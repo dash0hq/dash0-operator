@@ -1,0 +1,40 @@
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: mutating-webhook-configuration
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /v1alpha1/inject/dash0
+  failurePolicy: Ignore
+  name: inject.dash0.kb.io
+  rules:
+  - apiGroups:
+    - apps
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - daemonsets
+    - deployments
+    - replicasets
+    - statefulsets
+  - apiGroups:
+      - batch
+    apiVersions:
+      - v1
+    operations:
+      - CREATE
+      - UPDATE
+    resources:
+      - cronjobs
+      - jobs
+  sideEffects: None
+  timeoutSeconds: 5

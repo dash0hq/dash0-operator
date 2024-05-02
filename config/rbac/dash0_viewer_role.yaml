@@ -1,0 +1,27 @@
+# permissions for end users to view dash0s.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: dash0-viewer-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: dash0-operator
+    app.kubernetes.io/part-of: dash0-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: dash0-viewer-role
+rules:
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - dash0s
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - dash0s/status
+  verbs:
+  - get
