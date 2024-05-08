@@ -32,27 +32,13 @@ spec:
           metadata:
             type: object
           spec:
-            description: Dash0Spec defines the desired state of Dash0
-            properties:
-              containerPort:
-                description: Port defines the port that will be used to init the container
-                  with the image
-                format: int32
-                type: integer
-              size:
-                description: the number of instances
-                format: int32
-                maximum: 5
-                minimum: 1
-                type: integer
+            description: Dash0Spec defines the desired state of the Dash0 custom resource.
             type: object
           status:
-            description: Dash0Status defines the observed state of Dash0
+            description: Dash0Status defines the observed state of the Dash0 custom
+              resource.
             properties:
               conditions:
-                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
-                  of cluster Important: Run "make" to regenerate code after modifying
-                  this file'
                 items:
                   description: "Condition contains details for one aspect of the current
                     state of this API Resource. --- This struct is intended for direct

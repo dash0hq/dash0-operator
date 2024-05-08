@@ -7,33 +7,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
-
-// Dash0Spec defines the desired state of Dash0
+// Dash0Spec defines the desired state of the Dash0 custom resource.
 type Dash0Spec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
-
-	// The following markers will use OpenAPI v3 schema to validate the value
-	// More info: https://book.kubebuilder.io/reference/markers/crd-validation.html
-	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=5
-	// +kubebuilder:validation:ExclusiveMaximum=false
-
-	// the number of instances
-	// +operator-sdk:csv:customresourcedefinitions:type=spec
-	Size int32 `json:"size,omitempty"`
-
-	// Port defines the port that will be used to init the container with the image
-	// +operator-sdk:csv:customresourcedefinitions:type=spec
-	ContainerPort int32 `json:"containerPort,omitempty"`
 }
 
-// Dash0Status defines the observed state of Dash0
+// Dash0Status defines the observed state of the Dash0 custom resource.
 type Dash0Status struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 }
 
