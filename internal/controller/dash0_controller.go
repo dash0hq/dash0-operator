@@ -5,8 +5,6 @@ package controller
 
 import (
 	"context"
-	"time"
-
 	appsv1 "k8s.io/api/apps/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -20,17 +18,10 @@ import (
 	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/v1alpha1"
 )
 
-// const dash0Finalizer = "operator.dash0.com/finalizer"
-
 const (
 	conditionTypeAvailable = "Available"
-	conditionTypeDegraded  = "Degraded"
-
-	// requeueTimeAferProblem is the retry-time in case of problems that do not produce.
-	requeueTimeAferProblem = 1 * time.Second
 )
 
-// Dash0Reconciler reconciles a Dash0 object
 type Dash0Reconciler struct {
 	client.Client
 	Scheme   *runtime.Scheme
@@ -99,34 +90,13 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		}
 	}
 
-	// Add finalizers to the Dash0 custom resource.
-	// if !controllerutil.ContainsFinalizer(dash0CustomResource, dash0Finalizer) {
-	//	log.Info("Adding finalizer to the Dash0 custom resource")
-	//	if ok := controllerutil.AddFinalizer(dash0CustomResource, dash0Finalizer); !ok {
-	//		log.Error(err, "Failed to add finalizer to the Dash0 custom resource, requeuing reconciliation request.")
-	//		return ctrl.Result{RequeueAfter: requeueTimeAferProblem}, nil
-	//	}
-	//
-	//	if err = r.Update(ctx, dash0CustomResource); err != nil {
-	//		log.Error(err, "Failed to update custom resource to add finalizer, requeuing reconciliation request.")
-	//		return ctrl.Result{}, err
-	//	}
-	// }
-
 	// If a deletion timestamp is set this indicates that the Dash0 custom resource is about to be deleted.
 	isMarkedForDeletion := dash0CustomResource.GetDeletionTimestamp() != nil
 	if isMarkedForDeletion {
-		// TODO proper cleanup needs to happen here (removeDash0ModificationsFromResources)
-		//if controllerutil.ContainsFinalizer(dash0CustomResource, dash0Finalizer) {
-		//	result, err2, done := r.handleFinalizerOperations(ctx, req, log, dash0CustomResource, err)
-		//	if done {
-		//		return result, err2
-		//	}
-		//}
 		return ctrl.Result{}, nil
 	}
 
-	// TODO inject Dash0 instrumentations into _existint_ resources (later)
+	// TODO inject Dash0 instrumentations into _existing_ resources (later)
 
 	if err := r.Status().Update(ctx, dash0CustomResource); err != nil {
 		log.Error(err, "Failed to update Dash0 status")
@@ -135,70 +105,3 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	return ctrl.Result{}, nil
 }
-
-//func (r *Dash0Reconciler) handleFinalizerOperations(ctx context.Context, req ctrl.Request, log logr.Logger, dash0 *operatorv1alpha1.Dash0, err error) (ctrl.Result, error, bool) {
-//	log.Info("Performing Finalizer Operations for Dash0 before delete custom resource")
-//
-//	meta.SetStatusCondition(&dash0.Status.Conditions, metav1.Condition{Type: conditionTypeDegraded,
-//		Status: metav1.ConditionUnknown, Reason: "Finalizing",
-//		Message: fmt.Sprintf("Performing finalizer operations for the custom resource: %s ", dash0.Name)})
-//
-//	if err := r.Status().Update(ctx, dash0); err != nil {
-//		log.Error(err, "Failed to update Dash0 status")
-//		return ctrl.Result{}, err, true
-//	}
-//
-//	// Perform all operations required before remove the finalizer and allow
-//	// the Kubernetes API to remove the custom resource.
-//	r.doFinalizerOperationsForDash0(dash0)
-//
-//	// TODO(user): If you add operations to the doFinalizerOperationsForDash0 method
-//	// then you need to ensure that all worked fine before deleting and updating the Downgrade status
-//	// otherwise, you should requeue here.
-//
-//	// Re-fetch the Dash0 Custom Resource before update the status
-//	// so that we have the latest state of the resource on the cluster and we will avoid
-//	// raise the issue "the object has been modified, please apply
-//	// your changes to the latest version and try again" which would re-trigger the reconciliation
-//	if err := r.Get(ctx, req.NamespacedName, dash0); err != nil {
-//		log.Error(err, "Failed to re-fetch dash0")
-//		return ctrl.Result{}, err, true
-//	}
-//
-//	meta.SetStatusCondition(&dash0.Status.Conditions, metav1.Condition{Type: conditionTypeDegraded,
-//		Status: metav1.ConditionTrue, Reason: "Finalizing",
-//		Message: fmt.Sprintf("Finalizer operations for custom resource %s name were successfully accomplished", dash0.Name)})
-//
-//	if err := r.Status().Update(ctx, dash0); err != nil {
-//		log.Error(err, "Failed to update Dash0 status")
-//		return ctrl.Result{}, err, true
-//	}
-//
-//	//log.Info("Removing Finalizer for Dash0 after successfully perform the operations")
-//	//if ok := controllerutil.RemoveFinalizer(dash0, dash0Finalizer); !ok {
-//	//	log.Error(err, "Failed to remove finalizer for Dash0")
-//	//	return ctrl.Result{RequeueAfter: requeueTimeAferProblem}, nil, true
-//	//}
-//
-//	if err := r.Update(ctx, dash0); err != nil {
-//		log.Error(err, "Failed to remove finalizer for Dash0")
-//		return ctrl.Result{}, err, true
-//	}
-//	return ctrl.Result{}, nil, false
-//}
-
-// finalizeDash0 will perform the required operations before delete the CR.
-//func (r *Dash0Reconciler) doFinalizerOperationsForDash0(cr *operatorv1alpha1.Dash0) {
-//	// TODO(user): Add the cleanup steps that the operator needs to do before the CR can be deleted,
-//	// or remove this.
-//
-//	// Note: It is not recommended to use finalizers with the purpose of deleting resources which are
-//	// created and managed in the reconciliation. These resources, such as the Deployment created on reconcile,
-//	// are defined as depending on the custom resource, via an ownerRef, thus they are deleted automatically.
-//
-//	// The following implementation will raise an event
-//	r.Recorder.Event(cr, "Warning", "Deleting",
-//		fmt.Sprintf("Custom Resource %s is being deleted from the namespace %s",
-//			cr.Name,
-//			cr.Namespace))
-//}
