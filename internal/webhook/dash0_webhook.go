@@ -158,9 +158,14 @@ func (wh *WebhookHandler) addInitContainer(podSpec *corev1.PodSpec) {
 func (wh *WebhookHandler) createInitContainer(podSpec *corev1.PodSpec) *corev1.Container {
 	initContainerUser := &defaultInitContainerUser
 	initContainerGroup := &defaultInitContainerGroup
-	if podSpec.SecurityContext.FSGroup != nil {
-		initContainerUser = podSpec.SecurityContext.FSGroup
-		initContainerGroup = podSpec.SecurityContext.FSGroup
+
+	securityContext := podSpec.SecurityContext
+	if securityContext == nil {
+		securityContext = &corev1.PodSecurityContext{}
+	}
+	if securityContext.FSGroup != nil {
+		initContainerUser = securityContext.FSGroup
+		initContainerGroup = securityContext.FSGroup
 	}
 
 	return &corev1.Container{
@@ -176,7 +181,7 @@ func (wh *WebhookHandler) createInitContainer(podSpec *corev1.PodSpec) *corev1.C
 			AllowPrivilegeEscalation: &initContainerAllowPrivilegeEscalation,
 			Privileged:               &initContainerPrivileged,
 			ReadOnlyRootFilesystem:   &initContainerReadOnlyRootFilesystem,
-			RunAsNonRoot:             podSpec.SecurityContext.RunAsNonRoot,
+			RunAsNonRoot:             securityContext.RunAsNonRoot,
 			RunAsUser:                initContainerUser,
 			RunAsGroup:               initContainerGroup,
 		},
