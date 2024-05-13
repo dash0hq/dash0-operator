@@ -20,6 +20,8 @@ if [ -z "${DASH0_INSTRUMENTATION_FOLDER_DESTINATION:-}" ]; then
   DASH0_INSTRUMENTATION_FOLDER_DESTINATION=/opt/dash0
 fi
 
+# We deliberately do not create the base directory for $DASH0_INSTRUMENTATION_FOLDER_DESTINATION via mkdir, it needs
+# be an existing mount point provided externally.
 cp -R "${DASH0_INSTRUMENTATION_FOLDER_SOURCE}"/ "${DASH0_INSTRUMENTATION_FOLDER_DESTINATION}"
 
 echo "[Dash0] Instrumentation files have been copied."

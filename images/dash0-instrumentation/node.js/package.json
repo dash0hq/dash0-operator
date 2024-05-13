@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@dash0/opentelemetry": "file:dash0-opentelemetry-1.0.0.tgz"
+  }
+}
