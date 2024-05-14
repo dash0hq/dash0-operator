@@ -5,6 +5,8 @@ package e2e
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -15,12 +17,40 @@ import (
 	"github.com/dash0hq/dash0-operator/test/utils"
 )
 
-const namespace = "dash0-operator-system"
+const (
+	namespace         = "dash0-operator-system"
+	managerYaml       = "config/manager/manager.yaml"
+	managerYamlBackup = managerYaml + ".backup"
+)
 
-var originalKubeContext string
+var (
+	originalKubeContext    string
+	managerYamlNeedsRevert bool
+)
 
 var _ = Describe("controller", Ordered, func() {
+
 	BeforeAll(func() {
+		pwdOutput, err := utils.Run(exec.Command("pwd"))
+		ExpectWithOffset(1, err).NotTo(HaveOccurred())
+		workingDir := strings.TrimSpace(string(pwdOutput))
+		fmt.Fprintf(GinkgoWriter, "workingDir: %s\n", workingDir)
+
+		By("Reading current imagePullPolicy")
+		yqOutput, err := utils.Run(exec.Command("yq", "e", "select(documentIndex == 1) | .spec.template.spec.containers[] |  select(.name == \"manager\") | .imagePullPolicy", managerYaml))
+		ExpectWithOffset(1, err).NotTo(HaveOccurred())
+		originalImagePullPolicy := strings.TrimSpace(string(yqOutput))
+		fmt.Fprintf(GinkgoWriter, "original imagePullPolicy: %s\n", originalImagePullPolicy)
+
+		if originalImagePullPolicy != "Never" {
+			err = copyFile(managerYaml, managerYamlBackup)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+			managerYamlNeedsRevert = true
+			By("temporarily changing imagePullPolicy to \"Never\"")
+			_, err = utils.Run(exec.Command("yq", "-i", "with(select(documentIndex == 1) | .spec.template.spec.containers[] |  select(.name == \"manager\"); .imagePullPolicy |= \"Never\")", managerYaml))
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+		}
+
 		By("reading current kubectx")
 		kubectxOutput, err := utils.Run(exec.Command("kubectx", "-c"))
 		ExpectWithOffset(1, err).NotTo(HaveOccurred())
@@ -42,6 +72,14 @@ var _ = Describe("controller", Ordered, func() {
 	})
 
 	AfterAll(func() {
+		if managerYamlNeedsRevert {
+			By("reverting changes to " + managerYaml)
+			err := copyFile(managerYamlBackup, managerYaml)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+			err = os.Remove(managerYamlBackup)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+		}
+
 		By("uninstalling the Prometheus manager bundle")
 		utils.UninstallPrometheusOperator()
 
@@ -125,4 +163,21 @@ var _ = Describe("controller", Ordered, func() {
 			EventuallyWithOffset(1, verifyControllerUp, 120*time.Second, time.Second).Should(Succeed())
 		})
 	})
+
 })
+
+func copyFile(source string, destination string) error {
+	src, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	dst, err := os.Create(destination)
+	if err != nil {
+		return err
+	}
+	defer dst.Close()
+	_, err = io.Copy(dst, src)
+	return err
+}
