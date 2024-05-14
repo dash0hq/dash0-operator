@@ -79,6 +79,10 @@ make undeploy
 make test
 ```
 
+```
+make test-e2e
+```
+
 ## Make Targets
 
 Run `make help` for more information on all potential `make` targets.
