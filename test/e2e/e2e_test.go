@@ -6,6 +6,7 @@ package e2e
 import (
 	"fmt"
 	"os/exec"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -16,8 +17,19 @@ import (
 
 const namespace = "dash0-operator-system"
 
+var originalKubeContext string
+
 var _ = Describe("controller", Ordered, func() {
 	BeforeAll(func() {
+		By("reading current kubectx")
+		kubectxOutput, err := utils.Run(exec.Command("kubectx", "-c"))
+		ExpectWithOffset(1, err).NotTo(HaveOccurred())
+		originalKubeContext = strings.TrimSpace(string(kubectxOutput))
+
+		By("switching to kubectx kind-kind, previous context " + originalKubeContext + " will be restored later")
+		_, err = utils.Run(exec.Command("kubectx", "kind-kind"))
+		ExpectWithOffset(1, err).NotTo(HaveOccurred())
+
 		By("installing prometheus operator")
 		Expect(utils.InstallPrometheusOperator()).To(Succeed())
 
@@ -39,6 +51,13 @@ var _ = Describe("controller", Ordered, func() {
 		By("removing manager namespace")
 		cmd := exec.Command("kubectl", "delete", "ns", namespace)
 		_, _ = utils.Run(cmd)
+
+		By("switching back to original kubectx " + originalKubeContext)
+		output, err := utils.Run(exec.Command("kubectx", originalKubeContext))
+		if err != nil {
+			fmt.Fprint(GinkgoWriter, err.Error())
+		}
+		fmt.Fprintf(GinkgoWriter, string(output))
 	})
 
 	Context("Operator", func() {
@@ -53,9 +72,9 @@ var _ = Describe("controller", Ordered, func() {
 			_, err = utils.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
-			// By("loading the the manager(Operator) image on Kind")
-			// err = utils.LoadImageToKindClusterWithName(projectimage)
-			// ExpectWithOffset(1, err).NotTo(HaveOccurred())
+			By("loading the the manager(Operator) image on Kind")
+			err = utils.LoadImageToKindClusterWithName(projectimage)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
 			By("installing CRDs")
 			cmd = exec.Command("make", "install")
@@ -104,7 +123,6 @@ var _ = Describe("controller", Ordered, func() {
 				return nil
 			}
 			EventuallyWithOffset(1, verifyControllerUp, 120*time.Second, time.Second).Should(Succeed())
-
 		})
 	})
 })

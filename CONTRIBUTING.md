@@ -79,6 +79,9 @@ make undeploy
 make test
 ```
 
+For the end-to-end tests, [kind](https://kind.sigs.k8s.io/) needs to be installed and a kind cluster needs to exist
+(run `kind create cluster` after the `kind` installation). To run the end-to-end tests:
+
 ```
 make test-e2e
 ```
