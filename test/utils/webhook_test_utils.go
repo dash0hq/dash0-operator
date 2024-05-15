@@ -74,10 +74,9 @@ func CreateDeploymentWithMoreBellsAndWhistles(namespace string, name string) *ap
 			},
 		},
 	}
-	podSpec.Containers = append(
-		deployment.Spec.Template.Spec.Containers,
-		corev1.Container{
-			Name:  "test-container-1",
+	podSpec.Containers = []corev1.Container{
+		{
+			Name:  "test-container-0",
 			Image: "ubuntu",
 			VolumeMounts: []corev1.VolumeMount{{
 				Name:      "test-volume-0",
@@ -88,8 +87,8 @@ func CreateDeploymentWithMoreBellsAndWhistles(namespace string, name string) *ap
 				Value: "value",
 			}},
 		},
-		corev1.Container{
-			Name:  "test-container-2",
+		{
+			Name:  "test-container-1",
 			Image: "ubuntu",
 			VolumeMounts: []corev1.VolumeMount{
 				{
@@ -111,7 +110,8 @@ func CreateDeploymentWithMoreBellsAndWhistles(namespace string, name string) *ap
 					ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}},
 				},
 			},
-		})
+		},
+	}
 
 	return deployment
 }
@@ -166,28 +166,35 @@ func CreateDeploymentWithExistingDash0Artifacts(namespace string, name string) *
 			},
 		},
 	}
-	podSpec.Containers = append(
-		deployment.Spec.Template.Spec.Containers,
-		corev1.Container{
-			Name:  "test-container-1",
+	podSpec.Containers = []corev1.Container{
+		{
+			Name:  "test-container-0",
 			Image: "ubuntu",
 			VolumeMounts: []corev1.VolumeMount{
-				{
-					Name:      "dash0-instrumentation",
-					MountPath: "/will/be/overwritten",
-				},
 				{
 					Name:      "test-volume-0",
 					MountPath: "/test-1",
 				},
+				{
+					Name:      "dash0-instrumentation",
+					MountPath: "/will/be/overwritten",
+				},
 			},
-			Env: []corev1.EnvVar{{
-				Name:  "TEST0",
-				Value: "value",
-			}},
+			Env: []corev1.EnvVar{
+				{
+					Name:  "TEST0",
+					Value: "value",
+				},
+				{
+					// Dash0 does not support injecting into containers that already have NODE_OPTIONS set via a
+					// ValueFrom clause, thus this env var will not be modified.
+					Name:      "NODE_OPTIONS",
+					ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}},
+				},
+			},
 		},
-		corev1.Container{
-			Name:  "test-container-2",
+		{
+			Name:  "test-container-1",
 			Image: "ubuntu",
 			VolumeMounts: []corev1.VolumeMount{
 				{
@@ -209,11 +216,16 @@ func CreateDeploymentWithExistingDash0Artifacts(namespace string, name string) *
 					Value: "value",
 				},
 				{
-					Name:      "TEST1",
-					ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}},
+					Name:  "NODE_OPTIONS",
+					Value: "--require something-else --experimental-modules",
+				},
+				{
+					Name:  "TEST2",
+					Value: "value",
 				},
 			},
-		})
+		},
+	}
 
 	return deployment
 }
