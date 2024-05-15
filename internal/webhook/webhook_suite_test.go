@@ -39,9 +39,8 @@ var testEnv *envtest.Environment
 var ctx context.Context
 var cancel context.CancelFunc
 
-func TestAPIs(t *testing.T) {
+func TestWebhook(t *testing.T) {
 	RegisterFailHandler(Fail)
-
 	RunSpecs(t, "Webhook Suite")
 }
 
@@ -135,7 +134,7 @@ func setupTestResources() {
 	ns.Name = DefaultNamespace
 	Expect(k8sClient.Create(ctx, ns)).Should(Succeed())
 
-	Expect(k8sClient.Create(ctx, CreateDeployment(DefaultNamespace, DeploymentNameExisting))).Should(Succeed())
+	Expect(k8sClient.Create(ctx, CreateBasicDeployment(DefaultNamespace, DeploymentNameExisting))).Should(Succeed())
 }
 
 var _ = AfterSuite(func() {
