@@ -11,6 +11,8 @@ import (
 	"reflect"
 	"slices"
 
+	"github.com/go-logr/logr"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -68,8 +70,8 @@ func (wh *WebhookHandler) SetupWebhookWithManager(mgr ctrl.Manager) error {
 }
 
 func (wh *WebhookHandler) Handle(ctx context.Context, request admission.Request) admission.Response {
-	l := log.WithValues("gvk", request.Kind)
-	l.Info("incoming admission request")
+	logger := log.WithValues("gvk", request.Kind, "namespace", request.Namespace, "name", request.Name)
+	logger.Info("incoming admission request")
 
 	gkv := request.Kind
 	group := gkv.Group
@@ -85,7 +87,7 @@ func (wh *WebhookHandler) Handle(ctx context.Context, request admission.Request)
 
 		deploymentSpecTemplate := &deployment.Spec.Template
 		originalSpec := deploymentSpecTemplate.Spec.DeepCopy()
-		wh.modifyPodSpec(&deploymentSpecTemplate.Spec)
+		wh.modifyPodSpec(&deploymentSpecTemplate.Spec, logger)
 		if reflect.DeepEqual(originalSpec, &deploymentSpecTemplate.Spec) {
 			return admission.Allowed("no changes")
 		}
@@ -96,17 +98,17 @@ func (wh *WebhookHandler) Handle(ctx context.Context, request admission.Request)
 		}
 		return admission.PatchResponseFromRaw(request.Object.Raw, marshalled)
 	} else {
-		l.Info("resource type not supported", "group", group, "version", version, "kind", kind)
+		logger.Info("resource type not supported", "group", group, "version", version, "kind", kind)
 		return admission.Allowed("unknown resource type")
 	}
 }
 
-func (wh *WebhookHandler) modifyPodSpec(podSpec *corev1.PodSpec) {
+func (wh *WebhookHandler) modifyPodSpec(podSpec *corev1.PodSpec, logger logr.Logger) {
 	wh.addInstrumentationVolume(podSpec)
 	wh.addInitContainer(podSpec)
 	for idx := range podSpec.Containers {
 		container := &podSpec.Containers[idx]
-		wh.instrumentContainer(container)
+		wh.instrumentContainer(container, logger)
 	}
 }
 
@@ -192,9 +194,10 @@ func (wh *WebhookHandler) createInitContainer(podSpec *corev1.PodSpec) *corev1.C
 	}
 }
 
-func (wh *WebhookHandler) instrumentContainer(container *corev1.Container) {
+func (wh *WebhookHandler) instrumentContainer(container *corev1.Container, logger logr.Logger) {
+	logger = logger.WithValues("container", container.Name)
 	wh.addMount(container)
-	wh.addEnvironmentVariables(container)
+	wh.addEnvironmentVariables(container, logger)
 }
 
 func (wh *WebhookHandler) addMount(container *corev1.Container) {
@@ -216,12 +219,12 @@ func (wh *WebhookHandler) addMount(container *corev1.Container) {
 	}
 }
 
-func (wh *WebhookHandler) addEnvironmentVariables(container *corev1.Container) {
+func (wh *WebhookHandler) addEnvironmentVariables(container *corev1.Container, logger logr.Logger) {
 	// For now, we directly modify NODE_OPTIONS. Consider migrating to an LD_PRELOAD hook at some point.
-	wh.addEnvironmentVariable(container, envVarNodeOptionsName, envVarNodeOptionsValue)
+	wh.addOrPrependToEnvironmentVariable(container, envVarNodeOptionsName, envVarNodeOptionsValue, logger)
 }
 
-func (wh *WebhookHandler) addEnvironmentVariable(container *corev1.Container, name string, value string) {
+func (wh *WebhookHandler) addOrPrependToEnvironmentVariable(container *corev1.Container, name string, value string, logger logr.Logger) {
 	if container.Env == nil {
 		container.Env = make([]corev1.EnvVar, 0)
 	}
@@ -229,14 +232,23 @@ func (wh *WebhookHandler) addEnvironmentVariable(container *corev1.Container, na
 		return c.Name == name
 	})
 
-	envVar := &corev1.EnvVar{
-		Name:  name,
-		Value: value,
-	}
 	if idx < 0 {
-		container.Env = append(container.Env, *envVar)
+		container.Env = append(container.Env, corev1.EnvVar{
+			Name:  name,
+			Value: value,
+		})
 	} else {
-		container.Env[idx] = *envVar
+		envVar := container.Env[idx]
+		previousValue := envVar.Value
+		if previousValue == "" && envVar.ValueFrom != nil {
+			logger.Info(
+				fmt.Sprintf(
+					"Dash0 cannot prepend anything to the environment variable %s as it is specified via "+
+						"ValueFrom. This container will not be instrumented.",
+					name))
+			return
+		}
+		container.Env[idx].Value = fmt.Sprintf("%s %s", value, previousValue)
 	}
 }
 

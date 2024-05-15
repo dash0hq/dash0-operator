@@ -12,12 +12,20 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 )
 
+type containerExpectations struct {
+	volumeMounts             int
+	dash0VolumeMountIdx      int
+	envVars                  int
+	nodeOptionsEnvVarIdx     int
+	nodeOptionsValue         string
+	nodeOptionsUsesValueFrom bool
+}
 type deploymentExpectations struct {
 	volumes               int
 	dash0VolumeIdx        int
 	initContainers        int
 	dash0InitContainerIdx int
-	containers            int
+	containers            []containerExpectations
 }
 
 var _ = Describe("Dash0 Webhook", func() {
@@ -36,7 +44,12 @@ var _ = Describe("Dash0 Webhook", func() {
 				dash0VolumeIdx:        0,
 				initContainers:        1,
 				dash0InitContainerIdx: 0,
-				containers:            1,
+				containers: []containerExpectations{{
+					volumeMounts:         1,
+					dash0VolumeMountIdx:  0,
+					envVars:              1,
+					nodeOptionsEnvVarIdx: 0,
+				}},
 			})
 		})
 
@@ -50,7 +63,20 @@ var _ = Describe("Dash0 Webhook", func() {
 				dash0VolumeIdx:        2,
 				initContainers:        3,
 				dash0InitContainerIdx: 2,
-				containers:            3,
+				containers: []containerExpectations{
+					{
+						volumeMounts:         2,
+						dash0VolumeMountIdx:  1,
+						envVars:              2,
+						nodeOptionsEnvVarIdx: 1,
+					},
+					{
+						volumeMounts:         3,
+						dash0VolumeMountIdx:  2,
+						envVars:              3,
+						nodeOptionsEnvVarIdx: 2,
+					},
+				},
 			})
 		})
 
@@ -64,7 +90,22 @@ var _ = Describe("Dash0 Webhook", func() {
 				dash0VolumeIdx:        1,
 				initContainers:        3,
 				dash0InitContainerIdx: 1,
-				containers:            3,
+				containers: []containerExpectations{
+					{
+						volumeMounts:             2,
+						dash0VolumeMountIdx:      1,
+						envVars:                  2,
+						nodeOptionsEnvVarIdx:     1,
+						nodeOptionsUsesValueFrom: true,
+					},
+					{
+						volumeMounts:         3,
+						dash0VolumeMountIdx:  1,
+						envVars:              3,
+						nodeOptionsEnvVarIdx: 1,
+						nodeOptionsValue:     "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js --require something-else --experimental-modules",
+					},
+				},
 			})
 		})
 	})
@@ -99,12 +140,34 @@ func verifyDeployment(deployment *appsv1.Deployment, expectations deploymentExpe
 		}
 	}
 
-	Expect(podSpec.Containers).To(HaveLen(expectations.containers))
+	Expect(podSpec.Containers).To(HaveLen(len(expectations.containers)))
 	for i, container := range podSpec.Containers {
 		Expect(container.Name).To(Equal(fmt.Sprintf("test-container-%d", i)))
-		Expect(container.VolumeMounts).To(HaveLen(i + 1))
-		Expect(container.VolumeMounts).To(ContainElement(MatchVolumeMount("dash0-instrumentation", "/opt/dash0")))
-		Expect(container.Env).To(HaveLen(i + 1))
-		Expect(container.Env).To(ContainElement(MatchEnvVar("NODE_OPTIONS", "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js")))
+		containerExpectations := expectations.containers[i]
+		Expect(container.VolumeMounts).To(HaveLen(containerExpectations.volumeMounts))
+		for i, volumeMount := range container.VolumeMounts {
+			if i == containerExpectations.dash0VolumeMountIdx {
+				Expect(volumeMount.Name).To(Equal("dash0-instrumentation"))
+				Expect(volumeMount.MountPath).To(Equal("/opt/dash0"))
+			} else {
+				Expect(volumeMount.Name).To(Equal(fmt.Sprintf("test-volume-%d", i)))
+			}
+		}
+		Expect(container.Env).To(HaveLen(containerExpectations.envVars))
+		for i, envVar := range container.Env {
+			if i == containerExpectations.nodeOptionsEnvVarIdx {
+				Expect(envVar.Name).To(Equal("NODE_OPTIONS"))
+				if containerExpectations.nodeOptionsUsesValueFrom {
+					Expect(envVar.Value).To(BeEmpty())
+					Expect(envVar.ValueFrom).To(Not(BeNil()))
+				} else if containerExpectations.nodeOptionsValue != "" {
+					Expect(envVar.Value).To(Equal(containerExpectations.nodeOptionsValue))
+				} else {
+					Expect(envVar.Value).To(Equal("--require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js"))
+				}
+			} else {
+				Expect(envVar.Name).To(Equal(fmt.Sprintf("TEST%d", i)))
+			}
+		}
 	}
 }
