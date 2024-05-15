@@ -6,10 +6,10 @@ package controller
 import (
 	"context"
 
+	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -17,10 +17,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/v1alpha1"
-)
-
-const (
-	conditionTypeAvailable = "Available"
 )
 
 type Dash0Reconciler struct {
@@ -75,18 +71,17 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{}, err
 	}
 
+	needsRefresh := false
 	if dash0CustomResource.Status.Conditions == nil || len(dash0CustomResource.Status.Conditions) == 0 {
-		// No status is available, assume unknown.
-		meta.SetStatusCondition(&dash0CustomResource.Status.Conditions, metav1.Condition{Type: conditionTypeAvailable, Status: metav1.ConditionUnknown, Reason: "Reconciling", Message: "Starting reconciliation"})
-		if err = r.Status().Update(ctx, dash0CustomResource); err != nil {
-			log.Error(err, "Cannot update the status of the Dash0 custom resource, requeuing reconciliation request.")
-			return ctrl.Result{}, err
-		}
-
-		// Re-fetch the Dash0 custom resource after updating the status. This also helps to avoid triggering
-		// "the object has been modified, please apply your changes to the latest version and try again".
-		if err := r.Get(ctx, req.NamespacedName, dash0CustomResource); err != nil {
-			log.Error(err, "Failed to re-fetch the Dash0 custom resource after updating its status, requeuing reconciliation request.")
+		setAvailableConditionToUnknown(dash0CustomResource)
+		needsRefresh = true
+	} else if availableCondition := meta.FindStatusCondition(dash0CustomResource.Status.Conditions, string(operatorv1alpha1.ConditionTypeAvailable)); availableCondition == nil {
+		setAvailableConditionToUnknown(dash0CustomResource)
+		needsRefresh = true
+	}
+	if needsRefresh {
+		err = r.refreshStatus(ctx, dash0CustomResource, req, log)
+		if err != nil {
 			return ctrl.Result{}, err
 		}
 	}
@@ -99,10 +94,30 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	// TODO inject Dash0 instrumentations into _existing_ resources (later)
 
+	makeAvailable(dash0CustomResource)
 	if err := r.Status().Update(ctx, dash0CustomResource); err != nil {
-		log.Error(err, "Failed to update Dash0 status")
+		log.Error(err, "Failed to update Dash0 status conditions, requeuing reconciliation request.")
 		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
+}
+
+func (r *Dash0Reconciler) refreshStatus(
+	ctx context.Context,
+	dash0CustomResource *operatorv1alpha1.Dash0,
+	req ctrl.Request,
+	log logr.Logger,
+) error {
+	if err := r.Status().Update(ctx, dash0CustomResource); err != nil {
+		log.Error(err, "Cannot update the status of the Dash0 custom resource, requeuing reconciliation request.")
+		return err
+	}
+	// Re-fetch the Dash0 custom resource after updating the status. This also helps to avoid triggering
+	// "the object has been modified, please apply your changes to the latest version and try again".
+	if err := r.Get(ctx, req.NamespacedName, dash0CustomResource); err != nil {
+		log.Error(err, "Failed to re-fetch the Dash0 custom resource after updating its status, requeuing reconciliation request.")
+		return err
+	}
+	return nil
 }

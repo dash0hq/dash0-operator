@@ -5,6 +5,9 @@ package controller
 
 import (
 	"context"
+	"time"
+
+	"k8s.io/apimachinery/pkg/api/meta"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -15,6 +18,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/v1alpha1"
+)
+
+var (
+	timeout         = 15 * time.Second
+	pollingInterval = 50 * time.Millisecond
 )
 
 var _ = Describe("Dash0 Controller", func() {
@@ -51,6 +59,7 @@ var _ = Describe("Dash0 Controller", func() {
 			By("Cleanup the specific resource instance Dash0")
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 		})
+
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
 			controllerReconciler := &Dash0Reconciler{
@@ -62,6 +71,16 @@ var _ = Describe("Dash0 Controller", func() {
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
+
+			Eventually(func(g Gomega) {
+				dash0 := &operatorv1alpha1.Dash0{}
+				g.Expect(k8sClient.Get(ctx, typeNamespacedName, dash0)).To(Succeed())
+				available := meta.FindStatusCondition(dash0.Status.Conditions, string(operatorv1alpha1.ConditionTypeAvailable))
+				g.Expect(available).NotTo(BeNil())
+				g.Expect(available.Status).To(Equal(metav1.ConditionTrue))
+				degraded := meta.FindStatusCondition(dash0.Status.Conditions, string(operatorv1alpha1.ConditionTypeDegraded))
+				g.Expect(degraded).To(BeNil())
+			}, timeout, pollingInterval).Should(Succeed())
 		})
 	})
 })
