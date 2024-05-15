@@ -5,9 +5,9 @@ package utils
 
 import (
 	"fmt"
-	"github.com/onsi/gomega/format"
 
 	"github.com/onsi/gomega"
+	"github.com/onsi/gomega/format"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -62,7 +62,9 @@ type MatchVolumeMountMatcher struct {
 func (matcher *MatchVolumeMountMatcher) Match(actual interface{}) (success bool, err error) {
 	volumeMount, ok := actual.(corev1.VolumeMount)
 	if !ok {
-		return false, fmt.Errorf("ContainsVolumeMount matcher requires a corev1.VolumeMount.  Got:\n%s", format.Object(actual, 1))
+		return false, fmt.Errorf(
+			"ContainsVolumeMount matcher requires a corev1.VolumeMount.  Got:\n%s",
+			format.Object(actual, 1))
 	}
 	return matcher.Name == volumeMount.Name && matcher.MountPath == volumeMount.MountPath, nil
 }

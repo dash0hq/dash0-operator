@@ -4,6 +4,7 @@
 package e2e
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -37,7 +38,11 @@ var _ = Describe("controller", Ordered, func() {
 		fmt.Fprintf(GinkgoWriter, "workingDir: %s\n", workingDir)
 
 		By("Reading current imagePullPolicy")
-		yqOutput, err := utils.Run(exec.Command("yq", "e", "select(documentIndex == 1) | .spec.template.spec.containers[] |  select(.name == \"manager\") | .imagePullPolicy", managerYaml))
+		yqOutput, err := utils.Run(exec.Command(
+			"yq",
+			"e",
+			"select(documentIndex == 1) | .spec.template.spec.containers[] |  select(.name == \"manager\") | .imagePullPolicy",
+			managerYaml))
 		ExpectWithOffset(1, err).NotTo(HaveOccurred())
 		originalImagePullPolicy := strings.TrimSpace(string(yqOutput))
 		fmt.Fprintf(GinkgoWriter, "original imagePullPolicy: %s\n", originalImagePullPolicy)
@@ -47,7 +52,14 @@ var _ = Describe("controller", Ordered, func() {
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 			managerYamlNeedsRevert = true
 			By("temporarily changing imagePullPolicy to \"Never\"")
-			_, err = utils.Run(exec.Command("yq", "-i", "with(select(documentIndex == 1) | .spec.template.spec.containers[] |  select(.name == \"manager\"); .imagePullPolicy |= \"Never\")", managerYaml))
+			_, err = utils.Run(exec.Command(
+				"yq",
+				"-i",
+				"with(select(documentIndex == 1) | "+
+					".spec.template.spec.containers[] | "+
+					"select(.name == \"manager\"); "+
+					".imagePullPolicy |= \"Never\")",
+				managerYaml))
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 		}
 
@@ -95,7 +107,7 @@ var _ = Describe("controller", Ordered, func() {
 		if err != nil {
 			fmt.Fprint(GinkgoWriter, err.Error())
 		}
-		fmt.Fprintf(GinkgoWriter, string(output))
+		fmt.Fprint(GinkgoWriter, string(output))
 	})
 
 	Context("Operator", func() {
@@ -117,6 +129,7 @@ var _ = Describe("controller", Ordered, func() {
 			By("installing CRDs")
 			cmd = exec.Command("make", "install")
 			_, err = utils.Run(cmd)
+			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
 			fmt.Fprintf(GinkgoWriter, "time.Sleep(30 * time.Second)\n")
 			time.Sleep(30 * time.Second)
@@ -171,13 +184,17 @@ func copyFile(source string, destination string) error {
 	if err != nil {
 		return err
 	}
-	defer src.Close()
+	defer func() {
+		err = errors.Join(err, src.Close())
+	}()
 
 	dst, err := os.Create(destination)
 	if err != nil {
 		return err
 	}
-	defer dst.Close()
+	defer func() {
+		err = errors.Join(err, dst.Close())
+	}()
 	_, err = io.Copy(dst, src)
 	return err
 }

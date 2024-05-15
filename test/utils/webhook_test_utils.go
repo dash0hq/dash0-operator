@@ -5,6 +5,7 @@ package utils
 
 import (
 	"context"
+
 	. "github.com/onsi/gomega"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -36,7 +37,12 @@ func CreateDeployment(namespace string, name string) *appsv1.Deployment {
 	return deployment
 }
 
-func GetDeployment(ctx context.Context, k8sClient client.Client, namespace string, deploymentName string) *appsv1.Deployment {
+func GetDeployment(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	deploymentName string,
+) *appsv1.Deployment {
 	deployment := &appsv1.Deployment{}
 	namespacedName := types.NamespacedName{
 		Namespace: namespace,

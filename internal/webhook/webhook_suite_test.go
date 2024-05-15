@@ -7,7 +7,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	corev1 "k8s.io/api/core/v1"
+
 	"net"
 	"path/filepath"
 	"runtime"
@@ -20,6 +20,7 @@ import (
 
 	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/v1alpha1"
 	admissionv1 "k8s.io/api/admission/v1"
+	corev1 "k8s.io/api/core/v1"
 	apimachineryruntime "k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"

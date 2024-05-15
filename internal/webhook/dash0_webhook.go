@@ -85,9 +85,7 @@ func (wh *WebhookHandler) Handle(ctx context.Context, request admission.Request)
 
 		deploymentSpecTemplate := &deployment.Spec.Template
 		originalSpec := deploymentSpecTemplate.Spec.DeepCopy()
-		if err := wh.modifyPodSpec(&deploymentSpecTemplate.Spec); err != nil {
-			return admission.Errored(http.StatusInternalServerError, fmt.Errorf("injecting into pod spec failed: %w", err))
-		}
+		wh.modifyPodSpec(&deploymentSpecTemplate.Spec)
 		if reflect.DeepEqual(originalSpec, &deploymentSpecTemplate.Spec) {
 			return admission.Allowed("no changes")
 		}
@@ -103,14 +101,13 @@ func (wh *WebhookHandler) Handle(ctx context.Context, request admission.Request)
 	}
 }
 
-func (wh *WebhookHandler) modifyPodSpec(podSpec *corev1.PodSpec) error {
+func (wh *WebhookHandler) modifyPodSpec(podSpec *corev1.PodSpec) {
 	wh.addInstrumentationVolume(podSpec)
 	wh.addInitContainer(podSpec)
-	for idx, _ := range podSpec.Containers {
+	for idx := range podSpec.Containers {
 		container := &podSpec.Containers[idx]
 		wh.instrumentContainer(container)
 	}
-	return nil
 }
 
 func (wh *WebhookHandler) addInstrumentationVolume(podSpec *corev1.PodSpec) {

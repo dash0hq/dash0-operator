@@ -5,6 +5,7 @@ package controller
 
 import (
 	"context"
+
 	appsv1 "k8s.io/api/apps/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -60,7 +61,7 @@ func (r *Dash0Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx).WithValues("namespace", req.NamespacedName.Namespace, "name", req.NamespacedName.Name)
 
-	// Check wheter the Dash0 custom resource exists.
+	// Check whether the Dash0 custom resource exists.
 	dash0CustomResource := &operatorv1alpha1.Dash0{}
 	err := r.Get(ctx, req.NamespacedName, dash0CustomResource)
 	if err != nil {

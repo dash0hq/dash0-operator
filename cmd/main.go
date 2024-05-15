@@ -83,7 +83,14 @@ func main() {
 		TLSOpts: tlsOpts,
 	})
 
-	if err := startOperatorManager(metricsAddr, secureMetrics, tlsOpts, webhookServer, probeAddr, enableLeaderElection); err != nil {
+	if err := startOperatorManager(
+		metricsAddr,
+		secureMetrics,
+		tlsOpts,
+		webhookServer,
+		probeAddr,
+		enableLeaderElection,
+	); err != nil {
 		setupLog.Error(err, "The Dash0 operator manager process failed to start.")
 		os.Exit(1)
 	}
@@ -135,7 +142,7 @@ func startOperatorManager(
 
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
 		if err = (&dash0webhook.WebhookHandler{
-			EventRecorder: mgr.GetEventRecorderFor(fmt.Sprintf("dash0-webhook")),
+			EventRecorder: mgr.GetEventRecorderFor("dash0-webhook"),
 		}).SetupWebhookWithManager(mgr); err != nil {
 			return fmt.Errorf("unable to create the Dash0 webhook: %w", err)
 		}
