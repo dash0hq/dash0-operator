@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package utils
+package util
 
 import (
 	"context"
@@ -10,18 +10,66 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
-	DefaultNamespace       = "namespace"
+	TestNamespaceName      = "test-namespace"
 	DeploymentName         = "deployment"
 	DeploymentNameExisting = "existing-deployment"
 )
 
-func CreateBasicDeployment(namespace string, name string) *appsv1.Deployment {
+func EnsureResourceExists(
+	ctx context.Context,
+	k8sClient client.Client,
+	qualifiedName types.NamespacedName,
+	receiver client.Object,
+	blueprint client.Object,
+) client.Object {
+	err := k8sClient.Get(ctx, qualifiedName, receiver)
+	if err == nil {
+		return receiver
+	}
+	if errors.IsNotFound(err) {
+		Expect(k8sClient.Create(ctx, blueprint)).To(Succeed())
+		return blueprint
+	} else {
+		Expect(err).ToNot(HaveOccurred())
+		return nil
+	}
+}
+
+func TestNamespace(name string) *corev1.Namespace {
+	namespace := &corev1.Namespace{}
+	namespace.Name = name
+	return namespace
+}
+
+func CreateTestNamespace(ctx context.Context, k8sClient client.Client, name string) *corev1.Namespace {
+	namespace := TestNamespace(name)
+	Expect(k8sClient.Create(ctx, namespace)).Should(Succeed())
+	return namespace
+}
+
+func EnsureTestNamespaceExists(
+	ctx context.Context,
+	k8sClient client.Client,
+	name string,
+) *corev1.Namespace {
+	object := EnsureResourceExists(
+		ctx,
+		k8sClient,
+		types.NamespacedName{Name: name},
+		&corev1.Namespace{},
+		TestNamespace(name),
+	)
+	return object.(*corev1.Namespace)
+}
+
+func BasicDeployment(namespace string, name string) *appsv1.Deployment {
 	deployment := &appsv1.Deployment{}
 	deployment.Namespace = namespace
 	deployment.Name = name
@@ -37,8 +85,19 @@ func CreateBasicDeployment(namespace string, name string) *appsv1.Deployment {
 	return deployment
 }
 
-func CreateDeploymentWithMoreBellsAndWhistles(namespace string, name string) *appsv1.Deployment {
-	deployment := CreateBasicDeployment(namespace, name)
+func CreateBasicDeployment(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *appsv1.Deployment {
+	deployment := BasicDeployment(namespace, name)
+	Expect(k8sClient.Create(ctx, deployment)).Should(Succeed())
+	return deployment
+}
+
+func DeploymentWithMoreBellsAndWhistles(namespace string, name string) *appsv1.Deployment {
+	deployment := BasicDeployment(namespace, name)
 	podSpec := &deployment.Spec.Template.Spec
 	podSpec.Volumes = []corev1.Volume{
 		{
@@ -116,8 +175,8 @@ func CreateDeploymentWithMoreBellsAndWhistles(namespace string, name string) *ap
 	return deployment
 }
 
-func CreateDeploymentWithExistingDash0Artifacts(namespace string, name string) *appsv1.Deployment {
-	deployment := CreateBasicDeployment(namespace, name)
+func DeploymentWithExistingDash0Artifacts(namespace string, name string) *appsv1.Deployment {
+	deployment := BasicDeployment(namespace, name)
 	podSpec := &deployment.Spec.Template.Spec
 	podSpec.Volumes = []corev1.Volume{
 		{

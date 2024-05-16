@@ -5,24 +5,30 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/k8sresources"
+	. "github.com/dash0hq/dash0-operator/internal/util"
 )
 
 type Dash0Reconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	Recorder record.EventRecorder
+	ClientSet *kubernetes.Clientset
+	Scheme    *runtime.Scheme
+	Recorder  record.EventRecorder
 }
 
 func (r *Dash0Reconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -71,30 +77,22 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{}, err
 	}
 
-	needsRefresh := false
-	if dash0CustomResource.Status.Conditions == nil || len(dash0CustomResource.Status.Conditions) == 0 {
-		setAvailableConditionToUnknown(dash0CustomResource)
-		needsRefresh = true
-	} else if availableCondition := meta.FindStatusCondition(dash0CustomResource.Status.Conditions, string(operatorv1alpha1.ConditionTypeAvailable)); availableCondition == nil {
-		setAvailableConditionToUnknown(dash0CustomResource)
-		needsRefresh = true
-	}
-	if needsRefresh {
-		err = r.refreshStatus(ctx, dash0CustomResource, req, log)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
+	isFirstReconciliation, err := r.initStatusConditions(ctx, req, dash0CustomResource, &log)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 
-	// If a deletion timestamp is set this indicates that the Dash0 custom resource is about to be deleted.
-	isMarkedForDeletion := dash0CustomResource.GetDeletionTimestamp() != nil
+	isMarkedForDeletion := r.handleFinalizers(dash0CustomResource)
 	if isMarkedForDeletion {
+		// Dash0 is marked for deletion, no further reconciliation is necessary.
 		return ctrl.Result{}, nil
 	}
 
-	// TODO inject Dash0 instrumentations into _existing_ resources (later)
+	if isFirstReconciliation {
+		r.handleFirstReconciliation(ctx, dash0CustomResource, &log)
+	}
 
-	makeAvailable(dash0CustomResource)
+	ensureResourceIsMarkedAsAvailable(dash0CustomResource)
 	if err := r.Status().Update(ctx, dash0CustomResource); err != nil {
 		log.Error(err, "Failed to update Dash0 status conditions, requeuing reconciliation request.")
 		return ctrl.Result{}, err
@@ -103,11 +101,65 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	return ctrl.Result{}, nil
 }
 
+func (r *Dash0Reconciler) initStatusConditions(ctx context.Context, req ctrl.Request, dash0CustomResource *operatorv1alpha1.Dash0, log *logr.Logger) (bool, error) {
+	firstReconciliation := false
+	needsRefresh := false
+	if dash0CustomResource.Status.Conditions == nil || len(dash0CustomResource.Status.Conditions) == 0 {
+		setAvailableConditionToUnknown(dash0CustomResource)
+		firstReconciliation = true
+		needsRefresh = true
+	} else if availableCondition := meta.FindStatusCondition(dash0CustomResource.Status.Conditions, string(operatorv1alpha1.ConditionTypeAvailable)); availableCondition == nil {
+		setAvailableConditionToUnknown(dash0CustomResource)
+		needsRefresh = true
+	}
+	if needsRefresh {
+		err := r.refreshStatus(ctx, dash0CustomResource, req, log)
+		if err != nil {
+			return firstReconciliation, err
+		}
+	}
+	return firstReconciliation, nil
+}
+
+func (r *Dash0Reconciler) handleFinalizers(dash0CustomResource *operatorv1alpha1.Dash0) bool {
+	isMarkedForDeletion := dash0CustomResource.GetDeletionTimestamp() != nil
+	// if !isMarkedForDeletion {
+	//   add finalizers here
+	// } else /* if has finalizers */ {
+	//   execute finalizers here
+	// }
+	return isMarkedForDeletion
+}
+
+func (r *Dash0Reconciler) handleFirstReconciliation(ctx context.Context, dash0CustomResource *operatorv1alpha1.Dash0, log *logr.Logger) {
+	log.Info("Initial reconciliation in progress.")
+	instrumentationEnabled := true
+	instrumentingExistingResourcesEnabled := true
+	if !instrumentationEnabled {
+		log.Info(
+			"Instrumentation is not enabled, neither new nor existing resources will be modified to send telemetry to Dash0.",
+		)
+		return
+	}
+
+	if !instrumentingExistingResourcesEnabled {
+		log.Info(
+			"Instrumenting existing resources is not enabled, only new resources will be modified (at deploy time) to send telemetry to Dash0.",
+		)
+		return
+	}
+
+	log.Info("Modifying existing resources to make them send telemetry to Dash0.")
+	if err := r.modifyExistingResources(ctx, dash0CustomResource); err != nil {
+		log.Error(err, "Modifying existing resources failed.")
+	}
+}
+
 func (r *Dash0Reconciler) refreshStatus(
 	ctx context.Context,
 	dash0CustomResource *operatorv1alpha1.Dash0,
 	req ctrl.Request,
-	log logr.Logger,
+	log *logr.Logger,
 ) error {
 	if err := r.Status().Update(ctx, dash0CustomResource); err != nil {
 		log.Error(err, "Cannot update the status of the Dash0 custom resource, requeuing reconciliation request.")
@@ -118,6 +170,45 @@ func (r *Dash0Reconciler) refreshStatus(
 	if err := r.Get(ctx, req.NamespacedName, dash0CustomResource); err != nil {
 		log.Error(err, "Failed to re-fetch the Dash0 custom resource after updating its status, requeuing reconciliation request.")
 		return err
+	}
+	return nil
+}
+
+func (r *Dash0Reconciler) modifyExistingResources(ctx context.Context, dash0CustomResource *operatorv1alpha1.Dash0) error {
+	namespace := dash0CustomResource.Namespace
+
+	listOptions := metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("!%s", Dash0AutoInstrumentationLabel),
+	}
+
+	deploymentsInNamespace, err := r.ClientSet.AppsV1().Deployments(namespace).List(ctx, listOptions)
+	if err != nil {
+		return fmt.Errorf("error when querying deployments: %w", err)
+	}
+
+	for _, deployment := range deploymentsInNamespace.Items {
+		logger := log.FromContext(ctx).WithValues("gvk", "deployment", "namespace", deployment.GetNamespace(), "name", deployment.GetName())
+		operationLabel := "Modifying deployment"
+		err := Retry(operationLabel, func() error {
+			if err := r.Client.Get(ctx, client.ObjectKey{
+				Namespace: deployment.GetNamespace(),
+				Name:      deployment.GetName(),
+			}, &deployment); err != nil {
+				return fmt.Errorf("error when fetching deployment %s/%s: %w", deployment.GetNamespace(), deployment.GetName(), err)
+			}
+			hasBeenModified := k8sresources.ModifyPodSpec(&deployment.Spec.Template.Spec, logger)
+			if hasBeenModified {
+				return r.Client.Update(ctx, &deployment)
+			} else {
+				return nil
+			}
+		}, &logger)
+
+		if err != nil {
+			return fmt.Errorf("Error when modifying deployment %s/%s: %w", deployment.GetNamespace(), deployment.GetName(), err)
+		} else {
+			logger.Info("Added instrumentation to deployment", "name", deployment.Name)
+		}
 	}
 	return nil
 }

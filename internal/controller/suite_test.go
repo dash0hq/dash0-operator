@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"testing"
 
+	"k8s.io/client-go/kubernetes"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -23,9 +25,12 @@ import (
 	//+kubebuilder:scaffold:imports
 )
 
-var cfg *rest.Config
-var k8sClient client.Client
-var testEnv *envtest.Environment
+var (
+	cfg       *rest.Config
+	k8sClient client.Client
+	clientset *kubernetes.Clientset
+	testEnv   *envtest.Environment
+)
 
 func TestControllers(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -65,6 +70,9 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
 
+	clientset, err = kubernetes.NewForConfig(cfg)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(clientset).NotTo(BeNil())
 })
 
 var _ = AfterSuite(func() {

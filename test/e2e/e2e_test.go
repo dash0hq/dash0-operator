@@ -15,7 +15,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/dash0hq/dash0-operator/test/utils"
+	testUtil "github.com/dash0hq/dash0-operator/test/util"
 )
 
 const (
@@ -32,13 +32,13 @@ var (
 var _ = Describe("controller", Ordered, func() {
 
 	BeforeAll(func() {
-		pwdOutput, err := utils.Run(exec.Command("pwd"))
+		pwdOutput, err := testUtil.Run(exec.Command("pwd"))
 		ExpectWithOffset(1, err).NotTo(HaveOccurred())
 		workingDir := strings.TrimSpace(string(pwdOutput))
 		fmt.Fprintf(GinkgoWriter, "workingDir: %s\n", workingDir)
 
 		By("Reading current imagePullPolicy")
-		yqOutput, err := utils.Run(exec.Command(
+		yqOutput, err := testUtil.Run(exec.Command(
 			"yq",
 			"e",
 			"select(documentIndex == 1) | .spec.template.spec.containers[] |  select(.name == \"manager\") | .imagePullPolicy",
@@ -52,7 +52,7 @@ var _ = Describe("controller", Ordered, func() {
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 			managerYamlNeedsRevert = true
 			By("temporarily changing imagePullPolicy to \"Never\"")
-			_, err = utils.Run(exec.Command(
+			_, err = testUtil.Run(exec.Command(
 				"yq",
 				"-i",
 				"with(select(documentIndex == 1) | "+
@@ -64,23 +64,23 @@ var _ = Describe("controller", Ordered, func() {
 		}
 
 		By("reading current kubectx")
-		kubectxOutput, err := utils.Run(exec.Command("kubectx", "-c"))
+		kubectxOutput, err := testUtil.Run(exec.Command("kubectx", "-c"))
 		ExpectWithOffset(1, err).NotTo(HaveOccurred())
 		originalKubeContext = strings.TrimSpace(string(kubectxOutput))
 
 		By("switching to kubectx kind-kind, previous context " + originalKubeContext + " will be restored later")
-		_, err = utils.Run(exec.Command("kubectx", "kind-kind"))
+		_, err = testUtil.Run(exec.Command("kubectx", "kind-kind"))
 		ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
 		By("installing prometheus operator")
-		Expect(utils.InstallPrometheusOperator()).To(Succeed())
+		Expect(testUtil.InstallPrometheusOperator()).To(Succeed())
 
 		By("installing the cert-manager")
-		Expect(utils.InstallCertManager()).To(Succeed())
+		Expect(testUtil.InstallCertManager()).To(Succeed())
 
 		By("creating manager namespace")
 		cmd := exec.Command("kubectl", "create", "ns", namespace)
-		_, _ = utils.Run(cmd)
+		_, _ = testUtil.Run(cmd)
 	})
 
 	AfterAll(func() {
@@ -93,17 +93,17 @@ var _ = Describe("controller", Ordered, func() {
 		}
 
 		By("uninstalling the Prometheus manager bundle")
-		utils.UninstallPrometheusOperator()
+		testUtil.UninstallPrometheusOperator()
 
 		By("uninstalling the cert-manager bundle")
-		utils.UninstallCertManager()
+		testUtil.UninstallCertManager()
 
 		By("removing manager namespace")
 		cmd := exec.Command("kubectl", "delete", "ns", namespace)
-		_, _ = utils.Run(cmd)
+		_, _ = testUtil.Run(cmd)
 
 		By("switching back to original kubectx " + originalKubeContext)
-		output, err := utils.Run(exec.Command("kubectx", originalKubeContext))
+		output, err := testUtil.Run(exec.Command("kubectx", originalKubeContext))
 		if err != nil {
 			fmt.Fprint(GinkgoWriter, err.Error())
 		}
@@ -119,16 +119,16 @@ var _ = Describe("controller", Ordered, func() {
 
 			By("building the manager(Operator) image")
 			cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectimage))
-			_, err = utils.Run(cmd)
+			_, err = testUtil.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
 			By("loading the the manager(Operator) image on Kind")
-			err = utils.LoadImageToKindClusterWithName(projectimage)
+			err = testUtil.LoadImageToKindClusterWithName(projectimage)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
 			By("installing CRDs")
 			cmd = exec.Command("make", "install")
-			_, err = utils.Run(cmd)
+			_, err = testUtil.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
 			fmt.Fprintf(GinkgoWriter, "time.Sleep(30 * time.Second)\n")
@@ -136,7 +136,7 @@ var _ = Describe("controller", Ordered, func() {
 
 			By("deploying the controller-manager")
 			cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", projectimage))
-			_, err = utils.Run(cmd)
+			_, err = testUtil.Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
 			By("validating that the controller-manager pod is running as expected")
@@ -152,9 +152,9 @@ var _ = Describe("controller", Ordered, func() {
 					"-n", namespace,
 				)
 
-				podOutput, err := utils.Run(cmd)
+				podOutput, err := testUtil.Run(cmd)
 				ExpectWithOffset(2, err).NotTo(HaveOccurred())
-				podNames := utils.GetNonEmptyLines(string(podOutput))
+				podNames := testUtil.GetNonEmptyLines(string(podOutput))
 				if len(podNames) != 1 {
 					return fmt.Errorf("expect 1 controller pods running, but got %d", len(podNames))
 				}
@@ -166,7 +166,7 @@ var _ = Describe("controller", Ordered, func() {
 					"pods", controllerPodName, "-o", "jsonpath={.status.phase}",
 					"-n", namespace,
 				)
-				status, err := utils.Run(cmd)
+				status, err := testUtil.Run(cmd)
 				ExpectWithOffset(2, err).NotTo(HaveOccurred())
 				if string(status) != "Running" {
 					return fmt.Errorf("controller pod in %s status", status)
