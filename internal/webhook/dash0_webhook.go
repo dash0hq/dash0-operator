@@ -10,30 +10,28 @@ import (
 	"net/http"
 
 	"github.com/dash0hq/dash0-operator/internal/k8sresources"
+	. "github.com/dash0hq/dash0-operator/internal/util"
+
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
-
 
 var (
 	log     = logf.Log.WithName("dash0-webhook")
 	decoder = scheme.Codecs.UniversalDecoder()
 )
 
-type WebhookHandler struct {
-	client.Client
-	*admission.Decoder
-	record.EventRecorder
+type Handler struct {
+	Recorder record.EventRecorder
 }
 
-func (wh *WebhookHandler) SetupWebhookWithManager(mgr ctrl.Manager) error {
+func (h *Handler) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	webhook := &admission.Webhook{
-		Handler: wh,
+		Handler: h,
 	}
 
 	handler, err := admission.StandaloneWebhook(webhook, admission.StandaloneOptions{})
@@ -45,7 +43,7 @@ func (wh *WebhookHandler) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return nil
 }
 
-func (wh *WebhookHandler) Handle(ctx context.Context, request admission.Request) admission.Response {
+func (h *Handler) Handle(ctx context.Context, request admission.Request) admission.Response {
 	logger := log.WithValues("gvk", request.Kind, "namespace", request.Namespace, "name", request.Name)
 	logger.Info("incoming admission request")
 
@@ -71,19 +69,12 @@ func (wh *WebhookHandler) Handle(ctx context.Context, request admission.Request)
 			return admission.Allowed(fmt.Errorf("error when marshalling modfied resource to JSON: %w", err).Error())
 		}
 
+		if hasBeenModified {
+			QueueSuccessfulInstrumentationEvent(h.Recorder, deployment, "webhook")
+		}
 		return admission.PatchResponseFromRaw(request.Object.Raw, marshalled)
 	} else {
 		logger.Info("resource type not supported", "group", group, "version", version, "kind", kind)
 		return admission.Allowed("unknown resource type")
 	}
-}
-
-func (wh *WebhookHandler) InjectClient(c client.Client) error {
-	wh.Client = c
-	return nil
-}
-
-func (wh *WebhookHandler) InjectDecoder(d *admission.Decoder) error {
-	wh.Decoder = d
-	return nil
 }

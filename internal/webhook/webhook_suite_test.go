@@ -21,6 +21,7 @@ import (
 	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/v1alpha1"
 	admissionv1 "k8s.io/api/admission/v1"
 	apimachineryruntime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -35,6 +36,7 @@ import (
 var (
 	cfg       *rest.Config
 	k8sClient client.Client
+	clientset *kubernetes.Clientset
 	testEnv   *envtest.Environment
 	ctx       context.Context
 	cancel    context.CancelFunc
@@ -90,6 +92,10 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
 
+	clientset, err = kubernetes.NewForConfig(cfg)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(clientset).NotTo(BeNil())
+
 	By("setting up resources")
 	setupTestResources()
 
@@ -107,7 +113,9 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).NotTo(HaveOccurred())
 
-	err = (&WebhookHandler{}).SetupWebhookWithManager(mgr)
+	err = (&Handler{
+		Recorder: mgr.GetEventRecorderFor("dash0-webhook"),
+	}).SetupWebhookWithManager(mgr)
 	Expect(err).NotTo(HaveOccurred())
 
 	//+kubebuilder:scaffold:webhook

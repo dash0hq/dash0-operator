@@ -135,7 +135,7 @@ var _ = Describe("Dash0 Controller", func() {
 					NodeOptionsEnvVarIdx: 0,
 				}},
 			})
-			verifySuccessEvent(ctx, namespace, deploymentName)
+			VerifySuccessEvent(ctx, clientset, namespace, deploymentName, "controller")
 		})
 	})
 })
@@ -154,18 +154,4 @@ func verifyStatusConditions(ctx context.Context, typeNamespacedName types.Namesp
 		}, timeout, pollingInterval).Should(Succeed())
 	})
 	return available
-}
-
-func verifySuccessEvent(ctx context.Context, namespace string, resourceName string) {
-	allEvents, err := clientset.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
-	Expect(allEvents.Items).To(HaveLen(1))
-	Expect(allEvents.Items).To(
-		ContainElement(
-			MatchEvent(
-				namespace,
-				resourceName,
-				operatorv1alpha1.ReasonSuccessfulInstrumentation,
-				"Dash0 instrumentation by controller has been successful.",
-			)))
 }
