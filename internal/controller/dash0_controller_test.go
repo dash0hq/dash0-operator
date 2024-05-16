@@ -37,6 +37,7 @@ var _ = Describe("Dash0 Controller", func() {
 			Name:      resourceName,
 		}
 		namespace := dash0ResourceName.Namespace
+		var reconciler *Dash0Reconciler
 
 		BeforeEach(func() {
 			By("creating the custom resource for the Kind Dash0", func() {
@@ -54,6 +55,13 @@ var _ = Describe("Dash0 Controller", func() {
 					},
 				)
 			})
+
+			reconciler = &Dash0Reconciler{
+				Client:    k8sClient,
+				ClientSet: clientset,
+				Recorder:  recorder,
+				Scheme:    k8sClient.Scheme(),
+			}
 		})
 
 		AfterEach(func() {
@@ -67,12 +75,7 @@ var _ = Describe("Dash0 Controller", func() {
 
 		It("should successfully run the first reconcile (no modifiable resources exist)", func() {
 			By("Reconciling the created resource", func() {
-				controllerReconciler := &Dash0Reconciler{
-					Client:    k8sClient,
-					ClientSet: clientset,
-					Scheme:    k8sClient.Scheme(),
-				}
-				_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				_, err := reconciler.Reconcile(ctx, reconcile.Request{
 					NamespacedName: dash0ResourceName,
 				})
 				Expect(err).NotTo(HaveOccurred())
@@ -83,12 +86,7 @@ var _ = Describe("Dash0 Controller", func() {
 
 		It("should successfully run multiple reconciles (no modifiable resources exist)", func() {
 			By("First reconcile request", func() {
-				controllerReconciler := &Dash0Reconciler{
-					Client:    k8sClient,
-					ClientSet: clientset,
-					Scheme:    k8sClient.Scheme(),
-				}
-				_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				_, err := reconciler.Reconcile(ctx, reconcile.Request{
 					NamespacedName: dash0ResourceName,
 				})
 				Expect(err).NotTo(HaveOccurred())
@@ -97,15 +95,10 @@ var _ = Describe("Dash0 Controller", func() {
 			firstAvailableStatusCondition := verifyStatusConditions(ctx, dash0ResourceName)
 			originalTransitionTimestamp := firstAvailableStatusCondition.LastTransitionTime.Time
 
-			time.Sleep(200 * time.Millisecond)
+			time.Sleep(50 * time.Millisecond)
 
 			By("Second reconcile request", func() {
-				controllerReconciler := &Dash0Reconciler{
-					Client:    k8sClient,
-					ClientSet: clientset,
-					Scheme:    k8sClient.Scheme(),
-				}
-				_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				_, err := reconciler.Reconcile(ctx, reconcile.Request{
 					NamespacedName: dash0ResourceName,
 				})
 				Expect(err).NotTo(HaveOccurred())
@@ -123,12 +116,7 @@ var _ = Describe("Dash0 Controller", func() {
 			})
 
 			By("Reconciling the created resource", func() {
-				controllerReconciler := &Dash0Reconciler{
-					Client:    k8sClient,
-					ClientSet: clientset,
-					Scheme:    k8sClient.Scheme(),
-				}
-				_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+				_, err := reconciler.Reconcile(ctx, reconcile.Request{
 					NamespacedName: dash0ResourceName,
 				})
 				Expect(err).NotTo(HaveOccurred())
@@ -147,8 +135,8 @@ var _ = Describe("Dash0 Controller", func() {
 					NodeOptionsEnvVarIdx: 0,
 				}},
 			})
+			verifySuccessEvent(ctx, namespace, deploymentName)
 		})
-
 	})
 })
 
@@ -166,4 +154,18 @@ func verifyStatusConditions(ctx context.Context, typeNamespacedName types.Namesp
 		}, timeout, pollingInterval).Should(Succeed())
 	})
 	return available
+}
+
+func verifySuccessEvent(ctx context.Context, namespace string, resourceName string) {
+	allEvents, err := clientset.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred())
+	Expect(allEvents.Items).To(HaveLen(1))
+	Expect(allEvents.Items).To(
+		ContainElement(
+			MatchEvent(
+				namespace,
+				resourceName,
+				operatorv1alpha1.ReasonSuccessfulInstrumentation,
+				"Dash0 instrumentation by controller has been successful.",
+			)))
 }
