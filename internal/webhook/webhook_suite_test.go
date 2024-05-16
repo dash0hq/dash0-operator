@@ -14,13 +14,12 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/dash0hq/dash0-operator/test/utils"
+	. "github.com/dash0hq/dash0-operator/test/util"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/v1alpha1"
 	admissionv1 "k8s.io/api/admission/v1"
-	corev1 "k8s.io/api/core/v1"
 	apimachineryruntime "k8s.io/apimachinery/pkg/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -33,11 +32,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 )
 
-var cfg *rest.Config
-var k8sClient client.Client
-var testEnv *envtest.Environment
-var ctx context.Context
-var cancel context.CancelFunc
+var (
+	cfg       *rest.Config
+	k8sClient client.Client
+	testEnv   *envtest.Environment
+	ctx       context.Context
+	cancel    context.CancelFunc
+)
 
 func TestWebhook(t *testing.T) {
 	RegisterFailHandler(Fail)
@@ -130,11 +131,7 @@ var _ = BeforeSuite(func() {
 })
 
 func setupTestResources() {
-	ns := &corev1.Namespace{}
-	ns.Name = DefaultNamespace
-	Expect(k8sClient.Create(ctx, ns)).Should(Succeed())
-
-	Expect(k8sClient.Create(ctx, CreateBasicDeployment(DefaultNamespace, DeploymentNameExisting))).Should(Succeed())
+	CreateTestNamespace(ctx, k8sClient, TestNamespaceName)
 }
 
 var _ = AfterSuite(func() {
