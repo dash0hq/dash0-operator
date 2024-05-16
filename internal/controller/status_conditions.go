@@ -20,7 +20,10 @@ func setAvailableConditionToUnknown(dash0CustomResource *operatorv1alpha1.Dash0)
 		})
 }
 
-func makeAvailable(dash0CustomResource *operatorv1alpha1.Dash0) {
+func ensureResourceIsMarkedAsAvailable(dash0CustomResource *operatorv1alpha1.Dash0) {
+	// If the available status is already true, the status condition is not updated, except for Reason, Message and
+	// ObservedGeneration timestamp. In particular, LastTransitionTime is not updated. Thus this operation is
+	// effectively idempotent.
 	meta.SetStatusCondition(
 		&dash0CustomResource.Status.Conditions,
 		metav1.Condition{
