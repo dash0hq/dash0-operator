@@ -148,8 +148,8 @@ func startOperatorManager(
 	setupLog.Info("Dash0 reconciler has been set up.")
 
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
-		if err = (&dash0webhook.WebhookHandler{
-			EventRecorder: mgr.GetEventRecorderFor("dash0-webhook"),
+		if err = (&dash0webhook.Handler{
+			Recorder: mgr.GetEventRecorderFor("dash0-webhook"),
 		}).SetupWebhookWithManager(mgr); err != nil {
 			return fmt.Errorf("unable to create the Dash0 webhook: %w", err)
 		}

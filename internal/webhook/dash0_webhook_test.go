@@ -59,6 +59,7 @@ var _ = Describe("Dash0 Webhook", func() {
 					},
 				},
 			})
+			VerifySuccessEvent(ctx, clientset, TestNamespaceName, DeploymentName, "webhook")
 		})
 
 		It("should update existing Dash artifacts in a new deployment", func() {

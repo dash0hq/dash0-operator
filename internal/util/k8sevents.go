@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package controller
+package util
 
 import (
 	"fmt"
@@ -13,7 +13,7 @@ import (
 	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/v1alpha1"
 )
 
-func queueSuccessfulInstrumentationEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource string) {
+func QueueSuccessfulInstrumentationEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource string) {
 	eventRecorder.Event(
 		resource,
 		corev1.EventTypeNormal,
@@ -22,7 +22,7 @@ func queueSuccessfulInstrumentationEvent(eventRecorder record.EventRecorder, res
 	)
 }
 
-func queueFailedInstrumentationEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource string, err error) {
+func QueueFailedInstrumentationEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource string, err error) {
 	eventRecorder.Event(
 		resource,
 		corev1.EventTypeWarning,
