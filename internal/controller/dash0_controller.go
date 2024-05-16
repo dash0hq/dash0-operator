@@ -201,8 +201,10 @@ func (r *Dash0Reconciler) modifyExistingResources(ctx context.Context, dash0Cust
 		}, &logger)
 
 		if err != nil {
+			queueFailedInstrumentationEvent(r.Recorder, &deployment, "controller", err)
 			return fmt.Errorf("Error when modifying deployment %s/%s: %w", deployment.GetNamespace(), deployment.GetName(), err)
 		} else {
+			queueSuccessfulInstrumentationEvent(r.Recorder, &deployment, "controller")
 			logger.Info("Added instrumentation to deployment", "name", deployment.Name)
 		}
 	}
