@@ -9,13 +9,14 @@ import (
 	"runtime"
 	"testing"
 
-	"k8s.io/client-go/kubernetes"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/record"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -29,6 +30,7 @@ var (
 	cfg       *rest.Config
 	k8sClient client.Client
 	clientset *kubernetes.Clientset
+	recorder  record.EventRecorder
 	testEnv   *envtest.Environment
 )
 
@@ -73,6 +75,13 @@ var _ = BeforeSuite(func() {
 	clientset, err = kubernetes.NewForConfig(cfg)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(clientset).NotTo(BeNil())
+
+	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
+		Scheme: scheme.Scheme,
+	})
+	Expect(err).NotTo(HaveOccurred())
+	Expect(mgr).NotTo(BeNil())
+	recorder = mgr.GetEventRecorderFor("dash0-controller")
 })
 
 var _ = AfterSuite(func() {

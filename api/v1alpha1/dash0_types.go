@@ -38,10 +38,14 @@ type Dash0List struct {
 }
 
 type ConditionType string
+type Reason string
 
 const (
 	ConditionTypeAvailable ConditionType = "Available"
 	ConditionTypeDegraded  ConditionType = "Degraded"
+
+	ReasonSuccessfulInstrumentation Reason = "SuccessfulInstrumentation"
+	ReasonFailedInstrumentation     Reason = "FailedInstrumentation"
 )
 
 func init() {
