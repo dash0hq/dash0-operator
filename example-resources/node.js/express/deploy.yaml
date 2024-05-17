@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: dash0-operator-nodejs-20-express-test-service
+spec:
+  selector:
+    app: dash0-operator-nodejs-20-express-test-app
+  ports:
+    - port: 1207
+      targetPort: 1207
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dash0-operator-nodejs-20-express-test-deployment
+  labels:
+    app: dash0-operator-nodejs-20-express-test-app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: dash0-operator-nodejs-20-express-test-app
+  template:
+    metadata:
+      labels:
+        app: dash0-operator-nodejs-20-express-test-app
+    spec:
+      containers:
+        - name: dash0-operator-nodejs-20-express-test-app
+          image: "dash0-operator-nodejs-20-express-test-app:latest"
+          env:
+            - name: DASH0_DEBUG
+              value: "true"
+          ports:
+            - containerPort: 1207
+          imagePullPolicy: Never
