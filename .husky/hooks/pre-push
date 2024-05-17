@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+cd "$(dirname ${BASH_SOURCE})"/../..
+
+make
+make lint
+make test
+make test-e2e
