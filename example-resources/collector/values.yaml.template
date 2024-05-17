@@ -1,0 +1,62 @@
+mode: daemonset
+service:
+  enabled: true
+resources:
+  limits:
+    memory: 500Mi
+config:
+  extensions:
+    bearertokenauth/dash0:
+      scheme: "Bearer"
+      token: "TODO provide token"
+
+  receivers:
+    jaeger: null
+    prometheus: null
+    zipkin: null
+
+  processors:
+    batch: {}
+
+  exporters:
+    debug:
+      verbosity: detailed
+    otlp:
+      auth:
+        authenticator: bearertokenauth/dash0
+      endpoint: "TODO provide endoint"
+
+  service:
+    extensions:
+      - health_check
+      - memory_ballast
+      - bearertokenauth/dash0
+    pipelines:
+      traces:
+        receivers:
+          - otlp
+        exporters:
+          - debug
+          - otlp
+      metrics:
+        receivers:
+          - otlp
+        exporters:
+          - debug
+          - otlp
+      logs:
+        receivers:
+          - otlp
+        exporters:
+          - debug
+          - otlp
+
+ports:
+  jaeger-compact:
+    enabled: false
+  jaeger-thrift:
+    enabled: false
+  jaeger-grpc:
+    enabled: false
+  zipkin:
+    enabled: false

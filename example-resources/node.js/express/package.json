@@ -1,0 +1,15 @@
+{
+  "name": "dash0-app-under-test-express",
+  "version": "1.0.0",
+  "description": "",
+  "main": "app.js",
+  "scripts": {
+    "start": "node .",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Bastian Krol <bastian.krol@dash0.com>",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

@@ -72,9 +72,6 @@ var _ = Describe("controller", Ordered, func() {
 		_, err = testUtil.Run(exec.Command("kubectx", "kind-kind"))
 		ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
-		By("installing prometheus operator")
-		Expect(testUtil.InstallPrometheusOperator()).To(Succeed())
-
 		By("installing the cert-manager")
 		Expect(testUtil.InstallCertManager()).To(Succeed())
 
@@ -91,9 +88,6 @@ var _ = Describe("controller", Ordered, func() {
 			err = os.Remove(managerYamlBackup)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 		}
-
-		By("uninstalling the Prometheus manager bundle")
-		testUtil.UninstallPrometheusOperator()
 
 		By("uninstalling the cert-manager bundle")
 		testUtil.UninstallCertManager()
