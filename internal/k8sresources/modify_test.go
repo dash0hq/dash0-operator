@@ -1,30 +1,33 @@
 // SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package webhook
+package k8sresources
 
 import (
-	. "github.com/dash0hq/dash0-operator/test/util"
+	"context"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
-// Maintenance note: There is some overlap of test cases between this file and k8sresources/modify_test.go. This is
-// intentional. However, this test should be used to verify external effects (recording events etc.) that cannot be
-// covered modify_test.go, while more fine-grained test cases and variations should rather be added to
-// k8sresources/modify_test.go.
+// Maintenance note: There is some overlap of test cases between this file and dash0_webhook_test.go. This is
+// intentional. However, this test should be used for more fine-grained test cases, while dash0_webhook_test.go should
+// be used to verify external effects (recording events etc.) that cannot be covered in this test.
 
 var _ = Describe("Dash0 Webhook", func() {
-	AfterEach(func() {
-		_ = k8sClient.Delete(ctx, BasicDeployment(TestNamespaceName, DeploymentName))
-	})
+
+	ctx := context.Background()
 
 	Context("when mutating new deployments", func() {
 		It("should inject Dash into a new basic deployment", func() {
 			deployment := BasicDeployment(TestNamespaceName, DeploymentName)
-			Expect(k8sClient.Create(ctx, deployment)).Should(Succeed())
+			result := ModifyPodSpec(&deployment.Spec.Template.Spec, log.FromContext(ctx))
 
-			deployment = GetDeployment(ctx, k8sClient, TestNamespaceName, DeploymentName)
+			Expect(result).To(BeTrue())
 			VerifyModifiedDeployment(deployment, DeploymentExpectations{
 				Volumes:               1,
 				Dash0VolumeIdx:        0,
@@ -41,9 +44,9 @@ var _ = Describe("Dash0 Webhook", func() {
 
 		It("should inject Dash into a new deployment that has multiple Containers, and already has Volumes and init Containers", func() {
 			deployment := DeploymentWithMoreBellsAndWhistles(TestNamespaceName, DeploymentName)
-			Expect(k8sClient.Create(ctx, deployment)).Should(Succeed())
+			result := ModifyPodSpec(&deployment.Spec.Template.Spec, log.FromContext(ctx))
 
-			deployment = GetDeployment(ctx, k8sClient, TestNamespaceName, DeploymentName)
+			Expect(result).To(BeTrue())
 			VerifyModifiedDeployment(deployment, DeploymentExpectations{
 				Volumes:               3,
 				Dash0VolumeIdx:        2,
@@ -64,14 +67,13 @@ var _ = Describe("Dash0 Webhook", func() {
 					},
 				},
 			})
-			VerifySuccessEvent(ctx, clientset, TestNamespaceName, DeploymentName, "webhook")
 		})
 
 		It("should update existing Dash artifacts in a new deployment", func() {
 			deployment := DeploymentWithExistingDash0Artifacts(TestNamespaceName, DeploymentName)
-			Expect(k8sClient.Create(ctx, deployment)).Should(Succeed())
+			result := ModifyPodSpec(&deployment.Spec.Template.Spec, log.FromContext(ctx))
 
-			deployment = GetDeployment(ctx, k8sClient, TestNamespaceName, DeploymentName)
+			Expect(result).To(BeTrue())
 			VerifyModifiedDeployment(deployment, DeploymentExpectations{
 				Volumes:               3,
 				Dash0VolumeIdx:        1,
