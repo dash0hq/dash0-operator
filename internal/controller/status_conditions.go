@@ -15,21 +15,21 @@ func setAvailableConditionToUnknown(dash0CustomResource *operatorv1alpha1.Dash0)
 		metav1.Condition{
 			Type:    string(operatorv1alpha1.ConditionTypeAvailable),
 			Status:  metav1.ConditionUnknown,
-			Reason:  "Reconciling",
+			Reason:  "ReconcileStarted",
 			Message: "Dash0 has started resource reconciliation.",
 		})
 }
 
 func ensureResourceIsMarkedAsAvailable(dash0CustomResource *operatorv1alpha1.Dash0) {
 	// If the available status is already true, the status condition is not updated, except for Reason, Message and
-	// ObservedGeneration timestamp. In particular, LastTransitionTime is not updated. Thus this operation is
+	// ObservedGeneration timestamp. In particular, LastTransitionTime is not updated. Thus, this operation is
 	// effectively idempotent.
 	meta.SetStatusCondition(
 		&dash0CustomResource.Status.Conditions,
 		metav1.Condition{
 			Type:    string(operatorv1alpha1.ConditionTypeAvailable),
 			Status:  metav1.ConditionTrue,
-			Reason:  "ReconcilingFinished",
+			Reason:  "ReconcileFinished",
 			Message: "Dash0 is is active in this namespace now.",
 		})
 	meta.RemoveStatusCondition(&dash0CustomResource.Status.Conditions, string(operatorv1alpha1.ConditionTypeDegraded))
