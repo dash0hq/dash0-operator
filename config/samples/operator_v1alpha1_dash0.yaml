@@ -1,0 +1,10 @@
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0
+metadata:
+  labels:
+    app.kubernetes.io/name: dash0
+    app.kubernetes.io/instance: dash0-sample
+    app.kubernetes.io/part-of: dash0-operator
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: dash0-operator
+  name: dash0-sample

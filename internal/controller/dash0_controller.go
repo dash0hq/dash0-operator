@@ -61,23 +61,24 @@ func (r *Dash0Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 // - About Controllers: https://kubernetes.io/docs/concepts/architecture/controller/
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.16.3/pkg/reconcile
 func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := log.FromContext(ctx).WithValues("namespace", req.NamespacedName.Namespace, "name", req.NamespacedName.Name)
+	log := log.FromContext(ctx)
+	log.Info("Processig reconcile request")
 
 	// Check whether the Dash0 custom resource exists.
 	dash0CustomResource := &operatorv1alpha1.Dash0{}
 	err := r.Get(ctx, req.NamespacedName, dash0CustomResource)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
-			log.Info("The Dash0 custom resource has not been found, either it hasn't been installed or it has been deleted. Ignoring the reconciliation request.")
+			log.Info("The Dash0 custom resource has not been found, either it hasn't been installed or it has been deleted. Ignoring the reconcile request.")
 			// stop the reconciliation
 			return ctrl.Result{}, nil
 		}
-		log.Error(err, "Failed to get the Dash0 custom resource, requeuing reconciliation request.")
+		log.Error(err, "Failed to get the Dash0 custom resource, requeuing reconcile request.")
 		// requeue the request.
 		return ctrl.Result{}, err
 	}
 
-	isFirstReconciliation, err := r.initStatusConditions(ctx, req, dash0CustomResource, &log)
+	isFirstReconcile, err := r.initStatusConditions(ctx, dash0CustomResource, &log)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -88,37 +89,37 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{}, nil
 	}
 
-	if isFirstReconciliation {
-		r.handleFirstReconciliation(ctx, dash0CustomResource, &log)
+	if isFirstReconcile {
+		r.handleFirstReconcile(ctx, dash0CustomResource, &log)
 	}
 
 	ensureResourceIsMarkedAsAvailable(dash0CustomResource)
 	if err := r.Status().Update(ctx, dash0CustomResource); err != nil {
-		log.Error(err, "Failed to update Dash0 status conditions, requeuing reconciliation request.")
+		log.Error(err, "Failed to update Dash0 status conditions, requeuing reconcile request.")
 		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
 }
 
-func (r *Dash0Reconciler) initStatusConditions(ctx context.Context, req ctrl.Request, dash0CustomResource *operatorv1alpha1.Dash0, log *logr.Logger) (bool, error) {
-	firstReconciliation := false
+func (r *Dash0Reconciler) initStatusConditions(ctx context.Context, dash0CustomResource *operatorv1alpha1.Dash0, log *logr.Logger) (bool, error) {
+	firstReconcile := false
 	needsRefresh := false
 	if dash0CustomResource.Status.Conditions == nil || len(dash0CustomResource.Status.Conditions) == 0 {
 		setAvailableConditionToUnknown(dash0CustomResource)
-		firstReconciliation = true
+		firstReconcile = true
 		needsRefresh = true
 	} else if availableCondition := meta.FindStatusCondition(dash0CustomResource.Status.Conditions, string(operatorv1alpha1.ConditionTypeAvailable)); availableCondition == nil {
 		setAvailableConditionToUnknown(dash0CustomResource)
 		needsRefresh = true
 	}
 	if needsRefresh {
-		err := r.refreshStatus(ctx, dash0CustomResource, req, log)
+		err := r.refreshStatus(ctx, dash0CustomResource, log)
 		if err != nil {
-			return firstReconciliation, err
+			return firstReconcile, err
 		}
 	}
-	return firstReconciliation, nil
+	return firstReconcile, nil
 }
 
 func (r *Dash0Reconciler) handleFinalizers(dash0CustomResource *operatorv1alpha1.Dash0) bool {
@@ -131,8 +132,8 @@ func (r *Dash0Reconciler) handleFinalizers(dash0CustomResource *operatorv1alpha1
 	return isMarkedForDeletion
 }
 
-func (r *Dash0Reconciler) handleFirstReconciliation(ctx context.Context, dash0CustomResource *operatorv1alpha1.Dash0, log *logr.Logger) {
-	log.Info("Initial reconciliation in progress.")
+func (r *Dash0Reconciler) handleFirstReconcile(ctx context.Context, dash0CustomResource *operatorv1alpha1.Dash0, log *logr.Logger) {
+	log.Info("Initial reconcile in progress.")
 	instrumentationEnabled := true
 	instrumentingExistingResourcesEnabled := true
 	if !instrumentationEnabled {
@@ -155,20 +156,9 @@ func (r *Dash0Reconciler) handleFirstReconciliation(ctx context.Context, dash0Cu
 	}
 }
 
-func (r *Dash0Reconciler) refreshStatus(
-	ctx context.Context,
-	dash0CustomResource *operatorv1alpha1.Dash0,
-	req ctrl.Request,
-	log *logr.Logger,
-) error {
+func (r *Dash0Reconciler) refreshStatus(ctx context.Context, dash0CustomResource *operatorv1alpha1.Dash0, log *logr.Logger) error {
 	if err := r.Status().Update(ctx, dash0CustomResource); err != nil {
-		log.Error(err, "Cannot update the status of the Dash0 custom resource, requeuing reconciliation request.")
-		return err
-	}
-	// Re-fetch the Dash0 custom resource after updating the status. This also helps to avoid triggering
-	// "the object has been modified, please apply your changes to the latest version and try again".
-	if err := r.Get(ctx, req.NamespacedName, dash0CustomResource); err != nil {
-		log.Error(err, "Failed to re-fetch the Dash0 custom resource after updating its status, requeuing reconciliation request.")
+		log.Error(err, "Cannot update the status of the Dash0 custom resource, requeuing reconcile request.")
 		return err
 	}
 	return nil
@@ -183,7 +173,7 @@ func (r *Dash0Reconciler) modifyExistingResources(ctx context.Context, dash0Cust
 	}
 
 	for _, deployment := range deploymentsInNamespace.Items {
-		logger := log.FromContext(ctx).WithValues("gvk", "deployment", "namespace", deployment.GetNamespace(), "name", deployment.GetName())
+		logger := log.FromContext(ctx).WithValues("resource type", "deployment", "resource namespace", deployment.GetNamespace(), "resource name", deployment.GetName())
 		operationLabel := "Modifying deployment"
 		err := Retry(operationLabel, func() error {
 			if err := r.Client.Get(ctx, client.ObjectKey{
@@ -205,7 +195,7 @@ func (r *Dash0Reconciler) modifyExistingResources(ctx context.Context, dash0Cust
 			return fmt.Errorf("Error when modifying deployment %s/%s: %w", deployment.GetNamespace(), deployment.GetName(), err)
 		} else {
 			QueueSuccessfulInstrumentationEvent(r.Recorder, &deployment, "controller")
-			logger.Info("Added instrumentation to deployment", "name", deployment.Name)
+			logger.Info("Added instrumentation to deployment")
 		}
 	}
 	return nil
