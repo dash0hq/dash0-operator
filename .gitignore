@@ -26,3 +26,5 @@ go.work
 *.swp
 *.swo
 *~
+
+e2e-test-received-data/

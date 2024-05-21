@@ -19,12 +19,19 @@ config:
     batch: {}
 
   exporters:
-    debug:
-      verbosity: detailed
+    file/traces:
+      path: /e2e-test-received-data/traces.jsonl
+      flush_interval: 100ms
+    file/metrics:
+      path: /e2e-test-received-data/metrics.jsonl
+      flush_interval: 100ms
+    file/logs:
+      path: /e2e-test-received-data/logs.jsonl
+      flush_interval: 100ms
     otlp:
       auth:
         authenticator: bearertokenauth/dash0
-      endpoint: "TODO provide endoint"
+      endpoint: "TODO provide endpoint"
 
   service:
     extensions:
@@ -36,19 +43,19 @@ config:
         receivers:
           - otlp
         exporters:
-          - debug
+          - file/traces
           - otlp
       metrics:
         receivers:
           - otlp
         exporters:
-          - debug
+          - file/metrics
           - otlp
       logs:
         receivers:
           - otlp
         exporters:
-          - debug
+          - file/logs
           - otlp
 
 ports:
@@ -60,3 +67,12 @@ ports:
     enabled: false
   zipkin:
     enabled: false
+
+extraVolumes:
+  - name: telemetry-file-export
+    hostPath:
+      path: {TODO provide absolute path to repo}/e2e-test-received-data
+      type: DirectoryOrCreate
+extraVolumeMounts:
+  - name: telemetry-file-export
+    mountPath: /e2e-test-received-data
