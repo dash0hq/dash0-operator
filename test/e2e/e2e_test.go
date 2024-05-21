@@ -123,10 +123,6 @@ var _ = Describe("controller", Ordered, func() {
 			_, err = Run(cmd)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 
-			// By("loading the the manager(Operator) image on Kind")
-			// err = LoadImageToKindClusterWithName(projectimage)
-			// ExpectWithOffset(1, err).NotTo(HaveOccurred())
-
 			By("installing CRDs")
 			cmd = exec.Command("make", "install")
 			_, err = Run(cmd)

@@ -200,13 +200,8 @@ func UninstallCollector() error {
 
 func InstallNodeJsDeployment() error {
 	imageName := "dash0-operator-nodejs-20-express-test-app"
-	//cluster := getKindCluster()
-	//kindLoadAppImage := loadImageToKindClusterWithNameCommand(imageName, cluster)
-	//kindLoadInstrumentationImage := loadImageToKindClusterWithNameCommand("dash0-instrumentation:1.0.0", cluster)
 	err := RunMultipleFromStrings([][]string{
 		{"docker", "build", "test-resources/node.js/express", "-t", imageName},
-		//kindLoadAppImage,
-		//kindLoadInstrumentationImage, // TODO actually do this in BeforeAll, and also do a fresh docker build
 		{"kubectl", "apply", "-f", "test-resources/node.js/express/deploy.yaml"},
 	})
 	if err != nil {
@@ -226,27 +221,9 @@ func UninstallNodeJsDeployment() error {
 	return RunAndIgnoreOutput(exec.Command("kubectl", "delete", "-f", "test-resources/node.js/express/deploy.yaml"))
 }
 
-// LoadImageToKindCluster loads a local docker image to the kind cluster
-func LoadImageToKindClusterWithName(imageName string) error {
-	cluster := getKindCluster()
-	kindLoadImage := loadImageToKindClusterWithNameCommand(imageName, cluster)
-	return RunAndIgnoreOutput(exec.Command(kindLoadImage[0], kindLoadImage[1:]...))
-}
-
-func getKindCluster() string {
-	cluster := "kind"
-	if v, ok := os.LookupEnv("KIND_CLUSTER"); ok {
-		cluster = v
-	}
-	return cluster
-}
-
-func loadImageToKindClusterWithNameCommand(imageName string, cluster string) []string {
-	return []string{"kind", "load", "docker-image", imageName, "--name", cluster}
-}
-
 func SendRequestAndVerifySpansHaveBeenProduced() {
 	timestampLowerBound := time.Now()
+
 	By("verify that the resource has been instrumented and is sending telemetry", func() {
 		Eventually(func(g Gomega) {
 			output, err := Run(exec.Command("curl", "http://localhost:1207/ohai"), false)
