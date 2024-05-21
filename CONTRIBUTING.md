@@ -19,8 +19,8 @@ helm repo update
 helm install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace --version v1.14.5 --set installCRDs=true
 ```
 
-This approach is suitable for deploying the operator to a cluster running locally on your machine, for example 
-via the Kubernetes support included in Docker Desktop. 
+This approach is suitable for deploying the operator to a cluster running locally on your machine, for example
+via the Kubernetes support included in Docker Desktop.
 
 Run `make docker-build` to build the container image locally, this will tag the image as
 `dash0-operator-controller:latest`.
@@ -49,7 +49,7 @@ Alternatively, you can also push the image to a remote registry, specified by th
 make docker-build docker-push IMG=<some-registry>/dash0-operator:tag
 ```
 
-Then the mentioned modification of `config/manager/manager.yaml` is not necessary. 
+Then the mentioned modification of `config/manager/manager.yaml` is not necessary.
 In this case your test cluster needs to be configured to have pull access for the image in the remote registry.
 
 After that, you can deploy the operator to your cluster:
@@ -79,9 +79,11 @@ make undeploy
 make test
 ```
 
-For the end-to-end tests, [kind](https://kind.sigs.k8s.io/) needs to be installed and a kind cluster needs to exist
-(run `kind create cluster` after the `kind` installation). To run the end-to-end tests:
+### End-to-End Tests
 
+The end-to-end tests currently only support Kubernetes via Docker Desktop on Mac.
+
+To run the end-to-end tests:
 ```
 make test-e2e
 ```
