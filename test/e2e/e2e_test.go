@@ -20,13 +20,15 @@ const (
 	operatorNamespace = "dash0-operator-system"
 	operatorImage     = "dash0-operator-controller:latest"
 
-	applicationUnderTestNamespace = "default"
+	applicationUnderTestNamespace = "application-under-test-namespace"
 
 	managerYaml       = "config/manager/manager.yaml"
 	managerYamlBackup = managerYaml + ".backup"
 )
 
 var (
+	applicationNamespaceHasBeenCreated = false
+
 	originalKubeContext    string
 	managerYamlNeedsRevert bool
 
@@ -88,11 +90,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			ExpectWithOffset(1, InstallCertManager()).To(Succeed())
 		}
 
-		if applicationUnderTestNamespace != "default" {
-			By("creating namespace for application under test")
-			ExpectWithOffset(1,
-				RunAndIgnoreOutput(exec.Command("kubectl", "create", "ns", applicationUnderTestNamespace))).To(Succeed())
-		}
+		applicationNamespaceHasBeenCreated = EnsureNamespaceExists(applicationUnderTestNamespace)
 
 		By("installing the collector")
 		ExpectWithOffset(1, ReinstallCollectorAndClearExportedTelemetry(applicationUnderTestNamespace)).To(Succeed())
@@ -131,7 +129,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		By("removing manager namespace")
 		_ = RunAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", operatorNamespace))
 
-		if applicationUnderTestNamespace != "default" {
+		if applicationNamespaceHasBeenCreated && applicationUnderTestNamespace != "default" {
 			By("removing namespace for application under test")
 			_ = RunAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", applicationUnderTestNamespace))
 		}

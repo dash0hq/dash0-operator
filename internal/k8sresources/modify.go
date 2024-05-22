@@ -24,8 +24,10 @@ const (
 	dash0InstrumentationDirectory     = "/opt/dash0/instrumentation"
 	// envVarLdPreloadName  = "LD_PRELOAD"
 	// envVarLdPreloadValue = "/opt/dash0/preload/inject.so"
-	envVarNodeOptionsName  = "NODE_OPTIONS"
-	envVarNodeOptionsValue = "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js"
+	envVarNodeOptionsName                        = "NODE_OPTIONS"
+	envVarNodeOptionsValue                       = "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js"
+	envVarDash0CollectorBaseUrlName              = "DASH0_OTEL_COLLECTOR_BASE_URL"
+	envVarDash0CollectorBaseUrlNameValueTemplate = "http://dash0-opentelemetry-collector-daemonset.%s.svc.cluster.local:4318"
 )
 
 var (
@@ -36,13 +38,13 @@ var (
 	initContainerReadOnlyRootFilesystem         = true
 )
 
-func ModifyPodSpec(podSpec *corev1.PodSpec, logger logr.Logger) bool {
+func ModifyPodSpec(podSpec *corev1.PodSpec, namespace string, logger logr.Logger) bool {
 	originalSpec := podSpec.DeepCopy()
 	addInstrumentationVolume(podSpec)
 	addInitContainer(podSpec)
 	for idx := range podSpec.Containers {
 		container := &podSpec.Containers[idx]
-		instrumentContainer(container, logger)
+		instrumentContainer(container, namespace, logger)
 	}
 	return !reflect.DeepEqual(originalSpec, podSpec)
 }
@@ -129,10 +131,10 @@ func createInitContainer(podSpec *corev1.PodSpec) *corev1.Container {
 	}
 }
 
-func instrumentContainer(container *corev1.Container, logger logr.Logger) {
+func instrumentContainer(container *corev1.Container, namespace string, logger logr.Logger) {
 	logger = logger.WithValues("container", container.Name)
 	addMount(container)
-	addEnvironmentVariables(container, logger)
+	addEnvironmentVariables(container, namespace, logger)
 }
 
 func addMount(container *corev1.Container) {
@@ -154,9 +156,14 @@ func addMount(container *corev1.Container) {
 	}
 }
 
-func addEnvironmentVariables(container *corev1.Container, logger logr.Logger) {
+func addEnvironmentVariables(container *corev1.Container, namespace string, logger logr.Logger) {
 	// For now, we directly modify NODE_OPTIONS. Consider migrating to an LD_PRELOAD hook at some point.
 	addOrPrependToEnvironmentVariable(container, envVarNodeOptionsName, envVarNodeOptionsValue, logger)
+
+	addOrReplaceEnvironmentVariable(
+		container,
+		envVarDash0CollectorBaseUrlName,
+		fmt.Sprintf(envVarDash0CollectorBaseUrlNameValueTemplate, namespace))
 }
 
 func addOrPrependToEnvironmentVariable(container *corev1.Container, name string, value string, logger logr.Logger) {
@@ -184,5 +191,24 @@ func addOrPrependToEnvironmentVariable(container *corev1.Container, name string,
 			return
 		}
 		container.Env[idx].Value = fmt.Sprintf("%s %s", value, previousValue)
+	}
+}
+
+func addOrReplaceEnvironmentVariable(container *corev1.Container, name string, value string) {
+	if container.Env == nil {
+		container.Env = make([]corev1.EnvVar, 0)
+	}
+	idx := slices.IndexFunc(container.Env, func(c corev1.EnvVar) bool {
+		return c.Name == name
+	})
+
+	if idx < 0 {
+		container.Env = append(container.Env, corev1.EnvVar{
+			Name:  name,
+			Value: value,
+		})
+	} else {
+		container.Env[idx].ValueFrom = nil
+		container.Env[idx].Value = value
 	}
 }
