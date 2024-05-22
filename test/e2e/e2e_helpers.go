@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	certmanagerVersion             = "v1.5.3"
+	certmanagerVersion             = "v1.14.5"
 	certmanagerURLTmpl             = "https://github.com/jetstack/cert-manager/releases/download/%s/cert-manager.yaml"
 	tracesJsonMaxLineLength        = 1_048_576
 	verifyTelemetryTimeout         = 60 * time.Second
@@ -152,8 +152,8 @@ func UninstallCertManager() {
 	}
 }
 
-func ReinstallCollectorAndClearExportedTelemetry() error {
-	_ = UninstallCollector()
+func ReinstallCollectorAndClearExportedTelemetry(namespace string) error {
+	_ = UninstallCollector(namespace)
 	_ = os.Remove("e2e-test-received-data/traces.jsonl")
 	_ = os.Remove("e2e-test-received-data/metrics.jsonl")
 	_ = os.Remove("e2e-test-received-data/logs.jsonl")
@@ -164,7 +164,7 @@ func ReinstallCollectorAndClearExportedTelemetry() error {
 			"dash0-opentelemetry-collector-daemonset",
 			"open-telemetry/opentelemetry-collector",
 			"--namespace",
-			"default",
+			namespace,
 			"--values",
 			"test-resources/collector/values.yaml",
 			"--set",
@@ -180,29 +180,74 @@ func ReinstallCollectorAndClearExportedTelemetry() error {
 			"daemonset",
 			"dash0-opentelemetry-collector-daemonset-agent",
 			"--namespace",
-			"default",
+			namespace,
 			"--timeout",
 			"30s",
 		))
 }
 
-func UninstallCollector() error {
+func UninstallCollector(namespace string) error {
 	return RunAndIgnoreOutput(
 		exec.Command(
 			"helm",
 			"uninstall",
 			"dash0-opentelemetry-collector-daemonset",
 			"--namespace",
-			"default",
+			namespace,
 			"--ignore-not-found",
 		))
 }
 
-func InstallNodeJsDeployment() error {
+func DeployOperator(namespace string, image string) {
+	By("deploying the controller-manager")
+	ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", image))))
+
+	var controllerPodName string
+	By("validating that the controller-manager pod is running as expected")
+	verifyControllerUp := func() error {
+		cmd := exec.Command("kubectl", "get",
+			"pods", "-l", "control-plane=controller-manager",
+			"-o", "go-template={{ range .items }}"+
+				"{{ if not .metadata.deletionTimestamp }}"+
+				"{{ .metadata.name }}"+
+				"{{ \"\\n\" }}{{ end }}{{ end }}",
+			"-n", namespace,
+		)
+
+		podOutput, err := Run(cmd, false)
+		ExpectWithOffset(2, err).NotTo(HaveOccurred())
+		podNames := GetNonEmptyLines(string(podOutput))
+		if len(podNames) != 1 {
+			return fmt.Errorf("expect 1 controller pods running, but got %d", len(podNames))
+		}
+		controllerPodName = podNames[0]
+		ExpectWithOffset(2, controllerPodName).To(ContainSubstring("controller-manager"))
+
+		cmd = exec.Command("kubectl", "get",
+			"pods", controllerPodName, "-o", "jsonpath={.status.phase}",
+			"-n", namespace,
+		)
+		status, err := Run(cmd)
+		ExpectWithOffset(2, err).NotTo(HaveOccurred())
+		if string(status) != "Running" {
+			return fmt.Errorf("controller pod in %s status", status)
+		}
+		return nil
+	}
+
+	EventuallyWithOffset(1, verifyControllerUp, 120*time.Second, time.Second).Should(Succeed())
+}
+
+func UndeployOperator() {
+	By("undeploying the controller-manager")
+	ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command("make", "undeploy"))).To(Succeed())
+}
+
+func InstallNodeJsDeployment(namespace string) error {
 	imageName := "dash0-operator-nodejs-20-express-test-app"
 	err := RunMultipleFromStrings([][]string{
 		{"docker", "build", "test-resources/node.js/express", "-t", imageName},
-		{"kubectl", "apply", "-f", "test-resources/node.js/express/deploy.yaml"},
+		{"kubectl", "apply", "-f", "test-resources/node.js/express/deploy.yaml", "--namespace", namespace},
 	})
 	if err != nil {
 		return err
@@ -210,18 +255,31 @@ func InstallNodeJsDeployment() error {
 
 	return RunAndIgnoreOutput(
 		exec.Command(
-			"kubectl", "wait", "deployment.apps/dash0-operator-nodejs-20-express-test-deployment",
-			"--for", "condition=Available",
-			"--namespace", "default",
-			"--timeout", "30s",
+			"kubectl",
+			"wait",
+			"deployment.apps/dash0-operator-nodejs-20-express-test-deployment",
+			"--for",
+			"condition=Available",
+			"--namespace",
+			namespace,
+			"--timeout",
+			"30s",
 		))
 }
 
-func UninstallNodeJsDeployment() error {
-	return RunAndIgnoreOutput(exec.Command("kubectl", "delete", "-f", "test-resources/node.js/express/deploy.yaml"))
+func UninstallNodeJsDeployment(namespace string) error {
+	return RunAndIgnoreOutput(
+		exec.Command(
+			"kubectl",
+			"delete",
+			"--namespace",
+			namespace,
+			"-f",
+			"test-resources/node.js/express/deploy.yaml",
+		))
 }
 
-func SendRequestAndVerifySpansHaveBeenProduced() {
+func SendRequestsAndVerifySpansHaveBeenProduced() {
 	timestampLowerBound := time.Now()
 
 	By("verify that the resource has been instrumented and is sending telemetry", func() {

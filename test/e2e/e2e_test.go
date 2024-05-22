@@ -17,7 +17,11 @@ import (
 )
 
 const (
-	namespace         = "dash0-operator-system"
+	operatorNamespace = "dash0-operator-system"
+	operatorImage     = "dash0-operator-controller:latest"
+
+	applicationUnderTestNamespace = "default"
+
 	managerYaml       = "config/manager/manager.yaml"
 	managerYamlBackup = managerYaml + ".backup"
 )
@@ -25,15 +29,26 @@ const (
 var (
 	originalKubeContext    string
 	managerYamlNeedsRevert bool
+
+	skipCertManagerInstall   = false
+	skipCertManagerUninstall = false
 )
 
-var _ = Describe("controller", Ordered, func() {
+var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 	BeforeAll(func() {
 		pwdOutput, err := Run(exec.Command("pwd"), false)
 		ExpectWithOffset(1, err).NotTo(HaveOccurred())
 		workingDir := strings.TrimSpace(string(pwdOutput))
 		fmt.Fprintf(GinkgoWriter, "workingDir: %s\n", workingDir)
+
+		if v, ok := os.LookupEnv("SKIP_CERT_MANAGER_UNINSTALL"); ok {
+			skipCertManagerUninstall = strings.ToLower(v) == "true"
+		}
+		if v, ok := os.LookupEnv("SKIP_CERT_MANAGER"); ok {
+			skipCertManagerInstall = strings.ToLower(v) == "true"
+			skipCertManagerUninstall = skipCertManagerInstall
+		}
 
 		By("Reading current imagePullPolicy")
 		yqOutput, err := Run(exec.Command(
@@ -50,15 +65,14 @@ var _ = Describe("controller", Ordered, func() {
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 			managerYamlNeedsRevert = true
 			By("temporarily changing imagePullPolicy to \"Never\"")
-			_, err = Run(exec.Command(
+			ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command(
 				"yq",
 				"-i",
 				"with(select(documentIndex == 1) | "+
 					".spec.template.spec.containers[] | "+
 					"select(.name == \"manager\"); "+
 					".imagePullPolicy |= \"Never\")",
-				managerYaml))
-			ExpectWithOffset(1, err).NotTo(HaveOccurred())
+				managerYaml))).To(Succeed())
 		}
 
 		By("reading current kubectx")
@@ -67,23 +81,36 @@ var _ = Describe("controller", Ordered, func() {
 		originalKubeContext = strings.TrimSpace(string(kubectxOutput))
 
 		By("switching to kubectx docker-desktop, previous context " + originalKubeContext + " will be restored later")
-		_, err = Run(exec.Command("kubectx", "docker-desktop"))
-		ExpectWithOffset(1, err).NotTo(HaveOccurred())
+		ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command("kubectx", "docker-desktop"))).To(Succeed())
 
-		By("installing the cert-manager")
-		Expect(InstallCertManager()).To(Succeed())
+		if !skipCertManagerInstall {
+			By("installing the cert-manager")
+			ExpectWithOffset(1, InstallCertManager()).To(Succeed())
+		}
+
+		if applicationUnderTestNamespace != "default" {
+			By("creating namespace for application under test")
+			ExpectWithOffset(1,
+				RunAndIgnoreOutput(exec.Command("kubectl", "create", "ns", applicationUnderTestNamespace))).To(Succeed())
+		}
 
 		By("installing the collector")
-		Expect(ReinstallCollectorAndClearExportedTelemetry()).To(Succeed())
+		ExpectWithOffset(1, ReinstallCollectorAndClearExportedTelemetry(applicationUnderTestNamespace)).To(Succeed())
 
 		By("creating manager namespace")
-		cmd := exec.Command("kubectl", "create", "ns", namespace)
-		_, _ = Run(cmd)
+		ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command("kubectl", "create", "ns", operatorNamespace))).To(Succeed())
+
+		By("building the manager(Operator) image")
+		ExpectWithOffset(1,
+			RunAndIgnoreOutput(exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", operatorImage)))).To(Succeed())
+
+		By("installing CRDs")
+		ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command("make", "install"))).To(Succeed())
 	})
 
 	AfterAll(func() {
 		By("uninstalling the Node.js deployment")
-		Expect(UninstallNodeJsDeployment()).Should(Succeed())
+		ExpectWithOffset(1, UninstallNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
 
 		if managerYamlNeedsRevert {
 			By("reverting changes to " + managerYaml)
@@ -93,15 +120,21 @@ var _ = Describe("controller", Ordered, func() {
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 		}
 
-		By("uninstalling the cert-manager bundle")
-		UninstallCertManager()
+		if !skipCertManagerUninstall {
+			By("uninstalling the cert-manager bundle")
+			UninstallCertManager()
+		}
 
 		By("uninstalling the collector")
-		Expect(UninstallCollector()).To(Succeed())
+		Expect(UninstallCollector(applicationUnderTestNamespace)).To(Succeed())
 
 		By("removing manager namespace")
-		cmd := exec.Command("kubectl", "delete", "ns", namespace)
-		_, _ = Run(cmd)
+		_ = RunAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", operatorNamespace))
+
+		if applicationUnderTestNamespace != "default" {
+			By("removing namespace for application under test")
+			_ = RunAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", applicationUnderTestNamespace))
+		}
 
 		By("switching back to original kubectx " + originalKubeContext)
 		output, err := Run(exec.Command("kubectx", originalKubeContext))
@@ -111,68 +144,22 @@ var _ = Describe("controller", Ordered, func() {
 		fmt.Fprint(GinkgoWriter, string(output))
 	})
 
-	Context("Operator", func() {
-		It("should start the controller successfully and modify deployments", func() {
-			var controllerPodName string
-			var err error
+	Context("the Dash0 operator's webhook", func() {
 
-			var projectimage = "dash0-operator-controller:latest"
-
-			By("building the manager(Operator) image")
-			cmd := exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", projectimage))
-			_, err = Run(cmd)
-			ExpectWithOffset(1, err).NotTo(HaveOccurred())
-
-			By("installing CRDs")
-			cmd = exec.Command("make", "install")
-			_, err = Run(cmd)
-			ExpectWithOffset(1, err).NotTo(HaveOccurred())
-
-			By("deploying the controller-manager")
-			cmd = exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", projectimage))
-			_, err = Run(cmd)
-			ExpectWithOffset(1, err).NotTo(HaveOccurred())
-
-			By("validating that the controller-manager pod is running as expected")
-			verifyControllerUp := func() error {
-				cmd = exec.Command("kubectl", "get",
-					"pods", "-l", "control-plane=controller-manager",
-					"-o", "go-template={{ range .items }}"+
-						"{{ if not .metadata.deletionTimestamp }}"+
-						"{{ .metadata.name }}"+
-						"{{ \"\\n\" }}{{ end }}{{ end }}",
-					"-n", namespace,
-				)
-
-				podOutput, err := Run(cmd)
-				ExpectWithOffset(2, err).NotTo(HaveOccurred())
-				podNames := GetNonEmptyLines(string(podOutput))
-				if len(podNames) != 1 {
-					return fmt.Errorf("expect 1 controller pods running, but got %d", len(podNames))
-				}
-				controllerPodName = podNames[0]
-				ExpectWithOffset(2, controllerPodName).Should(ContainSubstring("controller-manager"))
-
-				cmd = exec.Command("kubectl", "get",
-					"pods", controllerPodName, "-o", "jsonpath={.status.phase}",
-					"-n", namespace,
-				)
-				status, err := Run(cmd)
-				ExpectWithOffset(2, err).NotTo(HaveOccurred())
-				if string(status) != "Running" {
-					return fmt.Errorf("controller pod in %s status", status)
-				}
-				return nil
-			}
-			EventuallyWithOffset(1, verifyControllerUp, 120*time.Second, time.Second).Should(Succeed())
-
+		BeforeAll(func() {
+			DeployOperator(operatorNamespace, operatorImage)
 			fmt.Fprint(GinkgoWriter, "waiting 10 seconds\n")
 			time.Sleep(10 * time.Second)
+		})
 
+		AfterAll(func() {
+			UndeployOperator()
+		})
+
+		It("should modify new deployments", func() {
 			By("installing the Node.js deployment")
-			Expect(InstallNodeJsDeployment()).To(Succeed())
-
-			SendRequestAndVerifySpansHaveBeenProduced()
+			Expect(InstallNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+			SendRequestsAndVerifySpansHaveBeenProduced()
 		})
 	})
 })

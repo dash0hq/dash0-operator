@@ -43,7 +43,7 @@ func (h *Handler) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return nil
 }
 
-func (h *Handler) Handle(ctx context.Context, request admission.Request) admission.Response {
+func (h *Handler) Handle(_ context.Context, request admission.Request) admission.Response {
 	logger := log.WithValues("gvk", request.Kind, "namespace", request.Namespace, "name", request.Name)
 	logger.Info("incoming admission request")
 
