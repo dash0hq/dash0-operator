@@ -18,14 +18,14 @@ import (
 // intentional. However, this test should be used for more fine-grained test cases, while dash0_webhook_test.go should
 // be used to verify external effects (recording events etc.) that cannot be covered in this test.
 
-var _ = Describe("Dash0 Webhook", func() {
+var _ = Describe("Dash0 Resource Modification", func() {
 
 	ctx := context.Background()
 
 	Context("when mutating new deployments", func() {
 		It("should inject Dash into a new basic deployment", func() {
 			deployment := BasicDeployment(TestNamespaceName, DeploymentName)
-			result := ModifyPodSpec(&deployment.Spec.Template.Spec, log.FromContext(ctx))
+			result := ModifyPodSpec(&deployment.Spec.Template.Spec, TestNamespaceName, log.FromContext(ctx))
 
 			Expect(result).To(BeTrue())
 			VerifyModifiedDeployment(deployment, DeploymentExpectations{
@@ -34,17 +34,19 @@ var _ = Describe("Dash0 Webhook", func() {
 				InitContainers:        1,
 				Dash0InitContainerIdx: 0,
 				Containers: []ContainerExpectations{{
-					VolumeMounts:         1,
-					Dash0VolumeMountIdx:  0,
-					EnvVars:              1,
-					NodeOptionsEnvVarIdx: 0,
+					VolumeMounts:                             1,
+					Dash0VolumeMountIdx:                      0,
+					EnvVars:                                  2,
+					NodeOptionsEnvVarIdx:                     0,
+					Dash0CollectorBaseUrlEnvVarIdx:           1,
+					Dash0CollectorBaseUrlEnvVarExpectedValue: "http://dash0-opentelemetry-collector-daemonset.test-namespace.svc.cluster.local:4318",
 				}},
 			})
 		})
 
 		It("should inject Dash into a new deployment that has multiple Containers, and already has Volumes and init Containers", func() {
 			deployment := DeploymentWithMoreBellsAndWhistles(TestNamespaceName, DeploymentName)
-			result := ModifyPodSpec(&deployment.Spec.Template.Spec, log.FromContext(ctx))
+			result := ModifyPodSpec(&deployment.Spec.Template.Spec, TestNamespaceName, log.FromContext(ctx))
 
 			Expect(result).To(BeTrue())
 			VerifyModifiedDeployment(deployment, DeploymentExpectations{
@@ -54,16 +56,20 @@ var _ = Describe("Dash0 Webhook", func() {
 				Dash0InitContainerIdx: 2,
 				Containers: []ContainerExpectations{
 					{
-						VolumeMounts:         2,
-						Dash0VolumeMountIdx:  1,
-						EnvVars:              2,
-						NodeOptionsEnvVarIdx: 1,
+						VolumeMounts:                             2,
+						Dash0VolumeMountIdx:                      1,
+						EnvVars:                                  3,
+						NodeOptionsEnvVarIdx:                     1,
+						Dash0CollectorBaseUrlEnvVarIdx:           2,
+						Dash0CollectorBaseUrlEnvVarExpectedValue: "http://dash0-opentelemetry-collector-daemonset.test-namespace.svc.cluster.local:4318",
 					},
 					{
-						VolumeMounts:         3,
-						Dash0VolumeMountIdx:  2,
-						EnvVars:              3,
-						NodeOptionsEnvVarIdx: 2,
+						VolumeMounts:                             3,
+						Dash0VolumeMountIdx:                      2,
+						EnvVars:                                  4,
+						NodeOptionsEnvVarIdx:                     2,
+						Dash0CollectorBaseUrlEnvVarIdx:           3,
+						Dash0CollectorBaseUrlEnvVarExpectedValue: "http://dash0-opentelemetry-collector-daemonset.test-namespace.svc.cluster.local:4318",
 					},
 				},
 			})
@@ -71,7 +77,7 @@ var _ = Describe("Dash0 Webhook", func() {
 
 		It("should update existing Dash artifacts in a new deployment", func() {
 			deployment := DeploymentWithExistingDash0Artifacts(TestNamespaceName, DeploymentName)
-			result := ModifyPodSpec(&deployment.Spec.Template.Spec, log.FromContext(ctx))
+			result := ModifyPodSpec(&deployment.Spec.Template.Spec, TestNamespaceName, log.FromContext(ctx))
 
 			Expect(result).To(BeTrue())
 			VerifyModifiedDeployment(deployment, DeploymentExpectations{
@@ -81,18 +87,22 @@ var _ = Describe("Dash0 Webhook", func() {
 				Dash0InitContainerIdx: 1,
 				Containers: []ContainerExpectations{
 					{
-						VolumeMounts:             2,
-						Dash0VolumeMountIdx:      1,
-						EnvVars:                  2,
-						NodeOptionsEnvVarIdx:     1,
-						NodeOptionsUsesValueFrom: true,
+						VolumeMounts:                             2,
+						Dash0VolumeMountIdx:                      1,
+						EnvVars:                                  3,
+						NodeOptionsEnvVarIdx:                     1,
+						NodeOptionsUsesValueFrom:                 true,
+						Dash0CollectorBaseUrlEnvVarIdx:           2,
+						Dash0CollectorBaseUrlEnvVarExpectedValue: "http://dash0-opentelemetry-collector-daemonset.test-namespace.svc.cluster.local:4318",
 					},
 					{
-						VolumeMounts:         3,
-						Dash0VolumeMountIdx:  1,
-						EnvVars:              3,
-						NodeOptionsEnvVarIdx: 1,
-						NodeOptionsValue:     "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js --require something-else --experimental-modules",
+						VolumeMounts:                             3,
+						Dash0VolumeMountIdx:                      1,
+						EnvVars:                                  3,
+						NodeOptionsEnvVarIdx:                     1,
+						NodeOptionsValue:                         "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js --require something-else --experimental-modules",
+						Dash0CollectorBaseUrlEnvVarIdx:           0,
+						Dash0CollectorBaseUrlEnvVarExpectedValue: "http://dash0-opentelemetry-collector-daemonset.test-namespace.svc.cluster.local:4318",
 					},
 				},
 			})

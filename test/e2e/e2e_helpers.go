@@ -81,6 +81,17 @@ func RunMultipleFromStrings(cmdsAsStrings [][]string, logCommandArgs ...bool) er
 	return RunMultiple(cmds, logCommandArgs...)
 }
 
+func EnsureNamespaceExists(namespace string) bool {
+	err := RunAndIgnoreOutput(exec.Command("kubectl", "get", "ns", namespace), false)
+	if err != nil {
+		By(fmt.Sprintf("creating namespace %s", namespace))
+		ExpectWithOffset(1,
+			RunAndIgnoreOutput(exec.Command("kubectl", "create", "ns", namespace))).To(Succeed())
+		return true
+	}
+	return false
+}
+
 // InstallCertManager installs the cert manager bundle.
 func InstallCertManager() error {
 	url := fmt.Sprintf(certmanagerURLTmpl, certmanagerVersion)

@@ -129,10 +129,12 @@ var _ = Describe("Dash0 Controller", func() {
 				InitContainers:        1,
 				Dash0InitContainerIdx: 0,
 				Containers: []ContainerExpectations{{
-					VolumeMounts:         1,
-					Dash0VolumeMountIdx:  0,
-					EnvVars:              1,
-					NodeOptionsEnvVarIdx: 0,
+					VolumeMounts:                             1,
+					Dash0VolumeMountIdx:                      0,
+					EnvVars:                                  2,
+					NodeOptionsEnvVarIdx:                     0,
+					Dash0CollectorBaseUrlEnvVarIdx:           1,
+					Dash0CollectorBaseUrlEnvVarExpectedValue: "http://dash0-opentelemetry-collector-daemonset.test-namespace.svc.cluster.local:4318",
 				}},
 			})
 			VerifySuccessEvent(ctx, clientset, namespace, deploymentName, "controller")
