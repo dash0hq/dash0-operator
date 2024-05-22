@@ -26,12 +26,10 @@ const (
 
 var (
 	applicationNamespaceHasBeenCreated = false
+	certManagerHasBeenInstalled        = false
 
 	originalKubeContext    string
 	managerYamlNeedsRevert bool
-
-	skipCertManagerInstall   = false
-	skipCertManagerUninstall = false
 )
 
 var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
@@ -41,14 +39,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		ExpectWithOffset(1, err).NotTo(HaveOccurred())
 		workingDir := strings.TrimSpace(string(pwdOutput))
 		fmt.Fprintf(GinkgoWriter, "workingDir: %s\n", workingDir)
-
-		if v, ok := os.LookupEnv("SKIP_CERT_MANAGER_UNINSTALL"); ok {
-			skipCertManagerUninstall = strings.ToLower(v) == "true"
-		}
-		if v, ok := os.LookupEnv("SKIP_CERT_MANAGER"); ok {
-			skipCertManagerInstall = strings.ToLower(v) == "true"
-			skipCertManagerUninstall = skipCertManagerInstall
-		}
 
 		By("Reading current imagePullPolicy")
 		yqOutput, err := Run(exec.Command(
@@ -83,10 +73,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		By("switching to kubectx docker-desktop, previous context " + originalKubeContext + " will be restored later")
 		ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command("kubectx", "docker-desktop"))).To(Succeed())
 
-		if !skipCertManagerInstall {
-			By("installing the cert-manager")
-			ExpectWithOffset(1, InstallCertManager()).To(Succeed())
-		}
+		certManagerHasBeenInstalled = EnsureCertManagerIsInstalled()
 
 		applicationNamespaceHasBeenCreated = EnsureNamespaceExists(applicationUnderTestNamespace)
 
@@ -116,10 +103,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 		}
 
-		if !skipCertManagerUninstall {
-			By("uninstalling the cert-manager bundle")
-			UninstallCertManager()
-		}
+		UninstallCertManagerIfApplicable(certManagerHasBeenInstalled)
 
 		By("uninstalling the collector")
 		Expect(UninstallCollector(applicationUnderTestNamespace)).To(Succeed())
