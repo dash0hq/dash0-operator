@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
+
+# SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 set -euo pipefail
 
 cd "$(dirname ${BASH_SOURCE})"
 
-helm uninstall dash0-opentelemetry-collector-daemonset --ignore-not-found
+target_namespace=${1:-default}
+
+helm uninstall dash0-opentelemetry-collector-daemonset --namespace ${target_namespace} --ignore-not-found
