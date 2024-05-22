@@ -18,6 +18,13 @@ import (
 // intentional. However, this test should be used for more fine-grained test cases, while dash0_webhook_test.go should
 // be used to verify external effects (recording events etc.) that cannot be covered in this test.
 
+var (
+	versions = Versions{
+		OperatorVersion:           "1.2.3",
+		InitContainerImageVersion: "4.5.6",
+	}
+)
+
 var _ = Describe("Dash0 Resource Modification", func() {
 
 	ctx := context.Background()
@@ -25,7 +32,12 @@ var _ = Describe("Dash0 Resource Modification", func() {
 	Context("when mutating new deployments", func() {
 		It("should inject Dash into a new basic deployment", func() {
 			deployment := BasicDeployment(TestNamespaceName, DeploymentName)
-			result := ModifyPodSpec(&deployment.Spec.Template.Spec, TestNamespaceName, log.FromContext(ctx))
+			result := ModifyDeployment(
+				deployment,
+				TestNamespaceName,
+				versions,
+				log.FromContext(ctx),
+			)
 
 			Expect(result).To(BeTrue())
 			VerifyModifiedDeployment(deployment, DeploymentExpectations{
@@ -46,7 +58,12 @@ var _ = Describe("Dash0 Resource Modification", func() {
 
 		It("should inject Dash into a new deployment that has multiple Containers, and already has Volumes and init Containers", func() {
 			deployment := DeploymentWithMoreBellsAndWhistles(TestNamespaceName, DeploymentName)
-			result := ModifyPodSpec(&deployment.Spec.Template.Spec, TestNamespaceName, log.FromContext(ctx))
+			result := ModifyDeployment(
+				deployment,
+				TestNamespaceName,
+				versions,
+				log.FromContext(ctx),
+			)
 
 			Expect(result).To(BeTrue())
 			VerifyModifiedDeployment(deployment, DeploymentExpectations{
@@ -77,7 +94,12 @@ var _ = Describe("Dash0 Resource Modification", func() {
 
 		It("should update existing Dash artifacts in a new deployment", func() {
 			deployment := DeploymentWithExistingDash0Artifacts(TestNamespaceName, DeploymentName)
-			result := ModifyPodSpec(&deployment.Spec.Template.Spec, TestNamespaceName, log.FromContext(ctx))
+			result := ModifyDeployment(
+				deployment,
+				TestNamespaceName,
+				versions,
+				log.FromContext(ctx),
+			)
 
 			Expect(result).To(BeTrue())
 			VerifyModifiedDeployment(deployment, DeploymentExpectations{
