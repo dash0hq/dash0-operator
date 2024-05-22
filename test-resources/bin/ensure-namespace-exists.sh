@@ -5,8 +5,12 @@
 
 set -euo pipefail
 
-cd "$(dirname ${BASH_SOURCE})"
-
 target_namespace=${1:-default}
 
-kubectl delete -n ${target_namespace} -f deploy.yaml || true
+if [[ "${target_namespace}" == default  ]]; then
+  exit 0
+fi
+
+if ! kubectl get ns ${target_namespace} &> /dev/null; then
+  kubectl create ns ${target_namespace}
+fi
