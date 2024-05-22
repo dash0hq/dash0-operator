@@ -59,7 +59,7 @@ func (h *Handler) Handle(_ context.Context, request admission.Request) admission
 			return admission.Errored(http.StatusInternalServerError, fmt.Errorf("error while parsing the resource: %w", err))
 		}
 
-		hasBeenModified := k8sresources.ModifyPodSpec(&deployment.Spec.Template.Spec, logger)
+		hasBeenModified := k8sresources.ModifyPodSpec(&deployment.Spec.Template.Spec, request.Namespace, logger)
 		if !hasBeenModified {
 			return admission.Allowed("no changes")
 		}

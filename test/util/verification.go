@@ -11,12 +11,14 @@ import (
 )
 
 type ContainerExpectations struct {
-	VolumeMounts             int
-	Dash0VolumeMountIdx      int
-	EnvVars                  int
-	NodeOptionsEnvVarIdx     int
-	NodeOptionsValue         string
-	NodeOptionsUsesValueFrom bool
+	VolumeMounts                             int
+	Dash0VolumeMountIdx                      int
+	EnvVars                                  int
+	NodeOptionsEnvVarIdx                     int
+	NodeOptionsValue                         string
+	NodeOptionsUsesValueFrom                 bool
+	Dash0CollectorBaseUrlEnvVarIdx           int
+	Dash0CollectorBaseUrlEnvVarExpectedValue string
 }
 
 type DeploymentExpectations struct {
@@ -83,6 +85,10 @@ func VerifyModifiedDeployment(deployment *appsv1.Deployment, expectations Deploy
 						"--require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js",
 					))
 				}
+			} else if i == containerExpectations.Dash0CollectorBaseUrlEnvVarIdx {
+				Expect(envVar.Name).To(Equal("DASH0_OTEL_COLLECTOR_BASE_URL"))
+				Expect(envVar.Value).To(Equal(containerExpectations.Dash0CollectorBaseUrlEnvVarExpectedValue))
+				Expect(envVar.ValueFrom).To(BeNil())
 			} else {
 				Expect(envVar.Name).To(Equal(fmt.Sprintf("TEST%d", i)))
 			}

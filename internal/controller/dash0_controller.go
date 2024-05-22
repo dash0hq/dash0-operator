@@ -186,7 +186,7 @@ func (r *Dash0Reconciler) modifyExistingResources(ctx context.Context, dash0Cust
 			}, &deployment); err != nil {
 				return fmt.Errorf("error when fetching deployment %s/%s: %w", deployment.GetNamespace(), deployment.GetName(), err)
 			}
-			hasBeenModified := k8sresources.ModifyPodSpec(&deployment.Spec.Template.Spec, logger)
+			hasBeenModified := k8sresources.ModifyPodSpec(&deployment.Spec.Template.Spec, deployment.GetNamespace(), logger)
 			if hasBeenModified {
 				return r.Client.Update(ctx, &deployment)
 			} else {
