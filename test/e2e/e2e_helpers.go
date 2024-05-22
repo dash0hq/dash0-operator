@@ -5,7 +5,9 @@ package e2e
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -249,9 +251,31 @@ func DeployOperator(namespace string, image string) {
 	EventuallyWithOffset(1, verifyControllerUp, 120*time.Second, time.Second).Should(Succeed())
 }
 
-func UndeployOperator() {
+func UndeployOperator(namespace string) {
 	By("undeploying the controller-manager")
 	ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command("make", "undeploy"))).To(Succeed())
+
+	// We need to wait until the namespace is really gone, otherwise the next test/suite that tries to create the operator
+	// will run into issues when trying to recreate the namespace which is still in the process of being deleted.
+	ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command(
+		"kubectl",
+		"wait",
+		"--for=delete",
+		fmt.Sprintf("namespace/%s", namespace),
+		"--timeout=60s",
+	))).To(Succeed())
+}
+
+func DeployDash0Resource(namespace string) {
+	ExpectWithOffset(1,
+		RunAndIgnoreOutput(exec.Command(
+			"kubectl", "apply", "-n", namespace, "-k", "config/samples"))).To(Succeed())
+}
+
+func UndeployDash0Resource(namespace string) {
+	ExpectWithOffset(1,
+		RunAndIgnoreOutput(exec.Command(
+			"kubectl", "delete", "-n", namespace, "-k", "config/samples"))).To(Succeed())
 }
 
 func InstallNodeJsDeployment(namespace string) error {
@@ -380,4 +404,24 @@ func GetProjectDir() (string, error) {
 	}
 	wd = strings.Replace(wd, "/test/e2e", "", -1)
 	return wd, nil
+}
+
+func CopyFile(source string, destination string) error {
+	src, err := os.Open(source)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err = errors.Join(err, src.Close())
+	}()
+
+	dst, err := os.Create(destination)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		err = errors.Join(err, dst.Close())
+	}()
+	_, err = io.Copy(dst, src)
+	return err
 }
