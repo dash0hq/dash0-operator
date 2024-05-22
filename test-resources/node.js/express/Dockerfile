@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 ARG NODE_VERSION=20.13.1
 ARG ALPINE_VERSION=3.19
 
