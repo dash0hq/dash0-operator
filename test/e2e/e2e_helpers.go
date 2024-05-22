@@ -21,7 +21,6 @@ import (
 
 const (
 	certmanagerVersion             = "v1.14.5"
-	certmanagerURLTmpl             = "https://github.com/jetstack/cert-manager/releases/download/%s/cert-manager.yaml"
 	tracesJsonMaxLineLength        = 1_048_576
 	verifyTelemetryTimeout         = 60 * time.Second
 	verifyTelemetryPollingInterval = 500 * time.Millisecond
@@ -62,13 +61,50 @@ func EnsureCertManagerIsInstalled() bool {
 }
 
 func installCertManager() error {
-	url := fmt.Sprintf(certmanagerURLTmpl, certmanagerVersion)
-	if err := RunAndIgnoreOutput(exec.Command("kubectl", "apply", "-f", url)); err != nil {
+	repoList, err := Run(exec.Command("helm", "repo", "list"))
+	if err != nil {
 		return err
 	}
+	if !strings.Contains(string(repoList), "jetstack") {
+		fmt.Fprintf(GinkgoWriter, "The helm repo for cert-manager has not been found, adding it now.\n")
+		if err := RunAndIgnoreOutput(
+			exec.Command(
+				"helm",
+				"repo",
+				"add",
+				"jetstack",
+				"https://charts.jetstack.io",
+				"--force-update",
+			)); err != nil {
+			return err
+		}
+		fmt.Fprintf(GinkgoWriter, "Running helm repo update.\n")
+		if err = RunAndIgnoreOutput(exec.Command("helm", "repo", "update")); err != nil {
+			return err
+		}
+	}
+
+	if err := RunAndIgnoreOutput(exec.Command(
+		"helm",
+		"install",
+		"cert-manager",
+		"jetstack/cert-manager",
+		"--namespace",
+		"cert-manager",
+		"--create-namespace",
+		"--version",
+		certmanagerVersion,
+		"--set",
+		"installCRDs=true",
+		"--timeout",
+		"5m",
+	)); err != nil {
+		return err
+	}
+
 	// Wait for cert-manager-webhook to be ready, which can take time if cert-manager
 	// was re-installed after uninstalling on a cluster.
-	err := RunAndIgnoreOutput(
+	if err := RunAndIgnoreOutput(
 		exec.Command(
 			"kubectl",
 			"wait",
@@ -79,11 +115,10 @@ func installCertManager() error {
 			"cert-manager",
 			"--timeout",
 			"5m",
-		))
-	if err != nil {
+		)); err != nil {
 		return err
 	}
-	err = RunAndIgnoreOutput(
+	if err := RunAndIgnoreOutput(
 		exec.Command(
 			"kubectl",
 			"wait",
@@ -94,11 +129,10 @@ func installCertManager() error {
 			"cert-manager",
 			"--timeout",
 			"60s",
-		))
-	if err != nil {
+		)); err != nil {
 		return err
 	}
-	err = RunAndIgnoreOutput(
+	if err := RunAndIgnoreOutput(
 		exec.Command(
 			"kubectl",
 			"wait",
@@ -109,17 +143,9 @@ func installCertManager() error {
 			"cert-manager",
 			"--timeout",
 			"60s",
-		))
-	if err != nil {
+		)); err != nil {
 		return err
 	}
-
-	// Not sure what is going on with that, but if there is no wait time after the cert-manager deployment (even though
-	// we explicitly run kubectl wait for all three deployments), we sometimes run into
-	//    tls: failed to verify certificate: x509: certificate signed by unknown authority
-	// during the "make deploy" step (which deploys the operator).-
-	fmt.Fprintf(GinkgoWriter, "waiting for cert-manager to _actually_ become ready (30 seconds wait time)\n")
-	time.Sleep(30 * time.Second)
 	return nil
 }
 
@@ -135,8 +161,20 @@ func UninstallCertManagerIfApplicable(certManagerHasBeenInstalled bool) {
 }
 
 func uninstallCertManager() {
-	url := fmt.Sprintf(certmanagerURLTmpl, certmanagerVersion)
-	if err := RunAndIgnoreOutput(exec.Command("kubectl", "delete", "-f", url)); err != nil {
+	if err := RunAndIgnoreOutput(exec.Command(
+		"helm",
+		"uninstall",
+		"cert-manager",
+		"--namespace",
+		"cert-manager",
+		"--ignore-not-found",
+	)); err != nil {
+		warnError(err)
+	}
+
+	if err := RunAndIgnoreOutput(
+		exec.Command(
+			"kubectl", "delete", "namespace", "cert-manager", "--ignore-not-found")); err != nil {
 		warnError(err)
 	}
 }
