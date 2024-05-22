@@ -31,58 +31,6 @@ var (
 	traceUnmarshaller = &ptrace.JSONUnmarshaler{}
 )
 
-func RunAndIgnoreOutput(cmd *exec.Cmd, logCommandArgs ...bool) error {
-	_, err := Run(cmd, logCommandArgs...)
-	return err
-}
-
-// Run executes the provided command within this context
-func Run(cmd *exec.Cmd, logCommandArgs ...bool) ([]byte, error) {
-	var logCommand bool
-	if len(logCommandArgs) > 0 {
-		logCommand = logCommandArgs[0]
-	} else {
-		logCommand = true
-	}
-
-	dir, _ := GetProjectDir()
-	cmd.Dir = dir
-
-	if err := os.Chdir(cmd.Dir); err != nil {
-		fmt.Fprintf(GinkgoWriter, "chdir dir: %s\n", err)
-	}
-
-	cmd.Env = append(os.Environ(), "GO111MODULE=on")
-	command := strings.Join(cmd.Args, " ")
-	if logCommand {
-		fmt.Fprintf(GinkgoWriter, "running: %s\n", command)
-	}
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return output, fmt.Errorf("%s failed with error: (%v) %s", command, err, string(output))
-	}
-
-	return output, nil
-}
-
-// RunMultiple executes multiple commands
-func RunMultiple(cmds []*exec.Cmd, logCommandArgs ...bool) error {
-	for _, cmd := range cmds {
-		if err := RunAndIgnoreOutput(cmd, logCommandArgs...); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func RunMultipleFromStrings(cmdsAsStrings [][]string, logCommandArgs ...bool) error {
-	cmds := make([]*exec.Cmd, len(cmdsAsStrings))
-	for i, cmdStrs := range cmdsAsStrings {
-		cmds[i] = exec.Command(cmdStrs[0], cmdStrs[1:]...)
-	}
-	return RunMultiple(cmds, logCommandArgs...)
-}
-
 func EnsureNamespaceExists(namespace string) bool {
 	err := RunAndIgnoreOutput(exec.Command("kubectl", "get", "ns", namespace), false)
 	if err != nil {
@@ -94,8 +42,26 @@ func EnsureNamespaceExists(namespace string) bool {
 	return false
 }
 
-// InstallCertManager installs the cert manager bundle.
-func InstallCertManager() error {
+func EnsureCertManagerIsInstalled() bool {
+	err := RunAndIgnoreOutput(exec.Command("kubectl", "get", "ns", "cert-manager"), false)
+	if err != nil {
+		By("installing the cert-manager")
+		fmt.Fprint(GinkgoWriter,
+			"Hint: To get a faster feedback cycle on e2e tests, deploy cert-manager once via "+
+				"test-resources/cert-manager/deploy.sh. If the e2e tests find an existing cert-manager namespace, they "+
+				"will not deploy cert-manager and they will also not undeploy it after running the test suite.\n",
+		)
+		ExpectWithOffset(1, installCertManager()).To(Succeed())
+		return true
+	} else {
+		fmt.Fprint(GinkgoWriter,
+			"The cert-manager namespace exists, assuming cert-manager has been deployed already.\n",
+		)
+	}
+	return false
+}
+
+func installCertManager() error {
 	url := fmt.Sprintf(certmanagerURLTmpl, certmanagerVersion)
 	if err := RunAndIgnoreOutput(exec.Command("kubectl", "apply", "-f", url)); err != nil {
 		return err
@@ -157,8 +123,18 @@ func InstallCertManager() error {
 	return nil
 }
 
-// UninstallCertManager uninstalls the cert manager
-func UninstallCertManager() {
+func UninstallCertManagerIfApplicable(certManagerHasBeenInstalled bool) {
+	if certManagerHasBeenInstalled {
+		By("uninstalling the cert-manager bundle")
+		uninstallCertManager()
+	} else {
+		fmt.Fprint(GinkgoWriter,
+			"Note: The e2e test suite did not install cert-manager, thus it will also not uninstall it.\n",
+		)
+	}
+}
+
+func uninstallCertManager() {
 	url := fmt.Sprintf(certmanagerURLTmpl, certmanagerVersion)
 	if err := RunAndIgnoreOutput(exec.Command("kubectl", "delete", "-f", url)); err != nil {
 		warnError(err)
@@ -376,6 +352,58 @@ func isHttpServerSpanWithRoute(expectedRoute string) func(span ptrace.Span) bool
 		}
 		return false
 	}
+}
+
+func RunAndIgnoreOutput(cmd *exec.Cmd, logCommandArgs ...bool) error {
+	_, err := Run(cmd, logCommandArgs...)
+	return err
+}
+
+// Run executes the provided command within this context
+func Run(cmd *exec.Cmd, logCommandArgs ...bool) ([]byte, error) {
+	var logCommand bool
+	if len(logCommandArgs) > 0 {
+		logCommand = logCommandArgs[0]
+	} else {
+		logCommand = true
+	}
+
+	dir, _ := GetProjectDir()
+	cmd.Dir = dir
+
+	if err := os.Chdir(cmd.Dir); err != nil {
+		fmt.Fprintf(GinkgoWriter, "chdir dir: %s\n", err)
+	}
+
+	cmd.Env = append(os.Environ(), "GO111MODULE=on")
+	command := strings.Join(cmd.Args, " ")
+	if logCommand {
+		fmt.Fprintf(GinkgoWriter, "running: %s\n", command)
+	}
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return output, fmt.Errorf("%s failed with error: (%v) %s", command, err, string(output))
+	}
+
+	return output, nil
+}
+
+// RunMultiple executes multiple commands
+func RunMultiple(cmds []*exec.Cmd, logCommandArgs ...bool) error {
+	for _, cmd := range cmds {
+		if err := RunAndIgnoreOutput(cmd, logCommandArgs...); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func RunMultipleFromStrings(cmdsAsStrings [][]string, logCommandArgs ...bool) error {
+	cmds := make([]*exec.Cmd, len(cmdsAsStrings))
+	for i, cmdStrs := range cmdsAsStrings {
+		cmds[i] = exec.Command(cmdStrs[0], cmdStrs[1:]...)
+	}
+	return RunMultiple(cmds, logCommandArgs...)
 }
 
 func warnError(err error) {
