@@ -7,6 +7,13 @@ set -euo pipefail
 
 cd "$(dirname ${BASH_SOURCE})"
 
+if [[ ! $(helm repo list | grep jetstack) ]]; then
+  echo "The helm repo for cert-manager has not been found, adding it now."
+  helm repo add jetstack https://charts.jetstack.io --force-update
+  echo "Running helm repo update."
+  helm repo update
+fi
+
 echo "removing any left-overs from previous cert-manager installations (if any)"
 ./undeploy.sh
 
