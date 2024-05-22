@@ -4,9 +4,7 @@
 package e2e
 
 import (
-	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -63,7 +61,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		fmt.Fprintf(GinkgoWriter, "original imagePullPolicy: %s\n", originalImagePullPolicy)
 
 		if originalImagePullPolicy != "Never" {
-			err = copyFile(managerYaml, managerYamlBackup)
+			err = CopyFile(managerYaml, managerYamlBackup)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 			managerYamlNeedsRevert = true
 			By("temporarily changing imagePullPolicy to \"Never\"")
@@ -92,7 +90,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 		applicationNamespaceHasBeenCreated = EnsureNamespaceExists(applicationUnderTestNamespace)
 
-		By("installing the collector")
+		By("(re)installing the collector")
 		ExpectWithOffset(1, ReinstallCollectorAndClearExportedTelemetry(applicationUnderTestNamespace)).To(Succeed())
 
 		By("creating manager namespace")
@@ -112,7 +110,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 		if managerYamlNeedsRevert {
 			By("reverting changes to " + managerYaml)
-			err := copyFile(managerYamlBackup, managerYaml)
+			err := CopyFile(managerYamlBackup, managerYaml)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
 			err = os.Remove(managerYamlBackup)
 			ExpectWithOffset(1, err).NotTo(HaveOccurred())
@@ -146,38 +144,35 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 		BeforeAll(func() {
 			DeployOperator(operatorNamespace, operatorImage)
-			fmt.Fprint(GinkgoWriter, "waiting 10 seconds\n")
+			fmt.Fprint(GinkgoWriter, "waiting 10 seconds to give the webook some time to get ready\n")
 			time.Sleep(10 * time.Second)
 		})
 
 		AfterAll(func() {
-			UndeployOperator()
+			UndeployOperator(operatorNamespace)
 		})
 
 		It("should modify new deployments", func() {
 			By("installing the Node.js deployment")
 			Expect(InstallNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+			By("verifying that the Node.js deployment has been instrumented by the webhook")
+			SendRequestsAndVerifySpansHaveBeenProduced()
+		})
+	})
+
+	Context("the Dash0 operator controller", func() {
+		AfterAll(func() {
+			UndeployDash0Resource(applicationUnderTestNamespace)
+			UndeployOperator(operatorNamespace)
+		})
+
+		It("should modify existing deployments", func() {
+			By("installing the Node.js deployment")
+			Expect(InstallNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+			DeployOperator(operatorNamespace, operatorImage)
+			DeployDash0Resource(applicationUnderTestNamespace)
+			By("verifying that the Node.js deployment has been instrumented by the controller")
 			SendRequestsAndVerifySpansHaveBeenProduced()
 		})
 	})
 })
-
-func copyFile(source string, destination string) error {
-	src, err := os.Open(source)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		err = errors.Join(err, src.Close())
-	}()
-
-	dst, err := os.Create(destination)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		err = errors.Join(err, dst.Close())
-	}()
-	_, err = io.Copy(dst, src)
-	return err
-}
