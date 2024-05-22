@@ -8,6 +8,7 @@ import (
 
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type ContainerExpectations struct {
@@ -94,4 +95,13 @@ func VerifyModifiedDeployment(deployment *appsv1.Deployment, expectations Deploy
 			}
 		}
 	}
+
+	verifyLabels(deployment.Spec.Template.ObjectMeta)
+	verifyLabels(deployment.ObjectMeta)
+}
+
+func verifyLabels(meta metav1.ObjectMeta) {
+	Expect(meta.Labels["dash0.instrumented"]).To(Equal("true"))
+	Expect(meta.Labels["dash0.operator.version"]).To(Equal("1.2.3"))
+	Expect(meta.Labels["dash0.initcontainer.image.version"]).To(Equal("4.5.6"))
 }

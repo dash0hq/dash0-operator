@@ -19,6 +19,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/k8sresources"
 	admissionv1 "k8s.io/api/admission/v1"
 	apimachineryruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
@@ -40,6 +41,11 @@ var (
 	testEnv   *envtest.Environment
 	ctx       context.Context
 	cancel    context.CancelFunc
+
+	versions = k8sresources.Versions{
+		OperatorVersion:           "1.2.3",
+		InitContainerImageVersion: "4.5.6",
+	}
 )
 
 func TestWebhook(t *testing.T) {
@@ -115,6 +121,7 @@ var _ = BeforeSuite(func() {
 
 	err = (&Handler{
 		Recorder: mgr.GetEventRecorderFor("dash0-webhook"),
+		Versions: versions,
 	}).SetupWebhookWithManager(mgr)
 	Expect(err).NotTo(HaveOccurred())
 

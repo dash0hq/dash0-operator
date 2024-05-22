@@ -29,6 +29,7 @@ type Dash0Reconciler struct {
 	ClientSet *kubernetes.Clientset
 	Scheme    *runtime.Scheme
 	Recorder  record.EventRecorder
+	Versions  k8sresources.Versions
 }
 
 func (r *Dash0Reconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -186,7 +187,12 @@ func (r *Dash0Reconciler) modifyExistingResources(ctx context.Context, dash0Cust
 			}, &deployment); err != nil {
 				return fmt.Errorf("error when fetching deployment %s/%s: %w", deployment.GetNamespace(), deployment.GetName(), err)
 			}
-			hasBeenModified := k8sresources.ModifyPodSpec(&deployment.Spec.Template.Spec, deployment.GetNamespace(), logger)
+			hasBeenModified := k8sresources.ModifyDeployment(
+				&deployment,
+				deployment.GetNamespace(),
+				r.Versions,
+				logger,
+			)
 			if hasBeenModified {
 				return r.Client.Update(ctx, &deployment)
 			} else {

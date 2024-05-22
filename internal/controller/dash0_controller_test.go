@@ -19,11 +19,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/k8sresources"
 )
 
 var (
 	timeout         = 15 * time.Second
 	pollingInterval = 50 * time.Millisecond
+
+	versions = k8sresources.Versions{
+		OperatorVersion:           "1.2.3",
+		InitContainerImageVersion: "4.5.6",
+	}
 )
 
 var _ = Describe("Dash0 Controller", func() {
@@ -61,6 +67,7 @@ var _ = Describe("Dash0 Controller", func() {
 				ClientSet: clientset,
 				Recorder:  recorder,
 				Scheme:    k8sClient.Scheme(),
+				Versions:  versions,
 			}
 		})
 
