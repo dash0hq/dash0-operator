@@ -27,6 +27,7 @@ var (
 
 type Handler struct {
 	Recorder record.EventRecorder
+	Versions k8sresources.Versions
 }
 
 func (h *Handler) SetupWebhookWithManager(mgr ctrl.Manager) error {
@@ -59,7 +60,7 @@ func (h *Handler) Handle(_ context.Context, request admission.Request) admission
 			return admission.Errored(http.StatusInternalServerError, fmt.Errorf("error while parsing the resource: %w", err))
 		}
 
-		hasBeenModified := k8sresources.ModifyPodSpec(&deployment.Spec.Template.Spec, request.Namespace, logger)
+		hasBeenModified := k8sresources.ModifyDeployment(deployment, request.Namespace, h.Versions, logger)
 		if !hasBeenModified {
 			return admission.Allowed("no changes")
 		}

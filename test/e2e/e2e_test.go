@@ -140,7 +140,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			By("installing the Node.js deployment")
 			Expect(InstallNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
 			By("verifying that the Node.js deployment has been instrumented by the webhook")
-			SendRequestsAndVerifySpansHaveBeenProduced()
+			SendRequestsAndVerifySpansHaveBeenProduced(applicationUnderTestNamespace)
 		})
 	})
 
@@ -156,7 +156,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			DeployOperator(operatorNamespace, operatorImage)
 			DeployDash0Resource(applicationUnderTestNamespace)
 			By("verifying that the Node.js deployment has been instrumented by the controller")
-			SendRequestsAndVerifySpansHaveBeenProduced()
+			SendRequestsAndVerifySpansHaveBeenProduced(applicationUnderTestNamespace)
 		})
 	})
 })

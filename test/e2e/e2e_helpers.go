@@ -290,14 +290,15 @@ func UninstallNodeJsDeployment(namespace string) error {
 		))
 }
 
-func SendRequestsAndVerifySpansHaveBeenProduced() {
+func SendRequestsAndVerifySpansHaveBeenProduced(namespace string) {
 	timestampLowerBound := time.Now()
 
 	By("verify that the resource has been instrumented and is sending telemetry", func() {
 		Eventually(func(g Gomega) {
-			output, err := Run(exec.Command("curl", "http://localhost:1207/ohai"), false)
+			verifyLabels(g, namespace)
+			response, err := Run(exec.Command("curl", "http://localhost:1207/ohai"), false)
 			g.ExpectWithOffset(1, err).NotTo(HaveOccurred())
-			g.ExpectWithOffset(1, string(output)).To(ContainSubstring(
+			g.ExpectWithOffset(1, string(response)).To(ContainSubstring(
 				"We make Observability easy for every developer."))
 			fileHandle, err := os.Open("e2e-test-received-data/traces.jsonl")
 			g.ExpectWithOffset(1, err).NotTo(HaveOccurred())
@@ -324,6 +325,30 @@ func SendRequestsAndVerifySpansHaveBeenProduced() {
 			g.Expect(spansFound).To(BeTrue(), "expected to find an HTTP server span")
 		}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
 	})
+}
+
+func verifyLabels(g Gomega, namespace string) {
+	instrumented := readLabel(g, namespace, "dash0.instrumented")
+	g.ExpectWithOffset(1, instrumented).To(Equal("true"))
+	operatorVersion := readLabel(g, namespace, "dash0.operator.version")
+	g.ExpectWithOffset(1, operatorVersion).To(MatchRegexp("\\d+\\.\\d+\\.\\d+"))
+	initContainerImageVersion := readLabel(g, namespace, "dash0.initcontainer.image.version")
+	g.ExpectWithOffset(1, initContainerImageVersion).To(MatchRegexp("\\d+\\.\\d+\\.\\d+"))
+}
+
+func readLabel(g Gomega, namespace string, labelKey string) string {
+	labelValue, err := Run(exec.Command(
+		"kubectl",
+		"get",
+		"deployment",
+		"--namespace",
+		namespace,
+		"dash0-operator-nodejs-20-express-test-deployment",
+		"-o",
+		fmt.Sprintf("jsonpath={.metadata.labels['%s']}", strings.ReplaceAll(labelKey, ".", "\\.")),
+	), false)
+	g.ExpectWithOffset(1, err).NotTo(HaveOccurred())
+	return string(labelValue)
 }
 
 func hasMatchingSpans(traces ptrace.Traces, timestampLowerBound time.Time, matchFn func(span ptrace.Span) bool) bool {
@@ -362,10 +387,16 @@ func RunAndIgnoreOutput(cmd *exec.Cmd, logCommandArgs ...bool) error {
 // Run executes the provided command within this context
 func Run(cmd *exec.Cmd, logCommandArgs ...bool) ([]byte, error) {
 	var logCommand bool
-	if len(logCommandArgs) > 0 {
+	var alwaysLogOutput bool
+	if len(logCommandArgs) >= 1 {
 		logCommand = logCommandArgs[0]
 	} else {
 		logCommand = true
+	}
+	if len(logCommandArgs) >= 2 {
+		alwaysLogOutput = logCommandArgs[1]
+	} else {
+		alwaysLogOutput = false
 	}
 
 	dir, _ := GetProjectDir()
@@ -381,6 +412,9 @@ func Run(cmd *exec.Cmd, logCommandArgs ...bool) ([]byte, error) {
 		fmt.Fprintf(GinkgoWriter, "running: %s\n", command)
 	}
 	output, err := cmd.CombinedOutput()
+	if alwaysLogOutput {
+		fmt.Fprintf(GinkgoWriter, "output: %s\n", string(output))
+	}
 	if err != nil {
 		return output, fmt.Errorf("%s failed with error: (%v) %s", command, err, string(output))
 	}
