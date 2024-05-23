@@ -22,6 +22,15 @@ func QueueSuccessfulInstrumentationEvent(eventRecorder record.EventRecorder, res
 	)
 }
 
+func QueueAlreadyInstrumentedEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource string) {
+	eventRecorder.Event(
+		resource,
+		corev1.EventTypeNormal,
+		string(operatorv1alpha1.ReasonSuccessfulInstrumentation),
+		fmt.Sprintf("Dash0 instrumentation already present, no modification by %s is necessary.", eventSource),
+	)
+}
+
 func QueueFailedInstrumentationEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource string, err error) {
 	eventRecorder.Event(
 		resource,

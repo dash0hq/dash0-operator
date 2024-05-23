@@ -10,7 +10,7 @@ import (
 	"net/http"
 
 	"github.com/dash0hq/dash0-operator/internal/k8sresources"
-	. "github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util"
 
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -57,22 +57,25 @@ func (h *Handler) Handle(_ context.Context, request admission.Request) admission
 		deployment := &appsv1.Deployment{}
 		if _, _, err := decoder.Decode(request.Object.Raw, nil, deployment); err != nil {
 			err := fmt.Errorf("cannot parse resource into a %s/%s.%s: %w", group, version, kind, err)
-			return admission.Errored(http.StatusInternalServerError, fmt.Errorf("error while parsing the resource: %w", err))
+			util.QueueFailedInstrumentationEvent(h.Recorder, deployment, "webhook", err)
+			return admission.Errored(http.StatusInternalServerError, err)
 		}
 
 		hasBeenModified := k8sresources.ModifyDeployment(deployment, request.Namespace, h.Versions, logger)
 		if !hasBeenModified {
+			logger.Info("Dash0 instrumentation already present, no modification by webhook is necessary.")
+			util.QueueAlreadyInstrumentedEvent(h.Recorder, deployment, "webhook")
 			return admission.Allowed("no changes")
 		}
 
 		marshalled, err := json.Marshal(deployment)
 		if err != nil {
+			util.QueueFailedInstrumentationEvent(h.Recorder, deployment, "webhook", err)
 			return admission.Allowed(fmt.Errorf("error when marshalling modfied resource to JSON: %w", err).Error())
 		}
 
-		if hasBeenModified {
-			QueueSuccessfulInstrumentationEvent(h.Recorder, deployment, "webhook")
-		}
+		logger.Info("The webhook has added Dash0 instrumentation to the resource.")
+		util.QueueSuccessfulInstrumentationEvent(h.Recorder, deployment, "webhook")
 		return admission.PatchResponseFromRaw(request.Object.Raw, marshalled)
 	} else {
 		logger.Info("resource type not supported", "group", group, "version", version, "kind", kind)
