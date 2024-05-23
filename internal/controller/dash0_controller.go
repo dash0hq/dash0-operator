@@ -21,7 +21,7 @@ import (
 
 	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/k8sresources"
-	. "github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
 type Dash0Reconciler struct {
@@ -169,7 +169,7 @@ func (r *Dash0Reconciler) modifyExistingResources(ctx context.Context, dash0Cust
 	namespace := dash0CustomResource.Namespace
 
 	listOptions := metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("!%s", Dash0AutoInstrumentationLabel),
+		LabelSelector: fmt.Sprintf("!%s", util.Dash0AutoInstrumentationLabel),
 	}
 
 	deploymentsInNamespace, err := r.ClientSet.AppsV1().Deployments(namespace).List(ctx, listOptions)
@@ -178,35 +178,42 @@ func (r *Dash0Reconciler) modifyExistingResources(ctx context.Context, dash0Cust
 	}
 
 	for _, deployment := range deploymentsInNamespace.Items {
-		logger := log.FromContext(ctx).WithValues("resource type", "deployment", "resource namespace", deployment.GetNamespace(), "resource name", deployment.GetName())
-		operationLabel := "Modifying deployment"
-		err := Retry(operationLabel, func() error {
-			if err := r.Client.Get(ctx, client.ObjectKey{
-				Namespace: deployment.GetNamespace(),
-				Name:      deployment.GetName(),
-			}, &deployment); err != nil {
-				return fmt.Errorf("error when fetching deployment %s/%s: %w", deployment.GetNamespace(), deployment.GetName(), err)
-			}
-			hasBeenModified := k8sresources.ModifyDeployment(
-				&deployment,
-				deployment.GetNamespace(),
-				r.Versions,
-				logger,
-			)
-			if hasBeenModified {
-				return r.Client.Update(ctx, &deployment)
-			} else {
-				return nil
-			}
-		}, &logger)
-
-		if err != nil {
-			QueueFailedInstrumentationEvent(r.Recorder, &deployment, "controller", err)
-			return fmt.Errorf("Error when modifying deployment %s/%s: %w", deployment.GetNamespace(), deployment.GetName(), err)
-		} else {
-			QueueSuccessfulInstrumentationEvent(r.Recorder, &deployment, "controller")
-			logger.Info("Added instrumentation to deployment")
-		}
+		r.modifySingleResource(ctx, deployment)
 	}
 	return nil
+}
+
+func (r *Dash0Reconciler) modifySingleResource(ctx context.Context, deployment appsv1.Deployment) {
+	logger := log.FromContext(ctx).WithValues("resource type", "deployment", "resource namespace", deployment.GetNamespace(), "resource name", deployment.GetName())
+	hasBeenModified := false
+	retryErr := util.Retry("Modifying deployment", func() error {
+		if err := r.Client.Get(ctx, client.ObjectKey{
+			Namespace: deployment.GetNamespace(),
+			Name:      deployment.GetName(),
+		}, &deployment); err != nil {
+			return fmt.Errorf("error when fetching deployment %s/%s: %w", deployment.GetNamespace(), deployment.GetName(), err)
+		}
+		hasBeenModified = k8sresources.ModifyDeployment(
+			&deployment,
+			deployment.GetNamespace(),
+			r.Versions,
+			logger,
+		)
+		if hasBeenModified {
+			return r.Client.Update(ctx, &deployment)
+		} else {
+			return nil
+		}
+	}, &logger)
+
+	if retryErr != nil {
+		logger.Error(retryErr, "Dash0 instrumentation by controller has not been successful.")
+		util.QueueFailedInstrumentationEvent(r.Recorder, &deployment, "controller", retryErr)
+	} else if !hasBeenModified {
+		logger.Info("Dash0 instrumentation already present, no modification by controller is necessary.")
+		util.QueueAlreadyInstrumentedEvent(r.Recorder, &deployment, "controller")
+	} else {
+		logger.Info("The controller has added Dash0 instrumentation to the resource.")
+		util.QueueSuccessfulInstrumentationEvent(r.Recorder, &deployment, "controller")
+	}
 }

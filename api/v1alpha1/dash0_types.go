@@ -45,6 +45,7 @@ const (
 	ConditionTypeDegraded  ConditionType = "Degraded"
 
 	ReasonSuccessfulInstrumentation Reason = "SuccessfulInstrumentation"
+	ReasonAlreadyInstrumented       Reason = "AlreadyInstrumented"
 	ReasonFailedInstrumentation     Reason = "FailedInstrumentation"
 )
 
