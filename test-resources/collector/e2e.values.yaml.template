@@ -1,0 +1,65 @@
+mode: daemonset
+service:
+  enabled: true
+resources:
+  limits:
+    memory: 500Mi
+config:
+  receivers:
+    jaeger: null
+    prometheus: null
+    zipkin: null
+
+  processors:
+    batch: {}
+
+  exporters:
+    file/traces:
+      path: /collector-received-data/traces.jsonl
+      flush_interval: 100ms
+    file/metrics:
+      path: /collector-received-data/metrics.jsonl
+      flush_interval: 100ms
+    file/logs:
+      path: /collector-received-data/logs.jsonl
+      flush_interval: 100ms
+
+  service:
+    extensions:
+      - health_check
+      - memory_ballast
+    pipelines:
+      traces:
+        receivers:
+          - otlp
+        exporters:
+          - file/traces
+      metrics:
+        receivers:
+          - otlp
+        exporters:
+          - file/metrics
+      logs:
+        receivers:
+          - otlp
+        exporters:
+          - file/logs
+
+ports:
+  jaeger-compact:
+    enabled: false
+  jaeger-thrift:
+    enabled: false
+  jaeger-grpc:
+    enabled: false
+  zipkin:
+    enabled: false
+
+extraVolumes:
+  - name: telemetry-file-export
+    hostPath:
+      path: $PWD/test-resources/e2e-test-volumes/collector-received-data
+      type: DirectoryOrCreate
+extraVolumeMounts:
+  - name: telemetry-file-export
+    mountPath: /collector-received-data

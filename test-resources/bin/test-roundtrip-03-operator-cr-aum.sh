@@ -13,6 +13,9 @@ if ! kubectl get ns cert-manager &> /dev/null; then
 fi
 
 target_namespace=${1:-default}
+kind=${2:-deployment}
+
+test-resources/bin/render-templates.sh manual-testing
 
 echo "STEP 1: creating target namespace (if necessary)"
 test-resources/bin/ensure-namespace-exists.sh ${target_namespace}
@@ -54,4 +57,4 @@ echo
 sleep 5
 
 echo "STEP 8: deploy application under monitoring"
-test-resources/node.js/express/build-and-deploy.sh ${target_namespace}
+test-resources/node.js/express/deploy.sh ${target_namespace} ${kind}

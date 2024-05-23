@@ -10,25 +10,32 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive
 	. "github.com/onsi/gomega"
 
+	"github.com/google/uuid"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 )
 
 const (
 	certmanagerVersion             = "v1.14.5"
 	tracesJsonMaxLineLength        = 1_048_576
-	verifyTelemetryTimeout         = 60 * time.Second
+	verifyTelemetryTimeout         = 90 * time.Second
 	verifyTelemetryPollingInterval = 500 * time.Millisecond
 )
 
 var (
 	traceUnmarshaller = &ptrace.JSONUnmarshaler{}
 )
+
+func RenderTemplates() {
+	By("render yaml templates")
+	ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command("test-resources/bin/render-templates.sh"))).To(Succeed())
+}
 
 func EnsureNamespaceExists(namespace string) bool {
 	err := RunAndIgnoreOutput(exec.Command("kubectl", "get", "ns", namespace), false)
@@ -181,10 +188,34 @@ func uninstallCertManager() {
 
 func ReinstallCollectorAndClearExportedTelemetry(namespace string) error {
 	_ = UninstallCollector(namespace)
-	_ = os.Remove("e2e-test-received-data/traces.jsonl")
-	_ = os.Remove("e2e-test-received-data/metrics.jsonl")
-	_ = os.Remove("e2e-test-received-data/logs.jsonl")
-	err := RunAndIgnoreOutput(
+	_ = os.Remove("test-resources/e2e-test-volumes/collector-received-data/traces.jsonl")
+	_ = os.Remove("test-resources/e2e-test-volumes/collector-received-data/metrics.jsonl")
+	_ = os.Remove("test-resources/e2e-test-volumes/collector-received-data/logs.jsonl")
+
+	repoList, err := Run(exec.Command("helm", "repo", "list"))
+	if err != nil {
+		return err
+	}
+	if !strings.Contains(string(repoList), "open-telemetry") {
+		fmt.Fprintf(GinkgoWriter, "The helm repo for open-telemetry has not been found, adding it now.\n")
+		if err := RunAndIgnoreOutput(
+			exec.Command(
+				"helm",
+				"repo",
+				"add",
+				"open-telemetry",
+				"https://open-telemetry.github.io/opentelemetry-helm-charts",
+				"--force-update",
+			)); err != nil {
+			return err
+		}
+		fmt.Fprintf(GinkgoWriter, "Running helm repo update.\n")
+		if err = RunAndIgnoreOutput(exec.Command("helm", "repo", "update")); err != nil {
+			return err
+		}
+	}
+
+	err = RunAndIgnoreOutput(
 		exec.Command(
 			"helm",
 			"install",
@@ -193,7 +224,7 @@ func ReinstallCollectorAndClearExportedTelemetry(namespace string) error {
 			"--namespace",
 			namespace,
 			"--values",
-			"test-resources/collector/values.yaml",
+			"test-resources/collector/e2e.values.yaml",
 			"--set",
 			"image.repository=otel/opentelemetry-collector-k8s",
 		))
@@ -209,7 +240,7 @@ func ReinstallCollectorAndClearExportedTelemetry(namespace string) error {
 			"--namespace",
 			namespace,
 			"--timeout",
-			"30s",
+			"60s",
 		))
 }
 
@@ -269,8 +300,9 @@ func UndeployOperator(namespace string) {
 	By("undeploying the controller-manager")
 	ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command("make", "undeploy"))).To(Succeed())
 
-	// We need to wait until the namespace is really gone, otherwise the next test/suite that tries to create the operator
-	// will run into issues when trying to recreate the namespace which is still in the process of being deleted.
+	// We need to wait until the namespace is really gone, otherwise the next test case/suite that tries to create the
+	// operator will run into issues when trying to recreate the namespace which is still in the process of being
+	// deleted.
 	ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command(
 		"kubectl",
 		"wait",
@@ -292,17 +324,44 @@ func UndeployDash0Resource(namespace string) {
 			"kubectl", "delete", "-n", namespace, "-k", "config/samples"))).To(Succeed())
 }
 
-func InstallNodeJsDeployment(namespace string) error {
-	imageName := "dash0-operator-nodejs-20-express-test-app"
-	err := RunMultipleFromStrings([][]string{
-		{"docker", "build", "test-resources/node.js/express", "-t", imageName},
-		{"kubectl", "apply", "-f", "test-resources/node.js/express/deploy.yaml", "--namespace", namespace},
-	})
-	if err != nil {
-		return err
-	}
+func InstallNodeJsCronJob(namespace string) error {
+	return installNodeJsApplication(
+		namespace,
+		"cronjob",
+		nil,
+	)
+}
 
-	return RunAndIgnoreOutput(
+func UninstallNodeJsCronJob(namespace string) error {
+	return uninstallNodeJsApplication(namespace, "cronjob")
+}
+
+func InstallNodeJsDaemonSet(namespace string) error {
+	return installNodeJsApplication(
+		namespace,
+		"daemonset",
+		exec.Command(
+			"kubectl",
+			"rollout",
+			"status",
+			"daemonset",
+			"dash0-operator-nodejs-20-express-test-daemonset",
+			"--namespace",
+			namespace,
+			"--timeout",
+			"60s",
+		),
+	)
+}
+
+func UninstallNodeJsDaemonSet(namespace string) error {
+	return uninstallNodeJsApplication(namespace, "daemonset")
+}
+
+func InstallNodeJsDeployment(namespace string) error {
+	return installNodeJsApplication(
+		namespace,
+		"deployment",
 		exec.Command(
 			"kubectl",
 			"wait",
@@ -312,76 +371,243 @@ func InstallNodeJsDeployment(namespace string) error {
 			"--namespace",
 			namespace,
 			"--timeout",
-			"30s",
-		))
+			"60s",
+		),
+	)
 }
 
 func UninstallNodeJsDeployment(namespace string) error {
+	return uninstallNodeJsApplication(namespace, "deployment")
+}
+
+func InstallNodeJsJob(namespace string) error {
+	return installNodeJsApplication(
+		namespace,
+		"job",
+		nil,
+	)
+}
+
+func UninstallNodeJsJob(namespace string) error {
+	return uninstallNodeJsApplication(namespace, "job")
+}
+
+func InstallNodeJsReplicaSet(namespace string) error {
+	return installNodeJsApplication(
+		namespace,
+		"replicaset",
+		exec.Command(
+			"kubectl",
+			"wait",
+			"pod",
+			"--namespace",
+			namespace,
+			"--selector",
+			"app=dash0-operator-nodejs-20-express-test-app",
+			"--for",
+			"condition=ContainersReady",
+			"--timeout",
+			"60s",
+		),
+	)
+}
+
+func UninstallNodeJsReplicaSet(namespace string) error {
+	return uninstallNodeJsApplication(namespace, "replicaset")
+}
+
+func InstallNodeJsStatefulSet(namespace string) error {
+	return installNodeJsApplication(
+		namespace,
+		"statefulset",
+		exec.Command(
+			"kubectl",
+			"rollout",
+			"status",
+			"statefulset",
+			"dash0-operator-nodejs-20-express-test-statefulset",
+			"--namespace",
+			namespace,
+			"--timeout",
+			"60s",
+		),
+	)
+}
+
+func UninstallNodeJsStatefulSet(namespace string) error {
+	return uninstallNodeJsApplication(namespace, "statefulset")
+}
+
+func RemoveAllTestApplications(namespace string) {
+	By("uninstalling the test applications")
+	ExpectWithOffset(1, UninstallNodeJsCronJob(namespace)).To(Succeed())
+	ExpectWithOffset(1, UninstallNodeJsDaemonSet(namespace)).To(Succeed())
+	ExpectWithOffset(1, UninstallNodeJsDeployment(namespace)).To(Succeed())
+	ExpectWithOffset(1, UninstallNodeJsJob(namespace)).To(Succeed())
+	ExpectWithOffset(1, UninstallNodeJsReplicaSet(namespace)).To(Succeed())
+	ExpectWithOffset(1, UninstallNodeJsStatefulSet(namespace)).To(Succeed())
+}
+
+func installNodeJsApplication(namespace string, kind string, waitCommand *exec.Cmd) error {
+	imageName := "dash0-operator-nodejs-20-express-test-app"
+	err := RunMultipleFromStrings([][]string{
+		{"docker", "build", "test-resources/node.js/express", "-t", imageName},
+		{
+			"kubectl",
+			"apply",
+			"--namespace",
+			namespace,
+			"-f",
+			fmt.Sprintf("test-resources/node.js/express/%s.yaml", kind),
+		},
+	})
+	if err != nil {
+		return err
+	}
+	if waitCommand == nil {
+		return nil
+	}
+	return RunAndIgnoreOutput(waitCommand)
+}
+
+func uninstallNodeJsApplication(namespace string, kind string) error {
 	return RunAndIgnoreOutput(
 		exec.Command(
 			"kubectl",
 			"delete",
 			"--namespace",
 			namespace,
+			"--ignore-not-found",
 			"-f",
-			"test-resources/node.js/express/deploy.yaml",
+			fmt.Sprintf("test-resources/node.js/express/%s.yaml", kind),
 		))
 }
 
-func SendRequestsAndVerifySpansHaveBeenProduced(namespace string) {
-	timestampLowerBound := time.Now()
+func DeleteTestIdFiles() {
+	_ = os.Remove("test-resources/e2e-test-volumes/test-uuid/cronjob.test.id")
+	_ = os.Remove("test-resources/e2e-test-volumes/test-uuid/job.test.id")
+}
 
-	By("verify that the resource has been instrumented and is sending telemetry", func() {
+func VerifyThatSpansAreCaptured(
+	namespace string,
+	kind string,
+	sendRequests bool,
+	restartPodsManually bool,
+	instrumentationBy string,
+) {
+	By("verify that the resource has been instrumented and is sending telemetry")
+
+	var testId string
+	if sendRequests {
+		// For resource types that are available as a service (daemonset, deployment etc.) we send HTTP requests with
+		// a unique ID as a query parameter. When checking the produced spans that the OTel collector writes to disk via
+		// the file exporter, we can verify that the span is actually from the currently running test case by inspecting
+		// the http.target span attribute. This guarantees that we do not accidentally pass the test due to a span from
+		// a previous test case.
+		testIdUuid := uuid.New()
+		testId = testIdUuid.String()
+	} else {
+		By(fmt.Sprintf("waiting for the test ID file to be written by the %s under test", kind))
 		Eventually(func(g Gomega) {
-			verifyLabels(g, namespace)
-			response, err := Run(exec.Command("curl", "http://localhost:1207/ohai"), false)
-			g.ExpectWithOffset(1, err).NotTo(HaveOccurred())
-			g.ExpectWithOffset(1, string(response)).To(ContainSubstring(
-				"We make Observability easy for every developer."))
-			fileHandle, err := os.Open("e2e-test-received-data/traces.jsonl")
-			g.ExpectWithOffset(1, err).NotTo(HaveOccurred())
-			defer func() {
-				_ = fileHandle.Close()
-			}()
-			scanner := bufio.NewScanner(fileHandle)
-			scanner.Buffer(make([]byte, tracesJsonMaxLineLength), tracesJsonMaxLineLength)
+			// For resource types like batch jobs/cron jobs, the application under test generates the test ID and writes it
+			// to a volume that maps to a host path. We read the test ID from the host path and use it to verify the spans.
+			testIdBytes, err := os.ReadFile(fmt.Sprintf("test-resources/e2e-test-volumes/test-uuid/%s.test.id", kind))
+			g.Expect(err).NotTo(HaveOccurred())
+			testId = string(testIdBytes)
+		}, 80*time.Second, 200*time.Millisecond).Should(Succeed())
+	}
 
-			// read file line by line
-			spansFound := false
-			for scanner.Scan() {
-				resourceSpanBytes := scanner.Bytes()
-				traces, err := traceUnmarshaller.UnmarshalTraces(resourceSpanBytes)
-				if err != nil {
-					// ignore lines that cannot be parsed
-					continue
-				}
-				if spansFound = hasMatchingSpans(traces, timestampLowerBound, isHttpServerSpanWithRoute("/ohai")); spansFound {
-					break
-				}
-			}
-			g.Expect(scanner.Err()).NotTo(HaveOccurred())
-			g.Expect(spansFound).To(BeTrue(), "expected to find an HTTP server span")
-		}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
-	})
+	httpPathWithQuery := fmt.Sprintf("/dash0-k8s-operator-test?id=%s", testId)
+
+	By("waiting for the workload to be modified/checking labels")
+	Eventually(func(g Gomega) {
+		verifyLabels(g, namespace, kind, true, instrumentationBy)
+	}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
+
+	if restartPodsManually {
+		restartAllPods(namespace)
+	}
+
+	By("waiting for spans to be captured")
+	Eventually(func(g Gomega) {
+		verifySpans(g, sendRequests, httpPathWithQuery)
+	}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
+	By("matchin spans have been received")
 }
 
-func verifyLabels(g Gomega, namespace string) {
-	instrumented := readLabel(g, namespace, "dash0.instrumented")
-	g.ExpectWithOffset(1, instrumented).To(Equal("true"))
-	operatorVersion := readLabel(g, namespace, "dash0.operator.version")
+func restartAllPods(namespace string) {
+	// The pods of replicasets are not restarted automatically when the template changes (in contrast to
+	// deployments, daemonsets etc.). For now we execpt the user to restart the pods of the replciaset manually,
+	// and we simuate this in the e2e tests.
+	By("restarting pods manually")
+	Expect(
+		RunAndIgnoreOutput(
+			exec.Command(
+				"kubectl",
+				"delete",
+				"pod",
+				"--namespace",
+				namespace,
+				"--selector",
+				"app=dash0-operator-nodejs-20-express-test-app",
+			))).To(Succeed())
+
+}
+
+func verifySpans(g Gomega, sendRequests bool, httpPathWithQuery string) {
+	if sendRequests {
+		response, err := Run(exec.Command("curl", fmt.Sprintf("http://localhost:1207%s", httpPathWithQuery)), false)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(string(response)).To(ContainSubstring(
+			"We make Observability easy for every developer."))
+	}
+	fileHandle, err := os.Open("test-resources/e2e-test-volumes/collector-received-data/traces.jsonl")
+	g.Expect(err).NotTo(HaveOccurred())
+	defer func() {
+		_ = fileHandle.Close()
+	}()
+	scanner := bufio.NewScanner(fileHandle)
+	scanner.Buffer(make([]byte, tracesJsonMaxLineLength), tracesJsonMaxLineLength)
+
+	// read file line by line
+	spansFound := false
+	for scanner.Scan() {
+		resourceSpanBytes := scanner.Bytes()
+		traces, err := traceUnmarshaller.UnmarshalTraces(resourceSpanBytes)
+		if err != nil {
+			// ignore lines that cannot be parsed
+			continue
+		}
+		if spansFound = hasMatchingSpans(
+			traces,
+			isHttpServerSpanWithHttpTarget(httpPathWithQuery),
+		); spansFound {
+			break
+		}
+	}
+	g.Expect(scanner.Err()).NotTo(HaveOccurred())
+	g.Expect(spansFound).To(BeTrue(), "expected to find an HTTP server span")
+}
+
+func verifyLabels(g Gomega, namespace string, kind string, hasBeenInstrumented bool, instrumentationBy string) {
+	instrumented := readLabel(g, namespace, kind, "dash0.instrumented")
+	g.ExpectWithOffset(1, instrumented).To(Equal(strconv.FormatBool(hasBeenInstrumented)))
+	operatorVersion := readLabel(g, namespace, kind, "dash0.operator.version")
 	g.ExpectWithOffset(1, operatorVersion).To(MatchRegexp("\\d+\\.\\d+\\.\\d+"))
-	initContainerImageVersion := readLabel(g, namespace, "dash0.initcontainer.image.version")
+	initContainerImageVersion := readLabel(g, namespace, kind, "dash0.initcontainer.image.version")
 	g.ExpectWithOffset(1, initContainerImageVersion).To(MatchRegexp("\\d+\\.\\d+\\.\\d+"))
+	instrumentedBy := readLabel(g, namespace, kind, "dash0.instrumented.by")
+	g.ExpectWithOffset(1, instrumentedBy).To(Equal(instrumentationBy))
 }
 
-func readLabel(g Gomega, namespace string, labelKey string) string {
+func readLabel(g Gomega, namespace string, kind string, labelKey string) string {
 	labelValue, err := Run(exec.Command(
 		"kubectl",
 		"get",
-		"deployment",
+		kind,
 		"--namespace",
 		namespace,
-		"dash0-operator-nodejs-20-express-test-deployment",
+		fmt.Sprintf("dash0-operator-nodejs-20-express-test-%s", kind),
 		"-o",
 		fmt.Sprintf("jsonpath={.metadata.labels['%s']}", strings.ReplaceAll(labelKey, ".", "\\.")),
 	), false)
@@ -389,14 +615,14 @@ func readLabel(g Gomega, namespace string, labelKey string) string {
 	return string(labelValue)
 }
 
-func hasMatchingSpans(traces ptrace.Traces, timestampLowerBound time.Time, matchFn func(span ptrace.Span) bool) bool {
+func hasMatchingSpans(traces ptrace.Traces, matchFn func(span ptrace.Span) bool) bool {
 	for i := 0; i < traces.ResourceSpans().Len(); i++ {
 		resourceSpan := traces.ResourceSpans().At(i)
 		for j := 0; j < resourceSpan.ScopeSpans().Len(); j++ {
 			scopeSpan := resourceSpan.ScopeSpans().At(j)
 			for k := 0; k < scopeSpan.Spans().Len(); k++ {
 				span := scopeSpan.Spans().At(k)
-				if span.StartTimestamp().AsTime().After(timestampLowerBound) && matchFn(span) {
+				if matchFn(span) {
 					return true
 				}
 			}
@@ -405,12 +631,14 @@ func hasMatchingSpans(traces ptrace.Traces, timestampLowerBound time.Time, match
 	return false
 }
 
-func isHttpServerSpanWithRoute(expectedRoute string) func(span ptrace.Span) bool {
+func isHttpServerSpanWithHttpTarget(expectedTarget string) func(span ptrace.Span) bool {
 	return func(span ptrace.Span) bool {
 		if span.Kind() == ptrace.SpanKindServer {
-			route, hasRoute := span.Attributes().Get("http.route")
-			if hasRoute && route.Str() == expectedRoute {
-				return true
+			target, hasTarget := span.Attributes().Get("http.target")
+			if hasTarget {
+				if target.Str() == expectedTarget {
+					return true
+				}
 			}
 		}
 		return false

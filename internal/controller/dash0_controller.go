@@ -5,10 +5,12 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -24,18 +26,42 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
+const (
+	resourceTypeLabel      = "resource type"
+	resourceNamespaceLabel = "resource namespace"
+	resourceNameLabel      = "resource name"
+)
+
 type Dash0Reconciler struct {
 	client.Client
 	ClientSet *kubernetes.Clientset
 	Scheme    *runtime.Scheme
 	Recorder  record.EventRecorder
-	Versions  k8sresources.Versions
+	Versions  util.Versions
 }
+
+type ImmutableResourceError struct {
+	resourceType string
+	resource     string
+}
+
+func (e ImmutableResourceError) Error() string {
+	return fmt.Sprintf(
+		"Dash0 cannot instrument the existing %s %s, since the this type of resource is immutable.",
+		e.resourceType,
+		e.resource,
+	)
+}
+
+var (
+	labelNotSetFilter = metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("!%s", util.Dash0AutoInstrumentationLabel),
+	}
+)
 
 func (r *Dash0Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&operatorv1alpha1.Dash0{}).
-		// Watches(&source.Kind{Type: &appsv1.Deployment{}}, handler.EnqueueRequestsFromMapFunc(r.enqueueIfApplicable)).
 		Owns(&appsv1.Deployment{}).
 		Complete(r)
 }
@@ -111,7 +137,7 @@ func (r *Dash0Reconciler) initStatusConditions(ctx context.Context, dash0CustomR
 		setAvailableConditionToUnknown(dash0CustomResource)
 		firstReconcile = true
 		needsRefresh = true
-	} else if availableCondition := meta.FindStatusCondition(dash0CustomResource.Status.Conditions, string(operatorv1alpha1.ConditionTypeAvailable)); availableCondition == nil {
+	} else if availableCondition := meta.FindStatusCondition(dash0CustomResource.Status.Conditions, string(util.ConditionTypeAvailable)); availableCondition == nil {
 		setAvailableConditionToUnknown(dash0CustomResource)
 		needsRefresh = true
 	}
@@ -169,37 +195,145 @@ func (r *Dash0Reconciler) refreshStatus(ctx context.Context, dash0CustomResource
 func (r *Dash0Reconciler) modifyExistingResources(ctx context.Context, dash0CustomResource *operatorv1alpha1.Dash0) error {
 	namespace := dash0CustomResource.Namespace
 
-	listOptions := metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("!%s", util.Dash0AutoInstrumentationLabel),
-	}
-
-	deploymentsInNamespace, err := r.ClientSet.AppsV1().Deployments(namespace).List(ctx, listOptions)
-	if err != nil {
-		return fmt.Errorf("error when querying deployments: %w", err)
-	}
-
-	for _, deployment := range deploymentsInNamespace.Items {
-		r.modifySingleResource(ctx, deployment)
+	errCronJobs := r.findAndModifyCronJobs(ctx, namespace)
+	errDaemonSets := r.findAndModifyDaemonSets(ctx, namespace)
+	errDeployments := r.findAndModifyDeployments(ctx, namespace)
+	errJobs := r.findAndHandleJobs(ctx, namespace)
+	errReplicaSets := r.findAndModifyReplicaSets(ctx, namespace)
+	errStatefulSets := r.findAndModifyStatefulSets(ctx, namespace)
+	combinedErrors := errors.Join(
+		errCronJobs,
+		errDaemonSets,
+		errDeployments,
+		errJobs,
+		errReplicaSets,
+		errStatefulSets,
+	)
+	if combinedErrors != nil {
+		return combinedErrors
 	}
 	return nil
 }
 
-func (r *Dash0Reconciler) modifySingleResource(ctx context.Context, deployment appsv1.Deployment) {
-	logger := log.FromContext(ctx).WithValues("resource type", "deployment", "resource namespace", deployment.GetNamespace(), "resource name", deployment.GetName())
+func (r *Dash0Reconciler) findAndModifyCronJobs(ctx context.Context, namespace string) error {
+	matchingResourcesInNamespace, err := r.ClientSet.BatchV1().CronJobs(namespace).List(ctx, labelNotSetFilter)
+	if err != nil {
+		return fmt.Errorf("error when querying cron jobs: %w", err)
+	}
+	for _, resource := range matchingResourcesInNamespace.Items {
+		r.modifyCronJob(ctx, resource)
+	}
+	return nil
+}
+
+func (r *Dash0Reconciler) modifyCronJob(ctx context.Context, cronJob batchv1.CronJob) {
+	if cronJob.DeletionTimestamp != nil {
+		// do not modify resources that are being deleted
+		return
+	}
+	logger := log.FromContext(ctx).WithValues(
+		resourceTypeLabel,
+		"CronJob",
+		resourceNamespaceLabel,
+		cronJob.GetNamespace(),
+		resourceNameLabel,
+		cronJob.GetName(),
+	)
 	hasBeenModified := false
-	retryErr := util.Retry("Modifying deployment", func() error {
+	retryErr := util.Retry("modifying cron job", func() error {
+		if err := r.Client.Get(ctx, client.ObjectKey{
+			Namespace: cronJob.GetNamespace(),
+			Name:      cronJob.GetName(),
+		}, &cronJob); err != nil {
+			return fmt.Errorf("error when fetching cron job %s/%s: %w", cronJob.GetNamespace(), cronJob.GetName(), err)
+		}
+		hasBeenModified = r.newResourceModifier(&logger).ModifyCronJob(&cronJob, cronJob.GetNamespace())
+		if hasBeenModified {
+			return r.Client.Update(ctx, &cronJob)
+		} else {
+			return nil
+		}
+	}, &logger)
+
+	r.postProcess(&cronJob, hasBeenModified, logger, retryErr)
+}
+
+func (r *Dash0Reconciler) findAndModifyDaemonSets(ctx context.Context, namespace string) error {
+	matchingResourcesInNamespace, err := r.ClientSet.AppsV1().DaemonSets(namespace).List(ctx, labelNotSetFilter)
+	if err != nil {
+		return fmt.Errorf("error when querying daemon sets: %w", err)
+	}
+	for _, resource := range matchingResourcesInNamespace.Items {
+		r.modifyDaemonSet(ctx, resource)
+	}
+	return nil
+}
+
+func (r *Dash0Reconciler) modifyDaemonSet(ctx context.Context, daemonSet appsv1.DaemonSet) {
+	if daemonSet.DeletionTimestamp != nil {
+		// do not modify resources that are being deleted
+		return
+	}
+	logger := log.FromContext(ctx).WithValues(
+		resourceTypeLabel,
+		"DaemonSet",
+		resourceNamespaceLabel,
+		daemonSet.GetNamespace(),
+		resourceNameLabel,
+		daemonSet.GetName(),
+	)
+	hasBeenModified := false
+	retryErr := util.Retry("modifying daemon set", func() error {
+		if err := r.Client.Get(ctx, client.ObjectKey{
+			Namespace: daemonSet.GetNamespace(),
+			Name:      daemonSet.GetName(),
+		}, &daemonSet); err != nil {
+			return fmt.Errorf("error when fetching daemon set %s/%s: %w", daemonSet.GetNamespace(), daemonSet.GetName(), err)
+		}
+		hasBeenModified = r.newResourceModifier(&logger).ModifyDaemonSet(&daemonSet, daemonSet.GetNamespace())
+		if hasBeenModified {
+			return r.Client.Update(ctx, &daemonSet)
+		} else {
+			return nil
+		}
+	}, &logger)
+
+	r.postProcess(&daemonSet, hasBeenModified, logger, retryErr)
+}
+
+func (r *Dash0Reconciler) findAndModifyDeployments(ctx context.Context, namespace string) error {
+	matchingResourcesInNamespace, err := r.ClientSet.AppsV1().Deployments(namespace).List(ctx, labelNotSetFilter)
+	if err != nil {
+		return fmt.Errorf("error when querying deployments: %w", err)
+	}
+	for _, resource := range matchingResourcesInNamespace.Items {
+		r.modifyDeployment(ctx, resource)
+	}
+	return nil
+}
+
+func (r *Dash0Reconciler) modifyDeployment(ctx context.Context, deployment appsv1.Deployment) {
+	if deployment.DeletionTimestamp != nil {
+		// do not modify resources that are being deleted
+		return
+	}
+	logger := log.FromContext(ctx).WithValues(
+		resourceTypeLabel,
+		"Deployment",
+		resourceNamespaceLabel,
+		deployment.GetNamespace(),
+		resourceNameLabel,
+		deployment.GetName(),
+	)
+	hasBeenModified := false
+	retryErr := util.Retry("modifying deployment", func() error {
 		if err := r.Client.Get(ctx, client.ObjectKey{
 			Namespace: deployment.GetNamespace(),
 			Name:      deployment.GetName(),
 		}, &deployment); err != nil {
 			return fmt.Errorf("error when fetching deployment %s/%s: %w", deployment.GetNamespace(), deployment.GetName(), err)
 		}
-		hasBeenModified = k8sresources.ModifyDeployment(
-			&deployment,
-			deployment.GetNamespace(),
-			r.Versions,
-			logger,
-		)
+		hasBeenModified = r.newResourceModifier(&logger).ModifyDeployment(&deployment, deployment.GetNamespace())
 		if hasBeenModified {
 			return r.Client.Update(ctx, &deployment)
 		} else {
@@ -207,14 +341,175 @@ func (r *Dash0Reconciler) modifySingleResource(ctx context.Context, deployment a
 		}
 	}, &logger)
 
+	r.postProcess(&deployment, hasBeenModified, logger, retryErr)
+}
+
+func (r *Dash0Reconciler) findAndHandleJobs(ctx context.Context, namespace string) error {
+	matchingResourcesInNamespace, err := r.ClientSet.BatchV1().Jobs(namespace).List(ctx, labelNotSetFilter)
+	if err != nil {
+		return fmt.Errorf("error when querying cron jobs: %w", err)
+	}
+
+	for _, job := range matchingResourcesInNamespace.Items {
+		r.handleJob(ctx, job)
+	}
+	return nil
+}
+
+func (r *Dash0Reconciler) handleJob(ctx context.Context, job batchv1.Job) {
+	if job.DeletionTimestamp != nil {
+		// do not modify resources that are being deleted
+		return
+	}
+	logger := log.FromContext(ctx).WithValues(
+		resourceTypeLabel,
+		"Job",
+		resourceNamespaceLabel,
+		job.GetNamespace(),
+		resourceNameLabel,
+		job.GetName(),
+	)
+	retryErr := util.Retry("labelling immutable job", func() error {
+		if err := r.Client.Get(ctx, client.ObjectKey{
+			Namespace: job.GetNamespace(),
+			Name:      job.GetName(),
+		}, &job); err != nil {
+			return fmt.Errorf("error when fetching job %s/%s: %w", job.GetNamespace(), job.GetName(), err)
+		}
+		r.newResourceModifier(&logger).AddLabelsToImmutableJob(&job)
+		return r.Client.Update(ctx, &job)
+	}, &logger)
+
 	if retryErr != nil {
-		logger.Error(retryErr, "Dash0 instrumentation by controller has not been successful.")
-		util.QueueFailedInstrumentationEvent(r.Recorder, &deployment, "controller", retryErr)
+		r.postProcess(&job, false, logger, retryErr)
+	} else {
+		r.postProcess(
+			&job,
+			false,
+			logger,
+			ImmutableResourceError{
+				resourceType: "job",
+				resource:     fmt.Sprintf("%s/%s", job.GetNamespace(), job.GetName()),
+			},
+		)
+	}
+}
+
+func (r *Dash0Reconciler) findAndModifyReplicaSets(ctx context.Context, namespace string) error {
+	matchingResourcesInNamespace, err := r.ClientSet.AppsV1().ReplicaSets(namespace).List(ctx, labelNotSetFilter)
+	if err != nil {
+		return fmt.Errorf("error when querying deployments: %w", err)
+	}
+	for _, resource := range matchingResourcesInNamespace.Items {
+		r.modifyReplicaSet(ctx, resource)
+	}
+	return nil
+}
+
+func (r *Dash0Reconciler) modifyReplicaSet(ctx context.Context, replicaSet appsv1.ReplicaSet) {
+	if replicaSet.DeletionTimestamp != nil {
+		// do not modify resources that are being deleted
+		return
+	}
+	logger := log.FromContext(ctx).WithValues(
+		resourceTypeLabel,
+		"ReplicaSet",
+		resourceNamespaceLabel,
+		replicaSet.GetNamespace(),
+		resourceNameLabel,
+		replicaSet.GetName(),
+	)
+	hasBeenModified := false
+	retryErr := util.Retry("modifying replicaset", func() error {
+		if err := r.Client.Get(ctx, client.ObjectKey{
+			Namespace: replicaSet.GetNamespace(),
+			Name:      replicaSet.GetName(),
+		}, &replicaSet); err != nil {
+			return fmt.Errorf("error when fetching replicaset %s/%s: %w", replicaSet.GetNamespace(), replicaSet.GetName(), err)
+		}
+		hasBeenModified = r.newResourceModifier(&logger).ModifyReplicaSet(&replicaSet, replicaSet.GetNamespace())
+		if hasBeenModified {
+			return r.Client.Update(ctx, &replicaSet)
+		} else {
+			return nil
+		}
+	}, &logger)
+
+	r.postProcess(&replicaSet, hasBeenModified, logger, retryErr)
+}
+
+func (r *Dash0Reconciler) findAndModifyStatefulSets(ctx context.Context, namespace string) error {
+	matchingResourcesInNamespace, err := r.ClientSet.AppsV1().StatefulSets(namespace).List(ctx, labelNotSetFilter)
+	if err != nil {
+		return fmt.Errorf("error when querying stateful sets: %w", err)
+	}
+	for _, resource := range matchingResourcesInNamespace.Items {
+		r.modifyStatefulSet(ctx, resource)
+	}
+	return nil
+}
+
+func (r *Dash0Reconciler) modifyStatefulSet(ctx context.Context, statefulSet appsv1.StatefulSet) {
+	if statefulSet.DeletionTimestamp != nil {
+		// do not modify resources that are being deleted
+		return
+	}
+	logger := log.FromContext(ctx).WithValues(
+		resourceTypeLabel,
+		"StatefulSet",
+		resourceNamespaceLabel,
+		statefulSet.GetNamespace(),
+		resourceNameLabel,
+		statefulSet.GetName(),
+	)
+	hasBeenModified := false
+	retryErr := util.Retry("modifying stateful set", func() error {
+		if err := r.Client.Get(ctx, client.ObjectKey{
+			Namespace: statefulSet.GetNamespace(),
+			Name:      statefulSet.GetName(),
+		}, &statefulSet); err != nil {
+			return fmt.Errorf("error when fetching stateful set %s/%s: %w", statefulSet.GetNamespace(), statefulSet.GetName(), err)
+		}
+		hasBeenModified = r.newResourceModifier(&logger).ModifyStatefulSet(&statefulSet, statefulSet.GetNamespace())
+		if hasBeenModified {
+			return r.Client.Update(ctx, &statefulSet)
+		} else {
+			return nil
+		}
+	}, &logger)
+
+	r.postProcess(&statefulSet, hasBeenModified, logger, retryErr)
+}
+
+func (r *Dash0Reconciler) newResourceModifier(logger *logr.Logger) *k8sresources.ResourceModifier {
+	return k8sresources.NewResourceModifier(
+		util.InstrumentationMetadata{
+			Versions:       r.Versions,
+			InstrumentedBy: "controller",
+		},
+		logger,
+	)
+}
+
+func (r *Dash0Reconciler) postProcess(
+	resource runtime.Object,
+	hasBeenModified bool,
+	logger logr.Logger,
+	retryErr error,
+) {
+	if retryErr != nil {
+		e := &ImmutableResourceError{}
+		if errors.As(retryErr, e) {
+			logger.Info(e.Error())
+		} else {
+			logger.Error(retryErr, "Dash0 instrumentation by controller has not been successful.")
+		}
+		util.QueueFailedInstrumentationEvent(r.Recorder, resource, "controller", retryErr)
 	} else if !hasBeenModified {
 		logger.Info("Dash0 instrumentation already present, no modification by controller is necessary.")
-		util.QueueAlreadyInstrumentedEvent(r.Recorder, &deployment, "controller")
+		util.QueueAlreadyInstrumentedEvent(r.Recorder, resource, "controller")
 	} else {
 		logger.Info("The controller has added Dash0 instrumentation to the resource.")
-		util.QueueSuccessfulInstrumentationEvent(r.Recorder, &deployment, "controller")
+		util.QueueSuccessfulInstrumentationEvent(r.Recorder, resource, "controller")
 	}
 }

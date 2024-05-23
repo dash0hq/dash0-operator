@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dash0-operator-nodejs-20-express-test-job
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: dash0-operator-nodejs-20-express-test-app
+          image: "dash0-operator-nodejs-20-express-test-app:latest"
+          env:
+            - name: DASH0_DEBUG
+              value: "true"
+            - name: TRIGGER_SELF_AND_EXIT
+              value: "true"
+            - name: TEST_ID_FILE
+              value: "/test-uuid/job.test.id"
+          ports:
+            - containerPort: 1207
+          imagePullPolicy: Never
+          volumeMounts:
+            - name: test-uuid
+              mountPath: /test-uuid
+      volumes:
+      - name: test-uuid
+        hostPath:
+          path: $PWD/test-resources/e2e-test-volumes/test-uuid
+          type: DirectoryOrCreate

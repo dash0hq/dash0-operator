@@ -7,8 +7,8 @@ import (
 	"context"
 
 	. "github.com/onsi/gomega"
-
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -17,12 +17,16 @@ import (
 )
 
 const (
-	TestNamespaceName      = "test-namespace"
-	DeploymentName         = "deployment"
-	DeploymentNameExisting = "existing-deployment"
+	TestNamespaceName = "test-namespace"
+	CronJobName       = "cronjob"
+	DaemonSetName     = "daemonset"
+	DeploymentName    = "deployment"
+	JobName           = "job"
+	ReplicaSetName    = "replicaset"
+	StatefulSetName   = "statefulset"
 )
 
-func EnsureResourceExists(
+func EnsureDash0CustomResourceExists(
 	ctx context.Context,
 	k8sClient client.Client,
 	qualifiedName types.NamespacedName,
@@ -59,7 +63,7 @@ func EnsureTestNamespaceExists(
 	k8sClient client.Client,
 	name string,
 ) *corev1.Namespace {
-	object := EnsureResourceExists(
+	object := EnsureDash0CustomResourceExists(
 		ctx,
 		k8sClient,
 		types.NamespacedName{Name: name},
@@ -69,20 +73,53 @@ func EnsureTestNamespaceExists(
 	return object.(*corev1.Namespace)
 }
 
+func BasicCronJob(namespace string, name string) *batchv1.CronJob {
+	resource := &batchv1.CronJob{}
+	resource.Namespace = namespace
+	resource.Name = name
+	resource.Spec = batchv1.CronJobSpec{}
+	resource.Spec.Schedule = "*/1 * * * *"
+	resource.Spec.JobTemplate.Spec.Template = basicPodSpecTemplate()
+	resource.Spec.JobTemplate.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
+	return resource
+}
+
+func CreateBasicCronJob(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *batchv1.CronJob {
+	return create(ctx, k8sClient, BasicCronJob(namespace, name)).(*batchv1.CronJob)
+}
+
+func BasicDaemonSet(namespace string, name string) *appsv1.DaemonSet {
+	resource := &appsv1.DaemonSet{}
+	resource.Namespace = namespace
+	resource.Name = name
+	resource.Spec = appsv1.DaemonSetSpec{}
+	resource.Spec.Template = basicPodSpecTemplate()
+	resource.Spec.Selector = createSelector()
+	return resource
+}
+
+func CreateBasicDaemonSet(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *appsv1.DaemonSet {
+	return create(ctx, k8sClient, BasicDaemonSet(namespace, name)).(*appsv1.DaemonSet)
+}
+
 func BasicDeployment(namespace string, name string) *appsv1.Deployment {
-	deployment := &appsv1.Deployment{}
-	deployment.Namespace = namespace
-	deployment.Name = name
-	deployment.Spec = appsv1.DeploymentSpec{}
-	deployment.Spec.Template = corev1.PodTemplateSpec{}
-	deployment.Spec.Template.Labels = map[string]string{"app": "test"}
-	deployment.Spec.Template.Spec.Containers = []corev1.Container{{
-		Name:  "test-container-0",
-		Image: "ubuntu",
-	}}
-	deployment.Spec.Selector = &metav1.LabelSelector{}
-	deployment.Spec.Selector.MatchLabels = map[string]string{"app": "test"}
-	return deployment
+	resource := &appsv1.Deployment{}
+	resource.Namespace = namespace
+	resource.Name = name
+	resource.Spec = appsv1.DeploymentSpec{}
+	resource.Spec.Template = basicPodSpecTemplate()
+	resource.Spec.Selector = createSelector()
+	return resource
 }
 
 func CreateBasicDeployment(
@@ -91,14 +128,114 @@ func CreateBasicDeployment(
 	namespace string,
 	name string,
 ) *appsv1.Deployment {
-	deployment := BasicDeployment(namespace, name)
-	Expect(k8sClient.Create(ctx, deployment)).Should(Succeed())
-	return deployment
+	return create(ctx, k8sClient, BasicDeployment(namespace, name)).(*appsv1.Deployment)
+}
+
+func BasicJob(namespace string, name string) *batchv1.Job {
+	resource := &batchv1.Job{}
+	resource.Namespace = namespace
+	resource.Name = name
+	resource.Spec = batchv1.JobSpec{}
+	resource.Spec.Template = basicPodSpecTemplate()
+	resource.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
+	return resource
+}
+
+func CreateBasicJob(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *batchv1.Job {
+	return create(ctx, k8sClient, BasicJob(namespace, name)).(*batchv1.Job)
+}
+
+func BasicReplicaSet(namespace string, name string) *appsv1.ReplicaSet {
+	resource := &appsv1.ReplicaSet{}
+	resource.Namespace = namespace
+	resource.Name = name
+	resource.Spec = appsv1.ReplicaSetSpec{}
+	resource.Spec.Template = basicPodSpecTemplate()
+	resource.Spec.Selector = createSelector()
+	return resource
+}
+
+func CreateBasicReplicaSet(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *appsv1.ReplicaSet {
+	return create(ctx, k8sClient, BasicReplicaSet(namespace, name)).(*appsv1.ReplicaSet)
+}
+
+func ReplicaSetOwnedByDeployment(namespace string, name string) *appsv1.ReplicaSet {
+	resource := BasicReplicaSet(namespace, name)
+	resource.ObjectMeta = metav1.ObjectMeta{
+		Namespace: namespace,
+		Name:      name,
+		OwnerReferences: []metav1.OwnerReference{{
+			APIVersion: "apps/v1",
+			Kind:       "Deployment",
+			Name:       "deployment",
+			UID:        "1234",
+		}},
+	}
+	return resource
+}
+
+func CreateReplicaSetOwnedByDeployment(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *appsv1.ReplicaSet {
+	return create(ctx, k8sClient, ReplicaSetOwnedByDeployment(namespace, name)).(*appsv1.ReplicaSet)
+}
+
+func BasicStatefulSet(namespace string, name string) *appsv1.StatefulSet {
+	resource := &appsv1.StatefulSet{}
+	resource.Namespace = namespace
+	resource.Name = name
+	resource.Spec = appsv1.StatefulSetSpec{}
+	resource.Spec.Template = basicPodSpecTemplate()
+	resource.Spec.Selector = createSelector()
+	return resource
+}
+
+func CreateBasicStatefulSet(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *appsv1.StatefulSet {
+	return create(ctx, k8sClient, BasicStatefulSet(namespace, name)).(*appsv1.StatefulSet)
+}
+
+func basicPodSpecTemplate() corev1.PodTemplateSpec {
+	podSpecTemplate := corev1.PodTemplateSpec{}
+	podSpecTemplate.Labels = map[string]string{"app": "test"}
+	podSpecTemplate.Spec.Containers = []corev1.Container{{
+		Name:  "test-container-0",
+		Image: "ubuntu",
+	}}
+	return podSpecTemplate
+}
+
+func createSelector() *metav1.LabelSelector {
+	selector := &metav1.LabelSelector{}
+	selector.MatchLabels = map[string]string{"app": "test"}
+	return selector
+}
+
+func create(ctx context.Context, k8sClient client.Client, resource client.Object) client.Object {
+	Expect(k8sClient.Create(ctx, resource)).Should(Succeed())
+	return resource
 }
 
 func DeploymentWithMoreBellsAndWhistles(namespace string, name string) *appsv1.Deployment {
-	deployment := BasicDeployment(namespace, name)
-	podSpec := &deployment.Spec.Template.Spec
+	resource := BasicDeployment(namespace, name)
+	podSpec := &resource.Spec.Template.Spec
 	podSpec.Volumes = []corev1.Volume{
 		{
 			Name:         "test-volume-0",
@@ -172,7 +309,7 @@ func DeploymentWithMoreBellsAndWhistles(namespace string, name string) *appsv1.D
 		},
 	}
 
-	return deployment
+	return resource
 }
 
 func DeploymentWithExistingDash0Artifacts(namespace string, name string) *appsv1.Deployment {
@@ -294,17 +431,92 @@ func DeploymentWithExistingDash0Artifacts(namespace string, name string) *appsv1
 	return deployment
 }
 
+func GetCronJob(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *batchv1.CronJob {
+	resource := &batchv1.CronJob{}
+	namespacedName := types.NamespacedName{
+		Namespace: namespace,
+		Name:      name,
+	}
+	ExpectWithOffset(1, k8sClient.Get(ctx, namespacedName, resource)).Should(Succeed())
+	return resource
+}
+
+func GetDaemonSet(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *appsv1.DaemonSet {
+	resource := &appsv1.DaemonSet{}
+	namespacedName := types.NamespacedName{
+		Namespace: namespace,
+		Name:      name,
+	}
+	ExpectWithOffset(1, k8sClient.Get(ctx, namespacedName, resource)).Should(Succeed())
+	return resource
+}
+
 func GetDeployment(
 	ctx context.Context,
 	k8sClient client.Client,
 	namespace string,
-	deploymentName string,
+	name string,
 ) *appsv1.Deployment {
-	deployment := &appsv1.Deployment{}
+	resource := &appsv1.Deployment{}
 	namespacedName := types.NamespacedName{
 		Namespace: namespace,
-		Name:      deploymentName,
+		Name:      name,
 	}
-	ExpectWithOffset(1, k8sClient.Get(ctx, namespacedName, deployment)).Should(Succeed())
-	return deployment
+	ExpectWithOffset(1, k8sClient.Get(ctx, namespacedName, resource)).Should(Succeed())
+	return resource
+}
+
+func GetJob(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *batchv1.Job {
+	resource := &batchv1.Job{}
+	namespacedName := types.NamespacedName{
+		Namespace: namespace,
+		Name:      name,
+	}
+	ExpectWithOffset(1, k8sClient.Get(ctx, namespacedName, resource)).Should(Succeed())
+	return resource
+}
+
+func GetReplicaSet(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *appsv1.ReplicaSet {
+	resource := &appsv1.ReplicaSet{}
+	namespacedName := types.NamespacedName{
+		Namespace: namespace,
+		Name:      name,
+	}
+	ExpectWithOffset(1, k8sClient.Get(ctx, namespacedName, resource)).Should(Succeed())
+	return resource
+}
+
+func GetStatefulSet(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *appsv1.StatefulSet {
+	resource := &appsv1.StatefulSet{}
+	namespacedName := types.NamespacedName{
+		Namespace: namespace,
+		Name:      name,
+	}
+	ExpectWithOffset(1, k8sClient.Get(ctx, namespacedName, resource)).Should(Succeed())
+	return resource
 }
