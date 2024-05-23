@@ -25,7 +25,7 @@ import (
 
 	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/controller"
-	"github.com/dash0hq/dash0-operator/internal/k8sresources"
+	"github.com/dash0hq/dash0-operator/internal/util"
 	dash0webhook "github.com/dash0hq/dash0-operator/internal/webhook"
 	//+kubebuilder:scaffold:imports
 )
@@ -155,15 +155,17 @@ func startOperatorManager(
 		initContainerImageVersion,
 	)
 
+	versions := util.Versions{
+		OperatorVersion:           operatorVersion,
+		InitContainerImageVersion: initContainerImageVersion,
+	}
+
 	if err = (&controller.Dash0Reconciler{
 		Client:    mgr.GetClient(),
 		ClientSet: clientSet,
 		Scheme:    mgr.GetScheme(),
 		Recorder:  mgr.GetEventRecorderFor("dash0-controller"),
-		Versions: k8sresources.Versions{
-			OperatorVersion:           operatorVersion,
-			InitContainerImageVersion: initContainerImageVersion,
-		},
+		Versions:  versions,
 	}).SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the Dash0 reconciler: %w", err)
 	}
@@ -172,10 +174,7 @@ func startOperatorManager(
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
 		if err = (&dash0webhook.Handler{
 			Recorder: mgr.GetEventRecorderFor("dash0-webhook"),
-			Versions: k8sresources.Versions{
-				OperatorVersion:           operatorVersion,
-				InitContainerImageVersion: initContainerImageVersion,
-			},
+			Versions: versions,
 		}).SetupWebhookWithManager(mgr); err != nil {
 			return fmt.Errorf("unable to create the Dash0 webhook: %w", err)
 		}

@@ -11,6 +11,8 @@ import (
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	"github.com/dash0hq/dash0-operator/internal/util"
+
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
@@ -19,54 +21,35 @@ import (
 // be used to verify external effects (recording events etc.) that cannot be covered in this test.
 
 var (
-	versions = Versions{
-		OperatorVersion:           "1.2.3",
-		InitContainerImageVersion: "4.5.6",
+	instrumentationMetadata = util.InstrumentationMetadata{
+		Versions: util.Versions{OperatorVersion: "1.2.3",
+			InitContainerImageVersion: "4.5.6",
+		},
+		InstrumentedBy: "modify_test",
 	}
 )
 
 var _ = Describe("Dash0 Resource Modification", func() {
 
 	ctx := context.Background()
+	logger := log.FromContext(ctx)
+	resourceModifier := NewResourceModifier(instrumentationMetadata, &logger)
 
-	Context("when mutating new deployments", func() {
-		It("should inject Dash into a new basic deployment", func() {
+	Context("when mutating new resources", func() {
+		It("should inject Dash0 into a new basic deployment", func() {
 			deployment := BasicDeployment(TestNamespaceName, DeploymentName)
-			result := ModifyDeployment(
-				deployment,
-				TestNamespaceName,
-				versions,
-				log.FromContext(ctx),
-			)
+			result := resourceModifier.ModifyDeployment(deployment, TestNamespaceName)
 
 			Expect(result).To(BeTrue())
-			VerifyModifiedDeployment(deployment, DeploymentExpectations{
-				Volumes:               1,
-				Dash0VolumeIdx:        0,
-				InitContainers:        1,
-				Dash0InitContainerIdx: 0,
-				Containers: []ContainerExpectations{{
-					VolumeMounts:                             1,
-					Dash0VolumeMountIdx:                      0,
-					EnvVars:                                  2,
-					NodeOptionsEnvVarIdx:                     0,
-					Dash0CollectorBaseUrlEnvVarIdx:           1,
-					Dash0CollectorBaseUrlEnvVarExpectedValue: "http://dash0-opentelemetry-collector-daemonset.test-namespace.svc.cluster.local:4318",
-				}},
-			})
+			VerifyModifiedDeployment(deployment, BasicPodSpecExpectations)
 		})
 
-		It("should inject Dash into a new deployment that has multiple Containers, and already has Volumes and init Containers", func() {
+		It("should inject Dash0 into a new deployment that has multiple Containers, and already has Volumes and init Containers", func() {
 			deployment := DeploymentWithMoreBellsAndWhistles(TestNamespaceName, DeploymentName)
-			result := ModifyDeployment(
-				deployment,
-				TestNamespaceName,
-				versions,
-				log.FromContext(ctx),
-			)
+			result := resourceModifier.ModifyDeployment(deployment, TestNamespaceName)
 
 			Expect(result).To(BeTrue())
-			VerifyModifiedDeployment(deployment, DeploymentExpectations{
+			VerifyModifiedDeployment(deployment, PodSpecExpectations{
 				Volumes:               3,
 				Dash0VolumeIdx:        2,
 				InitContainers:        3,
@@ -92,17 +75,12 @@ var _ = Describe("Dash0 Resource Modification", func() {
 			})
 		})
 
-		It("should update existing Dash artifacts in a new deployment", func() {
+		It("should update existing Dash0 artifacts in a new deployment", func() {
 			deployment := DeploymentWithExistingDash0Artifacts(TestNamespaceName, DeploymentName)
-			result := ModifyDeployment(
-				deployment,
-				TestNamespaceName,
-				versions,
-				log.FromContext(ctx),
-			)
+			result := resourceModifier.ModifyDeployment(deployment, TestNamespaceName)
 
 			Expect(result).To(BeTrue())
-			VerifyModifiedDeployment(deployment, DeploymentExpectations{
+			VerifyModifiedDeployment(deployment, PodSpecExpectations{
 				Volumes:               3,
 				Dash0VolumeIdx:        1,
 				InitContainers:        3,
@@ -128,6 +106,54 @@ var _ = Describe("Dash0 Resource Modification", func() {
 					},
 				},
 			})
+		})
+
+		It("should inject Dash0 into a new basic cron job", func() {
+			resource := BasicCronJob(TestNamespaceName, CronJobName)
+			result := resourceModifier.ModifyCronJob(resource, TestNamespaceName)
+
+			Expect(result).To(BeTrue())
+			VerifyModifiedCronJob(resource, BasicPodSpecExpectations)
+		})
+
+		It("should inject Dash0 into a new basic daemon set", func() {
+			resource := BasicDaemonSet(TestNamespaceName, DaemonSetName)
+			result := resourceModifier.ModifyDaemonSet(resource, TestNamespaceName)
+
+			Expect(result).To(BeTrue())
+			VerifyModifiedDaemonSet(resource, BasicPodSpecExpectations)
+		})
+
+		It("should inject Dash0 into a new basic job", func() {
+			resource := BasicJob(TestNamespaceName, JobName)
+			result := resourceModifier.ModifyJob(resource, TestNamespaceName)
+
+			Expect(result).To(BeTrue())
+			VerifyModifiedJob(resource, BasicPodSpecExpectations)
+		})
+
+		It("should inject Dash0 into a new basic replica set", func() {
+			resource := BasicReplicaSet(TestNamespaceName, ReplicaSetName)
+			result := resourceModifier.ModifyReplicaSet(resource, TestNamespaceName)
+
+			Expect(result).To(BeTrue())
+			VerifyModifiedReplicaSet(resource, BasicPodSpecExpectations)
+		})
+
+		It("should not inject Dash0 into a new basic replica set that is owned by a deployment", func() {
+			resource := ReplicaSetOwnedByDeployment(TestNamespaceName, ReplicaSetName)
+			result := resourceModifier.ModifyReplicaSet(resource, TestNamespaceName)
+
+			Expect(result).To(BeFalse())
+			VerifyUnmodifiedReplicaSet(resource)
+		})
+
+		It("should inject Dash0 into a new basic stateful set", func() {
+			resource := BasicStatefulSet(TestNamespaceName, StatefulSetName)
+			result := resourceModifier.ModifyStatefulSet(resource, TestNamespaceName)
+
+			Expect(result).To(BeTrue())
+			VerifyModifiedStatefulSet(resource, BasicPodSpecExpectations)
 		})
 	})
 })

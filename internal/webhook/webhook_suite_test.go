@@ -14,12 +14,9 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/dash0hq/dash0-operator/test/util"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/v1alpha1"
-	"github.com/dash0hq/dash0-operator/internal/k8sresources"
 	admissionv1 "k8s.io/api/admission/v1"
 	apimachineryruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
@@ -32,6 +29,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
+
+	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/util"
+
+	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
 var (
@@ -42,7 +44,7 @@ var (
 	ctx       context.Context
 	cancel    context.CancelFunc
 
-	versions = k8sresources.Versions{
+	versions = util.Versions{
 		OperatorVersion:           "1.2.3",
 		InitContainerImageVersion: "4.5.6",
 	}

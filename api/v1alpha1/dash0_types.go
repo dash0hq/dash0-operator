@@ -37,18 +37,6 @@ type Dash0List struct {
 	Items           []Dash0 `json:"items"`
 }
 
-type ConditionType string
-type Reason string
-
-const (
-	ConditionTypeAvailable ConditionType = "Available"
-	ConditionTypeDegraded  ConditionType = "Degraded"
-
-	ReasonSuccessfulInstrumentation Reason = "SuccessfulInstrumentation"
-	ReasonAlreadyInstrumented       Reason = "AlreadyInstrumented"
-	ReasonFailedInstrumentation     Reason = "FailedInstrumentation"
-)
-
 func init() {
 	SchemeBuilder.Register(&Dash0{}, &Dash0List{})
 }
