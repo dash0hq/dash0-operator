@@ -14,21 +14,22 @@ spec:
   type: LoadBalancer
 ---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
-  name: dash0-operator-nodejs-20-express-test-deployment
-  labels:
-    app: dash0-operator-nodejs-20-express-test-app
+  name: dash0-operator-nodejs-20-express-test-statefulset
 spec:
-  replicas: 2
   selector:
     matchLabels:
+      # has to match .spec.template.metadata.labels
       app: dash0-operator-nodejs-20-express-test-app
+  serviceName: "dash0-operator-nodejs-20-express-test-service"
+  replicas: 1
   template:
     metadata:
       labels:
         app: dash0-operator-nodejs-20-express-test-app
     spec:
+      terminationGracePeriodSeconds: 3
       containers:
         - name: dash0-operator-nodejs-20-express-test-app
           image: "dash0-operator-nodejs-20-express-test-app:latest"

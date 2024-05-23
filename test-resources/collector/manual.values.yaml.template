@@ -8,7 +8,7 @@ config:
   extensions:
     bearertokenauth/dash0:
       scheme: "Bearer"
-      token: "TODO provide token"
+      token: "$DASH0_AUTHORIZATION_TOKEN"
 
   receivers:
     jaeger: null
@@ -19,19 +19,10 @@ config:
     batch: {}
 
   exporters:
-    file/traces:
-      path: /e2e-test-received-data/traces.jsonl
-      flush_interval: 100ms
-    file/metrics:
-      path: /e2e-test-received-data/metrics.jsonl
-      flush_interval: 100ms
-    file/logs:
-      path: /e2e-test-received-data/logs.jsonl
-      flush_interval: 100ms
     otlp:
       auth:
         authenticator: bearertokenauth/dash0
-      endpoint: "TODO provide endpoint"
+      endpoint: "$OTEL_EXPORTER_OTLP_ENDPOINT"
 
   service:
     extensions:
@@ -43,19 +34,16 @@ config:
         receivers:
           - otlp
         exporters:
-          - file/traces
           - otlp
       metrics:
         receivers:
           - otlp
         exporters:
-          - file/metrics
           - otlp
       logs:
         receivers:
           - otlp
         exporters:
-          - file/logs
           - otlp
 
 ports:
@@ -67,12 +55,3 @@ ports:
     enabled: false
   zipkin:
     enabled: false
-
-extraVolumes:
-  - name: telemetry-file-export
-    hostPath:
-      path: {TODO provide absolute path to repo}/e2e-test-received-data
-      type: DirectoryOrCreate
-extraVolumeMounts:
-  - name: telemetry-file-export
-    mountPath: /e2e-test-received-data

@@ -7,11 +7,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/onsi/gomega"
 	"github.com/onsi/gomega/format"
 	corev1 "k8s.io/api/core/v1"
-
-	"github.com/dash0hq/dash0-operator/api/v1alpha1"
 )
 
 func MatchEnvVar(name string, value string, args ...interface{}) gomega.OmegaMatcher {
@@ -87,7 +86,7 @@ func (matcher *MatchVolumeMountMatcher) NegatedFailureMessage(actual interface{}
 func MatchEvent(
 	namespace string,
 	resourceName string,
-	reason v1alpha1.Reason,
+	reason util.Reason,
 	message string,
 	args ...interface{},
 ) gomega.OmegaMatcher {

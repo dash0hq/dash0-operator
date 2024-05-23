@@ -7,14 +7,18 @@ set -euo pipefail
 
 cd "$(dirname ${BASH_SOURCE})"
 
-if [[ ! -f values.yaml ]]; then
-  echo Please copy $(pwd)/values.yaml.template to $(pwd)/values.yaml and provide the auth token and the ingress endpoint.
-  exit 1
-fi
-
 target_namespace=${1:-default}
 
-# helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
+if [[ ! $(helm repo list | grep open-telemetry) ]]; then
+  echo "The helm repo for open-telemetry has not been found, adding it now."
+  helm helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts --force-update
+  echo "Running helm repo update."
+  helm repo update
+fi
+
+if [[ -f manual.values.yaml ]]; then
+  ../bin/render-templates.sh manual-testing
+fi
 
 ./undeploy.sh ${target_namespace}
 
@@ -22,5 +26,5 @@ helm install \
   dash0-opentelemetry-collector-daemonset \
   open-telemetry/opentelemetry-collector \
   --namespace ${target_namespace} \
-  --values values.yaml \
+  --values manual.values.yaml \
   --set image.repository="otel/opentelemetry-collector-k8s"

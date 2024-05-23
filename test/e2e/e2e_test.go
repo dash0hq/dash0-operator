@@ -18,7 +18,7 @@ const (
 	operatorNamespace = "dash0-operator-system"
 	operatorImage     = "dash0-operator-controller:latest"
 
-	applicationUnderTestNamespace = "application-under-test-namespace"
+	applicationUnderTestNamespace = "e2e-application-under-test-namespace"
 
 	managerYaml       = "config/manager/manager.yaml"
 	managerYamlBackup = managerYaml + ".backup"
@@ -40,7 +40,9 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		workingDir := strings.TrimSpace(string(pwdOutput))
 		fmt.Fprintf(GinkgoWriter, "workingDir: %s\n", workingDir)
 
-		By("Reading current imagePullPolicy")
+		RenderTemplates()
+
+		By("reading current imagePullPolicy")
 		yqOutput, err := Run(exec.Command(
 			"yq",
 			"e",
@@ -92,9 +94,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 	})
 
 	AfterAll(func() {
-		By("uninstalling the Node.js deployment")
-		ExpectWithOffset(1, UninstallNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
-
 		if managerYamlNeedsRevert {
 			By("reverting changes to " + managerYaml)
 			err := CopyFile(managerYamlBackup, managerYaml)
@@ -124,39 +123,110 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		fmt.Fprint(GinkgoWriter, string(output))
 	})
 
-	Context("the Dash0 operator's webhook", func() {
-
-		BeforeAll(func() {
-			DeployOperator(operatorNamespace, operatorImage)
-			fmt.Fprint(GinkgoWriter, "waiting 10 seconds to give the webook some time to get ready\n")
-			time.Sleep(10 * time.Second)
-		})
-
-		AfterAll(func() {
-			UndeployOperator(operatorNamespace)
-		})
-
-		It("should modify new deployments", func() {
-			By("installing the Node.js deployment")
-			Expect(InstallNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
-			By("verifying that the Node.js deployment has been instrumented by the webhook")
-			SendRequestsAndVerifySpansHaveBeenProduced(applicationUnderTestNamespace)
-		})
+	BeforeEach(func() {
+		DeleteTestIdFiles()
 	})
 
-	Context("the Dash0 operator controller", func() {
-		AfterAll(func() {
+	AfterEach(func() {
+		// As an alternative to undeploying all applications under test (deployment, daemonset, cronjob, ...) we could
+		// also delete the whole namespace for the application under test to after each test case get rid of all
+		// applications (and then recreate the namespace before each test). However, this would mean we also need to
+		// deploy the OpenTelemetry collector to the target namespace again for each test case, which would slow down
+		// tests a bit more.
+		RemoveAllTestApplications(applicationUnderTestNamespace)
+
+		DeleteTestIdFiles()
+	})
+
+	Describe("controller", func() {
+		AfterEach(func() {
 			UndeployDash0Resource(applicationUnderTestNamespace)
 			UndeployOperator(operatorNamespace)
 		})
 
-		It("should modify existing deployments", func() {
-			By("installing the Node.js deployment")
-			Expect(InstallNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
-			DeployOperator(operatorNamespace, operatorImage)
-			DeployDash0Resource(applicationUnderTestNamespace)
-			By("verifying that the Node.js deployment has been instrumented by the controller")
-			SendRequestsAndVerifySpansHaveBeenProduced(applicationUnderTestNamespace)
+		DescribeTable(
+			"when instrumenting existing resources",
+			func(
+				resourceType string,
+				installResource func(string) error,
+				sendRequests bool,
+				restartPodsManually bool,
+			) {
+				By(fmt.Sprintf("installing the Node.js %s", resourceType))
+				Expect(installResource(applicationUnderTestNamespace)).To(Succeed())
+				By("deploy the operator and the Dash0 custom resource")
+				DeployOperator(operatorNamespace, operatorImage)
+				DeployDash0Resource(applicationUnderTestNamespace)
+				By(fmt.Sprintf("verifying that the Node.js %s has been instrumented by the controller", resourceType))
+				VerifyThatSpansAreCaptured(
+					applicationUnderTestNamespace,
+					resourceType,
+					sendRequests,
+					restartPodsManually,
+					"controller",
+				)
+			},
+			Entry("should modify existing cron jobs", "cronjob", InstallNodeJsCronJob, false, false),
+			Entry("should modify existing daemon sets", "daemonset", InstallNodeJsDaemonSet, true, false),
+			Entry("should modify existing deployments", "deployment", InstallNodeJsDeployment, true, false),
+			Entry("should modify existing replica set", "replicaset", InstallNodeJsReplicaSet, true, true),
+			Entry("should modify existing stateful set", "statefulset", InstallNodeJsStatefulSet, true, false),
+		)
+
+		Describe("when it detects existing immutable jobs", func() {
+			It("should label them accordingly", func() {
+				By("installing the Node.js job")
+				Expect(InstallNodeJsJob(applicationUnderTestNamespace)).To(Succeed())
+				By("deploy the operator and the Dash0 custom resource")
+				DeployOperator(operatorNamespace, operatorImage)
+				DeployDash0Resource(applicationUnderTestNamespace)
+				By("verifying that the Node.js job has been labelled by the controller")
+				Eventually(func(g Gomega) {
+					verifyLabels(g, applicationUnderTestNamespace, "job", false, "controller")
+				}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
+			})
 		})
+	})
+
+	Describe("webhook", func() {
+
+		BeforeAll(func() {
+			DeployOperator(operatorNamespace, operatorImage)
+
+			// Deliberately not deploying the Dash0 custom resource here: as of now, the webhook does not rely on the
+			// presence of the Dash0 resource. This is subject to change though. (If changed, it also needs to be
+			// undeployed in the AfterAll hook.)
+			//
+			// DeployDash0Resource(applicationUnderTestNamespace)
+
+			fmt.Fprint(GinkgoWriter, "waiting 10 seconds to give the webhook some time to get ready\n")
+			time.Sleep(10 * time.Second)
+		})
+
+		AfterAll(func() {
+			// See comment in BeforeAll hook.
+			// UndeployDash0Resource(applicationUnderTestNamespace)
+			UndeployOperator(operatorNamespace)
+		})
+
+		DescribeTable(
+			"when instrumenting new resources",
+			func(
+				resourceType string,
+				installResource func(string) error,
+				sendRequests bool,
+			) {
+				By(fmt.Sprintf("installing the Node.js %s", resourceType))
+				Expect(installResource(applicationUnderTestNamespace)).To(Succeed())
+				By(fmt.Sprintf("verifying that the Node.js %s has been instrumented by the webhook", resourceType))
+				VerifyThatSpansAreCaptured(applicationUnderTestNamespace, resourceType, sendRequests, false, "webhook")
+			},
+			Entry("should modify new cron jobs", "cronjob", InstallNodeJsCronJob, false),
+			Entry("should modify new daemon sets", "daemonset", InstallNodeJsDaemonSet, true),
+			Entry("should modify new deployments", "deployment", InstallNodeJsDeployment, true),
+			Entry("should modify new jobs", "job", InstallNodeJsJob, false),
+			Entry("should modify new replica sets", "replicaset", InstallNodeJsReplicaSet, true),
+			Entry("should modify new stateful sets", "statefulset", InstallNodeJsStatefulSet, true),
+		)
 	})
 })
