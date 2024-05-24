@@ -7,10 +7,22 @@ rules:
 - apiGroups:
   - apps
   resources:
+  - daemonsets
   - deployments
+  - replicasets
+  - statefulsets
   verbs:
-  - create
-  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - cronjobs
+  - jobs
+  verbs:
   - get
   - list
   - patch
@@ -22,7 +34,6 @@ rules:
   - events
   verbs:
   - create
-  - patch
 - apiGroups:
   - ""
   resources:
