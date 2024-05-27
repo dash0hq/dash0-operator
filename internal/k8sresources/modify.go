@@ -33,11 +33,6 @@ const (
 	envVarNodeOptionsValue                   = "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js"
 	envVarDash0CollectorBaseUrlName          = "DASH0_OTEL_COLLECTOR_BASE_URL"
 	envVarDash0CollectorBaseUrlValueTemplate = "http://dash0-opentelemetry-collector-daemonset.%s.svc.cluster.local:4318"
-
-	instrumentedLabelKey              = "dash0.instrumented"
-	operatorVersionLabelKey           = "dash0.operator.version"
-	initContainerImageVersionLabelKey = "dash0.initcontainer.image.version"
-	instrumentedByLabelKey            = "dash0.instrumented.by"
 )
 
 var (
@@ -298,10 +293,10 @@ func (m *ResourceModifier) addInstrumentationLabels(
 	meta *metav1.ObjectMeta,
 	hasBeenInstrumented bool,
 ) {
-	m.addLabel(meta, instrumentedLabelKey, strconv.FormatBool(hasBeenInstrumented))
-	m.addLabel(meta, operatorVersionLabelKey, m.instrumentationMetadata.OperatorVersion)
-	m.addLabel(meta, initContainerImageVersionLabelKey, m.instrumentationMetadata.InitContainerImageVersion)
-	m.addLabel(meta, instrumentedByLabelKey, m.instrumentationMetadata.InstrumentedBy)
+	m.addLabel(meta, util.InstrumentedLabelKey, strconv.FormatBool(hasBeenInstrumented))
+	m.addLabel(meta, util.OperatorVersionLabelKey, m.instrumentationMetadata.OperatorVersion)
+	m.addLabel(meta, util.InitContainerImageVersionLabelKey, m.instrumentationMetadata.InitContainerImageVersion)
+	m.addLabel(meta, util.InstrumentedByLabelKey, m.instrumentationMetadata.InstrumentedBy)
 }
 
 func (m *ResourceModifier) addLabel(meta *metav1.ObjectMeta, key string, value string) {
