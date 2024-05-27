@@ -30,7 +30,44 @@ const (
 
 var (
 	traceUnmarshaller = &ptrace.JSONUnmarshaler{}
+	requiredPorts     = []int{1207, 4317, 4318}
 )
+
+func CheckIfRequiredPortsAreBlocked() {
+	portsCurrentlyInUseByKubernetesServices, err := Run(
+		exec.Command(
+			"kubectl",
+			"get",
+			"svc",
+			"--all-namespaces",
+			"-o",
+			"go-template='{{range .items}}{{range.spec.ports}}{{if .port}}{{.port}}{{\"\\n\"}}{{end}}{{end}}{{end}}'",
+		))
+	Expect(err).NotTo(HaveOccurred())
+	portsCurrentlyInUseArray := GetNonEmptyLines(string(portsCurrentlyInUseByKubernetesServices))
+	messages := make([]string, 0)
+	foundBlockedPort := false
+	for _, usedPortStr := range portsCurrentlyInUseArray {
+		usedPort, err := strconv.Atoi(usedPortStr)
+		if err != nil {
+			continue
+		}
+		for _, requiredPort := range requiredPorts {
+			if usedPort == requiredPort {
+				messages = append(messages,
+					fmt.Sprintf(
+						"Port %d is required by the test suite, but it is already in use by a Kubernetes "+
+							"service. Please check for conflicting deployed serivces.",
+						requiredPort,
+					))
+				foundBlockedPort = true
+			}
+		}
+	}
+	if foundBlockedPort {
+		Fail(strings.Join(messages, "\n"))
+	}
+}
 
 func RenderTemplates() {
 	By("render yaml templates")
