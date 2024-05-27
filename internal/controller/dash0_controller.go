@@ -56,7 +56,6 @@ func (e ImmutableResourceError) Error() string {
 func (r *Dash0Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&operatorv1alpha1.Dash0{}).
-		Owns(&appsv1.Deployment{}).
 		Complete(r)
 }
 
