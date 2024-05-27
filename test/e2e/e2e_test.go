@@ -18,6 +18,7 @@ const (
 	operatorNamespace = "dash0-operator-system"
 	operatorImage     = "dash0-operator-controller:latest"
 
+	kubeContextForTest            = "docker-desktop"
 	applicationUnderTestNamespace = "e2e-application-under-test-namespace"
 
 	managerYaml       = "config/manager/manager.yaml"
@@ -28,8 +29,11 @@ var (
 	applicationNamespaceHasBeenCreated = false
 	certManagerHasBeenInstalled        = false
 
-	originalKubeContext    string
-	managerYamlNeedsRevert bool
+	originalKubeContext            string
+	managerYamlNeedsRevert         bool
+	collectorHasBeenInstalled      bool
+	managerNamespaceHasBeenCreated bool
+	setupFinishedSuccessfully      bool
 )
 
 var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
@@ -39,6 +43,8 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		ExpectWithOffset(1, err).NotTo(HaveOccurred())
 		workingDir := strings.TrimSpace(string(pwdOutput))
 		fmt.Fprintf(GinkgoWriter, "workingDir: %s\n", workingDir)
+
+		CheckIfRequiredPortsAreBlocked()
 
 		RenderTemplates()
 
@@ -72,8 +78,10 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		ExpectWithOffset(1, err).NotTo(HaveOccurred())
 		originalKubeContext = strings.TrimSpace(string(kubectxOutput))
 
-		By("switching to kubectx docker-desktop, previous context " + originalKubeContext + " will be restored later")
-		ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command("kubectx", "docker-desktop"))).To(Succeed())
+		if originalKubeContext != kubeContextForTest {
+			By("switching to kubectx docker-desktop, previous context " + originalKubeContext + " will be restored later")
+			ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command("kubectx", "docker-desktop"))).To(Succeed())
+		}
 
 		certManagerHasBeenInstalled = EnsureCertManagerIsInstalled()
 
@@ -81,9 +89,11 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 		By("(re)installing the collector")
 		ExpectWithOffset(1, ReinstallCollectorAndClearExportedTelemetry(applicationUnderTestNamespace)).To(Succeed())
+		collectorHasBeenInstalled = true
 
 		By("creating manager namespace")
 		ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command("kubectl", "create", "ns", operatorNamespace))).To(Succeed())
+		managerNamespaceHasBeenCreated = true
 
 		By("building the manager(Operator) image")
 		ExpectWithOffset(1,
@@ -91,6 +101,8 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 		By("installing CRDs")
 		ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command("make", "install"))).To(Succeed())
+
+		setupFinishedSuccessfully = true
 	})
 
 	AfterAll(func() {
@@ -104,23 +116,29 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 		UninstallCertManagerIfApplicable(certManagerHasBeenInstalled)
 
-		By("uninstalling the collector")
-		Expect(UninstallCollector(applicationUnderTestNamespace)).To(Succeed())
+		if collectorHasBeenInstalled {
+			By("uninstalling the collector")
+			Expect(UninstallCollector(applicationUnderTestNamespace)).To(Succeed())
+		}
 
-		By("removing manager namespace")
-		_ = RunAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", operatorNamespace))
+		if managerNamespaceHasBeenCreated {
+			By("removing manager namespace")
+			_ = RunAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", operatorNamespace))
+		}
 
 		if applicationNamespaceHasBeenCreated && applicationUnderTestNamespace != "default" {
 			By("removing namespace for application under test")
 			_ = RunAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", applicationUnderTestNamespace))
 		}
 
-		By("switching back to original kubectx " + originalKubeContext)
-		output, err := Run(exec.Command("kubectx", originalKubeContext))
-		if err != nil {
-			fmt.Fprint(GinkgoWriter, err.Error())
+		if originalKubeContext != "" && originalKubeContext != kubeContextForTest {
+			By("switching back to original kubectx " + originalKubeContext)
+			output, err := Run(exec.Command("kubectx", originalKubeContext))
+			if err != nil {
+				fmt.Fprint(GinkgoWriter, err.Error())
+			}
+			fmt.Fprint(GinkgoWriter, string(output))
 		}
-		fmt.Fprint(GinkgoWriter, string(output))
 	})
 
 	BeforeEach(func() {
@@ -128,14 +146,15 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 	})
 
 	AfterEach(func() {
-		// As an alternative to undeploying all applications under test (deployment, daemonset, cronjob, ...) we could
-		// also delete the whole namespace for the application under test to after each test case get rid of all
-		// applications (and then recreate the namespace before each test). However, this would mean we also need to
-		// deploy the OpenTelemetry collector to the target namespace again for each test case, which would slow down
-		// tests a bit more.
-		RemoveAllTestApplications(applicationUnderTestNamespace)
-
-		DeleteTestIdFiles()
+		if setupFinishedSuccessfully {
+			// As an alternative to undeploying all applications under test (deployment, daemonset, cronjob, ...) we
+			// could also delete the whole namespace for the application under test to after each test case get rid of
+			// all applications (and then recreate the namespace before each test). However, this would mean we also
+			// need to deploy the OpenTelemetry collector to the target namespace again for each test case, which would
+			// slow down tests a bit more.
+			RemoveAllTestApplications(applicationUnderTestNamespace)
+			DeleteTestIdFiles()
+		}
 	})
 
 	Describe("controller", func() {
