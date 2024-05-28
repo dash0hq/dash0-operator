@@ -5,15 +5,21 @@ package util
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 
-	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	. "github.com/onsi/gomega"
+
+	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
 const (
@@ -21,9 +27,39 @@ const (
 	CronJobName       = "cronjob"
 	DaemonSetName     = "daemonset"
 	DeploymentName    = "deployment"
-	JobName           = "job"
+	JobName1          = "job1"
+	JobName2          = "job2"
+	JobName3          = "job3"
 	ReplicaSetName    = "replicaset"
 	StatefulSetName   = "statefulset"
+)
+
+var (
+	True                 = true
+	False                = false
+	ArbitraryNumer int64 = 1302
+
+	instrumentationInitContainer = corev1.Container{
+		Name:  "dash0-instrumentation",
+		Image: "dash0-instrumentation:1.2.3",
+		Env: []corev1.EnvVar{{
+			Name:  "DASH0_INSTRUMENTATION_FOLDER_DESTINATION",
+			Value: "/opt/dash0",
+		}},
+		SecurityContext: &corev1.SecurityContext{
+			AllowPrivilegeEscalation: &False,
+			Privileged:               &False,
+			ReadOnlyRootFilesystem:   &True,
+			RunAsNonRoot:             &False,
+			RunAsUser:                &ArbitraryNumer,
+			RunAsGroup:               &ArbitraryNumer,
+		},
+		VolumeMounts: []corev1.VolumeMount{{
+			Name:      "dash0-instrumentation",
+			ReadOnly:  false,
+			MountPath: "/opt/dash0",
+		}},
+	}
 )
 
 func EnsureDash0CustomResourceExists(
@@ -90,7 +126,22 @@ func CreateBasicCronJob(
 	namespace string,
 	name string,
 ) *batchv1.CronJob {
-	return create(ctx, k8sClient, BasicCronJob(namespace, name)).(*batchv1.CronJob)
+	return createResource(ctx, k8sClient, BasicCronJob(namespace, name)).(*batchv1.CronJob)
+}
+
+func InstrumentedCronJob(namespace string, name string) *batchv1.CronJob {
+	resource := BasicCronJob(namespace, name)
+	simulateInstrumentedResource(&resource.Spec.JobTemplate.Spec.Template, &resource.ObjectMeta, namespace)
+	return resource
+}
+
+func CreateInstrumentedCronJob(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *batchv1.CronJob {
+	return createResource(ctx, k8sClient, InstrumentedCronJob(namespace, name)).(*batchv1.CronJob)
 }
 
 func BasicDaemonSet(namespace string, name string) *appsv1.DaemonSet {
@@ -109,7 +160,22 @@ func CreateBasicDaemonSet(
 	namespace string,
 	name string,
 ) *appsv1.DaemonSet {
-	return create(ctx, k8sClient, BasicDaemonSet(namespace, name)).(*appsv1.DaemonSet)
+	return createResource(ctx, k8sClient, BasicDaemonSet(namespace, name)).(*appsv1.DaemonSet)
+}
+
+func InstrumentedDaemonSet(namespace string, name string) *appsv1.DaemonSet {
+	resource := BasicDaemonSet(namespace, name)
+	simulateInstrumentedResource(&resource.Spec.Template, &resource.ObjectMeta, namespace)
+	return resource
+}
+
+func CreateInstrumentedDaemonSet(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *appsv1.DaemonSet {
+	return createResource(ctx, k8sClient, InstrumentedDaemonSet(namespace, name)).(*appsv1.DaemonSet)
 }
 
 func BasicDeployment(namespace string, name string) *appsv1.Deployment {
@@ -128,7 +194,28 @@ func CreateBasicDeployment(
 	namespace string,
 	name string,
 ) *appsv1.Deployment {
-	return create(ctx, k8sClient, BasicDeployment(namespace, name)).(*appsv1.Deployment)
+	return createResource(ctx, k8sClient, BasicDeployment(namespace, name)).(*appsv1.Deployment)
+}
+
+func InstrumentedDeployment(namespace string, name string) *appsv1.Deployment {
+	resource := BasicDeployment(namespace, name)
+	simulateInstrumentedResource(&resource.Spec.Template, &resource.ObjectMeta, namespace)
+	return resource
+}
+
+func CreateInstrumentedDeployment(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *appsv1.Deployment {
+	return createResource(ctx, k8sClient, InstrumentedDeployment(namespace, name)).(*appsv1.Deployment)
+}
+
+func DeploymentWithInstrumentedFalseLabel(namespace string, name string) *appsv1.Deployment {
+	resource := BasicDeployment(namespace, name)
+	addInstrumentationLabels(&resource.ObjectMeta, false)
+	return resource
 }
 
 func BasicJob(namespace string, name string) *batchv1.Job {
@@ -147,7 +234,37 @@ func CreateBasicJob(
 	namespace string,
 	name string,
 ) *batchv1.Job {
-	return create(ctx, k8sClient, BasicJob(namespace, name)).(*batchv1.Job)
+	return createResource(ctx, k8sClient, BasicJob(namespace, name)).(*batchv1.Job)
+}
+
+func InstrumentedJob(namespace string, name string) *batchv1.Job {
+	resource := BasicJob(namespace, name)
+	simulateInstrumentedResource(&resource.Spec.Template, &resource.ObjectMeta, namespace)
+	return resource
+}
+
+func CreateInstrumentedJob(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *batchv1.Job {
+	return createResource(ctx, k8sClient, InstrumentedJob(namespace, name)).(*batchv1.Job)
+}
+
+func JobWithInstrumentationLabels(namespace string, name string) *batchv1.Job {
+	resource := BasicJob(namespace, name)
+	addInstrumentationLabels(&resource.ObjectMeta, false)
+	return resource
+}
+
+func CreateJobWithInstrumentationLabels(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *batchv1.Job {
+	return createResource(ctx, k8sClient, JobWithInstrumentationLabels(namespace, name)).(*batchv1.Job)
 }
 
 func BasicReplicaSet(namespace string, name string) *appsv1.ReplicaSet {
@@ -166,7 +283,22 @@ func CreateBasicReplicaSet(
 	namespace string,
 	name string,
 ) *appsv1.ReplicaSet {
-	return create(ctx, k8sClient, BasicReplicaSet(namespace, name)).(*appsv1.ReplicaSet)
+	return createResource(ctx, k8sClient, BasicReplicaSet(namespace, name)).(*appsv1.ReplicaSet)
+}
+
+func InstrumentedReplicaSet(namespace string, name string) *appsv1.ReplicaSet {
+	resource := BasicReplicaSet(namespace, name)
+	simulateInstrumentedResource(&resource.Spec.Template, &resource.ObjectMeta, namespace)
+	return resource
+}
+
+func CreateInstrumentedReplicaSet(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *appsv1.ReplicaSet {
+	return createResource(ctx, k8sClient, InstrumentedReplicaSet(namespace, name)).(*appsv1.ReplicaSet)
 }
 
 func ReplicaSetOwnedByDeployment(namespace string, name string) *appsv1.ReplicaSet {
@@ -190,7 +322,22 @@ func CreateReplicaSetOwnedByDeployment(
 	namespace string,
 	name string,
 ) *appsv1.ReplicaSet {
-	return create(ctx, k8sClient, ReplicaSetOwnedByDeployment(namespace, name)).(*appsv1.ReplicaSet)
+	return createResource(ctx, k8sClient, ReplicaSetOwnedByDeployment(namespace, name)).(*appsv1.ReplicaSet)
+}
+
+func InstrumentedReplicaSetOwnedByDeployment(namespace string, name string) *appsv1.ReplicaSet {
+	resource := ReplicaSetOwnedByDeployment(namespace, name)
+	simulateInstrumentedResource(&resource.Spec.Template, &resource.ObjectMeta, namespace)
+	return resource
+}
+
+func CreateInstrumentedReplicaSetOwnedByDeployment(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *appsv1.ReplicaSet {
+	return createResource(ctx, k8sClient, InstrumentedReplicaSetOwnedByDeployment(namespace, name)).(*appsv1.ReplicaSet)
 }
 
 func BasicStatefulSet(namespace string, name string) *appsv1.StatefulSet {
@@ -209,7 +356,22 @@ func CreateBasicStatefulSet(
 	namespace string,
 	name string,
 ) *appsv1.StatefulSet {
-	return create(ctx, k8sClient, BasicStatefulSet(namespace, name)).(*appsv1.StatefulSet)
+	return createResource(ctx, k8sClient, BasicStatefulSet(namespace, name)).(*appsv1.StatefulSet)
+}
+
+func InstrumentedStatefulSet(namespace string, name string) *appsv1.StatefulSet {
+	resource := BasicStatefulSet(namespace, name)
+	simulateInstrumentedResource(&resource.Spec.Template, &resource.ObjectMeta, namespace)
+	return resource
+}
+
+func CreateInstrumentedStatefulSet(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *appsv1.StatefulSet {
+	return createResource(ctx, k8sClient, InstrumentedStatefulSet(namespace, name)).(*appsv1.StatefulSet)
 }
 
 func basicPodSpecTemplate() corev1.PodTemplateSpec {
@@ -228,7 +390,7 @@ func createSelector() *metav1.LabelSelector {
 	return selector
 }
 
-func create(ctx context.Context, k8sClient client.Client, resource client.Object) client.Object {
+func createResource(ctx context.Context, k8sClient client.Client, resource client.Object) client.Object {
 	Expect(k8sClient.Create(ctx, resource)).Should(Succeed())
 	return resource
 }
@@ -339,10 +501,7 @@ func DeploymentWithExistingDash0Artifacts(namespace string, name string) *appsv1
 				Value: "value",
 			}},
 		},
-		{
-			Name:  "dash0-instrumentation",
-			Image: "ubuntu",
-		},
+		instrumentationInitContainer,
 		{
 			Name:  "test-init-container-2",
 			Image: "ubuntu",
@@ -429,6 +588,156 @@ func DeploymentWithExistingDash0Artifacts(namespace string, name string) *appsv1
 	}
 
 	return deployment
+}
+
+func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name string) *appsv1.Deployment {
+	deployment := DeploymentWithMoreBellsAndWhistles(namespace, name)
+	podSpec := &deployment.Spec.Template.Spec
+	podSpec.Volumes = []corev1.Volume{
+		{
+			Name:         "test-volume-0",
+			VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+		},
+		{
+			Name:         "test-volume-1",
+			VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+		},
+		{
+			Name: "dash0-instrumentation",
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{
+					SizeLimit: resource.NewScaledQuantity(150, resource.Mega),
+				},
+			},
+		},
+	}
+	podSpec.InitContainers = []corev1.Container{
+		{
+			Name:  "test-init-container-0",
+			Image: "ubuntu",
+			Env: []corev1.EnvVar{{
+				Name:  "TEST_INIT_0",
+				Value: "value",
+			}},
+		},
+		{
+			Name:  "test-init-container-1",
+			Image: "ubuntu",
+			Env: []corev1.EnvVar{
+				{
+					Name:  "TEST_INIT_0",
+					Value: "value",
+				},
+				{
+					Name:  "TEST_INIT_1",
+					Value: "value",
+				},
+			},
+		},
+		instrumentationInitContainer,
+	}
+	podSpec.Containers = []corev1.Container{
+		{
+			Name:  "test-container-0",
+			Image: "ubuntu",
+			VolumeMounts: []corev1.VolumeMount{
+				{
+					Name:      "test-volume-0",
+					MountPath: "/test-1",
+				},
+				{
+					Name:      "dash0-instrumentation",
+					MountPath: "/opt/dash0",
+				},
+			},
+			Env: []corev1.EnvVar{
+				{
+					Name:  "TEST0",
+					Value: "value",
+				},
+				{
+					Name:  "NODE_OPTIONS",
+					Value: "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js",
+				},
+				{
+					Name:  "DASH0_OTEL_COLLECTOR_BASE_URL",
+					Value: fmt.Sprintf("http://dash0-opentelemetry-collector-daemonset.%s.svc.cluster.local:4318", namespace),
+				},
+			},
+		},
+		{
+			Name:  "test-container-1",
+			Image: "ubuntu",
+			VolumeMounts: []corev1.VolumeMount{
+				{
+					Name:      "test-volume-0",
+					MountPath: "/test-0",
+				},
+				{
+					Name:      "test-volume-1",
+					MountPath: "/test-1",
+				},
+				{
+					Name:      "dash0-instrumentation",
+					MountPath: "/opt/dash0",
+				},
+			},
+			Env: []corev1.EnvVar{
+				{
+					Name:  "TEST0",
+					Value: "value",
+				},
+				{
+					Name:      "TEST1",
+					ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}},
+				},
+				{
+					Name:  "NODE_OPTIONS",
+					Value: "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js",
+				},
+				{
+					Name:  "DASH0_OTEL_COLLECTOR_BASE_URL",
+					Value: fmt.Sprintf("http://dash0-opentelemetry-collector-daemonset.%s.svc.cluster.local:4318", namespace),
+				},
+			},
+		},
+	}
+
+	return deployment
+}
+
+func simulateInstrumentedResource(podTemplateSpec *corev1.PodTemplateSpec, meta *metav1.ObjectMeta, namespace string) {
+	podSpec := &podTemplateSpec.Spec
+	podSpec.Volumes = []corev1.Volume{
+		{
+			Name: "dash0-instrumentation",
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{
+					SizeLimit: resource.NewScaledQuantity(150, resource.Mega),
+				},
+			},
+		},
+	}
+	podSpec.InitContainers = []corev1.Container{instrumentationInitContainer}
+
+	container := &podSpec.Containers[0]
+	container.VolumeMounts = []corev1.VolumeMount{{
+		Name:      "dash0-instrumentation",
+		MountPath: "/opt/dash0",
+	}}
+	container.Env = []corev1.EnvVar{
+		{
+			Name:  "NODE_OPTIONS",
+			Value: "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js",
+		},
+		{
+			Name:  "DASH0_OTEL_COLLECTOR_BASE_URL",
+			Value: fmt.Sprintf("http://dash0-opentelemetry-collector-daemonset.%s.svc.cluster.local:4318", namespace),
+		},
+	}
+
+	addInstrumentationLabels(meta, true)
+	addInstrumentationLabels(&podTemplateSpec.ObjectMeta, true)
 }
 
 func GetCronJob(
@@ -519,4 +828,18 @@ func GetStatefulSet(
 	}
 	ExpectWithOffset(1, k8sClient.Get(ctx, namespacedName, resource)).Should(Succeed())
 	return resource
+}
+
+func addInstrumentationLabels(meta *metav1.ObjectMeta, instrumented bool) {
+	addLabel(meta, util.InstrumentedLabelKey, strconv.FormatBool(instrumented))
+	addLabel(meta, util.OperatorVersionLabelKey, "1.2.3")
+	addLabel(meta, util.InitContainerImageVersionLabelKey, "4.5.6")
+	addLabel(meta, util.InstrumentedByLabelKey, "someone")
+}
+
+func addLabel(meta *metav1.ObjectMeta, key string, value string) {
+	if meta.Labels == nil {
+		meta.Labels = make(map[string]string, 1)
+	}
+	meta.Labels[key] = value
 }

@@ -22,7 +22,7 @@ var _ = Describe("Dash0 Webhook", func() {
 		_ = k8sClient.Delete(ctx, BasicCronJob(TestNamespaceName, CronJobName))
 		_ = k8sClient.Delete(ctx, BasicDaemonSet(TestNamespaceName, DaemonSetName))
 		_ = k8sClient.Delete(ctx, BasicDeployment(TestNamespaceName, DeploymentName))
-		_ = k8sClient.Delete(ctx, BasicJob(TestNamespaceName, JobName))
+		_ = k8sClient.Delete(ctx, BasicJob(TestNamespaceName, JobName1))
 		err := k8sClient.Delete(ctx, BasicReplicaSet(TestNamespaceName, ReplicaSetName))
 		if err != nil {
 			fmt.Fprintf(GinkgoWriter, "cannot delete replicaset: %v\n", err)
@@ -35,7 +35,7 @@ var _ = Describe("Dash0 Webhook", func() {
 		It("should inject Dash0 into a new basic deployment", func() {
 			CreateBasicDeployment(ctx, k8sClient, TestNamespaceName, DeploymentName)
 			deployment := GetDeployment(ctx, k8sClient, TestNamespaceName, DeploymentName)
-			VerifyModifiedDeployment(deployment, BasicPodSpecExpectations)
+			VerifyModifiedDeployment(deployment, BasicInstrumentedPodSpecExpectations)
 		})
 
 		It("should inject Dash0 into a new deployment that has multiple containers, and already has volumes and init containers", func() {
@@ -67,7 +67,7 @@ var _ = Describe("Dash0 Webhook", func() {
 					},
 				},
 			})
-			VerifySuccessEvent(ctx, clientset, TestNamespaceName, DeploymentName, "webhook")
+			VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, DeploymentName, "webhook")
 		})
 
 		It("should update existing Dash0 artifacts in a new deployment", func() {
@@ -106,25 +106,25 @@ var _ = Describe("Dash0 Webhook", func() {
 		It("should inject Dash0 into a new basic cron job", func() {
 			CreateBasicCronJob(ctx, k8sClient, TestNamespaceName, CronJobName)
 			cronJob := GetCronJob(ctx, k8sClient, TestNamespaceName, CronJobName)
-			VerifyModifiedCronJob(cronJob, BasicPodSpecExpectations)
+			VerifyModifiedCronJob(cronJob, BasicInstrumentedPodSpecExpectations)
 		})
 
 		It("should inject Dash0 into a new basic daemon set", func() {
 			CreateBasicDaemonSet(ctx, k8sClient, TestNamespaceName, DaemonSetName)
 			daemonSet := GetDaemonSet(ctx, k8sClient, TestNamespaceName, DaemonSetName)
-			VerifyModifiedDaemonSet(daemonSet, BasicPodSpecExpectations)
+			VerifyModifiedDaemonSet(daemonSet, BasicInstrumentedPodSpecExpectations)
 		})
 
 		It("should inject Dash0 into a new basic job", func() {
-			CreateBasicJob(ctx, k8sClient, TestNamespaceName, JobName)
-			job := GetJob(ctx, k8sClient, TestNamespaceName, JobName)
-			VerifyModifiedJob(job, BasicPodSpecExpectations)
+			CreateBasicJob(ctx, k8sClient, TestNamespaceName, JobName1)
+			job := GetJob(ctx, k8sClient, TestNamespaceName, JobName1)
+			VerifyModifiedJob(job, BasicInstrumentedPodSpecExpectations)
 		})
 
 		It("should inject Dash0 into a new basic replica set", func() {
 			CreateBasicReplicaSet(ctx, k8sClient, TestNamespaceName, ReplicaSetName)
 			replicaSet := GetReplicaSet(ctx, k8sClient, TestNamespaceName, ReplicaSetName)
-			VerifyModifiedReplicaSet(replicaSet, BasicPodSpecExpectations)
+			VerifyModifiedReplicaSet(replicaSet, BasicInstrumentedPodSpecExpectations)
 		})
 
 		It("should not inject Dash0 into a new replica set owned by a deployment", func() {
@@ -136,7 +136,7 @@ var _ = Describe("Dash0 Webhook", func() {
 		It("should inject Dash0 into a new basic stateful set", func() {
 			CreateBasicStatefulSet(ctx, k8sClient, TestNamespaceName, StatefulSetName)
 			statefulSet := GetStatefulSet(ctx, k8sClient, TestNamespaceName, StatefulSetName)
-			VerifyModifiedStatefulSet(statefulSet, BasicPodSpecExpectations)
+			VerifyModifiedStatefulSet(statefulSet, BasicInstrumentedPodSpecExpectations)
 		})
 	})
 })

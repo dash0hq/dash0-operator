@@ -8,4 +8,6 @@ const (
 	OperatorVersionLabelKey           = "dash0.operator.version"
 	InitContainerImageVersionLabelKey = "dash0.initcontainer.image.version"
 	InstrumentedByLabelKey            = "dash0.instrumented.by"
+
+	FinalizerId = "operator.dash0.com/finalizer"
 )
