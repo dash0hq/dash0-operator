@@ -6,4 +6,7 @@ cd "$(dirname ${BASH_SOURCE})"/../..
 make
 make lint
 make test
-make test-e2e
+
+if [[ "${SKIP_E2E_TESTS:-false}" != "true" ]]; then
+  make test-e2e
+fi
