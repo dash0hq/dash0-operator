@@ -37,11 +37,9 @@ rules:
 - apiGroups:
   - ""
   resources:
-  - pods
+  - namespaces
   verbs:
   - get
-  - list
-  - watch
 - apiGroups:
   - operator.dash0.com
   resources:
