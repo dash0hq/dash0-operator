@@ -62,13 +62,13 @@ func (r *Dash0Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 // The following markers are used to generate the rules permissions (RBAC) on config/rbac using controller-gen
 // when the command <make manifests> is executed.
 // To know more about markers see: https://book.kubebuilder.io/reference/markers.html
-//+kubebuilder:rbac:groups=operator.dash0.com,resources=dash0s,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=operator.dash0.com,resources=dash0s/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=operator.dash0.com,resources=dash0s/finalizers,verbs=update
-//+kubebuilder:rbac:groups=core,resources=events,verbs=create
 //+kubebuilder:rbac:groups=apps,resources=daemonsets;deployments;replicasets;statefulsets,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups=batch,resources=cronjobs;jobs,verbs=get;list;watch;update;patch
-//+kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch
+//+kubebuilder:rbac:groups=core,resources=events,verbs=create
+//+kubebuilder:rbac:groups=core,resources=namespaces,verbs=get
+//+kubebuilder:rbac:groups=operator.dash0.com,resources=dash0s,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=operator.dash0.com,resources=dash0s/finalizers,verbs=update
+//+kubebuilder:rbac:groups=operator.dash0.com,resources=dash0s/status,verbs=get;update;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
