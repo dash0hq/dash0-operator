@@ -16,6 +16,9 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    concurrency:
+      group: verify-concurrency-group-${{ github.ref }}
+      cancel-in-progress: true
     name: Build & Test
 
     steps:
