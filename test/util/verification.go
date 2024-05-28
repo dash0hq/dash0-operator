@@ -4,6 +4,7 @@
 package util
 
 import (
+	"context"
 	"fmt"
 
 	. "github.com/onsi/gomega"
@@ -12,6 +13,9 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+
+	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
 type ContainerExpectations struct {
@@ -34,7 +38,7 @@ type PodSpecExpectations struct {
 }
 
 var (
-	BasicPodSpecExpectations = PodSpecExpectations{
+	BasicInstrumentedPodSpecExpectations = PodSpecExpectations{
 		Volumes:               1,
 		Dash0VolumeIdx:        0,
 		InitContainers:        1,
@@ -52,37 +56,67 @@ var (
 )
 
 func VerifyModifiedCronJob(resource *batchv1.CronJob, expectations PodSpecExpectations) {
-	verifyModifiedPodSpec(resource.Spec.JobTemplate.Spec.Template.Spec, expectations)
+	verifyPodSpec(resource.Spec.JobTemplate.Spec.Template.Spec, expectations)
 	verifyLabelsAfterSuccessfulModification(resource.Spec.JobTemplate.Spec.Template.ObjectMeta)
 	verifyLabelsAfterSuccessfulModification(resource.ObjectMeta)
 }
 
+func VerifyUnmodifiedCronJob(resource *batchv1.CronJob) {
+	verifyUnmodifiedPodSpec(resource.Spec.JobTemplate.Spec.Template.Spec)
+	verifyNoDash0Labels(resource.Spec.JobTemplate.Spec.Template.ObjectMeta)
+	verifyNoDash0Labels(resource.ObjectMeta)
+}
+
 func VerifyModifiedDaemonSet(resource *appsv1.DaemonSet, expectations PodSpecExpectations) {
-	verifyModifiedPodSpec(resource.Spec.Template.Spec, expectations)
+	verifyPodSpec(resource.Spec.Template.Spec, expectations)
 	verifyLabelsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
 	verifyLabelsAfterSuccessfulModification(resource.ObjectMeta)
+}
+
+func VerifyUnmodifiedDaemonSet(resource *appsv1.DaemonSet) {
+	verifyUnmodifiedPodSpec(resource.Spec.Template.Spec)
+	verifyNoDash0Labels(resource.Spec.Template.ObjectMeta)
+	verifyNoDash0Labels(resource.ObjectMeta)
 }
 
 func VerifyModifiedDeployment(resource *appsv1.Deployment, expectations PodSpecExpectations) {
-	verifyModifiedPodSpec(resource.Spec.Template.Spec, expectations)
+	verifyPodSpec(resource.Spec.Template.Spec, expectations)
 	verifyLabelsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
 	verifyLabelsAfterSuccessfulModification(resource.ObjectMeta)
+}
+
+func VerifyUnmodifiedDeployment(resource *appsv1.Deployment) {
+	verifyUnmodifiedPodSpec(resource.Spec.Template.Spec)
+	verifyNoDash0Labels(resource.Spec.Template.ObjectMeta)
+	verifyNoDash0Labels(resource.ObjectMeta)
+}
+
+func VerifyRevertedDeployment(resource *appsv1.Deployment, expectations PodSpecExpectations) {
+	verifyPodSpec(resource.Spec.Template.Spec, expectations)
+	verifyNoDash0Labels(resource.Spec.Template.ObjectMeta)
+	verifyNoDash0Labels(resource.ObjectMeta)
 }
 
 func VerifyModifiedJob(resource *batchv1.Job, expectations PodSpecExpectations) {
-	verifyModifiedPodSpec(resource.Spec.Template.Spec, expectations)
+	verifyPodSpec(resource.Spec.Template.Spec, expectations)
 	verifyLabelsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
 	verifyLabelsAfterSuccessfulModification(resource.ObjectMeta)
 }
 
-func VerifyUnmodifiedJob(resource *batchv1.Job) {
+func VerifyImmutableJobCouldNotBeModified(resource *batchv1.Job) {
 	verifyUnmodifiedPodSpec(resource.Spec.Template.Spec)
 	verifyNoDash0Labels(resource.Spec.Template.ObjectMeta)
 	verifyLabelsAfterFailureToModify(resource.ObjectMeta)
 }
 
+func VerifyUnmodifiedJob(resource *batchv1.Job) {
+	verifyUnmodifiedPodSpec(resource.Spec.Template.Spec)
+	verifyNoDash0Labels(resource.Spec.Template.ObjectMeta)
+	verifyNoDash0Labels(resource.ObjectMeta)
+}
+
 func VerifyModifiedReplicaSet(resource *appsv1.ReplicaSet, expectations PodSpecExpectations) {
-	verifyModifiedPodSpec(resource.Spec.Template.Spec, expectations)
+	verifyPodSpec(resource.Spec.Template.Spec, expectations)
 	verifyLabelsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
 	verifyLabelsAfterSuccessfulModification(resource.ObjectMeta)
 }
@@ -94,12 +128,18 @@ func VerifyUnmodifiedReplicaSet(resource *appsv1.ReplicaSet) {
 }
 
 func VerifyModifiedStatefulSet(resource *appsv1.StatefulSet, expectations PodSpecExpectations) {
-	verifyModifiedPodSpec(resource.Spec.Template.Spec, expectations)
+	verifyPodSpec(resource.Spec.Template.Spec, expectations)
 	verifyLabelsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
 	verifyLabelsAfterSuccessfulModification(resource.ObjectMeta)
 }
 
-func verifyModifiedPodSpec(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
+func VerifyUnmodifiedStatefulSet(resource *appsv1.StatefulSet) {
+	verifyUnmodifiedPodSpec(resource.Spec.Template.Spec)
+	verifyNoDash0Labels(resource.Spec.Template.ObjectMeta)
+	verifyNoDash0Labels(resource.ObjectMeta)
+}
+
+func verifyPodSpec(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
 	Expect(podSpec.Volumes).To(HaveLen(expectations.Volumes))
 	for i, volume := range podSpec.Volumes {
 		if i == expectations.Dash0VolumeIdx {
@@ -179,16 +219,135 @@ func verifyLabelsAfterSuccessfulModification(meta metav1.ObjectMeta) {
 	Expect(meta.Labels["dash0.instrumented"]).To(Equal("true"))
 	Expect(meta.Labels["dash0.operator.version"]).To(Equal("1.2.3"))
 	Expect(meta.Labels["dash0.initcontainer.image.version"]).To(Equal("4.5.6"))
+	Expect(meta.Labels["dash0.instrumented.by"]).NotTo(Equal(""))
 }
 
 func verifyLabelsAfterFailureToModify(meta metav1.ObjectMeta) {
 	Expect(meta.Labels["dash0.instrumented"]).To(Equal("false"))
 	Expect(meta.Labels["dash0.operator.version"]).To(Equal("1.2.3"))
 	Expect(meta.Labels["dash0.initcontainer.image.version"]).To(Equal("4.5.6"))
+	Expect(meta.Labels["dash0.instrumented.by"]).NotTo(Equal(""))
 }
 
 func verifyNoDash0Labels(meta metav1.ObjectMeta) {
 	Expect(meta.Labels["dash0.instrumented"]).To(Equal(""))
 	Expect(meta.Labels["dash0.operator.version"]).To(Equal(""))
 	Expect(meta.Labels["dash0.initcontainer.image.version"]).To(Equal(""))
+	Expect(meta.Labels["dash0.instrumented.by"]).To(Equal(""))
+}
+
+func VerifyNoEvents(
+	ctx context.Context,
+	clientset *kubernetes.Clientset,
+	namespace string,
+) {
+	allEvents, err := clientset.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred())
+	Expect(allEvents.Items).To(BeEmpty())
+}
+
+func VerifySuccessfulInstrumentationEvent(
+	ctx context.Context,
+	clientset *kubernetes.Clientset,
+	namespace string,
+	resourceName string,
+	eventSource string,
+) {
+	verifyEvent(
+		ctx,
+		clientset,
+		namespace,
+		resourceName,
+		util.ReasonSuccessfulInstrumentation,
+		fmt.Sprintf("Dash0 instrumentation of this resource by the %s has been successful.", eventSource),
+	)
+}
+
+func VerifyFailedInstrumentationEvent(
+	ctx context.Context,
+	clientset *kubernetes.Clientset,
+	namespace string,
+	resourceName string,
+	message string,
+) {
+	verifyEvent(
+		ctx,
+		clientset,
+		namespace,
+		resourceName,
+		util.ReasonFailedInstrumentation,
+		message,
+	)
+}
+
+func VerifySuccessfulUninstrumentationEvent(
+	ctx context.Context,
+	clientset *kubernetes.Clientset,
+	namespace string,
+	resourceName string,
+	eventSource string,
+) {
+	verifyEvent(
+		ctx,
+		clientset,
+		namespace,
+		resourceName,
+		util.ReasonSuccessfulUninstrumentation,
+		fmt.Sprintf("The %s successfully removed the Dash0 instrumentation from this resource.", eventSource),
+	)
+}
+
+func VerifyFailedUninstrumentationEvent(
+	ctx context.Context,
+	clientset *kubernetes.Clientset,
+	namespace string,
+	resourceName string,
+	message string,
+) {
+	verifyEvent(
+		ctx,
+		clientset,
+		namespace,
+		resourceName,
+		util.ReasonFailedUninstrumentation,
+		message,
+	)
+}
+
+func VerifyAlreadyNotInstrumented(
+	ctx context.Context,
+	clientset *kubernetes.Clientset,
+	namespace string,
+	resourceName string,
+	message string,
+) {
+	verifyEvent(
+		ctx,
+		clientset,
+		namespace,
+		resourceName,
+		util.ReasonAlreadyNotInstrumented,
+		message,
+	)
+}
+
+func verifyEvent(
+	ctx context.Context,
+	clientset *kubernetes.Clientset,
+	namespace string,
+	resourceName string,
+	reason util.Reason,
+	message string,
+) {
+	allEvents, err := clientset.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred())
+	Expect(allEvents.Items).To(HaveLen(1))
+	Expect(allEvents.Items).To(
+		ContainElement(
+			MatchEvent(
+				namespace,
+				resourceName,
+				reason,
+				message,
+			)))
 }

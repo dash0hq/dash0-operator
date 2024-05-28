@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
@@ -79,15 +80,9 @@ func (m *ResourceModifier) AddLabelsToImmutableJob(job *batchv1.Job) {
 }
 
 func (m *ResourceModifier) ModifyReplicaSet(replicaSet *appsv1.ReplicaSet, namespace string) bool {
-	ownerReferences := replicaSet.ObjectMeta.OwnerReferences
-	if len(ownerReferences) > 0 {
-		for _, ownerReference := range ownerReferences {
-			if ownerReference.APIVersion == "apps/v1" && ownerReference.Kind == "Deployment" {
-				return false
-			}
-		}
+	if m.hasDeploymentOwnerReference(replicaSet) {
+		return false
 	}
-
 	return m.modifyResource(&replicaSet.Spec.Template, &replicaSet.ObjectMeta, namespace)
 }
 
@@ -304,4 +299,157 @@ func (m *ResourceModifier) addLabel(meta *metav1.ObjectMeta, key string, value s
 		meta.Labels = make(map[string]string, 1)
 	}
 	meta.Labels[key] = value
+}
+
+func (m *ResourceModifier) RevertCronJob(cronJob *batchv1.CronJob) bool {
+	return m.revertResource(&cronJob.Spec.JobTemplate.Spec.Template, &cronJob.ObjectMeta)
+}
+
+func (m *ResourceModifier) RevertDaemonSet(daemonSet *appsv1.DaemonSet) bool {
+	return m.revertResource(&daemonSet.Spec.Template, &daemonSet.ObjectMeta)
+}
+
+func (m *ResourceModifier) RevertDeployment(deployment *appsv1.Deployment) bool {
+	return m.revertResource(&deployment.Spec.Template, &deployment.ObjectMeta)
+}
+
+func (m *ResourceModifier) RevertJob(job *batchv1.Job) bool {
+	return m.revertResource(&job.Spec.Template, &job.ObjectMeta)
+}
+
+func (m *ResourceModifier) RemoveLabelsFromImmutableJob(job *batchv1.Job) {
+	m.removeInstrumentationLabels(&job.ObjectMeta)
+}
+
+func (m *ResourceModifier) RevertReplicaSet(replicaSet *appsv1.ReplicaSet) bool {
+	if m.hasDeploymentOwnerReference(replicaSet) {
+		return false
+	}
+	return m.revertResource(&replicaSet.Spec.Template, &replicaSet.ObjectMeta)
+}
+
+func (m *ResourceModifier) RevertStatefulSet(statefulSet *appsv1.StatefulSet) bool {
+	return m.revertResource(&statefulSet.Spec.Template, &statefulSet.ObjectMeta)
+}
+
+func (m *ResourceModifier) revertResource(podTemplateSpec *corev1.PodTemplateSpec, meta *metav1.ObjectMeta) bool {
+	if meta.GetLabels()[util.InstrumentedLabelKey] == "false" {
+		// resource has never been instrumented successfully, only remove labels
+		m.removeInstrumentationLabels(meta)
+		m.removeInstrumentationLabels(&podTemplateSpec.ObjectMeta)
+		return true
+	}
+	hasBeenModified := m.revertPodSpec(&podTemplateSpec.Spec)
+	if hasBeenModified {
+		m.removeInstrumentationLabels(meta)
+		m.removeInstrumentationLabels(&podTemplateSpec.ObjectMeta)
+		return true
+	}
+	return false
+}
+
+func (m *ResourceModifier) revertPodSpec(podSpec *corev1.PodSpec) bool {
+	originalSpec := podSpec.DeepCopy()
+	m.removeInstrumentationVolume(podSpec)
+	m.removeInitContainer(podSpec)
+	for idx := range podSpec.Containers {
+		container := &podSpec.Containers[idx]
+		m.uninstrumentContainer(container)
+	}
+
+	return !reflect.DeepEqual(originalSpec, podSpec)
+}
+
+func (m *ResourceModifier) removeInstrumentationVolume(podSpec *corev1.PodSpec) {
+	if podSpec.Volumes == nil {
+		return
+	}
+	podSpec.Volumes = slices.DeleteFunc(podSpec.Volumes, func(c corev1.Volume) bool {
+		return c.Name == dash0VolumeName
+	})
+}
+
+func (m *ResourceModifier) removeInitContainer(podSpec *corev1.PodSpec) {
+	if podSpec.InitContainers == nil {
+		return
+	}
+	podSpec.InitContainers = slices.DeleteFunc(podSpec.InitContainers, func(c corev1.Container) bool {
+		return c.Name == initContainerName
+	})
+}
+
+func (m *ResourceModifier) uninstrumentContainer(container *corev1.Container) {
+	m.removeMount(container)
+	m.removeEnvironmentVariables(container)
+}
+
+func (m *ResourceModifier) removeMount(container *corev1.Container) {
+	if container.VolumeMounts == nil {
+		return
+	}
+	container.VolumeMounts = slices.DeleteFunc(container.VolumeMounts, func(c corev1.VolumeMount) bool {
+		return c.Name == dash0VolumeName || c.MountPath == dash0InstrumentationDirectory
+	})
+}
+
+func (m *ResourceModifier) removeEnvironmentVariables(container *corev1.Container) {
+	m.removeNodeOptions(container)
+	m.removeEnvironmentVariable(container, envVarDash0CollectorBaseUrlName)
+}
+
+func (m *ResourceModifier) removeNodeOptions(container *corev1.Container) {
+	if container.Env == nil {
+		return
+	}
+	idx := slices.IndexFunc(container.Env, func(c corev1.EnvVar) bool {
+		return c.Name == envVarNodeOptionsName
+	})
+
+	if idx < 0 {
+		return
+	} else {
+		envVar := container.Env[idx]
+		previousValue := envVar.Value
+		if previousValue == "" && envVar.ValueFrom != nil {
+			// Specified via ValueFrom, this has not been done by us, so we assume there is no Dash0-specific
+			// NODE_OPTIONS part.
+			return
+		} else if previousValue == envVarNodeOptionsValue {
+			container.Env = slices.Delete(container.Env, idx, idx+1)
+		}
+
+		container.Env[idx].Value = strings.Replace(previousValue, envVarNodeOptionsValue, "", -1)
+	}
+}
+
+func (m *ResourceModifier) removeEnvironmentVariable(container *corev1.Container, name string) {
+	if container.Env == nil {
+		return
+	}
+	container.Env = slices.DeleteFunc(container.Env, func(c corev1.EnvVar) bool {
+		return c.Name == name
+	})
+}
+
+func (m *ResourceModifier) removeInstrumentationLabels(meta *metav1.ObjectMeta) {
+	m.removeLabel(meta, util.InstrumentedLabelKey)
+	m.removeLabel(meta, util.OperatorVersionLabelKey)
+	m.removeLabel(meta, util.InitContainerImageVersionLabelKey)
+	m.removeLabel(meta, util.InstrumentedByLabelKey)
+}
+
+func (m *ResourceModifier) removeLabel(meta *metav1.ObjectMeta, key string) {
+	delete(meta.Labels, key)
+}
+
+func (m *ResourceModifier) hasDeploymentOwnerReference(replicaSet *appsv1.ReplicaSet) bool {
+	ownerReferences := replicaSet.ObjectMeta.OwnerReferences
+	if len(ownerReferences) > 0 {
+		for _, ownerReference := range ownerReferences {
+			if ownerReference.APIVersion == "apps/v1" && ownerReference.Kind == "Deployment" {
+				return true
+			}
+		}
+	}
+	return false
 }

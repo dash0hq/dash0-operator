@@ -10,10 +10,13 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/v1alpha1"
@@ -43,7 +46,7 @@ var (
 )
 
 var _ = Describe("Dash0 Controller", func() {
-	Context("When reconciling a resource", func() {
+	Context("When reconciling the Dash0 custom resource", func() {
 
 		ctx := context.Background()
 		var createdObjects []client.Object
@@ -77,196 +80,399 @@ var _ = Describe("Dash0 Controller", func() {
 		})
 
 		AfterEach(func() {
-			By("Cleanup the Dash0 resource instance")
-			dash0CustomResource := &operatorv1alpha1.Dash0{}
-			err := k8sClient.Get(ctx, dash0CustomResourceQualifiedName, dash0CustomResource)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
-
+			By("Remove all created objects")
 			for _, object := range createdObjects {
 				Expect(k8sClient.Delete(ctx, object, &client.DeleteOptions{
 					GracePeriodSeconds: new(int64),
 				})).To(Succeed())
 			}
 
-			DeleteAllEvents(ctx, clientset, namespace)
+			By("Cleanup the Dash0 resource instance")
+			if dash0CustomResource := loadDash0CustomResourceIfItExists(ctx); dash0CustomResource != nil {
+				// We want to delete the custom resource, but we need to remove the finalizer first, otherwise the first
+				// reconcile of the next test case will actually run the finalizers.
+				removeFinalizer(ctx, dash0CustomResource)
+				Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
+			}
+
+			deleteAllEvents(ctx, clientset, namespace)
 			allEvents, err := clientset.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(allEvents.Items).To(BeEmpty())
 		})
 
 		It("should successfully run the first reconcile (no modifiable resources exist)", func() {
-			By("Reconciling the created resource")
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: dash0CustomResourceQualifiedName,
-			})
-			Expect(err).NotTo(HaveOccurred())
-
-			verifyStatusConditions(ctx, dash0CustomResourceQualifiedName)
+			By("Trigger reconcile request")
+			triggerReconcileRequest(ctx, reconciler, "")
+			verifyDash0ResourceIsAvailable(ctx)
 		})
 
 		It("should successfully run multiple reconciles (no modifiable resources exist)", func() {
-			By("First reconcile request")
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: dash0CustomResourceQualifiedName,
-			})
-			Expect(err).NotTo(HaveOccurred())
+			triggerReconcileRequest(ctx, reconciler, "First reconcile request")
 
-			firstAvailableStatusCondition := verifyStatusConditions(ctx, dash0CustomResourceQualifiedName)
+			firstAvailableStatusCondition := verifyDash0ResourceIsAvailable(ctx)
 			originalTransitionTimestamp := firstAvailableStatusCondition.LastTransitionTime.Time
 
 			time.Sleep(50 * time.Millisecond)
 
-			By("Second reconcile request")
-			_, err = reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: dash0CustomResourceQualifiedName,
-			})
-			Expect(err).NotTo(HaveOccurred())
+			triggerReconcileRequest(ctx, reconciler, "Second reconcile request")
 
 			// The LastTransitionTime should not change with subsequent reconciliations.
-			secondAvailableCondition := verifyStatusConditions(ctx, dash0CustomResourceQualifiedName)
+			secondAvailableCondition := verifyDash0ResourceIsAvailable(ctx)
 			Expect(secondAvailableCondition.LastTransitionTime.Time).To(Equal(originalTransitionTimestamp))
 		})
 
-		It("should modify an existing cron job", func() {
+		It("should instrument an existing cron job", func() {
 			name := CronJobName
 			By("Inititalize a cron job")
 			cronJob := CreateBasicCronJob(ctx, k8sClient, namespace, name)
 			createdObjects = append(createdObjects, cronJob)
 
-			By("Reconciling the created resource")
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: dash0CustomResourceQualifiedName,
-			})
-			Expect(err).NotTo(HaveOccurred())
+			triggerReconcileRequest(ctx, reconciler, "")
 
-			verifyStatusConditionAndSuccessEvent(ctx, namespace, name)
-			VerifyModifiedCronJob(GetCronJob(ctx, k8sClient, namespace, name), BasicPodSpecExpectations)
+			verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
+			VerifyModifiedCronJob(GetCronJob(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations)
 		})
 
-		It("should modify an existing daemon set", func() {
+		It("should instrument an existing daemon set", func() {
 			name := DaemonSetName
 			By("Inititalize a daemon set")
 			daemonSet := CreateBasicDaemonSet(ctx, k8sClient, namespace, name)
 			createdObjects = append(createdObjects, daemonSet)
 
-			By("Reconciling the created resource")
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: dash0CustomResourceQualifiedName,
-			})
-			Expect(err).NotTo(HaveOccurred())
+			triggerReconcileRequest(ctx, reconciler, "")
 
-			verifyStatusConditionAndSuccessEvent(ctx, namespace, name)
-			VerifyModifiedDaemonSet(GetDaemonSet(ctx, k8sClient, namespace, name), BasicPodSpecExpectations)
+			verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
+			VerifyModifiedDaemonSet(GetDaemonSet(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations)
 		})
 
-		It("should modify an existing deployment", func() {
+		It("should instrument an existing deployment", func() {
 			name := DeploymentName
 			By("Inititalize a deployment")
 			deployment := CreateBasicDeployment(ctx, k8sClient, namespace, name)
 			createdObjects = append(createdObjects, deployment)
 
-			By("Reconciling the created resource")
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: dash0CustomResourceQualifiedName,
-			})
-			Expect(err).NotTo(HaveOccurred())
+			triggerReconcileRequest(ctx, reconciler, "")
 
-			verifyStatusConditionAndSuccessEvent(ctx, namespace, name)
-			VerifyModifiedDeployment(GetDeployment(ctx, k8sClient, namespace, name), BasicPodSpecExpectations)
+			verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
+			VerifyModifiedDeployment(GetDeployment(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations)
 		})
 
-		It("should record a failure event for an existing job and add labels", func() {
-			name := JobName
+		It("should record a failure event when attempting to instrument an existing job and add labels", func() {
+			name := JobName1
 			By("Inititalize a job")
 			job := CreateBasicJob(ctx, k8sClient, namespace, name)
 			createdObjects = append(createdObjects, job)
 
-			By("Reconciling the created resource")
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: dash0CustomResourceQualifiedName,
-			})
-			Expect(err).NotTo(HaveOccurred())
+			triggerReconcileRequest(ctx, reconciler, "")
 
-			verifyStatusConditions(ctx, dash0CustomResourceQualifiedName)
-			VerifyFailureEvent(
+			verifyDash0ResourceIsAvailable(ctx)
+			VerifyFailedInstrumentationEvent(
 				ctx,
 				clientset,
 				namespace,
 				name,
-				"controller",
-				"Dash0 instrumentation by controller has not been successful. Error message: Dash0 cannot"+
-					" instrument the existing job test-namespace/job, since the this type of resource is immutable.",
+				"Dash0 instrumentation of this resource by the controller has not been successful. Error message: Dash0 cannot"+
+					" instrument the existing job test-namespace/job1, since the this type of resource is immutable.",
 			)
-			VerifyUnmodifiedJob(GetJob(ctx, k8sClient, namespace, name))
+			VerifyImmutableJobCouldNotBeModified(GetJob(ctx, k8sClient, namespace, name))
 		})
 
-		It("should modify an existing orphan replicaset", func() {
+		It("should instrument an existing orphan replicaset", func() {
 			name := DeploymentName
 			By("Inititalize a replicaset")
 			replicaSet := CreateBasicReplicaSet(ctx, k8sClient, namespace, name)
 			createdObjects = append(createdObjects, replicaSet)
 
-			By("Reconciling the created resource")
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: dash0CustomResourceQualifiedName,
-			})
-			Expect(err).NotTo(HaveOccurred())
+			triggerReconcileRequest(ctx, reconciler, "")
 
-			verifyStatusConditionAndSuccessEvent(ctx, namespace, name)
-			VerifyModifiedReplicaSet(GetReplicaSet(ctx, k8sClient, namespace, name), BasicPodSpecExpectations)
+			verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
+			VerifyModifiedReplicaSet(GetReplicaSet(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations)
 		})
 
-		It("should not modify an existing replicaset with an owner", func() {
+		It("should not modify an existing replicaset owned by a deployment", func() {
 			name := DeploymentName
 			By("Inititalize a replicaset")
 			replicaSet := CreateReplicaSetOwnedByDeployment(ctx, k8sClient, namespace, name)
 			createdObjects = append(createdObjects, replicaSet)
 
-			By("Reconciling the created resource")
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: dash0CustomResourceQualifiedName,
-			})
-			Expect(err).NotTo(HaveOccurred())
+			triggerReconcileRequest(ctx, reconciler, "")
 
-			verifyStatusConditions(ctx, dash0CustomResourceQualifiedName)
+			verifyDash0ResourceIsAvailable(ctx)
 			VerifyUnmodifiedReplicaSet(GetReplicaSet(ctx, k8sClient, namespace, name))
 		})
 
-		It("should modify an stateful set", func() {
+		It("should instrument an stateful set", func() {
 			name := StatefulSetName
 			By("Inititalize a stateful set")
 			statefulSet := CreateBasicStatefulSet(ctx, k8sClient, namespace, name)
 			createdObjects = append(createdObjects, statefulSet)
 
-			By("Reconciling the created resource")
-			_, err := reconciler.Reconcile(ctx, reconcile.Request{
-				NamespacedName: dash0CustomResourceQualifiedName,
-			})
-			Expect(err).NotTo(HaveOccurred())
+			triggerReconcileRequest(ctx, reconciler, "")
 
-			verifyStatusConditionAndSuccessEvent(ctx, namespace, name)
-			VerifyModifiedStatefulSet(GetStatefulSet(ctx, k8sClient, namespace, name), BasicPodSpecExpectations)
+			verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
+			VerifyModifiedStatefulSet(GetStatefulSet(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations)
+		})
+
+		It("should revert an instrumented cron job", func() {
+			// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
+			// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
+			// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
+			// happens in production.
+			triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
+
+			name := CronJobName
+			By("Create an instrumented cron job")
+			cronJob := CreateInstrumentedCronJob(ctx, k8sClient, namespace, name)
+			createdObjects = append(createdObjects, cronJob)
+
+			By("Queue the deletion of the Dash0 custom resource")
+			dash0CustomResource := loadDash0CustomResourceOrFail(ctx, Default)
+			Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
+
+			triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to revert the instrumented workload")
+
+			VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, "controller")
+			VerifyUnmodifiedCronJob(GetCronJob(ctx, k8sClient, namespace, name))
+		})
+
+		It("should revert an instrumented daemon set", func() {
+			// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
+			// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
+			// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
+			// happens in production.
+			triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
+
+			name := DaemonSetName
+			By("Create an instrumented daemon set")
+			daemonSet := CreateInstrumentedDaemonSet(ctx, k8sClient, namespace, name)
+			createdObjects = append(createdObjects, daemonSet)
+
+			By("Queue the deletion of the Dash0 custom resource")
+			dash0CustomResource := loadDash0CustomResourceOrFail(ctx, Default)
+			Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
+
+			triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to revert the instrumented workload")
+
+			VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, "controller")
+			VerifyUnmodifiedDaemonSet(GetDaemonSet(ctx, k8sClient, namespace, name))
+		})
+
+		It("should revert an instrumented deployment", func() {
+			// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
+			// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
+			// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
+			// happens in production.
+			triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
+
+			name := DeploymentName
+			By("Create an instrumented deployment")
+			deployment := CreateInstrumentedDeployment(ctx, k8sClient, namespace, name)
+			createdObjects = append(createdObjects, deployment)
+
+			By("Queue the deletion of the Dash0 custom resource")
+			dash0CustomResource := loadDash0CustomResourceOrFail(ctx, Default)
+			Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
+
+			triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to revert the instrumented workload")
+
+			VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, "controller")
+			VerifyUnmodifiedDeployment(GetDeployment(ctx, k8sClient, namespace, name))
+		})
+
+		It("should record a failure event when attempting to revert an existing instrumenting job (which has been instrumented by the webhook)", func() {
+			// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
+			// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
+			// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
+			// happens in production.
+			triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
+
+			name := JobName2
+			By("Create an instrumented job")
+			job := CreateInstrumentedJob(ctx, k8sClient, namespace, name)
+			createdObjects = append(createdObjects, job)
+
+			By("Queue the deletion of the Dash0 custom resource")
+			dash0CustomResource := loadDash0CustomResourceOrFail(ctx, Default)
+			Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
+
+			triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to attempt to revert the instrumented job")
+
+			VerifyFailedUninstrumentationEvent(
+				ctx,
+				clientset,
+				namespace,
+				name,
+				"The controller's attempt to remove the Dash0 instrumentation from this resource has not been successful. Error message: Dash0 cannot remove the instrumentation from the existing job test-namespace/job2, since the this type of resource is immutable.",
+			)
+			VerifyModifiedJob(GetJob(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations)
+		})
+
+		It("should remove instrumentation labels from an existing uninstrumented job (which has been labelled by the controller without being instrumented)", func() {
+			// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
+			// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
+			// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
+			// happens in production.
+			triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
+
+			name := JobName3
+			By("Create a job with labels (dash0.instrumented=false)")
+			job := CreateJobWithInstrumentationLabels(ctx, k8sClient, namespace, name)
+			createdObjects = append(createdObjects, job)
+
+			By("Queue the deletion of the Dash0 custom resource")
+			dash0CustomResource := loadDash0CustomResourceOrFail(ctx, Default)
+			Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
+
+			triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to attempt to revert the instrumented job")
+
+			VerifyAlreadyNotInstrumented(ctx, clientset, namespace, name, "Dash0 instrumentation was not present on this resource, no modification by the controller has been necessary.")
+			VerifyUnmodifiedJob(GetJob(ctx, k8sClient, namespace, name))
+		})
+
+		It("should revert an instrumented orphan replica set", func() {
+			// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
+			// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
+			// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
+			// happens in production.
+			triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
+
+			name := ReplicaSetName
+			By("Create an instrumented replica set")
+			replicaSet := CreateInstrumentedReplicaSet(ctx, k8sClient, namespace, name)
+			createdObjects = append(createdObjects, replicaSet)
+
+			By("Queue the deletion of the Dash0 custom resource")
+			dash0CustomResource := loadDash0CustomResourceOrFail(ctx, Default)
+			Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
+
+			triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to revert the instrumented workload")
+
+			VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, "controller")
+			VerifyUnmodifiedReplicaSet(GetReplicaSet(ctx, k8sClient, namespace, name))
+		})
+
+		It("should not leave existing uninstrumented replica sets owned by deployments alone", func() {
+			// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
+			// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
+			// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
+			// happens in production.
+			triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
+
+			name := ReplicaSetName
+			By("Create an instrumented replica set owned by a deployment")
+			replicaSet := CreateReplicaSetOwnedByDeployment(ctx, k8sClient, namespace, name)
+			createdObjects = append(createdObjects, replicaSet)
+
+			By("Queue the deletion of the Dash0 custom resource")
+			dash0CustomResource := loadDash0CustomResourceOrFail(ctx, Default)
+			Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
+
+			triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to revert the instrumented workload")
+
+			VerifyNoEvents(ctx, clientset, namespace)
+			VerifyUnmodifiedReplicaSet(GetReplicaSet(ctx, k8sClient, namespace, name))
+		})
+
+		It("should revert an instrumented stateful set", func() {
+			// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
+			// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
+			// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
+			// happens in production.
+			triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
+
+			name := StatefulSetName
+			By("Create an instrumented stateful set")
+			statefulSet := CreateInstrumentedStatefulSet(ctx, k8sClient, namespace, name)
+			createdObjects = append(createdObjects, statefulSet)
+
+			By("Queue the deletion of the Dash0 custom resource")
+			dash0CustomResource := loadDash0CustomResourceOrFail(ctx, Default)
+			Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
+
+			triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to revert the instrumented workload")
+
+			VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, "controller")
+			VerifyUnmodifiedStatefulSet(GetStatefulSet(ctx, k8sClient, namespace, name))
 		})
 	})
 })
 
-func verifyStatusConditionAndSuccessEvent(ctx context.Context, namespace string, name string) {
-	verifyStatusConditions(ctx, dash0CustomResourceQualifiedName)
-	VerifySuccessEvent(ctx, clientset, namespace, name, "controller")
+func triggerReconcileRequest(ctx context.Context, reconciler *Dash0Reconciler, stepMessage string) {
+	if stepMessage == "" {
+		stepMessage = "Trigger reconcile request"
+	}
+	By(stepMessage)
+	_, err := reconciler.Reconcile(ctx, reconcile.Request{
+		NamespacedName: dash0CustomResourceQualifiedName,
+	})
+	Expect(err).NotTo(HaveOccurred())
 }
 
-func verifyStatusConditions(ctx context.Context, typeNamespacedName types.NamespacedName) *metav1.Condition {
-	var available *metav1.Condition
+func loadDash0CustomResourceOrFail(ctx context.Context, g Gomega) *operatorv1alpha1.Dash0 {
+	return loadDash0CustomResource(ctx, g, true)
+}
+
+func loadDash0CustomResourceIfItExists(ctx context.Context) *operatorv1alpha1.Dash0 {
+	return loadDash0CustomResource(ctx, Default, false)
+}
+
+func loadDash0CustomResource(ctx context.Context, g Gomega, failTestsOnNonExists bool) *operatorv1alpha1.Dash0 {
+	dash0CustomResource := &operatorv1alpha1.Dash0{}
+	if err := k8sClient.Get(ctx, dash0CustomResourceQualifiedName, dash0CustomResource); err != nil {
+		if apierrors.IsNotFound(err) {
+			if failTestsOnNonExists {
+				g.Expect(err).NotTo(HaveOccurred())
+				return nil
+			} else {
+				return nil
+			}
+		} else {
+			// an error occurred, but it is not an IsNotFound error, fail test immediately
+			g.Expect(err).NotTo(HaveOccurred())
+		}
+	}
+
+	return dash0CustomResource
+}
+
+func verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx context.Context, namespace string, name string) {
+	verifyDash0ResourceIsAvailable(ctx)
+	VerifySuccessfulInstrumentationEvent(ctx, clientset, namespace, name, "controller")
+}
+
+func verifyDash0ResourceIsAvailable(ctx context.Context) *metav1.Condition {
+	return verifyDash0ResourceStatus(ctx, metav1.ConditionTrue)
+}
+
+func verifyDash0ResourceStatus(ctx context.Context, expectedStatus metav1.ConditionStatus) *metav1.Condition {
+	var availableCondition *metav1.Condition
 	By("Verifying status conditions")
 	Eventually(func(g Gomega) {
-		dash0 := &operatorv1alpha1.Dash0{}
-		g.Expect(k8sClient.Get(ctx, typeNamespacedName, dash0)).To(Succeed())
-		available = meta.FindStatusCondition(dash0.Status.Conditions, string(util.ConditionTypeAvailable))
-		g.Expect(available).NotTo(BeNil())
-		g.Expect(available.Status).To(Equal(metav1.ConditionTrue))
-		degraded := meta.FindStatusCondition(dash0.Status.Conditions, string(util.ConditionTypeDegraded))
+		dash0CustomResource := loadDash0CustomResourceOrFail(ctx, g)
+		availableCondition = meta.FindStatusCondition(dash0CustomResource.Status.Conditions, string(util.ConditionTypeAvailable))
+		g.Expect(availableCondition).NotTo(BeNil())
+		g.Expect(availableCondition.Status).To(Equal(expectedStatus))
+		degraded := meta.FindStatusCondition(dash0CustomResource.Status.Conditions, string(util.ConditionTypeDegraded))
 		g.Expect(degraded).To(BeNil())
 	}, timeout, pollingInterval).Should(Succeed())
-	return available
+	return availableCondition
+}
+
+func removeFinalizer(ctx context.Context, dash0CustomResource *operatorv1alpha1.Dash0) {
+	finalizerHasBeenRemoved := controllerutil.RemoveFinalizer(dash0CustomResource, util.FinalizerId)
+	if finalizerHasBeenRemoved {
+		Expect(k8sClient.Update(ctx, dash0CustomResource)).To(Succeed())
+	}
+}
+
+func deleteAllEvents(
+	ctx context.Context,
+	clientset *kubernetes.Clientset,
+	namespace string,
+) {
+	err := clientset.CoreV1().Events(namespace).DeleteCollection(ctx, metav1.DeleteOptions{
+		GracePeriodSeconds: new(int64), // delete immediately
+	}, metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred())
 }

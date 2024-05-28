@@ -35,16 +35,16 @@ var _ = Describe("Dash0 Resource Modification", func() {
 	logger := log.FromContext(ctx)
 	resourceModifier := NewResourceModifier(instrumentationMetadata, &logger)
 
-	Context("when mutating new resources", func() {
-		It("should inject Dash0 into a new basic deployment", func() {
+	Context("when instrumenting resources", func() {
+		It("should add Dash0 to a basic deployment", func() {
 			deployment := BasicDeployment(TestNamespaceName, DeploymentName)
 			result := resourceModifier.ModifyDeployment(deployment, TestNamespaceName)
 
 			Expect(result).To(BeTrue())
-			VerifyModifiedDeployment(deployment, BasicPodSpecExpectations)
+			VerifyModifiedDeployment(deployment, BasicInstrumentedPodSpecExpectations)
 		})
 
-		It("should inject Dash0 into a new deployment that has multiple Containers, and already has Volumes and init Containers", func() {
+		It("should add Dash0 to a deployment that has multiple containers, and already has volumes and init containers", func() {
 			deployment := DeploymentWithMoreBellsAndWhistles(TestNamespaceName, DeploymentName)
 			result := resourceModifier.ModifyDeployment(deployment, TestNamespaceName)
 
@@ -75,7 +75,7 @@ var _ = Describe("Dash0 Resource Modification", func() {
 			})
 		})
 
-		It("should update existing Dash0 artifacts in a new deployment", func() {
+		It("should update existing Dash0 artifacts in a deployment", func() {
 			deployment := DeploymentWithExistingDash0Artifacts(TestNamespaceName, DeploymentName)
 			result := resourceModifier.ModifyDeployment(deployment, TestNamespaceName)
 
@@ -108,39 +108,39 @@ var _ = Describe("Dash0 Resource Modification", func() {
 			})
 		})
 
-		It("should inject Dash0 into a new basic cron job", func() {
+		It("should add Dash0 to a basic cron job", func() {
 			resource := BasicCronJob(TestNamespaceName, CronJobName)
 			result := resourceModifier.ModifyCronJob(resource, TestNamespaceName)
 
 			Expect(result).To(BeTrue())
-			VerifyModifiedCronJob(resource, BasicPodSpecExpectations)
+			VerifyModifiedCronJob(resource, BasicInstrumentedPodSpecExpectations)
 		})
 
-		It("should inject Dash0 into a new basic daemon set", func() {
+		It("should add Dash0 to a basic daemon set", func() {
 			resource := BasicDaemonSet(TestNamespaceName, DaemonSetName)
 			result := resourceModifier.ModifyDaemonSet(resource, TestNamespaceName)
 
 			Expect(result).To(BeTrue())
-			VerifyModifiedDaemonSet(resource, BasicPodSpecExpectations)
+			VerifyModifiedDaemonSet(resource, BasicInstrumentedPodSpecExpectations)
 		})
 
-		It("should inject Dash0 into a new basic job", func() {
-			resource := BasicJob(TestNamespaceName, JobName)
+		It("should add Dash0 to a basic job", func() {
+			resource := BasicJob(TestNamespaceName, JobName1)
 			result := resourceModifier.ModifyJob(resource, TestNamespaceName)
 
 			Expect(result).To(BeTrue())
-			VerifyModifiedJob(resource, BasicPodSpecExpectations)
+			VerifyModifiedJob(resource, BasicInstrumentedPodSpecExpectations)
 		})
 
-		It("should inject Dash0 into a new basic replica set", func() {
+		It("should add Dash0 to a basic replica set", func() {
 			resource := BasicReplicaSet(TestNamespaceName, ReplicaSetName)
 			result := resourceModifier.ModifyReplicaSet(resource, TestNamespaceName)
 
 			Expect(result).To(BeTrue())
-			VerifyModifiedReplicaSet(resource, BasicPodSpecExpectations)
+			VerifyModifiedReplicaSet(resource, BasicInstrumentedPodSpecExpectations)
 		})
 
-		It("should not inject Dash0 into a new basic replica set that is owned by a deployment", func() {
+		It("should not add Dash0 to a basic replica set that is owned by a deployment", func() {
 			resource := ReplicaSetOwnedByDeployment(TestNamespaceName, ReplicaSetName)
 			result := resourceModifier.ModifyReplicaSet(resource, TestNamespaceName)
 
@@ -148,12 +148,107 @@ var _ = Describe("Dash0 Resource Modification", func() {
 			VerifyUnmodifiedReplicaSet(resource)
 		})
 
-		It("should inject Dash0 into a new basic stateful set", func() {
+		It("should add Dash0 to a basic stateful set", func() {
 			resource := BasicStatefulSet(TestNamespaceName, StatefulSetName)
 			result := resourceModifier.ModifyStatefulSet(resource, TestNamespaceName)
 
 			Expect(result).To(BeTrue())
-			VerifyModifiedStatefulSet(resource, BasicPodSpecExpectations)
+			VerifyModifiedStatefulSet(resource, BasicInstrumentedPodSpecExpectations)
+		})
+	})
+
+	Context("when reverting resources", func() {
+		It("should remove Dash0 from an instrumented deployment", func() {
+			deployment := InstrumentedDeployment(TestNamespaceName, DeploymentName)
+			result := resourceModifier.RevertDeployment(deployment)
+
+			Expect(result).To(BeTrue())
+			VerifyUnmodifiedDeployment(deployment)
+		})
+
+		It("should only remove labels from deployment that has dash0.instrumented=false", func() {
+			deployment := DeploymentWithInstrumentedFalseLabel(TestNamespaceName, DeploymentName)
+			result := resourceModifier.RevertDeployment(deployment)
+
+			Expect(result).To(BeTrue())
+			VerifyUnmodifiedDeployment(deployment)
+		})
+
+		It("should remove Dash0 from a instrumented deployment that has multiple containers, and already has volumes and init containers previous to being instrumented", func() {
+			deployment := InstrumentedDeploymentWithMoreBellsAndWhistles(TestNamespaceName, DeploymentName)
+			result := resourceModifier.RevertDeployment(deployment)
+
+			Expect(result).To(BeTrue())
+			VerifyRevertedDeployment(deployment, PodSpecExpectations{
+				Volumes:               2,
+				Dash0VolumeIdx:        -1,
+				InitContainers:        2,
+				Dash0InitContainerIdx: -1,
+				Containers: []ContainerExpectations{
+					{
+						VolumeMounts:                   1,
+						Dash0VolumeMountIdx:            -1,
+						EnvVars:                        1,
+						NodeOptionsEnvVarIdx:           -1,
+						Dash0CollectorBaseUrlEnvVarIdx: -1,
+					},
+					{
+						VolumeMounts:                   2,
+						Dash0VolumeMountIdx:            -1,
+						EnvVars:                        2,
+						NodeOptionsEnvVarIdx:           -1,
+						Dash0CollectorBaseUrlEnvVarIdx: -1,
+					},
+				},
+			})
+		})
+
+		It("should remove Dash0 from an instrumented cron job", func() {
+			resource := InstrumentedCronJob(TestNamespaceName, CronJobName)
+			result := resourceModifier.RevertCronJob(resource)
+
+			Expect(result).To(BeTrue())
+			VerifyUnmodifiedCronJob(resource)
+		})
+
+		It("should remove Dash0 from an instrumented daemon set", func() {
+			resource := InstrumentedDaemonSet(TestNamespaceName, DaemonSetName)
+			result := resourceModifier.RevertDaemonSet(resource)
+
+			Expect(result).To(BeTrue())
+			VerifyUnmodifiedDaemonSet(resource)
+		})
+
+		It("should remove Dash0 from an instrumented job", func() {
+			resource := InstrumentedJob(TestNamespaceName, JobName1)
+			result := resourceModifier.RevertJob(resource)
+
+			Expect(result).To(BeTrue())
+			VerifyUnmodifiedJob(resource)
+		})
+
+		It("should remove Dash0 from an instrumented replica set", func() {
+			resource := InstrumentedReplicaSet(TestNamespaceName, ReplicaSetName)
+			result := resourceModifier.RevertReplicaSet(resource)
+
+			Expect(result).To(BeTrue())
+			VerifyUnmodifiedReplicaSet(resource)
+		})
+
+		It("should not remove Dash0 from a replica set that is owned by a deployment", func() {
+			resource := InstrumentedReplicaSetOwnedByDeployment(TestNamespaceName, ReplicaSetName)
+			result := resourceModifier.RevertReplicaSet(resource)
+
+			Expect(result).To(BeFalse())
+			VerifyModifiedReplicaSet(resource, BasicInstrumentedPodSpecExpectations)
+		})
+
+		It("should remove Dash0 from an instrumented stateful set", func() {
+			resource := InstrumentedStatefulSet(TestNamespaceName, StatefulSetName)
+			result := resourceModifier.RevertStatefulSet(resource)
+
+			Expect(result).To(BeTrue())
+			VerifyUnmodifiedStatefulSet(resource)
 		})
 	})
 })

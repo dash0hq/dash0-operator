@@ -16,7 +16,7 @@ func QueueSuccessfulInstrumentationEvent(eventRecorder record.EventRecorder, res
 		resource,
 		corev1.EventTypeNormal,
 		string(ReasonSuccessfulInstrumentation),
-		fmt.Sprintf("Dash0 instrumentation by %s has been successful.", eventSource),
+		fmt.Sprintf("Dash0 instrumentation of this resource by the %s has been successful.", eventSource),
 	)
 }
 
@@ -24,8 +24,8 @@ func QueueAlreadyInstrumentedEvent(eventRecorder record.EventRecorder, resource 
 	eventRecorder.Event(
 		resource,
 		corev1.EventTypeNormal,
-		string(ReasonSuccessfulInstrumentation),
-		fmt.Sprintf("Dash0 instrumentation already present, no modification by %s is necessary.", eventSource),
+		string(ReasonAlreadyInstrumented),
+		fmt.Sprintf("Dash0 instrumentation was already present on this resource, no modification by the %s is necessary.", eventSource),
 	)
 }
 
@@ -34,6 +34,33 @@ func QueueFailedInstrumentationEvent(eventRecorder record.EventRecorder, resourc
 		resource,
 		corev1.EventTypeWarning,
 		string(ReasonFailedInstrumentation),
-		fmt.Sprintf("Dash0 instrumentation by %s has not been successful. Error message: %s", eventSource, err.Error()),
+		fmt.Sprintf("Dash0 instrumentation of this resource by the %s has not been successful. Error message: %s", eventSource, err.Error()),
+	)
+}
+
+func QueueSuccessfulUninstrumentationEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource string) {
+	eventRecorder.Event(
+		resource,
+		corev1.EventTypeNormal,
+		string(ReasonSuccessfulUninstrumentation),
+		fmt.Sprintf("The %s successfully removed the Dash0 instrumentation from this resource.", eventSource),
+	)
+}
+
+func QueueAlreadyNotInstrumentedEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource string) {
+	eventRecorder.Event(
+		resource,
+		corev1.EventTypeNormal,
+		string(ReasonAlreadyNotInstrumented),
+		fmt.Sprintf("Dash0 instrumentation was not present on this resource, no modification by the %s has been necessary.", eventSource),
+	)
+}
+
+func QueueFailedUninstrumentationEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource string, err error) {
+	eventRecorder.Event(
+		resource,
+		corev1.EventTypeWarning,
+		string(ReasonFailedUninstrumentation),
+		fmt.Sprintf("The %s's attempt to remove the Dash0 instrumentation from this resource has not been successful. Error message: %s", eventSource, err.Error()),
 	)
 }
