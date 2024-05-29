@@ -164,7 +164,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		})
 
 		DescribeTable(
-			"when instrumenting existing resources",
+			"when instrumenting existing workloads",
 			func(
 				resourceType string,
 				installResource func(string) error,
@@ -229,7 +229,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		})
 
 		DescribeTable(
-			"when instrumenting new resources",
+			"when instrumenting new workloads",
 			func(
 				resourceType string,
 				installResource func(string) error,

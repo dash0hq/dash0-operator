@@ -87,7 +87,7 @@ var _ = Describe("Dash0 Controller", func() {
 				})).To(Succeed())
 			}
 
-			By("Cleanup the Dash0 resource instance")
+			By("Cleanup the Dash0 custom resource instance")
 			if dash0CustomResource := loadDash0CustomResourceIfItExists(ctx); dash0CustomResource != nil {
 				// We want to delete the custom resource, but we need to remove the finalizer first, otherwise the first
 				// reconcile of the next test case will actually run the finalizers.
@@ -101,13 +101,13 @@ var _ = Describe("Dash0 Controller", func() {
 			Expect(allEvents.Items).To(BeEmpty())
 		})
 
-		It("should successfully run the first reconcile (no modifiable resources exist)", func() {
+		It("should successfully run the first reconcile (no modifiable workloads exist)", func() {
 			By("Trigger reconcile request")
 			triggerReconcileRequest(ctx, reconciler, "")
 			verifyDash0ResourceIsAvailable(ctx)
 		})
 
-		It("should successfully run multiple reconciles (no modifiable resources exist)", func() {
+		It("should successfully run multiple reconciles (no modifiable workloads exist)", func() {
 			triggerReconcileRequest(ctx, reconciler, "First reconcile request")
 
 			firstAvailableStatusCondition := verifyDash0ResourceIsAvailable(ctx)
@@ -172,8 +172,8 @@ var _ = Describe("Dash0 Controller", func() {
 				clientset,
 				namespace,
 				name,
-				"Dash0 instrumentation of this resource by the controller has not been successful. Error message: Dash0 cannot"+
-					" instrument the existing job test-namespace/job1, since the this type of resource is immutable.",
+				"Dash0 instrumentation of this workload by the controller has not been successful. Error message: Dash0 cannot"+
+					" instrument the existing job test-namespace/job1, since the this type of workload is immutable.",
 			)
 			VerifyImmutableJobCouldNotBeModified(GetJob(ctx, k8sClient, namespace, name))
 		})
@@ -303,7 +303,7 @@ var _ = Describe("Dash0 Controller", func() {
 				clientset,
 				namespace,
 				name,
-				"The controller's attempt to remove the Dash0 instrumentation from this resource has not been successful. Error message: Dash0 cannot remove the instrumentation from the existing job test-namespace/job2, since the this type of resource is immutable.",
+				"The controller's attempt to remove the Dash0 instrumentation from this workload has not been successful. Error message: Dash0 cannot remove the instrumentation from the existing job test-namespace/job2, since the this type of workload is immutable.",
 			)
 			VerifyModifiedJob(GetJob(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations)
 		})
@@ -326,7 +326,7 @@ var _ = Describe("Dash0 Controller", func() {
 
 			triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to attempt to revert the instrumented job")
 
-			VerifyAlreadyNotInstrumented(ctx, clientset, namespace, name, "Dash0 instrumentation was not present on this resource, no modification by the controller has been necessary.")
+			VerifyAlreadyNotInstrumented(ctx, clientset, namespace, name, "Dash0 instrumentation was not present on this workload, no modification by the controller has been necessary.")
 			VerifyUnmodifiedJob(GetJob(ctx, k8sClient, namespace, name))
 		})
 
