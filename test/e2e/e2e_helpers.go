@@ -74,15 +74,25 @@ func RenderTemplates() {
 	ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command("test-resources/bin/render-templates.sh"))).To(Succeed())
 }
 
-func EnsureNamespaceExists(namespace string) bool {
-	err := RunAndIgnoreOutput(exec.Command("kubectl", "get", "ns", namespace), false)
+func RecreateNamespace(namespace string) {
+	By(fmt.Sprintf("(re)creating namespace %s", namespace))
+	output, err := Run(exec.Command("kubectl", "get", "ns", namespace))
 	if err != nil {
-		By(fmt.Sprintf("creating namespace %s", namespace))
+		if strings.Contains(string(output), "(NotFound)") {
+			// The namespace does not exist, that's fine, we will create it further down.
+		} else {
+			Fail(fmt.Sprintf("kubectl get ns %s failed with unexpected error: %v", namespace, err))
+		}
+	} else {
 		ExpectWithOffset(1,
-			RunAndIgnoreOutput(exec.Command("kubectl", "create", "ns", namespace))).To(Succeed())
-		return true
+			RunAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", namespace))).To(Succeed())
+		ExpectWithOffset(1,
+			RunAndIgnoreOutput(
+				exec.Command("kubectl", "wait", "--for=delete", "ns", namespace, "--timeout=60s"))).To(Succeed())
 	}
-	return false
+
+	ExpectWithOffset(1,
+		RunAndIgnoreOutput(exec.Command("kubectl", "create", "ns", namespace))).To(Succeed())
 }
 
 func EnsureCertManagerIsInstalled() bool {
@@ -356,9 +366,28 @@ func DeployDash0Resource(namespace string) {
 }
 
 func UndeployDash0Resource(namespace string) {
+	// remove the finalizer from the resource to allow immediate deletion
+	_ = RunAndIgnoreOutput(exec.Command(
+		"kubectl",
+		"patch",
+		"dash0/dash0-sample",
+		"--namespace",
+		namespace,
+		"--type",
+		"json",
+		"--patch='[{\"op\":\"remove\",\"path\":\"/metadata/finalizers\"}]'",
+	))
+	// remove the resource
 	ExpectWithOffset(1,
 		RunAndIgnoreOutput(exec.Command(
-			"kubectl", "delete", "-n", namespace, "-k", "config/samples"))).To(Succeed())
+			"kubectl",
+			"delete",
+			"--namespace",
+			namespace,
+			"-k",
+			"config/samples",
+			"--ignore-not-found",
+		))).To(Succeed())
 }
 
 func InstallNodeJsCronJob(namespace string) error {
@@ -525,40 +554,16 @@ func DeleteTestIdFiles() {
 	_ = os.Remove("test-resources/e2e-test-volumes/test-uuid/job.test.id")
 }
 
-func VerifyThatSpansAreCaptured(
+func VerifyThatWorkloadHasBeenInstrumented(
 	namespace string,
-	kind string,
-	sendRequests bool,
+	workloadType string,
+	isBatch bool,
 	restartPodsManually bool,
 	instrumentationBy string,
-) {
-	By("verify that the workload has been instrumented and is sending telemetry")
-
-	var testId string
-	if sendRequests {
-		// For resource types that are available as a service (daemonset, deployment etc.) we send HTTP requests with
-		// a unique ID as a query parameter. When checking the produced spans that the OTel collector writes to disk via
-		// the file exporter, we can verify that the span is actually from the currently running test case by inspecting
-		// the http.target span attribute. This guarantees that we do not accidentally pass the test due to a span from
-		// a previous test case.
-		testIdUuid := uuid.New()
-		testId = testIdUuid.String()
-	} else {
-		By(fmt.Sprintf("waiting for the test ID file to be written by the %s under test", kind))
-		Eventually(func(g Gomega) {
-			// For resource types like batch jobs/cron jobs, the application under test generates the test ID and writes it
-			// to a volume that maps to a host path. We read the test ID from the host path and use it to verify the spans.
-			testIdBytes, err := os.ReadFile(fmt.Sprintf("test-resources/e2e-test-volumes/test-uuid/%s.test.id", kind))
-			g.Expect(err).NotTo(HaveOccurred())
-			testId = string(testIdBytes)
-		}, 80*time.Second, 200*time.Millisecond).Should(Succeed())
-	}
-
-	httpPathWithQuery := fmt.Sprintf("/dash0-k8s-operator-test?id=%s", testId)
-
-	By("waiting for the workload to be modified/checking labels")
+) string {
+	By("waiting for the workload to get instrumented (polling its labels to check)")
 	Eventually(func(g Gomega) {
-		verifyLabels(g, namespace, kind, true, instrumentationBy)
+		verifyLabels(g, namespace, workloadType, true, instrumentationBy)
 	}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
 
 	if restartPodsManually {
@@ -566,10 +571,113 @@ func VerifyThatSpansAreCaptured(
 	}
 
 	By("waiting for spans to be captured")
+	var testId string
+	if isBatch {
+		By(fmt.Sprintf("waiting for the test ID file to be written by the %s under test", workloadType))
+		Eventually(func(g Gomega) {
+			// For resource types like batch jobs/cron jobs, the application under test generates the test ID and writes it
+			// to a volume that maps to a host path. We read the test ID from the host path and use it to verify the spans.
+			testIdBytes, err := os.ReadFile(fmt.Sprintf("test-resources/e2e-test-volumes/test-uuid/%s.test.id", workloadType))
+			g.Expect(err).NotTo(HaveOccurred())
+			testId = string(testIdBytes)
+			// Also, cronjob pods are only scheduled once a minute, so we might need to wait a while for the ID to
+			// become available, hence the 80 second timeout for the surrounding Eventually.
+		}, 80*time.Second, 200*time.Millisecond).Should(Succeed())
+	} else {
+		// For resource types that are available as a service (daemonset, deployment etc.) we send HTTP requests with
+		// a unique ID as a query parameter. When checking the produced spans that the OTel collector writes to disk via
+		// the file exporter, we can verify that the span is actually from the currently running test case by inspecting
+		// the http.target span attribute. This guarantees that we do not accidentally pass the test due to a span from
+		// a previous test case.
+		testIdUuid := uuid.New()
+		testId = testIdUuid.String()
+	}
+
+	httpPathWithQuery := fmt.Sprintf("/dash0-k8s-operator-test?id=%s", testId)
 	Eventually(func(g Gomega) {
-		verifySpans(g, sendRequests, httpPathWithQuery)
+		verifySpans(g, isBatch, httpPathWithQuery)
 	}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
 	By("matchin spans have been received")
+	return testId
+}
+
+func VerifyThatInstrumentationHasBeenReverted(
+	namespace string,
+	workloadType string,
+	isBatch bool,
+	restartPodsManually bool,
+	testId string,
+) {
+	By("waiting for the instrumentation to get removed from the workload (polling its labels to check)")
+	Eventually(func(g Gomega) {
+		verifyLabelsHaveBeenRemoved(g, namespace, workloadType)
+	}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
+
+	if restartPodsManually {
+		restartAllPods(namespace)
+	}
+
+	// Add some buffer time between the workloads being restarted and verifying that no spans are produced/captured.
+	time.Sleep(10 * time.Second)
+
+	secondsToCheckForSpans := 20
+	if workloadType == "cronjob" {
+		// Pod for cron jobs only get scheduled once a minute, since the cronjob schedule format does not allow for jobs
+		// starting every second. Thus, to make the test valid, we need to monitor for spans a little bit longer than
+		// for appsv1 workloads.
+		secondsToCheckForSpans = 80
+	}
+	httpPathWithQuery := fmt.Sprintf("/dash0-k8s-operator-test?id=%s", testId)
+	By(fmt.Sprintf("verifying that spans are no longer being captured (checking for %d seconds)", secondsToCheckForSpans))
+	Consistently(func(g Gomega) {
+		verifyNoSpans(isBatch, httpPathWithQuery)
+	}, time.Duration(secondsToCheckForSpans)*time.Second, 1*time.Second).Should(Succeed())
+
+	By("matching spans are no longer captured")
+}
+
+func VerifyThatFailedInstrumentationAttemptLabelsHaveBeenRemovedRemoved(namespace string, workloadType string) {
+	By("waiting for the instrumentation to get removed from the workload (polling its labels to check)")
+	Eventually(func(g Gomega) {
+		verifyLabelsHaveBeenRemoved(g, namespace, workloadType)
+	}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
+}
+
+func verifyLabels(g Gomega, namespace string, kind string, hasBeenInstrumented bool, instrumentationBy string) {
+	instrumented := readLabel(g, namespace, kind, "dash0.instrumented")
+	g.ExpectWithOffset(1, instrumented).To(Equal(strconv.FormatBool(hasBeenInstrumented)))
+	operatorVersion := readLabel(g, namespace, kind, "dash0.operator.version")
+	g.ExpectWithOffset(1, operatorVersion).To(MatchRegexp("\\d+\\.\\d+\\.\\d+"))
+	initContainerImageVersion := readLabel(g, namespace, kind, "dash0.initcontainer.image.version")
+	g.ExpectWithOffset(1, initContainerImageVersion).To(MatchRegexp("\\d+\\.\\d+\\.\\d+"))
+	instrumentedBy := readLabel(g, namespace, kind, "dash0.instrumented.by")
+	g.ExpectWithOffset(1, instrumentedBy).To(Equal(instrumentationBy))
+}
+
+func verifyLabelsHaveBeenRemoved(g Gomega, namespace string, kind string) {
+	instrumented := readLabel(g, namespace, kind, "dash0.instrumented")
+	g.ExpectWithOffset(1, instrumented).To(Equal(""))
+	operatorVersion := readLabel(g, namespace, kind, "dash0.operator.version")
+	g.ExpectWithOffset(1, operatorVersion).To(Equal(""))
+	initContainerImageVersion := readLabel(g, namespace, kind, "dash0.initcontainer.image.version")
+	g.ExpectWithOffset(1, initContainerImageVersion).To(Equal(""))
+	instrumentedBy := readLabel(g, namespace, kind, "dash0.instrumented.by")
+	g.ExpectWithOffset(1, instrumentedBy).To(Equal(""))
+}
+
+func readLabel(g Gomega, namespace string, kind string, labelKey string) string {
+	labelValue, err := Run(exec.Command(
+		"kubectl",
+		"get",
+		kind,
+		"--namespace",
+		namespace,
+		fmt.Sprintf("dash0-operator-nodejs-20-express-test-%s", kind),
+		"-o",
+		fmt.Sprintf("jsonpath={.metadata.labels['%s']}", strings.ReplaceAll(labelKey, ".", "\\.")),
+	), false)
+	g.ExpectWithOffset(1, err).NotTo(HaveOccurred())
+	return string(labelValue)
 }
 
 func restartAllPods(namespace string) {
@@ -591,13 +699,40 @@ func restartAllPods(namespace string) {
 
 }
 
-func verifySpans(g Gomega, sendRequests bool, httpPathWithQuery string) {
-	if sendRequests {
+func verifySpans(g Gomega, isBatch bool, httpPathWithQuery string) {
+	spansFound := sendRequestAndFindMatchingSpans(g, isBatch, httpPathWithQuery, true, nil)
+	g.Expect(spansFound).To(BeTrue(), "expected to find at least one matching HTTP server span")
+}
+
+func verifyNoSpans(isBatch bool, httpPathWithQuery string) {
+	timestampLowerBound := time.Now()
+	spansFound := sendRequestAndFindMatchingSpans(Default, isBatch, httpPathWithQuery, false, &timestampLowerBound)
+	Expect(spansFound).To(BeFalse(), "expected to find no matching HTTP server span")
+}
+
+func sendRequestAndFindMatchingSpans(
+	g Gomega,
+	isBatch bool,
+	httpPathWithQuery string,
+	requestsMustNotFail bool,
+	timestampLowerBound *time.Time,
+) bool {
+	sendRequest(g, isBatch, httpPathWithQuery, requestsMustNotFail)
+	return fileHasMatchingSpan(g, httpPathWithQuery, timestampLowerBound)
+}
+
+func sendRequest(g Gomega, isBatch bool, httpPathWithQuery string, mustNotFail bool) {
+	if !isBatch {
 		response, err := Run(exec.Command("curl", fmt.Sprintf("http://localhost:1207%s", httpPathWithQuery)), false)
-		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(string(response)).To(ContainSubstring(
-			"We make Observability easy for every developer."))
+		if mustNotFail {
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(string(response)).To(ContainSubstring(
+				"We make Observability easy for every developer."))
+		}
 	}
+}
+
+func fileHasMatchingSpan(g Gomega, httpPathWithQuery string, timestampLowerBound *time.Time) bool {
 	fileHandle, err := os.Open("test-resources/e2e-test-volumes/collector-received-data/traces.jsonl")
 	g.Expect(err).NotTo(HaveOccurred())
 	defer func() {
@@ -618,48 +753,26 @@ func verifySpans(g Gomega, sendRequests bool, httpPathWithQuery string) {
 		if spansFound = hasMatchingSpans(
 			traces,
 			isHttpServerSpanWithHttpTarget(httpPathWithQuery),
+			timestampLowerBound,
 		); spansFound {
 			break
 		}
 	}
+
 	g.Expect(scanner.Err()).NotTo(HaveOccurred())
-	g.Expect(spansFound).To(BeTrue(), "expected to find an HTTP server span")
+
+	return spansFound
 }
 
-func verifyLabels(g Gomega, namespace string, kind string, hasBeenInstrumented bool, instrumentationBy string) {
-	instrumented := readLabel(g, namespace, kind, "dash0.instrumented")
-	g.ExpectWithOffset(1, instrumented).To(Equal(strconv.FormatBool(hasBeenInstrumented)))
-	operatorVersion := readLabel(g, namespace, kind, "dash0.operator.version")
-	g.ExpectWithOffset(1, operatorVersion).To(MatchRegexp("\\d+\\.\\d+\\.\\d+"))
-	initContainerImageVersion := readLabel(g, namespace, kind, "dash0.initcontainer.image.version")
-	g.ExpectWithOffset(1, initContainerImageVersion).To(MatchRegexp("\\d+\\.\\d+\\.\\d+"))
-	instrumentedBy := readLabel(g, namespace, kind, "dash0.instrumented.by")
-	g.ExpectWithOffset(1, instrumentedBy).To(Equal(instrumentationBy))
-}
-
-func readLabel(g Gomega, namespace string, kind string, labelKey string) string {
-	labelValue, err := Run(exec.Command(
-		"kubectl",
-		"get",
-		kind,
-		"--namespace",
-		namespace,
-		fmt.Sprintf("dash0-operator-nodejs-20-express-test-%s", kind),
-		"-o",
-		fmt.Sprintf("jsonpath={.metadata.labels['%s']}", strings.ReplaceAll(labelKey, ".", "\\.")),
-	), false)
-	g.ExpectWithOffset(1, err).NotTo(HaveOccurred())
-	return string(labelValue)
-}
-
-func hasMatchingSpans(traces ptrace.Traces, matchFn func(span ptrace.Span) bool) bool {
+func hasMatchingSpans(traces ptrace.Traces, matchFn func(span ptrace.Span) bool, timestampLowerBound *time.Time) bool {
 	for i := 0; i < traces.ResourceSpans().Len(); i++ {
 		resourceSpan := traces.ResourceSpans().At(i)
 		for j := 0; j < resourceSpan.ScopeSpans().Len(); j++ {
 			scopeSpan := resourceSpan.ScopeSpans().At(j)
 			for k := 0; k < scopeSpan.Spans().Len(); k++ {
 				span := scopeSpan.Spans().At(k)
-				if matchFn(span) {
+				if (timestampLowerBound == nil || span.StartTimestamp().AsTime().After(*timestampLowerBound)) &&
+					matchFn(span) {
 					return true
 				}
 			}

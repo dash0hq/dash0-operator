@@ -115,10 +115,13 @@ vet: ## Run go vet against code.
 test: manifests generate fmt vet envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
 
-# Utilize Kind or modify the e2e tests to load the image locally, enabling compatibility with other vendors.
-.PHONY: test-e2e  # Run the e2e tests against a Kind k8s instance that is spun up.
+# Invoking ginkgo via go run makes sure we use the version from go.mod and not a version installed globally, which
+# would be used when simply running `ginkgo -v test/e2e`. An alternative would be to invoke ginkgo via go test, that
+# is, `go test ./test/e2e/ -v -ginkgo.v`, but that would require us to manage go test's timeout (via the -timeout
+# flag), and ginkgo's own timeout.
+.PHONY: test-e2e
 test-e2e:
-	go test ./test/e2e/ -v -ginkgo.v
+	go run github.com/onsi/ginkgo/v2/ginkgo -v test/e2e
 
 GOLANGCI_LINT = $(shell pwd)/bin/golangci-lint
 GOLANGCI_LINT_VERSION ?= v1.54.2

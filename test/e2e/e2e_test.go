@@ -26,8 +26,7 @@ const (
 )
 
 var (
-	applicationNamespaceHasBeenCreated = false
-	certManagerHasBeenInstalled        = false
+	certManagerHasBeenInstalled = false
 
 	originalKubeContext            string
 	managerYamlNeedsRevert         bool
@@ -85,7 +84,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 		certManagerHasBeenInstalled = EnsureCertManagerIsInstalled()
 
-		applicationNamespaceHasBeenCreated = EnsureNamespaceExists(applicationUnderTestNamespace)
+		RecreateNamespace(applicationUnderTestNamespace)
 
 		By("(re)installing the collector")
 		ExpectWithOffset(1, ReinstallCollectorAndClearExportedTelemetry(applicationUnderTestNamespace)).To(Succeed())
@@ -126,7 +125,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			_ = RunAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", operatorNamespace))
 		}
 
-		if applicationNamespaceHasBeenCreated && applicationUnderTestNamespace != "default" {
+		if applicationUnderTestNamespace != "default" {
 			By("removing namespace for application under test")
 			_ = RunAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", applicationUnderTestNamespace))
 		}
@@ -163,33 +162,63 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			UndeployOperator(operatorNamespace)
 		})
 
+		type controllerTest struct {
+			workloadType        string
+			installWorkload     func(string) error
+			isBatch             bool
+			restartPodsManually bool
+		}
+
 		DescribeTable(
 			"when instrumenting existing workloads",
-			func(
-				resourceType string,
-				installResource func(string) error,
-				sendRequests bool,
-				restartPodsManually bool,
-			) {
-				By(fmt.Sprintf("installing the Node.js %s", resourceType))
-				Expect(installResource(applicationUnderTestNamespace)).To(Succeed())
+			func(config controllerTest) {
+				By(fmt.Sprintf("installing the Node.js %s", config.workloadType))
+				Expect(config.installWorkload(applicationUnderTestNamespace)).To(Succeed())
 				By("deploy the operator and the Dash0 custom resource")
+
 				DeployOperator(operatorNamespace, operatorImage)
 				DeployDash0Resource(applicationUnderTestNamespace)
-				By(fmt.Sprintf("verifying that the Node.js %s has been instrumented by the controller", resourceType))
-				VerifyThatSpansAreCaptured(
+				By(fmt.Sprintf("verifying that the Node.js %s has been instrumented by the controller", config.workloadType))
+				testId := VerifyThatWorkloadHasBeenInstrumented(
 					applicationUnderTestNamespace,
-					resourceType,
-					sendRequests,
-					restartPodsManually,
+					config.workloadType,
+					config.isBatch,
+					config.restartPodsManually,
 					"controller",
 				)
+
+				UndeployDash0Resource(applicationUnderTestNamespace)
+
+				VerifyThatInstrumentationHasBeenReverted(
+					applicationUnderTestNamespace,
+					config.workloadType,
+					config.isBatch,
+					config.restartPodsManually,
+					testId,
+				)
 			},
-			Entry("should modify existing cron jobs", "cronjob", InstallNodeJsCronJob, false, false),
-			Entry("should modify existing daemon sets", "daemonset", InstallNodeJsDaemonSet, true, false),
-			Entry("should modify existing deployments", "deployment", InstallNodeJsDeployment, true, false),
-			Entry("should modify existing replica set", "replicaset", InstallNodeJsReplicaSet, true, true),
-			Entry("should modify existing stateful set", "statefulset", InstallNodeJsStatefulSet, true, false),
+			Entry("should instrument and uninstrument existing cron jobs", controllerTest{
+				workloadType:    "cronjob",
+				installWorkload: InstallNodeJsCronJob,
+				isBatch:         true,
+			}),
+			Entry("should instrument and uninstrument existing daemon sets", controllerTest{
+				workloadType:    "daemonset",
+				installWorkload: InstallNodeJsDaemonSet,
+			}),
+			Entry("should instrument and uninstrument existing deployments", controllerTest{
+				workloadType:    "deployment",
+				installWorkload: InstallNodeJsDeployment,
+			}),
+			Entry("should instrument and uninstrument existing replica set", controllerTest{
+				workloadType:        "replicaset",
+				installWorkload:     InstallNodeJsReplicaSet,
+				restartPodsManually: true,
+			}),
+			Entry("should instrument and uninstrument existing stateful set", controllerTest{
+				workloadType:    "statefulset",
+				installWorkload: InstallNodeJsStatefulSet,
+			}),
 		)
 
 		Describe("when it detects existing immutable jobs", func() {
@@ -203,6 +232,10 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				Eventually(func(g Gomega) {
 					verifyLabels(g, applicationUnderTestNamespace, "job", false, "controller")
 				}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
+
+				UndeployDash0Resource(applicationUnderTestNamespace)
+
+				VerifyThatFailedInstrumentationAttemptLabelsHaveBeenRemovedRemoved(applicationUnderTestNamespace, "job")
 			})
 		})
 	})
@@ -228,24 +261,52 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			UndeployOperator(operatorNamespace)
 		})
 
+		type webhookTest struct {
+			workloadType    string
+			installWorkload func(string) error
+			isBatch         bool
+		}
+
 		DescribeTable(
 			"when instrumenting new workloads",
-			func(
-				resourceType string,
-				installResource func(string) error,
-				sendRequests bool,
-			) {
-				By(fmt.Sprintf("installing the Node.js %s", resourceType))
-				Expect(installResource(applicationUnderTestNamespace)).To(Succeed())
-				By(fmt.Sprintf("verifying that the Node.js %s has been instrumented by the webhook", resourceType))
-				VerifyThatSpansAreCaptured(applicationUnderTestNamespace, resourceType, sendRequests, false, "webhook")
+			func(config webhookTest) {
+				By(fmt.Sprintf("installing the Node.js %s", config.workloadType))
+				Expect(config.installWorkload(applicationUnderTestNamespace)).To(Succeed())
+				By(fmt.Sprintf("verifying that the Node.js %s has been instrumented by the webhook", config.workloadType))
+				VerifyThatWorkloadHasBeenInstrumented(
+					applicationUnderTestNamespace,
+					config.workloadType,
+					config.isBatch,
+					false,
+					"webhook",
+				)
 			},
-			Entry("should modify new cron jobs", "cronjob", InstallNodeJsCronJob, false),
-			Entry("should modify new daemon sets", "daemonset", InstallNodeJsDaemonSet, true),
-			Entry("should modify new deployments", "deployment", InstallNodeJsDeployment, true),
-			Entry("should modify new jobs", "job", InstallNodeJsJob, false),
-			Entry("should modify new replica sets", "replicaset", InstallNodeJsReplicaSet, true),
-			Entry("should modify new stateful sets", "statefulset", InstallNodeJsStatefulSet, true),
+			Entry("should modify new cron jobs", webhookTest{
+				workloadType:    "cronjob",
+				installWorkload: InstallNodeJsCronJob,
+				isBatch:         true,
+			}),
+			Entry("should modify new daemon sets", webhookTest{
+				workloadType:    "daemonset",
+				installWorkload: InstallNodeJsDaemonSet,
+			}),
+			Entry("should modify new deployments", webhookTest{
+				workloadType:    "deployment",
+				installWorkload: InstallNodeJsDeployment,
+			}),
+			Entry("should modify new jobs", webhookTest{
+				workloadType:    "job",
+				installWorkload: InstallNodeJsJob,
+				isBatch:         true,
+			}),
+			Entry("should modify new replica sets", webhookTest{
+				workloadType:    "replicaset",
+				installWorkload: InstallNodeJsReplicaSet,
+			}),
+			Entry("should modify new stateful sets", webhookTest{
+				workloadType:    "statefulset",
+				installWorkload: InstallNodeJsStatefulSet,
+			}),
 		)
 	})
 })
