@@ -23,21 +23,21 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/v1alpha1"
-	"github.com/dash0hq/dash0-operator/internal/k8sresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/workloads"
 )
 
 const (
-	resourceTypeLabel      = "resource type"
-	resourceNamespaceLabel = "resource namespace"
-	resourceNameLabel      = "resource name"
+	workkloadTypeLabel     = "workload type"
+	workloadNamespaceLabel = "workload namespace"
+	workloadNameLabel      = "workload name"
 )
 
 var (
-	resourcesWithoutDash0InstrumentedLabelFilter = metav1.ListOptions{
+	workloadsWithoutDash0InstrumentedLabelFilter = metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("!%s", util.InstrumentedLabelKey),
 	}
-	resourcesWithDash0InstrumentedLabelFilter = metav1.ListOptions{
+	workloadsWithDash0InstrumentedLabelFilter = metav1.ListOptions{
 		LabelSelector: util.InstrumentedLabelKey,
 	}
 )
@@ -57,13 +57,13 @@ const (
 	Uninstrumentation ModificationMode = "Uninstrumentation"
 )
 
-type ImmutableResourceError struct {
-	resourceType     string
-	resource         string
+type ImmutableWorkloadError struct {
+	workloadType     string
+	workloadName     string
 	modificationMode ModificationMode
 }
 
-func (e ImmutableResourceError) Error() string {
+func (e ImmutableWorkloadError) Error() string {
 	var modificationParticle string
 	switch e.modificationMode {
 	case Instrumentation:
@@ -75,10 +75,10 @@ func (e ImmutableResourceError) Error() string {
 	}
 
 	return fmt.Sprintf(
-		"Dash0 cannot %s the existing %s %s, since the this type of resource is immutable.",
+		"Dash0 cannot %s the existing %s %s, since the this type of workload is immutable.",
 		modificationParticle,
-		e.resourceType,
-		e.resource,
+		e.workloadType,
+		e.workloadName,
 	)
 }
 
@@ -224,26 +224,26 @@ func (r *Dash0Reconciler) handleFirstReconcile(
 ) error {
 	logger.Info("Initial reconcile in progress.")
 	instrumentationEnabled := true
-	instrumentingExistingResourcesEnabled := true
+	instrumentingExistingWorkloadsEnabled := true
 	if !instrumentationEnabled {
 		logger.Info(
-			"Instrumentation is not enabled, neither new nor existing resources will be modified to send telemetry " +
+			"Instrumentation is not enabled, neither new nor existing workloads will be modified to send telemetry " +
 				"to Dash0.",
 		)
 		return nil
 	}
 
-	if !instrumentingExistingResourcesEnabled {
+	if !instrumentingExistingWorkloadsEnabled {
 		logger.Info(
-			"Instrumenting existing resources is not enabled, only new resources will be modified (at deploy time) " +
+			"Instrumenting existing workloads is not enabled, only new workloads will be modified (at deploy time) " +
 				"to send telemetry to Dash0.",
 		)
 		return nil
 	}
 
-	logger.Info("Modifying existing resources to make them send telemetry to Dash0.")
-	if err := r.instrumentExistingResources(ctx, dash0CustomResource, logger); err != nil {
-		logger.Error(err, "Instrumenting existing resources failed, requeuing reconcile request.")
+	logger.Info("Modifying existing workloads to make them send telemetry to Dash0.")
+	if err := r.instrumentWorkloadsResources(ctx, dash0CustomResource, logger); err != nil {
+		logger.Error(err, "Instrumenting existing workloads failed, requeuing reconcile request.")
 		return err
 	}
 
@@ -262,7 +262,7 @@ func (r *Dash0Reconciler) refreshStatus(
 	return nil
 }
 
-func (r *Dash0Reconciler) instrumentExistingResources(
+func (r *Dash0Reconciler) instrumentWorkloadsResources(
 	ctx context.Context,
 	dash0CustomResource *operatorv1alpha1.Dash0,
 	logger *logr.Logger,
@@ -294,12 +294,12 @@ func (r *Dash0Reconciler) findAndInstrumentCronJobs(
 	namespace string,
 	logger *logr.Logger,
 ) error {
-	matchingResourcesInNamespace, err :=
-		r.ClientSet.BatchV1().CronJobs(namespace).List(ctx, resourcesWithoutDash0InstrumentedLabelFilter)
+	matchingWorkloadsInNamespace, err :=
+		r.ClientSet.BatchV1().CronJobs(namespace).List(ctx, workloadsWithoutDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying cron jobs: %w", err)
 	}
-	for _, resource := range matchingResourcesInNamespace.Items {
+	for _, resource := range matchingWorkloadsInNamespace.Items {
 		r.instrumentCronJob(ctx, resource, logger)
 	}
 	return nil
@@ -321,12 +321,12 @@ func (r *Dash0Reconciler) findAndInstrumentyDaemonSets(
 	namespace string,
 	logger *logr.Logger,
 ) error {
-	matchingResourcesInNamespace, err :=
-		r.ClientSet.AppsV1().DaemonSets(namespace).List(ctx, resourcesWithoutDash0InstrumentedLabelFilter)
+	matchingWorkloadsInNamespace, err :=
+		r.ClientSet.AppsV1().DaemonSets(namespace).List(ctx, workloadsWithoutDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying daemon sets: %w", err)
 	}
-	for _, resource := range matchingResourcesInNamespace.Items {
+	for _, resource := range matchingWorkloadsInNamespace.Items {
 		r.instrumentDaemonSet(ctx, resource, logger)
 	}
 	return nil
@@ -348,12 +348,12 @@ func (r *Dash0Reconciler) findAndInstrumentDeployments(
 	namespace string,
 	logger *logr.Logger,
 ) error {
-	matchingResourcesInNamespace, err :=
-		r.ClientSet.AppsV1().Deployments(namespace).List(ctx, resourcesWithoutDash0InstrumentedLabelFilter)
+	matchingWorkloadsInNamespace, err :=
+		r.ClientSet.AppsV1().Deployments(namespace).List(ctx, workloadsWithoutDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying deployments: %w", err)
 	}
-	for _, resource := range matchingResourcesInNamespace.Items {
+	for _, resource := range matchingWorkloadsInNamespace.Items {
 		r.instrumentDeployment(ctx, resource, logger)
 	}
 	return nil
@@ -375,13 +375,13 @@ func (r *Dash0Reconciler) findAndAddLabelsToImmutableJobsOnInstrumentation(
 	namespace string,
 	logger *logr.Logger,
 ) error {
-	matchingResourcesInNamespace, err :=
-		r.ClientSet.BatchV1().Jobs(namespace).List(ctx, resourcesWithoutDash0InstrumentedLabelFilter)
+	matchingWorkloadsInNamespace, err :=
+		r.ClientSet.BatchV1().Jobs(namespace).List(ctx, workloadsWithoutDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying jobs: %w", err)
 	}
 
-	for _, job := range matchingResourcesInNamespace.Items {
+	for _, job := range matchingWorkloadsInNamespace.Items {
 		r.addLabelsToImmutableJobsOnInstrumentation(ctx, job, logger)
 	}
 	return nil
@@ -397,11 +397,11 @@ func (r *Dash0Reconciler) addLabelsToImmutableJobsOnInstrumentation(
 		return
 	}
 	logger := reconcileLogger.WithValues(
-		resourceTypeLabel,
+		workkloadTypeLabel,
 		"Job",
-		resourceNamespaceLabel,
+		workloadNamespaceLabel,
 		job.GetNamespace(),
-		resourceNameLabel,
+		workloadNameLabel,
 		job.GetName(),
 	)
 	retryErr := util.Retry("labelling immutable job", func() error {
@@ -411,16 +411,16 @@ func (r *Dash0Reconciler) addLabelsToImmutableJobsOnInstrumentation(
 		}, &job); err != nil {
 			return fmt.Errorf("error when fetching job %s/%s: %w", job.GetNamespace(), job.GetName(), err)
 		}
-		newResourceModifier(r.Versions, &logger).AddLabelsToImmutableJob(&job)
+		newWorkloadModifier(r.Versions, &logger).AddLabelsToImmutableJob(&job)
 		return r.Client.Update(ctx, &job)
 	}, &logger)
 
 	if retryErr != nil {
 		r.postProcessInstrumentation(&job, false, retryErr, &logger)
 	} else {
-		r.postProcessInstrumentation(&job, false, ImmutableResourceError{
-			resourceType:     "job",
-			resource:         fmt.Sprintf("%s/%s", job.GetNamespace(), job.GetName()),
+		r.postProcessInstrumentation(&job, false, ImmutableWorkloadError{
+			workloadType:     "job",
+			workloadName:     fmt.Sprintf("%s/%s", job.GetNamespace(), job.GetName()),
 			modificationMode: Instrumentation,
 		}, &logger)
 	}
@@ -431,12 +431,12 @@ func (r *Dash0Reconciler) findAndInstrumentReplicaSets(
 	namespace string,
 	logger *logr.Logger,
 ) error {
-	matchingResourcesInNamespace, err :=
-		r.ClientSet.AppsV1().ReplicaSets(namespace).List(ctx, resourcesWithoutDash0InstrumentedLabelFilter)
+	matchingWorkloadsInNamespace, err :=
+		r.ClientSet.AppsV1().ReplicaSets(namespace).List(ctx, workloadsWithoutDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying deployments: %w", err)
 	}
-	for _, resource := range matchingResourcesInNamespace.Items {
+	for _, resource := range matchingWorkloadsInNamespace.Items {
 		r.instrumentReplicaSet(ctx, resource, logger)
 	}
 	return nil
@@ -463,11 +463,11 @@ func (r *Dash0Reconciler) findAndInstrumentStatefulSets(
 	namespace string,
 	logger *logr.Logger,
 ) error {
-	matchingResourcesInNamespace, err := r.ClientSet.AppsV1().StatefulSets(namespace).List(ctx, resourcesWithoutDash0InstrumentedLabelFilter)
+	matchingWorkloadsInNamespace, err := r.ClientSet.AppsV1().StatefulSets(namespace).List(ctx, workloadsWithoutDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying stateful sets: %w", err)
 	}
-	for _, resource := range matchingResourcesInNamespace.Items {
+	for _, resource := range matchingWorkloadsInNamespace.Items {
 		r.instrumentStatefulSet(ctx, resource, logger)
 	}
 	return nil
@@ -490,17 +490,17 @@ func (r *Dash0Reconciler) instrumentWorkload(
 	reconcileLogger *logr.Logger,
 ) {
 	objectMeta := workload.getObjectMeta()
-	kind := workload.getTypeMeta().Kind
+	kind := workload.getKind()
 	if objectMeta.DeletionTimestamp != nil {
 		// do not modify resources that are being deleted
 		return
 	}
 	logger := reconcileLogger.WithValues(
-		resourceTypeLabel,
+		workkloadTypeLabel,
 		kind,
-		resourceNamespaceLabel,
+		workloadNamespaceLabel,
 		objectMeta.GetNamespace(),
-		resourceNameLabel,
+		workloadNameLabel,
 		objectMeta.GetName(),
 	)
 
@@ -536,7 +536,7 @@ func (r *Dash0Reconciler) postProcessInstrumentation(
 	logger *logr.Logger,
 ) {
 	if retryErr != nil {
-		e := &ImmutableResourceError{}
+		e := &ImmutableWorkloadError{}
 		if errors.As(retryErr, e) {
 			logger.Info(e.Error())
 		} else {
@@ -544,11 +544,11 @@ func (r *Dash0Reconciler) postProcessInstrumentation(
 		}
 		util.QueueFailedInstrumentationEvent(r.Recorder, resource, "controller", retryErr)
 	} else if !hasBeenModified {
-		logger.Info("Dash0 instrumentation was already present on this resource, no modification by controller is " +
+		logger.Info("Dash0 instrumentation was already present on this workload, no modification by controller is " +
 			"necessary.")
 		util.QueueAlreadyInstrumentedEvent(r.Recorder, resource, "controller")
 	} else {
-		logger.Info("The controller has added Dash0 instrumentation to the resource.")
+		logger.Info("The controller has added Dash0 instrumentation to the workload.")
 		util.QueueSuccessfulInstrumentationEvent(r.Recorder, resource, "controller")
 	}
 }
@@ -583,9 +583,9 @@ func (r *Dash0Reconciler) runCleanupActions(
 	dash0CustomResource *operatorv1alpha1.Dash0,
 	logger *logr.Logger,
 ) error {
-	err := r.uninstrumentResourcesIfAvailable(ctx, dash0CustomResource, logger)
+	err := r.uninstrumentWorkloadsIfAvailable(ctx, dash0CustomResource, logger)
 	if err != nil {
-		logger.Error(err, "Failed to uninstrument resources, requeuing reconcile request.")
+		logger.Error(err, "Failed to uninstrument workloads, requeuing reconcile request.")
 		return err
 	}
 
@@ -618,14 +618,15 @@ func (r *Dash0Reconciler) addFinalizerIfNecessary(
 	return nil
 }
 
-func (r *Dash0Reconciler) uninstrumentResourcesIfAvailable(
+func (r *Dash0Reconciler) uninstrumentWorkloadsIfAvailable(
 	ctx context.Context,
 	dash0CustomResource *operatorv1alpha1.Dash0,
 	logger *logr.Logger,
 ) error {
 	if dash0CustomResource.IsAvailable() {
-		if err := r.uninstrumentResources(ctx, dash0CustomResource, logger); err != nil {
-			logger.Error(err, "Uninstrumenting existing resources failed.")
+		logger.Info("Reverting Dash0's modifications to workloads that have been instrumented to make them send telemetry to Dash0.")
+		if err := r.uninstrumentWorkloads(ctx, dash0CustomResource, logger); err != nil {
+			logger.Error(err, "Uninstrumenting existing workloads failed.")
 			return err
 		}
 	} else {
@@ -635,7 +636,7 @@ func (r *Dash0Reconciler) uninstrumentResourcesIfAvailable(
 	return nil
 }
 
-func (r *Dash0Reconciler) uninstrumentResources(
+func (r *Dash0Reconciler) uninstrumentWorkloads(
 	ctx context.Context,
 	dash0CustomResource *operatorv1alpha1.Dash0,
 	logger *logr.Logger,
@@ -667,12 +668,12 @@ func (r *Dash0Reconciler) findAndUninstrumentCronJobs(
 	namespace string,
 	logger *logr.Logger,
 ) error {
-	matchingResourcesInNamespace, err :=
-		r.ClientSet.BatchV1().CronJobs(namespace).List(ctx, resourcesWithDash0InstrumentedLabelFilter)
+	matchingWorkloadsInNamespace, err :=
+		r.ClientSet.BatchV1().CronJobs(namespace).List(ctx, workloadsWithDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying instrumented cron jobs: %w", err)
 	}
-	for _, resource := range matchingResourcesInNamespace.Items {
+	for _, resource := range matchingWorkloadsInNamespace.Items {
 		r.uninstrumentCronJob(ctx, resource, logger)
 	}
 	return nil
@@ -690,12 +691,12 @@ func (r *Dash0Reconciler) uninstrumentCronJob(
 }
 
 func (r *Dash0Reconciler) findAndUninstrumentDaemonSets(ctx context.Context, namespace string, logger *logr.Logger) error {
-	matchingResourcesInNamespace, err :=
-		r.ClientSet.AppsV1().DaemonSets(namespace).List(ctx, resourcesWithDash0InstrumentedLabelFilter)
+	matchingWorkloadsInNamespace, err :=
+		r.ClientSet.AppsV1().DaemonSets(namespace).List(ctx, workloadsWithDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying instrumented daemon sets: %w", err)
 	}
-	for _, resource := range matchingResourcesInNamespace.Items {
+	for _, resource := range matchingWorkloadsInNamespace.Items {
 		r.uninstrumentDaemonSet(ctx, resource, logger)
 	}
 	return nil
@@ -717,12 +718,12 @@ func (r *Dash0Reconciler) findAndUninstrumentDeployments(
 	namespace string,
 	logger *logr.Logger,
 ) error {
-	matchingResourcesInNamespace, err :=
-		r.ClientSet.AppsV1().Deployments(namespace).List(ctx, resourcesWithDash0InstrumentedLabelFilter)
+	matchingWorkloadsInNamespace, err :=
+		r.ClientSet.AppsV1().Deployments(namespace).List(ctx, workloadsWithDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying instrumented deployments: %w", err)
 	}
-	for _, resource := range matchingResourcesInNamespace.Items {
+	for _, resource := range matchingWorkloadsInNamespace.Items {
 		r.uninstrumentDeployment(ctx, resource, logger)
 	}
 	return nil
@@ -744,12 +745,12 @@ func (r *Dash0Reconciler) findAndHandleJobOnUninstrumentation(
 	namespace string,
 	logger *logr.Logger,
 ) error {
-	matchingResourcesInNamespace, err := r.ClientSet.BatchV1().Jobs(namespace).List(ctx, resourcesWithDash0InstrumentedLabelFilter)
+	matchingWorkloadsInNamespace, err := r.ClientSet.BatchV1().Jobs(namespace).List(ctx, workloadsWithDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying instrumented jobs: %w", err)
 	}
 
-	for _, job := range matchingResourcesInNamespace.Items {
+	for _, job := range matchingWorkloadsInNamespace.Items {
 		r.handleJobOnUninstrumentation(ctx, job, logger)
 	}
 	return nil
@@ -761,15 +762,15 @@ func (r *Dash0Reconciler) handleJobOnUninstrumentation(ctx context.Context, job 
 		return
 	}
 	logger := reconcileLogger.WithValues(
-		resourceTypeLabel,
+		workkloadTypeLabel,
 		"Job",
-		resourceNamespaceLabel,
+		workloadNamespaceLabel,
 		job.GetNamespace(),
-		resourceNameLabel,
+		workloadNameLabel,
 		job.GetName(),
 	)
 
-	createImmutableResourceError := false
+	createImmutableWorkloadsError := false
 	retryErr := util.Retry("removing labels from immutable job", func() error {
 		if err := r.Client.Get(ctx, client.ObjectKey{
 			Namespace: job.GetNamespace(),
@@ -782,28 +783,28 @@ func (r *Dash0Reconciler) handleJobOnUninstrumentation(ctx context.Context, job 
 			// This job has been instrumented, presumably by the webhook. We cannot undo the instrumentation here, since
 			// jobs are immutable.
 
-			// Deliberately not calling newResourceModifier(r.Versions,&logger).RemoveLabelsFromImmutableJob(&job) here
+			// Deliberately not calling newWorkloadModifier(r.Versions,&logger).RemoveLabelsFromImmutableJob(&job) here
 			// since we cannot remove the instrumentation, so we also have to leave the labels in place.
-			createImmutableResourceError = true
+			createImmutableWorkloadsError = true
 			return nil
 		} else {
 			// There was an attempt to instrument this job (probably by the controller), which has not been successful.
 			// We only need remove the labels from that instrumentation attempt to clean up.
-			newResourceModifier(r.Versions, &logger).RemoveLabelsFromImmutableJob(&job)
+			newWorkloadModifier(r.Versions, &logger).RemoveLabelsFromImmutableJob(&job)
 			return r.Client.Update(ctx, &job)
 		}
 	}, &logger)
 
 	if retryErr != nil {
 		// For the case that the job was instrumented and we could not uninstrument it, we create a
-		// ImmutableResourceError inside the retry loop. This error is then handled in the postProcessUninstrumentation.
+		// ImmutableWorkloadError inside the retry loop. This error is then handled in the postProcessUninstrumentation.
 		// The same is true for any other error types (for example errors in r.ClientUpdate).
 		r.postProcessUninstrumentation(&job, false, retryErr, &logger)
-	} else if createImmutableResourceError {
+	} else if createImmutableWorkloadsError {
 		//
-		r.postProcessUninstrumentation(&job, false, ImmutableResourceError{
-			resourceType:     "job",
-			resource:         fmt.Sprintf("%s/%s", job.GetNamespace(), job.GetName()),
+		r.postProcessUninstrumentation(&job, false, ImmutableWorkloadError{
+			workloadType:     "job",
+			workloadName:     fmt.Sprintf("%s/%s", job.GetNamespace(), job.GetName()),
 			modificationMode: Uninstrumentation,
 		}, &logger)
 	} else {
@@ -816,12 +817,12 @@ func (r *Dash0Reconciler) findAndUninstrumentReplicaSets(
 	namespace string,
 	logger *logr.Logger,
 ) error {
-	matchingResourcesInNamespace, err :=
-		r.ClientSet.AppsV1().ReplicaSets(namespace).List(ctx, resourcesWithDash0InstrumentedLabelFilter)
+	matchingWorkloadsInNamespace, err :=
+		r.ClientSet.AppsV1().ReplicaSets(namespace).List(ctx, workloadsWithDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying instrumented replica sets: %w", err)
 	}
-	for _, resource := range matchingResourcesInNamespace.Items {
+	for _, resource := range matchingWorkloadsInNamespace.Items {
 		r.uninstrumentReplicaSet(ctx, resource, logger)
 	}
 	return nil
@@ -843,12 +844,12 @@ func (r *Dash0Reconciler) findAndUninstrumentStatefulSets(
 	namespace string,
 	logger *logr.Logger,
 ) error {
-	matchingResourcesInNamespace, err :=
-		r.ClientSet.AppsV1().StatefulSets(namespace).List(ctx, resourcesWithDash0InstrumentedLabelFilter)
+	matchingWorkloadsInNamespace, err :=
+		r.ClientSet.AppsV1().StatefulSets(namespace).List(ctx, workloadsWithDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying instrumented stateful sets: %w", err)
 	}
-	for _, resource := range matchingResourcesInNamespace.Items {
+	for _, resource := range matchingWorkloadsInNamespace.Items {
 		r.uninstrumentStatefulSet(ctx, resource, logger)
 	}
 	return nil
@@ -871,17 +872,17 @@ func (r *Dash0Reconciler) revertWorkloadInstrumentation(
 	reconcileLogger *logr.Logger,
 ) {
 	objectMeta := workload.getObjectMeta()
-	kind := workload.getTypeMeta().Kind
+	kind := workload.getKind()
 	if objectMeta.DeletionTimestamp != nil {
 		// do not modify resources that are being deleted
 		return
 	}
 	logger := reconcileLogger.WithValues(
-		resourceTypeLabel,
+		workkloadTypeLabel,
 		kind,
-		resourceNamespaceLabel,
+		workloadNamespaceLabel,
 		objectMeta.GetNamespace(),
-		resourceNameLabel,
+		workloadNameLabel,
 		objectMeta.GetName(),
 	)
 
@@ -917,7 +918,7 @@ func (r *Dash0Reconciler) postProcessUninstrumentation(
 	logger *logr.Logger,
 ) {
 	if retryErr != nil {
-		e := &ImmutableResourceError{}
+		e := &ImmutableWorkloadError{}
 		if errors.As(retryErr, e) {
 			logger.Info(e.Error())
 		} else {
@@ -925,17 +926,17 @@ func (r *Dash0Reconciler) postProcessUninstrumentation(
 		}
 		util.QueueFailedUninstrumentationEvent(r.Recorder, resource, "controller", retryErr)
 	} else if !hasBeenModified {
-		logger.Info("Dash0 instrumentations was not present on this resource, no modification by controller has been " +
+		logger.Info("Dash0 instrumentations was not present on this workload, no modification by controller has been " +
 			"necessary.")
 		util.QueueAlreadyNotInstrumentedEvent(r.Recorder, resource, "controller")
 	} else {
-		logger.Info("The controller has removed Dash0 instrumentation from the resource.")
+		logger.Info("The controller has removed Dash0 instrumentation from the workload.")
 		util.QueueSuccessfulUninstrumentationEvent(r.Recorder, resource, "controller")
 	}
 }
 
-func newResourceModifier(versions util.Versions, logger *logr.Logger) *k8sresources.ResourceModifier {
-	return k8sresources.NewResourceModifier(
+func newWorkloadModifier(versions util.Versions, logger *logr.Logger) *workloads.ResourceModifier {
+	return workloads.NewResourceModifier(
 		util.InstrumentationMetadata{
 			Versions:       versions,
 			InstrumentedBy: "controller",

@@ -1,4 +1,4 @@
-package k8sresources_test
+package workloads_test
 
 import (
 	"testing"
@@ -9,5 +9,5 @@ import (
 
 func TestK8sresources(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "K8s Resources Suite")
+	RunSpecs(t, "Workload Modifications Suite")
 }

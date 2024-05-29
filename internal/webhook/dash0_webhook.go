@@ -19,8 +19,8 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	"github.com/dash0hq/dash0-operator/internal/k8sresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/workloads"
 )
 
 type Handler struct {
@@ -109,7 +109,7 @@ func (h *Handler) handleCronJob(
 	if failed {
 		return responseIfFailed
 	}
-	hasBeenModified := h.newResourceModifier(logger).ModifyCronJob(cronJob)
+	hasBeenModified := h.newWorkloadModifier(logger).ModifyCronJob(cronJob)
 	return h.postProcess(request, cronJob, hasBeenModified, logger)
 }
 
@@ -123,7 +123,7 @@ func (h *Handler) handleDaemonSet(
 	if failed {
 		return responseIfFailed
 	}
-	hasBeenModified := h.newResourceModifier(logger).ModifyDaemonSet(daemonSet)
+	hasBeenModified := h.newWorkloadModifier(logger).ModifyDaemonSet(daemonSet)
 	return h.postProcess(request, daemonSet, hasBeenModified, logger)
 }
 
@@ -137,7 +137,7 @@ func (h *Handler) handleDeployment(
 	if failed {
 		return responseIfFailed
 	}
-	hasBeenModified := h.newResourceModifier(logger).ModifyDeployment(deployment)
+	hasBeenModified := h.newWorkloadModifier(logger).ModifyDeployment(deployment)
 	return h.postProcess(request, deployment, hasBeenModified, logger)
 }
 
@@ -151,7 +151,7 @@ func (h *Handler) handleJob(
 	if failed {
 		return responseIfFailed
 	}
-	hasBeenModified := h.newResourceModifier(logger).ModifyJob(job)
+	hasBeenModified := h.newWorkloadModifier(logger).ModifyJob(job)
 	return h.postProcess(request, job, hasBeenModified, logger)
 }
 
@@ -165,7 +165,7 @@ func (h *Handler) handleReplicaSet(
 	if failed {
 		return responseIfFailed
 	}
-	hasBeenModified := h.newResourceModifier(logger).ModifyReplicaSet(replicaSet)
+	hasBeenModified := h.newWorkloadModifier(logger).ModifyReplicaSet(replicaSet)
 	return h.postProcess(request, replicaSet, hasBeenModified, logger)
 }
 
@@ -179,7 +179,7 @@ func (h *Handler) handleStatefulSet(
 	if failed {
 		return responseIfFailed
 	}
-	hasBeenModified := h.newResourceModifier(logger).ModifyStatefulSet(statefulSet)
+	hasBeenModified := h.newWorkloadModifier(logger).ModifyStatefulSet(statefulSet)
 	return h.postProcess(request, statefulSet, hasBeenModified, logger)
 }
 
@@ -214,13 +214,13 @@ func (h *Handler) postProcess(
 		return admission.Allowed(fmt.Errorf("error when marshalling modfied resource to JSON: %w", err).Error())
 	}
 
-	logger.Info("The webhook has added Dash0 instrumentation to the resource.")
+	logger.Info("The webhook has added Dash0 instrumentation to the workload.")
 	util.QueueSuccessfulInstrumentationEvent(h.Recorder, resource, "webhook")
 	return admission.PatchResponseFromRaw(request.Object.Raw, marshalled)
 }
 
-func (h *Handler) newResourceModifier(logger *logr.Logger) *k8sresources.ResourceModifier {
-	return k8sresources.NewResourceModifier(
+func (h *Handler) newWorkloadModifier(logger *logr.Logger) *workloads.ResourceModifier {
+	return workloads.NewResourceModifier(
 		util.InstrumentationMetadata{
 			Versions:       h.Versions,
 			InstrumentedBy: "webhook",

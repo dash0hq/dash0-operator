@@ -532,7 +532,7 @@ func VerifyThatSpansAreCaptured(
 	restartPodsManually bool,
 	instrumentationBy string,
 ) {
-	By("verify that the resource has been instrumented and is sending telemetry")
+	By("verify that the workload has been instrumented and is sending telemetry")
 
 	var testId string
 	if sendRequests {

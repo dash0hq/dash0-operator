@@ -259,7 +259,7 @@ func VerifySuccessfulInstrumentationEvent(
 		namespace,
 		resourceName,
 		util.ReasonSuccessfulInstrumentation,
-		fmt.Sprintf("Dash0 instrumentation of this resource by the %s has been successful.", eventSource),
+		fmt.Sprintf("Dash0 instrumentation of this workload by the %s has been successful.", eventSource),
 	)
 }
 
@@ -293,7 +293,7 @@ func VerifySuccessfulUninstrumentationEvent(
 		namespace,
 		resourceName,
 		util.ReasonSuccessfulUninstrumentation,
-		fmt.Sprintf("The %s successfully removed the Dash0 instrumentation from this resource.", eventSource),
+		fmt.Sprintf("The %s successfully removed the Dash0 instrumentation from this workload.", eventSource),
 	)
 }
 
