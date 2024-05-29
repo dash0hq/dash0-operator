@@ -38,7 +38,7 @@ var _ = Describe("Dash0 Resource Modification", func() {
 	Context("when instrumenting resources", func() {
 		It("should add Dash0 to a basic deployment", func() {
 			deployment := BasicDeployment(TestNamespaceName, DeploymentName)
-			result := resourceModifier.ModifyDeployment(deployment, TestNamespaceName)
+			result := resourceModifier.ModifyDeployment(deployment)
 
 			Expect(result).To(BeTrue())
 			VerifyModifiedDeployment(deployment, BasicInstrumentedPodSpecExpectations)
@@ -46,7 +46,7 @@ var _ = Describe("Dash0 Resource Modification", func() {
 
 		It("should add Dash0 to a deployment that has multiple containers, and already has volumes and init containers", func() {
 			deployment := DeploymentWithMoreBellsAndWhistles(TestNamespaceName, DeploymentName)
-			result := resourceModifier.ModifyDeployment(deployment, TestNamespaceName)
+			result := resourceModifier.ModifyDeployment(deployment)
 
 			Expect(result).To(BeTrue())
 			VerifyModifiedDeployment(deployment, PodSpecExpectations{
@@ -77,7 +77,7 @@ var _ = Describe("Dash0 Resource Modification", func() {
 
 		It("should update existing Dash0 artifacts in a deployment", func() {
 			deployment := DeploymentWithExistingDash0Artifacts(TestNamespaceName, DeploymentName)
-			result := resourceModifier.ModifyDeployment(deployment, TestNamespaceName)
+			result := resourceModifier.ModifyDeployment(deployment)
 
 			Expect(result).To(BeTrue())
 			VerifyModifiedDeployment(deployment, PodSpecExpectations{
@@ -110,7 +110,7 @@ var _ = Describe("Dash0 Resource Modification", func() {
 
 		It("should add Dash0 to a basic cron job", func() {
 			resource := BasicCronJob(TestNamespaceName, CronJobName)
-			result := resourceModifier.ModifyCronJob(resource, TestNamespaceName)
+			result := resourceModifier.ModifyCronJob(resource)
 
 			Expect(result).To(BeTrue())
 			VerifyModifiedCronJob(resource, BasicInstrumentedPodSpecExpectations)
@@ -118,7 +118,7 @@ var _ = Describe("Dash0 Resource Modification", func() {
 
 		It("should add Dash0 to a basic daemon set", func() {
 			resource := BasicDaemonSet(TestNamespaceName, DaemonSetName)
-			result := resourceModifier.ModifyDaemonSet(resource, TestNamespaceName)
+			result := resourceModifier.ModifyDaemonSet(resource)
 
 			Expect(result).To(BeTrue())
 			VerifyModifiedDaemonSet(resource, BasicInstrumentedPodSpecExpectations)
@@ -126,7 +126,7 @@ var _ = Describe("Dash0 Resource Modification", func() {
 
 		It("should add Dash0 to a basic job", func() {
 			resource := BasicJob(TestNamespaceName, JobName1)
-			result := resourceModifier.ModifyJob(resource, TestNamespaceName)
+			result := resourceModifier.ModifyJob(resource)
 
 			Expect(result).To(BeTrue())
 			VerifyModifiedJob(resource, BasicInstrumentedPodSpecExpectations)
@@ -134,7 +134,7 @@ var _ = Describe("Dash0 Resource Modification", func() {
 
 		It("should add Dash0 to a basic replica set", func() {
 			resource := BasicReplicaSet(TestNamespaceName, ReplicaSetName)
-			result := resourceModifier.ModifyReplicaSet(resource, TestNamespaceName)
+			result := resourceModifier.ModifyReplicaSet(resource)
 
 			Expect(result).To(BeTrue())
 			VerifyModifiedReplicaSet(resource, BasicInstrumentedPodSpecExpectations)
@@ -142,7 +142,7 @@ var _ = Describe("Dash0 Resource Modification", func() {
 
 		It("should not add Dash0 to a basic replica set that is owned by a deployment", func() {
 			resource := ReplicaSetOwnedByDeployment(TestNamespaceName, ReplicaSetName)
-			result := resourceModifier.ModifyReplicaSet(resource, TestNamespaceName)
+			result := resourceModifier.ModifyReplicaSet(resource)
 
 			Expect(result).To(BeFalse())
 			VerifyUnmodifiedReplicaSet(resource)
@@ -150,7 +150,7 @@ var _ = Describe("Dash0 Resource Modification", func() {
 
 		It("should add Dash0 to a basic stateful set", func() {
 			resource := BasicStatefulSet(TestNamespaceName, StatefulSetName)
-			result := resourceModifier.ModifyStatefulSet(resource, TestNamespaceName)
+			result := resourceModifier.ModifyStatefulSet(resource)
 
 			Expect(result).To(BeTrue())
 			VerifyModifiedStatefulSet(resource, BasicInstrumentedPodSpecExpectations)

@@ -109,7 +109,7 @@ func (h *Handler) handleCronJob(
 	if failed {
 		return responseIfFailed
 	}
-	hasBeenModified := h.newResourceModifier(logger).ModifyCronJob(cronJob, request.Namespace)
+	hasBeenModified := h.newResourceModifier(logger).ModifyCronJob(cronJob)
 	return h.postProcess(request, cronJob, hasBeenModified, logger)
 }
 
@@ -123,7 +123,7 @@ func (h *Handler) handleDaemonSet(
 	if failed {
 		return responseIfFailed
 	}
-	hasBeenModified := h.newResourceModifier(logger).ModifyDaemonSet(daemonSet, request.Namespace)
+	hasBeenModified := h.newResourceModifier(logger).ModifyDaemonSet(daemonSet)
 	return h.postProcess(request, daemonSet, hasBeenModified, logger)
 }
 
@@ -137,7 +137,7 @@ func (h *Handler) handleDeployment(
 	if failed {
 		return responseIfFailed
 	}
-	hasBeenModified := h.newResourceModifier(logger).ModifyDeployment(deployment, request.Namespace)
+	hasBeenModified := h.newResourceModifier(logger).ModifyDeployment(deployment)
 	return h.postProcess(request, deployment, hasBeenModified, logger)
 }
 
@@ -151,7 +151,7 @@ func (h *Handler) handleJob(
 	if failed {
 		return responseIfFailed
 	}
-	hasBeenModified := h.newResourceModifier(logger).ModifyJob(job, request.Namespace)
+	hasBeenModified := h.newResourceModifier(logger).ModifyJob(job)
 	return h.postProcess(request, job, hasBeenModified, logger)
 }
 
@@ -165,7 +165,7 @@ func (h *Handler) handleReplicaSet(
 	if failed {
 		return responseIfFailed
 	}
-	hasBeenModified := h.newResourceModifier(logger).ModifyReplicaSet(replicaSet, request.Namespace)
+	hasBeenModified := h.newResourceModifier(logger).ModifyReplicaSet(replicaSet)
 	return h.postProcess(request, replicaSet, hasBeenModified, logger)
 }
 
@@ -179,7 +179,7 @@ func (h *Handler) handleStatefulSet(
 	if failed {
 		return responseIfFailed
 	}
-	hasBeenModified := h.newResourceModifier(logger).ModifyStatefulSet(statefulSet, request.Namespace)
+	hasBeenModified := h.newResourceModifier(logger).ModifyStatefulSet(statefulSet)
 	return h.postProcess(request, statefulSet, hasBeenModified, logger)
 }
 
