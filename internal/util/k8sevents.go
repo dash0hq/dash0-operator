@@ -20,12 +20,13 @@ func QueueSuccessfulInstrumentationEvent(eventRecorder record.EventRecorder, res
 	)
 }
 
-func QueueAlreadyInstrumentedEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource string) {
+func QueueNoInstrumentationNecessaryEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource string) {
 	eventRecorder.Event(
 		resource,
 		corev1.EventTypeNormal,
-		string(ReasonAlreadyInstrumented),
-		fmt.Sprintf("Dash0 instrumentation was already present on this workload, no modification by the %s is necessary.", eventSource),
+		string(ReasonNoInstrumentationNecessary),
+		fmt.Sprintf("Dash0 instrumentation was already present on this workload, or the workload is part of a higher "+
+			"order workload that will be instrumented, no modification by the %s is necessary.", eventSource),
 	)
 }
 
@@ -47,7 +48,7 @@ func QueueSuccessfulUninstrumentationEvent(eventRecorder record.EventRecorder, r
 	)
 }
 
-func QueueAlreadyNotInstrumentedEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource string) {
+func QueueNoUninstrumentationNecessaryEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource string) {
 	eventRecorder.Event(
 		resource,
 		corev1.EventTypeNormal,
