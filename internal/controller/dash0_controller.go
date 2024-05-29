@@ -544,9 +544,12 @@ func (r *Dash0Reconciler) postProcessInstrumentation(
 		}
 		util.QueueFailedInstrumentationEvent(r.Recorder, resource, "controller", retryErr)
 	} else if !hasBeenModified {
-		logger.Info("Dash0 instrumentation was already present on this workload, no modification by controller is " +
-			"necessary.")
-		util.QueueAlreadyInstrumentedEvent(r.Recorder, resource, "controller")
+		// TODO This also happens for replica sets owned by a deployment and the log message as well as the message on
+		// the event are unspecific, would be better if we could differentiate between the two cases.
+		// (Also for revert maybe.)
+		logger.Info("Dash0 instrumentation was already present on this workload, or the workload is part of a higher " +
+			"order workload that will be instrumented, no modification by controller is necessary.")
+		util.QueueNoInstrumentationNecessaryEvent(r.Recorder, resource, "controller")
 	} else {
 		logger.Info("The controller has added Dash0 instrumentation to the workload.")
 		util.QueueSuccessfulInstrumentationEvent(r.Recorder, resource, "controller")
@@ -928,7 +931,7 @@ func (r *Dash0Reconciler) postProcessUninstrumentation(
 	} else if !hasBeenModified {
 		logger.Info("Dash0 instrumentations was not present on this workload, no modification by controller has been " +
 			"necessary.")
-		util.QueueAlreadyNotInstrumentedEvent(r.Recorder, resource, "controller")
+		util.QueueNoUninstrumentationNecessaryEvent(r.Recorder, resource, "controller")
 	} else {
 		logger.Info("The controller has removed Dash0 instrumentation from the workload.")
 		util.QueueSuccessfulUninstrumentationEvent(r.Recorder, resource, "controller")

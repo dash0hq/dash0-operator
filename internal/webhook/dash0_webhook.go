@@ -204,7 +204,7 @@ func (h *Handler) postProcess(
 ) admission.Response {
 	if !hasBeenModified {
 		logger.Info("Dash0 instrumentation already present, no modification by webhook is necessary.")
-		util.QueueAlreadyInstrumentedEvent(h.Recorder, resource, "webhook")
+		util.QueueNoInstrumentationNecessaryEvent(h.Recorder, resource, "webhook")
 		return admission.Allowed("no changes")
 	}
 

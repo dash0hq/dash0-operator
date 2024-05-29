@@ -11,7 +11,7 @@ const (
 	ConditionTypeDegraded  ConditionType = "Degraded"
 
 	ReasonSuccessfulInstrumentation   Reason = "SuccessfulInstrumentation"
-	ReasonAlreadyInstrumented         Reason = "ReasonAlreadyInstrumented"
+	ReasonNoInstrumentationNecessary  Reason = "ReasonAlreadyInstrumented"
 	ReasonFailedInstrumentation       Reason = "FailedInstrumentation"
 	ReasonSuccessfulUninstrumentation Reason = "SuccessfulUninstrumentation"
 	ReasonAlreadyNotInstrumented      Reason = "ReasonAlreadyNotInstrumented"
