@@ -59,41 +59,41 @@ func NewResourceModifier(
 	}
 }
 
-func (m *ResourceModifier) ModifyCronJob(cronJob *batchv1.CronJob, namespace string) bool {
-	return m.modifyResource(&cronJob.Spec.JobTemplate.Spec.Template, &cronJob.ObjectMeta, namespace)
+func (m *ResourceModifier) ModifyCronJob(cronJob *batchv1.CronJob) bool {
+	return m.modifyResource(&cronJob.Spec.JobTemplate.Spec.Template, &cronJob.ObjectMeta)
 }
 
-func (m *ResourceModifier) ModifyDaemonSet(daemonSet *appsv1.DaemonSet, namespace string) bool {
-	return m.modifyResource(&daemonSet.Spec.Template, &daemonSet.ObjectMeta, namespace)
+func (m *ResourceModifier) ModifyDaemonSet(daemonSet *appsv1.DaemonSet) bool {
+	return m.modifyResource(&daemonSet.Spec.Template, &daemonSet.ObjectMeta)
 }
 
-func (m *ResourceModifier) ModifyDeployment(deployment *appsv1.Deployment, namespace string) bool {
-	return m.modifyResource(&deployment.Spec.Template, &deployment.ObjectMeta, namespace)
+func (m *ResourceModifier) ModifyDeployment(deployment *appsv1.Deployment) bool {
+	return m.modifyResource(&deployment.Spec.Template, &deployment.ObjectMeta)
 }
 
-func (m *ResourceModifier) ModifyJob(job *batchv1.Job, namespace string) bool {
-	return m.modifyResource(&job.Spec.Template, &job.ObjectMeta, namespace)
+func (m *ResourceModifier) ModifyJob(job *batchv1.Job) bool {
+	return m.modifyResource(&job.Spec.Template, &job.ObjectMeta)
 }
 
 func (m *ResourceModifier) AddLabelsToImmutableJob(job *batchv1.Job) {
 	m.addInstrumentationLabels(&job.ObjectMeta, false)
 }
 
-func (m *ResourceModifier) ModifyReplicaSet(replicaSet *appsv1.ReplicaSet, namespace string) bool {
+func (m *ResourceModifier) ModifyReplicaSet(replicaSet *appsv1.ReplicaSet) bool {
 	if m.hasDeploymentOwnerReference(replicaSet) {
 		return false
 	}
-	return m.modifyResource(&replicaSet.Spec.Template, &replicaSet.ObjectMeta, namespace)
+	return m.modifyResource(&replicaSet.Spec.Template, &replicaSet.ObjectMeta)
 }
 
-func (m *ResourceModifier) ModifyStatefulSet(statefulSet *appsv1.StatefulSet, namespace string) bool {
-	return m.modifyResource(&statefulSet.Spec.Template, &statefulSet.ObjectMeta, namespace)
+func (m *ResourceModifier) ModifyStatefulSet(statefulSet *appsv1.StatefulSet) bool {
+	return m.modifyResource(&statefulSet.Spec.Template, &statefulSet.ObjectMeta)
 }
 
-func (m *ResourceModifier) modifyResource(podTemplateSpec *corev1.PodTemplateSpec, meta *metav1.ObjectMeta, namespace string) bool {
+func (m *ResourceModifier) modifyResource(podTemplateSpec *corev1.PodTemplateSpec, meta *metav1.ObjectMeta) bool {
 	hasBeenModified := m.modifyPodSpec(
 		&podTemplateSpec.Spec,
-		fmt.Sprintf(envVarDash0CollectorBaseUrlValueTemplate, namespace),
+		fmt.Sprintf(envVarDash0CollectorBaseUrlValueTemplate, meta.Namespace),
 	)
 	if hasBeenModified {
 		m.addInstrumentationLabels(meta, true)

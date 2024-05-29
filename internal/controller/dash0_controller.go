@@ -119,7 +119,8 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		// The error has already been logged in checkIfNamespaceExists.
 		return ctrl.Result{}, err
 	} else if !namespaceStillExists {
-		logger.Info("The namespace seems to have been deleted after this reconcile request has been scheduled. Ignoring the reconcile request.")
+		logger.Info("The namespace seems to have been deleted after this reconcile request has been scheduled. " +
+			"Ignoring the reconcile request.")
 		return ctrl.Result{}, nil
 	}
 
@@ -170,7 +171,11 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	return ctrl.Result{}, nil
 }
 
-func (r *Dash0Reconciler) checkIfNamespaceExists(ctx context.Context, namespace string, logger *logr.Logger) (bool, error) {
+func (r *Dash0Reconciler) checkIfNamespaceExists(
+	ctx context.Context,
+	namespace string,
+	logger *logr.Logger,
+) (bool, error) {
 	_, err := r.ClientSet.CoreV1().Namespaces().Get(ctx, namespace, metav1.GetOptions{})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -183,14 +188,22 @@ func (r *Dash0Reconciler) checkIfNamespaceExists(ctx context.Context, namespace 
 	return true, nil
 }
 
-func (r *Dash0Reconciler) initStatusConditions(ctx context.Context, dash0CustomResource *operatorv1alpha1.Dash0, logger *logr.Logger) (bool, error) {
+func (r *Dash0Reconciler) initStatusConditions(
+	ctx context.Context,
+	dash0CustomResource *operatorv1alpha1.Dash0,
+	logger *logr.Logger,
+) (bool, error) {
 	firstReconcile := false
 	needsRefresh := false
 	if dash0CustomResource.Status.Conditions == nil || len(dash0CustomResource.Status.Conditions) == 0 {
 		dash0CustomResource.SetAvailableConditionToUnknown()
 		firstReconcile = true
 		needsRefresh = true
-	} else if availableCondition := meta.FindStatusCondition(dash0CustomResource.Status.Conditions, string(util.ConditionTypeAvailable)); availableCondition == nil {
+	} else if availableCondition :=
+		meta.FindStatusCondition(
+			dash0CustomResource.Status.Conditions,
+			string(util.ConditionTypeAvailable),
+		); availableCondition == nil {
 		dash0CustomResource.SetAvailableConditionToUnknown()
 		needsRefresh = true
 	}
@@ -204,20 +217,26 @@ func (r *Dash0Reconciler) initStatusConditions(ctx context.Context, dash0CustomR
 	return firstReconcile, nil
 }
 
-func (r *Dash0Reconciler) handleFirstReconcile(ctx context.Context, dash0CustomResource *operatorv1alpha1.Dash0, logger *logr.Logger) error {
+func (r *Dash0Reconciler) handleFirstReconcile(
+	ctx context.Context,
+	dash0CustomResource *operatorv1alpha1.Dash0,
+	logger *logr.Logger,
+) error {
 	logger.Info("Initial reconcile in progress.")
 	instrumentationEnabled := true
 	instrumentingExistingResourcesEnabled := true
 	if !instrumentationEnabled {
 		logger.Info(
-			"Instrumentation is not enabled, neither new nor existing resources will be modified to send telemetry to Dash0.",
+			"Instrumentation is not enabled, neither new nor existing resources will be modified to send telemetry " +
+				"to Dash0.",
 		)
 		return nil
 	}
 
 	if !instrumentingExistingResourcesEnabled {
 		logger.Info(
-			"Instrumenting existing resources is not enabled, only new resources will be modified (at deploy time) to send telemetry to Dash0.",
+			"Instrumenting existing resources is not enabled, only new resources will be modified (at deploy time) " +
+				"to send telemetry to Dash0.",
 		)
 		return nil
 	}
@@ -231,7 +250,11 @@ func (r *Dash0Reconciler) handleFirstReconcile(ctx context.Context, dash0CustomR
 	return nil
 }
 
-func (r *Dash0Reconciler) refreshStatus(ctx context.Context, dash0CustomResource *operatorv1alpha1.Dash0, logger *logr.Logger) error {
+func (r *Dash0Reconciler) refreshStatus(
+	ctx context.Context,
+	dash0CustomResource *operatorv1alpha1.Dash0,
+	logger *logr.Logger,
+) error {
 	if err := r.Status().Update(ctx, dash0CustomResource); err != nil {
 		logger.Error(err, "Cannot update the status of the Dash0 custom resource, requeuing reconcile request.")
 		return err
@@ -239,7 +262,11 @@ func (r *Dash0Reconciler) refreshStatus(ctx context.Context, dash0CustomResource
 	return nil
 }
 
-func (r *Dash0Reconciler) instrumentExistingResources(ctx context.Context, dash0CustomResource *operatorv1alpha1.Dash0, logger *logr.Logger) error {
+func (r *Dash0Reconciler) instrumentExistingResources(
+	ctx context.Context,
+	dash0CustomResource *operatorv1alpha1.Dash0,
+	logger *logr.Logger,
+) error {
 	namespace := dash0CustomResource.Namespace
 
 	errCronJobs := r.findAndInstrumentCronJobs(ctx, namespace, logger)
@@ -262,8 +289,13 @@ func (r *Dash0Reconciler) instrumentExistingResources(ctx context.Context, dash0
 	return nil
 }
 
-func (r *Dash0Reconciler) findAndInstrumentCronJobs(ctx context.Context, namespace string, logger *logr.Logger) error {
-	matchingResourcesInNamespace, err := r.ClientSet.BatchV1().CronJobs(namespace).List(ctx, resourcesWithoutDash0InstrumentedLabelFilter)
+func (r *Dash0Reconciler) findAndInstrumentCronJobs(
+	ctx context.Context,
+	namespace string,
+	logger *logr.Logger,
+) error {
+	matchingResourcesInNamespace, err :=
+		r.ClientSet.BatchV1().CronJobs(namespace).List(ctx, resourcesWithoutDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying cron jobs: %w", err)
 	}
@@ -273,40 +305,24 @@ func (r *Dash0Reconciler) findAndInstrumentCronJobs(ctx context.Context, namespa
 	return nil
 }
 
-func (r *Dash0Reconciler) instrumentCronJob(ctx context.Context, cronJob batchv1.CronJob, reconcileLogger *logr.Logger) {
-	if cronJob.DeletionTimestamp != nil {
-		// do not modify resources that are being deleted
-		return
-	}
-	logger := reconcileLogger.WithValues(
-		resourceTypeLabel,
-		"CronJob",
-		resourceNamespaceLabel,
-		cronJob.GetNamespace(),
-		resourceNameLabel,
-		cronJob.GetName(),
-	)
-	hasBeenModified := false
-	retryErr := util.Retry("instrumenting cron job", func() error {
-		if err := r.Client.Get(ctx, client.ObjectKey{
-			Namespace: cronJob.GetNamespace(),
-			Name:      cronJob.GetName(),
-		}, &cronJob); err != nil {
-			return fmt.Errorf("error when fetching cron job %s/%s: %w", cronJob.GetNamespace(), cronJob.GetName(), err)
-		}
-		hasBeenModified = r.newResourceModifier(&logger).ModifyCronJob(&cronJob, cronJob.GetNamespace())
-		if hasBeenModified {
-			return r.Client.Update(ctx, &cronJob)
-		} else {
-			return nil
-		}
-	}, &logger)
-
-	r.postProcessInstrumentation(&cronJob, hasBeenModified, retryErr, &logger)
+func (r *Dash0Reconciler) instrumentCronJob(
+	ctx context.Context,
+	cronJob batchv1.CronJob,
+	reconcileLogger *logr.Logger,
+) {
+	r.instrumentWorkload(ctx, &cronJobWorkload{
+		cronJob:  &cronJob,
+		versions: r.Versions,
+	}, reconcileLogger)
 }
 
-func (r *Dash0Reconciler) findAndInstrumentyDaemonSets(ctx context.Context, namespace string, logger *logr.Logger) error {
-	matchingResourcesInNamespace, err := r.ClientSet.AppsV1().DaemonSets(namespace).List(ctx, resourcesWithoutDash0InstrumentedLabelFilter)
+func (r *Dash0Reconciler) findAndInstrumentyDaemonSets(
+	ctx context.Context,
+	namespace string,
+	logger *logr.Logger,
+) error {
+	matchingResourcesInNamespace, err :=
+		r.ClientSet.AppsV1().DaemonSets(namespace).List(ctx, resourcesWithoutDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying daemon sets: %w", err)
 	}
@@ -316,40 +332,24 @@ func (r *Dash0Reconciler) findAndInstrumentyDaemonSets(ctx context.Context, name
 	return nil
 }
 
-func (r *Dash0Reconciler) instrumentDaemonSet(ctx context.Context, daemonSet appsv1.DaemonSet, reconcileLogger *logr.Logger) {
-	if daemonSet.DeletionTimestamp != nil {
-		// do not modify resources that are being deleted
-		return
-	}
-	logger := reconcileLogger.WithValues(
-		resourceTypeLabel,
-		"DaemonSet",
-		resourceNamespaceLabel,
-		daemonSet.GetNamespace(),
-		resourceNameLabel,
-		daemonSet.GetName(),
-	)
-	hasBeenModified := false
-	retryErr := util.Retry("instrumenting daemon set", func() error {
-		if err := r.Client.Get(ctx, client.ObjectKey{
-			Namespace: daemonSet.GetNamespace(),
-			Name:      daemonSet.GetName(),
-		}, &daemonSet); err != nil {
-			return fmt.Errorf("error when fetching daemon set %s/%s: %w", daemonSet.GetNamespace(), daemonSet.GetName(), err)
-		}
-		hasBeenModified = r.newResourceModifier(&logger).ModifyDaemonSet(&daemonSet, daemonSet.GetNamespace())
-		if hasBeenModified {
-			return r.Client.Update(ctx, &daemonSet)
-		} else {
-			return nil
-		}
-	}, &logger)
-
-	r.postProcessInstrumentation(&daemonSet, hasBeenModified, retryErr, &logger)
+func (r *Dash0Reconciler) instrumentDaemonSet(
+	ctx context.Context,
+	daemonSet appsv1.DaemonSet,
+	reconcileLogger *logr.Logger,
+) {
+	r.instrumentWorkload(ctx, &daemonSetWorkload{
+		daemonSet: &daemonSet,
+		versions:  r.Versions,
+	}, reconcileLogger)
 }
 
-func (r *Dash0Reconciler) findAndInstrumentDeployments(ctx context.Context, namespace string, logger *logr.Logger) error {
-	matchingResourcesInNamespace, err := r.ClientSet.AppsV1().Deployments(namespace).List(ctx, resourcesWithoutDash0InstrumentedLabelFilter)
+func (r *Dash0Reconciler) findAndInstrumentDeployments(
+	ctx context.Context,
+	namespace string,
+	logger *logr.Logger,
+) error {
+	matchingResourcesInNamespace, err :=
+		r.ClientSet.AppsV1().Deployments(namespace).List(ctx, resourcesWithoutDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying deployments: %w", err)
 	}
@@ -359,40 +359,24 @@ func (r *Dash0Reconciler) findAndInstrumentDeployments(ctx context.Context, name
 	return nil
 }
 
-func (r *Dash0Reconciler) instrumentDeployment(ctx context.Context, deployment appsv1.Deployment, reconcileLogger *logr.Logger) {
-	if deployment.DeletionTimestamp != nil {
-		// do not modify resources that are being deleted
-		return
-	}
-	logger := reconcileLogger.WithValues(
-		resourceTypeLabel,
-		"Deployment",
-		resourceNamespaceLabel,
-		deployment.GetNamespace(),
-		resourceNameLabel,
-		deployment.GetName(),
-	)
-	hasBeenModified := false
-	retryErr := util.Retry("instrumenting deployment", func() error {
-		if err := r.Client.Get(ctx, client.ObjectKey{
-			Namespace: deployment.GetNamespace(),
-			Name:      deployment.GetName(),
-		}, &deployment); err != nil {
-			return fmt.Errorf("error when fetching deployment %s/%s: %w", deployment.GetNamespace(), deployment.GetName(), err)
-		}
-		hasBeenModified = r.newResourceModifier(&logger).ModifyDeployment(&deployment, deployment.GetNamespace())
-		if hasBeenModified {
-			return r.Client.Update(ctx, &deployment)
-		} else {
-			return nil
-		}
-	}, &logger)
-
-	r.postProcessInstrumentation(&deployment, hasBeenModified, retryErr, &logger)
+func (r *Dash0Reconciler) instrumentDeployment(
+	ctx context.Context,
+	deployment appsv1.Deployment,
+	reconcileLogger *logr.Logger,
+) {
+	r.instrumentWorkload(ctx, &deploymentWorkload{
+		deployment: &deployment,
+		versions:   r.Versions,
+	}, reconcileLogger)
 }
 
-func (r *Dash0Reconciler) findAndAddLabelsToImmutableJobsOnInstrumentation(ctx context.Context, namespace string, logger *logr.Logger) error {
-	matchingResourcesInNamespace, err := r.ClientSet.BatchV1().Jobs(namespace).List(ctx, resourcesWithoutDash0InstrumentedLabelFilter)
+func (r *Dash0Reconciler) findAndAddLabelsToImmutableJobsOnInstrumentation(
+	ctx context.Context,
+	namespace string,
+	logger *logr.Logger,
+) error {
+	matchingResourcesInNamespace, err :=
+		r.ClientSet.BatchV1().Jobs(namespace).List(ctx, resourcesWithoutDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying jobs: %w", err)
 	}
@@ -403,7 +387,11 @@ func (r *Dash0Reconciler) findAndAddLabelsToImmutableJobsOnInstrumentation(ctx c
 	return nil
 }
 
-func (r *Dash0Reconciler) addLabelsToImmutableJobsOnInstrumentation(ctx context.Context, job batchv1.Job, reconcileLogger *logr.Logger) {
+func (r *Dash0Reconciler) addLabelsToImmutableJobsOnInstrumentation(
+	ctx context.Context,
+	job batchv1.Job,
+	reconcileLogger *logr.Logger,
+) {
 	if job.DeletionTimestamp != nil {
 		// do not modify resources that are being deleted
 		return
@@ -423,7 +411,7 @@ func (r *Dash0Reconciler) addLabelsToImmutableJobsOnInstrumentation(ctx context.
 		}, &job); err != nil {
 			return fmt.Errorf("error when fetching job %s/%s: %w", job.GetNamespace(), job.GetName(), err)
 		}
-		r.newResourceModifier(&logger).AddLabelsToImmutableJob(&job)
+		newResourceModifier(r.Versions, &logger).AddLabelsToImmutableJob(&job)
 		return r.Client.Update(ctx, &job)
 	}, &logger)
 
@@ -438,8 +426,13 @@ func (r *Dash0Reconciler) addLabelsToImmutableJobsOnInstrumentation(ctx context.
 	}
 }
 
-func (r *Dash0Reconciler) findAndInstrumentReplicaSets(ctx context.Context, namespace string, logger *logr.Logger) error {
-	matchingResourcesInNamespace, err := r.ClientSet.AppsV1().ReplicaSets(namespace).List(ctx, resourcesWithoutDash0InstrumentedLabelFilter)
+func (r *Dash0Reconciler) findAndInstrumentReplicaSets(
+	ctx context.Context,
+	namespace string,
+	logger *logr.Logger,
+) error {
+	matchingResourcesInNamespace, err :=
+		r.ClientSet.AppsV1().ReplicaSets(namespace).List(ctx, resourcesWithoutDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying deployments: %w", err)
 	}
@@ -449,44 +442,27 @@ func (r *Dash0Reconciler) findAndInstrumentReplicaSets(ctx context.Context, name
 	return nil
 }
 
-func (r *Dash0Reconciler) instrumentReplicaSet(ctx context.Context, replicaSet appsv1.ReplicaSet, reconcileLogger *logr.Logger) {
-	if replicaSet.DeletionTimestamp != nil {
-		// do not modify resources that are being deleted
-		return
-	}
-	logger := reconcileLogger.WithValues(
-		resourceTypeLabel,
-		"ReplicaSet",
-		resourceNamespaceLabel,
-		replicaSet.GetNamespace(),
-		resourceNameLabel,
-		replicaSet.GetName(),
-	)
-	hasBeenModified := false
-	retryErr := util.Retry("instrumenting replicaset", func() error {
-		if err := r.Client.Get(ctx, client.ObjectKey{
-			Namespace: replicaSet.GetNamespace(),
-			Name:      replicaSet.GetName(),
-		}, &replicaSet); err != nil {
-			return fmt.Errorf("error when fetching replicaset %s/%s: %w", replicaSet.GetNamespace(), replicaSet.GetName(), err)
-		}
-		hasBeenModified = r.newResourceModifier(&logger).ModifyReplicaSet(&replicaSet, replicaSet.GetNamespace())
-		if hasBeenModified {
-			return r.Client.Update(ctx, &replicaSet)
-		} else {
-			return nil
-		}
-	}, &logger)
+func (r *Dash0Reconciler) instrumentReplicaSet(
+	ctx context.Context,
+	replicaSet appsv1.ReplicaSet,
+	reconcileLogger *logr.Logger,
+) {
+	// Note: ReplicaSet pods are not restarted automatically by Kubernetes when their spec is changed (for other
+	// resource types like deployments or daemonsets this is managed by Kubernetes automatically). For now, we rely on
+	// the user to manually restart the pods of their replica sets after they have been instrumented. We could consider
+	// finding all pods for that are owned by the replica set and restart them automatically.
 
-	// Note: ReplicaSet pods are not restarted automatically by Kubernetes when their spec is change (for other resource
-	// types like deployments or daemonsets this is managed by Kubernetes automatically). For now, we rely on the user
-	// to manually restart the pods of their replica sets after they have been instrumented. We could consider finding
-	// all pods for that are owned by the replica set and restart them automatically.
-
-	r.postProcessInstrumentation(&replicaSet, hasBeenModified, retryErr, &logger)
+	r.instrumentWorkload(ctx, &replicaSetWorkload{
+		replicaSet: &replicaSet,
+		versions:   r.Versions,
+	}, reconcileLogger)
 }
 
-func (r *Dash0Reconciler) findAndInstrumentStatefulSets(ctx context.Context, namespace string, logger *logr.Logger) error {
+func (r *Dash0Reconciler) findAndInstrumentStatefulSets(
+	ctx context.Context,
+	namespace string,
+	logger *logr.Logger,
+) error {
 	matchingResourcesInNamespace, err := r.ClientSet.AppsV1().StatefulSets(namespace).List(ctx, resourcesWithoutDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying stateful sets: %w", err)
@@ -497,36 +473,60 @@ func (r *Dash0Reconciler) findAndInstrumentStatefulSets(ctx context.Context, nam
 	return nil
 }
 
-func (r *Dash0Reconciler) instrumentStatefulSet(ctx context.Context, statefulSet appsv1.StatefulSet, reconcileLogger *logr.Logger) {
-	if statefulSet.DeletionTimestamp != nil {
+func (r *Dash0Reconciler) instrumentStatefulSet(
+	ctx context.Context,
+	statefulSet appsv1.StatefulSet,
+	reconcileLogger *logr.Logger,
+) {
+	r.instrumentWorkload(ctx, &statefulSetWorkload{
+		statefulSet: &statefulSet,
+		versions:    r.Versions,
+	}, reconcileLogger)
+}
+
+func (r *Dash0Reconciler) instrumentWorkload(
+	ctx context.Context,
+	workload instrumentableWorkload,
+	reconcileLogger *logr.Logger,
+) {
+	objectMeta := workload.getObjectMeta()
+	kind := workload.getTypeMeta().Kind
+	if objectMeta.DeletionTimestamp != nil {
 		// do not modify resources that are being deleted
 		return
 	}
 	logger := reconcileLogger.WithValues(
 		resourceTypeLabel,
-		"StatefulSet",
+		kind,
 		resourceNamespaceLabel,
-		statefulSet.GetNamespace(),
+		objectMeta.GetNamespace(),
 		resourceNameLabel,
-		statefulSet.GetName(),
+		objectMeta.GetName(),
 	)
+
 	hasBeenModified := false
-	retryErr := util.Retry("instrumenting stateful set", func() error {
+	retryErr := util.Retry(fmt.Sprintf("instrumenting %s", kind), func() error {
 		if err := r.Client.Get(ctx, client.ObjectKey{
-			Namespace: statefulSet.GetNamespace(),
-			Name:      statefulSet.GetName(),
-		}, &statefulSet); err != nil {
-			return fmt.Errorf("error when fetching stateful set %s/%s: %w", statefulSet.GetNamespace(), statefulSet.GetName(), err)
+			Namespace: objectMeta.GetNamespace(),
+			Name:      objectMeta.GetName(),
+		}, workload.asClientObject()); err != nil {
+			return fmt.Errorf(
+				"error when fetching %s %s/%s: %w",
+				kind,
+				objectMeta.GetNamespace(),
+				objectMeta.GetName(),
+				err,
+			)
 		}
-		hasBeenModified = r.newResourceModifier(&logger).ModifyStatefulSet(&statefulSet, statefulSet.GetNamespace())
+		hasBeenModified = workload.instrument(&logger)
 		if hasBeenModified {
-			return r.Client.Update(ctx, &statefulSet)
+			return r.Client.Update(ctx, workload.asClientObject())
 		} else {
 			return nil
 		}
 	}, &logger)
 
-	r.postProcessInstrumentation(&statefulSet, hasBeenModified, retryErr, &logger)
+	r.postProcessInstrumentation(workload.asRuntimeObject(), hasBeenModified, retryErr, &logger)
 }
 
 func (r *Dash0Reconciler) postProcessInstrumentation(
@@ -544,7 +544,8 @@ func (r *Dash0Reconciler) postProcessInstrumentation(
 		}
 		util.QueueFailedInstrumentationEvent(r.Recorder, resource, "controller", retryErr)
 	} else if !hasBeenModified {
-		logger.Info("Dash0 instrumentation was already present on this resource, no modification by controller is necessary.")
+		logger.Info("Dash0 instrumentation was already present on this resource, no modification by controller is " +
+			"necessary.")
 		util.QueueAlreadyInstrumentedEvent(r.Recorder, resource, "controller")
 	} else {
 		logger.Info("The controller has added Dash0 instrumentation to the resource.")
@@ -552,7 +553,11 @@ func (r *Dash0Reconciler) postProcessInstrumentation(
 	}
 }
 
-func (r *Dash0Reconciler) checkImminentDeletionAndHandleFinalizers(ctx context.Context, dash0CustomResource *operatorv1alpha1.Dash0, logger *logr.Logger) (bool, error) {
+func (r *Dash0Reconciler) checkImminentDeletionAndHandleFinalizers(
+	ctx context.Context,
+	dash0CustomResource *operatorv1alpha1.Dash0,
+	logger *logr.Logger,
+) (bool, error) {
 	deletionTimestamp := dash0CustomResource.GetDeletionTimestamp()
 	isMarkedForDeletion := deletionTimestamp != nil && !deletionTimestamp.IsZero()
 	if !isMarkedForDeletion {
@@ -573,7 +578,11 @@ func (r *Dash0Reconciler) checkImminentDeletionAndHandleFinalizers(ctx context.C
 	return isMarkedForDeletion, nil
 }
 
-func (r *Dash0Reconciler) runCleanupActions(ctx context.Context, dash0CustomResource *operatorv1alpha1.Dash0, logger *logr.Logger) error {
+func (r *Dash0Reconciler) runCleanupActions(
+	ctx context.Context,
+	dash0CustomResource *operatorv1alpha1.Dash0,
+	logger *logr.Logger,
+) error {
 	err := r.uninstrumentResourcesIfAvailable(ctx, dash0CustomResource, logger)
 	if err != nil {
 		logger.Error(err, "Failed to uninstrument resources, requeuing reconcile request.")
@@ -597,7 +606,10 @@ func (r *Dash0Reconciler) runCleanupActions(ctx context.Context, dash0CustomReso
 	return nil
 }
 
-func (r *Dash0Reconciler) addFinalizerIfNecessary(ctx context.Context, dash0CustomResource *operatorv1alpha1.Dash0) error {
+func (r *Dash0Reconciler) addFinalizerIfNecessary(
+	ctx context.Context,
+	dash0CustomResource *operatorv1alpha1.Dash0,
+) error {
 	finalizerHasBeenAdded := controllerutil.AddFinalizer(dash0CustomResource, util.FinalizerId)
 	if finalizerHasBeenAdded {
 		return r.Update(ctx, dash0CustomResource)
@@ -606,7 +618,11 @@ func (r *Dash0Reconciler) addFinalizerIfNecessary(ctx context.Context, dash0Cust
 	return nil
 }
 
-func (r *Dash0Reconciler) uninstrumentResourcesIfAvailable(ctx context.Context, dash0CustomResource *operatorv1alpha1.Dash0, logger *logr.Logger) error {
+func (r *Dash0Reconciler) uninstrumentResourcesIfAvailable(
+	ctx context.Context,
+	dash0CustomResource *operatorv1alpha1.Dash0,
+	logger *logr.Logger,
+) error {
 	if dash0CustomResource.IsAvailable() {
 		if err := r.uninstrumentResources(ctx, dash0CustomResource, logger); err != nil {
 			logger.Error(err, "Uninstrumenting existing resources failed.")
@@ -619,7 +635,11 @@ func (r *Dash0Reconciler) uninstrumentResourcesIfAvailable(ctx context.Context, 
 	return nil
 }
 
-func (r *Dash0Reconciler) uninstrumentResources(ctx context.Context, dash0CustomResource *operatorv1alpha1.Dash0, logger *logr.Logger) error {
+func (r *Dash0Reconciler) uninstrumentResources(
+	ctx context.Context,
+	dash0CustomResource *operatorv1alpha1.Dash0,
+	logger *logr.Logger,
+) error {
 	namespace := dash0CustomResource.Namespace
 
 	errCronJobs := r.findAndUninstrumentCronJobs(ctx, namespace, logger)
@@ -642,7 +662,11 @@ func (r *Dash0Reconciler) uninstrumentResources(ctx context.Context, dash0Custom
 	return nil
 }
 
-func (r *Dash0Reconciler) findAndUninstrumentCronJobs(ctx context.Context, namespace string, logger *logr.Logger) error {
+func (r *Dash0Reconciler) findAndUninstrumentCronJobs(
+	ctx context.Context,
+	namespace string,
+	logger *logr.Logger,
+) error {
 	matchingResourcesInNamespace, err :=
 		r.ClientSet.BatchV1().CronJobs(namespace).List(ctx, resourcesWithDash0InstrumentedLabelFilter)
 	if err != nil {
@@ -654,37 +678,15 @@ func (r *Dash0Reconciler) findAndUninstrumentCronJobs(ctx context.Context, names
 	return nil
 }
 
-func (r *Dash0Reconciler) uninstrumentCronJob(ctx context.Context, cronJob batchv1.CronJob, reconcileLogger *logr.Logger) {
-	if cronJob.DeletionTimestamp != nil {
-		// do not modify resources that are being deleted
-		return
-	}
-	logger := reconcileLogger.WithValues(
-		resourceTypeLabel,
-		"CronJob",
-		resourceNamespaceLabel,
-		cronJob.GetNamespace(),
-		resourceNameLabel,
-		cronJob.GetName(),
-	)
-	hasBeenModified := false
-
-	retryErr := util.Retry("uninstrumenting cron job", func() error {
-		if err := r.Client.Get(ctx, client.ObjectKey{
-			Namespace: cronJob.GetNamespace(),
-			Name:      cronJob.GetName(),
-		}, &cronJob); err != nil {
-			return fmt.Errorf("error when fetching cron job %s/%s: %w", cronJob.GetNamespace(), cronJob.GetName(), err)
-		}
-		hasBeenModified = r.newResourceModifier(&logger).RevertCronJob(&cronJob)
-		if hasBeenModified {
-			return r.Client.Update(ctx, &cronJob)
-		} else {
-			return nil
-		}
-	}, &logger)
-
-	r.postProcessUninstrumentation(&cronJob, hasBeenModified, retryErr, &logger)
+func (r *Dash0Reconciler) uninstrumentCronJob(
+	ctx context.Context,
+	cronJob batchv1.CronJob,
+	reconcileLogger *logr.Logger,
+) {
+	r.revertWorkloadInstrumentation(ctx, &cronJobWorkload{
+		cronJob:  &cronJob,
+		versions: r.Versions,
+	}, reconcileLogger)
 }
 
 func (r *Dash0Reconciler) findAndUninstrumentDaemonSets(ctx context.Context, namespace string, logger *logr.Logger) error {
@@ -699,39 +701,22 @@ func (r *Dash0Reconciler) findAndUninstrumentDaemonSets(ctx context.Context, nam
 	return nil
 }
 
-func (r *Dash0Reconciler) uninstrumentDaemonSet(ctx context.Context, daemonSet appsv1.DaemonSet, reconcileLogger *logr.Logger) {
-	if daemonSet.DeletionTimestamp != nil {
-		// do not modify resources that are being deleted
-		return
-	}
-	logger := reconcileLogger.WithValues(
-		resourceTypeLabel,
-		"DaemonSet",
-		resourceNamespaceLabel,
-		daemonSet.GetNamespace(),
-		resourceNameLabel,
-		daemonSet.GetName(),
-	)
-	hasBeenModified := false
-	retryErr := util.Retry("uninstrumenting daemon set", func() error {
-		if err := r.Client.Get(ctx, client.ObjectKey{
-			Namespace: daemonSet.GetNamespace(),
-			Name:      daemonSet.GetName(),
-		}, &daemonSet); err != nil {
-			return fmt.Errorf("error when fetching daemon set %s/%s: %w", daemonSet.GetNamespace(), daemonSet.GetName(), err)
-		}
-		hasBeenModified = r.newResourceModifier(&logger).RevertDaemonSet(&daemonSet)
-		if hasBeenModified {
-			return r.Client.Update(ctx, &daemonSet)
-		} else {
-			return nil
-		}
-	}, &logger)
-
-	r.postProcessUninstrumentation(&daemonSet, hasBeenModified, retryErr, &logger)
+func (r *Dash0Reconciler) uninstrumentDaemonSet(
+	ctx context.Context,
+	daemonSet appsv1.DaemonSet,
+	reconcileLogger *logr.Logger,
+) {
+	r.revertWorkloadInstrumentation(ctx, &daemonSetWorkload{
+		daemonSet: &daemonSet,
+		versions:  r.Versions,
+	}, reconcileLogger)
 }
 
-func (r *Dash0Reconciler) findAndUninstrumentDeployments(ctx context.Context, namespace string, logger *logr.Logger) error {
+func (r *Dash0Reconciler) findAndUninstrumentDeployments(
+	ctx context.Context,
+	namespace string,
+	logger *logr.Logger,
+) error {
 	matchingResourcesInNamespace, err :=
 		r.ClientSet.AppsV1().Deployments(namespace).List(ctx, resourcesWithDash0InstrumentedLabelFilter)
 	if err != nil {
@@ -743,39 +728,22 @@ func (r *Dash0Reconciler) findAndUninstrumentDeployments(ctx context.Context, na
 	return nil
 }
 
-func (r *Dash0Reconciler) uninstrumentDeployment(ctx context.Context, deployment appsv1.Deployment, reconcileLogger *logr.Logger) {
-	if deployment.DeletionTimestamp != nil {
-		// do not modify resources that are being deleted
-		return
-	}
-	logger := reconcileLogger.WithValues(
-		resourceTypeLabel,
-		"Deployment",
-		resourceNamespaceLabel,
-		deployment.GetNamespace(),
-		resourceNameLabel,
-		deployment.GetName(),
-	)
-	hasBeenModified := false
-	retryErr := util.Retry("uninstrumenting deployment", func() error {
-		if err := r.Client.Get(ctx, client.ObjectKey{
-			Namespace: deployment.GetNamespace(),
-			Name:      deployment.GetName(),
-		}, &deployment); err != nil {
-			return fmt.Errorf("error when fetching deployment %s/%s: %w", deployment.GetNamespace(), deployment.GetName(), err)
-		}
-		hasBeenModified = r.newResourceModifier(&logger).RevertDeployment(&deployment)
-		if hasBeenModified {
-			return r.Client.Update(ctx, &deployment)
-		} else {
-			return nil
-		}
-	}, &logger)
-
-	r.postProcessUninstrumentation(&deployment, hasBeenModified, retryErr, &logger)
+func (r *Dash0Reconciler) uninstrumentDeployment(
+	ctx context.Context,
+	deployment appsv1.Deployment,
+	reconcileLogger *logr.Logger,
+) {
+	r.revertWorkloadInstrumentation(ctx, &deploymentWorkload{
+		deployment: &deployment,
+		versions:   r.Versions,
+	}, reconcileLogger)
 }
 
-func (r *Dash0Reconciler) findAndHandleJobOnUninstrumentation(ctx context.Context, namespace string, logger *logr.Logger) error {
+func (r *Dash0Reconciler) findAndHandleJobOnUninstrumentation(
+	ctx context.Context,
+	namespace string,
+	logger *logr.Logger,
+) error {
 	matchingResourcesInNamespace, err := r.ClientSet.BatchV1().Jobs(namespace).List(ctx, resourcesWithDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying instrumented jobs: %w", err)
@@ -814,14 +782,14 @@ func (r *Dash0Reconciler) handleJobOnUninstrumentation(ctx context.Context, job 
 			// This job has been instrumented, presumably by the webhook. We cannot undo the instrumentation here, since
 			// jobs are immutable.
 
-			// Deliberately not calling r.newResourceModifier(&logger).RemoveLabelsFromImmutableJob(&job) here since
-			// we cannot remove the instrumentation, so we also have to leave the labels in place.
+			// Deliberately not calling newResourceModifier(r.Versions,&logger).RemoveLabelsFromImmutableJob(&job) here
+			// since we cannot remove the instrumentation, so we also have to leave the labels in place.
 			createImmutableResourceError = true
 			return nil
 		} else {
 			// There was an attempt to instrument this job (probably by the controller), which has not been successful.
 			// We only need remove the labels from that instrumentation attempt to clean up.
-			r.newResourceModifier(&logger).RemoveLabelsFromImmutableJob(&job)
+			newResourceModifier(r.Versions, &logger).RemoveLabelsFromImmutableJob(&job)
 			return r.Client.Update(ctx, &job)
 		}
 	}, &logger)
@@ -843,7 +811,11 @@ func (r *Dash0Reconciler) handleJobOnUninstrumentation(ctx context.Context, job 
 	}
 }
 
-func (r *Dash0Reconciler) findAndUninstrumentReplicaSets(ctx context.Context, namespace string, logger *logr.Logger) error {
+func (r *Dash0Reconciler) findAndUninstrumentReplicaSets(
+	ctx context.Context,
+	namespace string,
+	logger *logr.Logger,
+) error {
 	matchingResourcesInNamespace, err :=
 		r.ClientSet.AppsV1().ReplicaSets(namespace).List(ctx, resourcesWithDash0InstrumentedLabelFilter)
 	if err != nil {
@@ -856,43 +828,21 @@ func (r *Dash0Reconciler) findAndUninstrumentReplicaSets(ctx context.Context, na
 }
 
 func (r *Dash0Reconciler) uninstrumentReplicaSet(ctx context.Context, replicaSet appsv1.ReplicaSet, reconcileLogger *logr.Logger) {
-	if replicaSet.DeletionTimestamp != nil {
-		// do not modify resources that are being deleted
-		return
-	}
-	logger := reconcileLogger.WithValues(
-		resourceTypeLabel,
-		"ReplicaSet",
-		resourceNamespaceLabel,
-		replicaSet.GetNamespace(),
-		resourceNameLabel,
-		replicaSet.GetName(),
-	)
-	hasBeenModified := false
-	retryErr := util.Retry("uninstrumenting replica set", func() error {
-		if err := r.Client.Get(ctx, client.ObjectKey{
-			Namespace: replicaSet.GetNamespace(),
-			Name:      replicaSet.GetName(),
-		}, &replicaSet); err != nil {
-			return fmt.Errorf("error when fetching replica set %s/%s: %w", replicaSet.GetNamespace(), replicaSet.GetName(), err)
-		}
-		hasBeenModified = r.newResourceModifier(&logger).RevertReplicaSet(&replicaSet)
-		if hasBeenModified {
-			return r.Client.Update(ctx, &replicaSet)
-		} else {
-			return nil
-		}
-	}, &logger)
-
 	// Note: ReplicaSet pods are not restarted automatically by Kubernetes when their spec is change (for other resource
 	// types like deployments or daemonsets this is managed by Kubernetes automatically). For now, we rely on the user
 	// to manually restart the pods of their replica sets after they have been instrumented. We could consider finding
 	// all pods for that are owned by the replica set and restart them automatically.
-
-	r.postProcessUninstrumentation(&replicaSet, hasBeenModified, retryErr, &logger)
+	r.revertWorkloadInstrumentation(ctx, &replicaSetWorkload{
+		replicaSet: &replicaSet,
+		versions:   r.Versions,
+	}, reconcileLogger)
 }
 
-func (r *Dash0Reconciler) findAndUninstrumentStatefulSets(ctx context.Context, namespace string, logger *logr.Logger) error {
+func (r *Dash0Reconciler) findAndUninstrumentStatefulSets(
+	ctx context.Context,
+	namespace string,
+	logger *logr.Logger,
+) error {
 	matchingResourcesInNamespace, err :=
 		r.ClientSet.AppsV1().StatefulSets(namespace).List(ctx, resourcesWithDash0InstrumentedLabelFilter)
 	if err != nil {
@@ -904,36 +854,60 @@ func (r *Dash0Reconciler) findAndUninstrumentStatefulSets(ctx context.Context, n
 	return nil
 }
 
-func (r *Dash0Reconciler) uninstrumentStatefulSet(ctx context.Context, statefulSet appsv1.StatefulSet, reconcileLogger *logr.Logger) {
-	if statefulSet.DeletionTimestamp != nil {
+func (r *Dash0Reconciler) uninstrumentStatefulSet(
+	ctx context.Context,
+	statefulSet appsv1.StatefulSet,
+	reconcileLogger *logr.Logger,
+) {
+	r.revertWorkloadInstrumentation(ctx, &statefulSetWorkload{
+		statefulSet: &statefulSet,
+		versions:    r.Versions,
+	}, reconcileLogger)
+}
+
+func (r *Dash0Reconciler) revertWorkloadInstrumentation(
+	ctx context.Context,
+	workload instrumentableWorkload,
+	reconcileLogger *logr.Logger,
+) {
+	objectMeta := workload.getObjectMeta()
+	kind := workload.getTypeMeta().Kind
+	if objectMeta.DeletionTimestamp != nil {
 		// do not modify resources that are being deleted
 		return
 	}
 	logger := reconcileLogger.WithValues(
 		resourceTypeLabel,
-		"StatefulSet",
+		kind,
 		resourceNamespaceLabel,
-		statefulSet.GetNamespace(),
+		objectMeta.GetNamespace(),
 		resourceNameLabel,
-		statefulSet.GetName(),
+		objectMeta.GetName(),
 	)
+
 	hasBeenModified := false
-	retryErr := util.Retry("uninstrumenting stateful set", func() error {
+	retryErr := util.Retry(fmt.Sprintf("uninstrumenting %s", kind), func() error {
 		if err := r.Client.Get(ctx, client.ObjectKey{
-			Namespace: statefulSet.GetNamespace(),
-			Name:      statefulSet.GetName(),
-		}, &statefulSet); err != nil {
-			return fmt.Errorf("error when fetching stateful set %s/%s: %w", statefulSet.GetNamespace(), statefulSet.GetName(), err)
+			Namespace: objectMeta.GetNamespace(),
+			Name:      objectMeta.GetName(),
+		}, workload.asClientObject()); err != nil {
+			return fmt.Errorf(
+				"error when fetching %s %s/%s: %w",
+				kind,
+				objectMeta.GetNamespace(),
+				objectMeta.GetName(),
+				err,
+			)
 		}
-		hasBeenModified = r.newResourceModifier(&logger).RevertStatefulSet(&statefulSet)
+		hasBeenModified = workload.revert(&logger)
 		if hasBeenModified {
-			return r.Client.Update(ctx, &statefulSet)
+			return r.Client.Update(ctx, workload.asClientObject())
 		} else {
 			return nil
 		}
 	}, &logger)
 
-	r.postProcessUninstrumentation(&statefulSet, hasBeenModified, retryErr, &logger)
+	r.postProcessUninstrumentation(workload.asRuntimeObject(), hasBeenModified, retryErr, &logger)
 }
 
 func (r *Dash0Reconciler) postProcessUninstrumentation(
@@ -951,7 +925,8 @@ func (r *Dash0Reconciler) postProcessUninstrumentation(
 		}
 		util.QueueFailedUninstrumentationEvent(r.Recorder, resource, "controller", retryErr)
 	} else if !hasBeenModified {
-		logger.Info("Dash0 instrumentations was not present on this resource, no modification by controller has been necessary.")
+		logger.Info("Dash0 instrumentations was not present on this resource, no modification by controller has been " +
+			"necessary.")
 		util.QueueAlreadyNotInstrumentedEvent(r.Recorder, resource, "controller")
 	} else {
 		logger.Info("The controller has removed Dash0 instrumentation from the resource.")
@@ -959,10 +934,10 @@ func (r *Dash0Reconciler) postProcessUninstrumentation(
 	}
 }
 
-func (r *Dash0Reconciler) newResourceModifier(logger *logr.Logger) *k8sresources.ResourceModifier {
+func newResourceModifier(versions util.Versions, logger *logr.Logger) *k8sresources.ResourceModifier {
 	return k8sresources.NewResourceModifier(
 		util.InstrumentationMetadata{
-			Versions:       r.Versions,
+			Versions:       versions,
 			InstrumentedBy: "controller",
 		},
 		logger,
