@@ -110,14 +110,14 @@ func EnsureTestNamespaceExists(
 }
 
 func BasicCronJob(namespace string, name string) *batchv1.CronJob {
-	resource := &batchv1.CronJob{}
-	resource.Namespace = namespace
-	resource.Name = name
-	resource.Spec = batchv1.CronJobSpec{}
-	resource.Spec.Schedule = "*/1 * * * *"
-	resource.Spec.JobTemplate.Spec.Template = basicPodSpecTemplate()
-	resource.Spec.JobTemplate.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
-	return resource
+	workload := &batchv1.CronJob{}
+	workload.Namespace = namespace
+	workload.Name = name
+	workload.Spec = batchv1.CronJobSpec{}
+	workload.Spec.Schedule = "*/1 * * * *"
+	workload.Spec.JobTemplate.Spec.Template = basicPodSpecTemplate()
+	workload.Spec.JobTemplate.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
+	return workload
 }
 
 func CreateBasicCronJob(
@@ -126,13 +126,13 @@ func CreateBasicCronJob(
 	namespace string,
 	name string,
 ) *batchv1.CronJob {
-	return createResource(ctx, k8sClient, BasicCronJob(namespace, name)).(*batchv1.CronJob)
+	return CreateWorkload(ctx, k8sClient, BasicCronJob(namespace, name)).(*batchv1.CronJob)
 }
 
 func InstrumentedCronJob(namespace string, name string) *batchv1.CronJob {
-	resource := BasicCronJob(namespace, name)
-	simulateInstrumentedResource(&resource.Spec.JobTemplate.Spec.Template, &resource.ObjectMeta, namespace)
-	return resource
+	workload := BasicCronJob(namespace, name)
+	simulateInstrumentedResource(&workload.Spec.JobTemplate.Spec.Template, &workload.ObjectMeta, namespace)
+	return workload
 }
 
 func CreateInstrumentedCronJob(
@@ -141,17 +141,17 @@ func CreateInstrumentedCronJob(
 	namespace string,
 	name string,
 ) *batchv1.CronJob {
-	return createResource(ctx, k8sClient, InstrumentedCronJob(namespace, name)).(*batchv1.CronJob)
+	return CreateWorkload(ctx, k8sClient, InstrumentedCronJob(namespace, name)).(*batchv1.CronJob)
 }
 
 func BasicDaemonSet(namespace string, name string) *appsv1.DaemonSet {
-	resource := &appsv1.DaemonSet{}
-	resource.Namespace = namespace
-	resource.Name = name
-	resource.Spec = appsv1.DaemonSetSpec{}
-	resource.Spec.Template = basicPodSpecTemplate()
-	resource.Spec.Selector = createSelector()
-	return resource
+	workload := &appsv1.DaemonSet{}
+	workload.Namespace = namespace
+	workload.Name = name
+	workload.Spec = appsv1.DaemonSetSpec{}
+	workload.Spec.Template = basicPodSpecTemplate()
+	workload.Spec.Selector = createSelector()
+	return workload
 }
 
 func CreateBasicDaemonSet(
@@ -160,13 +160,13 @@ func CreateBasicDaemonSet(
 	namespace string,
 	name string,
 ) *appsv1.DaemonSet {
-	return createResource(ctx, k8sClient, BasicDaemonSet(namespace, name)).(*appsv1.DaemonSet)
+	return CreateWorkload(ctx, k8sClient, BasicDaemonSet(namespace, name)).(*appsv1.DaemonSet)
 }
 
 func InstrumentedDaemonSet(namespace string, name string) *appsv1.DaemonSet {
-	resource := BasicDaemonSet(namespace, name)
-	simulateInstrumentedResource(&resource.Spec.Template, &resource.ObjectMeta, namespace)
-	return resource
+	workload := BasicDaemonSet(namespace, name)
+	simulateInstrumentedResource(&workload.Spec.Template, &workload.ObjectMeta, namespace)
+	return workload
 }
 
 func CreateInstrumentedDaemonSet(
@@ -175,17 +175,17 @@ func CreateInstrumentedDaemonSet(
 	namespace string,
 	name string,
 ) *appsv1.DaemonSet {
-	return createResource(ctx, k8sClient, InstrumentedDaemonSet(namespace, name)).(*appsv1.DaemonSet)
+	return CreateWorkload(ctx, k8sClient, InstrumentedDaemonSet(namespace, name)).(*appsv1.DaemonSet)
 }
 
 func BasicDeployment(namespace string, name string) *appsv1.Deployment {
-	resource := &appsv1.Deployment{}
-	resource.Namespace = namespace
-	resource.Name = name
-	resource.Spec = appsv1.DeploymentSpec{}
-	resource.Spec.Template = basicPodSpecTemplate()
-	resource.Spec.Selector = createSelector()
-	return resource
+	workload := &appsv1.Deployment{}
+	workload.Namespace = namespace
+	workload.Name = name
+	workload.Spec = appsv1.DeploymentSpec{}
+	workload.Spec.Template = basicPodSpecTemplate()
+	workload.Spec.Selector = createSelector()
+	return workload
 }
 
 func CreateBasicDeployment(
@@ -194,13 +194,13 @@ func CreateBasicDeployment(
 	namespace string,
 	name string,
 ) *appsv1.Deployment {
-	return createResource(ctx, k8sClient, BasicDeployment(namespace, name)).(*appsv1.Deployment)
+	return CreateWorkload(ctx, k8sClient, BasicDeployment(namespace, name)).(*appsv1.Deployment)
 }
 
 func InstrumentedDeployment(namespace string, name string) *appsv1.Deployment {
-	resource := BasicDeployment(namespace, name)
-	simulateInstrumentedResource(&resource.Spec.Template, &resource.ObjectMeta, namespace)
-	return resource
+	workload := BasicDeployment(namespace, name)
+	simulateInstrumentedResource(&workload.Spec.Template, &workload.ObjectMeta, namespace)
+	return workload
 }
 
 func CreateInstrumentedDeployment(
@@ -209,23 +209,23 @@ func CreateInstrumentedDeployment(
 	namespace string,
 	name string,
 ) *appsv1.Deployment {
-	return createResource(ctx, k8sClient, InstrumentedDeployment(namespace, name)).(*appsv1.Deployment)
+	return CreateWorkload(ctx, k8sClient, InstrumentedDeployment(namespace, name)).(*appsv1.Deployment)
 }
 
 func DeploymentWithInstrumentedFalseLabel(namespace string, name string) *appsv1.Deployment {
-	resource := BasicDeployment(namespace, name)
-	addInstrumentationLabels(&resource.ObjectMeta, false)
-	return resource
+	workload := BasicDeployment(namespace, name)
+	addInstrumentationLabels(&workload.ObjectMeta, false)
+	return workload
 }
 
 func BasicJob(namespace string, name string) *batchv1.Job {
-	resource := &batchv1.Job{}
-	resource.Namespace = namespace
-	resource.Name = name
-	resource.Spec = batchv1.JobSpec{}
-	resource.Spec.Template = basicPodSpecTemplate()
-	resource.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
-	return resource
+	workload := &batchv1.Job{}
+	workload.Namespace = namespace
+	workload.Name = name
+	workload.Spec = batchv1.JobSpec{}
+	workload.Spec.Template = basicPodSpecTemplate()
+	workload.Spec.Template.Spec.RestartPolicy = corev1.RestartPolicyNever
+	return workload
 }
 
 func CreateBasicJob(
@@ -234,13 +234,13 @@ func CreateBasicJob(
 	namespace string,
 	name string,
 ) *batchv1.Job {
-	return createResource(ctx, k8sClient, BasicJob(namespace, name)).(*batchv1.Job)
+	return CreateWorkload(ctx, k8sClient, BasicJob(namespace, name)).(*batchv1.Job)
 }
 
 func InstrumentedJob(namespace string, name string) *batchv1.Job {
-	resource := BasicJob(namespace, name)
-	simulateInstrumentedResource(&resource.Spec.Template, &resource.ObjectMeta, namespace)
-	return resource
+	workload := BasicJob(namespace, name)
+	simulateInstrumentedResource(&workload.Spec.Template, &workload.ObjectMeta, namespace)
+	return workload
 }
 
 func CreateInstrumentedJob(
@@ -249,13 +249,13 @@ func CreateInstrumentedJob(
 	namespace string,
 	name string,
 ) *batchv1.Job {
-	return createResource(ctx, k8sClient, InstrumentedJob(namespace, name)).(*batchv1.Job)
+	return CreateWorkload(ctx, k8sClient, InstrumentedJob(namespace, name)).(*batchv1.Job)
 }
 
 func JobWithInstrumentationLabels(namespace string, name string) *batchv1.Job {
-	resource := BasicJob(namespace, name)
-	addInstrumentationLabels(&resource.ObjectMeta, false)
-	return resource
+	workload := BasicJob(namespace, name)
+	addInstrumentationLabels(&workload.ObjectMeta, false)
+	return workload
 }
 
 func CreateJobWithInstrumentationLabels(
@@ -264,17 +264,17 @@ func CreateJobWithInstrumentationLabels(
 	namespace string,
 	name string,
 ) *batchv1.Job {
-	return createResource(ctx, k8sClient, JobWithInstrumentationLabels(namespace, name)).(*batchv1.Job)
+	return CreateWorkload(ctx, k8sClient, JobWithInstrumentationLabels(namespace, name)).(*batchv1.Job)
 }
 
 func BasicReplicaSet(namespace string, name string) *appsv1.ReplicaSet {
-	resource := &appsv1.ReplicaSet{}
-	resource.Namespace = namespace
-	resource.Name = name
-	resource.Spec = appsv1.ReplicaSetSpec{}
-	resource.Spec.Template = basicPodSpecTemplate()
-	resource.Spec.Selector = createSelector()
-	return resource
+	workload := &appsv1.ReplicaSet{}
+	workload.Namespace = namespace
+	workload.Name = name
+	workload.Spec = appsv1.ReplicaSetSpec{}
+	workload.Spec.Template = basicPodSpecTemplate()
+	workload.Spec.Selector = createSelector()
+	return workload
 }
 
 func CreateBasicReplicaSet(
@@ -283,13 +283,13 @@ func CreateBasicReplicaSet(
 	namespace string,
 	name string,
 ) *appsv1.ReplicaSet {
-	return createResource(ctx, k8sClient, BasicReplicaSet(namespace, name)).(*appsv1.ReplicaSet)
+	return CreateWorkload(ctx, k8sClient, BasicReplicaSet(namespace, name)).(*appsv1.ReplicaSet)
 }
 
 func InstrumentedReplicaSet(namespace string, name string) *appsv1.ReplicaSet {
-	resource := BasicReplicaSet(namespace, name)
-	simulateInstrumentedResource(&resource.Spec.Template, &resource.ObjectMeta, namespace)
-	return resource
+	workload := BasicReplicaSet(namespace, name)
+	simulateInstrumentedResource(&workload.Spec.Template, &workload.ObjectMeta, namespace)
+	return workload
 }
 
 func CreateInstrumentedReplicaSet(
@@ -298,12 +298,12 @@ func CreateInstrumentedReplicaSet(
 	namespace string,
 	name string,
 ) *appsv1.ReplicaSet {
-	return createResource(ctx, k8sClient, InstrumentedReplicaSet(namespace, name)).(*appsv1.ReplicaSet)
+	return CreateWorkload(ctx, k8sClient, InstrumentedReplicaSet(namespace, name)).(*appsv1.ReplicaSet)
 }
 
 func ReplicaSetOwnedByDeployment(namespace string, name string) *appsv1.ReplicaSet {
-	resource := BasicReplicaSet(namespace, name)
-	resource.ObjectMeta = metav1.ObjectMeta{
+	workload := BasicReplicaSet(namespace, name)
+	workload.ObjectMeta = metav1.ObjectMeta{
 		Namespace: namespace,
 		Name:      name,
 		OwnerReferences: []metav1.OwnerReference{{
@@ -313,7 +313,7 @@ func ReplicaSetOwnedByDeployment(namespace string, name string) *appsv1.ReplicaS
 			UID:        "1234",
 		}},
 	}
-	return resource
+	return workload
 }
 
 func CreateReplicaSetOwnedByDeployment(
@@ -322,32 +322,23 @@ func CreateReplicaSetOwnedByDeployment(
 	namespace string,
 	name string,
 ) *appsv1.ReplicaSet {
-	return createResource(ctx, k8sClient, ReplicaSetOwnedByDeployment(namespace, name)).(*appsv1.ReplicaSet)
+	return CreateWorkload(ctx, k8sClient, ReplicaSetOwnedByDeployment(namespace, name)).(*appsv1.ReplicaSet)
 }
 
 func InstrumentedReplicaSetOwnedByDeployment(namespace string, name string) *appsv1.ReplicaSet {
-	resource := ReplicaSetOwnedByDeployment(namespace, name)
-	simulateInstrumentedResource(&resource.Spec.Template, &resource.ObjectMeta, namespace)
-	return resource
-}
-
-func CreateInstrumentedReplicaSetOwnedByDeployment(
-	ctx context.Context,
-	k8sClient client.Client,
-	namespace string,
-	name string,
-) *appsv1.ReplicaSet {
-	return createResource(ctx, k8sClient, InstrumentedReplicaSetOwnedByDeployment(namespace, name)).(*appsv1.ReplicaSet)
+	workload := ReplicaSetOwnedByDeployment(namespace, name)
+	simulateInstrumentedResource(&workload.Spec.Template, &workload.ObjectMeta, namespace)
+	return workload
 }
 
 func BasicStatefulSet(namespace string, name string) *appsv1.StatefulSet {
-	resource := &appsv1.StatefulSet{}
-	resource.Namespace = namespace
-	resource.Name = name
-	resource.Spec = appsv1.StatefulSetSpec{}
-	resource.Spec.Template = basicPodSpecTemplate()
-	resource.Spec.Selector = createSelector()
-	return resource
+	workload := &appsv1.StatefulSet{}
+	workload.Namespace = namespace
+	workload.Name = name
+	workload.Spec = appsv1.StatefulSetSpec{}
+	workload.Spec.Template = basicPodSpecTemplate()
+	workload.Spec.Selector = createSelector()
+	return workload
 }
 
 func CreateBasicStatefulSet(
@@ -356,13 +347,13 @@ func CreateBasicStatefulSet(
 	namespace string,
 	name string,
 ) *appsv1.StatefulSet {
-	return createResource(ctx, k8sClient, BasicStatefulSet(namespace, name)).(*appsv1.StatefulSet)
+	return CreateWorkload(ctx, k8sClient, BasicStatefulSet(namespace, name)).(*appsv1.StatefulSet)
 }
 
 func InstrumentedStatefulSet(namespace string, name string) *appsv1.StatefulSet {
-	resource := BasicStatefulSet(namespace, name)
-	simulateInstrumentedResource(&resource.Spec.Template, &resource.ObjectMeta, namespace)
-	return resource
+	workload := BasicStatefulSet(namespace, name)
+	simulateInstrumentedResource(&workload.Spec.Template, &workload.ObjectMeta, namespace)
+	return workload
 }
 
 func CreateInstrumentedStatefulSet(
@@ -371,7 +362,7 @@ func CreateInstrumentedStatefulSet(
 	namespace string,
 	name string,
 ) *appsv1.StatefulSet {
-	return createResource(ctx, k8sClient, InstrumentedStatefulSet(namespace, name)).(*appsv1.StatefulSet)
+	return CreateWorkload(ctx, k8sClient, InstrumentedStatefulSet(namespace, name)).(*appsv1.StatefulSet)
 }
 
 func basicPodSpecTemplate() corev1.PodTemplateSpec {
@@ -390,14 +381,14 @@ func createSelector() *metav1.LabelSelector {
 	return selector
 }
 
-func createResource(ctx context.Context, k8sClient client.Client, resource client.Object) client.Object {
-	Expect(k8sClient.Create(ctx, resource)).Should(Succeed())
-	return resource
+func CreateWorkload(ctx context.Context, k8sClient client.Client, workload client.Object) client.Object {
+	Expect(k8sClient.Create(ctx, workload)).Should(Succeed())
+	return workload
 }
 
 func DeploymentWithMoreBellsAndWhistles(namespace string, name string) *appsv1.Deployment {
-	resource := BasicDeployment(namespace, name)
-	podSpec := &resource.Spec.Template.Spec
+	workload := BasicDeployment(namespace, name)
+	podSpec := &workload.Spec.Template.Spec
 	podSpec.Volumes = []corev1.Volume{
 		{
 			Name:         "test-volume-0",
@@ -471,7 +462,7 @@ func DeploymentWithMoreBellsAndWhistles(namespace string, name string) *appsv1.D
 		},
 	}
 
-	return resource
+	return workload
 }
 
 func DeploymentWithExistingDash0Artifacts(namespace string, name string) *appsv1.Deployment {
@@ -746,13 +737,13 @@ func GetCronJob(
 	namespace string,
 	name string,
 ) *batchv1.CronJob {
-	resource := &batchv1.CronJob{}
+	workload := &batchv1.CronJob{}
 	namespacedName := types.NamespacedName{
 		Namespace: namespace,
 		Name:      name,
 	}
-	ExpectWithOffset(1, k8sClient.Get(ctx, namespacedName, resource)).Should(Succeed())
-	return resource
+	ExpectWithOffset(1, k8sClient.Get(ctx, namespacedName, workload)).Should(Succeed())
+	return workload
 }
 
 func GetDaemonSet(
@@ -761,13 +752,13 @@ func GetDaemonSet(
 	namespace string,
 	name string,
 ) *appsv1.DaemonSet {
-	resource := &appsv1.DaemonSet{}
+	workload := &appsv1.DaemonSet{}
 	namespacedName := types.NamespacedName{
 		Namespace: namespace,
 		Name:      name,
 	}
-	ExpectWithOffset(1, k8sClient.Get(ctx, namespacedName, resource)).Should(Succeed())
-	return resource
+	ExpectWithOffset(1, k8sClient.Get(ctx, namespacedName, workload)).Should(Succeed())
+	return workload
 }
 
 func GetDeployment(
@@ -776,13 +767,13 @@ func GetDeployment(
 	namespace string,
 	name string,
 ) *appsv1.Deployment {
-	resource := &appsv1.Deployment{}
+	workload := &appsv1.Deployment{}
 	namespacedName := types.NamespacedName{
 		Namespace: namespace,
 		Name:      name,
 	}
-	ExpectWithOffset(1, k8sClient.Get(ctx, namespacedName, resource)).Should(Succeed())
-	return resource
+	ExpectWithOffset(1, k8sClient.Get(ctx, namespacedName, workload)).Should(Succeed())
+	return workload
 }
 
 func GetJob(
@@ -791,13 +782,13 @@ func GetJob(
 	namespace string,
 	name string,
 ) *batchv1.Job {
-	resource := &batchv1.Job{}
+	workload := &batchv1.Job{}
 	namespacedName := types.NamespacedName{
 		Namespace: namespace,
 		Name:      name,
 	}
-	ExpectWithOffset(1, k8sClient.Get(ctx, namespacedName, resource)).Should(Succeed())
-	return resource
+	ExpectWithOffset(1, k8sClient.Get(ctx, namespacedName, workload)).Should(Succeed())
+	return workload
 }
 
 func GetReplicaSet(
@@ -806,13 +797,13 @@ func GetReplicaSet(
 	namespace string,
 	name string,
 ) *appsv1.ReplicaSet {
-	resource := &appsv1.ReplicaSet{}
+	workload := &appsv1.ReplicaSet{}
 	namespacedName := types.NamespacedName{
 		Namespace: namespace,
 		Name:      name,
 	}
-	ExpectWithOffset(1, k8sClient.Get(ctx, namespacedName, resource)).Should(Succeed())
-	return resource
+	ExpectWithOffset(1, k8sClient.Get(ctx, namespacedName, workload)).Should(Succeed())
+	return workload
 }
 
 func GetStatefulSet(
@@ -821,23 +812,23 @@ func GetStatefulSet(
 	namespace string,
 	name string,
 ) *appsv1.StatefulSet {
-	resource := &appsv1.StatefulSet{}
+	workload := &appsv1.StatefulSet{}
 	namespacedName := types.NamespacedName{
 		Namespace: namespace,
 		Name:      name,
 	}
-	ExpectWithOffset(1, k8sClient.Get(ctx, namespacedName, resource)).Should(Succeed())
-	return resource
+	ExpectWithOffset(1, k8sClient.Get(ctx, namespacedName, workload)).Should(Succeed())
+	return workload
 }
 
 func addInstrumentationLabels(meta *metav1.ObjectMeta, instrumented bool) {
-	addLabel(meta, util.InstrumentedLabelKey, strconv.FormatBool(instrumented))
-	addLabel(meta, util.OperatorVersionLabelKey, "1.2.3")
-	addLabel(meta, util.InitContainerImageVersionLabelKey, "4.5.6")
-	addLabel(meta, util.InstrumentedByLabelKey, "someone")
+	AddLabel(meta, util.InstrumentedLabelKey, strconv.FormatBool(instrumented))
+	AddLabel(meta, util.OperatorVersionLabelKey, "1.2.3")
+	AddLabel(meta, util.InitContainerImageVersionLabelKey, "4.5.6")
+	AddLabel(meta, util.InstrumentedByLabelKey, "someone")
 }
 
-func addLabel(meta *metav1.ObjectMeta, key string, value string) {
+func AddLabel(meta *metav1.ObjectMeta, key string, value string) {
 	if meta.Labels == nil {
 		meta.Labels = make(map[string]string, 1)
 	}

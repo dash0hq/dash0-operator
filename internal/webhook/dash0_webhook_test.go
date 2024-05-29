@@ -6,6 +6,8 @@ package webhook
 import (
 	"fmt"
 
+	"github.com/dash0hq/dash0-operator/internal/util"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -139,4 +141,61 @@ var _ = Describe("Dash0 Webhook", func() {
 			VerifyModifiedStatefulSet(statefulSet, BasicInstrumentedPodSpecExpectations)
 		})
 	})
+
+	Context("when seeing the ignore once label", func() {
+		It("should not instrument a cron job that has the label, but remove the label", func() {
+			workload := BasicCronJob(TestNamespaceName, DeploymentName)
+			AddLabel(&workload.ObjectMeta, util.WebhookIgnoreOnceLabelKey, "true")
+			CreateWorkload(ctx, k8sClient, workload)
+			workload = GetCronJob(ctx, k8sClient, TestNamespaceName, DeploymentName)
+			VerifyUnmodifiedCronJob(workload)
+			VerifyWebhookIgnoreOnceLabelIsAbesent(&workload.ObjectMeta)
+		})
+
+		It("should not instrument a daemonset that has the label, but remove the label", func() {
+			workload := BasicDaemonSet(TestNamespaceName, DeploymentName)
+			AddLabel(&workload.ObjectMeta, util.WebhookIgnoreOnceLabelKey, "true")
+			CreateWorkload(ctx, k8sClient, workload)
+			workload = GetDaemonSet(ctx, k8sClient, TestNamespaceName, DeploymentName)
+			VerifyUnmodifiedDaemonSet(workload)
+			VerifyWebhookIgnoreOnceLabelIsAbesent(&workload.ObjectMeta)
+		})
+
+		It("should not instrument a deployment that has the label, but remove the label", func() {
+			workload := BasicDeployment(TestNamespaceName, DeploymentName)
+			AddLabel(&workload.ObjectMeta, util.WebhookIgnoreOnceLabelKey, "true")
+			CreateWorkload(ctx, k8sClient, workload)
+			workload = GetDeployment(ctx, k8sClient, TestNamespaceName, DeploymentName)
+			VerifyUnmodifiedDeployment(workload)
+			VerifyWebhookIgnoreOnceLabelIsAbesent(&workload.ObjectMeta)
+		})
+
+		It("should not instrument a job that has the label, but remove the label", func() {
+			workload := BasicJob(TestNamespaceName, DeploymentName)
+			AddLabel(&workload.ObjectMeta, util.WebhookIgnoreOnceLabelKey, "true")
+			CreateWorkload(ctx, k8sClient, workload)
+			workload = GetJob(ctx, k8sClient, TestNamespaceName, DeploymentName)
+			VerifyUnmodifiedJob(workload)
+			VerifyWebhookIgnoreOnceLabelIsAbesent(&workload.ObjectMeta)
+		})
+
+		It("should not instrument an orphan replica set that has the label, but remove the label", func() {
+			workload := BasicReplicaSet(TestNamespaceName, DeploymentName)
+			AddLabel(&workload.ObjectMeta, util.WebhookIgnoreOnceLabelKey, "true")
+			CreateWorkload(ctx, k8sClient, workload)
+			workload = GetReplicaSet(ctx, k8sClient, TestNamespaceName, DeploymentName)
+			VerifyUnmodifiedReplicaSet(workload)
+			VerifyWebhookIgnoreOnceLabelIsAbesent(&workload.ObjectMeta)
+		})
+
+		It("should not instrument a stateful set that has the label, but remove the label", func() {
+			workload := BasicStatefulSet(TestNamespaceName, DeploymentName)
+			AddLabel(&workload.ObjectMeta, util.WebhookIgnoreOnceLabelKey, "true")
+			CreateWorkload(ctx, k8sClient, workload)
+			workload = GetStatefulSet(ctx, k8sClient, TestNamespaceName, DeploymentName)
+			VerifyUnmodifiedStatefulSet(workload)
+			VerifyWebhookIgnoreOnceLabelIsAbesent(&workload.ObjectMeta)
+		})
+	})
+
 })

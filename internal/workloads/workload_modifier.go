@@ -288,17 +288,10 @@ func (m *ResourceModifier) addInstrumentationLabels(
 	meta *metav1.ObjectMeta,
 	hasBeenInstrumented bool,
 ) {
-	m.addLabel(meta, util.InstrumentedLabelKey, strconv.FormatBool(hasBeenInstrumented))
-	m.addLabel(meta, util.OperatorVersionLabelKey, m.instrumentationMetadata.OperatorVersion)
-	m.addLabel(meta, util.InitContainerImageVersionLabelKey, m.instrumentationMetadata.InitContainerImageVersion)
-	m.addLabel(meta, util.InstrumentedByLabelKey, m.instrumentationMetadata.InstrumentedBy)
-}
-
-func (m *ResourceModifier) addLabel(meta *metav1.ObjectMeta, key string, value string) {
-	if meta.Labels == nil {
-		meta.Labels = make(map[string]string, 1)
-	}
-	meta.Labels[key] = value
+	util.AddLabel(meta, util.InstrumentedLabelKey, strconv.FormatBool(hasBeenInstrumented))
+	util.AddLabel(meta, util.OperatorVersionLabelKey, m.instrumentationMetadata.OperatorVersion)
+	util.AddLabel(meta, util.InitContainerImageVersionLabelKey, m.instrumentationMetadata.InitContainerImageVersion)
+	util.AddLabel(meta, util.InstrumentedByLabelKey, m.instrumentationMetadata.InstrumentedBy)
 }
 
 func (m *ResourceModifier) RevertCronJob(cronJob *batchv1.CronJob) bool {
