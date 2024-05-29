@@ -233,7 +233,9 @@ var _ = Describe("Dash0 Controller", func() {
 			triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to revert the instrumented workload")
 
 			VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, "controller")
-			VerifyUnmodifiedCronJob(GetCronJob(ctx, k8sClient, namespace, name))
+			cronJob = GetCronJob(ctx, k8sClient, namespace, name)
+			VerifyUnmodifiedCronJob(cronJob)
+			VerifyWebhookIgnoreOnceLabelIsPresent(&cronJob.ObjectMeta)
 		})
 
 		It("should revert an instrumented daemon set", func() {
@@ -255,7 +257,9 @@ var _ = Describe("Dash0 Controller", func() {
 			triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to revert the instrumented workload")
 
 			VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, "controller")
-			VerifyUnmodifiedDaemonSet(GetDaemonSet(ctx, k8sClient, namespace, name))
+			daemonSet = GetDaemonSet(ctx, k8sClient, namespace, name)
+			VerifyUnmodifiedDaemonSet(daemonSet)
+			VerifyWebhookIgnoreOnceLabelIsPresent(&daemonSet.ObjectMeta)
 		})
 
 		It("should revert an instrumented deployment", func() {
@@ -277,7 +281,9 @@ var _ = Describe("Dash0 Controller", func() {
 			triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to revert the instrumented workload")
 
 			VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, "controller")
-			VerifyUnmodifiedDeployment(GetDeployment(ctx, k8sClient, namespace, name))
+			deployment = GetDeployment(ctx, k8sClient, namespace, name)
+			VerifyUnmodifiedDeployment(deployment)
+			VerifyWebhookIgnoreOnceLabelIsPresent(&deployment.ObjectMeta)
 		})
 
 		It("should record a failure event when attempting to revert an existing instrumenting job (which has been instrumented by the webhook)", func() {
@@ -349,10 +355,12 @@ var _ = Describe("Dash0 Controller", func() {
 			triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to revert the instrumented workload")
 
 			VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, "controller")
-			VerifyUnmodifiedReplicaSet(GetReplicaSet(ctx, k8sClient, namespace, name))
+			replicaSet = GetReplicaSet(ctx, k8sClient, namespace, name)
+			VerifyUnmodifiedReplicaSet(replicaSet)
+			VerifyWebhookIgnoreOnceLabelIsPresent(&replicaSet.ObjectMeta)
 		})
 
-		It("should not leave existing uninstrumented replica sets owned by deployments alone", func() {
+		It("should leave existing uninstrumented replica sets owned by deployments alone", func() {
 			// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
 			// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
 			// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
@@ -393,7 +401,9 @@ var _ = Describe("Dash0 Controller", func() {
 			triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to revert the instrumented workload")
 
 			VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, "controller")
-			VerifyUnmodifiedStatefulSet(GetStatefulSet(ctx, k8sClient, namespace, name))
+			statefulSet = GetStatefulSet(ctx, k8sClient, namespace, name)
+			VerifyUnmodifiedStatefulSet(statefulSet)
+			VerifyWebhookIgnoreOnceLabelIsPresent(&statefulSet.ObjectMeta)
 		})
 	})
 })
@@ -460,7 +470,7 @@ func verifyDash0ResourceStatus(ctx context.Context, expectedStatus metav1.Condit
 }
 
 func removeFinalizer(ctx context.Context, dash0CustomResource *operatorv1alpha1.Dash0) {
-	finalizerHasBeenRemoved := controllerutil.RemoveFinalizer(dash0CustomResource, util.FinalizerId)
+	finalizerHasBeenRemoved := controllerutil.RemoveFinalizer(dash0CustomResource, FinalizerId)
 	if finalizerHasBeenRemoved {
 		Expect(k8sClient.Update(ctx, dash0CustomResource)).To(Succeed())
 	}

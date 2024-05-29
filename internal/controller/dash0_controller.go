@@ -28,6 +28,8 @@ import (
 )
 
 const (
+	FinalizerId = "operator.dash0.com/finalizer"
+
 	workkloadTypeLabel     = "workload type"
 	workloadNamespaceLabel = "workload namespace"
 	workloadNameLabel      = "workload name"
@@ -570,7 +572,7 @@ func (r *Dash0Reconciler) checkImminentDeletionAndHandleFinalizers(
 			return isMarkedForDeletion, err
 		}
 	} else {
-		if controllerutil.ContainsFinalizer(dash0CustomResource, util.FinalizerId) {
+		if controllerutil.ContainsFinalizer(dash0CustomResource, FinalizerId) {
 			err := r.runCleanupActions(ctx, dash0CustomResource, logger)
 			if err != nil {
 				// error has already been logged in runCleanupActions
@@ -601,7 +603,7 @@ func (r *Dash0Reconciler) runCleanupActions(
 		return err
 	}
 
-	controllerutil.RemoveFinalizer(dash0CustomResource, util.FinalizerId)
+	controllerutil.RemoveFinalizer(dash0CustomResource, FinalizerId)
 	if err = r.Update(ctx, dash0CustomResource); err != nil {
 		logger.Error(err, "Failed to remove the finalizer from the Dash0 custom resource, requeuing reconcile request.")
 		return err
@@ -613,7 +615,7 @@ func (r *Dash0Reconciler) addFinalizerIfNecessary(
 	ctx context.Context,
 	dash0CustomResource *operatorv1alpha1.Dash0,
 ) error {
-	finalizerHasBeenAdded := controllerutil.AddFinalizer(dash0CustomResource, util.FinalizerId)
+	finalizerHasBeenAdded := controllerutil.AddFinalizer(dash0CustomResource, FinalizerId)
 	if finalizerHasBeenAdded {
 		return r.Update(ctx, dash0CustomResource)
 	}
@@ -794,6 +796,9 @@ func (r *Dash0Reconciler) handleJobOnUninstrumentation(ctx context.Context, job 
 			// There was an attempt to instrument this job (probably by the controller), which has not been successful.
 			// We only need remove the labels from that instrumentation attempt to clean up.
 			newWorkloadModifier(r.Versions, &logger).RemoveLabelsFromImmutableJob(&job)
+
+			// Apparently for jobs we do not need to set the "dash0.webhook.ignore.once" label, since changing there
+			// labels does not trigger a new admission request.
 			return r.Client.Update(ctx, &job)
 		}
 	}, &logger)
@@ -905,6 +910,10 @@ func (r *Dash0Reconciler) revertWorkloadInstrumentation(
 		}
 		hasBeenModified = workload.revert(&logger)
 		if hasBeenModified {
+			// Changing the workload spec sometimes triggers a new admission request, which would re-instrument the
+			// workload via the webhook immediately. To prevent this, we add a label that the webhook can check to
+			// prevent instrumentation.
+			util.AddWebhookIgnoreOnceLabel(objectMeta)
 			return r.Client.Update(ctx, workload.asClientObject())
 		} else {
 			return nil

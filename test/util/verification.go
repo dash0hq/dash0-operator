@@ -236,6 +236,14 @@ func verifyNoDash0Labels(meta metav1.ObjectMeta) {
 	Expect(meta.Labels["dash0.instrumented.by"]).To(Equal(""))
 }
 
+func VerifyWebhookIgnoreOnceLabelIsPresent(objectMeta *metav1.ObjectMeta) bool {
+	return Expect(objectMeta.Labels["dash0.webhook.ignore.once"]).To(Equal("true"))
+}
+
+func VerifyWebhookIgnoreOnceLabelIsAbesent(objectMeta *metav1.ObjectMeta) bool {
+	return Expect(objectMeta.Labels["dash0.webhook.ignore.once"]).To(Equal(""))
+}
+
 func VerifyNoEvents(
 	ctx context.Context,
 	clientset *kubernetes.Clientset,
