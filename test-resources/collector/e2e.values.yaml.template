@@ -1,6 +1,8 @@
 mode: daemonset
 service:
   enabled: true
+additionalLabels:
+  dash0.instrumented: "false"
 resources:
   limits:
     memory: 500Mi
