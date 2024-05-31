@@ -252,39 +252,45 @@ func verifyUnmodifiedPodSpec(podSpec corev1.PodSpec) {
 }
 
 func verifyLabelsAfterSuccessfulModification(meta metav1.ObjectMeta) {
-	Expect(meta.Labels["dash0.instrumented"]).To(Equal("successful"))
-	Expect(meta.Labels["dash0.operator.version"]).To(Equal("1.2.3"))
-	Expect(meta.Labels["dash0.initcontainer.image.version"]).To(Equal("4.5.6"))
-	Expect(meta.Labels["dash0.instrumented.by"]).NotTo(Equal(""))
+	Expect(meta.Labels["dash0.com/instrumented"]).To(Equal("true"))
+	Expect(meta.Labels["dash0.com/operator-version"]).To(Equal("1.2.3"))
+	Expect(meta.Labels["dash0.com/init-container-image-version"]).To(Equal("4.5.6"))
+	Expect(meta.Labels["dash0.com/instrumented-by"]).NotTo(Equal(""))
+	Expect(meta.Labels["dash0.com/opt-out"]).To(Equal(""))
 }
 
 func verifyLabelsAfterFailureToModify(meta metav1.ObjectMeta) {
-	Expect(meta.Labels["dash0.instrumented"]).To(Equal("unsuccessful"))
-	Expect(meta.Labels["dash0.operator.version"]).To(Equal("1.2.3"))
-	Expect(meta.Labels["dash0.initcontainer.image.version"]).To(Equal("4.5.6"))
-	Expect(meta.Labels["dash0.instrumented.by"]).NotTo(Equal(""))
+	Expect(meta.Labels["dash0.com/instrumented"]).To(Equal("false"))
+	Expect(meta.Labels["dash0.com/operator-version"]).To(Equal("1.2.3"))
+	Expect(meta.Labels["dash0.com/init-container-image-version"]).To(Equal("4.5.6"))
+	Expect(meta.Labels["dash0.com/instrumented-by"]).NotTo(Equal(""))
+	Expect(meta.Labels["dash0.com/webhook-ignore-once"]).To(Equal(""))
+	Expect(meta.Labels["dash0.com/opt-out"]).To(Equal(""))
 }
 
 func verifyNoDash0Labels(meta metav1.ObjectMeta) {
-	Expect(meta.Labels["dash0.instrumented"]).To(Equal(""))
-	Expect(meta.Labels["dash0.operator.version"]).To(Equal(""))
-	Expect(meta.Labels["dash0.initcontainer.image.version"]).To(Equal(""))
-	Expect(meta.Labels["dash0.instrumented.by"]).To(Equal(""))
+	Expect(meta.Labels["dash0.com/instrumented"]).To(Equal(""))
+	Expect(meta.Labels["dash0.com/operator-version"]).To(Equal(""))
+	Expect(meta.Labels["dash0.com/init-container-image-version"]).To(Equal(""))
+	Expect(meta.Labels["dash0.com/instrumented-by"]).To(Equal(""))
+	Expect(meta.Labels["dash0.com/opt-out"]).To(Equal(""))
 }
 
 func verifyLabelsForOptOutWorkload(meta metav1.ObjectMeta) {
-	Expect(meta.Labels["dash0.instrumented"]).To(Equal("false"))
-	Expect(meta.Labels["dash0.operator.version"]).To(Equal(""))
-	Expect(meta.Labels["dash0.initcontainer.image.version"]).To(Equal(""))
-	Expect(meta.Labels["dash0.instrumented.by"]).To(Equal(""))
+	Expect(meta.Labels["dash0.com/instrumented"]).To(Equal(""))
+	Expect(meta.Labels["dash0.com/operator-version"]).To(Equal(""))
+	Expect(meta.Labels["dash0.com/init-container-image-version"]).To(Equal(""))
+	Expect(meta.Labels["dash0.com/instrumented-by"]).To(Equal(""))
+	Expect(meta.Labels["dash0.com/webhook-ignore-once"]).To(Equal(""))
+	Expect(meta.Labels["dash0.com/opt-out"]).To(Equal("true"))
 }
 
 func VerifyWebhookIgnoreOnceLabelIsPresent(objectMeta *metav1.ObjectMeta) bool {
-	return Expect(objectMeta.Labels["dash0.webhook.ignore.once"]).To(Equal("true"))
+	return Expect(objectMeta.Labels["dash0.com/webhook-ignore-once"]).To(Equal("true"))
 }
 
 func VerifyWebhookIgnoreOnceLabelIsAbesent(objectMeta *metav1.ObjectMeta) bool {
-	return Expect(objectMeta.Labels["dash0.webhook.ignore.once"]).To(Equal(""))
+	return Expect(objectMeta.Labels["dash0.com/webhook-ignore-once"]).To(Equal(""))
 }
 
 func VerifyNoEvents(

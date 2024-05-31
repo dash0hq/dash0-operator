@@ -6,6 +6,7 @@ package util
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/google/uuid"
 	appsv1 "k8s.io/api/apps/v1"
@@ -908,20 +909,14 @@ func GetStatefulSet(
 }
 
 func addInstrumentationLabels(meta *metav1.ObjectMeta, successful bool) {
-	var instrumentationState string
-	if successful {
-		instrumentationState = "successful"
-	} else {
-		instrumentationState = "unsuccessful"
-	}
-	AddLabel(meta, "dash0.instrumented", instrumentationState)
-	AddLabel(meta, "dash0.operator.version", "1.2.3")
-	AddLabel(meta, "dash0.initcontainer.image.version", "4.5.6")
-	AddLabel(meta, "dash0.instrumented.by", "someone")
+	AddLabel(meta, "dash0.com/instrumented", strconv.FormatBool(successful))
+	AddLabel(meta, "dash0.com/operator-version", "1.2.3")
+	AddLabel(meta, "dash0.com/init-container-image-version", "4.5.6")
+	AddLabel(meta, "dash0.com/instrumented-by", "someone")
 }
 
 func addOptOutLabel(meta *metav1.ObjectMeta) {
-	AddLabel(meta, "dash0.instrumented", "false")
+	AddLabel(meta, "dash0.com/opt-out", "true")
 }
 
 func AddLabel(meta *metav1.ObjectMeta, key string, value string) {

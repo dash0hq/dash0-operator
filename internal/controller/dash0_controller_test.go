@@ -396,7 +396,7 @@ var _ = Describe("The Dash0 controller", func() {
 			triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
 
 			name := UniqueName(JobNamePrefix)
-			By("Create a job with labels (dash0.instrumented=unsuccessful)")
+			By("Create a job with label dash0.com/instrumented=false")
 			job := CreateJobForWhichAnInstrumentationAttemptHasFailed(ctx, k8sClient, namespace, name)
 			createdObjects = append(createdObjects, job)
 

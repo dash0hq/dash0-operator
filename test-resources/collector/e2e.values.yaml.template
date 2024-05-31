@@ -2,7 +2,7 @@ mode: daemonset
 service:
   enabled: true
 additionalLabels:
-  dash0.instrumented: "false"
+  dash0.com/opt-out: "true"
 resources:
   limits:
     memory: 500Mi
