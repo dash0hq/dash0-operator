@@ -10,35 +10,32 @@ import (
 )
 
 const (
-	instrumentedLabelKey = "dash0.instrumented"
+	instrumentedLabelKey = "dash0.com/instrumented"
 
-	// InstrumentedLabelValueSuccessful os written by the operator when then instrumentation attempt has been
+	// instrumentedLabelValueSuccessful os written by the operator when then instrumentation attempt has been
 	// successful.
-	instrumentedLabelValueSuccessful instrumentedState = "successful"
+	instrumentedLabelValueSuccessful instrumentedState = "true"
 
-	// InstrumentedLabelValueUnsuccessful is written by the operator when then instrumentation attempt has failed.
-	instrumentedLabelValueUnsuccessful instrumentedState = "unsuccessful"
+	// instrumentedLabelValueUnsuccessful is written by the operator when then instrumentation attempt has failed.
+	instrumentedLabelValueUnsuccessful instrumentedState = "false"
 
-	// InstrumentedLabelValueOptOut is never written by the operator, this can be set externally to opt-out of
-	// instrumentation for a particular workload
-	instrumentedLabelValueOptOut instrumentedState = "false"
-
-	// InstrumentedLabelValueUnknown should never occur in the wild, it is used as a fallback for inconsistent states
+	// instrumentedLabelValueUnknown should never occur in the wild, it is used as a fallback for inconsistent states.
 	// or when the label is missing entirely.
 	instrumentedLabelValueUnknown instrumentedState = "unknown"
 
-	operatorVersionLabelKey           = "dash0.operator.version"
-	initContainerImageVersionLabelKey = "dash0.initcontainer.image.version"
-	instrumentedByLabelKey            = "dash0.instrumented.by"
-	webhookIgnoreOnceLabelKey         = "dash0.webhook.ignore.once"
+	optOutLabelKey                    = "dash0.com/opt-out"
+	operatorVersionLabelKey           = "dash0.com/operator-version"
+	initContainerImageVersionLabelKey = "dash0.com/init-container-image-version"
+	instrumentedByLabelKey            = "dash0.com/instrumented-by"
+	webhookIgnoreOnceLabelKey         = "dash0.com/webhook-ignore-once"
 )
 
 var (
 	WorkloadsWithoutDash0InstrumentedLabelFilter = metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("!%s", instrumentedLabelKey),
+		LabelSelector: fmt.Sprintf("!%s,%s != true", instrumentedLabelKey, optOutLabelKey),
 	}
-	WorkloadsWithDash0InstrumentedLabelExlucdingOptOutFilter = metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("%[1]s,%[1]s != false", instrumentedLabelKey),
+	WorkloadsWithDash0InstrumentedLabelFilter = metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("%s,%s != true", instrumentedLabelKey, optOutLabelKey),
 	}
 )
 
@@ -71,9 +68,7 @@ func addLabel(meta *metav1.ObjectMeta, key string, value string) {
 }
 
 func RemoveInstrumentationLabels(meta *metav1.ObjectMeta) {
-	if meta.GetLabels()[instrumentedLabelKey] != "false" {
-		removeLabel(meta, instrumentedLabelKey)
-	}
+	removeLabel(meta, instrumentedLabelKey)
 	removeLabel(meta, operatorVersionLabelKey)
 	removeLabel(meta, initContainerImageVersionLabelKey)
 	removeLabel(meta, instrumentedByLabelKey)
@@ -91,10 +86,6 @@ func InstrumenationAttemptHasFailed(meta *metav1.ObjectMeta) bool {
 	return readInstrumentationState(meta) == instrumentedLabelValueUnsuccessful
 }
 
-func HasOptedOutOfInstrumenation(meta *metav1.ObjectMeta) bool {
-	return readInstrumentationState(meta) == instrumentedLabelValueOptOut
-}
-
 func readInstrumentationState(meta *metav1.ObjectMeta) instrumentedState {
 	if meta.Labels == nil {
 		return instrumentedLabelValueUnknown
@@ -104,20 +95,28 @@ func readInstrumentationState(meta *metav1.ObjectMeta) instrumentedState {
 		return instrumentedLabelValueSuccessful
 	case string(instrumentedLabelValueUnsuccessful):
 		return instrumentedLabelValueUnsuccessful
-	case string(instrumentedLabelValueOptOut):
-		return instrumentedLabelValueOptOut
 	default:
 		return instrumentedLabelValueUnknown
 	}
+}
+
+func HasOptedOutOfInstrumenation(meta *metav1.ObjectMeta) bool {
+	if meta.Labels == nil {
+		return false
+	}
+	if value, ok := meta.Labels[optOutLabelKey]; ok && value == "true" {
+		return true
+	}
+	return false
 }
 
 func CheckAndDeleteIgnoreOnceLabel(meta *metav1.ObjectMeta) bool {
 	if meta.Labels == nil {
 		return false
 	}
-	if value, ok := meta.Labels[webhookIgnoreOnceLabelKey]; ok && value == "true" {
+	if value, ok := meta.Labels[webhookIgnoreOnceLabelKey]; ok {
 		delete(meta.Labels, webhookIgnoreOnceLabelKey)
-		return true
+		return value == "true"
 	}
 	return false
 }

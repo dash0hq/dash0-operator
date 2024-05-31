@@ -644,31 +644,29 @@ func VerifyThatFailedInstrumentationAttemptLabelsHaveBeenRemovedRemoved(namespac
 }
 
 func verifyLabels(g Gomega, namespace string, kind string, successful bool, instrumentationBy string) {
-	var expectedDash0InstrumentationValue string
-	if successful {
-		expectedDash0InstrumentationValue = "successful"
-	} else {
-		expectedDash0InstrumentationValue = "unsuccessful"
-	}
-	instrumented := readLabel(g, namespace, kind, "dash0.instrumented")
-	g.ExpectWithOffset(1, instrumented).To(Equal(expectedDash0InstrumentationValue))
-	operatorVersion := readLabel(g, namespace, kind, "dash0.operator.version")
+	instrumented := readLabel(g, namespace, kind, "dash0.com/instrumented")
+	g.ExpectWithOffset(1, instrumented).To(Equal(strconv.FormatBool(successful)))
+	operatorVersion := readLabel(g, namespace, kind, "dash0.com/operator-version")
 	g.ExpectWithOffset(1, operatorVersion).To(MatchRegexp("\\d+\\.\\d+\\.\\d+"))
-	initContainerImageVersion := readLabel(g, namespace, kind, "dash0.initcontainer.image.version")
+	initContainerImageVersion := readLabel(g, namespace, kind, "dash0.com/init-container-image-version")
 	g.ExpectWithOffset(1, initContainerImageVersion).To(MatchRegexp("\\d+\\.\\d+\\.\\d+"))
-	instrumentedBy := readLabel(g, namespace, kind, "dash0.instrumented.by")
+	instrumentedBy := readLabel(g, namespace, kind, "dash0.com/instrumented-by")
 	g.ExpectWithOffset(1, instrumentedBy).To(Equal(instrumentationBy))
+	optOut := readLabel(g, namespace, kind, "dash0.com/opt-out")
+	g.ExpectWithOffset(1, optOut).To(Equal(""))
 }
 
 func verifyLabelsHaveBeenRemoved(g Gomega, namespace string, kind string) {
-	instrumented := readLabel(g, namespace, kind, "dash0.instrumented")
+	instrumented := readLabel(g, namespace, kind, "dash0.com/instrumented")
 	g.ExpectWithOffset(1, instrumented).To(Equal(""))
-	operatorVersion := readLabel(g, namespace, kind, "dash0.operator.version")
+	operatorVersion := readLabel(g, namespace, kind, "dash0.com/operator-version")
 	g.ExpectWithOffset(1, operatorVersion).To(Equal(""))
-	initContainerImageVersion := readLabel(g, namespace, kind, "dash0.initcontainer.image.version")
+	initContainerImageVersion := readLabel(g, namespace, kind, "dash0.com/init-container-image-version")
 	g.ExpectWithOffset(1, initContainerImageVersion).To(Equal(""))
-	instrumentedBy := readLabel(g, namespace, kind, "dash0.instrumented.by")
+	instrumentedBy := readLabel(g, namespace, kind, "dash0.com/instrumented-by")
 	g.ExpectWithOffset(1, instrumentedBy).To(Equal(""))
+	optOut := readLabel(g, namespace, kind, "dash0.com/opt-out")
+	g.ExpectWithOffset(1, optOut).To(Equal(""))
 }
 
 func readLabel(g Gomega, namespace string, kind string, labelKey string) string {
