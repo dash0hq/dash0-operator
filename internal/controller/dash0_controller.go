@@ -35,15 +35,6 @@ const (
 	workloadNameLabel      = "workload name"
 )
 
-var (
-	workloadsWithoutDash0InstrumentedLabelFilter = metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("!%s", util.InstrumentedLabelKey),
-	}
-	workloadsWithDash0InstrumentedLabelFilter = metav1.ListOptions{
-		LabelSelector: util.InstrumentedLabelKey,
-	}
-)
-
 type Dash0Reconciler struct {
 	client.Client
 	ClientSet *kubernetes.Clientset
@@ -297,7 +288,7 @@ func (r *Dash0Reconciler) findAndInstrumentCronJobs(
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
-		r.ClientSet.BatchV1().CronJobs(namespace).List(ctx, workloadsWithoutDash0InstrumentedLabelFilter)
+		r.ClientSet.BatchV1().CronJobs(namespace).List(ctx, util.WorkloadsWithoutDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying cron jobs: %w", err)
 	}
@@ -324,7 +315,7 @@ func (r *Dash0Reconciler) findAndInstrumentyDaemonSets(
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
-		r.ClientSet.AppsV1().DaemonSets(namespace).List(ctx, workloadsWithoutDash0InstrumentedLabelFilter)
+		r.ClientSet.AppsV1().DaemonSets(namespace).List(ctx, util.WorkloadsWithoutDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying daemon sets: %w", err)
 	}
@@ -351,7 +342,7 @@ func (r *Dash0Reconciler) findAndInstrumentDeployments(
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
-		r.ClientSet.AppsV1().Deployments(namespace).List(ctx, workloadsWithoutDash0InstrumentedLabelFilter)
+		r.ClientSet.AppsV1().Deployments(namespace).List(ctx, util.WorkloadsWithoutDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying deployments: %w", err)
 	}
@@ -378,7 +369,7 @@ func (r *Dash0Reconciler) findAndAddLabelsToImmutableJobsOnInstrumentation(
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
-		r.ClientSet.BatchV1().Jobs(namespace).List(ctx, workloadsWithoutDash0InstrumentedLabelFilter)
+		r.ClientSet.BatchV1().Jobs(namespace).List(ctx, util.WorkloadsWithoutDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying jobs: %w", err)
 	}
@@ -434,7 +425,7 @@ func (r *Dash0Reconciler) findAndInstrumentReplicaSets(
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
-		r.ClientSet.AppsV1().ReplicaSets(namespace).List(ctx, workloadsWithoutDash0InstrumentedLabelFilter)
+		r.ClientSet.AppsV1().ReplicaSets(namespace).List(ctx, util.WorkloadsWithoutDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying deployments: %w", err)
 	}
@@ -465,7 +456,7 @@ func (r *Dash0Reconciler) findAndInstrumentStatefulSets(
 	namespace string,
 	logger *logr.Logger,
 ) error {
-	matchingWorkloadsInNamespace, err := r.ClientSet.AppsV1().StatefulSets(namespace).List(ctx, workloadsWithoutDash0InstrumentedLabelFilter)
+	matchingWorkloadsInNamespace, err := r.ClientSet.AppsV1().StatefulSets(namespace).List(ctx, util.WorkloadsWithoutDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying stateful sets: %w", err)
 	}
@@ -674,7 +665,7 @@ func (r *Dash0Reconciler) findAndUninstrumentCronJobs(
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
-		r.ClientSet.BatchV1().CronJobs(namespace).List(ctx, workloadsWithDash0InstrumentedLabelFilter)
+		r.ClientSet.BatchV1().CronJobs(namespace).List(ctx, util.WorkloadsWithDash0InstrumentedLabelExlucdingOptOutFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying instrumented cron jobs: %w", err)
 	}
@@ -697,7 +688,7 @@ func (r *Dash0Reconciler) uninstrumentCronJob(
 
 func (r *Dash0Reconciler) findAndUninstrumentDaemonSets(ctx context.Context, namespace string, logger *logr.Logger) error {
 	matchingWorkloadsInNamespace, err :=
-		r.ClientSet.AppsV1().DaemonSets(namespace).List(ctx, workloadsWithDash0InstrumentedLabelFilter)
+		r.ClientSet.AppsV1().DaemonSets(namespace).List(ctx, util.WorkloadsWithDash0InstrumentedLabelExlucdingOptOutFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying instrumented daemon sets: %w", err)
 	}
@@ -724,7 +715,7 @@ func (r *Dash0Reconciler) findAndUninstrumentDeployments(
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
-		r.ClientSet.AppsV1().Deployments(namespace).List(ctx, workloadsWithDash0InstrumentedLabelFilter)
+		r.ClientSet.AppsV1().Deployments(namespace).List(ctx, util.WorkloadsWithDash0InstrumentedLabelExlucdingOptOutFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying instrumented deployments: %w", err)
 	}
@@ -750,7 +741,7 @@ func (r *Dash0Reconciler) findAndHandleJobOnUninstrumentation(
 	namespace string,
 	logger *logr.Logger,
 ) error {
-	matchingWorkloadsInNamespace, err := r.ClientSet.BatchV1().Jobs(namespace).List(ctx, workloadsWithDash0InstrumentedLabelFilter)
+	matchingWorkloadsInNamespace, err := r.ClientSet.BatchV1().Jobs(namespace).List(ctx, util.WorkloadsWithDash0InstrumentedLabelExlucdingOptOutFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying instrumented jobs: %w", err)
 	}
@@ -783,8 +774,7 @@ func (r *Dash0Reconciler) handleJobOnUninstrumentation(ctx context.Context, job 
 		}, &job); err != nil {
 			return fmt.Errorf("error when fetching job %s/%s: %w", job.GetNamespace(), job.GetName(), err)
 		}
-		isInstrumented := job.GetObjectMeta().GetLabels()[util.InstrumentedLabelKey]
-		if isInstrumented == "true" {
+		if util.HasBeenInstrumentedSuccessfully(&job.ObjectMeta) {
 			// This job has been instrumented, presumably by the webhook. We cannot undo the instrumentation here, since
 			// jobs are immutable.
 
@@ -792,7 +782,7 @@ func (r *Dash0Reconciler) handleJobOnUninstrumentation(ctx context.Context, job 
 			// since we cannot remove the instrumentation, so we also have to leave the labels in place.
 			createImmutableWorkloadsError = true
 			return nil
-		} else {
+		} else if util.InstrumenationAttemptHasFailed(&job.ObjectMeta) {
 			// There was an attempt to instrument this job (probably by the controller), which has not been successful.
 			// We only need remove the labels from that instrumentation attempt to clean up.
 			newWorkloadModifier(r.Versions, &logger).RemoveLabelsFromImmutableJob(&job)
@@ -800,6 +790,13 @@ func (r *Dash0Reconciler) handleJobOnUninstrumentation(ctx context.Context, job 
 			// Apparently for jobs we do not need to set the "dash0.webhook.ignore.once" label, since changing there
 			// labels does not trigger a new admission request.
 			return r.Client.Update(ctx, &job)
+		} else if util.HasOptedOutOfInstrumenation(&job.ObjectMeta) {
+			// There is an opt-out marker for this job, so we have never attempted to instrument it and also do not
+			// need to revert anything or remove any labels.
+			return nil
+		} else {
+			// No dash0.instrumented label is present, do nothing.
+			return nil
 		}
 	}, &logger)
 
@@ -826,7 +823,7 @@ func (r *Dash0Reconciler) findAndUninstrumentReplicaSets(
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
-		r.ClientSet.AppsV1().ReplicaSets(namespace).List(ctx, workloadsWithDash0InstrumentedLabelFilter)
+		r.ClientSet.AppsV1().ReplicaSets(namespace).List(ctx, util.WorkloadsWithDash0InstrumentedLabelExlucdingOptOutFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying instrumented replica sets: %w", err)
 	}
@@ -853,7 +850,7 @@ func (r *Dash0Reconciler) findAndUninstrumentStatefulSets(
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
-		r.ClientSet.AppsV1().StatefulSets(namespace).List(ctx, workloadsWithDash0InstrumentedLabelFilter)
+		r.ClientSet.AppsV1().StatefulSets(namespace).List(ctx, util.WorkloadsWithDash0InstrumentedLabelExlucdingOptOutFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying instrumented stateful sets: %w", err)
 	}

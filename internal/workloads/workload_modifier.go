@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -76,7 +75,7 @@ func (m *ResourceModifier) ModifyJob(job *batchv1.Job) bool {
 }
 
 func (m *ResourceModifier) AddLabelsToImmutableJob(job *batchv1.Job) {
-	m.addInstrumentationLabels(&job.ObjectMeta, false)
+	util.AddInstrumentationLabels(&job.ObjectMeta, false, m.instrumentationMetadata)
 }
 
 func (m *ResourceModifier) ModifyReplicaSet(replicaSet *appsv1.ReplicaSet) bool {
@@ -91,13 +90,16 @@ func (m *ResourceModifier) ModifyStatefulSet(statefulSet *appsv1.StatefulSet) bo
 }
 
 func (m *ResourceModifier) modifyResource(podTemplateSpec *corev1.PodTemplateSpec, meta *metav1.ObjectMeta) bool {
+	if util.HasOptedOutOfInstrumenation(meta) {
+		return false
+	}
 	hasBeenModified := m.modifyPodSpec(
 		&podTemplateSpec.Spec,
 		fmt.Sprintf(envVarDash0CollectorBaseUrlValueTemplate, meta.Namespace),
 	)
 	if hasBeenModified {
-		m.addInstrumentationLabels(meta, true)
-		m.addInstrumentationLabels(&podTemplateSpec.ObjectMeta, true)
+		util.AddInstrumentationLabels(meta, true, m.instrumentationMetadata)
+		util.AddInstrumentationLabels(&podTemplateSpec.ObjectMeta, true, m.instrumentationMetadata)
 	}
 	return hasBeenModified
 }
@@ -284,16 +286,6 @@ func (m *ResourceModifier) addOrReplaceEnvironmentVariable(container *corev1.Con
 	}
 }
 
-func (m *ResourceModifier) addInstrumentationLabels(
-	meta *metav1.ObjectMeta,
-	hasBeenInstrumented bool,
-) {
-	util.AddLabel(meta, util.InstrumentedLabelKey, strconv.FormatBool(hasBeenInstrumented))
-	util.AddLabel(meta, util.OperatorVersionLabelKey, m.instrumentationMetadata.OperatorVersion)
-	util.AddLabel(meta, util.InitContainerImageVersionLabelKey, m.instrumentationMetadata.InitContainerImageVersion)
-	util.AddLabel(meta, util.InstrumentedByLabelKey, m.instrumentationMetadata.InstrumentedBy)
-}
-
 func (m *ResourceModifier) RevertCronJob(cronJob *batchv1.CronJob) bool {
 	return m.revertResource(&cronJob.Spec.JobTemplate.Spec.Template, &cronJob.ObjectMeta)
 }
@@ -311,7 +303,7 @@ func (m *ResourceModifier) RevertJob(job *batchv1.Job) bool {
 }
 
 func (m *ResourceModifier) RemoveLabelsFromImmutableJob(job *batchv1.Job) {
-	m.removeInstrumentationLabels(&job.ObjectMeta)
+	util.RemoveInstrumentationLabels(&job.ObjectMeta)
 }
 
 func (m *ResourceModifier) RevertReplicaSet(replicaSet *appsv1.ReplicaSet) bool {
@@ -326,16 +318,19 @@ func (m *ResourceModifier) RevertStatefulSet(statefulSet *appsv1.StatefulSet) bo
 }
 
 func (m *ResourceModifier) revertResource(podTemplateSpec *corev1.PodTemplateSpec, meta *metav1.ObjectMeta) bool {
-	if meta.GetLabels()[util.InstrumentedLabelKey] == "false" {
+	if util.HasOptedOutOfInstrumenation(meta) {
+		return false
+	}
+	if util.InstrumenationAttemptHasFailed(meta) {
 		// resource has never been instrumented successfully, only remove labels
-		m.removeInstrumentationLabels(meta)
-		m.removeInstrumentationLabels(&podTemplateSpec.ObjectMeta)
+		util.RemoveInstrumentationLabels(meta)
+		util.RemoveInstrumentationLabels(&podTemplateSpec.ObjectMeta)
 		return true
 	}
 	hasBeenModified := m.revertPodSpec(&podTemplateSpec.Spec)
 	if hasBeenModified {
-		m.removeInstrumentationLabels(meta)
-		m.removeInstrumentationLabels(&podTemplateSpec.ObjectMeta)
+		util.RemoveInstrumentationLabels(meta)
+		util.RemoveInstrumentationLabels(&podTemplateSpec.ObjectMeta)
 		return true
 	}
 	return false
@@ -422,17 +417,6 @@ func (m *ResourceModifier) removeEnvironmentVariable(container *corev1.Container
 	container.Env = slices.DeleteFunc(container.Env, func(c corev1.EnvVar) bool {
 		return c.Name == name
 	})
-}
-
-func (m *ResourceModifier) removeInstrumentationLabels(meta *metav1.ObjectMeta) {
-	m.removeLabel(meta, util.InstrumentedLabelKey)
-	m.removeLabel(meta, util.OperatorVersionLabelKey)
-	m.removeLabel(meta, util.InitContainerImageVersionLabelKey)
-	m.removeLabel(meta, util.InstrumentedByLabelKey)
-}
-
-func (m *ResourceModifier) removeLabel(meta *metav1.ObjectMeta, key string) {
-	delete(meta.Labels, key)
 }
 
 func (m *ResourceModifier) hasDeploymentOwnerReference(replicaSet *appsv1.ReplicaSet) bool {

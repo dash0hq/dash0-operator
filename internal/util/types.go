@@ -10,12 +10,12 @@ const (
 	ConditionTypeAvailable ConditionType = "Available"
 	ConditionTypeDegraded  ConditionType = "Degraded"
 
-	ReasonSuccessfulInstrumentation   Reason = "SuccessfulInstrumentation"
-	ReasonNoInstrumentationNecessary  Reason = "ReasonAlreadyInstrumented"
-	ReasonFailedInstrumentation       Reason = "FailedInstrumentation"
-	ReasonSuccessfulUninstrumentation Reason = "SuccessfulUninstrumentation"
-	ReasonAlreadyNotInstrumented      Reason = "ReasonAlreadyNotInstrumented"
-	ReasonFailedUninstrumentation     Reason = "FailedUninstrumentation"
+	ReasonSuccessfulInstrumentation    Reason = "SuccessfulInstrumentation"
+	ReasonNoInstrumentationNecessary   Reason = "ReasonAlreadyInstrumented"
+	ReasonFailedInstrumentation        Reason = "FailedInstrumentation"
+	ReasonSuccessfulUninstrumentation  Reason = "SuccessfulUninstrumentation"
+	ReasonNoUninstrumentationNecessary Reason = "ReasonAlreadyNotInstrumented"
+	ReasonFailedUninstrumentation      Reason = "FailedUninstrumentation"
 )
 
 type Versions struct {
