@@ -8,6 +8,7 @@ set -euo pipefail
 cd "$(dirname ${BASH_SOURCE})"/../..
 
 target_namespace=${1:-default}
+delete_namespace=${2:-true}
 
 kubectl delete -n ${target_namespace} -k config/samples || true
 make uninstall || true
@@ -20,6 +21,6 @@ done
 
 test-resources/collector/undeploy.sh ${target_namespace}
 
-if [[ "${target_namespace}" != "default" ]]; then
+if [[ "${target_namespace}" != "default" ]] && [[ "${delete_namespace}" == "true" ]]; then
   kubectl delete ns ${target_namespace}
 fi

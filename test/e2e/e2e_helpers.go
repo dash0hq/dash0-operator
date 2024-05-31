@@ -643,9 +643,15 @@ func VerifyThatFailedInstrumentationAttemptLabelsHaveBeenRemovedRemoved(namespac
 	}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
 }
 
-func verifyLabels(g Gomega, namespace string, kind string, hasBeenInstrumented bool, instrumentationBy string) {
+func verifyLabels(g Gomega, namespace string, kind string, successful bool, instrumentationBy string) {
+	var expectedDash0InstrumentationValue string
+	if successful {
+		expectedDash0InstrumentationValue = "successful"
+	} else {
+		expectedDash0InstrumentationValue = "unsuccessful"
+	}
 	instrumented := readLabel(g, namespace, kind, "dash0.instrumented")
-	g.ExpectWithOffset(1, instrumented).To(Equal(strconv.FormatBool(hasBeenInstrumented)))
+	g.ExpectWithOffset(1, instrumented).To(Equal(expectedDash0InstrumentationValue))
 	operatorVersion := readLabel(g, namespace, kind, "dash0.operator.version")
 	g.ExpectWithOffset(1, operatorVersion).To(MatchRegexp("\\d+\\.\\d+\\.\\d+"))
 	initContainerImageVersion := readLabel(g, namespace, kind, "dash0.initcontainer.image.version")

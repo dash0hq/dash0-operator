@@ -52,7 +52,7 @@ func QueueNoUninstrumentationNecessaryEvent(eventRecorder record.EventRecorder, 
 	eventRecorder.Event(
 		resource,
 		corev1.EventTypeNormal,
-		string(ReasonAlreadyNotInstrumented),
+		string(ReasonNoUninstrumentationNecessary),
 		fmt.Sprintf("Dash0 instrumentation was not present on this workload, no modification by the %s has been necessary.", eventSource),
 	)
 }

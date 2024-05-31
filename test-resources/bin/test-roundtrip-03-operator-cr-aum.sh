@@ -21,7 +21,7 @@ echo "STEP 1: creating target namespace (if necessary)"
 test-resources/bin/ensure-namespace-exists.sh ${target_namespace}
 
 echo "STEP 2: remove old test resources"
-test-resources/bin/test-cleanup.sh ${target_namespace}
+test-resources/bin/test-cleanup.sh ${target_namespace} false
 echo
 echo
 

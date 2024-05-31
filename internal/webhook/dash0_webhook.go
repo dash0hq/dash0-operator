@@ -12,7 +12,6 @@ import (
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
@@ -110,8 +109,11 @@ func (h *Handler) handleCronJob(
 	if failed {
 		return responseIfFailed
 	}
-	if isIgnored(&cronJob.ObjectMeta) {
+	if util.CheckAndDeleteIgnoreOnceLabel(&cronJob.ObjectMeta) {
 		return h.postProcess(request, cronJob, false, true, logger)
+	}
+	if util.HasOptedOutOfInstrumenation(&cronJob.ObjectMeta) {
+		return admission.Allowed("not instrumenting this resource due to dash0.instrumented=false (opt-out)")
 	}
 	hasBeenModified := h.newWorkloadModifier(logger).ModifyCronJob(cronJob)
 	return h.postProcess(request, cronJob, hasBeenModified, false, logger)
@@ -127,8 +129,11 @@ func (h *Handler) handleDaemonSet(
 	if failed {
 		return responseIfFailed
 	}
-	if isIgnored(&daemonSet.ObjectMeta) {
+	if util.CheckAndDeleteIgnoreOnceLabel(&daemonSet.ObjectMeta) {
 		return h.postProcess(request, daemonSet, false, true, logger)
+	}
+	if util.HasOptedOutOfInstrumenation(&daemonSet.ObjectMeta) {
+		return admission.Allowed("not instrumenting this resource due to dash0.instrumented=false (opt-out)")
 	}
 	hasBeenModified := h.newWorkloadModifier(logger).ModifyDaemonSet(daemonSet)
 	return h.postProcess(request, daemonSet, hasBeenModified, false, logger)
@@ -144,8 +149,11 @@ func (h *Handler) handleDeployment(
 	if failed {
 		return responseIfFailed
 	}
-	if isIgnored(&deployment.ObjectMeta) {
+	if util.CheckAndDeleteIgnoreOnceLabel(&deployment.ObjectMeta) {
 		return h.postProcess(request, deployment, false, true, logger)
+	}
+	if util.HasOptedOutOfInstrumenation(&deployment.ObjectMeta) {
+		return admission.Allowed("not instrumenting this resource due to dash0.instrumented=false (opt-out)")
 	}
 	hasBeenModified := h.newWorkloadModifier(logger).ModifyDeployment(deployment)
 	return h.postProcess(request, deployment, hasBeenModified, false, logger)
@@ -161,8 +169,11 @@ func (h *Handler) handleJob(
 	if failed {
 		return responseIfFailed
 	}
-	if isIgnored(&job.ObjectMeta) {
+	if util.CheckAndDeleteIgnoreOnceLabel(&job.ObjectMeta) {
 		return h.postProcess(request, job, false, true, logger)
+	}
+	if util.HasOptedOutOfInstrumenation(&job.ObjectMeta) {
+		return admission.Allowed("not instrumenting this resource due to dash0.instrumented=false (opt-out)")
 	}
 	hasBeenModified := h.newWorkloadModifier(logger).ModifyJob(job)
 	return h.postProcess(request, job, hasBeenModified, false, logger)
@@ -178,8 +189,11 @@ func (h *Handler) handleReplicaSet(
 	if failed {
 		return responseIfFailed
 	}
-	if isIgnored(&replicaSet.ObjectMeta) {
+	if util.CheckAndDeleteIgnoreOnceLabel(&replicaSet.ObjectMeta) {
 		return h.postProcess(request, replicaSet, false, true, logger)
+	}
+	if util.HasOptedOutOfInstrumenation(&replicaSet.ObjectMeta) {
+		return admission.Allowed("not instrumenting this resource due to dash0.instrumented=false (opt-out)")
 	}
 	hasBeenModified := h.newWorkloadModifier(logger).ModifyReplicaSet(replicaSet)
 	return h.postProcess(request, replicaSet, hasBeenModified, false, logger)
@@ -195,8 +209,11 @@ func (h *Handler) handleStatefulSet(
 	if failed {
 		return responseIfFailed
 	}
-	if isIgnored(&statefulSet.ObjectMeta) {
+	if util.CheckAndDeleteIgnoreOnceLabel(&statefulSet.ObjectMeta) {
 		return h.postProcess(request, statefulSet, false, true, logger)
+	}
+	if util.HasOptedOutOfInstrumenation(&statefulSet.ObjectMeta) {
+		return admission.Allowed("not instrumenting this resource due to dash0.instrumented=false (opt-out)")
 	}
 	hasBeenModified := h.newWorkloadModifier(logger).ModifyStatefulSet(statefulSet)
 	return h.postProcess(request, statefulSet, hasBeenModified, false, logger)
@@ -213,17 +230,6 @@ func (h *Handler) preProcess(
 		return admission.Errored(http.StatusInternalServerError, err), true
 	}
 	return admission.Response{}, false
-}
-
-func isIgnored(meta *metav1.ObjectMeta) bool {
-	if meta.Labels == nil {
-		return false
-	}
-	if value, ok := meta.Labels[util.WebhookIgnoreOnceLabelKey]; ok && value == "true" {
-		delete(meta.Labels, util.WebhookIgnoreOnceLabelKey)
-		return true
-	}
-	return false
 }
 
 func (h *Handler) postProcess(
@@ -246,7 +252,7 @@ func (h *Handler) postProcess(
 	}
 
 	if ignored {
-		logger.Info(fmt.Sprintf("Ignoring this admission request due to the presence of %s.", util.WebhookIgnoreOnceLabelKey))
+		logger.Info("Ignoring this admission request due to the presence of dash0.webhook.ignore.once")
 		// deliberately not queueing an event for this case
 		return admission.PatchResponseFromRaw(request.Object.Raw, marshalled)
 	}

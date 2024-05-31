@@ -6,8 +6,8 @@ package util
 import (
 	"context"
 	"fmt"
-	"strconv"
 
+	"github.com/google/uuid"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -15,23 +15,21 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
 const (
-	TestNamespaceName = "test-namespace"
-	CronJobName       = "cronjob"
-	DaemonSetName     = "daemonset"
-	DeploymentName    = "deployment"
-	JobName1          = "job1"
-	JobName2          = "job2"
-	JobName3          = "job3"
-	ReplicaSetName    = "replicaset"
-	StatefulSetName   = "statefulset"
+	TestNamespaceName     = "test-namespace"
+	CronJobNamePrefix     = "cronjob"
+	DaemonSetNamePrefix   = "daemonset"
+	DeploymentNamePrefix  = "deployment"
+	JobNamePrefix         = "job"
+	ReplicaSetNamePrefix  = "replicaset"
+	StatefulSetNamePrefix = "statefulset"
 )
 
 var (
@@ -109,6 +107,10 @@ func EnsureTestNamespaceExists(
 	return object.(*corev1.Namespace)
 }
 
+func UniqueName(prefix string) string {
+	return fmt.Sprintf("%s-%s", prefix, uuid.New())
+}
+
 func BasicCronJob(namespace string, name string) *batchv1.CronJob {
 	workload := &batchv1.CronJob{}
 	workload.Namespace = namespace
@@ -142,6 +144,21 @@ func CreateInstrumentedCronJob(
 	name string,
 ) *batchv1.CronJob {
 	return CreateWorkload(ctx, k8sClient, InstrumentedCronJob(namespace, name)).(*batchv1.CronJob)
+}
+
+func CronJobWithOptOutLabel(namespace string, name string) *batchv1.CronJob {
+	workload := BasicCronJob(namespace, name)
+	addOptOutLabel(&workload.ObjectMeta)
+	return workload
+}
+
+func CreateCronJobWithOptOutLabel(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *batchv1.CronJob {
+	return CreateWorkload(ctx, k8sClient, CronJobWithOptOutLabel(namespace, name)).(*batchv1.CronJob)
 }
 
 func BasicDaemonSet(namespace string, name string) *appsv1.DaemonSet {
@@ -178,6 +195,21 @@ func CreateInstrumentedDaemonSet(
 	return CreateWorkload(ctx, k8sClient, InstrumentedDaemonSet(namespace, name)).(*appsv1.DaemonSet)
 }
 
+func DaemonSetWithOptOutLabel(namespace string, name string) *appsv1.DaemonSet {
+	workload := BasicDaemonSet(namespace, name)
+	addOptOutLabel(&workload.ObjectMeta)
+	return workload
+}
+
+func CreateDaemonSetWithOptOutLabel(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *appsv1.DaemonSet {
+	return CreateWorkload(ctx, k8sClient, DaemonSetWithOptOutLabel(namespace, name)).(*appsv1.DaemonSet)
+}
+
 func BasicDeployment(namespace string, name string) *appsv1.Deployment {
 	workload := &appsv1.Deployment{}
 	workload.Namespace = namespace
@@ -212,10 +244,19 @@ func CreateInstrumentedDeployment(
 	return CreateWorkload(ctx, k8sClient, InstrumentedDeployment(namespace, name)).(*appsv1.Deployment)
 }
 
-func DeploymentWithInstrumentedFalseLabel(namespace string, name string) *appsv1.Deployment {
+func DeploymentWithOptOutLabel(namespace string, name string) *appsv1.Deployment {
 	workload := BasicDeployment(namespace, name)
-	addInstrumentationLabels(&workload.ObjectMeta, false)
+	addOptOutLabel(&workload.ObjectMeta)
 	return workload
+}
+
+func CreateDeploymentWithOptOutLabel(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *appsv1.Deployment {
+	return CreateWorkload(ctx, k8sClient, DeploymentWithOptOutLabel(namespace, name)).(*appsv1.Deployment)
 }
 
 func BasicJob(namespace string, name string) *batchv1.Job {
@@ -252,19 +293,34 @@ func CreateInstrumentedJob(
 	return CreateWorkload(ctx, k8sClient, InstrumentedJob(namespace, name)).(*batchv1.Job)
 }
 
-func JobWithInstrumentationLabels(namespace string, name string) *batchv1.Job {
+func JobForWhichAnInstrumentationAttemptHasFailed(namespace string, name string) *batchv1.Job {
 	workload := BasicJob(namespace, name)
 	addInstrumentationLabels(&workload.ObjectMeta, false)
 	return workload
 }
 
-func CreateJobWithInstrumentationLabels(
+func CreateJobForWhichAnInstrumentationAttemptHasFailed(
 	ctx context.Context,
 	k8sClient client.Client,
 	namespace string,
 	name string,
 ) *batchv1.Job {
-	return CreateWorkload(ctx, k8sClient, JobWithInstrumentationLabels(namespace, name)).(*batchv1.Job)
+	return CreateWorkload(ctx, k8sClient, JobForWhichAnInstrumentationAttemptHasFailed(namespace, name)).(*batchv1.Job)
+}
+
+func JobWithOptOutLabel(namespace string, name string) *batchv1.Job {
+	workload := BasicJob(namespace, name)
+	addOptOutLabel(&workload.ObjectMeta)
+	return workload
+}
+
+func CreateJobWithOptOutLabel(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *batchv1.Job {
+	return CreateWorkload(ctx, k8sClient, JobWithOptOutLabel(namespace, name)).(*batchv1.Job)
 }
 
 func BasicReplicaSet(namespace string, name string) *appsv1.ReplicaSet {
@@ -331,6 +387,21 @@ func InstrumentedReplicaSetOwnedByDeployment(namespace string, name string) *app
 	return workload
 }
 
+func ReplicaSetWithOptOutLabel(namespace string, name string) *appsv1.ReplicaSet {
+	workload := BasicReplicaSet(namespace, name)
+	addOptOutLabel(&workload.ObjectMeta)
+	return workload
+}
+
+func CreateReplicaSetWithOptOutLabel(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *appsv1.ReplicaSet {
+	return CreateWorkload(ctx, k8sClient, ReplicaSetWithOptOutLabel(namespace, name)).(*appsv1.ReplicaSet)
+}
+
 func BasicStatefulSet(namespace string, name string) *appsv1.StatefulSet {
 	workload := &appsv1.StatefulSet{}
 	workload.Namespace = namespace
@@ -363,6 +434,21 @@ func CreateInstrumentedStatefulSet(
 	name string,
 ) *appsv1.StatefulSet {
 	return CreateWorkload(ctx, k8sClient, InstrumentedStatefulSet(namespace, name)).(*appsv1.StatefulSet)
+}
+
+func StatefulSetWithOptOutLabel(namespace string, name string) *appsv1.StatefulSet {
+	workload := BasicStatefulSet(namespace, name)
+	addOptOutLabel(&workload.ObjectMeta)
+	return workload
+}
+
+func CreateStatefulSetWithOptOutLabel(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *appsv1.StatefulSet {
+	return CreateWorkload(ctx, k8sClient, StatefulSetWithOptOutLabel(namespace, name)).(*appsv1.StatefulSet)
 }
 
 func basicPodSpecTemplate() corev1.PodTemplateSpec {
@@ -821,11 +907,21 @@ func GetStatefulSet(
 	return workload
 }
 
-func addInstrumentationLabels(meta *metav1.ObjectMeta, instrumented bool) {
-	AddLabel(meta, util.InstrumentedLabelKey, strconv.FormatBool(instrumented))
-	AddLabel(meta, util.OperatorVersionLabelKey, "1.2.3")
-	AddLabel(meta, util.InitContainerImageVersionLabelKey, "4.5.6")
-	AddLabel(meta, util.InstrumentedByLabelKey, "someone")
+func addInstrumentationLabels(meta *metav1.ObjectMeta, successful bool) {
+	var instrumentationState string
+	if successful {
+		instrumentationState = "successful"
+	} else {
+		instrumentationState = "unsuccessful"
+	}
+	AddLabel(meta, "dash0.instrumented", instrumentationState)
+	AddLabel(meta, "dash0.operator.version", "1.2.3")
+	AddLabel(meta, "dash0.initcontainer.image.version", "4.5.6")
+	AddLabel(meta, "dash0.instrumented.by", "someone")
+}
+
+func addOptOutLabel(meta *metav1.ObjectMeta) {
+	AddLabel(meta, "dash0.instrumented", "false")
 }
 
 func AddLabel(meta *metav1.ObjectMeta, key string, value string) {
@@ -833,4 +929,33 @@ func AddLabel(meta *metav1.ObjectMeta, key string, value string) {
 		meta.Labels = make(map[string]string, 1)
 	}
 	meta.Labels[key] = value
+}
+
+func DeleteAllCreatedObjects(
+	ctx context.Context,
+	k8sClient client.Client,
+	createdObjects []client.Object,
+) []client.Object {
+	By("Remove all created objects")
+	for _, object := range createdObjects {
+		Expect(k8sClient.Delete(ctx, object, &client.DeleteOptions{
+			GracePeriodSeconds: new(int64),
+		})).To(Succeed())
+	}
+	return make([]client.Object, 0)
+}
+
+func DeleteAllEvents(
+	ctx context.Context,
+	clientset *kubernetes.Clientset,
+	namespace string,
+) {
+	err := clientset.CoreV1().Events(namespace).DeleteCollection(ctx, metav1.DeleteOptions{
+		GracePeriodSeconds: new(int64), // delete immediately
+	}, metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred())
+
+	allEvents, err := clientset.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{})
+	Expect(err).NotTo(HaveOccurred())
+	Expect(allEvents.Items).To(BeEmpty())
 }
