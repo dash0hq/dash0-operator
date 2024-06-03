@@ -281,29 +281,29 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					"webhook",
 				)
 			},
-			Entry("should modify new cron jobs", webhookTest{
+			Entry("should instrument new cron jobs", webhookTest{
 				workloadType:    "cronjob",
 				installWorkload: InstallNodeJsCronJob,
 				isBatch:         true,
 			}),
-			Entry("should modify new daemon sets", webhookTest{
+			Entry("should instrument new daemon sets", webhookTest{
 				workloadType:    "daemonset",
 				installWorkload: InstallNodeJsDaemonSet,
 			}),
-			Entry("should modify new deployments", webhookTest{
+			Entry("should instrument new deployments", webhookTest{
 				workloadType:    "deployment",
 				installWorkload: InstallNodeJsDeployment,
 			}),
-			Entry("should modify new jobs", webhookTest{
+			Entry("should instrument new jobs", webhookTest{
 				workloadType:    "job",
 				installWorkload: InstallNodeJsJob,
 				isBatch:         true,
 			}),
-			Entry("should modify new replica sets", webhookTest{
+			Entry("should instrument new replica sets", webhookTest{
 				workloadType:    "replicaset",
 				installWorkload: InstallNodeJsReplicaSet,
 			}),
-			Entry("should modify new stateful sets", webhookTest{
+			Entry("should instrument new stateful sets", webhookTest{
 				workloadType:    "statefulset",
 				installWorkload: InstallNodeJsStatefulSet,
 			}),

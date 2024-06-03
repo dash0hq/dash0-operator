@@ -16,7 +16,7 @@ if [[ ! $(helm repo list | grep open-telemetry) ]]; then
   helm repo update
 fi
 
-if [[ -f manual.values.yaml ]]; then
+if [[ ! -f manual.values.yaml ]]; then
   ../bin/render-templates.sh manual-testing
 fi
 

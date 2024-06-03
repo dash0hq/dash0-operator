@@ -1,8 +1,13 @@
 mode: daemonset
 service:
   enabled: true
+presets:
+  kubernetesAttributes:
+    enabled: true
+  # kubeletMetrics:
+  #   enabled: true
 additionalLabels:
-   dash0.com/opt-out: "true"
+  dash0.com/opt-out: "true"
 resources:
   limits:
     memory: 500Mi
@@ -19,12 +24,35 @@ config:
 
   processors:
     batch: {}
+    k8sattributes:
+      extract:
+        metadata:
+        - k8s.namespace.name
+        - k8s.deployment.name
+        - k8s.statefulset.name
+        - k8s.daemonset.name
+        - k8s.cronjob.name
+        - k8s.job.name
+        - k8s.node.name
+        - k8s.pod.name
+        - k8s.pod.uid
+        - k8s.pod.start_time
+      passthrough: false
+      pod_association:
+      - sources:
+        - from: resource_attribute
+          name: k8s.pod.ip
+      - sources:
+        - from: resource_attribute
+          name: k8s.pod.uid
+      - sources:
+        - from: connection
 
   exporters:
     otlp:
       auth:
         authenticator: bearertokenauth/dash0
-      endpoint: "$OTEL_EXPORTER_OTLP_ENDPOINT"
+      endpoint: "$DASH0_OTEL_EXPORTER_OTLP_ENDPOINT"
 
   service:
     extensions:
@@ -35,16 +63,28 @@ config:
       traces:
         receivers:
           - otlp
+        processors:
+          - k8sattributes
+          - memory_limiter
+          - batch
         exporters:
           - otlp
       metrics:
         receivers:
           - otlp
+        processors:
+          - k8sattributes
+          - memory_limiter
+          - batch
         exporters:
           - otlp
       logs:
         receivers:
           - otlp
+        processors:
+          - k8sattributes
+          - memory_limiter
+          - batch
         exporters:
           - otlp
 

@@ -18,6 +18,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 )
 
@@ -595,7 +596,7 @@ func VerifyThatWorkloadHasBeenInstrumented(
 
 	httpPathWithQuery := fmt.Sprintf("/dash0-k8s-operator-test?id=%s", testId)
 	Eventually(func(g Gomega) {
-		verifySpans(g, isBatch, httpPathWithQuery)
+		verifySpans(g, isBatch, workloadType, httpPathWithQuery)
 	}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
 	By("matchin spans have been received")
 	return testId
@@ -703,26 +704,27 @@ func restartAllPods(namespace string) {
 
 }
 
-func verifySpans(g Gomega, isBatch bool, httpPathWithQuery string) {
-	spansFound := sendRequestAndFindMatchingSpans(g, isBatch, httpPathWithQuery, true, nil)
+func verifySpans(g Gomega, isBatch bool, workloadType string, httpPathWithQuery string) {
+	spansFound := sendRequestAndFindMatchingSpans(g, isBatch, workloadType, httpPathWithQuery, true, nil)
 	g.Expect(spansFound).To(BeTrue(), "expected to find at least one matching HTTP server span")
 }
 
 func verifyNoSpans(isBatch bool, httpPathWithQuery string) {
 	timestampLowerBound := time.Now()
-	spansFound := sendRequestAndFindMatchingSpans(Default, isBatch, httpPathWithQuery, false, &timestampLowerBound)
+	spansFound := sendRequestAndFindMatchingSpans(Default, isBatch, "", httpPathWithQuery, false, &timestampLowerBound)
 	Expect(spansFound).To(BeFalse(), "expected to find no matching HTTP server span")
 }
 
 func sendRequestAndFindMatchingSpans(
 	g Gomega,
 	isBatch bool,
+	workloadType string,
 	httpPathWithQuery string,
 	requestsMustNotFail bool,
 	timestampLowerBound *time.Time,
 ) bool {
 	sendRequest(g, isBatch, httpPathWithQuery, requestsMustNotFail)
-	return fileHasMatchingSpan(g, httpPathWithQuery, timestampLowerBound)
+	return fileHasMatchingSpan(g, workloadType, httpPathWithQuery, timestampLowerBound)
 }
 
 func sendRequest(g Gomega, isBatch bool, httpPathWithQuery string, mustNotFail bool) {
@@ -736,7 +738,7 @@ func sendRequest(g Gomega, isBatch bool, httpPathWithQuery string, mustNotFail b
 	}
 }
 
-func fileHasMatchingSpan(g Gomega, httpPathWithQuery string, timestampLowerBound *time.Time) bool {
+func fileHasMatchingSpan(g Gomega, workloadType string, httpPathWithQuery string, timestampLowerBound *time.Time) bool {
 	fileHandle, err := os.Open("test-resources/e2e-test-volumes/collector-received-data/traces.jsonl")
 	g.Expect(err).NotTo(HaveOccurred())
 	defer func() {
@@ -744,6 +746,11 @@ func fileHasMatchingSpan(g Gomega, httpPathWithQuery string, timestampLowerBound
 	}()
 	scanner := bufio.NewScanner(fileHandle)
 	scanner.Buffer(make([]byte, tracesJsonMaxLineLength), tracesJsonMaxLineLength)
+
+	var resourceMatchFn func(span ptrace.ResourceSpans) bool
+	if workloadType != "" {
+		resourceMatchFn = resourceSpansHaveExpectedResourceAttributes(workloadType)
+	}
 
 	// read file line by line
 	spansFound := false
@@ -756,6 +763,7 @@ func fileHasMatchingSpan(g Gomega, httpPathWithQuery string, timestampLowerBound
 		}
 		if spansFound = hasMatchingSpans(
 			traces,
+			resourceMatchFn,
 			isHttpServerSpanWithHttpTarget(httpPathWithQuery),
 			timestampLowerBound,
 		); spansFound {
@@ -768,21 +776,67 @@ func fileHasMatchingSpan(g Gomega, httpPathWithQuery string, timestampLowerBound
 	return spansFound
 }
 
-func hasMatchingSpans(traces ptrace.Traces, matchFn func(span ptrace.Span) bool, timestampLowerBound *time.Time) bool {
+func hasMatchingSpans(
+	traces ptrace.Traces,
+	resourceMatchFn func(span ptrace.ResourceSpans) bool,
+	spanMatchFn func(span ptrace.Span) bool,
+	timestampLowerBound *time.Time,
+) bool {
 	for i := 0; i < traces.ResourceSpans().Len(); i++ {
 		resourceSpan := traces.ResourceSpans().At(i)
+		if resourceMatchFn != nil {
+			if !resourceMatchFn(resourceSpan) {
+				continue
+			}
+		}
 		for j := 0; j < resourceSpan.ScopeSpans().Len(); j++ {
 			scopeSpan := resourceSpan.ScopeSpans().At(j)
 			for k := 0; k < scopeSpan.Spans().Len(); k++ {
 				span := scopeSpan.Spans().At(k)
 				if (timestampLowerBound == nil || span.StartTimestamp().AsTime().After(*timestampLowerBound)) &&
-					matchFn(span) {
+					spanMatchFn(span) {
 					return true
 				}
 			}
 		}
 	}
 	return false
+}
+
+func resourceSpansHaveExpectedResourceAttributes(workloadType string) func(span ptrace.ResourceSpans) bool {
+	return func(resourceSpans ptrace.ResourceSpans) bool {
+
+		attributes := resourceSpans.Resource().Attributes()
+		attributes.Range(func(k string, v pcommon.Value) bool {
+			return true
+		})
+
+		workloadAttributeFound := false
+		if workloadType == "replicaset" {
+			workloadAttributeFound = true
+		} else {
+			workloadKey := fmt.Sprintf("k8s.%s.name", workloadType)
+			expectedWorkloadValue := fmt.Sprintf("dash0-operator-nodejs-20-express-test-%s", workloadType)
+			workloadAttribute, hasWorkloadAttribute := attributes.Get(workloadKey)
+			if hasWorkloadAttribute {
+				if workloadAttribute.Str() == expectedWorkloadValue {
+					workloadAttributeFound = true
+				}
+			}
+		}
+
+		podKey := "k8s.pod.name"
+		expectedPodPrefix := fmt.Sprintf("dash0-operator-nodejs-20-express-test-%s-", workloadType)
+		podAttributeFound := false
+		podAttribute, hasPodAttribute := attributes.Get(podKey)
+		if hasPodAttribute {
+			if strings.Contains(podAttribute.Str(), expectedPodPrefix) {
+				podAttributeFound = true
+			}
+		}
+
+		return workloadAttributeFound && podAttributeFound
+	}
 }
 
 func isHttpServerSpanWithHttpTarget(expectedTarget string) func(span ptrace.Span) bool {
