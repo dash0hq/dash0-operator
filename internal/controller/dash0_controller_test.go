@@ -39,9 +39,9 @@ var (
 	timeout         = 15 * time.Second
 	pollingInterval = 50 * time.Millisecond
 
-	versions = util.Versions{
-		OperatorVersion:           "1.2.3",
-		InitContainerImageVersion: "4.5.6",
+	images = util.Images{
+		OperatorImage:      "some-registry.com:1234/dash0-operator-controller:1.2.3",
+		InitContainerImage: "some-registry.com:1234/dash0-instrumentation:4.5.6",
 	}
 )
 
@@ -73,7 +73,7 @@ var _ = Describe("The Dash0 controller", func() {
 			ClientSet: clientset,
 			Recorder:  recorder,
 			Scheme:    k8sClient.Scheme(),
-			Versions:  versions,
+			Images:    images,
 		}
 
 		createdObjects = make([]client.Object, 0)

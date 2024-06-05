@@ -25,7 +25,7 @@ import (
 
 type Handler struct {
 	Recorder record.EventRecorder
-	Versions util.Versions
+	Images   util.Images
 }
 
 type resourceHandler func(h *Handler, request admission.Request, gvkLabel string, logger *logr.Logger) admission.Response
@@ -265,7 +265,7 @@ func (h *Handler) postProcess(
 func (h *Handler) newWorkloadModifier(logger *logr.Logger) *workloads.ResourceModifier {
 	return workloads.NewResourceModifier(
 		util.InstrumentationMetadata{
-			Versions:       h.Versions,
+			Images:         h.Images,
 			InstrumentedBy: "webhook",
 		},
 		logger,

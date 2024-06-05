@@ -20,8 +20,7 @@ import (
 )
 
 const (
-	initContainerName          = "dash0-instrumentation"
-	initContainerImageTemplate = "dash0-instrumentation:%s"
+	initContainerName = "dash0-instrumentation"
 
 	dash0VolumeName                   = "dash0-instrumentation"
 	dash0DirectoryEnvVarName          = "DASH0_INSTRUMENTATION_FOLDER_DESTINATION"
@@ -173,7 +172,7 @@ func (m *ResourceModifier) createInitContainer(podSpec *corev1.PodSpec) *corev1.
 
 	return &corev1.Container{
 		Name:  initContainerName,
-		Image: fmt.Sprintf(initContainerImageTemplate, m.instrumentationMetadata.InitContainerImageVersion),
+		Image: m.instrumentationMetadata.InitContainerImage,
 		Env: []corev1.EnvVar{
 			{
 				Name:  dash0DirectoryEnvVarName,

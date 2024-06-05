@@ -40,7 +40,7 @@ var (
 
 	instrumentationInitContainer = corev1.Container{
 		Name:  "dash0-instrumentation",
-		Image: "dash0-instrumentation:1.2.3",
+		Image: "some-registry.com:1234/dash0-instrumentation:4.5.6",
 		Env: []corev1.EnvVar{{
 			Name:  "DASH0_INSTRUMENTATION_FOLDER_DESTINATION",
 			Value: "/opt/dash0",
@@ -910,8 +910,8 @@ func GetStatefulSet(
 
 func addInstrumentationLabels(meta *metav1.ObjectMeta, successful bool) {
 	AddLabel(meta, "dash0.com/instrumented", strconv.FormatBool(successful))
-	AddLabel(meta, "dash0.com/operator-version", "1.2.3")
-	AddLabel(meta, "dash0.com/init-container-image-version", "4.5.6")
+	AddLabel(meta, "dash0.com/operator-image", "some-registry.com_1234_dash0-operator-controller_1.2.3")
+	AddLabel(meta, "dash0.com/init-container-image", "some-registry.com_1234_dash0-instrumentation_4.5.6")
 	AddLabel(meta, "dash0.com/instrumented-by", "someone")
 }
 

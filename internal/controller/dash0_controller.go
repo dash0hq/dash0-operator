@@ -40,7 +40,7 @@ type Dash0Reconciler struct {
 	ClientSet *kubernetes.Clientset
 	Scheme    *runtime.Scheme
 	Recorder  record.EventRecorder
-	Versions  util.Versions
+	Images    util.Images
 }
 
 type ModificationMode string
@@ -304,8 +304,8 @@ func (r *Dash0Reconciler) instrumentCronJob(
 	reconcileLogger *logr.Logger,
 ) {
 	r.instrumentWorkload(ctx, &cronJobWorkload{
-		cronJob:  &cronJob,
-		versions: r.Versions,
+		cronJob: &cronJob,
+		images:  r.Images,
 	}, reconcileLogger)
 }
 
@@ -332,7 +332,7 @@ func (r *Dash0Reconciler) instrumentDaemonSet(
 ) {
 	r.instrumentWorkload(ctx, &daemonSetWorkload{
 		daemonSet: &daemonSet,
-		versions:  r.Versions,
+		images:    r.Images,
 	}, reconcileLogger)
 }
 
@@ -359,7 +359,7 @@ func (r *Dash0Reconciler) instrumentDeployment(
 ) {
 	r.instrumentWorkload(ctx, &deploymentWorkload{
 		deployment: &deployment,
-		versions:   r.Versions,
+		images:     r.Images,
 	}, reconcileLogger)
 }
 
@@ -404,7 +404,7 @@ func (r *Dash0Reconciler) addLabelsToImmutableJobsOnInstrumentation(
 		}, &job); err != nil {
 			return fmt.Errorf("error when fetching job %s/%s: %w", job.GetNamespace(), job.GetName(), err)
 		}
-		newWorkloadModifier(r.Versions, &logger).AddLabelsToImmutableJob(&job)
+		newWorkloadModifier(r.Images, &logger).AddLabelsToImmutableJob(&job)
 		return r.Client.Update(ctx, &job)
 	}, &logger)
 
@@ -447,7 +447,7 @@ func (r *Dash0Reconciler) instrumentReplicaSet(
 
 	r.instrumentWorkload(ctx, &replicaSetWorkload{
 		replicaSet: &replicaSet,
-		versions:   r.Versions,
+		images:     r.Images,
 	}, reconcileLogger)
 }
 
@@ -473,7 +473,7 @@ func (r *Dash0Reconciler) instrumentStatefulSet(
 ) {
 	r.instrumentWorkload(ctx, &statefulSetWorkload{
 		statefulSet: &statefulSet,
-		versions:    r.Versions,
+		images:      r.Images,
 	}, reconcileLogger)
 }
 
@@ -681,8 +681,8 @@ func (r *Dash0Reconciler) uninstrumentCronJob(
 	reconcileLogger *logr.Logger,
 ) {
 	r.revertWorkloadInstrumentation(ctx, &cronJobWorkload{
-		cronJob:  &cronJob,
-		versions: r.Versions,
+		cronJob: &cronJob,
+		images:  r.Images,
 	}, reconcileLogger)
 }
 
@@ -705,7 +705,7 @@ func (r *Dash0Reconciler) uninstrumentDaemonSet(
 ) {
 	r.revertWorkloadInstrumentation(ctx, &daemonSetWorkload{
 		daemonSet: &daemonSet,
-		versions:  r.Versions,
+		images:    r.Images,
 	}, reconcileLogger)
 }
 
@@ -732,7 +732,7 @@ func (r *Dash0Reconciler) uninstrumentDeployment(
 ) {
 	r.revertWorkloadInstrumentation(ctx, &deploymentWorkload{
 		deployment: &deployment,
-		versions:   r.Versions,
+		images:     r.Images,
 	}, reconcileLogger)
 }
 
@@ -778,14 +778,14 @@ func (r *Dash0Reconciler) handleJobOnUninstrumentation(ctx context.Context, job 
 			// This job has been instrumented, presumably by the webhook. We cannot undo the instrumentation here, since
 			// jobs are immutable.
 
-			// Deliberately not calling newWorkloadModifier(r.Versions,&logger).RemoveLabelsFromImmutableJob(&job) here
+			// Deliberately not calling newWorkloadModifier(r.Images, &logger).RemoveLabelsFromImmutableJob(&job) here
 			// since we cannot remove the instrumentation, so we also have to leave the labels in place.
 			createImmutableWorkloadsError = true
 			return nil
 		} else if util.InstrumenationAttemptHasFailed(&job.ObjectMeta) {
 			// There was an attempt to instrument this job (probably by the controller), which has not been successful.
 			// We only need remove the labels from that instrumentation attempt to clean up.
-			newWorkloadModifier(r.Versions, &logger).RemoveLabelsFromImmutableJob(&job)
+			newWorkloadModifier(r.Images, &logger).RemoveLabelsFromImmutableJob(&job)
 
 			// Apparently for jobs we do not need to set the "dash0.com/webhook-ignore-once" label, since changing their
 			// labels does not trigger a new admission request.
@@ -836,7 +836,7 @@ func (r *Dash0Reconciler) uninstrumentReplicaSet(ctx context.Context, replicaSet
 	// all pods for that are owned by the replica set and restart them automatically.
 	r.revertWorkloadInstrumentation(ctx, &replicaSetWorkload{
 		replicaSet: &replicaSet,
-		versions:   r.Versions,
+		images:     r.Images,
 	}, reconcileLogger)
 }
 
@@ -863,7 +863,7 @@ func (r *Dash0Reconciler) uninstrumentStatefulSet(
 ) {
 	r.revertWorkloadInstrumentation(ctx, &statefulSetWorkload{
 		statefulSet: &statefulSet,
-		versions:    r.Versions,
+		images:      r.Images,
 	}, reconcileLogger)
 }
 
@@ -940,10 +940,10 @@ func (r *Dash0Reconciler) postProcessUninstrumentation(
 	}
 }
 
-func newWorkloadModifier(versions util.Versions, logger *logr.Logger) *workloads.ResourceModifier {
+func newWorkloadModifier(images util.Images, logger *logr.Logger) *workloads.ResourceModifier {
 	return workloads.NewResourceModifier(
 		util.InstrumentationMetadata{
-			Versions:       versions,
+			Images:         images,
 			InstrumentedBy: "controller",
 		},
 		logger,
