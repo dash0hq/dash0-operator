@@ -18,12 +18,12 @@ const (
 	ReasonFailedUninstrumentation      Reason = "FailedUninstrumentation"
 )
 
-type Versions struct {
-	OperatorVersion           string
-	InitContainerImageVersion string
+type Images struct {
+	OperatorImage      string
+	InitContainerImage string
 }
 
 type InstrumentationMetadata struct {
-	Versions
+	Images
 	InstrumentedBy string
 }

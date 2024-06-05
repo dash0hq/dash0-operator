@@ -5,6 +5,7 @@ package util
 
 import (
 	"fmt"
+	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -23,11 +24,11 @@ const (
 	// or when the label is missing entirely.
 	instrumentedLabelValueUnknown instrumentedState = "unknown"
 
-	optOutLabelKey                    = "dash0.com/opt-out"
-	operatorVersionLabelKey           = "dash0.com/operator-version"
-	initContainerImageVersionLabelKey = "dash0.com/init-container-image-version"
-	instrumentedByLabelKey            = "dash0.com/instrumented-by"
-	webhookIgnoreOnceLabelKey         = "dash0.com/webhook-ignore-once"
+	optOutLabelKey             = "dash0.com/opt-out"
+	operatorImageLabelKey      = "dash0.com/operator-image"
+	initContainerImageLabelKey = "dash0.com/init-container-image"
+	instrumentedByLabelKey     = "dash0.com/instrumented-by"
+	webhookIgnoreOnceLabelKey  = "dash0.com/webhook-ignore-once"
 )
 
 var (
@@ -51,8 +52,8 @@ func AddInstrumentationLabels(
 	} else {
 		addLabel(meta, instrumentedLabelKey, string(instrumentedLabelValueUnsuccessful))
 	}
-	addLabel(meta, operatorVersionLabelKey, instrumentationMetadata.OperatorVersion)
-	addLabel(meta, initContainerImageVersionLabelKey, instrumentationMetadata.InitContainerImageVersion)
+	addLabel(meta, operatorImageLabelKey, imageNameToLabel(instrumentationMetadata.OperatorImage))
+	addLabel(meta, initContainerImageLabelKey, imageNameToLabel(instrumentationMetadata.InitContainerImage))
 	addLabel(meta, instrumentedByLabelKey, instrumentationMetadata.InstrumentedBy)
 }
 
@@ -69,8 +70,8 @@ func addLabel(meta *metav1.ObjectMeta, key string, value string) {
 
 func RemoveInstrumentationLabels(meta *metav1.ObjectMeta) {
 	removeLabel(meta, instrumentedLabelKey)
-	removeLabel(meta, operatorVersionLabelKey)
-	removeLabel(meta, initContainerImageVersionLabelKey)
+	removeLabel(meta, operatorImageLabelKey)
+	removeLabel(meta, initContainerImageLabelKey)
 	removeLabel(meta, instrumentedByLabelKey)
 }
 
@@ -119,4 +120,16 @@ func CheckAndDeleteIgnoreOnceLabel(meta *metav1.ObjectMeta) bool {
 		return value == "true"
 	}
 	return false
+}
+
+func imageNameToLabel(imageName string) string {
+	// See https://github.com/distribution/reference/blob/e60f3474a5da95391815dacd158f9dba50ef7df4/regexp.go#L136 ->
+	// referencePat for parsing logic for image names, if required. In particular, if we see longer image names out in
+	// the wild (due to longer registry names), we might want to prefer the tag/version over the registry name when
+	// truncating. For now, we conveniently ignore this problem.
+	label := strings.ReplaceAll(strings.ReplaceAll(imageName, "/", "_"), ":", "_")
+	if len(label) <= 63 {
+		return label
+	}
+	return label[:63]
 }

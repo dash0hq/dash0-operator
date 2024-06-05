@@ -138,26 +138,27 @@ func startOperatorManager(
 		return fmt.Errorf("unable to create the clientset client")
 	}
 
-	operatorVersion, isSet := os.LookupEnv("DASH0_OPERATOR_VERSION")
-	if !isSet {
-		operatorVersion = "unknown"
-	}
-	initContainerImageVersion, isSet := os.LookupEnv("DASH0_INIT_CONTAINER_IMAGE_VERSION")
+	operatorImage, isSet := os.LookupEnv("DASH0_OPERATOR_IMAGE")
 	if !isSet {
 		return fmt.Errorf("cannot start Dash0 operator, the mandatory environment variable " +
-			"\"DASH0_INIT_CONTAINER_IMAGE_VERSION\" is missing")
+			"\"DASH0_OPERATOR_IMAGE\" is missing")
+	}
+	initContainerImage, isSet := os.LookupEnv("DASH0_INIT_CONTAINER_IMAGE")
+	if !isSet {
+		return fmt.Errorf("cannot start Dash0 operator, the mandatory environment variable " +
+			"\"DASH0_INIT_CONTAINER_IMAGE\" is missing")
 	}
 	setupLog.Info(
 		"version information",
-		"operator version",
-		operatorVersion,
-		"init container image version",
-		initContainerImageVersion,
+		"operator image and version",
+		operatorImage,
+		"init container image and version",
+		initContainerImage,
 	)
 
-	versions := util.Versions{
-		OperatorVersion:           operatorVersion,
-		InitContainerImageVersion: initContainerImageVersion,
+	images := util.Images{
+		OperatorImage:      operatorImage,
+		InitContainerImage: initContainerImage,
 	}
 
 	if err = (&controller.Dash0Reconciler{
@@ -165,7 +166,7 @@ func startOperatorManager(
 		ClientSet: clientSet,
 		Scheme:    mgr.GetScheme(),
 		Recorder:  mgr.GetEventRecorderFor("dash0-controller"),
-		Versions:  versions,
+		Images:    images,
 	}).SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the Dash0 reconciler: %w", err)
 	}
@@ -174,7 +175,7 @@ func startOperatorManager(
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
 		if err = (&dash0webhook.Handler{
 			Recorder: mgr.GetEventRecorderFor("dash0-webhook"),
-			Versions: versions,
+			Images:   images,
 		}).SetupWebhookWithManager(mgr); err != nil {
 			return fmt.Errorf("unable to create the Dash0 webhook: %w", err)
 		}

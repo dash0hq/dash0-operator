@@ -44,9 +44,9 @@ var (
 	ctx       context.Context
 	cancel    context.CancelFunc
 
-	versions = util.Versions{
-		OperatorVersion:           "1.2.3",
-		InitContainerImageVersion: "4.5.6",
+	images = util.Images{
+		OperatorImage:      "some-registry.com:1234/dash0-operator-controller:1.2.3",
+		InitContainerImage: "some-registry.com:1234/dash0-instrumentation:4.5.6",
 	}
 )
 
@@ -123,7 +123,7 @@ var _ = BeforeSuite(func() {
 
 	err = (&Handler{
 		Recorder: mgr.GetEventRecorderFor("dash0-webhook"),
-		Versions: versions,
+		Images:   images,
 	}).SetupWebhookWithManager(mgr)
 	Expect(err).NotTo(HaveOccurred())
 

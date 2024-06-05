@@ -48,10 +48,10 @@ spec:
         image: dash0-operator-controller:latest
         name: manager
         env:
-          - name: DASH0_OPERATOR_VERSION
-            value: 1.0.0
-          - name: DASH0_INIT_CONTAINER_IMAGE_VERSION
-            value: 1.0.0
+          - name: DASH0_OPERATOR_IMAGE
+            value: dash0-operator-controller:1.0.0
+          - name: DASH0_INIT_CONTAINER_IMAGE
+            value: dash0-instrumentation:1.0.0
 
         # Note: Use "imagePullPolicy: Never" when only building the image locally without pushing them anywhere. Omit
         # the attribute otherwise to use the default pull policy.

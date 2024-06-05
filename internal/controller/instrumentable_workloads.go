@@ -24,8 +24,8 @@ type instrumentableWorkload interface {
 }
 
 type cronJobWorkload struct {
-	cronJob  *batchv1.CronJob
-	versions util.Versions
+	cronJob *batchv1.CronJob
+	images  util.Images
 }
 
 func (w *cronJobWorkload) getObjectMeta() *metav1.ObjectMeta { return &w.cronJob.ObjectMeta }
@@ -33,15 +33,15 @@ func (w *cronJobWorkload) getKind() string                   { return "CronJob" 
 func (w *cronJobWorkload) asRuntimeObject() runtime.Object   { return w.cronJob }
 func (w *cronJobWorkload) asClientObject() client.Object     { return w.cronJob }
 func (w *cronJobWorkload) instrument(logger *logr.Logger) bool {
-	return newWorkloadModifier(w.versions, logger).ModifyCronJob(w.cronJob)
+	return newWorkloadModifier(w.images, logger).ModifyCronJob(w.cronJob)
 }
 func (w *cronJobWorkload) revert(logger *logr.Logger) bool {
-	return newWorkloadModifier(w.versions, logger).RevertCronJob(w.cronJob)
+	return newWorkloadModifier(w.images, logger).RevertCronJob(w.cronJob)
 }
 
 type daemonSetWorkload struct {
 	daemonSet *appsv1.DaemonSet
-	versions  util.Versions
+	images    util.Images
 }
 
 func (w *daemonSetWorkload) getObjectMeta() *metav1.ObjectMeta { return &w.daemonSet.ObjectMeta }
@@ -49,15 +49,15 @@ func (w *daemonSetWorkload) getKind() string                   { return "DaemonS
 func (w *daemonSetWorkload) asRuntimeObject() runtime.Object   { return w.daemonSet }
 func (w *daemonSetWorkload) asClientObject() client.Object     { return w.daemonSet }
 func (w *daemonSetWorkload) instrument(logger *logr.Logger) bool {
-	return newWorkloadModifier(w.versions, logger).ModifyDaemonSet(w.daemonSet)
+	return newWorkloadModifier(w.images, logger).ModifyDaemonSet(w.daemonSet)
 }
 func (w *daemonSetWorkload) revert(logger *logr.Logger) bool {
-	return newWorkloadModifier(w.versions, logger).RevertDaemonSet(w.daemonSet)
+	return newWorkloadModifier(w.images, logger).RevertDaemonSet(w.daemonSet)
 }
 
 type deploymentWorkload struct {
 	deployment *appsv1.Deployment
-	versions   util.Versions
+	images     util.Images
 }
 
 func (w *deploymentWorkload) getObjectMeta() *metav1.ObjectMeta { return &w.deployment.ObjectMeta }
@@ -65,15 +65,15 @@ func (w *deploymentWorkload) getKind() string                   { return "Deploy
 func (w *deploymentWorkload) asRuntimeObject() runtime.Object   { return w.deployment }
 func (w *deploymentWorkload) asClientObject() client.Object     { return w.deployment }
 func (w *deploymentWorkload) instrument(logger *logr.Logger) bool {
-	return newWorkloadModifier(w.versions, logger).ModifyDeployment(w.deployment)
+	return newWorkloadModifier(w.images, logger).ModifyDeployment(w.deployment)
 }
 func (w *deploymentWorkload) revert(logger *logr.Logger) bool {
-	return newWorkloadModifier(w.versions, logger).RevertDeployment(w.deployment)
+	return newWorkloadModifier(w.images, logger).RevertDeployment(w.deployment)
 }
 
 type replicaSetWorkload struct {
 	replicaSet *appsv1.ReplicaSet
-	versions   util.Versions
+	images     util.Images
 }
 
 func (w *replicaSetWorkload) getObjectMeta() *metav1.ObjectMeta { return &w.replicaSet.ObjectMeta }
@@ -81,15 +81,15 @@ func (w *replicaSetWorkload) getKind() string                   { return "Replic
 func (w *replicaSetWorkload) asRuntimeObject() runtime.Object   { return w.replicaSet }
 func (w *replicaSetWorkload) asClientObject() client.Object     { return w.replicaSet }
 func (w *replicaSetWorkload) instrument(logger *logr.Logger) bool {
-	return newWorkloadModifier(w.versions, logger).ModifyReplicaSet(w.replicaSet)
+	return newWorkloadModifier(w.images, logger).ModifyReplicaSet(w.replicaSet)
 }
 func (w *replicaSetWorkload) revert(logger *logr.Logger) bool {
-	return newWorkloadModifier(w.versions, logger).RevertReplicaSet(w.replicaSet)
+	return newWorkloadModifier(w.images, logger).RevertReplicaSet(w.replicaSet)
 }
 
 type statefulSetWorkload struct {
 	statefulSet *appsv1.StatefulSet
-	versions    util.Versions
+	images      util.Images
 }
 
 func (w *statefulSetWorkload) getObjectMeta() *metav1.ObjectMeta { return &w.statefulSet.ObjectMeta }
@@ -97,8 +97,8 @@ func (w *statefulSetWorkload) getKind() string                   { return "State
 func (w *statefulSetWorkload) asRuntimeObject() runtime.Object   { return w.statefulSet }
 func (w *statefulSetWorkload) asClientObject() client.Object     { return w.statefulSet }
 func (w *statefulSetWorkload) instrument(logger *logr.Logger) bool {
-	return newWorkloadModifier(w.versions, logger).ModifyStatefulSet(w.statefulSet)
+	return newWorkloadModifier(w.images, logger).ModifyStatefulSet(w.statefulSet)
 }
 func (w *statefulSetWorkload) revert(logger *logr.Logger) bool {
-	return newWorkloadModifier(w.versions, logger).RevertStatefulSet(w.statefulSet)
+	return newWorkloadModifier(w.images, logger).RevertStatefulSet(w.statefulSet)
 }
