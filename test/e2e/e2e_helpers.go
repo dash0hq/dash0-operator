@@ -45,7 +45,7 @@ func CheckIfRequiredPortsAreBlocked() {
 			"go-template='{{range .items}}{{range.spec.ports}}{{if .port}}{{.port}}{{\"\\n\"}}{{end}}{{end}}{{end}}'",
 		))
 	Expect(err).NotTo(HaveOccurred())
-	portsCurrentlyInUseArray := GetNonEmptyLines(string(portsCurrentlyInUseByKubernetesServices))
+	portsCurrentlyInUseArray := GetNonEmptyLines(portsCurrentlyInUseByKubernetesServices)
 	messages := make([]string, 0)
 	foundBlockedPort := false
 	for _, usedPortStr := range portsCurrentlyInUseArray {
@@ -79,7 +79,7 @@ func RecreateNamespace(namespace string) {
 	By(fmt.Sprintf("(re)creating namespace %s", namespace))
 	output, err := Run(exec.Command("kubectl", "get", "ns", namespace))
 	if err != nil {
-		if strings.Contains(string(output), "(NotFound)") {
+		if strings.Contains(output, "(NotFound)") {
 			// The namespace does not exist, that's fine, we will create it further down.
 		} else {
 			Fail(fmt.Sprintf("kubectl get ns %s failed with unexpected error: %v", namespace, err))
@@ -120,7 +120,7 @@ func installCertManager() error {
 	if err != nil {
 		return err
 	}
-	if !strings.Contains(string(repoList), "jetstack") {
+	if !strings.Contains(repoList, "jetstack") {
 		fmt.Fprintf(GinkgoWriter, "The helm repo for cert-manager has not been found, adding it now.\n")
 		if err := RunAndIgnoreOutput(
 			exec.Command(
@@ -244,7 +244,7 @@ func ReinstallCollectorAndClearExportedTelemetry(namespace string) error {
 	if err != nil {
 		return err
 	}
-	if !strings.Contains(string(repoList), "open-telemetry") {
+	if !strings.Contains(repoList, "open-telemetry") {
 		fmt.Fprintf(GinkgoWriter, "The helm repo for open-telemetry has not been found, adding it now.\n")
 		if err := RunAndIgnoreOutput(
 			exec.Command(
@@ -304,9 +304,24 @@ func UninstallCollector(namespace string) error {
 		))
 }
 
-func DeployOperator(namespace string, image string) {
+func DeployOperator(operatorNamespace string, image string) {
 	By("deploying the controller-manager")
-	ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command("make", "deploy", fmt.Sprintf("IMG=%s", image))))
+	output, err := Run(
+		exec.Command(
+			"helm",
+			"install",
+			"--namespace",
+			operatorNamespace,
+			"--create-namespace",
+			"--set",
+			fmt.Sprintf("operator.image=%s", image),
+			"--set",
+			"operator.imagePullPolicy=Never",
+			"e2e-tests-operator-helm-release",
+			"helm-chart/dash0-operator",
+		))
+	ExpectWithOffset(2, err).NotTo(HaveOccurred())
+	fmt.Fprintf(GinkgoWriter, "output of helm install:\n%s", output)
 
 	var controllerPodName string
 	By("validating that the controller-manager pod is running as expected")
@@ -317,25 +332,25 @@ func DeployOperator(namespace string, image string) {
 				"{{ if not .metadata.deletionTimestamp }}"+
 				"{{ .metadata.name }}"+
 				"{{ \"\\n\" }}{{ end }}{{ end }}",
-			"-n", namespace,
+			"-n", operatorNamespace,
 		)
 
 		podOutput, err := Run(cmd, false)
 		ExpectWithOffset(2, err).NotTo(HaveOccurred())
-		podNames := GetNonEmptyLines(string(podOutput))
+		podNames := GetNonEmptyLines(podOutput)
 		if len(podNames) != 1 {
-			return fmt.Errorf("expect 1 controller pods running, but got %d", len(podNames))
+			return fmt.Errorf("expect 1 controller pods running, but got %d -- %s", len(podNames), podOutput)
 		}
 		controllerPodName = podNames[0]
 		ExpectWithOffset(2, controllerPodName).To(ContainSubstring("controller-manager"))
 
 		cmd = exec.Command("kubectl", "get",
 			"pods", controllerPodName, "-o", "jsonpath={.status.phase}",
-			"-n", namespace,
+			"-n", operatorNamespace,
 		)
 		status, err := Run(cmd)
 		ExpectWithOffset(2, err).NotTo(HaveOccurred())
-		if string(status) != "Running" {
+		if status != "Running" {
 			return fmt.Errorf("controller pod in %s status", status)
 		}
 		return nil
@@ -344,18 +359,28 @@ func DeployOperator(namespace string, image string) {
 	EventuallyWithOffset(1, verifyControllerUp, 120*time.Second, time.Second).Should(Succeed())
 }
 
-func UndeployOperator(namespace string) {
+func UndeployOperator(operatorNamespace string) {
 	By("undeploying the controller-manager")
-	ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command("make", "undeploy"))).To(Succeed())
+	ExpectWithOffset(1,
+		RunAndIgnoreOutput(
+			exec.Command(
+				"helm",
+				"uninstall",
+				"--namespace",
+				operatorNamespace,
+				"e2e-tests-operator-helm-release",
+			))).To(Succeed())
 
-	// We need to wait until the namespace is really gone, otherwise the next test case/suite that tries to create the
-	// operator will run into issues when trying to recreate the namespace which is still in the process of being
-	// deleted.
+	// We need to delete the operator namespace and wait until the namespace is really gone, otherwise the next test
+	// case/suite that tries to create the operator will run into issues when trying to recreate the namespace which is
+	// still in the process of being deleted.
+	ExpectWithOffset(1,
+		RunAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", operatorNamespace))).To(Succeed())
 	ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command(
 		"kubectl",
 		"wait",
 		"--for=delete",
-		fmt.Sprintf("namespace/%s", namespace),
+		fmt.Sprintf("namespace/%s", operatorNamespace),
 		"--timeout=60s",
 	))).To(Succeed())
 }
@@ -648,7 +673,10 @@ func verifyLabels(g Gomega, namespace string, kind string, successful bool, inst
 	instrumented := readLabel(g, namespace, kind, "dash0.com/instrumented")
 	g.ExpectWithOffset(1, instrumented).To(Equal(strconv.FormatBool(successful)))
 	operatorVersion := readLabel(g, namespace, kind, "dash0.com/operator-image")
-	g.ExpectWithOffset(1, operatorVersion).To(MatchRegexp("dash0-operator-controller_\\d+\\.\\d+\\.\\d+"))
+	g.ExpectWithOffset(1, operatorVersion).To(Or(
+		Equal("dash0-operator-controller_latest"),
+		MatchRegexp("dash0-operator-controller_\\d+\\.\\d+\\.\\d+"),
+	))
 	initContainerImageVersion := readLabel(g, namespace, kind, "dash0.com/init-container-image")
 	g.ExpectWithOffset(1, initContainerImageVersion).To(MatchRegexp("dash0-instrumentation_\\d+\\.\\d+\\.\\d+"))
 	instrumentedBy := readLabel(g, namespace, kind, "dash0.com/instrumented-by")
@@ -682,7 +710,7 @@ func readLabel(g Gomega, namespace string, kind string, labelKey string) string 
 		fmt.Sprintf("jsonpath={.metadata.labels['%s']}", strings.ReplaceAll(labelKey, ".", "\\.")),
 	), false)
 	g.ExpectWithOffset(1, err).NotTo(HaveOccurred())
-	return string(labelValue)
+	return labelValue
 }
 
 func restartAllPods(namespace string) {
@@ -732,7 +760,7 @@ func sendRequest(g Gomega, isBatch bool, httpPathWithQuery string, mustNotFail b
 		response, err := Run(exec.Command("curl", fmt.Sprintf("http://localhost:1207%s", httpPathWithQuery)), false)
 		if mustNotFail {
 			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(string(response)).To(ContainSubstring(
+			g.Expect(response).To(ContainSubstring(
 				"We make Observability easy for every developer."))
 		}
 	}
@@ -859,7 +887,7 @@ func RunAndIgnoreOutput(cmd *exec.Cmd, logCommandArgs ...bool) error {
 }
 
 // Run executes the provided command within this context
-func Run(cmd *exec.Cmd, logCommandArgs ...bool) ([]byte, error) {
+func Run(cmd *exec.Cmd, logCommandArgs ...bool) (string, error) {
 	var logCommand bool
 	var alwaysLogOutput bool
 	if len(logCommandArgs) >= 1 {
@@ -890,10 +918,10 @@ func Run(cmd *exec.Cmd, logCommandArgs ...bool) ([]byte, error) {
 		fmt.Fprintf(GinkgoWriter, "output: %s\n", string(output))
 	}
 	if err != nil {
-		return output, fmt.Errorf("%s failed with error: (%v) %s", command, err, string(output))
+		return string(output), fmt.Errorf("%s failed with error: (%v) %s", command, err, string(output))
 	}
 
-	return output, nil
+	return string(output), nil
 }
 
 // RunMultiple executes multiple commands

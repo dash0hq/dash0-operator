@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-target_namespace=${1:-default}
+target_namespace=${1:-test-namespace}
 
 if [[ "${target_namespace}" == default  ]]; then
   exit 0

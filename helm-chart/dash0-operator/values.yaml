@@ -1,0 +1,85 @@
+# This file contains the default values for the Dash0 Kubernetes Operator Helm chart.
+# Values can be overriden via --set or by providing additional yaml files when doing helm install etc.
+
+# settings for the operator/controller
+operator:
+  # number of replica for the controller manager deployment
+  replicaCount: 1
+
+  # settings for the service account to be used
+  serviceAccount:
+    # whether or not to create a dedicated service account, set this to false if you want to provide a separately
+    # created service account
+    create: true
+    # can be used to override the default name of the serviceaccount (defaults to "dash0-operator-controller-manager")
+    name: ""
+
+  # common labels, will be added to all operator resources, example:
+  # additionalLabels:
+  #   label1: "value 1"
+  #   label2: "value 2"
+  additionalLabels: {}
+
+  # additional annotations for the controller manager service, example
+  # serviceAnnotations:
+  #   annotation1: "value 1"
+  #   annotation2: "value 2"
+  serviceAnnotations: {}
+
+  # additional annotations for the controller manager deployment, example:
+  # deploymentAnnotations:
+  #   annotation1: "value 1"
+  #   annotation2: "value 2"
+  deploymentAnnotations: {}
+
+  # additional annotations for the controller manager pod(s), example:
+  # podAnnotations:
+  #   annotation1: "value 1"
+  #   annotation2: "value 2"
+  podAnnotations: {}
+
+  # additional labels for the controller manager pod(s), example:
+  # podLabels:
+  #   label1: "value 1"
+  #   labels: "value 2"
+  podLabels: {}
+
+  # resources for the controller manager pod(s)
+  managerPodResources:
+    limits:
+      cpu: 500m
+      memory: 128Mi
+      ephemeral-storage: 500Mi
+    requests:
+      cpu: 10m
+      memory: 64Mi
+      ephemeral-storage: 500Mi
+
+  # resources for the kube-rbac-proxy pod(s)
+  kubeRbacProxyPodResources:
+    limits:
+      cpu: 500m
+      memory: 128Mi
+    requests:
+      cpu: 5m
+      memory: 64Mi
+
+  # the port for the metrics service
+  metricsPort: 8443
+
+  # the port for the admission webhook service which instruments new workloads at deploy time
+  webhookPort: 443
+
+  # the container image to use for the controller manager component (there should usually be no reason to override this)
+  image: "dash0-operator-controller:1.0.0"
+
+  # override the default image pull policy
+  imagePullPolicy:
+
+  # the container image to use for the instrumentation init container
+  # (there should usually be no reason to override this)
+  initContainerImage: "dash0-instrumentation:1.0.0"
+
+# settings for the OpenTelemetry collector instance
+collector:
+  placeholder: "value"

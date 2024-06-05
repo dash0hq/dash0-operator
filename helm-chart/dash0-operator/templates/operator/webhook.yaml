@@ -1,0 +1,96 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "dash0-operator.chartName" . }}-webhook-service
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: service
+    app.kubernetes.io/instance: webhook-service
+    app.kubernetes.io/component: webhook
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+spec:
+  ports:
+  - port: {{ .Values.operator.webhookPort }}
+    protocol: TCP
+    targetPort: 9443
+  selector:
+    control-plane: controller-manager
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ template "dash0-operator.chartName" . }}-serving-cert
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: certificate
+    app.kubernetes.io/instance: serving-cert
+    app.kubernetes.io/component: certificate
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+spec:
+  dnsNames:
+  - dash0-operator-webhook-service.dash0-operator-system.svc
+  - dash0-operator-webhook-service.dash0-operator-system.svc.cluster.local
+  issuerRef:
+    kind: Issuer
+    name: dash0-operator-selfsigned-issuer
+  secretName: webhook-server-cert
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ template "dash0-operator.chartName" . }}-selfsigned-issuer
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: certificate
+    app.kubernetes.io/instance: serving-cert
+    app.kubernetes.io/component: certificate
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ template "dash0-operator.chartName" . }}-mutating-webhook-configuration
+  annotations:
+    cert-manager.io/inject-ca-from: dash0-operator-system/dash0-operator-serving-cert
+  labels:
+    app.kubernetes.io/name: mutatingwebhookconfiguration
+    app.kubernetes.io/instance: mutating-webhook-configuration
+    app.kubernetes.io/component: webhook
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: {{ template "dash0-operator.chartName" . }}-webhook-service
+      namespace: {{ .Release.Namespace }}
+      path: /v1alpha1/inject/dash0
+  failurePolicy: Ignore
+  name: inject.dash0.kb.io
+  rules:
+  - apiGroups:
+    - apps
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - daemonsets
+    - deployments
+    - replicasets
+    - statefulsets
+  - apiGroups:
+    - batch
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - cronjobs
+    - jobs
+  sideEffects: None
+  timeoutSeconds: 5

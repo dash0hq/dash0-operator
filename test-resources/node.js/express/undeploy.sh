@@ -7,7 +7,7 @@ set -euo pipefail
 
 cd "$(dirname ${BASH_SOURCE})"
 
-target_namespace=${1:-default}
+target_namespace=${1:-test-namespace}
 kind=${2:-deployment}
 
 kubectl delete -n ${target_namespace} -f ${kind}.yaml --ignore-not-found || true
