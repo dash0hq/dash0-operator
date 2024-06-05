@@ -7,6 +7,6 @@ set -euo pipefail
 
 cd "$(dirname ${BASH_SOURCE})"
 
-target_namespace=${1:-default}
+target_namespace=${1:-test-namespace}
 
 helm uninstall dash0-opentelemetry-collector-daemonset --namespace ${target_namespace} --ignore-not-found

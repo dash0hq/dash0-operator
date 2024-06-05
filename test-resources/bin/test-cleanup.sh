@@ -7,7 +7,7 @@ set -euo pipefail
 
 cd "$(dirname ${BASH_SOURCE})"/../..
 
-target_namespace=${1:-default}
+target_namespace=${1:-test-namespace}
 delete_namespace=${2:-true}
 
 kubectl delete -n ${target_namespace} -k config/samples || true

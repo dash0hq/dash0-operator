@@ -12,7 +12,7 @@ if ! kubectl get ns cert-manager &> /dev/null; then
   test-resources/cert-manager/deploy.sh
 fi
 
-target_namespace=${1:-default}
+target_namespace=${1:-test-namespace}
 kind=${2:-deployment}
 
 test-resources/bin/render-templates.sh manual-testing

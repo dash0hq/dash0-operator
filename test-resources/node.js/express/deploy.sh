@@ -7,7 +7,7 @@ set -euo pipefail
 
 cd "$(dirname ${BASH_SOURCE})"
 
-target_namespace=${1:-default}
+target_namespace=${1:-test-namespace}
 kind=${2:-deployment}
 
 if [[ -z ${SKIP_DOCKER_BUILD:-} ]]; then

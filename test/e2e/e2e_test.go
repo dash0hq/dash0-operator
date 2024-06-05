@@ -28,11 +28,10 @@ const (
 var (
 	certManagerHasBeenInstalled = false
 
-	originalKubeContext            string
-	managerYamlNeedsRevert         bool
-	collectorHasBeenInstalled      bool
-	managerNamespaceHasBeenCreated bool
-	setupFinishedSuccessfully      bool
+	originalKubeContext       string
+	managerYamlNeedsRevert    bool
+	collectorHasBeenInstalled bool
+	setupFinishedSuccessfully bool
 )
 
 var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
@@ -40,7 +39,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 	BeforeAll(func() {
 		pwdOutput, err := Run(exec.Command("pwd"), false)
 		ExpectWithOffset(1, err).NotTo(HaveOccurred())
-		workingDir := strings.TrimSpace(string(pwdOutput))
+		workingDir := strings.TrimSpace(pwdOutput)
 		fmt.Fprintf(GinkgoWriter, "workingDir: %s\n", workingDir)
 
 		CheckIfRequiredPortsAreBlocked()
@@ -54,7 +53,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			"select(documentIndex == 1) | .spec.template.spec.containers[] |  select(.name == \"manager\") | .imagePullPolicy",
 			managerYaml))
 		ExpectWithOffset(1, err).NotTo(HaveOccurred())
-		originalImagePullPolicy := strings.TrimSpace(string(yqOutput))
+		originalImagePullPolicy := strings.TrimSpace(yqOutput)
 		fmt.Fprintf(GinkgoWriter, "original imagePullPolicy: %s\n", originalImagePullPolicy)
 
 		if originalImagePullPolicy != "Never" {
@@ -75,7 +74,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		By("reading current kubectx")
 		kubectxOutput, err := Run(exec.Command("kubectx", "-c"))
 		ExpectWithOffset(1, err).NotTo(HaveOccurred())
-		originalKubeContext = strings.TrimSpace(string(kubectxOutput))
+		originalKubeContext = strings.TrimSpace(kubectxOutput)
 
 		if originalKubeContext != kubeContextForTest {
 			By("switching to kubectx docker-desktop, previous context " + originalKubeContext + " will be restored later")
@@ -90,16 +89,9 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		ExpectWithOffset(1, ReinstallCollectorAndClearExportedTelemetry(applicationUnderTestNamespace)).To(Succeed())
 		collectorHasBeenInstalled = true
 
-		By("creating manager namespace")
-		ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command("kubectl", "create", "ns", operatorNamespace))).To(Succeed())
-		managerNamespaceHasBeenCreated = true
-
 		By("building the manager(Operator) image")
 		ExpectWithOffset(1,
 			RunAndIgnoreOutput(exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", operatorImage)))).To(Succeed())
-
-		By("installing CRDs")
-		ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command("make", "install"))).To(Succeed())
 
 		setupFinishedSuccessfully = true
 	})
@@ -120,11 +112,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			Expect(UninstallCollector(applicationUnderTestNamespace)).To(Succeed())
 		}
 
-		if managerNamespaceHasBeenCreated {
-			By("removing manager namespace")
-			_ = RunAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", operatorNamespace))
-		}
-
 		if applicationUnderTestNamespace != "default" {
 			By("removing namespace for application under test")
 			_ = RunAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", applicationUnderTestNamespace))
@@ -136,7 +123,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			if err != nil {
 				fmt.Fprint(GinkgoWriter, err.Error())
 			}
-			fmt.Fprint(GinkgoWriter, string(output))
+			fmt.Fprint(GinkgoWriter, output)
 		}
 	})
 

@@ -1,14 +1,15 @@
 # Dash0 Kubernetes Operator
 
-The Dash0 Kubernetes Operator makes observability easy for every Kubernetes setup.
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
+The Dash0 Kubernetes Operator makes observability for Kubernetes _easy_.
 Simply install the operator into your cluster to get OpenTelemetry data flowing from your applications and
 infrastructure to Dash0.
 
 ## Description
 
-The Dash0 Kubernetes operator installs an OpenTelemetry collector into your cluster that sends data to your Dash0
-ingress endpoint, with authentication already configured out of the box. Additionally, it will enable gathering
-OpenTelemetry data from applications deployed to the cluster for a selection of supported runtimes.
+The Dash0 Kubernetes operator enables gathering OpenTelemetry data from your workloads for a selection of supported
+runtimes. 
 
 The Dash0 Kubernetes operator is currently in beta.
 
@@ -18,5 +19,5 @@ Supported runtimes:
 
 ## Getting Started
 
-TODO Describe installation via Helm etc.
-
+The preferred method of installation is via the operator's
+[Helm chart](https://github.com/dash0hq/dash0-operator/helm-chart/dash0-operator/README.md).
