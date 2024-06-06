@@ -50,6 +50,11 @@ jobs:
         run: |
           make lint
 
+      - name: install Helm unittest plugin
+        shell: bash
+        run: |
+          helm plugin install https://github.com/helm-unittest/helm-unittest.git
+
       - name: test
         run: |
           make test

@@ -1,0 +1,86 @@
+suite: test deployment
+templates:
+  - operator/deployment.yaml
+tests:
+  - it: deployment should match snapshot (default values)
+    asserts:
+      - matchSnapshot: {}
+
+  - it: should render deployment with custom settings
+    set:
+      operator:
+        additionalLabels:
+          label1: "value 1"
+          label2: "value 2"
+        deploymentAnnotations:
+          annotation1: "value 1"
+          annotation2: "value 2"
+        replicaCount: 3
+        podAnnotations:
+          annotation1: "value 1"
+          annotation2: "value 2"
+        podLabels:
+          label1: "value 1"
+          label2: "value 2"
+        image: custom-operator-image:1.2.3
+        imagePullPolicy: Never
+        initContainerImage: custom-init-container-image:4.5.6
+        managerPodResources:
+          limits:
+            cpu: 123m
+            memory: 456Mi
+          requests:
+            cpu: 5m
+            memory: 32Mi
+    asserts:
+      - equal:
+          path: metadata.labels['label1']
+          value: "value 1"
+      - equal:
+          path: metadata.labels['label2']
+          value: "value 2"
+      - equal:
+          path: metadata.annotations['annotation1']
+          value: "value 1"
+      - equal:
+          path: metadata.annotations['annotation2']
+          value: "value 2"
+      - equal:
+          path: spec.replicas
+          value: 3
+      - equal:
+          path: spec.template.metadata.annotations['annotation1']
+          value: "value 1"
+      - equal:
+          path: spec.template.metadata.annotations['annotation2']
+          value: "value 2"
+      - equal:
+          path: spec.template.metadata.labels['label1']
+          value: "value 1"
+      - equal:
+          path: spec.template.metadata.labels['label2']
+          value: "value 2"
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: custom-operator-image:1.2.3
+      - equal:
+          path: spec.template.spec.containers[0].imagePullPolicy
+          value: Never
+      - equal:
+          path: spec.template.spec.containers[0].env[0].value
+          value: custom-operator-image:1.2.3
+      - equal:
+          path: spec.template.spec.containers[0].env[1].value
+          value: custom-init-container-image:4.5.6
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+          value: 123m
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 456Mi
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.cpu
+          value: 5m
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests.memory
+          value: 32Mi

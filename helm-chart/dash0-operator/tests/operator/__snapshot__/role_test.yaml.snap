@@ -1,0 +1,47 @@
+leader election role should match snapshot:
+  1: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: Role
+    metadata:
+      labels:
+        app.kubernetes.io/component: rbac
+        app.kubernetes.io/instance: leader-election-role
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: role
+        app.kubernetes.io/part-of: dash0-operator
+        app.kubernetes.io/version: 1.0.0
+        helm.sh/chart: dash0-operator-1.0.0
+      name: dash0-operator-leader-election-role
+      namespace: NAMESPACE
+    rules:
+      - apiGroups:
+          - ""
+        resources:
+          - configmaps
+        verbs:
+          - get
+          - list
+          - watch
+          - create
+          - update
+          - patch
+          - delete
+      - apiGroups:
+          - coordination.k8s.io
+        resources:
+          - leases
+        verbs:
+          - get
+          - list
+          - watch
+          - create
+          - update
+          - patch
+          - delete
+      - apiGroups:
+          - ""
+        resources:
+          - events
+        verbs:
+          - create
+          - patch

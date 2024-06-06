@@ -1,0 +1,7 @@
+suite: test cluster roles
+templates:
+  - operator/cluster-roles.yaml
+tests:
+  - it: cluster roles should match snapshot
+    asserts:
+      - matchSnapshot: {}

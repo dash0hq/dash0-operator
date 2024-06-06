@@ -6,6 +6,8 @@ Contributing
 - Docker
 - kubectl version v1.11.3+.
 - Access to a Kubernetes v1.11.3+ cluster.
+- [helm](https://helm.sh/docs/intro/install/)
+- [helm unittest plug-in](https://github.com/helm-unittest/helm-unittest/tree/main)
 
 ## Deploying to a Local Cluster for Testing Purposes
 
@@ -79,11 +81,16 @@ make undeploy-via-kustomize
 
 When undeploying the controllor, the same tool (helm vs. kustomiz) should be used as when deploying it.
 
+This will also remove the custom resource definition. However, the custom resource definition can also be removed
+separately via `make uninstall` without removing the operator.
+
 ## Run Tests
 
 ```
 make test
 ```
+
+This will run the go unit tests as well as the helm chart tests.
 
 ### End-to-End Tests
 
@@ -102,4 +109,3 @@ More information can be found via the [Kubebuilder Documentation](https://book.k
 ## Contributing
 
 No contribution guidelines are available at this point.
-
