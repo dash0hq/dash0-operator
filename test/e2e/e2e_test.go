@@ -15,8 +15,9 @@ import (
 )
 
 const (
-	operatorNamespace = "dash0-operator-system"
-	operatorImage     = "dash0-operator-controller:latest"
+	operatorNamespace       = "dash0-operator-system"
+	operatorImageRepository = "dash0-operator-controller"
+	operatorImageTag        = "latest"
 
 	kubeContextForTest            = "docker-desktop"
 	applicationUnderTestNamespace = "e2e-application-under-test-namespace"
@@ -91,7 +92,13 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 		By("building the manager(Operator) image")
 		ExpectWithOffset(1,
-			RunAndIgnoreOutput(exec.Command("make", "docker-build", fmt.Sprintf("IMG=%s", operatorImage)))).To(Succeed())
+			RunAndIgnoreOutput(
+				exec.Command(
+					"make",
+					"docker-build",
+					fmt.Sprintf("IMG_REPOSITORY=%s", operatorImageRepository),
+					fmt.Sprintf("IMG_TAG=%s", operatorImageTag),
+				))).To(Succeed())
 
 		setupFinishedSuccessfully = true
 	})
@@ -163,7 +170,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				Expect(config.installWorkload(applicationUnderTestNamespace)).To(Succeed())
 				By("deploy the operator and the Dash0 custom resource")
 
-				DeployOperator(operatorNamespace, operatorImage)
+				DeployOperator(operatorNamespace, operatorImageRepository, operatorImageTag)
 				DeployDash0Resource(applicationUnderTestNamespace)
 				By(fmt.Sprintf("verifying that the Node.js %s has been instrumented by the controller", config.workloadType))
 				testId := VerifyThatWorkloadHasBeenInstrumented(
@@ -213,7 +220,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				By("installing the Node.js job")
 				Expect(InstallNodeJsJob(applicationUnderTestNamespace)).To(Succeed())
 				By("deploy the operator and the Dash0 custom resource")
-				DeployOperator(operatorNamespace, operatorImage)
+				DeployOperator(operatorNamespace, operatorImageRepository, operatorImageTag)
 				DeployDash0Resource(applicationUnderTestNamespace)
 				By("verifying that the Node.js job has been labelled by the controller")
 				Eventually(func(g Gomega) {
@@ -230,7 +237,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 	Describe("webhook", func() {
 
 		BeforeAll(func() {
-			DeployOperator(operatorNamespace, operatorImage)
+			DeployOperator(operatorNamespace, operatorImageRepository, operatorImageTag)
 
 			// Deliberately not deploying the Dash0 custom resource here: as of now, the webhook does not rely on the
 			// presence of the Dash0 resource. This is subject to change though. (If changed, it also needs to be

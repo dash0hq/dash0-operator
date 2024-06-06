@@ -191,6 +191,7 @@ func verifyPodSpec(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
 		if i == expectations.Dash0InitContainerIdx {
 			Expect(initContainer.Name).To(Equal("dash0-instrumentation"))
 			Expect(initContainer.Image).To(Equal("some-registry.com:1234/dash0-instrumentation:4.5.6"))
+			Expect(initContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
 			Expect(initContainer.Env).To(HaveLen(1))
 			Expect(initContainer.Env).To(ContainElement(MatchEnvVar("DASH0_INSTRUMENTATION_FOLDER_DESTINATION", "/opt/dash0")))
 			Expect(initContainer.SecurityContext).NotTo(BeNil())

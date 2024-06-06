@@ -33,8 +33,8 @@ spec:
     spec:
       containers:
       - name: manager
-        image: {{ .Values.operator.image | quote }}
-        {{- if .Values.operator.imagePullPolicy }}
+        image: {{ include "dash0-operator.image" . | quote }}
+        {{- if .Values.operator.image.pullPolicy }}
         imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
         {{- end }}
         command:
@@ -45,9 +45,13 @@ spec:
         - --leader-elect
         env:
         - name: DASH0_OPERATOR_IMAGE
-          value: {{ .Values.operator.image | quote }}
+          value: {{ include "dash0-operator.image" . | quote }}
         - name: DASH0_INIT_CONTAINER_IMAGE
-          value: {{ .Values.operator.initContainerImage | quote }}
+          value: {{ include "dash0-operator.initContainerImage" . | quote }}
+        {{- if .Values.operator.initContainerImage.pullPolicy }}
+        - name: DASH0_INIT_CONTAINER_IMAGE_PULL_POLICY
+          value: {{ .Values.operator.initContainerImage.pullPolicy }}
+        {{- end }}
         ports:
         - containerPort: 9443
           name: webhook-server
@@ -93,6 +97,10 @@ spec:
           capabilities:
             drop:
             - ALL
+      {{- with .Values.operator.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       securityContext:
         runAsNonRoot: true
         seccompProfile:

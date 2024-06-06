@@ -170,7 +170,7 @@ func (m *ResourceModifier) createInitContainer(podSpec *corev1.PodSpec) *corev1.
 		initContainerGroup = securityContext.FSGroup
 	}
 
-	return &corev1.Container{
+	initContainer := &corev1.Container{
 		Name:  initContainerName,
 		Image: m.instrumentationMetadata.InitContainerImage,
 		Env: []corev1.EnvVar{
@@ -195,6 +195,11 @@ func (m *ResourceModifier) createInitContainer(podSpec *corev1.PodSpec) *corev1.
 			},
 		},
 	}
+
+	if m.instrumentationMetadata.InitContainerImagePullPolicy != "" {
+		initContainer.ImagePullPolicy = m.instrumentationMetadata.InitContainerImagePullPolicy
+	}
+	return initContainer
 }
 
 func (m *ResourceModifier) instrumentContainer(container *corev1.Container, dash0CollectorBaseUrl string) {

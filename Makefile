@@ -50,8 +50,11 @@ endif
 # This is useful for CI or a project to utilize a specific version of the operator-sdk toolkit.
 OPERATOR_SDK_VERSION ?= v1.34.1
 
-# Image URL to use all building/pushing image targets
-IMG ?= dash0-operator-controller:latest
+# image repository and tag to use for building/pushing the operator image
+IMG_REPOSITORY ?= dash0-operator-controller
+IMG_TAG ?= latest
+IMG ?= $(IMG_REPOSITORY):$(IMG_TAG)
+
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.28.3
 

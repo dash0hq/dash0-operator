@@ -13,6 +13,7 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
@@ -143,10 +144,25 @@ func startOperatorManager(
 		return fmt.Errorf("cannot start Dash0 operator, the mandatory environment variable " +
 			"\"DASH0_OPERATOR_IMAGE\" is missing")
 	}
+
 	initContainerImage, isSet := os.LookupEnv("DASH0_INIT_CONTAINER_IMAGE")
 	if !isSet {
 		return fmt.Errorf("cannot start Dash0 operator, the mandatory environment variable " +
 			"\"DASH0_INIT_CONTAINER_IMAGE\" is missing")
+	}
+
+	initContainerImagePullPolicyRaw := os.Getenv("DASH0_INIT_CONTAINER_IMAGE_PULL_POLICY")
+	var initContainerImagePullPolicy corev1.PullPolicy
+	if initContainerImagePullPolicyRaw == "" {
+		if initContainerImagePullPolicyRaw == string(corev1.PullAlways) ||
+			initContainerImagePullPolicyRaw == string(corev1.PullIfNotPresent) ||
+			initContainerImagePullPolicyRaw == string(corev1.PullNever) {
+			initContainerImagePullPolicy = corev1.PullPolicy(initContainerImagePullPolicyRaw)
+		} else {
+			setupLog.Info(
+				fmt.Sprintf(
+					"Ignoring unknown pull policy for init container image: %s.", initContainerImagePullPolicyRaw))
+		}
 	}
 	setupLog.Info(
 		"version information",
@@ -154,11 +170,14 @@ func startOperatorManager(
 		operatorImage,
 		"init container image and version",
 		initContainerImage,
+		"init container image pull policy override",
+		initContainerImagePullPolicy,
 	)
 
 	images := util.Images{
-		OperatorImage:      operatorImage,
-		InitContainerImage: initContainerImage,
+		OperatorImage:                operatorImage,
+		InitContainerImage:           initContainerImage,
+		InitContainerImagePullPolicy: initContainerImagePullPolicy,
 	}
 
 	if err = (&controller.Dash0Reconciler{
