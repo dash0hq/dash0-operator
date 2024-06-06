@@ -193,14 +193,23 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 	sleep 1
 	$(KUSTOMIZE) build config/crd | $(KUBECTL) patch CustomResourceDefinition dash0s.operator.dash0.com -p '{"metadata":{"finalizers":null}}' --type=merge
 
-.PHONY: deploy
-deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
+.PHONY: deploy-via-kustomize
+deploy-via-kustomize: manifests kustomize ## Deploy the controller via kustomize to the K8s cluster specified in ~/.kube/config.
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
 
-.PHONY: undeploy
-undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+.PHONY: undeploy-via-kustomize
+undeploy-via-kustomize: ## Undeploy the controller via kustomize from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) --wait=false -f -
+
+.PHONY: deploy-via-helm
+deploy-via-helm: ## Deploy the controller via helm to the K8s cluster specified in ~/.kube/config.
+	helm install --namespace dash0-operator-system --create-namespace --set operator.image=${IMG} --set operator.imagePullPolicy=Never dash0-operator helm-chart/dash0-operator
+
+.PHONY: undeploy-via-helm
+undeploy-via-helm: ## Undeploy the controller via helm from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
+	helm uninstall --namespace dash0-operator-system dash0-operator
+	$(KUBECTL) delete ns dash0-operator-system
 
 ##@ Build Dependencies
 

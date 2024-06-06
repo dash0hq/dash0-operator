@@ -15,6 +15,11 @@ fi
 target_namespace=${1:-test-namespace}
 kind=${2:-deployment}
 
+deployment_tool=helm
+if [[ -n "${USE_KUSTOMIZE:-}" ]]; then
+  deployment_tool=kustomize
+fi
+
 test-resources/bin/render-templates.sh manual-testing
 
 echo "STEP 1: creating target namespace (if necessary)"
@@ -35,15 +40,13 @@ make docker-build
 echo
 echo
 
-echo "STEP 5: install the custom resource definition"
-make install
+echo "STEP 5: deploy application under monitoring"
+test-resources/node.js/express/deploy.sh ${target_namespace} ${kind}
 echo
 echo
 
-sleep 5
-
-echo "STEP 6: deploy the Dash0 operator"
-make deploy
+echo "STEP 6: deploy the Dash0 operator (using ${deployment_tool})"
+make deploy-via-${deployment_tool}
 echo
 echo
 
@@ -51,10 +54,3 @@ sleep 5
 
 echo "STEP 7: deploy the Dash0 custom resource to namespace ${target_namespace}"
 kubectl apply -n ${target_namespace} -k config/samples
-echo
-echo
-
-sleep 5
-
-echo "STEP 8: deploy application under monitoring"
-test-resources/node.js/express/deploy.sh ${target_namespace} ${kind}
