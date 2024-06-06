@@ -12,4 +12,4 @@ COPY --chown=node:node package-lock.json .
 RUN npm ci --omit=dev
 COPY --chown=node:node . .
 EXPOSE 1207
-CMD [ "node", "app.js" ]
+ENTRYPOINT [ "node", "app.js" ]
