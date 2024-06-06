@@ -1,0 +1,7 @@
+suite: test role
+templates:
+  - operator/role.yaml
+tests:
+  - it: leader election role should match snapshot
+    asserts:
+      - matchSnapshot: {}

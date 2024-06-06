@@ -1,0 +1,113 @@
+cluster roles should match snapshot:
+  1: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      name: dash0-operator-manager-role
+    rules:
+      - apiGroups:
+          - apps
+        resources:
+          - daemonsets
+          - deployments
+          - replicasets
+          - statefulsets
+        verbs:
+          - get
+          - list
+          - patch
+          - update
+          - watch
+      - apiGroups:
+          - batch
+        resources:
+          - cronjobs
+          - jobs
+        verbs:
+          - get
+          - list
+          - patch
+          - update
+          - watch
+      - apiGroups:
+          - ""
+        resources:
+          - events
+        verbs:
+          - create
+      - apiGroups:
+          - ""
+        resources:
+          - namespaces
+        verbs:
+          - get
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0s
+        verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0s/finalizers
+        verbs:
+          - update
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0s/status
+        verbs:
+          - get
+          - patch
+          - update
+  2: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-rbac-proxy
+        app.kubernetes.io/instance: metrics-reader
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: clusterrole
+        app.kubernetes.io/part-of: dash0-operator
+        app.kubernetes.io/version: 1.0.0
+        helm.sh/chart: dash0-operator-1.0.0
+      name: dash0-operator-metrics-reader
+    rules:
+      - nonResourceURLs:
+          - /metrics
+        verbs:
+          - get
+  3: |
+    apiVersion: rbac.authorization.k8s.io/v1
+    kind: ClusterRole
+    metadata:
+      labels:
+        app.kubernetes.io/component: kube-rbac-proxy
+        app.kubernetes.io/instance: proxy-role
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: clusterrole
+        app.kubernetes.io/part-of: dash0-operator
+        app.kubernetes.io/version: 1.0.0
+        helm.sh/chart: dash0-operator-1.0.0
+      name: dash0-operator-proxy-role
+    rules:
+      - apiGroups:
+          - authentication.k8s.io
+        resources:
+          - tokenreviews
+        verbs:
+          - create
+      - apiGroups:
+          - authorization.k8s.io
+        resources:
+          - subjectaccessreviews
+        verbs:
+          - create

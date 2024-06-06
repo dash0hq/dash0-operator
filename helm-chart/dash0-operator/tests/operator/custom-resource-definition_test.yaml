@@ -1,0 +1,7 @@
+suite: test custom resource definition
+templates:
+  - operator/custom-resource-definition.yaml
+tests:
+  - it: custom resource definition should match snapshot
+    asserts:
+      - matchSnapshot: {}

@@ -1,0 +1,110 @@
+deployment should match snapshot (default values):
+  1: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      labels:
+        app.kubernetes.io/component: manager
+        app.kubernetes.io/instance: controller-manager
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: deployment
+        app.kubernetes.io/part-of: dash0-operator
+        app.kubernetes.io/version: 1.0.0
+        control-plane: controller-manager
+        helm.sh/chart: dash0-operator-1.0.0
+      name: dash0-operator-controller-manager
+      namespace: NAMESPACE
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          control-plane: controller-manager
+      template:
+        metadata:
+          annotations:
+            kubectl.kubernetes.io/default-container: manager
+          labels:
+            control-plane: controller-manager
+        spec:
+          containers:
+            - args:
+                - --health-probe-bind-address=:8081
+                - --metrics-bind-address=127.0.0.1:8080
+                - --leader-elect
+              command:
+                - /manager
+              env:
+                - name: DASH0_OPERATOR_IMAGE
+                  value: dash0-operator-controller:1.0.0
+                - name: DASH0_INIT_CONTAINER_IMAGE
+                  value: dash0-instrumentation:1.0.0
+              image: dash0-operator-controller:1.0.0
+              livenessProbe:
+                httpGet:
+                  path: /healthz
+                  port: 8081
+                initialDelaySeconds: 15
+                periodSeconds: 20
+              name: manager
+              ports:
+                - containerPort: 9443
+                  name: webhook-server
+                  protocol: TCP
+              readinessProbe:
+                httpGet:
+                  path: /readyz
+                  port: 8081
+                initialDelaySeconds: 5
+                periodSeconds: 10
+              resources:
+                limits:
+                  cpu: 500m
+                  ephemeral-storage: 500Mi
+                  memory: 128Mi
+                requests:
+                  cpu: 10m
+                  ephemeral-storage: 500Mi
+                  memory: 64Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+              volumeMounts:
+                - mountPath: /tmp/k8s-webhook-server/serving-certs
+                  name: cert
+                  readOnly: true
+            - args:
+                - --secure-listen-address=0.0.0.0:8443
+                - --upstream=http://127.0.0.1:8080/
+                - --logtostderr=true
+                - --v=0
+              image: gcr.io/kubebuilder/kube-rbac-proxy:v0.15.0
+              name: kube-rbac-proxy
+              ports:
+                - containerPort: 8443
+                  name: https
+                  protocol: TCP
+              resources:
+                limits:
+                  cpu: 500m
+                  memory: 128Mi
+                requests:
+                  cpu: 5m
+                  memory: 64Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          serviceAccountName: dash0-operator-controller-manager
+          terminationGracePeriodSeconds: 10
+          volumes:
+            - name: cert
+              secret:
+                defaultMode: 420
+                secretName: webhook-server-cert

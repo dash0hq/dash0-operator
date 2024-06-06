@@ -1,0 +1,110 @@
+webhook should match snapshot:
+  1: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      labels:
+        app.kubernetes.io/component: webhook
+        app.kubernetes.io/instance: webhook-service
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: service
+        app.kubernetes.io/part-of: dash0-operator
+        app.kubernetes.io/version: 1.0.0
+        helm.sh/chart: dash0-operator-1.0.0
+      name: dash0-operator-webhook-service
+      namespace: NAMESPACE
+    spec:
+      ports:
+        - port: 443
+          protocol: TCP
+          targetPort: 9443
+      selector:
+        control-plane: controller-manager
+  2: |
+    apiVersion: cert-manager.io/v1
+    kind: Certificate
+    metadata:
+      labels:
+        app.kubernetes.io/component: certificate
+        app.kubernetes.io/instance: serving-cert
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: certificate
+        app.kubernetes.io/part-of: dash0-operator
+        app.kubernetes.io/version: 1.0.0
+        helm.sh/chart: dash0-operator-1.0.0
+      name: dash0-operator-serving-cert
+      namespace: NAMESPACE
+    spec:
+      dnsNames:
+        - dash0-operator-webhook-service.dash0-operator-system.svc
+        - dash0-operator-webhook-service.dash0-operator-system.svc.cluster.local
+      issuerRef:
+        kind: Issuer
+        name: dash0-operator-selfsigned-issuer
+      secretName: webhook-server-cert
+  3: |
+    apiVersion: cert-manager.io/v1
+    kind: Issuer
+    metadata:
+      labels:
+        app.kubernetes.io/component: certificate
+        app.kubernetes.io/instance: serving-cert
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: certificate
+        app.kubernetes.io/part-of: dash0-operator
+        app.kubernetes.io/version: 1.0.0
+        helm.sh/chart: dash0-operator-1.0.0
+      name: dash0-operator-selfsigned-issuer
+      namespace: NAMESPACE
+    spec:
+      selfSigned: {}
+  4: |
+    apiVersion: admissionregistration.k8s.io/v1
+    kind: MutatingWebhookConfiguration
+    metadata:
+      annotations:
+        cert-manager.io/inject-ca-from: dash0-operator-system/dash0-operator-serving-cert
+      labels:
+        app.kubernetes.io/component: webhook
+        app.kubernetes.io/instance: mutating-webhook-configuration
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: mutatingwebhookconfiguration
+        app.kubernetes.io/part-of: dash0-operator
+        app.kubernetes.io/version: 1.0.0
+        helm.sh/chart: dash0-operator-1.0.0
+      name: dash0-operator-mutating-webhook-configuration
+    webhooks:
+      - admissionReviewVersions:
+          - v1
+        clientConfig:
+          service:
+            name: dash0-operator-webhook-service
+            namespace: NAMESPACE
+            path: /v1alpha1/inject/dash0
+        failurePolicy: Ignore
+        name: inject.dash0.kb.io
+        rules:
+          - apiGroups:
+              - apps
+            apiVersions:
+              - v1
+            operations:
+              - CREATE
+              - UPDATE
+            resources:
+              - daemonsets
+              - deployments
+              - replicasets
+              - statefulsets
+          - apiGroups:
+              - batch
+            apiVersions:
+              - v1
+            operations:
+              - CREATE
+              - UPDATE
+            resources:
+              - cronjobs
+              - jobs
+        sideEffects: None
+        timeoutSeconds: 5

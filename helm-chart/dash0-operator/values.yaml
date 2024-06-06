@@ -8,7 +8,7 @@ operator:
 
   # settings for the service account to be used
   serviceAccount:
-    # whether or not to create a dedicated service account, set this to false if you want to provide a separately
+    # whether to create a dedicated service account, set this to false if you want to provide a separately
     # created service account
     create: true
     # can be used to override the default name of the serviceaccount (defaults to "dash0-operator-controller-manager")
@@ -41,7 +41,7 @@ operator:
   # additional labels for the controller manager pod(s), example:
   # podLabels:
   #   label1: "value 1"
-  #   labels: "value 2"
+  #   label2: "value 2"
   podLabels: {}
 
   # resources for the controller manager pod(s)

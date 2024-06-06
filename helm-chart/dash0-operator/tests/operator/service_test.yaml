@@ -1,0 +1,16 @@
+suite: test role
+templates:
+  - operator/service.yaml
+tests:
+  - it: service should match snapshot (default settings)
+    asserts:
+      - matchSnapshot: {}
+
+  - it: should render service with custom settings
+    set:
+      operator:
+        metricsPort: 9554
+    asserts:
+      - equal:
+          path: spec.ports[0].port
+          value: 9554

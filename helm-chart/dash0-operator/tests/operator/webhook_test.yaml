@@ -1,0 +1,19 @@
+suite: test role
+templates:
+  - operator/webhook.yaml
+tests:
+  - it: webhook should match snapshot
+    asserts:
+      - matchSnapshot: {}
+
+  - it: should render webhook with custom settings
+    set:
+      operator:
+        webhookPort: 554
+    documentIndex: 0
+    asserts:
+      - hasDocuments:
+          count: 4
+      - equal:
+          path: spec.ports[0].port
+          value: 554
