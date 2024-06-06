@@ -54,24 +54,30 @@ In this case your test cluster needs to be configured to have pull access for th
 
 After that, you can deploy the operator to your cluster:
 
-* Install the CRDs into the cluster: `make install`
-* Deploy the locally built image `dash0-operator-controller:latest` to the cluster: `make deploy`
-* Alternatively, deploy the image pushed to the remote registry with the image specified by `IMG`: `make deploy IMG=<some-registry>/dash0-operator:tag`
+* Deploy the locally built image `dash0-operator-controller:latest` to the cluster: `make deploy-via-helm`
+  (or `make deploy-via-kustomize`)
+* Alternatively, deploy the image pushed to the remote registry with the image specified by `IMG`:
+  `make deploy-via-helm IMG=<some-registry>/dash0-operator:tag`
+  (or `make deploy-via-kustomize IMG=<some-registry>/dash0-operator:tag`)
+* No matter if you deploy via helm or kustomize, the custom resource definition will automatically be installed when
+  deploying the operator. However, you can also do that separately via kustomize if required via `make install`.
 
 **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin privileges or be logged in as
 admin.
 
-**Delete the APIs(CRDs) from the cluster:**
+**Undeploy the controller from the cluster:**
 
 ```sh
-make uninstall
+make undeploy-via-helm
 ```
 
-**UnDeploy the controller from the cluster:**
+or
 
 ```sh
-make undeploy
+make undeploy-via-kustomize
 ```
+
+When undeploying the controllor, the same tool (helm vs. kustomiz) should be used as when deploying it.
 
 ## Run Tests
 
