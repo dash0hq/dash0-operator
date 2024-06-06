@@ -3,6 +3,8 @@
 
 package util
 
+import corev1 "k8s.io/api/core/v1"
+
 type ConditionType string
 type Reason string
 
@@ -19,8 +21,9 @@ const (
 )
 
 type Images struct {
-	OperatorImage      string
-	InitContainerImage string
+	OperatorImage                string
+	InitContainerImage           string
+	InitContainerImagePullPolicy corev1.PullPolicy
 }
 
 type InstrumentationMetadata struct {

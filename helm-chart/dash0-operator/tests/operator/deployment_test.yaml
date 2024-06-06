@@ -22,9 +22,17 @@ tests:
         podLabels:
           label1: "value 1"
           label2: "value 2"
-        image: custom-operator-image:1.2.3
-        imagePullPolicy: Never
-        initContainerImage: custom-init-container-image:4.5.6
+        image:
+          repository: custom-operator-image
+          tag: "1.2.3"
+          pullPolicy: Never
+        initContainerImage:
+          repository: custom-init-container-image
+          tag: "4.5.6"
+          pullPolicy: Always
+        imagePullSecrets:
+          - name: regcred
+          - name: anotherSecret
         managerPodResources:
           limits:
             cpu: 123m
@@ -61,17 +69,35 @@ tests:
           path: spec.template.metadata.labels['label2']
           value: "value 2"
       - equal:
+          path: spec.template.spec.imagePullSecrets[0].name
+          value: regcred
+      - equal:
+          path: spec.template.spec.imagePullSecrets[1].name
+          value: anotherSecret
+      - equal:
           path: spec.template.spec.containers[0].image
           value: custom-operator-image:1.2.3
       - equal:
           path: spec.template.spec.containers[0].imagePullPolicy
           value: Never
       - equal:
+          path: spec.template.spec.containers[0].env[0].name
+          value: DASH0_OPERATOR_IMAGE
+      - equal:
           path: spec.template.spec.containers[0].env[0].value
           value: custom-operator-image:1.2.3
       - equal:
+         path: spec.template.spec.containers[0].env[1].name
+         value: DASH0_INIT_CONTAINER_IMAGE
+      - equal:
           path: spec.template.spec.containers[0].env[1].value
           value: custom-init-container-image:4.5.6
+      - equal:
+          path: spec.template.spec.containers[0].env[2].name
+          value: DASH0_INIT_CONTAINER_IMAGE_PULL_POLICY
+      - equal:
+          path: spec.template.spec.containers[0].env[2].value
+          value: Always
       - equal:
           path: spec.template.spec.containers[0].resources.limits.cpu
           value: 123m

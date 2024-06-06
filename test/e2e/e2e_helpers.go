@@ -304,7 +304,7 @@ func UninstallCollector(namespace string) error {
 		))
 }
 
-func DeployOperator(operatorNamespace string, image string) {
+func DeployOperator(operatorNamespace string, imageRepository string, imageTag string) {
 	By("deploying the controller-manager")
 	output, err := Run(
 		exec.Command(
@@ -313,10 +313,9 @@ func DeployOperator(operatorNamespace string, image string) {
 			"--namespace",
 			operatorNamespace,
 			"--create-namespace",
-			"--set",
-			fmt.Sprintf("operator.image=%s", image),
-			"--set",
-			"operator.imagePullPolicy=Never",
+			"--set", fmt.Sprintf("operator.image.repository=%s", imageRepository),
+			"--set", fmt.Sprintf("operator.image.tag=%s", imageTag),
+			"--set", "operator.image.pullPolicy=Never",
 			"e2e-tests-operator-helm-release",
 			"helm-chart/dash0-operator",
 		))

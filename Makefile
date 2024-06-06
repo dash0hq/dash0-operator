@@ -50,8 +50,11 @@ endif
 # This is useful for CI or a project to utilize a specific version of the operator-sdk toolkit.
 OPERATOR_SDK_VERSION ?= v1.34.1
 
-# Image URL to use all building/pushing image targets
-IMG ?= dash0-operator-controller:latest
+# image repository and tag to use for building/pushing the operator image
+IMG_REPOSITORY ?= dash0-operator-controller
+IMG_TAG ?= latest
+IMG ?= $(IMG_REPOSITORY):$(IMG_TAG)
+
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.28.3
 
@@ -205,7 +208,7 @@ undeploy-via-kustomize: ## Undeploy the controller via kustomize from the K8s cl
 
 .PHONY: deploy-via-helm
 deploy-via-helm: ## Deploy the controller via helm to the K8s cluster specified in ~/.kube/config.
-	helm install --namespace dash0-operator-system --create-namespace --set operator.image=${IMG} --set operator.imagePullPolicy=Never dash0-operator helm-chart/dash0-operator
+	helm install --namespace dash0-operator-system --create-namespace --set operator.image.repository=${IMG_REPOSITORY} --set operator.image.tag=${IMG_TAG} --set operator.image.pullPolicy=Never dash0-operator helm-chart/dash0-operator
 
 .PHONY: undeploy-via-helm
 undeploy-via-helm: ## Undeploy the controller via helm from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.

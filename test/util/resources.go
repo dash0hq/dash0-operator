@@ -39,8 +39,9 @@ var (
 	ArbitraryNumer int64 = 1302
 
 	instrumentationInitContainer = corev1.Container{
-		Name:  "dash0-instrumentation",
-		Image: "some-registry.com:1234/dash0-instrumentation:4.5.6",
+		Name:            "dash0-instrumentation",
+		Image:           "some-registry.com:1234/dash0-instrumentation:4.5.6",
+		ImagePullPolicy: corev1.PullAlways,
 		Env: []corev1.EnvVar{{
 			Name:  "DASH0_INSTRUMENTATION_FOLDER_DESTINATION",
 			Value: "/opt/dash0",

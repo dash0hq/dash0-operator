@@ -41,3 +41,17 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 {{- define "dash0-operator.serviceAccountName" -}}
 {{- default (printf "%s-controller-manager" (include "dash0-operator.chartName" .)) .Values.operator.serviceAccount.name }}
 {{- end }}
+
+{{/* the controller manager container image */}}
+{{- define "dash0-operator.image" -}}
+{{- printf "%s:%s" .Values.operator.image.repository (include "dash0-operator.imageTag" .) }}
+{{- end }}
+
+{{- define "dash0-operator.imageTag" -}}
+{{- default .Chart.AppVersion .Values.operator.image.tag }}
+{{- end }}
+
+{{/* the init container image */}}
+{{- define "dash0-operator.initContainerImage" -}}
+{{- printf "%s:%s" .Values.operator.initContainerImage.repository .Values.operator.initContainerImage.tag }}
+{{- end }}
