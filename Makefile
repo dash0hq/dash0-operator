@@ -208,7 +208,16 @@ undeploy-via-kustomize: ## Undeploy the controller via kustomize from the K8s cl
 
 .PHONY: deploy-via-helm
 deploy-via-helm: ## Deploy the controller via helm to the K8s cluster specified in ~/.kube/config.
-	helm install --namespace dash0-operator-system --create-namespace --set operator.image.repository=${IMG_REPOSITORY} --set operator.image.tag=${IMG_TAG} --set operator.image.pullPolicy=Never dash0-operator helm-chart/dash0-operator
+	test-resources/bin/render-templates.sh manual-testing
+	helm install \
+		--namespace dash0-operator-system \
+		--create-namespace \
+		--values test-resources/helm/manual.values.yaml \
+		--set operator.image.repository=${IMG_REPOSITORY} \
+		--set operator.image.tag=${IMG_TAG} \
+		dash0-operator \
+		helm-chart/dash0-operator
+
 
 .PHONY: undeploy-via-helm
 undeploy-via-helm: ## Undeploy the controller via helm from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.

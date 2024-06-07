@@ -31,7 +31,6 @@ var (
 
 	originalKubeContext       string
 	managerYamlNeedsRevert    bool
-	collectorHasBeenInstalled bool
 	setupFinishedSuccessfully bool
 )
 
@@ -86,10 +85,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 		RecreateNamespace(applicationUnderTestNamespace)
 
-		By("(re)installing the collector")
-		ExpectWithOffset(1, ReinstallCollectorAndClearExportedTelemetry(applicationUnderTestNamespace)).To(Succeed())
-		collectorHasBeenInstalled = true
-
 		By("building the manager(Operator) image")
 		ExpectWithOffset(1,
 			RunAndIgnoreOutput(
@@ -113,11 +108,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		}
 
 		UninstallCertManagerIfApplicable(certManagerHasBeenInstalled)
-
-		if collectorHasBeenInstalled {
-			By("uninstalling the collector")
-			Expect(UninstallCollector(applicationUnderTestNamespace)).To(Succeed())
-		}
 
 		if applicationUnderTestNamespace != "default" {
 			By("removing namespace for application under test")
@@ -153,7 +143,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 	Describe("controller", func() {
 		AfterEach(func() {
 			UndeployDash0Resource(applicationUnderTestNamespace)
-			UndeployOperator(operatorNamespace)
+			UndeployOperatorAndCollector(operatorNamespace)
 		})
 
 		type controllerTest struct {
@@ -170,7 +160,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				Expect(config.installWorkload(applicationUnderTestNamespace)).To(Succeed())
 				By("deploy the operator and the Dash0 custom resource")
 
-				DeployOperator(operatorNamespace, operatorImageRepository, operatorImageTag)
+				DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace, operatorImageRepository, operatorImageTag)
 				DeployDash0Resource(applicationUnderTestNamespace)
 				By(fmt.Sprintf("verifying that the Node.js %s has been instrumented by the controller", config.workloadType))
 				testId := VerifyThatWorkloadHasBeenInstrumented(
@@ -220,7 +210,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				By("installing the Node.js job")
 				Expect(InstallNodeJsJob(applicationUnderTestNamespace)).To(Succeed())
 				By("deploy the operator and the Dash0 custom resource")
-				DeployOperator(operatorNamespace, operatorImageRepository, operatorImageTag)
+				DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace, operatorImageRepository, operatorImageTag)
 				DeployDash0Resource(applicationUnderTestNamespace)
 				By("verifying that the Node.js job has been labelled by the controller")
 				Eventually(func(g Gomega) {
@@ -237,7 +227,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 	Describe("webhook", func() {
 
 		BeforeAll(func() {
-			DeployOperator(operatorNamespace, operatorImageRepository, operatorImageTag)
+			DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace, operatorImageRepository, operatorImageTag)
 
 			// Deliberately not deploying the Dash0 custom resource here: as of now, the webhook does not rely on the
 			// presence of the Dash0 resource. This is subject to change though. (If changed, it also needs to be
@@ -252,7 +242,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		AfterAll(func() {
 			// See comment in BeforeAll hook.
 			// UndeployDash0Resource(applicationUnderTestNamespace)
-			UndeployOperator(operatorNamespace)
+			UndeployOperatorAndCollector(operatorNamespace)
 		})
 
 		type webhookTest struct {

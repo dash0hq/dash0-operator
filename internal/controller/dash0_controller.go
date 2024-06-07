@@ -37,10 +37,11 @@ const (
 
 type Dash0Reconciler struct {
 	client.Client
-	ClientSet *kubernetes.Clientset
-	Scheme    *runtime.Scheme
-	Recorder  record.EventRecorder
-	Images    util.Images
+	ClientSet            *kubernetes.Clientset
+	Scheme               *runtime.Scheme
+	Recorder             record.EventRecorder
+	Images               util.Images
+	OtelCollectorBaseUrl string
 }
 
 type ModificationMode string
@@ -305,7 +306,6 @@ func (r *Dash0Reconciler) instrumentCronJob(
 ) {
 	r.instrumentWorkload(ctx, &cronJobWorkload{
 		cronJob: &cronJob,
-		images:  r.Images,
 	}, reconcileLogger)
 }
 
@@ -332,7 +332,6 @@ func (r *Dash0Reconciler) instrumentDaemonSet(
 ) {
 	r.instrumentWorkload(ctx, &daemonSetWorkload{
 		daemonSet: &daemonSet,
-		images:    r.Images,
 	}, reconcileLogger)
 }
 
@@ -359,7 +358,6 @@ func (r *Dash0Reconciler) instrumentDeployment(
 ) {
 	r.instrumentWorkload(ctx, &deploymentWorkload{
 		deployment: &deployment,
-		images:     r.Images,
 	}, reconcileLogger)
 }
 
@@ -404,7 +402,7 @@ func (r *Dash0Reconciler) addLabelsToImmutableJobsOnInstrumentation(
 		}, &job); err != nil {
 			return fmt.Errorf("error when fetching job %s/%s: %w", job.GetNamespace(), job.GetName(), err)
 		}
-		newWorkloadModifier(r.Images, &logger).AddLabelsToImmutableJob(&job)
+		newWorkloadModifier(r.Images, r.OtelCollectorBaseUrl, &logger).AddLabelsToImmutableJob(&job)
 		return r.Client.Update(ctx, &job)
 	}, &logger)
 
@@ -447,7 +445,6 @@ func (r *Dash0Reconciler) instrumentReplicaSet(
 
 	r.instrumentWorkload(ctx, &replicaSetWorkload{
 		replicaSet: &replicaSet,
-		images:     r.Images,
 	}, reconcileLogger)
 }
 
@@ -473,7 +470,6 @@ func (r *Dash0Reconciler) instrumentStatefulSet(
 ) {
 	r.instrumentWorkload(ctx, &statefulSetWorkload{
 		statefulSet: &statefulSet,
-		images:      r.Images,
 	}, reconcileLogger)
 }
 
@@ -511,7 +507,7 @@ func (r *Dash0Reconciler) instrumentWorkload(
 				err,
 			)
 		}
-		hasBeenModified = workload.instrument(&logger)
+		hasBeenModified = workload.instrument(r.Images, r.OtelCollectorBaseUrl, &logger)
 		if hasBeenModified {
 			return r.Client.Update(ctx, workload.asClientObject())
 		} else {
@@ -682,7 +678,6 @@ func (r *Dash0Reconciler) uninstrumentCronJob(
 ) {
 	r.revertWorkloadInstrumentation(ctx, &cronJobWorkload{
 		cronJob: &cronJob,
-		images:  r.Images,
 	}, reconcileLogger)
 }
 
@@ -705,7 +700,6 @@ func (r *Dash0Reconciler) uninstrumentDaemonSet(
 ) {
 	r.revertWorkloadInstrumentation(ctx, &daemonSetWorkload{
 		daemonSet: &daemonSet,
-		images:    r.Images,
 	}, reconcileLogger)
 }
 
@@ -732,7 +726,6 @@ func (r *Dash0Reconciler) uninstrumentDeployment(
 ) {
 	r.revertWorkloadInstrumentation(ctx, &deploymentWorkload{
 		deployment: &deployment,
-		images:     r.Images,
 	}, reconcileLogger)
 }
 
@@ -785,7 +778,7 @@ func (r *Dash0Reconciler) handleJobOnUninstrumentation(ctx context.Context, job 
 		} else if util.InstrumenationAttemptHasFailed(&job.ObjectMeta) {
 			// There was an attempt to instrument this job (probably by the controller), which has not been successful.
 			// We only need remove the labels from that instrumentation attempt to clean up.
-			newWorkloadModifier(r.Images, &logger).RemoveLabelsFromImmutableJob(&job)
+			newWorkloadModifier(r.Images, r.OtelCollectorBaseUrl, &logger).RemoveLabelsFromImmutableJob(&job)
 
 			// Apparently for jobs we do not need to set the "dash0.com/webhook-ignore-once" label, since changing their
 			// labels does not trigger a new admission request.
@@ -797,7 +790,7 @@ func (r *Dash0Reconciler) handleJobOnUninstrumentation(ctx context.Context, job 
 	}, &logger)
 
 	if retryErr != nil {
-		// For the case that the job was instrumented and we could not uninstrument it, we create a
+		// For the case that the job was instrumented, and we could not uninstrument it, we create a
 		// ImmutableWorkloadError inside the retry loop. This error is then handled in the postProcessUninstrumentation.
 		// The same is true for any other error types (for example errors in r.ClientUpdate).
 		r.postProcessUninstrumentation(&job, false, retryErr, &logger)
@@ -836,7 +829,6 @@ func (r *Dash0Reconciler) uninstrumentReplicaSet(ctx context.Context, replicaSet
 	// all pods for that are owned by the replica set and restart them automatically.
 	r.revertWorkloadInstrumentation(ctx, &replicaSetWorkload{
 		replicaSet: &replicaSet,
-		images:     r.Images,
 	}, reconcileLogger)
 }
 
@@ -863,7 +855,6 @@ func (r *Dash0Reconciler) uninstrumentStatefulSet(
 ) {
 	r.revertWorkloadInstrumentation(ctx, &statefulSetWorkload{
 		statefulSet: &statefulSet,
-		images:      r.Images,
 	}, reconcileLogger)
 }
 
@@ -901,7 +892,7 @@ func (r *Dash0Reconciler) revertWorkloadInstrumentation(
 				err,
 			)
 		}
-		hasBeenModified = workload.revert(&logger)
+		hasBeenModified = workload.revert(r.Images, r.OtelCollectorBaseUrl, &logger)
 		if hasBeenModified {
 			// Changing the workload spec sometimes triggers a new admission request, which would re-instrument the
 			// workload via the webhook immediately. To prevent this, we add a label that the webhook can check to
@@ -940,11 +931,12 @@ func (r *Dash0Reconciler) postProcessUninstrumentation(
 	}
 }
 
-func newWorkloadModifier(images util.Images, logger *logr.Logger) *workloads.ResourceModifier {
+func newWorkloadModifier(images util.Images, otelCollectorBaseUrl string, logger *logr.Logger) *workloads.ResourceModifier {
 	return workloads.NewResourceModifier(
 		util.InstrumentationMetadata{
-			Images:         images,
-			InstrumentedBy: "controller",
+			Images:               images,
+			InstrumentedBy:       "controller",
+			OtelCollectorBaseUrl: otelCollectorBaseUrl,
 		},
 		logger,
 	)

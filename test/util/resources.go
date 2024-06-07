@@ -135,7 +135,7 @@ func CreateBasicCronJob(
 
 func InstrumentedCronJob(namespace string, name string) *batchv1.CronJob {
 	workload := BasicCronJob(namespace, name)
-	simulateInstrumentedResource(&workload.Spec.JobTemplate.Spec.Template, &workload.ObjectMeta, namespace)
+	simulateInstrumentedResource(&workload.Spec.JobTemplate.Spec.Template, &workload.ObjectMeta)
 	return workload
 }
 
@@ -184,7 +184,7 @@ func CreateBasicDaemonSet(
 
 func InstrumentedDaemonSet(namespace string, name string) *appsv1.DaemonSet {
 	workload := BasicDaemonSet(namespace, name)
-	simulateInstrumentedResource(&workload.Spec.Template, &workload.ObjectMeta, namespace)
+	simulateInstrumentedResource(&workload.Spec.Template, &workload.ObjectMeta)
 	return workload
 }
 
@@ -233,7 +233,7 @@ func CreateBasicDeployment(
 
 func InstrumentedDeployment(namespace string, name string) *appsv1.Deployment {
 	workload := BasicDeployment(namespace, name)
-	simulateInstrumentedResource(&workload.Spec.Template, &workload.ObjectMeta, namespace)
+	simulateInstrumentedResource(&workload.Spec.Template, &workload.ObjectMeta)
 	return workload
 }
 
@@ -282,7 +282,7 @@ func CreateBasicJob(
 
 func InstrumentedJob(namespace string, name string) *batchv1.Job {
 	workload := BasicJob(namespace, name)
-	simulateInstrumentedResource(&workload.Spec.Template, &workload.ObjectMeta, namespace)
+	simulateInstrumentedResource(&workload.Spec.Template, &workload.ObjectMeta)
 	return workload
 }
 
@@ -346,7 +346,7 @@ func CreateBasicReplicaSet(
 
 func InstrumentedReplicaSet(namespace string, name string) *appsv1.ReplicaSet {
 	workload := BasicReplicaSet(namespace, name)
-	simulateInstrumentedResource(&workload.Spec.Template, &workload.ObjectMeta, namespace)
+	simulateInstrumentedResource(&workload.Spec.Template, &workload.ObjectMeta)
 	return workload
 }
 
@@ -385,7 +385,7 @@ func CreateReplicaSetOwnedByDeployment(
 
 func InstrumentedReplicaSetOwnedByDeployment(namespace string, name string) *appsv1.ReplicaSet {
 	workload := ReplicaSetOwnedByDeployment(namespace, name)
-	simulateInstrumentedResource(&workload.Spec.Template, &workload.ObjectMeta, namespace)
+	simulateInstrumentedResource(&workload.Spec.Template, &workload.ObjectMeta)
 	return workload
 }
 
@@ -425,7 +425,7 @@ func CreateBasicStatefulSet(
 
 func InstrumentedStatefulSet(namespace string, name string) *appsv1.StatefulSet {
 	workload := BasicStatefulSet(namespace, name)
-	simulateInstrumentedResource(&workload.Spec.Template, &workload.ObjectMeta, namespace)
+	simulateInstrumentedResource(&workload.Spec.Template, &workload.ObjectMeta)
 	return workload
 }
 
@@ -740,7 +740,7 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 				},
 				{
 					Name:  "DASH0_OTEL_COLLECTOR_BASE_URL",
-					Value: fmt.Sprintf("http://dash0-opentelemetry-collector-daemonset.%s.svc.cluster.local:4318", namespace),
+					Value: "http://dash0-operator-opentelemetry-collector.dash0-operator-system.svc.cluster.local:4318",
 				},
 			},
 		},
@@ -776,7 +776,7 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 				},
 				{
 					Name:  "DASH0_OTEL_COLLECTOR_BASE_URL",
-					Value: fmt.Sprintf("http://dash0-opentelemetry-collector-daemonset.%s.svc.cluster.local:4318", namespace),
+					Value: "http://dash0-operator-opentelemetry-collector.dash0-operator-system.svc.cluster.local:4318",
 				},
 			},
 		},
@@ -785,7 +785,7 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 	return deployment
 }
 
-func simulateInstrumentedResource(podTemplateSpec *corev1.PodTemplateSpec, meta *metav1.ObjectMeta, namespace string) {
+func simulateInstrumentedResource(podTemplateSpec *corev1.PodTemplateSpec, meta *metav1.ObjectMeta) {
 	podSpec := &podTemplateSpec.Spec
 	podSpec.Volumes = []corev1.Volume{
 		{
@@ -811,7 +811,7 @@ func simulateInstrumentedResource(podTemplateSpec *corev1.PodTemplateSpec, meta 
 		},
 		{
 			Name:  "DASH0_OTEL_COLLECTOR_BASE_URL",
-			Value: fmt.Sprintf("http://dash0-opentelemetry-collector-daemonset.%s.svc.cluster.local:4318", namespace),
+			Value: "http://dash0-operator-opentelemetry-collector.dash0-operator-system.svc.cluster.local:4318",
 		},
 	}
 

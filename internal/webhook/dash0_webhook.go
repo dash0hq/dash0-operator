@@ -24,8 +24,9 @@ import (
 )
 
 type Handler struct {
-	Recorder record.EventRecorder
-	Images   util.Images
+	Recorder             record.EventRecorder
+	Images               util.Images
+	OtelCollectorBaseUrl string
 }
 
 type resourceHandler func(h *Handler, request admission.Request, gvkLabel string, logger *logr.Logger) admission.Response
@@ -269,8 +270,9 @@ func (h *Handler) postProcess(
 func (h *Handler) newWorkloadModifier(logger *logr.Logger) *workloads.ResourceModifier {
 	return workloads.NewResourceModifier(
 		util.InstrumentationMetadata{
-			Images:         h.Images,
-			InstrumentedBy: "webhook",
+			Images:               h.Images,
+			InstrumentedBy:       "webhook",
+			OtelCollectorBaseUrl: h.OtelCollectorBaseUrl,
 		},
 		logger,
 	)

@@ -92,8 +92,94 @@ operator:
     pullPolicy:
 
   # the image pull secrets to pull the container images
-  imagePullSecrets: []
+  imagePullSecrets: [ ]
 
-# settings for the OpenTelemetry collector instance
-collector:
-  placeholder: "value"
+# settings for the OpenTelemetry collector instance that Dash0 will use for reporting data to Dash0
+opentelemetry-collector:
+  enabled: true
+
+  image:
+    repository: otel/opentelemetry-collector-k8s
+
+  mode: daemonset
+
+  service:
+    enabled: true
+
+  presets:
+    kubernetesAttributes:
+      enabled: true
+    # kubeletMetrics:
+    #   enabled: true
+
+  additionalLabels:
+    dash0.com/opt-out: "true"
+
+  resources:
+    limits:
+      memory: 500Mi
+
+  config:
+    extensions:
+      bearertokenauth/dash0:
+        scheme: "Bearer"
+        # needs to be provided via --set or an additional values file for now
+        token:
+
+    receivers:
+      # Removing these receivers by setting them to null will print three warnings in helm 3.13.3 (and probaly other
+      # 3.13.x versions) during helm install. They can be ignored safely. Probably related to
+      # https://github.com/helm/helm/issues/12441 - not sure why that one is closed, apparently it is not fixed.
+      # coalesce.go:286: warning: cannot overwrite table with non table for dash0-operator.opentelemetry-collector.config.receivers.jaeger (map[protocols:map[grpc:map[endpoint:${env:MY_POD_IP}:14250] thrift_compact:map[endpoint:${env:MY_POD_IP}:6831] thrift_http:map[endpoint:${env:MY_POD_IP}:14268]]])
+      # coalesce.go:286: warning: cannot overwrite table with non table for dash0-operator.opentelemetry-collector.config.receivers.prometheus (map[config:map[scrape_configs:[map[job_name:opentelemetry-collector scrape_interval:10s static_configs:[map[targets:[${env:MY_POD_IP}:8888]]]]]]])
+      # coalesce.go:286: warning: cannot overwrite table with non table for dash0-operator.opentelemetry-collector.config.receivers.zipkin (map[endpoint:${env:MY_POD_IP}:9411])
+      jaeger: null
+      prometheus: null
+      zipkin: null
+
+    exporters:
+      otlp:
+        auth:
+          authenticator: bearertokenauth/dash0
+        # needs to be provided via --set or an additional values file for now
+        endpoint:
+
+    service:
+      pipelines:
+        traces:
+          receivers:
+            - otlp
+          processors:
+            - k8sattributes
+            - memory_limiter
+            - batch
+          exporters:
+            - otlp
+        metrics:
+          receivers:
+            - otlp
+          processors:
+            - k8sattributes
+            - memory_limiter
+            - batch
+          exporters:
+            - otlp
+        logs:
+          receivers:
+            - otlp
+          processors:
+            - k8sattributes
+            - memory_limiter
+            - batch
+          exporters:
+            - otlp
+
+  ports:
+    jaeger-compact:
+      enabled: false
+    jaeger-thrift:
+      enabled: false
+    jaeger-grpc:
+      enabled: false
+    zipkin:
+      enabled: false

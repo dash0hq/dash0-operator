@@ -44,6 +44,20 @@ spec:
         - --metrics-bind-address=127.0.0.1:8080
         - --leader-elect
         env:
+        - name: DASH0_OTEL_COLLECTOR_BASE_URL
+          {{/*
+          Note: This reuses an internal template of the opentelmetry-collector Helm chart, to make sure we render the
+          exact same service name for the collector URL as the collector Helm chart does. This might need to be updated
+          if the collector Helm chart changes its service name template. Since we control the version of the collector
+          Helm chart we use and run rigorous tests when updating to a newer version, this approach should be safe.
+          */}}
+          {{ $collectorSubChartValues :=
+               dict
+                 "Values" (index .Values "opentelemetry-collector")
+                 "Chart" (dict "Name" "opentelemetry-collector")
+                 "Release" .Release
+          }}
+          value: http://{{ include "opentelemetry-collector.fullname" $collectorSubChartValues }}.{{ .Release.Namespace }}.svc.cluster.local:4318
         - name: DASH0_OPERATOR_IMAGE
           value: {{ include "dash0-operator.image" . | quote }}
         - name: DASH0_INIT_CONTAINER_IMAGE

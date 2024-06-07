@@ -7,11 +7,11 @@ set -euo pipefail
 
 cd "$(dirname ${BASH_SOURCE})"
 
-target_namespace=${1:-test-namespace}
+target_namespace=${1:-dash0-operator-system}
 
 if [[ ! $(helm repo list | grep open-telemetry) ]]; then
   echo "The helm repo for open-telemetry has not been found, adding it now."
-  helm helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts --force-update
+  helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts --force-update
   echo "Running helm repo update."
   helm repo update
 fi
@@ -26,5 +26,6 @@ helm install \
   dash0-opentelemetry-collector-daemonset \
   open-telemetry/opentelemetry-collector \
   --namespace ${target_namespace} \
+  --create-namespace \
   --values manual.values.yaml \
   --set image.repository="otel/opentelemetry-collector-k8s"

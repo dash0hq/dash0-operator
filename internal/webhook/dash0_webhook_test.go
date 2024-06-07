@@ -58,7 +58,7 @@ var _ = Describe("The Dash0 webhook", func() {
 						EnvVars:                                  3,
 						NodeOptionsEnvVarIdx:                     1,
 						Dash0CollectorBaseUrlEnvVarIdx:           2,
-						Dash0CollectorBaseUrlEnvVarExpectedValue: "http://dash0-opentelemetry-collector-daemonset.test-namespace.svc.cluster.local:4318",
+						Dash0CollectorBaseUrlEnvVarExpectedValue: "http://dash0-operator-opentelemetry-collector.dash0-operator-system.svc.cluster.local:4318",
 					},
 					{
 						VolumeMounts:                             3,
@@ -66,7 +66,7 @@ var _ = Describe("The Dash0 webhook", func() {
 						EnvVars:                                  4,
 						NodeOptionsEnvVarIdx:                     2,
 						Dash0CollectorBaseUrlEnvVarIdx:           3,
-						Dash0CollectorBaseUrlEnvVarExpectedValue: "http://dash0-opentelemetry-collector-daemonset.test-namespace.svc.cluster.local:4318",
+						Dash0CollectorBaseUrlEnvVarExpectedValue: "http://dash0-operator-opentelemetry-collector.dash0-operator-system.svc.cluster.local:4318",
 					},
 				},
 			})
@@ -93,7 +93,7 @@ var _ = Describe("The Dash0 webhook", func() {
 						NodeOptionsEnvVarIdx:                     1,
 						NodeOptionsUsesValueFrom:                 true,
 						Dash0CollectorBaseUrlEnvVarIdx:           2,
-						Dash0CollectorBaseUrlEnvVarExpectedValue: "http://dash0-opentelemetry-collector-daemonset.test-namespace.svc.cluster.local:4318",
+						Dash0CollectorBaseUrlEnvVarExpectedValue: "http://dash0-operator-opentelemetry-collector.dash0-operator-system.svc.cluster.local:4318",
 					},
 					{
 						VolumeMounts:                             3,
@@ -102,7 +102,7 @@ var _ = Describe("The Dash0 webhook", func() {
 						NodeOptionsEnvVarIdx:                     1,
 						NodeOptionsValue:                         "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js --require something-else --experimental-modules",
 						Dash0CollectorBaseUrlEnvVarIdx:           0,
-						Dash0CollectorBaseUrlEnvVarExpectedValue: "http://dash0-opentelemetry-collector-daemonset.test-namespace.svc.cluster.local:4318",
+						Dash0CollectorBaseUrlEnvVarExpectedValue: "http://dash0-operator-opentelemetry-collector.dash0-operator-system.svc.cluster.local:4318",
 					},
 				},
 			})

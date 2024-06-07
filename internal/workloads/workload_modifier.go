@@ -28,10 +28,9 @@ const (
 	dash0InstrumentationDirectory     = "/opt/dash0/instrumentation"
 	// envVarLdPreloadName  = "LD_PRELOAD"
 	// envVarLdPreloadValue = "/opt/dash0/preload/inject.so"
-	envVarNodeOptionsName                    = "NODE_OPTIONS"
-	envVarNodeOptionsValue                   = "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js"
-	envVarDash0CollectorBaseUrlName          = "DASH0_OTEL_COLLECTOR_BASE_URL"
-	envVarDash0CollectorBaseUrlValueTemplate = "http://dash0-opentelemetry-collector-daemonset.%s.svc.cluster.local:4318"
+	envVarNodeOptionsName           = "NODE_OPTIONS"
+	envVarNodeOptionsValue          = "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js"
+	envVarDash0CollectorBaseUrlName = "DASH0_OTEL_COLLECTOR_BASE_URL"
 )
 
 var (
@@ -92,10 +91,7 @@ func (m *ResourceModifier) modifyResource(podTemplateSpec *corev1.PodTemplateSpe
 	if util.HasOptedOutOfInstrumenation(meta) {
 		return false
 	}
-	hasBeenModified := m.modifyPodSpec(
-		&podTemplateSpec.Spec,
-		fmt.Sprintf(envVarDash0CollectorBaseUrlValueTemplate, meta.Namespace),
-	)
+	hasBeenModified := m.modifyPodSpec(&podTemplateSpec.Spec)
 	if hasBeenModified {
 		util.AddInstrumentationLabels(meta, true, m.instrumentationMetadata)
 		util.AddInstrumentationLabels(&podTemplateSpec.ObjectMeta, true, m.instrumentationMetadata)
@@ -103,13 +99,13 @@ func (m *ResourceModifier) modifyResource(podTemplateSpec *corev1.PodTemplateSpe
 	return hasBeenModified
 }
 
-func (m *ResourceModifier) modifyPodSpec(podSpec *corev1.PodSpec, dash0CollectorBaseUrl string) bool {
+func (m *ResourceModifier) modifyPodSpec(podSpec *corev1.PodSpec) bool {
 	originalSpec := podSpec.DeepCopy()
 	m.addInstrumentationVolume(podSpec)
 	m.addInitContainer(podSpec)
 	for idx := range podSpec.Containers {
 		container := &podSpec.Containers[idx]
-		m.instrumentContainer(container, dash0CollectorBaseUrl)
+		m.instrumentContainer(container)
 	}
 
 	return !reflect.DeepEqual(originalSpec, podSpec)
@@ -202,10 +198,10 @@ func (m *ResourceModifier) createInitContainer(podSpec *corev1.PodSpec) *corev1.
 	return initContainer
 }
 
-func (m *ResourceModifier) instrumentContainer(container *corev1.Container, dash0CollectorBaseUrl string) {
+func (m *ResourceModifier) instrumentContainer(container *corev1.Container) {
 	perContainerLogger := m.logger.WithValues("container", container.Name)
 	m.addMount(container)
-	m.addEnvironmentVariables(container, dash0CollectorBaseUrl, perContainerLogger)
+	m.addEnvironmentVariables(container, perContainerLogger)
 }
 
 func (m *ResourceModifier) addMount(container *corev1.Container) {
@@ -227,14 +223,14 @@ func (m *ResourceModifier) addMount(container *corev1.Container) {
 	}
 }
 
-func (m *ResourceModifier) addEnvironmentVariables(container *corev1.Container, dash0CollectorBaseUrl string, perContainerLogger logr.Logger) {
+func (m *ResourceModifier) addEnvironmentVariables(container *corev1.Container, perContainerLogger logr.Logger) {
 	// For now, we directly modify NODE_OPTIONS. Consider migrating to an LD_PRELOAD hook at some point.
 	m.addOrPrependToEnvironmentVariable(container, envVarNodeOptionsName, envVarNodeOptionsValue, perContainerLogger)
 
 	m.addOrReplaceEnvironmentVariable(
 		container,
 		envVarDash0CollectorBaseUrlName,
-		dash0CollectorBaseUrl,
+		m.instrumentationMetadata.OtelCollectorBaseUrl,
 	)
 }
 

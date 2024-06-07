@@ -31,6 +31,15 @@ import (
 	//+kubebuilder:scaffold:imports
 )
 
+const (
+	otelCollectorBaseUrlEnvVarName = "DASH0_OTEL_COLLECTOR_BASE_URL"
+	operatorImageEnvVarName        = "DASH0_OPERATOR_IMAGE"
+	initContainerImageEnvVarName   = "DASH0_INIT_CONTAINER_IMAGE"
+	initContainerImagePullPolicy   = "DASH0_INIT_CONTAINER_IMAGE_PULL_POLICY"
+	//nolint
+	mandatoryEnvVarMissingMessageTemplate = "cannot start the Dash0 operator, the mandatory environment variable \"%s\" is missing"
+)
+
 var (
 	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
@@ -139,19 +148,20 @@ func startOperatorManager(
 		return fmt.Errorf("unable to create the clientset client")
 	}
 
-	operatorImage, isSet := os.LookupEnv("DASH0_OPERATOR_IMAGE")
+	otelCollectorBaseUrl, isSet := os.LookupEnv(otelCollectorBaseUrlEnvVarName)
 	if !isSet {
-		return fmt.Errorf("cannot start Dash0 operator, the mandatory environment variable " +
-			"\"DASH0_OPERATOR_IMAGE\" is missing")
+		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, otelCollectorBaseUrlEnvVarName)
+	}
+	operatorImage, isSet := os.LookupEnv(operatorImageEnvVarName)
+	if !isSet {
+		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, operatorImageEnvVarName)
+	}
+	initContainerImage, isSet := os.LookupEnv(initContainerImageEnvVarName)
+	if !isSet {
+		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, initContainerImageEnvVarName)
 	}
 
-	initContainerImage, isSet := os.LookupEnv("DASH0_INIT_CONTAINER_IMAGE")
-	if !isSet {
-		return fmt.Errorf("cannot start Dash0 operator, the mandatory environment variable " +
-			"\"DASH0_INIT_CONTAINER_IMAGE\" is missing")
-	}
-
-	initContainerImagePullPolicyRaw := os.Getenv("DASH0_INIT_CONTAINER_IMAGE_PULL_POLICY")
+	initContainerImagePullPolicyRaw := os.Getenv(initContainerImagePullPolicy)
 	var initContainerImagePullPolicy corev1.PullPolicy
 	if initContainerImagePullPolicyRaw == "" {
 		if initContainerImagePullPolicyRaw == string(corev1.PullAlways) ||
@@ -165,13 +175,15 @@ func startOperatorManager(
 		}
 	}
 	setupLog.Info(
-		"version information",
-		"operator image and version",
+		"configuration:",
+		"operator image",
 		operatorImage,
-		"init container image and version",
+		"init container image",
 		initContainerImage,
 		"init container image pull policy override",
 		initContainerImagePullPolicy,
+		"otel collector base url",
+		otelCollectorBaseUrl,
 	)
 
 	images := util.Images{
@@ -181,11 +193,12 @@ func startOperatorManager(
 	}
 
 	if err = (&controller.Dash0Reconciler{
-		Client:    mgr.GetClient(),
-		ClientSet: clientSet,
-		Scheme:    mgr.GetScheme(),
-		Recorder:  mgr.GetEventRecorderFor("dash0-controller"),
-		Images:    images,
+		Client:               mgr.GetClient(),
+		ClientSet:            clientSet,
+		Scheme:               mgr.GetScheme(),
+		Recorder:             mgr.GetEventRecorderFor("dash0-controller"),
+		Images:               images,
+		OtelCollectorBaseUrl: otelCollectorBaseUrl,
 	}).SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the Dash0 reconciler: %w", err)
 	}
@@ -193,8 +206,9 @@ func startOperatorManager(
 
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
 		if err = (&dash0webhook.Handler{
-			Recorder: mgr.GetEventRecorderFor("dash0-webhook"),
-			Images:   images,
+			Recorder:             mgr.GetEventRecorderFor("dash0-webhook"),
+			Images:               images,
+			OtelCollectorBaseUrl: otelCollectorBaseUrl,
 		}).SetupWebhookWithManager(mgr); err != nil {
 			return fmt.Errorf("unable to create the Dash0 webhook: %w", err)
 		}
