@@ -28,5 +28,6 @@ type Images struct {
 
 type InstrumentationMetadata struct {
 	Images
-	InstrumentedBy string
+	OtelCollectorBaseUrl string
+	InstrumentedBy       string
 }

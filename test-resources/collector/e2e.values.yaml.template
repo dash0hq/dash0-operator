@@ -1,4 +1,7 @@
+# Note: This file might be outdated, see README.md for details.
 mode: daemonset
+image:
+  repository: otel/opentelemetry-collector-k8s
 service:
   enabled: true
 presets:

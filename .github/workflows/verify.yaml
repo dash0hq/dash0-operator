@@ -55,6 +55,12 @@ jobs:
         run: |
           helm plugin install https://github.com/helm-unittest/helm-unittest.git
 
+      - name: install Helm dependencies
+        working-directory: helm-chart/dash0-operator
+        run: |
+          helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts --force-update
+          helm dependency build
+
       - name: test
         run: |
           make test

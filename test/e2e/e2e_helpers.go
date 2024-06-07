@@ -24,6 +24,7 @@ import (
 
 const (
 	certmanagerVersion             = "v1.14.5"
+	operatorHelmReleaseName        = "e2e-tests-operator-helm-release"
 	tracesJsonMaxLineLength        = 1_048_576
 	verifyTelemetryTimeout         = 90 * time.Second
 	verifyTelemetryPollingInterval = 500 * time.Millisecond
@@ -66,6 +67,9 @@ func CheckIfRequiredPortsAreBlocked() {
 		}
 	}
 	if foundBlockedPort {
+		messages = append(messages,
+			"Note: If you have used the scripts for manual testing in test-resource, running "+
+				"test-resources/bin/test-cleanup.sh might help removing all left-over Kubernetes objects.")
 		Fail(strings.Join(messages, "\n"))
 	}
 }
@@ -234,77 +238,18 @@ func uninstallCertManager() {
 	}
 }
 
-func ReinstallCollectorAndClearExportedTelemetry(namespace string) error {
-	_ = UninstallCollector(namespace)
+func DeployOperatorWithCollectorAndClearExportedTelemetry(
+	operatorNamespace string,
+	imageRepository string,
+	imageTag string,
+) {
+	By("removing old captured telemetry files")
 	_ = os.Remove("test-resources/e2e-test-volumes/collector-received-data/traces.jsonl")
 	_ = os.Remove("test-resources/e2e-test-volumes/collector-received-data/metrics.jsonl")
 	_ = os.Remove("test-resources/e2e-test-volumes/collector-received-data/logs.jsonl")
 
-	repoList, err := Run(exec.Command("helm", "repo", "list"))
-	if err != nil {
-		return err
-	}
-	if !strings.Contains(repoList, "open-telemetry") {
-		fmt.Fprintf(GinkgoWriter, "The helm repo for open-telemetry has not been found, adding it now.\n")
-		if err := RunAndIgnoreOutput(
-			exec.Command(
-				"helm",
-				"repo",
-				"add",
-				"open-telemetry",
-				"https://open-telemetry.github.io/opentelemetry-helm-charts",
-				"--force-update",
-			)); err != nil {
-			return err
-		}
-		fmt.Fprintf(GinkgoWriter, "Running helm repo update.\n")
-		if err = RunAndIgnoreOutput(exec.Command("helm", "repo", "update")); err != nil {
-			return err
-		}
-	}
+	ensureOtelCollectorHelmRepoIsInstalled()
 
-	err = RunAndIgnoreOutput(
-		exec.Command(
-			"helm",
-			"install",
-			"dash0-opentelemetry-collector-daemonset",
-			"open-telemetry/opentelemetry-collector",
-			"--namespace",
-			namespace,
-			"--values",
-			"test-resources/collector/e2e.values.yaml",
-			"--set",
-			"image.repository=otel/opentelemetry-collector-k8s",
-		))
-	if err != nil {
-		return err
-	}
-	return RunAndIgnoreOutput(
-		exec.Command("kubectl",
-			"rollout",
-			"status",
-			"daemonset",
-			"dash0-opentelemetry-collector-daemonset-agent",
-			"--namespace",
-			namespace,
-			"--timeout",
-			"60s",
-		))
-}
-
-func UninstallCollector(namespace string) error {
-	return RunAndIgnoreOutput(
-		exec.Command(
-			"helm",
-			"uninstall",
-			"dash0-opentelemetry-collector-daemonset",
-			"--namespace",
-			namespace,
-			"--ignore-not-found",
-		))
-}
-
-func DeployOperator(operatorNamespace string, imageRepository string, imageTag string) {
 	By("deploying the controller-manager")
 	output, err := Run(
 		exec.Command(
@@ -313,10 +258,13 @@ func DeployOperator(operatorNamespace string, imageRepository string, imageTag s
 			"--namespace",
 			operatorNamespace,
 			"--create-namespace",
+			"--values", "test-resources/helm/e2e.values.yaml",
+			// The image repo, tag and pull policy are also defined in test-resources/helm/e2e.values.yaml, but we want
+			// to keep them in sync with the args passed to make docker build in the BeforeAll hook when building the
+			// container image, thus we pass them here explicitly.
 			"--set", fmt.Sprintf("operator.image.repository=%s", imageRepository),
 			"--set", fmt.Sprintf("operator.image.tag=%s", imageTag),
-			"--set", "operator.image.pullPolicy=Never",
-			"e2e-tests-operator-helm-release",
+			operatorHelmReleaseName,
 			"helm-chart/dash0-operator",
 		))
 	ExpectWithOffset(2, err).NotTo(HaveOccurred())
@@ -356,9 +304,44 @@ func DeployOperator(operatorNamespace string, imageRepository string, imageTag s
 	}
 
 	EventuallyWithOffset(1, verifyControllerUp, 120*time.Second, time.Second).Should(Succeed())
+
+	// verify that the OTel collector is also up and running
+	ExpectWithOffset(1, RunAndIgnoreOutput(
+		exec.Command("kubectl",
+			"rollout",
+			"status",
+			"daemonset",
+			fmt.Sprintf("%s-opentelemetry-collector-agent", operatorHelmReleaseName),
+			"--namespace",
+			operatorNamespace,
+			"--timeout",
+			"60s",
+		))).To(Succeed())
 }
 
-func UndeployOperator(operatorNamespace string) {
+func ensureOtelCollectorHelmRepoIsInstalled() {
+	By("checking whether OpenTelemetry Helm charts have been installed")
+	repoList, err := Run(exec.Command("helm", "repo", "list"))
+	Expect(err).NotTo(HaveOccurred())
+	if !strings.Contains(repoList, "open-telemetry") {
+		fmt.Fprintf(GinkgoWriter, "The helm repo for open-telemetry has not been found, adding it now.\n")
+		Expect(RunAndIgnoreOutput(
+			exec.Command(
+				"helm",
+				"repo",
+				"add",
+				"open-telemetry",
+				"https://open-telemetry.github.io/opentelemetry-helm-charts",
+				"--force-update",
+			))).To(Succeed())
+
+		Expect(RunAndIgnoreOutput(exec.Command("helm", "repo", "update"))).To(Succeed())
+	} else {
+		fmt.Fprintf(GinkgoWriter, "The helm repo for open-telemetry is already installed.\n")
+	}
+}
+
+func UndeployOperatorAndCollector(operatorNamespace string) {
 	By("undeploying the controller-manager")
 	ExpectWithOffset(1,
 		RunAndIgnoreOutput(
@@ -367,7 +350,7 @@ func UndeployOperator(operatorNamespace string) {
 				"uninstall",
 				"--namespace",
 				operatorNamespace,
-				"e2e-tests-operator-helm-release",
+				operatorHelmReleaseName,
 			))).To(Succeed())
 
 	// We need to delete the operator namespace and wait until the namespace is really gone, otherwise the next test

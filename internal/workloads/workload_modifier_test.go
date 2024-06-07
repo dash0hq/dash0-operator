@@ -28,7 +28,8 @@ var (
 			InitContainerImage:           "some-registry.com:1234/dash0-instrumentation:4.5.6",
 			InitContainerImagePullPolicy: corev1.PullAlways,
 		},
-		InstrumentedBy: "modify_test",
+		OtelCollectorBaseUrl: "http://dash0-operator-opentelemetry-collector.dash0-operator-system.svc.cluster.local:4318",
+		InstrumentedBy:       "modify_test",
 	}
 )
 
@@ -64,7 +65,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						EnvVars:                                  3,
 						NodeOptionsEnvVarIdx:                     1,
 						Dash0CollectorBaseUrlEnvVarIdx:           2,
-						Dash0CollectorBaseUrlEnvVarExpectedValue: "http://dash0-opentelemetry-collector-daemonset.test-namespace.svc.cluster.local:4318",
+						Dash0CollectorBaseUrlEnvVarExpectedValue: "http://dash0-operator-opentelemetry-collector.dash0-operator-system.svc.cluster.local:4318",
 					},
 					{
 						VolumeMounts:                             3,
@@ -72,7 +73,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						EnvVars:                                  4,
 						NodeOptionsEnvVarIdx:                     2,
 						Dash0CollectorBaseUrlEnvVarIdx:           3,
-						Dash0CollectorBaseUrlEnvVarExpectedValue: "http://dash0-opentelemetry-collector-daemonset.test-namespace.svc.cluster.local:4318",
+						Dash0CollectorBaseUrlEnvVarExpectedValue: "http://dash0-operator-opentelemetry-collector.dash0-operator-system.svc.cluster.local:4318",
 					},
 				},
 			})
@@ -96,7 +97,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						NodeOptionsEnvVarIdx:                     1,
 						NodeOptionsUsesValueFrom:                 true,
 						Dash0CollectorBaseUrlEnvVarIdx:           2,
-						Dash0CollectorBaseUrlEnvVarExpectedValue: "http://dash0-opentelemetry-collector-daemonset.test-namespace.svc.cluster.local:4318",
+						Dash0CollectorBaseUrlEnvVarExpectedValue: "http://dash0-operator-opentelemetry-collector.dash0-operator-system.svc.cluster.local:4318",
 					},
 					{
 						VolumeMounts:                             3,
@@ -105,7 +106,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						NodeOptionsEnvVarIdx:                     1,
 						NodeOptionsValue:                         "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js --require something-else --experimental-modules",
 						Dash0CollectorBaseUrlEnvVarIdx:           0,
-						Dash0CollectorBaseUrlEnvVarExpectedValue: "http://dash0-opentelemetry-collector-daemonset.test-namespace.svc.cluster.local:4318",
+						Dash0CollectorBaseUrlEnvVarExpectedValue: "http://dash0-operator-opentelemetry-collector.dash0-operator-system.svc.cluster.local:4318",
 					},
 				},
 			})

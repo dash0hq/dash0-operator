@@ -71,11 +71,12 @@ var _ = Describe("The Dash0 controller", func() {
 		)
 
 		reconciler = &Dash0Reconciler{
-			Client:    k8sClient,
-			ClientSet: clientset,
-			Recorder:  recorder,
-			Scheme:    k8sClient.Scheme(),
-			Images:    images,
+			Client:               k8sClient,
+			ClientSet:            clientset,
+			Recorder:             recorder,
+			Scheme:               k8sClient.Scheme(),
+			Images:               images,
+			OtelCollectorBaseUrl: "http://dash0-operator-opentelemetry-collector.dash0-operator-system.svc.cluster.local:4318",
 		}
 
 		createdObjects = make([]client.Object, 0)

@@ -30,8 +30,12 @@ test-resources/bin/test-cleanup.sh ${target_namespace} false
 echo
 echo
 
-echo "STEP 3: deploy the collector to namespace ${target_namespace}"
-test-resources/collector/deploy.sh ${target_namespace}
+if [[ "${deployment_tool}" != "helm" ]]; then
+  echo "STEP 3: deploy the collector dash0-operator-system"
+  test-resources/collector/deploy.sh dash0-operator-system
+else
+  echo "STEP 3: skipping collector deployment, the collector will be deployed by the operator helm chart"
+fi
 echo
 echo
 

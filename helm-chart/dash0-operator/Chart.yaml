@@ -20,3 +20,8 @@ maintainers:
     email: bastian.krol@dash0.com
 icon: icon/logo.svg
 appVersion: "1.0.0"
+dependencies:
+  - name: opentelemetry-collector
+    version: 0.93.1
+    repository: https://open-telemetry.github.io/opentelemetry-helm-charts
+    condition: opentelemetry-collector.enabled

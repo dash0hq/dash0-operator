@@ -1,0 +1,23 @@
+operator:
+  image:
+    tag: latest
+    pullPolicy: Never
+
+opentelemetry-collector:
+  config:
+
+    extensions:
+      bearertokenauth/dash0:
+        token: "$DASH0_AUTHORIZATION_TOKEN"
+
+    exporters:
+      otlp:
+        auth:
+          authenticator: bearertokenauth/dash0
+        endpoint: "$DASH0_OTEL_EXPORTER_OTLP_ENDPOINT"
+
+    service:
+      extensions:
+        - health_check
+        - memory_ballast
+        - bearertokenauth/dash0

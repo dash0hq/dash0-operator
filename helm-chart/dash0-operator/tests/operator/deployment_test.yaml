@@ -82,21 +82,27 @@ tests:
           value: Never
       - equal:
           path: spec.template.spec.containers[0].env[0].name
-          value: DASH0_OPERATOR_IMAGE
+          value: DASH0_OTEL_COLLECTOR_BASE_URL
       - equal:
           path: spec.template.spec.containers[0].env[0].value
-          value: custom-operator-image:1.2.3
+          value: http://RELEASE-NAME-opentelemetry-collector.NAMESPACE.svc.cluster.local:4318
       - equal:
-         path: spec.template.spec.containers[0].env[1].name
-         value: DASH0_INIT_CONTAINER_IMAGE
+          path: spec.template.spec.containers[0].env[1].name
+          value: DASH0_OPERATOR_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[1].value
-          value: custom-init-container-image:4.5.6
+          value: custom-operator-image:1.2.3
       - equal:
-          path: spec.template.spec.containers[0].env[2].name
-          value: DASH0_INIT_CONTAINER_IMAGE_PULL_POLICY
+         path: spec.template.spec.containers[0].env[2].name
+         value: DASH0_INIT_CONTAINER_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[2].value
+          value: custom-init-container-image:4.5.6
+      - equal:
+          path: spec.template.spec.containers[0].env[3].name
+          value: DASH0_INIT_CONTAINER_IMAGE_PULL_POLICY
+      - equal:
+          path: spec.template.spec.containers[0].env[3].value
           value: Always
       - equal:
           path: spec.template.spec.containers[0].resources.limits.cpu
