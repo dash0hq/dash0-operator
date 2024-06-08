@@ -32,10 +32,10 @@ import (
 )
 
 const (
-	otelCollectorBaseUrlEnvVarName = "DASH0_OTEL_COLLECTOR_BASE_URL"
-	operatorImageEnvVarName        = "DASH0_OPERATOR_IMAGE"
-	initContainerImageEnvVarName   = "DASH0_INIT_CONTAINER_IMAGE"
-	initContainerImagePullPolicy   = "DASH0_INIT_CONTAINER_IMAGE_PULL_POLICY"
+	otelCollectorBaseUrlEnvVarName         = "DASH0_OTEL_COLLECTOR_BASE_URL"
+	operatorImageEnvVarName                = "DASH0_OPERATOR_IMAGE"
+	initContainerImageEnvVarName           = "DASH0_INIT_CONTAINER_IMAGE"
+	initContainerImagePullPolicyEnvVarName = "DASH0_INIT_CONTAINER_IMAGE_PULL_POLICY"
 	//nolint
 	mandatoryEnvVarMissingMessageTemplate = "cannot start the Dash0 operator, the mandatory environment variable \"%s\" is missing"
 )
@@ -148,32 +148,12 @@ func startOperatorManager(
 		return fmt.Errorf("unable to create the clientset client")
 	}
 
-	otelCollectorBaseUrl, isSet := os.LookupEnv(otelCollectorBaseUrlEnvVarName)
-	if !isSet {
-		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, otelCollectorBaseUrlEnvVarName)
-	}
-	operatorImage, isSet := os.LookupEnv(operatorImageEnvVarName)
-	if !isSet {
-		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, operatorImageEnvVarName)
-	}
-	initContainerImage, isSet := os.LookupEnv(initContainerImageEnvVarName)
-	if !isSet {
-		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, initContainerImageEnvVarName)
+	otelCollectorBaseUrl, operatorImage, initContainerImage, initContainerImagePullPolicy, err :=
+		readEnvironmentVariables()
+	if err != nil {
+		return err
 	}
 
-	initContainerImagePullPolicyRaw := os.Getenv(initContainerImagePullPolicy)
-	var initContainerImagePullPolicy corev1.PullPolicy
-	if initContainerImagePullPolicyRaw == "" {
-		if initContainerImagePullPolicyRaw == string(corev1.PullAlways) ||
-			initContainerImagePullPolicyRaw == string(corev1.PullIfNotPresent) ||
-			initContainerImagePullPolicyRaw == string(corev1.PullNever) {
-			initContainerImagePullPolicy = corev1.PullPolicy(initContainerImagePullPolicyRaw)
-		} else {
-			setupLog.Info(
-				fmt.Sprintf(
-					"Ignoring unknown pull policy for init container image: %s.", initContainerImagePullPolicyRaw))
-		}
-	}
 	setupLog.Info(
 		"configuration:",
 		"operator image",
@@ -231,4 +211,39 @@ func startOperatorManager(
 		return fmt.Errorf("unable to set up the signal handler: %w", err)
 	}
 	return nil
+}
+
+func readEnvironmentVariables() (string, string, string, corev1.PullPolicy, error) {
+	otelCollectorBaseUrl, isSet := os.LookupEnv(otelCollectorBaseUrlEnvVarName)
+	if !isSet {
+		return "", "", "", "", fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, otelCollectorBaseUrlEnvVarName)
+	}
+	operatorImage, isSet := os.LookupEnv(operatorImageEnvVarName)
+	if !isSet {
+		return otelCollectorBaseUrl, "", "", "", fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, operatorImageEnvVarName)
+	}
+	initContainerImage, isSet := os.LookupEnv(initContainerImageEnvVarName)
+	if !isSet {
+		return otelCollectorBaseUrl,
+			operatorImage,
+			"",
+			"",
+			fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, initContainerImageEnvVarName)
+	}
+
+	initContainerImagePullPolicyRaw := os.Getenv(initContainerImagePullPolicyEnvVarName)
+	var initContainerImagePullPolicy corev1.PullPolicy
+	if initContainerImagePullPolicyRaw == "" {
+		if initContainerImagePullPolicyRaw == string(corev1.PullAlways) ||
+			initContainerImagePullPolicyRaw == string(corev1.PullIfNotPresent) ||
+			initContainerImagePullPolicyRaw == string(corev1.PullNever) {
+			initContainerImagePullPolicy = corev1.PullPolicy(initContainerImagePullPolicyRaw)
+		} else {
+			setupLog.Info(
+				fmt.Sprintf(
+					"Ignoring unknown pull policy for init container image: %s.", initContainerImagePullPolicyRaw))
+		}
+	}
+
+	return otelCollectorBaseUrl, operatorImage, initContainerImage, initContainerImagePullPolicy, nil
 }
