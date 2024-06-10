@@ -68,7 +68,7 @@ func CheckIfRequiredPortsAreBlocked() {
 	}
 	if foundBlockedPort {
 		messages = append(messages,
-			"Note: If you have used the scripts for manual testing in test-resource, running "+
+			"Note: If you have used the scripts for manual testing in test-resources, running "+
 				"test-resources/bin/test-cleanup.sh might help removing all left-over Kubernetes objects.")
 		Fail(strings.Join(messages, "\n"))
 	}
@@ -264,6 +264,7 @@ func DeployOperatorWithCollectorAndClearExportedTelemetry(
 			// container image, thus we pass them here explicitly.
 			"--set", fmt.Sprintf("operator.image.repository=%s", imageRepository),
 			"--set", fmt.Sprintf("operator.image.tag=%s", imageTag),
+			"--set", "operator.developmentMode=true",
 			operatorHelmReleaseName,
 			"helm-chart/dash0-operator",
 		))

@@ -66,6 +66,10 @@ spec:
         - name: DASH0_INIT_CONTAINER_IMAGE_PULL_POLICY
           value: {{ .Values.operator.initContainerImage.pullPolicy }}
         {{- end }}
+        {{- if .Values.operator.developmentMode }}
+        - name: DASH0_DEVELOPMENT_MODE
+          value: {{ .Values.operator.developmentMode | toString | quote }}
+        {{- end }}
         ports:
         - containerPort: 9443
           name: webhook-server

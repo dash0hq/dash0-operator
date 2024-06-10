@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -32,6 +33,7 @@ import (
 )
 
 const (
+	developmentModeEnvVarName              = "DASH0_DEVELOPMENT_MODE"
 	otelCollectorBaseUrlEnvVarName         = "DASH0_OTEL_COLLECTOR_BASE_URL"
 	operatorImageEnvVarName                = "DASH0_OPERATOR_IMAGE"
 	initContainerImageEnvVarName           = "DASH0_INIT_CONTAINER_IMAGE"
@@ -67,8 +69,19 @@ func main() {
 		"If set the metrics endpoint is served securely")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	opts := zap.Options{
-		Development: true,
+
+	var developmentMode bool
+	developmentModeRaw, isSet := os.LookupEnv(developmentModeEnvVarName)
+	developmentMode = isSet && strings.ToLower(developmentModeRaw) == "true"
+	var opts zap.Options
+	if developmentMode {
+		opts = zap.Options{
+			Development: true,
+		}
+	} else {
+		opts = zap.Options{
+			Development: false,
+		}
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
