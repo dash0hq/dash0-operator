@@ -7,20 +7,15 @@ set -euo pipefail
 
 cd "$(dirname ${BASH_SOURCE})"/../..
 
-if ! kubectl get ns cert-manager &> /dev/null; then
-  echo cert-manager namespace not found, deploying cert-manager
-  test-resources/cert-manager/deploy.sh
-fi
-
 target_namespace=${1:-test-namespace}
 kind=${2:-deployment}
-
 deployment_tool=helm
 if [[ -n "${USE_KUSTOMIZE:-}" ]]; then
   deployment_tool=kustomize
 fi
 
-test-resources/bin/render-templates.sh manual-testing
+source test-resources/bin/util
+setup_test_environment $deployment_tool
 
 echo "STEP 1: creating target namespace (if necessary)"
 test-resources/bin/ensure-namespace-exists.sh ${target_namespace}

@@ -54,7 +54,8 @@ spec:
             value: dash0-instrumentation:1.0.0
 
         # Note: Use "imagePullPolicy: Never" when only building the image locally without pushing them anywhere. Omit
-        # the attribute otherwise to use the default pull policy.
+        # the attribute otherwise to use the default pull policy. The scripts in test-resources/bin and the end-to-end
+        # tests handle this automatically, that is, they will temporarily patch the image pull policy to "Never".
         # imagePullPolicy: Never
 
         securityContext:
