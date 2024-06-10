@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+###############################################################################
+# Utility functions for manual test scenarios.
+###############################################################################
+
+setup_test_environment () {
+  deployment_tool=$1
+  install_cert_manager_if_necessary
+  switch_image_pull_policy_to_never_if_necessary $deployment_tool
+  test-resources/bin/render-templates.sh manual-testing
+}
+
+install_cert_manager_if_necessary () {
+  if ! kubectl get ns cert-manager &> /dev/null; then
+    echo cert-manager namespace not found, deploying cert-manager
+    test-resources/cert-manager/deploy.sh
+  fi
+}
+
+switch_image_pull_policy_to_never_if_necessary () {
+  deployment_tool=$1
+
+  if [[ "${deployment_tool}" != "kustomize" ]]; then
+    echo "Not patching ..."
+    return
+  fi
+
+  originalImagePullPolicy=$(yq e "select(documentIndex == 1) | .spec.template.spec.containers[] |  select(.name == \"manager\") | .imagePullPolicy" config/manager/manager.yaml)
+
+  if [[ ${originalImagePullPolicy:-} != "Never" ]]; then
+    echo "The current image pull policy is \"$originalImagePullPolicy\", temporarily changing it to \"Never\"."
+    cp config/manager/manager.yaml config/manager/manager.yaml.backup
+    yq -i \
+      "with(select(documentIndex == 1) | .spec.template.spec.containers[] | select(.name == \"manager\"); .imagePullPolicy |= \"Never\")" \
+      config/manager/manager.yaml
+
+    trap "{ echo reverting changes to imagePullPolicy; cp config/manager/manager.yaml.backup config/manager/manager.yaml; rm -f config/manager/manager.yaml.backup; }" EXIT
+
+  else
+    echo The image pull policy is set to "Never" already, so there is no need to patch config/manager/manager.yaml.
+  fi
+}
+
