@@ -215,6 +215,7 @@ deploy-via-helm: ## Deploy the controller via helm to the K8s cluster specified 
 		--values test-resources/helm/manual.values.yaml \
 		--set operator.image.repository=${IMG_REPOSITORY} \
 		--set operator.image.tag=${IMG_TAG} \
+		--set operator.developmentMode=true \
 		dash0-operator \
 		helm-chart/dash0-operator
 
