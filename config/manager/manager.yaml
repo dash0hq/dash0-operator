@@ -48,6 +48,8 @@ spec:
         image: dash0-operator-controller:latest
         name: manager
         env:
+          - name: DASH0_OTEL_COLLECTOR_BASE_URL
+            value: http://dash0-operator-opentelemetry-collector.dash0-operator-system.svc.cluster.local:4318
           - name: DASH0_OPERATOR_IMAGE
             value: dash0-operator-controller:1.0.0
           - name: DASH0_INIT_CONTAINER_IMAGE
