@@ -5,7 +5,6 @@ package e2e
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -21,16 +20,14 @@ const (
 
 	kubeContextForTest            = "docker-desktop"
 	applicationUnderTestNamespace = "e2e-application-under-test-namespace"
-
-	managerYaml       = "config/manager/manager.yaml"
-	managerYamlBackup = managerYaml + ".backup"
 )
 
 var (
 	certManagerHasBeenInstalled = false
 
 	originalKubeContext       string
-	managerYamlNeedsRevert    bool
+	kubeContextHasBeenChanged bool
+
 	setupFinishedSuccessfully bool
 )
 
@@ -43,84 +40,26 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		fmt.Fprintf(GinkgoWriter, "workingDir: %s\n", workingDir)
 
 		CheckIfRequiredPortsAreBlocked()
-
 		RenderTemplates()
-
-		By("reading current imagePullPolicy")
-		yqOutput, err := Run(exec.Command(
-			"yq",
-			"e",
-			"select(documentIndex == 1) | .spec.template.spec.containers[] |  select(.name == \"manager\") | .imagePullPolicy",
-			managerYaml))
-		ExpectWithOffset(1, err).NotTo(HaveOccurred())
-		originalImagePullPolicy := strings.TrimSpace(yqOutput)
-		fmt.Fprintf(GinkgoWriter, "original imagePullPolicy: %s\n", originalImagePullPolicy)
-
-		if originalImagePullPolicy != "Never" {
-			err = CopyFile(managerYaml, managerYamlBackup)
-			ExpectWithOffset(1, err).NotTo(HaveOccurred())
-			managerYamlNeedsRevert = true
-			By("temporarily changing imagePullPolicy to \"Never\"")
-			ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command(
-				"yq",
-				"-i",
-				"with(select(documentIndex == 1) | "+
-					".spec.template.spec.containers[] | "+
-					"select(.name == \"manager\"); "+
-					".imagePullPolicy |= \"Never\")",
-				managerYaml))).To(Succeed())
-		}
-
-		By("reading current kubectx")
-		kubectxOutput, err := Run(exec.Command("kubectx", "-c"))
-		ExpectWithOffset(1, err).NotTo(HaveOccurred())
-		originalKubeContext = strings.TrimSpace(kubectxOutput)
-
-		if originalKubeContext != kubeContextForTest {
-			By("switching to kubectx docker-desktop, previous context " + originalKubeContext + " will be restored later")
-			ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command("kubectx", "docker-desktop"))).To(Succeed())
-		}
+		kubeContextHasBeenChanged, originalKubeContext = SetKubeContext(kubeContextForTest)
 
 		certManagerHasBeenInstalled = EnsureCertManagerIsInstalled()
-
 		RecreateNamespace(applicationUnderTestNamespace)
-
-		By("building the manager(Operator) image")
-		ExpectWithOffset(1,
-			RunAndIgnoreOutput(
-				exec.Command(
-					"make",
-					"docker-build",
-					fmt.Sprintf("IMG_REPOSITORY=%s", operatorImageRepository),
-					fmt.Sprintf("IMG_TAG=%s", operatorImageTag),
-				))).To(Succeed())
+		RebuildOperatorControllerImage(operatorImageRepository, operatorImageTag)
+		RebuildDash0InstrumentationImage()
 
 		setupFinishedSuccessfully = true
 	})
 
 	AfterAll(func() {
-		if managerYamlNeedsRevert {
-			By("reverting changes to " + managerYaml)
-			err := CopyFile(managerYamlBackup, managerYaml)
-			ExpectWithOffset(1, err).NotTo(HaveOccurred())
-			err = os.Remove(managerYamlBackup)
-			ExpectWithOffset(1, err).NotTo(HaveOccurred())
-		}
-
 		UninstallCertManagerIfApplicable(certManagerHasBeenInstalled)
 
 		if applicationUnderTestNamespace != "default" {
 			By("removing namespace for application under test")
 			_ = RunAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", applicationUnderTestNamespace))
 		}
-
-		if originalKubeContext != "" && originalKubeContext != kubeContextForTest {
-			By("switching back to original kubectx " + originalKubeContext)
-			output, err := Run(exec.Command("kubectx", originalKubeContext))
-			if err != nil {
-				fmt.Fprint(GinkgoWriter, err.Error())
-			}
-			fmt.Fprint(GinkgoWriter, output)
+		if kubeContextHasBeenChanged {
+			RevertKubeCtx(originalKubeContext)
 		}
 	})
 
