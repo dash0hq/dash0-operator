@@ -118,6 +118,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					config.isBatch,
 					config.restartPodsManually,
 					testId,
+					"controller",
 				)
 			},
 			Entry("should instrument and uninstrument existing cron jobs", controllerTest{
@@ -151,9 +152,18 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				By("deploy the operator and the Dash0 custom resource")
 				DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace, operatorImageRepository, operatorImageTag)
 				DeployDash0Resource(applicationUnderTestNamespace)
-				By("verifying that the Node.js job has been labelled by the controller")
+				By("verifying that the Node.js job has been labelled by the controller and that an event has been emitted")
 				Eventually(func(g Gomega) {
-					verifyLabels(g, applicationUnderTestNamespace, "job", false, "controller")
+					VerifyLabels(g, applicationUnderTestNamespace, "job", false, "controller")
+					VerifyFailedInstrumentationEvent(
+						g,
+						applicationUnderTestNamespace,
+						"job",
+						"Dash0 instrumentation of this workload by the controller has not been successful. "+
+							"Error message: Dash0 cannot instrument the existing job "+
+							"e2e-application-under-test-namespace/dash0-operator-nodejs-20-express-test-job, since "+
+							"this type of workload is immutable.",
+					)
 				}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
 
 				UndeployDash0Resource(applicationUnderTestNamespace)
@@ -167,20 +177,14 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 		BeforeAll(func() {
 			DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace, operatorImageRepository, operatorImageTag)
-
-			// Deliberately not deploying the Dash0 custom resource here: as of now, the webhook does not rely on the
-			// presence of the Dash0 resource. This is subject to change though. (If changed, it also needs to be
-			// undeployed in the AfterAll hook.)
-			//
-			// DeployDash0Resource(applicationUnderTestNamespace)
+			DeployDash0Resource(applicationUnderTestNamespace)
 
 			fmt.Fprint(GinkgoWriter, "waiting 10 seconds to give the webhook some time to get ready\n")
 			time.Sleep(10 * time.Second)
 		})
 
 		AfterAll(func() {
-			// See comment in BeforeAll hook.
-			// UndeployDash0Resource(applicationUnderTestNamespace)
+			UndeployDash0Resource(applicationUnderTestNamespace)
 			UndeployOperatorAndCollector(operatorNamespace)
 		})
 
@@ -203,6 +207,30 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					false,
 					"webhook",
 				)
+
+				if config.workloadType == "job" {
+					// For all other workload types, reverting the instrumentation is tested by the controller test
+					// suite. But the controller cannot instrument jobs, so we cannot test the (failing)
+					// uninstrumentation procedure there. Thus, for jobs, we test the failing uninstrumentation and
+					// its effects here.
+					UndeployDash0Resource(applicationUnderTestNamespace)
+
+					Eventually(func(g Gomega) {
+						// Verify that the instrumentation labels are still in place -- since we cannot undo the
+						// instrumentation, the labels must also not be removed.
+						VerifyLabels(g, applicationUnderTestNamespace, config.workloadType, true, "webhook")
+						VerifyFailedUninstrumentationEvent(
+							g,
+							applicationUnderTestNamespace,
+							"job",
+							"The controller's attempt to remove the Dash0 instrumentation from this workload has not "+
+								"been successful. Error message: Dash0 cannot remove the instrumentation from the "+
+								"existing job "+
+								"e2e-application-under-test-namespace/dash0-operator-nodejs-20-express-test-job, since "+
+								"this type of workload is immutable.",
+						)
+					}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
+				}
 			},
 			Entry("should instrument new cron jobs", webhookTest{
 				workloadType:    "cronjob",
