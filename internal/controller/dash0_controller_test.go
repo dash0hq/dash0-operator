@@ -171,7 +171,7 @@ var _ = Describe("The Dash0 controller", func() {
 				namespace,
 				name,
 				fmt.Sprintf("Dash0 instrumentation of this workload by the controller has not been successful. Error message: "+
-					"Dash0 cannot instrument the existing job test-namespace/%s, since the this type of workload "+
+					"Dash0 cannot instrument the existing job test-namespace/%s, since this type of workload "+
 					"is immutable.", name),
 			)
 			VerifyImmutableJobCouldNotBeModified(GetJob(ctx, k8sClient, namespace, name))
@@ -386,7 +386,7 @@ var _ = Describe("The Dash0 controller", func() {
 				name,
 				fmt.Sprintf("The controller's attempt to remove the Dash0 instrumentation from this workload has not "+
 					"been successful. Error message: Dash0 cannot remove the instrumentation from the existing job "+
-					"test-namespace/%s, since the this type of workload is immutable.", name),
+					"test-namespace/%s, since this type of workload is immutable.", name),
 			)
 			VerifyModifiedJob(GetJob(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations)
 		})

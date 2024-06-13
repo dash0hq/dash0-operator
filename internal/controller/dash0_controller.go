@@ -69,7 +69,7 @@ func (e ImmutableWorkloadError) Error() string {
 	}
 
 	return fmt.Sprintf(
-		"Dash0 cannot %s the existing %s %s, since the this type of workload is immutable.",
+		"Dash0 cannot %s the existing %s %s, since this type of workload is immutable.",
 		modificationParticle,
 		e.workloadType,
 		e.workloadName,

@@ -5,6 +5,7 @@ package e2e
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -15,12 +16,18 @@ import (
 	"strings"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
+
 	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive
 	. "github.com/onsi/gomega"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
+
+	"github.com/dash0hq/dash0-operator/internal/util"
+
+	testUtil "github.com/dash0hq/dash0-operator/test/util"
 )
 
 const (
@@ -612,9 +619,10 @@ func VerifyThatWorkloadHasBeenInstrumented(
 	restartPodsManually bool,
 	instrumentationBy string,
 ) string {
-	By("waiting for the workload to get instrumented (polling its labels to check)")
+	By("waiting for the workload to get instrumented (polling its labels and events to check)")
 	Eventually(func(g Gomega) {
-		verifyLabels(g, namespace, workloadType, true, instrumentationBy)
+		VerifyLabels(g, namespace, workloadType, true, instrumentationBy)
+		verifySuccessfulInstrumentationEvent(g, namespace, workloadType, instrumentationBy)
 	}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
 
 	if restartPodsManually {
@@ -658,10 +666,12 @@ func VerifyThatInstrumentationHasBeenReverted(
 	isBatch bool,
 	restartPodsManually bool,
 	testId string,
+	instrumentationBy string,
 ) {
-	By("waiting for the instrumentation to get removed from the workload (polling its labels to check)")
+	By("waiting for the instrumentation to get removed from the workload (polling its labels and events to check)")
 	Eventually(func(g Gomega) {
 		verifyLabelsHaveBeenRemoved(g, namespace, workloadType)
+		verifySuccessfulUninstrumentationEvent(g, namespace, workloadType, instrumentationBy)
 	}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
 
 	if restartPodsManually {
@@ -688,13 +698,13 @@ func VerifyThatInstrumentationHasBeenReverted(
 }
 
 func VerifyThatFailedInstrumentationAttemptLabelsHaveBeenRemovedRemoved(namespace string, workloadType string) {
-	By("waiting for the instrumentation to get removed from the workload (polling its labels to check)")
+	By("waiting for the labels to get removed from the workload")
 	Eventually(func(g Gomega) {
 		verifyLabelsHaveBeenRemoved(g, namespace, workloadType)
 	}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
 }
 
-func verifyLabels(g Gomega, namespace string, kind string, successful bool, instrumentationBy string) {
+func VerifyLabels(g Gomega, namespace string, kind string, successful bool, instrumentationBy string) {
 	instrumented := readLabel(g, namespace, kind, "dash0.com/instrumented")
 	g.ExpectWithOffset(1, instrumented).To(Equal(strconv.FormatBool(successful)))
 	operatorVersion := readLabel(g, namespace, kind, "dash0.com/operator-image")
@@ -736,6 +746,97 @@ func readLabel(g Gomega, namespace string, kind string, labelKey string) string 
 	), false)
 	g.ExpectWithOffset(1, err).NotTo(HaveOccurred())
 	return labelValue
+}
+
+func verifySuccessfulInstrumentationEvent(
+	g Gomega,
+	namespace string,
+	workloadType string,
+	eventSource string,
+) {
+	verifyEvent(
+		g,
+		namespace,
+		workloadType,
+		util.ReasonSuccessfulInstrumentation,
+		fmt.Sprintf("Dash0 instrumentation of this workload by the %s has been successful.", eventSource),
+	)
+}
+
+func VerifyFailedInstrumentationEvent(
+	g Gomega,
+	namespace string,
+	workloadType string,
+	message string,
+) {
+	verifyEvent(
+		g,
+		namespace,
+		workloadType,
+		util.ReasonFailedInstrumentation,
+		message,
+	)
+}
+
+func verifySuccessfulUninstrumentationEvent(
+	g Gomega,
+	namespace string,
+	workloadType string,
+	eventSource string,
+) {
+	verifyEvent(
+		g,
+		namespace,
+		workloadType,
+		util.ReasonSuccessfulUninstrumentation,
+		fmt.Sprintf("The %s successfully removed the Dash0 instrumentation from this workload.", eventSource),
+	)
+}
+
+func VerifyFailedUninstrumentationEvent(
+	g Gomega,
+	namespace string,
+	workloadType string,
+	message string,
+) {
+	verifyEvent(
+		g,
+		namespace,
+		workloadType,
+		util.ReasonFailedUninstrumentation,
+		message,
+	)
+}
+
+func verifyEvent(
+	g Gomega,
+	namespace string,
+	workloadType string,
+	reason util.Reason,
+	message string,
+) {
+	resourceName := fmt.Sprintf("dash0-operator-nodejs-20-express-test-%s", workloadType)
+	eventsJson, err := Run(exec.Command(
+		"kubectl",
+		"events",
+		"-ojson",
+		"--namespace",
+		namespace,
+		"--for",
+		fmt.Sprintf("%s/%s", workloadType, resourceName),
+	), false)
+	g.ExpectWithOffset(1, err).NotTo(HaveOccurred())
+	var events corev1.EventList
+	err = json.Unmarshal([]byte(eventsJson), &events)
+	g.ExpectWithOffset(1, err).NotTo(HaveOccurred())
+	g.Expect(events.Items).To(
+		ContainElement(
+			testUtil.MatchEvent(
+				namespace,
+				resourceName,
+				reason,
+				message,
+			)))
 }
 
 func restartAllPods(namespace string) {
@@ -862,7 +963,6 @@ func hasMatchingSpans(
 
 func resourceSpansHaveExpectedResourceAttributes(workloadType string) func(span ptrace.ResourceSpans) bool {
 	return func(resourceSpans ptrace.ResourceSpans) bool {
-
 		attributes := resourceSpans.Resource().Attributes()
 		attributes.Range(func(k string, v pcommon.Value) bool {
 			return true
