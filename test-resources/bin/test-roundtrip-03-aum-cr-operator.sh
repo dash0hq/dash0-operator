@@ -35,12 +35,17 @@ fi
 echo
 echo
 
-echo "STEP 4: rebuild the operator image"
+echo "STEP 4: rebuild the instrumentation image"
+images/dash0-instrumentation/build.sh
+echo
+echo
+
+echo "STEP 5: rebuild the operator image"
 make docker-build
 echo
 echo
 
-echo "STEP 5: deploy application under monitoring"
+echo "STEP 6: deploy application under monitoring"
 test-resources/node.js/express/deploy.sh ${target_namespace} ${kind}
 echo
 echo
@@ -49,19 +54,19 @@ echo
 # operator), we need to explicitly install the custom resource definition via make install. In other scenarios, this
 # is not required, as the operator installation will also include the custom resource definition, both for kustomize
 # and helm as well.
-echo "STEP 6: install the custom resource definition"
+echo "STEP 7: install the custom resource definition"
 make install
 echo
 echo
 
 sleep 5
 
-echo "STEP 7: deploy the Dash0 custom resource to namespace ${target_namespace}"
+echo "STEP 8: deploy the Dash0 custom resource to namespace ${target_namespace}"
 kubectl apply -n ${target_namespace} -k config/samples
 echo
 echo
 
 sleep 5
 
-echo "STEP 8: deploy the Dash0 operator (using ${deployment_tool})"
+echo "STEP 9: deploy the Dash0 operator (using ${deployment_tool})"
 make deploy-via-${deployment_tool}
