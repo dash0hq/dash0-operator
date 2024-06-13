@@ -685,7 +685,7 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 			Name: "dash0-instrumentation",
 			VolumeSource: corev1.VolumeSource{
 				EmptyDir: &corev1.EmptyDirVolumeSource{
-					SizeLimit: resource.NewScaledQuantity(150, resource.Mega),
+					SizeLimit: resource.NewScaledQuantity(500, resource.Mega),
 				},
 			},
 		},
@@ -792,7 +792,7 @@ func simulateInstrumentedResource(podTemplateSpec *corev1.PodTemplateSpec, meta 
 			Name: "dash0-instrumentation",
 			VolumeSource: corev1.VolumeSource{
 				EmptyDir: &corev1.EmptyDirVolumeSource{
-					SizeLimit: resource.NewScaledQuantity(150, resource.Mega),
+					SizeLimit: resource.NewScaledQuantity(500, resource.Mega),
 				},
 			},
 		},
