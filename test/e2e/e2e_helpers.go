@@ -79,25 +79,28 @@ func RenderTemplates() {
 	ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command("test-resources/bin/render-templates.sh"))).To(Succeed())
 }
 
-func RecreateNamespace(namespace string) {
-	By(fmt.Sprintf("(re)creating namespace %s", namespace))
-	output, err := Run(exec.Command("kubectl", "get", "ns", namespace))
-	if err != nil {
-		if strings.Contains(output, "(NotFound)") {
-			// The namespace does not exist, that's fine, we will create it further down.
-		} else {
-			Fail(fmt.Sprintf("kubectl get ns %s failed with unexpected error: %v", namespace, err))
-		}
-	} else {
-		ExpectWithOffset(1,
-			RunAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", namespace))).To(Succeed())
-		ExpectWithOffset(1,
-			RunAndIgnoreOutput(
-				exec.Command("kubectl", "wait", "--for=delete", "ns", namespace, "--timeout=60s"))).To(Succeed())
-	}
+func SetKubeContext(kubeContextForTest string) (bool, string) {
+	By("reading current kubectx")
+	kubectxOutput, err := Run(exec.Command("kubectx", "-c"))
+	ExpectWithOffset(1, err).NotTo(HaveOccurred())
+	originalKubeContext := strings.TrimSpace(kubectxOutput)
 
-	ExpectWithOffset(1,
-		RunAndIgnoreOutput(exec.Command("kubectl", "create", "ns", namespace))).To(Succeed())
+	if originalKubeContext != kubeContextForTest {
+		By("switching to kubectx docker-desktop, previous context " + originalKubeContext + " will be restored later")
+		ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command("kubectx", "docker-desktop"))).To(Succeed())
+		return true, originalKubeContext
+	} else {
+		return false, originalKubeContext
+	}
+}
+
+func RevertKubeCtx(originalKubeContext string) {
+	By("switching back to original kubectx " + originalKubeContext)
+	output, err := Run(exec.Command("kubectx", originalKubeContext))
+	if err != nil {
+		fmt.Fprint(GinkgoWriter, err.Error())
+	}
+	fmt.Fprint(GinkgoWriter, output)
 }
 
 func EnsureCertManagerIsInstalled() bool {
@@ -236,6 +239,44 @@ func uninstallCertManager() {
 			"kubectl", "delete", "namespace", "cert-manager", "--ignore-not-found")); err != nil {
 		warnError(err)
 	}
+}
+
+func RecreateNamespace(namespace string) {
+	By(fmt.Sprintf("(re)creating namespace %s", namespace))
+	output, err := Run(exec.Command("kubectl", "get", "ns", namespace))
+	if err != nil {
+		if strings.Contains(output, "(NotFound)") {
+			// The namespace does not exist, that's fine, we will create it further down.
+		} else {
+			Fail(fmt.Sprintf("kubectl get ns %s failed with unexpected error: %v", namespace, err))
+		}
+	} else {
+		ExpectWithOffset(1,
+			RunAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", namespace))).To(Succeed())
+		ExpectWithOffset(1,
+			RunAndIgnoreOutput(
+				exec.Command("kubectl", "wait", "--for=delete", "ns", namespace, "--timeout=60s"))).To(Succeed())
+	}
+
+	ExpectWithOffset(1,
+		RunAndIgnoreOutput(exec.Command("kubectl", "create", "ns", namespace))).To(Succeed())
+}
+
+func RebuildOperatorControllerImage(operatorImageRepository string, operatorImageTag string) bool {
+	By("building the operator controller image")
+	return ExpectWithOffset(1,
+		RunAndIgnoreOutput(
+			exec.Command(
+				"make",
+				"docker-build",
+				fmt.Sprintf("IMG_REPOSITORY=%s", operatorImageRepository),
+				fmt.Sprintf("IMG_TAG=%s", operatorImageTag),
+			))).To(Succeed())
+}
+
+func RebuildDash0InstrumentationImage() bool {
+	By("building the dash0-instrumentation image")
+	return ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command("images/dash0-instrumentation/build.sh"))).To(Succeed())
 }
 
 func DeployOperatorWithCollectorAndClearExportedTelemetry(
