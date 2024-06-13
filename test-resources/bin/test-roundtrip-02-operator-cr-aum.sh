@@ -34,24 +34,29 @@ fi
 echo
 echo
 
-echo "STEP 4: rebuild the operator image"
+echo "STEP 4: rebuild the instrumentation image"
+images/dash0-instrumentation/build.sh
+echo
+echo
+
+echo "STEP 5: rebuild the operator image"
 make docker-build
 echo
 echo
 
-echo "STEP 5: deploy the Dash0 operator (using ${deployment_tool})"
+echo "STEP 6: deploy the Dash0 operator (using ${deployment_tool})"
 make deploy-via-${deployment_tool}
 echo
 echo
 
 sleep 5
 
-echo "STEP 6: deploy the Dash0 custom resource to namespace ${target_namespace}"
+echo "STEP 7: deploy the Dash0 custom resource to namespace ${target_namespace}"
 kubectl apply -n ${target_namespace} -k config/samples
 echo
 echo
 
 sleep 5
 
-echo "STEP 7: deploy application under monitoring"
+echo "STEP 8: deploy application under monitoring"
 test-resources/node.js/express/deploy.sh ${target_namespace} ${kind}
