@@ -18,7 +18,7 @@ sources:
 maintainers:
   - name: Bastian Krol
     email: bastian.krol@dash0.com
-icon: icon/logo.svg
+icon: https://www.dash0.com/shared/logo_colors_128x128.png
 appVersion: "1.0.0"
 dependencies:
   - name: opentelemetry-collector
