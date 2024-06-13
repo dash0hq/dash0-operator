@@ -122,7 +122,7 @@ func (m *ResourceModifier) addInstrumentationVolume(podSpec *corev1.PodSpec) {
 		Name: dash0VolumeName,
 		VolumeSource: corev1.VolumeSource{
 			EmptyDir: &corev1.EmptyDirVolumeSource{
-				SizeLimit: resource.NewScaledQuantity(150, resource.Mega),
+				SizeLimit: resource.NewScaledQuantity(500, resource.Mega),
 			},
 		},
 	}

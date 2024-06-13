@@ -795,7 +795,6 @@ func (r *Dash0Reconciler) handleJobOnUninstrumentation(ctx context.Context, job 
 		// The same is true for any other error types (for example errors in r.ClientUpdate).
 		r.postProcessUninstrumentation(&job, false, retryErr, &logger)
 	} else if createImmutableWorkloadsError {
-		//
 		r.postProcessUninstrumentation(&job, false, ImmutableWorkloadError{
 			workloadType:     "job",
 			workloadName:     fmt.Sprintf("%s/%s", job.GetNamespace(), job.GetName()),
