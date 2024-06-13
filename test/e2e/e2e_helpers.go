@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"strconv"
@@ -781,11 +782,15 @@ func sendRequestAndFindMatchingSpans(
 
 func sendRequest(g Gomega, isBatch bool, httpPathWithQuery string, mustNotFail bool) {
 	if !isBatch {
-		response, err := Run(exec.Command("curl", fmt.Sprintf("http://localhost:1207%s", httpPathWithQuery)), false)
+		response, err := http.Get(fmt.Sprintf("http://localhost:1207%s", httpPathWithQuery))
 		if mustNotFail {
 			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(response).To(ContainSubstring(
-				"We make Observability easy for every developer."))
+			defer func() {
+				_ = response.Body.Close()
+			}()
+			responseBody, err := io.ReadAll(response.Body)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(responseBody).To(ContainSubstring("We make Observability easy for every developer."))
 		}
 	}
 }
