@@ -257,7 +257,7 @@ func verifyLabelsAfterSuccessfulModification(meta metav1.ObjectMeta) {
 	Expect(meta.Labels["dash0.com/operator-image"]).To(Equal("some-registry.com_1234_dash0-operator-controller_1.2.3"))
 	Expect(meta.Labels["dash0.com/init-container-image"]).To(Equal("some-registry.com_1234_dash0-instrumentation_4.5.6"))
 	Expect(meta.Labels["dash0.com/instrumented-by"]).NotTo(Equal(""))
-	Expect(meta.Labels["dash0.com/opt-out"]).To(Equal(""))
+	Expect(meta.Labels["dash0.com/enable"]).To(Equal(""))
 }
 
 func verifyLabelsAfterFailureToModify(meta metav1.ObjectMeta) {
@@ -266,7 +266,7 @@ func verifyLabelsAfterFailureToModify(meta metav1.ObjectMeta) {
 	Expect(meta.Labels["dash0.com/init-container-image"]).To(Equal("some-registry.com_1234_dash0-instrumentation_4.5.6"))
 	Expect(meta.Labels["dash0.com/instrumented-by"]).NotTo(Equal(""))
 	Expect(meta.Labels["dash0.com/webhook-ignore-once"]).To(Equal(""))
-	Expect(meta.Labels["dash0.com/opt-out"]).To(Equal(""))
+	Expect(meta.Labels["dash0.com/enable"]).To(Equal(""))
 }
 
 func verifyNoDash0Labels(meta metav1.ObjectMeta) {
@@ -274,7 +274,7 @@ func verifyNoDash0Labels(meta metav1.ObjectMeta) {
 	Expect(meta.Labels["dash0.com/operator-image"]).To(Equal(""))
 	Expect(meta.Labels["dash0.com/init-container-image"]).To(Equal(""))
 	Expect(meta.Labels["dash0.com/instrumented-by"]).To(Equal(""))
-	Expect(meta.Labels["dash0.com/opt-out"]).To(Equal(""))
+	Expect(meta.Labels["dash0.com/enable"]).To(Equal(""))
 }
 
 func verifyLabelsForOptOutWorkload(meta metav1.ObjectMeta) {
@@ -283,7 +283,7 @@ func verifyLabelsForOptOutWorkload(meta metav1.ObjectMeta) {
 	Expect(meta.Labels["dash0.com/init-container-image"]).To(Equal(""))
 	Expect(meta.Labels["dash0.com/instrumented-by"]).To(Equal(""))
 	Expect(meta.Labels["dash0.com/webhook-ignore-once"]).To(Equal(""))
-	Expect(meta.Labels["dash0.com/opt-out"]).To(Equal("true"))
+	Expect(meta.Labels["dash0.com/enable"]).To(Equal("false"))
 }
 
 func VerifyWebhookIgnoreOnceLabelIsPresent(objectMeta *metav1.ObjectMeta) bool {
