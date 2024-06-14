@@ -37,7 +37,7 @@ type resourceHandler func(h *Handler, request admission.Request, gvkLabel string
 type routing map[string]map[string]map[string]resourceHandler
 
 const (
-	optOutAdmissionAllowedMessage = "not instrumenting this resource due to dash0.com/opt-out=true"
+	optOutAdmissionAllowedMessage = "not instrumenting this resource due to dash0.com/enable=false"
 )
 
 var (
