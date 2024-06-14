@@ -34,8 +34,6 @@ const (
 )
 
 var (
-	True                 = true
-	False                = false
 	ArbitraryNumer int64 = 1302
 
 	instrumentationInitContainer = corev1.Container{
@@ -62,7 +60,28 @@ var (
 	}
 )
 
-func EnsureDash0CustomResourceExists(
+func TestNamespace(name string) *corev1.Namespace {
+	namespace := &corev1.Namespace{}
+	namespace.Name = name
+	return namespace
+}
+
+func EnsureTestNamespaceExists(
+	ctx context.Context,
+	k8sClient client.Client,
+) *corev1.Namespace {
+	By("creating the test namespace")
+	object := EnsureKubernetesObjectExists(
+		ctx,
+		k8sClient,
+		types.NamespacedName{Name: TestNamespaceName},
+		&corev1.Namespace{},
+		TestNamespace(TestNamespaceName),
+	)
+	return object.(*corev1.Namespace)
+}
+
+func EnsureKubernetesObjectExists(
 	ctx context.Context,
 	k8sClient client.Client,
 	qualifiedName types.NamespacedName,
@@ -80,33 +99,6 @@ func EnsureDash0CustomResourceExists(
 		Expect(err).ToNot(HaveOccurred())
 		return nil
 	}
-}
-
-func TestNamespace(name string) *corev1.Namespace {
-	namespace := &corev1.Namespace{}
-	namespace.Name = name
-	return namespace
-}
-
-func CreateTestNamespace(ctx context.Context, k8sClient client.Client, name string) *corev1.Namespace {
-	namespace := TestNamespace(name)
-	Expect(k8sClient.Create(ctx, namespace)).Should(Succeed())
-	return namespace
-}
-
-func EnsureTestNamespaceExists(
-	ctx context.Context,
-	k8sClient client.Client,
-	name string,
-) *corev1.Namespace {
-	object := EnsureDash0CustomResourceExists(
-		ctx,
-		k8sClient,
-		types.NamespacedName{Name: name},
-		&corev1.Namespace{},
-		TestNamespace(name),
-	)
-	return object.(*corev1.Namespace)
 }
 
 func UniqueName(prefix string) string {

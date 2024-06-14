@@ -12,18 +12,22 @@ import (
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
+	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/workloads"
 )
 
 type Handler struct {
+	Client               client.Client
 	Recorder             record.EventRecorder
 	Images               util.Images
 	OtelCollectorBaseUrl string
@@ -91,9 +95,64 @@ func (h *Handler) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return nil
 }
 
-func (h *Handler) Handle(_ context.Context, request admission.Request) admission.Response {
+func (h *Handler) Handle(ctx context.Context, request admission.Request) admission.Response {
 	logger := log.WithValues("gvk", request.Kind, "namespace", request.Namespace, "name", request.Name)
 	logger.Info("incoming admission request")
+
+	targetNamespace := request.Namespace
+
+	dash0List := &operatorv1alpha1.Dash0List{}
+	if err := h.Client.List(ctx, dash0List, &client.ListOptions{
+		Namespace: targetNamespace,
+	}); err != nil {
+		if apierrors.IsNotFound(err) {
+			return admission.Allowed(
+				fmt.Sprintf(
+					"There is no Dash0 custom resource in the namespace %s, the workload will not be instrumented.",
+					targetNamespace,
+				))
+		} else {
+			message := fmt.Sprintf("Failed to list Dash0 custom resources in namespace %s, workload will not be instrumented.", targetNamespace)
+			logger.Error(err, message)
+			return admission.Errored(http.StatusInternalServerError, fmt.Errorf("%s - %w", message, err))
+		}
+	}
+	if len(dash0List.Items) == 0 {
+		return admission.Allowed(
+			fmt.Sprintf(
+				"There is no Dash0 custom resource in the namespace %s, the workload will not be instrumented.",
+				targetNamespace,
+			))
+	}
+
+	dash0CustomResource := dash0List.Items[0]
+	instrumentWorkloads := util.ReadOptOutSetting(dash0CustomResource.Spec.InstrumentWorkloads)
+	instrumentNewWorkloads := util.ReadOptOutSetting(dash0CustomResource.Spec.InstrumentNewWorkloads)
+	if !instrumentWorkloads {
+		message := fmt.Sprintf("Instrumenting workloads is not enabled in namespace %s, this newly deployed workload "+
+			"will not be modified to send telemetry to Dash0.", targetNamespace)
+		logger.Info(message)
+		return admission.Allowed(message)
+	}
+	if !instrumentNewWorkloads {
+		message := fmt.Sprintf("Instrumenting new workloads at deploy-time is not enabled in namespace %s, this newly"+
+			"deployed workload will not be modified to send telemetry to Dash0.", targetNamespace)
+		logger.Info(message)
+		return admission.Allowed(message)
+	}
+
+	if !dash0CustomResource.IsAvailable() {
+		return admission.Allowed(
+			fmt.Sprintf(
+				"The Dash0 custome resource in the namespace %s is not in status available, this workload will not be "+
+					"modified to send telemetry to Dash0.", targetNamespace))
+	}
+	if dash0CustomResource.IsMarkedForDeletion() {
+		return admission.Allowed(
+			fmt.Sprintf(
+				"The Dash0 custome resource in the namespace %s is about to be deleted, this workload will not be "+
+					"modified to send telemetry to Dash0.", targetNamespace))
+	}
 
 	gkv := request.Kind
 	group := gkv.Group
@@ -117,7 +176,7 @@ func (h *Handler) handleCronJob(
 	if util.CheckAndDeleteIgnoreOnceLabel(&cronJob.ObjectMeta) {
 		return h.postProcess(request, cronJob, false, true, logger)
 	}
-	if util.HasOptedOutOfInstrumenation(&cronJob.ObjectMeta) {
+	if util.HasOptedOutOfInstrumenationForWorkload(&cronJob.ObjectMeta) {
 		return admission.Allowed(optOutAdmissionAllowedMessage)
 	}
 	hasBeenModified := h.newWorkloadModifier(logger).ModifyCronJob(cronJob)
@@ -137,7 +196,7 @@ func (h *Handler) handleDaemonSet(
 	if util.CheckAndDeleteIgnoreOnceLabel(&daemonSet.ObjectMeta) {
 		return h.postProcess(request, daemonSet, false, true, logger)
 	}
-	if util.HasOptedOutOfInstrumenation(&daemonSet.ObjectMeta) {
+	if util.HasOptedOutOfInstrumenationForWorkload(&daemonSet.ObjectMeta) {
 		return admission.Allowed(optOutAdmissionAllowedMessage)
 	}
 	hasBeenModified := h.newWorkloadModifier(logger).ModifyDaemonSet(daemonSet)
@@ -157,7 +216,7 @@ func (h *Handler) handleDeployment(
 	if util.CheckAndDeleteIgnoreOnceLabel(&deployment.ObjectMeta) {
 		return h.postProcess(request, deployment, false, true, logger)
 	}
-	if util.HasOptedOutOfInstrumenation(&deployment.ObjectMeta) {
+	if util.HasOptedOutOfInstrumenationForWorkload(&deployment.ObjectMeta) {
 		return admission.Allowed(optOutAdmissionAllowedMessage)
 	}
 	hasBeenModified := h.newWorkloadModifier(logger).ModifyDeployment(deployment)
@@ -177,7 +236,7 @@ func (h *Handler) handleJob(
 	if util.CheckAndDeleteIgnoreOnceLabel(&job.ObjectMeta) {
 		return h.postProcess(request, job, false, true, logger)
 	}
-	if util.HasOptedOutOfInstrumenation(&job.ObjectMeta) {
+	if util.HasOptedOutOfInstrumenationForWorkload(&job.ObjectMeta) {
 		return admission.Allowed(optOutAdmissionAllowedMessage)
 	}
 	hasBeenModified := h.newWorkloadModifier(logger).ModifyJob(job)
@@ -197,7 +256,7 @@ func (h *Handler) handleReplicaSet(
 	if util.CheckAndDeleteIgnoreOnceLabel(&replicaSet.ObjectMeta) {
 		return h.postProcess(request, replicaSet, false, true, logger)
 	}
-	if util.HasOptedOutOfInstrumenation(&replicaSet.ObjectMeta) {
+	if util.HasOptedOutOfInstrumenationForWorkload(&replicaSet.ObjectMeta) {
 		return admission.Allowed(optOutAdmissionAllowedMessage)
 	}
 	hasBeenModified := h.newWorkloadModifier(logger).ModifyReplicaSet(replicaSet)
@@ -217,7 +276,7 @@ func (h *Handler) handleStatefulSet(
 	if util.CheckAndDeleteIgnoreOnceLabel(&statefulSet.ObjectMeta) {
 		return h.postProcess(request, statefulSet, false, true, logger)
 	}
-	if util.HasOptedOutOfInstrumenation(&statefulSet.ObjectMeta) {
+	if util.HasOptedOutOfInstrumenationForWorkload(&statefulSet.ObjectMeta) {
 		return admission.Allowed("not instrumenting this resource due to dash0.com/out-out=true")
 	}
 	hasBeenModified := h.newWorkloadModifier(logger).ModifyStatefulSet(statefulSet)
