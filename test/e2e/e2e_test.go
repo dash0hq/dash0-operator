@@ -174,18 +174,23 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 	})
 
 	Describe("webhook", func() {
-
 		BeforeAll(func() {
 			DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace, operatorImageRepository, operatorImageTag)
-			DeployDash0Resource(applicationUnderTestNamespace)
 
 			fmt.Fprint(GinkgoWriter, "waiting 10 seconds to give the webhook some time to get ready\n")
 			time.Sleep(10 * time.Second)
 		})
 
 		AfterAll(func() {
-			UndeployDash0Resource(applicationUnderTestNamespace)
 			UndeployOperatorAndCollector(operatorNamespace)
+		})
+
+		BeforeEach(func() {
+			DeployDash0Resource(applicationUnderTestNamespace)
+		})
+
+		AfterEach(func() {
+			UndeployDash0Resource(applicationUnderTestNamespace)
 		})
 
 		type webhookTest struct {
@@ -213,12 +218,16 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					// suite. But the controller cannot instrument jobs, so we cannot test the (failing)
 					// uninstrumentation procedure there. Thus, for jobs, we test the failing uninstrumentation and
 					// its effects here.
+					By("verifying that removing the Dash0 custom resource attempts to uninstruments the job")
 					UndeployDash0Resource(applicationUnderTestNamespace)
 
 					Eventually(func(g Gomega) {
 						// Verify that the instrumentation labels are still in place -- since we cannot undo the
 						// instrumentation, the labels must also not be removed.
+						By("verifying that the job still has labels")
 						VerifyLabels(g, applicationUnderTestNamespace, config.workloadType, true, "webhook")
+
+						By("verifying failed uninstrumentation event")
 						VerifyFailedUninstrumentationEvent(
 							g,
 							applicationUnderTestNamespace,
