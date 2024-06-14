@@ -199,6 +199,7 @@ func startOperatorManager(
 
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
 		if err = (&dash0webhook.Handler{
+			Client:               mgr.GetClient(),
 			Recorder:             mgr.GetEventRecorderFor("dash0-webhook"),
 			Images:               images,
 			OtelCollectorBaseUrl: otelCollectorBaseUrl,

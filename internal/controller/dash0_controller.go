@@ -28,8 +28,6 @@ import (
 )
 
 const (
-	FinalizerId = "operator.dash0.com/finalizer"
-
 	workkloadTypeLabel     = "workload type"
 	workloadNamespaceLabel = "workload namespace"
 	workloadNameLabel      = "workload name"
@@ -217,17 +215,19 @@ func (r *Dash0Reconciler) handleFirstReconcile(
 	logger *logr.Logger,
 ) error {
 	logger.Info("Initial reconcile in progress.")
-	instrumentationEnabled := true
-	instrumentingExistingWorkloadsEnabled := true
-	if !instrumentationEnabled {
+
+	instrumentWorkloads := util.ReadOptOutSetting(dash0CustomResource.Spec.InstrumentWorkloads)
+	instrumentExistingWorkloads := util.ReadOptOutSetting(dash0CustomResource.Spec.InstrumentExistingWorkloads)
+	instrumentNewWorkloads := util.ReadOptOutSetting(dash0CustomResource.Spec.InstrumentNewWorkloads)
+
+	if !instrumentWorkloads || (!instrumentExistingWorkloads && !instrumentNewWorkloads) {
 		logger.Info(
 			"Instrumentation is not enabled, neither new nor existing workloads will be modified to send telemetry " +
 				"to Dash0.",
 		)
 		return nil
 	}
-
-	if !instrumentingExistingWorkloadsEnabled {
+	if !instrumentExistingWorkloads {
 		logger.Info(
 			"Instrumenting existing workloads is not enabled, only new workloads will be modified (at deploy time) " +
 				"to send telemetry to Dash0.",
@@ -235,7 +235,7 @@ func (r *Dash0Reconciler) handleFirstReconcile(
 		return nil
 	}
 
-	logger.Info("Modifying existing workloads to make them send telemetry to Dash0.")
+	logger.Info("Now instrumenting existing workloads so they send telemetry to Dash0.")
 	if err := r.instrumentWorkloadsResources(ctx, dash0CustomResource, logger); err != nil {
 		logger.Error(err, "Instrumenting existing workloads failed, requeuing reconcile request.")
 		return err
@@ -550,8 +550,7 @@ func (r *Dash0Reconciler) checkImminentDeletionAndHandleFinalizers(
 	dash0CustomResource *operatorv1alpha1.Dash0,
 	logger *logr.Logger,
 ) (bool, error) {
-	deletionTimestamp := dash0CustomResource.GetDeletionTimestamp()
-	isMarkedForDeletion := deletionTimestamp != nil && !deletionTimestamp.IsZero()
+	isMarkedForDeletion := dash0CustomResource.IsMarkedForDeletion()
 	if !isMarkedForDeletion {
 		err := r.addFinalizerIfNecessary(ctx, dash0CustomResource)
 		if err != nil {
@@ -559,7 +558,7 @@ func (r *Dash0Reconciler) checkImminentDeletionAndHandleFinalizers(
 			return isMarkedForDeletion, err
 		}
 	} else {
-		if controllerutil.ContainsFinalizer(dash0CustomResource, FinalizerId) {
+		if controllerutil.ContainsFinalizer(dash0CustomResource, operatorv1alpha1.FinalizerId) {
 			err := r.runCleanupActions(ctx, dash0CustomResource, logger)
 			if err != nil {
 				// error has already been logged in runCleanupActions
@@ -575,6 +574,15 @@ func (r *Dash0Reconciler) runCleanupActions(
 	dash0CustomResource *operatorv1alpha1.Dash0,
 	logger *logr.Logger,
 ) error {
+	uninstrumentWorkloadsOnDelete := util.ReadOptOutSetting(dash0CustomResource.Spec.UninstrumentWorkloadsOnDelete)
+	if !uninstrumentWorkloadsOnDelete {
+		logger.Info(
+			"Reverting instrumentation modifications is not enabled, the Dash0 Kubernetes operator will not attempt " +
+				"any changes made to workloads.",
+		)
+		return nil
+	}
+
 	err := r.uninstrumentWorkloadsIfAvailable(ctx, dash0CustomResource, logger)
 	if err != nil {
 		logger.Error(err, "Failed to uninstrument workloads, requeuing reconcile request.")
@@ -590,7 +598,7 @@ func (r *Dash0Reconciler) runCleanupActions(
 		return err
 	}
 
-	controllerutil.RemoveFinalizer(dash0CustomResource, FinalizerId)
+	controllerutil.RemoveFinalizer(dash0CustomResource, operatorv1alpha1.FinalizerId)
 	if err = r.Update(ctx, dash0CustomResource); err != nil {
 		logger.Error(err, "Failed to remove the finalizer from the Dash0 custom resource, requeuing reconcile request.")
 		return err
@@ -602,7 +610,7 @@ func (r *Dash0Reconciler) addFinalizerIfNecessary(
 	ctx context.Context,
 	dash0CustomResource *operatorv1alpha1.Dash0,
 ) error {
-	finalizerHasBeenAdded := controllerutil.AddFinalizer(dash0CustomResource, FinalizerId)
+	finalizerHasBeenAdded := controllerutil.AddFinalizer(dash0CustomResource, operatorv1alpha1.FinalizerId)
 	if finalizerHasBeenAdded {
 		return r.Update(ctx, dash0CustomResource)
 	}
