@@ -24,7 +24,7 @@ const (
 	// or when the label is missing entirely.
 	instrumentedLabelValueUnknown instrumentedState = "unknown"
 
-	optOutLabelKey             = "dash0.com/opt-out"
+	dash0EnableLabelKey        = "dash0.com/enable"
 	operatorImageLabelKey      = "dash0.com/operator-image"
 	initContainerImageLabelKey = "dash0.com/init-container-image"
 	instrumentedByLabelKey     = "dash0.com/instrumented-by"
@@ -33,10 +33,10 @@ const (
 
 var (
 	WorkloadsWithoutDash0InstrumentedLabelFilter = metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("!%s,%s != true", instrumentedLabelKey, optOutLabelKey),
+		LabelSelector: fmt.Sprintf("!%s,%s != false", instrumentedLabelKey, dash0EnableLabelKey),
 	}
 	WorkloadsWithDash0InstrumentedLabelFilter = metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("%s,%s != true", instrumentedLabelKey, optOutLabelKey),
+		LabelSelector: fmt.Sprintf("%s,%s != false", instrumentedLabelKey, dash0EnableLabelKey),
 	}
 )
 
@@ -105,7 +105,7 @@ func HasOptedOutOfInstrumenationForWorkload(meta *metav1.ObjectMeta) bool {
 	if meta.Labels == nil {
 		return false
 	}
-	if value, ok := meta.Labels[optOutLabelKey]; ok && value == "true" {
+	if value, ok := meta.Labels[dash0EnableLabelKey]; ok && value == "false" {
 		return true
 	}
 	return false

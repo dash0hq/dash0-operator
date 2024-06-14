@@ -10,7 +10,7 @@ presets:
   # kubeletMetrics:
   #   enabled: true
 additionalLabels:
-  dash0.com/opt-out: "true"
+  dash0.com/enable: "false"
 resources:
   limits:
     memory: 500Mi

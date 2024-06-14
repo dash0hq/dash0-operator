@@ -716,8 +716,8 @@ func VerifyLabels(g Gomega, namespace string, kind string, successful bool, inst
 	g.ExpectWithOffset(1, initContainerImageVersion).To(MatchRegexp("dash0-instrumentation_\\d+\\.\\d+\\.\\d+"))
 	instrumentedBy := readLabel(g, namespace, kind, "dash0.com/instrumented-by")
 	g.ExpectWithOffset(1, instrumentedBy).To(Equal(instrumentationBy))
-	optOut := readLabel(g, namespace, kind, "dash0.com/opt-out")
-	g.ExpectWithOffset(1, optOut).To(Equal(""))
+	dash0Enable := readLabel(g, namespace, kind, "dash0.com/enable")
+	g.ExpectWithOffset(1, dash0Enable).To(Equal(""))
 }
 
 func verifyLabelsHaveBeenRemoved(g Gomega, namespace string, kind string) {
@@ -729,8 +729,8 @@ func verifyLabelsHaveBeenRemoved(g Gomega, namespace string, kind string) {
 	g.ExpectWithOffset(1, initContainerImageVersion).To(Equal(""))
 	instrumentedBy := readLabel(g, namespace, kind, "dash0.com/instrumented-by")
 	g.ExpectWithOffset(1, instrumentedBy).To(Equal(""))
-	optOut := readLabel(g, namespace, kind, "dash0.com/opt-out")
-	g.ExpectWithOffset(1, optOut).To(Equal(""))
+	dash0Enable := readLabel(g, namespace, kind, "dash0.com/enable")
+	g.ExpectWithOffset(1, dash0Enable).To(Equal(""))
 }
 
 func readLabel(g Gomega, namespace string, kind string, labelKey string) string {

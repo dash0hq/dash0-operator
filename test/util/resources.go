@@ -909,7 +909,7 @@ func addInstrumentationLabels(meta *metav1.ObjectMeta, successful bool) {
 }
 
 func addOptOutLabel(meta *metav1.ObjectMeta) {
-	AddLabel(meta, "dash0.com/opt-out", "true")
+	AddLabel(meta, "dash0.com/enable", "false")
 }
 
 func AddLabel(meta *metav1.ObjectMeta, key string, value string) {
