@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -31,6 +32,14 @@ var (
 	setupFinishedSuccessfully bool
 )
 
+type controllerTestWorkloadConfig struct {
+	workloadType        string
+	port                int
+	installWorkload     func(string) error
+	isBatch             bool
+	restartPodsManually bool
+}
+
 var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 	BeforeAll(func() {
@@ -47,6 +56,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		RecreateNamespace(applicationUnderTestNamespace)
 		RebuildOperatorControllerImage(operatorImageRepository, operatorImageTag)
 		RebuildDash0InstrumentationImage()
+		RebuildNodeJsApplicationContainerImage()
 
 		setupFinishedSuccessfully = true
 	})
@@ -85,73 +95,72 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			UndeployOperatorAndCollector(operatorNamespace)
 		})
 
-		type controllerTest struct {
-			workloadType        string
-			port                int
-			installWorkload     func(string) error
-			isBatch             bool
-			restartPodsManually bool
-		}
-
-		DescribeTable(
-			"when instrumenting existing workloads",
-			func(config controllerTest) {
-				By(fmt.Sprintf("installing the Node.js %s", config.workloadType))
-				Expect(config.installWorkload(applicationUnderTestNamespace)).To(Succeed())
-				By("deploy the operator and the Dash0 custom resource")
-
-				DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace, operatorImageRepository, operatorImageTag)
-				DeployDash0Resource(applicationUnderTestNamespace)
-				By(fmt.Sprintf("verifying that the Node.js %s has been instrumented by the controller", config.workloadType))
-				testId := VerifyThatWorkloadHasBeenInstrumented(
-					applicationUnderTestNamespace,
-					config.workloadType,
-					config.port,
-					config.isBatch,
-					config.restartPodsManually,
-					"controller",
-				)
-
-				UndeployDash0Resource(applicationUnderTestNamespace)
-
-				VerifyThatInstrumentationHasBeenReverted(
-					applicationUnderTestNamespace,
-					config.workloadType,
-					config.port,
-					config.isBatch,
-					config.restartPodsManually,
-					testId,
-					"controller",
-				)
-			},
-			Entry("should instrument and uninstrument existing cron jobs", controllerTest{
+		workloadConfigs := []controllerTestWorkloadConfig{
+			{
 				workloadType:    "cronjob",
 				port:            1205,
 				installWorkload: InstallNodeJsCronJob,
 				isBatch:         true,
-			}),
-			Entry("should instrument and uninstrument existing daemon sets", controllerTest{
+			}, {
 				workloadType:    "daemonset",
 				port:            1206,
 				installWorkload: InstallNodeJsDaemonSet,
-			}),
-			Entry("should instrument and uninstrument existing deployments", controllerTest{
+			}, {
 				workloadType:    "deployment",
 				port:            1207,
 				installWorkload: InstallNodeJsDeployment,
-			}),
-			Entry("should instrument and uninstrument existing replica set", controllerTest{
+			}, {
 				workloadType:        "replicaset",
 				port:                1209,
 				installWorkload:     InstallNodeJsReplicaSet,
 				restartPodsManually: true,
-			}),
-			Entry("should instrument and uninstrument existing stateful set", controllerTest{
+			}, {
 				workloadType:    "statefulset",
 				port:            1210,
 				installWorkload: InstallNodeJsStatefulSet,
-			}),
-		)
+			},
+		}
+
+		Describe("when instrumenting existing workloads", func() {
+			It("should instrument and uninstrument all workload types", func() {
+				By("deploying all workloads")
+				runInParallelForAllWorkloadTypes(workloadConfigs, func(config controllerTestWorkloadConfig) {
+					By(fmt.Sprintf("deploying the Node.js %s", config.workloadType))
+					Expect(config.installWorkload(applicationUnderTestNamespace)).To(Succeed())
+				})
+
+				By("deploy the operator and the Dash0 custom resource")
+				DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace, operatorImageRepository, operatorImageTag)
+				DeployDash0Resource(applicationUnderTestNamespace)
+
+				testIds := make(map[string]string)
+				runInParallelForAllWorkloadTypes(workloadConfigs, func(config controllerTestWorkloadConfig) {
+					By(fmt.Sprintf("verifying that the Node.js %s has been instrumented by the controller", config.workloadType))
+					testIds[config.workloadType] = VerifyThatWorkloadHasBeenInstrumented(
+						applicationUnderTestNamespace,
+						config.workloadType,
+						config.port,
+						config.isBatch,
+						config.restartPodsManually,
+						"controller",
+					)
+				})
+
+				UndeployDash0Resource(applicationUnderTestNamespace)
+
+				runInParallelForAllWorkloadTypes(workloadConfigs, func(config controllerTestWorkloadConfig) {
+					VerifyThatInstrumentationHasBeenReverted(
+						applicationUnderTestNamespace,
+						config.workloadType,
+						config.port,
+						config.isBatch,
+						config.restartPodsManually,
+						testIds[config.workloadType],
+						"controller",
+					)
+				})
+			})
+		})
 
 		Describe("when it detects existing immutable jobs", func() {
 			It("should label them accordingly", func() {
@@ -286,3 +295,19 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		)
 	})
 })
+
+func runInParallelForAllWorkloadTypes(
+	workloadConfigs []controllerTestWorkloadConfig,
+	testStep func(controllerTestWorkloadConfig),
+) {
+	var wg sync.WaitGroup
+	for _, config := range workloadConfigs {
+		wg.Add(1)
+		go func(cfg controllerTestWorkloadConfig) {
+			defer GinkgoRecover()
+			defer wg.Done()
+			testStep(cfg)
+		}(config)
+	}
+	wg.Wait()
+}

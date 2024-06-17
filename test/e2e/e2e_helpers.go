@@ -448,6 +448,19 @@ func UndeployDash0Resource(namespace string) {
 		))).To(Succeed())
 }
 
+func RebuildNodeJsApplicationContainerImage() {
+	By("building the dash0-operator-nodejs-20-express-test-app image")
+	Expect(
+		RunAndIgnoreOutput(
+			exec.Command(
+				"docker",
+				"build",
+				"test-resources/node.js/express",
+				"-t",
+				"dash0-operator-nodejs-20-express-test-app",
+			))).To(Succeed())
+}
+
 func InstallNodeJsCronJob(namespace string) error {
 	return installNodeJsApplication(
 		namespace,
@@ -573,18 +586,14 @@ func RemoveAllTestApplications(namespace string) {
 }
 
 func installNodeJsApplication(namespace string, kind string, waitCommand *exec.Cmd) error {
-	imageName := "dash0-operator-nodejs-20-express-test-app"
-	err := RunMultipleFromStrings([][]string{
-		{"docker", "build", "test-resources/node.js/express", "-t", imageName},
-		{
-			"kubectl",
-			"apply",
-			"--namespace",
-			namespace,
-			"-f",
-			fmt.Sprintf("test-resources/node.js/express/%s.yaml", kind),
-		},
-	})
+	err := RunAndIgnoreOutput(exec.Command(
+		"kubectl",
+		"apply",
+		"--namespace",
+		namespace,
+		"-f",
+		fmt.Sprintf("test-resources/node.js/express/%s.yaml", kind),
+	))
 	if err != nil {
 		return err
 	}
@@ -620,7 +629,8 @@ func VerifyThatWorkloadHasBeenInstrumented(
 	restartPodsManually bool,
 	instrumentationBy string,
 ) string {
-	By("waiting for the workload to get instrumented (polling its labels and events to check)")
+	By(fmt.Sprintf("%s: waiting for the workload to get instrumented (polling its labels and events to check)",
+		workloadType))
 	Eventually(func(g Gomega) {
 		VerifyLabels(g, namespace, workloadType, true, instrumentationBy)
 		verifySuccessfulInstrumentationEvent(g, namespace, workloadType, instrumentationBy)
@@ -630,7 +640,7 @@ func VerifyThatWorkloadHasBeenInstrumented(
 		restartAllPods(namespace)
 	}
 
-	By("waiting for spans to be captured")
+	By(fmt.Sprintf("%s: waiting for spans to be captured", workloadType))
 	var testId string
 	if isBatch {
 		By(fmt.Sprintf("waiting for the test ID file to be written by the %s under test", workloadType))
@@ -657,7 +667,7 @@ func VerifyThatWorkloadHasBeenInstrumented(
 	Eventually(func(g Gomega) {
 		verifySpans(g, isBatch, workloadType, port, httpPathWithQuery)
 	}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
-	By("matchin spans have been received")
+	By(fmt.Sprintf("%s: matching spans have been received", workloadType))
 	return testId
 }
 
@@ -670,7 +680,9 @@ func VerifyThatInstrumentationHasBeenReverted(
 	testId string,
 	instrumentationBy string,
 ) {
-	By("waiting for the instrumentation to get removed from the workload (polling its labels and events to check)")
+	By(fmt.Sprintf(
+		"%s: waiting for the instrumentation to get removed from the workload (polling its labels and events to check)",
+		workloadType))
 	Eventually(func(g Gomega) {
 		verifyLabelsHaveBeenRemoved(g, namespace, workloadType)
 		verifySuccessfulUninstrumentationEvent(g, namespace, workloadType, instrumentationBy)
@@ -691,12 +703,16 @@ func VerifyThatInstrumentationHasBeenReverted(
 		secondsToCheckForSpans = 80
 	}
 	httpPathWithQuery := fmt.Sprintf("/dash0-k8s-operator-test?id=%s", testId)
-	By(fmt.Sprintf("verifying that spans are no longer being captured (checking for %d seconds)", secondsToCheckForSpans))
+	By(
+		fmt.Sprintf("%s: verifying that spans are no longer being captured (checking for %d seconds)",
+			workloadType,
+			secondsToCheckForSpans,
+		))
 	Consistently(func(g Gomega) {
-		verifyNoSpans(isBatch, port, httpPathWithQuery)
+		verifyNoSpans(isBatch, workloadType, port, httpPathWithQuery)
 	}, time.Duration(secondsToCheckForSpans)*time.Second, 1*time.Second).Should(Succeed())
 
-	By("matching spans are no longer captured")
+	By(fmt.Sprintf("%s: matching spans are no longer captured", workloadType))
 }
 
 func VerifyThatFailedInstrumentationAttemptLabelsHaveBeenRemovedRemoved(namespace string, workloadType string) {
@@ -855,17 +871,18 @@ func restartAllPods(namespace string) {
 				"--namespace",
 				namespace,
 				"--selector",
-				"app=dash0-operator-nodejs-20-express-test-app",
+				"app=dash0-operator-nodejs-20-express-test-replicaset-app",
 			))).To(Succeed())
 
 }
 
 func verifySpans(g Gomega, isBatch bool, workloadType string, port int, httpPathWithQuery string) {
 	spansFound := sendRequestAndFindMatchingSpans(g, isBatch, workloadType, port, httpPathWithQuery, true, nil)
-	g.Expect(spansFound).To(BeTrue(), "expected to find at least one matching HTTP server span")
+	g.Expect(spansFound).To(BeTrue(),
+		fmt.Sprintf("%s: expected to find at least one matching HTTP server span", workloadType))
 }
 
-func verifyNoSpans(isBatch bool, port int, httpPathWithQuery string) {
+func verifyNoSpans(isBatch bool, workloadType string, port int, httpPathWithQuery string) {
 	timestampLowerBound := time.Now()
 	spansFound := sendRequestAndFindMatchingSpans(
 		Default,
@@ -876,7 +893,7 @@ func verifyNoSpans(isBatch bool, port int, httpPathWithQuery string) {
 		false,
 		&timestampLowerBound,
 	)
-	Expect(spansFound).To(BeFalse(), "expected to find no matching HTTP server span")
+	Expect(spansFound).To(BeFalse(), fmt.Sprintf("%s: expected to find no matching HTTP server span", workloadType))
 }
 
 func sendRequestAndFindMatchingSpans(
