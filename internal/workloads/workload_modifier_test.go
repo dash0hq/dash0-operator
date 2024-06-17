@@ -112,28 +112,12 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			})
 		})
 
-		It("should not touch a deployment that has opted out of instrumentation", func() {
-			workload := DeploymentWithOptOutLabel(TestNamespaceName, DeploymentNamePrefix)
-			result := workloadModifier.ModifyDeployment(workload)
-
-			Expect(result).To(BeFalse())
-			VerifyDeploymentWithOptOutLabel(workload)
-		})
-
 		It("should instrument a basic cron job", func() {
 			workload := BasicCronJob(TestNamespaceName, CronJobNamePrefix)
 			result := workloadModifier.ModifyCronJob(workload)
 
 			Expect(result).To(BeTrue())
 			VerifyModifiedCronJob(workload, BasicInstrumentedPodSpecExpectations)
-		})
-
-		It("should not touch a cron job that has opted out of instrumentation", func() {
-			workload := CronJobWithOptOutLabel(TestNamespaceName, DeploymentNamePrefix)
-			result := workloadModifier.ModifyCronJob(workload)
-
-			Expect(result).To(BeFalse())
-			VerifyCronJobWithOptOutLabel(workload)
 		})
 
 		It("should instrument a basic daemon set", func() {
@@ -144,28 +128,12 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			VerifyModifiedDaemonSet(workload, BasicInstrumentedPodSpecExpectations)
 		})
 
-		It("should not touch a daemon set that has opted out of instrumentation", func() {
-			workload := DaemonSetWithOptOutLabel(TestNamespaceName, DeploymentNamePrefix)
-			result := workloadModifier.ModifyDaemonSet(workload)
-
-			Expect(result).To(BeFalse())
-			VerifyDaemonSetWithOptOutLabel(workload)
-		})
-
 		It("should instrument a basic job", func() {
 			workload := BasicJob(TestNamespaceName, JobNamePrefix)
 			result := workloadModifier.ModifyJob(workload)
 
 			Expect(result).To(BeTrue())
 			VerifyModifiedJob(workload, BasicInstrumentedPodSpecExpectations)
-		})
-
-		It("should not touch a job that has opted out of instrumentation", func() {
-			workload := JobWithOptOutLabel(TestNamespaceName, DeploymentNamePrefix)
-			result := workloadModifier.ModifyJob(workload)
-
-			Expect(result).To(BeFalse())
-			VerifyJobWithOptOutLabel(workload)
 		})
 
 		It("should instrument a basic replica set", func() {
@@ -184,28 +152,12 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			VerifyUnmodifiedReplicaSet(workload)
 		})
 
-		It("should not touch a replica set that has opted out of instrumentation", func() {
-			workload := ReplicaSetWithOptOutLabel(TestNamespaceName, DeploymentNamePrefix)
-			result := workloadModifier.ModifyReplicaSet(workload)
-
-			Expect(result).To(BeFalse())
-			VerifyReplicaSetWithOptOutLabel(workload)
-		})
-
 		It("should instrument a basic stateful set", func() {
 			workload := BasicStatefulSet(TestNamespaceName, StatefulSetNamePrefix)
 			result := workloadModifier.ModifyStatefulSet(workload)
 
 			Expect(result).To(BeTrue())
 			VerifyModifiedStatefulSet(workload, BasicInstrumentedPodSpecExpectations)
-		})
-
-		It("should not touch a stateful set that has opted out of instrumentation", func() {
-			workload := StatefulSetWithOptOutLabel(TestNamespaceName, DeploymentNamePrefix)
-			result := workloadModifier.ModifyStatefulSet(workload)
-
-			Expect(result).To(BeFalse())
-			VerifyStatefulSetWithOptOutLabel(workload)
 		})
 	})
 
@@ -216,14 +168,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 
 			Expect(result).To(BeTrue())
 			VerifyUnmodifiedDeployment(workload)
-		})
-
-		It("should not touch deployments that have opted out of instrumentation", func() {
-			workload := DeploymentWithOptOutLabel(TestNamespaceName, DeploymentNamePrefix)
-			result := workloadModifier.RevertDeployment(workload)
-
-			Expect(result).To(BeFalse())
-			VerifyDeploymentWithOptOutLabel(workload)
 		})
 
 		It("should remove Dash0 from a instrumented deployment that has multiple containers, and already has volumes and init containers previous to being instrumented", func() {
@@ -263,28 +207,12 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			VerifyUnmodifiedCronJob(workload)
 		})
 
-		It("should not touch cron jobs that have opted out of instrumentation", func() {
-			workload := CronJobWithOptOutLabel(TestNamespaceName, DeploymentNamePrefix)
-			result := workloadModifier.RevertCronJob(workload)
-
-			Expect(result).To(BeFalse())
-			VerifyCronJobWithOptOutLabel(workload)
-		})
-
 		It("should remove Dash0 from an instrumented daemon set", func() {
 			workload := InstrumentedDaemonSet(TestNamespaceName, DaemonSetNamePrefix)
 			result := workloadModifier.RevertDaemonSet(workload)
 
 			Expect(result).To(BeTrue())
 			VerifyUnmodifiedDaemonSet(workload)
-		})
-
-		It("should not touch daemon sets that have opted out of instrumentation", func() {
-			workload := DaemonSetWithOptOutLabel(TestNamespaceName, DeploymentNamePrefix)
-			result := workloadModifier.RevertDaemonSet(workload)
-
-			Expect(result).To(BeFalse())
-			VerifyDaemonSetWithOptOutLabel(workload)
 		})
 
 		It("should remove Dash0 from an instrumented job", func() {
@@ -295,28 +223,12 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			VerifyUnmodifiedJob(workload)
 		})
 
-		It("should not touch jobs that have opted out of instrumentation", func() {
-			workload := JobWithOptOutLabel(TestNamespaceName, DeploymentNamePrefix)
-			result := workloadModifier.RevertJob(workload)
-
-			Expect(result).To(BeFalse())
-			VerifyJobWithOptOutLabel(workload)
-		})
-
 		It("should remove Dash0 from an instrumented replica set", func() {
 			workload := InstrumentedReplicaSet(TestNamespaceName, ReplicaSetNamePrefix)
 			result := workloadModifier.RevertReplicaSet(workload)
 
 			Expect(result).To(BeTrue())
 			VerifyUnmodifiedReplicaSet(workload)
-		})
-
-		It("should not touch replica sets that have opted out of instrumentation", func() {
-			workload := ReplicaSetWithOptOutLabel(TestNamespaceName, DeploymentNamePrefix)
-			result := workloadModifier.RevertReplicaSet(workload)
-
-			Expect(result).To(BeFalse())
-			VerifyReplicaSetWithOptOutLabel(workload)
 		})
 
 		It("should not remove Dash0 from a replica set that is owned by a deployment", func() {
@@ -333,14 +245,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 
 			Expect(result).To(BeTrue())
 			VerifyUnmodifiedStatefulSet(workload)
-		})
-
-		It("should not touch a stateful sets that have opted out of instrumentation", func() {
-			workload := StatefulSetWithOptOutLabel(TestNamespaceName, DeploymentNamePrefix)
-			result := workloadModifier.RevertStatefulSet(workload)
-
-			Expect(result).To(BeFalse())
-			VerifyStatefulSetWithOptOutLabel(workload)
 		})
 	})
 })

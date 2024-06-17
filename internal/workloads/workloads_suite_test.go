@@ -7,7 +7,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func TestK8sresources(t *testing.T) {
+func TestWorkloadModifications(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Workload Modifications Suite")
 }

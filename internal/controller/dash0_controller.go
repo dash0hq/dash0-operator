@@ -383,10 +383,6 @@ func (r *Dash0Reconciler) addLabelsToImmutableJobsOnInstrumentation(
 	job batchv1.Job,
 	reconcileLogger *logr.Logger,
 ) {
-	if job.DeletionTimestamp != nil {
-		// do not modify resources that are being deleted
-		return
-	}
 	logger := reconcileLogger.WithValues(
 		workkloadTypeLabel,
 		"Job",
@@ -395,6 +391,16 @@ func (r *Dash0Reconciler) addLabelsToImmutableJobsOnInstrumentation(
 		workloadNameLabel,
 		job.GetName(),
 	)
+	if job.DeletionTimestamp != nil {
+		// do not modify resources that are being deleted
+		logger.Info("not instrumenting this workload since it is about to be deleted (a deletion timestamp is set)")
+		return
+	}
+	if util.HasOptedOutOfInstrumenationForWorkload(&job.ObjectMeta) {
+		logger.Info("not instrumenting this workload due to dash0.com/enable=false")
+		return
+	}
+
 	retryErr := util.Retry("labelling immutable job", func() error {
 		if err := r.Client.Get(ctx, client.ObjectKey{
 			Namespace: job.GetNamespace(),
@@ -480,10 +486,6 @@ func (r *Dash0Reconciler) instrumentWorkload(
 ) {
 	objectMeta := workload.getObjectMeta()
 	kind := workload.getKind()
-	if objectMeta.DeletionTimestamp != nil {
-		// do not modify resources that are being deleted
-		return
-	}
 	logger := reconcileLogger.WithValues(
 		workkloadTypeLabel,
 		kind,
@@ -492,6 +494,15 @@ func (r *Dash0Reconciler) instrumentWorkload(
 		workloadNameLabel,
 		objectMeta.GetName(),
 	)
+	if objectMeta.DeletionTimestamp != nil {
+		// do not modify resources that are being deleted
+		logger.Info("not instrumenting this workload since it is about to be deleted (a deletion timestamp is set)")
+		return
+	}
+	if util.HasOptedOutOfInstrumenationForWorkload(workload.getObjectMeta()) {
+		logger.Info("not instrumenting this workload due to dash0.com/enable=false")
+		return
+	}
 
 	hasBeenModified := false
 	retryErr := util.Retry(fmt.Sprintf("instrumenting %s", kind), func() error {
@@ -754,10 +765,6 @@ func (r *Dash0Reconciler) findAndHandleJobOnUninstrumentation(
 }
 
 func (r *Dash0Reconciler) handleJobOnUninstrumentation(ctx context.Context, job batchv1.Job, reconcileLogger *logr.Logger) {
-	if job.DeletionTimestamp != nil {
-		// do not modify resources that are being deleted
-		return
-	}
 	logger := reconcileLogger.WithValues(
 		workkloadTypeLabel,
 		"Job",
@@ -766,6 +773,16 @@ func (r *Dash0Reconciler) handleJobOnUninstrumentation(ctx context.Context, job 
 		workloadNameLabel,
 		job.GetName(),
 	)
+	if job.DeletionTimestamp != nil {
+		// do not modify resources that are being deleted
+		logger.Info("not uninstrumenting this workload since it is about to be deleted (a deletion timestamp is set)")
+		return
+	}
+	// Note: In contrast to the instrumentation logic, there is no need to check for dash.com/enable=false here:
+	// If it is set, the workload would not have been instrumented in the first place, hence the label selector filter
+	// looking for dash0.com/instrumented=true would not have matched. Or if the workload is actually instrumented,
+	// although it has dash0.com/enabled=false it must have been set after the instrumentation, in which case
+	// uninstrumenting it is the correct thing to do.
 
 	createImmutableWorkloadsError := false
 	retryErr := util.Retry("removing labels from immutable job", func() error {
@@ -872,10 +889,6 @@ func (r *Dash0Reconciler) revertWorkloadInstrumentation(
 ) {
 	objectMeta := workload.getObjectMeta()
 	kind := workload.getKind()
-	if objectMeta.DeletionTimestamp != nil {
-		// do not modify resources that are being deleted
-		return
-	}
 	logger := reconcileLogger.WithValues(
 		workkloadTypeLabel,
 		kind,
@@ -884,6 +897,16 @@ func (r *Dash0Reconciler) revertWorkloadInstrumentation(
 		workloadNameLabel,
 		objectMeta.GetName(),
 	)
+	if objectMeta.DeletionTimestamp != nil {
+		// do not modify resources that are being deleted
+		logger.Info("not uninstrumenting this workload since it is about to be deleted (a deletion timestamp is set)")
+		return
+	}
+	// Note: In contrast to the instrumentation logic, there is no need to check for dash.com/enable=false here:
+	// If it is set, the workload would not have been instrumented in the first place, hence the label selector filter
+	// looking for dash0.com/instrumented=true would not have matched. Or if the workload is actually instrumented,
+	// although it has dash0.com/enabled=false it must have been set after the instrumentation, in which case
+	// uninstrumenting it is the correct thing to do.
 
 	hasBeenModified := false
 	retryErr := util.Retry(fmt.Sprintf("uninstrumenting %s", kind), func() error {

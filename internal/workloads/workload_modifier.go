@@ -88,9 +88,6 @@ func (m *ResourceModifier) ModifyStatefulSet(statefulSet *appsv1.StatefulSet) bo
 }
 
 func (m *ResourceModifier) modifyResource(podTemplateSpec *corev1.PodTemplateSpec, meta *metav1.ObjectMeta) bool {
-	if util.HasOptedOutOfInstrumenationForWorkload(meta) {
-		return false
-	}
 	hasBeenModified := m.modifyPodSpec(&podTemplateSpec.Spec)
 	if hasBeenModified {
 		util.AddInstrumentationLabels(meta, true, m.instrumentationMetadata)
@@ -318,9 +315,6 @@ func (m *ResourceModifier) RevertStatefulSet(statefulSet *appsv1.StatefulSet) bo
 }
 
 func (m *ResourceModifier) revertResource(podTemplateSpec *corev1.PodTemplateSpec, meta *metav1.ObjectMeta) bool {
-	if util.HasOptedOutOfInstrumenationForWorkload(meta) {
-		return false
-	}
 	if util.InstrumenationAttemptHasFailed(meta) {
 		// resource has never been instrumented successfully, only remove labels
 		util.RemoveInstrumentationLabels(meta)
