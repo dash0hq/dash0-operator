@@ -4,10 +4,10 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: dash0-operator-nodejs-20-express-test-service
+  name: dash0-operator-nodejs-20-express-test-deployment-service
 spec:
   selector:
-    app: dash0-operator-nodejs-20-express-test-app
+    app: dash0-operator-nodejs-20-express-test-deployment-app
   ports:
     - port: 1207
       targetPort: 1207
@@ -18,19 +18,19 @@ kind: Deployment
 metadata:
   name: dash0-operator-nodejs-20-express-test-deployment
   labels:
-    app: dash0-operator-nodejs-20-express-test-app
+    app: dash0-operator-nodejs-20-express-test-deployment-app
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: dash0-operator-nodejs-20-express-test-app
+      app: dash0-operator-nodejs-20-express-test-deployment-app
   template:
     metadata:
       labels:
-        app: dash0-operator-nodejs-20-express-test-app
+        app: dash0-operator-nodejs-20-express-test-deployment-app
     spec:
       containers:
-        - name: dash0-operator-nodejs-20-express-test-app
+        - name: dash0-operator-nodejs-20-express-test-deployment-app
           image: "dash0-operator-nodejs-20-express-test-app:latest"
           env:
             - name: PORT

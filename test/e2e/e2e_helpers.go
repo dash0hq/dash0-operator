@@ -527,7 +527,7 @@ func InstallNodeJsReplicaSet(namespace string) error {
 			"--namespace",
 			namespace,
 			"--selector",
-			"app=dash0-operator-nodejs-20-express-test-app",
+			"app=dash0-operator-nodejs-20-express-test-replicaset-app",
 			"--for",
 			"condition=ContainersReady",
 			"--timeout",

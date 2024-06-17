@@ -4,10 +4,10 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: dash0-operator-nodejs-20-express-test-service
+  name: dash0-operator-nodejs-20-express-test-statefulset-service
 spec:
   selector:
-    app: dash0-operator-nodejs-20-express-test-app
+    app: dash0-operator-nodejs-20-express-test-statefulset-app
   ports:
     - port: 1210
       targetPort: 1210
@@ -20,18 +20,17 @@ metadata:
 spec:
   selector:
     matchLabels:
-      # has to match .spec.template.metadata.labels
-      app: dash0-operator-nodejs-20-express-test-app
+      app: dash0-operator-nodejs-20-express-test-statefulset-app
   serviceName: "dash0-operator-nodejs-20-express-test-service"
   replicas: 1
   template:
     metadata:
       labels:
-        app: dash0-operator-nodejs-20-express-test-app
+        app: dash0-operator-nodejs-20-express-test-statefulset-app
     spec:
       terminationGracePeriodSeconds: 3
       containers:
-        - name: dash0-operator-nodejs-20-express-test-app
+        - name: dash0-operator-nodejs-20-express-test-statefulset-app
           image: "dash0-operator-nodejs-20-express-test-app:latest"
           env:
             - name: PORT
