@@ -10,7 +10,7 @@ spec:
     spec:
       restartPolicy: Never
       containers:
-        - name: dash0-operator-nodejs-20-express-test-app
+        - name: dash0-operator-nodejs-20-express-test-job-app
           image: "dash0-operator-nodejs-20-express-test-app:latest"
           env:
             - name: PORT

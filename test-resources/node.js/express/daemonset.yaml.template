@@ -4,10 +4,10 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: dash0-operator-nodejs-20-express-test-service
+  name: dash0-operator-nodejs-20-express-test-daemonset-service
 spec:
   selector:
-    app: dash0-operator-nodejs-20-express-test-app
+    app: dash0-operator-nodejs-20-express-test-daemonset-app
   ports:
     - port: 1206
       targetPort: 1206
@@ -18,18 +18,18 @@ kind: DaemonSet
 metadata:
   name: dash0-operator-nodejs-20-express-test-daemonset
   labels:
-    app: dash0-operator-nodejs-20-express-test-app
+    app: dash0-operator-nodejs-20-express-test-daemonset-app
 spec:
   selector:
     matchLabels:
-      app: dash0-operator-nodejs-20-express-test-app
+      app: dash0-operator-nodejs-20-express-test-daemonset-app
   template:
     metadata:
       labels:
-        app: dash0-operator-nodejs-20-express-test-app
+        app: dash0-operator-nodejs-20-express-test-daemonset-app
     spec:
       containers:
-        - name: dash0-operator-nodejs-20-express-test-app
+        - name: dash0-operator-nodejs-20-express-test-daemonset-app
           image: "dash0-operator-nodejs-20-express-test-app:latest"
           env:
             - name: PORT
