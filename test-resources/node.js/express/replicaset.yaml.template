@@ -4,10 +4,10 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: dash0-operator-nodejs-20-express-test-service
+  name: dash0-operator-nodejs-20-express-test-replicaset-service
 spec:
   selector:
-    app: dash0-operator-nodejs-20-express-test-app
+    app: dash0-operator-nodejs-20-express-test-replicaset-app
   ports:
     - port: 1209
       targetPort: 1209
@@ -18,19 +18,19 @@ kind: ReplicaSet
 metadata:
   name: dash0-operator-nodejs-20-express-test-replicaset
   labels:
-    app: dash0-operator-nodejs-20-express-test-app
+    app: dash0-operator-nodejs-20-express-test-replicaset-app
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: dash0-operator-nodejs-20-express-test-app
+      app: dash0-operator-nodejs-20-express-test-replicaset-app
   template:
     metadata:
       labels:
-        app: dash0-operator-nodejs-20-express-test-app
+        app: dash0-operator-nodejs-20-express-test-replicaset-app
     spec:
       containers:
-        - name: dash0-operator-nodejs-20-express-test-app
+        - name: dash0-operator-nodejs-20-express-test-replicaset-app
           image: "dash0-operator-nodejs-20-express-test-app:latest"
           env:
             - name: PORT
