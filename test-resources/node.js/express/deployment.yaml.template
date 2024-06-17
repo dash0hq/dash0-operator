@@ -33,6 +33,8 @@ spec:
         - name: dash0-operator-nodejs-20-express-test-app
           image: "dash0-operator-nodejs-20-express-test-app:latest"
           env:
+            - name: PORT
+              value: "1207"
             - name: DASH0_DEBUG
               value: "true"
           ports:

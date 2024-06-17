@@ -615,6 +615,7 @@ func DeleteTestIdFiles() {
 func VerifyThatWorkloadHasBeenInstrumented(
 	namespace string,
 	workloadType string,
+	port int,
 	isBatch bool,
 	restartPodsManually bool,
 	instrumentationBy string,
@@ -654,7 +655,7 @@ func VerifyThatWorkloadHasBeenInstrumented(
 
 	httpPathWithQuery := fmt.Sprintf("/dash0-k8s-operator-test?id=%s", testId)
 	Eventually(func(g Gomega) {
-		verifySpans(g, isBatch, workloadType, httpPathWithQuery)
+		verifySpans(g, isBatch, workloadType, port, httpPathWithQuery)
 	}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
 	By("matchin spans have been received")
 	return testId
@@ -663,6 +664,7 @@ func VerifyThatWorkloadHasBeenInstrumented(
 func VerifyThatInstrumentationHasBeenReverted(
 	namespace string,
 	workloadType string,
+	port int,
 	isBatch bool,
 	restartPodsManually bool,
 	testId string,
@@ -691,7 +693,7 @@ func VerifyThatInstrumentationHasBeenReverted(
 	httpPathWithQuery := fmt.Sprintf("/dash0-k8s-operator-test?id=%s", testId)
 	By(fmt.Sprintf("verifying that spans are no longer being captured (checking for %d seconds)", secondsToCheckForSpans))
 	Consistently(func(g Gomega) {
-		verifyNoSpans(isBatch, httpPathWithQuery)
+		verifyNoSpans(isBatch, port, httpPathWithQuery)
 	}, time.Duration(secondsToCheckForSpans)*time.Second, 1*time.Second).Should(Succeed())
 
 	By("matching spans are no longer captured")
@@ -858,14 +860,22 @@ func restartAllPods(namespace string) {
 
 }
 
-func verifySpans(g Gomega, isBatch bool, workloadType string, httpPathWithQuery string) {
-	spansFound := sendRequestAndFindMatchingSpans(g, isBatch, workloadType, httpPathWithQuery, true, nil)
+func verifySpans(g Gomega, isBatch bool, workloadType string, port int, httpPathWithQuery string) {
+	spansFound := sendRequestAndFindMatchingSpans(g, isBatch, workloadType, port, httpPathWithQuery, true, nil)
 	g.Expect(spansFound).To(BeTrue(), "expected to find at least one matching HTTP server span")
 }
 
-func verifyNoSpans(isBatch bool, httpPathWithQuery string) {
+func verifyNoSpans(isBatch bool, port int, httpPathWithQuery string) {
 	timestampLowerBound := time.Now()
-	spansFound := sendRequestAndFindMatchingSpans(Default, isBatch, "", httpPathWithQuery, false, &timestampLowerBound)
+	spansFound := sendRequestAndFindMatchingSpans(
+		Default,
+		isBatch,
+		"",
+		port,
+		httpPathWithQuery,
+		false,
+		&timestampLowerBound,
+	)
 	Expect(spansFound).To(BeFalse(), "expected to find no matching HTTP server span")
 }
 
@@ -873,17 +883,18 @@ func sendRequestAndFindMatchingSpans(
 	g Gomega,
 	isBatch bool,
 	workloadType string,
+	port int,
 	httpPathWithQuery string,
 	requestsMustNotFail bool,
 	timestampLowerBound *time.Time,
 ) bool {
-	sendRequest(g, isBatch, httpPathWithQuery, requestsMustNotFail)
+	sendRequest(g, isBatch, port, httpPathWithQuery, requestsMustNotFail)
 	return fileHasMatchingSpan(g, workloadType, httpPathWithQuery, timestampLowerBound)
 }
 
-func sendRequest(g Gomega, isBatch bool, httpPathWithQuery string, mustNotFail bool) {
+func sendRequest(g Gomega, isBatch bool, port int, httpPathWithQuery string, mustNotFail bool) {
 	if !isBatch {
-		response, err := http.Get(fmt.Sprintf("http://localhost:1207%s", httpPathWithQuery))
+		response, err := http.Get(fmt.Sprintf("http://localhost:%d%s", port, httpPathWithQuery))
 		if mustNotFail {
 			g.Expect(err).NotTo(HaveOccurred())
 			defer func() {
