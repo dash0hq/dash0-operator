@@ -16,6 +16,8 @@ spec:
             - name: dash0-operator-nodejs-20-express-test-app
               image: "dash0-operator-nodejs-20-express-test-app:latest"
               env:
+                - name: PORT
+                  value: "1205"
                 - name: DASH0_DEBUG
                   value: "true"
                 - name: TRIGGER_SELF_AND_EXIT
@@ -23,7 +25,7 @@ spec:
                 - name: TEST_ID_FILE
                   value: "/test-uuid/cronjob.test.id"
               ports:
-                - containerPort: 1207
+                - containerPort: 1205
               imagePullPolicy: Never
               volumeMounts:
                 - name: test-uuid
