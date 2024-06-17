@@ -9,8 +9,8 @@ spec:
   selector:
     app: dash0-operator-nodejs-20-express-test-app
   ports:
-    - port: 1207
-      targetPort: 1207
+    - port: 1209
+      targetPort: 1209
   type: LoadBalancer
 ---
 apiVersion: apps/v1
@@ -33,8 +33,10 @@ spec:
         - name: dash0-operator-nodejs-20-express-test-app
           image: "dash0-operator-nodejs-20-express-test-app:latest"
           env:
+            - name: PORT
+              value: "1209"
             - name: DASH0_DEBUG
               value: "true"
           ports:
-            - containerPort: 1207
+            - containerPort: 1209
           imagePullPolicy: Never

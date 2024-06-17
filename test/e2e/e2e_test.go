@@ -87,6 +87,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 		type controllerTest struct {
 			workloadType        string
+			port                int
 			installWorkload     func(string) error
 			isBatch             bool
 			restartPodsManually bool
@@ -105,6 +106,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				testId := VerifyThatWorkloadHasBeenInstrumented(
 					applicationUnderTestNamespace,
 					config.workloadType,
+					config.port,
 					config.isBatch,
 					config.restartPodsManually,
 					"controller",
@@ -115,6 +117,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				VerifyThatInstrumentationHasBeenReverted(
 					applicationUnderTestNamespace,
 					config.workloadType,
+					config.port,
 					config.isBatch,
 					config.restartPodsManually,
 					testId,
@@ -123,24 +126,29 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			},
 			Entry("should instrument and uninstrument existing cron jobs", controllerTest{
 				workloadType:    "cronjob",
+				port:            1205,
 				installWorkload: InstallNodeJsCronJob,
 				isBatch:         true,
 			}),
 			Entry("should instrument and uninstrument existing daemon sets", controllerTest{
 				workloadType:    "daemonset",
+				port:            1206,
 				installWorkload: InstallNodeJsDaemonSet,
 			}),
 			Entry("should instrument and uninstrument existing deployments", controllerTest{
 				workloadType:    "deployment",
+				port:            1207,
 				installWorkload: InstallNodeJsDeployment,
 			}),
 			Entry("should instrument and uninstrument existing replica set", controllerTest{
 				workloadType:        "replicaset",
+				port:                1209,
 				installWorkload:     InstallNodeJsReplicaSet,
 				restartPodsManually: true,
 			}),
 			Entry("should instrument and uninstrument existing stateful set", controllerTest{
 				workloadType:    "statefulset",
+				port:            1210,
 				installWorkload: InstallNodeJsStatefulSet,
 			}),
 		)
@@ -195,6 +203,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 		type webhookTest struct {
 			workloadType    string
+			port            int
 			installWorkload func(string) error
 			isBatch         bool
 		}
@@ -208,6 +217,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				VerifyThatWorkloadHasBeenInstrumented(
 					applicationUnderTestNamespace,
 					config.workloadType,
+					config.port,
 					config.isBatch,
 					false,
 					"webhook",
@@ -243,28 +253,34 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			},
 			Entry("should instrument new cron jobs", webhookTest{
 				workloadType:    "cronjob",
+				port:            1205,
 				installWorkload: InstallNodeJsCronJob,
 				isBatch:         true,
 			}),
 			Entry("should instrument new daemon sets", webhookTest{
 				workloadType:    "daemonset",
+				port:            1206,
 				installWorkload: InstallNodeJsDaemonSet,
 			}),
 			Entry("should instrument new deployments", webhookTest{
 				workloadType:    "deployment",
+				port:            1207,
 				installWorkload: InstallNodeJsDeployment,
 			}),
 			Entry("should instrument new jobs", webhookTest{
 				workloadType:    "job",
+				port:            1208,
 				installWorkload: InstallNodeJsJob,
 				isBatch:         true,
 			}),
 			Entry("should instrument new replica sets", webhookTest{
 				workloadType:    "replicaset",
+				port:            1209,
 				installWorkload: InstallNodeJsReplicaSet,
 			}),
 			Entry("should instrument new stateful sets", webhookTest{
 				workloadType:    "statefulset",
+				port:            1210,
 				installWorkload: InstallNodeJsStatefulSet,
 			}),
 		)
