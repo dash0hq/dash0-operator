@@ -37,7 +37,7 @@ type resourceHandler func(h *Handler, request admission.Request, gvkLabel string
 type routing map[string]map[string]map[string]resourceHandler
 
 const (
-	optOutAdmissionAllowedMessage = "not instrumenting this resource due to dash0.com/enable=false"
+	optOutAdmissionAllowedMessage = "not instrumenting this workload due to dash0.com/enable=false"
 )
 
 var (
@@ -178,6 +178,7 @@ func (h *Handler) handleCronJob(
 		return h.postProcess(request, cronJob, false, true, logger)
 	}
 	if util.HasOptedOutOfInstrumenationForWorkload(&cronJob.ObjectMeta) {
+		logger.Info(optOutAdmissionAllowedMessage)
 		return admission.Allowed(optOutAdmissionAllowedMessage)
 	}
 	hasBeenModified := h.newWorkloadModifier(logger).ModifyCronJob(cronJob)
@@ -198,6 +199,7 @@ func (h *Handler) handleDaemonSet(
 		return h.postProcess(request, daemonSet, false, true, logger)
 	}
 	if util.HasOptedOutOfInstrumenationForWorkload(&daemonSet.ObjectMeta) {
+		logger.Info(optOutAdmissionAllowedMessage)
 		return admission.Allowed(optOutAdmissionAllowedMessage)
 	}
 	hasBeenModified := h.newWorkloadModifier(logger).ModifyDaemonSet(daemonSet)
@@ -218,6 +220,7 @@ func (h *Handler) handleDeployment(
 		return h.postProcess(request, deployment, false, true, logger)
 	}
 	if util.HasOptedOutOfInstrumenationForWorkload(&deployment.ObjectMeta) {
+		logger.Info(optOutAdmissionAllowedMessage)
 		return admission.Allowed(optOutAdmissionAllowedMessage)
 	}
 	hasBeenModified := h.newWorkloadModifier(logger).ModifyDeployment(deployment)
@@ -238,6 +241,7 @@ func (h *Handler) handleJob(
 		return h.postProcess(request, job, false, true, logger)
 	}
 	if util.HasOptedOutOfInstrumenationForWorkload(&job.ObjectMeta) {
+		logger.Info(optOutAdmissionAllowedMessage)
 		return admission.Allowed(optOutAdmissionAllowedMessage)
 	}
 	hasBeenModified := h.newWorkloadModifier(logger).ModifyJob(job)
@@ -258,6 +262,7 @@ func (h *Handler) handleReplicaSet(
 		return h.postProcess(request, replicaSet, false, true, logger)
 	}
 	if util.HasOptedOutOfInstrumenationForWorkload(&replicaSet.ObjectMeta) {
+		logger.Info(optOutAdmissionAllowedMessage)
 		return admission.Allowed(optOutAdmissionAllowedMessage)
 	}
 	hasBeenModified := h.newWorkloadModifier(logger).ModifyReplicaSet(replicaSet)
@@ -278,7 +283,8 @@ func (h *Handler) handleStatefulSet(
 		return h.postProcess(request, statefulSet, false, true, logger)
 	}
 	if util.HasOptedOutOfInstrumenationForWorkload(&statefulSet.ObjectMeta) {
-		return admission.Allowed("not instrumenting this resource due to dash0.com/out-out=true")
+		logger.Info(optOutAdmissionAllowedMessage)
+		return admission.Allowed(optOutAdmissionAllowedMessage)
 	}
 	hasBeenModified := h.newWorkloadModifier(logger).ModifyStatefulSet(statefulSet)
 	return h.postProcess(request, statefulSet, hasBeenModified, false, logger)
