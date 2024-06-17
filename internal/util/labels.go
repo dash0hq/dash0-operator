@@ -33,10 +33,10 @@ const (
 
 var (
 	WorkloadsWithoutDash0InstrumentedLabelFilter = metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("!%s,%s != false", instrumentedLabelKey, dash0EnableLabelKey),
+		LabelSelector: fmt.Sprintf("!%s", instrumentedLabelKey),
 	}
 	WorkloadsWithDash0InstrumentedLabelFilter = metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("%s,%s != false", instrumentedLabelKey, dash0EnableLabelKey),
+		LabelSelector: instrumentedLabelKey,
 	}
 )
 
