@@ -133,6 +133,12 @@ func (h *Handler) Handle(ctx context.Context, request admission.Request) admissi
 	}
 
 	dash0CustomResource := dash0List.Items[0]
+	if dash0CustomResource.IsMarkedForDeletion() {
+		message := fmt.Sprintf("The Dash0 custom resource is about to be deleted in namespace %s, this newly "+
+			"deployed workload will not be modified to send telemetry to Dash0.", targetNamespace)
+		logger.Info(message)
+		return admission.Allowed(message)
+	}
 	instrumentWorkloads := util.ReadOptOutSetting(dash0CustomResource.Spec.InstrumentWorkloads)
 	instrumentNewWorkloads := util.ReadOptOutSetting(dash0CustomResource.Spec.InstrumentNewWorkloads)
 	if !instrumentWorkloads {
