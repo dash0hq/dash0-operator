@@ -123,7 +123,7 @@ var _ = Describe("The Dash0 webhook", func() {
 			})
 
 			It("should instrument a new basic daemon set", func() {
-				name := UniqueName(CronJobNamePrefix)
+				name := UniqueName(DaemonSetNamePrefix)
 				workload := CreateBasicDaemonSet(ctx, k8sClient, TestNamespaceName, name)
 				createdObjects = append(createdObjects, workload)
 				workload = GetDaemonSet(ctx, k8sClient, TestNamespaceName, name)
@@ -132,7 +132,7 @@ var _ = Describe("The Dash0 webhook", func() {
 			})
 
 			It("should instrument a new basic job", func() {
-				name := UniqueName(CronJobNamePrefix)
+				name := UniqueName(JobNamePrefix)
 				workload := CreateBasicJob(ctx, k8sClient, TestNamespaceName, name)
 				createdObjects = append(createdObjects, workload)
 				workload = GetJob(ctx, k8sClient, TestNamespaceName, name)
@@ -140,8 +140,26 @@ var _ = Describe("The Dash0 webhook", func() {
 				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
 			})
 
+			It("should instrument a new basic ownerless pod", func() {
+				name := UniqueName(PodNamePrefix)
+				workload := CreateBasicPod(ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				workload = GetPod(ctx, k8sClient, TestNamespaceName, name)
+				VerifyModifiedPod(workload, BasicInstrumentedPodSpecExpectations)
+				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
+			})
+
+			It("should not instrument a new pod owned by a replica set", func() {
+				name := UniqueName(PodNamePrefix)
+				workload := CreatePodOwnedByReplicaSet(ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				workload = GetPod(ctx, k8sClient, TestNamespaceName, name)
+				VerifyUnmodifiedPod(workload)
+				VerifyNoInstrumentationNecessaryEvent(ctx, clientset, TestNamespaceName, name, "webhook")
+			})
+
 			It("should instrument a new basic replica set", func() {
-				name := UniqueName(CronJobNamePrefix)
+				name := UniqueName(ReplicaSetNamePrefix)
 				workload := CreateBasicReplicaSet(ctx, k8sClient, TestNamespaceName, name)
 				createdObjects = append(createdObjects, workload)
 				workload = GetReplicaSet(ctx, k8sClient, TestNamespaceName, name)
@@ -159,7 +177,7 @@ var _ = Describe("The Dash0 webhook", func() {
 			})
 
 			It("should instrument a new basic stateful set", func() {
-				name := UniqueName(CronJobNamePrefix)
+				name := UniqueName(StatefulSetNamePrefix)
 				workload := CreateBasicStatefulSet(ctx, k8sClient, TestNamespaceName, name)
 				createdObjects = append(createdObjects, workload)
 				workload = GetStatefulSet(ctx, k8sClient, TestNamespaceName, name)
@@ -209,7 +227,17 @@ var _ = Describe("The Dash0 webhook", func() {
 				VerifyNoEvents(ctx, clientset, TestNamespaceName)
 			})
 
-			It("should not instrument an orphan replica set that has opted out of instrumentation", func() {
+			It("should not instrument an ownerless pod that has opted out of instrumentation", func() {
+				name := UniqueName(PodNamePrefix)
+				workload := PodWithOptOutLabel(TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				CreateWorkload(ctx, k8sClient, workload)
+				workload = GetPod(ctx, k8sClient, TestNamespaceName, name)
+				VerifyPodWithOptOutLabel(workload)
+				VerifyNoEvents(ctx, clientset, TestNamespaceName)
+			})
+
+			It("should not instrument an ownerless replica set that has opted out of instrumentation", func() {
 				name := UniqueName(ReplicaSetNamePrefix)
 				workload := ReplicaSetWithOptOutLabel(TestNamespaceName, name)
 				createdObjects = append(createdObjects, workload)
@@ -279,7 +307,19 @@ var _ = Describe("The Dash0 webhook", func() {
 				VerifyNoEvents(ctx, clientset, TestNamespaceName)
 			})
 
-			It("should not instrument an orphan replica set that has the label, but remove the label", func() {
+			It("should not instrument an ownerless pod that has the label, but remove the label", func() {
+				name := UniqueName(PodNamePrefix)
+				workload := BasicPod(TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				AddLabel(&workload.ObjectMeta, "dash0.com/webhook-ignore-once", "true")
+				CreateWorkload(ctx, k8sClient, workload)
+				workload = GetPod(ctx, k8sClient, TestNamespaceName, name)
+				VerifyUnmodifiedPod(workload)
+				VerifyWebhookIgnoreOnceLabelIsAbesent(&workload.ObjectMeta)
+				VerifyNoEvents(ctx, clientset, TestNamespaceName)
+			})
+
+			It("should not instrument an ownerless replica set that has the label, but remove the label", func() {
 				name := UniqueName(ReplicaSetNamePrefix)
 				workload := BasicReplicaSet(TestNamespaceName, name)
 				createdObjects = append(createdObjects, workload)

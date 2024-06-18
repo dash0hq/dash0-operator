@@ -3,5 +3,6 @@ cronjob.yaml
 daemonset.yaml
 deployment.yaml
 job.yaml
+pod.yaml
 replicaset.yaml
 statefulset.yaml

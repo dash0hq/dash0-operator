@@ -27,14 +27,22 @@ webhooks:
     - replicasets
     - statefulsets
   - apiGroups:
-      - batch
+    - batch
     apiVersions:
-      - v1
+    - v1
     operations:
-      - CREATE
-      - UPDATE
+    - CREATE
+    - UPDATE
     resources:
-      - cronjobs
-      - jobs
+    - cronjobs
+    - jobs
+  - apiGroups: [""]
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - pods
   sideEffects: None
   timeoutSeconds: 5

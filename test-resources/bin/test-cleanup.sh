@@ -24,7 +24,7 @@ kubectl delete -n ${target_namespace} -k config/samples || true
 make uninstall || true
 make undeploy-via-${deployment_tool} || true
 
-resource_types=( cronjob daemonset deployment job replicaset statefulset )
+resource_types=( cronjob daemonset deployment job pod replicaset statefulset )
 for resource_type in "${resource_types[@]}"; do
   test-resources/node.js/express/undeploy.sh ${target_namespace} ${resource_type}
 done

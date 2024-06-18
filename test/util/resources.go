@@ -29,6 +29,7 @@ const (
 	DaemonSetNamePrefix   = "daemonset"
 	DeploymentNamePrefix  = "deployment"
 	JobNamePrefix         = "job"
+	PodNamePrefix         = "pod"
 	ReplicaSetNamePrefix  = "replicaset"
 	StatefulSetNamePrefix = "statefulset"
 )
@@ -317,6 +318,69 @@ func CreateJobWithOptOutLabel(
 	return CreateWorkload(ctx, k8sClient, JobWithOptOutLabel(namespace, name)).(*batchv1.Job)
 }
 
+func BasicPod(namespace string, name string) *corev1.Pod {
+	workload := &corev1.Pod{}
+	workload.Namespace = namespace
+	workload.Name = name
+	workload.Spec = corev1.PodSpec{}
+	workload.Spec = basicPodSpec()
+	return workload
+}
+
+func CreateBasicPod(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *corev1.Pod {
+	return CreateWorkload(ctx, k8sClient, BasicPod(namespace, name)).(*corev1.Pod)
+}
+
+func InstrumentedPod(namespace string, name string) *corev1.Pod {
+	workload := BasicPod(namespace, name)
+	simulateInstrumentedPodSpec(&workload.Spec, &workload.ObjectMeta)
+	return workload
+}
+
+func CreateInstrumentedPod(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *corev1.Pod {
+	return CreateWorkload(ctx, k8sClient, InstrumentedPod(namespace, name)).(*corev1.Pod)
+}
+
+func PodOwnedByReplicaSet(namespace string, name string) *corev1.Pod {
+	workload := BasicPod(namespace, name)
+	workload.ObjectMeta = metav1.ObjectMeta{
+		Namespace: namespace,
+		Name:      name,
+		OwnerReferences: []metav1.OwnerReference{{
+			APIVersion: "apps/v1",
+			Kind:       "ReplicaSet",
+			Name:       "replicaset",
+			UID:        "1234",
+		}},
+	}
+	return workload
+}
+
+func CreatePodOwnedByReplicaSet(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *corev1.Pod {
+	return CreateWorkload(ctx, k8sClient, PodOwnedByReplicaSet(namespace, name)).(*corev1.Pod)
+}
+
+func PodWithOptOutLabel(namespace string, name string) *corev1.Pod {
+	workload := BasicPod(namespace, name)
+	addOptOutLabel(&workload.ObjectMeta)
+	return workload
+}
+
 func BasicReplicaSet(namespace string, name string) *appsv1.ReplicaSet {
 	workload := &appsv1.ReplicaSet{}
 	workload.Namespace = namespace
@@ -448,11 +512,17 @@ func CreateStatefulSetWithOptOutLabel(
 func basicPodSpecTemplate() corev1.PodTemplateSpec {
 	podSpecTemplate := corev1.PodTemplateSpec{}
 	podSpecTemplate.Labels = map[string]string{"app": "test"}
-	podSpecTemplate.Spec.Containers = []corev1.Container{{
+	podSpecTemplate.Spec = basicPodSpec()
+	return podSpecTemplate
+}
+
+func basicPodSpec() corev1.PodSpec {
+	podSpec := corev1.PodSpec{}
+	podSpec.Containers = []corev1.Container{{
 		Name:  "test-container-0",
 		Image: "ubuntu",
 	}}
-	return podSpecTemplate
+	return podSpec
 }
 
 func createSelector() *metav1.LabelSelector {
@@ -778,7 +848,11 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 }
 
 func simulateInstrumentedResource(podTemplateSpec *corev1.PodTemplateSpec, meta *metav1.ObjectMeta) {
-	podSpec := &podTemplateSpec.Spec
+	simulateInstrumentedPodSpec(&podTemplateSpec.Spec, meta)
+	addInstrumentationLabels(&podTemplateSpec.ObjectMeta, true)
+}
+
+func simulateInstrumentedPodSpec(podSpec *corev1.PodSpec, meta *metav1.ObjectMeta) {
 	podSpec.Volumes = []corev1.Volume{
 		{
 			Name: "dash0-instrumentation",
@@ -808,7 +882,6 @@ func simulateInstrumentedResource(podTemplateSpec *corev1.PodTemplateSpec, meta 
 	}
 
 	addInstrumentationLabels(meta, true)
-	addInstrumentationLabels(&podTemplateSpec.ObjectMeta, true)
 }
 
 func GetCronJob(
@@ -863,6 +936,21 @@ func GetJob(
 	name string,
 ) *batchv1.Job {
 	workload := &batchv1.Job{}
+	namespacedName := types.NamespacedName{
+		Namespace: namespace,
+		Name:      name,
+	}
+	ExpectWithOffset(1, k8sClient.Get(ctx, namespacedName, workload)).Should(Succeed())
+	return workload
+}
+
+func GetPod(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *corev1.Pod {
+	workload := &corev1.Pod{}
 	namespacedName := types.NamespacedName{
 		Namespace: namespace,
 		Name:      name,

@@ -136,7 +136,23 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			VerifyModifiedJob(workload, BasicInstrumentedPodSpecExpectations)
 		})
 
-		It("should instrument a basic replica set", func() {
+		It("should instrument a basic ownerless pod", func() {
+			workload := BasicPod(TestNamespaceName, PodNamePrefix)
+			result := workloadModifier.ModifyPod(workload)
+
+			Expect(result).To(BeTrue())
+			VerifyModifiedPod(workload, BasicInstrumentedPodSpecExpectations)
+		})
+
+		It("should not instrument a basic pod owned by another higher level workload", func() {
+			workload := PodOwnedByReplicaSet(TestNamespaceName, PodNamePrefix)
+			result := workloadModifier.ModifyPod(workload)
+
+			Expect(result).To(BeFalse())
+			VerifyUnmodifiedPod(workload)
+		})
+
+		It("should instrument a basic ownerless replica set", func() {
 			workload := BasicReplicaSet(TestNamespaceName, ReplicaSetNamePrefix)
 			result := workloadModifier.ModifyReplicaSet(workload)
 
@@ -223,7 +239,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			VerifyUnmodifiedJob(workload)
 		})
 
-		It("should remove Dash0 from an instrumented replica set", func() {
+		It("should remove Dash0 from an instrumented ownerless replica set", func() {
 			workload := InstrumentedReplicaSet(TestNamespaceName, ReplicaSetNamePrefix)
 			result := workloadModifier.RevertReplicaSet(workload)
 
