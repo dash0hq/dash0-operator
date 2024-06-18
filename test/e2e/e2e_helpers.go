@@ -84,18 +84,18 @@ func CheckIfRequiredPortsAreBlocked() {
 
 func RenderTemplates() {
 	By("render yaml templates")
-	ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command("test-resources/bin/render-templates.sh"))).To(Succeed())
+	Expect(RunAndIgnoreOutput(exec.Command("test-resources/bin/render-templates.sh"))).To(Succeed())
 }
 
 func SetKubeContext(kubeContextForTest string) (bool, string) {
 	By("reading current kubectx")
 	kubectxOutput, err := Run(exec.Command("kubectx", "-c"))
-	ExpectWithOffset(1, err).NotTo(HaveOccurred())
+	Expect(err).NotTo(HaveOccurred())
 	originalKubeContext := strings.TrimSpace(kubectxOutput)
 
 	if originalKubeContext != kubeContextForTest {
 		By("switching to kubectx docker-desktop, previous context " + originalKubeContext + " will be restored later")
-		ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command("kubectx", "docker-desktop"))).To(Succeed())
+		Expect(RunAndIgnoreOutput(exec.Command("kubectx", "docker-desktop"))).To(Succeed())
 		return true, originalKubeContext
 	} else {
 		return false, originalKubeContext
@@ -120,7 +120,7 @@ func EnsureCertManagerIsInstalled() bool {
 				"test-resources/cert-manager/deploy.sh. If the e2e tests find an existing cert-manager namespace, they "+
 				"will not deploy cert-manager and they will also not undeploy it after running the test suite.\n",
 		)
-		ExpectWithOffset(1, installCertManager()).To(Succeed())
+		Expect(installCertManager()).To(Succeed())
 		return true
 	} else {
 		fmt.Fprint(GinkgoWriter,
@@ -284,7 +284,7 @@ func RebuildOperatorControllerImage(operatorImageRepository string, operatorImag
 
 func RebuildDash0InstrumentationImage() bool {
 	By("building the dash0-instrumentation image")
-	return ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command("images/dash0-instrumentation/build.sh"))).To(Succeed())
+	return Expect(RunAndIgnoreOutput(exec.Command("images/dash0-instrumentation/build.sh"))).To(Succeed())
 }
 
 func DeployOperatorWithCollectorAndClearExportedTelemetry(
@@ -317,7 +317,7 @@ func DeployOperatorWithCollectorAndClearExportedTelemetry(
 			operatorHelmReleaseName,
 			"helm-chart/dash0-operator",
 		))
-	ExpectWithOffset(2, err).NotTo(HaveOccurred())
+	Expect(err).NotTo(HaveOccurred())
 	fmt.Fprintf(GinkgoWriter, "output of helm install:\n%s", output)
 
 	var controllerPodName string
@@ -333,20 +333,20 @@ func DeployOperatorWithCollectorAndClearExportedTelemetry(
 		)
 
 		podOutput, err := Run(cmd, false)
-		ExpectWithOffset(2, err).NotTo(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred())
 		podNames := GetNonEmptyLines(podOutput)
 		if len(podNames) != 1 {
 			return fmt.Errorf("expect 1 controller pods running, but got %d -- %s", len(podNames), podOutput)
 		}
 		controllerPodName = podNames[0]
-		ExpectWithOffset(2, controllerPodName).To(ContainSubstring("controller-manager"))
+		Expect(controllerPodName).To(ContainSubstring("controller-manager"))
 
 		cmd = exec.Command("kubectl", "get",
 			"pods", controllerPodName, "-o", "jsonpath={.status.phase}",
 			"-n", operatorNamespace,
 		)
 		status, err := Run(cmd)
-		ExpectWithOffset(2, err).NotTo(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred())
 		if status != "Running" {
 			return fmt.Errorf("controller pod in %s status", status)
 		}
@@ -529,6 +529,30 @@ func UninstallNodeJsJob(namespace string) error {
 	return uninstallNodeJsApplication(namespace, "job")
 }
 
+func InstallNodeJsPod(namespace string) error {
+	return installNodeJsApplication(
+		namespace,
+		"pod",
+		exec.Command(
+			"kubectl",
+			"wait",
+			"pod",
+			"--namespace",
+			namespace,
+			"--selector",
+			"app=dash0-operator-nodejs-20-express-test-pod-app",
+			"--for",
+			"condition=ContainersReady",
+			"--timeout",
+			"60s",
+		),
+	)
+}
+
+func UninstallNodeJsPod(namespace string) error {
+	return uninstallNodeJsApplication(namespace, "pod")
+}
+
 func InstallNodeJsReplicaSet(namespace string) error {
 	return installNodeJsApplication(
 		namespace,
@@ -577,12 +601,13 @@ func UninstallNodeJsStatefulSet(namespace string) error {
 
 func RemoveAllTestApplications(namespace string) {
 	By("uninstalling the test applications")
-	ExpectWithOffset(1, UninstallNodeJsCronJob(namespace)).To(Succeed())
-	ExpectWithOffset(1, UninstallNodeJsDaemonSet(namespace)).To(Succeed())
-	ExpectWithOffset(1, UninstallNodeJsDeployment(namespace)).To(Succeed())
-	ExpectWithOffset(1, UninstallNodeJsJob(namespace)).To(Succeed())
-	ExpectWithOffset(1, UninstallNodeJsReplicaSet(namespace)).To(Succeed())
-	ExpectWithOffset(1, UninstallNodeJsStatefulSet(namespace)).To(Succeed())
+	Expect(UninstallNodeJsCronJob(namespace)).To(Succeed())
+	Expect(UninstallNodeJsDaemonSet(namespace)).To(Succeed())
+	Expect(UninstallNodeJsDeployment(namespace)).To(Succeed())
+	Expect(UninstallNodeJsJob(namespace)).To(Succeed())
+	Expect(UninstallNodeJsPod(namespace)).To(Succeed())
+	Expect(UninstallNodeJsReplicaSet(namespace)).To(Succeed())
+	Expect(UninstallNodeJsStatefulSet(namespace)).To(Succeed())
 }
 
 func installNodeJsApplication(namespace string, kind string, waitCommand *exec.Cmd) error {
@@ -633,7 +658,7 @@ func VerifyThatWorkloadHasBeenInstrumented(
 		workloadType))
 	Eventually(func(g Gomega) {
 		VerifyLabels(g, namespace, workloadType, true, instrumentationBy)
-		verifySuccessfulInstrumentationEvent(g, namespace, workloadType, instrumentationBy)
+		VerifySuccessfulInstrumentationEvent(g, namespace, workloadType, instrumentationBy)
 	}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
 
 	if restartPodsManually {
@@ -684,8 +709,8 @@ func VerifyThatInstrumentationHasBeenReverted(
 		"%s: waiting for the instrumentation to get removed from the workload (polling its labels and events to check)",
 		workloadType))
 	Eventually(func(g Gomega) {
-		verifyLabelsHaveBeenRemoved(g, namespace, workloadType)
-		verifySuccessfulUninstrumentationEvent(g, namespace, workloadType, instrumentationBy)
+		VerifyNoDash0Labels(g, namespace, workloadType)
+		VerifySuccessfulUninstrumentationEvent(g, namespace, workloadType, instrumentationBy)
 	}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
 
 	if restartPodsManually {
@@ -718,37 +743,37 @@ func VerifyThatInstrumentationHasBeenReverted(
 func VerifyThatFailedInstrumentationAttemptLabelsHaveBeenRemovedRemoved(namespace string, workloadType string) {
 	By("waiting for the labels to get removed from the workload")
 	Eventually(func(g Gomega) {
-		verifyLabelsHaveBeenRemoved(g, namespace, workloadType)
+		VerifyNoDash0Labels(g, namespace, workloadType)
 	}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
 }
 
 func VerifyLabels(g Gomega, namespace string, kind string, successful bool, instrumentationBy string) {
 	instrumented := readLabel(g, namespace, kind, "dash0.com/instrumented")
-	g.ExpectWithOffset(1, instrumented).To(Equal(strconv.FormatBool(successful)))
+	g.Expect(instrumented).To(Equal(strconv.FormatBool(successful)))
 	operatorVersion := readLabel(g, namespace, kind, "dash0.com/operator-image")
-	g.ExpectWithOffset(1, operatorVersion).To(Or(
+	g.Expect(operatorVersion).To(Or(
 		Equal("dash0-operator-controller_latest"),
 		MatchRegexp("dash0-operator-controller_\\d+\\.\\d+\\.\\d+"),
 	))
 	initContainerImageVersion := readLabel(g, namespace, kind, "dash0.com/init-container-image")
-	g.ExpectWithOffset(1, initContainerImageVersion).To(MatchRegexp("dash0-instrumentation_\\d+\\.\\d+\\.\\d+"))
+	g.Expect(initContainerImageVersion).To(MatchRegexp("dash0-instrumentation_\\d+\\.\\d+\\.\\d+"))
 	instrumentedBy := readLabel(g, namespace, kind, "dash0.com/instrumented-by")
-	g.ExpectWithOffset(1, instrumentedBy).To(Equal(instrumentationBy))
+	g.Expect(instrumentedBy).To(Equal(instrumentationBy))
 	dash0Enable := readLabel(g, namespace, kind, "dash0.com/enable")
-	g.ExpectWithOffset(1, dash0Enable).To(Equal(""))
+	g.Expect(dash0Enable).To(Equal(""))
 }
 
-func verifyLabelsHaveBeenRemoved(g Gomega, namespace string, kind string) {
+func VerifyNoDash0Labels(g Gomega, namespace string, kind string) {
 	instrumented := readLabel(g, namespace, kind, "dash0.com/instrumented")
-	g.ExpectWithOffset(1, instrumented).To(Equal(""))
+	g.Expect(instrumented).To(Equal(""))
 	operatorVersion := readLabel(g, namespace, kind, "dash0.com/operator-image")
-	g.ExpectWithOffset(1, operatorVersion).To(Equal(""))
+	g.Expect(operatorVersion).To(Equal(""))
 	initContainerImageVersion := readLabel(g, namespace, kind, "dash0.com/init-container-image")
-	g.ExpectWithOffset(1, initContainerImageVersion).To(Equal(""))
+	g.Expect(initContainerImageVersion).To(Equal(""))
 	instrumentedBy := readLabel(g, namespace, kind, "dash0.com/instrumented-by")
-	g.ExpectWithOffset(1, instrumentedBy).To(Equal(""))
+	g.Expect(instrumentedBy).To(Equal(""))
 	dash0Enable := readLabel(g, namespace, kind, "dash0.com/enable")
-	g.ExpectWithOffset(1, dash0Enable).To(Equal(""))
+	g.Expect(dash0Enable).To(Equal(""))
 }
 
 func readLabel(g Gomega, namespace string, kind string, labelKey string) string {
@@ -762,11 +787,11 @@ func readLabel(g Gomega, namespace string, kind string, labelKey string) string 
 		"-o",
 		fmt.Sprintf("jsonpath={.metadata.labels['%s']}", strings.ReplaceAll(labelKey, ".", "\\.")),
 	), false)
-	g.ExpectWithOffset(1, err).NotTo(HaveOccurred())
+	g.Expect(err).NotTo(HaveOccurred())
 	return labelValue
 }
 
-func verifySuccessfulInstrumentationEvent(
+func VerifySuccessfulInstrumentationEvent(
 	g Gomega,
 	namespace string,
 	workloadType string,
@@ -796,7 +821,7 @@ func VerifyFailedInstrumentationEvent(
 	)
 }
 
-func verifySuccessfulUninstrumentationEvent(
+func VerifySuccessfulUninstrumentationEvent(
 	g Gomega,
 	namespace string,
 	workloadType string,
@@ -843,10 +868,10 @@ func verifyEvent(
 		"--for",
 		fmt.Sprintf("%s/%s", workloadType, resourceName),
 	), false)
-	g.ExpectWithOffset(1, err).NotTo(HaveOccurred())
+	g.Expect(err).NotTo(HaveOccurred())
 	var events corev1.EventList
 	err = json.Unmarshal([]byte(eventsJson), &events)
-	g.ExpectWithOffset(1, err).NotTo(HaveOccurred())
+	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(events.Items).To(
 		ContainElement(
 			testUtil.MatchEvent(
@@ -998,6 +1023,7 @@ func resourceSpansHaveExpectedResourceAttributes(workloadType string) func(span 
 
 		workloadAttributeFound := false
 		if workloadType == "replicaset" {
+			// There is no k8s.replicaset.name attribute.
 			workloadAttributeFound = true
 		} else {
 			workloadKey := fmt.Sprintf("k8s.%s.name", workloadType)
@@ -1011,12 +1037,19 @@ func resourceSpansHaveExpectedResourceAttributes(workloadType string) func(span 
 		}
 
 		podKey := "k8s.pod.name"
-		expectedPodPrefix := fmt.Sprintf("dash0-operator-nodejs-20-express-test-%s-", workloadType)
+		expectedPodName := fmt.Sprintf("dash0-operator-nodejs-20-express-test-%s", workloadType)
+		expectedPodPrefix := fmt.Sprintf("%s-", expectedPodName)
 		podAttributeFound := false
 		podAttribute, hasPodAttribute := attributes.Get(podKey)
 		if hasPodAttribute {
-			if strings.Contains(podAttribute.Str(), expectedPodPrefix) {
-				podAttributeFound = true
+			if workloadType == "pod" {
+				if podAttribute.Str() == expectedPodName {
+					podAttributeFound = true
+				}
+			} else {
+				if strings.Contains(podAttribute.Str(), expectedPodPrefix) {
+					podAttributeFound = true
+				}
 			}
 		}
 

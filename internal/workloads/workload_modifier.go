@@ -15,6 +15,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
@@ -76,8 +77,19 @@ func (m *ResourceModifier) AddLabelsToImmutableJob(job *batchv1.Job) {
 	util.AddInstrumentationLabels(&job.ObjectMeta, false, m.instrumentationMetadata)
 }
 
+func (m *ResourceModifier) ModifyPod(pod *corev1.Pod) bool {
+	if m.hasOwnerReference(pod) {
+		return false
+	}
+	hasBeenModified := m.modifyPodSpec(&pod.Spec)
+	if hasBeenModified {
+		util.AddInstrumentationLabels(&pod.ObjectMeta, true, m.instrumentationMetadata)
+	}
+	return hasBeenModified
+}
+
 func (m *ResourceModifier) ModifyReplicaSet(replicaSet *appsv1.ReplicaSet) bool {
-	if m.hasDeploymentOwnerReference(replicaSet) {
+	if m.hasOwnerReference(replicaSet) {
 		return false
 	}
 	return m.modifyResource(&replicaSet.Spec.Template, &replicaSet.ObjectMeta)
@@ -304,7 +316,7 @@ func (m *ResourceModifier) RemoveLabelsFromImmutableJob(job *batchv1.Job) {
 }
 
 func (m *ResourceModifier) RevertReplicaSet(replicaSet *appsv1.ReplicaSet) bool {
-	if m.hasDeploymentOwnerReference(replicaSet) {
+	if m.hasOwnerReference(replicaSet) {
 		return false
 	}
 	return m.revertResource(&replicaSet.Spec.Template, &replicaSet.ObjectMeta)
@@ -413,14 +425,6 @@ func (m *ResourceModifier) removeEnvironmentVariable(container *corev1.Container
 	})
 }
 
-func (m *ResourceModifier) hasDeploymentOwnerReference(replicaSet *appsv1.ReplicaSet) bool {
-	ownerReferences := replicaSet.ObjectMeta.OwnerReferences
-	if len(ownerReferences) > 0 {
-		for _, ownerReference := range ownerReferences {
-			if ownerReference.APIVersion == "apps/v1" && ownerReference.Kind == "Deployment" {
-				return true
-			}
-		}
-	}
-	return false
+func (m *ResourceModifier) hasOwnerReference(workload client.Object) bool {
+	return len(workload.GetOwnerReferences()) > 0
 }

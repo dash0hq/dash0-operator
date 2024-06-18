@@ -44,7 +44,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 	BeforeAll(func() {
 		pwdOutput, err := Run(exec.Command("pwd"), false)
-		ExpectWithOffset(1, err).NotTo(HaveOccurred())
+		Expect(err).NotTo(HaveOccurred())
 		workingDir := strings.TrimSpace(pwdOutput)
 		fmt.Fprintf(GinkgoWriter, "workingDir: %s\n", workingDir)
 
@@ -162,8 +162,8 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			})
 		})
 
-		Describe("when it detects existing immutable jobs", func() {
-			It("should label them accordingly", func() {
+		Describe("when it detects existing jobs or pods", func() {
+			It("should label immutable jobs accordingly", func() {
 				By("installing the Node.js job")
 				Expect(InstallNodeJsJob(applicationUnderTestNamespace)).To(Succeed())
 				By("deploy the operator and the Dash0 custom resource")
@@ -186,6 +186,18 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				UndeployDash0Resource(applicationUnderTestNamespace)
 
 				VerifyThatFailedInstrumentationAttemptLabelsHaveBeenRemovedRemoved(applicationUnderTestNamespace, "job")
+			})
+
+			It("should ignore existing pods", func() {
+				By("installing the Node.js pod")
+				Expect(InstallNodeJsPod(applicationUnderTestNamespace)).To(Succeed())
+				By("deploy the operator and the Dash0 custom resource")
+				DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace, operatorImageRepository, operatorImageTag)
+				DeployDash0Resource(applicationUnderTestNamespace)
+				By("verifying that the Node.js pod has not been labelled")
+				Eventually(func(g Gomega) {
+					VerifyNoDash0Labels(g, applicationUnderTestNamespace, "pod")
+				}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
 			})
 		})
 	})
@@ -281,6 +293,11 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				port:            1208,
 				installWorkload: InstallNodeJsJob,
 				isBatch:         true,
+			}),
+			Entry("should instrument new pods", webhookTest{
+				workloadType:    "pod",
+				port:            1211,
+				installWorkload: InstallNodeJsPod,
 			}),
 			Entry("should instrument new replica sets", webhookTest{
 				workloadType:    "replicaset",

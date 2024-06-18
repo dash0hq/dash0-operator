@@ -7,7 +7,7 @@ set -euo pipefail
 
 cd "$(dirname ${BASH_SOURCE})"/../..
 
-resource_types=( cronjob daemonset deployment job replicaset statefulset )
+resource_types=( cronjob daemonset deployment job pod replicaset statefulset )
 
 for resource_type in "${resource_types[@]}"; do
   cat test-resources/node.js/express/${resource_type}.yaml.template | envsubst > test-resources/node.js/express/${resource_type}.yaml

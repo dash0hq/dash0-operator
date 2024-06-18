@@ -12,6 +12,7 @@ import (
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -45,6 +46,11 @@ var (
 	decoder = scheme.Codecs.UniversalDecoder()
 
 	routes = routing{
+		"": {
+			"Pod": {
+				"v1": (*Handler).handlePod,
+			},
+		},
 		"batch": {
 			"CronJob": {
 				"v1": (*Handler).handleCronJob,
@@ -245,6 +251,27 @@ func (h *Handler) handleJob(
 	}
 	hasBeenModified := h.newWorkloadModifier(logger).ModifyJob(job)
 	return h.postProcess(request, job, hasBeenModified, false, logger)
+}
+
+func (h *Handler) handlePod(
+	request admission.Request,
+	gvkLabel string,
+	logger *logr.Logger,
+) admission.Response {
+	pod := &corev1.Pod{}
+	responseIfFailed, failed := h.preProcess(request, gvkLabel, pod)
+	if failed {
+		return responseIfFailed
+	}
+	if util.CheckAndDeleteIgnoreOnceLabel(&pod.ObjectMeta) {
+		return h.postProcess(request, pod, false, true, logger)
+	}
+	if util.HasOptedOutOfInstrumenationForWorkload(&pod.ObjectMeta) {
+		logger.Info(optOutAdmissionAllowedMessage)
+		return admission.Allowed(optOutAdmissionAllowedMessage)
+	}
+	hasBeenModified := h.newWorkloadModifier(logger).ModifyPod(pod)
+	return h.postProcess(request, pod, hasBeenModified, false, logger)
 }
 
 func (h *Handler) handleReplicaSet(

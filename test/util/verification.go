@@ -139,6 +139,21 @@ func VerifyJobWithOptOutLabel(resource *batchv1.Job) {
 	verifyNoDash0Labels(resource.Spec.Template.ObjectMeta)
 }
 
+func VerifyModifiedPod(resource *corev1.Pod, expectations PodSpecExpectations) {
+	verifyPodSpec(resource.Spec, expectations)
+	verifyLabelsAfterSuccessfulModification(resource.ObjectMeta)
+}
+
+func VerifyUnmodifiedPod(resource *corev1.Pod) {
+	verifyUnmodifiedPodSpec(resource.Spec)
+	verifyNoDash0Labels(resource.ObjectMeta)
+}
+
+func VerifyPodWithOptOutLabel(resource *corev1.Pod) {
+	verifyUnmodifiedPodSpec(resource.Spec)
+	verifyLabelsForOptOutWorkload(resource.ObjectMeta)
+}
+
 func VerifyModifiedReplicaSet(resource *appsv1.ReplicaSet, expectations PodSpecExpectations) {
 	verifyPodSpec(resource.Spec.Template.Spec, expectations)
 	verifyLabelsAfterSuccessfulModification(resource.ObjectMeta)
