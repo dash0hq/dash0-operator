@@ -145,7 +145,35 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				VerifyImmutableJobCouldNotBeModified(GetJob(ctx, k8sClient, namespace, name))
 			})
 
-			It("should instrument an existing orphan replicaset", func() {
+			It("should not instrument an existing ownerless pod", func() {
+				name := UniqueName(PodNamePrefix)
+				By("Inititalize a pod")
+				pod := CreateBasicPod(ctx, k8sClient, namespace, name)
+				createdObjects = append(createdObjects, pod)
+
+				triggerReconcileRequest(ctx, reconciler, "")
+
+				// We do not instrument existing pods via the controller, since they cannot be restarted.
+				// We only instrument new pods via the webhook.
+				verifyDash0ResourceIsAvailable(ctx)
+				VerifyNoEvents(ctx, clientset, namespace)
+				VerifyUnmodifiedPod(GetPod(ctx, k8sClient, namespace, name))
+			})
+
+			It("should not instrument an existing pod owned by a replicaset", func() {
+				name := UniqueName(PodNamePrefix)
+				By("Inititalize a pod")
+				pod := CreatePodOwnedByReplicaSet(ctx, k8sClient, namespace, name)
+				createdObjects = append(createdObjects, pod)
+
+				triggerReconcileRequest(ctx, reconciler, "")
+
+				verifyDash0ResourceIsAvailable(ctx)
+				VerifyNoEvents(ctx, clientset, namespace)
+				VerifyUnmodifiedPod(GetPod(ctx, k8sClient, namespace, name))
+			})
+
+			It("should instrument an existing ownerless replicaset", func() {
 				name := UniqueName(ReplicaSetNamePrefix)
 				By("Inititalize a replicaset")
 				replicaSet := CreateBasicReplicaSet(ctx, k8sClient, namespace, name)
@@ -223,7 +251,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				VerifyJobWithOptOutLabel(GetJob(ctx, k8sClient, namespace, name))
 			})
 
-			It("should not instrument an existing orphan replicaset with the opt-out label", func() {
+			It("should not instrument an existing ownerless replicaset with the opt-out label", func() {
 				name := UniqueName(ReplicaSetNamePrefix)
 				By("Inititalize a replicaset")
 				replicaSet := CreateReplicaSetWithOptOutLabel(ctx, k8sClient, namespace, name)
@@ -373,7 +401,51 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				VerifyUnmodifiedJob(GetJob(ctx, k8sClient, namespace, name))
 			})
 
-			It("should revert an instrumented orphan replica set", func() {
+			It("should not revert an instrumented ownerless pod", func() {
+				// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
+				// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
+				// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
+				// happens in production.
+				triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
+
+				name := UniqueName(PodNamePrefix)
+				By("Create an instrumented pod")
+				pod := CreateInstrumentedPod(ctx, k8sClient, namespace, name)
+				createdObjects = append(createdObjects, pod)
+
+				By("Queue the deletion of the Dash0 custom resource")
+				dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, Default)
+				Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
+
+				triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to revert the instrumented workload")
+
+				VerifyNoEvents(ctx, clientset, namespace)
+				VerifyModifiedPod(GetPod(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations)
+			})
+
+			It("should leave existing uninstrumented pod owned by a replica set alone", func() {
+				// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
+				// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
+				// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
+				// happens in production.
+				triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
+
+				name := UniqueName(PodNamePrefix)
+				By("Create an instrumented pod owned by a deployment")
+				pod := CreatePodOwnedByReplicaSet(ctx, k8sClient, namespace, name)
+				createdObjects = append(createdObjects, pod)
+
+				By("Queue the deletion of the Dash0 custom resource")
+				dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, Default)
+				Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
+
+				triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to revert the instrumented workload")
+
+				VerifyNoEvents(ctx, clientset, namespace)
+				VerifyUnmodifiedPod(GetPod(ctx, k8sClient, namespace, name))
+			})
+
+			It("should revert an instrumented ownerless replica set", func() {
 				// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
 				// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
 				// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
@@ -397,7 +469,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				VerifyWebhookIgnoreOnceLabelIsPresent(&replicaSet.ObjectMeta)
 			})
 
-			It("should leave existing uninstrumented replica sets owned by deployments alone", func() {
+			It("should leave existing uninstrumented replica sets owned by deployment alone", func() {
 				// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
 				// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
 				// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
@@ -541,7 +613,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				VerifyWebhookIgnoreOnceLabelIsAbesent(&job.ObjectMeta)
 			})
 
-			It("should not attempt to revert an orphan replica set that has the opt-out label", func() {
+			It("should not attempt to revert an ownerless replica set that has the opt-out label", func() {
 				// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
 				// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
 				// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually

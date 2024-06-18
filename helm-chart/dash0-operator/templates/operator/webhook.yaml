@@ -92,5 +92,13 @@ webhooks:
     resources:
     - cronjobs
     - jobs
+  - apiGroups: [""]
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - pods
   sideEffects: None
   timeoutSeconds: 5

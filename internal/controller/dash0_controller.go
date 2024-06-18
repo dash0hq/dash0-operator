@@ -431,7 +431,7 @@ func (r *Dash0Reconciler) findAndInstrumentReplicaSets(
 	matchingWorkloadsInNamespace, err :=
 		r.ClientSet.AppsV1().ReplicaSets(namespace).List(ctx, util.WorkloadsWithoutDash0InstrumentedLabelFilter)
 	if err != nil {
-		return fmt.Errorf("error when querying deployments: %w", err)
+		return fmt.Errorf("error when querying replica sets: %w", err)
 	}
 	for _, resource := range matchingWorkloadsInNamespace.Items {
 		r.instrumentReplicaSet(ctx, resource, logger)
