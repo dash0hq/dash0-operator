@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
@@ -31,6 +32,8 @@ const (
 	workkloadTypeLabel     = "workload type"
 	workloadNamespaceLabel = "workload namespace"
 	workloadNameLabel      = "workload name"
+
+	updateStatusFailedMessage = "Failed to update Dash0 status conditions, requeuing reconcile request."
 )
 
 type Dash0Reconciler struct {
@@ -116,19 +119,11 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{}, nil
 	}
 
-	// Check whether the Dash0 custom resource exists.
-	dash0CustomResource := &operatorv1alpha1.Dash0{}
-	err = r.Get(ctx, req.NamespacedName, dash0CustomResource)
+	dash0CustomResource, stopReconcile, err := r.verifyUniqueDash0CustomResourceExists(ctx, req, logger)
 	if err != nil {
-		if apierrors.IsNotFound(err) {
-			logger.Info(
-				"The Dash0 custom resource has not been found, either it hasn't been installed or it has been " +
-					"deleted. Ignoring the reconcile request.")
-			// stop the reconciliation
-			return ctrl.Result{}, nil
-		}
-		logger.Error(err, "Failed to get the Dash0 custom resource, requeuing reconcile request.")
 		return ctrl.Result{}, err
+	} else if stopReconcile {
+		return ctrl.Result{}, nil
 	}
 
 	isFirstReconcile, err := r.initStatusConditions(ctx, dash0CustomResource, &logger)
@@ -156,7 +151,7 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	dash0CustomResource.EnsureResourceIsMarkedAsAvailable()
 	if err := r.Status().Update(ctx, dash0CustomResource); err != nil {
-		logger.Error(err, "Failed to update Dash0 status conditions, requeuing reconcile request.")
+		logger.Error(err, updateStatusFailedMessage)
 		return ctrl.Result{}, err
 	}
 
@@ -178,6 +173,107 @@ func (r *Dash0Reconciler) checkIfNamespaceExists(
 		}
 	}
 	return true, nil
+}
+
+func (r *Dash0Reconciler) verifyUniqueDash0CustomResourceExists(
+	ctx context.Context,
+	req ctrl.Request,
+	logger logr.Logger,
+) (*operatorv1alpha1.Dash0, bool, error) {
+	dash0CustomResource, stopReconcile, err := r.verifyThatDash0CustomResourceExists(ctx, req, &logger)
+	if err != nil || stopReconcile {
+		return dash0CustomResource, stopReconcile, err
+	}
+	stopReconcile, err = r.verifyThatDash0CustomResourceIsUniqe(ctx, req, dash0CustomResource, &logger)
+	return dash0CustomResource, stopReconcile, err
+}
+
+// verifyThatDash0CustomResourceExists loads the Dash0 custom resource that that the current reconcile request applies
+// to. If that resource does not exist, the function logs a message and returns (nil, true, nil) and expects the caller
+// to stop the reconciliation (without requeing it). If any other error occurs while trying to fetch the resource, the
+// function logs the error and returns (nil, true, err) and expects the caller to requeue the reconciliation.
+func (r *Dash0Reconciler) verifyThatDash0CustomResourceExists(
+	ctx context.Context,
+	req ctrl.Request,
+	logger *logr.Logger,
+) (*operatorv1alpha1.Dash0, bool, error) {
+	dash0CustomResource := &operatorv1alpha1.Dash0{}
+	err := r.Get(ctx, req.NamespacedName, dash0CustomResource)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			logger.Info(
+				"The Dash0 custom resource has not been found, either it hasn't been installed or it has been " +
+					"deleted. Ignoring the reconcile request.")
+			// stop the reconciliation, and do not requeue it (that is, return (ctrl.Result{}, nil))
+			return nil, true, nil
+		}
+		logger.Error(err, "Failed to get the Dash0 custom resource, requeuing reconcile request.")
+		// requeue the reconciliation (that is, return (ctrl.Result{}, err))
+		return nil, true, err
+	}
+	return dash0CustomResource, false, nil
+}
+
+// verifyThatDash0CustomResourceIsUniqe checks whether there are any additional Dash0 custom resources in the namespace,
+// besides the one that the current reconcile request applies to.
+func (r *Dash0Reconciler) verifyThatDash0CustomResourceIsUniqe(
+	ctx context.Context,
+	req ctrl.Request,
+	dash0CustomResource *operatorv1alpha1.Dash0,
+	logger *logr.Logger,
+) (bool, error) {
+	allDash0CustomResourcesNamespace := &operatorv1alpha1.Dash0List{}
+	if err := r.Client.List(
+		ctx,
+		allDash0CustomResourcesNamespace,
+		&client.ListOptions{
+			Namespace: req.Namespace,
+		},
+	); err != nil {
+		logger.Error(err, "Failed to list all Dash0 custom resources, requeuing reconcile request.")
+		return true, err
+	}
+
+	if len(allDash0CustomResourcesNamespace.Items) > 1 {
+		// There are multiple instances of the Dash0 custom resource in this namespace. If the resource that is
+		// currently being reconciled is the one that has been most recently created, we assume that this is the source
+		// of truth in terms of configuration settings etc., and we ignore the other instances in this reconcile request
+		// (they will be handled when they are being reconciled). If the currently reconciled resource is not the most
+		// recent one, we set its status to degraded.
+		sort.Sort(SortByCreationTimestamp(allDash0CustomResourcesNamespace.Items))
+		mostRecentResource := allDash0CustomResourcesNamespace.Items[len(allDash0CustomResourcesNamespace.Items)-1]
+		if mostRecentResource.UID == dash0CustomResource.UID {
+			logger.Info(
+				"At least one other Dash0 custom resource exists in this namespace. This Dash0 custom " +
+					"resource is the most recent one. The state of the other resource(s) will be set to degraded.")
+			// continue with the reconcile request for this resource, let the reconcile requests for the other offending
+			// resources handle the situation for those resources
+			return false, nil
+		} else {
+			logger.Info(
+				"At least one other Dash0 custom resource exists in this namespace, and at least one other Dash0 "+
+					"custom resource has been created more recently than this one. Setting the state of this resource "+
+					"to degraded.",
+				"most recently created Dash0 custom resource",
+				fmt.Sprintf("%s (%s)", mostRecentResource.Name, mostRecentResource.UID),
+			)
+			dash0CustomResource.EnsureResourceIsMarkedAsDegraded(
+				"NewerDash0CustomResourceIsPresent",
+				"There is a more recently created Dash0 custom resource in this namespace, please remove all but one "+
+					"resource instance.",
+				"NewerDash0CustomResourceIsPresent",
+				"There is a more recently created Dash0 custom resource in this namespace, please remove all but one "+
+					"resource instance.",
+			)
+			if err := r.Status().Update(ctx, dash0CustomResource); err != nil {
+				logger.Error(err, updateStatusFailedMessage)
+				return true, err
+			}
+			// stop the reconciliation, and do not requeue it
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (r *Dash0Reconciler) initStatusConditions(
@@ -603,9 +699,9 @@ func (r *Dash0Reconciler) runCleanupActions(
 	// The Dash0 custom resource will be deleted after this reconcile finished, so updating the status is
 	// probably unnecessary. But for due process we do it anyway. In particular, if deleting it should fail
 	// for any reason or take a while, the resource is no longer marked as available.
-	dash0CustomResource.EnsureResourceIsMarkedAsUnavailable()
+	dash0CustomResource.EnsureResourceIsMarkedAsAboutToBeDeleted()
 	if err = r.Status().Update(ctx, dash0CustomResource); err != nil {
-		logger.Error(err, "Failed to update Dash0 status conditions, requeuing reconcile request.")
+		logger.Error(err, updateStatusFailedMessage)
 		return err
 	}
 
@@ -970,4 +1066,16 @@ func newWorkloadModifier(images util.Images, otelCollectorBaseUrl string, logger
 		},
 		logger,
 	)
+}
+
+type SortByCreationTimestamp []operatorv1alpha1.Dash0
+
+func (s SortByCreationTimestamp) Len() int {
+	return len(s)
+}
+func (s SortByCreationTimestamp) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+func (s SortByCreationTimestamp) Less(i, j int) bool {
+	return s[i].CreationTimestamp.Before(&s[j].CreationTimestamp)
 }

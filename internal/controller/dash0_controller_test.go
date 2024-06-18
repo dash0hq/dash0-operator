@@ -14,9 +14,11 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/dash0hq/dash0-operator/test/util"
@@ -25,7 +27,7 @@ import (
 var (
 	namespace = TestNamespaceName
 
-	timeout         = 15 * time.Second
+	timeout         = 10 * time.Second
 	pollingInterval = 50 * time.Millisecond
 
 	images = util.Images{
@@ -33,6 +35,8 @@ var (
 		InitContainerImage:           "some-registry.com:1234/dash0-instrumentation:4.5.6",
 		InitContainerImagePullPolicy: corev1.PullAlways,
 	}
+
+	extraDash0CustomResourceNames = []types.NamespacedName{}
 )
 
 var _ = Describe("The Dash0 controller", Ordered, func() {
@@ -70,6 +74,9 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 		AfterEach(func() {
 			RemoveDash0CustomResource(ctx, k8sClient)
+			for _, name := range extraDash0CustomResourceNames {
+				RemoveDash0CustomResourceByName(ctx, k8sClient, name)
+			}
 		})
 
 		Describe("when reconciling", func() {
@@ -92,6 +99,68 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				// The LastTransitionTime should not change with subsequent reconciliations.
 				secondAvailableCondition := verifyDash0ResourceIsAvailable(ctx)
 				Expect(secondAvailableCondition.LastTransitionTime.Time).To(Equal(originalTransitionTimestamp))
+			})
+
+			It("should mark only the most recent resource as available and the other ones as degraded when multiple "+
+				"resources exist", func() {
+				firstDash0CustomResource := &operatorv1alpha1.Dash0{}
+				Expect(k8sClient.Get(ctx, Dash0CustomResourceQualifiedName, firstDash0CustomResource)).To(Succeed())
+				time.Sleep(10 * time.Millisecond)
+				secondName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-test-resource-2"}
+				extraDash0CustomResourceNames = append(extraDash0CustomResourceNames, secondName)
+				CreateDash0CustomResource(ctx, k8sClient, secondName)
+				time.Sleep(10 * time.Millisecond)
+				thirdName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-test-resource-3"}
+				extraDash0CustomResourceNames = append(extraDash0CustomResourceNames, thirdName)
+				CreateDash0CustomResource(ctx, k8sClient, thirdName)
+
+				triggerReconcileRequestForName(ctx, reconciler, "", Dash0CustomResourceQualifiedName)
+				triggerReconcileRequestForName(ctx, reconciler, "", secondName)
+				triggerReconcileRequestForName(ctx, reconciler, "", thirdName)
+
+				Eventually(func(g Gomega) {
+					resource1Available := loadCondition(ctx, Dash0CustomResourceQualifiedName, util.ConditionTypeAvailable)
+					resource1Degraded := loadCondition(ctx, Dash0CustomResourceQualifiedName, util.ConditionTypeDegraded)
+					resource2Available := loadCondition(ctx, secondName, util.ConditionTypeAvailable)
+					resource2Degraded := loadCondition(ctx, secondName, util.ConditionTypeDegraded)
+					resource3Available := loadCondition(ctx, thirdName, util.ConditionTypeAvailable)
+					resource3Degraded := loadCondition(ctx, thirdName, util.ConditionTypeDegraded)
+
+					// The first two resource should have been marked as degraded.
+					verifyCondition(
+						g,
+						resource1Available,
+						metav1.ConditionFalse,
+						"NewerDash0CustomResourceIsPresent",
+						"There is a more recently created Dash0 custom resource in this namespace, please remove all "+
+							"but one resource instance.",
+					)
+					verifyCondition(
+						g,
+						resource1Degraded,
+						metav1.ConditionTrue,
+						"NewerDash0CustomResourceIsPresent",
+						"There is a more recently created Dash0 custom resource in this namespace, please remove all "+
+							"but one resource instance.",
+					)
+					verifyCondition(g, resource2Available, metav1.ConditionFalse, "NewerDash0CustomResourceIsPresent",
+						"There is a more recently created Dash0 custom resource in this namespace, please remove all "+
+							"but one resource instance.")
+					verifyCondition(g, resource2Degraded, metav1.ConditionTrue, "NewerDash0CustomResourceIsPresent",
+						"There is a more recently created Dash0 custom resource in this namespace, please remove all "+
+							"but one resource instance.")
+
+					// The third (and most recent) resource should have been marked as available.
+					verifyCondition(
+						g,
+						resource3Available,
+						metav1.ConditionTrue,
+						"ReconcileFinished",
+						"Dash0 is active in this namespace now.",
+					)
+					g.Expect(resource3Degraded).To(BeNil())
+
+				}, timeout, pollingInterval).Should(Succeed())
 			})
 		})
 
@@ -747,12 +816,21 @@ func verifyThatDeploymentIsNotBeingInstrumented(ctx context.Context, reconciler 
 }
 
 func triggerReconcileRequest(ctx context.Context, reconciler *Dash0Reconciler, stepMessage string) {
+	triggerReconcileRequestForName(ctx, reconciler, stepMessage, Dash0CustomResourceQualifiedName)
+}
+
+func triggerReconcileRequestForName(
+	ctx context.Context,
+	reconciler *Dash0Reconciler,
+	stepMessage string,
+	dash0CustomResourceName types.NamespacedName,
+) {
 	if stepMessage == "" {
 		stepMessage = "Trigger reconcile request"
 	}
 	By(stepMessage)
 	_, err := reconciler.Reconcile(ctx, reconcile.Request{
-		NamespacedName: Dash0CustomResourceQualifiedName,
+		NamespacedName: dash0CustomResourceName,
 	})
 	Expect(err).NotTo(HaveOccurred())
 }
@@ -763,19 +841,33 @@ func verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx context.Context,
 }
 
 func verifyDash0ResourceIsAvailable(ctx context.Context) *metav1.Condition {
-	return verifyDash0ResourceStatus(ctx, metav1.ConditionTrue)
-}
-
-func verifyDash0ResourceStatus(ctx context.Context, expectedStatus metav1.ConditionStatus) *metav1.Condition {
 	var availableCondition *metav1.Condition
 	By("Verifying status conditions")
 	Eventually(func(g Gomega) {
 		dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, g)
 		availableCondition = meta.FindStatusCondition(dash0CustomResource.Status.Conditions, string(util.ConditionTypeAvailable))
 		g.Expect(availableCondition).NotTo(BeNil())
-		g.Expect(availableCondition.Status).To(Equal(expectedStatus))
+		g.Expect(availableCondition.Status).To(Equal(metav1.ConditionTrue))
 		degraded := meta.FindStatusCondition(dash0CustomResource.Status.Conditions, string(util.ConditionTypeDegraded))
 		g.Expect(degraded).To(BeNil())
 	}, timeout, pollingInterval).Should(Succeed())
 	return availableCondition
+}
+
+func loadCondition(ctx context.Context, dash0CustomResourceName types.NamespacedName, conditionType util.ConditionType) *metav1.Condition {
+	dash0CustomResource := LoadDash0CustomResourceByNameOrFail(ctx, k8sClient, Default, dash0CustomResourceName)
+	return meta.FindStatusCondition(dash0CustomResource.Status.Conditions, string(conditionType))
+}
+
+func verifyCondition(
+	g Gomega,
+	condition *metav1.Condition,
+	expectedStatus metav1.ConditionStatus,
+	expectedReason string,
+	expectedMessage string,
+) {
+	g.Expect(condition).NotTo(BeNil())
+	g.Expect(condition.Status).To(Equal(expectedStatus))
+	g.Expect(condition.Reason).To(Equal(expectedReason))
+	g.Expect(condition.Message).To(Equal(expectedMessage))
 }

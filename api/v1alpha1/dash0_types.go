@@ -143,7 +143,21 @@ func (d *Dash0) EnsureResourceIsMarkedAsAvailable() {
 	meta.RemoveStatusCondition(&d.Status.Conditions, string(util.ConditionTypeDegraded))
 }
 
-func (d *Dash0) EnsureResourceIsMarkedAsUnavailable() {
+func (d *Dash0) EnsureResourceIsMarkedAsAboutToBeDeleted() {
+	d.EnsureResourceIsMarkedAsDegraded(
+		"Dash0CustomResourceHasBeenRemoved",
+		"Dash0 is inactive in this namespace now.",
+		"Dash0CustomResourceHasBeenRemoved",
+		"Dash0 is about to be deleted.",
+	)
+}
+
+func (d *Dash0) EnsureResourceIsMarkedAsDegraded(
+	availableReason string,
+	availableMessage string,
+	degradedReason string,
+	degradedMessage string,
+) {
 	// If the available status is already false, the status condition is not updated, except for Reason, Message and
 	// ObservedGeneration timestamp. In particular, LastTransitionTime is not updated. Thus, this operation is
 	// effectively idempotent.
@@ -152,16 +166,16 @@ func (d *Dash0) EnsureResourceIsMarkedAsUnavailable() {
 		metav1.Condition{
 			Type:    string(util.ConditionTypeAvailable),
 			Status:  metav1.ConditionFalse,
-			Reason:  "Dash0CustomResourceHasBeenRemoved",
-			Message: "Dash0 is inactive in this namespace now.",
+			Reason:  availableReason,
+			Message: availableMessage,
 		})
 	meta.SetStatusCondition(
 		&d.Status.Conditions,
 		metav1.Condition{
 			Type:    string(util.ConditionTypeDegraded),
 			Status:  metav1.ConditionTrue,
-			Reason:  "Dash0CustomResourceHasBeenRemoved",
-			Message: "Dash0 is about to be deleted.",
+			Reason:  degradedReason,
+			Message: degradedMessage,
 		})
 }
 
