@@ -7,13 +7,13 @@ import (
 	"context"
 	"fmt"
 
-	. "github.com/onsi/gomega"
-
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+
+	. "github.com/onsi/gomega"
 
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
@@ -98,9 +98,13 @@ func VerifyModifiedDeployment(resource *appsv1.Deployment, expectations PodSpecE
 }
 
 func VerifyUnmodifiedDeployment(resource *appsv1.Deployment) {
-	verifyUnmodifiedPodSpec(resource.Spec.Template.Spec)
-	verifyNoDash0Labels(resource.ObjectMeta)
-	verifyNoDash0Labels(resource.Spec.Template.ObjectMeta)
+	VerifyUnmodifiedDeploymentEventually(Default, resource)
+}
+
+func VerifyUnmodifiedDeploymentEventually(g Gomega, resource *appsv1.Deployment) {
+	verifyUnmodifiedPodSpecEventually(g, resource.Spec.Template.Spec)
+	verifyNoDash0LabelsEventually(g, resource.ObjectMeta)
+	verifyNoDash0LabelsEventually(g, resource.Spec.Template.ObjectMeta)
 }
 
 func VerifyRevertedDeployment(resource *appsv1.Deployment, expectations PodSpecExpectations) {
@@ -257,13 +261,17 @@ func verifyPodSpec(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
 }
 
 func verifyUnmodifiedPodSpec(podSpec corev1.PodSpec) {
-	Expect(podSpec.Volumes).To(BeEmpty())
-	Expect(podSpec.InitContainers).To(BeEmpty())
-	Expect(podSpec.Containers).To(HaveLen(1))
+	verifyUnmodifiedPodSpecEventually(Default, podSpec)
+}
+
+func verifyUnmodifiedPodSpecEventually(g Gomega, podSpec corev1.PodSpec) {
+	g.Expect(podSpec.Volumes).To(BeEmpty())
+	g.Expect(podSpec.InitContainers).To(BeEmpty())
+	g.Expect(podSpec.Containers).To(HaveLen(1))
 	for i, container := range podSpec.Containers {
-		Expect(container.Name).To(Equal(fmt.Sprintf("test-container-%d", i)))
-		Expect(container.VolumeMounts).To(BeEmpty())
-		Expect(container.Env).To(BeEmpty())
+		g.Expect(container.Name).To(Equal(fmt.Sprintf("test-container-%d", i)))
+		g.Expect(container.VolumeMounts).To(BeEmpty())
+		g.Expect(container.Env).To(BeEmpty())
 	}
 }
 
@@ -285,11 +293,15 @@ func verifyLabelsAfterFailureToModify(meta metav1.ObjectMeta) {
 }
 
 func verifyNoDash0Labels(meta metav1.ObjectMeta) {
-	Expect(meta.Labels["dash0.com/instrumented"]).To(Equal(""))
-	Expect(meta.Labels["dash0.com/operator-image"]).To(Equal(""))
-	Expect(meta.Labels["dash0.com/init-container-image"]).To(Equal(""))
-	Expect(meta.Labels["dash0.com/instrumented-by"]).To(Equal(""))
-	Expect(meta.Labels["dash0.com/enable"]).To(Equal(""))
+	verifyNoDash0LabelsEventually(Default, meta)
+}
+
+func verifyNoDash0LabelsEventually(g Gomega, meta metav1.ObjectMeta) {
+	g.Expect(meta.Labels["dash0.com/instrumented"]).To(Equal(""))
+	g.Expect(meta.Labels["dash0.com/operator-image"]).To(Equal(""))
+	g.Expect(meta.Labels["dash0.com/init-container-image"]).To(Equal(""))
+	g.Expect(meta.Labels["dash0.com/instrumented-by"]).To(Equal(""))
+	g.Expect(meta.Labels["dash0.com/enable"]).To(Equal(""))
 }
 
 func verifyLabelsForOptOutWorkload(meta metav1.ObjectMeta) {
@@ -301,12 +313,16 @@ func verifyLabelsForOptOutWorkload(meta metav1.ObjectMeta) {
 	Expect(meta.Labels["dash0.com/enable"]).To(Equal("false"))
 }
 
-func VerifyWebhookIgnoreOnceLabelIsPresent(objectMeta *metav1.ObjectMeta) bool {
-	return Expect(objectMeta.Labels["dash0.com/webhook-ignore-once"]).To(Equal("true"))
+func VerifyWebhookIgnoreOnceLabelIsPresent(objectMeta *metav1.ObjectMeta) {
+	VerifyWebhookIgnoreOnceLabelIsPresentEventually(Default, objectMeta)
 }
 
-func VerifyWebhookIgnoreOnceLabelIsAbesent(objectMeta *metav1.ObjectMeta) bool {
-	return Expect(objectMeta.Labels["dash0.com/webhook-ignore-once"]).To(Equal(""))
+func VerifyWebhookIgnoreOnceLabelIsPresentEventually(g Gomega, objectMeta *metav1.ObjectMeta) {
+	g.Expect(objectMeta.Labels["dash0.com/webhook-ignore-once"]).To(Equal("true"))
+}
+
+func VerifyWebhookIgnoreOnceLabelIsAbesent(objectMeta *metav1.ObjectMeta) {
+	Expect(objectMeta.Labels["dash0.com/webhook-ignore-once"]).To(Equal(""))
 }
 
 func VerifyNoEvents(
@@ -329,6 +345,7 @@ func VerifySuccessfulInstrumentationEvent(
 	verifyEvent(
 		ctx,
 		clientset,
+		Default,
 		namespace,
 		resourceName,
 		util.ReasonSuccessfulInstrumentation,
@@ -346,6 +363,7 @@ func VerifyNoInstrumentationNecessaryEvent(
 	verifyEvent(
 		ctx,
 		clientset,
+		Default,
 		namespace,
 		resourceName,
 		util.ReasonNoInstrumentationNecessary,
@@ -365,6 +383,7 @@ func VerifyFailedInstrumentationEvent(
 	verifyEvent(
 		ctx,
 		clientset,
+		Default,
 		namespace,
 		resourceName,
 		util.ReasonFailedInstrumentation,
@@ -379,9 +398,21 @@ func VerifySuccessfulUninstrumentationEvent(
 	resourceName string,
 	eventSource string,
 ) {
+	VerifySuccessfulUninstrumentationEventEventually(ctx, clientset, Default, namespace, resourceName, eventSource)
+}
+
+func VerifySuccessfulUninstrumentationEventEventually(
+	ctx context.Context,
+	clientset *kubernetes.Clientset,
+	g Gomega,
+	namespace string,
+	resourceName string,
+	eventSource string,
+) {
 	verifyEvent(
 		ctx,
 		clientset,
+		g,
 		namespace,
 		resourceName,
 		util.ReasonSuccessfulUninstrumentation,
@@ -399,6 +430,7 @@ func VerifyFailedUninstrumentationEvent(
 	verifyEvent(
 		ctx,
 		clientset,
+		Default,
 		namespace,
 		resourceName,
 		util.ReasonFailedUninstrumentation,
@@ -416,6 +448,7 @@ func VerifyNoUninstrumentationNecessaryEvent(
 	verifyEvent(
 		ctx,
 		clientset,
+		Default,
 		namespace,
 		resourceName,
 		util.ReasonNoUninstrumentationNecessary,
@@ -426,15 +459,16 @@ func VerifyNoUninstrumentationNecessaryEvent(
 func verifyEvent(
 	ctx context.Context,
 	clientset *kubernetes.Clientset,
+	g Gomega,
 	namespace string,
 	resourceName string,
 	reason util.Reason,
 	message string,
 ) {
 	allEvents, err := clientset.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{})
-	Expect(err).NotTo(HaveOccurred())
-	Expect(allEvents.Items).To(HaveLen(1))
-	Expect(allEvents.Items).To(
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(allEvents.Items).To(HaveLen(1))
+	g.Expect(allEvents.Items).To(
 		ContainElement(
 			MatchEvent(
 				namespace,

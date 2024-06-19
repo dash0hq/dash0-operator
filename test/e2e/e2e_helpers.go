@@ -6,7 +6,6 @@ package e2e
 import (
 	"bufio"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -36,6 +35,7 @@ const (
 	tracesJsonMaxLineLength        = 1_048_576
 	verifyTelemetryTimeout         = 90 * time.Second
 	verifyTelemetryPollingInterval = 500 * time.Millisecond
+	dash0CustomResourceName        = "dash0-sample"
 )
 
 var (
@@ -400,6 +400,7 @@ func UndeployOperatorAndCollector(operatorNamespace string) {
 				"uninstall",
 				"--namespace",
 				operatorNamespace,
+				"--ignore-not-found",
 				operatorHelmReleaseName,
 			))).To(Succeed())
 
@@ -407,8 +408,20 @@ func UndeployOperatorAndCollector(operatorNamespace string) {
 	// case/suite that tries to create the operator will run into issues when trying to recreate the namespace which is
 	// still in the process of being deleted.
 	ExpectWithOffset(1,
-		RunAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", operatorNamespace))).To(Succeed())
-	ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command(
+		RunAndIgnoreOutput(
+			exec.Command(
+				"kubectl",
+				"delete",
+				"ns",
+				"--ignore-not-found",
+				operatorNamespace,
+			))).To(Succeed())
+
+	VerifyDash0OperatorReleaseIsNotInstalled(Default, operatorNamespace)
+}
+
+func VerifyDash0OperatorReleaseIsNotInstalled(g Gomega, operatorNamespace string) {
+	g.ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command(
 		"kubectl",
 		"wait",
 		"--for=delete",
@@ -417,24 +430,13 @@ func UndeployOperatorAndCollector(operatorNamespace string) {
 	))).To(Succeed())
 }
 
-func DeployDash0Resource(namespace string) {
+func DeployDash0CustomResource(namespace string) {
 	ExpectWithOffset(1,
 		RunAndIgnoreOutput(exec.Command(
 			"kubectl", "apply", "-n", namespace, "-k", "config/samples"))).To(Succeed())
 }
 
-func UndeployDash0Resource(namespace string) {
-	// remove the finalizer from the resource to allow immediate deletion
-	_ = RunAndIgnoreOutput(exec.Command(
-		"kubectl",
-		"patch",
-		"dash0/dash0-sample",
-		"--namespace",
-		namespace,
-		"--type",
-		"json",
-		"--patch='[{\"op\":\"remove\",\"path\":\"/metadata/finalizers\"}]'",
-	))
+func UndeployDash0CustomResource(namespace string) {
 	// remove the resource
 	ExpectWithOffset(1,
 		RunAndIgnoreOutput(exec.Command(
@@ -446,6 +448,21 @@ func UndeployDash0Resource(namespace string) {
 			"config/samples",
 			"--ignore-not-found",
 		))).To(Succeed())
+}
+
+func VerifyDash0CustomResourceDoesNotExist(g Gomega, namespace string) {
+	output, err := Run(exec.Command(
+		"kubectl",
+		"get",
+		"--namespace",
+		namespace,
+		"--ignore-not-found",
+		"dash0",
+		dash0CustomResourceName,
+	))
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(output).NotTo(ContainSubstring(dash0CustomResourceName))
+
 }
 
 func RebuildNodeJsApplicationContainerImage() {
@@ -1114,24 +1131,6 @@ func Run(cmd *exec.Cmd, logCommandArgs ...bool) (string, error) {
 	return string(output), nil
 }
 
-// RunMultiple executes multiple commands
-func RunMultiple(cmds []*exec.Cmd, logCommandArgs ...bool) error {
-	for _, cmd := range cmds {
-		if err := RunAndIgnoreOutput(cmd, logCommandArgs...); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func RunMultipleFromStrings(cmdsAsStrings [][]string, logCommandArgs ...bool) error {
-	cmds := make([]*exec.Cmd, len(cmdsAsStrings))
-	for i, cmdStrs := range cmdsAsStrings {
-		cmds[i] = exec.Command(cmdStrs[0], cmdStrs[1:]...)
-	}
-	return RunMultiple(cmds, logCommandArgs...)
-}
-
 func warnError(err error) {
 	fmt.Fprintf(GinkgoWriter, "warning: %v\n", err)
 }
@@ -1158,24 +1157,4 @@ func GetProjectDir() (string, error) {
 	}
 	wd = strings.Replace(wd, "/test/e2e", "", -1)
 	return wd, nil
-}
-
-func CopyFile(source string, destination string) error {
-	src, err := os.Open(source)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		err = errors.Join(err, src.Close())
-	}()
-
-	dst, err := os.Create(destination)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		err = errors.Join(err, dst.Close())
-	}()
-	_, err = io.Copy(dst, src)
-	return err
 }

@@ -32,14 +32,6 @@ var (
 	setupFinishedSuccessfully bool
 )
 
-type controllerTestWorkloadConfig struct {
-	workloadType        string
-	port                int
-	installWorkload     func(string) error
-	isBatch             bool
-	restartPodsManually bool
-}
-
 var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 	BeforeAll(func() {
@@ -91,9 +83,17 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 	Describe("controller", func() {
 		AfterEach(func() {
-			UndeployDash0Resource(applicationUnderTestNamespace)
+			UndeployDash0CustomResource(applicationUnderTestNamespace)
 			UndeployOperatorAndCollector(operatorNamespace)
 		})
+
+		type controllerTestWorkloadConfig struct {
+			workloadType        string
+			port                int
+			installWorkload     func(string) error
+			isBatch             bool
+			restartPodsManually bool
+		}
 
 		workloadConfigs := []controllerTestWorkloadConfig{
 			{
@@ -131,7 +131,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 				By("deploy the operator and the Dash0 custom resource")
 				DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace, operatorImageRepository, operatorImageTag)
-				DeployDash0Resource(applicationUnderTestNamespace)
+				DeployDash0CustomResource(applicationUnderTestNamespace)
 
 				testIds := make(map[string]string)
 				runInParallelForAllWorkloadTypes(workloadConfigs, func(config controllerTestWorkloadConfig) {
@@ -146,7 +146,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					)
 				})
 
-				UndeployDash0Resource(applicationUnderTestNamespace)
+				UndeployDash0CustomResource(applicationUnderTestNamespace)
 
 				runInParallelForAllWorkloadTypes(workloadConfigs, func(config controllerTestWorkloadConfig) {
 					VerifyThatInstrumentationHasBeenReverted(
@@ -162,13 +162,13 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			})
 		})
 
-		Describe("when it detects existing jobs or pods", func() {
+		Describe("when it detects existing jobs or ownerless pods", func() {
 			It("should label immutable jobs accordingly", func() {
 				By("installing the Node.js job")
 				Expect(InstallNodeJsJob(applicationUnderTestNamespace)).To(Succeed())
 				By("deploy the operator and the Dash0 custom resource")
 				DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace, operatorImageRepository, operatorImageTag)
-				DeployDash0Resource(applicationUnderTestNamespace)
+				DeployDash0CustomResource(applicationUnderTestNamespace)
 				By("verifying that the Node.js job has been labelled by the controller and that an event has been emitted")
 				Eventually(func(g Gomega) {
 					VerifyLabels(g, applicationUnderTestNamespace, "job", false, "controller")
@@ -183,7 +183,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					)
 				}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
 
-				UndeployDash0Resource(applicationUnderTestNamespace)
+				UndeployDash0CustomResource(applicationUnderTestNamespace)
 
 				VerifyThatFailedInstrumentationAttemptLabelsHaveBeenRemovedRemoved(applicationUnderTestNamespace, "job")
 			})
@@ -193,7 +193,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				Expect(InstallNodeJsPod(applicationUnderTestNamespace)).To(Succeed())
 				By("deploy the operator and the Dash0 custom resource")
 				DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace, operatorImageRepository, operatorImageTag)
-				DeployDash0Resource(applicationUnderTestNamespace)
+				DeployDash0CustomResource(applicationUnderTestNamespace)
 				By("verifying that the Node.js pod has not been labelled")
 				Eventually(func(g Gomega) {
 					VerifyNoDash0Labels(g, applicationUnderTestNamespace, "pod")
@@ -215,11 +215,11 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		})
 
 		BeforeEach(func() {
-			DeployDash0Resource(applicationUnderTestNamespace)
+			DeployDash0CustomResource(applicationUnderTestNamespace)
 		})
 
 		AfterEach(func() {
-			UndeployDash0Resource(applicationUnderTestNamespace)
+			UndeployDash0CustomResource(applicationUnderTestNamespace)
 		})
 
 		type webhookTest struct {
@@ -250,7 +250,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					// uninstrumentation procedure there. Thus, for jobs, we test the failing uninstrumentation and
 					// its effects here.
 					By("verifying that removing the Dash0 custom resource attempts to uninstruments the job")
-					UndeployDash0Resource(applicationUnderTestNamespace)
+					UndeployDash0CustomResource(applicationUnderTestNamespace)
 
 					Eventually(func(g Gomega) {
 						// Verify that the instrumentation labels are still in place -- since we cannot undo the
@@ -311,16 +311,115 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			}),
 		)
 	})
+
+	Describe("operator removal", func() {
+
+		const (
+			namespace1 = "e2e-application-under-test-namespace-removal-1"
+			namespace2 = "e2e-application-under-test-namespace-removal-2"
+		)
+
+		BeforeAll(func() {
+			By("creating test namespaces")
+			RecreateNamespace(namespace1)
+			RecreateNamespace(namespace2)
+		})
+
+		AfterEach(func() {
+			UndeployDash0CustomResource(namespace1)
+			UndeployDash0CustomResource(namespace2)
+			UndeployOperatorAndCollector(operatorNamespace)
+		})
+
+		AfterAll(func() {
+			By("removing test namespaces")
+			_ = RunAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", namespace1))
+			_ = RunAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", namespace2))
+			UndeployOperatorAndCollector(operatorNamespace)
+		})
+
+		type removalTestNamespaceConfig struct {
+			namespace       string
+			workloadType    string
+			port            int
+			installWorkload func(string) error
+		}
+
+		configs := []removalTestNamespaceConfig{
+			{
+				namespace:       "e2e-application-under-test-namespace-removal-1",
+				workloadType:    "daemonset",
+				port:            1206,
+				installWorkload: InstallNodeJsDaemonSet,
+			},
+			{
+				namespace:       "e2e-application-under-test-namespace-removal-2",
+				workloadType:    "deployment",
+				port:            1207,
+				installWorkload: InstallNodeJsDeployment,
+			},
+		}
+
+		Describe("when uninstalling the operator via helm", func() {
+			It("should remove all Dash0 custom resources and uninstrument all workloads", func() {
+				By("deploying workloads")
+				runInParallelForAllWorkloadTypes(configs, func(config removalTestNamespaceConfig) {
+					By(fmt.Sprintf("deploying the Node.js %s to namespace %s", config.workloadType, config.namespace))
+					Expect(config.installWorkload(config.namespace)).To(Succeed())
+				})
+
+				By("deploy the operator and the Dash0 custom resource")
+				DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace, operatorImageRepository, operatorImageTag)
+				runInParallelForAllWorkloadTypes(configs, func(config removalTestNamespaceConfig) {
+					DeployDash0CustomResource(config.namespace)
+				})
+
+				testIds := make(map[string]string)
+				runInParallelForAllWorkloadTypes(configs, func(config removalTestNamespaceConfig) {
+					By(fmt.Sprintf("verifying that the Node.js %s has been instrumented by the controller", config.workloadType))
+					testIds[config.workloadType] = VerifyThatWorkloadHasBeenInstrumented(
+						config.namespace,
+						config.workloadType,
+						config.port,
+						false,
+						false,
+						"controller",
+					)
+				})
+
+				UndeployOperatorAndCollector(operatorNamespace)
+
+				runInParallelForAllWorkloadTypes(configs, func(config removalTestNamespaceConfig) {
+					VerifyThatInstrumentationHasBeenReverted(
+						config.namespace,
+						config.workloadType,
+						config.port,
+						false,
+						false,
+						testIds[config.workloadType],
+						"controller",
+					)
+				})
+
+				Eventually(func(g Gomega) {
+					for _, config := range configs {
+						VerifyDash0CustomResourceDoesNotExist(g, config.namespace)
+					}
+					VerifyDash0OperatorReleaseIsNotInstalled(g, operatorNamespace)
+				}).Should(Succeed())
+			})
+		})
+	})
 })
 
-func runInParallelForAllWorkloadTypes(
-	workloadConfigs []controllerTestWorkloadConfig,
-	testStep func(controllerTestWorkloadConfig),
+func runInParallelForAllWorkloadTypes[C any](
+	workloadConfigs []C,
+	testStep func(C),
 ) {
 	var wg sync.WaitGroup
 	for _, config := range workloadConfigs {
 		wg.Add(1)
-		go func(cfg controllerTestWorkloadConfig) {
+		go func(cfg C) {
 			defer GinkgoRecover()
 			defer wg.Done()
 			testStep(cfg)

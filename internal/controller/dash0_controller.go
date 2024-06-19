@@ -222,10 +222,10 @@ func (r *Dash0Reconciler) verifyThatDash0CustomResourceIsUniqe(
 	dash0CustomResource *operatorv1alpha1.Dash0,
 	logger *logr.Logger,
 ) (bool, error) {
-	allDash0CustomResourcesNamespace := &operatorv1alpha1.Dash0List{}
+	allDash0CustomResourcesInNamespace := &operatorv1alpha1.Dash0List{}
 	if err := r.Client.List(
 		ctx,
-		allDash0CustomResourcesNamespace,
+		allDash0CustomResourcesInNamespace,
 		&client.ListOptions{
 			Namespace: req.Namespace,
 		},
@@ -234,14 +234,14 @@ func (r *Dash0Reconciler) verifyThatDash0CustomResourceIsUniqe(
 		return true, err
 	}
 
-	if len(allDash0CustomResourcesNamespace.Items) > 1 {
+	if len(allDash0CustomResourcesInNamespace.Items) > 1 {
 		// There are multiple instances of the Dash0 custom resource in this namespace. If the resource that is
 		// currently being reconciled is the one that has been most recently created, we assume that this is the source
 		// of truth in terms of configuration settings etc., and we ignore the other instances in this reconcile request
 		// (they will be handled when they are being reconciled). If the currently reconciled resource is not the most
 		// recent one, we set its status to degraded.
-		sort.Sort(SortByCreationTimestamp(allDash0CustomResourcesNamespace.Items))
-		mostRecentResource := allDash0CustomResourcesNamespace.Items[len(allDash0CustomResourcesNamespace.Items)-1]
+		sort.Sort(SortByCreationTimestamp(allDash0CustomResourcesInNamespace.Items))
+		mostRecentResource := allDash0CustomResourcesInNamespace.Items[len(allDash0CustomResourcesInNamespace.Items)-1]
 		if mostRecentResource.UID == dash0CustomResource.UID {
 			logger.Info(
 				"At least one other Dash0 custom resource exists in this namespace. This Dash0 custom " +

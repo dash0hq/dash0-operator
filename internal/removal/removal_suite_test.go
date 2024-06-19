@@ -1,18 +1,16 @@
-// SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
-// SPDX-License-Identifier: Apache-2.0
-
-package controller
+package removal
 
 import (
 	"fmt"
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -23,21 +21,33 @@ import (
 	. "github.com/onsi/gomega"
 
 	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/v1alpha1"
-	//+kubebuilder:scaffold:imports
+	controller "github.com/dash0hq/dash0-operator/internal/controller"
+	"github.com/dash0hq/dash0-operator/internal/util"
+)
+
+const (
+	preDeleteHandlerTimeoutForTests = 5 * time.Second
 )
 
 var (
-	cfg       *rest.Config
-	k8sClient client.Client
-	clientset *kubernetes.Clientset
-	recorder  record.EventRecorder
-	testEnv   *envtest.Environment
+	k8sClient        client.Client
+	clientset        *kubernetes.Clientset
+	preDeleteHandler *OperatorPreDeleteHandler
+	reconciler       *controller.Dash0Reconciler
+	cfg              *rest.Config
+	testEnv          *envtest.Environment
+
+	images = util.Images{
+		OperatorImage:                "some-registry.com:1234/dash0-operator-controller:1.2.3",
+		InitContainerImage:           "some-registry.com:1234/dash0-instrumentation:4.5.6",
+		InitContainerImagePullPolicy: corev1.PullAlways,
+	}
 )
 
-func TestControllers(t *testing.T) {
+func TestRemoval(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	RunSpecs(t, "Controller Suite")
+	RunSpecs(t, "Removal Suite")
 }
 
 var _ = BeforeSuite(func() {
@@ -58,7 +68,6 @@ var _ = BeforeSuite(func() {
 	}
 
 	var err error
-	// cfg is defined in this file globally.
 	cfg, err = testEnv.Start()
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
@@ -66,7 +75,9 @@ var _ = BeforeSuite(func() {
 	err = operatorv1alpha1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
-	//+kubebuilder:scaffold:scheme
+	preDeleteHandler, err = NewOperatorPreDeleteHandlerFromConfig(cfg)
+	Expect(err).NotTo(HaveOccurred())
+	preDeleteHandler.SetTimeout(preDeleteHandlerTimeoutForTests)
 
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	Expect(err).NotTo(HaveOccurred())
@@ -81,7 +92,15 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).NotTo(HaveOccurred())
 	Expect(mgr).NotTo(BeNil())
-	recorder = mgr.GetEventRecorderFor("dash0-controller")
+
+	reconciler = &controller.Dash0Reconciler{
+		Client:               k8sClient,
+		ClientSet:            clientset,
+		Recorder:             mgr.GetEventRecorderFor("dash0-controller"),
+		Scheme:               k8sClient.Scheme(),
+		Images:               images,
+		OtelCollectorBaseUrl: "http://dash0-operator-opentelemetry-collector.dash0-operator-system.svc.cluster.local:4318",
+	}
 })
 
 var _ = AfterSuite(func() {
