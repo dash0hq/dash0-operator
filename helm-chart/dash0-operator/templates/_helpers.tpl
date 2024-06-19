@@ -14,7 +14,7 @@
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/part-of: {{ include "dash0-operator.chartName" . }}
-app.kubernetes.io/managed-by: {{ .Release.Service }}
+app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
 helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 {{- include "dash0-operator.additionalLabels" . }}
 {{- end }}
@@ -54,4 +54,14 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 {{/* the init container image */}}
 {{- define "dash0-operator.initContainerImage" -}}
 {{- printf "%s:%s" .Values.operator.initContainerImage.repository .Values.operator.initContainerImage.tag }}
+{{- end }}
+
+{{- define "dash0-operator.restrictiveContainerSecurityContext" -}}
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  capabilities:
+    drop:
+    - ALL
 {{- end }}

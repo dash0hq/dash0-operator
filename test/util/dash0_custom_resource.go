@@ -33,6 +33,18 @@ func EnsureDash0CustomResourceExists(
 	ctx context.Context,
 	k8sClient client.Client,
 ) *operatorv1alpha1.Dash0 {
+	return EnsureDash0CustomResourceExistsWithNamespacedName(
+		ctx,
+		k8sClient,
+		Dash0CustomResourceQualifiedName,
+	)
+}
+
+func EnsureDash0CustomResourceExistsWithNamespacedName(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespacesName types.NamespacedName,
+) *operatorv1alpha1.Dash0 {
 	By("creating the Dash0 custom resource")
 	object := EnsureKubernetesObjectExists(
 		ctx,
@@ -41,8 +53,8 @@ func EnsureDash0CustomResourceExists(
 		&operatorv1alpha1.Dash0{},
 		&operatorv1alpha1.Dash0{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      Dash0CustomResourceQualifiedName.Name,
-				Namespace: Dash0CustomResourceQualifiedName.Namespace,
+				Name:      namespacesName.Name,
+				Namespace: namespacesName.Namespace,
 			},
 		},
 	)
@@ -68,7 +80,19 @@ func EnsureDash0CustomResourceExistsAndIsAvailable(
 	ctx context.Context,
 	k8sClient client.Client,
 ) *operatorv1alpha1.Dash0 {
-	dash0CustomResource := EnsureDash0CustomResourceExists(ctx, k8sClient)
+	return EnsureDash0CustomResourceExistsAndIsAvailableInNamespace(ctx, k8sClient, Dash0CustomResourceQualifiedName)
+}
+
+func EnsureDash0CustomResourceExistsAndIsAvailableInNamespace(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespacedName types.NamespacedName,
+) *operatorv1alpha1.Dash0 {
+	dash0CustomResource := EnsureDash0CustomResourceExistsWithNamespacedName(
+		ctx,
+		k8sClient,
+		namespacedName,
+	)
 	dash0CustomResource.EnsureResourceIsMarkedAsAvailable()
 	Expect(k8sClient.Status().Update(ctx, dash0CustomResource)).To(Succeed())
 	return dash0CustomResource
@@ -92,9 +116,10 @@ func EnsureDash0CustomResourceExistsAndIsDegraded(
 func LoadDash0CustomResourceByNameIfItExists(
 	ctx context.Context,
 	k8sClient client.Client,
+	g Gomega,
 	dash0CustomResourceName types.NamespacedName,
 ) *operatorv1alpha1.Dash0 {
-	return LoadDash0CustomResourceByName(ctx, k8sClient, Default, dash0CustomResourceName, false)
+	return LoadDash0CustomResourceByName(ctx, k8sClient, g, dash0CustomResourceName, false)
 }
 
 func LoadDash0CustomResourceOrFail(ctx context.Context, k8sClient client.Client, g Gomega) *operatorv1alpha1.Dash0 {
@@ -129,31 +154,49 @@ func LoadDash0CustomResourceByName(
 		} else {
 			// an error occurred, but it is not an IsNotFound error, fail test immediately
 			g.Expect(err).NotTo(HaveOccurred())
+			return nil
 		}
 	}
 
 	return dash0CustomResource
 }
 
+func VerifyDash0CustomResourceByNameDoesNotExist(
+	ctx context.Context,
+	k8sClient client.Client,
+	g Gomega,
+	dash0CustomResourceName types.NamespacedName,
+) {
+	g.Expect(LoadDash0CustomResourceByNameIfItExists(ctx, k8sClient, g, dash0CustomResourceName)).To(BeNil())
+}
+
 func RemoveDash0CustomResource(ctx context.Context, k8sClient client.Client) {
-	RemoveDash0CustomResourceByName(ctx, k8sClient, Dash0CustomResourceQualifiedName)
+	RemoveDash0CustomResourceByName(ctx, k8sClient, Dash0CustomResourceQualifiedName, true)
 }
 
 func RemoveDash0CustomResourceByName(
 	ctx context.Context,
 	k8sClient client.Client,
 	dash0CustomResourceName types.NamespacedName,
+	failOnErr bool,
 ) {
 	By("Removing the Dash0 custom resource instance")
 	if dash0CustomResource := LoadDash0CustomResourceByNameIfItExists(
 		ctx,
 		k8sClient,
+		Default,
 		dash0CustomResourceName,
 	); dash0CustomResource != nil {
 		// We want to delete the custom resource, but we need to remove the finalizer first, otherwise the first
 		// reconcile of the next test case will actually run the finalizers.
 		removeFinalizer(ctx, k8sClient, dash0CustomResource)
-		Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
+		err := k8sClient.Delete(ctx, dash0CustomResource)
+		if failOnErr {
+			// If the test already triggered the deletion of the custom resource, but it was blocked by the finalizer
+			// removing the finalizer may immediately delete the custom resource. In these cases it is okay to ignore
+			// the error from k8sClient.Delete(ctx, dash0CustomResource).
+			Expect(err).NotTo(HaveOccurred())
+		}
 	}
 }
 

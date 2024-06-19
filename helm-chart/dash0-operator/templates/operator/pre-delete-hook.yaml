@@ -1,0 +1,39 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "dash0-operator.chartName" . }}-pre-delete
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: job
+    app.kubernetes.io/instance: pre-delete-hook
+    app.kubernetes.io/component: pre-delete
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+    dash0.com/enable: "false"
+  annotations:
+    "helm.sh/hook": pre-delete
+    "helm.sh/hook-delete-policy": hook-succeeded
+spec:
+  template:
+    metadata:
+      name: {{ .Release.Name }}-pre-delete-job
+      labels:
+        app.kubernetes.io/instance: pre-delete-hook
+        app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+        helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: pre-delete-job
+          image: {{ include "dash0-operator.image" . | quote }}
+          imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
+          command:
+            - /manager
+            - "--uninstrument-all"
+          {{ include "dash0-operator.restrictiveContainerSecurityContext" . | nindent 10 }}
+          resources:
+            {{- toYaml .Values.operator.managerPodResources | nindent 12 }}
+      securityContext:
+        runAsNonRoot: true
+      serviceAccountName: {{ template "dash0-operator.serviceAccountName" . }}
+      automountServiceAccountToken: true
+  backoffLimit: 2

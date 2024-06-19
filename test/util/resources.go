@@ -61,7 +61,7 @@ var (
 	}
 )
 
-func TestNamespace(name string) *corev1.Namespace {
+func Namespace(name string) *corev1.Namespace {
 	namespace := &corev1.Namespace{}
 	namespace.Name = name
 	return namespace
@@ -71,13 +71,21 @@ func EnsureTestNamespaceExists(
 	ctx context.Context,
 	k8sClient client.Client,
 ) *corev1.Namespace {
+	return EnsureNamespaceExists(ctx, k8sClient, TestNamespaceName)
+}
+
+func EnsureNamespaceExists(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+) *corev1.Namespace {
 	By("creating the test namespace")
 	object := EnsureKubernetesObjectExists(
 		ctx,
 		k8sClient,
-		types.NamespacedName{Name: TestNamespaceName},
+		types.NamespacedName{Name: namespace},
 		&corev1.Namespace{},
-		TestNamespace(TestNamespaceName),
+		Namespace(namespace),
 	)
 	return object.(*corev1.Namespace)
 }
@@ -920,12 +928,22 @@ func GetDeployment(
 	namespace string,
 	name string,
 ) *appsv1.Deployment {
+	return GetDeploymentEventually(ctx, k8sClient, Default, namespace, name)
+}
+
+func GetDeploymentEventually(
+	ctx context.Context,
+	k8sClient client.Client,
+	g Gomega,
+	namespace string,
+	name string,
+) *appsv1.Deployment {
 	workload := &appsv1.Deployment{}
 	namespacedName := types.NamespacedName{
 		Namespace: namespace,
 		Name:      name,
 	}
-	ExpectWithOffset(1, k8sClient.Get(ctx, namespacedName, workload)).Should(Succeed())
+	g.ExpectWithOffset(1, k8sClient.Get(ctx, namespacedName, workload)).Should(Succeed())
 	return workload
 }
 

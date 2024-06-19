@@ -14,6 +14,7 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -27,6 +28,7 @@ import (
 
 	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/controller"
+	"github.com/dash0hq/dash0-operator/internal/removal"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	dash0webhook "github.com/dash0hq/dash0-operator/internal/webhook"
 	//+kubebuilder:scaffold:imports
@@ -55,18 +57,23 @@ func init() {
 }
 
 func main() {
+	var uninstrumentAll bool
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	flag.BoolVar(&uninstrumentAll, "uninstrument-all", false,
+		"If set, the process will remove all Dash0 custom resources from all namespaces in the cluster. This will "+
+			"trigger the Dash0 custom resources' finalizers in each namespace, which in turn will revert the "+
+			"instrumentation of all workloads in all namespaces.")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.BoolVar(&secureMetrics, "metrics-secure", false,
-		"If set the metrics endpoint is served securely")
+		"If set, the metrics endpoint is served securely")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 
@@ -87,6 +94,14 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	if uninstrumentAll {
+		if err := deleteCustomResourcesInAllNamespaces(&setupLog); err != nil {
+			setupLog.Error(err, "deleting the Dash0 custom resources in all namespaces failed")
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -260,4 +275,18 @@ func readEnvironmentVariables() (string, string, string, corev1.PullPolicy, erro
 	}
 
 	return otelCollectorBaseUrl, operatorImage, initContainerImage, initContainerImagePullPolicy, nil
+}
+
+func deleteCustomResourcesInAllNamespaces(logger *logr.Logger) error {
+	handler, err := removal.NewOperatorPreDeleteHandler()
+	if err != nil {
+		logger.Error(err, "Failed to create the OperatorPreDeleteHandler.")
+		return err
+	}
+	err = handler.DeleteAllDash0CustomResources()
+	if err != nil {
+		logger.Error(err, "Failed to delete all Dash0 custom resources.")
+		return err
+	}
+	return nil
 }

@@ -48,6 +48,7 @@ cluster roles should match snapshot:
         verbs:
           - create
           - delete
+          - deletecollection
           - get
           - list
           - patch

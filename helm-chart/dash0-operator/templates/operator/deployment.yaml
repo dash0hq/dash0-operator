@@ -9,6 +9,7 @@ metadata:
     app.kubernetes.io/component: manager
     {{- include "dash0-operator.labels" . | nindent 4 }}
     control-plane: controller-manager
+    dash0.com/enable: "false"
   {{- with .Values.operator.deploymentAnnotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -76,11 +77,7 @@ spec:
           protocol: TCP
         resources:
           {{- toYaml .Values.operator.managerPodResources | nindent 10 }}
-        securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-            - ALL
+        {{ include "dash0-operator.restrictiveContainerSecurityContext" . | nindent 8 }}
         volumeMounts:
         - mountPath: /tmp/k8s-webhook-server/serving-certs
           name: cert
@@ -124,6 +121,7 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       serviceAccountName: {{ template "dash0-operator.serviceAccountName" . }}
+      automountServiceAccountToken: true
       terminationGracePeriodSeconds: 10
       volumes:
       - name: cert

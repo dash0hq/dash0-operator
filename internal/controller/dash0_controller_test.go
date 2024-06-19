@@ -75,7 +75,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 		AfterEach(func() {
 			RemoveDash0CustomResource(ctx, k8sClient)
 			for _, name := range extraDash0CustomResourceNames {
-				RemoveDash0CustomResourceByName(ctx, k8sClient, name)
+				RemoveDash0CustomResourceByName(ctx, k8sClient, name, true)
 			}
 		})
 

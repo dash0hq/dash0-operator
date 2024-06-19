@@ -1,0 +1,7 @@
+suite: test pre-delete hook job
+templates:
+  - operator/pre-delete-hook.yaml
+tests:
+  - it: pre-delete hook job should match snapshot
+    asserts:
+      - matchSnapshot: {}
