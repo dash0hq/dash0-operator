@@ -7,11 +7,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -50,6 +52,10 @@ type ModificationMode string
 const (
 	Instrumentation   ModificationMode = "Instrumentation"
 	Uninstrumentation ModificationMode = "Uninstrumentation"
+)
+
+var (
+	timeoutForListingPods int64 = 2
 )
 
 type ImmutableWorkloadError struct {
@@ -540,14 +546,11 @@ func (r *Dash0Reconciler) instrumentReplicaSet(
 	replicaSet appsv1.ReplicaSet,
 	reconcileLogger *logr.Logger,
 ) {
-	// Note: ReplicaSet pods are not restarted automatically by Kubernetes when their spec is changed (for other
-	// resource types like deployments or daemonsets this is managed by Kubernetes automatically). For now, we rely on
-	// the user to manually restart the pods of their replica sets after they have been instrumented. We could consider
-	// finding all pods for that are owned by the replica set and restart them automatically.
-
 	r.instrumentWorkload(ctx, &replicaSetWorkload{
 		replicaSet: &replicaSet,
 	}, reconcileLogger)
+
+	r.restartPodsOfReplicaSet(ctx, replicaSet, reconcileLogger)
 }
 
 func (r *Dash0Reconciler) findAndInstrumentStatefulSets(
@@ -943,13 +946,11 @@ func (r *Dash0Reconciler) findAndUninstrumentReplicaSets(
 }
 
 func (r *Dash0Reconciler) uninstrumentReplicaSet(ctx context.Context, replicaSet appsv1.ReplicaSet, reconcileLogger *logr.Logger) {
-	// Note: ReplicaSet pods are not restarted automatically by Kubernetes when their spec is change (for other resource
-	// types like deployments or daemonsets this is managed by Kubernetes automatically). For now, we rely on the user
-	// to manually restart the pods of their replica sets after they have been instrumented. We could consider finding
-	// all pods for that are owned by the replica set and restart them automatically.
 	r.revertWorkloadInstrumentation(ctx, &replicaSetWorkload{
 		replicaSet: &replicaSet,
 	}, reconcileLogger)
+
+	r.restartPodsOfReplicaSet(ctx, replicaSet, reconcileLogger)
 }
 
 func (r *Dash0Reconciler) findAndUninstrumentStatefulSets(
@@ -1078,4 +1079,59 @@ func (s SortByCreationTimestamp) Swap(i, j int) {
 }
 func (s SortByCreationTimestamp) Less(i, j int) bool {
 	return s[i].CreationTimestamp.Before(&s[j].CreationTimestamp)
+}
+
+func (r *Dash0Reconciler) restartPodsOfReplicaSet(
+	ctx context.Context,
+	replicaSet appsv1.ReplicaSet,
+	logger *logr.Logger,
+) {
+	// Note: ReplicaSet pods are not restarted automatically by Kubernetes when their spec is changed (for other
+	// resource types like deployments or daemonsets this is managed by Kubernetes automatically). Therefore, we
+	// find all pods owned by the replica set and explicitly delete them to trigger a restart.
+	allPodsInNamespace, err :=
+		r.ClientSet.
+			CoreV1().
+			Pods(replicaSet.Namespace).
+			List(ctx, metav1.ListOptions{
+				TimeoutSeconds: &timeoutForListingPods,
+			})
+	if err != nil {
+		logger.Error(
+			err,
+			fmt.Sprintf(
+				"Failed to list all pods in the namespaces for the purpose of restarting the pods owned by the "+
+					"replica set %s/%s (%s), pods will not be restarted automatically.",
+				replicaSet.Namespace,
+				replicaSet.Name,
+				replicaSet.UID,
+			))
+		return
+	}
+
+	podsOfReplicaSet := slices.DeleteFunc(allPodsInNamespace.Items, func(pod corev1.Pod) bool {
+		ownerReferences := pod.GetOwnerReferences()
+		for _, ownerReference := range ownerReferences {
+			if ownerReference.Kind == "ReplicaSet" &&
+				ownerReference.Name == replicaSet.Name &&
+				ownerReference.UID == replicaSet.UID {
+				return false
+			}
+		}
+		return true
+	})
+
+	for _, pod := range podsOfReplicaSet {
+		err := r.Client.Delete(ctx, &pod)
+		if err != nil {
+			logger.Info(
+				fmt.Sprintf(
+					"Failed to restart pod owned by the replica "+
+						"set %s/%s (%s), this pod will not be restarted automatically.",
+					replicaSet.Namespace,
+					replicaSet.Name,
+					replicaSet.UID,
+				))
+		}
+	}
 }

@@ -3,6 +3,7 @@ kind: ClusterRole
 metadata:
   name: {{ template "dash0-operator.chartName" . }}-manager-role
 rules:
+
 - apiGroups:
   - apps
   resources:
@@ -16,6 +17,7 @@ rules:
   - patch
   - update
   - watch
+
 - apiGroups:
   - batch
   resources:
@@ -27,18 +29,30 @@ rules:
   - patch
   - update
   - watch
+
 - apiGroups:
   - ""
   resources:
   - events
   verbs:
   - create
+
 - apiGroups:
   - ""
   resources:
   - namespaces
   verbs:
   - get
+
+- apiGroups:
+    - ""
+  resources:
+  - pods
+  verbs:
+  - get
+  - list
+  - delete
+
 - apiGroups:
   - operator.dash0.com
   resources:
@@ -52,6 +66,7 @@ rules:
   - patch
   - update
   - watch
+
 - apiGroups:
   - operator.dash0.com
   resources:
@@ -66,6 +81,7 @@ rules:
   - get
   - patch
   - update
+
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

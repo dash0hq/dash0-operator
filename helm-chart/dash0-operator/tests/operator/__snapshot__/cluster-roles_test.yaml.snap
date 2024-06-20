@@ -42,6 +42,14 @@ cluster roles should match snapshot:
         verbs:
           - get
       - apiGroups:
+          - ""
+        resources:
+          - pods
+        verbs:
+          - get
+          - list
+          - delete
+      - apiGroups:
           - operator.dash0.com
         resources:
           - dash0s
