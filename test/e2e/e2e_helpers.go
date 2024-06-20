@@ -668,7 +668,6 @@ func VerifyThatWorkloadHasBeenInstrumented(
 	workloadType string,
 	port int,
 	isBatch bool,
-	restartPodsManually bool,
 	instrumentationBy string,
 ) string {
 	By(fmt.Sprintf("%s: waiting for the workload to get instrumented (polling its labels and events to check)",
@@ -677,10 +676,6 @@ func VerifyThatWorkloadHasBeenInstrumented(
 		VerifyLabels(g, namespace, workloadType, true, instrumentationBy)
 		VerifySuccessfulInstrumentationEvent(g, namespace, workloadType, instrumentationBy)
 	}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
-
-	if restartPodsManually {
-		restartAllPods(namespace)
-	}
 
 	By(fmt.Sprintf("%s: waiting for spans to be captured", workloadType))
 	var testId string
@@ -718,7 +713,6 @@ func VerifyThatInstrumentationHasBeenReverted(
 	workloadType string,
 	port int,
 	isBatch bool,
-	restartPodsManually bool,
 	testId string,
 	instrumentationBy string,
 ) {
@@ -729,10 +723,6 @@ func VerifyThatInstrumentationHasBeenReverted(
 		VerifyNoDash0Labels(g, namespace, workloadType)
 		VerifySuccessfulUninstrumentationEvent(g, namespace, workloadType, instrumentationBy)
 	}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
-
-	if restartPodsManually {
-		restartAllPods(namespace)
-	}
 
 	// Add some buffer time between the workloads being restarted and verifying that no spans are produced/captured.
 	time.Sleep(10 * time.Second)
@@ -897,25 +887,6 @@ func verifyEvent(
 				reason,
 				message,
 			)))
-}
-
-func restartAllPods(namespace string) {
-	// The pods of replicasets are not restarted automatically when the template changes (in contrast to
-	// deployments, daemonsets etc.). For now we execpt the user to restart the pods of the replciaset manually,
-	// and we simuate this in the e2e tests.
-	By("restarting pods manually")
-	Expect(
-		RunAndIgnoreOutput(
-			exec.Command(
-				"kubectl",
-				"delete",
-				"pod",
-				"--namespace",
-				namespace,
-				"--selector",
-				"app=dash0-operator-nodejs-20-express-test-replicaset-app",
-			))).To(Succeed())
-
 }
 
 func verifySpans(g Gomega, isBatch bool, workloadType string, port int, httpPathWithQuery string) {

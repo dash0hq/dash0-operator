@@ -88,11 +88,10 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		})
 
 		type controllerTestWorkloadConfig struct {
-			workloadType        string
-			port                int
-			installWorkload     func(string) error
-			isBatch             bool
-			restartPodsManually bool
+			workloadType    string
+			port            int
+			installWorkload func(string) error
+			isBatch         bool
 		}
 
 		workloadConfigs := []controllerTestWorkloadConfig{
@@ -110,10 +109,9 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				port:            1207,
 				installWorkload: InstallNodeJsDeployment,
 			}, {
-				workloadType:        "replicaset",
-				port:                1209,
-				installWorkload:     InstallNodeJsReplicaSet,
-				restartPodsManually: true,
+				workloadType:    "replicaset",
+				port:            1209,
+				installWorkload: InstallNodeJsReplicaSet,
 			}, {
 				workloadType:    "statefulset",
 				port:            1210,
@@ -141,7 +139,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 						config.workloadType,
 						config.port,
 						config.isBatch,
-						config.restartPodsManually,
 						"controller",
 					)
 				})
@@ -154,7 +151,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 						config.workloadType,
 						config.port,
 						config.isBatch,
-						config.restartPodsManually,
 						testIds[config.workloadType],
 						"controller",
 					)
@@ -240,7 +236,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					config.workloadType,
 					config.port,
 					config.isBatch,
-					false,
 					"webhook",
 				)
 
@@ -382,7 +377,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 						config.workloadType,
 						config.port,
 						false,
-						false,
 						"controller",
 					)
 				})
@@ -394,7 +388,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 						config.namespace,
 						config.workloadType,
 						config.port,
-						false,
 						false,
 						testIds[config.workloadType],
 						"controller",
