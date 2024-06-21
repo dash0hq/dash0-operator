@@ -14,14 +14,10 @@ OS := $(shell uname -s)
 SHELL := bash
 
 NAMES := $(notdir $(basename $(wildcard $(SRC_DIR)/*.$(SRC_EXT))))
-$(info NAMES: $(NAMES))
 OBJECTS :=$(patsubst %,$(OBJ_DIR)/%.o,$(NAMES))
-$(info OBJECTS: $(OBJECTS))
 
 TEST_NAMES := $(notdir $(basename $(wildcard $(TEST_DIR)/*.$(SRC_EXT))))
-$(info TEST_NAMES: $(TEST_NAMES))
 TEST_OBJECTS :=$(patsubst %,$(OBJ_DIR)/%.o,$(TEST_NAMES))
-$(info TEST_OBJECTS: $(TEST_OBJECTS))
 
 
 all: $(OBJECTS) $(TEST_OBJECTS) testbin/appundertest.so
