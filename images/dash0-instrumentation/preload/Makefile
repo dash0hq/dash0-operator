@@ -1,25 +1,42 @@
 # SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-CFLAGS ?= -Wall -Werror -O2
-PREFIX = /usr
-LIBDIR = $(PREFIX)/lib
-BINDIR = $(PREFIX)/bin
+CFLAGS ?= -Wall -Werror -Wextra -O2
 
-all: libdash0envhook.so appundertest.so
+SRC_DIR := src
+BIN_DIR := bin
+OBJ_DIR := obj
+LIB_DIR := lib
+TEST_DIR := test
+SRC_EXT := c
 
-libdash0envhook.so: libdash0envhook.c
-	$(CC) $(CFLAGS) -fPIC -rdynamic -shared -ldl -o $@ libdash0envhook.c
+OS := $(shell uname -s)
+SHELL := bash
 
-appundertest.so: appundertest.c
-	$(CC) $(CFLAGS) -o $@ appundertest.c
+NAMES := $(notdir $(basename $(wildcard $(SRC_DIR)/*.$(SRC_EXT))))
+$(info NAMES: $(NAMES))
+OBJECTS :=$(patsubst %,$(OBJ_DIR)/%.o,$(NAMES))
+$(info OBJECTS: $(OBJECTS))
+
+TEST_NAMES := $(notdir $(basename $(wildcard $(TEST_DIR)/*.$(SRC_EXT))))
+$(info TEST_NAMES: $(TEST_NAMES))
+TEST_OBJECTS :=$(patsubst %,$(OBJ_DIR)/%.o,$(TEST_NAMES))
+$(info TEST_OBJECTS: $(TEST_OBJECTS))
+
+
+all: $(OBJECTS) $(TEST_OBJECTS) testbin/appundertest.so
+	$(CC) $(CFLAGS) -rdynamic -shared -ldl $(OBJECTS) -o $(LIB_DIR)/libdash0envhook.so
+
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.$(SRC_EXT)
+	$(CC) -c -fPIC $^ -o $@ $(DEBUG) $(CFLAGS) $(LIBS)
+
+$(OBJ_DIR)/%.o: $(TEST_DIR)/%.$(SRC_EXT)
+	$(CC) -c $^ -o $@ $(DEBUG) $(CFLAGS) $(LIBS)
+
+testbin/appundertest.so: test/appundertest.c
+	$(CC) $(CFLAGS) -o $@ test/appundertest.c
 
 clean:
 	@rm -f *.so
-
-install:
-	install -d $(DESTDIR)$(LIBDIR) $(DESTDIR)$(BINDIR)
-	install -m 644 libdash0envhook.so $(DESTDIR)$(LIBDIR)/
-	install -m 755 dash0-env-hook.sh $(DESTDIR)$(BINDIR)/
 
 .PHONY: all clean install
