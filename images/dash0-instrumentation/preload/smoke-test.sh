@@ -18,7 +18,7 @@ make
 
 exit_code=0
 
-test_output_1=$(LD_PRELOAD="$directory/libdash0envhook.so" ./appundertest.so)
+test_output_1=$(LD_PRELOAD="$directory/lib/libdash0envhook.so" ./testbin/appundertest.so)
 
 if [[ "$test_output_1" == "TERM: xterm; NODE_OPTIONS: --require /dash0; " ]]; then
   printf "${GREEN}test 1 successful${NC}\n"
@@ -28,7 +28,7 @@ else
   exit_code=1
 fi
 
-test_output_2=$(LD_PRELOAD="$directory/libdash0envhook.so" NODE_OPTIONS="existing NODE_OPTIONS" ./appundertest.so)
+test_output_2=$(LD_PRELOAD="$directory/lib/libdash0envhook.so" NODE_OPTIONS="existing NODE_OPTIONS" ./testbin/appundertest.so)
 if [[ "$test_output_2" == "TERM: xterm; NODE_OPTIONS: --require /dash0 existing NODE_OPTIONS; " ]]; then
   printf "${GREEN}test 2 successful${NC}\n"
 else
