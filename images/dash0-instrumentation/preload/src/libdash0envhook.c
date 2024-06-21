@@ -7,12 +7,12 @@
 #include <string.h>
 #include <sys/types.h>
 
-typedef char* (*getenv_fun_ptr)(const char *name);
-typedef char* (*secure_getenv_fun_ptr)(const char *name);
+typedef char* (*getenv_fun_ptr)(const char* name);
 
-char* getenv(const char* name)
+typedef char* (*secure_getenv_fun_ptr)(const char* name);
+
+char* _getenv(char* (*original_function)(const char* name), const char* name)
 {
- 	getenv_fun_ptr original_function = (getenv_fun_ptr)dlsym(RTLD_NEXT, "getenv");
   if (strcmp(name, "NODE_OPTIONS") != 0) {
  	  return original_function(name);
   }
@@ -33,5 +33,15 @@ char* getenv(const char* name)
   // Note: it is probably okay to not free the modified_value, as long as we only malloc a very limited number of char*
   // instances, i.e. only one for every environment variable name we want to override, *not* one per getenv call!
   return modified_value;
+}
+
+char* getenv(const char* name) {
+ 	getenv_fun_ptr original_function = (getenv_fun_ptr)dlsym(RTLD_NEXT, "getenv");
+  return _getenv(original_function, name);
+}
+
+char* secure_getenv(const char* name) {
+ 	secure_getenv_fun_ptr original_function = (secure_getenv_fun_ptr)dlsym(RTLD_NEXT, "secure_getenv");
+  return _getenv(original_function, name);
 }
 
