@@ -14,12 +14,14 @@ typedef char* (*getenv_fun_ptr)(const char* name);
 
 typedef char* (*secure_getenv_fun_ptr)(const char* name);
 
+getenv_fun_ptr original_getenv;
+secure_getenv_fun_ptr original_secure_getenv;
+
 int num_map_entries = 1;
 Entry map[1];
 bool init = false;
 
 char* default_node_options_value = "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js";
-
 
 void init_map() {
   if (init) {
@@ -60,12 +62,16 @@ char* _getenv(char* (*original_function)(const char* name), const char* name)
 }
 
 char* getenv(const char* name) {
- 	getenv_fun_ptr original_function = (getenv_fun_ptr)dlsym(RTLD_NEXT, "getenv");
-  return _getenv(original_function, name);
+  if (!original_getenv) {
+    original_getenv = (getenv_fun_ptr)dlsym(RTLD_NEXT, "getenv");
+  }
+  return _getenv(original_getenv, name);
 }
 
 char* secure_getenv(const char* name) {
- 	secure_getenv_fun_ptr original_function = (secure_getenv_fun_ptr)dlsym(RTLD_NEXT, "secure_getenv");
-  return _getenv(original_function, name);
+  if (!original_secure_getenv) {
+    original_secure_getenv = (secure_getenv_fun_ptr)dlsym(RTLD_NEXT, "secure_getenv");
+  }
+  return _getenv(original_secure_getenv, name);
 }
 
