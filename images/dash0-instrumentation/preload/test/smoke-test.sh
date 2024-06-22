@@ -13,18 +13,40 @@ relative_directory="$(dirname ${BASH_SOURCE})"/..
 directory="$(realpath $relative_directory)"
 cd "$directory"
 
+if [[ -z ${EXPECTED_CPU_ARCHITECTURE:-} ]]; then
+  echo "EXPECTED_CPU_ARCHITECTURE is not set for $0."
+  exit 1
+fi
+
+arch_output=$(uname -p)
+arch_exit_code=$?
+if [[ $arch_exit_code != 0 ]]; then
+  printf "${RED}verifying CPU architecture failed:${NC}\n"
+  echo "exit code: $arch_exit_code"
+  echo "output: $arch_output"
+  exit 1
+elif [[ "$arch_output" != "$EXPECTED_CPU_ARCHITECTURE" ]]; then
+  printf "${RED}verifying CPU architecture failed:${NC}\n"
+  echo "expected: $EXPECTED_CPU_ARCHITECTURE"
+  echo "actual:   $arch_output"
+  exit 1
+else
+  printf "${GREEN}verifying CPU architecture $EXPECTED_CPU_ARCHITECTURE successful${NC}\n"
+fi
+
 run_test_case() {
   local test_case=$1
   local command=$2
   local expected=$3
   local existing_node_options_value=${4:-}
-  set +xe
+  set +e
   if [[ "$existing_node_options_value" != "" ]]; then
     local test_output=$(LD_PRELOAD="$directory/lib/libdash0envhook.so" NODE_OPTIONS="$existing_node_options_value" ./testbin/appundertest.so "$command")
   else
     local test_output=$(LD_PRELOAD="$directory/lib/libdash0envhook.so" ./testbin/appundertest.so "$command")
   fi
   local test_exit_code=$?
+  set -e
   if [[ $test_exit_code != 0 ]]; then
     printf "${RED}test \"$test_case\" crashed:${NC}\n"
     echo "received exit code: $test_exit_code"
@@ -40,6 +62,7 @@ run_test_case() {
   fi
 }
 
+make clean
 make
 
 exit_code=0

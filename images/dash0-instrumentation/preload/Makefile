@@ -19,7 +19,6 @@ OBJECTS :=$(patsubst %,$(OBJ_DIR)/%.o,$(NAMES))
 TEST_NAMES := $(notdir $(basename $(wildcard $(TEST_DIR)/*.$(SRC_EXT))))
 TEST_OBJECTS :=$(patsubst %,$(OBJ_DIR)/%.o,$(TEST_NAMES))
 
-
 all: $(OBJECTS) $(TEST_OBJECTS) testbin/appundertest.so
 	$(CC) $(CFLAGS) -rdynamic -shared -ldl $(OBJECTS) -o $(LIB_DIR)/libdash0envhook.so
 
@@ -33,6 +32,6 @@ testbin/appundertest.so: test/appundertest.c
 	$(CC) $(CFLAGS) -o $@ test/appundertest.c
 
 clean:
-	@rm -f *.so
+	@rm -f $(OBJECTS) $(OBJ_DIR)/*.o $(TEST_OBJECTS) $(LIB_DIR)/*.so testbin/appundertest.so
 
 .PHONY: all clean install

@@ -8,15 +8,26 @@ set -euo pipefail
 cd "$(dirname ${BASH_SOURCE})"
 
 if [[ -z ${ARCH:-} ]]; then
-  ARCH=x86_64
+  ARCH=arm64
 fi
+if [[ $ARCH == arm64 ]]; then
+  docker_platform=linux/arm64
+  expected_cpu_architecture=aarch64
+elif [[ $ARCH == x86_64 ]]; then
+  docker_platform=linux/amd64
+  expected_cpu_architecture=x86_64
+else
+  echo "The architecture $ARCH is not supported."
+  exit 1
+fi
+
 if [[ -z ${LIBC:-} ]]; then
   LIBC=glibc
 fi
 
-dockerfile_name="Dockerfile-$ARCH-$LIBC"
+dockerfile_name="Dockerfile-$LIBC"
 if [[ ! -f $dockerfile_name ]]; then
-  echo "The file \"$dockerfile_name\" does not exist, this combination of CPU architecture and libc flavor is not supported."
+  echo "The file \"$dockerfile_name\" does not exist, the libc flavor $LIBC is not supported."
   exit 1
 fi
 
@@ -29,8 +40,14 @@ if [[ "${INTERACTIVE:-}" == "true" ]]; then
 fi
 
 docker rm -f $container_name
-docker build . -f $dockerfile_name -t $image_name
+docker build --platform $docker_platform . -f $dockerfile_name -t $image_name
+
+# note: building one image for both platforms is not suppored on Docker desktop
+# docker build --platform linux/amd64,linux/arm64 . -f $dockerfile_name -t dash0-env-hook-builder-all-$LIBC
+
 docker run \
+  --platform $docker_platform \
+  --env EXPECTED_CPU_ARCHITECTURE=$expected_cpu_architecture \
   --name $container_name \
   -it \
   --volume $(pwd):/usr/src/dash0/preload/ \
