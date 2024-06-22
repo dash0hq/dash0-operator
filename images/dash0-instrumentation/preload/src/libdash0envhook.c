@@ -19,23 +19,17 @@ secure_getenv_fun_ptr original_secure_getenv;
 
 int num_map_entries = 1;
 Entry map[1];
-bool init = false;
 
 char* default_node_options_value = "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js";
 
-void init_map() {
-  if (init) {
-    return;
-  }
+
+__attribute__((constructor)) static void setup(void) {
   Entry node_options_entry = { .key = "NODE_OPTIONS", .value = NULL };
   map[0] = node_options_entry;
-  init = true;
 }
 
 char* _getenv(char* (*original_function)(const char* name), const char* name)
 {
-  init_map();
-
   if (strcmp(name, "NODE_OPTIONS") != 0) {
  	  return original_function(name);
   }
