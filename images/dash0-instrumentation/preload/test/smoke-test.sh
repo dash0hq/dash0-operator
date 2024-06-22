@@ -46,13 +46,17 @@ exit_code=0
 
 run_test_case "getenv: returns NULL for non-existing environment variable" non-existing "DOES_NOT_EXIST: NULL"
 run_test_case "getenv: returns environment variable unchanged" term "TERM: xterm"
-run_test_case "getenv: overrides NODE_OPTIONS if it is not present" node_options "NODE_OPTIONS: --require /dash0"
-run_test_case "getenv: appends to NODE_OPTIONS if it is present" node_options "NODE_OPTIONS: --require /dash0 --existing-node-options" "--existing-node-options"
+run_test_case "getenv: overrides NODE_OPTIONS if it is not present" node_options "NODE_OPTIONS: --require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js"
+run_test_case "getenv: ask for NODE_OPTIONS (unset) twice" node_options_twice "NODE_OPTIONS: --require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js; NODE_OPTIONS: --require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js"
+run_test_case "getenv: appends to NODE_OPTIONS if it is present" node_options "NODE_OPTIONS: --require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js --existing-node-options" "--existing-node-options"
+run_test_case "getenv: ask for NODE_OPTIONS (set) twice" node_options_twice "NODE_OPTIONS: --require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js --existing-node-options; NODE_OPTIONS: --require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js --existing-node-options" "--existing-node-options"
 
 run_test_case "secure_getenv: returns NULL for non-existing environment variable" non-existing "DOES_NOT_EXIST: NULL"
 run_test_case "secure_getenv: returns environment variable unchanged" term-gnu-secure "TERM: xterm"
-run_test_case "secure_getenv: overrides NODE_OPTIONS if it is not present" node_options-gnu-secure "NODE_OPTIONS: --require /dash0"
-run_test_case "secure_getenv: appends to NODE_OPTIONS if it is present" node_options-gnu-secure "NODE_OPTIONS: --require /dash0 --existing-node-options" "--existing-node-options"
+run_test_case "secure_getenv: overrides NODE_OPTIONS if it is not present" node_options-gnu-secure "NODE_OPTIONS: --require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js"
+run_test_case "secure_getenv: ask for NODE_OPTIONS (unset) twice" node_options_twice-gnu-secure "NODE_OPTIONS: --require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js; NODE_OPTIONS: --require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js"
+run_test_case "secure_getenv: appends to NODE_OPTIONS if it is present" node_options-gnu-secure "NODE_OPTIONS: --require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js --existing-node-options" "--existing-node-options"
+run_test_case "secure_getenv: ask for NODE_OPTIONS (set) twice" node_options_twice-gnu-secure "NODE_OPTIONS: --require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js --existing-node-options; NODE_OPTIONS: --require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js --existing-node-options" "--existing-node-options"
 
 exit $exit_code
 

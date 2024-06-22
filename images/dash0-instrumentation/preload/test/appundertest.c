@@ -44,12 +44,20 @@ int main(int argc, char* argv[]) {
     echo_env_var("TERM");
   } else if (strcmp(test_case, "node_options") == 0) {
     echo_env_var("NODE_OPTIONS");
+  } else if (strcmp(test_case, "node_options_twice") == 0) {
+    echo_env_var("NODE_OPTIONS");
+    fputs("; ", stdout);
+    echo_env_var("NODE_OPTIONS");
   } else if (strcmp(test_case, "term-gnu-secure") == 0) {
     echo_env_var_secure("TERM");
   } else if (strcmp(test_case, "node_options-gnu-secure") == 0) {
     echo_env_var_secure("NODE_OPTIONS");
+  } else if (strcmp(test_case, "node_options_twice-gnu-secure") == 0) {
+    echo_env_var_secure("NODE_OPTIONS");
+    fputs("; ", stdout);
+    echo_env_var_secure("NODE_OPTIONS");
   } else {
-    fputs("unknown test case:", stdout);
+    fputs("unknown test case: ", stdout);
     fputs(test_case, stdout);
     fputs("\n", stdout);
     exit(1);
