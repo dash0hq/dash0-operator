@@ -2,36 +2,60 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <dlfcn.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 
+#include "map.h"
+
 typedef char* (*getenv_fun_ptr)(const char* name);
 
 typedef char* (*secure_getenv_fun_ptr)(const char* name);
 
+int num_map_entries = 1;
+Entry map[1];
+bool init = false;
+
+char* default_node_options_value = "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js";
+
+
+void init_map() {
+  if (init) {
+    return;
+  }
+  Entry node_options_entry = { .key = "NODE_OPTIONS", .value = NULL };
+  map[0] = node_options_entry;
+  init = true;
+}
+
 char* _getenv(char* (*original_function)(const char* name), const char* name)
 {
+  init_map();
+
   if (strcmp(name, "NODE_OPTIONS") != 0) {
  	  return original_function(name);
   }
 
-  char* dash0_stuff = "--require /dash0";
+  char* cached = get_map_entry(map, num_map_entries, name);
+  if (cached != NULL) {
+    return cached;
+  }
 
  	char* original_value = original_function(name);
   if (original_value == NULL) {
-    return dash0_stuff;
+    return default_node_options_value;
   }
 
-  char* modified_value = malloc(strlen(dash0_stuff) + 1 + strlen(original_value) + 1);
-  sprintf(modified_value, "%s %s", dash0_stuff, original_value);
-  strcpy(modified_value, dash0_stuff);
+  char* modified_value = malloc(strlen(default_node_options_value) + 1 + strlen(original_value) + 1);
+  strcpy(modified_value, default_node_options_value);
   strcat(modified_value, " ");
   strcat(modified_value, original_value);
 
   // Note: it is probably okay to not free the modified_value, as long as we only malloc a very limited number of char*
-  // instances, i.e. only one for every environment variable name we want to override, *not* one per getenv call!
+  // instances, i.e. only one for every environment variable name we want to override.
+  put_map_entry(map, num_map_entries, name, modified_value);
   return modified_value;
 }
 
