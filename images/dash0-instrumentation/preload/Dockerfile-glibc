@@ -9,4 +9,4 @@ RUN apt update && \
 
 WORKDIR /usr/src/dash0/preload/
 
-CMD ["watch", "-n1", "test/smoke-test.sh"]
+CMD ["test/smoke-test.sh"]
