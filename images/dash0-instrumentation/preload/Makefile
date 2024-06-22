@@ -11,7 +11,7 @@ TEST_DIR := test
 SRC_EXT := c
 
 OS := $(shell uname -s)
-SHELL := bash
+SHELL := sh
 
 NAMES := $(notdir $(basename $(wildcard $(SRC_DIR)/*.$(SRC_EXT))))
 OBJECTS :=$(patsubst %,$(OBJ_DIR)/%.o,$(NAMES))

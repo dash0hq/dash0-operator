@@ -1,64 +1,64 @@
-#!/usr/bin/env bash
+#!/usr/bin/env sh
 
 # SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-set -euo pipefail
+set -eu
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 NC='\033[0m'
 
-relative_directory="$(dirname ${BASH_SOURCE})"/..
-directory="$(realpath $relative_directory)"
+relative_directory="$(dirname "$0")"/..
+directory="$(realpath "$relative_directory")"
 cd "$directory"
 
-if [[ -z ${EXPECTED_CPU_ARCHITECTURE:-} ]]; then
+if [ -z "${EXPECTED_CPU_ARCHITECTURE:-}" ]; then
   echo "EXPECTED_CPU_ARCHITECTURE is not set for $0."
   exit 1
 fi
 
-arch_output=$(uname -p)
+arch_output=$(uname -m)
 arch_exit_code=$?
-if [[ $arch_exit_code != 0 ]]; then
+if [ $arch_exit_code != 0 ]; then
   printf "${RED}verifying CPU architecture failed:${NC}\n"
   echo "exit code: $arch_exit_code"
   echo "output: $arch_output"
   exit 1
-elif [[ "$arch_output" != "$EXPECTED_CPU_ARCHITECTURE" ]]; then
+elif [ "$arch_output" != "$EXPECTED_CPU_ARCHITECTURE" ]; then
   printf "${RED}verifying CPU architecture failed:${NC}\n"
   echo "expected: $EXPECTED_CPU_ARCHITECTURE"
   echo "actual:   $arch_output"
   exit 1
 else
-  printf "${GREEN}verifying CPU architecture $EXPECTED_CPU_ARCHITECTURE successful${NC}\n"
+  printf "${GREEN}verifying CPU architecture %s successful${NC}\n" "$EXPECTED_CPU_ARCHITECTURE"
 fi
 
 run_test_case() {
-  local test_case=$1
-  local command=$2
-  local expected=$3
-  local existing_node_options_value=${4:-}
+  test_case=$1
+  command=$2
+  expected=$3
+  existing_node_options_value=${4:-}
   set +e
-  if [[ "$existing_node_options_value" != "" ]]; then
-    local test_output=$(LD_PRELOAD="$directory/lib/libdash0envhook.so" NODE_OPTIONS="$existing_node_options_value" ./testbin/appundertest.so "$command")
+  if [ "$existing_node_options_value" != "" ]; then
+    test_output=$(LD_PRELOAD="$directory/lib/libdash0envhook.so" NODE_OPTIONS="$existing_node_options_value" ./testbin/appundertest.so "$command")
   else
-    local test_output=$(LD_PRELOAD="$directory/lib/libdash0envhook.so" ./testbin/appundertest.so "$command")
+    test_output=$(LD_PRELOAD="$directory/lib/libdash0envhook.so" ./testbin/appundertest.so "$command")
   fi
-  local test_exit_code=$?
+  test_exit_code=$?
   set -e
-  if [[ $test_exit_code != 0 ]]; then
-    printf "${RED}test \"$test_case\" crashed:${NC}\n"
+  if [ $test_exit_code != 0 ]; then
+    printf "${RED}test \"%s\" crashed:${NC}\n" "$test_case"
     echo "received exit code: $test_exit_code"
     echo "output: $test_output"
     exit_code=1
-  elif [[ "$test_output" != "$expected" ]]; then
-    printf "${RED}test \"$test_case\" failed:${NC}\n"
+  elif [ "$test_output" != "$expected" ]; then
+    printf "${RED}test \"%s\" failed:${NC}\n" "$test_case"
     echo "expected: $expected"
     echo "actual:   $test_output"
     exit_code=1
   else
-    printf "${GREEN}test \"$test_case\" successful${NC}\n"
+    printf "${GREEN}test \"%s\" successful${NC}\n" "$test_case"
   fi
 }
 

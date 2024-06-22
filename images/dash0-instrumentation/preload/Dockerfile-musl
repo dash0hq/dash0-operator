@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+FROM alpine:3.20.1
+
+RUN apk add --no-cache build-base
+
+WORKDIR /usr/src/dash0/preload/
+
+CMD ["test/smoke-test.sh"]
