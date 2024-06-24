@@ -18,29 +18,29 @@ if [ -z "${EXPECTED_CPU_ARCHITECTURE:-}" ]; then
   exit 1
 fi
 
-arch_output=$(uname -m)
+arch=$(uname -m)
 arch_exit_code=$?
 if [ $arch_exit_code != 0 ]; then
   printf "${RED}verifying CPU architecture failed:${NC}\n"
   echo "exit code: $arch_exit_code"
-  echo "output: $arch_output"
+  echo "output: $arch"
   exit 1
-elif [ "$arch_output" != "$EXPECTED_CPU_ARCHITECTURE" ]; then
+elif [ "$arch" != "$EXPECTED_CPU_ARCHITECTURE" ]; then
   printf "${RED}verifying CPU architecture failed:${NC}\n"
   echo "expected: $EXPECTED_CPU_ARCHITECTURE"
-  echo "actual:   $arch_output"
+  echo "actual:   $arch"
   exit 1
 else
   printf "${GREEN}verifying CPU architecture %s successful${NC}\n" "$EXPECTED_CPU_ARCHITECTURE"
 fi
 
-preload_lib=$directory/lib/libdash0envhook.so
+preload_lib=$directory/lib/libdash0envhook_$arch.so
 if [ ! -f $preload_lib ]; then
   printf "${RED}error: $preload_lib does not exist, not running any tests.${NC}\n"
   exit 1
 fi
 
-appundertest=testbin/"${arch_output}"/appundertest.o
+appundertest=testbin/"${arch}"/appundertest.o
 echo appundertest: $appundertest
 
 run_test_case() {
