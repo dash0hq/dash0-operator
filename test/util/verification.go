@@ -246,7 +246,7 @@ func verifyPodSpec(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
 					Expect(envVar.Value).To(Equal(containerExpectations.NodeOptionsValue))
 				} else {
 					Expect(envVar.Value).To(Equal(
-						"--require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js",
+						"--require /opt/dash0/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
 					))
 				}
 			} else if i == containerExpectations.Dash0CollectorBaseUrlEnvVarIdx {

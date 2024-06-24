@@ -806,7 +806,7 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 				},
 				{
 					Name:  "NODE_OPTIONS",
-					Value: "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js",
+					Value: "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
 				},
 				{
 					Name:  "DASH0_OTEL_COLLECTOR_BASE_URL",
@@ -842,7 +842,7 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 				},
 				{
 					Name:  "NODE_OPTIONS",
-					Value: "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js",
+					Value: "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
 				},
 				{
 					Name:  "DASH0_OTEL_COLLECTOR_BASE_URL",
@@ -881,7 +881,7 @@ func simulateInstrumentedPodSpec(podSpec *corev1.PodSpec, meta *metav1.ObjectMet
 	container.Env = []corev1.EnvVar{
 		{
 			Name:  "NODE_OPTIONS",
-			Value: "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js",
+			Value: "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
 		},
 		{
 			Name:  "DASH0_OTEL_COLLECTOR_BASE_URL",

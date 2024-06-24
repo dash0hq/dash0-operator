@@ -104,7 +104,7 @@ var _ = Describe("The Dash0 webhook", func() {
 							Dash0VolumeMountIdx:                      1,
 							EnvVars:                                  3,
 							NodeOptionsEnvVarIdx:                     1,
-							NodeOptionsValue:                         "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js --require something-else --experimental-modules",
+							NodeOptionsValue:                         "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --require something-else --experimental-modules",
 							Dash0CollectorBaseUrlEnvVarIdx:           0,
 							Dash0CollectorBaseUrlEnvVarExpectedValue: "http://dash0-operator-opentelemetry-collector.dash0-operator-system.svc.cluster.local:4318",
 						},

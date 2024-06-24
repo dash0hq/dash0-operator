@@ -79,7 +79,7 @@ func (r *OperatorPreDeleteHandler) findAllAndRequestDeletion(ctx context.Context
 	err := r.client.List(ctx, allDash0CustomResources)
 	if err != nil {
 		r.logger.Error(err, "failed to list all Dash0 custom resources across all namespaces")
-		return 0, fmt.Errorf("failed to list all Dash0 custom resourcesa cross all namespaces: %w", err)
+		return 0, fmt.Errorf("failed to list all Dash0 custom resources across all namespaces: %w", err)
 	}
 
 	if len(allDash0CustomResources.Items) == 0 {
