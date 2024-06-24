@@ -47,8 +47,9 @@ if [ "${INTERACTIVE:-}" = "true" ]; then
 fi
 
 echo
-echo
-echo ">>> Testing the library on $ARCH and $LIBC <<<"
+echo ---------------------------------------
+echo "testing the library on $ARCH and $LIBC"
+echo ---------------------------------------
 
 docker rm -f "$container_name"
 docker build \

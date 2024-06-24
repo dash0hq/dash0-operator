@@ -22,7 +22,7 @@ else
 fi
 
 dockerfile_name=docker/Dockerfile-build
-image_name=dash0-env-hook-builder
+image_name=dash0-env-hook-builder-$ARCH
 container_name=$image_name
 
 docker_run_extra_arguments=""
@@ -34,15 +34,17 @@ echo
 echo
 echo ">>> Building the library on $ARCH <<<"
 
-docker rm -f "$container_name"
+docker rm -f "$container_name" 2> /dev/null
+
+# Note: This is not the multi-platform image that we will need eventually. The combination of docker build and docker
+# run here basically only builds the library binary for the given CPU architecture and places it in the lib folder. And
+# since the lib folder is mounted, the binary is then available in the host file system for further testing (for
+# example, via other container images using a specific CPU architecture).
 docker build \
   --platform "$docker_platform" \
   . \
   -f "$dockerfile_name" \
   -t "$image_name"
-
-# note: building one image for both platforms is not supported by Docker desktop's standard "docker build" command.
-# docker build --platform linux/amd64,linux/arm64 . -f $dockerfile_name -t dash0-env-hook-builder-all-$LIBC
 
 docker run \
   --platform "$docker_platform" \
