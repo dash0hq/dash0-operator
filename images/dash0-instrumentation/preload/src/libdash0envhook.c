@@ -22,7 +22,6 @@ Entry map[1];
 
 char* default_node_options_value = "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js";
 
-
 __attribute__((constructor)) static void setup(void) {
   Entry node_options_entry = { .key = "NODE_OPTIONS", .value = NULL };
   map[0] = node_options_entry;

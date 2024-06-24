@@ -33,8 +33,7 @@ void echo_env_var_secure(const char* name) {
 
 int main(int argc, char* argv[]) {
   if (argc < 2) {
-    fputs("not enough arguments, the name of the test case needs to be specifed", stdout);
-    fputs("\n", stdout);
+    fputs("error: not enough arguments, the name of the test case needs to be specifed\n", stdout);
     exit(1);
   }
   char* test_case = argv[1];
