@@ -3,11 +3,11 @@ set -euo pipefail
 
 cd "$(dirname ${BASH_SOURCE})"
 
-rm -f dash0-opentelemetry-*.tgz
-pushd ../../../../opentelemetry-js-distro > /dev/null
-bin/pack.sh
+rm -f dash0hq-opentelemetry-*.tgz
+pushd ../../../../opentelemetry-js-distribution > /dev/null
+npm pack
 popd > /dev/null
-cp ../../../../opentelemetry-js-distro/dash0-opentelemetry-*.tgz .
+cp ../../../../opentelemetry-js-distribution/dash0hq-opentelemetry-*.tgz .
 
 NPM_CONFIG_UPDATE_NOTIFIER=false \
   npm install \
@@ -16,4 +16,4 @@ NPM_CONFIG_UPDATE_NOTIFIER=false \
   --omit=dev \
   --no-audit \
   --no-fund=true \
-  dash0-opentelemetry-*.tgz
+  dash0hq-opentelemetry-*.tgz

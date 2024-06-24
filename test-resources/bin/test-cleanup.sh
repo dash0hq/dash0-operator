@@ -17,12 +17,13 @@ fi
 
 kubectl delete -n ${target_namespace} -k config/samples || true
 
+make undeploy-via-${deployment_tool} || true
+
 # If the custom resource definition has been installed by kustomize and the next test scenario attempts to install it
 # via helm, the helm installation will fail because the custom resource definition already exists and does not have the
 # "app.kubernetes.io/managed-by: Helm" label. Thus we always remove the CRD explictly and assume the next test scenario
 # will install it again.
 make uninstall || true
-make undeploy-via-${deployment_tool} || true
 
 resource_types=( cronjob daemonset deployment job pod replicaset statefulset )
 for resource_type in "${resource_types[@]}"; do

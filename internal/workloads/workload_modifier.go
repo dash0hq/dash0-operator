@@ -30,7 +30,7 @@ const (
 	// envVarLdPreloadName  = "LD_PRELOAD"
 	// envVarLdPreloadValue = "/opt/dash0/preload/inject.so"
 	envVarNodeOptionsName           = "NODE_OPTIONS"
-	envVarNodeOptionsValue          = "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0/opentelemetry/src/index.js"
+	envVarNodeOptionsValue          = "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0hq/opentelemetry"
 	envVarDash0CollectorBaseUrlName = "DASH0_OTEL_COLLECTOR_BASE_URL"
 )
 
