@@ -5,7 +5,7 @@
 
 set -eu
 
-cd "$(dirname "$0")"
+cd "$(dirname "$0")"/..
 
 if [ -z "${ARCH:-}" ]; then
   ARCH=arm64
@@ -25,17 +25,13 @@ if [ -z "${LIBC:-}" ]; then
   LIBC=glibc
 fi
 
-echo
-echo
-echo ">>> Building and testing for $ARCH and $LIBC <<<"
-
-dockerfile_name="Dockerfile-$LIBC"
+dockerfile_name="docker/Dockerfile-test-$LIBC"
 if [ ! -f "$dockerfile_name" ]; then
   echo "The file \"$dockerfile_name\" does not exist, the libc flavor $LIBC is not supported."
   exit 1
 fi
 
-image_name=dash0-env-hook-builder-$ARCH-$LIBC
+image_name=dash0-env-hook-test-$ARCH-$LIBC
 container_name=$image_name
 
 docker_run_extra_arguments=""
@@ -50,11 +46,16 @@ if [ "${INTERACTIVE:-}" = "true" ]; then
   fi
 fi
 
-docker rm -f "$container_name"
-docker build --platform "$docker_platform" . -f "$dockerfile_name" -t "$image_name"
+echo
+echo
+echo ">>> Testing the library on $ARCH and $LIBC <<<"
 
-# note: building one image for both platforms is not suppored on Docker desktop
-# docker build --platform linux/amd64,linux/arm64 . -f $dockerfile_name -t dash0-env-hook-builder-all-$LIBC
+docker rm -f "$container_name"
+docker build \
+  --platform "$docker_platform" \
+  . \
+  -f "$dockerfile_name" \
+  -t "$image_name"
 
 docker run \
   --platform "$docker_platform" \

@@ -1,13 +1,12 @@
 // SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-#include <stdlib.h>
 #include <string.h>
 
 #include "map.h"
 
 Entry* find(Entry map[], int len, const char* key) {
- for (int i = 0; i < len; i++) {
+  for (int i = 0; i < len; i++) {
     Entry* e = &map[i];
     if (strcmp(e->key, key) == 0) {
       return e;
