@@ -9,3 +9,4 @@ typedef struct Entry {
 char* get_map_entry(Entry map[], int len, const char* key);
 
 void put_map_entry(Entry* map, int len, const char* key, char* value);
+

@@ -1,10 +1,12 @@
 # SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM alpine:3.20.1
+FROM ubuntu:24.10
 
-RUN apk add --no-cache build-base
+RUN apt update && \
+  apt-get install -y \
+    build-essential
 
 WORKDIR /usr/src/dash0/preload/
 
-CMD ["test/smoke-test.sh"]
+CMD ["scripts/make-clean.sh"]

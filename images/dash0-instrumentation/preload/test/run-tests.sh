@@ -34,6 +34,15 @@ else
   printf "${GREEN}verifying CPU architecture %s successful${NC}\n" "$EXPECTED_CPU_ARCHITECTURE"
 fi
 
+preload_lib=$directory/lib/libdash0envhook.so
+if [ ! -f $preload_lib ]; then
+  printf "${RED}error: $preload_lib does not exist, not running any tests.${NC}\n"
+  exit 1
+fi
+
+appundertest=testbin/"${arch_output}"/appundertest.o
+echo appundertest: $appundertest
+
 run_test_case() {
   test_case=$1
   command=$2
@@ -41,9 +50,9 @@ run_test_case() {
   existing_node_options_value=${4:-}
   set +e
   if [ "$existing_node_options_value" != "" ]; then
-    test_output=$(LD_PRELOAD="$directory/lib/libdash0envhook.so" NODE_OPTIONS="$existing_node_options_value" ./testbin/appundertest.so "$command")
+    test_output=$(LD_PRELOAD="$preload_lib" NODE_OPTIONS="$existing_node_options_value" "$appundertest" "$command")
   else
-    test_output=$(LD_PRELOAD="$directory/lib/libdash0envhook.so" ./testbin/appundertest.so "$command")
+    test_output=$(LD_PRELOAD="$preload_lib" "$appundertest" "$command")
   fi
   test_exit_code=$?
   set -e
@@ -62,8 +71,9 @@ run_test_case() {
   fi
 }
 
-make clean
-make
+# We always need to clean out the old appundertest.o, it might have been built for a different libc flavor.
+make clean-test
+make build-test
 
 exit_code=0
 
