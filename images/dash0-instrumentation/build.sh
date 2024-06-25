@@ -7,4 +7,6 @@ pushd node.js > /dev/null
 ./build.sh
 popd > /dev/null
 
-docker build . -t dash0-instrumentation:1.0.0
+image_version=1.0.0
+
+docker build . -t dash0-instrumentation:"$image_version"
