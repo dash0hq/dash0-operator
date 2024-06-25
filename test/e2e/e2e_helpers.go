@@ -675,11 +675,17 @@ func VerifyThatWorkloadHasBeenInstrumented(
 	Eventually(func(g Gomega) {
 		VerifyLabels(g, namespace, workloadType, true, instrumentationBy)
 		VerifySuccessfulInstrumentationEvent(g, namespace, workloadType, instrumentationBy)
-	}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
+	}, 20*time.Second, verifyTelemetryPollingInterval).Should(Succeed())
 
 	By(fmt.Sprintf("%s: waiting for spans to be captured", workloadType))
 	var testId string
 	if isBatch {
+		testIdTimeoutSeconds := 30
+		if workloadType == "cronjob" {
+			// Cronjob pods are only scheduled once a minute, so we might need to wait a while for a job to be started
+			// and for the ID to become available, hence increasing the timeout for the surrounding "Eventually".
+			testIdTimeoutSeconds = 100
+		}
 		By(fmt.Sprintf("waiting for the test ID file to be written by the %s under test", workloadType))
 		Eventually(func(g Gomega) {
 			// For resource types like batch jobs/cron jobs, the application under test generates the test ID and writes it
@@ -687,9 +693,9 @@ func VerifyThatWorkloadHasBeenInstrumented(
 			testIdBytes, err := os.ReadFile(fmt.Sprintf("test-resources/e2e-test-volumes/test-uuid/%s.test.id", workloadType))
 			g.Expect(err).NotTo(HaveOccurred())
 			testId = string(testIdBytes)
-			// Also, cronjob pods are only scheduled once a minute, so we might need to wait a while for the ID to
-			// become available, hence the 80 second timeout for the surrounding Eventually.
-		}, 80*time.Second, 200*time.Millisecond).Should(Succeed())
+			By(fmt.Sprintf("%s: test ID file is available (test ID: %s)", workloadType, testId))
+
+		}, time.Duration(testIdTimeoutSeconds)*time.Second, 200*time.Millisecond).Should(Succeed())
 	} else {
 		// For resource types that are available as a service (daemonset, deployment etc.) we send HTTP requests with
 		// a unique ID as a query parameter. When checking the produced spans that the OTel collector writes to disk via
@@ -698,6 +704,7 @@ func VerifyThatWorkloadHasBeenInstrumented(
 		// a previous test case.
 		testIdUuid := uuid.New()
 		testId = testIdUuid.String()
+		By(fmt.Sprintf("%s: test ID: %s", workloadType, testId))
 	}
 
 	httpPathWithQuery := fmt.Sprintf("/dash0-k8s-operator-test?id=%s", testId)
@@ -722,7 +729,7 @@ func VerifyThatInstrumentationHasBeenReverted(
 	Eventually(func(g Gomega) {
 		VerifyNoDash0Labels(g, namespace, workloadType)
 		VerifySuccessfulUninstrumentationEvent(g, namespace, workloadType, instrumentationBy)
-	}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
+	}, 30*time.Second, verifyTelemetryPollingInterval).Should(Succeed())
 
 	// Add some buffer time between the workloads being restarted and verifying that no spans are produced/captured.
 	time.Sleep(10 * time.Second)
@@ -731,7 +738,7 @@ func VerifyThatInstrumentationHasBeenReverted(
 	if workloadType == "cronjob" {
 		// Pod for cron jobs only get scheduled once a minute, since the cronjob schedule format does not allow for jobs
 		// starting every second. Thus, to make the test valid, we need to monitor for spans a little bit longer than
-		// for appsv1 workloads.
+		// for other workload types.
 		secondsToCheckForSpans = 80
 	}
 	httpPathWithQuery := fmt.Sprintf("/dash0-k8s-operator-test?id=%s", testId)
