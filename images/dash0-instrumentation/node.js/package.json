@@ -1,5 +1,5 @@
 {
   "dependencies": {
-    "@dash0hq/opentelemetry": "file:dash0hq-opentelemetry-0.0.0-managed-by-semantic-release.tgz"
+    "@dash0hq/opentelemetry": "1.0.1"
   }
 }
