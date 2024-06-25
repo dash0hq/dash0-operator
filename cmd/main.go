@@ -259,10 +259,9 @@ func readEnvironmentVariables() (string, string, string, corev1.PullPolicy, erro
 			"",
 			fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, initContainerImageEnvVarName)
 	}
-
 	initContainerImagePullPolicyRaw := os.Getenv(initContainerImagePullPolicyEnvVarName)
 	var initContainerImagePullPolicy corev1.PullPolicy
-	if initContainerImagePullPolicyRaw == "" {
+	if initContainerImagePullPolicyRaw != "" {
 		if initContainerImagePullPolicyRaw == string(corev1.PullAlways) ||
 			initContainerImagePullPolicyRaw == string(corev1.PullIfNotPresent) ||
 			initContainerImagePullPolicyRaw == string(corev1.PullNever) {

@@ -39,7 +39,7 @@ var (
 
 	instrumentationInitContainer = corev1.Container{
 		Name:            "dash0-instrumentation",
-		Image:           "some-registry.com:1234/dash0-instrumentation:4.5.6",
+		Image:           "some-registry.com:1234/dash0hq/instrumentation:4.5.6",
 		ImagePullPolicy: corev1.PullAlways,
 		Env: []corev1.EnvVar{{
 			Name:  "DASH0_INSTRUMENTATION_FOLDER_DESTINATION",
@@ -1009,8 +1009,8 @@ func GetStatefulSet(
 
 func addInstrumentationLabels(meta *metav1.ObjectMeta, successful bool) {
 	AddLabel(meta, "dash0.com/instrumented", strconv.FormatBool(successful))
-	AddLabel(meta, "dash0.com/operator-image", "some-registry.com_1234_dash0-operator-controller_1.2.3")
-	AddLabel(meta, "dash0.com/init-container-image", "some-registry.com_1234_dash0-instrumentation_4.5.6")
+	AddLabel(meta, "dash0.com/operator-image", "some-registry.com_1234_dash0hq_operator-controller_1.2.3")
+	AddLabel(meta, "dash0.com/init-container-image", "some-registry.com_1234_dash0hq_instrumentation_4.5.6")
 	AddLabel(meta, "dash0.com/instrumented-by", "someone")
 }
 

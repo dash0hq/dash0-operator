@@ -35,7 +35,7 @@ echo
 echo
 
 echo "STEP 4: rebuild the instrumentation image"
-images/dash0-instrumentation/build.sh
+images/instrumentation/build.sh instrumentation latest
 echo
 echo
 

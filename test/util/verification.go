@@ -209,7 +209,7 @@ func verifyPodSpec(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
 	for i, initContainer := range podSpec.InitContainers {
 		if i == expectations.Dash0InitContainerIdx {
 			Expect(initContainer.Name).To(Equal("dash0-instrumentation"))
-			Expect(initContainer.Image).To(Equal("some-registry.com:1234/dash0-instrumentation:4.5.6"))
+			Expect(initContainer.Image).To(Equal("some-registry.com:1234/dash0hq/instrumentation:4.5.6"))
 			Expect(initContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
 			Expect(initContainer.Env).To(HaveLen(1))
 			Expect(initContainer.Env).To(ContainElement(MatchEnvVar("DASH0_INSTRUMENTATION_FOLDER_DESTINATION", "/opt/dash0")))
@@ -277,16 +277,16 @@ func verifyUnmodifiedPodSpecEventually(g Gomega, podSpec corev1.PodSpec) {
 
 func verifyLabelsAfterSuccessfulModification(meta metav1.ObjectMeta) {
 	Expect(meta.Labels["dash0.com/instrumented"]).To(Equal("true"))
-	Expect(meta.Labels["dash0.com/operator-image"]).To(Equal("some-registry.com_1234_dash0-operator-controller_1.2.3"))
-	Expect(meta.Labels["dash0.com/init-container-image"]).To(Equal("some-registry.com_1234_dash0-instrumentation_4.5.6"))
+	Expect(meta.Labels["dash0.com/operator-image"]).To(Equal("some-registry.com_1234_dash0hq_operator-controller_1.2.3"))
+	Expect(meta.Labels["dash0.com/init-container-image"]).To(Equal("some-registry.com_1234_dash0hq_instrumentation_4.5.6"))
 	Expect(meta.Labels["dash0.com/instrumented-by"]).NotTo(Equal(""))
 	Expect(meta.Labels["dash0.com/enable"]).To(Equal(""))
 }
 
 func verifyLabelsAfterFailureToModify(meta metav1.ObjectMeta) {
 	Expect(meta.Labels["dash0.com/instrumented"]).To(Equal("false"))
-	Expect(meta.Labels["dash0.com/operator-image"]).To(Equal("some-registry.com_1234_dash0-operator-controller_1.2.3"))
-	Expect(meta.Labels["dash0.com/init-container-image"]).To(Equal("some-registry.com_1234_dash0-instrumentation_4.5.6"))
+	Expect(meta.Labels["dash0.com/operator-image"]).To(Equal("some-registry.com_1234_dash0hq_operator-controller_1.2.3"))
+	Expect(meta.Labels["dash0.com/init-container-image"]).To(Equal("some-registry.com_1234_dash0hq_instrumentation_4.5.6"))
 	Expect(meta.Labels["dash0.com/instrumented-by"]).NotTo(Equal(""))
 	Expect(meta.Labels["dash0.com/webhook-ignore-once"]).To(Equal(""))
 	Expect(meta.Labels["dash0.com/enable"]).To(Equal(""))

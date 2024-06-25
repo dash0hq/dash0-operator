@@ -51,9 +51,13 @@ endif
 OPERATOR_SDK_VERSION ?= v1.34.1
 
 # image repository and tag to use for building/pushing the operator image
-IMG_REPOSITORY ?= dash0-operator-controller
+IMG_REPOSITORY ?= operator-controller
 IMG_TAG ?= latest
 IMG ?= $(IMG_REPOSITORY):$(IMG_TAG)
+
+INSTRUMENTATION_IMG_REPOSITORY ?= instrumentation
+INSTRUMENTATION_IMG_TAG ?= latest
+INSTRUMENTATION_IMG ?= $(INSTRUMENTATION_IMG_REPOSITORY):$(INSTRUMENTATION_IMG_TAG)
 
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.28.3
@@ -215,6 +219,8 @@ deploy-via-helm: ## Deploy the controller via helm to the K8s cluster specified 
 		--values test-resources/helm/manual.values.yaml \
 		--set operator.image.repository=${IMG_REPOSITORY} \
 		--set operator.image.tag=${IMG_TAG} \
+		--set operator.initContainerImage.repository=${INSTRUMENTATION_IMG_REPOSITORY} \
+		--set operator.initContainerImage.tag=${INSTRUMENTATION_IMG_TAG} \
 		--set operator.developmentMode=true \
 		dash0-operator \
 		helm-chart/dash0-operator

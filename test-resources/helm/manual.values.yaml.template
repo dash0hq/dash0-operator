@@ -1,5 +1,10 @@
 operator:
   image:
+    repository: operator-controller
+    tag: latest
+    pullPolicy: Never
+  initContainerImage:
+    repository: instrumentation
     tag: latest
     pullPolicy: Never
 
