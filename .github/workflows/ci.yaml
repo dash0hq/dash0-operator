@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - 'main'
+    paths-ignore:
+      - '*.md'
+    tags:
+      - 'v*'
+  pull_request:
+    paths-ignore:
+      - '*.md'
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ci-concurrency-group-${{ github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ~1.22
+          cache: true
+
+      - name: go version
+        run: |
+          go version
+
+      - name: build
+        run: |
+          make
+
+      - name: verify that generated code is up-to-date
+        run: |
+          # make (which we ran in the previous step) will implicitly also run the targets manifests & generate, which
+          # could potentially modify code that is under version control, if changes have been comitted that would have
+          # required updating manifests or generated code and these updates have not been done.
+          git diff --exit-code
+
+      - name: lint
+        run: |
+          make lint
+
+      - name: install Helm unittest plugin
+        shell: bash
+        run: |
+          helm plugin install https://github.com/helm-unittest/helm-unittest.git
+
+      - name: install Helm dependencies
+        working-directory: helm-chart/dash0-operator
+        run: |
+          helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts --force-update
+          helm dependency build
+
+      - name: test
+        run: |
+          make test
+
+  # Builds all container images. For pushes to PRs/branches, we simply verify that the image build still works, the
+  # resulting image will not be pushed to any target registry. For pushes to the main branch, the images are tagged with
+  # "main", but not with a version x.y.z. Finally, for pushes to a tag (or when a tag is created), the images are tagged
+  # with the version indicated by the tag respectively, and also with latest. That is: Creating a GitHub release (or
+  # creating a git tag via other means) will trigger building images tagged with x.y.z meant for production use.
+  build-images:
+    name: Build Images
+    runs-on: ubuntu-latest
+    needs:
+      - verify
+    concurrency:
+      group: ci-concurrency-group-${{ github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: build instrumentation image
+        uses: ./.github/actions/build-image
+        with:
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          imageName: dash0-instrumentation
+          imageTitle: Dash0 Instrumentation
+          imageDescription: contains Dash0 OpenTelemetry distributions for multiple runtimes
+          imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/dash0-instrumentation
+          context: images/dash0-instrumentation
+
+      - name: build operator controller image
+        uses: ./.github/actions/build-image
+        with:
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          imageName: dash0-operator-controller
+          imageTitle: Dash0 Kubernetes Operator Controller
+          imageDescription: the controller for the Dash0 Kubernetes operator
+          context: .
