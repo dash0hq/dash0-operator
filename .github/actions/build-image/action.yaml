@@ -1,0 +1,80 @@
+name: build container image
+description: builds and pushes a container image
+
+inputs:
+  githubToken:
+    description: "github token"
+    required: true
+  # dockerhubUsername:
+  #   description: "Dockerhub username"
+  #   required: true
+  # dockerhubToken:
+  #   description: "Dockerhub token"
+  #   required: true
+  imageName:
+    description: "name of the container image (without registry prefix)"
+    required: true
+  imageTitle:
+    description: "human-readable title for the container image metadata"
+    required: true
+  imageDescription:
+    description: "human-readable description for the container image metadata"
+    required: true
+  imageUrl:
+    description: "URL for the sources of the image"
+    default: "https://github.com/dash0hq/dash0-operator"
+  context:
+    description: "docker build context directory"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+
+    - name: set up docker buildx
+      uses: docker/setup-buildx-action@v3
+
+    # - name: dockerhub login
+    #   uses: docker/login-action@v3
+    #   with:
+    #     username: ${{ inputs.dockerhubUsername }}
+    #     password: ${{ inputs.dockerhubToken }}
+
+    - name: login to GitHub container registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.repository_owner }}
+        password: ${{ inputs.githubToken }}
+
+    - name: extract metadata (tags, labels) for Docker
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        # add ${{ inputs.imageName }} to images once Dockerhub has been set up
+        images: |
+          ghcr.io/${{ inputs.imageName }}
+        tags: |
+          type=semver,pattern={{major}}.{{minor}}.{{patch}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+          type=ref,event=tag
+          type=sha
+        labels: |
+          org.opencontainers.image.title=${{ inputs.imageTitle }}
+          org.opencontainers.image.description=${{ inputs.imageDescription }}
+          org.opencontainers.image.vendor=Dash0 Inc.
+          org.opencontainers.image.url=${{ inputs.imageUrl }}
+        flavor: |
+          latest=auto
+
+    - name: build and push container image
+      uses: docker/build-push-action@v6
+      with:
+        context: ${{ inputs.context }}
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        platforms: linux/amd64
+        cache-from: type=gha,scope=${{ inputs.imageName }}
+        cache-to: type=gha,mode=max,scope=${{ inputs.imageName }}
+        push: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')) }}
