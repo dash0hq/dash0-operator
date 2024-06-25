@@ -85,7 +85,7 @@ operator:
   initContainerImage:
     # Use a different image for the init container entirely. Note that Dash0 does not offer support for Dash0 operator
     # setups that do not use Dash0's official init container image.
-    repository: "dash0-instrumentation"
+    repository: "ghcr.io/dash0hq/instrumentation"
     # overrides the image tag for the init container image
     tag: "1.0.0"
     # override the default image pull policy

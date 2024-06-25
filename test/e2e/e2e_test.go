@@ -15,9 +15,11 @@ import (
 )
 
 const (
-	operatorNamespace       = "dash0-operator-system"
-	operatorImageRepository = "dash0-operator-controller"
-	operatorImageTag        = "latest"
+	operatorNamespace              = "dash0-operator-system"
+	operatorImageRepository        = "operator-controller"
+	operatorImageTag               = "latest"
+	instrumentationImageRepository = "instrumentation"
+	instrumentationImageTag        = "latest"
 
 	kubeContextForTest            = "docker-desktop"
 	applicationUnderTestNamespace = "e2e-application-under-test-namespace"
@@ -47,7 +49,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		certManagerHasBeenInstalled = EnsureCertManagerIsInstalled()
 		RecreateNamespace(applicationUnderTestNamespace)
 		RebuildOperatorControllerImage(operatorImageRepository, operatorImageTag)
-		RebuildDash0InstrumentationImage()
+		RebuildDash0InstrumentationImage(instrumentationImageRepository, instrumentationImageTag)
 		RebuildNodeJsApplicationContainerImage()
 
 		setupFinishedSuccessfully = true
@@ -128,7 +130,13 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				})
 
 				By("deploy the operator and the Dash0 custom resource")
-				DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace, operatorImageRepository, operatorImageTag)
+				DeployOperatorWithCollectorAndClearExportedTelemetry(
+					operatorNamespace,
+					operatorImageRepository,
+					operatorImageTag,
+					instrumentationImageRepository,
+					instrumentationImageTag,
+				)
 				DeployDash0CustomResource(applicationUnderTestNamespace)
 
 				testIds := make(map[string]string)
@@ -163,7 +171,13 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				By("installing the Node.js job")
 				Expect(InstallNodeJsJob(applicationUnderTestNamespace)).To(Succeed())
 				By("deploy the operator and the Dash0 custom resource")
-				DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace, operatorImageRepository, operatorImageTag)
+				DeployOperatorWithCollectorAndClearExportedTelemetry(
+					operatorNamespace,
+					operatorImageRepository,
+					operatorImageTag,
+					instrumentationImageRepository,
+					instrumentationImageTag,
+				)
 				DeployDash0CustomResource(applicationUnderTestNamespace)
 				By("verifying that the Node.js job has been labelled by the controller and that an event has been emitted")
 				Eventually(func(g Gomega) {
@@ -188,7 +202,13 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				By("installing the Node.js pod")
 				Expect(InstallNodeJsPod(applicationUnderTestNamespace)).To(Succeed())
 				By("deploy the operator and the Dash0 custom resource")
-				DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace, operatorImageRepository, operatorImageTag)
+				DeployOperatorWithCollectorAndClearExportedTelemetry(
+					operatorNamespace,
+					operatorImageRepository,
+					operatorImageTag,
+					instrumentationImageRepository,
+					instrumentationImageTag,
+				)
 				DeployDash0CustomResource(applicationUnderTestNamespace)
 				By("verifying that the Node.js pod has not been labelled")
 				Eventually(func(g Gomega) {
@@ -200,7 +220,13 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 	Describe("webhook", func() {
 		BeforeAll(func() {
-			DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace, operatorImageRepository, operatorImageTag)
+			DeployOperatorWithCollectorAndClearExportedTelemetry(
+				operatorNamespace,
+				operatorImageRepository,
+				operatorImageTag,
+				instrumentationImageRepository,
+				instrumentationImageTag,
+			)
 
 			fmt.Fprint(GinkgoWriter, "waiting 10 seconds to give the webhook some time to get ready\n")
 			time.Sleep(10 * time.Second)
@@ -364,7 +390,13 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				})
 
 				By("deploy the operator and the Dash0 custom resource")
-				DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace, operatorImageRepository, operatorImageTag)
+				DeployOperatorWithCollectorAndClearExportedTelemetry(
+					operatorNamespace,
+					operatorImageRepository,
+					operatorImageTag,
+					instrumentationImageRepository,
+					instrumentationImageTag,
+				)
 				runInParallelForAllWorkloadTypes(configs, func(config removalTestNamespaceConfig) {
 					DeployDash0CustomResource(config.namespace)
 				})

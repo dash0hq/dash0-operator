@@ -84,17 +84,17 @@ jobs:
         uses: ./.github/actions/build-image
         with:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
-          imageName: dash0-instrumentation
+          imageName: instrumentation
           imageTitle: Dash0 Instrumentation
           imageDescription: contains Dash0 OpenTelemetry distributions for multiple runtimes
-          imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/dash0-instrumentation
-          context: images/dash0-instrumentation
+          imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/instrumentation
+          context: images/instrumentation
 
       - name: build operator controller image
         uses: ./.github/actions/build-image
         with:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
-          imageName: dash0-operator-controller
+          imageName: operator-controller
           imageTitle: Dash0 Kubernetes Operator Controller
           imageDescription: the controller for the Dash0 Kubernetes operator
           context: .

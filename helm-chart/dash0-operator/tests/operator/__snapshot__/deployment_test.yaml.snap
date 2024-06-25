@@ -41,7 +41,7 @@ deployment should match snapshot (default values):
                 - name: DASH0_OPERATOR_IMAGE
                   value: dash0-operator-controller:1.0.0
                 - name: DASH0_INIT_CONTAINER_IMAGE
-                  value: dash0-instrumentation:1.0.0
+                  value: ghcr.io/dash0hq/instrumentation:1.0.0
               image: dash0-operator-controller:1.0.0
               livenessProbe:
                 httpGet:

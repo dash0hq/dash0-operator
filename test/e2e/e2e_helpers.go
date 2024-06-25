@@ -282,15 +282,23 @@ func RebuildOperatorControllerImage(operatorImageRepository string, operatorImag
 			))).To(Succeed())
 }
 
-func RebuildDash0InstrumentationImage() bool {
-	By("building the dash0-instrumentation image")
-	return Expect(RunAndIgnoreOutput(exec.Command("images/dash0-instrumentation/build.sh"))).To(Succeed())
+func RebuildDash0InstrumentationImage(instrumentationImageRepository string, instrumentationImageTag string) bool {
+	By("building the instrumentation image")
+	return Expect(
+		RunAndIgnoreOutput(
+			exec.Command(
+				"images/instrumentation/build.sh",
+				instrumentationImageRepository,
+				instrumentationImageTag,
+			))).To(Succeed())
 }
 
 func DeployOperatorWithCollectorAndClearExportedTelemetry(
 	operatorNamespace string,
-	imageRepository string,
-	imageTag string,
+	controllerImageRepository string,
+	controllerImageTag string,
+	instrumentationImageRepository string,
+	instrumentationImageTag string,
 ) {
 	By("removing old captured telemetry files")
 	_ = os.Remove("test-resources/e2e-test-volumes/collector-received-data/traces.jsonl")
@@ -311,8 +319,10 @@ func DeployOperatorWithCollectorAndClearExportedTelemetry(
 			// The image repo, tag and pull policy are also defined in test-resources/helm/e2e.values.yaml, but we want
 			// to keep them in sync with the args passed to make docker build in the BeforeAll hook when building the
 			// container image, thus we pass them here explicitly.
-			"--set", fmt.Sprintf("operator.image.repository=%s", imageRepository),
-			"--set", fmt.Sprintf("operator.image.tag=%s", imageTag),
+			"--set", fmt.Sprintf("operator.image.repository=%s", controllerImageRepository),
+			"--set", fmt.Sprintf("operator.image.tag=%s", controllerImageTag),
+			"--set", fmt.Sprintf("operator.initContainerImage.repository=%s", instrumentationImageRepository),
+			"--set", fmt.Sprintf("operator.initContainerImage.tag=%s", instrumentationImageTag),
 			"--set", "operator.developmentMode=true",
 			operatorHelmReleaseName,
 			"helm-chart/dash0-operator",
@@ -766,11 +776,14 @@ func VerifyLabels(g Gomega, namespace string, kind string, successful bool, inst
 	g.Expect(instrumented).To(Equal(strconv.FormatBool(successful)))
 	operatorVersion := readLabel(g, namespace, kind, "dash0.com/operator-image")
 	g.Expect(operatorVersion).To(Or(
-		Equal("dash0-operator-controller_latest"),
-		MatchRegexp("dash0-operator-controller_\\d+\\.\\d+\\.\\d+"),
+		MatchRegexp(".*operator-controller_latest"),
+		MatchRegexp(".*operator-controller_\\d+\\.\\d+\\.\\d+"),
 	))
 	initContainerImageVersion := readLabel(g, namespace, kind, "dash0.com/init-container-image")
-	g.Expect(initContainerImageVersion).To(MatchRegexp("dash0-instrumentation_\\d+\\.\\d+\\.\\d+"))
+	g.Expect(initContainerImageVersion).To(Or(
+		MatchRegexp(".*instrumentation_latest"),
+		MatchRegexp(".*instrumentation_\\d+\\.\\d+\\.\\d+"),
+	))
 	instrumentedBy := readLabel(g, namespace, kind, "dash0.com/instrumented-by")
 	g.Expect(instrumentedBy).To(Equal(instrumentationBy))
 	dash0Enable := readLabel(g, namespace, kind, "dash0.com/enable")

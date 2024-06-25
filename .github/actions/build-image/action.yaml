@@ -51,9 +51,9 @@ runs:
       id: meta
       uses: docker/metadata-action@v5
       with:
-        # add ${{ inputs.imageName }} to images once Dockerhub has been set up
+        # add dash0hq/${{ inputs.imageName }} to images once Dockerhub has been set up
         images: |
-          ghcr.io/${{ inputs.imageName }}
+          ghcr.io/dash0hq/${{ inputs.imageName }}
         tags: |
           type=semver,pattern={{major}}.{{minor}}.{{patch}}
           type=semver,pattern={{major}}.{{minor}}

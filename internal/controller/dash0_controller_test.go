@@ -31,8 +31,8 @@ var (
 	pollingInterval = 50 * time.Millisecond
 
 	images = util.Images{
-		OperatorImage:                "some-registry.com:1234/dash0-operator-controller:1.2.3",
-		InitContainerImage:           "some-registry.com:1234/dash0-instrumentation:4.5.6",
+		OperatorImage:                "some-registry.com:1234/dash0hq/operator-controller:1.2.3",
+		InitContainerImage:           "some-registry.com:1234/dash0hq/instrumentation:4.5.6",
 		InitContainerImagePullPolicy: corev1.PullAlways,
 	}
 
