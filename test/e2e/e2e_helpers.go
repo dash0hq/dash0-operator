@@ -11,26 +11,27 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
-
-	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive
-	. "github.com/onsi/gomega"
-
 	"github.com/google/uuid"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
+	corev1 "k8s.io/api/core/v1"
 
 	"github.com/dash0hq/dash0-operator/internal/util"
+
+	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive
+	. "github.com/onsi/gomega"
 
 	testUtil "github.com/dash0hq/dash0-operator/test/util"
 )
 
 const (
 	certmanagerVersion             = "v1.14.5"
+	localHelmChart                 = "helm-chart/dash0-operator"
 	operatorHelmReleaseName        = "e2e-tests-operator-helm-release"
 	tracesJsonMaxLineLength        = 1_048_576
 	verifyTelemetryTimeout         = 90 * time.Second
@@ -281,7 +282,10 @@ func RecreateNamespace(namespace string) {
 		RunAndIgnoreOutput(exec.Command("kubectl", "create", "ns", namespace))).To(Succeed())
 }
 
-func RebuildOperatorControllerImage(operatorImage ImageSpec) {
+func RebuildOperatorControllerImage(operatorImage ImageSpec, buildImageLocally bool) {
+	if !buildImageLocally {
+		return
+	}
 	if strings.Contains(operatorImage.repository, "/") {
 		By(
 			fmt.Sprintf(
@@ -302,7 +306,10 @@ func RebuildOperatorControllerImage(operatorImage ImageSpec) {
 			))).To(Succeed())
 }
 
-func RebuildDash0InstrumentationImage(instrumentationImage ImageSpec) {
+func RebuildDash0InstrumentationImage(instrumentationImage ImageSpec, buildImageLocally bool) {
+	if !buildImageLocally {
+		return
+	}
 	if strings.Contains(instrumentationImage.repository, "/") {
 		By(
 			fmt.Sprintf(
@@ -322,36 +329,40 @@ func RebuildDash0InstrumentationImage(instrumentationImage ImageSpec) {
 			))).To(Succeed())
 }
 
-func DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace string, images Images) {
+func DeployOperatorWithCollectorAndClearExportedTelemetry(
+	operatorNamespace string,
+	operatorHelmChart string,
+	operatorHelmChartUrl string,
+	images Images,
+) {
 	By("removing old captured telemetry files")
 	_ = os.Remove("test-resources/e2e-test-volumes/collector-received-data/traces.jsonl")
 	_ = os.Remove("test-resources/e2e-test-volumes/collector-received-data/metrics.jsonl")
 	_ = os.Remove("test-resources/e2e-test-volumes/collector-received-data/logs.jsonl")
 
 	ensureOtelCollectorHelmRepoIsInstalled()
+	ensureDash0OperatorHelmRepoIsInstalled(operatorHelmChart, operatorHelmChartUrl)
 
 	By("deploying the controller-manager")
-	output, err := Run(
-		exec.Command(
-			"helm",
-			"install",
-			"--namespace",
-			operatorNamespace,
-			"--create-namespace",
-			"--values", "test-resources/helm/e2e.values.yaml",
-			// The image repo, tag and pull policy are also defined in test-resources/helm/e2e.values.yaml, but we want
-			// to keep them in sync with the args passed to make docker build in the BeforeAll hook when building the
-			// container image, thus we pass them here explicitly.
-			"--set", fmt.Sprintf("operator.image.repository=%s", images.operator.repository),
-			"--set", fmt.Sprintf("operator.image.tag=%s", images.operator.tag),
-			"--set", fmt.Sprintf("operator.image.pullPolicy=%s", images.operator.pullPolicy),
-			"--set", fmt.Sprintf("operator.initContainerImage.repository=%s", images.instrumentation.repository),
-			"--set", fmt.Sprintf("operator.initContainerImage.tag=%s", images.instrumentation.tag),
-			"--set", fmt.Sprintf("operator.initContainerImage.pullPolicy=%s", images.instrumentation.pullPolicy),
-			"--set", "operator.developmentMode=true",
-			operatorHelmReleaseName,
-			"helm-chart/dash0-operator",
-		))
+	arguments := []string{
+		"install",
+		"--namespace",
+		operatorNamespace,
+		"--create-namespace",
+		"--values",
+		"test-resources/helm/e2e.values.yaml",
+		"--set", "operator.developmentMode=true",
+	}
+	arguments = setIfNotEmpty(arguments, "operator.image.repository", images.operator.repository)
+	arguments = setIfNotEmpty(arguments, "operator.image.tag", images.operator.tag)
+	arguments = setIfNotEmpty(arguments, "operator.image.pullPolicy", images.operator.pullPolicy)
+	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.repository", images.instrumentation.repository)
+	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.tag", images.instrumentation.tag)
+	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.pullPolicy", images.instrumentation.pullPolicy)
+	arguments = append(arguments, operatorHelmReleaseName)
+	arguments = append(arguments, operatorHelmChart)
+
+	output, err := Run(exec.Command("helm", arguments...))
 	Expect(err).NotTo(HaveOccurred())
 	fmt.Fprintf(GinkgoWriter, "output of helm install:\n%s", output)
 
@@ -404,6 +415,14 @@ func DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace stri
 		))).To(Succeed())
 }
 
+func setIfNotEmpty(arguments []string, key string, value string) []string {
+	if value != "" {
+		arguments = append(arguments, "--set")
+		arguments = append(arguments, fmt.Sprintf("%s=%s", key, value))
+	}
+	return arguments
+}
+
 func ensureOtelCollectorHelmRepoIsInstalled() {
 	By("checking whether OpenTelemetry Helm charts have been installed")
 	repoList, err := Run(exec.Command("helm", "repo", "list"))
@@ -419,10 +438,56 @@ func ensureOtelCollectorHelmRepoIsInstalled() {
 				"https://open-telemetry.github.io/opentelemetry-helm-charts",
 				"--force-update",
 			))).To(Succeed())
-
 		Expect(RunAndIgnoreOutput(exec.Command("helm", "repo", "update"))).To(Succeed())
 	} else {
 		fmt.Fprintf(GinkgoWriter, "The helm repo for open-telemetry is already installed.\n")
+	}
+}
+
+func ensureDash0OperatorHelmRepoIsInstalled(operatorHelmChart string, operatorHelmChartUrl string) {
+	if operatorHelmChart == localHelmChart && operatorHelmChartUrl == "" {
+		// installing from local Helm chart sources, no action required
+		return
+	} else if operatorHelmChart == localHelmChart && operatorHelmChartUrl != "" {
+		Fail("Invalid test setup: When setting a URL for the Helm chart (OPERATOR_HELM_CHART_URL), you also need to " +
+			"provide a custom name (OPERATOR_HELM_CHART).")
+	} else if operatorHelmChart != localHelmChart && operatorHelmChartUrl == "" {
+		Fail("Invalid test setup: When setting a non-standard name for the operator Helm chart " +
+			"(OPERATOR_HELM_CHART), you also need to provide a URL from where to install it (OPERATOR_HELM_CHART_URL).")
+	} else if operatorHelmChartUrl != "" && !strings.Contains(operatorHelmChart, "/") {
+		Fail("Invalid test setup: When using a Helm chart URL (OPERATOR_HELM_CHART_URL), the provided Helm chart " +
+			"name (OPERATOR_HELM_CHART) needs to have the format ${repository}/${chart_name}.")
+	}
+	repositoryName := operatorHelmChart[:strings.LastIndex(operatorHelmChart, "/")]
+	By(fmt.Sprintf("checking whether the operator Helm chart repo %s (%s) has been installed",
+		repositoryName, operatorHelmChartUrl))
+	repoList, err := Run(exec.Command("helm", "repo", "list"))
+	Expect(err).NotTo(HaveOccurred())
+	if !regexp.MustCompile(
+		fmt.Sprintf("%s\\s+%s", repositoryName, operatorHelmChartUrl)).MatchString(repoList) {
+		fmt.Fprintf(
+			GinkgoWriter,
+			"The helm repo %s (%s) has not been found, adding it now.\n",
+			repositoryName,
+			operatorHelmChartUrl,
+		)
+		Expect(RunAndIgnoreOutput(
+			exec.Command(
+				"helm",
+				"repo",
+				"add",
+				repositoryName,
+				operatorHelmChartUrl,
+				"--force-update",
+			))).To(Succeed())
+		Expect(RunAndIgnoreOutput(exec.Command("helm", "repo", "update"))).To(Succeed())
+	} else {
+		fmt.Fprintf(
+			GinkgoWriter,
+			"The helm repo %s (%s) is already installed.\n",
+			repositoryName,
+			operatorHelmChartUrl,
+		)
 	}
 }
 
@@ -758,14 +823,6 @@ func VerifyThatWorkloadHasBeenInstrumented(
 	return testId
 }
 
-func expectedImageLabel(image ImageSpec) string {
-	return util.ImageNameToLabel(renderFullyQualifiedImageName(image))
-}
-
-func renderFullyQualifiedImageName(image ImageSpec) string {
-	return fmt.Sprintf("%s:%s", image.repository, image.tag)
-}
-
 func VerifyThatInstrumentationHasBeenReverted(
 	namespace string,
 	workloadType string,
@@ -823,13 +880,35 @@ func VerifyLabels(
 	instrumented := readLabel(g, namespace, kind, "dash0.com/instrumented")
 	g.Expect(instrumented).To(Equal(strconv.FormatBool(successful)))
 	operatorImage := readLabel(g, namespace, kind, "dash0.com/operator-image")
-	g.Expect(operatorImage).To(Equal(expectedImageLabel(images.operator)))
+	verifyImageLabel(g, operatorImage, images.operator, "ghcr.io/dash0hq/operator-controller:")
 	initContainerImage := readLabel(g, namespace, kind, "dash0.com/init-container-image")
-	g.Expect(initContainerImage).To(Equal(expectedImageLabel(images.instrumentation)))
+	verifyImageLabel(g, initContainerImage, images.instrumentation, "ghcr.io/dash0hq/instrumentation:")
 	instrumentedBy := readLabel(g, namespace, kind, "dash0.com/instrumented-by")
 	g.Expect(instrumentedBy).To(Equal(instrumentationBy))
 	dash0Enable := readLabel(g, namespace, kind, "dash0.com/enable")
 	g.Expect(dash0Enable).To(Equal(""))
+}
+
+func verifyImageLabel(g Gomega, labelValue string, image ImageSpec, defaultImageNamePrefix string) {
+	expectedLabel, expectFullLabel := expectedImageLabel(image, defaultImageNamePrefix)
+	if expectFullLabel {
+		g.Expect(labelValue).To(Equal(expectedLabel))
+	} else {
+		g.Expect(labelValue).To(ContainSubstring(expectedLabel))
+	}
+}
+
+func expectedImageLabel(image ImageSpec, defaultImageName string) (string, bool) {
+	// If the repository has been unset explicitly via the respective environment variable, the default image from the
+	// helm chart will be used, so we need to test against that.
+	if image.repository == "" {
+		return util.ImageNameToLabel(defaultImageName), false
+	}
+	return util.ImageNameToLabel(renderFullyQualifiedImageName(image)), true
+}
+
+func renderFullyQualifiedImageName(image ImageSpec) string {
+	return fmt.Sprintf("%s:%s", image.repository, image.tag)
 }
 
 func VerifyNoDash0Labels(g Gomega, namespace string, kind string) {

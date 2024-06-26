@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -28,8 +29,12 @@ var (
 
 	setupFinishedSuccessfully bool
 
-	operatorNamespace = "dash0-operator-system"
-	images            = Images{
+	buildOperatorControllerImageFromLocalSources = true
+	buildInstrumentationImageFromLocalSources    = true
+	operatorHelmChart                            = localHelmChart
+	operatorHelmChartUrl                         = ""
+	operatorNamespace                            = "dash0-operator-system"
+	images                                       = Images{
 		operator: ImageSpec{
 			repository: "operator-controller",
 			tag:        "latest",
@@ -59,8 +64,8 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		RecreateNamespace(applicationUnderTestNamespace)
 
 		readAndApplyEnvironmentVariables()
-		RebuildOperatorControllerImage(images.operator)
-		RebuildDash0InstrumentationImage(images.instrumentation)
+		RebuildOperatorControllerImage(images.operator, buildOperatorControllerImageFromLocalSources)
+		RebuildDash0InstrumentationImage(images.instrumentation, buildInstrumentationImageFromLocalSources)
 		RebuildNodeJsApplicationContainerImage()
 
 		setupFinishedSuccessfully = true
@@ -141,7 +146,12 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				})
 
 				By("deploy the operator and the Dash0 custom resource")
-				DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace, images)
+				DeployOperatorWithCollectorAndClearExportedTelemetry(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					images,
+				)
 				DeployDash0CustomResource(applicationUnderTestNamespace)
 
 				testIds := make(map[string]string)
@@ -177,7 +187,12 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				By("installing the Node.js job")
 				Expect(InstallNodeJsJob(applicationUnderTestNamespace)).To(Succeed())
 				By("deploy the operator and the Dash0 custom resource")
-				DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace, images)
+				DeployOperatorWithCollectorAndClearExportedTelemetry(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					images,
+				)
 				DeployDash0CustomResource(applicationUnderTestNamespace)
 				By("verifying that the Node.js job has been labelled by the controller and that an event has been emitted")
 				Eventually(func(g Gomega) {
@@ -202,7 +217,12 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				By("installing the Node.js pod")
 				Expect(InstallNodeJsPod(applicationUnderTestNamespace)).To(Succeed())
 				By("deploy the operator and the Dash0 custom resource")
-				DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace, images)
+				DeployOperatorWithCollectorAndClearExportedTelemetry(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					images,
+				)
 				DeployDash0CustomResource(applicationUnderTestNamespace)
 				By("verifying that the Node.js pod has not been labelled")
 				Eventually(func(g Gomega) {
@@ -214,7 +234,12 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 	Describe("webhook", func() {
 		BeforeAll(func() {
-			DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace, images)
+			DeployOperatorWithCollectorAndClearExportedTelemetry(
+				operatorNamespace,
+				operatorHelmChart,
+				operatorHelmChartUrl,
+				images,
+			)
 
 			fmt.Fprint(GinkgoWriter, "waiting 10 seconds to give the webhook some time to get ready\n")
 			time.Sleep(10 * time.Second)
@@ -379,7 +404,12 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				})
 
 				By("deploy the operator and the Dash0 custom resource")
-				DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace, images)
+				DeployOperatorWithCollectorAndClearExportedTelemetry(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					images,
+				)
 				runInParallelForAllWorkloadTypes(configs, func(config removalTestNamespaceConfig) {
 					DeployDash0CustomResource(config.namespace)
 				})
@@ -438,6 +468,19 @@ func runInParallelForAllWorkloadTypes[C any](
 }
 
 func readAndApplyEnvironmentVariables() {
+	buildOperatorControllerImageFromLocalSourcesRaw := getEnvOrDefault("BUILD_OPERATOR_CONTROLLER_IMAGE", "")
+	var err error
+	if buildOperatorControllerImageFromLocalSourcesRaw != "" {
+		buildOperatorControllerImageFromLocalSources, err = strconv.ParseBool(buildOperatorControllerImageFromLocalSourcesRaw)
+		Expect(err).NotTo(HaveOccurred())
+	}
+	buildInstrumentationImageFromLocalSourcesRaw := getEnvOrDefault("BUILD_INSTRUMENTATION_IMAGE", "")
+	if buildInstrumentationImageFromLocalSourcesRaw != "" {
+		buildInstrumentationImageFromLocalSources, err = strconv.ParseBool(buildInstrumentationImageFromLocalSourcesRaw)
+		Expect(err).NotTo(HaveOccurred())
+	}
+	operatorHelmChart = getEnvOrDefault("OPERATOR_HELM_CHART", operatorHelmChart)
+	operatorHelmChartUrl = getEnvOrDefault("OPERATOR_HELM_CHART_URL", operatorHelmChartUrl)
 	images.operator.repository = getEnvOrDefault("IMG_REPOSITORY", images.operator.repository)
 	images.operator.tag = getEnvOrDefault("IMG_TAG", images.operator.tag)
 	images.operator.pullPolicy = getEnvOrDefault("IMG_PULL_POLICY", images.operator.pullPolicy)

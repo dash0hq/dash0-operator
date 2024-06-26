@@ -1,13 +1,3 @@
-operator:
-  image:
-    repository: operator-controller
-    tag: latest
-    pullPolicy: Never
-  initContainerImage:
-    repository: instrumentation
-    tag: latest
-    pullPolicy: Never
-
 opentelemetry-collector:
   config:
     # Remove the bearertokenauth/dash0 extension, we do not need it for the e2e tests
