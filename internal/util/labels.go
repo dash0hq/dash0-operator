@@ -52,8 +52,8 @@ func AddInstrumentationLabels(
 	} else {
 		addLabel(meta, instrumentedLabelKey, string(instrumentedLabelValueUnsuccessful))
 	}
-	addLabel(meta, operatorImageLabelKey, imageNameToLabel(instrumentationMetadata.OperatorImage))
-	addLabel(meta, initContainerImageLabelKey, imageNameToLabel(instrumentationMetadata.InitContainerImage))
+	addLabel(meta, operatorImageLabelKey, ImageNameToLabel(instrumentationMetadata.OperatorImage))
+	addLabel(meta, initContainerImageLabelKey, ImageNameToLabel(instrumentationMetadata.InitContainerImage))
 	addLabel(meta, instrumentedByLabelKey, instrumentationMetadata.InstrumentedBy)
 }
 
@@ -122,7 +122,7 @@ func CheckAndDeleteIgnoreOnceLabel(meta *metav1.ObjectMeta) bool {
 	return false
 }
 
-func imageNameToLabel(imageName string) string {
+func ImageNameToLabel(imageName string) string {
 	// See https://github.com/distribution/reference/blob/e60f3474a5da95391815dacd158f9dba50ef7df4/regexp.go#L136 ->
 	// referencePat for parsing logic for image names, if required. In particular, if we see longer image names out in
 	// the wild (due to longer registry names), we might want to prefer the tag/version over the registry name when

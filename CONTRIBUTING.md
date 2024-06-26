@@ -73,6 +73,12 @@ To run the end-to-end tests:
 make test-e2e
 ```
 
+The tests can also be run with remote images, like this:
+
+```
+IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller IMG_TAG=main-dev IMG_PULL_POLICY="" INSTRUMENTATION_IMG_REPOSITORY=ghcr.io/dash0hq/instrumentation INSTRUMENTATION_IMG_TAG=main-dev INSTRUMENTATION_IMG_PULL_POLICY="" make test-e2e
+```
+
 ### Semi-Manual Test Scenarios
 
 The e2e tests might sometimes not be the best tool to troubleshoot the operator, simply because they remove everything

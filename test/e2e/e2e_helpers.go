@@ -43,6 +43,17 @@ var (
 	requiredPorts     = []int{1207, 4317, 4318}
 )
 
+type ImageSpec struct {
+	repository string
+	tag        string
+	pullPolicy string
+}
+
+type Images struct {
+	operator        ImageSpec
+	instrumentation ImageSpec
+}
+
 func CheckIfRequiredPortsAreBlocked() {
 	portsCurrentlyInUseByKubernetesServices, err := Run(
 		exec.Command(
@@ -259,47 +270,59 @@ func RecreateNamespace(namespace string) {
 			Fail(fmt.Sprintf("kubectl get ns %s failed with unexpected error: %v", namespace, err))
 		}
 	} else {
-		ExpectWithOffset(1,
+		Expect(
 			RunAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", namespace))).To(Succeed())
-		ExpectWithOffset(1,
+		Expect(
 			RunAndIgnoreOutput(
 				exec.Command("kubectl", "wait", "--for=delete", "ns", namespace, "--timeout=60s"))).To(Succeed())
 	}
 
-	ExpectWithOffset(1,
+	Expect(
 		RunAndIgnoreOutput(exec.Command("kubectl", "create", "ns", namespace))).To(Succeed())
 }
 
-func RebuildOperatorControllerImage(operatorImageRepository string, operatorImageTag string) bool {
-	By("building the operator controller image")
-	return ExpectWithOffset(1,
+func RebuildOperatorControllerImage(operatorImage ImageSpec) {
+	if strings.Contains(operatorImage.repository, "/") {
+		By(
+			fmt.Sprintf(
+				"not rebuilding the operator controller image %s, this looks like a remote image",
+				renderFullyQualifiedImageName(operatorImage),
+			))
+		return
+	}
+
+	By(fmt.Sprintf("building the operator controller image: %s", renderFullyQualifiedImageName(operatorImage)))
+	Expect(
 		RunAndIgnoreOutput(
 			exec.Command(
 				"make",
 				"docker-build",
-				fmt.Sprintf("IMG_REPOSITORY=%s", operatorImageRepository),
-				fmt.Sprintf("IMG_TAG=%s", operatorImageTag),
+				fmt.Sprintf("IMG_REPOSITORY=%s", operatorImage.repository),
+				fmt.Sprintf("IMG_TAG=%s", operatorImage.tag),
 			))).To(Succeed())
 }
 
-func RebuildDash0InstrumentationImage(instrumentationImageRepository string, instrumentationImageTag string) bool {
-	By("building the instrumentation image")
-	return Expect(
+func RebuildDash0InstrumentationImage(instrumentationImage ImageSpec) {
+	if strings.Contains(instrumentationImage.repository, "/") {
+		By(
+			fmt.Sprintf(
+				"not rebuilding the instrumenation image %s, this looks like a remote image",
+				renderFullyQualifiedImageName(instrumentationImage),
+			))
+		return
+	}
+
+	By(fmt.Sprintf("building the instrumentation image: %s", renderFullyQualifiedImageName(instrumentationImage)))
+	Expect(
 		RunAndIgnoreOutput(
 			exec.Command(
 				"images/instrumentation/build.sh",
-				instrumentationImageRepository,
-				instrumentationImageTag,
+				instrumentationImage.repository,
+				instrumentationImage.tag,
 			))).To(Succeed())
 }
 
-func DeployOperatorWithCollectorAndClearExportedTelemetry(
-	operatorNamespace string,
-	controllerImageRepository string,
-	controllerImageTag string,
-	instrumentationImageRepository string,
-	instrumentationImageTag string,
-) {
+func DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace string, images Images) {
 	By("removing old captured telemetry files")
 	_ = os.Remove("test-resources/e2e-test-volumes/collector-received-data/traces.jsonl")
 	_ = os.Remove("test-resources/e2e-test-volumes/collector-received-data/metrics.jsonl")
@@ -319,10 +342,12 @@ func DeployOperatorWithCollectorAndClearExportedTelemetry(
 			// The image repo, tag and pull policy are also defined in test-resources/helm/e2e.values.yaml, but we want
 			// to keep them in sync with the args passed to make docker build in the BeforeAll hook when building the
 			// container image, thus we pass them here explicitly.
-			"--set", fmt.Sprintf("operator.image.repository=%s", controllerImageRepository),
-			"--set", fmt.Sprintf("operator.image.tag=%s", controllerImageTag),
-			"--set", fmt.Sprintf("operator.initContainerImage.repository=%s", instrumentationImageRepository),
-			"--set", fmt.Sprintf("operator.initContainerImage.tag=%s", instrumentationImageTag),
+			"--set", fmt.Sprintf("operator.image.repository=%s", images.operator.repository),
+			"--set", fmt.Sprintf("operator.image.tag=%s", images.operator.tag),
+			"--set", fmt.Sprintf("operator.image.pullPolicy=%s", images.operator.pullPolicy),
+			"--set", fmt.Sprintf("operator.initContainerImage.repository=%s", images.instrumentation.repository),
+			"--set", fmt.Sprintf("operator.initContainerImage.tag=%s", images.instrumentation.tag),
+			"--set", fmt.Sprintf("operator.initContainerImage.pullPolicy=%s", images.instrumentation.pullPolicy),
 			"--set", "operator.developmentMode=true",
 			operatorHelmReleaseName,
 			"helm-chart/dash0-operator",
@@ -363,10 +388,10 @@ func DeployOperatorWithCollectorAndClearExportedTelemetry(
 		return nil
 	}
 
-	EventuallyWithOffset(1, verifyControllerUp, 120*time.Second, time.Second).Should(Succeed())
+	Eventually(verifyControllerUp, 120*time.Second, time.Second).Should(Succeed())
 
 	// verify that the OTel collector is also up and running
-	ExpectWithOffset(1, RunAndIgnoreOutput(
+	Expect(RunAndIgnoreOutput(
 		exec.Command("kubectl",
 			"rollout",
 			"status",
@@ -403,7 +428,7 @@ func ensureOtelCollectorHelmRepoIsInstalled() {
 
 func UndeployOperatorAndCollector(operatorNamespace string) {
 	By("undeploying the controller-manager")
-	ExpectWithOffset(1,
+	Expect(
 		RunAndIgnoreOutput(
 			exec.Command(
 				"helm",
@@ -417,7 +442,7 @@ func UndeployOperatorAndCollector(operatorNamespace string) {
 	// We need to delete the operator namespace and wait until the namespace is really gone, otherwise the next test
 	// case/suite that tries to create the operator will run into issues when trying to recreate the namespace which is
 	// still in the process of being deleted.
-	ExpectWithOffset(1,
+	Expect(
 		RunAndIgnoreOutput(
 			exec.Command(
 				"kubectl",
@@ -431,7 +456,7 @@ func UndeployOperatorAndCollector(operatorNamespace string) {
 }
 
 func VerifyDash0OperatorReleaseIsNotInstalled(g Gomega, operatorNamespace string) {
-	g.ExpectWithOffset(1, RunAndIgnoreOutput(exec.Command(
+	g.Expect(RunAndIgnoreOutput(exec.Command(
 		"kubectl",
 		"wait",
 		"--for=delete",
@@ -441,14 +466,14 @@ func VerifyDash0OperatorReleaseIsNotInstalled(g Gomega, operatorNamespace string
 }
 
 func DeployDash0CustomResource(namespace string) {
-	ExpectWithOffset(1,
+	Expect(
 		RunAndIgnoreOutput(exec.Command(
 			"kubectl", "apply", "-n", namespace, "-k", "config/samples"))).To(Succeed())
 }
 
 func UndeployDash0CustomResource(namespace string) {
 	// remove the resource
-	ExpectWithOffset(1,
+	Expect(
 		RunAndIgnoreOutput(exec.Command(
 			"kubectl",
 			"delete",
@@ -678,12 +703,20 @@ func VerifyThatWorkloadHasBeenInstrumented(
 	workloadType string,
 	port int,
 	isBatch bool,
+	images Images,
 	instrumentationBy string,
 ) string {
 	By(fmt.Sprintf("%s: waiting for the workload to get instrumented (polling its labels and events to check)",
 		workloadType))
 	Eventually(func(g Gomega) {
-		VerifyLabels(g, namespace, workloadType, true, instrumentationBy)
+		VerifyLabels(
+			g,
+			namespace,
+			workloadType,
+			true,
+			images,
+			instrumentationBy,
+		)
 		VerifySuccessfulInstrumentationEvent(g, namespace, workloadType, instrumentationBy)
 	}, 20*time.Second, verifyTelemetryPollingInterval).Should(Succeed())
 
@@ -723,6 +756,14 @@ func VerifyThatWorkloadHasBeenInstrumented(
 	}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
 	By(fmt.Sprintf("%s: matching spans have been received", workloadType))
 	return testId
+}
+
+func expectedImageLabel(image ImageSpec) string {
+	return util.ImageNameToLabel(renderFullyQualifiedImageName(image))
+}
+
+func renderFullyQualifiedImageName(image ImageSpec) string {
+	return fmt.Sprintf("%s:%s", image.repository, image.tag)
 }
 
 func VerifyThatInstrumentationHasBeenReverted(
@@ -771,19 +812,20 @@ func VerifyThatFailedInstrumentationAttemptLabelsHaveBeenRemovedRemoved(namespac
 	}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
 }
 
-func VerifyLabels(g Gomega, namespace string, kind string, successful bool, instrumentationBy string) {
+func VerifyLabels(
+	g Gomega,
+	namespace string,
+	kind string,
+	successful bool,
+	images Images,
+	instrumentationBy string,
+) {
 	instrumented := readLabel(g, namespace, kind, "dash0.com/instrumented")
 	g.Expect(instrumented).To(Equal(strconv.FormatBool(successful)))
-	operatorVersion := readLabel(g, namespace, kind, "dash0.com/operator-image")
-	g.Expect(operatorVersion).To(Or(
-		MatchRegexp(".*operator-controller_latest"),
-		MatchRegexp(".*operator-controller_\\d+\\.\\d+\\.\\d+"),
-	))
-	initContainerImageVersion := readLabel(g, namespace, kind, "dash0.com/init-container-image")
-	g.Expect(initContainerImageVersion).To(Or(
-		MatchRegexp(".*instrumentation_latest"),
-		MatchRegexp(".*instrumentation_\\d+\\.\\d+\\.\\d+"),
-	))
+	operatorImage := readLabel(g, namespace, kind, "dash0.com/operator-image")
+	g.Expect(operatorImage).To(Equal(expectedImageLabel(images.operator)))
+	initContainerImage := readLabel(g, namespace, kind, "dash0.com/init-container-image")
+	g.Expect(initContainerImage).To(Equal(expectedImageLabel(images.instrumentation)))
 	instrumentedBy := readLabel(g, namespace, kind, "dash0.com/instrumented-by")
 	g.Expect(instrumentedBy).To(Equal(instrumentationBy))
 	dash0Enable := readLabel(g, namespace, kind, "dash0.com/enable")
