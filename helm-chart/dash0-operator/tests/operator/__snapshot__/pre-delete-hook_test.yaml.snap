@@ -32,7 +32,7 @@ pre-delete hook job should match snapshot:
             - command:
                 - /manager
                 - --uninstrument-all
-              image: dash0-operator-controller:1.0.0
+              image: ghcr.io/dash0hq/operator-controller:1.0.0
               imagePullPolicy: null
               name: pre-delete-job
               resources:
