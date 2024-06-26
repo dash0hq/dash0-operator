@@ -117,7 +117,7 @@ jobs:
 
       - name: build instrumentation image
         uses: ./.github/actions/build-image
-        if: steps.changed-files.outputs.instrumentation_any_changed == 'true'
+        if: steps.changed-files.outputs.instrumentation_any_changed == 'true' || contains(github.ref, 'refs/tags/')
         with:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
           imageName: instrumentation
@@ -128,7 +128,7 @@ jobs:
 
       - name: build operator controller image
         uses: ./.github/actions/build-image
-        if: steps.changed-files.outputs.operator_controller_any_changed == 'true'
+        if: steps.changed-files.outputs.operator_controller_any_changed == 'true' || contains(github.ref, 'refs/tags/')
         with:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
           imageName: operator-controller
