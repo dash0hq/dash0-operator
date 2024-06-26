@@ -25,44 +25,16 @@ This approach is suitable for deploying the operator to a cluster running locall
 via the Kubernetes support included in Docker Desktop.
 
 Run `make docker-build` to build the container image locally, this will tag the image as
-`dash0-operator-controller:latest`.
-
-When deploying an image that has only been built locally (and has not been pushed to any remote registry), the file
-`config/manager/manager.yaml` needs to be modified locally: Find the `controller-manager` `Deployment` specification
-and `spec.template.spec.containers[command]` and add the attribute `imagePullPolicy: Never`, like this:
-
-```
-      # ...
-      containers:
-        - command:
-            - /manager
-          args:
-            - --leader-elect
-          image: dash0-operator-controller:latest
-          name: manager
-
-          imagePullPolicy: Never
-      # ...
-```
-
-Alternatively, you can also push the image to a remote registry, specified by the variable `IMG`:
-
-```sh
-make docker-build docker-push IMG=<some-registry>/dash0-operator:tag
-```
-
-Then the mentioned modification of `config/manager/manager.yaml` is not necessary.
-In this case your test cluster needs to be configured to have pull access for the image in the remote registry.
+`operator-controller:latest`.
 
 After that, you can deploy the operator to your cluster:
 
-* Deploy the locally built image `dash0-operator-controller:latest` to the cluster: `make deploy-via-helm`
+* Deploy the locally built image `operator-controller:latest` to the cluster: `make deploy-via-helm`
   (or `make deploy-via-kustomize`)
-* Alternatively, deploy the image pushed to the remote registry with the image specified by `IMG`:
-  `make deploy-via-helm IMG=<some-registry>/dash0-operator:tag`
-  (or `make deploy-via-kustomize IMG=<some-registry>/dash0-operator:tag`)
-* No matter if you deploy via helm or kustomize, the custom resource definition will automatically be installed when
-  deploying the operator. However, you can also do that separately via kustomize if required via `make install`.
+* Alternatively, deploy with images from a remote registry:
+  `make deploy-via-helm IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller IMG_TAG=main-dev IMG_PULL_POLICY="" INSTRUMENTATION_IMG_REPOSITORY=ghcr.io/dash0hq/instrumentation INSTRUMENTATION_IMG_TAG=main-dev INSTRUMENTATION_IMG_PULL_POLICY=""`
+* The custom resource definition will automatically be installed when deploying the operator. However, you can also do
+  that separately via kustomize if required via `make install`.
 
 **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin privileges or be logged in as
 admin.
@@ -100,6 +72,32 @@ To run the end-to-end tests:
 ```
 make test-e2e
 ```
+
+### Semi-Manual Test Scenarios
+
+The e2e tests might sometimes not be the best tool to troubleshoot the operator, simply because they remove everything
+they deploy in their `AfterAll`/`AfterEach` hooks. The scripts in `test-resources/bin` can be used for these cases:
+* `test-resources/bin/test-roundtrip-01-aum-operator-cr.sh`: Deploys an application under monitoring (this is 
+  abbreviated to "aum" in the name of the script) to the namespace `test-namespace`, then it deploys the operator to
+  the namespace `dash-operator-system`, and finally it deploys the Dash0 custom resource to `test-namespace`. This is a
+  test scenario for instrumenting _existing_ workloads via the controller's reconcile loop.   
+* `test-resources/bin/test-roundtrip-02-operator-cr-aum.sh`: Deploys the operator to `dash0-operator-system`, then the
+  Dash0 custom resource to namespace `test-namespace`, and finally an application under monitoring to the namespace
+  `test-namespace`. This is a test scenario for instrumenting _new_ workloads at deploy time via the admission webhook.
+* `test-resources/bin/test-roundtrip-03-aum-cr-operator.sh`: This is the same as `test-roundtrip-01-aum-operator-cr.sh`,
+  with the minor difference that the custom resource is deployed to the target namespace before the operator is
+  deployed.
+* `test-resources/bin/test-cleanup.sh`: This script removes all resources created by the other scripts. **You should
+  always this script after running any of the other scripts, when you are done with your tests, otherwise the e2e
+  tests will fail the next time you start them.** Note that all above the scripts call this script at the beginning, so
+  there is no need to clean up between individual invocations of the test scripts.
+* All scripts will, by default, use the target namespace `test-namespace` and the workload type `deployment`. They all
+  accept two command line parameters to override these defaults. For example, use 
+  `test-resources/bin/test-roundtrip-01-aum-operator-cr.sh another-namespace replicaset` to run the scenario with 
+  the target namespace `another-namespace` and a replica set workload.
+* Additional parameterization can be achieved via environment variables, for example
+  `IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller IMG_TAG=main-dev IMG_PULL_POLICY="" INSTRUMENTATION_IMG_REPOSITORY=ghcr.io/dash0hq/instrumentation INSTRUMENTATION_IMG_TAG=main-dev INSTRUMENTATION_IMG_PULL_POLICY="" test-resources/bin/test-roundtrip-01-aum-operator-cr.sh`
+  will run the scenario with the images that have been built from the main branch and pushed to ghcr.io most recently.
 
 ## Make Targets
 
