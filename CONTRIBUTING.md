@@ -74,10 +74,41 @@ make test-e2e
 ```
 
 The tests can also be run with remote images, like this:
+```
+BUILD_OPERATOR_CONTROLLER_IMAGE=false \
+  BUILD_INSTRUMENTATION_IMAGE=false \
+  IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller \
+  IMG_TAG=main-dev \
+  IMG_PULL_POLICY="" \
+  INSTRUMENTATION_IMG_REPOSITORY=ghcr.io/dash0hq/instrumentation \
+  INSTRUMENTATION_IMG_TAG=main-dev \
+  INSTRUMENTATION_IMG_PULL_POLICY="" \
+  make test-e2e
+```
+
+The settings `BUILD_OPERATOR_CONTROLLER_IMAGE=false` plus `BUILD_INSTRUMENTATION_IMAGE=false` will skip building these
+images locally, which is not required when using remote images from a registry.
+
+The test suite can also be run with a Helm chart from a remote repository:
 
 ```
-IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller IMG_TAG=main-dev IMG_PULL_POLICY="" INSTRUMENTATION_IMG_REPOSITORY=ghcr.io/dash0hq/instrumentation INSTRUMENTATION_IMG_TAG=main-dev INSTRUMENTATION_IMG_PULL_POLICY="" make test-e2e
+BUILD_OPERATOR_CONTROLLER_IMAGE=false \
+  BUILD_INSTRUMENTATION_IMAGE=false \
+  OPERATOR_HELM_CHART=dash0hq-operator/dash0-operator \
+  OPERATOR_HELM_CHART_URL=https://dash0hq.github.io/dash0-operator \
+  IMG_REPOSITORY="" \
+  IMG_TAG="" \
+  IMG_PULL_POLICY="" \
+  INSTRUMENTATION_IMG_REPOSITORY="" \
+  INSTRUMENTATION_IMG_TAG="" \
+  INSTRUMENTATION_IMG_PULL_POLICY="" \
+  make test-e2e
 ```
+
+Note: Unsetting parameters like `IMG_REPOSITORY` explicitly (by setting them to an empty string) will lead to the
+end-to-end test not setting those values when deploying via helm, so that the default value from the chart will be used.
+Otherwise, without `IMG_REPOSITORY=""` being present, the test suite will use `IMG_REPOSITORY=operator-controller` (the
+image built from local sources) as the default setting.
 
 ### Semi-Manual Test Scenarios
 
