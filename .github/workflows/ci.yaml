@@ -90,8 +90,12 @@ jobs:
         with:
           files_yaml: |
             instrumentation:
+              - .github/actions/build-image/**
+              - .github/workflows/ci.yaml
               - images/instrumentation/**
             operator_controller:
+              - .github/actions/build-image/**
+              - .github/workflows/ci.yaml
               - go.mod
               - go.sum
               - api/**
