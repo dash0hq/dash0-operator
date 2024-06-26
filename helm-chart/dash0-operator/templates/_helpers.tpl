@@ -53,7 +53,11 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 
 {{/* the init container image */}}
 {{- define "dash0-operator.initContainerImage" -}}
-{{- printf "%s:%s" .Values.operator.initContainerImage.repository .Values.operator.initContainerImage.tag }}
+{{- printf "%s:%s" .Values.operator.initContainerImage.repository (include "dash0-operator.initContainerImageTag" .)  }}
+{{- end }}
+
+{{- define "dash0-operator.initContainerImageTag" -}}
+{{- default .Chart.AppVersion .Values.operator.initContainerImage.tag }}
 {{- end }}
 
 {{- define "dash0-operator.restrictiveContainerSecurityContext" -}}

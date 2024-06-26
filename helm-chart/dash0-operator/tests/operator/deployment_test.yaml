@@ -6,6 +6,27 @@ tests:
     asserts:
       - matchSnapshot: {}
 
+  - it: image tags should default to appVersion
+    chart:
+      version: 4.5.6
+      appVersion: 99.100.101
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/dash0hq/operator-controller:99.100.101
+      - equal:
+          path: spec.template.spec.containers[0].env[1].name
+          value: DASH0_OPERATOR_IMAGE
+      - equal:
+          path: spec.template.spec.containers[0].env[1].value
+          value: ghcr.io/dash0hq/operator-controller:99.100.101
+      - equal:
+          path: spec.template.spec.containers[0].env[2].name
+          value: DASH0_INIT_CONTAINER_IMAGE
+      - equal:
+          path: spec.template.spec.containers[0].env[2].value
+          value: ghcr.io/dash0hq/instrumentation:99.100.101
+
   - it: should render deployment with custom settings
     set:
       operator:

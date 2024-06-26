@@ -5,3 +5,12 @@ tests:
   - it: pre-delete hook job should match snapshot
     asserts:
       - matchSnapshot: {}
+
+  - it: image tag should default to appVersion
+    chart:
+      version: 4.5.6
+      appVersion: 99.100.101
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/dash0hq/operator-controller:99.100.101
