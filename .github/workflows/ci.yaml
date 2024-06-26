@@ -4,10 +4,10 @@ on:
   push:
     branches:
       - 'main'
+    tags:
+      - '*.*.*'
     paths-ignore:
       - '*.md'
-    tags:
-      - 'v*'
   pull_request:
     paths-ignore:
       - '*.md'
