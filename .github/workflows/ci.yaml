@@ -79,9 +79,40 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Note: By default, changed-files will compare against the last non-merge commit on the target branch for pull
+      # request events, and the previous remote commit of the current branch for push events.
+      - name: compile list of relevant changed files for instrumentation and operator controller image build
+        id: changed-files
+        uses: tj-actions/changed-files@v44
+        with:
+          files_yaml: |
+            instrumentation:
+              - images/instrumentation/**
+            operator_controller:
+              - go.mod
+              - go.sum
+              - api/**
+              - cmd/**
+              - internal/**
+
+      - name: show changed files
+        env:
+          INSTRUMENTATION_CHANGED_FILES_FLAG: ${{ steps.changed-files.outputs.instrumentation_any_changed }}
+          INSTRUMENTATION_CHANGED_FILES_LIST: ${{ steps.changed-files.outputs.instrumentation_all_changed_files }}
+          OPERATOR_CONTROLLER_CHANGED_FILES_FLAG: ${{ steps.changed-files.outputs.operator_controller_any_changed }}
+          OPERATOR_CONTROLLER_CHANGED_FILES_LIST: ${{ steps.changed-files.outputs.operator_controller_all_changed_files }}
+        run: |
+          echo "files for instrumentation image have changed: $INSTRUMENTATION_CHANGED_FILES_FLAG"
+          echo "changed files for instrumentation image: $INSTRUMENTATION_CHANGED_FILES_LIST"
+          echo "files for operator controller image have changed: $OPERATOR_CONTROLLER_CHANGED_FILES_FLAG"
+          echo "changed files for operator controller image: $OPERATOR_CONTROLLER_CHANGED_FILES_LIST"
 
       - name: build instrumentation image
         uses: ./.github/actions/build-image
+        if: steps.changed-files.outputs.instrumentation_any_changed == 'true'
         with:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
           imageName: instrumentation
@@ -92,6 +123,7 @@ jobs:
 
       - name: build operator controller image
         uses: ./.github/actions/build-image
+        if: steps.changed-files.outputs.operator_controller_any_changed == 'true'
         with:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
           imageName: operator-controller
