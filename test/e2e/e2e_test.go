@@ -5,6 +5,7 @@ package e2e
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"sync"
@@ -15,12 +16,6 @@ import (
 )
 
 const (
-	operatorNamespace              = "dash0-operator-system"
-	operatorImageRepository        = "operator-controller"
-	operatorImageTag               = "latest"
-	instrumentationImageRepository = "instrumentation"
-	instrumentationImageTag        = "latest"
-
 	kubeContextForTest            = "docker-desktop"
 	applicationUnderTestNamespace = "e2e-application-under-test-namespace"
 )
@@ -32,6 +27,20 @@ var (
 	kubeContextHasBeenChanged bool
 
 	setupFinishedSuccessfully bool
+
+	operatorNamespace = "dash0-operator-system"
+	images            = Images{
+		operator: ImageSpec{
+			repository: "operator-controller",
+			tag:        "latest",
+			pullPolicy: "Never",
+		},
+		instrumentation: ImageSpec{
+			repository: "instrumentation",
+			tag:        "latest",
+			pullPolicy: "Never",
+		},
+	}
 )
 
 var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
@@ -48,8 +57,10 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 		certManagerHasBeenInstalled = EnsureCertManagerIsInstalled()
 		RecreateNamespace(applicationUnderTestNamespace)
-		RebuildOperatorControllerImage(operatorImageRepository, operatorImageTag)
-		RebuildDash0InstrumentationImage(instrumentationImageRepository, instrumentationImageTag)
+
+		readAndApplyEnvironmentVariables()
+		RebuildOperatorControllerImage(images.operator)
+		RebuildDash0InstrumentationImage(images.instrumentation)
 		RebuildNodeJsApplicationContainerImage()
 
 		setupFinishedSuccessfully = true
@@ -130,13 +141,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				})
 
 				By("deploy the operator and the Dash0 custom resource")
-				DeployOperatorWithCollectorAndClearExportedTelemetry(
-					operatorNamespace,
-					operatorImageRepository,
-					operatorImageTag,
-					instrumentationImageRepository,
-					instrumentationImageTag,
-				)
+				DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace, images)
 				DeployDash0CustomResource(applicationUnderTestNamespace)
 
 				testIds := make(map[string]string)
@@ -147,6 +152,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 						config.workloadType,
 						config.port,
 						config.isBatch,
+						images,
 						"controller",
 					)
 				})
@@ -171,17 +177,11 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				By("installing the Node.js job")
 				Expect(InstallNodeJsJob(applicationUnderTestNamespace)).To(Succeed())
 				By("deploy the operator and the Dash0 custom resource")
-				DeployOperatorWithCollectorAndClearExportedTelemetry(
-					operatorNamespace,
-					operatorImageRepository,
-					operatorImageTag,
-					instrumentationImageRepository,
-					instrumentationImageTag,
-				)
+				DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace, images)
 				DeployDash0CustomResource(applicationUnderTestNamespace)
 				By("verifying that the Node.js job has been labelled by the controller and that an event has been emitted")
 				Eventually(func(g Gomega) {
-					VerifyLabels(g, applicationUnderTestNamespace, "job", false, "controller")
+					VerifyLabels(g, applicationUnderTestNamespace, "job", false, images, "controller")
 					VerifyFailedInstrumentationEvent(
 						g,
 						applicationUnderTestNamespace,
@@ -202,13 +202,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				By("installing the Node.js pod")
 				Expect(InstallNodeJsPod(applicationUnderTestNamespace)).To(Succeed())
 				By("deploy the operator and the Dash0 custom resource")
-				DeployOperatorWithCollectorAndClearExportedTelemetry(
-					operatorNamespace,
-					operatorImageRepository,
-					operatorImageTag,
-					instrumentationImageRepository,
-					instrumentationImageTag,
-				)
+				DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace, images)
 				DeployDash0CustomResource(applicationUnderTestNamespace)
 				By("verifying that the Node.js pod has not been labelled")
 				Eventually(func(g Gomega) {
@@ -220,13 +214,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 	Describe("webhook", func() {
 		BeforeAll(func() {
-			DeployOperatorWithCollectorAndClearExportedTelemetry(
-				operatorNamespace,
-				operatorImageRepository,
-				operatorImageTag,
-				instrumentationImageRepository,
-				instrumentationImageTag,
-			)
+			DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace, images)
 
 			fmt.Fprint(GinkgoWriter, "waiting 10 seconds to give the webhook some time to get ready\n")
 			time.Sleep(10 * time.Second)
@@ -262,6 +250,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					config.workloadType,
 					config.port,
 					config.isBatch,
+					images,
 					"webhook",
 				)
 
@@ -277,7 +266,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 						// Verify that the instrumentation labels are still in place -- since we cannot undo the
 						// instrumentation, the labels must also not be removed.
 						By("verifying that the job still has labels")
-						VerifyLabels(g, applicationUnderTestNamespace, config.workloadType, true, "webhook")
+						VerifyLabels(g, applicationUnderTestNamespace, config.workloadType, true, images, "webhook")
 
 						By("verifying failed uninstrumentation event")
 						VerifyFailedUninstrumentationEvent(
@@ -390,13 +379,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				})
 
 				By("deploy the operator and the Dash0 custom resource")
-				DeployOperatorWithCollectorAndClearExportedTelemetry(
-					operatorNamespace,
-					operatorImageRepository,
-					operatorImageTag,
-					instrumentationImageRepository,
-					instrumentationImageTag,
-				)
+				DeployOperatorWithCollectorAndClearExportedTelemetry(operatorNamespace, images)
 				runInParallelForAllWorkloadTypes(configs, func(config removalTestNamespaceConfig) {
 					DeployDash0CustomResource(config.namespace)
 				})
@@ -409,6 +392,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 						config.workloadType,
 						config.port,
 						false,
+						images,
 						"controller",
 					)
 				})
@@ -451,4 +435,27 @@ func runInParallelForAllWorkloadTypes[C any](
 		}(config)
 	}
 	wg.Wait()
+}
+
+func readAndApplyEnvironmentVariables() {
+	images.operator.repository = getEnvOrDefault("IMG_REPOSITORY", images.operator.repository)
+	images.operator.tag = getEnvOrDefault("IMG_TAG", images.operator.tag)
+	images.operator.pullPolicy = getEnvOrDefault("IMG_PULL_POLICY", images.operator.pullPolicy)
+	images.instrumentation.repository = getEnvOrDefault(
+		"INSTRUMENTATION_IMG_REPOSITORY",
+		images.instrumentation.repository,
+	)
+	images.instrumentation.tag = getEnvOrDefault("INSTRUMENTATION_IMG_TAG", images.instrumentation.tag)
+	images.instrumentation.pullPolicy = getEnvOrDefault(
+		"INSTRUMENTATION_IMG_PULL_POLICY",
+		images.instrumentation.pullPolicy,
+	)
+}
+
+func getEnvOrDefault(name string, defaultValue string) string {
+	value, isSet := os.LookupEnv(name)
+	if isSet {
+		return value
+	}
+	return defaultValue
 }
