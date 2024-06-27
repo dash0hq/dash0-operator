@@ -121,12 +121,20 @@ opentelemetry-collector:
     limits:
       memory: 500Mi
 
+  extraVolumes:
+    - name: dash0-secret-volume
+      secret:
+        secretName: dash0-authorization-secret
+  extraVolumeMounts:
+    - name: dash0-secret-volume
+      readOnly: true
+      mountPath: "/etc/dash0/secret-volume"
+
   config:
     extensions:
       bearertokenauth/dash0:
         scheme: "Bearer"
-        # needs to be provided via --set or an additional values file for now
-        token:
+        filename: "/etc/dash0/secret-volume/dash0-authorization-token"
 
     receivers:
       # Removing these receivers by setting them to null will print three warnings in helm 3.13.3 (and probaly other
@@ -143,10 +151,15 @@ opentelemetry-collector:
       otlp:
         auth:
           authenticator: bearertokenauth/dash0
-        # needs to be provided via --set or an additional values file for now
+        # needs to be provided via --set or an additional values file
         endpoint:
 
     service:
+      extensions:
+        - health_check
+        - memory_ballast
+        - bearertokenauth/dash0
+
       pipelines:
         traces:
           receivers:

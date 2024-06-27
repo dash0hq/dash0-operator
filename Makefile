@@ -82,6 +82,8 @@ CONTAINER_TOOL ?= docker
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
+-include test-resources/.env
+
 .PHONY: all
 all: build
 
@@ -214,11 +216,17 @@ undeploy-via-kustomize: ## Undeploy the controller via kustomize from the K8s cl
 
 .PHONY: deploy-via-helm
 deploy-via-helm: ## Deploy the controller via helm to the K8s cluster specified in ~/.kube/config.
-	test-resources/bin/render-templates.sh manual-testing
+	@if test ! -f test-resources/.env; then \
+		echo "error: The file test-resources/.env does not exist. Copy test-resources/.env.template to test-resources/.env and edit it to provide a Dash0 authorization token."; \
+		exit 1; \
+	fi
+
+	test-resources/bin/render-templates.sh
 	helm install \
 		--namespace dash0-operator-system \
 		--create-namespace \
 		--values test-resources/helm/manual.values.yaml \
+		--set opentelemetry-collector.config.exporters.otlp.endpoint=${DASH0_OTEL_EXPORTER_OTLP_ENDPOINT} \
 		--set operator.image.repository=${IMG_REPOSITORY} \
 		--set operator.image.tag=${IMG_TAG} \
 		--set operator.image.pullPolicy=${IMG_PULL_POLICY} \
@@ -228,7 +236,6 @@ deploy-via-helm: ## Deploy the controller via helm to the K8s cluster specified 
 		--set operator.developmentMode=true \
 		dash0-operator \
 		helm-chart/dash0-operator
-
 
 .PHONY: undeploy-via-helm
 undeploy-via-helm: ## Undeploy the controller via helm from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.

@@ -15,7 +15,7 @@ if [[ -z ${SKIP_DOCKER_BUILD:-} ]]; then
 fi
 
 if [[ -f ${kind}.yaml ]]; then
-  ../../bin/render-templates.sh manual-testing
+  ../../bin/render-templates.sh
 fi
 
 ./undeploy.sh ${target_namespace} ${kind}
