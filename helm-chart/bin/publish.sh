@@ -5,7 +5,19 @@
 
 set -euo pipefail
 
-cd "$(dirname ${BASH_SOURCE})"/..
+cd "$(dirname "${0}")"/..
+
+# For testing the script locally, provide the relative path to a directory to a with a separate clone of the
+# repository, as seen from the helm-chart directory. For example:
+# TEST_PUBLISH_DIR=../../dash0-operator-helm-chart-publish-test bin/publish.sh 9.9.9
+# The main branch should be checked out initially in that clone.
+# You could theoretically use your main working copy/clone for testing, but since the script switches the branch to
+# gh-pages and that is an orphan branch it might leave the working copy in a slightly messy state. Therefore it is
+# better to use another clone for that.
+# Additionally, if TEST_PUBLISH_DIR is set, no actual git push will take place.
+if [[ -n "${TEST_PUBLISH_DIR:-}" ]]; then
+  cd  "$TEST_PUBLISH_DIR"/helm-chart
+fi
 
 # Abort when there are local changes in the repository. This is mostly relevant for testing the script locally.
 if ! git diff --quiet --exit-code; then
@@ -25,13 +37,14 @@ fi
 echo "packaging Helm chart as version $version"
 helm package \
   dash0-operator \
-  --version $version \
-  --app-version $version \
+  --version "$version" \
+  --app-version "$version" \
   --dependency-update \
   --destination ..
 echo "packaging Helm version $version has been packaged"
 
 cd ..
+
 echo "switching to gh-pages branch"
 git fetch origin gh-pages:gh-pages
 git switch gh-pages
@@ -42,7 +55,15 @@ rm -rf helm-chart
 echo "creating Helm chart index"
 helm repo index .
 
-echo "git add, commit & push"
+echo "git add & commit"
 git add "dash0-operator-$version.tgz" index.yaml
 git commit -m"feat(chart): publish version $version"
-git push --no-verify --set-upstream origin gh-pages
+
+if [[ -z "${TEST_PUBLISH_DIR:-}" ]]; then
+  echo "executing git push"
+  git push --no-verify --set-upstream origin gh-pages
+else
+  echo "executing git push (--dry-run)"
+  git push --no-verify --dry-run origin gh-pages
+fi
+
