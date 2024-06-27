@@ -73,6 +73,15 @@ helm install \
   dash0-operator/dash0-operator  
 ```
 
+Note: When installing a chart, you might see a warning like the following printed to the console:
+```
+coalesce.go:286: warning: cannot overwrite table with non table for dash0-operator.opentelemetry-collector.config.receivers.prometheus (map[config:map[scrape_configs:[map[job_name:opentelemetry-collector scrape_interval:10s static_configs:[map[targets:[${env:MY_POD_IP}:8888]]]]]]])
+coalesce.go:286: warning: cannot overwrite table with non table for dash0-operator.opentelemetry-collector.config.receivers.zipkin (map[endpoint:${env:MY_POD_IP}:9411])
+coalesce.go:286: warning: cannot overwrite table with non table for dash0-operator.opentelemetry-collector.config.receivers.jaeger (map[protocols:map[grpc:map[endpoint:${env:MY_POD_IP}:14250] thrift_compact:map[endpoint:${env:MY_POD_IP}:6831] thrift_http:map[endpoint:${env:MY_POD_IP}:14268]]])
+```
+
+This can be safely ignored.
+
 ## Uninstallation
 
 To remove the Dash0 Kubernetes Operator from your cluster, run the following command:
