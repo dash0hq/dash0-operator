@@ -6,9 +6,11 @@ package removal
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/rest"
@@ -66,6 +68,11 @@ func (r *OperatorPreDeleteHandler) DeleteAllDash0CustomResources() error {
 		return err
 	}
 
+	if totalNumberOfDash0CustomResources == 0 {
+		r.logger.Info("No Dash0 custom resources have been deleted, nothing to wait for.")
+		return nil
+	}
+
 	err = r.waitForAllDash0CustomResourcesToBeFinalizedAndDeleted(ctx, totalNumberOfDash0CustomResources)
 	if err != nil {
 		return err
@@ -78,6 +85,15 @@ func (r *OperatorPreDeleteHandler) findAllAndRequestDeletion(ctx context.Context
 	allDash0CustomResources := &operatorv1alpha1.Dash0List{}
 	err := r.client.List(ctx, allDash0CustomResources)
 	if err != nil {
+		errMsg := err.Error()
+		if apierrors.IsNotFound(err) ||
+			strings.Contains(errMsg, "operator.dash0.com/v1alpha1: the server could not find the requested resource") ||
+			strings.Contains(errMsg, "no matches for kind \"Dash0\" in version") {
+			r.logger.Error(err, "The Dash0 custom resource *definition* has not been found. Assuming that no Dash0 "+
+				"custom resources exist and no cleanup is necessary.")
+			return 0, nil
+		}
+
 		r.logger.Error(err, "failed to list all Dash0 custom resources across all namespaces")
 		return 0, fmt.Errorf("failed to list all Dash0 custom resources across all namespaces: %w", err)
 	}
