@@ -32,55 +32,75 @@ helm repo add dash0-operator https://dash0hq.github.io/dash0-operator
 helm repo update
 ```
 
-Create a file named `dash0-operator-values.yaml` with the following content:
+Create the namespace for the operator and a secret with your Dash0 authorization token.
+The authorization token for your Dash0 organization can be copied from https://app.dash0.com/settings.
+Make sure to use `dash0-authorization-secret` for the name of the secret and `dash0-authorization-token` as the token
+key.
 
-```yaml
-#
-# Note: The required values for the authorization token and OTLP/gRPC endpoint
-# can be copied from https://app.dash0.com/settings (you need to be logged in).
-#
-
-opentelemetry-collector:
-  config:
-    extensions:
-      bearertokenauth/dash0:
-        token: "auth_..." # <- put your actual Dash0 Authorization Token here
-
-    exporters:
-      otlp:
-        auth:
-          authenticator: bearertokenauth/dash0
-        endpoint: "ingress.XX-XXXX-X.aws.dash0.com:4317" # <- pur your actual OTLP/gRPC endpoint here
-
-    service:
-      extensions:
-        - health_check
-        - memory_ballast
-        - bearertokenauth/dash0
+```console
+kubectl create namespace dash0-operator-system
+kubectl create secret generic \
+  dash0-authorization-secret \
+  --namespace dash0-operator-system \
+  --from-literal=dash0-authorization-token=auth_...your-token-here...
 ```
 
-Edit the file to replace the placeholders for the token and the endpoint.
-The required values can be found in the Dash0 web application at https://app.dash0.com/settings.
-
-Then install the operator to your cluster via Helm with the following command:
+Now you can install the operator into your cluster via Helm with the following command.
+Use the same namespace that you have created in the previous step and which contains the `dash0-authorization-secret`. 
+You will need to replace the value given to `--set opentelemetry-collector.config.exporters.otlp.endpoint` with the
+actual OTLP/gRPC endpoint of your Dash0 organization.
+Again, the correct OTLP/gRPC endpoint can be copied fom https://app.dash0.com/settings.
+The correct endpoint value will always start with `ingress.` and end in `dash0.com:4317`.
 
 ```console
 helm install \
   --namespace dash0-operator-system \
-  --create-namespace \
-  --values dash0-operator-values.yaml \
+  --set opentelemetry-collector.config.exporters.otlp.endpoint=your-dash0-ingress-endpoint-here.dash0.com:4317 \
   dash0-operator \
   dash0-operator/dash0-operator  
 ```
 
-Note: When installing a chart, you might see a warning like the following printed to the console:
+Note: When installing the chart, you might see a warning like the following printed to the console:
 ```
 coalesce.go:286: warning: cannot overwrite table with non table for dash0-operator.opentelemetry-collector.config.receivers.prometheus (map[config:map[scrape_configs:[map[job_name:opentelemetry-collector scrape_interval:10s static_configs:[map[targets:[${env:MY_POD_IP}:8888]]]]]]])
 coalesce.go:286: warning: cannot overwrite table with non table for dash0-operator.opentelemetry-collector.config.receivers.zipkin (map[endpoint:${env:MY_POD_IP}:9411])
 coalesce.go:286: warning: cannot overwrite table with non table for dash0-operator.opentelemetry-collector.config.receivers.jaeger (map[protocols:map[grpc:map[endpoint:${env:MY_POD_IP}:14250] thrift_compact:map[endpoint:${env:MY_POD_IP}:6831] thrift_http:map[endpoint:${env:MY_POD_IP}:14268]]])
 ```
 
-This can be safely ignored.
+These warnings can be safely ignored.
+
+Note that Dash0 has to be enabled per namespace that you want to monitor, which is described in the next section.
+
+## Enable Dash0 For a Namespace
+
+For each namespace that you want to monitor with Dash0, enable monitoring by installing a custom Dash0 resource:
+
+Create a file `dash0.yaml` with the following content:
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0
+metadata:
+  name: dash0-resource
+```
+
+Then apply the resource to the namespace you want to monitor:
+```console
+kubectl apply --namespace my-namespace -f dash0.yaml
+```
+
+## Disable Dash0 For a Namespace
+
+If you want to stop monitoring a namespace with Dash0, remove the Dash0 resource from that namespace.
+
+```console
+kubectl delete --namespace my-namespace Dash0 dash0-resource
+```
+
+or, alternatively, by using the `dash0.yaml` file created earlier:
+
+```console
+kubectl delete --namespace test-namespace -f dash0.yaml
+```
 
 ## Uninstallation
 
@@ -92,6 +112,8 @@ helm uninstall dash0-operator --namespace dash0-operator-system
 
 Depending on the command you used to install the operator, you may need to use a different Helm release name or
 namespace.
+
+This will also automatically disable Dash0 monitoring for all namespaces.
 
 Optionally, remove the namespace that has been created for the operator:
 

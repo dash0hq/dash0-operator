@@ -5,11 +5,19 @@
 # Utility functions for manual test scenarios.
 ###############################################################################
 
+load_env_file () {
+  if [[ ! -f test-resources/.env ]]; then
+    echo "error: The file test-resources/.env does not exist. Copy test-resources/.env.template to test-resources/.env and edit it to provide a Dash0 authorization token."
+    exit 1
+  fi
+  source test-resources/.env
+}
+
 setup_test_environment () {
   deployment_tool=$1
   install_cert_manager_if_necessary
   switch_image_pull_policy_to_never_if_necessary $deployment_tool
-  test-resources/bin/render-templates.sh manual-testing
+  test-resources/bin/render-templates.sh
 }
 
 install_cert_manager_if_necessary () {

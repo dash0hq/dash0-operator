@@ -17,7 +17,7 @@ if [[ ! $(helm repo list | grep open-telemetry) ]]; then
 fi
 
 if [[ ! -f manual.values.yaml ]]; then
-  ../bin/render-templates.sh manual-testing
+  ../bin/render-templates.sh
 fi
 
 ./undeploy.sh ${target_namespace}
