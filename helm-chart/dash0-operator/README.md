@@ -28,23 +28,64 @@ https://github.com/dash0hq/dash0-operator/blob/main/README.md.
 Before installing the operator, add the Helm repository as follows:
 
 ```console
-$ helm repo add dash0-operator {TODO: add repository URL}
+helm repo add dash0-operator https://dash0hq.github.io/dash0-operator
+helm repo update
 ```
 
-Then install the operator to your cluster like this:
-
-```console
-helm install dash0-operator dash0-operator ... TODO ...
-```
-
-## Upgrading
-
-TODO
-
-## Configuration
-
-TODO
+Create a file named `dash0-operator-values.yaml` with the following content:
 
 ```yaml
-...
+#
+# Note: The required values for the authorization token and OTLP/gRPC endpoint
+# can be copied from https://app.dash0.com/settings (you need to be logged in).
+#
+
+opentelemetry-collector:
+  config:
+    extensions:
+      bearertokenauth/dash0:
+        token: "auth_..." # <- put your actual Dash0 Authorization Token here
+
+    exporters:
+      otlp:
+        auth:
+          authenticator: bearertokenauth/dash0
+        endpoint: "ingress.XX-XXXX-X.aws.dash0.com:4317" # <- pur your actual OTLP/gRPC endpoint here
+
+    service:
+      extensions:
+        - health_check
+        - memory_ballast
+        - bearertokenauth/dash0
+```
+
+Edit the file to replace the placeholders for the token and the endpoint.
+The required values can be found in the Dash0 web application at https://app.dash0.com/settings.
+
+Then install the operator to your cluster via Helm with the following command:
+
+```console
+helm install \
+  --namespace dash0-operator-system \
+  --create-namespace \
+  --values dash0-operator-values.yaml \
+  dash0-operator \
+  dash0-operator/dash0-operator  
+```
+
+## Uninstallation
+
+To remove the Dash0 Kubernetes Operator from your cluster, run the following command:
+
+```
+helm uninstall dash0-operator --namespace dash0-operator-system
+```
+
+Depending on the command you used to install the operator, you may need to use a different Helm release name or
+namespace.
+
+Optionally, remove the namespace that has been created for the operator:
+
+```
+kubectl delete namespace dash0-operator-system
 ```
