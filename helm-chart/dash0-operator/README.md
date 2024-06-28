@@ -120,3 +120,9 @@ Optionally, remove the namespace that has been created for the operator:
 ```
 kubectl delete namespace dash0-operator-system
 ```
+
+If you choose to not remove the namespace, you might consider removing the secret with the Dash0 authorization token:
+
+```console
+kubectl delete secret --namespace dash0-operator-system dash0-authorization-secret
+```
