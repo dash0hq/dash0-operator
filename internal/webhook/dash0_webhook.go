@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
@@ -81,9 +80,7 @@ var (
 		gvkLabel string,
 		logger *logr.Logger,
 	) admission.Response {
-		msg := fmt.Sprintf("resource type not supported: %s", gvkLabel)
-		logger.Info(msg)
-		return admission.Allowed(msg)
+		return logAndReturnAllowed(fmt.Sprintf("resource type not supported: %s", gvkLabel), logger)
 	}
 )
 
@@ -112,58 +109,60 @@ func (h *Handler) Handle(ctx context.Context, request admission.Request) admissi
 		Namespace: targetNamespace,
 	}); err != nil {
 		if apierrors.IsNotFound(err) {
-			return admission.Allowed(
-				fmt.Sprintf(
-					"There is no Dash0 custom resource in the namespace %s, the workload will not be instrumented.",
-					targetNamespace,
-				))
+			return logAndReturnAllowed(fmt.Sprintf(
+				"There is no Dash0 custom resource in the namespace %s, the workload will not be instrumented.",
+				targetNamespace,
+			), &logger)
 		} else {
-			message := fmt.Sprintf("Failed to list Dash0 custom resources in namespace %s, workload will not be instrumented.", targetNamespace)
-			logger.Error(err, message)
-			return admission.Errored(http.StatusInternalServerError, fmt.Errorf("%s - %w", message, err))
+			// Ideally we would queue a failed instrumentation event here, but we didn't decode the workload resource
+			// yet, so there is nothing to bind the event to.
+			return logErrorAndReturnAllowed(
+				fmt.Errorf(
+					"failed to list Dash0 custom resources in namespace %s, workload will not be instrumented: %w",
+					targetNamespace,
+					err,
+				),
+				&logger,
+			)
 		}
 	}
+
 	if len(dash0List.Items) == 0 {
-		return admission.Allowed(
+		return logAndReturnAllowed(
 			fmt.Sprintf(
 				"There is no Dash0 custom resource in the namespace %s, the workload will not be instrumented.",
 				targetNamespace,
-			))
+			), &logger)
 	}
 
 	dash0CustomResource := dash0List.Items[0]
 	if dash0CustomResource.IsMarkedForDeletion() {
-		message := fmt.Sprintf("The Dash0 custom resource is about to be deleted in namespace %s, this newly "+
-			"deployed workload will not be modified to send telemetry to Dash0.", targetNamespace)
-		logger.Info(message)
-		return admission.Allowed(message)
+		return logAndReturnAllowed(fmt.Sprintf("The Dash0 custom resource is about to be deleted in namespace %s, "+
+			"this newly deployed workload will not be modified to send telemetry to Dash0.", targetNamespace), &logger)
 	}
 	instrumentWorkloads := util.ReadOptOutSetting(dash0CustomResource.Spec.InstrumentWorkloads)
 	instrumentNewWorkloads := util.ReadOptOutSetting(dash0CustomResource.Spec.InstrumentNewWorkloads)
 	if !instrumentWorkloads {
-		message := fmt.Sprintf("Instrumenting workloads is not enabled in namespace %s, this newly deployed workload "+
-			"will not be modified to send telemetry to Dash0.", targetNamespace)
-		logger.Info(message)
-		return admission.Allowed(message)
+		return logAndReturnAllowed(fmt.Sprintf("Instrumenting workloads is not enabled in namespace %s, this newly "+
+			"deployed workload will not be modified to send telemetry to Dash0.", targetNamespace), &logger)
 	}
 	if !instrumentNewWorkloads {
-		message := fmt.Sprintf("Instrumenting new workloads at deploy-time is not enabled in namespace %s, this newly"+
-			"deployed workload will not be modified to send telemetry to Dash0.", targetNamespace)
-		logger.Info(message)
-		return admission.Allowed(message)
+		return logAndReturnAllowed(fmt.Sprintf("Instrumenting new workloads at deploy-time is not enabled in "+
+			"namespace %s, this newlydeployed workload will not be modified to send telemetry to Dash0.",
+			targetNamespace), &logger)
 	}
 
 	if !dash0CustomResource.IsAvailable() {
-		return admission.Allowed(
+		return logAndReturnAllowed(
 			fmt.Sprintf(
 				"The Dash0 custome resource in the namespace %s is not in status available, this workload will not be "+
-					"modified to send telemetry to Dash0.", targetNamespace))
+					"modified to send telemetry to Dash0.", targetNamespace), &logger)
 	}
 	if dash0CustomResource.IsMarkedForDeletion() {
-		return admission.Allowed(
+		return logAndReturnAllowed(
 			fmt.Sprintf(
 				"The Dash0 custome resource in the namespace %s is about to be deleted, this workload will not be "+
-					"modified to send telemetry to Dash0.", targetNamespace))
+					"modified to send telemetry to Dash0.", targetNamespace), &logger)
 	}
 
 	gkv := request.Kind
@@ -181,16 +180,16 @@ func (h *Handler) handleCronJob(
 	logger *logr.Logger,
 ) admission.Response {
 	cronJob := &batchv1.CronJob{}
-	responseIfFailed, failed := h.preProcess(request, gvkLabel, cronJob)
+	responseIfFailed, failed := h.preProcess(request, gvkLabel, cronJob, logger)
 	if failed {
+		// if h.preProcess returns failed=true, it will already have logged the error
 		return responseIfFailed
 	}
 	if util.CheckAndDeleteIgnoreOnceLabel(&cronJob.ObjectMeta) {
 		return h.postProcess(request, cronJob, false, true, logger)
 	}
 	if util.HasOptedOutOfInstrumenationForWorkload(&cronJob.ObjectMeta) {
-		logger.Info(optOutAdmissionAllowedMessage)
-		return admission.Allowed(optOutAdmissionAllowedMessage)
+		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
 	}
 	hasBeenModified := h.newWorkloadModifier(logger).ModifyCronJob(cronJob)
 	return h.postProcess(request, cronJob, hasBeenModified, false, logger)
@@ -202,16 +201,16 @@ func (h *Handler) handleDaemonSet(
 	logger *logr.Logger,
 ) admission.Response {
 	daemonSet := &appsv1.DaemonSet{}
-	responseIfFailed, failed := h.preProcess(request, gvkLabel, daemonSet)
+	responseIfFailed, failed := h.preProcess(request, gvkLabel, daemonSet, logger)
 	if failed {
+		// if h.preProcess returns failed=true, it will already have logged the error
 		return responseIfFailed
 	}
 	if util.CheckAndDeleteIgnoreOnceLabel(&daemonSet.ObjectMeta) {
 		return h.postProcess(request, daemonSet, false, true, logger)
 	}
 	if util.HasOptedOutOfInstrumenationForWorkload(&daemonSet.ObjectMeta) {
-		logger.Info(optOutAdmissionAllowedMessage)
-		return admission.Allowed(optOutAdmissionAllowedMessage)
+		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
 	}
 	hasBeenModified := h.newWorkloadModifier(logger).ModifyDaemonSet(daemonSet)
 	return h.postProcess(request, daemonSet, hasBeenModified, false, logger)
@@ -223,16 +222,16 @@ func (h *Handler) handleDeployment(
 	logger *logr.Logger,
 ) admission.Response {
 	deployment := &appsv1.Deployment{}
-	responseIfFailed, failed := h.preProcess(request, gvkLabel, deployment)
+	responseIfFailed, failed := h.preProcess(request, gvkLabel, deployment, logger)
 	if failed {
+		// if h.preProcess returns failed=true, it will already have logged the error
 		return responseIfFailed
 	}
 	if util.CheckAndDeleteIgnoreOnceLabel(&deployment.ObjectMeta) {
 		return h.postProcess(request, deployment, false, true, logger)
 	}
 	if util.HasOptedOutOfInstrumenationForWorkload(&deployment.ObjectMeta) {
-		logger.Info(optOutAdmissionAllowedMessage)
-		return admission.Allowed(optOutAdmissionAllowedMessage)
+		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
 	}
 	hasBeenModified := h.newWorkloadModifier(logger).ModifyDeployment(deployment)
 	return h.postProcess(request, deployment, hasBeenModified, false, logger)
@@ -244,16 +243,16 @@ func (h *Handler) handleJob(
 	logger *logr.Logger,
 ) admission.Response {
 	job := &batchv1.Job{}
-	responseIfFailed, failed := h.preProcess(request, gvkLabel, job)
+	responseIfFailed, failed := h.preProcess(request, gvkLabel, job, logger)
 	if failed {
+		// if h.preProcess returns failed=true, it will already have logged the error
 		return responseIfFailed
 	}
 	if util.CheckAndDeleteIgnoreOnceLabel(&job.ObjectMeta) {
 		return h.postProcess(request, job, false, true, logger)
 	}
 	if util.HasOptedOutOfInstrumenationForWorkload(&job.ObjectMeta) {
-		logger.Info(optOutAdmissionAllowedMessage)
-		return admission.Allowed(optOutAdmissionAllowedMessage)
+		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
 	}
 	hasBeenModified := h.newWorkloadModifier(logger).ModifyJob(job)
 	return h.postProcess(request, job, hasBeenModified, false, logger)
@@ -265,16 +264,16 @@ func (h *Handler) handlePod(
 	logger *logr.Logger,
 ) admission.Response {
 	pod := &corev1.Pod{}
-	responseIfFailed, failed := h.preProcess(request, gvkLabel, pod)
+	responseIfFailed, failed := h.preProcess(request, gvkLabel, pod, logger)
 	if failed {
+		// if h.preProcess returns failed=true, it will already have logged the error
 		return responseIfFailed
 	}
 	if util.CheckAndDeleteIgnoreOnceLabel(&pod.ObjectMeta) {
 		return h.postProcess(request, pod, false, true, logger)
 	}
 	if util.HasOptedOutOfInstrumenationForWorkload(&pod.ObjectMeta) {
-		logger.Info(optOutAdmissionAllowedMessage)
-		return admission.Allowed(optOutAdmissionAllowedMessage)
+		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
 	}
 	hasBeenModified := h.newWorkloadModifier(logger).ModifyPod(pod)
 	return h.postProcess(request, pod, hasBeenModified, false, logger)
@@ -286,16 +285,16 @@ func (h *Handler) handleReplicaSet(
 	logger *logr.Logger,
 ) admission.Response {
 	replicaSet := &appsv1.ReplicaSet{}
-	responseIfFailed, failed := h.preProcess(request, gvkLabel, replicaSet)
+	responseIfFailed, failed := h.preProcess(request, gvkLabel, replicaSet, logger)
 	if failed {
+		// if h.preProcess returns failed=true, it will already have logged the error
 		return responseIfFailed
 	}
 	if util.CheckAndDeleteIgnoreOnceLabel(&replicaSet.ObjectMeta) {
 		return h.postProcess(request, replicaSet, false, true, logger)
 	}
 	if util.HasOptedOutOfInstrumenationForWorkload(&replicaSet.ObjectMeta) {
-		logger.Info(optOutAdmissionAllowedMessage)
-		return admission.Allowed(optOutAdmissionAllowedMessage)
+		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
 	}
 	hasBeenModified := h.newWorkloadModifier(logger).ModifyReplicaSet(replicaSet)
 	return h.postProcess(request, replicaSet, hasBeenModified, false, logger)
@@ -307,16 +306,16 @@ func (h *Handler) handleStatefulSet(
 	logger *logr.Logger,
 ) admission.Response {
 	statefulSet := &appsv1.StatefulSet{}
-	responseIfFailed, failed := h.preProcess(request, gvkLabel, statefulSet)
+	responseIfFailed, failed := h.preProcess(request, gvkLabel, statefulSet, logger)
 	if failed {
+		// if h.preProcess returns failed=true, it will already have logged the error
 		return responseIfFailed
 	}
 	if util.CheckAndDeleteIgnoreOnceLabel(&statefulSet.ObjectMeta) {
 		return h.postProcess(request, statefulSet, false, true, logger)
 	}
 	if util.HasOptedOutOfInstrumenationForWorkload(&statefulSet.ObjectMeta) {
-		logger.Info(optOutAdmissionAllowedMessage)
-		return admission.Allowed(optOutAdmissionAllowedMessage)
+		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
 	}
 	hasBeenModified := h.newWorkloadModifier(logger).ModifyStatefulSet(statefulSet)
 	return h.postProcess(request, statefulSet, hasBeenModified, false, logger)
@@ -326,11 +325,12 @@ func (h *Handler) preProcess(
 	request admission.Request,
 	gvkLabel string,
 	resource runtime.Object,
+	logger *logr.Logger,
 ) (admission.Response, bool) {
 	if _, _, err := decoder.Decode(request.Object.Raw, nil, resource); err != nil {
-		err := fmt.Errorf("cannot parse resource into a %s: %w", gvkLabel, err)
-		util.QueueFailedInstrumentationEvent(h.Recorder, resource, "webhook", err)
-		return admission.Errored(http.StatusInternalServerError, err), true
+		wrappedErr := fmt.Errorf("cannot parse resource into a %s: %w", gvkLabel, err)
+		util.QueueFailedInstrumentationEvent(h.Recorder, resource, "webhook", wrappedErr)
+		return logErrorAndReturnAllowed(wrappedErr, logger), true
 	}
 	return admission.Response{}, false
 }
@@ -350,8 +350,9 @@ func (h *Handler) postProcess(
 
 	marshalled, err := json.Marshal(resource)
 	if err != nil {
-		util.QueueFailedInstrumentationEvent(h.Recorder, resource, "webhook", err)
-		return admission.Allowed(fmt.Errorf("error when marshalling modfied resource to JSON: %w", err).Error())
+		wrappedErr := fmt.Errorf("error when marshalling modfied resource to JSON: %w", err)
+		util.QueueFailedInstrumentationEvent(h.Recorder, resource, "webhook", wrappedErr)
+		return logErrorAndReturnAllowed(wrappedErr, logger)
 	}
 
 	if ignored {
@@ -390,4 +391,18 @@ func (r *routing) routeFor(group, kind, version string) resourceHandler {
 		return fallbackRoute
 	}
 	return routesForVersion
+}
+
+func logAndReturnAllowed(message string, logger *logr.Logger) admission.Response {
+	logger.Info(message)
+	return admission.Allowed(message)
+}
+
+func logErrorAndReturnAllowed(err error, logger *logr.Logger) admission.Response {
+	logger.Error(err, "an error occurred while processing the admission request")
+
+	// Note: We never return admission.Errored or admission.Denied, even in case an error happens, because we do not
+	// want to block the deployment of workloads. If instrumenting a new workload fails it is not great, but having
+	// the webhook actually getting in the way of deploying a workload would be much worse.
+	return admission.Allowed(err.Error())
 }
