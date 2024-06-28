@@ -94,8 +94,16 @@ operator:
   # the image pull secrets to pull the container images
   imagePullSecrets: [ ]
 
+  # If set to true, instructs the logger (Zap) to use a Zap development config (stacktraces on warnings, no sampling),
+  # otherwise a Zap production config will be used (stacktraces on errors, sampling).
   developmentMode: false
+
+  # If set to true, the operator Helm chart will skip the check for the Dash0 authorization secret. This should only
+  # be done for testing purposes.
   disableSecretCheck: false
+
+  # If set to true, the operator Helm chart will skip the check for the OTLP endpoing setting. This should only be done
+  # for testing purposes.
   disableOtlpEndpointCheck: false
 
 # settings for the OpenTelemetry collector instance that Dash0 will use for reporting data to Dash0
