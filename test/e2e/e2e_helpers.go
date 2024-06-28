@@ -352,6 +352,8 @@ func DeployOperatorWithCollectorAndClearExportedTelemetry(
 		"--values",
 		"test-resources/helm/e2e.values.yaml",
 		"--set", "operator.developmentMode=true",
+		"--set", "operator.disableSecretCheck=true",
+		"--set", "operator.disableOtlpEndpoingCheck=true",
 	}
 	arguments = setIfNotEmpty(arguments, "operator.image.repository", images.operator.repository)
 	arguments = setIfNotEmpty(arguments, "operator.image.tag", images.operator.tag)

@@ -95,6 +95,8 @@ operator:
   imagePullSecrets: [ ]
 
   developmentMode: false
+  disableSecretCheck: false
+  disableOtlpEndpoingCheck: false
 
 # settings for the OpenTelemetry collector instance that Dash0 will use for reporting data to Dash0
 opentelemetry-collector:

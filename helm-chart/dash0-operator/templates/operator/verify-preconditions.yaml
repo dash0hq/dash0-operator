@@ -1,3 +1,4 @@
+{{- if not .Values.operator.disableSecretCheck -}}
 {{- $secret := lookup "v1" "Secret" .Release.Namespace "dash0-authorization-secret" -}}
 {{- if $secret -}}
 {{- if not (index $secret.data "dash0-authorization-token") -}}
@@ -6,7 +7,11 @@
 {{- else -}}
 {{- fail (printf "Error: There is no secret named \"dash0-authorization-secret\" in the target namespace \"%s\". Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator#installation." .Release.Namespace) -}}
 {{- end -}}
+{{- end -}}
 
-{{- if not (index .Values "opentelemetry-collector").config.exporters.otlp.endpoint -}}
+{{- if not .Values.operator.disableOtlpEndpoingCheck -}}
+{{- $oltpExporter := (index .Values "opentelemetry-collector").config.exporters.otlp -}}
+{{- if not $oltpExporter.endpoint -}}
 {{- fail "Error: You did not provide a value for opentelemetry-collector.config.exporters.otlp.endpoint. Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator#installation." -}}
+{{- end -}}
 {{- end -}}
