@@ -14,9 +14,7 @@ load_env_file () {
 }
 
 setup_test_environment () {
-  deployment_tool=$1
   install_cert_manager_if_necessary
-  switch_image_pull_policy_to_never_if_necessary $deployment_tool
   test-resources/bin/render-templates.sh
 }
 
@@ -27,27 +25,96 @@ install_cert_manager_if_necessary () {
   fi
 }
 
-switch_image_pull_policy_to_never_if_necessary () {
-  deployment_tool=$1
-
-  if [[ "${deployment_tool}" != "kustomize" ]]; then
-    echo "Not patching ..."
-    return
-  fi
-
-  originalImagePullPolicy=$(yq e "select(documentIndex == 1) | .spec.template.spec.containers[] |  select(.name == \"manager\") | .imagePullPolicy" config/manager/manager.yaml)
-
-  if [[ ${originalImagePullPolicy:-} != "Never" ]]; then
-    echo "The current image pull policy is \"$originalImagePullPolicy\", temporarily changing it to \"Never\"."
-    cp config/manager/manager.yaml config/manager/manager.yaml.backup
-    yq -i \
-      "with(select(documentIndex == 1) | .spec.template.spec.containers[] | select(.name == \"manager\"); .imagePullPolicy |= \"Never\")" \
-      config/manager/manager.yaml
-
-    trap "{ echo reverting changes to imagePullPolicy; cp config/manager/manager.yaml.backup config/manager/manager.yaml; rm -f config/manager/manager.yaml.backup; }" EXIT
-
+is_remote_image() {
+  image_name=${1:-}
+  if [[ $image_name == *"/"* ]]; then
+    return 0
   else
-    echo The image pull policy is set to "Never" already, so there is no need to patch config/manager/manager.yaml.
+    return 1
   fi
 }
 
+build_operator_controller_image() {
+  if [[ "${BUILD_OPERATOR_CONTROLLER_IMAGE:-}" = false ]]; then
+    echo "Skipping operator controller image build (BUILD_OPERATOR_CONTROLLER_IMAGE=false)."
+    return
+  fi
+  if [[ -n "${IMG:-}" ]]; then
+    if is_remote_image "$IMG"; then
+      echo "The specified image IMG=$IMG looks like a remote image, refusing to build it and overwrite it with a locally built image. Set BUILD_OPERATOR_CONTROLLER_IMAGE=false to skip this step and use the remote image."
+      exit 1
+    fi
+  fi
+  if [[ -n "${IMG_REPOSITORY:-}" ]]; then
+    if is_remote_image "$IMG_REPOSITORY"; then
+      echo "The specified image IMG_REPOSITORY=$IMG_REPOSITORY looks like a remote image, refusing to build it and overwrite it with a locally built image. Set BUILD_OPERATOR_CONTROLLER_IMAGE=false to skip this step and use the remote image."
+      exit 1
+    fi
+  fi
+
+  make docker-build
+}
+
+build_instrumentation_image() {
+  if [[ "${BUILD_INSTRUMENTATION_IMAGE:-}" = false ]]; then
+    echo "Skipping instrumentation image build (BUILD_INSTRUMENTATION_IMAGE=false)."
+    return
+  fi
+  if [[ -n "${INSTRUMENTATION_IMG_REPOSITORY:-}" ]]; then
+    if is_remote_image "$INSTRUMENTATION_IMG_REPOSITORY"; then
+      echo "The specified image INSTRUMENTATION_IMG_REPOSITORY=$INSTRUMENTATION_IMG_REPOSITORY looks like a remote image, refusing to build it and overwrite it with a locally built image. Set BUILD_INSTRUMENTATION_IMAGE=false to skip this step and use the remote image."
+      exit 1
+    fi
+  fi
+  repository="${INSTRUMENTATION_IMG_REPOSITORY:-instrumentation}"
+	tag="${INSTRUMENTATION_IMG_TAG:-latest}"
+  images/instrumentation/build.sh $repository $tag
+}
+
+deploy_via_helm() {
+  helm_install_command=$(cat <<EOF
+  helm install
+		--namespace dash0-operator-system
+		--create-namespace
+		--set opentelemetry-collector.config.exporters.otlp.endpoint=${DASH0_OTEL_EXPORTER_OTLP_ENDPOINT}
+		--set operator.developmentMode=true
+EOF
+)
+  if ! has_been_set_to_empty_string "IMG_REPOSITORY"; then
+    helm_install_command+=" --set operator.image.repository=${IMG_REPOSITORY:-operator-controller}"
+  fi
+  if ! has_been_set_to_empty_string "IMG_TAG"; then
+    helm_install_command+=" --set operator.image.tag=${IMG_TAG:-latest}"
+  fi
+  if ! has_been_set_to_empty_string "IMG_PULL_POLICY"; then
+    helm_install_command+=" --set operator.image.pullPolicy=${IMG_PULL_POLICY:-Never}"
+  fi
+  if ! has_been_set_to_empty_string "INSTRUMENTATION_IMG_REPOSITORY"; then
+    helm_install_command+=" --set operator.initContainerImage.repository=${INSTRUMENTATION_IMG_REPOSITORY:-instrumentation}"
+  fi
+  if ! has_been_set_to_empty_string "INSTRUMENTATION_IMG_TAG"; then
+    helm_install_command+=" --set operator.initContainerImage.tag=${INSTRUMENTATION_IMG_TAG:-latest}"
+  fi
+  if ! has_been_set_to_empty_string "INSTRUMENTATION_IMG_PULL_POLICY"; then
+    helm_install_command+=" --set operator.initContainerImage.pullPolicy=${INSTRUMENTATION_IMG_PULL_POLICY:-Never}"
+  fi
+  helm_install_command+=" dash0-operator"
+	helm_install_command+=" ${OPERATOR_HELM_CHART:-helm-chart/dash0-operator}"
+  echo Helm install command:
+  echo "$helm_install_command"
+  $helm_install_command
+}
+
+has_been_set_to_empty_string() {
+  env_var_name=$1
+  value=${!env_var_name:-}
+  is_set=${!env_var_name+is_set}
+
+  if [ -z "$value" ] && [ "$is_set" = "is_set" ]; then
+    return 0
+  elif [ -n "$value" ]; then
+    return 1
+  else
+    return 1
+  fi
+}

@@ -94,7 +94,7 @@ The test suite can also be run with a Helm chart from a remote repository:
 ```
 BUILD_OPERATOR_CONTROLLER_IMAGE=false \
   BUILD_INSTRUMENTATION_IMAGE=false \
-  OPERATOR_HELM_CHART=dash0hq-operator/dash0-operator \
+  OPERATOR_HELM_CHART=dash0-operator/dash0-operator \
   OPERATOR_HELM_CHART_URL=https://dash0hq.github.io/dash0-operator \
   IMG_REPOSITORY="" \
   IMG_TAG="" \
@@ -121,9 +121,6 @@ they deploy in their `AfterAll`/`AfterEach` hooks. The scripts in `test-resource
 * `test-resources/bin/test-roundtrip-02-operator-cr-aum.sh`: Deploys the operator to `dash0-operator-system`, then the
   Dash0 custom resource to namespace `test-namespace`, and finally an application under monitoring to the namespace
   `test-namespace`. This is a test scenario for instrumenting _new_ workloads at deploy time via the admission webhook.
-* `test-resources/bin/test-roundtrip-03-aum-cr-operator.sh`: This is the same as `test-roundtrip-01-aum-operator-cr.sh`,
-  with the minor difference that the custom resource is deployed to the target namespace before the operator is
-  deployed.
 * `test-resources/bin/test-cleanup.sh`: This script removes all resources created by the other scripts. **You should
   always this script after running any of the other scripts, when you are done with your tests, otherwise the e2e
   tests will fail the next time you start them.** Note that all above the scripts call this script at the beginning, so
@@ -132,9 +129,38 @@ they deploy in their `AfterAll`/`AfterEach` hooks. The scripts in `test-resource
   accept two command line parameters to override these defaults. For example, use 
   `test-resources/bin/test-roundtrip-01-aum-operator-cr.sh another-namespace replicaset` to run the scenario with 
   the target namespace `another-namespace` and a replica set workload.
-* Additional parameterization can be achieved via environment variables, for example
-  `IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller IMG_TAG=main-dev IMG_PULL_POLICY="" INSTRUMENTATION_IMG_REPOSITORY=ghcr.io/dash0hq/instrumentation INSTRUMENTATION_IMG_TAG=main-dev INSTRUMENTATION_IMG_PULL_POLICY="" test-resources/bin/test-roundtrip-01-aum-operator-cr.sh`
-  will run the scenario with the images that have been built from the main branch and pushed to ghcr.io most recently.
+  * Additional parameterization can be achieved via environment variables, for example:
+      * To run the scenario with the images that have been built from the main branch and pushed to ghcr.io most 
+        recently:
+        ```
+        BUILD_OPERATOR_CONTROLLER_IMAGE=false \
+          BUILD_INSTRUMENTATION_IMAGE=false \
+          IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller \
+          IMG_TAG=main-dev \
+          IMG_PULL_POLICY="" \
+          INSTRUMENTATION_IMG_REPOSITORY=ghcr.io/dash0hq/instrumentation \
+          INSTRUMENTATION_IMG_TAG=main-dev \
+          INSTRUMENTATION_IMG_PULL_POLICY="" \
+          test-resources/bin/test-roundtrip-01-aum-operator-cr.sh
+        ```
+      * To run the scenario with the helm chart from the official remote repository and the default images referenced in
+        that chart (the Helm repository must have been installed beforehand): 
+        ```
+        BUILD_OPERATOR_CONTROLLER_IMAGE=false \
+          BUILD_INSTRUMENTATION_IMAGE=false \
+          OPERATOR_HELM_CHART=dash0-operator/dash0-operator \
+          IMG_REPOSITORY="" \
+          IMG_TAG="" \
+          IMG_PULL_POLICY="" \
+          INSTRUMENTATION_IMG_REPOSITORY="" \
+          INSTRUMENTATION_IMG_TAG="" \
+          INSTRUMENTATION_IMG_PULL_POLICY="" \
+          test-resources/bin/test-roundtrip-01-aum-operator-cr.sh
+        ```
+        Note: Unsetting parameters like `IMG_REPOSITORY` explicitly (by setting them to an empty string) will lead to
+        the scenario not setting those values when deploying via helm, so that the default value from the chart will
+        actually be used. Otherwise, without `IMG_REPOSITORY=""` being present, the test script will use 
+        `IMG_REPOSITORY=operator-controller` (the image built from local sources) as the default setting.
 
 ## Make Targets
 

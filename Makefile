@@ -50,6 +50,11 @@ endif
 # This is useful for CI or a project to utilize a specific version of the operator-sdk toolkit.
 OPERATOR_SDK_VERSION ?= v1.34.1
 
+# Use the local Helm chart sources by default, can be overridden with a chart referencing a remote repository,
+# for example dash0-operator/dash0-operator. The remote repository needs to have been installed previously, e.g. via
+# helm repo add dash0-operator https://dash0hq.github.io/dash0-operator && helm repo update
+OPERATOR_HELM_CHART ?= helm-chart/dash0-operator
+
 # image repository and tag to use for building/pushing the operator image
 IMG_REPOSITORY ?= operator-controller
 IMG_TAG ?= latest
@@ -169,10 +174,6 @@ run: manifests generate fmt vet ## Run a controller from your host.
 docker-build: ## Build docker image with the manager.
 	$(CONTAINER_TOOL) build -t ${IMG} .
 
-.PHONY: docker-push
-docker-push: ## Push docker image with the manager.
-	$(CONTAINER_TOOL) push ${IMG}
-
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
 # - be able to use docker buildx. More info: https://docs.docker.com/build/buildx/
@@ -206,17 +207,14 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 	sleep 1
 	$(KUSTOMIZE) build config/crd | $(KUBECTL) patch CustomResourceDefinition dash0s.operator.dash0.com -p '{"metadata":{"finalizers":null}}' --type=merge
 
-.PHONY: deploy-via-kustomize
-deploy-via-kustomize: manifests kustomize ## Deploy the controller via kustomize to the K8s cluster specified in ~/.kube/config.
-	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
-
-.PHONY: undeploy-via-kustomize
-undeploy-via-kustomize: ## Undeploy the controller via kustomize from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) --wait=false -f -
-
 .PHONY: deploy-via-helm
 deploy-via-helm: ## Deploy the controller via helm to the K8s cluster specified in ~/.kube/config.
+# Note: We need the values from test-resources/.env here for the helm install command (in particular
+# $DASH0_OTEL_EXPORTER_OTLP_ENDPOINT, but they are not actually read at this point. Instead, they have been already
+# read via the -include directive at the top of this Makefile. The "-include" will fail silently if the file does
+# not exist, so we need to check for the existence of the file here. Using "include" (which does not fail silently
+# but aborts make immediately is not a good alternative, since it fails with a somewhat cryptic error message, plus
+# most make targets do not require the file.
 	@if test ! -f test-resources/.env; then \
 		echo "error: The file test-resources/.env does not exist. Copy test-resources/.env.template to test-resources/.env and edit it to provide a Dash0 authorization token."; \
 		exit 1; \
@@ -226,17 +224,16 @@ deploy-via-helm: ## Deploy the controller via helm to the K8s cluster specified 
 	helm install \
 		--namespace dash0-operator-system \
 		--create-namespace \
-		--values test-resources/helm/manual.values.yaml \
 		--set opentelemetry-collector.config.exporters.otlp.endpoint=${DASH0_OTEL_EXPORTER_OTLP_ENDPOINT} \
-		--set operator.image.repository=${IMG_REPOSITORY} \
-		--set operator.image.tag=${IMG_TAG} \
-		--set operator.image.pullPolicy=${IMG_PULL_POLICY} \
-		--set operator.initContainerImage.repository=${INSTRUMENTATION_IMG_REPOSITORY} \
-		--set operator.initContainerImage.tag=${INSTRUMENTATION_IMG_TAG} \
-		--set operator.initContainerImage.pullPolicy=${INSTRUMENTATION_IMG_PULL_POLICY} \
+		--set operator.image.repository=$(IMG_REPOSITORY) \
+		--set operator.image.tag=$(IMG_TAG) \
+		--set operator.image.pullPolicy=$(IMG_PULL_POLICY) \
+		--set operator.initContainerImage.repository=$(INSTRUMENTATION_IMG_REPOSITORY) \
+		--set operator.initContainerImage.tag=$(INSTRUMENTATION_IMG_TAG) \
+		--set operator.initContainerImage.pullPolicy=$(INSTRUMENTATION_IMG_PULL_POLICY) \
 		--set operator.developmentMode=true \
 		dash0-operator \
-		helm-chart/dash0-operator
+		$(OPERATOR_HELM_CHART)
 
 .PHONY: undeploy-via-helm
 undeploy-via-helm: ## Undeploy the controller via helm from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
