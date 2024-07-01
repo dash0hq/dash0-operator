@@ -75,8 +75,11 @@ operator:
     # Use a different image entirely. Note that Dash0 does not offer support for Dash0 operator setups that do not use
     # Dash0's official image.
     repository: "ghcr.io/dash0hq/operator-controller"
-    # overrides the image tag, which defaults to the chart appVersion.
+    # overrides the image tag, which defaults to the chart appVersion
     tag:
+    # pull image by digest instead of tag; if this is set, the tag value will be ignored
+    digest:
+
     # override the default image pull policy
     pullPolicy:
 
@@ -88,6 +91,8 @@ operator:
     repository: "ghcr.io/dash0hq/instrumentation"
     # overrides the image tag, which defaults to the chart appVersion.
     tag:
+    # pull image by digest instead of tag; if this is set, the tag value will be ignored
+    digest:
     # override the default image pull policy
     pullPolicy:
 

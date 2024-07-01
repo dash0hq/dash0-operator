@@ -137,3 +137,31 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].resources.requests.memory
           value: 32Mi
+
+  - it: should support referencing images by digest instead of tag
+    set:
+      operator:
+        image:
+          digest: sha256:e05496f5bcc3c2caf7d2a2944bfc084872d69dd1e9c365a521719c5bbcf4430c
+        initContainerImage:
+          digest: sha256:1e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda01
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/dash0hq/operator-controller@sha256:e05496f5bcc3c2caf7d2a2944bfc084872d69dd1e9c365a521719c5bbcf4430c
+      - notExists:
+          path: spec.template.spec.containers[0].imagePullPolicy
+      - equal:
+          path: spec.template.spec.containers[0].env[1].name
+          value: DASH0_OPERATOR_IMAGE
+      - equal:
+          path: spec.template.spec.containers[0].env[1].value
+          value: ghcr.io/dash0hq/operator-controller@sha256:e05496f5bcc3c2caf7d2a2944bfc084872d69dd1e9c365a521719c5bbcf4430c
+      - equal:
+          path: spec.template.spec.containers[0].env[2].name
+          value: DASH0_INIT_CONTAINER_IMAGE
+      - equal:
+          path: spec.template.spec.containers[0].env[2].value
+          value: ghcr.io/dash0hq/instrumentation@sha256:1e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda01
+      - notExists:
+          path: spec.template.spec.containers[0].env[3].name

@@ -86,6 +86,9 @@ EOF
   if ! has_been_set_to_empty_string "IMG_TAG"; then
     helm_install_command+=" --set operator.image.tag=${IMG_TAG:-latest}"
   fi
+  if [[ -n "${IMG_DIGEST:-}" ]]; then
+    helm_install_command+=" --set operator.image.digest=$IMG_DIGEST"
+  fi
   if ! has_been_set_to_empty_string "IMG_PULL_POLICY"; then
     helm_install_command+=" --set operator.image.pullPolicy=${IMG_PULL_POLICY:-Never}"
   fi
@@ -94,6 +97,9 @@ EOF
   fi
   if ! has_been_set_to_empty_string "INSTRUMENTATION_IMG_TAG"; then
     helm_install_command+=" --set operator.initContainerImage.tag=${INSTRUMENTATION_IMG_TAG:-latest}"
+  fi
+  if [[ -n "${INSTRUMENTATION_IMG_DIGEST:-}" ]]; then
+    helm_install_command+=" --set operator.initContainerImage.digest=$INSTRUMENTATION_IMG_DIGEST"
   fi
   if ! has_been_set_to_empty_string "INSTRUMENTATION_IMG_PULL_POLICY"; then
     helm_install_command+=" --set operator.initContainerImage.pullPolicy=${INSTRUMENTATION_IMG_PULL_POLICY:-Never}"

@@ -44,7 +44,7 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 
 {{/* the controller manager container image */}}
 {{- define "dash0-operator.image" -}}
-{{- printf "%s:%s" .Values.operator.image.repository (include "dash0-operator.imageTag" .) }}
+{{- include "dash0-operator.imageRef" (dict "image" .Values.operator.image "context" .) -}}
 {{- end }}
 
 {{- define "dash0-operator.imageTag" -}}
@@ -53,11 +53,19 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 
 {{/* the init container image */}}
 {{- define "dash0-operator.initContainerImage" -}}
-{{- printf "%s:%s" .Values.operator.initContainerImage.repository (include "dash0-operator.initContainerImageTag" .)  }}
+{{- include "dash0-operator.imageRef" (dict "image" .Values.operator.initContainerImage "context" .) -}}
 {{- end }}
 
 {{- define "dash0-operator.initContainerImageTag" -}}
 {{- default .Chart.AppVersion .Values.operator.initContainerImage.tag }}
+{{- end }}
+
+{{- define "dash0-operator.imageRef" -}}
+{{- if .image.digest -}}
+{{- printf "%s@%s" .image.repository .image.digest }}
+{{- else -}}
+{{- printf "%s:%s" .image.repository (default .context.Chart.AppVersion .image.tag) }}
+{{- end }}
 {{- end }}
 
 {{- define "dash0-operator.restrictiveContainerSecurityContext" -}}
