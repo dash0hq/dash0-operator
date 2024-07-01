@@ -1,4 +1,4 @@
-{{- if not .Values.operator.disableSecretCheck -}}
+{{- if and (index .Values "opentelemetry-collector").enabled (not .Values.operator.disableSecretCheck) -}}
 {{- $secret := lookup "v1" "Secret" .Release.Namespace "dash0-authorization-secret" -}}
 {{- if $secret -}}
 {{- if not (index $secret.data "dash0-authorization-token") -}}
@@ -9,7 +9,7 @@
 {{- end -}}
 {{- end -}}
 
-{{- if not .Values.operator.disableOtlpEndpointCheck -}}
+{{- if and (index .Values "opentelemetry-collector").enabled (not .Values.operator.disableOtlpEndpointCheck) -}}
 {{- $oltpExporter := (index .Values "opentelemetry-collector").config.exporters.otlp -}}
 {{- if not $oltpExporter.endpoint -}}
 {{- fail "Error: You did not provide a value for opentelemetry-collector.config.exporters.otlp.endpoint. Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator#installation." -}}

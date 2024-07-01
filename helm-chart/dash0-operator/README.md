@@ -25,10 +25,11 @@ https://github.com/dash0hq/dash0-operator/blob/main/README.md.
 
 ## Installation
 
-Before installing the operator, add the Helm repository as follows:
+Before installing the operator, add the required Helm repositories as follows:
 
 ```console
 helm repo add dash0-operator https://dash0hq.github.io/dash0-operator
+helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
 helm repo update
 ```
 
