@@ -165,3 +165,17 @@ tests:
           value: ghcr.io/dash0hq/instrumentation@sha256:1e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda01
       - notExists:
           path: spec.template.spec.containers[0].env[3].name
+
+  - it: should support independent collector
+    set:
+      operator:
+        openTelemetryCollectorBaseUrl: "http://opentelemetry-collector-daemonset.opentelemetry.svc.cluster.local:4318"
+      opentelemetry-collector:
+        enabled: false
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].env[0].name
+          value: DASH0_OTEL_COLLECTOR_BASE_URL
+      - equal:
+          path: spec.template.spec.containers[0].env[0].value
+          value: http://opentelemetry-collector-daemonset.opentelemetry.svc.cluster.local:4318

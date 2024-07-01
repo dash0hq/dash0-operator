@@ -1,5 +1,5 @@
 # This file contains the default values for the Dash0 Kubernetes Operator Helm chart.
-# Values can be overriden via --set or by providing additional yaml files when doing helm install etc.
+# Values can be overriden via --set or by providing additional yaml files when running helm install.
 
 # settings for the operator/controller
 operator:
@@ -79,7 +79,6 @@ operator:
     tag:
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
-
     # override the default image pull policy
     pullPolicy:
 
@@ -103,6 +102,12 @@ operator:
   # otherwise a Zap production config will be used (stacktraces on errors, sampling).
   developmentMode: false
 
+  # If set, the instrumented workloads will send telemetry data to this URL instead of the default URL for the
+  # OpenTelemetry collector instance that this Helm chart deploys. This setting is meant to be used together with
+  # the setting opentelemetry-collector.enabled: false. If opentelemetry-collector.enabled is not set to false, the
+  # setting operator.openTelemetryCollectorBaseUrl should be left unset.
+  openTelemetryCollectorBaseUrl:
+
   # If set to true, the operator Helm chart will skip the check for the Dash0 authorization secret. This should only
   # be done for testing purposes.
   disableSecretCheck: false
@@ -113,6 +118,9 @@ operator:
 
 # settings for the OpenTelemetry collector instance that Dash0 will use for reporting data to Dash0
 opentelemetry-collector:
+  # Set this to false if you do not want the Dash0 Kubernetes operator helm chart to deploy an OpenTelemetry collector
+  # daemonset. Note that if you disable this, you will need to provide your own OpenTelemetry collector instance
+  # and also provide its URL via the setting operator.openTelemetryCollectorBaseUrl.
   enabled: true
 
   image:
