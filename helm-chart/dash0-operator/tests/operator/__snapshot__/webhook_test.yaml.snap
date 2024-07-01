@@ -36,8 +36,8 @@ webhook should match snapshot:
       namespace: NAMESPACE
     spec:
       dnsNames:
-        - dash0-operator-webhook-service.dash0-operator-system.svc
-        - dash0-operator-webhook-service.dash0-operator-system.svc.cluster.local
+        - dash0-operator-webhook-service.NAMESPACE.svc
+        - dash0-operator-webhook-service.NAMESPACE.svc.cluster.local
       issuerRef:
         kind: Issuer
         name: dash0-operator-selfsigned-issuer
@@ -63,7 +63,7 @@ webhook should match snapshot:
     kind: MutatingWebhookConfiguration
     metadata:
       annotations:
-        cert-manager.io/inject-ca-from: dash0-operator-system/dash0-operator-serving-cert
+        cert-manager.io/inject-ca-from: NAMESPACE/dash0-operator-serving-cert
       labels:
         app.kubernetes.io/component: webhook
         app.kubernetes.io/instance: mutating-webhook-configuration

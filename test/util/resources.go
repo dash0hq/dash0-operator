@@ -810,7 +810,7 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 				},
 				{
 					Name:  "DASH0_OTEL_COLLECTOR_BASE_URL",
-					Value: "http://dash0-operator-opentelemetry-collector.dash0-operator-system.svc.cluster.local:4318",
+					Value: "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
 				},
 			},
 		},
@@ -846,7 +846,7 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 				},
 				{
 					Name:  "DASH0_OTEL_COLLECTOR_BASE_URL",
-					Value: "http://dash0-operator-opentelemetry-collector.dash0-operator-system.svc.cluster.local:4318",
+					Value: "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
 				},
 			},
 		},
@@ -885,7 +885,7 @@ func simulateInstrumentedPodSpec(podSpec *corev1.PodSpec, meta *metav1.ObjectMet
 		},
 		{
 			Name:  "DASH0_OTEL_COLLECTOR_BASE_URL",
-			Value: "http://dash0-operator-opentelemetry-collector.dash0-operator-system.svc.cluster.local:4318",
+			Value: "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
 		},
 	}
 
