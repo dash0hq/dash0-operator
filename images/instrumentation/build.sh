@@ -13,7 +13,7 @@ image_version=latest
 if [[ -n "${1:-}" ]]; then
   image_repository=$1
 fi
-if [[ -n "${1:-}" ]]; then
+if [[ -n "${2:-}" ]]; then
   image_version=$2
 fi
 

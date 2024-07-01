@@ -10,14 +10,14 @@ cd "$(dirname ${BASH_SOURCE})"/../..
 target_namespace=${1:-test-namespace}
 delete_namespace=${2:-true}
 
-deployment_tool=helm
-if [[ -n "${USE_KUSTOMIZE:-}" ]]; then
-  deployment_tool=kustomize
-fi
-
 kubectl delete -n ${target_namespace} -k config/samples || true
 
-make undeploy-via-${deployment_tool} || true
+make undeploy-via-helm || true
+
+kubectl delete secret \
+  --namespace dash0-operator-system \
+  dash0-authorization-secret \
+  --ignore-not-found
 
 # If the custom resource definition has been installed by kustomize and the next test scenario attempts to install it
 # via helm, the helm installation will fail because the custom resource definition already exists and does not have the
@@ -33,5 +33,5 @@ done
 test-resources/collector/undeploy.sh ${target_namespace}
 
 if [[ "${target_namespace}" != "default" ]] && [[ "${delete_namespace}" == "true" ]]; then
-  kubectl delete ns ${target_namespace}
+  kubectl delete ns ${target_namespace} --ignore-not-found
 fi
