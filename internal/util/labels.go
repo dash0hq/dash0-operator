@@ -127,7 +127,17 @@ func ImageNameToLabel(imageName string) string {
 	// referencePat for parsing logic for image names, if required. In particular, if we see longer image names out in
 	// the wild (due to longer registry names), we might want to prefer the tag/version over the registry name when
 	// truncating. For now, we conveniently ignore this problem.
-	label := strings.ReplaceAll(strings.ReplaceAll(imageName, "/", "_"), ":", "_")
+	label :=
+		strings.ReplaceAll(
+			strings.ReplaceAll(
+				strings.ReplaceAll(
+					imageName,
+					"@", "_",
+				),
+				"/", "_",
+			),
+			":", "_",
+		)
 	if len(label) <= 63 {
 		return label
 	}

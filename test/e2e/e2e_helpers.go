@@ -47,6 +47,7 @@ var (
 type ImageSpec struct {
 	repository string
 	tag        string
+	digest     string
 	pullPolicy string
 }
 
@@ -357,9 +358,11 @@ func DeployOperatorWithCollectorAndClearExportedTelemetry(
 	}
 	arguments = setIfNotEmpty(arguments, "operator.image.repository", images.operator.repository)
 	arguments = setIfNotEmpty(arguments, "operator.image.tag", images.operator.tag)
+	arguments = setIfNotEmpty(arguments, "operator.image.digest", images.operator.digest)
 	arguments = setIfNotEmpty(arguments, "operator.image.pullPolicy", images.operator.pullPolicy)
 	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.repository", images.instrumentation.repository)
 	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.tag", images.instrumentation.tag)
+	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.digest", images.instrumentation.digest)
 	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.pullPolicy", images.instrumentation.pullPolicy)
 	arguments = append(arguments, operatorHelmReleaseName)
 	arguments = append(arguments, operatorHelmChart)

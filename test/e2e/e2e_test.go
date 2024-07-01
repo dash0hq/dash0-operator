@@ -483,12 +483,14 @@ func readAndApplyEnvironmentVariables() {
 	operatorHelmChartUrl = getEnvOrDefault("OPERATOR_HELM_CHART_URL", operatorHelmChartUrl)
 	images.operator.repository = getEnvOrDefault("IMG_REPOSITORY", images.operator.repository)
 	images.operator.tag = getEnvOrDefault("IMG_TAG", images.operator.tag)
+	images.operator.digest = getEnvOrDefault("IMG_DIGEST", images.operator.digest)
 	images.operator.pullPolicy = getEnvOrDefault("IMG_PULL_POLICY", images.operator.pullPolicy)
 	images.instrumentation.repository = getEnvOrDefault(
 		"INSTRUMENTATION_IMG_REPOSITORY",
 		images.instrumentation.repository,
 	)
 	images.instrumentation.tag = getEnvOrDefault("INSTRUMENTATION_IMG_TAG", images.instrumentation.tag)
+	images.instrumentation.digest = getEnvOrDefault("INSTRUMENTATION_IMG_DIGEST", images.instrumentation.digest)
 	images.instrumentation.pullPolicy = getEnvOrDefault(
 		"INSTRUMENTATION_IMG_PULL_POLICY",
 		images.instrumentation.pullPolicy,
