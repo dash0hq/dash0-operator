@@ -126,7 +126,7 @@ var _ = BeforeSuite(func() {
 		Client:               k8sClient,
 		Recorder:             mgr.GetEventRecorderFor("dash0-webhook"),
 		Images:               images,
-		OtelCollectorBaseUrl: "http://dash0-operator-opentelemetry-collector.dash0-operator-system.svc.cluster.local:4318",
+		OtelCollectorBaseUrl: "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
 	}).SetupWebhookWithManager(mgr)
 	Expect(err).NotTo(HaveOccurred())
 

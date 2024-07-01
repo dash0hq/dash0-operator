@@ -7,7 +7,7 @@ set -euo pipefail
 
 cd "$(dirname ${BASH_SOURCE})"
 
-target_namespace=${1:-dash0-operator-system}
+target_namespace=${1:-dash0-system}
 
 if [[ ! $(helm repo list | grep open-telemetry) ]]; then
   echo "The helm repo for open-telemetry has not been found, adding it now."

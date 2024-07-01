@@ -15,7 +15,7 @@ kubectl delete -n ${target_namespace} -k config/samples || true
 make undeploy-via-helm || true
 
 kubectl delete secret \
-  --namespace dash0-operator-system \
+  --namespace dash0-system \
   dash0-authorization-secret \
   --ignore-not-found
 

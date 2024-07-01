@@ -39,10 +39,10 @@ Make sure to use `dash0-authorization-secret` for the name of the secret and `da
 key.
 
 ```console
-kubectl create namespace dash0-operator-system
+kubectl create namespace dash0-system
 kubectl create secret generic \
   dash0-authorization-secret \
-  --namespace dash0-operator-system \
+  --namespace dash0-system \
   --from-literal=dash0-authorization-token=auth_...your-token-here...
 ```
 
@@ -55,7 +55,7 @@ The correct endpoint value will always start with `ingress.` and end in `dash0.c
 
 ```console
 helm install \
-  --namespace dash0-operator-system \
+  --namespace dash0-system \
   --set opentelemetry-collector.config.exporters.otlp.endpoint=your-dash0-ingress-endpoint-here.dash0.com:4317 \
   dash0-operator \
   dash0-operator/dash0-operator  
@@ -108,7 +108,7 @@ kubectl delete --namespace test-namespace -f dash0.yaml
 To remove the Dash0 Kubernetes Operator from your cluster, run the following command:
 
 ```
-helm uninstall dash0-operator --namespace dash0-operator-system
+helm uninstall dash0-operator --namespace dash0-system
 ```
 
 Depending on the command you used to install the operator, you may need to use a different Helm release name or
@@ -119,11 +119,11 @@ This will also automatically disable Dash0 monitoring for all namespaces.
 Optionally, remove the namespace that has been created for the operator:
 
 ```
-kubectl delete namespace dash0-operator-system
+kubectl delete namespace dash0-system
 ```
 
 If you choose to not remove the namespace, you might consider removing the secret with the Dash0 authorization token:
 
 ```console
-kubectl delete secret --namespace dash0-operator-system dash0-authorization-secret
+kubectl delete secret --namespace dash0-system dash0-authorization-secret
 ```

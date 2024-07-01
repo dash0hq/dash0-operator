@@ -33,7 +33,7 @@ var (
 	buildInstrumentationImageFromLocalSources    = true
 	operatorHelmChart                            = localHelmChart
 	operatorHelmChartUrl                         = ""
-	operatorNamespace                            = "dash0-operator-system"
+	operatorNamespace                            = "dash0-system"
 	images                                       = Images{
 		operator: ImageSpec{
 			repository: "operator-controller",

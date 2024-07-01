@@ -25,11 +25,11 @@ echo
 echo
 
 echo "STEP 3: creating operator namespace and authorization token secret"
-test-resources/bin/ensure-namespace-exists.sh dash0-operator-system
+test-resources/bin/ensure-namespace-exists.sh dash0-system
 kubectl create secret \
   generic \
   dash0-authorization-secret \
-  --namespace dash0-operator-system \
+  --namespace dash0-system \
   --from-literal=dash0-authorization-token="${DASH0_AUTHORIZATION_TOKEN}"
 echo
 echo

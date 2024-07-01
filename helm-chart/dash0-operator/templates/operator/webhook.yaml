@@ -28,8 +28,8 @@ metadata:
     {{- include "dash0-operator.labels" . | nindent 4 }}
 spec:
   dnsNames:
-  - dash0-operator-webhook-service.dash0-operator-system.svc
-  - dash0-operator-webhook-service.dash0-operator-system.svc.cluster.local
+  - dash0-operator-webhook-service.{{ .Release.Namespace }}.svc
+  - dash0-operator-webhook-service.{{ .Release.Namespace }}.svc.cluster.local
   issuerRef:
     kind: Issuer
     name: dash0-operator-selfsigned-issuer
@@ -53,7 +53,7 @@ kind: MutatingWebhookConfiguration
 metadata:
   name: {{ template "dash0-operator.chartName" . }}-mutating-webhook-configuration
   annotations:
-    cert-manager.io/inject-ca-from: dash0-operator-system/dash0-operator-serving-cert
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/dash0-operator-serving-cert
   labels:
     app.kubernetes.io/name: mutatingwebhookconfiguration
     app.kubernetes.io/instance: mutating-webhook-configuration

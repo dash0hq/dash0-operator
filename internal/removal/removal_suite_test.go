@@ -99,7 +99,7 @@ var _ = BeforeSuite(func() {
 		Recorder:             mgr.GetEventRecorderFor("dash0-controller"),
 		Scheme:               k8sClient.Scheme(),
 		Images:               images,
-		OtelCollectorBaseUrl: "http://dash0-operator-opentelemetry-collector.dash0-operator-system.svc.cluster.local:4318",
+		OtelCollectorBaseUrl: "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
 	}
 })
 

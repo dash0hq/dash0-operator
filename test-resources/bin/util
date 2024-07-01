@@ -74,8 +74,7 @@ build_instrumentation_image() {
 deploy_via_helm() {
   helm_install_command=$(cat <<EOF
   helm install
-		--namespace dash0-operator-system
-		--create-namespace
+		--namespace dash0-system
 		--set opentelemetry-collector.config.exporters.otlp.endpoint=${DASH0_OTEL_EXPORTER_OTLP_ENDPOINT}
 		--set operator.developmentMode=true
 EOF

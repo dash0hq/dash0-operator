@@ -222,7 +222,7 @@ deploy-via-helm: ## Deploy the controller via helm to the K8s cluster specified 
 
 	test-resources/bin/render-templates.sh
 	helm install \
-		--namespace dash0-operator-system \
+		--namespace dash0-system \
 		--create-namespace \
 		--set opentelemetry-collector.config.exporters.otlp.endpoint=${DASH0_OTEL_EXPORTER_OTLP_ENDPOINT} \
 		--set operator.image.repository=$(IMG_REPOSITORY) \
@@ -237,8 +237,8 @@ deploy-via-helm: ## Deploy the controller via helm to the K8s cluster specified 
 
 .PHONY: undeploy-via-helm
 undeploy-via-helm: ## Undeploy the controller via helm from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	helm uninstall --namespace dash0-operator-system dash0-operator
-	$(KUBECTL) delete ns dash0-operator-system
+	helm uninstall --namespace dash0-system dash0-operator
+	$(KUBECTL) delete ns dash0-system
 
 ##@ Build Dependencies
 
