@@ -91,13 +91,23 @@ webhooks:
     - UPDATE
     resources:
     - cronjobs
-    - jobs
+  - apiGroups:
+      - batch
+    apiVersions:
+      - v1
+    operations:
+      # do not listen to UPDATE for jobs, we cannot revert instrumentation or do anything on UPDATE requests, since jobs
+      # are immutable
+      - CREATE
+    resources:
+      - jobs
   - apiGroups: [""]
     apiVersions:
     - v1
     operations:
-    - CREATE
-    - UPDATE
+    # do not listen to UPDATE for pods, we cannot revert instrumentation or do anything on UPDATE requests, since pods
+    # are effectively immutable (we cannot restart ownerless pods)
+      - CREATE
     resources:
     - pods
   sideEffects: None

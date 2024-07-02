@@ -38,7 +38,7 @@ var _ = Describe("The Dash0 webhook", func() {
 			RemoveDash0CustomResource(ctx, k8sClient)
 		})
 
-		Describe("when mutating new deployments", Ordered, func() {
+		Describe("when mutating new workloads", Ordered, func() {
 			It("should instrument a new basic deployment", func() {
 				createdObjects = verifyDeploymentIsBeingInstrumented(createdObjects)
 			})
@@ -155,7 +155,7 @@ var _ = Describe("The Dash0 webhook", func() {
 				createdObjects = append(createdObjects, workload)
 				workload = GetPod(ctx, k8sClient, TestNamespaceName, name)
 				VerifyUnmodifiedPod(workload)
-				VerifyNoInstrumentationNecessaryEvent(ctx, clientset, TestNamespaceName, name, "webhook")
+				VerifyNoEvents(ctx, clientset, TestNamespaceName)
 			})
 
 			It("should instrument a new basic replica set", func() {
@@ -186,7 +186,7 @@ var _ = Describe("The Dash0 webhook", func() {
 			})
 		})
 
-		Describe("when workload has opted out of instrumentation", func() {
+		Describe("when an uninstrumented workload has opted out of instrumentation", func() {
 			It("should not instrument a cron job that has opted out of instrumentation", func() {
 				name := UniqueName(CronJobNamePrefix)
 				workload := CronJobWithOptOutLabel(TestNamespaceName, name)
@@ -255,6 +255,201 @@ var _ = Describe("The Dash0 webhook", func() {
 				workload = GetStatefulSet(ctx, k8sClient, TestNamespaceName, name)
 				VerifyStatefulSetWithOptOutLabel(workload)
 				VerifyNoEvents(ctx, clientset, TestNamespaceName)
+			})
+		})
+
+		Describe("when the opt-out label is added to an already instrumented workload", func() {
+			It("should remove Dash0 from an instrumented cron job when dash0.com/enable=false is added", func() {
+				name := UniqueName(CronJobNamePrefix)
+				workload := CreateInstrumentedCronJob(ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				DeleteAllEvents(ctx, clientset, TestNamespaceName)
+				AddOptOutLabel(&workload.ObjectMeta)
+				UpdateWorkload(ctx, k8sClient, workload)
+				workload = GetCronJob(ctx, k8sClient, TestNamespaceName, name)
+				VerifyCronJobWithOptOutLabel(workload)
+				VerifySuccessfulUninstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
+			})
+
+			It("should remove Dash0 from an instrumented daemon set when dash0.com/enable=false is added", func() {
+				name := UniqueName(DaemonSetNamePrefix)
+				workload := CreateInstrumentedDaemonSet(ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				DeleteAllEvents(ctx, clientset, TestNamespaceName)
+				AddOptOutLabel(&workload.ObjectMeta)
+				UpdateWorkload(ctx, k8sClient, workload)
+				workload = GetDaemonSet(ctx, k8sClient, TestNamespaceName, name)
+				VerifyDaemonSetWithOptOutLabel(workload)
+				VerifySuccessfulUninstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
+			})
+
+			It("should remove Dash0 from an instrumented deployment when dash0.com/enable=false is added", func() {
+				name := UniqueName(DeploymentNamePrefix)
+				workload := CreateInstrumentedDeployment(ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				DeleteAllEvents(ctx, clientset, TestNamespaceName)
+				AddOptOutLabel(&workload.ObjectMeta)
+				UpdateWorkload(ctx, k8sClient, workload)
+				workload = GetDeployment(ctx, k8sClient, TestNamespaceName, name)
+				VerifyDeploymentWithOptOutLabel(workload)
+				VerifySuccessfulUninstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
+			})
+
+			// The tests for jobs and pods are deliberately missing here, since we do not listen to UPDATE requests for
+			// those two immutable workload types.
+
+			It("should remove Dash0 from an instrumented replica set when dash0.com/enable=false is added", func() {
+				name := UniqueName(ReplicaSetNamePrefix)
+				workload := CreateInstrumentedReplicaSet(ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				DeleteAllEvents(ctx, clientset, TestNamespaceName)
+				AddOptOutLabel(&workload.ObjectMeta)
+				UpdateWorkload(ctx, k8sClient, workload)
+				workload = GetReplicaSet(ctx, k8sClient, TestNamespaceName, name)
+				VerifyReplicaSetWithOptOutLabel(workload)
+				VerifySuccessfulUninstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
+			})
+
+			It("should remove Dash0 from an instrumented stateful set when dash0.com/enable=false is added", func() {
+				name := UniqueName(StatefulSetNamePrefix)
+				workload := CreateInstrumentedStatefulSet(ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				DeleteAllEvents(ctx, clientset, TestNamespaceName)
+				AddOptOutLabel(&workload.ObjectMeta)
+				UpdateWorkload(ctx, k8sClient, workload)
+				workload = GetStatefulSet(ctx, k8sClient, TestNamespaceName, name)
+				VerifyStatefulSetWithOptOutLabel(workload)
+				VerifySuccessfulUninstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
+			})
+		})
+
+		Describe("when the opt-out label is removed from a workload that had previously opted out", func() {
+			It("should add Dash0 to an uninstrumented cron job when dash0.com/enable=false is removed", func() {
+				name := UniqueName(CronJobNamePrefix)
+				workload := CreateCronJobWithOptOutLabel(ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				DeleteAllEvents(ctx, clientset, TestNamespaceName)
+				RemoveOptOutLabel(&workload.ObjectMeta)
+				UpdateWorkload(ctx, k8sClient, workload)
+				workload = GetCronJob(ctx, k8sClient, TestNamespaceName, name)
+				VerifyModifiedCronJob(workload, BasicInstrumentedPodSpecExpectations)
+				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
+			})
+
+			It("should add Dash0 to an uninstrumented daemon set when dash0.com/enable=false is removed", func() {
+				name := UniqueName(DaemonSetNamePrefix)
+				workload := CreateDaemonSetWithOptOutLabel(ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				DeleteAllEvents(ctx, clientset, TestNamespaceName)
+				RemoveOptOutLabel(&workload.ObjectMeta)
+				UpdateWorkload(ctx, k8sClient, workload)
+				workload = GetDaemonSet(ctx, k8sClient, TestNamespaceName, name)
+				VerifyModifiedDaemonSet(workload, BasicInstrumentedPodSpecExpectations)
+				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
+			})
+
+			It("should add Dash0 to an uninstrumented deployment when dash0.com/enable=false is removed", func() {
+				name := UniqueName(DeploymentNamePrefix)
+				workload := CreateDeploymentWithOptOutLabel(ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				DeleteAllEvents(ctx, clientset, TestNamespaceName)
+				RemoveOptOutLabel(&workload.ObjectMeta)
+				UpdateWorkload(ctx, k8sClient, workload)
+				workload = GetDeployment(ctx, k8sClient, TestNamespaceName, name)
+				VerifyModifiedDeployment(workload, BasicInstrumentedPodSpecExpectations)
+				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
+			})
+
+			// The tests for jobs and pods are deliberately missing here, since we do not listen to UPDATE requests for
+			// those two immutable workload types.
+
+			It("should add Dash0 to an uninstrumented replica set when dash0.com/enable=false is removed", func() {
+				name := UniqueName(ReplicaSetNamePrefix)
+				workload := CreateReplicaSetWithOptOutLabel(ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				DeleteAllEvents(ctx, clientset, TestNamespaceName)
+				RemoveOptOutLabel(&workload.ObjectMeta)
+				UpdateWorkload(ctx, k8sClient, workload)
+				workload = GetReplicaSet(ctx, k8sClient, TestNamespaceName, name)
+				VerifyModifiedReplicaSet(workload, BasicInstrumentedPodSpecExpectations)
+				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
+			})
+
+			It("should add Dash0 to an uninstrumented stateful set when dash0.com/enable=false is removed", func() {
+				name := UniqueName(StatefulSetNamePrefix)
+				workload := CreateStatefulSetWithOptOutLabel(ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				DeleteAllEvents(ctx, clientset, TestNamespaceName)
+				RemoveOptOutLabel(&workload.ObjectMeta)
+				UpdateWorkload(ctx, k8sClient, workload)
+				workload = GetStatefulSet(ctx, k8sClient, TestNamespaceName, name)
+				VerifyModifiedStatefulSet(workload, BasicInstrumentedPodSpecExpectations)
+				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
+			})
+		})
+
+		Describe("when dash0.com/enabled=true is set on a workload that had previously opted out", func() {
+			It("should add Dash0 to an uninstrumented cron job when dash0.com/enable flips from false to true", func() {
+				name := UniqueName(CronJobNamePrefix)
+				workload := CreateCronJobWithOptOutLabel(ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				DeleteAllEvents(ctx, clientset, TestNamespaceName)
+				UpdateLabel(&workload.ObjectMeta, "dash0.com/enable", "true")
+				UpdateWorkload(ctx, k8sClient, workload)
+				workload = GetCronJob(ctx, k8sClient, TestNamespaceName, name)
+				VerifyModifiedCronJob(workload, BasicInstrumentedPodSpecExpectations)
+				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
+			})
+
+			It("should add Dash0 to an uninstrumented daemon set when dash0.com/enable flips from false to true", func() {
+				name := UniqueName(DaemonSetNamePrefix)
+				workload := CreateDaemonSetWithOptOutLabel(ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				DeleteAllEvents(ctx, clientset, TestNamespaceName)
+				UpdateLabel(&workload.ObjectMeta, "dash0.com/enable", "true")
+				UpdateWorkload(ctx, k8sClient, workload)
+				workload = GetDaemonSet(ctx, k8sClient, TestNamespaceName, name)
+				VerifyModifiedDaemonSet(workload, BasicInstrumentedPodSpecExpectations)
+				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
+			})
+
+			It("should add Dash0 to an uninstrumented deployment when dash0.com/enable flips from false to true", func() {
+				name := UniqueName(DeploymentNamePrefix)
+				workload := CreateDeploymentWithOptOutLabel(ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				DeleteAllEvents(ctx, clientset, TestNamespaceName)
+				UpdateLabel(&workload.ObjectMeta, "dash0.com/enable", "true")
+				UpdateWorkload(ctx, k8sClient, workload)
+				workload = GetDeployment(ctx, k8sClient, TestNamespaceName, name)
+				VerifyModifiedDeployment(workload, BasicInstrumentedPodSpecExpectations)
+				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
+			})
+
+			// The tests for jobs and pods are deliberately missing here, since we do not listen to UPDATE requests for
+			// those two immutable workload types.
+
+			It("should add Dash0 to an uninstrumented replica set when dash0.com/enable flips from false to true", func() {
+				name := UniqueName(ReplicaSetNamePrefix)
+				workload := CreateReplicaSetWithOptOutLabel(ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				DeleteAllEvents(ctx, clientset, TestNamespaceName)
+				UpdateLabel(&workload.ObjectMeta, "dash0.com/enable", "true")
+				UpdateWorkload(ctx, k8sClient, workload)
+				workload = GetReplicaSet(ctx, k8sClient, TestNamespaceName, name)
+				VerifyModifiedReplicaSet(workload, BasicInstrumentedPodSpecExpectations)
+				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
+			})
+
+			It("should add Dash0 to an uninstrumented stateful set when dash0.com/enable flips from false to true", func() {
+				name := UniqueName(StatefulSetNamePrefix)
+				workload := CreateStatefulSetWithOptOutLabel(ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				DeleteAllEvents(ctx, clientset, TestNamespaceName)
+				UpdateLabel(&workload.ObjectMeta, "dash0.com/enable", "true")
+				UpdateWorkload(ctx, k8sClient, workload)
+				workload = GetStatefulSet(ctx, k8sClient, TestNamespaceName, name)
+				VerifyModifiedStatefulSet(workload, BasicInstrumentedPodSpecExpectations)
+				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
 			})
 		})
 

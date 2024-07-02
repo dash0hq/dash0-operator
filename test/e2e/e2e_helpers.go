@@ -613,6 +613,24 @@ func InstallNodeJsDaemonSet(namespace string) error {
 	)
 }
 
+func InstallNodeJsDaemonSetWithOptOutLabel(namespace string) error {
+	return installNodeJsApplication(
+		namespace,
+		"daemonset.opt-out",
+		exec.Command(
+			"kubectl",
+			"rollout",
+			"status",
+			"daemonset",
+			"dash0-operator-nodejs-20-express-test-daemonset",
+			"--namespace",
+			namespace,
+			"--timeout",
+			"60s",
+		),
+	)
+}
+
 func UninstallNodeJsDaemonSet(namespace string) error {
 	return uninstallNodeJsApplication(namespace, "daemonset")
 }
@@ -732,14 +750,18 @@ func RemoveAllTestApplications(namespace string) {
 	Expect(UninstallNodeJsStatefulSet(namespace)).To(Succeed())
 }
 
-func installNodeJsApplication(namespace string, kind string, waitCommand *exec.Cmd) error {
+func installNodeJsApplication(
+	namespace string,
+	templateName string,
+	waitCommand *exec.Cmd,
+) error {
 	err := RunAndIgnoreOutput(exec.Command(
 		"kubectl",
 		"apply",
 		"--namespace",
 		namespace,
 		"-f",
-		fmt.Sprintf("test-resources/node.js/express/%s.yaml", kind),
+		fmt.Sprintf("test-resources/node.js/express/%s.yaml", templateName),
 	))
 	if err != nil {
 		return err
@@ -760,6 +782,33 @@ func uninstallNodeJsApplication(namespace string, kind string) error {
 			"--ignore-not-found",
 			"-f",
 			fmt.Sprintf("test-resources/node.js/express/%s.yaml", kind),
+		))
+}
+
+func AddOptOutLabel(namespace string, workloadType string, workloadName string) error {
+	return RunAndIgnoreOutput(
+		exec.Command(
+			"kubectl",
+			"label",
+			"--namespace",
+			namespace,
+			"--overwrite",
+			workloadType,
+			workloadName,
+			"dash0.com/enable=false",
+		))
+}
+
+func RemoveOptOutLabel(namespace string, workloadType string, workloadName string) error {
+	return RunAndIgnoreOutput(
+		exec.Command(
+			"kubectl",
+			"label",
+			"--namespace",
+			namespace,
+			workloadType,
+			workloadName,
+			"dash0.com/enable-",
 		))
 }
 
@@ -836,11 +885,54 @@ func VerifyThatInstrumentationHasBeenReverted(
 	testId string,
 	instrumentationBy string,
 ) {
+	verifyThatInstrumentationHasBeenReverted(
+		namespace,
+		workloadType,
+		port,
+		isBatch,
+		testId,
+		instrumentationBy,
+		false,
+	)
+}
+
+func VerifyThatInstrumentationHasBeenRevertedAfterAddingOptOutLabel(
+	namespace string,
+	workloadType string,
+	port int,
+	isBatch bool,
+	testId string,
+	instrumentationBy string,
+) {
+	verifyThatInstrumentationHasBeenReverted(
+		namespace,
+		workloadType,
+		port,
+		isBatch,
+		testId,
+		instrumentationBy,
+		true,
+	)
+}
+
+func verifyThatInstrumentationHasBeenReverted(
+	namespace string,
+	workloadType string,
+	port int,
+	isBatch bool,
+	testId string,
+	instrumentationBy string,
+	expectOptOutLabel bool,
+) {
 	By(fmt.Sprintf(
 		"%s: waiting for the instrumentation to get removed from the workload (polling its labels and events to check)",
 		workloadType))
 	Eventually(func(g Gomega) {
-		VerifyNoDash0Labels(g, namespace, workloadType)
+		if expectOptOutLabel {
+			VerifyOnlyOptOutLabelIsPresent(g, namespace, workloadType)
+		} else {
+			VerifyNoDash0Labels(g, namespace, workloadType)
+		}
 		VerifySuccessfulUninstrumentationEvent(g, namespace, workloadType, instrumentationBy)
 	}, 30*time.Second, verifyTelemetryPollingInterval).Should(Succeed())
 
@@ -867,7 +959,7 @@ func VerifyThatInstrumentationHasBeenReverted(
 	By(fmt.Sprintf("%s: matching spans are no longer captured", workloadType))
 }
 
-func VerifyThatFailedInstrumentationAttemptLabelsHaveBeenRemovedRemoved(namespace string, workloadType string) {
+func VerifyThatFailedInstrumentationAttemptLabelsHaveBeenRemoved(namespace string, workloadType string) {
 	By("waiting for the labels to get removed from the workload")
 	Eventually(func(g Gomega) {
 		VerifyNoDash0Labels(g, namespace, workloadType)
@@ -917,6 +1009,14 @@ func renderFullyQualifiedImageName(image ImageSpec) string {
 }
 
 func VerifyNoDash0Labels(g Gomega, namespace string, kind string) {
+	verifyNoDash0Labels(g, namespace, kind, false)
+}
+
+func VerifyOnlyOptOutLabelIsPresent(g Gomega, namespace string, kind string) {
+	verifyNoDash0Labels(g, namespace, kind, true)
+}
+
+func verifyNoDash0Labels(g Gomega, namespace string, kind string, expectOptOutLabel bool) {
 	instrumented := readLabel(g, namespace, kind, "dash0.com/instrumented")
 	g.Expect(instrumented).To(Equal(""))
 	operatorVersion := readLabel(g, namespace, kind, "dash0.com/operator-image")
@@ -926,7 +1026,11 @@ func VerifyNoDash0Labels(g Gomega, namespace string, kind string) {
 	instrumentedBy := readLabel(g, namespace, kind, "dash0.com/instrumented-by")
 	g.Expect(instrumentedBy).To(Equal(""))
 	dash0Enable := readLabel(g, namespace, kind, "dash0.com/enable")
-	g.Expect(dash0Enable).To(Equal(""))
+	if expectOptOutLabel {
+		g.Expect(dash0Enable).To(Equal("false"))
+	} else {
+		g.Expect(dash0Enable).To(Equal(""))
+	}
 }
 
 func readLabel(g Gomega, namespace string, kind string, labelKey string) string {

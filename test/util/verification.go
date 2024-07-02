@@ -280,7 +280,7 @@ func verifyLabelsAfterSuccessfulModification(meta metav1.ObjectMeta) {
 	Expect(meta.Labels["dash0.com/operator-image"]).To(Equal("some-registry.com_1234_dash0hq_operator-controller_1.2.3"))
 	Expect(meta.Labels["dash0.com/init-container-image"]).To(Equal("some-registry.com_1234_dash0hq_instrumentation_4.5.6"))
 	Expect(meta.Labels["dash0.com/instrumented-by"]).NotTo(Equal(""))
-	Expect(meta.Labels["dash0.com/enable"]).To(Equal(""))
+	Expect(meta.Labels["dash0.com/enable"]).To(Or(Equal(""), Equal("true")))
 }
 
 func verifyLabelsAfterFailureToModify(meta metav1.ObjectMeta) {

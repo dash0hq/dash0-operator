@@ -105,6 +105,13 @@ webhook should match snapshot:
               - UPDATE
             resources:
               - cronjobs
+          - apiGroups:
+              - batch
+            apiVersions:
+              - v1
+            operations:
+              - CREATE
+            resources:
               - jobs
           - apiGroups:
               - ""
@@ -112,7 +119,6 @@ webhook should match snapshot:
               - v1
             operations:
               - CREATE
-              - UPDATE
             resources:
               - pods
         sideEffects: None

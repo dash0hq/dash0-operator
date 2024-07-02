@@ -273,6 +273,9 @@ func (m *ResourceModifier) addOrPrependToEnvironmentVariable(
 					name))
 			return
 		}
+		if strings.Contains(previousValue, envVarNodeOptionsValue) {
+			return
+		}
 		container.Env[idx].Value = fmt.Sprintf("%s %s", value, previousValue)
 	}
 }
@@ -407,6 +410,7 @@ func (m *ResourceModifier) removeNodeOptions(container *corev1.Container) {
 			return
 		} else if previousValue == envVarNodeOptionsValue {
 			container.Env = slices.Delete(container.Env, idx, idx+1)
+			return
 		}
 
 		container.Env[idx].Value = strings.Replace(previousValue, envVarNodeOptionsValue, "", -1)

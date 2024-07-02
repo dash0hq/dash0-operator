@@ -151,7 +151,7 @@ func CreateInstrumentedCronJob(
 
 func CronJobWithOptOutLabel(namespace string, name string) *batchv1.CronJob {
 	workload := BasicCronJob(namespace, name)
-	addOptOutLabel(&workload.ObjectMeta)
+	AddOptOutLabel(&workload.ObjectMeta)
 	return workload
 }
 
@@ -200,7 +200,7 @@ func CreateInstrumentedDaemonSet(
 
 func DaemonSetWithOptOutLabel(namespace string, name string) *appsv1.DaemonSet {
 	workload := BasicDaemonSet(namespace, name)
-	addOptOutLabel(&workload.ObjectMeta)
+	AddOptOutLabel(&workload.ObjectMeta)
 	return workload
 }
 
@@ -249,7 +249,7 @@ func CreateInstrumentedDeployment(
 
 func DeploymentWithOptOutLabel(namespace string, name string) *appsv1.Deployment {
 	workload := BasicDeployment(namespace, name)
-	addOptOutLabel(&workload.ObjectMeta)
+	AddOptOutLabel(&workload.ObjectMeta)
 	return workload
 }
 
@@ -313,7 +313,7 @@ func CreateJobForWhichAnInstrumentationAttemptHasFailed(
 
 func JobWithOptOutLabel(namespace string, name string) *batchv1.Job {
 	workload := BasicJob(namespace, name)
-	addOptOutLabel(&workload.ObjectMeta)
+	AddOptOutLabel(&workload.ObjectMeta)
 	return workload
 }
 
@@ -385,7 +385,7 @@ func CreatePodOwnedByReplicaSet(
 
 func PodWithOptOutLabel(namespace string, name string) *corev1.Pod {
 	workload := BasicPod(namespace, name)
-	addOptOutLabel(&workload.ObjectMeta)
+	AddOptOutLabel(&workload.ObjectMeta)
 	return workload
 }
 
@@ -455,7 +455,7 @@ func InstrumentedReplicaSetOwnedByDeployment(namespace string, name string) *app
 
 func ReplicaSetWithOptOutLabel(namespace string, name string) *appsv1.ReplicaSet {
 	workload := BasicReplicaSet(namespace, name)
-	addOptOutLabel(&workload.ObjectMeta)
+	AddOptOutLabel(&workload.ObjectMeta)
 	return workload
 }
 
@@ -504,7 +504,7 @@ func CreateInstrumentedStatefulSet(
 
 func StatefulSetWithOptOutLabel(namespace string, name string) *appsv1.StatefulSet {
 	workload := BasicStatefulSet(namespace, name)
-	addOptOutLabel(&workload.ObjectMeta)
+	AddOptOutLabel(&workload.ObjectMeta)
 	return workload
 }
 
@@ -541,6 +541,11 @@ func createSelector() *metav1.LabelSelector {
 
 func CreateWorkload(ctx context.Context, k8sClient client.Client, workload client.Object) client.Object {
 	Expect(k8sClient.Create(ctx, workload)).Should(Succeed())
+	return workload
+}
+
+func UpdateWorkload(ctx context.Context, k8sClient client.Client, workload client.Object) client.Object {
+	Expect(k8sClient.Update(ctx, workload)).Should(Succeed())
 	return workload
 }
 
@@ -1014,8 +1019,12 @@ func addInstrumentationLabels(meta *metav1.ObjectMeta, successful bool) {
 	AddLabel(meta, "dash0.com/instrumented-by", "someone")
 }
 
-func addOptOutLabel(meta *metav1.ObjectMeta) {
+func AddOptOutLabel(meta *metav1.ObjectMeta) {
 	AddLabel(meta, "dash0.com/enable", "false")
+}
+
+func RemoveOptOutLabel(meta *metav1.ObjectMeta) {
+	RemoveLabel(meta, "dash0.com/enable")
 }
 
 func AddLabel(meta *metav1.ObjectMeta, key string, value string) {
@@ -1023,6 +1032,14 @@ func AddLabel(meta *metav1.ObjectMeta, key string, value string) {
 		meta.Labels = make(map[string]string, 1)
 	}
 	meta.Labels[key] = value
+}
+
+func UpdateLabel(meta *metav1.ObjectMeta, key string, value string) {
+	meta.Labels[key] = value
+}
+
+func RemoveLabel(meta *metav1.ObjectMeta, key string) {
+	delete(meta.Labels, key)
 }
 
 func DeleteAllCreatedObjects(

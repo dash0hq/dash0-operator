@@ -1,0 +1,42 @@
+# SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: dash0-operator-nodejs-20-express-test-daemonset-service
+spec:
+  selector:
+    app: dash0-operator-nodejs-20-express-test-daemonset-app
+  ports:
+    - port: 1206
+      targetPort: 1206
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: dash0-operator-nodejs-20-express-test-daemonset
+  labels:
+    app: dash0-operator-nodejs-20-express-test-daemonset-app
+    dash0.com/enable: "false"
+spec:
+  selector:
+    matchLabels:
+      app: dash0-operator-nodejs-20-express-test-daemonset-app
+  template:
+    metadata:
+      labels:
+        app: dash0-operator-nodejs-20-express-test-daemonset-app
+    spec:
+      containers:
+        - name: dash0-operator-nodejs-20-express-test-daemonset-app
+          image: "dash0-operator-nodejs-20-express-test-app:latest"
+          env:
+            - name: PORT
+              value: "1206"
+            - name: DASH0_DEBUG
+              value: "true"
+          ports:
+            - containerPort: 1206
+          imagePullPolicy: Never
