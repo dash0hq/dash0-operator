@@ -9,10 +9,10 @@ deployment should match snapshot (default values):
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/name: deployment
         app.kubernetes.io/part-of: dash0-operator
-        app.kubernetes.io/version: 1.0.0
+        app.kubernetes.io/version: 0.0.0
         control-plane: controller-manager
         dash0.com/enable: "false"
-        helm.sh/chart: dash0-operator-1.0.0
+        helm.sh/chart: dash0-operator-0.0.0
       name: dash0-operator-controller-manager
       namespace: NAMESPACE
     spec:
@@ -39,10 +39,10 @@ deployment should match snapshot (default values):
                 - name: DASH0_OTEL_COLLECTOR_BASE_URL
                   value: http://RELEASE-NAME-opentelemetry-collector.NAMESPACE.svc.cluster.local:4318
                 - name: DASH0_OPERATOR_IMAGE
-                  value: ghcr.io/dash0hq/operator-controller:1.0.0
+                  value: ghcr.io/dash0hq/operator-controller:0.0.0
                 - name: DASH0_INIT_CONTAINER_IMAGE
-                  value: ghcr.io/dash0hq/instrumentation:1.0.0
-              image: ghcr.io/dash0hq/operator-controller:1.0.0
+                  value: ghcr.io/dash0hq/instrumentation:0.0.0
+              image: ghcr.io/dash0hq/operator-controller:0.0.0
               livenessProbe:
                 httpGet:
                   path: /healthz

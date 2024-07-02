@@ -25,12 +25,12 @@ const (
 
 	dash0VolumeName                   = "dash0-instrumentation"
 	dash0DirectoryEnvVarName          = "DASH0_INSTRUMENTATION_FOLDER_DESTINATION"
-	dash0InstrumentationBaseDirectory = "/opt/dash0"
-	dash0InstrumentationDirectory     = "/opt/dash0/instrumentation"
+	dash0InstrumentationBaseDirectory = "/__dash0__"
+	dash0InstrumentationDirectory     = "/__dash0__/instrumentation"
 	// envVarLdPreloadName  = "LD_PRELOAD"
-	// envVarLdPreloadValue = "/opt/dash0/preload/inject.so"
+	// envVarLdPreloadValue = "/__dash0__/preload/inject.so"
 	envVarNodeOptionsName           = "NODE_OPTIONS"
-	envVarNodeOptionsValue          = "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0hq/opentelemetry"
+	envVarNodeOptionsValue          = "--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry"
 	envVarDash0CollectorBaseUrlName = "DASH0_OTEL_COLLECTOR_BASE_URL"
 )
 
@@ -145,8 +145,9 @@ func (m *ResourceModifier) addInstrumentationVolume(podSpec *corev1.PodSpec) {
 
 func (m *ResourceModifier) addInitContainer(podSpec *corev1.PodSpec) {
 	// The init container has all the instrumentation packages (e.g. the Dash0 Node.js distribution etc.), stored under
-	// /dash0/instrumentation. Its main responsibility is to copy these files to the Kubernetes volume created and mounted in
-	// addInstrumentationVolume (mounted at /opt/dash0/instrumentation in the init container and also in the target containers).
+	// /dash0-init-container/instrumentation. Its main responsibility is to copy these files to the Kubernetes volume
+	// created and mounted in addInstrumentationVolume (mounted at /__dash0__/instrumentation in the init container and
+	// also in the target containers).
 
 	if podSpec.InitContainers == nil {
 		podSpec.InitContainers = make([]corev1.Container, 0)

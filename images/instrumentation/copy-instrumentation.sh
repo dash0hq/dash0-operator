@@ -9,7 +9,7 @@ fi
 cd -P -- "$(dirname -- "$0")"
 
 if [ -z "${DASH0_INSTRUMENTATION_FOLDER_SOURCE:-}" ]; then
-  DASH0_INSTRUMENTATION_FOLDER_SOURCE=/dash0/instrumentation
+  DASH0_INSTRUMENTATION_FOLDER_SOURCE=/dash0-init-container/instrumentation
 fi
 if [ ! -d "${DASH0_INSTRUMENTATION_FOLDER_SOURCE}" ]; then
   >&2 echo "[Dash0] Instrumentation source directory ${DASH0_INSTRUMENTATION_FOLDER_SOURCE} does not exist."
@@ -17,7 +17,7 @@ if [ ! -d "${DASH0_INSTRUMENTATION_FOLDER_SOURCE}" ]; then
 fi
 
 if [ -z "${DASH0_INSTRUMENTATION_FOLDER_DESTINATION:-}" ]; then
-  DASH0_INSTRUMENTATION_FOLDER_DESTINATION=/opt/dash0
+  DASH0_INSTRUMENTATION_FOLDER_DESTINATION=/__dash0__
 fi
 
 # We deliberately do not create the base directory for $DASH0_INSTRUMENTATION_FOLDER_DESTINATION via mkdir, it needs

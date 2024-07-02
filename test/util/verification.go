@@ -212,10 +212,10 @@ func verifyPodSpec(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
 			Expect(initContainer.Image).To(Equal("some-registry.com:1234/dash0hq/instrumentation:4.5.6"))
 			Expect(initContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
 			Expect(initContainer.Env).To(HaveLen(1))
-			Expect(initContainer.Env).To(ContainElement(MatchEnvVar("DASH0_INSTRUMENTATION_FOLDER_DESTINATION", "/opt/dash0")))
+			Expect(initContainer.Env).To(ContainElement(MatchEnvVar("DASH0_INSTRUMENTATION_FOLDER_DESTINATION", "/__dash0__")))
 			Expect(initContainer.SecurityContext).NotTo(BeNil())
 			Expect(initContainer.VolumeMounts).To(HaveLen(1))
-			Expect(initContainer.VolumeMounts).To(ContainElement(MatchVolumeMount("dash0-instrumentation", "/opt/dash0")))
+			Expect(initContainer.VolumeMounts).To(ContainElement(MatchVolumeMount("dash0-instrumentation", "/__dash0__")))
 		} else {
 			Expect(initContainer.Name).To(Equal(fmt.Sprintf("test-init-container-%d", i)))
 			Expect(initContainer.Env).To(HaveLen(i + 1))
@@ -230,7 +230,7 @@ func verifyPodSpec(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
 		for i, volumeMount := range container.VolumeMounts {
 			if i == containerExpectations.Dash0VolumeMountIdx {
 				Expect(volumeMount.Name).To(Equal("dash0-instrumentation"))
-				Expect(volumeMount.MountPath).To(Equal("/opt/dash0"))
+				Expect(volumeMount.MountPath).To(Equal("/__dash0__"))
 			} else {
 				Expect(volumeMount.Name).To(Equal(fmt.Sprintf("test-volume-%d", i)))
 			}
@@ -246,7 +246,7 @@ func verifyPodSpec(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
 					Expect(envVar.Value).To(Equal(containerExpectations.NodeOptionsValue))
 				} else {
 					Expect(envVar.Value).To(Equal(
-						"--require /opt/dash0/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
+						"--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
 					))
 				}
 			} else if i == containerExpectations.Dash0CollectorBaseUrlEnvVarIdx {

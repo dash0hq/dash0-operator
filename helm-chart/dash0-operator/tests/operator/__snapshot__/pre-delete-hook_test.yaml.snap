@@ -12,9 +12,9 @@ pre-delete hook job should match snapshot:
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/name: job
         app.kubernetes.io/part-of: dash0-operator
-        app.kubernetes.io/version: 1.0.0
+        app.kubernetes.io/version: 0.0.0
         dash0.com/enable: "false"
-        helm.sh/chart: dash0-operator-1.0.0
+        helm.sh/chart: dash0-operator-0.0.0
       name: dash0-operator-pre-delete
       namespace: NAMESPACE
     spec:
@@ -24,7 +24,7 @@ pre-delete hook job should match snapshot:
           labels:
             app.kubernetes.io/instance: pre-delete-hook
             app.kubernetes.io/managed-by: Helm
-            helm.sh/chart: dash0-operator-1.0.0
+            helm.sh/chart: dash0-operator-0.0.0
           name: RELEASE-NAME-pre-delete-job
         spec:
           automountServiceAccountToken: true
@@ -32,7 +32,7 @@ pre-delete hook job should match snapshot:
             - command:
                 - /manager
                 - --uninstrument-all
-              image: ghcr.io/dash0hq/operator-controller:1.0.0
+              image: ghcr.io/dash0hq/operator-controller:0.0.0
               imagePullPolicy: null
               name: pre-delete-job
               resources:

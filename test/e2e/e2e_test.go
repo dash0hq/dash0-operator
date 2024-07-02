@@ -56,9 +56,9 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		workingDir := strings.TrimSpace(pwdOutput)
 		fmt.Fprintf(GinkgoWriter, "workingDir: %s\n", workingDir)
 
+		kubeContextHasBeenChanged, originalKubeContext = SetKubeContext(kubeContextForTest)
 		CheckIfRequiredPortsAreBlocked()
 		RenderTemplates()
-		kubeContextHasBeenChanged, originalKubeContext = SetKubeContext(kubeContextForTest)
 
 		certManagerHasBeenInstalled = EnsureCertManagerIsInstalled()
 		RecreateNamespace(applicationUnderTestNamespace)

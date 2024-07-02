@@ -9,8 +9,8 @@ leader election role binding should match snapshot:
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/name: rolebinding
         app.kubernetes.io/part-of: dash0-operator
-        app.kubernetes.io/version: 1.0.0
-        helm.sh/chart: dash0-operator-1.0.0
+        app.kubernetes.io/version: 0.0.0
+        helm.sh/chart: dash0-operator-0.0.0
       name: dash0-operator-leader-election-rolebinding
       namespace: NAMESPACE
     roleRef:
