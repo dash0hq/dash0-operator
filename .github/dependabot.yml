@@ -7,6 +7,7 @@ updates:
       day: "tuesday"
       time: "09:00"
       timezone: "Europe/Berlin"
+
   - package-ecosystem: "gomod"
     directories:
       - "/"
@@ -15,3 +16,8 @@ updates:
       day: "tuesday"
       time: "09:00"
       timezone: "Europe/Berlin"
+
+  - package-ecosystem: "npm"
+    directory: "images/instrumentation/node.js/"
+    schedule:
+      interval: "daily"
