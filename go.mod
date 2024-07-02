@@ -9,7 +9,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/onsi/ginkgo/v2 v2.19.0
 	github.com/onsi/gomega v1.33.1
-	go.opentelemetry.io/collector/pdata v1.10.0
+	go.opentelemetry.io/collector/pdata v1.11.0
 	k8s.io/api v0.30.2
 	k8s.io/apimachinery v0.30.2
 	k8s.io/client-go v0.30.2
