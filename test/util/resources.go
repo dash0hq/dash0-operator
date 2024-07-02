@@ -43,7 +43,7 @@ var (
 		ImagePullPolicy: corev1.PullAlways,
 		Env: []corev1.EnvVar{{
 			Name:  "DASH0_INSTRUMENTATION_FOLDER_DESTINATION",
-			Value: "/opt/dash0",
+			Value: "/__dash0__",
 		}},
 		SecurityContext: &corev1.SecurityContext{
 			AllowPrivilegeEscalation: &False,
@@ -56,7 +56,7 @@ var (
 		VolumeMounts: []corev1.VolumeMount{{
 			Name:      "dash0-instrumentation",
 			ReadOnly:  false,
-			MountPath: "/opt/dash0",
+			MountPath: "/__dash0__",
 		}},
 	}
 )
@@ -796,7 +796,7 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 				},
 				{
 					Name:      "dash0-instrumentation",
-					MountPath: "/opt/dash0",
+					MountPath: "/__dash0__",
 				},
 			},
 			Env: []corev1.EnvVar{
@@ -806,7 +806,7 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 				},
 				{
 					Name:  "NODE_OPTIONS",
-					Value: "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
+					Value: "--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
 				},
 				{
 					Name:  "DASH0_OTEL_COLLECTOR_BASE_URL",
@@ -828,7 +828,7 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 				},
 				{
 					Name:      "dash0-instrumentation",
-					MountPath: "/opt/dash0",
+					MountPath: "/__dash0__",
 				},
 			},
 			Env: []corev1.EnvVar{
@@ -842,7 +842,7 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 				},
 				{
 					Name:  "NODE_OPTIONS",
-					Value: "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
+					Value: "--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
 				},
 				{
 					Name:  "DASH0_OTEL_COLLECTOR_BASE_URL",
@@ -876,12 +876,12 @@ func simulateInstrumentedPodSpec(podSpec *corev1.PodSpec, meta *metav1.ObjectMet
 	container := &podSpec.Containers[0]
 	container.VolumeMounts = []corev1.VolumeMount{{
 		Name:      "dash0-instrumentation",
-		MountPath: "/opt/dash0",
+		MountPath: "/__dash0__",
 	}}
 	container.Env = []corev1.EnvVar{
 		{
 			Name:  "NODE_OPTIONS",
-			Value: "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
+			Value: "--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
 		},
 		{
 			Name:  "DASH0_OTEL_COLLECTOR_BASE_URL",
