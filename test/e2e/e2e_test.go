@@ -210,7 +210,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 				UndeployDash0CustomResource(applicationUnderTestNamespace)
 
-				VerifyThatFailedInstrumentationAttemptLabelsHaveBeenRemovedRemoved(applicationUnderTestNamespace, "job")
+				VerifyThatFailedInstrumentationAttemptLabelsHaveBeenRemoved(applicationUnderTestNamespace, "job")
 			})
 
 			It("should ignore existing pods", func() {
@@ -345,6 +345,62 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				installWorkload: InstallNodeJsStatefulSet,
 			}),
 		)
+
+		It("should revert an instrumented workload when the opt-out label is added after the fact", func() {
+			By("installing the Node.js deployment")
+			Expect(InstallNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+			By("verifying that the Node.js deployment has been instrumented by the webhook")
+			testId := VerifyThatWorkloadHasBeenInstrumented(
+				applicationUnderTestNamespace,
+				"deployment",
+				1207,
+				false,
+				images,
+				"webhook",
+			)
+
+			By("Adding the opt-out label to the deployment")
+			Expect(AddOptOutLabel(
+				applicationUnderTestNamespace,
+				"deployment",
+				"dash0-operator-nodejs-20-express-test-deployment",
+			)).To(Succeed())
+
+			VerifyThatInstrumentationHasBeenRevertedAfterAddingOptOutLabel(
+				applicationUnderTestNamespace,
+				"deployment",
+				1207,
+				false,
+				testId,
+				"webhook",
+			)
+		})
+
+		It("should instrument a workload when the opt-out label is removed from it", func() {
+			By("installing the Node.js daemonset with dash0.com/enable=false")
+			Expect(InstallNodeJsDaemonSetWithOptOutLabel(applicationUnderTestNamespace)).To(Succeed())
+			By("verifying that the Node.js daemonset has not been instrumented by the webhook")
+			Eventually(func(g Gomega) {
+				VerifyOnlyOptOutLabelIsPresent(g, applicationUnderTestNamespace, "daemonset")
+			}, 30*time.Second, verifyTelemetryPollingInterval).Should(Succeed())
+
+			By("Removing the opt-out label from the daemonset")
+			Expect(RemoveOptOutLabel(
+				applicationUnderTestNamespace,
+				"daemonset",
+				"dash0-operator-nodejs-20-express-test-daemonset",
+			)).To(Succeed())
+
+			By("verifying that the Node.js daemonset has been instrumented by the webhook")
+			VerifyThatWorkloadHasBeenInstrumented(
+				applicationUnderTestNamespace,
+				"daemonset",
+				1206,
+				false,
+				images,
+				"webhook",
+			)
+		})
 	})
 
 	Describe("operator removal", func() {

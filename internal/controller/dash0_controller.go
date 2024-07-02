@@ -498,7 +498,7 @@ func (r *Dash0Reconciler) addLabelsToImmutableJobsOnInstrumentation(
 		logger.Info("not instrumenting this workload since it is about to be deleted (a deletion timestamp is set)")
 		return
 	}
-	if util.HasOptedOutOfInstrumenationForWorkload(&job.ObjectMeta) {
+	if util.HasOptedOutOfInstrumenation(&job.ObjectMeta) {
 		logger.Info("not instrumenting this workload due to dash0.com/enable=false")
 		return
 	}
@@ -598,7 +598,7 @@ func (r *Dash0Reconciler) instrumentWorkload(
 		logger.Info("not instrumenting this workload since it is about to be deleted (a deletion timestamp is set)")
 		return
 	}
-	if util.HasOptedOutOfInstrumenationForWorkload(workload.getObjectMeta()) {
+	if util.HasOptedOutOfInstrumenation(workload.getObjectMeta()) {
 		logger.Info("not instrumenting this workload due to dash0.com/enable=false")
 		return
 	}
@@ -647,7 +647,7 @@ func (r *Dash0Reconciler) postProcessInstrumentation(
 		// the event are unspecific, would be better if we could differentiate between the two cases.
 		// (Also for revert maybe.)
 		logger.Info("Dash0 instrumentation was already present on this workload, or the workload is part of a higher " +
-			"order workload that will be instrumented, no modification by controller is necessary.")
+			"order workload that will be instrumented, no modification by the controller is necessary.")
 		util.QueueNoInstrumentationNecessaryEvent(r.Recorder, resource, "controller")
 	} else {
 		logger.Info("The controller has added Dash0 instrumentation to the workload.")
@@ -1049,11 +1049,11 @@ func (r *Dash0Reconciler) postProcessUninstrumentation(
 		}
 		util.QueueFailedUninstrumentationEvent(r.Recorder, resource, "controller", retryErr)
 	} else if !hasBeenModified {
-		logger.Info("Dash0 instrumentations was not present on this workload, no modification by controller has been " +
+		logger.Info("Dash0 instrumentations was not present on this workload, no modification by the controller has been " +
 			"necessary.")
 		util.QueueNoUninstrumentationNecessaryEvent(r.Recorder, resource, "controller")
 	} else {
-		logger.Info("The controller has removed Dash0 instrumentation from the workload.")
+		logger.Info("The controller has removed the Dash0 instrumentation from the workload.")
 		util.QueueSuccessfulUninstrumentationEvent(r.Recorder, resource, "controller")
 	}
 }

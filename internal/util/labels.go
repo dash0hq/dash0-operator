@@ -101,7 +101,19 @@ func readInstrumentationState(meta *metav1.ObjectMeta) instrumentedState {
 	}
 }
 
-func HasOptedOutOfInstrumenationForWorkload(meta *metav1.ObjectMeta) bool {
+func HasOptedOutOfInstrumenation(meta *metav1.ObjectMeta) bool {
+	return hasOptedOutOfInstrumenationForWorkload(meta)
+}
+
+func HasOptedOutOfInstrumenationAndIsUninstrumented(meta *metav1.ObjectMeta) bool {
+	return hasOptedOutOfInstrumenationForWorkload(meta) && !HasBeenInstrumentedSuccessfully(meta)
+}
+
+func WasInstrumentedButHasOptedOutNow(meta *metav1.ObjectMeta) bool {
+	return HasBeenInstrumentedSuccessfully(meta) && hasOptedOutOfInstrumenationForWorkload(meta)
+}
+
+func hasOptedOutOfInstrumenationForWorkload(meta *metav1.ObjectMeta) bool {
 	if meta.Labels == nil {
 		return false
 	}
