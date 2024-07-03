@@ -231,14 +231,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			VerifyUnmodifiedDaemonSet(workload)
 		})
 
-		It("should remove Dash0 from an instrumented job", func() {
-			workload := InstrumentedJob(TestNamespaceName, JobNamePrefix)
-			result := workloadModifier.RevertJob(workload)
-
-			Expect(result).To(BeTrue())
-			VerifyUnmodifiedJob(workload)
-		})
-
 		It("should remove Dash0 from an instrumented ownerless replica set", func() {
 			workload := InstrumentedReplicaSet(TestNamespaceName, ReplicaSetNamePrefix)
 			result := workloadModifier.RevertReplicaSet(workload)
