@@ -308,10 +308,6 @@ func (m *ResourceModifier) RevertDeployment(deployment *appsv1.Deployment) bool 
 	return m.revertResource(&deployment.Spec.Template, &deployment.ObjectMeta)
 }
 
-func (m *ResourceModifier) RevertJob(job *batchv1.Job) bool {
-	return m.revertResource(&job.Spec.Template, &job.ObjectMeta)
-}
-
 func (m *ResourceModifier) RemoveLabelsFromImmutableJob(job *batchv1.Job) {
 	util.RemoveInstrumentationLabels(&job.ObjectMeta)
 }
