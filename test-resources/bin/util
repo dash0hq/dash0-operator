@@ -13,6 +13,14 @@ load_env_file () {
   source test-resources/.env
 }
 
+verify_kubectx() {
+  current_kubectx=$(kubectl config current-context)
+  if [[ "$current_kubectx" != "${LOCAL_KUBECTX:-}" ]]; then
+	echo "error: The current kubectx is not the expected local kubectx \"${LOCAL_KUBECTX:-}\". Please switch to the local context or set LOCAL_KUBECTX differently in .env. Refusing to run test scenarios/cleanup in a potentially remote context."
+	exit 1
+  fi
+}
+
 setup_test_environment () {
   install_cert_manager_if_necessary
   test-resources/bin/render-templates.sh

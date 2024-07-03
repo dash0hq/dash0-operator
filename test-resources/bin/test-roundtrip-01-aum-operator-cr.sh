@@ -12,6 +12,7 @@ kind=${2:-deployment}
 
 source test-resources/bin/util
 load_env_file
+verify_kubectx
 setup_test_environment
 
 echo "STEP 1: creating target namespace (if necessary)"
