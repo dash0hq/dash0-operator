@@ -73,8 +73,10 @@ func (m *ResourceModifier) ModifyJob(job *batchv1.Job) bool {
 	return m.modifyResource(&job.Spec.Template, &job.ObjectMeta)
 }
 
-func (m *ResourceModifier) AddLabelsToImmutableJob(job *batchv1.Job) {
+func (m *ResourceModifier) AddLabelsToImmutableJob(job *batchv1.Job) bool {
 	util.AddInstrumentationLabels(&job.ObjectMeta, false, m.instrumentationMetadata)
+	// adding labels always works and is a modification that requires an update
+	return true
 }
 
 func (m *ResourceModifier) ModifyPod(pod *corev1.Pod) bool {
@@ -311,8 +313,10 @@ func (m *ResourceModifier) RevertDeployment(deployment *appsv1.Deployment) bool 
 	return m.revertResource(&deployment.Spec.Template, &deployment.ObjectMeta)
 }
 
-func (m *ResourceModifier) RemoveLabelsFromImmutableJob(job *batchv1.Job) {
+func (m *ResourceModifier) RemoveLabelsFromImmutableJob(job *batchv1.Job) bool {
 	util.RemoveInstrumentationLabels(&job.ObjectMeta)
+	// removing labels always works and is a modification that requires an update
+	return true
 }
 
 func (m *ResourceModifier) RevertReplicaSet(replicaSet *appsv1.ReplicaSet) bool {
