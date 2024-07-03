@@ -10,6 +10,10 @@ cd "$(dirname ${BASH_SOURCE})"/../..
 target_namespace=${1:-test-namespace}
 delete_namespace=${2:-true}
 
+source test-resources/bin/util
+load_env_file
+verify_kubectx
+
 kubectl delete -n ${target_namespace} -k config/samples || true
 
 make undeploy-via-helm || true
