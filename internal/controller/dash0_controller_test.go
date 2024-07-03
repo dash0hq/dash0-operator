@@ -345,6 +345,156 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			})
 		})
 
+		Describe("when the opt-out label is added to an already instrumented workload", func() {
+			It("should remove Dash0 from an instrumented cron job when dash0.com/enable=false is added", func() {
+				name := UniqueName(CronJobNamePrefix)
+				workload := CreateInstrumentedCronJob(ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				AddOptOutLabel(&workload.ObjectMeta)
+				UpdateWorkload(ctx, k8sClient, workload)
+				triggerReconcileRequest(ctx, reconciler, "")
+				VerifyCronJobWithOptOutLabel(GetCronJob(ctx, k8sClient, TestNamespaceName, name))
+				VerifySuccessfulUninstrumentationEvent(ctx, clientset, TestNamespaceName, name, "controller")
+			})
+
+			It("should remove Dash0 from an instrumented daemon set when dash0.com/enable=false is added", func() {
+				name := UniqueName(DaemonSetNamePrefix)
+				workload := CreateInstrumentedDaemonSet(ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				AddOptOutLabel(&workload.ObjectMeta)
+				UpdateWorkload(ctx, k8sClient, workload)
+				triggerReconcileRequest(ctx, reconciler, "")
+				VerifyDaemonSetWithOptOutLabel(GetDaemonSet(ctx, k8sClient, TestNamespaceName, name))
+				VerifySuccessfulUninstrumentationEvent(ctx, clientset, TestNamespaceName, name, "controller")
+			})
+
+			It("should remove Dash0 from an instrumented deployment when dash0.com/enable=false is added", func() {
+				name := UniqueName(DeploymentNamePrefix)
+				workload := CreateInstrumentedDeployment(ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				AddOptOutLabel(&workload.ObjectMeta)
+				UpdateWorkload(ctx, k8sClient, workload)
+				triggerReconcileRequest(ctx, reconciler, "")
+				VerifyDeploymentWithOptOutLabel(GetDeployment(ctx, k8sClient, TestNamespaceName, name))
+				VerifySuccessfulUninstrumentationEvent(ctx, clientset, TestNamespaceName, name, "controller")
+			})
+
+			It("should report the failure to remove Dash0 from an instrumented job when dash0.com/enable=false is added", func() {
+				name := UniqueName(JobNamePrefix)
+				workload := CreateInstrumentedJob(ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				AddOptOutLabel(&workload.ObjectMeta)
+				UpdateWorkload(ctx, k8sClient, workload)
+				triggerReconcileRequest(ctx, reconciler, "")
+				VerifyModifiedJobAfterUnsuccessfulOptOut(GetJob(ctx, k8sClient, TestNamespaceName, name))
+				VerifyFailedUninstrumentationEvent(
+					ctx,
+					clientset,
+					TestNamespaceName,
+					name,
+					fmt.Sprintf("The controller's attempt to remove the Dash0 instrumentation from this workload has not "+
+						"been successful. Error message: Dash0 cannot remove the instrumentation from the existing job "+
+						"test-namespace/%s, since this type of workload is immutable.", name),
+				)
+			})
+
+			It("should remove labels from from a job with a previously failed instrumentation attempt when dash0.com/enable=false is added", func() {
+				name := UniqueName(JobNamePrefix)
+				workload := CreateJobForWhichAnInstrumentationAttemptHasFailed(
+					ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				AddOptOutLabel(&workload.ObjectMeta)
+				UpdateWorkload(ctx, k8sClient, workload)
+				triggerReconcileRequest(ctx, reconciler, "")
+				VerifyJobWithOptOutLabel(GetJob(ctx, k8sClient, TestNamespaceName, name))
+				VerifyNoUninstrumentationNecessaryEvent(
+					ctx,
+					clientset,
+					TestNamespaceName,
+					name,
+					"Dash0 instrumentation was not present on this workload, no modification by the controller has been necessary.",
+				)
+			})
+
+			It("should remove Dash0 from an instrumented replica set when dash0.com/enable=false is added", func() {
+				name := UniqueName(ReplicaSetNamePrefix)
+				workload := CreateInstrumentedReplicaSet(ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				AddOptOutLabel(&workload.ObjectMeta)
+				UpdateWorkload(ctx, k8sClient, workload)
+				triggerReconcileRequest(ctx, reconciler, "")
+				VerifyReplicaSetWithOptOutLabel(GetReplicaSet(ctx, k8sClient, TestNamespaceName, name))
+				VerifySuccessfulUninstrumentationEvent(ctx, clientset, TestNamespaceName, name, "controller")
+			})
+
+			It("should remove Dash0 from an instrumented stateful set when dash0.com/enable=false is added", func() {
+				name := UniqueName(StatefulSetNamePrefix)
+				workload := CreateInstrumentedStatefulSet(ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				AddOptOutLabel(&workload.ObjectMeta)
+				UpdateWorkload(ctx, k8sClient, workload)
+				triggerReconcileRequest(ctx, reconciler, "")
+				VerifyStatefulSetWithOptOutLabel(GetStatefulSet(ctx, k8sClient, TestNamespaceName, name))
+				VerifySuccessfulUninstrumentationEvent(ctx, clientset, TestNamespaceName, name, "controller")
+			})
+		})
+
+		Describe("when a workload is already instrumented", func() {
+			It("should not touch an already instrumented cron job", func() {
+				name := UniqueName(CronJobNamePrefix)
+				workload := CreateInstrumentedCronJob(ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				triggerReconcileRequest(ctx, reconciler, "")
+				VerifyModifiedCronJob(GetCronJob(ctx, k8sClient, TestNamespaceName, name), BasicInstrumentedPodSpecExpectations)
+				VerifyNoEvents(ctx, clientset, TestNamespaceName)
+			})
+
+			It("should not touch an already instrumented daemon set", func() {
+				name := UniqueName(DaemonSetNamePrefix)
+				workload := CreateInstrumentedDaemonSet(ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				triggerReconcileRequest(ctx, reconciler, "")
+				VerifyModifiedDaemonSet(GetDaemonSet(ctx, k8sClient, TestNamespaceName, name), BasicInstrumentedPodSpecExpectations)
+				VerifyNoEvents(ctx, clientset, TestNamespaceName)
+			})
+
+			It("should not touch an already instrumented deployment", func() {
+				name := UniqueName(DeploymentNamePrefix)
+				workload := CreateInstrumentedDeployment(ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				triggerReconcileRequest(ctx, reconciler, "")
+				VerifyModifiedDeployment(GetDeployment(ctx, k8sClient, TestNamespaceName, name), BasicInstrumentedPodSpecExpectations)
+				VerifyNoEvents(ctx, clientset, TestNamespaceName)
+			})
+
+			It("should not touch an already instrumented job", func() {
+				name := UniqueName(JobNamePrefix)
+				workload := CreateInstrumentedJob(ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				triggerReconcileRequest(ctx, reconciler, "")
+				VerifyModifiedJob(GetJob(ctx, k8sClient, TestNamespaceName, name), BasicInstrumentedPodSpecExpectations)
+				VerifyNoEvents(ctx, clientset, TestNamespaceName)
+			})
+
+			It("should not touch an already instrumented replica set", func() {
+				name := UniqueName(ReplicaSetNamePrefix)
+				workload := CreateInstrumentedReplicaSet(ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				triggerReconcileRequest(ctx, reconciler, "")
+				VerifyModifiedReplicaSet(GetReplicaSet(ctx, k8sClient, TestNamespaceName, name), BasicInstrumentedPodSpecExpectations)
+				VerifyNoEvents(ctx, clientset, TestNamespaceName)
+			})
+
+			It("should not touch an already instrumented stateful set", func() {
+				name := UniqueName(StatefulSetNamePrefix)
+				workload := CreateInstrumentedStatefulSet(ctx, k8sClient, TestNamespaceName, name)
+				createdObjects = append(createdObjects, workload)
+				triggerReconcileRequest(ctx, reconciler, "")
+				VerifyModifiedStatefulSet(GetStatefulSet(ctx, k8sClient, TestNamespaceName, name), BasicInstrumentedPodSpecExpectations)
+				VerifyNoEvents(ctx, clientset, TestNamespaceName)
+			})
+		})
+
 		Describe("when reverting the instrumentation on cleanup", func() {
 			It("should revert an instrumented cron job", func() {
 				// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom

@@ -391,7 +391,7 @@ func (r *Dash0Reconciler) findAndInstrumentCronJobs(
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
-		r.ClientSet.BatchV1().CronJobs(namespace).List(ctx, util.WorkloadsWithoutDash0InstrumentedLabelFilter)
+		r.ClientSet.BatchV1().CronJobs(namespace).List(ctx, util.EmptyListOptions)
 	if err != nil {
 		return fmt.Errorf("error when querying cron jobs: %w", err)
 	}
@@ -417,7 +417,7 @@ func (r *Dash0Reconciler) findAndInstrumentyDaemonSets(
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
-		r.ClientSet.AppsV1().DaemonSets(namespace).List(ctx, util.WorkloadsWithoutDash0InstrumentedLabelFilter)
+		r.ClientSet.AppsV1().DaemonSets(namespace).List(ctx, util.EmptyListOptions)
 	if err != nil {
 		return fmt.Errorf("error when querying daemon sets: %w", err)
 	}
@@ -443,7 +443,7 @@ func (r *Dash0Reconciler) findAndInstrumentDeployments(
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
-		r.ClientSet.AppsV1().Deployments(namespace).List(ctx, util.WorkloadsWithoutDash0InstrumentedLabelFilter)
+		r.ClientSet.AppsV1().Deployments(namespace).List(ctx, util.EmptyListOptions)
 	if err != nil {
 		return fmt.Errorf("error when querying deployments: %w", err)
 	}
@@ -469,18 +469,18 @@ func (r *Dash0Reconciler) findAndAddLabelsToImmutableJobsOnInstrumentation(
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
-		r.ClientSet.BatchV1().Jobs(namespace).List(ctx, util.WorkloadsWithoutDash0InstrumentedLabelFilter)
+		r.ClientSet.BatchV1().Jobs(namespace).List(ctx, util.EmptyListOptions)
 	if err != nil {
 		return fmt.Errorf("error when querying jobs: %w", err)
 	}
 
 	for _, job := range matchingWorkloadsInNamespace.Items {
-		r.addLabelsToImmutableJobsOnInstrumentation(ctx, job, logger)
+		r.handleJobJobOnInstrumentation(ctx, job, logger)
 	}
 	return nil
 }
 
-func (r *Dash0Reconciler) addLabelsToImmutableJobsOnInstrumentation(
+func (r *Dash0Reconciler) handleJobJobOnInstrumentation(
 	ctx context.Context,
 	job batchv1.Job,
 	reconcileLogger *logr.Logger,
@@ -498,30 +498,84 @@ func (r *Dash0Reconciler) addLabelsToImmutableJobsOnInstrumentation(
 		logger.Info("not instrumenting this workload since it is about to be deleted (a deletion timestamp is set)")
 		return
 	}
-	if util.HasOptedOutOfInstrumenation(&job.ObjectMeta) {
+
+	objectMeta := &job.ObjectMeta
+	var requiredAction ModificationMode
+	modifyLabels := true
+	createImmutableWorkloadsError := true
+	if util.HasOptedOutOfInstrumenation(objectMeta) && util.InstrumenationAttemptHasFailed(objectMeta) {
+		// There has been an unsuccessful attempt to instrument this job before, but now the user has added the opt-out
+		// label, so we can remove the labels left over from that earlier attempt.
+		// "requiredAction = Instrumentation" in the context of immutable jobs means "remove Dash0 labels from the job",
+		// no other modification will take place.
+		requiredAction = Uninstrumentation
+		createImmutableWorkloadsError = false
+	} else if util.HasOptedOutOfInstrumenation(objectMeta) && util.HasBeenInstrumentedSuccessfully(objectMeta) {
+		// This job has been instrumented successfully, presumably by the webhook. Since then, the opt-out label has
+		// been added. The correct action would be to uninstrument it, but since it is immutable, we cannot do that.
+		// We will not actually modify this job at all, but create a log message and a corresponding event.
+		modifyLabels = false
+		requiredAction = Uninstrumentation
+	} else if util.HasOptedOutOfInstrumenation(objectMeta) {
+		// has opt-out label and there has been no previous instrumentation attempt
 		logger.Info("not instrumenting this workload due to dash0.com/enable=false")
 		return
+	} else if util.HasBeenInstrumentedSuccessfully(objectMeta) || util.InstrumenationAttemptHasFailed(objectMeta) {
+		// We already have instrumented this job (via the webhook) or have failed to instrument it, in either case,
+		// there is nothing to do here.
+		return
+	} else {
+		// We have not attempted to instrument this job yet, that is, we are seeing this job for the first time now.
+		//
+		// "requiredAction = Instrumentation" in the context of immutable jobs means "add labels to the job", no other
+		// modification will (or can) take place.
+		requiredAction = Instrumentation
 	}
 
-	retryErr := util.Retry("labelling immutable job", func() error {
+	retryErr := util.Retry("handling immutable job", func() error {
+		if !modifyLabels {
+			return nil
+		}
+
 		if err := r.Client.Get(ctx, client.ObjectKey{
 			Namespace: job.GetNamespace(),
 			Name:      job.GetName(),
 		}, &job); err != nil {
 			return fmt.Errorf("error when fetching job %s/%s: %w", job.GetNamespace(), job.GetName(), err)
 		}
-		newWorkloadModifier(r.Images, r.OtelCollectorBaseUrl, &logger).AddLabelsToImmutableJob(&job)
-		return r.Client.Update(ctx, &job)
+
+		hasBeenModified := false
+		switch requiredAction {
+		case Instrumentation:
+			hasBeenModified = newWorkloadModifier(r.Images, r.OtelCollectorBaseUrl, &logger).AddLabelsToImmutableJob(&job)
+		case Uninstrumentation:
+			hasBeenModified = newWorkloadModifier(r.Images, r.OtelCollectorBaseUrl, &logger).RemoveLabelsFromImmutableJob(&job)
+		}
+
+		if hasBeenModified {
+			return r.Client.Update(ctx, &job)
+		} else {
+			return nil
+		}
 	}, &logger)
 
+	postProcess := r.postProcessInstrumentation
+	if requiredAction == Uninstrumentation {
+		postProcess = r.postProcessUninstrumentation
+	}
 	if retryErr != nil {
-		r.postProcessInstrumentation(&job, false, retryErr, &logger)
-	} else {
-		r.postProcessInstrumentation(&job, false, ImmutableWorkloadError{
+		postProcess(&job, false, retryErr, &logger)
+	} else if createImmutableWorkloadsError {
+		// One way or another we are in a situation were we would have wanted to instrument/uninstrument the job, but
+		// could not. Passing an ImmutableWorkloadError to postProcess will make sure we write a corresponding log
+		// message and create a corresponding event.
+		postProcess(&job, false, ImmutableWorkloadError{
 			workloadType:     "job",
 			workloadName:     fmt.Sprintf("%s/%s", job.GetNamespace(), job.GetName()),
-			modificationMode: Instrumentation,
+			modificationMode: requiredAction,
 		}, &logger)
+	} else {
+		postProcess(&job, false, nil, &logger)
 	}
 }
 
@@ -531,7 +585,7 @@ func (r *Dash0Reconciler) findAndInstrumentReplicaSets(
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
-		r.ClientSet.AppsV1().ReplicaSets(namespace).List(ctx, util.WorkloadsWithoutDash0InstrumentedLabelFilter)
+		r.ClientSet.AppsV1().ReplicaSets(namespace).List(ctx, util.EmptyListOptions)
 	if err != nil {
 		return fmt.Errorf("error when querying replica sets: %w", err)
 	}
@@ -546,11 +600,13 @@ func (r *Dash0Reconciler) instrumentReplicaSet(
 	replicaSet appsv1.ReplicaSet,
 	reconcileLogger *logr.Logger,
 ) {
-	r.instrumentWorkload(ctx, &replicaSetWorkload{
+	hasBeenUpdated := r.instrumentWorkload(ctx, &replicaSetWorkload{
 		replicaSet: &replicaSet,
 	}, reconcileLogger)
 
-	r.restartPodsOfReplicaSet(ctx, replicaSet, reconcileLogger)
+	if hasBeenUpdated {
+		r.restartPodsOfReplicaSet(ctx, replicaSet, reconcileLogger)
+	}
 }
 
 func (r *Dash0Reconciler) findAndInstrumentStatefulSets(
@@ -558,7 +614,7 @@ func (r *Dash0Reconciler) findAndInstrumentStatefulSets(
 	namespace string,
 	logger *logr.Logger,
 ) error {
-	matchingWorkloadsInNamespace, err := r.ClientSet.AppsV1().StatefulSets(namespace).List(ctx, util.WorkloadsWithoutDash0InstrumentedLabelFilter)
+	matchingWorkloadsInNamespace, err := r.ClientSet.AppsV1().StatefulSets(namespace).List(ctx, util.EmptyListOptions)
 	if err != nil {
 		return fmt.Errorf("error when querying stateful sets: %w", err)
 	}
@@ -582,7 +638,7 @@ func (r *Dash0Reconciler) instrumentWorkload(
 	ctx context.Context,
 	workload instrumentableWorkload,
 	reconcileLogger *logr.Logger,
-) {
+) bool {
 	objectMeta := workload.getObjectMeta()
 	kind := workload.getKind()
 	logger := reconcileLogger.WithValues(
@@ -596,11 +652,21 @@ func (r *Dash0Reconciler) instrumentWorkload(
 	if objectMeta.DeletionTimestamp != nil {
 		// do not modify resources that are being deleted
 		logger.Info("not instrumenting this workload since it is about to be deleted (a deletion timestamp is set)")
-		return
+		return false
 	}
-	if util.HasOptedOutOfInstrumenation(workload.getObjectMeta()) {
+
+	var requiredAction ModificationMode
+	if util.WasInstrumentedButHasOptedOutNow(objectMeta) {
+		requiredAction = Uninstrumentation
+	} else if util.HasBeenInstrumentedSuccessfully(objectMeta) {
+		// No change necessary, this workload has already been instrumented and an opt-out label (which would need to
+		// trigger uninstrumentation) has not been added since it has been instrumented.
+		return false
+	} else if util.HasOptedOutOfInstrumenationAndIsUninstrumented(workload.getObjectMeta()) {
 		logger.Info("not instrumenting this workload due to dash0.com/enable=false")
-		return
+		return false
+	} else {
+		requiredAction = Instrumentation
 	}
 
 	hasBeenModified := false
@@ -617,7 +683,14 @@ func (r *Dash0Reconciler) instrumentWorkload(
 				err,
 			)
 		}
-		hasBeenModified = workload.instrument(r.Images, r.OtelCollectorBaseUrl, &logger)
+
+		switch requiredAction {
+		case Instrumentation:
+			hasBeenModified = workload.instrument(r.Images, r.OtelCollectorBaseUrl, &logger)
+		case Uninstrumentation:
+			hasBeenModified = workload.revert(r.Images, r.OtelCollectorBaseUrl, &logger)
+		}
+
 		if hasBeenModified {
 			return r.Client.Update(ctx, workload.asClientObject())
 		} else {
@@ -625,7 +698,13 @@ func (r *Dash0Reconciler) instrumentWorkload(
 		}
 	}, &logger)
 
-	r.postProcessInstrumentation(workload.asRuntimeObject(), hasBeenModified, retryErr, &logger)
+	switch requiredAction {
+	case Instrumentation:
+		return r.postProcessInstrumentation(workload.asRuntimeObject(), hasBeenModified, retryErr, &logger)
+	case Uninstrumentation:
+		return r.postProcessUninstrumentation(workload.asRuntimeObject(), hasBeenModified, retryErr, &logger)
+	}
+	return false
 }
 
 func (r *Dash0Reconciler) postProcessInstrumentation(
@@ -633,7 +712,7 @@ func (r *Dash0Reconciler) postProcessInstrumentation(
 	hasBeenModified bool,
 	retryErr error,
 	logger *logr.Logger,
-) {
+) bool {
 	if retryErr != nil {
 		e := &ImmutableWorkloadError{}
 		if errors.As(retryErr, e) {
@@ -642,6 +721,7 @@ func (r *Dash0Reconciler) postProcessInstrumentation(
 			logger.Error(retryErr, "Dash0 instrumentation by controller has not been successful.")
 		}
 		util.QueueFailedInstrumentationEvent(r.Recorder, resource, "controller", retryErr)
+		return false
 	} else if !hasBeenModified {
 		// TODO This also happens for replica sets owned by a deployment and the log message as well as the message on
 		// the event are unspecific, would be better if we could differentiate between the two cases.
@@ -649,9 +729,11 @@ func (r *Dash0Reconciler) postProcessInstrumentation(
 		logger.Info("Dash0 instrumentation was already present on this workload, or the workload is part of a higher " +
 			"order workload that will be instrumented, no modification by the controller is necessary.")
 		util.QueueNoInstrumentationNecessaryEvent(r.Recorder, resource, "controller")
+		return false
 	} else {
 		logger.Info("The controller has added Dash0 instrumentation to the workload.")
 		util.QueueSuccessfulInstrumentationEvent(r.Recorder, resource, "controller")
+		return true
 	}
 }
 
@@ -877,6 +959,7 @@ func (r *Dash0Reconciler) handleJobOnUninstrumentation(ctx context.Context, job 
 		logger.Info("not uninstrumenting this workload since it is about to be deleted (a deletion timestamp is set)")
 		return
 	}
+
 	// Note: In contrast to the instrumentation logic, there is no need to check for dash.com/enable=false here:
 	// If it is set, the workload would not have been instrumented in the first place, hence the label selector filter
 	// looking for dash0.com/instrumented=true would not have matched. Or if the workload is actually instrumented,
@@ -946,11 +1029,13 @@ func (r *Dash0Reconciler) findAndUninstrumentReplicaSets(
 }
 
 func (r *Dash0Reconciler) uninstrumentReplicaSet(ctx context.Context, replicaSet appsv1.ReplicaSet, reconcileLogger *logr.Logger) {
-	r.revertWorkloadInstrumentation(ctx, &replicaSetWorkload{
+	hasBeenUpdated := r.revertWorkloadInstrumentation(ctx, &replicaSetWorkload{
 		replicaSet: &replicaSet,
 	}, reconcileLogger)
 
-	r.restartPodsOfReplicaSet(ctx, replicaSet, reconcileLogger)
+	if hasBeenUpdated {
+		r.restartPodsOfReplicaSet(ctx, replicaSet, reconcileLogger)
+	}
 }
 
 func (r *Dash0Reconciler) findAndUninstrumentStatefulSets(
@@ -983,7 +1068,7 @@ func (r *Dash0Reconciler) revertWorkloadInstrumentation(
 	ctx context.Context,
 	workload instrumentableWorkload,
 	reconcileLogger *logr.Logger,
-) {
+) bool {
 	objectMeta := workload.getObjectMeta()
 	kind := workload.getKind()
 	logger := reconcileLogger.WithValues(
@@ -997,8 +1082,9 @@ func (r *Dash0Reconciler) revertWorkloadInstrumentation(
 	if objectMeta.DeletionTimestamp != nil {
 		// do not modify resources that are being deleted
 		logger.Info("not uninstrumenting this workload since it is about to be deleted (a deletion timestamp is set)")
-		return
+		return false
 	}
+
 	// Note: In contrast to the instrumentation logic, there is no need to check for dash.com/enable=false here:
 	// If it is set, the workload would not have been instrumented in the first place, hence the label selector filter
 	// looking for dash0.com/instrumented=true would not have matched. Or if the workload is actually instrumented,
@@ -1031,7 +1117,7 @@ func (r *Dash0Reconciler) revertWorkloadInstrumentation(
 		}
 	}, &logger)
 
-	r.postProcessUninstrumentation(workload.asRuntimeObject(), hasBeenModified, retryErr, &logger)
+	return r.postProcessUninstrumentation(workload.asRuntimeObject(), hasBeenModified, retryErr, &logger)
 }
 
 func (r *Dash0Reconciler) postProcessUninstrumentation(
@@ -1039,7 +1125,7 @@ func (r *Dash0Reconciler) postProcessUninstrumentation(
 	hasBeenModified bool,
 	retryErr error,
 	logger *logr.Logger,
-) {
+) bool {
 	if retryErr != nil {
 		e := &ImmutableWorkloadError{}
 		if errors.As(retryErr, e) {
@@ -1048,13 +1134,16 @@ func (r *Dash0Reconciler) postProcessUninstrumentation(
 			logger.Error(retryErr, "Dash0's removal of instrumentation by controller has not been successful.")
 		}
 		util.QueueFailedUninstrumentationEvent(r.Recorder, resource, "controller", retryErr)
+		return false
 	} else if !hasBeenModified {
-		logger.Info("Dash0 instrumentations was not present on this workload, no modification by the controller has been " +
-			"necessary.")
+		logger.Info("Dash0 instrumentations was not present on this workload, no modification by the controller has " +
+			"been necessary.")
 		util.QueueNoUninstrumentationNecessaryEvent(r.Recorder, resource, "controller")
+		return false
 	} else {
 		logger.Info("The controller has removed the Dash0 instrumentation from the workload.")
 		util.QueueSuccessfulUninstrumentationEvent(r.Recorder, resource, "controller")
+		return true
 	}
 }
 

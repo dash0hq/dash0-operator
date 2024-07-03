@@ -4,7 +4,6 @@
 package util
 
 import (
-	"fmt"
 	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,9 +31,7 @@ const (
 )
 
 var (
-	WorkloadsWithoutDash0InstrumentedLabelFilter = metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("!%s", instrumentedLabelKey),
-	}
+	EmptyListOptions                          = metav1.ListOptions{}
 	WorkloadsWithDash0InstrumentedLabelFilter = metav1.ListOptions{
 		LabelSelector: instrumentedLabelKey,
 	}
@@ -102,18 +99,18 @@ func readInstrumentationState(meta *metav1.ObjectMeta) instrumentedState {
 }
 
 func HasOptedOutOfInstrumenation(meta *metav1.ObjectMeta) bool {
-	return hasOptedOutOfInstrumenationForWorkload(meta)
+	return hasOptedOutOfInstrumenation(meta)
 }
 
 func HasOptedOutOfInstrumenationAndIsUninstrumented(meta *metav1.ObjectMeta) bool {
-	return hasOptedOutOfInstrumenationForWorkload(meta) && !HasBeenInstrumentedSuccessfully(meta)
+	return hasOptedOutOfInstrumenation(meta) && !HasBeenInstrumentedSuccessfully(meta)
 }
 
 func WasInstrumentedButHasOptedOutNow(meta *metav1.ObjectMeta) bool {
-	return HasBeenInstrumentedSuccessfully(meta) && hasOptedOutOfInstrumenationForWorkload(meta)
+	return HasBeenInstrumentedSuccessfully(meta) && hasOptedOutOfInstrumenation(meta)
 }
 
-func hasOptedOutOfInstrumenationForWorkload(meta *metav1.ObjectMeta) bool {
+func hasOptedOutOfInstrumenation(meta *metav1.ObjectMeta) bool {
 	if meta.Labels == nil {
 		return false
 	}

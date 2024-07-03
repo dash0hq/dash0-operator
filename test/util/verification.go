@@ -125,6 +125,17 @@ func VerifyModifiedJob(resource *batchv1.Job, expectations PodSpecExpectations) 
 	verifyLabelsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
 }
 
+func VerifyModifiedJobAfterUnsuccessfulOptOut(resource *batchv1.Job) {
+	verifyPodSpec(resource.Spec.Template.Spec, BasicInstrumentedPodSpecExpectations)
+	jobLabels := resource.ObjectMeta.Labels
+	Expect(jobLabels["dash0.com/instrumented"]).To(Equal("true"))
+	Expect(jobLabels["dash0.com/operator-image"]).To(Equal("some-registry.com_1234_dash0hq_operator-controller_1.2.3"))
+	Expect(jobLabels["dash0.com/init-container-image"]).To(Equal("some-registry.com_1234_dash0hq_instrumentation_4.5.6"))
+	Expect(jobLabels["dash0.com/instrumented-by"]).NotTo(Equal(""))
+	Expect(jobLabels["dash0.com/enable"]).To(Equal("false"))
+	verifyLabelsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
+}
+
 func VerifyImmutableJobCouldNotBeModified(resource *batchv1.Job) {
 	verifyUnmodifiedPodSpec(resource.Spec.Template.Spec)
 	verifyLabelsAfterFailureToModify(resource.ObjectMeta)
