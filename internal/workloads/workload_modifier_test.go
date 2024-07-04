@@ -5,6 +5,7 @@ package workloads
 
 import (
 	"context"
+	"reflect"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -39,21 +40,37 @@ var _ = Describe("Dash0 Workload Modification", func() {
 	logger := log.FromContext(ctx)
 	workloadModifier := NewResourceModifier(instrumentationMetadata, &logger)
 
-	Context("when instrumenting workloads", func() {
-		It("should add Dash0 to a basic deployment", func() {
-			deployment := BasicDeployment(TestNamespaceName, DeploymentNamePrefix)
-			result := workloadModifier.ModifyDeployment(deployment)
+	Describe("when instrumenting workloads", func() {
+		It("should instrument a basic cron job", func() {
+			workload := BasicCronJob(TestNamespaceName, CronJobNamePrefix)
+			hasBeenModified := workloadModifier.ModifyCronJob(workload)
 
-			Expect(result).To(BeTrue())
-			VerifyModifiedDeployment(deployment, BasicInstrumentedPodSpecExpectations)
+			Expect(hasBeenModified).To(BeTrue())
+			VerifyModifiedCronJob(workload, BasicInstrumentedPodSpecExpectations)
+		})
+
+		It("should instrument a basic daemon set", func() {
+			workload := BasicDaemonSet(TestNamespaceName, DaemonSetNamePrefix)
+			hasBeenModified := workloadModifier.ModifyDaemonSet(workload)
+
+			Expect(hasBeenModified).To(BeTrue())
+			VerifyModifiedDaemonSet(workload, BasicInstrumentedPodSpecExpectations)
+		})
+
+		It("should add Dash0 to a basic deployment", func() {
+			workload := BasicDeployment(TestNamespaceName, DeploymentNamePrefix)
+			hasBeenModified := workloadModifier.ModifyDeployment(workload)
+
+			Expect(hasBeenModified).To(BeTrue())
+			VerifyModifiedDeployment(workload, BasicInstrumentedPodSpecExpectations)
 		})
 
 		It("should instrument a deployment that has multiple containers, and already has volumes and init containers", func() {
-			deployment := DeploymentWithMoreBellsAndWhistles(TestNamespaceName, DeploymentNamePrefix)
-			result := workloadModifier.ModifyDeployment(deployment)
+			workload := DeploymentWithMoreBellsAndWhistles(TestNamespaceName, DeploymentNamePrefix)
+			hasBeenModified := workloadModifier.ModifyDeployment(workload)
 
-			Expect(result).To(BeTrue())
-			VerifyModifiedDeployment(deployment, PodSpecExpectations{
+			Expect(hasBeenModified).To(BeTrue())
+			VerifyModifiedDeployment(workload, PodSpecExpectations{
 				Volumes:               3,
 				Dash0VolumeIdx:        2,
 				InitContainers:        3,
@@ -80,11 +97,11 @@ var _ = Describe("Dash0 Workload Modification", func() {
 		})
 
 		It("should update existing Dash0 artifacts in a deployment", func() {
-			deployment := DeploymentWithExistingDash0Artifacts(TestNamespaceName, DeploymentNamePrefix)
-			result := workloadModifier.ModifyDeployment(deployment)
+			workload := DeploymentWithExistingDash0Artifacts(TestNamespaceName, DeploymentNamePrefix)
+			hasBeenModified := workloadModifier.ModifyDeployment(workload)
 
-			Expect(result).To(BeTrue())
-			VerifyModifiedDeployment(deployment, PodSpecExpectations{
+			Expect(hasBeenModified).To(BeTrue())
+			VerifyModifiedDeployment(workload, PodSpecExpectations{
 				Volumes:               3,
 				Dash0VolumeIdx:        1,
 				InitContainers:        3,
@@ -112,85 +129,164 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			})
 		})
 
-		It("should instrument a basic cron job", func() {
-			workload := BasicCronJob(TestNamespaceName, CronJobNamePrefix)
-			result := workloadModifier.ModifyCronJob(workload)
-
-			Expect(result).To(BeTrue())
-			VerifyModifiedCronJob(workload, BasicInstrumentedPodSpecExpectations)
-		})
-
-		It("should instrument a basic daemon set", func() {
-			workload := BasicDaemonSet(TestNamespaceName, DaemonSetNamePrefix)
-			result := workloadModifier.ModifyDaemonSet(workload)
-
-			Expect(result).To(BeTrue())
-			VerifyModifiedDaemonSet(workload, BasicInstrumentedPodSpecExpectations)
-		})
-
 		It("should instrument a basic job", func() {
 			workload := BasicJob(TestNamespaceName, JobNamePrefix)
-			result := workloadModifier.ModifyJob(workload)
+			hasBeenModified := workloadModifier.ModifyJob(workload)
 
-			Expect(result).To(BeTrue())
+			Expect(hasBeenModified).To(BeTrue())
 			VerifyModifiedJob(workload, BasicInstrumentedPodSpecExpectations)
 		})
 
 		It("should instrument a basic ownerless pod", func() {
 			workload := BasicPod(TestNamespaceName, PodNamePrefix)
-			result := workloadModifier.ModifyPod(workload)
+			hasBeenModified := workloadModifier.ModifyPod(workload)
 
-			Expect(result).To(BeTrue())
+			Expect(hasBeenModified).To(BeTrue())
 			VerifyModifiedPod(workload, BasicInstrumentedPodSpecExpectations)
 		})
 
 		It("should not instrument a basic pod owned by another higher level workload", func() {
 			workload := PodOwnedByReplicaSet(TestNamespaceName, PodNamePrefix)
-			result := workloadModifier.ModifyPod(workload)
+			hasBeenModified := workloadModifier.ModifyPod(workload)
 
-			Expect(result).To(BeFalse())
+			Expect(hasBeenModified).To(BeFalse())
 			VerifyUnmodifiedPod(workload)
 		})
 
 		It("should instrument a basic ownerless replica set", func() {
 			workload := BasicReplicaSet(TestNamespaceName, ReplicaSetNamePrefix)
-			result := workloadModifier.ModifyReplicaSet(workload)
+			hasBeenModified := workloadModifier.ModifyReplicaSet(workload)
 
-			Expect(result).To(BeTrue())
+			Expect(hasBeenModified).To(BeTrue())
 			VerifyModifiedReplicaSet(workload, BasicInstrumentedPodSpecExpectations)
 		})
 
 		It("should not instrument a basic replica set that is owned by a deployment", func() {
 			workload := ReplicaSetOwnedByDeployment(TestNamespaceName, ReplicaSetNamePrefix)
-			result := workloadModifier.ModifyReplicaSet(workload)
+			hasBeenModified := workloadModifier.ModifyReplicaSet(workload)
 
-			Expect(result).To(BeFalse())
+			Expect(hasBeenModified).To(BeFalse())
 			VerifyUnmodifiedReplicaSet(workload)
 		})
 
 		It("should instrument a basic stateful set", func() {
 			workload := BasicStatefulSet(TestNamespaceName, StatefulSetNamePrefix)
-			result := workloadModifier.ModifyStatefulSet(workload)
+			hasBeenModified := workloadModifier.ModifyStatefulSet(workload)
 
-			Expect(result).To(BeTrue())
+			Expect(hasBeenModified).To(BeTrue())
 			VerifyModifiedStatefulSet(workload, BasicInstrumentedPodSpecExpectations)
 		})
 	})
 
-	Context("when reverting workloads", func() {
+	Describe("when instrumenting workloads multiple times (instrumentation needs to be idempotent)", func() {
+		It("cron job instrumentation needs to be idempotent", func() {
+			workload := BasicCronJob(TestNamespaceName, CronJobNamePrefix)
+			hasBeenModified := workloadModifier.ModifyCronJob(workload)
+			Expect(hasBeenModified).To(BeTrue())
+			instrumentedOnce := workload.DeepCopy()
+			hasBeenModified = workloadModifier.ModifyCronJob(workload)
+			Expect(hasBeenModified).To(BeFalse())
+			VerifyModifiedCronJob(workload, BasicInstrumentedPodSpecExpectations)
+			Expect(reflect.DeepEqual(instrumentedOnce, workload)).To(BeTrue())
+		})
+
+		It("daemon set instrumentation needs to be idempotent", func() {
+			workload := BasicDaemonSet(TestNamespaceName, DaemonSetNamePrefix)
+			hasBeenModified := workloadModifier.ModifyDaemonSet(workload)
+			Expect(hasBeenModified).To(BeTrue())
+			instrumentedOnce := workload.DeepCopy()
+			hasBeenModified = workloadModifier.ModifyDaemonSet(workload)
+			Expect(hasBeenModified).To(BeFalse())
+			VerifyModifiedDaemonSet(workload, BasicInstrumentedPodSpecExpectations)
+			Expect(reflect.DeepEqual(instrumentedOnce, workload)).To(BeTrue())
+		})
+
+		It("deployment instrumentation needs to be idempotent", func() {
+			workload := BasicDeployment(TestNamespaceName, DeploymentNamePrefix)
+			hasBeenModified := workloadModifier.ModifyDeployment(workload)
+			Expect(hasBeenModified).To(BeTrue())
+			instrumentedOnce := workload.DeepCopy()
+			hasBeenModified = workloadModifier.ModifyDeployment(workload)
+			Expect(hasBeenModified).To(BeFalse())
+			VerifyModifiedDeployment(workload, BasicInstrumentedPodSpecExpectations)
+			Expect(reflect.DeepEqual(instrumentedOnce, workload)).To(BeTrue())
+		})
+
+		It("job instrumentation needs to be idempotent", func() {
+			workload := BasicJob(TestNamespaceName, JobNamePrefix)
+			hasBeenModified := workloadModifier.ModifyJob(workload)
+			Expect(hasBeenModified).To(BeTrue())
+			instrumentedOnce := workload.DeepCopy()
+			hasBeenModified = workloadModifier.ModifyJob(workload)
+			Expect(hasBeenModified).To(BeFalse())
+			VerifyModifiedJob(workload, BasicInstrumentedPodSpecExpectations)
+			Expect(reflect.DeepEqual(instrumentedOnce, workload)).To(BeTrue())
+		})
+
+		It("ownerless pod instrumentation needs to be idempotent", func() {
+			workload := BasicPod(TestNamespaceName, PodNamePrefix)
+			hasBeenModified := workloadModifier.ModifyPod(workload)
+			Expect(hasBeenModified).To(BeTrue())
+			instrumentedOnce := workload.DeepCopy()
+			hasBeenModified = workloadModifier.ModifyPod(workload)
+			Expect(hasBeenModified).To(BeFalse())
+			VerifyModifiedPod(workload, BasicInstrumentedPodSpecExpectations)
+			Expect(reflect.DeepEqual(instrumentedOnce, workload)).To(BeTrue())
+		})
+
+		It("ownerless replica set instrumentation needs to be idempotent", func() {
+			workload := BasicReplicaSet(TestNamespaceName, ReplicaSetNamePrefix)
+			hasBeenModified := workloadModifier.ModifyReplicaSet(workload)
+			Expect(hasBeenModified).To(BeTrue())
+			instrumentedOnce := workload.DeepCopy()
+			hasBeenModified = workloadModifier.ModifyReplicaSet(workload)
+			Expect(hasBeenModified).To(BeFalse())
+			VerifyModifiedReplicaSet(workload, BasicInstrumentedPodSpecExpectations)
+			Expect(reflect.DeepEqual(instrumentedOnce, workload)).To(BeTrue())
+		})
+
+		It("stateful set instrumentation needs to be idempotent", func() {
+			workload := BasicStatefulSet(TestNamespaceName, StatefulSetNamePrefix)
+			hasBeenModified := workloadModifier.ModifyStatefulSet(workload)
+			Expect(hasBeenModified).To(BeTrue())
+			instrumentedOnce := workload.DeepCopy()
+			hasBeenModified = workloadModifier.ModifyStatefulSet(workload)
+			Expect(hasBeenModified).To(BeFalse())
+			VerifyModifiedStatefulSet(workload, BasicInstrumentedPodSpecExpectations)
+			Expect(reflect.DeepEqual(instrumentedOnce, workload)).To(BeTrue())
+		})
+	})
+
+	Describe("when reverting workloads", func() {
+		It("should remove Dash0 from an instrumented cron job", func() {
+			workload := InstrumentedCronJob(TestNamespaceName, CronJobNamePrefix)
+			hasBeenModified := workloadModifier.RevertCronJob(workload)
+
+			Expect(hasBeenModified).To(BeTrue())
+			VerifyUnmodifiedCronJob(workload)
+		})
+
+		It("should remove Dash0 from an instrumented daemon set", func() {
+			workload := InstrumentedDaemonSet(TestNamespaceName, DaemonSetNamePrefix)
+			hasBeenModified := workloadModifier.RevertDaemonSet(workload)
+
+			Expect(hasBeenModified).To(BeTrue())
+			VerifyUnmodifiedDaemonSet(workload)
+		})
+
 		It("should remove Dash0 from an instrumented deployment", func() {
 			workload := InstrumentedDeployment(TestNamespaceName, DeploymentNamePrefix)
-			result := workloadModifier.RevertDeployment(workload)
+			hasBeenModified := workloadModifier.RevertDeployment(workload)
 
-			Expect(result).To(BeTrue())
+			Expect(hasBeenModified).To(BeTrue())
 			VerifyUnmodifiedDeployment(workload)
 		})
 
 		It("should remove Dash0 from a instrumented deployment that has multiple containers, and already has volumes and init containers previous to being instrumented", func() {
 			workload := InstrumentedDeploymentWithMoreBellsAndWhistles(TestNamespaceName, DeploymentNamePrefix)
-			result := workloadModifier.RevertDeployment(workload)
+			hasBeenModified := workloadModifier.RevertDeployment(workload)
 
-			Expect(result).To(BeTrue())
+			Expect(hasBeenModified).To(BeTrue())
 			VerifyRevertedDeployment(workload, PodSpecExpectations{
 				Volumes:               2,
 				Dash0VolumeIdx:        -1,
@@ -215,43 +311,27 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			})
 		})
 
-		It("should remove Dash0 from an instrumented cron job", func() {
-			workload := InstrumentedCronJob(TestNamespaceName, CronJobNamePrefix)
-			result := workloadModifier.RevertCronJob(workload)
-
-			Expect(result).To(BeTrue())
-			VerifyUnmodifiedCronJob(workload)
-		})
-
-		It("should remove Dash0 from an instrumented daemon set", func() {
-			workload := InstrumentedDaemonSet(TestNamespaceName, DaemonSetNamePrefix)
-			result := workloadModifier.RevertDaemonSet(workload)
-
-			Expect(result).To(BeTrue())
-			VerifyUnmodifiedDaemonSet(workload)
-		})
-
 		It("should remove Dash0 from an instrumented ownerless replica set", func() {
 			workload := InstrumentedReplicaSet(TestNamespaceName, ReplicaSetNamePrefix)
-			result := workloadModifier.RevertReplicaSet(workload)
+			hasBeenModified := workloadModifier.RevertReplicaSet(workload)
 
-			Expect(result).To(BeTrue())
+			Expect(hasBeenModified).To(BeTrue())
 			VerifyUnmodifiedReplicaSet(workload)
 		})
 
 		It("should not remove Dash0 from a replica set that is owned by a deployment", func() {
 			workload := InstrumentedReplicaSetOwnedByDeployment(TestNamespaceName, ReplicaSetNamePrefix)
-			result := workloadModifier.RevertReplicaSet(workload)
+			hasBeenModified := workloadModifier.RevertReplicaSet(workload)
 
-			Expect(result).To(BeFalse())
+			Expect(hasBeenModified).To(BeFalse())
 			VerifyModifiedReplicaSet(workload, BasicInstrumentedPodSpecExpectations)
 		})
 
 		It("should remove Dash0 from an instrumented stateful set", func() {
 			workload := InstrumentedStatefulSet(TestNamespaceName, StatefulSetNamePrefix)
-			result := workloadModifier.RevertStatefulSet(workload)
+			hasBeenModified := workloadModifier.RevertStatefulSet(workload)
 
-			Expect(result).To(BeTrue())
+			Expect(hasBeenModified).To(BeTrue())
 			VerifyUnmodifiedStatefulSet(workload)
 		})
 	})
