@@ -2,8 +2,38 @@ apiVersion: v1
 entries:
   dash0-operator:
   - apiVersion: v2
+    appVersion: 0.7.0
+    created: "2024-07-04T13:04:33.449288612Z"
+    dependencies:
+    - condition: opentelemetry-collector.enabled
+      name: opentelemetry-collector
+      repository: https://open-telemetry.github.io/opentelemetry-helm-charts
+      version: 0.96.0
+    description: The Dash0 Kubernetes Operator makes observability easy for every
+      Kubernetes setup, simply install the operator into your cluster to get OpenTelemetry
+      data flowing from your applications and infrastructure to Dash0.
+    digest: b8d4f8a6e13d57fa410b3a2843e09170f6a4725424eb43762309d36b322e6b9f
+    home: https://www.dash0.com/
+    icon: https://www.dash0.com/shared/logo_colors_128x128.png
+    keywords:
+    - OpenTelemetry
+    - Observability
+    - Monitoring
+    - Dash0
+    - Node.js
+    maintainers:
+    - email: bastian.krol@dash0.com
+      name: Bastian Krol
+    name: dash0-operator
+    sources:
+    - https://github.com/dash0hq/dash0-operator
+    type: application
+    urls:
+    - dash0-operator-0.7.0.tgz
+    version: 0.7.0
+  - apiVersion: v2
     appVersion: 0.6.0
-    created: "2024-07-03T17:20:19.279407253Z"
+    created: "2024-07-04T13:04:33.445751072Z"
     dependencies:
     - condition: opentelemetry-collector.enabled
       name: opentelemetry-collector
@@ -33,7 +63,7 @@ entries:
     version: 0.6.0
   - apiVersion: v2
     appVersion: 0.5.1
-    created: "2024-07-03T17:20:19.276663236Z"
+    created: "2024-07-04T13:04:33.443109545Z"
     dependencies:
     - condition: opentelemetry-collector.enabled
       name: opentelemetry-collector
@@ -63,7 +93,7 @@ entries:
     version: 0.5.1
   - apiVersion: v2
     appVersion: 0.5.0
-    created: "2024-07-03T17:20:19.273410125Z"
+    created: "2024-07-04T13:04:33.439563609Z"
     dependencies:
     - condition: opentelemetry-collector.enabled
       name: opentelemetry-collector
@@ -93,7 +123,7 @@ entries:
     version: 0.5.0
   - apiVersion: v2
     appVersion: 0.4.0
-    created: "2024-07-03T17:20:19.270804447Z"
+    created: "2024-07-04T13:04:33.436950706Z"
     dependencies:
     - condition: opentelemetry-collector.enabled
       name: opentelemetry-collector
@@ -123,7 +153,7 @@ entries:
     version: 0.4.0
   - apiVersion: v2
     appVersion: 0.3.0
-    created: "2024-07-03T17:20:19.268151501Z"
+    created: "2024-07-04T13:04:33.434251852Z"
     dependencies:
     - condition: opentelemetry-collector.enabled
       name: opentelemetry-collector
@@ -153,7 +183,7 @@ entries:
     version: 0.3.0
   - apiVersion: v2
     appVersion: 0.2.0
-    created: "2024-07-03T17:20:19.264579822Z"
+    created: "2024-07-04T13:04:33.430775332Z"
     dependencies:
     - condition: opentelemetry-collector.enabled
       name: opentelemetry-collector
@@ -183,7 +213,7 @@ entries:
     version: 0.2.0
   - apiVersion: v2
     appVersion: 0.1.3
-    created: "2024-07-03T17:20:19.261954888Z"
+    created: "2024-07-04T13:04:33.428175975Z"
     dependencies:
     - condition: opentelemetry-collector.enabled
       name: opentelemetry-collector
@@ -213,7 +243,7 @@ entries:
     version: 0.1.3
   - apiVersion: v2
     appVersion: 0.1.2
-    created: "2024-07-03T17:20:19.258813412Z"
+    created: "2024-07-04T13:04:33.424836137Z"
     dependencies:
     - condition: opentelemetry-collector.enabled
       name: opentelemetry-collector
@@ -243,7 +273,7 @@ entries:
     version: 0.1.2
   - apiVersion: v2
     appVersion: 0.1.1
-    created: "2024-07-03T17:20:19.256148653Z"
+    created: "2024-07-04T13:04:33.422227472Z"
     dependencies:
     - condition: opentelemetry-collector.enabled
       name: opentelemetry-collector
@@ -273,7 +303,7 @@ entries:
     version: 0.1.1
   - apiVersion: v2
     appVersion: 0.1.0
-    created: "2024-07-03T17:20:19.253473865Z"
+    created: "2024-07-04T13:04:33.419569906Z"
     dependencies:
     - condition: opentelemetry-collector.enabled
       name: opentelemetry-collector
@@ -301,4 +331,4 @@ entries:
     urls:
     - dash0-operator-0.1.0.tgz
     version: 0.1.0
-generated: "2024-07-03T17:20:19.249796066Z"
+generated: "2024-07-04T13:04:33.416495881Z"
