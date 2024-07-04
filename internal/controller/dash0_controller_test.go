@@ -174,7 +174,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				triggerReconcileRequest(ctx, reconciler, "")
 
 				verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
-				VerifyModifiedCronJob(GetCronJob(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations)
+				VerifyModifiedCronJob(GetCronJob(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations())
 			})
 
 			It("should instrument an existing daemon set", func() {
@@ -186,7 +186,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				triggerReconcileRequest(ctx, reconciler, "")
 
 				verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
-				VerifyModifiedDaemonSet(GetDaemonSet(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations)
+				VerifyModifiedDaemonSet(GetDaemonSet(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations())
 			})
 
 			It("should instrument an existing deployment", func() {
@@ -251,7 +251,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				triggerReconcileRequest(ctx, reconciler, "")
 
 				verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
-				VerifyModifiedReplicaSet(GetReplicaSet(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations)
+				VerifyModifiedReplicaSet(GetReplicaSet(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations())
 			})
 
 			It("should not instrument an existing replicaset owned by a deployment", func() {
@@ -275,7 +275,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				triggerReconcileRequest(ctx, reconciler, "")
 
 				verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
-				VerifyModifiedStatefulSet(GetStatefulSet(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations)
+				VerifyModifiedStatefulSet(GetStatefulSet(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations())
 			})
 		})
 
@@ -445,7 +445,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				workload := CreateInstrumentedCronJob(ctx, k8sClient, TestNamespaceName, name)
 				createdObjects = append(createdObjects, workload)
 				triggerReconcileRequest(ctx, reconciler, "")
-				VerifyModifiedCronJob(GetCronJob(ctx, k8sClient, TestNamespaceName, name), BasicInstrumentedPodSpecExpectations)
+				VerifyModifiedCronJob(GetCronJob(ctx, k8sClient, TestNamespaceName, name), BasicInstrumentedPodSpecExpectations())
 				VerifyNoEvents(ctx, clientset, TestNamespaceName)
 			})
 
@@ -454,7 +454,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				workload := CreateInstrumentedDaemonSet(ctx, k8sClient, TestNamespaceName, name)
 				createdObjects = append(createdObjects, workload)
 				triggerReconcileRequest(ctx, reconciler, "")
-				VerifyModifiedDaemonSet(GetDaemonSet(ctx, k8sClient, TestNamespaceName, name), BasicInstrumentedPodSpecExpectations)
+				VerifyModifiedDaemonSet(GetDaemonSet(ctx, k8sClient, TestNamespaceName, name), BasicInstrumentedPodSpecExpectations())
 				VerifyNoEvents(ctx, clientset, TestNamespaceName)
 			})
 
@@ -463,7 +463,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				workload := CreateInstrumentedDeployment(ctx, k8sClient, TestNamespaceName, name)
 				createdObjects = append(createdObjects, workload)
 				triggerReconcileRequest(ctx, reconciler, "")
-				VerifyModifiedDeployment(GetDeployment(ctx, k8sClient, TestNamespaceName, name), BasicInstrumentedPodSpecExpectations)
+				VerifyModifiedDeployment(GetDeployment(ctx, k8sClient, TestNamespaceName, name), BasicInstrumentedPodSpecExpectations())
 				VerifyNoEvents(ctx, clientset, TestNamespaceName)
 			})
 
@@ -472,7 +472,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				workload := CreateInstrumentedJob(ctx, k8sClient, TestNamespaceName, name)
 				createdObjects = append(createdObjects, workload)
 				triggerReconcileRequest(ctx, reconciler, "")
-				VerifyModifiedJob(GetJob(ctx, k8sClient, TestNamespaceName, name), BasicInstrumentedPodSpecExpectations)
+				VerifyModifiedJob(GetJob(ctx, k8sClient, TestNamespaceName, name), BasicInstrumentedPodSpecExpectations())
 				VerifyNoEvents(ctx, clientset, TestNamespaceName)
 			})
 
@@ -481,7 +481,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				workload := CreateInstrumentedReplicaSet(ctx, k8sClient, TestNamespaceName, name)
 				createdObjects = append(createdObjects, workload)
 				triggerReconcileRequest(ctx, reconciler, "")
-				VerifyModifiedReplicaSet(GetReplicaSet(ctx, k8sClient, TestNamespaceName, name), BasicInstrumentedPodSpecExpectations)
+				VerifyModifiedReplicaSet(GetReplicaSet(ctx, k8sClient, TestNamespaceName, name), BasicInstrumentedPodSpecExpectations())
 				VerifyNoEvents(ctx, clientset, TestNamespaceName)
 			})
 
@@ -490,7 +490,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				workload := CreateInstrumentedStatefulSet(ctx, k8sClient, TestNamespaceName, name)
 				createdObjects = append(createdObjects, workload)
 				triggerReconcileRequest(ctx, reconciler, "")
-				VerifyModifiedStatefulSet(GetStatefulSet(ctx, k8sClient, TestNamespaceName, name), BasicInstrumentedPodSpecExpectations)
+				VerifyModifiedStatefulSet(GetStatefulSet(ctx, k8sClient, TestNamespaceName, name), BasicInstrumentedPodSpecExpectations())
 				VerifyNoEvents(ctx, clientset, TestNamespaceName)
 			})
 		})
@@ -595,7 +595,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 						"been successful. Error message: Dash0 cannot remove the instrumentation from the existing job "+
 						"test-namespace/%s, since this type of workload is immutable.", name),
 				)
-				VerifyModifiedJob(GetJob(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations)
+				VerifyModifiedJob(GetJob(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations())
 			})
 
 			It("should remove instrumentation labels from an existing job for which an instrumentation attempt has failed", func() {
@@ -639,7 +639,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to revert the instrumented workload")
 
 				VerifyNoEvents(ctx, clientset, namespace)
-				VerifyModifiedPod(GetPod(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations)
+				VerifyModifiedPod(GetPod(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations())
 			})
 
 			It("should leave existing uninstrumented pod owned by a replica set alone", func() {
@@ -946,7 +946,7 @@ func verifyDeploymentIsBeingInstrumented(ctx context.Context, reconciler *Dash0R
 	triggerReconcileRequest(ctx, reconciler, "")
 
 	verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
-	VerifyModifiedDeployment(GetDeployment(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations)
+	VerifyModifiedDeployment(GetDeployment(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations())
 
 	return createdObjects
 }

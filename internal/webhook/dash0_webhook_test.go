@@ -118,7 +118,7 @@ var _ = Describe("The Dash0 webhook", func() {
 				workload := CreateBasicCronJob(ctx, k8sClient, TestNamespaceName, name)
 				createdObjects = append(createdObjects, workload)
 				workload = GetCronJob(ctx, k8sClient, TestNamespaceName, name)
-				VerifyModifiedCronJob(workload, BasicInstrumentedPodSpecExpectations)
+				VerifyModifiedCronJob(workload, BasicInstrumentedPodSpecExpectations())
 				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
 			})
 
@@ -127,7 +127,7 @@ var _ = Describe("The Dash0 webhook", func() {
 				workload := CreateBasicDaemonSet(ctx, k8sClient, TestNamespaceName, name)
 				createdObjects = append(createdObjects, workload)
 				workload = GetDaemonSet(ctx, k8sClient, TestNamespaceName, name)
-				VerifyModifiedDaemonSet(workload, BasicInstrumentedPodSpecExpectations)
+				VerifyModifiedDaemonSet(workload, BasicInstrumentedPodSpecExpectations())
 				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
 			})
 
@@ -136,7 +136,7 @@ var _ = Describe("The Dash0 webhook", func() {
 				workload := CreateBasicJob(ctx, k8sClient, TestNamespaceName, name)
 				createdObjects = append(createdObjects, workload)
 				workload = GetJob(ctx, k8sClient, TestNamespaceName, name)
-				VerifyModifiedJob(workload, BasicInstrumentedPodSpecExpectations)
+				VerifyModifiedJob(workload, BasicInstrumentedPodSpecExpectations())
 				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
 			})
 
@@ -145,7 +145,7 @@ var _ = Describe("The Dash0 webhook", func() {
 				workload := CreateBasicPod(ctx, k8sClient, TestNamespaceName, name)
 				createdObjects = append(createdObjects, workload)
 				workload = GetPod(ctx, k8sClient, TestNamespaceName, name)
-				VerifyModifiedPod(workload, BasicInstrumentedPodSpecExpectations)
+				VerifyModifiedPod(workload, BasicInstrumentedPodSpecExpectations())
 				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
 			})
 
@@ -163,7 +163,7 @@ var _ = Describe("The Dash0 webhook", func() {
 				workload := CreateBasicReplicaSet(ctx, k8sClient, TestNamespaceName, name)
 				createdObjects = append(createdObjects, workload)
 				workload = GetReplicaSet(ctx, k8sClient, TestNamespaceName, name)
-				VerifyModifiedReplicaSet(workload, BasicInstrumentedPodSpecExpectations)
+				VerifyModifiedReplicaSet(workload, BasicInstrumentedPodSpecExpectations())
 				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
 			})
 
@@ -181,7 +181,7 @@ var _ = Describe("The Dash0 webhook", func() {
 				workload := CreateBasicStatefulSet(ctx, k8sClient, TestNamespaceName, name)
 				createdObjects = append(createdObjects, workload)
 				workload = GetStatefulSet(ctx, k8sClient, TestNamespaceName, name)
-				VerifyModifiedStatefulSet(workload, BasicInstrumentedPodSpecExpectations)
+				VerifyModifiedStatefulSet(workload, BasicInstrumentedPodSpecExpectations())
 				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
 			})
 		})
@@ -332,7 +332,7 @@ var _ = Describe("The Dash0 webhook", func() {
 				RemoveOptOutLabel(&workload.ObjectMeta)
 				UpdateWorkload(ctx, k8sClient, workload)
 				workload = GetCronJob(ctx, k8sClient, TestNamespaceName, name)
-				VerifyModifiedCronJob(workload, BasicInstrumentedPodSpecExpectations)
+				VerifyModifiedCronJob(workload, BasicInstrumentedPodSpecExpectations())
 				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
 			})
 
@@ -344,7 +344,7 @@ var _ = Describe("The Dash0 webhook", func() {
 				RemoveOptOutLabel(&workload.ObjectMeta)
 				UpdateWorkload(ctx, k8sClient, workload)
 				workload = GetDaemonSet(ctx, k8sClient, TestNamespaceName, name)
-				VerifyModifiedDaemonSet(workload, BasicInstrumentedPodSpecExpectations)
+				VerifyModifiedDaemonSet(workload, BasicInstrumentedPodSpecExpectations())
 				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
 			})
 
@@ -356,7 +356,7 @@ var _ = Describe("The Dash0 webhook", func() {
 				RemoveOptOutLabel(&workload.ObjectMeta)
 				UpdateWorkload(ctx, k8sClient, workload)
 				workload = GetDeployment(ctx, k8sClient, TestNamespaceName, name)
-				VerifyModifiedDeployment(workload, BasicInstrumentedPodSpecExpectations)
+				VerifyModifiedDeployment(workload, BasicInstrumentedPodSpecExpectations())
 				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
 			})
 
@@ -371,7 +371,7 @@ var _ = Describe("The Dash0 webhook", func() {
 				RemoveOptOutLabel(&workload.ObjectMeta)
 				UpdateWorkload(ctx, k8sClient, workload)
 				workload = GetReplicaSet(ctx, k8sClient, TestNamespaceName, name)
-				VerifyModifiedReplicaSet(workload, BasicInstrumentedPodSpecExpectations)
+				VerifyModifiedReplicaSet(workload, BasicInstrumentedPodSpecExpectations())
 				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
 			})
 
@@ -383,7 +383,7 @@ var _ = Describe("The Dash0 webhook", func() {
 				RemoveOptOutLabel(&workload.ObjectMeta)
 				UpdateWorkload(ctx, k8sClient, workload)
 				workload = GetStatefulSet(ctx, k8sClient, TestNamespaceName, name)
-				VerifyModifiedStatefulSet(workload, BasicInstrumentedPodSpecExpectations)
+				VerifyModifiedStatefulSet(workload, BasicInstrumentedPodSpecExpectations())
 				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
 			})
 		})
@@ -397,7 +397,7 @@ var _ = Describe("The Dash0 webhook", func() {
 				UpdateLabel(&workload.ObjectMeta, "dash0.com/enable", "true")
 				UpdateWorkload(ctx, k8sClient, workload)
 				workload = GetCronJob(ctx, k8sClient, TestNamespaceName, name)
-				VerifyModifiedCronJob(workload, BasicInstrumentedPodSpecExpectations)
+				VerifyModifiedCronJob(workload, BasicInstrumentedPodSpecExpectations())
 				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
 			})
 
@@ -409,7 +409,7 @@ var _ = Describe("The Dash0 webhook", func() {
 				UpdateLabel(&workload.ObjectMeta, "dash0.com/enable", "true")
 				UpdateWorkload(ctx, k8sClient, workload)
 				workload = GetDaemonSet(ctx, k8sClient, TestNamespaceName, name)
-				VerifyModifiedDaemonSet(workload, BasicInstrumentedPodSpecExpectations)
+				VerifyModifiedDaemonSet(workload, BasicInstrumentedPodSpecExpectations())
 				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
 			})
 
@@ -421,7 +421,7 @@ var _ = Describe("The Dash0 webhook", func() {
 				UpdateLabel(&workload.ObjectMeta, "dash0.com/enable", "true")
 				UpdateWorkload(ctx, k8sClient, workload)
 				workload = GetDeployment(ctx, k8sClient, TestNamespaceName, name)
-				VerifyModifiedDeployment(workload, BasicInstrumentedPodSpecExpectations)
+				VerifyModifiedDeployment(workload, BasicInstrumentedPodSpecExpectations())
 				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
 			})
 
@@ -436,7 +436,7 @@ var _ = Describe("The Dash0 webhook", func() {
 				UpdateLabel(&workload.ObjectMeta, "dash0.com/enable", "true")
 				UpdateWorkload(ctx, k8sClient, workload)
 				workload = GetReplicaSet(ctx, k8sClient, TestNamespaceName, name)
-				VerifyModifiedReplicaSet(workload, BasicInstrumentedPodSpecExpectations)
+				VerifyModifiedReplicaSet(workload, BasicInstrumentedPodSpecExpectations())
 				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
 			})
 
@@ -448,7 +448,7 @@ var _ = Describe("The Dash0 webhook", func() {
 				UpdateLabel(&workload.ObjectMeta, "dash0.com/enable", "true")
 				UpdateWorkload(ctx, k8sClient, workload)
 				workload = GetStatefulSet(ctx, k8sClient, TestNamespaceName, name)
-				VerifyModifiedStatefulSet(workload, BasicInstrumentedPodSpecExpectations)
+				VerifyModifiedStatefulSet(workload, BasicInstrumentedPodSpecExpectations())
 				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
 			})
 		})
@@ -614,7 +614,7 @@ func verifyDeploymentIsBeingInstrumented(createdObjects []client.Object) []clien
 	workload := CreateBasicDeployment(ctx, k8sClient, TestNamespaceName, name)
 	createdObjects = append(createdObjects, workload)
 	workload = GetDeployment(ctx, k8sClient, TestNamespaceName, name)
-	VerifyModifiedDeployment(workload, BasicInstrumentedPodSpecExpectations)
+	VerifyModifiedDeployment(workload, BasicInstrumentedPodSpecExpectations())
 	VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
 	return createdObjects
 }

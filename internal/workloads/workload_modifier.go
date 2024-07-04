@@ -31,6 +31,7 @@ const (
 	// envVarLdPreloadValue = "/__dash0__/preload/inject.so"
 	envVarNodeOptionsName           = "NODE_OPTIONS"
 	envVarNodeOptionsValue          = "--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry"
+	envVarNodeOptionsValue_0_5_1    = "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0hq/opentelemetry"
 	envVarDash0CollectorBaseUrlName = "DASH0_OTEL_COLLECTOR_BASE_URL"
 )
 
@@ -237,7 +238,7 @@ func (m *ResourceModifier) addMount(container *corev1.Container) {
 
 func (m *ResourceModifier) addEnvironmentVariables(container *corev1.Container, perContainerLogger logr.Logger) {
 	// For now, we directly modify NODE_OPTIONS. Consider migrating to an LD_PRELOAD hook at some point.
-	m.addOrPrependToEnvironmentVariable(container, envVarNodeOptionsName, envVarNodeOptionsValue, perContainerLogger)
+	m.handleNodeOptionsEnvVar(container, perContainerLogger)
 
 	m.addOrReplaceEnvironmentVariable(
 		container,
@@ -246,39 +247,51 @@ func (m *ResourceModifier) addEnvironmentVariables(container *corev1.Container, 
 	)
 }
 
-func (m *ResourceModifier) addOrPrependToEnvironmentVariable(
+func (m *ResourceModifier) handleNodeOptionsEnvVar(
 	container *corev1.Container,
-	name string,
-	value string,
 	perContainerLogger logr.Logger,
 ) {
 	if container.Env == nil {
 		container.Env = make([]corev1.EnvVar, 0)
 	}
 	idx := slices.IndexFunc(container.Env, func(c corev1.EnvVar) bool {
-		return c.Name == name
+		return c.Name == envVarNodeOptionsName
 	})
 
 	if idx < 0 {
 		container.Env = append(container.Env, corev1.EnvVar{
-			Name:  name,
-			Value: value,
+			Name:  envVarNodeOptionsName,
+			Value: envVarNodeOptionsValue,
 		})
 	} else {
-		envVar := container.Env[idx]
-		previousValue := envVar.Value
-		if previousValue == "" && envVar.ValueFrom != nil {
+		// Note: This needs to be a point to the env var, otherwise updates would only be local to this function.
+		envVar := &container.Env[idx]
+		if envVar.Value == "" && envVar.ValueFrom != nil {
 			perContainerLogger.Info(
 				fmt.Sprintf(
 					"Dash0 cannot prepend anything to the environment variable %s as it is specified via "+
 						"ValueFrom. This container will not be instrumented.",
-					name))
+					envVarNodeOptionsName))
 			return
 		}
-		if strings.Contains(previousValue, envVarNodeOptionsValue) {
-			return
+
+		// update from 0.5.1 or earlier to 0.6.0: remove old --require instruction
+		if strings.Contains(envVar.Value, envVarNodeOptionsValue_0_5_1) {
+			// the three slightly different ReplaceAll calls handle all cases: the old require at the beginning of the
+			// string, in the middle, at the end, or the only content of NODE_OPTIONS. The point is that if NODE_OPTIONS
+			// has other content as well, we need to remove an extra space either before or after the old --require.
+			envVar.Value = strings.ReplaceAll(envVar.Value, envVarNodeOptionsValue_0_5_1+" ", "")
+			envVar.Value = strings.ReplaceAll(envVar.Value, " "+envVarNodeOptionsValue_0_5_1, "")
+			envVar.Value = strings.ReplaceAll(envVar.Value, envVarNodeOptionsValue_0_5_1, "")
 		}
-		container.Env[idx].Value = fmt.Sprintf("%s %s", value, previousValue)
+
+		if !strings.Contains(envVar.Value, envVarNodeOptionsValue) {
+			if envVar.Value == "" {
+				envVar.Value = envVarNodeOptionsValue
+			} else {
+				envVar.Value = fmt.Sprintf("%s %s", envVarNodeOptionsValue, envVar.Value)
+			}
+		}
 	}
 }
 
