@@ -137,6 +137,26 @@ jobs:
           imageDescription: the controller for the Dash0 Kubernetes operator
           context: .
 
+  publish-helm-chart-dry-run:
+    name: Publish Helm Chart (Dry Run)
+    runs-on: ubuntu-latest
+    if: ${{ ! contains(github.ref, 'refs/tags/') }}
+    needs:
+      - build-and-push-images
+    concurrency:
+      group: ci-concurrency-group-${{ github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: publish helm chart (dry run)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          echo "verifying that helm chart can be published"
+          DRY_RUN=true helm-chart/bin/publish.sh 0.0.0
+
   publish-helm-chart:
     name: Publish Helm Chart
     runs-on: ubuntu-latest
