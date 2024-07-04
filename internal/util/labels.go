@@ -80,15 +80,33 @@ func HasBeenInstrumentedSuccessfully(meta *metav1.ObjectMeta) bool {
 	return readInstrumentationState(meta) == instrumentedLabelValueSuccessful
 }
 
+func HasBeenInstrumentedSuccessfullyByThisVersion(
+	meta *metav1.ObjectMeta,
+	images Images,
+) bool {
+	if !HasBeenInstrumentedSuccessfully(meta) {
+		return false
+	}
+	operatorImageValue, operatorImageIsSet := readLabel(meta, operatorImageLabelKey)
+	initContainerImageValue, initContainerImageIsSet := readLabel(meta, initContainerImageLabelKey)
+	if !operatorImageIsSet || !initContainerImageIsSet {
+		return false
+	}
+	expectedOperatorImageLabel := ImageNameToLabel(images.OperatorImage)
+	expectedInitContainerImageLabel := ImageNameToLabel(images.InitContainerImage)
+	return operatorImageValue == expectedOperatorImageLabel && initContainerImageValue == expectedInitContainerImageLabel
+}
+
 func InstrumenationAttemptHasFailed(meta *metav1.ObjectMeta) bool {
 	return readInstrumentationState(meta) == instrumentedLabelValueUnsuccessful
 }
 
 func readInstrumentationState(meta *metav1.ObjectMeta) instrumentedState {
-	if meta.Labels == nil {
+	instrumented, isSet := readLabel(meta, instrumentedLabelKey)
+	if !isSet {
 		return instrumentedLabelValueUnknown
 	}
-	switch meta.Labels[instrumentedLabelKey] {
+	switch instrumented {
 	case string(instrumentedLabelValueSuccessful):
 		return instrumentedLabelValueSuccessful
 	case string(instrumentedLabelValueUnsuccessful):
@@ -111,13 +129,8 @@ func WasInstrumentedButHasOptedOutNow(meta *metav1.ObjectMeta) bool {
 }
 
 func hasOptedOutOfInstrumenation(meta *metav1.ObjectMeta) bool {
-	if meta.Labels == nil {
-		return false
-	}
-	if value, ok := meta.Labels[dash0EnableLabelKey]; ok && value == "false" {
-		return true
-	}
-	return false
+	dash0EnabledValue, isSet := readLabel(meta, dash0EnableLabelKey)
+	return isSet && dash0EnabledValue == "false"
 }
 
 func CheckAndDeleteIgnoreOnceLabel(meta *metav1.ObjectMeta) bool {
@@ -151,4 +164,14 @@ func ImageNameToLabel(imageName string) string {
 		return label
 	}
 	return label[:63]
+}
+
+func readLabel(meta *metav1.ObjectMeta, key string) (string, bool) {
+	if meta.Labels == nil {
+		return "", false
+	}
+	if value, ok := meta.Labels[key]; ok {
+		return value, true
+	}
+	return "", false
 }

@@ -380,9 +380,9 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			By("installing the Node.js daemonset with dash0.com/enable=false")
 			Expect(InstallNodeJsDaemonSetWithOptOutLabel(applicationUnderTestNamespace)).To(Succeed())
 			By("verifying that the Node.js daemonset has not been instrumented by the webhook")
-			Eventually(func(g Gomega) {
-				VerifyOnlyOptOutLabelIsPresent(g, applicationUnderTestNamespace, "daemonset")
-			}, 30*time.Second, verifyTelemetryPollingInterval).Should(Succeed())
+			Consistently(func(g Gomega) {
+				verifyNoDash0Labels(g, applicationUnderTestNamespace, "daemonset", true)
+			}, 10*time.Second, verifyTelemetryPollingInterval).Should(Succeed())
 
 			By("Removing the opt-out label from the daemonset")
 			Expect(RemoveOptOutLabel(
