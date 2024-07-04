@@ -661,6 +661,8 @@ func (r *Dash0Reconciler) instrumentWorkload(
 	} else if util.HasBeenInstrumentedSuccessfully(objectMeta) {
 		// No change necessary, this workload has already been instrumented and an opt-out label (which would need to
 		// trigger uninstrumentation) has not been added since it has been instrumented.
+		// This check likely needs to change, see
+		// https://linear.app/dash0/issue/ENG-1955/updating-the-operator-should-run-a-first-reconcile-on-all-workloads-to
 		return false
 	} else if util.HasOptedOutOfInstrumenationAndIsUninstrumented(workload.getObjectMeta()) {
 		logger.Info("not instrumenting this workload due to dash0.com/enable=false")

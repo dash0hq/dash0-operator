@@ -167,6 +167,13 @@ they deploy in their `AfterAll`/`AfterEach` hooks. The scripts in `test-resource
 Run `make help` for more information on all potential `make` targets.
 More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
 
+## Migration Strategy When Updating Instrumentation Values
+
+When a new release of the operator changes the instrumentation values (new or changed environment variables, new labels,
+new volumes etc.), we need to make sure that previously instrumented workloads are updated correctly. This should always
+be accompanied by corresponding tests (for example new test cases in `workload_modifier_test.go`, see the test suite
+`"when updating instrumentation from 0.5.1 to 0.6.0"` for an example).
+
 ## Contributing
 
 No contribution guidelines are available at this point.

@@ -37,8 +37,8 @@ type PodSpecExpectations struct {
 	Containers            []ContainerExpectations
 }
 
-var (
-	BasicInstrumentedPodSpecExpectations = PodSpecExpectations{
+func BasicInstrumentedPodSpecExpectations() PodSpecExpectations {
+	return PodSpecExpectations{
 		Volumes:               1,
 		Dash0VolumeIdx:        0,
 		InitContainers:        1,
@@ -53,7 +53,7 @@ var (
 			"http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
 		}},
 	}
-)
+}
 
 func VerifyModifiedCronJob(resource *batchv1.CronJob, expectations PodSpecExpectations) {
 	verifyPodSpec(resource.Spec.JobTemplate.Spec.Template.Spec, expectations)
@@ -126,7 +126,7 @@ func VerifyModifiedJob(resource *batchv1.Job, expectations PodSpecExpectations) 
 }
 
 func VerifyModifiedJobAfterUnsuccessfulOptOut(resource *batchv1.Job) {
-	verifyPodSpec(resource.Spec.Template.Spec, BasicInstrumentedPodSpecExpectations)
+	verifyPodSpec(resource.Spec.Template.Spec, BasicInstrumentedPodSpecExpectations())
 	jobLabels := resource.ObjectMeta.Labels
 	Expect(jobLabels["dash0.com/instrumented"]).To(Equal("true"))
 	Expect(jobLabels["dash0.com/operator-image"]).To(Equal("some-registry.com_1234_dash0hq_operator-controller_1.2.3"))
