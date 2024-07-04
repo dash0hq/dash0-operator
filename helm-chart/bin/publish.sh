@@ -7,16 +7,20 @@ set -euo pipefail
 
 cd "$(dirname "${0}")"/..
 
-# For testing the script locally, provide the relative path to a directory to a with a separate clone of the
-# repository, as seen from the helm-chart directory. For example:
+# Use DRY_RUN=true to verify that the helm chart can be successfully packaged -- all steps will be executed except for
+# the final git push to the gh-pages branch.
+#
+# For testing the script locally, provide the relative path to a directory with a separate clone of the
+# repository, as seen from the helm-chart directory via TEST_PUBLISH_DIR. For example:
 # TEST_PUBLISH_DIR=../../dash0-operator-helm-chart-publish-test bin/publish.sh 9.9.9
 # The main branch should be checked out initially in that clone.
 # You could theoretically use your main working copy/clone for testing, but since the script switches the branch to
 # gh-pages and that is an orphan branch it might leave the working copy in a slightly messy state. Therefore it is
 # better to use another clone for that.
-# Additionally, if TEST_PUBLISH_DIR is set, no actual git push will take place.
+# Additionally, a non-empty TEST_PUBLISH_DIR implies DRY_RUN=true.
 if [[ -n "${TEST_PUBLISH_DIR:-}" ]]; then
   cd  "$TEST_PUBLISH_DIR"/helm-chart
+  DRY_RUN=true
 fi
 
 # Abort when there are local changes in the repository. This is mostly relevant for testing the script locally.
@@ -49,6 +53,9 @@ echo "switching to gh-pages branch"
 git fetch origin gh-pages:gh-pages
 git switch gh-pages
 
+git status
+git log
+
 # clean up potential left-overs from the --dependency-update flag
 rm -rf helm-chart
 
@@ -59,11 +66,11 @@ echo "git add & commit"
 git add "dash0-operator-$version.tgz" index.yaml
 git commit -m"feat(chart): publish version $version"
 
-if [[ -z "${TEST_PUBLISH_DIR:-}" ]]; then
-  echo "executing git push"
-  git push --no-verify --set-upstream origin gh-pages
-else
+if [[ "${DRY_RUN:-}" == "true" ]]; then
   echo "executing git push (--dry-run)"
   git push --no-verify --dry-run origin gh-pages
+else
+  echo "executing git push"
+  git push --no-verify --set-upstream origin gh-pages
 fi
 
