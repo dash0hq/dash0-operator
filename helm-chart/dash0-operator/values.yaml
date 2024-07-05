@@ -44,6 +44,9 @@ operator:
   #   label2: "value 2"
   podLabels: {}
 
+  # Set this to "false" to disable the admission webhook to instrument new workloads at deploy time.
+  enableWebhook: true
+
   # resources for the controller manager pod(s)
   managerPodResources:
     limits:

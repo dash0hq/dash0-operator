@@ -214,7 +214,7 @@ func startOperatorManager(
 	}
 	setupLog.Info("Dash0 reconciler has been set up.")
 
-	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
+	if os.Getenv("ENABLE_WEBHOOK") != "false" {
 		if err = (&dash0webhook.Handler{
 			Client:               mgr.GetClient(),
 			Recorder:             mgr.GetEventRecorderFor("dash0-webhook"),
