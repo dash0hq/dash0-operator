@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -200,14 +201,15 @@ func startOperatorManager(
 		InitContainerImagePullPolicy: initContainerImagePullPolicy,
 	}
 
-	if err = (&controller.Dash0Reconciler{
+	reconciler := &controller.Dash0Reconciler{
 		Client:               mgr.GetClient(),
 		ClientSet:            clientSet,
 		Scheme:               mgr.GetScheme(),
 		Recorder:             mgr.GetEventRecorderFor("dash0-controller"),
 		Images:               images,
 		OtelCollectorBaseUrl: otelCollectorBaseUrl,
-	}).SetupWithManager(mgr); err != nil {
+	}
+	if err = reconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the Dash0 reconciler: %w", err)
 	}
 	setupLog.Info("Dash0 reconciler has been set up.")
@@ -235,10 +237,16 @@ func startOperatorManager(
 		return fmt.Errorf("unable to set up the ready check: %w", err)
 	}
 
+	go func() {
+		time.Sleep(10 * time.Second)
+		reconciler.InstrumentAtStartup()
+	}()
+
 	setupLog.Info("starting manager")
 	if err = mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		return fmt.Errorf("unable to set up the signal handler: %w", err)
 	}
+
 	return nil
 }
 

@@ -6,6 +6,7 @@ package util
 import (
 	"context"
 	"fmt"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
@@ -36,6 +37,10 @@ type PodSpecExpectations struct {
 	Dash0InitContainerIdx int
 	Containers            []ContainerExpectations
 }
+
+const (
+	eventTimeout = 1 * time.Second
+)
 
 func BasicInstrumentedPodSpecExpectations() PodSpecExpectations {
 	return PodSpecExpectations{
@@ -356,7 +361,6 @@ func VerifySuccessfulInstrumentationEvent(
 	verifyEvent(
 		ctx,
 		clientset,
-		Default,
 		namespace,
 		resourceName,
 		util.ReasonSuccessfulInstrumentation,
@@ -374,7 +378,6 @@ func VerifyNoInstrumentationNecessaryEvent(
 	verifyEvent(
 		ctx,
 		clientset,
-		Default,
 		namespace,
 		resourceName,
 		util.ReasonNoInstrumentationNecessary,
@@ -394,7 +397,6 @@ func VerifyFailedInstrumentationEvent(
 	verifyEvent(
 		ctx,
 		clientset,
-		Default,
 		namespace,
 		resourceName,
 		util.ReasonFailedInstrumentation,
@@ -409,7 +411,14 @@ func VerifySuccessfulUninstrumentationEvent(
 	resourceName string,
 	eventSource string,
 ) {
-	VerifySuccessfulUninstrumentationEventEventually(ctx, clientset, Default, namespace, resourceName, eventSource)
+	verifyEvent(
+		ctx,
+		clientset,
+		namespace,
+		resourceName,
+		util.ReasonSuccessfulUninstrumentation,
+		fmt.Sprintf("The %s successfully removed the Dash0 instrumentation from this workload.", eventSource),
+	)
 }
 
 func VerifySuccessfulUninstrumentationEventEventually(
@@ -420,7 +429,7 @@ func VerifySuccessfulUninstrumentationEventEventually(
 	resourceName string,
 	eventSource string,
 ) {
-	verifyEvent(
+	verifyEventEventually(
 		ctx,
 		clientset,
 		g,
@@ -441,7 +450,6 @@ func VerifyFailedUninstrumentationEvent(
 	verifyEvent(
 		ctx,
 		clientset,
-		Default,
 		namespace,
 		resourceName,
 		util.ReasonFailedUninstrumentation,
@@ -459,7 +467,6 @@ func VerifyNoUninstrumentationNecessaryEvent(
 	verifyEvent(
 		ctx,
 		clientset,
-		Default,
 		namespace,
 		resourceName,
 		util.ReasonNoUninstrumentationNecessary,
@@ -468,6 +475,19 @@ func VerifyNoUninstrumentationNecessaryEvent(
 }
 
 func verifyEvent(
+	ctx context.Context,
+	clientset *kubernetes.Clientset,
+	namespace string,
+	resourceName string,
+	reason util.Reason,
+	message string,
+) {
+	Eventually(func(g Gomega) {
+		verifyEventEventually(ctx, clientset, g, namespace, resourceName, reason, message)
+	}, eventTimeout).Should(Succeed())
+}
+
+func verifyEventEventually(
 	ctx context.Context,
 	clientset *kubernetes.Clientset,
 	g Gomega,
