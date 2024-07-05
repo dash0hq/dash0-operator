@@ -48,6 +48,62 @@ spec:
             type: object
           spec:
             description: Dash0Spec defines the desired state of the Dash0 custom resource.
+            properties:
+              InstrumentNewWorkloads:
+                description: |-
+                  Opt-out for workload instrumentation of newly deployed workloads for the target namespace. You can opt-out of
+                  instrumenting workloads at the time they are deployed by setting this option to false. By default, when the Dash0
+                  custom resource is present in a namespace (and the Dash0 Kubernetes operator is active), the operator will
+                  instrument new workloads to send telemetry to Dash0, at the time they are deployed to that namespace.
+                  Setting this option to false will prevent that behavior, but workloads existing when the Dash0 custom resource
+                  is deployed will still be instrumented (see option InstrumentExistingWorkloads). More fine-grained control over
+                  instrumentation on a per-workload level is available by setting the label dash0.com/enable=false on individual
+                  workloads.
+
+
+                  The default value for this option is true.
+
+
+                  This option has no effect if InstrumentWorkloads is set to false.
+                type: boolean
+              instrumentExistingWorkloads:
+                description: |-
+                  Opt-out for workload instrumentation of existing workloads for the target namespace. You can opt-out of
+                  instrumenting existing workloads by setting this option to false. By default, when the Dash0 custom resource
+                  is deployed to a namespace (and the Dash0 Kubernetes operator is active), the operator will instrument the
+                  workloads already running in that namesapce, to send telemetry to Dash0. Setting this option to false will
+                  prevent that behavior, but workloads that are deployed after Dash0 custom resource will still be instrumented
+                  (see option InstrumentNewWorkloads). More fine-grained control over instrumentation on a per-workload level is
+                  available by setting the label dash0.com/enable=false on individual workloads.
+
+
+                  The default value for this option is true.
+
+
+                  This option has no effect if InstrumentWorkloads is set to false.
+                type: boolean
+              instrumentWorkloads:
+                description: |-
+                  Global opt-out for workload instrumentation for the target namespace. You can opt-out of instrumenting workloads
+                  entirely by setting this option to false. By default, this setting is true and Kubernetes workloads will be
+                  intrumented by the operator to send telemetry to Dash0. Setting it to false will prevent workload instrumentation
+                  in the target namespace. More fine-grained control over instrumentation is available via the settings
+                  InstrumentExistingWorkloads, InstrumentNewWorkloads and UninstrumentWorkloadsOnDelete, as well as by setting the
+                  label dash0.com/enable=false on individual workloads.
+
+
+                  The default value for this option is true.
+                type: boolean
+              uninstrumentWorkloadsOnDelete:
+                description: |-
+                  Opt-out for removing the Dash0 instrumentation from workloads when the Dash0 custom resource is removed from a
+                  namespace, or when the Dash0 Kubernetes operator is deleted entirely. By default, this setting is true and the
+                  operator will revert the instrumentation modifications it applied to workloads to send telemetry to Dash0.
+                  Setting this option to false will prevent this behavior.
+
+
+                  The default value for this option is true.
+                type: boolean
             type: object
           status:
             description: Dash0Status defines the observed state of the Dash0 custom
@@ -56,15 +112,15 @@ spec:
               conditions:
                 items:
                   description: "Condition contains details for one aspect of the current
-                  state of this API Resource.\n---\nThis struct is intended for
-                  direct use as an array at the field path .status.conditions.  For
-                  example,\n\n\n\ttype FooStatus struct{\n\t    // Represents the
-                  observations of a foo's current state.\n\t    // Known .status.conditions.type
-                  are: \"Available\", \"Progressing\", and \"Degraded\"\n\t    //
-                  +patchMergeKey=type\n\t    // +patchStrategy=merge\n\t    // +listType=map\n\t
-                  \   // +listMapKey=type\n\t    Conditions []metav1.Condition `json:\"conditions,omitempty\"
-                  patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`\n\n\n\t
-                  \   // other fields\n\t}"
+                    state of this API Resource.\n---\nThis struct is intended for
+                    direct use as an array at the field path .status.conditions.  For
+                    example,\n\n\n\ttype FooStatus struct{\n\t    // Represents the
+                    observations of a foo's current state.\n\t    // Known .status.conditions.type
+                    are: \"Available\", \"Progressing\", and \"Degraded\"\n\t    //
+                    +patchMergeKey=type\n\t    // +patchStrategy=merge\n\t    // +listType=map\n\t
+                    \   // +listMapKey=type\n\t    Conditions []metav1.Condition `json:\"conditions,omitempty\"
+                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`\n\n\n\t
+                    \   // other fields\n\t}"
                   properties:
                     lastTransitionTime:
                       description: |-
@@ -100,9 +156,9 @@ spec:
                     status:
                       description: status of the condition, one of True, False, Unknown.
                       enum:
-                        - "True"
-                        - "False"
-                        - Unknown
+                      - "True"
+                      - "False"
+                      - Unknown
                       type: string
                     type:
                       description: |-
@@ -115,11 +171,11 @@ spec:
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
                   required:
-                    - lastTransitionTime
-                    - message
-                    - reason
-                    - status
-                    - type
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
                   type: object
                 type: array
             type: object
