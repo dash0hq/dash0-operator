@@ -14,13 +14,13 @@ The Dash0 Kubernetes operator installs an OpenTelemetry collector into your clus
 ingress endpoint, with authentication already configured out of the box. Additionally, it will enable gathering
 OpenTelemetry data from applications deployed to the cluster for a selection of supported runtimes.
 
-More information on the Dash0 Kubernetes Operator can be found at 
+More information on the Dash0 Kubernetes Operator can be found at
 https://github.com/dash0hq/dash0-operator/blob/main/README.md.
 
 ## Prerequisites
 
 - [Kubernetes](https://kubernetes.io/) >= 1.xx
-- [Helm](https://helm.sh) >= 3.xx, please refer to Helm's [documentation](https://helm.sh/docs/) for more information 
+- [Helm](https://helm.sh) >= 3.xx, please refer to Helm's [documentation](https://helm.sh/docs/) for more information
   on installing Helm.
 
 ## Installation
@@ -47,7 +47,7 @@ kubectl create secret generic \
 ```
 
 Now you can install the operator into your cluster via Helm with the following command.
-Use the same namespace that you have created in the previous step and which contains the `dash0-authorization-secret`. 
+Use the same namespace that you have created in the previous step and which contains the `dash0-authorization-secret`.
 You will need to replace the value given to `--set opentelemetry-collector.config.exporters.otlp.endpoint` with the
 actual OTLP/gRPC endpoint of your Dash0 organization.
 Again, the correct OTLP/gRPC endpoint can be copied fom https://app.dash0.com/settings.
@@ -58,7 +58,7 @@ helm install \
   --namespace dash0-system \
   --set opentelemetry-collector.config.exporters.otlp.endpoint=your-dash0-ingress-endpoint-here.dash0.com:4317 \
   dash0-operator \
-  dash0-operator/dash0-operator  
+  dash0-operator/dash0-operator
 ```
 
 Note: When installing the chart, you might see a warning like the following printed to the console:
@@ -74,7 +74,8 @@ Note that Dash0 has to be enabled per namespace that you want to monitor, which 
 
 ## Enable Dash0 For a Namespace
 
-For each namespace that you want to monitor with Dash0, enable monitoring by installing a custom Dash0 resource:
+For _each namespace_ that you want to monitor with Dash0, enable monitoring by installing a custom Dash0 resource into
+that namespace:
 
 Create a file `dash0.yaml` with the following content:
 ```yaml
@@ -84,23 +85,32 @@ metadata:
   name: dash0-resource
 ```
 
-Then apply the resource to the namespace you want to monitor:
+Then apply the resource to the namespace you want to monitor.
+For example, if you want to monitor workloads in the namespace `my-nodejs-applications`, use the following command:
+
 ```console
-kubectl apply --namespace my-namespace -f dash0.yaml
+kubectl apply --namespace my-nodejs-applications -f dash0.yaml
+```
+
+If you want to monitor the `default` namespace with Dash0, use the following command:
+```console
+kubectl apply -f dash0.yaml
 ```
 
 ## Disable Dash0 For a Namespace
 
 If you want to stop monitoring a namespace with Dash0, remove the Dash0 resource from that namespace.
+For example, if you want to stop monitoring workloads in the namespace `my-nodejs-applications`, use the following
+command:
 
 ```console
-kubectl delete --namespace my-namespace Dash0 dash0-resource
+kubectl delete --namespace my-nodejs-applications Dash0 dash0-resource
 ```
 
 or, alternatively, by using the `dash0.yaml` file created earlier:
 
 ```console
-kubectl delete --namespace test-namespace -f dash0.yaml
+kubectl delete --namespace my-nodejs-applications -f dash0.yaml
 ```
 
 ## Uninstallation
@@ -114,8 +124,8 @@ helm uninstall dash0-operator --namespace dash0-system
 Depending on the command you used to install the operator, you may need to use a different Helm release name or
 namespace.
 
-This will also automatically disable Dash0 monitoring for all namespaces.
-
+This will also automatically disable Dash0 monitoring for all namespaces by deleting the Dash0 resources in all
+namespaces.
 Optionally, remove the namespace that has been created for the operator:
 
 ```
@@ -127,3 +137,6 @@ If you choose to not remove the namespace, you might consider removing the secre
 ```console
 kubectl delete secret --namespace dash0-system dash0-authorization-secret
 ```
+
+If you later decide to install the operator again, you will need to enable Dash0 in each namespace you want to monitor
+again, see [Enable Dash0 For a Namespace](#enable-dash0-for-a-namespace).
