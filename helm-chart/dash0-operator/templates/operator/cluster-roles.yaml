@@ -36,7 +36,7 @@ rules:
   - events
   verbs:
   - create
-
+  - patch
 - apiGroups:
   - ""
   resources:
@@ -45,13 +45,13 @@ rules:
   - get
 
 - apiGroups:
-    - ""
+  - ""
   resources:
   - pods
   verbs:
+  - delete
   - get
   - list
-  - delete
 
 - apiGroups:
   - operator.dash0.com

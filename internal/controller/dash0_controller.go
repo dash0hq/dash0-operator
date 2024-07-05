@@ -147,9 +147,10 @@ func (r *Dash0Reconciler) InstrumentAtStartup() {
 // To know more about markers see: https://book.kubebuilder.io/reference/markers.html
 //+kubebuilder:rbac:groups=apps,resources=daemonsets;deployments;replicasets;statefulsets,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups=batch,resources=cronjobs;jobs,verbs=get;list;watch;update;patch
-//+kubebuilder:rbac:groups=core,resources=events,verbs=create
+//+kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
 //+kubebuilder:rbac:groups=core,resources=namespaces,verbs=get
-//+kubebuilder:rbac:groups=operator.dash0.com,resources=dash0s,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;delete
+//+kubebuilder:rbac:groups=operator.dash0.com,resources=dash0s,verbs=get;list;watch;create;update;patch;delete;deletecollection
 //+kubebuilder:rbac:groups=operator.dash0.com,resources=dash0s/finalizers,verbs=update
 //+kubebuilder:rbac:groups=operator.dash0.com,resources=dash0s/status,verbs=get;update;patch
 
