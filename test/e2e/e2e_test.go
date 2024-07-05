@@ -151,6 +151,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					operatorHelmChart,
 					operatorHelmChartUrl,
 					images,
+					true,
 				)
 				DeployDash0CustomResource(applicationUnderTestNamespace)
 
@@ -192,6 +193,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					operatorHelmChart,
 					operatorHelmChartUrl,
 					images,
+					true,
 				)
 				DeployDash0CustomResource(applicationUnderTestNamespace)
 				By("verifying that the Node.js job has been labelled by the controller and that an event has been emitted")
@@ -222,12 +224,75 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					operatorHelmChart,
 					operatorHelmChartUrl,
 					images,
+					true,
 				)
 				DeployDash0CustomResource(applicationUnderTestNamespace)
 				By("verifying that the Node.js pod has not been labelled")
 				Eventually(func(g Gomega) {
 					VerifyNoDash0Labels(g, applicationUnderTestNamespace, "pod")
 				}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
+			})
+		})
+
+		Describe("when updating workloads at startup", func() {
+			It("should update instrumentation modifications at startup", func() {
+				By("installing the Node.js deployment")
+				Expect(InstallNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+
+				By("deploy the operator and the Dash0 custom resource")
+				initialImages := Images{
+					operator: ImageSpec{
+						repository: "operator-controller",
+						tag:        additionalImageTag,
+						pullPolicy: "Never",
+					},
+					instrumentation: ImageSpec{
+						repository: "instrumentation",
+						tag:        additionalImageTag,
+						pullPolicy: "Never",
+					},
+				}
+				DeployOperatorWithCollectorAndClearExportedTelemetry(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					// we deploy the chart with image digests initially, so that the helm upgrade command we run later
+					// (with image tags instead of digests) will actually change the reference to the image (even
+					// if it is the same image content).
+					initialImages,
+					false,
+				)
+				DeployDash0CustomResource(applicationUnderTestNamespace)
+
+				By("verifying that the Node.js deployment has been instrumented by the controller")
+				VerifyThatWorkloadHasBeenInstrumented(
+					applicationUnderTestNamespace,
+					"deployment",
+					1207,
+					false,
+					initialImages,
+					"controller",
+				)
+
+				UpgradeOperator(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					// now we use different image tags
+					images,
+					false,
+				)
+
+				By("verifying that the Node.js deployment's instrumentation settings have been updated by the controller")
+				VerifyThatWorkloadHasBeenInstrumented(
+					applicationUnderTestNamespace,
+					"deployment",
+					1207,
+					false,
+					// check that the new image tags have been applied to the workload
+					images,
+					"controller",
+				)
 			})
 		})
 	})
@@ -239,6 +304,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				operatorHelmChart,
 				operatorHelmChartUrl,
 				images,
+				true,
 			)
 
 			fmt.Fprint(GinkgoWriter, "waiting 10 seconds to give the webhook some time to get ready\n")
@@ -465,6 +531,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					operatorHelmChart,
 					operatorHelmChartUrl,
 					images,
+					true,
 				)
 				runInParallelForAllWorkloadTypes(configs, func(config removalTestNamespaceConfig) {
 					DeployDash0CustomResource(config.namespace)

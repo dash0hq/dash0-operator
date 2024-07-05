@@ -37,6 +37,7 @@ const (
 	verifyTelemetryTimeout         = 90 * time.Second
 	verifyTelemetryPollingInterval = 500 * time.Millisecond
 	dash0CustomResourceName        = "dash0-sample"
+	additionalImageTag             = "e2e-test"
 )
 
 var (
@@ -305,6 +306,19 @@ func RebuildOperatorControllerImage(operatorImage ImageSpec, buildImageLocally b
 				fmt.Sprintf("IMG_REPOSITORY=%s", operatorImage.repository),
 				fmt.Sprintf("IMG_TAG=%s", operatorImage.tag),
 			))).To(Succeed())
+
+	additionalTag := ImageSpec{
+		repository: operatorImage.repository,
+		tag:        additionalImageTag,
+	}
+	Expect(
+		RunAndIgnoreOutput(
+			exec.Command(
+				"docker",
+				"tag",
+				renderFullyQualifiedImageName(operatorImage),
+				renderFullyQualifiedImageName(additionalTag),
+			))).To(Succeed())
 }
 
 func RebuildDash0InstrumentationImage(instrumentationImage ImageSpec, buildImageLocally bool) {
@@ -328,6 +342,19 @@ func RebuildDash0InstrumentationImage(instrumentationImage ImageSpec, buildImage
 				instrumentationImage.repository,
 				instrumentationImage.tag,
 			))).To(Succeed())
+
+	additionalTag := ImageSpec{
+		repository: instrumentationImage.repository,
+		tag:        additionalImageTag,
+	}
+	Expect(
+		RunAndIgnoreOutput(
+			exec.Command(
+				"docker",
+				"tag",
+				renderFullyQualifiedImageName(instrumentationImage),
+				renderFullyQualifiedImageName(additionalTag),
+			))).To(Succeed())
 }
 
 func DeployOperatorWithCollectorAndClearExportedTelemetry(
@@ -335,6 +362,7 @@ func DeployOperatorWithCollectorAndClearExportedTelemetry(
 	operatorHelmChart string,
 	operatorHelmChartUrl string,
 	images Images,
+	enableWebhook bool,
 ) {
 	By("removing old captured telemetry files")
 	_ = os.Remove("test-resources/e2e-test-volumes/collector-received-data/traces.jsonl")
@@ -344,7 +372,7 @@ func DeployOperatorWithCollectorAndClearExportedTelemetry(
 	ensureOtelCollectorHelmRepoIsInstalled()
 	ensureDash0OperatorHelmRepoIsInstalled(operatorHelmChart, operatorHelmChartUrl)
 
-	By("deploying the controller-manager")
+	By("deploying the operator controller")
 	arguments := []string{
 		"install",
 		"--namespace",
@@ -355,56 +383,15 @@ func DeployOperatorWithCollectorAndClearExportedTelemetry(
 		"--set", "operator.developmentMode=true",
 		"--set", "operator.disableSecretCheck=true",
 		"--set", "operator.disableOtlpEndpointCheck=true",
+		"--set", fmt.Sprintf("operator.enableWebhook=%t", enableWebhook),
 	}
-	arguments = setIfNotEmpty(arguments, "operator.image.repository", images.operator.repository)
-	arguments = setIfNotEmpty(arguments, "operator.image.tag", images.operator.tag)
-	arguments = setIfNotEmpty(arguments, "operator.image.digest", images.operator.digest)
-	arguments = setIfNotEmpty(arguments, "operator.image.pullPolicy", images.operator.pullPolicy)
-	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.repository", images.instrumentation.repository)
-	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.tag", images.instrumentation.tag)
-	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.digest", images.instrumentation.digest)
-	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.pullPolicy", images.instrumentation.pullPolicy)
-	arguments = append(arguments, operatorHelmReleaseName)
-	arguments = append(arguments, operatorHelmChart)
+	arguments = addOptionalHelmParameters(arguments, operatorHelmChart, images)
 
 	output, err := Run(exec.Command("helm", arguments...))
 	Expect(err).NotTo(HaveOccurred())
 	fmt.Fprintf(GinkgoWriter, "output of helm install:\n%s", output)
 
-	var controllerPodName string
-	By("validating that the controller-manager pod is running as expected")
-	verifyControllerUp := func() error {
-		cmd := exec.Command("kubectl", "get",
-			"pods", "-l", "control-plane=controller-manager",
-			"-o", "go-template={{ range .items }}"+
-				"{{ if not .metadata.deletionTimestamp }}"+
-				"{{ .metadata.name }}"+
-				"{{ \"\\n\" }}{{ end }}{{ end }}",
-			"-n", operatorNamespace,
-		)
-
-		podOutput, err := Run(cmd, false)
-		Expect(err).NotTo(HaveOccurred())
-		podNames := GetNonEmptyLines(podOutput)
-		if len(podNames) != 1 {
-			return fmt.Errorf("expect 1 controller pods running, but got %d -- %s", len(podNames), podOutput)
-		}
-		controllerPodName = podNames[0]
-		Expect(controllerPodName).To(ContainSubstring("controller-manager"))
-
-		cmd = exec.Command("kubectl", "get",
-			"pods", controllerPodName, "-o", "jsonpath={.status.phase}",
-			"-n", operatorNamespace,
-		)
-		status, err := Run(cmd)
-		Expect(err).NotTo(HaveOccurred())
-		if status != "Running" {
-			return fmt.Errorf("controller pod in %s status", status)
-		}
-		return nil
-	}
-
-	Eventually(verifyControllerUp, 120*time.Second, time.Second).Should(Succeed())
+	verifyThatControllerPodIsRunning(operatorNamespace)
 
 	// verify that the OTel collector is also up and running
 	Expect(RunAndIgnoreOutput(
@@ -418,6 +405,20 @@ func DeployOperatorWithCollectorAndClearExportedTelemetry(
 			"--timeout",
 			"60s",
 		))).To(Succeed())
+}
+
+func addOptionalHelmParameters(arguments []string, operatorHelmChart string, images Images) []string {
+	arguments = setIfNotEmpty(arguments, "operator.image.repository", images.operator.repository)
+	arguments = setIfNotEmpty(arguments, "operator.image.tag", images.operator.tag)
+	arguments = setIfNotEmpty(arguments, "operator.image.digest", images.operator.digest)
+	arguments = setIfNotEmpty(arguments, "operator.image.pullPolicy", images.operator.pullPolicy)
+	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.repository", images.instrumentation.repository)
+	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.tag", images.instrumentation.tag)
+	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.digest", images.instrumentation.digest)
+	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.pullPolicy", images.instrumentation.pullPolicy)
+	arguments = append(arguments, operatorHelmReleaseName)
+	arguments = append(arguments, operatorHelmChart)
+	return arguments
 }
 
 func setIfNotEmpty(arguments []string, key string, value string) []string {
@@ -496,8 +497,45 @@ func ensureDash0OperatorHelmRepoIsInstalled(operatorHelmChart string, operatorHe
 	}
 }
 
+func verifyThatControllerPodIsRunning(operatorNamespace string) {
+	var controllerPodName string
+	By("validating that the controller-manager pod is running as expected")
+	verifyControllerUp := func() error {
+		cmd := exec.Command("kubectl", "get",
+			"pods", "-l", "control-plane=controller-manager",
+			"-o", "go-template={{ range .items }}"+
+				"{{ if not .metadata.deletionTimestamp }}"+
+				"{{ .metadata.name }}"+
+				"{{ \"\\n\" }}{{ end }}{{ end }}",
+			"-n", operatorNamespace,
+		)
+
+		podOutput, err := Run(cmd, false)
+		Expect(err).NotTo(HaveOccurred())
+		podNames := GetNonEmptyLines(podOutput)
+		if len(podNames) != 1 {
+			return fmt.Errorf("expect 1 controller pods running, but got %d -- %s", len(podNames), podOutput)
+		}
+		controllerPodName = podNames[0]
+		Expect(controllerPodName).To(ContainSubstring("controller-manager"))
+
+		cmd = exec.Command("kubectl", "get",
+			"pods", controllerPodName, "-o", "jsonpath={.status.phase}",
+			"-n", operatorNamespace,
+		)
+		status, err := Run(cmd)
+		Expect(err).NotTo(HaveOccurred())
+		if status != "Running" {
+			return fmt.Errorf("controller pod in %s status", status)
+		}
+		return nil
+	}
+
+	Eventually(verifyControllerUp, 120*time.Second, time.Second).Should(Succeed())
+}
+
 func UndeployOperatorAndCollector(operatorNamespace string) {
-	By("undeploying the controller-manager")
+	By("undeploying the operator controller")
 	Expect(
 		RunAndIgnoreOutput(
 			exec.Command(
@@ -533,6 +571,52 @@ func VerifyDash0OperatorReleaseIsNotInstalled(g Gomega, operatorNamespace string
 		fmt.Sprintf("namespace/%s", operatorNamespace),
 		"--timeout=60s",
 	))).To(Succeed())
+}
+
+func UpgradeOperator(
+	operatorNamespace string,
+	operatorHelmChart string,
+	operatorHelmChartUrl string,
+	images Images,
+	enableWebhook bool,
+) {
+	ensureDash0OperatorHelmRepoIsInstalled(operatorHelmChart, operatorHelmChartUrl)
+
+	By("upgrading the operator controller")
+	arguments := []string{
+		"upgrade",
+		"--namespace",
+		operatorNamespace,
+		"--values",
+		"test-resources/helm/e2e.values.yaml",
+		"--set", "operator.developmentMode=true",
+		"--set", "operator.disableSecretCheck=true",
+		"--set", "operator.disableOtlpEndpointCheck=true",
+		"--set", fmt.Sprintf("operator.enableWebhook=%t", enableWebhook),
+	}
+	arguments = addOptionalHelmParameters(arguments, operatorHelmChart, images)
+
+	output, err := Run(exec.Command("helm", arguments...))
+	Expect(err).NotTo(HaveOccurred())
+	fmt.Fprintf(GinkgoWriter, "output of helm upgrade:\n%s", output)
+
+	By("waiting shortly, to give the operator time to restart after helm upgrade")
+	time.Sleep(5 * time.Second)
+
+	verifyThatControllerPodIsRunning(operatorNamespace)
+
+	// verify that the OTel collector is also up and running
+	Expect(RunAndIgnoreOutput(
+		exec.Command("kubectl",
+			"rollout",
+			"status",
+			"daemonset",
+			fmt.Sprintf("%s-opentelemetry-collector-agent", operatorHelmReleaseName),
+			"--namespace",
+			operatorNamespace,
+			"--timeout",
+			"60s",
+		))).To(Succeed())
 }
 
 func DeployDash0CustomResource(namespace string) {
