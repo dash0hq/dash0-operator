@@ -35,6 +35,7 @@ cluster roles should match snapshot:
           - events
         verbs:
           - create
+          - patch
       - apiGroups:
           - ""
         resources:
@@ -46,9 +47,9 @@ cluster roles should match snapshot:
         resources:
           - pods
         verbs:
+          - delete
           - get
           - list
-          - delete
       - apiGroups:
           - operator.dash0.com
         resources:
