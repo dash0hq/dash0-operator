@@ -30,14 +30,6 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/workloads"
 )
 
-const (
-	workkloadTypeLabel     = "workload type"
-	workloadNamespaceLabel = "workload namespace"
-	workloadNameLabel      = "workload name"
-
-	updateStatusFailedMessage = "Failed to update Dash0 status conditions, requeuing reconcile request."
-)
-
 type Dash0Reconciler struct {
 	client.Client
 	ClientSet            *kubernetes.Clientset
@@ -50,6 +42,12 @@ type Dash0Reconciler struct {
 type ModificationMode string
 
 const (
+	workkloadTypeLabel     = "workload type"
+	workloadNamespaceLabel = "workload namespace"
+	workloadNameLabel      = "workload name"
+
+	updateStatusFailedMessage = "Failed to update Dash0 status conditions, requeuing reconcile request."
+
 	Instrumentation   ModificationMode = "Instrumentation"
 	Uninstrumentation ModificationMode = "Uninstrumentation"
 )
@@ -89,6 +87,61 @@ func (r *Dash0Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
+// InstrumentAtStartup is run once, when the controller process starts. Its main purpose is to upgrade workloads that
+// have already been instrumented, in namespaces where the Dash0 custom resource already exists. For those workloads,
+// it is not guaranteed that a reconcile request will be triggered when the operator controller image is updated and
+// restarted - reconcile requests are only triggered when the Dash0 custom resource is installed/changed/deleted.
+// Since it runs the full instrumentation process, it might also as a byproduct instrument workloads that are not
+// instrumented yet. It will only cover namespaces where a Dash0 custom resource exists, because it works by listing
+// all Dash0 custom resources and then instrumenting workloads in the corresponding namespaces.
+func (r *Dash0Reconciler) InstrumentAtStartup() {
+	ctx := context.Background()
+	logger := log.FromContext(ctx)
+	logger.Info("Applying/updating instrumentation at controller startup.")
+	dash0CustomResourcesInNamespace := &operatorv1alpha1.Dash0List{}
+	if err := r.Client.List(
+		ctx,
+		dash0CustomResourcesInNamespace,
+		&client.ListOptions{},
+	); err != nil {
+		logger.Error(err, "Failed to list all Dash0 custom resources at controller startup.")
+		return
+	}
+
+	logger.Info(fmt.Sprintf("Found %d Dash0 custom resources.", len(dash0CustomResourcesInNamespace.Items)))
+	for _, dash0CustomResource := range dash0CustomResourcesInNamespace.Items {
+		logger.Info(fmt.Sprintf("Processing workloads in Dash0-enabled namespace %s", dash0CustomResource.Namespace))
+
+		if dash0CustomResource.IsMarkedForDeletion() {
+			continue
+		}
+		pseudoReconcileRequest := ctrl.Request{
+			NamespacedName: client.ObjectKey{
+				Namespace: dash0CustomResource.Namespace,
+				Name:      dash0CustomResource.Name,
+			},
+		}
+		_, stop, err := r.verifyUniqueDash0CustomResourceExists(ctx, pseudoReconcileRequest, logger)
+		if err != nil || stop {
+			// if an error occurred, it has already been logged in verifyUniqueDash0CustomResourceExists
+			continue
+		}
+
+		err = r.checkSettingsAndInstrumentAllWorkloads(ctx, &dash0CustomResource, &logger)
+		if err != nil {
+			logger.Error(
+				err,
+				"Failed to apply/update instrumentation instrumentation at startup in one namespace.",
+				"namespace",
+				dash0CustomResource.Namespace,
+				"name",
+				dash0CustomResource.Name,
+			)
+			continue
+		}
+	}
+}
+
 // The following markers are used to generate the rules permissions (RBAC) on config/rbac using controller-gen
 // when the command <make manifests> is executed.
 // To know more about markers see: https://book.kubebuilder.io/reference/markers.html
@@ -113,7 +166,7 @@ func (r *Dash0Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.16.3/pkg/reconcile
 func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Processig reconcile request")
+	logger.Info("Processing reconcile request")
 
 	namespaceStillExists, err := r.checkIfNamespaceExists(ctx, req.Namespace, &logger)
 	if err != nil {
@@ -149,8 +202,10 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 
 	if isFirstReconcile {
-		if err = r.handleFirstReconcile(ctx, dash0CustomResource, &logger); err != nil {
-			// The error has already been logged in handleFirstReconcile
+		logger.Info("Initial reconcile in progress.")
+		if err = r.checkSettingsAndInstrumentAllWorkloads(ctx, dash0CustomResource, &logger); err != nil {
+			// The error has already been logged in checkSettingsAndInstrumentAllWorkloads
+			logger.Info("Requeuing reconcile request.")
 			return ctrl.Result{}, err
 		}
 	}
@@ -194,8 +249,8 @@ func (r *Dash0Reconciler) verifyUniqueDash0CustomResourceExists(
 	return dash0CustomResource, stopReconcile, err
 }
 
-// verifyThatDash0CustomResourceExists loads the Dash0 custom resource that that the current reconcile request applies
-// to. If that resource does not exist, the function logs a message and returns (nil, true, nil) and expects the caller
+// verifyThatDash0CustomResourceExists loads the Dash0 custom resource that the current reconcile request applies to.
+// If that resource does not exist, the function logs a message and returns (nil, true, nil) and expects the caller
 // to stop the reconciliation (without requeing it). If any other error occurs while trying to fetch the resource, the
 // function logs the error and returns (nil, true, err) and expects the caller to requeue the reconciliation.
 func (r *Dash0Reconciler) verifyThatDash0CustomResourceExists(
@@ -229,7 +284,7 @@ func (r *Dash0Reconciler) verifyThatDash0CustomResourceIsUniqe(
 	logger *logr.Logger,
 ) (bool, error) {
 	allDash0CustomResourcesInNamespace := &operatorv1alpha1.Dash0List{}
-	if err := r.Client.List(
+	if err := r.List(
 		ctx,
 		allDash0CustomResourcesInNamespace,
 		&client.ListOptions{
@@ -311,13 +366,11 @@ func (r *Dash0Reconciler) initStatusConditions(
 	return firstReconcile, nil
 }
 
-func (r *Dash0Reconciler) handleFirstReconcile(
+func (r *Dash0Reconciler) checkSettingsAndInstrumentAllWorkloads(
 	ctx context.Context,
 	dash0CustomResource *operatorv1alpha1.Dash0,
 	logger *logr.Logger,
 ) error {
-	logger.Info("Initial reconcile in progress.")
-
 	instrumentWorkloads := util.ReadOptOutSetting(dash0CustomResource.Spec.InstrumentWorkloads)
 	instrumentExistingWorkloads := util.ReadOptOutSetting(dash0CustomResource.Spec.InstrumentExistingWorkloads)
 	instrumentNewWorkloads := util.ReadOptOutSetting(dash0CustomResource.Spec.InstrumentNewWorkloads)
@@ -337,9 +390,9 @@ func (r *Dash0Reconciler) handleFirstReconcile(
 		return nil
 	}
 
-	logger.Info("Now instrumenting existing workloads so they send telemetry to Dash0.")
-	if err := r.instrumentWorkloadsResources(ctx, dash0CustomResource, logger); err != nil {
-		logger.Error(err, "Instrumenting existing workloads failed, requeuing reconcile request.")
+	logger.Info("Now instrumenting existing workloads in namespace so they send telemetry to Dash0.")
+	if err := r.instrumentAllWorkloads(ctx, dash0CustomResource, logger); err != nil {
+		logger.Error(err, "Instrumenting existing workloads failed.")
 		return err
 	}
 
@@ -352,13 +405,13 @@ func (r *Dash0Reconciler) refreshStatus(
 	logger *logr.Logger,
 ) error {
 	if err := r.Status().Update(ctx, dash0CustomResource); err != nil {
-		logger.Error(err, "Cannot update the status of the Dash0 custom resource, requeuing reconcile request.")
+		logger.Error(err, "Cannot update the status of the Dash0 custom resource.")
 		return err
 	}
 	return nil
 }
 
-func (r *Dash0Reconciler) instrumentWorkloadsResources(
+func (r *Dash0Reconciler) instrumentAllWorkloads(
 	ctx context.Context,
 	dash0CustomResource *operatorv1alpha1.Dash0,
 	logger *logr.Logger,
