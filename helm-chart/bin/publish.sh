@@ -53,9 +53,6 @@ echo "switching to gh-pages branch"
 git fetch origin gh-pages:gh-pages
 git switch gh-pages
 
-git status
-git log
-
 # clean up potential left-overs from the --dependency-update flag
 rm -rf helm-chart
 
