@@ -622,19 +622,24 @@ func UpgradeOperator(
 func DeployDash0CustomResource(namespace string) {
 	Expect(
 		RunAndIgnoreOutput(exec.Command(
-			"kubectl", "apply", "-n", namespace, "-k", "config/samples"))).To(Succeed())
+			"kubectl",
+			"apply",
+			"-n",
+			namespace,
+			"-f",
+			"test-resources/customresources/dash0/dash0.yaml",
+		))).To(Succeed())
 }
 
 func UndeployDash0CustomResource(namespace string) {
-	// remove the resource
 	Expect(
 		RunAndIgnoreOutput(exec.Command(
 			"kubectl",
 			"delete",
 			"--namespace",
 			namespace,
-			"-k",
-			"config/samples",
+			"-f",
+			"test-resources/customresources/dash0/dash0.yaml",
 			"--ignore-not-found",
 		))).To(Succeed())
 }

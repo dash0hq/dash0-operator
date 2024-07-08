@@ -1,6 +1,6 @@
 suite: test custom resource definition
 templates:
-  - operator/custom-resource-definition.yaml
+  - operator/custom-resource-definition-dash0.yaml
 tests:
   - it: custom resource definition should match snapshot
     asserts:
