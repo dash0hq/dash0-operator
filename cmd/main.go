@@ -28,10 +28,10 @@ import (
 	k8swebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/v1alpha1"
-	"github.com/dash0hq/dash0-operator/internal/controller"
-	"github.com/dash0hq/dash0-operator/internal/removal"
-	"github.com/dash0hq/dash0-operator/internal/util"
-	dash0webhook "github.com/dash0hq/dash0-operator/internal/webhook"
+	"github.com/dash0hq/dash0-operator/internal/dash0/controller"
+	"github.com/dash0hq/dash0-operator/internal/dash0/removal"
+	"github.com/dash0hq/dash0-operator/internal/dash0/util"
+	dash0webhook "github.com/dash0hq/dash0-operator/internal/dash0/webhook"
 	//+kubebuilder:scaffold:imports
 )
 

@@ -16,7 +16,7 @@ import (
 
 	. "github.com/onsi/gomega"
 
-	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 )
 
 type ContainerExpectations struct {
