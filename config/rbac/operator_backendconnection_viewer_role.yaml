@@ -1,0 +1,27 @@
+# permissions for end users to view backendconnections.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: backendconnection-viewer-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: dash0-operator
+    app.kubernetes.io/part-of: dash0-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: backendconnection-viewer-role
+rules:
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - backendconnections
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - backendconnections/status
+  verbs:
+  - get

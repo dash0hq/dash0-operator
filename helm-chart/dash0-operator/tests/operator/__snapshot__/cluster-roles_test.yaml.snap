@@ -3,6 +3,14 @@ cluster roles should match snapshot:
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole
     metadata:
+      labels:
+        app.kubernetes.io/component: kube-rbac-proxy
+        app.kubernetes.io/instance: manager-role
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: clusterrole
+        app.kubernetes.io/part-of: dash0-operator
+        app.kubernetes.io/version: 0.0.0
+        helm.sh/chart: dash0-operator-0.0.0
       name: dash0-operator-manager-role
     rules:
       - apiGroups:
@@ -73,6 +81,27 @@ cluster roles should match snapshot:
           - operator.dash0.com
         resources:
           - dash0s/status
+        verbs:
+          - get
+          - patch
+          - update
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - backendconnections
+        verbs:
+          - create
+          - delete
+          - deletecollection
+          - get
+          - list
+          - patch
+          - update
+          - watch
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - backendconnections/status
         verbs:
           - get
           - patch

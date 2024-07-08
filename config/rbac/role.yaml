@@ -52,6 +52,32 @@ rules:
 - apiGroups:
   - operator.dash0.com
   resources:
+  - backendconnections
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - backendconnections/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - backendconnections/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - operator.dash0.com
+  resources:
   - dash0s
   verbs:
   - create

@@ -24,13 +24,16 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	k8swebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	backendconnectionv1alpha1 "github.com/dash0hq/dash0-operator/api/backendconnection/v1alpha1"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
-	"github.com/dash0hq/dash0-operator/internal/dash0/controller"
-	"github.com/dash0hq/dash0-operator/internal/dash0/removal"
-	"github.com/dash0hq/dash0-operator/internal/dash0/util"
+	backendconnectioncontroller "github.com/dash0hq/dash0-operator/internal/backendconnection/controller"
+	dash0controller "github.com/dash0hq/dash0-operator/internal/dash0/controller"
+	dash0removal "github.com/dash0hq/dash0-operator/internal/dash0/removal"
+	dash0util "github.com/dash0hq/dash0-operator/internal/dash0/util"
 	dash0webhook "github.com/dash0hq/dash0-operator/internal/dash0/webhook"
 	//+kubebuilder:scaffold:imports
 )
@@ -54,6 +57,7 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(dash0v1alpha1.AddToScheme(scheme))
+	utilruntime.Must(backendconnectionv1alpha1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
@@ -177,6 +181,36 @@ func startOperatorManager(
 		return fmt.Errorf("unable to create the clientset client")
 	}
 
+	err = startDash0Controller(mgr, clientSet)
+	if err != nil {
+		return err
+	}
+
+	err = startBackendConnectionController(mgr)
+	if err != nil {
+		return err
+	}
+	//+kubebuilder:scaffold:builder
+
+	if err = mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
+		return fmt.Errorf("unable to set up the health check: %w", err)
+	}
+	if err = mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
+		return fmt.Errorf("unable to set up the ready check: %w", err)
+	}
+
+	setupLog.Info("starting manager")
+	if err = mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+		return fmt.Errorf("unable to set up the signal handler: %w", err)
+	}
+
+	return nil
+}
+
+func startDash0Controller(
+	mgr manager.Manager,
+	clientSet *kubernetes.Clientset,
+) error {
 	otelCollectorBaseUrl, operatorImage, initContainerImage, initContainerImagePullPolicy, err :=
 		readEnvironmentVariables()
 	if err != nil {
@@ -195,13 +229,13 @@ func startOperatorManager(
 		otelCollectorBaseUrl,
 	)
 
-	images := util.Images{
+	images := dash0util.Images{
 		OperatorImage:                operatorImage,
 		InitContainerImage:           initContainerImage,
 		InitContainerImagePullPolicy: initContainerImagePullPolicy,
 	}
 
-	reconciler := &controller.Dash0Reconciler{
+	dash0Reconciler := &dash0controller.Dash0Reconciler{
 		Client:               mgr.GetClient(),
 		ClientSet:            clientSet,
 		Scheme:               mgr.GetScheme(),
@@ -209,13 +243,13 @@ func startOperatorManager(
 		Images:               images,
 		OtelCollectorBaseUrl: otelCollectorBaseUrl,
 	}
-	if err = reconciler.SetupWithManager(mgr); err != nil {
+	if err := dash0Reconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the Dash0 reconciler: %w", err)
 	}
 	setupLog.Info("Dash0 reconciler has been set up.")
 
 	if os.Getenv("ENABLE_WEBHOOK") != "false" {
-		if err = (&dash0webhook.Handler{
+		if err := (&dash0webhook.Handler{
 			Client:               mgr.GetClient(),
 			Recorder:             mgr.GetEventRecorderFor("dash0-webhook"),
 			Images:               images,
@@ -228,25 +262,24 @@ func startOperatorManager(
 		setupLog.Info("Dash0 webhooks have been disabled via configuration.")
 	}
 
-	//+kubebuilder:scaffold:builder
-
-	if err = mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
-		return fmt.Errorf("unable to set up the health check: %w", err)
-	}
-	if err = mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
-		return fmt.Errorf("unable to set up the ready check: %w", err)
-	}
-
 	go func() {
 		time.Sleep(10 * time.Second)
-		reconciler.InstrumentAtStartup()
+
+		// trigger an unconditional apply/update of instrumentation for all workloads, see godoc comment on
+		// Dash0Reconciler#InstrumentAtStartup
+		dash0Reconciler.InstrumentAtStartup()
 	}()
 
-	setupLog.Info("starting manager")
-	if err = mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-		return fmt.Errorf("unable to set up the signal handler: %w", err)
-	}
+	return nil
+}
 
+func startBackendConnectionController(mgr manager.Manager) error {
+	if err := (&backendconnectioncontroller.BackendConnectionReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to set up the BackendConnection reconciler: %w", err)
+	}
 	return nil
 }
 
@@ -285,7 +318,7 @@ func readEnvironmentVariables() (string, string, string, corev1.PullPolicy, erro
 }
 
 func deleteCustomResourcesInAllNamespaces(logger *logr.Logger) error {
-	handler, err := removal.NewOperatorPreDeleteHandler()
+	handler, err := dash0removal.NewOperatorPreDeleteHandler()
 	if err != nil {
 		logger.Error(err, "Failed to create the OperatorPreDeleteHandler.")
 		return err

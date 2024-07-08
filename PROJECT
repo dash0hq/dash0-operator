@@ -24,4 +24,13 @@ resources:
   webhooks:
     defaulting: true
     webhookVersion: v1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: dash0.com
+  group: operator
+  kind: BackendConnection
+  path: github.com/dash0hq/dash0-operator/api/backendconnection/v1alpha1
+  version: v1alpha1
 version: "3"
