@@ -19,7 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/v1alpha1"
-	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 
 	. "github.com/dash0hq/dash0-operator/test/util"
 )

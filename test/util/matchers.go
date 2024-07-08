@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dash0hq/dash0-operator/internal/util"
+	corev1 "k8s.io/api/core/v1"
+
+	"github.com/dash0hq/dash0-operator/internal/dash0/util"
+
 	"github.com/onsi/gomega"
 	"github.com/onsi/gomega/format"
-	corev1 "k8s.io/api/core/v1"
 )
 
 func MatchEnvVar(name string, value string, args ...interface{}) gomega.OmegaMatcher {

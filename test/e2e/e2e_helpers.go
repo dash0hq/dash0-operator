@@ -21,7 +21,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	corev1 "k8s.io/api/core/v1"
 
-	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 
 	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive
 	. "github.com/onsi/gomega"
