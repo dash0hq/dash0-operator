@@ -23,7 +23,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/v1alpha1"
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 	"github.com/dash0hq/dash0-operator/internal/dash0/workloads"
 )
@@ -105,7 +105,7 @@ func (h *Handler) Handle(ctx context.Context, request admission.Request) admissi
 
 	targetNamespace := request.Namespace
 
-	dash0List := &operatorv1alpha1.Dash0List{}
+	dash0List := &dash0v1alpha1.Dash0List{}
 	if err := h.Client.List(ctx, dash0List, &client.ListOptions{
 		Namespace: targetNamespace,
 	}); err != nil {

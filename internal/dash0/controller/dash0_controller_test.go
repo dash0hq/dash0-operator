@@ -18,7 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/v1alpha1"
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 
 	. "github.com/dash0hq/dash0-operator/test/util"
@@ -108,7 +108,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 			It("should mark only the most recent resource as available and the other ones as degraded when multiple "+
 				"resources exist", func() {
-				firstDash0CustomResource := &operatorv1alpha1.Dash0{}
+				firstDash0CustomResource := &dash0v1alpha1.Dash0{}
 				Expect(k8sClient.Get(ctx, Dash0CustomResourceQualifiedName, firstDash0CustomResource)).To(Succeed())
 				time.Sleep(10 * time.Millisecond)
 				secondName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-test-resource-2"}
