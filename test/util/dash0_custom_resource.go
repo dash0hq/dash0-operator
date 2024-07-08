@@ -15,7 +15,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/v1alpha1"
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
 )
 
 const (
@@ -32,7 +32,7 @@ var (
 func EnsureDash0CustomResourceExists(
 	ctx context.Context,
 	k8sClient client.Client,
-) *operatorv1alpha1.Dash0 {
+) *dash0v1alpha1.Dash0 {
 	return EnsureDash0CustomResourceExistsWithNamespacedName(
 		ctx,
 		k8sClient,
@@ -44,21 +44,21 @@ func EnsureDash0CustomResourceExistsWithNamespacedName(
 	ctx context.Context,
 	k8sClient client.Client,
 	namespacesName types.NamespacedName,
-) *operatorv1alpha1.Dash0 {
+) *dash0v1alpha1.Dash0 {
 	By("creating the Dash0 custom resource")
 	object := EnsureKubernetesObjectExists(
 		ctx,
 		k8sClient,
 		Dash0CustomResourceQualifiedName,
-		&operatorv1alpha1.Dash0{},
-		&operatorv1alpha1.Dash0{
+		&dash0v1alpha1.Dash0{},
+		&dash0v1alpha1.Dash0{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      namespacesName.Name,
 				Namespace: namespacesName.Namespace,
 			},
 		},
 	)
-	return object.(*operatorv1alpha1.Dash0)
+	return object.(*dash0v1alpha1.Dash0)
 }
 
 func CreateDash0CustomResource(
@@ -66,7 +66,7 @@ func CreateDash0CustomResource(
 	k8sClient client.Client,
 	dash0CustomResourceName types.NamespacedName,
 ) client.Object {
-	dash0CustomResource := &operatorv1alpha1.Dash0{
+	dash0CustomResource := &dash0v1alpha1.Dash0{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      dash0CustomResourceName.Name,
 			Namespace: dash0CustomResourceName.Namespace,
@@ -79,7 +79,7 @@ func CreateDash0CustomResource(
 func EnsureDash0CustomResourceExistsAndIsAvailable(
 	ctx context.Context,
 	k8sClient client.Client,
-) *operatorv1alpha1.Dash0 {
+) *dash0v1alpha1.Dash0 {
 	return EnsureDash0CustomResourceExistsAndIsAvailableInNamespace(ctx, k8sClient, Dash0CustomResourceQualifiedName)
 }
 
@@ -87,7 +87,7 @@ func EnsureDash0CustomResourceExistsAndIsAvailableInNamespace(
 	ctx context.Context,
 	k8sClient client.Client,
 	namespacedName types.NamespacedName,
-) *operatorv1alpha1.Dash0 {
+) *dash0v1alpha1.Dash0 {
 	dash0CustomResource := EnsureDash0CustomResourceExistsWithNamespacedName(
 		ctx,
 		k8sClient,
@@ -101,7 +101,7 @@ func EnsureDash0CustomResourceExistsAndIsAvailableInNamespace(
 func EnsureDash0CustomResourceExistsAndIsDegraded(
 	ctx context.Context,
 	k8sClient client.Client,
-) *operatorv1alpha1.Dash0 {
+) *dash0v1alpha1.Dash0 {
 	dash0CustomResource := EnsureDash0CustomResourceExists(ctx, k8sClient)
 	dash0CustomResource.EnsureResourceIsMarkedAsDegraded(
 		"TestReasonForAvailableBeingFalse",
@@ -118,11 +118,11 @@ func LoadDash0CustomResourceByNameIfItExists(
 	k8sClient client.Client,
 	g Gomega,
 	dash0CustomResourceName types.NamespacedName,
-) *operatorv1alpha1.Dash0 {
+) *dash0v1alpha1.Dash0 {
 	return LoadDash0CustomResourceByName(ctx, k8sClient, g, dash0CustomResourceName, false)
 }
 
-func LoadDash0CustomResourceOrFail(ctx context.Context, k8sClient client.Client, g Gomega) *operatorv1alpha1.Dash0 {
+func LoadDash0CustomResourceOrFail(ctx context.Context, k8sClient client.Client, g Gomega) *dash0v1alpha1.Dash0 {
 	return LoadDash0CustomResourceByNameOrFail(ctx, k8sClient, g, Dash0CustomResourceQualifiedName)
 }
 
@@ -131,7 +131,7 @@ func LoadDash0CustomResourceByNameOrFail(
 	k8sClient client.Client,
 	g Gomega,
 	dash0CustomResourceName types.NamespacedName,
-) *operatorv1alpha1.Dash0 {
+) *dash0v1alpha1.Dash0 {
 	return LoadDash0CustomResourceByName(ctx, k8sClient, g, dash0CustomResourceName, true)
 }
 
@@ -141,8 +141,8 @@ func LoadDash0CustomResourceByName(
 	g Gomega,
 	dash0CustomResourceName types.NamespacedName,
 	failTestsOnNonExists bool,
-) *operatorv1alpha1.Dash0 {
-	dash0CustomResource := &operatorv1alpha1.Dash0{}
+) *dash0v1alpha1.Dash0 {
+	dash0CustomResource := &dash0v1alpha1.Dash0{}
 	if err := k8sClient.Get(ctx, dash0CustomResourceName, dash0CustomResource); err != nil {
 		if apierrors.IsNotFound(err) {
 			if failTestsOnNonExists {
@@ -200,8 +200,8 @@ func RemoveDash0CustomResourceByName(
 	}
 }
 
-func removeFinalizer(ctx context.Context, k8sClient client.Client, dash0CustomResource *operatorv1alpha1.Dash0) {
-	finalizerHasBeenRemoved := controllerutil.RemoveFinalizer(dash0CustomResource, operatorv1alpha1.FinalizerId)
+func removeFinalizer(ctx context.Context, k8sClient client.Client, dash0CustomResource *dash0v1alpha1.Dash0) {
+	finalizerHasBeenRemoved := controllerutil.RemoveFinalizer(dash0CustomResource, dash0v1alpha1.FinalizerId)
 	if finalizerHasBeenRemoved {
 		Expect(k8sClient.Update(ctx, dash0CustomResource)).To(Succeed())
 	}

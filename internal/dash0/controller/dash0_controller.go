@@ -25,7 +25,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/v1alpha1"
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 	"github.com/dash0hq/dash0-operator/internal/dash0/workloads"
 )
@@ -83,7 +83,7 @@ func (e ImmutableWorkloadError) Error() string {
 
 func (r *Dash0Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&operatorv1alpha1.Dash0{}).
+		For(&dash0v1alpha1.Dash0{}).
 		Complete(r)
 }
 
@@ -98,7 +98,7 @@ func (r *Dash0Reconciler) InstrumentAtStartup() {
 	ctx := context.Background()
 	logger := log.FromContext(ctx)
 	logger.Info("Applying/updating instrumentation at controller startup.")
-	dash0CustomResourcesInNamespace := &operatorv1alpha1.Dash0List{}
+	dash0CustomResourcesInNamespace := &dash0v1alpha1.Dash0List{}
 	if err := r.Client.List(
 		ctx,
 		dash0CustomResourcesInNamespace,
@@ -241,7 +241,7 @@ func (r *Dash0Reconciler) verifyUniqueDash0CustomResourceExists(
 	ctx context.Context,
 	req ctrl.Request,
 	logger logr.Logger,
-) (*operatorv1alpha1.Dash0, bool, error) {
+) (*dash0v1alpha1.Dash0, bool, error) {
 	dash0CustomResource, stopReconcile, err := r.verifyThatDash0CustomResourceExists(ctx, req, &logger)
 	if err != nil || stopReconcile {
 		return dash0CustomResource, stopReconcile, err
@@ -258,8 +258,8 @@ func (r *Dash0Reconciler) verifyThatDash0CustomResourceExists(
 	ctx context.Context,
 	req ctrl.Request,
 	logger *logr.Logger,
-) (*operatorv1alpha1.Dash0, bool, error) {
-	dash0CustomResource := &operatorv1alpha1.Dash0{}
+) (*dash0v1alpha1.Dash0, bool, error) {
+	dash0CustomResource := &dash0v1alpha1.Dash0{}
 	err := r.Get(ctx, req.NamespacedName, dash0CustomResource)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
@@ -281,10 +281,10 @@ func (r *Dash0Reconciler) verifyThatDash0CustomResourceExists(
 func (r *Dash0Reconciler) verifyThatDash0CustomResourceIsUniqe(
 	ctx context.Context,
 	req ctrl.Request,
-	dash0CustomResource *operatorv1alpha1.Dash0,
+	dash0CustomResource *dash0v1alpha1.Dash0,
 	logger *logr.Logger,
 ) (bool, error) {
-	allDash0CustomResourcesInNamespace := &operatorv1alpha1.Dash0List{}
+	allDash0CustomResourcesInNamespace := &dash0v1alpha1.Dash0List{}
 	if err := r.List(
 		ctx,
 		allDash0CustomResourcesInNamespace,
@@ -340,7 +340,7 @@ func (r *Dash0Reconciler) verifyThatDash0CustomResourceIsUniqe(
 
 func (r *Dash0Reconciler) initStatusConditions(
 	ctx context.Context,
-	dash0CustomResource *operatorv1alpha1.Dash0,
+	dash0CustomResource *dash0v1alpha1.Dash0,
 	logger *logr.Logger,
 ) (bool, error) {
 	firstReconcile := false
@@ -369,7 +369,7 @@ func (r *Dash0Reconciler) initStatusConditions(
 
 func (r *Dash0Reconciler) checkSettingsAndInstrumentAllWorkloads(
 	ctx context.Context,
-	dash0CustomResource *operatorv1alpha1.Dash0,
+	dash0CustomResource *dash0v1alpha1.Dash0,
 	logger *logr.Logger,
 ) error {
 	instrumentWorkloads := util.ReadOptOutSetting(dash0CustomResource.Spec.InstrumentWorkloads)
@@ -402,7 +402,7 @@ func (r *Dash0Reconciler) checkSettingsAndInstrumentAllWorkloads(
 
 func (r *Dash0Reconciler) refreshStatus(
 	ctx context.Context,
-	dash0CustomResource *operatorv1alpha1.Dash0,
+	dash0CustomResource *dash0v1alpha1.Dash0,
 	logger *logr.Logger,
 ) error {
 	if err := r.Status().Update(ctx, dash0CustomResource); err != nil {
@@ -414,7 +414,7 @@ func (r *Dash0Reconciler) refreshStatus(
 
 func (r *Dash0Reconciler) instrumentAllWorkloads(
 	ctx context.Context,
-	dash0CustomResource *operatorv1alpha1.Dash0,
+	dash0CustomResource *dash0v1alpha1.Dash0,
 	logger *logr.Logger,
 ) error {
 	namespace := dash0CustomResource.Namespace
@@ -795,7 +795,7 @@ func (r *Dash0Reconciler) postProcessInstrumentation(
 
 func (r *Dash0Reconciler) checkImminentDeletionAndHandleFinalizers(
 	ctx context.Context,
-	dash0CustomResource *operatorv1alpha1.Dash0,
+	dash0CustomResource *dash0v1alpha1.Dash0,
 	logger *logr.Logger,
 ) (bool, error) {
 	isMarkedForDeletion := dash0CustomResource.IsMarkedForDeletion()
@@ -806,7 +806,7 @@ func (r *Dash0Reconciler) checkImminentDeletionAndHandleFinalizers(
 			return isMarkedForDeletion, err
 		}
 	} else {
-		if controllerutil.ContainsFinalizer(dash0CustomResource, operatorv1alpha1.FinalizerId) {
+		if controllerutil.ContainsFinalizer(dash0CustomResource, dash0v1alpha1.FinalizerId) {
 			err := r.runCleanupActions(ctx, dash0CustomResource, logger)
 			if err != nil {
 				// error has already been logged in runCleanupActions
@@ -819,7 +819,7 @@ func (r *Dash0Reconciler) checkImminentDeletionAndHandleFinalizers(
 
 func (r *Dash0Reconciler) runCleanupActions(
 	ctx context.Context,
-	dash0CustomResource *operatorv1alpha1.Dash0,
+	dash0CustomResource *dash0v1alpha1.Dash0,
 	logger *logr.Logger,
 ) error {
 	uninstrumentWorkloadsOnDelete := util.ReadOptOutSetting(dash0CustomResource.Spec.UninstrumentWorkloadsOnDelete)
@@ -846,7 +846,7 @@ func (r *Dash0Reconciler) runCleanupActions(
 		return err
 	}
 
-	controllerutil.RemoveFinalizer(dash0CustomResource, operatorv1alpha1.FinalizerId)
+	controllerutil.RemoveFinalizer(dash0CustomResource, dash0v1alpha1.FinalizerId)
 	if err = r.Update(ctx, dash0CustomResource); err != nil {
 		logger.Error(err, "Failed to remove the finalizer from the Dash0 custom resource, requeuing reconcile request.")
 		return err
@@ -856,9 +856,9 @@ func (r *Dash0Reconciler) runCleanupActions(
 
 func (r *Dash0Reconciler) addFinalizerIfNecessary(
 	ctx context.Context,
-	dash0CustomResource *operatorv1alpha1.Dash0,
+	dash0CustomResource *dash0v1alpha1.Dash0,
 ) error {
-	finalizerHasBeenAdded := controllerutil.AddFinalizer(dash0CustomResource, operatorv1alpha1.FinalizerId)
+	finalizerHasBeenAdded := controllerutil.AddFinalizer(dash0CustomResource, dash0v1alpha1.FinalizerId)
 	if finalizerHasBeenAdded {
 		return r.Update(ctx, dash0CustomResource)
 	}
@@ -868,7 +868,7 @@ func (r *Dash0Reconciler) addFinalizerIfNecessary(
 
 func (r *Dash0Reconciler) uninstrumentWorkloadsIfAvailable(
 	ctx context.Context,
-	dash0CustomResource *operatorv1alpha1.Dash0,
+	dash0CustomResource *dash0v1alpha1.Dash0,
 	logger *logr.Logger,
 ) error {
 	if dash0CustomResource.IsAvailable() {
@@ -886,7 +886,7 @@ func (r *Dash0Reconciler) uninstrumentWorkloadsIfAvailable(
 
 func (r *Dash0Reconciler) uninstrumentWorkloads(
 	ctx context.Context,
-	dash0CustomResource *operatorv1alpha1.Dash0,
+	dash0CustomResource *dash0v1alpha1.Dash0,
 	logger *logr.Logger,
 ) error {
 	namespace := dash0CustomResource.Namespace
@@ -1214,7 +1214,7 @@ func newWorkloadModifier(images util.Images, otelCollectorBaseUrl string, logger
 	)
 }
 
-type SortByCreationTimestamp []operatorv1alpha1.Dash0
+type SortByCreationTimestamp []dash0v1alpha1.Dash0
 
 func (s SortByCreationTimestamp) Len() int {
 	return len(s)

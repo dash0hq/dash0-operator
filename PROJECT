@@ -5,6 +5,7 @@
 domain: dash0.com
 layout:
 - go.kubebuilder.io/v4
+multigroup: true
 plugins:
   manifests.sdk.operatorframework.io/v2: {}
   scorecard.sdk.operatorframework.io/v2: {}
@@ -18,7 +19,7 @@ resources:
   domain: dash0.com
   group: operator
   kind: Dash0
-  path: github.com/dash0hq/dash0-operator/api/v1alpha1
+  path: github.com/dash0hq/dash0-operator/api/dash0/v1alpha1
   version: v1alpha1
   webhooks:
     defaulting: true

@@ -27,7 +27,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	k8swebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/v1alpha1"
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/dash0/controller"
 	"github.com/dash0hq/dash0-operator/internal/dash0/removal"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
@@ -53,7 +53,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
-	utilruntime.Must(operatorv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(dash0v1alpha1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 

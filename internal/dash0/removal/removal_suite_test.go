@@ -20,7 +20,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/v1alpha1"
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/dash0/controller"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 )
@@ -72,7 +72,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
 
-	err = operatorv1alpha1.AddToScheme(scheme.Scheme)
+	err = dash0v1alpha1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	preDeleteHandler, err = NewOperatorPreDeleteHandlerFromConfig(cfg)

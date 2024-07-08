@@ -30,7 +30,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	operatorv1alpha1 "github.com/dash0hq/dash0-operator/api/v1alpha1"
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 
 	. "github.com/dash0hq/dash0-operator/test/util"
@@ -89,7 +89,7 @@ var _ = BeforeSuite(func() {
 	scheme := apimachineryruntime.NewScheme()
 	err = clientgoscheme.AddToScheme(scheme)
 	Expect(err).NotTo(HaveOccurred())
-	err = operatorv1alpha1.AddToScheme(scheme)
+	err = dash0v1alpha1.AddToScheme(scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	err = admissionv1.AddToScheme(scheme)
