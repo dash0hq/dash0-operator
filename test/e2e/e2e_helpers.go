@@ -853,7 +853,12 @@ func installNodeJsApplication(
 	if waitCommand == nil {
 		return nil
 	}
-	return RunAndIgnoreOutput(waitCommand)
+	By(fmt.Sprintf("waiting for %s to become ready", templateName))
+	err = RunAndIgnoreOutput(waitCommand)
+	if err == nil {
+		By(fmt.Sprintf("%s is ready", templateName))
+	}
+	return err
 }
 
 func uninstallNodeJsApplication(namespace string, kind string) error {
@@ -1224,7 +1229,7 @@ func verifyEvent(
 }
 
 func verifySpans(g Gomega, isBatch bool, workloadType string, port int, httpPathWithQuery string) {
-	spansFound := sendRequestAndFindMatchingSpans(g, isBatch, workloadType, port, httpPathWithQuery, true, nil)
+	spansFound := sendRequestAndFindMatchingSpans(g, isBatch, workloadType, port, httpPathWithQuery, nil)
 	g.Expect(spansFound).To(BeTrue(),
 		fmt.Sprintf("%s: expected to find at least one matching HTTP server span", workloadType))
 }
@@ -1237,7 +1242,6 @@ func verifyNoSpans(isBatch bool, workloadType string, port int, httpPathWithQuer
 		"",
 		port,
 		httpPathWithQuery,
-		false,
 		&timestampLowerBound,
 	)
 	Expect(spansFound).To(BeFalse(), fmt.Sprintf("%s: expected to find no matching HTTP server span", workloadType))
@@ -1249,26 +1253,36 @@ func sendRequestAndFindMatchingSpans(
 	workloadType string,
 	port int,
 	httpPathWithQuery string,
-	requestsMustNotFail bool,
 	timestampLowerBound *time.Time,
 ) bool {
-	sendRequest(g, isBatch, port, httpPathWithQuery, requestsMustNotFail)
+	if !isBatch {
+		sendRequest(g, port, httpPathWithQuery)
+	}
 	return fileHasMatchingSpan(g, workloadType, httpPathWithQuery, timestampLowerBound)
 }
 
-func sendRequest(g Gomega, isBatch bool, port int, httpPathWithQuery string, mustNotFail bool) {
-	if !isBatch {
-		response, err := http.Get(fmt.Sprintf("http://localhost:%d%s", port, httpPathWithQuery))
-		if mustNotFail {
-			g.Expect(err).NotTo(HaveOccurred())
-			defer func() {
-				_ = response.Body.Close()
-			}()
-			responseBody, err := io.ReadAll(response.Body)
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(responseBody).To(ContainSubstring("We make Observability easy for every developer."))
-		}
+func sendRequest(g Gomega, port int, httpPathWithQuery string) {
+	url := fmt.Sprintf("http://localhost:%d%s", port, httpPathWithQuery)
+	client := http.Client{
+		Timeout: 500 * time.Millisecond,
 	}
+	response, err := client.Get(url)
+	if err != nil {
+		fmt.Fprintf(GinkgoWriter, "http request to %s did not succeed: %s\n", url, err.Error())
+	}
+	g.Expect(err).NotTo(HaveOccurred())
+	defer func() {
+		_ = response.Body.Close()
+	}()
+	responseBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		fmt.Fprintf(GinkgoWriter, "could not read http response from %s: %s\n", url, err.Error())
+	}
+	g.Expect(err).NotTo(HaveOccurred())
+	if err == nil {
+		fmt.Fprintf(GinkgoWriter, "http request successful to %s, response was: %s\n", url, responseBody)
+	}
+	g.Expect(responseBody).To(ContainSubstring("We make Observability easy for every developer."))
 }
 
 func fileHasMatchingSpan(g Gomega, workloadType string, httpPathWithQuery string, timestampLowerBound *time.Time) bool {
