@@ -31,6 +31,7 @@ import (
 	backendconnectionv1alpha1 "github.com/dash0hq/dash0-operator/api/backendconnection/v1alpha1"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
 	backendconnectioncontroller "github.com/dash0hq/dash0-operator/internal/backendconnection/controller"
+	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
 	dash0controller "github.com/dash0hq/dash0-operator/internal/dash0/controller"
 	dash0removal "github.com/dash0hq/dash0-operator/internal/dash0/removal"
 	dash0util "github.com/dash0hq/dash0-operator/internal/dash0/util"
@@ -274,10 +275,14 @@ func startDash0Controller(
 }
 
 func startBackendConnectionController(mgr manager.Manager, clientSet *kubernetes.Clientset) error {
+	oTelColResourceManager := &otelcolresources.OTelColResourceManager{
+		Client: mgr.GetClient(),
+	}
 	if err := (&backendconnectioncontroller.BackendConnectionReconciler{
-		Client:    mgr.GetClient(),
-		ClientSet: clientSet,
-		Scheme:    mgr.GetScheme(),
+		Client:                 mgr.GetClient(),
+		ClientSet:              clientSet,
+		Scheme:                 mgr.GetScheme(),
+		OTelColResourceManager: oTelColResourceManager,
 	}).SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the BackendConnection reconciler: %w", err)
 	}

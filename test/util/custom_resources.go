@@ -315,10 +315,6 @@ func LoadBackendConnectionResourceByName(
 	return backendConnectionResource
 }
 
-func RemoveBackendConnectionResource(ctx context.Context, k8sClient client.Client) {
-	RemoveBackendConnectionResourceByName(ctx, k8sClient, BackendConnectionResourceQualifiedName, true)
-}
-
 func RemoveBackendConnectionResourceByName(
 	ctx context.Context,
 	k8sClient client.Client,

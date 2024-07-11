@@ -79,17 +79,17 @@ func (bc *BackendConnection) SetAvailableConditionToUnknown() {
 		})
 }
 
-func (bc *BackendConnection) EnsureResourceIsMarkedAsAvailable(isNew bool, isChanged bool) {
+func (bc *BackendConnection) EnsureResourceIsMarkedAsAvailable(resourcesHaveBeenCreated bool, resourcesHaveBeenUpdated bool) {
 	// If the available status is already true, the status condition is not updated, except for Reason, Message and
 	// ObservedGeneration timestamp. In particular, LastTransitionTime is not updated. Thus, this operation is
 	// effectively idempotent.
 	var message string
-	if isNew {
-		message = "A Dash0 backend connection has been created in this namespace."
-	} else if isChanged {
-		message = "The Dash0 backend connection in this namespace has been updated."
+	if resourcesHaveBeenCreated {
+		message = "Resources for the Dash0 backend connection have been created in this namespace."
+	} else if resourcesHaveBeenUpdated {
+		message = "Resources for the Dash0 backend connection have been updated in this namespace."
 	} else {
-		message = "There already was an up-to-date Dash0 backend connection in this namespace."
+		message = "The resources for the Dash0 backend connection in this namespace are up to date."
 	}
 	meta.SetStatusCondition(
 		&bc.Status.Conditions,

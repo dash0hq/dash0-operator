@@ -1,7 +1,4 @@
-// SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
-// SPDX-License-Identifier: Apache-2.0
-
-package controller
+package otelcolresources
 
 import (
 	"fmt"
@@ -9,7 +6,6 @@ import (
 	"runtime"
 	"testing"
 
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -19,21 +15,17 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	backendconnectionv1alpha1 "github.com/dash0hq/dash0-operator/api/backendconnection/v1alpha1"
-	//+kubebuilder:scaffold:imports
 )
 
 var (
 	cfg       *rest.Config
 	k8sClient client.Client
-	clientset *kubernetes.Clientset
 	testEnv   *envtest.Environment
 )
 
-func TestControllers(t *testing.T) {
+func TestOtelcolresources(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Controller Suite")
+	RunSpecs(t, "OpenTelemetry Collector Resources Suite")
 }
 
 var _ = BeforeSuite(func() {
@@ -43,35 +35,18 @@ var _ = BeforeSuite(func() {
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "..", "config", "crd", "bases")},
 		ErrorIfCRDPathMissing: true,
-
-		// The BinaryAssetsDirectory is only required if you want to run the tests directly
-		// without call the makefile target test. If not informed it will look for the
-		// default path defined in controller-runtime which is /usr/local/kubebuilder/.
-		// Note that you must have the required binaries setup under the bin directory to perform
-		// the tests directly. When we run make test it will be setup and used automatically.
 		BinaryAssetsDirectory: filepath.Join("..", "..", "..", "bin", "k8s",
 			fmt.Sprintf("1.28.3-%s-%s", runtime.GOOS, runtime.GOARCH)),
 	}
 
 	var err error
-	// cfg is defined in this file globally.
 	cfg, err = testEnv.Start()
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
 
-	err = backendconnectionv1alpha1.AddToScheme(scheme.Scheme)
-	Expect(err).NotTo(HaveOccurred())
-
-	//+kubebuilder:scaffold:scheme
-
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
-
-	clientset, err = kubernetes.NewForConfig(cfg)
-	Expect(err).NotTo(HaveOccurred())
-	Expect(clientset).NotTo(BeNil())
-
 })
 
 var _ = AfterSuite(func() {
