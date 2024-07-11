@@ -186,7 +186,7 @@ func startOperatorManager(
 		return err
 	}
 
-	err = startBackendConnectionController(mgr)
+	err = startBackendConnectionController(mgr, clientSet)
 	if err != nil {
 		return err
 	}
@@ -273,10 +273,11 @@ func startDash0Controller(
 	return nil
 }
 
-func startBackendConnectionController(mgr manager.Manager) error {
+func startBackendConnectionController(mgr manager.Manager, clientSet *kubernetes.Clientset) error {
 	if err := (&backendconnectioncontroller.BackendConnectionReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:    mgr.GetClient(),
+		ClientSet: clientSet,
+		Scheme:    mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the BackendConnection reconciler: %w", err)
 	}

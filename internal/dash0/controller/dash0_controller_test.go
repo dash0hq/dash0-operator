@@ -88,13 +88,13 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			It("should successfully run the first reconcile (no modifiable workloads exist)", func() {
 				By("Trigger reconcile request")
 				triggerReconcileRequest(ctx, reconciler, "")
-				verifyDash0ResourceIsAvailable(ctx)
+				verifyDash0CustomResourceIsAvailable(ctx)
 			})
 
 			It("should successfully run multiple reconciles (no modifiable workloads exist)", func() {
 				triggerReconcileRequest(ctx, reconciler, "First reconcile request")
 
-				firstAvailableStatusCondition := verifyDash0ResourceIsAvailable(ctx)
+				firstAvailableStatusCondition := verifyDash0CustomResourceIsAvailable(ctx)
 				originalTransitionTimestamp := firstAvailableStatusCondition.LastTransitionTime.Time
 
 				time.Sleep(50 * time.Millisecond)
@@ -102,7 +102,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				triggerReconcileRequest(ctx, reconciler, "Second reconcile request")
 
 				// The LastTransitionTime should not change with subsequent reconciliations.
-				secondAvailableCondition := verifyDash0ResourceIsAvailable(ctx)
+				secondAvailableCondition := verifyDash0CustomResourceIsAvailable(ctx)
 				Expect(secondAvailableCondition.LastTransitionTime.Time).To(Equal(originalTransitionTimestamp))
 			})
 
@@ -136,7 +136,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 						g,
 						resource1Available,
 						metav1.ConditionFalse,
-						"NewerDash0CustomResourceIsPresent",
+						"NewerResourceIsPresent",
 						"There is a more recently created Dash0 custom resource in this namespace, please remove all "+
 							"but one resource instance.",
 					)
@@ -144,14 +144,14 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 						g,
 						resource1Degraded,
 						metav1.ConditionTrue,
-						"NewerDash0CustomResourceIsPresent",
+						"NewerResourceIsPresent",
 						"There is a more recently created Dash0 custom resource in this namespace, please remove all "+
 							"but one resource instance.",
 					)
-					verifyCondition(g, resource2Available, metav1.ConditionFalse, "NewerDash0CustomResourceIsPresent",
+					verifyCondition(g, resource2Available, metav1.ConditionFalse, "NewerResourceIsPresent",
 						"There is a more recently created Dash0 custom resource in this namespace, please remove all "+
 							"but one resource instance.")
-					verifyCondition(g, resource2Degraded, metav1.ConditionTrue, "NewerDash0CustomResourceIsPresent",
+					verifyCondition(g, resource2Degraded, metav1.ConditionTrue, "NewerResourceIsPresent",
 						"There is a more recently created Dash0 custom resource in this namespace, please remove all "+
 							"but one resource instance.")
 
@@ -206,7 +206,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 				triggerReconcileRequest(ctx, reconciler, "")
 
-				verifyDash0ResourceIsAvailable(ctx)
+				verifyDash0CustomResourceIsAvailable(ctx)
 				VerifyFailedInstrumentationEvent(
 					ctx,
 					clientset,
@@ -229,7 +229,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 				// We do not instrument existing pods via the controller, since they cannot be restarted.
 				// We only instrument new pods via the webhook.
-				verifyDash0ResourceIsAvailable(ctx)
+				verifyDash0CustomResourceIsAvailable(ctx)
 				VerifyNoEvents(ctx, clientset, namespace)
 				VerifyUnmodifiedPod(GetPod(ctx, k8sClient, namespace, name))
 			})
@@ -242,7 +242,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 				triggerReconcileRequest(ctx, reconciler, "")
 
-				verifyDash0ResourceIsAvailable(ctx)
+				verifyDash0CustomResourceIsAvailable(ctx)
 				VerifyNoEvents(ctx, clientset, namespace)
 				VerifyUnmodifiedPod(GetPod(ctx, k8sClient, namespace, name))
 			})
@@ -267,7 +267,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 				triggerReconcileRequest(ctx, reconciler, "")
 
-				verifyDash0ResourceIsAvailable(ctx)
+				verifyDash0CustomResourceIsAvailable(ctx)
 				VerifyUnmodifiedReplicaSet(GetReplicaSet(ctx, k8sClient, namespace, name))
 			})
 
@@ -1149,11 +1149,11 @@ func triggerReconcileRequestForName(
 }
 
 func verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx context.Context, namespace string, name string) {
-	verifyDash0ResourceIsAvailable(ctx)
+	verifyDash0CustomResourceIsAvailable(ctx)
 	VerifySuccessfulInstrumentationEvent(ctx, clientset, namespace, name, "controller")
 }
 
-func verifyDash0ResourceIsAvailable(ctx context.Context) *metav1.Condition {
+func verifyDash0CustomResourceIsAvailable(ctx context.Context) *metav1.Condition {
 	var availableCondition *metav1.Condition
 	By("Verifying status conditions")
 	Eventually(func(g Gomega) {
