@@ -11,9 +11,11 @@ import (
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	backendconnectionv1alpha1 "github.com/dash0hq/dash0-operator/api/backendconnection/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/util"
 	"github.com/dash0hq/dash0-operator/internal/common/controller"
 )
@@ -23,6 +25,7 @@ type BackendConnectionReconciler struct {
 	client.Client
 	ClientSet *kubernetes.Clientset
 	Scheme    *runtime.Scheme
+	*otelcolresources.OTelColResourceManager
 }
 
 const (
@@ -99,7 +102,7 @@ func (r *BackendConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		// The error has already been logged in checkImminentDeletionAndHandleFinalizers
 		return ctrl.Result{}, err
 	} else if runCleanupActions {
-		err = r.runCleanupActions(ctx, backendConnectionResource, &logger)
+		err = r.runCleanupActions(ctx, namespace, backendConnectionResource, &logger)
 		if err != nil {
 			// error has already been logged in runCleanupActions
 			return ctrl.Result{}, err
@@ -113,12 +116,17 @@ func (r *BackendConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, nil
 	}
 
-	isNew, isChanged, err := r.createOrUpdateOpenTelemetryCollectorResources(ctx, namespace, backendConnectionResource, &logger)
+	resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
+		r.OTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+			ctx,
+			namespace,
+			&logger,
+		)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	backendConnectionResource.EnsureResourceIsMarkedAsAvailable(isNew, isChanged)
+	backendConnectionResource.EnsureResourceIsMarkedAsAvailable(resourcesHaveBeenCreated, resourcesHaveBeenUpdated)
 	if err = r.Status().Update(ctx, backendConnectionResource); err != nil {
 		logger.Error(err, updateStatusFailedMessage)
 		return ctrl.Result{}, err
@@ -127,19 +135,27 @@ func (r *BackendConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	return ctrl.Result{}, nil
 }
 
-func (r *BackendConnectionReconciler) createOrUpdateOpenTelemetryCollectorResources(
+func (r *BackendConnectionReconciler) runCleanupActions(
 	ctx context.Context,
 	namespace string,
 	backendConnectionResource *backendconnectionv1alpha1.BackendConnection,
 	logger *logr.Logger,
-) (bool, bool, error) {
-	return true, false, nil
-}
-
-func (r *BackendConnectionReconciler) runCleanupActions(
-	ctx context.Context,
-	backendConnectionResource *backendconnectionv1alpha1.BackendConnection,
-	logger *logr.Logger,
 ) error {
+	if err := r.OTelColResourceManager.DeleteResources(ctx, namespace, logger); err != nil {
+		logger.Error(err, "Failed to delete the OpenTelemetry collector resources, requeuing reconcile request.")
+		return err
+	}
+
+	backendConnectionResource.EnsureResourceIsMarkedAsAboutToBeDeleted()
+	if err := r.Status().Update(ctx, backendConnectionResource); err != nil {
+		logger.Error(err, updateStatusFailedMessage)
+		return err
+	}
+
+	controllerutil.RemoveFinalizer(backendConnectionResource, backendconnectionv1alpha1.FinalizerId)
+	if err := r.Update(ctx, backendConnectionResource); err != nil {
+		logger.Error(err, "Failed to remove the finalizer from the backend connection resource, requeuing reconcile request.")
+		return err
+	}
 	return nil
 }

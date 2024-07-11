@@ -73,7 +73,7 @@ func CheckIfNamespaceExists(
 //     expected to ignore the bool result and requeue the reconcile request.
 func VerifyUniqueCustomResourceExists(
 	ctx context.Context,
-	k8sclient client.Client,
+	k8sClient client.Client,
 	statusWriter client.SubResourceWriter,
 	customResourceReceiver CustomResource,
 	updateStatusFailedMessage string,
@@ -82,7 +82,7 @@ func VerifyUniqueCustomResourceExists(
 ) (CustomResource, bool, error) {
 	customResource, stopReconcile, err := verifyThatCustomResourceExists(
 		ctx,
-		k8sclient,
+		k8sClient,
 		req,
 		customResourceReceiver,
 		&logger,
@@ -93,7 +93,7 @@ func VerifyUniqueCustomResourceExists(
 	stopReconcile, err =
 		verifyThatCustomResourceIsUniqe(
 			ctx,
-			k8sclient,
+			k8sClient,
 			statusWriter,
 			req,
 			customResource,
@@ -109,13 +109,13 @@ func VerifyUniqueCustomResourceExists(
 // the error and returns (nil, true, err) and expects the caller to requeue the reconciliation.
 func verifyThatCustomResourceExists(
 	ctx context.Context,
-	k8sclient client.Client,
+	k8sClient client.Client,
 	req ctrl.Request,
 	customResourceReceiver CustomResource,
 	logger *logr.Logger,
 ) (CustomResource, bool, error) {
 	resource := customResourceReceiver.GetReceiver()
-	err := k8sclient.Get(ctx, req.NamespacedName, resource)
+	err := k8sClient.Get(ctx, req.NamespacedName, resource)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			logger.Info(
@@ -143,7 +143,7 @@ func verifyThatCustomResourceExists(
 // expected to ignore the bool result and requeue the reconcile request.
 func verifyThatCustomResourceIsUniqe(
 	ctx context.Context,
-	k8sclient client.Client,
+	k8sClient client.Client,
 	statusWriter client.SubResourceWriter,
 	req ctrl.Request,
 	customResource CustomResource,
@@ -151,7 +151,7 @@ func verifyThatCustomResourceIsUniqe(
 	logger *logr.Logger,
 ) (bool, error) {
 	allCustomResourcesInNamespace := customResource.GetListReceiver()
-	if err := k8sclient.List(
+	if err := k8sClient.List(
 		ctx,
 		allCustomResourcesInNamespace,
 		&client.ListOptions{
@@ -269,7 +269,7 @@ func updateResourceStatus(
 
 func CheckImminentDeletionAndHandleFinalizers(
 	ctx context.Context,
-	k8sclient client.Client,
+	k8sClient client.Client,
 	customResource CustomResource,
 	finalizerId string,
 	logger *logr.Logger,
@@ -278,7 +278,7 @@ func CheckImminentDeletionAndHandleFinalizers(
 	if !isMarkedForDeletion {
 		err := addFinalizerIfNecessary(
 			ctx,
-			k8sclient,
+			k8sClient,
 			customResource,
 			finalizerId,
 		)
@@ -303,13 +303,13 @@ func CheckImminentDeletionAndHandleFinalizers(
 
 func addFinalizerIfNecessary(
 	ctx context.Context,
-	k8sclient client.Client,
+	k8sClient client.Client,
 	customResource CustomResource,
 	finalizerId string,
 ) error {
 	finalizerHasBeenAdded := controllerutil.AddFinalizer(customResource.Get(), finalizerId)
 	if finalizerHasBeenAdded {
-		return k8sclient.Update(ctx, customResource.Get())
+		return k8sClient.Update(ctx, customResource.Get())
 	}
 	// The resource already had the finalizer, no update necessary.
 	return nil
