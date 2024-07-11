@@ -9,9 +9,7 @@ import (
 	"reflect"
 
 	"github.com/go-logr/logr"
-	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -21,36 +19,19 @@ type OTelColResourceManager struct {
 	client.Client
 }
 
-func (m *OTelColResourceManager) AssembleDesiredState(namespace string) []client.Object {
-	return []client.Object{
-		&corev1.ConfigMap{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "ConfigMap",
-				APIVersion: "v1",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				// TODO name is configurable to some degree?
-				Name:      "dash0-opentelemetry-collector-daemonset",
-				Namespace: namespace,
-				Labels: map[string]string{
-					// TODO more labels
-					"dash0.com/enable": "false",
-				},
-				// Annotations: TODO do we need annotations?
-			},
-			Data: map[string]string{
-				"collector.yaml": "{}",
-			},
-		},
-	}
-}
-
 func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	ctx context.Context,
 	namespace string,
 	logger *logr.Logger,
 ) (bool, bool, error) {
-	desiredState := m.AssembleDesiredState(namespace)
+	desiredState, err := assembleDesiredState(
+		namespace,
+		"dash0-operator",
+		"0.0.1",
+	)
+	if err != nil {
+		return false, false, err
+	}
 	resourcesHaveBeenCreated := false
 	resourcesHaveBeenUpdated := false
 	for _, desiredResource := range desiredState {
@@ -172,8 +153,15 @@ func (m *OTelColResourceManager) DeleteResources(
 	namespace string,
 	logger *logr.Logger,
 ) error {
+	allObjects, err := assembleDesiredState(
+		namespace,
+		"dash0-operator",
+		"0.0.1",
+	)
+	if err != nil {
+		return err
+	}
 	var allErrors []error
-	allObjects := m.AssembleDesiredState(namespace)
 	for _, object := range allObjects {
 		logger.Info(
 			"deleting resource",

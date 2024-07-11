@@ -21,7 +21,7 @@ import (
 
 var (
 	namespace             = TestNamespaceName
-	expectedConfigMapName = "dash0-opentelemetry-collector-daemonset"
+	expectedConfigMapName = "dash0-operator-opentelemetry-collector-agent"
 
 	testObject = &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
@@ -99,7 +99,7 @@ var _ = Describe("The BackendConnection Controller", Ordered, func() {
 	})
 
 	Describe("when creating all OpenTelemetry collector resources", func() {
-		It("should create a config map", func() {
+		It("should create the resources", func() {
 			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(ctx, namespace, &logger)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resourcesHaveBeenCreated).To(BeTrue())
@@ -109,7 +109,7 @@ var _ = Describe("The BackendConnection Controller", Ordered, func() {
 	})
 
 	Describe("when updating all OpenTelemetry collector resources", func() {
-		It("should update the config map", func() {
+		It("should update the resources", func() {
 			err := k8sClient.Create(ctx, &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      expectedConfigMapName,
@@ -151,7 +151,7 @@ var _ = Describe("The BackendConnection Controller", Ordered, func() {
 	})
 
 	Describe("when deleting all OpenTelemetry collector resources", func() {
-		It("should delete the config map", func() {
+		It("should delete the resources", func() {
 			// create resources (so there is something to delete)
 			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(ctx, namespace, &logger)
 			Expect(err).ToNot(HaveOccurred())

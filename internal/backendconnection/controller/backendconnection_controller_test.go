@@ -28,7 +28,7 @@ import (
 
 var (
 	namespace             = TestNamespaceName
-	expectedConfigMapName = "dash0-opentelemetry-collector-daemonset"
+	expectedConfigMapName = "dash0-operator-opentelemetry-collector-agent"
 
 	timeout         = 10 * time.Second
 	pollingInterval = 50 * time.Millisecond
@@ -163,7 +163,7 @@ var _ = Describe("The BackendConnection Controller", Ordered, func() {
 		})
 
 		Describe("when creating OpenTelemetry collector resources", func() {
-			It("should create a config map", func() {
+			It("should create all resources", func() {
 				triggerReconcileRequest(ctx, reconciler)
 				verifyConfigMap(ctx)
 				verifyResourcesHaveBeenCreated(ctx)
@@ -171,7 +171,7 @@ var _ = Describe("The BackendConnection Controller", Ordered, func() {
 		})
 
 		Describe("when updating OpenTelemetry collector resources", func() {
-			It("should update the config map", func() {
+			It("should update the resources", func() {
 				err := k8sClient.Create(ctx, &corev1.ConfigMap{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      expectedConfigMapName,
@@ -207,7 +207,7 @@ var _ = Describe("The BackendConnection Controller", Ordered, func() {
 		})
 
 		Describe("when cleaning up OpenTelemetry collector resources when the resource is deleted", func() {
-			It("should delete the config map", func() {
+			It("should delete the resources", func() {
 				// We trigger one reconcile request before creating any workload and before deleting the backend connection
 				// resource, just to create the OTel collector resources and to add the finalizer to the backend connection
 				// resource.
