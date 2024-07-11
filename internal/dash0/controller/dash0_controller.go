@@ -8,14 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"sort"
 
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
@@ -26,6 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/common/controller"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 	"github.com/dash0hq/dash0-operator/internal/dash0/workloads"
 )
@@ -121,7 +119,15 @@ func (r *Dash0Reconciler) InstrumentAtStartup() {
 				Name:      dash0CustomResource.Name,
 			},
 		}
-		_, stop, err := r.verifyUniqueDash0CustomResourceExists(ctx, pseudoReconcileRequest, logger)
+		_, stop, err := controller.VerifyUniqueCustomResourceExists(
+			ctx,
+			r.Client,
+			r.Status(),
+			&dash0v1alpha1.Dash0{},
+			updateStatusFailedMessage,
+			pseudoReconcileRequest,
+			logger,
+		)
 		if err != nil || stop {
 			// if an error occurred, it has already been logged in verifyUniqueDash0CustomResourceExists
 			continue
@@ -167,9 +173,9 @@ func (r *Dash0Reconciler) InstrumentAtStartup() {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.16.3/pkg/reconcile
 func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("Processing reconcile request")
+	logger.Info("processing reconcile request for Dash0 custom resource")
 
-	namespaceStillExists, err := r.checkIfNamespaceExists(ctx, req.Namespace, &logger)
+	namespaceStillExists, err := controller.CheckIfNamespaceExists(ctx, r.ClientSet, req.Namespace, &logger)
 	if err != nil {
 		// The error has already been logged in checkIfNamespaceExists.
 		return ctrl.Result{}, err
@@ -179,26 +185,57 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{}, nil
 	}
 
-	dash0CustomResource, stopReconcile, err := r.verifyUniqueDash0CustomResourceExists(ctx, req, logger)
+	customResource, stopReconcile, err := controller.VerifyUniqueCustomResourceExists(
+		ctx,
+		r.Client,
+		r.Status(),
+		&dash0v1alpha1.Dash0{},
+		updateStatusFailedMessage,
+		req,
+		logger,
+	)
 	if err != nil {
 		return ctrl.Result{}, err
 	} else if stopReconcile {
 		return ctrl.Result{}, nil
 	}
+	dash0CustomResource := customResource.(*dash0v1alpha1.Dash0)
 
-	isFirstReconcile, err := r.initStatusConditions(ctx, dash0CustomResource, &logger)
+	isFirstReconcile, err := controller.InitStatusConditions(
+		ctx,
+		r.Status(),
+		dash0CustomResource,
+		dash0CustomResource.Status.Conditions,
+		string(util.ConditionTypeAvailable),
+		&logger,
+	)
 	if err != nil {
 		// The error has already been logged in initStatusConditions
 		return ctrl.Result{}, err
 	}
 
-	isMarkedForDeletion, err := r.checkImminentDeletionAndHandleFinalizers(ctx, dash0CustomResource, &logger)
+	isMarkedForDeletion, runCleanupActions, err := controller.CheckImminentDeletionAndHandleFinalizers(
+		ctx,
+		r.Client,
+		dash0CustomResource,
+		dash0v1alpha1.FinalizerId,
+		&logger,
+	)
 	if err != nil {
 		// The error has already been logged in checkImminentDeletionAndHandleFinalizers
 		return ctrl.Result{}, err
-	} else if isMarkedForDeletion {
+	} else if runCleanupActions {
+		err = r.runCleanupActions(ctx, dash0CustomResource, &logger)
+		if err != nil {
+			// error has already been logged in runCleanupActions
+			return ctrl.Result{}, err
+		}
 		// The Dash0 custom resource is slated for deletion, all cleanup actions (like reverting instrumented resources)
 		// have been processed, no further reconciliation is necessary.
+		return ctrl.Result{}, nil
+	} else if isMarkedForDeletion {
+		// The Dash0 custom resource is slated for deletion, the finalizer has already been removed (which means all
+		// cleanup actions have been processed), no further reconciliation is necessary.
 		return ctrl.Result{}, nil
 	}
 
@@ -212,159 +249,12 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	}
 
 	dash0CustomResource.EnsureResourceIsMarkedAsAvailable()
-	if err := r.Status().Update(ctx, dash0CustomResource); err != nil {
+	if err = r.Status().Update(ctx, dash0CustomResource); err != nil {
 		logger.Error(err, updateStatusFailedMessage)
 		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
-}
-
-func (r *Dash0Reconciler) checkIfNamespaceExists(
-	ctx context.Context,
-	namespace string,
-	logger *logr.Logger,
-) (bool, error) {
-	_, err := r.ClientSet.CoreV1().Namespaces().Get(ctx, namespace, metav1.GetOptions{})
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return false, nil
-		} else {
-			logger.Error(err, "Failed to fetch the current namespace, requeuing reconcile request.")
-			return true, err
-		}
-	}
-	return true, nil
-}
-
-func (r *Dash0Reconciler) verifyUniqueDash0CustomResourceExists(
-	ctx context.Context,
-	req ctrl.Request,
-	logger logr.Logger,
-) (*dash0v1alpha1.Dash0, bool, error) {
-	dash0CustomResource, stopReconcile, err := r.verifyThatDash0CustomResourceExists(ctx, req, &logger)
-	if err != nil || stopReconcile {
-		return dash0CustomResource, stopReconcile, err
-	}
-	stopReconcile, err = r.verifyThatDash0CustomResourceIsUniqe(ctx, req, dash0CustomResource, &logger)
-	return dash0CustomResource, stopReconcile, err
-}
-
-// verifyThatDash0CustomResourceExists loads the Dash0 custom resource that the current reconcile request applies to.
-// If that resource does not exist, the function logs a message and returns (nil, true, nil) and expects the caller
-// to stop the reconciliation (without requeing it). If any other error occurs while trying to fetch the resource, the
-// function logs the error and returns (nil, true, err) and expects the caller to requeue the reconciliation.
-func (r *Dash0Reconciler) verifyThatDash0CustomResourceExists(
-	ctx context.Context,
-	req ctrl.Request,
-	logger *logr.Logger,
-) (*dash0v1alpha1.Dash0, bool, error) {
-	dash0CustomResource := &dash0v1alpha1.Dash0{}
-	err := r.Get(ctx, req.NamespacedName, dash0CustomResource)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			logger.Info(
-				"The Dash0 custom resource has not been found, either it hasn't been installed or it has been " +
-					"deleted. Ignoring the reconcile request.")
-			// stop the reconciliation, and do not requeue it (that is, return (ctrl.Result{}, nil))
-			return nil, true, nil
-		}
-		logger.Error(err, "Failed to get the Dash0 custom resource, requeuing reconcile request.")
-		// requeue the reconciliation (that is, return (ctrl.Result{}, err))
-		return nil, true, err
-	}
-	return dash0CustomResource, false, nil
-}
-
-// verifyThatDash0CustomResourceIsUniqe checks whether there are any additional Dash0 custom resources in the namespace,
-// besides the one that the current reconcile request applies to.
-func (r *Dash0Reconciler) verifyThatDash0CustomResourceIsUniqe(
-	ctx context.Context,
-	req ctrl.Request,
-	dash0CustomResource *dash0v1alpha1.Dash0,
-	logger *logr.Logger,
-) (bool, error) {
-	allDash0CustomResourcesInNamespace := &dash0v1alpha1.Dash0List{}
-	if err := r.List(
-		ctx,
-		allDash0CustomResourcesInNamespace,
-		&client.ListOptions{
-			Namespace: req.Namespace,
-		},
-	); err != nil {
-		logger.Error(err, "Failed to list all Dash0 custom resources, requeuing reconcile request.")
-		return true, err
-	}
-
-	if len(allDash0CustomResourcesInNamespace.Items) > 1 {
-		// There are multiple instances of the Dash0 custom resource in this namespace. If the resource that is
-		// currently being reconciled is the one that has been most recently created, we assume that this is the source
-		// of truth in terms of configuration settings etc., and we ignore the other instances in this reconcile request
-		// (they will be handled when they are being reconciled). If the currently reconciled resource is not the most
-		// recent one, we set its status to degraded.
-		sort.Sort(SortByCreationTimestamp(allDash0CustomResourcesInNamespace.Items))
-		mostRecentResource := allDash0CustomResourcesInNamespace.Items[len(allDash0CustomResourcesInNamespace.Items)-1]
-		if mostRecentResource.UID == dash0CustomResource.UID {
-			logger.Info(
-				"At least one other Dash0 custom resource exists in this namespace. This Dash0 custom " +
-					"resource is the most recent one. The state of the other resource(s) will be set to degraded.")
-			// continue with the reconcile request for this resource, let the reconcile requests for the other offending
-			// resources handle the situation for those resources
-			return false, nil
-		} else {
-			logger.Info(
-				"At least one other Dash0 custom resource exists in this namespace, and at least one other Dash0 "+
-					"custom resource has been created more recently than this one. Setting the state of this resource "+
-					"to degraded.",
-				"most recently created Dash0 custom resource",
-				fmt.Sprintf("%s (%s)", mostRecentResource.Name, mostRecentResource.UID),
-			)
-			dash0CustomResource.EnsureResourceIsMarkedAsDegraded(
-				"NewerDash0CustomResourceIsPresent",
-				"There is a more recently created Dash0 custom resource in this namespace, please remove all but one "+
-					"resource instance.",
-				"NewerDash0CustomResourceIsPresent",
-				"There is a more recently created Dash0 custom resource in this namespace, please remove all but one "+
-					"resource instance.",
-			)
-			if err := r.Status().Update(ctx, dash0CustomResource); err != nil {
-				logger.Error(err, updateStatusFailedMessage)
-				return true, err
-			}
-			// stop the reconciliation, and do not requeue it
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-func (r *Dash0Reconciler) initStatusConditions(
-	ctx context.Context,
-	dash0CustomResource *dash0v1alpha1.Dash0,
-	logger *logr.Logger,
-) (bool, error) {
-	firstReconcile := false
-	needsRefresh := false
-	if dash0CustomResource.Status.Conditions == nil || len(dash0CustomResource.Status.Conditions) == 0 {
-		dash0CustomResource.SetAvailableConditionToUnknown()
-		firstReconcile = true
-		needsRefresh = true
-	} else if availableCondition :=
-		meta.FindStatusCondition(
-			dash0CustomResource.Status.Conditions,
-			string(util.ConditionTypeAvailable),
-		); availableCondition == nil {
-		dash0CustomResource.SetAvailableConditionToUnknown()
-		needsRefresh = true
-	}
-	if needsRefresh {
-		err := r.refreshStatus(ctx, dash0CustomResource, logger)
-		if err != nil {
-			// The error has already been logged in refreshStatus
-			return firstReconcile, err
-		}
-	}
-	return firstReconcile, nil
 }
 
 func (r *Dash0Reconciler) checkSettingsAndInstrumentAllWorkloads(
@@ -397,18 +287,6 @@ func (r *Dash0Reconciler) checkSettingsAndInstrumentAllWorkloads(
 		return err
 	}
 
-	return nil
-}
-
-func (r *Dash0Reconciler) refreshStatus(
-	ctx context.Context,
-	dash0CustomResource *dash0v1alpha1.Dash0,
-	logger *logr.Logger,
-) error {
-	if err := r.Status().Update(ctx, dash0CustomResource); err != nil {
-		logger.Error(err, "Cannot update the status of the Dash0 custom resource.")
-		return err
-	}
 	return nil
 }
 
@@ -793,30 +671,6 @@ func (r *Dash0Reconciler) postProcessInstrumentation(
 	}
 }
 
-func (r *Dash0Reconciler) checkImminentDeletionAndHandleFinalizers(
-	ctx context.Context,
-	dash0CustomResource *dash0v1alpha1.Dash0,
-	logger *logr.Logger,
-) (bool, error) {
-	isMarkedForDeletion := dash0CustomResource.IsMarkedForDeletion()
-	if !isMarkedForDeletion {
-		err := r.addFinalizerIfNecessary(ctx, dash0CustomResource)
-		if err != nil {
-			logger.Error(err, "Failed to add finalizer to Dash0 custom resource, requeuing reconcile request.")
-			return isMarkedForDeletion, err
-		}
-	} else {
-		if controllerutil.ContainsFinalizer(dash0CustomResource, dash0v1alpha1.FinalizerId) {
-			err := r.runCleanupActions(ctx, dash0CustomResource, logger)
-			if err != nil {
-				// error has already been logged in runCleanupActions
-				return isMarkedForDeletion, err
-			}
-		}
-	}
-	return isMarkedForDeletion, nil
-}
-
 func (r *Dash0Reconciler) runCleanupActions(
 	ctx context.Context,
 	dash0CustomResource *dash0v1alpha1.Dash0,
@@ -851,18 +705,6 @@ func (r *Dash0Reconciler) runCleanupActions(
 		logger.Error(err, "Failed to remove the finalizer from the Dash0 custom resource, requeuing reconcile request.")
 		return err
 	}
-	return nil
-}
-
-func (r *Dash0Reconciler) addFinalizerIfNecessary(
-	ctx context.Context,
-	dash0CustomResource *dash0v1alpha1.Dash0,
-) error {
-	finalizerHasBeenAdded := controllerutil.AddFinalizer(dash0CustomResource, dash0v1alpha1.FinalizerId)
-	if finalizerHasBeenAdded {
-		return r.Update(ctx, dash0CustomResource)
-	}
-	// The resource already had the finalizer, no update necessary.
 	return nil
 }
 

@@ -6,12 +6,15 @@ package v1alpha1
 import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/dash0hq/dash0-operator/internal/common/controller"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 )
 
 const (
-	FinalizerId = "operator.dash0.com/finalizer"
+	FinalizerId = "operator.dash0.com/dash0-finalizer"
 )
 
 // Dash0Spec defines the desired state of the Dash0 custom resource.
@@ -147,16 +150,12 @@ func (d *Dash0) EnsureResourceIsMarkedAsAboutToBeDeleted() {
 	d.EnsureResourceIsMarkedAsDegraded(
 		"Dash0CustomResourceHasBeenRemoved",
 		"Dash0 is inactive in this namespace now.",
-		"Dash0CustomResourceHasBeenRemoved",
-		"Dash0 is about to be deleted.",
 	)
 }
 
 func (d *Dash0) EnsureResourceIsMarkedAsDegraded(
-	availableReason string,
-	availableMessage string,
-	degradedReason string,
-	degradedMessage string,
+	reason string,
+	message string,
 ) {
 	// If the available status is already false, the status condition is not updated, except for Reason, Message and
 	// ObservedGeneration timestamp. In particular, LastTransitionTime is not updated. Thus, this operation is
@@ -166,17 +165,53 @@ func (d *Dash0) EnsureResourceIsMarkedAsDegraded(
 		metav1.Condition{
 			Type:    string(util.ConditionTypeAvailable),
 			Status:  metav1.ConditionFalse,
-			Reason:  availableReason,
-			Message: availableMessage,
+			Reason:  reason,
+			Message: message,
 		})
 	meta.SetStatusCondition(
 		&d.Status.Conditions,
 		metav1.Condition{
 			Type:    string(util.ConditionTypeDegraded),
 			Status:  metav1.ConditionTrue,
-			Reason:  degradedReason,
-			Message: degradedMessage,
+			Reason:  reason,
+			Message: message,
 		})
+}
+
+func (d *Dash0) GetResourceTypeName() string {
+	return "Dash0CustomResource"
+}
+func (d *Dash0) GetNaturalLanguageResourceTypeName() string {
+	return "Dash0 custom resource"
+}
+func (d *Dash0) Get() client.Object {
+	return d
+}
+func (d *Dash0) GetName() string {
+	return d.Name
+}
+func (d *Dash0) GetUid() types.UID {
+	return d.UID
+}
+func (d *Dash0) GetCreationTimestamp() metav1.Time {
+	return d.CreationTimestamp
+}
+func (d *Dash0) GetReceiver() client.Object {
+	return &Dash0{}
+}
+func (d *Dash0) GetListReceiver() client.ObjectList {
+	return &Dash0List{}
+}
+func (d *Dash0) Items(list client.ObjectList) []client.Object {
+	items := list.(*Dash0List).Items
+	result := make([]client.Object, len(items))
+	for i := range items {
+		result[i] = &items[i]
+	}
+	return result
+}
+func (d *Dash0) At(list client.ObjectList, index int) controller.CustomResource {
+	return &list.(*Dash0List).Items[index]
 }
 
 //+kubebuilder:object:root=true
