@@ -21,7 +21,7 @@ import (
 
 var (
 	namespace             = TestNamespaceName
-	expectedConfigMapName = "dash0-operator-opentelemetry-collector-agent"
+	expectedConfigMapName = "unit-test-opentelemetry-collector-agent"
 
 	testObject = &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
@@ -53,7 +53,8 @@ var _ = Describe("The BackendConnection Controller", Ordered, func() {
 
 	BeforeEach(func() {
 		oTelColResourceManager = &OTelColResourceManager{
-			Client: k8sClient,
+			Client:                  k8sClient,
+			OTelCollectorNamePrefix: "unit-test",
 		}
 	})
 

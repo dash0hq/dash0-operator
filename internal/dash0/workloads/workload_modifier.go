@@ -243,7 +243,7 @@ func (m *ResourceModifier) addEnvironmentVariables(container *corev1.Container, 
 	m.addOrReplaceEnvironmentVariable(
 		container,
 		envVarDash0CollectorBaseUrlName,
-		m.instrumentationMetadata.OtelCollectorBaseUrl,
+		m.instrumentationMetadata.OTelCollectorBaseUrl,
 	)
 }
 

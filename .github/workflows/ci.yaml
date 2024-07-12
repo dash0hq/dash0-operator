@@ -44,13 +44,6 @@ jobs:
           # required updating manifests or generated code and these updates have not been done.
           git diff --exit-code
 
-      - name: install Helm dependencies
-        # Note: this needs to happen before the lint step, since helm lint requires chart dependencies to be installed.
-        working-directory: helm-chart/dash0-operator
-        run: |
-          helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts --force-update
-          helm dependency build
-
       - name: lint
         run: |
           make lint

@@ -28,7 +28,7 @@ import (
 
 var (
 	namespace             = TestNamespaceName
-	expectedConfigMapName = "dash0-operator-opentelemetry-collector-agent"
+	expectedConfigMapName = "unit-test-opentelemetry-collector-agent"
 
 	timeout         = 10 * time.Second
 	pollingInterval = 50 * time.Millisecond
@@ -49,7 +49,8 @@ var _ = Describe("The BackendConnection Controller", Ordered, func() {
 	BeforeEach(func() {
 		createdObjects = make([]client.Object, 0)
 		oTelColResourceManager := &otelcolresources.OTelColResourceManager{
-			Client: k8sClient,
+			Client:                  k8sClient,
+			OTelCollectorNamePrefix: "unit-test",
 		}
 		reconciler = &BackendConnectionReconciler{
 			Client:                 k8sClient,

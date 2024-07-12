@@ -101,11 +101,81 @@ cluster roles should match snapshot:
       - apiGroups:
           - operator.dash0.com
         resources:
+          - backendconnections/finalizers
+        verbs:
+          - update
+      - apiGroups:
+          - operator.dash0.com
+        resources:
           - backendconnections/status
         verbs:
           - get
           - patch
           - update
+      - apiGroups:
+          - ""
+        resources:
+          - configmaps
+          - serviceaccounts
+          - services
+        verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+      - apiGroups:
+          - rbac.authorization.k8s.io
+        resources:
+          - clusterroles
+          - clusterrolebindings
+        verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+      - apiGroups:
+          - apps
+        resources:
+          - daemonsets
+        verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+      - apiGroups:
+          - ""
+        resources:
+          - pods
+          - namespaces
+        verbs:
+          - get
+          - watch
+          - list
+      - apiGroups:
+          - apps
+        resources:
+          - replicasets
+        verbs:
+          - get
+          - watch
+          - list
+      - apiGroups:
+          - extensions
+        resources:
+          - replicasets
+        verbs:
+          - get
+          - watch
+          - list
   2: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRole

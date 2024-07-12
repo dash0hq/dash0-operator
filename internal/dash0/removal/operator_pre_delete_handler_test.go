@@ -39,7 +39,7 @@ var (
 	}
 )
 
-var _ = Describe("Uninstalling the Dash0 Kubernetes operator", func() {
+var _ = Describe("Uninstalling the Dash0 Kubernetes operator", Ordered, func() {
 
 	ctx := context.Background()
 	var (
@@ -47,6 +47,10 @@ var _ = Describe("Uninstalling the Dash0 Kubernetes operator", func() {
 		deployment1    *appv1.Deployment
 		deployment2    *appv1.Deployment
 	)
+
+	BeforeAll(func() {
+		EnsureDash0SystemNamespaceExists(ctx, k8sClient)
+	})
 
 	BeforeEach(func() {
 		createdObjects, deployment1 = setupNamespaceWithDash0CustomResourceAndWorkload(

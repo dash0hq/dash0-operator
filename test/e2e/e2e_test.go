@@ -22,6 +22,8 @@ const (
 )
 
 var (
+	workingDir string
+
 	certManagerHasBeenInstalled = false
 
 	originalKubeContext       string
@@ -53,7 +55,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 	BeforeAll(func() {
 		pwdOutput, err := Run(exec.Command("pwd"), false)
 		Expect(err).NotTo(HaveOccurred())
-		workingDir := strings.TrimSpace(pwdOutput)
+		workingDir = strings.TrimSpace(pwdOutput)
 		fmt.Fprintf(GinkgoWriter, "workingDir: %s\n", workingDir)
 
 		kubeContextHasBeenChanged, originalKubeContext = SetKubeContext(kubeContextForTest)
@@ -90,10 +92,8 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 	AfterEach(func() {
 		if setupFinishedSuccessfully {
 			// As an alternative to undeploying all applications under test (deployment, daemonset, cronjob, ...) we
-			// could also delete the whole namespace for the application under test to after each test case get rid of
-			// all applications (and then recreate the namespace before each test). However, this would mean we also
-			// need to deploy the OpenTelemetry collector to the target namespace again for each test case, which would
-			// slow down tests a bit more.
+			// could also delete the whole namespace for the application under test after each test case to get rid of
+			// all applications (and then recreate the namespace before each test).
 			RemoveAllTestApplications(applicationUnderTestNamespace)
 			DeleteTestIdFiles()
 		}
@@ -102,7 +102,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 	Describe("controller", func() {
 		AfterEach(func() {
 			UndeployDash0CustomResource(applicationUnderTestNamespace)
-			UndeployOperatorAndCollector(operatorNamespace)
+			UndeployOperator(operatorNamespace)
 		})
 
 		type controllerTestWorkloadConfig struct {
@@ -145,15 +145,15 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					Expect(config.installWorkload(applicationUnderTestNamespace)).To(Succeed())
 				})
 
-				By("deploy the operator and the Dash0 custom resource")
-				DeployOperatorWithCollectorAndClearExportedTelemetry(
+				DeployOperator(
 					operatorNamespace,
 					operatorHelmChart,
 					operatorHelmChartUrl,
 					images,
 					true,
+					workingDir,
 				)
-				DeployDash0CustomResource(applicationUnderTestNamespace)
+				DeployDash0CustomResource(applicationUnderTestNamespace, operatorNamespace)
 
 				testIds := make(map[string]string)
 				runInParallelForAllWorkloadTypes(workloadConfigs, func(config controllerTestWorkloadConfig) {
@@ -187,15 +187,15 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			It("should label immutable jobs accordingly", func() {
 				By("installing the Node.js job")
 				Expect(InstallNodeJsJob(applicationUnderTestNamespace)).To(Succeed())
-				By("deploy the operator and the Dash0 custom resource")
-				DeployOperatorWithCollectorAndClearExportedTelemetry(
+				DeployOperator(
 					operatorNamespace,
 					operatorHelmChart,
 					operatorHelmChartUrl,
 					images,
 					true,
+					workingDir,
 				)
-				DeployDash0CustomResource(applicationUnderTestNamespace)
+				DeployDash0CustomResource(applicationUnderTestNamespace, operatorNamespace)
 				By("verifying that the Node.js job has been labelled by the controller and that an event has been emitted")
 				Eventually(func(g Gomega) {
 					VerifyLabels(g, applicationUnderTestNamespace, "job", false, images, "controller")
@@ -218,15 +218,15 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			It("should ignore existing pods", func() {
 				By("installing the Node.js pod")
 				Expect(InstallNodeJsPod(applicationUnderTestNamespace)).To(Succeed())
-				By("deploy the operator and the Dash0 custom resource")
-				DeployOperatorWithCollectorAndClearExportedTelemetry(
+				DeployOperator(
 					operatorNamespace,
 					operatorHelmChart,
 					operatorHelmChartUrl,
 					images,
 					true,
+					workingDir,
 				)
-				DeployDash0CustomResource(applicationUnderTestNamespace)
+				DeployDash0CustomResource(applicationUnderTestNamespace, operatorNamespace)
 				By("verifying that the Node.js pod has not been labelled")
 				Eventually(func(g Gomega) {
 					VerifyNoDash0Labels(g, applicationUnderTestNamespace, "pod")
@@ -239,7 +239,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				By("installing the Node.js deployment")
 				Expect(InstallNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
 
-				By("deploy the operator and the Dash0 custom resource")
 				initialImages := Images{
 					operator: ImageSpec{
 						repository: "operator-controller",
@@ -252,7 +251,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 						pullPolicy: "Never",
 					},
 				}
-				DeployOperatorWithCollectorAndClearExportedTelemetry(
+				DeployOperator(
 					operatorNamespace,
 					operatorHelmChart,
 					operatorHelmChartUrl,
@@ -261,8 +260,9 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					// if it is the same image content).
 					initialImages,
 					false,
+					workingDir,
 				)
-				DeployDash0CustomResource(applicationUnderTestNamespace)
+				DeployDash0CustomResource(applicationUnderTestNamespace, operatorNamespace)
 
 				By("verifying that the Node.js deployment has been instrumented by the controller")
 				VerifyThatWorkloadHasBeenInstrumented(
@@ -299,12 +299,14 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 	Describe("webhook", func() {
 		BeforeAll(func() {
-			DeployOperatorWithCollectorAndClearExportedTelemetry(
+			By("deploy the Dash0 operator")
+			DeployOperator(
 				operatorNamespace,
 				operatorHelmChart,
 				operatorHelmChartUrl,
 				images,
 				true,
+				workingDir,
 			)
 
 			fmt.Fprint(GinkgoWriter, "waiting 10 seconds to give the webhook some time to get ready\n")
@@ -312,11 +314,11 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			UndeployOperatorAndCollector(operatorNamespace)
+			UndeployOperator(operatorNamespace)
 		})
 
 		BeforeEach(func() {
-			DeployDash0CustomResource(applicationUnderTestNamespace)
+			DeployDash0CustomResource(applicationUnderTestNamespace, operatorNamespace)
 		})
 
 		AfterEach(func() {
@@ -485,14 +487,14 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		AfterEach(func() {
 			UndeployDash0CustomResource(namespace1)
 			UndeployDash0CustomResource(namespace2)
-			UndeployOperatorAndCollector(operatorNamespace)
+			UndeployOperator(operatorNamespace)
 		})
 
 		AfterAll(func() {
 			By("removing test namespaces")
 			_ = RunAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", namespace1))
 			_ = RunAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", namespace2))
-			UndeployOperatorAndCollector(operatorNamespace)
+			UndeployOperator(operatorNamespace)
 		})
 
 		type removalTestNamespaceConfig struct {
@@ -525,16 +527,16 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					Expect(config.installWorkload(config.namespace)).To(Succeed())
 				})
 
-				By("deploy the operator and the Dash0 custom resource")
-				DeployOperatorWithCollectorAndClearExportedTelemetry(
+				DeployOperator(
 					operatorNamespace,
 					operatorHelmChart,
 					operatorHelmChartUrl,
 					images,
 					true,
+					workingDir,
 				)
 				runInParallelForAllWorkloadTypes(configs, func(config removalTestNamespaceConfig) {
-					DeployDash0CustomResource(config.namespace)
+					DeployDash0CustomResource(config.namespace, operatorNamespace)
 				})
 
 				testIds := make(map[string]string)
@@ -550,7 +552,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					)
 				})
 
-				UndeployOperatorAndCollector(operatorNamespace)
+				UndeployOperator(operatorNamespace)
 
 				runInParallelForAllWorkloadTypes(configs, func(config removalTestNamespaceConfig) {
 					VerifyThatInstrumentationHasBeenReverted(

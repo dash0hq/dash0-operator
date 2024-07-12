@@ -357,33 +357,38 @@ func RebuildDash0InstrumentationImage(instrumentationImage ImageSpec, buildImage
 			))).To(Succeed())
 }
 
-func DeployOperatorWithCollectorAndClearExportedTelemetry(
+func DeployOperator(
 	operatorNamespace string,
 	operatorHelmChart string,
 	operatorHelmChartUrl string,
 	images Images,
 	enableWebhook bool,
+	workingDir string,
 ) {
-	By("removing old captured telemetry files")
-	_ = os.Remove("test-resources/e2e-test-volumes/collector-received-data/traces.jsonl")
-	_ = os.Remove("test-resources/e2e-test-volumes/collector-received-data/metrics.jsonl")
-	_ = os.Remove("test-resources/e2e-test-volumes/collector-received-data/logs.jsonl")
-
-	ensureOtelCollectorHelmRepoIsInstalled()
 	ensureDash0OperatorHelmRepoIsInstalled(operatorHelmChart, operatorHelmChartUrl)
 
-	By("deploying the operator controller")
+	e2eTestExportDir :=
+		fmt.Sprintf(
+			"%s/test-resources/e2e-test-volumes/collector-received-data",
+			workingDir,
+		)
+	By(
+		fmt.Sprintf(
+			"deploying the operator controller to namespace %s with telemetry export directory %s",
+			operatorNamespace,
+			e2eTestExportDir,
+		))
 	arguments := []string{
 		"install",
 		"--namespace",
 		operatorNamespace,
 		"--create-namespace",
-		"--values",
-		"test-resources/helm/e2e.values.yaml",
 		"--set", "operator.developmentMode=true",
 		"--set", "operator.disableSecretCheck=true",
 		"--set", "operator.disableOtlpEndpointCheck=true",
 		"--set", fmt.Sprintf("operator.enableWebhook=%t", enableWebhook),
+		"--set", "operator.e2eTestMode=true",
+		"--set", fmt.Sprintf("operator.e2eTestExportDir=%s", e2eTestExportDir),
 	}
 	arguments = addOptionalHelmParameters(arguments, operatorHelmChart, images)
 
@@ -392,19 +397,6 @@ func DeployOperatorWithCollectorAndClearExportedTelemetry(
 	fmt.Fprintf(GinkgoWriter, "output of helm install:\n%s", output)
 
 	verifyThatControllerPodIsRunning(operatorNamespace)
-
-	// verify that the OTel collector is also up and running
-	Expect(RunAndIgnoreOutput(
-		exec.Command("kubectl",
-			"rollout",
-			"status",
-			"daemonset",
-			fmt.Sprintf("%s-opentelemetry-collector-agent", operatorHelmReleaseName),
-			"--namespace",
-			operatorNamespace,
-			"--timeout",
-			"60s",
-		))).To(Succeed())
 }
 
 func addOptionalHelmParameters(arguments []string, operatorHelmChart string, images Images) []string {
@@ -427,27 +419,6 @@ func setIfNotEmpty(arguments []string, key string, value string) []string {
 		arguments = append(arguments, fmt.Sprintf("%s=%s", key, value))
 	}
 	return arguments
-}
-
-func ensureOtelCollectorHelmRepoIsInstalled() {
-	By("checking whether OpenTelemetry Helm charts have been installed")
-	repoList, err := Run(exec.Command("helm", "repo", "list"))
-	Expect(err).NotTo(HaveOccurred())
-	if !strings.Contains(repoList, "open-telemetry") {
-		fmt.Fprintf(GinkgoWriter, "The helm repo for open-telemetry has not been found, adding it now.\n")
-		Expect(RunAndIgnoreOutput(
-			exec.Command(
-				"helm",
-				"repo",
-				"add",
-				"open-telemetry",
-				"https://open-telemetry.github.io/opentelemetry-helm-charts",
-				"--force-update",
-			))).To(Succeed())
-		Expect(RunAndIgnoreOutput(exec.Command("helm", "repo", "update"))).To(Succeed())
-	} else {
-		fmt.Fprintf(GinkgoWriter, "The helm repo for open-telemetry is already installed.\n")
-	}
 }
 
 func ensureDash0OperatorHelmRepoIsInstalled(operatorHelmChart string, operatorHelmChartUrl string) {
@@ -500,7 +471,7 @@ func ensureDash0OperatorHelmRepoIsInstalled(operatorHelmChart string, operatorHe
 func verifyThatControllerPodIsRunning(operatorNamespace string) {
 	var controllerPodName string
 	By("validating that the controller-manager pod is running as expected")
-	verifyControllerUp := func() error {
+	verifyControllerUp := func(g Gomega) error {
 		cmd := exec.Command("kubectl", "get",
 			"pods", "-l", "control-plane=controller-manager",
 			"-o", "go-template={{ range .items }}"+
@@ -511,20 +482,20 @@ func verifyThatControllerPodIsRunning(operatorNamespace string) {
 		)
 
 		podOutput, err := Run(cmd, false)
-		Expect(err).NotTo(HaveOccurred())
+		g.Expect(err).NotTo(HaveOccurred())
 		podNames := GetNonEmptyLines(podOutput)
 		if len(podNames) != 1 {
 			return fmt.Errorf("expect 1 controller pods running, but got %d -- %s", len(podNames), podOutput)
 		}
 		controllerPodName = podNames[0]
-		Expect(controllerPodName).To(ContainSubstring("controller-manager"))
+		g.Expect(controllerPodName).To(ContainSubstring("controller-manager"))
 
 		cmd = exec.Command("kubectl", "get",
 			"pods", controllerPodName, "-o", "jsonpath={.status.phase}",
 			"-n", operatorNamespace,
 		)
 		status, err := Run(cmd)
-		Expect(err).NotTo(HaveOccurred())
+		g.Expect(err).NotTo(HaveOccurred())
 		if status != "Running" {
 			return fmt.Errorf("controller pod in %s status", status)
 		}
@@ -534,7 +505,28 @@ func verifyThatControllerPodIsRunning(operatorNamespace string) {
 	Eventually(verifyControllerUp, 120*time.Second, time.Second).Should(Succeed())
 }
 
-func UndeployOperatorAndCollector(operatorNamespace string) {
+func verifyThatDefaultBackendConnectionHasBeenCreatedAndOTelCollectorIsRunning(operatorNamespace string) {
+	By("validating that the default OpenTelemetry collector has been created and is running as expected")
+	verifyCollectorIsUp := func(g Gomega) {
+		// Even though this command comes with its own timeout, we still have to wrap it in an Eventually block, since
+		// it will fail outright if the daemonset has not been created yet.
+		g.Expect(RunAndIgnoreOutput(
+			exec.Command("kubectl",
+				"rollout",
+				"status",
+				"daemonset",
+				fmt.Sprintf("%s-opentelemetry-collector-agent", operatorHelmReleaseName),
+				"--namespace",
+				operatorNamespace,
+				"--timeout",
+				"20s",
+			))).To(Succeed())
+	}
+
+	Eventually(verifyCollectorIsUp, 60*time.Second, time.Second).Should(Succeed())
+}
+
+func UndeployOperator(operatorNamespace string) {
 	By("undeploying the operator controller")
 	Expect(
 		RunAndIgnoreOutput(
@@ -587,8 +579,6 @@ func UpgradeOperator(
 		"upgrade",
 		"--namespace",
 		operatorNamespace,
-		"--values",
-		"test-resources/helm/e2e.values.yaml",
 		"--set", "operator.developmentMode=true",
 		"--set", "operator.disableSecretCheck=true",
 		"--set", "operator.disableOtlpEndpointCheck=true",
@@ -605,21 +595,14 @@ func UpgradeOperator(
 
 	verifyThatControllerPodIsRunning(operatorNamespace)
 
-	// verify that the OTel collector is also up and running
-	Expect(RunAndIgnoreOutput(
-		exec.Command("kubectl",
-			"rollout",
-			"status",
-			"daemonset",
-			fmt.Sprintf("%s-opentelemetry-collector-agent", operatorHelmReleaseName),
-			"--namespace",
-			operatorNamespace,
-			"--timeout",
-			"60s",
-		))).To(Succeed())
+	verifyThatDefaultBackendConnectionHasBeenCreatedAndOTelCollectorIsRunning(operatorNamespace)
 }
 
-func DeployDash0CustomResource(namespace string) {
+func DeployDash0CustomResource(namespace string, operatorNamespace string) {
+	TruncateExportedTelemetry()
+	By(fmt.Sprintf(
+		"deploying the Dash0 custom resource to namespace %s, operator namespace is %s",
+		namespace, operatorNamespace))
 	Expect(
 		RunAndIgnoreOutput(exec.Command(
 			"kubectl",
@@ -629,9 +612,15 @@ func DeployDash0CustomResource(namespace string) {
 			"-f",
 			"test-resources/customresources/dash0/dash0.yaml",
 		))).To(Succeed())
+
+	// Deploying the dash0 custom resource will trigger creating the default backend connection resource, which will in
+	// turn trigger creating an OpenTelemetry collector instance.
+	verifyThatDefaultBackendConnectionHasBeenCreatedAndOTelCollectorIsRunning(operatorNamespace)
 }
 
 func UndeployDash0CustomResource(namespace string) {
+	TruncateExportedTelemetry()
+	By(fmt.Sprintf("Removing the Dash0 custom resource from namespace %s", namespace))
 	Expect(
 		RunAndIgnoreOutput(exec.Command(
 			"kubectl",
@@ -656,7 +645,13 @@ func VerifyDash0CustomResourceDoesNotExist(g Gomega, namespace string) {
 	))
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(output).NotTo(ContainSubstring(dash0CustomResourceName))
+}
 
+func TruncateExportedTelemetry() {
+	By("truncating old captured telemetry files")
+	_ = os.Truncate("test-resources/e2e-test-volumes/collector-received-data/traces.jsonl", 0)
+	_ = os.Truncate("test-resources/e2e-test-volumes/collector-received-data/metrics.jsonl", 0)
+	_ = os.Truncate("test-resources/e2e-test-volumes/collector-received-data/logs.jsonl", 0)
 }
 
 func RebuildNodeJsApplicationContainerImage() {

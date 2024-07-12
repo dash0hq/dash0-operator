@@ -5,8 +5,10 @@ package controller
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/go-logr/logr"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -15,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	backendconnectionv1alpha1 "github.com/dash0hq/dash0-operator/api/backendconnection/v1alpha1"
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/util"
 	"github.com/dash0hq/dash0-operator/internal/common/controller"
@@ -158,4 +161,92 @@ func (r *BackendConnectionReconciler) runCleanupActions(
 		return err
 	}
 	return nil
+}
+
+func EnsureBackendConnectionResourceInDash0OperatorNamespace(
+	ctx context.Context,
+	operatorNamespace string,
+	k8sClient client.Client,
+) error {
+	logger := log.FromContext(ctx)
+	list := &backendconnectionv1alpha1.BackendConnectionList{}
+	err := k8sClient.List(
+		ctx,
+		list,
+		&client.ListOptions{
+			Namespace: operatorNamespace,
+		},
+	)
+
+	if err != nil {
+		return err
+	}
+	if len(list.Items) > 0 {
+		// There is a backend connection resource in the dash0 namespace, all is peachy.
+		return nil
+	}
+
+	// There is no backend connection resource in the dash0 namespace yet, create one, so that a default OTel collector
+	// is created
+	logger.Info(fmt.Sprintf("Creating a backend connection resource in the Dash0 operator namespace %s.", operatorNamespace))
+	return k8sClient.Create(ctx, &backendconnectionv1alpha1.BackendConnection{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      backendconnectionv1alpha1.DefaultName,
+			Namespace: operatorNamespace,
+		},
+	})
+}
+
+func RemoveBackendConnectionIfNoDash0CustomResourceIsLeft(
+	ctx context.Context,
+	operatorNamespace string,
+	k8sClient client.Client,
+	dash0CustomResourceToBeDeleted *dash0v1alpha1.Dash0,
+) error {
+	logger := log.FromContext(ctx)
+	list := &dash0v1alpha1.Dash0List{}
+	err := k8sClient.List(
+		ctx,
+		list,
+	)
+
+	if err != nil {
+		logger.Error(err, "Error when checking whether there are any Dash0 custom resources left in the cluster.")
+		return err
+	}
+	if len(list.Items) > 1 {
+		// There is still more than one Dash0 custom resource in the namespace, do not remove the backend connection.
+		return nil
+	}
+
+	if len(list.Items) == 1 && list.Items[0].UID != dash0CustomResourceToBeDeleted.UID {
+		// There is only one Dash0 custom resource left, but it is *not* the one that is about to be deleted.
+		// Do not remove the backend connection.
+		logger.Info(
+			"There is only one Dash0 custom resource left, but it is not the one being deleted.",
+			"to be deleted/UID",
+			dash0CustomResourceToBeDeleted.UID,
+			"to be deleted/namespace",
+			dash0CustomResourceToBeDeleted.Namespace,
+			"to be deleted/name",
+			dash0CustomResourceToBeDeleted.Name,
+			"existing resource/UID",
+			list.Items[0].UID,
+			"existing resource/namespace",
+			list.Items[0].Namespace,
+			"existing resource/name",
+			list.Items[0].Name,
+		)
+		return nil
+	}
+
+	// Either there is no Dash0 custom resource left, or only one and that one is about to be deleted. Delete the
+	// backend connection.
+	logger.Info(fmt.Sprintf("Deleting the backend connection resource in the Dash0 operator namespace %s.", operatorNamespace))
+	return k8sClient.Delete(ctx, &backendconnectionv1alpha1.BackendConnection{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      backendconnectionv1alpha1.DefaultName,
+			Namespace: operatorNamespace,
+		},
+	})
 }

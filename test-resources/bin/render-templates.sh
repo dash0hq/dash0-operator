@@ -12,6 +12,3 @@ resource_types=( cronjob daemonset deployment job pod replicaset statefulset )
 for resource_type in "${resource_types[@]}"; do
   cat test-resources/node.js/express/${resource_type}.yaml.template | envsubst > test-resources/node.js/express/${resource_type}.yaml
 done
-
-cat test-resources/helm/e2e.values.yaml.template | envsubst > test-resources/helm/e2e.values.yaml
-

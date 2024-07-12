@@ -34,8 +34,6 @@ for resource_type in "${resource_types[@]}"; do
   test-resources/node.js/express/undeploy.sh ${target_namespace} ${resource_type}
 done
 
-test-resources/collector/undeploy.sh ${target_namespace}
-
 if [[ "${target_namespace}" != "default" ]] && [[ "${delete_namespace}" == "true" ]]; then
   kubectl delete ns ${target_namespace} --ignore-not-found
 fi
