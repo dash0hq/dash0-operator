@@ -77,25 +77,3 @@ securityContext:
     drop:
     - ALL
 {{- end }}
-
-{{- define "dash0-operator.openTelemetryCollectorBaseUrl" -}}
-{{- if .Values.operator.openTelemetryCollectorBaseUrl -}}
-{{- .Values.operator.openTelemetryCollectorBaseUrl -}}
-{{- else if (index .Values "opentelemetry-collector").enabled -}}
-{{- /*
-Note: This reuses an internal template of the opentelmetry-collector Helm chart, to make sure we render the
-exact same service name for the collector URL as the collector Helm chart does. This might need to be updated
-if the collector Helm chart changes its service name template. Since we control the version of the collector
-Helm chart we use and run rigorous tests when updating to a newer version, this approach should be safe.
-*/ -}}
-{{- $collectorSubChartValues :=
-   dict
-	 "Values" (index .Values "opentelemetry-collector")
-	 "Chart" (dict "Name" "opentelemetry-collector")
-	 "Release" .Release
--}}
-http://{{ include "opentelemetry-collector.fullname" $collectorSubChartValues }}.{{ .Release.Namespace }}.svc.cluster.local:4318
-{{- else -}}
-{{- fail "Error: The value \"opentelemetry-collector.enabled\" is false and the value \"operator.openTelemetryCollectorBaseUrl\" has not been provided. Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator#installation." -}}
-{{- end -}}
-{{- end -}}

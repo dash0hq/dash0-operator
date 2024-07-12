@@ -24,14 +24,15 @@ import (
 )
 
 const (
-	TestNamespaceName     = "test-namespace"
-	CronJobNamePrefix     = "cronjob"
-	DaemonSetNamePrefix   = "daemonset"
-	DeploymentNamePrefix  = "deployment"
-	JobNamePrefix         = "job"
-	PodNamePrefix         = "pod"
-	ReplicaSetNamePrefix  = "replicaset"
-	StatefulSetNamePrefix = "statefulset"
+	TestNamespaceName        = "test-namespace"
+	Dash0SystemNamespaceName = "dash0-system"
+	CronJobNamePrefix        = "cronjob"
+	DaemonSetNamePrefix      = "daemonset"
+	DeploymentNamePrefix     = "deployment"
+	JobNamePrefix            = "job"
+	PodNamePrefix            = "pod"
+	ReplicaSetNamePrefix     = "replicaset"
+	StatefulSetNamePrefix    = "statefulset"
 )
 
 var (
@@ -72,6 +73,13 @@ func EnsureTestNamespaceExists(
 	k8sClient client.Client,
 ) *corev1.Namespace {
 	return EnsureNamespaceExists(ctx, k8sClient, TestNamespaceName)
+}
+
+func EnsureDash0SystemNamespaceExists(
+	ctx context.Context,
+	k8sClient client.Client,
+) *corev1.Namespace {
+	return EnsureNamespaceExists(ctx, k8sClient, Dash0SystemNamespaceName)
 }
 
 func EnsureNamespaceExists(

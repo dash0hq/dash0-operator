@@ -36,8 +36,12 @@ deployment should match snapshot (default values):
               command:
                 - /manager
               env:
-                - name: DASH0_OTEL_COLLECTOR_BASE_URL
-                  value: http://RELEASE-NAME-opentelemetry-collector.NAMESPACE.svc.cluster.local:4318
+                - name: DASH0_OPERATOR_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+                - name: OTEL_COLLECTOR_NAME_PREFIX
+                  value: RELEASE-NAME
                 - name: DASH0_OPERATOR_IMAGE
                   value: ghcr.io/dash0hq/operator-controller:0.0.0
                 - name: DASH0_INIT_CONTAINER_IMAGE

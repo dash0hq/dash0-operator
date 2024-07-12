@@ -39,12 +39,27 @@ import (
 	//+kubebuilder:scaffold:imports
 )
 
+type environmentVariables struct {
+	operatorNamespace            string
+	oTelCollectorNamePrefix      string
+	operatorImage                string
+	initContainerImage           string
+	initContainerImagePullPolicy corev1.PullPolicy
+	e2eTestMode                  bool
+	e2eTestExportDir             string
+}
+
 const (
-	developmentModeEnvVarName              = "DASH0_DEVELOPMENT_MODE"
-	otelCollectorBaseUrlEnvVarName         = "DASH0_OTEL_COLLECTOR_BASE_URL"
+	operatorNamespaceEnvVarName            = "DASH0_OPERATOR_NAMESPACE"
+	oTelCollectorNamePrefixEnvVarName      = "OTEL_COLLECTOR_NAME_PREFIX"
 	operatorImageEnvVarName                = "DASH0_OPERATOR_IMAGE"
 	initContainerImageEnvVarName           = "DASH0_INIT_CONTAINER_IMAGE"
 	initContainerImagePullPolicyEnvVarName = "DASH0_INIT_CONTAINER_IMAGE_PULL_POLICY"
+
+	developmentModeEnvVarName  = "DASH0_DEVELOPMENT_MODE"
+	e2eTestModeEnvVarName      = "DASH0_DEV_E2E_TEST_MODE"
+	e2eTestExportDirEnvVarName = "DASH0_DEV_E2E_TEST_EXPORT_DIR"
+
 	//nolint
 	mandatoryEnvVarMissingMessageTemplate = "cannot start the Dash0 operator, the mandatory environment variable \"%s\" is missing"
 )
@@ -182,15 +197,39 @@ func startOperatorManager(
 		return fmt.Errorf("unable to create the clientset client")
 	}
 
-	err = startDash0Controller(mgr, clientSet)
+	envVars, err := readEnvironmentVariables()
+	if err != nil {
+		return err
+	}
+	setupLog.Info(
+		"configuration:",
+		"operator image",
+		envVars.operatorImage,
+		"init container image",
+		envVars.initContainerImage,
+		"init container image pull policy override",
+		envVars.initContainerImagePullPolicy,
+		"otel collector name prefix",
+		envVars.oTelCollectorNamePrefix,
+	)
+	if envVars.e2eTestMode {
+		setupLog.Info(
+			"!E2E test mode is active!",
+			"export dir",
+			envVars.e2eTestExportDir,
+		)
+	}
+
+	err = startDash0Controller(mgr, clientSet, envVars)
 	if err != nil {
 		return err
 	}
 
-	err = startBackendConnectionController(mgr, clientSet)
+	err = startBackendConnectionController(mgr, clientSet, envVars)
 	if err != nil {
 		return err
 	}
+
 	//+kubebuilder:scaffold:builder
 
 	if err = mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
@@ -208,41 +247,28 @@ func startOperatorManager(
 	return nil
 }
 
-func startDash0Controller(
-	mgr manager.Manager,
-	clientSet *kubernetes.Clientset,
-) error {
-	otelCollectorBaseUrl, operatorImage, initContainerImage, initContainerImagePullPolicy, err :=
-		readEnvironmentVariables()
-	if err != nil {
-		return err
-	}
-
-	setupLog.Info(
-		"configuration:",
-		"operator image",
-		operatorImage,
-		"init container image",
-		initContainerImage,
-		"init container image pull policy override",
-		initContainerImagePullPolicy,
-		"otel collector base url",
-		otelCollectorBaseUrl,
-	)
+func startDash0Controller(mgr manager.Manager, clientSet *kubernetes.Clientset, envVars *environmentVariables) error {
+	oTelCollectorBaseUrl :=
+		fmt.Sprintf(
+			"http://%s-opentelemetry-collector.%s.svc.cluster.local:4318",
+			envVars.oTelCollectorNamePrefix,
+			envVars.operatorNamespace)
 
 	images := dash0util.Images{
-		OperatorImage:                operatorImage,
-		InitContainerImage:           initContainerImage,
-		InitContainerImagePullPolicy: initContainerImagePullPolicy,
+		OperatorImage:                envVars.operatorImage,
+		InitContainerImage:           envVars.initContainerImage,
+		InitContainerImagePullPolicy: envVars.initContainerImagePullPolicy,
 	}
 
 	dash0Reconciler := &dash0controller.Dash0Reconciler{
-		Client:               mgr.GetClient(),
-		ClientSet:            clientSet,
-		Scheme:               mgr.GetScheme(),
-		Recorder:             mgr.GetEventRecorderFor("dash0-controller"),
-		Images:               images,
-		OtelCollectorBaseUrl: otelCollectorBaseUrl,
+		Client:                  mgr.GetClient(),
+		ClientSet:               clientSet,
+		Scheme:                  mgr.GetScheme(),
+		Recorder:                mgr.GetEventRecorderFor("dash0-controller"),
+		Images:                  images,
+		OTelCollectorNamePrefix: envVars.oTelCollectorNamePrefix,
+		OTelCollectorBaseUrl:    oTelCollectorBaseUrl,
+		OperatorNamespace:       envVars.operatorNamespace,
 	}
 	if err := dash0Reconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the Dash0 reconciler: %w", err)
@@ -254,7 +280,7 @@ func startDash0Controller(
 			Client:               mgr.GetClient(),
 			Recorder:             mgr.GetEventRecorderFor("dash0-webhook"),
 			Images:               images,
-			OtelCollectorBaseUrl: otelCollectorBaseUrl,
+			OTelCollectorBaseUrl: oTelCollectorBaseUrl,
 		}).SetupWebhookWithManager(mgr); err != nil {
 			return fmt.Errorf("unable to create the Dash0 webhook: %w", err)
 		}
@@ -274,9 +300,18 @@ func startDash0Controller(
 	return nil
 }
 
-func startBackendConnectionController(mgr manager.Manager, clientSet *kubernetes.Clientset) error {
+func startBackendConnectionController(
+	mgr manager.Manager,
+	clientSet *kubernetes.Clientset,
+	envVars *environmentVariables,
+) error {
 	oTelColResourceManager := &otelcolresources.OTelColResourceManager{
-		Client: mgr.GetClient(),
+		Client:                  mgr.GetClient(),
+		OTelCollectorNamePrefix: envVars.oTelCollectorNamePrefix,
+		E2eTestConfig: otelcolresources.E2eTestConfig{
+			Enabled:   envVars.e2eTestMode,
+			ExportDir: envVars.e2eTestExportDir,
+		},
 	}
 	if err := (&backendconnectioncontroller.BackendConnectionReconciler{
 		Client:                 mgr.GetClient(),
@@ -289,22 +324,22 @@ func startBackendConnectionController(mgr manager.Manager, clientSet *kubernetes
 	return nil
 }
 
-func readEnvironmentVariables() (string, string, string, corev1.PullPolicy, error) {
-	otelCollectorBaseUrl, isSet := os.LookupEnv(otelCollectorBaseUrlEnvVarName)
+func readEnvironmentVariables() (*environmentVariables, error) {
+	operatorNamespace, isSet := os.LookupEnv(operatorNamespaceEnvVarName)
 	if !isSet {
-		return "", "", "", "", fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, otelCollectorBaseUrlEnvVarName)
+		return nil, fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, operatorNamespaceEnvVarName)
+	}
+	oTelCollectorNamePrefix, isSet := os.LookupEnv(oTelCollectorNamePrefixEnvVarName)
+	if !isSet {
+		return nil, fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, oTelCollectorNamePrefixEnvVarName)
 	}
 	operatorImage, isSet := os.LookupEnv(operatorImageEnvVarName)
 	if !isSet {
-		return otelCollectorBaseUrl, "", "", "", fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, operatorImageEnvVarName)
+		return nil, fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, operatorImageEnvVarName)
 	}
 	initContainerImage, isSet := os.LookupEnv(initContainerImageEnvVarName)
 	if !isSet {
-		return otelCollectorBaseUrl,
-			operatorImage,
-			"",
-			"",
-			fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, initContainerImageEnvVarName)
+		return nil, fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, initContainerImageEnvVarName)
 	}
 	initContainerImagePullPolicyRaw := os.Getenv(initContainerImagePullPolicyEnvVarName)
 	var initContainerImagePullPolicy corev1.PullPolicy
@@ -320,7 +355,22 @@ func readEnvironmentVariables() (string, string, string, corev1.PullPolicy, erro
 		}
 	}
 
-	return otelCollectorBaseUrl, operatorImage, initContainerImage, initContainerImagePullPolicy, nil
+	e2eTestModeRaw, isSet := os.LookupEnv(e2eTestModeEnvVarName)
+	e2eTestMode := isSet && strings.ToLower(e2eTestModeRaw) == "true"
+	e2eTestExportDir := ""
+	if e2eTestMode {
+		e2eTestExportDir, _ = os.LookupEnv(e2eTestExportDirEnvVarName)
+	}
+
+	return &environmentVariables{
+		operatorNamespace:            operatorNamespace,
+		oTelCollectorNamePrefix:      oTelCollectorNamePrefix,
+		operatorImage:                operatorImage,
+		initContainerImage:           initContainerImage,
+		initContainerImagePullPolicy: initContainerImagePullPolicy,
+		e2eTestMode:                  e2eTestMode,
+		e2eTestExportDir:             e2eTestExportDir,
+	}, nil
 }
 
 func deleteCustomResourcesInAllNamespaces(logger *logr.Logger) error {

@@ -10,6 +10,7 @@ metadata:
 
 rules:
 
+# Permissions required to instrument workloads in the apps API group.
 - apiGroups:
   - apps
   resources:
@@ -24,6 +25,7 @@ rules:
   - update
   - watch
 
+# Permissions required to instrument workloads in the batch API group.
 - apiGroups:
   - batch
   resources:
@@ -36,6 +38,7 @@ rules:
   - update
   - watch
 
+# Permissions required to queue events to report about the operator's actions.
 - apiGroups:
   - ""
   resources:
@@ -50,6 +53,8 @@ rules:
   verbs:
   - get
 
+# Permissions required to automatically restart (i.e. delete) pods when instrumenting replicasets that are not part of a
+# higher order workload (e.g. a deployment, daemonset).
 - apiGroups:
   - ""
   resources:
@@ -59,6 +64,7 @@ rules:
   - get
   - list
 
+# Permissions required to manage the dash0 resource, its finalizers and status.
 - apiGroups:
   - operator.dash0.com
   resources:
@@ -73,6 +79,7 @@ rules:
   - update
   - watch
 
+# Permissions required to manage the dash0 resource, its finalizers and status.
 - apiGroups:
   - operator.dash0.com
   resources:
@@ -80,6 +87,7 @@ rules:
   verbs:
   - update
 
+# Permissions required to manage the dash0 resource, its finalizers and status.
 - apiGroups:
   - operator.dash0.com
   resources:
@@ -89,6 +97,7 @@ rules:
   - patch
   - update
 
+# Permissions required to manage the backendconnection resource, its finalizers and status.
 - apiGroups:
   - operator.dash0.com
   resources:
@@ -103,6 +112,15 @@ rules:
   - update
   - watch
 
+# Permissions required to manage the backendconnection resource, its finalizers and status.
+- apiGroups:
+    - operator.dash0.com
+  resources:
+    - backendconnections/finalizers
+  verbs:
+    - update
+
+# Permissions required to manage the backendconnection resource, its finalizers and status.
 - apiGroups:
   - operator.dash0.com
   resources:
@@ -112,6 +130,79 @@ rules:
   - patch
   - update
 
+# Permissions required to manage OTel collector resources, as a consequence of the creation/change/deletion of
+# backendconnection resource.
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - serviceaccounts
+  - services
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - rbac.authorization.k8s.io
+  resources:
+  - clusterroles
+  - clusterrolebindings
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  # Note: apps.daemonsets are also listed further up together with the other workload types in the apps API group, with
+  # fewer permissions. The declaration here extends that list of permissions to make sure we can also create and delete
+  # the daemonsets for the OTel collector instances that the Dash0 operator manages.
+  - daemonsets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+
+# Permissions required due to the fact that the operator needs to create a dedicated service account/cluster role/
+# cluster role binding for the OTel collector and give it a set of permissions; which it can only do if holds these
+# permissions itself.
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  - namespaces
+  verbs:
+  - get
+  - watch
+  - list
+- apiGroups:
+  - apps
+  resources:
+  - replicasets
+  verbs:
+  - get
+  - watch
+  - list
+- apiGroups:
+  - extensions
+  resources:
+  - replicasets
+  verbs:
+  - get
+  - watch
+  - list
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

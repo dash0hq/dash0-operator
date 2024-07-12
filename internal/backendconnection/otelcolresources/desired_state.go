@@ -18,6 +18,18 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+type E2eTestConfig struct {
+	Enabled   bool
+	ExportDir string
+}
+
+type oTelColConfig struct {
+	namespace      string
+	namePrefix     string
+	oTelColVersion string
+	e2eTest        E2eTestConfig
+}
+
 const (
 	serviceComponent = "agent-collector"
 
@@ -44,7 +56,6 @@ var (
 		componentLabelKey:          serviceComponent,
 	}
 
-	// TODO make configurable
 	configTemplate = template.Must(template.New("collector-config").Parse(`
     exporters:
       debug: {}
@@ -105,101 +116,147 @@ var (
       - health_check
       - bearertokenauth/dash0
       pipelines:
-        logs:
-          exporters:
-          - otlp
+        traces:
           processors:
           - k8sattributes
           - memory_limiter
           - batch
           receivers:
+          - otlp
+          exporters:
           - otlp
         metrics:
-          exporters:
-          - otlp
           processors:
           - k8sattributes
           - memory_limiter
           - batch
           receivers:
           - otlp
-        traces:
           exporters:
           - otlp
+        logs:
           processors:
           - k8sattributes
           - memory_limiter
           - batch
           receivers:
+          - otlp
+          exporters:
           - otlp
 
       telemetry:
         metrics:
           address: ${env:MY_POD_IP}:8888
 `))
+
+	// With multiple config files (if activated), maps are merged recursively, other types (strings, arrays etc.) are
+	// not merged but overwritten. Anything defined in the extra config file will overwrite the base config file.
+	// See https://github.com/knadh/koanf/blob/c53f381935963555ce8986061bb765f415ae5cb7/maps/maps.go#L107-L138.
+	// The extra config file is only used for testing purposes and is not active in production.
+	extraConfigTemplate = template.Must(template.New("extra-collector-config").Parse(`
+    exporters:
+      file/traces:
+        path: /collector-received-data/traces.jsonl
+        flush_interval: 100ms
+      file/metrics:
+        path: /collector-received-data/metrics.jsonl
+        flush_interval: 100ms
+      file/logs:
+        path: /collector-received-data/logs.jsonl
+        flush_interval: 100ms
+
+    service:
+      extensions:
+        - health_check
+        # remove the reference to the bearertokenauth/dash0 extension by overwriting the extension array with a an
+        # array that only has one element
+
+      # add file exporters
+      pipelines:
+        traces:
+          exporters:
+            - file/traces
+        metrics:
+          exporters:
+            - file/metrics
+        logs:
+          exporters:
+            - file/logs
+`))
 )
 
-func assembleDesiredState(namespace string, namePrefix string, oTelColVersion string) ([]client.Object, error) {
+func assembleDesiredState(config *oTelColConfig) ([]client.Object, error) {
 	var desiredState []client.Object
-	desiredState = append(desiredState, serviceAccount(namespace, namePrefix, oTelColVersion))
-	cnfgMap, err := configMap(namespace, namePrefix, oTelColVersion)
+	desiredState = append(desiredState, serviceAccount(config))
+	cnfgMap, err := configMap(config)
 	if err != nil {
 		return desiredState, err
 	}
 	desiredState = append(desiredState, cnfgMap)
-	desiredState = append(desiredState, clusterRole(namespace, namePrefix, oTelColVersion))
-	desiredState = append(desiredState, clusterRoleBinding(namespace, namePrefix, oTelColVersion))
-	desiredState = append(desiredState, service(namespace, namePrefix, oTelColVersion))
-	desiredState = append(desiredState, daemonSet(namespace, namePrefix, oTelColVersion))
+	desiredState = append(desiredState, clusterRole(config))
+	desiredState = append(desiredState, clusterRoleBinding(config))
+	desiredState = append(desiredState, service(config))
+	desiredState = append(desiredState, daemonSet(config))
 	return desiredState, nil
 }
 
-func serviceAccount(namespace string, namePrefix string, oTelColVersion string) *corev1.ServiceAccount {
+func serviceAccount(config *oTelColConfig) *corev1.ServiceAccount {
 	return &corev1.ServiceAccount{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ServiceAccount",
 			APIVersion: "v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      serviceAccountName(namePrefix),
-			Namespace: namespace,
-			Labels:    labels(oTelColVersion, false),
+			Name:      serviceAccountName(config.namePrefix),
+			Namespace: config.namespace,
+			Labels:    labels(config.oTelColVersion, false),
 		},
 	}
 }
 
-func configMap(namespace string, namePrefix string, oTelColVersion string) (*corev1.ConfigMap, error) {
-	var renderedConfig bytes.Buffer
-	err := configTemplate.Execute(&renderedConfig, nil)
+func configMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
+	var collectorYaml bytes.Buffer
+	err := configTemplate.Execute(&collectorYaml, nil)
 	if err != nil {
 		return nil, err
 	}
+
+	configMapData := map[string]string{
+		"collector.yaml": collectorYaml.String(),
+	}
+	if config.e2eTest.Enabled {
+		var collectorExtraYaml bytes.Buffer
+		err = extraConfigTemplate.Execute(&collectorExtraYaml, nil)
+		if err != nil {
+			return nil, err
+		}
+		configMapData["collector-extra.yaml"] = collectorExtraYaml.String()
+	}
+
 	return &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ConfigMap",
 			APIVersion: "v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      configMapName(namePrefix),
-			Namespace: namespace,
-			Labels:    labels(oTelColVersion, false),
+			Name:      configMapName(config.namePrefix),
+			Namespace: config.namespace,
+			Labels:    labels(config.oTelColVersion, false),
 		},
-		Data: map[string]string{
-			"collector.yaml": renderedConfig.String(),
-		},
+		Data: configMapData,
 	}, nil
 }
 
-func clusterRole(namespace string, namePrefix string, oTelColVersion string) *rbacv1.ClusterRole {
+func clusterRole(config *oTelColConfig) *rbacv1.ClusterRole {
 	return &rbacv1.ClusterRole{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ClusterRole",
 			APIVersion: "rbac.authorization.k8s.io/v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      clusterRoleName(namePrefix),
-			Namespace: namespace,
-			Labels:    labels(oTelColVersion, false),
+			Name:      clusterRoleName(config.namePrefix),
+			Namespace: config.namespace,
+			Labels:    labels(config.oTelColVersion, false),
 		},
 		Rules: []rbacv1.PolicyRule{
 			{
@@ -221,40 +278,40 @@ func clusterRole(namespace string, namePrefix string, oTelColVersion string) *rb
 	}
 }
 
-func clusterRoleBinding(namespace string, namePrefix string, oTelColVersion string) *rbacv1.ClusterRoleBinding {
+func clusterRoleBinding(config *oTelColConfig) *rbacv1.ClusterRoleBinding {
 	return &rbacv1.ClusterRoleBinding{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ClusterRoleBinding",
 			APIVersion: "rbac.authorization.k8s.io/v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name(namePrefix, "opentelemetry-collector"),
-			Namespace: namespace,
-			Labels:    labels(oTelColVersion, false),
+			Name:      name(config.namePrefix, "opentelemetry-collector"),
+			Namespace: config.namespace,
+			Labels:    labels(config.oTelColVersion, false),
 		},
 		RoleRef: rbacv1.RoleRef{
 			APIGroup: "rbac.authorization.k8s.io",
 			Kind:     "ClusterRole",
-			Name:     clusterRoleName(namePrefix),
+			Name:     clusterRoleName(config.namePrefix),
 		},
 		Subjects: []rbacv1.Subject{{
 			Kind:      "ServiceAccount",
-			Name:      serviceAccountName(namePrefix),
-			Namespace: namespace,
+			Name:      serviceAccountName(config.namePrefix),
+			Namespace: config.namespace,
 		}},
 	}
 }
 
-func service(namespace string, namePrefix string, oTelColVersion string) *corev1.Service {
+func service(config *oTelColConfig) *corev1.Service {
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Service",
 			APIVersion: "v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name(namePrefix, "opentelemetry-collector"),
-			Namespace: namespace,
-			Labels:    serviceLabels(oTelColVersion),
+			Name:      name(config.namePrefix, "opentelemetry-collector"),
+			Namespace: config.namespace,
+			Labels:    serviceLabels(config.oTelColVersion),
 		},
 		Spec: corev1.ServiceSpec{
 			Type: corev1.ServiceTypeClusterIP,
@@ -283,16 +340,86 @@ func service(namespace string, namePrefix string, oTelColVersion string) *corev1
 	}
 }
 
-func daemonSet(namespace string, namePrefix string, oTelColVersion string) *appsv1.DaemonSet {
+func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
+	oTelColArgs := []string{
+		"--config=file:/conf/collector.yaml",
+	}
+	if config.e2eTest.Enabled {
+		oTelColArgs = append(oTelColArgs, "--config=file:/conf/collector-extra.yaml")
+	}
+
+	volumeMounts := []corev1.VolumeMount{{
+		Name:      "opentelemetry-collector-configmap",
+		MountPath: "/conf",
+	}}
+	if !config.e2eTest.Enabled {
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      "dash0-secret-volume",
+			MountPath: "/etc/dash0/secret-volume",
+			ReadOnly:  true,
+		})
+	} else {
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:      "telemetry-file-export",
+			MountPath: "/collector-received-data",
+		})
+	}
+
+	configMapItems := []corev1.KeyToPath{{
+		Key:  "collector.yaml",
+		Path: "collector.yaml",
+	}}
+	if config.e2eTest.Enabled {
+		configMapItems = append(configMapItems, corev1.KeyToPath{
+			Key:  "collector-extra.yaml",
+			Path: "collector-extra.yaml",
+		})
+	}
+
+	directoryOrCreate := corev1.HostPathDirectoryOrCreate
+	volumes := []corev1.Volume{
+		{
+			Name: "opentelemetry-collector-configmap",
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: configMapName(config.namePrefix),
+					},
+					Items: configMapItems,
+				},
+			},
+		},
+	}
+	if !config.e2eTest.Enabled {
+		volumes = append(volumes, corev1.Volume{
+			Name: "dash0-secret-volume",
+			VolumeSource: corev1.VolumeSource{
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: dash0AuthorizationSecretName,
+				},
+			},
+		})
+	} else {
+		volumes = append(volumes, corev1.Volume{
+			Name: "telemetry-file-export",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: config.e2eTest.ExportDir,
+					Type: &directoryOrCreate,
+				},
+			},
+		})
+	}
+
 	return &appsv1.DaemonSet{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "DaemonSet",
 			APIVersion: "apps/v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name(namePrefix, "opentelemetry-collector-agent"),
-			Namespace: namespace,
-			Labels:    labels(oTelColVersion, true),
+			Name:      name(config.namePrefix, "opentelemetry-collector-agent"),
+			Namespace: config.namespace,
+			Labels:    labels(config.oTelColVersion, true),
 		},
 		Spec: appsv1.DaemonSetSpec{
 			Selector: &metav1.LabelSelector{
@@ -306,16 +433,14 @@ func daemonSet(namespace string, namePrefix string, oTelColVersion string) *apps
 					Labels: daemonSetMatchLabels,
 				},
 				Spec: corev1.PodSpec{
-					ServiceAccountName: serviceAccountName(namePrefix),
+					ServiceAccountName: serviceAccountName(config.namePrefix),
 					SecurityContext:    &corev1.PodSecurityContext{},
 					Containers: []corev1.Container{
 						{
-							Name: "opentelemetry-collector",
-							Args: []string{
-								"--config=/conf/relay.yaml",
-							},
+							Name:            "opentelemetry-collector",
+							Args:            oTelColArgs,
 							SecurityContext: &corev1.SecurityContext{},
-							Image:           fmt.Sprintf("otel/opentelemetry-collector-k8s:%s", oTelColVersion),
+							Image:           fmt.Sprintf("otel/opentelemetry-collector-k8s:%s", config.oTelColVersion),
 							ImagePullPolicy: corev1.PullIfNotPresent,
 							Ports: []corev1.ContainerPort{
 								{
@@ -374,45 +499,10 @@ func daemonSet(namespace string, namePrefix string, oTelColVersion string) *apps
 									corev1.ResourceMemory: resource.MustParse("500Mi"),
 								},
 							},
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      "opentelemetry-collector-configmap",
-									MountPath: "/conf",
-								},
-								{
-									Name:      "dash0-secret-volume",
-									MountPath: "/etc/dash0/secret-volume",
-									ReadOnly:  true,
-								},
-							},
+							VolumeMounts: volumeMounts,
 						},
 					},
-					Volumes: []corev1.Volume{
-						{
-							Name: "opentelemetry-collector-configmap",
-							VolumeSource: corev1.VolumeSource{
-								ConfigMap: &corev1.ConfigMapVolumeSource{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: configMapName(namePrefix),
-									},
-									Items: []corev1.KeyToPath{
-										{
-											Key:  "relay",
-											Path: "relay.yaml",
-										},
-									},
-								},
-							},
-						},
-						{
-							Name: "dash0-secret-volume",
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									SecretName: dash0AuthorizationSecretName,
-								},
-							},
-						},
-					},
+					Volumes:     volumes,
 					HostNetwork: false,
 				},
 			},

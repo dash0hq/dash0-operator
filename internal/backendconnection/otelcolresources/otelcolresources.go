@@ -17,18 +17,26 @@ import (
 
 type OTelColResourceManager struct {
 	client.Client
+	OTelCollectorNamePrefix string
+	E2eTestConfig           E2eTestConfig
 }
+
+const (
+	oTelCollectorImageVersion = "0.105.0"
+)
 
 func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	ctx context.Context,
 	namespace string,
 	logger *logr.Logger,
 ) (bool, bool, error) {
-	desiredState, err := assembleDesiredState(
-		namespace,
-		"dash0-operator",
-		"0.0.1",
-	)
+	config := &oTelColConfig{
+		namespace:      namespace,
+		namePrefix:     m.OTelCollectorNamePrefix,
+		oTelColVersion: oTelCollectorImageVersion,
+		e2eTest:        m.E2eTestConfig,
+	}
+	desiredState, err := assembleDesiredState(config)
 	if err != nil {
 		return false, false, err
 	}
@@ -153,11 +161,13 @@ func (m *OTelColResourceManager) DeleteResources(
 	namespace string,
 	logger *logr.Logger,
 ) error {
-	allObjects, err := assembleDesiredState(
-		namespace,
-		"dash0-operator",
-		"0.0.1",
-	)
+	config := &oTelColConfig{
+		namespace:      namespace,
+		namePrefix:     m.OTelCollectorNamePrefix,
+		oTelColVersion: oTelCollectorImageVersion,
+		e2eTest:        m.E2eTestConfig,
+	}
+	allObjects, err := assembleDesiredState(config)
 	if err != nil {
 		return err
 	}

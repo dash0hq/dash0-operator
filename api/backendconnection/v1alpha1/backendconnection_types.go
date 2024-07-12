@@ -15,6 +15,8 @@ import (
 
 const (
 	FinalizerId = "operator.dash0.com/backend-connection-finalizer"
+
+	DefaultName = "dash0-default-backend-connection"
 )
 
 // BackendConnectionSpec defines the desired state of BackendConnection

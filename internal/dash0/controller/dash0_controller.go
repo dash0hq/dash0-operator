@@ -23,6 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
+	backendconnectioncontroller "github.com/dash0hq/dash0-operator/internal/backendconnection/controller"
 	"github.com/dash0hq/dash0-operator/internal/common/controller"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 	"github.com/dash0hq/dash0-operator/internal/dash0/workloads"
@@ -30,11 +31,13 @@ import (
 
 type Dash0Reconciler struct {
 	client.Client
-	ClientSet            *kubernetes.Clientset
-	Scheme               *runtime.Scheme
-	Recorder             record.EventRecorder
-	Images               util.Images
-	OtelCollectorBaseUrl string
+	ClientSet               *kubernetes.Clientset
+	Scheme                  *runtime.Scheme
+	Recorder                record.EventRecorder
+	Images                  util.Images
+	OTelCollectorNamePrefix string
+	OTelCollectorBaseUrl    string
+	OperatorNamespace       string
 }
 
 type ModificationMode string
@@ -237,6 +240,19 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		// The Dash0 custom resource is slated for deletion, the finalizer has already been removed (which means all
 		// cleanup actions have been processed), no further reconciliation is necessary.
 		return ctrl.Result{}, nil
+	}
+
+	// Make sure that there is at least one BackendConnectionResource in the namespace of the operator (dash0-system by
+	// default). That BackendConnectionResource will then trigger the creation of an OpenTelemetry collector in
+	// dash0-system, which will serve as our default collector, for all instrumented namespaces (unless a
+	// Dash0CustomResource in a namespace specifies a different target backend, via referencing a different
+	// BackendConnection explicitly).
+	if err = backendconnectioncontroller.EnsureBackendConnectionResourceInDash0OperatorNamespace(
+		ctx,
+		r.OperatorNamespace,
+		r.Client,
+	); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	if isFirstReconcile {
@@ -479,9 +495,9 @@ func (r *Dash0Reconciler) handleJobJobOnInstrumentation(
 		hasBeenModified := false
 		switch requiredAction {
 		case Instrumentation:
-			hasBeenModified = newWorkloadModifier(r.Images, r.OtelCollectorBaseUrl, &logger).AddLabelsToImmutableJob(&job)
+			hasBeenModified = newWorkloadModifier(r.Images, r.OTelCollectorBaseUrl, &logger).AddLabelsToImmutableJob(&job)
 		case Uninstrumentation:
-			hasBeenModified = newWorkloadModifier(r.Images, r.OtelCollectorBaseUrl, &logger).RemoveLabelsFromImmutableJob(&job)
+			hasBeenModified = newWorkloadModifier(r.Images, r.OTelCollectorBaseUrl, &logger).RemoveLabelsFromImmutableJob(&job)
 		}
 
 		if hasBeenModified {
@@ -620,9 +636,9 @@ func (r *Dash0Reconciler) instrumentWorkload(
 
 		switch requiredAction {
 		case Instrumentation:
-			hasBeenModified = workload.instrument(r.Images, r.OtelCollectorBaseUrl, &logger)
+			hasBeenModified = workload.instrument(r.Images, r.OTelCollectorBaseUrl, &logger)
 		case Uninstrumentation:
-			hasBeenModified = workload.revert(r.Images, r.OtelCollectorBaseUrl, &logger)
+			hasBeenModified = workload.revert(r.Images, r.OTelCollectorBaseUrl, &logger)
 		}
 
 		if hasBeenModified {
@@ -685,9 +701,18 @@ func (r *Dash0Reconciler) runCleanupActions(
 		return nil
 	}
 
-	err := r.uninstrumentWorkloadsIfAvailable(ctx, dash0CustomResource, logger)
-	if err != nil {
+	if err := r.uninstrumentWorkloadsIfAvailable(ctx, dash0CustomResource, logger); err != nil {
 		logger.Error(err, "Failed to uninstrument workloads, requeuing reconcile request.")
+		return err
+	}
+
+	if err := backendconnectioncontroller.RemoveBackendConnectionIfNoDash0CustomResourceIsLeft(
+		ctx,
+		r.OperatorNamespace,
+		r.Client,
+		dash0CustomResource,
+	); err != nil {
+		logger.Error(err, "Failed to check if the OpenTelemetry collector instance needs to be removed or failed removing it.")
 		return err
 	}
 
@@ -695,13 +720,13 @@ func (r *Dash0Reconciler) runCleanupActions(
 	// probably unnecessary. But for due process we do it anyway. In particular, if deleting it should fail
 	// for any reason or take a while, the resource is no longer marked as available.
 	dash0CustomResource.EnsureResourceIsMarkedAsAboutToBeDeleted()
-	if err = r.Status().Update(ctx, dash0CustomResource); err != nil {
+	if err := r.Status().Update(ctx, dash0CustomResource); err != nil {
 		logger.Error(err, updateStatusFailedMessage)
 		return err
 	}
 
 	controllerutil.RemoveFinalizer(dash0CustomResource, dash0v1alpha1.FinalizerId)
-	if err = r.Update(ctx, dash0CustomResource); err != nil {
+	if err := r.Update(ctx, dash0CustomResource); err != nil {
 		logger.Error(err, "Failed to remove the finalizer from the Dash0 custom resource, requeuing reconcile request.")
 		return err
 	}
@@ -883,7 +908,7 @@ func (r *Dash0Reconciler) handleJobOnUninstrumentation(ctx context.Context, job 
 		} else if util.InstrumenationAttemptHasFailed(&job.ObjectMeta) {
 			// There was an attempt to instrument this job (probably by the controller), which has not been successful.
 			// We only need remove the labels from that instrumentation attempt to clean up.
-			newWorkloadModifier(r.Images, r.OtelCollectorBaseUrl, &logger).RemoveLabelsFromImmutableJob(&job)
+			newWorkloadModifier(r.Images, r.OTelCollectorBaseUrl, &logger).RemoveLabelsFromImmutableJob(&job)
 
 			// Apparently for jobs we do not need to set the "dash0.com/webhook-ignore-once" label, since changing their
 			// labels does not trigger a new admission request.
@@ -1003,7 +1028,7 @@ func (r *Dash0Reconciler) revertWorkloadInstrumentation(
 				err,
 			)
 		}
-		hasBeenModified = workload.revert(r.Images, r.OtelCollectorBaseUrl, &logger)
+		hasBeenModified = workload.revert(r.Images, r.OTelCollectorBaseUrl, &logger)
 		if hasBeenModified {
 			// Changing the workload spec sometimes triggers a new admission request, which would re-instrument the
 			// workload via the webhook immediately. To prevent this, we add a label that the webhook can check to
@@ -1045,27 +1070,15 @@ func (r *Dash0Reconciler) postProcessUninstrumentation(
 	}
 }
 
-func newWorkloadModifier(images util.Images, otelCollectorBaseUrl string, logger *logr.Logger) *workloads.ResourceModifier {
+func newWorkloadModifier(images util.Images, oTelCollectorBaseUrl string, logger *logr.Logger) *workloads.ResourceModifier {
 	return workloads.NewResourceModifier(
 		util.InstrumentationMetadata{
 			Images:               images,
 			InstrumentedBy:       "controller",
-			OtelCollectorBaseUrl: otelCollectorBaseUrl,
+			OTelCollectorBaseUrl: oTelCollectorBaseUrl,
 		},
 		logger,
 	)
-}
-
-type SortByCreationTimestamp []dash0v1alpha1.Dash0
-
-func (s SortByCreationTimestamp) Len() int {
-	return len(s)
-}
-func (s SortByCreationTimestamp) Swap(i, j int) {
-	s[i], s[j] = s[j], s[i]
-}
-func (s SortByCreationTimestamp) Less(i, j int) bool {
-	return s[i].CreationTimestamp.Before(&s[j].CreationTimestamp)
 }
 
 func (r *Dash0Reconciler) restartPodsOfReplicaSet(

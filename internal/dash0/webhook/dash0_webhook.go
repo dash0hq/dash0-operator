@@ -32,7 +32,7 @@ type Handler struct {
 	Client               client.Client
 	Recorder             record.EventRecorder
 	Images               util.Images
-	OtelCollectorBaseUrl string
+	OTelCollectorBaseUrl string
 }
 
 type resourceHandler func(h *Handler, request admission.Request, gvkLabel string, logger *logr.Logger) admission.Response
@@ -457,7 +457,7 @@ func (h *Handler) newWorkloadModifier(logger *logr.Logger) *workloads.ResourceMo
 		util.InstrumentationMetadata{
 			Images:               h.Images,
 			InstrumentedBy:       "webhook",
-			OtelCollectorBaseUrl: h.OtelCollectorBaseUrl,
+			OTelCollectorBaseUrl: h.OTelCollectorBaseUrl,
 		},
 		logger,
 	)

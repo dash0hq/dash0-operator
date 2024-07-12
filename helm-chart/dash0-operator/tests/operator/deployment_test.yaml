@@ -15,16 +15,16 @@ tests:
           path: spec.template.spec.containers[0].image
           value: ghcr.io/dash0hq/operator-controller:99.100.101
       - equal:
-          path: spec.template.spec.containers[0].env[1].name
+          path: spec.template.spec.containers[0].env[2].name
           value: DASH0_OPERATOR_IMAGE
       - equal:
-          path: spec.template.spec.containers[0].env[1].value
+          path: spec.template.spec.containers[0].env[2].value
           value: ghcr.io/dash0hq/operator-controller:99.100.101
       - equal:
-          path: spec.template.spec.containers[0].env[2].name
+          path: spec.template.spec.containers[0].env[3].name
           value: DASH0_INIT_CONTAINER_IMAGE
       - equal:
-          path: spec.template.spec.containers[0].env[2].value
+          path: spec.template.spec.containers[0].env[3].value
           value: ghcr.io/dash0hq/instrumentation:99.100.101
 
   - it: should render deployment with custom settings
@@ -105,39 +105,42 @@ tests:
           value: Never
       - equal:
           path: spec.template.spec.containers[0].env[0].name
-          value: DASH0_OTEL_COLLECTOR_BASE_URL
-      - equal:
-          path: spec.template.spec.containers[0].env[0].value
-          value: http://RELEASE-NAME-opentelemetry-collector.NAMESPACE.svc.cluster.local:4318
+          value: DASH0_OPERATOR_NAMESPACE
       - equal:
           path: spec.template.spec.containers[0].env[1].name
-          value: DASH0_OPERATOR_IMAGE
+          value: OTEL_COLLECTOR_NAME_PREFIX
       - equal:
           path: spec.template.spec.containers[0].env[1].value
-          value: custom-operator-image:1.2.3
+          value: RELEASE-NAME
       - equal:
-         path: spec.template.spec.containers[0].env[2].name
-         value: DASH0_INIT_CONTAINER_IMAGE
+          path: spec.template.spec.containers[0].env[2].name
+          value: DASH0_OPERATOR_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[2].value
-          value: custom-init-container-image:4.5.6
+          value: custom-operator-image:1.2.3
       - equal:
-          path: spec.template.spec.containers[0].env[3].name
-          value: DASH0_INIT_CONTAINER_IMAGE_PULL_POLICY
+         path: spec.template.spec.containers[0].env[3].name
+         value: DASH0_INIT_CONTAINER_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[3].value
-          value: Always
+          value: custom-init-container-image:4.5.6
       - equal:
           path: spec.template.spec.containers[0].env[4].name
-          value: ENABLE_WEBHOOK
+          value: DASH0_INIT_CONTAINER_IMAGE_PULL_POLICY
       - equal:
           path: spec.template.spec.containers[0].env[4].value
-          value: "false"
+          value: Always
       - equal:
           path: spec.template.spec.containers[0].env[5].name
-          value: DASH0_DEVELOPMENT_MODE
+          value: ENABLE_WEBHOOK
       - equal:
           path: spec.template.spec.containers[0].env[5].value
+          value: "false"
+      - equal:
+          path: spec.template.spec.containers[0].env[6].name
+          value: DASH0_DEVELOPMENT_MODE
+      - equal:
+          path: spec.template.spec.containers[0].env[6].value
           value: "true"
       - equal:
           path: spec.template.spec.containers[0].resources.limits.cpu
@@ -166,30 +169,16 @@ tests:
       - notExists:
           path: spec.template.spec.containers[0].imagePullPolicy
       - equal:
-          path: spec.template.spec.containers[0].env[1].name
+          path: spec.template.spec.containers[0].env[2].name
           value: DASH0_OPERATOR_IMAGE
       - equal:
-          path: spec.template.spec.containers[0].env[1].value
+          path: spec.template.spec.containers[0].env[2].value
           value: ghcr.io/dash0hq/operator-controller@sha256:e05496f5bcc3c2caf7d2a2944bfc084872d69dd1e9c365a521719c5bbcf4430c
       - equal:
-          path: spec.template.spec.containers[0].env[2].name
+          path: spec.template.spec.containers[0].env[3].name
           value: DASH0_INIT_CONTAINER_IMAGE
       - equal:
-          path: spec.template.spec.containers[0].env[2].value
+          path: spec.template.spec.containers[0].env[3].value
           value: ghcr.io/dash0hq/instrumentation@sha256:1e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda01
       - notExists:
-          path: spec.template.spec.containers[0].env[3].name
-
-  - it: should support independent collector
-    set:
-      operator:
-        openTelemetryCollectorBaseUrl: "http://opentelemetry-collector-daemonset.opentelemetry.svc.cluster.local:4318"
-      opentelemetry-collector:
-        enabled: false
-    asserts:
-      - equal:
-          path: spec.template.spec.containers[0].env[0].name
-          value: DASH0_OTEL_COLLECTOR_BASE_URL
-      - equal:
-          path: spec.template.spec.containers[0].env[0].value
-          value: http://opentelemetry-collector-daemonset.opentelemetry.svc.cluster.local:4318
+          path: spec.template.spec.containers[0].env[4].name

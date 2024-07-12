@@ -62,6 +62,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 	BeforeAll(func() {
 		EnsureTestNamespaceExists(ctx, k8sClient)
+		EnsureDash0SystemNamespaceExists(ctx, k8sClient)
 	})
 
 	BeforeEach(func() {
@@ -72,7 +73,8 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			Recorder:             recorder,
 			Scheme:               k8sClient.Scheme(),
 			Images:               images,
-			OtelCollectorBaseUrl: "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
+			OTelCollectorBaseUrl: "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
+			OperatorNamespace:    Dash0SystemNamespaceName,
 		}
 	})
 

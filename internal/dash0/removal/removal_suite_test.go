@@ -20,9 +20,11 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	backendconnectionv1alpha1 "github.com/dash0hq/dash0-operator/api/backendconnection/v1alpha1"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/dash0/controller"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
+	testutil "github.com/dash0hq/dash0-operator/test/util"
 )
 
 const (
@@ -72,8 +74,8 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
 
-	err = dash0v1alpha1.AddToScheme(scheme.Scheme)
-	Expect(err).NotTo(HaveOccurred())
+	Expect(dash0v1alpha1.AddToScheme(scheme.Scheme)).To(Succeed())
+	Expect(backendconnectionv1alpha1.AddToScheme(scheme.Scheme)).To(Succeed())
 
 	preDeleteHandler, err = NewOperatorPreDeleteHandlerFromConfig(cfg)
 	Expect(err).NotTo(HaveOccurred())
@@ -99,7 +101,8 @@ var _ = BeforeSuite(func() {
 		Recorder:             mgr.GetEventRecorderFor("dash0-controller"),
 		Scheme:               k8sClient.Scheme(),
 		Images:               images,
-		OtelCollectorBaseUrl: "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
+		OTelCollectorBaseUrl: "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
+		OperatorNamespace:    testutil.Dash0SystemNamespaceName,
 	}
 })
 

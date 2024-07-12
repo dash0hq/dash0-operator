@@ -29,7 +29,7 @@ var (
 			InitContainerImage:           "some-registry.com:1234/dash0hq/instrumentation:4.5.6",
 			InitContainerImagePullPolicy: corev1.PullAlways,
 		},
-		OtelCollectorBaseUrl: "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
+		OTelCollectorBaseUrl: "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
 		InstrumentedBy:       "modify_test",
 	}
 )
