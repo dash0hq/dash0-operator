@@ -63,9 +63,11 @@ operator:
     limits:
       cpu: 500m
       memory: 128Mi
+      ephemeral-storage: 500Mi
     requests:
       cpu: 5m
       memory: 64Mi
+      ephemeral-storage: 500Mi
 
   # the port for the metrics service
   metricsPort: 8443

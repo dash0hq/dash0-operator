@@ -41,6 +41,9 @@ type oTelConfigTemplateValues struct {
 const (
 	serviceComponent = "agent-collector"
 
+	openTelemetryCollector      = "opentelemetry-collector"
+	openTelemetryCollectorAgent = "opentelemetry-collector-agent"
+
 	// label keys
 	appKubernetesIoNameKey      = "app.kubernetes.io/name"
 	appKubernetesIoInstanceKey  = "app.kubernetes.io/instance"
@@ -50,9 +53,12 @@ const (
 	componentLabelKey           = "component"
 
 	// label values
-	appKubernetesIoNameValue      = "opentelemetry-collector"
+	appKubernetesIoNameValue      = openTelemetryCollector
 	appKubernetesIoInstanceValue  = "dash0-operator"
 	appKubernetesIoManagedByValue = "dash0-operator"
+
+	collectorYaml      = "collector.yaml"
+	collectorExtraYaml = "collector-extra.yaml"
 )
 
 var (
@@ -256,22 +262,22 @@ func configMap(config *oTelColConfig, useSecretRef bool) (*corev1.ConfigMap, err
 		TokenOrFilename: tokenOrFilename,
 		oTelColConfig:   *config,
 	}
-	var collectorYaml bytes.Buffer
-	err := configTemplate.Execute(&collectorYaml, values)
+	var collectorYamlContent bytes.Buffer
+	err := configTemplate.Execute(&collectorYamlContent, values)
 	if err != nil {
 		return nil, err
 	}
 
 	configMapData := map[string]string{
-		"collector.yaml": collectorYaml.String(),
+		collectorYaml: collectorYamlContent.String(),
 	}
 	if config.e2eTest.Enabled {
-		var collectorExtraYaml bytes.Buffer
-		err = extraConfigTemplate.Execute(&collectorExtraYaml, values)
+		var collectorExtraYamlContent bytes.Buffer
+		err = extraConfigTemplate.Execute(&collectorExtraYamlContent, values)
 		if err != nil {
 			return nil, err
 		}
-		configMapData["collector-extra.yaml"] = collectorExtraYaml.String()
+		configMapData[collectorExtraYaml] = collectorExtraYamlContent.String()
 	}
 
 	return &corev1.ConfigMap{
@@ -326,7 +332,7 @@ func clusterRoleBinding(config *oTelColConfig) *rbacv1.ClusterRoleBinding {
 			APIVersion: "rbac.authorization.k8s.io/v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name(config.NamePrefix, "opentelemetry-collector"),
+			Name:      name(config.NamePrefix, openTelemetryCollector),
 			Namespace: config.Namespace,
 			Labels:    labels(config.oTelColVersion, false),
 		},
@@ -350,7 +356,7 @@ func service(config *oTelColConfig) *corev1.Service {
 			APIVersion: "v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name(config.NamePrefix, "opentelemetry-collector"),
+			Name:      name(config.NamePrefix, openTelemetryCollector),
 			Namespace: config.Namespace,
 			Labels:    serviceLabels(config.oTelColVersion),
 		},
@@ -409,13 +415,13 @@ func daemonSet(config *oTelColConfig, useSecretRef bool) *appsv1.DaemonSet {
 	}
 
 	configMapItems := []corev1.KeyToPath{{
-		Key:  "collector.yaml",
-		Path: "collector.yaml",
+		Key:  collectorYaml,
+		Path: collectorYaml,
 	}}
 	if config.e2eTest.Enabled {
 		configMapItems = append(configMapItems, corev1.KeyToPath{
-			Key:  "collector-extra.yaml",
-			Path: "collector-extra.yaml",
+			Key:  collectorExtraYaml,
+			Path: collectorExtraYaml,
 		})
 	}
 
@@ -462,7 +468,7 @@ func daemonSet(config *oTelColConfig, useSecretRef bool) *appsv1.DaemonSet {
 			APIVersion: "apps/v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name(config.NamePrefix, "opentelemetry-collector-agent"),
+			Name:      name(config.NamePrefix, openTelemetryCollectorAgent),
 			Namespace: config.Namespace,
 			Labels:    labels(config.oTelColVersion, true),
 		},
@@ -482,7 +488,7 @@ func daemonSet(config *oTelColConfig, useSecretRef bool) *appsv1.DaemonSet {
 					SecurityContext:    &corev1.PodSecurityContext{},
 					Containers: []corev1.Container{
 						{
-							Name:            "opentelemetry-collector",
+							Name:            openTelemetryCollector,
 							Args:            oTelColArgs,
 							SecurityContext: &corev1.SecurityContext{},
 							Image:           fmt.Sprintf("otel/opentelemetry-collector-k8s:%s", config.oTelColVersion),
@@ -556,15 +562,15 @@ func daemonSet(config *oTelColConfig, useSecretRef bool) *appsv1.DaemonSet {
 }
 
 func serviceAccountName(namePrefix string) string {
-	return name(namePrefix, "opentelemetry-collector")
+	return name(namePrefix, openTelemetryCollector)
 }
 
 func configMapName(namePrefix string) string {
-	return name(namePrefix, "opentelemetry-collector-agent")
+	return name(namePrefix, openTelemetryCollectorAgent)
 }
 
 func clusterRoleName(namePrefix string) string {
-	return name(namePrefix, "opentelemetry-collector")
+	return name(namePrefix, openTelemetryCollector)
 }
 
 func serviceLabels(oTelColVersion string) map[string]string {

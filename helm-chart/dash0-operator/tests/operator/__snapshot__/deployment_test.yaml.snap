@@ -98,9 +98,11 @@ deployment should match snapshot (default values):
               resources:
                 limits:
                   cpu: 500m
+                  ephemeral-storage: 500Mi
                   memory: 128Mi
                 requests:
                   cpu: 5m
+                  ephemeral-storage: 500Mi
                   memory: 64Mi
               securityContext:
                 allowPrivilegeEscalation: false
