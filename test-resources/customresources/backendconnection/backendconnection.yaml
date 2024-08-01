@@ -1,4 +1,0 @@
-apiVersion: operator.dash0.com/v1alpha1
-kind: BackendConnection
-metadata:
-  name: dash0-backendconnection

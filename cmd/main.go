@@ -28,9 +28,8 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	k8swebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	backendconnectionv1alpha1 "github.com/dash0hq/dash0-operator/api/backendconnection/v1alpha1"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
-	backendconnectioncontroller "github.com/dash0hq/dash0-operator/internal/backendconnection/controller"
+	"github.com/dash0hq/dash0-operator/internal/backendconnection"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
 	dash0controller "github.com/dash0hq/dash0-operator/internal/dash0/controller"
 	dash0removal "github.com/dash0hq/dash0-operator/internal/dash0/removal"
@@ -73,7 +72,6 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
 	utilruntime.Must(dash0v1alpha1.AddToScheme(scheme))
-	utilruntime.Must(backendconnectionv1alpha1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 
@@ -192,7 +190,7 @@ func startOperatorManager(
 		return fmt.Errorf("unable to create the manager: %w", err)
 	}
 
-	clientSet, err := kubernetes.NewForConfig(mgr.GetConfig())
+	clientset, err := kubernetes.NewForConfig(mgr.GetConfig())
 	if err != nil {
 		return fmt.Errorf("unable to create the clientset client")
 	}
@@ -220,12 +218,7 @@ func startOperatorManager(
 		)
 	}
 
-	err = startDash0Controller(mgr, clientSet, envVars)
-	if err != nil {
-		return err
-	}
-
-	err = startBackendConnectionController(mgr, clientSet, envVars)
+	err = startDash0Controller(mgr, clientset, envVars)
 	if err != nil {
 		return err
 	}
@@ -247,7 +240,7 @@ func startOperatorManager(
 	return nil
 }
 
-func startDash0Controller(mgr manager.Manager, clientSet *kubernetes.Clientset, envVars *environmentVariables) error {
+func startDash0Controller(mgr manager.Manager, clientset *kubernetes.Clientset, envVars *environmentVariables) error {
 	oTelCollectorBaseUrl :=
 		fmt.Sprintf(
 			"http://%s-opentelemetry-collector.%s.svc.cluster.local:4318",
@@ -260,15 +253,31 @@ func startDash0Controller(mgr manager.Manager, clientSet *kubernetes.Clientset, 
 		InitContainerImagePullPolicy: envVars.initContainerImagePullPolicy,
 	}
 
-	dash0Reconciler := &dash0controller.Dash0Reconciler{
+	oTelColResourceManager := &otelcolresources.OTelColResourceManager{
 		Client:                  mgr.GetClient(),
-		ClientSet:               clientSet,
-		Scheme:                  mgr.GetScheme(),
-		Recorder:                mgr.GetEventRecorderFor("dash0-controller"),
-		Images:                  images,
 		OTelCollectorNamePrefix: envVars.oTelCollectorNamePrefix,
-		OTelCollectorBaseUrl:    oTelCollectorBaseUrl,
-		OperatorNamespace:       envVars.operatorNamespace,
+		E2eTestConfig: otelcolresources.E2eTestConfig{
+			Enabled:   envVars.e2eTestMode,
+			ExportDir: envVars.e2eTestExportDir,
+		},
+	}
+	backendConnectionManager := &backendconnection.BackendConnectionManager{
+		Client:                 mgr.GetClient(),
+		Clientset:              clientset,
+		Scheme:                 mgr.GetScheme(),
+		OTelColResourceManager: oTelColResourceManager,
+	}
+
+	dash0Reconciler := &dash0controller.Dash0Reconciler{
+		Client:                   mgr.GetClient(),
+		ClientSet:                clientset,
+		Scheme:                   mgr.GetScheme(),
+		Recorder:                 mgr.GetEventRecorderFor("dash0-controller"),
+		Images:                   images,
+		OTelCollectorNamePrefix:  envVars.oTelCollectorNamePrefix,
+		OTelCollectorBaseUrl:     oTelCollectorBaseUrl,
+		OperatorNamespace:        envVars.operatorNamespace,
+		BackendConnectionManager: backendConnectionManager,
 	}
 	if err := dash0Reconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the Dash0 reconciler: %w", err)
@@ -297,30 +306,6 @@ func startDash0Controller(mgr manager.Manager, clientSet *kubernetes.Clientset, 
 		dash0Reconciler.InstrumentAtStartup()
 	}()
 
-	return nil
-}
-
-func startBackendConnectionController(
-	mgr manager.Manager,
-	clientSet *kubernetes.Clientset,
-	envVars *environmentVariables,
-) error {
-	oTelColResourceManager := &otelcolresources.OTelColResourceManager{
-		Client:                  mgr.GetClient(),
-		OTelCollectorNamePrefix: envVars.oTelCollectorNamePrefix,
-		E2eTestConfig: otelcolresources.E2eTestConfig{
-			Enabled:   envVars.e2eTestMode,
-			ExportDir: envVars.e2eTestExportDir,
-		},
-	}
-	if err := (&backendconnectioncontroller.BackendConnectionReconciler{
-		Client:                 mgr.GetClient(),
-		ClientSet:              clientSet,
-		Scheme:                 mgr.GetScheme(),
-		OTelColResourceManager: oTelColResourceManager,
-	}).SetupWithManager(mgr); err != nil {
-		return fmt.Errorf("unable to set up the BackendConnection reconciler: %w", err)
-	}
 	return nil
 }
 

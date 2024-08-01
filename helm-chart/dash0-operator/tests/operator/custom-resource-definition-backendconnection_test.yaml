@@ -1,7 +1,0 @@
-suite: test custom resource definition
-templates:
-  - operator/custom-resource-definition-backendconnections.yaml
-tests:
-  - it: custom resource definition for backend connection should match snapshot
-    asserts:
-      - matchSnapshot: {}

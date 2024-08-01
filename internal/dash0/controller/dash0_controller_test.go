@@ -21,6 +21,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/backendconnection"
+	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 
 	. "github.com/dash0hq/dash0-operator/test/util"
@@ -67,14 +69,26 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 	BeforeEach(func() {
 		createdObjects = make([]client.Object, 0)
+
+		oTelColResourceManager := &otelcolresources.OTelColResourceManager{
+			Client:                  k8sClient,
+			OTelCollectorNamePrefix: "unit-test",
+		}
+		backendConnectionManager := &backendconnection.BackendConnectionManager{
+			Client:                 k8sClient,
+			Clientset:              clientset,
+			Scheme:                 k8sClient.Scheme(),
+			OTelColResourceManager: oTelColResourceManager,
+		}
 		reconciler = &Dash0Reconciler{
-			Client:               k8sClient,
-			ClientSet:            clientset,
-			Recorder:             recorder,
-			Scheme:               k8sClient.Scheme(),
-			Images:               images,
-			OTelCollectorBaseUrl: "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
-			OperatorNamespace:    Dash0SystemNamespaceName,
+			Client:                   k8sClient,
+			ClientSet:                clientset,
+			Recorder:                 recorder,
+			Scheme:                   k8sClient.Scheme(),
+			Images:                   images,
+			OTelCollectorBaseUrl:     "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
+			OperatorNamespace:        Dash0SystemNamespaceName,
+			BackendConnectionManager: backendConnectionManager,
 		}
 	})
 

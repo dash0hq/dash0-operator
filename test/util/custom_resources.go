@@ -15,24 +15,17 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	backendconnectionv1alpha "github.com/dash0hq/dash0-operator/api/backendconnection/v1alpha1"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
 )
 
 const (
-	Dash0CustomResourceName       = "dash0-test-resource"
-	BackendConnectionResourceName = "dash0-backendconnection-test-resource"
+	Dash0CustomResourceName = "dash0-test-resource"
 )
 
 var (
 	Dash0CustomResourceQualifiedName = types.NamespacedName{
 		Namespace: TestNamespaceName,
 		Name:      Dash0CustomResourceName,
-	}
-
-	BackendConnectionResourceQualifiedName = types.NamespacedName{
-		Namespace: TestNamespaceName,
-		Name:      BackendConnectionResourceName,
 	}
 )
 
@@ -223,154 +216,5 @@ func removeFinalizerFromDash0CustomResource(
 	finalizerHasBeenRemoved := controllerutil.RemoveFinalizer(dash0CustomResource, dash0v1alpha1.FinalizerId)
 	if finalizerHasBeenRemoved {
 		Expect(k8sClient.Update(ctx, dash0CustomResource)).To(Succeed())
-	}
-}
-
-func EnsureBackendConnectionResourceExists(
-	ctx context.Context,
-	k8sClient client.Client,
-) *backendconnectionv1alpha.BackendConnection {
-	return EnsureBackendConnectionResourceExistsWithNamespacedName(
-		ctx,
-		k8sClient,
-		BackendConnectionResourceQualifiedName,
-	)
-}
-
-func EnsureBackendConnectionResourceExistsWithNamespacedName(
-	ctx context.Context,
-	k8sClient client.Client,
-	namespacesName types.NamespacedName,
-) *backendconnectionv1alpha.BackendConnection {
-	By("creating the BackendConnection custom resource")
-	object := EnsureKubernetesObjectExists(
-		ctx,
-		k8sClient,
-		BackendConnectionResourceQualifiedName,
-		&backendconnectionv1alpha.BackendConnection{},
-		&backendconnectionv1alpha.BackendConnection{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      namespacesName.Name,
-				Namespace: namespacesName.Namespace,
-			},
-			Spec: backendconnectionv1alpha.BackendConnectionSpec{
-				IngressEndpoint:    "ingress.endpoint.dash0.com:4317",
-				AuthorizationToken: "authorization-token",
-				SecretRef:          "secret-ref",
-			},
-		},
-	)
-	return object.(*backendconnectionv1alpha.BackendConnection)
-}
-
-func CreateBackendConnectionResource(
-	ctx context.Context,
-	k8sClient client.Client,
-	backendConnectionResourceName types.NamespacedName,
-) client.Object {
-	backendConnectionResource := &backendconnectionv1alpha.BackendConnection{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      backendConnectionResourceName.Name,
-			Namespace: backendConnectionResourceName.Namespace,
-		},
-		Spec: backendconnectionv1alpha.BackendConnectionSpec{
-			IngressEndpoint:    "ingress.endpoint.dash0.com:4317",
-			AuthorizationToken: "authorization-token",
-			SecretRef:          "secret-ref",
-		},
-	}
-	Expect(k8sClient.Create(ctx, backendConnectionResource)).To(Succeed())
-	return backendConnectionResource
-}
-
-func LoadBackendConnectionResourceByNameIfItExists(
-	ctx context.Context,
-	k8sClient client.Client,
-	g Gomega,
-	backendConnectionResourceName types.NamespacedName,
-) *backendconnectionv1alpha.BackendConnection {
-	return LoadBackendConnectionResourceByName(ctx, k8sClient, g, backendConnectionResourceName, false)
-}
-
-func LoadBackendConnectionResourceOrFail(
-	ctx context.Context,
-	k8sClient client.Client,
-	g Gomega,
-) *backendconnectionv1alpha.BackendConnection {
-	return LoadBackendConnectionResourceByNameOrFail(ctx, k8sClient, g, BackendConnectionResourceQualifiedName)
-}
-
-func LoadBackendConnectionResourceByNameOrFail(
-	ctx context.Context,
-	k8sClient client.Client,
-	g Gomega,
-	backendConnectionResourceName types.NamespacedName,
-) *backendconnectionv1alpha.BackendConnection {
-	return LoadBackendConnectionResourceByName(ctx, k8sClient, g, backendConnectionResourceName, true)
-}
-
-func LoadBackendConnectionResourceByName(
-	ctx context.Context,
-	k8sClient client.Client,
-	g Gomega,
-	backendConnectionResourceName types.NamespacedName,
-	failTestsOnNonExists bool,
-) *backendconnectionv1alpha.BackendConnection {
-	backendConnectionResource := &backendconnectionv1alpha.BackendConnection{}
-	if err := k8sClient.Get(ctx, backendConnectionResourceName, backendConnectionResource); err != nil {
-		if apierrors.IsNotFound(err) {
-			if failTestsOnNonExists {
-				g.Expect(err).NotTo(HaveOccurred())
-				return nil
-			} else {
-				return nil
-			}
-		} else {
-			// an error occurred, but it is not an IsNotFound error, fail test immediately
-			g.Expect(err).NotTo(HaveOccurred())
-			return nil
-		}
-	}
-
-	return backendConnectionResource
-}
-
-func RemoveBackendConnectionResourceByName(
-	ctx context.Context,
-	k8sClient client.Client,
-	backendConnectionResourceName types.NamespacedName,
-	failOnErr bool,
-) {
-	By("Removing the BackendConnection custom resource instance")
-	if backendConnectionResource := LoadBackendConnectionResourceByNameIfItExists(
-		ctx,
-		k8sClient,
-		Default,
-		backendConnectionResourceName,
-	); backendConnectionResource != nil {
-		// We want to delete the custom resource, but we need to remove the finalizer first, otherwise the first
-		// reconcile of the next test case will actually run the finalizers.
-		removeFinalizerFromBackendConnectionResource(ctx, k8sClient, backendConnectionResource)
-		err := k8sClient.Delete(ctx, backendConnectionResource)
-		if failOnErr {
-			// If the test already triggered the deletion of the custom resource, but it was blocked by the finalizer
-			// removing the finalizer may immediately delete the custom resource. In these cases it is okay to ignore
-			// the error from k8sClient.Delete(ctx, backendConnectionResource).
-			Expect(err).NotTo(HaveOccurred())
-		}
-	}
-}
-
-func removeFinalizerFromBackendConnectionResource(
-	ctx context.Context,
-	k8sClient client.Client,
-	backendConnectionResource *backendconnectionv1alpha.BackendConnection,
-) {
-	finalizerHasBeenRemoved := controllerutil.RemoveFinalizer(
-		backendConnectionResource,
-		backendconnectionv1alpha.FinalizerId,
-	)
-	if finalizerHasBeenRemoved {
-		Expect(k8sClient.Update(ctx, backendConnectionResource)).To(Succeed())
 	}
 }
