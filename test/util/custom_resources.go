@@ -63,6 +63,11 @@ func EnsureDash0CustomResourceExistsWithNamespacedName(
 				Name:      namespacesName.Name,
 				Namespace: namespacesName.Namespace,
 			},
+			Spec: dash0v1alpha1.Dash0Spec{
+				IngressEndpoint:    "ingress.endpoint.dash0.com:4317",
+				AuthorizationToken: "authorization-token",
+				SecretRef:          "secret-ref",
+			},
 		},
 	)
 	return object.(*dash0v1alpha1.Dash0)
@@ -77,6 +82,11 @@ func CreateDash0CustomResource(
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      dash0CustomResourceName.Name,
 			Namespace: dash0CustomResourceName.Namespace,
+		},
+		Spec: dash0v1alpha1.Dash0Spec{
+			IngressEndpoint:    "ingress.endpoint.dash0.com:4317",
+			AuthorizationToken: "authorization-token",
+			SecretRef:          "secret-ref",
 		},
 	}
 	Expect(k8sClient.Create(ctx, dash0CustomResource)).To(Succeed())
@@ -243,6 +253,11 @@ func EnsureBackendConnectionResourceExistsWithNamespacedName(
 				Name:      namespacesName.Name,
 				Namespace: namespacesName.Namespace,
 			},
+			Spec: backendconnectionv1alpha.BackendConnectionSpec{
+				IngressEndpoint:    "ingress.endpoint.dash0.com:4317",
+				AuthorizationToken: "authorization-token",
+				SecretRef:          "secret-ref",
+			},
 		},
 	)
 	return object.(*backendconnectionv1alpha.BackendConnection)
@@ -257,6 +272,11 @@ func CreateBackendConnectionResource(
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      backendConnectionResourceName.Name,
 			Namespace: backendConnectionResourceName.Namespace,
+		},
+		Spec: backendconnectionv1alpha.BackendConnectionSpec{
+			IngressEndpoint:    "ingress.endpoint.dash0.com:4317",
+			AuthorizationToken: "authorization-token",
+			SecretRef:          "secret-ref",
 		},
 	}
 	Expect(k8sClient.Create(ctx, backendConnectionResource)).To(Succeed())

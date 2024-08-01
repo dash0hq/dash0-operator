@@ -39,6 +39,15 @@ custom resource definition for backend connection should match snapshot:
                   type: object
                 spec:
                   description: BackendConnectionSpec defines the desired state of BackendConnection
+                  properties:
+                    authorizationToken:
+                      type: string
+                    ingressEndpoint:
+                      type: string
+                    secretRef:
+                      type: string
+                  required:
+                    - ingressEndpoint
                   type: object
                 status:
                   description: BackendConnectionStatus defines the observed state of BackendConnection

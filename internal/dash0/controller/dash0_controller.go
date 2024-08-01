@@ -249,8 +249,11 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	// BackendConnection explicitly).
 	if err = backendconnectioncontroller.EnsureBackendConnectionResourceInDash0OperatorNamespace(
 		ctx,
-		r.OperatorNamespace,
 		r.Client,
+		r.OperatorNamespace,
+		dash0CustomResource.Spec.IngressEndpoint,
+		dash0CustomResource.Spec.AuthorizationToken,
+		dash0CustomResource.Spec.SecretRef,
 	); err != nil {
 		return ctrl.Result{}, err
 	}

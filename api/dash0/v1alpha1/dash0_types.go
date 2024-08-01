@@ -19,6 +19,29 @@ const (
 
 // Dash0Spec defines the desired state of the Dash0 custom resource.
 type Dash0Spec struct {
+	// The URL of the observability backend to which telemetry data will be sent. This property is mandatory. The value
+	// needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct OTLP/gRPC endpoint can be copied fom
+	// https://app.dash0.com/settings. The correct endpoint value will always start with `ingress.` and end in
+	// `dash0.com:4317`.
+	//
+	// +kubebuilder:validation:Mandatory
+	IngressEndpoint string `json:"ingressEndpoint"`
+
+	// The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
+	// to be provided. If both are provided, the AuthorizationToken will be used and SecretRef will be ignored. The
+	// authorization token for your Dash0 organization can be copied from https://app.dash0.com/settings.
+	//
+	// +kubebuilder:validation:Optional
+	AuthorizationToken string `json:"authorizationToken"`
+
+	// A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, but either
+	// this property or the AuthorizationToken property has to be provided. If both are provided, the AuthorizationToken
+	// will be used and SecretRef will be ignored. The authorization token for your Dash0 organization can be copied
+	// from https://app.dash0.com/settings.
+	//
+	// +kubebuilder:validation:Optional
+	SecretRef string `json:"secretRef"`
+
 	// Global opt-out for workload instrumentation for the target namespace. You can opt-out of instrumenting workloads
 	// entirely by setting this option to false. By default, this setting is true and Kubernetes workloads will be
 	// intrumented by the operator to send telemetry to Dash0. Setting it to false will prevent workload instrumentation

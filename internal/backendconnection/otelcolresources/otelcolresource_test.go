@@ -90,7 +90,11 @@ var _ = Describe("The BackendConnection Controller", Ordered, func() {
 			err := oTelColResourceManager.createResource(ctx, testObject.DeepCopy(), &logger)
 			Expect(err).ToNot(HaveOccurred())
 
-			isNew, isChanged, err := oTelColResourceManager.createOrUpdateResource(ctx, testObject.DeepCopy(), &logger)
+			isNew, isChanged, err := oTelColResourceManager.createOrUpdateResource(
+				ctx,
+				testObject.DeepCopy(),
+				&logger,
+			)
 
 			Expect(err).ToNot(HaveOccurred())
 			Expect(isNew).To(BeFalse())
@@ -101,7 +105,15 @@ var _ = Describe("The BackendConnection Controller", Ordered, func() {
 
 	Describe("when creating all OpenTelemetry collector resources", func() {
 		It("should create the resources", func() {
-			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(ctx, namespace, &logger)
+			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
+				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+					ctx,
+					namespace,
+					"ingress.endpoint.dash0.com:4317",
+					"authorization-token",
+					"secret-ref",
+					&logger,
+				)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resourcesHaveBeenCreated).To(BeTrue())
 			Expect(resourcesHaveBeenUpdated).To(BeFalse())
@@ -127,7 +139,15 @@ var _ = Describe("The BackendConnection Controller", Ordered, func() {
 				},
 			})
 			Expect(err).ToNot(HaveOccurred())
-			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(ctx, namespace, &logger)
+			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
+				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+					ctx,
+					namespace,
+					"ingress.endpoint.dash0.com:4317",
+					"authorization-token",
+					"secret-ref",
+					&logger,
+				)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resourcesHaveBeenCreated).To(BeFalse())
 			Expect(resourcesHaveBeenUpdated).To(BeTrue())
@@ -138,12 +158,27 @@ var _ = Describe("The BackendConnection Controller", Ordered, func() {
 	Describe("when all OpenTelemetry collector resources are up to date", func() {
 		It("should report that nothing has changed", func() {
 			// create resources (so we are sure that everything is in the desired state)
-			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(ctx, namespace, &logger)
+			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx,
+				namespace,
+				"ingress.endpoint.dash0.com:4317",
+				"authorization-token",
+				"secret-ref",
+				&logger,
+			)
 			Expect(err).ToNot(HaveOccurred())
 
 			// now run another create/update, to make sure resourcesHaveBeenCreated/resourcesHaveBeenUpdated come back
 			// as false
-			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(ctx, namespace, &logger)
+			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
+				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+					ctx,
+					namespace,
+					"ingress.endpoint.dash0.com:4317",
+					"authorization-token",
+					"secret-ref",
+					&logger,
+				)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resourcesHaveBeenCreated).To(BeFalse())
 			Expect(resourcesHaveBeenUpdated).To(BeFalse())
@@ -154,11 +189,25 @@ var _ = Describe("The BackendConnection Controller", Ordered, func() {
 	Describe("when deleting all OpenTelemetry collector resources", func() {
 		It("should delete the resources", func() {
 			// create resources (so there is something to delete)
-			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(ctx, namespace, &logger)
+			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx,
+				namespace,
+				"ingress.endpoint.dash0.com:4317",
+				"authorization-token",
+				"secret-ref",
+				&logger,
+			)
 			Expect(err).ToNot(HaveOccurred())
 
 			// delete everything again
-			err = oTelColResourceManager.DeleteResources(ctx, namespace, &logger)
+			err = oTelColResourceManager.DeleteResources(
+				ctx,
+				namespace,
+				"ingress.endpoint.dash0.com:4317",
+				"authorization-token",
+				"secret-ref",
+				&logger,
+			)
 			Expect(err).ToNot(HaveOccurred())
 
 			verifyNoConfigMapExists(ctx)

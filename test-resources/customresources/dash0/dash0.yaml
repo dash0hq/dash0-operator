@@ -2,3 +2,11 @@ apiVersion: operator.dash0.com/v1alpha1
 kind: Dash0
 metadata:
   name: dash0-resource
+spec:
+  ingressEndpoint: ingress.eu-west-1.aws.dash0-dev.com:4317
+
+  # Either provide the name of a secret existing in the Dash0 operator's namespace as secretRef:
+  secretRef: dash0-authorization-secret
+
+  # Or provide the token directly as authorizationToken:
+  # authorizationToken: auth_...
