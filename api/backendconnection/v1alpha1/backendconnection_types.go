@@ -21,6 +21,12 @@ const (
 
 // BackendConnectionSpec defines the desired state of BackendConnection
 type BackendConnectionSpec struct {
+	// +kubebuilder:validation:Mandatory
+	IngressEndpoint string `json:"ingressEndpoint"`
+	// +kubebuilder:validation:Optional
+	AuthorizationToken string `json:"authorizationToken"`
+	// +kubebuilder:validation:Optional
+	SecretRef string `json:"secretRef"`
 }
 
 // BackendConnectionStatus defines the observed state of BackendConnection

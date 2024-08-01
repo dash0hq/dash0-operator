@@ -123,6 +123,9 @@ func (r *BackendConnectionReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		r.OTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 			ctx,
 			namespace,
+			backendConnectionResource.Spec.IngressEndpoint,
+			backendConnectionResource.Spec.AuthorizationToken,
+			backendConnectionResource.Spec.SecretRef,
 			&logger,
 		)
 	if err != nil {
@@ -144,7 +147,14 @@ func (r *BackendConnectionReconciler) runCleanupActions(
 	backendConnectionResource *backendconnectionv1alpha1.BackendConnection,
 	logger *logr.Logger,
 ) error {
-	if err := r.OTelColResourceManager.DeleteResources(ctx, namespace, logger); err != nil {
+	if err := r.OTelColResourceManager.DeleteResources(
+		ctx,
+		namespace,
+		backendConnectionResource.Spec.IngressEndpoint,
+		backendConnectionResource.Spec.AuthorizationToken,
+		backendConnectionResource.Spec.SecretRef,
+		logger,
+	); err != nil {
 		logger.Error(err, "Failed to delete the OpenTelemetry collector resources, requeuing reconcile request.")
 		return err
 	}
@@ -165,10 +175,14 @@ func (r *BackendConnectionReconciler) runCleanupActions(
 
 func EnsureBackendConnectionResourceInDash0OperatorNamespace(
 	ctx context.Context,
-	operatorNamespace string,
 	k8sClient client.Client,
+	operatorNamespace string,
+	ingressEndpoint string,
+	authorizationToken string,
+	secretRef string,
 ) error {
 	logger := log.FromContext(ctx)
+
 	list := &backendconnectionv1alpha1.BackendConnectionList{}
 	err := k8sClient.List(
 		ctx,
@@ -186,6 +200,18 @@ func EnsureBackendConnectionResourceInDash0OperatorNamespace(
 		return nil
 	}
 
+	if ingressEndpoint == "" {
+		err = fmt.Errorf("no ingress endpoint provided, unable to create the OpenTelemetry collector")
+		logger.Error(err, "failed to create a backend connection, no telemetry will be reported to Dash0")
+		return err
+	}
+	if authorizationToken == "" && secretRef == "" {
+		err = fmt.Errorf("neither an authorization token nor a reference to a Kubernetes secret has been provided, " +
+			"unable to create the OpenTelemetry collector")
+		logger.Error(err, "failed to create a backend connection, no telemetry will be reported to Dash0")
+		return err
+	}
+
 	// There is no backend connection resource in the dash0 namespace yet, create one, so that a default OTel collector
 	// is created
 	logger.Info(fmt.Sprintf("Creating a backend connection resource in the Dash0 operator namespace %s.", operatorNamespace))
@@ -193,6 +219,11 @@ func EnsureBackendConnectionResourceInDash0OperatorNamespace(
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      backendconnectionv1alpha1.DefaultName,
 			Namespace: operatorNamespace,
+		},
+		Spec: backendconnectionv1alpha1.BackendConnectionSpec{
+			IngressEndpoint:    ingressEndpoint,
+			AuthorizationToken: authorizationToken,
+			SecretRef:          secretRef,
 		},
 	})
 }

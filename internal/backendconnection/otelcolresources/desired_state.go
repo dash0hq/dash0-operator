@@ -24,10 +24,18 @@ type E2eTestConfig struct {
 }
 
 type oTelColConfig struct {
-	namespace      string
-	namePrefix     string
-	oTelColVersion string
-	e2eTest        E2eTestConfig
+	Namespace          string
+	NamePrefix         string
+	IngressEndpoint    string
+	AuthorizationToken string
+	SecretRef          string
+	oTelColVersion     string
+	e2eTest            E2eTestConfig
+}
+
+type oTelConfigTemplateValues struct {
+	TokenOrFilename string
+	oTelColConfig
 }
 
 const (
@@ -45,8 +53,6 @@ const (
 	appKubernetesIoNameValue      = "opentelemetry-collector"
 	appKubernetesIoInstanceValue  = "dash0-operator"
 	appKubernetesIoManagedByValue = "dash0-operator"
-
-	dash0AuthorizationSecretName = "dash0-authorization-secret"
 )
 
 var (
@@ -56,18 +62,21 @@ var (
 		componentLabelKey:          serviceComponent,
 	}
 
+	authWithTokenTemplate    = template.Must(template.New("auth-with-token").Parse("token: {{ .AuthorizationToken }}"))
+	authWithFilenameTemplate = template.Must(template.New("auth-with-filename").Parse("filename: /etc/dash0/secret-volume/dash0-authorization-token"))
+
 	configTemplate = template.Must(template.New("collector-config").Parse(`
     exporters:
       debug: {}
       otlp:
         auth:
           authenticator: bearertokenauth/dash0
-        endpoint: ingress.eu-west-1.aws.dash0-dev.com:4317
+        endpoint: {{ .IngressEndpoint }}
 
     extensions:
       bearertokenauth/dash0:
-        filename: /etc/dash0/secret-volume/dash0-authorization-token
         scheme: Bearer
+        {{ .TokenOrFilename }}
       health_check:
         endpoint: ${env:MY_POD_IP}:13133
 
@@ -186,9 +195,20 @@ var (
 )
 
 func assembleDesiredState(config *oTelColConfig) ([]client.Object, error) {
+	if config.IngressEndpoint == "" {
+		return nil, fmt.Errorf("no ingress endpoint provided, unable to create the OpenTelemetry collector")
+	}
+	useSecretRef := false
+	if config.AuthorizationToken == "" && config.SecretRef == "" {
+		return nil, fmt.Errorf("neither an authorization token nor a reference to a Kubernetes secret has been " +
+			"provided, unable to create the OpenTelemetry collector")
+	} else if config.AuthorizationToken == "" {
+		useSecretRef = true
+	}
+
 	var desiredState []client.Object
 	desiredState = append(desiredState, serviceAccount(config))
-	cnfgMap, err := configMap(config)
+	cnfgMap, err := configMap(config, useSecretRef)
 	if err != nil {
 		return desiredState, err
 	}
@@ -196,7 +216,7 @@ func assembleDesiredState(config *oTelColConfig) ([]client.Object, error) {
 	desiredState = append(desiredState, clusterRole(config))
 	desiredState = append(desiredState, clusterRoleBinding(config))
 	desiredState = append(desiredState, service(config))
-	desiredState = append(desiredState, daemonSet(config))
+	desiredState = append(desiredState, daemonSet(config, useSecretRef))
 	return desiredState, nil
 }
 
@@ -207,16 +227,37 @@ func serviceAccount(config *oTelColConfig) *corev1.ServiceAccount {
 			APIVersion: "v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      serviceAccountName(config.namePrefix),
-			Namespace: config.namespace,
+			Name:      serviceAccountName(config.NamePrefix),
+			Namespace: config.Namespace,
 			Labels:    labels(config.oTelColVersion, false),
 		},
 	}
 }
 
-func configMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
+func configMap(config *oTelColConfig, useSecretRef bool) (*corev1.ConfigMap, error) {
+	var tokenOrFilename string
+	if useSecretRef {
+		var authWithFilename bytes.Buffer
+		err := authWithFilenameTemplate.Execute(&authWithFilename, config)
+		if err != nil {
+			return nil, err
+		}
+		tokenOrFilename = authWithFilename.String()
+	} else {
+		var authWithToken bytes.Buffer
+		err := authWithTokenTemplate.Execute(&authWithToken, config)
+		if err != nil {
+			return nil, err
+		}
+		tokenOrFilename = authWithToken.String()
+	}
+
+	values := oTelConfigTemplateValues{
+		TokenOrFilename: tokenOrFilename,
+		oTelColConfig:   *config,
+	}
 	var collectorYaml bytes.Buffer
-	err := configTemplate.Execute(&collectorYaml, nil)
+	err := configTemplate.Execute(&collectorYaml, values)
 	if err != nil {
 		return nil, err
 	}
@@ -226,7 +267,7 @@ func configMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
 	}
 	if config.e2eTest.Enabled {
 		var collectorExtraYaml bytes.Buffer
-		err = extraConfigTemplate.Execute(&collectorExtraYaml, nil)
+		err = extraConfigTemplate.Execute(&collectorExtraYaml, values)
 		if err != nil {
 			return nil, err
 		}
@@ -239,8 +280,8 @@ func configMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
 			APIVersion: "v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      configMapName(config.namePrefix),
-			Namespace: config.namespace,
+			Name:      configMapName(config.NamePrefix),
+			Namespace: config.Namespace,
 			Labels:    labels(config.oTelColVersion, false),
 		},
 		Data: configMapData,
@@ -254,8 +295,8 @@ func clusterRole(config *oTelColConfig) *rbacv1.ClusterRole {
 			APIVersion: "rbac.authorization.k8s.io/v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      clusterRoleName(config.namePrefix),
-			Namespace: config.namespace,
+			Name:      clusterRoleName(config.NamePrefix),
+			Namespace: config.Namespace,
 			Labels:    labels(config.oTelColVersion, false),
 		},
 		Rules: []rbacv1.PolicyRule{
@@ -285,19 +326,19 @@ func clusterRoleBinding(config *oTelColConfig) *rbacv1.ClusterRoleBinding {
 			APIVersion: "rbac.authorization.k8s.io/v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name(config.namePrefix, "opentelemetry-collector"),
-			Namespace: config.namespace,
+			Name:      name(config.NamePrefix, "opentelemetry-collector"),
+			Namespace: config.Namespace,
 			Labels:    labels(config.oTelColVersion, false),
 		},
 		RoleRef: rbacv1.RoleRef{
 			APIGroup: "rbac.authorization.k8s.io",
 			Kind:     "ClusterRole",
-			Name:     clusterRoleName(config.namePrefix),
+			Name:     clusterRoleName(config.NamePrefix),
 		},
 		Subjects: []rbacv1.Subject{{
 			Kind:      "ServiceAccount",
-			Name:      serviceAccountName(config.namePrefix),
-			Namespace: config.namespace,
+			Name:      serviceAccountName(config.NamePrefix),
+			Namespace: config.Namespace,
 		}},
 	}
 }
@@ -309,8 +350,8 @@ func service(config *oTelColConfig) *corev1.Service {
 			APIVersion: "v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name(config.namePrefix, "opentelemetry-collector"),
-			Namespace: config.namespace,
+			Name:      name(config.NamePrefix, "opentelemetry-collector"),
+			Namespace: config.Namespace,
 			Labels:    serviceLabels(config.oTelColVersion),
 		},
 		Spec: corev1.ServiceSpec{
@@ -340,7 +381,7 @@ func service(config *oTelColConfig) *corev1.Service {
 	}
 }
 
-func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
+func daemonSet(config *oTelColConfig, useSecretRef bool) *appsv1.DaemonSet {
 	oTelColArgs := []string{
 		"--config=file:/conf/collector.yaml",
 	}
@@ -353,11 +394,13 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 		MountPath: "/conf",
 	}}
 	if !config.e2eTest.Enabled {
-		volumeMounts = append(volumeMounts, corev1.VolumeMount{
-			Name:      "dash0-secret-volume",
-			MountPath: "/etc/dash0/secret-volume",
-			ReadOnly:  true,
-		})
+		if useSecretRef {
+			volumeMounts = append(volumeMounts, corev1.VolumeMount{
+				Name:      "dash0-secret-volume",
+				MountPath: "/etc/dash0/secret-volume",
+				ReadOnly:  true,
+			})
+		}
 	} else {
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
 			Name:      "telemetry-file-export",
@@ -383,7 +426,7 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 			VolumeSource: corev1.VolumeSource{
 				ConfigMap: &corev1.ConfigMapVolumeSource{
 					LocalObjectReference: corev1.LocalObjectReference{
-						Name: configMapName(config.namePrefix),
+						Name: configMapName(config.NamePrefix),
 					},
 					Items: configMapItems,
 				},
@@ -391,14 +434,16 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 		},
 	}
 	if !config.e2eTest.Enabled {
-		volumes = append(volumes, corev1.Volume{
-			Name: "dash0-secret-volume",
-			VolumeSource: corev1.VolumeSource{
-				Secret: &corev1.SecretVolumeSource{
-					SecretName: dash0AuthorizationSecretName,
+		if useSecretRef {
+			volumes = append(volumes, corev1.Volume{
+				Name: "dash0-secret-volume",
+				VolumeSource: corev1.VolumeSource{
+					Secret: &corev1.SecretVolumeSource{
+						SecretName: config.SecretRef,
+					},
 				},
-			},
-		})
+			})
+		}
 	} else {
 		volumes = append(volumes, corev1.Volume{
 			Name: "telemetry-file-export",
@@ -417,8 +462,8 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 			APIVersion: "apps/v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name(config.namePrefix, "opentelemetry-collector-agent"),
-			Namespace: config.namespace,
+			Name:      name(config.NamePrefix, "opentelemetry-collector-agent"),
+			Namespace: config.Namespace,
 			Labels:    labels(config.oTelColVersion, true),
 		},
 		Spec: appsv1.DaemonSetSpec{
@@ -433,7 +478,7 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 					Labels: daemonSetMatchLabels,
 				},
 				Spec: corev1.PodSpec{
-					ServiceAccountName: serviceAccountName(config.namePrefix),
+					ServiceAccountName: serviceAccountName(config.NamePrefix),
 					SecurityContext:    &corev1.PodSecurityContext{},
 					Containers: []corev1.Container{
 						{

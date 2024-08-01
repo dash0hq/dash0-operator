@@ -6,16 +6,6 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.14.0
   name: dash0s.operator.dash0.com
 spec:
-  conversion:
-    strategy: Webhook
-    webhook:
-      clientConfig:
-        service:
-          name: {{ template "dash0-operator.chartName" . }}-webhook-service
-          namespace: {{ .Release.Namespace }}
-          path: /convert
-      conversionReviewVersions:
-      - v1
   group: operator.dash0.com
   names:
     kind: Dash0
@@ -66,6 +56,19 @@ spec:
 
                   This option has no effect if InstrumentWorkloads is set to false.
                 type: boolean
+              authorizationToken:
+                description: |-
+                  The Dash0 authorization token. This propery is optional, but either this property or the SecretRef property has
+                  to be provided. If both are provided, the AuthorizationToken will be used and SecretRef will be ignored. The
+                  authorization token for your Dash0 organization can be copied from https://app.dash0.com/settings.
+                type: string
+              ingressEndpoint:
+                description: |-
+                  The URL of the observability backend to which telemetry data will be sent. This property is mandatory. The value
+                  needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct OTLP/gRPC endpoint can be copied fom
+                  https://app.dash0.com/settings. The correct endpoint value will always start with `ingress.` and end in
+                  `dash0.com:4317`.
+                type: string
               instrumentExistingWorkloads:
                 description: |-
                   Opt-out for workload instrumentation of existing workloads for the target namespace. You can opt-out of
@@ -94,6 +97,13 @@ spec:
 
                   The default value for this option is true.
                 type: boolean
+              secretRef:
+                description: |-
+                  A reference to a Kubernetes secret containing the Dash0 authorization token. This propery is optional, but either
+                  this property or the AuthorizationToken property has to be provided. If both are provided, the AuthorizationToken
+                  will be used and SecretRef will be ignored. The authorization token for your Dash0 organization can be copied
+                  from https://app.dash0.com/settings.
+                type: string
               uninstrumentWorkloadsOnDelete:
                 description: |-
                   Opt-out for removing the Dash0 instrumentation from workloads when the Dash0 custom resource is removed from a
@@ -104,6 +114,8 @@ spec:
 
                   The default value for this option is true.
                 type: boolean
+            required:
+            - ingressEndpoint
             type: object
           status:
             description: Dash0Status defines the observed state of the Dash0 custom

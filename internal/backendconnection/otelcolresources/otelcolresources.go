@@ -28,13 +28,19 @@ const (
 func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	ctx context.Context,
 	namespace string,
+	ingressEndpoint string,
+	authorizationToken string,
+	secretRef string,
 	logger *logr.Logger,
 ) (bool, bool, error) {
 	config := &oTelColConfig{
-		namespace:      namespace,
-		namePrefix:     m.OTelCollectorNamePrefix,
-		oTelColVersion: oTelCollectorImageVersion,
-		e2eTest:        m.E2eTestConfig,
+		Namespace:          namespace,
+		NamePrefix:         m.OTelCollectorNamePrefix,
+		IngressEndpoint:    ingressEndpoint,
+		SecretRef:          secretRef,
+		AuthorizationToken: authorizationToken,
+		oTelColVersion:     oTelCollectorImageVersion,
+		e2eTest:            m.E2eTestConfig,
 	}
 	desiredState, err := assembleDesiredState(config)
 	if err != nil {
@@ -159,13 +165,19 @@ func (m *OTelColResourceManager) updateResource(
 func (m *OTelColResourceManager) DeleteResources(
 	ctx context.Context,
 	namespace string,
+	ingressEndpoint string,
+	authorizationToken string,
+	secretRef string,
 	logger *logr.Logger,
 ) error {
 	config := &oTelColConfig{
-		namespace:      namespace,
-		namePrefix:     m.OTelCollectorNamePrefix,
-		oTelColVersion: oTelCollectorImageVersion,
-		e2eTest:        m.E2eTestConfig,
+		Namespace:          namespace,
+		NamePrefix:         m.OTelCollectorNamePrefix,
+		IngressEndpoint:    ingressEndpoint,
+		SecretRef:          secretRef,
+		AuthorizationToken: authorizationToken,
+		oTelColVersion:     oTelCollectorImageVersion,
+		e2eTest:            m.E2eTestConfig,
 	}
 	allObjects, err := assembleDesiredState(config)
 	if err != nil {
