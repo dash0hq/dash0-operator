@@ -97,41 +97,8 @@ rules:
   - patch
   - update
 
-# Permissions required to manage the backendconnection resource, its finalizers and status.
-- apiGroups:
-  - operator.dash0.com
-  resources:
-  - backendconnections
-  verbs:
-  - create
-  - delete
-  - deletecollection
-  - get
-  - list
-  - patch
-  - update
-  - watch
 
-# Permissions required to manage the backendconnection resource, its finalizers and status.
-- apiGroups:
-    - operator.dash0.com
-  resources:
-    - backendconnections/finalizers
-  verbs:
-    - update
-
-# Permissions required to manage the backendconnection resource, its finalizers and status.
-- apiGroups:
-  - operator.dash0.com
-  resources:
-  - backendconnections/status
-  verbs:
-  - get
-  - patch
-  - update
-
-# Permissions required to manage OTel collector resources, as a consequence of the creation/change/deletion of
-# backendconnection resource.
+# Permissions required to manage OTel collector resources.
 - apiGroups:
   - ""
   resources:

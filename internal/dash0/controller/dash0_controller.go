@@ -23,7 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
-	backendconnectioncontroller "github.com/dash0hq/dash0-operator/internal/backendconnection/controller"
+	"github.com/dash0hq/dash0-operator/internal/backendconnection"
 	"github.com/dash0hq/dash0-operator/internal/common/controller"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 	"github.com/dash0hq/dash0-operator/internal/dash0/workloads"
@@ -31,13 +31,14 @@ import (
 
 type Dash0Reconciler struct {
 	client.Client
-	ClientSet               *kubernetes.Clientset
-	Scheme                  *runtime.Scheme
-	Recorder                record.EventRecorder
-	Images                  util.Images
-	OTelCollectorNamePrefix string
-	OTelCollectorBaseUrl    string
-	OperatorNamespace       string
+	ClientSet                *kubernetes.Clientset
+	Scheme                   *runtime.Scheme
+	Recorder                 record.EventRecorder
+	Images                   util.Images
+	OTelCollectorNamePrefix  string
+	OTelCollectorBaseUrl     string
+	OperatorNamespace        string
+	BackendConnectionManager *backendconnection.BackendConnectionManager
 }
 
 type ModificationMode string
@@ -242,18 +243,12 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{}, nil
 	}
 
-	// Make sure that there is at least one BackendConnectionResource in the namespace of the operator (dash0-system by
-	// default). That BackendConnectionResource will then trigger the creation of an OpenTelemetry collector in
-	// dash0-system, which will serve as our default collector, for all instrumented namespaces (unless a
-	// Dash0CustomResource in a namespace specifies a different target backend, via referencing a different
-	// BackendConnection explicitly).
-	if err = backendconnectioncontroller.EnsureBackendConnectionResourceInDash0OperatorNamespace(
+	// Make sure that an OpenTelemetry collector instance has been created in the namespace of the operator, and that
+	// its configuration is up-to-date.
+	if err = r.BackendConnectionManager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
 		ctx,
-		r.Client,
 		r.OperatorNamespace,
-		dash0CustomResource.Spec.IngressEndpoint,
-		dash0CustomResource.Spec.AuthorizationToken,
-		dash0CustomResource.Spec.SecretRef,
+		dash0CustomResource,
 	); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -709,10 +704,9 @@ func (r *Dash0Reconciler) runCleanupActions(
 		return err
 	}
 
-	if err := backendconnectioncontroller.RemoveBackendConnectionIfNoDash0CustomResourceIsLeft(
+	if err := r.BackendConnectionManager.RemoveOpenTelemetryCollectorIfNoDash0CustomResourceIsLeft(
 		ctx,
 		r.OperatorNamespace,
-		r.Client,
 		dash0CustomResource,
 	); err != nil {
 		logger.Error(err, "Failed to check if the OpenTelemetry collector instance needs to be removed or failed removing it.")

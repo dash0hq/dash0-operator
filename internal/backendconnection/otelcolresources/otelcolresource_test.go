@@ -41,7 +41,7 @@ var (
 	}
 )
 
-var _ = Describe("The BackendConnection Controller", Ordered, func() {
+var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func() {
 	ctx := context.Background()
 	logger := log.FromContext(ctx)
 
