@@ -23,6 +23,10 @@ type BackendConnectionManager struct {
 	*otelcolresources.OTelColResourceManager
 }
 
+const (
+	failedToCreateMsg = "failed to create the OpenTelemetry collector instance, no telemetry will be reported to Dash0"
+)
+
 func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
 	ctx context.Context,
 	operatorNamespace string,
@@ -32,13 +36,13 @@ func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInDash0
 
 	if dash0CustomResource.Spec.IngressEndpoint == "" {
 		err := fmt.Errorf("no ingress endpoint provided, unable to create the OpenTelemetry collector")
-		logger.Error(err, "failed to create a backend connection, no telemetry will be reported to Dash0")
+		logger.Error(err, failedToCreateMsg)
 		return err
 	}
 	if dash0CustomResource.Spec.AuthorizationToken == "" && dash0CustomResource.Spec.SecretRef == "" {
 		err := fmt.Errorf("neither an authorization token nor a reference to a Kubernetes secret has been provided, " +
 			"unable to create the OpenTelemetry collector")
-		logger.Error(err, "failed to create a backend connection, no telemetry will be reported to Dash0")
+		logger.Error(err, failedToCreateMsg)
 		return err
 	}
 
@@ -53,7 +57,7 @@ func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInDash0
 		)
 
 	if err != nil {
-		logger.Error(err, "failed to create a backend connection, no telemetry will be reported to Dash0")
+		logger.Error(err, failedToCreateMsg)
 		return err
 	}
 
