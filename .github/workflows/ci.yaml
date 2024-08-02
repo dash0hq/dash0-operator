@@ -17,6 +17,7 @@ jobs:
   verify:
     name: Build & Test
     runs-on: ubuntu-latest
+
     concurrency:
       group: ci-concurrency-group-${{ github.ref }}
       cancel-in-progress: true
@@ -133,7 +134,7 @@ jobs:
   publish-helm-chart-dry-run:
     name: Publish Helm Chart (Dry Run)
     runs-on: ubuntu-latest
-    if: ${{ ! contains(github.ref, 'refs/tags/') }}
+    if: ${{ ! contains(github.ref, 'refs/tags/') && github.actor != 'dependabot[bot]'}}
     needs:
       - build-and-push-images
     concurrency:
@@ -150,10 +151,31 @@ jobs:
           echo "verifying that helm chart can be published"
           DRY_RUN=true helm-chart/bin/publish.sh 0.0.0
 
+  # By default, when a GH action run is triggered by dependabot, it will only get read-only permissions.
+  # See https://docs.github.com/en/code-security/dependabot/working-with-dependabot/automating-dependabot-with-github-actions#changing-github_token-permissions
+  # For that reason, we skip the check whether the Helm chart can still be published for Dependabot update PRs.
+  # Those PRs do not change the Helm chart anyway.
+  # Note that the value of the "name" attribute needs to be identical to the publish-helm-chart-dry-run job, since the
+  # branch protection rules reference this property, and it is a required check.
+  skip-publish-helm-chart-dry-run-for-dependabot:
+    name: Publish Helm Chart (Dry Run)
+    runs-on: ubuntu-latest
+    if: ${{ ! contains(github.ref, 'refs/tags/') && github.actor == 'dependabot[bot]'}}
+    needs:
+      - build-and-push-images
+    concurrency:
+      group: ci-concurrency-group-${{ github.ref }}
+      cancel-in-progress: true
+
+    steps:
+      - name: skipping publish helm chart (dry run)
+        run: |
+          echo skipping publish helm chart dry run for dependabot commit
+
   publish-helm-chart:
     name: Publish Helm Chart
     runs-on: ubuntu-latest
-    if: ${{ contains(github.ref, 'refs/tags/') }}
+    if: ${{ contains(github.ref, 'refs/tags/') && github.actor != 'dependabot[bot]'}}
     needs:
       - build-and-push-images
     concurrency:
