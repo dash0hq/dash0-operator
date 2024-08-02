@@ -270,7 +270,7 @@ func startDash0Controller(mgr manager.Manager, clientset *kubernetes.Clientset, 
 
 	dash0Reconciler := &dash0controller.Dash0Reconciler{
 		Client:                   mgr.GetClient(),
-		ClientSet:                clientset,
+		Clientset:                clientset,
 		Scheme:                   mgr.GetScheme(),
 		Recorder:                 mgr.GetEventRecorderFor("dash0-controller"),
 		Images:                   images,

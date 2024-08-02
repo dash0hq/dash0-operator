@@ -5,10 +5,8 @@ package otelcolresources
 
 import (
 	"context"
-	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -20,7 +18,6 @@ import (
 )
 
 var (
-	namespace             = TestNamespaceName
 	expectedConfigMapName = "unit-test-opentelemetry-collector-agent"
 
 	testObject = &corev1.ConfigMap{
@@ -30,7 +27,7 @@ var (
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-config-map",
-			Namespace: namespace,
+			Namespace: Dash0OperatorNamespace,
 			Labels: map[string]string{
 				"label": "value",
 			},
@@ -48,7 +45,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 	var oTelColResourceManager *OTelColResourceManager
 
 	BeforeAll(func() {
-		EnsureTestNamespaceExists(ctx, k8sClient)
+		EnsureDash0OperatorNamespaceExists(ctx, k8sClient)
 	})
 
 	BeforeEach(func() {
@@ -59,7 +56,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 	})
 
 	AfterEach(func() {
-		err := k8sClient.DeleteAllOf(ctx, &corev1.ConfigMap{}, client.InNamespace(namespace))
+		err := k8sClient.DeleteAllOf(ctx, &corev1.ConfigMap{}, client.InNamespace(Dash0OperatorNamespace))
 		Expect(err).ToNot(HaveOccurred())
 	})
 
@@ -108,16 +105,17 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
-					namespace,
-					"ingress.endpoint.dash0.com:4317",
-					"authorization-token",
-					"secret-ref",
+					Dash0OperatorNamespace,
+					IngressEndpoint,
+					AuthorizationToken,
+					SecretRefEmpty,
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resourcesHaveBeenCreated).To(BeTrue())
 			Expect(resourcesHaveBeenUpdated).To(BeFalse())
-			verifyConfigMap(ctx)
+
+			VerifyCollectorResourcesExist(ctx, k8sClient, Dash0OperatorNamespace)
 		})
 	})
 
@@ -126,7 +124,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			err := k8sClient.Create(ctx, &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      expectedConfigMapName,
-					Namespace: namespace,
+					Namespace: Dash0OperatorNamespace,
 					Labels: map[string]string{
 						"wrong-key": "value",
 					},
@@ -142,16 +140,17 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
-					namespace,
-					"ingress.endpoint.dash0.com:4317",
-					"authorization-token",
-					"secret-ref",
+					Dash0OperatorNamespace,
+					IngressEndpoint,
+					AuthorizationToken,
+					SecretRefEmpty,
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resourcesHaveBeenCreated).To(BeFalse())
 			Expect(resourcesHaveBeenUpdated).To(BeTrue())
-			verifyConfigMap(ctx)
+
+			VerifyCollectorResourcesExist(ctx, k8sClient, Dash0OperatorNamespace)
 		})
 	})
 
@@ -160,10 +159,10 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			// create resources (so we are sure that everything is in the desired state)
 			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 				ctx,
-				namespace,
-				"ingress.endpoint.dash0.com:4317",
-				"authorization-token",
-				"secret-ref",
+				Dash0OperatorNamespace,
+				IngressEndpoint,
+				AuthorizationToken,
+				SecretRefEmpty,
 				&logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -173,16 +172,17 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
-					namespace,
-					"ingress.endpoint.dash0.com:4317",
-					"authorization-token",
-					"secret-ref",
+					Dash0OperatorNamespace,
+					IngressEndpoint,
+					AuthorizationToken,
+					SecretRefEmpty,
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resourcesHaveBeenCreated).To(BeFalse())
 			Expect(resourcesHaveBeenUpdated).To(BeFalse())
-			verifyConfigMap(ctx)
+
+			VerifyCollectorResourcesExist(ctx, k8sClient, Dash0OperatorNamespace)
 		})
 	})
 
@@ -191,26 +191,27 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			// create resources (so there is something to delete)
 			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 				ctx,
-				namespace,
-				"ingress.endpoint.dash0.com:4317",
-				"authorization-token",
-				"secret-ref",
+				Dash0OperatorNamespace,
+				IngressEndpoint,
+				AuthorizationToken,
+				SecretRefEmpty,
 				&logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			VerifyCollectorResourcesExist(ctx, k8sClient, Dash0OperatorNamespace)
 
 			// delete everything again
 			err = oTelColResourceManager.DeleteResources(
 				ctx,
-				namespace,
-				"ingress.endpoint.dash0.com:4317",
-				"authorization-token",
-				"secret-ref",
+				Dash0OperatorNamespace,
+				IngressEndpoint,
+				AuthorizationToken,
+				SecretRefEmpty,
 				&logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
 
-			verifyNoConfigMapExists(ctx)
+			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, Dash0OperatorNamespace)
 		})
 	})
 })
@@ -223,24 +224,4 @@ func verifyObject(ctx context.Context, testObject *corev1.ConfigMap) {
 	Expect(object.Namespace).To(Equal(testObject.Namespace))
 	Expect(object.Labels).To(Equal(testObject.Labels))
 	Expect(object.Data).To(Equal(testObject.Data))
-}
-
-func verifyConfigMap(ctx context.Context) {
-	key := client.ObjectKey{Name: expectedConfigMapName, Namespace: namespace}
-	cm := &corev1.ConfigMap{}
-	err := k8sClient.Get(ctx, key, cm)
-	Expect(err).ToNot(HaveOccurred())
-	Expect(cm.Labels).ToNot(HaveKey("wrong-key"))
-	Expect(cm.Annotations).ToNot(HaveKey("wrong-key"))
-	Expect(cm.Data).To(HaveKey("collector.yaml"))
-	Expect(cm.Data).ToNot(HaveKey("wrong-key"))
-}
-
-func verifyNoConfigMapExists(ctx context.Context) {
-	key := client.ObjectKey{Name: expectedConfigMapName, Namespace: namespace}
-	cm := &corev1.ConfigMap{}
-	err := k8sClient.Get(ctx, key, cm)
-	Expect(err).To(HaveOccurred(), "the config map still exists although it should have been deleted")
-	Expect(apierrors.IsNotFound(err)).To(BeTrue(),
-		fmt.Sprintf("loading the config map failed with an unexpected error: %v", err))
 }
