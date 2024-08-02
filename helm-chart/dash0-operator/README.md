@@ -25,50 +25,22 @@ https://github.com/dash0hq/dash0-operator/blob/main/README.md.
 
 ## Installation
 
-Before installing the operator, add the required Helm repositories as follows:
+Before installing the operator, add the Dash0 operator's Helm repository as follows:
 
 ```console
 helm repo add dash0-operator https://dash0hq.github.io/dash0-operator
-helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts
 helm repo update
 ```
 
-Create the namespace for the operator and a secret with your Dash0 authorization token.
-The authorization token for your Dash0 organization can be copied from https://app.dash0.com/settings.
-Make sure to use `dash0-authorization-secret` for the name of the secret and `dash0-authorization-token` as the token
-key.
-
-```console
-kubectl create namespace dash0-system
-kubectl create secret generic \
-  dash0-authorization-secret \
-  --namespace dash0-system \
-  --from-literal=dash0-authorization-token=auth_...your-token-here...
-```
-
-Now you can install the operator into your cluster via Helm with the following command.
-Use the same namespace that you have created in the previous step and which contains the `dash0-authorization-secret`.
-You will need to replace the value given to `--set opentelemetry-collector.config.exporters.otlp.endpoint` with the
-actual OTLP/gRPC endpoint of your Dash0 organization.
-Again, the correct OTLP/gRPC endpoint can be copied fom https://app.dash0.com/settings.
-The correct endpoint value will always start with `ingress.` and end in `dash0.com:4317`.
+Now you can install the operator into your cluster via Helm with the following command:
 
 ```console
 helm install \
   --namespace dash0-system \
-  --set opentelemetry-collector.config.exporters.otlp.endpoint=your-dash0-ingress-endpoint-here.dash0.com:4317 \
+  --create-namespace \
   dash0-operator \
   dash0-operator/dash0-operator
 ```
-
-Note: When installing the chart, you might see a warning like the following printed to the console:
-```
-coalesce.go:286: warning: cannot overwrite table with non table for dash0-operator.opentelemetry-collector.config.receivers.prometheus (map[config:map[scrape_configs:[map[job_name:opentelemetry-collector scrape_interval:10s static_configs:[map[targets:[${env:MY_POD_IP}:8888]]]]]]])
-coalesce.go:286: warning: cannot overwrite table with non table for dash0-operator.opentelemetry-collector.config.receivers.zipkin (map[endpoint:${env:MY_POD_IP}:9411])
-coalesce.go:286: warning: cannot overwrite table with non table for dash0-operator.opentelemetry-collector.config.receivers.jaeger (map[protocols:map[grpc:map[endpoint:${env:MY_POD_IP}:14250] thrift_compact:map[endpoint:${env:MY_POD_IP}:6831] thrift_http:map[endpoint:${env:MY_POD_IP}:14268]]])
-```
-
-These warnings can be safely ignored.
 
 Note that Dash0 has to be enabled per namespace that you want to monitor, which is described in the next section.
 
@@ -83,9 +55,43 @@ apiVersion: operator.dash0.com/v1alpha1
 kind: Dash0
 metadata:
   name: dash0-resource
+spec:
+  # Replace this value with the actual OTLP/gRPC endpoint of your Dash0 organization.
+  ingressEndpoint: ingress... # TODO needs to be replaced with the actual value, see below
+
+  # Either provide the Dash0 authorization token as a string via the property authorizationToken:
+  authorizationToken: auth_... # TODO needs to be replaced with the actual value, see below
+
+  # Or provide the name of a secret existing in the Dash0 operator's namespace as the property secretRef:
+  # secretRef: dash0-authorization-secret
 ```
 
-Then apply the resource to the namespace you want to monitor.
+At this point, you need to provide two configuration settings:
+* `ingressEndpoint`: The URL of the observability backend to which telemetry data will be sent. This property is
+  mandatory.
+  Replace the value in the example above with the OTLP/gRPC endpoint of your Dash0 organization.
+  The correct OTLP/gRPC endpoint can be copied fom https://app.dash0.com/settings.
+  Note that the correct endpoint value will always start with `ingress.` and end in `dash0.com:4317`.
+  A protocol prefix (eg. `https://`) should not be included in the value.
+* `authorizationToken` or `secretRef`: Exactly one of these two properties needs to be provided.
+  If both are provided, `authorizationToken` will be used and `secretRef` will be ignored.
+  * `authorizationToken`: Replace the value in the example above with the Dash0 authorization token of your
+    organization.
+    The authorization token for your Dash0 organization can be copied from https://app.dash0.com/settings.
+    The prefix `Bearer ` must *not* be included in the value.
+    Note that the value will be rendered verbatim into a Kubernetes ConfigMap object.
+    Anyone with API access to the Kubernetes cluster will be able to read the value.
+    Use the `secretRef` property and a Kubernetes secret if you want to avoid that.
+  * `secretRef`: Replace the value in the example above with the name of an existing Kubernetes secret in the Dash0
+    operator's namespace.
+    The secret needs to contain the Dash0 authorization token.
+    See below for details on how exactly the secret should be created.
+    Note that by default, Kubernetes secrets are stored _unencrypted_, and anyone with API access to the Kubernetes
+    cluster will be able to read the value.
+    Additional steps are required to make sure secret values are encrypted.
+    See https://kubernetes.io/docs/concepts/configuration/secret/ for more information on Kubernetes secrets.
+
+After providing the required values, save the file and apply the resource to the namespace you want to monitor.
 For example, if you want to monitor workloads in the namespace `my-nodejs-applications`, use the following command:
 
 ```console
@@ -96,6 +102,48 @@ If you want to monitor the `default` namespace with Dash0, use the following com
 ```console
 kubectl apply -f dash0.yaml
 ```
+
+### Using a Kubernetes Secret for the Dash0 Authorization Token
+
+If you want to provide the Dash0 authorization token via a Kubernetes secret instead of providing the token as a string,
+create the secret in the namespace where the Dash0 operator is installed.
+If you followed the guide above, the name of that namespace is `dash0-system`.
+The authorization token for your Dash0 organization can be copied from https://app.dash0.com/settings.
+You can freely choose the name of the secret.
+Make sure to use `dash0-authorization-token` as the token key.
+
+Create the secret by using the following command:
+
+```console
+kubectl create secret generic \
+  dash0-authorization-secret \
+  --namespace dash0-system \
+  --from-literal=dash0-authorization-token=auth_...your-token-here...
+```
+
+With this example command, you would create a secret with the name `dash0-authorization-secret` in the namespace
+`dash0-system`.
+If you installed the operator into a different namespace, replace the `--namespace` parameter accordingly.
+
+The name of the secret must be referenced in the YAML file for the Dash0 resource in the `secretRef` property.
+Here is an example that uses the secret created above:
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0
+metadata:
+  name: dash0-resource
+spec:
+  # Replace this value with the actual OTLP/gRPC endpoint of your Dash0 organization.
+  ingressEndpoint: ingress... # TODO needs to be replaced with the actual value, see below
+
+  # Or provide the name of a secret existing in the Dash0 operator's namespace as the property secretRef:
+  secretRef: dash0-authorization-secret
+```
+
+Note that by default, Kubernetes secrets are stored _unencrypted_, and anyone with API access to the Kubernetes cluster
+will be able to read the value.
+Additional steps are required to make sure secret values are encrypted.
+See https://kubernetes.io/docs/concepts/configur**ation/secret/ for more information on Kubernetes secrets.
 
 ## Disable Dash0 For a Namespace
 
@@ -132,7 +180,8 @@ Optionally, remove the namespace that has been created for the operator:
 kubectl delete namespace dash0-system
 ```
 
-If you choose to not remove the namespace, you might consider removing the secret with the Dash0 authorization token:
+If you choose to not remove the namespace, you might want to consider removing the secret with the Dash0 authorization
+token (if such a secret has been created):
 
 ```console
 kubectl delete secret --namespace dash0-system dash0-authorization-secret
