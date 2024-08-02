@@ -505,8 +505,8 @@ func verifyThatControllerPodIsRunning(operatorNamespace string) {
 	Eventually(verifyControllerUp, 120*time.Second, time.Second).Should(Succeed())
 }
 
-func verifyThatDefaultBackendConnectionHasBeenCreatedAndOTelCollectorIsRunning(operatorNamespace string) {
-	By("validating that the default OpenTelemetry collector has been created and is running as expected")
+func verifyThatOTelCollectorIsRunning(operatorNamespace string) {
+	By("validating that the OpenTelemetry collector has been created and is running as expected")
 	verifyCollectorIsUp := func(g Gomega) {
 		// Even though this command comes with its own timeout, we still have to wrap it in an Eventually block, since
 		// it will fail outright if the daemonset has not been created yet.
@@ -524,6 +524,23 @@ func verifyThatDefaultBackendConnectionHasBeenCreatedAndOTelCollectorIsRunning(o
 	}
 
 	Eventually(verifyCollectorIsUp, 60*time.Second, time.Second).Should(Succeed())
+}
+
+func VerifyThatOTelCollectorHasBeenRemoved(operatorNamespace string) {
+	By("validating that the OpenTelemetry collector has been removed")
+	daemonSetName := fmt.Sprintf("%s-opentelemetry-collector-agent", operatorHelmReleaseName)
+	verifyCollectorIsGone := func(g Gomega) {
+		g.Expect(RunAndIgnoreOutput(
+			exec.Command(
+				"kubectl",
+				"get",
+				"daemonset",
+				"--namespace",
+				operatorNamespace,
+				daemonSetName,
+			))).ToNot(Succeed())
+	}
+	Eventually(verifyCollectorIsGone, 60*time.Second, time.Second).Should(Succeed())
 }
 
 func UndeployOperator(operatorNamespace string) {
@@ -595,7 +612,7 @@ func UpgradeOperator(
 
 	verifyThatControllerPodIsRunning(operatorNamespace)
 
-	verifyThatDefaultBackendConnectionHasBeenCreatedAndOTelCollectorIsRunning(operatorNamespace)
+	verifyThatOTelCollectorIsRunning(operatorNamespace)
 }
 
 func DeployDash0CustomResource(namespace string, operatorNamespace string) {
@@ -615,7 +632,7 @@ func DeployDash0CustomResource(namespace string, operatorNamespace string) {
 
 	// Deploying the dash0 custom resource will trigger creating the default backend connection resource, which will in
 	// turn trigger creating an OpenTelemetry collector instance.
-	verifyThatDefaultBackendConnectionHasBeenCreatedAndOTelCollectorIsRunning(operatorNamespace)
+	verifyThatOTelCollectorIsRunning(operatorNamespace)
 }
 
 func UndeployDash0CustomResource(namespace string) {
@@ -1267,9 +1284,6 @@ func sendRequest(g Gomega, port int, httpPathWithQuery string) {
 		Timeout: 500 * time.Millisecond,
 	}
 	response, err := client.Get(url)
-	if err != nil {
-		fmt.Fprintf(GinkgoWriter, "http request to %s did not succeed: %s\n", url, err.Error())
-	}
 	g.Expect(err).NotTo(HaveOccurred())
 	defer func() {
 		_ = response.Body.Close()
@@ -1279,9 +1293,6 @@ func sendRequest(g Gomega, port int, httpPathWithQuery string) {
 		fmt.Fprintf(GinkgoWriter, "could not read http response from %s: %s\n", url, err.Error())
 	}
 	g.Expect(err).NotTo(HaveOccurred())
-	if err == nil {
-		fmt.Fprintf(GinkgoWriter, "http request successful to %s, response was: %s\n", url, responseBody)
-	}
 	g.Expect(responseBody).To(ContainSubstring("We make Observability easy for every developer."))
 }
 

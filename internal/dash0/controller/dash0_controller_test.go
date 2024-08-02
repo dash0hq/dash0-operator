@@ -53,10 +53,11 @@ var (
 	}
 
 	extraDash0CustomResourceNames = []types.NamespacedName{}
+
+	operatorNamespace = Dash0OperatorNamespace
 )
 
 var _ = Describe("The Dash0 controller", Ordered, func() {
-
 	ctx := context.Background()
 	var createdObjects []client.Object
 
@@ -64,7 +65,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 	BeforeAll(func() {
 		EnsureTestNamespaceExists(ctx, k8sClient)
-		EnsureDash0SystemNamespaceExists(ctx, k8sClient)
+		EnsureDash0OperatorNamespaceExists(ctx, k8sClient)
 	})
 
 	BeforeEach(func() {
@@ -82,12 +83,12 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 		}
 		reconciler = &Dash0Reconciler{
 			Client:                   k8sClient,
-			ClientSet:                clientset,
+			Clientset:                clientset,
 			Recorder:                 recorder,
 			Scheme:                   k8sClient.Scheme(),
 			Images:                   images,
 			OTelCollectorBaseUrl:     "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
-			OperatorNamespace:        Dash0SystemNamespaceName,
+			OperatorNamespace:        Dash0OperatorNamespace,
 			BackendConnectionManager: backendConnectionManager,
 		}
 	})
@@ -114,6 +115,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				By("Trigger reconcile request")
 				triggerReconcileRequest(ctx, reconciler, "")
 				verifyDash0CustomResourceIsAvailable(ctx)
+				VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
 			})
 
 			It("should successfully run multiple reconciles (no modifiable workloads exist)", func() {
@@ -129,6 +131,8 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				// The LastTransitionTime should not change with subsequent reconciliations.
 				secondAvailableCondition := verifyDash0CustomResourceIsAvailable(ctx)
 				Expect(secondAvailableCondition.LastTransitionTime.Time).To(Equal(originalTransitionTimestamp))
+
+				VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
 			})
 
 			It("should mark only the most recent resource as available and the other ones as degraded when multiple "+
@@ -649,7 +653,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			})
 		})
 
-		Describe("when reverting the instrumentation on cleanup", func() {
+		Describe("when deleting the Dash0 custom resource and reverting the instrumentation on cleanup", func() {
 			It("should revert an instrumented cron job", func() {
 				// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
 				// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
@@ -889,7 +893,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			})
 		})
 
-		Describe("when attempting to revert the instrumentation on cleanup but the resource has an opt-out label", func() {
+		Describe("when deleting the Dash0 custom resource and attempting to revert the instrumentation on cleanup but the resource has an opt-out label", func() {
 			It("should not attempt to revert a cron job that has the opt-out label", func() {
 				// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
 				// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
@@ -1087,6 +1091,27 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 		It("should not instrument workloads", func() {
 			createdObjects = verifyDeploymentIsBeingInstrumented(ctx, reconciler, createdObjects)
+		})
+	})
+
+	Describe("when deleting the Dash0 custom resource and removing the collector resources", func() {
+		BeforeEach(func() {
+			EnsureDash0CustomResourceExists(ctx, k8sClient)
+		})
+
+		AfterEach(func() {
+			RemoveDash0CustomResource(ctx, k8sClient)
+		})
+
+		It("should remove the collector resources", func() {
+			triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
+			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
+
+			dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, Default)
+			Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
+			triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to trigger removing the collector resources")
+
+			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
 		})
 	})
 })

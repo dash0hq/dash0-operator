@@ -180,6 +180,8 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 						"controller",
 					)
 				})
+
+				VerifyThatOTelCollectorHasBeenRemoved(operatorNamespace)
 			})
 		})
 
@@ -571,6 +573,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					}
 					VerifyDash0OperatorReleaseIsNotInstalled(g, operatorNamespace)
 				}).Should(Succeed())
+				VerifyThatOTelCollectorHasBeenRemoved(operatorNamespace)
 			})
 		})
 	})

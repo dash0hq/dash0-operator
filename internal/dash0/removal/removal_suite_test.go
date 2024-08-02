@@ -107,12 +107,12 @@ var _ = BeforeSuite(func() {
 	}
 	reconciler = &controller.Dash0Reconciler{
 		Client:                   k8sClient,
-		ClientSet:                clientset,
+		Clientset:                clientset,
 		Recorder:                 mgr.GetEventRecorderFor("dash0-controller"),
 		Scheme:                   k8sClient.Scheme(),
 		Images:                   images,
 		OTelCollectorBaseUrl:     "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
-		OperatorNamespace:        testutil.Dash0SystemNamespaceName,
+		OperatorNamespace:        testutil.Dash0OperatorNamespace,
 		BackendConnectionManager: backendConnectionManager,
 	}
 })

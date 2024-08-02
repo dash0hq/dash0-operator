@@ -23,7 +23,7 @@ var (
 	testEnv   *envtest.Environment
 )
 
-func TestOtelcolresources(t *testing.T) {
+func TestOtelColResources(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "OpenTelemetry Collector Resources Suite")
 }

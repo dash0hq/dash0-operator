@@ -31,7 +31,7 @@ import (
 
 type Dash0Reconciler struct {
 	client.Client
-	ClientSet                *kubernetes.Clientset
+	Clientset                *kubernetes.Clientset
 	Scheme                   *runtime.Scheme
 	Recorder                 record.EventRecorder
 	Images                   util.Images
@@ -179,7 +179,7 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	logger := log.FromContext(ctx)
 	logger.Info("processing reconcile request for Dash0 custom resource")
 
-	namespaceStillExists, err := controller.CheckIfNamespaceExists(ctx, r.ClientSet, req.Namespace, &logger)
+	namespaceStillExists, err := controller.CheckIfNamespaceExists(ctx, r.Clientset, req.Namespace, &logger)
 	if err != nil {
 		// The error has already been logged in checkIfNamespaceExists.
 		return ctrl.Result{}, err
@@ -337,7 +337,7 @@ func (r *Dash0Reconciler) findAndInstrumentCronJobs(
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
-		r.ClientSet.BatchV1().CronJobs(namespace).List(ctx, util.EmptyListOptions)
+		r.Clientset.BatchV1().CronJobs(namespace).List(ctx, util.EmptyListOptions)
 	if err != nil {
 		return fmt.Errorf("error when querying cron jobs: %w", err)
 	}
@@ -363,7 +363,7 @@ func (r *Dash0Reconciler) findAndInstrumentyDaemonSets(
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
-		r.ClientSet.AppsV1().DaemonSets(namespace).List(ctx, util.EmptyListOptions)
+		r.Clientset.AppsV1().DaemonSets(namespace).List(ctx, util.EmptyListOptions)
 	if err != nil {
 		return fmt.Errorf("error when querying daemon sets: %w", err)
 	}
@@ -389,7 +389,7 @@ func (r *Dash0Reconciler) findAndInstrumentDeployments(
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
-		r.ClientSet.AppsV1().Deployments(namespace).List(ctx, util.EmptyListOptions)
+		r.Clientset.AppsV1().Deployments(namespace).List(ctx, util.EmptyListOptions)
 	if err != nil {
 		return fmt.Errorf("error when querying deployments: %w", err)
 	}
@@ -415,7 +415,7 @@ func (r *Dash0Reconciler) findAndAddLabelsToImmutableJobsOnInstrumentation(
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
-		r.ClientSet.BatchV1().Jobs(namespace).List(ctx, util.EmptyListOptions)
+		r.Clientset.BatchV1().Jobs(namespace).List(ctx, util.EmptyListOptions)
 	if err != nil {
 		return fmt.Errorf("error when querying jobs: %w", err)
 	}
@@ -531,7 +531,7 @@ func (r *Dash0Reconciler) findAndInstrumentReplicaSets(
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
-		r.ClientSet.AppsV1().ReplicaSets(namespace).List(ctx, util.EmptyListOptions)
+		r.Clientset.AppsV1().ReplicaSets(namespace).List(ctx, util.EmptyListOptions)
 	if err != nil {
 		return fmt.Errorf("error when querying replica sets: %w", err)
 	}
@@ -560,7 +560,7 @@ func (r *Dash0Reconciler) findAndInstrumentStatefulSets(
 	namespace string,
 	logger *logr.Logger,
 ) error {
-	matchingWorkloadsInNamespace, err := r.ClientSet.AppsV1().StatefulSets(namespace).List(ctx, util.EmptyListOptions)
+	matchingWorkloadsInNamespace, err := r.Clientset.AppsV1().StatefulSets(namespace).List(ctx, util.EmptyListOptions)
 	if err != nil {
 		return fmt.Errorf("error when querying stateful sets: %w", err)
 	}
@@ -781,7 +781,7 @@ func (r *Dash0Reconciler) findAndUninstrumentCronJobs(
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
-		r.ClientSet.BatchV1().CronJobs(namespace).List(ctx, util.WorkloadsWithDash0InstrumentedLabelFilter)
+		r.Clientset.BatchV1().CronJobs(namespace).List(ctx, util.WorkloadsWithDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying instrumented cron jobs: %w", err)
 	}
@@ -803,7 +803,7 @@ func (r *Dash0Reconciler) uninstrumentCronJob(
 
 func (r *Dash0Reconciler) findAndUninstrumentDaemonSets(ctx context.Context, namespace string, logger *logr.Logger) error {
 	matchingWorkloadsInNamespace, err :=
-		r.ClientSet.AppsV1().DaemonSets(namespace).List(ctx, util.WorkloadsWithDash0InstrumentedLabelFilter)
+		r.Clientset.AppsV1().DaemonSets(namespace).List(ctx, util.WorkloadsWithDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying instrumented daemon sets: %w", err)
 	}
@@ -829,7 +829,7 @@ func (r *Dash0Reconciler) findAndUninstrumentDeployments(
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
-		r.ClientSet.AppsV1().Deployments(namespace).List(ctx, util.WorkloadsWithDash0InstrumentedLabelFilter)
+		r.Clientset.AppsV1().Deployments(namespace).List(ctx, util.WorkloadsWithDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying instrumented deployments: %w", err)
 	}
@@ -854,7 +854,7 @@ func (r *Dash0Reconciler) findAndHandleJobOnUninstrumentation(
 	namespace string,
 	logger *logr.Logger,
 ) error {
-	matchingWorkloadsInNamespace, err := r.ClientSet.BatchV1().Jobs(namespace).List(ctx, util.WorkloadsWithDash0InstrumentedLabelFilter)
+	matchingWorkloadsInNamespace, err := r.Clientset.BatchV1().Jobs(namespace).List(ctx, util.WorkloadsWithDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying instrumented jobs: %w", err)
 	}
@@ -938,7 +938,7 @@ func (r *Dash0Reconciler) findAndUninstrumentReplicaSets(
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
-		r.ClientSet.AppsV1().ReplicaSets(namespace).List(ctx, util.WorkloadsWithDash0InstrumentedLabelFilter)
+		r.Clientset.AppsV1().ReplicaSets(namespace).List(ctx, util.WorkloadsWithDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying instrumented replica sets: %w", err)
 	}
@@ -964,7 +964,7 @@ func (r *Dash0Reconciler) findAndUninstrumentStatefulSets(
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
-		r.ClientSet.AppsV1().StatefulSets(namespace).List(ctx, util.WorkloadsWithDash0InstrumentedLabelFilter)
+		r.Clientset.AppsV1().StatefulSets(namespace).List(ctx, util.WorkloadsWithDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying instrumented stateful sets: %w", err)
 	}
@@ -1087,7 +1087,7 @@ func (r *Dash0Reconciler) restartPodsOfReplicaSet(
 	// resource types like deployments or daemonsets this is managed by Kubernetes automatically). Therefore, we
 	// find all pods owned by the replica set and explicitly delete them to trigger a restart.
 	allPodsInNamespace, err :=
-		r.ClientSet.
+		r.Clientset.
 			CoreV1().
 			Pods(replicaSet.Namespace).
 			List(ctx, metav1.ListOptions{

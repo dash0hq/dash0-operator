@@ -70,7 +70,7 @@ func CreateDash0CustomResource(
 	ctx context.Context,
 	k8sClient client.Client,
 	dash0CustomResourceName types.NamespacedName,
-) client.Object {
+) *dash0v1alpha1.Dash0 {
 	dash0CustomResource := &dash0v1alpha1.Dash0{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      dash0CustomResourceName.Name,
