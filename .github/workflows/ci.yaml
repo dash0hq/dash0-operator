@@ -17,9 +17,14 @@ jobs:
   verify:
     name: Build & Test
     runs-on: ubuntu-latest
+
     concurrency:
       group: ci-concurrency-group-${{ github.ref }}
       cancel-in-progress: true
+
+    # required for publishing the Helm chart
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
