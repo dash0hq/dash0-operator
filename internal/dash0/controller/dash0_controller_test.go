@@ -28,13 +28,6 @@ import (
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
-type workloadTestConfig struct {
-	workloadNamePrefix string
-	createFn           func(context.Context, client.Client, string, string) TestableWorkload
-	getFn              func(context.Context, client.Client, string, string) TestableWorkload
-	verifyFn           func(TestableWorkload)
-}
-
 const (
 	olderOperatorControllerImageLabel = "some-registry_com_1234_dash0hq_operator-controller_0.9.8"
 	olderInitContainerImageLabel      = "some-registry_com_1234_dash0hq_instrumentation_2.3.4"
@@ -198,35 +191,54 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			})
 		})
 
-		Describe("when instrumenting existing workloads", func() {
-			It("should instrument an existing cron job", func() {
-				name := UniqueName(CronJobNamePrefix)
-				By("Inititalize a cron job")
-				cronJob := CreateBasicCronJob(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, cronJob)
+		DescribeTable("when instrumenting existing workloads", func(config WorkloadTestConfig) {
+			name := UniqueName(config.WorkloadNamePrefix)
+			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
+			createdObjects = append(createdObjects, workload.Get())
 
-				triggerReconcileRequest(ctx, reconciler, "")
+			triggerReconcileRequest(ctx, reconciler, "")
 
-				verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
-				VerifyModifiedCronJob(GetCronJob(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations())
-			})
+			verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
+			config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
+		}, Entry("should instrument an existing cron job", WorkloadTestConfig{
+			WorkloadNamePrefix: CronJobNamePrefix,
+			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateBasicCronJob),
+			GetFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyModifiedCronJob(workload.Get().(*batchv1.CronJob), BasicInstrumentedPodSpecExpectations())
+			},
+		}), Entry("should instrument an existing daemon set", WorkloadTestConfig{
+			WorkloadNamePrefix: DaemonSetNamePrefix,
+			CreateFn:           WrapDaemonSetFnAsTestableWorkload(CreateBasicDaemonSet),
+			GetFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyModifiedDaemonSet(workload.Get().(*appsv1.DaemonSet), BasicInstrumentedPodSpecExpectations())
+			},
+		}), Entry("should instrument an existing deployment", WorkloadTestConfig{
+			WorkloadNamePrefix: DaemonSetNamePrefix,
+			CreateFn:           WrapDeploymentFnAsTestableWorkload(CreateBasicDeployment),
+			GetFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyModifiedDeployment(workload.Get().(*appsv1.Deployment), BasicInstrumentedPodSpecExpectations())
+			},
+		}), Entry("should instrument an existing ownerless replicaset", WorkloadTestConfig{
+			WorkloadNamePrefix: ReplicaSetNamePrefix,
+			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateBasicReplicaSet),
+			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyModifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet), BasicInstrumentedPodSpecExpectations())
+			},
+		}), Entry("should instrument an existing stateful set", WorkloadTestConfig{
+			WorkloadNamePrefix: StatefulSetNamePrefix,
+			CreateFn:           WrapStatefulSetFnAsTestableWorkload(CreateBasicStatefulSet),
+			GetFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyModifiedStatefulSet(workload.Get().(*appsv1.StatefulSet), BasicInstrumentedPodSpecExpectations())
+			},
+		}),
+		)
 
-			It("should instrument an existing daemon set", func() {
-				name := UniqueName(DaemonSetNamePrefix)
-				By("Inititalize a daemon set")
-				daemonSet := CreateBasicDaemonSet(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, daemonSet)
-
-				triggerReconcileRequest(ctx, reconciler, "")
-
-				verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
-				VerifyModifiedDaemonSet(GetDaemonSet(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations())
-			})
-
-			It("should instrument an existing deployment", func() {
-				createdObjects = verifyDeploymentIsBeingInstrumented(ctx, reconciler, createdObjects)
-			})
-
+		Describe("when instrumenting existing workloads (special cases)", func() {
 			It("should record a failure event when attempting to instrument an existing job and add labels", func() {
 				name := UniqueName(JobNamePrefix)
 				By("Inititalize a job")
@@ -276,18 +288,6 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				VerifyUnmodifiedPod(GetPod(ctx, k8sClient, namespace, name))
 			})
 
-			It("should instrument an existing ownerless replicaset", func() {
-				name := UniqueName(ReplicaSetNamePrefix)
-				By("Inititalize a replicaset")
-				replicaSet := CreateBasicReplicaSet(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, replicaSet)
-
-				triggerReconcileRequest(ctx, reconciler, "")
-
-				verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
-				VerifyModifiedReplicaSet(GetReplicaSet(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations())
-			})
-
 			It("should not instrument an existing replicaset owned by a deployment", func() {
 				name := UniqueName(ReplicaSetNamePrefix)
 				By("Inititalize a replicaset")
@@ -299,49 +299,55 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				verifyDash0CustomResourceIsAvailable(ctx)
 				VerifyUnmodifiedReplicaSet(GetReplicaSet(ctx, k8sClient, namespace, name))
 			})
-
-			It("should instrument an existing stateful set", func() {
-				name := UniqueName(StatefulSetNamePrefix)
-				By("Inititalize a stateful set")
-				statefulSet := CreateBasicStatefulSet(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, statefulSet)
-
-				triggerReconcileRequest(ctx, reconciler, "")
-
-				verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
-				VerifyModifiedStatefulSet(GetStatefulSet(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations())
-			})
 		})
 
-		Describe("when existing workloads have the opt-out label", func() {
-			It("should not instrument an existing cron job with the opt-out label", func() {
-				name := UniqueName(CronJobNamePrefix)
-				By("Inititalize a cron job")
-				job := CreateCronJobWithOptOutLabel(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, job)
+		DescribeTable("when existing workloads have the opt-out label", func(config WorkloadTestConfig) {
+			name := UniqueName(config.WorkloadNamePrefix)
+			workload := config.CreateFn(ctx, k8sClient, namespace, name)
+			createdObjects = append(createdObjects, workload.Get())
 
-				triggerReconcileRequest(ctx, reconciler, "")
+			triggerReconcileRequest(ctx, reconciler, "")
 
-				VerifyNoEvents(ctx, clientset, namespace)
-				VerifyCronJobWithOptOutLabel(GetCronJob(ctx, k8sClient, namespace, name))
-			})
+			VerifyNoEvents(ctx, clientset, namespace)
+			config.VerifyFn(config.GetFn(ctx, k8sClient, namespace, name))
+		}, Entry("should not instrument an existing cron job with the opt-out label", WorkloadTestConfig{
+			WorkloadNamePrefix: CronJobNamePrefix,
+			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateCronJobWithOptOutLabel),
+			GetFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyCronJobWithOptOutLabel(workload.Get().(*batchv1.CronJob))
+			},
+		}), Entry("should not instrument an existing daemon set with the opt-out label", WorkloadTestConfig{
+			WorkloadNamePrefix: DaemonSetNamePrefix,
+			CreateFn:           WrapDaemonSetFnAsTestableWorkload(CreateDaemonSetWithOptOutLabel),
+			GetFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyDaemonSetWithOptOutLabel(workload.Get().(*appsv1.DaemonSet))
+			},
+		}), Entry("should not instrument an existing deployment with the opt-out label", WorkloadTestConfig{
+			WorkloadNamePrefix: DeploymentNamePrefix,
+			CreateFn:           WrapDeploymentFnAsTestableWorkload(CreateDeploymentWithOptOutLabel),
+			GetFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyDeploymentWithOptOutLabel(workload.Get().(*appsv1.Deployment))
+			},
+		}), Entry("should not instrument an existing ownerless replicaset with the opt-out label", WorkloadTestConfig{
+			WorkloadNamePrefix: ReplicaSetNamePrefix,
+			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateReplicaSetWithOptOutLabel),
+			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyReplicaSetWithOptOutLabel(workload.Get().(*appsv1.ReplicaSet))
+			},
+		}), Entry("should not instrument an existing stateful set with the opt-out label", WorkloadTestConfig{
+			WorkloadNamePrefix: StatefulSetNamePrefix,
+			CreateFn:           WrapStatefulSetFnAsTestableWorkload(CreateStatefulSetWithOptOutLabel),
+			GetFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyStatefulSetWithOptOutLabel(workload.Get().(*appsv1.StatefulSet))
+			},
+		}))
 
-			It("should not instrument an existing daemon set with the opt-out label", func() {
-				name := UniqueName(DaemonSetNamePrefix)
-				By("Inititalize a daemon set")
-				daemonSet := CreateDaemonSetWithOptOutLabel(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, daemonSet)
-
-				triggerReconcileRequest(ctx, reconciler, "")
-
-				VerifyNoEvents(ctx, clientset, namespace)
-				VerifyDaemonSetWithOptOutLabel(GetDaemonSet(ctx, k8sClient, namespace, name))
-			})
-
-			It("should not instrument an existing deployment with the opt-out label", func() {
-				createdObjects = verifyThatDeploymentIsNotBeingInstrumented(ctx, reconciler, createdObjects)
-			})
-
+		Describe("when existing jobs have the opt-out label", func() {
 			It("should not touch an existing job with the opt-out label", func() {
 				name := UniqueName(JobNamePrefix)
 				By("Inititalize a job")
@@ -353,74 +359,50 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				VerifyNoEvents(ctx, clientset, namespace)
 				VerifyJobWithOptOutLabel(GetJob(ctx, k8sClient, namespace, name))
 			})
-
-			It("should not instrument an existing ownerless replicaset with the opt-out label", func() {
-				name := UniqueName(ReplicaSetNamePrefix)
-				By("Inititalize a replicaset")
-				replicaSet := CreateReplicaSetWithOptOutLabel(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, replicaSet)
-
-				triggerReconcileRequest(ctx, reconciler, "")
-
-				VerifyNoEvents(ctx, clientset, namespace)
-				VerifyReplicaSetWithOptOutLabel(GetReplicaSet(ctx, k8sClient, namespace, name))
-			})
-
-			It("should not instrument an stateful set with the opt-out label", func() {
-				name := UniqueName(StatefulSetNamePrefix)
-				By("Inititalize a stateful set")
-				statefulSet := CreateStatefulSetWithOptOutLabel(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, statefulSet)
-
-				triggerReconcileRequest(ctx, reconciler, "")
-
-				VerifyNoEvents(ctx, clientset, namespace)
-				VerifyStatefulSetWithOptOutLabel(GetStatefulSet(ctx, k8sClient, namespace, name))
-			})
 		})
 
-		DescribeTable("when the opt-out label is added to an already instrumented workload", func(config workloadTestConfig) {
-			name := UniqueName(config.workloadNamePrefix)
-			workload := config.createFn(ctx, k8sClient, TestNamespaceName, name)
+		DescribeTable("when the opt-out label is added to an already instrumented workload", func(config WorkloadTestConfig) {
+			name := UniqueName(config.WorkloadNamePrefix)
+			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
 			createdObjects = append(createdObjects, workload.Get())
 			AddOptOutLabel(workload.GetObjectMeta())
 			UpdateWorkload(ctx, k8sClient, workload.Get())
 			triggerReconcileRequest(ctx, reconciler, "")
-			config.verifyFn(config.getFn(ctx, k8sClient, TestNamespaceName, name))
+			config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 			VerifySuccessfulUninstrumentationEvent(ctx, clientset, TestNamespaceName, name, "controller")
-		}, Entry("should remove Dash0 from an instrumented cron job when dash0.com/enable=false is added", workloadTestConfig{
-			workloadNamePrefix: CronJobNamePrefix,
-			createFn:           WrapCronJobFnAsTestableWorkload(CreateInstrumentedCronJob),
-			getFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
-			verifyFn: func(workload TestableWorkload) {
+		}, Entry("should remove Dash0 from an instrumented cron job when dash0.com/enable=false is added", WorkloadTestConfig{
+			WorkloadNamePrefix: CronJobNamePrefix,
+			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateInstrumentedCronJob),
+			GetFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
+			VerifyFn: func(workload TestableWorkload) {
 				VerifyCronJobWithOptOutLabel(workload.Get().(*batchv1.CronJob))
 			},
-		}), Entry("should remove Dash0 from an instrumented daemon set when dash0.com/enable=false is added", workloadTestConfig{
-			workloadNamePrefix: DaemonSetNamePrefix,
-			createFn:           WrapDaemonSetFnAsTestableWorkload(CreateInstrumentedDaemonSet),
-			getFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
-			verifyFn: func(workload TestableWorkload) {
+		}), Entry("should remove Dash0 from an instrumented daemon set when dash0.com/enable=false is added", WorkloadTestConfig{
+			WorkloadNamePrefix: DaemonSetNamePrefix,
+			CreateFn:           WrapDaemonSetFnAsTestableWorkload(CreateInstrumentedDaemonSet),
+			GetFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
+			VerifyFn: func(workload TestableWorkload) {
 				VerifyDaemonSetWithOptOutLabel(workload.Get().(*appsv1.DaemonSet))
 			},
-		}), Entry("should remove Dash0 from an instrumented deployment when dash0.com/enable=false is added", workloadTestConfig{
-			workloadNamePrefix: DeploymentNamePrefix,
-			createFn:           WrapDeploymentFnAsTestableWorkload(CreateInstrumentedDeployment),
-			getFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
-			verifyFn: func(workload TestableWorkload) {
+		}), Entry("should remove Dash0 from an instrumented deployment when dash0.com/enable=false is added", WorkloadTestConfig{
+			WorkloadNamePrefix: DeploymentNamePrefix,
+			CreateFn:           WrapDeploymentFnAsTestableWorkload(CreateInstrumentedDeployment),
+			GetFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
+			VerifyFn: func(workload TestableWorkload) {
 				VerifyDeploymentWithOptOutLabel(workload.Get().(*appsv1.Deployment))
 			},
-		}), Entry("should remove Dash0 from an instrumented replica set when dash0.com/enable=false is added", workloadTestConfig{
-			workloadNamePrefix: ReplicaSetNamePrefix,
-			createFn:           WrapReplicaSetFnAsTestableWorkload(CreateInstrumentedReplicaSet),
-			getFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
-			verifyFn: func(workload TestableWorkload) {
+		}), Entry("should remove Dash0 from an instrumented replica set when dash0.com/enable=false is added", WorkloadTestConfig{
+			WorkloadNamePrefix: ReplicaSetNamePrefix,
+			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateInstrumentedReplicaSet),
+			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
+			VerifyFn: func(workload TestableWorkload) {
 				VerifyReplicaSetWithOptOutLabel(workload.Get().(*appsv1.ReplicaSet))
 			},
-		}), Entry("should remove Dash0 from an instrumented stateful set when dash0.com/enable=false is added", workloadTestConfig{
-			workloadNamePrefix: StatefulSetNamePrefix,
-			createFn:           WrapStatefulSetFnAsTestableWorkload(CreateInstrumentedStatefulSet),
-			getFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
-			verifyFn: func(workload TestableWorkload) {
+		}), Entry("should remove Dash0 from an instrumented stateful set when dash0.com/enable=false is added", WorkloadTestConfig{
+			WorkloadNamePrefix: StatefulSetNamePrefix,
+			CreateFn:           WrapStatefulSetFnAsTestableWorkload(CreateInstrumentedStatefulSet),
+			GetFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
+			VerifyFn: func(workload TestableWorkload) {
 				VerifyStatefulSetWithOptOutLabel(workload.Get().(*appsv1.StatefulSet))
 			},
 		}),
@@ -465,100 +447,100 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			})
 		})
 
-		DescribeTable("when a workload is already instrumented by the same version", func(config workloadTestConfig) {
-			name := UniqueName(config.workloadNamePrefix)
-			workload := config.createFn(ctx, k8sClient, TestNamespaceName, name)
+		DescribeTable("when a workload is already instrumented by the same version", func(config WorkloadTestConfig) {
+			name := UniqueName(config.WorkloadNamePrefix)
+			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
 			createdObjects = append(createdObjects, workload.Get())
 			triggerReconcileRequest(ctx, reconciler, "")
-			config.verifyFn(config.getFn(ctx, k8sClient, TestNamespaceName, name))
+			config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 			VerifyNoEvents(ctx, clientset, TestNamespaceName)
-		}, Entry("should not touch a successfully instrumented cron job", workloadTestConfig{
-			workloadNamePrefix: CronJobNamePrefix,
-			createFn:           WrapCronJobFnAsTestableWorkload(CreateInstrumentedCronJob),
-			getFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
-			verifyFn: func(workload TestableWorkload) {
+		}, Entry("should not touch a successfully instrumented cron job", WorkloadTestConfig{
+			WorkloadNamePrefix: CronJobNamePrefix,
+			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateInstrumentedCronJob),
+			GetFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
+			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedCronJob(workload.Get().(*batchv1.CronJob), BasicInstrumentedPodSpecExpectations())
 			},
-		}), Entry("should not touch a successfully instrumented daemon set", workloadTestConfig{
-			workloadNamePrefix: DaemonSetNamePrefix,
-			createFn:           WrapDaemonSetFnAsTestableWorkload(CreateInstrumentedDaemonSet),
-			getFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
-			verifyFn: func(workload TestableWorkload) {
+		}), Entry("should not touch a successfully instrumented daemon set", WorkloadTestConfig{
+			WorkloadNamePrefix: DaemonSetNamePrefix,
+			CreateFn:           WrapDaemonSetFnAsTestableWorkload(CreateInstrumentedDaemonSet),
+			GetFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
+			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedDaemonSet(workload.Get().(*appsv1.DaemonSet), BasicInstrumentedPodSpecExpectations())
 			},
-		}), Entry("should not touch a successfully instrumented deployment", workloadTestConfig{
-			workloadNamePrefix: DeploymentNamePrefix,
-			createFn:           WrapDeploymentFnAsTestableWorkload(CreateInstrumentedDeployment),
-			getFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
-			verifyFn: func(workload TestableWorkload) {
+		}), Entry("should not touch a successfully instrumented deployment", WorkloadTestConfig{
+			WorkloadNamePrefix: DeploymentNamePrefix,
+			CreateFn:           WrapDeploymentFnAsTestableWorkload(CreateInstrumentedDeployment),
+			GetFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
+			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedDeployment(workload.Get().(*appsv1.Deployment), BasicInstrumentedPodSpecExpectations())
 			},
-		}), Entry("should not touch a successfully instrumented job", workloadTestConfig{
-			workloadNamePrefix: JobNamePrefix,
-			createFn:           WrapJobFnAsTestableWorkload(CreateInstrumentedJob),
-			getFn:              WrapJobFnAsTestableWorkload(GetJob),
-			verifyFn: func(workload TestableWorkload) {
+		}), Entry("should not touch a successfully instrumented job", WorkloadTestConfig{
+			WorkloadNamePrefix: JobNamePrefix,
+			CreateFn:           WrapJobFnAsTestableWorkload(CreateInstrumentedJob),
+			GetFn:              WrapJobFnAsTestableWorkload(GetJob),
+			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedJob(workload.Get().(*batchv1.Job), BasicInstrumentedPodSpecExpectations())
 			},
-		}), Entry("should not touch a successfully instrumented replica set", workloadTestConfig{
-			workloadNamePrefix: ReplicaSetNamePrefix,
-			createFn:           WrapReplicaSetFnAsTestableWorkload(CreateInstrumentedReplicaSet),
-			getFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
-			verifyFn: func(workload TestableWorkload) {
+		}), Entry("should not touch a successfully instrumented replica set", WorkloadTestConfig{
+			WorkloadNamePrefix: ReplicaSetNamePrefix,
+			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateInstrumentedReplicaSet),
+			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
+			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet), BasicInstrumentedPodSpecExpectations())
 			},
-		}), Entry("should not touch a successfully instrumented stateful set", workloadTestConfig{
-			workloadNamePrefix: StatefulSetNamePrefix,
-			createFn:           WrapStatefulSetFnAsTestableWorkload(CreateInstrumentedStatefulSet),
-			getFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
-			verifyFn: func(workload TestableWorkload) {
+		}), Entry("should not touch a successfully instrumented stateful set", WorkloadTestConfig{
+			WorkloadNamePrefix: StatefulSetNamePrefix,
+			CreateFn:           WrapStatefulSetFnAsTestableWorkload(CreateInstrumentedStatefulSet),
+			GetFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
+			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedStatefulSet(workload.Get().(*appsv1.StatefulSet), BasicInstrumentedPodSpecExpectations())
 			},
 		}),
 		)
 
-		DescribeTable("should instrument existing workloads at startup", func(config workloadTestConfig) {
-			name := UniqueName(config.workloadNamePrefix)
-			workload := config.createFn(ctx, k8sClient, namespace, name)
+		DescribeTable("should instrument existing workloads at startup", func(config WorkloadTestConfig) {
+			name := UniqueName(config.WorkloadNamePrefix)
+			workload := config.CreateFn(ctx, k8sClient, namespace, name)
 			createdObjects = append(createdObjects, workload.Get())
 
 			reconciler.InstrumentAtStartup()
 
 			VerifySuccessfulInstrumentationEvent(ctx, clientset, namespace, name, "controller")
-			config.verifyFn(config.getFn(ctx, k8sClient, namespace, name))
-		}, Entry("should instrument a cron job at startup", workloadTestConfig{
-			workloadNamePrefix: CronJobNamePrefix,
-			createFn:           WrapCronJobFnAsTestableWorkload(CreateBasicCronJob),
-			getFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
-			verifyFn: func(workload TestableWorkload) {
+			config.VerifyFn(config.GetFn(ctx, k8sClient, namespace, name))
+		}, Entry("should instrument a cron job at startup", WorkloadTestConfig{
+			WorkloadNamePrefix: CronJobNamePrefix,
+			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateBasicCronJob),
+			GetFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
+			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedCronJob(workload.Get().(*batchv1.CronJob), BasicInstrumentedPodSpecExpectations())
 			},
-		}), Entry("should instrument a daemon set at startup", workloadTestConfig{
-			workloadNamePrefix: DaemonSetNamePrefix,
-			createFn:           WrapDaemonSetFnAsTestableWorkload(CreateBasicDaemonSet),
-			getFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
-			verifyFn: func(workload TestableWorkload) {
+		}), Entry("should instrument a daemon set at startup", WorkloadTestConfig{
+			WorkloadNamePrefix: DaemonSetNamePrefix,
+			CreateFn:           WrapDaemonSetFnAsTestableWorkload(CreateBasicDaemonSet),
+			GetFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
+			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedDaemonSet(workload.Get().(*appsv1.DaemonSet), BasicInstrumentedPodSpecExpectations())
 			},
-		}), Entry("should instrument a deployment at startup", workloadTestConfig{
-			workloadNamePrefix: DeploymentNamePrefix,
-			createFn:           WrapDeploymentFnAsTestableWorkload(CreateBasicDeployment),
-			getFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
-			verifyFn: func(workload TestableWorkload) {
+		}), Entry("should instrument a deployment at startup", WorkloadTestConfig{
+			WorkloadNamePrefix: DeploymentNamePrefix,
+			CreateFn:           WrapDeploymentFnAsTestableWorkload(CreateBasicDeployment),
+			GetFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
+			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedDeployment(workload.Get().(*appsv1.Deployment), BasicInstrumentedPodSpecExpectations())
 			},
-		}), Entry("should instrument a replica set at startup", workloadTestConfig{
-			workloadNamePrefix: ReplicaSetNamePrefix,
-			createFn:           WrapReplicaSetFnAsTestableWorkload(CreateBasicReplicaSet),
-			getFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
-			verifyFn: func(workload TestableWorkload) {
+		}), Entry("should instrument a replica set at startup", WorkloadTestConfig{
+			WorkloadNamePrefix: ReplicaSetNamePrefix,
+			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateBasicReplicaSet),
+			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
+			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet), BasicInstrumentedPodSpecExpectations())
 			},
-		}), Entry("should instrument a stateful set at startup", workloadTestConfig{
-			workloadNamePrefix: StatefulSetNamePrefix,
-			createFn:           WrapStatefulSetFnAsTestableWorkload(CreateBasicStatefulSet),
-			getFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
-			verifyFn: func(workload TestableWorkload) {
+		}), Entry("should instrument a stateful set at startup", WorkloadTestConfig{
+			WorkloadNamePrefix: StatefulSetNamePrefix,
+			CreateFn:           WrapStatefulSetFnAsTestableWorkload(CreateBasicStatefulSet),
+			GetFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
+			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedStatefulSet(workload.Get().(*appsv1.StatefulSet), BasicInstrumentedPodSpecExpectations())
 			},
 		}),
@@ -585,49 +567,49 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			})
 		})
 
-		DescribeTable("when updating instrumented workloads at startup", func(config workloadTestConfig) {
-			name := UniqueName(config.workloadNamePrefix)
-			workload := config.createFn(ctx, k8sClient, TestNamespaceName, name)
+		DescribeTable("when updating instrumented workloads at startup", func(config WorkloadTestConfig) {
+			name := UniqueName(config.WorkloadNamePrefix)
+			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
 			createdObjects = append(createdObjects, workload.Get())
 			workload.GetObjectMeta().Labels["dash0.com/operator-image"] = olderOperatorControllerImageLabel
 			workload.GetObjectMeta().Labels["dash0.com/init-container-image"] = olderInitContainerImageLabel
 			UpdateWorkload(ctx, k8sClient, workload.Get())
 			reconciler.InstrumentAtStartup()
-			config.verifyFn(config.getFn(ctx, k8sClient, TestNamespaceName, name))
+			config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 			VerifySuccessfulInstrumentationEvent(ctx, clientset, namespace, name, "controller")
-		}, Entry("should override outdated instrumentation settings for a cron job at startup", workloadTestConfig{
-			workloadNamePrefix: CronJobNamePrefix,
-			createFn:           WrapCronJobFnAsTestableWorkload(CreateInstrumentedCronJob),
-			getFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
-			verifyFn: func(workload TestableWorkload) {
+		}, Entry("should override outdated instrumentation settings for a cron job at startup", WorkloadTestConfig{
+			WorkloadNamePrefix: CronJobNamePrefix,
+			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateInstrumentedCronJob),
+			GetFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
+			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedCronJob(workload.Get().(*batchv1.CronJob), BasicInstrumentedPodSpecExpectations())
 			},
-		}), Entry("should override outdated instrumentation settings for a daemon set at startup", workloadTestConfig{
-			workloadNamePrefix: DaemonSetNamePrefix,
-			createFn:           WrapDaemonSetFnAsTestableWorkload(CreateInstrumentedDaemonSet),
-			getFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
-			verifyFn: func(workload TestableWorkload) {
+		}), Entry("should override outdated instrumentation settings for a daemon set at startup", WorkloadTestConfig{
+			WorkloadNamePrefix: DaemonSetNamePrefix,
+			CreateFn:           WrapDaemonSetFnAsTestableWorkload(CreateInstrumentedDaemonSet),
+			GetFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
+			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedDaemonSet(workload.Get().(*appsv1.DaemonSet), BasicInstrumentedPodSpecExpectations())
 			},
-		}), Entry("should override outdated instrumentation settings for a deployment at startup", workloadTestConfig{
-			workloadNamePrefix: DeploymentNamePrefix,
-			createFn:           WrapDeploymentFnAsTestableWorkload(CreateInstrumentedDeployment),
-			getFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
-			verifyFn: func(workload TestableWorkload) {
+		}), Entry("should override outdated instrumentation settings for a deployment at startup", WorkloadTestConfig{
+			WorkloadNamePrefix: DeploymentNamePrefix,
+			CreateFn:           WrapDeploymentFnAsTestableWorkload(CreateInstrumentedDeployment),
+			GetFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
+			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedDeployment(workload.Get().(*appsv1.Deployment), BasicInstrumentedPodSpecExpectations())
 			},
-		}), Entry("should override outdated instrumentation settings for a replica set at startup", workloadTestConfig{
-			workloadNamePrefix: ReplicaSetNamePrefix,
-			createFn:           WrapReplicaSetFnAsTestableWorkload(CreateInstrumentedReplicaSet),
-			getFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
-			verifyFn: func(workload TestableWorkload) {
+		}), Entry("should override outdated instrumentation settings for a replica set at startup", WorkloadTestConfig{
+			WorkloadNamePrefix: ReplicaSetNamePrefix,
+			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateInstrumentedReplicaSet),
+			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
+			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet), BasicInstrumentedPodSpecExpectations())
 			},
-		}), Entry("should override outdated instrumentation settings for a stateful set at startup", workloadTestConfig{
-			workloadNamePrefix: StatefulSetNamePrefix,
-			createFn:           WrapStatefulSetFnAsTestableWorkload(CreateInstrumentedStatefulSet),
-			getFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
-			verifyFn: func(workload TestableWorkload) {
+		}), Entry("should override outdated instrumentation settings for a stateful set at startup", WorkloadTestConfig{
+			WorkloadNamePrefix: StatefulSetNamePrefix,
+			CreateFn:           WrapStatefulSetFnAsTestableWorkload(CreateInstrumentedStatefulSet),
+			GetFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
+			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedStatefulSet(workload.Get().(*appsv1.StatefulSet), BasicInstrumentedPodSpecExpectations())
 			},
 		}),
@@ -653,79 +635,65 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			})
 		})
 
-		Describe("when deleting the Dash0 custom resource and reverting the instrumentation on cleanup", func() {
-			It("should revert an instrumented cron job", func() {
-				// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
-				// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
-				// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
-				// happens in production.
-				triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
+		DescribeTable("when deleting the Dash0 custom resource and reverting the instrumentation on cleanup", func(config WorkloadTestConfig) {
+			// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
+			// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
+			// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
+			// happens in production.
+			triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
 
-				name := UniqueName(CronJobNamePrefix)
-				By("Create an instrumented cron job")
-				cronJob := CreateInstrumentedCronJob(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, cronJob)
+			name := UniqueName(config.WorkloadNamePrefix)
+			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
+			createdObjects = append(createdObjects, workload.Get())
 
-				By("Queue the deletion of the Dash0 custom resource")
-				dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, Default)
-				Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
+			By("deleting the Dash0 custom resource")
+			dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, Default)
+			Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
 
-				triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to revert the instrumented workload")
+			triggerReconcileRequest(ctx, reconciler, "trigger a reconcile request to revert the instrumented workload")
 
-				VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, "controller")
-				cronJob = GetCronJob(ctx, k8sClient, namespace, name)
-				VerifyUnmodifiedCronJob(cronJob)
-				VerifyWebhookIgnoreOnceLabelIsPresent(&cronJob.ObjectMeta)
-			})
+			VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, "controller")
+			workload = config.GetFn(ctx, k8sClient, TestNamespaceName, name)
+			config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
+			VerifyWebhookIgnoreOnceLabelIsPresent(workload.GetObjectMeta())
+		}, Entry("should revert an instrumented cron job", WorkloadTestConfig{
+			WorkloadNamePrefix: CronJobNamePrefix,
+			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateInstrumentedCronJob),
+			GetFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedCronJob(workload.Get().(*batchv1.CronJob))
+			},
+		}), Entry("should revert an instrumented daemon set", WorkloadTestConfig{
+			WorkloadNamePrefix: DaemonSetNamePrefix,
+			CreateFn:           WrapDaemonSetFnAsTestableWorkload(CreateInstrumentedDaemonSet),
+			GetFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedDaemonSet(workload.Get().(*appsv1.DaemonSet))
+			},
+		}), Entry("should revert an instrumented deployment", WorkloadTestConfig{
+			WorkloadNamePrefix: DeploymentNamePrefix,
+			CreateFn:           WrapDeploymentFnAsTestableWorkload(CreateInstrumentedDeployment),
+			GetFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedDeployment(workload.Get().(*appsv1.Deployment))
+			},
+		}), Entry("should revert an instrumented ownerless replica set", WorkloadTestConfig{
+			WorkloadNamePrefix: ReplicaSetNamePrefix,
+			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateInstrumentedReplicaSet),
+			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet))
+			},
+		}), Entry("should revert an instrumented stateful set", WorkloadTestConfig{
+			WorkloadNamePrefix: StatefulSetNamePrefix,
+			CreateFn:           WrapStatefulSetFnAsTestableWorkload(CreateInstrumentedStatefulSet),
+			GetFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedStatefulSet(workload.Get().(*appsv1.StatefulSet))
+			},
+		}))
 
-			It("should revert an instrumented daemon set", func() {
-				// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
-				// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
-				// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
-				// happens in production.
-				triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
-
-				name := UniqueName(DaemonSetNamePrefix)
-				By("Create an instrumented daemon set")
-				daemonSet := CreateInstrumentedDaemonSet(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, daemonSet)
-
-				By("Queue the deletion of the Dash0 custom resource")
-				dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, Default)
-				Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
-
-				triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to revert the instrumented workload")
-
-				VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, "controller")
-				daemonSet = GetDaemonSet(ctx, k8sClient, namespace, name)
-				VerifyUnmodifiedDaemonSet(daemonSet)
-				VerifyWebhookIgnoreOnceLabelIsPresent(&daemonSet.ObjectMeta)
-			})
-
-			It("should revert an instrumented deployment", func() {
-				// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
-				// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
-				// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
-				// happens in production.
-				triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
-
-				name := UniqueName(DeploymentNamePrefix)
-				By("Create an instrumented deployment")
-				deployment := CreateInstrumentedDeployment(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, deployment)
-
-				By("Queue the deletion of the Dash0 custom resource")
-				dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, Default)
-				Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
-
-				triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to revert the instrumented workload")
-
-				VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, "controller")
-				deployment = GetDeployment(ctx, k8sClient, namespace, name)
-				VerifyUnmodifiedDeployment(deployment)
-				VerifyWebhookIgnoreOnceLabelIsPresent(&deployment.ObjectMeta)
-			})
-
+		Describe("when deleting the Dash0 custom resource and reverting the instrumentation on cleanup (special cases)", func() {
 			It("should record a failure event when attempting to revert an existing instrumenting job (which has been instrumented by the webhook)", func() {
 				// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
 				// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
@@ -738,7 +706,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				job := CreateInstrumentedJob(ctx, k8sClient, namespace, name)
 				createdObjects = append(createdObjects, job)
 
-				By("Queue the deletion of the Dash0 custom resource")
+				By("Deleting the Dash0 custom resource")
 				dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, Default)
 				Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
 
@@ -768,7 +736,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				job := CreateJobForWhichAnInstrumentationAttemptHasFailed(ctx, k8sClient, namespace, name)
 				createdObjects = append(createdObjects, job)
 
-				By("Queue the deletion of the Dash0 custom resource")
+				By("Deleting the Dash0 custom resource")
 				dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, Default)
 				Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
 
@@ -790,7 +758,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				pod := CreateInstrumentedPod(ctx, k8sClient, namespace, name)
 				createdObjects = append(createdObjects, pod)
 
-				By("Queue the deletion of the Dash0 custom resource")
+				By("Deleting the Dash0 custom resource")
 				dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, Default)
 				Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
 
@@ -812,7 +780,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				pod := CreatePodOwnedByReplicaSet(ctx, k8sClient, namespace, name)
 				createdObjects = append(createdObjects, pod)
 
-				By("Queue the deletion of the Dash0 custom resource")
+				By("Deleting the Dash0 custom resource")
 				dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, Default)
 				Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
 
@@ -820,30 +788,6 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 				VerifyNoEvents(ctx, clientset, namespace)
 				VerifyUnmodifiedPod(GetPod(ctx, k8sClient, namespace, name))
-			})
-
-			It("should revert an instrumented ownerless replica set", func() {
-				// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
-				// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
-				// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
-				// happens in production.
-				triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
-
-				name := UniqueName(ReplicaSetNamePrefix)
-				By("Create an instrumented replica set")
-				replicaSet := CreateInstrumentedReplicaSet(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, replicaSet)
-
-				By("Queue the deletion of the Dash0 custom resource")
-				dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, Default)
-				Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
-
-				triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to revert the instrumented workload")
-
-				VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, "controller")
-				replicaSet = GetReplicaSet(ctx, k8sClient, namespace, name)
-				VerifyUnmodifiedReplicaSet(replicaSet)
-				VerifyWebhookIgnoreOnceLabelIsPresent(&replicaSet.ObjectMeta)
 			})
 
 			It("should leave existing uninstrumented replica sets owned by deployment alone", func() {
@@ -858,7 +802,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				replicaSet := CreateReplicaSetOwnedByDeployment(ctx, k8sClient, namespace, name)
 				createdObjects = append(createdObjects, replicaSet)
 
-				By("Queue the deletion of the Dash0 custom resource")
+				By("Deleting the Dash0 custom resource")
 				dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, Default)
 				Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
 
@@ -867,177 +811,73 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				VerifyNoEvents(ctx, clientset, namespace)
 				VerifyUnmodifiedReplicaSet(GetReplicaSet(ctx, k8sClient, namespace, name))
 			})
-
-			It("should revert an instrumented stateful set", func() {
-				// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
-				// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
-				// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
-				// happens in production.
-				triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
-
-				name := UniqueName(StatefulSetNamePrefix)
-				By("Create an instrumented stateful set")
-				statefulSet := CreateInstrumentedStatefulSet(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, statefulSet)
-
-				By("Queue the deletion of the Dash0 custom resource")
-				dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, Default)
-				Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
-
-				triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to revert the instrumented workload")
-
-				VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, "controller")
-				statefulSet = GetStatefulSet(ctx, k8sClient, namespace, name)
-				VerifyUnmodifiedStatefulSet(statefulSet)
-				VerifyWebhookIgnoreOnceLabelIsPresent(&statefulSet.ObjectMeta)
-			})
 		})
 
-		Describe("when deleting the Dash0 custom resource and attempting to revert the instrumentation on cleanup but the resource has an opt-out label", func() {
-			It("should not attempt to revert a cron job that has the opt-out label", func() {
-				// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
-				// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
-				// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
-				// happens in production.
-				triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
+		DescribeTable("when deleting the Dash0 custom resource and attempting to revert the instrumentation on cleanup but the resource has an opt-out label", func(config WorkloadTestConfig) {
+			// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
+			// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
+			// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
+			// happens in production.
+			triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
 
-				name := UniqueName(CronJobNamePrefix)
-				By("Create a cron job")
-				cronJob := CreateCronJobWithOptOutLabel(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, cronJob)
+			name := UniqueName(config.WorkloadNamePrefix)
+			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
+			createdObjects = append(createdObjects, workload.Get())
 
-				By("Queue the deletion of the Dash0 custom resource")
-				dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, Default)
-				Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
+			By("Deleting the Dash0 custom resource")
+			dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, Default)
+			Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
 
-				triggerReconcileRequest(ctx, reconciler, "")
+			triggerReconcileRequest(ctx, reconciler, "")
 
-				VerifyNoEvents(ctx, clientset, namespace)
-				cronJob = GetCronJob(ctx, k8sClient, namespace, name)
-				VerifyCronJobWithOptOutLabel(cronJob)
-				VerifyWebhookIgnoreOnceLabelIsAbesent(&cronJob.ObjectMeta)
-			})
+			VerifyNoEvents(ctx, clientset, namespace)
+			workload = config.GetFn(ctx, k8sClient, namespace, name)
+			config.VerifyFn(workload)
+			VerifyWebhookIgnoreOnceLabelIsAbesent(workload.GetObjectMeta())
 
-			It("should not attempt to revert a daemon set that has the opt-out label", func() {
-				// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
-				// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
-				// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
-				// happens in production.
-				triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
-
-				name := UniqueName(DaemonSetNamePrefix)
-				By("Create a daemon set")
-				daemonSet := CreateDaemonSetWithOptOutLabel(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, daemonSet)
-
-				By("Queue the deletion of the Dash0 custom resource")
-				dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, Default)
-				Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
-
-				triggerReconcileRequest(ctx, reconciler, "")
-
-				VerifyNoEvents(ctx, clientset, namespace)
-				daemonSet = GetDaemonSet(ctx, k8sClient, namespace, name)
-				VerifyDaemonSetWithOptOutLabel(daemonSet)
-				VerifyWebhookIgnoreOnceLabelIsAbesent(&daemonSet.ObjectMeta)
-			})
-
-			It("should not attempt to revert a deployment that has the opt-out label", func() {
-				// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
-				// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
-				// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
-				// happens in production.
-				triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
-
-				name := UniqueName(DeploymentNamePrefix)
-				By("Create a deployment")
-				deployment := CreateDeploymentWithOptOutLabel(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, deployment)
-
-				By("Queue the deletion of the Dash0 custom resource")
-				dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, Default)
-				Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
-
-				triggerReconcileRequest(ctx, reconciler, "")
-
-				VerifyNoEvents(ctx, clientset, namespace)
-				deployment = GetDeployment(ctx, k8sClient, namespace, name)
-				VerifyDeploymentWithOptOutLabel(deployment)
-				VerifyWebhookIgnoreOnceLabelIsAbesent(&deployment.ObjectMeta)
-			})
-
-			It("should not attempt to revert a job that has the opt-out label", func() {
-				// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
-				// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
-				// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
-				// happens in production.
-				triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
-
-				name := UniqueName(JobNamePrefix)
-				By("Create a job")
-				job := CreateJobWithOptOutLabel(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, job)
-
-				By("Queue the deletion of the Dash0 custom resource")
-				dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, Default)
-				Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
-
-				triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to attempt to revert the instrumented job")
-
-				VerifyNoEvents(ctx, clientset, namespace)
-				job = GetJob(ctx, k8sClient, namespace, name)
-				VerifyJobWithOptOutLabel(job)
-				VerifyWebhookIgnoreOnceLabelIsAbesent(&job.ObjectMeta)
-			})
-
-			It("should not attempt to revert an ownerless replica set that has the opt-out label", func() {
-				// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
-				// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
-				// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
-				// happens in production.
-				triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
-
-				name := UniqueName(ReplicaSetNamePrefix)
-				By("Create a replica set")
-				replicaSet := CreateReplicaSetWithOptOutLabel(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, replicaSet)
-
-				By("Queue the deletion of the Dash0 custom resource")
-				dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, Default)
-				Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
-
-				triggerReconcileRequest(ctx, reconciler, "")
-
-				VerifyNoEvents(ctx, clientset, namespace)
-				replicaSet = GetReplicaSet(ctx, k8sClient, namespace, name)
-				VerifyReplicaSetWithOptOutLabel(replicaSet)
-				VerifyWebhookIgnoreOnceLabelIsAbesent(&replicaSet.ObjectMeta)
-			})
-
-			It("should not attempt to revert a stateful set that has the opt-out label", func() {
-				// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
-				// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
-				// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
-				// happens in production.
-				triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
-
-				name := UniqueName(StatefulSetNamePrefix)
-				By("Create a stateful set")
-				statefulSet := CreateStatefulSetWithOptOutLabel(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, statefulSet)
-
-				By("Queue the deletion of the Dash0 custom resource")
-				dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, Default)
-				Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
-
-				triggerReconcileRequest(ctx, reconciler, "")
-
-				VerifyNoEvents(ctx, clientset, namespace)
-				statefulSet = GetStatefulSet(ctx, k8sClient, namespace, name)
-				VerifyStatefulSetWithOptOutLabel(statefulSet)
-				VerifyWebhookIgnoreOnceLabelIsAbesent(&statefulSet.ObjectMeta)
-			})
-		})
+		}, Entry("should not attempt to revert a cron job that has the opt-out label", WorkloadTestConfig{
+			WorkloadNamePrefix: CronJobNamePrefix,
+			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateCronJobWithOptOutLabel),
+			GetFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyCronJobWithOptOutLabel(workload.Get().(*batchv1.CronJob))
+			},
+		}), Entry("should not attempt to revert a daemon set that has the opt-out label", WorkloadTestConfig{
+			WorkloadNamePrefix: DaemonSetNamePrefix,
+			CreateFn:           WrapDaemonSetFnAsTestableWorkload(CreateDaemonSetWithOptOutLabel),
+			GetFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyDaemonSetWithOptOutLabel(workload.Get().(*appsv1.DaemonSet))
+			},
+		}), Entry("should not attempt to revert a deployment that has the opt-out label", WorkloadTestConfig{
+			WorkloadNamePrefix: DeploymentNamePrefix,
+			CreateFn:           WrapDeploymentFnAsTestableWorkload(CreateDeploymentWithOptOutLabel),
+			GetFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyDeploymentWithOptOutLabel(workload.Get().(*appsv1.Deployment))
+			},
+		}), Entry("should not attempt to revert a job that has the opt-out label", WorkloadTestConfig{
+			WorkloadNamePrefix: JobNamePrefix,
+			CreateFn:           WrapJobFnAsTestableWorkload(CreateJobWithOptOutLabel),
+			GetFn:              WrapJobFnAsTestableWorkload(GetJob),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyJobWithOptOutLabel(workload.Get().(*batchv1.Job))
+			},
+		}), Entry("should not attempt to revert an ownerless replica set that has the opt-out label", WorkloadTestConfig{
+			WorkloadNamePrefix: ReplicaSetNamePrefix,
+			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateReplicaSetWithOptOutLabel),
+			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyReplicaSetWithOptOutLabel(workload.Get().(*appsv1.ReplicaSet))
+			},
+		}), Entry("should not attempt to revert a stateful set that has the opt-out label", WorkloadTestConfig{
+			WorkloadNamePrefix: StatefulSetNamePrefix,
+			CreateFn:           WrapStatefulSetFnAsTestableWorkload(CreateStatefulSetWithOptOutLabel),
+			GetFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyStatefulSetWithOptOutLabel(workload.Get().(*appsv1.StatefulSet))
+			},
+		}))
 	})
 
 	Describe("when the Dash0 resource does not exist", func() {
@@ -1090,7 +930,15 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 		})
 
 		It("should not instrument workloads", func() {
-			createdObjects = verifyDeploymentIsBeingInstrumented(ctx, reconciler, createdObjects)
+			name := UniqueName(DeploymentNamePrefix)
+			By("Inititalize a deployment")
+			deployment := CreateBasicDeployment(ctx, k8sClient, namespace, name)
+			createdObjects = append(createdObjects, deployment)
+
+			triggerReconcileRequest(ctx, reconciler, "")
+
+			verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
+			VerifyModifiedDeployment(GetDeployment(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations())
 		})
 	})
 
@@ -1115,20 +963,6 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 		})
 	})
 })
-
-func verifyDeploymentIsBeingInstrumented(ctx context.Context, reconciler *Dash0Reconciler, createdObjects []client.Object) []client.Object {
-	name := UniqueName(DeploymentNamePrefix)
-	By("Inititalize a deployment")
-	deployment := CreateBasicDeployment(ctx, k8sClient, namespace, name)
-	createdObjects = append(createdObjects, deployment)
-
-	triggerReconcileRequest(ctx, reconciler, "")
-
-	verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
-	VerifyModifiedDeployment(GetDeployment(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations())
-
-	return createdObjects
-}
 
 func verifyThatDeploymentIsNotBeingInstrumented(ctx context.Context, reconciler *Dash0Reconciler, createdObjects []client.Object) []client.Object {
 	name := UniqueName(DeploymentNamePrefix)

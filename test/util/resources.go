@@ -397,6 +397,15 @@ func PodWithOptOutLabel(namespace string, name string) *corev1.Pod {
 	return workload
 }
 
+func CreatePodWithOptOutLabel(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+) *corev1.Pod {
+	return CreateWorkload(ctx, k8sClient, PodWithOptOutLabel(namespace, name)).(*corev1.Pod)
+}
+
 func BasicReplicaSet(namespace string, name string) *appsv1.ReplicaSet {
 	workload := &appsv1.ReplicaSet{}
 	workload.Namespace = namespace
