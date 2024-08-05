@@ -41,26 +41,9 @@ custom resource definition should match snapshot:
                 spec:
                   description: Dash0Spec defines the desired state of the Dash0 custom resource.
                   properties:
-                    InstrumentNewWorkloads:
-                      description: |-
-                        Opt-out for workload instrumentation of newly deployed workloads for the target namespace. You can opt-out of
-                        instrumenting workloads at the time they are deployed by setting this option to false. By default, when the Dash0
-                        custom resource is present in a namespace (and the Dash0 Kubernetes operator is active), the operator will
-                        instrument new workloads to send telemetry to Dash0, at the time they are deployed to that namespace.
-                        Setting this option to false will prevent that behavior, but workloads existing when the Dash0 custom resource
-                        is deployed will still be instrumented (see option InstrumentExistingWorkloads). More fine-grained control over
-                        instrumentation on a per-workload level is available by setting the label dash0.com/enable=false on individual
-                        workloads.
-
-
-                        The default value for this option is true.
-
-
-                        This option has no effect if InstrumentWorkloads is set to false.
-                      type: boolean
                     authorizationToken:
                       description: |-
-                        The Dash0 authorization token. This propery is optional, but either this property or the SecretRef property has
+                        The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
                         to be provided. If both are provided, the AuthorizationToken will be used and SecretRef will be ignored. The
                         authorization token for your Dash0 organization can be copied from https://app.dash0.com/settings.
                       type: string
@@ -87,6 +70,23 @@ custom resource definition should match snapshot:
 
                         This option has no effect if InstrumentWorkloads is set to false.
                       type: boolean
+                    instrumentNewWorkloads:
+                      description: |-
+                        Opt-out for workload instrumentation of newly deployed workloads for the target namespace. You can opt-out of
+                        instrumenting workloads at the time they are deployed by setting this option to false. By default, when the Dash0
+                        custom resource is present in a namespace (and the Dash0 Kubernetes operator is active), the operator will
+                        instrument new workloads to send telemetry to Dash0, at the time they are deployed to that namespace.
+                        Setting this option to false will prevent that behavior, but workloads existing when the Dash0 custom resource
+                        is deployed will still be instrumented (see option InstrumentExistingWorkloads). More fine-grained control over
+                        instrumentation on a per-workload level is available by setting the label dash0.com/enable=false on individual
+                        workloads.
+
+
+                        The default value for this option is true.
+
+
+                        This option has no effect if InstrumentWorkloads is set to false.
+                      type: boolean
                     instrumentWorkloads:
                       description: |-
                         Global opt-out for workload instrumentation for the target namespace. You can opt-out of instrumenting workloads
@@ -101,7 +101,7 @@ custom resource definition should match snapshot:
                       type: boolean
                     secretRef:
                       description: |-
-                        A reference to a Kubernetes secret containing the Dash0 authorization token. This propery is optional, but either
+                        A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, but either
                         this property or the AuthorizationToken property has to be provided. If both are provided, the AuthorizationToken
                         will be used and SecretRef will be ignored. The authorization token for your Dash0 organization can be copied
                         from https://app.dash0.com/settings.
