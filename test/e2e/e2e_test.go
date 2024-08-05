@@ -101,7 +101,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 	Describe("controller", func() {
 		AfterEach(func() {
-			UndeployDash0CustomResource(applicationUnderTestNamespace)
+			UndeployDash0MonitoringResource(applicationUnderTestNamespace)
 			UndeployOperator(operatorNamespace)
 		})
 
@@ -153,7 +153,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					true,
 					workingDir,
 				)
-				DeployDash0CustomResource(applicationUnderTestNamespace, operatorNamespace)
+				DeployDash0MonitoringResource(applicationUnderTestNamespace, operatorNamespace)
 
 				testIds := make(map[string]string)
 				runInParallelForAllWorkloadTypes(workloadConfigs, func(config controllerTestWorkloadConfig) {
@@ -168,7 +168,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					)
 				})
 
-				UndeployDash0CustomResource(applicationUnderTestNamespace)
+				UndeployDash0MonitoringResource(applicationUnderTestNamespace)
 
 				runInParallelForAllWorkloadTypes(workloadConfigs, func(config controllerTestWorkloadConfig) {
 					VerifyThatInstrumentationHasBeenReverted(
@@ -197,7 +197,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					true,
 					workingDir,
 				)
-				DeployDash0CustomResource(applicationUnderTestNamespace, operatorNamespace)
+				DeployDash0MonitoringResource(applicationUnderTestNamespace, operatorNamespace)
 				By("verifying that the Node.js job has been labelled by the controller and that an event has been emitted")
 				Eventually(func(g Gomega) {
 					VerifyLabels(g, applicationUnderTestNamespace, "job", false, images, "controller")
@@ -212,7 +212,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					)
 				}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
 
-				UndeployDash0CustomResource(applicationUnderTestNamespace)
+				UndeployDash0MonitoringResource(applicationUnderTestNamespace)
 
 				VerifyThatFailedInstrumentationAttemptLabelsHaveBeenRemoved(applicationUnderTestNamespace, "job")
 			})
@@ -228,7 +228,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					true,
 					workingDir,
 				)
-				DeployDash0CustomResource(applicationUnderTestNamespace, operatorNamespace)
+				DeployDash0MonitoringResource(applicationUnderTestNamespace, operatorNamespace)
 				By("verifying that the Node.js pod has not been labelled")
 				Eventually(func(g Gomega) {
 					VerifyNoDash0Labels(g, applicationUnderTestNamespace, "pod")
@@ -264,7 +264,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					false,
 					workingDir,
 				)
-				DeployDash0CustomResource(applicationUnderTestNamespace, operatorNamespace)
+				DeployDash0MonitoringResource(applicationUnderTestNamespace, operatorNamespace)
 
 				By("verifying that the Node.js deployment has been instrumented by the controller")
 				VerifyThatWorkloadHasBeenInstrumented(
@@ -320,11 +320,11 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		})
 
 		BeforeEach(func() {
-			DeployDash0CustomResource(applicationUnderTestNamespace, operatorNamespace)
+			DeployDash0MonitoringResource(applicationUnderTestNamespace, operatorNamespace)
 		})
 
 		AfterEach(func() {
-			UndeployDash0CustomResource(applicationUnderTestNamespace)
+			UndeployDash0MonitoringResource(applicationUnderTestNamespace)
 		})
 
 		type webhookTest struct {
@@ -354,8 +354,8 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					// suite. But the controller cannot instrument jobs, so we cannot test the (failing)
 					// uninstrumentation procedure there. Thus, for jobs, we test the failing uninstrumentation and
 					// its effects here.
-					By("verifying that removing the Dash0 custom resource attempts to uninstruments the job")
-					UndeployDash0CustomResource(applicationUnderTestNamespace)
+					By("verifying that removing the Dash0 monitoring resource attempts to uninstruments the job")
+					UndeployDash0MonitoringResource(applicationUnderTestNamespace)
 
 					Eventually(func(g Gomega) {
 						// Verify that the instrumentation labels are still in place -- since we cannot undo the
@@ -487,8 +487,8 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		})
 
 		AfterEach(func() {
-			UndeployDash0CustomResource(namespace1)
-			UndeployDash0CustomResource(namespace2)
+			UndeployDash0MonitoringResource(namespace1)
+			UndeployDash0MonitoringResource(namespace2)
 			UndeployOperator(operatorNamespace)
 		})
 
@@ -522,7 +522,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		}
 
 		Describe("when uninstalling the operator via helm", func() {
-			It("should remove all Dash0 custom resources and uninstrument all workloads", func() {
+			It("should remove all Dash0 monitoring resources and uninstrument all workloads", func() {
 				By("deploying workloads")
 				runInParallelForAllWorkloadTypes(configs, func(config removalTestNamespaceConfig) {
 					By(fmt.Sprintf("deploying the Node.js %s to namespace %s", config.workloadType, config.namespace))
@@ -538,7 +538,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					workingDir,
 				)
 				runInParallelForAllWorkloadTypes(configs, func(config removalTestNamespaceConfig) {
-					DeployDash0CustomResource(config.namespace, operatorNamespace)
+					DeployDash0MonitoringResource(config.namespace, operatorNamespace)
 				})
 
 				testIds := make(map[string]string)
@@ -569,7 +569,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 				Eventually(func(g Gomega) {
 					for _, config := range configs {
-						VerifyDash0CustomResourceDoesNotExist(g, config.namespace)
+						VerifyDash0MonitoringResourceDoesNotExist(g, config.namespace)
 					}
 					VerifyDash0OperatorReleaseIsNotInstalled(g, operatorNamespace)
 				}).Should(Succeed())

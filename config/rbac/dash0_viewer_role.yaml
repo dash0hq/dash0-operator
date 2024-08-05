@@ -1,4 +1,4 @@
-# permissions for end users to view dash0s.
+# permissions for end users to view dash0monitorings.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -14,7 +14,7 @@ rules:
 - apiGroups:
   - operator.dash0.com
   resources:
-  - dash0s
+  - dash0monitorings
   verbs:
   - get
   - list
@@ -22,6 +22,6 @@ rules:
 - apiGroups:
   - operator.dash0.com
   resources:
-  - dash0s/status
+  - dash0monitorings/status
   verbs:
   - get

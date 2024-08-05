@@ -23,7 +23,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 	"github.com/dash0hq/dash0-operator/internal/dash0/workloads"
 )
@@ -105,13 +105,13 @@ func (h *Handler) Handle(ctx context.Context, request admission.Request) admissi
 
 	targetNamespace := request.Namespace
 
-	dash0List := &dash0v1alpha1.Dash0List{}
+	dash0List := &dash0v1alpha1.Dash0MonitoringList{}
 	if err := h.Client.List(ctx, dash0List, &client.ListOptions{
 		Namespace: targetNamespace,
 	}); err != nil {
 		if apierrors.IsNotFound(err) {
 			msg := fmt.Sprintf(
-				"There is no Dash0 custom resource in the namespace %s, the workload will not be instrumented.",
+				"There is no Dash0 monitoring resource in the namespace %s, the workload will not be instrumented.",
 				targetNamespace,
 			)
 			if request.Operation == admissionv1.Update {
@@ -126,7 +126,7 @@ func (h *Handler) Handle(ctx context.Context, request admission.Request) admissi
 			// yet, so there is nothing to bind the event to.
 			return logErrorAndReturnAllowed(
 				fmt.Errorf(
-					"failed to list Dash0 custom resources in namespace %s, workload will not be instrumented: %w",
+					"failed to list Dash0 monitoring resources in namespace %s, workload will not be instrumented: %w",
 					targetNamespace,
 					err,
 				),
@@ -137,7 +137,7 @@ func (h *Handler) Handle(ctx context.Context, request admission.Request) admissi
 
 	if len(dash0List.Items) == 0 {
 		msg := fmt.Sprintf(
-			"There is no Dash0 custom resource in the namespace %s, the workload will not be instrumented.",
+			"There is no Dash0 monitoring resource in the namespace %s, the workload will not be instrumented.",
 			targetNamespace,
 		)
 		if request.Operation == admissionv1.Update {
@@ -151,13 +151,13 @@ func (h *Handler) Handle(ctx context.Context, request admission.Request) admissi
 
 	logger.Info("new admission request in a Dash0-enabled workspace")
 
-	dash0CustomResource := dash0List.Items[0]
-	if dash0CustomResource.IsMarkedForDeletion() {
-		return logAndReturnAllowed(fmt.Sprintf("The Dash0 custom resource is about to be deleted in namespace %s, "+
+	dash0MonitoringResource := dash0List.Items[0]
+	if dash0MonitoringResource.IsMarkedForDeletion() {
+		return logAndReturnAllowed(fmt.Sprintf("The Dash0 monitoring resource is about to be deleted in namespace %s, "+
 			"this newly deployed workload will not be modified to send telemetry to Dash0.", targetNamespace), &logger)
 	}
-	instrumentWorkloads := util.ReadOptOutSetting(dash0CustomResource.Spec.InstrumentWorkloads)
-	instrumentNewWorkloads := util.ReadOptOutSetting(dash0CustomResource.Spec.InstrumentNewWorkloads)
+	instrumentWorkloads := util.ReadOptOutSetting(dash0MonitoringResource.Spec.InstrumentWorkloads)
+	instrumentNewWorkloads := util.ReadOptOutSetting(dash0MonitoringResource.Spec.InstrumentNewWorkloads)
 	if !instrumentWorkloads {
 		return logAndReturnAllowed(fmt.Sprintf("Instrumenting workloads is not enabled in namespace %s, this newly "+
 			"deployed workload will not be modified to send telemetry to Dash0.", targetNamespace), &logger)
@@ -168,16 +168,16 @@ func (h *Handler) Handle(ctx context.Context, request admission.Request) admissi
 			targetNamespace), &logger)
 	}
 
-	if !dash0CustomResource.IsAvailable() {
+	if !dash0MonitoringResource.IsAvailable() {
 		return logAndReturnAllowed(
 			fmt.Sprintf(
-				"The Dash0 custome resource in the namespace %s is not in status available, this workload will not be "+
+				"The Dash0 monitoring resource in the namespace %s is not in status available, this workload will not be "+
 					"modified to send telemetry to Dash0.", targetNamespace), &logger)
 	}
-	if dash0CustomResource.IsMarkedForDeletion() {
+	if dash0MonitoringResource.IsMarkedForDeletion() {
 		return logAndReturnAllowed(
 			fmt.Sprintf(
-				"The Dash0 custome resource in the namespace %s is about to be deleted, this workload will not be "+
+				"The Dash0 monitoring resource in the namespace %s is about to be deleted, this workload will not be "+
 					"modified to send telemetry to Dash0.", targetNamespace), &logger)
 	}
 

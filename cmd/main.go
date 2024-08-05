@@ -28,7 +28,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	k8swebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
 	dash0controller "github.com/dash0hq/dash0-operator/internal/dash0/controller"
@@ -83,8 +83,8 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	flag.BoolVar(&uninstrumentAll, "uninstrument-all", false,
-		"If set, the process will remove all Dash0 custom resources from all namespaces in the cluster. This will "+
-			"trigger the Dash0 custom resources' finalizers in each namespace, which in turn will revert the "+
+		"If set, the process will remove all Dash0 monitoring resources from all namespaces in the cluster. This "+
+			"will trigger the Dash0 monitoring resources' finalizers in each namespace, which in turn will revert the "+
 			"instrumentation of all workloads in all namespaces.")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -115,8 +115,8 @@ func main() {
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
 	if uninstrumentAll {
-		if err := deleteCustomResourcesInAllNamespaces(&setupLog); err != nil {
-			setupLog.Error(err, "deleting the Dash0 custom resources in all namespaces failed")
+		if err := deleteDash0MonitoringResourcesInAllNamespaces(&setupLog); err != nil {
+			setupLog.Error(err, "deleting the Dash0 monitoring resources in all namespaces failed")
 			os.Exit(1)
 		}
 		os.Exit(0)
@@ -358,15 +358,15 @@ func readEnvironmentVariables() (*environmentVariables, error) {
 	}, nil
 }
 
-func deleteCustomResourcesInAllNamespaces(logger *logr.Logger) error {
+func deleteDash0MonitoringResourcesInAllNamespaces(logger *logr.Logger) error {
 	handler, err := dash0removal.NewOperatorPreDeleteHandler()
 	if err != nil {
 		logger.Error(err, "Failed to create the OperatorPreDeleteHandler.")
 		return err
 	}
-	err = handler.DeleteAllDash0CustomResources()
+	err = handler.DeleteAllDash0MonitoringResources()
 	if err != nil {
-		logger.Error(err, "Failed to delete all Dash0 custom resources.")
+		logger.Error(err, "Failed to delete all Dash0 monitoring resources.")
 		return err
 	}
 	return nil

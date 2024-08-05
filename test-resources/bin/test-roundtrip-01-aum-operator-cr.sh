@@ -57,6 +57,6 @@ echo
 
 sleep 5
 
-echo "STEP 8: deploy the Dash0 custom resource to namespace ${target_namespace}"
-kubectl apply -n ${target_namespace} -f test-resources/customresources/dash0/dash0.yaml
+echo "STEP 8: deploy the Dash0 monitoring resource to namespace ${target_namespace}"
+kubectl apply -n ${target_namespace} -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml
 

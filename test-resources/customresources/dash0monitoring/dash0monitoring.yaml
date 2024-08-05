@@ -1,8 +1,10 @@
 apiVersion: operator.dash0.com/v1alpha1
-kind: Dash0
+kind: Dash0Monitoring
 metadata:
-  name: dash0-resource
+  name: dash0-monitoring-resource
 spec:
+  # production: ingressEndpoint: ingress.eu-west-1.aws.dash0.com:4317
+  # development: ingress.eu-west-1.aws.dash0-dev.com:4317
   ingressEndpoint: ingress.eu-west-1.aws.dash0-dev.com:4317
 
   # Either provide the name of a secret existing in the Dash0 operator's namespace as secretRef:

@@ -14,11 +14,11 @@ import (
 )
 
 const (
-	FinalizerId = "operator.dash0.com/dash0-finalizer"
+	FinalizerId = "operator.dash0.com/dash0-monitoring-finalizer"
 )
 
-// Dash0Spec defines the desired state of the Dash0 custom resource.
-type Dash0Spec struct {
+// Dash0MonitoringSpec defines the desired state of the Dash0 monitoring resource.
+type Dash0MonitoringSpec struct {
 	// The URL of the observability backend to which telemetry data will be sent. This property is mandatory. The value
 	// needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct OTLP/gRPC endpoint can be copied fom
 	// https://app.dash0.com/settings. The correct endpoint value will always start with `ingress.` and end in
@@ -55,10 +55,10 @@ type Dash0Spec struct {
 	InstrumentWorkloads *bool `json:"instrumentWorkloads"`
 
 	// Opt-out for workload instrumentation of existing workloads for the target namespace. You can opt-out of
-	// instrumenting existing workloads by setting this option to false. By default, when the Dash0 custom resource
+	// instrumenting existing workloads by setting this option to false. By default, when the Dash0 monitoring resource
 	// is deployed to a namespace (and the Dash0 Kubernetes operator is active), the operator will instrument the
 	// workloads already running in that namesapce, to send telemetry to Dash0. Setting this option to false will
-	// prevent that behavior, but workloads that are deployed after Dash0 custom resource will still be instrumented
+	// prevent that behavior, but workloads that are deployed after Dash0 monitoring resource will still be instrumented
 	// (see option InstrumentNewWorkloads). More fine-grained control over instrumentation on a per-workload level is
 	// available by setting the label dash0.com/enable=false on individual workloads.
 	//
@@ -71,9 +71,9 @@ type Dash0Spec struct {
 
 	// Opt-out for workload instrumentation of newly deployed workloads for the target namespace. You can opt-out of
 	// instrumenting workloads at the time they are deployed by setting this option to false. By default, when the Dash0
-	// custom resource is present in a namespace (and the Dash0 Kubernetes operator is active), the operator will
+	// monitoring resource is present in a namespace (and the Dash0 Kubernetes operator is active), the operator will
 	// instrument new workloads to send telemetry to Dash0, at the time they are deployed to that namespace.
-	// Setting this option to false will prevent that behavior, but workloads existing when the Dash0 custom resource
+	// Setting this option to false will prevent that behavior, but workloads existing when the Dash0 monitoring resource
 	// is deployed will still be instrumented (see option InstrumentExistingWorkloads). More fine-grained control over
 	// instrumentation on a per-workload level is available by setting the label dash0.com/enable=false on individual
 	// workloads.
@@ -85,7 +85,7 @@ type Dash0Spec struct {
 	// +kubebuilder:validation:Optional
 	InstrumentNewWorkloads *bool `json:"instrumentNewWorkloads"`
 
-	// Opt-out for removing the Dash0 instrumentation from workloads when the Dash0 custom resource is removed from a
+	// Opt-out for removing the Dash0 instrumentation from workloads when the Dash0 monitoring resource is removed from a
 	// namespace, or when the Dash0 Kubernetes operator is deleted entirely. By default, this setting is true and the
 	// operator will revert the instrumentation modifications it applied to workloads to send telemetry to Dash0.
 	// Setting this option to false will prevent this behavior.
@@ -96,36 +96,36 @@ type Dash0Spec struct {
 	UninstrumentWorkloadsOnDelete *bool `json:"uninstrumentWorkloadsOnDelete"`
 }
 
-// Dash0Status defines the observed state of the Dash0 custom resource.
-type Dash0Status struct {
+// Dash0MonitoringStatus defines the observed state of the Dash0 monitoring resource.
+type Dash0MonitoringStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 }
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
 
-// Dash0 is the Schema for the dash0s API
-type Dash0 struct {
+// Dash0Monitoring is the Schema for the Dash0Monitoring API
+type Dash0Monitoring struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   Dash0Spec   `json:"spec,omitempty"`
-	Status Dash0Status `json:"status,omitempty"`
+	Spec   Dash0MonitoringSpec   `json:"spec,omitempty"`
+	Status Dash0MonitoringStatus `json:"status,omitempty"`
 }
 
-func (d *Dash0) IsMarkedForDeletion() bool {
+func (d *Dash0Monitoring) IsMarkedForDeletion() bool {
 	deletionTimestamp := d.GetDeletionTimestamp()
 	return deletionTimestamp != nil && !deletionTimestamp.IsZero()
 }
 
-func (d *Dash0) IsAvailable() bool {
+func (d *Dash0Monitoring) IsAvailable() bool {
 	if condition := d.getCondition(util.ConditionTypeAvailable); condition != nil {
 		return condition.Status == metav1.ConditionTrue
 	}
 	return false
 }
 
-func (d *Dash0) getCondition(conditionType util.ConditionType) *metav1.Condition {
+func (d *Dash0Monitoring) getCondition(conditionType util.ConditionType) *metav1.Condition {
 	for _, c := range d.Status.Conditions {
 		if c.Type == string(conditionType) {
 			return &c
@@ -135,7 +135,7 @@ func (d *Dash0) getCondition(conditionType util.ConditionType) *metav1.Condition
 	return nil
 }
 
-func (d *Dash0) SetAvailableConditionToUnknown() {
+func (d *Dash0Monitoring) SetAvailableConditionToUnknown() {
 	meta.SetStatusCondition(
 		&d.Status.Conditions,
 		metav1.Condition{
@@ -154,7 +154,7 @@ func (d *Dash0) SetAvailableConditionToUnknown() {
 		})
 }
 
-func (d *Dash0) EnsureResourceIsMarkedAsAvailable() {
+func (d *Dash0Monitoring) EnsureResourceIsMarkedAsAvailable() {
 	// If the available status is already true, the status condition is not updated, except for Reason, Message and
 	// ObservedGeneration timestamp. In particular, LastTransitionTime is not updated. Thus, this operation is
 	// effectively idempotent.
@@ -169,14 +169,14 @@ func (d *Dash0) EnsureResourceIsMarkedAsAvailable() {
 	meta.RemoveStatusCondition(&d.Status.Conditions, string(util.ConditionTypeDegraded))
 }
 
-func (d *Dash0) EnsureResourceIsMarkedAsAboutToBeDeleted() {
+func (d *Dash0Monitoring) EnsureResourceIsMarkedAsAboutToBeDeleted() {
 	d.EnsureResourceIsMarkedAsDegraded(
-		"Dash0CustomResourceHasBeenRemoved",
+		"Dash0MonitoringResourceHasBeenRemoved",
 		"Dash0 is inactive in this namespace now.",
 	)
 }
 
-func (d *Dash0) EnsureResourceIsMarkedAsDegraded(
+func (d *Dash0Monitoring) EnsureResourceIsMarkedAsDegraded(
 	reason string,
 	message string,
 ) {
@@ -201,51 +201,51 @@ func (d *Dash0) EnsureResourceIsMarkedAsDegraded(
 		})
 }
 
-func (d *Dash0) GetResourceTypeName() string {
-	return "Dash0CustomResource"
+func (d *Dash0Monitoring) GetResourceTypeName() string {
+	return "Dash0MonitoringResource"
 }
-func (d *Dash0) GetNaturalLanguageResourceTypeName() string {
-	return "Dash0 custom resource"
+func (d *Dash0Monitoring) GetNaturalLanguageResourceTypeName() string {
+	return "Dash0 monitoring resource"
 }
-func (d *Dash0) Get() client.Object {
+func (d *Dash0Monitoring) Get() client.Object {
 	return d
 }
-func (d *Dash0) GetName() string {
+func (d *Dash0Monitoring) GetName() string {
 	return d.Name
 }
-func (d *Dash0) GetUid() types.UID {
+func (d *Dash0Monitoring) GetUid() types.UID {
 	return d.UID
 }
-func (d *Dash0) GetCreationTimestamp() metav1.Time {
+func (d *Dash0Monitoring) GetCreationTimestamp() metav1.Time {
 	return d.CreationTimestamp
 }
-func (d *Dash0) GetReceiver() client.Object {
-	return &Dash0{}
+func (d *Dash0Monitoring) GetReceiver() client.Object {
+	return &Dash0Monitoring{}
 }
-func (d *Dash0) GetListReceiver() client.ObjectList {
-	return &Dash0List{}
+func (d *Dash0Monitoring) GetListReceiver() client.ObjectList {
+	return &Dash0MonitoringList{}
 }
-func (d *Dash0) Items(list client.ObjectList) []client.Object {
-	items := list.(*Dash0List).Items
+func (d *Dash0Monitoring) Items(list client.ObjectList) []client.Object {
+	items := list.(*Dash0MonitoringList).Items
 	result := make([]client.Object, len(items))
 	for i := range items {
 		result[i] = &items[i]
 	}
 	return result
 }
-func (d *Dash0) At(list client.ObjectList, index int) controller.CustomResource {
-	return &list.(*Dash0List).Items[index]
+func (d *Dash0Monitoring) At(list client.ObjectList, index int) controller.CustomResource {
+	return &list.(*Dash0MonitoringList).Items[index]
 }
 
 //+kubebuilder:object:root=true
 
-// Dash0List contains a list of Dash0
-type Dash0List struct {
+// Dash0MonitoringList contains a list of Dash0Monitoring resources.
+type Dash0MonitoringList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []Dash0 `json:"items"`
+	Items           []Dash0Monitoring `json:"items"`
 }
 
 func init() {
-	SchemeBuilder.Register(&Dash0{}, &Dash0List{})
+	SchemeBuilder.Register(&Dash0Monitoring{}, &Dash0MonitoringList{})
 }

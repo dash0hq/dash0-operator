@@ -24,7 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection"
 	"github.com/dash0hq/dash0-operator/internal/common/controller"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
@@ -106,67 +106,67 @@ func (r *Dash0Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		r.DanglingEventsTimeouts = defaultDanglingEventsTimeouts
 	}
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&dash0v1alpha1.Dash0{}).
+		For(&dash0v1alpha1.Dash0Monitoring{}).
 		Complete(r)
 }
 
 // InstrumentAtStartup is run once, when the controller process starts. Its main purpose is to upgrade workloads that
-// have already been instrumented, in namespaces where the Dash0 custom resource already exists. For those workloads,
+// have already been instrumented, in namespaces where the Dash0 monitoring resource already exists. For those workloads,
 // it is not guaranteed that a reconcile request will be triggered when the operator controller image is updated and
-// restarted - reconcile requests are only triggered when the Dash0 custom resource is installed/changed/deleted.
+// restarted - reconcile requests are only triggered when the Dash0 monitoring resource is installed/changed/deleted.
 // Since it runs the full instrumentation process, it might also as a byproduct instrument workloads that are not
-// instrumented yet. It will only cover namespaces where a Dash0 custom resource exists, because it works by listing
-// all Dash0 custom resources and then instrumenting workloads in the corresponding namespaces.
+// instrumented yet. It will only cover namespaces where a Dash0 monitoring resource exists, because it works by listing
+// all Dash0 monitoring resources and then instrumenting workloads in the corresponding namespaces.
 func (r *Dash0Reconciler) InstrumentAtStartup() {
 	ctx := context.Background()
 	logger := log.FromContext(ctx)
 	logger.Info("Applying/updating instrumentation at controller startup.")
-	dash0CustomResourcesInNamespace := &dash0v1alpha1.Dash0List{}
+	dash0MonitoringResourcesInNamespace := &dash0v1alpha1.Dash0MonitoringList{}
 	if err := r.Client.List(
 		ctx,
-		dash0CustomResourcesInNamespace,
+		dash0MonitoringResourcesInNamespace,
 		&client.ListOptions{},
 	); err != nil {
-		logger.Error(err, "Failed to list all Dash0 custom resources at controller startup.")
+		logger.Error(err, "Failed to list all Dash0 monitoring resources at controller startup.")
 		return
 	}
 
-	logger.Info(fmt.Sprintf("Found %d Dash0 custom resources.", len(dash0CustomResourcesInNamespace.Items)))
-	for _, dash0CustomResource := range dash0CustomResourcesInNamespace.Items {
-		logger.Info(fmt.Sprintf("Processing workloads in Dash0-enabled namespace %s", dash0CustomResource.Namespace))
+	logger.Info(fmt.Sprintf("Found %d Dash0 monitoring resources.", len(dash0MonitoringResourcesInNamespace.Items)))
+	for _, dash0MonitoringResource := range dash0MonitoringResourcesInNamespace.Items {
+		logger.Info(fmt.Sprintf("Processing workloads in Dash0-enabled namespace %s", dash0MonitoringResource.Namespace))
 
-		if dash0CustomResource.IsMarkedForDeletion() {
+		if dash0MonitoringResource.IsMarkedForDeletion() {
 			continue
 		}
 		pseudoReconcileRequest := ctrl.Request{
 			NamespacedName: client.ObjectKey{
-				Namespace: dash0CustomResource.Namespace,
-				Name:      dash0CustomResource.Name,
+				Namespace: dash0MonitoringResource.Namespace,
+				Name:      dash0MonitoringResource.Name,
 			},
 		}
-		_, stop, err := controller.VerifyUniqueCustomResourceExists(
+		_, stop, err := controller.VerifyUniqueDash0MonitoringResourceExists(
 			ctx,
 			r.Client,
 			r.Status(),
-			&dash0v1alpha1.Dash0{},
+			&dash0v1alpha1.Dash0Monitoring{},
 			updateStatusFailedMessage,
 			pseudoReconcileRequest,
 			logger,
 		)
 		if err != nil || stop {
-			// if an error occurred, it has already been logged in verifyUniqueDash0CustomResourceExists
+			// if an error occurred, it has already been logged in verifyUniqueDash0MonitoringResourceExists
 			continue
 		}
 
-		err = r.checkSettingsAndInstrumentAllWorkloads(ctx, &dash0CustomResource, &logger)
+		err = r.checkSettingsAndInstrumentAllWorkloads(ctx, &dash0MonitoringResource, &logger)
 		if err != nil {
 			logger.Error(
 				err,
 				"Failed to apply/update instrumentation instrumentation at startup in one namespace.",
 				"namespace",
-				dash0CustomResource.Namespace,
+				dash0MonitoringResource.Namespace,
 				"name",
-				dash0CustomResource.Name,
+				dash0MonitoringResource.Name,
 			)
 			continue
 		}
@@ -181,9 +181,9 @@ func (r *Dash0Reconciler) InstrumentAtStartup() {
 //+kubebuilder:rbac:groups=core,resources=events,verbs=create;list;patch;update
 //+kubebuilder:rbac:groups=core,resources=namespaces,verbs=get
 //+kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;delete
-//+kubebuilder:rbac:groups=operator.dash0.com,resources=dash0s,verbs=get;list;watch;create;update;patch;delete;deletecollection
-//+kubebuilder:rbac:groups=operator.dash0.com,resources=dash0s/finalizers,verbs=update
-//+kubebuilder:rbac:groups=operator.dash0.com,resources=dash0s/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=operator.dash0.com,resources=dash0monitorings,verbs=get;list;watch;create;update;patch;delete;deletecollection
+//+kubebuilder:rbac:groups=operator.dash0.com,resources=dash0monitorings/finalizers,verbs=update
+//+kubebuilder:rbac:groups=operator.dash0.com,resources=dash0monitorings/status,verbs=get;update;patch
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -198,7 +198,7 @@ func (r *Dash0Reconciler) InstrumentAtStartup() {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.16.3/pkg/reconcile
 func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("processing reconcile request for Dash0 custom resource")
+	logger.Info("processing reconcile request for Dash0 monitoring resource")
 
 	namespaceStillExists, err := controller.CheckIfNamespaceExists(ctx, r.Clientset, req.Namespace, &logger)
 	if err != nil {
@@ -210,11 +210,11 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{}, nil
 	}
 
-	customResource, stopReconcile, err := controller.VerifyUniqueCustomResourceExists(
+	monitoringResource, stopReconcile, err := controller.VerifyUniqueDash0MonitoringResourceExists(
 		ctx,
 		r.Client,
 		r.Status(),
-		&dash0v1alpha1.Dash0{},
+		&dash0v1alpha1.Dash0Monitoring{},
 		updateStatusFailedMessage,
 		req,
 		logger,
@@ -224,13 +224,13 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	} else if stopReconcile {
 		return ctrl.Result{}, nil
 	}
-	dash0CustomResource := customResource.(*dash0v1alpha1.Dash0)
+	dash0MonitoringResource := monitoringResource.(*dash0v1alpha1.Dash0Monitoring)
 
 	isFirstReconcile, err := controller.InitStatusConditions(
 		ctx,
 		r.Status(),
-		dash0CustomResource,
-		dash0CustomResource.Status.Conditions,
+		dash0MonitoringResource,
+		dash0MonitoringResource.Status.Conditions,
 		string(util.ConditionTypeAvailable),
 		&logger,
 	)
@@ -242,7 +242,7 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	isMarkedForDeletion, runCleanupActions, err := controller.CheckImminentDeletionAndHandleFinalizers(
 		ctx,
 		r.Client,
-		dash0CustomResource,
+		dash0MonitoringResource,
 		dash0v1alpha1.FinalizerId,
 		&logger,
 	)
@@ -250,16 +250,16 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		// The error has already been logged in checkImminentDeletionAndHandleFinalizers
 		return ctrl.Result{}, err
 	} else if runCleanupActions {
-		err = r.runCleanupActions(ctx, dash0CustomResource, &logger)
+		err = r.runCleanupActions(ctx, dash0MonitoringResource, &logger)
 		if err != nil {
 			// error has already been logged in runCleanupActions
 			return ctrl.Result{}, err
 		}
-		// The Dash0 custom resource is slated for deletion, all cleanup actions (like reverting instrumented resources)
+		// The Dash0 monitoring resource is slated for deletion, all cleanup actions (like reverting instrumented resources)
 		// have been processed, no further reconciliation is necessary.
 		return ctrl.Result{}, nil
 	} else if isMarkedForDeletion {
-		// The Dash0 custom resource is slated for deletion, the finalizer has already been removed (which means all
+		// The Dash0 monitoring resource is slated for deletion, the finalizer has already been removed (which means all
 		// cleanup actions have been processed), no further reconciliation is necessary.
 		return ctrl.Result{}, nil
 	}
@@ -269,24 +269,24 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	if err = r.BackendConnectionManager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
 		ctx,
 		r.OperatorNamespace,
-		dash0CustomResource,
+		dash0MonitoringResource,
 	); err != nil {
 		return ctrl.Result{}, err
 	}
 
 	if isFirstReconcile {
 		logger.Info("Initial reconcile in progress.")
-		if err = r.checkSettingsAndInstrumentAllWorkloads(ctx, dash0CustomResource, &logger); err != nil {
+		if err = r.checkSettingsAndInstrumentAllWorkloads(ctx, dash0MonitoringResource, &logger); err != nil {
 			// The error has already been logged in checkSettingsAndInstrumentAllWorkloads
 			logger.Info("Requeuing reconcile request.")
 			return ctrl.Result{}, err
 		}
 	}
 
-	r.scheduleAttachDanglingEvents(ctx, dash0CustomResource, &logger)
+	r.scheduleAttachDanglingEvents(ctx, dash0MonitoringResource, &logger)
 
-	dash0CustomResource.EnsureResourceIsMarkedAsAvailable()
-	if err = r.Status().Update(ctx, dash0CustomResource); err != nil {
+	dash0MonitoringResource.EnsureResourceIsMarkedAsAvailable()
+	if err = r.Status().Update(ctx, dash0MonitoringResource); err != nil {
 		logger.Error(err, updateStatusFailedMessage)
 		return ctrl.Result{}, err
 	}
@@ -296,12 +296,12 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 func (r *Dash0Reconciler) checkSettingsAndInstrumentAllWorkloads(
 	ctx context.Context,
-	dash0CustomResource *dash0v1alpha1.Dash0,
+	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
 	logger *logr.Logger,
 ) error {
-	instrumentWorkloads := util.ReadOptOutSetting(dash0CustomResource.Spec.InstrumentWorkloads)
-	instrumentExistingWorkloads := util.ReadOptOutSetting(dash0CustomResource.Spec.InstrumentExistingWorkloads)
-	instrumentNewWorkloads := util.ReadOptOutSetting(dash0CustomResource.Spec.InstrumentNewWorkloads)
+	instrumentWorkloads := util.ReadOptOutSetting(dash0MonitoringResource.Spec.InstrumentWorkloads)
+	instrumentExistingWorkloads := util.ReadOptOutSetting(dash0MonitoringResource.Spec.InstrumentExistingWorkloads)
+	instrumentNewWorkloads := util.ReadOptOutSetting(dash0MonitoringResource.Spec.InstrumentNewWorkloads)
 
 	if !instrumentWorkloads || (!instrumentExistingWorkloads && !instrumentNewWorkloads) {
 		logger.Info(
@@ -319,7 +319,7 @@ func (r *Dash0Reconciler) checkSettingsAndInstrumentAllWorkloads(
 	}
 
 	logger.Info("Now instrumenting existing workloads in namespace so they send telemetry to Dash0.")
-	if err := r.instrumentAllWorkloads(ctx, dash0CustomResource, logger); err != nil {
+	if err := r.instrumentAllWorkloads(ctx, dash0MonitoringResource, logger); err != nil {
 		logger.Error(err, "Instrumenting existing workloads failed.")
 		return err
 	}
@@ -329,10 +329,10 @@ func (r *Dash0Reconciler) checkSettingsAndInstrumentAllWorkloads(
 
 func (r *Dash0Reconciler) instrumentAllWorkloads(
 	ctx context.Context,
-	dash0CustomResource *dash0v1alpha1.Dash0,
+	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
 	logger *logr.Logger,
 ) error {
-	namespace := dash0CustomResource.Namespace
+	namespace := dash0MonitoringResource.Namespace
 
 	errCronJobs := r.findAndInstrumentCronJobs(ctx, namespace, logger)
 	errDaemonSets := r.findAndInstrumentyDaemonSets(ctx, namespace, logger)
@@ -710,10 +710,10 @@ func (r *Dash0Reconciler) postProcessInstrumentation(
 
 func (r *Dash0Reconciler) runCleanupActions(
 	ctx context.Context,
-	dash0CustomResource *dash0v1alpha1.Dash0,
+	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
 	logger *logr.Logger,
 ) error {
-	uninstrumentWorkloadsOnDelete := util.ReadOptOutSetting(dash0CustomResource.Spec.UninstrumentWorkloadsOnDelete)
+	uninstrumentWorkloadsOnDelete := util.ReadOptOutSetting(dash0MonitoringResource.Spec.UninstrumentWorkloadsOnDelete)
 	if !uninstrumentWorkloadsOnDelete {
 		logger.Info(
 			"Reverting instrumentation modifications is not enabled, the Dash0 Kubernetes operator will not attempt " +
@@ -722,32 +722,32 @@ func (r *Dash0Reconciler) runCleanupActions(
 		return nil
 	}
 
-	if err := r.uninstrumentWorkloadsIfAvailable(ctx, dash0CustomResource, logger); err != nil {
+	if err := r.uninstrumentWorkloadsIfAvailable(ctx, dash0MonitoringResource, logger); err != nil {
 		logger.Error(err, "Failed to uninstrument workloads, requeuing reconcile request.")
 		return err
 	}
 
-	if err := r.BackendConnectionManager.RemoveOpenTelemetryCollectorIfNoDash0CustomResourceIsLeft(
+	if err := r.BackendConnectionManager.RemoveOpenTelemetryCollectorIfNoDash0MonitoringResourceIsLeft(
 		ctx,
 		r.OperatorNamespace,
-		dash0CustomResource,
+		dash0MonitoringResource,
 	); err != nil {
 		logger.Error(err, "Failed to check if the OpenTelemetry collector instance needs to be removed or failed removing it.")
 		return err
 	}
 
-	// The Dash0 custom resource will be deleted after this reconcile finished, so updating the status is
+	// The Dash0 monitoring resource will be deleted after this reconcile finished, so updating the status is
 	// probably unnecessary. But for due process we do it anyway. In particular, if deleting it should fail
 	// for any reason or take a while, the resource is no longer marked as available.
-	dash0CustomResource.EnsureResourceIsMarkedAsAboutToBeDeleted()
-	if err := r.Status().Update(ctx, dash0CustomResource); err != nil {
+	dash0MonitoringResource.EnsureResourceIsMarkedAsAboutToBeDeleted()
+	if err := r.Status().Update(ctx, dash0MonitoringResource); err != nil {
 		logger.Error(err, updateStatusFailedMessage)
 		return err
 	}
 
-	controllerutil.RemoveFinalizer(dash0CustomResource, dash0v1alpha1.FinalizerId)
-	if err := r.Update(ctx, dash0CustomResource); err != nil {
-		logger.Error(err, "Failed to remove the finalizer from the Dash0 custom resource, requeuing reconcile request.")
+	controllerutil.RemoveFinalizer(dash0MonitoringResource, dash0v1alpha1.FinalizerId)
+	if err := r.Update(ctx, dash0MonitoringResource); err != nil {
+		logger.Error(err, "Failed to remove the finalizer from the Dash0 monitoring resource, requeuing reconcile request.")
 		return err
 	}
 	return nil
@@ -755,17 +755,17 @@ func (r *Dash0Reconciler) runCleanupActions(
 
 func (r *Dash0Reconciler) uninstrumentWorkloadsIfAvailable(
 	ctx context.Context,
-	dash0CustomResource *dash0v1alpha1.Dash0,
+	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
 	logger *logr.Logger,
 ) error {
-	if dash0CustomResource.IsAvailable() {
+	if dash0MonitoringResource.IsAvailable() {
 		logger.Info("Reverting Dash0's modifications to workloads that have been instrumented to make them send telemetry to Dash0.")
-		if err := r.uninstrumentWorkloads(ctx, dash0CustomResource, logger); err != nil {
+		if err := r.uninstrumentWorkloads(ctx, dash0MonitoringResource, logger); err != nil {
 			logger.Error(err, "Uninstrumenting existing workloads failed.")
 			return err
 		}
 	} else {
-		logger.Info("Removing the Dash0 custom resource and running finalizers, but Dash0 is not marked as available." +
+		logger.Info("Removing the Dash0 monitoring resource and running finalizers, but Dash0 is not marked as available." +
 			" Dash0 Instrumentation will not be removed from workloads..")
 	}
 	return nil
@@ -773,10 +773,10 @@ func (r *Dash0Reconciler) uninstrumentWorkloadsIfAvailable(
 
 func (r *Dash0Reconciler) uninstrumentWorkloads(
 	ctx context.Context,
-	dash0CustomResource *dash0v1alpha1.Dash0,
+	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
 	logger *logr.Logger,
 ) error {
-	namespace := dash0CustomResource.Namespace
+	namespace := dash0MonitoringResource.Namespace
 
 	errCronJobs := r.findAndUninstrumentCronJobs(ctx, namespace, logger)
 	errDaemonSets := r.findAndUninstrumentDaemonSets(ctx, namespace, logger)
@@ -1158,7 +1158,7 @@ func (r *Dash0Reconciler) restartPodsOfReplicaSet(
 
 func (r *Dash0Reconciler) scheduleAttachDanglingEvents(
 	ctx context.Context,
-	dash0CustomResource *dash0v1alpha1.Dash0,
+	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
 	logger *logr.Logger,
 ) {
 	// execute the attachment in a separate go routine to not block the main reconcile loop
@@ -1168,7 +1168,7 @@ func (r *Dash0Reconciler) scheduleAttachDanglingEvents(
 			// the webhook queues the events
 			time.Sleep(r.DanglingEventsTimeouts.InitialTimeout)
 		}
-		r.attachDanglingEvents(ctx, dash0CustomResource, logger)
+		r.attachDanglingEvents(ctx, dash0MonitoringResource, logger)
 	}()
 }
 
@@ -1180,10 +1180,10 @@ func (r *Dash0Reconciler) scheduleAttachDanglingEvents(
  */
 func (r *Dash0Reconciler) attachDanglingEvents(
 	ctx context.Context,
-	dash0CustomResource *dash0v1alpha1.Dash0,
+	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
 	logger *logr.Logger,
 ) {
-	namespace := dash0CustomResource.Namespace
+	namespace := dash0MonitoringResource.Namespace
 	eventApi := r.Clientset.CoreV1().Events(namespace)
 	backoff := r.DanglingEventsTimeouts.Backoff
 	for _, eventType := range util.AllEvents {
