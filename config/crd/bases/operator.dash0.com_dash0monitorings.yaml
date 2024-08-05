@@ -4,20 +4,20 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.14.0
-  name: dash0s.operator.dash0.com
+  name: dash0monitorings.operator.dash0.com
 spec:
   group: operator.dash0.com
   names:
-    kind: Dash0
-    listKind: Dash0List
-    plural: dash0s
-    singular: dash0
+    kind: Dash0Monitoring
+    listKind: Dash0MonitoringList
+    plural: dash0monitorings
+    singular: dash0monitoring
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Dash0 is the Schema for the dash0s API
+        description: Dash0Monitoring is the Schema for the Dash0Monitoring API
         properties:
           apiVersion:
             description: |-
@@ -37,7 +37,8 @@ spec:
           metadata:
             type: object
           spec:
-            description: Dash0Spec defines the desired state of the Dash0 custom resource.
+            description: Dash0MonitoringSpec defines the desired state of the Dash0
+              monitoring resource.
             properties:
               authorizationToken:
                 description: |-
@@ -55,10 +56,10 @@ spec:
               instrumentExistingWorkloads:
                 description: |-
                   Opt-out for workload instrumentation of existing workloads for the target namespace. You can opt-out of
-                  instrumenting existing workloads by setting this option to false. By default, when the Dash0 custom resource
+                  instrumenting existing workloads by setting this option to false. By default, when the Dash0 monitoring resource
                   is deployed to a namespace (and the Dash0 Kubernetes operator is active), the operator will instrument the
                   workloads already running in that namesapce, to send telemetry to Dash0. Setting this option to false will
-                  prevent that behavior, but workloads that are deployed after Dash0 custom resource will still be instrumented
+                  prevent that behavior, but workloads that are deployed after Dash0 monitoring resource will still be instrumented
                   (see option InstrumentNewWorkloads). More fine-grained control over instrumentation on a per-workload level is
                   available by setting the label dash0.com/enable=false on individual workloads.
 
@@ -72,9 +73,9 @@ spec:
                 description: |-
                   Opt-out for workload instrumentation of newly deployed workloads for the target namespace. You can opt-out of
                   instrumenting workloads at the time they are deployed by setting this option to false. By default, when the Dash0
-                  custom resource is present in a namespace (and the Dash0 Kubernetes operator is active), the operator will
+                  monitoring resource is present in a namespace (and the Dash0 Kubernetes operator is active), the operator will
                   instrument new workloads to send telemetry to Dash0, at the time they are deployed to that namespace.
-                  Setting this option to false will prevent that behavior, but workloads existing when the Dash0 custom resource
+                  Setting this option to false will prevent that behavior, but workloads existing when the Dash0 monitoring resource
                   is deployed will still be instrumented (see option InstrumentExistingWorkloads). More fine-grained control over
                   instrumentation on a per-workload level is available by setting the label dash0.com/enable=false on individual
                   workloads.
@@ -106,7 +107,7 @@ spec:
                 type: string
               uninstrumentWorkloadsOnDelete:
                 description: |-
-                  Opt-out for removing the Dash0 instrumentation from workloads when the Dash0 custom resource is removed from a
+                  Opt-out for removing the Dash0 instrumentation from workloads when the Dash0 monitoring resource is removed from a
                   namespace, or when the Dash0 Kubernetes operator is deleted entirely. By default, this setting is true and the
                   operator will revert the instrumentation modifications it applied to workloads to send telemetry to Dash0.
                   Setting this option to false will prevent this behavior.
@@ -118,8 +119,8 @@ spec:
             - ingressEndpoint
             type: object
           status:
-            description: Dash0Status defines the observed state of the Dash0 custom
-              resource.
+            description: Dash0MonitoringStatus defines the observed state of the Dash0
+              monitoring resource.
             properties:
               conditions:
                 items:

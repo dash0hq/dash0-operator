@@ -44,17 +44,17 @@ helm install \
 
 Note that Dash0 has to be enabled per namespace that you want to monitor, which is described in the next section.
 
-## Enable Dash0 For a Namespace
+## Enable Dash0 Monitoring For a Namespace
 
-For _each namespace_ that you want to monitor with Dash0, enable monitoring by installing a custom Dash0 resource into
-that namespace:
+For _each namespace_ that you want to monitor with Dash0, enable monitoring by installing a Dash0 monitoring resource
+into that namespace:
 
-Create a file `dash0.yaml` with the following content:
+Create a file `dash0-monitoring.yaml` with the following content:
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1
 kind: Dash0
 metadata:
-  name: dash0-resource
+  name: dash0-monitoring-resource
 spec:
   # Replace this value with the actual OTLP/gRPC endpoint of your Dash0 organization.
   ingressEndpoint: ingress... # TODO needs to be replaced with the actual value, see below
@@ -95,12 +95,12 @@ After providing the required values, save the file and apply the resource to the
 For example, if you want to monitor workloads in the namespace `my-nodejs-applications`, use the following command:
 
 ```console
-kubectl apply --namespace my-nodejs-applications -f dash0.yaml
+kubectl apply --namespace my-nodejs-applications -f dash0-monitoring.yaml
 ```
 
 If you want to monitor the `default` namespace with Dash0, use the following command:
 ```console
-kubectl apply -f dash0.yaml
+kubectl apply -f dash0-monitoring.yaml
 ```
 
 ### Using a Kubernetes Secret for the Dash0 Authorization Token
@@ -125,13 +125,13 @@ With this example command, you would create a secret with the name `dash0-author
 `dash0-system`.
 If you installed the operator into a different namespace, replace the `--namespace` parameter accordingly.
 
-The name of the secret must be referenced in the YAML file for the Dash0 resource in the `secretRef` property.
+The name of the secret must be referenced in the YAML file for the Dash0 monitoring resource in the `secretRef` property.
 Here is an example that uses the secret created above:
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1
-kind: Dash0
+kind: Dash0Monitoring
 metadata:
-  name: dash0-resource
+  name: dash0-monitoring-resource
 spec:
   # Replace this value with the actual OTLP/gRPC endpoint of your Dash0 organization.
   ingressEndpoint: ingress... # TODO needs to be replaced with the actual value, see below
@@ -145,20 +145,20 @@ will be able to read the value.
 Additional steps are required to make sure secret values are encrypted.
 See https://kubernetes.io/docs/concepts/configur**ation/secret/ for more information on Kubernetes secrets.
 
-## Disable Dash0 For a Namespace
+## Disable Dash0 Monitoring For a Namespace
 
-If you want to stop monitoring a namespace with Dash0, remove the Dash0 resource from that namespace.
+If you want to stop monitoring a namespace with Dash0, remove the Dash0 monitoring resource from that namespace.
 For example, if you want to stop monitoring workloads in the namespace `my-nodejs-applications`, use the following
 command:
 
 ```console
-kubectl delete --namespace my-nodejs-applications Dash0 dash0-resource
+kubectl delete --namespace my-nodejs-applications Dash0Monitoring dash0-monitoring-resource
 ```
 
-or, alternatively, by using the `dash0.yaml` file created earlier:
+or, alternatively, by using the `dash0-monitoring.yaml` file created earlier:
 
 ```console
-kubectl delete --namespace my-nodejs-applications -f dash0.yaml
+kubectl delete --namespace my-nodejs-applications -f dash0-monitoring.yaml
 ```
 
 ## Uninstallation
@@ -172,7 +172,7 @@ helm uninstall dash0-operator --namespace dash0-system
 Depending on the command you used to install the operator, you may need to use a different Helm release name or
 namespace.
 
-This will also automatically disable Dash0 monitoring for all namespaces by deleting the Dash0 resources in all
+This will also automatically disable Dash0 monitoring for all namespaces by deleting the Dash0 monitoring resources in all
 namespaces.
 Optionally, remove the namespace that has been created for the operator:
 
@@ -187,5 +187,5 @@ token (if such a secret has been created):
 kubectl delete secret --namespace dash0-system dash0-authorization-secret
 ```
 
-If you later decide to install the operator again, you will need to enable Dash0 in each namespace you want to monitor
-again, see [Enable Dash0 For a Namespace](#enable-dash0-for-a-namespace).
+If you later decide to install the operator again, you will need to enable Dash0 monitoring in each namespace you want
+to monitor again, see [Enable Dash0 Monitoring For a Namespace](#enable-dash0-monitoring-for-a-namespace).

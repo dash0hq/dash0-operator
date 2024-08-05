@@ -36,7 +36,7 @@ const (
 	tracesJsonMaxLineLength        = 1_048_576
 	verifyTelemetryTimeout         = 90 * time.Second
 	verifyTelemetryPollingInterval = 500 * time.Millisecond
-	dash0CustomResourceName        = "dash0-sample"
+	dash0MonitoringResourceName    = "dash0-monitoring-resource"
 	additionalImageTag             = "e2e-test"
 )
 
@@ -615,10 +615,10 @@ func UpgradeOperator(
 	verifyThatOTelCollectorIsRunning(operatorNamespace)
 }
 
-func DeployDash0CustomResource(namespace string, operatorNamespace string) {
+func DeployDash0MonitoringResource(namespace string, operatorNamespace string) {
 	TruncateExportedTelemetry()
 	By(fmt.Sprintf(
-		"deploying the Dash0 custom resource to namespace %s, operator namespace is %s",
+		"deploying the Dash0 monitoring resource to namespace %s, operator namespace is %s",
 		namespace, operatorNamespace))
 	Expect(
 		RunAndIgnoreOutput(exec.Command(
@@ -627,17 +627,16 @@ func DeployDash0CustomResource(namespace string, operatorNamespace string) {
 			"-n",
 			namespace,
 			"-f",
-			"test-resources/customresources/dash0/dash0.yaml",
+			"test-resources/customresources/dash0monitoring/dash0monitoring.yaml",
 		))).To(Succeed())
 
-	// Deploying the dash0 custom resource will trigger creating the default backend connection resource, which will in
-	// turn trigger creating an OpenTelemetry collector instance.
+	// Deploying the Dash0 monitoring resource will trigger creating the default OpenTelemetry collecor instance.
 	verifyThatOTelCollectorIsRunning(operatorNamespace)
 }
 
-func UndeployDash0CustomResource(namespace string) {
+func UndeployDash0MonitoringResource(namespace string) {
 	TruncateExportedTelemetry()
-	By(fmt.Sprintf("Removing the Dash0 custom resource from namespace %s", namespace))
+	By(fmt.Sprintf("Removing the Dash0 monitoring resource from namespace %s", namespace))
 	Expect(
 		RunAndIgnoreOutput(exec.Command(
 			"kubectl",
@@ -645,23 +644,23 @@ func UndeployDash0CustomResource(namespace string) {
 			"--namespace",
 			namespace,
 			"-f",
-			"test-resources/customresources/dash0/dash0.yaml",
+			"test-resources/customresources/dash0monitoring/dash0monitoring.yaml",
 			"--ignore-not-found",
 		))).To(Succeed())
 }
 
-func VerifyDash0CustomResourceDoesNotExist(g Gomega, namespace string) {
+func VerifyDash0MonitoringResourceDoesNotExist(g Gomega, namespace string) {
 	output, err := Run(exec.Command(
 		"kubectl",
 		"get",
 		"--namespace",
 		namespace,
 		"--ignore-not-found",
-		"dash0",
-		dash0CustomResourceName,
+		"dash0monitoring",
+		dash0MonitoringResourceName,
 	))
 	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(output).NotTo(ContainSubstring(dash0CustomResourceName))
+	g.Expect(output).NotTo(ContainSubstring(dash0MonitoringResourceName))
 }
 
 func TruncateExportedTelemetry() {
