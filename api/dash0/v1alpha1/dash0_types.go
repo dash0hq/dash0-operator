@@ -83,7 +83,7 @@ type Dash0Spec struct {
 	// This option has no effect if InstrumentWorkloads is set to false.
 	//
 	// +kubebuilder:validation:Optional
-	InstrumentNewWorkloads *bool `json:"InstrumentNewWorkloads"`
+	InstrumentNewWorkloads *bool `json:"instrumentNewWorkloads"`
 
 	// Opt-out for removing the Dash0 instrumentation from workloads when the Dash0 custom resource is removed from a
 	// namespace, or when the Dash0 Kubernetes operator is deleted entirely. By default, this setting is true and the
