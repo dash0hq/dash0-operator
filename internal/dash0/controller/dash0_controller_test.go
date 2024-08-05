@@ -21,7 +21,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
@@ -46,7 +46,7 @@ var (
 		InitContainerImagePullPolicy: corev1.PullAlways,
 	}
 
-	extraDash0CustomResourceNames = []types.NamespacedName{}
+	extraDash0MonitoringResourceNames = []types.NamespacedName{}
 
 	operatorNamespace = Dash0OperatorNamespace
 )
@@ -103,13 +103,13 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 	Describe("when the Dash0 resource exists", Ordered, func() {
 		BeforeEach(func() {
-			EnsureDash0CustomResourceExists(ctx, k8sClient)
+			EnsureDash0MonitoringResourceExists(ctx, k8sClient)
 		})
 
 		AfterEach(func() {
-			RemoveDash0CustomResource(ctx, k8sClient)
-			for _, name := range extraDash0CustomResourceNames {
-				RemoveDash0CustomResourceByName(ctx, k8sClient, name, true)
+			RemoveDash0MonitoringResource(ctx, k8sClient)
+			for _, name := range extraDash0MonitoringResourceNames {
+				RemoveDash0MonitoringResourceByName(ctx, k8sClient, name, true)
 			}
 		})
 
@@ -117,14 +117,14 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			It("should successfully run the first reconcile (no modifiable workloads exist)", func() {
 				By("Trigger reconcile request")
 				triggerReconcileRequest(ctx, reconciler, "")
-				verifyDash0CustomResourceIsAvailable(ctx)
+				verifyDash0MonitoringResourceIsAvailable(ctx)
 				VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
 			})
 
 			It("should successfully run multiple reconciles (no modifiable workloads exist)", func() {
 				triggerReconcileRequest(ctx, reconciler, "First reconcile request")
 
-				firstAvailableStatusCondition := verifyDash0CustomResourceIsAvailable(ctx)
+				firstAvailableStatusCondition := verifyDash0MonitoringResourceIsAvailable(ctx)
 				originalTransitionTimestamp := firstAvailableStatusCondition.LastTransitionTime.Time
 
 				time.Sleep(50 * time.Millisecond)
@@ -132,7 +132,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				triggerReconcileRequest(ctx, reconciler, "Second reconcile request")
 
 				// The LastTransitionTime should not change with subsequent reconciliations.
-				secondAvailableCondition := verifyDash0CustomResourceIsAvailable(ctx)
+				secondAvailableCondition := verifyDash0MonitoringResourceIsAvailable(ctx)
 				Expect(secondAvailableCondition.LastTransitionTime.Time).To(Equal(originalTransitionTimestamp))
 
 				VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
@@ -140,24 +140,24 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 			It("should mark only the most recent resource as available and the other ones as degraded when multiple "+
 				"resources exist", func() {
-				firstDash0CustomResource := &dash0v1alpha1.Dash0{}
-				Expect(k8sClient.Get(ctx, Dash0CustomResourceQualifiedName, firstDash0CustomResource)).To(Succeed())
+				firstDash0MonitoringResource := &dash0v1alpha1.Dash0Monitoring{}
+				Expect(k8sClient.Get(ctx, Dash0MonitoringResourceQualifiedName, firstDash0MonitoringResource)).To(Succeed())
 				time.Sleep(10 * time.Millisecond)
-				secondName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-test-resource-2"}
-				extraDash0CustomResourceNames = append(extraDash0CustomResourceNames, secondName)
-				CreateDash0CustomResource(ctx, k8sClient, secondName)
+				secondName := types.NamespacedName{Namespace: TestNamespaceName, Name: "das0-monitoring-test-resource-2"}
+				extraDash0MonitoringResourceNames = append(extraDash0MonitoringResourceNames, secondName)
+				CreateDash0MonitoringResource(ctx, k8sClient, secondName)
 				time.Sleep(10 * time.Millisecond)
-				thirdName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-test-resource-3"}
-				extraDash0CustomResourceNames = append(extraDash0CustomResourceNames, thirdName)
-				CreateDash0CustomResource(ctx, k8sClient, thirdName)
+				thirdName := types.NamespacedName{Namespace: TestNamespaceName, Name: "das0-monitoring-test-resource-3"}
+				extraDash0MonitoringResourceNames = append(extraDash0MonitoringResourceNames, thirdName)
+				CreateDash0MonitoringResource(ctx, k8sClient, thirdName)
 
-				triggerReconcileRequestForName(ctx, reconciler, "", Dash0CustomResourceQualifiedName)
+				triggerReconcileRequestForName(ctx, reconciler, "", Dash0MonitoringResourceQualifiedName)
 				triggerReconcileRequestForName(ctx, reconciler, "", secondName)
 				triggerReconcileRequestForName(ctx, reconciler, "", thirdName)
 
 				Eventually(func(g Gomega) {
-					resource1Available := loadCondition(ctx, Dash0CustomResourceQualifiedName, util.ConditionTypeAvailable)
-					resource1Degraded := loadCondition(ctx, Dash0CustomResourceQualifiedName, util.ConditionTypeDegraded)
+					resource1Available := loadCondition(ctx, Dash0MonitoringResourceQualifiedName, util.ConditionTypeAvailable)
+					resource1Degraded := loadCondition(ctx, Dash0MonitoringResourceQualifiedName, util.ConditionTypeDegraded)
 					resource2Available := loadCondition(ctx, secondName, util.ConditionTypeAvailable)
 					resource2Degraded := loadCondition(ctx, secondName, util.ConditionTypeDegraded)
 					resource3Available := loadCondition(ctx, thirdName, util.ConditionTypeAvailable)
@@ -169,7 +169,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 						resource1Available,
 						metav1.ConditionFalse,
 						"NewerResourceIsPresent",
-						"There is a more recently created Dash0 custom resource in this namespace, please remove all "+
+						"There is a more recently created Dash0 monitoring resource in this namespace, please remove all "+
 							"but one resource instance.",
 					)
 					verifyCondition(
@@ -177,14 +177,14 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 						resource1Degraded,
 						metav1.ConditionTrue,
 						"NewerResourceIsPresent",
-						"There is a more recently created Dash0 custom resource in this namespace, please remove all "+
+						"There is a more recently created Dash0 monitoring resource in this namespace, please remove all "+
 							"but one resource instance.",
 					)
 					verifyCondition(g, resource2Available, metav1.ConditionFalse, "NewerResourceIsPresent",
-						"There is a more recently created Dash0 custom resource in this namespace, please remove all "+
+						"There is a more recently created Dash0 monitoring resource in this namespace, please remove all "+
 							"but one resource instance.")
 					verifyCondition(g, resource2Degraded, metav1.ConditionTrue, "NewerResourceIsPresent",
-						"There is a more recently created Dash0 custom resource in this namespace, please remove all "+
+						"There is a more recently created Dash0 monitoring resource in this namespace, please remove all "+
 							"but one resource instance.")
 
 					// The third (and most recent) resource should have been marked as available.
@@ -257,7 +257,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 				triggerReconcileRequest(ctx, reconciler, "")
 
-				verifyDash0CustomResourceIsAvailable(ctx)
+				verifyDash0MonitoringResourceIsAvailable(ctx)
 				VerifyFailedInstrumentationEvent(
 					ctx,
 					clientset,
@@ -280,7 +280,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 				// We do not instrument existing pods via the controller, since they cannot be restarted.
 				// We only instrument new pods via the webhook.
-				verifyDash0CustomResourceIsAvailable(ctx)
+				verifyDash0MonitoringResourceIsAvailable(ctx)
 				VerifyNoEvents(ctx, clientset, namespace)
 				VerifyUnmodifiedPod(GetPod(ctx, k8sClient, namespace, name))
 			})
@@ -293,7 +293,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 				triggerReconcileRequest(ctx, reconciler, "")
 
-				verifyDash0CustomResourceIsAvailable(ctx)
+				verifyDash0MonitoringResourceIsAvailable(ctx)
 				VerifyNoEvents(ctx, clientset, namespace)
 				VerifyUnmodifiedPod(GetPod(ctx, k8sClient, namespace, name))
 			})
@@ -306,7 +306,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 				triggerReconcileRequest(ctx, reconciler, "")
 
-				verifyDash0CustomResourceIsAvailable(ctx)
+				verifyDash0MonitoringResourceIsAvailable(ctx)
 				VerifyUnmodifiedReplicaSet(GetReplicaSet(ctx, k8sClient, namespace, name))
 			})
 		})
@@ -645,8 +645,8 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			})
 		})
 
-		DescribeTable("when deleting the Dash0 custom resource and reverting the instrumentation on cleanup", func(config WorkloadTestConfig) {
-			// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
+		DescribeTable("when deleting the Dash0 monitoring resource and reverting the instrumentation on cleanup", func(config WorkloadTestConfig) {
+			// We trigger one reconcile request before creating any workload and before deleting the Dash0 monitoring
 			// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
 			// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
 			// happens in production.
@@ -656,9 +656,9 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
 			createdObjects = append(createdObjects, workload.Get())
 
-			By("deleting the Dash0 custom resource")
-			dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, Default)
-			Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
+			By("deleting the Dash0 monitoring resource")
+			dash0MonitoringResource := LoadDash0MonitoringResourceOrFail(ctx, k8sClient, Default)
+			Expect(k8sClient.Delete(ctx, dash0MonitoringResource)).To(Succeed())
 
 			triggerReconcileRequest(ctx, reconciler, "trigger a reconcile request to revert the instrumented workload")
 
@@ -703,9 +703,9 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			},
 		}))
 
-		Describe("when deleting the Dash0 custom resource and reverting the instrumentation on cleanup (special cases)", func() {
+		Describe("when deleting the Dash0 monitoring resource and reverting the instrumentation on cleanup (special cases)", func() {
 			It("should record a failure event when attempting to revert an existing instrumenting job (which has been instrumented by the webhook)", func() {
-				// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
+				// We trigger one reconcile request before creating any workload and before deleting the Dash0 monitoring
 				// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
 				// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
 				// happens in production.
@@ -716,9 +716,9 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				job := CreateInstrumentedJob(ctx, k8sClient, namespace, name)
 				createdObjects = append(createdObjects, job)
 
-				By("Deleting the Dash0 custom resource")
-				dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, Default)
-				Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
+				By("Deleting the Dash0 monitoring resource")
+				dash0MonitoringResource := LoadDash0MonitoringResourceOrFail(ctx, k8sClient, Default)
+				Expect(k8sClient.Delete(ctx, dash0MonitoringResource)).To(Succeed())
 
 				triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to attempt to revert the instrumented job")
 
@@ -735,7 +735,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			})
 
 			It("should remove instrumentation labels from an existing job for which an instrumentation attempt has failed", func() {
-				// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
+				// We trigger one reconcile request before creating any workload and before deleting the Dash0 monitoring
 				// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
 				// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
 				// happens in production.
@@ -746,9 +746,9 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				job := CreateJobForWhichAnInstrumentationAttemptHasFailed(ctx, k8sClient, namespace, name)
 				createdObjects = append(createdObjects, job)
 
-				By("Deleting the Dash0 custom resource")
-				dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, Default)
-				Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
+				By("Deleting the Dash0 monitoring resource")
+				dash0MonitoringResource := LoadDash0MonitoringResourceOrFail(ctx, k8sClient, Default)
+				Expect(k8sClient.Delete(ctx, dash0MonitoringResource)).To(Succeed())
 
 				triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to attempt to revert the instrumented job")
 
@@ -757,7 +757,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			})
 
 			It("should not revert an instrumented ownerless pod", func() {
-				// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
+				// We trigger one reconcile request before creating any workload and before deleting the Dash0 monitoring
 				// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
 				// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
 				// happens in production.
@@ -768,9 +768,9 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				pod := CreateInstrumentedPod(ctx, k8sClient, namespace, name)
 				createdObjects = append(createdObjects, pod)
 
-				By("Deleting the Dash0 custom resource")
-				dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, Default)
-				Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
+				By("Deleting the Dash0 monitoring resource")
+				dash0MonitoringResource := LoadDash0MonitoringResourceOrFail(ctx, k8sClient, Default)
+				Expect(k8sClient.Delete(ctx, dash0MonitoringResource)).To(Succeed())
 
 				triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to revert the instrumented workload")
 
@@ -779,7 +779,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			})
 
 			It("should leave existing uninstrumented pod owned by a replica set alone", func() {
-				// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
+				// We trigger one reconcile request before creating any workload and before deleting the Dash0 monitoring
 				// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
 				// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
 				// happens in production.
@@ -790,9 +790,9 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				pod := CreatePodOwnedByReplicaSet(ctx, k8sClient, namespace, name)
 				createdObjects = append(createdObjects, pod)
 
-				By("Deleting the Dash0 custom resource")
-				dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, Default)
-				Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
+				By("Deleting the Dash0 monitoring resource")
+				dash0MonitoringResource := LoadDash0MonitoringResourceOrFail(ctx, k8sClient, Default)
+				Expect(k8sClient.Delete(ctx, dash0MonitoringResource)).To(Succeed())
 
 				triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to revert the instrumented workload")
 
@@ -801,7 +801,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			})
 
 			It("should leave existing uninstrumented replica sets owned by deployment alone", func() {
-				// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
+				// We trigger one reconcile request before creating any workload and before deleting the Dash0 monitoring
 				// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
 				// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
 				// happens in production.
@@ -812,9 +812,9 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				replicaSet := CreateReplicaSetOwnedByDeployment(ctx, k8sClient, namespace, name)
 				createdObjects = append(createdObjects, replicaSet)
 
-				By("Deleting the Dash0 custom resource")
-				dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, Default)
-				Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
+				By("Deleting the Dash0 monitoring resource")
+				dash0MonitoringResource := LoadDash0MonitoringResourceOrFail(ctx, k8sClient, Default)
+				Expect(k8sClient.Delete(ctx, dash0MonitoringResource)).To(Succeed())
 
 				triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to revert the instrumented workload")
 
@@ -823,8 +823,8 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			})
 		})
 
-		DescribeTable("when deleting the Dash0 custom resource and attempting to revert the instrumentation on cleanup but the resource has an opt-out label", func(config WorkloadTestConfig) {
-			// We trigger one reconcile request before creating any workload and before deleting the Dash0 custom
+		DescribeTable("when deleting the Dash0 monitoring resource and attempting to revert the instrumentation on cleanup but the resource has an opt-out label", func(config WorkloadTestConfig) {
+			// We trigger one reconcile request before creating any workload and before deleting the Dash0 monitoring
 			// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
 			// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
 			// happens in production.
@@ -834,9 +834,9 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
 			createdObjects = append(createdObjects, workload.Get())
 
-			By("Deleting the Dash0 custom resource")
-			dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, Default)
-			Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
+			By("Deleting the Dash0 monitoring resource")
+			dash0MonitoringResource := LoadDash0MonitoringResourceOrFail(ctx, k8sClient, Default)
+			Expect(k8sClient.Delete(ctx, dash0MonitoringResource)).To(Succeed())
 
 			triggerReconcileRequest(ctx, reconciler, "")
 
@@ -898,13 +898,13 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 	Describe("when the Dash0 resource exists but has InstrumentWorkloads=false set", Ordered, func() {
 		BeforeAll(func() {
-			dash0CustomResource := EnsureDash0CustomResourceExists(ctx, k8sClient)
-			dash0CustomResource.Spec.InstrumentWorkloads = &False
-			Expect(k8sClient.Update(ctx, dash0CustomResource)).To(Succeed())
+			dash0MonitoringResource := EnsureDash0MonitoringResourceExists(ctx, k8sClient)
+			dash0MonitoringResource.Spec.InstrumentWorkloads = &False
+			Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
 		})
 
 		AfterAll(func() {
-			RemoveDash0CustomResource(ctx, k8sClient)
+			RemoveDash0MonitoringResource(ctx, k8sClient)
 		})
 
 		It("should not instrument workloads", func() {
@@ -914,13 +914,13 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 	Describe("when the Dash0 resource exists but has InstrumentExistingWorkloads=false set", Ordered, func() {
 		BeforeAll(func() {
-			dash0CustomResource := EnsureDash0CustomResourceExists(ctx, k8sClient)
-			dash0CustomResource.Spec.InstrumentExistingWorkloads = &False
-			Expect(k8sClient.Update(ctx, dash0CustomResource)).To(Succeed())
+			dash0MonitoringResource := EnsureDash0MonitoringResourceExists(ctx, k8sClient)
+			dash0MonitoringResource.Spec.InstrumentExistingWorkloads = &False
+			Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
 		})
 
 		AfterAll(func() {
-			RemoveDash0CustomResource(ctx, k8sClient)
+			RemoveDash0MonitoringResource(ctx, k8sClient)
 		})
 
 		It("should not instrument workloads", func() {
@@ -930,13 +930,13 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 	Describe("when the Dash0 resource exists and has InstrumentNewWorkloads=false set", Ordered, func() {
 		BeforeAll(func() {
-			dash0CustomResource := EnsureDash0CustomResourceExists(ctx, k8sClient)
-			dash0CustomResource.Spec.InstrumentNewWorkloads = &False
-			Expect(k8sClient.Update(ctx, dash0CustomResource)).To(Succeed())
+			dash0MonitoringResource := EnsureDash0MonitoringResourceExists(ctx, k8sClient)
+			dash0MonitoringResource.Spec.InstrumentNewWorkloads = &False
+			Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
 		})
 
 		AfterAll(func() {
-			RemoveDash0CustomResource(ctx, k8sClient)
+			RemoveDash0MonitoringResource(ctx, k8sClient)
 		})
 
 		It("should not instrument workloads", func() {
@@ -952,21 +952,21 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 		})
 	})
 
-	Describe("when deleting the Dash0 custom resource and removing the collector resources", func() {
+	Describe("when deleting the Dash0 monitoring resource and removing the collector resources", func() {
 		BeforeEach(func() {
-			EnsureDash0CustomResourceExists(ctx, k8sClient)
+			EnsureDash0MonitoringResourceExists(ctx, k8sClient)
 		})
 
 		AfterEach(func() {
-			RemoveDash0CustomResource(ctx, k8sClient)
+			RemoveDash0MonitoringResource(ctx, k8sClient)
 		})
 
 		It("should remove the collector resources", func() {
 			triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
 			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
 
-			dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, Default)
-			Expect(k8sClient.Delete(ctx, dash0CustomResource)).To(Succeed())
+			dash0MonitoringResource := LoadDash0MonitoringResourceOrFail(ctx, k8sClient, Default)
+			Expect(k8sClient.Delete(ctx, dash0MonitoringResource)).To(Succeed())
 			triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to trigger removing the collector resources")
 
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
@@ -989,47 +989,47 @@ func verifyThatDeploymentIsNotBeingInstrumented(ctx context.Context, reconciler 
 }
 
 func triggerReconcileRequest(ctx context.Context, reconciler *Dash0Reconciler, stepMessage string) {
-	triggerReconcileRequestForName(ctx, reconciler, stepMessage, Dash0CustomResourceQualifiedName)
+	triggerReconcileRequestForName(ctx, reconciler, stepMessage, Dash0MonitoringResourceQualifiedName)
 }
 
 func triggerReconcileRequestForName(
 	ctx context.Context,
 	reconciler *Dash0Reconciler,
 	stepMessage string,
-	dash0CustomResourceName types.NamespacedName,
+	dash0MonitoringResourceName types.NamespacedName,
 ) {
 	if stepMessage == "" {
 		stepMessage = "Trigger reconcile request"
 	}
 	By(stepMessage)
 	_, err := reconciler.Reconcile(ctx, reconcile.Request{
-		NamespacedName: dash0CustomResourceName,
+		NamespacedName: dash0MonitoringResourceName,
 	})
 	Expect(err).NotTo(HaveOccurred())
 }
 
 func verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx context.Context, namespace string, name string) {
-	verifyDash0CustomResourceIsAvailable(ctx)
+	verifyDash0MonitoringResourceIsAvailable(ctx)
 	VerifySuccessfulInstrumentationEvent(ctx, clientset, namespace, name, "controller")
 }
 
-func verifyDash0CustomResourceIsAvailable(ctx context.Context) *metav1.Condition {
+func verifyDash0MonitoringResourceIsAvailable(ctx context.Context) *metav1.Condition {
 	var availableCondition *metav1.Condition
 	By("Verifying status conditions")
 	Eventually(func(g Gomega) {
-		dash0CustomResource := LoadDash0CustomResourceOrFail(ctx, k8sClient, g)
-		availableCondition = meta.FindStatusCondition(dash0CustomResource.Status.Conditions, string(util.ConditionTypeAvailable))
+		dash0MonitoringResource := LoadDash0MonitoringResourceOrFail(ctx, k8sClient, g)
+		availableCondition = meta.FindStatusCondition(dash0MonitoringResource.Status.Conditions, string(util.ConditionTypeAvailable))
 		g.Expect(availableCondition).NotTo(BeNil())
 		g.Expect(availableCondition.Status).To(Equal(metav1.ConditionTrue))
-		degraded := meta.FindStatusCondition(dash0CustomResource.Status.Conditions, string(util.ConditionTypeDegraded))
+		degraded := meta.FindStatusCondition(dash0MonitoringResource.Status.Conditions, string(util.ConditionTypeDegraded))
 		g.Expect(degraded).To(BeNil())
 	}, timeout, pollingInterval).Should(Succeed())
 	return availableCondition
 }
 
-func loadCondition(ctx context.Context, dash0CustomResourceName types.NamespacedName, conditionType util.ConditionType) *metav1.Condition {
-	dash0CustomResource := LoadDash0CustomResourceByNameOrFail(ctx, k8sClient, Default, dash0CustomResourceName)
-	return meta.FindStatusCondition(dash0CustomResource.Status.Conditions, string(conditionType))
+func loadCondition(ctx context.Context, dash0MonitoringResourceName types.NamespacedName, conditionType util.ConditionType) *metav1.Condition {
+	dash0MonitoringResource := LoadDash0MonitoringResourceByNameOrFail(ctx, k8sClient, Default, dash0MonitoringResourceName)
+	return meta.FindStatusCondition(dash0MonitoringResource.Status.Conditions, string(conditionType))
 }
 
 func verifyCondition(

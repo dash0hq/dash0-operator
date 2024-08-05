@@ -16,7 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/dash0/controller"
@@ -29,7 +29,7 @@ import (
 
 var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 	var reconciler *controller.Dash0Reconciler
-	var dash0CustomResource *dash0v1alpha1.Dash0
+	var dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring
 	var createdObjects []client.Object
 
 	BeforeAll(func() {
@@ -67,11 +67,11 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 			},
 		}
 
-		dash0CustomResource = EnsureDash0CustomResourceExistsAndIsAvailable(ctx, k8sClient)
+		dash0MonitoringResource = EnsureDash0MonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 	})
 
 	AfterAll(func() {
-		RemoveDash0CustomResource(ctx, k8sClient)
+		RemoveDash0MonitoringResource(ctx, k8sClient)
 	})
 
 	BeforeEach(func() {
@@ -93,7 +93,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 		Expect(event.InvolvedObject.UID).To(BeEmpty())
 		Expect(event.InvolvedObject.ResourceVersion).To(BeEmpty())
 
-		triggerReconcileRequest(ctx, reconciler, dash0CustomResource)
+		triggerReconcileRequest(ctx, reconciler, dash0MonitoringResource)
 
 		Eventually(func(g Gomega) {
 			// refetch event and check that the UID and ResourceVersion are set correctly now
@@ -159,13 +159,13 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 func triggerReconcileRequest(
 	ctx context.Context,
 	reconciler *controller.Dash0Reconciler,
-	dash0CustomResource *dash0v1alpha1.Dash0,
+	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
 ) {
 	By("Trigger reconcile request")
 	_, err := reconciler.Reconcile(ctx, reconcile.Request{
 		NamespacedName: types.NamespacedName{
-			Namespace: dash0CustomResource.Namespace,
-			Name:      dash0CustomResource.Name,
+			Namespace: dash0MonitoringResource.Namespace,
+			Name:      dash0MonitoringResource.Name,
 		},
 	})
 	Expect(err).NotTo(HaveOccurred())

@@ -63,7 +63,7 @@ cluster roles should match snapshot:
       - apiGroups:
           - operator.dash0.com
         resources:
-          - dash0s
+          - dash0monitorings
         verbs:
           - create
           - delete
@@ -76,13 +76,13 @@ cluster roles should match snapshot:
       - apiGroups:
           - operator.dash0.com
         resources:
-          - dash0s/finalizers
+          - dash0monitorings/finalizers
         verbs:
           - update
       - apiGroups:
           - operator.dash0.com
         resources:
-          - dash0s/status
+          - dash0monitorings/status
         verbs:
           - get
           - patch

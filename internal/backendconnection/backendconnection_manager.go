@@ -12,7 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
 )
 
@@ -30,16 +30,16 @@ const (
 func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
 	ctx context.Context,
 	operatorNamespace string,
-	dash0CustomResource *dash0v1alpha1.Dash0,
+	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
 ) error {
 	logger := log.FromContext(ctx)
 
-	if dash0CustomResource.Spec.IngressEndpoint == "" {
+	if dash0MonitoringResource.Spec.IngressEndpoint == "" {
 		err := fmt.Errorf("no ingress endpoint provided, unable to create the OpenTelemetry collector")
 		logger.Error(err, failedToCreateMsg)
 		return err
 	}
-	if dash0CustomResource.Spec.AuthorizationToken == "" && dash0CustomResource.Spec.SecretRef == "" {
+	if dash0MonitoringResource.Spec.AuthorizationToken == "" && dash0MonitoringResource.Spec.SecretRef == "" {
 		err := fmt.Errorf("neither an authorization token nor a reference to a Kubernetes secret has been provided, " +
 			"unable to create the OpenTelemetry collector")
 		logger.Error(err, failedToCreateMsg)
@@ -50,9 +50,9 @@ func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInDash0
 		m.OTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 			ctx,
 			operatorNamespace,
-			dash0CustomResource.Spec.IngressEndpoint,
-			dash0CustomResource.Spec.AuthorizationToken,
-			dash0CustomResource.Spec.SecretRef,
+			dash0MonitoringResource.Spec.IngressEndpoint,
+			dash0MonitoringResource.Spec.AuthorizationToken,
+			dash0MonitoringResource.Spec.SecretRef,
 			&logger,
 		)
 
@@ -69,38 +69,38 @@ func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInDash0
 	return nil
 }
 
-func (m *BackendConnectionManager) RemoveOpenTelemetryCollectorIfNoDash0CustomResourceIsLeft(
+func (m *BackendConnectionManager) RemoveOpenTelemetryCollectorIfNoDash0MonitoringResourceIsLeft(
 	ctx context.Context,
 	operatorNamespace string,
-	dash0CustomResourceToBeDeleted *dash0v1alpha1.Dash0,
+	dash0MonitoringResourceToBeDeleted *dash0v1alpha1.Dash0Monitoring,
 ) error {
 	logger := log.FromContext(ctx)
-	list := &dash0v1alpha1.Dash0List{}
+	list := &dash0v1alpha1.Dash0MonitoringList{}
 	err := m.Client.List(
 		ctx,
 		list,
 	)
 
 	if err != nil {
-		logger.Error(err, "Error when checking whether there are any Dash0 custom resources left in the cluster.")
+		logger.Error(err, "Error when checking whether there are any Dash0 monitoring resources left in the cluster.")
 		return err
 	}
 	if len(list.Items) > 1 {
-		// There is still more than one Dash0 custom resource in the namespace, do not remove the backend connection.
+		// There is still more than one Dash0 monitoring resource in the namespace, do not remove the backend connection.
 		return nil
 	}
 
-	if len(list.Items) == 1 && list.Items[0].UID != dash0CustomResourceToBeDeleted.UID {
-		// There is only one Dash0 custom resource left, but it is *not* the one that is about to be deleted.
+	if len(list.Items) == 1 && list.Items[0].UID != dash0MonitoringResourceToBeDeleted.UID {
+		// There is only one Dash0 monitoring resource left, but it is *not* the one that is about to be deleted.
 		// Do not remove the backend connection.
 		logger.Info(
-			"There is only one Dash0 custom resource left, but it is not the one being deleted.",
+			"There is only one Dash0 monitoring resource left, but it is not the one being deleted.",
 			"to be deleted/UID",
-			dash0CustomResourceToBeDeleted.UID,
+			dash0MonitoringResourceToBeDeleted.UID,
 			"to be deleted/namespace",
-			dash0CustomResourceToBeDeleted.Namespace,
+			dash0MonitoringResourceToBeDeleted.Namespace,
 			"to be deleted/name",
-			dash0CustomResourceToBeDeleted.Name,
+			dash0MonitoringResourceToBeDeleted.Name,
 			"existing resource/UID",
 			list.Items[0].UID,
 			"existing resource/namespace",
@@ -111,16 +111,16 @@ func (m *BackendConnectionManager) RemoveOpenTelemetryCollectorIfNoDash0CustomRe
 		return nil
 	}
 
-	// Either there is no Dash0 custom resource left, or only one and that one is about to be deleted. Delete the
+	// Either there is no Dash0 monitoring resource left, or only one and that one is about to be deleted. Delete the
 	// backend connection.
 	logger.Info(fmt.Sprintf("Deleting the OpenTelemetry collector resources in the Dash0 operator namespace %s.", operatorNamespace))
 
 	if err := m.OTelColResourceManager.DeleteResources(
 		ctx,
 		operatorNamespace,
-		dash0CustomResourceToBeDeleted.Spec.IngressEndpoint,
-		dash0CustomResourceToBeDeleted.Spec.AuthorizationToken,
-		dash0CustomResourceToBeDeleted.Spec.SecretRef,
+		dash0MonitoringResourceToBeDeleted.Spec.IngressEndpoint,
+		dash0MonitoringResourceToBeDeleted.Spec.AuthorizationToken,
+		dash0MonitoringResourceToBeDeleted.Spec.SecretRef,
 		&logger,
 	); err != nil {
 		logger.Error(err, "Failed to delete the OpenTelemetry collector resources, requeuing reconcile request.")

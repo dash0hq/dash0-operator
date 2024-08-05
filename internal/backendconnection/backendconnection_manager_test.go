@@ -15,16 +15,16 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0/v1alpha1"
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
 
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
 var (
-	operatorNamespace   = Dash0OperatorNamespace
-	dash0CustomResource = &dash0v1alpha1.Dash0{
-		Spec: dash0v1alpha1.Dash0Spec{
+	operatorNamespace       = Dash0OperatorNamespace
+	dash0MonitoringResource = &dash0v1alpha1.Dash0Monitoring{
+		Spec: dash0v1alpha1.Dash0MonitoringSpec{
 			IngressEndpoint:    IngressEndpoint,
 			AuthorizationToken: AuthorizationToken,
 		},
@@ -70,8 +70,8 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			err := manager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
 				ctx,
 				operatorNamespace,
-				&dash0v1alpha1.Dash0{
-					Spec: dash0v1alpha1.Dash0Spec{
+				&dash0v1alpha1.Dash0Monitoring{
+					Spec: dash0v1alpha1.Dash0MonitoringSpec{
 						AuthorizationToken: AuthorizationToken,
 					}})
 			Expect(err).To(HaveOccurred())
@@ -82,8 +82,8 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			err := manager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
 				ctx,
 				operatorNamespace,
-				&dash0v1alpha1.Dash0{
-					Spec: dash0v1alpha1.Dash0Spec{
+				&dash0v1alpha1.Dash0Monitoring{
+					Spec: dash0v1alpha1.Dash0MonitoringSpec{
 						IngressEndpoint: IngressEndpoint,
 					}})
 			Expect(err).To(HaveOccurred())
@@ -109,7 +109,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			err := manager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
 				ctx,
 				operatorNamespace,
-				dash0CustomResource,
+				dash0MonitoringResource,
 			)
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
@@ -138,7 +138,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			err = manager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
 				ctx,
 				operatorNamespace,
-				dash0CustomResource,
+				dash0MonitoringResource,
 			)
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
@@ -154,66 +154,66 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 	})
 
 	Describe("when cleaning up OpenTelemetry collector resources when the resource is deleted", func() {
-		It("should not delete the collector if there are still Dash0 custom resources", func() {
-			// create multiple Dash0 custom resources
-			firstName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-test-resource-1"}
-			firstDash0CustomResource := CreateDash0CustomResource(ctx, k8sClient, firstName)
-			createdObjects = append(createdObjects, firstDash0CustomResource)
+		It("should not delete the collector if there are still Dash0 monitoring resources", func() {
+			// create multiple Dash0 monitoring resources
+			firstName := types.NamespacedName{Namespace: TestNamespaceName, Name: "das0-monitoring-test-resource-1"}
+			firstDash0MonitoringResource := CreateDash0MonitoringResource(ctx, k8sClient, firstName)
+			createdObjects = append(createdObjects, firstDash0MonitoringResource)
 
-			secondName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-test-resource-2"}
-			secondDash0CustomResource := CreateDash0CustomResource(ctx, k8sClient, secondName)
-			createdObjects = append(createdObjects, secondDash0CustomResource)
+			secondName := types.NamespacedName{Namespace: TestNamespaceName, Name: "das0-monitoring-test-resource-2"}
+			secondDash0MonitoringResource := CreateDash0MonitoringResource(ctx, k8sClient, secondName)
+			createdObjects = append(createdObjects, secondDash0MonitoringResource)
 
-			thirdName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-test-resource-3"}
-			thirdDash0CustomResource := CreateDash0CustomResource(ctx, k8sClient, thirdName)
-			createdObjects = append(createdObjects, thirdDash0CustomResource)
+			thirdName := types.NamespacedName{Namespace: TestNamespaceName, Name: "das0-monitoring-test-resource-3"}
+			thirdDash0MonitoringResource := CreateDash0MonitoringResource(ctx, k8sClient, thirdName)
+			createdObjects = append(createdObjects, thirdDash0MonitoringResource)
 
 			// Let the manager create the collector so there is something to delete.
 			err := manager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
 				ctx,
 				operatorNamespace,
-				secondDash0CustomResource,
+				secondDash0MonitoringResource,
 			)
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
 
-			err = manager.RemoveOpenTelemetryCollectorIfNoDash0CustomResourceIsLeft(
+			err = manager.RemoveOpenTelemetryCollectorIfNoDash0MonitoringResourceIsLeft(
 				ctx,
 				operatorNamespace,
-				secondDash0CustomResource,
+				secondDash0MonitoringResource,
 			)
 			Expect(err).ToNot(HaveOccurred())
-			// since other Dash0 custom resources still exist, the collector resources should not be deleted
+			// since other Dash0 monitoring resources still exist, the collector resources should not be deleted
 			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
 		})
 
-		It("should not delete the collector if there is only one Dash0 custom resource left but it is not the one being deleted", func() {
-			resourceName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-test-resource-1"}
-			existingDash0CustomResource := CreateDash0CustomResource(ctx, k8sClient, resourceName)
-			createdObjects = append(createdObjects, existingDash0CustomResource)
+		It("should not delete the collector if there is only one Dash0 monitoring resource left but it is not the one being deleted", func() {
+			resourceName := types.NamespacedName{Namespace: TestNamespaceName, Name: "das0-monitoring-test-resource-1"}
+			existingDash0MonitoringResource := CreateDash0MonitoringResource(ctx, k8sClient, resourceName)
+			createdObjects = append(createdObjects, existingDash0MonitoringResource)
 
 			// Let the manager create the collector so there is something to delete.
 			err := manager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
 				ctx,
 				operatorNamespace,
-				existingDash0CustomResource,
+				existingDash0MonitoringResource,
 			)
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
 
-			err = manager.RemoveOpenTelemetryCollectorIfNoDash0CustomResourceIsLeft(
+			err = manager.RemoveOpenTelemetryCollectorIfNoDash0MonitoringResourceIsLeft(
 				ctx,
 				operatorNamespace,
 				// We deliberately pass a different resource here, not the one that actually exists in the cluster.
 				// The existing resource should be found and compared to the one that we pass in, and since they do
 				// not match, the collector should not be deleted
-				&dash0v1alpha1.Dash0{
+				&dash0v1alpha1.Dash0Monitoring{
 					ObjectMeta: metav1.ObjectMeta{
 						Namespace: "some-other-namespace",
 						Name:      "name",
 						UID:       "3c0e72bb-26a7-40a4-bbdd-b1c978278fc5",
 					},
-					Spec: dash0v1alpha1.Dash0Spec{
+					Spec: dash0v1alpha1.Dash0MonitoringSpec{
 						IngressEndpoint:    IngressEndpoint,
 						AuthorizationToken: AuthorizationToken,
 					},
@@ -223,46 +223,46 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
 		})
 
-		It("should delete the collector if the Dash0 custom resource that is being deleted is the only one left", func() {
-			// create multiple Dash0 custom resources
-			resourceName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-test-resource-1"}
-			dash0CustomResource := CreateDash0CustomResource(ctx, k8sClient, resourceName)
-			createdObjects = append(createdObjects, dash0CustomResource)
+		It("should delete the collector if the Dash0 monitoring resource that is being deleted is the only one left", func() {
+			// create multiple Dash0 monitoring resources
+			resourceName := types.NamespacedName{Namespace: TestNamespaceName, Name: "das0-monitoring-test-resource-1"}
+			dash0MonitoringResource := CreateDash0MonitoringResource(ctx, k8sClient, resourceName)
+			createdObjects = append(createdObjects, dash0MonitoringResource)
 
 			// Let the manager create the collector so there is something to delete.
 			err := manager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
 				ctx,
 				operatorNamespace,
-				dash0CustomResource,
+				dash0MonitoringResource,
 			)
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
 
-			err = manager.RemoveOpenTelemetryCollectorIfNoDash0CustomResourceIsLeft(
+			err = manager.RemoveOpenTelemetryCollectorIfNoDash0MonitoringResourceIsLeft(
 				ctx,
 				operatorNamespace,
-				dash0CustomResource,
+				dash0MonitoringResource,
 			)
 			Expect(err).ToNot(HaveOccurred())
-			// verify the collector is deleted when the Dash0 custom resource provided as a parameter is the only
+			// verify the collector is deleted when the Dash0 monitoring resource provided as a parameter is the only
 			// one left
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
 		})
 
-		It("should delete the collector if no Dash0 custom resource exists", func() {
+		It("should delete the collector if no Dash0 monitoring resource exists", func() {
 			// Let the manager create the collector so there is something to delete.
 			err := manager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
 				ctx,
 				operatorNamespace,
-				dash0CustomResource,
+				dash0MonitoringResource,
 			)
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
 
-			err = manager.RemoveOpenTelemetryCollectorIfNoDash0CustomResourceIsLeft(
+			err = manager.RemoveOpenTelemetryCollectorIfNoDash0MonitoringResourceIsLeft(
 				ctx,
 				operatorNamespace,
-				dash0CustomResource,
+				dash0MonitoringResource,
 			)
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)

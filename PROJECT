@@ -18,8 +18,8 @@ resources:
   controller: true
   domain: dash0.com
   group: operator
-  kind: Dash0
-  path: github.com/dash0hq/dash0-operator/api/dash0/v1alpha1
+  kind: Dash0Monitoring
+  path: github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1
   version: v1alpha1
   webhooks:
     defaulting: true

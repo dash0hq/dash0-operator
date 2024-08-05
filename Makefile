@@ -205,16 +205,15 @@ install: manifests kustomize ## Install CRDs into the K8s cluster specified in ~
 uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/crd | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) --wait=false -f -
 	sleep 1
-	$(KUSTOMIZE) build config/crd | $(KUBECTL) patch CustomResourceDefinition dash0s.operator.dash0.com -p '{"metadata":{"finalizers":null}}' --type=merge
+	$(KUSTOMIZE) build config/crd | $(KUBECTL) patch CustomResourceDefinition dash0monitorings.operator.dash0.com -p '{"metadata":{"finalizers":null}}' --type=merge
 
 .PHONY: deploy-via-helm
 deploy-via-helm: ## Deploy the controller via helm to the K8s cluster specified in ~/.kube/config.
-# Note: We need the values from test-resources/.env here for the helm install command (in particular
-# $DASH0_OTEL_EXPORTER_OTLP_ENDPOINT, but they are not actually read at this point. Instead, they have been already
-# read via the -include directive at the top of this Makefile. The "-include" will fail silently if the file does
-# not exist, so we need to check for the existence of the file here. Using "include" (which does not fail silently
-# but aborts make immediately is not a good alternative, since it fails with a somewhat cryptic error message, plus
-# most make targets do not require the file.
+# Note: We need the values from test-resources/.env here for the helm install command but they are not actually read at
+# this point. Instead, they have been already read via the -include directive at the top of this Makefile. The
+# "-include" will fail silently if the file does not exist, so we need to check for the existence of the file here.
+# Using "include" (which does not fail silently but aborts make immediately is not a good alternative, since it fails
+# with a somewhat cryptic error message, plus most make targets do not require the file.
 	@if test ! -f test-resources/.env; then \
 		echo "error: The file test-resources/.env does not exist. Copy test-resources/.env.template to test-resources/.env and edit it to provide a Dash0 authorization token."; \
 		exit 1; \
@@ -224,7 +223,6 @@ deploy-via-helm: ## Deploy the controller via helm to the K8s cluster specified 
 	helm install \
 		--namespace dash0-system \
 		--create-namespace \
-		--set opentelemetry-collector.config.exporters.otlp.endpoint=${DASH0_OTEL_EXPORTER_OTLP_ENDPOINT} \
 		--set operator.image.repository=$(IMG_REPOSITORY) \
 		--set operator.image.tag=$(IMG_TAG) \
 		--set operator.image.pullPolicy=$(IMG_PULL_POLICY) \

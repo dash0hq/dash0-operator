@@ -32,13 +32,13 @@ var _ = Describe("The Dash0 webhook", func() {
 		DeleteAllEvents(ctx, clientset, TestNamespaceName)
 	})
 
-	Describe("when the Dash0 custom resource exists and is available", Ordered, func() {
+	Describe("when the Dash0 monitoring resource exists and is available", Ordered, func() {
 		BeforeAll(func() {
-			EnsureDash0CustomResourceExistsAndIsAvailable(ctx, k8sClient)
+			EnsureDash0MonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 		})
 
 		AfterAll(func() {
-			RemoveDash0CustomResource(ctx, k8sClient)
+			RemoveDash0MonitoringResource(ctx, k8sClient)
 		})
 
 		DescribeTable("when mutating new workloads", func(config WorkloadTestConfig) {
@@ -473,35 +473,19 @@ var _ = Describe("The Dash0 webhook", func() {
 		}))
 	})
 
-	Describe("when the Dash0 resource does not exist", func() {
+	Describe("when the Dash0 monitoring resource does not exist", func() {
 		It("should not instrument workloads", func() {
 			createdObjects = verifyThatDeploymentIsNotBeingInstrumented(createdObjects)
 		})
 	})
 
-	Describe("when the Dash0 resource exists but is not available", Ordered, func() {
+	Describe("when the Dash0 monitoring resource exists but is not available", Ordered, func() {
 		BeforeAll(func() {
-			EnsureDash0CustomResourceExistsAndIsDegraded(ctx, k8sClient)
+			EnsureDash0MonitoringResourceExistsAndIsDegraded(ctx, k8sClient)
 		})
 
 		AfterAll(func() {
-			RemoveDash0CustomResource(ctx, k8sClient)
-		})
-
-		It("should not instrument workloads", func() {
-			createdObjects = verifyThatDeploymentIsNotBeingInstrumented(createdObjects)
-		})
-	})
-
-	Describe("when the Dash0 resource exists and is available but has InstrumentWorkloads=false set", Ordered, func() {
-		BeforeAll(func() {
-			dash0CustomResource := EnsureDash0CustomResourceExistsAndIsAvailable(ctx, k8sClient)
-			dash0CustomResource.Spec.InstrumentWorkloads = &False
-			Expect(k8sClient.Update(ctx, dash0CustomResource)).To(Succeed())
-		})
-
-		AfterAll(func() {
-			RemoveDash0CustomResource(ctx, k8sClient)
+			RemoveDash0MonitoringResource(ctx, k8sClient)
 		})
 
 		It("should not instrument workloads", func() {
@@ -509,15 +493,15 @@ var _ = Describe("The Dash0 webhook", func() {
 		})
 	})
 
-	Describe("when the Dash0 resource exists and is available but has InstrumentNewWorkloads=false set", Ordered, func() {
+	Describe("when the Dash0 monitoring resource exists and is available but has InstrumentWorkloads=false set", Ordered, func() {
 		BeforeAll(func() {
-			dash0CustomResource := EnsureDash0CustomResourceExistsAndIsAvailable(ctx, k8sClient)
-			dash0CustomResource.Spec.InstrumentNewWorkloads = &False
-			Expect(k8sClient.Update(ctx, dash0CustomResource)).To(Succeed())
+			dash0MonitoringResource := EnsureDash0MonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			dash0MonitoringResource.Spec.InstrumentWorkloads = &False
+			Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
 		})
 
 		AfterAll(func() {
-			RemoveDash0CustomResource(ctx, k8sClient)
+			RemoveDash0MonitoringResource(ctx, k8sClient)
 		})
 
 		It("should not instrument workloads", func() {
@@ -525,15 +509,31 @@ var _ = Describe("The Dash0 webhook", func() {
 		})
 	})
 
-	Describe("when the Dash0 resource exists and is available and has InstrumentExistingWorkloads=false set", Ordered, func() {
+	Describe("when the Dash0 monitoring resource exists and is available but has InstrumentNewWorkloads=false set", Ordered, func() {
 		BeforeAll(func() {
-			dash0CustomResource := EnsureDash0CustomResourceExistsAndIsAvailable(ctx, k8sClient)
-			dash0CustomResource.Spec.InstrumentExistingWorkloads = &False
-			Expect(k8sClient.Update(ctx, dash0CustomResource)).To(Succeed())
+			dash0MonitoringResource := EnsureDash0MonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			dash0MonitoringResource.Spec.InstrumentNewWorkloads = &False
+			Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
 		})
 
 		AfterAll(func() {
-			RemoveDash0CustomResource(ctx, k8sClient)
+			RemoveDash0MonitoringResource(ctx, k8sClient)
+		})
+
+		It("should not instrument workloads", func() {
+			createdObjects = verifyThatDeploymentIsNotBeingInstrumented(createdObjects)
+		})
+	})
+
+	Describe("when the Dash0 monitoring resource exists and is available and has InstrumentExistingWorkloads=false set", Ordered, func() {
+		BeforeAll(func() {
+			dash0MonitoringResource := EnsureDash0MonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			dash0MonitoringResource.Spec.InstrumentExistingWorkloads = &False
+			Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
+		})
+
+		AfterAll(func() {
+			RemoveDash0MonitoringResource(ctx, k8sClient)
 		})
 
 		It("should not instrument workloads", func() {

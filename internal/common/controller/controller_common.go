@@ -55,7 +55,7 @@ func CheckIfNamespaceExists(
 	return true, nil
 }
 
-// VerifyUniqueCustomResourceExists loads the resource that the current reconcile request applies to, if it exists. It
+// VerifyUniqueDash0MonitoringResourceExists loads the resource that the current reconcile request applies to, if it exists. It
 // also checks whether there is only one such resource (or, if there are multiple, if the currently reconciled one is
 // the most recently created one). The bool returned has the meaning "stop the reconcile request", that is, if the
 // function returns true, it expects the caller to stop the reconcile request immediately and not requeue it. If an
@@ -71,7 +71,7 @@ func CheckIfNamespaceExists(
 //     stopReconcile and the caller is expected to stop the reconcile and not requeue it.
 //   - If any error is encountered when searching for resources etc., that error will be returned, the caller is
 //     expected to ignore the bool result and requeue the reconcile request.
-func VerifyUniqueCustomResourceExists(
+func VerifyUniqueDash0MonitoringResourceExists(
 	ctx context.Context,
 	k8sClient client.Client,
 	statusWriter client.SubResourceWriter,
@@ -125,7 +125,7 @@ func verifyThatCustomResourceExists(
 			// stop the reconciliation, and do not requeue it (that is, return (ctrl.Result{}, nil))
 			return nil, true, nil
 		}
-		logger.Error(err, "Failed to get the Dash0 custom resource, requeuing reconcile request.")
+		logger.Error(err, "Failed to get the Dash0 monitoring resource, requeuing reconcile request.")
 		// requeue the reconciliation (that is, return (ctrl.Result{}, err))
 		return nil, true, err
 	}
@@ -169,7 +169,7 @@ func verifyThatCustomResourceIsUniqe(
 
 	items := customResource.Items(allCustomResourcesInNamespace)
 	if len(items) > 1 {
-		// There are multiple instances of the Dash0 custom resource in this namespace. If the resource that is
+		// There are multiple instances of the Dash0 monitoring resource in this namespace. If the resource that is
 		// currently being reconciled is the one that has been most recently created, we assume that this is the source
 		// of truth in terms of configuration settings etc., and we ignore the other instances in this reconcile request
 		// (they will be handled when they are being reconciled). If the currently reconciled resource is not the most

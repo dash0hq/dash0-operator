@@ -29,13 +29,13 @@ const (
 )
 
 var (
-	dash0CustomResourceName1 = types.NamespacedName{
+	dash0MonitoringResourceName1 = types.NamespacedName{
 		Namespace: namespace1,
-		Name:      Dash0CustomResourceName,
+		Name:      Dash0MonitoringResourceName,
 	}
-	dash0CustomResourceName2 = types.NamespacedName{
+	dash0MonitoringResourceName2 = types.NamespacedName{
 		Namespace: namespace2,
-		Name:      Dash0CustomResourceName,
+		Name:      Dash0MonitoringResourceName,
 	}
 )
 
@@ -53,38 +53,38 @@ var _ = Describe("Uninstalling the Dash0 Kubernetes operator", Ordered, func() {
 	})
 
 	BeforeEach(func() {
-		createdObjects, deployment1 = setupNamespaceWithDash0CustomResourceAndWorkload(
+		createdObjects, deployment1 = setupNamespaceWithDash0MonitoringResourceAndWorkload(
 			ctx,
 			k8sClient,
-			dash0CustomResourceName1,
+			dash0MonitoringResourceName1,
 			createdObjects,
 		)
-		createdObjects, deployment2 = setupNamespaceWithDash0CustomResourceAndWorkload(
+		createdObjects, deployment2 = setupNamespaceWithDash0MonitoringResourceAndWorkload(
 			ctx,
 			k8sClient,
-			dash0CustomResourceName2,
+			dash0MonitoringResourceName2,
 			createdObjects,
 		)
 	})
 
 	AfterEach(func() {
 		createdObjects = DeleteAllCreatedObjects(ctx, k8sClient, createdObjects)
-		RemoveDash0CustomResourceByName(ctx, k8sClient, dash0CustomResourceName1, false)
-		RemoveDash0CustomResourceByName(ctx, k8sClient, dash0CustomResourceName2, false)
+		RemoveDash0MonitoringResourceByName(ctx, k8sClient, dash0MonitoringResourceName1, false)
+		RemoveDash0MonitoringResourceByName(ctx, k8sClient, dash0MonitoringResourceName2, false)
 	})
 
-	It("should time out if the deletion of all Dash0 custom resources does not happen in a timely manner", func() {
+	It("should time out if the deletion of all Dash0 monitoring resources does not happen in a timely manner", func() {
 		startTime := time.Now()
 		preDeleteHandlerTerminatedAt := time.Time{}
 
 		go func() {
 			defer GinkgoRecover()
-			Expect(preDeleteHandler.DeleteAllDash0CustomResources()).To(Succeed())
+			Expect(preDeleteHandler.DeleteAllDash0MonitoringResources()).To(Succeed())
 			preDeleteHandlerTerminatedAt = time.Now()
 		}()
 
-		// Deliberately not triggering a reconcile loop -> the finalizer action of the Dash0 custom resources will
-		// not trigger, and the Dash0 custom resources won't be deleted. Ultimately, the timeout will kick in.
+		// Deliberately not triggering a reconcile loop -> the finalizer action of the Dash0 monitoring resources will
+		// not trigger, and the Dash0 monitoring resources won't be deleted. Ultimately, the timeout will kick in.
 
 		Eventually(func(g Gomega) {
 			g.Expect(preDeleteHandlerTerminatedAt).ToNot(BeZero())
@@ -93,13 +93,13 @@ var _ = Describe("Uninstalling the Dash0 Kubernetes operator", Ordered, func() {
 		}, testTimeout, pollingInterval).Should(Succeed())
 	})
 
-	It("should delete all Dash0 custom resources and uninstrument workloads", func() {
+	It("should delete all Dash0 monitoring resources and uninstrument workloads", func() {
 		go func() {
 			defer GinkgoRecover()
-			Expect(preDeleteHandler.DeleteAllDash0CustomResources()).To(Succeed())
+			Expect(preDeleteHandler.DeleteAllDash0MonitoringResources()).To(Succeed())
 		}()
 
-		// Triggering reconcile requests for both Dash0 custom resources to run cleanup actions and remove the
+		// Triggering reconcile requests for both Dash0 monitoring resources to run cleanup actions and remove the
 		// finalizer, so that the resources actually get deleted.
 		go func() {
 			defer GinkgoRecover()
@@ -107,18 +107,18 @@ var _ = Describe("Uninstalling the Dash0 Kubernetes operator", Ordered, func() {
 			triggerReconcileRequestForName(
 				ctx,
 				reconciler,
-				dash0CustomResourceName1,
+				dash0MonitoringResourceName1,
 			)
 			triggerReconcileRequestForName(
 				ctx,
 				reconciler,
-				dash0CustomResourceName2,
+				dash0MonitoringResourceName2,
 			)
 		}()
 
 		Eventually(func(g Gomega) {
-			VerifyDash0CustomResourceByNameDoesNotExist(ctx, k8sClient, g, dash0CustomResourceName1)
-			VerifyDash0CustomResourceByNameDoesNotExist(ctx, k8sClient, g, dash0CustomResourceName2)
+			VerifyDash0MonitoringResourceByNameDoesNotExist(ctx, k8sClient, g, dash0MonitoringResourceName1)
+			VerifyDash0MonitoringResourceByNameDoesNotExist(ctx, k8sClient, g, dash0MonitoringResourceName2)
 
 			VerifySuccessfulUninstrumentationEventEventually(ctx, clientset, g, deployment1.Namespace, deployment1.Name, "controller")
 			deployment1 := GetDeploymentEventually(ctx, k8sClient, g, deployment1.Namespace, deployment1.Name)
@@ -133,29 +133,29 @@ var _ = Describe("Uninstalling the Dash0 Kubernetes operator", Ordered, func() {
 	})
 })
 
-func setupNamespaceWithDash0CustomResourceAndWorkload(
+func setupNamespaceWithDash0MonitoringResourceAndWorkload(
 	ctx context.Context,
 	k8sClient client.Client,
-	dash0CustomResourceName types.NamespacedName,
+	dash0MonitoringResourceName types.NamespacedName,
 	createdObjects []client.Object,
 ) ([]client.Object, *appv1.Deployment) {
-	EnsureNamespaceExists(ctx, k8sClient, dash0CustomResourceName.Namespace)
-	EnsureDash0CustomResourceExistsAndIsAvailableInNamespace(ctx, k8sClient, dash0CustomResourceName)
+	EnsureNamespaceExists(ctx, k8sClient, dash0MonitoringResourceName.Namespace)
+	EnsureDash0MonitoringResourceExistsAndIsAvailableInNamespace(ctx, k8sClient, dash0MonitoringResourceName)
 	deploymentName := UniqueName(DeploymentNamePrefix)
-	deployment := CreateInstrumentedDeployment(ctx, k8sClient, dash0CustomResourceName.Namespace, deploymentName)
-	// make sure the custom resource has the finalizer
-	triggerReconcileRequestForName(ctx, reconciler, dash0CustomResourceName)
+	deployment := CreateInstrumentedDeployment(ctx, k8sClient, dash0MonitoringResourceName.Namespace, deploymentName)
+	// make sure the monitoring resource has the finalizer
+	triggerReconcileRequestForName(ctx, reconciler, dash0MonitoringResourceName)
 	return append(createdObjects, deployment), deployment
 }
 
 func triggerReconcileRequestForName(
 	ctx context.Context,
 	reconciler *controller.Dash0Reconciler,
-	dash0CustomResourceName types.NamespacedName,
+	dash0MonitoringResourceName types.NamespacedName,
 ) {
-	By(fmt.Sprintf("Trigger reconcile request for %s/%s", dash0CustomResourceName.Namespace, dash0CustomResourceName.Name))
+	By(fmt.Sprintf("Trigger reconcile request for %s/%s", dash0MonitoringResourceName.Namespace, dash0MonitoringResourceName.Name))
 	_, err := reconciler.Reconcile(ctx, reconcile.Request{
-		NamespacedName: dash0CustomResourceName,
+		NamespacedName: dash0MonitoringResourceName,
 	})
 	Expect(err).NotTo(HaveOccurred())
 }
