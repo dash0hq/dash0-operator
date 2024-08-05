@@ -37,6 +37,7 @@ import (
 )
 
 var (
+	manager   ctrl.Manager
 	cfg       *rest.Config
 	k8sClient client.Client
 	clientset *kubernetes.Clientset
@@ -110,7 +111,7 @@ var _ = BeforeSuite(func() {
 
 	// start webhook server using Manager
 	webhookInstallOptions := &testEnv.WebhookInstallOptions
-	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
+	manager, err = ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme,
 		WebhookServer: webhook.NewServer(webhook.Options{
 			Host:    webhookInstallOptions.LocalServingHost,
@@ -124,17 +125,17 @@ var _ = BeforeSuite(func() {
 
 	err = (&Handler{
 		Client:               k8sClient,
-		Recorder:             mgr.GetEventRecorderFor("dash0-webhook"),
+		Recorder:             manager.GetEventRecorderFor("dash0-webhook"),
 		Images:               images,
 		OTelCollectorBaseUrl: "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
-	}).SetupWebhookWithManager(mgr)
+	}).SetupWebhookWithManager(manager)
 	Expect(err).NotTo(HaveOccurred())
 
 	//+kubebuilder:scaffold:webhook
 
 	go func() {
 		defer GinkgoRecover()
-		err = mgr.Start(ctx)
+		err = manager.Start(ctx)
 		Expect(err).NotTo(HaveOccurred())
 	}()
 

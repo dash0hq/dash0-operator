@@ -357,8 +357,8 @@ func VerifySuccessfulInstrumentationEvent(
 	namespace string,
 	resourceName string,
 	eventSource string,
-) {
-	verifyEvent(
+) *corev1.Event {
+	return verifyEvent(
 		ctx,
 		clientset,
 		namespace,
@@ -374,8 +374,8 @@ func VerifyNoInstrumentationNecessaryEvent(
 	namespace string,
 	resourceName string,
 	eventSource string,
-) {
-	verifyEvent(
+) *corev1.Event {
+	return verifyEvent(
 		ctx,
 		clientset,
 		namespace,
@@ -393,8 +393,8 @@ func VerifyFailedInstrumentationEvent(
 	namespace string,
 	resourceName string,
 	message string,
-) {
-	verifyEvent(
+) *corev1.Event {
+	return verifyEvent(
 		ctx,
 		clientset,
 		namespace,
@@ -410,8 +410,8 @@ func VerifySuccessfulUninstrumentationEvent(
 	namespace string,
 	resourceName string,
 	eventSource string,
-) {
-	verifyEvent(
+) *corev1.Event {
+	return verifyEvent(
 		ctx,
 		clientset,
 		namespace,
@@ -428,8 +428,8 @@ func VerifySuccessfulUninstrumentationEventEventually(
 	namespace string,
 	resourceName string,
 	eventSource string,
-) {
-	verifyEventEventually(
+) *corev1.Event {
+	return verifyEventEventually(
 		ctx,
 		clientset,
 		g,
@@ -446,8 +446,8 @@ func VerifyFailedUninstrumentationEvent(
 	namespace string,
 	resourceName string,
 	message string,
-) {
-	verifyEvent(
+) *corev1.Event {
+	return verifyEvent(
 		ctx,
 		clientset,
 		namespace,
@@ -463,8 +463,8 @@ func VerifyNoUninstrumentationNecessaryEvent(
 	namespace string,
 	resourceName string,
 	message string,
-) {
-	verifyEvent(
+) *corev1.Event {
+	return verifyEvent(
 		ctx,
 		clientset,
 		namespace,
@@ -481,10 +481,12 @@ func verifyEvent(
 	resourceName string,
 	reason util.Reason,
 	message string,
-) {
+) *corev1.Event {
+	var event *corev1.Event
 	Eventually(func(g Gomega) {
-		verifyEventEventually(ctx, clientset, g, namespace, resourceName, reason, message)
+		event = verifyEventEventually(ctx, clientset, g, namespace, resourceName, reason, message)
 	}, eventTimeout).Should(Succeed())
+	return event
 }
 
 func verifyEventEventually(
@@ -495,16 +497,23 @@ func verifyEventEventually(
 	resourceName string,
 	reason util.Reason,
 	message string,
-) {
+) *corev1.Event {
+	matcher := MatchEvent(
+		namespace,
+		resourceName,
+		reason,
+		message,
+	)
+
 	allEvents, err := clientset.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{})
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(allEvents.Items).To(HaveLen(1))
-	g.Expect(allEvents.Items).To(
-		ContainElement(
-			MatchEvent(
-				namespace,
-				resourceName,
-				reason,
-				message,
-			)))
+	g.Expect(allEvents.Items).To(ContainElement(matcher))
+
+	for _, event := range allEvents.Items {
+		if success, _ := matcher.Match(event); success {
+			return &event
+		}
+	}
+	return nil
 }

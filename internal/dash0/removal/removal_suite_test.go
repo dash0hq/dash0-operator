@@ -8,6 +8,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -25,7 +26,8 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/dash0/controller"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
-	testutil "github.com/dash0hq/dash0-operator/test/util"
+
+	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
 const (
@@ -112,8 +114,17 @@ var _ = BeforeSuite(func() {
 		Scheme:                   k8sClient.Scheme(),
 		Images:                   images,
 		OTelCollectorBaseUrl:     "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
-		OperatorNamespace:        testutil.Dash0OperatorNamespace,
+		OperatorNamespace:        Dash0OperatorNamespace,
 		BackendConnectionManager: backendConnectionManager,
+		DanglingEventsTimeouts: &controller.DanglingEventsTimeouts{
+			InitialTimeout: 0 * time.Second,
+			Backoff: wait.Backoff{
+				Steps:    1,
+				Duration: 0 * time.Second,
+				Factor:   1,
+				Jitter:   0,
+			},
+		},
 	}
 })
 

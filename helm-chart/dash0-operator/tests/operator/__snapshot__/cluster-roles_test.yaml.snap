@@ -43,7 +43,9 @@ cluster roles should match snapshot:
           - events
         verbs:
           - create
+          - list
           - patch
+          - update
       - apiGroups:
           - ""
         resources:

@@ -17,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -83,6 +84,15 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			OTelCollectorBaseUrl:     "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
 			OperatorNamespace:        Dash0OperatorNamespace,
 			BackendConnectionManager: backendConnectionManager,
+			DanglingEventsTimeouts: &DanglingEventsTimeouts{
+				InitialTimeout: 0 * time.Second,
+				Backoff: wait.Backoff{
+					Steps:    1,
+					Duration: 0 * time.Second,
+					Factor:   1,
+					Jitter:   0,
+				},
+			},
 		}
 	})
 

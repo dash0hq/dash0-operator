@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
@@ -15,6 +16,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -29,6 +31,11 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/dash0/workloads"
 )
 
+type DanglingEventsTimeouts struct {
+	InitialTimeout time.Duration
+	Backoff        wait.Backoff
+}
+
 type Dash0Reconciler struct {
 	client.Client
 	Clientset                *kubernetes.Clientset
@@ -39,6 +46,7 @@ type Dash0Reconciler struct {
 	OTelCollectorBaseUrl     string
 	OperatorNamespace        string
 	BackendConnectionManager *backendconnection.BackendConnectionManager
+	DanglingEventsTimeouts   *DanglingEventsTimeouts
 }
 
 type ModificationMode string
@@ -56,6 +64,16 @@ const (
 
 var (
 	timeoutForListingPods int64 = 2
+
+	defaultDanglingEventsTimeouts = &DanglingEventsTimeouts{
+		InitialTimeout: 30 * time.Second,
+		Backoff: wait.Backoff{
+			Steps:    3,
+			Duration: 30 * time.Second,
+			Factor:   1.5,
+			Jitter:   0.3,
+		},
+	}
 )
 
 type ImmutableWorkloadError struct {
@@ -84,6 +102,9 @@ func (e ImmutableWorkloadError) Error() string {
 }
 
 func (r *Dash0Reconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if r.DanglingEventsTimeouts == nil {
+		r.DanglingEventsTimeouts = defaultDanglingEventsTimeouts
+	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dash0v1alpha1.Dash0{}).
 		Complete(r)
@@ -157,7 +178,7 @@ func (r *Dash0Reconciler) InstrumentAtStartup() {
 // To know more about markers see: https://book.kubebuilder.io/reference/markers.html
 //+kubebuilder:rbac:groups=apps,resources=daemonsets;deployments;replicasets;statefulsets,verbs=get;list;watch;update;patch
 //+kubebuilder:rbac:groups=batch,resources=cronjobs;jobs,verbs=get;list;watch;update;patch
-//+kubebuilder:rbac:groups=core,resources=events,verbs=create;patch
+//+kubebuilder:rbac:groups=core,resources=events,verbs=create;list;patch;update
 //+kubebuilder:rbac:groups=core,resources=namespaces,verbs=get
 //+kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;delete
 //+kubebuilder:rbac:groups=operator.dash0.com,resources=dash0s,verbs=get;list;watch;create;update;patch;delete;deletecollection
@@ -261,6 +282,8 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			return ctrl.Result{}, err
 		}
 	}
+
+	r.scheduleAttachDanglingEvents(ctx, dash0CustomResource, &logger)
 
 	dash0CustomResource.EnsureResourceIsMarkedAsAvailable()
 	if err = r.Status().Update(ctx, dash0CustomResource); err != nil {
@@ -1129,6 +1152,88 @@ func (r *Dash0Reconciler) restartPodsOfReplicaSet(
 					replicaSet.Name,
 					replicaSet.UID,
 				))
+		}
+	}
+}
+
+func (r *Dash0Reconciler) scheduleAttachDanglingEvents(
+	ctx context.Context,
+	dash0CustomResource *dash0v1alpha1.Dash0,
+	logger *logr.Logger,
+) {
+	// execute the attachment in a separate go routine to not block the main reconcile loop
+	go func() {
+		if r.DanglingEventsTimeouts.InitialTimeout > 0 {
+			// wait a bit before attempting to attach dangling events, since the K8s resources do not exist yet when
+			// the webhook queues the events
+			time.Sleep(r.DanglingEventsTimeouts.InitialTimeout)
+		}
+		r.attachDanglingEvents(ctx, dash0CustomResource, logger)
+	}()
+}
+
+/*
+ * attachDanglingEvents attaches events that have been created by the webhook to the involved object of the event.
+ * When the webhook creates the respective events, the workload might not exist yet, so the UID of the workload is not
+ * set in the event. The list of events for that workload will not contain this event. We go the extra mile here and
+ * retroactively fix the reference of all those events.
+ */
+func (r *Dash0Reconciler) attachDanglingEvents(
+	ctx context.Context,
+	dash0CustomResource *dash0v1alpha1.Dash0,
+	logger *logr.Logger,
+) {
+	namespace := dash0CustomResource.Namespace
+	eventApi := r.Clientset.CoreV1().Events(namespace)
+	backoff := r.DanglingEventsTimeouts.Backoff
+	for _, eventType := range util.AllEvents {
+		retryErr := util.RetryWithCustomBackoff(
+			"attaching dangling event to involved object",
+			func() error {
+				danglingEvents, listErr := eventApi.List(ctx, metav1.ListOptions{
+					FieldSelector: fmt.Sprintf("involvedObject.uid=,reason=%s", eventType),
+				})
+				if listErr != nil {
+					return listErr
+				}
+
+				if len(danglingEvents.Items) > 0 {
+					logger.Info(fmt.Sprintf("Attempting to attach %d dangling event(s).", len(danglingEvents.Items)))
+				}
+
+				var allAttachErrors []error
+				for _, event := range danglingEvents.Items {
+					attachErr := util.AttachEventToInvolvedObject(ctx, r.Client, eventApi, &event)
+					if attachErr != nil {
+						allAttachErrors = append(allAttachErrors, attachErr)
+					} else {
+						involvedObject := event.InvolvedObject
+						logger.Info(fmt.Sprintf("Attached '%s' event (uid: %s) to its associated object (%s %s/%s).",
+							eventType, event.UID, involvedObject.Kind, involvedObject.Namespace, involvedObject.Name))
+					}
+				}
+				if len(allAttachErrors) > 0 {
+					return errors.Join(allAttachErrors...)
+				}
+
+				if len(danglingEvents.Items) > 0 {
+					logger.Info(
+						fmt.Sprintf(
+							"%d dangling event(s) have been successfully attached to its/their associated object(s).",
+							len(danglingEvents.Items)),
+					)
+				}
+
+				return nil
+			},
+			backoff,
+			false,
+			logger,
+		)
+
+		if retryErr != nil {
+			logger.Error(retryErr, fmt.Sprintf(
+				"Could not attach all dangling events after %d retries.", backoff.Steps))
 		}
 	}
 }
