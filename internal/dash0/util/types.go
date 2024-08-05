@@ -13,12 +13,21 @@ const (
 	ConditionTypeDegraded  ConditionType = "Degraded"
 
 	ReasonSuccessfulInstrumentation    Reason = "SuccessfulInstrumentation"
-	ReasonNoInstrumentationNecessary   Reason = "ReasonAlreadyInstrumented"
+	ReasonNoInstrumentationNecessary   Reason = "AlreadyInstrumented"
 	ReasonFailedInstrumentation        Reason = "FailedInstrumentation"
 	ReasonSuccessfulUninstrumentation  Reason = "SuccessfulUninstrumentation"
-	ReasonNoUninstrumentationNecessary Reason = "ReasonAlreadyNotInstrumented"
+	ReasonNoUninstrumentationNecessary Reason = "AlreadyNotInstrumented"
 	ReasonFailedUninstrumentation      Reason = "FailedUninstrumentation"
 )
+
+var AllEvents = []Reason{
+	ReasonSuccessfulInstrumentation,
+	ReasonNoInstrumentationNecessary,
+	ReasonFailedInstrumentation,
+	ReasonSuccessfulUninstrumentation,
+	ReasonNoUninstrumentationNecessary,
+	ReasonFailedUninstrumentation,
+}
 
 type Images struct {
 	OperatorImage                string

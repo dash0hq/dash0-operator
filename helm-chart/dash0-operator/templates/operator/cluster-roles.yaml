@@ -38,14 +38,17 @@ rules:
   - update
   - watch
 
-# Permissions required to queue events to report about the operator's actions.
+# Permissions required to queue events to report about the operator's actions, and to attach dangling events to their
+# respective involved objects.
 - apiGroups:
   - ""
   resources:
   - events
   verbs:
   - create
+  - list
   - patch
+  - update
 - apiGroups:
   - ""
   resources:

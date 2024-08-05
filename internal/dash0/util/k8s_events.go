@@ -4,11 +4,15 @@
 package util
 
 import (
+	"context"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	clientcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/record"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func QueueSuccessfulInstrumentationEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource string) {
@@ -64,4 +68,50 @@ func QueueFailedUninstrumentationEvent(eventRecorder record.EventRecorder, resou
 		string(ReasonFailedUninstrumentation),
 		fmt.Sprintf("The %s's attempt to remove the Dash0 instrumentation from this workload has not been successful. Error message: %s", eventSource, err.Error()),
 	)
+}
+
+func AttachEventToInvolvedObject(
+	ctx context.Context,
+	k8sClient client.Client,
+	eventApi clientcorev1.EventInterface,
+	event *corev1.Event,
+) error {
+	if err := setUidAndResourceVersionForEvent(ctx, k8sClient, event); err != nil {
+		return fmt.Errorf("could not update event.InvolvedObject: %w", err)
+	}
+	if _, err := eventApi.Update(ctx, event, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("could not update the dangling event %v: %w", event.UID, err)
+	}
+	return nil
+}
+
+func setUidAndResourceVersionForEvent(
+	ctx context.Context,
+	k8sClient client.Client,
+	event *corev1.Event,
+) error {
+	involvedObject := &event.InvolvedObject
+	object, err := GetReceiverForWorkloadType(involvedObject.APIVersion, involvedObject.Kind)
+	if err != nil {
+		return err
+	}
+
+	if err = k8sClient.Get(
+		ctx,
+		client.ObjectKey{Namespace: involvedObject.Namespace, Name: involvedObject.Name},
+		object,
+	); err != nil {
+		return fmt.Errorf(
+			"could not load involved object %s %s/%s: %w",
+			involvedObject.Kind,
+			involvedObject.Namespace,
+			involvedObject.Name,
+			err,
+		)
+	}
+
+	involvedObject.UID = object.GetUID()
+	involvedObject.ResourceVersion = object.GetResourceVersion()
+
+	return nil
 }

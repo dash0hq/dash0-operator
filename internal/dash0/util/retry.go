@@ -21,17 +21,32 @@ var (
 	}
 )
 
-func Retry(operationLabel string, operation func() error, log *logr.Logger) error {
-	backoff := defaultRetryBackoff
+func Retry(operationLabel string, operation func() error, logger *logr.Logger) error {
+	return RetryWithCustomBackoff(operationLabel, operation, defaultRetryBackoff, true, logger)
+}
+
+func RetryWithCustomBackoff(
+	operationLabel string,
+	operation func() error,
+	backoff wait.Backoff,
+	logAttempts bool,
+	logger *logr.Logger,
+) error {
 	attempt := 0
 	return retry.OnError(
-		retry.DefaultBackoff,
+		backoff,
 		func(err error) bool {
 			attempt += 1
 			if attempt < backoff.Steps {
-				log.Error(err, fmt.Sprintf("%s failed in attempt %d/%d, will be retried.", operationLabel, attempt, backoff.Steps))
+				if logAttempts {
+					logger.Error(err,
+						fmt.Sprintf(
+							"%s failed in attempt %d/%d, will be retried.", operationLabel, attempt, backoff.Steps))
+				}
 			} else {
-				log.Error(err, fmt.Sprintf("%s failed after attempt %d/%d, no more retries left.", operationLabel, attempt, backoff.Steps))
+				logger.Error(err,
+					fmt.Sprintf(
+						"%s failed after attempt %d/%d, no more retries left.", operationLabel, attempt, backoff.Steps))
 			}
 			return true
 		},
