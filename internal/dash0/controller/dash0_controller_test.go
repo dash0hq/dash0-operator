@@ -156,12 +156,12 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				triggerReconcileRequestForName(ctx, reconciler, "", thirdName)
 
 				Eventually(func(g Gomega) {
-					resource1Available := loadCondition(ctx, Dash0MonitoringResourceQualifiedName, util.ConditionTypeAvailable)
-					resource1Degraded := loadCondition(ctx, Dash0MonitoringResourceQualifiedName, util.ConditionTypeDegraded)
-					resource2Available := loadCondition(ctx, secondName, util.ConditionTypeAvailable)
-					resource2Degraded := loadCondition(ctx, secondName, util.ConditionTypeDegraded)
-					resource3Available := loadCondition(ctx, thirdName, util.ConditionTypeAvailable)
-					resource3Degraded := loadCondition(ctx, thirdName, util.ConditionTypeDegraded)
+					resource1Available := loadCondition(ctx, Dash0MonitoringResourceQualifiedName, dash0v1alpha1.ConditionTypeAvailable)
+					resource1Degraded := loadCondition(ctx, Dash0MonitoringResourceQualifiedName, dash0v1alpha1.ConditionTypeDegraded)
+					resource2Available := loadCondition(ctx, secondName, dash0v1alpha1.ConditionTypeAvailable)
+					resource2Degraded := loadCondition(ctx, secondName, dash0v1alpha1.ConditionTypeDegraded)
+					resource3Available := loadCondition(ctx, thirdName, dash0v1alpha1.ConditionTypeAvailable)
+					resource3Degraded := loadCondition(ctx, thirdName, dash0v1alpha1.ConditionTypeDegraded)
 
 					// The first two resource should have been marked as degraded.
 					verifyCondition(
@@ -1048,16 +1048,16 @@ func verifyDash0MonitoringResourceIsAvailable(ctx context.Context) *metav1.Condi
 	By("Verifying status conditions")
 	Eventually(func(g Gomega) {
 		dash0MonitoringResource := LoadDash0MonitoringResourceOrFail(ctx, k8sClient, g)
-		availableCondition = meta.FindStatusCondition(dash0MonitoringResource.Status.Conditions, string(util.ConditionTypeAvailable))
+		availableCondition = meta.FindStatusCondition(dash0MonitoringResource.Status.Conditions, string(dash0v1alpha1.ConditionTypeAvailable))
 		g.Expect(availableCondition).NotTo(BeNil())
 		g.Expect(availableCondition.Status).To(Equal(metav1.ConditionTrue))
-		degraded := meta.FindStatusCondition(dash0MonitoringResource.Status.Conditions, string(util.ConditionTypeDegraded))
+		degraded := meta.FindStatusCondition(dash0MonitoringResource.Status.Conditions, string(dash0v1alpha1.ConditionTypeDegraded))
 		g.Expect(degraded).To(BeNil())
 	}, timeout, pollingInterval).Should(Succeed())
 	return availableCondition
 }
 
-func loadCondition(ctx context.Context, dash0MonitoringResourceName types.NamespacedName, conditionType util.ConditionType) *metav1.Condition {
+func loadCondition(ctx context.Context, dash0MonitoringResourceName types.NamespacedName, conditionType dash0v1alpha1.ConditionType) *metav1.Condition {
 	dash0MonitoringResource := LoadDash0MonitoringResourceByNameOrFail(ctx, k8sClient, Default, dash0MonitoringResourceName)
 	return meta.FindStatusCondition(dash0MonitoringResource.Status.Conditions, string(conditionType))
 }

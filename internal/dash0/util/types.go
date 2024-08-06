@@ -5,13 +5,9 @@ package util
 
 import corev1 "k8s.io/api/core/v1"
 
-type ConditionType string
 type Reason string
 
 const (
-	ConditionTypeAvailable ConditionType = "Available"
-	ConditionTypeDegraded  ConditionType = "Degraded"
-
 	ReasonSuccessfulInstrumentation    Reason = "SuccessfulInstrumentation"
 	ReasonNoInstrumentationNecessary   Reason = "AlreadyInstrumented"
 	ReasonFailedInstrumentation        Reason = "FailedInstrumentation"
