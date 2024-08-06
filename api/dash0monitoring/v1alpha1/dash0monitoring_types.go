@@ -12,7 +12,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/dash0hq/dash0-operator/internal/common/controller"
-	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 )
 
 const (
@@ -121,6 +120,13 @@ func readOptionalBooleanWithDefault(setting *bool, defaultValue bool) bool {
 	return *setting
 }
 
+type ConditionType string
+
+const (
+	ConditionTypeAvailable ConditionType = "Available"
+	ConditionTypeDegraded  ConditionType = "Degraded"
+)
+
 // Dash0MonitoringStatus defines the observed state of the Dash0 monitoring resource.
 type Dash0MonitoringStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
@@ -155,13 +161,13 @@ func (d *Dash0Monitoring) IsMarkedForDeletion() bool {
 }
 
 func (d *Dash0Monitoring) IsAvailable() bool {
-	if condition := d.getCondition(util.ConditionTypeAvailable); condition != nil {
+	if condition := d.getCondition(ConditionTypeAvailable); condition != nil {
 		return condition.Status == metav1.ConditionTrue
 	}
 	return false
 }
 
-func (d *Dash0Monitoring) getCondition(conditionType util.ConditionType) *metav1.Condition {
+func (d *Dash0Monitoring) getCondition(conditionType ConditionType) *metav1.Condition {
 	for _, c := range d.Status.Conditions {
 		if c.Type == string(conditionType) {
 			return &c
@@ -175,7 +181,7 @@ func (d *Dash0Monitoring) SetAvailableConditionToUnknown() {
 	meta.SetStatusCondition(
 		&d.Status.Conditions,
 		metav1.Condition{
-			Type:    string(util.ConditionTypeAvailable),
+			Type:    string(ConditionTypeAvailable),
 			Status:  metav1.ConditionUnknown,
 			Reason:  "ReconcileStarted",
 			Message: "Dash0 has started resource reconciliation.",
@@ -183,7 +189,7 @@ func (d *Dash0Monitoring) SetAvailableConditionToUnknown() {
 	meta.SetStatusCondition(
 		&d.Status.Conditions,
 		metav1.Condition{
-			Type:    string(util.ConditionTypeDegraded),
+			Type:    string(ConditionTypeDegraded),
 			Status:  metav1.ConditionTrue,
 			Reason:  "ReconcileStarted",
 			Message: "Dash0 is still starting.",
@@ -197,12 +203,12 @@ func (d *Dash0Monitoring) EnsureResourceIsMarkedAsAvailable() {
 	meta.SetStatusCondition(
 		&d.Status.Conditions,
 		metav1.Condition{
-			Type:    string(util.ConditionTypeAvailable),
+			Type:    string(ConditionTypeAvailable),
 			Status:  metav1.ConditionTrue,
 			Reason:  "ReconcileFinished",
 			Message: "Dash0 is active in this namespace now.",
 		})
-	meta.RemoveStatusCondition(&d.Status.Conditions, string(util.ConditionTypeDegraded))
+	meta.RemoveStatusCondition(&d.Status.Conditions, string(ConditionTypeDegraded))
 }
 
 func (d *Dash0Monitoring) EnsureResourceIsMarkedAsAboutToBeDeleted() {
@@ -222,7 +228,7 @@ func (d *Dash0Monitoring) EnsureResourceIsMarkedAsDegraded(
 	meta.SetStatusCondition(
 		&d.Status.Conditions,
 		metav1.Condition{
-			Type:    string(util.ConditionTypeAvailable),
+			Type:    string(ConditionTypeAvailable),
 			Status:  metav1.ConditionFalse,
 			Reason:  reason,
 			Message: message,
@@ -230,7 +236,7 @@ func (d *Dash0Monitoring) EnsureResourceIsMarkedAsDegraded(
 	meta.SetStatusCondition(
 		&d.Status.Conditions,
 		metav1.Condition{
-			Type:    string(util.ConditionTypeDegraded),
+			Type:    string(ConditionTypeDegraded),
 			Status:  metav1.ConditionTrue,
 			Reason:  reason,
 			Message: message,

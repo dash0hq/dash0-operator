@@ -231,7 +231,7 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		r.Status(),
 		dash0MonitoringResource,
 		dash0MonitoringResource.Status.Conditions,
-		string(util.ConditionTypeAvailable),
+		string(dash0v1alpha1.ConditionTypeAvailable),
 		&logger,
 	)
 	if err != nil {
