@@ -26,7 +26,6 @@ import (
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection"
-	"github.com/dash0hq/dash0-operator/internal/common/controller"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 	"github.com/dash0hq/dash0-operator/internal/dash0/workloads"
 )
@@ -144,11 +143,10 @@ func (r *Dash0Reconciler) InstrumentAtStartup() {
 				Name:      dash0MonitoringResource.Name,
 			},
 		}
-		_, stop, err := controller.VerifyUniqueDash0MonitoringResourceExists(
+		_, stop, err := verifyUniqueDash0MonitoringResourceExists(
 			ctx,
 			r.Client,
 			r.Status(),
-			&dash0v1alpha1.Dash0Monitoring{},
 			updateStatusFailedMessage,
 			pseudoReconcileRequest,
 			logger,
@@ -200,7 +198,7 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	logger := log.FromContext(ctx)
 	logger.Info("processing reconcile request for Dash0 monitoring resource")
 
-	namespaceStillExists, err := controller.CheckIfNamespaceExists(ctx, r.Clientset, req.Namespace, &logger)
+	namespaceStillExists, err := checkIfNamespaceExists(ctx, r.Clientset, req.Namespace, &logger)
 	if err != nil {
 		// The error has already been logged in checkIfNamespaceExists.
 		return ctrl.Result{}, err
@@ -210,11 +208,10 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{}, nil
 	}
 
-	monitoringResource, stopReconcile, err := controller.VerifyUniqueDash0MonitoringResourceExists(
+	dash0MonitoringResource, stopReconcile, err := verifyUniqueDash0MonitoringResourceExists(
 		ctx,
 		r.Client,
 		r.Status(),
-		&dash0v1alpha1.Dash0Monitoring{},
 		updateStatusFailedMessage,
 		req,
 		logger,
@@ -224,9 +221,8 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	} else if stopReconcile {
 		return ctrl.Result{}, nil
 	}
-	dash0MonitoringResource := monitoringResource.(*dash0v1alpha1.Dash0Monitoring)
 
-	isFirstReconcile, err := controller.InitStatusConditions(
+	isFirstReconcile, err := initStatusConditions(
 		ctx,
 		r.Status(),
 		dash0MonitoringResource,
@@ -239,7 +235,7 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{}, err
 	}
 
-	isMarkedForDeletion, runCleanupActions, err := controller.CheckImminentDeletionAndHandleFinalizers(
+	isMarkedForDeletion, runCleanupActions, err := checkImminentDeletionAndHandleFinalizers(
 		ctx,
 		r.Client,
 		dash0MonitoringResource,

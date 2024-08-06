@@ -8,10 +8,6 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	"github.com/dash0hq/dash0-operator/internal/common/controller"
 )
 
 const (
@@ -241,42 +237,6 @@ func (d *Dash0Monitoring) EnsureResourceIsMarkedAsDegraded(
 			Reason:  reason,
 			Message: message,
 		})
-}
-
-func (d *Dash0Monitoring) GetResourceTypeName() string {
-	return "Dash0MonitoringResource"
-}
-func (d *Dash0Monitoring) GetNaturalLanguageResourceTypeName() string {
-	return "Dash0 monitoring resource"
-}
-func (d *Dash0Monitoring) Get() client.Object {
-	return d
-}
-func (d *Dash0Monitoring) GetName() string {
-	return d.Name
-}
-func (d *Dash0Monitoring) GetUid() types.UID {
-	return d.UID
-}
-func (d *Dash0Monitoring) GetCreationTimestamp() metav1.Time {
-	return d.CreationTimestamp
-}
-func (d *Dash0Monitoring) GetReceiver() client.Object {
-	return &Dash0Monitoring{}
-}
-func (d *Dash0Monitoring) GetListReceiver() client.ObjectList {
-	return &Dash0MonitoringList{}
-}
-func (d *Dash0Monitoring) Items(list client.ObjectList) []client.Object {
-	items := list.(*Dash0MonitoringList).Items
-	result := make([]client.Object, len(items))
-	for i := range items {
-		result[i] = &items[i]
-	}
-	return result
-}
-func (d *Dash0Monitoring) At(list client.ObjectList, index int) controller.CustomResource {
-	return &list.(*Dash0MonitoringList).Items[index]
 }
 
 //+kubebuilder:object:root=true
