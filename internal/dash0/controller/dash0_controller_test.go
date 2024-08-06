@@ -896,10 +896,50 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 		})
 	})
 
-	Describe("when the Dash0 resource exists but has InstrumentWorkloads=false set", Ordered, func() {
+	Describe("when the Dash0 resource exists and has InstrumentWorkloads=all set explicitly", Ordered, func() {
 		BeforeAll(func() {
 			dash0MonitoringResource := EnsureDash0MonitoringResourceExists(ctx, k8sClient)
-			dash0MonitoringResource.Spec.InstrumentWorkloads = &False
+			dash0MonitoringResource.Spec.InstrumentWorkloads = dash0v1alpha1.All
+			Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
+		})
+
+		AfterAll(func() {
+			RemoveDash0MonitoringResource(ctx, k8sClient)
+		})
+
+		It("should instrument workloads", func() {
+			createdObjects = verifyThatDeploymentIsInstrumented(ctx, reconciler, createdObjects)
+		})
+	})
+
+	Describe("when the Dash0 resource exists and has an invalid InstrumentWorkloads setting", Ordered, func() {
+		It("should not allow creating the resource with an invalid value", func() {
+			By("creating the Dash0 monitoring resource")
+			Expect(k8sClient.Create(ctx, &dash0v1alpha1.Dash0Monitoring{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      Dash0MonitoringResourceQualifiedName.Name,
+					Namespace: Dash0MonitoringResourceQualifiedName.Namespace,
+				},
+				Spec: dash0v1alpha1.Dash0MonitoringSpec{
+					IngressEndpoint:     "ingress.endpoint.dash0.com:4317",
+					AuthorizationToken:  "authorization-token",
+					SecretRef:           "secret-ref",
+					InstrumentWorkloads: "invalid",
+				},
+			})).ToNot(Succeed())
+		})
+
+		It("should not allow to update the resource with an invalid value", func() {
+			dash0MonitoringResource := EnsureDash0MonitoringResourceExists(ctx, k8sClient)
+			dash0MonitoringResource.Spec.InstrumentWorkloads = "invalid"
+			Expect(k8sClient.Update(ctx, dash0MonitoringResource)).ToNot(Succeed())
+		})
+	})
+
+	Describe("when the Dash0 resource exists but has InstrumentWorkloads=none set", Ordered, func() {
+		BeforeAll(func() {
+			dash0MonitoringResource := EnsureDash0MonitoringResourceExists(ctx, k8sClient)
+			dash0MonitoringResource.Spec.InstrumentWorkloads = dash0v1alpha1.None
 			Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
 		})
 
@@ -912,10 +952,10 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 		})
 	})
 
-	Describe("when the Dash0 resource exists but has InstrumentExistingWorkloads=false set", Ordered, func() {
+	Describe("when the Dash0 resource exists but has InstrumentWorkloads=created-and-updated set", Ordered, func() {
 		BeforeAll(func() {
 			dash0MonitoringResource := EnsureDash0MonitoringResourceExists(ctx, k8sClient)
-			dash0MonitoringResource.Spec.InstrumentExistingWorkloads = &False
+			dash0MonitoringResource.Spec.InstrumentWorkloads = dash0v1alpha1.CreatedAndUpdated
 			Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
 		})
 
@@ -925,30 +965,6 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 		It("should not instrument workloads", func() {
 			createdObjects = verifyThatDeploymentIsNotBeingInstrumented(ctx, reconciler, createdObjects)
-		})
-	})
-
-	Describe("when the Dash0 resource exists and has InstrumentNewWorkloads=false set", Ordered, func() {
-		BeforeAll(func() {
-			dash0MonitoringResource := EnsureDash0MonitoringResourceExists(ctx, k8sClient)
-			dash0MonitoringResource.Spec.InstrumentNewWorkloads = &False
-			Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
-		})
-
-		AfterAll(func() {
-			RemoveDash0MonitoringResource(ctx, k8sClient)
-		})
-
-		It("should not instrument workloads", func() {
-			name := UniqueName(DeploymentNamePrefix)
-			By("Inititalize a deployment")
-			deployment := CreateBasicDeployment(ctx, k8sClient, namespace, name)
-			createdObjects = append(createdObjects, deployment)
-
-			triggerReconcileRequest(ctx, reconciler, "")
-
-			verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
-			VerifyModifiedDeployment(GetDeployment(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations())
 		})
 	})
 
@@ -973,6 +989,20 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 		})
 	})
 })
+
+func verifyThatDeploymentIsInstrumented(ctx context.Context, reconciler *Dash0Reconciler, createdObjects []client.Object) []client.Object {
+	name := UniqueName(DeploymentNamePrefix)
+	By("Inititalize a deployment")
+	deployment := CreateBasicDeployment(ctx, k8sClient, namespace, name)
+	createdObjects = append(createdObjects, deployment)
+
+	triggerReconcileRequest(ctx, reconciler, "")
+
+	verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
+	VerifyModifiedDeployment(GetDeployment(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations())
+
+	return createdObjects
+}
 
 func verifyThatDeploymentIsNotBeingInstrumented(ctx context.Context, reconciler *Dash0Reconciler, createdObjects []client.Object) []client.Object {
 	name := UniqueName(DeploymentNamePrefix)

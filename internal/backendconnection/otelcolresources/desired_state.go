@@ -74,6 +74,8 @@ var (
 	configTemplate = template.Must(template.New("collector-config").Parse(`
     exporters:
       debug: {}
+      # debug:
+      #   verbosity: detailed
       otlp:
         auth:
           authenticator: bearertokenauth/dash0
