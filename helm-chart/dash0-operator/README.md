@@ -62,8 +62,12 @@ spec:
   # Either provide the Dash0 authorization token as a string via the property authorizationToken:
   authorizationToken: auth_... # TODO needs to be replaced with the actual value, see below
 
-  # Or provide the name of a secret existing in the Dash0 operator's namespace as the property secretRef:
-  # secretRef: dash0-authorization-secret
+  # Opt-out settings for particular use cases. The default value is "all". Other possible values are
+  # "created-and-updated" and "none".
+  # instrumentWorkloads: all
+
+  # Opt-out setting for removing instrumentation from workloads when the Dash0 monitoring resource is removed.
+  # uninstrumentWorkloadsOnDelete: true
 ```
 
 At this point, you need to provide two configuration settings:
@@ -75,21 +79,64 @@ At this point, you need to provide two configuration settings:
   A protocol prefix (eg. `https://`) should not be included in the value.
 * `authorizationToken` or `secretRef`: Exactly one of these two properties needs to be provided.
   If both are provided, `authorizationToken` will be used and `secretRef` will be ignored.
-  * `authorizationToken`: Replace the value in the example above with the Dash0 authorization token of your
-    organization.
-    The authorization token for your Dash0 organization can be copied from https://app.dash0.com/settings.
-    The prefix `Bearer ` must *not* be included in the value.
-    Note that the value will be rendered verbatim into a Kubernetes ConfigMap object.
-    Anyone with API access to the Kubernetes cluster will be able to read the value.
-    Use the `secretRef` property and a Kubernetes secret if you want to avoid that.
-  * `secretRef`: Replace the value in the example above with the name of an existing Kubernetes secret in the Dash0
-    operator's namespace.
-    The secret needs to contain the Dash0 authorization token.
-    See below for details on how exactly the secret should be created.
-    Note that by default, Kubernetes secrets are stored _unencrypted_, and anyone with API access to the Kubernetes
-    cluster will be able to read the value.
-    Additional steps are required to make sure secret values are encrypted.
-    See https://kubernetes.io/docs/concepts/configuration/secret/ for more information on Kubernetes secrets.
+    * `authorizationToken`: Replace the value in the example above with the Dash0 authorization token of your
+      organization.
+      The authorization token for your Dash0 organization can be copied from https://app.dash0.com/settings.
+      The prefix `Bearer ` must *not* be included in the value.
+      Note that the value will be rendered verbatim into a Kubernetes ConfigMap object.
+      Anyone with API access to the Kubernetes cluster will be able to read the value.
+      Use the `secretRef` property and a Kubernetes secret if you want to avoid that.
+    * `secretRef`: Replace the value in the example above with the name of an existing Kubernetes secret in the Dash0
+       operator's namespace.
+       The secret needs to contain the Dash0 authorization token.
+       See below for details on how exactly the secret should be created.
+       Note that by default, Kubernetes secrets are stored _unencrypted_, and anyone with API access to the Kubernetes
+       cluster will be able to read the value.
+       Additional steps are required to make sure secret values are encrypted.
+       See https://kubernetes.io/docs/concepts/configuration/secret/ for more information on Kubernetes secrets.
+
+The other configuration settings are optional:
+* `instrumentWorkloads`: A global opt-out for workload instrumentation for the target namespace.
+  There are threepossible settings: `all`, `created-and-updated` and `none`.
+  By default, the setting `all` is assumed.
+
+  * `all`: If set to `all` (or omitted), the operator will:
+      * instrument existing workloads in the target namespace (i.e. workloads already running in the namespace) when
+        the Dash0 monitoring resource is deployed,
+      * instrument existing workloads or update the instrumentation of already instrumented workloads in the target
+        namespace when the Dash0 Kubernetes operator is first started or restarted (for example when updating the
+        operator),
+      * instrument new workloads in the target namespace when they are deployed, and
+      * instrument changed workloads in the target namespace when changes are applied to them.
+  Note that the first two actions (instrumenting existing workloads) will result in restarting the pods of the
+  affected workloads.
+
+  * `created-and-updated`: If set to `created-and-updated`, the operator will not instrument existing workloads in the
+    target namespace.
+    Instead, it will only:
+      * instrument new workloads in the target namespace when they are deployed, and
+      * instrument changed workloads in the target namespace when changes are applied to them.
+        This setting is useful if you want to avoid pod restarts as a side effect of deploying the Dash0 monitoring
+        resource or restarting the Dash0 Kubernetes operator.
+
+  * `none`: You can opt out of instrumenting workloads entirely by setting this option to `none`.
+     With `instrumentWorkloads: none`, workloads in the target namespace will never be instrumented to send telemetry to
+     Dash0.
+
+  If this setting is omitted, the value `all` is assumed and new/updated as well as existing Kubernetes workloads
+  will be intrumented by the operator to send telemetry to Dash0, as described above.
+
+  More fine-grained per-workload control over instrumentation is available by setting the label
+  `dash0.com/enable=false` on individual workloads.
+
+* `uninstrumentWorkloadsOnDelete`: A boolean opt-out setting for removing the Dash0 instrumentation from workloads when
+  the Dash0 monitoring resource is removed from a namespace, or when the Dash0 Kubernetes operator is deleted entirely.
+  By default, this setting is true and the operator will revert the instrumentation modifications it applied to
+  workloads to send telemetry to Dash0.
+  Setting this option to `false` will prevent this behavior.
+  Note that removing instrumentation will typically result in a restart of the pods of the affected workloads.
+
+  The default value for this option is true.
 
 After providing the required values, save the file and apply the resource to the namespace you want to monitor.
 For example, if you want to monitor workloads in the namespace `my-nodejs-applications`, use the following command:

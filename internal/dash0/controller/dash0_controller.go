@@ -299,21 +299,18 @@ func (r *Dash0Reconciler) checkSettingsAndInstrumentAllWorkloads(
 	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
 	logger *logr.Logger,
 ) error {
-	instrumentWorkloads := util.ReadOptOutSetting(dash0MonitoringResource.Spec.InstrumentWorkloads)
-	instrumentExistingWorkloads := util.ReadOptOutSetting(dash0MonitoringResource.Spec.InstrumentExistingWorkloads)
-	instrumentNewWorkloads := util.ReadOptOutSetting(dash0MonitoringResource.Spec.InstrumentNewWorkloads)
-
-	if !instrumentWorkloads || (!instrumentExistingWorkloads && !instrumentNewWorkloads) {
+	instrumentWorkloads := dash0MonitoringResource.ReadInstrumentWorkloadsSetting()
+	if instrumentWorkloads == dash0v1alpha1.None {
 		logger.Info(
 			"Instrumentation is not enabled, neither new nor existing workloads will be modified to send telemetry " +
 				"to Dash0.",
 		)
 		return nil
 	}
-	if !instrumentExistingWorkloads {
+	if instrumentWorkloads == dash0v1alpha1.CreatedAndUpdated {
 		logger.Info(
-			"Instrumenting existing workloads is not enabled, only new workloads will be modified (at deploy time) " +
-				"to send telemetry to Dash0.",
+			"Instrumenting existing workloads is not enabled, only new or updated workloads will be modified (at " +
+				"deploy time) to send telemetry to Dash0.",
 		)
 		return nil
 	}
@@ -713,7 +710,7 @@ func (r *Dash0Reconciler) runCleanupActions(
 	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
 	logger *logr.Logger,
 ) error {
-	uninstrumentWorkloadsOnDelete := util.ReadOptOutSetting(dash0MonitoringResource.Spec.UninstrumentWorkloadsOnDelete)
+	uninstrumentWorkloadsOnDelete := dash0v1alpha1.ReadBooleanOptOutSetting(dash0MonitoringResource.Spec.UninstrumentWorkloadsOnDelete)
 	if !uninstrumentWorkloadsOnDelete {
 		logger.Info(
 			"Reverting instrumentation modifications is not enabled, the Dash0 Kubernetes operator will not attempt " +
