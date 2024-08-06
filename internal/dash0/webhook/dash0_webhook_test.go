@@ -9,6 +9,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -493,10 +495,26 @@ var _ = Describe("The Dash0 webhook", func() {
 		})
 	})
 
-	Describe("when the Dash0 monitoring resource exists and is available but has InstrumentWorkloads=false set", Ordered, func() {
+	Describe("when the Dash0 monitoring resource exists and is available and has InstrumentWorkloads=all set explicitly", Ordered, func() {
 		BeforeAll(func() {
 			dash0MonitoringResource := EnsureDash0MonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
-			dash0MonitoringResource.Spec.InstrumentWorkloads = &False
+			dash0MonitoringResource.Spec.InstrumentWorkloads = dash0v1alpha1.All
+			Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
+		})
+
+		AfterAll(func() {
+			RemoveDash0MonitoringResource(ctx, k8sClient)
+		})
+
+		It("should instrument workloads", func() {
+			createdObjects = verifyThatDeploymentIsInstrumented(createdObjects)
+		})
+	})
+
+	Describe("when the Dash0 monitoring resource exists and is available but has InstrumentWorkloads=none set", Ordered, func() {
+		BeforeAll(func() {
+			dash0MonitoringResource := EnsureDash0MonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			dash0MonitoringResource.Spec.InstrumentWorkloads = dash0v1alpha1.None
 			Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
 		})
 
@@ -509,10 +527,10 @@ var _ = Describe("The Dash0 webhook", func() {
 		})
 	})
 
-	Describe("when the Dash0 monitoring resource exists and is available but has InstrumentNewWorkloads=false set", Ordered, func() {
+	Describe("when the Dash0 monitoring resource exists and is available and has InstrumentWorkloads=created-and-updated set", Ordered, func() {
 		BeforeAll(func() {
 			dash0MonitoringResource := EnsureDash0MonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
-			dash0MonitoringResource.Spec.InstrumentNewWorkloads = &False
+			dash0MonitoringResource.Spec.InstrumentWorkloads = dash0v1alpha1.CreatedAndUpdated
 			Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
 		})
 
@@ -520,32 +538,21 @@ var _ = Describe("The Dash0 webhook", func() {
 			RemoveDash0MonitoringResource(ctx, k8sClient)
 		})
 
-		It("should not instrument workloads", func() {
-			createdObjects = verifyThatDeploymentIsNotBeingInstrumented(createdObjects)
-		})
-	})
-
-	Describe("when the Dash0 monitoring resource exists and is available and has InstrumentExistingWorkloads=false set", Ordered, func() {
-		BeforeAll(func() {
-			dash0MonitoringResource := EnsureDash0MonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
-			dash0MonitoringResource.Spec.InstrumentExistingWorkloads = &False
-			Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
-		})
-
-		AfterAll(func() {
-			RemoveDash0MonitoringResource(ctx, k8sClient)
-		})
-
-		It("should not instrument workloads", func() {
-			name := UniqueName(DeploymentNamePrefix)
-			workload := CreateBasicDeployment(ctx, k8sClient, TestNamespaceName, name)
-			createdObjects = append(createdObjects, workload)
-			workload = GetDeployment(ctx, k8sClient, TestNamespaceName, name)
-			VerifyModifiedDeployment(workload, BasicInstrumentedPodSpecExpectations())
-			VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
+		It("should instrument workloads", func() {
+			createdObjects = verifyThatDeploymentIsInstrumented(createdObjects)
 		})
 	})
 })
+
+func verifyThatDeploymentIsInstrumented(createdObjects []client.Object) []client.Object {
+	name := UniqueName(DeploymentNamePrefix)
+	workload := CreateBasicDeployment(ctx, k8sClient, TestNamespaceName, name)
+	createdObjects = append(createdObjects, workload)
+	workload = GetDeployment(ctx, k8sClient, TestNamespaceName, name)
+	VerifyModifiedDeployment(workload, BasicInstrumentedPodSpecExpectations())
+	VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
+	return createdObjects
+}
 
 func verifyThatDeploymentIsNotBeingInstrumented(createdObjects []client.Object) []client.Object {
 	name := UniqueName(DeploymentNamePrefix)

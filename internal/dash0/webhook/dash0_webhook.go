@@ -152,33 +152,28 @@ func (h *Handler) Handle(ctx context.Context, request admission.Request) admissi
 	logger.Info("new admission request in a Dash0-enabled workspace")
 
 	dash0MonitoringResource := dash0List.Items[0]
-	if dash0MonitoringResource.IsMarkedForDeletion() {
-		return logAndReturnAllowed(fmt.Sprintf("The Dash0 monitoring resource is about to be deleted in namespace %s, "+
-			"this newly deployed workload will not be modified to send telemetry to Dash0.", targetNamespace), &logger)
-	}
-	instrumentWorkloads := util.ReadOptOutSetting(dash0MonitoringResource.Spec.InstrumentWorkloads)
-	instrumentNewWorkloads := util.ReadOptOutSetting(dash0MonitoringResource.Spec.InstrumentNewWorkloads)
-	if !instrumentWorkloads {
-		return logAndReturnAllowed(fmt.Sprintf("Instrumenting workloads is not enabled in namespace %s, this newly "+
-			"deployed workload will not be modified to send telemetry to Dash0.", targetNamespace), &logger)
-	}
-	if !instrumentNewWorkloads {
-		return logAndReturnAllowed(fmt.Sprintf("Instrumenting new workloads at deploy-time is not enabled in "+
-			"namespace %s, this newlydeployed workload will not be modified to send telemetry to Dash0.",
-			targetNamespace), &logger)
-	}
 
 	if !dash0MonitoringResource.IsAvailable() {
 		return logAndReturnAllowed(
 			fmt.Sprintf(
-				"The Dash0 monitoring resource in the namespace %s is not in status available, this workload will not be "+
-					"modified to send telemetry to Dash0.", targetNamespace), &logger)
+				"The Dash0 monitoring resource in the namespace %s is not in status available, this workload will "+
+					"not be modified to send telemetry to Dash0.", targetNamespace), &logger)
 	}
 	if dash0MonitoringResource.IsMarkedForDeletion() {
 		return logAndReturnAllowed(
 			fmt.Sprintf(
 				"The Dash0 monitoring resource in the namespace %s is about to be deleted, this workload will not be "+
 					"modified to send telemetry to Dash0.", targetNamespace), &logger)
+	}
+
+	actionPartial := "newly deployed"
+	if request.Operation == admissionv1.Update {
+		actionPartial = "updated"
+	}
+	instrumentWorkloads := dash0MonitoringResource.ReadInstrumentWorkloadsSetting()
+	if instrumentWorkloads == dash0v1alpha1.None {
+		return logAndReturnAllowed(fmt.Sprintf("Instrumenting workloads is not enabled in namespace %s, this %s "+
+			"workload will not be modified to send telemetry to Dash0.", targetNamespace, actionPartial), &logger)
 	}
 
 	gkv := request.Kind

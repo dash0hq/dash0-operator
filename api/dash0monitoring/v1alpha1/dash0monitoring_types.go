@@ -4,6 +4,8 @@
 package v1alpha1
 
 import (
+	"slices"
+
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -42,58 +44,81 @@ type Dash0MonitoringSpec struct {
 	// +kubebuilder:validation:Optional
 	SecretRef string `json:"secretRef"`
 
-	// Global opt-out for workload instrumentation for the target namespace. You can opt-out of instrumenting workloads
-	// entirely by setting this option to false. By default, this setting is true and Kubernetes workloads will be
-	// intrumented by the operator to send telemetry to Dash0. Setting it to false will prevent workload instrumentation
-	// in the target namespace. More fine-grained control over instrumentation is available via the settings
-	// InstrumentExistingWorkloads, InstrumentNewWorkloads and UninstrumentWorkloadsOnDelete, as well as by setting the
-	// label dash0.com/enable=false on individual workloads.
+	// Global opt-out for workload instrumentation for the target namespace. There are three possible settings: `all`,
+	// `created-and-updated` and `none`. By default, the setting `all` is assumed.
 	//
-	// The default value for this option is true.
+	// If set to `all` (or omitted), the operator will:
+	// * instrument existing workloads in the target namespace (i.e. workloads already running in the namespace) when
+	//   the Dash0 monitoring resource is deployed,
+	// * instrument existing workloads or update the instrumentation of already instrumented workloads in the target
+	//   namespace when the Dash0 Kubernetes operator is first started or restarted (for example when updating the
+	//   operator),
+	// * instrument new workloads in the target namespace when they are deployed, and
+	// * instrument changed workloads in the target namespace when changes are applied to them.
+	// Note that the first two actions (instrumenting existing workloads) will result in restarting the pods of the
+	// affected workloads.
 	//
-	// +kubebuilder:validation:Optional
-	InstrumentWorkloads *bool `json:"instrumentWorkloads"`
-
-	// Opt-out for workload instrumentation of existing workloads for the target namespace. You can opt-out of
-	// instrumenting existing workloads by setting this option to false. By default, when the Dash0 monitoring resource
-	// is deployed to a namespace (and the Dash0 Kubernetes operator is active), the operator will instrument the
-	// workloads already running in that namesapce, to send telemetry to Dash0. Setting this option to false will
-	// prevent that behavior, but workloads that are deployed after Dash0 monitoring resource will still be instrumented
-	// (see option InstrumentNewWorkloads). More fine-grained control over instrumentation on a per-workload level is
-	// available by setting the label dash0.com/enable=false on individual workloads.
+	// If set to `created-and-updated`, the operator will not instrument existing workloads in the target namespace.
+	// Instead, it will only:
+	// * instrument new workloads in the target namespace when they are deployed, and
+	// * instrument changed workloads in the target namespace when changes are applied to them.
+	// This setting is useful if you want to avoid pod restarts as a side effect of deploying the Dash0 monitoring
+	// resource or restarting the Dash0 Kubernetes operator.
 	//
-	// The default value for this option is true.
+	// You can opt out of instrumenting workloads entirely by setting this option to `none`. With
+	// `instrumentWorkloads: none`, workloads in the target namespace will never be instrumented to send telemetry to
+	// Dash0.
 	//
-	// This option has no effect if InstrumentWorkloads is set to false.
+	// If this setting is omitted, the value `all` is assumed and new/updated as well as existing Kubernetes workloads
+	// will be intrumented by the operator to send telemetry to Dash0, as described above.
 	//
-	// +kubebuilder:validation:Optional
-	InstrumentExistingWorkloads *bool `json:"instrumentExistingWorkloads"`
-
-	// Opt-out for workload instrumentation of newly deployed workloads for the target namespace. You can opt-out of
-	// instrumenting workloads at the time they are deployed by setting this option to false. By default, when the Dash0
-	// monitoring resource is present in a namespace (and the Dash0 Kubernetes operator is active), the operator will
-	// instrument new workloads to send telemetry to Dash0, at the time they are deployed to that namespace.
-	// Setting this option to false will prevent that behavior, but workloads existing when the Dash0 monitoring resource
-	// is deployed will still be instrumented (see option InstrumentExistingWorkloads). More fine-grained control over
-	// instrumentation on a per-workload level is available by setting the label dash0.com/enable=false on individual
-	// workloads.
-	//
-	// The default value for this option is true.
-	//
-	// This option has no effect if InstrumentWorkloads is set to false.
+	// More fine-grained per-workload control over instrumentation is available by setting the label
+	// dash0.com/enable=false on individual workloads.
 	//
 	// +kubebuilder:validation:Optional
-	InstrumentNewWorkloads *bool `json:"instrumentNewWorkloads"`
+	InstrumentWorkloads InstrumentWorkloadsMode `json:"instrumentWorkloads,omitempty"`
 
-	// Opt-out for removing the Dash0 instrumentation from workloads when the Dash0 monitoring resource is removed from a
-	// namespace, or when the Dash0 Kubernetes operator is deleted entirely. By default, this setting is true and the
+	// Opt-out for removing the Dash0 instrumentation from workloads when the Dash0 monitoring resource is removed from
+	// a namespace, or when the Dash0 Kubernetes operator is deleted entirely. By default, this setting is true and the
 	// operator will revert the instrumentation modifications it applied to workloads to send telemetry to Dash0.
-	// Setting this option to false will prevent this behavior.
+	// Setting this option to false will prevent this behavior. Note that removing instrumentation will typically result
+	// in a restart of the pods of the affected workloads.
 	//
 	// The default value for this option is true.
 	//
 	// +kubebuilder:validation:Optional
 	UninstrumentWorkloadsOnDelete *bool `json:"uninstrumentWorkloadsOnDelete"`
+}
+
+// InstrumentWorkloadsMode describes when exactly workloads will be instrumented.  Only one of the following modes
+// may be specified. If none of the following policies is specified, the default one is All. See
+// Dash0MonitoringSpec#InstrumentWorkloads for more details.
+//
+// +kubebuilder:validation:Enum=all;created-and-updated;none
+type InstrumentWorkloadsMode string
+
+const (
+	// All allows instrumenting existing as well as new and updated workloads.
+	All InstrumentWorkloadsMode = "all"
+
+	// CreatedAndUpdated disables instrumenting existing workloads, but new and updated workloads will be instrumented.
+	CreatedAndUpdated InstrumentWorkloadsMode = "created-and-updated"
+
+	// None will disable instrumentation of workloads entirely for a namespace.
+	None InstrumentWorkloadsMode = "none"
+)
+
+var allInstrumentWorkloadsMode = []InstrumentWorkloadsMode{All, CreatedAndUpdated, None}
+
+func ReadBooleanOptOutSetting(setting *bool) bool {
+	return readOptionalBooleanWithDefault(setting, true)
+}
+
+func readOptionalBooleanWithDefault(setting *bool, defaultValue bool) bool {
+	if setting == nil {
+		return defaultValue
+	}
+	return *setting
 }
 
 // Dash0MonitoringStatus defines the observed state of the Dash0 monitoring resource.
@@ -111,6 +136,17 @@ type Dash0Monitoring struct {
 
 	Spec   Dash0MonitoringSpec   `json:"spec,omitempty"`
 	Status Dash0MonitoringStatus `json:"status,omitempty"`
+}
+
+func (d *Dash0Monitoring) ReadInstrumentWorkloadsSetting() InstrumentWorkloadsMode {
+	instrumentWorkloads := d.Spec.InstrumentWorkloads
+	if instrumentWorkloads == "" {
+		return All
+	}
+	if !slices.Contains(allInstrumentWorkloadsMode, instrumentWorkloads) {
+		return All
+	}
+	return instrumentWorkloads
 }
 
 func (d *Dash0Monitoring) IsMarkedForDeletion() bool {
