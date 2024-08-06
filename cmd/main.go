@@ -42,6 +42,8 @@ type environmentVariables struct {
 	operatorNamespace            string
 	oTelCollectorNamePrefix      string
 	operatorImage                string
+	collectorImage               string
+	configurationReloaderImage   string
 	initContainerImage           string
 	initContainerImagePullPolicy corev1.PullPolicy
 	e2eTestMode                  bool
@@ -52,6 +54,8 @@ const (
 	operatorNamespaceEnvVarName            = "DASH0_OPERATOR_NAMESPACE"
 	oTelCollectorNamePrefixEnvVarName      = "OTEL_COLLECTOR_NAME_PREFIX"
 	operatorImageEnvVarName                = "DASH0_OPERATOR_IMAGE"
+	collectorImageEnvVarName               = "DASH0_COLLECTOR_IMAGE"
+	configurationReloaderImageEnvVarName   = "DASH0_CONFIGURATION_RELOADER_IMAGE"
 	initContainerImageEnvVarName           = "DASH0_INIT_CONTAINER_IMAGE"
 	initContainerImagePullPolicyEnvVarName = "DASH0_INIT_CONTAINER_IMAGE_PULL_POLICY"
 
@@ -322,6 +326,14 @@ func readEnvironmentVariables() (*environmentVariables, error) {
 	if !isSet {
 		return nil, fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, operatorImageEnvVarName)
 	}
+	collectorImage, isSet := os.LookupEnv(collectorImageEnvVarName)
+	if !isSet {
+		return nil, fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, collectorImageEnvVarName)
+	}
+	configurationReloaderImage, isSet := os.LookupEnv(configurationReloaderImageEnvVarName)
+	if !isSet {
+		return nil, fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, configurationReloaderImageEnvVarName)
+	}
 	initContainerImage, isSet := os.LookupEnv(initContainerImageEnvVarName)
 	if !isSet {
 		return nil, fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, initContainerImageEnvVarName)
@@ -351,6 +363,8 @@ func readEnvironmentVariables() (*environmentVariables, error) {
 		operatorNamespace:            operatorNamespace,
 		oTelCollectorNamePrefix:      oTelCollectorNamePrefix,
 		operatorImage:                operatorImage,
+		collectorImage:               collectorImage,
+		configurationReloaderImage:   configurationReloaderImage,
 		initContainerImage:           initContainerImage,
 		initContainerImagePullPolicy: initContainerImagePullPolicy,
 		e2eTestMode:                  e2eTestMode,

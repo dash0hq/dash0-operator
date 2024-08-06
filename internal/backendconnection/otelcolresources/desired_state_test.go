@@ -28,7 +28,6 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			NamePrefix:         namePrefix,
 			AuthorizationToken: AuthorizationToken,
 			SecretRef:          SecretRefEmpty,
-			oTelColVersion:     oTelCollectorImageVersion,
 		})
 		Expect(err).To(HaveOccurred())
 	})
@@ -38,7 +37,6 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			Namespace:       namespace,
 			NamePrefix:      namePrefix,
 			IngressEndpoint: IngressEndpoint,
-			oTelColVersion:  oTelCollectorImageVersion,
 		})
 		Expect(err).To(HaveOccurred())
 	})
@@ -49,7 +47,6 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			NamePrefix:         namePrefix,
 			IngressEndpoint:    IngressEndpoint,
 			AuthorizationToken: AuthorizationToken,
-			oTelColVersion:     oTelCollectorImageVersion,
 		})
 
 		Expect(err).ToNot(HaveOccurred())
@@ -82,7 +79,6 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			NamePrefix:         namePrefix,
 			IngressEndpoint:    IngressEndpoint,
 			AuthorizationToken: AuthorizationToken,
-			oTelColVersion:     oTelCollectorImageVersion,
 		})
 
 		Expect(err).ToNot(HaveOccurred())
@@ -105,7 +101,6 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			NamePrefix:      namePrefix,
 			IngressEndpoint: IngressEndpoint,
 			SecretRef:       "some-secret",
-			oTelColVersion:  oTelCollectorImageVersion,
 		})
 
 		Expect(err).ToNot(HaveOccurred())

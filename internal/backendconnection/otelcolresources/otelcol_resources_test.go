@@ -14,6 +14,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
+	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
@@ -105,6 +106,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
+					util.Images{},
 					Dash0OperatorNamespace,
 					IngressEndpoint,
 					AuthorizationToken,
@@ -140,6 +142,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
+					util.Images{},
 					Dash0OperatorNamespace,
 					IngressEndpoint,
 					AuthorizationToken,
@@ -159,6 +162,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			// create resources (so we are sure that everything is in the desired state)
 			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 				ctx,
+				util.Images{},
 				Dash0OperatorNamespace,
 				IngressEndpoint,
 				AuthorizationToken,
@@ -172,6 +176,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
+					util.Images{},
 					Dash0OperatorNamespace,
 					IngressEndpoint,
 					AuthorizationToken,
@@ -191,6 +196,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			// create resources (so there is something to delete)
 			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 				ctx,
+				util.Images{},
 				Dash0OperatorNamespace,
 				IngressEndpoint,
 				AuthorizationToken,
@@ -203,6 +209,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			// delete everything again
 			err = oTelColResourceManager.DeleteResources(
 				ctx,
+				util.Images{},
 				Dash0OperatorNamespace,
 				IngressEndpoint,
 				AuthorizationToken,

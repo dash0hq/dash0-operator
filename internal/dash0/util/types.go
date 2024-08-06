@@ -27,6 +27,8 @@ var AllEvents = []Reason{
 
 type Images struct {
 	OperatorImage                string
+	CollectorImage               string
+	ConfigurationReloaderImage   string
 	InitContainerImage           string
 	InitContainerImagePullPolicy corev1.PullPolicy
 }

@@ -14,6 +14,7 @@ import (
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
+	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 )
 
 type BackendConnectionManager struct {
@@ -29,6 +30,7 @@ const (
 
 func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
 	ctx context.Context,
+	images util.Images,
 	operatorNamespace string,
 	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
 ) error {
@@ -49,6 +51,7 @@ func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInDash0
 	resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 		m.OTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 			ctx,
+			images,
 			operatorNamespace,
 			dash0MonitoringResource.Spec.IngressEndpoint,
 			dash0MonitoringResource.Spec.AuthorizationToken,
@@ -71,6 +74,7 @@ func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInDash0
 
 func (m *BackendConnectionManager) RemoveOpenTelemetryCollectorIfNoDash0MonitoringResourceIsLeft(
 	ctx context.Context,
+	images util.Images,
 	operatorNamespace string,
 	dash0MonitoringResourceToBeDeleted *dash0v1alpha1.Dash0Monitoring,
 ) error {
@@ -117,6 +121,7 @@ func (m *BackendConnectionManager) RemoveOpenTelemetryCollectorIfNoDash0Monitori
 
 	if err := m.OTelColResourceManager.DeleteResources(
 		ctx,
+		images,
 		operatorNamespace,
 		dash0MonitoringResourceToBeDeleted.Spec.IngressEndpoint,
 		dash0MonitoringResourceToBeDeleted.Spec.AuthorizationToken,

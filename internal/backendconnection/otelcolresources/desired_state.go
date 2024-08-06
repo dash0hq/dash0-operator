@@ -6,6 +6,7 @@ package otelcolresources
 import (
 	"bytes"
 	"fmt"
+	"path/filepath"
 	"text/template"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -24,13 +25,14 @@ type E2eTestConfig struct {
 }
 
 type oTelColConfig struct {
-	Namespace          string
-	NamePrefix         string
-	IngressEndpoint    string
-	AuthorizationToken string
-	SecretRef          string
-	oTelColVersion     string
-	e2eTest            E2eTestConfig
+	Namespace                  string
+	NamePrefix                 string
+	IngressEndpoint            string
+	AuthorizationToken         string
+	SecretRef                  string
+	CollectorImage             string
+	ConfigurationReloaderImage string
+	e2eTest                    E2eTestConfig
 }
 
 type oTelConfigTemplateValues struct {
@@ -44,13 +46,15 @@ const (
 	openTelemetryCollector      = "opentelemetry-collector"
 	openTelemetryCollectorAgent = "opentelemetry-collector-agent"
 
+	configReloader = "configuration-reloader"
+
 	// label keys
-	appKubernetesIoNameKey      = "app.kubernetes.io/name"
-	appKubernetesIoInstanceKey  = "app.kubernetes.io/instance"
-	appKubernetesIoVersionKey   = "app.kubernetes.io/version"
-	appKubernetesIoManagedByKey = "app.kubernetes.io/managed-by"
-	dash0OptOutLabelKey         = "dash0.com/enable"
-	componentLabelKey           = "component"
+	appKubernetesIoNameKey           = "app.kubernetes.io/name"
+	appKubernetesIoInstanceKey       = "app.kubernetes.io/instance"
+	appKubernetesIoComponentLabelKey = "app.kubernetes.io/component"
+	appKubernetesIoVersionKey        = "app.kubernetes.io/version"
+	appKubernetesIoManagedByKey      = "app.kubernetes.io/managed-by"
+	dash0OptOutLabelKey              = "dash0.com/enable"
 
 	// label values
 	appKubernetesIoNameValue      = openTelemetryCollector
@@ -63,9 +67,9 @@ const (
 
 var (
 	daemonSetMatchLabels = map[string]string{
-		appKubernetesIoNameKey:     appKubernetesIoNameValue,
-		appKubernetesIoInstanceKey: appKubernetesIoInstanceValue,
-		componentLabelKey:          serviceComponent,
+		appKubernetesIoNameKey:           appKubernetesIoNameValue,
+		appKubernetesIoInstanceKey:       appKubernetesIoInstanceValue,
+		appKubernetesIoComponentLabelKey: serviceComponent,
 	}
 
 	authWithTokenTemplate    = template.Must(template.New("auth-with-token").Parse("token: {{ .AuthorizationToken }}"))
@@ -237,7 +241,7 @@ func serviceAccount(config *oTelColConfig) *corev1.ServiceAccount {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      serviceAccountName(config.NamePrefix),
 			Namespace: config.Namespace,
-			Labels:    labels(config.oTelColVersion, false),
+			Labels:    labels(false),
 		},
 	}
 }
@@ -290,7 +294,7 @@ func configMap(config *oTelColConfig, useSecretRef bool) (*corev1.ConfigMap, err
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      configMapName(config.NamePrefix),
 			Namespace: config.Namespace,
-			Labels:    labels(config.oTelColVersion, false),
+			Labels:    labels(false),
 		},
 		Data: configMapData,
 	}, nil
@@ -305,7 +309,7 @@ func clusterRole(config *oTelColConfig) *rbacv1.ClusterRole {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      clusterRoleName(config.NamePrefix),
 			Namespace: config.Namespace,
-			Labels:    labels(config.oTelColVersion, false),
+			Labels:    labels(false),
 		},
 		Rules: []rbacv1.PolicyRule{
 			{
@@ -336,7 +340,7 @@ func clusterRoleBinding(config *oTelColConfig) *rbacv1.ClusterRoleBinding {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name(config.NamePrefix, openTelemetryCollector),
 			Namespace: config.Namespace,
-			Labels:    labels(config.oTelColVersion, false),
+			Labels:    labels(false),
 		},
 		RoleRef: rbacv1.RoleRef{
 			APIGroup: "rbac.authorization.k8s.io",
@@ -360,7 +364,7 @@ func service(config *oTelColConfig) *corev1.Service {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name(config.NamePrefix, openTelemetryCollector),
 			Namespace: config.Namespace,
-			Labels:    serviceLabels(config.oTelColVersion),
+			Labels:    serviceLabels(),
 		},
 		Spec: corev1.ServiceSpec{
 			Type: corev1.ServiceTypeClusterIP,
@@ -380,9 +384,9 @@ func service(config *oTelColConfig) *corev1.Service {
 				},
 			},
 			Selector: map[string]string{
-				appKubernetesIoNameKey:     appKubernetesIoNameValue,
-				appKubernetesIoInstanceKey: appKubernetesIoInstanceValue,
-				componentLabelKey:          serviceComponent,
+				appKubernetesIoNameKey:           appKubernetesIoNameValue,
+				appKubernetesIoInstanceKey:       appKubernetesIoInstanceValue,
+				appKubernetesIoComponentLabelKey: serviceComponent,
 			},
 			InternalTrafficPolicy: ptr.To(corev1.ServiceInternalTrafficPolicyLocal),
 		},
@@ -390,17 +394,32 @@ func service(config *oTelColConfig) *corev1.Service {
 }
 
 func daemonSet(config *oTelColConfig, useSecretRef bool) *appsv1.DaemonSet {
-	oTelColArgs := []string{
-		"--config=file:/conf/collector.yaml",
-	}
-	if config.e2eTest.Enabled {
-		oTelColArgs = append(oTelColArgs, "--config=file:/conf/collector-extra.yaml")
+	configFiles := []string{
+		"/etc/otelcol/conf/collector.yaml",
 	}
 
-	volumeMounts := []corev1.VolumeMount{{
-		Name:      "opentelemetry-collector-configmap",
-		MountPath: "/conf",
-	}}
+	if config.e2eTest.Enabled {
+		configFiles = append(configFiles, "/etc/otelcol/conf/collector-extra.yaml")
+	}
+
+	oTelColArgs := []string{}
+	for _, configFile := range configFiles {
+		oTelColArgs = append(oTelColArgs, "--config=file:/"+configFile)
+	}
+
+	collectorPidFilePath := "/etc/otelcol/run/pid.file"
+	volumeMounts := []corev1.VolumeMount{
+		{
+			Name:      "opentelemetry-collector-configmap",
+			MountPath: "/etc/otelcol/conf",
+			ReadOnly:  true,
+		},
+		{
+			Name:      "opentelemetry-collector-pidfile",
+			MountPath: filepath.Dir(collectorPidFilePath),
+			ReadOnly:  false,
+		},
+	}
 	if !config.e2eTest.Enabled {
 		if useSecretRef {
 			volumeMounts = append(volumeMounts, corev1.VolumeMount{
@@ -413,6 +432,7 @@ func daemonSet(config *oTelColConfig, useSecretRef bool) *appsv1.DaemonSet {
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
 			Name:      "telemetry-file-export",
 			MountPath: "/collector-received-data",
+			ReadOnly:  false,
 		})
 	}
 
@@ -427,6 +447,7 @@ func daemonSet(config *oTelColConfig, useSecretRef bool) *appsv1.DaemonSet {
 		})
 	}
 
+	pidFileVolumeSizeLimit := resource.MustParse("1M")
 	directoryOrCreate := corev1.HostPathDirectoryOrCreate
 	volumes := []corev1.Volume{
 		{
@@ -437,6 +458,14 @@ func daemonSet(config *oTelColConfig, useSecretRef bool) *appsv1.DaemonSet {
 						Name: configMapName(config.NamePrefix),
 					},
 					Items: configMapItems,
+				},
+			},
+		},
+		{
+			Name: "opentelemetry-collector-pidfile",
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{
+					SizeLimit: &pidFileVolumeSizeLimit,
 				},
 			},
 		},
@@ -464,6 +493,13 @@ func daemonSet(config *oTelColConfig, useSecretRef bool) *appsv1.DaemonSet {
 		})
 	}
 
+	truthy := true
+
+	configReloaderArgs := []string{
+		"--pidfile=" + collectorPidFilePath,
+	}
+	configReloaderArgs = append(configReloaderArgs, configFiles...)
+
 	return &appsv1.DaemonSet{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "DaemonSet",
@@ -472,7 +508,7 @@ func daemonSet(config *oTelColConfig, useSecretRef bool) *appsv1.DaemonSet {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name(config.NamePrefix, openTelemetryCollectorAgent),
 			Namespace: config.Namespace,
-			Labels:    labels(config.oTelColVersion, true),
+			Labels:    labels(true),
 		},
 		Spec: appsv1.DaemonSetSpec{
 			Selector: &metav1.LabelSelector{
@@ -488,12 +524,14 @@ func daemonSet(config *oTelColConfig, useSecretRef bool) *appsv1.DaemonSet {
 				Spec: corev1.PodSpec{
 					ServiceAccountName: serviceAccountName(config.NamePrefix),
 					SecurityContext:    &corev1.PodSecurityContext{},
+					// Enable configuration processor to send Unix signals to the collector processor
+					ShareProcessNamespace: &truthy,
 					Containers: []corev1.Container{
 						{
 							Name:            openTelemetryCollector,
 							Args:            oTelColArgs,
 							SecurityContext: &corev1.SecurityContext{},
-							Image:           fmt.Sprintf("otel/opentelemetry-collector-k8s:%s", config.oTelColVersion),
+							Image:           config.CollectorImage,
 							ImagePullPolicy: corev1.PullIfNotPresent,
 							Ports: []corev1.ContainerPort{
 								{
@@ -507,6 +545,12 @@ func daemonSet(config *oTelColConfig, useSecretRef bool) *appsv1.DaemonSet {
 									ContainerPort: 4318,
 									Protocol:      corev1.ProtocolTCP,
 									HostPort:      4318,
+								},
+								{
+									Name:          "k8s-probes",
+									ContainerPort: 13133,
+									Protocol:      corev1.ProtocolTCP,
+									HostPort:      13133,
 								},
 							},
 							Env: []corev1.EnvVar{
@@ -525,6 +569,10 @@ func daemonSet(config *oTelColConfig, useSecretRef bool) *appsv1.DaemonSet {
 											FieldPath: "spec.nodeName",
 										},
 									},
+								},
+								{
+									Name:  "DASH0_COLLECTOR_PID_FILE",
+									Value: collectorPidFilePath,
 								},
 								{
 									Name:  "GOMEMLIMIT",
@@ -554,6 +602,25 @@ func daemonSet(config *oTelColConfig, useSecretRef bool) *appsv1.DaemonSet {
 							},
 							VolumeMounts: volumeMounts,
 						},
+						{
+							Name:            configReloader,
+							Args:            configReloaderArgs,
+							SecurityContext: &corev1.SecurityContext{},
+							Image:           config.ConfigurationReloaderImage,
+							ImagePullPolicy: corev1.PullIfNotPresent,
+							Env: []corev1.EnvVar{
+								{
+									Name:  "GOMEMLIMIT",
+									Value: "4MiB",
+								},
+							},
+							Resources: corev1.ResourceRequirements{
+								Limits: corev1.ResourceList{
+									corev1.ResourceMemory: resource.MustParse("12Mi"),
+								},
+							},
+							VolumeMounts: volumeMounts,
+						},
 					},
 					Volumes:     volumes,
 					HostNetwork: false,
@@ -575,9 +642,9 @@ func clusterRoleName(namePrefix string) string {
 	return name(namePrefix, openTelemetryCollector)
 }
 
-func serviceLabels(oTelColVersion string) map[string]string {
-	lbls := labels(oTelColVersion, false)
-	lbls[componentLabelKey] = serviceComponent
+func serviceLabels() map[string]string {
+	lbls := labels(false)
+	lbls[appKubernetesIoComponentLabelKey] = serviceComponent
 	return lbls
 }
 
@@ -585,11 +652,10 @@ func name(prefix string, suffix string) string {
 	return fmt.Sprintf("%s-%s", prefix, suffix)
 }
 
-func labels(oTelColVersion string, addOptOutLabel bool) map[string]string {
+func labels(addOptOutLabel bool) map[string]string {
 	lbls := map[string]string{
 		appKubernetesIoNameKey:      appKubernetesIoNameValue,
 		appKubernetesIoInstanceKey:  appKubernetesIoInstanceValue,
-		appKubernetesIoVersionKey:   oTelColVersion,
 		appKubernetesIoManagedByKey: appKubernetesIoManagedByValue,
 	}
 	if addOptOutLabel {

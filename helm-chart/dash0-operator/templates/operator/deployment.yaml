@@ -53,6 +53,10 @@ spec:
           value: {{ .Release.Name | quote }}
         - name: DASH0_OPERATOR_IMAGE
           value: {{ include "dash0-operator.image" . | quote }}
+        - name: DASH0_COLLECTOR_IMAGE
+          value: {{ include "dash0-operator.collectorImage" . | quote }}
+        - name: DASH0_CONFIGURATION_RELOADER_IMAGE
+          value: {{ include "dash0-operator.configurationReloaderImage" . | quote }}
         - name: DASH0_INIT_CONTAINER_IMAGE
           value: {{ include "dash0-operator.initContainerImage" . | quote }}
         {{- if .Values.operator.initContainerImage.pullPolicy }}

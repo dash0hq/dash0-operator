@@ -14,10 +14,11 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/format"
 )
 
 const (
-	kubeContextForTest            = "docker-desktop"
+	kubeContextForTest            = "minikube"
 	applicationUnderTestNamespace = "e2e-application-under-test-namespace"
 )
 
@@ -42,6 +43,16 @@ var (
 			tag:        "latest",
 			pullPolicy: "Never",
 		},
+		collector: ImageSpec{
+			repository: "collector",
+			tag:        "latest",
+			pullPolicy: "Never",
+		},
+		configurationReloader: ImageSpec{
+			repository: "configuration-reloader",
+			tag:        "latest",
+			pullPolicy: "Never",
+		},
 		instrumentation: ImageSpec{
 			repository: "instrumentation",
 			tag:        "latest",
@@ -53,6 +64,9 @@ var (
 var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 	BeforeAll(func() {
+		// Do not truncate string diff output
+		format.MaxLength = 0
+
 		pwdOutput, err := Run(exec.Command("pwd"), false)
 		Expect(err).NotTo(HaveOccurred())
 		workingDir = strings.TrimSpace(pwdOutput)
@@ -67,6 +81,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 		readAndApplyEnvironmentVariables()
 		RebuildOperatorControllerImage(images.operator, buildOperatorControllerImageFromLocalSources)
+		RebuildOperatorConfigurationReloaderImage(images.configurationReloader, buildOperatorControllerImageFromLocalSources)
 		RebuildDash0InstrumentationImage(images.instrumentation, buildInstrumentationImageFromLocalSources)
 		RebuildNodeJsApplicationContainerImage()
 
@@ -471,6 +486,73 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				"webhook",
 			)
 		})
+
+		FIt("should update the daemonset collector configuration when updating the Dash0 endpoint", func() {
+			By("updating the Dash0 resource endpoint")
+
+			newEndpoint := "ingress.eu-east-1.aws.dash0-dev.com:4317"
+			Expect(
+				RunAndIgnoreOutput(exec.Command(
+					"kubectl",
+					"patch",
+					"-n",
+					applicationUnderTestNamespace,
+					"Dash0", // TODO Update to Dash0Monitoring after rebase
+					dash0CustomResourceName,
+					"--type",
+					"merge",
+					"-p",
+					"{\"spec\":{\"ingressEndpoint\":\""+newEndpoint+"\"}}",
+				))).To(Succeed())
+
+			resourceName := fmt.Sprintf("%s-opentelemetry-collector-agent", operatorHelmReleaseName)
+
+			Eventually(func(g Gomega) {
+				// Check that the collector appears to have reloaded configuration
+				output, err := Run(exec.Command(
+					"kubectl",
+					"get",
+					"-n",
+					operatorNamespace,
+					"configmap/"+resourceName,
+					"-o",
+					"json",
+				))
+				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(output).To(ContainSubstring(newEndpoint))
+			}, 10*time.Second, time.Second).Should(Succeed())
+
+			// Wait up to 10 seconds for the changes to apply to all daemonsets
+			Eventually(func(g Gomega) {
+				// Check that the configreloader says to have triggered a config change
+				output, err := Run(exec.Command(
+					"kubectl",
+					"logs",
+					"-n",
+					operatorNamespace,
+					"daemonset/"+resourceName,
+					"-c",
+					"configuration-reloader",
+				))
+				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(output).To(ContainSubstring("Triggering a collector update due to changes to the config files"))
+
+				// Check that the collector appears to have reloaded configuration
+				output, err = Run(exec.Command(
+					"kubectl",
+					"logs",
+					"-n",
+					operatorNamespace,
+					"daemonset/"+resourceName,
+					"-c",
+					"opentelemetry-collector",
+				))
+				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(output).To(ContainSubstring("Received signal from OS"))
+				g.Expect(output).To(ContainSubstring("Config updated, restart service"))
+			}, 10*time.Second, time.Second).Should(Succeed())
+		})
+
 	})
 
 	Describe("operator removal", func() {

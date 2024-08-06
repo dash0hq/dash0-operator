@@ -17,6 +17,7 @@ import (
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
+	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
@@ -69,6 +70,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 		It("should fail if no ingress endpoint is provided", func() {
 			err := manager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
 				ctx,
+				util.Images{},
 				operatorNamespace,
 				&dash0v1alpha1.Dash0Monitoring{
 					Spec: dash0v1alpha1.Dash0MonitoringSpec{
@@ -81,6 +83,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 		It("should fail if neither authorization token nor secret ref  provided", func() {
 			err := manager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
 				ctx,
+				util.Images{},
 				operatorNamespace,
 				&dash0v1alpha1.Dash0Monitoring{
 					Spec: dash0v1alpha1.Dash0MonitoringSpec{
@@ -96,6 +99,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 		AfterEach(func() {
 			err := manager.OTelColResourceManager.DeleteResources(
 				ctx,
+				util.Images{},
 				operatorNamespace,
 				IngressEndpoint,
 				AuthorizationToken,
@@ -108,6 +112,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 		It("should create all resources", func() {
 			err := manager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
 				ctx,
+				util.Images{},
 				operatorNamespace,
 				dash0MonitoringResource,
 			)
@@ -137,6 +142,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 
 			err = manager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
 				ctx,
+				util.Images{},
 				operatorNamespace,
 				dash0MonitoringResource,
 			)
@@ -171,6 +177,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			// Let the manager create the collector so there is something to delete.
 			err := manager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
 				ctx,
+				util.Images{},
 				operatorNamespace,
 				secondDash0MonitoringResource,
 			)
@@ -179,6 +186,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 
 			err = manager.RemoveOpenTelemetryCollectorIfNoDash0MonitoringResourceIsLeft(
 				ctx,
+				util.Images{},
 				operatorNamespace,
 				secondDash0MonitoringResource,
 			)
@@ -195,6 +203,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			// Let the manager create the collector so there is something to delete.
 			err := manager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
 				ctx,
+				util.Images{},
 				operatorNamespace,
 				existingDash0MonitoringResource,
 			)
@@ -203,6 +212,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 
 			err = manager.RemoveOpenTelemetryCollectorIfNoDash0MonitoringResourceIsLeft(
 				ctx,
+				util.Images{},
 				operatorNamespace,
 				// We deliberately pass a different resource here, not the one that actually exists in the cluster.
 				// The existing resource should be found and compared to the one that we pass in, and since they do
@@ -232,6 +242,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			// Let the manager create the collector so there is something to delete.
 			err := manager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
 				ctx,
+				util.Images{},
 				operatorNamespace,
 				dash0MonitoringResource,
 			)
@@ -240,6 +251,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 
 			err = manager.RemoveOpenTelemetryCollectorIfNoDash0MonitoringResourceIsLeft(
 				ctx,
+				util.Images{},
 				operatorNamespace,
 				dash0MonitoringResource,
 			)
@@ -253,6 +265,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			// Let the manager create the collector so there is something to delete.
 			err := manager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
 				ctx,
+				util.Images{},
 				operatorNamespace,
 				dash0MonitoringResource,
 			)
@@ -261,6 +274,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 
 			err = manager.RemoveOpenTelemetryCollectorIfNoDash0MonitoringResourceIsLeft(
 				ctx,
+				util.Images{},
 				operatorNamespace,
 				dash0MonitoringResource,
 			)

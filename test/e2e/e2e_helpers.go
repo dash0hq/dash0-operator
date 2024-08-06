@@ -53,8 +53,10 @@ type ImageSpec struct {
 }
 
 type Images struct {
-	operator        ImageSpec
-	instrumentation ImageSpec
+	operator              ImageSpec
+	collector             ImageSpec
+	configurationReloader ImageSpec
+	instrumentation       ImageSpec
 }
 
 func CheckIfRequiredPortsAreBlocked() {
@@ -321,6 +323,44 @@ func RebuildOperatorControllerImage(operatorImage ImageSpec, buildImageLocally b
 			))).To(Succeed())
 }
 
+func RebuildOperatorConfigurationReloaderImage(configurationReloader ImageSpec, buildImageLocally bool) {
+	if !buildImageLocally {
+		return
+	}
+	if strings.Contains(configurationReloader.repository, "/") {
+		By(
+			fmt.Sprintf(
+				"not rebuilding the instrumenation image %s, this looks like a remote image",
+				renderFullyQualifiedImageName(configurationReloader),
+			))
+		return
+	}
+
+	By(fmt.Sprintf("building the instrumentation image: %s", renderFullyQualifiedImageName(configurationReloader)))
+	Expect(
+		RunAndIgnoreOutput(
+			exec.Command(
+				"docker",
+				"build",
+				"images/configreloader",
+				"-t",
+				configurationReloader.tag,
+			))).To(Succeed())
+
+	additionalTag := ImageSpec{
+		repository: configurationReloader.repository,
+		tag:        additionalImageTag,
+	}
+	Expect(
+		RunAndIgnoreOutput(
+			exec.Command(
+				"docker",
+				"tag",
+				renderFullyQualifiedImageName(configurationReloader),
+				renderFullyQualifiedImageName(additionalTag),
+			))).To(Succeed())
+}
+
 func RebuildDash0InstrumentationImage(instrumentationImage ImageSpec, buildImageLocally bool) {
 	if !buildImageLocally {
 		return
@@ -404,10 +444,22 @@ func addOptionalHelmParameters(arguments []string, operatorHelmChart string, ima
 	arguments = setIfNotEmpty(arguments, "operator.image.tag", images.operator.tag)
 	arguments = setIfNotEmpty(arguments, "operator.image.digest", images.operator.digest)
 	arguments = setIfNotEmpty(arguments, "operator.image.pullPolicy", images.operator.pullPolicy)
+
+	arguments = setIfNotEmpty(arguments, "operator.collectorImage.repository", images.collector.repository)
+	arguments = setIfNotEmpty(arguments, "operator.collectorImage.tag", images.collector.tag)
+	arguments = setIfNotEmpty(arguments, "operator.collectorImage.digest", images.collector.digest)
+	arguments = setIfNotEmpty(arguments, "operator.collectorImage.pullPolicy", images.collector.pullPolicy)
+
+	arguments = setIfNotEmpty(arguments, "operator.configurationReloaderImage.repository", images.configurationReloader.repository)
+	arguments = setIfNotEmpty(arguments, "operator.configurationReloaderImage.tag", images.configurationReloader.tag)
+	arguments = setIfNotEmpty(arguments, "operator.configurationReloaderImage.digest", images.configurationReloader.digest)
+	arguments = setIfNotEmpty(arguments, "operator.configurationReloaderImage.pullPolicy", images.configurationReloader.pullPolicy)
+
 	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.repository", images.instrumentation.repository)
 	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.tag", images.instrumentation.tag)
 	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.digest", images.instrumentation.digest)
 	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.pullPolicy", images.instrumentation.pullPolicy)
+
 	arguments = append(arguments, operatorHelmReleaseName)
 	arguments = append(arguments, operatorHelmChart)
 	return arguments
