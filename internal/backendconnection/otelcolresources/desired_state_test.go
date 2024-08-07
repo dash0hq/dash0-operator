@@ -28,7 +28,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			NamePrefix:         namePrefix,
 			AuthorizationToken: AuthorizationToken,
 			SecretRef:          SecretRefEmpty,
-			oTelColVersion:     oTelCollectorImageVersion,
+			Images:             TestImages,
 		})
 		Expect(err).To(HaveOccurred())
 	})
@@ -38,7 +38,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			Namespace:       namespace,
 			NamePrefix:      namePrefix,
 			IngressEndpoint: IngressEndpoint,
-			oTelColVersion:  oTelCollectorImageVersion,
+			Images:          TestImages,
 		})
 		Expect(err).To(HaveOccurred())
 	})
@@ -49,7 +49,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			NamePrefix:         namePrefix,
 			IngressEndpoint:    IngressEndpoint,
 			AuthorizationToken: AuthorizationToken,
-			oTelColVersion:     oTelCollectorImageVersion,
+			Images:             TestImages,
 		})
 
 		Expect(err).ToNot(HaveOccurred())
@@ -64,16 +64,44 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(daemonSet).NotTo(BeNil())
 		Expect(daemonSet.ObjectMeta.Labels["dash0.com/enable"]).To(Equal("false"))
 		podSpec := daemonSet.Spec.Template.Spec
+
+		Expect(podSpec.Volumes).To(HaveLen(2))
 		configMapVolume := findVolumeByName(podSpec.Volumes, "opentelemetry-collector-configmap")
 		Expect(configMapVolume).NotTo(BeNil())
 		Expect(configMapVolume.VolumeSource.ConfigMap.LocalObjectReference.Name).
 			To(Equal("unit-test-opentelemetry-collector-agent"))
-		container := podSpec.Containers[0]
-		Expect(container).NotTo(BeNil())
-		containerArgs := container.Args
-		Expect(containerArgs).To(HaveLen(1))
-		Expect(containerArgs[0]).To(Equal("--config=file:/conf/collector.yaml"))
-		Expect(container.VolumeMounts).To(ContainElement(MatchVolumeMount("opentelemetry-collector-configmap", "/conf")))
+		pidFileVolume := findVolumeByName(podSpec.Volumes, "opentelemetry-collector-pidfile")
+		Expect(pidFileVolume).NotTo(BeNil())
+		Expect(pidFileVolume.VolumeSource.EmptyDir).NotTo(BeNil())
+
+		Expect(podSpec.Containers).To(HaveLen(2))
+
+		collectorContainer := podSpec.Containers[0]
+		Expect(collectorContainer).NotTo(BeNil())
+		Expect(collectorContainer.Image).To(Equal(CollectorImageTest))
+		Expect(collectorContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
+		collectorContainerArgs := collectorContainer.Args
+		Expect(collectorContainerArgs).To(HaveLen(1))
+		Expect(collectorContainerArgs[0]).To(Equal("--config=file://etc/otelcol/conf/collector.yaml"))
+		Expect(collectorContainer.VolumeMounts).To(HaveLen(2))
+		Expect(collectorContainer.VolumeMounts).To(
+			ContainElement(MatchVolumeMount("opentelemetry-collector-configmap", "/etc/otelcol/conf")))
+		Expect(collectorContainer.VolumeMounts).To(
+			ContainElement(MatchVolumeMount("opentelemetry-collector-pidfile", "/etc/otelcol/run")))
+
+		configReloaderContainer := podSpec.Containers[1]
+		Expect(configReloaderContainer).NotTo(BeNil())
+		Expect(configReloaderContainer.Image).To(Equal(ConfigurationReloaderImageTest))
+		Expect(configReloaderContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
+		configReloaderContainerArgs := configReloaderContainer.Args
+		Expect(configReloaderContainerArgs).To(HaveLen(2))
+		Expect(configReloaderContainerArgs[0]).To(Equal("--pidfile=/etc/otelcol/run/pid.file"))
+		Expect(configReloaderContainerArgs[1]).To(Equal("/etc/otelcol/conf/collector.yaml"))
+		Expect(configReloaderContainer.VolumeMounts).To(HaveLen(2))
+		Expect(configReloaderContainer.VolumeMounts).To(
+			ContainElement(MatchVolumeMount("opentelemetry-collector-configmap", "/etc/otelcol/conf")))
+		Expect(configReloaderContainer.VolumeMounts).To(
+			ContainElement(MatchVolumeMount("opentelemetry-collector-pidfile", "/etc/otelcol/run")))
 	})
 
 	It("should use the authorization token directly if provided", func() {
@@ -82,7 +110,6 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			NamePrefix:         namePrefix,
 			IngressEndpoint:    IngressEndpoint,
 			AuthorizationToken: AuthorizationToken,
-			oTelColVersion:     oTelCollectorImageVersion,
 		})
 
 		Expect(err).ToNot(HaveOccurred())
@@ -105,7 +132,6 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			NamePrefix:      namePrefix,
 			IngressEndpoint: IngressEndpoint,
 			SecretRef:       "some-secret",
-			oTelColVersion:  oTelCollectorImageVersion,
 		})
 
 		Expect(err).ToNot(HaveOccurred())

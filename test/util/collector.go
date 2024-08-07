@@ -60,11 +60,12 @@ func VerifyCollectorDaemonSetExists(
 
 	// arbitrarily checking a couple of settings for the daemon set
 	containers := ds.Spec.Template.Spec.Containers
-	Expect(containers).To(HaveLen(1))
+	Expect(containers).To(HaveLen(2))
 	ports := containers[0].Ports
-	Expect(ports).To(HaveLen(2))
+	Expect(ports).To(HaveLen(3))
 	Expect(ports[0].ContainerPort).To(Equal(int32(4317)))
 	Expect(ports[1].ContainerPort).To(Equal(int32(4318)))
+	Expect(ports[2].ContainerPort).To(Equal(int32(13133)))
 
 	return ds
 }

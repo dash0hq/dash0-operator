@@ -264,6 +264,7 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	// its configuration is up-to-date.
 	if err = r.BackendConnectionManager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
 		ctx,
+		r.Images,
 		r.OperatorNamespace,
 		dash0MonitoringResource,
 	); err != nil {
@@ -722,6 +723,7 @@ func (r *Dash0Reconciler) runCleanupActions(
 
 	if err := r.BackendConnectionManager.RemoveOpenTelemetryCollectorIfNoDash0MonitoringResourceIsLeft(
 		ctx,
+		r.Images,
 		r.OperatorNamespace,
 		dash0MonitoringResource,
 	); err != nil {

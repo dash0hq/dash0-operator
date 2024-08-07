@@ -15,9 +15,9 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/format"
 
 	admissionv1 "k8s.io/api/admission/v1"
-	corev1 "k8s.io/api/core/v1"
 	apimachineryruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -31,8 +31,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
-	"github.com/dash0hq/dash0-operator/internal/dash0/util"
-
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
@@ -44,12 +42,6 @@ var (
 	testEnv   *envtest.Environment
 	ctx       context.Context
 	cancel    context.CancelFunc
-
-	images = util.Images{
-		OperatorImage:                "some-registry.com:1234/dash0hq/operator-controller:1.2.3",
-		InitContainerImage:           "some-registry.com:1234/dash0hq/instrumentation:4.5.6",
-		InitContainerImagePullPolicy: corev1.PullAlways,
-	}
 )
 
 func TestWebhook(t *testing.T) {
@@ -58,6 +50,8 @@ func TestWebhook(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
+	format.MaxLength = 0
+
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 
 	ctx, cancel = context.WithCancel(context.TODO())
@@ -126,7 +120,7 @@ var _ = BeforeSuite(func() {
 	err = (&Handler{
 		Client:               k8sClient,
 		Recorder:             manager.GetEventRecorderFor("dash0-webhook"),
-		Images:               images,
+		Images:               TestImages,
 		OTelCollectorBaseUrl: "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
 	}).SetupWebhookWithManager(manager)
 	Expect(err).NotTo(HaveOccurred())

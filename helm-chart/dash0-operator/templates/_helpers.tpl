@@ -60,6 +60,16 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 {{- default .Chart.AppVersion .Values.operator.initContainerImage.tag }}
 {{- end }}
 
+{{/* the collector image */}}
+{{- define "dash0-operator.collectorImage" -}}
+{{- include "dash0-operator.imageRef" (dict "image" .Values.operator.collectorImage "context" .) -}}
+{{- end }}
+
+{{/* the config reloader image */}}
+{{- define "dash0-operator.configurationReloaderImage" -}}
+{{- include "dash0-operator.imageRef" (dict "image" .Values.operator.configurationReloaderImage "context" .) -}}
+{{- end }}
+
 {{- define "dash0-operator.imageRef" -}}
 {{- if .image.digest -}}
 {{- printf "%s@%s" .image.repository .image.digest }}

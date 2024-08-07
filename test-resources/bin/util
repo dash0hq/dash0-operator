@@ -42,20 +42,38 @@ is_remote_image() {
   fi
 }
 
+build_all_images() {
+  echo "build operator controller image"
+  build_operator_controller_image
+  echo
+  echo "build instrumentation image"
+  build_instrumentation_image
+  echo
+  # TODO this is redundant with make docker-build, move either all image builds to
+  # make docker-build (including the instrumentation image) and remove the three function calls below
+  # or remove the collector and configuration reloader image builds from make docker-build.
+  echo "build collecter image"
+  build_collector_image
+  echo
+  echo "build configuration reloader image"
+  build_configuration_reloader_image
+  echo
+}
+
 build_operator_controller_image() {
   if [[ "${BUILD_OPERATOR_CONTROLLER_IMAGE:-}" = false ]]; then
     echo "Skipping operator controller image build (BUILD_OPERATOR_CONTROLLER_IMAGE=false)."
     return
   fi
-  if [[ -n "${IMG:-}" ]]; then
+  if [[ -n "${CONTROLLER_IMG:-}" ]]; then
     if is_remote_image "$IMG"; then
-      echo "The specified image IMG=$IMG looks like a remote image, refusing to build it and overwrite it with a locally built image. Set BUILD_OPERATOR_CONTROLLER_IMAGE=false to skip this step and use the remote image."
+      echo "The specified image CONTROLLER_IMG=$IMG looks like a remote image, refusing to build it and overwrite it with a locally built image. Set BUILD_OPERATOR_CONTROLLER_IMAGE=false to skip this step and use the remote image."
       exit 1
     fi
   fi
-  if [[ -n "${IMG_REPOSITORY:-}" ]]; then
-    if is_remote_image "$IMG_REPOSITORY"; then
-      echo "The specified image IMG_REPOSITORY=$IMG_REPOSITORY looks like a remote image, refusing to build it and overwrite it with a locally built image. Set BUILD_OPERATOR_CONTROLLER_IMAGE=false to skip this step and use the remote image."
+  if [[ -n "${CONTROLLER_IMG_REPOSITORY:-}" ]]; then
+    if is_remote_image "$CONTROLLER_IMG_REPOSITORY"; then
+      echo "The specified image CONTROLLER_IMG_REPOSITORY=$CONTROLLER_IMG_REPOSITORY looks like a remote image, refusing to build it and overwrite it with a locally built image. Set BUILD_OPERATOR_CONTROLLER_IMAGE=false to skip this step and use the remote image."
       exit 1
     fi
   fi
@@ -75,29 +93,58 @@ build_instrumentation_image() {
     fi
   fi
   repository="${INSTRUMENTATION_IMG_REPOSITORY:-instrumentation}"
-	tag="${INSTRUMENTATION_IMG_TAG:-latest}"
+  tag="${INSTRUMENTATION_IMG_TAG:-latest}"
   images/instrumentation/build.sh $repository $tag
 }
 
+build_collector_image() {
+  if [[ "${BUILD_COLLECTOR_IMAGE:-}" = false ]]; then
+    echo "Skipping collector image build (BUILD_COLLECTOR_IMAGE=false)."
+    return
+  fi
+  if [[ -n "${COLLECTOR_IMG_REPOSITORY:-}" ]]; then
+    if is_remote_image "$COLLECTOR_IMG_REPOSITORY"; then
+      echo "The specified image COLLECTOR_IMG_REPOSITORY=$COLLECTOR_IMG_REPOSITORY looks like a remote image, refusing to build it and overwrite it with a locally built image. Set BUILD_COLLECTOR_IMAGE=false to skip this step and use the remote image."
+      exit 1
+    fi
+  fi
+  repository="${COLLECTOR_IMG_REPOSITORY:-collector}"
+  tag="${COLLECTOR_IMG_TAG:-latest}"
+  docker build images/collector -t "${repository}":"${tag}"
+}
+
+build_configuration_reloader_image() {
+  if [[ "${BUILD_CONFIGURATION_RELOADER_IMAGE:-}" = false ]]; then
+    echo "Skipping configuration-reloader image build (BUILD_CONFIGURATION_RELOADER_IMAGE=false)."
+    return
+  fi
+  if [[ -n "${CONFIGURATION_RELOADER_IMG_REPOSITORY:-}" ]]; then
+    if is_remote_image "$CONFIGURATION_RELOADER_IMG_REPOSITORY"; then
+      echo "The specified image CONFIGURATION_RELOADER_IMG_REPOSITORY=$CONFIGURATION_RELOADER_IMG_REPOSITORY looks like a remote image, refusing to build it and overwrite it with a locally built image. Set BUILD_CONFIGURATION_RELOADER_IMAGE=false to skip this step and use the remote image."
+      exit 1
+    fi
+  fi
+  repository="${CONFIGURATION_RELOADER_IMG_REPOSITORY:-configuration-reloader}"
+  tag="${CONFIGURATION_RELOADER_IMG_TAG:-latest}"
+  docker build images/configreloader -t "${repository}":"${tag}"
+}
+
 deploy_via_helm() {
-  helm_install_command=$(cat <<EOF
-  helm install
-		--namespace dash0-system
-		--set operator.developmentMode=true
-EOF
-)
-  if ! has_been_set_to_empty_string "IMG_REPOSITORY"; then
-    helm_install_command+=" --set operator.image.repository=${IMG_REPOSITORY:-operator-controller}"
+  helm_install_command="helm install --namespace dash0-system --set operator.developmentMode=true"
+
+  if ! has_been_set_to_empty_string "CONTROLLER_IMG_REPOSITORY"; then
+    helm_install_command+=" --set operator.image.repository=${CONTROLLER_IMG_REPOSITORY:-operator-controller}"
   fi
-  if ! has_been_set_to_empty_string "IMG_TAG"; then
-    helm_install_command+=" --set operator.image.tag=${IMG_TAG:-latest}"
+  if ! has_been_set_to_empty_string "CONTROLLER_IMG_TAG"; then
+    helm_install_command+=" --set operator.image.tag=${CONTROLLER_IMG_TAG:-latest}"
   fi
-  if [[ -n "${IMG_DIGEST:-}" ]]; then
+  if [[ -n "${CONTROLLER_IMG_DIGEST:-}" ]]; then
     helm_install_command+=" --set operator.image.digest=$IMG_DIGEST"
   fi
-  if ! has_been_set_to_empty_string "IMG_PULL_POLICY"; then
-    helm_install_command+=" --set operator.image.pullPolicy=${IMG_PULL_POLICY:-Never}"
+  if ! has_been_set_to_empty_string "CONTROLLER_IMG_PULL_POLICY"; then
+    helm_install_command+=" --set operator.image.pullPolicy=${CONTROLLER_IMG_PULL_POLICY:-Never}"
   fi
+
   if ! has_been_set_to_empty_string "INSTRUMENTATION_IMG_REPOSITORY"; then
     helm_install_command+=" --set operator.initContainerImage.repository=${INSTRUMENTATION_IMG_REPOSITORY:-instrumentation}"
   fi
@@ -110,8 +157,35 @@ EOF
   if ! has_been_set_to_empty_string "INSTRUMENTATION_IMG_PULL_POLICY"; then
     helm_install_command+=" --set operator.initContainerImage.pullPolicy=${INSTRUMENTATION_IMG_PULL_POLICY:-Never}"
   fi
+
+  if ! has_been_set_to_empty_string "COLLECTOR_IMG_REPOSITORY"; then
+    helm_install_command+=" --set operator.collectorImage.repository=${COLLECTOR_IMG_REPOSITORY:-collector}"
+  fi
+  if ! has_been_set_to_empty_string "COLLECTOR_IMG_TAG"; then
+    helm_install_command+=" --set operator.collectorImage.tag=${COLLECTOR_IMG_TAG:-latest}"
+  fi
+  if [[ -n "${COLLECTOR_IMG_DIGEST:-}" ]]; then
+    helm_install_command+=" --set operator.collectorImage.digest=$IMG_DIGEST"
+  fi
+  if ! has_been_set_to_empty_string "COLLECTOR_IMG_PULL_POLICY"; then
+    helm_install_command+=" --set operator.collectorImage.pullPolicy=${COLLECTOR_IMG_PULL_POLICY:-Never}"
+  fi
+
+  if ! has_been_set_to_empty_string "CONFIGURATION_RELOADER_IMG_REPOSITORY"; then
+    helm_install_command+=" --set operator.configurationReloaderImage.repository=${CONFIGURATION_RELOADER_IMG_REPOSITORY:-configuration-reloader}"
+  fi
+  if ! has_been_set_to_empty_string "CONFIGURATION_RELOADER_IMG_TAG"; then
+    helm_install_command+=" --set operator.configurationReloaderImage.tag=${CONFIGURATION_RELOADER_IMG_TAG:-latest}"
+  fi
+  if [[ -n "${CONFIGURATION_RELOADER_IMG_DIGEST:-}" ]]; then
+    helm_install_command+=" --set operator.configurationReloaderImage.digest=$IMG_DIGEST"
+  fi
+  if ! has_been_set_to_empty_string "CONFIGURATION_RELOADER_IMG_PULL_POLICY"; then
+    helm_install_command+=" --set operator.configurationReloaderImage.pullPolicy=${CONFIGURATION_RELOADER_IMG_PULL_POLICY:-Never}"
+  fi
+
   helm_install_command+=" dash0-operator"
-	helm_install_command+=" ${OPERATOR_HELM_CHART:-helm-chart/dash0-operator}"
+  helm_install_command+=" ${OPERATOR_HELM_CHART:-helm-chart/dash0-operator}"
   echo Helm install command:
   echo "$helm_install_command"
   $helm_install_command

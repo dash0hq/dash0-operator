@@ -56,15 +56,26 @@ OPERATOR_SDK_VERSION ?= v1.34.1
 OPERATOR_HELM_CHART ?= helm-chart/dash0-operator
 
 # image repository and tag to use for building/pushing the operator image
-IMG_REPOSITORY ?= operator-controller
-IMG_TAG ?= latest
-IMG ?= $(IMG_REPOSITORY):$(IMG_TAG)
-IMG_PULL_POLICY ?= Never
+CONTROLLER_IMG_REPOSITORY ?= operator-controller
+CONTROLLER_IMG_TAG ?= latest
+CONTROLLER_IMG ?= $(CONTROLLER_IMG_REPOSITORY):$(CONTROLLER_IMG_TAG)
+CONTROLLER_IMG_PULL_POLICY ?= Never
 
 INSTRUMENTATION_IMG_REPOSITORY ?= instrumentation
 INSTRUMENTATION_IMG_TAG ?= latest
 INSTRUMENTATION_IMG ?= $(INSTRUMENTATION_IMG_REPOSITORY):$(INSTRUMENTATION_IMG_TAG)
 INSTRUMENTATION_IMG_PULL_POLICY ?= Never
+
+COLLECTOR_IMG_REPOSITORY ?= collector
+COLLECTOR_IMG_TAG ?= latest
+COLLECTOR_IMG ?= $(COLLECTOR_IMG_REPOSITORY):$(COLLECTOR_IMG_TAG)
+COLLECTOR_IMG_PULL_POLICY ?= Never
+
+CONFIGURATION_RELOADER_IMG_REPOSITORY ?= configuration-reloader
+CONFIGURATION_RELOADER_IMG_TAG ?= latest
+CONFIGURATION_RELOADER_IMG ?= $(CONFIGURATION_RELOADER_IMG_REPOSITORY):$(CONFIGURATION_RELOADER_IMG_TAG)
+CONFIGURATION_RELOADER_IMG_PULL_POLICY ?= Never
+
 
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.28.3
@@ -172,24 +183,30 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
 docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${IMG} .
+	$(CONTAINER_TOOL) build -t ${CONTROLLER_IMG} .
+	$(CONTAINER_TOOL) build -t ${COLLECTOR_IMG} images/collector
+	$(CONTAINER_TOOL) build -t ${CONFIGURATION_RELOADER_IMG} images/configreloader
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
-# architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
+# architectures. (i.e. make docker-buildx CONTROLLER_IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
 # - be able to use docker buildx. More info: https://docs.docker.com/build/buildx/
 # - have enabled BuildKit. More info: https://docs.docker.com/develop/develop-images/build_enhancements/
-# - be able to push the image to your registry (i.e. if you do not set a valid value via IMG=<myregistry/image:<tag>> then the export will fail)
+# - be able to push the image to your registry (i.e. if you do not set a valid value via CONTROLLER_IMG=<myregistry/image:<tag>> then the export will fail)
 # To adequately provide solutions that are compatible with multiple platforms, you should consider using this option.
 PLATFORMS ?= linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
 .PHONY: docker-buildx
 docker-buildx: ## Build and push docker image for the manager for cross-platform support
 	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
 	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
+	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' images/collector/Dockerfile > images/collector/Dockerfile.cross
+	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' images/configreloader/Dockerfile > images/configreloader/Dockerfile.cross
 	- $(CONTAINER_TOOL) buildx create --name project-v3-builder
 	$(CONTAINER_TOOL) buildx use project-v3-builder
-	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${IMG} -f Dockerfile.cross .
+	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${CONTROLLER_IMG} -f Dockerfile.cross .
+	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${COLLECTOR_IMG} -f images/collector/Dockerfile.cross images/collector
+	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${CONFIGURATION_RELOADER_IMG} -f images/configreloader/Dockerfile.cross images/configreloader
 	- $(CONTAINER_TOOL) buildx rm project-v3-builder
-	rm Dockerfile.cross
+	rm Dockerfile.cross images/collector/Dockerfile.cross images/configreloader/Dockerfile.cross
 
 ##@ Deployment
 
@@ -220,22 +237,28 @@ deploy-via-helm: ## Deploy the controller via helm to the K8s cluster specified 
 	fi
 
 	test-resources/bin/render-templates.sh
-	helm install \
+	helm upgrade --install \
 		--namespace dash0-system \
 		--create-namespace \
-		--set operator.image.repository=$(IMG_REPOSITORY) \
-		--set operator.image.tag=$(IMG_TAG) \
-		--set operator.image.pullPolicy=$(IMG_PULL_POLICY) \
+		--set operator.image.repository=$(CONTROLLER_IMG_REPOSITORY) \
+		--set operator.image.tag=$(CONTROLLER_IMG_TAG) \
+		--set operator.image.pullPolicy=$(CONTROLLER_IMG_PULL_POLICY) \
 		--set operator.initContainerImage.repository=$(INSTRUMENTATION_IMG_REPOSITORY) \
 		--set operator.initContainerImage.tag=$(INSTRUMENTATION_IMG_TAG) \
 		--set operator.initContainerImage.pullPolicy=$(INSTRUMENTATION_IMG_PULL_POLICY) \
+		--set operator.collectorImage.repository=$(COLLECTOR_IMG_REPOSITORY) \
+		--set operator.collectorImage.tag=$(COLLECTOR_IMG_TAG) \
+		--set operator.collectorImage.pullPolicy=$(COLLECTOR_IMG_PULL_POLICY) \
+		--set operator.configurationReloaderImage.repository=$(CONFIGURATION_RELOADER_IMG_REPOSITORY) \
+		--set operator.configurationReloaderImage.tag=$(CONFIGURATION_RELOADER_IMG_TAG) \
+		--set operator.configurationReloaderImage.pullPolicy=$(CONFIGURATION_RELOADER_IMG_PULL_POLICY) \
 		--set operator.developmentMode=true \
 		dash0-operator \
 		$(OPERATOR_HELM_CHART)
 
 .PHONY: undeploy-via-helm
 undeploy-via-helm: ## Undeploy the controller via helm from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	helm uninstall --namespace dash0-system dash0-operator
+	helm uninstall --namespace dash0-system dash0-operator --timeout 30s
 	$(KUBECTL) delete ns dash0-system
 
 ##@ Build Dependencies
@@ -295,7 +318,7 @@ endif
 .PHONY: bundle
 bundle: manifests kustomize operator-sdk ## Generate bundle manifests and metadata, then validate generated files.
 	$(OPERATOR_SDK) generate kustomize manifests -q
-	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
+	cd config/manager && $(KUSTOMIZE) edit set image controller=$(CONTROLLER_IMG)
 	$(KUSTOMIZE) build config/manifests | $(OPERATOR_SDK) generate bundle $(BUNDLE_GEN_FLAGS)
 	$(OPERATOR_SDK) bundle validate ./bundle
 
@@ -305,7 +328,7 @@ bundle-build: ## Build the bundle image.
 
 .PHONY: bundle-push
 bundle-push: ## Push the bundle image.
-	$(MAKE) docker-push IMG=$(BUNDLE_IMG)
+	$(MAKE) docker-push CONTROLLER_IMG=$(BUNDLE_IMG)
 
 .PHONY: opm
 OPM = $(LOCALBIN)/opm
@@ -346,4 +369,4 @@ catalog-build: opm ## Build a catalog image.
 # Push the catalog image.
 .PHONY: catalog-push
 catalog-push: ## Push a catalog image.
-	$(MAKE) docker-push IMG=$(CATALOG_IMG)
+	$(MAKE) docker-push CONTROLLER_IMG=$(CATALOG_IMG)

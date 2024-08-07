@@ -30,9 +30,22 @@ Run `make docker-build` to build the container image locally, this will tag the 
 After that, you can deploy the operator to your cluster:
 
 * Deploy the locally built image `operator-controller:latest` to the cluster: `make deploy-via-helm`
-  (or `make deploy-via-kustomize`)
 * Alternatively, deploy with images from a remote registry:
-  `make deploy-via-helm IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller IMG_TAG=main-dev IMG_PULL_POLICY="" INSTRUMENTATION_IMG_REPOSITORY=ghcr.io/dash0hq/instrumentation INSTRUMENTATION_IMG_TAG=main-dev INSTRUMENTATION_IMG_PULL_POLICY=""`
+  ```
+  make deploy-via-helm \
+    CONTROLLER_IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller \
+    CONTROLLER_IMG_TAG=main-dev \
+    CONTROLLER_IMG_PULL_POLICY="" \
+    INSTRUMENTATION_IMG_REPOSITORY=ghcr.io/dash0hq/instrumentation \
+    INSTRUMENTATION_IMG_TAG=main-dev \
+    INSTRUMENTATION_IMG_PULL_POLICY="" \
+    COLLECTOR_IMG_REPOSITORY=ghcr.io/dash0hq/collector \
+    COLLECTOR_IMG_TAG=main-dev \
+    COLLECTOR_IMG_PULL_POLICY="" \
+    CONFIGURATION_RELOADER_IMG_REPOSITORY=configuration-reloader \
+    CONFIGURATION_RELOADER_IMG_TAG=main-dev \
+    CONFIGURATION_RELOADER_IMG_PULL_POLICY=""
+  ```
 * The custom resource definition will automatically be installed when deploying the operator. However, you can also do
   that separately via kustomize if required via `make install`.
 
@@ -44,14 +57,6 @@ admin.
 ```sh
 make undeploy-via-helm
 ```
-
-or
-
-```sh
-make undeploy-via-kustomize
-```
-
-When undeploying the controllor, the same tool (helm vs. kustomiz) should be used as when deploying it.
 
 This will also remove the custom resource definition. However, the custom resource definition can also be removed
 separately via `make uninstall` without removing the operator.
@@ -77,12 +82,18 @@ The tests can also be run with remote images, like this:
 ```
 BUILD_OPERATOR_CONTROLLER_IMAGE=false \
   BUILD_INSTRUMENTATION_IMAGE=false \
-  IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller \
-  IMG_TAG=main-dev \
-  IMG_PULL_POLICY="" \
+  CONTROLLER_IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller \
+  CONTROLLER_IMG_TAG=main-dev \
+  CONTROLLER_IMG_PULL_POLICY="" \
   INSTRUMENTATION_IMG_REPOSITORY=ghcr.io/dash0hq/instrumentation \
   INSTRUMENTATION_IMG_TAG=main-dev \
   INSTRUMENTATION_IMG_PULL_POLICY="" \
+  COLLECTOR_IMG_REPOSITORY=ghcr.io/dash0hq/collector \
+  COLLECTOR_IMG_TAG=main-dev \
+  COLLECTOR_IMG_PULL_POLICY="" \
+  CONFIGURATION_RELOADER_IMG_REPOSITORY=configuration-reloader \
+  CONFIGURATION_RELOADER_IMG_TAG=main-dev \
+  CONFIGURATION_RELOADER_IMG_PULL_POLICY="" \
   make test-e2e
 ```
 
@@ -96,18 +107,24 @@ BUILD_OPERATOR_CONTROLLER_IMAGE=false \
   BUILD_INSTRUMENTATION_IMAGE=false \
   OPERATOR_HELM_CHART=dash0-operator/dash0-operator \
   OPERATOR_HELM_CHART_URL=https://dash0hq.github.io/dash0-operator \
-  IMG_REPOSITORY="" \
-  IMG_TAG="" \
-  IMG_PULL_POLICY="" \
+  CONTROLLER_IMG_REPOSITORY="" \
+  CONTROLLER_IMG_TAG="" \
+  CONTROLLER_IMG_PULL_POLICY="" \
   INSTRUMENTATION_IMG_REPOSITORY="" \
   INSTRUMENTATION_IMG_TAG="" \
   INSTRUMENTATION_IMG_PULL_POLICY="" \
+  COLLECTOR_IMG_REPOSITORY="" \
+  COLLECTOR_IMG_TAG="" \
+  COLLECTOR_IMG_PULL_POLICY="" \
+  CONFIGURATION_RELOADER_IMG_REPOSITORY="" \
+  CONFIGURATION_RELOADER_IMG_TAG="" \
+  CONFIGURATION_RELOADER_IMG_PULL_POLICY="" \
   make test-e2e
 ```
 
-Note: Unsetting parameters like `IMG_REPOSITORY` explicitly (by setting them to an empty string) will lead to the
+Note: Unsetting parameters like `CONTROLLER_IMG_REPOSITORY` explicitly (by setting them to an empty string) will lead to the
 end-to-end test not setting those values when deploying via helm, so that the default value from the chart will be used.
-Otherwise, without `IMG_REPOSITORY=""` being present, the test suite will use `IMG_REPOSITORY=operator-controller` (the
+Otherwise, without `CONTROLLER_IMG_REPOSITORY=""` being present, the test suite will use `CONTROLLER_IMG_REPOSITORY=operator-controller` (the
 image built from local sources) as the default setting.
 
 ### Semi-Manual Test Scenarios
@@ -135,12 +152,18 @@ they deploy in their `AfterAll`/`AfterEach` hooks. The scripts in `test-resource
         ```
         BUILD_OPERATOR_CONTROLLER_IMAGE=false \
           BUILD_INSTRUMENTATION_IMAGE=false \
-          IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller \
-          IMG_TAG=main-dev \
-          IMG_PULL_POLICY="" \
+          CONTROLLER_IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller \
+          CONTROLLER_IMG_TAG=main-dev \
+          CONTROLLER_IMG_PULL_POLICY="" \
           INSTRUMENTATION_IMG_REPOSITORY=ghcr.io/dash0hq/instrumentation \
           INSTRUMENTATION_IMG_TAG=main-dev \
           INSTRUMENTATION_IMG_PULL_POLICY="" \
+          COLLECTOR_IMG_REPOSITORY=ghcr.io/dash0hq/collector \
+          COLLECTOR_IMG_TAG=main-dev \
+          COLLECTOR_IMG_PULL_POLICY="" \
+          CONFIGURATION_RELOADER_IMG_REPOSITORY=configuration-reloader \
+          CONFIGURATION_RELOADER_IMG_TAG=main-dev \
+          CONFIGURATION_RELOADER_IMG_PULL_POLICY="" \
           test-resources/bin/test-roundtrip-01-aum-operator-cr.sh
         ```
       * To run the scenario with the helm chart from the official remote repository and the default images referenced in
@@ -149,18 +172,24 @@ they deploy in their `AfterAll`/`AfterEach` hooks. The scripts in `test-resource
         BUILD_OPERATOR_CONTROLLER_IMAGE=false \
           BUILD_INSTRUMENTATION_IMAGE=false \
           OPERATOR_HELM_CHART=dash0-operator/dash0-operator \
-          IMG_REPOSITORY="" \
-          IMG_TAG="" \
-          IMG_PULL_POLICY="" \
+          CONTROLLER_IMG_REPOSITORY="" \
+          CONTROLLER_IMG_TAG="" \
+          CONTROLLER_IMG_PULL_POLICY="" \
           INSTRUMENTATION_IMG_REPOSITORY="" \
           INSTRUMENTATION_IMG_TAG="" \
           INSTRUMENTATION_IMG_PULL_POLICY="" \
+          COLLECTOR_IMG_REPOSITORY="" \
+          COLLECTOR_IMG_TAG=main \
+          COLLECTOR_IMG_PULL_POLICY="" \
+          CONFIGURATION_RELOADER_IMG_REPOSITORY="" \
+          CONFIGURATION_RELOADER_IMG_TAG=main \
+          CONFIGURATION_RELOADER_IMG_PULL_POLICY="" \
           test-resources/bin/test-roundtrip-01-aum-operator-cr.sh
         ```
-        Note: Unsetting parameters like `IMG_REPOSITORY` explicitly (by setting them to an empty string) will lead to
+        Note: Unsetting parameters like `CONTROLLER_IMG_REPOSITORY` explicitly (by setting them to an empty string) will lead to
         the scenario not setting those values when deploying via helm, so that the default value from the chart will
-        actually be used. Otherwise, without `IMG_REPOSITORY=""` being present, the test script will use 
-        `IMG_REPOSITORY=operator-controller` (the image built from local sources) as the default setting.
+        actually be used. Otherwise, without `CONTROLLER_IMG_REPOSITORY=""` being present, the test script will use 
+        `CONTROLLER_IMG_REPOSITORY=operator-controller` (the image built from local sources) as the default setting.
 
 ## Make Targets
 

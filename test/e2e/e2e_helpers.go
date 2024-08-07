@@ -41,8 +41,12 @@ const (
 )
 
 var (
-	traceUnmarshaller = &ptrace.JSONUnmarshaler{}
-	requiredPorts     = []int{1207, 4317, 4318}
+	traceUnmarshaller               = &ptrace.JSONUnmarshaler{}
+	requiredPorts                   = []int{1207, 4317, 4318}
+	collectorDaemonSetName          = fmt.Sprintf("%s-opentelemetry-collector-agent", operatorHelmReleaseName)
+	collectorDaemonSetNameQualified = fmt.Sprintf("daemonset/%s", collectorDaemonSetName)
+	collectorConfigMapName          = fmt.Sprintf("%s-opentelemetry-collector-agent", operatorHelmReleaseName)
+	collectorConfigMapNameQualified = fmt.Sprintf("configmap/%s", collectorConfigMapName)
 )
 
 type ImageSpec struct {
@@ -53,8 +57,10 @@ type ImageSpec struct {
 }
 
 type Images struct {
-	operator        ImageSpec
-	instrumentation ImageSpec
+	operator              ImageSpec
+	instrumentation       ImageSpec
+	collector             ImageSpec
+	configurationReloader ImageSpec
 }
 
 func CheckIfRequiredPortsAreBlocked() {
@@ -303,8 +309,8 @@ func RebuildOperatorControllerImage(operatorImage ImageSpec, buildImageLocally b
 			exec.Command(
 				"make",
 				"docker-build",
-				fmt.Sprintf("IMG_REPOSITORY=%s", operatorImage.repository),
-				fmt.Sprintf("IMG_TAG=%s", operatorImage.tag),
+				fmt.Sprintf("CONTROLLER_IMG_REPOSITORY=%s", operatorImage.repository),
+				fmt.Sprintf("CONTROLLER_IMG_TAG=%s", operatorImage.tag),
 			))).To(Succeed())
 
 	additionalTag := ImageSpec{
@@ -321,7 +327,7 @@ func RebuildOperatorControllerImage(operatorImage ImageSpec, buildImageLocally b
 			))).To(Succeed())
 }
 
-func RebuildDash0InstrumentationImage(instrumentationImage ImageSpec, buildImageLocally bool) {
+func RebuildInstrumentationImage(instrumentationImage ImageSpec, buildImageLocally bool) {
 	if !buildImageLocally {
 		return
 	}
@@ -353,6 +359,83 @@ func RebuildDash0InstrumentationImage(instrumentationImage ImageSpec, buildImage
 				"docker",
 				"tag",
 				renderFullyQualifiedImageName(instrumentationImage),
+				renderFullyQualifiedImageName(additionalTag),
+			))).To(Succeed())
+}
+
+func RebuildCollectorImage(collectorImage ImageSpec, buildImageLocally bool) {
+	if !buildImageLocally {
+		return
+	}
+	if strings.Contains(collectorImage.repository, "/") {
+		By(
+			fmt.Sprintf(
+				"not rebuilding the collector image %s, this looks like a remote image",
+				renderFullyQualifiedImageName(collectorImage),
+			))
+		return
+	}
+
+	By(fmt.Sprintf("building the collector image: %s", renderFullyQualifiedImageName(collectorImage)))
+	Expect(
+		RunAndIgnoreOutput(
+			exec.Command(
+				"docker",
+				"build",
+				"images/collector",
+				"-t",
+				collectorImage.tag,
+			))).To(Succeed())
+
+	additionalTag := ImageSpec{
+		repository: collectorImage.repository,
+		tag:        additionalImageTag,
+	}
+	Expect(
+		RunAndIgnoreOutput(
+			exec.Command(
+				"docker",
+				"tag",
+				renderFullyQualifiedImageName(collectorImage),
+				renderFullyQualifiedImageName(additionalTag),
+			))).To(Succeed())
+}
+
+func RebuildConfigurationReloaderImage(configurationReloaderImage ImageSpec, buildImageLocally bool) {
+	if !buildImageLocally {
+		return
+	}
+	if strings.Contains(configurationReloaderImage.repository, "/") {
+		By(
+			fmt.Sprintf(
+				"not rebuilding the configuration reloader image %s, this looks like a remote image",
+				renderFullyQualifiedImageName(configurationReloaderImage),
+			))
+		return
+	}
+
+	By(fmt.Sprintf("building the configuration reloader image: %s",
+		renderFullyQualifiedImageName(configurationReloaderImage)))
+	Expect(
+		RunAndIgnoreOutput(
+			exec.Command(
+				"docker",
+				"build",
+				"images/configreloader",
+				"-t",
+				configurationReloaderImage.tag,
+			))).To(Succeed())
+
+	additionalTag := ImageSpec{
+		repository: configurationReloaderImage.repository,
+		tag:        additionalImageTag,
+	}
+	Expect(
+		RunAndIgnoreOutput(
+			exec.Command(
+				"docker",
+				"tag",
+				renderFullyQualifiedImageName(configurationReloaderImage),
 				renderFullyQualifiedImageName(additionalTag),
 			))).To(Succeed())
 }
@@ -404,10 +487,25 @@ func addOptionalHelmParameters(arguments []string, operatorHelmChart string, ima
 	arguments = setIfNotEmpty(arguments, "operator.image.tag", images.operator.tag)
 	arguments = setIfNotEmpty(arguments, "operator.image.digest", images.operator.digest)
 	arguments = setIfNotEmpty(arguments, "operator.image.pullPolicy", images.operator.pullPolicy)
+
+	arguments = setIfNotEmpty(arguments, "operator.collectorImage.repository", images.collector.repository)
+	arguments = setIfNotEmpty(arguments, "operator.collectorImage.tag", images.collector.tag)
+	arguments = setIfNotEmpty(arguments, "operator.collectorImage.digest", images.collector.digest)
+	arguments = setIfNotEmpty(arguments, "operator.collectorImage.pullPolicy", images.collector.pullPolicy)
+
+	arguments = setIfNotEmpty(arguments, "operator.configurationReloaderImage.repository",
+		images.configurationReloader.repository)
+	arguments = setIfNotEmpty(arguments, "operator.configurationReloaderImage.tag", images.configurationReloader.tag)
+	arguments = setIfNotEmpty(arguments, "operator.configurationReloaderImage.digest",
+		images.configurationReloader.digest)
+	arguments = setIfNotEmpty(arguments, "operator.configurationReloaderImage.pullPolicy",
+		images.configurationReloader.pullPolicy)
+
 	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.repository", images.instrumentation.repository)
 	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.tag", images.instrumentation.tag)
 	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.digest", images.instrumentation.digest)
 	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.pullPolicy", images.instrumentation.pullPolicy)
+
 	arguments = append(arguments, operatorHelmReleaseName)
 	arguments = append(arguments, operatorHelmChart)
 	return arguments
@@ -515,7 +613,7 @@ func verifyThatOTelCollectorIsRunning(operatorNamespace string) {
 				"rollout",
 				"status",
 				"daemonset",
-				fmt.Sprintf("%s-opentelemetry-collector-agent", operatorHelmReleaseName),
+				collectorDaemonSetName,
 				"--namespace",
 				operatorNamespace,
 				"--timeout",
@@ -528,7 +626,6 @@ func verifyThatOTelCollectorIsRunning(operatorNamespace string) {
 
 func VerifyThatOTelCollectorHasBeenRemoved(operatorNamespace string) {
 	By("validating that the OpenTelemetry collector has been removed")
-	daemonSetName := fmt.Sprintf("%s-opentelemetry-collector-agent", operatorHelmReleaseName)
 	verifyCollectorIsGone := func(g Gomega) {
 		g.Expect(RunAndIgnoreOutput(
 			exec.Command(
@@ -537,7 +634,7 @@ func VerifyThatOTelCollectorHasBeenRemoved(operatorNamespace string) {
 				"daemonset",
 				"--namespace",
 				operatorNamespace,
-				daemonSetName,
+				collectorDaemonSetName,
 			))).ToNot(Succeed())
 	}
 	Eventually(verifyCollectorIsGone, 60*time.Second, time.Second).Should(Succeed())
@@ -627,11 +724,27 @@ func DeployDash0MonitoringResource(namespace string, operatorNamespace string) {
 			"-n",
 			namespace,
 			"-f",
-			"test-resources/customresources/dash0monitoring/dash0monitoring.yaml",
+			"test-resources/customresources/dash0monitoring/dash0monitoring.token.yaml",
 		))).To(Succeed())
 
 	// Deploying the Dash0 monitoring resource will trigger creating the default OpenTelemetry collecor instance.
 	verifyThatOTelCollectorIsRunning(operatorNamespace)
+}
+
+func UpdateDash0MonitoringResource(namespace string, newIngressEndpoint string) bool {
+	return Expect(
+		RunAndIgnoreOutput(exec.Command(
+			"kubectl",
+			"patch",
+			"-n",
+			namespace,
+			"Dash0Monitoring",
+			dash0MonitoringResourceName,
+			"--type",
+			"merge",
+			"-p",
+			"{\"spec\":{\"ingressEndpoint\":\""+newIngressEndpoint+"\"}}",
+		))).To(Succeed())
 }
 
 func UndeployDash0MonitoringResource(namespace string) {
@@ -644,7 +757,7 @@ func UndeployDash0MonitoringResource(namespace string) {
 			"--namespace",
 			namespace,
 			"-f",
-			"test-resources/customresources/dash0monitoring/dash0monitoring.yaml",
+			"test-resources/customresources/dash0monitoring/dash0monitoring.token.yaml",
 			"--ignore-not-found",
 		))).To(Succeed())
 }

@@ -106,6 +106,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
 					Dash0OperatorNamespace,
+					TestImages,
 					IngressEndpoint,
 					AuthorizationToken,
 					SecretRefEmpty,
@@ -141,6 +142,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
 					Dash0OperatorNamespace,
+					TestImages,
 					IngressEndpoint,
 					AuthorizationToken,
 					SecretRefEmpty,
@@ -160,6 +162,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 				ctx,
 				Dash0OperatorNamespace,
+				TestImages,
 				IngressEndpoint,
 				AuthorizationToken,
 				SecretRefEmpty,
@@ -173,6 +176,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
 					Dash0OperatorNamespace,
+					TestImages,
 					IngressEndpoint,
 					AuthorizationToken,
 					SecretRefEmpty,
@@ -192,6 +196,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 				ctx,
 				Dash0OperatorNamespace,
+				TestImages,
 				IngressEndpoint,
 				AuthorizationToken,
 				SecretRefEmpty,
@@ -204,6 +209,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			err = oTelColResourceManager.DeleteResources(
 				ctx,
 				Dash0OperatorNamespace,
+				TestImages,
 				IngressEndpoint,
 				AuthorizationToken,
 				SecretRefEmpty,

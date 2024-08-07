@@ -26,9 +26,13 @@ var AllEvents = []Reason{
 }
 
 type Images struct {
-	OperatorImage                string
-	InitContainerImage           string
-	InitContainerImagePullPolicy corev1.PullPolicy
+	OperatorImage                        string
+	InitContainerImage                   string
+	InitContainerImagePullPolicy         corev1.PullPolicy
+	CollectorImage                       string
+	CollectorImagePullPolicy             corev1.PullPolicy
+	ConfigurationReloaderImage           string
+	ConfigurationReloaderImagePullPolicy corev1.PullPolicy
 }
 
 type InstrumentationMetadata struct {

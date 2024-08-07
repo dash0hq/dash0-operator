@@ -14,10 +14,12 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/format"
 )
 
 const (
-	kubeContextForTest            = "docker-desktop"
+	dotEnvFile = "test-resources/.env"
+
 	applicationUnderTestNamespace = "e2e-application-under-test-namespace"
 )
 
@@ -31,12 +33,14 @@ var (
 
 	setupFinishedSuccessfully bool
 
-	buildOperatorControllerImageFromLocalSources = true
-	buildInstrumentationImageFromLocalSources    = true
-	operatorHelmChart                            = localHelmChart
-	operatorHelmChartUrl                         = ""
-	operatorNamespace                            = "dash0-system"
-	images                                       = Images{
+	buildOperatorControllerImageFromLocalSources    = true
+	buildInstrumentationImageFromLocalSources       = true
+	buildCollectorImageFromLocalSources             = true
+	buildConfigurationReloaderImageFromLocalSources = true
+	operatorHelmChart                               = localHelmChart
+	operatorHelmChartUrl                            = ""
+	operatorNamespace                               = "dash0-system"
+	images                                          = Images{
 		operator: ImageSpec{
 			repository: "operator-controller",
 			tag:        "latest",
@@ -47,18 +51,39 @@ var (
 			tag:        "latest",
 			pullPolicy: "Never",
 		},
+		collector: ImageSpec{
+			repository: "collector",
+			tag:        "latest",
+			pullPolicy: "Never",
+		},
+		configurationReloader: ImageSpec{
+			repository: "configuration-reloader",
+			tag:        "latest",
+			pullPolicy: "Never",
+		},
 	}
 )
 
 var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 	BeforeAll(func() {
+		// Do not truncate string diff output.
+		format.MaxLength = 0
+
 		pwdOutput, err := Run(exec.Command("pwd"), false)
 		Expect(err).NotTo(HaveOccurred())
 		workingDir = strings.TrimSpace(pwdOutput)
 		fmt.Fprintf(GinkgoWriter, "workingDir: %s\n", workingDir)
 
-		kubeContextHasBeenChanged, originalKubeContext = SetKubeContext(kubeContextForTest)
+		env, err := readDotEnvFile(dotEnvFile)
+		Expect(err).NotTo(HaveOccurred())
+
+		localKubeCtx := env["LOCAL_KUBECTX"]
+		if localKubeCtx == "" {
+			Fail(fmt.Sprintf("The mandatory setting LOCAL_KUBECTX is missing in the file %s.", dotEnvFile))
+		}
+
+		kubeContextHasBeenChanged, originalKubeContext = SetKubeContext(localKubeCtx)
 		CheckIfRequiredPortsAreBlocked()
 		RenderTemplates()
 
@@ -67,7 +92,9 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 		readAndApplyEnvironmentVariables()
 		RebuildOperatorControllerImage(images.operator, buildOperatorControllerImageFromLocalSources)
-		RebuildDash0InstrumentationImage(images.instrumentation, buildInstrumentationImageFromLocalSources)
+		RebuildInstrumentationImage(images.instrumentation, buildInstrumentationImageFromLocalSources)
+		RebuildCollectorImage(images.collector, buildCollectorImageFromLocalSources)
+		RebuildConfigurationReloaderImage(images.configurationReloader, buildConfigurationReloaderImageFromLocalSources)
 		RebuildNodeJsApplicationContainerImage()
 
 		setupFinishedSuccessfully = true
@@ -252,14 +279,24 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 						tag:        additionalImageTag,
 						pullPolicy: "Never",
 					},
+					collector: ImageSpec{
+						repository: "collector",
+						tag:        additionalImageTag,
+						pullPolicy: "Never",
+					},
+					configurationReloader: ImageSpec{
+						repository: "configuration-reloader",
+						tag:        additionalImageTag,
+						pullPolicy: "Never",
+					},
 				}
 				DeployOperator(
 					operatorNamespace,
 					operatorHelmChart,
 					operatorHelmChartUrl,
-					// we deploy the chart with image digests initially, so that the helm upgrade command we run later
-					// (with image tags instead of digests) will actually change the reference to the image (even
-					// if it is the same image content).
+					// we deploy the chart with the tag $imageName:e2e-test initially, so that the helm upgrade command
+					// we run later (with :latest instead of :e2e-test) will actually change the reference to the image
+					// (even if it is the same image content).
 					initialImages,
 					false,
 					workingDir,
@@ -280,7 +317,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					operatorNamespace,
 					operatorHelmChart,
 					operatorHelmChartUrl,
-					// now we use different image tags
+					// now we use :latest instead of :e2e-test to trigger an actual change
 					images,
 					false,
 				)
@@ -471,6 +508,59 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				"webhook",
 			)
 		})
+
+		It("should update the daemonset collector configuration when updating the Dash0 endpoint", func() {
+			By("updating the Dash0 resource endpoint")
+
+			newIngressEndpoint := "ingress.eu-east-1.aws.dash0-dev.com:4317"
+			UpdateDash0MonitoringResource(applicationUnderTestNamespace, newIngressEndpoint)
+
+			By("verify that the config map has been updated by the controller")
+			Eventually(func(g Gomega) {
+				output, err := Run(exec.Command(
+					"kubectl",
+					"get",
+					"-n",
+					operatorNamespace,
+					collectorConfigMapNameQualified,
+					"-o",
+					"json",
+				))
+				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(output).To(ContainSubstring(newIngressEndpoint))
+			}, 10*time.Second, time.Second).Should(Succeed())
+
+			By("verify that the configuration reloader says to have triggered a config change")
+			Eventually(func(g Gomega) {
+				output, err := Run(exec.Command(
+					"kubectl",
+					"logs",
+					"-n",
+					operatorNamespace,
+					collectorDaemonSetNameQualified,
+					"-c",
+					"configuration-reloader",
+				))
+				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(output).To(ContainSubstring("Triggering a collector update due to changes to the config files"))
+			}, 10*time.Second, time.Second).Should(Succeed())
+
+			By("verify that the collector appears to have reloaded its configuration")
+			Eventually(func(g Gomega) {
+				output, err := Run(exec.Command(
+					"kubectl",
+					"logs",
+					"-n",
+					operatorNamespace,
+					collectorDaemonSetNameQualified,
+					"-c",
+					"opentelemetry-collector",
+				))
+				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(output).To(ContainSubstring("Received signal from OS"))
+				g.Expect(output).To(ContainSubstring("Config updated, restart service"))
+			}, 10*time.Second, time.Second).Should(Succeed())
+		})
 	})
 
 	Describe("operator removal", func() {
@@ -596,23 +686,26 @@ func runInParallelForAllWorkloadTypes[C any](
 }
 
 func readAndApplyEnvironmentVariables() {
-	buildOperatorControllerImageFromLocalSourcesRaw := getEnvOrDefault("BUILD_OPERATOR_CONTROLLER_IMAGE", "")
 	var err error
+
+	operatorHelmChart = getEnvOrDefault("OPERATOR_HELM_CHART", operatorHelmChart)
+	operatorHelmChartUrl = getEnvOrDefault("OPERATOR_HELM_CHART_URL", operatorHelmChartUrl)
+
+	buildOperatorControllerImageFromLocalSourcesRaw := getEnvOrDefault("BUILD_OPERATOR_CONTROLLER_IMAGE", "")
 	if buildOperatorControllerImageFromLocalSourcesRaw != "" {
 		buildOperatorControllerImageFromLocalSources, err = strconv.ParseBool(buildOperatorControllerImageFromLocalSourcesRaw)
 		Expect(err).NotTo(HaveOccurred())
 	}
+	images.operator.repository = getEnvOrDefault("CONTROLLER_IMG_REPOSITORY", images.operator.repository)
+	images.operator.tag = getEnvOrDefault("CONTROLLER_IMG_TAG", images.operator.tag)
+	images.operator.digest = getEnvOrDefault("CONTROLLER_IMG_DIGEST", images.operator.digest)
+	images.operator.pullPolicy = getEnvOrDefault("CONTROLLER_IMG_PULL_POLICY", images.operator.pullPolicy)
+
 	buildInstrumentationImageFromLocalSourcesRaw := getEnvOrDefault("BUILD_INSTRUMENTATION_IMAGE", "")
 	if buildInstrumentationImageFromLocalSourcesRaw != "" {
 		buildInstrumentationImageFromLocalSources, err = strconv.ParseBool(buildInstrumentationImageFromLocalSourcesRaw)
 		Expect(err).NotTo(HaveOccurred())
 	}
-	operatorHelmChart = getEnvOrDefault("OPERATOR_HELM_CHART", operatorHelmChart)
-	operatorHelmChartUrl = getEnvOrDefault("OPERATOR_HELM_CHART_URL", operatorHelmChartUrl)
-	images.operator.repository = getEnvOrDefault("IMG_REPOSITORY", images.operator.repository)
-	images.operator.tag = getEnvOrDefault("IMG_TAG", images.operator.tag)
-	images.operator.digest = getEnvOrDefault("IMG_DIGEST", images.operator.digest)
-	images.operator.pullPolicy = getEnvOrDefault("IMG_PULL_POLICY", images.operator.pullPolicy)
 	images.instrumentation.repository = getEnvOrDefault(
 		"INSTRUMENTATION_IMG_REPOSITORY",
 		images.instrumentation.repository,
@@ -622,6 +715,40 @@ func readAndApplyEnvironmentVariables() {
 	images.instrumentation.pullPolicy = getEnvOrDefault(
 		"INSTRUMENTATION_IMG_PULL_POLICY",
 		images.instrumentation.pullPolicy,
+	)
+
+	buildCollectorImageFromLocalSourcesRaw := getEnvOrDefault("BUILD_COLLECTOR_IMAGE", "")
+	if buildCollectorImageFromLocalSourcesRaw != "" {
+		buildCollectorImageFromLocalSources, err = strconv.ParseBool(buildCollectorImageFromLocalSourcesRaw)
+		Expect(err).NotTo(HaveOccurred())
+	}
+	images.collector.repository = getEnvOrDefault(
+		"COLLECTOR_IMG_REPOSITORY",
+		images.collector.repository,
+	)
+	images.collector.tag = getEnvOrDefault("COLLECTOR_IMG_TAG", images.collector.tag)
+	images.collector.digest = getEnvOrDefault("COLLECTOR_IMG_DIGEST", images.collector.digest)
+	images.collector.pullPolicy = getEnvOrDefault(
+		"COLLECTOR_IMG_PULL_POLICY",
+		images.collector.pullPolicy,
+	)
+
+	buildConfigurationReloaderImageFromLocalSourcesRaw := getEnvOrDefault("BUILD_CONFIGURATION_RELOADER_IMAGE", "")
+	if buildConfigurationReloaderImageFromLocalSourcesRaw != "" {
+		buildConfigurationReloaderImageFromLocalSources, err =
+			strconv.ParseBool(buildConfigurationReloaderImageFromLocalSourcesRaw)
+		Expect(err).NotTo(HaveOccurred())
+	}
+	images.configurationReloader.repository = getEnvOrDefault(
+		"CONFIGURATION_RELOADER_IMG_REPOSITORY",
+		images.configurationReloader.repository,
+	)
+	images.configurationReloader.tag = getEnvOrDefault("CONFIGURATION_RELOADER_IMG_TAG", images.configurationReloader.tag)
+	images.configurationReloader.digest = getEnvOrDefault("CONFIGURATION_RELOADER_IMG_DIGEST",
+		images.configurationReloader.digest)
+	images.configurationReloader.pullPolicy = getEnvOrDefault(
+		"CONFIGURATION_RELOADER_IMG_PULL_POLICY",
+		images.configurationReloader.pullPolicy,
 	)
 }
 

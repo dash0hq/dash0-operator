@@ -13,7 +13,6 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -24,8 +23,6 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
-	"github.com/dash0hq/dash0-operator/internal/dash0/util"
-
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
@@ -39,12 +36,6 @@ var (
 
 	timeout         = 10 * time.Second
 	pollingInterval = 50 * time.Millisecond
-
-	images = util.Images{
-		OperatorImage:                "some-registry.com:1234/dash0hq/operator-controller:1.2.3",
-		InitContainerImage:           "some-registry.com:1234/dash0hq/instrumentation:4.5.6",
-		InitContainerImagePullPolicy: corev1.PullAlways,
-	}
 
 	extraDash0MonitoringResourceNames = []types.NamespacedName{}
 
@@ -80,7 +71,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			Clientset:                clientset,
 			Recorder:                 recorder,
 			Scheme:                   k8sClient.Scheme(),
-			Images:                   images,
+			Images:                   TestImages,
 			OTelCollectorBaseUrl:     "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
 			OperatorNamespace:        Dash0OperatorNamespace,
 			BackendConnectionManager: backendConnectionManager,

@@ -15,6 +15,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/format"
 )
 
 var (
@@ -29,6 +30,8 @@ func TestOtelColResources(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
+	format.MaxLength = 0
+
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 
 	By("bootstrapping test environment")
