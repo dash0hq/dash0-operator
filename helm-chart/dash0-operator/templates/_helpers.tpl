@@ -51,6 +51,15 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 {{- default .Chart.AppVersion .Values.operator.image.tag }}
 {{- end }}
 
+{{/* the init container image */}}
+{{- define "dash0-operator.initContainerImage" -}}
+{{- include "dash0-operator.imageRef" (dict "image" .Values.operator.initContainerImage "context" .) -}}
+{{- end }}
+
+{{- define "dash0-operator.initContainerImageTag" -}}
+{{- default .Chart.AppVersion .Values.operator.initContainerImage.tag }}
+{{- end }}
+
 {{/* the collector image */}}
 {{- define "dash0-operator.collectorImage" -}}
 {{- include "dash0-operator.imageRef" (dict "image" .Values.operator.collectorImage "context" .) -}}
@@ -59,15 +68,6 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 {{/* the config reloader image */}}
 {{- define "dash0-operator.configurationReloaderImage" -}}
 {{- include "dash0-operator.imageRef" (dict "image" .Values.operator.configurationReloaderImage "context" .) -}}
-{{- end }}
-
-{{/* the init container image */}}
-{{- define "dash0-operator.initContainerImage" -}}
-{{- include "dash0-operator.imageRef" (dict "image" .Values.operator.initContainerImage "context" .) -}}
-{{- end }}
-
-{{- define "dash0-operator.initContainerImageTag" -}}
-{{- default .Chart.AppVersion .Values.operator.initContainerImage.tag }}
 {{- end }}
 
 {{- define "dash0-operator.imageRef" -}}

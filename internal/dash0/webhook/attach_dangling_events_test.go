@@ -52,7 +52,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 			Clientset:                clientset,
 			Recorder:                 recorder,
 			Scheme:                   k8sClient.Scheme(),
-			Images:                   images,
+			Images:                   TestImages,
 			OTelCollectorBaseUrl:     "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
 			OperatorNamespace:        Dash0OperatorNamespace,
 			BackendConnectionManager: backendConnectionManager,

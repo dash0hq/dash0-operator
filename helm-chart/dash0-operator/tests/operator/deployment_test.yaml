@@ -26,6 +26,18 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[3].value
           value: ghcr.io/dash0hq/instrumentation:99.100.101
+      - equal:
+          path: spec.template.spec.containers[0].env[4].name
+          value: DASH0_COLLECTOR_IMAGE
+      - equal:
+          path: spec.template.spec.containers[0].env[4].value
+          value: ghcr.io/dash0hq/collector:99.100.101
+      - equal:
+          path: spec.template.spec.containers[0].env[5].name
+          value: DASH0_CONFIGURATION_RELOADER_IMAGE
+      - equal:
+          path: spec.template.spec.containers[0].env[5].value
+          value: ghcr.io/dash0hq/configuration-reloader:99.100.101
 
   - it: should render deployment with custom settings
     set:
@@ -54,6 +66,14 @@ tests:
         imagePullSecrets:
           - name: regcred
           - name: anotherSecret
+        collectorImage:
+          repository: custom-collector-image
+          tag: "7.8.9"
+          pullPolicy: Never
+        configurationReloaderImage:
+          repository: custom-configuration-reloader-image
+          tag: "10.11.12"
+          pullPolicy: Always
         enableWebhook: false
         managerPodResources:
           limits:
@@ -132,15 +152,39 @@ tests:
           value: Always
       - equal:
           path: spec.template.spec.containers[0].env[5].name
-          value: ENABLE_WEBHOOK
+          value: DASH0_COLLECTOR_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[5].value
-          value: "false"
+          value: custom-collector-image:7.8.9
       - equal:
           path: spec.template.spec.containers[0].env[6].name
-          value: DASH0_DEVELOPMENT_MODE
+          value: DASH0_COLLECTOR_IMAGE_PULL_POLICY
       - equal:
           path: spec.template.spec.containers[0].env[6].value
+          value: Never
+      - equal:
+          path: spec.template.spec.containers[0].env[7].name
+          value: DASH0_CONFIGURATION_RELOADER_IMAGE
+      - equal:
+          path: spec.template.spec.containers[0].env[7].value
+          value: custom-configuration-reloader-image:10.11.12
+      - equal:
+          path: spec.template.spec.containers[0].env[8].name
+          value: DASH0_CONFIGURATION_RELOADER_IMAGE_PULL_POLICY
+      - equal:
+          path: spec.template.spec.containers[0].env[8].value
+          value: Always
+      - equal:
+          path: spec.template.spec.containers[0].env[9].name
+          value: ENABLE_WEBHOOK
+      - equal:
+          path: spec.template.spec.containers[0].env[9].value
+          value: "false"
+      - equal:
+          path: spec.template.spec.containers[0].env[10].name
+          value: DASH0_DEVELOPMENT_MODE
+      - equal:
+          path: spec.template.spec.containers[0].env[10].value
           value: "true"
       - equal:
           path: spec.template.spec.containers[0].resources.limits.cpu
@@ -162,6 +206,10 @@ tests:
           digest: sha256:e05496f5bcc3c2caf7d2a2944bfc084872d69dd1e9c365a521719c5bbcf4430c
         initContainerImage:
           digest: sha256:1e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda01
+        collectorImage:
+          digest: sha256:2e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda02
+        configurationReloaderImage:
+          digest: sha256:3e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda03
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
@@ -180,5 +228,17 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[3].value
           value: ghcr.io/dash0hq/instrumentation@sha256:1e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda01
-      - notExists:
+      - equal:
           path: spec.template.spec.containers[0].env[4].name
+          value: DASH0_COLLECTOR_IMAGE
+      - equal:
+          path: spec.template.spec.containers[0].env[4].value
+          value: ghcr.io/dash0hq/collector@sha256:2e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda02
+      - equal:
+          path: spec.template.spec.containers[0].env[5].name
+          value: DASH0_CONFIGURATION_RELOADER_IMAGE
+      - equal:
+          path: spec.template.spec.containers[0].env[5].value
+          value: ghcr.io/dash0hq/configuration-reloader@sha256:3e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda03
+      - notExists:
+          path: spec.template.spec.containers[0].env[6].name

@@ -39,25 +39,29 @@ import (
 )
 
 type environmentVariables struct {
-	operatorNamespace            string
-	oTelCollectorNamePrefix      string
-	operatorImage                string
-	collectorImage               string
-	configurationReloaderImage   string
-	initContainerImage           string
-	initContainerImagePullPolicy corev1.PullPolicy
-	e2eTestMode                  bool
-	e2eTestExportDir             string
+	operatorNamespace                    string
+	oTelCollectorNamePrefix              string
+	operatorImage                        string
+	initContainerImage                   string
+	initContainerImagePullPolicy         corev1.PullPolicy
+	collectorImage                       string
+	collectorImagePullPolicy             corev1.PullPolicy
+	configurationReloaderImage           string
+	configurationReloaderImagePullPolicy corev1.PullPolicy
+	e2eTestMode                          bool
+	e2eTestExportDir                     string
 }
 
 const (
-	operatorNamespaceEnvVarName            = "DASH0_OPERATOR_NAMESPACE"
-	oTelCollectorNamePrefixEnvVarName      = "OTEL_COLLECTOR_NAME_PREFIX"
-	operatorImageEnvVarName                = "DASH0_OPERATOR_IMAGE"
-	collectorImageEnvVarName               = "DASH0_COLLECTOR_IMAGE"
-	configurationReloaderImageEnvVarName   = "DASH0_CONFIGURATION_RELOADER_IMAGE"
-	initContainerImageEnvVarName           = "DASH0_INIT_CONTAINER_IMAGE"
-	initContainerImagePullPolicyEnvVarName = "DASH0_INIT_CONTAINER_IMAGE_PULL_POLICY"
+	operatorNamespaceEnvVarName                         = "DASH0_OPERATOR_NAMESPACE"
+	oTelCollectorNamePrefixEnvVarName                   = "OTEL_COLLECTOR_NAME_PREFIX"
+	operatorImageEnvVarName                             = "DASH0_OPERATOR_IMAGE"
+	initContainerImageEnvVarName                        = "DASH0_INIT_CONTAINER_IMAGE"
+	initContainerImagePullPolicyEnvVarName              = "DASH0_INIT_CONTAINER_IMAGE_PULL_POLICY"
+	collectorImageEnvVarName                            = "DASH0_COLLECTOR_IMAGE"
+	collectorImageImagePullPolicyEnvVarName             = "DASH0_COLLECTOR_IMAGE_PULL_POLICY"
+	configurationReloaderImageEnvVarName                = "DASH0_CONFIGURATION_RELOADER_IMAGE"
+	configurationReloaderImageImagePullPolicyEnvVarName = "DASH0_CONFIGURATION_RELOADER_IMAGE_PULL_POLICY"
 
 	developmentModeEnvVarName  = "DASH0_DEVELOPMENT_MODE"
 	e2eTestModeEnvVarName      = "DASH0_DEV_E2E_TEST_MODE"
@@ -205,12 +209,25 @@ func startOperatorManager(
 	}
 	setupLog.Info(
 		"configuration:",
+
 		"operator image",
 		envVars.operatorImage,
+
 		"init container image",
 		envVars.initContainerImage,
 		"init container image pull policy override",
 		envVars.initContainerImagePullPolicy,
+
+		"collector image",
+		envVars.collectorImage,
+		"collector image pull policy override",
+		envVars.collectorImagePullPolicy,
+
+		"configuration reloader image",
+		envVars.configurationReloaderImage,
+		"configuration reloader image pull policy override",
+		envVars.configurationReloaderImagePullPolicy,
+
 		"otel collector name prefix",
 		envVars.oTelCollectorNamePrefix,
 	)
@@ -252,9 +269,13 @@ func startDash0Controller(mgr manager.Manager, clientset *kubernetes.Clientset, 
 			envVars.operatorNamespace)
 
 	images := dash0util.Images{
-		OperatorImage:                envVars.operatorImage,
-		InitContainerImage:           envVars.initContainerImage,
-		InitContainerImagePullPolicy: envVars.initContainerImagePullPolicy,
+		OperatorImage:                        envVars.operatorImage,
+		InitContainerImage:                   envVars.initContainerImage,
+		InitContainerImagePullPolicy:         envVars.initContainerImagePullPolicy,
+		CollectorImage:                       envVars.collectorImage,
+		CollectorImagePullPolicy:             envVars.collectorImagePullPolicy,
+		ConfigurationReloaderImage:           envVars.configurationReloaderImage,
+		ConfigurationReloaderImagePullPolicy: envVars.configurationReloaderImagePullPolicy,
 	}
 
 	oTelColResourceManager := &otelcolresources.OTelColResourceManager{
@@ -318,39 +339,36 @@ func readEnvironmentVariables() (*environmentVariables, error) {
 	if !isSet {
 		return nil, fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, operatorNamespaceEnvVarName)
 	}
+
 	oTelCollectorNamePrefix, isSet := os.LookupEnv(oTelCollectorNamePrefixEnvVarName)
 	if !isSet {
 		return nil, fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, oTelCollectorNamePrefixEnvVarName)
 	}
+
 	operatorImage, isSet := os.LookupEnv(operatorImageEnvVarName)
 	if !isSet {
 		return nil, fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, operatorImageEnvVarName)
 	}
-	collectorImage, isSet := os.LookupEnv(collectorImageEnvVarName)
-	if !isSet {
-		return nil, fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, collectorImageEnvVarName)
-	}
-	configurationReloaderImage, isSet := os.LookupEnv(configurationReloaderImageEnvVarName)
-	if !isSet {
-		return nil, fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, configurationReloaderImageEnvVarName)
-	}
+
 	initContainerImage, isSet := os.LookupEnv(initContainerImageEnvVarName)
 	if !isSet {
 		return nil, fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, initContainerImageEnvVarName)
 	}
-	initContainerImagePullPolicyRaw := os.Getenv(initContainerImagePullPolicyEnvVarName)
-	var initContainerImagePullPolicy corev1.PullPolicy
-	if initContainerImagePullPolicyRaw != "" {
-		if initContainerImagePullPolicyRaw == string(corev1.PullAlways) ||
-			initContainerImagePullPolicyRaw == string(corev1.PullIfNotPresent) ||
-			initContainerImagePullPolicyRaw == string(corev1.PullNever) {
-			initContainerImagePullPolicy = corev1.PullPolicy(initContainerImagePullPolicyRaw)
-		} else {
-			setupLog.Info(
-				fmt.Sprintf(
-					"Ignoring unknown pull policy for init container image: %s.", initContainerImagePullPolicyRaw))
-		}
+	initContainerImagePullPolicy :=
+		readOptionalPullPolicyFromEnvironmentVariable(initContainerImagePullPolicyEnvVarName)
+
+	collectorImage, isSet := os.LookupEnv(collectorImageEnvVarName)
+	if !isSet {
+		return nil, fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, collectorImageEnvVarName)
 	}
+	collectorImagePullPolicy := readOptionalPullPolicyFromEnvironmentVariable(collectorImageImagePullPolicyEnvVarName)
+
+	configurationReloaderImage, isSet := os.LookupEnv(configurationReloaderImageEnvVarName)
+	if !isSet {
+		return nil, fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, configurationReloaderImageEnvVarName)
+	}
+	configurationReloaderImagePullPolicy :=
+		readOptionalPullPolicyFromEnvironmentVariable(configurationReloaderImageImagePullPolicyEnvVarName)
 
 	e2eTestModeRaw, isSet := os.LookupEnv(e2eTestModeEnvVarName)
 	e2eTestMode := isSet && strings.ToLower(e2eTestModeRaw) == "true"
@@ -360,16 +378,34 @@ func readEnvironmentVariables() (*environmentVariables, error) {
 	}
 
 	return &environmentVariables{
-		operatorNamespace:            operatorNamespace,
-		oTelCollectorNamePrefix:      oTelCollectorNamePrefix,
-		operatorImage:                operatorImage,
-		collectorImage:               collectorImage,
-		configurationReloaderImage:   configurationReloaderImage,
-		initContainerImage:           initContainerImage,
-		initContainerImagePullPolicy: initContainerImagePullPolicy,
-		e2eTestMode:                  e2eTestMode,
-		e2eTestExportDir:             e2eTestExportDir,
+		operatorNamespace:                    operatorNamespace,
+		oTelCollectorNamePrefix:              oTelCollectorNamePrefix,
+		operatorImage:                        operatorImage,
+		initContainerImage:                   initContainerImage,
+		initContainerImagePullPolicy:         initContainerImagePullPolicy,
+		collectorImage:                       collectorImage,
+		collectorImagePullPolicy:             collectorImagePullPolicy,
+		configurationReloaderImage:           configurationReloaderImage,
+		configurationReloaderImagePullPolicy: configurationReloaderImagePullPolicy,
+		e2eTestMode:                          e2eTestMode,
+		e2eTestExportDir:                     e2eTestExportDir,
 	}, nil
+}
+
+func readOptionalPullPolicyFromEnvironmentVariable(envVarName string) corev1.PullPolicy {
+	pullPolicyRaw := os.Getenv(envVarName)
+	if pullPolicyRaw != "" {
+		if pullPolicyRaw == string(corev1.PullAlways) ||
+			pullPolicyRaw == string(corev1.PullIfNotPresent) ||
+			pullPolicyRaw == string(corev1.PullNever) {
+			return corev1.PullPolicy(pullPolicyRaw)
+		} else {
+			setupLog.Info(
+				fmt.Sprintf(
+					"Ignoring unknown pull policy setting (%s): %s.", envVarName, pullPolicyRaw))
+		}
+	}
+	return ""
 }
 
 func deleteDash0MonitoringResourcesInAllNamespaces(logger *logr.Logger) error {

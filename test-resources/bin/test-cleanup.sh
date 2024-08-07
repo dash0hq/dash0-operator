@@ -14,7 +14,7 @@ source test-resources/bin/util
 load_env_file
 verify_kubectx
 
-kubectl delete -n ${target_namespace} -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml || true
+kubectl delete -n ${target_namespace} -f test-resources/customresources/dash0monitoring/dash0monitoring.secret.yaml || true
 
 make undeploy-via-helm || true
 

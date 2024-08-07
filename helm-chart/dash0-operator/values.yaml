@@ -87,6 +87,19 @@ operator:
     # override the default image pull policy
     pullPolicy:
 
+  # the container image to use for the instrumentation init container
+  # (there should usually be no reason to override this)
+  initContainerImage:
+    # Use a different image for the init container entirely. Note that Dash0 does not offer support for Dash0 operator
+    # setups that do not use Dash0's official init container image.
+    repository: "ghcr.io/dash0hq/instrumentation"
+    # overrides the image tag, which defaults to the chart appVersion.
+    tag:
+    # pull image by digest instead of tag; if this is set, the tag value will be ignored
+    digest:
+    # override the default image pull policy
+    pullPolicy:
+
   # the container image to use for the collector component (there should usually be no reason to override this)
   collectorImage:
     repository: "ghcr.io/dash0hq/collector"
@@ -97,22 +110,10 @@ operator:
     # override the default image pull policy
     pullPolicy:
 
-  # the container image to use for the configuration reloader of the collector component (there should usually be no reason to override this)
+  # the container image to use for the configuration reloader of the collector component
+  # (there should usually be no reason to override this)
   configurationReloaderImage:
     repository: "ghcr.io/dash0hq/configuration-reloader"
-    # overrides the image tag, which defaults to the chart appVersion.
-    tag:
-    # pull image by digest instead of tag; if this is set, the tag value will be ignored
-    digest:
-    # override the default image pull policy
-    pullPolicy:
-
-  # the container image to use for the instrumentation init container
-  # (there should usually be no reason to override this)
-  initContainerImage:
-    # Use a different image for the init container entirely. Note that Dash0 does not offer support for Dash0 operator
-    # setups that do not use Dash0's official init container image.
-    repository: "ghcr.io/dash0hq/instrumentation"
     # overrides the image tag, which defaults to the chart appVersion.
     tag:
     # pull image by digest instead of tag; if this is set, the tag value will be ignored

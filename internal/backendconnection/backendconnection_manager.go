@@ -51,8 +51,8 @@ func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInDash0
 	resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 		m.OTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 			ctx,
-			images,
 			operatorNamespace,
+			images,
 			dash0MonitoringResource.Spec.IngressEndpoint,
 			dash0MonitoringResource.Spec.AuthorizationToken,
 			dash0MonitoringResource.Spec.SecretRef,
@@ -121,8 +121,8 @@ func (m *BackendConnectionManager) RemoveOpenTelemetryCollectorIfNoDash0Monitori
 
 	if err := m.OTelColResourceManager.DeleteResources(
 		ctx,
-		images,
 		operatorNamespace,
+		images,
 		dash0MonitoringResourceToBeDeleted.Spec.IngressEndpoint,
 		dash0MonitoringResourceToBeDeleted.Spec.AuthorizationToken,
 		dash0MonitoringResourceToBeDeleted.Spec.SecretRef,

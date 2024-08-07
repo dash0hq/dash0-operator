@@ -61,20 +61,20 @@ CONTROLLER_IMG_TAG ?= latest
 CONTROLLER_IMG ?= $(CONTROLLER_IMG_REPOSITORY):$(CONTROLLER_IMG_TAG)
 CONTROLLER_IMG_PULL_POLICY ?= Never
 
-COLLECTOR_IMG_REPOSITORY ?= collector
-COLLECTOR_IMG_TAG ?= latest
-COLLECTOR_IMG ?= $(COLLECTOR_IMG_REPOSITORY):$(COLLECTOR_IMG_TAG)
-COLLECTOR_IMG_PULL_POLICY ?= Never
-
 INSTRUMENTATION_IMG_REPOSITORY ?= instrumentation
 INSTRUMENTATION_IMG_TAG ?= latest
 INSTRUMENTATION_IMG ?= $(INSTRUMENTATION_IMG_REPOSITORY):$(INSTRUMENTATION_IMG_TAG)
 INSTRUMENTATION_IMG_PULL_POLICY ?= Never
 
-CONFIGRELOADER_IMG_REPOSITORY ?= configuration-reloader
-CONFIGRELOADER_IMG_TAG ?= latest
-CONFIGRELOADER_IMG ?= $(CONFIGRELOADER_IMG_REPOSITORY):$(CONFIGRELOADER_IMG_TAG)
-CONFIGRELOADER_IMG_PULL_POLICY ?= Never
+COLLECTOR_IMG_REPOSITORY ?= collector
+COLLECTOR_IMG_TAG ?= latest
+COLLECTOR_IMG ?= $(COLLECTOR_IMG_REPOSITORY):$(COLLECTOR_IMG_TAG)
+COLLECTOR_IMG_PULL_POLICY ?= Never
+
+CONFIGURATION_RELOADER_IMG_REPOSITORY ?= configuration-reloader
+CONFIGURATION_RELOADER_IMG_TAG ?= latest
+CONFIGURATION_RELOADER_IMG ?= $(CONFIGURATION_RELOADER_IMG_REPOSITORY):$(CONFIGURATION_RELOADER_IMG_TAG)
+CONFIGURATION_RELOADER_IMG_PULL_POLICY ?= Never
 
 
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
@@ -185,7 +185,7 @@ run: manifests generate fmt vet ## Run a controller from your host.
 docker-build: ## Build docker image with the manager.
 	$(CONTAINER_TOOL) build -t ${CONTROLLER_IMG} .
 	$(CONTAINER_TOOL) build -t ${COLLECTOR_IMG} images/collector
-	$(CONTAINER_TOOL) build -t ${CONFIGRELOADER_IMG} images/configreloader
+	$(CONTAINER_TOOL) build -t ${CONFIGURATION_RELOADER_IMG} images/configreloader
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx CONTROLLER_IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
@@ -204,7 +204,7 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 	$(CONTAINER_TOOL) buildx use project-v3-builder
 	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${CONTROLLER_IMG} -f Dockerfile.cross .
 	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${COLLECTOR_IMG} -f images/collector/Dockerfile.cross images/collector
-	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${CONFIGRELOADER_IMG} -f images/configreloader/Dockerfile.cross images/configreloader
+	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${CONFIGURATION_RELOADER_IMG} -f images/configreloader/Dockerfile.cross images/configreloader
 	- $(CONTAINER_TOOL) buildx rm project-v3-builder
 	rm Dockerfile.cross images/collector/Dockerfile.cross images/configreloader/Dockerfile.cross
 
@@ -246,6 +246,12 @@ deploy-via-helm: ## Deploy the controller via helm to the K8s cluster specified 
 		--set operator.initContainerImage.repository=$(INSTRUMENTATION_IMG_REPOSITORY) \
 		--set operator.initContainerImage.tag=$(INSTRUMENTATION_IMG_TAG) \
 		--set operator.initContainerImage.pullPolicy=$(INSTRUMENTATION_IMG_PULL_POLICY) \
+		--set operator.collectorImage.repository=$(COLLECTOR_IMG_REPOSITORY) \
+		--set operator.collectorImage.tag=$(COLLECTOR_IMG_TAG) \
+		--set operator.collectorImage.pullPolicy=$(COLLECTOR_IMG_PULL_POLICY) \
+		--set operator.configurationReloaderImage.repository=$(CONFIGURATION_RELOADER_IMG_REPOSITORY) \
+		--set operator.configurationReloaderImage.tag=$(CONFIGURATION_RELOADER_IMG_TAG) \
+		--set operator.configurationReloaderImage.pullPolicy=$(CONFIGURATION_RELOADER_IMG_PULL_POLICY) \
 		--set operator.developmentMode=true \
 		dash0-operator \
 		$(OPERATOR_HELM_CHART)
@@ -322,7 +328,7 @@ bundle-build: ## Build the bundle image.
 
 .PHONY: bundle-push
 bundle-push: ## Push the bundle image.
-	$(MAKE) docker-push IMG=$(BUNDLE_IMG)
+	$(MAKE) docker-push CONTROLLER_IMG=$(BUNDLE_IMG)
 
 .PHONY: opm
 OPM = $(LOCALBIN)/opm
@@ -363,4 +369,4 @@ catalog-build: opm ## Build a catalog image.
 # Push the catalog image.
 .PHONY: catalog-push
 catalog-push: ## Push a catalog image.
-	$(MAKE) docker-push IMG=$(CATALOG_IMG)
+	$(MAKE) docker-push CONTROLLER_IMG=$(CATALOG_IMG)

@@ -17,6 +17,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 )
 
 type E2eTestConfig struct {
@@ -25,14 +27,13 @@ type E2eTestConfig struct {
 }
 
 type oTelColConfig struct {
-	Namespace                  string
-	NamePrefix                 string
-	IngressEndpoint            string
-	AuthorizationToken         string
-	SecretRef                  string
-	CollectorImage             string
-	ConfigurationReloaderImage string
-	e2eTest                    E2eTestConfig
+	Namespace          string
+	NamePrefix         string
+	IngressEndpoint    string
+	AuthorizationToken string
+	SecretRef          string
+	Images             util.Images
+	E2eTest            E2eTestConfig
 }
 
 type oTelConfigTemplateValues struct {
@@ -52,7 +53,6 @@ const (
 	appKubernetesIoNameKey           = "app.kubernetes.io/name"
 	appKubernetesIoInstanceKey       = "app.kubernetes.io/instance"
 	appKubernetesIoComponentLabelKey = "app.kubernetes.io/component"
-	appKubernetesIoVersionKey        = "app.kubernetes.io/version"
 	appKubernetesIoManagedByKey      = "app.kubernetes.io/managed-by"
 	dash0OptOutLabelKey              = "dash0.com/enable"
 
@@ -277,7 +277,7 @@ func configMap(config *oTelColConfig, useSecretRef bool) (*corev1.ConfigMap, err
 	configMapData := map[string]string{
 		collectorYaml: collectorYamlContent.String(),
 	}
-	if config.e2eTest.Enabled {
+	if config.E2eTest.Enabled {
 		var collectorExtraYamlContent bytes.Buffer
 		err = extraConfigTemplate.Execute(&collectorExtraYamlContent, values)
 		if err != nil {
@@ -398,7 +398,7 @@ func daemonSet(config *oTelColConfig, useSecretRef bool) *appsv1.DaemonSet {
 		"/etc/otelcol/conf/collector.yaml",
 	}
 
-	if config.e2eTest.Enabled {
+	if config.E2eTest.Enabled {
 		configFiles = append(configFiles, "/etc/otelcol/conf/collector-extra.yaml")
 	}
 
@@ -408,7 +408,8 @@ func daemonSet(config *oTelColConfig, useSecretRef bool) *appsv1.DaemonSet {
 	}
 
 	collectorPidFilePath := "/etc/otelcol/run/pid.file"
-	volumeMounts := []corev1.VolumeMount{
+
+	commonVolumeMounts := []corev1.VolumeMount{
 		{
 			Name:      "opentelemetry-collector-configmap",
 			MountPath: "/etc/otelcol/conf",
@@ -420,16 +421,21 @@ func daemonSet(config *oTelColConfig, useSecretRef bool) *appsv1.DaemonSet {
 			ReadOnly:  false,
 		},
 	}
-	if !config.e2eTest.Enabled {
+	collectorVolumeMounts := make([]corev1.VolumeMount, len(commonVolumeMounts))
+	copy(collectorVolumeMounts, commonVolumeMounts)
+	configReloaderVolumeMounts := make([]corev1.VolumeMount, len(commonVolumeMounts))
+	copy(configReloaderVolumeMounts, commonVolumeMounts)
+
+	if !config.E2eTest.Enabled {
 		if useSecretRef {
-			volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			collectorVolumeMounts = append(collectorVolumeMounts, corev1.VolumeMount{
 				Name:      "dash0-secret-volume",
 				MountPath: "/etc/dash0/secret-volume",
 				ReadOnly:  true,
 			})
 		}
 	} else {
-		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+		collectorVolumeMounts = append(collectorVolumeMounts, corev1.VolumeMount{
 			Name:      "telemetry-file-export",
 			MountPath: "/collector-received-data",
 			ReadOnly:  false,
@@ -440,7 +446,7 @@ func daemonSet(config *oTelColConfig, useSecretRef bool) *appsv1.DaemonSet {
 		Key:  collectorYaml,
 		Path: collectorYaml,
 	}}
-	if config.e2eTest.Enabled {
+	if config.E2eTest.Enabled {
 		configMapItems = append(configMapItems, corev1.KeyToPath{
 			Key:  collectorExtraYaml,
 			Path: collectorExtraYaml,
@@ -470,7 +476,7 @@ func daemonSet(config *oTelColConfig, useSecretRef bool) *appsv1.DaemonSet {
 			},
 		},
 	}
-	if !config.e2eTest.Enabled {
+	if !config.E2eTest.Enabled {
 		if useSecretRef {
 			volumes = append(volumes, corev1.Volume{
 				Name: "dash0-secret-volume",
@@ -486,19 +492,117 @@ func daemonSet(config *oTelColConfig, useSecretRef bool) *appsv1.DaemonSet {
 			Name: "telemetry-file-export",
 			VolumeSource: corev1.VolumeSource{
 				HostPath: &corev1.HostPathVolumeSource{
-					Path: config.e2eTest.ExportDir,
+					Path: config.E2eTest.ExportDir,
 					Type: &directoryOrCreate,
 				},
 			},
 		})
 	}
 
-	truthy := true
-
 	configReloaderArgs := []string{
 		"--pidfile=" + collectorPidFilePath,
 	}
 	configReloaderArgs = append(configReloaderArgs, configFiles...)
+
+	collectorContainer := corev1.Container{
+		Name:            openTelemetryCollector,
+		Args:            oTelColArgs,
+		SecurityContext: &corev1.SecurityContext{},
+		Image:           config.Images.CollectorImage,
+		Ports: []corev1.ContainerPort{
+			{
+				Name:          "otlp",
+				ContainerPort: 4317,
+				Protocol:      corev1.ProtocolTCP,
+				HostPort:      4317,
+			},
+			{
+				Name:          "otlp-http",
+				ContainerPort: 4318,
+				Protocol:      corev1.ProtocolTCP,
+				HostPort:      4318,
+			},
+			{
+				Name:          "k8s-probes",
+				ContainerPort: 13133,
+				Protocol:      corev1.ProtocolTCP,
+				HostPort:      13133,
+			},
+		},
+		Env: []corev1.EnvVar{
+			{
+				Name: "MY_POD_IP",
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: &corev1.ObjectFieldSelector{
+						FieldPath: "status.podIP",
+					},
+				},
+			},
+			{
+				Name: "K8S_NODE_NAME",
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: &corev1.ObjectFieldSelector{
+						FieldPath: "spec.nodeName",
+					},
+				},
+			},
+			{
+				Name:  "DASH0_COLLECTOR_PID_FILE",
+				Value: collectorPidFilePath,
+			},
+			{
+				Name:  "GOMEMLIMIT",
+				Value: "400MiB",
+			},
+		},
+		LivenessProbe: &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Path: "/",
+					Port: intstr.FromInt32(13133),
+				},
+			},
+		},
+		ReadinessProbe: &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Path: "/",
+					Port: intstr.FromInt32(13133),
+				},
+			},
+		},
+		Resources: corev1.ResourceRequirements{
+			Limits: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("500Mi"),
+			},
+		},
+		VolumeMounts: collectorVolumeMounts,
+	}
+	if config.Images.CollectorImagePullPolicy != "" {
+		collectorContainer.ImagePullPolicy = config.Images.CollectorImagePullPolicy
+	}
+
+	configurationReloaderContainer := corev1.Container{
+		Name:            configReloader,
+		Args:            configReloaderArgs,
+		SecurityContext: &corev1.SecurityContext{},
+		Image:           config.Images.ConfigurationReloaderImage,
+		Env: []corev1.EnvVar{
+			{
+				Name:  "GOMEMLIMIT",
+				Value: "4MiB",
+			},
+		},
+		Resources: corev1.ResourceRequirements{
+			Limits: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("12Mi"),
+			},
+		},
+		VolumeMounts: configReloaderVolumeMounts,
+	}
+	if config.Images.ConfigurationReloaderImagePullPolicy != "" {
+		configurationReloaderContainer.ImagePullPolicy = config.Images.ConfigurationReloaderImagePullPolicy
+	}
 
 	return &appsv1.DaemonSet{
 		TypeMeta: metav1.TypeMeta{
@@ -524,103 +628,12 @@ func daemonSet(config *oTelColConfig, useSecretRef bool) *appsv1.DaemonSet {
 				Spec: corev1.PodSpec{
 					ServiceAccountName: serviceAccountName(config.NamePrefix),
 					SecurityContext:    &corev1.PodSecurityContext{},
-					// Enable configuration processor to send Unix signals to the collector processor
-					ShareProcessNamespace: &truthy,
+					// This setting is required to enable the configuration reloader process to send Unix signals to the
+					// collector process.
+					ShareProcessNamespace: &util.True,
 					Containers: []corev1.Container{
-						{
-							Name:            openTelemetryCollector,
-							Args:            oTelColArgs,
-							SecurityContext: &corev1.SecurityContext{},
-							Image:           config.CollectorImage,
-							ImagePullPolicy: corev1.PullIfNotPresent,
-							Ports: []corev1.ContainerPort{
-								{
-									Name:          "otlp",
-									ContainerPort: 4317,
-									Protocol:      corev1.ProtocolTCP,
-									HostPort:      4317,
-								},
-								{
-									Name:          "otlp-http",
-									ContainerPort: 4318,
-									Protocol:      corev1.ProtocolTCP,
-									HostPort:      4318,
-								},
-								{
-									Name:          "k8s-probes",
-									ContainerPort: 13133,
-									Protocol:      corev1.ProtocolTCP,
-									HostPort:      13133,
-								},
-							},
-							Env: []corev1.EnvVar{
-								{
-									Name: "MY_POD_IP",
-									ValueFrom: &corev1.EnvVarSource{
-										FieldRef: &corev1.ObjectFieldSelector{
-											FieldPath: "status.podIP",
-										},
-									},
-								},
-								{
-									Name: "K8S_NODE_NAME",
-									ValueFrom: &corev1.EnvVarSource{
-										FieldRef: &corev1.ObjectFieldSelector{
-											FieldPath: "spec.nodeName",
-										},
-									},
-								},
-								{
-									Name:  "DASH0_COLLECTOR_PID_FILE",
-									Value: collectorPidFilePath,
-								},
-								{
-									Name:  "GOMEMLIMIT",
-									Value: "400MiB",
-								},
-							},
-							LivenessProbe: &corev1.Probe{
-								ProbeHandler: corev1.ProbeHandler{
-									HTTPGet: &corev1.HTTPGetAction{
-										Path: "/",
-										Port: intstr.FromInt32(13133),
-									},
-								},
-							},
-							ReadinessProbe: &corev1.Probe{
-								ProbeHandler: corev1.ProbeHandler{
-									HTTPGet: &corev1.HTTPGetAction{
-										Path: "/",
-										Port: intstr.FromInt32(13133),
-									},
-								},
-							},
-							Resources: corev1.ResourceRequirements{
-								Limits: corev1.ResourceList{
-									corev1.ResourceMemory: resource.MustParse("500Mi"),
-								},
-							},
-							VolumeMounts: volumeMounts,
-						},
-						{
-							Name:            configReloader,
-							Args:            configReloaderArgs,
-							SecurityContext: &corev1.SecurityContext{},
-							Image:           config.ConfigurationReloaderImage,
-							ImagePullPolicy: corev1.PullIfNotPresent,
-							Env: []corev1.EnvVar{
-								{
-									Name:  "GOMEMLIMIT",
-									Value: "4MiB",
-								},
-							},
-							Resources: corev1.ResourceRequirements{
-								Limits: corev1.ResourceList{
-									corev1.ResourceMemory: resource.MustParse("12Mi"),
-								},
-							},
-							VolumeMounts: volumeMounts,
-						},
+						collectorContainer,
+						configurationReloaderContainer,
 					},
 					Volumes:     volumes,
 					HostNetwork: false,

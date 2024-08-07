@@ -8,12 +8,13 @@ import (
 	"errors"
 	"reflect"
 
-	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 	"github.com/go-logr/logr"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 )
 
 type OTelColResourceManager struct {
@@ -22,28 +23,23 @@ type OTelColResourceManager struct {
 	E2eTestConfig           E2eTestConfig
 }
 
-const (
-	oTelCollectorImageVersion = "0.105.0"
-)
-
 func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	ctx context.Context,
-	images util.Images,
 	namespace string,
+	images util.Images,
 	ingressEndpoint string,
 	authorizationToken string,
 	secretRef string,
 	logger *logr.Logger,
 ) (bool, bool, error) {
 	config := &oTelColConfig{
-		Namespace:                  namespace,
-		NamePrefix:                 m.OTelCollectorNamePrefix,
-		IngressEndpoint:            ingressEndpoint,
-		SecretRef:                  secretRef,
-		CollectorImage:             images.CollectorImage,
-		ConfigurationReloaderImage: images.ConfigurationReloaderImage,
-		AuthorizationToken:         authorizationToken,
-		e2eTest:                    m.E2eTestConfig,
+		Namespace:          namespace,
+		NamePrefix:         m.OTelCollectorNamePrefix,
+		IngressEndpoint:    ingressEndpoint,
+		SecretRef:          secretRef,
+		Images:             images,
+		AuthorizationToken: authorizationToken,
+		E2eTest:            m.E2eTestConfig,
 	}
 	desiredState, err := assembleDesiredState(config)
 	if err != nil {
@@ -167,22 +163,21 @@ func (m *OTelColResourceManager) updateResource(
 
 func (m *OTelColResourceManager) DeleteResources(
 	ctx context.Context,
-	images util.Images,
 	namespace string,
+	images util.Images,
 	ingressEndpoint string,
 	authorizationToken string,
 	secretRef string,
 	logger *logr.Logger,
 ) error {
 	config := &oTelColConfig{
-		Namespace:                  namespace,
-		NamePrefix:                 m.OTelCollectorNamePrefix,
-		IngressEndpoint:            ingressEndpoint,
-		SecretRef:                  secretRef,
-		CollectorImage:             images.CollectorImage,
-		ConfigurationReloaderImage: images.ConfigurationReloaderImage,
-		AuthorizationToken:         authorizationToken,
-		e2eTest:                    m.E2eTestConfig,
+		Namespace:          namespace,
+		NamePrefix:         m.OTelCollectorNamePrefix,
+		IngressEndpoint:    ingressEndpoint,
+		SecretRef:          secretRef,
+		Images:             images,
+		AuthorizationToken: authorizationToken,
+		E2eTest:            m.E2eTestConfig,
 	}
 	allObjects, err := assembleDesiredState(config)
 	if err != nil {

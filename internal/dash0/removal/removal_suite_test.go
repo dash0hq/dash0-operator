@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -20,13 +19,12 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/format"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/dash0/controller"
-	"github.com/dash0hq/dash0-operator/internal/dash0/util"
-
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
@@ -41,12 +39,6 @@ var (
 	reconciler       *controller.Dash0Reconciler
 	cfg              *rest.Config
 	testEnv          *envtest.Environment
-
-	images = util.Images{
-		OperatorImage:                "some-registry.com:1234/dash0hq/operator-controller:1.2.3",
-		InitContainerImage:           "some-registry.com:1234/dash0hq/instrumentation:4.5.6",
-		InitContainerImagePullPolicy: corev1.PullAlways,
-	}
 )
 
 func TestRemoval(t *testing.T) {
@@ -56,6 +48,8 @@ func TestRemoval(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
+	format.MaxLength = 0
+
 	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
 
 	By("bootstrapping test environment")
@@ -112,7 +106,7 @@ var _ = BeforeSuite(func() {
 		Clientset:                clientset,
 		Recorder:                 mgr.GetEventRecorderFor("dash0-controller"),
 		Scheme:                   k8sClient.Scheme(),
-		Images:                   images,
+		Images:                   TestImages,
 		OTelCollectorBaseUrl:     "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
 		OperatorNamespace:        Dash0OperatorNamespace,
 		BackendConnectionManager: backendConnectionManager,

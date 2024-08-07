@@ -144,8 +144,8 @@ jobs:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
           imageName: collector
           imageTitle: Dash0 Kubernetes Collector
-          imageDescription: the collector for the Dash0 Kubernetes operator
-          context: .
+          imageDescription: the OpenTelemetry collector for the Dash0 Kubernetes operator
+          context: images/collector
 
       - name: build configuration reloader image
         uses: ./.github/actions/build-image
@@ -155,7 +155,7 @@ jobs:
           imageName: configuration-reloader
           imageTitle: Dash0 Kubernetes Configuration Reloader
           imageDescription: the configuration reloader for the Dash0 Kubernetes operator
-          context: .
+          context: images/configreloader
 
       - name: build operator controller image
         uses: ./.github/actions/build-image

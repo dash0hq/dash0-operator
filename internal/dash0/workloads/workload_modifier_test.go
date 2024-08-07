@@ -10,7 +10,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
@@ -24,11 +23,7 @@ import (
 
 var (
 	instrumentationMetadata = util.InstrumentationMetadata{
-		Images: util.Images{
-			OperatorImage:                "some-registry.com:1234/dash0hq/operator-controller:1.2.3",
-			InitContainerImage:           "some-registry.com:1234/dash0hq/instrumentation:4.5.6",
-			InitContainerImagePullPolicy: corev1.PullAlways,
-		},
+		Images:               TestImages,
 		OTelCollectorBaseUrl: "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
 		InstrumentedBy:       "modify_test",
 	}
