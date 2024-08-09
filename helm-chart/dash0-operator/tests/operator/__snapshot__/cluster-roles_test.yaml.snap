@@ -4,10 +4,10 @@ cluster roles should match snapshot:
     kind: ClusterRole
     metadata:
       labels:
-        app.kubernetes.io/component: kube-rbac-proxy
+        app.kubernetes.io/component: controller
         app.kubernetes.io/instance: manager-role
         app.kubernetes.io/managed-by: Helm
-        app.kubernetes.io/name: clusterrole
+        app.kubernetes.io/name: dash0-operator
         app.kubernetes.io/part-of: dash0-operator
         app.kubernetes.io/version: 0.0.0
         helm.sh/chart: dash0-operator-0.0.0
@@ -156,10 +156,10 @@ cluster roles should match snapshot:
     kind: ClusterRole
     metadata:
       labels:
-        app.kubernetes.io/component: kube-rbac-proxy
-        app.kubernetes.io/instance: metrics-reader
+        app.kubernetes.io/component: controller
+        app.kubernetes.io/instance: metrics-role
         app.kubernetes.io/managed-by: Helm
-        app.kubernetes.io/name: clusterrole
+        app.kubernetes.io/name: dash0-operator
         app.kubernetes.io/part-of: dash0-operator
         app.kubernetes.io/version: 0.0.0
         helm.sh/chart: dash0-operator-0.0.0
@@ -174,10 +174,10 @@ cluster roles should match snapshot:
     kind: ClusterRole
     metadata:
       labels:
-        app.kubernetes.io/component: kube-rbac-proxy
+        app.kubernetes.io/component: controller
         app.kubernetes.io/instance: proxy-role
         app.kubernetes.io/managed-by: Helm
-        app.kubernetes.io/name: clusterrole
+        app.kubernetes.io/name: dash0-operator
         app.kubernetes.io/part-of: dash0-operator
         app.kubernetes.io/version: 0.0.0
         helm.sh/chart: dash0-operator-0.0.0

@@ -30,7 +30,6 @@ import (
 )
 
 const (
-	certmanagerVersion             = "v1.14.5"
 	localHelmChart                 = "helm-chart/dash0-operator"
 	operatorHelmReleaseName        = "e2e-tests-operator-helm-release"
 	tracesJsonMaxLineLength        = 1_048_576
@@ -129,144 +128,6 @@ func RevertKubeCtx(originalKubeContext string) {
 		fmt.Fprint(GinkgoWriter, err.Error())
 	}
 	fmt.Fprint(GinkgoWriter, output)
-}
-
-func EnsureCertManagerIsInstalled() bool {
-	err := RunAndIgnoreOutput(exec.Command("kubectl", "get", "ns", "cert-manager"), false)
-	if err != nil {
-		By("installing the cert-manager")
-		fmt.Fprint(GinkgoWriter,
-			"Hint: To get a faster feedback cycle on e2e tests, deploy cert-manager once via "+
-				"test-resources/cert-manager/deploy.sh. If the e2e tests find an existing cert-manager namespace, they "+
-				"will not deploy cert-manager and they will also not undeploy it after running the test suite.\n",
-		)
-		Expect(installCertManager()).To(Succeed())
-		return true
-	} else {
-		fmt.Fprint(GinkgoWriter,
-			"The cert-manager namespace exists, assuming cert-manager has been deployed already.\n",
-		)
-	}
-	return false
-}
-
-func installCertManager() error {
-	repoList, err := Run(exec.Command("helm", "repo", "list"))
-	if err != nil {
-		return err
-	}
-	if !strings.Contains(repoList, "jetstack") {
-		fmt.Fprintf(GinkgoWriter, "The helm repo for cert-manager has not been found, adding it now.\n")
-		if err := RunAndIgnoreOutput(
-			exec.Command(
-				"helm",
-				"repo",
-				"add",
-				"jetstack",
-				"https://charts.jetstack.io",
-				"--force-update",
-			)); err != nil {
-			return err
-		}
-		fmt.Fprintf(GinkgoWriter, "Running helm repo update.\n")
-		if err = RunAndIgnoreOutput(exec.Command("helm", "repo", "update")); err != nil {
-			return err
-		}
-	}
-
-	if err := RunAndIgnoreOutput(exec.Command(
-		"helm",
-		"install",
-		"cert-manager",
-		"jetstack/cert-manager",
-		"--namespace",
-		"cert-manager",
-		"--create-namespace",
-		"--version",
-		certmanagerVersion,
-		"--set",
-		"installCRDs=true",
-		"--timeout",
-		"5m",
-	)); err != nil {
-		return err
-	}
-
-	// Wait for cert-manager-webhook to be ready, which can take time if cert-manager
-	// was re-installed after uninstalling on a cluster.
-	if err := RunAndIgnoreOutput(
-		exec.Command(
-			"kubectl",
-			"wait",
-			"deployment.apps/cert-manager-webhook",
-			"--for",
-			"condition=Available",
-			"--namespace",
-			"cert-manager",
-			"--timeout",
-			"5m",
-		)); err != nil {
-		return err
-	}
-	if err := RunAndIgnoreOutput(
-		exec.Command(
-			"kubectl",
-			"wait",
-			"deployment.apps/cert-manager-cainjector",
-			"--for",
-			"condition=Available",
-			"--namespace",
-			"cert-manager",
-			"--timeout",
-			"60s",
-		)); err != nil {
-		return err
-	}
-	if err := RunAndIgnoreOutput(
-		exec.Command(
-			"kubectl",
-			"wait",
-			"deployment.apps/cert-manager-cainjector",
-			"--for",
-			"condition=Available",
-			"--namespace",
-			"cert-manager",
-			"--timeout",
-			"60s",
-		)); err != nil {
-		return err
-	}
-	return nil
-}
-
-func UninstallCertManagerIfApplicable(certManagerHasBeenInstalled bool) {
-	if certManagerHasBeenInstalled {
-		By("uninstalling the cert-manager bundle")
-		uninstallCertManager()
-	} else {
-		fmt.Fprint(GinkgoWriter,
-			"Note: The e2e test suite did not install cert-manager, thus it will also not uninstall it.\n",
-		)
-	}
-}
-
-func uninstallCertManager() {
-	if err := RunAndIgnoreOutput(exec.Command(
-		"helm",
-		"uninstall",
-		"cert-manager",
-		"--namespace",
-		"cert-manager",
-		"--ignore-not-found",
-	)); err != nil {
-		warnError(err)
-	}
-
-	if err := RunAndIgnoreOutput(
-		exec.Command(
-			"kubectl", "delete", "namespace", "cert-manager", "--ignore-not-found")); err != nil {
-		warnError(err)
-	}
 }
 
 func RecreateNamespace(namespace string) {
@@ -568,10 +429,11 @@ func ensureDash0OperatorHelmRepoIsInstalled(operatorHelmChart string, operatorHe
 
 func verifyThatControllerPodIsRunning(operatorNamespace string) {
 	var controllerPodName string
-	By("validating that the controller-manager pod is running as expected")
+	By("validating that the controller pod is running as expected")
 	verifyControllerUp := func(g Gomega) error {
 		cmd := exec.Command("kubectl", "get",
-			"pods", "-l", "control-plane=controller-manager",
+			"pods", "-l", "app.kubernetes.io/name=dash0-operator",
+			"-l", "app.kubernetes.io/component=controller",
 			"-o", "go-template={{ range .items }}"+
 				"{{ if not .metadata.deletionTimestamp }}"+
 				"{{ .metadata.name }}"+
@@ -586,7 +448,7 @@ func verifyThatControllerPodIsRunning(operatorNamespace string) {
 			return fmt.Errorf("expect 1 controller pods running, but got %d -- %s", len(podNames), podOutput)
 		}
 		controllerPodName = podNames[0]
-		g.Expect(controllerPodName).To(ContainSubstring("controller-manager"))
+		g.Expect(controllerPodName).To(ContainSubstring("controller"))
 
 		cmd = exec.Command("kubectl", "get",
 			"pods", controllerPodName, "-o", "jsonpath={.status.phase}",
@@ -1571,10 +1433,6 @@ func Run(cmd *exec.Cmd, logCommandArgs ...bool) (string, error) {
 	}
 
 	return string(output), nil
-}
-
-func warnError(err error) {
-	fmt.Fprintf(GinkgoWriter, "warning: %v\n", err)
 }
 
 // GetNonEmptyLines converts given command output string into individual objects

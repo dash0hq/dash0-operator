@@ -4,7 +4,7 @@
 [![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/dash0-operator)](https://artifacthub.io/packages/search?repo=dash0-operator)
 
 The Dash0 Kubernetes Operator makes observability for Kubernetes _easy_.
-Simply install the operator into your cluster to get OpenTelemetry data flowing from your applications and
+Install the operator into your cluster and create a Dash0 monitoring resource to get OpenTelemetry data flowing from your applications and
 infrastructure to Dash0.
 
 ## Description

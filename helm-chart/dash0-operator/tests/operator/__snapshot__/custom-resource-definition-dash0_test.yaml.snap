@@ -4,7 +4,6 @@ custom resource definition should match snapshot:
     kind: CustomResourceDefinition
     metadata:
       annotations:
-        cert-manager.io/inject-ca-from: NAMESPACE/dash0-operator-serving-cert
         controller-gen.kubebuilder.io/version: v0.14.0
       name: dash0monitorings.operator.dash0.com
     spec:

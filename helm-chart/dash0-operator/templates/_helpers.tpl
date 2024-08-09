@@ -39,7 +39,7 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 
 {{/* service account name */}}
 {{- define "dash0-operator.serviceAccountName" -}}
-{{- default (printf "%s-controller-manager" (include "dash0-operator.chartName" .)) .Values.operator.serviceAccount.name }}
+{{- default (printf "%s-controller" (include "dash0-operator.chartName" .)) .Values.operator.serviceAccount.name }}
 {{- end }}
 
 {{/* the controller manager container image */}}

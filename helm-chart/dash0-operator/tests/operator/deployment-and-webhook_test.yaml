@@ -1,15 +1,33 @@
 suite: test deployment
 templates:
-  - operator/deployment.yaml
+  - operator/deployment-and-webhook.yaml
 tests:
+  - it: secret should contain ca and cert
+    documentSelector:
+      path: kind
+      value: Secret
+    asserts:
+      - isNotNullOrEmpty:
+          path: data["ca.crt"]
+      - isNotNullOrEmpty:
+          path: data["tls.crt"]
+      - isNotNullOrEmpty:
+          path: data["tls.key"]
+
   - it: deployment should match snapshot (default values)
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
     asserts:
       - matchSnapshot: {}
 
-  - it: image tags should default to appVersion
+  - it: deployment image tags should default to appVersion
     chart:
       version: 4.5.6
       appVersion: 99.100.101
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
@@ -40,6 +58,9 @@ tests:
           value: ghcr.io/dash0hq/configuration-reloader:99.100.101
 
   - it: should render deployment with custom settings
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
     set:
       operator:
         additionalLabels:
@@ -199,7 +220,18 @@ tests:
           path: spec.template.spec.containers[0].resources.requests.memory
           value: 32Mi
 
-  - it: should support referencing images by digest instead of tag
+  - it: should render the "dash0.cert-digest" label
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    asserts:
+      - isNotNullOrEmpty:
+          path: spec.template.metadata.labels["dash0.cert-digest"]
+
+  - it: deployment should support referencing images by digest instead of tag
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
     set:
       operator:
         image:
@@ -242,3 +274,47 @@ tests:
           value: ghcr.io/dash0hq/configuration-reloader@sha256:3e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda03
       - notExists:
           path: spec.template.spec.containers[0].env[6].name
+
+  - it: webhook should have caBundle set
+    documentSelector:
+      path: kind
+      value: MutatingWebhookConfiguration
+    asserts:
+      - isNotNullOrEmpty:
+          path: webhooks[0].clientConfig.caBundle
+
+  - it: webhook should have caBundle set also with custom settings
+    documentSelector:
+      path: kind
+      value: MutatingWebhookConfiguration
+    set:
+      operator:
+        webhookPort: 554
+    asserts:
+      - hasDocuments:
+          count: 5
+      - isNotNullOrEmpty:
+          path: webhooks[0].clientConfig.caBundle
+
+  - it: injector service should render the "dash0.cert-digest" label
+    documentIndex: 4
+    asserts:
+      - isNotNullOrEmpty:
+          path: spec.selector["dash0.cert-digest"]
+
+  - it: injector service should match snapshot (default settings)
+    documentIndex: 4
+    asserts:
+      - matchSnapshot: {}
+
+  - it: should render injector service with custom settings
+    documentIndex: 4
+    set:
+      operator:
+        metricsPort: 9554
+    asserts:
+      - isNotNullOrEmpty:
+          path: spec.selector["dash0.cert-digest"]
+      - equal:
+          path: spec.ports[0].port
+          value: 9554
