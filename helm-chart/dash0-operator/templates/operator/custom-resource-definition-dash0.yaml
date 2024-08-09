@@ -2,7 +2,6 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ template "dash0-operator.chartName" . }}-serving-cert
     controller-gen.kubebuilder.io/version: v0.14.0
   name: dash0monitorings.operator.dash0.com
 spec:

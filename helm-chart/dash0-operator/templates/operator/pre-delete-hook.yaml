@@ -4,9 +4,8 @@ metadata:
   name: {{ include "dash0-operator.chartName" . }}-pre-delete
   namespace: {{ .Release.Namespace }}
   labels:
-    app.kubernetes.io/name: job
-    app.kubernetes.io/instance: pre-delete-hook
-    app.kubernetes.io/component: pre-delete
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: uninstallation-process
     {{- include "dash0-operator.labels" . | nindent 4 }}
     dash0.com/enable: "false"
   annotations:
@@ -17,6 +16,8 @@ spec:
     metadata:
       name: {{ .Release.Name }}-pre-delete-job
       labels:
+        app.kubernetes.io/name: dash0-operator
+        app.kubernetes.io/component: uninstallation-process
         app.kubernetes.io/instance: pre-delete-hook
         app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
         helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}

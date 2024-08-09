@@ -26,8 +26,6 @@ const (
 var (
 	workingDir string
 
-	certManagerHasBeenInstalled = false
-
 	originalKubeContext       string
 	kubeContextHasBeenChanged bool
 
@@ -87,7 +85,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		CheckIfRequiredPortsAreBlocked()
 		RenderTemplates()
 
-		certManagerHasBeenInstalled = EnsureCertManagerIsInstalled()
 		RecreateNamespace(applicationUnderTestNamespace)
 
 		readAndApplyEnvironmentVariables()
@@ -101,8 +98,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 	})
 
 	AfterAll(func() {
-		UninstallCertManagerIfApplicable(certManagerHasBeenInstalled)
-
 		if applicationUnderTestNamespace != "default" {
 			By("removing namespace for application under test")
 			_ = RunAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", applicationUnderTestNamespace))

@@ -22,15 +22,7 @@ verify_kubectx() {
 }
 
 setup_test_environment () {
-  install_cert_manager_if_necessary
   test-resources/bin/render-templates.sh
-}
-
-install_cert_manager_if_necessary () {
-  if ! kubectl get ns cert-manager &> /dev/null; then
-    echo cert-manager namespace not found, deploying cert-manager
-    test-resources/cert-manager/deploy.sh
-  fi
 }
 
 is_remote_image() {

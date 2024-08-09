@@ -7,10 +7,9 @@ pre-delete hook job should match snapshot:
         helm.sh/hook: pre-delete
         helm.sh/hook-delete-policy: hook-succeeded
       labels:
-        app.kubernetes.io/component: pre-delete
-        app.kubernetes.io/instance: pre-delete-hook
+        app.kubernetes.io/component: uninstallation-process
         app.kubernetes.io/managed-by: Helm
-        app.kubernetes.io/name: job
+        app.kubernetes.io/name: dash0-operator
         app.kubernetes.io/part-of: dash0-operator
         app.kubernetes.io/version: 0.0.0
         dash0.com/enable: "false"
@@ -22,8 +21,10 @@ pre-delete hook job should match snapshot:
       template:
         metadata:
           labels:
+            app.kubernetes.io/component: uninstallation-process
             app.kubernetes.io/instance: pre-delete-hook
             app.kubernetes.io/managed-by: Helm
+            app.kubernetes.io/name: dash0-operator
             helm.sh/chart: dash0-operator-0.0.0
           name: RELEASE-NAME-pre-delete-job
         spec:
@@ -54,4 +55,4 @@ pre-delete hook job should match snapshot:
           restartPolicy: OnFailure
           securityContext:
             runAsNonRoot: true
-          serviceAccountName: dash0-operator-controller-manager
+          serviceAccountName: dash0-operator-controller
