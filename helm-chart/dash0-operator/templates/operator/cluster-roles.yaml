@@ -3,9 +3,9 @@ kind: ClusterRole
 metadata:
   name: {{ template "dash0-operator.chartName" . }}-manager-role
   labels:
-    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: controller
     app.kubernetes.io/instance: manager-role
-    app.kubernetes.io/component: kube-rbac-proxy
     {{- include "dash0-operator.labels" . | nindent 4 }}
 
 rules:
@@ -179,9 +179,9 @@ kind: ClusterRole
 metadata:
   name: {{ template "dash0-operator.chartName" . }}-metrics-reader
   labels:
-    app.kubernetes.io/name: clusterrole
-    app.kubernetes.io/instance: metrics-reader
-    app.kubernetes.io/component: kube-rbac-proxy
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: metrics-role
     {{- include "dash0-operator.labels" . | nindent 4 }}
 rules:
 - nonResourceURLs:
@@ -194,9 +194,9 @@ kind: ClusterRole
 metadata:
   name: {{ template "dash0-operator.chartName" . }}-proxy-role
   labels:
-    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: controller
     app.kubernetes.io/instance: proxy-role
-    app.kubernetes.io/component: kube-rbac-proxy
     {{- include "dash0-operator.labels" . | nindent 4 }}
 rules:
 - apiGroups:

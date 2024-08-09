@@ -11,16 +11,6 @@ Contributing
 
 ## Deploying to a Local Cluster for Testing Purposes
 
-Make sure your cluster has cert-manager running. If not, refer to https://cert-manager.io/docs/installation/.
-
-E.g.:
-
-```
-helm repo add jetstack https://charts.jetstack.io --force-update
-helm repo update
-helm install cert-manager jetstack/cert-manager --namespace cert-manager --create-namespace --version v1.14.5 --set installCRDs=true
-```
-
 This approach is suitable for deploying the operator to a cluster running locally on your machine, for example
 via the Kubernetes support included in Docker Desktop.
 

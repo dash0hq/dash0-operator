@@ -4,10 +4,10 @@ cluster role bindings should match snapshot:
     kind: ClusterRoleBinding
     metadata:
       labels:
-        app.kubernetes.io/component: rbac
-        app.kubernetes.io/instance: manager-rolebinding
+        app.kubernetes.io/component: controller
+        app.kubernetes.io/instance: role-binding
         app.kubernetes.io/managed-by: Helm
-        app.kubernetes.io/name: clusterrolebinding
+        app.kubernetes.io/name: dash0-operator
         app.kubernetes.io/part-of: dash0-operator
         app.kubernetes.io/version: 0.0.0
         helm.sh/chart: dash0-operator-0.0.0
@@ -18,17 +18,17 @@ cluster role bindings should match snapshot:
       name: dash0-operator-manager-role
     subjects:
       - kind: ServiceAccount
-        name: dash0-operator-controller-manager
+        name: dash0-operator-controller
         namespace: NAMESPACE
   2: |
     apiVersion: rbac.authorization.k8s.io/v1
     kind: ClusterRoleBinding
     metadata:
       labels:
-        app.kubernetes.io/component: kube-rbac-proxy
-        app.kubernetes.io/instance: proxy-rolebinding
+        app.kubernetes.io/component: proxy
+        app.kubernetes.io/instance: role-binding
         app.kubernetes.io/managed-by: Helm
-        app.kubernetes.io/name: clusterrolebinding
+        app.kubernetes.io/name: dash0-operator
         app.kubernetes.io/part-of: dash0-operator
         app.kubernetes.io/version: 0.0.0
         helm.sh/chart: dash0-operator-0.0.0
@@ -39,5 +39,5 @@ cluster role bindings should match snapshot:
       name: dash0-operator-proxy-role
     subjects:
       - kind: ServiceAccount
-        name: dash0-operator-controller-manager
+        name: dash0-operator-controller
         namespace: NAMESPACE
