@@ -1,14 +1,45 @@
+{{- /*
+   * Helm does not have a way to share generated values between files.
+   * And it does _actually_ create resources in pre-install / pre-upgrade hooks
+   * before rendering the rest of the chart. So, we do not have another way to
+   * generate a self-signed cert and use it across deployment, webhook and service
+   * other than lumping all these resourceds in the same file.
+  */ -}}
+{{- $altNames := list ( printf "%s-injector.%s.svc" (include "dash0-operator.chartName" . ) .Release.Namespace ) ( printf "%s-metrics.%s.svc" (include "dash0-operator.chartName" . ) .Release.Namespace ) -}}
+{{- $ca := genCA "dash0-operator-ca" 365 -}}
+{{- $cert := genSignedCert ( include "dash0-operator.chartName" . ) nil $altNames 365 $ca -}}
+{{- /*
+   * On upgrade, we want to avoid the injector service from routing to older
+   * pod, which will use a different certificate. Therefore, we add a digest
+   * of the cert as a label of the controller pods, which we can use in service
+   * selector to ensure routing to the newer controller pods.
+   */ -}}
+{{- $certFingerprint := $cert.Cert | b64enc | substr 10 25 | quote }}
+---
+apiVersion: v1
+kind: Secret
+type: kubernetes.io/tls
+metadata:
+  name: {{ include "dash0-operator.chartName" . }}-certificates
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: certificates
+    app.kubernetes.io/instance: secret
+data:
+  ca.crt: {{ $ca.Cert | b64enc }}
+  tls.crt: {{ $cert.Cert | b64enc }}
+  tls.key: {{ $cert.Key | b64enc }}
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "dash0-operator.chartName" . }}-controller-manager
+  name: {{ include "dash0-operator.chartName" . }}-controller
   namespace: {{ .Release.Namespace }}
   labels:
-    app.kubernetes.io/name: deployment
-    app.kubernetes.io/instance: controller-manager
-    app.kubernetes.io/component: manager
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: deployment
     {{- include "dash0-operator.labels" . | nindent 4 }}
-    control-plane: controller-manager
     dash0.com/enable: "false"
   {{- with .Values.operator.deploymentAnnotations }}
   annotations:
@@ -18,7 +49,8 @@ spec:
   replicas: {{ .Values.operator.replicaCount }}
   selector:
     matchLabels:
-      control-plane: controller-manager
+      app.kubernetes.io/name: dash0-operator
+      app.kubernetes.io/component: controller
   template:
     metadata:
       annotations:
@@ -27,7 +59,9 @@ spec:
         {{- include "dash0-operator.podAnnotations" . | nindent 8 }}
         {{- end }}
       labels:
-        control-plane: controller-manager
+        app.kubernetes.io/name: dash0-operator
+        app.kubernetes.io/component: controller
+        dash0.cert-digest: {{ $certFingerprint }}
         {{- if .Values.operator.podLabels }}
         {{- include "dash0-operator.podLabels" . | nindent 8 }}
         {{- end }}
@@ -98,7 +132,7 @@ spec:
         {{ include "dash0-operator.restrictiveContainerSecurityContext" . | nindent 8 }}
         volumeMounts:
         - mountPath: /tmp/k8s-webhook-server/serving-certs
-          name: cert
+          name: certificates
           readOnly: true
         livenessProbe:
           httpGet:
@@ -142,7 +176,115 @@ spec:
       automountServiceAccountToken: true
       terminationGracePeriodSeconds: 10
       volumes:
-      - name: cert
+      - name: certificates
         secret:
           defaultMode: 420
-          secretName: webhook-server-cert
+          secretName: {{ include "dash0-operator.chartName" . }}-certificates
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "dash0-operator.chartName" . }}-injector
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: injector
+    app.kubernetes.io/instance: mutating-webhook-service
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+spec:
+  ports:
+  - port: {{ .Values.operator.webhookPort }}
+    protocol: TCP
+    targetPort: 9443
+  selector:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: controller
+    dash0.cert-digest: {{ $certFingerprint }}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ template "dash0-operator.chartName" . }}-injector
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: injector
+    app.kubernetes.io/instance: mutating-webhook
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+webhooks:
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    caBundle: {{ default "" ( $ca.Cert | b64enc ) }}
+    service:
+      name: {{ template "dash0-operator.chartName" . }}-injector
+      namespace: {{ .Release.Namespace }}
+      path: /v1alpha1/inject/dash0
+  failurePolicy: Ignore
+  name: inject.dash0.kb.io
+  rules:
+  - apiGroups:
+    - apps
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - daemonsets
+    - deployments
+    - replicasets
+    - statefulsets
+  - apiGroups:
+    - batch
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - cronjobs
+  - apiGroups:
+      - batch
+    apiVersions:
+      - v1
+    operations:
+      # do not listen to UPDATE for jobs, we cannot revert instrumentation or do anything on UPDATE requests, since jobs
+      # are immutable
+      - CREATE
+    resources:
+      - jobs
+  - apiGroups: [""]
+    apiVersions:
+    - v1
+    operations:
+    # do not listen to UPDATE for pods, we cannot revert instrumentation or do anything on UPDATE requests, since pods
+    # are effectively immutable (we cannot restart ownerless pods)
+      - CREATE
+    resources:
+    - pods
+  sideEffects: None
+  timeoutSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "dash0-operator.chartName" . }}-metrics
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: metrics-service
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+  {{- with .Values.operator.serviceAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ports:
+  - name: https
+    port: {{ .Values.operator.metricsPort }}
+    protocol: TCP
+    targetPort: https
+  selector:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: controller
+    dash0.cert-digest: {{ $certFingerprint }}
