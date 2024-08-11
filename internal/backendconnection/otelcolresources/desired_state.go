@@ -5,7 +5,9 @@ package otelcolresources
 
 import (
 	"bytes"
+	_ "embed"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"text/template"
 
@@ -21,11 +23,6 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 )
 
-type E2eTestConfig struct {
-	Enabled   bool
-	ExportDir string
-}
-
 type oTelColConfig struct {
 	Namespace          string
 	NamePrefix         string
@@ -33,12 +30,23 @@ type oTelColConfig struct {
 	AuthorizationToken string
 	SecretRef          string
 	Images             util.Images
-	E2eTest            E2eTestConfig
 }
 
-type oTelConfigTemplateValues struct {
-	TokenOrFilename string
-	oTelColConfig
+func (c *oTelColConfig) hasAuthentication() bool {
+	return c.SecretRef != "" || c.AuthorizationToken != ""
+}
+
+type exportProtocol string
+
+const (
+	grpcExportProtocol exportProtocol = "grpc"
+	httpExportProtocol exportProtocol = "http"
+)
+
+type collectorConfigurationTemplateValues struct {
+	HasExportAuthentication bool
+	IngressEndpoint         string
+	ExportProtocol          exportProtocol
 }
 
 const (
@@ -61,8 +69,15 @@ const (
 	appKubernetesIoInstanceValue  = "dash0-operator"
 	appKubernetesIoManagedByValue = "dash0-operator"
 
-	collectorYaml      = "collector.yaml"
-	collectorExtraYaml = "collector-extra.yaml"
+	authTokenEnvVarName = "AUTH_TOKEN"
+
+	collectorConfigurationYaml = "config.yaml"
+)
+
+const (
+	otlpGrpcPort   = 4317
+	otlpHttpPort   = 4318
+	probesHttpPort = 13133
 )
 
 var (
@@ -72,155 +87,19 @@ var (
 		appKubernetesIoComponentLabelKey: serviceComponent,
 	}
 
-	authWithTokenTemplate    = template.Must(template.New("auth-with-token").Parse("token: {{ .AuthorizationToken }}"))
-	authWithFilenameTemplate = template.Must(template.New("auth-with-filename").Parse("filename: /etc/dash0/secret-volume/dash0-authorization-token"))
-
-	configTemplate = template.Must(template.New("collector-config").Parse(`
-    exporters:
-      debug: {}
-      # debug:
-      #   verbosity: detailed
-      otlp:
-        auth:
-          authenticator: bearertokenauth/dash0
-        endpoint: {{ .IngressEndpoint }}
-
-    extensions:
-      bearertokenauth/dash0:
-        scheme: Bearer
-        {{ .TokenOrFilename }}
-      health_check:
-        endpoint: ${env:MY_POD_IP}:13133
-
-    processors:
-      batch: {}
-      k8sattributes:
-        extract:
-          metadata:
-          - k8s.namespace.name
-          - k8s.deployment.name
-          - k8s.statefulset.name
-          - k8s.daemonset.name
-          - k8s.cronjob.name
-          - k8s.job.name
-          - k8s.node.name
-          - k8s.pod.name
-          - k8s.pod.uid
-          - k8s.pod.start_time
-        filter:
-          node_from_env_var: K8S_NODE_NAME
-        passthrough: false
-        pod_association:
-        - sources:
-          - from: resource_attribute
-            name: k8s.pod.ip
-        - sources:
-          - from: resource_attribute
-            name: k8s.pod.uid
-        - sources:
-          - from: connection
-      memory_limiter:
-        check_interval: 5s
-        limit_percentage: 80
-        spike_limit_percentage: 25
-
-    receivers:
-      otlp:
-        protocols:
-          grpc:
-            endpoint: ${env:MY_POD_IP}:4317
-          http:
-            endpoint: ${env:MY_POD_IP}:4318
-
-    service:
-      extensions:
-      - health_check
-      - bearertokenauth/dash0
-      pipelines:
-        traces:
-          processors:
-          - k8sattributes
-          - memory_limiter
-          - batch
-          receivers:
-          - otlp
-          exporters:
-          - otlp
-        metrics:
-          processors:
-          - k8sattributes
-          - memory_limiter
-          - batch
-          receivers:
-          - otlp
-          exporters:
-          - otlp
-        logs:
-          processors:
-          - k8sattributes
-          - memory_limiter
-          - batch
-          receivers:
-          - otlp
-          exporters:
-          - otlp
-
-      telemetry:
-        metrics:
-          address: ${env:MY_POD_IP}:8888
-`))
-
-	// With multiple config files (if activated), maps are merged recursively, other types (strings, arrays etc.) are
-	// not merged but overwritten. Anything defined in the extra config file will overwrite the base config file.
-	// See https://github.com/knadh/koanf/blob/c53f381935963555ce8986061bb765f415ae5cb7/maps/maps.go#L107-L138.
-	// The extra config file is only used for testing purposes and is not active in production.
-	extraConfigTemplate = template.Must(template.New("extra-collector-config").Parse(`
-    exporters:
-      file/traces:
-        path: /collector-received-data/traces.jsonl
-        flush_interval: 100ms
-      file/metrics:
-        path: /collector-received-data/metrics.jsonl
-        flush_interval: 100ms
-      file/logs:
-        path: /collector-received-data/logs.jsonl
-        flush_interval: 100ms
-
-    service:
-      extensions:
-        - health_check
-        # remove the reference to the bearertokenauth/dash0 extension by overwriting the extension array with a an
-        # array that only has one element
-
-      # add file exporters
-      pipelines:
-        traces:
-          exporters:
-            - file/traces
-        metrics:
-          exporters:
-            - file/metrics
-        logs:
-          exporters:
-            - file/logs
-`))
+	//go:embed config.yaml.template
+	collectorConfigurationTemplateSource string
+	collectorConfigurationTemplate       = template.Must(template.New("collector-configuration").Parse(collectorConfigurationTemplateSource))
 )
 
 func assembleDesiredState(config *oTelColConfig) ([]client.Object, error) {
 	if config.IngressEndpoint == "" {
 		return nil, fmt.Errorf("no ingress endpoint provided, unable to create the OpenTelemetry collector")
 	}
-	useSecretRef := false
-	if config.AuthorizationToken == "" && config.SecretRef == "" {
-		return nil, fmt.Errorf("neither an authorization token nor a reference to a Kubernetes secret has been " +
-			"provided, unable to create the OpenTelemetry collector")
-	} else if config.AuthorizationToken == "" {
-		useSecretRef = true
-	}
 
 	var desiredState []client.Object
 	desiredState = append(desiredState, serviceAccount(config))
-	cnfgMap, err := configMap(config, useSecretRef)
+	cnfgMap, err := configMap(config)
 	if err != nil {
 		return desiredState, err
 	}
@@ -228,7 +107,7 @@ func assembleDesiredState(config *oTelColConfig) ([]client.Object, error) {
 	desiredState = append(desiredState, clusterRole(config))
 	desiredState = append(desiredState, clusterRoleBinding(config))
 	desiredState = append(desiredState, service(config))
-	desiredState = append(desiredState, daemonSet(config, useSecretRef))
+	desiredState = append(desiredState, daemonSet(config))
 	return desiredState, nil
 }
 
@@ -246,44 +125,35 @@ func serviceAccount(config *oTelColConfig) *corev1.ServiceAccount {
 	}
 }
 
-func configMap(config *oTelColConfig, useSecretRef bool) (*corev1.ConfigMap, error) {
-	var tokenOrFilename string
-	if useSecretRef {
-		var authWithFilename bytes.Buffer
-		err := authWithFilenameTemplate.Execute(&authWithFilename, config)
-		if err != nil {
-			return nil, err
-		}
-		tokenOrFilename = authWithFilename.String()
-	} else {
-		var authWithToken bytes.Buffer
-		err := authWithTokenTemplate.Execute(&authWithToken, config)
-		if err != nil {
-			return nil, err
-		}
-		tokenOrFilename = authWithToken.String()
+func renderCollectorConfigs(templateValues *collectorConfigurationTemplateValues) (string, error) {
+	var collectorConfiguration bytes.Buffer
+	if err := collectorConfigurationTemplate.Execute(&collectorConfiguration, templateValues); err != nil {
+		return "", err
 	}
 
-	values := oTelConfigTemplateValues{
-		TokenOrFilename: tokenOrFilename,
-		oTelColConfig:   *config,
+	return collectorConfiguration.String(), nil
+}
+
+func configMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
+	ingressEndpoint := config.IngressEndpoint
+	exportProtocol := grpcExportProtocol
+	if url, err := url.ParseRequestURI(ingressEndpoint); err != nil {
+		// Not a valid URL, assume it's grpc
+	} else if url.Scheme == "https" || url.Scheme == "http" {
+		exportProtocol = httpExportProtocol
 	}
-	var collectorYamlContent bytes.Buffer
-	err := configTemplate.Execute(&collectorYamlContent, values)
+
+	collectorConfiguration, err := renderCollectorConfigs(&collectorConfigurationTemplateValues{
+		IngressEndpoint:         ingressEndpoint,
+		ExportProtocol:          exportProtocol,
+		HasExportAuthentication: config.hasAuthentication(),
+	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cannot render the collector configuration template: %w", err)
 	}
 
 	configMapData := map[string]string{
-		collectorYaml: collectorYamlContent.String(),
-	}
-	if config.E2eTest.Enabled {
-		var collectorExtraYamlContent bytes.Buffer
-		err = extraConfigTemplate.Execute(&collectorExtraYamlContent, values)
-		if err != nil {
-			return nil, err
-		}
-		configMapData[collectorExtraYaml] = collectorExtraYamlContent.String()
+		collectorConfigurationYaml: collectorConfiguration,
 	}
 
 	return &corev1.ConfigMap{
@@ -371,15 +241,15 @@ func service(config *oTelColConfig) *corev1.Service {
 			Ports: []corev1.ServicePort{
 				{
 					Name:        "otlp",
-					Port:        4317,
-					TargetPort:  intstr.FromInt32(4317),
+					Port:        otlpGrpcPort,
+					TargetPort:  intstr.FromInt32(otlpGrpcPort),
 					Protocol:    corev1.ProtocolTCP,
 					AppProtocol: ptr.To("grpc"),
 				},
 				{
 					Name:       "otlp-http",
-					Port:       4318,
-					TargetPort: intstr.FromInt32(4318),
+					Port:       otlpHttpPort,
+					TargetPort: intstr.FromInt32(otlpHttpPort),
 					Protocol:   corev1.ProtocolTCP,
 				},
 			},
@@ -393,68 +263,29 @@ func service(config *oTelColConfig) *corev1.Service {
 	}
 }
 
-func daemonSet(config *oTelColConfig, useSecretRef bool) *appsv1.DaemonSet {
-	configFiles := []string{
-		"/etc/otelcol/conf/collector.yaml",
-	}
-
-	if config.E2eTest.Enabled {
-		configFiles = append(configFiles, "/etc/otelcol/conf/collector-extra.yaml")
-	}
-
-	oTelColArgs := []string{}
-	for _, configFile := range configFiles {
-		oTelColArgs = append(oTelColArgs, "--config=file:/"+configFile)
-	}
-
+func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 	collectorPidFilePath := "/etc/otelcol/run/pid.file"
 
-	commonVolumeMounts := []corev1.VolumeMount{
+	volumeMounts := []corev1.VolumeMount{
 		{
 			Name:      "opentelemetry-collector-configmap",
 			MountPath: "/etc/otelcol/conf",
 			ReadOnly:  true,
 		},
+		// TODO Make this readonly for config reloader
 		{
 			Name:      "opentelemetry-collector-pidfile",
 			MountPath: filepath.Dir(collectorPidFilePath),
 			ReadOnly:  false,
 		},
 	}
-	collectorVolumeMounts := make([]corev1.VolumeMount, len(commonVolumeMounts))
-	copy(collectorVolumeMounts, commonVolumeMounts)
-	configReloaderVolumeMounts := make([]corev1.VolumeMount, len(commonVolumeMounts))
-	copy(configReloaderVolumeMounts, commonVolumeMounts)
-
-	if !config.E2eTest.Enabled {
-		if useSecretRef {
-			collectorVolumeMounts = append(collectorVolumeMounts, corev1.VolumeMount{
-				Name:      "dash0-secret-volume",
-				MountPath: "/etc/dash0/secret-volume",
-				ReadOnly:  true,
-			})
-		}
-	} else {
-		collectorVolumeMounts = append(collectorVolumeMounts, corev1.VolumeMount{
-			Name:      "telemetry-file-export",
-			MountPath: "/collector-received-data",
-			ReadOnly:  false,
-		})
-	}
 
 	configMapItems := []corev1.KeyToPath{{
-		Key:  collectorYaml,
-		Path: collectorYaml,
+		Key:  collectorConfigurationYaml,
+		Path: collectorConfigurationYaml,
 	}}
-	if config.E2eTest.Enabled {
-		configMapItems = append(configMapItems, corev1.KeyToPath{
-			Key:  collectorExtraYaml,
-			Path: collectorExtraYaml,
-		})
-	}
 
 	pidFileVolumeSizeLimit := resource.MustParse("1M")
-	directoryOrCreate := corev1.HostPathDirectoryOrCreate
 	volumes := []corev1.Volume{
 		{
 			Name: "opentelemetry-collector-configmap",
@@ -476,115 +307,115 @@ func daemonSet(config *oTelColConfig, useSecretRef bool) *appsv1.DaemonSet {
 			},
 		},
 	}
-	if !config.E2eTest.Enabled {
-		if useSecretRef {
-			volumes = append(volumes, corev1.Volume{
-				Name: "dash0-secret-volume",
-				VolumeSource: corev1.VolumeSource{
-					Secret: &corev1.SecretVolumeSource{
-						SecretName: config.SecretRef,
-					},
-				},
-			})
-		}
-	} else {
-		volumes = append(volumes, corev1.Volume{
-			Name: "telemetry-file-export",
-			VolumeSource: corev1.VolumeSource{
-				HostPath: &corev1.HostPathVolumeSource{
-					Path: config.E2eTest.ExportDir,
-					Type: &directoryOrCreate,
+
+	env := []corev1.EnvVar{
+		{
+			Name: "MY_POD_IP",
+			ValueFrom: &corev1.EnvVarSource{
+				FieldRef: &corev1.ObjectFieldSelector{
+					FieldPath: "status.podIP",
 				},
 			},
-		})
+		},
+		{
+			Name: "K8S_NODE_NAME",
+			ValueFrom: &corev1.EnvVarSource{
+				FieldRef: &corev1.ObjectFieldSelector{
+					FieldPath: "spec.nodeName",
+				},
+			},
+		},
+		{
+			Name:  "DASH0_COLLECTOR_PID_FILE",
+			Value: collectorPidFilePath,
+		},
+		{
+			Name:  "GOMEMLIMIT",
+			Value: "400MiB",
+		},
 	}
 
-	configReloaderArgs := []string{
-		"--pidfile=" + collectorPidFilePath,
+	if config.hasAuthentication() {
+		var authTokenEnvVar corev1.EnvVar
+
+		if config.AuthorizationToken != "" {
+			authTokenEnvVar = corev1.EnvVar{
+				Name:  authTokenEnvVarName,
+				Value: config.AuthorizationToken,
+			}
+		} else {
+			authTokenEnvVar = corev1.EnvVar{
+				Name: authTokenEnvVarName,
+				ValueFrom: &corev1.EnvVarSource{
+					SecretKeyRef: &corev1.SecretKeySelector{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: config.SecretRef,
+						},
+						Key: "dash0-authorization-token", // TODO Make configurable
+					},
+				},
+			}
+		}
+
+		env = append(env, authTokenEnvVar)
 	}
-	configReloaderArgs = append(configReloaderArgs, configFiles...)
+
+	probe := corev1.Probe{
+		ProbeHandler: corev1.ProbeHandler{
+			HTTPGet: &corev1.HTTPGetAction{
+				Path: "/",
+				Port: intstr.FromInt32(probesHttpPort),
+			},
+		},
+	}
+
+	collectorConfigurationFilePath := "/etc/otelcol/conf/" + collectorConfigurationYaml
 
 	collectorContainer := corev1.Container{
 		Name:            openTelemetryCollector,
-		Args:            oTelColArgs,
+		Args:            []string{"--config=file:" + collectorConfigurationFilePath},
 		SecurityContext: &corev1.SecurityContext{},
 		Image:           config.Images.CollectorImage,
 		Ports: []corev1.ContainerPort{
 			{
 				Name:          "otlp",
-				ContainerPort: 4317,
 				Protocol:      corev1.ProtocolTCP,
-				HostPort:      4317,
+				ContainerPort: otlpGrpcPort,
+				HostPort:      otlpGrpcPort,
 			},
 			{
 				Name:          "otlp-http",
-				ContainerPort: 4318,
 				Protocol:      corev1.ProtocolTCP,
-				HostPort:      4318,
+				ContainerPort: otlpHttpPort,
+				HostPort:      otlpHttpPort,
 			},
-			{
-				Name:          "k8s-probes",
-				ContainerPort: 13133,
-				Protocol:      corev1.ProtocolTCP,
-				HostPort:      13133,
-			},
+			// {
+			// 	Name:          "k8s-probes",
+			// 	Protocol:      corev1.ProtocolTCP,
+			// 	ContainerPort: probesHttpPort,
+			// 	HostPort:      probesHttpPort,
+			// },
 		},
-		Env: []corev1.EnvVar{
-			{
-				Name: "MY_POD_IP",
-				ValueFrom: &corev1.EnvVarSource{
-					FieldRef: &corev1.ObjectFieldSelector{
-						FieldPath: "status.podIP",
-					},
-				},
-			},
-			{
-				Name: "K8S_NODE_NAME",
-				ValueFrom: &corev1.EnvVarSource{
-					FieldRef: &corev1.ObjectFieldSelector{
-						FieldPath: "spec.nodeName",
-					},
-				},
-			},
-			{
-				Name:  "DASH0_COLLECTOR_PID_FILE",
-				Value: collectorPidFilePath,
-			},
-			{
-				Name:  "GOMEMLIMIT",
-				Value: "400MiB",
-			},
-		},
-		LivenessProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				HTTPGet: &corev1.HTTPGetAction{
-					Path: "/",
-					Port: intstr.FromInt32(13133),
-				},
-			},
-		},
-		ReadinessProbe: &corev1.Probe{
-			ProbeHandler: corev1.ProbeHandler{
-				HTTPGet: &corev1.HTTPGetAction{
-					Path: "/",
-					Port: intstr.FromInt32(13133),
-				},
-			},
-		},
+		Env:            env,
+		LivenessProbe:  &probe,
+		ReadinessProbe: &probe,
 		Resources: corev1.ResourceRequirements{
 			Limits: corev1.ResourceList{
 				corev1.ResourceMemory: resource.MustParse("500Mi"),
 			},
 		},
-		VolumeMounts: collectorVolumeMounts,
+		VolumeMounts: volumeMounts,
 	}
 	if config.Images.CollectorImagePullPolicy != "" {
 		collectorContainer.ImagePullPolicy = config.Images.CollectorImagePullPolicy
 	}
 
 	configurationReloaderContainer := corev1.Container{
-		Name:            configReloader,
-		Args:            configReloaderArgs,
+		Name: configReloader,
+		Args: []string{
+			"--pidfile=" + collectorPidFilePath,
+			collectorConfigurationFilePath,
+		},
 		SecurityContext: &corev1.SecurityContext{},
 		Image:           config.Images.ConfigurationReloaderImage,
 		Env: []corev1.EnvVar{
@@ -598,7 +429,7 @@ func daemonSet(config *oTelColConfig, useSecretRef bool) *appsv1.DaemonSet {
 				corev1.ResourceMemory: resource.MustParse("12Mi"),
 			},
 		},
-		VolumeMounts: configReloaderVolumeMounts,
+		VolumeMounts: volumeMounts,
 	}
 	if config.Images.ConfigurationReloaderImagePullPolicy != "" {
 		configurationReloaderContainer.ImagePullPolicy = config.Images.ConfigurationReloaderImagePullPolicy

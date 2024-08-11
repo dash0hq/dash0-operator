@@ -48,8 +48,6 @@ type environmentVariables struct {
 	collectorImagePullPolicy             corev1.PullPolicy
 	configurationReloaderImage           string
 	configurationReloaderImagePullPolicy corev1.PullPolicy
-	e2eTestMode                          bool
-	e2eTestExportDir                     string
 }
 
 const (
@@ -63,9 +61,7 @@ const (
 	configurationReloaderImageEnvVarName                = "DASH0_CONFIGURATION_RELOADER_IMAGE"
 	configurationReloaderImageImagePullPolicyEnvVarName = "DASH0_CONFIGURATION_RELOADER_IMAGE_PULL_POLICY"
 
-	developmentModeEnvVarName  = "DASH0_DEVELOPMENT_MODE"
-	e2eTestModeEnvVarName      = "DASH0_DEV_E2E_TEST_MODE"
-	e2eTestExportDirEnvVarName = "DASH0_DEV_E2E_TEST_EXPORT_DIR"
+	developmentModeEnvVarName = "DASH0_DEVELOPMENT_MODE"
 
 	//nolint
 	mandatoryEnvVarMissingMessageTemplate = "cannot start the Dash0 operator, the mandatory environment variable \"%s\" is missing"
@@ -231,13 +227,6 @@ func startOperatorManager(
 		"otel collector name prefix",
 		envVars.oTelCollectorNamePrefix,
 	)
-	if envVars.e2eTestMode {
-		setupLog.Info(
-			"!E2E test mode is active!",
-			"export dir",
-			envVars.e2eTestExportDir,
-		)
-	}
 
 	err = startDash0Controller(mgr, clientset, envVars)
 	if err != nil {
@@ -281,10 +270,6 @@ func startDash0Controller(mgr manager.Manager, clientset *kubernetes.Clientset, 
 	oTelColResourceManager := &otelcolresources.OTelColResourceManager{
 		Client:                  mgr.GetClient(),
 		OTelCollectorNamePrefix: envVars.oTelCollectorNamePrefix,
-		E2eTestConfig: otelcolresources.E2eTestConfig{
-			Enabled:   envVars.e2eTestMode,
-			ExportDir: envVars.e2eTestExportDir,
-		},
 	}
 	backendConnectionManager := &backendconnection.BackendConnectionManager{
 		Client:                 mgr.GetClient(),
@@ -370,13 +355,6 @@ func readEnvironmentVariables() (*environmentVariables, error) {
 	configurationReloaderImagePullPolicy :=
 		readOptionalPullPolicyFromEnvironmentVariable(configurationReloaderImageImagePullPolicyEnvVarName)
 
-	e2eTestModeRaw, isSet := os.LookupEnv(e2eTestModeEnvVarName)
-	e2eTestMode := isSet && strings.ToLower(e2eTestModeRaw) == "true"
-	e2eTestExportDir := ""
-	if e2eTestMode {
-		e2eTestExportDir, _ = os.LookupEnv(e2eTestExportDirEnvVarName)
-	}
-
 	return &environmentVariables{
 		operatorNamespace:                    operatorNamespace,
 		oTelCollectorNamePrefix:              oTelCollectorNamePrefix,
@@ -387,8 +365,6 @@ func readEnvironmentVariables() (*environmentVariables, error) {
 		collectorImagePullPolicy:             collectorImagePullPolicy,
 		configurationReloaderImage:           configurationReloaderImage,
 		configurationReloaderImagePullPolicy: configurationReloaderImagePullPolicy,
-		e2eTestMode:                          e2eTestMode,
-		e2eTestExportDir:                     e2eTestExportDir,
 	}, nil
 }
 

@@ -82,7 +82,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		}
 
 		kubeContextHasBeenChanged, originalKubeContext = SetKubeContext(localKubeCtx)
-		CheckIfRequiredPortsAreBlocked()
+		// CheckIfRequiredPortsAreBlocked()
 		RenderTemplates()
 
 		RecreateNamespace(applicationUnderTestNamespace)
@@ -98,6 +98,8 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 	})
 
 	AfterAll(func() {
+		UninstallOtlpSink(workingDir)
+
 		if applicationUnderTestNamespace != "default" {
 			By("removing namespace for application under test")
 			_ = RunAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", applicationUnderTestNamespace))
@@ -105,10 +107,12 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		if kubeContextHasBeenChanged {
 			RevertKubeCtx(originalKubeContext)
 		}
+		RemoveRenderedResourceTemplate()
 	})
 
 	BeforeEach(func() {
 		DeleteTestIdFiles()
+		DeployOtlpSink(workingDir)
 	})
 
 	AfterEach(func() {
@@ -117,6 +121,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			// could also delete the whole namespace for the application under test after each test case to get rid of
 			// all applications (and then recreate the namespace before each test).
 			RemoveAllTestApplications(applicationUnderTestNamespace)
+			UninstallOtlpSink(workingDir)
 			DeleteTestIdFiles()
 		}
 	})
@@ -203,7 +208,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					)
 				})
 
-				VerifyThatOTelCollectorHasBeenRemoved(operatorNamespace)
+				VerifyThatCollectorHasBeenRemoved(operatorNamespace)
 			})
 		})
 
@@ -658,7 +663,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					}
 					VerifyDash0OperatorReleaseIsNotInstalled(g, operatorNamespace)
 				}).Should(Succeed())
-				VerifyThatOTelCollectorHasBeenRemoved(operatorNamespace)
+				VerifyThatCollectorHasBeenRemoved(operatorNamespace)
 			})
 		})
 	})

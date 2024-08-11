@@ -9,6 +9,7 @@ import (
 	"reflect"
 
 	"github.com/go-logr/logr"
+	"github.com/google/go-cmp/cmp"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -20,7 +21,6 @@ import (
 type OTelColResourceManager struct {
 	client.Client
 	OTelCollectorNamePrefix string
-	E2eTestConfig           E2eTestConfig
 }
 
 func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
@@ -39,7 +39,6 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		SecretRef:          secretRef,
 		Images:             images,
 		AuthorizationToken: authorizationToken,
-		E2eTest:            m.E2eTestConfig,
 	}
 	desiredState, err := assembleDesiredState(config)
 	if err != nil {
@@ -86,8 +85,7 @@ func (m *OTelColResourceManager) createOrUpdateResource(
 		return true, false, nil
 	} else {
 		// object needs to be updated
-		var hasChanged bool
-		hasChanged, err = m.updateResource(ctx, existingObject, desiredObject, logger)
+		hasChanged, err := m.updateResource(ctx, existingObject, desiredObject, logger)
 		if err != nil {
 			return false, false, err
 		}
@@ -114,8 +112,12 @@ func (m *OTelColResourceManager) createResource(
 	desiredObject client.Object,
 	logger *logr.Logger,
 ) error {
+	err := m.Client.Create(ctx, desiredObject)
+	if err != nil {
+		return err
+	}
 	logger.Info(
-		"creating resource",
+		"created resource",
 		"name",
 		desiredObject.GetName(),
 		"namespace",
@@ -123,10 +125,6 @@ func (m *OTelColResourceManager) createResource(
 		"kind",
 		desiredObject.GetObjectKind().GroupVersionKind(),
 	)
-	err := m.Client.Create(ctx, desiredObject)
-	if err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -158,6 +156,19 @@ func (m *OTelColResourceManager) updateResource(
 		return false, err
 	}
 	hasChanged := !reflect.DeepEqual(existingObject, updatedObject)
+	if hasChanged {
+		logger.Info(
+			"updated resource",
+			"name",
+			desiredObject.GetName(),
+			"namespace",
+			desiredObject.GetNamespace(),
+			"kind",
+			desiredObject.GetObjectKind().GroupVersionKind(),
+			"diff",
+			cmp.Diff(existingObject, updatedObject),
+		)
+	}
 	return hasChanged, nil
 }
 
@@ -177,7 +188,6 @@ func (m *OTelColResourceManager) DeleteResources(
 		SecretRef:          secretRef,
 		Images:             images,
 		AuthorizationToken: authorizationToken,
-		E2eTest:            m.E2eTestConfig,
 	}
 	allObjects, err := assembleDesiredState(config)
 	if err != nil {
@@ -185,18 +195,19 @@ func (m *OTelColResourceManager) DeleteResources(
 	}
 	var allErrors []error
 	for _, object := range allObjects {
-		logger.Info(
-			"deleting resource",
-			"name",
-			object.GetName(),
-			"namespace",
-			object.GetNamespace(),
-			"kind",
-			object.GetObjectKind().GroupVersionKind(),
-		)
 		err := m.Client.Delete(ctx, object)
 		if err != nil {
 			allErrors = append(allErrors, err)
+		} else {
+			logger.Info(
+				"deleted resource",
+				"name",
+				object.GetName(),
+				"namespace",
+				object.GetNamespace(),
+				"kind",
+				object.GetObjectKind().GroupVersionKind(),
+			)
 		}
 	}
 	if len(allErrors) > 0 {

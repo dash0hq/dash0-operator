@@ -1,6 +1,6 @@
 #!/bin/sh
 
-./otelcol-k8s "$@" &
+./otelcol "$@" &
 
 DASH0_COLLECTOR_PID=$!
 

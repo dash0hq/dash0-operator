@@ -78,7 +78,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
 		})
 
-		It("should fail if neither authorization token nor secret ref  provided", func() {
+		It("should not fail if neither authorization token nor secret ref are provided", func() {
 			err := manager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
 				ctx,
 				TestImages,
@@ -87,8 +87,8 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 					Spec: dash0v1alpha1.Dash0MonitoringSpec{
 						IngressEndpoint: IngressEndpoint,
 					}})
-			Expect(err).To(HaveOccurred())
-			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
+			Expect(err).NotTo(HaveOccurred())
+			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
 		})
 	})
 
@@ -149,11 +149,10 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 
 			// verify that all wrong properties that we have set up initially have been removed
 			cm := VerifyCollectorConfigMapExists(ctx, k8sClient, operatorNamespace)
-			Expect(cm.Data).To(HaveKey("collector.yaml"))
+			Expect(cm.Data).To(HaveKey("config.yaml"))
+			Expect(cm.Data).ToNot(HaveKey("wrong-key"))
 			Expect(cm.Labels).ToNot(HaveKey("wrong-key"))
 			Expect(cm.Annotations).ToNot(HaveKey("wrong-key"))
-			Expect(cm.Data).To(HaveKey("collector.yaml"))
-			Expect(cm.Data).ToNot(HaveKey("wrong-key"))
 		})
 	})
 
