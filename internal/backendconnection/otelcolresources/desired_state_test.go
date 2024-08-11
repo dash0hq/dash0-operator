@@ -33,16 +33,6 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(err).To(HaveOccurred())
 	})
 
-	It("should fail if neither authorization token nor secret ref have been provided", func() {
-		_, err := assembleDesiredState(&oTelColConfig{
-			Namespace:       namespace,
-			NamePrefix:      namePrefix,
-			IngressEndpoint: IngressEndpoint,
-			Images:          TestImages,
-		})
-		Expect(err).To(HaveOccurred())
-	})
-
 	It("should describe the desired state as a set of Kubernetes client objects", func() {
 		desiredState, err := assembleDesiredState(&oTelColConfig{
 			Namespace:          namespace,
@@ -70,9 +60,16 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(configMapVolume).NotTo(BeNil())
 		Expect(configMapVolume.VolumeSource.ConfigMap.LocalObjectReference.Name).
 			To(Equal("unit-test-opentelemetry-collector-agent"))
+		for _, container := range podSpec.Containers {
+			Expect(findVolumeMountByName(container.VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
+		}
+
 		pidFileVolume := findVolumeByName(podSpec.Volumes, "opentelemetry-collector-pidfile")
 		Expect(pidFileVolume).NotTo(BeNil())
 		Expect(pidFileVolume.VolumeSource.EmptyDir).NotTo(BeNil())
+		for _, container := range podSpec.Containers {
+			Expect(findVolumeMountByName(container.VolumeMounts, "opentelemetry-collector-pidfile")).NotTo(BeNil())
+		}
 
 		Expect(podSpec.Containers).To(HaveLen(2))
 
@@ -82,7 +79,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(collectorContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
 		collectorContainerArgs := collectorContainer.Args
 		Expect(collectorContainerArgs).To(HaveLen(1))
-		Expect(collectorContainerArgs[0]).To(Equal("--config=file://etc/otelcol/conf/collector.yaml"))
+		Expect(collectorContainerArgs[0]).To(Equal("--config=file:/etc/otelcol/conf/config.yaml"))
 		Expect(collectorContainer.VolumeMounts).To(HaveLen(2))
 		Expect(collectorContainer.VolumeMounts).To(
 			ContainElement(MatchVolumeMount("opentelemetry-collector-configmap", "/etc/otelcol/conf")))
@@ -96,7 +93,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		configReloaderContainerArgs := configReloaderContainer.Args
 		Expect(configReloaderContainerArgs).To(HaveLen(2))
 		Expect(configReloaderContainerArgs[0]).To(Equal("--pidfile=/etc/otelcol/run/pid.file"))
-		Expect(configReloaderContainerArgs[1]).To(Equal("/etc/otelcol/conf/collector.yaml"))
+		Expect(configReloaderContainerArgs[1]).To(Equal("/etc/otelcol/conf/config.yaml"))
 		Expect(configReloaderContainer.VolumeMounts).To(HaveLen(2))
 		Expect(configReloaderContainer.VolumeMounts).To(
 			ContainElement(MatchVolumeMount("opentelemetry-collector-configmap", "/etc/otelcol/conf")))
@@ -114,16 +111,13 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 		Expect(err).ToNot(HaveOccurred())
 		configMapContent := getConfigMapContent(desiredState)
-		Expect(configMapContent).To(ContainSubstring(fmt.Sprintf("token: %s", AuthorizationToken)))
-		Expect(configMapContent).NotTo(ContainSubstring("filename:"))
+		Expect(configMapContent).To(ContainSubstring("Authorization: Bearer ${env:AUTH_TOKEN}"))
 
 		daemonSet := getDaemonSet(desiredState)
-		volumes := daemonSet.Spec.Template.Spec.Volumes
-		secretVolume := findVolumeByName(volumes, "dash0-secret-volume")
-		Expect(secretVolume).To(BeNil())
-		volumeMounts := daemonSet.Spec.Template.Spec.Containers[0].VolumeMounts
-		secretVolumeMount := findVolumeMountByName(volumeMounts, "dash0-secret-volume")
-		Expect(secretVolumeMount).To(BeNil())
+
+		authTokenEnvVar := findEnvVarByName(daemonSet.Spec.Template.Spec.Containers[0].Env, "AUTH_TOKEN")
+		Expect(authTokenEnvVar).NotTo(BeNil())
+		Expect(authTokenEnvVar.Value).To(Equal(AuthorizationToken))
 	})
 
 	It("should use the secret reference if provided (and no authorization token has been provided)", func() {
@@ -136,19 +130,33 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 		Expect(err).ToNot(HaveOccurred())
 		configMapContent := getConfigMapContent(desiredState)
-		Expect(configMapContent).To(ContainSubstring("filename: /etc/dash0/secret-volume/dash0-authorization-token"))
-		Expect(configMapContent).NotTo(ContainSubstring("token:"))
+		Expect(configMapContent).To(ContainSubstring("Authorization: Bearer ${env:AUTH_TOKEN}"))
 
 		daemonSet := getDaemonSet(desiredState)
 		podSpec := daemonSet.Spec.Template.Spec
-		secretVolume := findVolumeByName(podSpec.Volumes, "dash0-secret-volume")
-		Expect(secretVolume).NotTo(BeNil())
-		Expect(secretVolume.VolumeSource.Secret.SecretName).To(Equal("some-secret"))
 		container := podSpec.Containers[0]
-		volumeMounts := container.VolumeMounts
-		secretVolumeMount := findVolumeMountByName(volumeMounts, "dash0-secret-volume")
-		Expect(secretVolumeMount).NotTo(BeNil())
-		Expect(volumeMounts).To(ContainElement(MatchVolumeMount("dash0-secret-volume", "/etc/dash0/secret-volume")))
+		authTokenEnvVar := findEnvVarByName(container.Env, "AUTH_TOKEN")
+		Expect(authTokenEnvVar).NotTo(BeNil())
+		Expect(authTokenEnvVar.ValueFrom.SecretKeyRef.Name).To(Equal("some-secret"))
+		Expect(authTokenEnvVar.ValueFrom.SecretKeyRef.Key).To(Equal("dash0-authorization-token"))
+	})
+
+	It("should not add the auth token env var if no authorization token has been provided", func() {
+		desiredState, err := assembleDesiredState(&oTelColConfig{
+			Namespace:       namespace,
+			NamePrefix:      namePrefix,
+			IngressEndpoint: IngressEndpoint,
+		})
+
+		Expect(err).ToNot(HaveOccurred())
+		configMapContent := getConfigMapContent(desiredState)
+		Expect(configMapContent).NotTo(ContainSubstring("Authorization: Bearer ${env:AUTH_TOKEN}"))
+
+		daemonSet := getDaemonSet(desiredState)
+		podSpec := daemonSet.Spec.Template.Spec
+		container := podSpec.Containers[0]
+		authTokenEnvVar := findEnvVarByName(container.Env, "AUTH_TOKEN")
+		Expect(authTokenEnvVar).To(BeNil())
 	})
 })
 
@@ -163,13 +171,22 @@ func getConfigMap(desiredState []client.Object) *corev1.ConfigMap {
 
 func getConfigMapContent(desiredState []client.Object) string {
 	cm := getConfigMap(desiredState)
-	return cm.Data["collector.yaml"]
+	return cm.Data["config.yaml"]
 }
 
 func getDaemonSet(desiredState []client.Object) *appsv1.DaemonSet {
 	for _, object := range desiredState {
 		if ds, ok := object.(*appsv1.DaemonSet); ok {
 			return ds
+		}
+	}
+	return nil
+}
+
+func findEnvVarByName(objects []corev1.EnvVar, name string) *corev1.EnvVar {
+	for _, object := range objects {
+		if object.Name == name {
+			return &object
 		}
 	}
 	return nil

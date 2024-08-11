@@ -5,15 +5,19 @@ package e2e
 
 import (
 	"bufio"
+	"bytes"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
 	"strings"
+	"text/template"
 	"time"
 
 	"github.com/google/uuid"
@@ -46,7 +50,15 @@ var (
 	collectorDaemonSetNameQualified = fmt.Sprintf("daemonset/%s", collectorDaemonSetName)
 	collectorConfigMapName          = fmt.Sprintf("%s-opentelemetry-collector-agent", operatorHelmReleaseName)
 	collectorConfigMapNameQualified = fmt.Sprintf("configmap/%s", collectorConfigMapName)
+
+	//go:embed dash0monitoring.e2e.yaml.template
+	dash0MonitoringResourceSource  string
+	tmpDash0MonitoringResourceFile *os.File
 )
+
+type dash0MonitoringTemplateValues struct {
+	IngressEndpoint string
+}
 
 type ImageSpec struct {
 	repository string
@@ -102,8 +114,28 @@ func CheckIfRequiredPortsAreBlocked() {
 }
 
 func RenderTemplates() {
-	By("render yaml templates")
+	By("render yaml templates via render-templates.sh")
 	Expect(RunAndIgnoreOutput(exec.Command("test-resources/bin/render-templates.sh"))).To(Succeed())
+
+	By("render resource template via text/template package")
+	dash0MonitoringResourceTemplate :=
+		template.Must(template.New("dash0monitoring").Parse(dash0MonitoringResourceSource))
+	var dash0MonitoringResource bytes.Buffer
+	Expect(dash0MonitoringResourceTemplate.Execute(&dash0MonitoringResource, dash0MonitoringTemplateValues{
+		IngressEndpoint: "http://otlp-sink.otlp-sink.svc.cluster.local",
+	})).To(Succeed())
+	var err error
+	tmpDash0MonitoringResourceFile, err = os.CreateTemp("/tmp", "dash0monitoring-*.yaml")
+	Expect(err).NotTo(HaveOccurred())
+
+	Expect(os.WriteFile(tmpDash0MonitoringResourceFile.Name(), dash0MonitoringResource.Bytes(), 0644)).To(Succeed())
+}
+
+func RemoveRenderedResourceTemplate() {
+	if tmpDash0MonitoringResourceFile == nil {
+		Fail("tmpDash0MonitoringResourceFile is nil, this should not happen")
+	}
+	Expect(os.Remove(tmpDash0MonitoringResourceFile.Name())).To(Succeed())
 }
 
 func SetKubeContext(kubeContextForTest string) (bool, string) {
@@ -301,6 +333,81 @@ func RebuildConfigurationReloaderImage(configurationReloaderImage ImageSpec, bui
 			))).To(Succeed())
 }
 
+func DeployOtlpSink(workingDir string) {
+	originalManifest := fmt.Sprintf(
+		"%s/test-resources/otlp-sink/otlp-sink.yaml",
+		workingDir,
+	)
+	e2eTestExportDir := fmt.Sprintf(
+		"%s/test-resources/e2e-test-volumes/otlp-sink",
+		workingDir,
+	)
+
+	tmpFile, err := os.CreateTemp("/tmp", "otlp-sink-*.yaml")
+	if err != nil {
+		log.Fatalf("could not create temporary file to store the patched otlp-sink manifest: %v", err)
+	}
+	defer Expect(os.Remove(tmpFile.Name())).To(Succeed())
+
+	Expect(func() error {
+		manifest, err := os.ReadFile(originalManifest)
+		if err != nil {
+			return fmt.Errorf("could not read otlp-sink manifest: %w", err)
+		}
+
+		manifest = []byte(strings.ReplaceAll(string(manifest), "path: /tmp/telemetry", "path: "+e2eTestExportDir))
+
+		if err = os.WriteFile(tmpFile.Name(), manifest, 0644); err != nil {
+			return fmt.Errorf("could not write patched manifest to temporary file: %w", err)
+		}
+
+		return nil
+	}()).To(Succeed())
+
+	Expect(
+		RunAndIgnoreOutput(
+			exec.Command(
+				"kubectl",
+				"apply",
+				"-f",
+				tmpFile.Name(),
+			))).To(Succeed())
+
+	Expect(
+		RunAndIgnoreOutput(
+			exec.Command("kubectl",
+				"rollout",
+				"status",
+				"deployment",
+				"otlp-sink",
+				"--namespace",
+				"otlp-sink",
+				"--timeout",
+				"1m",
+			),
+		),
+	).To(Succeed())
+}
+
+func UninstallOtlpSink(workingDir string) {
+	originalManifest := fmt.Sprintf(
+		"%s/test-resources/otlp-sink/otlp-sink.yaml",
+		workingDir,
+	)
+
+	Expect(
+		RunAndIgnoreOutput(
+			exec.Command(
+				"kubectl",
+				"delete",
+				"--ignore-not-found=true",
+				"-f",
+				originalManifest,
+				"--wait",
+			))).To(Succeed())
+
+}
+
 func DeployOperator(
 	operatorNamespace string,
 	operatorHelmChart string,
@@ -311,16 +418,10 @@ func DeployOperator(
 ) {
 	ensureDash0OperatorHelmRepoIsInstalled(operatorHelmChart, operatorHelmChartUrl)
 
-	e2eTestExportDir :=
-		fmt.Sprintf(
-			"%s/test-resources/e2e-test-volumes/collector-received-data",
-			workingDir,
-		)
 	By(
 		fmt.Sprintf(
-			"deploying the operator controller to namespace %s with telemetry export directory %s",
+			"deploying the operator controller to namespace %s",
 			operatorNamespace,
-			e2eTestExportDir,
 		))
 	arguments := []string{
 		"install",
@@ -331,8 +432,6 @@ func DeployOperator(
 		"--set", "operator.disableSecretCheck=true",
 		"--set", "operator.disableOtlpEndpointCheck=true",
 		"--set", fmt.Sprintf("operator.enableWebhook=%t", enableWebhook),
-		"--set", "operator.e2eTestMode=true",
-		"--set", fmt.Sprintf("operator.e2eTestExportDir=%s", e2eTestExportDir),
 	}
 	arguments = addOptionalHelmParameters(arguments, operatorHelmChart, images)
 
@@ -465,7 +564,7 @@ func verifyThatControllerPodIsRunning(operatorNamespace string) {
 	Eventually(verifyControllerUp, 120*time.Second, time.Second).Should(Succeed())
 }
 
-func verifyThatOTelCollectorIsRunning(operatorNamespace string) {
+func verifyThatCollectorIsRunning(operatorNamespace string) {
 	By("validating that the OpenTelemetry collector has been created and is running as expected")
 	verifyCollectorIsUp := func(g Gomega) {
 		// Even though this command comes with its own timeout, we still have to wrap it in an Eventually block, since
@@ -486,7 +585,7 @@ func verifyThatOTelCollectorIsRunning(operatorNamespace string) {
 	Eventually(verifyCollectorIsUp, 60*time.Second, time.Second).Should(Succeed())
 }
 
-func VerifyThatOTelCollectorHasBeenRemoved(operatorNamespace string) {
+func VerifyThatCollectorHasBeenRemoved(operatorNamespace string) {
 	By("validating that the OpenTelemetry collector has been removed")
 	verifyCollectorIsGone := func(g Gomega) {
 		g.Expect(RunAndIgnoreOutput(
@@ -571,14 +670,16 @@ func UpgradeOperator(
 
 	verifyThatControllerPodIsRunning(operatorNamespace)
 
-	verifyThatOTelCollectorIsRunning(operatorNamespace)
+	verifyThatCollectorIsRunning(operatorNamespace)
 }
 
 func DeployDash0MonitoringResource(namespace string, operatorNamespace string) {
 	TruncateExportedTelemetry()
+
 	By(fmt.Sprintf(
-		"deploying the Dash0 monitoring resource to namespace %s, operator namespace is %s",
+		"Deploying the Dash0 monitoring resource to namespace %s, operator namespace is %s",
 		namespace, operatorNamespace))
+
 	Expect(
 		RunAndIgnoreOutput(exec.Command(
 			"kubectl",
@@ -586,11 +687,11 @@ func DeployDash0MonitoringResource(namespace string, operatorNamespace string) {
 			"-n",
 			namespace,
 			"-f",
-			"test-resources/customresources/dash0monitoring/dash0monitoring.token.yaml",
+			tmpDash0MonitoringResourceFile.Name(),
 		))).To(Succeed())
 
 	// Deploying the Dash0 monitoring resource will trigger creating the default OpenTelemetry collecor instance.
-	verifyThatOTelCollectorIsRunning(operatorNamespace)
+	verifyThatCollectorIsRunning(operatorNamespace)
 }
 
 func UpdateDash0MonitoringResource(namespace string, newIngressEndpoint string) bool {
@@ -611,6 +712,11 @@ func UpdateDash0MonitoringResource(namespace string, newIngressEndpoint string) 
 
 func UndeployDash0MonitoringResource(namespace string) {
 	TruncateExportedTelemetry()
+
+	if tmpDash0MonitoringResourceFile == nil {
+		Fail("tmpDash0MonitoringResourceFile is nil, this should not happen")
+	}
+
 	By(fmt.Sprintf("Removing the Dash0 monitoring resource from namespace %s", namespace))
 	Expect(
 		RunAndIgnoreOutput(exec.Command(
@@ -619,7 +725,7 @@ func UndeployDash0MonitoringResource(namespace string) {
 			"--namespace",
 			namespace,
 			"-f",
-			"test-resources/customresources/dash0monitoring/dash0monitoring.token.yaml",
+			tmpDash0MonitoringResourceFile.Name(),
 			"--ignore-not-found",
 		))).To(Succeed())
 }
@@ -640,9 +746,9 @@ func VerifyDash0MonitoringResourceDoesNotExist(g Gomega, namespace string) {
 
 func TruncateExportedTelemetry() {
 	By("truncating old captured telemetry files")
-	_ = os.Truncate("test-resources/e2e-test-volumes/collector-received-data/traces.jsonl", 0)
-	_ = os.Truncate("test-resources/e2e-test-volumes/collector-received-data/metrics.jsonl", 0)
-	_ = os.Truncate("test-resources/e2e-test-volumes/collector-received-data/logs.jsonl", 0)
+	_ = os.Truncate("test-resources/e2e-test-volumes/otlp-sink/traces.jsonl", 0)
+	_ = os.Truncate("test-resources/e2e-test-volumes/otlp-sink/metrics.jsonl", 0)
+	_ = os.Truncate("test-resources/e2e-test-volumes/otlp-sink/logs.jsonl", 0)
 }
 
 func RebuildNodeJsApplicationContainerImage() {
@@ -1271,7 +1377,7 @@ func sendRequest(g Gomega, port int, httpPathWithQuery string) {
 }
 
 func fileHasMatchingSpan(g Gomega, workloadType string, httpPathWithQuery string, timestampLowerBound *time.Time) bool {
-	fileHandle, err := os.Open("test-resources/e2e-test-volumes/collector-received-data/traces.jsonl")
+	fileHandle, err := os.Open("test-resources/e2e-test-volumes/otlp-sink/traces.jsonl")
 	g.Expect(err).NotTo(HaveOccurred())
 	defer func() {
 		_ = fileHandle.Close()

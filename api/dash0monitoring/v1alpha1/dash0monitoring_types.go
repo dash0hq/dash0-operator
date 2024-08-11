@@ -31,10 +31,9 @@ type Dash0MonitoringSpec struct {
 	// +kubebuilder:validation:Optional
 	AuthorizationToken string `json:"authorizationToken"`
 
-	// A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, but either
-	// this property or the AuthorizationToken property has to be provided. If both are provided, the AuthorizationToken
-	// will be used and SecretRef will be ignored. The authorization token for your Dash0 organization can be copied
-	// from https://app.dash0.com/settings.
+	// A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
+	// ignored if the AuthorizationToken property is set. The authorization token for your Dash0 organization
+	// can be copied from https://app.dash0.com/settings.
 	//
 	// +kubebuilder:validation:Optional
 	SecretRef string `json:"secretRef"`

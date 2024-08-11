@@ -1,7 +1,19 @@
-FROM otel/opentelemetry-collector-k8s:0.105.0 AS builder
+FROM golang:1.21-alpine AS builder
+
+RUN apk add --update make git && apk cache clean
+
+COPY ./src /src
+WORKDIR /src
+
+RUN export VERSION=$(cat builder/otelcol-version) \
+ && echo "Using otelcol v${VERSION} as baseline" \
+ && go install go.opentelemetry.io/collector/cmd/builder@v${VERSION}
+
+RUN CGO_ENABLED=0 builder --config=builder/config.yaml \
+ && chmod u+x /src/dist/dash0-operator-collector
 
 FROM alpine:3.20.2
-COPY ./src/entrypoint.sh /entrypoint.sh
-COPY --from=builder ./otelcol-k8s ./otelcol-k8s
+COPY ./src/image/entrypoint.sh /entrypoint.sh
+COPY --from=builder /src/dist/dash0-operator-collector ./otelcol
 USER 65532:65532
 ENTRYPOINT ["/entrypoint.sh"]

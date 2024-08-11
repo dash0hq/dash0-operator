@@ -113,16 +113,6 @@ spec:
         - name: DASH0_DEVELOPMENT_MODE
           value: {{ .Values.operator.developmentMode | toString | quote }}
         {{- end }}
-        {{- if .Values.operator.e2eTestMode }}
-        - name: DASH0_DEV_E2E_TEST_MODE
-          value: {{ .Values.operator.e2eTestMode | toString | quote }}
-        {{- if .Values.operator.e2eTestExportDir }}
-        - name: DASH0_DEV_E2E_TEST_EXPORT_DIR
-          value: {{ .Values.operator.e2eTestExportDir | quote }}
-        {{- else -}}
-        {{- fail "Error: If e2eTestMode is set, e2eTestExportDir neeeds to be set as well." -}}
-        {{- end }}
-        {{- end }}
         ports:
         - containerPort: 9443
           name: webhook-server

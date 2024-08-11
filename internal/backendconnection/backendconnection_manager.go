@@ -41,12 +41,6 @@ func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInDash0
 		logger.Error(err, failedToCreateMsg)
 		return err
 	}
-	if dash0MonitoringResource.Spec.AuthorizationToken == "" && dash0MonitoringResource.Spec.SecretRef == "" {
-		err := fmt.Errorf("neither an authorization token nor a reference to a Kubernetes secret has been provided, " +
-			"unable to create the OpenTelemetry collector")
-		logger.Error(err, failedToCreateMsg)
-		return err
-	}
 
 	resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 		m.OTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
