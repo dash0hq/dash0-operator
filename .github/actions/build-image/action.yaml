@@ -22,7 +22,7 @@ inputs:
     required: true
   imageUrl:
     description: "URL for the sources of the image"
-    default: "https://github.com/dash0hq/dash0-operator"
+    required: true
   context:
     description: "docker build context directory"
     required: true

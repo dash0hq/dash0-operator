@@ -145,6 +145,7 @@ jobs:
           imageName: collector
           imageTitle: Dash0 Kubernetes Collector
           imageDescription: the OpenTelemetry collector for the Dash0 Kubernetes operator
+          imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/collector
           context: images/collector
 
       - name: build configuration reloader image
@@ -155,6 +156,7 @@ jobs:
           imageName: configuration-reloader
           imageTitle: Dash0 Kubernetes Configuration Reloader
           imageDescription: the configuration reloader for the Dash0 Kubernetes operator
+          imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/configreloader
           context: images/configreloader
 
       - name: build operator controller image
@@ -165,6 +167,7 @@ jobs:
           imageName: operator-controller
           imageTitle: Dash0 Kubernetes Operator Controller
           imageDescription: the controller for the Dash0 Kubernetes operator
+          imageUrl: https://github.com/dash0hq/dash0-operator/tree/main
           context: .
 
   publish-helm-chart-dry-run:
