@@ -11,7 +11,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-// Run e2e tests using the Ginkgo runner.
+// run e2e tests using the Ginkgo runner.
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
 	fmt.Fprint(GinkgoWriter, "Starting dash0-operator suite\n")
