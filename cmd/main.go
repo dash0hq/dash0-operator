@@ -52,19 +52,23 @@ type environmentVariables struct {
 	collectorImagePullPolicy             corev1.PullPolicy
 	configurationReloaderImage           string
 	configurationReloaderImagePullPolicy corev1.PullPolicy
+	filelogOffsetSynchImage              string
+	filelogOffsetSynchImagePullPolicy    corev1.PullPolicy
 }
 
 const (
-	operatorNamespaceEnvVarName                         = "DASH0_OPERATOR_NAMESPACE"
-	deploymentNameEnvVarName                            = "DASH0_DEPLOYMENT_NAME"
-	oTelCollectorNamePrefixEnvVarName                   = "OTEL_COLLECTOR_NAME_PREFIX"
-	operatorImageEnvVarName                             = "DASH0_OPERATOR_IMAGE"
-	initContainerImageEnvVarName                        = "DASH0_INIT_CONTAINER_IMAGE"
-	initContainerImagePullPolicyEnvVarName              = "DASH0_INIT_CONTAINER_IMAGE_PULL_POLICY"
-	collectorImageEnvVarName                            = "DASH0_COLLECTOR_IMAGE"
-	collectorImageImagePullPolicyEnvVarName             = "DASH0_COLLECTOR_IMAGE_PULL_POLICY"
-	configurationReloaderImageEnvVarName                = "DASH0_CONFIGURATION_RELOADER_IMAGE"
-	configurationReloaderImageImagePullPolicyEnvVarName = "DASH0_CONFIGURATION_RELOADER_IMAGE_PULL_POLICY"
+	operatorNamespaceEnvVarName                    = "DASH0_OPERATOR_NAMESPACE"
+	deploymentNameEnvVarName                       = "DASH0_DEPLOYMENT_NAME"
+	oTelCollectorNamePrefixEnvVarName              = "OTEL_COLLECTOR_NAME_PREFIX"
+	operatorImageEnvVarName                        = "DASH0_OPERATOR_IMAGE"
+	initContainerImageEnvVarName                   = "DASH0_INIT_CONTAINER_IMAGE"
+	initContainerImagePullPolicyEnvVarName         = "DASH0_INIT_CONTAINER_IMAGE_PULL_POLICY"
+	collectorImageEnvVarName                       = "DASH0_COLLECTOR_IMAGE"
+	collectorImageImagePullPolicyEnvVarName        = "DASH0_COLLECTOR_IMAGE_PULL_POLICY"
+	configurationReloaderImageEnvVarName           = "DASH0_CONFIGURATION_RELOADER_IMAGE"
+	configurationReloaderImagePullPolicyEnvVarName = "DASH0_CONFIGURATION_RELOADER_IMAGE_PULL_POLICY"
+	filelogOffsetSynchImageEnvVarName              = "DASH0_FILELOG_OFFSET_SYNCH_IMAGE"
+	filelogOffsetSynchImagePullPolicyEnvVarName    = "DASH0_FILELOG_OFFSET_SYNCH_IMAGE_PULL_POLICY"
 
 	developmentModeEnvVarName = "DASH0_DEVELOPMENT_MODE"
 
@@ -292,6 +296,8 @@ func startDash0Controller(
 		CollectorImagePullPolicy:             envVars.collectorImagePullPolicy,
 		ConfigurationReloaderImage:           envVars.configurationReloaderImage,
 		ConfigurationReloaderImagePullPolicy: envVars.configurationReloaderImagePullPolicy,
+		FilelogOffsetSynchImage:              envVars.filelogOffsetSynchImage,
+		FilelogOffsetSynchImagePullPolicy:    envVars.filelogOffsetSynchImagePullPolicy,
 	}
 	oTelColResourceManager := &otelcolresources.OTelColResourceManager{
 		Client:                  mgr.GetClient(),
@@ -426,7 +432,14 @@ func readEnvironmentVariables() (*environmentVariables, error) {
 		return nil, fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, configurationReloaderImageEnvVarName)
 	}
 	configurationReloaderImagePullPolicy :=
-		readOptionalPullPolicyFromEnvironmentVariable(configurationReloaderImageImagePullPolicyEnvVarName)
+		readOptionalPullPolicyFromEnvironmentVariable(configurationReloaderImagePullPolicyEnvVarName)
+
+	filelogOffsetSynchImage, isSet := os.LookupEnv(filelogOffsetSynchImageEnvVarName)
+	if !isSet {
+		return nil, fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, filelogOffsetSynchImageEnvVarName)
+	}
+	filelogOffsetSynchImagePullPolicy :=
+		readOptionalPullPolicyFromEnvironmentVariable(filelogOffsetSynchImagePullPolicyEnvVarName)
 
 	return &environmentVariables{
 		operatorNamespace:                    operatorNamespace,
@@ -439,6 +452,8 @@ func readEnvironmentVariables() (*environmentVariables, error) {
 		collectorImagePullPolicy:             collectorImagePullPolicy,
 		configurationReloaderImage:           configurationReloaderImage,
 		configurationReloaderImagePullPolicy: configurationReloaderImagePullPolicy,
+		filelogOffsetSynchImage:              filelogOffsetSynchImage,
+		filelogOffsetSynchImagePullPolicy:    filelogOffsetSynchImagePullPolicy,
 	}, nil
 }
 

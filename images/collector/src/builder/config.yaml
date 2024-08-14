@@ -6,6 +6,9 @@ dist:
   version: "dash0"
   output_path: dist
 
+connectors:
+  - gomod: "go.opentelemetry.io/collector/connector/forwardconnector v0.106.1"
+
 extensions:
   - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.106.1"
 

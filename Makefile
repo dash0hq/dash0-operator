@@ -76,6 +76,10 @@ CONFIGURATION_RELOADER_IMG_TAG ?= latest
 CONFIGURATION_RELOADER_IMG ?= $(CONFIGURATION_RELOADER_IMG_REPOSITORY):$(CONFIGURATION_RELOADER_IMG_TAG)
 CONFIGURATION_RELOADER_IMG_PULL_POLICY ?= Never
 
+FILELOG_OFFSET_SYNCH_IMG_REPOSITORY ?= filelog-offset-synch
+FILELOG_OFFSET_SYNCH_IMG_TAG ?= latest
+FILELOG_OFFSET_SYNCH_IMG ?= $(FILELOG_OFFSET_SYNCH_IMG_REPOSITORY):$(FILELOG_OFFSET_SYNCH_IMG_TAG)
+FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY ?= Never
 
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.28.3
@@ -252,6 +256,9 @@ deploy-via-helm: ## Deploy the controller via helm to the K8s cluster specified 
 		--set operator.configurationReloaderImage.repository=$(CONFIGURATION_RELOADER_IMG_REPOSITORY) \
 		--set operator.configurationReloaderImage.tag=$(CONFIGURATION_RELOADER_IMG_TAG) \
 		--set operator.configurationReloaderImage.pullPolicy=$(CONFIGURATION_RELOADER_IMG_PULL_POLICY) \
+		--set operator.filelogOffsetSynchImage.repository=$(FILELOG_OFFSET_SYNCH_IMG_REPOSITORY) \
+		--set operator.filelogOffsetSynchImage.tag=$(FILELOG_OFFSET_SYNCH_IMG_TAG) \
+		--set operator.filelogOffsetSynchImage.pullPolicy=$(FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY) \
 		--set operator.developmentMode=true \
 		dash0-operator \
 		$(OPERATOR_HELM_CHART)

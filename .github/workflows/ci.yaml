@@ -105,6 +105,10 @@ jobs:
               - .github/actions/build-image/**
               - .github/workflows/ci.yaml
               - images/configreloader/**
+            filelog_offset_synch:
+              - .github/actions/build-image/**
+              - .github/workflows/ci.yaml
+              - images/filelogoffsetsynch/**
 
       - name: show changed files
         env:
@@ -116,6 +120,8 @@ jobs:
           COLLECTOR_CHANGED_FILES_LIST: ${{ steps.changed-files.outputs.collector_all_changed_files }}
           CONFIGURATION_RELOADER_CHANGED_FILES_FLAG: ${{ steps.changed-files.outputs.configuration_reloader_any_changed }}
           CONFIGURATION_RELOADER_CHANGED_FILES_LIST: ${{ steps.changed-files.outputs.configuration_reloader_all_changed_files }}
+          FILELOG_OFFSET_SYNCH_CHANGED_FILES_FLAG: ${{ steps.changed-files.outputs.filelog_offset_synch_any_changed }}
+          FILELOG_OFFSET_SYNCH_CHANGED_FILES_LIST: ${{ steps.changed-files.outputs.filelog_offset_synch_any_changed_files }}
         run: |
           echo "files for instrumentation image have changed: $INSTRUMENTATION_CHANGED_FILES_FLAG"
           echo "changed files for instrumentation image: $INSTRUMENTATION_CHANGED_FILES_LIST"
@@ -125,6 +131,8 @@ jobs:
           echo "changed files for collector image: $COLLECTOR_CHANGED_FILES_LIST"
           echo "files for configuration reloader image have changed: $CONFIGURATION_RELOADER_CHANGED_FILES_FLAG"
           echo "changed files for configuration reloader image: $CONFIGURATION_RELOADER_CHANGED_FILES_LIST"
+          echo "files for file offset synch image have changed: $FILELOG_OFFSET_SYNCH_CHANGED_FILES_FLAG"
+          echo "changed files for file offset synch image: $FILELOG_OFFSET_SYNCH_CHANGED_FILES_LIST"
 
       - name: build instrumentation image
         uses: ./.github/actions/build-image
@@ -167,6 +175,17 @@ jobs:
           imageName: operator-controller
           imageTitle: Dash0 Kubernetes Operator Controller
           imageDescription: the controller for the Dash0 Kubernetes operator
+          imageUrl: https://github.com/dash0hq/dash0-operator/tree/main
+          context: .
+
+      - name: build filelog offset synch image
+        uses: ./.github/actions/build-image
+        if: steps.changed-files.outputs.filelog_offset_synch_any_changed == 'true' || contains(github.ref, 'refs/tags/')
+        with:
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          imageName: filelog-offset-synch
+          imageTitle: Dash0 Kubernetes Filelog Offset Synch
+          imageDescription: the filelog offset synch for the Dash0 Kubernetes operator
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main
           context: .
 

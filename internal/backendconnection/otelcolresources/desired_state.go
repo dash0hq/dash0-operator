@@ -44,9 +44,10 @@ const (
 )
 
 type collectorConfigurationTemplateValues struct {
-	HasExportAuthentication bool
-	IngressEndpoint         string
-	ExportProtocol          exportProtocol
+	HasExportAuthentication  bool
+	IngressEndpoint          string
+	ExportProtocol           exportProtocol
+	IgnoreLogsFromNamespaces []string
 }
 
 const (
@@ -99,11 +100,19 @@ func assembleDesiredState(config *oTelColConfig) ([]client.Object, error) {
 
 	var desiredState []client.Object
 	desiredState = append(desiredState, serviceAccount(config))
-	cnfgMap, err := configMap(config)
+
+	collectorConfigMap, err := collectorConfigConfigMap(config)
 	if err != nil {
 		return desiredState, err
 	}
-	desiredState = append(desiredState, cnfgMap)
+	desiredState = append(desiredState, collectorConfigMap)
+
+	filelogOffsetsConfigMap, err := filelogOffsetsConfigMap(config)
+	if err != nil {
+		return desiredState, err
+	}
+	desiredState = append(desiredState, filelogOffsetsConfigMap)
+
 	desiredState = append(desiredState, clusterRole(config))
 	desiredState = append(desiredState, clusterRoleBinding(config))
 	desiredState = append(desiredState, service(config))
@@ -134,7 +143,7 @@ func renderCollectorConfigs(templateValues *collectorConfigurationTemplateValues
 	return collectorConfiguration.String(), nil
 }
 
-func configMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
+func collectorConfigConfigMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
 	ingressEndpoint := config.IngressEndpoint
 	exportProtocol := grpcExportProtocol
 	if url, err := url.ParseRequestURI(ingressEndpoint); err != nil {
@@ -147,6 +156,13 @@ func configMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
 		IngressEndpoint:         ingressEndpoint,
 		ExportProtocol:          exportProtocol,
 		HasExportAuthentication: config.hasAuthentication(),
+		IgnoreLogsFromNamespaces: []string{
+			// Skipping kube-system, it requires bespoke filtering work
+			"kube-system",
+			// Skipping logs from the operator and the daemonset, otherwise
+			// logs will compound in case of log parsing errors
+			config.Namespace,
+		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("cannot render the collector configuration template: %w", err)
@@ -167,6 +183,21 @@ func configMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
 			Labels:    labels(false),
 		},
 		Data: configMapData,
+	}, nil
+}
+
+func filelogOffsetsConfigMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
+	return &corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ConfigMap",
+			APIVersion: "v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      filelogReceiverOffsetsConfigMapName(config.NamePrefix),
+			Namespace: config.Namespace,
+			Labels:    labels(false),
+		},
+		Data: map[string]string{},
 	}, nil
 }
 
@@ -264,29 +295,40 @@ func service(config *oTelColConfig) *corev1.Service {
 }
 
 func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
-	collectorPidFilePath := "/etc/otelcol/run/pid.file"
-
-	volumeMounts := []corev1.VolumeMount{
-		{
-			Name:      "opentelemetry-collector-configmap",
-			MountPath: "/etc/otelcol/conf",
-			ReadOnly:  true,
-		},
-		// TODO Make this readonly for config reloader
-		{
-			Name:      "opentelemetry-collector-pidfile",
-			MountPath: filepath.Dir(collectorPidFilePath),
-			ReadOnly:  false,
-		},
-	}
-
 	configMapItems := []corev1.KeyToPath{{
 		Key:  collectorConfigurationYaml,
 		Path: collectorConfigurationYaml,
 	}}
 
+	collectorPidFilePath := "/etc/otelcol/run/pid.file"
+
 	pidFileVolumeSizeLimit := resource.MustParse("1M")
+	offsetsVolumeSizeLimit := resource.MustParse("10M")
 	volumes := []corev1.Volume{
+		{
+			Name: "filelogreceiver-offsets",
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{
+					SizeLimit: &offsetsVolumeSizeLimit,
+				},
+			},
+		},
+		{
+			Name: "node-pod-logs",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: "/var/log/pods/",
+				},
+			},
+		},
+		{
+			Name: "node-docker-container-logs",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: "/var/lib/docker/containers",
+				},
+			},
+		},
 		{
 			Name: "opentelemetry-collector-configmap",
 			VolumeSource: corev1.VolumeSource{
@@ -307,6 +349,41 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 			},
 		},
 	}
+
+	commonVolumeMounts := []corev1.VolumeMount{
+		{
+			Name:      "opentelemetry-collector-configmap",
+			MountPath: "/etc/otelcol/conf",
+			ReadOnly:  true,
+		},
+		// TODO Make this readonly for config reloader
+		{
+			Name:      "opentelemetry-collector-pidfile",
+			MountPath: filepath.Dir(collectorPidFilePath),
+			ReadOnly:  false,
+		},
+	}
+
+	filelogReceiverOffsetsVolumeMount := corev1.VolumeMount{
+		Name:      "filelogreceiver-offsets",
+		MountPath: "/var/otelcol/filelogreceiver_offsets",
+		ReadOnly:  false,
+	}
+
+	collectorVolumeMounts := append(commonVolumeMounts, corev1.VolumeMount{
+		Name:      "node-pod-logs",
+		MountPath: "/var/log/pods",
+		ReadOnly:  true,
+	},
+		// On Docker desktop and other runtimes using docker, the files in /var/log/pods
+		// are simlinked to this folder
+		corev1.VolumeMount{
+			Name:      "node-docker-container-logs",
+			MountPath: "/var/lib/docker/containers",
+			ReadOnly:  true,
+		},
+		filelogReceiverOffsetsVolumeMount,
+	)
 
 	env := []corev1.EnvVar{
 		{
@@ -389,12 +466,6 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 				ContainerPort: otlpHttpPort,
 				HostPort:      otlpHttpPort,
 			},
-			// {
-			// 	Name:          "k8s-probes",
-			// 	Protocol:      corev1.ProtocolTCP,
-			// 	ContainerPort: probesHttpPort,
-			// 	HostPort:      probesHttpPort,
-			// },
 		},
 		Env:            env,
 		LivenessProbe:  &probe,
@@ -404,7 +475,7 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 				corev1.ResourceMemory: resource.MustParse("500Mi"),
 			},
 		},
-		VolumeMounts: volumeMounts,
+		VolumeMounts: collectorVolumeMounts,
 	}
 	if config.Images.CollectorImagePullPolicy != "" {
 		collectorContainer.ImagePullPolicy = config.Images.CollectorImagePullPolicy
@@ -429,10 +500,50 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 				corev1.ResourceMemory: resource.MustParse("12Mi"),
 			},
 		},
-		VolumeMounts: volumeMounts,
+		VolumeMounts: commonVolumeMounts,
 	}
 	if config.Images.ConfigurationReloaderImagePullPolicy != "" {
 		configurationReloaderContainer.ImagePullPolicy = config.Images.ConfigurationReloaderImagePullPolicy
+	}
+
+	filelogOffsetSynchContainer := corev1.Container{
+		Name: configReloader,
+		Args: []string{
+			"/var/otelcol/filelogreceiver_offsets",
+		},
+		SecurityContext: &corev1.SecurityContext{},
+		Image:           config.Images.FilelogOffsetSynchImage,
+		Env: []corev1.EnvVar{
+			{
+				Name:  "GOMEMLIMIT",
+				Value: "4MiB",
+			},
+			{
+				Name:  "K8S_CONFIGMAP_NAME",
+				Value: filelogReceiverOffsetsConfigMapName(config.NamePrefix),
+			},
+			{
+				Name:  "FILELOG_OFFSET_DIRECTORY_PATH",
+				Value: "/var/otelcol/filelogreceiver_offsets",
+			},
+			{
+				Name: "K8S_NODE_NAME",
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: &corev1.ObjectFieldSelector{
+						FieldPath: "spec.nodeName",
+					},
+				},
+			},
+		},
+		Resources: corev1.ResourceRequirements{
+			Limits: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("12Mi"),
+			},
+		},
+		VolumeMounts: commonVolumeMounts,
+	}
+	if config.Images.FilelogOffsetSynchImagePullPolicy != "" {
+		filelogOffsetSynchContainer.ImagePullPolicy = config.Images.FilelogOffsetSynchImagePullPolicy
 	}
 
 	return &appsv1.DaemonSet{
@@ -465,6 +576,7 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 					Containers: []corev1.Container{
 						collectorContainer,
 						configurationReloaderContainer,
+						filelogOffsetSynchContainer,
 					},
 					Volumes:     volumes,
 					HostNetwork: false,
@@ -476,6 +588,10 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 
 func serviceAccountName(namePrefix string) string {
 	return name(namePrefix, openTelemetryCollector)
+}
+
+func filelogReceiverOffsetsConfigMapName(namePrefix string) string {
+	return name(namePrefix, "filelogoffsets")
 }
 
 func configMapName(namePrefix string) string {
