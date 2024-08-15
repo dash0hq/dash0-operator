@@ -129,6 +129,15 @@ The other configuration settings are optional:
   More fine-grained per-workload control over instrumentation is available by setting the label
   `dash0.com/enable=false` on individual workloads.
 
+  The behavior when changing this setting for an existing Dash0 monitoring resource is as follows:
+    * When this setting is updated to `instrumentWorkloads=all` (and it had a different value before): All existing
+      uninstrumented workloads will be instrumented.
+    * When this setting is updated to `instrumentWorkloads=none` (and it had a different value before): The
+      instrumentation will be removed from all instrumented workloads.
+    * Updating this value to `instrumentWorkloads=created-and-updated` has no immediate effect; existing uninstrumented 
+      workloads will not be instrumented, existing instrumented workloads will not be uninstrumented. Newly deployed
+      or updated workloads will be instrumented from the point of the configuration change onwards as described above.
+
 * `uninstrumentWorkloadsOnDelete`: A boolean opt-out setting for removing the Dash0 instrumentation from workloads when
   the Dash0 monitoring resource is removed from a namespace, or when the Dash0 Kubernetes operator is deleted entirely.
   By default, this setting is true and the operator will revert the instrumentation modifications it applied to

@@ -39,7 +39,9 @@ type resourceHandler func(h *Handler, request admission.Request, gvkLabel string
 type routing map[string]map[string]map[string]resourceHandler
 
 const (
-	optOutAdmissionAllowedMessage = "not instrumenting this workload due to dash0.com/enable=false"
+	optOutAdmissionAllowedMessage    = "not instrumenting this workload due to dash0.com/enable=false"
+	sameVersionNoModificationMessage = "not updating the existing instrumentation for this workload, it has already " +
+		"been successfully instrumented by the same operator version"
 )
 
 var (
@@ -204,6 +206,8 @@ func (h *Handler) handleCronJob(
 	} else if util.WasInstrumentedButHasOptedOutNow(&cronJob.ObjectMeta) {
 		hasBeenModified := h.newWorkloadModifier(logger).RevertCronJob(cronJob)
 		return h.postProcessUninstrumentation(request, cronJob, hasBeenModified, false, logger)
+	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(&cronJob.ObjectMeta, h.Images) {
+		return logAndReturnAllowed(sameVersionNoModificationMessage, logger)
 	} else {
 		hasBeenModified := h.newWorkloadModifier(logger).ModifyCronJob(cronJob)
 		return h.postProcessInstrumentation(request, cronJob, hasBeenModified, false, false, logger)
@@ -229,6 +233,8 @@ func (h *Handler) handleDaemonSet(
 	} else if util.WasInstrumentedButHasOptedOutNow(&daemonSet.ObjectMeta) {
 		hasBeenModified := h.newWorkloadModifier(logger).RevertDaemonSet(daemonSet)
 		return h.postProcessUninstrumentation(request, daemonSet, hasBeenModified, false, logger)
+	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(&daemonSet.ObjectMeta, h.Images) {
+		return logAndReturnAllowed(sameVersionNoModificationMessage, logger)
 	} else {
 		hasBeenModified := h.newWorkloadModifier(logger).ModifyDaemonSet(daemonSet)
 		return h.postProcessInstrumentation(request, daemonSet, hasBeenModified, false, false, logger)
@@ -254,6 +260,8 @@ func (h *Handler) handleDeployment(
 	} else if util.WasInstrumentedButHasOptedOutNow(&deployment.ObjectMeta) {
 		hasBeenModified := h.newWorkloadModifier(logger).RevertDeployment(deployment)
 		return h.postProcessUninstrumentation(request, deployment, hasBeenModified, false, logger)
+	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(&deployment.ObjectMeta, h.Images) {
+		return logAndReturnAllowed(sameVersionNoModificationMessage, logger)
 	} else {
 		hasBeenModified := h.newWorkloadModifier(logger).ModifyDeployment(deployment)
 		return h.postProcessInstrumentation(request, deployment, hasBeenModified, false, false, logger)
@@ -281,6 +289,9 @@ func (h *Handler) handleJob(
 		// not listening to udpates for jobs. We cannot uninstrument jobs if the user adds an opt-out label after the
 		// job has been already instrumented, since jobs are immutable.
 		return h.postProcessUninstrumentation(request, job, false, true, logger)
+	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(&job.ObjectMeta, h.Images) {
+		// This should not happen either.
+		return logAndReturnAllowed(sameVersionNoModificationMessage, logger)
 	} else {
 		hasBeenModified := h.newWorkloadModifier(logger).ModifyJob(job)
 		return h.postProcessInstrumentation(request, job, hasBeenModified, false, false, logger)
@@ -309,6 +320,9 @@ func (h *Handler) handlePod(
 		// after the pod has been already instrumented, since we cannot restart ownerless pods, which makes them
 		// effectively immutable.
 		return h.postProcessUninstrumentation(request, pod, false, true, logger)
+	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(&pod.ObjectMeta, h.Images) {
+		// This should not happen either.
+		return logAndReturnAllowed(sameVersionNoModificationMessage, logger)
 	} else {
 		hasBeenModified := h.newWorkloadModifier(logger).ModifyPod(pod)
 		return h.postProcessInstrumentation(request, pod, hasBeenModified, false, true, logger)
@@ -334,6 +348,8 @@ func (h *Handler) handleReplicaSet(
 	} else if util.WasInstrumentedButHasOptedOutNow(&replicaSet.ObjectMeta) {
 		hasBeenModified := h.newWorkloadModifier(logger).RevertReplicaSet(replicaSet)
 		return h.postProcessUninstrumentation(request, replicaSet, hasBeenModified, false, logger)
+	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(&replicaSet.ObjectMeta, h.Images) {
+		return logAndReturnAllowed(sameVersionNoModificationMessage, logger)
 	} else {
 		hasBeenModified := h.newWorkloadModifier(logger).ModifyReplicaSet(replicaSet)
 		return h.postProcessInstrumentation(request, replicaSet, hasBeenModified, false, false, logger)
@@ -359,6 +375,8 @@ func (h *Handler) handleStatefulSet(
 	} else if util.WasInstrumentedButHasOptedOutNow(&statefulSet.ObjectMeta) {
 		hasBeenModified := h.newWorkloadModifier(logger).RevertStatefulSet(statefulSet)
 		return h.postProcessUninstrumentation(request, statefulSet, hasBeenModified, false, logger)
+	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(&statefulSet.ObjectMeta, h.Images) {
+		return logAndReturnAllowed(sameVersionNoModificationMessage, logger)
 	} else {
 		hasBeenModified := h.newWorkloadModifier(logger).ModifyStatefulSet(statefulSet)
 		return h.postProcessInstrumentation(request, statefulSet, hasBeenModified, false, false, logger)

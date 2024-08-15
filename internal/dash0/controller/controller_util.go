@@ -204,20 +204,19 @@ func initStatusConditions(
 	ctx context.Context,
 	statusWriter client.SubResourceWriter,
 	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
-	conditions []metav1.Condition,
-	conditionTypeAvailable string,
 	logger *logr.Logger,
 ) (bool, error) {
+	status := dash0MonitoringResource.Status
 	firstReconcile := false
 	needsRefresh := false
-	if len(conditions) == 0 {
+	if len(status.Conditions) == 0 {
 		dash0MonitoringResource.SetAvailableConditionToUnknown()
 		firstReconcile = true
 		needsRefresh = true
 	} else if availableCondition :=
 		meta.FindStatusCondition(
-			conditions,
-			conditionTypeAvailable,
+			status.Conditions,
+			string(dash0v1alpha1.ConditionTypeAvailable),
 		); availableCondition == nil {
 		dash0MonitoringResource.SetAvailableConditionToUnknown()
 		needsRefresh = true

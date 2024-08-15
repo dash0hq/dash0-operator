@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/format"
@@ -105,7 +107,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		if kubeContextHasBeenChanged {
 			revertKubeCtx(originalKubeContext)
 		}
-		removeRenderedResourceTemplate()
 	})
 
 	BeforeEach(func() {
@@ -171,7 +172,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				})
 
 				deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images, true)
-				deployDash0MonitoringResource(applicationUnderTestNamespace, operatorNamespace)
+				deployDash0MonitoringResource(applicationUnderTestNamespace, operatorNamespace, defaultDash0MonitoringValues)
 
 				testIds := make(map[string]string)
 				runInParallelForAllWorkloadTypes(workloadConfigs, func(config controllerTestWorkloadConfig) {
@@ -208,7 +209,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				By("installing the Node.js job")
 				Expect(installNodeJsJob(applicationUnderTestNamespace)).To(Succeed())
 				deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images, true)
-				deployDash0MonitoringResource(applicationUnderTestNamespace, operatorNamespace)
+				deployDash0MonitoringResource(applicationUnderTestNamespace, operatorNamespace, defaultDash0MonitoringValues)
 				By("verifying that the Node.js job has been labelled by the controller and that an event has been emitted")
 				Eventually(func(g Gomega) {
 					verifyLabels(g, applicationUnderTestNamespace, "job", false, images, "controller")
@@ -232,7 +233,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				By("installing the Node.js pod")
 				Expect(installNodeJsPod(applicationUnderTestNamespace)).To(Succeed())
 				deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images, true)
-				deployDash0MonitoringResource(applicationUnderTestNamespace, operatorNamespace)
+				deployDash0MonitoringResource(applicationUnderTestNamespace, operatorNamespace, defaultDash0MonitoringValues)
 				By("verifying that the Node.js pod has not been labelled")
 				Eventually(func(g Gomega) {
 					verifyNoDash0Labels(g, applicationUnderTestNamespace, "pod")
@@ -268,7 +269,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					},
 				}
 				deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, initialImages, false)
-				deployDash0MonitoringResource(applicationUnderTestNamespace, operatorNamespace)
+				deployDash0MonitoringResource(applicationUnderTestNamespace, operatorNamespace, defaultDash0MonitoringValues)
 
 				By("verifying that the Node.js deployment has been instrumented by the controller")
 				verifyThatWorkloadHasBeenInstrumented(
@@ -317,7 +318,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		})
 
 		BeforeEach(func() {
-			deployDash0MonitoringResource(applicationUnderTestNamespace, operatorNamespace)
+			deployDash0MonitoringResource(applicationUnderTestNamespace, operatorNamespace, defaultDash0MonitoringValues)
 		})
 
 		AfterEach(func() {
@@ -468,10 +469,96 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				"webhook",
 			)
 		})
+	})
+
+	Describe("when updating the Dash0Monitoring resource", func() {
+		BeforeAll(func() {
+			By("deploy the Dash0 operator")
+			deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images, true)
+			time.Sleep(10 * time.Second)
+		})
+
+		AfterAll(func() {
+			undeployOperator(operatorNamespace)
+		})
+
+		AfterEach(func() {
+			undeployDash0MonitoringResource(applicationUnderTestNamespace)
+		})
+
+		It("should instrument workloads when the Dash0Monitoring resource is switched from instrumentWorkloads=none to instrumentWorkloads=all", func() { //nolint
+			deployDash0MonitoringResource(
+				applicationUnderTestNamespace,
+				operatorNamespace,
+				dash0MonitoringValues{
+					IngressEndpoint:     defaultIngressEndpoint,
+					InstrumentWorkloads: dash0v1alpha1.None,
+				},
+			)
+
+			By("installing the Node.js stateful set")
+			Expect(installNodeJsStatefulSet(applicationUnderTestNamespace)).To(Succeed())
+			By("verifying that the Node.js stateful set has not been instrumented by the webhook (due to " +
+				"namespace-level opt-out via the Dash0Monitoring resource)")
+			Consistently(func(g Gomega) {
+				verifyNoDash0Labels(g, applicationUnderTestNamespace, "statefulset")
+			}, 10*time.Second, verifyTelemetryPollingInterval).Should(Succeed())
+
+			updateInstrumentWorkloadsModeOfDash0MonitoringResource(
+				applicationUnderTestNamespace,
+				dash0v1alpha1.All,
+			)
+
+			By("verifying that the Node.js stateful set has been instrumented by the controller")
+			verifyThatWorkloadHasBeenInstrumented(
+				applicationUnderTestNamespace,
+				"statefulset",
+				1210,
+				false,
+				images,
+				"controller",
+			)
+		})
+
+		It("should revert an instrumented workload when the Dash0Monitoring resource is switched from instrumentWorkloads=all to instrumentWorkloads=none", func() { //nolint
+			deployDash0MonitoringResource(
+				applicationUnderTestNamespace,
+				operatorNamespace,
+				defaultDash0MonitoringValues,
+			)
+
+			By("installing the Node.js deployment")
+			Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+			By("verifying that the Node.js deployment has been instrumented by the webhook")
+			testId := verifyThatWorkloadHasBeenInstrumented(
+				applicationUnderTestNamespace,
+				"deployment",
+				1207,
+				false,
+				images,
+				"webhook",
+			)
+
+			By("updating the Dash0Monitoring resource to InstrumentWorkloads=none")
+			updateInstrumentWorkloadsModeOfDash0MonitoringResource(
+				applicationUnderTestNamespace,
+				dash0v1alpha1.None,
+			)
+
+			verifyThatInstrumentationHasBeenReverted(
+				applicationUnderTestNamespace,
+				"deployment",
+				1207,
+				false,
+				testId,
+				"controller",
+			)
+		})
 
 		It("should update the daemonset collector configuration when updating the Dash0 endpoint", func() {
-			By("updating the Dash0 resource endpoint")
+			deployDash0MonitoringResource(applicationUnderTestNamespace, operatorNamespace, defaultDash0MonitoringValues)
 
+			By("updating the Dash0 monitoring resource ingress endpoint")
 			newIngressEndpoint := "ingress.eu-east-1.aws.dash0-dev.com:4317"
 			updateIngressEndpointOfDash0MonitoringResource(applicationUnderTestNamespace, newIngressEndpoint)
 
@@ -553,7 +640,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 				deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images, true)
 				runInParallelForAllWorkloadTypes(configs, func(config removalTestNamespaceConfig) {
-					deployDash0MonitoringResource(config.namespace, operatorNamespace)
+					deployDash0MonitoringResource(config.namespace, operatorNamespace, defaultDash0MonitoringValues)
 				})
 
 				testIds := make(map[string]string)

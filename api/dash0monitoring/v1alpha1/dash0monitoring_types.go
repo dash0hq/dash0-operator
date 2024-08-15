@@ -125,6 +125,10 @@ const (
 // Dash0MonitoringStatus defines the observed state of the Dash0 monitoring resource.
 type Dash0MonitoringStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
+
+	// The spec.instrumentWorkloads setting that has been observed in the previous reconcile cycle.
+	// +kubebuilder:validation:Optional
+	PreviousInstrumentWorkloads InstrumentWorkloadsMode `json:"previousInstrumentWorkloads,omitempty"`
 }
 
 //+kubebuilder:object:root=true
