@@ -71,17 +71,6 @@ type Dash0MonitoringSpec struct {
 	//
 	// +kubebuilder:validation:Optional
 	InstrumentWorkloads InstrumentWorkloadsMode `json:"instrumentWorkloads,omitempty"`
-
-	// Opt-out for removing the Dash0 instrumentation from workloads when the Dash0 monitoring resource is removed from
-	// a namespace, or when the Dash0 Kubernetes operator is deleted entirely. By default, this setting is true and the
-	// operator will revert the instrumentation modifications it applied to workloads to send telemetry to Dash0.
-	// Setting this option to false will prevent this behavior. Note that removing instrumentation will typically result
-	// in a restart of the pods of the affected workloads.
-	//
-	// The default value for this option is true.
-	//
-	// +kubebuilder:validation:Optional
-	UninstrumentWorkloadsOnDelete *bool `json:"uninstrumentWorkloadsOnDelete"`
 }
 
 // InstrumentWorkloadsMode describes when exactly workloads will be instrumented.  Only one of the following modes

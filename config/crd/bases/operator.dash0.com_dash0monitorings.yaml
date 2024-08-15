@@ -101,17 +101,6 @@ spec:
                   ignored if the AuthorizationToken property is set. The authorization token for your Dash0 organization
                   can be copied from https://app.dash0.com/settings.
                 type: string
-              uninstrumentWorkloadsOnDelete:
-                description: |-
-                  Opt-out for removing the Dash0 instrumentation from workloads when the Dash0 monitoring resource is removed from
-                  a namespace, or when the Dash0 Kubernetes operator is deleted entirely. By default, this setting is true and the
-                  operator will revert the instrumentation modifications it applied to workloads to send telemetry to Dash0.
-                  Setting this option to false will prevent this behavior. Note that removing instrumentation will typically result
-                  in a restart of the pods of the affected workloads.
-
-
-                  The default value for this option is true.
-                type: boolean
             required:
             - ingressEndpoint
             type: object

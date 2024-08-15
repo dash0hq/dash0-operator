@@ -16,7 +16,3 @@ spec:
   # Opt-out settings for particular use cases. The default value is "all". Other possible values are
   # "created-and-updated" and "none".
   # instrumentWorkloads: all
-
-  # Opt-out setting for removing instrumentation from workloads when the Dash0 monitoring resource is removed.
-  # uninstrumentWorkloadsOnDelete: true
-

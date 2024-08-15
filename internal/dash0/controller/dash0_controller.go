@@ -284,18 +284,9 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 			return ctrl.Result{}, err
 		}
 	} else if requiredAction == modificationModeUninstrumentation {
-		uninstrumentWorkloadsOnDelete :=
-			dash0v1alpha1.ReadBooleanOptOutSetting(dash0MonitoringResource.Spec.UninstrumentWorkloadsOnDelete)
-		if uninstrumentWorkloadsOnDelete {
-			if err = r.uninstrumentWorkloadsIfAvailable(ctx, dash0MonitoringResource, &logger); err != nil {
-				logger.Error(err, "Failed to uninstrument workloads, requeuing reconcile request.")
-				return ctrl.Result{}, err
-			}
-		} else {
-			logger.Info(
-				"Reverting instrumentation modifications is not enabled, the Dash0 Kubernetes operator will not attempt " +
-					"any changes made to workloads.",
-			)
+		if err = r.uninstrumentWorkloadsIfAvailable(ctx, dash0MonitoringResource, &logger); err != nil {
+			logger.Error(err, "Failed to uninstrument workloads, requeuing reconcile request.")
+			return ctrl.Result{}, err
 		}
 	}
 
@@ -758,17 +749,9 @@ func (r *Dash0Reconciler) runCleanupActions(
 	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
 	logger *logr.Logger,
 ) error {
-	uninstrumentWorkloadsOnDelete := dash0v1alpha1.ReadBooleanOptOutSetting(dash0MonitoringResource.Spec.UninstrumentWorkloadsOnDelete)
-	if uninstrumentWorkloadsOnDelete {
-		if err := r.uninstrumentWorkloadsIfAvailable(ctx, dash0MonitoringResource, logger); err != nil {
-			logger.Error(err, "Failed to uninstrument workloads, requeuing reconcile request.")
-			return err
-		}
-	} else {
-		logger.Info(
-			"Reverting instrumentation modifications is not enabled, the Dash0 Kubernetes operator will not attempt " +
-				"any changes made to workloads.",
-		)
+	if err := r.uninstrumentWorkloadsIfAvailable(ctx, dash0MonitoringResource, logger); err != nil {
+		logger.Error(err, "Failed to uninstrument workloads, requeuing reconcile request.")
+		return err
 	}
 
 	if err := r.BackendConnectionManager.RemoveOpenTelemetryCollectorIfNoDash0MonitoringResourceIsLeft(
