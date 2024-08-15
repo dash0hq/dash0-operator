@@ -24,11 +24,13 @@ func deployOtlpSink(workingDir string) {
 		workingDir,
 	)
 
-	tmpFile, err := os.CreateTemp("/tmp", "otlp-sink-*.yaml")
+	tmpFile, err := os.CreateTemp(os.TempDir(), "otlp-sink-*.yaml")
 	if err != nil {
 		log.Fatalf("could not create temporary file to store the patched otlp-sink manifest: %v", err)
 	}
-	defer Expect(os.Remove(tmpFile.Name())).To(Succeed())
+	defer func() {
+		Expect(os.Remove(tmpFile.Name())).To(Succeed())
+	}()
 
 	Expect(func() error {
 		manifest, err := os.ReadFile(originalManifest)

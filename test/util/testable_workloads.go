@@ -19,6 +19,7 @@ type WorkloadTestConfig struct {
 	ConfigureFn        func(string, string) TestableWorkload
 	CreateFn           func(context.Context, client.Client, string, string) TestableWorkload
 	GetFn              func(context.Context, client.Client, string, string) TestableWorkload
+	VerifyPreFn        func(TestableWorkload)
 	VerifyFn           func(TestableWorkload)
 }
 

@@ -48,17 +48,17 @@ type Dash0Reconciler struct {
 	DanglingEventsTimeouts   *DanglingEventsTimeouts
 }
 
-type ModificationMode string
+type modificationMode string
 
 const (
 	workkloadTypeLabel     = "workload type"
 	workloadNamespaceLabel = "workload namespace"
 	workloadNameLabel      = "workload name"
 
-	updateStatusFailedMessage = "Failed to update Dash0 status conditions, requeuing reconcile request."
+	updateStatusFailedMessage = "Failed to update Dash0 monitoring status conditions, requeuing reconcile request."
 
-	Instrumentation   ModificationMode = "Instrumentation"
-	Uninstrumentation ModificationMode = "Uninstrumentation"
+	modificationModeInstrumentation   modificationMode = "instrumentation"
+	modificationModeUninstrumentation modificationMode = "uninstrumentation"
 )
 
 var (
@@ -78,15 +78,15 @@ var (
 type ImmutableWorkloadError struct {
 	workloadType     string
 	workloadName     string
-	modificationMode ModificationMode
+	modificationMode modificationMode
 }
 
 func (e ImmutableWorkloadError) Error() string {
 	var modificationParticle string
 	switch e.modificationMode {
-	case Instrumentation:
+	case modificationModeInstrumentation:
 		modificationParticle = "instrument"
-	case Uninstrumentation:
+	case modificationModeUninstrumentation:
 		modificationParticle = "remove the instrumentation from"
 	default:
 		modificationParticle = "modify"
@@ -156,7 +156,7 @@ func (r *Dash0Reconciler) InstrumentAtStartup() {
 			continue
 		}
 
-		err = r.checkSettingsAndInstrumentAllWorkloads(ctx, &dash0MonitoringResource, &logger)
+		err = r.checkSettingsAndInstrumentExistingWorkloads(ctx, &dash0MonitoringResource, &logger)
 		if err != nil {
 			logger.Error(
 				err,
@@ -226,8 +226,6 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		ctx,
 		r.Status(),
 		dash0MonitoringResource,
-		dash0MonitoringResource.Status.Conditions,
-		string(dash0v1alpha1.ConditionTypeAvailable),
 		&logger,
 	)
 	if err != nil {
@@ -271,12 +269,33 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{}, err
 	}
 
-	if isFirstReconcile {
-		logger.Info("Initial reconcile in progress.")
-		if err = r.checkSettingsAndInstrumentAllWorkloads(ctx, dash0MonitoringResource, &logger); err != nil {
-			// The error has already been logged in checkSettingsAndInstrumentAllWorkloads
+	var requiredAction modificationMode
+	dash0MonitoringResource, requiredAction, err =
+		r.manageInstrumentWorkloadsChanges(ctx, dash0MonitoringResource, isFirstReconcile, &logger)
+	if err != nil {
+		// The error has already been logged in manageInstrumentWorkloadsChanges
+		return ctrl.Result{}, err
+	}
+
+	if isFirstReconcile || requiredAction == modificationModeInstrumentation {
+		if err = r.checkSettingsAndInstrumentExistingWorkloads(ctx, dash0MonitoringResource, &logger); err != nil {
+			// The error has already been logged in checkSettingsAndInstrumentExistingWorkloads
 			logger.Info("Requeuing reconcile request.")
 			return ctrl.Result{}, err
+		}
+	} else if requiredAction == modificationModeUninstrumentation {
+		uninstrumentWorkloadsOnDelete :=
+			dash0v1alpha1.ReadBooleanOptOutSetting(dash0MonitoringResource.Spec.UninstrumentWorkloadsOnDelete)
+		if uninstrumentWorkloadsOnDelete {
+			if err = r.uninstrumentWorkloadsIfAvailable(ctx, dash0MonitoringResource, &logger); err != nil {
+				logger.Error(err, "Failed to uninstrument workloads, requeuing reconcile request.")
+				return ctrl.Result{}, err
+			}
+		} else {
+			logger.Info(
+				"Reverting instrumentation modifications is not enabled, the Dash0 Kubernetes operator will not attempt " +
+					"any changes made to workloads.",
+			)
 		}
 	}
 
@@ -291,7 +310,39 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	return ctrl.Result{}, nil
 }
 
-func (r *Dash0Reconciler) checkSettingsAndInstrumentAllWorkloads(
+func (r *Dash0Reconciler) manageInstrumentWorkloadsChanges(ctx context.Context, dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring, isFirstReconcile bool, logger *logr.Logger) (*dash0v1alpha1.Dash0Monitoring, modificationMode, error) {
+	previous := dash0MonitoringResource.Status.PreviousInstrumentWorkloads
+	current := dash0MonitoringResource.ReadInstrumentWorkloadsSetting()
+
+	var requiredAction modificationMode
+	if !isFirstReconcile {
+		if previous != dash0v1alpha1.All && previous != "" && current == dash0v1alpha1.All {
+			logger.Info(fmt.Sprintf(
+				"The instrumentWorkloads setting has changed from \"%s\" to \"%s\" (or it is absent, in which case it"+
+					"defaults to \"all\"). Workloads in this namespace will now be instrumented so they send "+
+					"telemetry to Dash0.", previous, current))
+			requiredAction = modificationModeInstrumentation
+		} else if previous != dash0v1alpha1.None && current == dash0v1alpha1.None {
+			logger.Info(fmt.Sprintf(
+				"The instrumentWorkloads setting has changed from \"%s\" to \"%s\". Instrumented workloads in this "+
+					"namespace will now be uninstrumented, they will no longer send telemetry to Dash0.",
+				previous,
+				current))
+			requiredAction = modificationModeUninstrumentation
+		}
+	}
+
+	if previous != current {
+		dash0MonitoringResource.Status.PreviousInstrumentWorkloads = current
+		if err := r.Status().Update(ctx, dash0MonitoringResource); err != nil {
+			logger.Error(err, "Failed to update the previous instrumentWorkloads status on the Dash0 monitoring resource, requeuing reconcile request.")
+			return dash0MonitoringResource, "", err
+		}
+	}
+	return dash0MonitoringResource, requiredAction, nil
+}
+
+func (r *Dash0Reconciler) checkSettingsAndInstrumentExistingWorkloads(
 	ctx context.Context,
 	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
 	logger *logr.Logger,
@@ -463,7 +514,7 @@ func (r *Dash0Reconciler) handleJobJobOnInstrumentation(
 	}
 
 	objectMeta := &job.ObjectMeta
-	var requiredAction ModificationMode
+	var requiredAction modificationMode
 	modifyLabels := true
 	createImmutableWorkloadsError := true
 	if util.HasOptedOutOfInstrumenation(objectMeta) && util.InstrumenationAttemptHasFailed(objectMeta) {
@@ -471,14 +522,14 @@ func (r *Dash0Reconciler) handleJobJobOnInstrumentation(
 		// label, so we can remove the labels left over from that earlier attempt.
 		// "requiredAction = Instrumentation" in the context of immutable jobs means "remove Dash0 labels from the job",
 		// no other modification will take place.
-		requiredAction = Uninstrumentation
+		requiredAction = modificationModeUninstrumentation
 		createImmutableWorkloadsError = false
 	} else if util.HasOptedOutOfInstrumenation(objectMeta) && util.HasBeenInstrumentedSuccessfully(objectMeta) {
 		// This job has been instrumented successfully, presumably by the webhook. Since then, the opt-out label has
 		// been added. The correct action would be to uninstrument it, but since it is immutable, we cannot do that.
 		// We will not actually modify this job at all, but create a log message and a corresponding event.
 		modifyLabels = false
-		requiredAction = Uninstrumentation
+		requiredAction = modificationModeUninstrumentation
 	} else if util.HasOptedOutOfInstrumenation(objectMeta) {
 		// has opt-out label and there has been no previous instrumentation attempt
 		logger.Info("not instrumenting this workload due to dash0.com/enable=false")
@@ -492,7 +543,7 @@ func (r *Dash0Reconciler) handleJobJobOnInstrumentation(
 		//
 		// "requiredAction = Instrumentation" in the context of immutable jobs means "add labels to the job", no other
 		// modification will (or can) take place.
-		requiredAction = Instrumentation
+		requiredAction = modificationModeInstrumentation
 	}
 
 	retryErr := util.Retry("handling immutable job", func() error {
@@ -509,9 +560,9 @@ func (r *Dash0Reconciler) handleJobJobOnInstrumentation(
 
 		hasBeenModified := false
 		switch requiredAction {
-		case Instrumentation:
+		case modificationModeInstrumentation:
 			hasBeenModified = newWorkloadModifier(r.Images, r.OTelCollectorBaseUrl, &logger).AddLabelsToImmutableJob(&job)
-		case Uninstrumentation:
+		case modificationModeUninstrumentation:
 			hasBeenModified = newWorkloadModifier(r.Images, r.OTelCollectorBaseUrl, &logger).RemoveLabelsFromImmutableJob(&job)
 		}
 
@@ -523,7 +574,7 @@ func (r *Dash0Reconciler) handleJobJobOnInstrumentation(
 	}, &logger)
 
 	postProcess := r.postProcessInstrumentation
-	if requiredAction == Uninstrumentation {
+	if requiredAction == modificationModeUninstrumentation {
 		postProcess = r.postProcessUninstrumentation
 	}
 	if retryErr != nil {
@@ -618,9 +669,9 @@ func (r *Dash0Reconciler) instrumentWorkload(
 		return false
 	}
 
-	var requiredAction ModificationMode
+	var requiredAction modificationMode
 	if util.WasInstrumentedButHasOptedOutNow(objectMeta) {
-		requiredAction = Uninstrumentation
+		requiredAction = modificationModeUninstrumentation
 	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(objectMeta, r.Images) {
 		// No change necessary, this workload has already been instrumented and an opt-out label (which would need to
 		// trigger uninstrumentation) has not been added since it has been instrumented.
@@ -631,7 +682,7 @@ func (r *Dash0Reconciler) instrumentWorkload(
 		logger.Info("not instrumenting this workload due to dash0.com/enable=false")
 		return false
 	} else {
-		requiredAction = Instrumentation
+		requiredAction = modificationModeInstrumentation
 	}
 
 	hasBeenModified := false
@@ -650,9 +701,9 @@ func (r *Dash0Reconciler) instrumentWorkload(
 		}
 
 		switch requiredAction {
-		case Instrumentation:
+		case modificationModeInstrumentation:
 			hasBeenModified = workload.instrument(r.Images, r.OTelCollectorBaseUrl, &logger)
-		case Uninstrumentation:
+		case modificationModeUninstrumentation:
 			hasBeenModified = workload.revert(r.Images, r.OTelCollectorBaseUrl, &logger)
 		}
 
@@ -664,9 +715,9 @@ func (r *Dash0Reconciler) instrumentWorkload(
 	}, &logger)
 
 	switch requiredAction {
-	case Instrumentation:
+	case modificationModeInstrumentation:
 		return r.postProcessInstrumentation(workload.asRuntimeObject(), hasBeenModified, retryErr, &logger)
-	case Uninstrumentation:
+	case modificationModeUninstrumentation:
 		return r.postProcessUninstrumentation(workload.asRuntimeObject(), hasBeenModified, retryErr, &logger)
 	}
 	return false
@@ -708,17 +759,16 @@ func (r *Dash0Reconciler) runCleanupActions(
 	logger *logr.Logger,
 ) error {
 	uninstrumentWorkloadsOnDelete := dash0v1alpha1.ReadBooleanOptOutSetting(dash0MonitoringResource.Spec.UninstrumentWorkloadsOnDelete)
-	if !uninstrumentWorkloadsOnDelete {
+	if uninstrumentWorkloadsOnDelete {
+		if err := r.uninstrumentWorkloadsIfAvailable(ctx, dash0MonitoringResource, logger); err != nil {
+			logger.Error(err, "Failed to uninstrument workloads, requeuing reconcile request.")
+			return err
+		}
+	} else {
 		logger.Info(
 			"Reverting instrumentation modifications is not enabled, the Dash0 Kubernetes operator will not attempt " +
 				"any changes made to workloads.",
 		)
-		return nil
-	}
-
-	if err := r.uninstrumentWorkloadsIfAvailable(ctx, dash0MonitoringResource, logger); err != nil {
-		logger.Error(err, "Failed to uninstrument workloads, requeuing reconcile request.")
-		return err
 	}
 
 	if err := r.BackendConnectionManager.RemoveOpenTelemetryCollectorIfNoDash0MonitoringResourceIsLeft(
@@ -943,7 +993,7 @@ func (r *Dash0Reconciler) handleJobOnUninstrumentation(ctx context.Context, job 
 		r.postProcessUninstrumentation(&job, false, ImmutableWorkloadError{
 			workloadType:     "job",
 			workloadName:     fmt.Sprintf("%s/%s", job.GetNamespace(), job.GetName()),
-			modificationMode: Uninstrumentation,
+			modificationMode: modificationModeUninstrumentation,
 		}, &logger)
 	} else {
 		r.postProcessUninstrumentation(&job, false, nil, &logger)

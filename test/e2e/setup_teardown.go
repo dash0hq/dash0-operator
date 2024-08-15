@@ -4,14 +4,10 @@
 package e2e
 
 import (
-	"bytes"
-	_ "embed"
 	"fmt"
-	"os"
 	"os/exec"
 	"strconv"
 	"strings"
-	"text/template"
 
 	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive
 	. "github.com/onsi/gomega"
@@ -19,10 +15,6 @@ import (
 
 var (
 	requiredPorts = []int{1207, 4317, 4318}
-
-	//go:embed dash0monitoring.e2e.yaml.template
-	dash0MonitoringResourceSource  string
-	tmpDash0MonitoringResourceFile *os.File
 )
 
 func checkIfRequiredPortsAreBlocked() {
@@ -67,26 +59,6 @@ func checkIfRequiredPortsAreBlocked() {
 func renderTemplates() {
 	By("render yaml templates via render-templates.sh")
 	Expect(runAndIgnoreOutput(exec.Command("test-resources/bin/render-templates.sh"))).To(Succeed())
-
-	By("render resource template via text/template package")
-	dash0MonitoringResourceTemplate :=
-		template.Must(template.New("dash0monitoring").Parse(dash0MonitoringResourceSource))
-	var dash0MonitoringResource bytes.Buffer
-	Expect(dash0MonitoringResourceTemplate.Execute(&dash0MonitoringResource, dash0MonitoringTemplateValues{
-		IngressEndpoint: "http://otlp-sink.otlp-sink.svc.cluster.local",
-	})).To(Succeed())
-	var err error
-	tmpDash0MonitoringResourceFile, err = os.CreateTemp("/tmp", "dash0monitoring-*.yaml")
-	Expect(err).NotTo(HaveOccurred())
-
-	Expect(os.WriteFile(tmpDash0MonitoringResourceFile.Name(), dash0MonitoringResource.Bytes(), 0644)).To(Succeed())
-}
-
-func removeRenderedResourceTemplate() {
-	if tmpDash0MonitoringResourceFile == nil {
-		Fail("tmpDash0MonitoringResourceFile is nil, this should not happen")
-	}
-	Expect(os.Remove(tmpDash0MonitoringResourceFile.Name())).To(Succeed())
 }
 
 func setKubeContext(kubeContextForTest string) (bool, string) {

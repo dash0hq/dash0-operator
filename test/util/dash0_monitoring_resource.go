@@ -37,6 +37,20 @@ func EnsureDash0MonitoringResourceExists(
 		ctx,
 		k8sClient,
 		Dash0MonitoringResourceQualifiedName,
+		"",
+	)
+}
+
+func EnsureDash0MonitoringResourceExistsWithInstrumentWorkloadsMode(
+	ctx context.Context,
+	k8sClient client.Client,
+	instrumentWorkloads dash0v1alpha1.InstrumentWorkloadsMode,
+) *dash0v1alpha1.Dash0Monitoring {
+	return EnsureDash0MonitoringResourceExistsWithNamespacedName(
+		ctx,
+		k8sClient,
+		Dash0MonitoringResourceQualifiedName,
+		instrumentWorkloads,
 	)
 }
 
@@ -44,23 +58,30 @@ func EnsureDash0MonitoringResourceExistsWithNamespacedName(
 	ctx context.Context,
 	k8sClient client.Client,
 	namespacesName types.NamespacedName,
+	instrumentWorkloads dash0v1alpha1.InstrumentWorkloadsMode,
 ) *dash0v1alpha1.Dash0Monitoring {
 	By("creating the Dash0 monitoring resource")
+
+	spec := dash0v1alpha1.Dash0MonitoringSpec{
+		IngressEndpoint:    "ingress.endpoint.dash0.com:4317",
+		AuthorizationToken: "authorization-token",
+		SecretRef:          "secret-ref",
+	}
+	if instrumentWorkloads != "" {
+		spec.InstrumentWorkloads = instrumentWorkloads
+	}
+	objectMeta := metav1.ObjectMeta{
+		Name:      namespacesName.Name,
+		Namespace: namespacesName.Namespace,
+	}
 	object := EnsureKubernetesObjectExists(
 		ctx,
 		k8sClient,
 		Dash0MonitoringResourceQualifiedName,
 		&dash0v1alpha1.Dash0Monitoring{},
 		&dash0v1alpha1.Dash0Monitoring{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      namespacesName.Name,
-				Namespace: namespacesName.Namespace,
-			},
-			Spec: dash0v1alpha1.Dash0MonitoringSpec{
-				IngressEndpoint:    "ingress.endpoint.dash0.com:4317",
-				AuthorizationToken: "authorization-token",
-				SecretRef:          "secret-ref",
-			},
+			ObjectMeta: objectMeta,
+			Spec:       spec,
 		},
 	)
 	return object.(*dash0v1alpha1.Dash0Monitoring)
@@ -106,6 +127,7 @@ func EnsureDash0MonitoringResourceExistsAndIsAvailableInNamespace(
 		ctx,
 		k8sClient,
 		namespacedName,
+		"",
 	)
 	dash0MonitoringResource.EnsureResourceIsMarkedAsAvailable()
 	Expect(k8sClient.Status().Update(ctx, dash0MonitoringResource)).To(Succeed())
@@ -230,4 +252,14 @@ func removeFinalizerFromDash0MonitoringResource(
 	if finalizerHasBeenRemoved {
 		Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
 	}
+}
+
+func UpdateInstrumentWorkloadsMode(
+	ctx context.Context,
+	k8sClient client.Client,
+	instrumentWorkloads dash0v1alpha1.InstrumentWorkloadsMode,
+) {
+	dash0MonitoringResource := LoadDash0MonitoringResourceOrFail(ctx, k8sClient, Default)
+	dash0MonitoringResource.Spec.InstrumentWorkloads = instrumentWorkloads
+	Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
 }
