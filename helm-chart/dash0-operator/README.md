@@ -65,9 +65,6 @@ spec:
   # Opt-out settings for particular use cases. The default value is "all". Other possible values are
   # "created-and-updated" and "none".
   # instrumentWorkloads: all
-
-  # Opt-out setting for removing instrumentation from workloads when the Dash0 monitoring resource is removed.
-  # uninstrumentWorkloadsOnDelete: true
 ```
 
 At this point, you need to provide two configuration settings:
@@ -137,15 +134,6 @@ The other configuration settings are optional:
     * Updating this value to `instrumentWorkloads=created-and-updated` has no immediate effect; existing uninstrumented 
       workloads will not be instrumented, existing instrumented workloads will not be uninstrumented. Newly deployed
       or updated workloads will be instrumented from the point of the configuration change onwards as described above.
-
-* `uninstrumentWorkloadsOnDelete`: A boolean opt-out setting for removing the Dash0 instrumentation from workloads when
-  the Dash0 monitoring resource is removed from a namespace, or when the Dash0 Kubernetes operator is deleted entirely.
-  By default, this setting is true and the operator will revert the instrumentation modifications it applied to
-  workloads to send telemetry to Dash0.
-  Setting this option to `false` will prevent this behavior.
-  Note that removing instrumentation will typically result in a restart of the pods of the affected workloads.
-
-  The default value for this option is true.
 
 After providing the required values, save the file and apply the resource to the namespace you want to monitor.
 For example, if you want to monitor workloads in the namespace `my-nodejs-applications`, use the following command:
