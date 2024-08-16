@@ -19,42 +19,13 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/dash0hq/dash0-operator/internal/dash0/util"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	"github.com/dash0hq/dash0-operator/internal/dash0/util"
-)
-
-const (
-	TestNamespaceName      = "test-namespace"
-	Dash0OperatorNamespace = "dash0-system"
-	CronJobNamePrefix      = "cronjob"
-	DaemonSetNamePrefix    = "daemonset"
-	DeploymentNamePrefix   = "deployment"
-	JobNamePrefix          = "job"
-	PodNamePrefix          = "pod"
-	ReplicaSetNamePrefix   = "replicaset"
-	StatefulSetNamePrefix  = "statefulset"
-
-	OperatorImageTest              = "some-registry.com:1234/dash0hq/operator-controller:1.2.3"
-	InitContainerImageTest         = "some-registry.com:1234/dash0hq/instrumentation:4.5.6"
-	CollectorImageTest             = "some-registry.com:1234/dash0hq/collector:7.8.9"
-	ConfigurationReloaderImageTest = "some-registry.com:1234/dash0hq/configuration-reloader:10.11.12"
 )
 
 var (
-	ArbitraryNumer int64 = 1302
-
-	TestImages = util.Images{
-		OperatorImage:                        OperatorImageTest,
-		InitContainerImage:                   InitContainerImageTest,
-		InitContainerImagePullPolicy:         corev1.PullAlways,
-		CollectorImage:                       CollectorImageTest,
-		CollectorImagePullPolicy:             corev1.PullAlways,
-		ConfigurationReloaderImage:           ConfigurationReloaderImageTest,
-		ConfigurationReloaderImagePullPolicy: corev1.PullAlways,
-	}
-
 	instrumentationInitContainer = corev1.Container{
 		Name:            "dash0-instrumentation",
 		Image:           InitContainerImageTest,

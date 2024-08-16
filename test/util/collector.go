@@ -17,10 +17,6 @@ import (
 const (
 	ExpectedConfigMapName = "unit-test-opentelemetry-collector-agent"
 	ExpectedDaemonSetName = "unit-test-opentelemetry-collector-agent"
-
-	IngressEndpoint    = "ingress.endpoint.dash0.com:4317"
-	AuthorizationToken = "authorization-token"
-	SecretRefEmpty     = ""
 )
 
 func VerifyCollectorResourcesExist(
@@ -47,6 +43,8 @@ func VerifyCollectorConfigMapExists(
 	cm := cm_.(*corev1.ConfigMap)
 	Expect(cm.Data).To(HaveKey("config.yaml"))
 
+	verifyOwnerReference(cm)
+
 	return cm
 }
 
@@ -64,6 +62,8 @@ func VerifyCollectorDaemonSetExists(
 	ports := containers[0].Ports
 	Expect(ports[0].ContainerPort).To(Equal(int32(4317)))
 	Expect(ports[1].ContainerPort).To(Equal(int32(4318)))
+
+	verifyOwnerReference(ds)
 
 	return ds
 }
@@ -134,4 +134,15 @@ func verifyResourceDoesNotExist(
 	Expect(err).To(HaveOccurred(), fmt.Sprintf("the %s still exists although it should have been deleted", resourceLabel))
 	Expect(apierrors.IsNotFound(err)).To(BeTrue(),
 		fmt.Sprintf("loading the %s failed with an unexpected error: %v", resourceLabel, err))
+}
+
+func verifyOwnerReference(object client.Object) {
+	ownerReferences := object.GetOwnerReferences()
+	Expect(ownerReferences).To(HaveLen(1))
+	ownerReference := ownerReferences[0]
+	Expect(ownerReference.APIVersion).To(Equal("apps/v1"))
+	Expect(ownerReference.Kind).To(Equal("Deployment"))
+	Expect(ownerReference.Name).To(Equal(DeploymentSelfReference.Name))
+	Expect(*ownerReference.BlockOwnerDeletion).To(BeTrue())
+	Expect(*ownerReference.Controller).To(BeTrue())
 }

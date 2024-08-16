@@ -58,12 +58,13 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 		oTelColResourceManager := &otelcolresources.OTelColResourceManager{
 			Client:                  k8sClient,
+			Scheme:                  k8sClient.Scheme(),
+			DeploymentSelfReference: DeploymentSelfReference,
 			OTelCollectorNamePrefix: "unit-test",
 		}
 		backendConnectionManager := &backendconnection.BackendConnectionManager{
 			Client:                 k8sClient,
 			Clientset:              clientset,
-			Scheme:                 k8sClient.Scheme(),
 			OTelColResourceManager: oTelColResourceManager,
 		}
 		reconciler = &Dash0Reconciler{
@@ -1319,9 +1320,9 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 					Namespace: Dash0MonitoringResourceQualifiedName.Namespace,
 				},
 				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					IngressEndpoint:     "ingress.endpoint.dash0.com:4317",
-					AuthorizationToken:  "authorization-token",
-					SecretRef:           "secret-ref",
+					IngressEndpoint:     IngressEndpointTest,
+					AuthorizationToken:  AuthorizationTokenTest,
+					SecretRef:           SecretRefTest,
 					InstrumentWorkloads: "invalid",
 				},
 			})).ToNot(Succeed())

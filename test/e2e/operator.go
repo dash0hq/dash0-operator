@@ -246,5 +246,5 @@ func upgradeOperator(
 
 	verifyThatControllerPodIsRunning(operatorNamespace)
 
-	verifyThatCollectorIsRunning(operatorNamespace)
+	verifyThatCollectorIsRunning(operatorNamespace, operatorHelmChart)
 }

@@ -17,15 +17,17 @@ import (
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
+
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
 var (
-	operatorNamespace       = Dash0OperatorNamespace
+	operatorNamespace = Dash0OperatorNamespace
+
 	dash0MonitoringResource = &dash0v1alpha1.Dash0Monitoring{
 		Spec: dash0v1alpha1.Dash0MonitoringSpec{
-			IngressEndpoint:    IngressEndpoint,
-			AuthorizationToken: AuthorizationToken,
+			IngressEndpoint:    IngressEndpointTest,
+			AuthorizationToken: AuthorizationTokenTest,
 		},
 	}
 )
@@ -47,12 +49,13 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 		createdObjects = make([]client.Object, 0)
 		oTelColResourceManager := &otelcolresources.OTelColResourceManager{
 			Client:                  k8sClient,
+			Scheme:                  k8sClient.Scheme(),
+			DeploymentSelfReference: DeploymentSelfReference,
 			OTelCollectorNamePrefix: "unit-test",
 		}
 		manager = &BackendConnectionManager{
 			Client:                 k8sClient,
 			Clientset:              clientset,
-			Scheme:                 k8sClient.Scheme(),
 			OTelColResourceManager: oTelColResourceManager,
 		}
 	})
@@ -72,7 +75,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				operatorNamespace,
 				&dash0v1alpha1.Dash0Monitoring{
 					Spec: dash0v1alpha1.Dash0MonitoringSpec{
-						AuthorizationToken: AuthorizationToken,
+						AuthorizationToken: AuthorizationTokenTest,
 					}})
 			Expect(err).To(HaveOccurred())
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
@@ -85,7 +88,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				operatorNamespace,
 				&dash0v1alpha1.Dash0Monitoring{
 					Spec: dash0v1alpha1.Dash0MonitoringSpec{
-						IngressEndpoint: IngressEndpoint,
+						IngressEndpoint: IngressEndpointTest,
 					}})
 			Expect(err).NotTo(HaveOccurred())
 			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
@@ -99,9 +102,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				ctx,
 				operatorNamespace,
 				TestImages,
-				IngressEndpoint,
-				AuthorizationToken,
-				SecretRefEmpty,
+				dash0MonitoringResource,
 				&logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -221,8 +222,8 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 						UID:       "3c0e72bb-26a7-40a4-bbdd-b1c978278fc5",
 					},
 					Spec: dash0v1alpha1.Dash0MonitoringSpec{
-						IngressEndpoint:    IngressEndpoint,
-						AuthorizationToken: AuthorizationToken,
+						IngressEndpoint:    IngressEndpointTest,
+						AuthorizationToken: AuthorizationTokenTest,
 					},
 				},
 			)

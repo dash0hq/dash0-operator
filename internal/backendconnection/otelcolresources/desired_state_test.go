@@ -26,7 +26,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		_, err := assembleDesiredState(&oTelColConfig{
 			Namespace:          namespace,
 			NamePrefix:         namePrefix,
-			AuthorizationToken: AuthorizationToken,
+			AuthorizationToken: AuthorizationTokenTest,
 			SecretRef:          SecretRefEmpty,
 			Images:             TestImages,
 		})
@@ -37,15 +37,15 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredState(&oTelColConfig{
 			Namespace:          namespace,
 			NamePrefix:         namePrefix,
-			IngressEndpoint:    IngressEndpoint,
-			AuthorizationToken: AuthorizationToken,
+			IngressEndpoint:    IngressEndpointTest,
+			AuthorizationToken: AuthorizationTokenTest,
 			Images:             TestImages,
 		})
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(desiredState).To(HaveLen(6))
 		configMapContent := getConfigMapContent(desiredState)
-		Expect(configMapContent).To(ContainSubstring(fmt.Sprintf("endpoint: %s", IngressEndpoint)))
+		Expect(configMapContent).To(ContainSubstring(fmt.Sprintf("endpoint: %s", IngressEndpointTest)))
 		Expect(configMapContent).NotTo(ContainSubstring("file/traces"))
 		Expect(configMapContent).NotTo(ContainSubstring("file/metrics"))
 		Expect(configMapContent).NotTo(ContainSubstring("file/logs"))
@@ -105,8 +105,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredState(&oTelColConfig{
 			Namespace:          namespace,
 			NamePrefix:         namePrefix,
-			IngressEndpoint:    IngressEndpoint,
-			AuthorizationToken: AuthorizationToken,
+			IngressEndpoint:    IngressEndpointTest,
+			AuthorizationToken: AuthorizationTokenTest,
 		})
 
 		Expect(err).ToNot(HaveOccurred())
@@ -117,14 +117,14 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 		authTokenEnvVar := findEnvVarByName(daemonSet.Spec.Template.Spec.Containers[0].Env, "AUTH_TOKEN")
 		Expect(authTokenEnvVar).NotTo(BeNil())
-		Expect(authTokenEnvVar.Value).To(Equal(AuthorizationToken))
+		Expect(authTokenEnvVar.Value).To(Equal(AuthorizationTokenTest))
 	})
 
 	It("should use the secret reference if provided (and no authorization token has been provided)", func() {
 		desiredState, err := assembleDesiredState(&oTelColConfig{
 			Namespace:       namespace,
 			NamePrefix:      namePrefix,
-			IngressEndpoint: IngressEndpoint,
+			IngressEndpoint: IngressEndpointTest,
 			SecretRef:       "some-secret",
 		})
 
@@ -145,7 +145,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredState(&oTelColConfig{
 			Namespace:       namespace,
 			NamePrefix:      namePrefix,
-			IngressEndpoint: IngressEndpoint,
+			IngressEndpoint: IngressEndpointTest,
 		})
 
 		Expect(err).ToNot(HaveOccurred())
