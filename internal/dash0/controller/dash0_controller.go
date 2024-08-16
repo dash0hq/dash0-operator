@@ -40,11 +40,11 @@ type Dash0Reconciler struct {
 	Clientset                *kubernetes.Clientset
 	Scheme                   *runtime.Scheme
 	Recorder                 record.EventRecorder
+	BackendConnectionManager *backendconnection.BackendConnectionManager
 	Images                   util.Images
 	OTelCollectorNamePrefix  string
 	OTelCollectorBaseUrl     string
 	OperatorNamespace        string
-	BackendConnectionManager *backendconnection.BackendConnectionManager
 	DanglingEventsTimeouts   *DanglingEventsTimeouts
 }
 

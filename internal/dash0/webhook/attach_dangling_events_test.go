@@ -37,12 +37,13 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 
 		oTelColResourceManager := &otelcolresources.OTelColResourceManager{
 			Client:                  k8sClient,
+			Scheme:                  k8sClient.Scheme(),
+			DeploymentSelfReference: DeploymentSelfReference,
 			OTelCollectorNamePrefix: "unit-test",
 		}
 		backendConnectionManager := &backendconnection.BackendConnectionManager{
 			Client:                 k8sClient,
 			Clientset:              clientset,
-			Scheme:                 k8sClient.Scheme(),
 			OTelColResourceManager: oTelColResourceManager,
 		}
 		recorder := manager.GetEventRecorderFor("dash0-controller")

@@ -57,8 +57,9 @@ func renderDash0MonitoringResourceTemplate(dash0MonitoringValues dash0Monitoring
 
 func deployDash0MonitoringResource(
 	namespace string,
-	operatorNamespace string,
 	dash0MonitoringValues dash0MonitoringValues,
+	operatorNamespace string,
+	operatorHelmChart string,
 ) {
 	truncateExportedTelemetry()
 
@@ -81,7 +82,7 @@ func deployDash0MonitoringResource(
 		))).To(Succeed())
 
 	// Deploying the Dash0 monitoring resource will trigger creating the default OpenTelemetry collecor instance.
-	verifyThatCollectorIsRunning(operatorNamespace)
+	verifyThatCollectorIsRunning(operatorNamespace, operatorHelmChart)
 }
 
 func updateIngressEndpointOfDash0MonitoringResource(

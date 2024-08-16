@@ -8,18 +8,25 @@ import (
 	"errors"
 	"reflect"
 
+	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 	"github.com/go-logr/logr"
 	"github.com/google/go-cmp/cmp"
+	appsv1 "k8s.io/api/apps/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	"github.com/dash0hq/dash0-operator/internal/dash0/util"
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 )
 
 type OTelColResourceManager struct {
 	client.Client
+	Scheme                  *runtime.Scheme
+	DeploymentSelfReference *appsv1.Deployment
 	OTelCollectorNamePrefix string
 }
 
@@ -27,18 +34,16 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	ctx context.Context,
 	namespace string,
 	images util.Images,
-	ingressEndpoint string,
-	authorizationToken string,
-	secretRef string,
+	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
 	logger *logr.Logger,
 ) (bool, bool, error) {
 	config := &oTelColConfig{
 		Namespace:          namespace,
 		NamePrefix:         m.OTelCollectorNamePrefix,
-		IngressEndpoint:    ingressEndpoint,
-		SecretRef:          secretRef,
+		IngressEndpoint:    dash0MonitoringResource.Spec.IngressEndpoint,
+		AuthorizationToken: dash0MonitoringResource.Spec.AuthorizationToken,
+		SecretRef:          dash0MonitoringResource.Spec.SecretRef,
 		Images:             images,
-		AuthorizationToken: authorizationToken,
 	}
 	desiredState, err := assembleDesiredState(config)
 	if err != nil {
@@ -112,6 +117,9 @@ func (m *OTelColResourceManager) createResource(
 	desiredObject client.Object,
 	logger *logr.Logger,
 ) error {
+	if err := m.setOwnerReference(desiredObject, logger); err != nil {
+		return err
+	}
 	err := m.Client.Create(ctx, desiredObject)
 	if err != nil {
 		return err
@@ -143,6 +151,9 @@ func (m *OTelColResourceManager) updateResource(
 		"kind",
 		desiredObject.GetObjectKind().GroupVersionKind(),
 	)
+	if err := m.setOwnerReference(desiredObject, logger); err != nil {
+		return false, err
+	}
 	err := m.Client.Update(ctx, desiredObject)
 	if err != nil {
 		return false, err
@@ -172,22 +183,37 @@ func (m *OTelColResourceManager) updateResource(
 	return hasChanged, nil
 }
 
+func (m *OTelColResourceManager) setOwnerReference(
+	object client.Object,
+	logger *logr.Logger,
+) error {
+	if err := controllerutil.SetControllerReference(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: m.DeploymentSelfReference.Namespace,
+			Name:      m.DeploymentSelfReference.Name,
+			UID:       m.DeploymentSelfReference.UID,
+		},
+	}, object, m.Scheme); err != nil {
+		logger.Error(err, "cannot set owner reference on object")
+		return err
+	}
+	return nil
+}
+
 func (m *OTelColResourceManager) DeleteResources(
 	ctx context.Context,
 	namespace string,
 	images util.Images,
-	ingressEndpoint string,
-	authorizationToken string,
-	secretRef string,
+	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
 	logger *logr.Logger,
 ) error {
 	config := &oTelColConfig{
 		Namespace:          namespace,
 		NamePrefix:         m.OTelCollectorNamePrefix,
-		IngressEndpoint:    ingressEndpoint,
-		SecretRef:          secretRef,
+		IngressEndpoint:    dash0MonitoringResource.Spec.IngressEndpoint,
+		AuthorizationToken: dash0MonitoringResource.Spec.AuthorizationToken,
+		SecretRef:          dash0MonitoringResource.Spec.SecretRef,
 		Images:             images,
-		AuthorizationToken: authorizationToken,
 	}
 	allObjects, err := assembleDesiredState(config)
 	if err != nil {

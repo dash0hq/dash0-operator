@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -20,7 +19,6 @@ import (
 type BackendConnectionManager struct {
 	client.Client
 	Clientset *kubernetes.Clientset
-	Scheme    *runtime.Scheme
 	*otelcolresources.OTelColResourceManager
 }
 
@@ -47,9 +45,7 @@ func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInDash0
 			ctx,
 			operatorNamespace,
 			images,
-			dash0MonitoringResource.Spec.IngressEndpoint,
-			dash0MonitoringResource.Spec.AuthorizationToken,
-			dash0MonitoringResource.Spec.SecretRef,
+			dash0MonitoringResource,
 			&logger,
 		)
 
@@ -117,9 +113,7 @@ func (m *BackendConnectionManager) RemoveOpenTelemetryCollectorIfNoDash0Monitori
 		ctx,
 		operatorNamespace,
 		images,
-		dash0MonitoringResourceToBeDeleted.Spec.IngressEndpoint,
-		dash0MonitoringResourceToBeDeleted.Spec.AuthorizationToken,
-		dash0MonitoringResourceToBeDeleted.Spec.SecretRef,
+		dash0MonitoringResourceToBeDeleted,
 		&logger,
 	); err != nil {
 		logger.Error(err, "Failed to delete the OpenTelemetry collector resources, requeuing reconcile request.")

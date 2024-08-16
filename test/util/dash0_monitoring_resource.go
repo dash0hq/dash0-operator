@@ -63,9 +63,9 @@ func EnsureDash0MonitoringResourceExistsWithNamespacedName(
 	By("creating the Dash0 monitoring resource")
 
 	spec := dash0v1alpha1.Dash0MonitoringSpec{
-		IngressEndpoint:    "ingress.endpoint.dash0.com:4317",
-		AuthorizationToken: "authorization-token",
-		SecretRef:          "secret-ref",
+		IngressEndpoint:    IngressEndpointTest,
+		AuthorizationToken: AuthorizationTokenTest,
+		SecretRef:          SecretRefTest,
 	}
 	if instrumentWorkloads != "" {
 		spec.InstrumentWorkloads = instrumentWorkloads
@@ -98,9 +98,9 @@ func CreateDash0MonitoringResource(
 			Namespace: dash0MonitoringResourceName.Namespace,
 		},
 		Spec: dash0v1alpha1.Dash0MonitoringSpec{
-			IngressEndpoint:    "ingress.endpoint.dash0.com:4317",
-			AuthorizationToken: "authorization-token",
-			SecretRef:          "secret-ref",
+			IngressEndpoint:    IngressEndpointTest,
+			AuthorizationToken: AuthorizationTokenTest,
+			SecretRef:          SecretRefTest,
 		},
 	}
 	Expect(k8sClient.Create(ctx, dash0MonitoringResource)).To(Succeed())

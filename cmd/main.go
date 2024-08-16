@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
 	"fmt"
@@ -16,12 +17,14 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"github.com/go-logr/logr"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
@@ -40,6 +43,7 @@ import (
 
 type environmentVariables struct {
 	operatorNamespace                    string
+	deploymentName                       string
 	oTelCollectorNamePrefix              string
 	operatorImage                        string
 	initContainerImage                   string
@@ -52,6 +56,7 @@ type environmentVariables struct {
 
 const (
 	operatorNamespaceEnvVarName                         = "DASH0_OPERATOR_NAMESPACE"
+	deploymentNameEnvVarName                            = "DASH0_DEPLOYMENT_NAME"
 	oTelCollectorNamePrefixEnvVarName                   = "OTEL_COLLECTOR_NAME_PREFIX"
 	operatorImageEnvVarName                             = "DASH0_OPERATOR_IMAGE"
 	initContainerImageEnvVarName                        = "DASH0_INIT_CONTAINER_IMAGE"
@@ -80,6 +85,7 @@ func init() {
 }
 
 func main() {
+	ctx := context.Background()
 	var uninstrumentAll bool
 	var metricsAddr string
 	var enableLeaderElection bool
@@ -147,6 +153,7 @@ func main() {
 	})
 
 	if err := startOperatorManager(
+		ctx,
 		metricsAddr,
 		secureMetrics,
 		tlsOpts,
@@ -160,6 +167,7 @@ func main() {
 }
 
 func startOperatorManager(
+	ctx context.Context,
 	metricsAddr string,
 	secureMetrics bool,
 	tlsOpts []func(*tls.Config),
@@ -203,6 +211,7 @@ func startOperatorManager(
 	if err != nil {
 		return err
 	}
+
 	setupLog.Info(
 		"configuration:",
 
@@ -224,11 +233,25 @@ func startOperatorManager(
 		"configuration reloader image pull policy override",
 		envVars.configurationReloaderImagePullPolicy,
 
+		"operator namespace",
+		envVars.operatorNamespace,
+		"deploymentName",
+		envVars.deploymentName,
 		"otel collector name prefix",
 		envVars.oTelCollectorNamePrefix,
 	)
 
-	err = startDash0Controller(mgr, clientset, envVars)
+	var deploymentSelfReference *appsv1.Deployment
+	if deploymentSelfReference, err = executeStartupTasks(
+		ctx,
+		envVars.operatorNamespace,
+		envVars.deploymentName,
+		&setupLog,
+	); err != nil {
+		return err
+	}
+
+	err = startDash0Controller(mgr, clientset, envVars, deploymentSelfReference)
 	if err != nil {
 		return err
 	}
@@ -250,13 +273,17 @@ func startOperatorManager(
 	return nil
 }
 
-func startDash0Controller(mgr manager.Manager, clientset *kubernetes.Clientset, envVars *environmentVariables) error {
+func startDash0Controller(
+	mgr manager.Manager,
+	clientset *kubernetes.Clientset,
+	envVars *environmentVariables,
+	deploymentSelfReference *appsv1.Deployment,
+) error {
 	oTelCollectorBaseUrl :=
 		fmt.Sprintf(
 			"http://%s-opentelemetry-collector.%s.svc.cluster.local:4318",
 			envVars.oTelCollectorNamePrefix,
 			envVars.operatorNamespace)
-
 	images := dash0util.Images{
 		OperatorImage:                        envVars.operatorImage,
 		InitContainerImage:                   envVars.initContainerImage,
@@ -266,29 +293,29 @@ func startDash0Controller(mgr manager.Manager, clientset *kubernetes.Clientset, 
 		ConfigurationReloaderImage:           envVars.configurationReloaderImage,
 		ConfigurationReloaderImagePullPolicy: envVars.configurationReloaderImagePullPolicy,
 	}
-
 	oTelColResourceManager := &otelcolresources.OTelColResourceManager{
 		Client:                  mgr.GetClient(),
+		Scheme:                  mgr.GetScheme(),
+		DeploymentSelfReference: deploymentSelfReference,
 		OTelCollectorNamePrefix: envVars.oTelCollectorNamePrefix,
 	}
 	backendConnectionManager := &backendconnection.BackendConnectionManager{
 		Client:                 mgr.GetClient(),
 		Clientset:              clientset,
-		Scheme:                 mgr.GetScheme(),
 		OTelColResourceManager: oTelColResourceManager,
 	}
-
 	dash0Reconciler := &dash0controller.Dash0Reconciler{
 		Client:                   mgr.GetClient(),
 		Clientset:                clientset,
 		Scheme:                   mgr.GetScheme(),
 		Recorder:                 mgr.GetEventRecorderFor("dash0-controller"),
+		BackendConnectionManager: backendConnectionManager,
 		Images:                   images,
 		OTelCollectorNamePrefix:  envVars.oTelCollectorNamePrefix,
 		OTelCollectorBaseUrl:     oTelCollectorBaseUrl,
 		OperatorNamespace:        envVars.operatorNamespace,
-		BackendConnectionManager: backendConnectionManager,
 	}
+
 	if err := dash0Reconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the Dash0 reconciler: %w", err)
 	}
@@ -319,10 +346,56 @@ func startDash0Controller(mgr manager.Manager, clientset *kubernetes.Clientset, 
 	return nil
 }
 
+func executeStartupTasks(
+	ctx context.Context,
+	operatorNamespace string,
+	deploymentName string,
+	logger *logr.Logger,
+) (*appsv1.Deployment, error) {
+	cfg := ctrl.GetConfigOrDie()
+	client, err := client.New(cfg, client.Options{})
+	if err != nil {
+		logger.Error(err, "failed to create Kubernetes API client for startup tasks")
+		return nil, err
+	}
+
+	return findDeploymentSelfReference(ctx, client, operatorNamespace, deploymentName, logger)
+}
+
+func findDeploymentSelfReference(
+	ctx context.Context,
+	k8sClient client.Client,
+	operatorNamespace string,
+	deploymentName string,
+	logger *logr.Logger,
+) (*appsv1.Deployment, error) {
+	deploymentSelfReference := &appsv1.Deployment{}
+	fullyQualifiedName := fmt.Sprintf("%s/%s", operatorNamespace, deploymentName)
+	if err := k8sClient.Get(ctx, client.ObjectKey{
+		Namespace: operatorNamespace,
+		Name:      deploymentName,
+	}, deploymentSelfReference); err != nil {
+		logger.Error(err, "failed to get self reference for controller deployment")
+		return nil, err
+	}
+	if deploymentSelfReference.UID == "" {
+		msg := fmt.Sprintf("self reference for controller deployment %s has no UID", fullyQualifiedName)
+		err := fmt.Errorf(msg)
+		logger.Error(err, msg)
+		return nil, err
+	}
+	return deploymentSelfReference, nil
+}
+
 func readEnvironmentVariables() (*environmentVariables, error) {
 	operatorNamespace, isSet := os.LookupEnv(operatorNamespaceEnvVarName)
 	if !isSet {
 		return nil, fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, operatorNamespaceEnvVarName)
+	}
+
+	deploymentName, isSet := os.LookupEnv(deploymentNameEnvVarName)
+	if !isSet {
+		return nil, fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, deploymentNameEnvVarName)
 	}
 
 	oTelCollectorNamePrefix, isSet := os.LookupEnv(oTelCollectorNamePrefixEnvVarName)
@@ -357,6 +430,7 @@ func readEnvironmentVariables() (*environmentVariables, error) {
 
 	return &environmentVariables{
 		operatorNamespace:                    operatorNamespace,
+		deploymentName:                       deploymentName,
 		oTelCollectorNamePrefix:              oTelCollectorNamePrefix,
 		operatorImage:                        operatorImage,
 		initContainerImage:                   initContainerImage,
