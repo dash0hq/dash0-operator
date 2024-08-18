@@ -42,3 +42,10 @@ type InstrumentationMetadata struct {
 	OTelCollectorBaseUrl string
 	InstrumentedBy       string
 }
+
+type ModificationMode string
+
+const (
+	ModificationModeInstrumentation   ModificationMode = "instrumentation"
+	ModificationModeUninstrumentation ModificationMode = "uninstrumentation"
+)

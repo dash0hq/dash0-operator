@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -23,6 +22,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -35,6 +35,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/backendconnection"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
 	dash0controller "github.com/dash0hq/dash0-operator/internal/dash0/controller"
+	"github.com/dash0hq/dash0-operator/internal/dash0/instrumentation"
 	dash0removal "github.com/dash0hq/dash0-operator/internal/dash0/removal"
 	dash0util "github.com/dash0hq/dash0-operator/internal/dash0/util"
 	dash0webhook "github.com/dash0hq/dash0-operator/internal/dash0/webhook"
@@ -245,17 +246,7 @@ func startOperatorManager(
 		envVars.oTelCollectorNamePrefix,
 	)
 
-	var deploymentSelfReference *appsv1.Deployment
-	if deploymentSelfReference, err = executeStartupTasks(
-		ctx,
-		envVars.operatorNamespace,
-		envVars.deploymentName,
-		&setupLog,
-	); err != nil {
-		return err
-	}
-
-	err = startDash0Controller(mgr, clientset, envVars, deploymentSelfReference)
+	err = startDash0Controller(ctx, mgr, clientset, envVars)
 	if err != nil {
 		return err
 	}
@@ -278,10 +269,10 @@ func startOperatorManager(
 }
 
 func startDash0Controller(
+	ctx context.Context,
 	mgr manager.Manager,
 	clientset *kubernetes.Clientset,
 	envVars *environmentVariables,
-	deploymentSelfReference *appsv1.Deployment,
 ) error {
 	oTelCollectorBaseUrl :=
 		fmt.Sprintf(
@@ -299,26 +290,48 @@ func startDash0Controller(
 		FilelogOffsetSynchImage:              envVars.filelogOffsetSynchImage,
 		FilelogOffsetSynchImagePullPolicy:    envVars.filelogOffsetSynchImagePullPolicy,
 	}
+
+	var deploymentSelfReference *appsv1.Deployment
+	var err error
+
+	if deploymentSelfReference, err = executeStartupTasks(
+		ctx,
+		clientset,
+		mgr.GetEventRecorderFor("dash0-startup-tasks"),
+		images,
+		oTelCollectorBaseUrl,
+		envVars.operatorNamespace,
+		envVars.deploymentName,
+		&setupLog,
+	); err != nil {
+		return err
+	}
+
+	k8sClient := mgr.GetClient()
+	instrumenter := &instrumentation.Instrumenter{
+		Client:               k8sClient,
+		Clientset:            clientset,
+		Recorder:             mgr.GetEventRecorderFor("dash0-controller"),
+		Images:               images,
+		OTelCollectorBaseUrl: oTelCollectorBaseUrl,
+	}
 	oTelColResourceManager := &otelcolresources.OTelColResourceManager{
-		Client:                  mgr.GetClient(),
+		Client:                  k8sClient,
 		Scheme:                  mgr.GetScheme(),
 		DeploymentSelfReference: deploymentSelfReference,
 		OTelCollectorNamePrefix: envVars.oTelCollectorNamePrefix,
 	}
 	backendConnectionManager := &backendconnection.BackendConnectionManager{
-		Client:                 mgr.GetClient(),
+		Client:                 k8sClient,
 		Clientset:              clientset,
 		OTelColResourceManager: oTelColResourceManager,
 	}
 	dash0Reconciler := &dash0controller.Dash0Reconciler{
-		Client:                   mgr.GetClient(),
+		Client:                   k8sClient,
 		Clientset:                clientset,
-		Scheme:                   mgr.GetScheme(),
-		Recorder:                 mgr.GetEventRecorderFor("dash0-controller"),
+		Instrumenter:             instrumenter,
 		BackendConnectionManager: backendConnectionManager,
 		Images:                   images,
-		OTelCollectorNamePrefix:  envVars.oTelCollectorNamePrefix,
-		OTelCollectorBaseUrl:     oTelCollectorBaseUrl,
 		OperatorNamespace:        envVars.operatorNamespace,
 	}
 
@@ -329,7 +342,7 @@ func startDash0Controller(
 
 	if os.Getenv("ENABLE_WEBHOOK") != "false" {
 		if err := (&dash0webhook.Handler{
-			Client:               mgr.GetClient(),
+			Client:               k8sClient,
 			Recorder:             mgr.GetEventRecorderFor("dash0-webhook"),
 			Images:               images,
 			OTelCollectorBaseUrl: oTelCollectorBaseUrl,
@@ -341,31 +354,49 @@ func startDash0Controller(
 		setupLog.Info("Dash0 webhooks have been disabled via configuration.")
 	}
 
-	go func() {
-		time.Sleep(10 * time.Second)
-
-		// trigger an unconditional apply/update of instrumentation for all workloads, see godoc comment on
-		// Dash0Reconciler#InstrumentAtStartup
-		dash0Reconciler.InstrumentAtStartup()
-	}()
-
 	return nil
 }
 
 func executeStartupTasks(
 	ctx context.Context,
+	clientset *kubernetes.Clientset,
+	eventRecorder record.EventRecorder,
+	images dash0util.Images,
+	oTelCollectorBaseUrl string,
 	operatorNamespace string,
 	deploymentName string,
 	logger *logr.Logger,
 ) (*appsv1.Deployment, error) {
 	cfg := ctrl.GetConfigOrDie()
-	client, err := client.New(cfg, client.Options{})
+	startupTasksK8sClient, err := client.New(cfg, client.Options{
+		Scheme: scheme,
+	})
 	if err != nil {
 		logger.Error(err, "failed to create Kubernetes API client for startup tasks")
 		return nil, err
 	}
 
-	return findDeploymentSelfReference(ctx, client, operatorNamespace, deploymentName, logger)
+	instrumentAtStartup(
+		ctx,
+		startupTasksK8sClient,
+		clientset,
+		eventRecorder,
+		images,
+		oTelCollectorBaseUrl,
+	)
+
+	deploymentSelfReference, err := findDeploymentSelfReference(
+		ctx,
+		startupTasksK8sClient,
+		operatorNamespace,
+		deploymentName,
+		logger,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return deploymentSelfReference, nil
 }
 
 func findDeploymentSelfReference(
@@ -391,6 +422,28 @@ func findDeploymentSelfReference(
 		return nil, err
 	}
 	return deploymentSelfReference, nil
+}
+
+func instrumentAtStartup(
+	ctx context.Context,
+	startupTasksK8sClient client.Client,
+	clientset *kubernetes.Clientset,
+	eventRecorder record.EventRecorder,
+	images dash0util.Images,
+	oTelCollectorBaseUrl string,
+) {
+	startupInstrumenter := &instrumentation.Instrumenter{
+		Client:               startupTasksK8sClient,
+		Clientset:            clientset,
+		Recorder:             eventRecorder,
+		Images:               images,
+		OTelCollectorBaseUrl: oTelCollectorBaseUrl,
+	}
+
+	// Trigger an unconditional apply/update of instrumentation for all workloads in Dash0-enabled namespaces, according
+	// to the respective settings of the Dash0 monitoring resource in the namespace. See godoc comment on
+	// Instrumenter#InstrumentAtStartup.
+	startupInstrumenter.InstrumentAtStartup(ctx, startupTasksK8sClient, &setupLog)
 }
 
 func readEnvironmentVariables() (*environmentVariables, error) {

@@ -55,7 +55,7 @@ func BasicInstrumentedPodSpecExpectations() PodSpecExpectations {
 			NodeOptionsEnvVarIdx:           0,
 			Dash0CollectorBaseUrlEnvVarIdx: 1,
 			Dash0CollectorBaseUrlEnvVarExpectedValue://
-			"http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
+			OTelCollectorBaseUrlTest,
 		}},
 	}
 }
