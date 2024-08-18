@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package controller
+package util
 
 import (
 	"context"
@@ -20,9 +20,9 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 )
 
-// checkIfNamespaceExists checks if the given namespace (which is supposed to be the namespace from a reconcile request)
+// CheckIfNamespaceExists checks if the given namespace (which is supposed to be the namespace from a reconcile request)
 // exists in the cluster. If the namespace does not exist, it returns false, and this is supposed to stop the reconcile
-func checkIfNamespaceExists(
+func CheckIfNamespaceExists(
 	ctx context.Context,
 	clientset *kubernetes.Clientset,
 	namespace string,
@@ -40,7 +40,7 @@ func checkIfNamespaceExists(
 	return true, nil
 }
 
-// verifyUniqueDash0MonitoringResourceExists loads the resource that the current reconcile request applies to, if it
+// VerifyUniqueDash0MonitoringResourceExists loads the resource that the current reconcile request applies to, if it
 // exists. It also checks whether there is only one such resource (or, if there are multiple, if the currently
 // reconciled one is the most recently created one). The bool returned has the meaning "stop the reconcile request",
 // that is, if the function returns true, it expects the caller to stop the reconcile request immediately and not
@@ -56,19 +56,18 @@ func checkIfNamespaceExists(
 //     stopReconcile and the caller is expected to stop the reconcile and not requeue it.
 //   - If any error is encountered when searching for resources etc., that error will be returned, the caller is
 //     expected to ignore the bool result and requeue the reconcile request.
-func verifyUniqueDash0MonitoringResourceExists(
+func VerifyUniqueDash0MonitoringResourceExists(
 	ctx context.Context,
 	k8sClient client.Client,
-	statusWriter client.SubResourceWriter,
 	updateStatusFailedMessage string,
 	req ctrl.Request,
-	logger logr.Logger,
+	logger *logr.Logger,
 ) (*dash0v1alpha1.Dash0Monitoring, bool, error) {
 	dash0MonitoringResource, stopReconcile, err := verifyThatCustomResourceExists(
 		ctx,
 		k8sClient,
 		req,
-		&logger,
+		logger,
 	)
 	if err != nil || stopReconcile {
 		return nil, stopReconcile, err
@@ -77,11 +76,10 @@ func verifyUniqueDash0MonitoringResourceExists(
 		verifyThatCustomResourceIsUniqe(
 			ctx,
 			k8sClient,
-			statusWriter,
 			req,
 			dash0MonitoringResource,
 			updateStatusFailedMessage,
-			&logger,
+			logger,
 		)
 	return dash0MonitoringResource, stopReconcile, err
 }
@@ -125,7 +123,6 @@ func verifyThatCustomResourceExists(
 func verifyThatCustomResourceIsUniqe(
 	ctx context.Context,
 	k8sClient client.Client,
-	statusWriter client.SubResourceWriter,
 	req ctrl.Request,
 	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
 	updateStatusFailedMessage string,
@@ -175,7 +172,7 @@ func verifyThatCustomResourceIsUniqe(
 				"NewerResourceIsPresent",
 				"There is a more recently created Dash0 monitoring resource in this namespace, please remove all but one resource instance.",
 			)
-			if err := statusWriter.Update(ctx, dash0MonitoringResource); err != nil {
+			if err := k8sClient.Status().Update(ctx, dash0MonitoringResource); err != nil {
 				logger.Error(err, updateStatusFailedMessage)
 				return true, err
 			}
@@ -200,7 +197,7 @@ func (s SortByCreationTimestamp) Less(i, j int) bool {
 	return tsi.Before(&tsj)
 }
 
-func initStatusConditions(
+func InitStatusConditions(
 	ctx context.Context,
 	statusWriter client.SubResourceWriter,
 	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
@@ -244,7 +241,7 @@ func updateResourceStatus(
 	return nil
 }
 
-func checkImminentDeletionAndHandleFinalizers(
+func CheckImminentDeletionAndHandleFinalizers(
 	ctx context.Context,
 	k8sClient client.Client,
 	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,

@@ -24,7 +24,7 @@ import (
 var (
 	instrumentationMetadata = util.InstrumentationMetadata{
 		Images:               TestImages,
-		OTelCollectorBaseUrl: "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
+		OTelCollectorBaseUrl: OTelCollectorBaseUrlTest,
 		InstrumentedBy:       "modify_test",
 	}
 )
@@ -77,7 +77,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						EnvVars:                                  3,
 						NodeOptionsEnvVarIdx:                     1,
 						Dash0CollectorBaseUrlEnvVarIdx:           2,
-						Dash0CollectorBaseUrlEnvVarExpectedValue: "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
+						Dash0CollectorBaseUrlEnvVarExpectedValue: OTelCollectorBaseUrlTest,
 					},
 					{
 						VolumeMounts:                             3,
@@ -85,7 +85,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						EnvVars:                                  4,
 						NodeOptionsEnvVarIdx:                     2,
 						Dash0CollectorBaseUrlEnvVarIdx:           3,
-						Dash0CollectorBaseUrlEnvVarExpectedValue: "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
+						Dash0CollectorBaseUrlEnvVarExpectedValue: OTelCollectorBaseUrlTest,
 					},
 				},
 			})
@@ -109,7 +109,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						NodeOptionsEnvVarIdx:                     1,
 						NodeOptionsUsesValueFrom:                 true,
 						Dash0CollectorBaseUrlEnvVarIdx:           2,
-						Dash0CollectorBaseUrlEnvVarExpectedValue: "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
+						Dash0CollectorBaseUrlEnvVarExpectedValue: OTelCollectorBaseUrlTest,
 					},
 					{
 						VolumeMounts:                             3,
@@ -118,7 +118,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						NodeOptionsEnvVarIdx:                     1,
 						NodeOptionsValue:                         "--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --require something-else --experimental-modules",
 						Dash0CollectorBaseUrlEnvVarIdx:           0,
-						Dash0CollectorBaseUrlEnvVarExpectedValue: "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
+						Dash0CollectorBaseUrlEnvVarExpectedValue: OTelCollectorBaseUrlTest,
 					},
 				},
 			})

@@ -20,6 +20,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/backendconnection"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/dash0/controller"
+	"github.com/dash0hq/dash0-operator/internal/dash0/instrumentation"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -35,6 +36,14 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 	BeforeAll(func() {
 		EnsureDash0OperatorNamespaceExists(ctx, k8sClient)
 
+		recorder := manager.GetEventRecorderFor("dash0-controller")
+		instrumenter := &instrumentation.Instrumenter{
+			Client:               k8sClient,
+			Clientset:            clientset,
+			Recorder:             recorder,
+			Images:               TestImages,
+			OTelCollectorBaseUrl: OTelCollectorBaseUrlTest,
+		}
 		oTelColResourceManager := &otelcolresources.OTelColResourceManager{
 			Client:                  k8sClient,
 			Scheme:                  k8sClient.Scheme(),
@@ -46,15 +55,11 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 			Clientset:              clientset,
 			OTelColResourceManager: oTelColResourceManager,
 		}
-		recorder := manager.GetEventRecorderFor("dash0-controller")
-
 		reconciler = &controller.Dash0Reconciler{
 			Client:                   k8sClient,
 			Clientset:                clientset,
-			Recorder:                 recorder,
-			Scheme:                   k8sClient.Scheme(),
+			Instrumenter:             instrumenter,
 			Images:                   TestImages,
-			OTelCollectorBaseUrl:     "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
 			OperatorNamespace:        Dash0OperatorNamespace,
 			BackendConnectionManager: backendConnectionManager,
 			DanglingEventsTimeouts: &controller.DanglingEventsTimeouts{

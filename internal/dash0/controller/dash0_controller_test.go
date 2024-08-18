@@ -3,13 +3,17 @@
 
 package controller
 
+// Maintenance note: the canonical order/grouping for imports is:
+// - standard library imports
+// - external third-party library imports, except for test libraries
+// - internal imports, except for internal test packages
+// - external third party test libraries
+// - internal test packages
+
 import (
 	"context"
 	"fmt"
 	"time"
-
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
@@ -23,12 +27,12 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
-	. "github.com/dash0hq/dash0-operator/test/util"
-)
+	"github.com/dash0hq/dash0-operator/internal/dash0/instrumentation"
 
-const (
-	olderOperatorControllerImageLabel = "some-registry_com_1234_dash0hq_operator-controller_0.9.8"
-	olderInitContainerImageLabel      = "some-registry_com_1234_dash0hq_instrumentation_2.3.4"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
+	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
 var (
@@ -56,6 +60,13 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 	BeforeEach(func() {
 		createdObjects = make([]client.Object, 0)
 
+		instrumenter := &instrumentation.Instrumenter{
+			Client:               k8sClient,
+			Clientset:            clientset,
+			Recorder:             recorder,
+			Images:               TestImages,
+			OTelCollectorBaseUrl: OTelCollectorBaseUrlTest,
+		}
 		oTelColResourceManager := &otelcolresources.OTelColResourceManager{
 			Client:                  k8sClient,
 			Scheme:                  k8sClient.Scheme(),
@@ -70,10 +81,8 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 		reconciler = &Dash0Reconciler{
 			Client:                   k8sClient,
 			Clientset:                clientset,
-			Recorder:                 recorder,
-			Scheme:                   k8sClient.Scheme(),
+			Instrumenter:             instrumenter,
 			Images:                   TestImages,
-			OTelCollectorBaseUrl:     "http://dash0-operator-opentelemetry-collector.dash0-system.svc.cluster.local:4318",
 			OperatorNamespace:        Dash0OperatorNamespace,
 			BackendConnectionManager: backendConnectionManager,
 			DanglingEventsTimeouts: &DanglingEventsTimeouts{
@@ -500,142 +509,6 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			},
 		}),
 		)
-
-		DescribeTable("should instrument existing workloads at startup", func(config WorkloadTestConfig) {
-			name := UniqueName(config.WorkloadNamePrefix)
-			workload := config.CreateFn(ctx, k8sClient, namespace, name)
-			createdObjects = append(createdObjects, workload.Get())
-
-			reconciler.InstrumentAtStartup()
-
-			VerifySuccessfulInstrumentationEvent(ctx, clientset, namespace, name, "controller")
-			config.VerifyFn(config.GetFn(ctx, k8sClient, namespace, name))
-		}, Entry("should instrument a cron job at startup", WorkloadTestConfig{
-			WorkloadNamePrefix: CronJobNamePrefix,
-			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateBasicCronJob),
-			GetFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
-			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedCronJob(workload.Get().(*batchv1.CronJob), BasicInstrumentedPodSpecExpectations())
-			},
-		}), Entry("should instrument a daemon set at startup", WorkloadTestConfig{
-			WorkloadNamePrefix: DaemonSetNamePrefix,
-			CreateFn:           WrapDaemonSetFnAsTestableWorkload(CreateBasicDaemonSet),
-			GetFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
-			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedDaemonSet(workload.Get().(*appsv1.DaemonSet), BasicInstrumentedPodSpecExpectations())
-			},
-		}), Entry("should instrument a deployment at startup", WorkloadTestConfig{
-			WorkloadNamePrefix: DeploymentNamePrefix,
-			CreateFn:           WrapDeploymentFnAsTestableWorkload(CreateBasicDeployment),
-			GetFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
-			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedDeployment(workload.Get().(*appsv1.Deployment), BasicInstrumentedPodSpecExpectations())
-			},
-		}), Entry("should instrument a replica set at startup", WorkloadTestConfig{
-			WorkloadNamePrefix: ReplicaSetNamePrefix,
-			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateBasicReplicaSet),
-			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
-			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet), BasicInstrumentedPodSpecExpectations())
-			},
-		}), Entry("should instrument a stateful set at startup", WorkloadTestConfig{
-			WorkloadNamePrefix: StatefulSetNamePrefix,
-			CreateFn:           WrapStatefulSetFnAsTestableWorkload(CreateBasicStatefulSet),
-			GetFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
-			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedStatefulSet(workload.Get().(*appsv1.StatefulSet), BasicInstrumentedPodSpecExpectations())
-			},
-		}),
-		)
-
-		Describe("should not instrument existing jobs at startup", func() {
-			It("should record a failure event when attempting to instrument an existing job at startup and add labels", func() {
-				name := UniqueName(JobNamePrefix)
-				job := CreateBasicJob(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, job)
-
-				reconciler.InstrumentAtStartup()
-
-				VerifyFailedInstrumentationEvent(
-					ctx,
-					clientset,
-					namespace,
-					name,
-					fmt.Sprintf("Dash0 instrumentation of this workload by the controller has not been successful. "+
-						"Error message: Dash0 cannot instrument the existing job test-namespace/%s, since this type "+
-						"of workload is immutable.", name),
-				)
-				VerifyImmutableJobCouldNotBeModified(GetJob(ctx, k8sClient, namespace, name))
-			})
-		})
-
-		DescribeTable("when updating instrumented workloads at startup", func(config WorkloadTestConfig) {
-			name := UniqueName(config.WorkloadNamePrefix)
-			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
-			createdObjects = append(createdObjects, workload.Get())
-			workload.GetObjectMeta().Labels["dash0.com/operator-image"] = olderOperatorControllerImageLabel
-			workload.GetObjectMeta().Labels["dash0.com/init-container-image"] = olderInitContainerImageLabel
-			UpdateWorkload(ctx, k8sClient, workload.Get())
-			reconciler.InstrumentAtStartup()
-			config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
-			VerifySuccessfulInstrumentationEvent(ctx, clientset, namespace, name, "controller")
-		}, Entry("should override outdated instrumentation settings for a cron job at startup", WorkloadTestConfig{
-			WorkloadNamePrefix: CronJobNamePrefix,
-			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateInstrumentedCronJob),
-			GetFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
-			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedCronJob(workload.Get().(*batchv1.CronJob), BasicInstrumentedPodSpecExpectations())
-			},
-		}), Entry("should override outdated instrumentation settings for a daemon set at startup", WorkloadTestConfig{
-			WorkloadNamePrefix: DaemonSetNamePrefix,
-			CreateFn:           WrapDaemonSetFnAsTestableWorkload(CreateInstrumentedDaemonSet),
-			GetFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
-			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedDaemonSet(workload.Get().(*appsv1.DaemonSet), BasicInstrumentedPodSpecExpectations())
-			},
-		}), Entry("should override outdated instrumentation settings for a deployment at startup", WorkloadTestConfig{
-			WorkloadNamePrefix: DeploymentNamePrefix,
-			CreateFn:           WrapDeploymentFnAsTestableWorkload(CreateInstrumentedDeployment),
-			GetFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
-			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedDeployment(workload.Get().(*appsv1.Deployment), BasicInstrumentedPodSpecExpectations())
-			},
-		}), Entry("should override outdated instrumentation settings for a replica set at startup", WorkloadTestConfig{
-			WorkloadNamePrefix: ReplicaSetNamePrefix,
-			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateInstrumentedReplicaSet),
-			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
-			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet), BasicInstrumentedPodSpecExpectations())
-			},
-		}), Entry("should override outdated instrumentation settings for a stateful set at startup", WorkloadTestConfig{
-			WorkloadNamePrefix: StatefulSetNamePrefix,
-			CreateFn:           WrapStatefulSetFnAsTestableWorkload(CreateInstrumentedStatefulSet),
-			GetFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
-			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedStatefulSet(workload.Get().(*appsv1.StatefulSet), BasicInstrumentedPodSpecExpectations())
-			},
-		}),
-		)
-
-		Describe("when attempting to update instrumented jobs at startup", func() {
-			It("should not override outdated instrumentation settings for a job at startup", func() {
-				name := UniqueName(JobNamePrefix)
-				workload := CreateInstrumentedJob(ctx, k8sClient, TestNamespaceName, name)
-				createdObjects = append(createdObjects, workload)
-				workload.ObjectMeta.Labels["dash0.com/operator-image"] = "some-registry.com_1234_dash0hq_operator-controller_0.9.8"
-				workload.ObjectMeta.Labels["dash0.com/init-container-image"] = "some-registry.com_1234_dash0hq_instrumentation_2.3.4"
-				UpdateWorkload(ctx, k8sClient, workload)
-				reconciler.InstrumentAtStartup()
-
-				// we do not attempt to update the instrumentation for jobs, since they are immutable
-				workload = GetJob(ctx, k8sClient, TestNamespaceName, name)
-				jobLabels := workload.ObjectMeta.Labels
-				Expect(jobLabels["dash0.com/instrumented"]).To(Equal("true"))
-				Expect(jobLabels["dash0.com/operator-image"]).To(Equal("some-registry.com_1234_dash0hq_operator-controller_0.9.8"))
-				Expect(jobLabels["dash0.com/init-container-image"]).To(Equal("some-registry.com_1234_dash0hq_instrumentation_2.3.4"))
-				VerifyNoEvents(ctx, clientset, namespace)
-			})
-		})
 
 		DescribeTable("when deleting the Dash0 monitoring resource and reverting the instrumentation on cleanup", func(config WorkloadTestConfig) {
 			// We trigger one reconcile request before creating any workload and before deleting the Dash0 monitoring

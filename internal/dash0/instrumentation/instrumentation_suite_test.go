@@ -1,19 +1,18 @@
 // SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package removal
+package instrumentation
 
 import (
 	"fmt"
 	"path/filepath"
 	"runtime"
 	"testing"
-	"time"
 
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -21,35 +20,23 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
-	"github.com/dash0hq/dash0-operator/internal/backendconnection"
-	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
-	"github.com/dash0hq/dash0-operator/internal/dash0/controller"
-	"github.com/dash0hq/dash0-operator/internal/dash0/instrumentation"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/format"
-
-	. "github.com/dash0hq/dash0-operator/test/util"
-)
-
-const (
-	preDeleteHandlerTimeoutForTests = 5 * time.Second
 )
 
 var (
-	k8sClient        client.Client
-	clientset        *kubernetes.Clientset
-	preDeleteHandler *OperatorPreDeleteHandler
-	reconciler       *controller.Dash0Reconciler
-	cfg              *rest.Config
-	testEnv          *envtest.Environment
+	cfg       *rest.Config
+	k8sClient client.Client
+	clientset *kubernetes.Clientset
+	recorder  record.EventRecorder
+	testEnv   *envtest.Environment
 )
 
-func TestRemoval(t *testing.T) {
+func TestInstrumentation(t *testing.T) {
 	RegisterFailHandler(Fail)
-
-	RunSpecs(t, "Removal Suite")
+	RunSpecs(t, "Instrumentation Suite")
 }
 
 var _ = BeforeSuite(func() {
@@ -72,15 +59,14 @@ var _ = BeforeSuite(func() {
 	}
 
 	var err error
+	// cfg is defined in this file globally.
 	cfg, err = testEnv.Start()
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
 
 	Expect(dash0v1alpha1.AddToScheme(scheme.Scheme)).To(Succeed())
 
-	preDeleteHandler, err = NewOperatorPreDeleteHandlerFromConfig(cfg)
-	Expect(err).NotTo(HaveOccurred())
-	preDeleteHandler.SetTimeout(preDeleteHandlerTimeoutForTests)
+	//+kubebuilder:scaffold:scheme
 
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	Expect(err).NotTo(HaveOccurred())
@@ -95,42 +81,7 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).NotTo(HaveOccurred())
 	Expect(mgr).NotTo(BeNil())
-
-	instrumenter := &instrumentation.Instrumenter{
-		Client:               k8sClient,
-		Clientset:            clientset,
-		Recorder:             mgr.GetEventRecorderFor("dash0-controller"),
-		Images:               TestImages,
-		OTelCollectorBaseUrl: OTelCollectorBaseUrlTest,
-	}
-	oTelColResourceManager := &otelcolresources.OTelColResourceManager{
-		Client:                  k8sClient,
-		Scheme:                  k8sClient.Scheme(),
-		DeploymentSelfReference: DeploymentSelfReference,
-		OTelCollectorNamePrefix: "unit-test",
-	}
-	backendConnectionManager := &backendconnection.BackendConnectionManager{
-		Client:                 k8sClient,
-		Clientset:              clientset,
-		OTelColResourceManager: oTelColResourceManager,
-	}
-	reconciler = &controller.Dash0Reconciler{
-		Client:                   k8sClient,
-		Clientset:                clientset,
-		Images:                   TestImages,
-		Instrumenter:             instrumenter,
-		OperatorNamespace:        Dash0OperatorNamespace,
-		BackendConnectionManager: backendConnectionManager,
-		DanglingEventsTimeouts: &controller.DanglingEventsTimeouts{
-			InitialTimeout: 0 * time.Second,
-			Backoff: wait.Backoff{
-				Steps:    1,
-				Duration: 0 * time.Second,
-				Factor:   1,
-				Jitter:   0,
-			},
-		},
-	}
+	recorder = mgr.GetEventRecorderFor("dash0-controller")
 })
 
 var _ = AfterSuite(func() {
