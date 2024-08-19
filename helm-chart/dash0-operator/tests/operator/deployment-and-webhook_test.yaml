@@ -95,6 +95,10 @@ tests:
           repository: custom-configuration-reloader-image
           tag: "10.11.12"
           pullPolicy: Always
+        filelogOffsetSynchImage:
+          repository: custom-filelog-offset-synch-image
+          tag: "13.14.15"
+          pullPolicy: Never
         enableWebhook: false
         managerPodResources:
           limits:
@@ -206,18 +210,24 @@ tests:
           value: DASH0_FILELOG_OFFSET_SYNCH_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[10].value
-          value: ghcr.io/dash0hq/filelog-offset-synch:0.0.0
+          value: custom-filelog-offset-synch-image:13.14.15
       - equal:
           path: spec.template.spec.containers[0].env[11].name
-          value: ENABLE_WEBHOOK
+          value: DASH0_FILELOG_OFFSET_SYNCH_IMAGE_PULL_POLICY
       - equal:
           path: spec.template.spec.containers[0].env[11].value
-          value: "false"
+          value: Never
       - equal:
           path: spec.template.spec.containers[0].env[12].name
-          value: DASH0_DEVELOPMENT_MODE
+          value: ENABLE_WEBHOOK
       - equal:
           path: spec.template.spec.containers[0].env[12].value
+          value: "false"
+      - equal:
+          path: spec.template.spec.containers[0].env[13].name
+          value: DASH0_DEVELOPMENT_MODE
+      - equal:
+          path: spec.template.spec.containers[0].env[13].value
           value: "true"
       - equal:
           path: spec.template.spec.containers[0].resources.limits.cpu
@@ -255,7 +265,7 @@ tests:
         configurationReloaderImage:
           digest: sha256:3e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda03
         filelogOffsetSynchImage:
-          digest: sha256:9e1d30699a1a7500bf532c8f49cda125d4c5c8cd6d1c2588791c24d958da9e1c
+          digest: sha256:4e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda04
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
@@ -291,7 +301,7 @@ tests:
           value: DASH0_FILELOG_OFFSET_SYNCH_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[7].value
-          value: ghcr.io/dash0hq/filelog-offset-synch@sha256:9e1d30699a1a7500bf532c8f49cda125d4c5c8cd6d1c2588791c24d958da9e1c
+          value: ghcr.io/dash0hq/filelog-offset-synch@sha256:4e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda04
       - notExists:
           path: spec.template.spec.containers[0].env[8].name
 
