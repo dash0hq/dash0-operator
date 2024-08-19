@@ -287,6 +287,11 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 						tag:        additionalImageTag,
 						pullPolicy: "Never",
 					},
+					fileLogOffsetSynch: ImageSpec{
+						repository: "filelog-offset-synch",
+						tag:        additionalImageTag,
+						pullPolicy: "Never",
+					},
 				}
 				deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, initialImages, false)
 				deployDash0MonitoringResource(
