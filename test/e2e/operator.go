@@ -71,6 +71,14 @@ func addOptionalHelmParameters(arguments []string, operatorHelmChart string, ima
 	arguments = setIfNotEmpty(arguments, "operator.configurationReloaderImage.pullPolicy",
 		images.configurationReloader.pullPolicy)
 
+	arguments = setIfNotEmpty(arguments, "operator.filelogOffsetSynchImage.repository",
+		images.fileLogOffsetSynch.repository)
+	arguments = setIfNotEmpty(arguments, "operator.filelogOffsetSynchImage.tag", images.fileLogOffsetSynch.tag)
+	arguments = setIfNotEmpty(arguments, "operator.filelogOffsetSynchImage.digest",
+		images.fileLogOffsetSynch.digest)
+	arguments = setIfNotEmpty(arguments, "operator.filelogOffsetSynchImage.pullPolicy",
+		images.fileLogOffsetSynch.pullPolicy)
+
 	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.repository", images.instrumentation.repository)
 	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.tag", images.instrumentation.tag)
 	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.digest", images.instrumentation.digest)

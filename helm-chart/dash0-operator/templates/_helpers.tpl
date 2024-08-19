@@ -74,6 +74,11 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 {{- include "dash0-operator.imageRef" (dict "image" .Values.operator.configurationReloaderImage "context" .) -}}
 {{- end }}
 
+{{/* the filelog offset synch image */}}
+{{- define "dash0-operator.filelogOffsetSynchImage" -}}
+{{- include "dash0-operator.imageRef" (dict "image" .Values.operator.filelogOffsetSynchImage "context" .) -}}
+{{- end }}
+
 {{- define "dash0-operator.imageRef" -}}
 {{- if .image.digest -}}
 {{- printf "%s@%s" .image.repository .image.digest }}

@@ -5,6 +5,7 @@ package otelcolresources
 
 import (
 	"fmt"
+	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -43,35 +44,36 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		})
 
 		Expect(err).ToNot(HaveOccurred())
-		Expect(desiredState).To(HaveLen(6))
-		configMapContent := getConfigMapContent(desiredState)
-		Expect(configMapContent).To(ContainSubstring(fmt.Sprintf("endpoint: %s", IngressEndpointTest)))
-		Expect(configMapContent).NotTo(ContainSubstring("file/traces"))
-		Expect(configMapContent).NotTo(ContainSubstring("file/metrics"))
-		Expect(configMapContent).NotTo(ContainSubstring("file/logs"))
+		Expect(desiredState).To(HaveLen(9))
+		collectorConfigConfigMapContent := getCollectorConfigConfigMapContent(desiredState)
+		Expect(collectorConfigConfigMapContent).To(ContainSubstring(fmt.Sprintf("endpoint: %s", IngressEndpointTest)))
+		Expect(collectorConfigConfigMapContent).NotTo(ContainSubstring("file/traces"))
+		Expect(collectorConfigConfigMapContent).NotTo(ContainSubstring("file/metrics"))
+		Expect(collectorConfigConfigMapContent).NotTo(ContainSubstring("file/logs"))
+
+		fileOffsetConfigMapContent := getFileOffsetConfigMapContent(desiredState)
+		Expect(fileOffsetConfigMapContent).NotTo(BeNil())
 
 		daemonSet := getDaemonSet(desiredState)
 		Expect(daemonSet).NotTo(BeNil())
 		Expect(daemonSet.ObjectMeta.Labels["dash0.com/enable"]).To(Equal("false"))
 		podSpec := daemonSet.Spec.Template.Spec
 
-		Expect(podSpec.Volumes).To(HaveLen(2))
+		Expect(podSpec.Volumes).To(HaveLen(5))
 		configMapVolume := findVolumeByName(podSpec.Volumes, "opentelemetry-collector-configmap")
 		Expect(configMapVolume).NotTo(BeNil())
 		Expect(configMapVolume.VolumeSource.ConfigMap.LocalObjectReference.Name).
 			To(Equal("unit-test-opentelemetry-collector-agent"))
-		for _, container := range podSpec.Containers {
-			Expect(findVolumeMountByName(container.VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
-		}
+		Expect(findVolumeMountByName(findContainerByName(podSpec.Containers, "opentelemetry-collector").VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
+		Expect(findVolumeMountByName(findContainerByName(podSpec.Containers, "configuration-reloader").VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
 
 		pidFileVolume := findVolumeByName(podSpec.Volumes, "opentelemetry-collector-pidfile")
 		Expect(pidFileVolume).NotTo(BeNil())
 		Expect(pidFileVolume.VolumeSource.EmptyDir).NotTo(BeNil())
-		for _, container := range podSpec.Containers {
-			Expect(findVolumeMountByName(container.VolumeMounts, "opentelemetry-collector-pidfile")).NotTo(BeNil())
-		}
+		Expect(findVolumeMountByName(findContainerByName(podSpec.Containers, "opentelemetry-collector").VolumeMounts, "opentelemetry-collector-pidfile")).NotTo(BeNil())
+		Expect(findVolumeMountByName(findContainerByName(podSpec.Containers, "configuration-reloader").VolumeMounts, "opentelemetry-collector-pidfile")).NotTo(BeNil())
 
-		Expect(podSpec.Containers).To(HaveLen(2))
+		Expect(podSpec.Containers).To(HaveLen(3))
 
 		collectorContainer := podSpec.Containers[0]
 		Expect(collectorContainer).NotTo(BeNil())
@@ -80,11 +82,17 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		collectorContainerArgs := collectorContainer.Args
 		Expect(collectorContainerArgs).To(HaveLen(1))
 		Expect(collectorContainerArgs[0]).To(Equal("--config=file:/etc/otelcol/conf/config.yaml"))
-		Expect(collectorContainer.VolumeMounts).To(HaveLen(2))
+		Expect(collectorContainer.VolumeMounts).To(HaveLen(5))
 		Expect(collectorContainer.VolumeMounts).To(
 			ContainElement(MatchVolumeMount("opentelemetry-collector-configmap", "/etc/otelcol/conf")))
 		Expect(collectorContainer.VolumeMounts).To(
 			ContainElement(MatchVolumeMount("opentelemetry-collector-pidfile", "/etc/otelcol/run")))
+		Expect(collectorContainer.VolumeMounts).To(
+			ContainElement(MatchVolumeMount("node-pod-logs", "/var/log/pods")))
+		Expect(collectorContainer.VolumeMounts).To(
+			ContainElement(MatchVolumeMount("node-docker-container-logs", "/var/lib/docker/containers")))
+		Expect(collectorContainer.VolumeMounts).To(
+			ContainElement(MatchVolumeMount("filelogreceiver-offsets", "/var/otelcol/filelogreceiver_offsets")))
 
 		configReloaderContainer := podSpec.Containers[1]
 		Expect(configReloaderContainer).NotTo(BeNil())
@@ -110,7 +118,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		})
 
 		Expect(err).ToNot(HaveOccurred())
-		configMapContent := getConfigMapContent(desiredState)
+		configMapContent := getCollectorConfigConfigMapContent(desiredState)
 		Expect(configMapContent).To(ContainSubstring("Authorization: Bearer ${env:AUTH_TOKEN}"))
 
 		daemonSet := getDaemonSet(desiredState)
@@ -129,7 +137,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		})
 
 		Expect(err).ToNot(HaveOccurred())
-		configMapContent := getConfigMapContent(desiredState)
+		configMapContent := getCollectorConfigConfigMapContent(desiredState)
 		Expect(configMapContent).To(ContainSubstring("Authorization: Bearer ${env:AUTH_TOKEN}"))
 
 		daemonSet := getDaemonSet(desiredState)
@@ -149,7 +157,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		})
 
 		Expect(err).ToNot(HaveOccurred())
-		configMapContent := getConfigMapContent(desiredState)
+		configMapContent := getCollectorConfigConfigMapContent(desiredState)
 		Expect(configMapContent).NotTo(ContainSubstring("Authorization: Bearer ${env:AUTH_TOKEN}"))
 
 		daemonSet := getDaemonSet(desiredState)
@@ -160,17 +168,26 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 	})
 })
 
-func getConfigMap(desiredState []client.Object) *corev1.ConfigMap {
+func getConfigMap(desiredState []client.Object, matcher func(c *corev1.ConfigMap) bool) *corev1.ConfigMap {
 	for _, object := range desiredState {
-		if cm, ok := object.(*corev1.ConfigMap); ok {
+		if cm, ok := object.(*corev1.ConfigMap); ok && matcher(cm) {
 			return cm
 		}
 	}
 	return nil
 }
 
-func getConfigMapContent(desiredState []client.Object) string {
-	cm := getConfigMap(desiredState)
+func getCollectorConfigConfigMapContent(desiredState []client.Object) string {
+	cm := getConfigMap(desiredState, func(c *corev1.ConfigMap) bool {
+		return strings.HasSuffix(c.Name, "-opentelemetry-collector-agent")
+	})
+	return cm.Data["config.yaml"]
+}
+
+func getFileOffsetConfigMapContent(desiredState []client.Object) string {
+	cm := getConfigMap(desiredState, func(c *corev1.ConfigMap) bool {
+		return strings.HasSuffix(c.Name, "-filelogoffsets")
+	})
 	return cm.Data["config.yaml"]
 }
 
@@ -178,6 +195,15 @@ func getDaemonSet(desiredState []client.Object) *appsv1.DaemonSet {
 	for _, object := range desiredState {
 		if ds, ok := object.(*appsv1.DaemonSet); ok {
 			return ds
+		}
+	}
+	return nil
+}
+
+func findContainerByName(objects []corev1.Container, name string) *corev1.Container {
+	for _, object := range objects {
+		if object.Name == name {
+			return &object
 		}
 	}
 	return nil

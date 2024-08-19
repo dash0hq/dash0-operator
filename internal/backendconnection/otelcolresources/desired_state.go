@@ -41,12 +41,14 @@ type exportProtocol string
 const (
 	grpcExportProtocol exportProtocol = "grpc"
 	httpExportProtocol exportProtocol = "http"
+	rbacApiVersion                    = "rbac.authorization.k8s.io/v1"
 )
 
 type collectorConfigurationTemplateValues struct {
-	HasExportAuthentication bool
-	IngressEndpoint         string
-	ExportProtocol          exportProtocol
+	HasExportAuthentication  bool
+	IngressEndpoint          string
+	ExportProtocol           exportProtocol
+	IgnoreLogsFromNamespaces []string
 }
 
 const (
@@ -72,6 +74,10 @@ const (
 	authTokenEnvVarName = "AUTH_TOKEN"
 
 	collectorConfigurationYaml = "config.yaml"
+
+	pidFileVolumeName = "opentelemetry-collector-pidfile"
+
+	offsetsDirPath = "/var/otelcol/filelogreceiver_offsets"
 )
 
 const (
@@ -99,13 +105,19 @@ func assembleDesiredState(config *oTelColConfig) ([]client.Object, error) {
 
 	var desiredState []client.Object
 	desiredState = append(desiredState, serviceAccount(config))
-	cnfgMap, err := configMap(config)
+
+	collectorCM, err := collectorConfigMap(config)
 	if err != nil {
 		return desiredState, err
 	}
-	desiredState = append(desiredState, cnfgMap)
+	desiredState = append(desiredState, collectorCM)
+
+	desiredState = append(desiredState, filelogOffsetsConfigMap(config))
+
 	desiredState = append(desiredState, clusterRole(config))
 	desiredState = append(desiredState, clusterRoleBinding(config))
+	desiredState = append(desiredState, role(config))
+	desiredState = append(desiredState, roleBinding(config))
 	desiredState = append(desiredState, service(config))
 	desiredState = append(desiredState, daemonSet(config))
 	return desiredState, nil
@@ -134,7 +146,7 @@ func renderCollectorConfigs(templateValues *collectorConfigurationTemplateValues
 	return collectorConfiguration.String(), nil
 }
 
-func configMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
+func collectorConfigMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
 	ingressEndpoint := config.IngressEndpoint
 	exportProtocol := grpcExportProtocol
 	if url, err := url.ParseRequestURI(ingressEndpoint); err != nil {
@@ -147,6 +159,13 @@ func configMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
 		IngressEndpoint:         ingressEndpoint,
 		ExportProtocol:          exportProtocol,
 		HasExportAuthentication: config.hasAuthentication(),
+		IgnoreLogsFromNamespaces: []string{
+			// Skipping kube-system, it requires bespoke filtering work
+			"kube-system",
+			// Skipping logs from the operator and the daemonset, otherwise
+			// logs will compound in case of log parsing errors
+			config.Namespace,
+		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("cannot render the collector configuration template: %w", err)
@@ -162,7 +181,7 @@ func configMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
 			APIVersion: "v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      configMapName(config.NamePrefix),
+			Name:      collectorConfigConfigMapName(config.NamePrefix),
 			Namespace: config.Namespace,
 			Labels:    labels(false),
 		},
@@ -170,11 +189,70 @@ func configMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
 	}, nil
 }
 
+func filelogOffsetsConfigMap(config *oTelColConfig) *corev1.ConfigMap {
+	return &corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ConfigMap",
+			APIVersion: "v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      filelogReceiverOffsetsConfigMapName(config.NamePrefix),
+			Namespace: config.Namespace,
+			Labels:    labels(false),
+		},
+	}
+}
+
+func role(config *oTelColConfig) *rbacv1.Role {
+	return &rbacv1.Role{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Role",
+			APIVersion: rbacApiVersion,
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      roleName(config.NamePrefix),
+			Namespace: config.Namespace,
+			Labels:    labels(false),
+		},
+		Rules: []rbacv1.PolicyRule{
+			{
+				APIGroups: []string{""},
+				Resources: []string{"configmaps"},
+				Verbs:     []string{"get", "watch", "list", "update", "patch"},
+			},
+		},
+	}
+}
+
+func roleBinding(config *oTelColConfig) *rbacv1.RoleBinding {
+	return &rbacv1.RoleBinding{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "RoleBinding",
+			APIVersion: rbacApiVersion,
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name(config.NamePrefix, openTelemetryCollector),
+			Namespace: config.Namespace,
+			Labels:    labels(false),
+		},
+		RoleRef: rbacv1.RoleRef{
+			APIGroup: "rbac.authorization.k8s.io",
+			Kind:     "Role",
+			Name:     roleName(config.NamePrefix),
+		},
+		Subjects: []rbacv1.Subject{{
+			Kind:      "ServiceAccount",
+			Name:      serviceAccountName(config.NamePrefix),
+			Namespace: config.Namespace,
+		}},
+	}
+}
+
 func clusterRole(config *oTelColConfig) *rbacv1.ClusterRole {
 	return &rbacv1.ClusterRole{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ClusterRole",
-			APIVersion: "rbac.authorization.k8s.io/v1",
+			APIVersion: rbacApiVersion,
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      clusterRoleName(config.NamePrefix),
@@ -205,7 +283,7 @@ func clusterRoleBinding(config *oTelColConfig) *rbacv1.ClusterRoleBinding {
 	return &rbacv1.ClusterRoleBinding{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ClusterRoleBinding",
-			APIVersion: "rbac.authorization.k8s.io/v1",
+			APIVersion: rbacApiVersion,
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name(config.NamePrefix, openTelemetryCollector),
@@ -264,48 +342,102 @@ func service(config *oTelColConfig) *corev1.Service {
 }
 
 func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
-	collectorPidFilePath := "/etc/otelcol/run/pid.file"
-
-	volumeMounts := []corev1.VolumeMount{
-		{
-			Name:      "opentelemetry-collector-configmap",
-			MountPath: "/etc/otelcol/conf",
-			ReadOnly:  true,
-		},
-		// TODO Make this readonly for config reloader
-		{
-			Name:      "opentelemetry-collector-pidfile",
-			MountPath: filepath.Dir(collectorPidFilePath),
-			ReadOnly:  false,
-		},
-	}
-
 	configMapItems := []corev1.KeyToPath{{
 		Key:  collectorConfigurationYaml,
 		Path: collectorConfigurationYaml,
 	}}
 
+	collectorPidFilePath := "/etc/otelcol/run/pid.file"
+
 	pidFileVolumeSizeLimit := resource.MustParse("1M")
+	offsetsVolumeSizeLimit := resource.MustParse("10M")
 	volumes := []corev1.Volume{
+		{
+			Name: "filelogreceiver-offsets",
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{
+					SizeLimit: &offsetsVolumeSizeLimit,
+				},
+			},
+		},
+		{
+			Name: "node-pod-logs",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: "/var/log/pods/",
+				},
+			},
+		},
+		{
+			Name: "node-docker-container-logs",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: "/var/lib/docker/containers",
+				},
+			},
+		},
 		{
 			Name: "opentelemetry-collector-configmap",
 			VolumeSource: corev1.VolumeSource{
 				ConfigMap: &corev1.ConfigMapVolumeSource{
 					LocalObjectReference: corev1.LocalObjectReference{
-						Name: configMapName(config.NamePrefix),
+						Name: collectorConfigConfigMapName(config.NamePrefix),
 					},
 					Items: configMapItems,
 				},
 			},
 		},
 		{
-			Name: "opentelemetry-collector-pidfile",
+			Name: pidFileVolumeName,
 			VolumeSource: corev1.VolumeSource{
 				EmptyDir: &corev1.EmptyDirVolumeSource{
 					SizeLimit: &pidFileVolumeSizeLimit,
 				},
 			},
 		},
+	}
+
+	collectorConfigVolume := corev1.VolumeMount{
+		Name:      "opentelemetry-collector-configmap",
+		MountPath: "/etc/otelcol/conf",
+		ReadOnly:  true,
+	}
+
+	collectorPidFileMountRW := corev1.VolumeMount{
+		Name:      pidFileVolumeName,
+		MountPath: filepath.Dir(collectorPidFilePath),
+		ReadOnly:  false,
+	}
+
+	collectorPidFileMountRO := collectorPidFileMountRW
+	collectorPidFileMountRO.ReadOnly = true
+
+	filelogReceiverOffsetsVolumeMount := corev1.VolumeMount{
+		Name:      "filelogreceiver-offsets",
+		MountPath: offsetsDirPath,
+		ReadOnly:  false,
+	}
+
+	collectorVolumeMounts := []corev1.VolumeMount{
+		collectorConfigVolume,
+		collectorPidFileMountRW,
+		{
+			Name:      "node-pod-logs",
+			MountPath: "/var/log/pods",
+			ReadOnly:  true,
+		},
+		// On Docker desktop and other runtimes using docker, the files in /var/log/pods
+		// are symlinked to this folder.
+		{
+			Name:      "node-docker-container-logs",
+			MountPath: "/var/lib/docker/containers",
+			ReadOnly:  true,
+		},
+		filelogReceiverOffsetsVolumeMount,
+	}
+
+	nodeNameFieldSpec := &corev1.ObjectFieldSelector{
+		FieldPath: "spec.nodeName",
 	}
 
 	env := []corev1.EnvVar{
@@ -320,9 +452,7 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 		{
 			Name: "K8S_NODE_NAME",
 			ValueFrom: &corev1.EnvVarSource{
-				FieldRef: &corev1.ObjectFieldSelector{
-					FieldPath: "spec.nodeName",
-				},
+				FieldRef: nodeNameFieldSpec,
 			},
 		},
 		{
@@ -389,12 +519,6 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 				ContainerPort: otlpHttpPort,
 				HostPort:      otlpHttpPort,
 			},
-			// {
-			// 	Name:          "k8s-probes",
-			// 	Protocol:      corev1.ProtocolTCP,
-			// 	ContainerPort: probesHttpPort,
-			// 	HostPort:      probesHttpPort,
-			// },
 		},
 		Env:            env,
 		LivenessProbe:  &probe,
@@ -404,7 +528,7 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 				corev1.ResourceMemory: resource.MustParse("500Mi"),
 			},
 		},
-		VolumeMounts: volumeMounts,
+		VolumeMounts: collectorVolumeMounts,
 	}
 	if config.Images.CollectorImagePullPolicy != "" {
 		collectorContainer.ImagePullPolicy = config.Images.CollectorImagePullPolicy
@@ -429,10 +553,92 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 				corev1.ResourceMemory: resource.MustParse("12Mi"),
 			},
 		},
-		VolumeMounts: volumeMounts,
+		VolumeMounts: []corev1.VolumeMount{collectorConfigVolume, collectorPidFileMountRO},
 	}
 	if config.Images.ConfigurationReloaderImagePullPolicy != "" {
 		configurationReloaderContainer.ImagePullPolicy = config.Images.ConfigurationReloaderImagePullPolicy
+	}
+
+	initFilelogOffsetSynchContainer := corev1.Container{
+		Name:            "filelog-offset-init",
+		Args:            []string{"--mode=init"},
+		SecurityContext: &corev1.SecurityContext{},
+		Image:           config.Images.FilelogOffsetSynchImage,
+		Env: []corev1.EnvVar{
+			{
+				Name:  "GOMEMLIMIT",
+				Value: "4MiB",
+			},
+			{
+				Name:  "K8S_CONFIGMAP_NAMESPACE",
+				Value: config.Namespace,
+			},
+			{
+				Name:  "K8S_CONFIGMAP_NAME",
+				Value: filelogReceiverOffsetsConfigMapName(config.NamePrefix),
+			},
+
+			{
+				Name:  "FILELOG_OFFSET_DIRECTORY_PATH",
+				Value: offsetsDirPath,
+			},
+			{
+				Name: "K8S_NODE_NAME",
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: nodeNameFieldSpec,
+				},
+			},
+		},
+		Resources: corev1.ResourceRequirements{
+			Limits: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("12Mi"),
+			},
+		},
+		VolumeMounts: []corev1.VolumeMount{filelogReceiverOffsetsVolumeMount},
+	}
+	if config.Images.FilelogOffsetSynchImagePullPolicy != "" {
+		initFilelogOffsetSynchContainer.ImagePullPolicy = config.Images.FilelogOffsetSynchImagePullPolicy
+	}
+
+	filelogOffsetSynchContainer := corev1.Container{
+		Name:            "filelog-offset-synch",
+		Args:            []string{"--mode=synch"},
+		SecurityContext: &corev1.SecurityContext{},
+		Image:           config.Images.FilelogOffsetSynchImage,
+		Env: []corev1.EnvVar{
+			{
+				Name:  "GOMEMLIMIT",
+				Value: "4MiB",
+			},
+			{
+				Name:  "K8S_CONFIGMAP_NAMESPACE",
+				Value: config.Namespace,
+			},
+			{
+				Name:  "K8S_CONFIGMAP_NAME",
+				Value: filelogReceiverOffsetsConfigMapName(config.NamePrefix),
+			},
+
+			{
+				Name:  "FILELOG_OFFSET_DIRECTORY_PATH",
+				Value: offsetsDirPath,
+			},
+			{
+				Name: "K8S_NODE_NAME",
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: nodeNameFieldSpec,
+				},
+			},
+		},
+		Resources: corev1.ResourceRequirements{
+			Limits: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("12Mi"),
+			},
+		},
+		VolumeMounts: []corev1.VolumeMount{filelogReceiverOffsetsVolumeMount},
+	}
+	if config.Images.FilelogOffsetSynchImagePullPolicy != "" {
+		filelogOffsetSynchContainer.ImagePullPolicy = config.Images.FilelogOffsetSynchImagePullPolicy
 	}
 
 	return &appsv1.DaemonSet{
@@ -462,9 +668,11 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 					// This setting is required to enable the configuration reloader process to send Unix signals to the
 					// collector process.
 					ShareProcessNamespace: &util.True,
+					InitContainers:        []corev1.Container{initFilelogOffsetSynchContainer},
 					Containers: []corev1.Container{
 						collectorContainer,
 						configurationReloaderContainer,
+						filelogOffsetSynchContainer,
 					},
 					Volumes:     volumes,
 					HostNetwork: false,
@@ -478,11 +686,19 @@ func serviceAccountName(namePrefix string) string {
 	return name(namePrefix, openTelemetryCollector)
 }
 
-func configMapName(namePrefix string) string {
+func filelogReceiverOffsetsConfigMapName(namePrefix string) string {
+	return name(namePrefix, "filelogoffsets")
+}
+
+func collectorConfigConfigMapName(namePrefix string) string {
 	return name(namePrefix, openTelemetryCollectorAgent)
 }
 
 func clusterRoleName(namePrefix string) string {
+	return name(namePrefix, openTelemetryCollector)
+}
+
+func roleName(namePrefix string) string {
 	return name(namePrefix, openTelemetryCollector)
 }
 

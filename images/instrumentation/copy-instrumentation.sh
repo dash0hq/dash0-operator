@@ -24,8 +24,6 @@ fi
 # be an existing mount point provided externally.
 cp -R "${DASH0_INSTRUMENTATION_FOLDER_SOURCE}"/ "${DASH0_INSTRUMENTATION_FOLDER_DESTINATION}"
 
-echo "[Dash0] Instrumentation files have been copied."
-
 if [ -n "${DASH0_DEBUG:-}" ]; then
   find "${DASH0_INSTRUMENTATION_FOLDER_DESTINATION}"
 fi

@@ -106,6 +106,8 @@ cluster roles should match snapshot:
         resources:
           - clusterroles
           - clusterrolebindings
+          - roles
+          - rolebindings
         verbs:
           - create
           - delete

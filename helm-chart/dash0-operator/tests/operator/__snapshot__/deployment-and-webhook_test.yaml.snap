@@ -54,6 +54,8 @@ deployment should match snapshot (default values):
                   value: ghcr.io/dash0hq/collector:0.0.0
                 - name: DASH0_CONFIGURATION_RELOADER_IMAGE
                   value: ghcr.io/dash0hq/configuration-reloader:0.0.0
+                - name: DASH0_FILELOG_OFFSET_SYNCH_IMAGE
+                  value: ghcr.io/dash0hq/filelog-offset-synch:0.0.0
               image: ghcr.io/dash0hq/operator-controller:0.0.0
               livenessProbe:
                 httpGet:

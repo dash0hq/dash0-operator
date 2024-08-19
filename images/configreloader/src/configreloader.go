@@ -53,8 +53,10 @@ func main() {
 		for {
 			select {
 			case <-ticker.C:
-				if err := checkConfiguration(configurationFilePaths, *collectorPidFilePath); err != nil {
+				if isUpdateTriggered, err := checkConfiguration(configurationFilePaths, *collectorPidFilePath); err != nil {
 					log.Printf("An error occurred while check for configuration changes: %s\n", err)
+				} else if isUpdateTriggered {
+					log.Println("Triggered collector configuration update")
 				}
 			case <-shutdown:
 				ticker.Stop()
@@ -86,19 +88,21 @@ func initializeHashes(configurationFilePaths []string) error {
 	return nil
 }
 
-func checkConfiguration(configurationFilePaths []string, collectorPidFilePath string) error {
+type HasTriggeredReload bool
+
+func checkConfiguration(configurationFilePaths []string, collectorPidFilePath string) (HasTriggeredReload, error) {
 	updatesConfigurationFilePaths := []string{}
 	// We need to poll files, we the filesystem timestamps are not reliable in container runtime
 	for _, configurationFilePath := range configurationFilePaths {
 		configurationFile, err := os.Open(configurationFilePath)
 		if err != nil {
-			return fmt.Errorf("cannot open '%v' configuration file: %w", configurationFilePath, err)
+			return false, fmt.Errorf("cannot open '%v' configuration file: %w", configurationFilePath, err)
 		}
 		defer configurationFile.Close()
 
 		configurationFileHash := md5.New()
 		if _, err := io.Copy(configurationFileHash, configurationFile); err != nil {
-			return fmt.Errorf("cannot hash '%v' configuration file: %w", configurationFilePath, err)
+			return false, fmt.Errorf("cannot hash '%v' configuration file: %w", configurationFilePath, err)
 		}
 
 		hashValue := hex.EncodeToString(configurationFileHash.Sum(nil))
@@ -117,24 +121,26 @@ func checkConfiguration(configurationFilePaths []string, collectorPidFilePath st
 
 	if len(updatesConfigurationFilePaths) < 1 {
 		// Nothing to do
-		return nil
+		return false, nil
 	}
 
 	log.Printf("Triggering a collector update due to changes to the config files: %v\n", strings.Join(updatesConfigurationFilePaths, ","))
 
 	collectorPid, err := parsePidFile(collectorPidFilePath)
 	if err != nil {
-		return fmt.Errorf("cannot retrieve collector pid: %w", err)
+		return false, fmt.Errorf("cannot retrieve collector pid: %w", err)
 	}
 
 	if err := triggerConfigurationReload(collectorPid); err != nil {
-		return fmt.Errorf("cannot trigger collector update: %w", err)
+		return false, fmt.Errorf("cannot trigger collector update: %w", err)
 	}
 
-	return nil
+	return true, nil
 }
 
-func parsePidFile(pidFilePath string) (int, error) {
+type OTelColPid int
+
+func parsePidFile(pidFilePath string) (OTelColPid, error) {
 	collectorPidFile, err := os.Open(pidFilePath)
 	if err != nil {
 		return 0, fmt.Errorf("cannot open '%v' pid file: %w", pidFilePath, err)
@@ -159,15 +165,15 @@ func parsePidFile(pidFilePath string) (int, error) {
 		return 0, fmt.Errorf("pid file '%v' has an unexpected format: expecting a single integer; found additional content: %v", pidFilePath, scanner.Text())
 	}
 
-	return pid, nil
+	return OTelColPid(pid), nil
 }
 
-func triggerConfigurationReload(collectorPid int) error {
+func triggerConfigurationReload(collectorPid OTelColPid) error {
 	if collectorPid < 0 || collectorPid > PID_MAX_LIMIT {
 		return fmt.Errorf("unexpected pid: expecting an integer between 0 and %v, found additional: %v", PID_MAX_LIMIT, collectorPid)
 	}
 
-	collectorProcess, err := os.FindProcess(collectorPid)
+	collectorProcess, err := os.FindProcess(int(collectorPid))
 	if err != nil {
 		return fmt.Errorf("cannot find the process with pid '%v': %w", collectorPid, err)
 	}

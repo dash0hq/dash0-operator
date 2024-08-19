@@ -1,115 +1,238 @@
+connectors:
+  forward/logs:
+
 exporters:
-    debug: {}
-    # debug:
-    #   verbosity: detailed
+  # debug: {}
+  debug:
+    verbosity: detailed
 {{- if eq .ExportProtocol "grpc" }}
-    otlp:
-        endpoint: {{ .IngressEndpoint }}
+  otlp:
+    endpoint: {{ .IngressEndpoint }}
 {{- if .HasExportAuthentication }}
-        headers:
-            Authorization: Bearer ${env:AUTH_TOKEN}
+    headers:
+      Authorization: Bearer ${env:AUTH_TOKEN}
 {{- end }}
 {{- end }}
 {{- if eq .ExportProtocol "http" }}
-    otlphttp:
-        endpoint: {{ .IngressEndpoint }}
+  otlphttp:
+    endpoint: {{ .IngressEndpoint }}
 {{- if .HasExportAuthentication }}
-        headers:
-            Authorization: Bearer ${env:AUTH_TOKEN}
+    headers:
+      Authorization: Bearer ${env:AUTH_TOKEN}
 {{- end }}
 {{- end }}
 
 extensions:
-    health_check:
-        endpoint: ${env:MY_POD_IP}:13133
+  health_check:
+    endpoint: ${env:MY_POD_IP}:13133
+  file_storage/filelogreceiver_offsets:
+    directory: /var/otelcol/filelogreceiver_offsets
+    timeout: 1s
 
 processors:
-    batch: {}
-    k8sattributes:
-        extract:
-            metadata:
-            - k8s.namespace.name
-            - k8s.deployment.name
-            - k8s.statefulset.name
-            - k8s.daemonset.name
-            - k8s.cronjob.name
-            - k8s.job.name
-            - k8s.node.name
-            - k8s.pod.name
-            - k8s.pod.uid
-            - k8s.pod.start_time
-        filter:
-            node_from_env_var: K8S_NODE_NAME
-        passthrough: false
-        pod_association:
-        - sources:
-            - from: resource_attribute
-              name: k8s.pod.ip
-        - sources:
-            - from: resource_attribute
-              name: k8s.pod.uid
-        - sources:
-            - from: connection
-    memory_limiter:
-        check_interval: 5s
-        limit_percentage: 80
-        spike_limit_percentage: 25
+  batch: {}
+  filter/only_dash0_monitored_resources:
+    error_mode: ignore
+    traces:
+      span:
+      - 'resource.attributes["dash0.monitoring.instrumented"] != "true"'
+    metrics:
+      metric:
+      datapoint:
+      - 'resource.attributes["dash0.monitoring.instrumented"] != "true"'
+    logs:
+      log_record:
+      - 'resource.attributes["dash0.monitoring.instrumented"] != "true"'
+  k8sattributes:
+    extract:
+      metadata:
+      - k8s.namespace.name
+      - k8s.deployment.name
+      - k8s.statefulset.name
+      - k8s.daemonset.name
+      - k8s.cronjob.name
+      - k8s.job.name
+      - k8s.node.name
+      - k8s.pod.name
+      - k8s.pod.uid
+      - k8s.pod.start_time
+      labels:
+      - key: dash0.com/instrumented
+        tag_name: dash0.monitoring.instrumented
+        from: pod
+    filter:
+      node_from_env_var: K8S_NODE_NAME
+    passthrough: false
+    pod_association:
+    - sources:
+      - from: resource_attribute
+        name: k8s.pod.ip
+    - sources:
+      - from: resource_attribute
+        name: k8s.pod.uid
+    - sources:
+      - from: connection
+  memory_limiter:
+    check_interval: 5s
+    limit_percentage: 80
+    spike_limit_percentage: 25
 
 receivers:
-    otlp:
-        protocols:
-            grpc:
-                endpoint: ${env:MY_POD_IP}:4317
-            http:
-                endpoint: ${env:MY_POD_IP}:4318
+  otlp:
+    protocols:
+      grpc:
+        endpoint: ${env:MY_POD_IP}:4317
+      http:
+        endpoint: ${env:MY_POD_IP}:4318
+  # TODO Turn on conditionally for monitored namespaces
+  filelog/monitored_pods:
+    include:
+    - /var/log/pods/*/*/*.log
+    exclude:
+{{- range $i, $namespace := .IgnoreLogsFromNamespaces }}
+    - /var/log/pods/{{ $namespace }}_*/*/*.log
+{{- end}}
+    storage: file_storage/filelogreceiver_offsets
+    include_file_path: true
+    include_file_name: false
+    include_file_record_number: true
+    operators:
+    # Find out which format is used by kubernetes
+    - type: router
+      id: get-format
+      routes:
+      - output: parser-docker
+        expr: 'body matches "^\\{"'
+      - output: parser-crio
+        expr: 'body matches "^[^ Z]+ "'
+      - output: parser-containerd
+        expr: 'body matches "^[^ Z]+Z"'
+    # Parse CRI-O format
+    - type: regex_parser
+      id: parser-crio
+      regex: '^(?P<time>[^ Z]+) (?P<stream>stdout|stderr) (?P<logtag>[^ ]*)?(?P<log>.*)$'
+      output: extract_metadata_from_filepath
+      timestamp:
+        parse_from: attributes.time
+        layout_type: gotime
+        layout: '2006-01-02T15:04:05.999999999Z07:00'
+    # Parse CRI-Containerd format
+    - type: regex_parser
+      id: parser-containerd
+      regex: '^(?P<time>[^ ^Z]+Z) (?P<stream>stdout|stderr) (?P<logtag>[^ ]*)?(?P<log>.*)$'
+      output: extract_metadata_from_filepath
+      timestamp:
+        parse_from: attributes.time
+        layout: '%Y-%m-%dT%H:%M:%S.%LZ'
+    # Parse Docker format
+    - type: json_parser
+      id: parser-docker
+      output: parser-docker-body
+      timestamp:
+        parse_from: attributes.time
+        layout: '%Y-%m-%dT%H:%M:%S.%LZ'
+    - type: json_parser
+      id: parser-docker-body
+      output: extract_metadata_from_filepath
+      parse_from: body
+      parse_to: attributes
+    # Extract metadata from file path
+    - type: regex_parser
+      id: extract_metadata_from_filepath
+      regex: '^.*\/(?P<namespace>[^_]+)_(?P<pod_name>[^_]+)_(?P<uid>[a-f0-9\-]{36})\/(?P<container_name>[^\._]+)\/(?P<restart_count>\d+)\.log$'
+      parse_from: attributes["log.file.path"]
+      cache:
+        size: 128 # default maximum amount of Pods per Node is 110
+    # Rename attributes
+    - type: move
+      from: attributes.stream
+      to: attributes["log.iostream"]
+    - type: move
+      from: attributes.container_name
+      to: resource["k8s.container.name"]
+    - type: move
+      from: attributes.namespace
+      to: resource["k8s.namespace.name"]
+    - type: move
+      from: attributes.pod_name
+      to: resource["k8s.pod.name"]
+    - type: move
+      from: attributes.restart_count
+      to: resource["k8s.container.restart_count"]
+    - type: move
+      from: attributes.uid
+      to: resource["k8s.pod.uid"]
+    # Delete unnecessary attributes
+    - type: remove
+      field: attributes.time
 
 service:
-    extensions:
-    - health_check
-    pipelines:
-        traces:
-            receivers:
-            - otlp
-            processors:
-            - k8sattributes
-            - memory_limiter
-            - batch
-            exporters:
+  extensions:
+  - health_check
+  - file_storage/filelogreceiver_offsets
+  pipelines:
+    traces/downstream:
+      receivers:
+      - otlp
+      processors:
+      - k8sattributes
+      - memory_limiter
+      - batch
+      exporters:
 {{- if eq .ExportProtocol "grpc" }}
-            - otlp
+      - otlp
 {{- end }}
 {{- if eq .ExportProtocol "http" }}
-            - otlphttp
-{{- end }}
-        metrics:
-            receivers:
-            - otlp
-            processors:
-            - k8sattributes
-            - memory_limiter
-            - batch
-            exporters:
-{{- if eq .ExportProtocol "grpc" }}
-            - otlp
-{{- end }}
-{{- if eq .ExportProtocol "http" }}
-            - otlphttp
-{{- end }}
-        logs:
-            receivers:
-            - otlp
-            processors:
-            - k8sattributes
-            - memory_limiter
-            - batch
-            exporters:
-{{- if eq .ExportProtocol "grpc" }}
-            - otlp
-{{- end }}
-{{- if eq .ExportProtocol "http" }}
-            - otlphttp
+      - otlphttp
 {{- end }}
 
-    telemetry:
-        metrics:
-            address: ${env:MY_POD_IP}:8888
+    metrics/downstream:
+      receivers:
+      - otlp
+      processors:
+      - k8sattributes
+      - memory_limiter
+      - batch
+      exporters:
+{{- if eq .ExportProtocol "grpc" }}
+      - otlp
+{{- end }}
+{{- if eq .ExportProtocol "http" }}
+      - otlphttp
+{{- end }}
+
+    logs/otlp:
+      receivers:
+      - otlp
+      processors:
+      - k8sattributes
+      exporters:
+      - forward/logs
+
+    logs/monitoredpods:
+      receivers:
+      - filelog/monitored_pods
+      processors:
+      - k8sattributes
+      - filter/only_dash0_monitored_resources
+      exporters:
+      - forward/logs
+
+    logs/downstream:
+      receivers:
+      - forward/logs
+      processors:
+      - memory_limiter
+      - batch
+      exporters:
+      - debug
+{{- if eq .ExportProtocol "grpc" }}
+      - otlp
+{{- end }}
+{{- if eq .ExportProtocol "http" }}
+      - otlphttp
+{{- end }}
+
+  telemetry:
+    metrics:
+      address: ${env:MY_POD_IP}:8888

@@ -20,7 +20,8 @@ import (
 )
 
 var (
-	expectedConfigMapName = "unit-test-opentelemetry-collector-agent"
+	expectedCollectorConfigConfigMapName = "unit-test-opentelemetry-collector-agent"
+	expectedFileOffsetsConfigMapName     = "unit-test-filelogoffsets"
 
 	testObject = &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
@@ -127,22 +128,24 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 
 	Describe("when updating all OpenTelemetry collector resources", func() {
 		It("should update the resources", func() {
-			err := k8sClient.Create(ctx, &corev1.ConfigMap{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      expectedConfigMapName,
-					Namespace: Dash0OperatorNamespace,
-					Labels: map[string]string{
-						"wrong-key": "value",
+			for _, configMapName := range []string{expectedCollectorConfigConfigMapName, expectedFileOffsetsConfigMapName} {
+				Expect(k8sClient.Create(ctx, &corev1.ConfigMap{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      configMapName,
+						Namespace: Dash0OperatorNamespace,
+						Labels: map[string]string{
+							"wrong-key": "value",
+						},
+						Annotations: map[string]string{
+							"wrong-key": "value",
+						},
 					},
-					Annotations: map[string]string{
-						"wrong-key": "value",
+					Data: map[string]string{
+						"wrong-key": "{}",
 					},
-				},
-				Data: map[string]string{
-					"wrong-key": "{}",
-				},
-			})
-			Expect(err).ToNot(HaveOccurred())
+				})).To(Succeed())
+			}
+
 			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,

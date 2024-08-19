@@ -6,6 +6,7 @@ package e2e
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"time"
 
 	"github.com/google/uuid"
@@ -159,4 +160,15 @@ func verifyThatInstrumentationIsRevertedEventually(
 	}, time.Duration(secondsToCheckForSpans)*time.Second, 1*time.Second).Should(Succeed())
 
 	By(fmt.Sprintf("%s: matching spans are no longer captured", workloadType))
+}
+
+func waitForApplicationToBecomeReady(templateName string, waitCommand *exec.Cmd) error {
+	By(fmt.Sprintf("waiting for %s to become ready", templateName))
+	err := runAndIgnoreOutput(waitCommand)
+	if err != nil {
+		By(fmt.Sprintf("%s never became ready", templateName))
+	} else {
+		By(fmt.Sprintf("%s is ready now", templateName))
+	}
+	return err
 }

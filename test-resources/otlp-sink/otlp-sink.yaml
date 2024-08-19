@@ -16,6 +16,8 @@ data:
         endpoint: ${env:MY_POD_IP}:13100
 
     exporters:
+      debug:
+        verbosity: detailed
       file/traces:
         path: /telemetry/traces.jsonl
         flush_interval: 100ms
@@ -30,7 +32,7 @@ data:
       otlp:
         protocols:
           http:
-            endpoint: ${env:MY_POD_IP}:80
+            endpoint: ${env:MY_POD_IP}:8080
 
     service:
       extensions:
@@ -40,16 +42,19 @@ data:
           receivers:
             - otlp
           exporters:
+            - debug
             - file/traces
         metrics:
           receivers:
             - otlp
           exporters:
+            - debug
             - file/metrics
         logs:
           receivers:
             - otlp
           exporters:
+            - debug
             - file/logs
 ---
 apiVersion: apps/v1
@@ -60,7 +65,7 @@ metadata:
   labels:
     app.kubernetes.io/name: deployment
     app.kubernetes.io/component: manager
-    dash0.com/enable: "false"
+    dash0.com/instrumented: "false"
 spec:
   replicas: 1
   selector:
@@ -85,7 +90,7 @@ spec:
           value: 400MiB
         ports:
         - name: otlp
-          containerPort: 80
+          containerPort: 8080
           protocol: TCP
         volumeMounts:
         - name: otelcol-config
@@ -111,7 +116,7 @@ spec:
         resources:
           limits:
             cpu: 500m
-            memory: 128Mi
+            memory: 512Mi
             ephemeral-storage: 500Mi
           requests:
             cpu: 10m
@@ -155,6 +160,6 @@ spec:
   - name: otlp
     port: 80
     protocol: TCP
-    targetPort: otlp
+    targetPort: 8080
   selector:
     app.kubernetes.io/instance: otlp-sink

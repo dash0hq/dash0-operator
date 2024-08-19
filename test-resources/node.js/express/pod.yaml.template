@@ -31,4 +31,3 @@ spec:
       ports:
         - containerPort: 1211
       imagePullPolicy: Never
-

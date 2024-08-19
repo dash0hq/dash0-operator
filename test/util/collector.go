@@ -6,6 +6,7 @@ package util
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	. "github.com/onsi/gomega"
 	appsv1 "k8s.io/api/apps/v1"
@@ -58,8 +59,14 @@ func VerifyCollectorDaemonSetExists(
 
 	// arbitrarily checking a couple of settings for the daemon set
 	containers := ds.Spec.Template.Spec.Containers
-	Expect(containers).To(HaveLen(2))
-	ports := containers[0].Ports
+	Expect(containers).To(HaveLen(3))
+
+	collectorContainerIdx := slices.IndexFunc(containers, func(c corev1.Container) bool {
+		return c.Name == "opentelemetry-collector"
+	})
+	collectorContainer := containers[collectorContainerIdx]
+
+	ports := collectorContainer.Ports
 	Expect(ports[0].ContainerPort).To(Equal(int32(4317)))
 	Expect(ports[1].ContainerPort).To(Equal(int32(4318)))
 

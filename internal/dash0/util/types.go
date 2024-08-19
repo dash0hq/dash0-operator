@@ -33,6 +33,8 @@ type Images struct {
 	CollectorImagePullPolicy             corev1.PullPolicy
 	ConfigurationReloaderImage           string
 	ConfigurationReloaderImagePullPolicy corev1.PullPolicy
+	FilelogOffsetSynchImage              string
+	FilelogOffsetSynchImagePullPolicy    corev1.PullPolicy
 }
 
 type InstrumentationMetadata struct {

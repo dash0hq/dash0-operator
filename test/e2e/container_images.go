@@ -24,6 +24,7 @@ type Images struct {
 	instrumentation       ImageSpec
 	collector             ImageSpec
 	configurationReloader ImageSpec
+	fileLogOffsetSynch    ImageSpec
 }
 
 const (
@@ -176,6 +177,45 @@ func rebuildConfigurationReloaderImage(configurationReloaderImage ImageSpec, bui
 				"docker",
 				"tag",
 				renderFullyQualifiedImageName(configurationReloaderImage),
+				renderFullyQualifiedImageName(additionalTag),
+			))).To(Succeed())
+}
+
+func rebuildFileLogOffsetSynchImage(fileLogOffsetSynchImage ImageSpec, buildImageLocally bool) {
+	if !buildImageLocally {
+		return
+	}
+	if strings.Contains(fileLogOffsetSynchImage.repository, "/") {
+		By(
+			fmt.Sprintf(
+				"not rebuilding the filelog offset synch image %s, this looks like a remote image",
+				renderFullyQualifiedImageName(fileLogOffsetSynchImage),
+			))
+		return
+	}
+
+	By(fmt.Sprintf("building the filelog offset synch image: %s",
+		renderFullyQualifiedImageName(fileLogOffsetSynchImage)))
+	Expect(
+		runAndIgnoreOutput(
+			exec.Command(
+				"docker",
+				"build",
+				"images/filelogoffsetsynch",
+				"-t",
+				fileLogOffsetSynchImage.tag,
+			))).To(Succeed())
+
+	additionalTag := ImageSpec{
+		repository: fileLogOffsetSynchImage.repository,
+		tag:        additionalImageTag,
+	}
+	Expect(
+		runAndIgnoreOutput(
+			exec.Command(
+				"docker",
+				"tag",
+				renderFullyQualifiedImageName(fileLogOffsetSynchImage),
 				renderFullyQualifiedImageName(additionalTag),
 			))).To(Succeed())
 }

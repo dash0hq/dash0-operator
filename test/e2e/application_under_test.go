@@ -212,12 +212,7 @@ func installNodeJsApplication(
 	if waitCommand == nil {
 		return nil
 	}
-	By(fmt.Sprintf("waiting for %s to become ready", templateName))
-	err = runAndIgnoreOutput(waitCommand)
-	if err == nil {
-		By(fmt.Sprintf("%s is ready", templateName))
-	}
-	return err
+	return waitForApplicationToBecomeReady(templateName, waitCommand)
 }
 
 func uninstallNodeJsApplication(namespace string, kind string) error {

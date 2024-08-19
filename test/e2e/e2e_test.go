@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
+
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -37,6 +39,7 @@ var (
 	buildInstrumentationImageFromLocalSources       = true
 	buildCollectorImageFromLocalSources             = true
 	buildConfigurationReloaderImageFromLocalSources = true
+	buildFileLogOffsetSynchImageFromLocalSources    = true
 	operatorHelmChart                               = localHelmChart
 	operatorHelmChartUrl                            = ""
 	operatorNamespace                               = "dash0-system"
@@ -58,6 +61,11 @@ var (
 		},
 		configurationReloader: ImageSpec{
 			repository: "configuration-reloader",
+			tag:        "latest",
+			pullPolicy: "Never",
+		},
+		fileLogOffsetSynch: ImageSpec{
+			repository: "filelog-offset-synch",
 			tag:        "latest",
 			pullPolicy: "Never",
 		},
@@ -94,6 +102,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		rebuildInstrumentationImage(images.instrumentation, buildInstrumentationImageFromLocalSources)
 		rebuildCollectorImage(images.collector, buildCollectorImageFromLocalSources)
 		rebuildConfigurationReloaderImage(images.configurationReloader, buildConfigurationReloaderImageFromLocalSources)
+		rebuildFileLogOffsetSynchImage(images.fileLogOffsetSynch, buildFileLogOffsetSynchImageFromLocalSources)
 		rebuildNodeJsApplicationContainerImage()
 
 		setupFinishedSuccessfully = true
@@ -131,13 +140,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			undeployOperator(operatorNamespace)
 		})
 
-		type controllerTestWorkloadConfig struct {
-			workloadType    string
-			port            int
-			installWorkload func(string) error
-			isBatch         bool
-		}
-
 		workloadConfigs := []controllerTestWorkloadConfig{
 			{
 				workloadType:    "cronjob",
@@ -170,6 +172,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					By(fmt.Sprintf("deploying the Node.js %s", config.workloadType))
 					Expect(config.installWorkload(applicationUnderTestNamespace)).To(Succeed())
 				})
+				By("all workloads have been deployed")
 
 				deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images, true)
 				deployDash0MonitoringResource(
@@ -191,6 +194,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 						"controller",
 					)
 				})
+				By("all workloads have been instrumented")
 
 				undeployDash0MonitoringResource(applicationUnderTestNamespace)
 
@@ -204,6 +208,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 						"controller",
 					)
 				})
+				By("all workloads have been reverted")
 
 				verifyThatCollectorHasBeenRemoved(operatorNamespace)
 			})
@@ -279,6 +284,11 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					},
 					configurationReloader: ImageSpec{
 						repository: "configuration-reloader",
+						tag:        additionalImageTag,
+						pullPolicy: "Never",
+					},
+					fileLogOffsetSynch: ImageSpec{
+						repository: "filelog-offset-synch",
 						tag:        additionalImageTag,
 						pullPolicy: "Never",
 					},
@@ -614,6 +624,71 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		})
 	})
 
+	Describe("log collection", func() {
+
+		BeforeAll(func() {
+			By("deploy the Dash0 operator")
+			deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images, true)
+			time.Sleep(10 * time.Second)
+		})
+
+		AfterAll(func() {
+			undeployOperator(operatorNamespace)
+		})
+
+		AfterEach(func() {
+			undeployDash0MonitoringResource(applicationUnderTestNamespace)
+		})
+
+		It("does not collect again older logs when the collector pod churns", func() {
+			deployDash0MonitoringResource(
+				applicationUnderTestNamespace,
+				defaultDash0MonitoringValues,
+				operatorNamespace,
+				operatorHelmChart,
+			)
+
+			Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+
+			By("verifying that the Node.js deployment has been instrumented by the controller")
+			Eventually(func(g Gomega) {
+				verifyLabels(
+					g,
+					applicationUnderTestNamespace,
+					"deployment",
+					true,
+					images,
+					"webhook",
+				)
+			}).Should(Succeed())
+
+			By("sending a request to the Node.js deployment that will generate a log with a predictable body")
+
+			testId := uuid.New().String()
+			httpPathWithQuery := fmt.Sprintf("/dash0-k8s-operator-test?id=%s", testId)
+
+			now := time.Now()
+			sendRequest(Default, 1207, httpPathWithQuery)
+
+			By("waiting for the the log to appear")
+
+			Eventually(func(g Gomega) error {
+				return verifyExactlyOneLogRecordIsReported(g, testId, &now)
+			}, 15*time.Second, verifyTelemetryPollingInterval).Should(Succeed())
+
+			By("churning collector pods")
+			_ = runAndIgnoreOutput(exec.Command("kubectl", "delete", "pods", "-n", operatorNamespace))
+
+			verifyThatCollectorIsRunning(operatorNamespace, operatorHelmChart)
+
+			By("verifying that the previous log message is not reported again (checking for 30 seconds)")
+			Consistently(func(g Gomega) error {
+				return verifyExactlyOneLogRecordIsReported(g, testId, &now)
+			}, 30*time.Second, verifyTelemetryPollingInterval).Should(Succeed())
+		})
+
+	})
+
 	Describe("operator removal", func() {
 
 		const (
@@ -639,13 +714,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			_ = runAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", namespace2))
 			undeployOperator(operatorNamespace)
 		})
-
-		type removalTestNamespaceConfig struct {
-			namespace       string
-			workloadType    string
-			port            int
-			installWorkload func(string) error
-		}
 
 		configs := []removalTestNamespaceConfig{
 			{
@@ -718,20 +786,64 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 	})
 })
 
-func runInParallelForAllWorkloadTypes[C any](
+type workloadConfig interface {
+	GetWorkloadType() string
+}
+
+type controllerTestWorkloadConfig struct {
+	workloadType    string
+	port            int
+	installWorkload func(string) error
+	isBatch         bool
+}
+
+func (c controllerTestWorkloadConfig) GetWorkloadType() string {
+	return c.workloadType
+}
+
+type removalTestNamespaceConfig struct {
+	namespace       string
+	workloadType    string
+	port            int
+	installWorkload func(string) error
+}
+
+func (c removalTestNamespaceConfig) GetWorkloadType() string {
+	return c.workloadType
+}
+
+func runInParallelForAllWorkloadTypes[C workloadConfig](
 	workloadConfigs []C,
 	testStep func(C),
 ) {
+	passed := make(map[string]bool)
 	var wg sync.WaitGroup
 	for _, config := range workloadConfigs {
+		workloadType := config.GetWorkloadType()
+		passed[workloadType] = false
 		wg.Add(1)
 		go func(cfg C) {
 			defer GinkgoRecover()
 			defer wg.Done()
+			fmt.Fprintf(GinkgoWriter, "(before test step: %s)\n", workloadType)
 			testStep(cfg)
+			fmt.Fprintf(GinkgoWriter, "(after test step: %s)\n", workloadType)
+			passed[workloadType] = true
 		}(config)
 	}
 	wg.Wait()
+
+	// Fail early if one of the workloads has not passed the test step. Because of runInParallelForAllWorkloadTypes and
+	// the business with the (required) "defer GinkgoRecover()", Ginkgo needs a little help with that. Without this
+	// additional check, a failure occurring in testStep might not make the test fail immediately, but is only reported
+	// after the whole test has finished. This might lead to some slightly weird and hard-to-understand behavior,
+	// because it looks like the has passed testStep, and then the whole test fails with something that should have been
+	// reported much earlier.
+	for _, config := range workloadConfigs {
+		if !passed[config.GetWorkloadType()] {
+			Fail(fmt.Sprintf("workload %s has not passed a test step executed in parallel", config.GetWorkloadType()))
+		}
+	}
 }
 
 func readAndApplyEnvironmentVariables() {
@@ -798,6 +910,24 @@ func readAndApplyEnvironmentVariables() {
 	images.configurationReloader.pullPolicy = getEnvOrDefault(
 		"CONFIGURATION_RELOADER_IMG_PULL_POLICY",
 		images.configurationReloader.pullPolicy,
+	)
+
+	buildFileLogOffsetSynchImageFromLocalSourcesRaw := getEnvOrDefault("BUILD_FILELOG_OFFSET_SYNCH_IMAGE", "")
+	if buildFileLogOffsetSynchImageFromLocalSourcesRaw != "" {
+		buildFileLogOffsetSynchImageFromLocalSources, err =
+			strconv.ParseBool(buildFileLogOffsetSynchImageFromLocalSourcesRaw)
+		Expect(err).NotTo(HaveOccurred())
+	}
+	images.fileLogOffsetSynch.repository = getEnvOrDefault(
+		"FILELOG_OFFSET_SYNCH_IMG_REPOSITORY",
+		images.fileLogOffsetSynch.repository,
+	)
+	images.fileLogOffsetSynch.tag = getEnvOrDefault("FILELOG_OFFSET_SYNCH_IMG_TAG", images.fileLogOffsetSynch.tag)
+	images.fileLogOffsetSynch.digest = getEnvOrDefault("FILELOG_OFFSET_SYNCH_IMG_DIGEST",
+		images.fileLogOffsetSynch.digest)
+	images.fileLogOffsetSynch.pullPolicy = getEnvOrDefault(
+		"FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY",
+		images.fileLogOffsetSynch.pullPolicy,
 	)
 }
 
