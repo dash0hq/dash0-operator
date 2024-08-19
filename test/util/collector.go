@@ -59,7 +59,7 @@ func VerifyCollectorDaemonSetExists(
 
 	// arbitrarily checking a couple of settings for the daemon set
 	containers := ds.Spec.Template.Spec.Containers
-	Expect(containers).To(HaveLen(4))
+	Expect(containers).To(HaveLen(3))
 
 	collectorContainerIdx := slices.IndexFunc(containers, func(c corev1.Container) bool {
 		return c.Name == "opentelemetry-collector"
