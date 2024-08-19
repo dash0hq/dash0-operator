@@ -170,10 +170,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 func getConfigMap(desiredState []client.Object, matcher func(c *corev1.ConfigMap) bool) *corev1.ConfigMap {
 	for _, object := range desiredState {
-		if cm, ok := object.(*corev1.ConfigMap); ok {
-			if matcher(cm) {
-				return cm
-			}
+		if cm, ok := object.(*corev1.ConfigMap); ok && matcher(cm) {
+			return cm
 		}
 	}
 	return nil
