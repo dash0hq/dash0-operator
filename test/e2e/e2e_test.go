@@ -827,14 +827,14 @@ func runInParallelForAllWorkloadTypes[C workloadConfig](
 			fmt.Fprintf(GinkgoWriter, "(before test step: %s)\n", cfg.GetWorkloadType())
 			testStep(cfg)
 			fmt.Fprintf(GinkgoWriter, "(after test step: %s)\n", cfg.GetWorkloadType())
-			passed[config.GetWorkloadType()] = true
+			passed[cfg.GetWorkloadType()] = true
 		}(config)
 	}
 	wg.Wait()
 
 	// Fail early if one of the workloads has not passed the test step. Because of runInParallelForAllWorkloadTypes and
 	// the business with the (required) "defer GinkgoRecover()", Ginkgo needs a little help with that. Without this
-	// additional check, a failure occuring in testStep might not make the test fail immediately, but is only reported
+	// additional check, a failure occurring in testStep might not make the test fail immediately, but is only reported
 	// after the whole test has finished. This might lead to some slightly weird and hard-to-understand behavior,
 	// because it looks like the has passed testStep, and then the whole test fails with something that should have been
 	// reported much earlier.
