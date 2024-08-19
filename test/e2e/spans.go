@@ -78,6 +78,7 @@ func sendRequest(g Gomega, port int, httpPathWithQuery string) {
 	g.Expect(responseBody).To(ContainSubstring("We make Observability easy for every developer."))
 }
 
+//nolint:all
 func fileHasMatchingSpan(g Gomega, workloadType string, httpPathWithQuery string, timestampLowerBound *time.Time) bool {
 	fileHandle, err := os.Open("test-resources/e2e-test-volumes/otlp-sink/traces.jsonl")
 	g.Expect(err).NotTo(HaveOccurred())
@@ -116,6 +117,7 @@ func fileHasMatchingSpan(g Gomega, workloadType string, httpPathWithQuery string
 	return spansFound
 }
 
+//nolint:all
 func hasMatchingSpans(
 	traces ptrace.Traces,
 	resourceMatchFn func(span ptrace.ResourceSpans) bool,
@@ -143,6 +145,7 @@ func hasMatchingSpans(
 	return false
 }
 
+//nolint:all
 func resourceSpansHaveExpectedResourceAttributes(workloadType string) func(span ptrace.ResourceSpans) bool {
 	return func(resourceSpans ptrace.ResourceSpans) bool {
 		attributes := resourceSpans.Resource().Attributes()

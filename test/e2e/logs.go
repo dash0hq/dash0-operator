@@ -13,7 +13,6 @@ import (
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 
-	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
@@ -25,39 +24,7 @@ var (
 	logsUnmarshaller = &plog.JSONUnmarshaler{}
 )
 
-// func verifyLogRecords(g Gomega, isBatch bool, workloadType string, port int, httpPathWithQuery string) {
-// 	spansFound := sendRequestAndFindMatchingLogRecords(g, isBatch, workloadType, port, httpPathWithQuery, nil)
-// 	g.Expect(spansFound).To(BeTrue(),
-// 		fmt.Sprintf("%s: expected to find at least one matching HTTP server span", workloadType))
-// }
-
-// func verifyNoLogRecords(isBatch bool, workloadType string, port int, httpPathWithQuery string) {
-// 	timestampLowerBound := time.Now()
-// 	spansFound := sendRequestAndFindMatchingLogRecords(
-// 		Default,
-// 		isBatch,
-// 		"",
-// 		port,
-// 		httpPathWithQuery,
-// 		&timestampLowerBound,
-// 	)
-// 	Expect(spansFound).To(BeFalse(), fmt.Sprintf("%s: expected to find no matching HTTP server span", workloadType))
-// }
-
-// func sendRequestAndFindMatchingLogRecords(
-// 	g Gomega,
-// 	isBatch bool,
-// 	workloadType string,
-// 	port int,
-// 	httpPathWithQuery string,
-// 	timestampLowerBound *time.Time,
-// ) bool {
-// 	if !isBatch {
-// 		sendRequest(g, port, httpPathWithQuery)
-// 	}
-// 	return fileHasMatchingLogRecords(g, workloadType, httpPathWithQuery, timestampLowerBound)
-// }
-
+//nolint:all
 func fileCountMatchingLogRecords(g Gomega, workloadType string, logBody string, timestampLowerBound *time.Time) int {
 	fileHandle, err := os.Open("test-resources/e2e-test-volumes/otlp-sink/logs.jsonl")
 	g.Expect(err).NotTo(HaveOccurred())
@@ -123,6 +90,7 @@ func countMatchingLogRecords(
 	return matches
 }
 
+//nolint:all
 func resourceLogRecordsHaveExpectedResourceAttributes(workloadType string) func(span plog.ResourceLogs) bool {
 	return func(resourceLogs plog.ResourceLogs) bool {
 		attributes := resourceLogs.Resource().Attributes()
