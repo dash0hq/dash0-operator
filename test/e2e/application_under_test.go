@@ -42,17 +42,21 @@ func installNodeJsDaemonSet(namespace string) error {
 	return installNodeJsApplication(
 		namespace,
 		"daemonset",
-		exec.Command(
-			"kubectl",
-			"rollout",
-			"status",
-			"daemonset",
-			"dash0-operator-nodejs-20-express-test-daemonset",
-			"--namespace",
-			namespace,
-			"--timeout",
-			"60s",
-		),
+		daemonSetReadyCheck(namespace),
+	)
+}
+
+func daemonSetReadyCheck(namespace string) *exec.Cmd {
+	return exec.Command(
+		"kubectl",
+		"rollout",
+		"status",
+		"daemonset",
+		"dash0-operator-nodejs-20-express-test-daemonset",
+		"--namespace",
+		namespace,
+		"--timeout",
+		"60s",
 	)
 }
 
@@ -60,17 +64,7 @@ func installNodeJsDaemonSetWithOptOutLabel(namespace string) error {
 	return installNodeJsApplication(
 		namespace,
 		"daemonset.opt-out",
-		exec.Command(
-			"kubectl",
-			"rollout",
-			"status",
-			"daemonset",
-			"dash0-operator-nodejs-20-express-test-daemonset",
-			"--namespace",
-			namespace,
-			"--timeout",
-			"60s",
-		),
+		daemonSetReadyCheck(namespace),
 	)
 }
 
@@ -82,17 +76,21 @@ func installNodeJsDeployment(namespace string) error {
 	return installNodeJsApplication(
 		namespace,
 		"deployment",
-		exec.Command(
-			"kubectl",
-			"wait",
-			"deployment.apps/dash0-operator-nodejs-20-express-test-deployment",
-			"--for",
-			"condition=Available",
-			"--namespace",
-			namespace,
-			"--timeout",
-			"60s",
-		),
+		deploymentReadyCheck(namespace),
+	)
+}
+
+func deploymentReadyCheck(namespace string) *exec.Cmd {
+	return exec.Command(
+		"kubectl",
+		"wait",
+		"deployment.apps/dash0-operator-nodejs-20-express-test-deployment",
+		"--for",
+		"condition=Available",
+		"--namespace",
+		namespace,
+		"--timeout",
+		"60s",
 	)
 }
 
@@ -116,19 +114,23 @@ func installNodeJsPod(namespace string) error {
 	return installNodeJsApplication(
 		namespace,
 		"pod",
-		exec.Command(
-			"kubectl",
-			"wait",
-			"pod",
-			"--namespace",
-			namespace,
-			"--selector",
-			"app=dash0-operator-nodejs-20-express-test-pod-app",
-			"--for",
-			"condition=ContainersReady",
-			"--timeout",
-			"60s",
-		),
+		podReadyCheck(namespace),
+	)
+}
+
+func podReadyCheck(namespace string) *exec.Cmd {
+	return exec.Command(
+		"kubectl",
+		"wait",
+		"pod",
+		"--namespace",
+		namespace,
+		"--selector",
+		"app=dash0-operator-nodejs-20-express-test-pod-app",
+		"--for",
+		"condition=ContainersReady",
+		"--timeout",
+		"60s",
 	)
 }
 
@@ -140,19 +142,23 @@ func installNodeJsReplicaSet(namespace string) error {
 	return installNodeJsApplication(
 		namespace,
 		"replicaset",
-		exec.Command(
-			"kubectl",
-			"wait",
-			"pod",
-			"--namespace",
-			namespace,
-			"--selector",
-			"app=dash0-operator-nodejs-20-express-test-replicaset-app",
-			"--for",
-			"condition=ContainersReady",
-			"--timeout",
-			"60s",
-		),
+		replicaSetReadyCheck(namespace),
+	)
+}
+
+func replicaSetReadyCheck(namespace string) *exec.Cmd {
+	return exec.Command(
+		"kubectl",
+		"wait",
+		"pod",
+		"--namespace",
+		namespace,
+		"--selector",
+		"app=dash0-operator-nodejs-20-express-test-replicaset-app",
+		"--for",
+		"condition=ContainersReady",
+		"--timeout",
+		"60s",
 	)
 }
 
@@ -164,17 +170,21 @@ func installNodeJsStatefulSet(namespace string) error {
 	return installNodeJsApplication(
 		namespace,
 		"statefulset",
-		exec.Command(
-			"kubectl",
-			"rollout",
-			"status",
-			"statefulset",
-			"dash0-operator-nodejs-20-express-test-statefulset",
-			"--namespace",
-			namespace,
-			"--timeout",
-			"60s",
-		),
+		statefulSetReadyCheck(namespace),
+	)
+}
+
+func statefulSetReadyCheck(namespace string) *exec.Cmd {
+	return exec.Command(
+		"kubectl",
+		"rollout",
+		"status",
+		"statefulset",
+		"dash0-operator-nodejs-20-express-test-statefulset",
+		"--namespace",
+		namespace,
+		"--timeout",
+		"60s",
 	)
 }
 
@@ -212,12 +222,7 @@ func installNodeJsApplication(
 	if waitCommand == nil {
 		return nil
 	}
-	By(fmt.Sprintf("waiting for %s to become ready", templateName))
-	err = runAndIgnoreOutput(waitCommand)
-	if err == nil {
-		By(fmt.Sprintf("%s is ready", templateName))
-	}
-	return err
+	return waitForApplicationToBecomeReady(templateName, waitCommand)
 }
 
 func uninstallNodeJsApplication(namespace string, kind string) error {

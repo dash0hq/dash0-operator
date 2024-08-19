@@ -6,6 +6,7 @@ package e2e
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,6 +24,7 @@ func verifyThatWorkloadHasBeenInstrumented(
 	namespace string,
 	workloadType string,
 	port int,
+	readyCheck func(string) *exec.Cmd,
 	isBatch bool,
 	images Images,
 	instrumentationBy string,
@@ -40,6 +42,10 @@ func verifyThatWorkloadHasBeenInstrumented(
 		)
 		verifySuccessfulInstrumentationEvent(g, namespace, workloadType, instrumentationBy)
 	}, 20*time.Second, verifyTelemetryPollingInterval).Should(Succeed())
+
+	if readyCheck != nil {
+		waitForApplicationToBecomeReady(workloadType, readyCheck(namespace))
+	}
 
 	By(fmt.Sprintf("%s: waiting for spans to be captured", workloadType))
 	var testId string
@@ -83,6 +89,7 @@ func verifyThatInstrumentationHasBeenReverted(
 	namespace string,
 	workloadType string,
 	port int,
+	readyCheck func(string) *exec.Cmd,
 	isBatch bool,
 	testId string,
 	instrumentationBy string,
@@ -91,6 +98,7 @@ func verifyThatInstrumentationHasBeenReverted(
 		namespace,
 		workloadType,
 		port,
+		readyCheck,
 		isBatch,
 		testId,
 		instrumentationBy,
@@ -102,6 +110,7 @@ func verifyThatInstrumentationHasBeenRevertedAfterAddingOptOutLabel(
 	namespace string,
 	workloadType string,
 	port int,
+	readyCheck func(string) *exec.Cmd,
 	isBatch bool,
 	testId string,
 	instrumentationBy string,
@@ -110,6 +119,7 @@ func verifyThatInstrumentationHasBeenRevertedAfterAddingOptOutLabel(
 		namespace,
 		workloadType,
 		port,
+		readyCheck,
 		isBatch,
 		testId,
 		instrumentationBy,
@@ -121,6 +131,7 @@ func verifyThatInstrumentationIsRevertedEventually(
 	namespace string,
 	workloadType string,
 	port int,
+	readyCheck func(string) *exec.Cmd,
 	isBatch bool,
 	testId string,
 	instrumentationBy string,
@@ -141,6 +152,10 @@ func verifyThatInstrumentationIsRevertedEventually(
 	// Add some buffer time between the workloads being restarted and verifying that no spans are produced/captured.
 	time.Sleep(10 * time.Second)
 
+	if readyCheck != nil {
+		waitForApplicationToBecomeReady(workloadType, readyCheck(namespace))
+	}
+
 	secondsToCheckForSpans := 20
 	if workloadType == "cronjob" {
 		// Pod for cron jobs only get scheduled once a minute, since the cronjob schedule format does not allow for jobs
@@ -159,4 +174,15 @@ func verifyThatInstrumentationIsRevertedEventually(
 	}, time.Duration(secondsToCheckForSpans)*time.Second, 1*time.Second).Should(Succeed())
 
 	By(fmt.Sprintf("%s: matching spans are no longer captured", workloadType))
+}
+
+func waitForApplicationToBecomeReady(templateName string, waitCommand *exec.Cmd) error {
+	By(fmt.Sprintf("waiting for %s to become ready", templateName))
+	err := runAndIgnoreOutput(waitCommand)
+	if err != nil {
+		By(fmt.Sprintf("%s never became ready", templateName))
+	} else {
+		By(fmt.Sprintf("%s is ready now", templateName))
+	}
+	return err
 }

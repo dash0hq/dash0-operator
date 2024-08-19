@@ -12,8 +12,9 @@ import (
 	"sync"
 	"time"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/google/uuid"
+
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -139,13 +140,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			undeployOperator(operatorNamespace)
 		})
 
-		type controllerTestWorkloadConfig struct {
-			workloadType    string
-			port            int
-			installWorkload func(string) error
-			isBatch         bool
-		}
-
 		workloadConfigs := []controllerTestWorkloadConfig{
 			{
 				workloadType:    "cronjob",
@@ -156,18 +150,22 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				workloadType:    "daemonset",
 				port:            1206,
 				installWorkload: installNodeJsDaemonSet,
+				readyCheck:      daemonSetReadyCheck,
 			}, {
 				workloadType:    "deployment",
 				port:            1207,
 				installWorkload: installNodeJsDeployment,
+				readyCheck:      deploymentReadyCheck,
 			}, {
 				workloadType:    "replicaset",
 				port:            1209,
 				installWorkload: installNodeJsReplicaSet,
+				readyCheck:      replicaSetReadyCheck,
 			}, {
 				workloadType:    "statefulset",
 				port:            1210,
 				installWorkload: installNodeJsStatefulSet,
+				readyCheck:      statefulSetReadyCheck,
 			},
 		}
 
@@ -178,6 +176,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					By(fmt.Sprintf("deploying the Node.js %s", config.workloadType))
 					Expect(config.installWorkload(applicationUnderTestNamespace)).To(Succeed())
 				})
+				By("all workloads have been deployed")
 
 				deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images, true)
 				deployDash0MonitoringResource(
@@ -194,11 +193,13 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 						applicationUnderTestNamespace,
 						config.workloadType,
 						config.port,
+						config.readyCheck,
 						config.isBatch,
 						images,
 						"controller",
 					)
 				})
+				By("all workloads have been instrumented")
 
 				undeployDash0MonitoringResource(applicationUnderTestNamespace)
 
@@ -207,11 +208,13 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 						applicationUnderTestNamespace,
 						config.workloadType,
 						config.port,
+						config.readyCheck,
 						config.isBatch,
 						testIds[config.workloadType],
 						"controller",
 					)
 				})
+				By("all workloads have been reverted")
 
 				verifyThatCollectorHasBeenRemoved(operatorNamespace)
 			})
@@ -304,6 +307,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					applicationUnderTestNamespace,
 					"deployment",
 					1207,
+					deploymentReadyCheck,
 					false,
 					initialImages,
 					"controller",
@@ -323,6 +327,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					applicationUnderTestNamespace,
 					"deployment",
 					1207,
+					deploymentReadyCheck,
 					false,
 					// check that the new image tags have been applied to the workload
 					images,
@@ -375,6 +380,10 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					applicationUnderTestNamespace,
 					config.workloadType,
 					config.port,
+					// the function installWorkload already executes the ready check, no need to do it again in the
+					// context of the webhook tests (the workload pods are not restarted, they are already instrumented
+					// when they are first started)
+					nil,
 					config.isBatch,
 					images,
 					"webhook",
@@ -455,6 +464,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				applicationUnderTestNamespace,
 				"deployment",
 				1207,
+				deploymentReadyCheck,
 				false,
 				images,
 				"webhook",
@@ -471,6 +481,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				applicationUnderTestNamespace,
 				"deployment",
 				1207,
+				deploymentReadyCheck,
 				false,
 				testId,
 				"webhook",
@@ -497,6 +508,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				applicationUnderTestNamespace,
 				"daemonset",
 				1206,
+				daemonSetReadyCheck,
 				false,
 				images,
 				"webhook",
@@ -548,6 +560,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				applicationUnderTestNamespace,
 				"statefulset",
 				1210,
+				statefulSetReadyCheck,
 				false,
 				images,
 				"controller",
@@ -569,6 +582,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				applicationUnderTestNamespace,
 				"deployment",
 				1207,
+				deploymentReadyCheck,
 				false,
 				images,
 				"webhook",
@@ -584,6 +598,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				applicationUnderTestNamespace,
 				"deployment",
 				1207,
+				deploymentReadyCheck,
 				false,
 				testId,
 				"controller",
@@ -713,25 +728,20 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			undeployOperator(operatorNamespace)
 		})
 
-		type removalTestNamespaceConfig struct {
-			namespace       string
-			workloadType    string
-			port            int
-			installWorkload func(string) error
-		}
-
 		configs := []removalTestNamespaceConfig{
 			{
 				namespace:       "e2e-application-under-test-namespace-removal-1",
 				workloadType:    "daemonset",
 				port:            1206,
 				installWorkload: installNodeJsDaemonSet,
+				readyCheck:      daemonSetReadyCheck,
 			},
 			{
 				namespace:       "e2e-application-under-test-namespace-removal-2",
 				workloadType:    "deployment",
 				port:            1207,
 				installWorkload: installNodeJsDeployment,
+				readyCheck:      deploymentReadyCheck,
 			},
 		}
 
@@ -741,6 +751,9 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				runInParallelForAllWorkloadTypes(configs, func(config removalTestNamespaceConfig) {
 					By(fmt.Sprintf("deploying the Node.js %s to namespace %s", config.workloadType, config.namespace))
 					Expect(config.installWorkload(config.namespace)).To(Succeed())
+					if config.readyCheck != nil {
+						waitForApplicationToBecomeReady(config.workloadType, config.readyCheck(config.namespace))
+					}
 				})
 
 				deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images, true)
@@ -760,6 +773,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 						config.namespace,
 						config.workloadType,
 						config.port,
+						config.readyCheck,
 						false,
 						images,
 						"controller",
@@ -773,6 +787,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 						config.namespace,
 						config.workloadType,
 						config.port,
+						config.readyCheck,
 						false,
 						testIds[config.workloadType],
 						"controller",
@@ -791,20 +806,65 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 	})
 })
 
-func runInParallelForAllWorkloadTypes[C any](
+type workloadConfig interface {
+	GetWorkloadType() string
+}
+
+type controllerTestWorkloadConfig struct {
+	workloadType    string
+	port            int
+	installWorkload func(string) error
+	readyCheck      func(string) *exec.Cmd
+	isBatch         bool
+}
+
+func (c controllerTestWorkloadConfig) GetWorkloadType() string {
+	return c.workloadType
+}
+
+type removalTestNamespaceConfig struct {
+	namespace       string
+	workloadType    string
+	port            int
+	installWorkload func(string) error
+	readyCheck      func(namespace string) *exec.Cmd
+}
+
+func (c removalTestNamespaceConfig) GetWorkloadType() string {
+	return c.workloadType
+}
+
+func runInParallelForAllWorkloadTypes[C workloadConfig](
 	workloadConfigs []C,
 	testStep func(C),
 ) {
+	passed := make(map[string]bool)
 	var wg sync.WaitGroup
 	for _, config := range workloadConfigs {
+		passed[config.GetWorkloadType()] = false
 		wg.Add(1)
 		go func(cfg C) {
 			defer GinkgoRecover()
 			defer wg.Done()
+			fmt.Fprintf(GinkgoWriter, "(before test step: %s)\n", cfg.GetWorkloadType())
 			testStep(cfg)
+			fmt.Fprintf(GinkgoWriter, "(after test step: %s)\n", cfg.GetWorkloadType())
+			passed[config.GetWorkloadType()] = true
 		}(config)
 	}
 	wg.Wait()
+
+	// Fail early if one of the workloads has not passed the test step. Because of runInParallelForAllWorkloadTypes and
+	// the business with the (required) "defer GinkgoRecover()", Ginkgo needs a little help with that. Without this
+	// additional check, a failure occuring in testStep might not make the test fail immediately, but is only reported
+	// after the whole test has finished. This might lead to some slightly weird and hard-to-understand behavior,
+	// because it looks like the has passed testStep, and then the whole test fails with something that should have been
+	// reported much earlier.
+	for _, config := range workloadConfigs {
+		if !passed[config.GetWorkloadType()] {
+			Fail(fmt.Sprintf("workload %s has not passed a test step executed in parallel", config.GetWorkloadType()))
+		}
+	}
 }
 
 func readAndApplyEnvironmentVariables() {
