@@ -671,15 +671,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			By("waiting for the the log to appear")
 
 			Eventually(func(g Gomega) error {
-				matches := fileCountMatchingLogRecords(g, "deployment", fmt.Sprintf("processing request %s", testId), &now)
-				switch matches {
-				case 0:
-					return fmt.Errorf("no matching logs found")
-				case 1:
-					return nil
-				default:
-					return fmt.Errorf("too many matching logs found: %d", matches)
-				}
+				return verifyExactlyOneLogRecordIsReported(g, testId, &now)
 			}, 15*time.Second, verifyTelemetryPollingInterval).Should(Succeed())
 
 			By("churning collector pods")
@@ -687,19 +679,9 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 			verifyThatCollectorIsRunning(operatorNamespace, operatorHelmChart)
 
-			By("verifying that the previous log message is not reported again")
+			By("verifying that the previous log message is not reported again (checking for 30 seconds)")
 			Consistently(func(g Gomega) error {
-				matches := fileCountMatchingLogRecords(g, "deployment", fmt.Sprintf("processing request %s", testId), &now)
-
-				switch matches {
-				case 0:
-					return fmt.Errorf("no matching logs found")
-				case 1:
-					return nil
-				default:
-					return fmt.Errorf("too many matching logs found: %d", matches)
-				}
-
+				return verifyExactlyOneLogRecordIsReported(g, testId, &now)
 			}, 30*time.Second, verifyTelemetryPollingInterval).Should(Succeed())
 		})
 

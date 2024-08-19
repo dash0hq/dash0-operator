@@ -24,6 +24,18 @@ var (
 	logsUnmarshaller = &plog.JSONUnmarshaler{}
 )
 
+func verifyExactlyOneLogRecordIsReported(g Gomega, testId string, timestampLowerBound *time.Time) error {
+	matches := fileCountMatchingLogRecords(g, "deployment", fmt.Sprintf("processing request %s", testId), timestampLowerBound)
+	switch matches {
+	case 0:
+		return fmt.Errorf("no matching logs found")
+	case 1:
+		return nil
+	default:
+		return fmt.Errorf("too many matching logs found: %d", matches)
+	}
+}
+
 //nolint:all
 func fileCountMatchingLogRecords(g Gomega, workloadType string, logBody string, timestampLowerBound *time.Time) int {
 	fileHandle, err := os.Open("test-resources/e2e-test-volumes/otlp-sink/logs.jsonl")
