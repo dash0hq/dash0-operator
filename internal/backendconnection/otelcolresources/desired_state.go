@@ -41,6 +41,7 @@ type exportProtocol string
 const (
 	grpcExportProtocol exportProtocol = "grpc"
 	httpExportProtocol exportProtocol = "http"
+	rbacApiVersion                    = "rbac.authorization.k8s.io/v1"
 )
 
 type collectorConfigurationTemplateValues struct {
@@ -206,7 +207,7 @@ func role(config *oTelColConfig) *rbacv1.Role {
 	return &rbacv1.Role{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Role",
-			APIVersion: "rbac.authorization.k8s.io/v1",
+			APIVersion: rbacApiVersion,
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      roleName(config.NamePrefix),
@@ -227,7 +228,7 @@ func roleBinding(config *oTelColConfig) *rbacv1.RoleBinding {
 	return &rbacv1.RoleBinding{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "RoleBinding",
-			APIVersion: "rbac.authorization.k8s.io/v1",
+			APIVersion: rbacApiVersion,
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name(config.NamePrefix, openTelemetryCollector),
@@ -251,7 +252,7 @@ func clusterRole(config *oTelColConfig) *rbacv1.ClusterRole {
 	return &rbacv1.ClusterRole{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ClusterRole",
-			APIVersion: "rbac.authorization.k8s.io/v1",
+			APIVersion: rbacApiVersion,
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      clusterRoleName(config.NamePrefix),
@@ -282,7 +283,7 @@ func clusterRoleBinding(config *oTelColConfig) *rbacv1.ClusterRoleBinding {
 	return &rbacv1.ClusterRoleBinding{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ClusterRoleBinding",
-			APIVersion: "rbac.authorization.k8s.io/v1",
+			APIVersion: rbacApiVersion,
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name(config.NamePrefix, openTelemetryCollector),
