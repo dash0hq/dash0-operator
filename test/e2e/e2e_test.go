@@ -38,6 +38,7 @@ var (
 	buildInstrumentationImageFromLocalSources       = true
 	buildCollectorImageFromLocalSources             = true
 	buildConfigurationReloaderImageFromLocalSources = true
+	buildFileLogOffsetSynchImageFromLocalSources    = true
 	operatorHelmChart                               = localHelmChart
 	operatorHelmChartUrl                            = ""
 	operatorNamespace                               = "dash0-system"
@@ -100,6 +101,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		rebuildInstrumentationImage(images.instrumentation, buildInstrumentationImageFromLocalSources)
 		rebuildCollectorImage(images.collector, buildCollectorImageFromLocalSources)
 		rebuildConfigurationReloaderImage(images.configurationReloader, buildConfigurationReloaderImageFromLocalSources)
+		rebuildFileLogOffsetSynchImage(images.fileLogOffsetSynch, buildFileLogOffsetSynchImageFromLocalSources)
 		rebuildNodeJsApplicationContainerImage()
 
 		setupFinishedSuccessfully = true
@@ -887,6 +889,24 @@ func readAndApplyEnvironmentVariables() {
 	images.configurationReloader.pullPolicy = getEnvOrDefault(
 		"CONFIGURATION_RELOADER_IMG_PULL_POLICY",
 		images.configurationReloader.pullPolicy,
+	)
+
+	buildFileLogOffsetSynchImageFromLocalSourcesRaw := getEnvOrDefault("BUILD_FILELOG_OFFSET_SYNCH_IMAGE", "")
+	if buildFileLogOffsetSynchImageFromLocalSourcesRaw != "" {
+		buildFileLogOffsetSynchImageFromLocalSources, err =
+			strconv.ParseBool(buildFileLogOffsetSynchImageFromLocalSourcesRaw)
+		Expect(err).NotTo(HaveOccurred())
+	}
+	images.fileLogOffsetSynch.repository = getEnvOrDefault(
+		"FILELOG_OFFSET_SYNCH_IMG_REPOSITORY",
+		images.fileLogOffsetSynch.repository,
+	)
+	images.fileLogOffsetSynch.tag = getEnvOrDefault("FILELOG_OFFSET_SYNCH_IMG_TAG", images.fileLogOffsetSynch.tag)
+	images.fileLogOffsetSynch.digest = getEnvOrDefault("FILELOG_OFFSET_SYNCH_IMG_DIGEST",
+		images.fileLogOffsetSynch.digest)
+	images.fileLogOffsetSynch.pullPolicy = getEnvOrDefault(
+		"FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY",
+		images.fileLogOffsetSynch.pullPolicy,
 	)
 }
 
