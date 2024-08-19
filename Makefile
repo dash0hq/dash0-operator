@@ -190,6 +190,7 @@ docker-build: ## Build docker image with the manager.
 	$(CONTAINER_TOOL) build -t ${CONTROLLER_IMG} .
 	$(CONTAINER_TOOL) build -t ${COLLECTOR_IMG} images/collector
 	$(CONTAINER_TOOL) build -t ${CONFIGURATION_RELOADER_IMG} images/configreloader
+	$(CONTAINER_TOOL) build -t ${FILELOG_OFFSET_SYNCH_IMG} images/filelogoffsetsynch
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx CONTROLLER_IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
@@ -204,11 +205,13 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
 	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' images/collector/Dockerfile > images/collector/Dockerfile.cross
 	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' images/configreloader/Dockerfile > images/configreloader/Dockerfile.cross
+	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' images/filelogoffsetsynch/Dockerfile > images/filelogoffsetsynch/Dockerfile.cross
 	- $(CONTAINER_TOOL) buildx create --name project-v3-builder
 	$(CONTAINER_TOOL) buildx use project-v3-builder
 	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${CONTROLLER_IMG} -f Dockerfile.cross .
 	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${COLLECTOR_IMG} -f images/collector/Dockerfile.cross images/collector
 	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${CONFIGURATION_RELOADER_IMG} -f images/configreloader/Dockerfile.cross images/configreloader
+	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${FILELOG_OFFSET_SYNCH_IMG} -f images/filelogoffsetsynch/Dockerfile.cross images/filelogoffsetsynch
 	- $(CONTAINER_TOOL) buildx rm project-v3-builder
 	rm Dockerfile.cross images/collector/Dockerfile.cross images/configreloader/Dockerfile.cross
 

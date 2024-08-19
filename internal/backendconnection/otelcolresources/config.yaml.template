@@ -57,8 +57,8 @@ processors:
       - k8s.pod.uid
       - k8s.pod.start_time
       labels:
-      - key_regex: 'dash0.com/(.*)'
-        tag_name: 'dash0.monitoring.$$1'
+      - key: dash0.com/instrumented
+        tag_name: dash0.monitoring.instrumented
         from: pod
     filter:
       node_from_env_var: K8S_NODE_NAME
@@ -72,14 +72,6 @@ processors:
         name: k8s.pod.uid
     - sources:
       - from: connection
-  transform/drop-unnecessary-dash0-attributes:
-    error_mode: ignore
-      log_statements:
-      - context: resource
-        statements:
-        - delete_key(attributes, "dash0.monitoring.init-container-image")
-        - delete_key(attributes, "dash0.monitoring.operator-image")
-        - delete_key(attributes, "dash0.monitoring.instrumented-by")
   memory_limiter:
     check_interval: 5s
     limit_percentage: 80
@@ -100,10 +92,10 @@ receivers:
 {{- range $i, $namespace := .IgnoreLogsFromNamespaces }}
     - /var/log/pods/{{ $namespace }}_*/*/*.log
 {{- end}}
-    start_at: beginning
-    storage: file_storage/filelogreceiver_offsets      
+    storage: file_storage/filelogreceiver_offsets
     include_file_path: true
     include_file_name: false
+    include_file_record_number: true
     operators:
     # Find out which format is used by kubernetes
     - type: router
@@ -223,7 +215,6 @@ service:
       processors:
       - k8sattributes
       - filter/only_dash0_monitored_resources
-      - transform/drop-unnecessary-dash0-attributes
       exporters:
       - forward/logs
 
