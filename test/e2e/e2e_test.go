@@ -150,22 +150,18 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				workloadType:    "daemonset",
 				port:            1206,
 				installWorkload: installNodeJsDaemonSet,
-				readyCheck:      daemonSetReadyCheck,
 			}, {
 				workloadType:    "deployment",
 				port:            1207,
 				installWorkload: installNodeJsDeployment,
-				readyCheck:      deploymentReadyCheck,
 			}, {
 				workloadType:    "replicaset",
 				port:            1209,
 				installWorkload: installNodeJsReplicaSet,
-				readyCheck:      replicaSetReadyCheck,
 			}, {
 				workloadType:    "statefulset",
 				port:            1210,
 				installWorkload: installNodeJsStatefulSet,
-				readyCheck:      statefulSetReadyCheck,
 			},
 		}
 
@@ -193,7 +189,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 						applicationUnderTestNamespace,
 						config.workloadType,
 						config.port,
-						config.readyCheck,
 						config.isBatch,
 						images,
 						"controller",
@@ -208,7 +203,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 						applicationUnderTestNamespace,
 						config.workloadType,
 						config.port,
-						config.readyCheck,
 						config.isBatch,
 						testIds[config.workloadType],
 						"controller",
@@ -307,7 +301,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					applicationUnderTestNamespace,
 					"deployment",
 					1207,
-					deploymentReadyCheck,
 					false,
 					initialImages,
 					"controller",
@@ -327,7 +320,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					applicationUnderTestNamespace,
 					"deployment",
 					1207,
-					deploymentReadyCheck,
 					false,
 					// check that the new image tags have been applied to the workload
 					images,
@@ -380,10 +372,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					applicationUnderTestNamespace,
 					config.workloadType,
 					config.port,
-					// the function installWorkload already executes the ready check, no need to do it again in the
-					// context of the webhook tests (the workload pods are not restarted, they are already instrumented
-					// when they are first started)
-					nil,
 					config.isBatch,
 					images,
 					"webhook",
@@ -464,7 +452,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				applicationUnderTestNamespace,
 				"deployment",
 				1207,
-				deploymentReadyCheck,
 				false,
 				images,
 				"webhook",
@@ -481,7 +468,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				applicationUnderTestNamespace,
 				"deployment",
 				1207,
-				deploymentReadyCheck,
 				false,
 				testId,
 				"webhook",
@@ -508,7 +494,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				applicationUnderTestNamespace,
 				"daemonset",
 				1206,
-				daemonSetReadyCheck,
 				false,
 				images,
 				"webhook",
@@ -560,7 +545,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				applicationUnderTestNamespace,
 				"statefulset",
 				1210,
-				statefulSetReadyCheck,
 				false,
 				images,
 				"controller",
@@ -582,7 +566,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				applicationUnderTestNamespace,
 				"deployment",
 				1207,
-				deploymentReadyCheck,
 				false,
 				images,
 				"webhook",
@@ -598,7 +581,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				applicationUnderTestNamespace,
 				"deployment",
 				1207,
-				deploymentReadyCheck,
 				false,
 				testId,
 				"controller",
@@ -734,14 +716,12 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				workloadType:    "daemonset",
 				port:            1206,
 				installWorkload: installNodeJsDaemonSet,
-				readyCheck:      daemonSetReadyCheck,
 			},
 			{
 				namespace:       "e2e-application-under-test-namespace-removal-2",
 				workloadType:    "deployment",
 				port:            1207,
 				installWorkload: installNodeJsDeployment,
-				readyCheck:      deploymentReadyCheck,
 			},
 		}
 
@@ -751,9 +731,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				runInParallelForAllWorkloadTypes(configs, func(config removalTestNamespaceConfig) {
 					By(fmt.Sprintf("deploying the Node.js %s to namespace %s", config.workloadType, config.namespace))
 					Expect(config.installWorkload(config.namespace)).To(Succeed())
-					if config.readyCheck != nil {
-						waitForApplicationToBecomeReady(config.workloadType, config.readyCheck(config.namespace))
-					}
 				})
 
 				deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images, true)
@@ -773,7 +750,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 						config.namespace,
 						config.workloadType,
 						config.port,
-						config.readyCheck,
 						false,
 						images,
 						"controller",
@@ -787,7 +763,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 						config.namespace,
 						config.workloadType,
 						config.port,
-						config.readyCheck,
 						false,
 						testIds[config.workloadType],
 						"controller",
@@ -814,7 +789,6 @@ type controllerTestWorkloadConfig struct {
 	workloadType    string
 	port            int
 	installWorkload func(string) error
-	readyCheck      func(string) *exec.Cmd
 	isBatch         bool
 }
 
@@ -827,7 +801,6 @@ type removalTestNamespaceConfig struct {
 	workloadType    string
 	port            int
 	installWorkload func(string) error
-	readyCheck      func(namespace string) *exec.Cmd
 }
 
 func (c removalTestNamespaceConfig) GetWorkloadType() string {

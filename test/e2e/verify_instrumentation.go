@@ -24,7 +24,6 @@ func verifyThatWorkloadHasBeenInstrumented(
 	namespace string,
 	workloadType string,
 	port int,
-	readyCheck func(string) *exec.Cmd,
 	isBatch bool,
 	images Images,
 	instrumentationBy string,
@@ -42,10 +41,6 @@ func verifyThatWorkloadHasBeenInstrumented(
 		)
 		verifySuccessfulInstrumentationEvent(g, namespace, workloadType, instrumentationBy)
 	}, 20*time.Second, verifyTelemetryPollingInterval).Should(Succeed())
-
-	if readyCheck != nil {
-		waitForApplicationToBecomeReady(workloadType, readyCheck(namespace))
-	}
 
 	By(fmt.Sprintf("%s: waiting for spans to be captured", workloadType))
 	var testId string
@@ -89,7 +84,6 @@ func verifyThatInstrumentationHasBeenReverted(
 	namespace string,
 	workloadType string,
 	port int,
-	readyCheck func(string) *exec.Cmd,
 	isBatch bool,
 	testId string,
 	instrumentationBy string,
@@ -98,7 +92,6 @@ func verifyThatInstrumentationHasBeenReverted(
 		namespace,
 		workloadType,
 		port,
-		readyCheck,
 		isBatch,
 		testId,
 		instrumentationBy,
@@ -110,7 +103,6 @@ func verifyThatInstrumentationHasBeenRevertedAfterAddingOptOutLabel(
 	namespace string,
 	workloadType string,
 	port int,
-	readyCheck func(string) *exec.Cmd,
 	isBatch bool,
 	testId string,
 	instrumentationBy string,
@@ -119,7 +111,6 @@ func verifyThatInstrumentationHasBeenRevertedAfterAddingOptOutLabel(
 		namespace,
 		workloadType,
 		port,
-		readyCheck,
 		isBatch,
 		testId,
 		instrumentationBy,
@@ -131,7 +122,6 @@ func verifyThatInstrumentationIsRevertedEventually(
 	namespace string,
 	workloadType string,
 	port int,
-	readyCheck func(string) *exec.Cmd,
 	isBatch bool,
 	testId string,
 	instrumentationBy string,
@@ -151,10 +141,6 @@ func verifyThatInstrumentationIsRevertedEventually(
 
 	// Add some buffer time between the workloads being restarted and verifying that no spans are produced/captured.
 	time.Sleep(10 * time.Second)
-
-	if readyCheck != nil {
-		waitForApplicationToBecomeReady(workloadType, readyCheck(namespace))
-	}
 
 	secondsToCheckForSpans := 20
 	if workloadType == "cronjob" {

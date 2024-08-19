@@ -42,21 +42,17 @@ func installNodeJsDaemonSet(namespace string) error {
 	return installNodeJsApplication(
 		namespace,
 		"daemonset",
-		daemonSetReadyCheck(namespace),
-	)
-}
-
-func daemonSetReadyCheck(namespace string) *exec.Cmd {
-	return exec.Command(
-		"kubectl",
-		"rollout",
-		"status",
-		"daemonset",
-		"dash0-operator-nodejs-20-express-test-daemonset",
-		"--namespace",
-		namespace,
-		"--timeout",
-		"60s",
+		exec.Command(
+			"kubectl",
+			"rollout",
+			"status",
+			"daemonset",
+			"dash0-operator-nodejs-20-express-test-daemonset",
+			"--namespace",
+			namespace,
+			"--timeout",
+			"60s",
+		),
 	)
 }
 
@@ -64,7 +60,17 @@ func installNodeJsDaemonSetWithOptOutLabel(namespace string) error {
 	return installNodeJsApplication(
 		namespace,
 		"daemonset.opt-out",
-		daemonSetReadyCheck(namespace),
+		exec.Command(
+			"kubectl",
+			"rollout",
+			"status",
+			"daemonset",
+			"dash0-operator-nodejs-20-express-test-daemonset",
+			"--namespace",
+			namespace,
+			"--timeout",
+			"60s",
+		),
 	)
 }
 
@@ -76,21 +82,17 @@ func installNodeJsDeployment(namespace string) error {
 	return installNodeJsApplication(
 		namespace,
 		"deployment",
-		deploymentReadyCheck(namespace),
-	)
-}
-
-func deploymentReadyCheck(namespace string) *exec.Cmd {
-	return exec.Command(
-		"kubectl",
-		"wait",
-		"deployment.apps/dash0-operator-nodejs-20-express-test-deployment",
-		"--for",
-		"condition=Available",
-		"--namespace",
-		namespace,
-		"--timeout",
-		"60s",
+		exec.Command(
+			"kubectl",
+			"wait",
+			"deployment.apps/dash0-operator-nodejs-20-express-test-deployment",
+			"--for",
+			"condition=Available",
+			"--namespace",
+			namespace,
+			"--timeout",
+			"60s",
+		),
 	)
 }
 
@@ -114,23 +116,19 @@ func installNodeJsPod(namespace string) error {
 	return installNodeJsApplication(
 		namespace,
 		"pod",
-		podReadyCheck(namespace),
-	)
-}
-
-func podReadyCheck(namespace string) *exec.Cmd {
-	return exec.Command(
-		"kubectl",
-		"wait",
-		"pod",
-		"--namespace",
-		namespace,
-		"--selector",
-		"app=dash0-operator-nodejs-20-express-test-pod-app",
-		"--for",
-		"condition=ContainersReady",
-		"--timeout",
-		"60s",
+		exec.Command(
+			"kubectl",
+			"wait",
+			"pod",
+			"--namespace",
+			namespace,
+			"--selector",
+			"app=dash0-operator-nodejs-20-express-test-pod-app",
+			"--for",
+			"condition=ContainersReady",
+			"--timeout",
+			"60s",
+		),
 	)
 }
 
@@ -142,23 +140,19 @@ func installNodeJsReplicaSet(namespace string) error {
 	return installNodeJsApplication(
 		namespace,
 		"replicaset",
-		replicaSetReadyCheck(namespace),
-	)
-}
-
-func replicaSetReadyCheck(namespace string) *exec.Cmd {
-	return exec.Command(
-		"kubectl",
-		"wait",
-		"pod",
-		"--namespace",
-		namespace,
-		"--selector",
-		"app=dash0-operator-nodejs-20-express-test-replicaset-app",
-		"--for",
-		"condition=ContainersReady",
-		"--timeout",
-		"60s",
+		exec.Command(
+			"kubectl",
+			"wait",
+			"pod",
+			"--namespace",
+			namespace,
+			"--selector",
+			"app=dash0-operator-nodejs-20-express-test-replicaset-app",
+			"--for",
+			"condition=ContainersReady",
+			"--timeout",
+			"60s",
+		),
 	)
 }
 
@@ -170,21 +164,17 @@ func installNodeJsStatefulSet(namespace string) error {
 	return installNodeJsApplication(
 		namespace,
 		"statefulset",
-		statefulSetReadyCheck(namespace),
-	)
-}
-
-func statefulSetReadyCheck(namespace string) *exec.Cmd {
-	return exec.Command(
-		"kubectl",
-		"rollout",
-		"status",
-		"statefulset",
-		"dash0-operator-nodejs-20-express-test-statefulset",
-		"--namespace",
-		namespace,
-		"--timeout",
-		"60s",
+		exec.Command(
+			"kubectl",
+			"rollout",
+			"status",
+			"statefulset",
+			"dash0-operator-nodejs-20-express-test-statefulset",
+			"--namespace",
+			namespace,
+			"--timeout",
+			"60s",
+		),
 	)
 }
 
