@@ -682,12 +682,12 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				}
 			}, 15*time.Second, verifyTelemetryPollingInterval).Should(Succeed())
 
-			By("by churning collector pods")
-
+			By("churning collector pods")
 			_ = runAndIgnoreOutput(exec.Command("kubectl", "delete", "pods", "-n", operatorNamespace))
 
 			verifyThatCollectorIsRunning(operatorNamespace, operatorHelmChart)
 
+			By("verifying that the previous log message is not reported again")
 			Consistently(func(g Gomega) error {
 				matches := fileCountMatchingLogRecords(g, "deployment", fmt.Sprintf("processing request %s", testId), &now)
 
