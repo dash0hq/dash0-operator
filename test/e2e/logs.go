@@ -25,7 +25,8 @@ var (
 )
 
 func verifyExactlyOneLogRecordIsReported(g Gomega, testId string, timestampLowerBound *time.Time) error {
-	matches := fileCountMatchingLogRecords(g, "deployment", fmt.Sprintf("processing request %s", testId), timestampLowerBound)
+	logPattern := fmt.Sprintf("processing request %s", testId)
+	matches := fileCountMatchingLogRecords(g, "deployment", logPattern, timestampLowerBound)
 	switch matches {
 	case 0:
 		return fmt.Errorf("no matching logs found")
