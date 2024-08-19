@@ -187,7 +187,7 @@ jobs:
           imageTitle: Dash0 Kubernetes Filelog Offset Synch
           imageDescription: the filelog offset synch for the Dash0 Kubernetes operator
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main
-          context: .
+          context: images/filelogoffsetsynch
 
   publish-helm-chart-dry-run:
     name: Publish Helm Chart (Dry Run)

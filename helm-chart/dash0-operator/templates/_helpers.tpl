@@ -74,7 +74,7 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 {{- include "dash0-operator.imageRef" (dict "image" .Values.operator.configurationReloaderImage "context" .) -}}
 {{- end }}
 
-{{/* the config reloader image */}}
+{{/* the filelog offset synch image */}}
 {{- define "dash0-operator.filelogOffsetSynchImage" -}}
 {{- include "dash0-operator.imageRef" (dict "image" .Values.operator.filelogOffsetSynchImage "context" .) -}}
 {{- end }}

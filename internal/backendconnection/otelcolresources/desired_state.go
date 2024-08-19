@@ -427,7 +427,7 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 			ReadOnly:  true,
 		},
 		// On Docker desktop and other runtimes using docker, the files in /var/log/pods
-		// are simlinked to this folder
+		// are symlinked to this folder.
 		{
 			Name:      "node-docker-container-logs",
 			MountPath: "/var/lib/docker/containers",
