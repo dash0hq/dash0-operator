@@ -819,15 +819,16 @@ func runInParallelForAllWorkloadTypes[C workloadConfig](
 	passed := make(map[string]bool)
 	var wg sync.WaitGroup
 	for _, config := range workloadConfigs {
-		passed[config.GetWorkloadType()] = false
+		workloadType := config.GetWorkloadType()
+		passed[workloadType] = false
 		wg.Add(1)
 		go func(cfg C) {
 			defer GinkgoRecover()
 			defer wg.Done()
-			fmt.Fprintf(GinkgoWriter, "(before test step: %s)\n", cfg.GetWorkloadType())
+			fmt.Fprintf(GinkgoWriter, "(before test step: %s)\n", workloadType)
 			testStep(cfg)
-			fmt.Fprintf(GinkgoWriter, "(after test step: %s)\n", cfg.GetWorkloadType())
-			passed[cfg.GetWorkloadType()] = true
+			fmt.Fprintf(GinkgoWriter, "(after test step: %s)\n", workloadType)
+			passed[workloadType] = true
 		}(config)
 	}
 	wg.Wait()
