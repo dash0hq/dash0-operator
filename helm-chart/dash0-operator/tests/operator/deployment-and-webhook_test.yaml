@@ -203,15 +203,21 @@ tests:
           value: Always
       - equal:
           path: spec.template.spec.containers[0].env[10].name
-          value: ENABLE_WEBHOOK
+          value: DASH0_FILELOG_OFFSET_SYNCH_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[10].value
-          value: "false"
+          value: ghcr.io/dash0hq/filelog-offset-synch:0.0.0
       - equal:
           path: spec.template.spec.containers[0].env[11].name
-          value: DASH0_DEVELOPMENT_MODE
+          value: ENABLE_WEBHOOK
       - equal:
           path: spec.template.spec.containers[0].env[11].value
+          value: "false"
+      - equal:
+          path: spec.template.spec.containers[0].env[12].name
+          value: DASH0_DEVELOPMENT_MODE
+      - equal:
+          path: spec.template.spec.containers[0].env[12].value
           value: "true"
       - equal:
           path: spec.template.spec.containers[0].resources.limits.cpu
@@ -248,6 +254,8 @@ tests:
           digest: sha256:2e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda02
         configurationReloaderImage:
           digest: sha256:3e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda03
+        filelogOffsetSynchImage:
+          digest: sha256:9e1d30699a1a7500bf532c8f49cda125d4c5c8cd6d1c2588791c24d958da9e1c
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
@@ -278,8 +286,14 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[6].value
           value: ghcr.io/dash0hq/configuration-reloader@sha256:3e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda03
-      - notExists:
+      - equal:
           path: spec.template.spec.containers[0].env[7].name
+          value: DASH0_FILELOG_OFFSET_SYNCH_IMAGE
+      - equal:
+          path: spec.template.spec.containers[0].env[7].value
+          value: ghcr.io/dash0hq/filelog-offset-synch@sha256:9e1d30699a1a7500bf532c8f49cda125d4c5c8cd6d1c2588791c24d958da9e1c
+      - notExists:
+          path: spec.template.spec.containers[0].env[8].name
 
   - it: webhook should have caBundle set
     documentSelector:
