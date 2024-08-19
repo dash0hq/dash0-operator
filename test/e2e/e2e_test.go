@@ -13,6 +13,7 @@ import (
 	"time"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	"github.com/google/uuid"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -612,6 +613,89 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				"Config updated, restart service",
 			)
 		})
+	})
+
+	Describe("log collection", func() {
+
+		BeforeAll(func() {
+			By("deploy the Dash0 operator")
+			deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images, true)
+			time.Sleep(10 * time.Second)
+		})
+
+		AfterAll(func() {
+			undeployOperator(operatorNamespace)
+		})
+
+		AfterEach(func() {
+			undeployDash0MonitoringResource(applicationUnderTestNamespace)
+		})
+
+		It("does not collect again older logs when the collector pod churns", func() {
+			deployDash0MonitoringResource(
+				applicationUnderTestNamespace,
+				defaultDash0MonitoringValues,
+				operatorNamespace,
+				operatorHelmChart,
+			)
+
+			Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+
+			By("verifying that the Node.js deployment has been instrumented by the controller")
+			Eventually(func(g Gomega) {
+				verifyLabels(
+					g,
+					applicationUnderTestNamespace,
+					"deployment",
+					true,
+					images,
+					"webhook",
+				)
+			}).Should(Succeed())
+
+			By("sending a request to the Node.js deployment that will generate a log with a predictable body")
+
+			testId := uuid.New().String()
+			httpPathWithQuery := fmt.Sprintf("/dash0-k8s-operator-test?id=%s", testId)
+
+			now := time.Now()
+			sendRequest(Default, 1207, httpPathWithQuery)
+
+			By("waiting for the the log to appear")
+
+			Eventually(func(g Gomega) error {
+				matches := fileCountMatchingLogRecords(g, "deployment", fmt.Sprintf("processing request %s", testId), &now)
+				switch matches {
+				case 0:
+					return fmt.Errorf("no matching logs found")
+				case 1:
+					return nil
+				default:
+					return fmt.Errorf("too many matching logs found: %d", matches)
+				}
+			}).Should(Succeed())
+
+			By("by churning collector pods")
+
+			_ = runAndIgnoreOutput(exec.Command("kubectl", "delete", "pods", "-n", operatorNamespace))
+
+			verifyThatCollectorIsRunning(operatorNamespace, operatorHelmChart)
+
+			Consistently(func(g Gomega) error {
+				matches := fileCountMatchingLogRecords(g, "deployment", fmt.Sprintf("processing request %s", testId), &now)
+
+				switch matches {
+				case 0:
+					return fmt.Errorf("no matching logs found")
+				case 1:
+					return nil
+				default:
+					return fmt.Errorf("too many matching logs found: %d", matches)
+				}
+
+			}, 30*time.Second, verifyTelemetryPollingInterval).Should(Succeed())
+		})
+
 	})
 
 	Describe("operator removal", func() {

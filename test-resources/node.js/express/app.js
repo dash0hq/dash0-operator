@@ -9,7 +9,7 @@ const port = parseInt(process.env.PORT || '1207');
 const app = express();
 
 app.get('/dash0-k8s-operator-test', (req, res) => {
-  console.log('processing request');
+  console.log(`processing request ${req.query['id']}`);
   res.json({ message: 'We make Observability easy for every developer.' });
 });
 
