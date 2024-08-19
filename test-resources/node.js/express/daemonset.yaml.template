@@ -42,6 +42,6 @@ spec:
           readinessProbe:
             httpGet:
               path: /ready
-              port: 1207
+              port: 1206
             initialDelaySeconds: 5
             periodSeconds: 10
