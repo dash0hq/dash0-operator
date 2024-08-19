@@ -165,7 +165,7 @@ func parsePidFile(pidFilePath string) (OTelColPid, error) {
 		return 0, fmt.Errorf("pid file '%v' has an unexpected format: expecting a single integer; found additional content: %v", pidFilePath, scanner.Text())
 	}
 
-	return pid, nil
+	return OTelColPid(pid), nil
 }
 
 func triggerConfigurationReload(collectorPid OTelColPid) error {

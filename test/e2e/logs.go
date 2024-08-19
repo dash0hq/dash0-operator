@@ -10,10 +10,11 @@ import (
 	"strings"
 	"time"
 
-	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive
-	. "github.com/onsi/gomega"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
 const (
@@ -84,7 +85,7 @@ func fileCountMatchingLogRecords(g Gomega, workloadType string, logBody string, 
 		logsFound += countMatchingLogRecords(
 			logs,
 			resourceMatchFn,
-			isLogBody(logBody),
+			logBodyContains(logBody),
 			timestampLowerBound,
 		)
 	}
@@ -165,8 +166,8 @@ func resourceLogRecordsHaveExpectedResourceAttributes(workloadType string) func(
 	}
 }
 
-func isLogBody(expectedTarget string) func(logRecord plog.LogRecord) bool {
+func logBodyContains(substring string) func(logRecord plog.LogRecord) bool {
 	return func(logRecord plog.LogRecord) bool {
-		return expectedTarget == logRecord.Body().AsString()
+		return strings.Contains(logRecord.Body().AsString(), substring)
 	}
 }

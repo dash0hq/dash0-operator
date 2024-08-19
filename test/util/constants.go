@@ -26,6 +26,7 @@ const (
 	InitContainerImageTest         = "some-registry.com:1234/dash0hq/instrumentation:4.5.6"
 	CollectorImageTest             = "some-registry.com:1234/dash0hq/collector:7.8.9"
 	ConfigurationReloaderImageTest = "some-registry.com:1234/dash0hq/configuration-reloader:10.11.12"
+	FilelogOffsetSynchImageTest    = "some-registry.com:1234/dash0hq/filelog-offset-synch:13.14.15"
 
 	IngressEndpointTest    = "ingress.endpoint.dash0.com:4317"
 	AuthorizationTokenTest = "authorization-token"
@@ -44,6 +45,8 @@ var (
 		CollectorImagePullPolicy:             corev1.PullAlways,
 		ConfigurationReloaderImage:           ConfigurationReloaderImageTest,
 		ConfigurationReloaderImagePullPolicy: corev1.PullAlways,
+		FilelogOffsetSynchImage:              FilelogOffsetSynchImageTest,
+		FilelogOffsetSynchImagePullPolicy:    corev1.PullAlways,
 	}
 
 	DeploymentSelfReference = &appsv1.Deployment{

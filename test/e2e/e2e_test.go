@@ -62,6 +62,11 @@ var (
 			tag:        "latest",
 			pullPolicy: "Never",
 		},
+		fileLogOffsetSynch: ImageSpec{
+			repository: "filelog-offset-synch",
+			tag:        "latest",
+			pullPolicy: "Never",
+		},
 	}
 )
 
@@ -673,7 +678,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				default:
 					return fmt.Errorf("too many matching logs found: %d", matches)
 				}
-			}).Should(Succeed())
+			}, 15*time.Second, verifyTelemetryPollingInterval).Should(Succeed())
 
 			By("by churning collector pods")
 

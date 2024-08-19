@@ -105,17 +105,13 @@ func assembleDesiredState(config *oTelColConfig) ([]client.Object, error) {
 	var desiredState []client.Object
 	desiredState = append(desiredState, serviceAccount(config))
 
-	collectorConfigMap, err := collectorConfigConfigMap(config)
+	collectorCM, err := collectorConfigMap(config)
 	if err != nil {
 		return desiredState, err
 	}
-	desiredState = append(desiredState, collectorConfigMap)
+	desiredState = append(desiredState, collectorCM)
 
-	filelogOffsetsConfigMap, err := filelogOffsetsConfigMap(config)
-	if err != nil {
-		return desiredState, err
-	}
-	desiredState = append(desiredState, filelogOffsetsConfigMap)
+	desiredState = append(desiredState, filelogOffsetsConfigMap(config))
 
 	desiredState = append(desiredState, clusterRole(config))
 	desiredState = append(desiredState, clusterRoleBinding(config))
@@ -149,7 +145,7 @@ func renderCollectorConfigs(templateValues *collectorConfigurationTemplateValues
 	return collectorConfiguration.String(), nil
 }
 
-func collectorConfigConfigMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
+func collectorConfigMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
 	ingressEndpoint := config.IngressEndpoint
 	exportProtocol := grpcExportProtocol
 	if url, err := url.ParseRequestURI(ingressEndpoint); err != nil {
@@ -192,7 +188,7 @@ func collectorConfigConfigMap(config *oTelColConfig) (*corev1.ConfigMap, error) 
 	}, nil
 }
 
-func filelogOffsetsConfigMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
+func filelogOffsetsConfigMap(config *oTelColConfig) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ConfigMap",
@@ -203,7 +199,7 @@ func filelogOffsetsConfigMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
 			Namespace: config.Namespace,
 			Labels:    labels(false),
 		},
-	}, nil
+	}
 }
 
 func role(config *oTelColConfig) *rbacv1.Role {

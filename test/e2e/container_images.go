@@ -24,6 +24,7 @@ type Images struct {
 	instrumentation       ImageSpec
 	collector             ImageSpec
 	configurationReloader ImageSpec
+	fileLogOffsetSynch    ImageSpec
 }
 
 const (
