@@ -14,6 +14,11 @@ import (
 )
 
 var (
+	originalKubeContext       string
+	kubeContextHasBeenChanged bool
+
+	setupFinishedSuccessfully bool
+
 	requiredPorts = []int{1207, 4317, 4318}
 )
 

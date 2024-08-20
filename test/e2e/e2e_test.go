@@ -23,53 +23,10 @@ import (
 
 const (
 	dotEnvFile = "test-resources/.env"
-
-	applicationUnderTestNamespace = "e2e-application-under-test-namespace"
 )
 
 var (
 	workingDir string
-
-	originalKubeContext       string
-	kubeContextHasBeenChanged bool
-
-	setupFinishedSuccessfully bool
-
-	buildOperatorControllerImageFromLocalSources    = true
-	buildInstrumentationImageFromLocalSources       = true
-	buildCollectorImageFromLocalSources             = true
-	buildConfigurationReloaderImageFromLocalSources = true
-	buildFileLogOffsetSynchImageFromLocalSources    = true
-	operatorHelmChart                               = localHelmChart
-	operatorHelmChartUrl                            = ""
-	operatorNamespace                               = "dash0-system"
-	images                                          = Images{
-		operator: ImageSpec{
-			repository: "operator-controller",
-			tag:        "latest",
-			pullPolicy: "Never",
-		},
-		instrumentation: ImageSpec{
-			repository: "instrumentation",
-			tag:        "latest",
-			pullPolicy: "Never",
-		},
-		collector: ImageSpec{
-			repository: "collector",
-			tag:        "latest",
-			pullPolicy: "Never",
-		},
-		configurationReloader: ImageSpec{
-			repository: "configuration-reloader",
-			tag:        "latest",
-			pullPolicy: "Never",
-		},
-		fileLogOffsetSynch: ImageSpec{
-			repository: "filelog-offset-synch",
-			tag:        "latest",
-			pullPolicy: "Never",
-		},
-	}
 )
 
 var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
