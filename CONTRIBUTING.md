@@ -32,9 +32,12 @@ After that, you can deploy the operator to your cluster:
     COLLECTOR_IMG_REPOSITORY=ghcr.io/dash0hq/collector \
     COLLECTOR_IMG_TAG=main-dev \
     COLLECTOR_IMG_PULL_POLICY="" \
-    CONFIGURATION_RELOADER_IMG_REPOSITORY=configuration-reloader \
+    CONFIGURATION_RELOADER_IMG_REPOSITORY=ghcr.io/dash0hq/configuration-reloader \
     CONFIGURATION_RELOADER_IMG_TAG=main-dev \
     CONFIGURATION_RELOADER_IMG_PULL_POLICY=""
+    FILELOG_OFFSET_SYNCH_IMG_REPOSITORY=ghcr.io/dash0hq/filelog-offset-synch \
+    FILELOG_OFFSET_SYNCH_IMG_TAG=main-dev \
+    FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY=""
   ```
 * The custom resource definition will automatically be installed when deploying the operator. However, you can also do
   that separately via kustomize if required via `make install`.
@@ -81,9 +84,12 @@ BUILD_OPERATOR_CONTROLLER_IMAGE=false \
   COLLECTOR_IMG_REPOSITORY=ghcr.io/dash0hq/collector \
   COLLECTOR_IMG_TAG=main-dev \
   COLLECTOR_IMG_PULL_POLICY="" \
-  CONFIGURATION_RELOADER_IMG_REPOSITORY=configuration-reloader \
+  CONFIGURATION_RELOADER_IMG_REPOSITORY=ghcr.io/dash0hq/configuration-reloader \
   CONFIGURATION_RELOADER_IMG_TAG=main-dev \
   CONFIGURATION_RELOADER_IMG_PULL_POLICY="" \
+  FILELOG_OFFSET_SYNCH_IMG_REPOSITORY=ghcr.io/dash0hq/filelog-offset-synch \
+  FILELOG_OFFSET_SYNCH_IMG_TAG=main-dev \
+  FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY="" \
   make test-e2e
 ```
 
@@ -109,6 +115,9 @@ BUILD_OPERATOR_CONTROLLER_IMAGE=false \
   CONFIGURATION_RELOADER_IMG_REPOSITORY="" \
   CONFIGURATION_RELOADER_IMG_TAG="" \
   CONFIGURATION_RELOADER_IMG_PULL_POLICY="" \
+  FILELOG_OFFSET_SYNCH_IMG_REPOSITORY="" \
+  FILELOG_OFFSET_SYNCH_IMG_TAG="" \
+  FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY="" \
   make test-e2e
 ```
 
@@ -151,9 +160,12 @@ they deploy in their `AfterAll`/`AfterEach` hooks. The scripts in `test-resource
           COLLECTOR_IMG_REPOSITORY=ghcr.io/dash0hq/collector \
           COLLECTOR_IMG_TAG=main-dev \
           COLLECTOR_IMG_PULL_POLICY="" \
-          CONFIGURATION_RELOADER_IMG_REPOSITORY=configuration-reloader \
+          CONFIGURATION_RELOADER_IMG_REPOSITORY=ghcr.io/dash0hq/configuration-reloader \
           CONFIGURATION_RELOADER_IMG_TAG=main-dev \
           CONFIGURATION_RELOADER_IMG_PULL_POLICY="" \
+          FILELOG_OFFSET_SYNCH_IMG_REPOSITORY=ghcr.io/dash0hq/filelog-offset-synch \
+          FILELOG_OFFSET_SYNCH_IMG_TAG=main-dev \
+          FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY="" \
           test-resources/bin/test-roundtrip-01-aum-operator-cr.sh
         ```
       * To run the scenario with the helm chart from the official remote repository and the default images referenced in
@@ -174,6 +186,9 @@ they deploy in their `AfterAll`/`AfterEach` hooks. The scripts in `test-resource
           CONFIGURATION_RELOADER_IMG_REPOSITORY="" \
           CONFIGURATION_RELOADER_IMG_TAG=main \
           CONFIGURATION_RELOADER_IMG_PULL_POLICY="" \
+          FILELOG_OFFSET_SYNCH_IMG_REPOSITORY="" \
+          FILELOG_OFFSET_SYNCH_IMG_TAG=main \
+          FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY="" \
           test-resources/bin/test-roundtrip-01-aum-operator-cr.sh
         ```
         Note: Unsetting parameters like `CONTROLLER_IMG_REPOSITORY` explicitly (by setting them to an empty string) will lead to
