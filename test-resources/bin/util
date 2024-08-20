@@ -49,6 +49,8 @@ build_all_images() {
   echo
   echo "build configuration reloader image"
   build_configuration_reloader_image
+  echo "build filelog offset synch image"
+  build_filelog_offset_synch_image
   echo
 }
 
@@ -121,6 +123,22 @@ build_configuration_reloader_image() {
   docker build images/configreloader -t "${repository}":"${tag}"
 }
 
+build_filelog_offset_synch_image() {
+  if [[ "${BUILD_FILELOG_OFFSET_SYNCH_IMAGE:-}" = false ]]; then
+    echo "Skipping filelog offset synch image build (BUILD_FILELOG_OFFSET_SYNCH_IMAGE=false)."
+    return
+  fi
+  if [[ -n "${FILELOG_OFFSET_SYNCH_IMG_REPOSITORY:-}" ]]; then
+    if is_remote_image "$FILELOG_OFFSET_SYNCH_IMG_REPOSITORY"; then
+      echo "The specified image FILELOG_OFFSET_SYNCH_IMG_REPOSITORY=$FILELOG_OFFSET_SYNCH_IMG_REPOSITORY looks like a remote image, refusing to build it and overwrite it with a locally built image. Set BUILD_FILELOG_OFFSET_SYNCH_IMAGE=false to skip this step and use the remote image."
+      exit 1
+    fi
+  fi
+  repository="${FILELOG_OFFSET_SYNCH_IMG_REPOSITORY:-configuration-reloader}"
+  tag="${FILELOG_OFFSET_SYNCH_IMG_TAG:-latest}"
+  docker build images/configreloader -t "${repository}":"${tag}"
+}
+
 deploy_via_helm() {
   helm_install_command="helm install --namespace dash0-system --set operator.developmentMode=true"
 
@@ -157,7 +175,7 @@ deploy_via_helm() {
     helm_install_command+=" --set operator.collectorImage.tag=${COLLECTOR_IMG_TAG:-latest}"
   fi
   if [[ -n "${COLLECTOR_IMG_DIGEST:-}" ]]; then
-    helm_install_command+=" --set operator.collectorImage.digest=$IMG_DIGEST"
+    helm_install_command+=" --set operator.collectorImage.digest=$COLLECTOR_IMG_DIGEST"
   fi
   if ! has_been_set_to_empty_string "COLLECTOR_IMG_PULL_POLICY"; then
     helm_install_command+=" --set operator.collectorImage.pullPolicy=${COLLECTOR_IMG_PULL_POLICY:-Never}"
@@ -170,10 +188,23 @@ deploy_via_helm() {
     helm_install_command+=" --set operator.configurationReloaderImage.tag=${CONFIGURATION_RELOADER_IMG_TAG:-latest}"
   fi
   if [[ -n "${CONFIGURATION_RELOADER_IMG_DIGEST:-}" ]]; then
-    helm_install_command+=" --set operator.configurationReloaderImage.digest=$IMG_DIGEST"
+    helm_install_command+=" --set operator.configurationReloaderImage.digest=$CONFIGURATION_RELOADER_IMG_DIGEST"
   fi
   if ! has_been_set_to_empty_string "CONFIGURATION_RELOADER_IMG_PULL_POLICY"; then
     helm_install_command+=" --set operator.configurationReloaderImage.pullPolicy=${CONFIGURATION_RELOADER_IMG_PULL_POLICY:-Never}"
+  fi
+
+  if ! has_been_set_to_empty_string "FILELOG_OFFSET_SYNCH_IMG_REPOSITORY"; then
+    helm_install_command+=" --set operator.filelogOffsetSynchImage.repository=${FILELOG_OFFSET_SYNCH_IMG_REPOSITORY:-configuration-reloader}"
+  fi
+  if ! has_been_set_to_empty_string "FILELOG_OFFSET_SYNCH_IMG_TAG"; then
+    helm_install_command+=" --set operator.filelogOffsetSynchImage.tag=${FILELOG_OFFSET_SYNCH_IMG_TAG:-latest}"
+  fi
+  if [[ -n "${FILELOG_OFFSET_SYNCH_IMG_DIGEST:-}" ]]; then
+    helm_install_command+=" --set operator.filelogOffsetSynchImage.digest=$FILELOG_OFFSET_SYNCH_IMG_DIGEST"
+  fi
+  if ! has_been_set_to_empty_string "FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY"; then
+    helm_install_command+=" --set operator.filelogOffsetSynchImage.pullPolicy=${FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY:-Never}"
   fi
 
   helm_install_command+=" dash0-operator"
