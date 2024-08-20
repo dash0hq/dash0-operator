@@ -75,6 +75,9 @@ The tests can also be run with remote images, like this:
 ```
 BUILD_OPERATOR_CONTROLLER_IMAGE=false \
   BUILD_INSTRUMENTATION_IMAGE=false \
+  BUILD_COLLECTOR_IMAGE=false \
+  BUILD_CONFIGURATION_RELOADER_IMAGE=false \
+  BUILD_FILELOG_OFFSET_SYNCH_IMAGE=false \
   CONTROLLER_IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller \
   CONTROLLER_IMG_TAG=main-dev \
   CONTROLLER_IMG_PULL_POLICY="" \
@@ -101,6 +104,9 @@ The test suite can also be run with a Helm chart from a remote repository:
 ```
 BUILD_OPERATOR_CONTROLLER_IMAGE=false \
   BUILD_INSTRUMENTATION_IMAGE=false \
+  BUILD_COLLECTOR_IMAGE=false \
+  BUILD_CONFIGURATION_RELOADER_IMAGE=false \
+  BUILD_FILELOG_OFFSET_SYNCH_IMAGE=false \
   OPERATOR_HELM_CHART=dash0-operator/dash0-operator \
   OPERATOR_HELM_CHART_URL=https://dash0hq.github.io/dash0-operator \
   CONTROLLER_IMG_REPOSITORY="" \
@@ -151,6 +157,9 @@ they deploy in their `AfterAll`/`AfterEach` hooks. The scripts in `test-resource
         ```
         BUILD_OPERATOR_CONTROLLER_IMAGE=false \
           BUILD_INSTRUMENTATION_IMAGE=false \
+          BUILD_COLLECTOR_IMAGE=false \
+          BUILD_CONFIGURATION_RELOADER_IMAGE=false \
+          BUILD_FILELOG_OFFSET_SYNCH_IMAGE=false \
           CONTROLLER_IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller \
           CONTROLLER_IMG_TAG=main-dev \
           CONTROLLER_IMG_PULL_POLICY="" \
@@ -173,6 +182,9 @@ they deploy in their `AfterAll`/`AfterEach` hooks. The scripts in `test-resource
         ```
         BUILD_OPERATOR_CONTROLLER_IMAGE=false \
           BUILD_INSTRUMENTATION_IMAGE=false \
+          BUILD_COLLECTOR_IMAGE=false \
+          BUILD_CONFIGURATION_RELOADER_IMAGE=false \
+          BUILD_FILELOG_OFFSET_SYNCH_IMAGE=false \
           OPERATOR_HELM_CHART=dash0-operator/dash0-operator \
           CONTROLLER_IMG_REPOSITORY="" \
           CONTROLLER_IMG_TAG="" \
