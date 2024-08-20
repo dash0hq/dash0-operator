@@ -78,65 +78,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Note: By default, changed-files will compare against the last non-merge commit on the target branch for pull
-      # request events, and the previous remote commit of the current branch for push events.
-      - name: compile list of relevant changed files for instrumentation and operator controller image build
-        id: changed-files
-        uses: tj-actions/changed-files@v44
-        with:
-          files_yaml: |
-            instrumentation:
-              - .github/actions/build-image/**
-              - .github/workflows/ci.yaml
-              - images/instrumentation/**
-            operator_controller:
-              - .github/actions/build-image/**
-              - .github/workflows/ci.yaml
-              - go.mod
-              - go.sum
-              - api/**
-              - cmd/**
-              - internal/**
-            collector:
-              - .github/actions/build-image/**
-              - .github/workflows/ci.yaml
-              - images/collector/**
-            configuration_reloader:
-              - .github/actions/build-image/**
-              - .github/workflows/ci.yaml
-              - images/configreloader/**
-            filelog_offset_synch:
-              - .github/actions/build-image/**
-              - .github/workflows/ci.yaml
-              - images/filelogoffsetsynch/**
-
-      - name: show changed files
-        env:
-          INSTRUMENTATION_CHANGED_FILES_FLAG: ${{ steps.changed-files.outputs.instrumentation_any_changed }}
-          INSTRUMENTATION_CHANGED_FILES_LIST: ${{ steps.changed-files.outputs.instrumentation_all_changed_files }}
-          OPERATOR_CONTROLLER_CHANGED_FILES_FLAG: ${{ steps.changed-files.outputs.operator_controller_any_changed }}
-          OPERATOR_CONTROLLER_CHANGED_FILES_LIST: ${{ steps.changed-files.outputs.operator_controller_all_changed_files }}
-          COLLECTOR_CHANGED_FILES_FLAG: ${{ steps.changed-files.outputs.collector_any_changed }}
-          COLLECTOR_CHANGED_FILES_LIST: ${{ steps.changed-files.outputs.collector_all_changed_files }}
-          CONFIGURATION_RELOADER_CHANGED_FILES_FLAG: ${{ steps.changed-files.outputs.configuration_reloader_any_changed }}
-          CONFIGURATION_RELOADER_CHANGED_FILES_LIST: ${{ steps.changed-files.outputs.configuration_reloader_all_changed_files }}
-          FILELOG_OFFSET_SYNCH_CHANGED_FILES_FLAG: ${{ steps.changed-files.outputs.filelog_offset_synch_any_changed }}
-          FILELOG_OFFSET_SYNCH_CHANGED_FILES_LIST: ${{ steps.changed-files.outputs.filelog_offset_synch_any_changed_files }}
-        run: |
-          echo "files for instrumentation image have changed: $INSTRUMENTATION_CHANGED_FILES_FLAG"
-          echo "changed files for instrumentation image: $INSTRUMENTATION_CHANGED_FILES_LIST"
-          echo "files for operator controller image have changed: $OPERATOR_CONTROLLER_CHANGED_FILES_FLAG"
-          echo "changed files for operator controller image: $OPERATOR_CONTROLLER_CHANGED_FILES_LIST"
-          echo "files for collector image have changed: $COLLECTOR_CHANGED_FILES_FLAG"
-          echo "changed files for collector image: $COLLECTOR_CHANGED_FILES_LIST"
-          echo "files for configuration reloader image have changed: $CONFIGURATION_RELOADER_CHANGED_FILES_FLAG"
-          echo "changed files for configuration reloader image: $CONFIGURATION_RELOADER_CHANGED_FILES_LIST"
-          echo "files for file offset synch image have changed: $FILELOG_OFFSET_SYNCH_CHANGED_FILES_FLAG"
-          echo "changed files for file offset synch image: $FILELOG_OFFSET_SYNCH_CHANGED_FILES_LIST"
-
       - name: build instrumentation image
         uses: ./.github/actions/build-image
-        if: steps.changed-files.outputs.instrumentation_any_changed == 'true' || contains(github.ref, 'refs/tags/')
         with:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
           imageName: instrumentation
@@ -147,7 +90,6 @@ jobs:
 
       - name: build collector image
         uses: ./.github/actions/build-image
-        if: steps.changed-files.outputs.collector_any_changed == 'true' || contains(github.ref, 'refs/tags/')
         with:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
           imageName: collector
@@ -158,7 +100,6 @@ jobs:
 
       - name: build configuration reloader image
         uses: ./.github/actions/build-image
-        if: steps.changed-files.outputs.configuration_reloader_any_changed == 'true' || contains(github.ref, 'refs/tags/')
         with:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
           imageName: configuration-reloader
@@ -169,7 +110,6 @@ jobs:
 
       - name: build operator controller image
         uses: ./.github/actions/build-image
-        if: steps.changed-files.outputs.operator_controller_any_changed == 'true' || contains(github.ref, 'refs/tags/')
         with:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
           imageName: operator-controller
@@ -180,7 +120,6 @@ jobs:
 
       - name: build filelog offset synch image
         uses: ./.github/actions/build-image
-        if: steps.changed-files.outputs.filelog_offset_synch_any_changed == 'true' || contains(github.ref, 'refs/tags/')
         with:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
           imageName: filelog-offset-synch
