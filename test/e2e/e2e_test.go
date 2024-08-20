@@ -131,6 +131,8 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				})
 				By("all workloads have been deployed")
 
+				deleteTestIdFiles()
+
 				deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images, true)
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
@@ -152,6 +154,8 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					)
 				})
 				By("all workloads have been instrumented")
+
+				deleteTestIdFiles()
 
 				undeployDash0MonitoringResource(applicationUnderTestNamespace)
 
@@ -176,6 +180,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				By("installing the Node.js job")
 				Expect(installNodeJsJob(applicationUnderTestNamespace)).To(Succeed())
 				deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images, true)
+				deleteTestIdFiles()
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
 					defaultDash0MonitoringValues,
@@ -251,6 +256,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					},
 				}
 				deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, initialImages, false)
+				deleteTestIdFiles()
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
 					defaultDash0MonitoringValues,
@@ -268,6 +274,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					"controller",
 				)
 
+				deleteTestIdFiles()
 				upgradeOperator(
 					operatorNamespace,
 					operatorHelmChart,
@@ -345,6 +352,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					// uninstrumentation procedure there. Thus, for jobs, we test the failing uninstrumentation and
 					// its effects here.
 					By("verifying that removing the Dash0 monitoring resource attempts to uninstruments the job")
+					deleteTestIdFiles()
 					undeployDash0MonitoringResource(applicationUnderTestNamespace)
 
 					Eventually(func(g Gomega) {
