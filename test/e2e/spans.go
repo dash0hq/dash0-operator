@@ -102,11 +102,15 @@ func fileHasMatchingSpan(g Gomega, workloadType string, httpPathWithQuery string
 			// ignore lines that cannot be parsed
 			continue
 		}
+		// Missing cronjob HTTP server spans in the "should instrument and uninstrument all workload types" have given
+		// us a hard time lately. Therefore, log more details about finding the matching spans for those.
+		detailedMatchingLogs := workloadType == "cronjob"
 		if spansFound = hasMatchingSpans(
 			traces,
 			resourceMatchFn,
-			isHttpServerSpanWithHttpTarget(httpPathWithQuery),
+			isHttpServerSpanWithHttpTarget(httpPathWithQuery, detailedMatchingLogs),
 			timestampLowerBound,
+			detailedMatchingLogs,
 		); spansFound {
 			break
 		}
@@ -123,6 +127,7 @@ func hasMatchingSpans(
 	resourceMatchFn func(span ptrace.ResourceSpans) bool,
 	spanMatchFn func(span ptrace.Span) bool,
 	timestampLowerBound *time.Time,
+	detailedMatchingLogs bool,
 ) bool {
 	for i := 0; i < traces.ResourceSpans().Len(); i++ {
 		resourceSpan := traces.ResourceSpans().At(i)
@@ -131,12 +136,33 @@ func hasMatchingSpans(
 				continue
 			}
 		}
+
+		if detailedMatchingLogs {
+			fmt.Fprint(GinkgoWriter, "> checking resource span\n")
+		}
 		for j := 0; j < resourceSpan.ScopeSpans().Len(); j++ {
 			scopeSpan := resourceSpan.ScopeSpans().At(j)
 			for k := 0; k < scopeSpan.Spans().Len(); k++ {
 				span := scopeSpan.Spans().At(k)
-				if (timestampLowerBound == nil || span.StartTimestamp().AsTime().After(*timestampLowerBound)) &&
-					spanMatchFn(span) {
+				timestampMatch := timestampLowerBound == nil || span.StartTimestamp().AsTime().After(*timestampLowerBound)
+				var spanMatches bool
+				if timestampMatch {
+					spanMatches = spanMatchFn(span)
+				}
+				if detailedMatchingLogs {
+					fmt.Fprintf(
+						GinkgoWriter,
+						"> %s: ResourceSpans(%d)/ScopeSpans(%d)/(%d), timestamp: %t, matches: %t\n",
+						span.Name(),
+						i,
+						j,
+						k,
+						timestampMatch,
+						spanMatches,
+					)
+				}
+
+				if timestampMatch && spanMatches {
 					return true
 				}
 			}
@@ -189,13 +215,25 @@ func resourceSpansHaveExpectedResourceAttributes(workloadType string) func(span 
 	}
 }
 
-func isHttpServerSpanWithHttpTarget(expectedTarget string) func(span ptrace.Span) bool {
+func isHttpServerSpanWithHttpTarget(expectedTarget string, detailedMatchingLogs bool) func(span ptrace.Span) bool {
 	return func(span ptrace.Span) bool {
 		if span.Kind() == ptrace.SpanKindServer {
 			target, hasTarget := span.Attributes().Get("http.target")
 			if hasTarget {
 				if target.Str() == expectedTarget {
+					if detailedMatchingLogs {
+						fmt.Fprintf(GinkgoWriter, "> span has matching http.target: %s\n", target.Str())
+					}
 					return true
+				} else if detailedMatchingLogs {
+					fmt.Fprintf(GinkgoWriter,
+						"> span has http.target attribute, but it does not match: expected: %s, actual: %s\n",
+						expectedTarget,
+						target.Str())
+				}
+			} else {
+				if detailedMatchingLogs {
+					fmt.Fprintf(GinkgoWriter, "> span does not have the http.target attribute\n")
 				}
 			}
 		}

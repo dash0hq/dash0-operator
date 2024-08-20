@@ -597,7 +597,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			undeployDash0MonitoringResource(applicationUnderTestNamespace)
 		})
 
-		It("does not collect again older logs when the collector pod churns", func() {
+		It("does not collect the same logs twice from a file when the collector pod churns", func() {
 			deployDash0MonitoringResource(
 				applicationUnderTestNamespace,
 				defaultDash0MonitoringValues,
