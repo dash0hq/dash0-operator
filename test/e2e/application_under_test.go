@@ -13,6 +13,10 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+const (
+	applicationUnderTestNamespace = "e2e-application-under-test-namespace"
+)
+
 func rebuildNodeJsApplicationContainerImage() {
 	By("building the dash0-operator-nodejs-20-express-test-app image")
 	Expect(

@@ -19,6 +19,12 @@ const (
 	operatorHelmReleaseName = "e2e-tests-operator-helm-release"
 )
 
+var (
+	operatorHelmChart    = localHelmChart
+	operatorHelmChartUrl = ""
+	operatorNamespace    = "dash0-system"
+)
+
 func deployOperator(
 	operatorNamespace string,
 	operatorHelmChart string,

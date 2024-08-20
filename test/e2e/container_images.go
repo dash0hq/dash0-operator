@@ -31,6 +31,42 @@ const (
 	additionalImageTag = "e2e-test"
 )
 
+var (
+	images = Images{
+		operator: ImageSpec{
+			repository: "operator-controller",
+			tag:        "latest",
+			pullPolicy: "Never",
+		},
+		instrumentation: ImageSpec{
+			repository: "instrumentation",
+			tag:        "latest",
+			pullPolicy: "Never",
+		},
+		collector: ImageSpec{
+			repository: "collector",
+			tag:        "latest",
+			pullPolicy: "Never",
+		},
+		configurationReloader: ImageSpec{
+			repository: "configuration-reloader",
+			tag:        "latest",
+			pullPolicy: "Never",
+		},
+		fileLogOffsetSynch: ImageSpec{
+			repository: "filelog-offset-synch",
+			tag:        "latest",
+			pullPolicy: "Never",
+		},
+	}
+
+	buildOperatorControllerImageFromLocalSources    = true
+	buildInstrumentationImageFromLocalSources       = true
+	buildCollectorImageFromLocalSources             = true
+	buildConfigurationReloaderImageFromLocalSources = true
+	buildFileLogOffsetSynchImageFromLocalSources    = true
+)
+
 func rebuildOperatorControllerImage(operatorImage ImageSpec, buildImageLocally bool) {
 	if !buildImageLocally {
 		return
