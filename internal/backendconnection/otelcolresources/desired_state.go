@@ -26,7 +26,7 @@ import (
 type oTelColConfig struct {
 	Namespace          string
 	NamePrefix         string
-	IngressEndpoint    string
+	Endpoint           string
 	AuthorizationToken string
 	SecretRef          string
 	Images             util.Images
@@ -46,7 +46,7 @@ const (
 
 type collectorConfigurationTemplateValues struct {
 	HasExportAuthentication  bool
-	IngressEndpoint          string
+	Endpoint                 string
 	ExportProtocol           exportProtocol
 	IgnoreLogsFromNamespaces []string
 }
@@ -99,8 +99,8 @@ var (
 )
 
 func assembleDesiredState(config *oTelColConfig) ([]client.Object, error) {
-	if config.IngressEndpoint == "" {
-		return nil, fmt.Errorf("no ingress endpoint provided, unable to create the OpenTelemetry collector")
+	if config.Endpoint == "" {
+		return nil, fmt.Errorf("no endpoint provided, unable to create the OpenTelemetry collector")
 	}
 
 	var desiredState []client.Object
@@ -147,16 +147,16 @@ func renderCollectorConfigs(templateValues *collectorConfigurationTemplateValues
 }
 
 func collectorConfigMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
-	ingressEndpoint := config.IngressEndpoint
+	endpoint := config.Endpoint
 	exportProtocol := grpcExportProtocol
-	if url, err := url.ParseRequestURI(ingressEndpoint); err != nil {
+	if url, err := url.ParseRequestURI(endpoint); err != nil {
 		// Not a valid URL, assume it's grpc
 	} else if url.Scheme == "https" || url.Scheme == "http" {
 		exportProtocol = httpExportProtocol
 	}
 
 	collectorConfiguration, err := renderCollectorConfigs(&collectorConfigurationTemplateValues{
-		IngressEndpoint:         ingressEndpoint,
+		Endpoint:                endpoint,
 		ExportProtocol:          exportProtocol,
 		HasExportAuthentication: config.hasAuthentication(),
 		IgnoreLogsFromNamespaces: []string{

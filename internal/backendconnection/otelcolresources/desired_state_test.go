@@ -23,7 +23,7 @@ const (
 )
 
 var _ = Describe("The desired state of the OpenTelemetry Collector resources", func() {
-	It("should fail if no ingress endpoint has been provided", func() {
+	It("should fail if no endpoint has been provided", func() {
 		_, err := assembleDesiredState(&oTelColConfig{
 			Namespace:          namespace,
 			NamePrefix:         namePrefix,
@@ -38,7 +38,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredState(&oTelColConfig{
 			Namespace:          namespace,
 			NamePrefix:         namePrefix,
-			IngressEndpoint:    IngressEndpointTest,
+			Endpoint:           EndpointTest,
 			AuthorizationToken: AuthorizationTokenTest,
 			Images:             TestImages,
 		})
@@ -46,7 +46,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(err).ToNot(HaveOccurred())
 		Expect(desiredState).To(HaveLen(9))
 		collectorConfigConfigMapContent := getCollectorConfigConfigMapContent(desiredState)
-		Expect(collectorConfigConfigMapContent).To(ContainSubstring(fmt.Sprintf("endpoint: %s", IngressEndpointTest)))
+		Expect(collectorConfigConfigMapContent).To(ContainSubstring(fmt.Sprintf("endpoint: %s", EndpointTest)))
 		Expect(collectorConfigConfigMapContent).NotTo(ContainSubstring("file/traces"))
 		Expect(collectorConfigConfigMapContent).NotTo(ContainSubstring("file/metrics"))
 		Expect(collectorConfigConfigMapContent).NotTo(ContainSubstring("file/logs"))
@@ -113,7 +113,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredState(&oTelColConfig{
 			Namespace:          namespace,
 			NamePrefix:         namePrefix,
-			IngressEndpoint:    IngressEndpointTest,
+			Endpoint:           EndpointTest,
 			AuthorizationToken: AuthorizationTokenTest,
 		})
 
@@ -130,10 +130,10 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 	It("should use the secret reference if provided (and no authorization token has been provided)", func() {
 		desiredState, err := assembleDesiredState(&oTelColConfig{
-			Namespace:       namespace,
-			NamePrefix:      namePrefix,
-			IngressEndpoint: IngressEndpointTest,
-			SecretRef:       "some-secret",
+			Namespace:  namespace,
+			NamePrefix: namePrefix,
+			Endpoint:   EndpointTest,
+			SecretRef:  "some-secret",
 		})
 
 		Expect(err).ToNot(HaveOccurred())
@@ -151,9 +151,9 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 	It("should not add the auth token env var if no authorization token has been provided", func() {
 		desiredState, err := assembleDesiredState(&oTelColConfig{
-			Namespace:       namespace,
-			NamePrefix:      namePrefix,
-			IngressEndpoint: IngressEndpointTest,
+			Namespace:  namespace,
+			NamePrefix: namePrefix,
+			Endpoint:   EndpointTest,
 		})
 
 		Expect(err).ToNot(HaveOccurred())

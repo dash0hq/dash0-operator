@@ -46,7 +46,7 @@ custom resource definition should match snapshot:
                         to be provided. If both are provided, the AuthorizationToken will be used and SecretRef will be ignored. The
                         authorization token for your Dash0 organization can be copied from https://app.dash0.com/settings.
                       type: string
-                    ingressEndpoint:
+                    endpoint:
                       description: |-
                         The URL of the observability backend to which telemetry data will be sent. This property is mandatory. The value
                         needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct OTLP/gRPC endpoint can be copied fom
@@ -102,7 +102,7 @@ custom resource definition should match snapshot:
                         can be copied from https://app.dash0.com/settings.
                       type: string
                   required:
-                    - ingressEndpoint
+                    - endpoint
                   type: object
                 status:
                   description: Dash0MonitoringStatus defines the observed state of the Dash0 monitoring resource.

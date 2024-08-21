@@ -26,7 +26,7 @@ var (
 
 	dash0MonitoringResource = &dash0v1alpha1.Dash0Monitoring{
 		Spec: dash0v1alpha1.Dash0MonitoringSpec{
-			IngressEndpoint:    IngressEndpointTest,
+			Endpoint:           EndpointTest,
 			AuthorizationToken: AuthorizationTokenTest,
 		},
 	}
@@ -68,7 +68,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 	})
 
 	Describe("when validation checks fail", func() {
-		It("should fail if no ingress endpoint is provided", func() {
+		It("should fail if no endpoint is provided", func() {
 			err := manager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
 				ctx,
 				TestImages,
@@ -88,7 +88,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				operatorNamespace,
 				&dash0v1alpha1.Dash0Monitoring{
 					Spec: dash0v1alpha1.Dash0MonitoringSpec{
-						IngressEndpoint: IngressEndpointTest,
+						Endpoint: EndpointTest,
 					}})
 			Expect(err).NotTo(HaveOccurred())
 			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
@@ -222,7 +222,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 						UID:       "3c0e72bb-26a7-40a4-bbdd-b1c978278fc5",
 					},
 					Spec: dash0v1alpha1.Dash0MonitoringSpec{
-						IngressEndpoint:    IngressEndpointTest,
+						Endpoint:           EndpointTest,
 						AuthorizationToken: AuthorizationTokenTest,
 					},
 				},

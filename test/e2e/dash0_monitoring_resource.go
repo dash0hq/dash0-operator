@@ -19,12 +19,12 @@ import (
 
 type dash0MonitoringValues struct {
 	InstrumentWorkloads dash0v1alpha1.InstrumentWorkloadsMode
-	IngressEndpoint     string
+	Endpoint            string
 }
 
 const (
 	dash0MonitoringResourceName = "dash0-monitoring-resource-e2e"
-	defaultIngressEndpoint      = "http://otlp-sink.otlp-sink.svc.cluster.local"
+	defaultEndpoint             = "http://otlp-sink.otlp-sink.svc.cluster.local"
 )
 
 var (
@@ -33,7 +33,7 @@ var (
 	dash0MonitoringResourceTemplate *template.Template
 
 	defaultDash0MonitoringValues = dash0MonitoringValues{
-		IngressEndpoint:     defaultIngressEndpoint,
+		Endpoint:            defaultEndpoint,
 		InstrumentWorkloads: dash0v1alpha1.All,
 	}
 )
@@ -85,13 +85,13 @@ func deployDash0MonitoringResource(
 	verifyThatCollectorIsRunning(operatorNamespace, operatorHelmChart)
 }
 
-func updateIngressEndpointOfDash0MonitoringResource(
+func updateEndpointOfDash0MonitoringResource(
 	namespace string,
-	newIngressEndpoint string,
+	newEndpoint string,
 ) {
 	updateDash0MonitoringResource(
 		namespace,
-		fmt.Sprintf("{\"spec\":{\"ingressEndpoint\":\"%s\"}}", newIngressEndpoint),
+		fmt.Sprintf("{\"spec\":{\"endpoint\":\"%s\"}}", newEndpoint),
 	)
 }
 

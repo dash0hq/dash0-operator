@@ -7,7 +7,7 @@ exporters:
     verbosity: detailed
 {{- if eq .ExportProtocol "grpc" }}
   otlp:
-    endpoint: {{ .IngressEndpoint }}
+    endpoint: {{ .Endpoint }}
 {{- if .HasExportAuthentication }}
     headers:
       Authorization: Bearer ${env:AUTH_TOKEN}
@@ -15,7 +15,7 @@ exporters:
 {{- end }}
 {{- if eq .ExportProtocol "http" }}
   otlphttp:
-    endpoint: {{ .IngressEndpoint }}
+    endpoint: {{ .Endpoint }}
 {{- if .HasExportAuthentication }}
     headers:
       Authorization: Bearer ${env:AUTH_TOKEN}
