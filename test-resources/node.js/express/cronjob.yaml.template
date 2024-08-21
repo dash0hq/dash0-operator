@@ -22,16 +22,6 @@ spec:
                   value: "true"
                 - name: TRIGGER_SELF_AND_EXIT
                   value: "true"
-                - name: TEST_ID_FILE
-                  value: "/test-uuid/cronjob.test.id"
               ports:
                 - containerPort: 1205
               imagePullPolicy: Never
-              volumeMounts:
-                - name: test-uuid
-                  mountPath: /test-uuid
-          volumes:
-            - name: test-uuid
-              hostPath:
-                path: $PWD/test-resources/e2e-test-volumes/test-uuid
-                type: DirectoryOrCreate

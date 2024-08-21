@@ -9,12 +9,15 @@ import (
 	"os"
 	"os/exec"
 
+	"gopkg.in/yaml.v3"
+
 	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive
 	. "github.com/onsi/gomega"
 )
 
 const (
 	applicationUnderTestNamespace = "e2e-application-under-test-namespace"
+	applicationPath               = "test-resources/node.js/express"
 )
 
 func rebuildNodeJsApplicationContainerImage() {
@@ -24,13 +27,14 @@ func rebuildNodeJsApplicationContainerImage() {
 			exec.Command(
 				"docker",
 				"build",
-				"test-resources/node.js/express",
+				applicationPath,
 				"-t",
 				"dash0-operator-nodejs-20-express-test-app",
 			))).To(Succeed())
 }
 
-func installNodeJsCronJob(namespace string) error {
+func installNodeJsCronJob(namespace string, testId string) error {
+	addTestIdToCronjobManifest(testId)
 	return installNodeJsApplication(
 		namespace,
 		"cronjob",
@@ -42,7 +46,7 @@ func uninstallNodeJsCronJob(namespace string) error {
 	return uninstallNodeJsApplication(namespace, "cronjob")
 }
 
-func installNodeJsDaemonSet(namespace string) error {
+func installNodeJsDaemonSet(namespace string, testId string) error {
 	return installNodeJsApplication(
 		namespace,
 		"daemonset",
@@ -60,7 +64,8 @@ func installNodeJsDaemonSet(namespace string) error {
 	)
 }
 
-func installNodeJsDaemonSetWithOptOutLabel(namespace string) error {
+//nolint:unparam
+func installNodeJsDaemonSetWithOptOutLabel(namespace string, testId string) error {
 	return installNodeJsApplication(
 		namespace,
 		"daemonset.opt-out",
@@ -82,7 +87,7 @@ func uninstallNodeJsDaemonSet(namespace string) error {
 	return uninstallNodeJsApplication(namespace, "daemonset")
 }
 
-func installNodeJsDeployment(namespace string) error {
+func installNodeJsDeployment(namespace string, testId string) error {
 	return installNodeJsApplication(
 		namespace,
 		"deployment",
@@ -104,7 +109,8 @@ func uninstallNodeJsDeployment(namespace string) error {
 	return uninstallNodeJsApplication(namespace, "deployment")
 }
 
-func installNodeJsJob(namespace string) error {
+func installNodeJsJob(namespace string, testId string) error {
+	addTestIdToJobManifest(testId)
 	return installNodeJsApplication(
 		namespace,
 		"job",
@@ -116,7 +122,8 @@ func uninstallNodeJsJob(namespace string) error {
 	return uninstallNodeJsApplication(namespace, "job")
 }
 
-func installNodeJsPod(namespace string) error {
+//nolint:unparam
+func installNodeJsPod(namespace string, testId string) error {
 	return installNodeJsApplication(
 		namespace,
 		"pod",
@@ -140,7 +147,8 @@ func uninstallNodeJsPod(namespace string) error {
 	return uninstallNodeJsApplication(namespace, "pod")
 }
 
-func installNodeJsReplicaSet(namespace string) error {
+//nolint:unparam
+func installNodeJsReplicaSet(namespace string, testId string) error {
 	return installNodeJsApplication(
 		namespace,
 		"replicaset",
@@ -164,7 +172,8 @@ func uninstallNodeJsReplicaSet(namespace string) error {
 	return uninstallNodeJsApplication(namespace, "replicaset")
 }
 
-func installNodeJsStatefulSet(namespace string) error {
+//nolint:unparam
+func installNodeJsStatefulSet(namespace string, testId string) error {
 	return installNodeJsApplication(
 		namespace,
 		"statefulset",
@@ -199,7 +208,7 @@ func removeAllTestApplications(namespace string) {
 
 func installNodeJsApplication(
 	namespace string,
-	templateName string,
+	workloadType string,
 	waitCommand *exec.Cmd,
 ) error {
 	err := runAndIgnoreOutput(exec.Command(
@@ -208,7 +217,7 @@ func installNodeJsApplication(
 		"--namespace",
 		namespace,
 		"-f",
-		fmt.Sprintf("test-resources/node.js/express/%s.yaml", templateName),
+		manifest(workloadType),
 	))
 	if err != nil {
 		return err
@@ -216,10 +225,10 @@ func installNodeJsApplication(
 	if waitCommand == nil {
 		return nil
 	}
-	return waitForApplicationToBecomeReady(templateName, waitCommand)
+	return waitForApplicationToBecomeReady(workloadType, waitCommand)
 }
 
-func uninstallNodeJsApplication(namespace string, kind string) error {
+func uninstallNodeJsApplication(namespace string, workloadType string) error {
 	return runAndIgnoreOutput(
 		exec.Command(
 			"kubectl",
@@ -228,7 +237,7 @@ func uninstallNodeJsApplication(namespace string, kind string) error {
 			namespace,
 			"--ignore-not-found",
 			"-f",
-			fmt.Sprintf("test-resources/node.js/express/%s.yaml", kind),
+			manifest(workloadType),
 		))
 }
 
@@ -259,7 +268,53 @@ func removeOptOutLabel(namespace string, workloadType string, workloadName strin
 		))
 }
 
-func deleteTestIdFiles() {
-	_ = os.Remove("test-resources/e2e-test-volumes/test-uuid/cronjob.test.id")
-	_ = os.Remove("test-resources/e2e-test-volumes/test-uuid/job.test.id")
+func addTestIdToCronjobManifest(testId string) {
+	filename := manifest("cronjob")
+	applicationManifestContentRaw, err := os.ReadFile(filename)
+	Expect(err).ToNot(HaveOccurred())
+	applicationManifestParsed := make(map[string]interface{})
+	Expect(yaml.Unmarshal(applicationManifestContentRaw, &applicationManifestParsed)).To(Succeed())
+	cronjobSpec := (applicationManifestParsed["spec"]).(map[string]interface{})
+	jobTemplate := (cronjobSpec["jobTemplate"]).(map[string]interface{})
+	jobTemplate["spec"] = addEnvVarToContainer(testId, jobTemplate)
+	cronjobSpec["jobTemplate"] = jobTemplate
+	applicationManifestParsed["spec"] = cronjobSpec
+	updatedApplicationManifestContentRaw, err := yaml.Marshal(&applicationManifestParsed)
+	Expect(err).ToNot(HaveOccurred())
+	Expect(os.WriteFile(filename, updatedApplicationManifestContentRaw, 0644)).To(Succeed())
+}
+
+func addTestIdToJobManifest(testId string) {
+	filename := manifest("job")
+	applicationManifestContentRaw, err := os.ReadFile(filename)
+	Expect(err).ToNot(HaveOccurred())
+	applicationManifestParsed := make(map[string]interface{})
+	Expect(yaml.Unmarshal(applicationManifestContentRaw, &applicationManifestParsed)).To(Succeed())
+	applicationManifestParsed["spec"] = addEnvVarToContainer(testId, applicationManifestParsed)
+	updatedApplicationManifestContentRaw, err := yaml.Marshal(&applicationManifestParsed)
+	Expect(err).ToNot(HaveOccurred())
+	Expect(os.WriteFile(filename, updatedApplicationManifestContentRaw, 0644)).To(Succeed())
+}
+
+func addEnvVarToContainer(testId string, jobTemplateOrManifest map[string]interface{}) map[string]interface{} {
+	jobSpec := (jobTemplateOrManifest["spec"]).(map[string]interface{})
+	template := (jobSpec["template"]).(map[string]interface{})
+	podSpec := (template["spec"]).(map[string]interface{})
+	containers := (podSpec["containers"]).([]interface{})
+	container := (containers[0]).(map[string]interface{})
+	env := (container["env"]).([]interface{})
+	newEnvVar := make(map[string]string)
+	newEnvVar["name"] = "TEST_ID"
+	newEnvVar["value"] = testId
+	env = append(env, newEnvVar)
+	container["env"] = env
+	containers[0] = container
+	podSpec["containers"] = containers
+	template["spec"] = podSpec
+	jobSpec["template"] = template
+	return jobSpec
+}
+
+func manifest(workloadType string) string {
+	return fmt.Sprintf("%s/%s.yaml", applicationPath, workloadType)
 }

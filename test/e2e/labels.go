@@ -19,7 +19,7 @@ func verifyThatFailedInstrumentationAttemptLabelsHaveBeenRemoved(namespace strin
 	By("waiting for the labels to get removed from the workload")
 	Eventually(func(g Gomega) {
 		verifyNoDash0Labels(g, namespace, workloadType)
-	}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
+	}, labelChangeTimeout, pollingInterval).Should(Succeed())
 }
 
 func verifyLabels(

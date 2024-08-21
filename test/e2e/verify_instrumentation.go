@@ -5,19 +5,17 @@ package e2e
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 	"time"
-
-	"github.com/google/uuid"
 
 	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive
 	. "github.com/onsi/gomega"
 )
 
 const (
-	verifyTelemetryTimeout         = 90 * time.Second
-	verifyTelemetryPollingInterval = 500 * time.Millisecond
+	labelChangeTimeout     = 25 * time.Second
+	verifyTelemetryTimeout = 40 * time.Second
+	pollingInterval        = 500 * time.Millisecond
 )
 
 func verifyThatWorkloadHasBeenInstrumented(
@@ -25,9 +23,10 @@ func verifyThatWorkloadHasBeenInstrumented(
 	workloadType string,
 	port int,
 	isBatch bool,
+	testId string,
 	images Images,
 	instrumentationBy string,
-) string {
+) {
 	By(fmt.Sprintf("%s: waiting for the workload to get instrumented (polling its labels and events to check)",
 		workloadType))
 	Eventually(func(g Gomega) {
@@ -40,44 +39,28 @@ func verifyThatWorkloadHasBeenInstrumented(
 			instrumentationBy,
 		)
 		verifySuccessfulInstrumentationEvent(g, namespace, workloadType, instrumentationBy)
-	}, 20*time.Second, verifyTelemetryPollingInterval).Should(Succeed())
+	}, labelChangeTimeout, pollingInterval).Should(Succeed())
 
 	By(fmt.Sprintf("%s: waiting for spans to be captured", workloadType))
-	var testId string
-	if isBatch {
-		testIdTimeoutSeconds := 30
-		if workloadType == "cronjob" {
-			// Cronjob pods are only scheduled once a minute, so we might need to wait a while for a job to be started
-			// and for the ID to become available, hence increasing the timeout for the surrounding "Eventually".
-			testIdTimeoutSeconds = 100
-		}
-		By(fmt.Sprintf("waiting for the test ID file to be written by the %s under test", workloadType))
-		Eventually(func(g Gomega) {
-			// For resource types like batch jobs/cron jobs, the application under test generates the test ID and writes it
-			// to a volume that maps to a host path. We read the test ID from the host path and use it to verify the spans.
-			testIdBytes, err := os.ReadFile(fmt.Sprintf("test-resources/e2e-test-volumes/test-uuid/%s.test.id", workloadType))
-			g.Expect(err).NotTo(HaveOccurred())
-			testId = string(testIdBytes)
-			By(fmt.Sprintf("%s: test ID file is available (test ID: %s)", workloadType, testId))
 
-		}, time.Duration(testIdTimeoutSeconds)*time.Second, 200*time.Millisecond).Should(Succeed())
-	} else {
-		// For resource types that are available as a service (daemonset, deployment etc.) we send HTTP requests with
-		// a unique ID as a query parameter. When checking the produced spans that the OTel collector writes to disk via
-		// the file exporter, we can verify that the span is actually from the currently running test case by inspecting
-		// the http.target span attribute. This guarantees that we do not accidentally pass the test due to a span from
-		// a previous test case.
-		testIdUuid := uuid.New()
-		testId = testIdUuid.String()
-		By(fmt.Sprintf("%s: test ID: %s", workloadType, testId))
+	// For workload types that are available as a service (daemonset, deployment etc.) we send HTTP requests with
+	// a unique ID as a query parameter. When checking the produced spans, we can verify that the span is
+	// actually from the currently running test case by inspecting the http.target span attribute. This guarantees
+	// that we do not accidentally pass the test due to a span from a previous test case.
+	//
+	// For batch workloads (job, cronjob), which are not reachable via a service, the application will call itself via
+	// HTTP instead, which will create spans as well.
+	spanTimeout := verifyTelemetryTimeout
+	if workloadType == "cronjob" {
+		// Cronjob pods are only scheduled once a minute, so we might need to wait a while for a job to be started
+		// and for spans to become available, hence increasing the timeout for "Eventually" block that waits for spans.
+		spanTimeout = 90 * time.Second
 	}
-
 	httpPathWithQuery := fmt.Sprintf("/dash0-k8s-operator-test?id=%s", testId)
 	Eventually(func(g Gomega) {
 		verifySpans(g, isBatch, workloadType, port, httpPathWithQuery)
-	}, verifyTelemetryTimeout, verifyTelemetryPollingInterval).Should(Succeed())
+	}, spanTimeout, pollingInterval).Should(Succeed())
 	By(fmt.Sprintf("%s: matching spans have been received", workloadType))
-	return testId
 }
 
 func verifyThatInstrumentationHasBeenReverted(
@@ -137,7 +120,7 @@ func verifyThatInstrumentationIsRevertedEventually(
 			verifyNoDash0Labels(g, namespace, workloadType)
 		}
 		verifySuccessfulUninstrumentationEvent(g, namespace, workloadType, instrumentationBy)
-	}, 30*time.Second, verifyTelemetryPollingInterval).Should(Succeed())
+	}, labelChangeTimeout, pollingInterval).Should(Succeed())
 
 	// Add some buffer time between the workloads being restarted and verifying that no spans are produced/captured.
 	time.Sleep(10 * time.Second)
