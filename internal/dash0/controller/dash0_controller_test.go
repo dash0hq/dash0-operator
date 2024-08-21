@@ -749,7 +749,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 					Namespace: Dash0MonitoringResourceQualifiedName.Namespace,
 				},
 				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					IngressEndpoint:     IngressEndpointTest,
+					Endpoint:            EndpointTest,
 					AuthorizationToken:  AuthorizationTokenTest,
 					SecretRef:           SecretRefTest,
 					InstrumentWorkloads: "invalid",

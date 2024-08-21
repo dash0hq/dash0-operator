@@ -63,7 +63,7 @@ func EnsureDash0MonitoringResourceExistsWithNamespacedName(
 	By("creating the Dash0 monitoring resource")
 
 	spec := dash0v1alpha1.Dash0MonitoringSpec{
-		IngressEndpoint:    IngressEndpointTest,
+		Endpoint:           EndpointTest,
 		AuthorizationToken: AuthorizationTokenTest,
 		SecretRef:          SecretRefTest,
 	}
@@ -98,7 +98,7 @@ func CreateDash0MonitoringResource(
 			Namespace: dash0MonitoringResourceName.Namespace,
 		},
 		Spec: dash0v1alpha1.Dash0MonitoringSpec{
-			IngressEndpoint:    IngressEndpointTest,
+			Endpoint:           EndpointTest,
 			AuthorizationToken: AuthorizationTokenTest,
 			SecretRef:          SecretRefTest,
 		},

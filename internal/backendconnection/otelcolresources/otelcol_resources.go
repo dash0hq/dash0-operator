@@ -40,7 +40,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	config := &oTelColConfig{
 		Namespace:          namespace,
 		NamePrefix:         m.OTelCollectorNamePrefix,
-		IngressEndpoint:    dash0MonitoringResource.Spec.IngressEndpoint,
+		Endpoint:           dash0MonitoringResource.Spec.Endpoint,
 		AuthorizationToken: dash0MonitoringResource.Spec.AuthorizationToken,
 		SecretRef:          dash0MonitoringResource.Spec.SecretRef,
 		Images:             images,
@@ -210,7 +210,7 @@ func (m *OTelColResourceManager) DeleteResources(
 	config := &oTelColConfig{
 		Namespace:          namespace,
 		NamePrefix:         m.OTelCollectorNamePrefix,
-		IngressEndpoint:    dash0MonitoringResource.Spec.IngressEndpoint,
+		Endpoint:           dash0MonitoringResource.Spec.Endpoint,
 		AuthorizationToken: dash0MonitoringResource.Spec.AuthorizationToken,
 		SecretRef:          dash0MonitoringResource.Spec.SecretRef,
 		Images:             images,

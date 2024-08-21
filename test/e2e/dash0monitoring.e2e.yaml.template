@@ -4,4 +4,4 @@ metadata:
   name: dash0-monitoring-resource-e2e
 spec:
   instrumentWorkloads: {{ .InstrumentWorkloads }}
-  ingressEndpoint: {{ .IngressEndpoint }}
+  endpoint: {{ .Endpoint }}

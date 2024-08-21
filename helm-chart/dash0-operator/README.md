@@ -57,7 +57,7 @@ metadata:
   name: dash0-monitoring-resource
 spec:
   # Replace this value with the actual OTLP/gRPC endpoint of your Dash0 organization.
-  ingressEndpoint: ingress... # TODO needs to be replaced with the actual value, see below
+  endpoint: ingress... # TODO needs to be replaced with the actual value, see below
 
   # Either provide the Dash0 authorization token as a string via the property authorizationToken:
   authorizationToken: auth_... # TODO needs to be replaced with the actual value, see below
@@ -68,7 +68,7 @@ spec:
 ```
 
 At this point, you need to provide two configuration settings:
-* `ingressEndpoint`: The URL of the observability backend to which telemetry data will be sent. This property is
+* `endpoint`: The URL of the observability backend to which telemetry data will be sent. This property is
   mandatory.
   Replace the value in the example above with the OTLP/gRPC endpoint of your Dash0 organization.
   The correct OTLP/gRPC endpoint can be copied fom https://app.dash0.com/settings.
@@ -178,7 +178,7 @@ metadata:
   name: dash0-monitoring-resource
 spec:
   # Replace this value with the actual OTLP/gRPC endpoint of your Dash0 organization.
-  ingressEndpoint: ingress... # TODO needs to be replaced with the actual value, see below
+  endpoint: ingress... # TODO needs to be replaced with the actual value, see below
 
   # Or provide the name of a secret existing in the Dash0 operator's namespace as the property secretRef:
   secretRef: dash0-authorization-secret

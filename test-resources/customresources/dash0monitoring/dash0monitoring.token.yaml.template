@@ -3,9 +3,9 @@ kind: Dash0Monitoring
 metadata:
   name: dash0-monitoring-resource
 spec:
-  # production: ingressEndpoint: ingress.eu-west-1.aws.dash0.com:4317
+  # production: endpoint: ingress.eu-west-1.aws.dash0.com:4317
   # development: ingress.eu-west-1.aws.dash0-dev.com:4317
-  ingressEndpoint: ingress.eu-west-1.aws.dash0-dev.com:4317
+  endpoint: ingress.eu-west-1.aws.dash0-dev.com:4317
 
   # Either provide the name of a secret existing in the Dash0 operator's namespace as secretRef:
   # secretRef: dash0-authorization-secret

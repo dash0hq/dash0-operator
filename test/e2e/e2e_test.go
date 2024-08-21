@@ -490,7 +490,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			deployDash0MonitoringResource(
 				applicationUnderTestNamespace,
 				dash0MonitoringValues{
-					IngressEndpoint:     defaultIngressEndpoint,
+					Endpoint:            defaultEndpoint,
 					InstrumentWorkloads: dash0v1alpha1.None,
 				},
 				operatorNamespace,
@@ -565,12 +565,12 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				operatorHelmChart,
 			)
 
-			By("updating the Dash0 monitoring resource ingress endpoint")
-			newIngressEndpoint := "ingress.eu-east-1.aws.dash0-dev.com:4317"
-			updateIngressEndpointOfDash0MonitoringResource(applicationUnderTestNamespace, newIngressEndpoint)
+			By("updating the Dash0 monitoring resource endpoint setting")
+			newEndpoint := "ingress.eu-east-1.aws.dash0-dev.com:4317"
+			updateEndpointOfDash0MonitoringResource(applicationUnderTestNamespace, newEndpoint)
 
 			By("verify that the config map has been updated by the controller")
-			verifyConfigMapContainsString(operatorNamespace, newIngressEndpoint)
+			verifyConfigMapContainsString(operatorNamespace, newEndpoint)
 
 			By("verify that the configuration reloader says to have triggered a config change")
 			verifyCollectorContainerLogContainsStrings(

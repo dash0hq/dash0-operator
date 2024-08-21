@@ -34,8 +34,8 @@ func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInDash0
 ) error {
 	logger := log.FromContext(ctx)
 
-	if dash0MonitoringResource.Spec.IngressEndpoint == "" {
-		err := fmt.Errorf("no ingress endpoint provided, unable to create the OpenTelemetry collector")
+	if dash0MonitoringResource.Spec.Endpoint == "" {
+		err := fmt.Errorf("no endpoint provided, unable to create the OpenTelemetry collector")
 		logger.Error(err, failedToCreateMsg)
 		return err
 	}
