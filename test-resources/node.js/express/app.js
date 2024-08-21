@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-const crypto = require('node:crypto');
-const fs = require('node:fs/promises');
 const express = require('express');
 
 const port = parseInt(process.env.PORT || '1207');
@@ -22,18 +20,11 @@ const server = app.listen(port, () => {
 });
 
 if (process.env.TRIGGER_SELF_AND_EXIT) {
-  const testId = crypto.randomUUID();
-
   (async function () {
-    const testIdFile = process.env.TEST_ID_FILE || '/test-uuid/test.id';
-    try {
-      await fs.writeFile(testIdFile, testId);
-      console.log(`Test ID ${testId} has been written to file ${testIdFile}.`);
-    } catch (err) {
-      console.error(
-        `Unable to write test ID ${testId} to file ${testIdFile}, matching spans in the end-to-end test will not work.`,
-        err,
-      );
+    const testId = process.env.TEST_ID;
+    if (!testId) {
+      console.error('TEST_ID environment variable is not set, exiting');
+      process.exit(1);
     }
 
     for (let i = 0; i < 120; i++) {
