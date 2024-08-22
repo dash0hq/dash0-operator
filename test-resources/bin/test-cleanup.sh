@@ -15,6 +15,7 @@ load_env_file
 verify_kubectx
 
 kubectl delete -n ${target_namespace} -f test-resources/customresources/dash0monitoring/dash0monitoring.secret.yaml || true
+kubectl delete -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.token.yaml || true
 
 make undeploy-via-helm || true
 

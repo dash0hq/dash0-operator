@@ -4,20 +4,21 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.14.0
-  name: dash0monitorings.operator.dash0.com
+  name: dash0operatorconfigurations.operator.dash0.com
 spec:
   group: operator.dash0.com
   names:
-    kind: Dash0Monitoring
-    listKind: Dash0MonitoringList
-    plural: dash0monitorings
-    singular: dash0monitoring
-  scope: Namespaced
+    kind: Dash0OperatorConfiguration
+    listKind: Dash0OperatorConfigurationList
+    plural: dash0operatorconfigurations
+    singular: dash0operatorconfiguration
+  scope: Cluster
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Dash0Monitoring is the schema for the Dash0Monitoring API
+        description: Dash0OperatorConfiguration is the schema for the Dash0OperatorConfiguration
+          API
         properties:
           apiVersion:
             description: |-
@@ -37,16 +38,21 @@ spec:
           metadata:
             type: object
           spec:
-            description: |-
-              Dash0MonitoringSpec describes the details of monitoring a single Kubernetes namespace with Dash0 and sending
-              telemetry to an observability backend.
+            description: Dash0OperatorConfigurationSpec describes cluster-wide configuration
+              settings for the Dash0 Kubernetes operator.
             properties:
               export:
                 description: |-
-                  The configuration of the observability backend to which telemetry data will be sent. This property is mandatory.
+                  The configuration of the default observability backend to which telemetry data will be sent by the operator, as
+                  well as the backend that will receive the operator's self-monitoring data. This property is mandatory.
                   This can either be Dash0 or another OTLP-compatible backend. You can also combine up to three exporters (i.e.
                   Dash0 plus gRPC plus HTTP). This allows sending the same data to two or three targets simultaneously. At least
                   one exporter has to be defined.
+
+
+                  Please note that self-monitoring data is only sent to one backend, with Dash0 taking precedence over gRPC and
+                  HTTP, and gRPC taking precedence over HTTP if multiple exports are defined. Furthermore, HTTP export with JSON
+                  encoding is not supported for self-monitoring telemetry.
                 minProperties: 1
                 properties:
                   dash0:
@@ -164,55 +170,21 @@ spec:
                     - endpoint
                     type: object
                 type: object
-              instrumentWorkloads:
-                default: all
-                description: |-
-                  Global opt-out for workload instrumentation for the target namespace. There are three possible settings: `all`,
-                  `created-and-updated` and `none`. By default, the setting `all` is assumed.
-
-
-                  If set to `all` (or omitted), the operator will:
-                  * instrument existing workloads in the target namespace (i.e. workloads already running in the namespace) when
-                    the Dash0 monitoring resource is deployed,
-                  * instrument existing workloads or update the instrumentation of already instrumented workloads in the target
-                    namespace when the Dash0 Kubernetes operator is first started or restarted (for example when updating the
-                    operator),
-                  * instrument new workloads in the target namespace when they are deployed, and
-                  * instrument changed workloads in the target namespace when changes are applied to them.
-                  Note that the first two actions (instrumenting existing workloads) will result in restarting the pods of the
-                  affected workloads.
-
-
-                  If set to `created-and-updated`, the operator will not instrument existing workloads in the target namespace.
-                  Instead, it will only:
-                  * instrument new workloads in the target namespace when they are deployed, and
-                  * instrument changed workloads in the target namespace when changes are applied to them.
-                  This setting is useful if you want to avoid pod restarts as a side effect of deploying the Dash0 monitoring
-                  resource or restarting the Dash0 Kubernetes operator.
-
-
-                  You can opt out of instrumenting workloads entirely by setting this option to `none`. With
-                  `instrumentWorkloads: none`, workloads in the target namespace will never be instrumented to send telemetry to
-                  Dash0.
-
-
-                  If this setting is omitted, the value `all` is assumed and new/updated as well as existing Kubernetes workloads
-                  will be intrumented by the operator to send telemetry to Dash0, as described above.
-
-
-                  More fine-grained per-workload control over instrumentation is available by setting the label
-                  dash0.com/enable=false on individual workloads.
-                enum:
-                - all
-                - created-and-updated
-                - none
-                type: string
-            required:
-            - export
+              selfMonitoring:
+                default:
+                  enabled: true
+                description: Global opt-out for self-monitoring for this operator
+                properties:
+                  enabled:
+                    default: true
+                    type: boolean
+                required:
+                - enabled
+                type: object
             type: object
           status:
-            description: Dash0MonitoringStatus defines the observed state of the Dash0Monitoring
-              monitoring resource.
+            description: Dash0OperatorConfigurationStatus defines the observed state
+              of the Dash0 operator configuration resource.
             properties:
               conditions:
                 items:
@@ -283,14 +255,6 @@ spec:
                   - type
                   type: object
                 type: array
-              previousInstrumentWorkloads:
-                description: The spec.instrumentWorkloads setting that has been observed
-                  in the previous reconcile cycle.
-                enum:
-                - all
-                - created-and-updated
-                - none
-                type: string
             type: object
         type: object
     served: true

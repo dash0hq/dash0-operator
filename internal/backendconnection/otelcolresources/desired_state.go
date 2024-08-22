@@ -17,14 +17,21 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoring"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 )
 
 type oTelColConfig struct {
-	Namespace  string
-	NamePrefix string
-	Export     dash0v1alpha1.Export
-	Images     util.Images
+	Namespace                   string
+	NamePrefix                  string
+	Export                      dash0v1alpha1.Export
+	SelfMonitoringConfiguration selfmonitoring.SelfMonitoringConfiguration
+	Images                      util.Images
+}
+
+type collectorConfigurationTemplateValues struct {
+	Exporters                []OtlpExporter
+	IgnoreLogsFromNamespaces []string
 }
 
 const (
@@ -35,15 +42,7 @@ const (
 	// ports. When the operator creates its daemonset, the pods of one of the two otelcol daemonsets would fail to start
 	// due to port conflicts.
 
-	rbacApiVersion = "rbac.authorization.k8s.io/v1"
-)
-
-type collectorConfigurationTemplateValues struct {
-	Exporters                []otlpExporter
-	IgnoreLogsFromNamespaces []string
-}
-
-const (
+	rbacApiVersion   = "rbac.authorization.k8s.io/v1"
 	serviceComponent = "agent-collector"
 
 	openTelemetryCollector      = "opentelemetry-collector"
@@ -90,22 +89,22 @@ var (
 func assembleDesiredState(config *oTelColConfig) ([]client.Object, error) {
 	var desiredState []client.Object
 	desiredState = append(desiredState, serviceAccount(config))
-	collectorCM, err := collectorConfigMap(config)
+	collectorConfigMap, err := assembleCollectorConfigMap(config)
 	if err != nil {
 		return desiredState, err
 	}
-	desiredState = append(desiredState, collectorCM)
-	desiredState = append(desiredState, filelogOffsetsConfigMap(config))
-	desiredState = append(desiredState, clusterRole(config))
-	desiredState = append(desiredState, clusterRoleBinding(config))
-	desiredState = append(desiredState, role(config))
-	desiredState = append(desiredState, roleBinding(config))
-	desiredState = append(desiredState, service(config))
-	ds, err := daemonSet(config)
+	desiredState = append(desiredState, collectorConfigMap)
+	desiredState = append(desiredState, assembleFilelogOffsetsConfigMap(config))
+	desiredState = append(desiredState, assembleClusterRole(config))
+	desiredState = append(desiredState, assembleClusterRoleBinding(config))
+	desiredState = append(desiredState, assembleRole(config))
+	desiredState = append(desiredState, assembleRoleBinding(config))
+	desiredState = append(desiredState, assembleService(config))
+	collectorDaemonSet, err := assembleDaemonSet(config)
 	if err != nil {
 		return desiredState, err
 	}
-	desiredState = append(desiredState, ds)
+	desiredState = append(desiredState, collectorDaemonSet)
 	return desiredState, nil
 }
 
@@ -123,7 +122,7 @@ func serviceAccount(config *oTelColConfig) *corev1.ServiceAccount {
 	}
 }
 
-func filelogOffsetsConfigMap(config *oTelColConfig) *corev1.ConfigMap {
+func assembleFilelogOffsetsConfigMap(config *oTelColConfig) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ConfigMap",
@@ -137,7 +136,7 @@ func filelogOffsetsConfigMap(config *oTelColConfig) *corev1.ConfigMap {
 	}
 }
 
-func role(config *oTelColConfig) *rbacv1.Role {
+func assembleRole(config *oTelColConfig) *rbacv1.Role {
 	return &rbacv1.Role{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Role",
@@ -158,7 +157,7 @@ func role(config *oTelColConfig) *rbacv1.Role {
 	}
 }
 
-func roleBinding(config *oTelColConfig) *rbacv1.RoleBinding {
+func assembleRoleBinding(config *oTelColConfig) *rbacv1.RoleBinding {
 	return &rbacv1.RoleBinding{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "RoleBinding",
@@ -182,7 +181,7 @@ func roleBinding(config *oTelColConfig) *rbacv1.RoleBinding {
 	}
 }
 
-func clusterRole(config *oTelColConfig) *rbacv1.ClusterRole {
+func assembleClusterRole(config *oTelColConfig) *rbacv1.ClusterRole {
 	return &rbacv1.ClusterRole{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ClusterRole",
@@ -213,7 +212,7 @@ func clusterRole(config *oTelColConfig) *rbacv1.ClusterRole {
 	}
 }
 
-func clusterRoleBinding(config *oTelColConfig) *rbacv1.ClusterRoleBinding {
+func assembleClusterRoleBinding(config *oTelColConfig) *rbacv1.ClusterRoleBinding {
 	return &rbacv1.ClusterRoleBinding{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ClusterRoleBinding",
@@ -237,7 +236,7 @@ func clusterRoleBinding(config *oTelColConfig) *rbacv1.ClusterRoleBinding {
 	}
 }
 
-func service(config *oTelColConfig) *corev1.Service {
+func assembleService(config *oTelColConfig) *corev1.Service {
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Service",
@@ -275,7 +274,7 @@ func service(config *oTelColConfig) *corev1.Service {
 	}
 }
 
-func daemonSet(config *oTelColConfig) (*appsv1.DaemonSet, error) {
+func assembleDaemonSet(config *oTelColConfig) (*appsv1.DaemonSet, error) {
 	configMapItems := []corev1.KeyToPath{{
 		Key:  collectorConfigurationYaml,
 		Path: collectorConfigurationYaml,
@@ -370,11 +369,29 @@ func daemonSet(config *oTelColConfig) (*appsv1.DaemonSet, error) {
 		filelogReceiverOffsetsVolumeMount,
 	}
 
-	nodeNameFieldSpec := &corev1.ObjectFieldSelector{
+	nodeNameFieldSpec := corev1.ObjectFieldSelector{
 		FieldPath: "spec.nodeName",
 	}
 
-	env := []corev1.EnvVar{
+	podUidFieldSpec := corev1.ObjectFieldSelector{
+		FieldPath: "metadata.uid",
+	}
+
+	k8sNodeNameEnvVar := corev1.EnvVar{
+		Name: "K8S_NODE_NAME",
+		ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &nodeNameFieldSpec,
+		},
+	}
+
+	k8sPodUidEnvVar := corev1.EnvVar{
+		Name: "K8S_POD_UID",
+		ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &podUidFieldSpec,
+		},
+	}
+
+	collectorEnv := []corev1.EnvVar{
 		{
 			Name: "MY_POD_IP",
 			ValueFrom: &corev1.EnvVarSource{
@@ -383,12 +400,8 @@ func daemonSet(config *oTelColConfig) (*appsv1.DaemonSet, error) {
 				},
 			},
 		},
-		{
-			Name: "K8S_NODE_NAME",
-			ValueFrom: &corev1.EnvVarSource{
-				FieldRef: nodeNameFieldSpec,
-			},
-		},
+		k8sNodeNameEnvVar,
+		k8sPodUidEnvVar,
 		{
 			Name:  "DASH0_COLLECTOR_PID_FILE",
 			Value: collectorPidFilePath,
@@ -400,28 +413,14 @@ func daemonSet(config *oTelColConfig) (*appsv1.DaemonSet, error) {
 	}
 
 	if config.Export.Dash0 != nil {
-		token := config.Export.Dash0.Authorization.Token
-		secretRef := config.Export.Dash0.Authorization.SecretRef
-		if token != nil && *token != "" {
-			env = append(env, corev1.EnvVar{
-				Name:  authTokenEnvVarName,
-				Value: *token,
-			})
-		} else if secretRef != nil && secretRef.Name != "" && secretRef.Key != "" {
-			env = append(env, corev1.EnvVar{
-				Name: authTokenEnvVarName,
-				ValueFrom: &corev1.EnvVarSource{
-					SecretKeyRef: &corev1.SecretKeySelector{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: secretRef.Name,
-						},
-						Key: secretRef.Key,
-					},
-				},
-			})
-		} else {
-			return nil, fmt.Errorf("neither token nor secretRef provided for the Dash0 exporter")
+		authTokenEnvVar, err := util.CreateEnvVarForAuthorization(
+			*config.Export.Dash0,
+			authTokenEnvVarName,
+		)
+		if err != nil {
+			return nil, err
 		}
+		collectorEnv = append(collectorEnv, authTokenEnvVar)
 	}
 
 	probe := corev1.Probe{
@@ -454,7 +453,7 @@ func daemonSet(config *oTelColConfig) (*appsv1.DaemonSet, error) {
 				HostPort:      int32(OtlpHttpHostPort),
 			},
 		},
-		Env:            env,
+		Env:            collectorEnv,
 		LivenessProbe:  &probe,
 		ReadinessProbe: &probe,
 		Resources: corev1.ResourceRequirements{
@@ -481,6 +480,8 @@ func daemonSet(config *oTelColConfig) (*appsv1.DaemonSet, error) {
 				Name:  "GOMEMLIMIT",
 				Value: "4MiB",
 			},
+			k8sNodeNameEnvVar,
+			k8sPodUidEnvVar,
 		},
 		Resources: corev1.ResourceRequirements{
 			Limits: corev1.ResourceList{
@@ -516,12 +517,8 @@ func daemonSet(config *oTelColConfig) (*appsv1.DaemonSet, error) {
 				Name:  "FILELOG_OFFSET_DIRECTORY_PATH",
 				Value: offsetsDirPath,
 			},
-			{
-				Name: "K8S_NODE_NAME",
-				ValueFrom: &corev1.EnvVarSource{
-					FieldRef: nodeNameFieldSpec,
-				},
-			},
+			k8sNodeNameEnvVar,
+			k8sPodUidEnvVar,
 		},
 		Resources: corev1.ResourceRequirements{
 			Limits: corev1.ResourceList{
@@ -557,12 +554,8 @@ func daemonSet(config *oTelColConfig) (*appsv1.DaemonSet, error) {
 				Name:  "FILELOG_OFFSET_DIRECTORY_PATH",
 				Value: offsetsDirPath,
 			},
-			{
-				Name: "K8S_NODE_NAME",
-				ValueFrom: &corev1.EnvVarSource{
-					FieldRef: nodeNameFieldSpec,
-				},
-			},
+			k8sNodeNameEnvVar,
+			k8sPodUidEnvVar,
 		},
 		Resources: corev1.ResourceRequirements{
 			Limits: corev1.ResourceList{
@@ -575,7 +568,7 @@ func daemonSet(config *oTelColConfig) (*appsv1.DaemonSet, error) {
 		filelogOffsetSynchContainer.ImagePullPolicy = config.Images.FilelogOffsetSynchImagePullPolicy
 	}
 
-	ds := &appsv1.DaemonSet{
+	collectorDaemonSet := &appsv1.DaemonSet{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "DaemonSet",
 			APIVersion: "apps/v1",
@@ -614,7 +607,19 @@ func daemonSet(config *oTelColConfig) (*appsv1.DaemonSet, error) {
 			},
 		},
 	}
-	return ds, nil
+
+	if config.SelfMonitoringConfiguration.Enabled {
+		err := selfmonitoring.EnableSelfMonitoringInCollectorDaemonSet(
+			collectorDaemonSet,
+			config.SelfMonitoringConfiguration,
+			config.Images.GetOperatorVersion(),
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return collectorDaemonSet, nil
 }
 
 func serviceAccountName(namePrefix string) string {

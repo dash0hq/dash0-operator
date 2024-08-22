@@ -61,7 +61,7 @@ spec:
       labels:
         app.kubernetes.io/name: dash0-operator
         app.kubernetes.io/component: controller
-        dash0.cert-digest: {{ $certFingerprint }}
+        dash0.com/cert-digest: {{ $certFingerprint }}
         {{- if .Values.operator.podLabels }}
         {{- include "dash0-operator.podLabels" . | nindent 8 }}
         {{- end }}
@@ -196,7 +196,7 @@ spec:
   selector:
     app.kubernetes.io/name: dash0-operator
     app.kubernetes.io/component: controller
-    dash0.cert-digest: {{ $certFingerprint }}
+    dash0.com/cert-digest: {{ $certFingerprint }}
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: MutatingWebhookConfiguration
@@ -285,4 +285,4 @@ spec:
   selector:
     app.kubernetes.io/name: dash0-operator
     app.kubernetes.io/component: controller
-    dash0.cert-digest: {{ $certFingerprint }}
+    dash0.com/cert-digest: {{ $certFingerprint }}

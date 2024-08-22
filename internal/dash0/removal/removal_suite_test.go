@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -99,7 +98,7 @@ var _ = BeforeSuite(func() {
 	instrumenter := &instrumentation.Instrumenter{
 		Client:               k8sClient,
 		Clientset:            clientset,
-		Recorder:             mgr.GetEventRecorderFor("dash0-controller"),
+		Recorder:             mgr.GetEventRecorderFor("dash0-monitoring-controller"),
 		Images:               TestImages,
 		OTelCollectorBaseUrl: OTelCollectorBaseUrlTest,
 	}
@@ -121,15 +120,7 @@ var _ = BeforeSuite(func() {
 		Instrumenter:             instrumenter,
 		OperatorNamespace:        Dash0OperatorNamespace,
 		BackendConnectionManager: backendConnectionManager,
-		DanglingEventsTimeouts: &controller.DanglingEventsTimeouts{
-			InitialTimeout: 0 * time.Second,
-			Backoff: wait.Backoff{
-				Steps:    1,
-				Duration: 0 * time.Second,
-				Factor:   1,
-				Jitter:   0,
-			},
-		},
+		DanglingEventsTimeouts:   &DanglingEventsTimeoutsTest,
 	}
 })
 

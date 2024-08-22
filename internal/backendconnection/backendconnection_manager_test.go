@@ -12,11 +12,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
+	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoring"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
@@ -28,7 +29,7 @@ var (
 		Spec: dash0v1alpha1.Dash0MonitoringSpec{
 			Export: dash0v1alpha1.Export{
 				Dash0: &dash0v1alpha1.Dash0Configuration{
-					Endpoint: EndpointTest,
+					Endpoint: EndpointDash0Test,
 					Authorization: dash0v1alpha1.Authorization{
 						Token: &AuthorizationTokenTest,
 					},
@@ -75,7 +76,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 
 	Describe("when validation checks fail", func() {
 		It("should fail if no endpoint is provided", func() {
-			err := manager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
+			err := manager.EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -90,13 +91,14 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 						},
 					},
 				},
+				selfmonitoring.SelfMonitoringConfiguration{},
 			)
 			Expect(err).To(HaveOccurred())
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
 		})
 
 		It("should fail if neither authorization token nor secret ref are provided for Dash0 exporter", func() {
-			err := manager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
+			err := manager.EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -104,12 +106,14 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 					Spec: dash0v1alpha1.Dash0MonitoringSpec{
 						Export: dash0v1alpha1.Export{
 							Dash0: &dash0v1alpha1.Dash0Configuration{
-								Endpoint:      EndpointTest,
+								Endpoint:      EndpointDash0Test,
 								Authorization: dash0v1alpha1.Authorization{},
 							},
 						},
 					},
-				})
+				},
+				selfmonitoring.SelfMonitoringConfiguration{},
+			)
 			Expect(err).To(HaveOccurred())
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
 		})
@@ -123,17 +127,19 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				operatorNamespace,
 				TestImages,
 				dash0MonitoringResource,
+				selfmonitoring.SelfMonitoringConfiguration{},
 				&logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
 		})
 
 		It("should create all resources", func() {
-			err := manager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
+			err := manager.EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
 				ctx,
 				TestImages,
 				operatorNamespace,
 				dash0MonitoringResource,
+				selfmonitoring.SelfMonitoringConfiguration{},
 			)
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
@@ -159,11 +165,12 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			})
 			Expect(err).ToNot(HaveOccurred())
 
-			err = manager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
+			err = manager.EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
 				ctx,
 				TestImages,
 				operatorNamespace,
 				dash0MonitoringResource,
+				selfmonitoring.SelfMonitoringConfiguration{},
 			)
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
@@ -193,20 +200,22 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			createdObjects = append(createdObjects, thirdDash0MonitoringResource)
 
 			// Let the manager create the collector so there is something to delete.
-			err := manager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
+			err := manager.EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
 				ctx,
 				TestImages,
 				operatorNamespace,
 				secondDash0MonitoringResource,
+				selfmonitoring.SelfMonitoringConfiguration{},
 			)
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
 
-			err = manager.RemoveOpenTelemetryCollectorIfNoDash0MonitoringResourceIsLeft(
+			err = manager.RemoveOpenTelemetryCollectorIfNoMonitoringResourceIsLeft(
 				ctx,
 				TestImages,
 				operatorNamespace,
 				secondDash0MonitoringResource,
+				selfmonitoring.SelfMonitoringConfiguration{},
 			)
 			Expect(err).ToNot(HaveOccurred())
 			// since other Dash0 monitoring resources still exist, the collector resources should not be deleted
@@ -219,16 +228,17 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			createdObjects = append(createdObjects, existingDash0MonitoringResource)
 
 			// Let the manager create the collector so there is something to delete.
-			err := manager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
+			err := manager.EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
 				ctx,
 				TestImages,
 				operatorNamespace,
 				existingDash0MonitoringResource,
+				selfmonitoring.SelfMonitoringConfiguration{},
 			)
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
 
-			err = manager.RemoveOpenTelemetryCollectorIfNoDash0MonitoringResourceIsLeft(
+			err = manager.RemoveOpenTelemetryCollectorIfNoMonitoringResourceIsLeft(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -244,7 +254,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 					Spec: dash0v1alpha1.Dash0MonitoringSpec{
 						Export: dash0v1alpha1.Export{
 							Dash0: &dash0v1alpha1.Dash0Configuration{
-								Endpoint: EndpointTest,
+								Endpoint: EndpointDash0Test,
 								Authorization: dash0v1alpha1.Authorization{
 									Token: &AuthorizationTokenTest,
 								},
@@ -252,6 +262,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 						},
 					},
 				},
+				selfmonitoring.SelfMonitoringConfiguration{},
 			)
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
@@ -264,20 +275,22 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			createdObjects = append(createdObjects, dash0MonitoringResource)
 
 			// Let the manager create the collector so there is something to delete.
-			err := manager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
+			err := manager.EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
 				ctx,
 				TestImages,
 				operatorNamespace,
 				dash0MonitoringResource,
+				selfmonitoring.SelfMonitoringConfiguration{},
 			)
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
 
-			err = manager.RemoveOpenTelemetryCollectorIfNoDash0MonitoringResourceIsLeft(
+			err = manager.RemoveOpenTelemetryCollectorIfNoMonitoringResourceIsLeft(
 				ctx,
 				TestImages,
 				operatorNamespace,
 				dash0MonitoringResource,
+				selfmonitoring.SelfMonitoringConfiguration{},
 			)
 			Expect(err).ToNot(HaveOccurred())
 			// verify the collector is deleted when the Dash0 monitoring resource provided as a parameter is the only
@@ -287,20 +300,22 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 
 		It("should delete the collector if no Dash0 monitoring resource exists", func() {
 			// Let the manager create the collector so there is something to delete.
-			err := manager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
+			err := manager.EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
 				ctx,
 				TestImages,
 				operatorNamespace,
 				dash0MonitoringResource,
+				selfmonitoring.SelfMonitoringConfiguration{},
 			)
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
 
-			err = manager.RemoveOpenTelemetryCollectorIfNoDash0MonitoringResourceIsLeft(
+			err = manager.RemoveOpenTelemetryCollectorIfNoMonitoringResourceIsLeft(
 				ctx,
 				TestImages,
 				operatorNamespace,
 				dash0MonitoringResource,
+				selfmonitoring.SelfMonitoringConfiguration{},
 			)
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)

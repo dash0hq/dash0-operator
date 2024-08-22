@@ -3,7 +3,11 @@
 
 package util
 
-import corev1 "k8s.io/api/core/v1"
+import (
+	"strings"
+
+	corev1 "k8s.io/api/core/v1"
+)
 
 type Reason string
 
@@ -35,6 +39,22 @@ type Images struct {
 	ConfigurationReloaderImagePullPolicy corev1.PullPolicy
 	FilelogOffsetSynchImage              string
 	FilelogOffsetSynchImagePullPolicy    corev1.PullPolicy
+}
+
+func (i Images) GetOperatorVersion() string {
+	return getImageVersion(i.OperatorImage)
+}
+
+func getImageVersion(image string) string {
+	idx := strings.LastIndex(image, "@")
+	if idx >= 0 {
+		return image[idx+1:]
+	}
+	idx = strings.LastIndex(image, ":")
+	if idx >= 0 {
+		return image[idx+1:]
+	}
+	return ""
 }
 
 type InstrumentationMetadata struct {

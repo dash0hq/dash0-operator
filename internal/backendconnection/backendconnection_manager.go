@@ -13,6 +13,7 @@ import (
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
+	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoring"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 )
 
@@ -26,11 +27,12 @@ const (
 	failedToCreateMsg = "failed to create the OpenTelemetry collector instance, no telemetry will be reported to Dash0"
 )
 
-func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
+func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
 	ctx context.Context,
 	images util.Images,
 	operatorNamespace string,
-	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
+	monitoringResource *dash0v1alpha1.Dash0Monitoring,
+	selfMonitoringConfiguration selfmonitoring.SelfMonitoringConfiguration,
 ) error {
 	logger := log.FromContext(ctx)
 
@@ -39,7 +41,8 @@ func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInDash0
 			ctx,
 			operatorNamespace,
 			images,
-			dash0MonitoringResource,
+			monitoringResource,
+			selfMonitoringConfiguration,
 			&logger,
 		)
 
@@ -56,11 +59,12 @@ func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInDash0
 	return nil
 }
 
-func (m *BackendConnectionManager) RemoveOpenTelemetryCollectorIfNoDash0MonitoringResourceIsLeft(
+func (m *BackendConnectionManager) RemoveOpenTelemetryCollectorIfNoMonitoringResourceIsLeft(
 	ctx context.Context,
 	images util.Images,
 	operatorNamespace string,
 	dash0MonitoringResourceToBeDeleted *dash0v1alpha1.Dash0Monitoring,
+	selfMonitoringConfiguration selfmonitoring.SelfMonitoringConfiguration,
 ) error {
 	logger := log.FromContext(ctx)
 	list := &dash0v1alpha1.Dash0MonitoringList{}
@@ -108,6 +112,7 @@ func (m *BackendConnectionManager) RemoveOpenTelemetryCollectorIfNoDash0Monitori
 		operatorNamespace,
 		images,
 		dash0MonitoringResourceToBeDeleted,
+		selfMonitoringConfiguration,
 		&logger,
 	); err != nil {
 		logger.Error(err, "Failed to delete the OpenTelemetry collector resources, requeuing reconcile request.")

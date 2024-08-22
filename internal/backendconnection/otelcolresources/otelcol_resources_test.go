@@ -12,6 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoring"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -116,6 +117,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					Dash0OperatorNamespace,
 					TestImages,
 					dash0MonitoringResource,
+					selfmonitoring.SelfMonitoringConfiguration{},
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -152,6 +154,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					Dash0OperatorNamespace,
 					TestImages,
 					dash0MonitoringResource,
+					selfmonitoring.SelfMonitoringConfiguration{},
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -170,6 +173,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				Dash0OperatorNamespace,
 				TestImages,
 				dash0MonitoringResource,
+				selfmonitoring.SelfMonitoringConfiguration{},
 				&logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -182,6 +186,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					Dash0OperatorNamespace,
 					TestImages,
 					dash0MonitoringResource,
+					selfmonitoring.SelfMonitoringConfiguration{},
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -200,6 +205,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				Dash0OperatorNamespace,
 				TestImages,
 				dash0MonitoringResource,
+				selfmonitoring.SelfMonitoringConfiguration{},
 				&logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -211,6 +217,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				Dash0OperatorNamespace,
 				TestImages,
 				dash0MonitoringResource,
+				selfmonitoring.SelfMonitoringConfiguration{},
 				&logger,
 			)
 			Expect(err).ToNot(HaveOccurred())

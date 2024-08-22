@@ -100,6 +100,38 @@ rules:
   - patch
   - update
 
+# Permissions required to manage the Dash0 operator configuration resource, its finalizers and status.
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - dash0operatorconfigurations
+  verbs:
+  - create
+  - delete
+  - deletecollection
+  - get
+  - list
+  - patch
+  - update
+  - watch
+
+# Permissions required to manage the Dash0 operator configuration resource, its finalizers and status.
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - dash0operatorconfigurations/finalizers
+  verbs:
+  - update
+
+# Permissions required to manage the Dash0 operator configuration resource, its finalizers and status.
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - dash0operatorconfigurations/status
+  verbs:
+  - get
+  - patch
+  - update
 
 # Permissions required to manage OTel collector resources.
 - apiGroups:

@@ -106,15 +106,16 @@ func (i *Instrumenter) InstrumentAtStartup(
 				Name:      dash0MonitoringResource.Name,
 			},
 		}
-		_, stop, err := util.VerifyUniqueDash0MonitoringResourceExists(
+		checkResourceResult, err := util.VerifyThatUniqueResourceExists(
 			ctx,
 			k8sClient,
-			updateStatusFailedMessage,
 			pseudoReconcileRequest,
+			&dash0v1alpha1.Dash0Monitoring{},
+			updateStatusFailedMessage,
 			logger,
 		)
-		if err != nil || stop {
-			// if an error occurred, it has already been logged in verifyUniqueDash0MonitoringResourceExists
+		if err != nil || checkResourceResult.StopReconcile || checkResourceResult.ResourceDoesNotExist {
+			// if an error occurred, it has already been logged in VerifyThatUniqueResourceExists
 			continue
 		}
 

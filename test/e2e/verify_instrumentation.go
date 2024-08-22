@@ -16,6 +16,8 @@ const (
 	labelChangeTimeout     = 25 * time.Second
 	verifyTelemetryTimeout = 40 * time.Second
 	pollingInterval        = 500 * time.Millisecond
+
+	cronjob = "cronjob"
 )
 
 func verifyThatWorkloadHasBeenInstrumented(
@@ -51,7 +53,7 @@ func verifyThatWorkloadHasBeenInstrumented(
 	// For batch workloads (job, cronjob), which are not reachable via a service, the application will call itself via
 	// HTTP instead, which will create spans as well.
 	spanTimeout := verifyTelemetryTimeout
-	if workloadType == "cronjob" {
+	if workloadType == cronjob {
 		// Cronjob pods are only scheduled once a minute, so we might need to wait a while for a job to be started
 		// and for spans to become available, hence increasing the timeout for "Eventually" block that waits for spans.
 		spanTimeout = 90 * time.Second
@@ -126,7 +128,7 @@ func verifyThatInstrumentationIsRevertedEventually(
 	time.Sleep(10 * time.Second)
 
 	secondsToCheckForSpans := 20
-	if workloadType == "cronjob" {
+	if workloadType == cronjob {
 		// Pod for cron jobs only get scheduled once a minute, since the cronjob schedule format does not allow for jobs
 		// starting every second. Thus, to make the test valid, we need to monitor for spans a little bit longer than
 		// for other workload types.

@@ -34,11 +34,12 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
-	dash0controller "github.com/dash0hq/dash0-operator/internal/dash0/controller"
+	"github.com/dash0hq/dash0-operator/internal/dash0/controller"
 	"github.com/dash0hq/dash0-operator/internal/dash0/instrumentation"
-	dash0removal "github.com/dash0hq/dash0-operator/internal/dash0/removal"
-	dash0util "github.com/dash0hq/dash0-operator/internal/dash0/util"
-	dash0webhook "github.com/dash0hq/dash0-operator/internal/dash0/webhook"
+	"github.com/dash0hq/dash0-operator/internal/dash0/removal"
+	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoring"
+	"github.com/dash0hq/dash0-operator/internal/dash0/util"
+	"github.com/dash0hq/dash0-operator/internal/dash0/webhook"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -268,184 +269,6 @@ func startOperatorManager(
 	return nil
 }
 
-func startDash0Controller(
-	ctx context.Context,
-	mgr manager.Manager,
-	clientset *kubernetes.Clientset,
-	envVars *environmentVariables,
-) error {
-	oTelCollectorBaseUrl :=
-		fmt.Sprintf(
-			"http://%s-opentelemetry-collector.%s.svc.cluster.local:4318",
-			envVars.oTelCollectorNamePrefix,
-			envVars.operatorNamespace)
-	images := dash0util.Images{
-		OperatorImage:                        envVars.operatorImage,
-		InitContainerImage:                   envVars.initContainerImage,
-		InitContainerImagePullPolicy:         envVars.initContainerImagePullPolicy,
-		CollectorImage:                       envVars.collectorImage,
-		CollectorImagePullPolicy:             envVars.collectorImagePullPolicy,
-		ConfigurationReloaderImage:           envVars.configurationReloaderImage,
-		ConfigurationReloaderImagePullPolicy: envVars.configurationReloaderImagePullPolicy,
-		FilelogOffsetSynchImage:              envVars.filelogOffsetSynchImage,
-		FilelogOffsetSynchImagePullPolicy:    envVars.filelogOffsetSynchImagePullPolicy,
-	}
-
-	var deploymentSelfReference *appsv1.Deployment
-	var err error
-
-	if deploymentSelfReference, err = executeStartupTasks(
-		ctx,
-		clientset,
-		mgr.GetEventRecorderFor("dash0-startup-tasks"),
-		images,
-		oTelCollectorBaseUrl,
-		envVars.operatorNamespace,
-		envVars.deploymentName,
-		&setupLog,
-	); err != nil {
-		return err
-	}
-
-	k8sClient := mgr.GetClient()
-	instrumenter := &instrumentation.Instrumenter{
-		Client:               k8sClient,
-		Clientset:            clientset,
-		Recorder:             mgr.GetEventRecorderFor("dash0-controller"),
-		Images:               images,
-		OTelCollectorBaseUrl: oTelCollectorBaseUrl,
-	}
-	oTelColResourceManager := &otelcolresources.OTelColResourceManager{
-		Client:                  k8sClient,
-		Scheme:                  mgr.GetScheme(),
-		DeploymentSelfReference: deploymentSelfReference,
-		OTelCollectorNamePrefix: envVars.oTelCollectorNamePrefix,
-	}
-	backendConnectionManager := &backendconnection.BackendConnectionManager{
-		Client:                 k8sClient,
-		Clientset:              clientset,
-		OTelColResourceManager: oTelColResourceManager,
-	}
-	dash0Reconciler := &dash0controller.Dash0Reconciler{
-		Client:                   k8sClient,
-		Clientset:                clientset,
-		Instrumenter:             instrumenter,
-		BackendConnectionManager: backendConnectionManager,
-		Images:                   images,
-		OperatorNamespace:        envVars.operatorNamespace,
-	}
-
-	if err := dash0Reconciler.SetupWithManager(mgr); err != nil {
-		return fmt.Errorf("unable to set up the Dash0 reconciler: %w", err)
-	}
-	setupLog.Info("Dash0 reconciler has been set up.")
-
-	if os.Getenv("ENABLE_WEBHOOK") != "false" {
-		if err := (&dash0webhook.Handler{
-			Client:               k8sClient,
-			Recorder:             mgr.GetEventRecorderFor("dash0-webhook"),
-			Images:               images,
-			OTelCollectorBaseUrl: oTelCollectorBaseUrl,
-		}).SetupWebhookWithManager(mgr); err != nil {
-			return fmt.Errorf("unable to create the Dash0 webhook: %w", err)
-		}
-		setupLog.Info("Dash0 webhook has been set up.")
-	} else {
-		setupLog.Info("Dash0 webhooks have been disabled via configuration.")
-	}
-
-	return nil
-}
-
-func executeStartupTasks(
-	ctx context.Context,
-	clientset *kubernetes.Clientset,
-	eventRecorder record.EventRecorder,
-	images dash0util.Images,
-	oTelCollectorBaseUrl string,
-	operatorNamespace string,
-	deploymentName string,
-	logger *logr.Logger,
-) (*appsv1.Deployment, error) {
-	cfg := ctrl.GetConfigOrDie()
-	startupTasksK8sClient, err := client.New(cfg, client.Options{
-		Scheme: scheme,
-	})
-	if err != nil {
-		logger.Error(err, "failed to create Kubernetes API client for startup tasks")
-		return nil, err
-	}
-
-	instrumentAtStartup(
-		ctx,
-		startupTasksK8sClient,
-		clientset,
-		eventRecorder,
-		images,
-		oTelCollectorBaseUrl,
-	)
-
-	deploymentSelfReference, err := findDeploymentSelfReference(
-		ctx,
-		startupTasksK8sClient,
-		operatorNamespace,
-		deploymentName,
-		logger,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return deploymentSelfReference, nil
-}
-
-func findDeploymentSelfReference(
-	ctx context.Context,
-	k8sClient client.Client,
-	operatorNamespace string,
-	deploymentName string,
-	logger *logr.Logger,
-) (*appsv1.Deployment, error) {
-	deploymentSelfReference := &appsv1.Deployment{}
-	fullyQualifiedName := fmt.Sprintf("%s/%s", operatorNamespace, deploymentName)
-	if err := k8sClient.Get(ctx, client.ObjectKey{
-		Namespace: operatorNamespace,
-		Name:      deploymentName,
-	}, deploymentSelfReference); err != nil {
-		logger.Error(err, "failed to get self reference for controller deployment")
-		return nil, err
-	}
-	if deploymentSelfReference.UID == "" {
-		msg := fmt.Sprintf("self reference for controller deployment %s has no UID", fullyQualifiedName)
-		err := fmt.Errorf(msg)
-		logger.Error(err, msg)
-		return nil, err
-	}
-	return deploymentSelfReference, nil
-}
-
-func instrumentAtStartup(
-	ctx context.Context,
-	startupTasksK8sClient client.Client,
-	clientset *kubernetes.Clientset,
-	eventRecorder record.EventRecorder,
-	images dash0util.Images,
-	oTelCollectorBaseUrl string,
-) {
-	startupInstrumenter := &instrumentation.Instrumenter{
-		Client:               startupTasksK8sClient,
-		Clientset:            clientset,
-		Recorder:             eventRecorder,
-		Images:               images,
-		OTelCollectorBaseUrl: oTelCollectorBaseUrl,
-	}
-
-	// Trigger an unconditional apply/update of instrumentation for all workloads in Dash0-enabled namespaces, according
-	// to the respective settings of the Dash0 monitoring resource in the namespace. See godoc comment on
-	// Instrumenter#InstrumentAtStartup.
-	startupInstrumenter.InstrumentAtStartup(ctx, startupTasksK8sClient, &setupLog)
-}
-
 func readEnvironmentVariables() (*environmentVariables, error) {
 	operatorNamespace, isSet := os.LookupEnv(operatorNamespaceEnvVarName)
 	if !isSet {
@@ -526,15 +349,233 @@ func readOptionalPullPolicyFromEnvironmentVariable(envVarName string) corev1.Pul
 	return ""
 }
 
+func startDash0Controller(
+	ctx context.Context,
+	mgr manager.Manager,
+	clientset *kubernetes.Clientset,
+	envVars *environmentVariables,
+) error {
+	oTelCollectorBaseUrl :=
+		fmt.Sprintf(
+			"http://%s-opentelemetry-collector.%s.svc.cluster.local:4318",
+			envVars.oTelCollectorNamePrefix,
+			envVars.operatorNamespace)
+	images := util.Images{
+		OperatorImage:                        envVars.operatorImage,
+		InitContainerImage:                   envVars.initContainerImage,
+		InitContainerImagePullPolicy:         envVars.initContainerImagePullPolicy,
+		CollectorImage:                       envVars.collectorImage,
+		CollectorImagePullPolicy:             envVars.collectorImagePullPolicy,
+		ConfigurationReloaderImage:           envVars.configurationReloaderImage,
+		ConfigurationReloaderImagePullPolicy: envVars.configurationReloaderImagePullPolicy,
+		FilelogOffsetSynchImage:              envVars.filelogOffsetSynchImage,
+		FilelogOffsetSynchImagePullPolicy:    envVars.filelogOffsetSynchImagePullPolicy,
+	}
+
+	var deploymentSelfReference *appsv1.Deployment
+	var err error
+
+	if deploymentSelfReference, err = executeStartupTasks(
+		ctx,
+		clientset,
+		mgr.GetEventRecorderFor("dash0-startup-tasks"),
+		images,
+		oTelCollectorBaseUrl,
+		envVars.operatorNamespace,
+		envVars.deploymentName,
+		&setupLog,
+	); err != nil {
+		return err
+	}
+
+	logCurrentSelfMonitoringSettings(deploymentSelfReference)
+
+	k8sClient := mgr.GetClient()
+	instrumenter := &instrumentation.Instrumenter{
+		Client:               k8sClient,
+		Clientset:            clientset,
+		Recorder:             mgr.GetEventRecorderFor("dash0-monitoring-controller"),
+		Images:               images,
+		OTelCollectorBaseUrl: oTelCollectorBaseUrl,
+	}
+	oTelColResourceManager := &otelcolresources.OTelColResourceManager{
+		Client:                  k8sClient,
+		Scheme:                  mgr.GetScheme(),
+		DeploymentSelfReference: deploymentSelfReference,
+		OTelCollectorNamePrefix: envVars.oTelCollectorNamePrefix,
+	}
+	backendConnectionManager := &backendconnection.BackendConnectionManager{
+		Client:                 k8sClient,
+		Clientset:              clientset,
+		OTelColResourceManager: oTelColResourceManager,
+	}
+
+	operatorConfigurationReconciler := &controller.OperatorConfigurationReconciler{
+		Client:                  mgr.GetClient(),
+		Clientset:               clientset,
+		Scheme:                  mgr.GetScheme(),
+		Recorder:                mgr.GetEventRecorderFor("dash0-operator-configuration-controller"),
+		DeploymentSelfReference: deploymentSelfReference,
+	}
+	if err := operatorConfigurationReconciler.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to set up the operator configuration reconciler: %w", err)
+	}
+
+	monitoringReconciler := &controller.Dash0Reconciler{
+		Client:                   k8sClient,
+		Clientset:                clientset,
+		Instrumenter:             instrumenter,
+		BackendConnectionManager: backendConnectionManager,
+		Images:                   images,
+		OperatorNamespace:        envVars.operatorNamespace,
+	}
+
+	if err := monitoringReconciler.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to set up the monitoring reconciler: %w", err)
+	}
+
+	if os.Getenv("ENABLE_WEBHOOK") != "false" {
+		if err := (&webhook.Handler{
+			Client:               k8sClient,
+			Recorder:             mgr.GetEventRecorderFor("dash0-webhook"),
+			Images:               images,
+			OTelCollectorBaseUrl: oTelCollectorBaseUrl,
+		}).SetupWebhookWithManager(mgr); err != nil {
+			return fmt.Errorf("unable to create the webhook: %w", err)
+		}
+	} else {
+		setupLog.Info("Webhook is disabled via configuration.")
+	}
+
+	return nil
+}
+
+func executeStartupTasks(
+	ctx context.Context,
+	clientset *kubernetes.Clientset,
+	eventRecorder record.EventRecorder,
+	images util.Images,
+	oTelCollectorBaseUrl string,
+	operatorNamespace string,
+	deploymentName string,
+	logger *logr.Logger,
+) (*appsv1.Deployment, error) {
+	cfg := ctrl.GetConfigOrDie()
+	startupTasksK8sClient, err := client.New(cfg, client.Options{
+		Scheme: scheme,
+	})
+	if err != nil {
+		logger.Error(err, "failed to create Kubernetes API client for startup tasks")
+		return nil, err
+	}
+
+	instrumentAtStartup(
+		ctx,
+		startupTasksK8sClient,
+		clientset,
+		eventRecorder,
+		images,
+		oTelCollectorBaseUrl,
+	)
+
+	deploymentSelfReference, err := findDeploymentSelfReference(
+		ctx,
+		startupTasksK8sClient,
+		operatorNamespace,
+		deploymentName,
+		logger,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return deploymentSelfReference, nil
+}
+
+func findDeploymentSelfReference(
+	ctx context.Context,
+	k8sClient client.Client,
+	operatorNamespace string,
+	deploymentName string,
+	logger *logr.Logger,
+) (*appsv1.Deployment, error) {
+	deploymentSelfReference := &appsv1.Deployment{}
+	fullyQualifiedName := fmt.Sprintf("%s/%s", operatorNamespace, deploymentName)
+	if err := k8sClient.Get(ctx, client.ObjectKey{
+		Namespace: operatorNamespace,
+		Name:      deploymentName,
+	}, deploymentSelfReference); err != nil {
+		logger.Error(err, "failed to get self reference for controller deployment")
+		return nil, err
+	}
+	if deploymentSelfReference.UID == "" {
+		msg := fmt.Sprintf("self reference for controller deployment %s has no UID", fullyQualifiedName)
+		err := fmt.Errorf(msg)
+		logger.Error(err, msg)
+		return nil, err
+	}
+	return deploymentSelfReference, nil
+}
+
+func instrumentAtStartup(
+	ctx context.Context,
+	startupTasksK8sClient client.Client,
+	clientset *kubernetes.Clientset,
+	eventRecorder record.EventRecorder,
+	images util.Images,
+	oTelCollectorBaseUrl string,
+) {
+	startupInstrumenter := &instrumentation.Instrumenter{
+		Client:               startupTasksK8sClient,
+		Clientset:            clientset,
+		Recorder:             eventRecorder,
+		Images:               images,
+		OTelCollectorBaseUrl: oTelCollectorBaseUrl,
+	}
+
+	// Trigger an unconditional apply/update of instrumentation for all workloads in Dash0-enabled namespaces, according
+	// to the respective settings of the Dash0 monitoring resource in the namespace. See godoc comment on
+	// Instrumenter#InstrumentAtStartup.
+	startupInstrumenter.InstrumentAtStartup(ctx, startupTasksK8sClient, &setupLog)
+}
+
+func logCurrentSelfMonitoringSettings(deploymentSelfReference *appsv1.Deployment) {
+	selfMonitoringConfiguration, err :=
+		selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(
+			deploymentSelfReference,
+			controller.ManagerContainerName,
+		)
+	if err != nil {
+		setupLog.Error(err, "cannot determine whether self-monitoring is enabled in the controller deployment")
+	}
+
+	if selfMonitoringConfiguration.Enabled {
+		endpointAndHeaders := selfmonitoring.ConvertExportConfigurationToEnvVarSettings(selfMonitoringConfiguration.Export)
+		setupLog.Info(
+			"Self-monitoring settings on controller deployment:",
+			"enabled",
+			selfMonitoringConfiguration.Enabled,
+			"endpoint",
+			endpointAndHeaders.Endpoint,
+		)
+	} else {
+		setupLog.Info(
+			"Self-monitoring settings on controller deployment:",
+			"enabled",
+			selfMonitoringConfiguration.Enabled,
+		)
+	}
+}
+
 func deleteDash0MonitoringResourcesInAllNamespaces(logger *logr.Logger) error {
-	handler, err := dash0removal.NewOperatorPreDeleteHandler()
+	handler, err := removal.NewOperatorPreDeleteHandler()
 	if err != nil {
 		logger.Error(err, "Failed to create the OperatorPreDeleteHandler.")
 		return err
 	}
 	err = handler.DeleteAllDash0MonitoringResources()
 	if err != nil {
-		logger.Error(err, "Failed to delete all Dash0 monitoring resources.")
+		logger.Error(err, "Failed to delete all monitoring resources.")
 		return err
 	}
 	return nil

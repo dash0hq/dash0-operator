@@ -8,7 +8,6 @@ import (
 	"errors"
 	"reflect"
 
-	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 	"github.com/go-logr/logr"
 	"github.com/google/go-cmp/cmp"
 	appsv1 "k8s.io/api/apps/v1"
@@ -21,6 +20,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoring"
+	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 )
 
 type OTelColResourceManager struct {
@@ -34,14 +35,16 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	ctx context.Context,
 	namespace string,
 	images util.Images,
-	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
+	monitoringResource *dash0v1alpha1.Dash0Monitoring,
+	selfMonitoringConfiguration selfmonitoring.SelfMonitoringConfiguration,
 	logger *logr.Logger,
 ) (bool, bool, error) {
 	config := &oTelColConfig{
-		Namespace:  namespace,
-		NamePrefix: m.OTelCollectorNamePrefix,
-		Export:     dash0MonitoringResource.Spec.Export,
-		Images:     images,
+		Namespace:                   namespace,
+		NamePrefix:                  m.OTelCollectorNamePrefix,
+		Export:                      monitoringResource.Spec.Export,
+		SelfMonitoringConfiguration: selfMonitoringConfiguration,
+		Images:                      images,
 	}
 	desiredState, err := assembleDesiredState(config)
 	if err != nil {
@@ -203,13 +206,15 @@ func (m *OTelColResourceManager) DeleteResources(
 	namespace string,
 	images util.Images,
 	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
+	selfMonitoringConfiguration selfmonitoring.SelfMonitoringConfiguration,
 	logger *logr.Logger,
 ) error {
 	config := &oTelColConfig{
-		Namespace:  namespace,
-		NamePrefix: m.OTelCollectorNamePrefix,
-		Export:     dash0MonitoringResource.Spec.Export,
-		Images:     images,
+		Namespace:                   namespace,
+		NamePrefix:                  m.OTelCollectorNamePrefix,
+		Export:                      dash0MonitoringResource.Spec.Export,
+		SelfMonitoringConfiguration: selfMonitoringConfiguration,
+		Images:                      images,
 	}
 	allObjects, err := assembleDesiredState(config)
 	if err != nil {

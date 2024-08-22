@@ -27,7 +27,7 @@ deployment should match snapshot (default values):
           labels:
             app.kubernetes.io/component: controller
             app.kubernetes.io/name: dash0-operator
-            dash0.cert-digest: dJTiBDRVJUSUZJQ
+            dash0.com/cert-digest: dJTiBDRVJUSUZJQ
         spec:
           automountServiceAccountToken: true
           containers:
@@ -154,4 +154,4 @@ injector service should match snapshot (default settings):
       selector:
         app.kubernetes.io/component: controller
         app.kubernetes.io/name: dash0-operator
-        dash0.cert-digest: dJTiBDRVJUSUZJQ
+        dash0.com/cert-digest: dJTiBDRVJUSUZJQ

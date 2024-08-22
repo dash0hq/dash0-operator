@@ -47,13 +47,19 @@ echo
 
 sleep 5
 
-echo "STEP 6: deploy the Dash0 monitoring resource to namespace ${target_namespace}"
+
+echo "STEP 6: deploy the Dash0 operator configuration resource to cluster"
+kubectl apply -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.token.yaml
+echo
+echo
+
+echo "STEP 7: deploy the Dash0 monitoring resource to namespace ${target_namespace}"
 kubectl apply -n ${target_namespace} -f test-resources/customresources/dash0monitoring/dash0monitoring.secret.yaml
 echo
 echo
 
 sleep 5
 
-echo "STEP 7: deploy application under monitoring"
+echo "STEP 8: deploy application under monitoring"
 test-resources/node.js/express/deploy.sh ${target_namespace} ${kind}
 

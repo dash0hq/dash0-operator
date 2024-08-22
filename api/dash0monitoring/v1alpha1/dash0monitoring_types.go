@@ -4,14 +4,20 @@
 package v1alpha1
 
 import (
+	"fmt"
 	"slices"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	dash0common "github.com/dash0hq/dash0-operator/api/dash0monitoring"
 )
 
 const (
-	FinalizerId = "operator.dash0.com/dash0-monitoring-finalizer"
+	MonitoringFinalizerId = "operator.dash0.com/dash0-monitoring-finalizer"
 )
 
 // Dash0MonitoringSpec describes the details of monitoring a single Kubernetes namespace with Dash0 and sending
@@ -60,131 +66,6 @@ type Dash0MonitoringSpec struct {
 	InstrumentWorkloads InstrumentWorkloadsMode `json:"instrumentWorkloads,omitempty"`
 }
 
-// Export describes the observability backend to which telemetry data will be sent. This can either be Dash0 or another
-// OTLP-compatible backend. You can also combine up to three exporters (i.e. Dash0 plus gRPC plus HTTP). This allows
-// sending the same data to two or three targets simultaneously. At least one exporter has to be defined.
-//
-// +kubebuilder:validation:MinProperties=1
-// +kubebuilder:validation:MaxProperties=3
-type Export struct {
-	// The configuration of the Dash0 ingress endpoint to which telemetry data will be sent.
-	//
-	// +kubebuilder:validation:Optional
-	Dash0 *Dash0Configuration `json:"dash0,omitempty"`
-
-	// The settings for an exporter to send telemetry to an arbitrary OTLP-compatible receiver via HTTP.
-	//
-	// +kubebuilder:validation:Optional
-	Http *HttpConfiguration `json:"http,omitempty"`
-
-	// The settings for an exporter to send telemetry to an arbitrary OTLP-compatible receiver via gRPC.
-	//
-	// +kubebuilder:validation:Optional
-	Grpc *GrpcConfiguration `json:"grpc,omitempty"`
-}
-
-// Dash0Configuration describes to which Dash0 ingress endpoint telemetry data will be sent.
-type Dash0Configuration struct {
-	// The URL of the Dash0 ingress endpoint to which telemetry data will be sent. This property is mandatory. The value
-	// needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct OTLP/gRPC endpoint can be copied fom
-	// https://app.dash0.com/settings. The correct endpoint value will always start with `ingress.` and end in
-	// `dash0.com:4317`.
-	//
-	// +kubebuilder:validation:Required
-	Endpoint string `json:"endpoint"`
-
-	// The name of the Dash0 dataset to which telemetry data will be sent. This property is optional. If omitted, the
-	// dataset "default" will be used.
-	//
-	// +kubebuilder:default=default
-	Dataset string `json:"dataset,omitempty"`
-
-	// Mandatory authorization settings for sending data to Dash0.
-	//
-	// +kubebuilder:validation:Required
-	Authorization Authorization `json:"authorization"`
-}
-
-// Authorization contains the authorization settings for Dash0.
-//
-// +kubebuilder:validation:MinProperties=1
-// +kubebuilder:validation:MaxProperties=1
-type Authorization struct {
-	// The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
-	// to be provided. If both are provided, the token will be used and SecretRef will be ignored. The authorization
-	// token for your Dash0 organization can be copied from https://app.dash0.com/settings.
-	//
-	// +kubebuilder:validation:Optional
-	Token *string `json:"token"` // either token or secret ref, with token taking precedence
-
-	// A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
-	// ignored if the token property is set. The authorization token for your Dash0 organization can be copied from
-	// https://app.dash0.com/settings.
-	//
-	// +kubebuilder:validation:Optional
-	SecretRef *SecretRef `json:"secretRef"`
-}
-
-type SecretRef struct {
-	// The name of the secret containing the Dash0 authorization token. Defaults to "dash0-authorization-secret".
-	// +kubebuilder:default=dash0-authorization-secret
-	Name string `json:"name"`
-
-	// The key of the value which contains the Dash0 authorization token. Defaults to "token"
-	// +kubebuilder:default=token
-	Key string `json:"key"`
-}
-
-// HttpConfiguration describe the settings for an exporter to send telemetry to an arbitrary OTLP-compatible receiver
-// via HTTP.
-type HttpConfiguration struct {
-	// The URL of the OTLP-compatible receiver to which telemetry data will be sent. This property is mandatory.
-	//
-	// +kubebuilder:validation:Required
-	Endpoint string `json:"endpoint"`
-
-	// Additional headers to be sent with each HTTP request, for example for authorization. This property is optional.
-	//
-	// +kubebuilder:validation:Optional
-	Headers []Header `json:"headers,omitempty"`
-
-	// The encoding of the OTLP data when sent via HTTP. Can be either proto or json, defaults to proto.
-	//
-	// +kubebuilder:default=proto
-	Encoding OtlpEncoding `json:"encoding,omitempty"`
-}
-
-// GrpcConfiguration descibe the settings for an exporter to send telemetry to an arbitrary OTLP-compatible receiver
-// via gRPC.
-type GrpcConfiguration struct {
-	// The URL of the OTLP-compatible receiver to which telemetry data will be sent. This property is mandatory.
-	//
-	// +kubebuilder:validation:Required
-	Endpoint string `json:"endpoint"`
-
-	// Additional headers to be sent with each gRPC request, for example for authorization. This property is optional.
-	//
-	// +kubebuilder:validation:Optional
-	Headers []Header `json:"headers,omitempty"`
-}
-
-// OtlpEncoding describes the encoding of the OTLP data when sent via HTTP.
-//
-// +kubebuilder:validation:Enum=proto;json
-type OtlpEncoding string
-
-const (
-	Proto OtlpEncoding = "proto"
-	Json  OtlpEncoding = "json"
-)
-
-type Header struct {
-	// +kubebuilder:validation:Required
-	Name string `json:"name"`
-	// +kubebuilder:validation:Required
-	Value string `json:"value"`
-}
-
 // InstrumentWorkloadsMode describes when exactly workloads will be instrumented.  Only one of the following modes
 // may be specified. If none of the following policies is specified, the default one is All. See
 // Dash0MonitoringSpec#InstrumentWorkloads for more details.
@@ -205,25 +86,7 @@ const (
 
 var allInstrumentWorkloadsMode = []InstrumentWorkloadsMode{All, CreatedAndUpdated, None}
 
-func ReadBooleanOptOutSetting(setting *bool) bool {
-	return readOptionalBooleanWithDefault(setting, true)
-}
-
-func readOptionalBooleanWithDefault(setting *bool, defaultValue bool) bool {
-	if setting == nil {
-		return defaultValue
-	}
-	return *setting
-}
-
-type ConditionType string
-
-const (
-	ConditionTypeAvailable ConditionType = "Available"
-	ConditionTypeDegraded  ConditionType = "Degraded"
-)
-
-// Dash0MonitoringStatus defines the observed state of the Dash0 monitoring resource.
+// Dash0MonitoringStatus defines the observed state of the Dash0Monitoring monitoring resource.
 type Dash0MonitoringStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 
@@ -232,10 +95,11 @@ type Dash0MonitoringStatus struct {
 	PreviousInstrumentWorkloads InstrumentWorkloadsMode `json:"previousInstrumentWorkloads,omitempty"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
-
-// Dash0Monitoring is the Schema for the Dash0Monitoring API
+// Dash0Monitoring is the schema for the Dash0Monitoring API
+//
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +groupName=operator.dash0.com
 type Dash0Monitoring struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -284,7 +148,7 @@ func (d *Dash0Monitoring) SetAvailableConditionToUnknown() {
 			Type:    string(ConditionTypeAvailable),
 			Status:  metav1.ConditionUnknown,
 			Reason:  "ReconcileStarted",
-			Message: "Dash0 has started resource reconciliation.",
+			Message: "Dash0 has started monitoring resource reconciliation for this namespace.",
 		})
 	meta.SetStatusCondition(
 		&d.Status.Conditions,
@@ -292,7 +156,7 @@ func (d *Dash0Monitoring) SetAvailableConditionToUnknown() {
 			Type:    string(ConditionTypeDegraded),
 			Status:  metav1.ConditionTrue,
 			Reason:  "ReconcileStarted",
-			Message: "Dash0 is still starting.",
+			Message: "Dash0 monitoring resource reconciliation is in progress.",
 		})
 }
 
@@ -306,7 +170,7 @@ func (d *Dash0Monitoring) EnsureResourceIsMarkedAsAvailable() {
 			Type:    string(ConditionTypeAvailable),
 			Status:  metav1.ConditionTrue,
 			Reason:  "ReconcileFinished",
-			Message: "Dash0 is active in this namespace now.",
+			Message: "Dash0 monitoring is active in this namespace now.",
 		})
 	meta.RemoveStatusCondition(&d.Status.Conditions, string(ConditionTypeDegraded))
 }
@@ -314,7 +178,7 @@ func (d *Dash0Monitoring) EnsureResourceIsMarkedAsAvailable() {
 func (d *Dash0Monitoring) EnsureResourceIsMarkedAsAboutToBeDeleted() {
 	d.EnsureResourceIsMarkedAsDegraded(
 		"Dash0MonitoringResourceHasBeenRemoved",
-		"Dash0 is inactive in this namespace now.",
+		"Dash0 monitoring is inactive in this namespace now.",
 	)
 }
 
@@ -341,6 +205,59 @@ func (d *Dash0Monitoring) EnsureResourceIsMarkedAsDegraded(
 			Reason:  reason,
 			Message: message,
 		})
+}
+
+func (d *Dash0Monitoring) GetResourceTypeName() string {
+	return "Dash0Monitoring"
+}
+
+func (d *Dash0Monitoring) GetNaturalLanguageResourceTypeName() string {
+	return "Dash0 monitoring resource"
+}
+
+func (d *Dash0Monitoring) Get() client.Object {
+	return d
+}
+
+func (d *Dash0Monitoring) GetName() string {
+	return d.Name
+}
+
+func (d *Dash0Monitoring) GetUid() types.UID {
+	return d.UID
+}
+
+func (d *Dash0Monitoring) GetCreationTimestamp() metav1.Time {
+	return d.CreationTimestamp
+}
+
+func (d *Dash0Monitoring) GetReceiver() client.Object {
+	return &Dash0Monitoring{}
+}
+
+func (d *Dash0Monitoring) GetListReceiver() client.ObjectList {
+	return &Dash0MonitoringList{}
+}
+
+func (d *Dash0Monitoring) IsClusterResource() bool {
+	return false
+}
+
+func (d *Dash0Monitoring) RequestToName(ctrl.Request) string {
+	return fmt.Sprintf("%s/%s", d.Namespace, d.Name)
+}
+
+func (d *Dash0Monitoring) Items(list client.ObjectList) []client.Object {
+	items := list.(*Dash0MonitoringList).Items
+	result := make([]client.Object, len(items))
+	for i := range items {
+		result[i] = &items[i]
+	}
+	return result
+}
+
+func (d *Dash0Monitoring) At(list client.ObjectList, index int) dash0common.Dash0Resource {
+	return &list.(*Dash0MonitoringList).Items[index]
 }
 
 //+kubebuilder:object:root=true
