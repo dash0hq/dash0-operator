@@ -22,3 +22,9 @@ spec:
           ports:
             - containerPort: 1208
           imagePullPolicy: Never
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 1208
+            initialDelaySeconds: 1
+            periodSeconds: 1

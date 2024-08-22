@@ -40,3 +40,9 @@ spec:
           ports:
             - containerPort: 1209
           imagePullPolicy: Never
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 1209
+            initialDelaySeconds: 1
+            periodSeconds: 1
