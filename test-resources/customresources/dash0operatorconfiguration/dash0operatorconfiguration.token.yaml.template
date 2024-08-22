@@ -1,0 +1,12 @@
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0OperatorConfiguration
+metadata:
+  name: dash0-operator-configuration-resource
+spec:
+  selfMonitoring:
+    enabled: true
+  export:
+    dash0:
+      endpoint: ingress.eu-west-1.aws.dash0-dev.com:4317
+      authorization:
+        token: "$DASH0_AUTHORIZATION_TOKEN"

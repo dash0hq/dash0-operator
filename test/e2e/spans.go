@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
 	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive
@@ -57,7 +56,16 @@ func sendRequestAndFindMatchingSpans(
 	if !isBatch {
 		sendRequest(g, port, httpPathWithQuery)
 	}
-	return fileHasMatchingSpan(g, workloadType, httpPathWithQuery, timestampLowerBound)
+	var resourceMatchFn func(span ptrace.ResourceSpans) bool
+	if workloadType != "" {
+		resourceMatchFn = resourceSpansHaveExpectedResourceAttributes(workloadType)
+	}
+	return fileHasMatchingSpan(
+		g,
+		resourceMatchFn,
+		matchHttpServerSpanWithHttpTarget(httpPathWithQuery),
+		timestampLowerBound,
+	)
 }
 
 func sendRequest(g Gomega, port int, httpPathWithQuery string) {
@@ -79,7 +87,12 @@ func sendRequest(g Gomega, port int, httpPathWithQuery string) {
 }
 
 //nolint:all
-func fileHasMatchingSpan(g Gomega, workloadType string, httpPathWithQuery string, timestampLowerBound *time.Time) bool {
+func fileHasMatchingSpan(
+	g Gomega,
+	resourceMatchFn func(span ptrace.ResourceSpans) bool,
+	spanMatchFn func(span ptrace.Span) bool,
+	timestampLowerBound *time.Time,
+) bool {
 	fileHandle, err := os.Open("test-resources/e2e-test-volumes/otlp-sink/traces.jsonl")
 	g.Expect(err).NotTo(HaveOccurred())
 	defer func() {
@@ -87,11 +100,6 @@ func fileHasMatchingSpan(g Gomega, workloadType string, httpPathWithQuery string
 	}()
 	scanner := bufio.NewScanner(fileHandle)
 	scanner.Buffer(make([]byte, tracesJsonMaxLineLength), tracesJsonMaxLineLength)
-
-	var resourceMatchFn func(span ptrace.ResourceSpans) bool
-	if workloadType != "" {
-		resourceMatchFn = resourceSpansHaveExpectedResourceAttributes(workloadType)
-	}
 
 	// read file line by line
 	spansFound := false
@@ -102,15 +110,11 @@ func fileHasMatchingSpan(g Gomega, workloadType string, httpPathWithQuery string
 			// ignore lines that cannot be parsed
 			continue
 		}
-		// Missing cronjob HTTP server spans in the "should instrument and uninstrument all workload types" have given
-		// us a hard time lately. Therefore, log more details about finding the matching spans for those.
-		detailedMatchingLogs := workloadType == "cronjob"
 		if spansFound = hasMatchingSpans(
 			traces,
 			resourceMatchFn,
-			isHttpServerSpanWithHttpTarget(httpPathWithQuery, detailedMatchingLogs),
+			spanMatchFn,
 			timestampLowerBound,
-			detailedMatchingLogs,
 		); spansFound {
 			break
 		}
@@ -127,7 +131,6 @@ func hasMatchingSpans(
 	resourceMatchFn func(span ptrace.ResourceSpans) bool,
 	spanMatchFn func(span ptrace.Span) bool,
 	timestampLowerBound *time.Time,
-	detailedMatchingLogs bool,
 ) bool {
 	for i := 0; i < traces.ResourceSpans().Len(); i++ {
 		resourceSpan := traces.ResourceSpans().At(i)
@@ -137,9 +140,6 @@ func hasMatchingSpans(
 			}
 		}
 
-		if detailedMatchingLogs {
-			fmt.Fprint(GinkgoWriter, "> checking resource span\n")
-		}
 		for j := 0; j < resourceSpan.ScopeSpans().Len(); j++ {
 			scopeSpan := resourceSpan.ScopeSpans().At(j)
 			for k := 0; k < scopeSpan.Spans().Len(); k++ {
@@ -149,19 +149,6 @@ func hasMatchingSpans(
 				if timestampMatch {
 					spanMatches = spanMatchFn(span)
 				}
-				if detailedMatchingLogs {
-					fmt.Fprintf(
-						GinkgoWriter,
-						"> %s: ResourceSpans(%d)/ScopeSpans(%d)/(%d), timestamp: %t, matches: %t\n",
-						span.Name(),
-						i,
-						j,
-						k,
-						timestampMatch,
-						spanMatches,
-					)
-				}
-
 				if timestampMatch && spanMatches {
 					return true
 				}
@@ -175,9 +162,6 @@ func hasMatchingSpans(
 func resourceSpansHaveExpectedResourceAttributes(workloadType string) func(span ptrace.ResourceSpans) bool {
 	return func(resourceSpans ptrace.ResourceSpans) bool {
 		attributes := resourceSpans.Resource().Attributes()
-		attributes.Range(func(k string, v pcommon.Value) bool {
-			return true
-		})
 
 		workloadAttributeFound := false
 		if workloadType == "replicaset" {
@@ -215,28 +199,59 @@ func resourceSpansHaveExpectedResourceAttributes(workloadType string) func(span 
 	}
 }
 
-func isHttpServerSpanWithHttpTarget(expectedTarget string, detailedMatchingLogs bool) func(span ptrace.Span) bool {
+func matchHttpServerSpanWithHttpTarget(expectedTarget string) func(span ptrace.Span) bool {
 	return func(span ptrace.Span) bool {
 		if span.Kind() == ptrace.SpanKindServer {
 			target, hasTarget := span.Attributes().Get("http.target")
 			if hasTarget {
 				if target.Str() == expectedTarget {
-					if detailedMatchingLogs {
-						fmt.Fprintf(GinkgoWriter, "> span has matching http.target: %s\n", target.Str())
-					}
 					return true
-				} else if detailedMatchingLogs {
-					fmt.Fprintf(GinkgoWriter,
-						"> span has http.target attribute, but it does not match: expected: %s, actual: %s\n",
-						expectedTarget,
-						target.Str())
-				}
-			} else {
-				if detailedMatchingLogs {
-					fmt.Fprintf(GinkgoWriter, "> span does not have the http.target attribute\n")
 				}
 			}
 		}
 		return false
 	}
+}
+
+func verifySelfMonitoringSpans() {
+	Eventually(func(g Gomega) {
+		resourceMatchFn := func(resourceSpans ptrace.ResourceSpans) bool {
+			attributes := resourceSpans.Resource().Attributes()
+			serviceNamespace, isSet := attributes.Get("service.namespace")
+			if !isSet {
+				return false
+			}
+			if serviceNamespace.Str() != "dash0.operator" {
+				return false
+			}
+			_, isSet = attributes.Get("service.name")
+			if !isSet {
+				return false
+			}
+			_, isSet = attributes.Get("service.version")
+			if !isSet {
+				return false
+			}
+			_, isSet = attributes.Get("k8s.node.name")
+			if !isSet {
+				return false
+			}
+			_, isSet = attributes.Get("k8s.pod.uid")
+
+			return isSet
+		}
+		spanMatchFn := func(span ptrace.Span) bool {
+			return span.Kind() == ptrace.SpanKindInternal
+		}
+		selfMonitoringSpansFound := fileHasMatchingSpan(
+			g,
+			resourceMatchFn,
+			spanMatchFn,
+			nil,
+		)
+		g.Expect(selfMonitoringSpansFound).To(
+			BeTrue(),
+			"expected to find at least one matching self-monitoring span",
+		)
+	}, verifyTelemetryTimeout, pollingInterval).Should(Succeed())
 }

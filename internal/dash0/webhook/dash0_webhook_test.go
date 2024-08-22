@@ -425,7 +425,7 @@ var _ = Describe("The Dash0 webhook", func() {
 
 			workload = config.GetFn(ctx, k8sClient, TestNamespaceName, name)
 			config.VerifyFn(workload)
-			VerifyWebhookIgnoreOnceLabelIsAbesent(workload.GetObjectMeta())
+			VerifyWebhookIgnoreOnceLabelIsAbsent(workload.GetObjectMeta())
 			VerifyNoEvents(ctx, clientset, TestNamespaceName)
 		}, Entry("should not instrument a cron job that has the label, but remove the label", WorkloadTestConfig{
 			WorkloadNamePrefix: CronJobNamePrefix,

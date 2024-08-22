@@ -163,6 +163,7 @@ golangci-lint:
 
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter & yamllint
+	@echo --------------------------------
 	$(GOLANGCI_LINT) run
 	helm lint helm-chart/dash0-operator --set operator.disableSecretCheck=true --set operator.disableOtlpEndpointCheck=true
 
@@ -192,38 +193,40 @@ docker-build: \
   docker-build-filelog-offset-synch ## Build all container images.
 
 define build_container_image
-$(eval $@IMAGE_REPOSITORY = $(1))
+$(eval $@_IMAGE_REPOSITORY = $(1))
 $(eval $@_IMAGE_TAG = $(2))
-if [[ -n "${$@IMAGE_REPOSITORY}" ]]; then                                      \
-  if [[ "${$@IMAGE_REPOSITORY}" = *"/"* ]]; then                               \
-    echo "not rebuilding the image ${$@IMAGE_REPOSITORY}, this looks like a remote image"; \
-  else                                                                         \
-    $(CONTAINER_TOOL) build -t ${$@IMAGE_REPOSITORY}:${$@_IMAGE_TAG} .;        \
-  fi;                                                                          \
-elif [[ -n "${OPERATOR_HELM_CHART_URL}" ]]; then                               \
-    echo "not rebuilding image, a remote Helm chart is used with the default image from the chart"; \
+$(eval $@_CONTEXT = $(3))
+if [[ -n "$($@_IMAGE_REPOSITORY)" ]]; then                                                           \
+  if [[ "$($@_IMAGE_REPOSITORY)" = *"/"* ]]; then                                                    \
+    echo "not rebuilding the image $($@_IMAGE_REPOSITORY), this looks like a remote image";          \
+  else                                                                                              \
+    echo $(CONTAINER_TOOL) build -t $($@_IMAGE_REPOSITORY):$($@_IMAGE_TAG) $($@_CONTEXT);                  \
+    $(CONTAINER_TOOL) build -t $($@_IMAGE_REPOSITORY):$($@_IMAGE_TAG) $($@_CONTEXT);                  \
+  fi;                                                                                               \
+elif [[ -n "$(OPERATOR_HELM_CHART_URL)" ]]; then                                                    \
+  echo "not rebuilding image, a remote Helm chart is used with the default image from the chart"; \
 fi
 endef
 
 .PHONY: docker-build-controller
 docker-build-controller: ## Build the manager container image.
-	@$(call build_container_image,$(CONTROLLER_IMG_REPOSITORY),$(CONTROLLER_IMG_TAG))
+	@$(call build_container_image,$(CONTROLLER_IMG_REPOSITORY),$(CONTROLLER_IMG_TAG),".")
 
 .PHONY: docker-build-instrumentation
 docker-build-instrumentation: ## Build the instrumentation image.
-	@$(call build_container_image,$(INSTRUMENTATION_IMG_REPOSITORY),$(INSTRUMENTATION_IMG_TAG))
+	@$(call build_container_image,$(INSTRUMENTATION_IMG_REPOSITORY),$(INSTRUMENTATION_IMG_TAG),images/instrumentation)
 
 .PHONY: docker-build-collector
 docker-build-collector: ## Build the OpenTelemetry collector container image.
-	@$(call build_container_image,$(COLLECTOR_IMG_REPOSITORY),$(COLLECTOR_IMG_TAG))
+	@$(call build_container_image,$(COLLECTOR_IMG_REPOSITORY),$(COLLECTOR_IMG_TAG),images/collector)
 
 .PHONY: docker-build-config-reloader
 docker-build-config-reloader: ## Build the config reloader container image.
-	@$(call build_container_image,$(CONFIGURATION_RELOADER_IMG_REPOSITORY),$(CONFIGURATION_RELOADER_IMG_TAG))
+	@$(call build_container_image,$(CONFIGURATION_RELOADER_IMG_REPOSITORY),$(CONFIGURATION_RELOADER_IMG_TAG),images/configreloader)
 
 .PHONY: docker-build-filelog-offset-synch
 docker-build-filelog-offset-synch: ## Build the filelog offset synch container image.
-	@$(call build_container_image,$(FILELOG_OFFSET_SYNCH_IMG_REPOSITORY),$(FILELOG_OFFSET_SYNCH_IMG_TAG))
+	@$(call build_container_image,$(FILELOG_OFFSET_SYNCH_IMG_REPOSITORY),$(FILELOG_OFFSET_SYNCH_IMG_TAG),images/filelogoffsetsynch)
 
 ifndef ignore-not-found
   ignore-not-found = false

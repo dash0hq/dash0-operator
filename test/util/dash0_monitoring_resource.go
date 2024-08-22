@@ -64,7 +64,7 @@ func EnsureDash0MonitoringResourceExistsWithNamespacedName(
 	spec := dash0v1alpha1.Dash0MonitoringSpec{
 		Export: dash0v1alpha1.Export{
 			Dash0: &dash0v1alpha1.Dash0Configuration{
-				Endpoint: EndpointTest,
+				Endpoint: EndpointDash0Test,
 				Authorization: dash0v1alpha1.Authorization{
 					Token: &AuthorizationTokenTest,
 				},
@@ -104,7 +104,7 @@ func CreateDash0MonitoringResource(
 		Spec: dash0v1alpha1.Dash0MonitoringSpec{
 			Export: dash0v1alpha1.Export{
 				Dash0: &dash0v1alpha1.Dash0Configuration{
-					Endpoint: EndpointTest,
+					Endpoint: EndpointDash0Test,
 					Authorization: dash0v1alpha1.Authorization{
 						Token: &AuthorizationTokenTest,
 					},
@@ -257,7 +257,7 @@ func removeFinalizerFromDash0MonitoringResource(
 	k8sClient client.Client,
 	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
 ) {
-	finalizerHasBeenRemoved := controllerutil.RemoveFinalizer(dash0MonitoringResource, dash0v1alpha1.FinalizerId)
+	finalizerHasBeenRemoved := controllerutil.RemoveFinalizer(dash0MonitoringResource, dash0v1alpha1.MonitoringFinalizerId)
 	if finalizerHasBeenRemoved {
 		Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
 	}

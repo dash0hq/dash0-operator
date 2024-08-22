@@ -12,7 +12,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -36,7 +35,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 	BeforeAll(func() {
 		EnsureDash0OperatorNamespaceExists(ctx, k8sClient)
 
-		recorder := manager.GetEventRecorderFor("dash0-controller")
+		recorder := manager.GetEventRecorderFor("dash0-monitoring-controller")
 		instrumenter := &instrumentation.Instrumenter{
 			Client:               k8sClient,
 			Clientset:            clientset,
@@ -55,6 +54,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 			Clientset:              clientset,
 			OTelColResourceManager: oTelColResourceManager,
 		}
+
 		reconciler = &controller.Dash0Reconciler{
 			Client:                   k8sClient,
 			Clientset:                clientset,
@@ -62,15 +62,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 			Images:                   TestImages,
 			OperatorNamespace:        Dash0OperatorNamespace,
 			BackendConnectionManager: backendConnectionManager,
-			DanglingEventsTimeouts: &controller.DanglingEventsTimeouts{
-				InitialTimeout: 0 * time.Second,
-				Backoff: wait.Backoff{
-					Steps:    1,
-					Duration: 0 * time.Second,
-					Factor:   1,
-					Jitter:   0,
-				},
-			},
+			DanglingEventsTimeouts:   &DanglingEventsTimeoutsTest,
 		}
 
 		dash0MonitoringResource = EnsureDash0MonitoringResourceExistsAndIsAvailable(ctx, k8sClient)

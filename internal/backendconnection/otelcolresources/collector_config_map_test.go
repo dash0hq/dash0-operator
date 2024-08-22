@@ -10,6 +10,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -22,10 +23,14 @@ const (
 	HttpEndpointTest = "https://example.com:4318"
 )
 
+var (
+	bearerWithAuthToken = fmt.Sprintf("Bearer ${env:%s}", authTokenEnvVarName)
+)
+
 var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 
 	It("should fail if no exporter is configured", func() {
-		_, err := collectorConfigMap(&oTelColConfig{
+		_, err := assembleCollectorConfigMap(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export:     dash0v1alpha1.Export{},
@@ -34,7 +39,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 	})
 
 	It("should fail to render the Dash0 exporter when no endpoint is provided", func() {
-		_, err := collectorConfigMap(&oTelColConfig{
+		_, err := assembleCollectorConfigMap(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export: dash0v1alpha1.Export{
@@ -53,12 +58,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 	})
 
 	It("should render the Dash0 exporter", func() {
-		configMap, err := collectorConfigMap(&oTelColConfig{
+		configMap, err := assembleCollectorConfigMap(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export: dash0v1alpha1.Export{
 				Dash0: &dash0v1alpha1.Dash0Configuration{
-					Endpoint: EndpointTest,
+					Endpoint: EndpointDash0Test,
 					Authorization: dash0v1alpha1.Authorization{
 						Token: &AuthorizationTokenTest,
 					},
@@ -79,25 +84,25 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 		Expect(exporter2).ToNot(BeNil())
 		dash0OtlpExporter := exporter2.(map[string]interface{})
 		Expect(dash0OtlpExporter).ToNot(BeNil())
-		Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointTest))
+		Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
 		headersRaw := dash0OtlpExporter["headers"]
 		Expect(headersRaw).ToNot(BeNil())
 		headers := headersRaw.(map[string]interface{})
 		Expect(headers).To(HaveLen(1))
-		Expect(headers["Authorization"]).To(Equal("Bearer ${env:AUTH_TOKEN}"))
-		Expect(headers["X-Dash0-Dataset"]).To(BeNil())
+		Expect(headers[util.AuthorizationHeaderName]).To(Equal(bearerWithAuthToken))
+		Expect(headers[util.Dash0DatasetHeaderName]).To(BeNil())
 		Expect(dash0OtlpExporter["encoding"]).To(BeNil())
 
 		verifyPipelines(collectorConfig, "otlp/dash0")
 	})
 
 	It("should render the Dash0 exporter with custom dataset", func() {
-		configMap, err := collectorConfigMap(&oTelColConfig{
+		configMap, err := assembleCollectorConfigMap(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export: dash0v1alpha1.Export{
 				Dash0: &dash0v1alpha1.Dash0Configuration{
-					Endpoint: EndpointTest,
+					Endpoint: EndpointDash0Test,
 					Dataset:  "custom-dataset",
 					Authorization: dash0v1alpha1.Authorization{
 						Token: &AuthorizationTokenTest,
@@ -119,20 +124,20 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 		Expect(exporter2).ToNot(BeNil())
 		dash0OtlpExporter := exporter2.(map[string]interface{})
 		Expect(dash0OtlpExporter).ToNot(BeNil())
-		Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointTest))
+		Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
 		headersRaw := dash0OtlpExporter["headers"]
 		Expect(headersRaw).ToNot(BeNil())
 		headers := headersRaw.(map[string]interface{})
 		Expect(headers).To(HaveLen(2))
-		Expect(headers["Authorization"]).To(Equal("Bearer ${env:AUTH_TOKEN}"))
-		Expect(headers["X-Dash0-Dataset"]).To(Equal("custom-dataset"))
+		Expect(headers[util.AuthorizationHeaderName]).To(Equal(bearerWithAuthToken))
+		Expect(headers[util.Dash0DatasetHeaderName]).To(Equal("custom-dataset"))
 		Expect(dash0OtlpExporter["encoding"]).To(BeNil())
 
 		verifyPipelines(collectorConfig, "otlp/dash0")
 	})
 
 	It("should fail to render a gRPC exporter when no endpoint is provided", func() {
-		_, err := collectorConfigMap(&oTelColConfig{
+		_, err := assembleCollectorConfigMap(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export: dash0v1alpha1.Export{
@@ -152,7 +157,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 	})
 
 	It("should render an arbitrary gRPC exporter", func() {
-		configMap, err := collectorConfigMap(&oTelColConfig{
+		configMap, err := assembleCollectorConfigMap(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export: dash0v1alpha1.Export{
@@ -198,7 +203,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 	})
 
 	It("should fail to render an HTTP exporter when no endpoint is provided", func() {
-		_, err := collectorConfigMap(&oTelColConfig{
+		_, err := assembleCollectorConfigMap(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export: dash0v1alpha1.Export{
@@ -218,7 +223,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 	})
 
 	It("should fail to render an HTTP exporter when no encoding is provided", func() {
-		_, err := collectorConfigMap(&oTelColConfig{
+		_, err := assembleCollectorConfigMap(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export: dash0v1alpha1.Export{
@@ -239,7 +244,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 	})
 
 	It("should render an arbitrary HTTP exporter", func() {
-		configMap, err := collectorConfigMap(&oTelColConfig{
+		configMap, err := assembleCollectorConfigMap(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export: dash0v1alpha1.Export{
@@ -286,12 +291,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 	})
 
 	It("should render the Dash0 exporter together with a gRPC exporter", func() {
-		configMap, err := collectorConfigMap(&oTelColConfig{
+		configMap, err := assembleCollectorConfigMap(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export: dash0v1alpha1.Export{
 				Dash0: &dash0v1alpha1.Dash0Configuration{
-					Endpoint: EndpointTest,
+					Endpoint: EndpointDash0Test,
 					Authorization: dash0v1alpha1.Authorization{
 						Token: &AuthorizationTokenTest,
 					},
@@ -319,12 +324,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 		Expect(exporter2).ToNot(BeNil())
 		dash0OtlpExporter := exporter2.(map[string]interface{})
 		Expect(dash0OtlpExporter).ToNot(BeNil())
-		Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointTest))
+		Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
 		headersRaw := dash0OtlpExporter["headers"]
 		Expect(headersRaw).ToNot(BeNil())
 		headers := headersRaw.(map[string]interface{})
 		Expect(headers).To(HaveLen(1))
-		Expect(headers["Authorization"]).To(Equal("Bearer ${env:AUTH_TOKEN}"))
+		Expect(headers[util.AuthorizationHeaderName]).To(Equal(bearerWithAuthToken))
 		Expect(dash0OtlpExporter["encoding"]).To(BeNil())
 
 		exporter3 := exporters["otlp/grpc"]
@@ -342,12 +347,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 	})
 
 	It("should render the Dash0 exporter together with an HTTP exporter", func() {
-		configMap, err := collectorConfigMap(&oTelColConfig{
+		configMap, err := assembleCollectorConfigMap(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export: dash0v1alpha1.Export{
 				Dash0: &dash0v1alpha1.Dash0Configuration{
-					Endpoint: EndpointTest,
+					Endpoint: EndpointDash0Test,
 					Authorization: dash0v1alpha1.Authorization{
 						Token: &AuthorizationTokenTest,
 					},
@@ -376,12 +381,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 		Expect(exporter2).ToNot(BeNil())
 		dash0OtlpExporter := exporter2.(map[string]interface{})
 		Expect(dash0OtlpExporter).ToNot(BeNil())
-		Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointTest))
+		Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
 		headersRaw := dash0OtlpExporter["headers"]
 		Expect(headersRaw).ToNot(BeNil())
 		headers := headersRaw.(map[string]interface{})
 		Expect(headers).To(HaveLen(1))
-		Expect(headers["Authorization"]).To(Equal("Bearer ${env:AUTH_TOKEN}"))
+		Expect(headers[util.AuthorizationHeaderName]).To(Equal(bearerWithAuthToken))
 		Expect(dash0OtlpExporter["encoding"]).To(BeNil())
 
 		exporter3 := exporters["otlphttp/proto"]
@@ -399,7 +404,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 	})
 
 	It("should render a gRPC exporter together with an HTTP exporter", func() {
-		configMap, err := collectorConfigMap(&oTelColConfig{
+		configMap, err := assembleCollectorConfigMap(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export: dash0v1alpha1.Export{
@@ -458,12 +463,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 	})
 
 	It("should render a combination of all three exporter types", func() {
-		configMap, err := collectorConfigMap(&oTelColConfig{
+		configMap, err := assembleCollectorConfigMap(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export: dash0v1alpha1.Export{
 				Dash0: &dash0v1alpha1.Dash0Configuration{
-					Endpoint: EndpointTest,
+					Endpoint: EndpointDash0Test,
 					Authorization: dash0v1alpha1.Authorization{
 						Token: &AuthorizationTokenTest,
 					},
@@ -499,12 +504,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 		Expect(exporter2).ToNot(BeNil())
 		dash0OtlpExporter := exporter2.(map[string]interface{})
 		Expect(dash0OtlpExporter).ToNot(BeNil())
-		Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointTest))
+		Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
 		headersRaw := dash0OtlpExporter["headers"]
 		Expect(headersRaw).ToNot(BeNil())
 		headers := headersRaw.(map[string]interface{})
 		Expect(headers).To(HaveLen(1))
-		Expect(headers["Authorization"]).To(Equal("Bearer ${env:AUTH_TOKEN}"))
+		Expect(headers[util.AuthorizationHeaderName]).To(Equal(bearerWithAuthToken))
 		Expect(dash0OtlpExporter["encoding"]).To(BeNil())
 
 		exporter3 := exporters["otlp/grpc"]

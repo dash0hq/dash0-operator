@@ -213,16 +213,6 @@ func VerifyStatefulSetWithOptOutLabel(resource *appsv1.StatefulSet) {
 }
 
 func verifyPodSpec(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
-	Expect(podSpec.Volumes).To(HaveLen(expectations.Volumes))
-	for i, volume := range podSpec.Volumes {
-		if i == expectations.Dash0VolumeIdx {
-			Expect(volume.Name).To(Equal("dash0-instrumentation"))
-			Expect(volume.EmptyDir).NotTo(BeNil())
-		} else {
-			Expect(volume.Name).To(Equal(fmt.Sprintf("test-volume-%d", i)))
-		}
-	}
-
 	Expect(podSpec.InitContainers).To(HaveLen(expectations.InitContainers))
 	for i, initContainer := range podSpec.InitContainers {
 		if i == expectations.Dash0InitContainerIdx {
@@ -237,6 +227,16 @@ func verifyPodSpec(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
 		} else {
 			Expect(initContainer.Name).To(Equal(fmt.Sprintf("test-init-container-%d", i)))
 			Expect(initContainer.Env).To(HaveLen(i + 1))
+		}
+	}
+
+	Expect(podSpec.Volumes).To(HaveLen(expectations.Volumes))
+	for i, volume := range podSpec.Volumes {
+		if i == expectations.Dash0VolumeIdx {
+			Expect(volume.Name).To(Equal("dash0-instrumentation"))
+			Expect(volume.EmptyDir).NotTo(BeNil())
+		} else {
+			Expect(volume.Name).To(Equal(fmt.Sprintf("test-volume-%d", i)))
 		}
 	}
 
@@ -346,7 +346,7 @@ func VerifyWebhookIgnoreOnceLabelIsPresentEventually(g Gomega, objectMeta *metav
 	g.Expect(objectMeta.Labels["dash0.com/webhook-ignore-once"]).To(Equal("true"))
 }
 
-func VerifyWebhookIgnoreOnceLabelIsAbesent(objectMeta *metav1.ObjectMeta) {
+func VerifyWebhookIgnoreOnceLabelIsAbsent(objectMeta *metav1.ObjectMeta) {
 	Expect(objectMeta.Labels["dash0.com/webhook-ignore-once"]).To(Equal(""))
 }
 

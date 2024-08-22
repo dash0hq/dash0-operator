@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -24,6 +25,12 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/format"
+)
+
+const (
+	timeout             = 10 * time.Second
+	consistentlyTimeout = 2 * time.Second
+	pollingInterval     = 50 * time.Millisecond
 )
 
 var (

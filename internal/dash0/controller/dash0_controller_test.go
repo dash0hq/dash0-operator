@@ -19,7 +19,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -35,14 +34,9 @@ import (
 )
 
 var (
-	namespace = TestNamespaceName
-
-	timeout         = 10 * time.Second
-	pollingInterval = 50 * time.Millisecond
-
-	extraDash0MonitoringResourceNames = []types.NamespacedName{}
-
-	operatorNamespace = Dash0OperatorNamespace
+	namespace                         = TestNamespaceName
+	extraDash0MonitoringResourceNames []types.NamespacedName
+	operatorNamespace                 = Dash0OperatorNamespace
 )
 
 var _ = Describe("The Dash0 controller", Ordered, func() {
@@ -84,15 +78,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			Images:                   TestImages,
 			OperatorNamespace:        Dash0OperatorNamespace,
 			BackendConnectionManager: backendConnectionManager,
-			DanglingEventsTimeouts: &DanglingEventsTimeouts{
-				InitialTimeout: 0 * time.Second,
-				Backoff: wait.Backoff{
-					Steps:    1,
-					Duration: 0 * time.Second,
-					Factor:   1,
-					Jitter:   0,
-				},
-			},
+			DanglingEventsTimeouts:   &DanglingEventsTimeoutsTest,
 		}
 	})
 
@@ -138,8 +124,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
 			})
 
-			It("should mark only the most recent resource as available and the other ones as degraded when multiple "+
-				"resources exist", func() {
+			It("should mark only the most recent resource as available and the other ones as degraded when multiple resources exist", func() {
 				firstDash0MonitoringResource := &dash0v1alpha1.Dash0Monitoring{}
 				Expect(k8sClient.Get(ctx, Dash0MonitoringResourceQualifiedName, firstDash0MonitoringResource)).To(Succeed())
 				time.Sleep(10 * time.Millisecond)
@@ -193,7 +178,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 						resource3Available,
 						metav1.ConditionTrue,
 						"ReconcileFinished",
-						"Dash0 is active in this namespace now.",
+						"Dash0 monitoring is active in this namespace now.",
 					)
 					g.Expect(resource3Degraded).To(BeNil())
 
@@ -752,7 +737,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 					InstrumentWorkloads: "invalid",
 					Export: dash0v1alpha1.Export{
 						Dash0: &dash0v1alpha1.Dash0Configuration{
-							Endpoint: EndpointTest,
+							Endpoint: EndpointDash0Test,
 							Authorization: dash0v1alpha1.Authorization{
 								Token: &AuthorizationTokenTest,
 							},
@@ -862,7 +847,7 @@ func triggerReconcileRequestForName(
 	dash0MonitoringResourceName types.NamespacedName,
 ) {
 	if stepMessage == "" {
-		stepMessage = "Trigger reconcile request"
+		stepMessage = "Trigger a monitoring resource reconcile request"
 	}
 	By(stepMessage)
 	_, err := reconciler.Reconcile(ctx, reconcile.Request{

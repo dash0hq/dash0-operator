@@ -498,7 +498,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 			VerifyNoEvents(ctx, clientset, namespace)
 			workload = config.GetFn(ctx, k8sClient, namespace, name)
 			config.VerifyFn(workload)
-			VerifyWebhookIgnoreOnceLabelIsAbesent(workload.GetObjectMeta())
+			VerifyWebhookIgnoreOnceLabelIsAbsent(workload.GetObjectMeta())
 
 		}, Entry("should not attempt to revert a cron job that has the opt-out label", WorkloadTestConfig{
 			WorkloadNamePrefix: CronJobNamePrefix,

@@ -78,3 +78,30 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - dash0operatorconfigurations
+  verbs:
+  - create
+  - delete
+  - deletecollection
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - dash0operatorconfigurations/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - operator.dash0.com
+  resources:
+  - dash0operatorconfigurations/status
+  verbs:
+  - get
+  - patch
+  - update

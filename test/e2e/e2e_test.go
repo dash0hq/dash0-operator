@@ -596,7 +596,36 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				return verifyExactlyOneLogRecordIsReported(g, testId, &now)
 			}, 30*time.Second, pollingInterval).Should(Succeed())
 		})
+	})
 
+	Describe("self-monitoring", func() {
+		BeforeAll(func() {
+			By("deploy the Dash0 operator")
+			deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images, true)
+		})
+
+		AfterAll(func() {
+			undeployOperator(operatorNamespace)
+		})
+
+		BeforeEach(func() {
+			deployDash0OperatorConfigurationResource(defaultDash0OperatorConfigurationValues)
+			deployDash0MonitoringResource(
+				applicationUnderTestNamespace,
+				defaultDash0MonitoringValues,
+				operatorNamespace,
+				operatorHelmChart,
+			)
+		})
+
+		AfterEach(func() {
+			undeployDash0OperatorConfigurationResource()
+			undeployDash0OperatorConfigurationResource()
+		})
+
+		It("should produce self-monitoring telemetry", func() {
+			verifySelfMonitoringSpans()
+		})
 	})
 
 	Describe("operator removal", func() {

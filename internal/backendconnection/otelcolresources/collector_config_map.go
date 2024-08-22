@@ -13,9 +13,10 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 )
 
-type otlpExporter struct {
+type OtlpExporter struct {
 	Name     string
 	Endpoint string
 	Headers  []dash0v1alpha1.Header
@@ -27,10 +28,11 @@ var (
 	collectorConfigurationTemplateSource string
 	collectorConfigurationTemplate       = template.Must(
 		template.New("collector-configuration").Parse(collectorConfigurationTemplateSource))
+	authHeaderValue = fmt.Sprintf("Bearer ${env:%s}", authTokenEnvVarName)
 )
 
-func collectorConfigMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
-	exporters, err := assembleExporters(config.Export)
+func assembleCollectorConfigMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
+	exporters, err := ConvertExportSettingsToExporterList(config.Export)
 	if err != nil {
 		return nil, fmt.Errorf("cannot assemble the exporters for the configuration: %w", err)
 	}
@@ -66,8 +68,8 @@ func collectorConfigMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
 	}, nil
 }
 
-func assembleExporters(export dash0v1alpha1.Export) ([]otlpExporter, error) {
-	var exporters []otlpExporter
+func ConvertExportSettingsToExporterList(export dash0v1alpha1.Export) ([]OtlpExporter, error) {
+	var exporters []OtlpExporter
 
 	if export.Dash0 == nil && export.Grpc == nil && export.Http == nil {
 		return nil, fmt.Errorf("no exporter configuration found")
@@ -79,16 +81,16 @@ func assembleExporters(export dash0v1alpha1.Export) ([]otlpExporter, error) {
 			return nil, fmt.Errorf("no endpoint provided for the Dash0 exporter, unable to create the OpenTelemetry collector")
 		}
 		headers := []dash0v1alpha1.Header{{
-			Name:  "Authorization",
-			Value: "Bearer ${env:AUTH_TOKEN}",
+			Name:  util.AuthorizationHeaderName,
+			Value: authHeaderValue,
 		}}
 		if d0.Dataset != "" && d0.Dataset != "default" {
 			headers = append(headers, dash0v1alpha1.Header{
-				Name:  "X-Dash0-Dataset",
+				Name:  util.Dash0DatasetHeaderName,
 				Value: d0.Dataset,
 			})
 		}
-		exporters = append(exporters, otlpExporter{
+		exporters = append(exporters, OtlpExporter{
 			Name:     "otlp/dash0",
 			Endpoint: export.Dash0.Endpoint,
 			Headers:  headers,
@@ -100,7 +102,7 @@ func assembleExporters(export dash0v1alpha1.Export) ([]otlpExporter, error) {
 		if grpc.Endpoint == "" {
 			return nil, fmt.Errorf("no endpoint provided for the gRPC exporter, unable to create the OpenTelemetry collector")
 		}
-		grpcExporter := otlpExporter{
+		grpcExporter := OtlpExporter{
 			Name:     "otlp/grpc",
 			Endpoint: grpc.Endpoint,
 			Headers:  grpc.Headers,
@@ -120,7 +122,7 @@ func assembleExporters(export dash0v1alpha1.Export) ([]otlpExporter, error) {
 			return nil, fmt.Errorf("no encoding provided for the HTTP exporter, unable to create the OpenTelemetry collector")
 		}
 		encoding := string(http.Encoding)
-		httpExporter := otlpExporter{
+		httpExporter := OtlpExporter{
 			Name:     fmt.Sprintf("otlphttp/%s", encoding),
 			Endpoint: http.Endpoint,
 			Encoding: encoding,

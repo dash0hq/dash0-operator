@@ -18,7 +18,7 @@ custom resource definition should match snapshot:
         - name: v1alpha1
           schema:
             openAPIV3Schema:
-              description: Dash0Monitoring is the Schema for the Dash0Monitoring API
+              description: Dash0Monitoring is the schema for the Dash0Monitoring API
               properties:
                 apiVersion:
                   description: |-
@@ -48,7 +48,6 @@ custom resource definition should match snapshot:
                         This can either be Dash0 or another OTLP-compatible backend. You can also combine up to three exporters (i.e.
                         Dash0 plus gRPC plus HTTP). This allows sending the same data to two or three targets simultaneously. At least
                         one exporter has to be defined.
-                      maxProperties: 3
                       minProperties: 1
                       properties:
                         dash0:
@@ -200,7 +199,7 @@ custom resource definition should match snapshot:
                     - export
                   type: object
                 status:
-                  description: Dash0MonitoringStatus defines the observed state of the Dash0 monitoring resource.
+                  description: Dash0MonitoringStatus defines the observed state of the Dash0Monitoring monitoring resource.
                   properties:
                     conditions:
                       items:
