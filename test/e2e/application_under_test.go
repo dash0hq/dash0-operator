@@ -15,9 +15,127 @@ import (
 	. "github.com/onsi/gomega"
 )
 
+type workloadType struct {
+	workloadTypeString string
+	port               int
+	isBatch            bool
+	waitCommand        func(string) *exec.Cmd
+}
+
 const (
 	applicationUnderTestNamespace = "e2e-application-under-test-namespace"
 	applicationPath               = "test-resources/node.js/express"
+)
+
+var (
+	temporaryManifestFiles []string
+
+	workloadTypeCronjob = workloadType{
+		workloadTypeString: "cronjob",
+		port:               1205,
+		isBatch:            true,
+		waitCommand:        nil,
+	}
+	workloadTypeDaemonSet = workloadType{
+		workloadTypeString: "daemonset",
+		port:               1206,
+		isBatch:            false,
+		waitCommand: func(namespace string) *exec.Cmd {
+			return exec.Command(
+				"kubectl",
+				"rollout",
+				"status",
+				"daemonset",
+				"dash0-operator-nodejs-20-express-test-daemonset",
+				"--namespace",
+				namespace,
+				"--timeout",
+				"60s",
+			)
+		},
+	}
+	workloadTypeDeployment = workloadType{
+		workloadTypeString: "deployment",
+		isBatch:            false,
+		port:               1207,
+		waitCommand: func(namespace string) *exec.Cmd {
+			return exec.Command(
+				"kubectl",
+				"wait",
+				"deployment.apps/dash0-operator-nodejs-20-express-test-deployment",
+				"--for",
+				"condition=Available",
+				"--namespace",
+				namespace,
+				"--timeout",
+				"60s",
+			)
+		},
+	}
+	workloadTypeJob = workloadType{
+		workloadTypeString: "job",
+		port:               1208,
+		isBatch:            true,
+		waitCommand:        nil,
+	}
+	workloadTypePod = workloadType{
+		workloadTypeString: "pod",
+		port:               1211,
+		isBatch:            false,
+		waitCommand: func(namespace string) *exec.Cmd {
+			return exec.Command(
+				"kubectl",
+				"wait",
+				"pod",
+				"--namespace",
+				namespace,
+				"--selector",
+				"app=dash0-operator-nodejs-20-express-test-pod-app",
+				"--for",
+				"condition=ContainersReady",
+				"--timeout",
+				"60s",
+			)
+		},
+	}
+	workloadTypeReplicaSet = workloadType{
+		workloadTypeString: "replicaset",
+		port:               1209,
+		isBatch:            false,
+		waitCommand: func(namespace string) *exec.Cmd {
+			return exec.Command(
+				"kubectl",
+				"wait",
+				"pod",
+				"--namespace",
+				namespace,
+				"--selector",
+				"app=dash0-operator-nodejs-20-express-test-replicaset-app",
+				"--for",
+				"condition=ContainersReady",
+				"--timeout",
+				"60s",
+			)
+		},
+	}
+	workloadTypeStatefulSet = workloadType{
+		workloadTypeString: "statefulset",
+		port:               1210,
+		isBatch:            false,
+		waitCommand: func(namespace string) *exec.Cmd {
+			return exec.Command(
+				"kubectl",
+				"rollout",
+				"status",
+				"statefulset",
+				"dash0-operator-nodejs-20-express-test-statefulset",
+				"--namespace",
+				namespace,
+				"--timeout",
+				"60s",
+			)
+		},
+	}
 )
 
 func rebuildNodeJsApplicationContainerImage() {
@@ -33,53 +151,16 @@ func rebuildNodeJsApplicationContainerImage() {
 			))).To(Succeed())
 }
 
-func installNodeJsCronJob(namespace string, testId string) error {
-	addTestIdToCronjobManifest(testId)
-	return installNodeJsApplication(
-		namespace,
-		"cronjob",
-		nil,
-	)
-}
-
 func uninstallNodeJsCronJob(namespace string) error {
 	return uninstallNodeJsApplication(namespace, "cronjob")
 }
 
-func installNodeJsDaemonSet(namespace string, testId string) error {
+func installNodeJsDaemonSetWithOptOutLabel(namespace string) error {
 	return installNodeJsApplication(
 		namespace,
+		manifest("daemonset.opt-out"),
 		"daemonset",
-		exec.Command(
-			"kubectl",
-			"rollout",
-			"status",
-			"daemonset",
-			"dash0-operator-nodejs-20-express-test-daemonset",
-			"--namespace",
-			namespace,
-			"--timeout",
-			"60s",
-		),
-	)
-}
-
-//nolint:unparam
-func installNodeJsDaemonSetWithOptOutLabel(namespace string, testId string) error {
-	return installNodeJsApplication(
-		namespace,
-		"daemonset.opt-out",
-		exec.Command(
-			"kubectl",
-			"rollout",
-			"status",
-			"daemonset",
-			"dash0-operator-nodejs-20-express-test-daemonset",
-			"--namespace",
-			namespace,
-			"--timeout",
-			"60s",
-		),
+		workloadTypeDaemonSet.waitCommand(namespace),
 	)
 }
 
@@ -87,21 +168,12 @@ func uninstallNodeJsDaemonSet(namespace string) error {
 	return uninstallNodeJsApplication(namespace, "daemonset")
 }
 
-func installNodeJsDeployment(namespace string, testId string) error {
-	return installNodeJsApplication(
+//nolint:unparam
+func installNodeJsDeployment(namespace string) error {
+	return installNodeJsWorkload(
+		workloadTypeDeployment,
 		namespace,
-		"deployment",
-		exec.Command(
-			"kubectl",
-			"wait",
-			"deployment.apps/dash0-operator-nodejs-20-express-test-deployment",
-			"--for",
-			"condition=Available",
-			"--namespace",
-			namespace,
-			"--timeout",
-			"60s",
-		),
+		"",
 	)
 }
 
@@ -110,11 +182,10 @@ func uninstallNodeJsDeployment(namespace string) error {
 }
 
 func installNodeJsJob(namespace string, testId string) error {
-	addTestIdToJobManifest(testId)
-	return installNodeJsApplication(
+	return installNodeJsWorkload(
+		workloadTypeJob,
 		namespace,
-		"job",
-		nil,
+		testId,
 	)
 }
 
@@ -122,24 +193,11 @@ func uninstallNodeJsJob(namespace string) error {
 	return uninstallNodeJsApplication(namespace, "job")
 }
 
-//nolint:unparam
-func installNodeJsPod(namespace string, testId string) error {
-	return installNodeJsApplication(
+func installNodeJsPod(namespace string) error {
+	return installNodeJsWorkload(
+		workloadTypePod,
 		namespace,
-		"pod",
-		exec.Command(
-			"kubectl",
-			"wait",
-			"pod",
-			"--namespace",
-			namespace,
-			"--selector",
-			"app=dash0-operator-nodejs-20-express-test-pod-app",
-			"--for",
-			"condition=ContainersReady",
-			"--timeout",
-			"60s",
-		),
+		"",
 	)
 }
 
@@ -147,47 +205,15 @@ func uninstallNodeJsPod(namespace string) error {
 	return uninstallNodeJsApplication(namespace, "pod")
 }
 
-//nolint:unparam
-func installNodeJsReplicaSet(namespace string, testId string) error {
-	return installNodeJsApplication(
-		namespace,
-		"replicaset",
-		exec.Command(
-			"kubectl",
-			"wait",
-			"pod",
-			"--namespace",
-			namespace,
-			"--selector",
-			"app=dash0-operator-nodejs-20-express-test-replicaset-app",
-			"--for",
-			"condition=ContainersReady",
-			"--timeout",
-			"60s",
-		),
-	)
-}
-
 func uninstallNodeJsReplicaSet(namespace string) error {
 	return uninstallNodeJsApplication(namespace, "replicaset")
 }
 
-//nolint:unparam
-func installNodeJsStatefulSet(namespace string, testId string) error {
-	return installNodeJsApplication(
+func installNodeJsStatefulSet(namespace string) error {
+	return installNodeJsWorkload(
+		workloadTypeStatefulSet,
 		namespace,
-		"statefulset",
-		exec.Command(
-			"kubectl",
-			"rollout",
-			"status",
-			"statefulset",
-			"dash0-operator-nodejs-20-express-test-statefulset",
-			"--namespace",
-			namespace,
-			"--timeout",
-			"60s",
-		),
+		"",
 	)
 }
 
@@ -195,20 +221,35 @@ func uninstallNodeJsStatefulSet(namespace string) error {
 	return uninstallNodeJsApplication(namespace, "statefulset")
 }
 
-func removeAllTestApplications(namespace string) {
-	By("uninstalling the test applications")
-	Expect(uninstallNodeJsCronJob(namespace)).To(Succeed())
-	Expect(uninstallNodeJsDaemonSet(namespace)).To(Succeed())
-	Expect(uninstallNodeJsDeployment(namespace)).To(Succeed())
-	Expect(uninstallNodeJsJob(namespace)).To(Succeed())
-	Expect(uninstallNodeJsPod(namespace)).To(Succeed())
-	Expect(uninstallNodeJsReplicaSet(namespace)).To(Succeed())
-	Expect(uninstallNodeJsStatefulSet(namespace)).To(Succeed())
+func installNodeJsWorkload(workloadType workloadType, namespace string, testId string) error {
+	manifestFile := manifest(workloadType.workloadTypeString)
+	if workloadType.isBatch {
+		switch workloadType.workloadTypeString {
+		case "cronjob":
+			manifestFile = addTestIdToCronjobManifest(testId)
+		case "job":
+			manifestFile = addTestIdToJobManifest(testId)
+		default:
+			return fmt.Errorf("unsupported batch workload type %s", workloadType.workloadTypeString)
+		}
+	}
+
+	var waitCommand *exec.Cmd
+	if workloadType.waitCommand != nil {
+		waitCommand = workloadType.waitCommand(namespace)
+	}
+	return installNodeJsApplication(
+		namespace,
+		manifestFile,
+		workloadType.workloadTypeString,
+		waitCommand,
+	)
 }
 
 func installNodeJsApplication(
 	namespace string,
-	workloadType string,
+	manifestFile string,
+	workloadTypeString string,
 	waitCommand *exec.Cmd,
 ) error {
 	err := runAndIgnoreOutput(exec.Command(
@@ -217,7 +258,7 @@ func installNodeJsApplication(
 		"--namespace",
 		namespace,
 		"-f",
-		manifest(workloadType),
+		manifestFile,
 	))
 	if err != nil {
 		return err
@@ -225,7 +266,7 @@ func installNodeJsApplication(
 	if waitCommand == nil {
 		return nil
 	}
-	return waitForApplicationToBecomeReady(workloadType, waitCommand)
+	return waitForApplicationToBecomeReady(workloadTypeString, waitCommand)
 }
 
 func uninstallNodeJsApplication(namespace string, workloadType string) error {
@@ -239,6 +280,17 @@ func uninstallNodeJsApplication(namespace string, workloadType string) error {
 			"-f",
 			manifest(workloadType),
 		))
+}
+
+func removeAllTestApplications(namespace string) {
+	By("uninstalling the test applications")
+	Expect(uninstallNodeJsCronJob(namespace)).To(Succeed())
+	Expect(uninstallNodeJsDaemonSet(namespace)).To(Succeed())
+	Expect(uninstallNodeJsDeployment(namespace)).To(Succeed())
+	Expect(uninstallNodeJsJob(namespace)).To(Succeed())
+	Expect(uninstallNodeJsPod(namespace)).To(Succeed())
+	Expect(uninstallNodeJsReplicaSet(namespace)).To(Succeed())
+	Expect(uninstallNodeJsStatefulSet(namespace)).To(Succeed())
 }
 
 func addOptOutLabel(namespace string, workloadType string, workloadName string) error {
@@ -268,9 +320,9 @@ func removeOptOutLabel(namespace string, workloadType string, workloadName strin
 		))
 }
 
-func addTestIdToCronjobManifest(testId string) {
-	filename := manifest("cronjob")
-	applicationManifestContentRaw, err := os.ReadFile(filename)
+func addTestIdToCronjobManifest(testId string) string {
+	source := manifest("cronjob")
+	applicationManifestContentRaw, err := os.ReadFile(source)
 	Expect(err).ToNot(HaveOccurred())
 	applicationManifestParsed := make(map[string]interface{})
 	Expect(yaml.Unmarshal(applicationManifestContentRaw, &applicationManifestParsed)).To(Succeed())
@@ -281,19 +333,34 @@ func addTestIdToCronjobManifest(testId string) {
 	applicationManifestParsed["spec"] = cronjobSpec
 	updatedApplicationManifestContentRaw, err := yaml.Marshal(&applicationManifestParsed)
 	Expect(err).ToNot(HaveOccurred())
-	Expect(os.WriteFile(filename, updatedApplicationManifestContentRaw, 0644)).To(Succeed())
+	return writeManifest("cronjob", testId, updatedApplicationManifestContentRaw)
 }
 
-func addTestIdToJobManifest(testId string) {
-	filename := manifest("job")
-	applicationManifestContentRaw, err := os.ReadFile(filename)
+func addTestIdToJobManifest(testId string) string {
+	source := manifest("job")
+	applicationManifestContentRaw, err := os.ReadFile(source)
 	Expect(err).ToNot(HaveOccurred())
 	applicationManifestParsed := make(map[string]interface{})
 	Expect(yaml.Unmarshal(applicationManifestContentRaw, &applicationManifestParsed)).To(Succeed())
 	applicationManifestParsed["spec"] = addEnvVarToContainer(testId, applicationManifestParsed)
 	updatedApplicationManifestContentRaw, err := yaml.Marshal(&applicationManifestParsed)
 	Expect(err).ToNot(HaveOccurred())
-	Expect(os.WriteFile(filename, updatedApplicationManifestContentRaw, 0644)).To(Succeed())
+	return writeManifest("job", testId, updatedApplicationManifestContentRaw)
+}
+
+func writeManifest(workloadTypeString string, testId string, updatedApplicationManifestContentRaw []byte) string {
+	target, err := os.CreateTemp(os.TempDir(), fmt.Sprintf("%s_%s.yaml", workloadTypeString, testId))
+	Expect(err).ToNot(HaveOccurred())
+	targetName := target.Name()
+	temporaryManifestFiles = append(temporaryManifestFiles, targetName)
+	Expect(os.WriteFile(targetName, updatedApplicationManifestContentRaw, 0644)).To(Succeed())
+	return targetName
+}
+
+func removeAllTemporaryManifests() {
+	for _, tmpfile := range temporaryManifestFiles {
+		_ = os.Remove(tmpfile)
+	}
 }
 
 func addEnvVarToContainer(testId string, jobTemplateOrManifest map[string]interface{}) map[string]interface{} {
@@ -303,10 +370,23 @@ func addEnvVarToContainer(testId string, jobTemplateOrManifest map[string]interf
 	containers := (podSpec["containers"]).([]interface{})
 	container := (containers[0]).(map[string]interface{})
 	env := (container["env"]).([]interface{})
+
+	for _, v := range env {
+		envVar := (v).(map[string]interface{})
+		if envVar["name"] == "TEST_ID" {
+			// TEST_ID already present, we just need to update the value
+			envVar["value"] = testId
+			return jobSpec
+		}
+	}
+
+	// no TEST_ID present, we need to add a new env var
 	newEnvVar := make(map[string]string)
 	newEnvVar["name"] = "TEST_ID"
 	newEnvVar["value"] = testId
 	env = append(env, newEnvVar)
+
+	// since append does not modify the original slice, we need to update all the objects all the way up the hierarchy
 	container["env"] = env
 	containers[0] = container
 	podSpec["containers"] = containers

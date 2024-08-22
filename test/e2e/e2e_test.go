@@ -66,6 +66,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 	})
 
 	AfterAll(func() {
+		removeAllTemporaryManifests()
 		if applicationUnderTestNamespace != "default" {
 			By("removing namespace for application under test")
 			_ = runAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", applicationUnderTestNamespace))
@@ -95,40 +96,29 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			undeployOperator(operatorNamespace)
 		})
 
-		workloadConfigs := []controllerTestWorkloadConfig{
-			{
-				workloadType:    "cronjob",
-				port:            1205,
-				installWorkload: installNodeJsCronJob,
-				isBatch:         true,
-			}, {
-				workloadType:    "daemonset",
-				port:            1206,
-				installWorkload: installNodeJsDaemonSet,
-			}, {
-				workloadType:    "deployment",
-				port:            1207,
-				installWorkload: installNodeJsDeployment,
-			}, {
-				workloadType:    "replicaset",
-				port:            1209,
-				installWorkload: installNodeJsReplicaSet,
-			}, {
-				workloadType:    "statefulset",
-				port:            1210,
-				installWorkload: installNodeJsStatefulSet,
-			},
+		controllerTestWorkloadTypes := []workloadType{
+			workloadTypeCronjob,
+			workloadTypeDaemonSet,
+			workloadTypeDeployment,
+			workloadTypeReplicaSet,
+			workloadTypeStatefulSet,
 		}
 
 		Describe("when instrumenting existing workloads", func() {
 			It("should instrument and uninstrument all workload types", func() {
 				testIds := make(map[string]string)
+				for _, workloadType := range controllerTestWorkloadTypes {
+					testIds[workloadType.workloadTypeString] = generateTestId(workloadType.workloadTypeString)
+				}
+
 				By("deploying all workloads")
-				runInParallelForAllWorkloadTypes(workloadConfigs, func(config controllerTestWorkloadConfig) {
-					testId := generateTestId(config.workloadType)
-					testIds[config.workloadType] = testId
-					By(fmt.Sprintf("deploying the Node.js %s", config.workloadType))
-					Expect(config.installWorkload(applicationUnderTestNamespace, testId)).To(Succeed())
+				runInParallelForAllWorkloadTypes(controllerTestWorkloadTypes, func(workloadType workloadType) {
+					By(fmt.Sprintf("deploying the Node.js %s", workloadType.workloadTypeString))
+					Expect(installNodeJsWorkload(
+						workloadType,
+						applicationUnderTestNamespace,
+						testIds[workloadType.workloadTypeString],
+					)).To(Succeed())
 				})
 				By("all workloads have been deployed")
 
@@ -140,14 +130,15 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					operatorHelmChart,
 				)
 
-				runInParallelForAllWorkloadTypes(workloadConfigs, func(config controllerTestWorkloadConfig) {
-					By(fmt.Sprintf("verifying that the Node.js %s has been instrumented by the controller", config.workloadType))
+				runInParallelForAllWorkloadTypes(controllerTestWorkloadTypes, func(workloadType workloadType) {
+					By(fmt.Sprintf("verifying that the Node.js %s has been instrumented by the controller",
+						workloadType.workloadTypeString))
 					verifyThatWorkloadHasBeenInstrumented(
 						applicationUnderTestNamespace,
-						config.workloadType,
-						config.port,
-						config.isBatch,
-						testIds[config.workloadType],
+						workloadType.workloadTypeString,
+						workloadType.port,
+						workloadType.isBatch,
+						testIds[workloadType.workloadTypeString],
 						images,
 						"controller",
 					)
@@ -156,13 +147,13 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 				undeployDash0MonitoringResource(applicationUnderTestNamespace)
 
-				runInParallelForAllWorkloadTypes(workloadConfigs, func(config controllerTestWorkloadConfig) {
+				runInParallelForAllWorkloadTypes(controllerTestWorkloadTypes, func(workloadType workloadType) {
 					verifyThatInstrumentationHasBeenReverted(
 						applicationUnderTestNamespace,
-						config.workloadType,
-						config.port,
-						config.isBatch,
-						testIds[config.workloadType],
+						workloadType.workloadTypeString,
+						workloadType.port,
+						workloadType.isBatch,
+						testIds[workloadType.workloadTypeString],
 						"controller",
 					)
 				})
@@ -204,9 +195,8 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			})
 
 			It("should ignore existing pods", func() {
-				testId := generateTestId("pod")
 				By("installing the Node.js pod")
-				Expect(installNodeJsPod(applicationUnderTestNamespace, testId)).To(Succeed())
+				Expect(installNodeJsPod(applicationUnderTestNamespace)).To(Succeed())
 				deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images, true)
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
@@ -225,7 +215,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			It("should update instrumentation modifications at startup", func() {
 				testId := generateTestId("deployment")
 				By("installing the Node.js deployment")
-				Expect(installNodeJsDeployment(applicationUnderTestNamespace, testId)).To(Succeed())
+				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
 
 				initialImages := Images{
 					operator: ImageSpec{
@@ -323,31 +313,25 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			undeployDash0MonitoringResource(applicationUnderTestNamespace)
 		})
 
-		type webhookTest struct {
-			workloadType    string
-			port            int
-			installWorkload func(string, string) error
-			isBatch         bool
-		}
-
 		DescribeTable(
 			"when instrumenting new workloads",
-			func(config webhookTest) {
-				testId := generateTestId(config.workloadType)
-				By(fmt.Sprintf("installing the Node.js %s", config.workloadType))
-				Expect(config.installWorkload(applicationUnderTestNamespace, testId)).To(Succeed())
-				By(fmt.Sprintf("verifying that the Node.js %s has been instrumented by the webhook", config.workloadType))
+			func(workloadType workloadType) {
+				testId := generateTestId(workloadType.workloadTypeString)
+				By(fmt.Sprintf("installing the Node.js %s", workloadType.workloadTypeString))
+				Expect(installNodeJsWorkload(workloadType, applicationUnderTestNamespace, testId)).To(Succeed())
+				By(fmt.Sprintf("verifying that the Node.js %s has been instrumented by the webhook",
+					workloadType.workloadTypeString))
 				verifyThatWorkloadHasBeenInstrumented(
 					applicationUnderTestNamespace,
-					config.workloadType,
-					config.port,
-					config.isBatch,
+					workloadType.workloadTypeString,
+					workloadType.port,
+					workloadType.isBatch,
 					testId,
 					images,
 					"webhook",
 				)
 
-				if config.workloadType == "job" {
+				if workloadType.workloadTypeString == "job" {
 					// For all other workload types, reverting the instrumentation is tested by the controller test
 					// suite. But the controller cannot instrument jobs, so we cannot test the (failing)
 					// uninstrumentation procedure there. Thus, for jobs, we test the failing uninstrumentation and
@@ -359,7 +343,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 						// Verify that the instrumentation labels are still in place -- since we cannot undo the
 						// instrumentation, the labels must also not be removed.
 						By("verifying that the job still has labels")
-						verifyLabels(g, applicationUnderTestNamespace, config.workloadType, true, images, "webhook")
+						verifyLabels(g, applicationUnderTestNamespace, workloadType.workloadTypeString, true, images, "webhook")
 
 						By("verifying failed uninstrumentation event")
 						verifyFailedUninstrumentationEvent(
@@ -375,49 +359,19 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					}, labelChangeTimeout, pollingInterval).Should(Succeed())
 				}
 			},
-			Entry("should instrument new cron jobs", webhookTest{
-				workloadType:    "cronjob",
-				port:            1205,
-				installWorkload: installNodeJsCronJob,
-				isBatch:         true,
-			}),
-			Entry("should instrument new daemon sets", webhookTest{
-				workloadType:    "daemonset",
-				port:            1206,
-				installWorkload: installNodeJsDaemonSet,
-			}),
-			Entry("should instrument new deployments", webhookTest{
-				workloadType:    "deployment",
-				port:            1207,
-				installWorkload: installNodeJsDeployment,
-			}),
-			Entry("should instrument new jobs", webhookTest{
-				workloadType:    "job",
-				port:            1208,
-				installWorkload: installNodeJsJob,
-				isBatch:         true,
-			}),
-			Entry("should instrument new pods", webhookTest{
-				workloadType:    "pod",
-				port:            1211,
-				installWorkload: installNodeJsPod,
-			}),
-			Entry("should instrument new replica sets", webhookTest{
-				workloadType:    "replicaset",
-				port:            1209,
-				installWorkload: installNodeJsReplicaSet,
-			}),
-			Entry("should instrument new stateful sets", webhookTest{
-				workloadType:    "statefulset",
-				port:            1210,
-				installWorkload: installNodeJsStatefulSet,
-			}),
+			Entry("should instrument new cron jobs", workloadTypeCronjob),
+			Entry("should instrument new daemon sets", workloadTypeDaemonSet),
+			Entry("should instrument new deployments", workloadTypeDeployment),
+			Entry("should instrument new jobs", workloadTypeJob),
+			Entry("should instrument new pods", workloadTypePod),
+			Entry("should instrument new replica sets", workloadTypeReplicaSet),
+			Entry("should instrument new stateful sets", workloadTypeStatefulSet),
 		)
 
 		It("should revert an instrumented workload when the opt-out label is added after the fact", func() {
 			testId := generateTestId("deployment")
 			By("installing the Node.js deployment")
-			Expect(installNodeJsDeployment(applicationUnderTestNamespace, testId)).To(Succeed())
+			Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
 			By("verifying that the Node.js deployment has been instrumented by the webhook")
 			verifyThatWorkloadHasBeenInstrumented(
 				applicationUnderTestNamespace,
@@ -449,7 +403,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		It("should instrument a workload when the opt-out label is removed from it", func() {
 			testId := generateTestId("daemonset")
 			By("installing the Node.js daemonset with dash0.com/enable=false")
-			Expect(installNodeJsDaemonSetWithOptOutLabel(applicationUnderTestNamespace, testId)).To(Succeed())
+			Expect(installNodeJsDaemonSetWithOptOutLabel(applicationUnderTestNamespace)).To(Succeed())
 			By("verifying that the Node.js daemonset has not been instrumented by the webhook")
 			Consistently(func(g Gomega) {
 				verifyNoDash0LabelsOrOnlyOptOut(g, applicationUnderTestNamespace, "daemonset", true)
@@ -503,7 +457,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			)
 
 			By("installing the Node.js stateful set")
-			Expect(installNodeJsStatefulSet(applicationUnderTestNamespace, testId)).To(Succeed())
+			Expect(installNodeJsStatefulSet(applicationUnderTestNamespace)).To(Succeed())
 			By("verifying that the Node.js stateful set has not been instrumented by the webhook (due to " +
 				"namespace-level opt-out via the Dash0Monitoring resource)")
 			Consistently(func(g Gomega) {
@@ -537,7 +491,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			)
 
 			By("installing the Node.js deployment")
-			Expect(installNodeJsDeployment(applicationUnderTestNamespace, testId)).To(Succeed())
+			Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
 			By("verifying that the Node.js deployment has been instrumented by the webhook")
 			verifyThatWorkloadHasBeenInstrumented(
 				applicationUnderTestNamespace,
@@ -622,7 +576,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				operatorHelmChart,
 			)
 
-			Expect(installNodeJsDeployment(applicationUnderTestNamespace, testId)).To(Succeed())
+			Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
 
 			By("verifying that the Node.js deployment has been instrumented by the controller")
 			Eventually(func(g Gomega) {
@@ -687,16 +641,12 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 		configs := []removalTestNamespaceConfig{
 			{
-				namespace:       "e2e-application-under-test-namespace-removal-1",
-				workloadType:    "daemonset",
-				port:            1206,
-				installWorkload: installNodeJsDaemonSet,
+				namespace:    "e2e-application-under-test-namespace-removal-1",
+				workloadType: workloadTypeDaemonSet,
 			},
 			{
-				namespace:       "e2e-application-under-test-namespace-removal-2",
-				workloadType:    "deployment",
-				port:            1207,
-				installWorkload: installNodeJsDeployment,
+				namespace:    "e2e-application-under-test-namespace-removal-2",
+				workloadType: workloadTypeDeployment,
 			},
 		}
 
@@ -704,11 +654,18 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			It("should remove all Dash0 monitoring resources and uninstrument all workloads", func() {
 				By("deploying workloads")
 				testIds := make(map[string]string)
+				for _, config := range configs {
+					testIds[config.workloadType.workloadTypeString] = generateTestId(config.workloadType.workloadTypeString)
+				}
+
 				runInParallelForAllWorkloadTypes(configs, func(config removalTestNamespaceConfig) {
-					testId := generateTestId(config.workloadType)
-					testIds[config.workloadType] = testId
-					By(fmt.Sprintf("deploying the Node.js %s to namespace %s", config.workloadType, config.namespace))
-					Expect(config.installWorkload(config.namespace, testId)).To(Succeed())
+					By(fmt.Sprintf("deploying the Node.js %s to namespace %s",
+						config.workloadType.workloadTypeString, config.namespace))
+					Expect(installNodeJsWorkload(
+						config.workloadType,
+						config.namespace,
+						testIds[config.workloadType.workloadTypeString],
+					)).To(Succeed())
 				})
 
 				deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images, true)
@@ -722,13 +679,14 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				})
 
 				runInParallelForAllWorkloadTypes(configs, func(config removalTestNamespaceConfig) {
-					By(fmt.Sprintf("verifying that the Node.js %s has been instrumented by the controller", config.workloadType))
+					By(fmt.Sprintf("verifying that the Node.js %s has been instrumented by the controller",
+						config.workloadType.workloadTypeString))
 					verifyThatWorkloadHasBeenInstrumented(
 						config.namespace,
-						config.workloadType,
-						config.port,
+						config.workloadType.workloadTypeString,
+						config.workloadType.port,
 						false,
-						testIds[config.workloadType],
+						testIds[config.workloadType.workloadTypeString],
 						images,
 						"controller",
 					)
@@ -739,10 +697,10 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				runInParallelForAllWorkloadTypes(configs, func(config removalTestNamespaceConfig) {
 					verifyThatInstrumentationHasBeenReverted(
 						config.namespace,
-						config.workloadType,
-						config.port,
+						config.workloadType.workloadTypeString,
+						config.workloadType.port,
 						false,
-						testIds[config.workloadType],
+						testIds[config.workloadType.workloadTypeString],
 						"controller",
 					)
 				})
@@ -763,26 +721,17 @@ type workloadConfig interface {
 	GetWorkloadType() string
 }
 
-type controllerTestWorkloadConfig struct {
-	workloadType    string
-	port            int
-	installWorkload func(string, string) error
-	isBatch         bool
-}
-
-func (c controllerTestWorkloadConfig) GetWorkloadType() string {
-	return c.workloadType
+func (wt workloadType) GetWorkloadType() string {
+	return wt.workloadTypeString
 }
 
 type removalTestNamespaceConfig struct {
-	namespace       string
-	workloadType    string
-	port            int
-	installWorkload func(string, string) error
+	namespace    string
+	workloadType workloadType
 }
 
 func (c removalTestNamespaceConfig) GetWorkloadType() string {
-	return c.workloadType
+	return c.workloadType.workloadTypeString
 }
 
 func runInParallelForAllWorkloadTypes[C workloadConfig](
@@ -792,16 +741,16 @@ func runInParallelForAllWorkloadTypes[C workloadConfig](
 	passed := make(map[string]bool)
 	var wg sync.WaitGroup
 	for _, config := range workloadConfigs {
-		workloadType := config.GetWorkloadType()
-		passed[workloadType] = false
+		workloadTypeString := config.GetWorkloadType()
+		passed[workloadTypeString] = false
 		wg.Add(1)
 		go func(cfg C) {
 			defer GinkgoRecover()
 			defer wg.Done()
-			fmt.Fprintf(GinkgoWriter, "(before test step: %s)\n", workloadType)
+			fmt.Fprintf(GinkgoWriter, "(before test step: %s)\n", workloadTypeString)
 			testStep(cfg)
-			fmt.Fprintf(GinkgoWriter, "(after test step: %s)\n", workloadType)
-			passed[workloadType] = true
+			fmt.Fprintf(GinkgoWriter, "(after test step: %s)\n", workloadTypeString)
+			passed[workloadTypeString] = true
 		}(config)
 	}
 	wg.Wait()
