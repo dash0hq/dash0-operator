@@ -1,0 +1,30 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+    name: dash0-operator-nodejs-20-express-test-cronjob
+spec:
+    jobTemplate:
+        spec:
+            template:
+                spec:
+                    containers:
+                        - env:
+                            - name: PORT
+                              value: "1205"
+                            - name: DASH0_DEBUG
+                              value: "true"
+                            - name: TRIGGER_SELF_AND_EXIT
+                              value: "true"
+                          image: dash0-operator-nodejs-20-express-test-app:latest
+                          imagePullPolicy: Never
+                          name: dash0-operator-nodejs-20-express-test-cronjob-app
+                          ports:
+                            - containerPort: 1205
+                          readinessProbe:
+                            httpGet:
+                                path: /ready
+                                port: 1205
+                            initialDelaySeconds: 1
+                            periodSeconds: 1
+                    restartPolicy: Never
+    schedule: '* * * * *'
