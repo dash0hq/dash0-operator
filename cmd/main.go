@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"k8s.io/client-go/tools/record"
 	"os"
 	"strings"
 
@@ -22,7 +23,6 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -34,11 +34,11 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
-	dash0controller "github.com/dash0hq/dash0-operator/internal/dash0/controller"
+	"github.com/dash0hq/dash0-operator/internal/dash0/controller"
 	"github.com/dash0hq/dash0-operator/internal/dash0/instrumentation"
-	dash0removal "github.com/dash0hq/dash0-operator/internal/dash0/removal"
-	dash0util "github.com/dash0hq/dash0-operator/internal/dash0/util"
-	dash0webhook "github.com/dash0hq/dash0-operator/internal/dash0/webhook"
+	"github.com/dash0hq/dash0-operator/internal/dash0/removal"
+	"github.com/dash0hq/dash0-operator/internal/dash0/util"
+	"github.com/dash0hq/dash0-operator/internal/dash0/webhook"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -279,7 +279,7 @@ func startDash0Controller(
 			"http://%s-opentelemetry-collector.%s.svc.cluster.local:4318",
 			envVars.oTelCollectorNamePrefix,
 			envVars.operatorNamespace)
-	images := dash0util.Images{
+	images := util.Images{
 		OperatorImage:                        envVars.operatorImage,
 		InitContainerImage:                   envVars.initContainerImage,
 		InitContainerImagePullPolicy:         envVars.initContainerImagePullPolicy,
@@ -311,7 +311,7 @@ func startDash0Controller(
 	instrumenter := &instrumentation.Instrumenter{
 		Client:               k8sClient,
 		Clientset:            clientset,
-		Recorder:             mgr.GetEventRecorderFor("dash0-controller"),
+		Recorder:             mgr.GetEventRecorderFor("dash0-monitoring-controller"),
 		Images:               images,
 		OTelCollectorBaseUrl: oTelCollectorBaseUrl,
 	}
@@ -326,7 +326,20 @@ func startDash0Controller(
 		Clientset:              clientset,
 		OTelColResourceManager: oTelColResourceManager,
 	}
-	dash0Reconciler := &dash0controller.Dash0Reconciler{
+
+	operatorConfigurationReconciler := &controller.OperatorConfigurationReconciler{
+		Client:                  mgr.GetClient(),
+		Clientset:               clientset,
+		Scheme:                  mgr.GetScheme(),
+		Recorder:                mgr.GetEventRecorderFor("dash0-operator-configuration-controller"),
+		DeploymentSelfReference: deploymentSelfReference,
+	}
+	if err := operatorConfigurationReconciler.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to set up the Dash0Operator reconciler: %w", err)
+	}
+	setupLog.Info("Dash0Monitoring reconciler has been set up.")
+
+	monitoringReconciler := &controller.Dash0Reconciler{
 		Client:                   k8sClient,
 		Clientset:                clientset,
 		Instrumenter:             instrumenter,
@@ -335,13 +348,13 @@ func startDash0Controller(
 		OperatorNamespace:        envVars.operatorNamespace,
 	}
 
-	if err := dash0Reconciler.SetupWithManager(mgr); err != nil {
-		return fmt.Errorf("unable to set up the Dash0 reconciler: %w", err)
+	if err := monitoringReconciler.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to set up the Dash0 monitoring reconciler: %w", err)
 	}
-	setupLog.Info("Dash0 reconciler has been set up.")
+	setupLog.Info("Dash0 monitoring reconciler has been set up.")
 
 	if os.Getenv("ENABLE_WEBHOOK") != "false" {
-		if err := (&dash0webhook.Handler{
+		if err := (&webhook.Handler{
 			Client:               k8sClient,
 			Recorder:             mgr.GetEventRecorderFor("dash0-webhook"),
 			Images:               images,
@@ -361,7 +374,7 @@ func executeStartupTasks(
 	ctx context.Context,
 	clientset *kubernetes.Clientset,
 	eventRecorder record.EventRecorder,
-	images dash0util.Images,
+	images util.Images,
 	oTelCollectorBaseUrl string,
 	operatorNamespace string,
 	deploymentName string,
@@ -429,7 +442,7 @@ func instrumentAtStartup(
 	startupTasksK8sClient client.Client,
 	clientset *kubernetes.Clientset,
 	eventRecorder record.EventRecorder,
-	images dash0util.Images,
+	images util.Images,
 	oTelCollectorBaseUrl string,
 ) {
 	startupInstrumenter := &instrumentation.Instrumenter{
@@ -527,7 +540,7 @@ func readOptionalPullPolicyFromEnvironmentVariable(envVarName string) corev1.Pul
 }
 
 func deleteDash0MonitoringResourcesInAllNamespaces(logger *logr.Logger) error {
-	handler, err := dash0removal.NewOperatorPreDeleteHandler()
+	handler, err := removal.NewOperatorPreDeleteHandler()
 	if err != nil {
 		logger.Error(err, "Failed to create the OperatorPreDeleteHandler.")
 		return err

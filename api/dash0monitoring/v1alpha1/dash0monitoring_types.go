@@ -8,10 +8,12 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	common "github.com/dash0hq/dash0-operator/api/dash0monitoring"
 )
 
 const (
-	FinalizerId = "operator.dash0.com/dash0-monitoring-finalizer"
+	MonitoringFinalizerId = "operator.dash0.com/dash0-monitoring-finalizer"
 )
 
 // Dash0MonitoringSpec defines the desired state of the Dash0 monitoring resource.
@@ -41,7 +43,7 @@ type Dash0MonitoringSpec struct {
 	// Global opt-out for workload instrumentation for the target namespace. There are three possible settings: `all`,
 	// `created-and-updated` and `none`. By default, the setting `all` is assumed.
 	//
-	// If set to `all` (or omitted), the operator will:
+	// If set to `all` (or omitted, as it `all` is the default value), the operator will:
 	// * instrument existing workloads in the target namespace (i.e. workloads already running in the namespace) when
 	//   the Dash0 monitoring resource is deployed,
 	// * instrument existing workloads or update the instrumentation of already instrumented workloads in the target
@@ -63,13 +65,10 @@ type Dash0MonitoringSpec struct {
 	// `instrumentWorkloads: none`, workloads in the target namespace will never be instrumented to send telemetry to
 	// Dash0.
 	//
-	// If this setting is omitted, the value `all` is assumed and new/updated as well as existing Kubernetes workloads
-	// will be intrumented by the operator to send telemetry to Dash0, as described above.
-	//
 	// More fine-grained per-workload control over instrumentation is available by setting the label
 	// dash0.com/enable=false on individual workloads.
 	//
-	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=all
 	InstrumentWorkloads InstrumentWorkloadsMode `json:"instrumentWorkloads,omitempty"`
 }
 
@@ -93,24 +92,6 @@ const (
 
 var allInstrumentWorkloadsMode = []InstrumentWorkloadsMode{All, CreatedAndUpdated, None}
 
-func ReadBooleanOptOutSetting(setting *bool) bool {
-	return readOptionalBooleanWithDefault(setting, true)
-}
-
-func readOptionalBooleanWithDefault(setting *bool, defaultValue bool) bool {
-	if setting == nil {
-		return defaultValue
-	}
-	return *setting
-}
-
-type ConditionType string
-
-const (
-	ConditionTypeAvailable ConditionType = "Available"
-	ConditionTypeDegraded  ConditionType = "Degraded"
-)
-
 // Dash0MonitoringStatus defines the observed state of the Dash0 monitoring resource.
 type Dash0MonitoringStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
@@ -122,6 +103,7 @@ type Dash0MonitoringStatus struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+//+groupName=operator.dash0.com
 
 // Dash0Monitoring is the Schema for the Dash0Monitoring API
 type Dash0Monitoring struct {
@@ -149,13 +131,13 @@ func (d *Dash0Monitoring) IsMarkedForDeletion() bool {
 }
 
 func (d *Dash0Monitoring) IsAvailable() bool {
-	if condition := d.getCondition(ConditionTypeAvailable); condition != nil {
+	if condition := d.getCondition(common.ConditionTypeAvailable); condition != nil {
 		return condition.Status == metav1.ConditionTrue
 	}
 	return false
 }
 
-func (d *Dash0Monitoring) getCondition(conditionType ConditionType) *metav1.Condition {
+func (d *Dash0Monitoring) getCondition(conditionType common.ConditionType) *metav1.Condition {
 	for _, c := range d.Status.Conditions {
 		if c.Type == string(conditionType) {
 			return &c
@@ -169,18 +151,18 @@ func (d *Dash0Monitoring) SetAvailableConditionToUnknown() {
 	meta.SetStatusCondition(
 		&d.Status.Conditions,
 		metav1.Condition{
-			Type:    string(ConditionTypeAvailable),
+			Type:    string(common.ConditionTypeAvailable),
 			Status:  metav1.ConditionUnknown,
 			Reason:  "ReconcileStarted",
-			Message: "Dash0 has started resource reconciliation.",
+			Message: "Dash0 has started resource reconciliation.", // TODO
 		})
 	meta.SetStatusCondition(
 		&d.Status.Conditions,
 		metav1.Condition{
-			Type:    string(ConditionTypeDegraded),
+			Type:    string(common.ConditionTypeDegraded),
 			Status:  metav1.ConditionTrue,
 			Reason:  "ReconcileStarted",
-			Message: "Dash0 is still starting.",
+			Message: "Dash0 is still starting.", // TODO
 		})
 }
 
@@ -191,18 +173,18 @@ func (d *Dash0Monitoring) EnsureResourceIsMarkedAsAvailable() {
 	meta.SetStatusCondition(
 		&d.Status.Conditions,
 		metav1.Condition{
-			Type:    string(ConditionTypeAvailable),
+			Type:    string(common.ConditionTypeAvailable),
 			Status:  metav1.ConditionTrue,
 			Reason:  "ReconcileFinished",
-			Message: "Dash0 is active in this namespace now.",
+			Message: "Dash0 is active in this namespace now.", // TODO
 		})
-	meta.RemoveStatusCondition(&d.Status.Conditions, string(ConditionTypeDegraded))
+	meta.RemoveStatusCondition(&d.Status.Conditions, string(common.ConditionTypeDegraded))
 }
 
 func (d *Dash0Monitoring) EnsureResourceIsMarkedAsAboutToBeDeleted() {
 	d.EnsureResourceIsMarkedAsDegraded(
 		"Dash0MonitoringResourceHasBeenRemoved",
-		"Dash0 is inactive in this namespace now.",
+		"Dash0 is inactive in this namespace now.", // TODO
 	)
 }
 
@@ -216,7 +198,7 @@ func (d *Dash0Monitoring) EnsureResourceIsMarkedAsDegraded(
 	meta.SetStatusCondition(
 		&d.Status.Conditions,
 		metav1.Condition{
-			Type:    string(ConditionTypeAvailable),
+			Type:    string(common.ConditionTypeAvailable),
 			Status:  metav1.ConditionFalse,
 			Reason:  reason,
 			Message: message,
@@ -224,7 +206,7 @@ func (d *Dash0Monitoring) EnsureResourceIsMarkedAsDegraded(
 	meta.SetStatusCondition(
 		&d.Status.Conditions,
 		metav1.Condition{
-			Type:    string(ConditionTypeDegraded),
+			Type:    string(common.ConditionTypeDegraded),
 			Status:  metav1.ConditionTrue,
 			Reason:  reason,
 			Message: message,

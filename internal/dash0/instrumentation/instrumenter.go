@@ -106,7 +106,7 @@ func (i *Instrumenter) InstrumentAtStartup(
 				Name:      dash0MonitoringResource.Name,
 			},
 		}
-		_, stop, err := util.VerifyUniqueDash0MonitoringResourceExists(
+		_, stop, err := util.VerifyUniqueMonitoringResourceExists(
 			ctx,
 			k8sClient,
 			updateStatusFailedMessage,

@@ -248,7 +248,7 @@ func removeFinalizerFromDash0MonitoringResource(
 	k8sClient client.Client,
 	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
 ) {
-	finalizerHasBeenRemoved := controllerutil.RemoveFinalizer(dash0MonitoringResource, dash0v1alpha1.FinalizerId)
+	finalizerHasBeenRemoved := controllerutil.RemoveFinalizer(dash0MonitoringResource, dash0v1alpha1.MonitoringFinalizerId)
 	if finalizerHasBeenRemoved {
 		Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
 	}

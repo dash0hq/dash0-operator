@@ -99,7 +99,7 @@ var _ = BeforeSuite(func() {
 	instrumenter := &instrumentation.Instrumenter{
 		Client:               k8sClient,
 		Clientset:            clientset,
-		Recorder:             mgr.GetEventRecorderFor("dash0-controller"),
+		Recorder:             mgr.GetEventRecorderFor("dash0-monitoring-controller"),
 		Images:               TestImages,
 		OTelCollectorBaseUrl: OTelCollectorBaseUrlTest,
 	}

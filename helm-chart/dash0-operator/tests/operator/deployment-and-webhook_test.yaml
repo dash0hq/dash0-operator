@@ -242,13 +242,13 @@ tests:
           path: spec.template.spec.containers[0].resources.requests.memory
           value: 32Mi
 
-  - it: should render the "dash0.cert-digest" label
+  - it: should render the "dash0.com/cert-digest" label
     documentSelector:
       path: metadata.name
       value: dash0-operator-controller
     asserts:
       - isNotNullOrEmpty:
-          path: spec.template.metadata.labels["dash0.cert-digest"]
+          path: spec.template.metadata.labels["dash0.com/cert-digest"]
 
   - it: deployment should support referencing images by digest instead of tag
     documentSelector:
@@ -326,11 +326,11 @@ tests:
       - isNotNullOrEmpty:
           path: webhooks[0].clientConfig.caBundle
 
-  - it: injector service should render the "dash0.cert-digest" label
+  - it: injector service should render the "dash0.com/cert-digest" label
     documentIndex: 4
     asserts:
       - isNotNullOrEmpty:
-          path: spec.selector["dash0.cert-digest"]
+          path: spec.selector["dash0.com/cert-digest"]
 
   - it: injector service should match snapshot (default settings)
     documentIndex: 4
@@ -344,7 +344,7 @@ tests:
         metricsPort: 9554
     asserts:
       - isNotNullOrEmpty:
-          path: spec.selector["dash0.cert-digest"]
+          path: spec.selector["dash0.com/cert-digest"]
       - equal:
           path: spec.ports[0].port
           value: 9554

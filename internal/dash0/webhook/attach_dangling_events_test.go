@@ -36,7 +36,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 	BeforeAll(func() {
 		EnsureDash0OperatorNamespaceExists(ctx, k8sClient)
 
-		recorder := manager.GetEventRecorderFor("dash0-controller")
+		recorder := manager.GetEventRecorderFor("dash0-monitoring-controller")
 		instrumenter := &instrumentation.Instrumenter{
 			Client:               k8sClient,
 			Clientset:            clientset,
@@ -55,6 +55,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 			Clientset:              clientset,
 			OTelColResourceManager: oTelColResourceManager,
 		}
+
 		reconciler = &controller.Dash0Reconciler{
 			Client:                   k8sClient,
 			Clientset:                clientset,

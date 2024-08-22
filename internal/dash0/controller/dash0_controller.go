@@ -101,7 +101,7 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{}, nil
 	}
 
-	dash0MonitoringResource, stopReconcile, err := util.VerifyUniqueDash0MonitoringResourceExists(
+	dash0MonitoringResource, stopReconcile, err := util.VerifyUniqueMonitoringResourceExists(
 		ctx,
 		r.Client,
 		updateStatusFailedMessage,
@@ -129,7 +129,7 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		ctx,
 		r.Client,
 		dash0MonitoringResource,
-		dash0v1alpha1.FinalizerId,
+		dash0v1alpha1.MonitoringFinalizerId,
 		&logger,
 	)
 	if err != nil {
@@ -265,7 +265,7 @@ func (r *Dash0Reconciler) runCleanupActions(
 		return err
 	}
 
-	controllerutil.RemoveFinalizer(dash0MonitoringResource, dash0v1alpha1.FinalizerId)
+	controllerutil.RemoveFinalizer(dash0MonitoringResource, dash0v1alpha1.MonitoringFinalizerId)
 	if err := r.Update(ctx, dash0MonitoringResource); err != nil {
 		logger.Error(err, "Failed to remove the finalizer from the Dash0 monitoring resource, requeuing reconcile "+
 			"request.")
