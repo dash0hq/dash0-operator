@@ -145,13 +145,13 @@ func verifyThatInstrumentationIsRevertedEventually(
 	By(fmt.Sprintf("%s: matching spans are no longer captured", workloadType))
 }
 
-func waitForApplicationToBecomeReady(templateName string, waitCommand *exec.Cmd) error {
-	By(fmt.Sprintf("waiting for %s to become ready", templateName))
+func waitForApplicationToBecomeReady(workloadType string, waitCommand *exec.Cmd) error {
+	By(fmt.Sprintf("waiting for %s to become ready", workloadType))
 	err := runAndIgnoreOutput(waitCommand)
 	if err != nil {
-		By(fmt.Sprintf("%s never became ready", templateName))
+		By(fmt.Sprintf("%s never became ready", workloadType))
 	} else {
-		By(fmt.Sprintf("%s is ready now", templateName))
+		By(fmt.Sprintf("%s is ready now", workloadType))
 	}
 	return err
 }
