@@ -2,9 +2,7 @@ connectors:
   forward/logs:
 
 exporters:
-  # debug: {}
-  debug:
-    verbosity: detailed
+  debug: {}
 {{- if eq .ExportProtocol "grpc" }}
   otlp:
     endpoint: {{ .Endpoint }}
