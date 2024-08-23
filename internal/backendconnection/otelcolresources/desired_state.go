@@ -20,16 +20,18 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoring"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 )
 
 type oTelColConfig struct {
-	Namespace          string
-	NamePrefix         string
-	Endpoint           string
-	AuthorizationToken string
-	SecretRef          string
-	Images             util.Images
+	Namespace                   string
+	NamePrefix                  string
+	Endpoint                    string
+	AuthorizationToken          string
+	SecretRef                   string
+	Images                      util.Images
+	SelfMonitoringConfiguration selfmonitoring.SelfMonitoringConfiguration
 }
 
 func (c *oTelColConfig) hasAuthentication() bool {
@@ -110,16 +112,20 @@ func assembleDesiredState(config *oTelColConfig) ([]client.Object, error) {
 	if err != nil {
 		return desiredState, err
 	}
+
+	ds, err := daemonSet(config)
+	if err != nil {
+		return desiredState, err
+	}
+
 	desiredState = append(desiredState, collectorCM)
-
 	desiredState = append(desiredState, filelogOffsetsConfigMap(config))
-
 	desiredState = append(desiredState, clusterRole(config))
 	desiredState = append(desiredState, clusterRoleBinding(config))
 	desiredState = append(desiredState, role(config))
 	desiredState = append(desiredState, roleBinding(config))
 	desiredState = append(desiredState, service(config))
-	desiredState = append(desiredState, daemonSet(config))
+	desiredState = append(desiredState, ds)
 	return desiredState, nil
 }
 
@@ -341,7 +347,7 @@ func service(config *oTelColConfig) *corev1.Service {
 	}
 }
 
-func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
+func daemonSet(config *oTelColConfig) (*appsv1.DaemonSet, error) {
 	configMapItems := []corev1.KeyToPath{{
 		Key:  collectorConfigurationYaml,
 		Path: collectorConfigurationYaml,
@@ -641,7 +647,7 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 		filelogOffsetSynchContainer.ImagePullPolicy = config.Images.FilelogOffsetSynchImagePullPolicy
 	}
 
-	return &appsv1.DaemonSet{
+	daemonset := &appsv1.DaemonSet{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "DaemonSet",
 			APIVersion: "apps/v1",
@@ -680,6 +686,14 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 			},
 		},
 	}
+
+	if config.SelfMonitoringConfiguration.Enabled {
+		if err := selfmonitoring.EnableSelfMonitoringInCollectorDaemonSet(daemonset, config.SelfMonitoringConfiguration.Endpoint, config.SelfMonitoringConfiguration.BearerToken); err != nil {
+			return nil, fmt.Errorf("failed to enable self monitoring in the daemonset: %w", err)
+		}
+	}
+
+	return daemonset, nil
 }
 
 func serviceAccountName(namePrefix string) string {

@@ -5,6 +5,7 @@ package otelcolresources
 
 import (
 	"context"
+	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoring"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -115,6 +116,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					ctx,
 					Dash0OperatorNamespace,
 					TestImages,
+					selfmonitoring.SelfMonitoringConfiguration{},
 					dash0MonitoringResource,
 					&logger,
 				)
@@ -151,6 +153,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					ctx,
 					Dash0OperatorNamespace,
 					TestImages,
+					selfmonitoring.SelfMonitoringConfiguration{},
 					dash0MonitoringResource,
 					&logger,
 				)
@@ -169,6 +172,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				ctx,
 				Dash0OperatorNamespace,
 				TestImages,
+				selfmonitoring.SelfMonitoringConfiguration{},
 				dash0MonitoringResource,
 				&logger,
 			)
@@ -181,6 +185,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					ctx,
 					Dash0OperatorNamespace,
 					TestImages,
+					selfmonitoring.SelfMonitoringConfiguration{},
 					dash0MonitoringResource,
 					&logger,
 				)
@@ -199,6 +204,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				ctx,
 				Dash0OperatorNamespace,
 				TestImages,
+				selfmonitoring.SelfMonitoringConfiguration{},
 				dash0MonitoringResource,
 				&logger,
 			)

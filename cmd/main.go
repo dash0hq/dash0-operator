@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoring"
 	"k8s.io/client-go/tools/record"
 	"os"
 	"strings"
@@ -307,6 +308,17 @@ func startDash0Controller(
 		return err
 	}
 
+	selfMonitoringConfiguration, err := selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(deploymentSelfReference, controller.ManagerContainerName)
+	if err != nil {
+		return fmt.Errorf("cannot determine if self-monitoring is enabled in the controller deployment: %w", err)
+	}
+
+	var bearerTokenReplacement string
+	if selfMonitoringConfiguration.BearerToken != "" {
+		bearerTokenReplacement = "*****"
+	}
+	setupLog.Info("Self monitoring configurations:", "enabled", selfMonitoringConfiguration.Enabled, "endpoint", selfMonitoringConfiguration.Endpoint, "bearer-token", bearerTokenReplacement)
+
 	k8sClient := mgr.GetClient()
 	instrumenter := &instrumentation.Instrumenter{
 		Client:               k8sClient,
@@ -328,11 +340,12 @@ func startDash0Controller(
 	}
 
 	operatorConfigurationReconciler := &controller.OperatorConfigurationReconciler{
-		Client:                  mgr.GetClient(),
-		Clientset:               clientset,
-		Scheme:                  mgr.GetScheme(),
-		Recorder:                mgr.GetEventRecorderFor("dash0-operator-configuration-controller"),
-		DeploymentSelfReference: deploymentSelfReference,
+		Client:                      mgr.GetClient(),
+		Clientset:                   clientset,
+		Scheme:                      mgr.GetScheme(),
+		Recorder:                    mgr.GetEventRecorderFor("dash0-operator-configuration-controller"),
+		DeploymentSelfReference:     deploymentSelfReference,
+		SelfMonitoringConfiguration: selfMonitoringConfiguration,
 	}
 	if err := operatorConfigurationReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the Dash0Operator reconciler: %w", err)
@@ -340,12 +353,13 @@ func startDash0Controller(
 	setupLog.Info("Dash0Monitoring reconciler has been set up.")
 
 	monitoringReconciler := &controller.Dash0Reconciler{
-		Client:                   k8sClient,
-		Clientset:                clientset,
-		Instrumenter:             instrumenter,
-		BackendConnectionManager: backendConnectionManager,
-		Images:                   images,
-		OperatorNamespace:        envVars.operatorNamespace,
+		Client:                      k8sClient,
+		Clientset:                   clientset,
+		Instrumenter:                instrumenter,
+		BackendConnectionManager:    backendConnectionManager,
+		Images:                      images,
+		OperatorNamespace:           envVars.operatorNamespace,
+		SelfMonitoringConfiguration: selfMonitoringConfiguration,
 	}
 
 	if err := monitoringReconciler.SetupWithManager(mgr); err != nil {

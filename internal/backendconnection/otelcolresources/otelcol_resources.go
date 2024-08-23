@@ -6,6 +6,7 @@ package otelcolresources
 import (
 	"context"
 	"errors"
+	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoring"
 	"reflect"
 
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
@@ -34,16 +35,18 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	ctx context.Context,
 	namespace string,
 	images util.Images,
-	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
+	selfMonitoringConfiguration selfmonitoring.SelfMonitoringConfiguration,
+	monitoringResource *dash0v1alpha1.Dash0Monitoring,
 	logger *logr.Logger,
 ) (bool, bool, error) {
 	config := &oTelColConfig{
-		Namespace:          namespace,
-		NamePrefix:         m.OTelCollectorNamePrefix,
-		Endpoint:           dash0MonitoringResource.Spec.Endpoint,
-		AuthorizationToken: dash0MonitoringResource.Spec.AuthorizationToken,
-		SecretRef:          dash0MonitoringResource.Spec.SecretRef,
-		Images:             images,
+		Namespace:                   namespace,
+		NamePrefix:                  m.OTelCollectorNamePrefix,
+		Endpoint:                    monitoringResource.Spec.Endpoint,
+		AuthorizationToken:          monitoringResource.Spec.AuthorizationToken,
+		SecretRef:                   monitoringResource.Spec.SecretRef,
+		Images:                      images,
+		SelfMonitoringConfiguration: selfMonitoringConfiguration,
 	}
 	desiredState, err := assembleDesiredState(config)
 	if err != nil {

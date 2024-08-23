@@ -6,6 +6,7 @@ package controller
 import (
 	"context"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoring"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -78,7 +79,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 			It("it enables self-monitoring in the controller deployment", func() {
 				CreateOperatorConfigurationResource(ctx, k8sClient, OperatorConfigurationResourceName, dash0v1alpha1.Dash0OperatorConfigurationSpec{
-					IngressEndpoint:    "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
+					Endpoint:           "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
 					AuthorizationToken: "1234567890",
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 						Enabled: true,
@@ -86,10 +87,12 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				})
 
 				triggerOperatorConfigurationReconcileRequest(ctx, reconciler, "")
-				verifyDash0OperatorResourceIsAvailable(ctx)
+				verifyOperatorConfigurationResourceIsAvailable(ctx)
 				Eventually(func(g Gomega) {
 					updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
-					Expect(IsSelfMonitoringEnabled(updatedDeployment)).To(BeTrue())
+					selfMonitoringConfiguration, err := selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(updatedDeployment, ManagerContainerName)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(selfMonitoringConfiguration.Enabled).To(BeFalse())
 				}, timeout, pollingInterval).Should(Succeed())
 			})
 
@@ -99,7 +102,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 			It("it does not change the controller deployment", func() {
 				CreateOperatorConfigurationResource(ctx, k8sClient, OperatorConfigurationResourceName, dash0v1alpha1.Dash0OperatorConfigurationSpec{
-					IngressEndpoint:    "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
+					Endpoint:           "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
 					AuthorizationToken: "1234567890",
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 						Enabled: false,
@@ -107,11 +110,12 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				})
 
 				triggerOperatorConfigurationReconcileRequest(ctx, reconciler, "")
-				verifyDash0OperatorResourceIsAvailable(ctx)
-				Expect(IsSelfMonitoringEnabled(controllerDeployment)).To(BeFalse())
-				Eventually(func(g Gomega) {
+				verifyOperatorConfigurationResourceIsAvailable(ctx)
+				Consistently(func(g Gomega) {
 					updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
-					Expect(IsSelfMonitoringEnabled(updatedDeployment)).To(BeTrue())
+					selfMonitoringConfiguration, err := selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(updatedDeployment, ManagerContainerName)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(selfMonitoringConfiguration.Enabled).To(BeFalse())
 				}, timeout, pollingInterval).Should(Succeed())
 			})
 
@@ -151,10 +155,8 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				})
 
 				It("it does not change the controller deployment", func() {
-					Expect(IsSelfMonitoringEnabled(controllerDeployment)).To(BeTrue())
-
 					CreateOperatorConfigurationResource(ctx, k8sClient, OperatorConfigurationResourceName, dash0v1alpha1.Dash0OperatorConfigurationSpec{
-						IngressEndpoint:    "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
+						Endpoint:           "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
 						AuthorizationToken: "1234567890",
 						SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 							Enabled: true,
@@ -162,11 +164,13 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 					})
 
 					triggerOperatorConfigurationReconcileRequest(ctx, reconciler, "")
-					verifyDash0OperatorResourceIsAvailable(ctx)
+					verifyOperatorConfigurationResourceIsAvailable(ctx)
 
 					Consistently(func(g Gomega) {
 						updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
-						Expect(IsSelfMonitoringEnabled(updatedDeployment)).To(BeTrue())
+						selfMonitoringConfiguration, err := selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(updatedDeployment, ManagerContainerName)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(selfMonitoringConfiguration.Enabled).To(BeTrue())
 					}, timeout, pollingInterval).Should(Succeed())
 				})
 
@@ -193,7 +197,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 					}
 
 					CreateOperatorConfigurationResource(ctx, k8sClient, OperatorConfigurationResourceName, dash0v1alpha1.Dash0OperatorConfigurationSpec{
-						IngressEndpoint:    "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
+						Endpoint:           "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
 						AuthorizationToken: "1234567890",
 						SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 							Enabled: false,
@@ -214,10 +218,12 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 					Expect(k8sClient.Update(ctx, resource)).To(Succeed())
 
 					triggerOperatorConfigurationReconcileRequest(ctx, reconciler, "")
-					verifyDash0OperatorResourceIsAvailable(ctx)
+					verifyOperatorConfigurationResourceIsAvailable(ctx)
 					Eventually(func(g Gomega) {
 						updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
-						Expect(IsSelfMonitoringEnabled(updatedDeployment)).To(BeTrue())
+						selfMonitoringConfiguration, err := selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(updatedDeployment, ManagerContainerName)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(selfMonitoringConfiguration.Enabled).To(BeTrue())
 					}, timeout, pollingInterval).Should(Succeed())
 				})
 
@@ -231,7 +237,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 				BeforeEach(func() {
 					CreateOperatorConfigurationResource(ctx, k8sClient, OperatorConfigurationResourceName, dash0v1alpha1.Dash0OperatorConfigurationSpec{
-						IngressEndpoint:    "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
+						Endpoint:           "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
 						AuthorizationToken: "1234567890",
 						SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 							Enabled: true,
@@ -269,10 +275,12 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 					Expect(k8sClient.Update(ctx, resource)).To(Succeed())
 
 					triggerOperatorConfigurationReconcileRequest(ctx, reconciler, "")
-					verifyDash0OperatorResourceIsAvailable(ctx)
+					verifyOperatorConfigurationResourceIsAvailable(ctx)
 					Eventually(func(g Gomega) {
 						updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
-						Expect(IsSelfMonitoringEnabled(updatedDeployment)).To(BeFalse())
+						selfMonitoringConfiguration, err := selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(updatedDeployment, ManagerContainerName)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(selfMonitoringConfiguration.Enabled).To(BeFalse())
 					}, timeout, pollingInterval).Should(Succeed())
 				})
 
@@ -282,7 +290,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 				BeforeEach(func() {
 					CreateOperatorConfigurationResource(ctx, k8sClient, OperatorConfigurationResourceName, dash0v1alpha1.Dash0OperatorConfigurationSpec{
-						IngressEndpoint:    "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
+						Endpoint:           "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
 						AuthorizationToken: "1234567890",
 						SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 							Enabled: false,
@@ -320,10 +328,12 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 					Expect(k8sClient.Update(ctx, resource)).To(Succeed())
 
 					triggerOperatorConfigurationReconcileRequest(ctx, reconciler, "")
-					verifyDash0OperatorResourceIsAvailable(ctx)
+					verifyOperatorConfigurationResourceIsAvailable(ctx)
 					Consistently(func(g Gomega) {
 						updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
-						Expect(IsSelfMonitoringEnabled(updatedDeployment)).To(BeFalse())
+						selfMonitoringConfiguration, err := selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(updatedDeployment, ManagerContainerName)
+						Expect(err).NotTo(HaveOccurred())
+						Expect(selfMonitoringConfiguration.Enabled).To(BeFalse())
 					}, timeout, pollingInterval).Should(Succeed())
 				})
 
@@ -339,7 +349,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 			BeforeEach(func() {
 				CreateOperatorConfigurationResource(ctx, k8sClient, OperatorConfigurationResourceName, dash0v1alpha1.Dash0OperatorConfigurationSpec{
-					IngressEndpoint:    "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
+					Endpoint:           "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
 					AuthorizationToken: "1234567890",
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 						Enabled: true,
@@ -365,7 +375,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			})
 
 			It("it disables self-monitoring in the controller deployment", func() {
-				Expect(IsSelfMonitoringEnabled(controllerDeployment)).To(BeTrue())
+				Expect(selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(controllerDeployment, ManagerContainerName)).To(BeTrue())
 
 				resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
 				Expect(resource.Spec.SelfMonitoring.Enabled).To(BeTrue())
@@ -377,7 +387,9 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 				Eventually(func(g Gomega) {
 					updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
-					Expect(IsSelfMonitoringEnabled(updatedDeployment)).To(BeFalse())
+					selfMonitoringConfiguration, err := selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(updatedDeployment, ManagerContainerName)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(selfMonitoringConfiguration.Enabled).To(BeFalse())
 				}, timeout, pollingInterval).Should(Succeed())
 			})
 
@@ -387,7 +399,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 			BeforeEach(func() {
 				CreateOperatorConfigurationResource(ctx, k8sClient, OperatorConfigurationResourceName, dash0v1alpha1.Dash0OperatorConfigurationSpec{
-					IngressEndpoint:    "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
+					Endpoint:           "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
 					AuthorizationToken: "1234567890",
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 						Enabled: false,
@@ -413,7 +425,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			})
 
 			It("it does not change the controller deployment", func() {
-				Expect(IsSelfMonitoringEnabled(controllerDeployment)).To(BeFalse())
+				Expect(selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(controllerDeployment, ManagerContainerName)).To(BeFalse())
 
 				resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
 				Expect(resource.Spec.SelfMonitoring.Enabled).To(BeFalse())
@@ -425,7 +437,9 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 				Consistently(func(g Gomega) {
 					updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
-					Expect(IsSelfMonitoringEnabled(updatedDeployment)).To(BeFalse())
+					selfMonitoringConfiguration, err := selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(updatedDeployment, ManagerContainerName)
+					Expect(err).NotTo(HaveOccurred())
+					Expect(selfMonitoringConfiguration.Enabled).To(BeFalse())
 				}, timeout, pollingInterval).Should(Succeed())
 			})
 
@@ -808,7 +822,7 @@ func triggerOperatorReconcileRequestForName(
 	Expect(err).NotTo(HaveOccurred())
 }
 
-func verifyDash0OperatorResourceIsAvailable(ctx context.Context) *metav1.Condition {
+func verifyOperatorConfigurationResourceIsAvailable(ctx context.Context) *metav1.Condition {
 	var availableCondition *metav1.Condition
 	By("Verifying status conditions")
 	Eventually(func(g Gomega) {

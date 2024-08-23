@@ -5,6 +5,7 @@ package otelcolresources
 
 import (
 	"fmt"
+	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoring"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -32,6 +33,52 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			Images:             TestImages,
 		})
 		Expect(err).To(HaveOccurred())
+	})
+
+	It("should correctly apply enabled self-monitoring on the daemonset", func() {
+		desiredState, err := assembleDesiredState(&oTelColConfig{
+			Namespace:          namespace,
+			NamePrefix:         namePrefix,
+			Endpoint:           EndpointTest,
+			AuthorizationToken: AuthorizationTokenTest,
+			Images:             TestImages,
+			SelfMonitoringConfiguration: selfmonitoring.SelfMonitoringConfiguration{
+				Enabled:     true,
+				Endpoint:    EndpointTest,
+				BearerToken: AuthorizationTokenTest,
+			},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		daemonSet := getDaemonSet(desiredState)
+		selfMonitoringConfiguration, err := selfmonitoring.IsSelfMonitoringInCollectorDaemonSetEnabled(daemonSet)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(selfMonitoringConfiguration.Enabled).To(BeTrue())
+		Expect(selfMonitoringConfiguration.Endpoint).To(Equal(EndpointTest))
+		Expect(selfMonitoringConfiguration.BearerToken).To(Equal(AuthorizationTokenTest))
+	})
+
+	It("should correctly apply disabled self-monitoring on the daemonset", func() {
+		desiredState, err := assembleDesiredState(&oTelColConfig{
+			Namespace:          namespace,
+			NamePrefix:         namePrefix,
+			Endpoint:           EndpointTest,
+			AuthorizationToken: AuthorizationTokenTest,
+			Images:             TestImages,
+			SelfMonitoringConfiguration: selfmonitoring.SelfMonitoringConfiguration{
+				Enabled:     false,
+				Endpoint:    EndpointTest,
+				BearerToken: AuthorizationTokenTest,
+			},
+		})
+		Expect(err).NotTo(HaveOccurred())
+
+		daemonSet := getDaemonSet(desiredState)
+		selfMonitoringConfiguration, err := selfmonitoring.IsSelfMonitoringInCollectorDaemonSetEnabled(daemonSet)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(selfMonitoringConfiguration.Enabled).To(BeFalse())
+		Expect(selfMonitoringConfiguration.Endpoint).To(Equal(""))
+		Expect(selfMonitoringConfiguration.BearerToken).To(Equal(""))
 	})
 
 	It("should describe the desired state as a set of Kubernetes client objects", func() {

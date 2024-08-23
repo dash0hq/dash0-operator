@@ -21,6 +21,7 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection"
 	"github.com/dash0hq/dash0-operator/internal/dash0/instrumentation"
+	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoring"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 )
 
@@ -31,12 +32,13 @@ type DanglingEventsTimeouts struct {
 
 type Dash0Reconciler struct {
 	client.Client
-	Clientset                *kubernetes.Clientset
-	Instrumenter             *instrumentation.Instrumenter
-	BackendConnectionManager *backendconnection.BackendConnectionManager
-	Images                   util.Images
-	OperatorNamespace        string
-	DanglingEventsTimeouts   *DanglingEventsTimeouts
+	Clientset                   *kubernetes.Clientset
+	Instrumenter                *instrumentation.Instrumenter
+	BackendConnectionManager    *backendconnection.BackendConnectionManager
+	Images                      util.Images
+	OperatorNamespace           string
+	SelfMonitoringConfiguration selfmonitoring.SelfMonitoringConfiguration
+	DanglingEventsTimeouts      *DanglingEventsTimeouts
 }
 
 const (
@@ -101,7 +103,7 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		return ctrl.Result{}, nil
 	}
 
-	dash0MonitoringResource, stopReconcile, err := util.VerifyUniqueMonitoringResourceExists(
+	monitoringResource, stopReconcile, err := util.VerifyUniqueMonitoringResourceExists(
 		ctx,
 		r.Client,
 		updateStatusFailedMessage,
@@ -117,7 +119,7 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	isFirstReconcile, err := util.InitStatusConditions(
 		ctx,
 		r.Status(),
-		dash0MonitoringResource,
+		monitoringResource,
 		&logger,
 	)
 	if err != nil {
@@ -128,7 +130,7 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	isMarkedForDeletion, runCleanupActions, err := util.CheckImminentDeletionAndHandleFinalizers(
 		ctx,
 		r.Client,
-		dash0MonitoringResource,
+		monitoringResource,
 		dash0v1alpha1.MonitoringFinalizerId,
 		&logger,
 	)
@@ -136,7 +138,7 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		// The error has already been logged in checkImminentDeletionAndHandleFinalizers
 		return ctrl.Result{}, err
 	} else if runCleanupActions {
-		err = r.runCleanupActions(ctx, dash0MonitoringResource, &logger)
+		err = r.runCleanupActions(ctx, monitoringResource, &logger)
 		if err != nil {
 			// error has already been logged in runCleanupActions
 			return ctrl.Result{}, err
@@ -152,40 +154,41 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 
 	// Make sure that an OpenTelemetry collector instance has been created in the namespace of the operator, and that
 	// its configuration is up-to-date.
-	if err = r.BackendConnectionManager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
+	if err = r.BackendConnectionManager.EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
 		ctx,
 		r.Images,
 		r.OperatorNamespace,
-		dash0MonitoringResource,
+		r.SelfMonitoringConfiguration,
+		monitoringResource,
 	); err != nil {
 		return ctrl.Result{}, err
 	}
 
 	var requiredAction util.ModificationMode
-	dash0MonitoringResource, requiredAction, err =
-		r.manageInstrumentWorkloadsChanges(ctx, dash0MonitoringResource, isFirstReconcile, &logger)
+	monitoringResource, requiredAction, err =
+		r.manageInstrumentWorkloadsChanges(ctx, monitoringResource, isFirstReconcile, &logger)
 	if err != nil {
 		// The error has already been logged in manageInstrumentWorkloadsChanges
 		return ctrl.Result{}, err
 	}
 
 	if isFirstReconcile || requiredAction == util.ModificationModeInstrumentation {
-		if err = r.Instrumenter.CheckSettingsAndInstrumentExistingWorkloads(ctx, dash0MonitoringResource, &logger); err != nil {
+		if err = r.Instrumenter.CheckSettingsAndInstrumentExistingWorkloads(ctx, monitoringResource, &logger); err != nil {
 			// The error has already been logged in checkSettingsAndInstrumentExistingWorkloads
 			logger.Info("Requeuing reconcile request.")
 			return ctrl.Result{}, err
 		}
 	} else if requiredAction == util.ModificationModeUninstrumentation {
-		if err = r.Instrumenter.UninstrumentWorkloadsIfAvailable(ctx, dash0MonitoringResource, &logger); err != nil {
+		if err = r.Instrumenter.UninstrumentWorkloadsIfAvailable(ctx, monitoringResource, &logger); err != nil {
 			logger.Error(err, "Failed to uninstrument workloads, requeuing reconcile request.")
 			return ctrl.Result{}, err
 		}
 	}
 
-	r.scheduleAttachDanglingEvents(ctx, dash0MonitoringResource, &logger)
+	r.scheduleAttachDanglingEvents(ctx, monitoringResource, &logger)
 
-	dash0MonitoringResource.EnsureResourceIsMarkedAsAvailable()
-	if err = r.Status().Update(ctx, dash0MonitoringResource); err != nil {
+	monitoringResource.EnsureResourceIsMarkedAsAvailable()
+	if err = r.Status().Update(ctx, monitoringResource); err != nil {
 		logger.Error(err, updateStatusFailedMessage)
 		return ctrl.Result{}, err
 	}
@@ -245,7 +248,7 @@ func (r *Dash0Reconciler) runCleanupActions(
 		return err
 	}
 
-	if err := r.BackendConnectionManager.RemoveOpenTelemetryCollectorIfNoDash0MonitoringResourceIsLeft(
+	if err := r.BackendConnectionManager.RemoveOpenTelemetryCollectorIfNoMonitoringResourceIsLeft(
 		ctx,
 		r.Images,
 		r.OperatorNamespace,

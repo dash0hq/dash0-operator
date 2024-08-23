@@ -22,7 +22,7 @@ type Dash0OperatorConfigurationSpec struct {
 	// `dash0monitoring.com:4317`.
 	//
 	// +kubebuilder:validation:Mandatory
-	IngressEndpoint string `json:"ingressEndpoint"`
+	Endpoint string `json:"endpoint"`
 
 	// The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
 	// to be provided. If both are provided, the AuthorizationToken will be used and SecretRef will be ignored. The
@@ -44,7 +44,7 @@ type Dash0OperatorConfigurationSpec struct {
 }
 
 // SelfMonitoring describes how the operator will report telemetry about its working to the
-// backend described in IngressEndpoint
+// backend described in Endpoint
 //
 // +kubebuilder:validation:Optional
 type SelfMonitoring struct {

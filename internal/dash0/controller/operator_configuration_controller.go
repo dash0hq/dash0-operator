@@ -6,6 +6,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoring"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sort"
@@ -30,11 +31,12 @@ const (
 
 type OperatorConfigurationReconciler struct {
 	client.Client
-	Clientset               *kubernetes.Clientset
-	Scheme                  *runtime.Scheme
-	Recorder                record.EventRecorder
-	DeploymentSelfReference *appsv1.Deployment
-	DanglingEventsTimeouts  *DanglingEventsTimeouts
+	Clientset                   *kubernetes.Clientset
+	Scheme                      *runtime.Scheme
+	Recorder                    record.EventRecorder
+	DeploymentSelfReference     *appsv1.Deployment
+	SelfMonitoringConfiguration selfmonitoring.SelfMonitoringConfiguration
+	DanglingEventsTimeouts      *DanglingEventsTimeouts
 }
 
 func (r *OperatorConfigurationReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -101,25 +103,18 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, err
 	}
 
-	isSelfMonitoringEnabled, err := IsSelfMonitoringEnabled(r.DeploymentSelfReference)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
 	shouldEnableSelfMonitoring := resource.Spec.SelfMonitoring.Enabled
-	if shouldEnableSelfMonitoring == isSelfMonitoringEnabled {
+	if shouldEnableSelfMonitoring == r.SelfMonitoringConfiguration.Enabled {
 		return ctrl.Result{}, nil
 	}
 
-	var updatedControllerDeployment *appsv1.Deployment
+	updatedControllerDeployment := r.DeploymentSelfReference.DeepCopy()
 	if shouldEnableSelfMonitoring {
-		updatedControllerDeployment, err = EnableSelfMonitoring(r.DeploymentSelfReference, resource.Spec.IngressEndpoint, resource.Spec.AuthorizationToken)
-		if err != nil {
+		if err := selfmonitoring.EnableSelfMonitoringInControllerDeployment(updatedControllerDeployment, ManagerContainerName, resource.Spec.Endpoint, resource.Spec.AuthorizationToken); err != nil {
 			return ctrl.Result{}, err
 		}
 	} else {
-		updatedControllerDeployment, err = DisableSelfMonitoring(r.DeploymentSelfReference)
-		if err != nil {
+		if err = selfmonitoring.DisableSelfMonitoringInControllerDeployment(updatedControllerDeployment, ManagerContainerName); err != nil {
 			return ctrl.Result{}, err
 		}
 	}

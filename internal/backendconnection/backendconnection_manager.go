@@ -13,6 +13,7 @@ import (
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
+	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoring"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 )
 
@@ -26,15 +27,16 @@ const (
 	failedToCreateMsg = "failed to create the OpenTelemetry collector instance, no telemetry will be reported to Dash0"
 )
 
-func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
+func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
 	ctx context.Context,
 	images util.Images,
 	operatorNamespace string,
-	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
+	selfMonitoringConfiguration selfmonitoring.SelfMonitoringConfiguration,
+	monitoringResource *dash0v1alpha1.Dash0Monitoring,
 ) error {
 	logger := log.FromContext(ctx)
 
-	if dash0MonitoringResource.Spec.Endpoint == "" {
+	if monitoringResource.Spec.Endpoint == "" {
 		err := fmt.Errorf("no endpoint provided, unable to create the OpenTelemetry collector")
 		logger.Error(err, failedToCreateMsg)
 		return err
@@ -45,7 +47,8 @@ func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInDash0
 			ctx,
 			operatorNamespace,
 			images,
-			dash0MonitoringResource,
+			selfMonitoringConfiguration,
+			monitoringResource,
 			&logger,
 		)
 
@@ -62,7 +65,7 @@ func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInDash0
 	return nil
 }
 
-func (m *BackendConnectionManager) RemoveOpenTelemetryCollectorIfNoDash0MonitoringResourceIsLeft(
+func (m *BackendConnectionManager) RemoveOpenTelemetryCollectorIfNoMonitoringResourceIsLeft(
 	ctx context.Context,
 	images util.Images,
 	operatorNamespace string,
