@@ -17,6 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 )
 
@@ -32,6 +33,7 @@ const (
 	envVarNodeOptionsName           = "NODE_OPTIONS"
 	envVarNodeOptionsValue          = "--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry"
 	envVarDash0CollectorBaseUrlName = "DASH0_OTEL_COLLECTOR_BASE_URL"
+	envVarDash0NodeIp               = "DASH0_NODE_IP"
 )
 
 var (
@@ -241,8 +243,21 @@ func (m *ResourceModifier) addEnvironmentVariables(container *corev1.Container, 
 
 	m.addOrReplaceEnvironmentVariable(
 		container,
-		envVarDash0CollectorBaseUrlName,
-		m.instrumentationMetadata.OTelCollectorBaseUrl,
+		corev1.EnvVar{
+			Name: envVarDash0NodeIp,
+			ValueFrom: &corev1.EnvVarSource{
+				FieldRef: &corev1.ObjectFieldSelector{
+					FieldPath: "status.hostIP",
+				},
+			},
+		},
+	)
+	m.addOrReplaceEnvironmentVariable(
+		container,
+		corev1.EnvVar{
+			Name:  envVarDash0CollectorBaseUrlName,
+			Value: fmt.Sprintf("http://$(%s):%d", envVarDash0NodeIp, otelcolresources.OtlpHttpHostPort),
+		},
 	)
 }
 
@@ -284,22 +299,22 @@ func (m *ResourceModifier) handleNodeOptionsEnvVar(
 	}
 }
 
-func (m *ResourceModifier) addOrReplaceEnvironmentVariable(container *corev1.Container, name string, value string) {
+func (m *ResourceModifier) addOrReplaceEnvironmentVariable(container *corev1.Container, envVar corev1.EnvVar) {
 	if container.Env == nil {
 		container.Env = make([]corev1.EnvVar, 0)
 	}
 	idx := slices.IndexFunc(container.Env, func(c corev1.EnvVar) bool {
-		return c.Name == name
+		return c.Name == envVar.Name
 	})
 
 	if idx < 0 {
-		container.Env = append(container.Env, corev1.EnvVar{
-			Name:  name,
-			Value: value,
-		})
-	} else {
+		container.Env = append(container.Env, envVar)
+	} else if envVar.Value != "" {
 		container.Env[idx].ValueFrom = nil
-		container.Env[idx].Value = value
+		container.Env[idx].Value = envVar.Value
+	} else {
+		container.Env[idx].Value = ""
+		container.Env[idx].ValueFrom = envVar.ValueFrom
 	}
 }
 
@@ -394,6 +409,7 @@ func (m *ResourceModifier) removeMount(container *corev1.Container) {
 
 func (m *ResourceModifier) removeEnvironmentVariables(container *corev1.Container) {
 	m.removeNodeOptions(container)
+	m.removeEnvironmentVariable(container, envVarDash0NodeIp)
 	m.removeEnvironmentVariable(container, envVarDash0CollectorBaseUrlName)
 }
 

@@ -39,6 +39,13 @@ func (c *oTelColConfig) hasAuthentication() bool {
 type exportProtocol string
 
 const (
+	OtlpGrpcHostPort = 40317
+	OtlpHttpHostPort = 40318
+	// ^ We deliberately do not use the default grpc/http ports as host ports. If there is another OTel collector
+	// daemonset in the cluster (which is not managed by the operator), it will very likely use the 4317/4318 as host
+	// ports. When the operator creates its daemonset, the pods of one of the two otelcol daemonsets would fail to start
+	// due to port conflicts.
+
 	grpcExportProtocol exportProtocol = "grpc"
 	httpExportProtocol exportProtocol = "http"
 	rbacApiVersion                    = "rbac.authorization.k8s.io/v1"
@@ -83,13 +90,6 @@ const (
 const (
 	otlpGrpcPort = 4317
 	otlpHttpPort = 4318
-
-	// We deliberately do not use the default grpc/http ports as host ports. If there is another OTel collector
-	// daemonset in the cluster (which is not managed by the operator), it will very likely use the 4317/4318 as host
-	// ports. When the operator creates its daemonset, the pods of one of the two otelcol daemonsets will fail to start
-	// due to port conflicts.
-	otlpGrpcHostPort = 40317
-	otlpHttpHostPort = 40318
 
 	probesHttpPort = 13133
 )
@@ -519,13 +519,13 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 				Name:          "otlp",
 				Protocol:      corev1.ProtocolTCP,
 				ContainerPort: otlpGrpcPort,
-				HostPort:      int32(otlpGrpcHostPort),
+				HostPort:      int32(OtlpGrpcHostPort),
 			},
 			{
 				Name:          "otlp-http",
 				Protocol:      corev1.ProtocolTCP,
 				ContainerPort: otlpHttpPort,
-				HostPort:      int32(otlpHttpHostPort),
+				HostPort:      int32(OtlpHttpHostPort),
 			},
 		},
 		Env:            env,
