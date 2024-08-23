@@ -267,7 +267,8 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					operatorNamespace,
 					operatorHelmChart,
 					operatorHelmChartUrl,
-					// now we use :latest instead of :e2e-test to trigger an actual change
+					// now we use :latest (or :main-dev or whatever has been provided via env vars) instead of
+					// :e2e-test to trigger an actual change
 					images,
 					false,
 				)

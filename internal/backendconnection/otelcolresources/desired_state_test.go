@@ -11,6 +11,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -25,11 +27,14 @@ const (
 var _ = Describe("The desired state of the OpenTelemetry Collector resources", func() {
 	It("should fail if no endpoint has been provided", func() {
 		_, err := assembleDesiredState(&oTelColConfig{
-			Namespace:          namespace,
-			NamePrefix:         namePrefix,
-			AuthorizationToken: AuthorizationTokenTest,
-			SecretRef:          SecretRefEmpty,
-			Images:             TestImages,
+			Namespace:  namespace,
+			NamePrefix: namePrefix,
+			MonitoringResource: &dash0v1alpha1.Dash0Monitoring{
+				Spec: dash0v1alpha1.Dash0MonitoringSpec{
+					AuthorizationToken: AuthorizationTokenTest,
+				},
+			},
+			Images: TestImages,
 		})
 		Expect(err).To(HaveOccurred())
 	})
@@ -38,8 +43,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredState(&oTelColConfig{
 			Namespace:          namespace,
 			NamePrefix:         namePrefix,
-			Endpoint:           EndpointTest,
-			AuthorizationToken: AuthorizationTokenTest,
+			MonitoringResource: MonitoringResourceWithDefaultSpec,
 			Images:             TestImages,
 		})
 
@@ -111,10 +115,14 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 	It("should use the authorization token directly if provided", func() {
 		desiredState, err := assembleDesiredState(&oTelColConfig{
-			Namespace:          namespace,
-			NamePrefix:         namePrefix,
-			Endpoint:           EndpointTest,
-			AuthorizationToken: AuthorizationTokenTest,
+			Namespace:  namespace,
+			NamePrefix: namePrefix,
+			MonitoringResource: &dash0v1alpha1.Dash0Monitoring{
+				Spec: dash0v1alpha1.Dash0MonitoringSpec{
+					Endpoint:           EndpointTest,
+					AuthorizationToken: AuthorizationTokenTest,
+				},
+			},
 		})
 
 		Expect(err).ToNot(HaveOccurred())
@@ -132,8 +140,12 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredState(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
-			Endpoint:   EndpointTest,
-			SecretRef:  "some-secret",
+			MonitoringResource: &dash0v1alpha1.Dash0Monitoring{
+				Spec: dash0v1alpha1.Dash0MonitoringSpec{
+					Endpoint:  EndpointTest,
+					SecretRef: SecretRefTest,
+				},
+			},
 		})
 
 		Expect(err).ToNot(HaveOccurred())
@@ -145,15 +157,19 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		container := podSpec.Containers[0]
 		authTokenEnvVar := findEnvVarByName(container.Env, "AUTH_TOKEN")
 		Expect(authTokenEnvVar).NotTo(BeNil())
-		Expect(authTokenEnvVar.ValueFrom.SecretKeyRef.Name).To(Equal("some-secret"))
+		Expect(authTokenEnvVar.ValueFrom.SecretKeyRef.Name).To(Equal(SecretRefTest))
 		Expect(authTokenEnvVar.ValueFrom.SecretKeyRef.Key).To(Equal("dash0-authorization-token"))
 	})
 
-	It("should not add the auth token env var if no authorization token has been provided", func() {
+	It("should not add the auth token env var if no authorization token nor secret has been provided", func() {
 		desiredState, err := assembleDesiredState(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
-			Endpoint:   EndpointTest,
+			MonitoringResource: &dash0v1alpha1.Dash0Monitoring{
+				Spec: dash0v1alpha1.Dash0MonitoringSpec{
+					Endpoint: EndpointTest,
+				},
+			},
 		})
 
 		Expect(err).ToNot(HaveOccurred())

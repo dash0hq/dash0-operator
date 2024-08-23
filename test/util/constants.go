@@ -8,6 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 )
 
@@ -32,7 +33,6 @@ const (
 	EndpointTest             = "endpoint.dash0.com:4317"
 	AuthorizationTokenTest   = "authorization-token"
 	SecretRefTest            = "secret-ref"
-	SecretRefEmpty           = ""
 )
 
 var (
@@ -55,6 +55,18 @@ var (
 			Namespace: Dash0OperatorNamespace,
 			Name:      "unit-test-dash0-operator-controller",
 			UID:       "2f009c75-d69f-4b02-9d9d-fa17e76f5c1d",
+		},
+	}
+
+	MonitoringResourceWithDefaultSpec = &dash0v1alpha1.Dash0Monitoring{
+		Spec: dash0v1alpha1.Dash0MonitoringSpec{
+			Endpoint:            EndpointTest,
+			AuthorizationToken:  AuthorizationTokenTest,
+			InstrumentWorkloads: dash0v1alpha1.All,
+			HostPorts: dash0v1alpha1.HostPorts{
+				OtlpGrpcHostPort: 40317,
+				OtlpHttpHostPort: 40318,
+			},
 		},
 	}
 )
