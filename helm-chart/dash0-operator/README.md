@@ -52,15 +52,18 @@ into that namespace:
 Create a file `dash0-monitoring.yaml` with the following content:
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1
-kind: Dash0
+kind: Dash0Monitoring
 metadata:
   name: dash0-monitoring-resource
 spec:
-  # Replace this value with the actual OTLP/gRPC endpoint of your Dash0 organization.
-  endpoint: ingress... # TODO needs to be replaced with the actual value, see below
+  export:
+    dash0:
+      # Replace this value with the actual OTLP/gRPC endpoint of your Dash0 organization.
+      endpoint: ingress... # TODO needs to be replaced with the actual value, see below
 
-  # Either provide the Dash0 authorization token as a string via the property authorizationToken:
-  authorizationToken: auth_... # TODO needs to be replaced with the actual value, see below
+      authorization:
+        # Provide the Dash0 authorization token as a string via the token property:
+        token: auth_... # TODO needs to be replaced with the actual value, see below
 
   # Opt-out settings for particular use cases. The default value is "all". Other possible values are
   # "created-and-updated" and "none".
@@ -68,25 +71,25 @@ spec:
 ```
 
 At this point, you need to provide two configuration settings:
-* `endpoint`: The URL of the observability backend to which telemetry data will be sent. This property is
-  mandatory.
+* `spec.export.dash0.endpoint`: The URL of the observability backend to which telemetry data will be sent. This property
+  is mandatory.
   Replace the value in the example above with the OTLP/gRPC endpoint of your Dash0 organization.
   The correct OTLP/gRPC endpoint can be copied fom https://app.dash0.com/settings.
   Note that the correct endpoint value will always start with `ingress.` and end in `dash0.com:4317`.
   A protocol prefix (eg. `https://`) should not be included in the value.
-* `authorizationToken` or `secretRef`: Exactly one of these two properties needs to be provided.
-  If both are provided, `authorizationToken` will be used and `secretRef` will be ignored.
-    * `authorizationToken`: Replace the value in the example above with the Dash0 authorization token of your
+* `spec.export.dash0.token` or `spec.export.dash0.secretRef`: Exactly one of these two properties needs to be provided.
+  Providing both will cause a validation error when installing the Dash0Monitoring resource.
+    * `spec.export.dash0.token`: Replace the value in the example above with the Dash0 authorization token of your
       organization.
       The authorization token for your Dash0 organization can be copied from https://app.dash0.com/settings.
       The prefix `Bearer ` must *not* be included in the value.
       Note that the value will be rendered verbatim into a Kubernetes ConfigMap object.
       Anyone with API access to the Kubernetes cluster will be able to read the value.
       Use the `secretRef` property and a Kubernetes secret if you want to avoid that.
-    * `secretRef`: Replace the value in the example above with the name of an existing Kubernetes secret in the Dash0
-       operator's namespace.
+    * `spec.export.dash0.secretRef`: A reference to an existing Kubernetes secret in the Dash0 operator's namespace.
+       See the next section for an example file that uses a `secretRef`.
        The secret needs to contain the Dash0 authorization token.
-       See below for details on how exactly the secret should be created.
+       See below for details on how exactly the secret should be created and configured.
        Note that by default, Kubernetes secrets are stored _unencrypted_, and anyone with API access to the Kubernetes
        cluster will be able to read the value.
        Additional steps are required to make sure secret values are encrypted.
@@ -153,8 +156,7 @@ If you want to provide the Dash0 authorization token via a Kubernetes secret ins
 create the secret in the namespace where the Dash0 operator is installed.
 If you followed the guide above, the name of that namespace is `dash0-system`.
 The authorization token for your Dash0 organization can be copied from https://app.dash0.com/settings.
-You can freely choose the name of the secret.
-Make sure to use `dash0-authorization-token` as the token key.
+You can freely choose the name of the secret and the key of the token within the secret.
 
 Create the secret by using the following command:
 
@@ -162,14 +164,17 @@ Create the secret by using the following command:
 kubectl create secret generic \
   dash0-authorization-secret \
   --namespace dash0-system \
-  --from-literal=dash0-authorization-token=auth_...your-token-here...
+  --from-literal=token=auth_...your-token-here...
 ```
 
 With this example command, you would create a secret with the name `dash0-authorization-secret` in the namespace
 `dash0-system`.
 If you installed the operator into a different namespace, replace the `--namespace` parameter accordingly.
 
-The name of the secret must be referenced in the YAML file for the Dash0 monitoring resource in the `secretRef` property.
+The name of the secret as well as the key of the token value within the secret must be provided in the YAML file for
+the Dash0 monitoring resource, in the `secretRef` property.
+If the `name` property is omitted, the name `dash0-authorization-secret` will be assumed.
+If the `key` property is omitted, the key `token` will be assumed.
 Here is an example that uses the secret created above:
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1
@@ -177,17 +182,102 @@ kind: Dash0Monitoring
 metadata:
   name: dash0-monitoring-resource
 spec:
-  # Replace this value with the actual OTLP/gRPC endpoint of your Dash0 organization.
-  endpoint: ingress... # TODO needs to be replaced with the actual value, see below
+  export:
+    dash0:
+      # Replace this value with the actual OTLP/gRPC endpoint of your Dash0 organization.
+      endpoint: ingress... # TODO needs to be replaced with the actual value, see below
 
-  # Or provide the name of a secret existing in the Dash0 operator's namespace as the property secretRef:
-  secretRef: dash0-authorization-secret
+      authorization:
+        # Provide the name and key of a secret existing in the Dash0 operator's namespace as secretRef:
+        secretRef:
+          name: dash0-authorization-secret
+          key: token
+```
+
+Since the name `dash0-authorization-secret` and the key `token` are the defaults, this secretRef could have also been
+written as follows:
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0Monitoring
+metadata:
+  name: dash0-monitoring-resource
+spec:
+  export:
+    dash0:
+      # Replace this value with the actual OTLP/gRPC endpoint of your Dash0 organization.
+      endpoint: ingress... # TODO needs to be replaced with the actual value, see below
+
+      authorization:
+        # Provide the name and key of a secret existing in the Dash0 operator's namespace as secretRef:
+        secretRef: {}
 ```
 
 Note that by default, Kubernetes secrets are stored _unencrypted_, and anyone with API access to the Kubernetes cluster
 will be able to read the value.
 Additional steps are required to make sure secret values are encrypted.
 See https://kubernetes.io/docs/concepts/configur**ation/secret/ for more information on Kubernetes secrets.
+
+### Dash0 Dataset Configuration
+
+Use the `spec.export.dash0.dataset` property to configure the dataset that should be used for the telemetry data.
+By default, data will be sent to the dataset `default`.
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0Monitoring
+metadata:
+  name: dash0-monitoring-resource
+spec:
+  export:
+    dash0:
+      endpoint: ingress... # TODO needs to be replaced with the actual value, see below
+      dataset: my-custom-dataset
+      authorization:
+        ...
+```
+
+### Exporting Data to Other Observability Backends
+
+Instead of `spec.export.dash0`, you can also provide `spec.export.http` or `spec.export.grpc` to export telemetry data
+to arbitrary OTLP-compatible backends, or to another local OpenTelemetry collector.
+
+Here is an example for HTTP:
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0Monitoring
+metadata:
+  name: dash0-monitoring-resource
+spec:
+  export:
+    http:
+      endpoint: ...
+      headers: 
+        - name: X-My-Header
+          value: my-value
+      encoding: json
+```
+
+Here is an example for gRPC:
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0Monitoring
+metadata:
+  name: dash0-monitoring-resource
+spec:
+  export:
+    grpc:
+      endpoint: ...
+      headers: 
+        - name: X-My-Header
+          value: my-value
+```
+
+You can even combine two exporters to send data to multiple backends, although there are some restrictions:
+* Combining `spec.export.dash0` with `spec.export.http` is supported.
+* Combining `spec.export.grpc` with `spec.export.http` is supported.
+* Combining `spec.export.dash0` with `spec.export.grpc` is currently not supported.
+* Combining more than two exporters is not supported.
+* At least one exporter configuration has to be provided.
+* Listing two or more exporters of the same type (i.e. providing `spec.export.grpc` twice) is not supported.
 
 ## Disable Dash0 Monitoring For a Namespace
 

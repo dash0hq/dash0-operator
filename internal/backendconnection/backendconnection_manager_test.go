@@ -26,8 +26,14 @@ var (
 
 	dash0MonitoringResource = &dash0v1alpha1.Dash0Monitoring{
 		Spec: dash0v1alpha1.Dash0MonitoringSpec{
-			Endpoint:           EndpointTest,
-			AuthorizationToken: AuthorizationTokenTest,
+			Export: dash0v1alpha1.Export{
+				Dash0: &dash0v1alpha1.Dash0Configuration{
+					Endpoint: EndpointTest,
+					Authorization: dash0v1alpha1.Authorization{
+						Token: &AuthorizationTokenTest,
+					},
+				},
+			},
 		},
 	}
 )
@@ -75,23 +81,37 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				operatorNamespace,
 				&dash0v1alpha1.Dash0Monitoring{
 					Spec: dash0v1alpha1.Dash0MonitoringSpec{
-						AuthorizationToken: AuthorizationTokenTest,
-					}})
+						Export: dash0v1alpha1.Export{
+							Dash0: &dash0v1alpha1.Dash0Configuration{
+								Authorization: dash0v1alpha1.Authorization{
+									Token: &AuthorizationTokenTest,
+								},
+							},
+						},
+					},
+				},
+			)
 			Expect(err).To(HaveOccurred())
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
 		})
 
-		It("should not fail if neither authorization token nor secret ref are provided", func() {
+		It("should fail if neither authorization token nor secret ref are provided for Dash0 exporter", func() {
 			err := manager.EnsureOpenTelemetryCollectorIsDeployedInDash0OperatorNamespace(
 				ctx,
 				TestImages,
 				operatorNamespace,
 				&dash0v1alpha1.Dash0Monitoring{
 					Spec: dash0v1alpha1.Dash0MonitoringSpec{
-						Endpoint: EndpointTest,
-					}})
-			Expect(err).NotTo(HaveOccurred())
-			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
+						Export: dash0v1alpha1.Export{
+							Dash0: &dash0v1alpha1.Dash0Configuration{
+								Endpoint:      EndpointTest,
+								Authorization: dash0v1alpha1.Authorization{},
+							},
+						},
+					},
+				})
+			Expect(err).To(HaveOccurred())
+			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
 		})
 	})
 
@@ -222,8 +242,14 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 						UID:       "3c0e72bb-26a7-40a4-bbdd-b1c978278fc5",
 					},
 					Spec: dash0v1alpha1.Dash0MonitoringSpec{
-						Endpoint:           EndpointTest,
-						AuthorizationToken: AuthorizationTokenTest,
+						Export: dash0v1alpha1.Export{
+							Dash0: &dash0v1alpha1.Dash0Configuration{
+								Endpoint: EndpointTest,
+								Authorization: dash0v1alpha1.Authorization{
+									Token: &AuthorizationTokenTest,
+								},
+							},
+						},
 					},
 				},
 			)

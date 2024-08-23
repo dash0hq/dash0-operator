@@ -4,4 +4,8 @@ metadata:
   name: dash0-monitoring-resource-e2e
 spec:
   instrumentWorkloads: {{ .InstrumentWorkloads }}
-  endpoint: {{ .Endpoint }}
+  export:
+    # In the e2e tests we only want to export to the local otlp-sink collector. Since the Dash0 exporter config uses
+    # gRPC, and gRPC requires a TLS connection, we are configuring the local otlp-sink collector via HTTP instead.
+    http:
+      endpoint: {{ .Endpoint }}

@@ -8,6 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 )
 
@@ -30,11 +31,16 @@ const (
 
 	OTelCollectorBaseUrlTest = "http://$(DASH0_NODE_IP):40318"
 	EndpointTest             = "endpoint.dash0.com:4317"
-	AuthorizationTokenTest   = "authorization-token"
-	SecretRefTest            = "secret-ref"
+	EndpointTestQuoted       = "\"endpoint.dash0.com:4317\""
 )
 
 var (
+	AuthorizationTokenTest = "authorization-token"
+	SecretRefTest          = dash0v1alpha1.SecretRef{
+		Name: "secret-ref",
+		Key:  "key",
+	}
+
 	ArbitraryNumer int64 = 1302
 
 	TestImages = util.Images{

@@ -195,7 +195,7 @@ deploy_via_helm() {
   fi
 
   if ! has_been_set_to_empty_string "FILELOG_OFFSET_SYNCH_IMG_REPOSITORY"; then
-    helm_install_command+=" --set operator.filelogOffsetSynchImage.repository=${FILELOG_OFFSET_SYNCH_IMG_REPOSITORY:-configuration-reloader}"
+    helm_install_command+=" --set operator.filelogOffsetSynchImage.repository=${FILELOG_OFFSET_SYNCH_IMG_REPOSITORY:-filelog-offset-synch}"
   fi
   if ! has_been_set_to_empty_string "FILELOG_OFFSET_SYNCH_IMG_TAG"; then
     helm_install_command+=" --set operator.filelogOffsetSynchImage.tag=${FILELOG_OFFSET_SYNCH_IMG_TAG:-latest}"

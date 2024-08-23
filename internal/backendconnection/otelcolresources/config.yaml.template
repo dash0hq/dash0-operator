@@ -3,20 +3,17 @@ connectors:
 
 exporters:
   debug: {}
-{{- if eq .ExportProtocol "grpc" }}
-  otlp:
-    endpoint: {{ .Endpoint }}
-{{- if .HasExportAuthentication }}
+{{- range $i, $exporter := .Exporters }}
+  {{ $exporter.Name }}:
+    endpoint: "{{ $exporter.Endpoint }}"
+{{- if $exporter.Headers }}
     headers:
-      Authorization: Bearer ${env:AUTH_TOKEN}
+{{- range $i, $header := $exporter.Headers }}
+      "{{ $header.Name }}": "{{ $header.Value }}"
 {{- end }}
 {{- end }}
-{{- if eq .ExportProtocol "http" }}
-  otlphttp:
-    endpoint: {{ .Endpoint }}
-{{- if .HasExportAuthentication }}
-    headers:
-      Authorization: Bearer ${env:AUTH_TOKEN}
+{{- if $exporter.Encoding }}
+    encoding: "{{ $exporter.Encoding }}"
 {{- end }}
 {{- end }}
 
@@ -177,12 +174,9 @@ service:
       - memory_limiter
       - batch
       exporters:
-{{- if eq .ExportProtocol "grpc" }}
-      - otlp
-{{- end }}
-{{- if eq .ExportProtocol "http" }}
-      - otlphttp
-{{- end }}
+      {{- range $i, $exporter := .Exporters }}
+      - {{ $exporter.Name }}
+      {{- end }}
 
     metrics/downstream:
       receivers:
@@ -192,12 +186,9 @@ service:
       - memory_limiter
       - batch
       exporters:
-{{- if eq .ExportProtocol "grpc" }}
-      - otlp
-{{- end }}
-{{- if eq .ExportProtocol "http" }}
-      - otlphttp
-{{- end }}
+      {{- range $i, $exporter := .Exporters }}
+      - {{ $exporter.Name }}
+      {{- end }}
 
     logs/otlp:
       receivers:
@@ -224,12 +215,9 @@ service:
       - batch
       exporters:
       - debug
-{{- if eq .ExportProtocol "grpc" }}
-      - otlp
-{{- end }}
-{{- if eq .ExportProtocol "http" }}
-      - otlphttp
-{{- end }}
+      {{- range $i, $exporter := .Exporters }}
+      - {{ $exporter.Name }}
+      {{- end }}
 
   telemetry:
     metrics:

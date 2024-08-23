@@ -4,12 +4,8 @@
 package otelcolresources
 
 import (
-	"bytes"
-	_ "embed"
 	"fmt"
-	"net/url"
 	"path/filepath"
-	"text/template"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -20,23 +16,16 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 )
 
 type oTelColConfig struct {
-	Namespace          string
-	NamePrefix         string
-	Endpoint           string
-	AuthorizationToken string
-	SecretRef          string
-	Images             util.Images
+	Namespace  string
+	NamePrefix string
+	Export     dash0v1alpha1.Export
+	Images     util.Images
 }
-
-func (c *oTelColConfig) hasAuthentication() bool {
-	return c.SecretRef != "" || c.AuthorizationToken != ""
-}
-
-type exportProtocol string
 
 const (
 	OtlpGrpcHostPort = 40317
@@ -46,15 +35,11 @@ const (
 	// ports. When the operator creates its daemonset, the pods of one of the two otelcol daemonsets would fail to start
 	// due to port conflicts.
 
-	grpcExportProtocol exportProtocol = "grpc"
-	httpExportProtocol exportProtocol = "http"
-	rbacApiVersion                    = "rbac.authorization.k8s.io/v1"
+	rbacApiVersion = "rbac.authorization.k8s.io/v1"
 )
 
 type collectorConfigurationTemplateValues struct {
-	HasExportAuthentication  bool
-	Endpoint                 string
-	ExportProtocol           exportProtocol
+	Exporters                []otlpExporter
 	IgnoreLogsFromNamespaces []string
 }
 
@@ -100,34 +85,27 @@ var (
 		appKubernetesIoInstanceKey:       appKubernetesIoInstanceValue,
 		appKubernetesIoComponentLabelKey: serviceComponent,
 	}
-
-	//go:embed config.yaml.template
-	collectorConfigurationTemplateSource string
-	collectorConfigurationTemplate       = template.Must(template.New("collector-configuration").Parse(collectorConfigurationTemplateSource))
 )
 
 func assembleDesiredState(config *oTelColConfig) ([]client.Object, error) {
-	if config.Endpoint == "" {
-		return nil, fmt.Errorf("no endpoint provided, unable to create the OpenTelemetry collector")
-	}
-
 	var desiredState []client.Object
 	desiredState = append(desiredState, serviceAccount(config))
-
 	collectorCM, err := collectorConfigMap(config)
 	if err != nil {
 		return desiredState, err
 	}
 	desiredState = append(desiredState, collectorCM)
-
 	desiredState = append(desiredState, filelogOffsetsConfigMap(config))
-
 	desiredState = append(desiredState, clusterRole(config))
 	desiredState = append(desiredState, clusterRoleBinding(config))
 	desiredState = append(desiredState, role(config))
 	desiredState = append(desiredState, roleBinding(config))
 	desiredState = append(desiredState, service(config))
-	desiredState = append(desiredState, daemonSet(config))
+	ds, err := daemonSet(config)
+	if err != nil {
+		return desiredState, err
+	}
+	desiredState = append(desiredState, ds)
 	return desiredState, nil
 }
 
@@ -143,58 +121,6 @@ func serviceAccount(config *oTelColConfig) *corev1.ServiceAccount {
 			Labels:    labels(false),
 		},
 	}
-}
-
-func renderCollectorConfigs(templateValues *collectorConfigurationTemplateValues) (string, error) {
-	var collectorConfiguration bytes.Buffer
-	if err := collectorConfigurationTemplate.Execute(&collectorConfiguration, templateValues); err != nil {
-		return "", err
-	}
-
-	return collectorConfiguration.String(), nil
-}
-
-func collectorConfigMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
-	endpoint := config.Endpoint
-	exportProtocol := grpcExportProtocol
-	if url, err := url.ParseRequestURI(endpoint); err != nil {
-		// Not a valid URL, assume it's grpc
-	} else if url.Scheme == "https" || url.Scheme == "http" {
-		exportProtocol = httpExportProtocol
-	}
-
-	collectorConfiguration, err := renderCollectorConfigs(&collectorConfigurationTemplateValues{
-		Endpoint:                endpoint,
-		ExportProtocol:          exportProtocol,
-		HasExportAuthentication: config.hasAuthentication(),
-		IgnoreLogsFromNamespaces: []string{
-			// Skipping kube-system, it requires bespoke filtering work
-			"kube-system",
-			// Skipping logs from the operator and the daemonset, otherwise
-			// logs will compound in case of log parsing errors
-			config.Namespace,
-		},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("cannot render the collector configuration template: %w", err)
-	}
-
-	configMapData := map[string]string{
-		collectorConfigurationYaml: collectorConfiguration,
-	}
-
-	return &corev1.ConfigMap{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "ConfigMap",
-			APIVersion: "v1",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      collectorConfigConfigMapName(config.NamePrefix),
-			Namespace: config.Namespace,
-			Labels:    labels(false),
-		},
-		Data: configMapData,
-	}, nil
 }
 
 func filelogOffsetsConfigMap(config *oTelColConfig) *corev1.ConfigMap {
@@ -349,7 +275,7 @@ func service(config *oTelColConfig) *corev1.Service {
 	}
 }
 
-func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
+func daemonSet(config *oTelColConfig) (*appsv1.DaemonSet, error) {
 	configMapItems := []corev1.KeyToPath{{
 		Key:  collectorConfigurationYaml,
 		Path: collectorConfigurationYaml,
@@ -473,29 +399,29 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 		},
 	}
 
-	if config.hasAuthentication() {
-		var authTokenEnvVar corev1.EnvVar
-
-		if config.AuthorizationToken != "" {
-			authTokenEnvVar = corev1.EnvVar{
+	if config.Export.Dash0 != nil {
+		token := config.Export.Dash0.Authorization.Token
+		secretRef := config.Export.Dash0.Authorization.SecretRef
+		if token != nil && *token != "" {
+			env = append(env, corev1.EnvVar{
 				Name:  authTokenEnvVarName,
-				Value: config.AuthorizationToken,
-			}
-		} else {
-			authTokenEnvVar = corev1.EnvVar{
+				Value: *token,
+			})
+		} else if secretRef != nil && secretRef.Name != "" && secretRef.Key != "" {
+			env = append(env, corev1.EnvVar{
 				Name: authTokenEnvVarName,
 				ValueFrom: &corev1.EnvVarSource{
 					SecretKeyRef: &corev1.SecretKeySelector{
 						LocalObjectReference: corev1.LocalObjectReference{
-							Name: config.SecretRef,
+							Name: secretRef.Name,
 						},
-						Key: "dash0-authorization-token", // TODO Make configurable
+						Key: secretRef.Key,
 					},
 				},
-			}
+			})
+		} else {
+			return nil, fmt.Errorf("neither token nor secretRef provided for the Dash0 exporter")
 		}
-
-		env = append(env, authTokenEnvVar)
 	}
 
 	probe := corev1.Probe{
@@ -649,7 +575,7 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 		filelogOffsetSynchContainer.ImagePullPolicy = config.Images.FilelogOffsetSynchImagePullPolicy
 	}
 
-	return &appsv1.DaemonSet{
+	ds := &appsv1.DaemonSet{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "DaemonSet",
 			APIVersion: "apps/v1",
@@ -688,6 +614,7 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 			},
 		},
 	}
+	return ds, nil
 }
 
 func serviceAccountName(namePrefix string) string {

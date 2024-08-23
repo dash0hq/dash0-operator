@@ -749,10 +749,15 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 					Namespace: Dash0MonitoringResourceQualifiedName.Namespace,
 				},
 				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					Endpoint:            EndpointTest,
-					AuthorizationToken:  AuthorizationTokenTest,
-					SecretRef:           SecretRefTest,
 					InstrumentWorkloads: "invalid",
+					Export: dash0v1alpha1.Export{
+						Dash0: &dash0v1alpha1.Dash0Configuration{
+							Endpoint: EndpointTest,
+							Authorization: dash0v1alpha1.Authorization{
+								Token: &AuthorizationTokenTest,
+							},
+						},
+					},
 				},
 			})).ToNot(Succeed())
 		})
