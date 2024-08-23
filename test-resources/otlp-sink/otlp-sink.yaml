@@ -31,9 +31,10 @@ data:
     receivers:
       otlp:
         protocols:
+          grpc:
+            endpoint: ${env:MY_POD_IP}:4317
           http:
-            endpoint: ${env:MY_POD_IP}:8080
-
+            endpoint: ${env:MY_POD_IP}:4318
     service:
       extensions:
         - health_check
@@ -90,7 +91,10 @@ spec:
           value: 400MiB
         ports:
         - name: otlp
-          containerPort: 8080
+          containerPort: 4317
+          protocol: TCP
+        - name: otlp-http
+          containerPort: 4318
           protocol: TCP
         volumeMounts:
         - name: otelcol-config
@@ -158,8 +162,12 @@ metadata:
 spec:
   ports:
   - name: otlp
-    port: 80
+    port: 4317
     protocol: TCP
-    targetPort: 8080
+    targetPort: 4317
+  - name: otlp-http
+    port: 4318
+    protocol: TCP
+    targetPort: 4318
   selector:
     app.kubernetes.io/instance: otlp-sink

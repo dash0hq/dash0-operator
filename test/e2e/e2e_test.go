@@ -47,8 +47,13 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		if localKubeCtx == "" {
 			Fail(fmt.Sprintf("The mandatory setting LOCAL_KUBECTX is missing in the file %s.", dotEnvFile))
 		}
-
 		kubeContextHasBeenChanged, originalKubeContext = setKubeContext(localKubeCtx)
+
+		// Cleans up the test namespace, otlp sink and the operator. Usually this is cleaned up in AfterAll/AfterEach
+		// steps, but for cases where we want to troubleshoot failing e2e tests and have disabled cleanup in After steps
+		// we clean up here at the beginning as well.
+		cleanupAll()
+
 		checkIfRequiredPortsAreBlocked()
 		renderTemplates()
 
@@ -767,6 +772,15 @@ func runInParallelForAllWorkloadTypes[C workloadConfig](
 			Fail(fmt.Sprintf("workload %s has not passed a test step executed in parallel", config.GetWorkloadType()))
 		}
 	}
+}
+
+func cleanupAll() {
+	if applicationUnderTestNamespace != "default" {
+		By("removing namespace for application under test")
+		_ = runAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", applicationUnderTestNamespace, "--ignore-not-found"))
+	}
+	undeployOperator(operatorNamespace)
+	uninstallOtlpSink(workingDir)
 }
 
 func readAndApplyEnvironmentVariables() {

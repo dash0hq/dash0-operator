@@ -38,12 +38,10 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	logger *logr.Logger,
 ) (bool, bool, error) {
 	config := &oTelColConfig{
-		Namespace:          namespace,
-		NamePrefix:         m.OTelCollectorNamePrefix,
-		Endpoint:           dash0MonitoringResource.Spec.Endpoint,
-		AuthorizationToken: dash0MonitoringResource.Spec.AuthorizationToken,
-		SecretRef:          dash0MonitoringResource.Spec.SecretRef,
-		Images:             images,
+		Namespace:  namespace,
+		NamePrefix: m.OTelCollectorNamePrefix,
+		Export:     dash0MonitoringResource.Spec.Export,
+		Images:     images,
 	}
 	desiredState, err := assembleDesiredState(config)
 	if err != nil {
@@ -208,12 +206,10 @@ func (m *OTelColResourceManager) DeleteResources(
 	logger *logr.Logger,
 ) error {
 	config := &oTelColConfig{
-		Namespace:          namespace,
-		NamePrefix:         m.OTelCollectorNamePrefix,
-		Endpoint:           dash0MonitoringResource.Spec.Endpoint,
-		AuthorizationToken: dash0MonitoringResource.Spec.AuthorizationToken,
-		SecretRef:          dash0MonitoringResource.Spec.SecretRef,
-		Images:             images,
+		Namespace:  namespace,
+		NamePrefix: m.OTelCollectorNamePrefix,
+		Export:     dash0MonitoringResource.Spec.Export,
+		Images:     images,
 	}
 	allObjects, err := assembleDesiredState(config)
 	if err != nil {

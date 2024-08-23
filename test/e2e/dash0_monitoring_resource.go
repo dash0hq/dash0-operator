@@ -24,7 +24,7 @@ type dash0MonitoringValues struct {
 
 const (
 	dash0MonitoringResourceName = "dash0-monitoring-resource-e2e"
-	defaultEndpoint             = "http://otlp-sink.otlp-sink.svc.cluster.local"
+	defaultEndpoint             = "http://otlp-sink.otlp-sink.svc.cluster.local:4318"
 )
 
 var (
@@ -91,7 +91,7 @@ func updateEndpointOfDash0MonitoringResource(
 ) {
 	updateDash0MonitoringResource(
 		namespace,
-		fmt.Sprintf("{\"spec\":{\"endpoint\":\"%s\"}}", newEndpoint),
+		fmt.Sprintf("{\"spec\":{\"export\":{\"http\":{\"endpoint\":\"%s\"}}}}", newEndpoint),
 	)
 }
 
