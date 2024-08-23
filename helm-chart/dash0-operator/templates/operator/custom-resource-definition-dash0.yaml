@@ -52,6 +52,21 @@ spec:
                   https://app.dash0.com/settings. The correct endpoint value will always start with `ingress.` and end in
                   `dash0.com:4317`.
                 type: string
+              hostPorts:
+                default:
+                  otlpGrpcHostPort: 40317
+                  otlpHttpHostPort: 40318
+                properties:
+                  otlpGrpcHostPort:
+                    default: 40317
+                    type: integer
+                  otlpHttpHostPort:
+                    default: 40318
+                    type: integer
+                required:
+                - otlpGrpcHostPort
+                - otlpHttpHostPort
+                type: object
               instrumentWorkloads:
                 description: |-
                   Global opt-out for workload instrumentation for the target namespace. There are three possible settings: `all`,

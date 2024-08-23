@@ -20,20 +20,23 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 )
 
 type oTelColConfig struct {
 	Namespace          string
 	NamePrefix         string
-	Endpoint           string
-	AuthorizationToken string
-	SecretRef          string
+	MonitoringResource *dash0v1alpha1.Dash0Monitoring
 	Images             util.Images
 }
 
 func (c *oTelColConfig) hasAuthentication() bool {
-	return c.SecretRef != "" || c.AuthorizationToken != ""
+	if c.MonitoringResource == nil {
+		return false
+	}
+	return c.MonitoringResource.Spec.SecretRef != "" || c.MonitoringResource.Spec.AuthorizationToken != ""
 }
 
 type exportProtocol string
@@ -81,8 +84,16 @@ const (
 )
 
 const (
-	otlpGrpcPort   = 4317
-	otlpHttpPort   = 4318
+	otlpGrpcPort = 4317
+	otlpHttpPort = 4318
+
+	// We deliberately do not use the default grpc/http ports as host ports. If there is another OTel collector
+	// daemonset in the cluster (which is not managed by the operator), it will very likely use the 4317/4318 as host
+	// ports. When the operator creates its daemonset, the pods of one of the two otelcol daemonsets will fail to start
+	// due to port conflicts.
+	otlpGrpcHostPortDefault = 40317
+	otlpHttpHostPortDefault = 40318
+
 	probesHttpPort = 13133
 )
 
@@ -99,7 +110,11 @@ var (
 )
 
 func assembleDesiredState(config *oTelColConfig) ([]client.Object, error) {
-	if config.Endpoint == "" {
+	if config.MonitoringResource == nil {
+		return nil,
+			fmt.Errorf("no monitoring resource provided, unable to create the desired state for OpenTelemetry collector")
+	}
+	if config.MonitoringResource.Spec.Endpoint == "" {
 		return nil, fmt.Errorf("no endpoint provided, unable to create the OpenTelemetry collector")
 	}
 
@@ -147,7 +162,7 @@ func renderCollectorConfigs(templateValues *collectorConfigurationTemplateValues
 }
 
 func collectorConfigMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
-	endpoint := config.Endpoint
+	endpoint := config.MonitoringResource.Spec.Endpoint
 	exportProtocol := grpcExportProtocol
 	if url, err := url.ParseRequestURI(endpoint); err != nil {
 		// Not a valid URL, assume it's grpc
@@ -468,10 +483,10 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 	if config.hasAuthentication() {
 		var authTokenEnvVar corev1.EnvVar
 
-		if config.AuthorizationToken != "" {
+		if config.MonitoringResource.Spec.AuthorizationToken != "" {
 			authTokenEnvVar = corev1.EnvVar{
 				Name:  authTokenEnvVarName,
-				Value: config.AuthorizationToken,
+				Value: config.MonitoringResource.Spec.AuthorizationToken,
 			}
 		} else {
 			authTokenEnvVar = corev1.EnvVar{
@@ -479,7 +494,7 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 				ValueFrom: &corev1.EnvVarSource{
 					SecretKeyRef: &corev1.SecretKeySelector{
 						LocalObjectReference: corev1.LocalObjectReference{
-							Name: config.SecretRef,
+							Name: config.MonitoringResource.Spec.SecretRef,
 						},
 						Key: "dash0-authorization-token", // TODO Make configurable
 					},
@@ -499,6 +514,15 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 		},
 	}
 
+	otlpGrpcHostPort := otlpGrpcHostPortDefault
+	if config.MonitoringResource.Spec.HostPorts.OtlpGrpcHostPort != 0 {
+		otlpGrpcHostPort = config.MonitoringResource.Spec.HostPorts.OtlpGrpcHostPort
+	}
+	otlpHttpHostPort := otlpHttpHostPortDefault
+	if config.MonitoringResource.Spec.HostPorts.OtlpHttpHostPort != 0 {
+		otlpHttpHostPort = config.MonitoringResource.Spec.HostPorts.OtlpHttpHostPort
+	}
+
 	collectorConfigurationFilePath := "/etc/otelcol/conf/" + collectorConfigurationYaml
 
 	collectorContainer := corev1.Container{
@@ -511,13 +535,13 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 				Name:          "otlp",
 				Protocol:      corev1.ProtocolTCP,
 				ContainerPort: otlpGrpcPort,
-				HostPort:      otlpGrpcPort,
+				HostPort:      int32(otlpGrpcHostPort),
 			},
 			{
 				Name:          "otlp-http",
 				Protocol:      corev1.ProtocolTCP,
 				ContainerPort: otlpHttpPort,
-				HostPort:      otlpHttpPort,
+				HostPort:      int32(otlpHttpHostPort),
 			},
 		},
 		Env:            env,
