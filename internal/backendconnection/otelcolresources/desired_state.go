@@ -20,23 +20,20 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
-
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 )
 
 type oTelColConfig struct {
 	Namespace          string
 	NamePrefix         string
-	MonitoringResource *dash0v1alpha1.Dash0Monitoring
+	Endpoint           string
+	AuthorizationToken string
+	SecretRef          string
 	Images             util.Images
 }
 
 func (c *oTelColConfig) hasAuthentication() bool {
-	if c.MonitoringResource == nil {
-		return false
-	}
-	return c.MonitoringResource.Spec.SecretRef != "" || c.MonitoringResource.Spec.AuthorizationToken != ""
+	return c.SecretRef != "" || c.AuthorizationToken != ""
 }
 
 type exportProtocol string
@@ -91,8 +88,8 @@ const (
 	// daemonset in the cluster (which is not managed by the operator), it will very likely use the 4317/4318 as host
 	// ports. When the operator creates its daemonset, the pods of one of the two otelcol daemonsets will fail to start
 	// due to port conflicts.
-	otlpGrpcHostPortDefault = 40317
-	otlpHttpHostPortDefault = 40318
+	otlpGrpcHostPort = 40317
+	otlpHttpHostPort = 40318
 
 	probesHttpPort = 13133
 )
@@ -110,11 +107,7 @@ var (
 )
 
 func assembleDesiredState(config *oTelColConfig) ([]client.Object, error) {
-	if config.MonitoringResource == nil {
-		return nil,
-			fmt.Errorf("no monitoring resource provided, unable to create the desired state for OpenTelemetry collector")
-	}
-	if config.MonitoringResource.Spec.Endpoint == "" {
+	if config.Endpoint == "" {
 		return nil, fmt.Errorf("no endpoint provided, unable to create the OpenTelemetry collector")
 	}
 
@@ -162,7 +155,7 @@ func renderCollectorConfigs(templateValues *collectorConfigurationTemplateValues
 }
 
 func collectorConfigMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
-	endpoint := config.MonitoringResource.Spec.Endpoint
+	endpoint := config.Endpoint
 	exportProtocol := grpcExportProtocol
 	if url, err := url.ParseRequestURI(endpoint); err != nil {
 		// Not a valid URL, assume it's grpc
@@ -483,10 +476,10 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 	if config.hasAuthentication() {
 		var authTokenEnvVar corev1.EnvVar
 
-		if config.MonitoringResource.Spec.AuthorizationToken != "" {
+		if config.AuthorizationToken != "" {
 			authTokenEnvVar = corev1.EnvVar{
 				Name:  authTokenEnvVarName,
-				Value: config.MonitoringResource.Spec.AuthorizationToken,
+				Value: config.AuthorizationToken,
 			}
 		} else {
 			authTokenEnvVar = corev1.EnvVar{
@@ -494,7 +487,7 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 				ValueFrom: &corev1.EnvVarSource{
 					SecretKeyRef: &corev1.SecretKeySelector{
 						LocalObjectReference: corev1.LocalObjectReference{
-							Name: config.MonitoringResource.Spec.SecretRef,
+							Name: config.SecretRef,
 						},
 						Key: "dash0-authorization-token", // TODO Make configurable
 					},
@@ -512,15 +505,6 @@ func daemonSet(config *oTelColConfig) *appsv1.DaemonSet {
 				Port: intstr.FromInt32(probesHttpPort),
 			},
 		},
-	}
-
-	otlpGrpcHostPort := otlpGrpcHostPortDefault
-	if config.MonitoringResource.Spec.HostPorts.OtlpGrpcHostPort != 0 {
-		otlpGrpcHostPort = config.MonitoringResource.Spec.HostPorts.OtlpGrpcHostPort
-	}
-	otlpHttpHostPort := otlpHttpHostPortDefault
-	if config.MonitoringResource.Spec.HostPorts.OtlpHttpHostPort != 0 {
-		otlpHttpHostPort = config.MonitoringResource.Spec.HostPorts.OtlpHttpHostPort
 	}
 
 	collectorConfigurationFilePath := "/etc/otelcol/conf/" + collectorConfigurationYaml

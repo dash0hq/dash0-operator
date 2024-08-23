@@ -71,9 +71,6 @@ type Dash0MonitoringSpec struct {
 	//
 	// +kubebuilder:validation:Optional
 	InstrumentWorkloads InstrumentWorkloadsMode `json:"instrumentWorkloads,omitempty"`
-
-	// +kubebuilder:default={"otlpGrpcHostPort":40317,"otlpHttpHostPort":40318}
-	HostPorts HostPorts `json:"hostPorts,omitempty"`
 }
 
 // InstrumentWorkloadsMode describes when exactly workloads will be instrumented.  Only one of the following modes
@@ -113,13 +110,6 @@ const (
 	ConditionTypeAvailable ConditionType = "Available"
 	ConditionTypeDegraded  ConditionType = "Degraded"
 )
-
-type HostPorts struct {
-	// +kubebuilder:default=40317
-	OtlpGrpcHostPort int `json:"otlpGrpcHostPort"`
-	// +kubebuilder:default=40318
-	OtlpHttpHostPort int `json:"otlpHttpHostPort"`
-}
 
 // Dash0MonitoringStatus defines the observed state of the Dash0 monitoring resource.
 type Dash0MonitoringStatus struct {
