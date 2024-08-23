@@ -31,7 +31,6 @@ const (
 	// envVarLdPreloadValue = "/__dash0__/preload/inject.so"
 	envVarNodeOptionsName           = "NODE_OPTIONS"
 	envVarNodeOptionsValue          = "--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry"
-	envVarNodeOptionsValue_0_5_1    = "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0hq/opentelemetry"
 	envVarDash0CollectorBaseUrlName = "DASH0_OTEL_COLLECTOR_BASE_URL"
 )
 
@@ -273,16 +272,6 @@ func (m *ResourceModifier) handleNodeOptionsEnvVar(
 						"ValueFrom. This container will not be instrumented.",
 					envVarNodeOptionsName))
 			return
-		}
-
-		// update from 0.5.1 or earlier to 0.6.0: remove old --require instruction
-		if strings.Contains(envVar.Value, envVarNodeOptionsValue_0_5_1) {
-			// the three slightly different ReplaceAll calls handle all cases: the old require at the beginning of the
-			// string, in the middle, at the end, or the only content of NODE_OPTIONS. The point is that if NODE_OPTIONS
-			// has other content as well, we need to remove an extra space either before or after the old --require.
-			envVar.Value = strings.ReplaceAll(envVar.Value, envVarNodeOptionsValue_0_5_1+" ", "")
-			envVar.Value = strings.ReplaceAll(envVar.Value, " "+envVarNodeOptionsValue_0_5_1, "")
-			envVar.Value = strings.ReplaceAll(envVar.Value, envVarNodeOptionsValue_0_5_1, "")
 		}
 
 		if !strings.Contains(envVar.Value, envVarNodeOptionsValue) {
