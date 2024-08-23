@@ -705,6 +705,10 @@ func DeploymentWithExistingDash0Artifacts(namespace string, name string) *appsv1
 					ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}},
 				},
 				{
+					Name:      "DASH0_NODE_IP",
+					ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "wrong.field.ref"}},
+				},
+				{
 					// this ValueFrom will be removed and replaced by a simple Value
 					Name:      "DASH0_OTEL_COLLECTOR_BASE_URL",
 					ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}},
@@ -738,7 +742,11 @@ func DeploymentWithExistingDash0Artifacts(namespace string, name string) *appsv1
 					Value: "--require something-else --experimental-modules",
 				},
 				{
-					Name:  "TEST2",
+					Name:  "DASH0_NODE_IP",
+					Value: "will be replaced by a value from",
+				},
+				{
+					Name:  "TEST3",
 					Value: "value",
 				},
 			},
@@ -818,6 +826,10 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 					Value: "--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
 				},
 				{
+					Name:      "DASH0_NODE_IP",
+					ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "status.hostIP"}},
+				},
+				{
 					Name:  "DASH0_OTEL_COLLECTOR_BASE_URL",
 					Value: OTelCollectorBaseUrlTest,
 				},
@@ -891,6 +903,10 @@ func simulateInstrumentedPodSpec(podSpec *corev1.PodSpec, meta *metav1.ObjectMet
 		{
 			Name:  "NODE_OPTIONS",
 			Value: "--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
+		},
+		{
+			Name:      "DASH0_NODE_IP",
+			ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "status.hostIP"}},
 		},
 		{
 			Name:  "DASH0_OTEL_COLLECTOR_BASE_URL",

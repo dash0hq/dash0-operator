@@ -74,17 +74,19 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					{
 						VolumeMounts:                             2,
 						Dash0VolumeMountIdx:                      1,
-						EnvVars:                                  3,
+						EnvVars:                                  4,
 						NodeOptionsEnvVarIdx:                     1,
-						Dash0CollectorBaseUrlEnvVarIdx:           2,
+						NodeIpIdx:                                2,
+						Dash0CollectorBaseUrlEnvVarIdx:           3,
 						Dash0CollectorBaseUrlEnvVarExpectedValue: OTelCollectorBaseUrlTest,
 					},
 					{
 						VolumeMounts:                             3,
 						Dash0VolumeMountIdx:                      2,
-						EnvVars:                                  4,
+						EnvVars:                                  5,
 						NodeOptionsEnvVarIdx:                     2,
-						Dash0CollectorBaseUrlEnvVarIdx:           3,
+						NodeIpIdx:                                3,
+						Dash0CollectorBaseUrlEnvVarIdx:           4,
 						Dash0CollectorBaseUrlEnvVarExpectedValue: OTelCollectorBaseUrlTest,
 					},
 				},
@@ -105,18 +107,20 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					{
 						VolumeMounts:                             2,
 						Dash0VolumeMountIdx:                      1,
-						EnvVars:                                  3,
+						EnvVars:                                  4,
 						NodeOptionsEnvVarIdx:                     1,
 						NodeOptionsUsesValueFrom:                 true,
-						Dash0CollectorBaseUrlEnvVarIdx:           2,
+						NodeIpIdx:                                2,
+						Dash0CollectorBaseUrlEnvVarIdx:           3,
 						Dash0CollectorBaseUrlEnvVarExpectedValue: OTelCollectorBaseUrlTest,
 					},
 					{
 						VolumeMounts:                             3,
 						Dash0VolumeMountIdx:                      1,
-						EnvVars:                                  3,
+						EnvVars:                                  4,
 						NodeOptionsEnvVarIdx:                     1,
 						NodeOptionsValue:                         "--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --require something-else --experimental-modules",
+						NodeIpIdx:                                2,
 						Dash0CollectorBaseUrlEnvVarIdx:           0,
 						Dash0CollectorBaseUrlEnvVarExpectedValue: OTelCollectorBaseUrlTest,
 					},
@@ -252,50 +256,6 @@ var _ = Describe("Dash0 Workload Modification", func() {
 		})
 	})
 
-	Describe("when updating instrumentation from 0.5.1 to 0.6.0", func() {
-		It("should remove the old --require from NODE_OPTIONS (when it is the only content of NODE_OPTIONS)", func() {
-			workload := InstrumentedDeployment(TestNamespaceName, DeploymentNamePrefix)
-			Expect(workload.Spec.Template.Spec.Containers[0].Env[0].Name).To(Equal("NODE_OPTIONS"))
-			workload.Spec.Template.Spec.Containers[0].Env[0].Value = "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0hq/opentelemetry"
-			hasBeenModified := workloadModifier.ModifyDeployment(workload)
-			Expect(hasBeenModified).To(BeTrue())
-			VerifyModifiedDeployment(workload, BasicInstrumentedPodSpecExpectations())
-		})
-
-		It("should remove the old --require from NODE_OPTIONS (when it is at the start of NODE_OPTIONS)", func() {
-			workload := InstrumentedDeployment(TestNamespaceName, DeploymentNamePrefix)
-			Expect(workload.Spec.Template.Spec.Containers[0].Env[0].Name).To(Equal("NODE_OPTIONS"))
-			workload.Spec.Template.Spec.Containers[0].Env[0].Value = "--require /opt/dash0/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --require /something/else"
-			hasBeenModified := workloadModifier.ModifyDeployment(workload)
-			Expect(hasBeenModified).To(BeTrue())
-			expectations := BasicInstrumentedPodSpecExpectations()
-			expectations.Containers[0].NodeOptionsValue = "--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --require /something/else"
-			VerifyModifiedDeployment(workload, expectations)
-		})
-
-		It("should remove the old --require from NODE_OPTIONS (when it is at the end of NODE_OPTIONS)", func() {
-			workload := InstrumentedDeployment(TestNamespaceName, DeploymentNamePrefix)
-			Expect(workload.Spec.Template.Spec.Containers[0].Env[0].Name).To(Equal("NODE_OPTIONS"))
-			workload.Spec.Template.Spec.Containers[0].Env[0].Value = "--require /something/else --require /opt/dash0/instrumentation/node.js/node_modules/@dash0hq/opentelemetry"
-			hasBeenModified := workloadModifier.ModifyDeployment(workload)
-			Expect(hasBeenModified).To(BeTrue())
-			expectations := BasicInstrumentedPodSpecExpectations()
-			expectations.Containers[0].NodeOptionsValue = "--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --require /something/else"
-			VerifyModifiedDeployment(workload, expectations)
-		})
-
-		It("should remove the old --require from NODE_OPTIONS (when it is in the middle of NODE_OPTIONS)", func() {
-			workload := InstrumentedDeployment(TestNamespaceName, DeploymentNamePrefix)
-			Expect(workload.Spec.Template.Spec.Containers[0].Env[0].Name).To(Equal("NODE_OPTIONS"))
-			workload.Spec.Template.Spec.Containers[0].Env[0].Value = "--require /something/else --require /opt/dash0/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --require /another/thing"
-			hasBeenModified := workloadModifier.ModifyDeployment(workload)
-			Expect(hasBeenModified).To(BeTrue())
-			expectations := BasicInstrumentedPodSpecExpectations()
-			expectations.Containers[0].NodeOptionsValue = "--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --require /something/else --require /another/thing"
-			VerifyModifiedDeployment(workload, expectations)
-		})
-	})
-
 	Describe("when reverting workloads", func() {
 		It("should remove Dash0 from an instrumented cron job", func() {
 			workload := InstrumentedCronJob(TestNamespaceName, CronJobNamePrefix)
@@ -337,6 +297,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						Dash0VolumeMountIdx:            -1,
 						EnvVars:                        1,
 						NodeOptionsEnvVarIdx:           -1,
+						NodeIpIdx:                      -1,
 						Dash0CollectorBaseUrlEnvVarIdx: -1,
 					},
 					{
@@ -344,6 +305,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						Dash0VolumeMountIdx:            -1,
 						EnvVars:                        2,
 						NodeOptionsEnvVarIdx:           -1,
+						NodeIpIdx:                      -1,
 						Dash0CollectorBaseUrlEnvVarIdx: -1,
 					},
 				},

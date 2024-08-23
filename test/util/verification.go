@@ -26,6 +26,7 @@ type ContainerExpectations struct {
 	NodeOptionsEnvVarIdx                     int
 	NodeOptionsValue                         string
 	NodeOptionsUsesValueFrom                 bool
+	NodeIpIdx                                int
 	Dash0CollectorBaseUrlEnvVarIdx           int
 	Dash0CollectorBaseUrlEnvVarExpectedValue string
 }
@@ -51,9 +52,10 @@ func BasicInstrumentedPodSpecExpectations() PodSpecExpectations {
 		Containers: []ContainerExpectations{{
 			VolumeMounts:                   1,
 			Dash0VolumeMountIdx:            0,
-			EnvVars:                        2,
+			EnvVars:                        3,
 			NodeOptionsEnvVarIdx:           0,
-			Dash0CollectorBaseUrlEnvVarIdx: 1,
+			NodeIpIdx:                      1,
+			Dash0CollectorBaseUrlEnvVarIdx: 2,
 			Dash0CollectorBaseUrlEnvVarExpectedValue://
 			OTelCollectorBaseUrlTest,
 		}},
@@ -243,17 +245,17 @@ func verifyPodSpec(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
 		Expect(container.Name).To(Equal(fmt.Sprintf("test-container-%d", i)))
 		containerExpectations := expectations.Containers[i]
 		Expect(container.VolumeMounts).To(HaveLen(containerExpectations.VolumeMounts))
-		for i, volumeMount := range container.VolumeMounts {
-			if i == containerExpectations.Dash0VolumeMountIdx {
+		for j, volumeMount := range container.VolumeMounts {
+			if j == containerExpectations.Dash0VolumeMountIdx {
 				Expect(volumeMount.Name).To(Equal("dash0-instrumentation"))
 				Expect(volumeMount.MountPath).To(Equal("/__dash0__"))
 			} else {
-				Expect(volumeMount.Name).To(Equal(fmt.Sprintf("test-volume-%d", i)))
+				Expect(volumeMount.Name).To(Equal(fmt.Sprintf("test-volume-%d", j)))
 			}
 		}
 		Expect(container.Env).To(HaveLen(containerExpectations.EnvVars))
-		for i, envVar := range container.Env {
-			if i == containerExpectations.NodeOptionsEnvVarIdx {
+		for j, envVar := range container.Env {
+			if j == containerExpectations.NodeOptionsEnvVarIdx {
 				Expect(envVar.Name).To(Equal("NODE_OPTIONS"))
 				if containerExpectations.NodeOptionsUsesValueFrom {
 					Expect(envVar.Value).To(BeEmpty())
@@ -265,12 +267,19 @@ func verifyPodSpec(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
 						"--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
 					))
 				}
-			} else if i == containerExpectations.Dash0CollectorBaseUrlEnvVarIdx {
+			} else if j == containerExpectations.NodeIpIdx {
+				Expect(envVar.Name).To(Equal("DASH0_NODE_IP"))
+				valueFrom := envVar.ValueFrom
+				Expect(valueFrom).ToNot(BeNil())
+				Expect(valueFrom.FieldRef).ToNot(BeNil())
+				Expect(valueFrom.FieldRef.FieldPath).To(Equal("status.hostIP"))
+				Expect(envVar.Value).To(BeEmpty())
+			} else if j == containerExpectations.Dash0CollectorBaseUrlEnvVarIdx {
 				Expect(envVar.Name).To(Equal("DASH0_OTEL_COLLECTOR_BASE_URL"))
 				Expect(envVar.Value).To(Equal(containerExpectations.Dash0CollectorBaseUrlEnvVarExpectedValue))
 				Expect(envVar.ValueFrom).To(BeNil())
 			} else {
-				Expect(envVar.Name).To(Equal(fmt.Sprintf("TEST%d", i)))
+				Expect(envVar.Name).To(Equal(fmt.Sprintf("TEST%d", j)))
 			}
 		}
 	}
