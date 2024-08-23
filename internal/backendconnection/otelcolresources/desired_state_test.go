@@ -11,8 +11,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -27,14 +25,10 @@ const (
 var _ = Describe("The desired state of the OpenTelemetry Collector resources", func() {
 	It("should fail if no endpoint has been provided", func() {
 		_, err := assembleDesiredState(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			MonitoringResource: &dash0v1alpha1.Dash0Monitoring{
-				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					AuthorizationToken: AuthorizationTokenTest,
-				},
-			},
-			Images: TestImages,
+			Namespace:          namespace,
+			NamePrefix:         namePrefix,
+			AuthorizationToken: AuthorizationTokenTest,
+			Images:             TestImages,
 		})
 		Expect(err).To(HaveOccurred())
 	})
@@ -43,7 +37,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredState(&oTelColConfig{
 			Namespace:          namespace,
 			NamePrefix:         namePrefix,
-			MonitoringResource: MonitoringResourceWithDefaultSpec,
+			Endpoint:           EndpointTest,
+			AuthorizationToken: AuthorizationTokenTest,
 			Images:             TestImages,
 		})
 
@@ -115,14 +110,10 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 	It("should use the authorization token directly if provided", func() {
 		desiredState, err := assembleDesiredState(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			MonitoringResource: &dash0v1alpha1.Dash0Monitoring{
-				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					Endpoint:           EndpointTest,
-					AuthorizationToken: AuthorizationTokenTest,
-				},
-			},
+			Namespace:          namespace,
+			NamePrefix:         namePrefix,
+			Endpoint:           EndpointTest,
+			AuthorizationToken: AuthorizationTokenTest,
 		})
 
 		Expect(err).ToNot(HaveOccurred())
@@ -140,12 +131,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredState(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
-			MonitoringResource: &dash0v1alpha1.Dash0Monitoring{
-				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					Endpoint:  EndpointTest,
-					SecretRef: SecretRefTest,
-				},
-			},
+			Endpoint:   EndpointTest,
+			SecretRef:  SecretRefTest,
 		})
 
 		Expect(err).ToNot(HaveOccurred())
@@ -165,11 +152,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredState(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
-			MonitoringResource: &dash0v1alpha1.Dash0Monitoring{
-				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					Endpoint: EndpointTest,
-				},
-			},
+			Endpoint:   EndpointTest,
 		})
 
 		Expect(err).ToNot(HaveOccurred())
