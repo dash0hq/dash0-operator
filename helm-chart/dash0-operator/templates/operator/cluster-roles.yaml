@@ -72,6 +72,7 @@ rules:
   - operator.dash0.com
   resources:
   - dash0monitorings
+  - dash0operatorconfigurations
   verbs:
   - create
   - delete
@@ -87,6 +88,7 @@ rules:
   - operator.dash0.com
   resources:
   - dash0monitorings/finalizers
+  - dash0operatorconfigurations/finalizers
   verbs:
   - update
 
@@ -95,6 +97,7 @@ rules:
   - operator.dash0.com
   resources:
   - dash0monitorings/status
+  - dash0operatorconfigurations/status
   verbs:
   - get
   - patch

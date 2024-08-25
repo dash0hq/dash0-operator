@@ -313,11 +313,7 @@ func startDash0Controller(
 		return fmt.Errorf("cannot determine if self-monitoring is enabled in the controller deployment: %w", err)
 	}
 
-	var bearerTokenReplacement string
-	if selfMonitoringConfiguration.BearerToken != "" {
-		bearerTokenReplacement = "*****"
-	}
-	setupLog.Info("Self monitoring configurations:", "enabled", selfMonitoringConfiguration.Enabled, "endpoint", selfMonitoringConfiguration.Endpoint, "bearer-token", bearerTokenReplacement)
+	setupLog.Info("Self monitoring configurations:", "enabled", selfMonitoringConfiguration.Enabled, "endpoint", selfMonitoringConfiguration.Endpoint)
 
 	k8sClient := mgr.GetClient()
 	instrumenter := &instrumentation.Instrumenter{
@@ -348,9 +344,8 @@ func startDash0Controller(
 		SelfMonitoringConfiguration: selfMonitoringConfiguration,
 	}
 	if err := operatorConfigurationReconciler.SetupWithManager(mgr); err != nil {
-		return fmt.Errorf("unable to set up the Dash0Operator reconciler: %w", err)
+		return fmt.Errorf("unable to set up the operator configuration reconciler: %w", err)
 	}
-	setupLog.Info("Dash0Monitoring reconciler has been set up.")
 
 	monitoringReconciler := &controller.Dash0Reconciler{
 		Client:                      k8sClient,
@@ -363,9 +358,8 @@ func startDash0Controller(
 	}
 
 	if err := monitoringReconciler.SetupWithManager(mgr); err != nil {
-		return fmt.Errorf("unable to set up the Dash0 monitoring reconciler: %w", err)
+		return fmt.Errorf("unable to set up the operator configuration reconciler: %w", err)
 	}
-	setupLog.Info("Dash0 monitoring reconciler has been set up.")
 
 	if os.Getenv("ENABLE_WEBHOOK") != "false" {
 		if err := (&webhook.Handler{
@@ -374,11 +368,10 @@ func startDash0Controller(
 			Images:               images,
 			OTelCollectorBaseUrl: oTelCollectorBaseUrl,
 		}).SetupWebhookWithManager(mgr); err != nil {
-			return fmt.Errorf("unable to create the Dash0 webhook: %w", err)
+			return fmt.Errorf("unable to create the webhook: %w", err)
 		}
-		setupLog.Info("Dash0 webhook has been set up.")
 	} else {
-		setupLog.Info("Dash0 webhooks have been disabled via configuration.")
+		setupLog.Info("Webhook is disabled via configuration.")
 	}
 
 	return nil
@@ -561,7 +554,7 @@ func deleteDash0MonitoringResourcesInAllNamespaces(logger *logr.Logger) error {
 	}
 	err = handler.DeleteAllDash0MonitoringResources()
 	if err != nil {
-		logger.Error(err, "Failed to delete all Dash0 monitoring resources.")
+		logger.Error(err, "Failed to delete all monitoring resources.")
 		return err
 	}
 	return nil

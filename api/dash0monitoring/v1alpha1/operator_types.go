@@ -14,29 +14,88 @@ const (
 	OperatorFinalizerId = "operator.dash0monitoring.com/dash0monitoring-operator-finalizer"
 )
 
-// Dash0OperatorConfigurationSpec defines the desired state of the Dash0 monitoring resource.
-type Dash0OperatorConfigurationSpec struct {
+type Dash0Export struct {
 	// The URL of the observability backend to which telemetry data will be sent. This property is mandatory. The value
 	// needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct OTLP/gRPC endpoint can be copied fom
 	// https://app.dash0.com/settings. The correct endpoint value will always start with `ingress.` and end in
-	// `dash0monitoring.com:4317`.
+	// `dash0.com:4317`.
 	//
 	// +kubebuilder:validation:Mandatory
-	Endpoint string `json:"endpoint"`
+	Endpoint string `json:"endpoint"` // Required
 
+	// The identifier of the dataset to which the telemetry will be sent. If unspecified, the telemetry will go to the `default` dataset
+	//
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:default=default
+	Dataset string `json:"dataset,omitempty"`
+
+	// +kubebuilder:validation:Mandatory
+	Authorization Authorization `json:"authorization"`
+}
+
+// The Export datastructure specifies the default backend to which telemetry will be
+// sent to by the operator, as well as the backend that will receive operator
+// self-monitoring data
+//
+// +kubebuilder:validation:MinProperties=1
+// +kubebuilder:validation:MaxProperties=1
+type Export struct {
+	// Pointer so that JSON serialization does not output an empty struct
+	Dash0Export *Dash0Export `json:"dash0,omitempty"`
+	// Pointer so that JSON serialization does not output an empty struct
+	HttpExport *HttpExport `json:"http,omitempty"`
+	// Pointer so that JSON serialization does not output an empty struct
+	GrpcExport *GrpcExport `json:"grpc,omitempty"`
+}
+
+// The Authorization datastructure specifies which authorization information to send to the Dash0 alongside
+// the telemetry data.
+//
+// +kubebuilder:validation:MinProperties=1
+// +kubebuilder:validation:MaxProperties=1
+type Authorization struct {
 	// The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
 	// to be provided. If both are provided, the AuthorizationToken will be used and SecretRef will be ignored. The
 	// authorization token for your Dash0 organization can be copied from https://app.dash0.com/settings.
 	//
 	// +kubebuilder:validation:Optional
-	AuthorizationToken string `json:"authorizationToken"`
-
+	Token string `json:"token"`
 	// A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
 	// ignored if the AuthorizationToken property is set. The authorization token for your Dash0 organization
 	// can be copied from https://app.dash0.com/settings.
 	//
 	// +kubebuilder:validation:Optional
 	SecretRef string `json:"secretRef"`
+}
+
+type OtlpProtocol string
+
+const (
+	OtlpProtocolHttpJson     OtlpProtocol = "http/json"
+	OtlpProtocolHttpProtobuf OtlpProtocol = "http/protobuf"
+	OtlpProtocolGrpc         OtlpProtocol = "grpc"
+)
+
+type HttpExport struct {
+	// +kubebuilder:validation:Pattern=`^https?:\/\/.+$`
+	Url     string   `json:"url"` // TODO More precise URL validation via kubebuilder:validation
+	Headers []string `json:"headers,omitempty"`
+	// +kubebuilder:validation:Enum=http/protobuf
+	// +kubebuilder:default=http/protobuf
+	// TODO Expand the enum when the Go SDK supports JSON encoding
+	Encoding OtlpProtocol `json:"protocol,omitempty"`
+}
+
+type GrpcExport struct {
+	Url     string   `json:"url"` // TODO Regexp validation via kubebuilder:validation
+	Headers []string `json:"headers,omitempty"`
+}
+
+// Dash0OperatorConfigurationSpec defines the desired state of the Dash0 monitoring resource.
+type Dash0OperatorConfigurationSpec struct {
+	// Pointer so that JSON serialization does not output an empty struct
+	// +kubebuilder:validation:Optional
+	Export *Export `json:"export,omitempty"`
 
 	// Global opt-out for self-monitoring for this operator
 	// +kubebuilder:default={enabled: true}
@@ -57,12 +116,12 @@ type Dash0OperatorConfigurationStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:resource:scope=Cluster
-//+kubebuilder:subresource:status
-//+groupName=operator.dash0.com
-
-// Dash0OperatorConfiguration is the Schema for the Dash0Monitoring API
+// Dash0OperatorConfiguration is the Schema for the Dash0OperatorConfiguration API
+//
+// +kubebuilder:object:root=true
+// +kubebuilder:resource:scope=Cluster
+// +kubebuilder:subresource:status
+// +groupName=operator.dash0.com
 type Dash0OperatorConfiguration struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

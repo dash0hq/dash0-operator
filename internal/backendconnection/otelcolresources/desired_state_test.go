@@ -43,9 +43,9 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			AuthorizationToken: AuthorizationTokenTest,
 			Images:             TestImages,
 			SelfMonitoringConfiguration: selfmonitoring.SelfMonitoringConfiguration{
-				Enabled:     true,
-				Endpoint:    EndpointTest,
-				BearerToken: AuthorizationTokenTest,
+				Enabled:  true,
+				Endpoint: EndpointTest,
+				Headers:  []string{fmt.Sprintf("Authorization=Bearer %s", AuthorizationTokenTest)},
 			},
 		})
 		Expect(err).NotTo(HaveOccurred())
@@ -55,7 +55,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(err).NotTo(HaveOccurred())
 		Expect(selfMonitoringConfiguration.Enabled).To(BeTrue())
 		Expect(selfMonitoringConfiguration.Endpoint).To(Equal(EndpointTest))
-		Expect(selfMonitoringConfiguration.BearerToken).To(Equal(AuthorizationTokenTest))
+		Expect(selfMonitoringConfiguration.Headers).To(Equal([]string{fmt.Sprintf("Authorization=Bearer %s", AuthorizationTokenTest)}))
 	})
 
 	It("should correctly apply disabled self-monitoring on the daemonset", func() {
@@ -66,9 +66,9 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			AuthorizationToken: AuthorizationTokenTest,
 			Images:             TestImages,
 			SelfMonitoringConfiguration: selfmonitoring.SelfMonitoringConfiguration{
-				Enabled:     false,
-				Endpoint:    EndpointTest,
-				BearerToken: AuthorizationTokenTest,
+				Enabled:  false,
+				Endpoint: EndpointTest,
+				Headers:  []string{fmt.Sprintf("Authorization=Bearer %s", AuthorizationTokenTest)},
 			},
 		})
 		Expect(err).NotTo(HaveOccurred())
@@ -78,7 +78,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(err).NotTo(HaveOccurred())
 		Expect(selfMonitoringConfiguration.Enabled).To(BeFalse())
 		Expect(selfMonitoringConfiguration.Endpoint).To(Equal(""))
-		Expect(selfMonitoringConfiguration.BearerToken).To(Equal(""))
+		Expect(selfMonitoringConfiguration.Headers).To(BeEmpty())
 	})
 
 	It("should describe the desired state as a set of Kubernetes client objects", func() {

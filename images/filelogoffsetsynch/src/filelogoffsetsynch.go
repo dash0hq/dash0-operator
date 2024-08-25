@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"go.opentelemetry.io/otel/metric/noop"
 	"io"
 	"log"
 	"os"
@@ -21,23 +22,41 @@ import (
 	"syscall"
 	"time"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
+	"go.opentelemetry.io/otel/metric"
+	otelmetric "go.opentelemetry.io/otel/metric"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/resource"
+	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
 
-type settings struct {
+type Settings struct {
 	Clientset                  *kubernetes.Clientset
 	NodeName                   string
 	ConfigMapNamespace         string
 	ConfigMapName              string
-	FilelogOffsetDirectoryPath string
+	FileLogOffsetDirectoryPath string
 }
 
 type patch struct {
 	BinaryData map[string]string `json:"binaryData,omitempty"`
 }
+
+var (
+	currentValue string
+
+	meterProvider              otelmetric.MeterProvider
+	offsetFileSize             otelmetric.Int64Gauge
+	updateCountMeter           otelmetric.Int64Counter
+	updateDurationSecondsMeter otelmetric.Float64Histogram
+)
 
 // TODO Add support for sending_queue on separate exporter
 // TODO Set up compaction
@@ -64,20 +83,107 @@ func main() {
 		log.Fatalln("Required env var 'K8S_CONFIGMAP_NAME' is not set")
 	}
 
+	podUid, isSet := os.LookupEnv("K8S_POD_UID")
+	if !isSet {
+		log.Fatalln("Required env var 'K8S_POD_UID' is not set")
+	}
+
 	nodeName, isSet := os.LookupEnv("K8S_NODE_NAME")
 	if !isSet {
 		log.Fatalln("Required env var 'K8S_NODE_NAME' is not set")
 	}
 
-	filelogOffsetDirectoryPath, isSet := os.LookupEnv("FILELOG_OFFSET_DIRECTORY_PATH")
+	fileLogOffsetDirectoryPath, isSet := os.LookupEnv("FILELOG_OFFSET_DIRECTORY_PATH")
 	if !isSet {
 		log.Fatalln("Required env var 'FILELOG_OFFSET_DIRECTORY_PATH' is not set")
 	}
 
+	ctx := context.Background()
+
 	// creates the in-cluster config
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		log.Fatalf("Cannot create the Kube API client: %v\n", err)
+		log.Fatalf("Cannot create the Kube API client: %v", err)
+	}
+
+	var doMeterShutdown func(ctx context.Context) error
+
+	if _, isSet := os.LookupEnv("OTEL_EXPORTER_OTLP_ENDPOINT"); isSet {
+		var exporter sdkmetric.Exporter
+
+		protocol, isProtocolSet := os.LookupEnv("OTEL_EXPORTER_OTLP_PROTOCOL")
+		if !isProtocolSet {
+			// http/protobuf is the default transport protocol, see spec:
+			// https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/protocol/exporter.md
+			protocol = "http/protobuf"
+		}
+
+		switch protocol {
+		case "grpc":
+			if exporter, err = otlpmetricgrpc.New(ctx); err != nil {
+				log.Fatalf("Cannot create the OTLP gRPC metrics exporter: %v", err)
+			}
+		case "http/protobuf":
+			if exporter, err = otlpmetrichttp.New(ctx); err != nil {
+				log.Fatalf("Cannot create the OTLP HTTP metrics exporter: %v", err)
+			}
+		case "http/json":
+			log.Fatalf("Cannot create the OTLP HTTP metrics exporter: the 'http/json' is currently unsupported")
+		default:
+			log.Fatalf("Unexpected OTLP protocol set as value of the 'OTEL_EXPORTER_OTLP_PROTOCOL' environment variable: %v", protocol)
+		}
+
+		r, err := resource.New(ctx,
+			resource.WithAttributes(
+				semconv.ServiceNamespace("dash0.operator"),
+				semconv.ServiceName("filelog_offset_synch"),
+				// TODO setup service version as operator version
+				semconv.K8SPodUID(podUid),
+				semconv.K8SNodeName(nodeName),
+			),
+		)
+		if err != nil {
+			log.Fatalf("Cannot setup the OTLP resource: %v", err)
+		}
+
+		sdkMeterProvider := sdkmetric.NewMeterProvider(
+			sdkmetric.WithResource(r),
+			sdkmetric.WithReader(sdkmetric.NewPeriodicReader(exporter, sdkmetric.WithTimeout(1*time.Second))),
+		)
+
+		doMeterShutdown = sdkMeterProvider.Shutdown
+		meterProvider = sdkMeterProvider
+	} else {
+		doMeterShutdown = func(ctx context.Context) error { return nil }
+		meterProvider = noop.MeterProvider{}
+	}
+
+	otel.SetMeterProvider(meterProvider)
+
+	meter := otel.Meter("dash0.operator.filelog_offset_synch")
+
+	if offsetFileSize, err = meter.Int64Gauge(
+		"update.compressed_size",
+		otelmetric.WithUnit("By"),
+		otelmetric.WithDescription("The size of the compressed offset file"),
+	); err != nil {
+		log.Fatalf("Cannot setup the OTLP meter for the offset file size gauge: %v", err)
+	}
+
+	if updateCountMeter, err = meter.Int64Counter(
+		"updates",
+		otelmetric.WithUnit("1"),
+		otelmetric.WithDescription("Counter of how many times the synch process for filelog offsets occurs, and how many times it succeeds"),
+	); err != nil {
+		log.Fatalf("Cannot setup the OTLP meter for the synch counter: %v", err)
+	}
+
+	if updateDurationSecondsMeter, err = meter.Float64Histogram(
+		"update.duration",
+		otelmetric.WithUnit("1s"),
+		otelmetric.WithDescription("Counter of how long it takes for the synch process for filelog offsets to complete"),
+	); err != nil {
+		log.Fatalf("Cannot setup the OTLP meter for the synch duration histogram: %v", err)
 	}
 
 	// creates the clientset
@@ -86,31 +192,38 @@ func main() {
 		log.Fatalf("Cannot create the Kube API client: %v\n", err)
 	}
 
-	settings := &settings{
+	settings := &Settings{
 		Clientset:                  clientset,
 		NodeName:                   nodeName,
 		ConfigMapNamespace:         configMapNamespace,
 		ConfigMapName:              configMapName,
-		FilelogOffsetDirectoryPath: filelogOffsetDirectoryPath,
+		FileLogOffsetDirectoryPath: fileLogOffsetDirectoryPath,
 	}
 
 	switch *mode {
 	case "init":
-		if restoredFiles, err := initOffsets(settings); err != nil {
+		if restoredFiles, err := initOffsets(ctx, settings); err != nil {
 			log.Fatalf("No offset files restored: %v\n", err)
 		} else if restoredFiles == 0 {
 			log.Println("No offset files restored")
 		}
 	case "synch":
-		if err := synchOffsets(settings); err != nil {
+		if err := synchOffsets(ctx, settings); err != nil {
 			log.Fatalf("An error occurred while synching file offsets to configmap: %v\n", err)
 		}
 	}
 
+	if meterProvider != nil {
+		timeoutCtx, cancelFun := context.WithTimeout(ctx, time.Second)
+		if err := doMeterShutdown(timeoutCtx); err != nil {
+			log.Fatalln("Failed to shutdown metrics provider, metrics data nay have been lost:", err)
+		}
+		cancelFun()
+	}
 }
 
-func initOffsets(settings *settings) (int, error) {
-	configMap, err := settings.Clientset.CoreV1().ConfigMaps(settings.ConfigMapNamespace).Get(context.Background(), settings.ConfigMapName, metav1.GetOptions{})
+func initOffsets(ctx context.Context, settings *Settings) (int, error) {
+	configMap, err := settings.Clientset.CoreV1().ConfigMaps(settings.ConfigMapNamespace).Get(ctx, settings.ConfigMapName, metav1.GetOptions{})
 	if err != nil {
 		return 0, fmt.Errorf("cannot retrieve %v/%v config map: %w", settings.ConfigMapNamespace, settings.ConfigMapName, err)
 	}
@@ -193,27 +306,26 @@ func restoreFile(tr *tar.Reader) (IsArchiveOver, HasRestoredFileFromArchive, err
 	}
 }
 
-func synchOffsets(settings *settings) error {
+func synchOffsets(ctx context.Context, settings *Settings) error {
 	ticker := time.NewTicker(5 * time.Second)
 	shutdown := make(chan os.Signal, 1)
 	done := make(chan bool, 1)
 	signal.Notify(shutdown, syscall.SIGTERM)
 
 	go func() {
-		var currentValue string
 		for {
 			select {
 			case <-ticker.C:
-				if newValue, err := doSynchOffsets(settings, currentValue); err != nil {
+				if err := doSynchOffsetsAndMeasure(ctx, settings); err != nil {
 					log.Printf("Cannot update offset files: %v\n", err)
-				} else if len(newValue) > 0 {
-					currentValue = newValue
 				}
 			case <-shutdown:
 				ticker.Stop()
-				if _, err := doSynchOffsets(settings, currentValue); err != nil {
+
+				if err := doSynchOffsetsAndMeasure(ctx, settings); err != nil {
 					log.Printf("Cannot update offset files on shutdown: %v\n", err)
 				}
+
 				done <- true
 			}
 		}
@@ -224,30 +336,60 @@ func synchOffsets(settings *settings) error {
 	return nil
 }
 
-func doSynchOffsets(settings *settings, currentValue string) (string, error) {
+type OffsetSizeBytes int
+type IsOffsetUpdated bool
+
+func doSynchOffsetsAndMeasure(ctx context.Context, settings *Settings) error {
+	start := time.Now()
+
+	offsetUpdated, offsetUpdateSize, err := doSynchOffsets(settings)
+
+	elapsed := time.Since(start)
+
+	attributes := []attribute.KeyValue{}
+	if err != nil {
+		log.Printf("Cannot update offset files on shutdown: %v\n", err)
+
+		attributes = append(attributes,
+			attribute.String("error.type", "CannotUpdateOffsetFiles"),
+			attribute.String("error.message", err.Error()),
+		)
+	} else if offsetUpdated {
+		updateCountMeter.Add(ctx, 1, metric.WithAttributes(
+			attributes...,
+		))
+		offsetFileSize.Record(ctx, int64(offsetUpdateSize))
+		updateDurationSecondsMeter.Record(ctx, elapsed.Seconds(), metric.WithAttributes(attributes...))
+	}
+
+	return err
+}
+
+func doSynchOffsets(settings *Settings) (IsOffsetUpdated, OffsetSizeBytes, error) {
 	var buf bytes.Buffer
 
 	// Compress folder to tar, store bytes in configmap
-	tarredFiles, err := tarFolder(settings.FilelogOffsetDirectoryPath, &buf)
+	tarredFiles, err := tarFolder(settings.FileLogOffsetDirectoryPath, &buf)
 	if err != nil {
-		return "", fmt.Errorf("cannot prepare offset files for storing: %w", err)
+		return false, -1, fmt.Errorf("cannot prepare offset files for storing: %w", err)
 	}
 
 	if tarredFiles == 0 {
-		return "", nil
+		return false, -1, nil
 	}
 
 	newValue := base64.StdEncoding.EncodeToString(buf.Bytes())
 
 	if newValue == currentValue {
-		return currentValue, nil
+		return false, -1, nil
 	}
 
 	if err := patchConfigMap(settings.Clientset, settings.NodeName, settings.ConfigMapNamespace, settings.ConfigMapName, newValue); err != nil {
-		return "", fmt.Errorf("cannot store offset files in configmap %v/%v: %w", settings.ConfigMapNamespace, settings.ConfigMapName, err)
+		return false, -1, fmt.Errorf("cannot store offset files in configmap %v/%v: %w", settings.ConfigMapNamespace, settings.ConfigMapName, err)
 	}
 
-	return newValue, nil
+	currentValue = newValue
+	return false, OffsetSizeBytes(len(buf.Bytes())), nil
 }
 
 func patchConfigMap(clientset *kubernetes.Clientset, nodeName string, configMapNamespace string, configMapName string, newValueBase64 string) error {
@@ -326,10 +468,13 @@ func tarFile(writer *tar.Writer, path string, info os.FileInfo) (HasAddedFileToA
 	if err != nil {
 		return false, err
 	}
-	defer file.Close()
 
 	if _, err := io.Copy(writer, file); err != nil {
 		return false, err
+	}
+
+	if err := file.Close(); err != nil {
+		return true, err
 	}
 
 	return true, nil

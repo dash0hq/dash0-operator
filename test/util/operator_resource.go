@@ -22,7 +22,7 @@ import (
 
 const (
 	Dash0OperatorDeploymentName       = "controller-deployment"
-	OperatorConfigurationResourceName = "dash0monitoring-operator-test-resource"
+	OperatorConfigurationResourceName = "dash0-operator-test-resource"
 )
 
 func EnsureControllerDeploymentExists(
@@ -43,6 +43,14 @@ func EnsureOperatorConfigurationResourceExists(
 		k8sClient,
 		OperatorConfigurationResourceName,
 	)
+}
+
+func EnsureControllerDeploymentDoesNotExist(
+	ctx context.Context,
+	k8sClient client.Client,
+	controllerDeployment *appsv1.Deployment,
+) {
+	Expect(k8sClient.Delete(ctx, controllerDeployment)).To(Succeed())
 }
 
 func EnsureOperatorConfigurationResourceExistsWithName(

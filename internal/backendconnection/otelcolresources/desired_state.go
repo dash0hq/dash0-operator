@@ -442,11 +442,29 @@ func daemonSet(config *oTelColConfig) (*appsv1.DaemonSet, error) {
 		filelogReceiverOffsetsVolumeMount,
 	}
 
-	nodeNameFieldSpec := &corev1.ObjectFieldSelector{
+	nodeNameFieldSpec := corev1.ObjectFieldSelector{
 		FieldPath: "spec.nodeName",
 	}
 
-	env := []corev1.EnvVar{
+	podUidFieldSpec := corev1.ObjectFieldSelector{
+		FieldPath: "metadata.uid",
+	}
+
+	k8sNodeNameEnvVar := corev1.EnvVar{
+		Name: "K8S_NODE_NAME",
+		ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &nodeNameFieldSpec,
+		},
+	}
+
+	k8sPodUidEnvVar := corev1.EnvVar{
+		Name: "K8S_POD_UID",
+		ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &podUidFieldSpec,
+		},
+	}
+
+	collectorEnv := []corev1.EnvVar{
 		{
 			Name: "MY_POD_IP",
 			ValueFrom: &corev1.EnvVarSource{
@@ -455,12 +473,8 @@ func daemonSet(config *oTelColConfig) (*appsv1.DaemonSet, error) {
 				},
 			},
 		},
-		{
-			Name: "K8S_NODE_NAME",
-			ValueFrom: &corev1.EnvVarSource{
-				FieldRef: nodeNameFieldSpec,
-			},
-		},
+		k8sNodeNameEnvVar,
+		k8sPodUidEnvVar,
 		{
 			Name:  "DASH0_COLLECTOR_PID_FILE",
 			Value: collectorPidFilePath,
@@ -493,7 +507,7 @@ func daemonSet(config *oTelColConfig) (*appsv1.DaemonSet, error) {
 			}
 		}
 
-		env = append(env, authTokenEnvVar)
+		collectorEnv = append(collectorEnv, authTokenEnvVar)
 	}
 
 	probe := corev1.Probe{
@@ -526,7 +540,7 @@ func daemonSet(config *oTelColConfig) (*appsv1.DaemonSet, error) {
 				HostPort:      otlpHttpPort,
 			},
 		},
-		Env:            env,
+		Env:            collectorEnv,
 		LivenessProbe:  &probe,
 		ReadinessProbe: &probe,
 		Resources: corev1.ResourceRequirements{
@@ -553,6 +567,8 @@ func daemonSet(config *oTelColConfig) (*appsv1.DaemonSet, error) {
 				Name:  "GOMEMLIMIT",
 				Value: "4MiB",
 			},
+			k8sNodeNameEnvVar,
+			k8sPodUidEnvVar,
 		},
 		Resources: corev1.ResourceRequirements{
 			Limits: corev1.ResourceList{
@@ -588,12 +604,8 @@ func daemonSet(config *oTelColConfig) (*appsv1.DaemonSet, error) {
 				Name:  "FILELOG_OFFSET_DIRECTORY_PATH",
 				Value: offsetsDirPath,
 			},
-			{
-				Name: "K8S_NODE_NAME",
-				ValueFrom: &corev1.EnvVarSource{
-					FieldRef: nodeNameFieldSpec,
-				},
-			},
+			k8sNodeNameEnvVar,
+			k8sPodUidEnvVar,
 		},
 		Resources: corev1.ResourceRequirements{
 			Limits: corev1.ResourceList{
@@ -629,12 +641,8 @@ func daemonSet(config *oTelColConfig) (*appsv1.DaemonSet, error) {
 				Name:  "FILELOG_OFFSET_DIRECTORY_PATH",
 				Value: offsetsDirPath,
 			},
-			{
-				Name: "K8S_NODE_NAME",
-				ValueFrom: &corev1.EnvVarSource{
-					FieldRef: nodeNameFieldSpec,
-				},
-			},
+			k8sNodeNameEnvVar,
+			k8sPodUidEnvVar,
 		},
 		Resources: corev1.ResourceRequirements{
 			Limits: corev1.ResourceList{
@@ -688,7 +696,7 @@ func daemonSet(config *oTelColConfig) (*appsv1.DaemonSet, error) {
 	}
 
 	if config.SelfMonitoringConfiguration.Enabled {
-		if err := selfmonitoring.EnableSelfMonitoringInCollectorDaemonSet(daemonset, config.SelfMonitoringConfiguration.Endpoint, config.SelfMonitoringConfiguration.BearerToken); err != nil {
+		if err := selfmonitoring.EnableSelfMonitoringInCollectorDaemonSet(daemonset, config.SelfMonitoringConfiguration); err != nil {
 			return nil, fmt.Errorf("failed to enable self monitoring in the daemonset: %w", err)
 		}
 	}

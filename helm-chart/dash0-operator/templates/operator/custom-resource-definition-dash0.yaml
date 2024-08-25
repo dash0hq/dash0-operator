@@ -1,3 +1,4 @@
+---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
@@ -181,3 +182,397 @@ spec:
     storage: true
     subresources:
       status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+  name: dash0monitorings.operator.dash0.com
+spec:
+  group: operator.dash0.com
+  names:
+    kind: Dash0Monitoring
+    listKind: Dash0MonitoringList
+    plural: dash0monitorings
+    singular: dash0monitoring
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      schema:
+        openAPIV3Schema:
+          description: Dash0Monitoring is the Schema for the Dash0Monitoring API
+          properties:
+            apiVersion:
+              description: |-
+                APIVersion defines the versioned schema of this representation of an object.
+                Servers should convert recognized schemas to the latest internal value, and
+                may reject unrecognized values.
+                More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+              type: string
+            kind:
+              description: |-
+                Kind is a string value representing the REST resource this object represents.
+                Servers may infer this from the endpoint the client submits requests to.
+                Cannot be updated.
+                In CamelCase.
+                More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+              type: string
+            metadata:
+              type: object
+            spec:
+              description: Dash0MonitoringSpec defines the desired state of the Dash0
+                monitoring resource.
+              properties:
+                authorizationToken:
+                  description: |-
+                    The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
+                    to be provided. If both are provided, the AuthorizationToken will be used and SecretRef will be ignored. The
+                    authorization token for your Dash0 organization can be copied from https://app.dash0.com/settings.
+                  type: string
+                endpoint:
+                  description: |-
+                    The URL of the observability backend to which telemetry data will be sent. This property is mandatory. The value
+                    needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct OTLP/gRPC endpoint can be copied fom
+                    https://app.dash0.com/settings. The correct endpoint value will always start with `ingress.` and end in
+                    `dash0.com:4317`.
+                  type: string
+                instrumentWorkloads:
+                  description: |-
+                    Global opt-out for workload instrumentation for the target namespace. There are three possible settings: `all`,
+                    `created-and-updated` and `none`. By default, the setting `all` is assumed.
+
+
+                    If set to `all` (or omitted), the operator will:
+                    * instrument existing workloads in the target namespace (i.e. workloads already running in the namespace) when
+                      the Dash0 monitoring resource is deployed,
+                    * instrument existing workloads or update the instrumentation of already instrumented workloads in the target
+                      namespace when the Dash0 Kubernetes operator is first started or restarted (for example when updating the
+                      operator),
+                    * instrument new workloads in the target namespace when they are deployed, and
+                    * instrument changed workloads in the target namespace when changes are applied to them.
+                    Note that the first two actions (instrumenting existing workloads) will result in restarting the pods of the
+                    affected workloads.
+
+
+                    If set to `created-and-updated`, the operator will not instrument existing workloads in the target namespace.
+                    Instead, it will only:
+                    * instrument new workloads in the target namespace when they are deployed, and
+                    * instrument changed workloads in the target namespace when changes are applied to them.
+                    This setting is useful if you want to avoid pod restarts as a side effect of deploying the Dash0 monitoring
+                    resource or restarting the Dash0 Kubernetes operator.
+
+
+                    You can opt out of instrumenting workloads entirely by setting this option to `none`. With
+                    `instrumentWorkloads: none`, workloads in the target namespace will never be instrumented to send telemetry to
+                    Dash0.
+
+
+                    If this setting is omitted, the value `all` is assumed and new/updated as well as existing Kubernetes workloads
+                    will be intrumented by the operator to send telemetry to Dash0, as described above.
+
+
+                    More fine-grained per-workload control over instrumentation is available by setting the label
+                    dash0.com/enable=false on individual workloads.
+                  enum:
+                    - all
+                    - created-and-updated
+                    - none
+                  type: string
+                secretRef:
+                  description: |-
+                    A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
+                    ignored if the AuthorizationToken property is set. The authorization token for your Dash0 organization
+                    can be copied from https://app.dash0.com/settings.
+                  type: string
+              required:
+                - endpoint
+              type: object
+            status:
+              description: Dash0MonitoringStatus defines the observed state of the Dash0
+                monitoring resource.
+              properties:
+                conditions:
+                  items:
+                    description: "Condition contains details for one aspect of the current state of this resource."
+                    properties:
+                      lastTransitionTime:
+                        description: |-
+                          lastTransitionTime is the last time the condition transitioned from one status to another.
+                          This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                        format: date-time
+                        type: string
+                      message:
+                        description: |-
+                          message is a human readable message indicating details about the transition.
+                          This may be an empty string.
+                        maxLength: 32768
+                        type: string
+                      observedGeneration:
+                        description: |-
+                          observedGeneration represents the .metadata.generation that the condition was set based upon.
+                          For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                          with respect to the current state of the instance.
+                        format: int64
+                        minimum: 0
+                        type: integer
+                      reason:
+                        description: |-
+                          reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                          Producers of specific condition types may define expected values and meanings for this field,
+                          and whether the values are considered a guaranteed API.
+                          The value should be a CamelCase string.
+                          This field may not be empty.
+                        maxLength: 1024
+                        minLength: 1
+                        pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                        type: string
+                      status:
+                        description: status of the condition, one of True, False, Unknown.
+                        enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                        type: string
+                      type:
+                        description: |-
+                          type of condition in CamelCase or in foo.example.com/CamelCase.
+                          ---
+                          Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
+                          useful (see .node.status.conditions), the ability to deconflict is important.
+                          The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                        maxLength: 316
+                        pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                        type: string
+                    required:
+                      - lastTransitionTime
+                      - message
+                      - reason
+                      - status
+                      - type
+                    type: object
+                  type: array
+                previousInstrumentWorkloads:
+                  description: The spec.instrumentWorkloads setting that has been observed
+                    in the previous reconcile cycle.
+                  enum:
+                    - all
+                    - created-and-updated
+                    - none
+                  type: string
+              type: object
+          type: object
+      served: true
+      storage: true
+      subresources:
+        status: {}
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+  name: dash0operatorconfigurations.operator.dash0.com
+spec:
+  group: operator.dash0.com
+  names:
+    kind: Dash0OperatorConfiguration
+    listKind: Dash0OperatorConfigurationList
+    plural: dash0operatorconfigurations
+    singular: dash0operatorconfiguration
+  scope: Cluster
+  versions:
+    - name: v1alpha1
+      schema:
+        openAPIV3Schema:
+          description: Dash0OperatorConfiguration is the Schema for the Dash0OperatorConfiguration
+            API
+          properties:
+            apiVersion:
+              description: |-
+                APIVersion defines the versioned schema of this representation of an object.
+                Servers should convert recognized schemas to the latest internal value, and
+                may reject unrecognized values.
+                More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+              type: string
+            kind:
+              description: |-
+                Kind is a string value representing the REST resource this object represents.
+                Servers may infer this from the endpoint the client submits requests to.
+                Cannot be updated.
+                In CamelCase.
+                More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+              type: string
+            metadata:
+              type: object
+            spec:
+              description: Dash0OperatorConfigurationSpec defines the desired state
+                of the Dash0 monitoring resource.
+              properties:
+                export:
+                  description: |-
+                    The Export datastructure specifies the default backend to which telemetry will be
+                    sent to by the operator, as well as the backend that will receive operator
+                    self-monitoring data
+                  maxProperties: 1
+                  minProperties: 1
+                  properties:
+                    dash0:
+                      properties:
+                        authorization:
+                          description: |-
+                            The Authorization datastructure specifies which authorization information to send to the Dash0 alongside
+                            the telemetry data.
+                          maxProperties: 1
+                          minProperties: 1
+                          properties:
+                            secretRef:
+                              description: |-
+                                A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
+                                ignored if the AuthorizationToken property is set. The authorization token for your Dash0 organization
+                                can be copied from https://app.dash0.com/settings.
+                              type: string
+                            token:
+                              description: |-
+                                The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
+                                to be provided. If both are provided, the AuthorizationToken will be used and SecretRef will be ignored. The
+                                authorization token for your Dash0 organization can be copied from https://app.dash0.com/settings.
+                              type: string
+                          type: object
+                        dataset:
+                          default: default
+                          description: The identifier of the dataset to which the telemetry
+                            will be sent. If unspecified, the telemetry will go to the
+                            `default` dataset
+                          type: string
+                        endpoint:
+                          description: |-
+                            The URL of the observability backend to which telemetry data will be sent. This property is mandatory. The value
+                            needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct OTLP/gRPC endpoint can be copied fom
+                            https://app.dash0.com/settings. The correct endpoint value will always start with `ingress.` and end in
+                            `dash0.com:4317`.
+                          type: string
+                      required:
+                        - authorization
+                        - endpoint
+                      type: object
+                    grpc:
+                      properties:
+                        headers:
+                          items:
+                            type: string
+                          type: array
+                        url:
+                          type: string
+                      required:
+                        - url
+                      type: object
+                    http:
+                      properties:
+                        headers:
+                          items:
+                            type: string
+                          type: array
+                        protocol:
+                          enum:
+                            - grpc
+                            - http/protobuf
+                          type: string
+                        url:
+                          pattern: ^https?:\/\/.+$
+                          type: string
+                      required:
+                        - url
+                      type: object
+                  type: object
+                selfMonitoring:
+                  default:
+                    enabled: true
+                  description: Global opt-out for self-monitoring for this operator
+                  properties:
+                    enabled:
+                      default: true
+                      type: boolean
+                  required:
+                    - enabled
+                  type: object
+              type: object
+            status:
+              description: Dash0OperatorConfigurationStatus defines the observed state
+                of the Dash0 monitoring resource.
+              properties:
+                conditions:
+                  items:
+                    description: "Condition contains details for one aspect of the current
+                    state of this API Resource.\n---\nThis struct is intended for
+                    direct use as an array at the field path .status.conditions.  For
+                    example,\n\n\n\ttype FooStatus struct{\n\t    // Represents the
+                    observations of a foo's current state.\n\t    // Known .status.conditions.type
+                    are: \"Available\", \"Progressing\", and \"Degraded\"\n\t    //
+                    +patchMergeKey=type\n\t    // +patchStrategy=merge\n\t    // +listType=map\n\t
+                    \   // +listMapKey=type\n\t    Conditions []metav1.Condition `json:\"conditions,omitempty\"
+                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`\n\n\n\t
+                    \   // other fields\n\t}"
+                    properties:
+                      lastTransitionTime:
+                        description: |-
+                          lastTransitionTime is the last time the condition transitioned from one status to another.
+                          This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                        format: date-time
+                        type: string
+                      message:
+                        description: |-
+                          message is a human readable message indicating details about the transition.
+                          This may be an empty string.
+                        maxLength: 32768
+                        type: string
+                      observedGeneration:
+                        description: |-
+                          observedGeneration represents the .metadata.generation that the condition was set based upon.
+                          For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                          with respect to the current state of the instance.
+                        format: int64
+                        minimum: 0
+                        type: integer
+                      reason:
+                        description: |-
+                          reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                          Producers of specific condition types may define expected values and meanings for this field,
+                          and whether the values are considered a guaranteed API.
+                          The value should be a CamelCase string.
+                          This field may not be empty.
+                        maxLength: 1024
+                        minLength: 1
+                        pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                        type: string
+                      status:
+                        description: status of the condition, one of True, False, Unknown.
+                        enum:
+                          - "True"
+                          - "False"
+                          - Unknown
+                        type: string
+                      type:
+                        description: |-
+                          type of condition in CamelCase or in foo.example.com/CamelCase.
+                          ---
+                          Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
+                          useful (see .node.status.conditions), the ability to deconflict is important.
+                          The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                        maxLength: 316
+                        pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                        type: string
+                    required:
+                      - lastTransitionTime
+                      - message
+                      - reason
+                      - status
+                      - type
+                    type: object
+                  type: array
+              type: object
+          type: object
+      served: true
+      storage: true
+      subresources:
+        status: {}

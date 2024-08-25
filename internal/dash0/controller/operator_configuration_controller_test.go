@@ -73,14 +73,19 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 		AfterEach(func() {
 			RemoveOperatorConfigurationResource(ctx, k8sClient)
+			EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, controllerDeployment)
 		})
 
 		Describe("enabling self-monitoring", func() {
 
 			It("it enables self-monitoring in the controller deployment", func() {
 				CreateOperatorConfigurationResource(ctx, k8sClient, OperatorConfigurationResourceName, dash0v1alpha1.Dash0OperatorConfigurationSpec{
-					Endpoint:           "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
-					AuthorizationToken: "1234567890",
+					Export: &dash0v1alpha1.Export{
+						GrpcExport: &dash0v1alpha1.GrpcExport{
+							Url:     "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
+							Headers: []string{"Authorization=Bearer 1234567890"},
+						},
+					},
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 						Enabled: true,
 					},
@@ -92,7 +97,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 					updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
 					selfMonitoringConfiguration, err := selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(updatedDeployment, ManagerContainerName)
 					Expect(err).NotTo(HaveOccurred())
-					Expect(selfMonitoringConfiguration.Enabled).To(BeFalse())
+					Expect(selfMonitoringConfiguration.Enabled).To(BeTrue())
 				}, timeout, pollingInterval).Should(Succeed())
 			})
 
@@ -102,8 +107,12 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 			It("it does not change the controller deployment", func() {
 				CreateOperatorConfigurationResource(ctx, k8sClient, OperatorConfigurationResourceName, dash0v1alpha1.Dash0OperatorConfigurationSpec{
-					Endpoint:           "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
-					AuthorizationToken: "1234567890",
+					Export: &dash0v1alpha1.Export{
+						GrpcExport: &dash0v1alpha1.GrpcExport{
+							Url:     "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
+							Headers: []string{"Authorization=Bearer 1234567890"},
+						},
+					},
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 						Enabled: false,
 					},
@@ -133,6 +142,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 					// When creating the resource, we assume the operator has
 					// self-monitoring enabled
 					controllerDeployment = controllerDeploymentWithSelfMonitoring()
+					EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
 					reconciler = &OperatorConfigurationReconciler{
 						Client:                  k8sClient,
 						Clientset:               clientset,
@@ -152,12 +162,17 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 				AfterEach(func() {
 					RemoveOperatorConfigurationResource(ctx, k8sClient)
+					EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, controllerDeployment)
 				})
 
 				It("it does not change the controller deployment", func() {
 					CreateOperatorConfigurationResource(ctx, k8sClient, OperatorConfigurationResourceName, dash0v1alpha1.Dash0OperatorConfigurationSpec{
-						Endpoint:           "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
-						AuthorizationToken: "1234567890",
+						Export: &dash0v1alpha1.Export{
+							GrpcExport: &dash0v1alpha1.GrpcExport{
+								Url:     "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
+								Headers: []string{"Authorization=Bearer 1234567890"},
+							},
+						},
 						SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 							Enabled: true,
 						},
@@ -180,6 +195,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 				BeforeEach(func() {
 					controllerDeployment = controllerDeploymentWithoutSelfMonitoring()
+					EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
 					reconciler = &OperatorConfigurationReconciler{
 						Client:                  k8sClient,
 						Clientset:               clientset,
@@ -197,8 +213,12 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 					}
 
 					CreateOperatorConfigurationResource(ctx, k8sClient, OperatorConfigurationResourceName, dash0v1alpha1.Dash0OperatorConfigurationSpec{
-						Endpoint:           "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
-						AuthorizationToken: "1234567890",
+						Export: &dash0v1alpha1.Export{
+							GrpcExport: &dash0v1alpha1.GrpcExport{
+								Url:     "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
+								Headers: []string{"Authorization=Bearer 1234567890"},
+							},
+						},
 						SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 							Enabled: false,
 						},
@@ -207,6 +227,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 				AfterEach(func() {
 					RemoveOperatorConfigurationResource(ctx, k8sClient)
+					EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, controllerDeployment)
 				})
 
 				It("it enables self-monitoring in the controller deployment", func() {
@@ -237,14 +258,19 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 				BeforeEach(func() {
 					CreateOperatorConfigurationResource(ctx, k8sClient, OperatorConfigurationResourceName, dash0v1alpha1.Dash0OperatorConfigurationSpec{
-						Endpoint:           "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
-						AuthorizationToken: "1234567890",
+						Export: &dash0v1alpha1.Export{
+							GrpcExport: &dash0v1alpha1.GrpcExport{
+								Url:     "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
+								Headers: []string{"Authorization=Bearer 1234567890"},
+							},
+						},
 						SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 							Enabled: true,
 						},
 					})
 
 					controllerDeployment = controllerDeploymentWithSelfMonitoring()
+					EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
 					reconciler = &OperatorConfigurationReconciler{
 						Client:                  k8sClient,
 						Clientset:               clientset,
@@ -264,6 +290,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 				AfterEach(func() {
 					RemoveOperatorConfigurationResource(ctx, k8sClient)
+					EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, controllerDeployment)
 				})
 
 				It("it disables self-monitoring in the controller deployment", func() {
@@ -290,14 +317,19 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 				BeforeEach(func() {
 					CreateOperatorConfigurationResource(ctx, k8sClient, OperatorConfigurationResourceName, dash0v1alpha1.Dash0OperatorConfigurationSpec{
-						Endpoint:           "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
-						AuthorizationToken: "1234567890",
+						Export: &dash0v1alpha1.Export{
+							GrpcExport: &dash0v1alpha1.GrpcExport{
+								Url:     "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
+								Headers: []string{"Authorization=Bearer 1234567890"},
+							},
+						},
 						SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 							Enabled: false,
 						},
 					})
 
 					controllerDeployment = controllerDeploymentWithoutSelfMonitoring()
+					EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
 					reconciler = &OperatorConfigurationReconciler{
 						Client:                  k8sClient,
 						Clientset:               clientset,
@@ -317,6 +349,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 				AfterEach(func() {
 					RemoveOperatorConfigurationResource(ctx, k8sClient)
+					EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, controllerDeployment)
 				})
 
 				It("it does not change the controller deployment", func() {
@@ -349,14 +382,19 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 			BeforeEach(func() {
 				CreateOperatorConfigurationResource(ctx, k8sClient, OperatorConfigurationResourceName, dash0v1alpha1.Dash0OperatorConfigurationSpec{
-					Endpoint:           "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
-					AuthorizationToken: "1234567890",
+					Export: &dash0v1alpha1.Export{
+						GrpcExport: &dash0v1alpha1.GrpcExport{
+							Url:     "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
+							Headers: []string{"Authorization=Bearer 1234567890"},
+						},
+					},
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 						Enabled: true,
 					},
 				})
 
 				controllerDeployment = controllerDeploymentWithSelfMonitoring()
+				EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
 				reconciler = &OperatorConfigurationReconciler{
 					Client:                  k8sClient,
 					Clientset:               clientset,
@@ -374,12 +412,17 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				}
 			})
 
+			AfterEach(func() {
+				RemoveOperatorConfigurationResource(ctx, k8sClient)
+				EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, controllerDeployment)
+			})
+
 			It("it disables self-monitoring in the controller deployment", func() {
-				Expect(selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(controllerDeployment, ManagerContainerName)).To(BeTrue())
+				selfMonitoringConfiguration, err := selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(controllerDeployment, ManagerContainerName)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(selfMonitoringConfiguration.Enabled).To(BeTrue())
 
 				resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
-				Expect(resource.Spec.SelfMonitoring.Enabled).To(BeTrue())
-
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 
 				triggerOperatorConfigurationReconcileRequest(ctx, reconciler, "")
@@ -399,14 +442,13 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 			BeforeEach(func() {
 				CreateOperatorConfigurationResource(ctx, k8sClient, OperatorConfigurationResourceName, dash0v1alpha1.Dash0OperatorConfigurationSpec{
-					Endpoint:           "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
-					AuthorizationToken: "1234567890",
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 						Enabled: false,
 					},
 				})
 
 				controllerDeployment = controllerDeploymentWithoutSelfMonitoring()
+				EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
 				reconciler = &OperatorConfigurationReconciler{
 					Client:                  k8sClient,
 					Clientset:               clientset,
@@ -424,8 +466,15 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				}
 			})
 
+			AfterEach(func() {
+				RemoveOperatorConfigurationResource(ctx, k8sClient)
+				EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, controllerDeployment)
+			})
+
 			It("it does not change the controller deployment", func() {
-				Expect(selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(controllerDeployment, ManagerContainerName)).To(BeFalse())
+				selfMonitoringConfiguration, err := selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(controllerDeployment, ManagerContainerName)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(selfMonitoringConfiguration.Enabled).To(BeFalse())
 
 				resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
 				Expect(resource.Spec.SelfMonitoring.Enabled).To(BeFalse())
@@ -468,7 +517,7 @@ func controllerDeploymentWithoutSelfMonitoring() *appsv1.Deployment {
 				"app.kubernetes.io/name":      "dash0monitoring-operator",
 				"app.kubernetes.io/component": "controller",
 				"app.kubernetes.io/instance":  "deployment",
-				"dash0monitoring.com/enable":  "false",
+				"dash0.com/enable":            "false",
 			},
 		},
 		Spec: appsv1.DeploymentSpec{
@@ -487,7 +536,7 @@ func controllerDeploymentWithoutSelfMonitoring() *appsv1.Deployment {
 					Labels: map[string]string{
 						"app.kubernetes.io/name":      "dash0monitoring-operator",
 						"app.kubernetes.io/component": "controller",
-						"dash0monitoring.cert-digest": "1234567890",
+						"dash0.cert-digest":           "1234567890",
 					},
 				},
 				Spec: corev1.PodSpec{
@@ -604,7 +653,7 @@ func controllerDeploymentWithoutSelfMonitoring() *appsv1.Deployment {
 							Type: corev1.SeccompProfileTypeRuntimeDefault,
 						},
 					},
-					ServiceAccountName:            "dash0monitoring-operator-service-account",
+					ServiceAccountName:            "dash0-operator-service-account",
 					AutomountServiceAccountToken:  &truthy,
 					TerminationGracePeriodSeconds: &terminationGracePeriodSeconds,
 					Volumes: []corev1.Volume{
@@ -613,7 +662,7 @@ func controllerDeploymentWithoutSelfMonitoring() *appsv1.Deployment {
 							VolumeSource: corev1.VolumeSource{
 								Secret: &corev1.SecretVolumeSource{
 									DefaultMode: &secretMode,
-									SecretName:  "dash0monitoring-operator-certificates",
+									SecretName:  "dash0-operator-certificates",
 								},
 							},
 						},

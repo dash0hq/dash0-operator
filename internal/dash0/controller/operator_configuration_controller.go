@@ -7,8 +7,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoring"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"reflect"
 	"sort"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -29,6 +29,8 @@ const (
 	ManagerContainerName = "manager"
 )
 
+type StopReconciliation bool
+
 type OperatorConfigurationReconciler struct {
 	client.Client
 	Clientset                   *kubernetes.Clientset
@@ -43,10 +45,13 @@ func (r *OperatorConfigurationReconciler) SetupWithManager(mgr ctrl.Manager) err
 	if r.DanglingEventsTimeouts == nil {
 		r.DanglingEventsTimeouts = defaultDanglingEventsTimeouts
 	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dash0v1alpha1.Dash0OperatorConfiguration{}).
 		Complete(r)
 }
+
+// TODO Implement exponential backoff for requeing
 
 // The following markers are used to generate the rules permissions (RBAC) on config/rbac using controller-gen
 // when the command <make manifests> is executed.
@@ -71,23 +76,64 @@ func (r *OperatorConfigurationReconciler) SetupWithManager(mgr ctrl.Manager) err
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.16.3/pkg/reconcile
 func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("processing reconcile request for Dash0Operator resource")
 
-	resource, stopReconcile, err := verifyUniqueOperatorConfigurationResourceExists(
+	var resourceDeleted bool
+	resource, stopReconcile, err := verifyThatOperatorConfigurationResourceExists(
 		ctx,
 		r.Client,
-		r.Status(),
-		"Failed to update Dash0 operator status conditions, requeuing reconcile request.",
 		req,
-		logger,
+		&logger,
 	)
+	if apierrors.IsNotFound(err) {
+		resourceDeleted = true
+		logger.Info("Reconciling deletion of operator configuration resource", "name", req.Name)
+	} else if err != nil || stopReconcile {
+		return ctrl.Result{}, nil
+	} else {
+		logger.Info("Reconciling operator configuration resource", "name", req.Name)
+	}
+
+	stopReconcile, err =
+		verifyThatOperatorConfigurationResourceIsUniqueInCluster(
+			ctx,
+			r.Client,
+			r.Status(),
+			resource,
+			updateStatusFailedMessage,
+			&logger,
+		)
 	if err != nil {
+		// Cannot validate whether this resource is normative, requering
 		return ctrl.Result{}, err
-	} else if stopReconcile {
+	}
+
+	currentSelfMonitoringConfiguration, err := selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(r.DeploymentSelfReference, ManagerContainerName)
+	if err != nil {
+		logger.Error(err, "cannot get self-monitoring configuration from controller deployment")
+		return ctrl.Result{
+			Requeue: true,
+		}, err
+	}
+
+	if resourceDeleted {
+		if currentSelfMonitoringConfiguration.Enabled {
+			if err = r.applySelfMonitoring(ctx, selfmonitoring.SelfMonitoringConfiguration{
+				Enabled: false,
+			}); err != nil {
+				logger.Error(err, "cannot disable self-monitoring of the controller deployment, requeuing reconcile request.")
+				return ctrl.Result{
+					Requeue: true,
+				}, nil
+			} else {
+				logger.Info("Self-monitoring of the controller deployment has been disabled")
+			}
+		} else {
+			logger.Info("Self-monitoring configuration of the controller deployment is already disabled")
+		}
 		return ctrl.Result{}, nil
 	}
 
-	if _, err := util.InitStatusConditions(
+	if _, err = util.InitStatusConditions(
 		ctx,
 		r.Status(),
 		resource,
@@ -97,84 +143,59 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, err
 	}
 
+	// TODO Add lookup of auth token via secret ref
+	newSelfMonitoringConfiguration, err := selfmonitoring.GetSelfMonitoringConfigurationFromOperatorConfigurationResource(*resource)
+	if err != nil {
+		logger.Error(err, "cannot generate self-monitoring configuration from operator configuration resource")
+		return ctrl.Result{
+			Requeue: true,
+		}, err
+	}
+
+	if reflect.DeepEqual(currentSelfMonitoringConfiguration, newSelfMonitoringConfiguration) {
+		logger.Info("Self-monitoring configuration of the controller deployment is up-to-date")
+	} else {
+		if err = r.applySelfMonitoring(ctx, newSelfMonitoringConfiguration); err != nil {
+			logger.Error(err, "Cannot apply self-monitoring configurations to the controller deployment")
+			resource.EnsureResourceIsMarkedAsDegraded("CannotApplySelfMonitoring", "Could not update the controller deployment to reflect the self-monitoring settings")
+			if statusUpdateErr := r.Status().Update(ctx, resource); statusUpdateErr != nil {
+				logger.Error(statusUpdateErr, "Failed to update Dash0 operator status conditions, requeuing reconcile request.")
+				return ctrl.Result{}, statusUpdateErr
+			}
+			return ctrl.Result{
+				Requeue: true,
+			}, nil
+		}
+
+		logger.Info("Self-monitoring configurations applied to the controller deployment", "self-monitoring", newSelfMonitoringConfiguration)
+	}
+
 	resource.EnsureResourceIsMarkedAsAvailable()
 	if err = r.Status().Update(ctx, resource); err != nil {
 		logger.Error(err, updateStatusFailedMessage)
-		return ctrl.Result{}, err
-	}
-
-	shouldEnableSelfMonitoring := resource.Spec.SelfMonitoring.Enabled
-	if shouldEnableSelfMonitoring == r.SelfMonitoringConfiguration.Enabled {
-		return ctrl.Result{}, nil
-	}
-
-	updatedControllerDeployment := r.DeploymentSelfReference.DeepCopy()
-	if shouldEnableSelfMonitoring {
-		if err := selfmonitoring.EnableSelfMonitoringInControllerDeployment(updatedControllerDeployment, ManagerContainerName, resource.Spec.Endpoint, resource.Spec.AuthorizationToken); err != nil {
-			return ctrl.Result{}, err
-		}
-	} else {
-		if err = selfmonitoring.DisableSelfMonitoringInControllerDeployment(updatedControllerDeployment, ManagerContainerName); err != nil {
-			return ctrl.Result{}, err
-		}
-	}
-
-	if err = r.Client.Update(ctx, updatedControllerDeployment); err != nil {
-		// We could not set up the self-monitoring, the operator resource must be marked as degraded
-		resource.EnsureResourceIsMarkedAsDegraded("CannotApplySelfMonitoring", "Could not update the controller deployment to reflect the self-monitoring settings")
-		if statusUpdateErr := r.Status().Update(ctx, resource); statusUpdateErr != nil {
-			logger.Error(statusUpdateErr, "Failed to update Dash0 operator status conditions, requeuing reconcile request.")
-			return ctrl.Result{}, statusUpdateErr
-		}
-		return ctrl.Result{}, err
+		return ctrl.Result{}, fmt.Errorf("cannot mark Dash0 operator configuration resource as available: %w", err)
 	}
 
 	return ctrl.Result{}, nil
 }
 
-// verifyUniqueOperatorResourceExists loads the resource that the current reconcile request applies to, if it
-// exists. It also checks whether there is only one such resource in the cluster. The bool returned has the meaning
-// "stop the reconcile request", that is, if the function returns true, it expects the caller to stop the reconcile
-// request immediately and not requeue it. If an error occurs during any of the checks (for example while talking to
-// the Kubernetes API server), the function will return that error, the caller should then ignore the bool result
-// and requeue the reconcile request.
-//
-//   - If the resource does not exist, the function logs a message and returns (nil, true, nil) and expects the caller
-//     to stop the reconciliation (without requeing it).
-//   - If there are multiple resources in the namespace, but the given resource is the most recent one, the function
-//     will return the resource together with (false, nil) as well, since the newest resource should be reconciled. The
-//     caller should continue with the reconcile request in that case.
-//   - If there are multiple resources and the given one is not the most recent one, the function will return true for
-//     stopReconcile and the caller is expected to stop the reconcile and not requeue it.
-//   - If any error is encountered when searching for resources etc., that error will be returned, the caller is
-//     expected to ignore the bool result and requeue the reconcile request.
-func verifyUniqueOperatorConfigurationResourceExists(
-	ctx context.Context,
-	k8sClient client.Client,
-	statusWriter client.SubResourceWriter,
-	updateStatusFailedMessage string,
-	req ctrl.Request,
-	logger logr.Logger,
-) (*dash0v1alpha1.Dash0OperatorConfiguration, bool, error) {
-	dash0OperatorResource, stopReconcile, err := verifyThatOperatorConfigurationResourceExists(
-		ctx,
-		k8sClient,
-		req,
-		&logger,
-	)
-	if err != nil || stopReconcile {
-		return nil, stopReconcile, err
+func (r *OperatorConfigurationReconciler) applySelfMonitoring(ctx context.Context, selfMonitoringConfiguration selfmonitoring.SelfMonitoringConfiguration) error {
+	updatedDeployment := &appsv1.Deployment{}
+	if err := r.Client.Get(ctx, client.ObjectKeyFromObject(r.DeploymentSelfReference), updatedDeployment); err != nil {
+		return fmt.Errorf("cannot fetch the current controller deployment: %w", err)
 	}
-	stopReconcile, err =
-		verifyThatOperatorConfigurationResourceIsUniqueInCluster(
-			ctx,
-			k8sClient,
-			statusWriter,
-			dash0OperatorResource,
-			updateStatusFailedMessage,
-			&logger,
-		)
-	return dash0OperatorResource, stopReconcile, err
+
+	if selfMonitoringConfiguration.Enabled {
+		if err := selfmonitoring.EnableSelfMonitoringInControllerDeployment(updatedDeployment, ManagerContainerName, selfMonitoringConfiguration); err != nil {
+			return fmt.Errorf("cannot apply settings to enable self-monitoring to the controller deployment: %w", err)
+		}
+	} else {
+		if err := selfmonitoring.DisableSelfMonitoringInControllerDeployment(updatedDeployment, ManagerContainerName); err != nil {
+			return fmt.Errorf("cannot apply settings to disable self-monitoring to the controller deployment: %w", err)
+		}
+	}
+
+	return r.Client.Update(ctx, updatedDeployment)
 }
 
 // verifyThatOperatorResourceExists loads the resource that the current reconcile request applies to. If that
@@ -186,22 +207,18 @@ func verifyThatOperatorConfigurationResourceExists(
 	k8sClient client.Client,
 	req ctrl.Request,
 	logger *logr.Logger,
-) (*dash0v1alpha1.Dash0OperatorConfiguration, bool, error) {
-	resource := &dash0v1alpha1.Dash0OperatorConfiguration{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: req.Name,
-		},
-	}
+) (*dash0v1alpha1.Dash0OperatorConfiguration, StopReconciliation, error) {
+	resource := &dash0v1alpha1.Dash0OperatorConfiguration{}
 
 	if err := k8sClient.Get(ctx, types.NamespacedName{Name: req.Name}, resource); err != nil {
 		if apierrors.IsNotFound(err) {
 			logger.Info(
-				"The Dash0 monitoring resource has not been found, either it hasn't been installed or it has " +
-					"been deleted. Ignoring the reconcile request.")
-			// stop the reconciliation, and do not requeue it (that is, return (ctrl.Result{}, nil))
-			return nil, true, nil
+				"The Dash0 operator configuration resource '" + req.Name + "' has not been found, either it " +
+					"hasn't been installed or it has been deleted.")
+			return nil, false, err
 		}
-		logger.Error(err, "Failed to get the Dash0 monitoring resource, requeuing reconcile request.")
+		logger.Error(err, "Failed to get the Dash0 operator configuration resource '"+req.Name+
+			"', requeuing reconcile request.")
 		// requeue the reconciliation (that is, return (ctrl.Result{}, err))
 		return nil, true, err
 	}
@@ -226,7 +243,7 @@ func verifyThatOperatorConfigurationResourceIsUniqueInCluster(
 	resource *dash0v1alpha1.Dash0OperatorConfiguration,
 	updateStatusFailedMessage string,
 	logger *logr.Logger,
-) (bool, error) {
+) (StopReconciliation, error) {
 	allCustomResourcesInCluster := &dash0v1alpha1.Dash0OperatorConfigurationList{}
 	if err := k8sClient.List(
 		ctx,
@@ -234,7 +251,7 @@ func verifyThatOperatorConfigurationResourceIsUniqueInCluster(
 	); err != nil {
 		logger.Error(
 			err,
-			"Failed to list all Dash0 operator resources, requeuing reconcile request.",
+			"Failed to list all Dash0 operator configuration resources, requeuing reconcile request.",
 		)
 		return true, err
 	}
@@ -250,15 +267,15 @@ func verifyThatOperatorConfigurationResourceIsUniqueInCluster(
 		mostRecentResource := items[len(items)-1]
 		if mostRecentResource.UID == resource.UID {
 			logger.Info(
-				"At least one other Dash0 operator resource exists in this operator. This Dash0 operator " +
-					"resource is the most recent one. The state of the other resource(s) will be set to degraded.",
+				"At least one other Dash0 operator configuration resource exists in this operator. This Dash0 " +
+					"operator resource is the most recent one. The state of the other resource(s) will be set to degraded.",
 			)
 			// continue with the reconcile request for this resource, let the reconcile requests for the other offending
 			// resources handle the situation for those resources
 			return false, nil
 		} else {
 			logger.Info(
-				"At least one other Dash0 operator resource exists in this cluster, and at least one other "+
+				"At least one other Dash0 operator configuration resource exists in this cluster, and at least one other "+
 					"Dash0 operator resource has been created more recently than this one. Setting the state of "+
 					"this resource to degraded.",
 				"most recently created Dash0 operator resource",
@@ -266,7 +283,7 @@ func verifyThatOperatorConfigurationResourceIsUniqueInCluster(
 			)
 			resource.EnsureResourceIsMarkedAsDegraded(
 				"NewerResourceIsPresent",
-				"There is a more recently created Dash0 operator resource in this cluster, please remove all but one resource instance.",
+				"There is a more recently created Dash0 operator configuration resource in this cluster, please remove all but one resource instance.",
 			)
 			if err := statusWriter.Update(ctx, resource); err != nil {
 				logger.Error(err, updateStatusFailedMessage)
