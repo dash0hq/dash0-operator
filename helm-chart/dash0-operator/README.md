@@ -77,16 +77,18 @@ At this point, you need to provide two configuration settings:
   The correct OTLP/gRPC endpoint can be copied fom https://app.dash0.com/settings.
   Note that the correct endpoint value will always start with `ingress.` and end in `dash0.com:4317`.
   A protocol prefix (eg. `https://`) should not be included in the value.
-* `spec.export.dash0.token` or `spec.export.dash0.secretRef`: Exactly one of these two properties needs to be provided.
+* `spec.export.dash0.authorization.token` or `spec.export.dash0.authorization.secretRef`: Exactly one of these two
+  properties needs to be provided.
   Providing both will cause a validation error when installing the Dash0Monitoring resource.
-    * `spec.export.dash0.token`: Replace the value in the example above with the Dash0 authorization token of your
-      organization.
+    * `spec.export.dash0.authorization.token`: Replace the value in the example above with the Dash0 authorization token
+      of your organization.
       The authorization token for your Dash0 organization can be copied from https://app.dash0.com/settings.
       The prefix `Bearer ` must *not* be included in the value.
       Note that the value will be rendered verbatim into a Kubernetes ConfigMap object.
       Anyone with API access to the Kubernetes cluster will be able to read the value.
       Use the `secretRef` property and a Kubernetes secret if you want to avoid that.
-    * `spec.export.dash0.secretRef`: A reference to an existing Kubernetes secret in the Dash0 operator's namespace.
+    * `spec.export.dash0.authorization.secretRef`: A reference to an existing Kubernetes secret in the Dash0 operator's
+       namespace.
        See the next section for an example file that uses a `secretRef`.
        The secret needs to contain the Dash0 authorization token.
        See below for details on how exactly the secret should be created and configured.
@@ -194,7 +196,7 @@ spec:
           key: token
 ```
 
-Since the name `dash0-authorization-secret` and the key `token` are the defaults, this secretRef could have also been
+Since the name `dash0-authorization-secret` and the key `token` are the defaults, this `secretRef` could have also been
 written as follows:
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1
