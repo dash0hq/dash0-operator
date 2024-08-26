@@ -142,7 +142,7 @@ they deploy in their `AfterAll`/`AfterEach` hooks. The scripts in `test-resource
       * To run the scenario with the images that have been built from the main branch and pushed to ghcr.io most 
         recently:
         ```
-          CONTROLLER_IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller \
+        CONTROLLER_IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller \
           CONTROLLER_IMG_TAG=main-dev \
           CONTROLLER_IMG_PULL_POLICY="" \
           INSTRUMENTATION_IMG_REPOSITORY=ghcr.io/dash0hq/instrumentation \
@@ -162,7 +162,8 @@ they deploy in their `AfterAll`/`AfterEach` hooks. The scripts in `test-resource
       * To run the scenario with the helm chart from the official remote repository and the default images referenced in
         that chart (the Helm repository must have been installed beforehand): 
         ```
-          OPERATOR_HELM_CHART=dash0-operator/dash0-operator \
+        OPERATOR_HELM_CHART=dash0-operator/dash0-operator \
+          OPERATOR_HELM_CHART_URL=https://dash0hq.github.io/dash0-operator \
           CONTROLLER_IMG_REPOSITORY="" \
           CONTROLLER_IMG_TAG="" \
           CONTROLLER_IMG_PULL_POLICY="" \
@@ -170,13 +171,13 @@ they deploy in their `AfterAll`/`AfterEach` hooks. The scripts in `test-resource
           INSTRUMENTATION_IMG_TAG="" \
           INSTRUMENTATION_IMG_PULL_POLICY="" \
           COLLECTOR_IMG_REPOSITORY="" \
-          COLLECTOR_IMG_TAG=main \
+          COLLECTOR_IMG_TAG="" \
           COLLECTOR_IMG_PULL_POLICY="" \
           CONFIGURATION_RELOADER_IMG_REPOSITORY="" \
-          CONFIGURATION_RELOADER_IMG_TAG=main \
+          CONFIGURATION_RELOADER_IMG_TAG="" \
           CONFIGURATION_RELOADER_IMG_PULL_POLICY="" \
           FILELOG_OFFSET_SYNCH_IMG_REPOSITORY="" \
-          FILELOG_OFFSET_SYNCH_IMG_TAG=main \
+          FILELOG_OFFSET_SYNCH_IMG_TAG="" \
           FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY="" \
           test-resources/bin/test-roundtrip-01-aum-operator-cr.sh
         ```

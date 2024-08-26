@@ -25,15 +25,6 @@ setup_test_environment () {
   test-resources/bin/render-templates.sh
 }
 
-is_remote_image() {
-  image_name=${1:-}
-  if [[ $image_name == *"/"* ]]; then
-    return 0
-  else
-    return 1
-  fi
-}
-
 build_all_images() {
   echo "build operator controller image"
   build_operator_controller_image
@@ -54,86 +45,73 @@ build_all_images() {
   echo
 }
 
+is_remote_image() {
+  image_name=${1:-}
+  if [[ $image_name == *"/"* ]]; then
+    return 0
+  else
+    return 1
+  fi
+}
+
+should_build_image_locally() {
+  img_to_check=$1
+  if [[ -n "${img_to_check:-}" ]]; then
+    if is_remote_image "$img_to_check"; then
+	  echo "not rebuilding the image $img_to_check, this looks like a remote image"
+      return 1
+    fi
+  elif [[ -n "${OPERATOR_HELM_CHART_URL:-}" ]]; then
+    echo "not rebuilding image, a remote Helm chart is used with the default image from the chart",
+    return 1
+  fi
+
+  return 0
+}
+
 build_operator_controller_image() {
-  if [[ "${BUILD_OPERATOR_CONTROLLER_IMAGE:-}" = false ]]; then
-    echo "Skipping operator controller image build (BUILD_OPERATOR_CONTROLLER_IMAGE=false)."
+  if ! should_build_image_locally "${CONTROLLER_IMG_REPOSITORY:-}"; then
     return
-  fi
-  if [[ -n "${CONTROLLER_IMG:-}" ]]; then
-    if is_remote_image "$IMG"; then
-      echo "The specified image CONTROLLER_IMG=$IMG looks like a remote image, refusing to build it and overwrite it with a locally built image. Set BUILD_OPERATOR_CONTROLLER_IMAGE=false to skip this step and use the remote image."
-      exit 1
-    fi
-  fi
-  if [[ -n "${CONTROLLER_IMG_REPOSITORY:-}" ]]; then
-    if is_remote_image "$CONTROLLER_IMG_REPOSITORY"; then
-      echo "The specified image CONTROLLER_IMG_REPOSITORY=$CONTROLLER_IMG_REPOSITORY looks like a remote image, refusing to build it and overwrite it with a locally built image. Set BUILD_OPERATOR_CONTROLLER_IMAGE=false to skip this step and use the remote image."
-      exit 1
-    fi
   fi
 
   make docker-build
 }
 
 build_instrumentation_image() {
-  if [[ "${BUILD_INSTRUMENTATION_IMAGE:-}" = false ]]; then
-    echo "Skipping instrumentation image build (BUILD_INSTRUMENTATION_IMAGE=false)."
+  if ! should_build_image_locally "${INSTRUMENTATION_IMG_REPOSITORY:-}"; then
     return
   fi
-  if [[ -n "${INSTRUMENTATION_IMG_REPOSITORY:-}" ]]; then
-    if is_remote_image "$INSTRUMENTATION_IMG_REPOSITORY"; then
-      echo "The specified image INSTRUMENTATION_IMG_REPOSITORY=$INSTRUMENTATION_IMG_REPOSITORY looks like a remote image, refusing to build it and overwrite it with a locally built image. Set BUILD_INSTRUMENTATION_IMAGE=false to skip this step and use the remote image."
-      exit 1
-    fi
-  fi
+
   repository="${INSTRUMENTATION_IMG_REPOSITORY:-instrumentation}"
   tag="${INSTRUMENTATION_IMG_TAG:-latest}"
   images/instrumentation/build.sh $repository $tag
 }
 
 build_collector_image() {
-  if [[ "${BUILD_COLLECTOR_IMAGE:-}" = false ]]; then
-    echo "Skipping collector image build (BUILD_COLLECTOR_IMAGE=false)."
+  if ! should_build_image_locally "${COLLECTOR_IMG_REPOSITORY:-}"; then
     return
   fi
-  if [[ -n "${COLLECTOR_IMG_REPOSITORY:-}" ]]; then
-    if is_remote_image "$COLLECTOR_IMG_REPOSITORY"; then
-      echo "The specified image COLLECTOR_IMG_REPOSITORY=$COLLECTOR_IMG_REPOSITORY looks like a remote image, refusing to build it and overwrite it with a locally built image. Set BUILD_COLLECTOR_IMAGE=false to skip this step and use the remote image."
-      exit 1
-    fi
-  fi
+
   repository="${COLLECTOR_IMG_REPOSITORY:-collector}"
   tag="${COLLECTOR_IMG_TAG:-latest}"
   docker build images/collector -t "${repository}":"${tag}"
 }
 
 build_configuration_reloader_image() {
-  if [[ "${BUILD_CONFIGURATION_RELOADER_IMAGE:-}" = false ]]; then
-    echo "Skipping configuration-reloader image build (BUILD_CONFIGURATION_RELOADER_IMAGE=false)."
+  if ! should_build_image_locally "${CONFIGURATION_RELOADER_IMG_REPOSITORY:-}"; then
     return
   fi
-  if [[ -n "${CONFIGURATION_RELOADER_IMG_REPOSITORY:-}" ]]; then
-    if is_remote_image "$CONFIGURATION_RELOADER_IMG_REPOSITORY"; then
-      echo "The specified image CONFIGURATION_RELOADER_IMG_REPOSITORY=$CONFIGURATION_RELOADER_IMG_REPOSITORY looks like a remote image, refusing to build it and overwrite it with a locally built image. Set BUILD_CONFIGURATION_RELOADER_IMAGE=false to skip this step and use the remote image."
-      exit 1
-    fi
-  fi
+
   repository="${CONFIGURATION_RELOADER_IMG_REPOSITORY:-configuration-reloader}"
   tag="${CONFIGURATION_RELOADER_IMG_TAG:-latest}"
   docker build images/configreloader -t "${repository}":"${tag}"
 }
 
 build_filelog_offset_synch_image() {
-  if [[ "${BUILD_FILELOG_OFFSET_SYNCH_IMAGE:-}" = false ]]; then
-    echo "Skipping filelog offset synch image build (BUILD_FILELOG_OFFSET_SYNCH_IMAGE=false)."
+  if ! should_build_image_locally "${FILELOG_OFFSET_SYNCH_IMG_REPOSITORY:-}"; then
     return
   fi
-  if [[ -n "${FILELOG_OFFSET_SYNCH_IMG_REPOSITORY:-}" ]]; then
-    if is_remote_image "$FILELOG_OFFSET_SYNCH_IMG_REPOSITORY"; then
-      echo "The specified image FILELOG_OFFSET_SYNCH_IMG_REPOSITORY=$FILELOG_OFFSET_SYNCH_IMG_REPOSITORY looks like a remote image, refusing to build it and overwrite it with a locally built image. Set BUILD_FILELOG_OFFSET_SYNCH_IMAGE=false to skip this step and use the remote image."
-      exit 1
-    fi
-  fi
+
   repository="${FILELOG_OFFSET_SYNCH_IMG_REPOSITORY:-configuration-reloader}"
   tag="${FILELOG_OFFSET_SYNCH_IMG_TAG:-latest}"
   docker build images/configreloader -t "${repository}":"${tag}"
