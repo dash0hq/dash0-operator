@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -60,11 +59,11 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		recreateNamespace(applicationUnderTestNamespace)
 
 		readAndApplyEnvironmentVariables()
-		rebuildOperatorControllerImage(images.operator, buildOperatorControllerImageFromLocalSources)
-		rebuildInstrumentationImage(images.instrumentation, buildInstrumentationImageFromLocalSources)
-		rebuildCollectorImage(images.collector, buildCollectorImageFromLocalSources)
-		rebuildConfigurationReloaderImage(images.configurationReloader, buildConfigurationReloaderImageFromLocalSources)
-		rebuildFileLogOffsetSynchImage(images.fileLogOffsetSynch, buildFileLogOffsetSynchImageFromLocalSources)
+		rebuildOperatorControllerImage(images.operator)
+		rebuildInstrumentationImage(images.instrumentation)
+		rebuildCollectorImage(images.collector)
+		rebuildConfigurationReloaderImage(images.configurationReloader)
+		rebuildFileLogOffsetSynchImage(images.fileLogOffsetSynch)
 		rebuildNodeJsApplicationContainerImage()
 
 		setupFinishedSuccessfully = true
@@ -784,26 +783,14 @@ func cleanupAll() {
 }
 
 func readAndApplyEnvironmentVariables() {
-	var err error
-
 	operatorHelmChart = getEnvOrDefault("OPERATOR_HELM_CHART", operatorHelmChart)
 	operatorHelmChartUrl = getEnvOrDefault("OPERATOR_HELM_CHART_URL", operatorHelmChartUrl)
 
-	buildOperatorControllerImageFromLocalSourcesRaw := getEnvOrDefault("BUILD_OPERATOR_CONTROLLER_IMAGE", "")
-	if buildOperatorControllerImageFromLocalSourcesRaw != "" {
-		buildOperatorControllerImageFromLocalSources, err = strconv.ParseBool(buildOperatorControllerImageFromLocalSourcesRaw)
-		Expect(err).NotTo(HaveOccurred())
-	}
 	images.operator.repository = getEnvOrDefault("CONTROLLER_IMG_REPOSITORY", images.operator.repository)
 	images.operator.tag = getEnvOrDefault("CONTROLLER_IMG_TAG", images.operator.tag)
 	images.operator.digest = getEnvOrDefault("CONTROLLER_IMG_DIGEST", images.operator.digest)
 	images.operator.pullPolicy = getEnvOrDefault("CONTROLLER_IMG_PULL_POLICY", images.operator.pullPolicy)
 
-	buildInstrumentationImageFromLocalSourcesRaw := getEnvOrDefault("BUILD_INSTRUMENTATION_IMAGE", "")
-	if buildInstrumentationImageFromLocalSourcesRaw != "" {
-		buildInstrumentationImageFromLocalSources, err = strconv.ParseBool(buildInstrumentationImageFromLocalSourcesRaw)
-		Expect(err).NotTo(HaveOccurred())
-	}
 	images.instrumentation.repository = getEnvOrDefault(
 		"INSTRUMENTATION_IMG_REPOSITORY",
 		images.instrumentation.repository,
@@ -815,11 +802,6 @@ func readAndApplyEnvironmentVariables() {
 		images.instrumentation.pullPolicy,
 	)
 
-	buildCollectorImageFromLocalSourcesRaw := getEnvOrDefault("BUILD_COLLECTOR_IMAGE", "")
-	if buildCollectorImageFromLocalSourcesRaw != "" {
-		buildCollectorImageFromLocalSources, err = strconv.ParseBool(buildCollectorImageFromLocalSourcesRaw)
-		Expect(err).NotTo(HaveOccurred())
-	}
 	images.collector.repository = getEnvOrDefault(
 		"COLLECTOR_IMG_REPOSITORY",
 		images.collector.repository,
@@ -831,12 +813,6 @@ func readAndApplyEnvironmentVariables() {
 		images.collector.pullPolicy,
 	)
 
-	buildConfigurationReloaderImageFromLocalSourcesRaw := getEnvOrDefault("BUILD_CONFIGURATION_RELOADER_IMAGE", "")
-	if buildConfigurationReloaderImageFromLocalSourcesRaw != "" {
-		buildConfigurationReloaderImageFromLocalSources, err =
-			strconv.ParseBool(buildConfigurationReloaderImageFromLocalSourcesRaw)
-		Expect(err).NotTo(HaveOccurred())
-	}
 	images.configurationReloader.repository = getEnvOrDefault(
 		"CONFIGURATION_RELOADER_IMG_REPOSITORY",
 		images.configurationReloader.repository,
@@ -849,12 +825,6 @@ func readAndApplyEnvironmentVariables() {
 		images.configurationReloader.pullPolicy,
 	)
 
-	buildFileLogOffsetSynchImageFromLocalSourcesRaw := getEnvOrDefault("BUILD_FILELOG_OFFSET_SYNCH_IMAGE", "")
-	if buildFileLogOffsetSynchImageFromLocalSourcesRaw != "" {
-		buildFileLogOffsetSynchImageFromLocalSources, err =
-			strconv.ParseBool(buildFileLogOffsetSynchImageFromLocalSourcesRaw)
-		Expect(err).NotTo(HaveOccurred())
-	}
 	images.fileLogOffsetSynch.repository = getEnvOrDefault(
 		"FILELOG_OFFSET_SYNCH_IMG_REPOSITORY",
 		images.fileLogOffsetSynch.repository,

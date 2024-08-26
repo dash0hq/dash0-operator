@@ -73,12 +73,7 @@ make test-e2e
 
 The tests can also be run with remote images, like this:
 ```
-BUILD_OPERATOR_CONTROLLER_IMAGE=false \
-  BUILD_INSTRUMENTATION_IMAGE=false \
-  BUILD_COLLECTOR_IMAGE=false \
-  BUILD_CONFIGURATION_RELOADER_IMAGE=false \
-  BUILD_FILELOG_OFFSET_SYNCH_IMAGE=false \
-  CONTROLLER_IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller \
+CONTROLLER_IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller \
   CONTROLLER_IMG_TAG=main-dev \
   CONTROLLER_IMG_PULL_POLICY="" \
   INSTRUMENTATION_IMG_REPOSITORY=ghcr.io/dash0hq/instrumentation \
@@ -96,18 +91,10 @@ BUILD_OPERATOR_CONTROLLER_IMAGE=false \
   make test-e2e
 ```
 
-The settings `BUILD_OPERATOR_CONTROLLER_IMAGE=false` plus `BUILD_INSTRUMENTATION_IMAGE=false` will skip building these
-images locally, which is not required when using remote images from a registry.
-
 The test suite can also be run with a Helm chart from a remote repository:
 
 ```
-BUILD_OPERATOR_CONTROLLER_IMAGE=false \
-  BUILD_INSTRUMENTATION_IMAGE=false \
-  BUILD_COLLECTOR_IMAGE=false \
-  BUILD_CONFIGURATION_RELOADER_IMAGE=false \
-  BUILD_FILELOG_OFFSET_SYNCH_IMAGE=false \
-  OPERATOR_HELM_CHART=dash0-operator/dash0-operator \
+OPERATOR_HELM_CHART=dash0-operator/dash0-operator \
   OPERATOR_HELM_CHART_URL=https://dash0hq.github.io/dash0-operator \
   CONTROLLER_IMG_REPOSITORY="" \
   CONTROLLER_IMG_TAG="" \
@@ -155,11 +142,6 @@ they deploy in their `AfterAll`/`AfterEach` hooks. The scripts in `test-resource
       * To run the scenario with the images that have been built from the main branch and pushed to ghcr.io most 
         recently:
         ```
-        BUILD_OPERATOR_CONTROLLER_IMAGE=false \
-          BUILD_INSTRUMENTATION_IMAGE=false \
-          BUILD_COLLECTOR_IMAGE=false \
-          BUILD_CONFIGURATION_RELOADER_IMAGE=false \
-          BUILD_FILELOG_OFFSET_SYNCH_IMAGE=false \
           CONTROLLER_IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller \
           CONTROLLER_IMG_TAG=main-dev \
           CONTROLLER_IMG_PULL_POLICY="" \
@@ -180,11 +162,6 @@ they deploy in their `AfterAll`/`AfterEach` hooks. The scripts in `test-resource
       * To run the scenario with the helm chart from the official remote repository and the default images referenced in
         that chart (the Helm repository must have been installed beforehand): 
         ```
-        BUILD_OPERATOR_CONTROLLER_IMAGE=false \
-          BUILD_INSTRUMENTATION_IMAGE=false \
-          BUILD_COLLECTOR_IMAGE=false \
-          BUILD_CONFIGURATION_RELOADER_IMAGE=false \
-          BUILD_FILELOG_OFFSET_SYNCH_IMAGE=false \
           OPERATOR_HELM_CHART=dash0-operator/dash0-operator \
           CONTROLLER_IMG_REPOSITORY="" \
           CONTROLLER_IMG_TAG="" \

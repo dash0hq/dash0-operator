@@ -59,24 +59,10 @@ var (
 			pullPolicy: "Never",
 		},
 	}
-
-	buildOperatorControllerImageFromLocalSources    = true
-	buildInstrumentationImageFromLocalSources       = true
-	buildCollectorImageFromLocalSources             = true
-	buildConfigurationReloaderImageFromLocalSources = true
-	buildFileLogOffsetSynchImageFromLocalSources    = true
 )
 
-func rebuildOperatorControllerImage(operatorImage ImageSpec, buildImageLocally bool) {
-	if !buildImageLocally {
-		return
-	}
-	if strings.Contains(operatorImage.repository, "/") {
-		By(
-			fmt.Sprintf(
-				"not rebuilding the operator controller image %s, this looks like a remote image",
-				renderFullyQualifiedImageName(operatorImage),
-			))
+func rebuildOperatorControllerImage(operatorImage ImageSpec) {
+	if !shouldBuildImageLocally(operatorImage) {
 		return
 	}
 
@@ -104,16 +90,8 @@ func rebuildOperatorControllerImage(operatorImage ImageSpec, buildImageLocally b
 			))).To(Succeed())
 }
 
-func rebuildInstrumentationImage(instrumentationImage ImageSpec, buildImageLocally bool) {
-	if !buildImageLocally {
-		return
-	}
-	if strings.Contains(instrumentationImage.repository, "/") {
-		By(
-			fmt.Sprintf(
-				"not rebuilding the instrumenation image %s, this looks like a remote image",
-				renderFullyQualifiedImageName(instrumentationImage),
-			))
+func rebuildInstrumentationImage(instrumentationImage ImageSpec) {
+	if !shouldBuildImageLocally(instrumentationImage) {
 		return
 	}
 
@@ -140,16 +118,8 @@ func rebuildInstrumentationImage(instrumentationImage ImageSpec, buildImageLocal
 			))).To(Succeed())
 }
 
-func rebuildCollectorImage(collectorImage ImageSpec, buildImageLocally bool) {
-	if !buildImageLocally {
-		return
-	}
-	if strings.Contains(collectorImage.repository, "/") {
-		By(
-			fmt.Sprintf(
-				"not rebuilding the collector image %s, this looks like a remote image",
-				renderFullyQualifiedImageName(collectorImage),
-			))
+func rebuildCollectorImage(collectorImage ImageSpec) {
+	if !shouldBuildImageLocally(collectorImage) {
 		return
 	}
 
@@ -178,16 +148,8 @@ func rebuildCollectorImage(collectorImage ImageSpec, buildImageLocally bool) {
 			))).To(Succeed())
 }
 
-func rebuildConfigurationReloaderImage(configurationReloaderImage ImageSpec, buildImageLocally bool) {
-	if !buildImageLocally {
-		return
-	}
-	if strings.Contains(configurationReloaderImage.repository, "/") {
-		By(
-			fmt.Sprintf(
-				"not rebuilding the configuration reloader image %s, this looks like a remote image",
-				renderFullyQualifiedImageName(configurationReloaderImage),
-			))
+func rebuildConfigurationReloaderImage(configurationReloaderImage ImageSpec) {
+	if !shouldBuildImageLocally(configurationReloaderImage) {
 		return
 	}
 
@@ -217,16 +179,8 @@ func rebuildConfigurationReloaderImage(configurationReloaderImage ImageSpec, bui
 			))).To(Succeed())
 }
 
-func rebuildFileLogOffsetSynchImage(fileLogOffsetSynchImage ImageSpec, buildImageLocally bool) {
-	if !buildImageLocally {
-		return
-	}
-	if strings.Contains(fileLogOffsetSynchImage.repository, "/") {
-		By(
-			fmt.Sprintf(
-				"not rebuilding the filelog offset synch image %s, this looks like a remote image",
-				renderFullyQualifiedImageName(fileLogOffsetSynchImage),
-			))
+func rebuildFileLogOffsetSynchImage(fileLogOffsetSynchImage ImageSpec) {
+	if !shouldBuildImageLocally(fileLogOffsetSynchImage) {
 		return
 	}
 
@@ -254,4 +208,20 @@ func rebuildFileLogOffsetSynchImage(fileLogOffsetSynchImage ImageSpec, buildImag
 				renderFullyQualifiedImageName(fileLogOffsetSynchImage),
 				renderFullyQualifiedImageName(additionalTag),
 			))).To(Succeed())
+}
+
+func shouldBuildImageLocally(image ImageSpec) bool {
+	if strings.Contains(image.repository, "/") {
+		By(fmt.Sprintf(
+			"not rebuilding the image %s, this looks like a remote image", renderFullyQualifiedImageName(image),
+		))
+		return false
+	}
+
+	if image.repository == "" && operatorHelmChartUrl != "" {
+		By("not rebuilding image, a remote Helm chart is used with the default image from the chart")
+		return false
+	}
+
+	return true
 }
