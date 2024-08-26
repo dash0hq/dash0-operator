@@ -146,10 +146,16 @@ func ensureDash0OperatorHelmRepoIsInstalled(
 	} else {
 		fmt.Fprintf(
 			GinkgoWriter,
-			"The helm repo %s (%s) is already installed.\n",
+			"The helm repo %s (%s) is already installed, updating it now.\n",
 			repositoryName,
 			operatorHelmChartUrl,
 		)
+		Expect(runAndIgnoreOutput(
+			exec.Command(
+				"helm",
+				"repo",
+				"update",
+			))).To(Succeed())
 	}
 }
 
