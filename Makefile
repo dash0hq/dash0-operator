@@ -102,8 +102,6 @@ CONTAINER_TOOL ?= docker
 SHELL = /usr/bin/env bash -o pipefail
 .SHELLFLAGS = -ec
 
--include test-resources/.env
-
 .PHONY: all
 all: build
 
@@ -233,16 +231,6 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 
 .PHONY: deploy-via-helm
 deploy-via-helm: ## Deploy the controller via helm to the K8s cluster specified in ~/.kube/config.
-# Note: We need the values from test-resources/.env here for the helm install command but they are not actually read at
-# this point. Instead, they have been already read via the -include directive at the top of this Makefile. The
-# "-include" will fail silently if the file does not exist, so we need to check for the existence of the file here.
-# Using "include" (which does not fail silently but aborts make immediately is not a good alternative, since it fails
-# with a somewhat cryptic error message, plus most make targets do not require the file.
-	@if test ! -f test-resources/.env; then \
-		echo "error: The file test-resources/.env does not exist. Copy test-resources/.env.template to test-resources/.env and edit it to provide a Dash0 authorization token."; \
-		exit 1; \
-	fi
-
 	test-resources/bin/render-templates.sh
 	helm upgrade --install \
 		--namespace dash0-system \
