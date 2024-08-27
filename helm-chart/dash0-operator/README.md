@@ -273,13 +273,23 @@ spec:
           value: my-value
 ```
 
-You can even combine two exporters to send data to multiple backends, although there are some restrictions:
-* Combining `spec.export.dash0` with `spec.export.http` is supported.
-* Combining `spec.export.grpc` with `spec.export.http` is supported.
-* Combining `spec.export.dash0` with `spec.export.grpc` is currently not supported.
-* Combining more than two exporters is not supported.
-* At least one exporter configuration has to be provided.
-* Listing two or more exporters of the same type (i.e. providing `spec.export.grpc` twice) is not supported.
+You can combine up to three exporters (i.e. Dash0 plus gRPC plus HTTP) to send data to multiple backends. This allows
+sending the same data to two or three targets simultaneously. At least one exporter has to be defined. More than three
+exporters cannot be defined. Listing two or more exporters of the same type (i.e. providing `spec.export.grpc` twice)
+is not supported.
+
+#### Exporting Telemetry to Different Backends Per Namespace
+
+Exporting telemetry to different backends per namespace is not yet implemented.
+This feature will be available in a future release.
+The export settings are available on the per-namespace resource (the Dash0 monitoring resource) to prepare for this
+feature.
+
+**Important**: For that reason, having different export settings on the Dash0 monitoring resources in your cluster is
+currently strongly discouraged -- the export settings of one Dash0 monitoring resource would overwrite the settings of
+the other Dash0 monitoring resources, leading to non-deterministic behavior.
+
+This restriction will be lifted once exporting telemetry to different backends per namespace is implemented.
 
 ## Disable Dash0 Monitoring For a Namespace
 
