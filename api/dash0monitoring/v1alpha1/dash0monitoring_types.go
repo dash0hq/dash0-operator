@@ -18,9 +18,9 @@ const (
 // telemetry to an observability backend.
 type Dash0MonitoringSpec struct {
 	// The configuration of the observability backend to which telemetry data will be sent. This property is mandatory.
-	// This can either be Dash0 or another OTLP-compatible backend. You can also combine sending to Dash0 with an
-	// HTTP exporter to send the same data to two targets simultaneously, or you can combine a gRPC exporter with an
-	// HTTP exporter. Combining Dash0 with a gRPC exporter is currently not supported.
+	// This can either be Dash0 or another OTLP-compatible backend. You can also combine up to three exporters (i.e.
+	// Dash0 plus gRPC plus HTTP). This allows sending the same data to two or three targets simultaneously. At least
+	// one exporter has to be defined.
 	//
 	// +kubebuilder:validation:Required
 	Export `json:"export"`
@@ -61,11 +61,11 @@ type Dash0MonitoringSpec struct {
 }
 
 // Export describes the observability backend to which telemetry data will be sent. This can either be Dash0 or another
-// OTLP-compatible backend. You can also combine Dash0 with an HTTP exporter or an arbitrary gRPC exporter with an HTTP
-// exporter. Combining Dash0 with a gRPC exporter is currently not supported.
+// OTLP-compatible backend. You can also combine up to three exporters (i.e. Dash0 plus gRPC plus HTTP). This allows
+// sending the same data to two or three targets simultaneously. At least one exporter has to be defined.
 //
 // +kubebuilder:validation:MinProperties=1
-// +kubebuilder:validation:MaxProperties=2
+// +kubebuilder:validation:MaxProperties=3
 type Export struct {
 	// The configuration of the Dash0 ingress endpoint to which telemetry data will be sent.
 	//

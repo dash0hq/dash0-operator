@@ -32,7 +32,7 @@ var (
 func collectorConfigMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
 	exporters, err := assembleExporters(config.Export)
 	if err != nil {
-		return nil, fmt.Errorf("cannot render the assemble the exporters for the configuration: %w", err)
+		return nil, fmt.Errorf("cannot assemble the exporters for the configuration: %w", err)
 	}
 	collectorConfiguration, err := renderCollectorConfigs(&collectorConfigurationTemplateValues{
 		Exporters: exporters,
@@ -69,9 +69,6 @@ func collectorConfigMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
 func assembleExporters(export dash0v1alpha1.Export) ([]otlpExporter, error) {
 	var exporters []otlpExporter
 
-	if export.Dash0 != nil && export.Grpc != nil {
-		return nil, fmt.Errorf("combining the Dash0 exporter with a gRPC exporter is not supported, please use only one of them")
-	}
 	if export.Dash0 == nil && export.Grpc == nil && export.Http == nil {
 		return nil, fmt.Errorf("no exporter configuration found")
 	}
@@ -92,7 +89,7 @@ func assembleExporters(export dash0v1alpha1.Export) ([]otlpExporter, error) {
 			})
 		}
 		exporters = append(exporters, otlpExporter{
-			Name:     "otlp",
+			Name:     "otlp/dash0",
 			Endpoint: export.Dash0.Endpoint,
 			Headers:  headers,
 		})
@@ -104,7 +101,7 @@ func assembleExporters(export dash0v1alpha1.Export) ([]otlpExporter, error) {
 			return nil, fmt.Errorf("no endpoint provided for the gRPC exporter, unable to create the OpenTelemetry collector")
 		}
 		grpcExporter := otlpExporter{
-			Name:     "otlp",
+			Name:     "otlp/grpc",
 			Endpoint: grpc.Endpoint,
 			Headers:  grpc.Headers,
 		}
@@ -122,10 +119,11 @@ func assembleExporters(export dash0v1alpha1.Export) ([]otlpExporter, error) {
 		if http.Encoding == "" {
 			return nil, fmt.Errorf("no encoding provided for the HTTP exporter, unable to create the OpenTelemetry collector")
 		}
+		encoding := string(http.Encoding)
 		httpExporter := otlpExporter{
-			Name:     "otlphttp",
+			Name:     fmt.Sprintf("otlphttp/%s", encoding),
 			Endpoint: http.Endpoint,
-			Encoding: string(http.Encoding),
+			Encoding: encoding,
 		}
 		if http.Headers != nil && len(http.Headers) > 0 {
 			httpExporter.Headers = http.Headers

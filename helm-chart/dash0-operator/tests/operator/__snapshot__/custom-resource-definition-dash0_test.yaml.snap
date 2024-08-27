@@ -45,10 +45,10 @@ custom resource definition should match snapshot:
                     export:
                       description: |-
                         The configuration of the observability backend to which telemetry data will be sent. This property is mandatory.
-                        This can either be Dash0 or another OTLP-compatible backend. You can also combine sending to Dash0 with an
-                        HTTP exporter to send the same data to two targets simultaneously, or you can combine a gRPC exporter with an
-                        HTTP exporter. Combining Dash0 with a gRPC exporter is currently not supported.
-                      maxProperties: 2
+                        This can either be Dash0 or another OTLP-compatible backend. You can also combine up to three exporters (i.e.
+                        Dash0 plus gRPC plus HTTP). This allows sending the same data to two or three targets simultaneously. At least
+                        one exporter has to be defined.
+                      maxProperties: 3
                       minProperties: 1
                       properties:
                         dash0:
