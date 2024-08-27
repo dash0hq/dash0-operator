@@ -217,34 +217,18 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				By("installing the Node.js deployment")
 				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
 
-				initialImages := Images{
-					operator: ImageSpec{
-						repository: "operator-controller",
-						tag:        additionalImageTag,
-						pullPolicy: "Never",
-					},
-					instrumentation: ImageSpec{
-						repository: "instrumentation",
-						tag:        additionalImageTag,
-						pullPolicy: "Never",
-					},
-					collector: ImageSpec{
-						repository: "collector",
-						tag:        additionalImageTag,
-						pullPolicy: "Never",
-					},
-					configurationReloader: ImageSpec{
-						repository: "configuration-reloader",
-						tag:        additionalImageTag,
-						pullPolicy: "Never",
-					},
-					fileLogOffsetSynch: ImageSpec{
-						repository: "filelog-offset-synch",
-						tag:        additionalImageTag,
-						pullPolicy: "Never",
-					},
+				// We initially deploy the operator with alternative image names to simulate the workloads having
+				// been instrumented by outdated images. Then (later) we will redeploy the operator with the actual
+				// image names that are used throughout the whole test suite (defined by environment variables).
+
+				initialAlternativeImages := Images{
+					operator:              deriveAlternativeImageForUpdateTest(images.operator),
+					instrumentation:       deriveAlternativeImageForUpdateTest(images.instrumentation),
+					collector:             deriveAlternativeImageForUpdateTest(images.collector),
+					configurationReloader: deriveAlternativeImageForUpdateTest(images.configurationReloader),
+					fileLogOffsetSynch:    deriveAlternativeImageForUpdateTest(images.fileLogOffsetSynch),
 				}
-				deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, initialImages, false)
+				deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, initialAlternativeImages, false)
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
 					defaultDash0MonitoringValues,
@@ -259,10 +243,11 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					1207,
 					false,
 					testId,
-					initialImages,
+					initialAlternativeImages,
 					"controller",
 				)
 
+				// Now update the operator with the actual image names that are used throughout the whole test suite.
 				upgradeOperator(
 					operatorNamespace,
 					operatorHelmChart,

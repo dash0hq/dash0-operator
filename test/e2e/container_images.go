@@ -28,6 +28,8 @@ type Images struct {
 }
 
 const (
+	tagLatest          = "latest"
+	tagMainDev         = "main-dev"
 	additionalImageTag = "e2e-test"
 )
 
@@ -35,27 +37,27 @@ var (
 	images = Images{
 		operator: ImageSpec{
 			repository: "operator-controller",
-			tag:        "latest",
+			tag:        tagLatest,
 			pullPolicy: "Never",
 		},
 		instrumentation: ImageSpec{
 			repository: "instrumentation",
-			tag:        "latest",
+			tag:        tagLatest,
 			pullPolicy: "Never",
 		},
 		collector: ImageSpec{
 			repository: "collector",
-			tag:        "latest",
+			tag:        tagLatest,
 			pullPolicy: "Never",
 		},
 		configurationReloader: ImageSpec{
 			repository: "configuration-reloader",
-			tag:        "latest",
+			tag:        tagLatest,
 			pullPolicy: "Never",
 		},
 		fileLogOffsetSynch: ImageSpec{
 			repository: "filelog-offset-synch",
-			tag:        "latest",
+			tag:        tagLatest,
 			pullPolicy: "Never",
 		},
 	}
@@ -220,17 +222,55 @@ func rebuildFileLogOffsetSynchImage(fileLogOffsetSynchImage ImageSpec) {
 }
 
 func shouldBuildImageLocally(image ImageSpec) bool {
-	if strings.Contains(image.repository, "/") {
+	if isRemoteImage(image) {
 		By(fmt.Sprintf(
 			"not rebuilding the image %s, this looks like a remote image", renderFullyQualifiedImageName(image),
 		))
 		return false
 	}
-
-	if image.repository == "" && operatorHelmChartUrl != "" {
+	if isDefaultImageFromHelmChart(image) {
 		By("not rebuilding image, a remote Helm chart is used with the default image from the chart")
 		return false
 	}
-
 	return true
+}
+
+func isRemoteImage(image ImageSpec) bool {
+	return strings.Contains(image.repository, "/")
+}
+
+func isDefaultImageFromHelmChart(image ImageSpec) bool {
+	return image.repository == "" && operatorHelmChartUrl != ""
+}
+
+func deriveAlternativeImageForUpdateTest(image ImageSpec) ImageSpec {
+	// For the "should update instrumentation modifications at startup" test case, we need to come up with
+	// an alternative image name to the one that is being used for the tests. When testing with the remote Helm
+	// chart, we usually use the default images from the chart by setting the image repository and tag to an
+	// empty string via the environment variables. The easiest way to come up with an alternative image name is
+	// to use "latest" instead of the actual version tag.
+
+	if isDefaultImageFromHelmChart(image) || isRemoteImage(image) {
+		alternativeImageTag := tagLatest
+		if image.tag == tagLatest {
+			// make sure the tag is a different one than the original from `image`.
+			image.tag = tagMainDev
+		}
+		return ImageSpec{
+			repository: image.repository,
+			tag:        alternativeImageTag,
+			pullPolicy: image.pullPolicy,
+		}
+	} else {
+		alternativeImageTag := additionalImageTag
+		if image.tag == additionalImageTag {
+			// make sure the tag is a different one than the original from `image`.
+			image.tag = tagLatest
+		}
+		return ImageSpec{
+			repository: image.repository,
+			tag:        alternativeImageTag,
+			pullPolicy: image.pullPolicy,
+		}
+	}
 }
