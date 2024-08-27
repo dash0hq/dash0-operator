@@ -184,36 +184,46 @@ run: manifests generate fmt vet ## Run a controller from your host.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
 # More info: https://docs.docker.com/develop/develop-images/build_enhancements/
 .PHONY: docker-build
-docker-build: ## Build docker image with the manager.
-	$(CONTAINER_TOOL) build -t ${CONTROLLER_IMG} .
-	$(CONTAINER_TOOL) build -t ${COLLECTOR_IMG} images/collector
-	$(CONTAINER_TOOL) build -t ${CONFIGURATION_RELOADER_IMG} images/configreloader
-	$(CONTAINER_TOOL) build -t ${FILELOG_OFFSET_SYNCH_IMG} images/filelogoffsetsynch
+docker-build: \
+  docker-build-controller \
+  docker-build-instrumentation \
+  docker-build-collector \
+  docker-build-config-reloader \
+  docker-build-filelog-offset-synch ## Build all container images.
 
-# PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
-# architectures. (i.e. make docker-buildx CONTROLLER_IMG=myregistry/mypoperator:0.0.1). To use this option you need to:
-# - be able to use docker buildx. More info: https://docs.docker.com/build/buildx/
-# - have enabled BuildKit. More info: https://docs.docker.com/develop/develop-images/build_enhancements/
-# - be able to push the image to your registry (i.e. if you do not set a valid value via CONTROLLER_IMG=<myregistry/image:<tag>> then the export will fail)
-# To adequately provide solutions that are compatible with multiple platforms, you should consider using this option.
-PLATFORMS ?= linux/arm64,linux/amd64,linux/s390x,linux/ppc64le
-.PHONY: docker-buildx
-docker-buildx: ## Build and push docker image for the manager for cross-platform support
-	# copy existing Dockerfile and insert --platform=${BUILDPLATFORM} into Dockerfile.cross, and preserve the original Dockerfile
-	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' Dockerfile > Dockerfile.cross
-	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' images/collector/Dockerfile > images/collector/Dockerfile.cross
-	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' images/configreloader/Dockerfile > images/configreloader/Dockerfile.cross
-	sed -e '1 s/\(^FROM\)/FROM --platform=\$$\{BUILDPLATFORM\}/; t' -e ' 1,// s//FROM --platform=\$$\{BUILDPLATFORM\}/' images/filelogoffsetsynch/Dockerfile > images/filelogoffsetsynch/Dockerfile.cross
-	- $(CONTAINER_TOOL) buildx create --name project-v3-builder
-	$(CONTAINER_TOOL) buildx use project-v3-builder
-	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${CONTROLLER_IMG} -f Dockerfile.cross .
-	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${COLLECTOR_IMG} -f images/collector/Dockerfile.cross images/collector
-	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${CONFIGURATION_RELOADER_IMG} -f images/configreloader/Dockerfile.cross images/configreloader
-	- $(CONTAINER_TOOL) buildx build --push --platform=$(PLATFORMS) --tag ${FILELOG_OFFSET_SYNCH_IMG} -f images/filelogoffsetsynch/Dockerfile.cross images/filelogoffsetsynch
-	- $(CONTAINER_TOOL) buildx rm project-v3-builder
-	rm Dockerfile.cross images/collector/Dockerfile.cross images/configreloader/Dockerfile.cross
+define build_container_image
+$(eval $@IMAGE_REPOSITORY = $(1))
+$(eval $@_IMAGE_TAG = $(2))
+if [[ -n "${$@IMAGE_REPOSITORY}" ]]; then                                      \
+  if [[ "${$@IMAGE_REPOSITORY}" = *"/"* ]]; then                               \
+    echo "not rebuilding the image ${$@IMAGE_REPOSITORY}, this looks like a remote image"; \
+  else                                                                         \
+    $(CONTAINER_TOOL) build -t ${$@IMAGE_REPOSITORY}:${$@_IMAGE_TAG} .;        \
+  fi;                                                                          \
+elif [[ -n "${OPERATOR_HELM_CHART_URL}" ]]; then                               \
+    echo "not rebuilding image, a remote Helm chart is used with the default image from the chart"; \
+fi
+endef
 
-##@ Deployment
+.PHONY: docker-build-controller
+docker-build-controller: ## Build the manager container image.
+	@$(call build_container_image,$(CONTROLLER_IMG_REPOSITORY),$(CONTROLLER_IMG_TAG))
+
+.PHONY: docker-build-instrumentation
+docker-build-instrumentation: ## Build the instrumentation image.
+	@$(call build_container_image,$(INSTRUMENTATION_IMG_REPOSITORY),$(INSTRUMENTATION_IMG_TAG))
+
+.PHONY: docker-build-collector
+docker-build-collector: ## Build the OpenTelemetry collector container image.
+	@$(call build_container_image,$(COLLECTOR_IMG_REPOSITORY),$(COLLECTOR_IMG_TAG))
+
+.PHONY: docker-build-config-reloader
+docker-build-config-reloader: ## Build the config reloader container image.
+	@$(call build_container_image,$(CONFIGURATION_RELOADER_IMG_REPOSITORY),$(CONFIGURATION_RELOADER_IMG_TAG))
+
+.PHONY: docker-build-filelog-offset-synch
+docker-build-filelog-offset-synch: ## Build the filelog offset synch container image.
+	@$(call build_container_image,$(FILELOG_OFFSET_SYNCH_IMG_REPOSITORY),$(FILELOG_OFFSET_SYNCH_IMG_TAG))
 
 ifndef ignore-not-found
   ignore-not-found = false

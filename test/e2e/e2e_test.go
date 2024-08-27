@@ -59,11 +59,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		recreateNamespace(applicationUnderTestNamespace)
 
 		readAndApplyEnvironmentVariables()
-		rebuildOperatorControllerImage(images.operator)
-		rebuildInstrumentationImage(images.instrumentation)
-		rebuildCollectorImage(images.collector)
-		rebuildConfigurationReloaderImage(images.configurationReloader)
-		rebuildFileLogOffsetSynchImage(images.fileLogOffsetSynch)
+		rebuildAllContainerImages()
 		rebuildNodeJsApplicationContainerImage()
 
 		setupFinishedSuccessfully = true
