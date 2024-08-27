@@ -61,6 +61,14 @@ var (
 	}
 )
 
+func rebuildAllContainerImages() {
+	rebuildOperatorControllerImage(images.operator)
+	rebuildInstrumentationImage(images.instrumentation)
+	rebuildCollectorImage(images.collector)
+	rebuildConfigurationReloaderImage(images.configurationReloader)
+	rebuildFileLogOffsetSynchImage(images.fileLogOffsetSynch)
+}
+
 func rebuildOperatorControllerImage(operatorImage ImageSpec) {
 	if !shouldBuildImageLocally(operatorImage) {
 		return
