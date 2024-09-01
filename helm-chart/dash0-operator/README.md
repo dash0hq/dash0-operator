@@ -291,6 +291,43 @@ the other Dash0 monitoring resources, leading to non-deterministic behavior.
 
 This restriction will be lifted once exporting telemetry to different backends per namespace is implemented.
 
+## Enable Self-Monitoring
+
+To enable self-monitoring for the Dash0 Kubernetes operator, deploy a Dash0 operator configuration resource in the
+cluster.
+
+Create a file `dash0-operator-configuration.yaml` with the following content:
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0OperatorConfiguration
+metadata:
+  name: dash0-operator-configuration-resource
+spec:
+  selfMonitoring:
+    enabled: true
+  export:
+    dash0:
+      # Replace this value with the actual OTLP/gRPC endpoint of your Dash0 organization.
+      endpoint: ingress... # TODO needs to be replaced with the actual value, see below
+
+      authorization:
+        # Provide the Dash0 authorization token as a string via the token property:
+        token: auth_... # TODO needs to be replaced with the actual value, see below
+```
+
+After providing the required values, save the file and apply the resource to the cluster:
+
+```console
+kubectl apply -f dash0-operator-configuration.yaml
+```
+
+This is a cluster-scoped resource, so it does not need to be installed into a specific namespace.
+
+The `export` settings are the same as for the per-namespace Dash0 monitoring resource.
+The only difference is that self-monitoring telemetry will only be sent to one export.
+If multiple export are defined, the `dash0` export will take precedence over `grpc` and `http`, and `grpc` will take
+precedence over `http`.
+
 ## Disable Dash0 Monitoring For a Namespace
 
 If you want to stop monitoring a namespace with Dash0, remove the Dash0 monitoring resource from that namespace.
