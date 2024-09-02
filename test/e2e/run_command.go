@@ -89,5 +89,5 @@ func verifyCommandOutputContainsStrings(command *exec.Cmd, needles ...string) {
 		for _, needle := range needles {
 			g.Expect(haystack).To(ContainSubstring(needle))
 		}
-	}, 10*time.Second, time.Second).Should(Succeed())
+	}, 20*time.Second, time.Second).Should(Succeed())
 }

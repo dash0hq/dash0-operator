@@ -24,10 +24,10 @@ kubectl delete secret \
   dash0-authorization-secret \
   --ignore-not-found
 
-# If the custom resource definition has been installed by kustomize and the next test scenario attempts to install it
-# via helm, the helm installation will fail because the custom resource definition already exists and does not have the
-# "app.kubernetes.io/managed-by: Helm" label. Thus we always remove the CRD explictly and assume the next test scenario
-# will install it again.
+# If the custom resource definitions have been installed by kustomize and the next test scenario attempts to install it
+# via helm, the helm installation will fail because the custom resource definitions already exists and do not have the
+# "app.kubernetes.io/managed-by: Helm" label. Thus we always remove all CRDs explictly and assume the next test scenario
+# will install them again.
 make uninstall || true
 
 resource_types=( cronjob daemonset deployment job pod replicaset statefulset )

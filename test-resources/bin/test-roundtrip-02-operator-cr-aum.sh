@@ -47,7 +47,6 @@ echo
 
 sleep 5
 
-
 echo "STEP 6: deploy the Dash0 operator configuration resource to cluster"
 kubectl apply -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.token.yaml
 echo

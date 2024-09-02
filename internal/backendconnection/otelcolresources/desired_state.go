@@ -27,6 +27,7 @@ type oTelColConfig struct {
 	Export                      dash0v1alpha1.Export
 	SelfMonitoringConfiguration selfmonitoring.SelfMonitoringConfiguration
 	Images                      util.Images
+	DevelopmentMode             bool
 }
 
 type collectorConfigurationTemplateValues struct {
@@ -613,6 +614,7 @@ func assembleDaemonSet(config *oTelColConfig) (*appsv1.DaemonSet, error) {
 			collectorDaemonSet,
 			config.SelfMonitoringConfiguration,
 			config.Images.GetOperatorVersion(),
+			config.DevelopmentMode,
 		)
 		if err != nil {
 			return nil, err

@@ -29,6 +29,7 @@ type OTelColResourceManager struct {
 	Scheme                  *runtime.Scheme
 	DeploymentSelfReference *appsv1.Deployment
 	OTelCollectorNamePrefix string
+	DevelopmentMode         bool
 }
 
 func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
@@ -45,6 +46,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		Export:                      monitoringResource.Spec.Export,
 		SelfMonitoringConfiguration: selfMonitoringConfiguration,
 		Images:                      images,
+		DevelopmentMode:             m.DevelopmentMode,
 	}
 	desiredState, err := assembleDesiredState(config)
 	if err != nil {
@@ -215,6 +217,7 @@ func (m *OTelColResourceManager) DeleteResources(
 		Export:                      dash0MonitoringResource.Spec.Export,
 		SelfMonitoringConfiguration: selfMonitoringConfiguration,
 		Images:                      images,
+		DevelopmentMode:             m.DevelopmentMode,
 	}
 	allObjects, err := assembleDesiredState(config)
 	if err != nil {

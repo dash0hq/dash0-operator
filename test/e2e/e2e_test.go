@@ -616,15 +616,23 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				operatorNamespace,
 				operatorHelmChart,
 			)
+
+			time.Sleep(15 * time.Second)
 		})
 
 		AfterEach(func() {
-			undeployDash0OperatorConfigurationResource()
+			undeployDash0MonitoringResource(applicationUnderTestNamespace)
 			undeployDash0OperatorConfigurationResource()
 		})
 
 		It("should produce self-monitoring telemetry", func() {
-			verifySelfMonitoringSpans()
+			By("updating the Dash0 monitoring resource endpoint setting")
+			newEndpoint := "ingress.us-east-2.aws.dash0-dev.com:4317"
+			updateEndpointOfDash0MonitoringResource(applicationUnderTestNamespace, newEndpoint)
+
+			Eventually(func(g Gomega) {
+				verifySelfMonitoringMetrics(g)
+			}, 90*time.Second, time.Second).Should(Succeed())
 		})
 	})
 

@@ -35,6 +35,7 @@ type OperatorConfigurationReconciler struct {
 	DeploymentSelfReference *appsv1.Deployment
 	DanglingEventsTimeouts  *util.DanglingEventsTimeouts
 	Images                  util.Images
+	DevelopmentMode         bool
 }
 
 func (r *OperatorConfigurationReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -202,6 +203,7 @@ func (r *OperatorConfigurationReconciler) applySelfMonitoring(
 			ManagerContainerName,
 			selfMonitoringConfiguration,
 			r.Images.GetOperatorVersion(),
+			r.DevelopmentMode,
 		); err != nil {
 			return fmt.Errorf("cannot apply settings to enable self-monitoring to the controller deployment: %w", err)
 		}
