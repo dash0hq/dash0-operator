@@ -36,6 +36,7 @@ const (
 	otelExporterOtlpHeadersEnvVarName  = "OTEL_EXPORTER_OTLP_HEADERS"
 	otelExporterOtlpProtocolEnvVarName = "OTEL_EXPORTER_OTLP_PROTOCOL"
 	otelResourceAttribtuesEnvVarName   = "OTEL_RESOURCE_ATTRIBUTES"
+	otelLogLevelEnvVarName             = "OTEL_LOG_LEVEL"
 
 	selfMonitoringauthTokenEnvVarName = "SELF_MONITORING_AUTH_TOKEN"
 )
@@ -190,6 +191,7 @@ func EnableSelfMonitoringInCollectorDaemonSet(
 	collectorDaemonSet *appsv1.DaemonSet,
 	selfMonitoringConfiguration SelfMonitoringConfiguration,
 	operatorVersion string,
+	developmentMode bool,
 ) error {
 	selfMonitoringExport := selfMonitoringConfiguration.Export
 	var authTokenEnvVar *corev1.EnvVar
@@ -214,12 +216,19 @@ func EnableSelfMonitoringInCollectorDaemonSet(
 	// prevent the collector from starting. We probably need to remove the log.Fatalln calls entirely there.
 	//
 	// for i, container := range collectorDaemonSet.Spec.Template.Spec.InitContainers {
-	//	enableSelfMonitoringInContainer(&container, selfMonitoringExport, authTokenEnvVar)
+	//	enableSelfMonitoringInContainer(
+	// 	  &container, selfMonitoringExport, authTokenEnvVar, operatorVersion, developmentMode)
 	//	collectorDaemonSet.Spec.Template.Spec.InitContainers[i] = container
 	// }
 
 	for i, container := range collectorDaemonSet.Spec.Template.Spec.Containers {
-		enableSelfMonitoringInContainer(&container, selfMonitoringExport, authTokenEnvVar, operatorVersion)
+		enableSelfMonitoringInContainer(
+			&container,
+			selfMonitoringExport,
+			authTokenEnvVar,
+			operatorVersion,
+			developmentMode,
+		)
 		collectorDaemonSet.Spec.Template.Spec.Containers[i] = container
 	}
 
@@ -277,6 +286,7 @@ func EnableSelfMonitoringInControllerDeployment(
 	managerContainerName string,
 	selfMonitoringConfiguration SelfMonitoringConfiguration,
 	operatorVersion string,
+	developmentMode bool,
 ) error {
 	managerContainerIdx := slices.IndexFunc(
 		controllerDeployment.Spec.Template.Spec.Containers,
@@ -306,7 +316,13 @@ func EnableSelfMonitoringInControllerDeployment(
 		authTokenEnvVar = &envVar
 	}
 	managerContainer := controllerDeployment.Spec.Template.Spec.Containers[managerContainerIdx]
-	enableSelfMonitoringInContainer(&managerContainer, selfMonitoringExport, authTokenEnvVar, operatorVersion)
+	enableSelfMonitoringInContainer(
+		&managerContainer,
+		selfMonitoringExport,
+		authTokenEnvVar,
+		operatorVersion,
+		developmentMode,
+	)
 	controllerDeployment.Spec.Template.Spec.Containers[managerContainerIdx] = managerContainer
 
 	return nil
@@ -487,6 +503,7 @@ func enableSelfMonitoringInContainer(
 	selfMonitoringExport dash0v1alpha1.Export,
 	authTokenEnvVar *corev1.EnvVar,
 	operatorVersion string,
+	developmentMode bool,
 ) {
 	if authTokenEnvVar != nil {
 		authTokenEnvVarIdx := slices.IndexFunc(container.Env, matchSelfMonitoringAuthTokenEnvVar)
@@ -511,9 +528,13 @@ func enableSelfMonitoringInContainer(
 	updateOrAppendEnvVar(container, otelExporterOtlpProtocolEnvVarName, exportSettings.Protocol)
 	updateOrAppendEnvVar(container, otelResourceAttribtuesEnvVarName,
 		fmt.Sprintf(
-			"service.namespace=dash0.operator,service.name=filelog_offset_synch,service.version=%s",
+			"service.namespace=dash0.operator,service.name=%s,service.version=%s",
+			container.Name,
 			operatorVersion,
 		))
+	if developmentMode {
+		updateOrAppendEnvVar(container, otelLogLevelEnvVarName, "debug")
+	}
 
 	headers := exportSettings.Headers
 	headersEnvVarIdx := slices.IndexFunc(container.Env, matchOtelExporterOtlpHeadersEnvVar)

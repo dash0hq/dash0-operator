@@ -166,6 +166,7 @@ func main() {
 		webhookServer,
 		probeAddr,
 		enableLeaderElection,
+		developmentMode,
 	); err != nil {
 		setupLog.Error(err, "The Dash0 operator manager process failed to start.")
 		os.Exit(1)
@@ -180,6 +181,7 @@ func startOperatorManager(
 	webhookServer k8swebhook.Server,
 	probeAddr string,
 	enableLeaderElection bool,
+	developmentMode bool,
 ) error {
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: scheme,
@@ -245,9 +247,12 @@ func startOperatorManager(
 		envVars.deploymentName,
 		"otel collector name prefix",
 		envVars.oTelCollectorNamePrefix,
+
+		"development mode",
+		developmentMode,
 	)
 
-	err = startDash0Controller(ctx, mgr, clientset, envVars)
+	err = startDash0Controller(ctx, mgr, clientset, envVars, developmentMode)
 	if err != nil {
 		return err
 	}
@@ -354,6 +359,7 @@ func startDash0Controller(
 	mgr manager.Manager,
 	clientset *kubernetes.Clientset,
 	envVars *environmentVariables,
+	developmentMode bool,
 ) error {
 	oTelCollectorBaseUrl :=
 		fmt.Sprintf(
@@ -403,6 +409,7 @@ func startDash0Controller(
 		Scheme:                  mgr.GetScheme(),
 		DeploymentSelfReference: deploymentSelfReference,
 		OTelCollectorNamePrefix: envVars.oTelCollectorNamePrefix,
+		DevelopmentMode:         developmentMode,
 	}
 	backendConnectionManager := &backendconnection.BackendConnectionManager{
 		Client:                 k8sClient,

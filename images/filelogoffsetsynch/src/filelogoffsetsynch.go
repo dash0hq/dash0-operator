@@ -25,16 +25,11 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	metricnoop "go.opentelemetry.io/otel/metric/noop"
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
-	"go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
-	oteltrace "go.opentelemetry.io/otel/trace"
-	tracenoop "go.opentelemetry.io/otel/trace/noop"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -54,28 +49,34 @@ type patch struct {
 }
 
 const (
-	metricNamePrefix = "dash0operator.filelogoffsetsynch."
+	meterName = "dash0.operator.filelog_offset_synch"
 )
 
 var (
 	currentValue string
 
-	tracerProvider oteltrace.TracerProvider
-	tracer         = otel.Tracer("dash0.com/operator/filelogoffsetsynch")
+	metricNamePrefix = fmt.Sprintf("%s.", meterName)
+	meterProvider    otelmetric.MeterProvider
 
-	meterProvider              otelmetric.MeterProvider
-	metricNameCompressedSize   = fmt.Sprintf("%s.%s", metricNamePrefix, "update.compressed_size")
-	offsetFileSize             otelmetric.Int64Gauge
-	metricNameUpdateCounter    = fmt.Sprintf("%s.%s", metricNamePrefix, "update.counter")
-	updateCountMeter           otelmetric.Int64Counter
-	metricNameUpdateDuration   = fmt.Sprintf("%s.%s", metricNamePrefix, "update.duration")
-	updateDurationSecondsMeter otelmetric.Float64Histogram
+	updateSizeMetricName = fmt.Sprintf("%s%s", metricNamePrefix, "update.compressed_size")
+	updateSizeMetric     otelmetric.Int64Gauge
+
+	updateCounterMetricName = fmt.Sprintf("%s%s", metricNamePrefix, "update.counter")
+	updateCountMetric       otelmetric.Int64Counter
+
+	updateErrorsMetricName = fmt.Sprintf("%s%s", metricNamePrefix, "update.errors")
+	updateErrors           otelmetric.Int64Counter
+
+	updateDurationMetricName = fmt.Sprintf("%s%s", metricNamePrefix, "update.duration")
+	updateDurationMetric     otelmetric.Float64Histogram
 )
 
 // TODO Add support for sending_queue on separate exporter
 // TODO Set up compaction
 // TODO Set up metrics & logs
 func main() {
+	ctx := context.Background()
+
 	mode := flag.String("mode", "synch",
 		"if set to 'init', it will fetch the offset files from the configmap and store it to the "+
 			"path stored at ${FILELOG_OFFSET_DIRECTORY_PATH}; synch mode instead will persist the offset "+
@@ -97,14 +98,9 @@ func main() {
 		log.Fatalln("Required env var 'K8S_CONFIGMAP_NAME' is not set")
 	}
 
-	podUid, isSet := os.LookupEnv("K8S_POD_UID")
-	if !isSet {
-		log.Println("Env var 'K8S_POD_UID' is not set")
-	}
-
 	nodeName, isSet := os.LookupEnv("K8S_NODE_NAME")
 	if !isSet {
-		log.Println("Env var 'K8S_NODE_NAME' is not set")
+		log.Fatalln("Required env var 'K8S_NODE_NAME' is not set")
 	}
 
 	fileLogOffsetDirectoryPath, isSet := os.LookupEnv("FILELOG_OFFSET_DIRECTORY_PATH")
@@ -112,107 +108,14 @@ func main() {
 		log.Fatalln("Required env var 'FILELOG_OFFSET_DIRECTORY_PATH' is not set")
 	}
 
-	ctx := context.Background()
-
 	// creates the in-cluster config
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		log.Fatalf("Cannot create the Kube API client: %v", err)
+		log.Fatalf("Cannot create the Kube API client: %v\n", err)
 	}
 
-	var doMeterShutdown func(ctx context.Context) error
-	var doTracerShutdown func(ctx context.Context) error
-
-	if _, isSet = os.LookupEnv("OTEL_EXPORTER_OTLP_ENDPOINT"); isSet {
-		var metricExporter metric.Exporter
-		var spanExporter trace.SpanExporter
-
-		protocol, isProtocolSet := os.LookupEnv("OTEL_EXPORTER_OTLP_PROTOCOL")
-		if !isProtocolSet {
-			// http/protobuf is the default transport protocol, see spec:
-			// https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/protocol/exporter.md
-			protocol = "http/protobuf"
-		}
-
-		switch protocol {
-		case "grpc":
-			if metricExporter, err = otlpmetricgrpc.New(ctx); err != nil {
-				log.Fatalf("Cannot create the OTLP gRPC metrics exporter: %v", err)
-			}
-			if spanExporter, err = otlptracegrpc.New(ctx); err != nil {
-				log.Fatalf("Cannot create the OTLP gRPC span exporter: %v", err)
-			}
-		case "http/protobuf":
-			if metricExporter, err = otlpmetrichttp.New(ctx); err != nil {
-				log.Fatalf("Cannot create the OTLP HTTP metrics exporter: %v", err)
-			}
-			if spanExporter, err = otlptracehttp.New(ctx); err != nil {
-				log.Fatalf("Cannot create the OTLP HTTP span exporter: %v", err)
-			}
-		case "http/json":
-			log.Fatalf("Cannot create the OTLP HTTP exporter: the protocol 'http/json' is currently unsupported")
-		default:
-			log.Fatalf("Unexpected OTLP protocol set as value of the 'OTEL_EXPORTER_OTLP_PROTOCOL' environment variable: %v", protocol)
-		}
-
-		r, err := resource.New(ctx,
-			resource.WithAttributes(
-				semconv.K8SPodUID(podUid),
-				semconv.K8SNodeName(nodeName),
-			),
-		)
-		if err != nil {
-			log.Fatalf("Cannot setup the OTLP resource: %v", err)
-		}
-
-		sdkMeterProvider := metric.NewMeterProvider(
-			metric.WithResource(r),
-			metric.WithReader(metric.NewPeriodicReader(metricExporter, metric.WithTimeout(1*time.Second))),
-		)
-		sdkTracerProvider := trace.NewTracerProvider(
-			trace.WithResource(r),
-			trace.WithBatcher(spanExporter, trace.WithBatchTimeout(time.Second)),
-		)
-
-		meterProvider = sdkMeterProvider
-		doMeterShutdown = sdkMeterProvider.Shutdown
-		tracerProvider = sdkTracerProvider
-		doTracerShutdown = sdkTracerProvider.Shutdown
-	} else {
-		meterProvider = metricnoop.MeterProvider{}
-		doMeterShutdown = func(ctx context.Context) error { return nil }
-		tracerProvider = tracenoop.TracerProvider{}
-		doTracerShutdown = func(ctx context.Context) error { return nil }
-	}
-
-	otel.SetMeterProvider(meterProvider)
-	otel.SetTracerProvider(tracerProvider)
-
-	meter := meterProvider.Meter("dash0.operator.filelog_offset_synch")
-
-	if offsetFileSize, err = meter.Int64Gauge(
-		metricNameCompressedSize,
-		otelmetric.WithUnit("By"),
-		otelmetric.WithDescription("The size of the compressed offset file"),
-	); err != nil {
-		log.Fatalf("Cannot setup the OTLP meter for the offset file size gauge: %v", err)
-	}
-
-	if updateCountMeter, err = meter.Int64Counter(
-		metricNameUpdateCounter,
-		otelmetric.WithUnit("1"),
-		otelmetric.WithDescription("Counter of how many times the synch process for filelog offsets occurs, and how many times it succeeds"),
-	); err != nil {
-		log.Fatalf("Cannot setup the OTLP meter for the synch counter: %v", err)
-	}
-
-	if updateDurationSecondsMeter, err = meter.Float64Histogram(
-		metricNameUpdateDuration,
-		otelmetric.WithUnit("1s"),
-		otelmetric.WithDescription("Counter of how long it takes for the synch process for filelog offsets to complete"),
-	); err != nil {
-		log.Fatalf("Cannot setup the OTLP meter for the synch duration histogram: %v", err)
-	}
+	meter, selfMonitoringShutdownFunctions := setUpSelfMonitoring(ctx)
+	setUpSelfMonitoringMetrics(meter)
 
 	// creates the clientset
 	clientset, err := kubernetes.NewForConfig(config)
@@ -241,20 +144,7 @@ func main() {
 		}
 	}
 
-	if meterProvider != nil {
-		timeoutCtx, cancelFun := context.WithTimeout(ctx, time.Second)
-		if err = doMeterShutdown(timeoutCtx); err != nil {
-			log.Printf("Failed to shutdown metrics provider, metrics data nay have been lost:%v\n", err)
-		}
-		cancelFun()
-	}
-	if tracerProvider != nil {
-		timeoutCtx, cancelFun := context.WithTimeout(ctx, time.Second)
-		if err = doTracerShutdown(timeoutCtx); err != nil {
-			log.Printf("Failed to shutdown tracer provider, metrics data nay have been lost:%v\n", err)
-		}
-		cancelFun()
-	}
+	shutDownSelfMonitoring(ctx, selfMonitoringShutdownFunctions)
 }
 
 func initOffsets(ctx context.Context, settings *Settings) (int, error) {
@@ -375,31 +265,20 @@ type OffsetSizeBytes int
 type IsOffsetUpdated bool
 
 func doSynchOffsetsAndMeasure(ctx context.Context, settings *Settings) error {
-	ctx, span := tracer.Start(ctx, "synch-offsets")
-	defer span.End()
-
 	start := time.Now()
-
 	offsetUpdated, offsetUpdateSize, err := doSynchOffsets(settings)
-
 	elapsed := time.Since(start)
-	span.SetAttributes(attribute.Int("elapsed", int(elapsed.Milliseconds())))
 
-	attributes := []attribute.KeyValue{}
 	if err != nil {
-		span.RecordError(err)
 		log.Printf("Cannot update offset files: %v\n", err)
-
-		attributes = append(attributes,
+		updateErrors.Add(ctx, 1, otelmetric.WithAttributes(
 			attribute.String("error.type", "CannotUpdateOffsetFiles"),
 			attribute.String("error.message", err.Error()),
-		)
-	} else if offsetUpdated {
-		updateCountMeter.Add(ctx, 1, otelmetric.WithAttributes(
-			attributes...,
 		))
-		offsetFileSize.Record(ctx, int64(offsetUpdateSize))
-		updateDurationSecondsMeter.Record(ctx, elapsed.Seconds(), otelmetric.WithAttributes(attributes...))
+	} else if offsetUpdated {
+		updateCountMetric.Add(ctx, 1)
+		updateSizeMetric.Record(ctx, int64(offsetUpdateSize))
+		updateDurationMetric.Record(ctx, elapsed.Seconds())
 	}
 
 	return err
@@ -518,4 +397,119 @@ func tarFile(writer *tar.Writer, path string, info os.FileInfo) (HasAddedFileToA
 	}
 
 	return true, nil
+}
+
+func setUpSelfMonitoring(ctx context.Context) (otelmetric.Meter, []func(ctx context.Context) error) {
+	podUid, isSet := os.LookupEnv("K8S_POD_UID")
+	if !isSet {
+		log.Println("Env var 'K8S_POD_UID' is not set")
+	}
+
+	nodeName, isSet := os.LookupEnv("K8S_NODE_NAME")
+	if !isSet {
+		log.Println("Env var 'K8S_NODE_NAME' is not set")
+	}
+
+	var doMeterShutdown func(ctx context.Context) error
+
+	if _, isSet = os.LookupEnv("OTEL_EXPORTER_OTLP_ENDPOINT"); isSet {
+		var metricExporter metric.Exporter
+
+		protocol, isProtocolSet := os.LookupEnv("OTEL_EXPORTER_OTLP_PROTOCOL")
+		if !isProtocolSet {
+			// http/protobuf is the default transport protocol, see spec:
+			// https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/protocol/exporter.md
+			protocol = "http/protobuf"
+		}
+
+		var err error
+		switch protocol {
+		case "grpc":
+			if metricExporter, err = otlpmetricgrpc.New(ctx); err != nil {
+				log.Fatalf("Cannot create the OTLP gRPC metrics exporter: %v", err)
+			}
+		case "http/protobuf":
+			if metricExporter, err = otlpmetrichttp.New(ctx); err != nil {
+				log.Fatalf("Cannot create the OTLP HTTP metrics exporter: %v", err)
+			}
+		case "http/json":
+			log.Fatalf("Cannot create the OTLP HTTP exporter: the protocol 'http/json' is currently unsupported")
+		default:
+			log.Fatalf("Unexpected OTLP protocol set as value of the 'OTEL_EXPORTER_OTLP_PROTOCOL' environment variable: %v", protocol)
+		}
+
+		r, err := resource.New(ctx,
+			resource.WithAttributes(
+				semconv.K8SPodUID(podUid),
+				semconv.K8SNodeName(nodeName),
+			),
+		)
+		if err != nil {
+			log.Fatalf("Cannot setup the OTLP resource: %v", err)
+		}
+
+		sdkMeterProvider := metric.NewMeterProvider(
+			metric.WithResource(r),
+			metric.WithReader(metric.NewPeriodicReader(metricExporter, metric.WithTimeout(1*time.Second))),
+		)
+
+		meterProvider = sdkMeterProvider
+		doMeterShutdown = sdkMeterProvider.Shutdown
+	} else {
+		meterProvider = metricnoop.MeterProvider{}
+		doMeterShutdown = func(ctx context.Context) error { return nil }
+	}
+
+	otel.SetMeterProvider(meterProvider)
+
+	return meterProvider.Meter(meterName), []func(ctx context.Context) error{
+		doMeterShutdown,
+	}
+}
+
+func shutDownSelfMonitoring(ctx context.Context, shutdownFunctions []func(ctx context.Context) error) {
+	var err error
+	for _, shutdownFunction := range shutdownFunctions {
+		timeoutCtx, cancelFun := context.WithTimeout(ctx, time.Second)
+		if err = shutdownFunction(timeoutCtx); err != nil {
+			log.Printf("Failed to shutdown self monitoring, telemetry may have been lost:%v\n", err)
+		}
+		cancelFun()
+	}
+}
+
+func setUpSelfMonitoringMetrics(meter otelmetric.Meter) {
+	var err error
+
+	if updateSizeMetric, err = meter.Int64Gauge(
+		updateSizeMetricName,
+		otelmetric.WithUnit("By"),
+		otelmetric.WithDescription("The size of the compressed offset file"),
+	); err != nil {
+		log.Fatalf("Cannot initialize the OTLP meter for the offset file size gauge: %v", err)
+	}
+
+	if updateCountMetric, err = meter.Int64Counter(
+		updateCounterMetricName,
+		otelmetric.WithUnit("1"),
+		otelmetric.WithDescription("Counter of how many times the synch process for filelog offsets occurs"),
+	); err != nil {
+		log.Fatalf("Cannot initialize the metric %s: %v", updateCounterMetricName, err)
+	}
+
+	if updateErrors, err = meter.Int64Counter(
+		updateErrorsMetricName,
+		otelmetric.WithUnit("1"),
+		otelmetric.WithDescription("Error counter for failed filelog offset synch attempts"),
+	); err != nil {
+		log.Fatalf("Cannot initialize the metric %s: %v", updateErrorsMetricName, err)
+	}
+
+	if updateDurationMetric, err = meter.Float64Histogram(
+		updateDurationMetricName,
+		otelmetric.WithUnit("1s"),
+		otelmetric.WithDescription("Histogram of how long it takes for the synch process for filelog offsets to complete"),
+	); err != nil {
+		log.Fatalf("Cannot initialize the metric %s: %v", updateDurationMetricName, err)
+	}
 }

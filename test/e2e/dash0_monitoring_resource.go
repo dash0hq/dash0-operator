@@ -132,7 +132,6 @@ func truncateExportedTelemetry() {
 }
 
 func undeployDash0MonitoringResource(namespace string) {
-	truncateExportedTelemetry()
 	By(fmt.Sprintf("Removing the Dash0 monitoring resource from namespace %s", namespace))
 	Expect(
 		runAndIgnoreOutput(exec.Command(
