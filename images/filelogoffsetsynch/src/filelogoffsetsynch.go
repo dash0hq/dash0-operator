@@ -21,19 +21,14 @@ import (
 	"syscall"
 	"time"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
-	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	otelmetric "go.opentelemetry.io/otel/metric"
-	metricnoop "go.opentelemetry.io/otel/metric/noop"
-	"go.opentelemetry.io/otel/sdk/metric"
-	"go.opentelemetry.io/otel/sdk/resource"
-	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+
+	"github.com/dash0hq/dash0-operator/images/pkg/common"
 )
 
 type Settings struct {
@@ -56,7 +51,6 @@ var (
 	currentValue string
 
 	metricNamePrefix = fmt.Sprintf("%s.", meterName)
-	meterProvider    otelmetric.MeterProvider
 
 	updateSizeMetricName = fmt.Sprintf("%s%s", metricNamePrefix, "update.compressed_size")
 	updateSizeMetric     otelmetric.Int64Gauge
@@ -114,7 +108,7 @@ func main() {
 		log.Fatalf("Cannot create the Kube API client: %v\n", err)
 	}
 
-	meter, selfMonitoringShutdownFunctions := setUpSelfMonitoring(ctx)
+	meter, selfMonitoringShutdownFunctions := common.InitOTelSdk(ctx, meterName)
 	setUpSelfMonitoringMetrics(meter)
 
 	// creates the clientset
@@ -144,7 +138,7 @@ func main() {
 		}
 	}
 
-	shutDownSelfMonitoring(ctx, selfMonitoringShutdownFunctions)
+	common.ShutDownOTelSdk(ctx, selfMonitoringShutdownFunctions)
 }
 
 func initOffsets(ctx context.Context, settings *Settings) (int, error) {
@@ -397,85 +391,6 @@ func tarFile(writer *tar.Writer, path string, info os.FileInfo) (HasAddedFileToA
 	}
 
 	return true, nil
-}
-
-func setUpSelfMonitoring(ctx context.Context) (otelmetric.Meter, []func(ctx context.Context) error) {
-	podUid, isSet := os.LookupEnv("K8S_POD_UID")
-	if !isSet {
-		log.Println("Env var 'K8S_POD_UID' is not set")
-	}
-
-	nodeName, isSet := os.LookupEnv("K8S_NODE_NAME")
-	if !isSet {
-		log.Println("Env var 'K8S_NODE_NAME' is not set")
-	}
-
-	var doMeterShutdown func(ctx context.Context) error
-
-	if _, isSet = os.LookupEnv("OTEL_EXPORTER_OTLP_ENDPOINT"); isSet {
-		var metricExporter metric.Exporter
-
-		protocol, isProtocolSet := os.LookupEnv("OTEL_EXPORTER_OTLP_PROTOCOL")
-		if !isProtocolSet {
-			// http/protobuf is the default transport protocol, see spec:
-			// https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/protocol/exporter.md
-			protocol = "http/protobuf"
-		}
-
-		var err error
-		switch protocol {
-		case "grpc":
-			if metricExporter, err = otlpmetricgrpc.New(ctx); err != nil {
-				log.Fatalf("Cannot create the OTLP gRPC metrics exporter: %v", err)
-			}
-		case "http/protobuf":
-			if metricExporter, err = otlpmetrichttp.New(ctx); err != nil {
-				log.Fatalf("Cannot create the OTLP HTTP metrics exporter: %v", err)
-			}
-		case "http/json":
-			log.Fatalf("Cannot create the OTLP HTTP exporter: the protocol 'http/json' is currently unsupported")
-		default:
-			log.Fatalf("Unexpected OTLP protocol set as value of the 'OTEL_EXPORTER_OTLP_PROTOCOL' environment variable: %v", protocol)
-		}
-
-		r, err := resource.New(ctx,
-			resource.WithAttributes(
-				semconv.K8SPodUID(podUid),
-				semconv.K8SNodeName(nodeName),
-			),
-		)
-		if err != nil {
-			log.Fatalf("Cannot setup the OTLP resource: %v", err)
-		}
-
-		sdkMeterProvider := metric.NewMeterProvider(
-			metric.WithResource(r),
-			metric.WithReader(metric.NewPeriodicReader(metricExporter, metric.WithTimeout(1*time.Second))),
-		)
-
-		meterProvider = sdkMeterProvider
-		doMeterShutdown = sdkMeterProvider.Shutdown
-	} else {
-		meterProvider = metricnoop.MeterProvider{}
-		doMeterShutdown = func(ctx context.Context) error { return nil }
-	}
-
-	otel.SetMeterProvider(meterProvider)
-
-	return meterProvider.Meter(meterName), []func(ctx context.Context) error{
-		doMeterShutdown,
-	}
-}
-
-func shutDownSelfMonitoring(ctx context.Context, shutdownFunctions []func(ctx context.Context) error) {
-	var err error
-	for _, shutdownFunction := range shutdownFunctions {
-		timeoutCtx, cancelFun := context.WithTimeout(ctx, time.Second)
-		if err = shutdownFunction(timeoutCtx); err != nil {
-			log.Printf("Failed to shutdown self monitoring, telemetry may have been lost:%v\n", err)
-		}
-		cancelFun()
-	}
 }
 
 func setUpSelfMonitoringMetrics(meter otelmetric.Meter) {

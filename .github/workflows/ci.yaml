@@ -78,6 +78,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: build operator controller image
+        uses: ./.github/actions/build-image
+        with:
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          imageName: operator-controller
+          imageTitle: Dash0 Kubernetes Operator Controller
+          imageDescription: the controller for the Dash0 Kubernetes operator
+          imageUrl: https://github.com/dash0hq/dash0-operator/tree/main
+          context: .
+
       - name: build instrumentation image
         uses: ./.github/actions/build-image
         with:
@@ -106,17 +116,8 @@ jobs:
           imageTitle: Dash0 Kubernetes Configuration Reloader
           imageDescription: the configuration reloader for the Dash0 Kubernetes operator
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/configreloader
-          context: images/configreloader
-
-      - name: build operator controller image
-        uses: ./.github/actions/build-image
-        with:
-          githubToken: ${{ secrets.GITHUB_TOKEN }}
-          imageName: operator-controller
-          imageTitle: Dash0 Kubernetes Operator Controller
-          imageDescription: the controller for the Dash0 Kubernetes operator
-          imageUrl: https://github.com/dash0hq/dash0-operator/tree/main
-          context: .
+          context: images
+          file: images/configreloader/Dockerfile
 
       - name: build filelog offset synch image
         uses: ./.github/actions/build-image
@@ -126,7 +127,8 @@ jobs:
           imageTitle: Dash0 Kubernetes Filelog Offset Synch
           imageDescription: the filelog offset synch for the Dash0 Kubernetes operator
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main
-          context: images/filelogoffsetsynch
+          context: images
+          file: images/filelogoffsetsynch/Dockerfile
 
   publish-helm-chart-dry-run:
     name: Publish Helm Chart (Dry Run)

@@ -630,6 +630,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			newEndpoint := "ingress.us-east-2.aws.dash0-dev.com:4317"
 			updateEndpointOfDash0MonitoringResource(applicationUnderTestNamespace, newEndpoint)
 
+			By("waiting for self-monitoring metrics")
 			Eventually(func(g Gomega) {
 				verifySelfMonitoringMetrics(g)
 			}, 90*time.Second, time.Second).Should(Succeed())

@@ -196,21 +196,26 @@ define build_container_image
 $(eval $@_IMAGE_REPOSITORY = $(1))
 $(eval $@_IMAGE_TAG = $(2))
 $(eval $@_CONTEXT = $(3))
-if [[ -n "$($@_IMAGE_REPOSITORY)" ]]; then                                                           \
-  if [[ "$($@_IMAGE_REPOSITORY)" = *"/"* ]]; then                                                    \
-    echo "not rebuilding the image $($@_IMAGE_REPOSITORY), this looks like a remote image";          \
-  else                                                                                              \
-    echo $(CONTAINER_TOOL) build -t $($@_IMAGE_REPOSITORY):$($@_IMAGE_TAG) $($@_CONTEXT);                  \
-    $(CONTAINER_TOOL) build -t $($@_IMAGE_REPOSITORY):$($@_IMAGE_TAG) $($@_CONTEXT);                  \
-  fi;                                                                                               \
-elif [[ -n "$(OPERATOR_HELM_CHART_URL)" ]]; then                                                    \
-  echo "not rebuilding image, a remote Helm chart is used with the default image from the chart"; \
+$(eval $@_DOCKERFILE = $(4))
+if [[ -n "$($@_IMAGE_REPOSITORY)" ]]; then                                                                \
+  if [[ "$($@_IMAGE_REPOSITORY)" = *"/"* ]]; then                                                         \
+    echo "not rebuilding the image $($@_IMAGE_REPOSITORY), this looks like a remote image";               \
+  else                                                                                                    \
+    dockerfile=$($@_DOCKERFILE);                                                                          \
+    if [[ -z $$dockerfile ]]; then                                                                        \
+        dockerfile=$($@_CONTEXT)/Dockerfile;                                                              \
+    fi;                                                                                                   \
+    echo $(CONTAINER_TOOL) build -t $($@_IMAGE_REPOSITORY):$($@_IMAGE_TAG) -f $$dockerfile $($@_CONTEXT); \
+    $(CONTAINER_TOOL) build -t $($@_IMAGE_REPOSITORY):$($@_IMAGE_TAG) -f $$dockerfile $($@_CONTEXT);      \
+  fi;                                                                                                     \
+elif [[ -n "$(OPERATOR_HELM_CHART_URL)" ]]; then                                                          \
+  echo "not rebuilding image, a remote Helm chart is used with the default image from the chart";         \
 fi
 endef
 
 .PHONY: docker-build-controller
 docker-build-controller: ## Build the manager container image.
-	@$(call build_container_image,$(CONTROLLER_IMG_REPOSITORY),$(CONTROLLER_IMG_TAG),".")
+	@$(call build_container_image,$(CONTROLLER_IMG_REPOSITORY),$(CONTROLLER_IMG_TAG),.)
 
 .PHONY: docker-build-instrumentation
 docker-build-instrumentation: ## Build the instrumentation image.
@@ -222,11 +227,11 @@ docker-build-collector: ## Build the OpenTelemetry collector container image.
 
 .PHONY: docker-build-config-reloader
 docker-build-config-reloader: ## Build the config reloader container image.
-	@$(call build_container_image,$(CONFIGURATION_RELOADER_IMG_REPOSITORY),$(CONFIGURATION_RELOADER_IMG_TAG),images/configreloader)
+	@$(call build_container_image,$(CONFIGURATION_RELOADER_IMG_REPOSITORY),$(CONFIGURATION_RELOADER_IMG_TAG),images,images/configreloader/Dockerfile)
 
 .PHONY: docker-build-filelog-offset-synch
 docker-build-filelog-offset-synch: ## Build the filelog offset synch container image.
-	@$(call build_container_image,$(FILELOG_OFFSET_SYNCH_IMG_REPOSITORY),$(FILELOG_OFFSET_SYNCH_IMG_TAG),images/filelogoffsetsynch)
+	@$(call build_container_image,$(FILELOG_OFFSET_SYNCH_IMG_REPOSITORY),$(FILELOG_OFFSET_SYNCH_IMG_TAG),images,images/filelogoffsetsynch/Dockerfile)
 
 ifndef ignore-not-found
   ignore-not-found = false

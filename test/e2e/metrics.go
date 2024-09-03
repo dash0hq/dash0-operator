@@ -90,21 +90,21 @@ func verifySelfMonitoringMetrics(g Gomega) {
 		attributes := resourceMetrics.Resource().Attributes()
 		var isSet bool
 
-		//serviceNamespace, isSet = attributes.Get("service.namespace")
-		//if !isSet {
-		//	return false
-		//}
-		//if serviceNamespace.Str() != "dash0.operator" {
-		//	return false
-		//}
-		//_, isSet = attributes.Get("service.name")
-		//if !isSet {
-		//	return false
-		//}
-		//_, isSet = attributes.Get("service.version")
-		//if !isSet {
-		//	return false
-		//}
+		serviceNamespace, isSet := attributes.Get("service.namespace")
+		if !isSet {
+			return false
+		}
+		if serviceNamespace.Str() != "dash0.operator" {
+			return false
+		}
+		_, isSet = attributes.Get("service.name")
+		if !isSet {
+			return false
+		}
+		_, isSet = attributes.Get("service.version")
+		if !isSet {
+			return false
+		}
 		_, isSet = attributes.Get("k8s.node.name")
 		if !isSet {
 			return false

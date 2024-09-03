@@ -1,5 +1,7 @@
+# Note: Expects dash0-operator/images as the build context.
 FROM golang:alpine AS builder
-COPY ./src /usr/local/go/src/filelogoffsetsynch
+COPY filelogoffsetsynch/src /usr/local/go/src/filelogoffsetsynch
+COPY pkg /usr/local/go/pkg
 WORKDIR /usr/local/go/src/filelogoffsetsynch
 RUN CGO_ENABLED=0 go build -ldflags '-extldflags "-static"' filelogoffsetsynch
 
