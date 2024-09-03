@@ -26,6 +26,10 @@ inputs:
   context:
     description: "docker build context directory"
     required: true
+  file:
+    description: "path to dockerfile, defaults to ${context}/Dockerfile"
+    required: false
+    default: ''
 
 runs:
   using: "composite"
