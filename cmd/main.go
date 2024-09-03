@@ -16,6 +16,7 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"github.com/go-logr/logr"
+	otelmetric "go.opentelemetry.io/otel/metric"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -32,6 +33,7 @@ import (
 	k8swebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/dash0/controller"
@@ -76,11 +78,18 @@ const (
 
 	//nolint
 	mandatoryEnvVarMissingMessageTemplate = "cannot start the Dash0 operator, the mandatory environment variable \"%s\" is missing"
+
+	meterName = "dash0.operator.manager"
 )
 
 var (
 	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
+
+	metricNamePrefix = fmt.Sprintf("%s.", meterName)
+
+	meter                 otelmetric.Meter
+	otelShutdownFunctions []func(ctx context.Context) error
 )
 
 func init() {
@@ -157,6 +166,8 @@ func main() {
 	webhookServer := k8swebhook.NewServer(k8swebhook.Options{
 		TLSOpts: tlsOpts,
 	})
+
+	meter, otelShutdownFunctions = common.InitOTelSdk(ctx, meterName)
 
 	if err := startOperatorManager(
 		ctx,
@@ -252,7 +263,7 @@ func startOperatorManager(
 		developmentMode,
 	)
 
-	err = startDash0Controller(ctx, mgr, clientset, envVars, developmentMode)
+	err = startDash0Controllers(ctx, mgr, clientset, envVars, developmentMode)
 	if err != nil {
 		return err
 	}
@@ -270,6 +281,9 @@ func startOperatorManager(
 	if err = mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		return fmt.Errorf("unable to set up the signal handler: %w", err)
 	}
+	// ^mgr.Start(...) blocks. It only returns when the manager is terminating.
+
+	common.ShutDownOTelSdk(ctx, otelShutdownFunctions)
 
 	return nil
 }
@@ -354,7 +368,7 @@ func readOptionalPullPolicyFromEnvironmentVariable(envVarName string) corev1.Pul
 	return ""
 }
 
-func startDash0Controller(
+func startDash0Controllers(
 	ctx context.Context,
 	mgr manager.Manager,
 	clientset *kubernetes.Clientset,
@@ -427,6 +441,11 @@ func startDash0Controller(
 	if err := operatorConfigurationReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the operator configuration reconciler: %w", err)
 	}
+	operatorConfigurationReconciler.InitializeSelfMonitoringMetrics(
+		meter,
+		metricNamePrefix,
+		&setupLog,
+	)
 
 	monitoringReconciler := &controller.Dash0Reconciler{
 		Client:                   k8sClient,
@@ -436,10 +455,14 @@ func startDash0Controller(
 		Images:                   images,
 		OperatorNamespace:        envVars.operatorNamespace,
 	}
-
 	if err := monitoringReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the monitoring reconciler: %w", err)
 	}
+	monitoringReconciler.InitializeSelfMonitoringMetrics(
+		meter,
+		metricNamePrefix,
+		&setupLog,
+	)
 
 	if os.Getenv("ENABLE_WEBHOOK") != "false" {
 		if err := (&webhook.Handler{

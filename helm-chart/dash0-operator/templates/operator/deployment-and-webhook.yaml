@@ -121,6 +121,14 @@ spec:
         - name: DASH0_DEVELOPMENT_MODE
           value: {{ .Values.operator.developmentMode | toString | quote }}
         {{- end }}
+        - name: K8S_NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: K8S_POD_UID
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.uid
         ports:
         - containerPort: 9443
           name: webhook-server

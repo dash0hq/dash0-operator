@@ -72,7 +72,7 @@ func main() {
 	signal.Notify(shutdown, syscall.SIGTERM)
 
 	meter, selfMonitoringShutdownFunctions := common.InitOTelSdk(ctx, meterName)
-	setUpSelfMonitoringMetrics(meter)
+	initializeSelfMonitoringMetrics(meter)
 
 	go func() {
 		for {
@@ -234,7 +234,7 @@ func triggerConfigurationReload(collectorPid OTelColPid) error {
 	return nil
 }
 
-func setUpSelfMonitoringMetrics(meter otelmetric.Meter) {
+func initializeSelfMonitoringMetrics(meter otelmetric.Meter) {
 	var err error
 
 	if configFilesChangesMetric, err = meter.Int64Counter(

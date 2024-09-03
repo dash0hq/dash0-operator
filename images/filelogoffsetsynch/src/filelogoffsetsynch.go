@@ -109,7 +109,7 @@ func main() {
 	}
 
 	meter, selfMonitoringShutdownFunctions := common.InitOTelSdk(ctx, meterName)
-	setUpSelfMonitoringMetrics(meter)
+	initializeSelfMonitoringMetrics(meter)
 
 	// creates the clientset
 	clientset, err := kubernetes.NewForConfig(config)
@@ -393,7 +393,7 @@ func tarFile(writer *tar.Writer, path string, info os.FileInfo) (HasAddedFileToA
 	return true, nil
 }
 
-func setUpSelfMonitoringMetrics(meter otelmetric.Meter) {
+func initializeSelfMonitoringMetrics(meter otelmetric.Meter) {
 	var err error
 
 	if updateSizeMetric, err = meter.Int64Gauge(

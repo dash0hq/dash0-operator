@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	otelmetric "go.opentelemetry.io/otel/metric"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
@@ -49,6 +50,8 @@ var (
 			Jitter:   0.3,
 		},
 	}
+
+	monitoringReconcileRequestMetric otelmetric.Int64Counter
 )
 
 func (r *Dash0Reconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -58,6 +61,22 @@ func (r *Dash0Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dash0v1alpha1.Dash0Monitoring{}).
 		Complete(r)
+}
+
+func (r *Dash0Reconciler) InitializeSelfMonitoringMetrics(
+	meter otelmetric.Meter,
+	metricNamePrefix string,
+	logger *logr.Logger,
+) {
+	reconcileRequestMetricName := fmt.Sprintf("%s%s", metricNamePrefix, "monitoring.reconcile_requests")
+	var err error
+	if monitoringReconcileRequestMetric, err = meter.Int64Counter(
+		reconcileRequestMetricName,
+		otelmetric.WithUnit("1"),
+		otelmetric.WithDescription("Counter for monitoring resource reconcile requests"),
+	); err != nil {
+		logger.Error(err, "Cannot initialize the metric %s.")
+	}
 }
 
 // The following markers are used to generate the rules permissions (RBAC) on config/rbac using controller-gen
@@ -84,6 +103,10 @@ func (r *Dash0Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 // - About Controllers: https://kubernetes.io/docs/concepts/architecture/controller/
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.16.3/pkg/reconcile
 func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	if monitoringReconcileRequestMetric != nil {
+		monitoringReconcileRequestMetric.Add(ctx, 1)
+	}
+
 	logger := log.FromContext(ctx)
 	logger.Info("processing reconcile request for Dash0 monitoring resource")
 

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/go-logr/logr"
+	otelmetric "go.opentelemetry.io/otel/metric"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
@@ -21,12 +23,6 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 )
 
-const (
-	ManagerContainerName                           = "manager"
-	updateStatusFailedMessageOperatorConfiguration = "Failed to update Dash0 operator configuration status " +
-		"conditions, requeuing reconcile request."
-)
-
 type OperatorConfigurationReconciler struct {
 	client.Client
 	Clientset               *kubernetes.Clientset
@@ -38,6 +34,16 @@ type OperatorConfigurationReconciler struct {
 	DevelopmentMode         bool
 }
 
+const (
+	ManagerContainerName                           = "manager"
+	updateStatusFailedMessageOperatorConfiguration = "Failed to update Dash0 operator configuration status " +
+		"conditions, requeuing reconcile request."
+)
+
+var (
+	operatorReconcileRequestMetric otelmetric.Int64Counter
+)
+
 func (r *OperatorConfigurationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if r.DanglingEventsTimeouts == nil {
 		r.DanglingEventsTimeouts = defaultDanglingEventsTimeouts
@@ -46,6 +52,22 @@ func (r *OperatorConfigurationReconciler) SetupWithManager(mgr ctrl.Manager) err
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dash0v1alpha1.Dash0OperatorConfiguration{}).
 		Complete(r)
+}
+
+func (r *OperatorConfigurationReconciler) InitializeSelfMonitoringMetrics(
+	meter otelmetric.Meter,
+	metricNamePrefix string,
+	logger *logr.Logger,
+) {
+	reconcileRequestMetricName := fmt.Sprintf("%s%s", metricNamePrefix, "operatorconfiguration.reconcile_requests")
+	var err error
+	if operatorReconcileRequestMetric, err = meter.Int64Counter(
+		reconcileRequestMetricName,
+		otelmetric.WithUnit("1"),
+		otelmetric.WithDescription("Counter for operator configuration resource reconcile requests"),
+	); err != nil {
+		logger.Error(err, "Cannot initialize the metric %s.")
+	}
 }
 
 // The following markers are used to generate the rules permissions (RBAC) on config/rbac using controller-gen
@@ -70,6 +92,10 @@ func (r *OperatorConfigurationReconciler) SetupWithManager(mgr ctrl.Manager) err
 // - About Controllers: https://kubernetes.io/docs/concepts/architecture/controller/
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.16.3/pkg/reconcile
 func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	if operatorReconcileRequestMetric != nil {
+		operatorReconcileRequestMetric.Add(ctx, 1)
+	}
+
 	logger := log.FromContext(ctx)
 
 	var resource *dash0v1alpha1.Dash0OperatorConfiguration
