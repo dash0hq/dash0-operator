@@ -1,5 +1,7 @@
+# Note: Expects dash0-operator/images as the build context.
 FROM golang:alpine AS builder
-COPY ./src /usr/local/go/src/configreloader
+COPY configreloader/src /usr/local/go/src/configreloader
+COPY pkg /usr/local/go/pkg
 WORKDIR /usr/local/go/src/configreloader
 RUN CGO_ENABLED=0 go build -ldflags '-extldflags "-static"' configreloader
 

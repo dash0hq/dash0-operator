@@ -73,6 +73,7 @@ runs:
       uses: docker/build-push-action@v6
       with:
         context: ${{ inputs.context }}
+        file: ${{ inputs.file != '' && inputs.file || format('{0}/Dockerfile', inputs.context) }}
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
         # Maintenance note: keep the expression for building both platforms in sync with the "push" expression.

@@ -82,9 +82,9 @@ func rebuildOperatorControllerImage(operatorImage ImageSpec) {
 			exec.Command(
 				"docker",
 				"build",
-				".",
 				"-t",
 				fmt.Sprintf("%s:%s", operatorImage.repository, operatorImage.tag),
+				".",
 			))).To(Succeed())
 
 	additionalTag := ImageSpec{
@@ -140,9 +140,9 @@ func rebuildCollectorImage(collectorImage ImageSpec) {
 			exec.Command(
 				"docker",
 				"build",
-				"images/collector",
 				"-t",
 				fmt.Sprintf("%s:%s", collectorImage.repository, collectorImage.tag),
+				"images/collector",
 			))).To(Succeed())
 
 	additionalTag := ImageSpec{
@@ -171,9 +171,11 @@ func rebuildConfigurationReloaderImage(configurationReloaderImage ImageSpec) {
 			exec.Command(
 				"docker",
 				"build",
-				"images/configreloader",
+				"-f",
+				"images/configreloader/Dockerfile",
 				"-t",
 				fmt.Sprintf("%s:%s", configurationReloaderImage.repository, configurationReloaderImage.tag),
+				"images",
 			))).To(Succeed())
 
 	additionalTag := ImageSpec{
@@ -202,9 +204,11 @@ func rebuildFileLogOffsetSynchImage(fileLogOffsetSynchImage ImageSpec) {
 			exec.Command(
 				"docker",
 				"build",
-				"images/filelogoffsetsynch",
+				"-f",
+				"images/filelogoffsetsynch/Dockerfile",
 				"-t",
 				fmt.Sprintf("%s:%s", fileLogOffsetSynchImage.repository, fileLogOffsetSynchImage.tag),
+				"images",
 			))).To(Succeed())
 
 	additionalTag := ImageSpec{
