@@ -80,6 +80,8 @@ func InitOTelSdk(
 		// Actually, the trace SDK does that correctly, but the metric SDK does not.
 		// - https://github.com/open-telemetry/opentelemetry-go/blob/932a4d8a5f2536645618d7aee8e5da6b8e3b6751/sdk/trace/provider.go#L353
 		// - https://github.com/open-telemetry/opentelemetry-go/blob/932a4d8a5f2536645618d7aee8e5da6b8e3b6751/sdk/metric/config.go#L106
+		//
+		// Reported here: https://github.com/open-telemetry/opentelemetry-go/issues/5764
 		finalResource, err := resource.Merge(resource.Environment(), resourceWithPodAndNode)
 		if err != nil {
 			log.Fatalf("Cannot merge the OpenTelemetry resource: %v", err)

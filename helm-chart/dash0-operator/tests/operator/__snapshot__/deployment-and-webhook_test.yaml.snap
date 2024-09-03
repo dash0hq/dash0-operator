@@ -56,6 +56,14 @@ deployment should match snapshot (default values):
                   value: ghcr.io/dash0hq/configuration-reloader:0.0.0
                 - name: DASH0_FILELOG_OFFSET_SYNCH_IMAGE
                   value: ghcr.io/dash0hq/filelog-offset-synch:0.0.0
+                - name: K8S_NODE_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: spec.nodeName
+                - name: K8S_POD_UID
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.uid
               image: ghcr.io/dash0hq/operator-controller:0.0.0
               livenessProbe:
                 httpGet:

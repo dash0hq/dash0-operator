@@ -302,8 +302,14 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[7].value
           value: ghcr.io/dash0hq/filelog-offset-synch@sha256:4e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda04
-      - notExists:
+      - equal:
           path: spec.template.spec.containers[0].env[8].name
+          value: K8S_NODE_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[9].name
+          value: K8S_POD_UID
+      - notExists:
+          path: spec.template.spec.containers[0].env[10].name
 
   - it: webhook should have caBundle set
     documentSelector:
