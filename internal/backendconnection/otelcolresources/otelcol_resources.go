@@ -225,9 +225,21 @@ func (m *OTelColResourceManager) DeleteResources(
 	}
 	var allErrors []error
 	for _, object := range allObjects {
-		err := m.Client.Delete(ctx, object)
+		err = m.Client.Delete(ctx, object)
 		if err != nil {
-			allErrors = append(allErrors, err)
+			if apierrors.IsNotFound(err) {
+				logger.Info(
+					"wanted to delete a resource, but it did not exist",
+					"name",
+					object.GetName(),
+					"namespace",
+					object.GetNamespace(),
+					"kind",
+					object.GetObjectKind().GroupVersionKind(),
+				)
+			} else {
+				allErrors = append(allErrors, err)
+			}
 		} else {
 			logger.Info(
 				"deleted resource",

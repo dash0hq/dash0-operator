@@ -197,8 +197,13 @@ func assembleClusterRole(config *oTelColConfig) *rbacv1.ClusterRole {
 		Rules: []rbacv1.PolicyRule{
 			{
 				APIGroups: []string{""},
-				Resources: []string{"pods", "namespaces"},
-				Verbs:     []string{"get", "watch", "list"},
+				Resources: []string{
+					"pods",
+					"namespaces",
+					// required for Kubelet Metrics/Kubeletstats receiver
+					"nodes/stats",
+				},
+				Verbs: []string{"get", "watch", "list"},
 			},
 			{
 				APIGroups: []string{"apps"},

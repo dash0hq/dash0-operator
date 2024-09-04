@@ -21,6 +21,48 @@ var (
 	metricsUnmarshaller = &pmetric.JSONUnmarshaler{}
 )
 
+func verifyKubeletStatsMetrics(g Gomega) {
+	resourceMatchFn := func(resourceMetrics pmetric.ResourceMetrics) bool {
+		attributes := resourceMetrics.Resource().Attributes()
+		var isSet bool
+
+		serviceNamespace, isSet := attributes.Get("service.namespace")
+		if isSet && serviceNamespace.Str() == "dash0.operator" {
+			return false
+		}
+		service, isSet := attributes.Get("service.name")
+		if isSet && service.Str() == "service.version" {
+			return false
+		}
+		_, isSet = attributes.Get("k8s.node.name")
+		if !isSet {
+			return false
+		}
+		_, isSet = attributes.Get("k8s.pod.uid")
+
+		return isSet
+	}
+
+	metricMatchFn := func(metric pmetric.Metric) bool {
+		return strings.HasPrefix(metric.Name(), "k8s.node.") || strings.HasPrefix(metric.Name(), "k8s.pod.")
+	}
+
+	metricsFound := findMatchingMetrics(g, resourceMatchFn, metricMatchFn)
+	g.Expect(metricsFound).To(BeTrue(), "expected to find at least one kubeletstat metric")
+}
+
+func findMatchingMetrics(
+	g Gomega,
+	resourceMatchFn func(resourceMetrics pmetric.ResourceMetrics) bool,
+	metricMatchFn func(metric pmetric.Metric) bool,
+) bool {
+	return fileHasMatchingMetrics(
+		g,
+		resourceMatchFn,
+		metricMatchFn,
+	)
+}
+
 //nolint:all
 func fileHasMatchingMetrics(
 	g Gomega,

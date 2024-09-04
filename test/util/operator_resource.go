@@ -234,14 +234,13 @@ func VerifyOperatorConfigurationResourceByNameDoesNotExist(
 }
 
 func RemoveOperatorConfigurationResource(ctx context.Context, k8sClient client.Client) {
-	RemoveOperatorConfigurationResourceByName(ctx, k8sClient, OperatorConfigurationResourceName, true)
+	RemoveOperatorConfigurationResourceByName(ctx, k8sClient, OperatorConfigurationResourceName)
 }
 
 func RemoveOperatorConfigurationResourceByName(
 	ctx context.Context,
 	k8sClient client.Client,
 	name string,
-	failOnErr bool,
 ) {
 	By("Removing the Dash0 operator configuration resource instance")
 	if resource := LoadOperatorConfigurationResourceByNameIfItExists(
@@ -250,12 +249,6 @@ func RemoveOperatorConfigurationResourceByName(
 		Default,
 		name,
 	); resource != nil {
-		err := k8sClient.Delete(ctx, resource)
-		if failOnErr {
-			// If the test already triggered the deletion of the operator resource, but it was blocked by the
-			// finalizer; removing the finalizer may immediately delete the operator resource. In these cases it is
-			// okay to ignore the error from k8sClient.Delete(ctx, dash0OperatorResource).
-			Expect(err).NotTo(HaveOccurred())
-		}
+		Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 	}
 }

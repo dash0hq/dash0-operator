@@ -84,6 +84,15 @@ receivers:
         endpoint: ${env:MY_POD_IP}:4317
       http:
         endpoint: ${env:MY_POD_IP}:4318
+
+  kubeletstats:
+    auth_type: serviceAccount
+    collection_interval: 20s
+    endpoint: ${env:K8S_NODE_NAME}:10250
+{{- if .DevelopmentMode }}
+    insecure_skip_verify: true
+{{- end }}
+
   # TODO Turn on conditionally for monitored namespaces
   filelog/monitored_pods:
     include:
@@ -186,6 +195,7 @@ service:
     metrics/downstream:
       receivers:
       - otlp
+      - kubeletstats
       processors:
       - k8sattributes
       - memory_limiter
