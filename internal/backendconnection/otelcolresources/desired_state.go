@@ -33,6 +33,7 @@ type oTelColConfig struct {
 type collectorConfigurationTemplateValues struct {
 	Exporters                []OtlpExporter
 	IgnoreLogsFromNamespaces []string
+	DevelopmentMode          bool
 }
 
 const (

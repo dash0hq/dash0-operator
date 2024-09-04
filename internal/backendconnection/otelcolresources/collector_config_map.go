@@ -45,6 +45,7 @@ func assembleCollectorConfigMap(config *oTelColConfig) (*corev1.ConfigMap, error
 			// logs will compound in case of log parsing errors
 			config.Namespace,
 		},
+		DevelopmentMode: config.DevelopmentMode,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("cannot render the collector configuration template: %w", err)
