@@ -187,6 +187,7 @@ rules:
   resources:
   - pods
   - namespaces
+  - nodes/stats
   verbs:
   - get
   - watch

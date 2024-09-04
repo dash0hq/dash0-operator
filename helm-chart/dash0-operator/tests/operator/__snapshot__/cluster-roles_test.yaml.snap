@@ -160,6 +160,7 @@ cluster roles should match snapshot:
         resources:
           - pods
           - namespaces
+          - nodes/stats
         verbs:
           - get
           - watch

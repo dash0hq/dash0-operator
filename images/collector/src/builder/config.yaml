@@ -21,6 +21,7 @@ exporters:
 receivers:
   - gomod: "go.opentelemetry.io/collector/receiver/otlpreceiver v0.106.1"
   - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/filelogreceiver v0.106.1"
+  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/kubeletstatsreceiver v0.106.1"
 
 processors:
   - gomod: "go.opentelemetry.io/collector/processor/batchprocessor v0.106.1"

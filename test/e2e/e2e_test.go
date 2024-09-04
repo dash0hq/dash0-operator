@@ -598,7 +598,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		})
 	})
 
-	Describe("self-monitoring", func() {
+	Describe("metrics & self-monitoring", func() {
 		BeforeAll(func() {
 			By("deploy the Dash0 operator")
 			deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images, true)
@@ -617,12 +617,19 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				operatorHelmChart,
 			)
 
-			time.Sleep(15 * time.Second)
+			time.Sleep(10 * time.Second)
 		})
 
 		AfterEach(func() {
 			undeployDash0MonitoringResource(applicationUnderTestNamespace)
 			undeployDash0OperatorConfigurationResource()
+		})
+
+		It("should produce metrics", func() {
+			By("waiting for metrics")
+			Eventually(func(g Gomega) {
+				verifyKubeletStatsMetrics(g)
+			}, 50*time.Second, time.Second).Should(Succeed())
 		})
 
 		It("should produce self-monitoring telemetry", func() {
