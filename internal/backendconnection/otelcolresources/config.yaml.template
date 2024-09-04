@@ -2,7 +2,12 @@ connectors:
   forward/logs:
 
 exporters:
+{{- if .DevelopmentMode }}
+  debug:
+    verbosity: detailed
+{{- else }}
   debug: {}
+{{- end }}
 {{- range $i, $exporter := .Exporters }}
   {{ $exporter.Name }}:
     endpoint: "{{ $exporter.Endpoint }}"
