@@ -23,10 +23,6 @@ type BackendConnectionManager struct {
 	*otelcolresources.OTelColResourceManager
 }
 
-const (
-	failedToCreateMsg = "failed to create the OpenTelemetry collector instance, no telemetry will be reported to Dash0"
-)
-
 func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
 	ctx context.Context,
 	images util.Images,
@@ -47,7 +43,11 @@ func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInOpera
 		)
 
 	if err != nil {
-		logger.Error(err, failedToCreateMsg)
+		logger.Error(
+			err,
+			"failed to create the one or more of the OpenTelemetry collector DaemonSet/Deployment resources, some or "+
+				"all telemetry will be missing",
+		)
 		return err
 	}
 
@@ -105,9 +105,13 @@ func (m *BackendConnectionManager) RemoveOpenTelemetryCollectorIfNoMonitoringRes
 
 	// Either there is no Dash0 monitoring resource left, or only one and that one is about to be deleted. Delete the
 	// backend connection.
-	logger.Info(fmt.Sprintf("Deleting the OpenTelemetry collector resources in the Dash0 operator namespace %s.", operatorNamespace))
+	logger.Info(
+		fmt.Sprintf(
+			"Deleting the OpenTelemetry collector Kuberenetes resources in the Dash0 operator namespace %s.",
+			operatorNamespace,
+		))
 
-	if err := m.OTelColResourceManager.DeleteResources(
+	if err = m.OTelColResourceManager.DeleteResources(
 		ctx,
 		operatorNamespace,
 		images,
@@ -115,7 +119,10 @@ func (m *BackendConnectionManager) RemoveOpenTelemetryCollectorIfNoMonitoringRes
 		selfMonitoringConfiguration,
 		&logger,
 	); err != nil {
-		logger.Error(err, "Failed to delete the OpenTelemetry collector resources, requeuing reconcile request.")
+		logger.Error(
+			err,
+			"Failed to delete the OpenTelemetry collector Kuberenetes resources, requeuing reconcile request.",
+		)
 		return err
 	}
 	return nil

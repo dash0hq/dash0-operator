@@ -29,6 +29,20 @@ extensions:
 
 processors:
   batch: {}
+
+  resourcedetection:
+    detectors:
+    # Note: Adding the "env" detector here would tag all metrics for all monitored resources with the key-value pairs
+    # from the OTEL_RESOURCE_ATTRIBUTES that we attach to the collector deployment via self-monitoring.
+    - system
+    - eks
+    - ecs
+    - ec2
+    - gcp
+    - aks
+    - azure
+    - k8snode
+
   filter/only_dash0_monitored_resources:
     error_mode: ignore
     traces:
@@ -88,6 +102,17 @@ receivers:
     collection_interval: 20s
     endpoint: ${env:K8S_NODE_NAME}:10250
 {{- if .DevelopmentMode }}
+{{- /*
+On Docker Desktop, Kind, etc. the API server uses a self-signed cert. Scraping will not work without
+insecure_skip_verify=true in these environments:
+
+kubeletstatsreceiver@v0.106.1/scraper.go:104 call to /stats/summary endpoint failed
+{"kind": "receiver", "name": "kubeletstats", "data_type": "metrics", "error": "Get
+\"https://docker-desktop:10250/stats/summary\": tls: failed to verify certificate: x509: certificate signed by unknown
+authority"}
+
+Thus we add this parameter when the helm chart is installed with --set operator.developmentMode=true for local tests and
+e2e tests. */}}
     insecure_skip_verify: true
 {{- end }}
 
@@ -183,6 +208,7 @@ service:
       - otlp
       processors:
       - k8sattributes
+      - resourcedetection
       - memory_limiter
       - batch
       exporters:
@@ -199,6 +225,7 @@ service:
       - kubeletstats
       processors:
       - k8sattributes
+      - resourcedetection
       - memory_limiter
       - batch
       exporters:
@@ -230,6 +257,7 @@ service:
       receivers:
       - forward/logs
       processors:
+      - resourcedetection
       - memory_limiter
       - batch
       exporters:

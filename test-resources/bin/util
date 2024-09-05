@@ -30,8 +30,8 @@ build_all_images() {
 }
 
 deploy_via_helm() {
-  helm_install_command="helm install --namespace dash0-system --set operator.developmentMode=true"
-
+  helm_install_command="helm install --namespace dash0-system"
+  helm_install_command+=" --set operator.developmentMode=true"
   if ! has_been_set_to_empty_string "CONTROLLER_IMG_REPOSITORY"; then
     helm_install_command+=" --set operator.image.repository=${CONTROLLER_IMG_REPOSITORY:-operator-controller}"
   fi

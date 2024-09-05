@@ -2,8 +2,6 @@ exporters:
 {{- if .DevelopmentMode }}
   debug:
     verbosity: detailed
-{{- else }}
-  debug: {}
 {{- end }}
 {{- range $i, $exporter := .Exporters }}
   {{ $exporter.Name }}:
@@ -33,7 +31,8 @@ processors:
 
   resourcedetection:
     detectors:
-    - env
+    # Note: Adding the "env" detector here would tag all metrics for all monitored resources with the key-value pairs
+    # from the OTEL_RESOURCE_ATTRIBUTES that we attach to the collector deployment via self-monitoring.
     - system
     - eks
     - ecs
@@ -60,6 +59,9 @@ service:
       - resourcedetection
       - batch
       exporters:
+      {{- if .DevelopmentMode }}
+      - debug
+      {{- end }}
       {{- range $i, $exporter := .Exporters }}
       - {{ $exporter.Name }}
       {{- end }}

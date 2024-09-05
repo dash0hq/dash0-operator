@@ -130,7 +130,10 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 
 	Describe("when updating all OpenTelemetry collector resources", func() {
 		It("should update the resources", func() {
-			for _, configMapName := range []string{expectedCollectorConfigConfigMapName, expectedFileOffsetsConfigMapName} {
+			for _, configMapName := range []string{
+				expectedCollectorConfigConfigMapName,
+				expectedFileOffsetsConfigMapName,
+			} {
 				Expect(k8sClient.Create(ctx, &corev1.ConfigMap{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      configMapName,
@@ -148,7 +151,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				})).To(Succeed())
 			}
 
-			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
+			_, resourcesHaveBeenUpdated, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
 					Dash0OperatorNamespace,
@@ -158,7 +161,6 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(resourcesHaveBeenCreated).To(BeFalse())
 			Expect(resourcesHaveBeenUpdated).To(BeTrue())
 
 			VerifyCollectorResourcesExist(ctx, k8sClient, Dash0OperatorNamespace)

@@ -244,8 +244,6 @@ install: manifests kustomize ## Install CRDs into the K8s cluster specified in ~
 .PHONY: uninstall
 uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/crd | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) --wait=false -f -
-	sleep 1
-	$(KUSTOMIZE) build config/crd | $(KUBECTL) patch CustomResourceDefinition dash0monitorings.operator.dash0.com -p '{"metadata":{"finalizers":null}}' --type=merge
 
 .PHONY: deploy-via-helm
 deploy-via-helm: ## Deploy the controller via helm to the K8s cluster specified in ~/.kube/config.

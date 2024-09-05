@@ -49,11 +49,14 @@ const (
 
 	probesHttpPort = 13133
 
-	rbacApiVersion   = "rbac.authorization.k8s.io/v1"
-	serviceComponent = "agent-collector"
+	rbacApiGroup = "rbac.authorization.k8s.io"
 
-	openTelemetryCollector      = "opentelemetry-collector"
-	openTelemetryCollectorAgent = "opentelemetry-collector-agent"
+	openTelemetryCollector                     = "opentelemetry-collector"
+	openTelemetryCollectorDaemonSetNameSuffix  = "opentelemetry-collector-agent"
+	openTelemetryCollectorDeploymentNameSuffix = "cluster-metrics-collector"
+
+	daemonSetServiceComponent  = "agent-collector"
+	deploymentServiceComponent = openTelemetryCollectorDeploymentNameSuffix
 
 	configReloader = "configuration-reloader"
 
@@ -71,6 +74,7 @@ const (
 
 	authTokenEnvVarName = "AUTH_TOKEN"
 
+	configMapVolumeName            = "opentelemetry-collector-configmap"
 	collectorConfigurationYaml     = "config.yaml"
 	collectorConfigurationFilePath = "/etc/otelcol/conf/" + collectorConfigurationYaml
 
@@ -80,10 +84,17 @@ const (
 )
 
 var (
+	rbacApiVersion = fmt.Sprintf("%s/v1", rbacApiGroup)
+
 	daemonSetMatchLabels = map[string]string{
 		appKubernetesIoNameKey:           appKubernetesIoNameValue,
 		appKubernetesIoInstanceKey:       appKubernetesIoInstanceValue,
-		appKubernetesIoComponentLabelKey: serviceComponent,
+		appKubernetesIoComponentLabelKey: daemonSetServiceComponent,
+	}
+	deploymentMatchLabels = map[string]string{
+		appKubernetesIoNameKey:           appKubernetesIoNameValue,
+		appKubernetesIoInstanceKey:       appKubernetesIoInstanceValue,
+		appKubernetesIoComponentLabelKey: deploymentServiceComponent,
 	}
 
 	nodeNameFieldSpec = corev1.ObjectFieldSelector{
@@ -111,7 +122,7 @@ var (
 	}}
 
 	collectorConfigVolume = corev1.VolumeMount{
-		Name:      "opentelemetry-collector-configmap",
+		Name:      configMapVolumeName,
 		MountPath: "/etc/otelcol/conf",
 		ReadOnly:  true,
 	}
@@ -134,19 +145,21 @@ var (
 			},
 		},
 	}
+
+	deploymentReplicas int32 = 1
 )
 
 func assembleDesiredState(config *oTelColConfig) ([]client.Object, error) {
 	var desiredState []client.Object
-	desiredState = append(desiredState, serviceAccount(config))
+	desiredState = append(desiredState, assembleServiceAccountForDaemonSet(config))
 	daemonSetCollectorConfigMap, err := assembleDaemonSetCollectorConfigMap(config)
 	if err != nil {
 		return desiredState, err
 	}
 	desiredState = append(desiredState, daemonSetCollectorConfigMap)
 	desiredState = append(desiredState, assembleFilelogOffsetsConfigMap(config))
-	desiredState = append(desiredState, assembleClusterRole(config))
-	desiredState = append(desiredState, assembleClusterRoleBinding(config))
+	desiredState = append(desiredState, assembleClusterRoleForDaemonSet(config))
+	desiredState = append(desiredState, assembleClusterRoleBindingForDaemonSet(config))
 	desiredState = append(desiredState, assembleRole(config))
 	desiredState = append(desiredState, assembleRoleBinding(config))
 	desiredState = append(desiredState, assembleService(config))
@@ -156,28 +169,31 @@ func assembleDesiredState(config *oTelColConfig) ([]client.Object, error) {
 	}
 	desiredState = append(desiredState, collectorDaemonSet)
 
-	//deploymentCollectorConfigMap, err := assembleDeploymentCollectorConfigMap(config)
-	//if err != nil {
-	//	return desiredState, err
-	//}
-	//desiredState = append(desiredState, deploymentCollectorConfigMap)
-	//collectorDeployment, err := assembleCollectorDeployment(config)
-	//if err != nil {
-	//	return desiredState, err
-	//}
-	// desiredState = append(desiredState, collectorDeployment)
+	desiredState = append(desiredState, assembleServiceAccountForDeployment(config))
+	desiredState = append(desiredState, assembleClusterRoleForDeployment(config))
+	desiredState = append(desiredState, assembleClusterRoleBindingForDeployment(config))
+	deploymentCollectorConfigMap, err := assembleDeploymentCollectorConfigMap(config)
+	if err != nil {
+		return desiredState, err
+	}
+	desiredState = append(desiredState, deploymentCollectorConfigMap)
+	collectorDeployment, err := assembleCollectorDeployment(config)
+	if err != nil {
+		return desiredState, err
+	}
+	desiredState = append(desiredState, collectorDeployment)
 
 	return desiredState, nil
 }
 
-func serviceAccount(config *oTelColConfig) *corev1.ServiceAccount {
+func assembleServiceAccountForDaemonSet(config *oTelColConfig) *corev1.ServiceAccount {
 	return &corev1.ServiceAccount{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ServiceAccount",
 			APIVersion: "v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      serviceAccountName(config.NamePrefix),
+			Name:      daemonsetServiceAccountName(config.NamePrefix),
 			Namespace: config.Namespace,
 			Labels:    labels(false),
 		},
@@ -231,26 +247,26 @@ func assembleRoleBinding(config *oTelColConfig) *rbacv1.RoleBinding {
 			Labels:    labels(false),
 		},
 		RoleRef: rbacv1.RoleRef{
-			APIGroup: "rbac.authorization.k8s.io",
+			APIGroup: rbacApiGroup,
 			Kind:     "Role",
 			Name:     roleName(config.NamePrefix),
 		},
 		Subjects: []rbacv1.Subject{{
 			Kind:      "ServiceAccount",
-			Name:      serviceAccountName(config.NamePrefix),
+			Name:      daemonsetServiceAccountName(config.NamePrefix),
 			Namespace: config.Namespace,
 		}},
 	}
 }
 
-func assembleClusterRole(config *oTelColConfig) *rbacv1.ClusterRole {
+func assembleClusterRoleForDaemonSet(config *oTelColConfig) *rbacv1.ClusterRole {
 	return &rbacv1.ClusterRole{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ClusterRole",
 			APIVersion: rbacApiVersion,
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      clusterRoleName(config.NamePrefix),
+			Name:      daemonSetClusterRoleName(config.NamePrefix),
 			Namespace: config.Namespace,
 			Labels:    labels(false),
 		},
@@ -275,11 +291,18 @@ func assembleClusterRole(config *oTelColConfig) *rbacv1.ClusterRole {
 				Resources: []string{"replicasets"},
 				Verbs:     []string{"get", "watch", "list"},
 			},
+			{
+				// Required for the EKS resource detector, to read the config map aws-auth in the namespace kube-system.
+				APIGroups:     []string{""},
+				Resources:     []string{"configmaps"},
+				Verbs:         []string{"get"},
+				ResourceNames: []string{"kube-system/aws-auth"},
+			},
 		},
 	}
 }
 
-func assembleClusterRoleBinding(config *oTelColConfig) *rbacv1.ClusterRoleBinding {
+func assembleClusterRoleBindingForDaemonSet(config *oTelColConfig) *rbacv1.ClusterRoleBinding {
 	return &rbacv1.ClusterRoleBinding{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ClusterRoleBinding",
@@ -291,13 +314,13 @@ func assembleClusterRoleBinding(config *oTelColConfig) *rbacv1.ClusterRoleBindin
 			Labels:    labels(false),
 		},
 		RoleRef: rbacv1.RoleRef{
-			APIGroup: "rbac.authorization.k8s.io",
+			APIGroup: rbacApiGroup,
 			Kind:     "ClusterRole",
-			Name:     clusterRoleName(config.NamePrefix),
+			Name:     daemonSetClusterRoleName(config.NamePrefix),
 		},
 		Subjects: []rbacv1.Subject{{
 			Kind:      "ServiceAccount",
-			Name:      serviceAccountName(config.NamePrefix),
+			Name:      daemonsetServiceAccountName(config.NamePrefix),
 			Namespace: config.Namespace,
 		}},
 	}
@@ -334,7 +357,7 @@ func assembleService(config *oTelColConfig) *corev1.Service {
 			Selector: map[string]string{
 				appKubernetesIoNameKey:           appKubernetesIoNameValue,
 				appKubernetesIoInstanceKey:       appKubernetesIoInstanceValue,
-				appKubernetesIoComponentLabelKey: serviceComponent,
+				appKubernetesIoComponentLabelKey: daemonSetServiceComponent,
 			},
 			InternalTrafficPolicy: ptr.To(corev1.ServiceInternalTrafficPolicyLocal),
 		},
@@ -342,7 +365,7 @@ func assembleService(config *oTelColConfig) *corev1.Service {
 }
 
 func assembleCollectorDaemonSet(config *oTelColConfig) (*appsv1.DaemonSet, error) {
-	collectorContainer, err := assembleCollectorContainer(config)
+	collectorContainer, err := assembleDaemonSetCollectorContainer(config)
 	if err != nil {
 		return nil, err
 	}
@@ -353,7 +376,7 @@ func assembleCollectorDaemonSet(config *oTelColConfig) (*appsv1.DaemonSet, error
 			APIVersion: "apps/v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name(config.NamePrefix, openTelemetryCollectorAgent),
+			Name:      name(config.NamePrefix, openTelemetryCollectorDaemonSetNameSuffix),
 			Namespace: config.Namespace,
 			Labels:    labels(true),
 		},
@@ -369,7 +392,7 @@ func assembleCollectorDaemonSet(config *oTelColConfig) (*appsv1.DaemonSet, error
 					Labels: daemonSetMatchLabels,
 				},
 				Spec: corev1.PodSpec{
-					ServiceAccountName: serviceAccountName(config.NamePrefix),
+					ServiceAccountName: daemonsetServiceAccountName(config.NamePrefix),
 					SecurityContext:    &corev1.PodSecurityContext{},
 					// This setting is required to enable the configuration reloader process to send Unix signals to the
 					// collector process.
@@ -474,11 +497,11 @@ func assembleCollectorDaemonSetVolumes(
 			},
 		},
 		{
-			Name: "opentelemetry-collector-configmap",
+			Name: configMapVolumeName,
 			VolumeSource: corev1.VolumeSource{
 				ConfigMap: &corev1.ConfigMapVolumeSource{
 					LocalObjectReference: corev1.LocalObjectReference{
-						Name: collectorConfigConfigMapName(config.NamePrefix),
+						Name: daemonSetCollectorConfigConfigMapName(config.NamePrefix),
 					},
 					Items: configMapItems,
 				},
@@ -515,7 +538,7 @@ func assembleCollectorDaemonSetVolumeMounts() []corev1.VolumeMount {
 	}
 }
 
-func assembleCollectorDaemonSetEnvVars(config *oTelColConfig) ([]corev1.EnvVar, error) {
+func assembleCollectorEnvVars(config *oTelColConfig) ([]corev1.EnvVar, error) {
 	collectorEnv := []corev1.EnvVar{
 		{
 			Name: "MY_POD_IP",
@@ -551,11 +574,11 @@ func assembleCollectorDaemonSetEnvVars(config *oTelColConfig) ([]corev1.EnvVar, 
 	return collectorEnv, nil
 }
 
-func assembleCollectorContainer(
+func assembleDaemonSetCollectorContainer(
 	config *oTelColConfig,
 ) (corev1.Container, error) {
 	collectorVolumeMounts := assembleCollectorDaemonSetVolumeMounts()
-	collectorEnv, err := assembleCollectorDaemonSetEnvVars(config)
+	collectorEnv, err := assembleCollectorEnvVars(config)
 	if err != nil {
 		return corev1.Container{}, err
 	}
@@ -667,25 +690,278 @@ func assembleFileLogOffsetSynchInitContainer(config *oTelColConfig) corev1.Conta
 	return initFilelogOffsetSynchContainer
 }
 
-// func assembleCollectorDeployment(config *oTelColConfig) (*appsv1.DaemonSet, error) {
-// 	// TODO implement the deployment assemblage
-// 	return nil, nil
-// }
+func assembleServiceAccountForDeployment(config *oTelColConfig) *corev1.ServiceAccount {
+	return &corev1.ServiceAccount{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ServiceAccount",
+			APIVersion: "v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      deploymentServiceAccountName(config.NamePrefix),
+			Namespace: config.Namespace,
+			Labels:    labels(false),
+		},
+	}
+}
 
-func serviceAccountName(namePrefix string) string {
+func assembleClusterRoleForDeployment(config *oTelColConfig) *rbacv1.ClusterRole {
+	return &rbacv1.ClusterRole{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ClusterRole",
+			APIVersion: rbacApiVersion,
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      deploymentClusterRoleName(config.NamePrefix),
+			Namespace: config.Namespace,
+			Labels:    labels(false),
+		},
+		Rules: []rbacv1.PolicyRule{
+			{
+				APIGroups: []string{""},
+				Resources: []string{
+					"events",
+					"namespaces",
+					"namespaces/status",
+					"nodes",
+					"nodes/spec",
+					"pods",
+					"pods/status",
+					"replicationcontrollers",
+					"replicationcontrollers/status",
+					"resourcequotas",
+					"services",
+				},
+				Verbs: []string{
+					"get",
+					"list",
+					"watch",
+				},
+			},
+			{
+				APIGroups: []string{"apps"},
+				Resources: []string{
+					"daemonsets",
+					"deployments",
+					"replicasets",
+					"statefulsets",
+				},
+				Verbs: []string{
+					"get",
+					"list",
+					"watch",
+				},
+			},
+			{
+				APIGroups: []string{"extensions"},
+				Resources: []string{
+					"daemonsets",
+					"deployments",
+					"replicasets",
+				},
+				Verbs: []string{
+					"get",
+					"list",
+					"watch",
+				},
+			},
+			{
+				APIGroups: []string{"batch"},
+				Resources: []string{
+					"jobs",
+					"cronjobs",
+				},
+				Verbs: []string{
+					"get",
+					"list",
+					"watch",
+				},
+			},
+			{
+				APIGroups: []string{"autoscaling"},
+				Resources: []string{
+					"horizontalpodautoscalers",
+				},
+				Verbs: []string{
+					"get",
+					"list",
+					"watch",
+				},
+			},
+		},
+	}
+}
+
+func assembleClusterRoleBindingForDeployment(config *oTelColConfig) *rbacv1.ClusterRoleBinding {
+	return &rbacv1.ClusterRoleBinding{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ClusterRoleBinding",
+			APIVersion: rbacApiVersion,
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name(config.NamePrefix, openTelemetryCollectorDeploymentNameSuffix),
+			Namespace: config.Namespace,
+			Labels:    labels(false),
+		},
+		RoleRef: rbacv1.RoleRef{
+			APIGroup: rbacApiGroup,
+			Kind:     "ClusterRole",
+			Name:     deploymentClusterRoleName(config.NamePrefix),
+		},
+		Subjects: []rbacv1.Subject{{
+			Kind:      "ServiceAccount",
+			Name:      deploymentServiceAccountName(config.NamePrefix),
+			Namespace: config.Namespace,
+		}},
+	}
+}
+
+func assembleCollectorDeployment(config *oTelColConfig) (*appsv1.Deployment, error) {
+	collectorContainer, err := assembleDeploymentCollectorContainer(config)
+	if err != nil {
+		return nil, err
+	}
+
+	collectorDeployment := &appsv1.Deployment{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "Deployment",
+			APIVersion: "apps/v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name(config.NamePrefix, openTelemetryCollectorDeploymentNameSuffix),
+			Namespace: config.Namespace,
+			Labels:    labels(true),
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &deploymentReplicas,
+			Selector: &metav1.LabelSelector{
+				MatchLabels: deploymentMatchLabels,
+			},
+			Strategy: appsv1.DeploymentStrategy{
+				Type: appsv1.RollingUpdateDeploymentStrategyType,
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: deploymentMatchLabels,
+				},
+				Spec: corev1.PodSpec{
+					ServiceAccountName: deploymentServiceAccountName(config.NamePrefix),
+					SecurityContext:    &corev1.PodSecurityContext{},
+					// This setting is required to enable the configuration reloader process to send Unix signals to the
+					// collector process.
+					ShareProcessNamespace: &util.True,
+					Containers: []corev1.Container{
+						collectorContainer,
+						assembleConfigurationReloaderContainer(config),
+					},
+					Volumes:     assembleCollectorDeploymentVolumes(config, configMapItems),
+					HostNetwork: false,
+				},
+			},
+		},
+	}
+
+	if config.SelfMonitoringConfiguration.Enabled {
+		err = selfmonitoring.EnableSelfMonitoringInCollectorDeployment(
+			collectorDeployment,
+			config.SelfMonitoringConfiguration,
+			config.Images.GetOperatorVersion(),
+			config.DevelopmentMode,
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return collectorDeployment, nil
+}
+
+func assembleCollectorDeploymentVolumes(
+	config *oTelColConfig,
+	configMapItems []corev1.KeyToPath,
+) []corev1.Volume {
+	pidFileVolumeSizeLimit := resource.MustParse("1M")
+	return []corev1.Volume{
+		{
+			Name: configMapVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: deploymentCollectorConfigConfigMapName(config.NamePrefix),
+					},
+					Items: configMapItems,
+				},
+			},
+		},
+		{
+			Name: pidFileVolumeName,
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{
+					SizeLimit: &pidFileVolumeSizeLimit,
+				},
+			},
+		},
+	}
+}
+
+func assembleDeploymentCollectorContainer(
+	config *oTelColConfig,
+) (corev1.Container, error) {
+	collectorVolumeMounts := []corev1.VolumeMount{
+		collectorConfigVolume,
+		collectorPidFileMountRW,
+	}
+	collectorEnv, err := assembleCollectorEnvVars(config)
+	if err != nil {
+		return corev1.Container{}, err
+	}
+
+	collectorContainer := corev1.Container{
+		Name:            openTelemetryCollector,
+		Args:            []string{"--config=file:" + collectorConfigurationFilePath},
+		SecurityContext: &corev1.SecurityContext{},
+		Image:           config.Images.CollectorImage,
+		Env:             collectorEnv,
+		LivenessProbe:   &collectorProbe,
+		ReadinessProbe:  &collectorProbe,
+		Resources: corev1.ResourceRequirements{
+			Limits: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("300Mi"),
+			},
+		},
+		VolumeMounts: collectorVolumeMounts,
+	}
+	if config.Images.CollectorImagePullPolicy != "" {
+		collectorContainer.ImagePullPolicy = config.Images.CollectorImagePullPolicy
+	}
+	return collectorContainer, nil
+}
+
+func daemonsetServiceAccountName(namePrefix string) string {
 	return name(namePrefix, openTelemetryCollector)
+}
+
+func deploymentServiceAccountName(namePrefix string) string {
+	return name(namePrefix, openTelemetryCollectorDeploymentNameSuffix)
 }
 
 func filelogReceiverOffsetsConfigMapName(namePrefix string) string {
 	return name(namePrefix, "filelogoffsets")
 }
 
-func collectorConfigConfigMapName(namePrefix string) string {
-	return name(namePrefix, openTelemetryCollectorAgent)
+func daemonSetCollectorConfigConfigMapName(namePrefix string) string {
+	return name(namePrefix, openTelemetryCollectorDaemonSetNameSuffix)
 }
 
-func clusterRoleName(namePrefix string) string {
+func deploymentCollectorConfigConfigMapName(namePrefix string) string {
+	return name(namePrefix, openTelemetryCollectorDeploymentNameSuffix)
+}
+
+func daemonSetClusterRoleName(namePrefix string) string {
 	return name(namePrefix, openTelemetryCollector)
+}
+
+func deploymentClusterRoleName(namePrefix string) string {
+	return name(namePrefix, openTelemetryCollectorDeploymentNameSuffix)
 }
 
 func roleName(namePrefix string) string {
@@ -694,7 +970,7 @@ func roleName(namePrefix string) string {
 
 func serviceLabels() map[string]string {
 	lbls := labels(false)
-	lbls[appKubernetesIoComponentLabelKey] = serviceComponent
+	lbls[appKubernetesIoComponentLabelKey] = daemonSetServiceComponent
 	return lbls
 }
 
