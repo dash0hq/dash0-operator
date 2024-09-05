@@ -16,8 +16,9 @@ import (
 )
 
 const (
-	ExpectedConfigMapName = "unit-test-opentelemetry-collector-agent"
-	ExpectedDaemonSetName = "unit-test-opentelemetry-collector-agent"
+	ExpectedConfigMapName  = "unit-test-opentelemetry-collector-agent"
+	ExpectedDaemonSetName  = "unit-test-opentelemetry-collector-agent"
+	ExpectedDeploymentName = "unit-test-cluster-metrics-collector"
 )
 
 func VerifyCollectorResourcesExist(
@@ -96,6 +97,7 @@ func VerifyCollectorResourcesDoNotExist(
 ) {
 	verifyCollectorConfigMapDoesNotExist(ctx, k8sClient, operatorNamespace)
 	verifyCollectorDaemonSetDoesNotExist(ctx, k8sClient, operatorNamespace)
+	verifyCollectorDeploymentDoesNotExist(ctx, k8sClient, operatorNamespace)
 }
 
 func verifyCollectorConfigMapDoesNotExist(
@@ -124,6 +126,21 @@ func verifyCollectorDaemonSetDoesNotExist(
 		operatorNamespace,
 		ExpectedDaemonSetName,
 		&appsv1.DaemonSet{},
+		"daemon set",
+	)
+}
+
+func verifyCollectorDeploymentDoesNotExist(
+	ctx context.Context,
+	k8sClient client.Client,
+	operatorNamespace string,
+) {
+	verifyResourceDoesNotExist(
+		ctx,
+		k8sClient,
+		operatorNamespace,
+		ExpectedDaemonSetName,
+		&appsv1.Deployment{},
 		"daemon set",
 	)
 }

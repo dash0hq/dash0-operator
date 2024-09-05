@@ -53,7 +53,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		})
 
 		Expect(err).ToNot(HaveOccurred())
-		Expect(desiredState).To(HaveLen(9))
+		Expect(desiredState).To(HaveLen(14))
 		collectorConfigConfigMapContent := getCollectorConfigConfigMapContent(desiredState)
 		Expect(collectorConfigConfigMapContent).To(ContainSubstring(fmt.Sprintf("endpoint: %s", EndpointDash0TestQuoted)))
 		Expect(collectorConfigConfigMapContent).NotTo(ContainSubstring("file/traces"))
@@ -116,6 +116,49 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			ContainElement(MatchVolumeMount("opentelemetry-collector-configmap", "/etc/otelcol/conf")))
 		Expect(configReloaderContainer.VolumeMounts).To(
 			ContainElement(MatchVolumeMount("opentelemetry-collector-pidfile", "/etc/otelcol/run")))
+
+		deployment := getDeployment(desiredState)
+		Expect(deployment).NotTo(BeNil())
+		Expect(deployment.Labels["dash0.com/enable"]).To(Equal("false"))
+		podSpec = deployment.Spec.Template.Spec
+
+		Expect(podSpec.Volumes).To(HaveLen(2))
+		configMapVolume = findVolumeByName(podSpec.Volumes, "opentelemetry-collector-configmap")
+		Expect(configMapVolume).NotTo(BeNil())
+		Expect(configMapVolume.VolumeSource.ConfigMap.LocalObjectReference.Name).
+			To(Equal("unit-test-cluster-metrics-collector"))
+		Expect(findVolumeMountByName(findContainerByName(podSpec.Containers, "opentelemetry-collector").VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
+		Expect(findVolumeMountByName(findContainerByName(podSpec.Containers, "configuration-reloader").VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
+
+		Expect(podSpec.Containers).To(HaveLen(2))
+
+		collectorContainer = podSpec.Containers[0]
+		Expect(collectorContainer).NotTo(BeNil())
+		Expect(collectorContainer.Image).To(Equal(CollectorImageTest))
+		Expect(collectorContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
+		collectorContainerArgs = collectorContainer.Args
+		Expect(collectorContainerArgs).To(HaveLen(1))
+		Expect(collectorContainerArgs[0]).To(Equal("--config=file:/etc/otelcol/conf/config.yaml"))
+		Expect(collectorContainer.VolumeMounts).To(HaveLen(2))
+		Expect(collectorContainer.VolumeMounts).To(
+			ContainElement(MatchVolumeMount("opentelemetry-collector-configmap", "/etc/otelcol/conf")))
+		Expect(collectorContainer.VolumeMounts).To(
+			ContainElement(MatchVolumeMount("opentelemetry-collector-pidfile", "/etc/otelcol/run")))
+
+		configReloaderContainer = podSpec.Containers[1]
+		Expect(configReloaderContainer).NotTo(BeNil())
+		Expect(configReloaderContainer.Image).To(Equal(ConfigurationReloaderImageTest))
+		Expect(configReloaderContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
+		configReloaderContainerArgs = configReloaderContainer.Args
+		Expect(configReloaderContainerArgs).To(HaveLen(2))
+		Expect(configReloaderContainerArgs[0]).To(Equal("--pidfile=/etc/otelcol/run/pid.file"))
+		Expect(configReloaderContainerArgs[1]).To(Equal("/etc/otelcol/conf/config.yaml"))
+		Expect(configReloaderContainer.VolumeMounts).To(HaveLen(2))
+		Expect(configReloaderContainer.VolumeMounts).To(
+			ContainElement(MatchVolumeMount("opentelemetry-collector-configmap", "/etc/otelcol/conf")))
+		Expect(configReloaderContainer.VolumeMounts).To(
+			ContainElement(MatchVolumeMount("opentelemetry-collector-pidfile", "/etc/otelcol/run")))
+
 	})
 
 	It("should use the authorization token directly if provided", func() {
@@ -249,6 +292,15 @@ func getDaemonSet(desiredState []client.Object) *appsv1.DaemonSet {
 	for _, object := range desiredState {
 		if ds, ok := object.(*appsv1.DaemonSet); ok {
 			return ds
+		}
+	}
+	return nil
+}
+
+func getDeployment(desiredState []client.Object) *appsv1.Deployment {
+	for _, object := range desiredState {
+		if d, ok := object.(*appsv1.Deployment); ok {
+			return d
 		}
 	}
 	return nil

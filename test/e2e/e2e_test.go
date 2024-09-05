@@ -602,13 +602,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		BeforeAll(func() {
 			By("deploy the Dash0 operator")
 			deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images, true)
-		})
 
-		AfterAll(func() {
-			undeployOperator(operatorNamespace)
-		})
-
-		BeforeEach(func() {
 			deployDash0OperatorConfigurationResource(defaultDash0OperatorConfigurationValues)
 			deployDash0MonitoringResource(
 				applicationUnderTestNamespace,
@@ -616,19 +610,29 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				operatorNamespace,
 				operatorHelmChart,
 			)
-
-			time.Sleep(10 * time.Second)
+			time.Sleep(5 * time.Second)
+			Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
 		})
 
-		AfterEach(func() {
+		AfterAll(func() {
+			undeployOperator(operatorNamespace)
+
+			removeAllTestApplications(applicationUnderTestNamespace)
 			undeployDash0MonitoringResource(applicationUnderTestNamespace)
 			undeployDash0OperatorConfigurationResource()
 		})
 
-		It("should produce metrics", func() {
-			By("waiting for metrics")
+		It("should produce node-based metrics via the kubeletstats receiver", func() {
+			By("waiting for kubeletstats receiver metrics")
 			Eventually(func(g Gomega) {
 				verifyKubeletStatsMetrics(g)
+			}, 50*time.Second, time.Second).Should(Succeed())
+		})
+
+		It("should produce cluster metrics via the k8s_cluster receiver", func() {
+			By("waiting for k8s_cluster receiver metrics")
+			Eventually(func(g Gomega) {
+				verifyK8skClusterReceiverMetrics(g)
 			}, 50*time.Second, time.Second).Should(Succeed())
 		})
 
@@ -636,6 +640,9 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			By("updating the Dash0 monitoring resource endpoint setting")
 			newEndpoint := "ingress.us-east-2.aws.dash0-dev.com:4317"
 			updateEndpointOfDash0MonitoringResource(applicationUnderTestNamespace, newEndpoint)
+			// Note: updating the endpoint in this way will lead to telemetry from the applications under test no longer
+			// being sent to otlp-sink. This is not relevant for this test case, but might be an issue if we ever add
+			// more tests to this suite after this one.
 
 			By("waiting for self-monitoring metrics")
 			Eventually(func(g Gomega) {

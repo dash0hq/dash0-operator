@@ -18,6 +18,11 @@ import (
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
+type testConfig struct {
+	assembleConfigMapFunction func(config *oTelColConfig) (*corev1.ConfigMap, error)
+	pipelineNames             []string
+}
+
 const (
 	GrpcEndpointTest = "example.com:4317"
 	HttpEndpointTest = "https://example.com:4318"
@@ -29,17 +34,38 @@ var (
 
 var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 
-	It("should fail if no exporter is configured", func() {
-		_, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+	testConfigs := []TableEntry{
+		Entry(
+			"for the DaemonSet",
+			testConfig{
+				assembleConfigMapFunction: assembleDaemonSetCollectorConfigMap,
+				pipelineNames: []string{
+					"traces/downstream",
+					"metrics/downstream",
+					"logs/downstream",
+				},
+			}),
+		Entry(
+			"for the Deployment",
+			testConfig{
+				assembleConfigMapFunction: assembleDeploymentCollectorConfigMap,
+				pipelineNames: []string{
+					"metrics/downstream",
+				},
+			}),
+	}
+
+	DescribeTable("should fail if no exporter is configured", func(testConfig testConfig) {
+		_, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export:     dash0v1alpha1.Export{},
 		})
 		Expect(err).To(HaveOccurred())
-	})
+	}, testConfigs)
 
-	It("should fail to render the Dash0 exporter when no endpoint is provided", func() {
-		_, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+	DescribeTable("should fail to render the Dash0 exporter when no endpoint is provided", func(testConfig testConfig) {
+		_, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export: dash0v1alpha1.Export{
@@ -55,10 +81,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 				ContainSubstring(
 					"no endpoint provided for the Dash0 exporter, unable to create the OpenTelemetry collector")))
 
-	})
+	}, testConfigs)
 
-	It("should render the Dash0 exporter", func() {
-		configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+	DescribeTable("should render the Dash0 exporter", func(testConfig testConfig) {
+		configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export: dash0v1alpha1.Export{
@@ -91,11 +117,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 		Expect(headers[util.Dash0DatasetHeaderName]).To(BeNil())
 		Expect(dash0OtlpExporter["encoding"]).To(BeNil())
 
-		verifyDownstreamExportersInPipelines(collectorConfig, "otlp/dash0")
-	})
+		verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/dash0")
+	}, testConfigs)
 
-	It("should render the Dash0 exporter with custom dataset", func() {
-		configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+	DescribeTable("should render the Dash0 exporter with custom dataset", func(testConfig testConfig) {
+		configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export: dash0v1alpha1.Export{
@@ -129,11 +155,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 		Expect(headers[util.Dash0DatasetHeaderName]).To(Equal("custom-dataset"))
 		Expect(dash0OtlpExporter["encoding"]).To(BeNil())
 
-		verifyDownstreamExportersInPipelines(collectorConfig, "otlp/dash0")
-	})
+		verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/dash0")
+	}, testConfigs)
 
-	It("should render a verbose debug exporter in development mode", func() {
-		configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+	DescribeTable("should render a verbose debug exporter in development mode", func(testConfig testConfig) {
+		configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export: dash0v1alpha1.Export{
@@ -172,11 +198,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 		Expect(headers[util.Dash0DatasetHeaderName]).To(BeNil())
 		Expect(dash0OtlpExporter["encoding"]).To(BeNil())
 
-		verifyDownstreamExportersInPipelines(collectorConfig, "debug", "otlp/dash0")
-	})
+		verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "debug", "otlp/dash0")
+	}, testConfigs)
 
-	It("should fail to render a gRPC exporter when no endpoint is provided", func() {
-		_, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+	DescribeTable("should fail to render a gRPC exporter when no endpoint is provided", func(testConfig testConfig) {
+		_, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export: dash0v1alpha1.Export{
@@ -193,10 +219,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 				ContainSubstring(
 					"no endpoint provided for the gRPC exporter, unable to create the OpenTelemetry collector")))
 
-	})
+	}, testConfigs)
 
-	It("should render an arbitrary gRPC exporter", func() {
-		configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+	DescribeTable("should render an arbitrary gRPC exporter", func(testConfig testConfig) {
+		configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export: dash0v1alpha1.Export{
@@ -236,11 +262,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 		Expect(headers["Key2"]).To(Equal("Value2"))
 		Expect(otlpGrpcExporter["encoding"]).To(BeNil())
 
-		verifyDownstreamExportersInPipelines(collectorConfig, "otlp/grpc")
-	})
+		verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/grpc")
+	}, testConfigs)
 
-	It("should fail to render an HTTP exporter when no endpoint is provided", func() {
-		_, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+	DescribeTable("should fail to render an HTTP exporter when no endpoint is provided", func(testConfig testConfig) {
+		_, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export: dash0v1alpha1.Export{
@@ -257,10 +283,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 			MatchError(
 				ContainSubstring(
 					"no endpoint provided for the HTTP exporter, unable to create the OpenTelemetry collector")))
-	})
+	}, testConfigs)
 
-	It("should fail to render an HTTP exporter when no encoding is provided", func() {
-		_, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+	DescribeTable("should fail to render an HTTP exporter when no encoding is provided", func(testConfig testConfig) {
+		_, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export: dash0v1alpha1.Export{
@@ -278,10 +304,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 				ContainSubstring(
 					"no encoding provided for the HTTP exporter, unable to create the OpenTelemetry collector")))
 
-	})
+	}, testConfigs)
 
-	It("should render an arbitrary HTTP exporter", func() {
-		configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+	DescribeTable("should render an arbitrary HTTP exporter", func(testConfig testConfig) {
+		configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export: dash0v1alpha1.Export{
@@ -322,11 +348,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 		Expect(headers["Key2"]).To(Equal("Value2"))
 		Expect(otlpHttpExporter["encoding"]).To(Equal("json"))
 
-		verifyDownstreamExportersInPipelines(collectorConfig, "otlphttp/json")
-	})
+		verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlphttp/json")
+	}, testConfigs)
 
-	It("should render the Dash0 exporter together with a gRPC exporter", func() {
-		configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+	DescribeTable("should render the Dash0 exporter together with a gRPC exporter", func(testConfig testConfig) {
+		configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export: dash0v1alpha1.Export{
@@ -376,11 +402,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 		Expect(headers["Key1"]).To(Equal("Value1"))
 		Expect(httpExporter["encoding"]).To(BeNil())
 
-		verifyDownstreamExportersInPipelines(collectorConfig, "otlp/dash0", "otlp/grpc")
-	})
+		verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/dash0", "otlp/grpc")
+	}, testConfigs)
 
-	It("should render the Dash0 exporter together with an HTTP exporter", func() {
-		configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+	DescribeTable("should render the Dash0 exporter together with an HTTP exporter", func(testConfig testConfig) {
+		configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export: dash0v1alpha1.Export{
@@ -431,11 +457,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 		Expect(headers["Key1"]).To(Equal("Value1"))
 		Expect(httpExporter["encoding"]).To(Equal("proto"))
 
-		verifyDownstreamExportersInPipelines(collectorConfig, "otlp/dash0", "otlphttp/proto")
-	})
+		verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/dash0", "otlphttp/proto")
+	}, testConfigs)
 
-	It("should render a gRPC exporter together with an HTTP exporter", func() {
-		configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+	DescribeTable("should render a gRPC exporter together with an HTTP exporter", func(testConfig testConfig) {
+		configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export: dash0v1alpha1.Export{
@@ -488,11 +514,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 		Expect(headers["Key2"]).To(Equal("Value2"))
 		Expect(httpExporter["encoding"]).To(Equal("proto"))
 
-		verifyDownstreamExportersInPipelines(collectorConfig, "otlp/grpc", "otlphttp/proto")
-	})
+		verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/grpc", "otlphttp/proto")
+	}, testConfigs)
 
-	It("should render a combination of all three exporter types", func() {
-		configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+	DescribeTable("should render a combination of all three exporter types", func(testConfig testConfig) {
+		configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export: dash0v1alpha1.Export{
@@ -566,8 +592,15 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 		Expect(headers["Key2"]).To(Equal("Value2"))
 		Expect(httpExporter["encoding"]).To(Equal("json"))
 
-		verifyDownstreamExportersInPipelines(collectorConfig, "debug", "otlp/dash0", "otlp/grpc", "otlphttp/json")
-	})
+		verifyDownstreamExportersInPipelines(
+			collectorConfig,
+			testConfig,
+			"debug",
+			"otlp/dash0",
+			"otlp/grpc",
+			"otlphttp/json",
+		)
+	}, testConfigs)
 })
 
 func parseConfigMapContent(configMap *corev1.ConfigMap) map[string]interface{} {
@@ -578,19 +611,17 @@ func parseConfigMapContent(configMap *corev1.ConfigMap) map[string]interface{} {
 	return *configMapParsed
 }
 
-func verifyDownstreamExportersInPipelines(collectorConfig map[string]interface{}, expectedExporters ...string) {
+func verifyDownstreamExportersInPipelines(
+	collectorConfig map[string]interface{},
+	testConfig testConfig,
+	expectedExporters ...string,
+) {
 	pipelines := ((collectorConfig["service"]).(map[string]interface{})["pipelines"]).(map[string]interface{})
 	Expect(pipelines).ToNot(BeNil())
-	tracesPipeline := (pipelines["traces/downstream"]).(map[string]interface{})
-	tracesExporters := (tracesPipeline["exporters"]).([]interface{})
-	Expect(tracesExporters).To(HaveLen(len(expectedExporters)))
-	Expect(tracesExporters).To(ContainElements(expectedExporters))
-	metricsPipeline := (pipelines["metrics/downstream"]).(map[string]interface{})
-	metricsExporters := (metricsPipeline["exporters"]).([]interface{})
-	Expect(metricsExporters).To(HaveLen(len(expectedExporters)))
-	Expect(metricsExporters).To(ContainElements(expectedExporters))
-	logsPipeline := (pipelines["logs/downstream"]).(map[string]interface{})
-	logsExporters := (logsPipeline["exporters"]).([]interface{})
-	Expect(logsExporters).To(ContainElements(expectedExporters))
-	Expect(logsExporters).To(HaveLen(len(expectedExporters)))
+	for _, pipelineName := range testConfig.pipelineNames {
+		pipeline := (pipelines[pipelineName]).(map[string]interface{})
+		exporters := (pipeline["exporters"]).([]interface{})
+		Expect(exporters).To(HaveLen(len(expectedExporters)))
+		Expect(exporters).To(ContainElements(expectedExporters))
+	}
 }

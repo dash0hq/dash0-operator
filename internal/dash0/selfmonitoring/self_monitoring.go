@@ -177,18 +177,36 @@ func (c *cannotFindContainerByNameError) Error() string {
 	return fmt.Sprintf("cannot find the container named '%v' in the %v %v/%v", c.ContainerName, c.WorkloadGKV.Kind, c.WorkloadNamespace, c.WorkloadName)
 }
 
-func DisableSelfMonitoringInCollectorDaemonSet(collectorDemonSet *appsv1.DaemonSet) {
-	for _, container := range collectorDemonSet.Spec.Template.Spec.InitContainers {
-		disableSelfMonitoringInContainer(&container)
-	}
-
-	for _, container := range collectorDemonSet.Spec.Template.Spec.Containers {
-		disableSelfMonitoringInContainer(&container)
-	}
-}
-
 func EnableSelfMonitoringInCollectorDaemonSet(
 	collectorDaemonSet *appsv1.DaemonSet,
+	selfMonitoringConfiguration SelfMonitoringConfiguration,
+	operatorVersion string,
+	developmentMode bool,
+) error {
+	return enableSelfMonitoringInCollector(
+		collectorDaemonSet.Spec.Template.Spec.Containers,
+		selfMonitoringConfiguration,
+		operatorVersion,
+		developmentMode,
+	)
+}
+
+func EnableSelfMonitoringInCollectorDeployment(
+	collectorDeployment *appsv1.Deployment,
+	selfMonitoringConfiguration SelfMonitoringConfiguration,
+	operatorVersion string,
+	developmentMode bool,
+) error {
+	return enableSelfMonitoringInCollector(
+		collectorDeployment.Spec.Template.Spec.Containers,
+		selfMonitoringConfiguration,
+		operatorVersion,
+		developmentMode,
+	)
+}
+
+func enableSelfMonitoringInCollector(
+	collectorContainers []corev1.Container,
 	selfMonitoringConfiguration SelfMonitoringConfiguration,
 	operatorVersion string,
 	developmentMode bool,
@@ -221,7 +239,7 @@ func EnableSelfMonitoringInCollectorDaemonSet(
 	//	collectorDaemonSet.Spec.Template.Spec.InitContainers[i] = container
 	// }
 
-	for i, container := range collectorDaemonSet.Spec.Template.Spec.Containers {
+	for i, container := range collectorContainers {
 		enableSelfMonitoringInContainer(
 			&container,
 			selfMonitoringExport,
@@ -229,7 +247,7 @@ func EnableSelfMonitoringInCollectorDaemonSet(
 			operatorVersion,
 			developmentMode,
 		)
-		collectorDaemonSet.Spec.Template.Spec.Containers[i] = container
+		collectorContainers[i] = container
 	}
 
 	return nil

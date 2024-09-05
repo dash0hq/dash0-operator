@@ -166,10 +166,12 @@ rules:
 - apiGroups:
   - apps
   resources:
-  # Note: apps.daemonsets are also listed further up together with the other workload types in the apps API group, with
-  # fewer permissions. The declaration here extends that list of permissions to make sure we can also create and delete
-  # the daemonsets for the OTel collector instances that the Dash0 operator manages.
+  # Note: apps.daemonsets and app.deployments are also listed further up together with the other workload types in the
+  # apps API group, with fewer permissions. The declaration here extends that list of permissions to make sure we can
+  # also create and delete the daemonset and deployment for the OTel collector instance that the Dash0 operator
+  # manages.
   - daemonsets
+  - deployments
   verbs:
   - create
   - delete
@@ -179,9 +181,11 @@ rules:
   - update
   - watch
 
-# Permissions required due to the fact that the operator needs to create a dedicated service account/cluster role/
-# cluster role binding for the OTel collector and give it a set of permissions; which it can only do if holds these
-# permissions itself.
+# Permissions required due to the fact that the operator needs to create dedicated service accounts/cluster roles/
+# cluster role bindings for the OTel collector daemonset/deployment and give it a set of permissions; which it can only
+# do if holds these permissions itself.
+#
+# First, the permissions for the OpenTelemetry collector DaemonSet:
 - apiGroups:
   - ""
   resources:
@@ -190,24 +194,81 @@ rules:
   - nodes/stats
   verbs:
   - get
-  - watch
   - list
+  - watch
 - apiGroups:
   - apps
   resources:
   - replicasets
   verbs:
   - get
-  - watch
   - list
+  - watch
 - apiGroups:
   - extensions
   resources:
   - replicasets
   verbs:
   - get
-  - watch
   - list
+  - watch
+# Next, the permissions for the OpenTelemetry collector Deployment:
+- apiGroups:
+  - ""
+  resources:
+  - events
+  - namespaces
+  - namespaces/status
+  - nodes
+  - nodes/spec
+  - pods
+  - pods/status
+  - replicationcontrollers
+  - replicationcontrollers/status
+  - resourcequotas
+  - services
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - daemonsets
+  - deployments
+  - replicasets
+  - statefulsets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - extensions
+  resources:
+  - daemonsets
+  - deployments
+  - replicasets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - jobs
+  - cronjobs
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - autoscaling
+  resources:
+  - horizontalpodautoscalers
+  verbs:
+  - get
+  - list
+  - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

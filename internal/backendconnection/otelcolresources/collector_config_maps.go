@@ -29,25 +29,34 @@ var (
 	daemonSetCollectorConfigurationTemplate       = template.Must(
 		template.New("daemonset-collector-configuration").Parse(daemonSetCollectorConfigurationTemplateSource))
 
-	////go:embed deployment.config.yaml.template
-	//deploymentCollectorConfigurationTemplateSource string
-	//deploymentCollectorConfigurationTemplate       = template.Must(
-	//	template.New("deployment-collector-configuration").Parse(deploymentCollectorConfigurationTemplateSource))
+	//go:embed deployment.config.yaml.template
+	deploymentCollectorConfigurationTemplateSource string
+	deploymentCollectorConfigurationTemplate       = template.Must(
+		template.New("deployment-collector-configuration").Parse(deploymentCollectorConfigurationTemplateSource))
 
 	authHeaderValue = fmt.Sprintf("Bearer ${env:%s}", authTokenEnvVarName)
 )
 
 func assembleDaemonSetCollectorConfigMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
-	return assembleCollectorConfigMap(config, daemonSetCollectorConfigurationTemplate)
+	return assembleCollectorConfigMap(
+		config,
+		daemonSetCollectorConfigurationTemplate,
+		daemonSetCollectorConfigConfigMapName(config.NamePrefix),
+	)
 }
 
-//func assembleDeploymentCollectorConfigMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
-//	return assembleCollectorConfigMap(config, deploymentCollectorConfigurationTemplate)
-//}
+func assembleDeploymentCollectorConfigMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
+	return assembleCollectorConfigMap(
+		config,
+		deploymentCollectorConfigurationTemplate,
+		deploymentCollectorConfigConfigMapName(config.NamePrefix),
+	)
+}
 
 func assembleCollectorConfigMap(
 	config *oTelColConfig,
 	template *template.Template,
+	configMapName string,
 ) (*corev1.ConfigMap, error) {
 	exporters, err := ConvertExportSettingsToExporterList(config.Export)
 	if err != nil {
@@ -79,7 +88,7 @@ func assembleCollectorConfigMap(
 			APIVersion: "v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      collectorConfigConfigMapName(config.NamePrefix),
+			Name:      configMapName,
 			Namespace: config.Namespace,
 			Labels:    labels(false),
 		},

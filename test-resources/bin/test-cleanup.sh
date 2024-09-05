@@ -14,7 +14,9 @@ source test-resources/bin/util
 load_env_file
 verify_kubectx
 
-kubectl delete -n ${target_namespace} -f test-resources/customresources/dash0monitoring/dash0monitoring.secret.yaml || true
+kubectl delete -n ${target_namespace} -f test-resources/customresources/dash0monitoring/dash0monitoring.secret.yaml --wait=false || true
+sleep 1
+kubectl patch -f test-resources/customresources/dash0monitoring/dash0monitoring.secret.yaml -p '{"metadata":{"finalizers":null}}' --type=merge || true
 kubectl delete -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.token.yaml || true
 
 make undeploy-via-helm || true
