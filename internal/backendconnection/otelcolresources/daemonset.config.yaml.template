@@ -5,8 +5,6 @@ exporters:
 {{- if .DevelopmentMode }}
   debug:
     verbosity: detailed
-{{- else }}
-  debug: {}
 {{- end }}
 {{- range $i, $exporter := .Exporters }}
   {{ $exporter.Name }}:
@@ -188,6 +186,9 @@ service:
       - memory_limiter
       - batch
       exporters:
+      {{- if .DevelopmentMode }}
+      - debug
+      {{- end }}
       {{- range $i, $exporter := .Exporters }}
       - {{ $exporter.Name }}
       {{- end }}
@@ -201,6 +202,9 @@ service:
       - memory_limiter
       - batch
       exporters:
+      {{- if .DevelopmentMode }}
+      - debug
+      {{- end }}
       {{- range $i, $exporter := .Exporters }}
       - {{ $exporter.Name }}
       {{- end }}
@@ -229,7 +233,9 @@ service:
       - memory_limiter
       - batch
       exporters:
+      {{- if .DevelopmentMode }}
       - debug
+      {{- end }}
       {{- range $i, $exporter := .Exporters }}
       - {{ $exporter.Name }}
       {{- end }}

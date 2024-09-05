@@ -1,0 +1,69 @@
+exporters:
+{{- if .DevelopmentMode }}
+  debug:
+    verbosity: detailed
+{{- else }}
+  debug: {}
+{{- end }}
+{{- range $i, $exporter := .Exporters }}
+  {{ $exporter.Name }}:
+    endpoint: "{{ $exporter.Endpoint }}"
+{{- if $exporter.Headers }}
+    headers:
+{{- range $i, $header := $exporter.Headers }}
+      "{{ $header.Name }}": "{{ $header.Value }}"
+{{- end }}
+{{- end }}
+{{- if $exporter.Encoding }}
+    encoding: "{{ $exporter.Encoding }}"
+{{- end }}
+{{- end }}
+
+extensions:
+  health_check:
+    endpoint: ${env:MY_POD_IP}:13133
+
+processors:
+  batch: {}
+
+  memory_limiter:
+    check_interval: 5s
+    limit_percentage: 80
+    spike_limit_percentage: 25
+
+  resourcedetection:
+    detectors:
+    - env
+    - system
+    - eks
+    - ecs
+    - ec2
+    - gcp
+    - aks
+    - azure
+    - k8snode
+
+receivers:
+  k8s_cluster: {}
+
+service:
+  extensions:
+  - health_check
+
+  pipelines:
+
+    metrics/downstream:
+      receivers:
+      - k8s_cluster
+      processors:
+      - memory_limiter
+      - resourcedetection
+      - batch
+      exporters:
+      {{- range $i, $exporter := .Exporters }}
+      - {{ $exporter.Name }}
+      {{- end }}
+
+  telemetry:
+    metrics:
+      address: ${env:MY_POD_IP}:8888

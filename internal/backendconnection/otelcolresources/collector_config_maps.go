@@ -24,29 +24,47 @@ type OtlpExporter struct {
 }
 
 var (
-	//go:embed config.yaml.template
-	collectorConfigurationTemplateSource string
-	collectorConfigurationTemplate       = template.Must(
-		template.New("collector-configuration").Parse(collectorConfigurationTemplateSource))
+	//go:embed daemonset.config.yaml.template
+	daemonSetCollectorConfigurationTemplateSource string
+	daemonSetCollectorConfigurationTemplate       = template.Must(
+		template.New("daemonset-collector-configuration").Parse(daemonSetCollectorConfigurationTemplateSource))
+
+	////go:embed deployment.config.yaml.template
+	//deploymentCollectorConfigurationTemplateSource string
+	//deploymentCollectorConfigurationTemplate       = template.Must(
+	//	template.New("deployment-collector-configuration").Parse(deploymentCollectorConfigurationTemplateSource))
+
 	authHeaderValue = fmt.Sprintf("Bearer ${env:%s}", authTokenEnvVarName)
 )
 
-func assembleCollectorConfigMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
+func assembleDaemonSetCollectorConfigMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
+	return assembleCollectorConfigMap(config, daemonSetCollectorConfigurationTemplate)
+}
+
+//func assembleDeploymentCollectorConfigMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
+//	return assembleCollectorConfigMap(config, deploymentCollectorConfigurationTemplate)
+//}
+
+func assembleCollectorConfigMap(
+	config *oTelColConfig,
+	template *template.Template,
+) (*corev1.ConfigMap, error) {
 	exporters, err := ConvertExportSettingsToExporterList(config.Export)
 	if err != nil {
 		return nil, fmt.Errorf("cannot assemble the exporters for the configuration: %w", err)
 	}
-	collectorConfiguration, err := renderCollectorConfigs(&collectorConfigurationTemplateValues{
-		Exporters: exporters,
-		IgnoreLogsFromNamespaces: []string{
-			// Skipping kube-system, it requires bespoke filtering work
-			"kube-system",
-			// Skipping logs from the operator and the daemonset, otherwise
-			// logs will compound in case of log parsing errors
-			config.Namespace,
-		},
-		DevelopmentMode: config.DevelopmentMode,
-	})
+	collectorConfiguration, err := renderCollectorConfiguration(template,
+		&collectorConfigurationTemplateValues{
+			Exporters: exporters,
+			IgnoreLogsFromNamespaces: []string{
+				// Skipping kube-system, it requires bespoke filtering work
+				"kube-system",
+				// Skipping logs from the operator and the daemonset, otherwise
+				// logs will compound in case of log parsing errors
+				config.Namespace,
+			},
+			DevelopmentMode: config.DevelopmentMode,
+		})
 	if err != nil {
 		return nil, fmt.Errorf("cannot render the collector configuration template: %w", err)
 	}
@@ -137,11 +155,13 @@ func ConvertExportSettingsToExporterList(export dash0v1alpha1.Export) ([]OtlpExp
 	return exporters, nil
 }
 
-func renderCollectorConfigs(templateValues *collectorConfigurationTemplateValues) (string, error) {
+func renderCollectorConfiguration(
+	template *template.Template,
+	templateValues *collectorConfigurationTemplateValues,
+) (string, error) {
 	var collectorConfiguration bytes.Buffer
-	if err := collectorConfigurationTemplate.Execute(&collectorConfiguration, templateValues); err != nil {
+	if err := template.Execute(&collectorConfiguration, templateValues); err != nil {
 		return "", err
 	}
-
 	return collectorConfiguration.String(), nil
 }
