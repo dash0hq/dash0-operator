@@ -437,6 +437,8 @@ func startDash0Controllers(
 		Scheme:                  mgr.GetScheme(),
 		Recorder:                mgr.GetEventRecorderFor("dash0-operator-configuration-controller"),
 		DeploymentSelfReference: deploymentSelfReference,
+		Images:                  images,
+		DevelopmentMode:         developmentMode,
 	}
 	if err := operatorConfigurationReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the operator configuration reconciler: %w", err)
