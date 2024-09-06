@@ -15,13 +15,14 @@ load_env_file
 verify_kubectx
 setup_test_environment
 
-echo "STEP 1: creating target namespace (if necessary)"
+echo "STEP 1: remove old test resources"
+test-resources/bin/test-cleanup.sh ${target_namespace} false
 test-resources/bin/ensure-namespace-exists.sh ${target_namespace}
 echo
 echo
 
-echo "STEP 2: remove old test resources"
-test-resources/bin/test-cleanup.sh ${target_namespace} false
+echo "STEP 2: creating target namespace (if necessary)"
+test-resources/bin/ensure-namespace-exists.sh ${target_namespace}
 echo
 echo
 
@@ -53,10 +54,10 @@ echo
 sleep 5
 
 echo "STEP 7: deploy the Dash0 operator configuration resource to cluster"
-kubectl apply -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.token.yaml
+install_operator_configuration_resource
 echo
 echo
 
 echo "STEP 8: deploy the Dash0 monitoring resource to namespace ${target_namespace}"
-kubectl apply -n ${target_namespace} -f test-resources/customresources/dash0monitoring/dash0monitoring.secret.yaml
+install_monitoring_resource
 
