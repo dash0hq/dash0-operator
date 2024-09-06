@@ -79,7 +79,7 @@ spec:
     spec:
       containers:
       - name: otelcol
-        image: otel/opentelemetry-collector-contrib:0.106.1
+        image: otel/opentelemetry-collector-contrib:0.108.0
         imagePullPolicy: IfNotPresent
         args: ["--config=/etc/otelcol/config/config.yaml"]
         env:
