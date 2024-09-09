@@ -55,7 +55,7 @@ func deployOperator(
 	Expect(err).NotTo(HaveOccurred())
 	fmt.Fprintf(GinkgoWriter, "output of helm install:\n%s", output)
 
-	verifyThatControllerPodIsRunning(operatorNamespace)
+	verifyThatManagerPodIsRunning(operatorNamespace)
 }
 
 func addOptionalHelmParameters(arguments []string, operatorHelmChart string, images Images) []string {
@@ -159,9 +159,9 @@ func ensureDash0OperatorHelmRepoIsInstalled(
 	}
 }
 
-func verifyThatControllerPodIsRunning(operatorNamespace string) {
-	var controllerPodName string
-	By("validating that the controller pod is running as expected")
+func verifyThatManagerPodIsRunning(operatorNamespace string) {
+	var managerPodName string
+	By("validating that the manager pod is running as expected")
 	verifyControllerUp := func(g Gomega) error {
 		cmd := exec.Command("kubectl", "get",
 			"pods", "-l", "app.kubernetes.io/name=dash0-operator",
@@ -179,11 +179,11 @@ func verifyThatControllerPodIsRunning(operatorNamespace string) {
 		if len(podNames) != 1 {
 			return fmt.Errorf("expect 1 controller pods running, but got %d -- %s", len(podNames), podOutput)
 		}
-		controllerPodName = podNames[0]
-		g.Expect(controllerPodName).To(ContainSubstring("controller"))
+		managerPodName = podNames[0]
+		g.Expect(managerPodName).To(ContainSubstring("controller"))
 
 		cmd = exec.Command("kubectl", "get",
-			"pods", controllerPodName, "-o", "jsonpath={.status.phase}",
+			"pods", managerPodName, "-o", "jsonpath={.status.phase}",
 			"-n", operatorNamespace,
 		)
 		status, err := run(cmd)
@@ -264,7 +264,7 @@ func upgradeOperator(
 	By("waiting shortly, to give the operator time to restart after helm upgrade")
 	time.Sleep(5 * time.Second)
 
-	verifyThatControllerPodIsRunning(operatorNamespace)
+	verifyThatManagerPodIsRunning(operatorNamespace)
 
 	verifyThatCollectorIsRunning(operatorNamespace, operatorHelmChart)
 }

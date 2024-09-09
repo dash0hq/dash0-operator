@@ -185,7 +185,8 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		r.Images,
 		r.OperatorNamespace,
 		monitoringResource,
-		r.readSelfMonitoringConfigurationFromOperatorConfigurationResource(ctx, &logger),
+		selfmonitoring.ReadSelfMonitoringConfigurationFromOperatorConfigurationResource(ctx, r.Client, &logger),
+		backendconnection.TriggeredByDash0Resource,
 	); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -387,32 +388,4 @@ func (r *Dash0Reconciler) attachDanglingEvents(
 				"Could not attach all dangling events after %d retries.", backoff.Steps))
 		}
 	}
-}
-
-func (r *Dash0Reconciler) readSelfMonitoringConfigurationFromOperatorConfigurationResource(
-	ctx context.Context,
-	logger *logr.Logger,
-) selfmonitoring.SelfMonitoringConfiguration {
-	operatorConfigurationResource, err := util.FindUniqueOrMostRecentResourceInScope(
-		ctx,
-		r.Client,
-		"", /* cluster-scope, thus no namespace */
-		&dash0v1alpha1.Dash0OperatorConfiguration{},
-		logger,
-	)
-	if err != nil || operatorConfigurationResource == nil {
-		return selfmonitoring.SelfMonitoringConfiguration{
-			Enabled: false,
-		}
-	}
-	config, err := selfmonitoring.ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
-		*operatorConfigurationResource.(*dash0v1alpha1.Dash0OperatorConfiguration),
-		logger,
-	)
-	if err != nil {
-		return selfmonitoring.SelfMonitoringConfiguration{
-			Enabled: false,
-		}
-	}
-	return config
 }

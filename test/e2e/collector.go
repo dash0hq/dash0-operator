@@ -14,10 +14,12 @@ import (
 )
 
 var (
-	collectorDaemonSetName          = fmt.Sprintf("%s-opentelemetry-collector-agent", operatorHelmReleaseName)
-	collectorDaemonSetNameQualified = fmt.Sprintf("daemonset/%s", collectorDaemonSetName)
-	collectorConfigMapName          = fmt.Sprintf("%s-opentelemetry-collector-agent", operatorHelmReleaseName)
-	collectorConfigMapNameQualified = fmt.Sprintf("configmap/%s", collectorConfigMapName)
+	collectorDaemonSetName           = fmt.Sprintf("%s-opentelemetry-collector-agent-daemonset", operatorHelmReleaseName)
+	collectorDaemonSetNameQualified  = fmt.Sprintf("daemonset/%s", collectorDaemonSetName)
+	collectorDeploymentName          = fmt.Sprintf("%s-cluster-metrics-collector-deployment", operatorHelmReleaseName)
+	collectorDeploymentNameQualified = fmt.Sprintf("deployment/%s", collectorDeploymentName)
+	collectorConfigMapName           = fmt.Sprintf("%s-opentelemetry-collector-agent-cm", operatorHelmReleaseName)
+	collectorConfigMapNameQualified  = fmt.Sprintf("configmap/%s", collectorConfigMapName)
 )
 
 func verifyThatCollectorIsRunning(operatorNamespace string, operatorHelmChart string) {
@@ -36,14 +38,25 @@ func verifyThatCollectorIsRunning(operatorNamespace string, operatorHelmChart st
 				"--timeout",
 				"20s",
 			))).To(Succeed())
+		g.Expect(runAndIgnoreOutput(
+			exec.Command("kubectl",
+				"rollout",
+				"status",
+				"deployment",
+				collectorDeploymentName,
+				"--namespace",
+				operatorNamespace,
+				"--timeout",
+				"20s",
+			))).To(Succeed())
 	}
 
 	Eventually(verifyCollectorIsUp, 60*time.Second, time.Second).Should(Succeed())
 
-	verifyCollectorDaemonsetHasOwnerReference(operatorNamespace, operatorHelmChart)
+	verifyCollectorHasOwnerReference(operatorNamespace, operatorHelmChart)
 }
 
-func verifyCollectorDaemonsetHasOwnerReference(operatorNamespace string, operatorHelmChart string) {
+func verifyCollectorHasOwnerReference(operatorNamespace string, operatorHelmChart string) {
 	chartNameParts := strings.Split(operatorHelmChart, "/")
 	chartName := chartNameParts[len(chartNameParts)-1]
 	controllerDeploymentName := fmt.Sprintf("%s-controller", chartName)
@@ -60,11 +73,24 @@ func verifyCollectorDaemonsetHasOwnerReference(operatorNamespace string, operato
 		))
 	Expect(err).NotTo(HaveOccurred())
 	Expect(output).To(Equal(controllerDeploymentName))
+
+	output, err = run(
+		exec.Command(
+			"kubectl",
+			"get",
+			"--namespace",
+			operatorNamespace,
+			collectorDeploymentNameQualified,
+			"-o",
+			"jsonpath={.metadata.ownerReferences[0].name}",
+		))
+	Expect(err).NotTo(HaveOccurred())
+	Expect(output).To(Equal(controllerDeploymentName))
 }
 
 func verifyThatCollectorHasBeenRemoved(operatorNamespace string) {
 	By("validating that the OpenTelemetry collector has been removed")
-	verifyCollectorIsGone := func(g Gomega) {
+	verifyCollectorDaemonSetIsGone := func(g Gomega) {
 		g.Expect(runAndIgnoreOutput(
 			exec.Command(
 				"kubectl",
@@ -75,7 +101,19 @@ func verifyThatCollectorHasBeenRemoved(operatorNamespace string) {
 				collectorDaemonSetName,
 			))).ToNot(Succeed())
 	}
-	Eventually(verifyCollectorIsGone, 60*time.Second, time.Second).Should(Succeed())
+	Eventually(verifyCollectorDaemonSetIsGone, 60*time.Second, time.Second).Should(Succeed())
+	verifyCollectorDeploymentIsGone := func(g Gomega) {
+		g.Expect(runAndIgnoreOutput(
+			exec.Command(
+				"kubectl",
+				"get",
+				"deployment",
+				"--namespace",
+				operatorNamespace,
+				collectorDeploymentName,
+			))).ToNot(Succeed())
+	}
+	Eventually(verifyCollectorDeploymentIsGone, 60*time.Second, time.Second).Should(Succeed())
 }
 
 func verifyConfigMapContainsString(operatorNamespace string, s string) {

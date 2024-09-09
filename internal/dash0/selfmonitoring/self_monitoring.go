@@ -4,6 +4,7 @@
 package selfmonitoring
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"slices"
@@ -13,6 +14,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
@@ -685,4 +687,33 @@ func matchOtelExporterOtlpProtocolEnvVar(e corev1.EnvVar) bool {
 
 func matchSelfMonitoringAuthTokenEnvVar(e corev1.EnvVar) bool {
 	return e.Name == selfMonitoringauthTokenEnvVarName
+}
+
+func ReadSelfMonitoringConfigurationFromOperatorConfigurationResource(
+	ctx context.Context,
+	k8sClient client.Client,
+	logger *logr.Logger,
+) SelfMonitoringConfiguration {
+	operatorConfigurationResource, err := util.FindUniqueOrMostRecentResourceInScope(
+		ctx,
+		k8sClient,
+		"", /* cluster-scope, thus no namespace */
+		&dash0v1alpha1.Dash0OperatorConfiguration{},
+		logger,
+	)
+	if err != nil || operatorConfigurationResource == nil {
+		return SelfMonitoringConfiguration{
+			Enabled: false,
+		}
+	}
+	config, err := ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
+		*operatorConfigurationResource.(*dash0v1alpha1.Dash0OperatorConfiguration),
+		logger,
+	)
+	if err != nil {
+		return SelfMonitoringConfiguration{
+			Enabled: false,
+		}
+	}
+	return config
 }

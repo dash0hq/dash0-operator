@@ -6,6 +6,7 @@ package otelcolresources
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -207,7 +208,7 @@ func assembleFilelogOffsetsConfigMap(config *oTelColConfig) *corev1.ConfigMap {
 			APIVersion: "v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      filelogReceiverOffsetsConfigMapName(config.NamePrefix),
+			Name:      FilelogReceiverOffsetsConfigMapName(config.NamePrefix),
 			Namespace: config.Namespace,
 			Labels:    labels(false),
 		},
@@ -242,7 +243,7 @@ func assembleRoleBinding(config *oTelColConfig) *rbacv1.RoleBinding {
 			APIVersion: rbacApiVersion,
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name(config.NamePrefix, openTelemetryCollector),
+			Name:      roleBindingName(config.NamePrefix),
 			Namespace: config.Namespace,
 			Labels:    labels(false),
 		},
@@ -266,9 +267,8 @@ func assembleClusterRoleForDaemonSet(config *oTelColConfig) *rbacv1.ClusterRole 
 			APIVersion: rbacApiVersion,
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      daemonSetClusterRoleName(config.NamePrefix),
-			Namespace: config.Namespace,
-			Labels:    labels(false),
+			Name:   DaemonSetClusterRoleName(config.NamePrefix),
+			Labels: labels(false),
 		},
 		Rules: []rbacv1.PolicyRule{
 			{
@@ -309,14 +309,13 @@ func assembleClusterRoleBindingForDaemonSet(config *oTelColConfig) *rbacv1.Clust
 			APIVersion: rbacApiVersion,
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name(config.NamePrefix, openTelemetryCollector),
-			Namespace: config.Namespace,
-			Labels:    labels(false),
+			Name:   DaemonSetClusterRoleBindingName(config.NamePrefix),
+			Labels: labels(false),
 		},
 		RoleRef: rbacv1.RoleRef{
 			APIGroup: rbacApiGroup,
 			Kind:     "ClusterRole",
-			Name:     daemonSetClusterRoleName(config.NamePrefix),
+			Name:     DaemonSetClusterRoleName(config.NamePrefix),
 		},
 		Subjects: []rbacv1.Subject{{
 			Kind:      "ServiceAccount",
@@ -333,7 +332,7 @@ func assembleService(config *oTelColConfig) *corev1.Service {
 			APIVersion: "v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name(config.NamePrefix, openTelemetryCollector),
+			Name:      ServiceName(config.NamePrefix),
 			Namespace: config.Namespace,
 			Labels:    serviceLabels(),
 		},
@@ -376,7 +375,7 @@ func assembleCollectorDaemonSet(config *oTelColConfig) (*appsv1.DaemonSet, error
 			APIVersion: "apps/v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name(config.NamePrefix, openTelemetryCollectorDaemonSetNameSuffix),
+			Name:      DaemonSetName(config.NamePrefix),
 			Namespace: config.Namespace,
 			Labels:    labels(true),
 		},
@@ -442,7 +441,7 @@ func assembleFileLogOffsetSynchContainer(config *oTelColConfig) corev1.Container
 			},
 			{
 				Name:  "K8S_CONFIGMAP_NAME",
-				Value: filelogReceiverOffsetsConfigMapName(config.NamePrefix),
+				Value: FilelogReceiverOffsetsConfigMapName(config.NamePrefix),
 			},
 
 			{
@@ -501,7 +500,7 @@ func assembleCollectorDaemonSetVolumes(
 			VolumeSource: corev1.VolumeSource{
 				ConfigMap: &corev1.ConfigMapVolumeSource{
 					LocalObjectReference: corev1.LocalObjectReference{
-						Name: daemonSetCollectorConfigConfigMapName(config.NamePrefix),
+						Name: DaemonSetCollectorConfigConfigMapName(config.NamePrefix),
 					},
 					Items: configMapItems,
 				},
@@ -667,7 +666,7 @@ func assembleFileLogOffsetSynchInitContainer(config *oTelColConfig) corev1.Conta
 			},
 			{
 				Name:  "K8S_CONFIGMAP_NAME",
-				Value: filelogReceiverOffsetsConfigMapName(config.NamePrefix),
+				Value: FilelogReceiverOffsetsConfigMapName(config.NamePrefix),
 			},
 
 			{
@@ -711,9 +710,8 @@ func assembleClusterRoleForDeployment(config *oTelColConfig) *rbacv1.ClusterRole
 			APIVersion: rbacApiVersion,
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      deploymentClusterRoleName(config.NamePrefix),
-			Namespace: config.Namespace,
-			Labels:    labels(false),
+			Name:   DeploymentClusterRoleName(config.NamePrefix),
+			Labels: labels(false),
 		},
 		Rules: []rbacv1.PolicyRule{
 			{
@@ -798,14 +796,13 @@ func assembleClusterRoleBindingForDeployment(config *oTelColConfig) *rbacv1.Clus
 			APIVersion: rbacApiVersion,
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name(config.NamePrefix, openTelemetryCollectorDeploymentNameSuffix),
-			Namespace: config.Namespace,
-			Labels:    labels(false),
+			Name:   DeploymentClusterRoleBindingName(config.NamePrefix),
+			Labels: labels(false),
 		},
 		RoleRef: rbacv1.RoleRef{
 			APIGroup: rbacApiGroup,
 			Kind:     "ClusterRole",
-			Name:     deploymentClusterRoleName(config.NamePrefix),
+			Name:     DeploymentClusterRoleName(config.NamePrefix),
 		},
 		Subjects: []rbacv1.Subject{{
 			Kind:      "ServiceAccount",
@@ -827,7 +824,7 @@ func assembleCollectorDeployment(config *oTelColConfig) (*appsv1.Deployment, err
 			APIVersion: "apps/v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name(config.NamePrefix, openTelemetryCollectorDeploymentNameSuffix),
+			Name:      DeploymentName(config.NamePrefix),
 			Namespace: config.Namespace,
 			Labels:    labels(true),
 		},
@@ -886,7 +883,7 @@ func assembleCollectorDeploymentVolumes(
 			VolumeSource: corev1.VolumeSource{
 				ConfigMap: &corev1.ConfigMapVolumeSource{
 					LocalObjectReference: corev1.LocalObjectReference{
-						Name: deploymentCollectorConfigConfigMapName(config.NamePrefix),
+						Name: DeploymentCollectorConfigConfigMapName(config.NamePrefix),
 					},
 					Items: configMapItems,
 				},
@@ -937,35 +934,51 @@ func assembleDeploymentCollectorContainer(
 }
 
 func daemonsetServiceAccountName(namePrefix string) string {
-	return name(namePrefix, openTelemetryCollector)
+	return name(namePrefix, openTelemetryCollector, "sa")
 }
 
 func deploymentServiceAccountName(namePrefix string) string {
-	return name(namePrefix, openTelemetryCollectorDeploymentNameSuffix)
+	return name(namePrefix, openTelemetryCollectorDeploymentNameSuffix, "sa")
 }
 
-func filelogReceiverOffsetsConfigMapName(namePrefix string) string {
-	return name(namePrefix, "filelogoffsets")
+func FilelogReceiverOffsetsConfigMapName(namePrefix string) string {
+	return name(namePrefix, "filelogoffsets", "cm")
 }
 
-func daemonSetCollectorConfigConfigMapName(namePrefix string) string {
-	return name(namePrefix, openTelemetryCollectorDaemonSetNameSuffix)
+func DaemonSetCollectorConfigConfigMapName(namePrefix string) string {
+	return name(namePrefix, openTelemetryCollectorDaemonSetNameSuffix, "cm")
 }
 
-func deploymentCollectorConfigConfigMapName(namePrefix string) string {
-	return name(namePrefix, openTelemetryCollectorDeploymentNameSuffix)
+func DeploymentCollectorConfigConfigMapName(namePrefix string) string {
+	return name(namePrefix, openTelemetryCollectorDeploymentNameSuffix, "cm")
 }
 
-func daemonSetClusterRoleName(namePrefix string) string {
-	return name(namePrefix, openTelemetryCollector)
+func DaemonSetClusterRoleName(namePrefix string) string {
+	return name(namePrefix, openTelemetryCollector, "cr")
 }
 
-func deploymentClusterRoleName(namePrefix string) string {
-	return name(namePrefix, openTelemetryCollectorDeploymentNameSuffix)
+func DeploymentClusterRoleName(namePrefix string) string {
+	return name(namePrefix, openTelemetryCollectorDeploymentNameSuffix, "cr")
+}
+
+func DaemonSetClusterRoleBindingName(namePrefix string) string {
+	return name(namePrefix, openTelemetryCollector, "crb")
+}
+
+func DeploymentClusterRoleBindingName(namePrefix string) string {
+	return name(namePrefix, openTelemetryCollectorDeploymentNameSuffix, "crb")
 }
 
 func roleName(namePrefix string) string {
-	return name(namePrefix, openTelemetryCollector)
+	return name(namePrefix, openTelemetryCollector, "role")
+}
+
+func roleBindingName(namePrefix string) string {
+	return name(namePrefix, openTelemetryCollector, "rolebinding")
+}
+
+func ServiceName(namePrefix string) string {
+	return name(namePrefix, openTelemetryCollector, "service")
 }
 
 func serviceLabels() map[string]string {
@@ -974,8 +987,16 @@ func serviceLabels() map[string]string {
 	return lbls
 }
 
-func name(prefix string, suffix string) string {
-	return fmt.Sprintf("%s-%s", prefix, suffix)
+func DaemonSetName(namePrefix string) string {
+	return name(namePrefix, openTelemetryCollectorDaemonSetNameSuffix, "daemonset")
+}
+
+func DeploymentName(namePrefix string) string {
+	return name(namePrefix, openTelemetryCollectorDeploymentNameSuffix, "deployment")
+}
+
+func name(prefix string, parts ...string) string {
+	return strings.Join(append([]string{prefix}, parts...), "-")
 }
 
 func labels(addOptOutLabel bool) map[string]string {

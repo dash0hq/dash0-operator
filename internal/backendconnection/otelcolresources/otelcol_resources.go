@@ -6,10 +6,11 @@ package otelcolresources
 import (
 	"context"
 	"errors"
-	"reflect"
+	"fmt"
+	"slices"
 
+	"github.com/cisco-open/k8s-objectmatcher/patch"
 	"github.com/go-logr/logr"
-	"github.com/google/go-cmp/cmp"
 	appsv1 "k8s.io/api/apps/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,6 +32,14 @@ type OTelColResourceManager struct {
 	OTelCollectorNamePrefix string
 	DevelopmentMode         bool
 }
+
+const (
+	bogusDeploymentPatch = "{\"spec\":{\"strategy\":{\"$retainKeys\":[\"type\"],\"rollingUpdate\":null}}}"
+)
+
+var (
+	knownIrrelevantPatches = []string{bogusDeploymentPatch}
+)
 
 func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	ctx context.Context,
@@ -74,26 +83,26 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 
 func (m *OTelColResourceManager) createOrUpdateResource(
 	ctx context.Context,
-	desiredObject client.Object,
+	desiredResource client.Object,
 	logger *logr.Logger,
 ) (bool, bool, error) {
-	existingObject, err := m.createEmptyReceiverFor(desiredObject)
+	existingObject, err := m.createEmptyReceiverFor(desiredResource)
 	if err != nil {
 		return false, false, err
 	}
-	err = m.Client.Get(ctx, client.ObjectKeyFromObject(desiredObject), existingObject)
+	err = m.Client.Get(ctx, client.ObjectKeyFromObject(desiredResource), existingObject)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return false, false, err
 		}
-		err = m.createResource(ctx, desiredObject, logger)
+		err = m.createResource(ctx, desiredResource, logger)
 		if err != nil {
 			return false, false, err
 		}
 		return true, false, nil
 	} else {
 		// object needs to be updated
-		hasChanged, err := m.updateResource(ctx, existingObject, desiredObject, logger)
+		hasChanged, err := m.updateResource(ctx, existingObject, desiredResource, logger)
 		if err != nil {
 			return false, false, err
 		}
@@ -101,8 +110,8 @@ func (m *OTelColResourceManager) createOrUpdateResource(
 	}
 }
 
-func (m *OTelColResourceManager) createEmptyReceiverFor(desiredObject client.Object) (client.Object, error) {
-	objectKind := desiredObject.GetObjectKind()
+func (m *OTelColResourceManager) createEmptyReceiverFor(desiredResource client.Object) (client.Object, error) {
+	objectKind := desiredResource.GetObjectKind()
 	gvk := schema.GroupVersionKind{
 		Group:   objectKind.GroupVersionKind().Group,
 		Version: objectKind.GroupVersionKind().Version,
@@ -117,79 +126,98 @@ func (m *OTelColResourceManager) createEmptyReceiverFor(desiredObject client.Obj
 
 func (m *OTelColResourceManager) createResource(
 	ctx context.Context,
-	desiredObject client.Object,
+	desiredResource client.Object,
 	logger *logr.Logger,
 ) error {
-	if err := m.setOwnerReference(desiredObject, logger); err != nil {
+	if err := m.setOwnerReference(desiredResource, logger); err != nil {
 		return err
 	}
-	err := m.Client.Create(ctx, desiredObject)
+	if err := patch.DefaultAnnotator.SetLastAppliedAnnotation(desiredResource); err != nil {
+		return err
+	}
+	err := m.Client.Create(ctx, desiredResource)
 	if err != nil {
 		return err
 	}
-	logger.Info(
-		"created resource",
-		"name",
-		desiredObject.GetName(),
-		"namespace",
-		desiredObject.GetNamespace(),
-		"kind",
-		desiredObject.GetObjectKind().GroupVersionKind(),
-	)
+	logger.Info(fmt.Sprintf(
+		"created resource %s/%s",
+		desiredResource.GetNamespace(),
+		desiredResource.GetName(),
+	))
 	return nil
 }
 
 func (m *OTelColResourceManager) updateResource(
 	ctx context.Context,
 	existingObject client.Object,
-	desiredObject client.Object,
+	desiredResource client.Object,
 	logger *logr.Logger,
 ) (bool, error) {
-	logger.Info(
-		"updating resource",
-		"name",
-		desiredObject.GetName(),
-		"namespace",
-		desiredObject.GetNamespace(),
-		"kind",
-		desiredObject.GetObjectKind().GroupVersionKind(),
+	if m.DevelopmentMode {
+		logger.Info(fmt.Sprintf(
+			"checking whether resource %s/%s requires update",
+			desiredResource.GetNamespace(),
+			desiredResource.GetName(),
+		))
+	}
+
+	if err := m.setOwnerReference(desiredResource, logger); err != nil {
+		return false, err
+	}
+
+	patchResult, err := patch.DefaultPatchMaker.Calculate(
+		existingObject,
+		desiredResource,
+		patch.IgnoreField("kind"),
+		patch.IgnoreField("apiVersion"),
 	)
-	if err := m.setOwnerReference(desiredObject, logger); err != nil {
-		return false, err
-	}
-	err := m.Client.Update(ctx, desiredObject)
 	if err != nil {
 		return false, err
 	}
-	updatedObject, err := m.createEmptyReceiverFor(desiredObject)
+	hasChanged := !patchResult.IsEmpty() && !isKnownIrrelevantPatch(patchResult)
+	if !hasChanged {
+		if m.DevelopmentMode {
+			logger.Info(fmt.Sprintf("resource %s/%s is already up to date",
+				desiredResource.GetNamespace(),
+				desiredResource.GetName(),
+			))
+		}
+		return false, nil
+	}
+
+	if err = patch.DefaultAnnotator.SetLastAppliedAnnotation(desiredResource); err != nil {
+		return false, err
+	}
+
+	err = m.Client.Update(ctx, desiredResource)
 	if err != nil {
 		return false, err
 	}
-	err = m.Client.Get(ctx, client.ObjectKeyFromObject(desiredObject), updatedObject)
-	if err != nil {
-		return false, err
+
+	if m.DevelopmentMode {
+		logger.Info(fmt.Sprintf(
+			"resource %s/%s was out of sync and has been reconciled",
+			desiredResource.GetNamespace(),
+			desiredResource.GetName(),
+		))
 	}
-	hasChanged := !reflect.DeepEqual(existingObject, updatedObject)
-	if hasChanged {
-		logger.Info(
-			"updated resource",
-			"name",
-			desiredObject.GetName(),
-			"namespace",
-			desiredObject.GetNamespace(),
-			"kind",
-			desiredObject.GetObjectKind().GroupVersionKind(),
-			"diff",
-			cmp.Diff(existingObject, updatedObject),
-		)
-	}
+
 	return hasChanged, nil
+}
+
+func isKnownIrrelevantPatch(patchResult *patch.PatchResult) bool {
+	patch := string(patchResult.Patch)
+	return slices.Contains(knownIrrelevantPatches, patch)
 }
 
 func (m *OTelColResourceManager) setOwnerReference(
 	object client.Object,
 	logger *logr.Logger,
 ) error {
+	if object.GetNamespace() == "" {
+		// cluster scoped resources like ClusterRole and ClusterRoleBinding cannot have a namespace-scoped owner.
+		return nil
+	}
 	if err := controllerutil.SetControllerReference(&appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: m.DeploymentSelfReference.Namespace,
@@ -219,37 +247,29 @@ func (m *OTelColResourceManager) DeleteResources(
 		Images:                      images,
 		DevelopmentMode:             m.DevelopmentMode,
 	}
-	allObjects, err := assembleDesiredState(config)
+	desiredResources, err := assembleDesiredState(config)
 	if err != nil {
 		return err
 	}
 	var allErrors []error
-	for _, object := range allObjects {
-		err = m.Client.Delete(ctx, object)
+	for _, desiredResource := range desiredResources {
+		err = m.Client.Delete(ctx, desiredResource)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
-				logger.Info(
-					"wanted to delete a resource, but it did not exist",
-					"name",
-					object.GetName(),
-					"namespace",
-					object.GetNamespace(),
-					"kind",
-					object.GetObjectKind().GroupVersionKind(),
-				)
+				logger.Info(fmt.Sprintf(
+					"wanted to delete resource %s/%s, but it did not exist",
+					desiredResource.GetNamespace(),
+					desiredResource.GetName(),
+				))
 			} else {
 				allErrors = append(allErrors, err)
 			}
 		} else {
-			logger.Info(
-				"deleted resource",
-				"name",
-				object.GetName(),
-				"namespace",
-				object.GetNamespace(),
-				"kind",
-				object.GetObjectKind().GroupVersionKind(),
-			)
+			logger.Info(fmt.Sprintf(
+				"deleted resource %s/%s",
+				desiredResource.GetNamespace(),
+				desiredResource.GetName(),
+			))
 		}
 	}
 	if len(allErrors) > 0 {

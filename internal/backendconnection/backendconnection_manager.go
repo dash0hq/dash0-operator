@@ -6,6 +6,7 @@ package backendconnection
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -21,7 +22,16 @@ type BackendConnectionManager struct {
 	client.Client
 	Clientset *kubernetes.Clientset
 	*otelcolresources.OTelColResourceManager
+	updateInProgress                   atomic.Bool
+	resourcesHaveBeenDeletedByOperator atomic.Bool
 }
+
+type BackendConnectionReconcileTrigger string
+
+const (
+	TriggeredByWatchEvent    BackendConnectionReconcileTrigger = "watch"
+	TriggeredByDash0Resource BackendConnectionReconcileTrigger = "resource"
+)
 
 func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
 	ctx context.Context,
@@ -29,8 +39,34 @@ func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInOpera
 	operatorNamespace string,
 	monitoringResource *dash0v1alpha1.Dash0Monitoring,
 	selfMonitoringConfiguration selfmonitoring.SelfMonitoringConfiguration,
+	trigger BackendConnectionReconcileTrigger,
 ) error {
 	logger := log.FromContext(ctx)
+	if m.resourcesHaveBeenDeletedByOperator.Load() {
+		if trigger == TriggeredByWatchEvent {
+			if m.DevelopmentMode {
+				logger.Info("OpenTelemetry collector resources have already been deleted, ignoring reconciliation request.")
+			}
+			return nil
+		} else if trigger == TriggeredByDash0Resource {
+			if m.DevelopmentMode {
+				logger.Info("resetting resourcesHaveBeenDeletedByOperator")
+			}
+			m.resourcesHaveBeenDeletedByOperator.Store(false)
+		}
+	}
+	if m.updateInProgress.Load() {
+		if m.DevelopmentMode {
+			logger.Info("creation/update of the OpenTelemetry collector resources is already in progress, skipping " +
+				"additional reconciliation request.")
+		}
+		return nil
+	}
+
+	m.updateInProgress.Store(true)
+	defer func() {
+		m.updateInProgress.Store(false)
+	}()
 
 	resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 		m.OTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
@@ -66,6 +102,12 @@ func (m *BackendConnectionManager) RemoveOpenTelemetryCollectorIfNoMonitoringRes
 	dash0MonitoringResourceToBeDeleted *dash0v1alpha1.Dash0Monitoring,
 	selfMonitoringConfiguration selfmonitoring.SelfMonitoringConfiguration,
 ) error {
+	m.resourcesHaveBeenDeletedByOperator.Store(true)
+	m.updateInProgress.Store(true)
+	defer func() {
+		m.updateInProgress.Store(false)
+	}()
+
 	logger := log.FromContext(ctx)
 	list := &dash0v1alpha1.Dash0MonitoringList{}
 	err := m.Client.List(

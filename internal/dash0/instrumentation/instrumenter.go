@@ -83,18 +83,18 @@ func (i *Instrumenter) InstrumentAtStartup(
 	logger *logr.Logger,
 ) {
 	logger.Info("Applying/updating instrumentation at controller startup.")
-	dash0MonitoringResourcesInNamespace := &dash0v1alpha1.Dash0MonitoringList{}
+	allDash0MonitoringResouresInCluster := &dash0v1alpha1.Dash0MonitoringList{}
 	if err := k8sClient.List(
 		ctx,
-		dash0MonitoringResourcesInNamespace,
+		allDash0MonitoringResouresInCluster,
 		&client.ListOptions{},
 	); err != nil {
 		logger.Error(err, "Failed to list all Dash0 monitoring resources at controller startup.")
 		return
 	}
 
-	logger.Info(fmt.Sprintf("Found %d Dash0 monitoring resources.", len(dash0MonitoringResourcesInNamespace.Items)))
-	for _, dash0MonitoringResource := range dash0MonitoringResourcesInNamespace.Items {
+	logger.Info(fmt.Sprintf("Found %d Dash0 monitoring resources.", len(allDash0MonitoringResouresInCluster.Items)))
+	for _, dash0MonitoringResource := range allDash0MonitoringResouresInCluster.Items {
 		logger.Info(fmt.Sprintf("Processing workloads in Dash0-enabled namespace %s", dash0MonitoringResource.Namespace))
 
 		if dash0MonitoringResource.IsMarkedForDeletion() {
