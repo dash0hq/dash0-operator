@@ -430,9 +430,19 @@ func startDash0Controllers(
 		Clientset:              clientset,
 		OTelColResourceManager: oTelColResourceManager,
 	}
+	backendConnectionReconciler := &backendconnection.BackendConnectionReconciler{
+		Client:                   k8sClient,
+		BackendConnectionManager: backendConnectionManager,
+		Images:                   images,
+		OperatorNamespace:        envVars.operatorNamespace,
+		OTelCollectorNamePrefix:  envVars.oTelCollectorNamePrefix,
+	}
+	if err = backendConnectionReconciler.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to set up the backend connection reconciler: %w", err)
+	}
 
 	operatorConfigurationReconciler := &controller.OperatorConfigurationReconciler{
-		Client:                  mgr.GetClient(),
+		Client:                  k8sClient,
 		Clientset:               clientset,
 		Scheme:                  mgr.GetScheme(),
 		Recorder:                mgr.GetEventRecorderFor("dash0-operator-configuration-controller"),
@@ -440,7 +450,7 @@ func startDash0Controllers(
 		Images:                  images,
 		DevelopmentMode:         developmentMode,
 	}
-	if err := operatorConfigurationReconciler.SetupWithManager(mgr); err != nil {
+	if err = operatorConfigurationReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the operator configuration reconciler: %w", err)
 	}
 	operatorConfigurationReconciler.InitializeSelfMonitoringMetrics(
@@ -457,7 +467,7 @@ func startDash0Controllers(
 		Images:                   images,
 		OperatorNamespace:        envVars.operatorNamespace,
 	}
-	if err := monitoringReconciler.SetupWithManager(mgr); err != nil {
+	if err = monitoringReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the monitoring reconciler: %w", err)
 	}
 	monitoringReconciler.InitializeSelfMonitoringMetrics(
@@ -467,7 +477,7 @@ func startDash0Controllers(
 	)
 
 	if os.Getenv("ENABLE_WEBHOOK") != "false" {
-		if err := (&webhook.Handler{
+		if err = (&webhook.Handler{
 			Client:               k8sClient,
 			Recorder:             mgr.GetEventRecorderFor("dash0-webhook"),
 			Images:               images,

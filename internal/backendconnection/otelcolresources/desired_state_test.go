@@ -6,7 +6,6 @@ package otelcolresources
 import (
 	"fmt"
 	"reflect"
-	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -72,7 +71,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		configMapVolume := findVolumeByName(podSpec.Volumes, "opentelemetry-collector-configmap")
 		Expect(configMapVolume).NotTo(BeNil())
 		Expect(configMapVolume.VolumeSource.ConfigMap.LocalObjectReference.Name).
-			To(Equal("unit-test-opentelemetry-collector-agent"))
+			To(Equal(ExpectedDaemonSetCollectorConfigMapName))
 		Expect(findVolumeMountByName(findContainerByName(podSpec.Containers, "opentelemetry-collector").VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
 		Expect(findVolumeMountByName(findContainerByName(podSpec.Containers, "configuration-reloader").VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
 
@@ -126,7 +125,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		configMapVolume = findVolumeByName(podSpec.Volumes, "opentelemetry-collector-configmap")
 		Expect(configMapVolume).NotTo(BeNil())
 		Expect(configMapVolume.VolumeSource.ConfigMap.LocalObjectReference.Name).
-			To(Equal("unit-test-cluster-metrics-collector"))
+			To(Equal(ExpectedDeploymentCollectorConfigMapName))
 		Expect(findVolumeMountByName(findContainerByName(podSpec.Containers, "opentelemetry-collector").VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
 		Expect(findVolumeMountByName(findContainerByName(podSpec.Containers, "configuration-reloader").VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
 
@@ -265,9 +264,9 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 	})
 })
 
-func getConfigMap(desiredState []client.Object, matcher func(c *corev1.ConfigMap) bool) *corev1.ConfigMap {
+func getConfigMap(desiredState []client.Object, name string) *corev1.ConfigMap {
 	for _, object := range desiredState {
-		if cm, ok := object.(*corev1.ConfigMap); ok && matcher(cm) {
+		if cm, ok := object.(*corev1.ConfigMap); ok && cm.Name == name {
 			return cm
 		}
 	}
@@ -275,16 +274,12 @@ func getConfigMap(desiredState []client.Object, matcher func(c *corev1.ConfigMap
 }
 
 func getCollectorConfigConfigMapContent(desiredState []client.Object) string {
-	cm := getConfigMap(desiredState, func(c *corev1.ConfigMap) bool {
-		return strings.HasSuffix(c.Name, "-opentelemetry-collector-agent")
-	})
+	cm := getConfigMap(desiredState, ExpectedDaemonSetCollectorConfigMapName)
 	return cm.Data["config.yaml"]
 }
 
 func getFileOffsetConfigMapContent(desiredState []client.Object) string {
-	cm := getConfigMap(desiredState, func(c *corev1.ConfigMap) bool {
-		return strings.HasSuffix(c.Name, "-filelogoffsets")
-	})
+	cm := getConfigMap(desiredState, ExpectedDaemonSetFilelogOffsetSynchConfigMapName)
 	return cm.Data["config.yaml"]
 }
 

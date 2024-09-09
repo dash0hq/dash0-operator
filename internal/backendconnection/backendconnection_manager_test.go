@@ -92,6 +92,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 					},
 				},
 				selfmonitoring.SelfMonitoringConfiguration{},
+				TriggeredByDash0Resource,
 			)
 			Expect(err).To(HaveOccurred())
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
@@ -113,6 +114,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 					},
 				},
 				selfmonitoring.SelfMonitoringConfiguration{},
+				TriggeredByDash0Resource,
 			)
 			Expect(err).To(HaveOccurred())
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
@@ -140,9 +142,10 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				operatorNamespace,
 				dash0MonitoringResource,
 				selfmonitoring.SelfMonitoringConfiguration{},
+				TriggeredByDash0Resource,
 			)
 			Expect(err).ToNot(HaveOccurred())
-			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
+			VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
 		})
 	})
 
@@ -150,7 +153,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 		It("should update the resources", func() {
 			err := k8sClient.Create(ctx, &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      ExpectedConfigMapName,
+					Name:      ExpectedDaemonSetCollectorConfigMapName,
 					Namespace: operatorNamespace,
 					Labels: map[string]string{
 						"wrong-key": "value",
@@ -171,12 +174,13 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				operatorNamespace,
 				dash0MonitoringResource,
 				selfmonitoring.SelfMonitoringConfiguration{},
+				TriggeredByDash0Resource,
 			)
 			Expect(err).ToNot(HaveOccurred())
-			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
+			VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
 
 			// verify that all wrong properties that we have set up initially have been removed
-			cm := VerifyCollectorConfigMapExists(ctx, k8sClient, operatorNamespace)
+			cm := GetOTelColDaemonSetConfigMap(ctx, k8sClient, operatorNamespace)
 			Expect(cm.Data).To(HaveKey("config.yaml"))
 			Expect(cm.Data).ToNot(HaveKey("wrong-key"))
 			Expect(cm.Labels).ToNot(HaveKey("wrong-key"))
@@ -206,9 +210,10 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				operatorNamespace,
 				secondDash0MonitoringResource,
 				selfmonitoring.SelfMonitoringConfiguration{},
+				TriggeredByDash0Resource,
 			)
 			Expect(err).ToNot(HaveOccurred())
-			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
+			VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
 
 			err = manager.RemoveOpenTelemetryCollectorIfNoMonitoringResourceIsLeft(
 				ctx,
@@ -219,7 +224,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			)
 			Expect(err).ToNot(HaveOccurred())
 			// since other Dash0 monitoring resources still exist, the collector resources should not be deleted
-			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
+			VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
 		})
 
 		It("should not delete the collector if there is only one Dash0 monitoring resource left but it is not the one being deleted", func() {
@@ -234,9 +239,10 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				operatorNamespace,
 				existingDash0MonitoringResource,
 				selfmonitoring.SelfMonitoringConfiguration{},
+				TriggeredByDash0Resource,
 			)
 			Expect(err).ToNot(HaveOccurred())
-			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
+			VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
 
 			err = manager.RemoveOpenTelemetryCollectorIfNoMonitoringResourceIsLeft(
 				ctx,
@@ -265,7 +271,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				selfmonitoring.SelfMonitoringConfiguration{},
 			)
 			Expect(err).ToNot(HaveOccurred())
-			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
+			VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
 		})
 
 		It("should delete the collector if the Dash0 monitoring resource that is being deleted is the only one left", func() {
@@ -281,9 +287,10 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				operatorNamespace,
 				dash0MonitoringResource,
 				selfmonitoring.SelfMonitoringConfiguration{},
+				TriggeredByDash0Resource,
 			)
 			Expect(err).ToNot(HaveOccurred())
-			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
+			VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
 
 			err = manager.RemoveOpenTelemetryCollectorIfNoMonitoringResourceIsLeft(
 				ctx,
@@ -306,9 +313,10 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				operatorNamespace,
 				dash0MonitoringResource,
 				selfmonitoring.SelfMonitoringConfiguration{},
+				TriggeredByDash0Resource,
 			)
 			Expect(err).ToNot(HaveOccurred())
-			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
+			VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
 
 			err = manager.RemoveOpenTelemetryCollectorIfNoMonitoringResourceIsLeft(
 				ctx,

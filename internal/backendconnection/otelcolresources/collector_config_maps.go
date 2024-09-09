@@ -41,7 +41,7 @@ func assembleDaemonSetCollectorConfigMap(config *oTelColConfig) (*corev1.ConfigM
 	return assembleCollectorConfigMap(
 		config,
 		daemonSetCollectorConfigurationTemplate,
-		daemonSetCollectorConfigConfigMapName(config.NamePrefix),
+		DaemonSetCollectorConfigConfigMapName(config.NamePrefix),
 	)
 }
 
@@ -49,7 +49,7 @@ func assembleDeploymentCollectorConfigMap(config *oTelColConfig) (*corev1.Config
 	return assembleCollectorConfigMap(
 		config,
 		deploymentCollectorConfigurationTemplate,
-		deploymentCollectorConfigConfigMapName(config.NamePrefix),
+		DeploymentCollectorConfigConfigMapName(config.NamePrefix),
 	)
 }
 

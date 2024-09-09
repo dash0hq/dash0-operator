@@ -104,7 +104,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				By("Trigger reconcile request")
 				triggerReconcileRequest(ctx, reconciler, "")
 				verifyDash0MonitoringResourceIsAvailable(ctx)
-				VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
+				VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
 			})
 
 			It("should successfully run multiple reconciles (no modifiable workloads exist)", func() {
@@ -121,7 +121,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				secondAvailableCondition := verifyDash0MonitoringResourceIsAvailable(ctx)
 				Expect(secondAvailableCondition.LastTransitionTime.Time).To(Equal(originalTransitionTimestamp))
 
-				VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
+				VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
 			})
 
 			It("should mark only the most recent resource as available and the other ones as degraded when multiple resources exist", func() {
@@ -797,7 +797,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 		It("should remove the collector resources", func() {
 			triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
-			VerifyCollectorResourcesExist(ctx, k8sClient, operatorNamespace)
+			VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
 
 			dash0MonitoringResource := LoadDash0MonitoringResourceOrFail(ctx, k8sClient, Default)
 			Expect(k8sClient.Delete(ctx, dash0MonitoringResource)).To(Succeed())

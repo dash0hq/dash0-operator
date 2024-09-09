@@ -275,10 +275,10 @@ func FindUniqueOrMostRecentResourceInScope(
 		return nil, err
 	}
 
-	return findMosRecentResource(resourcePrototype, allResourcesInScope), nil
+	return findMostRecentResource(resourcePrototype, allResourcesInScope), nil
 }
 
-func findMosRecentResource(
+func findMostRecentResource(
 	resourcePrototype dash0common.Dash0Resource,
 	allResourcesInScope client.ObjectList,
 ) dash0common.Dash0Resource {
