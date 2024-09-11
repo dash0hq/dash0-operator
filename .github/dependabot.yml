@@ -11,6 +11,9 @@ updates:
   - package-ecosystem: "gomod"
     directories:
       - "/"
+      - "/images/configreloader/src"
+      - "/images/filelogoffsetsynch/src"
+      - "/images/pkg/common"
     schedule:
       interval: "weekly"
       day: "tuesday"
