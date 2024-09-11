@@ -65,7 +65,7 @@ func InitOTelSdk(
 			log.Fatalf("Unexpected OTLP protocol set as value of the 'OTEL_EXPORTER_OTLP_PROTOCOL' environment variable: %v", protocol)
 		}
 
-		resourceWithPodAndNode, err := resource.New(ctx,
+		resourceAttributes, err := resource.New(ctx,
 			resource.WithAttributes(
 				semconv.K8SPodUID(podUid),
 				semconv.K8SNodeName(nodeName),
@@ -74,21 +74,9 @@ func InitOTelSdk(
 		if err != nil {
 			log.Fatalf("Cannot initialize the OpenTelemetry resource: %v", err)
 		}
-		// Note: Merging with resource.Environment() should not be necessary, the SDK is supposed to do that on its own,
-		// that is, merge the resource attributes provided here with the key-value pairs from OTEL_RESOURCE_ATTRIBUTES.
-		//
-		// Actually, the trace SDK does that correctly, but the metric SDK does not.
-		// - https://github.com/open-telemetry/opentelemetry-go/blob/932a4d8a5f2536645618d7aee8e5da6b8e3b6751/sdk/trace/provider.go#L353
-		// - https://github.com/open-telemetry/opentelemetry-go/blob/932a4d8a5f2536645618d7aee8e5da6b8e3b6751/sdk/metric/config.go#L106
-		//
-		// Reported here: https://github.com/open-telemetry/opentelemetry-go/issues/5764
-		finalResource, err := resource.Merge(resource.Environment(), resourceWithPodAndNode)
-		if err != nil {
-			log.Fatalf("Cannot merge the OpenTelemetry resource: %v", err)
-		}
 
 		sdkMeterProvider := sdkmetric.NewMeterProvider(
-			sdkmetric.WithResource(finalResource),
+			sdkmetric.WithResource(resourceAttributes),
 			sdkmetric.WithReader(
 				sdkmetric.NewPeriodicReader(
 					metricExporter,
