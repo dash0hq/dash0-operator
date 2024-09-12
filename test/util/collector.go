@@ -300,7 +300,7 @@ func VerifyCollectorResourcesDoNotExist(
 		if expectedRes.clusterScoped {
 			expectedNamespace = ""
 		}
-		verifyResourceDoesNotExist(
+		VerifyResourceDoesNotExist(
 			ctx,
 			k8sClient,
 			expectedNamespace,
@@ -310,7 +310,7 @@ func VerifyCollectorResourcesDoNotExist(
 	}
 }
 
-func verifyResourceDoesNotExist(
+func VerifyResourceDoesNotExist(
 	ctx context.Context,
 	k8sClient client.Client,
 	namespace string,

@@ -42,10 +42,14 @@ kubectl delete --ignore-not-found=true customresourcedefinition dash0operatorcon
 
 # The following resources are deleted automatically with helm uninstall, unless for example when the operator manager
 # crashes and the helm pre-delete helm hook cannot run, then they might be left behind.
+kubectl delete clusterrole                  --ignore-not-found dash0-operator-cluster-metrics-collector-cr
 kubectl delete clusterrole                  --ignore-not-found dash0-operator-manager-role
 kubectl delete clusterrole                  --ignore-not-found dash0-operator-metrics-reader
+kubectl delete clusterrole                  --ignore-not-found dash0-operator-opentelemetry-collector-cr
 kubectl delete clusterrole                  --ignore-not-found dash0-operator-proxy-role
+kubectl delete clusterrolebinding           --ignore-not-found dash0-operator-cluster-metrics-collector-crb
 kubectl delete clusterrolebinding           --ignore-not-found dash0-operator-manager-rolebinding
+kubectl delete clusterrolebinding           --ignore-not-found dash0-operator-opentelemetry-collector-crb
 kubectl delete clusterrolebinding           --ignore-not-found dash0-operator-proxy-rolebinding
 kubectl delete mutatingwebhookconfiguration --ignore-not-found dash0-operator-injector
 

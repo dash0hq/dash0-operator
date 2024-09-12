@@ -12,15 +12,19 @@ Simply install the operator into your cluster to get OpenTelemetry data flowing 
 
 The Dash0 Kubernetes operator installs an OpenTelemetry collector into your cluster that sends data to your Dash0
 ingress endpoint, with authentication already configured out of the box. Additionally, it will enable gathering
-OpenTelemetry data from applications deployed to the cluster for a selection of supported runtimes.
+OpenTelemetry data from applications deployed to the cluster for a selection of supported runtimes, plus automatic log
+collection and metrics.
 
-More information on the Dash0 Kubernetes Operator can be found at
-https://github.com/dash0hq/dash0-operator/blob/main/README.md.
+The Dash0 Kubernetes operator is currently available as a technical preview.
+
+Supported runtimes:
+
+* Node.js 18 and beyond
 
 ## Prerequisites
 
 - [Kubernetes](https://kubernetes.io/) >= 1.xx
-- [Helm](https://helm.sh) >= 3.xx, please refer to Helm's [documentation](https://helm.sh/docs/) for more information
+- [Helm](https://helm.sh) >= 3.x, please refer to Helm's [documentation](https://helm.sh/docs/) for more information
   on installing Helm.
 
 ## Installation

@@ -181,10 +181,12 @@ they deploy in their `AfterAll`/`AfterEach` hooks. The scripts in `test-resource
           FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY="" \
           test-resources/bin/test-roundtrip-01-aum-operator-cr.sh
         ```
-        Note: Unsetting parameters like `CONTROLLER_IMG_REPOSITORY` explicitly (by setting them to an empty string) will lead to
-        the scenario not setting those values when deploying via helm, so that the default value from the chart will
-        actually be used. Otherwise, without `CONTROLLER_IMG_REPOSITORY=""` being present, the test script will use 
+        Note: Unsetting parameters like `CONTROLLER_IMG_REPOSITORY` explicitly (by setting them to an empty string) will
+        lead to the scenario not setting those values when deploying via helm, so that the default value from the chart
+        will actually be used. Otherwise, without `CONTROLLER_IMG_REPOSITORY=""` being present, the test script will use 
         `CONTROLLER_IMG_REPOSITORY=operator-controller` (the image built from local sources) as the default setting.
+      * You can add `OPERATOR_HELM_CHART_VERSION=0.11.0` to the command above to install a specific version of the
+        Helm chart. This can be useful to test upgrade scenarios.
 
 ## Make Targets
 

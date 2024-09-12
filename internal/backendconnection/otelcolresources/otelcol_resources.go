@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"sync/atomic"
 
 	"github.com/cisco-open/k8s-objectmatcher/patch"
 	"github.com/go-logr/logr"
@@ -27,10 +28,11 @@ import (
 
 type OTelColResourceManager struct {
 	client.Client
-	Scheme                  *runtime.Scheme
-	DeploymentSelfReference *appsv1.Deployment
-	OTelCollectorNamePrefix string
-	DevelopmentMode         bool
+	Scheme                           *runtime.Scheme
+	DeploymentSelfReference          *appsv1.Deployment
+	OTelCollectorNamePrefix          string
+	DevelopmentMode                  bool
+	obsoleteResourcesHaveBeenDeleted atomic.Bool
 }
 
 const (
@@ -49,6 +51,11 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	selfMonitoringConfiguration selfmonitoring.SelfMonitoringConfiguration,
 	logger *logr.Logger,
 ) (bool, bool, error) {
+	err := m.deleteObsoleteResourcesFromPreviousOperatorVersions(ctx, namespace, logger)
+	if err != nil {
+		return false, false, err
+	}
+
 	config := &oTelColConfig{
 		Namespace:                   namespace,
 		NamePrefix:                  m.OTelCollectorNamePrefix,
@@ -275,5 +282,42 @@ func (m *OTelColResourceManager) DeleteResources(
 	if len(allErrors) > 0 {
 		return errors.Join(allErrors...)
 	}
+	return nil
+}
+
+func (m *OTelColResourceManager) deleteObsoleteResourcesFromPreviousOperatorVersions(
+	ctx context.Context,
+	namespace string,
+	logger *logr.Logger,
+) error {
+	if m.obsoleteResourcesHaveBeenDeleted.Load() {
+		return nil
+	}
+	obsoleteResources := compileObsoleteResources(
+		namespace,
+		m.OTelCollectorNamePrefix,
+	)
+	var allErrors []error
+	for _, obsoleteResource := range obsoleteResources {
+		err := m.Client.Delete(ctx, obsoleteResource)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				// expected, ignore silently
+			} else {
+				allErrors = append(allErrors, err)
+			}
+		} else {
+			logger.Info(fmt.Sprintf(
+				"deleted obsolete resource %s/%s",
+				obsoleteResource.GetNamespace(),
+				obsoleteResource.GetName(),
+			))
+		}
+	}
+	if len(allErrors) > 0 {
+		return errors.Join(allErrors...)
+	}
+
+	m.obsoleteResourcesHaveBeenDeleted.Store(true)
 	return nil
 }
