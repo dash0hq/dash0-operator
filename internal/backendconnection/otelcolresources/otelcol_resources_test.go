@@ -5,7 +5,9 @@ package otelcolresources
 
 import (
 	"context"
+	"fmt"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -123,6 +125,66 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			Expect(resourcesHaveBeenUpdated).To(BeFalse())
 
 			VerifyCollectorResources(ctx, k8sClient, Dash0OperatorNamespace)
+		})
+
+		It("should delete outdated resources from older operator versions", func() {
+			nameOfOutdatedResources := fmt.Sprintf("%s-opentelemetry-collector-agent", NamePrefix)
+			Expect(k8sClient.Create(ctx, &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      nameOfOutdatedResources,
+					Namespace: Dash0OperatorNamespace,
+				},
+			})).To(Succeed())
+			Expect(k8sClient.Create(ctx, &appsv1.DaemonSet{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      nameOfOutdatedResources,
+					Namespace: Dash0OperatorNamespace,
+				},
+				Spec: appsv1.DaemonSetSpec{
+					Selector: &metav1.LabelSelector{
+						MatchLabels: daemonSetMatchLabels,
+					},
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: daemonSetMatchLabels,
+						},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name:  openTelemetryCollector,
+									Image: CollectorImageTest,
+								},
+							},
+						},
+					},
+				},
+			})).To(Succeed())
+
+			_, _, err :=
+				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+					ctx,
+					Dash0OperatorNamespace,
+					TestImages,
+					dash0MonitoringResource,
+					selfmonitoring.SelfMonitoringConfiguration{},
+					&logger,
+				)
+			Expect(err).ToNot(HaveOccurred())
+
+			VerifyResourceDoesNotExist(
+				ctx,
+				k8sClient,
+				Dash0OperatorNamespace,
+				nameOfOutdatedResources,
+				&corev1.ConfigMap{},
+			)
+			VerifyResourceDoesNotExist(
+				ctx,
+				k8sClient,
+				Dash0OperatorNamespace,
+				nameOfOutdatedResources,
+				&appsv1.DaemonSet{},
+			)
 		})
 	})
 

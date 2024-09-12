@@ -10,7 +10,7 @@ infrastructure to Dash0.
 ## Description
 
 The Dash0 Kubernetes operator enables gathering OpenTelemetry data from your workloads for a selection of supported
-runtimes. 
+runtimes, automatic log collection and metrics.
 
 The Dash0 Kubernetes operator is currently available as a technical preview.
 
@@ -22,3 +22,7 @@ Supported runtimes:
 
 The preferred method of installation is via the operator's
 [Helm chart](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md).
+
+The [Helm chart documentation](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md)
+also contains all other relevant information for getting started with the operator, like how to enable Dash0 monitoring
+for your workloads etc.

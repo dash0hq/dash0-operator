@@ -1010,3 +1010,84 @@ func labels(addOptOutLabel bool) map[string]string {
 	}
 	return lbls
 }
+
+func compileObsoleteResources(namespace string, namePrefix string) []client.Object {
+	openTelemetryCollectorSuffix := "opentelemetry-collector"
+	openTelemetryCollectorAgentSuffix := "opentelemetry-collector-agent"
+	clusterMetricsCollectorSuffix := "cluster-metrics-collector"
+
+	return []client.Object{
+		// K8s resources that were created by the operator in versions 0.9.0 to 0.16.0, becoming obsolete with
+		// version 0.17.0:
+		&corev1.ServiceAccount{
+			ObjectMeta: obsoleteResourceObjectMeta(
+				namespace, fmt.Sprintf("%s-%s", namePrefix, openTelemetryCollectorSuffix)),
+		},
+		&corev1.ConfigMap{
+			ObjectMeta: obsoleteResourceObjectMeta(
+				namespace, fmt.Sprintf("%s-%s", namePrefix, openTelemetryCollectorAgentSuffix)),
+		},
+		&corev1.ConfigMap{
+			ObjectMeta: obsoleteResourceObjectMeta(
+				namespace, fmt.Sprintf("%s-%s", namePrefix, "filelogoffsets")),
+		},
+		&rbacv1.ClusterRole{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: fmt.Sprintf("%s-%s", namePrefix, openTelemetryCollectorSuffix),
+			},
+		},
+		&rbacv1.ClusterRoleBinding{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: fmt.Sprintf("%s-%s", namePrefix, openTelemetryCollectorSuffix),
+			},
+		},
+		&rbacv1.Role{
+			ObjectMeta: obsoleteResourceObjectMeta(
+				namespace, fmt.Sprintf("%s-%s", namePrefix, openTelemetryCollectorSuffix)),
+		},
+		&rbacv1.RoleBinding{
+			ObjectMeta: obsoleteResourceObjectMeta(
+				namespace, fmt.Sprintf("%s-%s", namePrefix, openTelemetryCollectorSuffix)),
+		},
+		&corev1.Service{
+			ObjectMeta: obsoleteResourceObjectMeta(
+				namespace, fmt.Sprintf("%s-%s", namePrefix, openTelemetryCollectorSuffix)),
+		},
+		&appsv1.DaemonSet{
+			ObjectMeta: obsoleteResourceObjectMeta(
+				namespace, fmt.Sprintf("%s-%s", namePrefix, openTelemetryCollectorAgentSuffix)),
+		},
+
+		// Additional deployment related resources that were only created in version 0.16.0, also obsolete starting at
+		// version 0.17.0:
+		&corev1.ServiceAccount{
+			ObjectMeta: obsoleteResourceObjectMeta(
+				namespace, fmt.Sprintf("%s-%s", namePrefix, clusterMetricsCollectorSuffix)),
+		},
+		&rbacv1.ClusterRole{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: fmt.Sprintf("%s-%s", namePrefix, clusterMetricsCollectorSuffix),
+			},
+		},
+		&rbacv1.ClusterRoleBinding{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: fmt.Sprintf("%s-%s", namePrefix, clusterMetricsCollectorSuffix),
+			},
+		},
+		&corev1.ConfigMap{
+			ObjectMeta: obsoleteResourceObjectMeta(
+				namespace, fmt.Sprintf("%s-%s", namePrefix, clusterMetricsCollectorSuffix)),
+		},
+		&appsv1.Deployment{
+			ObjectMeta: obsoleteResourceObjectMeta(
+				namespace, fmt.Sprintf("%s-%s", namePrefix, clusterMetricsCollectorSuffix)),
+		},
+	}
+}
+
+func obsoleteResourceObjectMeta(namespace string, name string) metav1.ObjectMeta {
+	return metav1.ObjectMeta{
+		Name:      name,
+		Namespace: namespace,
+	}
+}
