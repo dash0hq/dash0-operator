@@ -12,6 +12,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.20.2
 	github.com/onsi/gomega v1.34.2
 	go.opentelemetry.io/collector/pdata v1.15.0
+	go.opentelemetry.io/collector/semconv v0.109.0
 	go.opentelemetry.io/otel/metric v1.30.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.31.0

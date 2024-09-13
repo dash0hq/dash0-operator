@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	otelmetric "go.opentelemetry.io/otel/metric"
@@ -26,6 +27,7 @@ var (
 func InitOTelSdk(
 	ctx context.Context,
 	meterName string,
+	extraResourceAttributes map[string]string,
 ) (otelmetric.Meter, []func(ctx context.Context) error) {
 	podUid, isSet := os.LookupEnv("K8S_POD_UID")
 	if !isSet {
@@ -65,11 +67,14 @@ func InitOTelSdk(
 			log.Fatalf("Unexpected OTLP protocol set as value of the 'OTEL_EXPORTER_OTLP_PROTOCOL' environment variable: %v", protocol)
 		}
 
+		attributes := make([]attribute.KeyValue, 0, len(extraResourceAttributes)+2)
+		attributes = append(attributes, semconv.K8SPodUID(podUid))
+		attributes = append(attributes, semconv.K8SNodeName(nodeName))
+		for key, value := range extraResourceAttributes {
+			attributes = append(attributes, attribute.String(key, value))
+		}
 		resourceAttributes, err := resource.New(ctx,
-			resource.WithAttributes(
-				semconv.K8SPodUID(podUid),
-				semconv.K8SNodeName(nodeName),
-			),
+			resource.WithAttributes(attributes...),
 		)
 		if err != nil {
 			log.Fatalf("Cannot initialize the OpenTelemetry resource: %v", err)
