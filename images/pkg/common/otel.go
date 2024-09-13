@@ -39,6 +39,9 @@ func InitOTelSdk(
 		log.Println("Env var 'K8S_NODE_NAME' is not set")
 	}
 
+	daemonSetUid := os.Getenv("K8S_DAEMONSET_UID")
+	deploymentUid := os.Getenv("K8S_DEPLOYMENT_UID")
+
 	var doMeterShutdown func(ctx context.Context) error
 
 	if _, isSet = os.LookupEnv("OTEL_EXPORTER_OTLP_ENDPOINT"); isSet {
@@ -70,6 +73,12 @@ func InitOTelSdk(
 		attributes := make([]attribute.KeyValue, 0, len(extraResourceAttributes)+2)
 		attributes = append(attributes, semconv.K8SPodUID(podUid))
 		attributes = append(attributes, semconv.K8SNodeName(nodeName))
+		if daemonSetUid != "" {
+			attributes = append(attributes, semconv.K8SDaemonSetUID(daemonSetUid))
+		}
+		if deploymentUid != "" {
+			attributes = append(attributes, semconv.K8SDeploymentUID(deploymentUid))
+		}
 		for key, value := range extraResourceAttributes {
 			attributes = append(attributes, attribute.String(key, value))
 		}

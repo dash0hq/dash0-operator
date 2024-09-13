@@ -6,6 +6,7 @@ package otelcolresources
 import (
 	"context"
 	"fmt"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -65,8 +66,18 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 	})
 
 	AfterEach(func() {
-		err := k8sClient.DeleteAllOf(ctx, &corev1.ConfigMap{}, client.InNamespace(Dash0OperatorNamespace))
-		Expect(err).ToNot(HaveOccurred())
+		Expect(oTelColResourceManager.DeleteResources(
+			ctx,
+			Dash0OperatorNamespace,
+			TestImages,
+			dash0MonitoringResource,
+			selfmonitoring.SelfMonitoringConfiguration{},
+			&logger,
+		)).To(Succeed())
+		Eventually(func(g Gomega) {
+			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, Dash0OperatorNamespace)
+		}, 500*time.Millisecond, 20*time.Millisecond).Should(Succeed())
+		Expect(k8sClient.DeleteAllOf(ctx, &corev1.ConfigMap{}, client.InNamespace(Dash0OperatorNamespace))).To(Succeed())
 	})
 
 	Describe("when dealing with individual resources", func() {
@@ -273,7 +284,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			deployment := GetOTelColDeployment(ctx, k8sClient, Dash0OperatorNamespace)
 			Expect(k8sClient.Delete(ctx, deployment)).To(Succeed())
 
-			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
+			resourcesHaveBeenCreated, _, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
 					Dash0OperatorNamespace,
@@ -284,7 +295,6 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resourcesHaveBeenCreated).To(BeTrue())
-			Expect(resourcesHaveBeenUpdated).To(BeFalse())
 
 			VerifyCollectorResources(ctx, k8sClient, Dash0OperatorNamespace)
 		})
@@ -292,7 +302,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 
 	Describe("when all OpenTelemetry collector resources are up to date", func() {
 		It("should report that nothing has changed", func() {
-			// create resources (so we are sure that everything is in the desired state)
+			// create resources
 			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 				ctx,
 				Dash0OperatorNamespace,
@@ -303,9 +313,24 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			)
 			Expect(err).ToNot(HaveOccurred())
 
-			// Now run another create/update, to make sure resourcesHaveBeenCreated/resourcesHaveBeenUpdated come back
-			// as false.
-			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
+			// The next run will still report that resources have been updated, since it adds K8S_DAEMONSET_UID and
+			// K8S_DEPLOYMENT_UID to the daemon set and deployment respectively (this cannot be done when creating the
+			// resources).
+			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx,
+				Dash0OperatorNamespace,
+				TestImages,
+				dash0MonitoringResource,
+				selfmonitoring.SelfMonitoringConfiguration{},
+				&logger,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(resourcesHaveBeenCreated).To(BeFalse())
+			Expect(resourcesHaveBeenUpdated).To(BeTrue())
+
+			// Now run a final create/update, to make sure resourcesHaveBeenCreated/resourcesHaveBeenUpdated come back
+			// as false and all resources are in their final desired state.
+			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err =
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
 					Dash0OperatorNamespace,

@@ -13,10 +13,12 @@ import (
 	"github.com/cisco-open/k8s-objectmatcher/patch"
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -93,11 +95,11 @@ func (m *OTelColResourceManager) createOrUpdateResource(
 	desiredResource client.Object,
 	logger *logr.Logger,
 ) (bool, bool, error) {
-	existingObject, err := m.createEmptyReceiverFor(desiredResource)
+	existingResource, err := m.createEmptyReceiverFor(desiredResource)
 	if err != nil {
 		return false, false, err
 	}
-	err = m.Client.Get(ctx, client.ObjectKeyFromObject(desiredResource), existingObject)
+	err = m.Client.Get(ctx, client.ObjectKeyFromObject(desiredResource), existingResource)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return false, false, err
@@ -108,8 +110,8 @@ func (m *OTelColResourceManager) createOrUpdateResource(
 		}
 		return true, false, nil
 	} else {
-		// object needs to be updated
-		hasChanged, err := m.updateResource(ctx, existingObject, desiredResource, logger)
+		// object might need to be updated
+		hasChanged, err := m.updateResource(ctx, existingResource, desiredResource, logger)
 		if err != nil {
 			return false, false, err
 		}
@@ -156,7 +158,7 @@ func (m *OTelColResourceManager) createResource(
 
 func (m *OTelColResourceManager) updateResource(
 	ctx context.Context,
-	existingObject client.Object,
+	existingResource client.Object,
 	desiredResource client.Object,
 	logger *logr.Logger,
 ) (bool, error) {
@@ -171,9 +173,14 @@ func (m *OTelColResourceManager) updateResource(
 	if err := m.setOwnerReference(desiredResource, logger); err != nil {
 		return false, err
 	}
+	// This will change the collector daemonset and collector deployment one more time after it has been created
+	// initially, by setting their own UID as an environment variable in all containers. Obviously, this cannot be done
+	// when creating the daemonset/deployment. The next reconcile cycle after creating the resources will set the UID
+	// environment variable, and modifying the containers will automatically restart them.
+	m.amendDeploymentAndDaemonSetWithSelfReferenceUIDs(existingResource, desiredResource)
 
 	patchResult, err := patch.DefaultPatchMaker.Calculate(
-		existingObject,
+		existingResource,
 		desiredResource,
 		patch.IgnoreField("kind"),
 		patch.IgnoreField("apiVersion"),
@@ -236,6 +243,33 @@ func (m *OTelColResourceManager) setOwnerReference(
 		return err
 	}
 	return nil
+}
+
+func (m *OTelColResourceManager) amendDeploymentAndDaemonSetWithSelfReferenceUIDs(existingResource client.Object, desiredResource client.Object) {
+	name := desiredResource.GetName()
+	uid := existingResource.GetUID()
+	if name == DaemonSetName(m.OTelCollectorNamePrefix) {
+		daemonset := desiredResource.(*appsv1.DaemonSet)
+		addSelfReferenceUidToAllContainers(&daemonset.Spec.Template.Spec.Containers, "K8S_DAEMONSET_UID", uid)
+	} else if name == DeploymentName(m.OTelCollectorNamePrefix) {
+		deployment := desiredResource.(*appsv1.Deployment)
+		addSelfReferenceUidToAllContainers(&deployment.Spec.Template.Spec.Containers, "K8S_DEPLOYMENT_UID", uid)
+	}
+}
+
+func addSelfReferenceUidToAllContainers(containers *[]corev1.Container, envVarName string, uid types.UID) {
+	for i, container := range *containers {
+		selfReferenceUidIsAlreadyPresent := slices.ContainsFunc(container.Env, func(envVar corev1.EnvVar) bool {
+			return envVar.Name == envVarName
+		})
+		if !selfReferenceUidIsAlreadyPresent {
+			container.Env = append(container.Env, corev1.EnvVar{
+				Name:  envVarName,
+				Value: string(uid),
+			})
+			(*containers)[i] = container
+		}
+	}
 }
 
 func (m *OTelColResourceManager) DeleteResources(
