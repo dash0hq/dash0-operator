@@ -542,10 +542,6 @@ func controllerDeploymentWithoutSelfMonitoring() *appsv1.Deployment {
 									Value: "",
 								},
 								{
-									Name:  "ENABLE_WEBHOOK",
-									Value: "false",
-								},
-								{
 									Name:  "DASH0_DEVELOPMENT_MODE",
 									Value: "false",
 								},
@@ -710,10 +706,6 @@ func controllerDeploymentWithSelfMonitoring() *appsv1.Deployment {
 								{
 									Name:  "DASH0_FILELOG_OFFSET_SYNCH_IMAGE_PULL_POLICY",
 									Value: "",
-								},
-								{
-									Name:  "ENABLE_WEBHOOK",
-									Value: "false",
 								},
 								{
 									Name:  "DASH0_DEVELOPMENT_MODE",

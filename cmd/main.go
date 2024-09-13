@@ -491,17 +491,13 @@ func startDash0Controllers(
 		&setupLog,
 	)
 
-	if os.Getenv("ENABLE_WEBHOOK") != "false" {
-		if err := (&webhook.Handler{
-			Client:               k8sClient,
-			Recorder:             mgr.GetEventRecorderFor("dash0-webhook"),
-			Images:               images,
-			OTelCollectorBaseUrl: oTelCollectorBaseUrl,
-		}).SetupWebhookWithManager(mgr); err != nil {
-			return fmt.Errorf("unable to create the webhook: %w", err)
-		}
-	} else {
-		setupLog.Info("Webhook is disabled via configuration.")
+	if err := (&webhook.Handler{
+		Client:               k8sClient,
+		Recorder:             mgr.GetEventRecorderFor("dash0-webhook"),
+		Images:               images,
+		OTelCollectorBaseUrl: oTelCollectorBaseUrl,
+	}).SetupWebhookWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to create the webhook: %w", err)
 	}
 
 	return nil
