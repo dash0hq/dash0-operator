@@ -16,6 +16,7 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"github.com/go-logr/logr"
+	semconv "go.opentelemetry.io/collector/semconv/v1.27.0"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -86,8 +87,11 @@ var (
 	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
 
-	metricNamePrefix = fmt.Sprintf("%s.", meterName)
+	startupTasksK8sClient   client.Client
+	deploymentSelfReference *appsv1.Deployment
+	envVars                 environmentVariables
 
+	metricNamePrefix      = fmt.Sprintf("%s.", meterName)
 	meter                 otelmetric.Meter
 	otelShutdownFunctions []func(ctx context.Context) error
 )
@@ -167,9 +171,32 @@ func main() {
 		TLSOpts: tlsOpts,
 	})
 
-	meter, otelShutdownFunctions = common.InitOTelSdk(ctx, meterName)
+	var err error
+	if err = readEnvironmentVariables(); err != nil {
+		os.Exit(1)
+	}
+	if err = initStartupTasksK8sClient(&setupLog); err != nil {
+		os.Exit(1)
+	}
+	if err = findDeploymentSelfReference(
+		ctx,
+		startupTasksK8sClient,
+		envVars.operatorNamespace,
+		envVars.deploymentName,
+		&setupLog,
+	); err != nil {
+		setupLog.Error(err, "The Dash0 operator manager process to lookup its own deployment.")
+		os.Exit(1)
+	}
 
-	if err := startOperatorManager(
+	meter, otelShutdownFunctions =
+		common.InitOTelSdk(
+			ctx,
+			meterName,
+			map[string]string{semconv.AttributeK8SDeploymentUID: string(deploymentSelfReference.UID)},
+		)
+
+	if err = startOperatorManager(
 		ctx,
 		metricsAddr,
 		secureMetrics,
@@ -226,11 +253,6 @@ func startOperatorManager(
 		return fmt.Errorf("unable to create the clientset client")
 	}
 
-	envVars, err := readEnvironmentVariables()
-	if err != nil {
-		return err
-	}
-
 	setupLog.Info(
 		"configuration:",
 
@@ -263,7 +285,7 @@ func startOperatorManager(
 		developmentMode,
 	)
 
-	err = startDash0Controllers(ctx, mgr, clientset, envVars, developmentMode)
+	err = startDash0Controllers(ctx, mgr, clientset, developmentMode)
 	if err != nil {
 		return err
 	}
@@ -288,55 +310,55 @@ func startOperatorManager(
 	return nil
 }
 
-func readEnvironmentVariables() (*environmentVariables, error) {
+func readEnvironmentVariables() error {
 	operatorNamespace, isSet := os.LookupEnv(operatorNamespaceEnvVarName)
 	if !isSet {
-		return nil, fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, operatorNamespaceEnvVarName)
+		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, operatorNamespaceEnvVarName)
 	}
 
 	deploymentName, isSet := os.LookupEnv(deploymentNameEnvVarName)
 	if !isSet {
-		return nil, fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, deploymentNameEnvVarName)
+		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, deploymentNameEnvVarName)
 	}
 
 	oTelCollectorNamePrefix, isSet := os.LookupEnv(oTelCollectorNamePrefixEnvVarName)
 	if !isSet {
-		return nil, fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, oTelCollectorNamePrefixEnvVarName)
+		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, oTelCollectorNamePrefixEnvVarName)
 	}
 
 	operatorImage, isSet := os.LookupEnv(operatorImageEnvVarName)
 	if !isSet {
-		return nil, fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, operatorImageEnvVarName)
+		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, operatorImageEnvVarName)
 	}
 
 	initContainerImage, isSet := os.LookupEnv(initContainerImageEnvVarName)
 	if !isSet {
-		return nil, fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, initContainerImageEnvVarName)
+		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, initContainerImageEnvVarName)
 	}
 	initContainerImagePullPolicy :=
 		readOptionalPullPolicyFromEnvironmentVariable(initContainerImagePullPolicyEnvVarName)
 
 	collectorImage, isSet := os.LookupEnv(collectorImageEnvVarName)
 	if !isSet {
-		return nil, fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, collectorImageEnvVarName)
+		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, collectorImageEnvVarName)
 	}
 	collectorImagePullPolicy := readOptionalPullPolicyFromEnvironmentVariable(collectorImageImagePullPolicyEnvVarName)
 
 	configurationReloaderImage, isSet := os.LookupEnv(configurationReloaderImageEnvVarName)
 	if !isSet {
-		return nil, fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, configurationReloaderImageEnvVarName)
+		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, configurationReloaderImageEnvVarName)
 	}
 	configurationReloaderImagePullPolicy :=
 		readOptionalPullPolicyFromEnvironmentVariable(configurationReloaderImagePullPolicyEnvVarName)
 
 	filelogOffsetSynchImage, isSet := os.LookupEnv(filelogOffsetSynchImageEnvVarName)
 	if !isSet {
-		return nil, fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, filelogOffsetSynchImageEnvVarName)
+		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, filelogOffsetSynchImageEnvVarName)
 	}
 	filelogOffsetSynchImagePullPolicy :=
 		readOptionalPullPolicyFromEnvironmentVariable(filelogOffsetSynchImagePullPolicyEnvVarName)
 
-	return &environmentVariables{
+	envVars = environmentVariables{
 		operatorNamespace:                    operatorNamespace,
 		deploymentName:                       deploymentName,
 		oTelCollectorNamePrefix:              oTelCollectorNamePrefix,
@@ -349,7 +371,9 @@ func readEnvironmentVariables() (*environmentVariables, error) {
 		configurationReloaderImagePullPolicy: configurationReloaderImagePullPolicy,
 		filelogOffsetSynchImage:              filelogOffsetSynchImage,
 		filelogOffsetSynchImagePullPolicy:    filelogOffsetSynchImagePullPolicy,
-	}, nil
+	}
+
+	return nil
 }
 
 func readOptionalPullPolicyFromEnvironmentVariable(envVarName string) corev1.PullPolicy {
@@ -372,7 +396,6 @@ func startDash0Controllers(
 	ctx context.Context,
 	mgr manager.Manager,
 	clientset *kubernetes.Clientset,
-	envVars *environmentVariables,
 	developmentMode bool,
 ) error {
 	oTelCollectorBaseUrl :=
@@ -392,21 +415,13 @@ func startDash0Controllers(
 		FilelogOffsetSynchImagePullPolicy:    envVars.filelogOffsetSynchImagePullPolicy,
 	}
 
-	var deploymentSelfReference *appsv1.Deployment
-	var err error
-
-	if deploymentSelfReference, err = executeStartupTasks(
+	executeStartupTasks(
 		ctx,
 		clientset,
 		mgr.GetEventRecorderFor("dash0-startup-tasks"),
 		images,
 		oTelCollectorBaseUrl,
-		envVars.operatorNamespace,
-		envVars.deploymentName,
-		&setupLog,
-	); err != nil {
-		return err
-	}
+	)
 
 	logCurrentSelfMonitoringSettings(deploymentSelfReference)
 
@@ -437,7 +452,7 @@ func startDash0Controllers(
 		OperatorNamespace:        envVars.operatorNamespace,
 		OTelCollectorNamePrefix:  envVars.oTelCollectorNamePrefix,
 	}
-	if err = backendConnectionReconciler.SetupWithManager(mgr); err != nil {
+	if err := backendConnectionReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the backend connection reconciler: %w", err)
 	}
 
@@ -450,7 +465,7 @@ func startDash0Controllers(
 		Images:                  images,
 		DevelopmentMode:         developmentMode,
 	}
-	if err = operatorConfigurationReconciler.SetupWithManager(mgr); err != nil {
+	if err := operatorConfigurationReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the operator configuration reconciler: %w", err)
 	}
 	operatorConfigurationReconciler.InitializeSelfMonitoringMetrics(
@@ -467,7 +482,7 @@ func startDash0Controllers(
 		Images:                   images,
 		OperatorNamespace:        envVars.operatorNamespace,
 	}
-	if err = monitoringReconciler.SetupWithManager(mgr); err != nil {
+	if err := monitoringReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the monitoring reconciler: %w", err)
 	}
 	monitoringReconciler.InitializeSelfMonitoringMetrics(
@@ -477,7 +492,7 @@ func startDash0Controllers(
 	)
 
 	if os.Getenv("ENABLE_WEBHOOK") != "false" {
-		if err = (&webhook.Handler{
+		if err := (&webhook.Handler{
 			Client:               k8sClient,
 			Recorder:             mgr.GetEventRecorderFor("dash0-webhook"),
 			Images:               images,
@@ -492,46 +507,16 @@ func startDash0Controllers(
 	return nil
 }
 
-func executeStartupTasks(
-	ctx context.Context,
-	clientset *kubernetes.Clientset,
-	eventRecorder record.EventRecorder,
-	images util.Images,
-	oTelCollectorBaseUrl string,
-	operatorNamespace string,
-	deploymentName string,
-	logger *logr.Logger,
-) (*appsv1.Deployment, error) {
+func initStartupTasksK8sClient(logger *logr.Logger) error {
 	cfg := ctrl.GetConfigOrDie()
-	startupTasksK8sClient, err := client.New(cfg, client.Options{
+	var err error
+	if startupTasksK8sClient, err = client.New(cfg, client.Options{
 		Scheme: scheme,
-	})
-	if err != nil {
+	}); err != nil {
 		logger.Error(err, "failed to create Kubernetes API client for startup tasks")
-		return nil, err
+		return err
 	}
-
-	instrumentAtStartup(
-		ctx,
-		startupTasksK8sClient,
-		clientset,
-		eventRecorder,
-		images,
-		oTelCollectorBaseUrl,
-	)
-
-	deploymentSelfReference, err := findDeploymentSelfReference(
-		ctx,
-		startupTasksK8sClient,
-		operatorNamespace,
-		deploymentName,
-		logger,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return deploymentSelfReference, nil
+	return nil
 }
 
 func findDeploymentSelfReference(
@@ -540,23 +525,40 @@ func findDeploymentSelfReference(
 	operatorNamespace string,
 	deploymentName string,
 	logger *logr.Logger,
-) (*appsv1.Deployment, error) {
-	deploymentSelfReference := &appsv1.Deployment{}
+) error {
+	deploymentSelfReference = &appsv1.Deployment{}
 	fullyQualifiedName := fmt.Sprintf("%s/%s", operatorNamespace, deploymentName)
 	if err := k8sClient.Get(ctx, client.ObjectKey{
 		Namespace: operatorNamespace,
 		Name:      deploymentName,
 	}, deploymentSelfReference); err != nil {
 		logger.Error(err, "failed to get self reference for controller deployment")
-		return nil, err
+		return err
 	}
 	if deploymentSelfReference.UID == "" {
 		msg := fmt.Sprintf("self reference for controller deployment %s has no UID", fullyQualifiedName)
 		err := fmt.Errorf(msg)
 		logger.Error(err, msg)
-		return nil, err
+		return err
 	}
-	return deploymentSelfReference, nil
+	return nil
+}
+
+func executeStartupTasks(
+	ctx context.Context,
+	clientset *kubernetes.Clientset,
+	eventRecorder record.EventRecorder,
+	images util.Images,
+	oTelCollectorBaseUrl string,
+) {
+	instrumentAtStartup(
+		ctx,
+		startupTasksK8sClient,
+		clientset,
+		eventRecorder,
+		images,
+		oTelCollectorBaseUrl,
+	)
 }
 
 func instrumentAtStartup(

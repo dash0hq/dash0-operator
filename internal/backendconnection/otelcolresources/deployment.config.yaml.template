@@ -31,8 +31,6 @@ processors:
 
   resourcedetection:
     detectors:
-    # Note: Adding the "env" detector here would tag all metrics for all monitored resources with the key-value pairs
-    # from the OTEL_RESOURCE_ATTRIBUTES that we attach to the collector deployment via self-monitoring.
     - system
     - eks
     - ecs
