@@ -4,7 +4,7 @@ metadata:
   name: dash0-operator-configuration-resource-e2e
 spec:
   selfMonitoring:
-    enabled: true
+    enabled: {{ .SelfMonitoringEnabled }}
   export:
     http:
       endpoint: {{ .Endpoint }}

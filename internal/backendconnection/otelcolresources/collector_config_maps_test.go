@@ -19,7 +19,7 @@ import (
 )
 
 type testConfig struct {
-	assembleConfigMapFunction func(config *oTelColConfig) (*corev1.ConfigMap, error)
+	assembleConfigMapFunction func(*oTelColConfig, bool) (*corev1.ConfigMap, error)
 	pipelineNames             []string
 }
 
@@ -60,7 +60,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export:     dash0v1alpha1.Export{},
-		})
+		}, false)
 		Expect(err).To(HaveOccurred())
 	}, testConfigs)
 
@@ -75,7 +75,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 					},
 				},
 			},
-		})
+		}, false)
 		Expect(err).To(
 			MatchError(
 				ContainSubstring(
@@ -95,7 +95,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 					},
 				},
 			},
-		})
+		}, false)
 
 		Expect(err).ToNot(HaveOccurred())
 		collectorConfig := parseConfigMapContent(configMap)
@@ -133,7 +133,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 					},
 				},
 			},
-		})
+		}, false)
 
 		Expect(err).ToNot(HaveOccurred())
 		collectorConfig := parseConfigMapContent(configMap)
@@ -171,7 +171,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 				},
 			},
 			DevelopmentMode: true,
-		})
+		}, false)
 
 		Expect(err).ToNot(HaveOccurred())
 		collectorConfig := parseConfigMapContent(configMap)
@@ -213,7 +213,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 					}},
 				},
 			},
-		})
+		}, false)
 		Expect(err).To(
 			MatchError(
 				ContainSubstring(
@@ -240,7 +240,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 					},
 				},
 			},
-		})
+		}, false)
 
 		Expect(err).ToNot(HaveOccurred())
 		collectorConfig := parseConfigMapContent(configMap)
@@ -278,7 +278,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 					Encoding: dash0v1alpha1.Proto,
 				},
 			},
-		})
+		}, false)
 		Expect(err).To(
 			MatchError(
 				ContainSubstring(
@@ -298,7 +298,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 					}},
 				},
 			},
-		})
+		}, false)
 		Expect(err).To(
 			MatchError(
 				ContainSubstring(
@@ -326,7 +326,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 					Encoding: dash0v1alpha1.Json,
 				},
 			},
-		})
+		}, false)
 
 		Expect(err).ToNot(HaveOccurred())
 		collectorConfig := parseConfigMapContent(configMap)
@@ -370,7 +370,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 					}},
 				},
 			},
-		})
+		}, false)
 		Expect(err).ToNot(HaveOccurred())
 
 		collectorConfig := parseConfigMapContent(configMap)
@@ -425,7 +425,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 					Encoding: dash0v1alpha1.Proto,
 				},
 			},
-		})
+		}, false)
 		Expect(err).ToNot(HaveOccurred())
 
 		collectorConfig := parseConfigMapContent(configMap)
@@ -481,7 +481,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 					Encoding: dash0v1alpha1.Proto,
 				},
 			},
-		})
+		}, false)
 		Expect(err).ToNot(HaveOccurred())
 
 		collectorConfig := parseConfigMapContent(configMap)
@@ -545,7 +545,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 				},
 			},
 			DevelopmentMode: true,
-		})
+		}, false)
 		Expect(err).ToNot(HaveOccurred())
 
 		collectorConfig := parseConfigMapContent(configMap)

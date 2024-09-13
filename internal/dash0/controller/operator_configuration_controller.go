@@ -179,7 +179,7 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 	}
 
 	newSelfMonitoringConfiguration, err :=
-		selfmonitoring.ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(*resource, &logger)
+		selfmonitoring.ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(resource, &logger)
 	if err != nil {
 		logger.Error(err, "cannot generate self-monitoring configuration from operator configuration resource")
 		return ctrl.Result{

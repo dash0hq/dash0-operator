@@ -37,19 +37,21 @@ var (
 	authHeaderValue = fmt.Sprintf("Bearer ${env:%s}", authTokenEnvVarName)
 )
 
-func assembleDaemonSetCollectorConfigMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
+func assembleDaemonSetCollectorConfigMap(config *oTelColConfig, forDeletion bool) (*corev1.ConfigMap, error) {
 	return assembleCollectorConfigMap(
 		config,
 		daemonSetCollectorConfigurationTemplate,
 		DaemonSetCollectorConfigConfigMapName(config.NamePrefix),
+		forDeletion,
 	)
 }
 
-func assembleDeploymentCollectorConfigMap(config *oTelColConfig) (*corev1.ConfigMap, error) {
+func assembleDeploymentCollectorConfigMap(config *oTelColConfig, forDeletion bool) (*corev1.ConfigMap, error) {
 	return assembleCollectorConfigMap(
 		config,
 		deploymentCollectorConfigurationTemplate,
 		DeploymentCollectorConfigConfigMapName(config.NamePrefix),
+		forDeletion,
 	)
 }
 
@@ -57,29 +59,35 @@ func assembleCollectorConfigMap(
 	config *oTelColConfig,
 	template *template.Template,
 	configMapName string,
+	forDeletion bool,
 ) (*corev1.ConfigMap, error) {
-	exporters, err := ConvertExportSettingsToExporterList(config.Export)
-	if err != nil {
-		return nil, fmt.Errorf("cannot assemble the exporters for the configuration: %w", err)
-	}
-	collectorConfiguration, err := renderCollectorConfiguration(template,
-		&collectorConfigurationTemplateValues{
-			Exporters: exporters,
-			IgnoreLogsFromNamespaces: []string{
-				// Skipping kube-system, it requires bespoke filtering work
-				"kube-system",
-				// Skipping logs from the operator and the daemonset, otherwise
-				// logs will compound in case of log parsing errors
-				config.Namespace,
-			},
-			DevelopmentMode: config.DevelopmentMode,
-		})
-	if err != nil {
-		return nil, fmt.Errorf("cannot render the collector configuration template: %w", err)
-	}
+	var configMapData map[string]string
+	if forDeletion {
+		configMapData = map[string]string{}
+	} else {
+		exporters, err := ConvertExportSettingsToExporterList(config.Export)
+		if err != nil {
+			return nil, fmt.Errorf("cannot assemble the exporters for the configuration: %w", err)
+		}
+		collectorConfiguration, err := renderCollectorConfiguration(template,
+			&collectorConfigurationTemplateValues{
+				Exporters: exporters,
+				IgnoreLogsFromNamespaces: []string{
+					// Skipping kube-system, it requires bespoke filtering work
+					"kube-system",
+					// Skipping logs from the operator and the daemonset, otherwise
+					// logs will compound in case of log parsing errors
+					config.Namespace,
+				},
+				DevelopmentMode: config.DevelopmentMode,
+			})
+		if err != nil {
+			return nil, fmt.Errorf("cannot render the collector configuration template: %w", err)
+		}
 
-	configMapData := map[string]string{
-		collectorConfigurationYaml: collectorConfiguration,
+		configMapData = map[string]string{
+			collectorConfigurationYaml: collectorConfiguration,
+		}
 	}
 
 	return &corev1.ConfigMap{

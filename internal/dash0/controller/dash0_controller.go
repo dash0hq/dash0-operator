@@ -22,7 +22,6 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection"
 	"github.com/dash0hq/dash0-operator/internal/dash0/instrumentation"
-	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoring"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 )
 
@@ -185,7 +184,6 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 		r.Images,
 		r.OperatorNamespace,
 		monitoringResource,
-		selfmonitoring.ReadSelfMonitoringConfigurationFromOperatorConfigurationResource(ctx, r.Client, &logger),
 		backendconnection.TriggeredByDash0Resource,
 	); err != nil {
 		return ctrl.Result{}, err
@@ -277,13 +275,8 @@ func (r *Dash0Reconciler) runCleanupActions(
 
 	if err := r.BackendConnectionManager.RemoveOpenTelemetryCollectorIfNoMonitoringResourceIsLeft(
 		ctx,
-		r.Images,
 		r.OperatorNamespace,
 		dash0MonitoringResource,
-		// Optimization: Self-monitoring does not create any additional resources in the set of desired objects, thus
-		// we do not actually need to look up the operator confifguration resource here when we only want to delete all
-		// OTel collector resources.
-		selfmonitoring.SelfMonitoringConfiguration{},
 	); err != nil {
 		logger.Error(err, "Failed to check if the OpenTelemetry collector instance needs to be removed or failed "+
 			"removing it.")

@@ -150,10 +150,10 @@ var (
 	deploymentReplicas int32 = 1
 )
 
-func assembleDesiredState(config *oTelColConfig) ([]client.Object, error) {
+func assembleDesiredState(config *oTelColConfig, forDeletion bool) ([]client.Object, error) {
 	var desiredState []client.Object
 	desiredState = append(desiredState, assembleServiceAccountForDaemonSet(config))
-	daemonSetCollectorConfigMap, err := assembleDaemonSetCollectorConfigMap(config)
+	daemonSetCollectorConfigMap, err := assembleDaemonSetCollectorConfigMap(config, forDeletion)
 	if err != nil {
 		return desiredState, err
 	}
@@ -173,7 +173,7 @@ func assembleDesiredState(config *oTelColConfig) ([]client.Object, error) {
 	desiredState = append(desiredState, assembleServiceAccountForDeployment(config))
 	desiredState = append(desiredState, assembleClusterRoleForDeployment(config))
 	desiredState = append(desiredState, assembleClusterRoleBindingForDeployment(config))
-	deploymentCollectorConfigMap, err := assembleDeploymentCollectorConfigMap(config)
+	deploymentCollectorConfigMap, err := assembleDeploymentCollectorConfigMap(config, forDeletion)
 	if err != nil {
 		return desiredState, err
 	}

@@ -735,7 +735,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				},
 				Spec: dash0v1alpha1.Dash0MonitoringSpec{
 					InstrumentWorkloads: "invalid",
-					Export: dash0v1alpha1.Export{
+					Export: &dash0v1alpha1.Export{
 						Dash0: &dash0v1alpha1.Dash0Configuration{
 							Endpoint: EndpointDash0Test,
 							Authorization: dash0v1alpha1.Authorization{

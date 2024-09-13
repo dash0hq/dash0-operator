@@ -15,8 +15,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
-	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoring"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -69,9 +67,6 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 		Expect(oTelColResourceManager.DeleteResources(
 			ctx,
 			Dash0OperatorNamespace,
-			TestImages,
-			dash0MonitoringResource,
-			selfmonitoring.SelfMonitoringConfiguration{},
 			&logger,
 		)).To(Succeed())
 		Eventually(func(g Gomega) {
@@ -121,6 +116,10 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 	})
 
 	Describe("when creating all OpenTelemetry collector resources", func() {
+		AfterEach(func() {
+			DeleteOperatorConfigurationResource(ctx, k8sClient)
+		})
+
 		It("should create the resources", func() {
 			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
@@ -128,7 +127,6 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					Dash0OperatorNamespace,
 					TestImages,
 					dash0MonitoringResource,
-					selfmonitoring.SelfMonitoringConfiguration{},
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -136,6 +134,76 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			Expect(resourcesHaveBeenUpdated).To(BeFalse())
 
 			VerifyCollectorResources(ctx, k8sClient, Dash0OperatorNamespace)
+		})
+
+		It("should fall back to the operator configuration export settings if the monitoring resource has no export", func() {
+			CreateOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+				"operator-configuration-resource",
+				dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Export: &dash0v1alpha1.Export{
+						Dash0: &dash0v1alpha1.Dash0Configuration{
+							Endpoint: EndpointDash0Test,
+							Authorization: dash0v1alpha1.Authorization{
+								Token: &AuthorizationTokenTest,
+							},
+						},
+					},
+				},
+			)
+			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx,
+				Dash0OperatorNamespace,
+				TestImages,
+				&dash0v1alpha1.Dash0Monitoring{
+					Spec: dash0v1alpha1.Dash0MonitoringSpec{},
+				},
+				&logger,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(resourcesHaveBeenCreated).To(BeTrue())
+			Expect(resourcesHaveBeenUpdated).To(BeFalse())
+			VerifyCollectorResources(ctx, k8sClient, Dash0OperatorNamespace)
+		})
+
+		It("should fail if the monitoring resource has no export and there is no operator configuration resource", func() {
+			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx,
+				Dash0OperatorNamespace,
+				TestImages,
+				&dash0v1alpha1.Dash0Monitoring{
+					Spec: dash0v1alpha1.Dash0MonitoringSpec{},
+				},
+				&logger,
+			)
+			Expect(err).To(
+				MatchError(
+					"the provided Dash0Monitoring resource does not have an export configuration and no " +
+						"Dash0OperatorConfiguration resource has been found"))
+			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, Dash0OperatorNamespace)
+		})
+
+		It("should fail if the monitoring resource has no export and the existing operator configuration "+
+			"resource has no export either", func() {
+			CreateOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+				"operator-configuration-resource",
+				dash0v1alpha1.Dash0OperatorConfigurationSpec{},
+			)
+			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+				ctx,
+				Dash0OperatorNamespace,
+				TestImages,
+				&dash0v1alpha1.Dash0Monitoring{
+					Spec: dash0v1alpha1.Dash0MonitoringSpec{},
+				},
+				&logger,
+			)
+			Expect(err).To(MatchError("the provided Dash0Monitoring resource does not have an export configuration " +
+				"and the Dash0OperatorConfiguration resource does not have one either"))
+			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, Dash0OperatorNamespace)
 		})
 
 		It("should delete outdated resources from older operator versions", func() {
@@ -177,7 +245,6 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					Dash0OperatorNamespace,
 					TestImages,
 					dash0MonitoringResource,
-					selfmonitoring.SelfMonitoringConfiguration{},
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -207,7 +274,6 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					Dash0OperatorNamespace,
 					TestImages,
 					dash0MonitoringResource,
-					selfmonitoring.SelfMonitoringConfiguration{},
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -248,7 +314,6 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					Dash0OperatorNamespace,
 					TestImages,
 					dash0MonitoringResource,
-					selfmonitoring.SelfMonitoringConfiguration{},
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -267,7 +332,6 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					Dash0OperatorNamespace,
 					TestImages,
 					dash0MonitoringResource,
-					selfmonitoring.SelfMonitoringConfiguration{},
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -290,7 +354,6 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					Dash0OperatorNamespace,
 					TestImages,
 					dash0MonitoringResource,
-					selfmonitoring.SelfMonitoringConfiguration{},
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -308,7 +371,6 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				Dash0OperatorNamespace,
 				TestImages,
 				dash0MonitoringResource,
-				selfmonitoring.SelfMonitoringConfiguration{},
 				&logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -321,7 +383,6 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				Dash0OperatorNamespace,
 				TestImages,
 				dash0MonitoringResource,
-				selfmonitoring.SelfMonitoringConfiguration{},
 				&logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -336,7 +397,6 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					Dash0OperatorNamespace,
 					TestImages,
 					dash0MonitoringResource,
-					selfmonitoring.SelfMonitoringConfiguration{},
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -355,7 +415,6 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				Dash0OperatorNamespace,
 				TestImages,
 				dash0MonitoringResource,
-				selfmonitoring.SelfMonitoringConfiguration{},
 				&logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -365,9 +424,6 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			err = oTelColResourceManager.DeleteResources(
 				ctx,
 				Dash0OperatorNamespace,
-				TestImages,
-				dash0MonitoringResource,
-				selfmonitoring.SelfMonitoringConfiguration{},
 				&logger,
 			)
 			Expect(err).ToNot(HaveOccurred())

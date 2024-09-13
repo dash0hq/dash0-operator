@@ -7,6 +7,7 @@ import (
 	"context"
 	"slices"
 
+	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -21,7 +22,6 @@ import (
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
-	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoring"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 )
 
@@ -117,35 +117,20 @@ func (r *BackendConnectionReconciler) Reconcile(
 	logger := log.FromContext(ctx)
 	logger.Info("reconciling backend connection resources", "request", request)
 
-	allDash0MonitoringResouresInCluster := &dash0v1alpha1.Dash0MonitoringList{}
-	if err := r.List(
-		ctx,
-		allDash0MonitoringResouresInCluster,
-		&client.ListOptions{},
-	); err != nil {
-		logger.Error(err, "Failed to list all Dash0 monitoring resources when reconciling backend connection resources.")
+	arbitraryMonitoringResource, err := r.findArbitraryMonitoringResource(ctx, &logger)
+	if err != nil {
 		return reconcile.Result{}, err
-	}
-
-	if len(allDash0MonitoringResouresInCluster.Items) == 0 {
-		logger.Info("No Dash0 monitoring resources in cluster, aborting the backend connection resources reconciliation.")
+	} else if arbitraryMonitoringResource == nil {
 		return reconcile.Result{}, nil
 	}
 
-	// TODO this needs to be fixed when we start to support sending telemetry to different backends per namespace.
-	// Ultimately we need to derive one consistent configuration including multiple pipelines and routing across all
-	// monitored namespaces.
-	arbitraryMonitoringResource := allDash0MonitoringResouresInCluster.Items[0]
-
-	err := r.BackendConnectionManager.EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
+	if err = r.BackendConnectionManager.EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
 		ctx,
 		r.Images,
 		r.OperatorNamespace,
-		&arbitraryMonitoringResource,
-		selfmonitoring.ReadSelfMonitoringConfigurationFromOperatorConfigurationResource(ctx, r.Client, &logger),
+		arbitraryMonitoringResource,
 		TriggeredByWatchEvent,
-	)
-	if err != nil {
+	); err != nil {
 		logger.Error(err, "Failed to create/update backend connection resources.")
 		return reconcile.Result{}, err
 	}
@@ -157,4 +142,29 @@ func (r *BackendConnectionReconciler) Reconcile(
 	)
 
 	return reconcile.Result{}, nil
+}
+
+func (r *BackendConnectionReconciler) findArbitraryMonitoringResource(
+	ctx context.Context,
+	logger *logr.Logger,
+) (*dash0v1alpha1.Dash0Monitoring, error) {
+	allDash0MonitoringResouresInCluster := &dash0v1alpha1.Dash0MonitoringList{}
+	if err := r.List(
+		ctx,
+		allDash0MonitoringResouresInCluster,
+		&client.ListOptions{},
+	); err != nil {
+		logger.Error(err, "Failed to list all Dash0 monitoring resources when reconciling backend connection resources.")
+		return nil, err
+	}
+
+	if len(allDash0MonitoringResouresInCluster.Items) == 0 {
+		logger.Info("No Dash0 monitoring resources in cluster, aborting the backend connection resources reconciliation.")
+		return nil, nil
+	}
+
+	// TODO this needs to be fixed when we start to support sending telemetry to different backends per namespace.
+	// Ultimately we need to derive one consistent configuration including multiple pipelines and routing across all
+	// monitored namespaces.
+	return &allDash0MonitoringResouresInCluster.Items[0], nil
 }

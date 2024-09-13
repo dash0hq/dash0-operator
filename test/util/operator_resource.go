@@ -77,15 +77,9 @@ func EnsureOperatorConfigurationResourceExistsWithName(
 		},
 	}
 
-	found := false
-	if len(list.Items) > 0 {
-		resourceIdx := slices.IndexFunc(list.Items, func(r dash0v1alpha1.Dash0OperatorConfiguration) bool {
-			return r.Name == name
-		})
-
-		found = resourceIdx > -1
-	}
-
+	found := slices.ContainsFunc(list.Items, func(r dash0v1alpha1.Dash0OperatorConfiguration) bool {
+		return r.Name == name
+	})
 	if !found {
 		Expect(k8sClient.Create(ctx, &object)).To(Succeed())
 	} else {
@@ -111,27 +105,11 @@ func CreateOperatorConfigurationResource(
 	return resource
 }
 
-func EnsureOperatorConfigurationResourceExistsAndIsAvailable(
+func DeleteOperatorConfigurationResource(
 	ctx context.Context,
 	k8sClient client.Client,
-) *dash0v1alpha1.Dash0OperatorConfiguration {
-	resource := EnsureOperatorConfigurationResourceExistsWithName(ctx, k8sClient, OperatorConfigurationResourceName)
-	resource.EnsureResourceIsMarkedAsAvailable()
-	Expect(k8sClient.Status().Update(ctx, resource)).To(Succeed())
-	return resource
-}
-
-func EnsureOperatorConfigurationResourceExistsAndIsDegraded(
-	ctx context.Context,
-	k8sClient client.Client,
-) *dash0v1alpha1.Dash0OperatorConfiguration {
-	resource := EnsureOperatorConfigurationResourceExistsWithName(ctx, k8sClient, OperatorConfigurationResourceName)
-	resource.EnsureResourceIsMarkedAsDegraded(
-		"TestReasonForDegradation",
-		"This resource is degraded.",
-	)
-	Expect(k8sClient.Status().Update(ctx, resource)).To(Succeed())
-	return resource
+) {
+	Expect(k8sClient.DeleteAllOf(ctx, &dash0v1alpha1.Dash0OperatorConfiguration{})).To(Succeed())
 }
 
 func LoadOperatorConfigurationResourceByNameIfItExists(
