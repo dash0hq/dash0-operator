@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package webhook
+package webhooks
 
 import (
 	"context"
@@ -117,7 +117,7 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).NotTo(HaveOccurred())
 
-	err = (&Handler{
+	err = (&InstrumentationWebhookHandler{
 		Client:               k8sClient,
 		Recorder:             manager.GetEventRecorderFor("dash0-webhook"),
 		Images:               TestImages,

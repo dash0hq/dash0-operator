@@ -42,7 +42,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/dash0/removal"
 	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoring"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
-	"github.com/dash0hq/dash0-operator/internal/dash0/webhook"
+	"github.com/dash0hq/dash0-operator/internal/dash0/webhooks"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -491,7 +491,7 @@ func startDash0Controllers(
 		&setupLog,
 	)
 
-	if err := (&webhook.Handler{
+	if err := (&webhooks.InstrumentationWebhookHandler{
 		Client:               k8sClient,
 		Recorder:             mgr.GetEventRecorderFor("dash0-webhook"),
 		Images:               images,

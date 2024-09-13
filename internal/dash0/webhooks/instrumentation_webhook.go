@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package webhook
+package webhooks
+
+// TODO create second webhook which rejects dash0monitoring resources without export if no
+// operatorconfiguration resource with export settings exist
 
 import (
 	"context"
@@ -28,14 +31,14 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/dash0/workloads"
 )
 
-type Handler struct {
+type InstrumentationWebhookHandler struct {
 	Client               client.Client
 	Recorder             record.EventRecorder
 	Images               util.Images
 	OTelCollectorBaseUrl string
 }
 
-type resourceHandler func(h *Handler, request admission.Request, gvkLabel string, logger *logr.Logger) admission.Response
+type resourceHandler func(h *InstrumentationWebhookHandler, request admission.Request, gvkLabel string, logger *logr.Logger) admission.Response
 type routing map[string]map[string]map[string]resourceHandler
 
 const (
@@ -51,35 +54,35 @@ var (
 	routes = routing{
 		"": {
 			"Pod": {
-				"v1": (*Handler).handlePod,
+				"v1": (*InstrumentationWebhookHandler).handlePod,
 			},
 		},
 		"batch": {
 			"CronJob": {
-				"v1": (*Handler).handleCronJob,
+				"v1": (*InstrumentationWebhookHandler).handleCronJob,
 			},
 			"Job": {
-				"v1": (*Handler).handleJob,
+				"v1": (*InstrumentationWebhookHandler).handleJob,
 			},
 		},
 		"apps": {
 			"DaemonSet": {
-				"v1": (*Handler).handleDaemonSet,
+				"v1": (*InstrumentationWebhookHandler).handleDaemonSet,
 			},
 			"Deployment": {
-				"v1": (*Handler).handleDeployment,
+				"v1": (*InstrumentationWebhookHandler).handleDeployment,
 			},
 			"ReplicaSet": {
-				"v1": (*Handler).handleReplicaSet,
+				"v1": (*InstrumentationWebhookHandler).handleReplicaSet,
 			},
 			"StatefulSet": {
-				"v1": (*Handler).handleStatefulSet,
+				"v1": (*InstrumentationWebhookHandler).handleStatefulSet,
 			},
 		},
 	}
 
 	fallbackRoute resourceHandler = func(
-		h *Handler,
+		h *InstrumentationWebhookHandler,
 		request admission.Request,
 		gvkLabel string,
 		logger *logr.Logger,
@@ -88,7 +91,7 @@ var (
 	}
 )
 
-func (h *Handler) SetupWebhookWithManager(mgr ctrl.Manager) error {
+func (h *InstrumentationWebhookHandler) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	webhook := &admission.Webhook{
 		Handler: h,
 	}
@@ -102,7 +105,7 @@ func (h *Handler) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return nil
 }
 
-func (h *Handler) Handle(ctx context.Context, request admission.Request) admission.Response {
+func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admission.Request) admission.Response {
 	logger := log.WithValues("operation", request.Operation, "gvk", request.Kind, "namespace", request.Namespace, "name", request.Name)
 
 	targetNamespace := request.Namespace
@@ -187,7 +190,7 @@ func (h *Handler) Handle(ctx context.Context, request admission.Request) admissi
 	return routes.routeFor(group, kind, version)(h, request, gvkLabel, &logger)
 }
 
-func (h *Handler) handleCronJob(
+func (h *InstrumentationWebhookHandler) handleCronJob(
 	request admission.Request,
 	gvkLabel string,
 	logger *logr.Logger,
@@ -214,7 +217,7 @@ func (h *Handler) handleCronJob(
 	}
 }
 
-func (h *Handler) handleDaemonSet(
+func (h *InstrumentationWebhookHandler) handleDaemonSet(
 	request admission.Request,
 	gvkLabel string,
 	logger *logr.Logger,
@@ -241,7 +244,7 @@ func (h *Handler) handleDaemonSet(
 	}
 }
 
-func (h *Handler) handleDeployment(
+func (h *InstrumentationWebhookHandler) handleDeployment(
 	request admission.Request,
 	gvkLabel string,
 	logger *logr.Logger,
@@ -268,7 +271,7 @@ func (h *Handler) handleDeployment(
 	}
 }
 
-func (h *Handler) handleJob(
+func (h *InstrumentationWebhookHandler) handleJob(
 	request admission.Request,
 	gvkLabel string,
 	logger *logr.Logger,
@@ -298,7 +301,7 @@ func (h *Handler) handleJob(
 	}
 }
 
-func (h *Handler) handlePod(
+func (h *InstrumentationWebhookHandler) handlePod(
 	request admission.Request,
 	gvkLabel string,
 	logger *logr.Logger,
@@ -329,7 +332,7 @@ func (h *Handler) handlePod(
 	}
 }
 
-func (h *Handler) handleReplicaSet(
+func (h *InstrumentationWebhookHandler) handleReplicaSet(
 	request admission.Request,
 	gvkLabel string,
 	logger *logr.Logger,
@@ -356,7 +359,7 @@ func (h *Handler) handleReplicaSet(
 	}
 }
 
-func (h *Handler) handleStatefulSet(
+func (h *InstrumentationWebhookHandler) handleStatefulSet(
 	request admission.Request,
 	gvkLabel string,
 	logger *logr.Logger,
@@ -383,7 +386,7 @@ func (h *Handler) handleStatefulSet(
 	}
 }
 
-func (h *Handler) preProcess(
+func (h *InstrumentationWebhookHandler) preProcess(
 	request admission.Request,
 	gvkLabel string,
 	resource runtime.Object,
@@ -397,7 +400,7 @@ func (h *Handler) preProcess(
 	return admission.Response{}, false
 }
 
-func (h *Handler) postProcessInstrumentation(
+func (h *InstrumentationWebhookHandler) postProcessInstrumentation(
 	request admission.Request,
 	resource runtime.Object,
 	hasBeenModified bool,
@@ -432,7 +435,7 @@ func (h *Handler) postProcessInstrumentation(
 	return admission.PatchResponseFromRaw(request.Object.Raw, marshalled)
 }
 
-func (h *Handler) postProcessUninstrumentation(
+func (h *InstrumentationWebhookHandler) postProcessUninstrumentation(
 	request admission.Request,
 	resource runtime.Object,
 	hasBeenModified bool,
@@ -465,7 +468,7 @@ func (h *Handler) postProcessUninstrumentation(
 	return admission.PatchResponseFromRaw(request.Object.Raw, marshalled)
 }
 
-func (h *Handler) newWorkloadModifier(logger *logr.Logger) *workloads.ResourceModifier {
+func (h *InstrumentationWebhookHandler) newWorkloadModifier(logger *logr.Logger) *workloads.ResourceModifier {
 	return workloads.NewResourceModifier(
 		util.InstrumentationMetadata{
 			Images:               h.Images,
