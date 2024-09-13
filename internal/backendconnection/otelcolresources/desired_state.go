@@ -934,51 +934,51 @@ func assembleDeploymentCollectorContainer(
 }
 
 func daemonsetServiceAccountName(namePrefix string) string {
-	return name(namePrefix, openTelemetryCollector, "sa")
+	return renderName(namePrefix, openTelemetryCollector, "sa")
 }
 
 func deploymentServiceAccountName(namePrefix string) string {
-	return name(namePrefix, openTelemetryCollectorDeploymentNameSuffix, "sa")
+	return renderName(namePrefix, openTelemetryCollectorDeploymentNameSuffix, "sa")
 }
 
 func FilelogReceiverOffsetsConfigMapName(namePrefix string) string {
-	return name(namePrefix, "filelogoffsets", "cm")
+	return renderName(namePrefix, "filelogoffsets", "cm")
 }
 
 func DaemonSetCollectorConfigConfigMapName(namePrefix string) string {
-	return name(namePrefix, openTelemetryCollectorDaemonSetNameSuffix, "cm")
+	return renderName(namePrefix, openTelemetryCollectorDaemonSetNameSuffix, "cm")
 }
 
 func DeploymentCollectorConfigConfigMapName(namePrefix string) string {
-	return name(namePrefix, openTelemetryCollectorDeploymentNameSuffix, "cm")
+	return renderName(namePrefix, openTelemetryCollectorDeploymentNameSuffix, "cm")
 }
 
 func DaemonSetClusterRoleName(namePrefix string) string {
-	return name(namePrefix, openTelemetryCollector, "cr")
+	return renderName(namePrefix, openTelemetryCollector, "cr")
 }
 
 func DeploymentClusterRoleName(namePrefix string) string {
-	return name(namePrefix, openTelemetryCollectorDeploymentNameSuffix, "cr")
+	return renderName(namePrefix, openTelemetryCollectorDeploymentNameSuffix, "cr")
 }
 
 func DaemonSetClusterRoleBindingName(namePrefix string) string {
-	return name(namePrefix, openTelemetryCollector, "crb")
+	return renderName(namePrefix, openTelemetryCollector, "crb")
 }
 
 func DeploymentClusterRoleBindingName(namePrefix string) string {
-	return name(namePrefix, openTelemetryCollectorDeploymentNameSuffix, "crb")
+	return renderName(namePrefix, openTelemetryCollectorDeploymentNameSuffix, "crb")
 }
 
 func roleName(namePrefix string) string {
-	return name(namePrefix, openTelemetryCollector, "role")
+	return renderName(namePrefix, openTelemetryCollector, "role")
 }
 
 func roleBindingName(namePrefix string) string {
-	return name(namePrefix, openTelemetryCollector, "rolebinding")
+	return renderName(namePrefix, openTelemetryCollector, "rolebinding")
 }
 
 func ServiceName(namePrefix string) string {
-	return name(namePrefix, openTelemetryCollector, "service")
+	return renderName(namePrefix, openTelemetryCollector, "service")
 }
 
 func serviceLabels() map[string]string {
@@ -988,14 +988,14 @@ func serviceLabels() map[string]string {
 }
 
 func DaemonSetName(namePrefix string) string {
-	return name(namePrefix, openTelemetryCollectorDaemonSetNameSuffix, "daemonset")
+	return renderName(namePrefix, openTelemetryCollectorDaemonSetNameSuffix, "daemonset")
 }
 
 func DeploymentName(namePrefix string) string {
-	return name(namePrefix, openTelemetryCollectorDeploymentNameSuffix, "deployment")
+	return renderName(namePrefix, openTelemetryCollectorDeploymentNameSuffix, "deployment")
 }
 
-func name(prefix string, parts ...string) string {
+func renderName(prefix string, parts ...string) string {
 	return strings.Join(append([]string{prefix}, parts...), "-")
 }
 
