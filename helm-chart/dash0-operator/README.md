@@ -33,7 +33,7 @@ Before installing the operator, add the Dash0 operator's Helm repository as foll
 
 ```console
 helm repo add dash0-operator https://dash0hq.github.io/dash0-operator
-helm repo update
+helm repo update dash0-operator
 ```
 
 Now you can install the operator into your cluster via Helm with the following command:
@@ -346,6 +346,15 @@ or, alternatively, by using the `dash0-monitoring.yaml` file created earlier:
 
 ```console
 kubectl delete --namespace my-nodejs-applications -f dash0-monitoring.yaml
+```
+
+## Upgrading
+
+To upgrade the Dash0 Kubernetes Operator to a newer version, run the following commands:
+
+```console
+helm repo update dash0-operator
+helm upgrade --namespace dash0-system dash0-operator dash0-operator/dash0-operator
 ```
 
 ## Uninstallation
