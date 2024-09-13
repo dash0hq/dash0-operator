@@ -113,10 +113,6 @@ spec:
         - name: DASH0_FILELOG_OFFSET_SYNCH_IMAGE_PULL_POLICY
           value: {{ .Values.operator.filelogOffsetSynchImage.pullPolicy }}
         {{- end }}
-        {{- if not .Values.operator.enableWebhook }}
-        - name: ENABLE_WEBHOOK
-          value: "false"
-        {{- end }}
         {{- if .Values.operator.developmentMode }}
         - name: DASH0_DEVELOPMENT_MODE
           value: {{ .Values.operator.developmentMode | toString | quote }}

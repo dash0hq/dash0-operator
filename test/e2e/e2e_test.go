@@ -122,7 +122,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				})
 				By("all workloads have been deployed")
 
-				deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images, true)
+				deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images)
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
 					defaultDash0MonitoringValues,
@@ -168,7 +168,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				testId := generateTestId("job")
 				By("installing the Node.js job")
 				Expect(installNodeJsJob(applicationUnderTestNamespace, testId)).To(Succeed())
-				deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images, true)
+				deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images)
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
 					defaultDash0MonitoringValues,
@@ -197,7 +197,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			It("should ignore existing pods", func() {
 				By("installing the Node.js pod")
 				Expect(installNodeJsPod(applicationUnderTestNamespace)).To(Succeed())
-				deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images, true)
+				deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images)
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
 					defaultDash0MonitoringValues,
@@ -228,7 +228,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					configurationReloader: deriveAlternativeImageForUpdateTest(images.configurationReloader),
 					fileLogOffsetSynch:    deriveAlternativeImageForUpdateTest(images.fileLogOffsetSynch),
 				}
-				deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, initialAlternativeImages, false)
+				deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, initialAlternativeImages)
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
 					defaultDash0MonitoringValues,
@@ -255,7 +255,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					// now we use :latest (or :main-dev or whatever has been provided via env vars) instead of
 					// :e2e-test to trigger an actual change
 					images,
-					false,
 				)
 
 				By("verifying that the Node.js deployment's instrumentation settings have been updated by the controller")
@@ -276,7 +275,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 	Describe("webhook", func() {
 		BeforeAll(func() {
 			By("deploy the Dash0 operator")
-			deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images, true)
+			deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images)
 
 			fmt.Fprint(GinkgoWriter, "waiting 5 seconds to give the webhook some time to get ready\n")
 			time.Sleep(5 * time.Second)
@@ -418,7 +417,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 	Describe("when updating the Dash0Monitoring resource", func() {
 		BeforeAll(func() {
 			By("deploy the Dash0 operator")
-			deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images, true)
+			deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images)
 			time.Sleep(10 * time.Second)
 		})
 
@@ -540,7 +539,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 	Describe("using the operator configuration resource's connection settings", func() {
 		BeforeAll(func() {
 			By("deploy the Dash0 operator")
-			deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images, true)
+			deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images)
 
 			fmt.Fprint(GinkgoWriter, "waiting 5 seconds to give the webhook some time to get ready\n")
 			time.Sleep(5 * time.Second)
@@ -594,7 +593,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 
 		BeforeAll(func() {
 			By("deploy the Dash0 operator")
-			deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images, true)
+			deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images)
 			time.Sleep(10 * time.Second)
 		})
 
@@ -654,7 +653,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 	Describe("metrics & self-monitoring", func() {
 		BeforeAll(func() {
 			By("deploy the Dash0 operator")
-			deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images, true)
+			deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images)
 
 			deployDash0OperatorConfigurationResource(defaultDash0OperatorConfigurationValues)
 			deployDash0MonitoringResource(
@@ -759,7 +758,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 					)).To(Succeed())
 				})
 
-				deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images, true)
+				deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images)
 				runInParallelForAllWorkloadTypes(configs, func(config removalTestNamespaceConfig) {
 					deployDash0MonitoringResource(
 						config.namespace,

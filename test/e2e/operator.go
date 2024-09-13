@@ -30,7 +30,6 @@ func deployOperator(
 	operatorHelmChart string,
 	operatorHelmChartUrl string,
 	images Images,
-	enableWebhook bool,
 ) {
 	ensureDash0OperatorHelmRepoIsInstalled(operatorHelmChart, operatorHelmChartUrl)
 
@@ -47,7 +46,6 @@ func deployOperator(
 		"--set", "operator.developmentMode=true",
 		"--set", "operator.disableSecretCheck=true",
 		"--set", "operator.disableOtlpEndpointCheck=true",
-		"--set", fmt.Sprintf("operator.enableWebhook=%t", enableWebhook),
 	}
 	arguments = addOptionalHelmParameters(arguments, operatorHelmChart, images)
 
@@ -241,7 +239,6 @@ func upgradeOperator(
 	operatorHelmChart string,
 	operatorHelmChartUrl string,
 	images Images,
-	enableWebhook bool,
 ) {
 	ensureDash0OperatorHelmRepoIsInstalled(operatorHelmChart, operatorHelmChartUrl)
 
@@ -253,7 +250,6 @@ func upgradeOperator(
 		"--set", "operator.developmentMode=true",
 		"--set", "operator.disableSecretCheck=true",
 		"--set", "operator.disableOtlpEndpointCheck=true",
-		"--set", fmt.Sprintf("operator.enableWebhook=%t", enableWebhook),
 	}
 	arguments = addOptionalHelmParameters(arguments, operatorHelmChart, images)
 
