@@ -43,6 +43,14 @@ const (
 
 var (
 	knownIrrelevantPatches = []string{bogusDeploymentPatch}
+
+	dummyImagesForDeletion = util.Images{
+		OperatorImage:              "ghcr.io/dash0hq/operator-controller:latest",
+		InitContainerImage:         "ghcr.io/dash0hq/instrumentation:latest",
+		CollectorImage:             "ghcr.io/dash0hq/collector:latest",
+		ConfigurationReloaderImage: "ghcr.io/dash0hq/configuration-reloader:latest",
+		FilelogOffsetSynchImage:    "ghcr.io/dash0hq/filelog-offset-synch:latest",
+	}
 )
 
 func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
@@ -50,23 +58,45 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	namespace string,
 	images util.Images,
 	monitoringResource *dash0v1alpha1.Dash0Monitoring,
-	selfMonitoringConfiguration selfmonitoring.SelfMonitoringConfiguration,
 	logger *logr.Logger,
 ) (bool, bool, error) {
-	err := m.deleteObsoleteResourcesFromPreviousOperatorVersions(ctx, namespace, logger)
+	operatorConfigurationResource, err := m.findOperatorConfigurationResource(ctx, logger)
 	if err != nil {
 		return false, false, err
+	}
+
+	export := monitoringResource.Spec.Export
+	if export == nil {
+		if operatorConfigurationResource == nil {
+			return false, false, fmt.Errorf("the provided Dash0Monitoring resource does not have an export " +
+				"configuration and no Dash0OperatorConfiguration resource has been found")
+		} else if operatorConfigurationResource.Spec.Export == nil {
+			return false, false, fmt.Errorf("the provided Dash0Monitoring resource does not have an export " +
+				"configuration and the Dash0OperatorConfiguration resource does not have one either")
+		} else {
+			export = operatorConfigurationResource.Spec.Export
+		}
+	}
+
+	selfMonitoringConfiguration, err := selfmonitoring.ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
+		operatorConfigurationResource,
+		logger,
+	)
+	if err != nil {
+		selfMonitoringConfiguration = selfmonitoring.SelfMonitoringConfiguration{
+			Enabled: false,
+		}
 	}
 
 	config := &oTelColConfig{
 		Namespace:                   namespace,
 		NamePrefix:                  m.OTelCollectorNamePrefix,
-		Export:                      monitoringResource.Spec.Export,
+		Export:                      *export,
 		SelfMonitoringConfiguration: selfMonitoringConfiguration,
 		Images:                      images,
 		DevelopmentMode:             m.DevelopmentMode,
 	}
-	desiredState, err := assembleDesiredState(config)
+	desiredState, err := assembleDesiredState(config, false)
 	if err != nil {
 		return false, false, err
 	}
@@ -87,7 +117,31 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		}
 	}
 
+	if err = m.deleteObsoleteResourcesFromPreviousOperatorVersions(ctx, namespace, logger); err != nil {
+		return resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err
+	}
+
 	return resourcesHaveBeenCreated, resourcesHaveBeenUpdated, nil
+}
+
+func (m *OTelColResourceManager) findOperatorConfigurationResource(
+	ctx context.Context,
+	logger *logr.Logger,
+) (*dash0v1alpha1.Dash0OperatorConfiguration, error) {
+	operatorConfigurationResource, err := util.FindUniqueOrMostRecentResourceInScope(
+		ctx,
+		m.Client,
+		"", /* cluster-scope, thus no namespace */
+		&dash0v1alpha1.Dash0OperatorConfiguration{},
+		logger,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if operatorConfigurationResource == nil {
+		return nil, nil
+	}
+	return operatorConfigurationResource.(*dash0v1alpha1.Dash0OperatorConfiguration), nil
 }
 
 func (m *OTelColResourceManager) createOrUpdateResource(
@@ -275,20 +329,19 @@ func addSelfReferenceUidToAllContainers(containers *[]corev1.Container, envVarNa
 func (m *OTelColResourceManager) DeleteResources(
 	ctx context.Context,
 	namespace string,
-	images util.Images,
-	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
-	selfMonitoringConfiguration selfmonitoring.SelfMonitoringConfiguration,
 	logger *logr.Logger,
 ) error {
 	config := &oTelColConfig{
-		Namespace:                   namespace,
-		NamePrefix:                  m.OTelCollectorNamePrefix,
-		Export:                      dash0MonitoringResource.Spec.Export,
-		SelfMonitoringConfiguration: selfMonitoringConfiguration,
-		Images:                      images,
+		Namespace:  namespace,
+		NamePrefix: m.OTelCollectorNamePrefix,
+		// For deleting the resources, we do not need the actual export settings; we only use assembleDesiredState to
+		// collect the kinds and names of all resources that need to be deleted.
+		Export:                      dash0v1alpha1.Export{},
+		SelfMonitoringConfiguration: selfmonitoring.SelfMonitoringConfiguration{Enabled: false},
+		Images:                      dummyImagesForDeletion,
 		DevelopmentMode:             m.DevelopmentMode,
 	}
-	desiredResources, err := assembleDesiredState(config)
+	desiredResources, err := assembleDesiredState(config, true)
 	if err != nil {
 		return err
 	}

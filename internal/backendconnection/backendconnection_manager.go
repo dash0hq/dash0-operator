@@ -14,7 +14,6 @@ import (
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
-	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoring"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 )
 
@@ -38,7 +37,6 @@ func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInOpera
 	images util.Images,
 	operatorNamespace string,
 	monitoringResource *dash0v1alpha1.Dash0Monitoring,
-	selfMonitoringConfiguration selfmonitoring.SelfMonitoringConfiguration,
 	trigger BackendConnectionReconcileTrigger,
 ) error {
 	logger := log.FromContext(ctx)
@@ -74,14 +72,13 @@ func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInOpera
 			operatorNamespace,
 			images,
 			monitoringResource,
-			selfMonitoringConfiguration,
 			&logger,
 		)
 
 	if err != nil {
 		logger.Error(
 			err,
-			"failed to create the one or more of the OpenTelemetry collector DaemonSet/Deployment resources, some or "+
+			"failed to create one or more of the OpenTelemetry collector DaemonSet/Deployment resources, some or "+
 				"all telemetry will be missing",
 		)
 		return err
@@ -97,10 +94,8 @@ func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInOpera
 
 func (m *BackendConnectionManager) RemoveOpenTelemetryCollectorIfNoMonitoringResourceIsLeft(
 	ctx context.Context,
-	images util.Images,
 	operatorNamespace string,
 	dash0MonitoringResourceToBeDeleted *dash0v1alpha1.Dash0Monitoring,
-	selfMonitoringConfiguration selfmonitoring.SelfMonitoringConfiguration,
 ) error {
 	m.resourcesHaveBeenDeletedByOperator.Store(true)
 	m.updateInProgress.Store(true)
@@ -156,9 +151,6 @@ func (m *BackendConnectionManager) RemoveOpenTelemetryCollectorIfNoMonitoringRes
 	if err = m.OTelColResourceManager.DeleteResources(
 		ctx,
 		operatorNamespace,
-		images,
-		dash0MonitoringResourceToBeDeleted,
-		selfMonitoringConfiguration,
 		&logger,
 	); err != nil {
 		logger.Error(

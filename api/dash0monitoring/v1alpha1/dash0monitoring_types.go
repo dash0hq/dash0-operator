@@ -23,13 +23,18 @@ const (
 // Dash0MonitoringSpec describes the details of monitoring a single Kubernetes namespace with Dash0 and sending
 // telemetry to an observability backend.
 type Dash0MonitoringSpec struct {
-	// The configuration of the observability backend to which telemetry data will be sent. This property is mandatory.
-	// This can either be Dash0 or another OTLP-compatible backend. You can also combine up to three exporters (i.e.
-	// Dash0 plus gRPC plus HTTP). This allows sending the same data to two or three targets simultaneously. At least
-	// one exporter has to be defined.
+	// The configuration of the observability backend to which telemetry data will be sent. This property is optional.
+	// If not set, the operator will use the default export configuration from the cluster-wide
+	// Dash0OperatorConfiguration resource, if present. If no Dash0OperatorConfiguration resource has been created for
+	// the cluster, or if the Dash0OperatorConfiguration resource does not have at least one export defined, creating a
+	// Dash0Monitoring resource without export settings will result in an error.
 	//
-	// +kubebuilder:validation:Required
-	Export `json:"export"`
+	// The export can either be Dash0 or another OTLP-compatible backend. You can also combine up to three exporters
+	// (i.e. Dash0 plus gRPC plus HTTP). This allows sending the same data to two or three targets simultaneously. When
+	// the export setting is present, it has to contain at least one exporter.
+	//
+	// +kubebuilder:validation:Optional
+	Export *Export `json:"export"`
 
 	// Global opt-out for workload instrumentation for the target namespace. There are three possible settings: `all`,
 	// `created-and-updated` and `none`. By default, the setting `all` is assumed.

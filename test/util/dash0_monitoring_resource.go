@@ -62,7 +62,7 @@ func EnsureDash0MonitoringResourceExistsWithNamespacedName(
 ) *dash0v1alpha1.Dash0Monitoring {
 	By("creating the Dash0 monitoring resource")
 	spec := dash0v1alpha1.Dash0MonitoringSpec{
-		Export: dash0v1alpha1.Export{
+		Export: &dash0v1alpha1.Export{
 			Dash0: &dash0v1alpha1.Dash0Configuration{
 				Endpoint: EndpointDash0Test,
 				Authorization: dash0v1alpha1.Authorization{
@@ -102,7 +102,7 @@ func CreateDash0MonitoringResource(
 			Namespace: dash0MonitoringResourceName.Namespace,
 		},
 		Spec: dash0v1alpha1.Dash0MonitoringSpec{
-			Export: dash0v1alpha1.Export{
+			Export: &dash0v1alpha1.Export{
 				Dash0: &dash0v1alpha1.Dash0Configuration{
 					Endpoint: EndpointDash0Test,
 					Authorization: dash0v1alpha1.Authorization{

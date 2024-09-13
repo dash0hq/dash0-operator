@@ -39,7 +39,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				},
 			},
 			Images: TestImages,
-		})
+		}, false)
 		Expect(err).To(HaveOccurred())
 	})
 
@@ -49,7 +49,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			NamePrefix: namePrefix,
 			Export:     Dash0ExportWithEndpointAndToken(),
 			Images:     TestImages,
-		})
+		}, false)
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(desiredState).To(HaveLen(14))
@@ -165,7 +165,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export:     Dash0ExportWithEndpointAndToken(),
-		})
+		}, false)
 
 		Expect(err).ToNot(HaveOccurred())
 		configMapContent := getCollectorConfigConfigMapContent(desiredState)
@@ -183,7 +183,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export:     Dash0ExportWithEndpointAndSecretRef(),
-		})
+		}, false)
 
 		Expect(err).ToNot(HaveOccurred())
 		configMapContent := getCollectorConfigConfigMapContent(desiredState)
@@ -203,7 +203,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export:     HttpExportTest(),
-		})
+		}, false)
 
 		Expect(err).ToNot(HaveOccurred())
 		configMapContent := getCollectorConfigConfigMapContent(desiredState)
@@ -226,7 +226,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				Export:  Dash0ExportWithEndpointTokenAndInsightsDataset(),
 			},
 			Images: TestImages,
-		})
+		}, false)
 		Expect(err).NotTo(HaveOccurred())
 
 		daemonSet := getDaemonSet(desiredState)
@@ -251,7 +251,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				Export:  Dash0ExportWithEndpointTokenAndInsightsDataset(),
 			},
 			Images: TestImages,
-		})
+		}, false)
 		Expect(err).NotTo(HaveOccurred())
 
 		daemonSet := getDaemonSet(desiredState)

@@ -16,7 +16,8 @@ import (
 )
 
 type dash0OperatorConfigurationValues struct {
-	Endpoint string
+	SelfMonitoringEnabled bool
+	Endpoint              string
 }
 
 const (
@@ -29,7 +30,8 @@ var (
 	dash0OperatorConfigurationResourceTemplate *template.Template
 
 	defaultDash0OperatorConfigurationValues = dash0OperatorConfigurationValues{
-		Endpoint: defaultEndpoint,
+		SelfMonitoringEnabled: true,
+		Endpoint:              defaultEndpoint,
 	}
 )
 

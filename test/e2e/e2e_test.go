@@ -278,8 +278,8 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			By("deploy the Dash0 operator")
 			deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images, true)
 
-			fmt.Fprint(GinkgoWriter, "waiting 10 seconds to give the webhook some time to get ready\n")
-			time.Sleep(10 * time.Second)
+			fmt.Fprint(GinkgoWriter, "waiting 5 seconds to give the webhook some time to get ready\n")
+			time.Sleep(5 * time.Second)
 		})
 
 		AfterAll(func() {
@@ -533,6 +533,59 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				"opentelemetry-collector",
 				"Received signal from OS",
 				"Config updated, restart service",
+			)
+		})
+	})
+
+	Describe("using the operator configuration resource's connection settings", func() {
+		BeforeAll(func() {
+			By("deploy the Dash0 operator")
+			deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images, true)
+
+			fmt.Fprint(GinkgoWriter, "waiting 5 seconds to give the webhook some time to get ready\n")
+			time.Sleep(5 * time.Second)
+		})
+
+		AfterAll(func() {
+			undeployOperator(operatorNamespace)
+		})
+
+		BeforeEach(func() {
+			deployDash0OperatorConfigurationResource(dash0OperatorConfigurationValues{
+				SelfMonitoringEnabled: false,
+				Endpoint:              defaultEndpoint,
+			})
+			deployDash0MonitoringResource(
+				applicationUnderTestNamespace,
+				dash0MonitoringValues{
+					Endpoint:            "",
+					InstrumentWorkloads: dash0v1alpha1.All,
+				},
+				operatorNamespace,
+				operatorHelmChart,
+			)
+		})
+
+		AfterEach(func() {
+			undeployDash0MonitoringResource(applicationUnderTestNamespace)
+			undeployDash0OperatorConfigurationResource()
+		})
+
+		It("when instrumenting workloads", func() {
+			workloadType := workloadTypeDeployment
+			testId := generateTestId(workloadType.workloadTypeString)
+			By(fmt.Sprintf("installing the Node.js %s", workloadType.workloadTypeString))
+			Expect(installNodeJsWorkload(workloadType, applicationUnderTestNamespace, testId)).To(Succeed())
+			By(fmt.Sprintf("verifying that the Node.js %s has been instrumented by the webhook",
+				workloadType.workloadTypeString))
+			verifyThatWorkloadHasBeenInstrumented(
+				applicationUnderTestNamespace,
+				workloadType.workloadTypeString,
+				workloadType.port,
+				workloadType.isBatch,
+				testId,
+				images,
+				"webhook",
 			)
 		})
 	})
