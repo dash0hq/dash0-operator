@@ -1,11 +1,11 @@
 suite: test deployment
 templates:
-  - operator/deployment-and-webhook.yaml
+  - operator/deployment-and-webhooks.yaml
 tests:
   - it: secret should contain ca and cert
     documentSelector:
-      path: kind
-      value: Secret
+      path: metadata.name
+      value: dash0-operator-certificates
     asserts:
       - isNotNullOrEmpty:
           path: data["ca.crt"]
@@ -304,40 +304,84 @@ tests:
       - notExists:
           path: spec.template.spec.containers[0].env[10].name
 
-  - it: webhook should have caBundle set
+  - it: mutating webhook should have caBundle set
     documentSelector:
-      path: kind
-      value: MutatingWebhookConfiguration
+      path: metadata.name
+      value: dash0-operator-injector
     asserts:
       - isNotNullOrEmpty:
           path: webhooks[0].clientConfig.caBundle
 
-  - it: webhook should have caBundle set also with custom settings
+  - it: mutating webhook should have caBundle set also with custom settings
     documentSelector:
-      path: kind
-      value: MutatingWebhookConfiguration
+      path: metadata.name
+      value: dash0-operator-injector
     set:
       operator:
         webhookPort: 554
     asserts:
-      - hasDocuments:
-          count: 5
       - isNotNullOrEmpty:
           path: webhooks[0].clientConfig.caBundle
 
-  - it: injector service should render the "dash0.com/cert-digest" label
-    documentIndex: 4
+  - it: validating webhook for monitoring resource should have caBundle set
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-monitoring-validator
+    asserts:
+      - isNotNullOrEmpty:
+          path: webhooks[0].clientConfig.caBundle
+
+  - it: validating webhook for monitoring resource should have caBundle set also with custom settings
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-monitoring-validator
+    set:
+      operator:
+        webhookPort: 554
+    asserts:
+      - isNotNullOrEmpty:
+          path: webhooks[0].clientConfig.caBundle
+
+  - it: webhook service should render the "dash0.com/cert-digest" label
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-webhook-service
     asserts:
       - isNotNullOrEmpty:
           path: spec.selector["dash0.com/cert-digest"]
 
-  - it: injector service should match snapshot (default settings)
-    documentIndex: 4
+  - it: webhook service should match snapshot (default settings)
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-webhook-service
     asserts:
       - matchSnapshot: {}
 
-  - it: should render injector service with custom settings
-    documentIndex: 4
+  - it: should render webhook service with custom settings
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-webhook-service
+    set:
+      operator:
+        webhookPort: 554
+    asserts:
+      - isNotNullOrEmpty:
+          path: spec.selector["dash0.com/cert-digest"]
+      - equal:
+          path: spec.ports[0].port
+          value: 554
+
+  - it: metrics service should match snapshot (default settings)
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-metrics
+    asserts:
+      - matchSnapshot: {}
+
+  - it: should render metrics service with custom settings
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-metrics
     set:
       operator:
         metricsPort: 9554
