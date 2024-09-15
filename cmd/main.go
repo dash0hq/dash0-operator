@@ -500,6 +500,11 @@ func startDash0Controllers(
 		return fmt.Errorf("unable to create the instrumentation webhook: %w", err)
 	}
 
+	if err := (&webhooks.OperatorConfigurationValidationWebhookHandler{
+		Client: k8sClient,
+	}).SetupWebhookWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to create the operator configuration validation webhook: %w", err)
+	}
 	if err := (&webhooks.MonitoringValidationWebhookHandler{
 		Client: k8sClient,
 	}).SetupWebhookWithManager(mgr); err != nil {

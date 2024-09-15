@@ -323,6 +323,25 @@ tests:
       - isNotNullOrEmpty:
           path: webhooks[0].clientConfig.caBundle
 
+  - it: validating webhook for operator configuration resource should have caBundle set
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-operator-configuration-validator
+    asserts:
+      - isNotNullOrEmpty:
+          path: webhooks[0].clientConfig.caBundle
+
+  - it: validating webhook for operator configuration resource should have caBundle set also with custom settings
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-operator-configuration-validator
+    set:
+      operator:
+        webhookPort: 554
+    asserts:
+      - isNotNullOrEmpty:
+          path: webhooks[0].clientConfig.caBundle
+
   - it: validating webhook for monitoring resource should have caBundle set
     documentSelector:
       path: metadata.name
