@@ -52,6 +52,8 @@ install_operator_configuration_resource
 echo
 echo
 
+sleep 10
+
 echo "STEP 7: deploy the Dash0 monitoring resource to namespace ${target_namespace}"
 install_monitoring_resource
 echo

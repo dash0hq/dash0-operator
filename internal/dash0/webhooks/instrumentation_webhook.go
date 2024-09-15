@@ -3,9 +3,6 @@
 
 package webhooks
 
-// TODO create second webhook which rejects dash0monitoring resources without export if no
-// operatorconfiguration resource with export settings exist
-
 import (
 	"context"
 	"encoding/json"
@@ -48,7 +45,7 @@ const (
 )
 
 var (
-	log     = logf.Log.WithName("dash0-webhook")
+	log     = logf.Log.WithName("instrumentation-webhook")
 	decoder = scheme.Codecs.UniversalDecoder()
 
 	routes = routing{
@@ -106,7 +103,16 @@ func (h *InstrumentationWebhookHandler) SetupWebhookWithManager(mgr ctrl.Manager
 }
 
 func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admission.Request) admission.Response {
-	logger := log.WithValues("operation", request.Operation, "gvk", request.Kind, "namespace", request.Namespace, "name", request.Name)
+	logger := log.WithValues(
+		"operation",
+		request.Operation,
+		"gvk",
+		request.Kind,
+		"namespace",
+		request.Namespace,
+		"name",
+		request.Name,
+	)
 
 	targetNamespace := request.Namespace
 

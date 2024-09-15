@@ -5,11 +5,11 @@
    * generate a self-signed cert and use it across deployment, webhook and service
    * other than lumping all these resourceds in the same file.
   */ -}}
-{{- $altNames := list ( printf "%s-injector.%s.svc" (include "dash0-operator.chartName" . ) .Release.Namespace ) ( printf "%s-metrics.%s.svc" (include "dash0-operator.chartName" . ) .Release.Namespace ) -}}
+{{- $altNames := list ( printf "%s-webhook-service.%s.svc" (include "dash0-operator.chartName" . ) .Release.Namespace ) ( printf "%s-metrics.%s.svc" (include "dash0-operator.chartName" . ) .Release.Namespace ) -}}
 {{- $ca := genCA "dash0-operator-ca" 365 -}}
 {{- $cert := genSignedCert ( include "dash0-operator.chartName" . ) nil $altNames 365 $ca -}}
 {{- /*
-   * On upgrade, we want to avoid the injector service from routing to older
+   * On upgrade, we want to avoid the webhook service from routing to older an
    * pod, which will use a different certificate. Therefore, we add a digest
    * of the cert as a label of the controller pods, which we can use in service
    * selector to ensure routing to the newer controller pods.
@@ -186,11 +186,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ template "dash0-operator.chartName" . }}-injector
+  name: {{ template "dash0-operator.chartName" . }}-webhook-service
   labels:
     app.kubernetes.io/name: dash0-operator
-    app.kubernetes.io/component: injector
-    app.kubernetes.io/instance: mutating-webhook-service
+    app.kubernetes.io/component: webhook-service
+    app.kubernetes.io/instance: webhook-service
     {{- include "dash0-operator.labels" . | nindent 4 }}
 spec:
   ports:
@@ -212,16 +212,16 @@ metadata:
     app.kubernetes.io/instance: mutating-webhook
     {{- include "dash0-operator.labels" . | nindent 4 }}
 webhooks:
-- admissionReviewVersions:
+- name: inject.dash0.com
+  admissionReviewVersions:
   - v1
   clientConfig:
     caBundle: {{ default "" ( $ca.Cert | b64enc ) }}
     service:
-      name: {{ template "dash0-operator.chartName" . }}-injector
+      name: {{ template "dash0-operator.chartName" . }}-webhook-service
       namespace: {{ .Release.Namespace }}
       path: /v1alpha1/inject/dash0
   failurePolicy: Ignore
-  name: inject.dash0.kb.io
   rules:
   - apiGroups:
     - apps
@@ -263,6 +263,38 @@ webhooks:
       - CREATE
     resources:
     - pods
+  sideEffects: None
+  timeoutSeconds: 5
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: {{ template "dash0-operator.chartName" . }}-monitoring-validator
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: validator
+    app.kubernetes.io/instance: monitoring-validator-webhook
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+webhooks:
+- name: validate-monitoring.dash0.com
+  clientConfig:
+    caBundle: {{ default "" ( $ca.Cert | b64enc ) }}
+    service:
+      name: {{ template "dash0-operator.chartName" . }}-webhook-service
+      namespace: {{ .Release.Namespace }}
+      path: /v1alpha1/validate/monitoring
+  admissionReviewVersions:
+  - v1
+  rules:
+    - apiGroups:
+      - operator.dash0.com
+      apiVersions:
+      - v1alpha1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - dash0monitorings
   sideEffects: None
   timeoutSeconds: 5
 ---

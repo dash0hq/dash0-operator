@@ -493,11 +493,17 @@ func startDash0Controllers(
 
 	if err := (&webhooks.InstrumentationWebhookHandler{
 		Client:               k8sClient,
-		Recorder:             mgr.GetEventRecorderFor("dash0-webhook"),
+		Recorder:             mgr.GetEventRecorderFor("dash0-instrumentation-webhook"),
 		Images:               images,
 		OTelCollectorBaseUrl: oTelCollectorBaseUrl,
 	}).SetupWebhookWithManager(mgr); err != nil {
-		return fmt.Errorf("unable to create the webhook: %w", err)
+		return fmt.Errorf("unable to create the instrumentation webhook: %w", err)
+	}
+
+	if err := (&webhooks.MonitoringValidationWebhookHandler{
+		Client: k8sClient,
+	}).SetupWebhookWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to create the monitoring validation webhook: %w", err)
 	}
 
 	return nil

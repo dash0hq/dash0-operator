@@ -138,7 +138,7 @@ deployment should match snapshot (default values):
               secret:
                 defaultMode: 420
                 secretName: dash0-operator-certificates
-injector service should match snapshot (default settings):
+metrics service should match snapshot (default settings):
   1: |
     apiVersion: v1
     kind: Service
@@ -159,6 +159,29 @@ injector service should match snapshot (default settings):
           port: 8443
           protocol: TCP
           targetPort: https
+      selector:
+        app.kubernetes.io/component: controller
+        app.kubernetes.io/name: dash0-operator
+        dash0.com/cert-digest: dJTiBDRVJUSUZJQ
+webhook service should match snapshot (default settings):
+  1: |
+    apiVersion: v1
+    kind: Service
+    metadata:
+      labels:
+        app.kubernetes.io/component: webhook-service
+        app.kubernetes.io/instance: webhook-service
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: dash0-operator
+        app.kubernetes.io/part-of: dash0-operator
+        app.kubernetes.io/version: 0.0.0
+        helm.sh/chart: dash0-operator-0.0.0
+      name: dash0-operator-webhook-service
+    spec:
+      ports:
+        - port: 443
+          protocol: TCP
+          targetPort: 9443
       selector:
         app.kubernetes.io/component: controller
         app.kubernetes.io/name: dash0-operator
