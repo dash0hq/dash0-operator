@@ -65,11 +65,11 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 			DanglingEventsTimeouts:   &DanglingEventsTimeoutsTest,
 		}
 
-		dash0MonitoringResource = EnsureDash0MonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+		dash0MonitoringResource = EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 	})
 
 	AfterAll(func() {
-		RemoveDash0MonitoringResource(ctx, k8sClient)
+		RemoveMonitoringResource(ctx, k8sClient)
 	})
 
 	BeforeEach(func() {

@@ -31,11 +31,11 @@ const (
 var (
 	dash0MonitoringResourceName1 = types.NamespacedName{
 		Namespace: namespace1,
-		Name:      Dash0MonitoringResourceName,
+		Name:      MonitoringResourceName,
 	}
 	dash0MonitoringResourceName2 = types.NamespacedName{
 		Namespace: namespace2,
-		Name:      Dash0MonitoringResourceName,
+		Name:      MonitoringResourceName,
 	}
 )
 
@@ -69,8 +69,8 @@ var _ = Describe("Uninstalling the Dash0 Kubernetes operator", Ordered, func() {
 
 	AfterEach(func() {
 		createdObjects = DeleteAllCreatedObjects(ctx, k8sClient, createdObjects)
-		RemoveDash0MonitoringResourceByName(ctx, k8sClient, dash0MonitoringResourceName1, false)
-		RemoveDash0MonitoringResourceByName(ctx, k8sClient, dash0MonitoringResourceName2, false)
+		RemoveMonitoringResourceByName(ctx, k8sClient, dash0MonitoringResourceName1, false)
+		RemoveMonitoringResourceByName(ctx, k8sClient, dash0MonitoringResourceName2, false)
 	})
 
 	It("should time out if the deletion of all Dash0 monitoring resources does not happen in a timely manner", func() {
@@ -117,8 +117,8 @@ var _ = Describe("Uninstalling the Dash0 Kubernetes operator", Ordered, func() {
 		}()
 
 		Eventually(func(g Gomega) {
-			VerifyDash0MonitoringResourceByNameDoesNotExist(ctx, k8sClient, g, dash0MonitoringResourceName1)
-			VerifyDash0MonitoringResourceByNameDoesNotExist(ctx, k8sClient, g, dash0MonitoringResourceName2)
+			VerifyMonitoringResourceByNameDoesNotExist(ctx, k8sClient, g, dash0MonitoringResourceName1)
+			VerifyMonitoringResourceByNameDoesNotExist(ctx, k8sClient, g, dash0MonitoringResourceName2)
 
 			VerifySuccessfulUninstrumentationEventEventually(ctx, clientset, g, deployment1.Namespace, deployment1.Name, "controller")
 			deployment1 := GetDeploymentEventually(ctx, k8sClient, g, deployment1.Namespace, deployment1.Name)
@@ -140,7 +140,7 @@ func setupNamespaceWithDash0MonitoringResourceAndWorkload(
 	createdObjects []client.Object,
 ) ([]client.Object, *appv1.Deployment) {
 	EnsureNamespaceExists(ctx, k8sClient, dash0MonitoringResourceName.Namespace)
-	EnsureDash0MonitoringResourceExistsAndIsAvailableInNamespace(ctx, k8sClient, dash0MonitoringResourceName)
+	EnsureMonitoringResourceExistsAndIsAvailableInNamespace(ctx, k8sClient, dash0MonitoringResourceName)
 	deploymentName := UniqueName(DeploymentNamePrefix)
 	deployment := CreateInstrumentedDeployment(ctx, k8sClient, dash0MonitoringResourceName.Namespace, deploymentName)
 	// make sure the monitoring resource has the finalizer

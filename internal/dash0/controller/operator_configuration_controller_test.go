@@ -60,10 +60,9 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 			DescribeTable("it enables self-monitoring in the controller deployment",
 				func(config SelfMonitoringTestConfig) {
-					CreateOperatorConfigurationResource(
+					CreateOperatorConfigurationResourceWithSpec(
 						ctx,
 						k8sClient,
-						OperatorConfigurationResourceName,
 						dash0v1alpha1.Dash0OperatorConfigurationSpec{
 							Export: ExportToPrt(config.createExport()),
 							SelfMonitoring: dash0v1alpha1.SelfMonitoring{
@@ -108,10 +107,9 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 		Describe("disabling self-monitoring", func() {
 
 			It("it does not change the controller deployment", func() {
-				CreateOperatorConfigurationResource(
+				CreateOperatorConfigurationResourceWithSpec(
 					ctx,
 					k8sClient,
-					OperatorConfigurationResourceName,
 					dash0v1alpha1.Dash0OperatorConfigurationSpec{
 						Export: ExportToPrt(Dash0ExportWithEndpointAndToken()),
 						SelfMonitoring: dash0v1alpha1.SelfMonitoring{
@@ -156,10 +154,9 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				})
 
 				It("it does not change the controller deployment", func() {
-					CreateOperatorConfigurationResource(
+					CreateOperatorConfigurationResourceWithSpec(
 						ctx,
 						k8sClient,
-						OperatorConfigurationResourceName,
 						dash0v1alpha1.Dash0OperatorConfigurationSpec{
 							Export: ExportToPrt(Dash0ExportWithEndpointAndToken()),
 							SelfMonitoring: dash0v1alpha1.SelfMonitoring{
@@ -191,10 +188,9 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 					EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
 					reconciler = createReconciler(controllerDeployment)
 
-					CreateOperatorConfigurationResource(
+					CreateOperatorConfigurationResourceWithSpec(
 						ctx,
 						k8sClient,
-						OperatorConfigurationResourceName,
 						dash0v1alpha1.Dash0OperatorConfigurationSpec{
 							Export: ExportToPrt(Dash0ExportWithEndpointAndToken()),
 							SelfMonitoring: dash0v1alpha1.SelfMonitoring{
@@ -238,10 +234,9 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			Describe("when self-monitoring is enabled", func() {
 
 				BeforeEach(func() {
-					CreateOperatorConfigurationResource(
+					CreateOperatorConfigurationResourceWithSpec(
 						ctx,
 						k8sClient,
-						OperatorConfigurationResourceName,
 						dash0v1alpha1.Dash0OperatorConfigurationSpec{
 							Export: ExportToPrt(Dash0ExportWithEndpointAndToken()),
 							SelfMonitoring: dash0v1alpha1.SelfMonitoring{
@@ -286,10 +281,9 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			Describe("when self-monitoring is already disabled", func() {
 
 				BeforeEach(func() {
-					CreateOperatorConfigurationResource(
+					CreateOperatorConfigurationResourceWithSpec(
 						ctx,
 						k8sClient,
-						OperatorConfigurationResourceName,
 						dash0v1alpha1.Dash0OperatorConfigurationSpec{
 							Export: ExportToPrt(Dash0ExportWithEndpointAndToken()),
 							SelfMonitoring: dash0v1alpha1.SelfMonitoring{
@@ -338,10 +332,9 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 		Describe("when self-monitoring is enabled", func() {
 
 			BeforeEach(func() {
-				CreateOperatorConfigurationResource(
+				CreateOperatorConfigurationResourceWithSpec(
 					ctx,
 					k8sClient,
-					OperatorConfigurationResourceName,
 					dash0v1alpha1.Dash0OperatorConfigurationSpec{
 						Export: ExportToPrt(Dash0ExportWithEndpointAndToken()),
 						SelfMonitoring: dash0v1alpha1.SelfMonitoring{
@@ -391,10 +384,9 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 		Describe("when self-monitoring is disabled", func() {
 
 			BeforeEach(func() {
-				CreateOperatorConfigurationResource(
+				CreateOperatorConfigurationResourceWithSpec(
 					ctx,
 					k8sClient,
-					OperatorConfigurationResourceName,
 					dash0v1alpha1.Dash0OperatorConfigurationSpec{
 						SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 							Enabled: false,

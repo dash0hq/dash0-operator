@@ -44,7 +44,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 	})
 
 	BeforeEach(func() {
-		dash0MonitoringResource = EnsureDash0MonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+		dash0MonitoringResource = EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
 		createdObjects = make([]client.Object, 0)
 
@@ -61,7 +61,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 		createdObjects = DeleteAllCreatedObjects(ctx, k8sClient, createdObjects)
 		DeleteAllEvents(ctx, clientset, namespace)
 
-		RemoveDash0MonitoringResource(ctx, k8sClient)
+		RemoveMonitoringResource(ctx, k8sClient)
 		dash0MonitoringResource = nil
 	})
 
