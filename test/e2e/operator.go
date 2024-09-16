@@ -193,6 +193,21 @@ func verifyThatManagerPodIsRunning(operatorNamespace string) {
 	}
 
 	Eventually(verifyControllerUp, 120*time.Second, time.Second).Should(Succeed())
+
+	By("wait for webhook endpoint to become available")
+	Eventually(func(g Gomega) {
+		endpointsOutput, err := run(exec.Command(
+			"kubectl",
+			"get",
+			"endpoints",
+			"--namespace",
+			operatorNamespace,
+			"dash0-operator-webhook-service",
+		), false)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(endpointsOutput).To(ContainSubstring("dash0-operator-webhook-service"))
+		g.Expect(endpointsOutput).To(ContainSubstring(":9443"))
+	}, 20*time.Second, 200*time.Millisecond).Should(Succeed())
 }
 
 func undeployOperator(operatorNamespace string) {
