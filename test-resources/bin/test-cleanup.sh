@@ -19,9 +19,9 @@ for resource_type in "${resource_types[@]}"; do
   test-resources/node.js/express/undeploy.sh ${target_namespace} ${resource_type}
 done
 
-kubectl delete -n ${target_namespace} -f test-resources/customresources/dash0monitoring/dash0monitoring.secret.yaml --wait=false || true
+kubectl delete -n ${target_namespace} -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml --wait=false || true
 sleep 1
-kubectl patch -f test-resources/customresources/dash0monitoring/dash0monitoring.secret.yaml -p '{"metadata":{"finalizers":null}}' --type=merge || true
+kubectl patch -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml -p '{"metadata":{"finalizers":null}}' --type=merge || true
 kubectl delete -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.token.yaml || true
 
 if [[ "${target_namespace}" != "default" ]] && [[ "${delete_namespace}" == "true" ]]; then

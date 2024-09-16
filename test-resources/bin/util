@@ -122,9 +122,9 @@ has_been_set_to_empty_string() {
 }
 
 install_operator_configuration_resource() {
-  kubectl apply -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.token.yaml
+  kubectl apply -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.secret.yaml
 }
 
 install_monitoring_resource() {
-  kubectl apply -n ${target_namespace} -f test-resources/customresources/dash0monitoring/dash0monitoring.secret.yaml
+  kubectl apply -n ${target_namespace} -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml
 }
