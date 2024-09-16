@@ -17,7 +17,7 @@ collection and metrics.
 
 The Dash0 Kubernetes operator is currently available as a technical preview.
 
-Supported runtimes:
+Supported runtimes for automatic instrumentation:
 
 * Node.js 18 and beyond
 
@@ -46,19 +46,24 @@ helm install \
   dash0-operator/dash0-operator
 ```
 
-Note that Dash0 has to be enabled per namespace that you want to monitor, which is described in the next section.
+On its own, the operator will not do much.
+To actually have the operator monitor your cluster, two more things need to be set up:
+1. a [Dash0 backend connection](#configuring-the-dash0-backend-connection) has to be configured and 
+2. monitoring workloads has to be [enabled per namespace](#enable-dash0-monitoring-for-a-namespace).
 
-## Enable Dash0 Monitoring For a Namespace
+Both steps are described in the following sections.
 
-For _each namespace_ that you want to monitor with Dash0, enable monitoring by installing a Dash0 monitoring resource
-into that namespace:
+## Configuration
 
-Create a file `dash0-monitoring.yaml` with the following content:
+### Configuring the Dash0 Backend Connection
+
+Create a file `dash0-operator-configuration.yaml` with the following content:
+
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1
-kind: Dash0Monitoring
+kind: Dash0OperatorConfiguration
 metadata:
-  name: dash0-monitoring-resource
+  name: dash0-operator-configuration
 spec:
   export:
     dash0:
@@ -68,41 +73,74 @@ spec:
       authorization:
         # Provide the Dash0 authorization token as a string via the token property:
         token: auth_... # TODO needs to be replaced with the actual value, see below
-
-  # Opt-out settings for particular use cases. The default value is "all". Other possible values are
-  # "created-and-updated" and "none".
-  # instrumentWorkloads: all
 ```
 
-At this point, you need to provide two configuration settings:
-* `spec.export.dash0.endpoint`: The URL of the observability backend to which telemetry data will be sent. This property
-  is mandatory.
+You need to provide two configuration settings:
+* `spec.export.dash0.endpoint`: The URL of the Dash0 ingress endpoint backend to which telemetry data will be sent.
+  This property is mandatory.
   Replace the value in the example above with the OTLP/gRPC endpoint of your Dash0 organization.
-  The correct OTLP/gRPC endpoint can be copied fom https://app.dash0.com/settings.
+  The correct OTLP/gRPC endpoint can be copied fom https://app.dash0.com -> organization settings -> "Endpoints".
   Note that the correct endpoint value will always start with `ingress.` and end in `dash0.com:4317`.
-  A protocol prefix (eg. `https://`) should not be included in the value.
+  A protocol prefix (e.g. `https://`) should not be included in the value.
 * `spec.export.dash0.authorization.token` or `spec.export.dash0.authorization.secretRef`: Exactly one of these two
   properties needs to be provided.
   Providing both will cause a validation error when installing the Dash0Monitoring resource.
     * `spec.export.dash0.authorization.token`: Replace the value in the example above with the Dash0 authorization token
       of your organization.
-      The authorization token for your Dash0 organization can be copied from https://app.dash0.com/settings.
+      The authorization token for your Dash0 organization can be copied from https://app.dash0.com -> organization 
+      settings -> "Auth Tokens".
       The prefix `Bearer ` must *not* be included in the value.
       Note that the value will be rendered verbatim into a Kubernetes ConfigMap object.
       Anyone with API access to the Kubernetes cluster will be able to read the value.
       Use the `secretRef` property and a Kubernetes secret if you want to avoid that.
     * `spec.export.dash0.authorization.secretRef`: A reference to an existing Kubernetes secret in the Dash0 operator's
-       namespace.
-       See the next section for an example file that uses a `secretRef`.
-       The secret needs to contain the Dash0 authorization token.
-       See below for details on how exactly the secret should be created and configured.
-       Note that by default, Kubernetes secrets are stored _unencrypted_, and anyone with API access to the Kubernetes
-       cluster will be able to read the value.
-       Additional steps are required to make sure secret values are encrypted.
-       See https://kubernetes.io/docs/concepts/configuration/secret/ for more information on Kubernetes secrets.
+      namespace.
+      See the section [Using a Kubernetes Secret for the Dash0 Authorization Token](#using-a-kubernetes-secret-for-the-dash0-authorization-token)
+      for an example file that uses a `secretRef`.
+      The secret needs to contain the Dash0 authorization token.
+      See below for details on how exactly the secret should be created and configured.
+      Note that by default, Kubernetes secrets are stored _unencrypted_, and anyone with API access to the Kubernetes
+      cluster will be able to read the value.
+      Additional steps are required to make sure secret values are encrypted.
+      See https://kubernetes.io/docs/concepts/configuration/secret/ for more information on Kubernetes secrets.
 
-The other configuration settings are optional:
-* `instrumentWorkloads`: A global opt-out for workload instrumentation for the target namespace.
+After providing the required values, save the file and apply the resource to the Kubernetes cluster you want to monitor:
+
+```console
+kubectl apply -f dash0-operator-configuration.yaml
+```
+
+The Dash0 operator configuration resource is cluster-scoped, so a specific namespace should not be provided when
+applying it.
+
+### Enable Dash0 Monitoring For a Namespace
+
+For _each namespace_ that you want to monitor with Dash0, enable workload monitoring by installing a _Dash0 monitoring
+resource_ into that namespace:
+
+Create a file `dash0-monitoring.yaml` with the following content:
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0Monitoring
+metadata:
+  name: dash0-monitoring-resource
+```
+
+Save the file and apply the resource to the namespace you want to monitor.
+For example, if you want to monitor workloads in the namespace `my-nodejs-applications`, use the following command:
+
+```console
+kubectl apply --namespace my-nodejs-applications -f dash0-monitoring.yaml
+```
+
+If you want to monitor the `default` namespace with Dash0, use the following command:
+```console
+kubectl apply -f dash0-monitoring.yaml
+```
+
+The Dash0 monitoring resource supports additional configuration settings:
+
+* `spec.instrumentWorkloads`: A namespace-wide opt-out for workload instrumentation for the target namespace.
   There are threepossible settings: `all`, `created-and-updated` and `none`.
   By default, the setting `all` is assumed.
 
@@ -126,8 +164,8 @@ The other configuration settings are optional:
         resource or restarting the Dash0 Kubernetes operator.
 
   * `none`: You can opt out of instrumenting workloads entirely by setting this option to `none`.
-     With `instrumentWorkloads: none`, workloads in the target namespace will never be instrumented to send telemetry to
-     Dash0.
+     With `spec.instrumentWorkloads: none`, workloads in the target namespace will never be instrumented to send
+     telemetry to Dash0.
 
   If this setting is omitted, the value `all` is assumed and new/updated as well as existing Kubernetes workloads
   will be intrumented by the operator to send telemetry to Dash0, as described above.
@@ -136,24 +174,27 @@ The other configuration settings are optional:
   `dash0.com/enable=false` on individual workloads.
 
   The behavior when changing this setting for an existing Dash0 monitoring resource is as follows:
-    * When this setting is updated to `instrumentWorkloads=all` (and it had a different value before): All existing
+    * When this setting is updated to `spec.instrumentWorkloads=all` (and it had a different value before): All existing
       uninstrumented workloads will be instrumented.
-    * When this setting is updated to `instrumentWorkloads=none` (and it had a different value before): The
+    * When this setting is updated to `spec.instrumentWorkloads=none` (and it had a different value before): The
       instrumentation will be removed from all instrumented workloads.
-    * Updating this value to `instrumentWorkloads=created-and-updated` has no immediate effect; existing uninstrumented 
-      workloads will not be instrumented, existing instrumented workloads will not be uninstrumented. Newly deployed
-      or updated workloads will be instrumented from the point of the configuration change onwards as described above.
+    * Updating this value to `spec.instrumentWorkloads=created-and-updated` has no immediate effect; existing
+      uninstrumented workloads will not be instrumented, existing instrumented workloads will not be uninstrumented.
+      Newly deployed or updated workloads will be instrumented from the point of the configuration change onwards as
+      described above.
 
-After providing the required values, save the file and apply the resource to the namespace you want to monitor.
-For example, if you want to monitor workloads in the namespace `my-nodejs-applications`, use the following command:
+Here is an example file for a monitoring resource that sets the `spec.instrumentWorkloads` property 
+to `created-and-updated`:
 
-```console
-kubectl apply --namespace my-nodejs-applications -f dash0-monitoring.yaml
-```
-
-If you want to monitor the `default` namespace with Dash0, use the following command:
-```console
-kubectl apply -f dash0-monitoring.yaml
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0Monitoring
+metadata:
+  name: dash0-monitoring-resource
+spec:
+  # Opt-out settings for particular use cases. The default value is "all". Other possible values are
+  # "created-and-updated" and "none".
+  instrumentWorkloads: created-and-updated
 ```
 
 ### Using a Kubernetes Secret for the Dash0 Authorization Token
@@ -161,7 +202,7 @@ kubectl apply -f dash0-monitoring.yaml
 If you want to provide the Dash0 authorization token via a Kubernetes secret instead of providing the token as a string,
 create the secret in the namespace where the Dash0 operator is installed.
 If you followed the guide above, the name of that namespace is `dash0-system`.
-The authorization token for your Dash0 organization can be copied from https://app.dash0.com/settings.
+The authorization token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings -> "Auth Tokens".
 You can freely choose the name of the secret and the key of the token within the secret.
 
 Create the secret by using the following command:
@@ -184,14 +225,13 @@ If the `key` property is omitted, the key `token` will be assumed.
 Here is an example that uses the secret created above:
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1
-kind: Dash0Monitoring
+kind: Dash0OperatorConfiguration
 metadata:
-  name: dash0-monitoring-resource
+  name: dash0-operator-configuration
 spec:
   export:
     dash0:
-      # Replace this value with the actual OTLP/gRPC endpoint of your Dash0 organization.
-      endpoint: ingress... # TODO needs to be replaced with the actual value, see below
+      endpoint: ingress... # TODO needs to be replaced with the actual value, see above
 
       authorization:
         # Provide the name and key of a secret existing in the Dash0 operator's namespace as secretRef:
@@ -202,19 +242,18 @@ spec:
 
 Since the name `dash0-authorization-secret` and the key `token` are the defaults, this `secretRef` could have also been
 written as follows:
+
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1
-kind: Dash0Monitoring
+kind: Dash0OperatorConfiguration
 metadata:
-  name: dash0-monitoring-resource
+  name: dash0-operator-configuration
 spec:
   export:
     dash0:
-      # Replace this value with the actual OTLP/gRPC endpoint of your Dash0 organization.
-      endpoint: ingress... # TODO needs to be replaced with the actual value, see below
+      endpoint: ingress... # TODO needs to be replaced with the actual value, see above
 
       authorization:
-        # Provide the name and key of a secret existing in the Dash0 operator's namespace as secretRef:
         secretRef: {}
 ```
 
@@ -227,17 +266,21 @@ See https://kubernetes.io/docs/concepts/configur**ation/secret/ for more informa
 
 Use the `spec.export.dash0.dataset` property to configure the dataset that should be used for the telemetry data.
 By default, data will be sent to the dataset `default`.
+Here is an example for a configuration that uses a different Dash0 dataset:
+
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1
-kind: Dash0Monitoring
+kind: Dash0OperatorConfiguration
 metadata:
-  name: dash0-monitoring-resource
+  name: dash0-operator-configuration
 spec:
   export:
     dash0:
-      endpoint: ingress... # TODO needs to be replaced with the actual value, see below
-      dataset: my-custom-dataset
-      authorization:
+      endpoint: ingress... # see above
+
+      dataset: my-custom-dataset # This optional setting determines the Dash0 dataset to which telemetry will be sent.
+
+      authorization: # see above
         ...
 ```
 
@@ -247,32 +290,34 @@ Instead of `spec.export.dash0`, you can also provide `spec.export.http` or `spec
 to arbitrary OTLP-compatible backends, or to another local OpenTelemetry collector.
 
 Here is an example for HTTP:
+
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1
-kind: Dash0Monitoring
+kind: Dash0OperatorConfiguration
 metadata:
-  name: dash0-monitoring-resource
+  name: dash0-operator-configuration
 spec:
   export:
     http:
-      endpoint: ...
-      headers: 
+      endpoint: ... # provide the OTLP HTTP endpoint of your observability backend here
+      headers: # you can optionally provide additional headers, for example for authorization
         - name: X-My-Header
           value: my-value
-      encoding: json
+      encoding: json # optional, can be "json" or "proto", defaults to "proto"
 ```
 
 Here is an example for gRPC:
+
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1
-kind: Dash0Monitoring
+kind: Dash0OperatorConfiguration
 metadata:
-  name: dash0-monitoring-resource
+  name: dash0-operator-configuration
 spec:
   export:
     grpc:
-      endpoint: ...
-      headers: 
+      endpoint: ... # provide the OTLP gRPC endpoint of your observability backend here
+      headers: # you can optionally provide additional headers, for example for authorization
         - name: X-My-Header
           value: my-value
 ```
@@ -281,6 +326,25 @@ You can combine up to three exporters (i.e. Dash0 plus gRPC plus HTTP) to send d
 sending the same data to two or three targets simultaneously. At least one exporter has to be defined. More than three
 exporters cannot be defined. Listing two or more exporters of the same type (i.e. providing `spec.export.grpc` twice)
 is not supported.
+
+Here is an example that combines three exporters:
+
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0OperatorConfiguration
+metadata:
+  name: dash0-operator-configuration
+spec:
+  export:
+    dash0:
+      endpoint: ingress... # TODO needs to be replaced with the actual value, see above
+      authorization:
+        token: auth_... # TODO needs to be replaced with the actual value, see above
+    http:
+      endpoint: ... # provide the OTLP HTTP endpoint of your observability backend here
+    grpc:
+      endpoint: ... # provide the OTLP gRPC endpoint of your observability backend here
+```
 
 #### Exporting Telemetry to Different Backends Per Namespace
 
@@ -292,15 +356,20 @@ feature.
 **Important**: For that reason, having different export settings on the Dash0 monitoring resources in your cluster is
 currently strongly discouraged -- the export settings of one Dash0 monitoring resource would overwrite the settings of
 the other Dash0 monitoring resources, leading to non-deterministic behavior.
+For now, we recommend to only set the `export` attribute on the cluster's Dash0 operator configuration resource.
 
 This restriction will be lifted once exporting telemetry to different backends per namespace is implemented.
 
-## Enable Self-Monitoring
+## Disable Self-Monitoring
 
-To enable self-monitoring for the Dash0 Kubernetes operator, deploy a Dash0 operator configuration resource in the
-cluster.
+By default, self-monitoring is enabled for the Dash0 Kubernetes operator as soon as you deploy a Das0 operator
+configuration resource with an export.
+That means, the operator will send self-monitoring telemetry to the Dash0 Insights dataset of the configured backend.
+Disabling self-monitoring is available as a setting on the Dash0 operator configuration resource.
+Dash0 does not recommend to disable the operator's self-monitoring.
 
-Create a file `dash0-operator-configuration.yaml` with the following content:
+Here is an example with self-monitoring disabled:
+
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1
 kind: Dash0OperatorConfiguration
@@ -308,29 +377,10 @@ metadata:
   name: dash0-operator-configuration-resource
 spec:
   selfMonitoring:
-    enabled: true
+    enabled: false
   export:
-    dash0:
-      # Replace this value with the actual OTLP/gRPC endpoint of your Dash0 organization.
-      endpoint: ingress... # TODO needs to be replaced with the actual value, see below
-
-      authorization:
-        # Provide the Dash0 authorization token as a string via the token property:
-        token: auth_... # TODO needs to be replaced with the actual value, see below
+    # ... see above for details on the export settings
 ```
-
-After providing the required values, save the file and apply the resource to the cluster:
-
-```console
-kubectl apply -f dash0-operator-configuration.yaml
-```
-
-This is a cluster-scoped resource, so it does not need to be installed into a specific namespace.
-
-The `export` settings are the same as for the per-namespace Dash0 monitoring resource.
-The only difference is that self-monitoring telemetry will only be sent to one export.
-If multiple export are defined, the `dash0` export will take precedence over `grpc` and `http`, and `grpc` will take
-precedence over `http`.
 
 ## Disable Dash0 Monitoring For a Namespace
 
@@ -383,5 +433,8 @@ token (if such a secret has been created):
 kubectl delete secret --namespace dash0-system dash0-authorization-secret
 ```
 
-If you later decide to install the operator again, you will need to enable Dash0 monitoring in each namespace you want
-to monitor again, see [Enable Dash0 Monitoring For a Namespace](#enable-dash0-monitoring-for-a-namespace).
+If you later decide to install the operator again, you will need to perform the [initial configuration](#configuration)
+steps again:
+
+1. set up a [Dash0 backend connection](#configuring-the-dash0-backend-connection) and
+2. enable Dash0 monitoring in each namespace you want to monitor, see [Enable Dash0 Monitoring For a Namespace](#enable-dash0-monitoring-for-a-namespace).
