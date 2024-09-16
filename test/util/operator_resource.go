@@ -8,7 +8,6 @@ import (
 	"slices"
 
 	appsv1 "k8s.io/api/apps/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -23,6 +22,25 @@ import (
 const (
 	Dash0OperatorDeploymentName       = "controller-deployment"
 	OperatorConfigurationResourceName = "dash0-operator-test-resource"
+)
+
+var (
+	OperatorConfigurationResourceDefaultObjectMeta = metav1.ObjectMeta{
+		Name: OperatorConfigurationResourceName,
+	}
+	OperatorConfigurationResourceDefaultSpec = dash0v1alpha1.Dash0OperatorConfigurationSpec{
+		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+			Enabled: true,
+		},
+		Export: &dash0v1alpha1.Export{
+			Dash0: &dash0v1alpha1.Dash0Configuration{
+				Endpoint: EndpointDash0Test,
+				Authorization: dash0v1alpha1.Authorization{
+					Token: &AuthorizationTokenTest,
+				},
+			},
+		},
+	}
 )
 
 func EnsureControllerDeploymentExists(
@@ -40,17 +58,6 @@ func EnsureControllerDeploymentExists(
 	return deployment.(*appsv1.Deployment)
 }
 
-func EnsureOperatorConfigurationResourceExists(
-	ctx context.Context,
-	k8sClient client.Client,
-) *dash0v1alpha1.Dash0OperatorConfiguration {
-	return EnsureOperatorConfigurationResourceExistsWithName(
-		ctx,
-		k8sClient,
-		OperatorConfigurationResourceName,
-	)
-}
-
 func EnsureControllerDeploymentDoesNotExist(
 	ctx context.Context,
 	k8sClient client.Client,
@@ -59,50 +66,40 @@ func EnsureControllerDeploymentDoesNotExist(
 	Expect(k8sClient.Delete(ctx, controllerDeployment)).To(Succeed())
 }
 
-func EnsureOperatorConfigurationResourceExistsWithName(
+func CreateDefaultOperatorConfigurationResource(
 	ctx context.Context,
 	k8sClient client.Client,
-	name string,
 ) *dash0v1alpha1.Dash0OperatorConfiguration {
-	By("creating the Dash0 operator configuration resource")
+	return CreateOperatorConfigurationResourceWithSpec(
+		ctx,
+		k8sClient,
+		OperatorConfigurationResourceDefaultSpec,
+	)
+}
 
-	list := dash0v1alpha1.Dash0OperatorConfigurationList{}
-	if err := k8sClient.List(ctx, &list, &client.ListOptions{}); err != nil && !errors.IsNotFound(err) {
-		Expect(err).ToNot(HaveOccurred())
-	}
-
-	object := dash0v1alpha1.Dash0OperatorConfiguration{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
-	}
-
-	found := slices.ContainsFunc(list.Items, func(r dash0v1alpha1.Dash0OperatorConfiguration) bool {
-		return r.Name == name
-	})
-	if !found {
-		Expect(k8sClient.Create(ctx, &object)).To(Succeed())
-	} else {
-		Expect(k8sClient.Update(ctx, &object)).To(Succeed())
-	}
-
-	return &object
+func CreateOperatorConfigurationResourceWithSpec(
+	ctx context.Context,
+	k8sClient client.Client,
+	operatorConfigurationSpec dash0v1alpha1.Dash0OperatorConfigurationSpec,
+) *dash0v1alpha1.Dash0OperatorConfiguration {
+	operatorConfigurationResource, err := CreateOperatorConfigurationResource(
+		ctx,
+		k8sClient,
+		&dash0v1alpha1.Dash0OperatorConfiguration{
+			ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+			Spec:       operatorConfigurationSpec,
+		})
+	Expect(err).ToNot(HaveOccurred())
+	return operatorConfigurationResource
 }
 
 func CreateOperatorConfigurationResource(
 	ctx context.Context,
 	k8sClient client.Client,
-	name string,
-	spec dash0v1alpha1.Dash0OperatorConfigurationSpec,
-) *dash0v1alpha1.Dash0OperatorConfiguration {
-	resource := &dash0v1alpha1.Dash0OperatorConfiguration{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: name,
-		},
-		Spec: spec,
-	}
-	Expect(k8sClient.Create(ctx, resource)).To(Succeed())
-	return resource
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
+) (*dash0v1alpha1.Dash0OperatorConfiguration, error) {
+	err := k8sClient.Create(ctx, operatorConfigurationResource)
+	return operatorConfigurationResource, err
 }
 
 func DeleteOperatorConfigurationResource(
@@ -220,7 +217,7 @@ func RemoveOperatorConfigurationResourceByName(
 	k8sClient client.Client,
 	name string,
 ) {
-	By("Removing the Dash0 operator configuration resource instance")
+	By("Removing the operator configuration resource instance")
 	if resource := LoadOperatorConfigurationResourceByNameIfItExists(
 		ctx,
 		k8sClient,

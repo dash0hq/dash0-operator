@@ -13,10 +13,6 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-	"github.com/onsi/gomega/format"
-
 	admissionv1 "k8s.io/api/admission/v1"
 	apimachineryruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
@@ -31,6 +27,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/format"
+
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
@@ -122,6 +123,14 @@ var _ = BeforeSuite(func() {
 		Recorder:             manager.GetEventRecorderFor("dash0-webhook"),
 		Images:               TestImages,
 		OTelCollectorBaseUrl: OTelCollectorBaseUrlTest,
+	}).SetupWebhookWithManager(manager)
+	Expect(err).NotTo(HaveOccurred())
+	err = (&OperatorConfigurationValidationWebhookHandler{
+		Client: k8sClient,
+	}).SetupWebhookWithManager(manager)
+	Expect(err).NotTo(HaveOccurred())
+	err = (&MonitoringValidationWebhookHandler{
+		Client: k8sClient,
 	}).SetupWebhookWithManager(manager)
 	Expect(err).NotTo(HaveOccurred())
 

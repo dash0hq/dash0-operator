@@ -143,20 +143,9 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 		})
 
 		It("should fall back to the operator configuration export settings if the monitoring resource has no export", func() {
-			CreateOperatorConfigurationResource(
+			CreateDefaultOperatorConfigurationResource(
 				ctx,
 				k8sClient,
-				"operator-configuration-resource",
-				dash0v1alpha1.Dash0OperatorConfigurationSpec{
-					Export: &dash0v1alpha1.Export{
-						Dash0: &dash0v1alpha1.Dash0Configuration{
-							Endpoint: EndpointDash0Test,
-							Authorization: dash0v1alpha1.Authorization{
-								Token: &AuthorizationTokenTest,
-							},
-						},
-					},
-				},
 			)
 			err := manager.EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
 				ctx,
@@ -190,10 +179,9 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 
 		It("should fail if the monitoring resource has no export and the existing operator configuration "+
 			"resource has no export either", func() {
-			CreateOperatorConfigurationResource(
+			CreateOperatorConfigurationResourceWithSpec(
 				ctx,
 				k8sClient,
-				"operator-configuration-resource",
 				dash0v1alpha1.Dash0OperatorConfigurationSpec{},
 			)
 			err := manager.EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
@@ -253,15 +241,15 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 		It("should not delete the collector if there are still Dash0 monitoring resources", func() {
 			// create multiple Dash0 monitoring resources
 			firstName := types.NamespacedName{Namespace: TestNamespaceName, Name: "das0-monitoring-test-resource-1"}
-			firstDash0MonitoringResource := CreateDash0MonitoringResource(ctx, k8sClient, firstName)
+			firstDash0MonitoringResource := CreateDefaultMonitoringResource(ctx, k8sClient, firstName)
 			createdObjects = append(createdObjects, firstDash0MonitoringResource)
 
 			secondName := types.NamespacedName{Namespace: TestNamespaceName, Name: "das0-monitoring-test-resource-2"}
-			secondDash0MonitoringResource := CreateDash0MonitoringResource(ctx, k8sClient, secondName)
+			secondDash0MonitoringResource := CreateDefaultMonitoringResource(ctx, k8sClient, secondName)
 			createdObjects = append(createdObjects, secondDash0MonitoringResource)
 
 			thirdName := types.NamespacedName{Namespace: TestNamespaceName, Name: "das0-monitoring-test-resource-3"}
-			thirdDash0MonitoringResource := CreateDash0MonitoringResource(ctx, k8sClient, thirdName)
+			thirdDash0MonitoringResource := CreateDefaultMonitoringResource(ctx, k8sClient, thirdName)
 			createdObjects = append(createdObjects, thirdDash0MonitoringResource)
 
 			// Let the manager create the collector so there is something to delete.
@@ -287,7 +275,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 
 		It("should not delete the collector if there is only one Dash0 monitoring resource left but it is not the one being deleted", func() {
 			resourceName := types.NamespacedName{Namespace: TestNamespaceName, Name: "das0-monitoring-test-resource-1"}
-			existingDash0MonitoringResource := CreateDash0MonitoringResource(ctx, k8sClient, resourceName)
+			existingDash0MonitoringResource := CreateDefaultMonitoringResource(ctx, k8sClient, resourceName)
 			createdObjects = append(createdObjects, existingDash0MonitoringResource)
 
 			// Let the manager create the collector so there is something to delete.
@@ -332,7 +320,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 		It("should delete the collector if the Dash0 monitoring resource that is being deleted is the only one left", func() {
 			// create multiple Dash0 monitoring resources
 			resourceName := types.NamespacedName{Namespace: TestNamespaceName, Name: "das0-monitoring-test-resource-1"}
-			dash0MonitoringResource := CreateDash0MonitoringResource(ctx, k8sClient, resourceName)
+			dash0MonitoringResource := CreateDefaultMonitoringResource(ctx, k8sClient, resourceName)
 			createdObjects = append(createdObjects, dash0MonitoringResource)
 
 			// Let the manager create the collector so there is something to delete.

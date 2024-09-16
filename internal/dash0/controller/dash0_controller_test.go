@@ -89,13 +89,13 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 	Describe("when the Dash0 monitoring resource exists", Ordered, func() {
 		BeforeEach(func() {
-			EnsureDash0MonitoringResourceExists(ctx, k8sClient)
+			EnsureMonitoringResourceExists(ctx, k8sClient)
 		})
 
 		AfterEach(func() {
-			RemoveDash0MonitoringResource(ctx, k8sClient)
+			RemoveMonitoringResource(ctx, k8sClient)
 			for _, name := range extraDash0MonitoringResourceNames {
-				RemoveDash0MonitoringResourceByName(ctx, k8sClient, name, true)
+				RemoveMonitoringResourceByName(ctx, k8sClient, name, true)
 			}
 		})
 
@@ -126,23 +126,23 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 			It("should mark only the most recent resource as available and the other ones as degraded when multiple resources exist", func() {
 				firstDash0MonitoringResource := &dash0v1alpha1.Dash0Monitoring{}
-				Expect(k8sClient.Get(ctx, Dash0MonitoringResourceQualifiedName, firstDash0MonitoringResource)).To(Succeed())
+				Expect(k8sClient.Get(ctx, MonitoringResourceQualifiedName, firstDash0MonitoringResource)).To(Succeed())
 				time.Sleep(10 * time.Millisecond)
 				secondName := types.NamespacedName{Namespace: TestNamespaceName, Name: "das0-monitoring-test-resource-2"}
 				extraDash0MonitoringResourceNames = append(extraDash0MonitoringResourceNames, secondName)
-				CreateDash0MonitoringResource(ctx, k8sClient, secondName)
+				CreateDefaultMonitoringResource(ctx, k8sClient, secondName)
 				time.Sleep(10 * time.Millisecond)
 				thirdName := types.NamespacedName{Namespace: TestNamespaceName, Name: "das0-monitoring-test-resource-3"}
 				extraDash0MonitoringResourceNames = append(extraDash0MonitoringResourceNames, thirdName)
-				CreateDash0MonitoringResource(ctx, k8sClient, thirdName)
+				CreateDefaultMonitoringResource(ctx, k8sClient, thirdName)
 
-				triggerReconcileRequestForName(ctx, reconciler, "", Dash0MonitoringResourceQualifiedName)
+				triggerReconcileRequestForName(ctx, reconciler, "", MonitoringResourceQualifiedName)
 				triggerReconcileRequestForName(ctx, reconciler, "", secondName)
 				triggerReconcileRequestForName(ctx, reconciler, "", thirdName)
 
 				Eventually(func(g Gomega) {
-					resource1Available := loadCondition(ctx, Dash0MonitoringResourceQualifiedName, dash0v1alpha1.ConditionTypeAvailable)
-					resource1Degraded := loadCondition(ctx, Dash0MonitoringResourceQualifiedName, dash0v1alpha1.ConditionTypeDegraded)
+					resource1Available := loadCondition(ctx, MonitoringResourceQualifiedName, dash0v1alpha1.ConditionTypeAvailable)
+					resource1Degraded := loadCondition(ctx, MonitoringResourceQualifiedName, dash0v1alpha1.ConditionTypeDegraded)
 					resource2Available := loadCondition(ctx, secondName, dash0v1alpha1.ConditionTypeAvailable)
 					resource2Degraded := loadCondition(ctx, secondName, dash0v1alpha1.ConditionTypeDegraded)
 					resource3Available := loadCondition(ctx, thirdName, dash0v1alpha1.ConditionTypeAvailable)
@@ -249,7 +249,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			createdObjects = append(createdObjects, workload.Get())
 
 			By("deleting the Dash0 monitoring resource")
-			dash0MonitoringResource := LoadDash0MonitoringResourceOrFail(ctx, k8sClient, Default)
+			dash0MonitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
 			Expect(k8sClient.Delete(ctx, dash0MonitoringResource)).To(Succeed())
 
 			triggerReconcileRequest(ctx, reconciler, "trigger a reconcile request to revert the instrumented workload")
@@ -298,11 +298,11 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 	Describe("when the instrumentWorkloads setting changes on an existing Dash0 monitoring resource", Ordered, func() {
 		AfterEach(func() {
-			RemoveDash0MonitoringResource(ctx, k8sClient)
+			RemoveMonitoringResource(ctx, k8sClient)
 		})
 
 		DescribeTable("when switching from instrumentWorkloads=none to instrumentWorkloads=created-and-updated", func(config WorkloadTestConfig) {
-			EnsureDash0MonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.None)
+			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.None)
 
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
@@ -360,7 +360,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 		)
 
 		DescribeTable("when instrumenting existing workloads after switching from instrumentWorkloads=none to instrumentWorkloads=all", func(config WorkloadTestConfig) {
-			EnsureDash0MonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.None)
+			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.None)
 
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
@@ -429,7 +429,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 		)
 
 		DescribeTable("when removing instrumentation from workloads after switching from instrumentWorkloads=created-and-updated to instrumentWorkloads=none", func(config WorkloadTestConfig) {
-			EnsureDash0MonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.CreatedAndUpdated)
+			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.CreatedAndUpdated)
 
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
@@ -502,7 +502,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 		)
 
 		DescribeTable("when instrumenting existing workloads after switching from instrumentWorkloads=created-and-updated to instrumentWorkloads=all", func(config WorkloadTestConfig) {
-			EnsureDash0MonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.CreatedAndUpdated)
+			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.CreatedAndUpdated)
 
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
@@ -571,7 +571,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 		)
 
 		DescribeTable("when removing instrumentation from workloads after switching from instrumentWorkloads=all to instrumentWorkloads=none", func(config WorkloadTestConfig) {
-			EnsureDash0MonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.All)
+			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.All)
 
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
@@ -644,7 +644,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 		)
 
 		DescribeTable("when switching from instrumentWorkloads=all to instrumentWorkloads=created-and-updated", func(config WorkloadTestConfig) {
-			EnsureDash0MonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.All)
+			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.All)
 
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
@@ -711,13 +711,13 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 	Describe("when the Dash0 monitoring resource exists and has InstrumentWorkloads=all set explicitly", Ordered, func() {
 		BeforeAll(func() {
-			dash0MonitoringResource := EnsureDash0MonitoringResourceExists(ctx, k8sClient)
+			dash0MonitoringResource := EnsureMonitoringResourceExists(ctx, k8sClient)
 			dash0MonitoringResource.Spec.InstrumentWorkloads = dash0v1alpha1.All
 			Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
 		})
 
 		AfterAll(func() {
-			RemoveDash0MonitoringResource(ctx, k8sClient)
+			RemoveMonitoringResource(ctx, k8sClient)
 		})
 
 		It("should instrument workloads", func() {
@@ -730,8 +730,8 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			By("creating the Dash0 monitoring resource")
 			Expect(k8sClient.Create(ctx, &dash0v1alpha1.Dash0Monitoring{
 				ObjectMeta: metav1.ObjectMeta{
-					Name:      Dash0MonitoringResourceQualifiedName.Name,
-					Namespace: Dash0MonitoringResourceQualifiedName.Namespace,
+					Name:      MonitoringResourceQualifiedName.Name,
+					Namespace: MonitoringResourceQualifiedName.Namespace,
 				},
 				Spec: dash0v1alpha1.Dash0MonitoringSpec{
 					InstrumentWorkloads: "invalid",
@@ -748,7 +748,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 		})
 
 		It("should not allow to update the resource with an invalid value", func() {
-			dash0MonitoringResource := EnsureDash0MonitoringResourceExists(ctx, k8sClient)
+			dash0MonitoringResource := EnsureMonitoringResourceExists(ctx, k8sClient)
 			dash0MonitoringResource.Spec.InstrumentWorkloads = "invalid"
 			Expect(k8sClient.Update(ctx, dash0MonitoringResource)).ToNot(Succeed())
 		})
@@ -756,13 +756,13 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 	Describe("when the Dash0 monitoring resource exists but has InstrumentWorkloads=none set", Ordered, func() {
 		BeforeAll(func() {
-			dash0MonitoringResource := EnsureDash0MonitoringResourceExists(ctx, k8sClient)
+			dash0MonitoringResource := EnsureMonitoringResourceExists(ctx, k8sClient)
 			dash0MonitoringResource.Spec.InstrumentWorkloads = dash0v1alpha1.None
 			Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
 		})
 
 		AfterAll(func() {
-			RemoveDash0MonitoringResource(ctx, k8sClient)
+			RemoveMonitoringResource(ctx, k8sClient)
 		})
 
 		It("should not instrument workloads", func() {
@@ -772,13 +772,13 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 	Describe("when the Dash0 monitoring resource exists but has InstrumentWorkloads=created-and-updated set", Ordered, func() {
 		BeforeAll(func() {
-			dash0MonitoringResource := EnsureDash0MonitoringResourceExists(ctx, k8sClient)
+			dash0MonitoringResource := EnsureMonitoringResourceExists(ctx, k8sClient)
 			dash0MonitoringResource.Spec.InstrumentWorkloads = dash0v1alpha1.CreatedAndUpdated
 			Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
 		})
 
 		AfterAll(func() {
-			RemoveDash0MonitoringResource(ctx, k8sClient)
+			RemoveMonitoringResource(ctx, k8sClient)
 		})
 
 		It("should not instrument workloads", func() {
@@ -788,18 +788,18 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 	Describe("when deleting the Dash0 monitoring resource and removing the collector resources", func() {
 		BeforeEach(func() {
-			EnsureDash0MonitoringResourceExists(ctx, k8sClient)
+			EnsureMonitoringResourceExists(ctx, k8sClient)
 		})
 
 		AfterEach(func() {
-			RemoveDash0MonitoringResource(ctx, k8sClient)
+			RemoveMonitoringResource(ctx, k8sClient)
 		})
 
 		It("should remove the collector resources", func() {
 			triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
 
-			dash0MonitoringResource := LoadDash0MonitoringResourceOrFail(ctx, k8sClient, Default)
+			dash0MonitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
 			Expect(k8sClient.Delete(ctx, dash0MonitoringResource)).To(Succeed())
 			triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to trigger removing the collector resources")
 
@@ -837,7 +837,7 @@ func verifyThatDeploymentIsNotBeingInstrumented(ctx context.Context, reconciler 
 }
 
 func triggerReconcileRequest(ctx context.Context, reconciler *Dash0Reconciler, stepMessage string) {
-	triggerReconcileRequestForName(ctx, reconciler, stepMessage, Dash0MonitoringResourceQualifiedName)
+	triggerReconcileRequestForName(ctx, reconciler, stepMessage, MonitoringResourceQualifiedName)
 }
 
 func triggerReconcileRequestForName(
@@ -865,7 +865,7 @@ func verifyDash0MonitoringResourceIsAvailable(ctx context.Context) *metav1.Condi
 	var availableCondition *metav1.Condition
 	By("Verifying status conditions")
 	Eventually(func(g Gomega) {
-		dash0MonitoringResource := LoadDash0MonitoringResourceOrFail(ctx, k8sClient, g)
+		dash0MonitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, g)
 		availableCondition = meta.FindStatusCondition(dash0MonitoringResource.Status.Conditions, string(dash0v1alpha1.ConditionTypeAvailable))
 		g.Expect(availableCondition).NotTo(BeNil())
 		g.Expect(availableCondition.Status).To(Equal(metav1.ConditionTrue))
@@ -876,7 +876,7 @@ func verifyDash0MonitoringResourceIsAvailable(ctx context.Context) *metav1.Condi
 }
 
 func loadCondition(ctx context.Context, dash0MonitoringResourceName types.NamespacedName, conditionType dash0v1alpha1.ConditionType) *metav1.Condition {
-	dash0MonitoringResource := LoadDash0MonitoringResourceByNameOrFail(ctx, k8sClient, Default, dash0MonitoringResourceName)
+	dash0MonitoringResource := LoadMonitoringResourceByNameOrFail(ctx, k8sClient, Default, dash0MonitoringResourceName)
 	return meta.FindStatusCondition(dash0MonitoringResource.Status.Conditions, string(conditionType))
 }
 

@@ -545,7 +545,8 @@ func createSelector() *metav1.LabelSelector {
 }
 
 func CreateWorkload(ctx context.Context, k8sClient client.Client, workload client.Object) client.Object {
-	Expect(k8sClient.Create(ctx, workload)).Should(Succeed())
+	err := k8sClient.Create(ctx, workload)
+	Expect(err).Should(Succeed())
 	return workload
 }
 

@@ -50,7 +50,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 	BeforeAll(func() {
 		EnsureDash0OperatorNamespaceExists(ctx, k8sClient)
 		EnsureTestNamespaceExists(ctx, k8sClient)
-		dash0MonitoringResource = EnsureDash0MonitoringResourceExists(ctx, k8sClient)
+		dash0MonitoringResource = EnsureMonitoringResourceExists(ctx, k8sClient)
 	})
 
 	BeforeEach(func() {
@@ -137,20 +137,9 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 		})
 
 		It("should fall back to the operator configuration export settings if the monitoring resource has no export", func() {
-			CreateOperatorConfigurationResource(
+			CreateDefaultOperatorConfigurationResource(
 				ctx,
 				k8sClient,
-				"operator-configuration-resource",
-				dash0v1alpha1.Dash0OperatorConfigurationSpec{
-					Export: &dash0v1alpha1.Export{
-						Dash0: &dash0v1alpha1.Dash0Configuration{
-							Endpoint: EndpointDash0Test,
-							Authorization: dash0v1alpha1.Authorization{
-								Token: &AuthorizationTokenTest,
-							},
-						},
-					},
-				},
 			)
 			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 				ctx,
@@ -186,10 +175,9 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 
 		It("should fail if the monitoring resource has no export and the existing operator configuration "+
 			"resource has no export either", func() {
-			CreateOperatorConfigurationResource(
+			CreateOperatorConfigurationResourceWithSpec(
 				ctx,
 				k8sClient,
-				"operator-configuration-resource",
 				dash0v1alpha1.Dash0OperatorConfigurationSpec{},
 			)
 			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
