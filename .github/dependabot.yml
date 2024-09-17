@@ -19,6 +19,11 @@ updates:
       day: "tuesday"
       time: "09:00"
       timezone: "Europe/Berlin"
+    groups:
+      production-dependencies:
+        dependency-type: "production"
+      development-dependencies:
+        dependency-type: "development"
 
   - package-ecosystem: "npm"
     directory: "images/instrumentation/node.js/"
