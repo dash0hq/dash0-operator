@@ -61,7 +61,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 		createdObjects = DeleteAllCreatedObjects(ctx, k8sClient, createdObjects)
 		DeleteAllEvents(ctx, clientset, namespace)
 
-		RemoveMonitoringResource(ctx, k8sClient)
+		DeleteMonitoringResource(ctx, k8sClient)
 		dash0MonitoringResource = nil
 	})
 

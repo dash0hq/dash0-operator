@@ -21,7 +21,7 @@ import (
 
 const (
 	Dash0OperatorDeploymentName       = "controller-deployment"
-	OperatorConfigurationResourceName = "dash0-operator-test-resource"
+	OperatorConfigurationResourceName = "dash0-operator-configuration-test"
 )
 
 var (
@@ -103,6 +103,13 @@ func CreateOperatorConfigurationResource(
 }
 
 func DeleteOperatorConfigurationResource(
+	ctx context.Context,
+	k8sClient client.Client,
+) {
+	Expect(k8sClient.DeleteAllOf(ctx, &dash0v1alpha1.Dash0OperatorConfiguration{})).To(Succeed())
+}
+
+func DeleteAllOperatorConfigurationResources(
 	ctx context.Context,
 	k8sClient client.Client,
 ) {

@@ -86,6 +86,7 @@ func (r *Dash0Reconciler) InitializeSelfMonitoringMetrics(
 //+kubebuilder:rbac:groups=core,resources=events,verbs=create;list;patch;update
 //+kubebuilder:rbac:groups=core,resources=namespaces,verbs=get
 //+kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;delete
+//+kubebuilder:rbac:groups=core,resources=endpoints,verbs=get
 //+kubebuilder:rbac:groups=operator.dash0.com,resources=dash0monitorings,verbs=get;list;watch;create;update;patch;delete;deletecollection
 //+kubebuilder:rbac:groups=operator.dash0.com,resources=dash0monitorings/finalizers,verbs=update
 //+kubebuilder:rbac:groups=operator.dash0.com,resources=dash0monitorings/status,verbs=get;update;patch

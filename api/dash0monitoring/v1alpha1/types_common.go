@@ -36,8 +36,8 @@ type Export struct {
 type Dash0Configuration struct {
 	// The URL of the Dash0 ingress endpoint to which telemetry data will be sent. This property is mandatory. The value
 	// needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct OTLP/gRPC endpoint can be copied fom
-	// https://app.dash0.com/settings. The correct endpoint value will always start with `ingress.` and end in
-	// `dash0.com:4317`.
+	// https://app.dash0.com -> organization settings -> "Endpoints". The correct endpoint value will always start with
+	// `ingress.` and end in `dash0.com:4317`.
 	//
 	// +kubebuilder:validation:Required
 	Endpoint string `json:"endpoint"`
@@ -61,14 +61,15 @@ type Dash0Configuration struct {
 type Authorization struct {
 	// The Dash0 authorization token. This property is optional, but either this property or the SecretRef property has
 	// to be provided. If both are provided, the token will be used and SecretRef will be ignored. The authorization
-	// token for your Dash0 organization can be copied from https://app.dash0.com/settings.
+	// token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings ->
+	// "Auth Tokens".
 	//
 	// +kubebuilder:validation:Optional
 	Token *string `json:"token"` // either token or secret ref, with token taking precedence
 
 	// A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
 	// ignored if the token property is set. The authorization token for your Dash0 organization can be copied from
-	// https://app.dash0.com/settings.
+	// https://app.dash0.com -> organization settings -> "Auth Tokens".
 	//
 	// +kubebuilder:validation:Optional
 	SecretRef *SecretRef `json:"secretRef"`

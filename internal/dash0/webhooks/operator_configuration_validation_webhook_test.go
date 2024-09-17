@@ -14,7 +14,7 @@ import (
 var _ = Describe("The validation webhook for the operator configuration resource", func() {
 
 	AfterEach(func() {
-		Expect(k8sClient.DeleteAllOf(ctx, &dash0v1alpha1.Dash0OperatorConfiguration{})).To(Succeed())
+		DeleteAllOperatorConfigurationResources(ctx, k8sClient)
 	})
 
 	Describe("when validating", Ordered, func() {

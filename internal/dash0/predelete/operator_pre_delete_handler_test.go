@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package removal
+package predelete
 
 import (
 	"context"
@@ -69,8 +69,8 @@ var _ = Describe("Uninstalling the Dash0 Kubernetes operator", Ordered, func() {
 
 	AfterEach(func() {
 		createdObjects = DeleteAllCreatedObjects(ctx, k8sClient, createdObjects)
-		RemoveMonitoringResourceByName(ctx, k8sClient, dash0MonitoringResourceName1, false)
-		RemoveMonitoringResourceByName(ctx, k8sClient, dash0MonitoringResourceName2, false)
+		DeleteMonitoringResourceByName(ctx, k8sClient, dash0MonitoringResourceName1, false)
+		DeleteMonitoringResourceByName(ctx, k8sClient, dash0MonitoringResourceName2, false)
 	})
 
 	It("should time out if the deletion of all Dash0 monitoring resources does not happen in a timely manner", func() {

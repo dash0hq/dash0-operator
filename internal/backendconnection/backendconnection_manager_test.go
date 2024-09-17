@@ -56,7 +56,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			Client:                  k8sClient,
 			Scheme:                  k8sClient.Scheme(),
 			DeploymentSelfReference: DeploymentSelfReference,
-			OTelCollectorNamePrefix: "unit-test",
+			OTelCollectorNamePrefix: OTelCollectorNamePrefixTest,
 		}
 		manager = &BackendConnectionManager{
 			Client:                 k8sClient,
@@ -240,15 +240,15 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 	Describe("when cleaning up OpenTelemetry collector resources when the resource is deleted", func() {
 		It("should not delete the collector if there are still Dash0 monitoring resources", func() {
 			// create multiple Dash0 monitoring resources
-			firstName := types.NamespacedName{Namespace: TestNamespaceName, Name: "das0-monitoring-test-resource-1"}
+			firstName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-monitoring-test-resource-1"}
 			firstDash0MonitoringResource := CreateDefaultMonitoringResource(ctx, k8sClient, firstName)
 			createdObjects = append(createdObjects, firstDash0MonitoringResource)
 
-			secondName := types.NamespacedName{Namespace: TestNamespaceName, Name: "das0-monitoring-test-resource-2"}
+			secondName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-monitoring-test-resource-2"}
 			secondDash0MonitoringResource := CreateDefaultMonitoringResource(ctx, k8sClient, secondName)
 			createdObjects = append(createdObjects, secondDash0MonitoringResource)
 
-			thirdName := types.NamespacedName{Namespace: TestNamespaceName, Name: "das0-monitoring-test-resource-3"}
+			thirdName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-monitoring-test-resource-3"}
 			thirdDash0MonitoringResource := CreateDefaultMonitoringResource(ctx, k8sClient, thirdName)
 			createdObjects = append(createdObjects, thirdDash0MonitoringResource)
 
@@ -274,7 +274,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 		})
 
 		It("should not delete the collector if there is only one Dash0 monitoring resource left but it is not the one being deleted", func() {
-			resourceName := types.NamespacedName{Namespace: TestNamespaceName, Name: "das0-monitoring-test-resource-1"}
+			resourceName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-monitoring-test-resource-1"}
 			existingDash0MonitoringResource := CreateDefaultMonitoringResource(ctx, k8sClient, resourceName)
 			createdObjects = append(createdObjects, existingDash0MonitoringResource)
 
@@ -319,7 +319,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 
 		It("should delete the collector if the Dash0 monitoring resource that is being deleted is the only one left", func() {
 			// create multiple Dash0 monitoring resources
-			resourceName := types.NamespacedName{Namespace: TestNamespaceName, Name: "das0-monitoring-test-resource-1"}
+			resourceName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-monitoring-test-resource-1"}
 			dash0MonitoringResource := CreateDefaultMonitoringResource(ctx, k8sClient, resourceName)
 			createdObjects = append(createdObjects, dash0MonitoringResource)
 

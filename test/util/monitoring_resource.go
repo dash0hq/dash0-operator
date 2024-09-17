@@ -232,11 +232,11 @@ func VerifyMonitoringResourceByNameDoesNotExist(
 	)).To(BeNil())
 }
 
-func RemoveMonitoringResource(ctx context.Context, k8sClient client.Client) {
-	RemoveMonitoringResourceByName(ctx, k8sClient, MonitoringResourceQualifiedName, true)
+func DeleteMonitoringResource(ctx context.Context, k8sClient client.Client) {
+	DeleteMonitoringResourceByName(ctx, k8sClient, MonitoringResourceQualifiedName, true)
 }
 
-func RemoveMonitoringResourceByName(
+func DeleteMonitoringResourceByName(
 	ctx context.Context,
 	k8sClient client.Client,
 	monitoringResourceName types.NamespacedName,

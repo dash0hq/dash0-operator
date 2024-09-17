@@ -39,8 +39,9 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/dash0/controller"
 	"github.com/dash0hq/dash0-operator/internal/dash0/instrumentation"
-	"github.com/dash0hq/dash0-operator/internal/dash0/removal"
+	"github.com/dash0hq/dash0-operator/internal/dash0/predelete"
 	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoring"
+	"github.com/dash0hq/dash0-operator/internal/dash0/startup"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 	"github.com/dash0hq/dash0-operator/internal/dash0/webhooks"
 	//+kubebuilder:scaffold:imports
@@ -105,25 +106,40 @@ func init() {
 
 func main() {
 	ctx := context.Background()
-	var uninstrumentAll bool
+	var operatorConfigurationEndpoint string
+	var operatorConfigurationToken string
+	var operatorConfigurationSecretRefName string
+	var operatorConfigurationSecretRefKey string
+	var isUninstrumentAll bool
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
-	flag.BoolVar(&uninstrumentAll, "uninstrument-all", false,
-		"If set, the process will remove all Dash0 monitoring resources from all namespaces in the cluster. This "+
-			"will trigger the Dash0 monitoring resources' finalizers in each namespace, which in turn will revert the "+
-			"instrumentation of all workloads in all namespaces.")
+
+	flag.BoolVar(&isUninstrumentAll, "uninstrument-all", false,
+		"If set, the process will remove all Dash0 monitoring resources from all namespaces in the cluste, then "+
+			"exit. This will trigger the Dash0 monitoring resources' finalizers in each namespace, which in turn will "+
+			"revert the instrumentation of all workloads in all namespaces.")
+	flag.StringVar(&operatorConfigurationEndpoint, "operator-configuration-endpoint", "",
+		"The Dash0 endpoint gRPC URL for creating an operator configuration resource.")
+	flag.StringVar(&operatorConfigurationToken, "operator-configuration-token", "",
+		"The Dash0 auth token for creating an operator configuration resource.")
+	flag.StringVar(&operatorConfigurationSecretRefName, "operator-configuration-secret-ref-name", "",
+		"The name of an existing Kubernetes secret containing the Dash0 auth token, used to creating an operator "+
+			"configuration resource.")
+	flag.StringVar(&operatorConfigurationSecretRefKey, "operator-configuration-secret-ref-key", "",
+		"The key in an existing Kubernetes secret containing the Dash0 auth token, used to creating an operator "+
+			"configuration resource.")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.BoolVar(&secureMetrics, "metrics-secure", false,
-		"If set, the metrics endpoint is served securely")
+		"If set, the metrics endpoint is served securely.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
-		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+		"If set, HTTP/2 will be enabled for the metrics and webhook servers.")
 
 	var developmentMode bool
 	developmentModeRaw, isSet := os.LookupEnv(developmentModeEnvVarName)
@@ -143,8 +159,8 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	if uninstrumentAll {
-		if err := deleteDash0MonitoringResourcesInAllNamespaces(&setupLog); err != nil {
+	if isUninstrumentAll {
+		if err := deleteMonitoringResourcesInAllNamespaces(&setupLog); err != nil {
 			setupLog.Error(err, "deleting the Dash0 monitoring resources in all namespaces failed")
 			os.Exit(1)
 		}
@@ -196,6 +212,18 @@ func main() {
 			map[string]string{semconv.AttributeK8SDeploymentUID: string(deploymentSelfReference.UID)},
 		)
 
+	var operatorConfiguration *startup.OperatorConfigurationValues
+	if len(operatorConfigurationEndpoint) > 0 {
+		operatorConfiguration = &startup.OperatorConfigurationValues{
+			Endpoint: operatorConfigurationEndpoint,
+			Token:    operatorConfigurationToken,
+			SecretRef: startup.SecretRef{
+				Name: operatorConfigurationSecretRefName,
+				Key:  operatorConfigurationSecretRefKey,
+			},
+		}
+	}
+
 	if err = startOperatorManager(
 		ctx,
 		metricsAddr,
@@ -204,6 +232,7 @@ func main() {
 		webhookServer,
 		probeAddr,
 		enableLeaderElection,
+		operatorConfiguration,
 		developmentMode,
 	); err != nil {
 		setupLog.Error(err, "The Dash0 operator manager process failed to start.")
@@ -219,6 +248,7 @@ func startOperatorManager(
 	webhookServer k8swebhook.Server,
 	probeAddr string,
 	enableLeaderElection bool,
+	operatorConfiguration *startup.OperatorConfigurationValues,
 	developmentMode bool,
 ) error {
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
@@ -285,7 +315,7 @@ func startOperatorManager(
 		developmentMode,
 	)
 
-	err = startDash0Controllers(ctx, mgr, clientset, developmentMode)
+	err = startDash0Controllers(ctx, mgr, clientset, operatorConfiguration, developmentMode)
 	if err != nil {
 		return err
 	}
@@ -396,6 +426,7 @@ func startDash0Controllers(
 	ctx context.Context,
 	mgr manager.Manager,
 	clientset *kubernetes.Clientset,
+	operatorConfiguration *startup.OperatorConfigurationValues,
 	developmentMode bool,
 ) error {
 	oTelCollectorBaseUrl :=
@@ -419,8 +450,10 @@ func startDash0Controllers(
 		ctx,
 		clientset,
 		mgr.GetEventRecorderFor("dash0-startup-tasks"),
+		operatorConfiguration,
 		images,
 		oTelCollectorBaseUrl,
+		&setupLog,
 	)
 
 	logCurrentSelfMonitoringSettings(deploymentSelfReference)
@@ -555,9 +588,17 @@ func executeStartupTasks(
 	ctx context.Context,
 	clientset *kubernetes.Clientset,
 	eventRecorder record.EventRecorder,
+	operatorConfiguration *startup.OperatorConfigurationValues,
 	images util.Images,
 	oTelCollectorBaseUrl string,
+	logger *logr.Logger,
 ) {
+	createOperatorConfiguration(
+		ctx,
+		startupTasksK8sClient,
+		operatorConfiguration,
+		logger,
+	)
 	instrumentAtStartup(
 		ctx,
 		startupTasksK8sClient,
@@ -618,8 +659,26 @@ func logCurrentSelfMonitoringSettings(deploymentSelfReference *appsv1.Deployment
 	}
 }
 
-func deleteDash0MonitoringResourcesInAllNamespaces(logger *logr.Logger) error {
-	handler, err := removal.NewOperatorPreDeleteHandler()
+func createOperatorConfiguration(
+	ctx context.Context,
+	k8sClient client.Client,
+	operatorConfiguration *startup.OperatorConfigurationValues,
+	logger *logr.Logger,
+) {
+	if operatorConfiguration != nil {
+		handler := startup.AutoOperatorConfigurationResourceHandler{
+			Client:            k8sClient,
+			OperatorNamespace: envVars.operatorNamespace,
+			NamePrefix:        envVars.oTelCollectorNamePrefix,
+		}
+		if err := handler.CreateOperatorConfigurationResource(ctx, operatorConfiguration, logger); err != nil {
+			logger.Error(err, "Failed to create the requested Dash0 operator configuration resource.")
+		}
+	}
+}
+
+func deleteMonitoringResourcesInAllNamespaces(logger *logr.Logger) error {
+	handler, err := predelete.NewOperatorPreDeleteHandler()
 	if err != nil {
 		logger.Error(err, "Failed to create the OperatorPreDeleteHandler.")
 		return err

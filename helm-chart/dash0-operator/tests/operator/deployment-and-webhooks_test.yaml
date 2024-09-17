@@ -235,6 +235,27 @@ tests:
           path: spec.template.spec.containers[0].resources.requests.memory
           value: 32Mi
 
+  - it: should add args for creating an operator configuration resource with a token to deployment
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        dash0Backend:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args[3]
+          value: --operator-configuration-endpoint=https://ingress.dash0.com
+      - equal:
+          path: spec.template.spec.containers[0].args[4]
+          value: --operator-configuration-token=very-secret-dash0-auth-token
+  # Note: We deliberately do not have a test for the operator.dash0Backend.secretRef variant, since this would trigger
+  # a check whether the secret actually exists in the cluster, which of course would fail when runnig helm chart unit
+  # tests.
+
   - it: should render the "dash0.com/cert-digest" label
     documentSelector:
       path: metadata.name

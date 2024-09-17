@@ -202,7 +202,8 @@ spec:
 If you want to provide the Dash0 authorization token via a Kubernetes secret instead of providing the token as a string,
 create the secret in the namespace where the Dash0 operator is installed.
 If you followed the guide above, the name of that namespace is `dash0-system`.
-The authorization token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings -> "Auth Tokens".
+The authorization token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings 
+-> "Auth Tokens".
 You can freely choose the name of the secret and the key of the token within the secret.
 
 Create the secret by using the following command:

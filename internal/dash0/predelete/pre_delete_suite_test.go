@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package removal
+package predelete
 
 import (
 	"fmt"
@@ -48,7 +48,7 @@ var (
 func TestRemoval(t *testing.T) {
 	RegisterFailHandler(Fail)
 
-	RunSpecs(t, "Removal Suite")
+	RunSpecs(t, "Pre-Delete Suite")
 }
 
 var _ = BeforeSuite(func() {
@@ -60,12 +60,6 @@ var _ = BeforeSuite(func() {
 	testEnv = &envtest.Environment{
 		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "..", "config", "crd", "bases")},
 		ErrorIfCRDPathMissing: true,
-
-		// The BinaryAssetsDirectory is only required if you want to run the tests directly
-		// without call the makefile target test. If not informed it will look for the
-		// default path defined in controller-runtime which is /usr/local/kubebuilder/.
-		// Note that you must have the required binaries setup under the bin directory to perform
-		// the tests directly. When we run make test it will be setup and used automatically.
 		BinaryAssetsDirectory: filepath.Join("..", "..", "..", "bin", "k8s",
 			fmt.Sprintf("1.28.3-%s-%s", runtime.GOOS, runtime.GOARCH)),
 	}
@@ -106,7 +100,7 @@ var _ = BeforeSuite(func() {
 		Client:                  k8sClient,
 		Scheme:                  k8sClient.Scheme(),
 		DeploymentSelfReference: DeploymentSelfReference,
-		OTelCollectorNamePrefix: "unit-test",
+		OTelCollectorNamePrefix: OTelCollectorNamePrefixTest,
 	}
 	backendConnectionManager := &backendconnection.BackendConnectionManager{
 		Client:                 k8sClient,
