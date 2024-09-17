@@ -105,6 +105,24 @@ deploy_via_helm() {
   echo Helm install command:
   echo "$helm_install_command"
   $helm_install_command
+
+  wait_for_operator_manager_and_webhook
+}
+
+
+wait_for_operator_manager_and_webhook() {
+  echo "waiting for the operator deployment to become available..."
+  kubectl wait deployment.apps/dash0-operator-controller --for condition=Available --namespace dash0-system --timeout 30s
+
+  echo "waiting for the operator's webhook endpoint to become available..."
+  for ((i=0; i<=100; i++)); do
+    endpoints_output=$(kubectl get endpoints --namespace dash0-system dash0-operator-webhook-service)
+    expected_endpoint_regex='dash0-operator-webhook-service[[:blank:]]+[[:digit:]\.]+:9443'
+    if [[ "$endpoints_output" =~ $expected_endpoint_regex ]]; then
+      break;
+    fi
+    sleep 0.3
+  done
 }
 
 has_been_set_to_empty_string() {
@@ -123,8 +141,18 @@ has_been_set_to_empty_string() {
 
 install_operator_configuration_resource() {
   kubectl apply -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.secret.yaml
+
+  echo "waiting for the operator configuration resource to become available"
+  kubectl wait dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration-resource --for condition=Available
+
+  # Deploying the operator configuration resource might result in a restart of the operator manager deployment pod,
+  # hence we check again that both are up and running.
+  wait_for_operator_manager_and_webhook
 }
 
 install_monitoring_resource() {
   kubectl apply -n ${target_namespace} -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml
+
+  echo "waiting for the monitoring resource to become available"
+  kubectl wait --namespace ${target_namespace} dash0monitorings.operator.dash0.com/dash0-monitoring-resource --for condition=Available
 }

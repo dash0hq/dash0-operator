@@ -17,7 +17,6 @@ setup_test_environment
 
 echo "STEP 1: remove old test resources"
 test-resources/bin/test-cleanup.sh ${target_namespace} false
-test-resources/bin/ensure-namespace-exists.sh ${target_namespace}
 echo
 echo
 
@@ -41,25 +40,21 @@ build_all_images
 echo
 echo
 
-echo "STEP 5: deploy application under monitoring"
-test-resources/node.js/express/deploy.sh ${target_namespace} ${kind}
-echo
-echo
-
-echo "STEP 6: deploy the Dash0 operator using helm"
+echo "STEP 5: deploy the Dash0 operator using helm"
 deploy_via_helm
 echo
 echo
 
-sleep 5
-
-echo "STEP 7: deploy the Dash0 operator configuration resource to cluster"
+echo "STEP 6: deploy the Dash0 operator configuration resource to cluster"
 install_operator_configuration_resource
 echo
 echo
 
-sleep 10
-
-echo "STEP 8: deploy the Dash0 monitoring resource to namespace ${target_namespace}"
+echo "STEP 7: deploy the Dash0 monitoring resource to namespace ${target_namespace}"
 install_monitoring_resource
+echo
+echo
+
+echo "STEP 8: deploy application under monitoring"
+test-resources/node.js/express/deploy.sh ${target_namespace} ${kind}
 

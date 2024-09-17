@@ -123,20 +123,20 @@ image built from local sources) as the default setting.
 
 The e2e tests might sometimes not be the best tool to troubleshoot the operator, simply because they remove everything
 they deploy in their `AfterAll`/`AfterEach` hooks. The scripts in `test-resources/bin` can be used for these cases:
-* `test-resources/bin/test-roundtrip-01-aum-operator-cr.sh`: Deploys an application under monitoring (this is 
+* `test-resources/bin/test-scenario-01-aum-operator-cr.sh`: Deploys an application under monitoring (this is 
   abbreviated to "aum" in the name of the script) to the namespace `test-namespace`, then it deploys the operator to
   the namespace `dash-operator-system`, and finally it deploys the Dash0 monitoring resource to `test-namespace`. This is a
   test scenario for instrumenting _existing_ workloads via the controller's reconcile loop.   
-* `test-resources/bin/test-roundtrip-02-operator-cr-aum.sh`: Deploys the operator to `dash0-system`, then the
+* `test-resources/bin/test-scenario-02-operator-cr-aum.sh`: Deploys the operator to `dash0-system`, then the
   Dash0 monitoring resource to namespace `test-namespace`, and finally an application under monitoring to the namespace
   `test-namespace`. This is a test scenario for instrumenting _new_ workloads at deploy time via the admission webhook.
 * `test-resources/bin/test-cleanup.sh`: This script removes all resources created by the other scripts. **You should
-  always this script after running any of the other scripts, when you are done with your tests, otherwise the e2e
-  tests will fail the next time you start them.** Note that all above the scripts call this script at the beginning, so
-  there is no need to clean up between individual invocations of the test scripts.
+  always run this script after running any of the scenario scripts, when you are done with your tests, otherwise the
+  e2e tests will fail the next time you start them.** Note that all scenario scripts call the cleanup at the beginning,
+  so there is no need to clean up between individual invocations of the scenario scripts.
 * All scripts will, by default, use the target namespace `test-namespace` and the workload type `deployment`. They all
   accept two command line parameters to override these defaults. For example, use 
-  `test-resources/bin/test-roundtrip-01-aum-operator-cr.sh another-namespace replicaset` to run the scenario with 
+  `test-resources/bin/test-scenario-01-aum-operator-cr.sh another-namespace replicaset` to run the scenario with 
   the target namespace `another-namespace` and a replica set workload.
   * Additional parameterization can be achieved via environment variables, for example:
       * To run the scenario with the images that have been built from the main branch and pushed to ghcr.io most 
@@ -157,7 +157,7 @@ they deploy in their `AfterAll`/`AfterEach` hooks. The scripts in `test-resource
           FILELOG_OFFSET_SYNCH_IMG_REPOSITORY=ghcr.io/dash0hq/filelog-offset-synch \
           FILELOG_OFFSET_SYNCH_IMG_TAG=main-dev \
           FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY="" \
-          test-resources/bin/test-roundtrip-01-aum-operator-cr.sh
+          test-resources/bin/test-scenario-01-aum-operator-cr.sh
         ```
       * To run the scenario with the helm chart from the official remote repository and the default images referenced in
         that chart (the Helm repository must have been installed beforehand): 
@@ -179,7 +179,7 @@ they deploy in their `AfterAll`/`AfterEach` hooks. The scripts in `test-resource
           FILELOG_OFFSET_SYNCH_IMG_REPOSITORY="" \
           FILELOG_OFFSET_SYNCH_IMG_TAG="" \
           FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY="" \
-          test-resources/bin/test-roundtrip-01-aum-operator-cr.sh
+          test-resources/bin/test-scenario-01-aum-operator-cr.sh
         ```
         Note: Unsetting parameters like `CONTROLLER_IMG_REPOSITORY` explicitly (by setting them to an empty string) will
         lead to the scenario not setting those values when deploying via helm, so that the default value from the chart
