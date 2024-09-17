@@ -16,15 +16,17 @@ import (
 )
 
 const (
-	TestNamespaceName      = "test-namespace"
-	Dash0OperatorNamespace = "dash0-system"
-	CronJobNamePrefix      = "cronjob"
-	DaemonSetNamePrefix    = "daemonset"
-	DeploymentNamePrefix   = "deployment"
-	JobNamePrefix          = "job"
-	PodNamePrefix          = "pod"
-	ReplicaSetNamePrefix   = "replicaset"
-	StatefulSetNamePrefix  = "statefulset"
+	TestNamespaceName           = "test-namespace"
+	Dash0OperatorNamespace      = "dash0-system"
+	OTelCollectorNamePrefixTest = "unit-test"
+
+	CronJobNamePrefix     = "cronjob"
+	DaemonSetNamePrefix   = "daemonset"
+	DeploymentNamePrefix  = "deployment"
+	JobNamePrefix         = "job"
+	PodNamePrefix         = "pod"
+	ReplicaSetNamePrefix  = "replicaset"
+	StatefulSetNamePrefix = "statefulset"
 
 	OperatorImageTest              = "some-registry.com:1234/dash0hq/operator-controller:1.2.3"
 	InitContainerImageTest         = "some-registry.com:1234/dash0hq/instrumentation:4.5.6"

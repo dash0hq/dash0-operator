@@ -165,7 +165,7 @@ golangci-lint:
 lint: golangci-lint ## Run golangci-lint linter & yamllint
 	@echo --------------------------------
 	$(GOLANGCI_LINT) run
-	helm lint helm-chart/dash0-operator --set operator.disableSecretCheck=true --set operator.disableOtlpEndpointCheck=true
+	helm lint helm-chart/dash0-operator
 
 .PHONY: lint-fix
 lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes

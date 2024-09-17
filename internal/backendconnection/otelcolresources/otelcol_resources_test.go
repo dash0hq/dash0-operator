@@ -58,7 +58,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			Client:                  k8sClient,
 			Scheme:                  k8sClient.Scheme(),
 			DeploymentSelfReference: DeploymentSelfReference,
-			OTelCollectorNamePrefix: "unit-test",
+			OTelCollectorNamePrefix: OTelCollectorNamePrefixTest,
 			DevelopmentMode:         true,
 		}
 	})

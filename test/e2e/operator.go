@@ -44,8 +44,6 @@ func deployOperator(
 		operatorNamespace,
 		"--create-namespace",
 		"--set", "operator.developmentMode=true",
-		"--set", "operator.disableSecretCheck=true",
-		"--set", "operator.disableOtlpEndpointCheck=true",
 	}
 	arguments = addOptionalHelmParameters(arguments, operatorHelmChart, images)
 
@@ -263,8 +261,6 @@ func upgradeOperator(
 		"--namespace",
 		operatorNamespace,
 		"--set", "operator.developmentMode=true",
-		"--set", "operator.disableSecretCheck=true",
-		"--set", "operator.disableOtlpEndpointCheck=true",
 	}
 	arguments = addOptionalHelmParameters(arguments, operatorHelmChart, images)
 

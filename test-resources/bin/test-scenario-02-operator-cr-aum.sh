@@ -45,16 +45,11 @@ deploy_via_helm
 echo
 echo
 
-echo "STEP 6: deploy the Dash0 operator configuration resource to cluster"
-install_operator_configuration_resource
-echo
-echo
-
-echo "STEP 7: deploy the Dash0 monitoring resource to namespace ${target_namespace}"
+echo "STEP 6: deploy the Dash0 monitoring resource to namespace ${target_namespace}"
 install_monitoring_resource
 echo
 echo
 
-echo "STEP 8: deploy application under monitoring"
+echo "STEP 7: deploy application under monitoring"
 test-resources/node.js/express/deploy.sh ${target_namespace} ${kind}
 

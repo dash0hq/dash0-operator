@@ -40,7 +40,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 		})
 
 		AfterAll(func() {
-			RemoveMonitoringResource(ctx, k8sClient)
+			DeleteMonitoringResource(ctx, k8sClient)
 		})
 
 		DescribeTable("when mutating new workloads", func(config WorkloadTestConfig) {
@@ -491,7 +491,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 		})
 
 		AfterAll(func() {
-			RemoveMonitoringResource(ctx, k8sClient)
+			DeleteMonitoringResource(ctx, k8sClient)
 		})
 
 		It("should not instrument workloads", func() {
@@ -507,7 +507,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 		})
 
 		AfterAll(func() {
-			RemoveMonitoringResource(ctx, k8sClient)
+			DeleteMonitoringResource(ctx, k8sClient)
 		})
 
 		It("should instrument workloads", func() {
@@ -523,7 +523,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 		})
 
 		AfterAll(func() {
-			RemoveMonitoringResource(ctx, k8sClient)
+			DeleteMonitoringResource(ctx, k8sClient)
 		})
 
 		It("should not instrument workloads", func() {
@@ -539,7 +539,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 		})
 
 		AfterAll(func() {
-			RemoveMonitoringResource(ctx, k8sClient)
+			DeleteMonitoringResource(ctx, k8sClient)
 		})
 
 		It("should instrument workloads", func() {

@@ -64,7 +64,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			Client:                  k8sClient,
 			Scheme:                  k8sClient.Scheme(),
 			DeploymentSelfReference: DeploymentSelfReference,
-			OTelCollectorNamePrefix: "unit-test",
+			OTelCollectorNamePrefix: OTelCollectorNamePrefixTest,
 		}
 		backendConnectionManager := &backendconnection.BackendConnectionManager{
 			Client:                 k8sClient,
@@ -93,9 +93,9 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 		})
 
 		AfterEach(func() {
-			RemoveMonitoringResource(ctx, k8sClient)
+			DeleteMonitoringResource(ctx, k8sClient)
 			for _, name := range extraDash0MonitoringResourceNames {
-				RemoveMonitoringResourceByName(ctx, k8sClient, name, true)
+				DeleteMonitoringResourceByName(ctx, k8sClient, name, true)
 			}
 		})
 
@@ -128,11 +128,11 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				firstDash0MonitoringResource := &dash0v1alpha1.Dash0Monitoring{}
 				Expect(k8sClient.Get(ctx, MonitoringResourceQualifiedName, firstDash0MonitoringResource)).To(Succeed())
 				time.Sleep(10 * time.Millisecond)
-				secondName := types.NamespacedName{Namespace: TestNamespaceName, Name: "das0-monitoring-test-resource-2"}
+				secondName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-monitoring-test-resource-2"}
 				extraDash0MonitoringResourceNames = append(extraDash0MonitoringResourceNames, secondName)
 				CreateDefaultMonitoringResource(ctx, k8sClient, secondName)
 				time.Sleep(10 * time.Millisecond)
-				thirdName := types.NamespacedName{Namespace: TestNamespaceName, Name: "das0-monitoring-test-resource-3"}
+				thirdName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-monitoring-test-resource-3"}
 				extraDash0MonitoringResourceNames = append(extraDash0MonitoringResourceNames, thirdName)
 				CreateDefaultMonitoringResource(ctx, k8sClient, thirdName)
 
@@ -298,7 +298,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 	Describe("when the instrumentWorkloads setting changes on an existing Dash0 monitoring resource", Ordered, func() {
 		AfterEach(func() {
-			RemoveMonitoringResource(ctx, k8sClient)
+			DeleteMonitoringResource(ctx, k8sClient)
 		})
 
 		DescribeTable("when switching from instrumentWorkloads=none to instrumentWorkloads=created-and-updated", func(config WorkloadTestConfig) {
@@ -717,7 +717,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			RemoveMonitoringResource(ctx, k8sClient)
+			DeleteMonitoringResource(ctx, k8sClient)
 		})
 
 		It("should instrument workloads", func() {
@@ -762,7 +762,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			RemoveMonitoringResource(ctx, k8sClient)
+			DeleteMonitoringResource(ctx, k8sClient)
 		})
 
 		It("should not instrument workloads", func() {
@@ -778,7 +778,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			RemoveMonitoringResource(ctx, k8sClient)
+			DeleteMonitoringResource(ctx, k8sClient)
 		})
 
 		It("should not instrument workloads", func() {
@@ -792,7 +792,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 		})
 
 		AfterEach(func() {
-			RemoveMonitoringResource(ctx, k8sClient)
+			DeleteMonitoringResource(ctx, k8sClient)
 		})
 
 		It("should remove the collector resources", func() {

@@ -3,6 +3,51 @@
 
 # settings for the operator/controller
 operator:
+
+  # Use the operator.dash0Backend settings to configure the connection to the Dash0 backend; telemetry will be sent to
+  # the configured Dash0 backend by default. Under the hood, this will create a Dash0OperatorConfiguration resource
+  # right away, when starting the operator. If left empty, you can always create a Dash0OperatorConfiguration resource
+  # manually later.
+  dash0Backend:
+    # Set this to true to enable the creation of a Dash0OperatorConfiguration resource at startup. If a
+    # Dash0OperatorConfiguration already exists in the cluster, no action will be taken. Note that if this is set to
+    # true, you will also need to provide a valid endpoint (operator.dash0Backend.endpoint), and either or an auth
+    # token (operator.dash0Backend.token) or a reference to a Kubernetes secret containing that token
+    # (operator.dash0Backend.secretRef).
+    enabled: false
+
+    # The URL of the Dash0 ingress endpoint to which telemetry data will be sent. This property is mandatory if
+    # operator.dash0Backend.enabled is true, otherwise it will be ignored. The value needs to be the OTLP/gRPC endpoint
+    # of your Dash0 organization. The correct OTLP/gRPC endpoint can be copied fom https://app.dash0.com -> organization
+    # settings -> "Endpoints". The correct endpoint value will always start with `ingress.` and end in `dash0.com:4317`.
+    endpoint:
+
+    # The Dash0 authorization token. This property is optional, but either this property or the secretRef configuration
+    # has to be provided if operator.dash0Backend.enabled is true. If operator.dash0Backend.enabled is false, this
+    # property will be ignored.
+    # If both token and secretRef are provided, the token will be used and secretRef will be ignored. The authorization
+    # token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings ->
+    # "Auth Tokens".
+    token:
+
+    # A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
+    # ignored if either operator.dash0Backend.enabled is false or operator.dash0Backend.token is set. The authorization
+    # token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings ->
+    # "Auth Tokens".
+    secretRef:
+      # The name of the secret containing the Dash0 authorization token. Example: Assume you have created the Kubernetes
+      # secret with the following command:
+      # kubectl create secret generic \
+      #   dash0-authorization-secret \
+      #   --namespace dash0-system \
+      #   --from-literal=token=auth_...your-token-here...
+      #
+      # Then you would set the property to "dash0-authorization-secret".
+      name:
+      # The key of the value which contains the Dash0 authorization token. Assuming you have created the Kubernetes
+      # secret with the command above (see property "name"), then you would set the property to "token".
+      key:
+
   # number of replica for the controller manager deployment
   replicaCount: 1
 
@@ -135,11 +180,3 @@ operator:
   # If set to true, instructs the logger (Zap) to use a Zap development config (stacktraces on warnings, no sampling),
   # otherwise a Zap production config will be used (stacktraces on errors, sampling).
   developmentMode: false
-
-  # If set to true, the operator Helm chart will skip the check for the Dash0 authorization secret. This should only
-  # be done for testing purposes.
-  disableSecretCheck: false
-
-  # If set to true, the operator Helm chart will skip the check for the OTLP endpoing setting. This should only be done
-  # for testing purposes.
-  disableOtlpEndpointCheck: false

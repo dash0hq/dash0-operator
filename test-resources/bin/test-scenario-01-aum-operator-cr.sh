@@ -51,11 +51,6 @@ deploy_via_helm
 echo
 echo
 
-echo "STEP 7: deploy the Dash0 operator configuration resource to cluster"
-install_operator_configuration_resource
-echo
-echo
-
-echo "STEP 8: deploy the Dash0 monitoring resource to namespace ${target_namespace}"
+echo "STEP 7: deploy the Dash0 monitoring resource to namespace ${target_namespace}"
 install_monitoring_resource
 

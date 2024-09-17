@@ -23,7 +23,7 @@ import (
 
 const (
 	namespace  = "some-namespace"
-	namePrefix = "unit-test"
+	namePrefix = OTelCollectorNamePrefixTest
 )
 
 var _ = Describe("The desired state of the OpenTelemetry Collector resources", func() {

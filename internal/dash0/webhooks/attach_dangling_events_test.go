@@ -47,7 +47,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 			Client:                  k8sClient,
 			Scheme:                  k8sClient.Scheme(),
 			DeploymentSelfReference: DeploymentSelfReference,
-			OTelCollectorNamePrefix: "unit-test",
+			OTelCollectorNamePrefix: OTelCollectorNamePrefixTest,
 		}
 		backendConnectionManager := &backendconnection.BackendConnectionManager{
 			Client:                 k8sClient,
@@ -69,7 +69,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 	})
 
 	AfterAll(func() {
-		RemoveMonitoringResource(ctx, k8sClient)
+		DeleteMonitoringResource(ctx, k8sClient)
 	})
 
 	BeforeEach(func() {

@@ -38,6 +38,14 @@ rules:
   - update
   - watch
 
+# Pmrmissions required top create a Dash0 operator configuration resources
+- apiGroups:
+  - ""
+  resources:
+  - endpoints
+  verbs:
+  - get
+
 # Permissions required to queue events to report about the operator's actions, and to attach dangling events to their
 # respective involved objects.
 - apiGroups:

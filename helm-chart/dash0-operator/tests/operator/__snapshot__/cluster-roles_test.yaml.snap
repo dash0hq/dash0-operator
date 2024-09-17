@@ -40,6 +40,12 @@ cluster roles should match snapshot:
       - apiGroups:
           - ""
         resources:
+          - endpoints
+        verbs:
+          - get
+      - apiGroups:
+          - ""
+        resources:
           - events
         verbs:
           - create

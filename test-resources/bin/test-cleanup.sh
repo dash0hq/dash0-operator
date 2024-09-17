@@ -23,6 +23,7 @@ kubectl delete -n ${target_namespace} -f test-resources/customresources/dash0mon
 sleep 1
 kubectl patch -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml -p '{"metadata":{"finalizers":null}}' --type=merge || true
 kubectl delete -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.token.yaml || true
+kubectl delete dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration-auto-resource || true
 
 if [[ "${target_namespace}" != "default" ]] && [[ "${delete_namespace}" == "true" ]]; then
   kubectl delete ns ${target_namespace} --ignore-not-found
