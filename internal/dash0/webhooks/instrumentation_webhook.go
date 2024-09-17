@@ -122,7 +122,7 @@ func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admi
 	}); err != nil {
 		if apierrors.IsNotFound(err) {
 			msg := fmt.Sprintf(
-				"There is no Dash0 monitoring resource in the namespace %s, the workload will not be instrumented.",
+				"There is no Dash0 monitoring resource in the namespace %s, the workload will not be instrumented by the webhook.",
 				targetNamespace,
 			)
 			if request.Operation == admissionv1.Update {
