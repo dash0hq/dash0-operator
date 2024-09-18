@@ -14,10 +14,13 @@ import (
 	"github.com/google/uuid"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/dash0/startup"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/format"
+
+	"github.com/dash0hq/dash0-operator/test/util"
 )
 
 const (
@@ -275,10 +278,12 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 	Describe("webhook", func() {
 		BeforeAll(func() {
 			By("deploy the Dash0 operator")
-			deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images)
-
-			fmt.Fprint(GinkgoWriter, "waiting 5 seconds to give the webhook some time to get ready\n")
-			time.Sleep(5 * time.Second)
+			deployOperator(
+				operatorNamespace,
+				operatorHelmChart,
+				operatorHelmChartUrl,
+				images,
+			)
 		})
 
 		AfterAll(func() {
@@ -368,7 +373,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				"webhook",
 			)
 
-			By("Adding the opt-out label to the deployment")
+			By("adding the opt-out label to the deployment")
 			Expect(addOptOutLabel(
 				applicationUnderTestNamespace,
 				"deployment",
@@ -394,7 +399,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				verifyNoDash0LabelsOrOnlyOptOut(g, applicationUnderTestNamespace, "daemonset", true)
 			}, 10*time.Second, pollingInterval).Should(Succeed())
 
-			By("Removing the opt-out label from the daemonset")
+			By("removing the opt-out label from the daemonset")
 			Expect(removeOptOutLabel(
 				applicationUnderTestNamespace,
 				"daemonset",
@@ -435,6 +440,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				applicationUnderTestNamespace,
 				dash0MonitoringValues{
 					Endpoint:            defaultEndpoint,
+					Token:               defaultToken,
 					InstrumentWorkloads: dash0v1alpha1.None,
 				},
 				operatorNamespace,
@@ -537,55 +543,104 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 	})
 
 	Describe("using the operator configuration resource's connection settings", func() {
-		BeforeAll(func() {
-			By("deploy the Dash0 operator")
-			deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images)
-
-			fmt.Fprint(GinkgoWriter, "waiting 5 seconds to give the webhook some time to get ready\n")
-			time.Sleep(5 * time.Second)
-		})
-
-		AfterAll(func() {
-			undeployOperator(operatorNamespace)
-		})
-
-		BeforeEach(func() {
-			deployDash0OperatorConfigurationResource(dash0OperatorConfigurationValues{
-				SelfMonitoringEnabled: false,
-				Endpoint:              defaultEndpoint,
+		Describe("with a manually created operator configuration resource", func() {
+			BeforeAll(func() {
+				By("deploy the Dash0 operator")
+				deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images)
 			})
-			deployDash0MonitoringResource(
-				applicationUnderTestNamespace,
-				dash0MonitoringValues{
-					Endpoint:            "",
-					InstrumentWorkloads: dash0v1alpha1.All,
-				},
-				operatorNamespace,
-				operatorHelmChart,
-			)
+
+			AfterAll(func() {
+				undeployOperator(operatorNamespace)
+			})
+
+			BeforeEach(func() {
+				deployDash0OperatorConfigurationResource(dash0OperatorConfigurationValues{
+					SelfMonitoringEnabled: false,
+					Endpoint:              defaultEndpoint,
+					Token:                 defaultToken,
+				})
+				deployDash0MonitoringResource(
+					applicationUnderTestNamespace,
+					dash0MonitoringValues{
+						Endpoint:            "",
+						Token:               "",
+						InstrumentWorkloads: dash0v1alpha1.All,
+					},
+					operatorNamespace,
+					operatorHelmChart,
+				)
+			})
+
+			AfterEach(func() {
+				undeployDash0MonitoringResource(applicationUnderTestNamespace)
+				undeployDash0OperatorConfigurationResource()
+			})
+
+			It("should instrumenting workloads", func() {
+				testId := generateTestId("deployment")
+				By("installing the Node.js deployment")
+				Expect(installNodeJsWorkload(workloadTypeDeployment, applicationUnderTestNamespace, testId)).To(Succeed())
+				By("verifying that the Node.js deployment has been instrumented by the webhook")
+				verifyThatWorkloadHasBeenInstrumented(
+					applicationUnderTestNamespace,
+					"deployment",
+					workloadTypeDeployment.port,
+					false,
+					testId,
+					images,
+					"webhook",
+				)
+			})
 		})
 
-		AfterEach(func() {
-			undeployDash0MonitoringResource(applicationUnderTestNamespace)
-			undeployDash0OperatorConfigurationResource()
-		})
+		Describe("using the automatically created operator configuration resource", func() {
+			BeforeAll(func() {
+				By("deploy the Dash0 operator and let it create an operator configuration resource")
+				deployOperatorWithDefaultAutoOperationConfiguration(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					images,
+				)
+			})
 
-		It("when instrumenting workloads", func() {
-			workloadType := workloadTypeDeployment
-			testId := generateTestId(workloadType.workloadTypeString)
-			By(fmt.Sprintf("installing the Node.js %s", workloadType.workloadTypeString))
-			Expect(installNodeJsWorkload(workloadType, applicationUnderTestNamespace, testId)).To(Succeed())
-			By(fmt.Sprintf("verifying that the Node.js %s has been instrumented by the webhook",
-				workloadType.workloadTypeString))
-			verifyThatWorkloadHasBeenInstrumented(
-				applicationUnderTestNamespace,
-				workloadType.workloadTypeString,
-				workloadType.port,
-				workloadType.isBatch,
-				testId,
-				images,
-				"webhook",
-			)
+			AfterAll(func() {
+				undeployOperator(operatorNamespace)
+			})
+
+			BeforeEach(func() {
+				deployDash0MonitoringResource(
+					applicationUnderTestNamespace,
+					dash0MonitoringValues{
+						Endpoint:            "",
+						Token:               "",
+						InstrumentWorkloads: dash0v1alpha1.All,
+					},
+					operatorNamespace,
+					operatorHelmChart,
+				)
+			})
+
+			AfterEach(func() {
+				undeployDash0MonitoringResource(applicationUnderTestNamespace)
+				undeployDash0OperatorConfigurationResource()
+			})
+
+			It("should instrumenting workloads", func() {
+				testId := generateTestId("deployment")
+				By("installing the Node.js deployment")
+				Expect(installNodeJsWorkload(workloadTypeDeployment, applicationUnderTestNamespace, testId)).To(Succeed())
+				By("verifying that the Node.js deployment has been instrumented by the webhook")
+				verifyThatWorkloadHasBeenInstrumented(
+					applicationUnderTestNamespace,
+					"deployment",
+					workloadTypeDeployment.port,
+					false,
+					testId,
+					images,
+					"webhook",
+				)
+			})
 		})
 	})
 
@@ -641,7 +696,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			By("churning collector pods")
 			_ = runAndIgnoreOutput(exec.Command("kubectl", "delete", "pods", "-n", operatorNamespace))
 
-			verifyThatCollectorIsRunning(operatorNamespace, operatorHelmChart)
+			waitForCollectorToStart(operatorNamespace, operatorHelmChart)
 
 			By("verifying that the previous log message is not reported again (checking for 30 seconds)")
 			Consistently(func(g Gomega) error {
@@ -700,6 +755,27 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			Eventually(func(g Gomega) {
 				verifySelfMonitoringMetrics(g)
 			}, 90*time.Second, time.Second).Should(Succeed())
+		})
+	})
+
+	Describe("operator installation", func() {
+
+		It("should fail if asked to create an operator configuration resource with invalid settings", func() {
+			err := deployOperatorWithAutoOperationConfiguration(
+				operatorNamespace,
+				operatorHelmChart,
+				operatorHelmChartUrl,
+				images,
+				&startup.OperatorConfigurationValues{
+					Endpoint: util.EndpointDash0Test,
+					// no token, no secret ref
+				},
+			)
+			Expect(err).To(
+				MatchError(
+					ContainSubstring("operator.dash0Backend.enabled is set to true, but neither " +
+						"operator.dash0Backend.token nor operator.dash0Backend.secretRef.name & " +
+						"operator.dash0Backend.secretRef.key have been provided.")))
 		})
 	})
 

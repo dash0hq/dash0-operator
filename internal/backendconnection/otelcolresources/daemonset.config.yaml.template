@@ -9,6 +9,10 @@ exporters:
 {{- range $i, $exporter := .Exporters }}
   {{ $exporter.Name }}:
     endpoint: "{{ $exporter.Endpoint }}"
+{{ if $exporter.Insecure }}
+    tls:
+      insecure: true
+{{ end }}
 {{- if $exporter.Headers }}
     headers:
 {{- range $i, $header := $exporter.Headers }}

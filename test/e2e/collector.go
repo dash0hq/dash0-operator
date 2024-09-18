@@ -22,7 +22,7 @@ var (
 	collectorConfigMapNameQualified  = fmt.Sprintf("configmap/%s", collectorConfigMapName)
 )
 
-func verifyThatCollectorIsRunning(operatorNamespace string, operatorHelmChart string) {
+func waitForCollectorToStart(operatorNamespace string, operatorHelmChart string) {
 	By("validating that the OpenTelemetry collector has been created and is running as expected")
 	verifyCollectorIsUp := func(g Gomega) {
 		// Even though this command comes with its own timeout, we still have to wrap it in an Eventually block, since

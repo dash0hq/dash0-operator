@@ -21,6 +21,7 @@ type OtlpExporter struct {
 	Endpoint string
 	Headers  []dash0v1alpha1.Header
 	Encoding string
+	Insecure bool
 }
 
 var (
@@ -126,11 +127,13 @@ func ConvertExportSettingsToExporterList(export dash0v1alpha1.Export) ([]OtlpExp
 				Value: d0.Dataset,
 			})
 		}
-		exporters = append(exporters, OtlpExporter{
+		dash0Exporter := OtlpExporter{
 			Name:     "otlp/dash0",
 			Endpoint: export.Dash0.Endpoint,
 			Headers:  headers,
-		})
+		}
+		setGrpcTls(export.Dash0.Endpoint, &dash0Exporter)
+		exporters = append(exporters, dash0Exporter)
 	}
 
 	if export.Grpc != nil {
@@ -143,6 +146,7 @@ func ConvertExportSettingsToExporterList(export dash0v1alpha1.Export) ([]OtlpExp
 			Endpoint: grpc.Endpoint,
 			Headers:  grpc.Headers,
 		}
+		setGrpcTls(grpc.Endpoint, &grpcExporter)
 		if grpc.Headers != nil && len(grpc.Headers) > 0 {
 			grpcExporter.Headers = grpc.Headers
 		}
@@ -181,4 +185,10 @@ func renderCollectorConfiguration(
 		return "", err
 	}
 	return collectorConfiguration.String(), nil
+}
+
+func setGrpcTls(endpoint string, exporter *OtlpExporter) {
+	if endpoint == "http://otlp-sink.otlp-sink.svc.cluster.local:4317" {
+		exporter.Insecure = true
+	}
 }

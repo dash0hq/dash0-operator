@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dash0hq/dash0-operator/internal/dash0/startup"
+
 	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive
 	. "github.com/onsi/gomega"
 )
@@ -31,6 +33,42 @@ func deployOperator(
 	operatorHelmChartUrl string,
 	images Images,
 ) {
+	err := deployOperatorWithAutoOperationConfiguration(
+		operatorNamespace,
+		operatorHelmChart,
+		operatorHelmChartUrl,
+		images,
+		nil,
+	)
+	Expect(err).ToNot(HaveOccurred())
+}
+
+func deployOperatorWithDefaultAutoOperationConfiguration(
+	operatorNamespace string,
+	operatorHelmChart string,
+	operatorHelmChartUrl string,
+	images Images,
+) {
+	err := deployOperatorWithAutoOperationConfiguration(
+		operatorNamespace,
+		operatorHelmChart,
+		operatorHelmChartUrl,
+		images,
+		&startup.OperatorConfigurationValues{
+			Endpoint: defaultEndpoint,
+			Token:    defaultToken,
+		},
+	)
+	Expect(err).ToNot(HaveOccurred())
+}
+
+func deployOperatorWithAutoOperationConfiguration(
+	operatorNamespace string,
+	operatorHelmChart string,
+	operatorHelmChartUrl string,
+	images Images,
+	operatorConfigurationValues *startup.OperatorConfigurationValues,
+) error {
 	ensureDash0OperatorHelmRepoIsInstalled(operatorHelmChart, operatorHelmChartUrl)
 
 	By(
@@ -47,11 +85,35 @@ func deployOperator(
 	}
 	arguments = addOptionalHelmParameters(arguments, operatorHelmChart, images)
 
-	output, err := run(exec.Command("helm", arguments...))
-	Expect(err).NotTo(HaveOccurred())
-	fmt.Fprintf(GinkgoWriter, "output of helm install:\n%s", output)
+	if operatorConfigurationValues != nil {
+		arguments = setHelmParameter(arguments, "operator.dash0Backend.enabled", "true")
+		arguments = setIfNotEmpty(arguments, "operator.dash0Backend.endpoint", operatorConfigurationValues.Endpoint)
+		arguments = setIfNotEmpty(arguments, "operator.dash0Backend.token", operatorConfigurationValues.Token)
+		arguments = setIfNotEmpty(
+			arguments,
+			"operator.dash0Backend.secretRef.name",
+			operatorConfigurationValues.SecretRef.Name,
+		)
+		arguments = setIfNotEmpty(
+			arguments,
+			"operator.dash0Backend.secretRef.key",
+			operatorConfigurationValues.SecretRef.Key,
+		)
+	}
 
-	verifyThatManagerPodIsRunning(operatorNamespace)
+	output, err := run(exec.Command("helm", arguments...))
+	if err != nil {
+		return err
+	}
+
+	fmt.Fprintf(GinkgoWriter, "output of helm install:\n%s", output)
+	waitForManagerPodAndWebhookToStart(operatorNamespace)
+
+	if operatorConfigurationValues != nil {
+		waitForAutoOperatorConfigurationResourceToBecomeAvailable()
+	}
+
+	return nil
 }
 
 func addOptionalHelmParameters(arguments []string, operatorHelmChart string, images Images) []string {
@@ -93,9 +155,14 @@ func addOptionalHelmParameters(arguments []string, operatorHelmChart string, ima
 
 func setIfNotEmpty(arguments []string, key string, value string) []string {
 	if value != "" {
-		arguments = append(arguments, "--set")
-		arguments = append(arguments, fmt.Sprintf("%s=%s", key, value))
+		return setHelmParameter(arguments, key, value)
 	}
+	return arguments
+}
+
+func setHelmParameter(arguments []string, key string, value string) []string {
+	arguments = append(arguments, "--set")
+	arguments = append(arguments, fmt.Sprintf("%s=%s", key, value))
 	return arguments
 }
 
@@ -155,7 +222,7 @@ func ensureDash0OperatorHelmRepoIsInstalled(
 	}
 }
 
-func verifyThatManagerPodIsRunning(operatorNamespace string) {
+func waitForManagerPodAndWebhookToStart(operatorNamespace string) {
 	var managerPodName string
 	By("validating that the manager pod is running as expected")
 	verifyControllerUp := func(g Gomega) error {
@@ -271,7 +338,7 @@ func upgradeOperator(
 	By("waiting shortly, to give the operator time to restart after helm upgrade")
 	time.Sleep(5 * time.Second)
 
-	verifyThatManagerPodIsRunning(operatorNamespace)
+	waitForManagerPodAndWebhookToStart(operatorNamespace)
 
-	verifyThatCollectorIsRunning(operatorNamespace, operatorHelmChart)
+	waitForCollectorToStart(operatorNamespace, operatorHelmChart)
 }
