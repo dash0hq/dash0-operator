@@ -27,6 +27,25 @@ Supported runtimes for automatic instrumentation:
 - [Helm](https://helm.sh) >= 3.x, please refer to Helm's [documentation](https://helm.sh/docs/) for more information
   on installing Helm.
 
+To use the operator, you will need provide two configuration values:
+* `endpoint`: The URL of the Dash0 ingress endpoint backend to which telemetry data will be sent.
+  This property is mandatory when installing the operator.
+  This is the OTLP/gRPC endpoint of your Dash0 organization.
+  The correct OTLP/gRPC endpoint can be copied fom https://app.dash0.com -> organization settings -> "Endpoints".
+  Note that the correct endpoint value will always start with `ingress.` and end in `dash0.com:4317`.
+  Including a protocol prefix (e.g. `https://`) is optional.
+* Either `token` or `secretRef`: Exactly one of these two properties needs to be provided when installing the operator.
+    * `token`: This is the Dash0 authorization token of your organization.
+      The authorization token for your Dash0 organization can be copied from https://app.dash0.com -> organization
+      settings -> "Auth Tokens".
+      The prefix `Bearer ` must *not* be included in the value.
+      Note that when you provide a token, it will be rendered verbatim into a Kubernetes ConfigMap object.
+      Anyone with API access to the Kubernetes cluster will be able to read the value.
+      Use a secret reference and a Kubernetes secret if you want to avoid that.
+    * `secretRef`: A reference to an existing Kubernetes secret in the Dash0 operator's namespace.
+      The secret needs to contain the Dash0 authorization token.
+      See below for details on how exactly the secret should be created and configured.
+
 ## Installation
 
 Before installing the operator, add the Dash0 operator's Helm repository as follows:
@@ -42,9 +61,44 @@ Now you can install the operator into your cluster via Helm with the following c
 helm install \
   --namespace dash0-system \
   --create-namespace \
+  --set operator.dash0Backend.enabled=true \
+  --set operator.dash0Backend.endpoint=REPLACE THIS WITH YOUR DASH0 INGRESS ENDPOINT \
+  --set operator.dash0Backend.token=REPLACE THIS WITH YOUR DASH0 AUTH TOKEN \
   dash0-operator \
   dash0-operator/dash0-operator
 ```
+
+Instead of providing the auth token directly, you can also use a secret reference:
+
+```console
+helm install \
+  --namespace dash0-system \
+  --create-namespace \
+  --set operator.dash0Backend.enabled=true \
+  --set operator.dash0Backend.endpoint=REPLACE THIS WITH YOUR DASH0 INGRESS ENDPOINT \
+  --set operator.dash0Backend.secretRef.name=REPLACE THIS WITH THE NAME OF AN EXISTING KUBERNETES SECRET \
+  --set operator.dash0Backend.secretRef.key=REPLACE THIS WITH THE PROPERTY KEY IN THAT SECRET \
+  dash0-operator \
+  dash0-operator/dash0-operator
+```
+
+See https://kubernetes.io/docs/concepts/configuration/secret/ for more information on using a Kubernetes secrets
+with the Dash0 operator.
+
+Last but not least, you can also install the operator without providing a Dash0 backend configuration:
+
+```console
+helm install \
+  --namespace dash0-system \
+  --create-namespace \
+  dash0-operator \
+  dash0-operator/dash0-operator
+```
+
+However, you will need to create a Dash0 operator configuration resource later that provides the backend connection
+settings.
+That is, providing `--set operator.dash0Backend.enabled=true` and the other backend-related settings when running
+`helm install` is simply a shortcut to deploy the Dash0 operator configuration resource automatically at startup.
 
 On its own, the operator will not do much.
 To actually have the operator monitor your cluster, two more things need to be set up:
@@ -57,7 +111,12 @@ Both steps are described in the following sections.
 
 ### Configuring the Dash0 Backend Connection
 
-Create a file `dash0-operator-configuration.yaml` with the following content:
+You can skip this step if you provided `--set operator.dash0Backend.enabled=true` together with the endpoint and either
+a token or a secret reference when running `helm install`. In that case, proceed to the next section, 
+[Enable Dash0 Monitoring For a Namespace](#enable-dash0-monitoring-for-a-namespace).
+
+Otherwise, configure the backend connection now by creating a file `dash0-operator-configuration.yaml` with the
+following content:
 
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1
@@ -81,7 +140,7 @@ You need to provide two configuration settings:
   Replace the value in the example above with the OTLP/gRPC endpoint of your Dash0 organization.
   The correct OTLP/gRPC endpoint can be copied fom https://app.dash0.com -> organization settings -> "Endpoints".
   Note that the correct endpoint value will always start with `ingress.` and end in `dash0.com:4317`.
-  A protocol prefix (e.g. `https://`) should not be included in the value.
+  Including a protocol prefix (e.g. `https://`) is optional.
 * `spec.export.dash0.authorization.token` or `spec.export.dash0.authorization.secretRef`: Exactly one of these two
   properties needs to be provided.
   Providing both will cause a validation error when installing the Dash0Monitoring resource.
@@ -119,6 +178,7 @@ For _each namespace_ that you want to monitor with Dash0, enable workload monito
 resource_ into that namespace:
 
 Create a file `dash0-monitoring.yaml` with the following content:
+
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1
 kind: Dash0Monitoring
@@ -134,6 +194,7 @@ kubectl apply --namespace my-nodejs-applications -f dash0-monitoring.yaml
 ```
 
 If you want to monitor the `default` namespace with Dash0, use the following command:
+
 ```console
 kubectl apply -f dash0-monitoring.yaml
 ```
@@ -217,13 +278,31 @@ kubectl create secret generic \
 
 With this example command, you would create a secret with the name `dash0-authorization-secret` in the namespace
 `dash0-system`.
-If you installed the operator into a different namespace, replace the `--namespace` parameter accordingly.
+If you installed (or plan to install) the operator into a different namespace, replace the `--namespace` parameter
+accordingly.
 
-The name of the secret as well as the key of the token value within the secret must be provided in the YAML file for
-the Dash0 monitoring resource, in the `secretRef` property.
-If the `name` property is omitted, the name `dash0-authorization-secret` will be assumed.
-If the `key` property is omitted, the key `token` will be assumed.
-Here is an example that uses the secret created above:
+The name of the secret as well as the key of the token value within the secret must be provided when referencing the 
+secret during `helm install`, or in the YAML file for the Dash0 operator configuration resource (in the `secretRef`
+property).
+
+For creating the operator configuration resource with `helm install`, the command would look like this, assuming the 
+secret has been created as shown above:
+
+```console
+helm install \
+  --namespace dash0-system \
+  --set operator.dash0Backend.enabled=true \
+  --set operator.dash0Backend.endpoint=REPLACE THIS WITH YOUR DASH0 INGRESS ENDPOINT \
+  --set operator.dash0Backend.secretRef.name=dash0-authorization-secret \
+  --set operator.dash0Backend.secretRef.key=token \
+  dash0-operator \
+  dash0-operator/dash0-operator
+```
+
+If you do not want to install the operator configuration resource via `helm install` but instead deploy it manually,
+and use a secret reference for the auth token, the following example YAML file would work work with the secret created
+above:
+
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1
 kind: Dash0OperatorConfiguration
@@ -232,17 +311,19 @@ metadata:
 spec:
   export:
     dash0:
-      endpoint: ingress... # TODO needs to be replaced with the actual value, see above
+      endpoint: ingress... # TODO REPLACE THIS WITH YOUR DASH0 INGRESS ENDPOINT
 
       authorization:
-        # Provide the name and key of a secret existing in the Dash0 operator's namespace as secretRef:
         secretRef:
           name: dash0-authorization-secret
           key: token
 ```
 
-Since the name `dash0-authorization-secret` and the key `token` are the defaults, this `secretRef` could have also been
-written as follows:
+When deploying the operator configuration resource via `kubectl`, the following defaults apply:
+* If the `name` property is omitted, the name `dash0-authorization-secret` will be assumed.
+* If the `key` property is omitted, the key `token` will be assumed.
+
+With these defaults in mind, the `secretRef` could have also been written as follows:
 
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1
@@ -258,9 +339,13 @@ spec:
         secretRef: {}
 ```
 
+Note: There are no defaults when using `--set operator.dash0Backend.secretRef.name` and 
+`--set operator.dash0Backend.secretRef.key` with `helm install`, so for that approach the values must always be
+provided explicitly.
+
 Note that by default, Kubernetes secrets are stored _unencrypted_, and anyone with API access to the Kubernetes cluster
 will be able to read the value.
-Additional steps are required to make sure secret values are encrypted.
+Additional steps are required to make sure secret values are encrypted, if that is desired.
 See https://kubernetes.io/docs/concepts/configur**ation/secret/ for more information on Kubernetes secrets.
 
 ### Dash0 Dataset Configuration
@@ -287,8 +372,9 @@ spec:
 
 ### Exporting Data to Other Observability Backends
 
-Instead of `spec.export.dash0`, you can also provide `spec.export.http` or `spec.export.grpc` to export telemetry data
-to arbitrary OTLP-compatible backends, or to another local OpenTelemetry collector.
+Instead of `spec.export.dash0` in the Dash0 operator configuration resource, you can also provide `spec.export.http` or
+`spec.export.grpc` to export telemetry data to arbitrary OTLP-compatible backends, or to another local OpenTelemetry
+collector.
 
 Here is an example for HTTP:
 
