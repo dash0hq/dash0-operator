@@ -20,11 +20,11 @@ import (
 type dash0MonitoringValues struct {
 	InstrumentWorkloads dash0v1alpha1.InstrumentWorkloadsMode
 	Endpoint            string
+	Token               string
 }
 
 const (
 	dash0MonitoringResourceName = "dash0-monitoring-resource-e2e"
-	defaultEndpoint             = "http://otlp-sink.otlp-sink.svc.cluster.local:4318"
 )
 
 var (
@@ -34,6 +34,7 @@ var (
 
 	defaultDash0MonitoringValues = dash0MonitoringValues{
 		Endpoint:            defaultEndpoint,
+		Token:               defaultToken,
 		InstrumentWorkloads: dash0v1alpha1.All,
 	}
 )
@@ -69,7 +70,7 @@ func deployDash0MonitoringResource(
 	}()
 
 	By(fmt.Sprintf(
-		"Deploying the Dash0 monitoring resource to namespace %s with values %v, operator namespace is %s",
+		"deploying the Dash0 monitoring resource to namespace %s with values %v, operator namespace is %s",
 		namespace, dash0MonitoringValues, operatorNamespace))
 	Expect(
 		runAndIgnoreOutput(exec.Command(
@@ -82,7 +83,7 @@ func deployDash0MonitoringResource(
 		))).To(Succeed())
 
 	// Deploying the Dash0 monitoring resource will trigger creating the default OpenTelemetry collecor instance.
-	verifyThatCollectorIsRunning(operatorNamespace, operatorHelmChart)
+	waitForCollectorToStart(operatorNamespace, operatorHelmChart)
 }
 
 func updateEndpointOfDash0MonitoringResource(
@@ -132,7 +133,7 @@ func truncateExportedTelemetry() {
 }
 
 func undeployDash0MonitoringResource(namespace string) {
-	By(fmt.Sprintf("Removing the Dash0 monitoring resource from namespace %s", namespace))
+	By(fmt.Sprintf("removing the Dash0 monitoring resource from namespace %s", namespace))
 	Expect(
 		runAndIgnoreOutput(exec.Command(
 			"kubectl",

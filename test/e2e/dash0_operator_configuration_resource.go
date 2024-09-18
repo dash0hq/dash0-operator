@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"text/template"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive
 	. "github.com/onsi/gomega"
@@ -18,10 +19,21 @@ import (
 type dash0OperatorConfigurationValues struct {
 	SelfMonitoringEnabled bool
 	Endpoint              string
+	Token                 string
 }
 
 const (
 	dash0OperatorConfigurationResourceName = "dash0-operator-configuration-resource-e2e"
+
+	// We are using the Dash0 exporter which uses a gRPC exporter under the hood, so actually omitting the http://
+	// scheme would be fine, but for self-monitoring we would prepend https:// to URLs without scheme, see comment in
+	// self_monitoring.go#prependProtocol. Since the OTLP sink does not serve https, we use a URL with http:// to avoid
+	// this behavior.
+	defaultEndpoint = "http://otlp-sink.otlp-sink.svc.cluster.local:4317"
+
+	// We only need a non-empty token to pass the validation in startup.auto_operator_configuration_handler.go,
+	// we do not actually send data to a Dash0 backend so no real token is required.
+	defaultToken = "dummy-token"
 )
 
 var (
@@ -32,6 +44,7 @@ var (
 	defaultDash0OperatorConfigurationValues = dash0OperatorConfigurationValues{
 		SelfMonitoringEnabled: true,
 		Endpoint:              defaultEndpoint,
+		Token:                 defaultToken,
 	}
 )
 
@@ -67,7 +80,7 @@ func deployDash0OperatorConfigurationResource(
 	}()
 
 	By(fmt.Sprintf(
-		"Deploying the Dash0 operator configuration resource with values %v", dash0OperatorConfigurationValues))
+		"deploying the Dash0 operator configuration resource with values %v", dash0OperatorConfigurationValues))
 	Expect(
 		runAndIgnoreOutput(exec.Command(
 			"kubectl",
@@ -77,8 +90,30 @@ func deployDash0OperatorConfigurationResource(
 		))).To(Succeed())
 }
 
+func waitForAutoOperatorConfigurationResourceToBecomeAvailable() {
+	By("waiting for the automatically create Dash0 operator configuration resource to become available")
+	Eventually(func(g Gomega) {
+		g.Expect(
+			runAndIgnoreOutput(exec.Command(
+				"kubectl",
+				"get",
+				"dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration-auto-resource",
+			))).To(Succeed())
+	}, 30*time.Second, 1*time.Second).Should(Succeed())
+	Expect(
+		runAndIgnoreOutput(exec.Command(
+			"kubectl",
+			"wait",
+			"dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration-auto-resource",
+			"--for",
+			"condition=Available",
+			"--timeout",
+			"30s",
+		))).To(Succeed())
+}
+
 func undeployDash0OperatorConfigurationResource() {
-	By("Removing the Dash0 operator configuration resource")
+	By("removing the Dash0 operator configuration resource")
 	Expect(
 		runAndIgnoreOutput(exec.Command(
 			"kubectl",

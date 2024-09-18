@@ -6,5 +6,7 @@ spec:
   selfMonitoring:
     enabled: {{ .SelfMonitoringEnabled }}
   export:
-    http:
+    dash0:
       endpoint: {{ .Endpoint }}
+      authorization:
+        token: {{ .Token }}
