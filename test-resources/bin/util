@@ -101,10 +101,10 @@ deploy_via_helm() {
   fi
 
   # Deploy an operator configuration right away.
-  helm_install_command+=" --set operator.dash0Backend.enabled=true"
-  helm_install_command+=" --set operator.dash0Backend.endpoint=ingress.eu-west-1.aws.dash0-dev.com:4317"
-  helm_install_command+=" --set operator.dash0Backend.secretRef.name=dash0-authorization-secret"
-  helm_install_command+=" --set operator.dash0Backend.secretRef.key=token"
+  helm_install_command+=" --set operator.dash0Export.enabled=true"
+  helm_install_command+=" --set operator.dash0Export.endpoint=ingress.eu-west-1.aws.dash0-dev.com:4317"
+  helm_install_command+=" --set operator.dash0Export.secretRef.name=dash0-authorization-secret"
+  helm_install_command+=" --set operator.dash0Export.secretRef.key=token"
 
   helm_install_command+=" dash0-operator"
   helm_install_command+=" ${OPERATOR_HELM_CHART:-helm-chart/dash0-operator}"
@@ -130,7 +130,7 @@ wait_for_operator_manager_and_webhook() {
     sleep 0.3
   done
 
-  # We deploy an operator configuration at startup via operator.dash0Backend.enabled=true, wait for that resource to
+  # We deploy an operator configuration at startup via operator.dash0Export.enabled=true, wait for that resource to
   # become available as well.
   echo "waiting for the automatically created operator configuration resource to become available"
   for ((i=0; i<=20; i++)); do

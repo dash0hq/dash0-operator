@@ -86,17 +86,17 @@ func deployOperatorWithAutoOperationConfiguration(
 	arguments = addOptionalHelmParameters(arguments, operatorHelmChart, images)
 
 	if operatorConfigurationValues != nil {
-		arguments = setHelmParameter(arguments, "operator.dash0Backend.enabled", "true")
-		arguments = setIfNotEmpty(arguments, "operator.dash0Backend.endpoint", operatorConfigurationValues.Endpoint)
-		arguments = setIfNotEmpty(arguments, "operator.dash0Backend.token", operatorConfigurationValues.Token)
+		arguments = setHelmParameter(arguments, "operator.dash0Export.enabled", "true")
+		arguments = setIfNotEmpty(arguments, "operator.dash0Export.endpoint", operatorConfigurationValues.Endpoint)
+		arguments = setIfNotEmpty(arguments, "operator.dash0Export.token", operatorConfigurationValues.Token)
 		arguments = setIfNotEmpty(
 			arguments,
-			"operator.dash0Backend.secretRef.name",
+			"operator.dash0Export.secretRef.name",
 			operatorConfigurationValues.SecretRef.Name,
 		)
 		arguments = setIfNotEmpty(
 			arguments,
-			"operator.dash0Backend.secretRef.key",
+			"operator.dash0Export.secretRef.key",
 			operatorConfigurationValues.SecretRef.Key,
 		)
 	}

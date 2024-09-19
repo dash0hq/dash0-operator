@@ -61,9 +61,9 @@ Now you can install the operator into your cluster via Helm with the following c
 helm install \
   --namespace dash0-system \
   --create-namespace \
-  --set operator.dash0Backend.enabled=true \
-  --set operator.dash0Backend.endpoint=REPLACE THIS WITH YOUR DASH0 INGRESS ENDPOINT \
-  --set operator.dash0Backend.token=REPLACE THIS WITH YOUR DASH0 AUTH TOKEN \
+  --set operator.dash0Export.enabled=true \
+  --set operator.dash0Export.endpoint=REPLACE THIS WITH YOUR DASH0 INGRESS ENDPOINT \
+  --set operator.dash0Export.token=REPLACE THIS WITH YOUR DASH0 AUTH TOKEN \
   dash0-operator \
   dash0-operator/dash0-operator
 ```
@@ -74,10 +74,10 @@ Instead of providing the auth token directly, you can also use a secret referenc
 helm install \
   --namespace dash0-system \
   --create-namespace \
-  --set operator.dash0Backend.enabled=true \
-  --set operator.dash0Backend.endpoint=REPLACE THIS WITH YOUR DASH0 INGRESS ENDPOINT \
-  --set operator.dash0Backend.secretRef.name=REPLACE THIS WITH THE NAME OF AN EXISTING KUBERNETES SECRET \
-  --set operator.dash0Backend.secretRef.key=REPLACE THIS WITH THE PROPERTY KEY IN THAT SECRET \
+  --set operator.dash0Export.enabled=true \
+  --set operator.dash0Export.endpoint=REPLACE THIS WITH YOUR DASH0 INGRESS ENDPOINT \
+  --set operator.dash0Export.secretRef.name=REPLACE THIS WITH THE NAME OF AN EXISTING KUBERNETES SECRET \
+  --set operator.dash0Export.secretRef.key=REPLACE THIS WITH THE PROPERTY KEY IN THAT SECRET \
   dash0-operator \
   dash0-operator/dash0-operator
 ```
@@ -98,7 +98,7 @@ helm install \
 
 However, you will need to create a Dash0 operator configuration resource later that provides the backend connection
 settings.
-That is, providing `--set operator.dash0Backend.enabled=true` and the other backend-related settings when running
+That is, providing `--set operator.dash0Export.enabled=true` and the other backend-related settings when running
 `helm install` is simply a shortcut to deploy the Dash0 operator configuration resource automatically at startup.
 
 On its own, the operator will not do much.
@@ -112,7 +112,7 @@ Both steps are described in the following sections.
 
 ### Configuring the Dash0 Backend Connection
 
-You can skip this step if you provided `--set operator.dash0Backend.enabled=true` together with the endpoint and either
+You can skip this step if you provided `--set operator.dash0Export.enabled=true` together with the endpoint and either
 a token or a secret reference when running `helm install`. In that case, proceed to the next section, 
 [Enable Dash0 Monitoring For a Namespace](#enable-dash0-monitoring-for-a-namespace).
 
@@ -292,10 +292,10 @@ secret has been created as shown above:
 ```console
 helm install \
   --namespace dash0-system \
-  --set operator.dash0Backend.enabled=true \
-  --set operator.dash0Backend.endpoint=REPLACE THIS WITH YOUR DASH0 INGRESS ENDPOINT \
-  --set operator.dash0Backend.secretRef.name=dash0-authorization-secret \
-  --set operator.dash0Backend.secretRef.key=token \
+  --set operator.dash0Export.enabled=true \
+  --set operator.dash0Export.endpoint=REPLACE THIS WITH YOUR DASH0 INGRESS ENDPOINT \
+  --set operator.dash0Export.secretRef.name=dash0-authorization-secret \
+  --set operator.dash0Export.secretRef.key=token \
   dash0-operator \
   dash0-operator/dash0-operator
 ```
@@ -340,8 +340,8 @@ spec:
         secretRef: {}
 ```
 
-Note: There are no defaults when using `--set operator.dash0Backend.secretRef.name` and 
-`--set operator.dash0Backend.secretRef.key` with `helm install`, so for that approach the values must always be
+Note: There are no defaults when using `--set operator.dash0Export.secretRef.name` and 
+`--set operator.dash0Export.secretRef.key` with `helm install`, so for that approach the values must always be
 provided explicitly.
 
 Note that by default, Kubernetes secrets are stored _unencrypted_, and anyone with API access to the Kubernetes cluster

@@ -773,9 +773,9 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			)
 			Expect(err).To(
 				MatchError(
-					ContainSubstring("operator.dash0Backend.enabled is set to true, but neither " +
-						"operator.dash0Backend.token nor operator.dash0Backend.secretRef.name & " +
-						"operator.dash0Backend.secretRef.key have been provided.")))
+					ContainSubstring("operator.dash0Export.enabled is set to true, but neither " +
+						"operator.dash0Export.token nor operator.dash0Export.secretRef.name & " +
+						"operator.dash0Export.secretRef.key have been provided.")))
 		})
 	})
 
