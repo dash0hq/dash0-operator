@@ -21,14 +21,15 @@ import (
 )
 
 var (
-	meterProvider otelmetric.MeterProvider
+	meterProvider     otelmetric.MeterProvider
+	shutdownFunctions []func(ctx context.Context) error
 )
 
 func InitOTelSdk(
 	ctx context.Context,
 	meterName string,
 	extraResourceAttributes map[string]string,
-) (otelmetric.Meter, []func(ctx context.Context) error) {
+) otelmetric.Meter {
 	podUid, isSet := os.LookupEnv("K8S_POD_UID")
 	if !isSet {
 		log.Println("Env var 'K8S_POD_UID' is not set")
@@ -41,8 +42,6 @@ func InitOTelSdk(
 
 	daemonSetUid := os.Getenv("K8S_DAEMONSET_UID")
 	deploymentUid := os.Getenv("K8S_DEPLOYMENT_UID")
-
-	var doMeterShutdown func(ctx context.Context) error
 
 	if _, isSet = os.LookupEnv("OTEL_EXPORTER_OTLP_ENDPOINT"); isSet {
 		var metricExporter sdkmetric.Exporter
@@ -100,26 +99,28 @@ func InitOTelSdk(
 		)
 
 		meterProvider = sdkMeterProvider
-		doMeterShutdown = sdkMeterProvider.Shutdown
+		shutdownFunctions = []func(ctx context.Context) error{
+			sdkMeterProvider.Shutdown,
+		}
 	} else {
 		meterProvider = metricnoop.MeterProvider{}
-		doMeterShutdown = func(ctx context.Context) error { return nil }
 	}
 
 	otel.SetMeterProvider(meterProvider)
 
-	return meterProvider.Meter(meterName), []func(ctx context.Context) error{
-		doMeterShutdown,
-	}
+	return meterProvider.Meter(meterName)
 }
 
-func ShutDownOTelSdk(ctx context.Context, shutdownFunctions []func(ctx context.Context) error) {
-	var err error
+func ShutDownOTelSdk(ctx context.Context) {
+	if len(shutdownFunctions) == 0 {
+		return
+	}
+
+	timeoutCtx, cancelFun := context.WithTimeout(ctx, time.Second)
+	defer cancelFun()
 	for _, shutdownFunction := range shutdownFunctions {
-		timeoutCtx, cancelFun := context.WithTimeout(ctx, time.Second)
-		if err = shutdownFunction(timeoutCtx); err != nil {
+		if err := shutdownFunction(timeoutCtx); err != nil {
 			log.Printf("Failed to shutdown self monitoring, telemetry may have been lost:%v\n", err)
 		}
-		cancelFun()
 	}
 }

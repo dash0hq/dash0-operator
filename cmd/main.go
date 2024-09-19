@@ -92,9 +92,8 @@ var (
 	deploymentSelfReference *appsv1.Deployment
 	envVars                 environmentVariables
 
-	metricNamePrefix      = fmt.Sprintf("%s.", meterName)
-	meter                 otelmetric.Meter
-	otelShutdownFunctions []func(ctx context.Context) error
+	metricNamePrefix = fmt.Sprintf("%s.", meterName)
+	meter            otelmetric.Meter
 )
 
 func init() {
@@ -205,7 +204,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	meter, otelShutdownFunctions =
+	meter =
 		common.InitOTelSdk(
 			ctx,
 			meterName,
@@ -335,7 +334,7 @@ func startOperatorManager(
 	}
 	// ^mgr.Start(...) blocks. It only returns when the manager is terminating.
 
-	common.ShutDownOTelSdk(ctx, otelShutdownFunctions)
+	common.ShutDownOTelSdk(ctx)
 
 	return nil
 }
