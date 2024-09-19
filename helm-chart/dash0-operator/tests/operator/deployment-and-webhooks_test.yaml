@@ -241,7 +241,7 @@ tests:
       value: dash0-operator-controller
     set:
       operator:
-        dash0Backend:
+        dash0Export:
           enabled: true
           endpoint: https://ingress.dash0.com
           token: "very-secret-dash0-auth-token"
@@ -252,7 +252,7 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].args[4]
           value: --operator-configuration-token=very-secret-dash0-auth-token
-  # Note: We deliberately do not have a test for the operator.dash0Backend.secretRef variant, since this would trigger
+  # Note: We deliberately do not have a test for the operator.dash0Export.secretRef variant, since this would trigger
   # a check whether the secret actually exists in the cluster, which of course would fail when runnig helm chart unit
   # tests.
 

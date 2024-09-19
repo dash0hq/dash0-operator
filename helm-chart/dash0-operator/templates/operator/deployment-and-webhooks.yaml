@@ -78,26 +78,26 @@ spec:
         - --health-probe-bind-address=:8081
         - --metrics-bind-address=127.0.0.1:8080
         - --leader-elect
-{{- if .Values.operator.dash0Backend.enabled }}
-{{- if not .Values.operator.dash0Backend.endpoint }}
-{{- fail "Error: operator.dash0Backend.enabled is set to true, but you did not provide a value for operator.dash0Backend.endpoint. Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator." -}}
+{{- if .Values.operator.dash0Export.enabled }}
+{{- if not .Values.operator.dash0Export.endpoint }}
+{{- fail "Error: operator.dash0Export.enabled is set to true, but you did not provide a value for operator.dash0Export.endpoint. Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator." -}}
 {{- end }}
-        - --operator-configuration-endpoint={{ .Values.operator.dash0Backend.endpoint }}
-{{- if .Values.operator.dash0Backend.token }}
-        - --operator-configuration-token={{ .Values.operator.dash0Backend.token }}
-{{- else if (and .Values.operator.dash0Backend.secretRef.name .Values.operator.dash0Backend.secretRef.key) }}
-{{- $secret := lookup "v1" "Secret" .Release.Namespace .Values.operator.dash0Backend.secretRef.name -}}
+        - --operator-configuration-endpoint={{ .Values.operator.dash0Export.endpoint }}
+{{- if .Values.operator.dash0Export.token }}
+        - --operator-configuration-token={{ .Values.operator.dash0Export.token }}
+{{- else if (and .Values.operator.dash0Export.secretRef.name .Values.operator.dash0Export.secretRef.key) }}
+{{- $secret := lookup "v1" "Secret" .Release.Namespace .Values.operator.dash0Export.secretRef.name -}}
 {{- if $secret -}}
-{{- if not (index $secret.data .Values.operator.dash0Backend.secretRef.key) -}}
-{{- fail (printf "Error: There is a secret named \"%s\" in the target namespace \"%s\", but it does not have the required key \"%s\". Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator." .Values.operator.dash0Backend.secretRef.name .Release.Namespace .Values.operator.dash0Backend.secretRef.key) -}}
+{{- if not (index $secret.data .Values.operator.dash0Export.secretRef.key) -}}
+{{- fail (printf "Error: There is a secret named \"%s\" in the target namespace \"%s\", but it does not have the required key \"%s\". Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator." .Values.operator.dash0Export.secretRef.name .Release.Namespace .Values.operator.dash0Export.secretRef.key) -}}
 {{- end -}}
 {{- else -}}
-{{- fail (printf "Error: There is no secret named \"%s\" in the target namespace \"%s\". Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator." .Values.operator.dash0Backend.secretRef.name .Release.Namespace) -}}
+{{- fail (printf "Error: There is no secret named \"%s\" in the target namespace \"%s\". Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator." .Values.operator.dash0Export.secretRef.name .Release.Namespace) -}}
 {{- end }}
-        - --operator-configuration-secret-ref-name={{ .Values.operator.dash0Backend.secretRef.name }}
-        - --operator-configuration-secret-ref-key={{ .Values.operator.dash0Backend.secretRef.key }}
+        - --operator-configuration-secret-ref-name={{ .Values.operator.dash0Export.secretRef.name }}
+        - --operator-configuration-secret-ref-key={{ .Values.operator.dash0Export.secretRef.key }}
 {{- else }}
-{{- fail "Error: operator.dash0Backend.enabled is set to true, but neither operator.dash0Backend.token nor operator.dash0Backend.secretRef.name & operator.dash0Backend.secretRef.key have been provided. Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator." -}}
+{{- fail "Error: operator.dash0Export.enabled is set to true, but neither operator.dash0Export.token nor operator.dash0Export.secretRef.name & operator.dash0Export.secretRef.key have been provided. Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator." -}}
 {{- end }}
 {{- end }}
         env:
