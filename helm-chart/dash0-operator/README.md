@@ -347,7 +347,7 @@ provided explicitly.
 Note that by default, Kubernetes secrets are stored _unencrypted_, and anyone with API access to the Kubernetes cluster
 will be able to read the value.
 Additional steps are required to make sure secret values are encrypted, if that is desired.
-See https://kubernetes.io/docs/concepts/configur**ation/secret/ for more information on Kubernetes secrets.
+See https://kubernetes.io/docs/concepts/configuration/secret/ for more information on Kubernetes secrets.
 
 ### Dash0 Dataset Configuration
 

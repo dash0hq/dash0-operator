@@ -71,7 +71,7 @@ func main() {
 	done := make(chan bool, 1)
 	signal.Notify(shutdown, syscall.SIGTERM)
 
-	meter, selfMonitoringShutdownFunctions := common.InitOTelSdk(ctx, meterName, nil)
+	meter := common.InitOTelSdk(ctx, meterName, nil)
 	initializeSelfMonitoringMetrics(meter)
 
 	go func() {
@@ -96,7 +96,7 @@ func main() {
 
 	<-done
 
-	common.ShutDownOTelSdk(ctx, selfMonitoringShutdownFunctions)
+	common.ShutDownOTelSdk(ctx)
 }
 
 func initializeHashes(configurationFilePaths []string) error {

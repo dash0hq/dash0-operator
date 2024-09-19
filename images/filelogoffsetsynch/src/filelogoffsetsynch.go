@@ -108,7 +108,7 @@ func main() {
 		log.Fatalf("Cannot create the Kube API client: %v\n", err)
 	}
 
-	meter, selfMonitoringShutdownFunctions := common.InitOTelSdk(ctx, meterName, nil)
+	meter := common.InitOTelSdk(ctx, meterName, nil)
 	initializeSelfMonitoringMetrics(meter)
 
 	// creates the clientset
@@ -138,7 +138,7 @@ func main() {
 		}
 	}
 
-	common.ShutDownOTelSdk(ctx, selfMonitoringShutdownFunctions)
+	common.ShutDownOTelSdk(ctx)
 }
 
 func initOffsets(ctx context.Context, settings *Settings) (int, error) {
