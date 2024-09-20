@@ -128,6 +128,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					OperatorNamespace,
 					TestImages,
 					dash0MonitoringResource,
+					nil,
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -149,6 +150,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				&dash0v1alpha1.Dash0Monitoring{
 					Spec: dash0v1alpha1.Dash0MonitoringSpec{},
 				},
+				nil,
 				&logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -165,6 +167,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				&dash0v1alpha1.Dash0Monitoring{
 					Spec: dash0v1alpha1.Dash0MonitoringSpec{},
 				},
+				nil,
 				&logger,
 			)
 			Expect(err).To(
@@ -188,6 +191,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				&dash0v1alpha1.Dash0Monitoring{
 					Spec: dash0v1alpha1.Dash0MonitoringSpec{},
 				},
+				nil,
 				&logger,
 			)
 			Expect(err).To(MatchError("the provided Dash0Monitoring resource does not have an export configuration " +
@@ -234,6 +238,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					OperatorNamespace,
 					TestImages,
 					dash0MonitoringResource,
+					nil,
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -263,6 +268,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					OperatorNamespace,
 					TestImages,
 					dash0MonitoringResource,
+					nil,
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -303,6 +309,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					OperatorNamespace,
 					TestImages,
 					dash0MonitoringResource,
+					nil,
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -321,6 +328,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					OperatorNamespace,
 					TestImages,
 					dash0MonitoringResource,
+					nil,
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -343,6 +351,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					OperatorNamespace,
 					TestImages,
 					dash0MonitoringResource,
+					nil,
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -360,6 +369,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				OperatorNamespace,
 				TestImages,
 				dash0MonitoringResource,
+				nil,
 				&logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -372,6 +382,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				OperatorNamespace,
 				TestImages,
 				dash0MonitoringResource,
+				nil,
 				&logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -386,6 +397,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					OperatorNamespace,
 					TestImages,
 					dash0MonitoringResource,
+					nil,
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -404,6 +416,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				OperatorNamespace,
 				TestImages,
 				dash0MonitoringResource,
+				nil,
 				&logger,
 			)
 			Expect(err).ToNot(HaveOccurred())

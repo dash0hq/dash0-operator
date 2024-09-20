@@ -6,8 +6,10 @@ package backendconnection
 import (
 	"context"
 	"fmt"
+	"sync"
 	"sync/atomic"
 
+	prometheusoperator "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1alpha1"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -23,6 +25,8 @@ type BackendConnectionManager struct {
 	*otelcolresources.OTelColResourceManager
 	updateInProgress                   atomic.Bool
 	resourcesHaveBeenDeletedByOperator atomic.Bool
+	prometheusScrapeConfigsMutex       sync.Mutex
+	prometheusScrapeConfigs            map[string]*prometheusoperator.ScrapeConfig
 }
 
 type BackendConnectionReconcileTrigger string
@@ -32,6 +36,19 @@ const (
 	TriggeredByDash0Resource BackendConnectionReconcileTrigger = "resource"
 )
 
+func NewBackendConnectionManager(
+	k8sClient client.Client,
+	clientset *kubernetes.Clientset,
+	oTelColResourceManager *otelcolresources.OTelColResourceManager,
+) *BackendConnectionManager {
+	return &BackendConnectionManager{
+		Client:                  k8sClient,
+		Clientset:               clientset,
+		OTelColResourceManager:  oTelColResourceManager,
+		prometheusScrapeConfigs: make(map[string]*prometheusoperator.ScrapeConfig),
+	}
+}
+
 func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
 	ctx context.Context,
 	images util.Images,
@@ -40,6 +57,10 @@ func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInOpera
 	trigger BackendConnectionReconcileTrigger,
 ) error {
 	logger := log.FromContext(ctx)
+
+	m.prometheusScrapeConfigsMutex.Lock()
+	defer m.prometheusScrapeConfigsMutex.Unlock()
+
 	if m.resourcesHaveBeenDeletedByOperator.Load() {
 		if trigger == TriggeredByWatchEvent {
 			if m.DevelopmentMode {
@@ -72,6 +93,7 @@ func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInOpera
 			operatorNamespace,
 			images,
 			monitoringResource,
+			m.prometheusScrapeConfigs,
 			&logger,
 		)
 
@@ -160,4 +182,20 @@ func (m *BackendConnectionManager) RemoveOpenTelemetryCollectorIfNoMonitoringRes
 		return err
 	}
 	return nil
+}
+
+func (m *BackendConnectionManager) UpdatePrometheusScrapeConfigs(scrapeConfig *prometheusoperator.ScrapeConfig) {
+	m.prometheusScrapeConfigsMutex.Lock()
+	defer m.prometheusScrapeConfigsMutex.Unlock()
+	m.prometheusScrapeConfigs[scrapeConfigKey(scrapeConfig)] = scrapeConfig
+}
+
+func (m *BackendConnectionManager) DeletePrometheusScrapeConfigs(scrapeConfig *prometheusoperator.ScrapeConfig) {
+	m.prometheusScrapeConfigsMutex.Lock()
+	defer m.prometheusScrapeConfigsMutex.Unlock()
+	delete(m.prometheusScrapeConfigs, scrapeConfigKey(scrapeConfig))
+}
+
+func scrapeConfigKey(scrapeConfig *prometheusoperator.ScrapeConfig) string {
+	return fmt.Sprintf("%s_%s", scrapeConfig.Namespace, scrapeConfig.Name)
 }

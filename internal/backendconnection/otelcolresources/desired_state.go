@@ -28,12 +28,14 @@ type oTelColConfig struct {
 	Export                                  dash0v1alpha1.Export
 	SelfMonitoringAndApiAccessConfiguration selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration
 	Images                                  util.Images
+	ScrapeConfigs                           bool
 	DevelopmentMode                         bool
 }
 
 type collectorConfigurationTemplateValues struct {
 	Exporters                []OtlpExporter
 	IgnoreLogsFromNamespaces []string
+	ScrapeConfigs            bool
 	DevelopmentMode          bool
 }
 

@@ -39,7 +39,7 @@ type SelfMonitoringTestConfig struct {
 }
 
 var (
-	reconciler *OperatorConfigurationReconciler
+	operatorConfigurationReconciler *OperatorConfigurationReconciler
 )
 
 var _ = Describe("The operation configuration resource controller", Ordered, func() {
@@ -60,7 +60,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 		DescribeTable("to reflect self-monitoring and API access auth settings:", func(config SelfMonitoringAndApiAccessTestConfig) {
 			controllerDeployment = config.existingControllerDeployment()
 			EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
-			reconciler = createReconciler(controllerDeployment)
+			operatorConfigurationReconciler = createOperatorConfigurationReconciler(controllerDeployment)
 
 			initialVersion := controllerDeployment.ResourceVersion
 
@@ -70,7 +70,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				config.operatorConfigurationResourceSpec,
 			)
 
-			triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+			triggerOperatorConfigurationReconcileRequest(ctx, operatorConfigurationReconciler)
 			verifyOperatorConfigurationResourceIsAvailable(ctx)
 
 			expectedDeploymentAfterReconcile := config.expectedControllerDeploymentAfterReconcile()
@@ -349,14 +349,14 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 		)
 	})
 
-	Describe("when creating the operator configuration resource", func() {
+	Describe("when creating the Dash0OperatorConfiguration resource", func() {
 
 		BeforeEach(func() {
 			// When creating the resource, we assume the operator has no
 			// self-monitoring enabled
 			controllerDeployment = CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth()
 			EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
-			reconciler = createReconciler(controllerDeployment)
+			operatorConfigurationReconciler = createOperatorConfigurationReconciler(controllerDeployment)
 		})
 
 		AfterEach(func() {
@@ -379,7 +379,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 						},
 					)
 
-					triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+					triggerOperatorConfigurationReconcileRequest(ctx, operatorConfigurationReconciler)
 					verifyOperatorConfigurationResourceIsAvailable(ctx)
 					Eventually(func(g Gomega) {
 						updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
@@ -425,7 +425,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 					},
 				)
 
-				triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+				triggerOperatorConfigurationReconcileRequest(ctx, operatorConfigurationReconciler)
 				verifyOperatorConfigurationResourceIsAvailable(ctx)
 				Eventually(func(g Gomega) {
 					updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
@@ -463,7 +463,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 					},
 				)
 
-				triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+				triggerOperatorConfigurationReconcileRequest(ctx, operatorConfigurationReconciler)
 				verifyOperatorConfigurationResourceIsAvailable(ctx)
 				Consistently(func(g Gomega) {
 					updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
@@ -490,7 +490,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 					// self-monitoring enabled
 					controllerDeployment = CreateControllerDeploymentWithSelfMonitoringWithToken()
 					EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
-					reconciler = createReconciler(controllerDeployment)
+					operatorConfigurationReconciler = createOperatorConfigurationReconciler(controllerDeployment)
 				})
 
 				AfterEach(func() {
@@ -510,7 +510,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 						},
 					)
 
-					triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+					triggerOperatorConfigurationReconcileRequest(ctx, operatorConfigurationReconciler)
 					verifyOperatorConfigurationResourceIsAvailable(ctx)
 
 					Consistently(func(g Gomega) {
@@ -531,7 +531,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				BeforeEach(func() {
 					controllerDeployment = CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth()
 					EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
-					reconciler = createReconciler(controllerDeployment)
+					operatorConfigurationReconciler = createOperatorConfigurationReconciler(controllerDeployment)
 
 					CreateOperatorConfigurationResourceWithSpec(
 						ctx,
@@ -558,7 +558,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 
 					Expect(k8sClient.Update(ctx, resource)).To(Succeed())
 
-					triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+					triggerOperatorConfigurationReconcileRequest(ctx, operatorConfigurationReconciler)
 					verifyOperatorConfigurationResourceIsAvailable(ctx)
 					Eventually(func(g Gomega) {
 						updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
@@ -592,7 +592,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 
 					controllerDeployment = CreateControllerDeploymentWithSelfMonitoringWithToken()
 					EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
-					reconciler = createReconciler(controllerDeployment)
+					operatorConfigurationReconciler = createOperatorConfigurationReconciler(controllerDeployment)
 				})
 
 				AfterEach(func() {
@@ -608,7 +608,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 
 					Expect(k8sClient.Update(ctx, resource)).To(Succeed())
 
-					triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+					triggerOperatorConfigurationReconcileRequest(ctx, operatorConfigurationReconciler)
 					verifyOperatorConfigurationResourceIsAvailable(ctx)
 					Eventually(func(g Gomega) {
 						updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
@@ -639,7 +639,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 
 					controllerDeployment = CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth()
 					EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
-					reconciler = createReconciler(controllerDeployment)
+					operatorConfigurationReconciler = createOperatorConfigurationReconciler(controllerDeployment)
 				})
 
 				AfterEach(func() {
@@ -655,7 +655,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 
 					Expect(k8sClient.Update(ctx, resource)).To(Succeed())
 
-					triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+					triggerOperatorConfigurationReconcileRequest(ctx, operatorConfigurationReconciler)
 					verifyOperatorConfigurationResourceIsAvailable(ctx)
 					Consistently(func(g Gomega) {
 						updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
@@ -690,7 +690,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 
 				controllerDeployment = CreateControllerDeploymentWithSelfMonitoringWithToken()
 				EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
-				reconciler = createReconciler(controllerDeployment)
+				operatorConfigurationReconciler = createOperatorConfigurationReconciler(controllerDeployment)
 			})
 
 			AfterEach(func() {
@@ -710,7 +710,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 
-				triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+				triggerOperatorConfigurationReconcileRequest(ctx, operatorConfigurationReconciler)
 				VerifyOperatorConfigurationResourceByNameDoesNotExist(ctx, k8sClient, Default, resource.Name)
 
 				Eventually(func(g Gomega) {
@@ -741,7 +741,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 
 				controllerDeployment = CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth()
 				EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
-				reconciler = createReconciler(controllerDeployment)
+				operatorConfigurationReconciler = createOperatorConfigurationReconciler(controllerDeployment)
 			})
 
 			AfterEach(func() {
@@ -763,7 +763,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 
-				triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+				triggerOperatorConfigurationReconcileRequest(ctx, operatorConfigurationReconciler)
 				VerifyOperatorConfigurationResourceByNameDoesNotExist(ctx, k8sClient, Default, resource.Name)
 
 				Consistently(func(g Gomega) {
@@ -796,7 +796,7 @@ func cleanUpDeploymentSpecForDiff(spec *appsv1.DeploymentSpec) {
 	spec.ProgressDeadlineSeconds = nil
 }
 
-func createReconciler(controllerDeployment *appsv1.Deployment) *OperatorConfigurationReconciler {
+func createOperatorConfigurationReconciler(controllerDeployment *appsv1.Deployment) *OperatorConfigurationReconciler {
 	persesDashboardCrdReconciler := &PersesDashboardCrdReconciler{
 		persesDashboardReconciler: &PersesDashboardReconciler{},
 	}

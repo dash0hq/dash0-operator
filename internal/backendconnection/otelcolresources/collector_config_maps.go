@@ -80,6 +80,7 @@ func assembleCollectorConfigMap(
 					// logs will compound in case of log parsing errors
 					config.Namespace,
 				},
+				ScrapeConfigs:   config.ScrapeConfigs,
 				DevelopmentMode: config.DevelopmentMode,
 			})
 		if err != nil {

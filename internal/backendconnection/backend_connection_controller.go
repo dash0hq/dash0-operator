@@ -8,6 +8,7 @@ import (
 	"slices"
 
 	"github.com/go-logr/logr"
+	prometheusoperator "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
@@ -35,7 +36,7 @@ type BackendConnectionReconciler struct {
 
 func (r *BackendConnectionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		Named("dash0backendconnectioncontroller").
+		Named("dash0_backend_connection_controller").
 		Watches(
 			&corev1.ConfigMap{},
 			&handler.EnqueueRequestForObject{},
@@ -81,10 +82,10 @@ func (r *BackendConnectionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *BackendConnectionReconciler) withNamePredicate(resourceNames []string) builder.Predicates {
-	return builder.WithPredicates(r.createFilterPredicate(resourceNames))
+	return builder.WithPredicates(r.makeFilterPredicate(resourceNames))
 }
 
-func (r *BackendConnectionReconciler) createFilterPredicate(resourceNames []string) predicate.Funcs {
+func (r *BackendConnectionReconciler) makeFilterPredicate(resourceNames []string) predicate.Funcs {
 	resourceNamespace := r.OperatorNamespace
 	return predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
@@ -135,11 +136,7 @@ func (r *BackendConnectionReconciler) Reconcile(
 		return reconcile.Result{}, err
 	}
 
-	logger.Info(
-		"successfully reconciled backend connection resources",
-		"request",
-		request,
-	)
+	logger.Info("successfully reconciled backend connection resources")
 
 	return reconcile.Result{}, nil
 }
@@ -167,4 +164,20 @@ func (r *BackendConnectionReconciler) findArbitraryMonitoringResource(
 	// Ultimately we need to derive one consistent configuration including multiple pipelines and routing across all
 	// monitored namespaces.
 	return &allDash0MonitoringResouresInCluster.Items[0], nil
+}
+
+func (r *BackendConnectionReconciler) UpdatePrometheusScrapeConfigs(
+	ctx context.Context,
+	scrapeConfig *prometheusoperator.ScrapeConfig,
+) {
+	r.BackendConnectionManager.UpdatePrometheusScrapeConfigs(scrapeConfig)
+	_, _ = r.Reconcile(ctx, reconcile.Request{})
+}
+
+func (r *BackendConnectionReconciler) DeletePrometheusScrapeConfigs(
+	ctx context.Context,
+	scrapeConfig *prometheusoperator.ScrapeConfig,
+) {
+	r.BackendConnectionManager.DeletePrometheusScrapeConfigs(scrapeConfig)
+	_, _ = r.Reconcile(ctx, reconcile.Request{})
 }

@@ -50,11 +50,11 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 			OTelCollectorNamePrefix: OTelCollectorNamePrefixTest,
 			OTelColResourceSpecs:    &otelcolresources.DefaultOTelColResourceSpecs,
 		}
-		backendConnectionManager := &backendconnection.BackendConnectionManager{
-			Client:                 k8sClient,
-			Clientset:              clientset,
-			OTelColResourceManager: oTelColResourceManager,
-		}
+		backendConnectionManager := backendconnection.NewBackendConnectionManager(
+			k8sClient,
+			clientset,
+			oTelColResourceManager,
+		)
 
 		reconciler = &controller.Dash0Reconciler{
 			Client:                   k8sClient,

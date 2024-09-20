@@ -61,3 +61,5 @@ kubectl delete clusterrolebinding           --ignore-not-found dash0-operator-op
 kubectl delete clusterrolebinding           --ignore-not-found dash0-operator-proxy-rolebinding
 kubectl delete mutatingwebhookconfiguration --ignore-not-found dash0-operator-injector
 
+kubectl delete --ignore-not-found crd scrapeconfigs.monitoring.coreos.com
+

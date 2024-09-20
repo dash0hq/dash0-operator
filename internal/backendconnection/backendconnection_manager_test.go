@@ -59,11 +59,12 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			OTelCollectorNamePrefix: OTelCollectorNamePrefixTest,
 			OTelColResourceSpecs:    &otelcolresources.DefaultOTelColResourceSpecs,
 		}
-		manager = &BackendConnectionManager{
-			Client:                 k8sClient,
-			Clientset:              clientset,
-			OTelColResourceManager: oTelColResourceManager,
-		}
+		manager = NewBackendConnectionManager(
+			k8sClient,
+			clientset,
+			oTelColResourceManager,
+		)
+
 	})
 
 	AfterEach(func() {

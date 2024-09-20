@@ -42,6 +42,14 @@ echo "STEP $step_counter: rebuild images"
 build_all_images
 finish_step
 
+# TODO move this to "install foreign CRDs"
+echo "STEP 5 (a): install scrapeconfig CRD"
+kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.76.2/example/prometheus-operator-crd/monitoring.coreos.com_scrapeconfigs.yaml
+sleep 2
+echo "STEP 5 (b): install a scrapeconfig CR "
+kubectl apply -n test-namespace -f test-resources/customresources/scrapeconfig/scrapeconfig.yaml
+sleep 2
+
 echo "STEP $step_counter: deploy the Dash0 operator using helm"
 deploy_via_helm
 finish_step

@@ -17,6 +17,7 @@ import (
 
 	"github.com/go-logr/logr"
 	persesv1alpha1 "github.com/perses/perses-operator/api/v1alpha1"
+	prometheusoperator "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1alpha1"
 	semconv "go.opentelemetry.io/collector/semconv/v1.27.0"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	appsv1 "k8s.io/api/apps/v1"
@@ -26,6 +27,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -93,6 +95,8 @@ var (
 	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
 
+	kubernetesApiServerRestConfig *rest.Config
+
 	startupTasksK8sClient   client.Client
 	deploymentSelfReference *appsv1.Deployment
 	envVars                 environmentVariables
@@ -108,6 +112,7 @@ func init() {
 	// for perses dashboard controller, prometheus scrape config controller etc.
 	utilruntime.Must(apiextensionsv1.AddToScheme(scheme))
 	utilruntime.Must(persesv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(prometheusoperator.AddToScheme(scheme))
 }
 
 func main() {
@@ -196,6 +201,7 @@ func main() {
 		TLSOpts: tlsOpts,
 	})
 
+	kubernetesApiServerRestConfig = ctrl.GetConfigOrDie()
 	var err error
 	if err = readEnvironmentVariables(); err != nil {
 		os.Exit(1)
@@ -263,7 +269,7 @@ func startOperatorManager(
 	operatorConfiguration *startup.OperatorConfigurationValues,
 	developmentMode bool,
 ) error {
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	mgr, err := ctrl.NewManager(kubernetesApiServerRestConfig, ctrl.Options{
 		Scheme: scheme,
 		Metrics: metricsserver.Options{
 			BindAddress:   metricsAddr,
@@ -502,11 +508,11 @@ func startDash0Controllers(
 		OTelColResourceSpecs:    oTelColResourceSpecs,
 		DevelopmentMode:         developmentMode,
 	}
-	backendConnectionManager := &backendconnection.BackendConnectionManager{
-		Client:                 k8sClient,
-		Clientset:              clientset,
-		OTelColResourceManager: oTelColResourceManager,
-	}
+	backendConnectionManager := backendconnection.NewBackendConnectionManager(
+		k8sClient,
+		clientset,
+		oTelColResourceManager,
+	)
 	backendConnectionReconciler := &backendconnection.BackendConnectionReconciler{
 		Client:                   k8sClient,
 		BackendConnectionManager: backendConnectionManager,
@@ -566,6 +572,17 @@ func startDash0Controllers(
 		&setupLog,
 	)
 
+	prometheusScrapeConfigReconciler := &controller.PrometheusScrapeConfigCrdReconciler{
+		Client:                      k8sClient,
+		Clientset:                   clientset,
+		BackendConnectionReconciler: backendConnectionReconciler,
+		Scheme:                      mgr.GetScheme(),
+	}
+	if err := prometheusScrapeConfigReconciler.
+		SetupWithManager(ctx, mgr, startupTasksK8sClient, &setupLog); err != nil {
+		return fmt.Errorf("unable to set up the prometheus scrapeconfig reconciler: %w", err)
+	}
+
 	if err := (&webhooks.InstrumentationWebhookHandler{
 		Client:               k8sClient,
 		Recorder:             mgr.GetEventRecorderFor("dash0-instrumentation-webhook"),
@@ -590,9 +607,8 @@ func startDash0Controllers(
 }
 
 func initStartupTasksK8sClient(logger *logr.Logger) error {
-	cfg := ctrl.GetConfigOrDie()
 	var err error
-	if startupTasksK8sClient, err = client.New(cfg, client.Options{
+	if startupTasksK8sClient, err = client.New(kubernetesApiServerRestConfig, client.Options{
 		Scheme: scheme,
 	}); err != nil {
 		logger.Error(err, "failed to create Kubernetes API client for startup tasks")

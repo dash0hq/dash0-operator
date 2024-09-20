@@ -12,6 +12,7 @@ import (
 
 	"github.com/cisco-open/k8s-objectmatcher/patch"
 	"github.com/go-logr/logr"
+	prometheusoperator "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -59,6 +60,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	namespace string,
 	images util.Images,
 	monitoringResource *dash0v1alpha1.Dash0Monitoring,
+	prometheusScrapeConfigs map[string]*prometheusoperator.ScrapeConfig,
 	logger *logr.Logger,
 ) (bool, bool, error) {
 	operatorConfigurationResource, err := m.findOperatorConfigurationResource(ctx, logger)
@@ -79,12 +81,12 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		}
 	}
 
-	selfMonitoringConfiguration, err := selfmonitoringapiaccess.ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
+	selfMonitoringAndApiAccessConfiguration, err := selfmonitoringapiaccess.ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
 		operatorConfigurationResource,
 		logger,
 	)
 	if err != nil {
-		selfMonitoringConfiguration = selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{
+		selfMonitoringAndApiAccessConfiguration = selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{
 			SelfMonitoringEnabled: false,
 		}
 	}
@@ -93,8 +95,9 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		Namespace:                               namespace,
 		NamePrefix:                              m.OTelCollectorNamePrefix,
 		Export:                                  *export,
-		SelfMonitoringAndApiAccessConfiguration: selfMonitoringConfiguration,
+		SelfMonitoringAndApiAccessConfiguration: selfMonitoringAndApiAccessConfiguration,
 		Images:                                  images,
+		ScrapeConfigs:                           len(prometheusScrapeConfigs) > 0,
 		DevelopmentMode:                         m.DevelopmentMode,
 	}
 	desiredState, err := assembleDesiredState(config, m.OTelColResourceSpecs, false)

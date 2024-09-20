@@ -85,6 +85,16 @@ rules:
   - get
   - list
 
+  # Permissions required to watch for the Prometheus ScrapeConfigs.
+- apiGroups:
+    - monitoring.coreos.com
+  resources:
+    - scrapeconfigs
+  verbs:
+    - get
+    - list
+    - watch
+
 # Permissions required to watch for the Perses dashboard resources.
 - apiGroups:
   - perses.dev

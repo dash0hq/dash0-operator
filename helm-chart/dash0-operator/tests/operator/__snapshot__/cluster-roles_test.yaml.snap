@@ -75,6 +75,14 @@ cluster roles should match snapshot:
           - get
           - list
       - apiGroups:
+          - monitoring.coreos.com
+        resources:
+          - scrapeconfigs
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
           - perses.dev
         resources:
           - persesdashboards
