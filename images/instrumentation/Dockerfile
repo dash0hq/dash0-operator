@@ -3,9 +3,9 @@ FROM ubuntu:24.04 AS build-injector
 
 RUN apt-get update && apt-get install build-essential -y && apt-get autoremove -y && apt-get autoclean -y
 
-COPY ./injector/src /dash0-init-container/injector
+COPY ./injector /dash0-init-container/injector
 WORKDIR /dash0-init-container/injector
-RUN gcc -shared -nostdlib -fPIC -Wl,--version-script=dash0_injector.exports.map dash0_injector.c -o dash0_injector.so
+RUN gcc -shared -nostdlib -fPIC -Wl,--version-script=src/dash0_injector.exports.map src/dash0_injector.c -o bin/dash0_injector.so
 
 # build Node.js artifacts
 FROM node:20.13.1-alpine3.19 AS build-node.js
@@ -26,7 +26,7 @@ COPY copy-instrumentation.sh /
 
 # copy node.js artifacts
 RUN mkdir -p /dash0-init-container/instrumentation
-COPY --from=build-injector /dash0-init-container/injector/dash0_injector.so /dash0-init-container/injector/dash0_injector.so
+COPY --from=build-injector /dash0-init-container/injector/bin /dash0-init-container/injector
 COPY --from=build-node.js /dash0-init-container/instrumentation/node.js /dash0-init-container/instrumentation/node.js
 
 WORKDIR /
