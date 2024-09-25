@@ -18,17 +18,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
-	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoring"
+	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 )
 
 type oTelColConfig struct {
-	Namespace                   string
-	NamePrefix                  string
-	Export                      dash0v1alpha1.Export
-	SelfMonitoringConfiguration selfmonitoring.SelfMonitoringConfiguration
-	Images                      util.Images
-	DevelopmentMode             bool
+	Namespace                               string
+	NamePrefix                              string
+	Export                                  dash0v1alpha1.Export
+	SelfMonitoringAndApiAccessConfiguration selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration
+	Images                                  util.Images
+	DevelopmentMode                         bool
 }
 
 type collectorConfigurationTemplateValues struct {
@@ -407,7 +407,7 @@ func assembleCollectorDaemonSet(config *oTelColConfig, resourceSpecs *OTelColRes
 					SecurityContext:    &corev1.PodSecurityContext{},
 					// This setting is required to enable the configuration reloader process to send Unix signals to the
 					// collector process.
-					ShareProcessNamespace: &util.True,
+					ShareProcessNamespace: ptr.To(true),
 					InitContainers: []corev1.Container{assembleFileLogOffsetSynchInitContainer(
 						config,
 						resourceSpecs.CollectorDaemonSetFileLogOffsetSynchContainerResources,
@@ -430,10 +430,10 @@ func assembleCollectorDaemonSet(config *oTelColConfig, resourceSpecs *OTelColRes
 		},
 	}
 
-	if config.SelfMonitoringConfiguration.Enabled {
-		err = selfmonitoring.EnableSelfMonitoringInCollectorDaemonSet(
+	if config.SelfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled {
+		err = selfmonitoringapiaccess.EnableSelfMonitoringInCollectorDaemonSet(
 			collectorDaemonSet,
-			config.SelfMonitoringConfiguration,
+			config.SelfMonitoringAndApiAccessConfiguration,
 			config.Images.GetOperatorVersion(),
 			config.DevelopmentMode,
 		)
@@ -581,7 +581,7 @@ func assembleCollectorEnvVars(config *oTelColConfig, goMemLimit string) ([]corev
 
 	if config.Export.Dash0 != nil {
 		authTokenEnvVar, err := util.CreateEnvVarForAuthorization(
-			*config.Export.Dash0,
+			(*(config.Export.Dash0)).Authorization,
 			authTokenEnvVarName,
 		)
 		if err != nil {
@@ -860,7 +860,7 @@ func assembleCollectorDeployment(
 					SecurityContext:    &corev1.PodSecurityContext{},
 					// This setting is required to enable the configuration reloader process to send Unix signals to the
 					// collector process.
-					ShareProcessNamespace: &util.True,
+					ShareProcessNamespace: ptr.To(true),
 					Containers: []corev1.Container{
 						collectorContainer,
 						assembleConfigurationReloaderContainer(
@@ -875,10 +875,10 @@ func assembleCollectorDeployment(
 		},
 	}
 
-	if config.SelfMonitoringConfiguration.Enabled {
-		err = selfmonitoring.EnableSelfMonitoringInCollectorDeployment(
+	if config.SelfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled {
+		err = selfmonitoringapiaccess.EnableSelfMonitoringInCollectorDeployment(
 			collectorDeployment,
-			config.SelfMonitoringConfiguration,
+			config.SelfMonitoringAndApiAccessConfiguration,
 			config.Images.GetOperatorVersion(),
 			config.DevelopmentMode,
 		)

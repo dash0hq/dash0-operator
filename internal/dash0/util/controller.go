@@ -404,11 +404,11 @@ func addFinalizerIfNecessary(
 }
 
 func CreateEnvVarForAuthorization(
-	dash0ExportConfiguration dash0v1alpha1.Dash0Configuration,
+	dash0Authorization dash0v1alpha1.Authorization,
 	envVarName string,
 ) (corev1.EnvVar, error) {
-	token := dash0ExportConfiguration.Authorization.Token
-	secretRef := dash0ExportConfiguration.Authorization.SecretRef
+	token := dash0Authorization.Token
+	secretRef := dash0Authorization.SecretRef
 	if token != nil && *token != "" {
 		return corev1.EnvVar{
 			Name:  envVarName,

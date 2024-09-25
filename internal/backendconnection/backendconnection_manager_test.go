@@ -21,7 +21,7 @@ import (
 )
 
 var (
-	operatorNamespace = Dash0OperatorNamespace
+	operatorNamespace = OperatorNamespace
 
 	dash0MonitoringResource = &dash0v1alpha1.Dash0Monitoring{
 		Spec: dash0v1alpha1.Dash0MonitoringSpec{
@@ -46,7 +46,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 	var manager *BackendConnectionManager
 
 	BeforeAll(func() {
-		EnsureDash0OperatorNamespaceExists(ctx, k8sClient)
+		EnsureOperatorNamespaceExists(ctx, k8sClient)
 		EnsureTestNamespaceExists(ctx, k8sClient)
 	})
 

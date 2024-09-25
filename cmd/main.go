@@ -16,10 +16,12 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"github.com/go-logr/logr"
+	persesv1alpha1 "github.com/perses/perses-operator/api/v1alpha1"
 	semconv "go.opentelemetry.io/collector/semconv/v1.27.0"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
@@ -40,7 +42,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/dash0/controller"
 	"github.com/dash0hq/dash0-operator/internal/dash0/instrumentation"
 	"github.com/dash0hq/dash0-operator/internal/dash0/predelete"
-	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoring"
+	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/dash0/startup"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 	"github.com/dash0hq/dash0-operator/internal/dash0/webhooks"
@@ -60,6 +62,7 @@ type environmentVariables struct {
 	configurationReloaderImagePullPolicy corev1.PullPolicy
 	filelogOffsetSynchImage              string
 	filelogOffsetSynchImagePullPolicy    corev1.PullPolicy
+	selfMonitoringAndApiAuthToken        string
 }
 
 const (
@@ -100,9 +103,11 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-
 	utilruntime.Must(dash0v1alpha1.AddToScheme(scheme))
-	//+kubebuilder:scaffold:scheme
+
+	// for perses dashboard controller, prometheus scrape config controller etc.
+	utilruntime.Must(apiextensionsv1.AddToScheme(scheme))
+	utilruntime.Must(persesv1alpha1.AddToScheme(scheme))
 }
 
 func main() {
@@ -111,6 +116,7 @@ func main() {
 	var operatorConfigurationToken string
 	var operatorConfigurationSecretRefName string
 	var operatorConfigurationSecretRefKey string
+	var operatorConfigurationApiEndpoint string
 	var isUninstrumentAll bool
 	var metricsAddr string
 	var enableLeaderElection bool
@@ -132,6 +138,8 @@ func main() {
 	flag.StringVar(&operatorConfigurationSecretRefKey, "operator-configuration-secret-ref-key", "",
 		"The key in an existing Kubernetes secret containing the Dash0 auth token, used to creating an operator "+
 			"configuration resource.")
+	flag.StringVar(&operatorConfigurationApiEndpoint, "operator-configuration-api-endpoint", "",
+		"The Dash0 API endpoint for managing dashboards and check rules via the operator.")
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
@@ -222,6 +230,9 @@ func main() {
 				Name: operatorConfigurationSecretRefName,
 				Key:  operatorConfigurationSecretRefKey,
 			},
+		}
+		if len(operatorConfigurationApiEndpoint) > 0 {
+			operatorConfiguration.ApiEndpoint = operatorConfigurationApiEndpoint
 		}
 	}
 
@@ -389,6 +400,8 @@ func readEnvironmentVariables() error {
 	filelogOffsetSynchImagePullPolicy :=
 		readOptionalPullPolicyFromEnvironmentVariable(filelogOffsetSynchImagePullPolicyEnvVarName)
 
+	selfMonitoringAndApiAuthToken := os.Getenv(util.SelfMonitoringAndApiAuthTokenEnvVarName)
+
 	envVars = environmentVariables{
 		operatorNamespace:                    operatorNamespace,
 		deploymentName:                       deploymentName,
@@ -402,6 +415,7 @@ func readEnvironmentVariables() error {
 		configurationReloaderImagePullPolicy: configurationReloaderImagePullPolicy,
 		filelogOffsetSynchImage:              filelogOffsetSynchImage,
 		filelogOffsetSynchImagePullPolicy:    filelogOffsetSynchImagePullPolicy,
+		selfMonitoringAndApiAuthToken:        selfMonitoringAndApiAuthToken,
 	}
 
 	return nil
@@ -504,14 +518,27 @@ func startDash0Controllers(
 		return fmt.Errorf("unable to set up the backend connection reconciler: %w", err)
 	}
 
+	persesDashboardCrdReconciler := &controller.PersesDashboardCrdReconciler{
+		AuthToken: envVars.selfMonitoringAndApiAuthToken,
+	}
+	if err := persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, startupTasksK8sClient, &setupLog); err != nil {
+		return fmt.Errorf("unable to set up the Perses dashboard reconciler: %w", err)
+	}
+	persesDashboardCrdReconciler.InitializeSelfMonitoringMetrics(
+		meter,
+		metricNamePrefix,
+		&setupLog,
+	)
+
 	operatorConfigurationReconciler := &controller.OperatorConfigurationReconciler{
-		Client:                  k8sClient,
-		Clientset:               clientset,
-		Scheme:                  mgr.GetScheme(),
-		Recorder:                mgr.GetEventRecorderFor("dash0-operator-configuration-controller"),
-		DeploymentSelfReference: deploymentSelfReference,
-		Images:                  images,
-		DevelopmentMode:         developmentMode,
+		Client:                       k8sClient,
+		Clientset:                    clientset,
+		PersesDashboardCrdReconciler: persesDashboardCrdReconciler,
+		Scheme:                       mgr.GetScheme(),
+		Recorder:                     mgr.GetEventRecorderFor("dash0-operator-configuration-controller"),
+		DeploymentSelfReference:      deploymentSelfReference,
+		Images:                       images,
+		DevelopmentMode:              developmentMode,
 	}
 	if err := operatorConfigurationReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the operator configuration reconciler: %w", err)
@@ -647,31 +674,27 @@ func instrumentAtStartup(
 }
 
 func logCurrentSelfMonitoringSettings(deploymentSelfReference *appsv1.Deployment) {
-	selfMonitoringConfiguration, err :=
-		selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(
+	selfMonitoringAndApiAccessConfiguration, err :=
+		selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromControllerDeployment(
 			deploymentSelfReference,
-			controller.ManagerContainerName,
+			controller.ControllerContainerName,
 		)
 	if err != nil {
 		setupLog.Error(err, "cannot determine whether self-monitoring is enabled in the controller deployment")
 	}
 
-	if selfMonitoringConfiguration.Enabled {
-		endpointAndHeaders := selfmonitoring.ConvertExportConfigurationToEnvVarSettings(selfMonitoringConfiguration.Export)
-		setupLog.Info(
-			"Self-monitoring settings on controller deployment:",
-			"enabled",
-			selfMonitoringConfiguration.Enabled,
-			"endpoint",
-			endpointAndHeaders.Endpoint,
-		)
-	} else {
-		setupLog.Info(
-			"Self-monitoring settings on controller deployment:",
-			"enabled",
-			selfMonitoringConfiguration.Enabled,
-		)
-	}
+	endpointAndHeaders :=
+		selfmonitoringapiaccess.ConvertExportConfigurationToEnvVarSettings(
+			selfMonitoringAndApiAccessConfiguration.Export)
+	setupLog.Info(
+		"Self-monitoring/API access settings on controller deployment:",
+		"self-monitoring enabled",
+		selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled,
+		"self-monitoring endpoint",
+		endpointAndHeaders.Endpoint,
+		"access to Dash0 API (API endpoint & authorization via token or secret-ref)",
+		selfMonitoringAndApiAccessConfiguration.HasDash0ApiAccessConfigured(),
+	)
 }
 
 func createOperatorConfiguration(

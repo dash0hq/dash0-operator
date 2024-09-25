@@ -31,7 +31,8 @@ To use the operator, you will need provide two configuration values:
 * `endpoint`: The URL of the Dash0 ingress endpoint backend to which telemetry data will be sent.
   This property is mandatory when installing the operator.
   This is the OTLP/gRPC endpoint of your Dash0 organization.
-  The correct OTLP/gRPC endpoint can be copied fom https://app.dash0.com -> organization settings -> "Endpoints".
+  The correct OTLP/gRPC endpoint can be copied fom https://app.dash0.com -> organization settings -> "Endpoints" 
+  -> "OTLP/gRPC".
   Note that the correct endpoint value will always start with `ingress.` and end in `dash0.com:4317`.
   Including a protocol prefix (e.g. `https://`) is optional.
 * Either `token` or `secretRef`: Exactly one of these two properties needs to be provided when installing the operator.
@@ -63,6 +64,7 @@ helm install \
   --create-namespace \
   --set operator.dash0Export.enabled=true \
   --set operator.dash0Export.endpoint=REPLACE THIS WITH YOUR DASH0 INGRESS ENDPOINT \
+  --set operator.dash0Export.apiEndpoint=REPLACE THIS WITH YOUR DASH0 API ENDPOINT \
   --set operator.dash0Export.token=REPLACE THIS WITH YOUR DASH0 AUTH TOKEN \
   dash0-operator \
   dash0-operator/dash0-operator
@@ -76,6 +78,7 @@ helm install \
   --create-namespace \
   --set operator.dash0Export.enabled=true \
   --set operator.dash0Export.endpoint=REPLACE THIS WITH YOUR DASH0 INGRESS ENDPOINT \
+  --set operator.dash0Export.apiEndpoint=REPLACE THIS WITH YOUR DASH0 API ENDPOINT \
   --set operator.dash0Export.secretRef.name=REPLACE THIS WITH THE NAME OF AN EXISTING KUBERNETES SECRET \
   --set operator.dash0Export.secretRef.key=REPLACE THIS WITH THE PROPERTY KEY IN THAT SECRET \
   dash0-operator \
@@ -133,13 +136,16 @@ spec:
       authorization:
         # Provide the Dash0 authorization token as a string via the token property:
         token: auth_... # TODO needs to be replaced with the actual value, see below
+
+      apiEndpoint: https://api.....dash0.com # TODO needs to be replaced with the actual value, see below
 ```
 
-You need to provide two configuration settings:
-* `spec.export.dash0.endpoint`: The URL of the Dash0 ingress endpoint backend to which telemetry data will be sent.
+You need to provide two mandatory configuration settings:
+* `spec.export.dash0.endpoint`: The URL of the Dash0 ingress endpoint to which telemetry data will be sent.
   This property is mandatory.
   Replace the value in the example above with the OTLP/gRPC endpoint of your Dash0 organization.
-  The correct OTLP/gRPC endpoint can be copied fom https://app.dash0.com -> organization settings -> "Endpoints".
+  The correct OTLP/gRPC endpoint can be copied fom https://app.dash0.com -> organization settings -> "Endpoints" 
+  -> "OTLP/gRPC".
   Note that the correct endpoint value will always start with `ingress.` and end in `dash0.com:4317`.
   Including a protocol prefix (e.g. `https://`) is optional.
 * `spec.export.dash0.authorization.token` or `spec.export.dash0.authorization.secretRef`: Exactly one of these two
@@ -163,6 +169,11 @@ You need to provide two configuration settings:
       cluster will be able to read the value.
       Additional steps are required to make sure secret values are encrypted.
       See https://kubernetes.io/docs/concepts/configuration/secret/ for more information on Kubernetes secrets.
+* `spec.export.dash0.apiEndpoint`: The base URL of the Dash0 API to talk to. This is not where telemetry will be sent,
+  but it is used for managing dashboards and check rules via the operator. This property is optional. The value needs
+  to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied fom https://app.dash0.com
+  -> organization settings -> "Endpoints" -> "API". The correct endpoint value will always start with "https://api." and
+  end in ".dash0.com". If this property is omitted, managing dashboards and check rules via the operator will not work.
 
 After providing the required values, save the file and apply the resource to the Kubernetes cluster you want to monitor:
 
@@ -294,6 +305,7 @@ helm install \
   --namespace dash0-system \
   --set operator.dash0Export.enabled=true \
   --set operator.dash0Export.endpoint=REPLACE THIS WITH YOUR DASH0 INGRESS ENDPOINT \
+  --set operator.dash0Export.apiEndpoint=REPLACE THIS WITH YOUR DASH0 API ENDPOINT \
   --set operator.dash0Export.secretRef.name=dash0-authorization-secret \
   --set operator.dash0Export.secretRef.key=token \
   dash0-operator \
@@ -318,6 +330,8 @@ spec:
         secretRef:
           name: dash0-authorization-secret
           key: token
+
+      apiEndpoint=https://api... # optional, see above
 ```
 
 When deploying the operator configuration resource via `kubectl`, the following defaults apply:
@@ -338,6 +352,8 @@ spec:
 
       authorization:
         secretRef: {}
+
+      apiEndpoint=https://api... # optional, see above
 ```
 
 Note: There are no defaults when using `--set operator.dash0Export.secretRef.name` and 
@@ -369,6 +385,8 @@ spec:
 
       authorization: # see above
         ...
+
+      apiEndpoint=https://api... # optional, see above
 ```
 
 ### Exporting Data to Other Observability Backends
@@ -526,3 +544,38 @@ steps again:
 
 1. set up a [Dash0 backend connection](#configuring-the-dash0-backend-connection) and
 2. enable Dash0 monitoring in each namespace you want to monitor, see [Enable Dash0 Monitoring For a Namespace](#enable-dash0-monitoring-for-a-namespace).
+
+## Managing Dash0 Dashboards with the Operator
+
+You can manage your Dash0 dashboards via the Dash0 Kubernetes operator.
+
+Pre-requisites for this feature:
+* A Dash0 operator configuration resource has to be installed in the cluster.
+* The operator configuration resource must have the `apiEndpoint` property.
+* The operator configuration resource must have a Dash0 export configured with authorization
+  (either `token` or `secret-ref`).
+
+Furthermore, the custom resource definition for Perses dashboards needs to be installed in the cluster. There are two
+ways to achieve this:
+* Install the Perses dashboard custom resource definition with the following command:
+```console
+kubectl apply --server-side -f https://raw.githubusercontent.com/perses/perses-operator/main/config/crd/bases/perses.dev_persesdashboards.yaml
+```
+* Alternatively, install the full Perses operator: Go to <https://github.com/perses/perses-operator> and follow the installation
+  instructions there.
+
+Note that the custom resource definition needs to be installed before the Dash0 operator is started.
+If you have installed the Dash0 operator before installing the Perses dashboard custom resource definition, you need to
+restart the Dash0 operator once, for example by deleting the operator's controller pod: 
+`kubectl --namespace dash0-system delete pod -l app.kubernetes.io/component=controller`
+
+With the prerequisites in place, you can manage Dash0 dashboards via the operator.
+The Dash0 operator will watch for Perses dashboard resources in the cluster and synchronize them with the Dash0 backend:
+* When a new Perses dashboard resource is created, the operator will create a corresponding dashboard via Dash0's API.
+* When a Perses dashboard resource is changed, the operator will update the corresponding dashboard via Dash0's API.
+* When a Perses dashboard resource is deleted, the operator will delete the corresponding dashboard via Dash0's API.
+
+The dashboards created by the operator will be in read-only mode in the Dash0 UI.
+
+If the Dash0 operator configuration resource has the `dataset` property set, the operator will create the dashboards
+in that specified dataset, otherwise they will be created in the `default` dataset.

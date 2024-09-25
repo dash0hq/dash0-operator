@@ -5,22 +5,30 @@
 operator:
 
   # Use the operator.dash0Export settings to configure the connection to the Dash0 backend; telemetry will be sent to
-  # the configured Dash0 backend by default. Under the hood, this will create a Dash0OperatorConfiguration resource
-  # right away, when starting the operator. If left empty, you can always create a Dash0OperatorConfiguration resource
-  # manually later.
+  # the configured Dash0 backend by default. Under the hood, this will make sure a Dash0OperatorConfiguration resource
+  # will be created right away, when starting the operator. If left empty, you can always create a
+  # Dash0OperatorConfiguration resource manually later.
   dash0Export:
     # Set this to true to enable the creation of a Dash0OperatorConfiguration resource at startup. If a
     # Dash0OperatorConfiguration already exists in the cluster, no action will be taken. Note that if this is set to
-    # true, you will also need to provide a valid endpoint (operator.dash0Export.endpoint), and either or an auth
-    # token (operator.dash0Export.token) or a reference to a Kubernetes secret containing that token
+    # true, you will also need to provide a valid endpoint (operator.dash0Export.endpoint), and either an auth token
+    # (operator.dash0Export.token) or a reference to a Kubernetes secret containing that token
     # (operator.dash0Export.secretRef).
     enabled: false
 
     # The URL of the Dash0 ingress endpoint to which telemetry data will be sent. This property is mandatory if
     # operator.dash0Export.enabled is true, otherwise it will be ignored. The value needs to be the OTLP/gRPC endpoint
     # of your Dash0 organization. The correct OTLP/gRPC endpoint can be copied fom https://app.dash0.com -> organization
-    # settings -> "Endpoints". The correct endpoint value will always start with `ingress.` and end in `dash0.com:4317`.
+    # settings -> "Endpoints" -> "OTLP/gRPC". The correct endpoint value will always start with `ingress.` and end in
+    # `dash0.com:4317`.
     endpoint:
+
+    # The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
+    # dashboards and check rules via the operator. This property is mandatory. The value needs to be the API endpoint
+    # of your Dash0 organization. The correct API endpoint can be copied fom https://app.dash0.com -> organization
+    # settings -> "Endpoints" -> "API". The correct endpoint value will always start with "https://api." and end in
+    # ".dash0.com"
+    apiEndpoint:
 
     # The Dash0 authorization token. This property is optional, but either this property or the secretRef configuration
     # has to be provided if operator.dash0Export.enabled is true. If operator.dash0Export.enabled is false, this

@@ -100,6 +100,9 @@ spec:
 {{- else }}
 {{- fail "Error: operator.dash0Export.enabled is set to true, but neither operator.dash0Export.token nor operator.dash0Export.secretRef.name & operator.dash0Export.secretRef.key have been provided. Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator." -}}
 {{- end }}
+{{- if .Values.operator.dash0Export.apiEndpoint }}
+        - --operator-configuration-api-endpoint={{ .Values.operator.dash0Export.apiEndpoint }}
+{{- end }}
 {{- end }}
         env:
         - name: DASH0_OPERATOR_NAMESPACE

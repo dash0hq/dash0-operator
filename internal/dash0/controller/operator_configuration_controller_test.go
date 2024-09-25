@@ -5,16 +5,19 @@ package controller
 
 import (
 	"context"
+	"fmt"
+	"reflect"
 
+	json "github.com/json-iterator/go"
+	"github.com/wI2L/jsondiff"
 	appsv1 "k8s.io/api/apps/v1"
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
-	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoring"
+	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -23,30 +26,335 @@ import (
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
+type SelfMonitoringAndApiAccessTestConfig struct {
+	existingControllerDeployment               func() *appsv1.Deployment
+	operatorConfigurationResourceSpec          dash0v1alpha1.Dash0OperatorConfigurationSpec
+	expectedControllerDeploymentAfterReconcile func() *appsv1.Deployment
+	expectK8sClientUpdate                      bool
+}
+
 type SelfMonitoringTestConfig struct {
 	createExport func() dash0v1alpha1.Export
-	verify       func(Gomega, selfmonitoring.SelfMonitoringConfiguration)
+	verify       func(Gomega, selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration, *appsv1.Deployment)
 }
 
 var (
 	reconciler *OperatorConfigurationReconciler
 )
 
-var _ = Describe("The Dash0 controller", Ordered, func() {
+var _ = Describe("The operation configuration resource controller", Ordered, func() {
 	ctx := context.Background()
 	var controllerDeployment *appsv1.Deployment
 
 	BeforeAll(func() {
 		EnsureTestNamespaceExists(ctx, k8sClient)
-		EnsureDash0OperatorNamespaceExists(ctx, k8sClient)
+		EnsureOperatorNamespaceExists(ctx, k8sClient)
 	})
 
-	Describe("when creating the Dash0Operator resource", func() {
+	Describe("updates the controller deployment", func() {
+		AfterEach(func() {
+			RemoveOperatorConfigurationResource(ctx, k8sClient)
+			EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, controllerDeployment)
+		})
+
+		DescribeTable("to reflect self-monitoring and API access auth settings:", func(config SelfMonitoringAndApiAccessTestConfig) {
+			controllerDeployment = config.existingControllerDeployment()
+			EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
+			reconciler = createReconciler(controllerDeployment)
+
+			initialVersion := controllerDeployment.ResourceVersion
+
+			CreateOperatorConfigurationResourceWithSpec(
+				ctx,
+				k8sClient,
+				config.operatorConfigurationResourceSpec,
+			)
+
+			triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+			verifyOperatorConfigurationResourceIsAvailable(ctx)
+
+			expectedDeploymentAfterReconcile := config.expectedControllerDeploymentAfterReconcile()
+			gomegaTimeout := timeout
+			gomgaWrapper := Eventually
+			if !config.expectK8sClientUpdate {
+				// For test cases where the initial controller deployment is already in the expected state (that is, it
+				// matches what the operator configuration resource says), we use gomega's Consistently instead of
+				// Eventually to make the test meaningful. We need to make sure that we do not update the controller
+				// deployment at all for these cases.
+				gomgaWrapper = Consistently
+				gomegaTimeout = consistentlyTimeout
+			}
+
+			gomgaWrapper(func(g Gomega) {
+				actualDeploymentAfterReconcile := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
+
+				expectedSpec := expectedDeploymentAfterReconcile.Spec
+				actualSpec := actualDeploymentAfterReconcile.Spec
+
+				for _, spec := range []*appsv1.DeploymentSpec{&expectedSpec, &actualSpec} {
+					// clean up defaults set by K8s, which are not relevant for the test
+					cleanUpDeploymentSpecForDiff(spec)
+				}
+
+				matchesExpectations := reflect.DeepEqual(expectedSpec, actualSpec)
+				if !matchesExpectations {
+					patch, err := jsondiff.Compare(expectedSpec, actualSpec)
+					g.Expect(err).ToNot(HaveOccurred())
+					humanReadableDiff, err := json.MarshalIndent(patch, "", "  ")
+					g.Expect(err).ToNot(HaveOccurred())
+
+					g.Expect(matchesExpectations).To(
+						BeTrue(),
+						fmt.Sprintf("resulting deployment does not match expectations, here is a JSON patch of the differences:\n%s", humanReadableDiff),
+					)
+				}
+
+				if !config.expectK8sClientUpdate {
+					// make sure we did not execute an unnecessary update
+					g.Expect(actualDeploymentAfterReconcile.ResourceVersion).To(Equal(initialVersion))
+				} else {
+					g.Expect(actualDeploymentAfterReconcile.ResourceVersion).ToNot(Equal(initialVersion))
+				}
+
+			}, gomegaTimeout, pollingInterval).Should(Succeed())
+		},
+
+			// | previous deployment state             | operator config res | expected deployment afterwards   |
+			// |---------------------------------------|---------------------|----------------------------------|
+			// | no self-monitoring, no authorization  | no sm, no auth      | no sm, no auth                   |
+			// | no self-monitoring, no authorization  | no sm, token        | no sm, auth via token            |
+			// | no self-monitoring, no authorization  | no sm, secret-ref   | no sm, auth via secret-ref       |
+			// | no self-monitoring, no authorization  | with sm, token      | has sm, auth via token           |
+			// | no self-monitoring, no authorization  | with sm, secret-ref | has sm, auth via secret-ref      |
+			// | --------------------------------------|---------------------|----------------------------------|
+			// | no self-monitoring, but token         | no sm, no auth      | no sm, no auth	                |
+			// | no self-monitoring, but secret-ref    | no sm, no auth      | no sm, no auth                   |
+			// | no self-monitoring, but token         | no sm, token        | no sm, auth via token            |
+			// | no self-monitoring, but token         | no sm, secret-ref   | no sm, auth via secret-ref       |
+			// | no self-monitoring, but secret-ref    | no sm, token        | no sm, auth via token            |
+			// | no self-monitoring, but secret-ref    | no sm, secret-ref   | no sm, auth via secret-ref       |
+			// | no self-monitoring, but token         | with sm, token      | has sm, auth via token           |
+			// | no self-monitoring, but token         | with sm, secret-ref | has sm, auth via secret-ref      |
+			// | no self-monitoring, but secret-ref    | with sm, token      | has sm, auth via token           |
+			// | no self-monitoring, but secret-ref    | with sm, secret-ref | has sm, auth via secret-ref      |
+			// | --------------------------------------|---------------------|----------------------------------|
+			// | self-monitoring with token            | no sm, no auth      | no sm, no auth                   |
+			// | self-monitoring with secret-ref       | no sm, no auth      | no sm, no auth                   |
+			// | self-monitoring with token            | no sm, token        | no sm, auth via token            |
+			// | self-monitoring with token            | no sm, secret-ref   | no sm, auth via secret-ref       |
+			// | self-monitoring with secret-ref       | no sm, token        | no sm, auth via token            |
+			// | self-monitoring with secret-ref       | no sm, secret-ref   | no sm, auth via secret-ref       |
+			// | self-monitoring with token            | with sm, token      | has sm, auth va token            |
+			// | self-monitoring with token            | with sm, secret-ref | has sm, auth va secret-ref       |
+			// | self-monitoring with secret-ref       | with sm, token      | has sm, auth via token           |
+			// | self-monitoring with secret-ref       | with sm, secret-ref | has sm, auth via secret-ref      |
+			// | --------------------------------------|---------------------|----------------------------------|
+
+			// |---------------------------------------|---------------------|----------------------------------|
+			// | no self-monitoring, no authorization  | no sm, no auth      | no sm, no auth                   |
+			Entry("no self-monitoring, no auth -> no self-monitoring, no auth", SelfMonitoringAndApiAccessTestConfig{
+				existingControllerDeployment:               CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth,
+				operatorConfigurationResourceSpec:          OperatorConfigurationResourceWithoutSelfMonitoringWithoutAuth,
+				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth,
+				expectK8sClientUpdate:                      false,
+			}),
+			// | no self-monitoring, no authorization  | no sm, token        | no sm, auth via token            |
+			Entry("no self-monitoring, no auth -> no self-monitoring, token", SelfMonitoringAndApiAccessTestConfig{
+				existingControllerDeployment:               CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth,
+				operatorConfigurationResourceSpec:          OperatorConfigurationResourceWithoutSelfMonitoringWithToken,
+				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithoutSelfMonitoringWithToken,
+				expectK8sClientUpdate:                      true,
+			}),
+			// | no self-monitoring, no authorization  | no sm, secret-ref   | no sm, auth via secret-ref       |
+			Entry("no self-monitoring, no auth -> no self-monitoring, secret-ref", SelfMonitoringAndApiAccessTestConfig{
+				existingControllerDeployment:               CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth,
+				operatorConfigurationResourceSpec:          OperatorConfigurationResourceWithoutSelfMonitoringWithSecretRef,
+				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithoutSelfMonitoringWithSecretRef,
+				expectK8sClientUpdate:                      true,
+			}),
+			// | no self-monitoring, no authorization  | with sm, token      | has sm, auth via token            |
+			Entry("no self-monitoring, no auth -> self-monitoring, token", SelfMonitoringAndApiAccessTestConfig{
+				existingControllerDeployment:               CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth,
+				operatorConfigurationResourceSpec:          OperatorConfigurationResourceWithSelfMonitoringWithToken,
+				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithSelfMonitoringWithToken,
+				expectK8sClientUpdate:                      true,
+			}),
+			// | no self-monitoring, no authorization  | with sm, secret-ref | has sm, auth via secret-ref       |
+			Entry("no self-monitoring, no auth -> self-monitoring, secret-ref", SelfMonitoringAndApiAccessTestConfig{
+				existingControllerDeployment:               CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth,
+				operatorConfigurationResourceSpec:          OperatorConfigurationResourceWithSelfMonitoringWithSecretRef,
+				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithSelfMonitoringWithSecretRef,
+				expectK8sClientUpdate:                      true,
+			}),
+
+			// | --------------------------------------|---------------------|----------------------------------|
+			// | no self-monitoring, but token         | no sm, no auth      | no sm, no auth	                |
+			Entry("no self-monitoring, token -> no self-monitoring, no auth", SelfMonitoringAndApiAccessTestConfig{
+				existingControllerDeployment:               CreateControllerDeploymentWithoutSelfMonitoringWithToken,
+				operatorConfigurationResourceSpec:          OperatorConfigurationResourceWithoutSelfMonitoringWithoutAuth,
+				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth,
+				expectK8sClientUpdate:                      true,
+			}),
+			// | no self-monitoring, but secret-ref    | no sm, no auth      | no sm, no auth                   |
+			Entry("no self-monitoring, secret-ref -> no self-monitoring, no auth", SelfMonitoringAndApiAccessTestConfig{
+				existingControllerDeployment:               CreateControllerDeploymentWithoutSelfMonitoringWithSecretRef,
+				operatorConfigurationResourceSpec:          OperatorConfigurationResourceWithoutSelfMonitoringWithoutAuth,
+				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth,
+				expectK8sClientUpdate:                      true,
+			}),
+			// | no self-monitoring, but token         | no sm, token        | no sm, auth via token            |
+			Entry("no self-monitoring, token -> no self-monitoring, token", SelfMonitoringAndApiAccessTestConfig{
+				existingControllerDeployment:               CreateControllerDeploymentWithoutSelfMonitoringWithToken,
+				operatorConfigurationResourceSpec:          OperatorConfigurationResourceWithoutSelfMonitoringWithToken,
+				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithoutSelfMonitoringWithToken,
+				expectK8sClientUpdate:                      false,
+			}),
+
+			// | no self-monitoring, but token         | no sm, secret-ref   | no sm, auth via secret-ref       |
+			Entry("no self-monitoring, token -> no self-monitoring, secret-ref", SelfMonitoringAndApiAccessTestConfig{
+				existingControllerDeployment:               CreateControllerDeploymentWithoutSelfMonitoringWithToken,
+				operatorConfigurationResourceSpec:          OperatorConfigurationResourceWithoutSelfMonitoringWithSecretRef,
+				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithoutSelfMonitoringWithSecretRef,
+				expectK8sClientUpdate:                      true,
+			}),
+
+			// | no self-monitoring, but secret-ref    | no sm, token        | no sm, auth via token            |
+			Entry("no self-monitoring, secret-ref -> no self-monitoring, token", SelfMonitoringAndApiAccessTestConfig{
+				existingControllerDeployment:               CreateControllerDeploymentWithoutSelfMonitoringWithSecretRef,
+				operatorConfigurationResourceSpec:          OperatorConfigurationResourceWithoutSelfMonitoringWithToken,
+				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithoutSelfMonitoringWithToken,
+				expectK8sClientUpdate:                      true,
+			}),
+
+			// | no self-monitoring, but secret-ref    | no sm, secret-ref   | no sm, auth via secret-ref       |
+			Entry("no self-monitoring, secret-ref -> no self-monitoring, secret-ref", SelfMonitoringAndApiAccessTestConfig{
+				existingControllerDeployment:               CreateControllerDeploymentWithoutSelfMonitoringWithSecretRef,
+				operatorConfigurationResourceSpec:          OperatorConfigurationResourceWithoutSelfMonitoringWithSecretRef,
+				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithoutSelfMonitoringWithSecretRef,
+				expectK8sClientUpdate:                      false,
+			}),
+
+			// | no self-monitoring, but token         | with sm, token      | has sm, auth via token           |
+			Entry("no self-monitoring, token -> self-monitoring, token", SelfMonitoringAndApiAccessTestConfig{
+				existingControllerDeployment:               CreateControllerDeploymentWithoutSelfMonitoringWithToken,
+				operatorConfigurationResourceSpec:          OperatorConfigurationResourceWithSelfMonitoringWithToken,
+				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithSelfMonitoringWithToken,
+				expectK8sClientUpdate:                      true,
+			}),
+
+			// | no self-monitoring, but token         | with sm, secret-ref | has sm, auth via secret-ref      |
+			Entry("no self-monitoring, token -> self-monitoring, secret-ref", SelfMonitoringAndApiAccessTestConfig{
+				existingControllerDeployment:               CreateControllerDeploymentWithoutSelfMonitoringWithToken,
+				operatorConfigurationResourceSpec:          OperatorConfigurationResourceWithSelfMonitoringWithSecretRef,
+				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithSelfMonitoringWithSecretRef,
+				expectK8sClientUpdate:                      true,
+			}),
+
+			// | no self-monitoring, but secret-ref    | with sm, token      | has sm, auth via token           |
+			Entry("no self-monitoring, secret-ref -> self-monitoring, token", SelfMonitoringAndApiAccessTestConfig{
+				existingControllerDeployment:               CreateControllerDeploymentWithoutSelfMonitoringWithSecretRef,
+				operatorConfigurationResourceSpec:          OperatorConfigurationResourceWithSelfMonitoringWithToken,
+				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithSelfMonitoringWithToken,
+				expectK8sClientUpdate:                      true,
+			}),
+
+			// | no self-monitoring, but secret-ref    | with sm, secret-ref | has sm, auth via secret-ref      |
+			Entry("no self-monitoring, secret-ref -> self-monitoring, token", SelfMonitoringAndApiAccessTestConfig{
+				existingControllerDeployment:               CreateControllerDeploymentWithoutSelfMonitoringWithSecretRef,
+				operatorConfigurationResourceSpec:          OperatorConfigurationResourceWithSelfMonitoringWithSecretRef,
+				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithSelfMonitoringWithSecretRef,
+				expectK8sClientUpdate:                      true,
+			}),
+
+			// | --------------------------------------|---------------------|----------------------------------|
+			// | self-monitoring with token            | no sm, no auth      | no sm, no auth                   |
+			Entry("self-monitoring, token -> no self-monitoring, no auth", SelfMonitoringAndApiAccessTestConfig{
+				existingControllerDeployment:               CreateControllerDeploymentWithSelfMonitoringWithToken,
+				operatorConfigurationResourceSpec:          OperatorConfigurationResourceWithoutSelfMonitoringWithoutAuth,
+				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth,
+				expectK8sClientUpdate:                      true,
+			}),
+
+			// | self-monitoring with secret-ref       | no sm, no auth      | no sm, no auth                   |
+			Entry("self-monitoring, secret-ref -> no self-monitoring, no auth", SelfMonitoringAndApiAccessTestConfig{
+				existingControllerDeployment:               CreateControllerDeploymentWithSelfMonitoringWithSecretRef,
+				operatorConfigurationResourceSpec:          OperatorConfigurationResourceWithoutSelfMonitoringWithoutAuth,
+				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth,
+				expectK8sClientUpdate:                      true,
+			}),
+
+			// | self-monitoring with token            | no sm, token        | no sm, auth via token            |
+			Entry("self-monitoring, token -> no self-monitoring, token", SelfMonitoringAndApiAccessTestConfig{
+				existingControllerDeployment:               CreateControllerDeploymentWithSelfMonitoringWithToken,
+				operatorConfigurationResourceSpec:          OperatorConfigurationResourceWithoutSelfMonitoringWithToken,
+				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithoutSelfMonitoringWithToken,
+				expectK8sClientUpdate:                      true,
+			}),
+
+			// | self-monitoring with token            | no sm, secret-ref   | no sm, auth via secret-ref       |
+			Entry("self-monitoring, token -> no self-monitoring, secret-ref", SelfMonitoringAndApiAccessTestConfig{
+				existingControllerDeployment:               CreateControllerDeploymentWithSelfMonitoringWithToken,
+				operatorConfigurationResourceSpec:          OperatorConfigurationResourceWithoutSelfMonitoringWithSecretRef,
+				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithoutSelfMonitoringWithSecretRef,
+				expectK8sClientUpdate:                      true,
+			}),
+
+			// | self-monitoring with secret-ref       | no sm, token        | no sm, auth via token            |
+			Entry("self-monitoring, secret-ref -> no self-monitoring, token", SelfMonitoringAndApiAccessTestConfig{
+				existingControllerDeployment:               CreateControllerDeploymentWithSelfMonitoringWithSecretRef,
+				operatorConfigurationResourceSpec:          OperatorConfigurationResourceWithoutSelfMonitoringWithToken,
+				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithoutSelfMonitoringWithToken,
+				expectK8sClientUpdate:                      true,
+			}),
+
+			// | self-monitoring with secret-ref       | no sm, secret-ref   | no sm, auth via secret-ref       |
+			Entry("self-monitoring, secret-ref -> no self-monitoring, secret-ref", SelfMonitoringAndApiAccessTestConfig{
+				existingControllerDeployment:               CreateControllerDeploymentWithSelfMonitoringWithSecretRef,
+				operatorConfigurationResourceSpec:          OperatorConfigurationResourceWithoutSelfMonitoringWithSecretRef,
+				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithoutSelfMonitoringWithSecretRef,
+				expectK8sClientUpdate:                      true,
+			}),
+
+			// | self-monitoring with token            | with sm, token      | has sm, auth via token            |
+			Entry("self-monitoring, token -> self-monitoring, token", SelfMonitoringAndApiAccessTestConfig{
+				existingControllerDeployment:               CreateControllerDeploymentWithSelfMonitoringWithToken,
+				operatorConfigurationResourceSpec:          OperatorConfigurationResourceWithSelfMonitoringWithToken,
+				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithSelfMonitoringWithToken,
+				expectK8sClientUpdate:                      false,
+			}),
+
+			// | self-monitoring with token            | with sm, secret-ref | has sm, auth via secret-ref       |
+			Entry("self-monitoring, token -> self-monitoring, secret-ref", SelfMonitoringAndApiAccessTestConfig{
+				existingControllerDeployment:               CreateControllerDeploymentWithSelfMonitoringWithToken,
+				operatorConfigurationResourceSpec:          OperatorConfigurationResourceWithSelfMonitoringWithSecretRef,
+				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithSelfMonitoringWithSecretRef,
+				expectK8sClientUpdate:                      true,
+			}),
+
+			// | self-monitoring with secret-ref       | with sm, token      | has sm, auth via token           |
+			Entry("self-monitoring, secret-ref -> self-monitoring, token", SelfMonitoringAndApiAccessTestConfig{
+				existingControllerDeployment:               CreateControllerDeploymentWithSelfMonitoringWithSecretRef,
+				operatorConfigurationResourceSpec:          OperatorConfigurationResourceWithSelfMonitoringWithToken,
+				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithSelfMonitoringWithToken,
+				expectK8sClientUpdate:                      true,
+			}),
+
+			// | self-monitoring with secret-ref       | with sm, secret-ref | has sm, auth via secret-ref      |
+			Entry("self-monitoring, secret-ref -> self-monitoring, secret-ref", SelfMonitoringAndApiAccessTestConfig{
+				existingControllerDeployment:               CreateControllerDeploymentWithSelfMonitoringWithSecretRef,
+				operatorConfigurationResourceSpec:          OperatorConfigurationResourceWithSelfMonitoringWithSecretRef,
+				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithSelfMonitoringWithSecretRef,
+				expectK8sClientUpdate:                      false,
+			}),
+		)
+	})
+
+	Describe("when creating the operator configuration resource", func() {
 
 		BeforeEach(func() {
 			// When creating the resource, we assume the operator has no
 			// self-monitoring enabled
-			controllerDeployment = controllerDeploymentWithoutSelfMonitoring()
+			controllerDeployment = CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth()
 			EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
 			reconciler = createReconciler(controllerDeployment)
 		})
@@ -75,14 +383,14 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 					verifyOperatorConfigurationResourceIsAvailable(ctx)
 					Eventually(func(g Gomega) {
 						updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
-						selfMonitoringConfiguration, err :=
-							selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(
+						selfMonitoringAndApiAccessConfiguration, err :=
+							selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromControllerDeployment(
 								updatedDeployment,
-								ManagerContainerName,
+								ControllerContainerName,
 							)
-						Expect(err).NotTo(HaveOccurred())
-						Expect(selfMonitoringConfiguration.Enabled).To(BeTrue())
-						config.verify(g, selfMonitoringConfiguration)
+						g.Expect(err).NotTo(HaveOccurred())
+						g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeTrue())
+						config.verify(g, selfMonitoringAndApiAccessConfiguration, updatedDeployment)
 					}, timeout, pollingInterval).Should(Succeed())
 				},
 				Entry("with a Dash0 export with a token", SelfMonitoringTestConfig{
@@ -104,9 +412,46 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			)
 		})
 
+		DescribeTable("it adds the auth token to the controller deployment even if self-monitoring is not enabled",
+			func(config SelfMonitoringTestConfig) {
+				CreateOperatorConfigurationResourceWithSpec(
+					ctx,
+					k8sClient,
+					dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						Export: ExportToPrt(config.createExport()),
+						SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+							Enabled: false,
+						},
+					},
+				)
+
+				triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+				verifyOperatorConfigurationResourceIsAvailable(ctx)
+				Eventually(func(g Gomega) {
+					updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
+					selfMonitoringAndApiAccessConfiguration, err :=
+						selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromControllerDeployment(
+							updatedDeployment,
+							ControllerContainerName,
+						)
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
+					config.verify(g, selfMonitoringAndApiAccessConfiguration, updatedDeployment)
+				}, timeout, pollingInterval).Should(Succeed())
+			},
+			Entry("with a Dash0 export with a token", SelfMonitoringTestConfig{
+				createExport: Dash0ExportWithEndpointAndTokenAndApiEndpoint,
+				verify:       verifyNoSelfMontoringButAuthTokenEnvVarFromToken,
+			}),
+			Entry("with a Dash0 export with a secret ref", SelfMonitoringTestConfig{
+				createExport: Dash0ExportWithEndpointAndSecretRefAndApiEndpoint,
+				verify:       verifyNoSelfMonitoringButAuthTokenEnvVarFromSecretRef,
+			}),
+		)
+
 		Describe("disabling self-monitoring", func() {
 
-			It("it does not change the controller deployment", func() {
+			It("it does not change the controller deployment (because self-monitoring was not enabled in the first place)", func() {
 				CreateOperatorConfigurationResourceWithSpec(
 					ctx,
 					k8sClient,
@@ -122,19 +467,19 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				verifyOperatorConfigurationResourceIsAvailable(ctx)
 				Consistently(func(g Gomega) {
 					updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
-					selfMonitoringConfiguration, err :=
-						selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(
+					selfMonitoringAndApiAccessConfiguration, err :=
+						selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromControllerDeployment(
 							updatedDeployment,
-							ManagerContainerName,
+							ControllerContainerName,
 						)
-					Expect(err).NotTo(HaveOccurred())
-					Expect(selfMonitoringConfiguration.Enabled).To(BeFalse())
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
 				}, consistentlyTimeout, pollingInterval).Should(Succeed())
 			})
 		})
 	})
 
-	Describe("when updating the Dash0Operator resource", func() {
+	Describe("when updating the operator configuration resource", func() {
 
 		Describe("enabling self-monitoring", func() {
 
@@ -143,7 +488,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 				BeforeEach(func() {
 					// When creating the resource, we assume the operator has
 					// self-monitoring enabled
-					controllerDeployment = controllerDeploymentWithSelfMonitoring()
+					controllerDeployment = CreateControllerDeploymentWithSelfMonitoringWithToken()
 					EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
 					reconciler = createReconciler(controllerDeployment)
 				})
@@ -170,21 +515,21 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 					Consistently(func(g Gomega) {
 						updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
-						selfMonitoringConfiguration, err :=
-							selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(
+						selfMonitoringAndApiAccessConfiguration, err :=
+							selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromControllerDeployment(
 								updatedDeployment,
-								ManagerContainerName,
+								ControllerContainerName,
 							)
-						Expect(err).NotTo(HaveOccurred())
-						Expect(selfMonitoringConfiguration.Enabled).To(BeTrue())
+						g.Expect(err).NotTo(HaveOccurred())
+						g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeTrue())
 					}, consistentlyTimeout, pollingInterval).Should(Succeed())
 				})
 			})
 
-			Describe("when self-monitoring is disabled", func() {
+			Describe("when self-monitoring was previously disabled", func() {
 
 				BeforeEach(func() {
-					controllerDeployment = controllerDeploymentWithoutSelfMonitoring()
+					controllerDeployment = CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth()
 					EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
 					reconciler = createReconciler(controllerDeployment)
 
@@ -217,13 +562,13 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 					verifyOperatorConfigurationResourceIsAvailable(ctx)
 					Eventually(func(g Gomega) {
 						updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
-						selfMonitoringConfiguration, err :=
-							selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(
+						selfMonitoringAndApiAccessConfiguration, err :=
+							selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromControllerDeployment(
 								updatedDeployment,
-								ManagerContainerName,
+								ControllerContainerName,
 							)
-						Expect(err).NotTo(HaveOccurred())
-						Expect(selfMonitoringConfiguration.Enabled).To(BeTrue())
+						g.Expect(err).NotTo(HaveOccurred())
+						g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeTrue())
 					}, timeout, pollingInterval).Should(Succeed())
 				})
 			})
@@ -245,7 +590,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 						},
 					)
 
-					controllerDeployment = controllerDeploymentWithSelfMonitoring()
+					controllerDeployment = CreateControllerDeploymentWithSelfMonitoringWithToken()
 					EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
 					reconciler = createReconciler(controllerDeployment)
 				})
@@ -267,13 +612,13 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 					verifyOperatorConfigurationResourceIsAvailable(ctx)
 					Eventually(func(g Gomega) {
 						updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
-						selfMonitoringConfiguration, err :=
-							selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(
+						selfMonitoringAndApiAccessConfiguration, err :=
+							selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromControllerDeployment(
 								updatedDeployment,
-								ManagerContainerName,
+								ControllerContainerName,
 							)
-						Expect(err).NotTo(HaveOccurred())
-						Expect(selfMonitoringConfiguration.Enabled).To(BeFalse())
+						g.Expect(err).NotTo(HaveOccurred())
+						g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
 					}, timeout, pollingInterval).Should(Succeed())
 				})
 			})
@@ -292,7 +637,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 						},
 					)
 
-					controllerDeployment = controllerDeploymentWithoutSelfMonitoring()
+					controllerDeployment = CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth()
 					EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
 					reconciler = createReconciler(controllerDeployment)
 				})
@@ -314,20 +659,20 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 					verifyOperatorConfigurationResourceIsAvailable(ctx)
 					Consistently(func(g Gomega) {
 						updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
-						selfMonitoringConfiguration, err :=
-							selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(
+						selfMonitoringAndApiAccessConfiguration, err :=
+							selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromControllerDeployment(
 								updatedDeployment,
-								ManagerContainerName,
+								ControllerContainerName,
 							)
-						Expect(err).NotTo(HaveOccurred())
-						Expect(selfMonitoringConfiguration.Enabled).To(BeFalse())
+						g.Expect(err).NotTo(HaveOccurred())
+						g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
 					}, consistentlyTimeout, pollingInterval).Should(Succeed())
 				})
 			})
 		})
 	})
 
-	Describe("when deleting the Dash0Operator resource", func() {
+	Describe("when deleting the operator configuration resource", func() {
 
 		Describe("when self-monitoring is enabled", func() {
 
@@ -343,7 +688,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 					},
 				)
 
-				controllerDeployment = controllerDeploymentWithSelfMonitoring()
+				controllerDeployment = CreateControllerDeploymentWithSelfMonitoringWithToken()
 				EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
 				reconciler = createReconciler(controllerDeployment)
 			})
@@ -354,13 +699,13 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			})
 
 			It("it disables self-monitoring in the controller deployment", func() {
-				selfMonitoringConfiguration, err :=
-					selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(
+				selfMonitoringAndApiAccessConfiguration, err :=
+					selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromControllerDeployment(
 						controllerDeployment,
-						ManagerContainerName,
+						ControllerContainerName,
 					)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(selfMonitoringConfiguration.Enabled).To(BeTrue())
+				Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeTrue())
 
 				resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
@@ -370,13 +715,13 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 				Eventually(func(g Gomega) {
 					updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
-					selfMonitoringConfiguration, err :=
-						selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(
+					selfMonitoringAndApiAccessConfiguration, err :=
+						selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromControllerDeployment(
 							updatedDeployment,
-							ManagerContainerName,
+							ControllerContainerName,
 						)
-					Expect(err).NotTo(HaveOccurred())
-					Expect(selfMonitoringConfiguration.Enabled).To(BeFalse())
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
 				}, timeout, pollingInterval).Should(Succeed())
 			})
 		})
@@ -394,7 +739,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 					},
 				)
 
-				controllerDeployment = controllerDeploymentWithoutSelfMonitoring()
+				controllerDeployment = CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth()
 				EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
 				reconciler = createReconciler(controllerDeployment)
 			})
@@ -405,13 +750,13 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			})
 
 			It("it does not change the controller deployment", func() {
-				selfMonitoringConfiguration, err :=
-					selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(
+				selfMonitoringAndApiAccessConfiguration, err :=
+					selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromControllerDeployment(
 						controllerDeployment,
-						ManagerContainerName,
+						ControllerContainerName,
 					)
 				Expect(err).NotTo(HaveOccurred())
-				Expect(selfMonitoringConfiguration.Enabled).To(BeFalse())
+				Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
 
 				resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
 				Expect(resource.Spec.SelfMonitoring.Enabled).To(BeFalse())
@@ -423,367 +768,46 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 				Consistently(func(g Gomega) {
 					updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
-					selfMonitoringConfiguration, err :=
-						selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(
+					selfMonitoringAndApiAccessConfiguration, err :=
+						selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromControllerDeployment(
 							updatedDeployment,
-							ManagerContainerName,
+							ControllerContainerName,
 						)
-					Expect(err).NotTo(HaveOccurred())
-					Expect(selfMonitoringConfiguration.Enabled).To(BeFalse())
+					g.Expect(err).NotTo(HaveOccurred())
+					g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
 				}, consistentlyTimeout, pollingInterval).Should(Succeed())
 			})
 		})
 	})
 })
 
-func controllerDeploymentWithoutSelfMonitoring() *appsv1.Deployment {
-	replicaCount := int32(2)
-	falsy := false
-	truthy := true
-	terminationGracePeriodSeconds := int64(10)
-	secretMode := corev1.SecretVolumeSourceDefaultMode
-
-	return &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      Dash0OperatorDeploymentName,
-			Namespace: Dash0OperatorNamespace,
-			Labels: map[string]string{
-				"app.kubernetes.io/name":      "dash0monitoring-operator",
-				"app.kubernetes.io/component": "controller",
-				"app.kubernetes.io/instance":  "deployment",
-				"dash0.com/enable":            "false",
-			},
-		},
-		Spec: appsv1.DeploymentSpec{
-			Replicas: &replicaCount,
-			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					"app.kubernetes.io/name":      "dash0monitoring-operator",
-					"app.kubernetes.io/component": "controller",
-				},
-			},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						"kubectl.kubernetes.io/default-container": "manager",
-					},
-					Labels: map[string]string{
-						"app.kubernetes.io/name":      "dash0monitoring-operator",
-						"app.kubernetes.io/component": "controller",
-						"dash0.cert-digest":           "1234567890",
-					},
-				},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{
-							Name:    "manager",
-							Image:   "ghcr.io/dash0hq/operator-controller@latest",
-							Command: []string{"/manager"},
-							Args: []string{
-								"--health-probe-bind-address=:8081",
-								"--metrics-bind-address=127.0.0.1:8080",
-								"--leader-elect",
-							},
-							Env: []corev1.EnvVar{
-								{
-									Name: "DASH0_OPERATOR_NAMESPACE",
-									ValueFrom: &corev1.EnvVarSource{
-										FieldRef: &corev1.ObjectFieldSelector{
-											FieldPath: "metadata.namespace",
-										},
-									},
-								},
-								{
-									Name:  "DASH0_DEPLOYMENT_NAME",
-									Value: Dash0OperatorDeploymentName,
-								},
-								{
-									Name:  "OTEL_COLLECTOR_NAME_PREFIX",
-									Value: "dash0monitoring-system",
-								},
-								{
-									Name:  "DASH0_INIT_CONTAINER_IMAGE",
-									Value: "ghcr.io/dash0hq/instrumentation",
-								},
-								{
-									Name:  "DASH0_INIT_CONTAINER_IMAGE_PULL_POLICY",
-									Value: "",
-								},
-								{
-									Name:  "DASH0_COLLECTOR_IMAGE",
-									Value: "ghcr.io/dash0hq/collector",
-								},
-								{
-									Name:  "DASH0_COLLECTOR_IMAGE_PULL_POLICY",
-									Value: "",
-								},
-								{
-									Name:  "DASH0_CONFIGURATION_RELOADER_IMAGE",
-									Value: "ghcr.io/dash0hq/configuration-reloader@latest",
-								},
-								{
-									Name:  "DASH0_CONFIGURATION_RELOADER_IMAGE_PULL_POLICY",
-									Value: "",
-								},
-								{
-									Name:  "DASH0_FILELOG_OFFSET_SYNCH_IMAGE",
-									Value: "ghcr.io/dash0hq/filelog-offset-synch",
-								},
-								{
-									Name:  "DASH0_FILELOG_OFFSET_SYNCH_IMAGE_PULL_POLICY",
-									Value: "",
-								},
-								{
-									Name:  "DASH0_DEVELOPMENT_MODE",
-									Value: "false",
-								},
-							},
-							Ports: []corev1.ContainerPort{
-								{
-									Name:          "webhook-server",
-									ContainerPort: 9443,
-									Protocol:      "TCP",
-								},
-							},
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      "certificates",
-									MountPath: "/tmp/k8s-webhook-server/serving-certs",
-									ReadOnly:  true,
-								},
-							},
-						},
-						{
-							Name:  "kube-rbac-proxy",
-							Image: "quay.io/brancz/kube-rbac-proxy:v0.18.0",
-							Args: []string{
-								"--secure-listen-address=0.0.0.0:8443",
-								"--upstream=http://127.0.0.1:8080/",
-								"--logtostderr=true",
-								"--v=0",
-							},
-							Ports: []corev1.ContainerPort{
-								{
-									Name:          "https",
-									ContainerPort: 8443,
-									Protocol:      "TCP",
-								},
-							},
-							SecurityContext: &corev1.SecurityContext{
-								AllowPrivilegeEscalation: &falsy,
-								Capabilities: &corev1.Capabilities{
-									Drop: []corev1.Capability{"ALL"},
-								},
-							},
-						},
-					},
-					SecurityContext: &corev1.PodSecurityContext{
-						RunAsNonRoot: &truthy,
-						SeccompProfile: &corev1.SeccompProfile{
-							Type: corev1.SeccompProfileTypeRuntimeDefault,
-						},
-					},
-					ServiceAccountName:            "dash0-operator-service-account",
-					AutomountServiceAccountToken:  &truthy,
-					TerminationGracePeriodSeconds: &terminationGracePeriodSeconds,
-					Volumes: []corev1.Volume{
-						{
-							Name: "certificates",
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									DefaultMode: &secretMode,
-									SecretName:  "dash0-operator-certificates",
-								},
-							},
-						},
-					},
-				},
-			},
-		},
+func cleanUpDeploymentSpecForDiff(spec *appsv1.DeploymentSpec) {
+	for i := range spec.Template.Spec.Containers {
+		spec.Template.Spec.Containers[i].TerminationMessagePath = ""
+		spec.Template.Spec.Containers[i].TerminationMessagePolicy = ""
+		spec.Template.Spec.Containers[i].ImagePullPolicy = ""
 	}
-}
-
-func controllerDeploymentWithSelfMonitoring() *appsv1.Deployment {
-	replicaCount := int32(2)
-	falsy := false
-	truthy := true
-	terminationGracePeriodSeconds := int64(10)
-	secretMode := corev1.SecretVolumeSourceDefaultMode
-
-	return &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      Dash0OperatorDeploymentName,
-			Namespace: Dash0OperatorNamespace,
-			Labels: map[string]string{
-				"app.kubernetes.io/name":      "dash0monitoring-operator",
-				"app.kubernetes.io/component": "controller",
-				"app.kubernetes.io/instance":  "deployment",
-				"dash0monitoring.com/enable":  "false",
-			},
-		},
-		Spec: appsv1.DeploymentSpec{
-			Replicas: &replicaCount,
-			Selector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					"app.kubernetes.io/name":      "dash0monitoring-operator",
-					"app.kubernetes.io/component": "controller",
-				},
-			},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Annotations: map[string]string{
-						"kubectl.kubernetes.io/default-container": "manager",
-					},
-					Labels: map[string]string{
-						"app.kubernetes.io/name":      "dash0monitoring-operator",
-						"app.kubernetes.io/component": "controller",
-						"dash0monitoring.cert-digest": "1234567890",
-					},
-				},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{
-						{
-							Name:    "manager",
-							Image:   "ghcr.io/dash0hq/operator-controller@latest",
-							Command: []string{"/manager"},
-							Args: []string{
-								"--health-probe-bind-address=:8081",
-								"--metrics-bind-address=127.0.0.1:8080",
-								"--leader-elect",
-							},
-							Env: []corev1.EnvVar{
-								{
-									Name: "DASH0_OPERATOR_NAMESPACE",
-									ValueFrom: &corev1.EnvVarSource{
-										FieldRef: &corev1.ObjectFieldSelector{
-											FieldPath: "metadata.namespace",
-										},
-									},
-								},
-								{
-									Name:  "DASH0_DEPLOYMENT_NAME",
-									Value: Dash0OperatorNamespace,
-								}, {
-									Name:  "OTEL_COLLECTOR_NAME_PREFIX",
-									Value: "dash0monitoring-system",
-								},
-								{
-									Name:  "DASH0_INIT_CONTAINER_IMAGE",
-									Value: "ghcr.io/dash0hq/instrumentation",
-								},
-								{
-									Name:  "DASH0_INIT_CONTAINER_IMAGE_PULL_POLICY",
-									Value: "",
-								},
-								{
-									Name:  "DASH0_COLLECTOR_IMAGE",
-									Value: "ghcr.io/dash0hq/collector",
-								},
-								{
-									Name:  "DASH0_COLLECTOR_IMAGE_PULL_POLICY",
-									Value: "",
-								},
-								{
-									Name:  "DASH0_CONFIGURATION_RELOADER_IMAGE",
-									Value: "ghcr.io/dash0hq/configuration-reloader@latest",
-								},
-								{
-									Name:  "DASH0_CONFIGURATION_RELOADER_IMAGE_PULL_POLICY",
-									Value: "",
-								},
-								{
-									Name:  "DASH0_FILELOG_OFFSET_SYNCH_IMAGE",
-									Value: "ghcr.io/dash0hq/filelog-offset-synch",
-								},
-								{
-									Name:  "DASH0_FILELOG_OFFSET_SYNCH_IMAGE_PULL_POLICY",
-									Value: "",
-								},
-								{
-									Name:  "DASH0_DEVELOPMENT_MODE",
-									Value: "false",
-								},
-								{
-									Name:  "OTEL_EXPORTER_OTLP_ENDPOINT",
-									Value: "ingress.eu-west-1.aws.dash0monitoring-dev.com:4317",
-								},
-								{
-									Name:  "OTEL_EXPORTER_OTLP_HEADERS",
-									Value: "Authorization=Bearer 1234567890",
-								},
-							},
-							Ports: []corev1.ContainerPort{
-								{
-									Name:          "webhook-server",
-									ContainerPort: 9443,
-									Protocol:      "TCP",
-								},
-							},
-							VolumeMounts: []corev1.VolumeMount{
-								{
-									Name:      "certificates",
-									MountPath: "/tmp/k8s-webhook-server/serving-certs",
-									ReadOnly:  true,
-								},
-							},
-						},
-						{
-							Name:  "kube-rbac-proxy",
-							Image: "quay.io/brancz/kube-rbac-proxy:v0.18.0",
-							Args: []string{
-								"--secure-listen-address=0.0.0.0:8443",
-								"--upstream=http://127.0.0.1:8080/",
-								"--logtostderr=true",
-								"--v=0",
-							},
-							Ports: []corev1.ContainerPort{
-								{
-									Name:          "https",
-									ContainerPort: 8443,
-									Protocol:      "TCP",
-								},
-							},
-							SecurityContext: &corev1.SecurityContext{
-								AllowPrivilegeEscalation: &falsy,
-								Capabilities: &corev1.Capabilities{
-									Drop: []corev1.Capability{"ALL"},
-								},
-							},
-						},
-					},
-					SecurityContext: &corev1.PodSecurityContext{
-						RunAsNonRoot: &truthy,
-						SeccompProfile: &corev1.SeccompProfile{
-							Type: corev1.SeccompProfileTypeRuntimeDefault,
-						},
-					},
-					ServiceAccountName:            "dash0monitoring-operator-service-account",
-					AutomountServiceAccountToken:  &truthy,
-					TerminationGracePeriodSeconds: &terminationGracePeriodSeconds,
-					Volumes: []corev1.Volume{
-						{
-							Name: "certificates",
-							VolumeSource: corev1.VolumeSource{
-								Secret: &corev1.SecretVolumeSource{
-									DefaultMode: &secretMode,
-									SecretName:  "dash0monitoring-operator-certificates",
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
+	spec.Template.Spec.RestartPolicy = ""
+	spec.Template.Spec.DNSPolicy = ""
+	spec.Template.Spec.DeprecatedServiceAccount = ""
+	spec.Template.Spec.SchedulerName = ""
+	spec.Strategy = appsv1.DeploymentStrategy{}
+	spec.RevisionHistoryLimit = nil
+	spec.ProgressDeadlineSeconds = nil
 }
 
 func createReconciler(controllerDeployment *appsv1.Deployment) *OperatorConfigurationReconciler {
+	persesDashboardCrdReconciler := &PersesDashboardCrdReconciler{
+		persesDashboardReconciler: &PersesDashboardReconciler{},
+	}
 	return &OperatorConfigurationReconciler{
-		Client:                  k8sClient,
-		Clientset:               clientset,
-		Recorder:                recorder,
-		DeploymentSelfReference: controllerDeployment,
-		DanglingEventsTimeouts:  &DanglingEventsTimeoutsTest,
+		Client:                       k8sClient,
+		Clientset:                    clientset,
+		Recorder:                     recorder,
+		PersesDashboardCrdReconciler: persesDashboardCrdReconciler,
+		DeploymentSelfReference:      controllerDeployment,
+		DanglingEventsTimeouts:       &DanglingEventsTimeoutsTest,
+		Images:                       TestImages,
 	}
 }
 
@@ -817,9 +841,10 @@ func verifyOperatorConfigurationResourceIsAvailable(ctx context.Context) {
 
 func verifySelfMonitoringConfigurationDash0Token(
 	g Gomega,
-	selfMonitoringConfiguration selfmonitoring.SelfMonitoringConfiguration,
+	selfMonitoringAndApiAccessConfiguration selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration,
+	_ *appsv1.Deployment,
 ) {
-	dash0ExportConfiguration := selfMonitoringConfiguration.Export.Dash0
+	dash0ExportConfiguration := selfMonitoringAndApiAccessConfiguration.Export.Dash0
 	g.Expect(dash0ExportConfiguration).NotTo(BeNil())
 	g.Expect(dash0ExportConfiguration.Endpoint).To(Equal(EndpointDash0WithProtocolTest))
 	g.Expect(dash0ExportConfiguration.Dataset).To(Equal(util.DatasetInsights))
@@ -827,15 +852,16 @@ func verifySelfMonitoringConfigurationDash0Token(
 	g.Expect(authorization).ToNot(BeNil())
 	g.Expect(*authorization.Token).To(Equal(AuthorizationTokenTest))
 	g.Expect(authorization.SecretRef).To(BeNil())
-	g.Expect(selfMonitoringConfiguration.Export.Grpc).To(BeNil())
-	g.Expect(selfMonitoringConfiguration.Export.Http).To(BeNil())
+	g.Expect(selfMonitoringAndApiAccessConfiguration.Export.Grpc).To(BeNil())
+	g.Expect(selfMonitoringAndApiAccessConfiguration.Export.Http).To(BeNil())
 }
 
 func verifySelfMonitoringConfigurationDash0SecretRef(
 	g Gomega,
-	selfMonitoringConfiguration selfmonitoring.SelfMonitoringConfiguration,
+	selfMonitoringAndApiAccessConfiguration selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration,
+	_ *appsv1.Deployment,
 ) {
-	dash0ExportConfiguration := selfMonitoringConfiguration.Export.Dash0
+	dash0ExportConfiguration := selfMonitoringAndApiAccessConfiguration.Export.Dash0
 	g.Expect(dash0ExportConfiguration).NotTo(BeNil())
 	g.Expect(dash0ExportConfiguration.Endpoint).To(Equal(EndpointDash0WithProtocolTest))
 	g.Expect(dash0ExportConfiguration.Dataset).To(Equal(util.DatasetInsights))
@@ -844,15 +870,16 @@ func verifySelfMonitoringConfigurationDash0SecretRef(
 	g.Expect(authorization.SecretRef).ToNot(BeNil())
 	g.Expect(authorization.SecretRef.Name).To(Equal(SecretRefTest.Name))
 	g.Expect(authorization.SecretRef.Key).To(Equal(SecretRefTest.Key))
-	g.Expect(selfMonitoringConfiguration.Export.Grpc).To(BeNil())
-	g.Expect(selfMonitoringConfiguration.Export.Http).To(BeNil())
+	g.Expect(selfMonitoringAndApiAccessConfiguration.Export.Grpc).To(BeNil())
+	g.Expect(selfMonitoringAndApiAccessConfiguration.Export.Http).To(BeNil())
 }
 
 func verifySelfMonitoringConfigurationGrpc(
 	g Gomega,
-	selfMonitoringConfiguration selfmonitoring.SelfMonitoringConfiguration,
+	selfMonitoringAndApiAccessConfiguration selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration,
+	_ *appsv1.Deployment,
 ) {
-	grpcExportConfiguration := selfMonitoringConfiguration.Export.Grpc
+	grpcExportConfiguration := selfMonitoringAndApiAccessConfiguration.Export.Grpc
 	g.Expect(grpcExportConfiguration).NotTo(BeNil())
 	g.Expect(grpcExportConfiguration.Endpoint).To(Equal("dns://" + EndpointGrpcTest))
 	headers := grpcExportConfiguration.Headers
@@ -861,15 +888,16 @@ func verifySelfMonitoringConfigurationGrpc(
 	g.Expect(headers[0].Value).To(Equal("Value"))
 	g.Expect(headers[1].Name).To(Equal(util.Dash0DatasetHeaderName))
 	g.Expect(headers[1].Value).To(Equal(util.DatasetInsights))
-	g.Expect(selfMonitoringConfiguration.Export.Dash0).To(BeNil())
-	g.Expect(selfMonitoringConfiguration.Export.Http).To(BeNil())
+	g.Expect(selfMonitoringAndApiAccessConfiguration.Export.Dash0).To(BeNil())
+	g.Expect(selfMonitoringAndApiAccessConfiguration.Export.Http).To(BeNil())
 }
 
 func verifySelfMonitoringConfigurationHttp(
 	g Gomega,
-	selfMonitoringConfiguration selfmonitoring.SelfMonitoringConfiguration,
+	selfMonitoringAndApiAccessConfiguration selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration,
+	_ *appsv1.Deployment,
 ) {
-	httpExportConfiguration := selfMonitoringConfiguration.Export.Http
+	httpExportConfiguration := selfMonitoringAndApiAccessConfiguration.Export.Http
 	g.Expect(httpExportConfiguration).NotTo(BeNil())
 	g.Expect(httpExportConfiguration.Endpoint).To(Equal(EndpointHttpTest))
 	g.Expect(httpExportConfiguration.Encoding).To(Equal(dash0v1alpha1.Proto))
@@ -879,6 +907,28 @@ func verifySelfMonitoringConfigurationHttp(
 	g.Expect(headers[0].Value).To(Equal("Value"))
 	g.Expect(headers[1].Name).To(Equal(util.Dash0DatasetHeaderName))
 	g.Expect(headers[1].Value).To(Equal(util.DatasetInsights))
-	g.Expect(selfMonitoringConfiguration.Export.Dash0).To(BeNil())
-	g.Expect(selfMonitoringConfiguration.Export.Grpc).To(BeNil())
+	g.Expect(selfMonitoringAndApiAccessConfiguration.Export.Dash0).To(BeNil())
+	g.Expect(selfMonitoringAndApiAccessConfiguration.Export.Grpc).To(BeNil())
+}
+
+func verifyNoSelfMontoringButAuthTokenEnvVarFromToken(
+	g Gomega,
+	selfMonitoringAndApiAccessConfiguration selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration,
+	controllerDeployment *appsv1.Deployment,
+) {
+	g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
+	container := controllerDeployment.Spec.Template.Spec.Containers[0]
+	g.Expect(container.Env).To(
+		ContainElement(MatchEnvVar("SELF_MONITORING_AND_API_AUTH_TOKEN", AuthorizationTokenTest)))
+}
+
+func verifyNoSelfMonitoringButAuthTokenEnvVarFromSecretRef(
+	g Gomega,
+	selfMonitoringAndApiAccessConfiguration selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration,
+	controllerDeployment *appsv1.Deployment,
+) {
+	g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
+	container := controllerDeployment.Spec.Template.Spec.Containers[0]
+	g.Expect(container.Env).To(
+		ContainElement(MatchEnvVarValueFrom("SELF_MONITORING_AND_API_AUTH_TOKEN", "secret-ref", "key")))
 }

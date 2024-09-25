@@ -33,7 +33,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 	var createdObjects []client.Object
 
 	BeforeAll(func() {
-		EnsureDash0OperatorNamespaceExists(ctx, k8sClient)
+		EnsureOperatorNamespaceExists(ctx, k8sClient)
 
 		recorder := manager.GetEventRecorderFor("dash0-monitoring-controller")
 		instrumenter := &instrumentation.Instrumenter{
@@ -61,7 +61,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 			Clientset:                clientset,
 			Instrumenter:             instrumenter,
 			Images:                   TestImages,
-			OperatorNamespace:        Dash0OperatorNamespace,
+			OperatorNamespace:        OperatorNamespace,
 			BackendConnectionManager: backendConnectionManager,
 			DanglingEventsTimeouts:   &DanglingEventsTimeoutsTest,
 		}

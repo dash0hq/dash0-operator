@@ -63,7 +63,7 @@ var _ = BeforeSuite(func() {
 
 	handler = &AutoOperatorConfigurationResourceHandler{
 		Client:             k8sClient,
-		OperatorNamespace:  Dash0OperatorNamespace,
+		OperatorNamespace:  OperatorNamespace,
 		NamePrefix:         OTelCollectorNamePrefixTest,
 		bypassWebhookCheck: true,
 	}

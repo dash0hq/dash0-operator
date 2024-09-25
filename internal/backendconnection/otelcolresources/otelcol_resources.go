@@ -24,7 +24,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
-	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoring"
+	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 )
 
@@ -79,23 +79,23 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		}
 	}
 
-	selfMonitoringConfiguration, err := selfmonitoring.ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
+	selfMonitoringConfiguration, err := selfmonitoringapiaccess.ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
 		operatorConfigurationResource,
 		logger,
 	)
 	if err != nil {
-		selfMonitoringConfiguration = selfmonitoring.SelfMonitoringConfiguration{
-			Enabled: false,
+		selfMonitoringConfiguration = selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{
+			SelfMonitoringEnabled: false,
 		}
 	}
 
 	config := &oTelColConfig{
-		Namespace:                   namespace,
-		NamePrefix:                  m.OTelCollectorNamePrefix,
-		Export:                      *export,
-		SelfMonitoringConfiguration: selfMonitoringConfiguration,
-		Images:                      images,
-		DevelopmentMode:             m.DevelopmentMode,
+		Namespace:                               namespace,
+		NamePrefix:                              m.OTelCollectorNamePrefix,
+		Export:                                  *export,
+		SelfMonitoringAndApiAccessConfiguration: selfMonitoringConfiguration,
+		Images:                                  images,
+		DevelopmentMode:                         m.DevelopmentMode,
 	}
 	desiredState, err := assembleDesiredState(config, m.OTelColResourceSpecs, false)
 	if err != nil {
@@ -218,14 +218,6 @@ func (m *OTelColResourceManager) updateResource(
 	desiredResource client.Object,
 	logger *logr.Logger,
 ) (bool, error) {
-	if m.DevelopmentMode {
-		logger.Info(fmt.Sprintf(
-			"checking whether resource %s/%s requires update",
-			desiredResource.GetNamespace(),
-			desiredResource.GetName(),
-		))
-	}
-
 	if err := m.setOwnerReference(desiredResource, logger); err != nil {
 		return false, err
 	}
@@ -246,12 +238,6 @@ func (m *OTelColResourceManager) updateResource(
 	}
 	hasChanged := !patchResult.IsEmpty() && !isKnownIrrelevantPatch(patchResult)
 	if !hasChanged {
-		if m.DevelopmentMode {
-			logger.Info(fmt.Sprintf("resource %s/%s is already up to date",
-				desiredResource.GetNamespace(),
-				desiredResource.GetName(),
-			))
-		}
 		return false, nil
 	}
 
@@ -338,10 +324,10 @@ func (m *OTelColResourceManager) DeleteResources(
 		NamePrefix: m.OTelCollectorNamePrefix,
 		// For deleting the resources, we do not need the actual export settings; we only use assembleDesiredState to
 		// collect the kinds and names of all resources that need to be deleted.
-		Export:                      dash0v1alpha1.Export{},
-		SelfMonitoringConfiguration: selfmonitoring.SelfMonitoringConfiguration{Enabled: false},
-		Images:                      dummyImagesForDeletion,
-		DevelopmentMode:             m.DevelopmentMode,
+		Export:                                  dash0v1alpha1.Export{},
+		SelfMonitoringAndApiAccessConfiguration: selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{SelfMonitoringEnabled: false},
+		Images:                                  dummyImagesForDeletion,
+		DevelopmentMode:                         m.DevelopmentMode,
 	}
 	desiredResources, err := assembleDesiredState(config, m.OTelColResourceSpecs, true)
 	if err != nil {

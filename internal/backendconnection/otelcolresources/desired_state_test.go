@@ -11,7 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
-	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoring"
+	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -228,9 +228,9 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export:     Dash0ExportWithEndpointAndToken(),
-			SelfMonitoringConfiguration: selfmonitoring.SelfMonitoringConfiguration{
-				Enabled: true,
-				Export:  Dash0ExportWithEndpointTokenAndInsightsDataset(),
+			SelfMonitoringAndApiAccessConfiguration: selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{
+				SelfMonitoringEnabled: true,
+				Export:                Dash0ExportWithEndpointTokenAndInsightsDataset(),
 			},
 			Images: TestImages,
 		}, &DefaultOTelColResourceSpecs, false)
@@ -239,7 +239,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		daemonSet := getDaemonSet(desiredState)
 		selfMonitoringConfiguration, err := parseBackSelfMonitoringEnvVarsFromCollectorDaemonSet(daemonSet)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(selfMonitoringConfiguration.Enabled).To(BeTrue())
+		Expect(selfMonitoringConfiguration.SelfMonitoringEnabled).To(BeTrue())
 		Expect(selfMonitoringConfiguration.Export.Dash0).ToNot(BeNil())
 		Expect(selfMonitoringConfiguration.Export.Dash0.Endpoint).To(Equal(EndpointDash0WithProtocolTest))
 		Expect(selfMonitoringConfiguration.Export.Dash0.Dataset).To(Equal(util.DatasetInsights))
@@ -253,9 +253,9 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export:     Dash0ExportWithEndpointAndToken(),
-			SelfMonitoringConfiguration: selfmonitoring.SelfMonitoringConfiguration{
-				Enabled: false,
-				Export:  Dash0ExportWithEndpointTokenAndInsightsDataset(),
+			SelfMonitoringAndApiAccessConfiguration: selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{
+				SelfMonitoringEnabled: false,
+				Export:                Dash0ExportWithEndpointTokenAndInsightsDataset(),
 			},
 			Images: TestImages,
 		}, &DefaultOTelColResourceSpecs, false)
@@ -264,7 +264,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		daemonSet := getDaemonSet(desiredState)
 		selfMonitoringConfiguration, err := parseBackSelfMonitoringEnvVarsFromCollectorDaemonSet(daemonSet)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(selfMonitoringConfiguration.Enabled).To(BeFalse())
+		Expect(selfMonitoringConfiguration.SelfMonitoringEnabled).To(BeFalse())
 		Expect(selfMonitoringConfiguration.Export.Dash0).To(BeNil())
 		Expect(selfMonitoringConfiguration.Export.Grpc).To(BeNil())
 		Expect(selfMonitoringConfiguration.Export.Http).To(BeNil())
@@ -349,31 +349,22 @@ func findVolumeMountByName(objects []corev1.VolumeMount, name string) *corev1.Vo
 // However, this also tests the functionality used in
 // selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment.
 func parseBackSelfMonitoringEnvVarsFromCollectorDaemonSet(collectorDemonSet *appsv1.DaemonSet) (
-	selfmonitoring.SelfMonitoringConfiguration,
+	selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration,
 	error,
 ) {
-	selfMonitoringConfigurations := make(map[string]selfmonitoring.SelfMonitoringConfiguration)
-
-	// Check that we have the OTel environment variabless set on all init containers and regular containers.
-	// for _, container := range collectorDemonSet.Spec.Template.Spec.InitContainers {
-	//	 if selfMonitoringConfiguration, err := selfmonitoring.ParseSelfMonitoringConfigurationFromContainer(&container); err != nil {
-	//		return selfmonitoring.SelfMonitoringConfiguration{}, err
-	//	 } else {
-	//		selfMonitoringConfigurations[container.Name] = selfMonitoringConfiguration
-	// 	 }
-	// }
+	selfMonitoringConfigurations := make(map[string]selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration)
 
 	for _, container := range collectorDemonSet.Spec.Template.Spec.Containers {
 		if selfMonitoringConfiguration, err :=
-			selfmonitoring.ParseSelfMonitoringConfigurationFromContainer(&container); err != nil {
-			return selfmonitoring.SelfMonitoringConfiguration{}, err
+			selfmonitoringapiaccess.ParseSelfMonitoringConfigurationFromContainer(&container); err != nil {
+			return selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{}, err
 		} else {
 			selfMonitoringConfigurations[container.Name] = selfMonitoringConfiguration
 		}
 	}
 
 	// verify that the configurations on all init containers and regular containers are consistent
-	var referenceMonitoringConfiguration *selfmonitoring.SelfMonitoringConfiguration
+	var referenceMonitoringConfiguration *selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration
 	for _, selfMonitoringConfiguration := range selfMonitoringConfigurations {
 		// Note: Using a local var in the loop fixes golangci-lint complaint exportloopref, see
 		// https://github.com/kyoh86/exportloopref.
@@ -382,7 +373,7 @@ func parseBackSelfMonitoringEnvVarsFromCollectorDaemonSet(collectorDemonSet *app
 			referenceMonitoringConfiguration = &loopLocalSelfMonitoringConfiguration
 		} else {
 			if !reflect.DeepEqual(*referenceMonitoringConfiguration, loopLocalSelfMonitoringConfiguration) {
-				return selfmonitoring.SelfMonitoringConfiguration{},
+				return selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{},
 					fmt.Errorf("inconsistent self-monitoring configurations: %v", selfMonitoringConfigurations)
 			}
 		}
@@ -391,6 +382,6 @@ func parseBackSelfMonitoringEnvVarsFromCollectorDaemonSet(collectorDemonSet *app
 	if referenceMonitoringConfiguration != nil {
 		return *referenceMonitoringConfiguration, nil
 	} else {
-		return selfmonitoring.SelfMonitoringConfiguration{}, nil
+		return selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{}, nil
 	}
 }

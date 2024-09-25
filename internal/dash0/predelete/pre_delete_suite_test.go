@@ -113,7 +113,7 @@ var _ = BeforeSuite(func() {
 		Clientset:                clientset,
 		Images:                   TestImages,
 		Instrumenter:             instrumenter,
-		OperatorNamespace:        Dash0OperatorNamespace,
+		OperatorNamespace:        OperatorNamespace,
 		BackendConnectionManager: backendConnectionManager,
 		DanglingEventsTimeouts:   &DanglingEventsTimeoutsTest,
 	}

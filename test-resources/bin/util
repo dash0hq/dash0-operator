@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 # SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
@@ -23,6 +25,12 @@ verify_kubectx() {
 
 setup_test_environment () {
   test-resources/bin/render-templates.sh
+}
+
+finish_step() {
+  ((step_counter++))
+  echo
+  echo
 }
 
 build_all_images() {
@@ -101,10 +109,17 @@ deploy_via_helm() {
   fi
 
   # Deploy an operator configuration right away.
-  helm_install_command+=" --set operator.dash0Export.enabled=true"
-  helm_install_command+=" --set operator.dash0Export.endpoint=ingress.eu-west-1.aws.dash0-dev.com:4317"
-  helm_install_command+=" --set operator.dash0Export.secretRef.name=dash0-authorization-secret"
-  helm_install_command+=" --set operator.dash0Export.secretRef.key=token"
+  if [[ "${DEPLOY_OPERATOR_CONFIGURATION_VIA_HELM:-}" != false ]]; then
+    helm_install_command+=" --set operator.dash0Export.enabled=true"
+    helm_install_command+=" --set operator.dash0Export.endpoint=ingress.eu-west-1.aws.dash0-dev.com:4317"
+    if [[ "${OPERATOR_CONFIGURATION_VIA_HELM_USE_TOKEN:-}" == true ]]; then
+      helm_install_command+=" --set operator.dash0Export.token=${DASH0_AUTHORIZATION_TOKEN}"
+    else
+      helm_install_command+=" --set operator.dash0Export.secretRef.name=dash0-authorization-secret"
+      helm_install_command+=" --set operator.dash0Export.secretRef.key=token"
+    fi
+    helm_install_command+=" --set operator.dash0Export.apiEndpoint=https://api.eu-west-1.aws.dash0-dev.com"
+  fi
 
   helm_install_command+=" dash0-operator"
   helm_install_command+=" ${OPERATOR_HELM_CHART:-helm-chart/dash0-operator}"
@@ -132,16 +147,18 @@ wait_for_operator_manager_and_webhook() {
 
   # We deploy an operator configuration at startup via operator.dash0Export.enabled=true, wait for that resource to
   # become available as well.
-  echo "waiting for the automatically created operator configuration resource to become available"
-  for ((i=0; i<=20; i++)); do
-    # wait until the resource has been created
-    if kubectl get dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration-auto-resource; then
-       break;
-    fi
-    sleep 1
-  done
-  # wait until the resource has been reconciled and is marked as available
-  kubectl wait dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration-auto-resource --for condition=Available --timeout 30s
+  if [[ "${DEPLOY_OPERATOR_CONFIGURATION_VIA_HELM:-}" != false ]]; then
+    echo "waiting for the automatically created operator configuration resource to become available"
+    for ((i=0; i<=20; i++)); do
+      # wait until the resource has been created
+      if kubectl get dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration-auto-resource; then
+	     break;
+	  fi
+	  sleep 1
+	done
+	# wait until the resource has been reconciled and is marked as available
+	kubectl wait dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration-auto-resource --for condition=Available --timeout 30s
+  fi
 }
 
 has_been_set_to_empty_string() {
@@ -175,3 +192,8 @@ install_monitoring_resource() {
   echo "waiting for the monitoring resource to become available"
   kubectl wait --namespace ${target_namespace} dash0monitorings.operator.dash0.com/dash0-monitoring-resource --for condition=Available
 }
+
+install_foreign_crds() {
+  kubectl apply --server-side -f https://raw.githubusercontent.com/perses/perses-operator/main/config/crd/bases/perses.dev_persesdashboards.yaml
+}
+
