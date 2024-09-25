@@ -17,9 +17,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -35,10 +34,10 @@ var (
 			Value: "/__dash0__",
 		}},
 		SecurityContext: &corev1.SecurityContext{
-			AllowPrivilegeEscalation: &util.False,
-			Privileged:               &util.False,
-			ReadOnlyRootFilesystem:   &util.True,
-			RunAsNonRoot:             &util.False,
+			AllowPrivilegeEscalation: ptr.To(false),
+			Privileged:               ptr.To(false),
+			ReadOnlyRootFilesystem:   ptr.To(true),
+			RunAsNonRoot:             ptr.To(false),
 			RunAsUser:                &ArbitraryNumer,
 			RunAsGroup:               &ArbitraryNumer,
 		},
@@ -63,11 +62,11 @@ func EnsureTestNamespaceExists(
 	return EnsureNamespaceExists(ctx, k8sClient, TestNamespaceName)
 }
 
-func EnsureDash0OperatorNamespaceExists(
+func EnsureOperatorNamespaceExists(
 	ctx context.Context,
 	k8sClient client.Client,
 ) *corev1.Namespace {
-	return EnsureNamespaceExists(ctx, k8sClient, Dash0OperatorNamespace)
+	return EnsureNamespaceExists(ctx, k8sClient, OperatorNamespace)
 }
 
 func EnsureNamespaceExists(
@@ -701,7 +700,7 @@ func DeploymentWithExistingDash0Artifacts(namespace string, name string) *appsv1
 					Value: "value",
 				},
 				{
-					// Dash0 does not support injecting into containers that already have NODE_OPTIONS set via a
+					// The operator does not support injecting into containers that already have NODE_OPTIONS set via a
 					// ValueFrom clause, thus this env var will not be modified.
 					Name:      "NODE_OPTIONS",
 					ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}},

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	persesv1alpha1 "github.com/perses/perses-operator/api/v1alpha1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -28,12 +29,13 @@ import (
 )
 
 const (
-	timeout             = 10 * time.Second
+	timeout             = 5 * time.Second
 	consistentlyTimeout = 2 * time.Second
 	pollingInterval     = 50 * time.Millisecond
 )
 
 var (
+	mgr       ctrl.Manager
 	cfg       *rest.Config
 	k8sClient client.Client
 	clientset *kubernetes.Clientset
@@ -65,6 +67,7 @@ var _ = BeforeSuite(func() {
 	Expect(cfg).NotTo(BeNil())
 
 	Expect(dash0v1alpha1.AddToScheme(scheme.Scheme)).To(Succeed())
+	Expect(persesv1alpha1.AddToScheme(scheme.Scheme)).To(Succeed())
 
 	//+kubebuilder:scaffold:scheme
 
@@ -76,7 +79,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(clientset).NotTo(BeNil())
 
-	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
+	mgr, err = ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme.Scheme,
 	})
 	Expect(err).NotTo(HaveOccurred())

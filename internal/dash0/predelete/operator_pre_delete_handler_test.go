@@ -49,7 +49,7 @@ var _ = Describe("Uninstalling the Dash0 Kubernetes operator", Ordered, func() {
 	)
 
 	BeforeAll(func() {
-		EnsureDash0OperatorNamespaceExists(ctx, k8sClient)
+		EnsureOperatorNamespaceExists(ctx, k8sClient)
 	})
 
 	BeforeEach(func() {

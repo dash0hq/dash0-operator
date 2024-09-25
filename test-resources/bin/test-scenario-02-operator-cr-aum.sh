@@ -15,41 +15,66 @@ load_env_file
 verify_kubectx
 setup_test_environment
 
-echo "STEP 1: remove old test resources"
+step_counter=1
+
+echo "STEP $step_counter: remove old test resources"
 test-resources/bin/test-cleanup.sh ${target_namespace} false
-echo
-echo
+finish_step
 
-echo "STEP 2: creating target namespace (if necessary)"
+echo "STEP $step_counter: creating target namespace (if necessary)"
 test-resources/bin/ensure-namespace-exists.sh ${target_namespace}
-echo
-echo
+finish_step
 
-echo "STEP 3: creating operator namespace and authorization token secret"
+echo "STEP $step_counter: creating operator namespace and authorization token secret"
 test-resources/bin/ensure-namespace-exists.sh dash0-system
 kubectl create secret \
   generic \
   dash0-authorization-secret \
   --namespace dash0-system \
   --from-literal=token="${DASH0_AUTHORIZATION_TOKEN}"
-echo
-echo
+finish_step
 
-echo "STEP 4: rebuild images"
+echo "STEP $step_counter: install foreign custom resource definitions"
+install_foreign_crds
+finish_step
+
+echo "STEP $step_counter: rebuild images"
 build_all_images
-echo
-echo
+finish_step
 
-echo "STEP 5: deploy the Dash0 operator using helm"
+echo "STEP $step_counter: deploy the Dash0 operator using helm"
 deploy_via_helm
-echo
-echo
+finish_step
 
-echo "STEP 6: deploy the Dash0 monitoring resource to namespace ${target_namespace}"
-install_monitoring_resource
-echo
-echo
+if [[ "${DEPLOY_OPERATOR_CONFIGURATION_VIA_HELM:-}" == false ]]; then
+  # if no operator configuration resource has been deployed via the helm chart, deploy one now
+  echo "STEP $step_counter: deploy the Dash0 operator configuration resource"
+  install_operator_configuration_resource
+  finish_step
+else
+  echo "not deploying a Dash0 operator configuration resource (has been deployed with the helm chart already)"
+  echo
+fi
 
-echo "STEP 7: deploy application under monitoring"
-test-resources/node.js/express/deploy.sh ${target_namespace} ${kind}
+if [[ "${DEPLOY_MONITORING_RESOURCE:-}" != false ]]; then
+  echo "STEP $step_counter: deploy the Dash0 monitoring resource to namespace ${target_namespace}"
+  install_monitoring_resource
+  finish_step
+else
+  echo "not deploying a Dash0 monitoring resource"
+  echo
+fi
 
+if [[ "${DEPLOY_APPLICATION_UNDER_MONITORING:-}" != false ]]; then
+  echo "STEP $step_counter: deploy application under monitoring"
+  test-resources/node.js/express/deploy.sh ${target_namespace} ${kind}
+  finish_step
+fi
+
+if [[ "${DEPLOY_PERSES_DASHBOARD:-}" == true ]]; then
+  echo "Waiting 30 seconds before deploying a Perses dashboard resource."
+  sleep 30
+  echo "STEP $step_counter: deploy a Perses dashboard resource to namespace ${target_namespace}"
+  kubectl apply -n ${target_namespace} -f test-resources/customresources/persesdashboard/persesdashboard.yaml
+  finish_step
+fi

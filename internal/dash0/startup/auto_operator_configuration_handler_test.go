@@ -39,7 +39,7 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 	logger := log.FromContext(ctx)
 
 	BeforeAll(func() {
-		EnsureDash0OperatorNamespaceExists(ctx, k8sClient)
+		EnsureOperatorNamespaceExists(ctx, k8sClient)
 	})
 
 	AfterEach(func() {

@@ -40,7 +40,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 
 	BeforeAll(func() {
 		EnsureTestNamespaceExists(ctx, k8sClient)
-		EnsureDash0OperatorNamespaceExists(ctx, k8sClient)
+		EnsureOperatorNamespaceExists(ctx, k8sClient)
 	})
 
 	BeforeEach(func() {

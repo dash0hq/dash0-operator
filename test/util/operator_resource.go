@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	Dash0OperatorDeploymentName       = "controller-deployment"
+	OperatorDeploymentName            = "controller-deployment"
 	OperatorConfigurationResourceName = "dash0-operator-configuration-test"
 )
 
@@ -28,7 +28,42 @@ var (
 	OperatorConfigurationResourceDefaultObjectMeta = metav1.ObjectMeta{
 		Name: OperatorConfigurationResourceName,
 	}
-	OperatorConfigurationResourceDefaultSpec = dash0v1alpha1.Dash0OperatorConfigurationSpec{
+
+	OperatorConfigurationResourceWithoutSelfMonitoringWithoutAuth = dash0v1alpha1.Dash0OperatorConfigurationSpec{
+		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+			Enabled: false,
+		},
+	}
+
+	OperatorConfigurationResourceWithoutSelfMonitoringWithToken = dash0v1alpha1.Dash0OperatorConfigurationSpec{
+		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+			Enabled: false,
+		},
+		Export: &dash0v1alpha1.Export{
+			Dash0: &dash0v1alpha1.Dash0Configuration{
+				ApiEndpoint: ApiEndpointTest,
+				Authorization: dash0v1alpha1.Authorization{
+					Token: &AuthorizationTokenTest,
+				},
+			},
+		},
+	}
+
+	OperatorConfigurationResourceWithoutSelfMonitoringWithSecretRef = dash0v1alpha1.Dash0OperatorConfigurationSpec{
+		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+			Enabled: false,
+		},
+		Export: &dash0v1alpha1.Export{
+			Dash0: &dash0v1alpha1.Dash0Configuration{
+				ApiEndpoint: ApiEndpointTest,
+				Authorization: dash0v1alpha1.Authorization{
+					SecretRef: &SecretRefTest,
+				},
+			},
+		},
+	}
+
+	OperatorConfigurationResourceWithSelfMonitoringWithToken = dash0v1alpha1.Dash0OperatorConfigurationSpec{
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 			Enabled: true,
 		},
@@ -41,6 +76,22 @@ var (
 			},
 		},
 	}
+
+	OperatorConfigurationResourceWithSelfMonitoringWithSecretRef = dash0v1alpha1.Dash0OperatorConfigurationSpec{
+		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+			Enabled: true,
+		},
+		Export: &dash0v1alpha1.Export{
+			Dash0: &dash0v1alpha1.Dash0Configuration{
+				Endpoint: EndpointDash0Test,
+				Authorization: dash0v1alpha1.Authorization{
+					SecretRef: &SecretRefTest,
+				},
+			},
+		},
+	}
+
+	OperatorConfigurationResourceDefaultSpec = OperatorConfigurationResourceWithSelfMonitoringWithToken
 )
 
 func EnsureControllerDeploymentExists(
@@ -133,7 +184,7 @@ func LoadOperatorDeploymentOrFail(
 	deployment := &appsv1.Deployment{}
 	if err := k8sClient.Get(
 		ctx,
-		types.NamespacedName{Namespace: Dash0OperatorNamespace, Name: Dash0OperatorDeploymentName},
+		types.NamespacedName{Namespace: OperatorNamespace, Name: OperatorDeploymentName},
 		deployment,
 	); err != nil {
 		g.Expect(err).NotTo(HaveOccurred())

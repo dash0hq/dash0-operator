@@ -245,6 +245,7 @@ tests:
           enabled: true
           endpoint: https://ingress.dash0.com
           token: "very-secret-dash0-auth-token"
+          apiEndpoint: https://api.dash0.com
     asserts:
       - equal:
           path: spec.template.spec.containers[0].args[3]
@@ -252,6 +253,9 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].args[4]
           value: --operator-configuration-token=very-secret-dash0-auth-token
+      - equal:
+          path: spec.template.spec.containers[0].args[5]
+          value: --operator-configuration-api-endpoint=https://api.dash0.com
   # Note: We deliberately do not have a test for the operator.dash0Export.secretRef variant, since this would trigger
   # a check whether the secret actually exists in the cluster, which of course would fail when runnig helm chart unit
   # tests.

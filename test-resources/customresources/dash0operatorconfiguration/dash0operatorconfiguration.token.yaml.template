@@ -8,3 +8,4 @@ spec:
       endpoint: ingress.eu-west-1.aws.dash0-dev.com:4317
       authorization:
         token: "$DASH0_AUTHORIZATION_TOKEN"
+      apiEndpoint: https://api.eu-west-1.aws.dash0-dev.com

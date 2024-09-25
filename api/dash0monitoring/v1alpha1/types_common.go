@@ -52,6 +52,15 @@ type Dash0Configuration struct {
 	//
 	// +kubebuilder:validation:Required
 	Authorization Authorization `json:"authorization"`
+
+	// The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
+	// dashboards and check rules via the operator. This property is optional. The value needs to be the API endpoint
+	// of your Dash0 organization. The correct API endpoint can be copied fom https://app.dash0.com -> organization
+	// settings -> "Endpoints" -> "API". The correct endpoint value will always start with "https://api." and end in
+	// ".dash0.com"
+	//
+	// +kubebuilder:validation:Optional
+	ApiEndpoint string `json:"apiEndpoint,omitempty"`
 }
 
 // Authorization contains the authorization settings for Dash0.

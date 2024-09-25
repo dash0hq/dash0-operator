@@ -17,7 +17,7 @@ import (
 
 const (
 	TestNamespaceName           = "test-namespace"
-	Dash0OperatorNamespace      = "dash0-system"
+	OperatorNamespace           = "dash0-system"
 	OTelCollectorNamePrefixTest = "unit-test"
 
 	CronJobNamePrefix     = "cronjob"
@@ -40,6 +40,9 @@ const (
 	EndpointDash0WithProtocolTest = "https://endpoint.dash0.com:4317"
 	EndpointGrpcTest              = "endpoint.backend.com:4317"
 	EndpointHttpTest              = "https://endpoint.backend.com:4318"
+
+	ApiEndpointTest = "https://api.dash0.com"
+	DatasetTest     = "test-dataset"
 )
 
 var (
@@ -65,7 +68,7 @@ var (
 
 	DeploymentSelfReference = &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: Dash0OperatorNamespace,
+			Namespace: OperatorNamespace,
 			Name:      "unit-test-dash0-operator-controller",
 			UID:       "2f009c75-d69f-4b02-9d9d-fa17e76f5c1d",
 		},
@@ -93,6 +96,18 @@ func Dash0ExportWithEndpointAndToken() dash0v1alpha1.Export {
 	}
 }
 
+func Dash0ExportWithEndpointAndTokenAndApiEndpoint() dash0v1alpha1.Export {
+	return dash0v1alpha1.Export{
+		Dash0: &dash0v1alpha1.Dash0Configuration{
+			Endpoint: EndpointDash0Test,
+			Authorization: dash0v1alpha1.Authorization{
+				Token: &AuthorizationTokenTest,
+			},
+			ApiEndpoint: ApiEndpointTest,
+		},
+	}
+}
+
 func Dash0ExportWithEndpointTokenAndInsightsDataset() dash0v1alpha1.Export {
 	return dash0v1alpha1.Export{
 		Dash0: &dash0v1alpha1.Dash0Configuration{
@@ -112,6 +127,18 @@ func Dash0ExportWithEndpointAndSecretRef() dash0v1alpha1.Export {
 			Authorization: dash0v1alpha1.Authorization{
 				SecretRef: &SecretRefTest,
 			},
+		},
+	}
+}
+
+func Dash0ExportWithEndpointAndSecretRefAndApiEndpoint() dash0v1alpha1.Export {
+	return dash0v1alpha1.Export{
+		Dash0: &dash0v1alpha1.Dash0Configuration{
+			Endpoint: EndpointDash0Test,
+			Authorization: dash0v1alpha1.Authorization{
+				SecretRef: &SecretRefTest,
+			},
+			ApiEndpoint: ApiEndpointTest,
 		},
 	}
 }

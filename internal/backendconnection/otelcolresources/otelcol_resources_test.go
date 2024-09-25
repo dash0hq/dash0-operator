@@ -29,7 +29,7 @@ var (
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-config-map",
-			Namespace: Dash0OperatorNamespace,
+			Namespace: OperatorNamespace,
 			Labels: map[string]string{
 				"label": "value",
 			},
@@ -48,7 +48,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 	var dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring
 
 	BeforeAll(func() {
-		EnsureDash0OperatorNamespaceExists(ctx, k8sClient)
+		EnsureOperatorNamespaceExists(ctx, k8sClient)
 		EnsureTestNamespaceExists(ctx, k8sClient)
 		dash0MonitoringResource = EnsureMonitoringResourceExists(ctx, k8sClient)
 	})
@@ -67,13 +67,13 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 	AfterEach(func() {
 		Expect(oTelColResourceManager.DeleteResources(
 			ctx,
-			Dash0OperatorNamespace,
+			OperatorNamespace,
 			&logger,
 		)).To(Succeed())
 		Eventually(func(g Gomega) {
-			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, Dash0OperatorNamespace)
+			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, OperatorNamespace)
 		}, 500*time.Millisecond, 20*time.Millisecond).Should(Succeed())
-		Expect(k8sClient.DeleteAllOf(ctx, &corev1.ConfigMap{}, client.InNamespace(Dash0OperatorNamespace))).To(Succeed())
+		Expect(k8sClient.DeleteAllOf(ctx, &corev1.ConfigMap{}, client.InNamespace(OperatorNamespace))).To(Succeed())
 	})
 
 	Describe("when dealing with individual resources", func() {
@@ -125,7 +125,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
-					Dash0OperatorNamespace,
+					OperatorNamespace,
 					TestImages,
 					dash0MonitoringResource,
 					&logger,
@@ -134,7 +134,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			Expect(resourcesHaveBeenCreated).To(BeTrue())
 			Expect(resourcesHaveBeenUpdated).To(BeFalse())
 
-			VerifyCollectorResources(ctx, k8sClient, Dash0OperatorNamespace)
+			VerifyCollectorResources(ctx, k8sClient, OperatorNamespace)
 		})
 
 		It("should fall back to the operator configuration export settings if the monitoring resource has no export", func() {
@@ -144,7 +144,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			)
 			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 				ctx,
-				Dash0OperatorNamespace,
+				OperatorNamespace,
 				TestImages,
 				&dash0v1alpha1.Dash0Monitoring{
 					Spec: dash0v1alpha1.Dash0MonitoringSpec{},
@@ -154,13 +154,13 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resourcesHaveBeenCreated).To(BeTrue())
 			Expect(resourcesHaveBeenUpdated).To(BeFalse())
-			VerifyCollectorResources(ctx, k8sClient, Dash0OperatorNamespace)
+			VerifyCollectorResources(ctx, k8sClient, OperatorNamespace)
 		})
 
 		It("should fail if the monitoring resource has no export and there is no operator configuration resource", func() {
 			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 				ctx,
-				Dash0OperatorNamespace,
+				OperatorNamespace,
 				TestImages,
 				&dash0v1alpha1.Dash0Monitoring{
 					Spec: dash0v1alpha1.Dash0MonitoringSpec{},
@@ -171,7 +171,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				MatchError(
 					"the provided Dash0Monitoring resource does not have an export configuration and no " +
 						"Dash0OperatorConfiguration resource has been found"))
-			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, Dash0OperatorNamespace)
+			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, OperatorNamespace)
 		})
 
 		It("should fail if the monitoring resource has no export and the existing operator configuration "+
@@ -183,7 +183,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			)
 			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 				ctx,
-				Dash0OperatorNamespace,
+				OperatorNamespace,
 				TestImages,
 				&dash0v1alpha1.Dash0Monitoring{
 					Spec: dash0v1alpha1.Dash0MonitoringSpec{},
@@ -192,7 +192,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			)
 			Expect(err).To(MatchError("the provided Dash0Monitoring resource does not have an export configuration " +
 				"and the Dash0OperatorConfiguration resource does not have one either"))
-			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, Dash0OperatorNamespace)
+			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, OperatorNamespace)
 		})
 
 		It("should delete outdated resources from older operator versions", func() {
@@ -200,13 +200,13 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			Expect(k8sClient.Create(ctx, &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      nameOfOutdatedResources,
-					Namespace: Dash0OperatorNamespace,
+					Namespace: OperatorNamespace,
 				},
 			})).To(Succeed())
 			Expect(k8sClient.Create(ctx, &appsv1.DaemonSet{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      nameOfOutdatedResources,
-					Namespace: Dash0OperatorNamespace,
+					Namespace: OperatorNamespace,
 				},
 				Spec: appsv1.DaemonSetSpec{
 					Selector: &metav1.LabelSelector{
@@ -231,7 +231,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			_, _, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
-					Dash0OperatorNamespace,
+					OperatorNamespace,
 					TestImages,
 					dash0MonitoringResource,
 					&logger,
@@ -241,14 +241,14 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			VerifyResourceDoesNotExist(
 				ctx,
 				k8sClient,
-				Dash0OperatorNamespace,
+				OperatorNamespace,
 				nameOfOutdatedResources,
 				&corev1.ConfigMap{},
 			)
 			VerifyResourceDoesNotExist(
 				ctx,
 				k8sClient,
-				Dash0OperatorNamespace,
+				OperatorNamespace,
 				nameOfOutdatedResources,
 				&appsv1.DaemonSet{},
 			)
@@ -260,7 +260,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			_, _, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
-					Dash0OperatorNamespace,
+					OperatorNamespace,
 					TestImages,
 					dash0MonitoringResource,
 					&logger,
@@ -270,12 +270,12 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			// Change some arbitrary fields in some resources, then simulate a reconcile cycle and verify that all
 			// resources are back in their desired state.
 
-			daemonSetConifgMap := GetOTelColDaemonSetConfigMap(ctx, k8sClient, Dash0OperatorNamespace)
+			daemonSetConifgMap := GetOTelColDaemonSetConfigMap(ctx, k8sClient, OperatorNamespace)
 			daemonSetConifgMap.Data["config.yaml"] = "{}"
 			daemonSetConifgMap.Data["bogus-key"] = ""
 			Expect(k8sClient.Update(ctx, daemonSetConifgMap)).To(Succeed())
 
-			daemonSet := GetOTelColDaemonSet(ctx, k8sClient, Dash0OperatorNamespace)
+			daemonSet := GetOTelColDaemonSet(ctx, k8sClient, OperatorNamespace)
 			daemonSet.Spec.Template.Spec.InitContainers = []corev1.Container{}
 			daemonSet.Spec.Template.Spec.Containers[0].Image = "wrong-collector-image:latest"
 			daemonSet.Spec.Template.Spec.Containers[0].Ports = []corev1.ContainerPort{
@@ -284,12 +284,12 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			}
 			Expect(k8sClient.Update(ctx, daemonSet)).To(Succeed())
 
-			deploymentConfigMap := GetOTelColDeploymentConfigMap(ctx, k8sClient, Dash0OperatorNamespace)
+			deploymentConfigMap := GetOTelColDeploymentConfigMap(ctx, k8sClient, OperatorNamespace)
 			deploymentConfigMap.Data["config.yaml"] = "{}"
 			deploymentConfigMap.Data["bogus-key"] = ""
 			Expect(k8sClient.Update(ctx, deploymentConfigMap)).To(Succeed())
 
-			deployment := GetOTelColDeployment(ctx, k8sClient, Dash0OperatorNamespace)
+			deployment := GetOTelColDeployment(ctx, k8sClient, OperatorNamespace)
 			var changedReplicas int32 = 5
 			deployment.Spec.Replicas = &changedReplicas
 			deployment.Spec.Template.Spec.Containers[0].Ports = []corev1.ContainerPort{
@@ -300,7 +300,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
-					Dash0OperatorNamespace,
+					OperatorNamespace,
 					TestImages,
 					dash0MonitoringResource,
 					&logger,
@@ -309,7 +309,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			Expect(resourcesHaveBeenCreated).To(BeFalse())
 			Expect(resourcesHaveBeenUpdated).To(BeTrue())
 
-			VerifyCollectorResources(ctx, k8sClient, Dash0OperatorNamespace)
+			VerifyCollectorResources(ctx, k8sClient, OperatorNamespace)
 		})
 	})
 
@@ -318,7 +318,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			_, _, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
-					Dash0OperatorNamespace,
+					OperatorNamespace,
 					TestImages,
 					dash0MonitoringResource,
 					&logger,
@@ -328,19 +328,19 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			// Delete some arbitrary resources, then simulate a reconcile cycle and verify that all resources have been
 			// recreated.
 
-			daemonSetConifgMap := GetOTelColDaemonSetConfigMap(ctx, k8sClient, Dash0OperatorNamespace)
+			daemonSetConifgMap := GetOTelColDaemonSetConfigMap(ctx, k8sClient, OperatorNamespace)
 			Expect(k8sClient.Delete(ctx, daemonSetConifgMap)).To(Succeed())
 
-			deploymentConfigMap := GetOTelColDeploymentConfigMap(ctx, k8sClient, Dash0OperatorNamespace)
+			deploymentConfigMap := GetOTelColDeploymentConfigMap(ctx, k8sClient, OperatorNamespace)
 			Expect(k8sClient.Delete(ctx, deploymentConfigMap)).To(Succeed())
 
-			deployment := GetOTelColDeployment(ctx, k8sClient, Dash0OperatorNamespace)
+			deployment := GetOTelColDeployment(ctx, k8sClient, OperatorNamespace)
 			Expect(k8sClient.Delete(ctx, deployment)).To(Succeed())
 
 			resourcesHaveBeenCreated, _, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
-					Dash0OperatorNamespace,
+					OperatorNamespace,
 					TestImages,
 					dash0MonitoringResource,
 					&logger,
@@ -348,7 +348,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			Expect(err).ToNot(HaveOccurred())
 			Expect(resourcesHaveBeenCreated).To(BeTrue())
 
-			VerifyCollectorResources(ctx, k8sClient, Dash0OperatorNamespace)
+			VerifyCollectorResources(ctx, k8sClient, OperatorNamespace)
 		})
 	})
 
@@ -357,7 +357,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			// create resources
 			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 				ctx,
-				Dash0OperatorNamespace,
+				OperatorNamespace,
 				TestImages,
 				dash0MonitoringResource,
 				&logger,
@@ -369,7 +369,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			// resources).
 			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 				ctx,
-				Dash0OperatorNamespace,
+				OperatorNamespace,
 				TestImages,
 				dash0MonitoringResource,
 				&logger,
@@ -383,7 +383,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err =
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
-					Dash0OperatorNamespace,
+					OperatorNamespace,
 					TestImages,
 					dash0MonitoringResource,
 					&logger,
@@ -392,7 +392,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			Expect(resourcesHaveBeenCreated).To(BeFalse())
 			Expect(resourcesHaveBeenUpdated).To(BeFalse())
 
-			VerifyCollectorResources(ctx, k8sClient, Dash0OperatorNamespace)
+			VerifyCollectorResources(ctx, k8sClient, OperatorNamespace)
 		})
 	})
 
@@ -401,23 +401,23 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			// create resources (so there is something to delete)
 			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 				ctx,
-				Dash0OperatorNamespace,
+				OperatorNamespace,
 				TestImages,
 				dash0MonitoringResource,
 				&logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
-			VerifyCollectorResources(ctx, k8sClient, Dash0OperatorNamespace)
+			VerifyCollectorResources(ctx, k8sClient, OperatorNamespace)
 
 			// delete everything again
 			err = oTelColResourceManager.DeleteResources(
 				ctx,
-				Dash0OperatorNamespace,
+				OperatorNamespace,
 				&logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
 
-			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, Dash0OperatorNamespace)
+			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, OperatorNamespace)
 		})
 	})
 })

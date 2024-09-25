@@ -36,10 +36,10 @@ import (
 var (
 	namespace                         = TestNamespaceName
 	extraDash0MonitoringResourceNames []types.NamespacedName
-	operatorNamespace                 = Dash0OperatorNamespace
+	operatorNamespace                 = OperatorNamespace
 )
 
-var _ = Describe("The Dash0 controller", Ordered, func() {
+var _ = Describe("The monitoring resource controller", Ordered, func() {
 	ctx := context.Background()
 	var createdObjects []client.Object
 
@@ -47,7 +47,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 
 	BeforeAll(func() {
 		EnsureTestNamespaceExists(ctx, k8sClient)
-		EnsureDash0OperatorNamespaceExists(ctx, k8sClient)
+		EnsureOperatorNamespaceExists(ctx, k8sClient)
 	})
 
 	BeforeEach(func() {
@@ -77,7 +77,7 @@ var _ = Describe("The Dash0 controller", Ordered, func() {
 			Clientset:                clientset,
 			Instrumenter:             instrumenter,
 			Images:                   TestImages,
-			OperatorNamespace:        Dash0OperatorNamespace,
+			OperatorNamespace:        OperatorNamespace,
 			BackendConnectionManager: backendConnectionManager,
 			DanglingEventsTimeouts:   &DanglingEventsTimeoutsTest,
 		}

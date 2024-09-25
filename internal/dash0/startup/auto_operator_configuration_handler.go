@@ -29,6 +29,7 @@ type OperatorConfigurationValues struct {
 	Endpoint string
 	Token    string
 	SecretRef
+	ApiEndpoint string
 }
 
 type AutoOperatorConfigurationResourceHandler struct {
@@ -198,7 +199,16 @@ func (r *AutoOperatorConfigurationResourceHandler) createOperatorConfigurationRe
 		}
 	}
 
-	if err := r.Create(ctx, &dash0v1alpha1.Dash0OperatorConfiguration{
+	dash0Export := dash0v1alpha1.Export{
+		Dash0: &dash0v1alpha1.Dash0Configuration{
+			Endpoint:      operatorConfiguration.Endpoint,
+			Authorization: authorization,
+		},
+	}
+	if operatorConfiguration.ApiEndpoint != "" {
+		dash0Export.Dash0.ApiEndpoint = operatorConfiguration.ApiEndpoint
+	}
+	operatorConfigurationResource := dash0v1alpha1.Dash0OperatorConfiguration{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: operatorConfigurationAutoResourceName,
 		},
@@ -206,14 +216,10 @@ func (r *AutoOperatorConfigurationResourceHandler) createOperatorConfigurationRe
 			SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 				Enabled: true,
 			},
-			Export: &dash0v1alpha1.Export{
-				Dash0: &dash0v1alpha1.Dash0Configuration{
-					Endpoint:      operatorConfiguration.Endpoint,
-					Authorization: authorization,
-				},
-			},
+			Export: &dash0Export,
 		},
-	}); err != nil {
+	}
+	if err := r.Create(ctx, &operatorConfigurationResource); err != nil {
 		return fmt.Errorf("failed to create the Dash0 operator configuration resource: %w", err)
 	}
 

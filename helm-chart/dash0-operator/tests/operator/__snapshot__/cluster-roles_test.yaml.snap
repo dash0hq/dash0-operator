@@ -14,6 +14,14 @@ cluster roles should match snapshot:
       name: dash0-operator-manager-role
     rules:
       - apiGroups:
+          - apiextensions.k8s.io
+        resources:
+          - customresourcedefinitions
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
           - apps
         resources:
           - daemonsets
@@ -66,6 +74,14 @@ cluster roles should match snapshot:
           - delete
           - get
           - list
+      - apiGroups:
+          - perses.dev
+        resources:
+          - persesdashboards
+        verbs:
+          - get
+          - list
+          - watch
       - apiGroups:
           - operator.dash0.com
         resources:

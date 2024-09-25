@@ -146,6 +146,29 @@ func (d *Dash0OperatorConfiguration) EnsureResourceIsMarkedAsDegraded(
 		})
 }
 
+func (d *Dash0OperatorConfiguration) HasDash0ApiAccessConfigured() bool {
+	return d.Spec.Export != nil &&
+		d.Spec.Export.Dash0 != nil &&
+		d.Spec.Export.Dash0.ApiEndpoint != "" &&
+		(d.Spec.Export.Dash0.Authorization.Token != nil || d.Spec.Export.Dash0.Authorization.SecretRef != nil)
+}
+
+func (d *Dash0OperatorConfiguration) GetDash0AuthorizationIfConfigured() *Authorization {
+	if d.Spec.Export == nil {
+		return nil
+	}
+	if d.Spec.Export.Dash0 == nil {
+		return nil
+	}
+
+	authorization := d.Spec.Export.Dash0.Authorization
+	if (authorization.Token != nil && *authorization.Token != "") ||
+		(authorization.SecretRef != nil && authorization.SecretRef.Name != "" && authorization.SecretRef.Key != "") {
+		return &authorization
+	}
+	return nil
+}
+
 func (d *Dash0OperatorConfiguration) GetResourceTypeName() string {
 	return "Dash0OperatorConfiguration"
 }

@@ -7,4 +7,6 @@ const (
 	AuthorizationHeaderName = "Authorization"
 	Dash0DatasetHeaderName  = "Dash0-Dataset"
 	DatasetInsights         = "dash0-internal"
+
+	SelfMonitoringAndApiAuthTokenEnvVarName = "SELF_MONITORING_AND_API_AUTH_TOKEN"
 )

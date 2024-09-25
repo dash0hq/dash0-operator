@@ -2,7 +2,7 @@
 FROM node:20.13.1-alpine3.19 AS build-node.js
 RUN mkdir -p /dash0-init-container/instrumentation/node.js
 WORKDIR /dash0-init-container/instrumentation/node.js
-COPY node.js/package* .
+COPY node.js/package* ./
 COPY node.js/dash0hq-opentelemetry-*.tgz .
 RUN NPM_CONFIG_UPDATE_NOTIFIER=false \
   npm ci \

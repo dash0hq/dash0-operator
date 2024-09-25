@@ -49,6 +49,56 @@ func (matcher *MatchEnvVarMatcher) NegatedFailureMessage(actual interface{}) (me
 	return format.Message(actual, fmt.Sprintf("not %s", matcher.message()))
 }
 
+func MatchEnvVarValueFrom(name string, secretName string, secretKey string, args ...interface{}) gomega.OmegaMatcher {
+	return &MatchEnvVarValueFromSecretMatcher{
+		Name:       name,
+		SecretName: secretName,
+		SecretKey:  secretKey,
+		Args:       args,
+	}
+}
+
+type MatchEnvVarValueFromSecretMatcher struct {
+	Name       string
+	SecretName string
+	SecretKey  string
+	Args       []interface{}
+}
+
+func (matcher *MatchEnvVarValueFromSecretMatcher) Match(actual interface{}) (success bool, err error) {
+	envVar, ok := actual.(corev1.EnvVar)
+	if !ok {
+		return false,
+			fmt.Errorf(
+				"MatchEnvVarValueFromSecretMatcher matcher requires a corev1.EnvVar. Got:\n%s",
+				format.Object(actual, 1),
+			)
+	}
+	return matcher.Name == envVar.Name &&
+			envVar.ValueFrom != nil &&
+			envVar.ValueFrom.SecretKeyRef != nil &&
+			matcher.SecretName == envVar.ValueFrom.SecretKeyRef.Name &&
+			matcher.SecretKey == envVar.ValueFrom.SecretKeyRef.Key,
+		nil
+}
+
+func (matcher *MatchEnvVarValueFromSecretMatcher) FailureMessage(actual interface{}) (message string) {
+	return format.Message(actual, matcher.message())
+}
+
+func (matcher *MatchEnvVarValueFromSecretMatcher) message() string {
+	return fmt.Sprintf(
+		"to contain env var with name %s and value from secret %s/%s",
+		matcher.Name,
+		matcher.SecretName,
+		matcher.SecretKey,
+	)
+}
+
+func (matcher *MatchEnvVarValueFromSecretMatcher) NegatedFailureMessage(actual interface{}) (message string) {
+	return format.Message(actual, fmt.Sprintf("not %s", matcher.message()))
+}
+
 func MatchVolumeMount(name string, mountPath string, args ...interface{}) gomega.OmegaMatcher {
 	return &MatchVolumeMountMatcher{
 		Name:      name,

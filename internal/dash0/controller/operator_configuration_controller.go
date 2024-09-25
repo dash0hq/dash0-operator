@@ -19,23 +19,24 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
-	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoring"
+	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 )
 
 type OperatorConfigurationReconciler struct {
 	client.Client
-	Clientset               *kubernetes.Clientset
-	Scheme                  *runtime.Scheme
-	Recorder                record.EventRecorder
-	DeploymentSelfReference *appsv1.Deployment
-	DanglingEventsTimeouts  *util.DanglingEventsTimeouts
-	Images                  util.Images
-	DevelopmentMode         bool
+	Clientset                    *kubernetes.Clientset
+	PersesDashboardCrdReconciler *PersesDashboardCrdReconciler
+	Scheme                       *runtime.Scheme
+	Recorder                     record.EventRecorder
+	DeploymentSelfReference      *appsv1.Deployment
+	DanglingEventsTimeouts       *util.DanglingEventsTimeouts
+	Images                       util.Images
+	DevelopmentMode              bool
 }
 
 const (
-	ManagerContainerName                           = "manager"
+	ControllerContainerName                        = "manager"
 	updateStatusFailedMessageOperatorConfiguration = "Failed to update Dash0 operator configuration status " +
 		"conditions, requeuing reconcile request."
 )
@@ -133,36 +134,17 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 			return ctrl.Result{}, nil
 		}
 		logger.Info("Reconciling the operator configuration resource", "name", req.Name)
-	} else {
-		logger.Info("Reconciling the deletion of the operator configuration resource", "name", req.Name)
-	}
-
-	currentSelfMonitoringConfiguration, err :=
-		selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment(
-			r.DeploymentSelfReference,
-			ManagerContainerName,
-		)
-	if err != nil {
-		logger.Error(err, "cannot get self-monitoring configuration from controller deployment")
-		return ctrl.Result{
-			Requeue: true,
-		}, err
 	}
 
 	if resourceDeleted {
-		if currentSelfMonitoringConfiguration.Enabled {
-			if err = r.applySelfMonitoring(ctx, selfmonitoring.SelfMonitoringConfiguration{
-				Enabled: false,
-			}); err != nil {
-				logger.Error(err, "cannot disable self-monitoring of the controller deployment, requeuing reconcile request.")
-				return ctrl.Result{
-					Requeue: true,
-				}, nil
-			} else {
-				logger.Info("Self-monitoring of the controller deployment has been disabled")
-			}
+		logger.Info("Reconciling the deletion of the operator configuration resource", "name", req.Name)
+		if err = r.removeSelfMonitoringAndApiAccessAndUpdate(ctx); err != nil {
+			logger.Error(err, "cannot disable self-monitoring/API access of the controller deployment, requeuing reconcile request.")
+			return ctrl.Result{
+				Requeue: true,
+			}, nil
 		} else {
-			logger.Info("Self-monitoring configuration of the controller deployment is already disabled")
+			logger.Info("Self-monitoring of the controller deployment has been disabled")
 		}
 		return ctrl.Result{}, nil
 	}
@@ -178,69 +160,165 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, err
 	}
 
-	newSelfMonitoringConfiguration, err :=
-		selfmonitoring.ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(resource, &logger)
+	if resource.HasDash0ApiAccessConfigured() {
+		dataset := resource.Spec.Export.Dash0.Dataset
+		if dataset == "" {
+			dataset = "default"
+		}
+		r.PersesDashboardCrdReconciler.SetApiEndpointAndDataset(&ApiConfig{
+			Endpoint: resource.Spec.Export.Dash0.ApiEndpoint,
+			Dataset:  dataset,
+		})
+	} else {
+		logger.Info("Settings required for managing dashboards via the operator are missing, the operator will not " +
+			"update dashboards in Dash0.")
+		r.PersesDashboardCrdReconciler.RemoveApiEndpointAndDataset()
+	}
+
+	currentSelfMonitoringAndApiAccessConfiguration, err :=
+		selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromControllerDeployment(
+			r.DeploymentSelfReference,
+			ControllerContainerName,
+		)
 	if err != nil {
-		logger.Error(err, "cannot generate self-monitoring configuration from operator configuration resource")
+		logger.Error(err, "cannot get self-monitoring/API access configuration from controller deployment")
 		return ctrl.Result{
 			Requeue: true,
 		}, err
 	}
 
-	if reflect.DeepEqual(currentSelfMonitoringConfiguration, newSelfMonitoringConfiguration) {
-		logger.Info("Self-monitoring configuration of the controller deployment is up-to-date")
-	} else {
-		if err = r.applySelfMonitoring(ctx, newSelfMonitoringConfiguration); err != nil {
-			logger.Error(err, "Cannot apply self-monitoring configurations to the controller deployment")
-			resource.EnsureResourceIsMarkedAsDegraded("CannotApplySelfMonitoring", "Could not update the controller deployment to reflect the self-monitoring settings")
-			if statusUpdateErr := r.Status().Update(ctx, resource); statusUpdateErr != nil {
-				logger.Error(statusUpdateErr, "Failed to update Dash0 operator status conditions, requeuing reconcile request.")
+	newSelfMonitoringAndApiAccessConfiguration, err :=
+		selfmonitoringapiaccess.ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(resource, &logger)
+	if err != nil {
+		logger.Error(
+			err,
+			"cannot generate self-monitoring/API access configuration from operator configuration resource",
+		)
+		return ctrl.Result{}, err
+	}
+
+	controllerDeployment := &appsv1.Deployment{}
+	if err = r.Client.Get(ctx, client.ObjectKeyFromObject(r.DeploymentSelfReference), controllerDeployment); err != nil {
+		return ctrl.Result{}, fmt.Errorf("cannot fetch the current controller deployment: %w", err)
+	}
+	if !reflect.DeepEqual(currentSelfMonitoringAndApiAccessConfiguration, newSelfMonitoringAndApiAccessConfiguration) {
+		if err = r.applySelfMonitoringAndApiAccess(
+			controllerDeployment,
+			newSelfMonitoringAndApiAccessConfiguration,
+		); err != nil {
+			logger.Error(err, "cannot apply self-monitoring configuration to the controller deployment")
+			if statusUpdateErr := r.markAsDegraded(
+				ctx,
+				resource,
+				"CannotUpdatedControllerDeployment",
+				"Could not update the controller deployment to reflect the self-monitoring settings.",
+				&logger,
+			); statusUpdateErr != nil {
 				return ctrl.Result{}, statusUpdateErr
 			}
-			return ctrl.Result{
-				Requeue: true,
-			}, nil
+			return ctrl.Result{}, err
 		}
 
-		logger.Info("Self-monitoring configurations applied to the controller deployment", "self-monitoring", newSelfMonitoringConfiguration)
+		if err = r.Client.Update(ctx, controllerDeployment); err != nil {
+			logger.Error(err, "cannot update the controller deployment")
+			if statusUpdateErr := r.markAsDegraded(
+				ctx,
+				resource,
+				"CannotUpdatedControllerDeployment",
+				"Could not update the controller deployment.",
+				&logger,
+			); statusUpdateErr != nil {
+				return ctrl.Result{}, statusUpdateErr
+			}
+			return ctrl.Result{}, err
+		}
+		logger.Info("The controller deployment has been updated.")
+	} else {
+		logger.Info("The controller deployment is up to date.")
 	}
 
 	resource.EnsureResourceIsMarkedAsAvailable()
 	if err = r.Status().Update(ctx, resource); err != nil {
 		logger.Error(err, updateStatusFailedMessageOperatorConfiguration)
-		return ctrl.Result{}, fmt.Errorf("cannot mark Dash0 operator configuration resource as available: %w", err)
+		return ctrl.Result{}, fmt.Errorf("cannot mark the Dash0 operator configuration resource as available: %w", err)
 	}
 
 	return ctrl.Result{}, nil
 }
 
-func (r *OperatorConfigurationReconciler) applySelfMonitoring(
-	ctx context.Context,
-	selfMonitoringConfiguration selfmonitoring.SelfMonitoringConfiguration,
+func (r *OperatorConfigurationReconciler) applySelfMonitoringAndApiAccess(
+	controllerDeployment *appsv1.Deployment,
+	selfMonitoringAndApiAccessConfiguration selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration,
 ) error {
-	updatedDeployment := &appsv1.Deployment{}
-	if err := r.Client.Get(ctx, client.ObjectKeyFromObject(r.DeploymentSelfReference), updatedDeployment); err != nil {
-		return fmt.Errorf("cannot fetch the current controller deployment: %w", err)
-	}
-
-	if selfMonitoringConfiguration.Enabled {
-		if err := selfmonitoring.EnableSelfMonitoringInControllerDeployment(
-			updatedDeployment,
-			ManagerContainerName,
-			selfMonitoringConfiguration,
+	if selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled {
+		if err := selfmonitoringapiaccess.EnableSelfMonitoringInControllerDeployment(
+			controllerDeployment,
+			ControllerContainerName,
+			selfMonitoringAndApiAccessConfiguration,
 			r.Images.GetOperatorVersion(),
 			r.DevelopmentMode,
 		); err != nil {
 			return fmt.Errorf("cannot apply settings to enable self-monitoring to the controller deployment: %w", err)
 		}
-	} else {
-		if err := selfmonitoring.DisableSelfMonitoringInControllerDeployment(
-			updatedDeployment,
-			ManagerContainerName,
+	} else if selfMonitoringAndApiAccessConfiguration.HasDash0ApiAccessConfigured() {
+		if err := selfmonitoringapiaccess.UpdateApiTokenWithoutAddingSelfMonitoringToControllerDeployment(
+			controllerDeployment,
+			ControllerContainerName,
+			selfMonitoringAndApiAccessConfiguration.GetDash0Authorization(),
+		); err != nil {
+			return fmt.Errorf("cannot add the Dash0 API token to the controller deployment: %w", err)
+		}
+		if err := selfmonitoringapiaccess.DisableSelfMonitoringInControllerDeployment(
+			controllerDeployment,
+			ControllerContainerName,
+			false,
 		); err != nil {
 			return fmt.Errorf("cannot apply settings to disable self-monitoring to the controller deployment: %w", err)
 		}
+	} else {
+		if err := selfmonitoringapiaccess.DisableSelfMonitoringInControllerDeployment(
+			controllerDeployment,
+			ControllerContainerName,
+			true,
+		); err != nil {
+			return fmt.Errorf("cannot apply settings to the controller deployment to disable self-monitoring and API access: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (r *OperatorConfigurationReconciler) removeSelfMonitoringAndApiAccessAndUpdate(ctx context.Context) error {
+	updatedDeployment := &appsv1.Deployment{}
+	if err := r.Client.Get(ctx, client.ObjectKeyFromObject(r.DeploymentSelfReference), updatedDeployment); err != nil {
+		return fmt.Errorf("cannot fetch the current controller deployment: %w", err)
+	}
+
+	if err := selfmonitoringapiaccess.DisableSelfMonitoringInControllerDeployment(
+		updatedDeployment,
+		ControllerContainerName,
+		true,
+	); err != nil {
+		return fmt.Errorf("cannot apply settings to disable self-monitoring to the controller deployment: %w", err)
 	}
 
 	return r.Client.Update(ctx, updatedDeployment)
+}
+
+func (r *OperatorConfigurationReconciler) markAsDegraded(
+	ctx context.Context,
+	resource *dash0v1alpha1.Dash0OperatorConfiguration,
+	reason string,
+	message string,
+	logger *logr.Logger,
+) error {
+	resource.EnsureResourceIsMarkedAsDegraded(
+		reason,
+		message,
+	)
+	if err := r.Status().Update(ctx, resource); err != nil {
+		logger.Error(err, "Failed to update Dash0 operator status conditions, requeuing reconcile request.")
+		return err
+	}
+	return nil
 }
