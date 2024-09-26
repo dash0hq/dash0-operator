@@ -37,6 +37,11 @@ type collectorConfigurationTemplateValues struct {
 	DevelopmentMode          bool
 }
 
+// This type just exists to ensure all created objects go through addCommonMetadata.
+type clientObject struct {
+	object client.Object
+}
+
 const (
 	OtlpGrpcHostPort = 40317
 	OtlpHttpHostPort = 40318
@@ -150,39 +155,39 @@ var (
 	deploymentReplicas int32 = 1
 )
 
-func assembleDesiredState(config *oTelColConfig, forDeletion bool) ([]client.Object, error) {
-	var desiredState []client.Object
-	desiredState = append(desiredState, assembleServiceAccountForDaemonSet(config))
+func assembleDesiredState(config *oTelColConfig, forDeletion bool) ([]clientObject, error) {
+	var desiredState []clientObject
+	desiredState = append(desiredState, addCommonMetadata(assembleServiceAccountForDaemonSet(config)))
 	daemonSetCollectorConfigMap, err := assembleDaemonSetCollectorConfigMap(config, forDeletion)
 	if err != nil {
 		return desiredState, err
 	}
-	desiredState = append(desiredState, daemonSetCollectorConfigMap)
-	desiredState = append(desiredState, assembleFilelogOffsetsConfigMap(config))
-	desiredState = append(desiredState, assembleClusterRoleForDaemonSet(config))
-	desiredState = append(desiredState, assembleClusterRoleBindingForDaemonSet(config))
-	desiredState = append(desiredState, assembleRole(config))
-	desiredState = append(desiredState, assembleRoleBinding(config))
-	desiredState = append(desiredState, assembleService(config))
+	desiredState = append(desiredState, addCommonMetadata(daemonSetCollectorConfigMap))
+	desiredState = append(desiredState, addCommonMetadata(assembleFilelogOffsetsConfigMap(config)))
+	desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleForDaemonSet(config)))
+	desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleBindingForDaemonSet(config)))
+	desiredState = append(desiredState, addCommonMetadata(assembleRole(config)))
+	desiredState = append(desiredState, addCommonMetadata(assembleRoleBinding(config)))
+	desiredState = append(desiredState, addCommonMetadata(assembleService(config)))
 	collectorDaemonSet, err := assembleCollectorDaemonSet(config)
 	if err != nil {
 		return desiredState, err
 	}
-	desiredState = append(desiredState, collectorDaemonSet)
+	desiredState = append(desiredState, addCommonMetadata(collectorDaemonSet))
 
-	desiredState = append(desiredState, assembleServiceAccountForDeployment(config))
-	desiredState = append(desiredState, assembleClusterRoleForDeployment(config))
-	desiredState = append(desiredState, assembleClusterRoleBindingForDeployment(config))
+	desiredState = append(desiredState, addCommonMetadata(assembleServiceAccountForDeployment(config)))
+	desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleForDeployment(config)))
+	desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleBindingForDeployment(config)))
 	deploymentCollectorConfigMap, err := assembleDeploymentCollectorConfigMap(config, forDeletion)
 	if err != nil {
 		return desiredState, err
 	}
-	desiredState = append(desiredState, deploymentCollectorConfigMap)
+	desiredState = append(desiredState, addCommonMetadata(deploymentCollectorConfigMap))
 	collectorDeployment, err := assembleCollectorDeployment(config)
 	if err != nil {
 		return desiredState, err
 	}
-	desiredState = append(desiredState, collectorDeployment)
+	desiredState = append(desiredState, addCommonMetadata(collectorDeployment))
 
 	return desiredState, nil
 }
@@ -1009,6 +1014,23 @@ func labels(addOptOutLabel bool) map[string]string {
 		lbls[dash0OptOutLabelKey] = "false"
 	}
 	return lbls
+}
+
+func addCommonMetadata(object client.Object) clientObject {
+	// For clusters managed by ArgoCD, we need to prevent ArgoCD to prune resources that have no owner reference
+	// which are all cluster-scoped resources, like cluster roles & cluster role bindings. We could add the annotation
+	// to achieve that only to the cluster-scoped resources, but instead we just apply it to all resources we manage.
+	// * https://github.com/argoproj/argo-cd/issues/4764#issuecomment-722661940 -- this is where they say that only top
+	//   level resources are pruned (that is basically the same as resources without an owner reference).
+	// * The docs for preventing this on a resource level are here:
+	//   https://argo-cd.readthedocs.io/en/stable/user-guide/sync-options/#no-prune-resources
+	if object.GetAnnotations() == nil {
+		object.SetAnnotations(map[string]string{})
+	}
+	object.GetAnnotations()["argocd.argoproj.io/sync-options"] = "Prune=false"
+	return clientObject{
+		object: object,
+	}
 }
 
 func compileObsoleteResources(namespace string, namePrefix string) []client.Object {
