@@ -747,9 +747,10 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			By("updating the Dash0 monitoring resource endpoint setting")
 			newEndpoint := "ingress.us-east-2.aws.dash0-dev.com:4317"
 			updateEndpointOfDash0MonitoringResource(applicationUnderTestNamespace, newEndpoint)
-			// Note: updating the endpoint in this way will lead to telemetry from the applications under test no longer
-			// being sent to otlp-sink. This is not relevant for this test case, but might be an issue if we ever add
-			// more tests to this suite after this one.
+			defer func() {
+				// reset the endpoint to the default after this test
+				updateEndpointOfDash0MonitoringResource(applicationUnderTestNamespace, defaultEndpoint)
+			}()
 
 			By("waiting for self-monitoring metrics")
 			Eventually(func(g Gomega) {

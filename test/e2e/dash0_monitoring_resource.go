@@ -92,7 +92,7 @@ func updateEndpointOfDash0MonitoringResource(
 ) {
 	updateDash0MonitoringResource(
 		namespace,
-		fmt.Sprintf("{\"spec\":{\"export\":{\"http\":{\"endpoint\":\"%s\"}}}}", newEndpoint),
+		fmt.Sprintf("{\"spec\":{\"export\":{\"dash0\":{\"endpoint\":\"%s\"}}}}", newEndpoint),
 	)
 }
 
