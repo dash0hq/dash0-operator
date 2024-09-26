@@ -102,7 +102,8 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	}
 	resourcesHaveBeenCreated := false
 	resourcesHaveBeenUpdated := false
-	for _, desiredResource := range desiredState {
+	for _, wrapper := range desiredState {
+		desiredResource := wrapper.object
 		isNew, isChanged, err := m.createOrUpdateResource(
 			ctx,
 			desiredResource,
@@ -346,7 +347,8 @@ func (m *OTelColResourceManager) DeleteResources(
 		return err
 	}
 	var allErrors []error
-	for _, desiredResource := range desiredResources {
+	for _, wrapper := range desiredResources {
+		desiredResource := wrapper.object
 		err = m.Client.Delete(ctx, desiredResource)
 		if err != nil {
 			if apierrors.IsNotFound(err) {

@@ -9,7 +9,6 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoring"
@@ -53,6 +52,14 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(desiredState).To(HaveLen(14))
+
+		for _, wrapper := range desiredState {
+			object := wrapper.object
+			annotations := object.GetAnnotations()
+			Expect(annotations).To(HaveLen(1))
+			Expect(annotations["argocd.argoproj.io/sync-options"]).To(Equal("Prune=false"))
+		}
+
 		collectorConfigConfigMapContent := getCollectorConfigConfigMapContent(desiredState)
 		Expect(collectorConfigConfigMapContent).To(ContainSubstring(fmt.Sprintf("endpoint: %s", EndpointDash0TestQuoted)))
 		Expect(collectorConfigConfigMapContent).NotTo(ContainSubstring("file/traces"))
@@ -264,37 +271,37 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 	})
 })
 
-func getConfigMap(desiredState []client.Object, name string) *corev1.ConfigMap {
+func getConfigMap(desiredState []clientObject, name string) *corev1.ConfigMap {
 	for _, object := range desiredState {
-		if cm, ok := object.(*corev1.ConfigMap); ok && cm.Name == name {
+		if cm, ok := object.object.(*corev1.ConfigMap); ok && cm.Name == name {
 			return cm
 		}
 	}
 	return nil
 }
 
-func getCollectorConfigConfigMapContent(desiredState []client.Object) string {
+func getCollectorConfigConfigMapContent(desiredState []clientObject) string {
 	cm := getConfigMap(desiredState, ExpectedDaemonSetCollectorConfigMapName)
 	return cm.Data["config.yaml"]
 }
 
-func getFileOffsetConfigMapContent(desiredState []client.Object) string {
+func getFileOffsetConfigMapContent(desiredState []clientObject) string {
 	cm := getConfigMap(desiredState, ExpectedDaemonSetFilelogOffsetSynchConfigMapName)
 	return cm.Data["config.yaml"]
 }
 
-func getDaemonSet(desiredState []client.Object) *appsv1.DaemonSet {
+func getDaemonSet(desiredState []clientObject) *appsv1.DaemonSet {
 	for _, object := range desiredState {
-		if ds, ok := object.(*appsv1.DaemonSet); ok {
+		if ds, ok := object.object.(*appsv1.DaemonSet); ok {
 			return ds
 		}
 	}
 	return nil
 }
 
-func getDeployment(desiredState []client.Object) *appsv1.Deployment {
+func getDeployment(desiredState []clientObject) *appsv1.Deployment {
 	for _, object := range desiredState {
-		if d, ok := object.(*appsv1.Deployment); ok {
+		if d, ok := object.object.(*appsv1.Deployment); ok {
 			return d
 		}
 	}
