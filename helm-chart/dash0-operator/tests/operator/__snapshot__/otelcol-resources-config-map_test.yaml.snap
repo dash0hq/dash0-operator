@@ -1,0 +1,48 @@
+otelcol resources config map should match snapshot:
+  1: |
+    apiVersion: v1
+    data:
+      otelcolresources.yaml: |-
+        collectorDaemonSetCollectorContainerResources:
+          gomemlimit: 400MiB
+          limits:
+            memory: 500Mi
+          requests:
+            memory: 500Mi
+        collectorDaemonSetConfigurationReloaderContainerResources:
+          gomemlimit: 8MiB
+          limits:
+            memory: 12Mi
+          requests:
+            memory: 12Mi
+        collectorDaemonSetFileLogOffsetSynchContainerResources:
+          gomemlimit: 24MiB
+          limits:
+            memory: 32Mi
+          requests:
+            memory: 32Mi
+
+        collectorDeploymentCollectorContainerResources:
+          gomemlimit: 400MiB
+          limits:
+            memory: 500Mi
+          requests:
+            memory: 500Mi
+        collectorDeploymentConfigurationReloaderContainerResources:
+          gomemlimit: 8MiB
+          limits:
+            memory: 12Mi
+          requests:
+            memory: 12Mi
+    kind: ConfigMap
+    metadata:
+      labels:
+        app.kubernetes.io/component: controller
+        app.kubernetes.io/instance: collector-resources-config-map
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: dash0-operator
+        app.kubernetes.io/part-of: dash0-operator
+        app.kubernetes.io/version: 0.0.0
+        helm.sh/chart: dash0-operator-0.0.0
+      name: dash0-operator-collector-resources
+      namespace: NAMESPACE

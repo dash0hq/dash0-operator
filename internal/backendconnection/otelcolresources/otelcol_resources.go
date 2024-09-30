@@ -33,6 +33,7 @@ type OTelColResourceManager struct {
 	Scheme                           *runtime.Scheme
 	DeploymentSelfReference          *appsv1.Deployment
 	OTelCollectorNamePrefix          string
+	OTelColResourceSpecs             *OTelColResourceSpecs
 	DevelopmentMode                  bool
 	obsoleteResourcesHaveBeenDeleted atomic.Bool
 }
@@ -96,7 +97,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		Images:                      images,
 		DevelopmentMode:             m.DevelopmentMode,
 	}
-	desiredState, err := assembleDesiredState(config, false)
+	desiredState, err := assembleDesiredState(config, m.OTelColResourceSpecs, false)
 	if err != nil {
 		return false, false, err
 	}
@@ -342,7 +343,7 @@ func (m *OTelColResourceManager) DeleteResources(
 		Images:                      dummyImagesForDeletion,
 		DevelopmentMode:             m.DevelopmentMode,
 	}
-	desiredResources, err := assembleDesiredState(config, true)
+	desiredResources, err := assembleDesiredState(config, m.OTelColResourceSpecs, true)
 	if err != nil {
 		return err
 	}

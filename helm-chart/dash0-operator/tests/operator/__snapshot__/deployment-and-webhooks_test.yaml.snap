@@ -102,6 +102,9 @@ deployment should match snapshot (default values):
                 - mountPath: /tmp/k8s-webhook-server/serving-certs
                   name: certificates
                   readOnly: true
+                - mountPath: /etc/config
+                  name: config-volume
+                  readOnly: true
             - args:
                 - --secure-listen-address=0.0.0.0:8443
                 - --upstream=http://127.0.0.1:8080/
@@ -138,6 +141,9 @@ deployment should match snapshot (default values):
               secret:
                 defaultMode: 420
                 secretName: dash0-operator-certificates
+            - configMap:
+                name: dash0-operator-collector-resources
+              name: config-volume
 metrics service should match snapshot (default settings):
   1: |
     apiVersion: v1

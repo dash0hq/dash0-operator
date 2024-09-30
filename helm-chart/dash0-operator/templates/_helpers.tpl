@@ -42,6 +42,11 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 {{- default (printf "%s-controller" (include "dash0-operator.chartName" .)) .Values.operator.serviceAccount.name }}
 {{- end }}
 
+{{/* otelcol resources config map name */}}
+{{- define "dash0-operator.collectorResourceConfigMapName" -}}
+{{ include "dash0-operator.chartName" . }}-collector-resources
+{{- end }}
+
 {{- define "dash0-operator.deploymentName" -}}
 {{ include "dash0-operator.chartName" . }}-controller
 {{- end }}

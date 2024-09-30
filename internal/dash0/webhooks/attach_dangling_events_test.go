@@ -48,6 +48,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 			Scheme:                  k8sClient.Scheme(),
 			DeploymentSelfReference: DeploymentSelfReference,
 			OTelCollectorNamePrefix: OTelCollectorNamePrefixTest,
+			OTelColResourceSpecs:    &otelcolresources.DefaultOTelColResourceSpecs,
 		}
 		backendConnectionManager := &backendconnection.BackendConnectionManager{
 			Client:                 k8sClient,
