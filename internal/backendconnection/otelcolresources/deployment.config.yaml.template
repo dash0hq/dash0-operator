@@ -45,7 +45,10 @@ processors:
     - k8snode
 
 receivers:
-  k8s_cluster: {}
+  k8s_cluster:
+    metrics:
+      k8s.namespace.phase:
+        enabled: false
 
 service:
   extensions:
