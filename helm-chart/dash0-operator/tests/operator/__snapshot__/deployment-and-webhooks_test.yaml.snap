@@ -183,6 +183,7 @@ webhook service should match snapshot (default settings):
         app.kubernetes.io/version: 0.0.0
         helm.sh/chart: dash0-operator-0.0.0
       name: dash0-operator-webhook-service
+      namespace: NAMESPACE
     spec:
       ports:
         - port: 443
