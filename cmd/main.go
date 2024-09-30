@@ -78,6 +78,8 @@ const (
 
 	developmentModeEnvVarName = "DASH0_DEVELOPMENT_MODE"
 
+	oTelColResourceSpecConfigFile = "/etc/config/otelcolresources.yaml"
+
 	//nolint
 	mandatoryEnvVarMissingMessageTemplate = "cannot start the Dash0 operator, the mandatory environment variable \"%s\" is missing"
 
@@ -405,6 +407,14 @@ func readEnvironmentVariables() error {
 	return nil
 }
 
+func readConfiguration() (*otelcolresources.OTelColResourceSpecs, error) {
+	oTelColResourceSpec, err := otelcolresources.ReadOTelColResourcesConfiguration(oTelColResourceSpecConfigFile)
+	if err != nil {
+		return nil, fmt.Errorf("Cannot read configuration file %s: %w", oTelColResourceSpecConfigFile, err)
+	}
+	return oTelColResourceSpec, nil
+}
+
 func readOptionalPullPolicyFromEnvironmentVariable(envVarName string) corev1.PullPolicy {
 	pullPolicyRaw := os.Getenv(envVarName)
 	if pullPolicyRaw != "" {
@@ -428,6 +438,11 @@ func startDash0Controllers(
 	operatorConfiguration *startup.OperatorConfigurationValues,
 	developmentMode bool,
 ) error {
+	oTelColResourceSpecs, err := readConfiguration()
+	if err != nil {
+		os.Exit(1)
+	}
+
 	oTelCollectorBaseUrl :=
 		fmt.Sprintf(
 			"http://%s-opentelemetry-collector.%s.svc.cluster.local:4318",
@@ -470,6 +485,7 @@ func startDash0Controllers(
 		Scheme:                  mgr.GetScheme(),
 		DeploymentSelfReference: deploymentSelfReference,
 		OTelCollectorNamePrefix: envVars.oTelCollectorNamePrefix,
+		OTelColResourceSpecs:    oTelColResourceSpecs,
 		DevelopmentMode:         developmentMode,
 	}
 	backendConnectionManager := &backendconnection.BackendConnectionManager{

@@ -32,7 +32,7 @@ spec:
             - "--uninstrument-all"
           {{ include "dash0-operator.restrictiveContainerSecurityContext" . | nindent 10 }}
           resources:
-            {{- toYaml .Values.operator.managerPodResources | nindent 12 }}
+            {{- toYaml .Values.operator.managerContainerResources | nindent 12 }}
       securityContext:
         runAsNonRoot: true
       serviceAccountName: {{ template "dash0-operator.serviceAccountName" . }}

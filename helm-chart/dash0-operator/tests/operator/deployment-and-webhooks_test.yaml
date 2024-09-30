@@ -99,7 +99,7 @@ tests:
           repository: custom-filelog-offset-synch-image
           tag: "13.14.15"
           pullPolicy: Never
-        managerPodResources:
+        managerContainerResources:
           limits:
             cpu: 123m
             memory: 456Mi

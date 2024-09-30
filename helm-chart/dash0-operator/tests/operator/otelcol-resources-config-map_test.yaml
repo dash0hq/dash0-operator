@@ -1,0 +1,7 @@
+suite: test otelcol resources config map
+templates:
+  - operator/otelcol-resources-config-map.yaml
+tests:
+  - it: otelcol resources config map should match snapshot
+    asserts:
+      - matchSnapshot: {}

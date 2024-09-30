@@ -155,7 +155,11 @@ var (
 	deploymentReplicas int32 = 1
 )
 
-func assembleDesiredState(config *oTelColConfig, forDeletion bool) ([]clientObject, error) {
+func assembleDesiredState(
+	config *oTelColConfig,
+	resourceSpecs *OTelColResourceSpecs,
+	forDeletion bool,
+) ([]clientObject, error) {
 	var desiredState []clientObject
 	desiredState = append(desiredState, addCommonMetadata(assembleServiceAccountForDaemonSet(config)))
 	daemonSetCollectorConfigMap, err := assembleDaemonSetCollectorConfigMap(config, forDeletion)
@@ -169,7 +173,7 @@ func assembleDesiredState(config *oTelColConfig, forDeletion bool) ([]clientObje
 	desiredState = append(desiredState, addCommonMetadata(assembleRole(config)))
 	desiredState = append(desiredState, addCommonMetadata(assembleRoleBinding(config)))
 	desiredState = append(desiredState, addCommonMetadata(assembleService(config)))
-	collectorDaemonSet, err := assembleCollectorDaemonSet(config)
+	collectorDaemonSet, err := assembleCollectorDaemonSet(config, resourceSpecs)
 	if err != nil {
 		return desiredState, err
 	}
@@ -183,7 +187,7 @@ func assembleDesiredState(config *oTelColConfig, forDeletion bool) ([]clientObje
 		return desiredState, err
 	}
 	desiredState = append(desiredState, addCommonMetadata(deploymentCollectorConfigMap))
-	collectorDeployment, err := assembleCollectorDeployment(config)
+	collectorDeployment, err := assembleCollectorDeployment(config, resourceSpecs)
 	if err != nil {
 		return desiredState, err
 	}
@@ -368,8 +372,11 @@ func assembleService(config *oTelColConfig) *corev1.Service {
 	}
 }
 
-func assembleCollectorDaemonSet(config *oTelColConfig) (*appsv1.DaemonSet, error) {
-	collectorContainer, err := assembleDaemonSetCollectorContainer(config)
+func assembleCollectorDaemonSet(config *oTelColConfig, resourceSpecs *OTelColResourceSpecs) (*appsv1.DaemonSet, error) {
+	collectorContainer, err := assembleDaemonSetCollectorContainer(
+		config,
+		resourceSpecs.CollectorDaemonSetCollectorContainerResources,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -401,11 +408,20 @@ func assembleCollectorDaemonSet(config *oTelColConfig) (*appsv1.DaemonSet, error
 					// This setting is required to enable the configuration reloader process to send Unix signals to the
 					// collector process.
 					ShareProcessNamespace: &util.True,
-					InitContainers:        []corev1.Container{assembleFileLogOffsetSynchInitContainer(config)},
+					InitContainers: []corev1.Container{assembleFileLogOffsetSynchInitContainer(
+						config,
+						resourceSpecs.CollectorDaemonSetFileLogOffsetSynchContainerResources,
+					)},
 					Containers: []corev1.Container{
 						collectorContainer,
-						assembleConfigurationReloaderContainer(config),
-						assembleFileLogOffsetSynchContainer(config),
+						assembleConfigurationReloaderContainer(
+							config,
+							resourceSpecs.CollectorDaemonSetConfigurationReloaderContainerResources,
+						),
+						assembleFileLogOffsetSynchContainer(
+							config,
+							resourceSpecs.CollectorDaemonSetFileLogOffsetSynchContainerResources,
+						),
 					},
 					Volumes:     assembleCollectorDaemonSetVolumes(config, configMapItems),
 					HostNetwork: false,
@@ -429,7 +445,10 @@ func assembleCollectorDaemonSet(config *oTelColConfig) (*appsv1.DaemonSet, error
 	return collectorDaemonSet, nil
 }
 
-func assembleFileLogOffsetSynchContainer(config *oTelColConfig) corev1.Container {
+func assembleFileLogOffsetSynchContainer(
+	config *oTelColConfig,
+	resourceRequirements ResourceRequirementsWithGoMemLimit,
+) corev1.Container {
 	filelogOffsetSynchContainer := corev1.Container{
 		Name:            "filelog-offset-synch",
 		Args:            []string{"--mode=synch"},
@@ -438,7 +457,7 @@ func assembleFileLogOffsetSynchContainer(config *oTelColConfig) corev1.Container
 		Env: []corev1.EnvVar{
 			{
 				Name:  "GOMEMLIMIT",
-				Value: "4MiB",
+				Value: resourceRequirements.GoMemLimit,
 			},
 			{
 				Name:  "K8S_CONFIGMAP_NAMESPACE",
@@ -456,11 +475,7 @@ func assembleFileLogOffsetSynchContainer(config *oTelColConfig) corev1.Container
 			k8sNodeNameEnvVar,
 			k8sPodUidEnvVar,
 		},
-		Resources: corev1.ResourceRequirements{
-			Limits: corev1.ResourceList{
-				corev1.ResourceMemory: resource.MustParse("12Mi"),
-			},
-		},
+		Resources:    resourceRequirements.ToResourceRequirements(),
 		VolumeMounts: []corev1.VolumeMount{filelogReceiverOffsetsVolumeMount},
 	}
 	if config.Images.FilelogOffsetSynchImagePullPolicy != "" {
@@ -542,7 +557,7 @@ func assembleCollectorDaemonSetVolumeMounts() []corev1.VolumeMount {
 	}
 }
 
-func assembleCollectorEnvVars(config *oTelColConfig) ([]corev1.EnvVar, error) {
+func assembleCollectorEnvVars(config *oTelColConfig, goMemLimit string) ([]corev1.EnvVar, error) {
 	collectorEnv := []corev1.EnvVar{
 		{
 			Name: "MY_POD_IP",
@@ -560,7 +575,7 @@ func assembleCollectorEnvVars(config *oTelColConfig) ([]corev1.EnvVar, error) {
 		},
 		{
 			Name:  "GOMEMLIMIT",
-			Value: "400MiB",
+			Value: goMemLimit,
 		},
 	}
 
@@ -580,9 +595,10 @@ func assembleCollectorEnvVars(config *oTelColConfig) ([]corev1.EnvVar, error) {
 
 func assembleDaemonSetCollectorContainer(
 	config *oTelColConfig,
+	resourceRequirements ResourceRequirementsWithGoMemLimit,
 ) (corev1.Container, error) {
 	collectorVolumeMounts := assembleCollectorDaemonSetVolumeMounts()
-	collectorEnv, err := assembleCollectorEnvVars(config)
+	collectorEnv, err := assembleCollectorEnvVars(config, resourceRequirements.GoMemLimit)
 	if err != nil {
 		return corev1.Container{}, err
 	}
@@ -609,12 +625,8 @@ func assembleDaemonSetCollectorContainer(
 		Env:            collectorEnv,
 		LivenessProbe:  &collectorProbe,
 		ReadinessProbe: &collectorProbe,
-		Resources: corev1.ResourceRequirements{
-			Limits: corev1.ResourceList{
-				corev1.ResourceMemory: resource.MustParse("500Mi"),
-			},
-		},
-		VolumeMounts: collectorVolumeMounts,
+		Resources:      resourceRequirements.ToResourceRequirements(),
+		VolumeMounts:   collectorVolumeMounts,
 	}
 	if config.Images.CollectorImagePullPolicy != "" {
 		collectorContainer.ImagePullPolicy = config.Images.CollectorImagePullPolicy
@@ -622,7 +634,7 @@ func assembleDaemonSetCollectorContainer(
 	return collectorContainer, nil
 }
 
-func assembleConfigurationReloaderContainer(config *oTelColConfig) corev1.Container {
+func assembleConfigurationReloaderContainer(config *oTelColConfig, resourceRequirements ResourceRequirementsWithGoMemLimit) corev1.Container {
 	collectorPidFileMountRO := collectorPidFileMountRW
 	collectorPidFileMountRO.ReadOnly = true
 	configurationReloaderContainer := corev1.Container{
@@ -636,16 +648,12 @@ func assembleConfigurationReloaderContainer(config *oTelColConfig) corev1.Contai
 		Env: []corev1.EnvVar{
 			{
 				Name:  "GOMEMLIMIT",
-				Value: "4MiB",
+				Value: resourceRequirements.GoMemLimit,
 			},
 			k8sNodeNameEnvVar,
 			k8sPodUidEnvVar,
 		},
-		Resources: corev1.ResourceRequirements{
-			Limits: corev1.ResourceList{
-				corev1.ResourceMemory: resource.MustParse("12Mi"),
-			},
-		},
+		Resources:    resourceRequirements.ToResourceRequirements(),
 		VolumeMounts: []corev1.VolumeMount{collectorConfigVolume, collectorPidFileMountRO},
 	}
 	if config.Images.ConfigurationReloaderImagePullPolicy != "" {
@@ -654,7 +662,7 @@ func assembleConfigurationReloaderContainer(config *oTelColConfig) corev1.Contai
 	return configurationReloaderContainer
 }
 
-func assembleFileLogOffsetSynchInitContainer(config *oTelColConfig) corev1.Container {
+func assembleFileLogOffsetSynchInitContainer(config *oTelColConfig, resourceRequirements ResourceRequirementsWithGoMemLimit) corev1.Container {
 	initFilelogOffsetSynchContainer := corev1.Container{
 		Name:            "filelog-offset-init",
 		Args:            []string{"--mode=init"},
@@ -663,7 +671,7 @@ func assembleFileLogOffsetSynchInitContainer(config *oTelColConfig) corev1.Conta
 		Env: []corev1.EnvVar{
 			{
 				Name:  "GOMEMLIMIT",
-				Value: "4MiB",
+				Value: resourceRequirements.GoMemLimit,
 			},
 			{
 				Name:  "K8S_CONFIGMAP_NAMESPACE",
@@ -681,11 +689,7 @@ func assembleFileLogOffsetSynchInitContainer(config *oTelColConfig) corev1.Conta
 			k8sNodeNameEnvVar,
 			k8sPodUidEnvVar,
 		},
-		Resources: corev1.ResourceRequirements{
-			Limits: corev1.ResourceList{
-				corev1.ResourceMemory: resource.MustParse("12Mi"),
-			},
-		},
+		Resources:    resourceRequirements.ToResourceRequirements(),
 		VolumeMounts: []corev1.VolumeMount{filelogReceiverOffsetsVolumeMount},
 	}
 	if config.Images.FilelogOffsetSynchImagePullPolicy != "" {
@@ -817,8 +821,14 @@ func assembleClusterRoleBindingForDeployment(config *oTelColConfig) *rbacv1.Clus
 	}
 }
 
-func assembleCollectorDeployment(config *oTelColConfig) (*appsv1.Deployment, error) {
-	collectorContainer, err := assembleDeploymentCollectorContainer(config)
+func assembleCollectorDeployment(
+	config *oTelColConfig,
+	resourceSpecs *OTelColResourceSpecs,
+) (*appsv1.Deployment, error) {
+	collectorContainer, err := assembleDeploymentCollectorContainer(
+		config,
+		resourceSpecs.CollectorDeploymentCollectorContainerResources,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -853,7 +863,10 @@ func assembleCollectorDeployment(config *oTelColConfig) (*appsv1.Deployment, err
 					ShareProcessNamespace: &util.True,
 					Containers: []corev1.Container{
 						collectorContainer,
-						assembleConfigurationReloaderContainer(config),
+						assembleConfigurationReloaderContainer(
+							config,
+							resourceSpecs.CollectorDeploymentConfigurationReloaderContainerResources,
+						),
 					},
 					Volumes:     assembleCollectorDeploymentVolumes(config, configMapItems),
 					HostNetwork: false,
@@ -907,12 +920,13 @@ func assembleCollectorDeploymentVolumes(
 
 func assembleDeploymentCollectorContainer(
 	config *oTelColConfig,
+	resourceRequirements ResourceRequirementsWithGoMemLimit,
 ) (corev1.Container, error) {
 	collectorVolumeMounts := []corev1.VolumeMount{
 		collectorConfigVolume,
 		collectorPidFileMountRW,
 	}
-	collectorEnv, err := assembleCollectorEnvVars(config)
+	collectorEnv, err := assembleCollectorEnvVars(config, resourceRequirements.GoMemLimit)
 	if err != nil {
 		return corev1.Container{}, err
 	}
@@ -925,12 +939,8 @@ func assembleDeploymentCollectorContainer(
 		Env:             collectorEnv,
 		LivenessProbe:   &collectorProbe,
 		ReadinessProbe:  &collectorProbe,
-		Resources: corev1.ResourceRequirements{
-			Limits: corev1.ResourceList{
-				corev1.ResourceMemory: resource.MustParse("300Mi"),
-			},
-		},
-		VolumeMounts: collectorVolumeMounts,
+		Resources:       resourceRequirements.ToResourceRequirements(),
+		VolumeMounts:    collectorVolumeMounts,
 	}
 	if config.Images.CollectorImagePullPolicy != "" {
 		collectorContainer.ImagePullPolicy = config.Images.CollectorImagePullPolicy

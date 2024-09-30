@@ -89,8 +89,8 @@ operator:
   #   label2: "value 2"
   podLabels: {}
 
-  # resources for the controller manager pod(s)
-  managerPodResources:
+  # resources for the controller manager container
+  managerContainerResources:
     limits:
       cpu: 500m
       memory: 128Mi
@@ -100,8 +100,8 @@ operator:
       memory: 64Mi
       ephemeral-storage: 500Mi
 
-  # resources for the kube-rbac-proxy pod(s)
-  kubeRbacProxyPodResources:
+  # resources for the kube-rbac-proxy container
+  kubeRbacProxyContainerResources:
     limits:
       cpu: 500m
       memory: 128Mi
@@ -110,6 +110,68 @@ operator:
       cpu: 5m
       memory: 64Mi
       ephemeral-storage: 500Mi
+
+  collectorDaemonSetCollectorContainerResources:
+    limits:
+      # cpu: (no cpu limit by default)
+      memory: 500Mi
+      # storage: (no storage limit by default)
+      # ephemeral-storage: (no ephemeral-storage limit by default)
+    gomemlimit: 400MiB
+    requests:
+      # cpu: (no cpu request by default)
+      memory: 500Mi
+      # storage: (no storage request by default)
+      # ephemeral-storage: (no ephemeral-storage request by default)
+  collectorDaemonSetConfigurationReloaderContainerResources:
+    limits:
+      # cpu: (no cpu limit by default)
+      memory: 12Mi
+      # storage: (no storage limit by default)
+      # ephemeral-storage: (no ephemeral-storage limit by default)
+    gomemlimit: 8MiB
+    requests:
+      # cpu: (no cpu request by default)
+      memory: 12Mi
+      # storage: (no storage request by default)
+      # ephemeral-storage: (no ephemeral-storage request by default)
+  collectorDaemonSetFileLogOffsetSynchContainerResources:
+    limits:
+      # cpu: (no cpu limit by default)
+      memory: 32Mi
+      # storage: (no storage limit by default)
+      # ephemeral-storage: (no ephemeral-storage limit by default)
+    gomemlimit: 24MiB
+    requests:
+      # cpu: (no cpu request by default)
+      memory: 32Mi
+      # storage: (no storage request by default)
+      # ephemeral-storage: (no ephemeral-storage request by default)
+
+  collectorDeploymentCollectorContainerResources:
+    limits:
+      # cpu: (no cpu limit by default)
+      memory: 500Mi
+      # storage: (no storage limit by default)
+      # ephemeral-storage: (no ephemeral-storage limit by default)
+    gomemlimit: 400MiB
+    requests:
+      # cpu: (no cpu request by default)
+      memory: 500Mi
+      # storage: (no storage request by default)
+      # ephemeral-storage: (no ephemeral-storage request by default)
+  collectorDeploymentConfigurationReloaderContainerResources:
+    limits:
+      # cpu: (no cpu limit by default)
+      memory: 12Mi
+      # storage: (no storage limit by default)
+      # ephemeral-storage: (no ephemeral-storage limit by default)
+    gomemlimit: 8MiB
+    requests:
+      # cpu: (no cpu request by default)
+      memory: 12Mi
+      # storage: (no storage request by default)
+      # ephemeral-storage: (no ephemeral-storage request by default)
 
   # the port for the metrics service
   metricsPort: 8443

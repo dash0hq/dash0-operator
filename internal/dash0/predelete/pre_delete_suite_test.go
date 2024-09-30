@@ -101,6 +101,7 @@ var _ = BeforeSuite(func() {
 		Scheme:                  k8sClient.Scheme(),
 		DeploymentSelfReference: DeploymentSelfReference,
 		OTelCollectorNamePrefix: OTelCollectorNamePrefixTest,
+		OTelColResourceSpecs:    &otelcolresources.DefaultOTelColResourceSpecs,
 	}
 	backendConnectionManager := &backendconnection.BackendConnectionManager{
 		Client:                 k8sClient,

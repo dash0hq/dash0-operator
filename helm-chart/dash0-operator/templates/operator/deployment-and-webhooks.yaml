@@ -152,11 +152,14 @@ spec:
           name: webhook-server
           protocol: TCP
         resources:
-          {{- toYaml .Values.operator.managerPodResources | nindent 10 }}
+          {{- toYaml .Values.operator.managerContainerResources | nindent 10 }}
         {{ include "dash0-operator.restrictiveContainerSecurityContext" . | nindent 8 }}
         volumeMounts:
-        - mountPath: /tmp/k8s-webhook-server/serving-certs
-          name: certificates
+        - name: certificates
+          mountPath: /tmp/k8s-webhook-server/serving-certs
+          readOnly: true
+        - name: config-volume
+          mountPath: /etc/config
           readOnly: true
         livenessProbe:
           httpGet:
@@ -182,7 +185,7 @@ spec:
           name: https
           protocol: TCP
         resources:
-          {{- toYaml .Values.operator.kubeRbacProxyPodResources | nindent 10 }}
+          {{- toYaml .Values.operator.kubeRbacProxyContainerResources | nindent 10 }}
         securityContext:
           allowPrivilegeEscalation: false
           capabilities:
@@ -204,6 +207,9 @@ spec:
         secret:
           defaultMode: 420
           secretName: {{ include "dash0-operator.chartName" . }}-certificates
+      - name: config-volume
+        configMap:
+          name: {{ template "dash0-operator.collectorResourceConfigMapName" . }}
 ---
 apiVersion: v1
 kind: Service
