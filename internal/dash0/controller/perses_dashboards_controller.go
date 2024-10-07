@@ -15,12 +15,12 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	persesv1alpha1 "github.com/perses/perses-operator/api/v1alpha1"
-	persesv1common "github.com/perses/perses/pkg/model/api/v1/common"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/workqueue"
@@ -43,6 +43,14 @@ type PersesDashboardCrdReconciler struct {
 }
 
 //+kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list;watch
+
+type validationResult struct {
+	namespace string
+	name      string
+	url       string
+	origin    string
+	authToken string
+}
 
 var (
 	// persesDashboardCrdReconcileRequestMetric otelmetric.Int64Counter
@@ -132,10 +140,17 @@ func (r *PersesDashboardCrdReconciler) startWatchingPersesDashboardResources(
 ) error {
 	logger.Info("Setting up a watch for Perses dashboard custom resources.")
 
+	unstructuredGvkForPersesDashboards := &unstructured.Unstructured{}
+	unstructuredGvkForPersesDashboards.SetGroupVersionKind(schema.GroupVersionKind{
+		Kind:    "PersesDashboard",
+		Group:   "perses.dev",
+		Version: "v1alpha1",
+	})
+
 	controllerBuilder := ctrl.NewControllerManagedBy(r.mgr).
 		Named("dash0_perses_dashboard_controller").
 		Watches(
-			&persesv1alpha1.PersesDashboard{},
+			unstructuredGvkForPersesDashboards,
 			// Deliberately not using a convenience mechanism like &handler.EnqueueRequestForObject{} (which would
 			// feed all events into the Reconcile method) here, since using the lower-level TypedEventHandler interface
 			// directly allows us to distinguish between create and delete events more easily.
@@ -209,7 +224,7 @@ func (r *PersesDashboardReconciler) Create(
 		"name",
 		e.Object.GetName(),
 	)
-	if err := r.UpsertDashboard(e.Object.(*persesv1alpha1.PersesDashboard), &logger); err != nil {
+	if err := r.UpsertDashboard(e.Object.(*unstructured.Unstructured), &logger); err != nil {
 		logger.Error(err, "unable to upsert the dashboard")
 	}
 }
@@ -235,7 +250,7 @@ func (r *PersesDashboardReconciler) Update(
 	_ = util.RetryWithCustomBackoff(
 		"upsert dashboard",
 		func() error {
-			return r.UpsertDashboard(e.ObjectNew.(*persesv1alpha1.PersesDashboard), &logger)
+			return r.UpsertDashboard(e.ObjectNew.(*unstructured.Unstructured), &logger)
 		},
 		retrySettings,
 		true,
@@ -264,7 +279,7 @@ func (r *PersesDashboardReconciler) Delete(
 	_ = util.RetryWithCustomBackoff(
 		"delete dashboard",
 		func() error {
-			return r.DeleteDashboard(e.Object.(*persesv1alpha1.PersesDashboard), &logger)
+			return r.DeleteDashboard(e.Object.(*unstructured.Unstructured), &logger)
 		},
 		retrySettings,
 		true,
@@ -291,11 +306,11 @@ func (r *PersesDashboardReconciler) Reconcile(
 }
 
 func (r *PersesDashboardReconciler) UpsertDashboard(
-	persesDashboard *persesv1alpha1.PersesDashboard,
+	persesDashboard *unstructured.Unstructured,
 	logger *logr.Logger,
 ) error {
 	apiConfig := r.apiConfig.Load()
-	dashboardUrl, dashboardOrigin, authToken, executeRequest := r.validateConfigAndRenderUrl(
+	valResult, executeRequest := r.validateConfigAndRenderUrl(
 		persesDashboard,
 		apiConfig,
 		logger,
@@ -304,25 +319,44 @@ func (r *PersesDashboardReconciler) UpsertDashboard(
 		return nil
 	}
 
-	if persesDashboard.Spec.Display == nil {
-		persesDashboard.Spec.Display = &persesv1common.Display{}
+	specRaw := persesDashboard.Object["spec"]
+	if specRaw == nil {
+		logger.Info("Perses dashboard has no spec, the dashboard will not be updated in Dash0.")
+		return nil
 	}
-	if persesDashboard.Spec.Display.Name == "" {
+	spec, ok := specRaw.(map[string]interface{})
+	if !ok {
+		logger.Info("Perses dashboard spec is not a map, the dashboard will not be updated in Dash0.")
+		return nil
+	}
+	displayRaw := spec["display"]
+	if displayRaw == nil {
+		spec["display"] = map[string]interface{}{}
+		displayRaw = spec["display"]
+	}
+	display, ok := displayRaw.(map[string]interface{})
+	if !ok {
+		logger.Info("Perses dashboard spec.display is not a map, the dashboard will not be updated in Dash0.")
+		return nil
+	}
+
+	displayName, ok := display["name"]
+	if !ok || displayName == "" {
 		// Let the dashboard name default to the perses dashboard resource's namespace + name, if unset.
-		persesDashboard.Spec.Display.Name = fmt.Sprintf("%s/%s", persesDashboard.Namespace, persesDashboard.Name)
+		display["name"] = fmt.Sprintf("%s/%s", valResult.namespace, valResult.name)
 	}
 
 	// Remove all unnecessary metadata (labels & annotations), we basically only need the dashboard spec.
 	serializedDashboard, _ := json.Marshal(
 		map[string]interface{}{
-			"kind": persesDashboard.Kind,
-			"spec": persesDashboard.Spec,
+			"kind": "PersesDashboard",
+			"spec": spec,
 		})
 	requestPayload := bytes.NewBuffer(serializedDashboard)
 
 	req, err := http.NewRequest(
 		http.MethodPut,
-		dashboardUrl,
+		valResult.url,
 		requestPayload,
 	)
 	if err != nil {
@@ -330,16 +364,16 @@ func (r *PersesDashboardReconciler) UpsertDashboard(
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", authToken))
-	logger.Info(fmt.Sprintf("Updating/creating dashboard %s in Dash0", dashboardOrigin))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", valResult.authToken))
+	logger.Info(fmt.Sprintf("Updating/creating dashboard %s in Dash0", valResult.origin))
 	res, err := r.httpClient.Do(req)
 	if err != nil {
-		logger.Error(err, fmt.Sprintf("unable to execute the HTTP request to update the dashboard %s", dashboardOrigin))
+		logger.Error(err, fmt.Sprintf("unable to execute the HTTP request to update the dashboard %s", valResult.origin))
 		return err
 	}
 
 	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
-		return r.handleNon2xxStatusCode(res, dashboardOrigin, logger)
+		return r.handleNon2xxStatusCode(res, valResult.origin, logger)
 	}
 
 	// http status code was 2xx, discard the response body and close it
@@ -352,11 +386,11 @@ func (r *PersesDashboardReconciler) UpsertDashboard(
 }
 
 func (r *PersesDashboardReconciler) DeleteDashboard(
-	persesDashboard *persesv1alpha1.PersesDashboard,
+	persesDashboard *unstructured.Unstructured,
 	logger *logr.Logger,
 ) error {
 	apiConfig := r.apiConfig.Load()
-	dashboardUrl, dashboardOrigin, authToken, executeRequest := r.validateConfigAndRenderUrl(
+	valResult, executeRequest := r.validateConfigAndRenderUrl(
 		persesDashboard,
 		apiConfig,
 		logger,
@@ -367,23 +401,23 @@ func (r *PersesDashboardReconciler) DeleteDashboard(
 
 	req, err := http.NewRequest(
 		http.MethodDelete,
-		dashboardUrl,
+		valResult.url,
 		nil,
 	)
 	if err != nil {
 		logger.Error(err, "unable to create a new HTTP request to delete the dashboard")
 		return err
 	}
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", authToken))
-	logger.Info(fmt.Sprintf("Deleting dashboard %s in Dash0", dashboardOrigin))
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", valResult.authToken))
+	logger.Info(fmt.Sprintf("Deleting dashboard %s in Dash0", valResult.origin))
 	res, err := r.httpClient.Do(req)
 	if err != nil {
-		logger.Error(err, fmt.Sprintf("unable to execute the HTTP request to delete the dashboard %s", dashboardOrigin))
+		logger.Error(err, fmt.Sprintf("unable to execute the HTTP request to delete the dashboard %s", valResult.origin))
 		return err
 	}
 
 	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
-		return r.handleNon2xxStatusCode(res, dashboardOrigin, logger)
+		return r.handleNon2xxStatusCode(res, valResult.origin, logger)
 	}
 
 	// http status code was 2xx, discard the response body and close it
@@ -396,42 +430,61 @@ func (r *PersesDashboardReconciler) DeleteDashboard(
 }
 
 func (r *PersesDashboardReconciler) validateConfigAndRenderUrl(
-	persesDashboard *persesv1alpha1.PersesDashboard,
+	persesDashboard *unstructured.Unstructured,
 	apiConfig *ApiConfig,
 	logger *logr.Logger,
-) (string, string, string, bool) {
+) (*validationResult, bool) {
 	if apiConfig == nil || apiConfig.Endpoint == "" {
 		logger.Info("No Dash0 API endpoint has been provided via the operator configuration resource, the dashboard " +
 			"will not be updated in Dash0.")
-		return "", "", "", false
+		return nil, false
 	}
 	if r.authToken == "" {
 		logger.Info("No auth token is set on the controller deployment, the dashboard will not be updated " +
 			"in Dash0.")
-		return "", "", "", false
+		return nil, false
 	}
 
 	dataset := apiConfig.Dataset
 	if dataset == "" {
 		dataset = "default"
 	}
-	dashboardUrl, dashboardOrigin := r.renderDashboardUrl(apiConfig.Endpoint, persesDashboard, dataset)
-	return dashboardUrl, dashboardOrigin, r.authToken, true
+
+	namespace, name, ok := readNamespaceAndName(persesDashboard, logger)
+	if !ok {
+		return nil, false
+	}
+
+	dashboardUrl, dashboardOrigin := r.renderDashboardUrl(
+		apiConfig.Endpoint,
+		namespace,
+		name,
+		dataset,
+	)
+	return &validationResult{
+		namespace: namespace,
+		name:      name,
+		url:       dashboardUrl,
+		origin:    dashboardOrigin,
+		authToken: r.authToken,
+	}, true
 }
 
 func (r *PersesDashboardReconciler) renderDashboardUrl(
 	dash0ApiEndpoint string,
-	persesDashboard *persesv1alpha1.PersesDashboard,
+	namespace string,
+	name string,
 	dataset string,
 ) (string, string) {
+
 	dashboardOrigin := fmt.Sprintf(
 		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
 		// any potential naming collisions (e.g. namespace="abc" & name="def-ghi" vs. namespace="abc-def" & name="ghi").
 		"dash0-operator_%s_%s_%s_%s",
 		r.pseudoClusterUid,
 		dataset,
-		persesDashboard.Namespace,
-		persesDashboard.Name,
+		namespace,
+		name,
 	)
 	if !strings.HasSuffix(dash0ApiEndpoint, "/") {
 		dash0ApiEndpoint += "/"
@@ -468,4 +521,48 @@ func (r *PersesDashboardReconciler) handleNon2xxStatusCode(
 	)
 	logger.Error(statusCodeErr, "unexpected status code")
 	return statusCodeErr
+}
+
+func readNamespaceAndName(persesDashboard *unstructured.Unstructured, logger *logr.Logger) (string, string, bool) {
+	metadataRaw := persesDashboard.Object["metadata"]
+	if metadataRaw == nil {
+		logger.Info("Perses dashboard payload has no metadata section, the dashboard will not be updated in Dash0.")
+		return "", "", false
+	}
+	metadata, ok := metadataRaw.(map[string]interface{})
+	if !ok {
+		logger.Info("Perses dashboard payload metadata section is not a map, the dashboard will not be updated in " +
+			"Dash0.")
+		return "", "", false
+	}
+	namespace, ok := readStringAttribute(metadata, "namespace", logger)
+	if !ok {
+		return "", "", false
+	}
+	name, ok := readStringAttribute(metadata, "name", logger)
+	if !ok {
+		return "", "", false
+	}
+	return namespace, name, true
+}
+
+func readStringAttribute(metadata map[string]interface{}, attributeName string, logger *logr.Logger) (string, bool) {
+	valueRaw := metadata[attributeName]
+	if valueRaw == nil {
+		logger.Info(fmt.Sprintf("Perses dashboard has no attribute metadata.%s, the dashboard will not be updated in "+
+			"Dash0.", attributeName))
+		return "", false
+	}
+	value, ok := valueRaw.(string)
+	if !ok {
+		logger.Info(fmt.Sprintf("Perses dashboard metadata.%s is not a string, the dashboard will not be updated "+
+			"in Dash0.", attributeName))
+		return "", false
+	}
+	if value == "" {
+		logger.Info(fmt.Sprintf("Perses dashboard has no attribute metadata.%s, the dashboard will not be updated in "+
+			"Dash0.", attributeName))
+		return "", false
+	}
+	return value, true
 }

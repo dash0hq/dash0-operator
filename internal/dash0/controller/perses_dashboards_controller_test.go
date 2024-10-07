@@ -5,12 +5,14 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/h2non/gock"
 	persesv1alpha1 "github.com/perses/perses-operator/api/v1alpha1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllertest"
@@ -183,14 +185,24 @@ func expectDeleteRequest() {
 		JSON(map[string]string{})
 }
 
-func createDashboardResource() persesv1alpha1.PersesDashboard {
-	return persesv1alpha1.PersesDashboard{
+func createDashboardResource() unstructured.Unstructured {
+	dashboard := persesv1alpha1.PersesDashboard{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "perses.dev/v1alpha1",
+			Kind:       "PersesDashboard",
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-dashboard",
 			Namespace: TestNamespaceName,
 		},
 		Spec: persesv1alpha1.Dashboard{},
 	}
+	marshalled, err := json.Marshal(dashboard)
+	Expect(err).NotTo(HaveOccurred())
+	unstructuredObject := unstructured.Unstructured{}
+	err = json.Unmarshal(marshalled, &unstructuredObject)
+	Expect(err).NotTo(HaveOccurred())
+	return unstructuredObject
 }
 
 func ensurePersesDashboardCrdExists(ctx context.Context) {
