@@ -312,15 +312,11 @@ func (r *PersesDashboardReconciler) UpsertDashboard(
 		persesDashboard.Spec.Display.Name = fmt.Sprintf("%s/%s", persesDashboard.Namespace, persesDashboard.Name)
 	}
 
+	// Remove all unnecessary metadata (labels & annotations), we basically only need the dashboard spec.
 	serializedDashboard, _ := json.Marshal(
 		map[string]interface{}{
-			"kind": "Dashboard",
+			"kind": persesDashboard.Kind,
 			"spec": persesDashboard.Spec,
-			"metadata": map[string]interface{}{
-				"dash0Extensions": map[string]interface{}{
-					"origin": dashboardOrigin,
-				},
-			},
 		})
 	requestPayload := bytes.NewBuffer(serializedDashboard)
 
