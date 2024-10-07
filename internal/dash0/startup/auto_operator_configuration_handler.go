@@ -211,6 +211,17 @@ func (r *AutoOperatorConfigurationResourceHandler) createOperatorConfigurationRe
 	operatorConfigurationResource := dash0v1alpha1.Dash0OperatorConfiguration{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: operatorConfigurationAutoResourceName,
+			Annotations: map[string]string{
+				// For clusters managed by ArgoCD, we need to prevent ArgoCD to prune resources that are not created
+				// directly via the Helm chart and that have no owner reference. These are all cluster-scoped resources
+				// not created via Helm, like cluster roles & cluster role bindings. See also:
+				// * https://github.com/argoproj/argo-cd/issues/4764#issuecomment-722661940 -- this is where they say
+				//   that only top level resources are pruned (that is basically the same as resources without an owner
+				//   reference).
+				// * The docs for preventing this on a resource level are here:
+				//   https://argo-cd.readthedocs.io/en/stable/user-guide/sync-options/#no-prune-resources
+				"argocd.argoproj.io/sync-options": "Prune=false",
+			},
 		},
 		Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 			SelfMonitoring: dash0v1alpha1.SelfMonitoring{

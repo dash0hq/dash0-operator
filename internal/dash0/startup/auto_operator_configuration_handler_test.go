@@ -104,8 +104,11 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 			err := k8sClient.Get(ctx, types.NamespacedName{
 				Name: operatorConfigurationAutoResourceName,
 			}, &operatorConfiguration)
-
 			g.Expect(err).ToNot(HaveOccurred())
+
+			g.Expect(operatorConfiguration.Annotations).To(HaveLen(1))
+			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/sync-options"]).To(Equal("Prune=false"))
+
 			export := operatorConfiguration.Spec.Export
 			g.Expect(export).ToNot(BeNil())
 			dash0Export := export.Dash0
@@ -129,8 +132,11 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 			err := k8sClient.Get(ctx, types.NamespacedName{
 				Name: operatorConfigurationAutoResourceName,
 			}, &operatorConfiguration)
-
 			g.Expect(err).ToNot(HaveOccurred())
+
+			g.Expect(operatorConfiguration.Annotations).To(HaveLen(1))
+			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/sync-options"]).To(Equal("Prune=false"))
+
 			export := operatorConfiguration.Spec.Export
 			g.Expect(export).ToNot(BeNil())
 			dash0Export := export.Dash0
