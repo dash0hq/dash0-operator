@@ -72,8 +72,6 @@ if [[ "${DEPLOY_APPLICATION_UNDER_MONITORING:-}" != false ]]; then
 fi
 
 if [[ "${DEPLOY_PERSES_DASHBOARD:-}" == true ]]; then
-  echo "Waiting 30 seconds before deploying a Perses dashboard resource."
-  sleep 30
   echo "STEP $step_counter: deploy a Perses dashboard resource to namespace ${target_namespace}"
   kubectl apply -n ${target_namespace} -f test-resources/customresources/persesdashboard/persesdashboard.yaml
   finish_step

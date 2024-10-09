@@ -38,6 +38,13 @@ echo "STEP $step_counter: install foreign custom resource definitions"
 install_foreign_crds
 finish_step
 
+
+if [[ "${DEPLOY_PERSES_DASHBOARD:-}" == true ]]; then
+  echo "STEP $step_counter: deploy a Perses dashboard resource to namespace ${target_namespace}"
+  kubectl apply -n ${target_namespace} -f test-resources/customresources/persesdashboard/persesdashboard.yaml
+  finish_step
+fi
+
 echo "STEP $step_counter: rebuild images"
 build_all_images
 finish_step
@@ -71,10 +78,3 @@ else
   echo
 fi
 
-if [[ "${DEPLOY_PERSES_DASHBOARD:-}" == true ]]; then
-  echo "Waiting 30 seconds before deploying a Perses dashboard resource."
-  sleep 30
-  echo "STEP $step_counter: deploy a Perses dashboard resource to namespace ${target_namespace}"
-  kubectl apply -n ${target_namespace} -f test-resources/customresources/persesdashboard/persesdashboard.yaml
-  finish_step
-fi

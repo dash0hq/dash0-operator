@@ -6,6 +6,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/h2non/gock"
 	persesv1alpha1 "github.com/perses/perses-operator/api/v1alpha1"
@@ -45,29 +46,85 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 	})
 
 	Describe("the Perses dashboard CRD reconciler", func() {
-		BeforeEach(func() {
-			crdReconciler = &PersesDashboardCrdReconciler{
-				AuthToken: AuthorizationTokenTest,
-
-				// We create the controller multiple times in tests, this option is required, otherwise the controller
-				// runtime will complain.
-				skipNameValidation: true,
-			}
-		})
 
 		AfterEach(func() {
 			ensurePersesDashboardCrdDoesNotExist(ctx)
 		})
 
-		It("does not start watching Perses dashboards if the CRD does not exist", func() {
+		It("does not create a Perses dashboard resource reconciler if there is no auth token", func() {
+			createCrdReconcilerWithoutAuthToken()
+			ensurePersesDashboardCrdExists(ctx)
+			Expect(crdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+			Expect(crdReconciler.persesDashboardReconciler).To(BeNil())
+			crdReconciler.SetApiEndpointAndDataset(&ApiConfig{
+				Endpoint: ApiEndpointTest,
+				Dataset:  DatasetTest,
+			}, &logger)
+			Expect(crdReconciler.persesDashboardReconciler).To(BeNil())
+		})
+
+		It("does not start watching Perses dashboards if the CRD does not exist and the API endpoint has not been provided", func() {
+			createCrdReconcilerWithAuthToken()
 			Expect(crdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
 			Expect(crdReconciler.persesDashboardReconciler.isWatching).To(BeFalse())
 		})
 
-		It("starts watching Perses dashboards if the CRD exists", func() {
+		It("does not start watching Perses dashboards if the API endpoint has been provided but the CRD does not exist", func() {
+			createCrdReconcilerWithAuthToken()
+			Expect(crdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+			crdReconciler.SetApiEndpointAndDataset(&ApiConfig{
+				Endpoint: ApiEndpointTest,
+				Dataset:  DatasetTest,
+			}, &logger)
+			Expect(crdReconciler.persesDashboardReconciler.isWatching).To(BeFalse())
+		})
+
+		It("does not start watching Perses dashboards if the CRD exists but the API endpoint has not been provided", func() {
+			createCrdReconcilerWithAuthToken()
 			ensurePersesDashboardCrdExists(ctx)
 			Expect(crdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+			Expect(crdReconciler.persesDashboardReconciler.isWatching).To(BeFalse())
+		})
+
+		It("starts watching Perses dashboards if the CRD exists and the API endpoint has been provided", func() {
+			createCrdReconcilerWithAuthToken()
+			ensurePersesDashboardCrdExists(ctx)
+			Expect(crdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+			Expect(crdReconciler.persesDashboardReconciler.isWatching).To(BeFalse())
+			crdReconciler.SetApiEndpointAndDataset(&ApiConfig{
+				Endpoint: ApiEndpointTest,
+				Dataset:  DatasetTest,
+			}, &logger)
 			Expect(crdReconciler.persesDashboardReconciler.isWatching).To(BeTrue())
+		})
+
+		It("starts watching Perses dashboards if API endpoint is provided and the CRD is created later on", func() {
+			createCrdReconcilerWithAuthToken()
+			Expect(crdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+
+			// provide the API endpoint first
+			crdReconciler.SetApiEndpointAndDataset(&ApiConfig{
+				Endpoint: ApiEndpointTest,
+				Dataset:  DatasetTest,
+			}, &logger)
+
+			// create the CRD a bit later
+			time.Sleep(100 * time.Millisecond)
+			Expect(crdReconciler.persesDashboardReconciler.isWatching).To(BeFalse())
+			dashboardCrd := ensurePersesDashboardCrdExists(ctx)
+			// watches are not triggered in unit tests
+			crdReconciler.Create(
+				ctx,
+				event.TypedCreateEvent[client.Object]{
+					Object: dashboardCrd,
+				},
+				&controllertest.TypedQueue[reconcile.Request]{},
+			)
+
+			// verify that the controller starts watching when it sees the CRD being created
+			Eventually(func(g Gomega) {
+				g.Expect(crdReconciler.persesDashboardReconciler.isWatching).To(BeTrue())
+			}).Should(Succeed())
 		})
 	})
 
@@ -75,25 +132,18 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 		var persesDashboardReconciler *PersesDashboardReconciler
 
 		BeforeAll(func() {
-			crdReconciler = &PersesDashboardCrdReconciler{
-				AuthToken: AuthorizationTokenTest,
-
-				// We create the controller multiple times in tests, this option is required, otherwise the controller
-				// runtime will complain.
-				skipNameValidation: true,
-			}
+			createCrdReconcilerWithAuthToken()
 			ensurePersesDashboardCrdExists(ctx)
 
 			Expect(crdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
-			Expect(crdReconciler.persesDashboardReconciler.isWatching).To(BeTrue())
 		})
 
 		BeforeEach(func() {
 			crdReconciler.SetApiEndpointAndDataset(&ApiConfig{
 				Endpoint: ApiEndpointTest,
 				Dataset:  DatasetTest,
-			})
-
+			}, &logger)
+			Expect(crdReconciler.persesDashboardReconciler.isWatching).To(BeTrue())
 			persesDashboardReconciler = crdReconciler.persesDashboardReconciler
 		})
 
@@ -153,7 +203,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			expectPutRequest()
 			defer gock.Off()
 
-			crdReconciler.SetApiEndpointAndDataset(nil)
+			crdReconciler.RemoveApiEndpointAndDataset()
 
 			dashboardResource := createDashboardResource()
 			persesDashboardReconciler.Create(
@@ -168,6 +218,24 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 		})
 	})
 })
+
+func createCrdReconcilerWithoutAuthToken() {
+	crdReconciler = &PersesDashboardCrdReconciler{
+		// We create the controller multiple times in tests, this option is required, otherwise the controller
+		// runtime will complain.
+		skipNameValidation: true,
+	}
+}
+
+func createCrdReconcilerWithAuthToken() {
+	crdReconciler = &PersesDashboardCrdReconciler{
+		AuthToken: AuthorizationTokenTest,
+
+		// We create the controller multiple times in tests, this option is required, otherwise the controller
+		// runtime will complain.
+		skipNameValidation: true,
+	}
+}
 
 func expectPutRequest() {
 	gock.New(ApiEndpointTest).
@@ -205,7 +273,7 @@ func createDashboardResource() unstructured.Unstructured {
 	return unstructuredObject
 }
 
-func ensurePersesDashboardCrdExists(ctx context.Context) {
+func ensurePersesDashboardCrdExists(ctx context.Context) *apiextensionsv1.CustomResourceDefinition {
 	crd_ := EnsureKubernetesObjectExists(
 		ctx,
 		k8sClient,
@@ -255,13 +323,19 @@ func ensurePersesDashboardCrdExists(ctx context.Context) {
 	)
 
 	crd = crd_.(*apiextensionsv1.CustomResourceDefinition)
+	return crd
 }
 
 func ensurePersesDashboardCrdDoesNotExist(ctx context.Context) {
 	if crd != nil {
-		Expect(k8sClient.Delete(ctx, crd, &client.DeleteOptions{
+		err := k8sClient.Delete(ctx, crd, &client.DeleteOptions{
 			GracePeriodSeconds: new(int64),
-		})).To(Succeed())
+		})
+		if err != nil && apierrors.IsNotFound(err) {
+			return
+		} else if err != nil {
+			Expect(err).NotTo(HaveOccurred())
+		}
 
 		Eventually(func(g Gomega) {
 			err := k8sClient.Get(ctx, crdQualifiedName, &apiextensionsv1.CustomResourceDefinition{})

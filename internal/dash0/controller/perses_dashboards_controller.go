@@ -26,10 +26,12 @@ import (
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
@@ -40,9 +42,15 @@ type PersesDashboardCrdReconciler struct {
 	mgr                       ctrl.Manager
 	skipNameValidation        bool
 	persesDashboardReconciler *PersesDashboardReconciler
+	persesDashboardCrdExists  atomic.Bool
 }
 
 //+kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list;watch
+
+type ApiConfig struct {
+	Endpoint string
+	Dataset  string
+}
 
 type validationResult struct {
 	namespace string
@@ -69,6 +77,12 @@ func (r *PersesDashboardCrdReconciler) SetupWithManager(
 	startupK8sClient client.Client,
 	logger *logr.Logger,
 ) error {
+	if r.AuthToken == "" {
+		logger.Info("No Dash0 auth token has been provided via the operator configuration resource. The operator " +
+			"will not watch for Perses dashboard resources.")
+		return nil
+	}
+
 	kubeSystemNamespace := &corev1.Namespace{}
 	if err := startupK8sClient.Get(ctx, client.ObjectKey{Name: "kube-system"}, kubeSystemNamespace); err != nil {
 		msg := "unable to get the kube-system namespace uid"
@@ -86,28 +100,118 @@ func (r *PersesDashboardCrdReconciler) SetupWithManager(
 	if err := startupK8sClient.Get(ctx, client.ObjectKey{
 		Name: "persesdashboards.perses.dev",
 	}, &apiextensionsv1.CustomResourceDefinition{}); err != nil {
-		if apierrors.IsNotFound(err) {
-			logger.Info("The persesdashboards.perses.dev custom resource definition does not exist in this " +
-				"cluster, the operator will not watch for Perses dashboard resources.")
-		} else {
+		if !apierrors.IsNotFound(err) {
 			logger.Error(err, "unable to call get the persesdashboards.perses.dev custom resource definition")
 			return err
 		}
 	} else {
-		logger.Info("The persesdashboards.perses.dev custom resource definition is present in this " +
-			"cluster, the operator will watch for Perses dashboard resources.")
-		if err = r.startWatchingPersesDashboardResources(ctx, logger); err != nil {
-			return err
-		}
+		r.persesDashboardCrdExists.Store(true)
+		r.maybeStartWatchingPersesDashboardResources(true, logger)
 	}
 
-	// For now, we are not watching for the PersesDashboard CRD. Watching for a foreign CRD and reacting appropriately
-	// to its creation/deletion is work in progress in the prometheus scraping branch. Once that is finished, we can
-	// employ the same approach here.
+	controllerBuilder := ctrl.NewControllerManagedBy(mgr).
+		Named("dash0_perses_dashboard_crd_controller").
+		Watches(
+			&apiextensionsv1.CustomResourceDefinition{},
+			// Deliberately not using a convenience mechanism like &handler.EnqueueRequestForObject{} (which would
+			// feed all events into the Reconcile method) here, since using the lower-level TypedEventHandler interface
+			// directly allows us to distinguish between create and delete events more easily.
+			r,
+			builder.WithPredicates(makeFilterPredicate()))
+	if r.skipNameValidation {
+		controllerBuilder = controllerBuilder.WithOptions(controller.TypedOptions[reconcile.Request]{
+			SkipNameValidation: ptr.To(true),
+		})
+	}
+	if err := controllerBuilder.Complete(r); err != nil {
+		logger.Error(err, "unable to build the controller for the Perses Dashboard CRD reconciler")
+		return err
+	}
+
 	return nil
 }
 
 //+kubebuilder:rbac:groups=perses.dev,resources=persesdashboards,verbs=get;list;watch
+
+func makeFilterPredicate() predicate.Funcs {
+	return predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool {
+			return isPersesDashboardCrd(e.Object)
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			// We are not interested in updates, but we still need to define a filter predicate for it, otherwise _all_
+			// update events for CRDs would be passed to our event handler. We always return false to ignore update
+			// events entirely. Same for generic events.
+			return false
+		},
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			return isPersesDashboardCrd(e.Object)
+		},
+		GenericFunc: func(e event.GenericEvent) bool {
+			return false
+		},
+	}
+}
+
+func isPersesDashboardCrd(crd client.Object) bool {
+	if crdCasted, ok := crd.(*apiextensionsv1.CustomResourceDefinition); ok {
+		return crdCasted.Spec.Group == "perses.dev" &&
+			crdCasted.Spec.Names.Kind == "PersesDashboard"
+	} else {
+		return false
+	}
+}
+
+func (r *PersesDashboardCrdReconciler) Create(
+	ctx context.Context,
+	_ event.TypedCreateEvent[client.Object],
+	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
+) {
+	logger := log.FromContext(ctx)
+	r.persesDashboardCrdExists.Store(true)
+	r.maybeStartWatchingPersesDashboardResources(false, &logger)
+}
+
+func (r *PersesDashboardCrdReconciler) Update(
+	context.Context,
+	event.TypedUpdateEvent[client.Object],
+	workqueue.TypedRateLimitingInterface[reconcile.Request],
+) {
+	// should not be called, we are not interested in updates
+	// note: update is called twice prior to delete, it is also called twice after an actual create
+}
+
+func (r *PersesDashboardCrdReconciler) Delete(
+	ctx context.Context,
+	_ event.TypedDeleteEvent[client.Object],
+	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
+) {
+	logger := log.FromContext(ctx)
+	logger.Info("The PersesDashboard custom resource definition has been deleted.")
+	r.persesDashboardCrdExists.Store(false)
+
+	// Known issue: We would need to stop the watch for the Perses dashboard resources here, but the controller-runtime
+	// does not provide any API to stop a watch.
+	// An error will be logged every ten seconds until the controller process is restarted.
+}
+
+func (r *PersesDashboardCrdReconciler) Generic(
+	context.Context,
+	event.TypedGenericEvent[client.Object],
+	workqueue.TypedRateLimitingInterface[reconcile.Request],
+) {
+	// Should not be called, we are not interested in generic events.
+}
+
+func (r *PersesDashboardCrdReconciler) Reconcile(
+	_ context.Context,
+	_ reconcile.Request,
+) (reconcile.Result, error) {
+	// Reconcile should not be called for the PersesDashboardCrdReconciler CRD, as we are using the
+	// TypedEventHandler interface directly when setting up the watch. We still need to implement the method, as the
+	// controller builder's Complete method requires implementing the Reconciler interface.
+	return reconcile.Result{}, nil
+}
 
 func (r *PersesDashboardCrdReconciler) InitializeSelfMonitoringMetrics(
 	meter otelmetric.Meter,
@@ -134,10 +238,61 @@ func (r *PersesDashboardCrdReconciler) InitializeSelfMonitoringMetrics(
 	)
 }
 
+func (r *PersesDashboardCrdReconciler) SetApiEndpointAndDataset(
+	apiConfig *ApiConfig,
+	logger *logr.Logger) {
+	if r.persesDashboardReconciler == nil {
+		// If no auth token has been set via environment variable, we do not even create the persesDashboardReconciler,
+		// hence this nil check is necessary.
+		return
+	}
+	r.persesDashboardReconciler.apiConfig.Store(apiConfig)
+	r.maybeStartWatchingPersesDashboardResources(false, logger)
+}
+
+func (r *PersesDashboardCrdReconciler) RemoveApiEndpointAndDataset() {
+	if r.persesDashboardReconciler == nil {
+		// If no auth token has been set via environment variable, we do not even create the persesDashboardReconciler,
+		// hence this nil check is necessary.
+		return
+	}
+	r.persesDashboardReconciler.apiConfig.Store(nil)
+}
+
+func (r *PersesDashboardCrdReconciler) maybeStartWatchingPersesDashboardResources(isStartup bool, logger *logr.Logger) {
+	if r.persesDashboardReconciler.isWatching {
+		// we are already watching, do not start a second watch
+		return
+	}
+
+	if !r.persesDashboardCrdExists.Load() {
+		logger.Info("The persesdashboards.perses.dev custom resource definition does not exist in this cluster, the " +
+			"operator will not watch for Perses dashboard resources.")
+		return
+	}
+
+	apiConfig := r.persesDashboardReconciler.apiConfig.Load()
+	if !isValidApiConfig(apiConfig) {
+		if !isStartup {
+			// Silently ignore this missing precondition if it happens during the startup of the operator. It will
+			// be remedied automatically once the operator configuration resource is reconciled for the first time.
+			logger.Info("The persesdashboards.perses.dev custom resource definition is present in this " +
+				"cluster, but no Dash0 API endpoint been provided via the operator configuration resource, or the " +
+				"operator configuration resource has not been reconciled yet. The operator will not watch for Perses " +
+				"dashboard resources. (If there is an operator configuration resource with an API endpoint present in " +
+				"the cluster, it will be reconciled in a few seconds and this message can be safely ignored.)")
+		}
+		return
+	}
+
+	logger.Info("The persesdashboards.perses.dev custom resource definition is present in this " +
+		"cluster, and a Dash0 API endpoint has been provided. The operator will watch for Perses dashboard resources.")
+	r.startWatchingPersesDashboardResources(logger)
+}
+
 func (r *PersesDashboardCrdReconciler) startWatchingPersesDashboardResources(
-	_ context.Context,
 	logger *logr.Logger,
-) error {
+) {
 	logger.Info("Setting up a watch for Perses dashboard custom resources.")
 
 	unstructuredGvkForPersesDashboards := &unstructured.Unstructured{}
@@ -163,24 +318,9 @@ func (r *PersesDashboardCrdReconciler) startWatchingPersesDashboardResources(
 	}
 	if err := controllerBuilder.Complete(r.persesDashboardReconciler); err != nil {
 		logger.Error(err, "unable to create a new controller for watching Perses Dashboards")
-		return err
+		return
 	}
 	r.persesDashboardReconciler.isWatching = true
-
-	return nil
-}
-
-func (r *PersesDashboardCrdReconciler) SetApiEndpointAndDataset(apiConfig *ApiConfig) {
-	r.persesDashboardReconciler.apiConfig.Store(apiConfig)
-}
-
-func (r *PersesDashboardCrdReconciler) RemoveApiEndpointAndDataset() {
-	r.persesDashboardReconciler.apiConfig.Store(nil)
-}
-
-type ApiConfig struct {
-	Endpoint string
-	Dataset  string
 }
 
 type PersesDashboardReconciler struct {
@@ -434,7 +574,7 @@ func (r *PersesDashboardReconciler) validateConfigAndRenderUrl(
 	apiConfig *ApiConfig,
 	logger *logr.Logger,
 ) (*validationResult, bool) {
-	if apiConfig == nil || apiConfig.Endpoint == "" {
+	if !isValidApiConfig(apiConfig) {
 		logger.Info("No Dash0 API endpoint has been provided via the operator configuration resource, the dashboard " +
 			"will not be updated in Dash0.")
 		return nil, false
@@ -468,6 +608,10 @@ func (r *PersesDashboardReconciler) validateConfigAndRenderUrl(
 		origin:    dashboardOrigin,
 		authToken: r.authToken,
 	}, true
+}
+
+func isValidApiConfig(apiConfig *ApiConfig) bool {
+	return apiConfig != nil && apiConfig.Endpoint != ""
 }
 
 func (r *PersesDashboardReconciler) renderDashboardUrl(
