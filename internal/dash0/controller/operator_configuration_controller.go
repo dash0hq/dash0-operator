@@ -168,7 +168,7 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		r.PersesDashboardCrdReconciler.SetApiEndpointAndDataset(&ApiConfig{
 			Endpoint: resource.Spec.Export.Dash0.ApiEndpoint,
 			Dataset:  dataset,
-		})
+		}, &logger)
 	} else {
 		logger.Info("Settings required for managing dashboards via the operator are missing, the operator will not " +
 			"update dashboards in Dash0.")

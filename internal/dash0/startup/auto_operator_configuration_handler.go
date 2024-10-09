@@ -42,7 +42,7 @@ type AutoOperatorConfigurationResourceHandler struct {
 const (
 	operatorConfigurationAutoResourceName = "dash0-operator-configuration-auto-resource"
 
-	alreadyExistsMessage = "The operator is configured to deploy an operator configuration resource at startup, but there is already" +
+	alreadyExistsMessage = "The operator is configured to deploy an operator configuration resource at startup, but there is already " +
 		"an operator configuration resource in the cluster. Hence no action is necessary. (This is not an error.)"
 )
 
