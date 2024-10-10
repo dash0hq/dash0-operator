@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive
 	. "github.com/onsi/gomega"
 )
 
@@ -38,17 +37,17 @@ func run(cmd *exec.Cmd, logCommandArgs ...bool) (string, error) {
 	cmd.Dir = dir
 
 	if err := os.Chdir(cmd.Dir); err != nil {
-		_, _ = fmt.Fprintf(GinkgoWriter, "chdir dir: %s\n", err)
+		e2ePrint("chdir dir: %s\n", err)
 	}
 
 	cmd.Env = append(os.Environ(), "GO111MODULE=on")
 	command := strings.Join(cmd.Args, " ")
 	if logCommand {
-		_, _ = fmt.Fprintf(GinkgoWriter, "running: %s\n", command)
+		e2ePrint("running: %s\n", command)
 	}
 	output, err := cmd.CombinedOutput()
 	if alwaysLogOutput {
-		_, _ = fmt.Fprintf(GinkgoWriter, "output: %s\n", string(output))
+		e2ePrint("output: %s\n", string(output))
 	}
 	if err != nil {
 		return string(output), fmt.Errorf("%s failed with error: (%v) %s", command, err, string(output))

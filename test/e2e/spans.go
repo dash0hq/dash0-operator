@@ -14,7 +14,6 @@ import (
 
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
-	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive
 	. "github.com/onsi/gomega"
 )
 
@@ -80,7 +79,7 @@ func sendRequest(g Gomega, port int, httpPathWithQuery string) {
 	}()
 	responseBody, err := io.ReadAll(response.Body)
 	if err != nil {
-		_, _ = fmt.Fprintf(GinkgoWriter, "could not read http response from %s: %s\n", url, err.Error())
+		e2ePrint("could not read http response from %s: %s\n", url, err.Error())
 	}
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(responseBody).To(ContainSubstring("We make Observability easy for every developer."))

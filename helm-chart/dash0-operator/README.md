@@ -561,13 +561,8 @@ ways to achieve this:
 ```console
 kubectl apply --server-side -f https://raw.githubusercontent.com/perses/perses-operator/main/config/crd/bases/perses.dev_persesdashboards.yaml
 ```
-* Alternatively, install the full Perses operator: Go to <https://github.com/perses/perses-operator> and follow the installation
-  instructions there.
-
-Note that the custom resource definition needs to be installed before the Dash0 operator is started.
-If you have installed the Dash0 operator before installing the Perses dashboard custom resource definition, you need to
-restart the Dash0 operator once, for example by deleting the operator's controller pod: 
-`kubectl --namespace dash0-system delete pod -l app.kubernetes.io/component=controller`
+* Alternatively, install the full Perses operator: Go to <https://github.com/perses/perses-operator> and follow the
+  installation instructions there.
 
 With the prerequisites in place, you can manage Dash0 dashboards via the operator.
 The Dash0 operator will watch for Perses dashboard resources in the cluster and synchronize them with the Dash0 backend:
@@ -578,4 +573,36 @@ The Dash0 operator will watch for Perses dashboard resources in the cluster and 
 The dashboards created by the operator will be in read-only mode in the Dash0 UI.
 
 If the Dash0 operator configuration resource has the `dataset` property set, the operator will create the dashboards
+in that specified dataset, otherwise they will be created in the `default` dataset.
+
+## Managing Dash0 Check Rules with the Operator
+
+You can manage your Dash0 check rules via the Dash0 Kubernetes operator.
+
+Pre-requisites for this feature:
+* A Dash0 operator configuration resource has to be installed in the cluster.
+* The operator configuration resource must have the `apiEndpoint` property.
+* The operator configuration resource must have a Dash0 export configured with authorization
+  (either `token` or `secret-ref`).
+
+Furthermore, the custom resource definition for Prometheus rules needs to be installed in the cluster. There are two
+ways to achieve this:
+* Install the Prometheus rules custom resource definition with the following command:
+```console
+kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.77.1/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml
+```
+* Alternatively, install the full kube-prometheus stack Helm chart: Go to
+  <https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack> and follow the
+  installation instructions there.
+
+With the prerequisites in place, you can manage Dash0 check rules via the operator.
+The Dash0 operator will watch for Prometheus rule resources in the cluster and synchronize them with the Dash0 backend:
+* When a new Prometheus rule resource is created, the operator will create corresponding check rules via Dash0's API.
+* When a Prometheus rule resource is changed, the operator will update the corresponding check rules via Dash0's API.
+* When a Prometheus rule resource is deleted, the operator will delete the corresponding check rules via Dash0's API.
+
+Note that a Prometheus rule resource can contain multiple groups, and each of those groups can have multiple rules.
+The Dash0 operator will create individual check rules for each rule in each group.
+
+If the Dash0 operator configuration resource has the `dataset` property set, the operator will create the rules
 in that specified dataset, otherwise they will be created in the `default` dataset.

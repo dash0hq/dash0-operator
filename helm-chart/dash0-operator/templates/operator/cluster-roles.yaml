@@ -10,7 +10,7 @@ metadata:
 
 rules:
 
-# Permissions required to watch for the foreign CRD (Perses dashboards, Prometheus scrape configs).
+# Permissions required to watch for the third-party CRD (Perses dashboards, Prometheus check rules):
 - apiGroups:
   - apiextensions.k8s.io
   resources:
@@ -20,7 +20,7 @@ rules:
   - list
   - watch
 
-# Permissions required to instrument workloads in the apps API group.
+# Permissions required to instrument workloads in the apps API group:
 - apiGroups:
   - apps
   resources:
@@ -35,7 +35,7 @@ rules:
   - update
   - watch
 
-# Permissions required to instrument workloads in the batch API group.
+# Permissions required to instrument workloads in the batch API group:
 - apiGroups:
   - batch
   resources:
@@ -48,7 +48,7 @@ rules:
   - update
   - watch
 
-# Pmrmissions required top create a Dash0 operator configuration resources
+# Pmrmissions required to create a Dash0 operator configuration resource:
 - apiGroups:
   - ""
   resources:
@@ -57,7 +57,7 @@ rules:
   - get
 
 # Permissions required to queue events to report about the operator's actions, and to attach dangling events to their
-# respective involved objects.
+# respective involved objects:
 - apiGroups:
   - ""
   resources:
@@ -75,7 +75,7 @@ rules:
   - get
 
 # Permissions required to automatically restart (i.e. delete) pods when instrumenting replicasets that are not part of a
-# higher order workload (e.g. a deployment, daemonset).
+# higher order workload (e.g. a deployment, daemonset):
 - apiGroups:
   - ""
   resources:
@@ -85,7 +85,7 @@ rules:
   - get
   - list
 
-# Permissions required to watch for the Perses dashboard resources.
+# Permissions required to watch Perses dashboard resources:
 - apiGroups:
   - perses.dev
   resources:
@@ -95,7 +95,17 @@ rules:
   - list
   - watch
 
-# Permissions required to manage the Dash0 monitoring resource, its finalizers and status.
+# Permissions required to watch Prometheus rule resources:
+- apiGroups:
+  - monitoring.coreos.com
+  resources:
+  - prometheusrules
+  verbs:
+  - get
+  - list
+  - watch
+
+# Permissions required to manage the Dash0 monitoring resource, its finalizers and status:
 - apiGroups:
   - operator.dash0.com
   resources:
@@ -110,7 +120,7 @@ rules:
   - update
   - watch
 
-# Permissions required to manage the Dash0 monitoring resource, its finalizers and status.
+# Permissions required to manage the Dash0 monitoring resource, its finalizers and status:
 - apiGroups:
   - operator.dash0.com
   resources:
@@ -118,7 +128,7 @@ rules:
   verbs:
   - update
 
-# Permissions required to manage the Dash0 monitoring resource, its finalizers and status.
+# Permissions required to manage the Dash0 monitoring resource, its finalizers and status:
 - apiGroups:
   - operator.dash0.com
   resources:
@@ -128,7 +138,7 @@ rules:
   - patch
   - update
 
-# Permissions required to manage the Dash0 operator configuration resource, its finalizers and status.
+# Permissions required to manage the Dash0 operator configuration resource, its finalizers and status:
 - apiGroups:
   - operator.dash0.com
   resources:
@@ -143,7 +153,7 @@ rules:
   - update
   - watch
 
-# Permissions required to manage the Dash0 operator configuration resource, its finalizers and status.
+# Permissions required to manage the Dash0 operator configuration resource, its finalizers and status:
 - apiGroups:
   - operator.dash0.com
   resources:
@@ -151,7 +161,7 @@ rules:
   verbs:
   - update
 
-# Permissions required to manage the Dash0 operator configuration resource, its finalizers and status.
+# Permissions required to manage the Dash0 operator configuration resource, its finalizers and status:
 - apiGroups:
   - operator.dash0.com
   resources:
@@ -161,7 +171,7 @@ rules:
   - patch
   - update
 
-# Permissions required to manage OTel collector resources.
+# Permissions required to manage OTel collector resources:
 - apiGroups:
   - ""
   resources:

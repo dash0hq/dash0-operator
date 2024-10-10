@@ -66,6 +66,14 @@ rules:
   - get
   - list
 - apiGroups:
+  - monitoring.coreos.com
+  resources:
+  - prometheusrules
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
   - operator.dash0.com
   resources:
   - dash0monitorings

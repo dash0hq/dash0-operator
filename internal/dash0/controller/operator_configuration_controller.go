@@ -25,14 +25,14 @@ import (
 
 type OperatorConfigurationReconciler struct {
 	client.Client
-	Clientset                    *kubernetes.Clientset
-	PersesDashboardCrdReconciler *PersesDashboardCrdReconciler
-	Scheme                       *runtime.Scheme
-	Recorder                     record.EventRecorder
-	DeploymentSelfReference      *appsv1.Deployment
-	DanglingEventsTimeouts       *util.DanglingEventsTimeouts
-	Images                       util.Images
-	DevelopmentMode              bool
+	Clientset               *kubernetes.Clientset
+	ApiClients              []ApiClient
+	Scheme                  *runtime.Scheme
+	Recorder                record.EventRecorder
+	DeploymentSelfReference *appsv1.Deployment
+	DanglingEventsTimeouts  *util.DanglingEventsTimeouts
+	Images                  util.Images
+	DevelopmentMode         bool
 }
 
 const (
@@ -138,6 +138,9 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 
 	if resourceDeleted {
 		logger.Info("Reconciling the deletion of the operator configuration resource", "name", req.Name)
+		for _, apiClient := range r.ApiClients {
+			apiClient.RemoveApiEndpointAndDataset()
+		}
 		if err = r.removeSelfMonitoringAndApiAccessAndUpdate(ctx); err != nil {
 			logger.Error(err, "cannot disable self-monitoring/API access of the controller deployment, requeuing reconcile request.")
 			return ctrl.Result{
@@ -163,16 +166,20 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 	if resource.HasDash0ApiAccessConfigured() {
 		dataset := resource.Spec.Export.Dash0.Dataset
 		if dataset == "" {
-			dataset = "default"
+			dataset = util.DatasetDefault
 		}
-		r.PersesDashboardCrdReconciler.SetApiEndpointAndDataset(&ApiConfig{
-			Endpoint: resource.Spec.Export.Dash0.ApiEndpoint,
-			Dataset:  dataset,
-		}, &logger)
+		for _, apiClient := range r.ApiClients {
+			apiClient.SetApiEndpointAndDataset(&ApiConfig{
+				Endpoint: resource.Spec.Export.Dash0.ApiEndpoint,
+				Dataset:  dataset,
+			}, &logger)
+		}
 	} else {
-		logger.Info("Settings required for managing dashboards via the operator are missing, the operator will not " +
-			"update dashboards in Dash0.")
-		r.PersesDashboardCrdReconciler.RemoveApiEndpointAndDataset()
+		logger.Info("Settings required for managing dashboards or check rules via the operator are missing, the " +
+			"operator will not update dashboards nor check rules in Dash0.")
+		for _, apiClient := range r.ApiClients {
+			apiClient.RemoveApiEndpointAndDataset()
+		}
 	}
 
 	currentSelfMonitoringAndApiAccessConfiguration, err :=

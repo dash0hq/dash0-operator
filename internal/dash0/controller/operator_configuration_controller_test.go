@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/go-logr/logr"
 	json "github.com/json-iterator/go"
 	"github.com/wI2L/jsondiff"
 	appsv1 "k8s.io/api/apps/v1"
@@ -33,6 +34,13 @@ type SelfMonitoringAndApiAccessTestConfig struct {
 	expectK8sClientUpdate                      bool
 }
 
+type ApiClientSetRemoveTestConfig struct {
+	operatorConfigurationResourceSpec dash0v1alpha1.Dash0OperatorConfigurationSpec
+	dataset                           string
+	expectSetApiEndpointAndDataset    bool
+	expectRemoveApiEndpointAndDataset bool
+}
+
 type SelfMonitoringTestConfig struct {
 	createExport func() dash0v1alpha1.Export
 	verify       func(Gomega, selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration, *appsv1.Deployment)
@@ -40,6 +48,8 @@ type SelfMonitoringTestConfig struct {
 
 var (
 	reconciler *OperatorConfigurationReconciler
+	apiClient1 *DummyApiClient
+	apiClient2 *DummyApiClient
 )
 
 var _ = Describe("The operation configuration resource controller", Ordered, func() {
@@ -49,6 +59,11 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 	BeforeAll(func() {
 		EnsureTestNamespaceExists(ctx, k8sClient)
 		EnsureOperatorNamespaceExists(ctx, k8sClient)
+	})
+
+	BeforeEach(func() {
+		apiClient1 = &DummyApiClient{}
+		apiClient2 = &DummyApiClient{}
 	})
 
 	Describe("updates the controller deployment", func() {
@@ -209,7 +224,6 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithoutSelfMonitoringWithToken,
 				expectK8sClientUpdate:                      false,
 			}),
-
 			// | no self-monitoring, but token         | no sm, secret-ref   | no sm, auth via secret-ref       |
 			Entry("no self-monitoring, token -> no self-monitoring, secret-ref", SelfMonitoringAndApiAccessTestConfig{
 				existingControllerDeployment:               CreateControllerDeploymentWithoutSelfMonitoringWithToken,
@@ -217,7 +231,6 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithoutSelfMonitoringWithSecretRef,
 				expectK8sClientUpdate:                      true,
 			}),
-
 			// | no self-monitoring, but secret-ref    | no sm, token        | no sm, auth via token            |
 			Entry("no self-monitoring, secret-ref -> no self-monitoring, token", SelfMonitoringAndApiAccessTestConfig{
 				existingControllerDeployment:               CreateControllerDeploymentWithoutSelfMonitoringWithSecretRef,
@@ -225,7 +238,6 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithoutSelfMonitoringWithToken,
 				expectK8sClientUpdate:                      true,
 			}),
-
 			// | no self-monitoring, but secret-ref    | no sm, secret-ref   | no sm, auth via secret-ref       |
 			Entry("no self-monitoring, secret-ref -> no self-monitoring, secret-ref", SelfMonitoringAndApiAccessTestConfig{
 				existingControllerDeployment:               CreateControllerDeploymentWithoutSelfMonitoringWithSecretRef,
@@ -233,7 +245,6 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithoutSelfMonitoringWithSecretRef,
 				expectK8sClientUpdate:                      false,
 			}),
-
 			// | no self-monitoring, but token         | with sm, token      | has sm, auth via token           |
 			Entry("no self-monitoring, token -> self-monitoring, token", SelfMonitoringAndApiAccessTestConfig{
 				existingControllerDeployment:               CreateControllerDeploymentWithoutSelfMonitoringWithToken,
@@ -241,7 +252,6 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithSelfMonitoringWithToken,
 				expectK8sClientUpdate:                      true,
 			}),
-
 			// | no self-monitoring, but token         | with sm, secret-ref | has sm, auth via secret-ref      |
 			Entry("no self-monitoring, token -> self-monitoring, secret-ref", SelfMonitoringAndApiAccessTestConfig{
 				existingControllerDeployment:               CreateControllerDeploymentWithoutSelfMonitoringWithToken,
@@ -249,7 +259,6 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithSelfMonitoringWithSecretRef,
 				expectK8sClientUpdate:                      true,
 			}),
-
 			// | no self-monitoring, but secret-ref    | with sm, token      | has sm, auth via token           |
 			Entry("no self-monitoring, secret-ref -> self-monitoring, token", SelfMonitoringAndApiAccessTestConfig{
 				existingControllerDeployment:               CreateControllerDeploymentWithoutSelfMonitoringWithSecretRef,
@@ -257,7 +266,6 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithSelfMonitoringWithToken,
 				expectK8sClientUpdate:                      true,
 			}),
-
 			// | no self-monitoring, but secret-ref    | with sm, secret-ref | has sm, auth via secret-ref      |
 			Entry("no self-monitoring, secret-ref -> self-monitoring, token", SelfMonitoringAndApiAccessTestConfig{
 				existingControllerDeployment:               CreateControllerDeploymentWithoutSelfMonitoringWithSecretRef,
@@ -274,7 +282,6 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth,
 				expectK8sClientUpdate:                      true,
 			}),
-
 			// | self-monitoring with secret-ref       | no sm, no auth      | no sm, no auth                   |
 			Entry("self-monitoring, secret-ref -> no self-monitoring, no auth", SelfMonitoringAndApiAccessTestConfig{
 				existingControllerDeployment:               CreateControllerDeploymentWithSelfMonitoringWithSecretRef,
@@ -282,7 +289,6 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth,
 				expectK8sClientUpdate:                      true,
 			}),
-
 			// | self-monitoring with token            | no sm, token        | no sm, auth via token            |
 			Entry("self-monitoring, token -> no self-monitoring, token", SelfMonitoringAndApiAccessTestConfig{
 				existingControllerDeployment:               CreateControllerDeploymentWithSelfMonitoringWithToken,
@@ -290,7 +296,6 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithoutSelfMonitoringWithToken,
 				expectK8sClientUpdate:                      true,
 			}),
-
 			// | self-monitoring with token            | no sm, secret-ref   | no sm, auth via secret-ref       |
 			Entry("self-monitoring, token -> no self-monitoring, secret-ref", SelfMonitoringAndApiAccessTestConfig{
 				existingControllerDeployment:               CreateControllerDeploymentWithSelfMonitoringWithToken,
@@ -298,7 +303,6 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithoutSelfMonitoringWithSecretRef,
 				expectK8sClientUpdate:                      true,
 			}),
-
 			// | self-monitoring with secret-ref       | no sm, token        | no sm, auth via token            |
 			Entry("self-monitoring, secret-ref -> no self-monitoring, token", SelfMonitoringAndApiAccessTestConfig{
 				existingControllerDeployment:               CreateControllerDeploymentWithSelfMonitoringWithSecretRef,
@@ -306,7 +310,6 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithoutSelfMonitoringWithToken,
 				expectK8sClientUpdate:                      true,
 			}),
-
 			// | self-monitoring with secret-ref       | no sm, secret-ref   | no sm, auth via secret-ref       |
 			Entry("self-monitoring, secret-ref -> no self-monitoring, secret-ref", SelfMonitoringAndApiAccessTestConfig{
 				existingControllerDeployment:               CreateControllerDeploymentWithSelfMonitoringWithSecretRef,
@@ -314,7 +317,6 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithoutSelfMonitoringWithSecretRef,
 				expectK8sClientUpdate:                      true,
 			}),
-
 			// | self-monitoring with token            | with sm, token      | has sm, auth via token            |
 			Entry("self-monitoring, token -> self-monitoring, token", SelfMonitoringAndApiAccessTestConfig{
 				existingControllerDeployment:               CreateControllerDeploymentWithSelfMonitoringWithToken,
@@ -322,7 +324,6 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithSelfMonitoringWithToken,
 				expectK8sClientUpdate:                      false,
 			}),
-
 			// | self-monitoring with token            | with sm, secret-ref | has sm, auth via secret-ref       |
 			Entry("self-monitoring, token -> self-monitoring, secret-ref", SelfMonitoringAndApiAccessTestConfig{
 				existingControllerDeployment:               CreateControllerDeploymentWithSelfMonitoringWithToken,
@@ -330,7 +331,6 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithSelfMonitoringWithSecretRef,
 				expectK8sClientUpdate:                      true,
 			}),
-
 			// | self-monitoring with secret-ref       | with sm, token      | has sm, auth via token           |
 			Entry("self-monitoring, secret-ref -> self-monitoring, token", SelfMonitoringAndApiAccessTestConfig{
 				existingControllerDeployment:               CreateControllerDeploymentWithSelfMonitoringWithSecretRef,
@@ -338,13 +338,111 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithSelfMonitoringWithToken,
 				expectK8sClientUpdate:                      true,
 			}),
-
 			// | self-monitoring with secret-ref       | with sm, secret-ref | has sm, auth via secret-ref      |
 			Entry("self-monitoring, secret-ref -> self-monitoring, secret-ref", SelfMonitoringAndApiAccessTestConfig{
 				existingControllerDeployment:               CreateControllerDeploymentWithSelfMonitoringWithSecretRef,
 				operatorConfigurationResourceSpec:          OperatorConfigurationResourceWithSelfMonitoringWithSecretRef,
 				expectedControllerDeploymentAfterReconcile: CreateControllerDeploymentWithSelfMonitoringWithSecretRef,
 				expectK8sClientUpdate:                      false,
+			}),
+		)
+	})
+
+	Describe("updates all registered API clients", func() {
+		AfterEach(func() {
+			RemoveOperatorConfigurationResource(ctx, k8sClient)
+		})
+
+		DescribeTable("by settings or removing the API config", func(config ApiClientSetRemoveTestConfig) {
+			controllerDeployment = EnsureControllerDeploymentExists(
+				ctx,
+				k8sClient,
+				CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth(),
+			)
+			reconciler = createReconciler(controllerDeployment)
+
+			operatorConfigurationResource := CreateOperatorConfigurationResourceWithSpec(
+				ctx,
+				k8sClient,
+				config.operatorConfigurationResourceSpec,
+			)
+
+			expectedDataset := "default"
+			if config.dataset != "" {
+				operatorConfigurationResource.Spec.Export.Dash0.Dataset = config.dataset
+				Expect(k8sClient.Update(ctx, operatorConfigurationResource)).To(Succeed())
+				expectedDataset = config.dataset
+			}
+
+			triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+			verifyOperatorConfigurationResourceIsAvailable(ctx)
+
+			for _, apiClient := range []*DummyApiClient{apiClient1, apiClient2} {
+				if config.expectSetApiEndpointAndDataset {
+					Expect(apiClient.setCalls).To(Equal(1))
+					Expect(apiClient.removeCalls).To(Equal(0))
+					Expect(apiClient.apiConfig.Endpoint).To(Equal(ApiEndpointTest))
+					Expect(apiClient.apiConfig.Dataset).To(Equal(expectedDataset))
+				}
+				if config.expectRemoveApiEndpointAndDataset {
+					Expect(apiClient.setCalls).To(Equal(0))
+					Expect(apiClient.removeCalls).To(Equal(1))
+					Expect(apiClient.apiConfig).To(BeNil())
+				}
+			}
+		},
+
+			// | operator config resource                  | expected calls |
+			// |-------------------------------------------|----------------|
+			// | no Dash0 export                           | remove         |
+			// | no API endpoint, token                    | remove         |
+			// | no API endpoint, secret-ref               | remove         |
+			// | API endpoint, token                       | set            |
+			// | API endpoint, secret-ref                  | set            |
+
+			// | no Dash0 export                           | remove         |
+			Entry("no API endpoint, no Dash0 export", ApiClientSetRemoveTestConfig{
+				operatorConfigurationResourceSpec: OperatorConfigurationResourceWithoutExport,
+				expectSetApiEndpointAndDataset:    false,
+				expectRemoveApiEndpointAndDataset: true,
+			}),
+			// | no API endpoint, token                    | remove         |
+			Entry("no API endpoint, Dash0 export with token", ApiClientSetRemoveTestConfig{
+				operatorConfigurationResourceSpec: OperatorConfigurationResourceDash0ExportWithoutApiEndpointWithToken,
+				expectSetApiEndpointAndDataset:    false,
+				expectRemoveApiEndpointAndDataset: true,
+			}),
+			// | no API endpoint, secret-ref               | remove         |
+			Entry("no API endpoint, Dash0 export with secret-ref", ApiClientSetRemoveTestConfig{
+				operatorConfigurationResourceSpec: OperatorConfigurationResourceDash0ExportWithoutApiEndpointWithSecretRef,
+				expectSetApiEndpointAndDataset:    false,
+				expectRemoveApiEndpointAndDataset: true,
+			}),
+			// | API endpoint, token                       | set            |
+			Entry("API endpoint, Dash0 export with token", ApiClientSetRemoveTestConfig{
+				operatorConfigurationResourceSpec: OperatorConfigurationResourceDash0ExportWithApiEndpointWithToken,
+				expectSetApiEndpointAndDataset:    true,
+				expectRemoveApiEndpointAndDataset: false,
+			}),
+			// | API endpoint, secret-ref                  | set            |
+			Entry("API endpoint, Dash0 export with secret-ref", ApiClientSetRemoveTestConfig{
+				operatorConfigurationResourceSpec: OperatorConfigurationResourceDash0ExportWithApiEndpointWithSecretRef,
+				expectSetApiEndpointAndDataset:    true,
+				expectRemoveApiEndpointAndDataset: false,
+			}),
+			// | API endpoint, token, custom dataset       | set            |
+			Entry("API endpoint, Dash0 export with token, custom dataset", ApiClientSetRemoveTestConfig{
+				operatorConfigurationResourceSpec: OperatorConfigurationResourceDash0ExportWithApiEndpointWithToken,
+				dataset:                           "custom-dataset",
+				expectSetApiEndpointAndDataset:    true,
+				expectRemoveApiEndpointAndDataset: false,
+			}),
+			// | API endpoint, secret-ref, custom dataset  | set            |
+			Entry("API endpoint, Dash0 export with secret-ref, custom dataset", ApiClientSetRemoveTestConfig{
+				operatorConfigurationResourceSpec: OperatorConfigurationResourceDash0ExportWithApiEndpointWithSecretRef,
+				dataset:                           "custom-dataset",
+				expectSetApiEndpointAndDataset:    true,
+				expectRemoveApiEndpointAndDataset: false,
 			}),
 		)
 	})
@@ -713,6 +811,12 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
 				VerifyOperatorConfigurationResourceByNameDoesNotExist(ctx, k8sClient, Default, resource.Name)
 
+				for _, apiClient := range []*DummyApiClient{apiClient1, apiClient2} {
+					Expect(apiClient.setCalls).To(Equal(0))
+					Expect(apiClient.removeCalls).To(Equal(1))
+					Expect(apiClient.apiConfig).To(BeNil())
+				}
+
 				Eventually(func(g Gomega) {
 					updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
 					selfMonitoringAndApiAccessConfiguration, err :=
@@ -766,6 +870,12 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
 				VerifyOperatorConfigurationResourceByNameDoesNotExist(ctx, k8sClient, Default, resource.Name)
 
+				for _, apiClient := range []*DummyApiClient{apiClient1, apiClient2} {
+					Expect(apiClient.setCalls).To(Equal(0))
+					Expect(apiClient.removeCalls).To(Equal(1))
+					Expect(apiClient.apiConfig).To(BeNil())
+				}
+
 				Consistently(func(g Gomega) {
 					updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
 					selfMonitoringAndApiAccessConfiguration, err :=
@@ -797,17 +907,18 @@ func cleanUpDeploymentSpecForDiff(spec *appsv1.DeploymentSpec) {
 }
 
 func createReconciler(controllerDeployment *appsv1.Deployment) *OperatorConfigurationReconciler {
-	persesDashboardCrdReconciler := &PersesDashboardCrdReconciler{
-		persesDashboardReconciler: &PersesDashboardReconciler{},
-	}
+
 	return &OperatorConfigurationReconciler{
-		Client:                       k8sClient,
-		Clientset:                    clientset,
-		Recorder:                     recorder,
-		PersesDashboardCrdReconciler: persesDashboardCrdReconciler,
-		DeploymentSelfReference:      controllerDeployment,
-		DanglingEventsTimeouts:       &DanglingEventsTimeoutsTest,
-		Images:                       TestImages,
+		Client:    k8sClient,
+		Clientset: clientset,
+		Recorder:  recorder,
+		ApiClients: []ApiClient{
+			apiClient1,
+			apiClient2,
+		},
+		DeploymentSelfReference: controllerDeployment,
+		DanglingEventsTimeouts:  &DanglingEventsTimeoutsTest,
+		Images:                  TestImages,
 	}
 }
 
@@ -931,4 +1042,20 @@ func verifyNoSelfMonitoringButAuthTokenEnvVarFromSecretRef(
 	container := controllerDeployment.Spec.Template.Spec.Containers[0]
 	g.Expect(container.Env).To(
 		ContainElement(MatchEnvVarValueFrom("SELF_MONITORING_AND_API_AUTH_TOKEN", "secret-ref", "key")))
+}
+
+type DummyApiClient struct {
+	setCalls    int
+	removeCalls int
+	apiConfig   *ApiConfig
+}
+
+func (c *DummyApiClient) SetApiEndpointAndDataset(apiConfig *ApiConfig, _ *logr.Logger) {
+	c.setCalls++
+	c.apiConfig = apiConfig
+}
+
+func (c *DummyApiClient) RemoveApiEndpointAndDataset() {
+	c.removeCalls++
+	c.apiConfig = nil
 }

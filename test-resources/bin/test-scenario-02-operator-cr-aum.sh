@@ -34,8 +34,8 @@ kubectl create secret \
   --from-literal=token="${DASH0_AUTHORIZATION_TOKEN}"
 finish_step
 
-echo "STEP $step_counter: install foreign custom resource definitions"
-install_foreign_crds
+echo "STEP $step_counter: install third-party custom resource definitions"
+install_third_party_crds
 finish_step
 
 echo "STEP $step_counter: rebuild images"
@@ -71,8 +71,4 @@ if [[ "${DEPLOY_APPLICATION_UNDER_MONITORING:-}" != false ]]; then
   finish_step
 fi
 
-if [[ "${DEPLOY_PERSES_DASHBOARD:-}" == true ]]; then
-  echo "STEP $step_counter: deploy a Perses dashboard resource to namespace ${target_namespace}"
-  kubectl apply -n ${target_namespace} -f test-resources/customresources/persesdashboard/persesdashboard.yaml
-  finish_step
-fi
+install_third_party_resources

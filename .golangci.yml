@@ -38,3 +38,7 @@ linters:
     - unconvert
     - unparam
     - unused
+linters-settings:
+  errcheck:
+    exclude-functions:
+      - fmt.Fprintf
