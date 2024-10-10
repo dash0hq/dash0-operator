@@ -12,7 +12,6 @@ import (
 
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 
-	//nolint:golint,revive
 	. "github.com/onsi/gomega"
 
 	testUtil "github.com/dash0hq/dash0-operator/test/util"

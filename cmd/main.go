@@ -17,6 +17,7 @@ import (
 
 	"github.com/go-logr/logr"
 	persesv1alpha1 "github.com/perses/perses-operator/api/v1alpha1"
+	prometheusv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	semconv "go.opentelemetry.io/collector/semconv/v1.27.0"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	appsv1 "k8s.io/api/apps/v1"
@@ -105,9 +106,10 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(dash0v1alpha1.AddToScheme(scheme))
 
-	// for perses dashboard controller, prometheus scrape config controller etc.
+	// required for Perses dashboard controller and Prometheus rules controller.
 	utilruntime.Must(apiextensionsv1.AddToScheme(scheme))
 	utilruntime.Must(persesv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(prometheusv1.AddToScheme(scheme))
 }
 
 func main() {
@@ -529,16 +531,30 @@ func startDash0Controllers(
 		metricNamePrefix,
 		&setupLog,
 	)
+	prometheusRuleCrdReconciler := &controller.PrometheusRuleCrdReconciler{
+		AuthToken: envVars.selfMonitoringAndApiAuthToken,
+	}
+	if err := prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, startupTasksK8sClient, &setupLog); err != nil {
+		return fmt.Errorf("unable to set up the Prometheus rule reconciler: %w", err)
+	}
+	prometheusRuleCrdReconciler.InitializeSelfMonitoringMetrics(
+		meter,
+		metricNamePrefix,
+		&setupLog,
+	)
 
 	operatorConfigurationReconciler := &controller.OperatorConfigurationReconciler{
-		Client:                       k8sClient,
-		Clientset:                    clientset,
-		PersesDashboardCrdReconciler: persesDashboardCrdReconciler,
-		Scheme:                       mgr.GetScheme(),
-		Recorder:                     mgr.GetEventRecorderFor("dash0-operator-configuration-controller"),
-		DeploymentSelfReference:      deploymentSelfReference,
-		Images:                       images,
-		DevelopmentMode:              developmentMode,
+		Client:    k8sClient,
+		Clientset: clientset,
+		ApiClients: []controller.ApiClient{
+			persesDashboardCrdReconciler,
+			prometheusRuleCrdReconciler,
+		},
+		Scheme:                  mgr.GetScheme(),
+		Recorder:                mgr.GetEventRecorderFor("dash0-operator-configuration-controller"),
+		DeploymentSelfReference: deploymentSelfReference,
+		Images:                  images,
+		DevelopmentMode:         developmentMode,
 	}
 	if err := operatorConfigurationReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the operator configuration reconciler: %w", err)

@@ -121,7 +121,7 @@ func ConvertExportSettingsToExporterList(export dash0v1alpha1.Export) ([]OtlpExp
 			Name:  util.AuthorizationHeaderName,
 			Value: authHeaderValue,
 		}}
-		if d0.Dataset != "" && d0.Dataset != "default" {
+		if d0.Dataset != "" && d0.Dataset != util.DatasetDefault {
 			headers = append(headers, dash0v1alpha1.Header{
 				Name:  util.Dash0DatasetHeaderName,
 				Value: d0.Dataset,

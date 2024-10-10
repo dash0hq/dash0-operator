@@ -12,7 +12,7 @@ import (
 
 	"github.com/dash0hq/dash0-operator/internal/dash0/startup"
 
-	. "github.com/onsi/ginkgo/v2" //nolint:golint,revive
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
@@ -106,7 +106,7 @@ func deployOperatorWithAutoOperationConfiguration(
 		return err
 	}
 
-	_, _ = fmt.Fprintf(GinkgoWriter, "output of helm install:\n%s", output)
+	e2ePrint("output of helm install:\n%s", output)
 	waitForManagerPodAndWebhookToStart(operatorNamespace)
 
 	if operatorConfigurationValues != nil {
@@ -190,8 +190,7 @@ func ensureDash0OperatorHelmRepoIsInstalled(
 	Expect(err).NotTo(HaveOccurred())
 	if !regexp.MustCompile(
 		fmt.Sprintf("%s\\s+%s", repositoryName, operatorHelmChartUrl)).MatchString(repoList) {
-		_, _ = fmt.Fprintf(
-			GinkgoWriter,
+		e2ePrint(
 			"The helm repo %s (%s) has not been found, adding it now.\n",
 			repositoryName,
 			operatorHelmChartUrl,
@@ -207,8 +206,7 @@ func ensureDash0OperatorHelmRepoIsInstalled(
 			))).To(Succeed())
 		Expect(runAndIgnoreOutput(exec.Command("helm", "repo", "update"))).To(Succeed())
 	} else {
-		_, _ = fmt.Fprintf(
-			GinkgoWriter,
+		e2ePrint(
 			"The helm repo %s (%s) is already installed, updating it now.\n",
 			repositoryName,
 			operatorHelmChartUrl,
@@ -333,7 +331,7 @@ func upgradeOperator(
 
 	output, err := run(exec.Command("helm", arguments...))
 	Expect(err).NotTo(HaveOccurred())
-	_, _ = fmt.Fprintf(GinkgoWriter, "output of helm upgrade:\n%s", output)
+	e2ePrint("output of helm upgrade:\n%s", output)
 
 	By("waiting shortly, to give the operator time to restart after helm upgrade")
 	time.Sleep(5 * time.Second)

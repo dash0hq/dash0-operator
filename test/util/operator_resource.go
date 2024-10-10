@@ -35,6 +35,66 @@ var (
 		},
 	}
 
+	OperatorConfigurationResourceWithoutExport = dash0v1alpha1.Dash0OperatorConfigurationSpec{
+		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+			Enabled: false,
+		},
+	}
+
+	OperatorConfigurationResourceDash0ExportWithoutApiEndpointWithToken = dash0v1alpha1.Dash0OperatorConfigurationSpec{
+		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+			Enabled: false,
+		},
+		Export: &dash0v1alpha1.Export{
+			Dash0: &dash0v1alpha1.Dash0Configuration{
+				Authorization: dash0v1alpha1.Authorization{
+					Token: &AuthorizationTokenTest,
+				},
+			},
+		},
+	}
+
+	OperatorConfigurationResourceDash0ExportWithoutApiEndpointWithSecretRef = dash0v1alpha1.Dash0OperatorConfigurationSpec{
+		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+			Enabled: false,
+		},
+		Export: &dash0v1alpha1.Export{
+			Dash0: &dash0v1alpha1.Dash0Configuration{
+				Authorization: dash0v1alpha1.Authorization{
+					SecretRef: &SecretRefTest,
+				},
+			},
+		},
+	}
+
+	OperatorConfigurationResourceDash0ExportWithApiEndpointWithToken = dash0v1alpha1.Dash0OperatorConfigurationSpec{
+		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+			Enabled: false,
+		},
+		Export: &dash0v1alpha1.Export{
+			Dash0: &dash0v1alpha1.Dash0Configuration{
+				ApiEndpoint: ApiEndpointTest,
+				Authorization: dash0v1alpha1.Authorization{
+					Token: &AuthorizationTokenTest,
+				},
+			},
+		},
+	}
+
+	OperatorConfigurationResourceDash0ExportWithApiEndpointWithSecretRef = dash0v1alpha1.Dash0OperatorConfigurationSpec{
+		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+			Enabled: false,
+		},
+		Export: &dash0v1alpha1.Export{
+			Dash0: &dash0v1alpha1.Dash0Configuration{
+				ApiEndpoint: ApiEndpointTest,
+				Authorization: dash0v1alpha1.Authorization{
+					SecretRef: &SecretRefTest,
+				},
+			},
+		},
+	}
+
 	OperatorConfigurationResourceWithoutSelfMonitoringWithToken = dash0v1alpha1.Dash0OperatorConfigurationSpec{
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 			Enabled: false,
