@@ -38,15 +38,16 @@ kubectl delete secret \
 
 kubectl delete ns dash0-system --ignore-not-found
 
-# deliberately deleting the dashboard after undeploying the operator to avoid deleting the dashboard in Dash0 every time.
+# deliberately deleting dashboards & check rules after undeploying the operator to avoid deleting these items in
+# Dash0 every time.
 kubectl delete -n ${target_namespace} -f test-resources/customresources/persesdashboard/persesdashboard.yaml || true
+kubectl delete -n ${target_namespace} -f test-resources/customresources/prometheusrule/prometheusrule.yaml || true
 
 kubectl delete --ignore-not-found=true customresourcedefinition dash0monitorings.operator.dash0.com
 kubectl delete --ignore-not-found=true customresourcedefinition dash0operatorconfigurations.operator.dash0.com
 kubectl delete --ignore-not-found=true customresourcedefinition dash0operatorconfigurations.operator.dash0.com
-kubectl delete --ignore-not-found=true customresourcedefinition perses.perses.dev
 kubectl delete --ignore-not-found=true customresourcedefinition persesdashboards.perses.dev
-kubectl delete --ignore-not-found=true customresourcedefinition persesdatasources.perses.dev
+kubectl delete --ignore-not-found=true customresourcedefinition prometheusrules.monitoring.coreos.com
 
 # The following resources are deleted automatically with helm uninstall, unless for example when the operator manager
 # crashes and the helm pre-delete helm hook cannot run, then they might be left behind.

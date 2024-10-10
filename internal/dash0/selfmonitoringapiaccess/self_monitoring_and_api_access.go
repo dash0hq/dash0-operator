@@ -633,7 +633,7 @@ func ConvertExportConfigurationToEnvVarSettings(selfMonitoringExport dash0v1alph
 			Name:  util.AuthorizationHeaderName,
 			Value: authHeaderValue,
 		}}
-		if dash0Export.Dataset != "" && dash0Export.Dataset != "default" {
+		if dash0Export.Dataset != "" && dash0Export.Dataset != util.DatasetDefault {
 			headers = append(headers, dash0v1alpha1.Header{
 				Name:  util.Dash0DatasetHeaderName,
 				Value: dash0Export.Dataset,

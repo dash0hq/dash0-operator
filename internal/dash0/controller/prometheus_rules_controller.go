@@ -34,22 +34,22 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/dash0/util"
 )
 
-type PersesDashboardCrdReconciler struct {
-	AuthToken                 string
-	mgr                       ctrl.Manager
-	skipNameValidation        bool
-	persesDashboardReconciler *PersesDashboardReconciler
-	persesDashboardCrdExists  atomic.Bool
+type PrometheusRuleCrdReconciler struct {
+	AuthToken                string
+	mgr                      ctrl.Manager
+	skipNameValidation       bool
+	prometheusRuleReconciler *PrometheusRuleReconciler
+	prometheusRuleCrdExists  atomic.Bool
 }
 
 //+kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list;watch
 
 var (
-	// persesDashboardCrdReconcileRequestMetric otelmetric.Int64Counter
-	persesDashboardReconcileRequestMetric otelmetric.Int64Counter
+	// prometheusRuleCrdReconcileRequestMetric otelmetric.Int64Counter
+	prometheusRuleReconcileRequestMetric otelmetric.Int64Counter
 )
 
-func (r *PersesDashboardCrdReconciler) SetupWithManager(
+func (r *PrometheusRuleCrdReconciler) SetupWithManager(
 	ctx context.Context,
 	mgr ctrl.Manager,
 	startupK8sClient client.Client,
@@ -57,7 +57,7 @@ func (r *PersesDashboardCrdReconciler) SetupWithManager(
 ) error {
 	if r.AuthToken == "" {
 		logger.Info("No Dash0 auth token has been provided via the operator configuration resource. The operator " +
-			"will not watch for Perses dashboard resources.")
+			"will not watch for Prometheus rule resources.")
 		return nil
 	}
 
@@ -69,59 +69,59 @@ func (r *PersesDashboardCrdReconciler) SetupWithManager(
 	}
 
 	r.mgr = mgr
-	r.persesDashboardReconciler = &PersesDashboardReconciler{
+	r.prometheusRuleReconciler = &PrometheusRuleReconciler{
 		pseudoClusterUid: kubeSystemNamespace.UID,
 		httpClient:       &http.Client{},
 		authToken:        r.AuthToken,
 	}
 
 	if err := startupK8sClient.Get(ctx, client.ObjectKey{
-		Name: "persesdashboards.perses.dev",
+		Name: "prometheusrules.monitoring.coreos.com",
 	}, &apiextensionsv1.CustomResourceDefinition{}); err != nil {
 		if !apierrors.IsNotFound(err) {
-			logger.Error(err, "unable to call get the persesdashboards.perses.dev custom resource definition")
+			logger.Error(err, "unable to call get the prometheusrules.monitoring.coreos.com custom resource definition")
 			return err
 		}
 	} else {
-		r.persesDashboardCrdExists.Store(true)
-		r.maybeStartWatchingPersesDashboardResources(true, logger)
+		r.prometheusRuleCrdExists.Store(true)
+		r.maybeStartWatchingPrometheusRuleResources(true, logger)
 	}
 
 	controllerBuilder := ctrl.NewControllerManagedBy(mgr).
-		Named("dash0_perses_dashboard_crd_controller").
+		Named("dash0_prometheus_rule_crd_controller").
 		Watches(
 			&apiextensionsv1.CustomResourceDefinition{},
 			// Deliberately not using a convenience mechanism like &handler.EnqueueRequestForObject{} (which would
 			// feed all events into the Reconcile method) here, since using the lower-level TypedEventHandler interface
 			// directly allows us to distinguish between create and delete events more easily.
 			r,
-			builder.WithPredicates(makeFilterPredicate("perses.dev", "PersesDashboard")))
+			builder.WithPredicates(makeFilterPredicate("monitoring.coreos.com", "PrometheusRule")))
 	if r.skipNameValidation {
 		controllerBuilder = controllerBuilder.WithOptions(controller.TypedOptions[reconcile.Request]{
 			SkipNameValidation: ptr.To(true),
 		})
 	}
 	if err := controllerBuilder.Complete(r); err != nil {
-		logger.Error(err, "unable to build the controller for the Perses dashboard CRD reconciler")
+		logger.Error(err, "unable to build the controller for the Prometheus rule CRD reconciler")
 		return err
 	}
 
 	return nil
 }
 
-//+kubebuilder:rbac:groups=perses.dev,resources=persesdashboards,verbs=get;list;watch
+//+kubebuilder:rbac:groups=monitoring.coreos.com,resources=prometheusrules,verbs=get;list;watch
 
-func (r *PersesDashboardCrdReconciler) Create(
+func (r *PrometheusRuleCrdReconciler) Create(
 	ctx context.Context,
 	_ event.TypedCreateEvent[client.Object],
 	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
 ) {
 	logger := log.FromContext(ctx)
-	r.persesDashboardCrdExists.Store(true)
-	r.maybeStartWatchingPersesDashboardResources(false, &logger)
+	r.prometheusRuleCrdExists.Store(true)
+	r.maybeStartWatchingPrometheusRuleResources(false, &logger)
 }
 
-func (r *PersesDashboardCrdReconciler) Update(
+func (r *PrometheusRuleCrdReconciler) Update(
 	context.Context,
 	event.TypedUpdateEvent[client.Object],
 	workqueue.TypedRateLimitingInterface[reconcile.Request],
@@ -130,21 +130,21 @@ func (r *PersesDashboardCrdReconciler) Update(
 	// note: update is called twice prior to delete, it is also called twice after an actual create
 }
 
-func (r *PersesDashboardCrdReconciler) Delete(
+func (r *PrometheusRuleCrdReconciler) Delete(
 	ctx context.Context,
 	_ event.TypedDeleteEvent[client.Object],
 	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
 ) {
 	logger := log.FromContext(ctx)
-	logger.Info("The PersesDashboard custom resource definition has been deleted.")
-	r.persesDashboardCrdExists.Store(false)
+	logger.Info("The PrometheusRule custom resource definition has been deleted.")
+	r.prometheusRuleCrdExists.Store(false)
 
-	// Known issue: We would need to stop the watch for the Perses dashboard resources here, but the controller-runtime
+	// Known issue: We would need to stop the watch for the Prometheus rule resources here, but the controller-runtime
 	// does not provide any API to stop a watch.
 	// An error will be logged every ten seconds until the controller process is restarted.
 }
 
-func (r *PersesDashboardCrdReconciler) Generic(
+func (r *PrometheusRuleCrdReconciler) Generic(
 	context.Context,
 	event.TypedGenericEvent[client.Object],
 	workqueue.TypedRateLimitingInterface[reconcile.Request],
@@ -152,127 +152,127 @@ func (r *PersesDashboardCrdReconciler) Generic(
 	// Should not be called, we are not interested in generic events.
 }
 
-func (r *PersesDashboardCrdReconciler) Reconcile(
+func (r *PrometheusRuleCrdReconciler) Reconcile(
 	_ context.Context,
 	_ reconcile.Request,
 ) (reconcile.Result, error) {
-	// Reconcile should not be called for the PersesDashboardCrdReconciler CRD, as we are using the
+	// Reconcile should not be called for the PrometheusRuleCrdReconciler CRD, as we are using the
 	// TypedEventHandler interface directly when setting up the watch. We still need to implement the method, as the
 	// controller builder's Complete method requires implementing the Reconciler interface.
 	return reconcile.Result{}, nil
 }
 
-func (r *PersesDashboardCrdReconciler) InitializeSelfMonitoringMetrics(
+func (r *PrometheusRuleCrdReconciler) InitializeSelfMonitoringMetrics(
 	meter otelmetric.Meter,
 	metricNamePrefix string,
 	logger *logr.Logger,
 ) {
-	// Note: The persesDashboardCrdReconcileRequestMetric is unused until we actually implement watching the
-	// PersesDashboard _CRD_, see comment above in SetupWithManager.
+	// Note: The prometheusRuleCrdReconcileRequestMetric is unused until we actually implement watching the
+	// PrometheusRule _CRD_, see comment above in SetupWithManager.
 
-	// reconcileRequestMetricName := fmt.Sprintf("%s%s", metricNamePrefix, "persesdashboardcrd.reconcile_requests")
+	// reconcileRequestMetricName := fmt.Sprintf("%s%s", metricNamePrefix, "prometheusrulecrd.reconcile_requests")
 	// var err error
-	// if persesDashboardCrdReconcileRequestMetric, err = meter.Int64Counter(
+	// if prometheusRuleCrdReconcileRequestMetric, err = meter.Int64Counter(
 	// 	reconcileRequestMetricName,
 	// 	otelmetric.WithUnit("1"),
-	// 	otelmetric.WithDescription("Counter for persesdashboard CRD reconcile requests"),
+	// 	otelmetric.WithDescription("Counter for prometheusrule CRD reconcile requests"),
 	// ); err != nil {
 	// 	logger.Error(err, "Cannot initialize the metric %s.")
 	// }
 
-	r.persesDashboardReconciler.InitializeSelfMonitoringMetrics(
+	r.prometheusRuleReconciler.InitializeSelfMonitoringMetrics(
 		meter,
 		metricNamePrefix,
 		logger,
 	)
 }
 
-func (r *PersesDashboardCrdReconciler) SetApiEndpointAndDataset(
+func (r *PrometheusRuleCrdReconciler) SetApiEndpointAndDataset(
 	apiConfig *ApiConfig,
 	logger *logr.Logger) {
-	if r.persesDashboardReconciler == nil {
-		// If no auth token has been set via environment variable, we do not even create the persesDashboardReconciler,
+	if r.prometheusRuleReconciler == nil {
+		// If no auth token has been set via environment variable, we do not even create the prometheusRuleReconciler,
 		// hence this nil check is necessary.
 		return
 	}
-	r.persesDashboardReconciler.apiConfig.Store(apiConfig)
-	r.maybeStartWatchingPersesDashboardResources(false, logger)
+	r.prometheusRuleReconciler.apiConfig.Store(apiConfig)
+	r.maybeStartWatchingPrometheusRuleResources(false, logger)
 }
 
-func (r *PersesDashboardCrdReconciler) RemoveApiEndpointAndDataset() {
-	if r.persesDashboardReconciler == nil {
-		// If no auth token has been set via environment variable, we do not even create the persesDashboardReconciler,
+func (r *PrometheusRuleCrdReconciler) RemoveApiEndpointAndDataset() {
+	if r.prometheusRuleReconciler == nil {
+		// If no auth token has been set via environment variable, we do not even create the prometheusRuleReconciler,
 		// hence this nil check is necessary.
 		return
 	}
-	r.persesDashboardReconciler.apiConfig.Store(nil)
+	r.prometheusRuleReconciler.apiConfig.Store(nil)
 }
 
-func (r *PersesDashboardCrdReconciler) maybeStartWatchingPersesDashboardResources(isStartup bool, logger *logr.Logger) {
-	if r.persesDashboardReconciler.isWatching.Load() {
+func (r *PrometheusRuleCrdReconciler) maybeStartWatchingPrometheusRuleResources(isStartup bool, logger *logr.Logger) {
+	if r.prometheusRuleReconciler.isWatching.Load() {
 		// we are already watching, do not start a second watch
 		return
 	}
 
-	if !r.persesDashboardCrdExists.Load() {
-		logger.Info("The persesdashboards.perses.dev custom resource definition does not exist in this cluster, the " +
-			"operator will not watch for Perses dashboard resources.")
+	if !r.prometheusRuleCrdExists.Load() {
+		logger.Info("The prometheusrules.monitoring.coreos.com custom resource definition does not exist in this cluster, the " +
+			"operator will not watch for Prometheus rule resources.")
 		return
 	}
 
-	apiConfig := r.persesDashboardReconciler.apiConfig.Load()
+	apiConfig := r.prometheusRuleReconciler.apiConfig.Load()
 	if !isValidApiConfig(apiConfig) {
 		if !isStartup {
 			// Silently ignore this missing precondition if it happens during the startup of the operator. It will
 			// be remedied automatically once the operator configuration resource is reconciled for the first time.
-			logger.Info("The persesdashboards.perses.dev custom resource definition is present in this " +
+			logger.Info("The prometheusrules.monitoring.coreos.com custom resource definition is present in this " +
 				"cluster, but no Dash0 API endpoint been provided via the operator configuration resource, or the " +
-				"operator configuration resource has not been reconciled yet. The operator will not watch for Perses " +
-				"dashboard resources. (If there is an operator configuration resource with an API endpoint present in " +
+				"operator configuration resource has not been reconciled yet. The operator will not watch for Prometheus " +
+				"rule resources. (If there is an operator configuration resource with an API endpoint present in " +
 				"the cluster, it will be reconciled in a few seconds and this message can be safely ignored.)")
 		}
 		return
 	}
 
-	logger.Info("The persesdashboards.perses.dev custom resource definition is present in this " +
-		"cluster, and a Dash0 API endpoint has been provided. The operator will watch for Perses dashboard resources.")
-	r.startWatchingPersesDashboardResources(logger)
+	logger.Info("The prometheusrules.monitoring.coreos.com custom resource definition is present in this " +
+		"cluster, and a Dash0 API endpoint has been provided. The operator will watch for Prometheus rule resources.")
+	r.startWatchingPrometheusRuleResources(logger)
 }
 
-func (r *PersesDashboardCrdReconciler) startWatchingPersesDashboardResources(
+func (r *PrometheusRuleCrdReconciler) startWatchingPrometheusRuleResources(
 	logger *logr.Logger,
 ) {
-	logger.Info("Setting up a watch for Perses dashboard custom resources.")
+	logger.Info("Setting up a watch for Prometheus rule custom resources.")
 
-	unstructuredGvkForPersesDashboards := &unstructured.Unstructured{}
-	unstructuredGvkForPersesDashboards.SetGroupVersionKind(schema.GroupVersionKind{
-		Kind:    "PersesDashboard",
-		Group:   "perses.dev",
-		Version: "v1alpha1",
+	unstructuredGvkForPrometheusRules := &unstructured.Unstructured{}
+	unstructuredGvkForPrometheusRules.SetGroupVersionKind(schema.GroupVersionKind{
+		Kind:    "PrometheusRule",
+		Group:   "monitoring.coreos.com",
+		Version: "v1",
 	})
 
 	controllerBuilder := ctrl.NewControllerManagedBy(r.mgr).
-		Named("dash0_perses_dashboard_controller").
+		Named("dash0_prometheus_rule_controller").
 		Watches(
-			unstructuredGvkForPersesDashboards,
+			unstructuredGvkForPrometheusRules,
 			// Deliberately not using a convenience mechanism like &handler.EnqueueRequestForObject{} (which would
 			// feed all events into the Reconcile method) here, since using the lower-level TypedEventHandler interface
 			// directly allows us to distinguish between create and delete events more easily.
-			r.persesDashboardReconciler,
+			r.prometheusRuleReconciler,
 		)
 	if r.skipNameValidation {
 		controllerBuilder = controllerBuilder.WithOptions(controller.TypedOptions[reconcile.Request]{
 			SkipNameValidation: ptr.To(true),
 		})
 	}
-	if err := controllerBuilder.Complete(r.persesDashboardReconciler); err != nil {
-		logger.Error(err, "unable to create a new controller for watching Perses dashboards")
+	if err := controllerBuilder.Complete(r.prometheusRuleReconciler); err != nil {
+		logger.Error(err, "unable to create a new controller for watching Prometheus Rules")
 		return
 	}
-	r.persesDashboardReconciler.isWatching.Store(true)
+	r.prometheusRuleReconciler.isWatching.Store(true)
 }
 
-type PersesDashboardReconciler struct {
+type PrometheusRuleReconciler struct {
 	isWatching       atomic.Bool
 	pseudoClusterUid types.UID
 	httpClient       *http.Client
@@ -280,56 +280,56 @@ type PersesDashboardReconciler struct {
 	authToken        string
 }
 
-func (r *PersesDashboardReconciler) InitializeSelfMonitoringMetrics(
+func (r *PrometheusRuleReconciler) InitializeSelfMonitoringMetrics(
 	meter otelmetric.Meter,
 	metricNamePrefix string,
 	logger *logr.Logger,
 ) {
-	reconcileRequestMetricName := fmt.Sprintf("%s%s", metricNamePrefix, "persesdashboard.reconcile_requests")
+	reconcileRequestMetricName := fmt.Sprintf("%s%s", metricNamePrefix, "prometheusrule.reconcile_requests")
 	var err error
-	if persesDashboardReconcileRequestMetric, err = meter.Int64Counter(
+	if prometheusRuleReconcileRequestMetric, err = meter.Int64Counter(
 		reconcileRequestMetricName,
 		otelmetric.WithUnit("1"),
-		otelmetric.WithDescription("Counter for perses dashboard reconcile requests"),
+		otelmetric.WithDescription("Counter for prometheus rule reconcile requests"),
 	); err != nil {
 		logger.Error(err, "Cannot initialize the metric %s.")
 	}
 }
 
-func (r *PersesDashboardReconciler) Create(
+func (r *PrometheusRuleReconciler) Create(
 	ctx context.Context,
 	e event.TypedCreateEvent[client.Object],
 	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
 ) {
-	if persesDashboardReconcileRequestMetric != nil {
-		persesDashboardReconcileRequestMetric.Add(ctx, 1)
+	if prometheusRuleReconcileRequestMetric != nil {
+		prometheusRuleReconcileRequestMetric.Add(ctx, 1)
 	}
 
 	logger := log.FromContext(ctx)
 	logger.Info(
-		"Detected a new Perses dashboard resource",
+		"Detected a new Prometheus rule resource",
 		"namespace",
 		e.Object.GetNamespace(),
 		"name",
 		e.Object.GetName(),
 	)
-	if err := r.UpsertDashboard(e.Object.(*unstructured.Unstructured), &logger); err != nil {
-		logger.Error(err, "unable to upsert the dashboard")
+	if err := r.UpsertRule(e.Object.(*unstructured.Unstructured), &logger); err != nil {
+		logger.Error(err, "unable to upsert the rule")
 	}
 }
 
-func (r *PersesDashboardReconciler) Update(
+func (r *PrometheusRuleReconciler) Update(
 	ctx context.Context,
 	e event.TypedUpdateEvent[client.Object],
 	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
 ) {
-	if persesDashboardReconcileRequestMetric != nil {
-		persesDashboardReconcileRequestMetric.Add(ctx, 1)
+	if prometheusRuleReconcileRequestMetric != nil {
+		prometheusRuleReconcileRequestMetric.Add(ctx, 1)
 	}
 
 	logger := log.FromContext(ctx)
 	logger.Info(
-		"Detected a change for a Perses dashboard resource",
+		"Detected a change for a Prometheus rule resource",
 		"namespace",
 		e.ObjectNew.GetNamespace(),
 		"name",
@@ -337,9 +337,9 @@ func (r *PersesDashboardReconciler) Update(
 	)
 
 	_ = util.RetryWithCustomBackoff(
-		"upsert dashboard",
+		"upsert rule",
 		func() error {
-			return r.UpsertDashboard(e.ObjectNew.(*unstructured.Unstructured), &logger)
+			return r.UpsertRule(e.ObjectNew.(*unstructured.Unstructured), &logger)
 		},
 		retrySettings,
 		true,
@@ -347,18 +347,18 @@ func (r *PersesDashboardReconciler) Update(
 	)
 }
 
-func (r *PersesDashboardReconciler) Delete(
+func (r *PrometheusRuleReconciler) Delete(
 	ctx context.Context,
 	e event.TypedDeleteEvent[client.Object],
 	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
 ) {
-	if persesDashboardReconcileRequestMetric != nil {
-		persesDashboardReconcileRequestMetric.Add(ctx, 1)
+	if prometheusRuleReconcileRequestMetric != nil {
+		prometheusRuleReconcileRequestMetric.Add(ctx, 1)
 	}
 
 	logger := log.FromContext(ctx)
 	logger.Info(
-		"Detected the deletion of a Perses dashboard resource",
+		"Detected the deletion of a Prometheus rule resource",
 		"namespace",
 		e.Object.GetNamespace(),
 		"name",
@@ -366,9 +366,9 @@ func (r *PersesDashboardReconciler) Delete(
 	)
 
 	_ = util.RetryWithCustomBackoff(
-		"delete dashboard",
+		"delete rule",
 		func() error {
-			return r.DeleteDashboard(e.Object.(*unstructured.Unstructured), &logger)
+			return r.DeleteRule(e.Object.(*unstructured.Unstructured), &logger)
 		},
 		retrySettings,
 		true,
@@ -376,7 +376,7 @@ func (r *PersesDashboardReconciler) Delete(
 	)
 }
 
-func (r *PersesDashboardReconciler) Generic(
+func (r *PrometheusRuleReconciler) Generic(
 	_ context.Context,
 	_ event.TypedGenericEvent[client.Object],
 	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
@@ -384,23 +384,23 @@ func (r *PersesDashboardReconciler) Generic(
 	// ignoring generic events
 }
 
-func (r *PersesDashboardReconciler) Reconcile(
+func (r *PrometheusRuleReconciler) Reconcile(
 	context.Context,
 	reconcile.Request,
 ) (reconcile.Result, error) {
-	// Reconcile should not be called on the PersesDashboardReconciler, as we are using the TypedEventHandler interface
+	// Reconcile should not be called on the PrometheusRuleReconciler, as we are using the TypedEventHandler interface
 	// directly when setting up the watch. We still need to implement the method, as the controller builder's Complete
 	// method requires implementing the Reconciler interface.
 	return reconcile.Result{}, nil
 }
 
-func (r *PersesDashboardReconciler) UpsertDashboard(
-	persesDashboard *unstructured.Unstructured,
+func (r *PrometheusRuleReconciler) UpsertRule(
+	prometheusRule *unstructured.Unstructured,
 	logger *logr.Logger,
 ) error {
 	apiConfig := r.apiConfig.Load()
 	valResult, executeRequest := r.validateConfigAndRenderUrl(
-		persesDashboard,
+		prometheusRule,
 		apiConfig,
 		logger,
 	)
@@ -408,14 +408,14 @@ func (r *PersesDashboardReconciler) UpsertDashboard(
 		return nil
 	}
 
-	specRaw := persesDashboard.Object["spec"]
+	specRaw := prometheusRule.Object["spec"]
 	if specRaw == nil {
-		logger.Info("Perses dashboard has no spec, the dashboard will not be updated in Dash0.")
+		logger.Info("Prometheus rule has no spec, the rule will not be updated in Dash0.")
 		return nil
 	}
 	spec, ok := specRaw.(map[string]interface{})
 	if !ok {
-		logger.Info("Perses dashboard spec is not a map, the dashboard will not be updated in Dash0.")
+		logger.Info("Prometheus rule spec is not a map, the rule will not be updated in Dash0.")
 		return nil
 	}
 	displayRaw := spec["display"]
@@ -425,23 +425,23 @@ func (r *PersesDashboardReconciler) UpsertDashboard(
 	}
 	display, ok := displayRaw.(map[string]interface{})
 	if !ok {
-		logger.Info("Perses dashboard spec.display is not a map, the dashboard will not be updated in Dash0.")
+		logger.Info("Prometheus rule spec.display is not a map, the rule will not be updated in Dash0.")
 		return nil
 	}
 
 	displayName, ok := display["name"]
 	if !ok || displayName == "" {
-		// Let the dashboard name default to the perses dashboard resource's namespace + name, if unset.
+		// Let the rule name default to the prometheus rule resource's namespace + name, if unset.
 		display["name"] = fmt.Sprintf("%s/%s", valResult.namespace, valResult.name)
 	}
 
-	// Remove all unnecessary metadata (labels & annotations), we basically only need the dashboard spec.
-	serializedDashboard, _ := json.Marshal(
+	// Remove all unnecessary metadata (labels & annotations), we basically only need the rule spec.
+	serializedRule, _ := json.Marshal(
 		map[string]interface{}{
-			"kind": "PersesDashboard",
+			"kind": "PrometheusRule",
 			"spec": spec,
 		})
-	requestPayload := bytes.NewBuffer(serializedDashboard)
+	requestPayload := bytes.NewBuffer(serializedRule)
 
 	req, err := http.NewRequest(
 		http.MethodPut,
@@ -449,15 +449,15 @@ func (r *PersesDashboardReconciler) UpsertDashboard(
 		requestPayload,
 	)
 	if err != nil {
-		logger.Error(err, "unable to create a new HTTP request to upsert the dashboard")
+		logger.Error(err, "unable to create a new HTTP request to upsert the rule")
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", valResult.authToken))
-	logger.Info(fmt.Sprintf("Updating/creating dashboard %s in Dash0", valResult.origin))
+	logger.Info(fmt.Sprintf("Updating/creating rule %s in Dash0", valResult.origin))
 	res, err := r.httpClient.Do(req)
 	if err != nil {
-		logger.Error(err, fmt.Sprintf("unable to execute the HTTP request to update the dashboard %s", valResult.origin))
+		logger.Error(err, fmt.Sprintf("unable to execute the HTTP request to update the rule %s", valResult.origin))
 		return err
 	}
 
@@ -474,13 +474,13 @@ func (r *PersesDashboardReconciler) UpsertDashboard(
 	return nil
 }
 
-func (r *PersesDashboardReconciler) DeleteDashboard(
-	persesDashboard *unstructured.Unstructured,
+func (r *PrometheusRuleReconciler) DeleteRule(
+	prometheusRule *unstructured.Unstructured,
 	logger *logr.Logger,
 ) error {
 	apiConfig := r.apiConfig.Load()
 	valResult, executeRequest := r.validateConfigAndRenderUrl(
-		persesDashboard,
+		prometheusRule,
 		apiConfig,
 		logger,
 	)
@@ -494,14 +494,14 @@ func (r *PersesDashboardReconciler) DeleteDashboard(
 		nil,
 	)
 	if err != nil {
-		logger.Error(err, "unable to create a new HTTP request to delete the dashboard")
+		logger.Error(err, "unable to create a new HTTP request to delete the rule")
 		return err
 	}
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", valResult.authToken))
-	logger.Info(fmt.Sprintf("Deleting dashboard %s in Dash0", valResult.origin))
+	logger.Info(fmt.Sprintf("Deleting rule %s in Dash0", valResult.origin))
 	res, err := r.httpClient.Do(req)
 	if err != nil {
-		logger.Error(err, fmt.Sprintf("unable to execute the HTTP request to delete the dashboard %s", valResult.origin))
+		logger.Error(err, fmt.Sprintf("unable to execute the HTTP request to delete the rule %s", valResult.origin))
 		return err
 	}
 
@@ -518,18 +518,18 @@ func (r *PersesDashboardReconciler) DeleteDashboard(
 	return nil
 }
 
-func (r *PersesDashboardReconciler) validateConfigAndRenderUrl(
-	persesDashboard *unstructured.Unstructured,
+func (r *PrometheusRuleReconciler) validateConfigAndRenderUrl(
+	prometheusRule *unstructured.Unstructured,
 	apiConfig *ApiConfig,
 	logger *logr.Logger,
 ) (*validationResult, bool) {
 	if !isValidApiConfig(apiConfig) {
-		logger.Info("No Dash0 API endpoint has been provided via the operator configuration resource, the dashboard " +
+		logger.Info("No Dash0 API endpoint has been provided via the operator configuration resource, the rule " +
 			"will not be updated in Dash0.")
 		return nil, false
 	}
 	if r.authToken == "" {
-		logger.Info("No auth token is set on the controller deployment, the dashboard will not be updated " +
+		logger.Info("No auth token is set on the controller deployment, the rule will not be updated " +
 			"in Dash0.")
 		return nil, false
 	}
@@ -539,12 +539,12 @@ func (r *PersesDashboardReconciler) validateConfigAndRenderUrl(
 		dataset = util.DatasetDefault
 	}
 
-	namespace, name, ok := readNamespaceAndName(persesDashboard, "Perses dashboard", logger)
+	namespace, name, ok := readNamespaceAndName(prometheusRule, "Prometheus rule", logger)
 	if !ok {
 		return nil, false
 	}
 
-	dashboardUrl, dashboardOrigin := r.renderDashboardUrl(
+	ruleUrl, ruleOrigin := r.renderRuleUrl(
 		apiConfig.Endpoint,
 		namespace,
 		name,
@@ -553,20 +553,20 @@ func (r *PersesDashboardReconciler) validateConfigAndRenderUrl(
 	return &validationResult{
 		namespace: namespace,
 		name:      name,
-		url:       dashboardUrl,
-		origin:    dashboardOrigin,
+		url:       ruleUrl,
+		origin:    ruleOrigin,
 		authToken: r.authToken,
 	}, true
 }
 
-func (r *PersesDashboardReconciler) renderDashboardUrl(
+func (r *PrometheusRuleReconciler) renderRuleUrl(
 	dash0ApiEndpoint string,
 	namespace string,
 	name string,
 	dataset string,
 ) (string, string) {
 
-	dashboardOrigin := fmt.Sprintf(
+	ruleOrigin := fmt.Sprintf(
 		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
 		// any potential naming collisions (e.g. namespace="abc" & name="def-ghi" vs. namespace="abc-def" & name="ghi").
 		"dash0-operator_%s_%s_%s_%s",
@@ -579,16 +579,16 @@ func (r *PersesDashboardReconciler) renderDashboardUrl(
 		dash0ApiEndpoint += "/"
 	}
 	return fmt.Sprintf(
-		"%sapi/dashboards/%s?dataset=%s",
+		"%sapi/alerting/check-rules/%s?dataset=%s",
 		dash0ApiEndpoint,
-		dashboardOrigin,
+		ruleOrigin,
 		dataset,
-	), dashboardOrigin
+	), ruleOrigin
 }
 
-func (r *PersesDashboardReconciler) handleNon2xxStatusCode(
+func (r *PrometheusRuleReconciler) handleNon2xxStatusCode(
 	res *http.Response,
-	dashboardOrigin string,
+	ruleOrigin string,
 	logger *logr.Logger,
 ) error {
 	defer func() {
@@ -597,15 +597,15 @@ func (r *PersesDashboardReconciler) handleNon2xxStatusCode(
 	responseBody, readErr := io.ReadAll(res.Body)
 	if readErr != nil {
 		readBodyErr := fmt.Errorf("unable to read the API response payload after receiving status code %d when "+
-			"trying to udpate/create/delete the dashboard %s", res.StatusCode, dashboardOrigin)
+			"trying to udpate/create/delete the rule %s", res.StatusCode, ruleOrigin)
 		logger.Error(readBodyErr, "unable to read the API response payload")
 		return readBodyErr
 	}
 
 	statusCodeErr := fmt.Errorf(
-		"unexpected status code %d when updating/creating/deleting the dashboard %s, response body is %s",
+		"unexpected status code %d when updating/creating/deleting the rule %s, response body is %s",
 		res.StatusCode,
-		dashboardOrigin,
+		ruleOrigin,
 		string(responseBody),
 	)
 	logger.Error(statusCodeErr, "unexpected status code")
