@@ -1,8 +1,6 @@
 module github.com/dash0hq/dash0-operator
 
-go 1.22.4
-
-toolchain go1.22.6
+go 1.23.2
 
 require (
 	github.com/cisco-open/k8s-objectmatcher v1.10.0
@@ -23,7 +21,7 @@ require (
 	k8s.io/apiextensions-apiserver v0.31.1
 	k8s.io/apimachinery v0.31.1
 	k8s.io/client-go v0.31.1
-	k8s.io/utils v0.0.0-20240711033017-18e509b52bc8
+	k8s.io/utils v0.0.0-20240902221715-702e33fdd3c3
 	sigs.k8s.io/controller-runtime v0.19.0
 	sigs.k8s.io/yaml v1.4.0
 )

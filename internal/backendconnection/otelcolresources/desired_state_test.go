@@ -366,13 +366,10 @@ func parseBackSelfMonitoringEnvVarsFromCollectorDaemonSet(collectorDemonSet *app
 	// verify that the configurations on all init containers and regular containers are consistent
 	var referenceMonitoringConfiguration *selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration
 	for _, selfMonitoringConfiguration := range selfMonitoringConfigurations {
-		// Note: Using a local var in the loop fixes golangci-lint complaint exportloopref, see
-		// https://github.com/kyoh86/exportloopref.
-		loopLocalSelfMonitoringConfiguration := selfMonitoringConfiguration
 		if referenceMonitoringConfiguration == nil {
-			referenceMonitoringConfiguration = &loopLocalSelfMonitoringConfiguration
+			referenceMonitoringConfiguration = &selfMonitoringConfiguration
 		} else {
-			if !reflect.DeepEqual(*referenceMonitoringConfiguration, loopLocalSelfMonitoringConfiguration) {
+			if !reflect.DeepEqual(*referenceMonitoringConfiguration, selfMonitoringConfiguration) {
 				return selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{},
 					fmt.Errorf("inconsistent self-monitoring configurations: %v", selfMonitoringConfigurations)
 			}

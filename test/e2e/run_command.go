@@ -38,17 +38,17 @@ func run(cmd *exec.Cmd, logCommandArgs ...bool) (string, error) {
 	cmd.Dir = dir
 
 	if err := os.Chdir(cmd.Dir); err != nil {
-		fmt.Fprintf(GinkgoWriter, "chdir dir: %s\n", err)
+		_, _ = fmt.Fprintf(GinkgoWriter, "chdir dir: %s\n", err)
 	}
 
 	cmd.Env = append(os.Environ(), "GO111MODULE=on")
 	command := strings.Join(cmd.Args, " ")
 	if logCommand {
-		fmt.Fprintf(GinkgoWriter, "running: %s\n", command)
+		_, _ = fmt.Fprintf(GinkgoWriter, "running: %s\n", command)
 	}
 	output, err := cmd.CombinedOutput()
 	if alwaysLogOutput {
-		fmt.Fprintf(GinkgoWriter, "output: %s\n", string(output))
+		_, _ = fmt.Fprintf(GinkgoWriter, "output: %s\n", string(output))
 	}
 	if err != nil {
 		return string(output), fmt.Errorf("%s failed with error: (%v) %s", command, err, string(output))

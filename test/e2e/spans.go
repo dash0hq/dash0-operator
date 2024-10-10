@@ -80,7 +80,7 @@ func sendRequest(g Gomega, port int, httpPathWithQuery string) {
 	}()
 	responseBody, err := io.ReadAll(response.Body)
 	if err != nil {
-		fmt.Fprintf(GinkgoWriter, "could not read http response from %s: %s\n", url, err.Error())
+		_, _ = fmt.Fprintf(GinkgoWriter, "could not read http response from %s: %s\n", url, err.Error())
 	}
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(responseBody).To(ContainSubstring("We make Observability easy for every developer."))

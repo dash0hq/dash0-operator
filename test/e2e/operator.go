@@ -106,7 +106,7 @@ func deployOperatorWithAutoOperationConfiguration(
 		return err
 	}
 
-	fmt.Fprintf(GinkgoWriter, "output of helm install:\n%s", output)
+	_, _ = fmt.Fprintf(GinkgoWriter, "output of helm install:\n%s", output)
 	waitForManagerPodAndWebhookToStart(operatorNamespace)
 
 	if operatorConfigurationValues != nil {
@@ -190,7 +190,7 @@ func ensureDash0OperatorHelmRepoIsInstalled(
 	Expect(err).NotTo(HaveOccurred())
 	if !regexp.MustCompile(
 		fmt.Sprintf("%s\\s+%s", repositoryName, operatorHelmChartUrl)).MatchString(repoList) {
-		fmt.Fprintf(
+		_, _ = fmt.Fprintf(
 			GinkgoWriter,
 			"The helm repo %s (%s) has not been found, adding it now.\n",
 			repositoryName,
@@ -207,7 +207,7 @@ func ensureDash0OperatorHelmRepoIsInstalled(
 			))).To(Succeed())
 		Expect(runAndIgnoreOutput(exec.Command("helm", "repo", "update"))).To(Succeed())
 	} else {
-		fmt.Fprintf(
+		_, _ = fmt.Fprintf(
 			GinkgoWriter,
 			"The helm repo %s (%s) is already installed, updating it now.\n",
 			repositoryName,
@@ -333,7 +333,7 @@ func upgradeOperator(
 
 	output, err := run(exec.Command("helm", arguments...))
 	Expect(err).NotTo(HaveOccurred())
-	fmt.Fprintf(GinkgoWriter, "output of helm upgrade:\n%s", output)
+	_, _ = fmt.Fprintf(GinkgoWriter, "output of helm upgrade:\n%s", output)
 
 	By("waiting shortly, to give the operator time to restart after helm upgrade")
 	time.Sleep(5 * time.Second)

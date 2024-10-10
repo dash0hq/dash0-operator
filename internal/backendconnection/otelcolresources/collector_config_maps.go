@@ -147,7 +147,7 @@ func ConvertExportSettingsToExporterList(export dash0v1alpha1.Export) ([]OtlpExp
 			Headers:  grpc.Headers,
 		}
 		setGrpcTls(grpc.Endpoint, &grpcExporter)
-		if grpc.Headers != nil && len(grpc.Headers) > 0 {
+		if len(grpc.Headers) > 0 {
 			grpcExporter.Headers = grpc.Headers
 		}
 		exporters = append(exporters, grpcExporter)
@@ -167,7 +167,7 @@ func ConvertExportSettingsToExporterList(export dash0v1alpha1.Export) ([]OtlpExp
 			Endpoint: http.Endpoint,
 			Encoding: encoding,
 		}
-		if http.Headers != nil && len(http.Headers) > 0 {
+		if len(http.Headers) > 0 {
 			httpExporter.Headers = http.Headers
 		}
 		exporters = append(exporters, httpExporter)

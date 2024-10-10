@@ -85,9 +85,9 @@ func revertKubeCtx(originalKubeContext string) {
 	By("switching back to original kubectx " + originalKubeContext)
 	output, err := run(exec.Command("kubectx", originalKubeContext))
 	if err != nil {
-		fmt.Fprint(GinkgoWriter, err.Error())
+		_, _ = fmt.Fprint(GinkgoWriter, err.Error())
 	}
-	fmt.Fprint(GinkgoWriter, output)
+	_, _ = fmt.Fprint(GinkgoWriter, output)
 }
 
 func recreateNamespace(namespace string) {

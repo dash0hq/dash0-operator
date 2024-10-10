@@ -40,7 +40,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		pwdOutput, err := run(exec.Command("pwd"), false)
 		Expect(err).NotTo(HaveOccurred())
 		workingDir = strings.TrimSpace(pwdOutput)
-		fmt.Fprintf(GinkgoWriter, "workingDir: %s\n", workingDir)
+		_, _ = fmt.Fprintf(GinkgoWriter, "workingDir: %s\n", workingDir)
 
 		env, err := readDotEnvFile(dotEnvFile)
 		Expect(err).NotTo(HaveOccurred())
@@ -914,9 +914,9 @@ func runInParallelForAllWorkloadTypes[C workloadConfig](
 		go func(cfg C) {
 			defer GinkgoRecover()
 			defer wg.Done()
-			fmt.Fprintf(GinkgoWriter, "(before test step: %s)\n", workloadTypeString)
+			_, _ = fmt.Fprintf(GinkgoWriter, "(before test step: %s)\n", workloadTypeString)
 			testStep(cfg)
-			fmt.Fprintf(GinkgoWriter, "(after test step: %s)\n", workloadTypeString)
+			_, _ = fmt.Fprintf(GinkgoWriter, "(after test step: %s)\n", workloadTypeString)
 			passed[workloadTypeString] = true
 		}(config)
 	}

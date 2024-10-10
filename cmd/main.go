@@ -619,6 +619,7 @@ func findDeploymentSelfReference(
 	}
 	if deploymentSelfReference.UID == "" {
 		msg := fmt.Sprintf("self reference for controller deployment %s has no UID", fullyQualifiedName)
+		//nolint:govet,staticcheck
 		err := fmt.Errorf(msg)
 		logger.Error(err, msg)
 		return err
