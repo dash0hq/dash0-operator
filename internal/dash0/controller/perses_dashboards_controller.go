@@ -15,18 +15,11 @@ import (
 
 	"github.com/go-logr/logr"
 	otelmetric "go.opentelemetry.io/otel/metric"
-	corev1 "k8s.io/api/core/v1"
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -49,64 +42,79 @@ var (
 	persesDashboardReconcileRequestMetric otelmetric.Int64Counter
 )
 
+func (r *PersesDashboardCrdReconciler) Manager() ctrl.Manager {
+	return r.mgr
+}
+
+func (r *PersesDashboardCrdReconciler) GetAuthToken() string {
+	return r.AuthToken
+}
+
+func (r *PersesDashboardCrdReconciler) KindDisplayName() string {
+	return "Perses dashboard"
+}
+
+func (r *PersesDashboardCrdReconciler) Group() string {
+	return "perses.dev"
+}
+
+func (r *PersesDashboardCrdReconciler) Kind() string {
+	return "PersesDashboard"
+}
+
+func (r *PersesDashboardCrdReconciler) Version() string {
+	return "v1alpha1"
+}
+
+func (r *PersesDashboardCrdReconciler) QualifiedKind() string {
+	return "persesdashboards.perses.dev"
+}
+
+func (r *PersesDashboardCrdReconciler) ControllerName() string {
+	return "dash0_perses_dashboard_crd_controller"
+}
+
+func (r *PersesDashboardCrdReconciler) DoesCrdExist() *atomic.Bool {
+	return &r.persesDashboardCrdExists
+}
+
+func (r *PersesDashboardCrdReconciler) SetCrdExists(exists bool) {
+	r.persesDashboardCrdExists.Store(exists)
+}
+
+func (r *PersesDashboardCrdReconciler) SkipNameValidation() bool {
+	return r.skipNameValidation
+}
+
+func (r *PersesDashboardCrdReconciler) CreateResourceReconciler(
+	pseudoClusterUid types.UID,
+	authToken string,
+	httpClient *http.Client,
+) {
+	r.persesDashboardReconciler = &PersesDashboardReconciler{
+		pseudoClusterUid: pseudoClusterUid,
+		authToken:        authToken,
+		httpClient:       httpClient,
+	}
+}
+
+func (r *PersesDashboardCrdReconciler) ResourceReconciler() ThirdPartyResourceReconciler {
+	return r.persesDashboardReconciler
+}
+
 func (r *PersesDashboardCrdReconciler) SetupWithManager(
 	ctx context.Context,
 	mgr ctrl.Manager,
 	startupK8sClient client.Client,
 	logger *logr.Logger,
 ) error {
-	if r.AuthToken == "" {
-		logger.Info("No Dash0 auth token has been provided via the operator configuration resource. The operator " +
-			"will not watch for Perses dashboard resources.")
-		return nil
-	}
-
-	kubeSystemNamespace := &corev1.Namespace{}
-	if err := startupK8sClient.Get(ctx, client.ObjectKey{Name: "kube-system"}, kubeSystemNamespace); err != nil {
-		msg := "unable to get the kube-system namespace uid"
-		logger.Error(err, msg)
-		return fmt.Errorf("%s: %w", msg, err)
-	}
-
 	r.mgr = mgr
-	r.persesDashboardReconciler = &PersesDashboardReconciler{
-		pseudoClusterUid: kubeSystemNamespace.UID,
-		httpClient:       &http.Client{},
-		authToken:        r.AuthToken,
-	}
-
-	if err := startupK8sClient.Get(ctx, client.ObjectKey{
-		Name: "persesdashboards.perses.dev",
-	}, &apiextensionsv1.CustomResourceDefinition{}); err != nil {
-		if !apierrors.IsNotFound(err) {
-			logger.Error(err, "unable to call get the persesdashboards.perses.dev custom resource definition")
-			return err
-		}
-	} else {
-		r.persesDashboardCrdExists.Store(true)
-		r.maybeStartWatchingPersesDashboardResources(true, logger)
-	}
-
-	controllerBuilder := ctrl.NewControllerManagedBy(mgr).
-		Named("dash0_perses_dashboard_crd_controller").
-		Watches(
-			&apiextensionsv1.CustomResourceDefinition{},
-			// Deliberately not using a convenience mechanism like &handler.EnqueueRequestForObject{} (which would
-			// feed all events into the Reconcile method) here, since using the lower-level TypedEventHandler interface
-			// directly allows us to distinguish between create and delete events more easily.
-			r,
-			builder.WithPredicates(makeFilterPredicate("perses.dev", "PersesDashboard")))
-	if r.skipNameValidation {
-		controllerBuilder = controllerBuilder.WithOptions(controller.TypedOptions[reconcile.Request]{
-			SkipNameValidation: ptr.To(true),
-		})
-	}
-	if err := controllerBuilder.Complete(r); err != nil {
-		logger.Error(err, "unable to build the controller for the Perses dashboard CRD reconciler")
-		return err
-	}
-
-	return nil
+	return SetupThirdPartyCrdReconcilerWithManager(
+		ctx,
+		startupK8sClient,
+		r,
+		logger,
+	)
 }
 
 //+kubebuilder:rbac:groups=perses.dev,resources=persesdashboards,verbs=get;list;watch
@@ -118,7 +126,7 @@ func (r *PersesDashboardCrdReconciler) Create(
 ) {
 	logger := log.FromContext(ctx)
 	r.persesDashboardCrdExists.Store(true)
-	r.maybeStartWatchingPersesDashboardResources(false, &logger)
+	maybeStartWatchingThirdPartyResources(r, false, &logger)
 }
 
 func (r *PersesDashboardCrdReconciler) Update(
@@ -196,7 +204,7 @@ func (r *PersesDashboardCrdReconciler) SetApiEndpointAndDataset(
 		return
 	}
 	r.persesDashboardReconciler.apiConfig.Store(apiConfig)
-	r.maybeStartWatchingPersesDashboardResources(false, logger)
+	maybeStartWatchingThirdPartyResources(r, false, logger)
 }
 
 func (r *PersesDashboardCrdReconciler) RemoveApiEndpointAndDataset() {
@@ -206,70 +214,6 @@ func (r *PersesDashboardCrdReconciler) RemoveApiEndpointAndDataset() {
 		return
 	}
 	r.persesDashboardReconciler.apiConfig.Store(nil)
-}
-
-func (r *PersesDashboardCrdReconciler) maybeStartWatchingPersesDashboardResources(isStartup bool, logger *logr.Logger) {
-	if r.persesDashboardReconciler.isWatching.Load() {
-		// we are already watching, do not start a second watch
-		return
-	}
-
-	if !r.persesDashboardCrdExists.Load() {
-		logger.Info("The persesdashboards.perses.dev custom resource definition does not exist in this cluster, the " +
-			"operator will not watch for Perses dashboard resources.")
-		return
-	}
-
-	apiConfig := r.persesDashboardReconciler.apiConfig.Load()
-	if !isValidApiConfig(apiConfig) {
-		if !isStartup {
-			// Silently ignore this missing precondition if it happens during the startup of the operator. It will
-			// be remedied automatically once the operator configuration resource is reconciled for the first time.
-			logger.Info("The persesdashboards.perses.dev custom resource definition is present in this " +
-				"cluster, but no Dash0 API endpoint been provided via the operator configuration resource, or the " +
-				"operator configuration resource has not been reconciled yet. The operator will not watch for Perses " +
-				"dashboard resources. (If there is an operator configuration resource with an API endpoint present in " +
-				"the cluster, it will be reconciled in a few seconds and this message can be safely ignored.)")
-		}
-		return
-	}
-
-	logger.Info("The persesdashboards.perses.dev custom resource definition is present in this " +
-		"cluster, and a Dash0 API endpoint has been provided. The operator will watch for Perses dashboard resources.")
-	r.startWatchingPersesDashboardResources(logger)
-}
-
-func (r *PersesDashboardCrdReconciler) startWatchingPersesDashboardResources(
-	logger *logr.Logger,
-) {
-	logger.Info("Setting up a watch for Perses dashboard custom resources.")
-
-	unstructuredGvkForPersesDashboards := &unstructured.Unstructured{}
-	unstructuredGvkForPersesDashboards.SetGroupVersionKind(schema.GroupVersionKind{
-		Kind:    "PersesDashboard",
-		Group:   "perses.dev",
-		Version: "v1alpha1",
-	})
-
-	controllerBuilder := ctrl.NewControllerManagedBy(r.mgr).
-		Named("dash0_perses_dashboard_controller").
-		Watches(
-			unstructuredGvkForPersesDashboards,
-			// Deliberately not using a convenience mechanism like &handler.EnqueueRequestForObject{} (which would
-			// feed all events into the Reconcile method) here, since using the lower-level TypedEventHandler interface
-			// directly allows us to distinguish between create and delete events more easily.
-			r.persesDashboardReconciler,
-		)
-	if r.skipNameValidation {
-		controllerBuilder = controllerBuilder.WithOptions(controller.TypedOptions[reconcile.Request]{
-			SkipNameValidation: ptr.To(true),
-		})
-	}
-	if err := controllerBuilder.Complete(r.persesDashboardReconciler); err != nil {
-		logger.Error(err, "unable to create a new controller for watching Perses dashboards")
-		return
-	}
-	r.persesDashboardReconciler.isWatching.Store(true)
 }
 
 type PersesDashboardReconciler struct {
@@ -294,6 +238,22 @@ func (r *PersesDashboardReconciler) InitializeSelfMonitoringMetrics(
 	); err != nil {
 		logger.Error(err, "Cannot initialize the metric %s.")
 	}
+}
+
+func (r *PersesDashboardReconciler) IsWatching() *atomic.Bool {
+	return &r.isWatching
+}
+
+func (r *PersesDashboardReconciler) SetIsWatching(isWatching bool) {
+	r.isWatching.Store(isWatching)
+}
+
+func (r *PersesDashboardReconciler) GetApiConfig() *atomic.Pointer[ApiConfig] {
+	return &r.apiConfig
+}
+
+func (r *PersesDashboardReconciler) ControllerName() string {
+	return "dash0_perses_dashboard_controller"
 }
 
 func (r *PersesDashboardReconciler) Create(

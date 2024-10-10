@@ -15,18 +15,11 @@ import (
 
 	"github.com/go-logr/logr"
 	otelmetric "go.opentelemetry.io/otel/metric"
-	corev1 "k8s.io/api/core/v1"
-	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -49,64 +42,79 @@ var (
 	prometheusRuleReconcileRequestMetric otelmetric.Int64Counter
 )
 
+func (r *PrometheusRuleCrdReconciler) Manager() ctrl.Manager {
+	return r.mgr
+}
+
+func (r *PrometheusRuleCrdReconciler) GetAuthToken() string {
+	return r.AuthToken
+}
+
+func (r *PrometheusRuleCrdReconciler) KindDisplayName() string {
+	return "Prometheus rule"
+}
+
+func (r *PrometheusRuleCrdReconciler) Group() string {
+	return "monitoring.coreos.com"
+}
+
+func (r *PrometheusRuleCrdReconciler) Kind() string {
+	return "PrometheusRule"
+}
+
+func (r *PrometheusRuleCrdReconciler) Version() string {
+	return "v1"
+}
+
+func (r *PrometheusRuleCrdReconciler) QualifiedKind() string {
+	return "prometheusrules.monitoring.coreos.com"
+}
+
+func (r *PrometheusRuleCrdReconciler) ControllerName() string {
+	return "dash0_prometheus_rule_crd_controller"
+}
+
+func (r *PrometheusRuleCrdReconciler) DoesCrdExist() *atomic.Bool {
+	return &r.prometheusRuleCrdExists
+}
+
+func (r *PrometheusRuleCrdReconciler) SetCrdExists(exists bool) {
+	r.prometheusRuleCrdExists.Store(exists)
+}
+
+func (r *PrometheusRuleCrdReconciler) SkipNameValidation() bool {
+	return r.skipNameValidation
+}
+
+func (r *PrometheusRuleCrdReconciler) CreateResourceReconciler(
+	pseudoClusterUid types.UID,
+	authToken string,
+	httpClient *http.Client,
+) {
+	r.prometheusRuleReconciler = &PrometheusRuleReconciler{
+		pseudoClusterUid: pseudoClusterUid,
+		authToken:        authToken,
+		httpClient:       httpClient,
+	}
+}
+
+func (r *PrometheusRuleCrdReconciler) ResourceReconciler() ThirdPartyResourceReconciler {
+	return r.prometheusRuleReconciler
+}
+
 func (r *PrometheusRuleCrdReconciler) SetupWithManager(
 	ctx context.Context,
 	mgr ctrl.Manager,
 	startupK8sClient client.Client,
 	logger *logr.Logger,
 ) error {
-	if r.AuthToken == "" {
-		logger.Info("No Dash0 auth token has been provided via the operator configuration resource. The operator " +
-			"will not watch for Prometheus rule resources.")
-		return nil
-	}
-
-	kubeSystemNamespace := &corev1.Namespace{}
-	if err := startupK8sClient.Get(ctx, client.ObjectKey{Name: "kube-system"}, kubeSystemNamespace); err != nil {
-		msg := "unable to get the kube-system namespace uid"
-		logger.Error(err, msg)
-		return fmt.Errorf("%s: %w", msg, err)
-	}
-
 	r.mgr = mgr
-	r.prometheusRuleReconciler = &PrometheusRuleReconciler{
-		pseudoClusterUid: kubeSystemNamespace.UID,
-		httpClient:       &http.Client{},
-		authToken:        r.AuthToken,
-	}
-
-	if err := startupK8sClient.Get(ctx, client.ObjectKey{
-		Name: "prometheusrules.monitoring.coreos.com",
-	}, &apiextensionsv1.CustomResourceDefinition{}); err != nil {
-		if !apierrors.IsNotFound(err) {
-			logger.Error(err, "unable to call get the prometheusrules.monitoring.coreos.com custom resource definition")
-			return err
-		}
-	} else {
-		r.prometheusRuleCrdExists.Store(true)
-		r.maybeStartWatchingPrometheusRuleResources(true, logger)
-	}
-
-	controllerBuilder := ctrl.NewControllerManagedBy(mgr).
-		Named("dash0_prometheus_rule_crd_controller").
-		Watches(
-			&apiextensionsv1.CustomResourceDefinition{},
-			// Deliberately not using a convenience mechanism like &handler.EnqueueRequestForObject{} (which would
-			// feed all events into the Reconcile method) here, since using the lower-level TypedEventHandler interface
-			// directly allows us to distinguish between create and delete events more easily.
-			r,
-			builder.WithPredicates(makeFilterPredicate("monitoring.coreos.com", "PrometheusRule")))
-	if r.skipNameValidation {
-		controllerBuilder = controllerBuilder.WithOptions(controller.TypedOptions[reconcile.Request]{
-			SkipNameValidation: ptr.To(true),
-		})
-	}
-	if err := controllerBuilder.Complete(r); err != nil {
-		logger.Error(err, "unable to build the controller for the Prometheus rule CRD reconciler")
-		return err
-	}
-
-	return nil
+	return SetupThirdPartyCrdReconcilerWithManager(
+		ctx,
+		startupK8sClient,
+		r,
+		logger,
+	)
 }
 
 //+kubebuilder:rbac:groups=monitoring.coreos.com,resources=prometheusrules,verbs=get;list;watch
@@ -118,7 +126,7 @@ func (r *PrometheusRuleCrdReconciler) Create(
 ) {
 	logger := log.FromContext(ctx)
 	r.prometheusRuleCrdExists.Store(true)
-	r.maybeStartWatchingPrometheusRuleResources(false, &logger)
+	maybeStartWatchingThirdPartyResources(r, false, &logger)
 }
 
 func (r *PrometheusRuleCrdReconciler) Update(
@@ -196,7 +204,7 @@ func (r *PrometheusRuleCrdReconciler) SetApiEndpointAndDataset(
 		return
 	}
 	r.prometheusRuleReconciler.apiConfig.Store(apiConfig)
-	r.maybeStartWatchingPrometheusRuleResources(false, logger)
+	maybeStartWatchingThirdPartyResources(r, false, logger)
 }
 
 func (r *PrometheusRuleCrdReconciler) RemoveApiEndpointAndDataset() {
@@ -206,70 +214,6 @@ func (r *PrometheusRuleCrdReconciler) RemoveApiEndpointAndDataset() {
 		return
 	}
 	r.prometheusRuleReconciler.apiConfig.Store(nil)
-}
-
-func (r *PrometheusRuleCrdReconciler) maybeStartWatchingPrometheusRuleResources(isStartup bool, logger *logr.Logger) {
-	if r.prometheusRuleReconciler.isWatching.Load() {
-		// we are already watching, do not start a second watch
-		return
-	}
-
-	if !r.prometheusRuleCrdExists.Load() {
-		logger.Info("The prometheusrules.monitoring.coreos.com custom resource definition does not exist in this cluster, the " +
-			"operator will not watch for Prometheus rule resources.")
-		return
-	}
-
-	apiConfig := r.prometheusRuleReconciler.apiConfig.Load()
-	if !isValidApiConfig(apiConfig) {
-		if !isStartup {
-			// Silently ignore this missing precondition if it happens during the startup of the operator. It will
-			// be remedied automatically once the operator configuration resource is reconciled for the first time.
-			logger.Info("The prometheusrules.monitoring.coreos.com custom resource definition is present in this " +
-				"cluster, but no Dash0 API endpoint been provided via the operator configuration resource, or the " +
-				"operator configuration resource has not been reconciled yet. The operator will not watch for Prometheus " +
-				"rule resources. (If there is an operator configuration resource with an API endpoint present in " +
-				"the cluster, it will be reconciled in a few seconds and this message can be safely ignored.)")
-		}
-		return
-	}
-
-	logger.Info("The prometheusrules.monitoring.coreos.com custom resource definition is present in this " +
-		"cluster, and a Dash0 API endpoint has been provided. The operator will watch for Prometheus rule resources.")
-	r.startWatchingPrometheusRuleResources(logger)
-}
-
-func (r *PrometheusRuleCrdReconciler) startWatchingPrometheusRuleResources(
-	logger *logr.Logger,
-) {
-	logger.Info("Setting up a watch for Prometheus rule custom resources.")
-
-	unstructuredGvkForPrometheusRules := &unstructured.Unstructured{}
-	unstructuredGvkForPrometheusRules.SetGroupVersionKind(schema.GroupVersionKind{
-		Kind:    "PrometheusRule",
-		Group:   "monitoring.coreos.com",
-		Version: "v1",
-	})
-
-	controllerBuilder := ctrl.NewControllerManagedBy(r.mgr).
-		Named("dash0_prometheus_rule_controller").
-		Watches(
-			unstructuredGvkForPrometheusRules,
-			// Deliberately not using a convenience mechanism like &handler.EnqueueRequestForObject{} (which would
-			// feed all events into the Reconcile method) here, since using the lower-level TypedEventHandler interface
-			// directly allows us to distinguish between create and delete events more easily.
-			r.prometheusRuleReconciler,
-		)
-	if r.skipNameValidation {
-		controllerBuilder = controllerBuilder.WithOptions(controller.TypedOptions[reconcile.Request]{
-			SkipNameValidation: ptr.To(true),
-		})
-	}
-	if err := controllerBuilder.Complete(r.prometheusRuleReconciler); err != nil {
-		logger.Error(err, "unable to create a new controller for watching Prometheus Rules")
-		return
-	}
-	r.prometheusRuleReconciler.isWatching.Store(true)
 }
 
 type PrometheusRuleReconciler struct {
@@ -294,6 +238,22 @@ func (r *PrometheusRuleReconciler) InitializeSelfMonitoringMetrics(
 	); err != nil {
 		logger.Error(err, "Cannot initialize the metric %s.")
 	}
+}
+
+func (r *PrometheusRuleReconciler) IsWatching() *atomic.Bool {
+	return &r.isWatching
+}
+
+func (r *PrometheusRuleReconciler) SetIsWatching(isWatching bool) {
+	r.isWatching.Store(isWatching)
+}
+
+func (r *PrometheusRuleReconciler) GetApiConfig() *atomic.Pointer[ApiConfig] {
+	return &r.apiConfig
+}
+
+func (r *PrometheusRuleReconciler) ControllerName() string {
+	return "dash0_prometheus_rule_controller"
 }
 
 func (r *PrometheusRuleReconciler) Create(
