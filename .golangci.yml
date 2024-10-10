@@ -20,8 +20,8 @@ linters:
   disable-all: true
   enable:
     - dupl
+    - copyloopvar
     - errcheck
-    - exportloopref
     - goconst
     - gocyclo
     - gofmt

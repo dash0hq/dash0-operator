@@ -1,6 +1,6 @@
 module github.com/dash0hq/dash0-operator/images/pkg/common
 
-go 1.22.4
+go 1.23.2
 
 require (
 	go.opentelemetry.io/otel v1.30.0

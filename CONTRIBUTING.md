@@ -2,7 +2,7 @@ Contributing
 ============
 
 ## Prerequisites
-- Go (version >= v1.22)
+- Go (version >= v1.23)
 - Docker
 - kubectl version v1.11.3+.
 - Access to a Kubernetes v1.11.3+ cluster.
