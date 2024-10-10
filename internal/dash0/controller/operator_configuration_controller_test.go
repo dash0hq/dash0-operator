@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"reflect"
 
+	"github.com/go-logr/logr"
 	json "github.com/json-iterator/go"
 	"github.com/wI2L/jsondiff"
 	appsv1 "k8s.io/api/apps/v1"
@@ -40,6 +41,8 @@ type SelfMonitoringTestConfig struct {
 
 var (
 	reconciler *OperatorConfigurationReconciler
+	apiClient1 ApiClient
+	apiClient2 ApiClient
 )
 
 var _ = Describe("The operation configuration resource controller", Ordered, func() {
@@ -49,6 +52,11 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 	BeforeAll(func() {
 		EnsureTestNamespaceExists(ctx, k8sClient)
 		EnsureOperatorNamespaceExists(ctx, k8sClient)
+	})
+
+	BeforeEach(func() {
+		apiClient1 = &DummyApiClient{}
+		apiClient2 = &DummyApiClient{}
 	})
 
 	Describe("updates the controller deployment", func() {
@@ -797,17 +805,18 @@ func cleanUpDeploymentSpecForDiff(spec *appsv1.DeploymentSpec) {
 }
 
 func createReconciler(controllerDeployment *appsv1.Deployment) *OperatorConfigurationReconciler {
-	persesDashboardCrdReconciler := &PersesDashboardCrdReconciler{
-		persesDashboardReconciler: &PersesDashboardReconciler{},
-	}
+
 	return &OperatorConfigurationReconciler{
-		Client:                       k8sClient,
-		Clientset:                    clientset,
-		Recorder:                     recorder,
-		PersesDashboardCrdReconciler: persesDashboardCrdReconciler,
-		DeploymentSelfReference:      controllerDeployment,
-		DanglingEventsTimeouts:       &DanglingEventsTimeoutsTest,
-		Images:                       TestImages,
+		Client:    k8sClient,
+		Clientset: clientset,
+		Recorder:  recorder,
+		ApiClients: []ApiClient{
+			apiClient1,
+			apiClient2,
+		},
+		DeploymentSelfReference: controllerDeployment,
+		DanglingEventsTimeouts:  &DanglingEventsTimeoutsTest,
+		Images:                  TestImages,
 	}
 }
 
@@ -931,4 +940,20 @@ func verifyNoSelfMonitoringButAuthTokenEnvVarFromSecretRef(
 	container := controllerDeployment.Spec.Template.Spec.Containers[0]
 	g.Expect(container.Env).To(
 		ContainElement(MatchEnvVarValueFrom("SELF_MONITORING_AND_API_AUTH_TOKEN", "secret-ref", "key")))
+}
+
+type DummyApiClient struct {
+	setCalls    int
+	removeCalls int
+	apiConfig   *ApiConfig
+}
+
+func (c *DummyApiClient) SetApiEndpointAndDataset(apiConfig *ApiConfig, _ *logr.Logger) {
+	c.setCalls++
+	c.apiConfig = apiConfig
+}
+
+func (c *DummyApiClient) RemoveApiEndpointAndDataset() {
+	c.removeCalls++
+	c.apiConfig = nil
 }
