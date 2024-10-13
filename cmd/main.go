@@ -40,13 +40,13 @@ import (
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
-	"github.com/dash0hq/dash0-operator/internal/dash0/controller"
-	"github.com/dash0hq/dash0-operator/internal/dash0/instrumentation"
-	"github.com/dash0hq/dash0-operator/internal/dash0/predelete"
-	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoringapiaccess"
-	"github.com/dash0hq/dash0-operator/internal/dash0/startup"
-	"github.com/dash0hq/dash0-operator/internal/dash0/util"
-	"github.com/dash0hq/dash0-operator/internal/dash0/webhooks"
+	"github.com/dash0hq/dash0-operator/internal/controller"
+	"github.com/dash0hq/dash0-operator/internal/instrumentation"
+	"github.com/dash0hq/dash0-operator/internal/predelete"
+	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
+	"github.com/dash0hq/dash0-operator/internal/startup"
+	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/webhooks"
 	//+kubebuilder:scaffold:imports
 )
 

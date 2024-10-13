@@ -22,8 +22,8 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
-	"github.com/dash0hq/dash0-operator/internal/dash0/controller"
-	"github.com/dash0hq/dash0-operator/internal/dash0/instrumentation"
+	"github.com/dash0hq/dash0-operator/internal/controller"
+	"github.com/dash0hq/dash0-operator/internal/instrumentation"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -58,9 +58,9 @@ var _ = BeforeSuite(func() {
 
 	By("bootstrapping test environment")
 	testEnv = &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "..", "config", "crd", "bases")},
+		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
 		ErrorIfCRDPathMissing: true,
-		BinaryAssetsDirectory: filepath.Join("..", "..", "..", "bin", "k8s",
+		BinaryAssetsDirectory: filepath.Join("..", "..", "bin", "k8s",
 			fmt.Sprintf("1.28.3-%s-%s", runtime.GOOS, runtime.GOARCH)),
 	}
 

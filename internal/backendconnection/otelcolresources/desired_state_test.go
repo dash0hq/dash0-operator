@@ -11,8 +11,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
-	"github.com/dash0hq/dash0-operator/internal/dash0/selfmonitoringapiaccess"
-	"github.com/dash0hq/dash0-operator/internal/dash0/util"
+	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
+	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"

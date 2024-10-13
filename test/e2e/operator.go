@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dash0hq/dash0-operator/internal/dash0/startup"
+	"github.com/dash0hq/dash0-operator/internal/startup"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
