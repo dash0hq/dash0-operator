@@ -3,8 +3,7 @@ connectors:
 
 exporters:
 {{- if .DevelopmentMode }}
-  debug:
-    verbosity: detailed
+  debug: {}
 {{- end }}
 {{- range $i, $exporter := .Exporters }}
   {{ $exporter.Name }}:
@@ -103,6 +102,17 @@ receivers:
     auth_type: serviceAccount
     collection_interval: 20s
     endpoint: ${env:K8S_NODE_NAME}:10250
+    metrics:
+      # deprecated -> container.cpu.usage
+      container.cpu.utilization:
+        enabled: false
+      # deprecated -> k8s.node.cpu.usage
+      k8s.node.cpu.utilization:
+        enabled: false
+      # deprecated -> k8s.pod.cpu.usage
+      k8s.pod.cpu.utilization:
+        enabled: false
+
 {{- if .DevelopmentMode }}
 {{- /*
 On Docker Desktop, Kind, etc. the API server uses a self-signed cert. Scraping will not work without
@@ -117,6 +127,148 @@ Thus we add this parameter when the helm chart is installed with --set operator.
 e2e tests. */}}
     insecure_skip_verify: true
 {{- end }}
+
+  prometheus:
+    config:
+{{- /*
+This particular set of scrape config jobs (kubernetes-service-endpoints, kubernetes-service-endpoints-slow,
+kubernetes-pods, kubernetes-pods-slow) is mostly a copy of
+https://github.com/prometheus-community/helm-charts/blob/5adf0ee898e8e5430471cb43a5f9532745c22f81/charts/prometheus/values.yaml
+to be compatible with the well-known configuration via annotations.
+*/}}
+      scrape_configs:
+
+      # The relabeling allows the actual pod scrape endpoint to be configured via the
+      # following annotations:
+      #
+      # * `prometheus.io/scrape`: Only scrape pods that have a value of `true`,
+      # except if `prometheus.io/scrape-slow` is set to `true` as well.
+      # * `prometheus.io/scheme`: If the metrics endpoint is secured then you will need
+      # to set this to `https` & most likely set the `tls_config` of the scrape config.
+      # * `prometheus.io/path`: If the metrics path is not `/metrics` override this.
+      # * `prometheus.io/port`: Scrape the pod on the indicated port instead of the default of `9102`.
+      - job_name: 'kubernetes-pods'
+        honor_labels: true
+
+        kubernetes_sd_configs:
+          - role: pod
+            # only scrape data from pods running on the same node as collector
+            selectors:
+              - role: pod
+                field: "spec.nodeName=${K8S_NODE_NAME}"
+
+        relabel_configs:
+          - source_labels: [ __meta_kubernetes_namespace ]
+            regex: kube-system
+            action: drop
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape_slow]
+            action: drop
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scheme]
+            action: replace
+            regex: (https?)
+            target_label: __scheme__
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port, __meta_kubernetes_pod_ip]
+            action: replace
+            regex: (\d+);(([A-Fa-f0-9]{1,4}::?){1,7}[A-Fa-f0-9]{1,4})
+            replacement: '[$2]:$1'
+            target_label: __address__
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port, __meta_kubernetes_pod_ip]
+            action: replace
+            regex: (\d+);((([0-9]+?)(\.|$)){4})
+            replacement: $2:$1
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_pod_annotation_prometheus_io_param_(.+)
+            replacement: __param_$1
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: pod
+          - source_labels: [__meta_kubernetes_pod_phase]
+            regex: Pending|Succeeded|Failed|Completed
+            action: drop
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            action: replace
+            target_label: node
+
+      # Example Scrape config for pods which should be scraped slower. An useful example
+      # would be stackriver-exporter which queries an API on every scrape of the pod
+      #
+      # The relabeling allows the actual pod scrape endpoint to be configured via the
+      # following annotations:
+      #
+      # * `prometheus.io/scrape-slow`: Only scrape pods that have a value of `true`
+      # * `prometheus.io/scheme`: If the metrics endpoint is secured then you will need
+      # to set this to `https` & most likely set the `tls_config` of the scrape config.
+      # * `prometheus.io/path`: If the metrics path is not `/metrics` override this.
+      # * `prometheus.io/port`: Scrape the pod on the indicated port instead of the default of `9102`.
+      - job_name: 'kubernetes-pods-slow'
+        honor_labels: true
+
+        scrape_interval: 5m
+        scrape_timeout: 30s
+
+        kubernetes_sd_configs:
+          - role: pod
+            # only scrape data from pods running on the same node as collector
+            selectors:
+              - role: pod
+                field: "spec.nodeName=${K8S_NODE_NAME}"
+
+        relabel_configs:
+          - source_labels: [ __meta_kubernetes_namespace ]
+            regex: kube-system
+            action: drop
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape_slow]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scheme]
+            action: replace
+            regex: (https?)
+            target_label: __scheme__
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port, __meta_kubernetes_pod_ip]
+            action: replace
+            regex: (\d+);(([A-Fa-f0-9]{1,4}::?){1,7}[A-Fa-f0-9]{1,4})
+            replacement: '[$2]:$1'
+            target_label: __address__
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_port, __meta_kubernetes_pod_ip]
+            action: replace
+            regex: (\d+);((([0-9]+?)(\.|$)){4})
+            replacement: $2:$1
+            target_label: __address__
+          - action: labelmap
+            regex: __meta_kubernetes_pod_annotation_prometheus_io_param_(.+)
+            replacement: __param_$1
+          - action: labelmap
+            regex: __meta_kubernetes_pod_label_(.+)
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: pod
+          - source_labels: [__meta_kubernetes_pod_phase]
+            regex: Pending|Succeeded|Failed|Completed
+            action: drop
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            action: replace
+            target_label: node
 
   # TODO Turn on conditionally for monitored namespaces
   filelog/monitored_pods:
@@ -225,6 +377,7 @@ service:
       receivers:
       - otlp
       - kubeletstats
+      - prometheus
       processors:
       - k8sattributes
       - resourcedetection
@@ -272,4 +425,9 @@ service:
 
   telemetry:
     metrics:
-      address: ${env:MY_POD_IP}:8888
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: "${env:MY_POD_IP}"
+                port: 8888

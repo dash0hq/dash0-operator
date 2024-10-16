@@ -189,9 +189,13 @@ cluster roles should match snapshot:
       - apiGroups:
           - ""
         resources:
+          - configmaps
           - pods
           - namespaces
+          - nodes
           - nodes/stats
+          - endpoints
+          - services
         verbs:
           - get
           - list

@@ -7,6 +7,10 @@ metadata:
   name: dash0-operator-nodejs-20-express-test-job
 spec:
   template:
+    metadata:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "1208"
     spec:
       restartPolicy: Never
       containers:

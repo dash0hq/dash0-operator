@@ -27,6 +27,9 @@ spec:
     metadata:
       labels:
         app: dash0-operator-nodejs-20-express-test-statefulset-app
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "1210"
     spec:
       terminationGracePeriodSeconds: 3
       containers:

@@ -28,6 +28,9 @@ spec:
     metadata:
       labels:
         app: dash0-operator-nodejs-20-express-test-replicaset-app
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "1209"
     spec:
       containers:
         - name: dash0-operator-nodejs-20-express-test-replicaset-app

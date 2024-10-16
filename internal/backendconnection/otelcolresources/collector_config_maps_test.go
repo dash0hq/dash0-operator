@@ -83,7 +83,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 
 	}, testConfigs)
 
-	DescribeTable("should render the Dash0 exporter", func(testConfig testConfig) {
+	DescribeTable("should render the Dash0 exporter without other exporters, with default settings", func(testConfig testConfig) {
 		configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
@@ -158,7 +158,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 		verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/dash0")
 	}, testConfigs)
 
-	DescribeTable("should render a verbose debug exporter in development mode", func(testConfig testConfig) {
+	DescribeTable("should render a debug exporter in development mode", func(testConfig testConfig) {
 		configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
@@ -183,7 +183,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 		debugExporterRaw := exporters["debug"]
 		Expect(debugExporterRaw).ToNot(BeNil())
 		debugExporter := debugExporterRaw.(map[string]interface{})
-		Expect(debugExporter["verbosity"]).To(Equal("detailed"))
+		Expect(debugExporter).To(HaveLen(0))
 
 		exporter := exporters["otlp/dash0"]
 		Expect(exporter).ToNot(BeNil())
@@ -557,7 +557,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 		debugExporterRaw := exporters["debug"]
 		Expect(debugExporterRaw).ToNot(BeNil())
 		debugExporter := debugExporterRaw.(map[string]interface{})
-		Expect(debugExporter["verbosity"]).To(Equal("detailed"))
+		Expect(debugExporter).To(HaveLen(0))
 
 		exporter2 := exporters["otlp/dash0"]
 		Expect(exporter2).ToNot(BeNil())

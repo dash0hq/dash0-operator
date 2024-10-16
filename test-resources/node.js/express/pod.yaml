@@ -19,6 +19,9 @@ metadata:
   name: dash0-operator-nodejs-20-express-test-pod
   labels:
     app: dash0-operator-nodejs-20-express-test-pod-app
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "1211"
 spec:
   containers:
     - name: dash0-operator-nodejs-20-express-test-pod-app

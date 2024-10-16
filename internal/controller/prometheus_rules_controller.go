@@ -170,6 +170,7 @@ func (r *PrometheusRuleCrdReconciler) Delete(
 	// Known issue: We would need to stop the watch for the Prometheus rule resources here, but the controller-runtime
 	// does not provide any API to stop a watch.
 	// An error will be logged every ten seconds until the controller process is restarted.
+	// See https://github.com/kubernetes-sigs/controller-runtime/issues/2983.
 }
 
 func (r *PrometheusRuleCrdReconciler) Generic(
