@@ -285,8 +285,13 @@ func assembleClusterRoleForDaemonSet(config *oTelColConfig) *rbacv1.ClusterRole 
 				Resources: []string{
 					"pods",
 					"namespaces",
+					"nodes",
+					"configmaps",
 					// required for Kubelet Metrics/Kubeletstats receiver
 					"nodes/stats",
+					// required for Prometheus receiver
+					"endpoints",
+					"services",
 				},
 				Verbs: []string{"get", "watch", "list"},
 			},

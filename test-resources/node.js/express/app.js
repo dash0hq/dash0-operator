@@ -2,16 +2,38 @@
 // SPDX-License-Identifier: Apache-2.0
 
 const express = require('express');
+const { Counter, collectDefaultMetrics, register } = require('prom-client');
 
 const port = parseInt(process.env.PORT || '1207');
 const app = express();
 
+collectDefaultMetrics();
+const requestCounter = new Counter({
+  name: 'appundertest_testendointrequestcounter',
+  help: 'Number of requests to the test endpoint',
+});
+
 app.get('/ready', (req, res) => {
-    res.sendStatus(204);
+  res.sendStatus(204);
+});
+
+app.get('/metrics', async (req, res) => {
+  try {
+    res.set('Content-Type', register.contentType);
+    res.end(await register.metrics());
+  } catch (err) {
+    res.status(500).end(err);
+  }
 });
 
 app.get('/dash0-k8s-operator-test', (req, res) => {
-  console.log(`processing request ${req.query['id']}`);
+  requestCounter.inc();
+  const reqId = req.query['id']
+  if (reqId) {
+    console.log(`processing request ${reqId}`);
+  } else {
+    console.log(`processing request`);
+  }
   res.json({ message: 'We make Observability easy for every developer.' });
 });
 
