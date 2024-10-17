@@ -718,7 +718,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				operatorHelmChart,
 			)
 			time.Sleep(5 * time.Second)
-			Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
 		})
 
 		AfterAll(func() {
@@ -727,6 +726,10 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			removeAllTestApplications(applicationUnderTestNamespace)
 			undeployDash0MonitoringResource(applicationUnderTestNamespace)
 			undeployDash0OperatorConfigurationResource()
+		})
+
+		BeforeEach(func() {
+			Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
 		})
 
 		It("should produce node-based metrics via the kubeletstats receiver", func() {
@@ -740,6 +743,13 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			By("waiting for k8s_cluster receiver metrics")
 			Eventually(func(g Gomega) {
 				verifyK8skClusterReceiverMetrics(g)
+			}, 50*time.Second, time.Second).Should(Succeed())
+		})
+
+		It("should produce Prometheus metrics via the prometheus receiver", func() {
+			By("waiting for prometheus receiver metrics")
+			Eventually(func(g Gomega) {
+				verifyPrometheusMetrics(g)
 			}, 50*time.Second, time.Second).Should(Succeed())
 		})
 
