@@ -60,7 +60,7 @@ func (r *OperatorPreDeleteHandler) SetTimeout(timeout time.Duration) {
 	r.timeout = timeout
 }
 
-func (r *OperatorPreDeleteHandler) DeleteAllDash0MonitoringResources() error {
+func (r *OperatorPreDeleteHandler) DeleteAllMonitoringResources() error {
 	ctx := context.Background()
 
 	totalNumberOfDash0MonitoringResources, err := r.findAllAndRequestDeletion(ctx)

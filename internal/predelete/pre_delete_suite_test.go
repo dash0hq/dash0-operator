@@ -40,7 +40,7 @@ var (
 	k8sClient        client.Client
 	clientset        *kubernetes.Clientset
 	preDeleteHandler *OperatorPreDeleteHandler
-	reconciler       *controller.Dash0Reconciler
+	reconciler       *controller.MonitoringReconciler
 	cfg              *rest.Config
 	testEnv          *envtest.Environment
 )
@@ -108,7 +108,7 @@ var _ = BeforeSuite(func() {
 		Clientset:              clientset,
 		OTelColResourceManager: oTelColResourceManager,
 	}
-	reconciler = &controller.Dash0Reconciler{
+	reconciler = &controller.MonitoringReconciler{
 		Client:                   k8sClient,
 		Clientset:                clientset,
 		Images:                   TestImages,

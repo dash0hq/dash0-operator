@@ -31,8 +31,8 @@ type BackendConnectionManager struct {
 type BackendConnectionReconcileTrigger string
 
 const (
-	TriggeredByWatchEvent    BackendConnectionReconcileTrigger = "watch"
-	TriggeredByDash0Resource BackendConnectionReconcileTrigger = "resource"
+	TriggeredByWatchEvent         BackendConnectionReconcileTrigger = "watch"
+	TriggeredByMonitoringResource BackendConnectionReconcileTrigger = "resource"
 )
 
 func (m *BackendConnectionManager) ReconcileOpenTelemetryCollector(
@@ -49,7 +49,7 @@ func (m *BackendConnectionManager) ReconcileOpenTelemetryCollector(
 				logger.Info("OpenTelemetry collector resources have already been deleted, ignoring reconciliation request.")
 			}
 			return nil
-		} else if trigger == TriggeredByDash0Resource {
+		} else if trigger == TriggeredByMonitoringResource {
 			if m.DevelopmentMode {
 				logger.Info("resetting resourcesHaveBeenDeletedByOperator")
 			}

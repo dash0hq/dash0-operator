@@ -565,7 +565,7 @@ func startDash0Controllers(
 		&setupLog,
 	)
 
-	monitoringReconciler := &controller.Dash0Reconciler{
+	monitoringReconciler := &controller.MonitoringReconciler{
 		Client:                   k8sClient,
 		Clientset:                clientset,
 		Instrumenter:             instrumenter,
@@ -738,7 +738,7 @@ func deleteMonitoringResourcesInAllNamespaces(logger *logr.Logger) error {
 		logger.Error(err, "Failed to create the OperatorPreDeleteHandler.")
 		return err
 	}
-	err = handler.DeleteAllDash0MonitoringResources()
+	err = handler.DeleteAllMonitoringResources()
 	if err != nil {
 		logger.Error(err, "Failed to delete all monitoring resources.")
 		return err
