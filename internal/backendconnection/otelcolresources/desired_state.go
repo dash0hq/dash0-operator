@@ -32,9 +32,10 @@ type oTelColConfig struct {
 }
 
 type collectorConfigurationTemplateValues struct {
-	Exporters                []OtlpExporter
-	IgnoreLogsFromNamespaces []string
-	DevelopmentMode          bool
+	Exporters                        []OtlpExporter
+	IgnoreLogsFromNamespaces         []string
+	NamespacesWithPrometheusScraping []string
+	DevelopmentMode                  bool
 }
 
 // This type just exists to ensure all created objects go through addCommonMetadata.
@@ -155,14 +156,50 @@ var (
 	deploymentReplicas int32 = 1
 )
 
+func assembleDesiredStateForUpsert(
+	config *oTelColConfig,
+	allMonitoringResources []dash0v1alpha1.Dash0Monitoring,
+	resourceSpecs *OTelColResourceSpecs,
+) ([]clientObject, error) {
+	namespacesWithPrometheusScraping := make([]string, 0, len(allMonitoringResources))
+	for _, monitoringResource := range allMonitoringResources {
+		if util.ReadBoolPointerWithDefault(monitoringResource.Spec.PrometheusScrapingEnabled, true) {
+			namespacesWithPrometheusScraping = append(namespacesWithPrometheusScraping, monitoringResource.Namespace)
+		}
+	}
+	return assembleDesiredState(
+		config,
+		namespacesWithPrometheusScraping,
+		resourceSpecs,
+		false,
+	)
+}
+
+func assembleDesiredStateForDelete(
+	config *oTelColConfig,
+	resourceSpecs *OTelColResourceSpecs,
+) ([]clientObject, error) {
+	return assembleDesiredState(
+		config,
+		nil,
+		resourceSpecs,
+		true,
+	)
+}
+
 func assembleDesiredState(
 	config *oTelColConfig,
+	namespacesWithPrometheusScraping []string,
 	resourceSpecs *OTelColResourceSpecs,
 	forDeletion bool,
 ) ([]clientObject, error) {
 	var desiredState []clientObject
 	desiredState = append(desiredState, addCommonMetadata(assembleServiceAccountForDaemonSet(config)))
-	daemonSetCollectorConfigMap, err := assembleDaemonSetCollectorConfigMap(config, forDeletion)
+	daemonSetCollectorConfigMap, err := assembleDaemonSetCollectorConfigMap(
+		config,
+		namespacesWithPrometheusScraping,
+		forDeletion,
+	)
 	if err != nil {
 		return desiredState, err
 	}

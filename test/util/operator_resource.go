@@ -11,6 +11,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
@@ -31,19 +32,19 @@ var (
 
 	OperatorConfigurationResourceWithoutSelfMonitoringWithoutAuth = dash0v1alpha1.Dash0OperatorConfigurationSpec{
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-			Enabled: false,
+			Enabled: ptr.To(false),
 		},
 	}
 
 	OperatorConfigurationResourceWithoutExport = dash0v1alpha1.Dash0OperatorConfigurationSpec{
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-			Enabled: false,
+			Enabled: ptr.To(false),
 		},
 	}
 
 	OperatorConfigurationResourceDash0ExportWithoutApiEndpointWithToken = dash0v1alpha1.Dash0OperatorConfigurationSpec{
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-			Enabled: false,
+			Enabled: ptr.To(false),
 		},
 		Export: &dash0v1alpha1.Export{
 			Dash0: &dash0v1alpha1.Dash0Configuration{
@@ -56,7 +57,7 @@ var (
 
 	OperatorConfigurationResourceDash0ExportWithoutApiEndpointWithSecretRef = dash0v1alpha1.Dash0OperatorConfigurationSpec{
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-			Enabled: false,
+			Enabled: ptr.To(false),
 		},
 		Export: &dash0v1alpha1.Export{
 			Dash0: &dash0v1alpha1.Dash0Configuration{
@@ -69,7 +70,7 @@ var (
 
 	OperatorConfigurationResourceDash0ExportWithApiEndpointWithToken = dash0v1alpha1.Dash0OperatorConfigurationSpec{
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-			Enabled: false,
+			Enabled: ptr.To(false),
 		},
 		Export: &dash0v1alpha1.Export{
 			Dash0: &dash0v1alpha1.Dash0Configuration{
@@ -83,7 +84,7 @@ var (
 
 	OperatorConfigurationResourceDash0ExportWithApiEndpointWithSecretRef = dash0v1alpha1.Dash0OperatorConfigurationSpec{
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-			Enabled: false,
+			Enabled: ptr.To(false),
 		},
 		Export: &dash0v1alpha1.Export{
 			Dash0: &dash0v1alpha1.Dash0Configuration{
@@ -97,7 +98,7 @@ var (
 
 	OperatorConfigurationResourceWithoutSelfMonitoringWithToken = dash0v1alpha1.Dash0OperatorConfigurationSpec{
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-			Enabled: false,
+			Enabled: ptr.To(false),
 		},
 		Export: &dash0v1alpha1.Export{
 			Dash0: &dash0v1alpha1.Dash0Configuration{
@@ -111,7 +112,7 @@ var (
 
 	OperatorConfigurationResourceWithoutSelfMonitoringWithSecretRef = dash0v1alpha1.Dash0OperatorConfigurationSpec{
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-			Enabled: false,
+			Enabled: ptr.To(false),
 		},
 		Export: &dash0v1alpha1.Export{
 			Dash0: &dash0v1alpha1.Dash0Configuration{
@@ -125,7 +126,7 @@ var (
 
 	OperatorConfigurationResourceWithSelfMonitoringWithToken = dash0v1alpha1.Dash0OperatorConfigurationSpec{
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-			Enabled: true,
+			Enabled: ptr.To(true),
 		},
 		Export: &dash0v1alpha1.Export{
 			Dash0: &dash0v1alpha1.Dash0Configuration{
@@ -139,7 +140,7 @@ var (
 
 	OperatorConfigurationResourceWithSelfMonitoringWithSecretRef = dash0v1alpha1.Dash0OperatorConfigurationSpec{
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-			Enabled: true,
+			Enabled: ptr.To(true),
 		},
 		Export: &dash0v1alpha1.Export{
 			Dash0: &dash0v1alpha1.Dash0Configuration{

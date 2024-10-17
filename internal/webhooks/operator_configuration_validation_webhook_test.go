@@ -4,7 +4,10 @@
 package webhooks
 
 import (
+	"k8s.io/utils/ptr"
+
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -19,6 +22,37 @@ var _ = Describe("The validation webhook for the operator configuration resource
 
 	Describe("when validating", Ordered, func() {
 
+		It("should reject operator configuration resources without spec (and thus without export) since self-monitoring defaults to true", func() {
+			_, err := CreateOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+				&dash0v1alpha1.Dash0OperatorConfiguration{
+					ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				})
+			Expect(err).To(MatchError(ContainSubstring(
+				"admission webhook \"validate-operator-configuration.dash0.com\" denied the request: The provided " +
+					"Dash0 operator configuration resource has self-monitoring enabled, but it does not have an " +
+					"export configuration. Either disable self-monitoring or provide an export configuration for " +
+					"self-monitoring telemetry.")))
+		})
+
+		It("should reject operator configuration resources without export if self-monitoring is unset and defaults to true", func() {
+			_, err := CreateOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+				&dash0v1alpha1.Dash0OperatorConfiguration{
+					ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						SelfMonitoring: dash0v1alpha1.SelfMonitoring{},
+					},
+				})
+			Expect(err).To(MatchError(ContainSubstring(
+				"admission webhook \"validate-operator-configuration.dash0.com\" denied the request: The provided " +
+					"Dash0 operator configuration resource has self-monitoring enabled, but it does not have an " +
+					"export configuration. Either disable self-monitoring or provide an export configuration for " +
+					"self-monitoring telemetry.")))
+		})
+
 		It("should reject operator configuration resources without export if self-monitoring is enabled", func() {
 			_, err := CreateOperatorConfigurationResource(
 				ctx,
@@ -27,7 +61,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 					ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
 					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 						SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-							Enabled: true,
+							Enabled: ptr.To(true),
 						},
 					},
 				})
@@ -46,7 +80,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 					ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
 					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 						SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-							Enabled: false,
+							Enabled: ptr.To(false),
 						},
 					},
 				})

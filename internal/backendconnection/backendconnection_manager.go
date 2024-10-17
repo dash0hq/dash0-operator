@@ -8,6 +8,9 @@ import (
 	"fmt"
 	"sync/atomic"
 
+	"github.com/go-logr/logr"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -32,7 +35,7 @@ const (
 	TriggeredByDash0Resource BackendConnectionReconcileTrigger = "resource"
 )
 
-func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
+func (m *BackendConnectionManager) ReconcileOpenTelemetryCollector(
 	ctx context.Context,
 	images util.Images,
 	operatorNamespace string,
@@ -66,11 +69,20 @@ func (m *BackendConnectionManager) EnsureOpenTelemetryCollectorIsDeployedInOpera
 		m.updateInProgress.Store(false)
 	}()
 
+	allMonitoringResources, err := m.findAllMonitoringResources(ctx, &logger)
+	if err != nil {
+		return err
+	}
+	if len(allMonitoringResources) == 0 {
+		return m.removeOpenTelemetryCollector(ctx, operatorNamespace, &logger)
+	}
+
 	resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 		m.OTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 			ctx,
 			operatorNamespace,
 			images,
+			allMonitoringResources,
 			monitoringResource,
 			&logger,
 		)
@@ -142,16 +154,24 @@ func (m *BackendConnectionManager) RemoveOpenTelemetryCollectorIfNoMonitoringRes
 
 	// Either there is no Dash0 monitoring resource left, or only one and that one is about to be deleted. Delete the
 	// backend connection.
+	return m.removeOpenTelemetryCollector(ctx, operatorNamespace, &logger)
+}
+
+func (m *BackendConnectionManager) removeOpenTelemetryCollector(
+	ctx context.Context,
+	operatorNamespace string,
+	logger *logr.Logger,
+) error {
 	logger.Info(
 		fmt.Sprintf(
 			"Deleting the OpenTelemetry collector Kuberenetes resources in the Dash0 operator namespace %s.",
 			operatorNamespace,
 		))
 
-	if err = m.OTelColResourceManager.DeleteResources(
+	if err := m.OTelColResourceManager.DeleteResources(
 		ctx,
 		operatorNamespace,
-		&logger,
+		logger,
 	); err != nil {
 		logger.Error(
 			err,
@@ -160,4 +180,33 @@ func (m *BackendConnectionManager) RemoveOpenTelemetryCollectorIfNoMonitoringRes
 		return err
 	}
 	return nil
+}
+
+func (m *BackendConnectionManager) findAllMonitoringResources(
+	ctx context.Context,
+	logger *logr.Logger,
+) ([]dash0v1alpha1.Dash0Monitoring, error) {
+	monitoringResourceList := dash0v1alpha1.Dash0MonitoringList{}
+	if err := m.List(
+		ctx,
+		&monitoringResourceList,
+		&client.ListOptions{},
+	); err != nil {
+		logger.Error(err, "Failed to list all Dash0 monitoring resources, requeuing reconcile request.")
+		return nil, err
+	}
+
+	// filter monitoring resources that are not in state available
+	monitoringResources := make([]dash0v1alpha1.Dash0Monitoring, 0, len(monitoringResourceList.Items))
+	for _, mr := range monitoringResourceList.Items {
+		availableCondition := meta.FindStatusCondition(
+			mr.Status.Conditions,
+			string(dash0v1alpha1.ConditionTypeAvailable),
+		)
+		if availableCondition == nil || availableCondition.Status != metav1.ConditionTrue {
+			continue
+		}
+		monitoringResources = append(monitoringResources, mr)
+	}
+	return monitoringResources, nil
 }

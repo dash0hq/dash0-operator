@@ -124,7 +124,7 @@ func (r *BackendConnectionReconciler) Reconcile(
 		return reconcile.Result{}, nil
 	}
 
-	if err = r.BackendConnectionManager.EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
+	if err = r.BackendConnectionManager.ReconcileOpenTelemetryCollector(
 		ctx,
 		r.Images,
 		r.OperatorNamespace,

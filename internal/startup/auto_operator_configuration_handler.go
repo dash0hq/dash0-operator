@@ -13,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
@@ -225,7 +226,7 @@ func (r *AutoOperatorConfigurationResourceHandler) createOperatorConfigurationRe
 		},
 		Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 			SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-				Enabled: true,
+				Enabled: ptr.To(true),
 			},
 			Export: &dash0Export,
 		},

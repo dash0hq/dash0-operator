@@ -41,10 +41,10 @@ type instrumentedState string
 
 func AddInstrumentationLabels(
 	meta *metav1.ObjectMeta,
-	instrumenationSuccess bool,
+	instrumentationSuccess bool,
 	instrumentationMetadata InstrumentationMetadata,
 ) {
-	if instrumenationSuccess {
+	if instrumentationSuccess {
 		addLabel(meta, instrumentedLabelKey, string(instrumentedLabelValueSuccessful))
 	} else {
 		addLabel(meta, instrumentedLabelKey, string(instrumentedLabelValueUnsuccessful))
@@ -97,7 +97,7 @@ func HasBeenInstrumentedSuccessfullyByThisVersion(
 	return operatorImageValue == expectedOperatorImageLabel && initContainerImageValue == expectedInitContainerImageLabel
 }
 
-func InstrumenationAttemptHasFailed(meta *metav1.ObjectMeta) bool {
+func InstrumentationAttemptHasFailed(meta *metav1.ObjectMeta) bool {
 	return readInstrumentationState(meta) == instrumentedLabelValueUnsuccessful
 }
 
@@ -116,19 +116,19 @@ func readInstrumentationState(meta *metav1.ObjectMeta) instrumentedState {
 	}
 }
 
-func HasOptedOutOfInstrumenation(meta *metav1.ObjectMeta) bool {
-	return hasOptedOutOfInstrumenation(meta)
+func HasOptedOutOfInstrumentation(meta *metav1.ObjectMeta) bool {
+	return hasOptedOutOfInstrumentation(meta)
 }
 
-func HasOptedOutOfInstrumenationAndIsUninstrumented(meta *metav1.ObjectMeta) bool {
-	return hasOptedOutOfInstrumenation(meta) && !HasBeenInstrumentedSuccessfully(meta)
+func HasOptedOutOfInstrumentationAndIsUninstrumented(meta *metav1.ObjectMeta) bool {
+	return hasOptedOutOfInstrumentation(meta) && !HasBeenInstrumentedSuccessfully(meta)
 }
 
 func WasInstrumentedButHasOptedOutNow(meta *metav1.ObjectMeta) bool {
-	return HasBeenInstrumentedSuccessfully(meta) && hasOptedOutOfInstrumenation(meta)
+	return HasBeenInstrumentedSuccessfully(meta) && hasOptedOutOfInstrumentation(meta)
 }
 
-func hasOptedOutOfInstrumenation(meta *metav1.ObjectMeta) bool {
+func hasOptedOutOfInstrumentation(meta *metav1.ObjectMeta) bool {
 	dash0EnabledValue, isSet := readLabel(meta, dash0EnableLabelKey)
 	return isSet && dash0EnabledValue == "false"
 }

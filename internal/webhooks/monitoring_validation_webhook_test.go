@@ -5,6 +5,7 @@ package webhooks
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
@@ -27,7 +28,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 	Describe("when validating", Ordered, func() {
 
 		It("should reject monitoring resources without export if no operator configuration resource exists", func() {
-			_, err := CreateMonitoringResource(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
+			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
 				ObjectMeta: MonitoringResourceDefaultObjectMeta,
 				Spec: dash0v1alpha1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1alpha1.All,
@@ -44,14 +45,14 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				k8sClient,
 				dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-						Enabled: false,
+						Enabled: ptr.To(false),
 					},
 				},
 			)
 
 			// deliberately not marking the operator configuration resource as available for this test
 
-			_, err := CreateMonitoringResource(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
+			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
 				ObjectMeta: MonitoringResourceDefaultObjectMeta,
 				Spec: dash0v1alpha1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1alpha1.All,
@@ -92,7 +93,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 			opConfRes2.EnsureResourceIsMarkedAsAvailable()
 			Expect(k8sClient.Status().Update(ctx, opConfRes2)).To(Succeed())
 
-			_, err = CreateMonitoringResource(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
+			_, err = CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
 				ObjectMeta: MonitoringResourceDefaultObjectMeta,
 				Spec: dash0v1alpha1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1alpha1.All,
@@ -111,14 +112,14 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				k8sClient,
 				dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-						Enabled: false,
+						Enabled: ptr.To(false),
 					},
 				},
 			)
 			operatorConfigurationResource.EnsureResourceIsMarkedAsAvailable()
 			Expect(k8sClient.Status().Update(ctx, operatorConfigurationResource)).To(Succeed())
 
-			_, err := CreateMonitoringResource(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
+			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
 				ObjectMeta: MonitoringResourceDefaultObjectMeta,
 				Spec: dash0v1alpha1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1alpha1.All,
@@ -136,7 +137,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 			operatorConfigurationResource.EnsureResourceIsMarkedAsAvailable()
 			Expect(k8sClient.Status().Update(ctx, operatorConfigurationResource)).To(Succeed())
 
-			_, err := CreateMonitoringResource(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
+			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
 				ObjectMeta: MonitoringResourceDefaultObjectMeta,
 				Spec: dash0v1alpha1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1alpha1.All,
@@ -147,7 +148,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 		})
 
 		It("should allow monitoring resource creation with export settings", func() {
-			_, err := CreateMonitoringResource(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
+			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
 				ObjectMeta: MonitoringResourceDefaultObjectMeta,
 				Spec:       MonitoringResourceDefaultSpec,
 			})

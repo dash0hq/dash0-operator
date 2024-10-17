@@ -12,6 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
 type OperatorConfigurationValidationWebhookHandler struct {
@@ -38,7 +39,8 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(_ context.Context
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
-	if operatorConfigurationResource.Spec.SelfMonitoring.Enabled && operatorConfigurationResource.Spec.Export == nil {
+	if util.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.SelfMonitoring.Enabled, true) &&
+		operatorConfigurationResource.Spec.Export == nil {
 		return admission.Denied(
 			"The provided Dash0 operator configuration resource has self-monitoring enabled, but it does not have an " +
 				"export configuration. Either disable self-monitoring or provide an export configuration for self-" +

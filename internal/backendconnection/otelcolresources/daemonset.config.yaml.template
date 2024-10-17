@@ -128,6 +128,9 @@ e2e tests. */}}
     insecure_skip_verify: true
 {{- end }}
 
+{{- $hasPrometheusScrapingEnabledForAtLeastOneNamespace := gt (len .NamespacesWithPrometheusScraping) 0 }}
+
+{{- if $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}
   prometheus:
     config:
 {{- /*
@@ -156,6 +159,11 @@ to be compatible with the well-known configuration via annotations.
             selectors:
               - role: pod
                 field: "spec.nodeName=${K8S_NODE_NAME}"
+            namespaces:
+              names:
+              {{- range $i, $namespace := .NamespacesWithPrometheusScraping }}
+              - {{ $namespace }}
+              {{- end }}
 
         relabel_configs:
           - source_labels: [ __meta_kubernetes_namespace ]
@@ -226,6 +234,11 @@ to be compatible with the well-known configuration via annotations.
             selectors:
               - role: pod
                 field: "spec.nodeName=${K8S_NODE_NAME}"
+            namespaces:
+              names:
+              {{- range $i, $namespace := .NamespacesWithPrometheusScraping }}
+              - {{ $namespace }}
+              {{- end }}
 
         relabel_configs:
           - source_labels: [ __meta_kubernetes_namespace ]
@@ -269,6 +282,7 @@ to be compatible with the well-known configuration via annotations.
           - source_labels: [__meta_kubernetes_pod_node_name]
             action: replace
             target_label: node
+{{- end }}
 
   # TODO Turn on conditionally for monitored namespaces
   filelog/monitored_pods:
@@ -377,7 +391,9 @@ service:
       receivers:
       - otlp
       - kubeletstats
+{{- if $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}
       - prometheus
+{{- end }}
       processors:
       - k8sattributes
       - resourcedetection
