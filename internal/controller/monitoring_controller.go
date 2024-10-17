@@ -25,7 +25,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
-type Dash0Reconciler struct {
+type MonitoringReconciler struct {
 	client.Client
 	Clientset                *kubernetes.Clientset
 	Instrumenter             *instrumentation.Instrumenter
@@ -53,7 +53,7 @@ var (
 	monitoringReconcileRequestMetric otelmetric.Int64Counter
 )
 
-func (r *Dash0Reconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *MonitoringReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if r.DanglingEventsTimeouts == nil {
 		r.DanglingEventsTimeouts = defaultDanglingEventsTimeouts
 	}
@@ -62,7 +62,7 @@ func (r *Dash0Reconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *Dash0Reconciler) InitializeSelfMonitoringMetrics(
+func (r *MonitoringReconciler) InitializeSelfMonitoringMetrics(
 	meter otelmetric.Meter,
 	metricNamePrefix string,
 	logger *logr.Logger,
@@ -102,7 +102,7 @@ func (r *Dash0Reconciler) InitializeSelfMonitoringMetrics(
 // - About Operator Pattern: https://kubernetes.io/docs/concepts/extend-kubernetes/operator/
 // - About Controllers: https://kubernetes.io/docs/concepts/architecture/controller/
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.16.3/pkg/reconcile
-func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	if monitoringReconcileRequestMetric != nil {
 		monitoringReconcileRequestMetric.Add(ctx, 1)
 	}
@@ -236,7 +236,7 @@ func (r *Dash0Reconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl
 	return ctrl.Result{}, nil
 }
 
-func (r *Dash0Reconciler) manageInstrumentWorkloadsChanges(
+func (r *MonitoringReconciler) manageInstrumentWorkloadsChanges(
 	ctx context.Context,
 	monitoringResource *dash0v1alpha1.Dash0Monitoring,
 	isFirstReconcile bool,
@@ -274,7 +274,7 @@ func (r *Dash0Reconciler) manageInstrumentWorkloadsChanges(
 	return monitoringResource, requiredAction, nil
 }
 
-func (r *Dash0Reconciler) runCleanupActions(
+func (r *MonitoringReconciler) runCleanupActions(
 	ctx context.Context,
 	monitoringResource *dash0v1alpha1.Dash0Monitoring,
 	logger *logr.Logger,
@@ -317,7 +317,7 @@ func (r *Dash0Reconciler) runCleanupActions(
 	return nil
 }
 
-func (r *Dash0Reconciler) scheduleAttachDanglingEvents(
+func (r *MonitoringReconciler) scheduleAttachDanglingEvents(
 	ctx context.Context,
 	monitoringResource *dash0v1alpha1.Dash0Monitoring,
 	logger *logr.Logger,
@@ -339,7 +339,7 @@ func (r *Dash0Reconciler) scheduleAttachDanglingEvents(
  * set in the event. The list of events for that workload will not contain this event. We go the extra mile here and
  * retroactively fix the reference of all those events.
  */
-func (r *Dash0Reconciler) attachDanglingEvents(
+func (r *MonitoringReconciler) attachDanglingEvents(
 	ctx context.Context,
 	monitoringResource *dash0v1alpha1.Dash0Monitoring,
 	logger *logr.Logger,
@@ -399,7 +399,7 @@ func (r *Dash0Reconciler) attachDanglingEvents(
 	}
 }
 
-func (r *Dash0Reconciler) reconcileOpenTelemetryCollector(
+func (r *MonitoringReconciler) reconcileOpenTelemetryCollector(
 	ctx context.Context,
 	monitoringResource *dash0v1alpha1.Dash0Monitoring,
 	logger *logr.Logger,
@@ -412,7 +412,7 @@ func (r *Dash0Reconciler) reconcileOpenTelemetryCollector(
 		r.Images,
 		r.OperatorNamespace,
 		monitoringResource,
-		backendconnection.TriggeredByDash0Resource,
+		backendconnection.TriggeredByMonitoringResource,
 	); err != nil {
 		logger.Error(err, "Failed to reconcile the OpenTelemetry collector, requeuing reconcile request.")
 		return err

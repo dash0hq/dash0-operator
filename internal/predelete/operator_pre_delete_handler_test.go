@@ -79,7 +79,7 @@ var _ = Describe("Uninstalling the Dash0 Kubernetes operator", Ordered, func() {
 
 		go func() {
 			defer GinkgoRecover()
-			Expect(preDeleteHandler.DeleteAllDash0MonitoringResources()).To(Succeed())
+			Expect(preDeleteHandler.DeleteAllMonitoringResources()).To(Succeed())
 			preDeleteHandlerTerminatedAt = time.Now()
 		}()
 
@@ -96,7 +96,7 @@ var _ = Describe("Uninstalling the Dash0 Kubernetes operator", Ordered, func() {
 	It("should delete all Dash0 monitoring resources and uninstrument workloads", func() {
 		go func() {
 			defer GinkgoRecover()
-			Expect(preDeleteHandler.DeleteAllDash0MonitoringResources()).To(Succeed())
+			Expect(preDeleteHandler.DeleteAllMonitoringResources()).To(Succeed())
 		}()
 
 		// Triggering reconcile requests for both Dash0 monitoring resources to run cleanup actions and remove the
@@ -150,7 +150,7 @@ func setupNamespaceWithDash0MonitoringResourceAndWorkload(
 
 func triggerReconcileRequestForName(
 	ctx context.Context,
-	reconciler *controller.Dash0Reconciler,
+	reconciler *controller.MonitoringReconciler,
 	dash0MonitoringResourceName types.NamespacedName,
 ) {
 	By(fmt.Sprintf("Trigger reconcile request for %s/%s", dash0MonitoringResourceName.Namespace, dash0MonitoringResourceName.Name))

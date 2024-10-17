@@ -28,7 +28,7 @@ import (
 )
 
 var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
-	var reconciler *controller.Dash0Reconciler
+	var reconciler *controller.MonitoringReconciler
 	var dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring
 	var createdObjects []client.Object
 
@@ -56,7 +56,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 			OTelColResourceManager: oTelColResourceManager,
 		}
 
-		reconciler = &controller.Dash0Reconciler{
+		reconciler = &controller.MonitoringReconciler{
 			Client:                   k8sClient,
 			Clientset:                clientset,
 			Instrumenter:             instrumenter,
@@ -157,7 +157,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 
 func triggerReconcileRequest(
 	ctx context.Context,
-	reconciler *controller.Dash0Reconciler,
+	reconciler *controller.MonitoringReconciler,
 	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
 ) {
 	By("Trigger reconcile request")

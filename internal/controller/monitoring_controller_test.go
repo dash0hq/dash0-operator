@@ -34,16 +34,16 @@ import (
 )
 
 var (
-	namespace                         = TestNamespaceName
-	extraDash0MonitoringResourceNames []types.NamespacedName
-	operatorNamespace                 = OperatorNamespace
+	namespace                    = TestNamespaceName
+	extraMonitoringResourceNames []types.NamespacedName
+	operatorNamespace            = OperatorNamespace
 )
 
 var _ = Describe("The monitoring resource controller", Ordered, func() {
 	ctx := context.Background()
 	var createdObjects []client.Object
 
-	var reconciler *Dash0Reconciler
+	var reconciler *MonitoringReconciler
 
 	BeforeAll(func() {
 		EnsureTestNamespaceExists(ctx, k8sClient)
@@ -72,7 +72,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			Clientset:              clientset,
 			OTelColResourceManager: oTelColResourceManager,
 		}
-		reconciler = &Dash0Reconciler{
+		reconciler = &MonitoringReconciler{
 			Client:                   k8sClient,
 			Clientset:                clientset,
 			Instrumenter:             instrumenter,
@@ -95,7 +95,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 		AfterEach(func() {
 			DeleteMonitoringResource(ctx, k8sClient)
-			for _, name := range extraDash0MonitoringResourceNames {
+			for _, name := range extraMonitoringResourceNames {
 				DeleteMonitoringResourceByName(ctx, k8sClient, name, true)
 			}
 		})
@@ -104,14 +104,14 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			It("should successfully run the first reconcile (no modifiable workloads exist)", func() {
 				By("Trigger reconcile request")
 				triggerReconcileRequest(ctx, reconciler, "")
-				verifyDash0MonitoringResourceIsAvailable(ctx)
+				verifyMonitoringResourceIsAvailable(ctx)
 				VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
 			})
 
 			It("should successfully run multiple reconciles (no modifiable workloads exist)", func() {
 				triggerReconcileRequest(ctx, reconciler, "First reconcile request")
 
-				firstAvailableStatusCondition := verifyDash0MonitoringResourceIsAvailable(ctx)
+				firstAvailableStatusCondition := verifyMonitoringResourceIsAvailable(ctx)
 				originalTransitionTimestamp := firstAvailableStatusCondition.LastTransitionTime.Time
 
 				time.Sleep(50 * time.Millisecond)
@@ -119,22 +119,22 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 				triggerReconcileRequest(ctx, reconciler, "Second reconcile request")
 
 				// The LastTransitionTime should not change with subsequent reconciliations.
-				secondAvailableCondition := verifyDash0MonitoringResourceIsAvailable(ctx)
+				secondAvailableCondition := verifyMonitoringResourceIsAvailable(ctx)
 				Expect(secondAvailableCondition.LastTransitionTime.Time).To(Equal(originalTransitionTimestamp))
 
 				VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
 			})
 
 			It("should mark only the most recent resource as available and the other ones as degraded when multiple resources exist", func() {
-				firstDash0MonitoringResource := &dash0v1alpha1.Dash0Monitoring{}
-				Expect(k8sClient.Get(ctx, MonitoringResourceQualifiedName, firstDash0MonitoringResource)).To(Succeed())
+				firstMonitoringResource := &dash0v1alpha1.Dash0Monitoring{}
+				Expect(k8sClient.Get(ctx, MonitoringResourceQualifiedName, firstMonitoringResource)).To(Succeed())
 				time.Sleep(10 * time.Millisecond)
 				secondName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-monitoring-test-resource-2"}
-				extraDash0MonitoringResourceNames = append(extraDash0MonitoringResourceNames, secondName)
+				extraMonitoringResourceNames = append(extraMonitoringResourceNames, secondName)
 				CreateDefaultMonitoringResource(ctx, k8sClient, secondName)
 				time.Sleep(10 * time.Millisecond)
 				thirdName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-monitoring-test-resource-3"}
-				extraDash0MonitoringResourceNames = append(extraDash0MonitoringResourceNames, thirdName)
+				extraMonitoringResourceNames = append(extraMonitoringResourceNames, thirdName)
 				CreateDefaultMonitoringResource(ctx, k8sClient, thirdName)
 
 				triggerReconcileRequestForName(ctx, reconciler, "", MonitoringResourceQualifiedName)
@@ -250,8 +250,8 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			createdObjects = append(createdObjects, workload.Get())
 
 			By("deleting the Dash0 monitoring resource")
-			dash0MonitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
-			Expect(k8sClient.Delete(ctx, dash0MonitoringResource)).To(Succeed())
+			monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
+			Expect(k8sClient.Delete(ctx, monitoringResource)).To(Succeed())
 
 			triggerReconcileRequest(ctx, reconciler, "trigger a reconcile request to revert the instrumented workload")
 
@@ -712,9 +712,9 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 	Describe("when the Dash0 monitoring resource exists and has InstrumentWorkloads=all set explicitly", Ordered, func() {
 		BeforeAll(func() {
-			dash0MonitoringResource := EnsureMonitoringResourceExists(ctx, k8sClient)
-			dash0MonitoringResource.Spec.InstrumentWorkloads = dash0v1alpha1.All
-			Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
+			monitoringResource := EnsureMonitoringResourceExists(ctx, k8sClient)
+			monitoringResource.Spec.InstrumentWorkloads = dash0v1alpha1.All
+			Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 		})
 
 		AfterAll(func() {
@@ -749,17 +749,17 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 		})
 
 		It("should not allow to update the resource with an invalid value", func() {
-			dash0MonitoringResource := EnsureMonitoringResourceExists(ctx, k8sClient)
-			dash0MonitoringResource.Spec.InstrumentWorkloads = "invalid"
-			Expect(k8sClient.Update(ctx, dash0MonitoringResource)).ToNot(Succeed())
+			monitoringResource := EnsureMonitoringResourceExists(ctx, k8sClient)
+			monitoringResource.Spec.InstrumentWorkloads = "invalid"
+			Expect(k8sClient.Update(ctx, monitoringResource)).ToNot(Succeed())
 		})
 	})
 
 	Describe("when the Dash0 monitoring resource exists but has InstrumentWorkloads=none set", Ordered, func() {
 		BeforeAll(func() {
-			dash0MonitoringResource := EnsureMonitoringResourceExists(ctx, k8sClient)
-			dash0MonitoringResource.Spec.InstrumentWorkloads = dash0v1alpha1.None
-			Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
+			monitoringResource := EnsureMonitoringResourceExists(ctx, k8sClient)
+			monitoringResource.Spec.InstrumentWorkloads = dash0v1alpha1.None
+			Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 		})
 
 		AfterAll(func() {
@@ -773,9 +773,9 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 	Describe("when the Dash0 monitoring resource exists but has InstrumentWorkloads=created-and-updated set", Ordered, func() {
 		BeforeAll(func() {
-			dash0MonitoringResource := EnsureMonitoringResourceExists(ctx, k8sClient)
-			dash0MonitoringResource.Spec.InstrumentWorkloads = dash0v1alpha1.CreatedAndUpdated
-			Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
+			monitoringResource := EnsureMonitoringResourceExists(ctx, k8sClient)
+			monitoringResource.Spec.InstrumentWorkloads = dash0v1alpha1.CreatedAndUpdated
+			Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 		})
 
 		AfterAll(func() {
@@ -800,8 +800,8 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
 
-			dash0MonitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
-			Expect(k8sClient.Delete(ctx, dash0MonitoringResource)).To(Succeed())
+			monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
+			Expect(k8sClient.Delete(ctx, monitoringResource)).To(Succeed())
 			triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to trigger removing the collector resources")
 
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
@@ -809,7 +809,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 	})
 })
 
-func verifyThatDeploymentIsInstrumented(ctx context.Context, reconciler *Dash0Reconciler, createdObjects []client.Object) []client.Object {
+func verifyThatDeploymentIsInstrumented(ctx context.Context, reconciler *MonitoringReconciler, createdObjects []client.Object) []client.Object {
 	name := UniqueName(DeploymentNamePrefix)
 	By("Inititalize a deployment")
 	deployment := CreateBasicDeployment(ctx, k8sClient, namespace, name)
@@ -823,7 +823,7 @@ func verifyThatDeploymentIsInstrumented(ctx context.Context, reconciler *Dash0Re
 	return createdObjects
 }
 
-func verifyThatDeploymentIsNotBeingInstrumented(ctx context.Context, reconciler *Dash0Reconciler, createdObjects []client.Object) []client.Object {
+func verifyThatDeploymentIsNotBeingInstrumented(ctx context.Context, reconciler *MonitoringReconciler, createdObjects []client.Object) []client.Object {
 	name := UniqueName(DeploymentNamePrefix)
 	By("Inititalize a deployment")
 	deployment := CreateDeploymentWithOptOutLabel(ctx, k8sClient, namespace, name)
@@ -837,48 +837,48 @@ func verifyThatDeploymentIsNotBeingInstrumented(ctx context.Context, reconciler 
 	return createdObjects
 }
 
-func triggerReconcileRequest(ctx context.Context, reconciler *Dash0Reconciler, stepMessage string) {
+func triggerReconcileRequest(ctx context.Context, reconciler *MonitoringReconciler, stepMessage string) {
 	triggerReconcileRequestForName(ctx, reconciler, stepMessage, MonitoringResourceQualifiedName)
 }
 
 func triggerReconcileRequestForName(
 	ctx context.Context,
-	reconciler *Dash0Reconciler,
+	reconciler *MonitoringReconciler,
 	stepMessage string,
-	dash0MonitoringResourceName types.NamespacedName,
+	monitoringResourceName types.NamespacedName,
 ) {
 	if stepMessage == "" {
 		stepMessage = "Trigger a monitoring resource reconcile request"
 	}
 	By(stepMessage)
 	_, err := reconciler.Reconcile(ctx, reconcile.Request{
-		NamespacedName: dash0MonitoringResourceName,
+		NamespacedName: monitoringResourceName,
 	})
 	Expect(err).NotTo(HaveOccurred())
 }
 
 func verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx context.Context, namespace string, name string) {
-	verifyDash0MonitoringResourceIsAvailable(ctx)
+	verifyMonitoringResourceIsAvailable(ctx)
 	VerifySuccessfulInstrumentationEvent(ctx, clientset, namespace, name, "controller")
 }
 
-func verifyDash0MonitoringResourceIsAvailable(ctx context.Context) *metav1.Condition {
+func verifyMonitoringResourceIsAvailable(ctx context.Context) *metav1.Condition {
 	var availableCondition *metav1.Condition
 	By("Verifying status conditions")
 	Eventually(func(g Gomega) {
-		dash0MonitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, g)
-		availableCondition = meta.FindStatusCondition(dash0MonitoringResource.Status.Conditions, string(dash0v1alpha1.ConditionTypeAvailable))
+		monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, g)
+		availableCondition = meta.FindStatusCondition(monitoringResource.Status.Conditions, string(dash0v1alpha1.ConditionTypeAvailable))
 		g.Expect(availableCondition).NotTo(BeNil())
 		g.Expect(availableCondition.Status).To(Equal(metav1.ConditionTrue))
-		degraded := meta.FindStatusCondition(dash0MonitoringResource.Status.Conditions, string(dash0v1alpha1.ConditionTypeDegraded))
+		degraded := meta.FindStatusCondition(monitoringResource.Status.Conditions, string(dash0v1alpha1.ConditionTypeDegraded))
 		g.Expect(degraded).To(BeNil())
 	}, timeout, pollingInterval).Should(Succeed())
 	return availableCondition
 }
 
-func loadCondition(ctx context.Context, dash0MonitoringResourceName types.NamespacedName, conditionType dash0v1alpha1.ConditionType) *metav1.Condition {
-	dash0MonitoringResource := LoadMonitoringResourceByNameOrFail(ctx, k8sClient, Default, dash0MonitoringResourceName)
-	return meta.FindStatusCondition(dash0MonitoringResource.Status.Conditions, string(conditionType))
+func loadCondition(ctx context.Context, monitoringResourceName types.NamespacedName, conditionType dash0v1alpha1.ConditionType) *metav1.Condition {
+	monitoringResource := LoadMonitoringResourceByNameOrFail(ctx, k8sClient, Default, monitoringResourceName)
+	return meta.FindStatusCondition(monitoringResource.Status.Conditions, string(conditionType))
 }
 
 func verifyCondition(
