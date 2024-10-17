@@ -743,6 +743,13 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			}, 50*time.Second, time.Second).Should(Succeed())
 		})
 
+		It("should produce Prometheus metrics via the prometheus receiver", func() {
+			By("waiting for prometheus receiver metrics")
+			Eventually(func(g Gomega) {
+				verifyPrometheusMetrics(g)
+			}, 50*time.Second, time.Second).Should(Succeed())
+		})
+
 		It("should produce self-monitoring telemetry", func() {
 			By("updating the Dash0 monitoring resource endpoint setting")
 			newEndpoint := "ingress.us-east-2.aws.dash0-dev.com:4317"

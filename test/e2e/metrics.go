@@ -28,6 +28,10 @@ var (
 	k8sClusterReceiverMetricsFile string
 	k8sClusterReceiverMetricNames = parseMetricNameList(k8sClusterReceiverMetricsFile)
 
+	//go:embed prometheus_receiver_metrics.txt
+	prometheusReceiverMetricsFile string
+	prometheusReceiverMetricNames = parseMetricNameList(prometheusReceiverMetricsFile)
+
 	metricsUnmarshaller = &pmetric.JSONUnmarshaler{}
 )
 
@@ -49,6 +53,16 @@ func verifyK8skClusterReceiverMetrics(g Gomega) {
 			metricNameMatcher(k8sClusterReceiverMetricNames),
 		),
 	).To(BeTrue(), "expected to find at least one k8s_cluster receiver metric")
+}
+
+func verifyPrometheusMetrics(g Gomega) {
+	g.Expect(
+		fileHasMatchingMetrics(
+			g,
+			resourceAttributeMatcher(""),
+			metricNameMatcher(prometheusReceiverMetricNames),
+		),
+	).To(BeTrue(), "expected to find at least one Prometheus receiver metric")
 }
 
 func fileHasMatchingMetrics(
