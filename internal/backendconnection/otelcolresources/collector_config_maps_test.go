@@ -5,6 +5,7 @@ package otelcolresources
 
 import (
 	"fmt"
+	"regexp"
 
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
@@ -30,98 +31,583 @@ const (
 
 var (
 	bearerWithAuthToken = fmt.Sprintf("Bearer ${env:%s}", authTokenEnvVarName)
+	pathKeysRegex       = regexp.MustCompile(`^([\w-]+)=([\w-]+)$`)
 )
 
-var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
+var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
-	testConfigs := []TableEntry{
-		Entry(
-			"for the DaemonSet",
-			testConfig{
-				assembleConfigMapFunction: assembleDaemonSetCollectorConfigMap,
-				pipelineNames: []string{
-					"traces/downstream",
-					"metrics/downstream",
-					"logs/downstream",
-				},
-			}),
-		Entry(
-			"for the Deployment",
-			testConfig{
-				assembleConfigMapFunction: assembleDeploymentCollectorConfigMap,
-				pipelineNames: []string{
-					"metrics/downstream",
-				},
-			}),
-	}
+	Describe("renders exporters", func() {
+		testConfigs := []TableEntry{
+			Entry(
+				"for the DaemonSet",
+				testConfig{
+					assembleConfigMapFunction: assembleDaemonSetCollectorConfigMapWithoutScrapingNamespaces,
+					pipelineNames: []string{
+						"traces/downstream",
+						"metrics/downstream",
+						"logs/downstream",
+					},
+				}),
+			Entry(
+				"for the Deployment",
+				testConfig{
+					assembleConfigMapFunction: assembleDeploymentCollectorConfigMap,
+					pipelineNames: []string{
+						"metrics/downstream",
+					},
+				}),
+		}
 
-	DescribeTable("should fail if no exporter is configured", func(testConfig testConfig) {
-		_, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export:     dash0v1alpha1.Export{},
-		}, false)
-		Expect(err).To(HaveOccurred())
-	}, testConfigs)
+		DescribeTable("should fail if no exporter is configured", func(testConfig testConfig) {
+			_, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+				Namespace:  namespace,
+				NamePrefix: namePrefix,
+				Export:     dash0v1alpha1.Export{},
+			}, false)
+			Expect(err).To(HaveOccurred())
+		}, testConfigs)
 
-	DescribeTable("should fail to render the Dash0 exporter when no endpoint is provided", func(testConfig testConfig) {
-		_, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export: dash0v1alpha1.Export{
-				Dash0: &dash0v1alpha1.Dash0Configuration{
-					Authorization: dash0v1alpha1.Authorization{
-						Token: &AuthorizationTokenTest,
+		DescribeTable("should fail to render the Dash0 exporter when no endpoint is provided", func(testConfig testConfig) {
+			_, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+				Namespace:  namespace,
+				NamePrefix: namePrefix,
+				Export: dash0v1alpha1.Export{
+					Dash0: &dash0v1alpha1.Dash0Configuration{
+						Authorization: dash0v1alpha1.Authorization{
+							Token: &AuthorizationTokenTest,
+						},
 					},
 				},
-			},
-		}, false)
-		Expect(err).To(
-			MatchError(
-				ContainSubstring(
-					"no endpoint provided for the Dash0 exporter, unable to create the OpenTelemetry collector")))
+			}, false)
+			Expect(err).To(
+				MatchError(
+					ContainSubstring(
+						"no endpoint provided for the Dash0 exporter, unable to create the OpenTelemetry collector")))
 
-	}, testConfigs)
+		}, testConfigs)
 
-	DescribeTable("should render the Dash0 exporter without other exporters, with default settings", func(testConfig testConfig) {
-		configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export: dash0v1alpha1.Export{
-				Dash0: &dash0v1alpha1.Dash0Configuration{
-					Endpoint: EndpointDash0Test,
-					Authorization: dash0v1alpha1.Authorization{
-						Token: &AuthorizationTokenTest,
+		DescribeTable("should render the Dash0 exporter without other exporters, with default settings", func(testConfig testConfig) {
+			configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+				Namespace:  namespace,
+				NamePrefix: namePrefix,
+				Export: dash0v1alpha1.Export{
+					Dash0: &dash0v1alpha1.Dash0Configuration{
+						Endpoint: EndpointDash0Test,
+						Authorization: dash0v1alpha1.Authorization{
+							Token: &AuthorizationTokenTest,
+						},
 					},
 				},
-			},
-		}, false)
+			}, false)
 
-		Expect(err).ToNot(HaveOccurred())
-		collectorConfig := parseConfigMapContent(configMap)
-		exportersRaw := collectorConfig["exporters"]
-		Expect(exportersRaw).ToNot(BeNil())
-		exporters := exportersRaw.(map[string]interface{})
-		Expect(exporters).To(HaveLen(1))
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]interface{})
+			Expect(exporters).To(HaveLen(1))
 
-		exporter := exporters["otlp/dash0"]
-		Expect(exporter).ToNot(BeNil())
-		dash0OtlpExporter := exporter.(map[string]interface{})
-		Expect(dash0OtlpExporter).ToNot(BeNil())
-		Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
-		headersRaw := dash0OtlpExporter["headers"]
-		Expect(headersRaw).ToNot(BeNil())
-		headers := headersRaw.(map[string]interface{})
-		Expect(headers).To(HaveLen(1))
-		Expect(headers[util.AuthorizationHeaderName]).To(Equal(bearerWithAuthToken))
-		Expect(headers[util.Dash0DatasetHeaderName]).To(BeNil())
-		Expect(dash0OtlpExporter["encoding"]).To(BeNil())
+			exporter := exporters["otlp/dash0"]
+			Expect(exporter).ToNot(BeNil())
+			dash0OtlpExporter := exporter.(map[string]interface{})
+			Expect(dash0OtlpExporter).ToNot(BeNil())
+			Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
+			headersRaw := dash0OtlpExporter["headers"]
+			Expect(headersRaw).ToNot(BeNil())
+			headers := headersRaw.(map[string]interface{})
+			Expect(headers).To(HaveLen(1))
+			Expect(headers[util.AuthorizationHeaderName]).To(Equal(bearerWithAuthToken))
+			Expect(headers[util.Dash0DatasetHeaderName]).To(BeNil())
+			Expect(dash0OtlpExporter["encoding"]).To(BeNil())
 
-		verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/dash0")
-	}, testConfigs)
+			verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/dash0")
+		}, testConfigs)
 
-	DescribeTable("should render the Dash0 exporter with custom dataset", func(testConfig testConfig) {
-		configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+		DescribeTable("should render the Dash0 exporter with custom dataset", func(testConfig testConfig) {
+			configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+				Namespace:  namespace,
+				NamePrefix: namePrefix,
+				Export: dash0v1alpha1.Export{
+					Dash0: &dash0v1alpha1.Dash0Configuration{
+						Endpoint: EndpointDash0Test,
+						Dataset:  "custom-dataset",
+						Authorization: dash0v1alpha1.Authorization{
+							Token: &AuthorizationTokenTest,
+						},
+					},
+				},
+			}, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]interface{})
+			Expect(exporters).To(HaveLen(1))
+
+			exporter := exporters["otlp/dash0"]
+			Expect(exporter).ToNot(BeNil())
+			dash0OtlpExporter := exporter.(map[string]interface{})
+			Expect(dash0OtlpExporter).ToNot(BeNil())
+			Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
+			headersRaw := dash0OtlpExporter["headers"]
+			Expect(headersRaw).ToNot(BeNil())
+			headers := headersRaw.(map[string]interface{})
+			Expect(headers).To(HaveLen(2))
+			Expect(headers[util.AuthorizationHeaderName]).To(Equal(bearerWithAuthToken))
+			Expect(headers[util.Dash0DatasetHeaderName]).To(Equal("custom-dataset"))
+			Expect(dash0OtlpExporter["encoding"]).To(BeNil())
+
+			verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/dash0")
+		}, testConfigs)
+
+		DescribeTable("should render a debug exporter in development mode", func(testConfig testConfig) {
+			configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+				Namespace:  namespace,
+				NamePrefix: namePrefix,
+				Export: dash0v1alpha1.Export{
+					Dash0: &dash0v1alpha1.Dash0Configuration{
+						Endpoint: EndpointDash0Test,
+						Authorization: dash0v1alpha1.Authorization{
+							Token: &AuthorizationTokenTest,
+						},
+					},
+				},
+				DevelopmentMode: true,
+			}, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]interface{})
+			Expect(exporters).To(HaveLen(2))
+
+			debugExporterRaw := exporters["debug"]
+			Expect(debugExporterRaw).ToNot(BeNil())
+			debugExporter := debugExporterRaw.(map[string]interface{})
+			Expect(debugExporter).To(HaveLen(0))
+
+			exporter := exporters["otlp/dash0"]
+			Expect(exporter).ToNot(BeNil())
+			dash0OtlpExporter := exporter.(map[string]interface{})
+			Expect(dash0OtlpExporter).ToNot(BeNil())
+			Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
+			headersRaw := dash0OtlpExporter["headers"]
+			Expect(headersRaw).ToNot(BeNil())
+			headers := headersRaw.(map[string]interface{})
+			Expect(headers).To(HaveLen(1))
+			Expect(headers[util.AuthorizationHeaderName]).To(Equal(bearerWithAuthToken))
+			Expect(headers[util.Dash0DatasetHeaderName]).To(BeNil())
+			Expect(dash0OtlpExporter["encoding"]).To(BeNil())
+
+			verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "debug", "otlp/dash0")
+		}, testConfigs)
+
+		DescribeTable("should fail to render a gRPC exporter when no endpoint is provided", func(testConfig testConfig) {
+			_, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+				Namespace:  namespace,
+				NamePrefix: namePrefix,
+				Export: dash0v1alpha1.Export{
+					Grpc: &dash0v1alpha1.GrpcConfiguration{
+						Headers: []dash0v1alpha1.Header{{
+							Name:  "Key1",
+							Value: "Value1",
+						}},
+					},
+				},
+			}, false)
+			Expect(err).To(
+				MatchError(
+					ContainSubstring(
+						"no endpoint provided for the gRPC exporter, unable to create the OpenTelemetry collector")))
+
+		}, testConfigs)
+
+		DescribeTable("should render an arbitrary gRPC exporter", func(testConfig testConfig) {
+			configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+				Namespace:  namespace,
+				NamePrefix: namePrefix,
+				Export: dash0v1alpha1.Export{
+					Grpc: &dash0v1alpha1.GrpcConfiguration{
+						Endpoint: GrpcEndpointTest,
+						Headers: []dash0v1alpha1.Header{
+							{
+								Name:  "Key1",
+								Value: "Value1",
+							},
+							{
+								Name:  "Key2",
+								Value: "Value2",
+							},
+						},
+					},
+				},
+			}, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]interface{})
+			Expect(exporters).To(HaveLen(1))
+
+			exporter2 := exporters["otlp/grpc"]
+			Expect(exporter2).ToNot(BeNil())
+			otlpGrpcExporter := exporter2.(map[string]interface{})
+			Expect(otlpGrpcExporter).ToNot(BeNil())
+			Expect(otlpGrpcExporter["endpoint"]).To(Equal(GrpcEndpointTest))
+			headersRaw := otlpGrpcExporter["headers"]
+			Expect(headersRaw).ToNot(BeNil())
+			headers := headersRaw.(map[string]interface{})
+			Expect(headers).To(HaveLen(2))
+			Expect(headers["Key1"]).To(Equal("Value1"))
+			Expect(headers["Key2"]).To(Equal("Value2"))
+			Expect(otlpGrpcExporter["encoding"]).To(BeNil())
+
+			verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/grpc")
+		}, testConfigs)
+
+		DescribeTable("should fail to render an HTTP exporter when no endpoint is provided", func(testConfig testConfig) {
+			_, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+				Namespace:  namespace,
+				NamePrefix: namePrefix,
+				Export: dash0v1alpha1.Export{
+					Http: &dash0v1alpha1.HttpConfiguration{
+						Headers: []dash0v1alpha1.Header{{
+							Name:  "Key1",
+							Value: "Value1",
+						}},
+						Encoding: dash0v1alpha1.Proto,
+					},
+				},
+			}, false)
+			Expect(err).To(
+				MatchError(
+					ContainSubstring(
+						"no endpoint provided for the HTTP exporter, unable to create the OpenTelemetry collector")))
+		}, testConfigs)
+
+		DescribeTable("should fail to render an HTTP exporter when no encoding is provided", func(testConfig testConfig) {
+			_, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+				Namespace:  namespace,
+				NamePrefix: namePrefix,
+				Export: dash0v1alpha1.Export{
+					Http: &dash0v1alpha1.HttpConfiguration{
+						Endpoint: HttpEndpointTest,
+						Headers: []dash0v1alpha1.Header{{
+							Name:  "Key1",
+							Value: "Value1",
+						}},
+					},
+				},
+			}, false)
+			Expect(err).To(
+				MatchError(
+					ContainSubstring(
+						"no encoding provided for the HTTP exporter, unable to create the OpenTelemetry collector")))
+
+		}, testConfigs)
+
+		DescribeTable("should render an arbitrary HTTP exporter", func(testConfig testConfig) {
+			configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+				Namespace:  namespace,
+				NamePrefix: namePrefix,
+				Export: dash0v1alpha1.Export{
+					Http: &dash0v1alpha1.HttpConfiguration{
+						Endpoint: HttpEndpointTest,
+						Headers: []dash0v1alpha1.Header{
+							{
+								Name:  "Key1",
+								Value: "Value1",
+							},
+							{
+								Name:  "Key2",
+								Value: "Value2",
+							},
+						},
+						Encoding: dash0v1alpha1.Json,
+					},
+				},
+			}, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]interface{})
+			Expect(exporters).To(HaveLen(1))
+
+			exporter2 := exporters["otlphttp/json"]
+			Expect(exporter2).ToNot(BeNil())
+			otlpHttpExporter := exporter2.(map[string]interface{})
+			Expect(otlpHttpExporter).ToNot(BeNil())
+			Expect(otlpHttpExporter["endpoint"]).To(Equal(HttpEndpointTest))
+			headersRaw := otlpHttpExporter["headers"]
+			Expect(headersRaw).ToNot(BeNil())
+			headers := headersRaw.(map[string]interface{})
+			Expect(headers).To(HaveLen(2))
+			Expect(headers["Key1"]).To(Equal("Value1"))
+			Expect(headers["Key2"]).To(Equal("Value2"))
+			Expect(otlpHttpExporter["encoding"]).To(Equal("json"))
+
+			verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlphttp/json")
+		}, testConfigs)
+
+		DescribeTable("should render the Dash0 exporter together with a gRPC exporter", func(testConfig testConfig) {
+			configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+				Namespace:  namespace,
+				NamePrefix: namePrefix,
+				Export: dash0v1alpha1.Export{
+					Dash0: &dash0v1alpha1.Dash0Configuration{
+						Endpoint: EndpointDash0Test,
+						Authorization: dash0v1alpha1.Authorization{
+							Token: &AuthorizationTokenTest,
+						},
+					},
+					Grpc: &dash0v1alpha1.GrpcConfiguration{
+						Endpoint: HttpEndpointTest,
+						Headers: []dash0v1alpha1.Header{{
+							Name:  "Key1",
+							Value: "Value1",
+						}},
+					},
+				},
+			}, false)
+			Expect(err).ToNot(HaveOccurred())
+
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]interface{})
+			Expect(exporters).To(HaveLen(2))
+
+			exporter2 := exporters["otlp/dash0"]
+			Expect(exporter2).ToNot(BeNil())
+			dash0OtlpExporter := exporter2.(map[string]interface{})
+			Expect(dash0OtlpExporter).ToNot(BeNil())
+			Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
+			headersRaw := dash0OtlpExporter["headers"]
+			Expect(headersRaw).ToNot(BeNil())
+			headers := headersRaw.(map[string]interface{})
+			Expect(headers).To(HaveLen(1))
+			Expect(headers[util.AuthorizationHeaderName]).To(Equal(bearerWithAuthToken))
+			Expect(dash0OtlpExporter["encoding"]).To(BeNil())
+
+			exporter3 := exporters["otlp/grpc"]
+			Expect(exporter3).ToNot(BeNil())
+			httpExporter := exporter3.(map[string]interface{})
+			Expect(httpExporter["endpoint"]).To(Equal(HttpEndpointTest))
+			headersRaw = httpExporter["headers"]
+			Expect(headersRaw).ToNot(BeNil())
+			headers = headersRaw.(map[string]interface{})
+			Expect(headers).To(HaveLen(1))
+			Expect(headers["Key1"]).To(Equal("Value1"))
+			Expect(httpExporter["encoding"]).To(BeNil())
+
+			verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/dash0", "otlp/grpc")
+		}, testConfigs)
+
+		DescribeTable("should render the Dash0 exporter together with an HTTP exporter", func(testConfig testConfig) {
+			configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+				Namespace:  namespace,
+				NamePrefix: namePrefix,
+				Export: dash0v1alpha1.Export{
+					Dash0: &dash0v1alpha1.Dash0Configuration{
+						Endpoint: EndpointDash0Test,
+						Authorization: dash0v1alpha1.Authorization{
+							Token: &AuthorizationTokenTest,
+						},
+					},
+					Http: &dash0v1alpha1.HttpConfiguration{
+						Endpoint: HttpEndpointTest,
+						Headers: []dash0v1alpha1.Header{{
+							Name:  "Key1",
+							Value: "Value1",
+						}},
+						Encoding: dash0v1alpha1.Proto,
+					},
+				},
+			}, false)
+			Expect(err).ToNot(HaveOccurred())
+
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]interface{})
+			Expect(exporters).To(HaveLen(2))
+
+			exporter2 := exporters["otlp/dash0"]
+			Expect(exporter2).ToNot(BeNil())
+			dash0OtlpExporter := exporter2.(map[string]interface{})
+			Expect(dash0OtlpExporter).ToNot(BeNil())
+			Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
+			headersRaw := dash0OtlpExporter["headers"]
+			Expect(headersRaw).ToNot(BeNil())
+			headers := headersRaw.(map[string]interface{})
+			Expect(headers).To(HaveLen(1))
+			Expect(headers[util.AuthorizationHeaderName]).To(Equal(bearerWithAuthToken))
+			Expect(dash0OtlpExporter["encoding"]).To(BeNil())
+
+			exporter3 := exporters["otlphttp/proto"]
+			Expect(exporter3).ToNot(BeNil())
+			httpExporter := exporter3.(map[string]interface{})
+			Expect(httpExporter["endpoint"]).To(Equal(HttpEndpointTest))
+			headersRaw = httpExporter["headers"]
+			Expect(headersRaw).ToNot(BeNil())
+			headers = headersRaw.(map[string]interface{})
+			Expect(headers).To(HaveLen(1))
+			Expect(headers["Key1"]).To(Equal("Value1"))
+			Expect(httpExporter["encoding"]).To(Equal("proto"))
+
+			verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/dash0", "otlphttp/proto")
+		}, testConfigs)
+
+		DescribeTable("should render a gRPC exporter together with an HTTP exporter", func(testConfig testConfig) {
+			configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+				Namespace:  namespace,
+				NamePrefix: namePrefix,
+				Export: dash0v1alpha1.Export{
+					Grpc: &dash0v1alpha1.GrpcConfiguration{
+						Endpoint: GrpcEndpointTest,
+						Headers: []dash0v1alpha1.Header{{
+							Name:  "Key1",
+							Value: "Value1",
+						}},
+					},
+					Http: &dash0v1alpha1.HttpConfiguration{
+						Endpoint: HttpEndpointTest,
+						Headers: []dash0v1alpha1.Header{{
+							Name:  "Key2",
+							Value: "Value2",
+						}},
+						Encoding: dash0v1alpha1.Proto,
+					},
+				},
+			}, false)
+			Expect(err).ToNot(HaveOccurred())
+
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]interface{})
+			Expect(exporters).To(HaveLen(2))
+
+			exporter2 := exporters["otlp/grpc"]
+			Expect(exporter2).ToNot(BeNil())
+			grpcOtlpExporter := exporter2.(map[string]interface{})
+			Expect(grpcOtlpExporter).ToNot(BeNil())
+			Expect(grpcOtlpExporter["endpoint"]).To(Equal(GrpcEndpointTest))
+			headersRaw := grpcOtlpExporter["headers"]
+			Expect(headersRaw).ToNot(BeNil())
+			headers := headersRaw.(map[string]interface{})
+			Expect(headers).To(HaveLen(1))
+			Expect(headers["Key1"]).To(Equal("Value1"))
+			Expect(grpcOtlpExporter["encoding"]).To(BeNil())
+
+			exporter3 := exporters["otlphttp/proto"]
+			Expect(exporter3).ToNot(BeNil())
+			httpExporter := exporter3.(map[string]interface{})
+			Expect(httpExporter["endpoint"]).To(Equal(HttpEndpointTest))
+			headersRaw = httpExporter["headers"]
+			Expect(headersRaw).ToNot(BeNil())
+			headers = headersRaw.(map[string]interface{})
+			Expect(headers).To(HaveLen(1))
+			Expect(headers).To(HaveLen(1))
+			Expect(headers["Key2"]).To(Equal("Value2"))
+			Expect(httpExporter["encoding"]).To(Equal("proto"))
+
+			verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/grpc", "otlphttp/proto")
+		}, testConfigs)
+
+		DescribeTable("should render a combination of all three exporter types", func(testConfig testConfig) {
+			configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+				Namespace:  namespace,
+				NamePrefix: namePrefix,
+				Export: dash0v1alpha1.Export{
+					Dash0: &dash0v1alpha1.Dash0Configuration{
+						Endpoint: EndpointDash0Test,
+						Authorization: dash0v1alpha1.Authorization{
+							Token: &AuthorizationTokenTest,
+						},
+					},
+					Grpc: &dash0v1alpha1.GrpcConfiguration{
+						Endpoint: GrpcEndpointTest,
+						Headers: []dash0v1alpha1.Header{{
+							Name:  "Key1",
+							Value: "Value1",
+						}},
+					},
+					Http: &dash0v1alpha1.HttpConfiguration{
+						Endpoint: HttpEndpointTest,
+						Headers: []dash0v1alpha1.Header{{
+							Name:  "Key2",
+							Value: "Value2",
+						}},
+						Encoding: dash0v1alpha1.Json,
+					},
+				},
+				DevelopmentMode: true,
+			}, false)
+			Expect(err).ToNot(HaveOccurred())
+
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]interface{})
+			Expect(exporters).To(HaveLen(4))
+
+			debugExporterRaw := exporters["debug"]
+			Expect(debugExporterRaw).ToNot(BeNil())
+			debugExporter := debugExporterRaw.(map[string]interface{})
+			Expect(debugExporter).To(HaveLen(0))
+
+			exporter2 := exporters["otlp/dash0"]
+			Expect(exporter2).ToNot(BeNil())
+			dash0OtlpExporter := exporter2.(map[string]interface{})
+			Expect(dash0OtlpExporter).ToNot(BeNil())
+			Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
+			headersRaw := dash0OtlpExporter["headers"]
+			Expect(headersRaw).ToNot(BeNil())
+			headers := headersRaw.(map[string]interface{})
+			Expect(headers).To(HaveLen(1))
+			Expect(headers[util.AuthorizationHeaderName]).To(Equal(bearerWithAuthToken))
+			Expect(dash0OtlpExporter["encoding"]).To(BeNil())
+
+			exporter3 := exporters["otlp/grpc"]
+			Expect(exporter3).ToNot(BeNil())
+			grpcExporter := exporter3.(map[string]interface{})
+			Expect(grpcExporter["endpoint"]).To(Equal(GrpcEndpointTest))
+			headersRaw = grpcExporter["headers"]
+			Expect(headersRaw).ToNot(BeNil())
+			headers = headersRaw.(map[string]interface{})
+			Expect(headers).To(HaveLen(1))
+			Expect(headers["Key1"]).To(Equal("Value1"))
+
+			exporter4 := exporters["otlphttp/json"]
+			Expect(exporter4).ToNot(BeNil())
+			httpExporter := exporter4.(map[string]interface{})
+			Expect(httpExporter["endpoint"]).To(Equal(HttpEndpointTest))
+			headersRaw = httpExporter["headers"]
+			Expect(headersRaw).ToNot(BeNil())
+			headers = headersRaw.(map[string]interface{})
+			Expect(headers).To(HaveLen(1))
+			Expect(headers["Key2"]).To(Equal("Value2"))
+			Expect(httpExporter["encoding"]).To(Equal("json"))
+
+			verifyDownstreamExportersInPipelines(
+				collectorConfig,
+				testConfig,
+				"debug",
+				"otlp/dash0",
+				"otlp/grpc",
+				"otlphttp/json",
+			)
+		}, testConfigs)
+	})
+
+	Describe("prometheus scraping config", func() {
+		var config = &oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export: dash0v1alpha1.Export{
@@ -133,475 +619,46 @@ var _ = Describe("The OpenTelemetry Collector ConfigMap conent", func() {
 					},
 				},
 			},
-		}, false)
+		}
 
-		Expect(err).ToNot(HaveOccurred())
-		collectorConfig := parseConfigMapContent(configMap)
-		exportersRaw := collectorConfig["exporters"]
-		Expect(exportersRaw).ToNot(BeNil())
-		exporters := exportersRaw.(map[string]interface{})
-		Expect(exporters).To(HaveLen(1))
+		It("should not render the prometheus scraping config if no namespaces have scraping enabled", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(config, nil, false)
 
-		exporter := exporters["otlp/dash0"]
-		Expect(exporter).ToNot(BeNil())
-		dash0OtlpExporter := exporter.(map[string]interface{})
-		Expect(dash0OtlpExporter).ToNot(BeNil())
-		Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
-		headersRaw := dash0OtlpExporter["headers"]
-		Expect(headersRaw).ToNot(BeNil())
-		headers := headersRaw.(map[string]interface{})
-		Expect(headers).To(HaveLen(2))
-		Expect(headers[util.AuthorizationHeaderName]).To(Equal(bearerWithAuthToken))
-		Expect(headers[util.Dash0DatasetHeaderName]).To(Equal("custom-dataset"))
-		Expect(dash0OtlpExporter["encoding"]).To(BeNil())
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			Expect(readFromMap(collectorConfig, []string{"receivers", "prometheus"})).To(BeNil())
 
-		verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/dash0")
-	}, testConfigs)
+			pipelines := readPipelines(collectorConfig)
+			metricsReceivers := readPipelineReceivers(pipelines, "metrics/downstream")
+			Expect(metricsReceivers).ToNot(ContainElement("prometheus"))
+		})
 
-	DescribeTable("should render a debug exporter in development mode", func(testConfig testConfig) {
-		configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export: dash0v1alpha1.Export{
-				Dash0: &dash0v1alpha1.Dash0Configuration{
-					Endpoint: EndpointDash0Test,
-					Authorization: dash0v1alpha1.Authorization{
-						Token: &AuthorizationTokenTest,
-					},
-				},
-			},
-			DevelopmentMode: true,
-		}, false)
+		It("should render the prometheus scraping config with all namespaces for which scraping is enabled", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(config, []string{"namespace1", "namespace2"}, false)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			Expect(readFromMap(collectorConfig, []string{"receivers", "prometheus"})).ToNot(BeNil())
+			for _, jobName := range []string{"kubernetes-pods", "kubernetes-pods-slow"} {
+				verifyScrapeJobHasNamespaces(collectorConfig, jobName)
+			}
 
-		Expect(err).ToNot(HaveOccurred())
-		collectorConfig := parseConfigMapContent(configMap)
-		exportersRaw := collectorConfig["exporters"]
-		Expect(exportersRaw).ToNot(BeNil())
-		exporters := exportersRaw.(map[string]interface{})
-		Expect(exporters).To(HaveLen(2))
-
-		debugExporterRaw := exporters["debug"]
-		Expect(debugExporterRaw).ToNot(BeNil())
-		debugExporter := debugExporterRaw.(map[string]interface{})
-		Expect(debugExporter).To(HaveLen(0))
-
-		exporter := exporters["otlp/dash0"]
-		Expect(exporter).ToNot(BeNil())
-		dash0OtlpExporter := exporter.(map[string]interface{})
-		Expect(dash0OtlpExporter).ToNot(BeNil())
-		Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
-		headersRaw := dash0OtlpExporter["headers"]
-		Expect(headersRaw).ToNot(BeNil())
-		headers := headersRaw.(map[string]interface{})
-		Expect(headers).To(HaveLen(1))
-		Expect(headers[util.AuthorizationHeaderName]).To(Equal(bearerWithAuthToken))
-		Expect(headers[util.Dash0DatasetHeaderName]).To(BeNil())
-		Expect(dash0OtlpExporter["encoding"]).To(BeNil())
-
-		verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "debug", "otlp/dash0")
-	}, testConfigs)
-
-	DescribeTable("should fail to render a gRPC exporter when no endpoint is provided", func(testConfig testConfig) {
-		_, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export: dash0v1alpha1.Export{
-				Grpc: &dash0v1alpha1.GrpcConfiguration{
-					Headers: []dash0v1alpha1.Header{{
-						Name:  "Key1",
-						Value: "Value1",
-					}},
-				},
-			},
-		}, false)
-		Expect(err).To(
-			MatchError(
-				ContainSubstring(
-					"no endpoint provided for the gRPC exporter, unable to create the OpenTelemetry collector")))
-
-	}, testConfigs)
-
-	DescribeTable("should render an arbitrary gRPC exporter", func(testConfig testConfig) {
-		configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export: dash0v1alpha1.Export{
-				Grpc: &dash0v1alpha1.GrpcConfiguration{
-					Endpoint: GrpcEndpointTest,
-					Headers: []dash0v1alpha1.Header{
-						{
-							Name:  "Key1",
-							Value: "Value1",
-						},
-						{
-							Name:  "Key2",
-							Value: "Value2",
-						},
-					},
-				},
-			},
-		}, false)
-
-		Expect(err).ToNot(HaveOccurred())
-		collectorConfig := parseConfigMapContent(configMap)
-		exportersRaw := collectorConfig["exporters"]
-		Expect(exportersRaw).ToNot(BeNil())
-		exporters := exportersRaw.(map[string]interface{})
-		Expect(exporters).To(HaveLen(1))
-
-		exporter2 := exporters["otlp/grpc"]
-		Expect(exporter2).ToNot(BeNil())
-		otlpGrpcExporter := exporter2.(map[string]interface{})
-		Expect(otlpGrpcExporter).ToNot(BeNil())
-		Expect(otlpGrpcExporter["endpoint"]).To(Equal(GrpcEndpointTest))
-		headersRaw := otlpGrpcExporter["headers"]
-		Expect(headersRaw).ToNot(BeNil())
-		headers := headersRaw.(map[string]interface{})
-		Expect(headers).To(HaveLen(2))
-		Expect(headers["Key1"]).To(Equal("Value1"))
-		Expect(headers["Key2"]).To(Equal("Value2"))
-		Expect(otlpGrpcExporter["encoding"]).To(BeNil())
-
-		verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/grpc")
-	}, testConfigs)
-
-	DescribeTable("should fail to render an HTTP exporter when no endpoint is provided", func(testConfig testConfig) {
-		_, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export: dash0v1alpha1.Export{
-				Http: &dash0v1alpha1.HttpConfiguration{
-					Headers: []dash0v1alpha1.Header{{
-						Name:  "Key1",
-						Value: "Value1",
-					}},
-					Encoding: dash0v1alpha1.Proto,
-				},
-			},
-		}, false)
-		Expect(err).To(
-			MatchError(
-				ContainSubstring(
-					"no endpoint provided for the HTTP exporter, unable to create the OpenTelemetry collector")))
-	}, testConfigs)
-
-	DescribeTable("should fail to render an HTTP exporter when no encoding is provided", func(testConfig testConfig) {
-		_, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export: dash0v1alpha1.Export{
-				Http: &dash0v1alpha1.HttpConfiguration{
-					Endpoint: HttpEndpointTest,
-					Headers: []dash0v1alpha1.Header{{
-						Name:  "Key1",
-						Value: "Value1",
-					}},
-				},
-			},
-		}, false)
-		Expect(err).To(
-			MatchError(
-				ContainSubstring(
-					"no encoding provided for the HTTP exporter, unable to create the OpenTelemetry collector")))
-
-	}, testConfigs)
-
-	DescribeTable("should render an arbitrary HTTP exporter", func(testConfig testConfig) {
-		configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export: dash0v1alpha1.Export{
-				Http: &dash0v1alpha1.HttpConfiguration{
-					Endpoint: HttpEndpointTest,
-					Headers: []dash0v1alpha1.Header{
-						{
-							Name:  "Key1",
-							Value: "Value1",
-						},
-						{
-							Name:  "Key2",
-							Value: "Value2",
-						},
-					},
-					Encoding: dash0v1alpha1.Json,
-				},
-			},
-		}, false)
-
-		Expect(err).ToNot(HaveOccurred())
-		collectorConfig := parseConfigMapContent(configMap)
-		exportersRaw := collectorConfig["exporters"]
-		Expect(exportersRaw).ToNot(BeNil())
-		exporters := exportersRaw.(map[string]interface{})
-		Expect(exporters).To(HaveLen(1))
-
-		exporter2 := exporters["otlphttp/json"]
-		Expect(exporter2).ToNot(BeNil())
-		otlpHttpExporter := exporter2.(map[string]interface{})
-		Expect(otlpHttpExporter).ToNot(BeNil())
-		Expect(otlpHttpExporter["endpoint"]).To(Equal(HttpEndpointTest))
-		headersRaw := otlpHttpExporter["headers"]
-		Expect(headersRaw).ToNot(BeNil())
-		headers := headersRaw.(map[string]interface{})
-		Expect(headers).To(HaveLen(2))
-		Expect(headers["Key1"]).To(Equal("Value1"))
-		Expect(headers["Key2"]).To(Equal("Value2"))
-		Expect(otlpHttpExporter["encoding"]).To(Equal("json"))
-
-		verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlphttp/json")
-	}, testConfigs)
-
-	DescribeTable("should render the Dash0 exporter together with a gRPC exporter", func(testConfig testConfig) {
-		configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export: dash0v1alpha1.Export{
-				Dash0: &dash0v1alpha1.Dash0Configuration{
-					Endpoint: EndpointDash0Test,
-					Authorization: dash0v1alpha1.Authorization{
-						Token: &AuthorizationTokenTest,
-					},
-				},
-				Grpc: &dash0v1alpha1.GrpcConfiguration{
-					Endpoint: HttpEndpointTest,
-					Headers: []dash0v1alpha1.Header{{
-						Name:  "Key1",
-						Value: "Value1",
-					}},
-				},
-			},
-		}, false)
-		Expect(err).ToNot(HaveOccurred())
-
-		collectorConfig := parseConfigMapContent(configMap)
-		exportersRaw := collectorConfig["exporters"]
-		Expect(exportersRaw).ToNot(BeNil())
-		exporters := exportersRaw.(map[string]interface{})
-		Expect(exporters).To(HaveLen(2))
-
-		exporter2 := exporters["otlp/dash0"]
-		Expect(exporter2).ToNot(BeNil())
-		dash0OtlpExporter := exporter2.(map[string]interface{})
-		Expect(dash0OtlpExporter).ToNot(BeNil())
-		Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
-		headersRaw := dash0OtlpExporter["headers"]
-		Expect(headersRaw).ToNot(BeNil())
-		headers := headersRaw.(map[string]interface{})
-		Expect(headers).To(HaveLen(1))
-		Expect(headers[util.AuthorizationHeaderName]).To(Equal(bearerWithAuthToken))
-		Expect(dash0OtlpExporter["encoding"]).To(BeNil())
-
-		exporter3 := exporters["otlp/grpc"]
-		Expect(exporter3).ToNot(BeNil())
-		httpExporter := exporter3.(map[string]interface{})
-		Expect(httpExporter["endpoint"]).To(Equal(HttpEndpointTest))
-		headersRaw = httpExporter["headers"]
-		Expect(headersRaw).ToNot(BeNil())
-		headers = headersRaw.(map[string]interface{})
-		Expect(headers).To(HaveLen(1))
-		Expect(headers["Key1"]).To(Equal("Value1"))
-		Expect(httpExporter["encoding"]).To(BeNil())
-
-		verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/dash0", "otlp/grpc")
-	}, testConfigs)
-
-	DescribeTable("should render the Dash0 exporter together with an HTTP exporter", func(testConfig testConfig) {
-		configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export: dash0v1alpha1.Export{
-				Dash0: &dash0v1alpha1.Dash0Configuration{
-					Endpoint: EndpointDash0Test,
-					Authorization: dash0v1alpha1.Authorization{
-						Token: &AuthorizationTokenTest,
-					},
-				},
-				Http: &dash0v1alpha1.HttpConfiguration{
-					Endpoint: HttpEndpointTest,
-					Headers: []dash0v1alpha1.Header{{
-						Name:  "Key1",
-						Value: "Value1",
-					}},
-					Encoding: dash0v1alpha1.Proto,
-				},
-			},
-		}, false)
-		Expect(err).ToNot(HaveOccurred())
-
-		collectorConfig := parseConfigMapContent(configMap)
-		exportersRaw := collectorConfig["exporters"]
-		Expect(exportersRaw).ToNot(BeNil())
-		exporters := exportersRaw.(map[string]interface{})
-		Expect(exporters).To(HaveLen(2))
-
-		exporter2 := exporters["otlp/dash0"]
-		Expect(exporter2).ToNot(BeNil())
-		dash0OtlpExporter := exporter2.(map[string]interface{})
-		Expect(dash0OtlpExporter).ToNot(BeNil())
-		Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
-		headersRaw := dash0OtlpExporter["headers"]
-		Expect(headersRaw).ToNot(BeNil())
-		headers := headersRaw.(map[string]interface{})
-		Expect(headers).To(HaveLen(1))
-		Expect(headers[util.AuthorizationHeaderName]).To(Equal(bearerWithAuthToken))
-		Expect(dash0OtlpExporter["encoding"]).To(BeNil())
-
-		exporter3 := exporters["otlphttp/proto"]
-		Expect(exporter3).ToNot(BeNil())
-		httpExporter := exporter3.(map[string]interface{})
-		Expect(httpExporter["endpoint"]).To(Equal(HttpEndpointTest))
-		headersRaw = httpExporter["headers"]
-		Expect(headersRaw).ToNot(BeNil())
-		headers = headersRaw.(map[string]interface{})
-		Expect(headers).To(HaveLen(1))
-		Expect(headers["Key1"]).To(Equal("Value1"))
-		Expect(httpExporter["encoding"]).To(Equal("proto"))
-
-		verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/dash0", "otlphttp/proto")
-	}, testConfigs)
-
-	DescribeTable("should render a gRPC exporter together with an HTTP exporter", func(testConfig testConfig) {
-		configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export: dash0v1alpha1.Export{
-				Grpc: &dash0v1alpha1.GrpcConfiguration{
-					Endpoint: GrpcEndpointTest,
-					Headers: []dash0v1alpha1.Header{{
-						Name:  "Key1",
-						Value: "Value1",
-					}},
-				},
-				Http: &dash0v1alpha1.HttpConfiguration{
-					Endpoint: HttpEndpointTest,
-					Headers: []dash0v1alpha1.Header{{
-						Name:  "Key2",
-						Value: "Value2",
-					}},
-					Encoding: dash0v1alpha1.Proto,
-				},
-			},
-		}, false)
-		Expect(err).ToNot(HaveOccurred())
-
-		collectorConfig := parseConfigMapContent(configMap)
-		exportersRaw := collectorConfig["exporters"]
-		Expect(exportersRaw).ToNot(BeNil())
-		exporters := exportersRaw.(map[string]interface{})
-		Expect(exporters).To(HaveLen(2))
-
-		exporter2 := exporters["otlp/grpc"]
-		Expect(exporter2).ToNot(BeNil())
-		grpcOtlpExporter := exporter2.(map[string]interface{})
-		Expect(grpcOtlpExporter).ToNot(BeNil())
-		Expect(grpcOtlpExporter["endpoint"]).To(Equal(GrpcEndpointTest))
-		headersRaw := grpcOtlpExporter["headers"]
-		Expect(headersRaw).ToNot(BeNil())
-		headers := headersRaw.(map[string]interface{})
-		Expect(headers).To(HaveLen(1))
-		Expect(headers["Key1"]).To(Equal("Value1"))
-		Expect(grpcOtlpExporter["encoding"]).To(BeNil())
-
-		exporter3 := exporters["otlphttp/proto"]
-		Expect(exporter3).ToNot(BeNil())
-		httpExporter := exporter3.(map[string]interface{})
-		Expect(httpExporter["endpoint"]).To(Equal(HttpEndpointTest))
-		headersRaw = httpExporter["headers"]
-		Expect(headersRaw).ToNot(BeNil())
-		headers = headersRaw.(map[string]interface{})
-		Expect(headers).To(HaveLen(1))
-		Expect(headers).To(HaveLen(1))
-		Expect(headers["Key2"]).To(Equal("Value2"))
-		Expect(httpExporter["encoding"]).To(Equal("proto"))
-
-		verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/grpc", "otlphttp/proto")
-	}, testConfigs)
-
-	DescribeTable("should render a combination of all three exporter types", func(testConfig testConfig) {
-		configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export: dash0v1alpha1.Export{
-				Dash0: &dash0v1alpha1.Dash0Configuration{
-					Endpoint: EndpointDash0Test,
-					Authorization: dash0v1alpha1.Authorization{
-						Token: &AuthorizationTokenTest,
-					},
-				},
-				Grpc: &dash0v1alpha1.GrpcConfiguration{
-					Endpoint: GrpcEndpointTest,
-					Headers: []dash0v1alpha1.Header{{
-						Name:  "Key1",
-						Value: "Value1",
-					}},
-				},
-				Http: &dash0v1alpha1.HttpConfiguration{
-					Endpoint: HttpEndpointTest,
-					Headers: []dash0v1alpha1.Header{{
-						Name:  "Key2",
-						Value: "Value2",
-					}},
-					Encoding: dash0v1alpha1.Json,
-				},
-			},
-			DevelopmentMode: true,
-		}, false)
-		Expect(err).ToNot(HaveOccurred())
-
-		collectorConfig := parseConfigMapContent(configMap)
-		exportersRaw := collectorConfig["exporters"]
-		Expect(exportersRaw).ToNot(BeNil())
-		exporters := exportersRaw.(map[string]interface{})
-		Expect(exporters).To(HaveLen(4))
-
-		debugExporterRaw := exporters["debug"]
-		Expect(debugExporterRaw).ToNot(BeNil())
-		debugExporter := debugExporterRaw.(map[string]interface{})
-		Expect(debugExporter).To(HaveLen(0))
-
-		exporter2 := exporters["otlp/dash0"]
-		Expect(exporter2).ToNot(BeNil())
-		dash0OtlpExporter := exporter2.(map[string]interface{})
-		Expect(dash0OtlpExporter).ToNot(BeNil())
-		Expect(dash0OtlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
-		headersRaw := dash0OtlpExporter["headers"]
-		Expect(headersRaw).ToNot(BeNil())
-		headers := headersRaw.(map[string]interface{})
-		Expect(headers).To(HaveLen(1))
-		Expect(headers[util.AuthorizationHeaderName]).To(Equal(bearerWithAuthToken))
-		Expect(dash0OtlpExporter["encoding"]).To(BeNil())
-
-		exporter3 := exporters["otlp/grpc"]
-		Expect(exporter3).ToNot(BeNil())
-		grpcExporter := exporter3.(map[string]interface{})
-		Expect(grpcExporter["endpoint"]).To(Equal(GrpcEndpointTest))
-		headersRaw = grpcExporter["headers"]
-		Expect(headersRaw).ToNot(BeNil())
-		headers = headersRaw.(map[string]interface{})
-		Expect(headers).To(HaveLen(1))
-		Expect(headers["Key1"]).To(Equal("Value1"))
-
-		exporter4 := exporters["otlphttp/json"]
-		Expect(exporter4).ToNot(BeNil())
-		httpExporter := exporter4.(map[string]interface{})
-		Expect(httpExporter["endpoint"]).To(Equal(HttpEndpointTest))
-		headersRaw = httpExporter["headers"]
-		Expect(headersRaw).ToNot(BeNil())
-		headers = headersRaw.(map[string]interface{})
-		Expect(headers).To(HaveLen(1))
-		Expect(headers["Key2"]).To(Equal("Value2"))
-		Expect(httpExporter["encoding"]).To(Equal("json"))
-
-		verifyDownstreamExportersInPipelines(
-			collectorConfig,
-			testConfig,
-			"debug",
-			"otlp/dash0",
-			"otlp/grpc",
-			"otlphttp/json",
-		)
-	}, testConfigs)
+			pipelines := readPipelines(collectorConfig)
+			metricsReceivers := readPipelineReceivers(pipelines, "metrics/downstream")
+			Expect(metricsReceivers).To(ContainElement("prometheus"))
+		})
+	})
 })
+
+func assembleDaemonSetCollectorConfigMapWithoutScrapingNamespaces(
+	config *oTelColConfig,
+	forDeletion bool,
+) (*corev1.ConfigMap, error) {
+	return assembleDaemonSetCollectorConfigMap(
+		config,
+		nil,
+		forDeletion,
+	)
+}
 
 func parseConfigMapContent(configMap *corev1.ConfigMap) map[string]interface{} {
 	configMapContent := configMap.Data["config.yaml"]
@@ -616,12 +673,91 @@ func verifyDownstreamExportersInPipelines(
 	testConfig testConfig,
 	expectedExporters ...string,
 ) {
-	pipelines := ((collectorConfig["service"]).(map[string]interface{})["pipelines"]).(map[string]interface{})
+	pipelines := readPipelines(collectorConfig)
 	Expect(pipelines).ToNot(BeNil())
 	for _, pipelineName := range testConfig.pipelineNames {
-		pipeline := (pipelines[pipelineName]).(map[string]interface{})
-		exporters := (pipeline["exporters"]).([]interface{})
+		exporters := readPipelineExporters(pipelines, pipelineName)
 		Expect(exporters).To(HaveLen(len(expectedExporters)))
 		Expect(exporters).To(ContainElements(expectedExporters))
 	}
+}
+
+func verifyScrapeJobHasNamespaces(collectorConfig map[string]interface{}, jobName string) {
+	namespacesKubernetesPodsRaw :=
+		readFromMap(
+			collectorConfig,
+			pathToScrapeJob(jobName),
+		)
+	namespacesKubernetesPods := namespacesKubernetesPodsRaw.([]interface{})
+	Expect(namespacesKubernetesPods).To(ContainElements("namespace1", "namespace2"))
+}
+
+func pathToScrapeJob(jobName string) []string {
+	return []string{"receivers",
+		"prometheus",
+		"config",
+		"scrape_configs",
+		fmt.Sprintf("job_name=%s", jobName),
+		"kubernetes_sd_configs",
+		"role=pod",
+		"namespaces",
+		"names",
+	}
+}
+
+func readPipelines(collectorConfig map[string]interface{}) map[string]interface{} {
+	return ((collectorConfig["service"]).(map[string]interface{})["pipelines"]).(map[string]interface{})
+}
+
+func readPipelineReceivers(pipelines map[string]interface{}, pipelineName string) []interface{} {
+	return readPipelineList(pipelines, pipelineName, "receivers")
+}
+
+func readPipelineExporters(pipelines map[string]interface{}, pipelineName string) []interface{} {
+	return readPipelineList(pipelines, pipelineName, "exporters")
+}
+
+func readPipelineList(pipelines map[string]interface{}, pipelineName string, listName string) []interface{} {
+	pipelineRaw := pipelines[pipelineName]
+	Expect(pipelineRaw).ToNot(BeNil())
+	pipeline := pipelineRaw.(map[string]interface{})
+	listRaw := pipeline[listName]
+	Expect(listRaw).ToNot(BeNil())
+	return listRaw.([]interface{})
+}
+
+func readFromMap(object interface{}, path []string) interface{} {
+	key := path[0]
+	var sub interface{}
+
+	matches := pathKeysRegex.FindStringSubmatch(key)
+	if len(matches) > 0 {
+		// assume we have a list, read by equality comparison with an attribute
+
+		attributeName := matches[1]
+		attributeValue := matches[2]
+
+		s, isSlice := object.([]interface{})
+		Expect(isSlice).To(BeTrue(), fmt.Sprintf("expected a []interface{} when reading key %s, got %T", key, object))
+		for _, item := range s {
+			m, isMapInSlice := item.(map[string]interface{})
+			Expect(isMapInSlice).To(BeTrue(), fmt.Sprintf("expected a map[string]interface{} when checking an item in the slice read via key %s, got %T", key, object))
+			val := m[attributeName]
+			if val == attributeValue {
+				sub = item
+				break
+			}
+		}
+	} else {
+		// assume we have a regular map, read by key
+		m, isMap := object.(map[string]interface{})
+		Expect(isMap).To(BeTrue(), fmt.Sprintf("expected a map[string]interface{} when reading key %s, got %T", key, object))
+		sub = m[key]
+	}
+
+	if len(path) == 1 {
+		return sub
+	}
+	Expect(sub).ToNot(BeNil())
+	return readFromMap(sub, path[1:])
 }

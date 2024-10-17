@@ -14,6 +14,7 @@ import (
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -22,19 +23,6 @@ import (
 
 var (
 	operatorNamespace = OperatorNamespace
-
-	dash0MonitoringResource = &dash0v1alpha1.Dash0Monitoring{
-		Spec: dash0v1alpha1.Dash0MonitoringSpec{
-			Export: &dash0v1alpha1.Export{
-				Dash0: &dash0v1alpha1.Dash0Configuration{
-					Endpoint: EndpointDash0Test,
-					Authorization: dash0v1alpha1.Authorization{
-						Token: &AuthorizationTokenTest,
-					},
-				},
-			},
-		},
-	}
 )
 
 var _ = Describe("The backend connection manager", Ordered, func() {
@@ -74,8 +62,18 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 	})
 
 	Describe("when validation checks fail", func() {
+		BeforeEach(func() {
+			// creating a valid monitoring resource beforehand, just so we get past the
+			// m.findAllMonitoringResources step.
+			resource := EnsureMonitoringResourceExistsAndIsAvailable(
+				ctx,
+				k8sClient,
+			)
+			createdObjects = append(createdObjects, resource)
+		})
+
 		It("should fail if no endpoint is provided", func() {
-			err := manager.EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
+			err := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -92,12 +90,13 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				},
 				TriggeredByDash0Resource,
 			)
-			Expect(err).To(HaveOccurred())
+			Expect(err).To(MatchError(
+				"cannot assemble the exporters for the configuration: no endpoint provided for the Dash0 exporter, unable to create the OpenTelemetry collector"))
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
 		})
 
 		It("should fail if neither authorization token nor secret ref are provided for Dash0 exporter", func() {
-			err := manager.EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
+			err := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -113,12 +112,23 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				},
 				TriggeredByDash0Resource,
 			)
-			Expect(err).To(HaveOccurred())
+			Expect(err).To(MatchError(
+				"neither token nor secretRef provided for the Dash0 exporter"))
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
 		})
 	})
 
 	Describe("when creating OpenTelemetry collector resources", func() {
+
+		BeforeEach(func() {
+			// creating a valid monitoring resource beforehand, just so we get past the
+			// m.findAllMonitoringResources step.
+			resource := EnsureMonitoringResourceExistsAndIsAvailable(
+				ctx,
+				k8sClient,
+			)
+			createdObjects = append(createdObjects, resource)
+		})
 
 		AfterEach(func() {
 			err := manager.OTelColResourceManager.DeleteResources(
@@ -132,11 +142,11 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 		})
 
 		It("should create all resources", func() {
-			err := manager.EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
+			err := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
-				dash0MonitoringResource,
+				assembleMonitoringResource(),
 				TriggeredByDash0Resource,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -148,7 +158,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				ctx,
 				k8sClient,
 			)
-			err := manager.EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
+			err := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -162,7 +172,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 		})
 
 		It("should fail if the monitoring resource has no export and there is no operator configuration resource", func() {
-			err := manager.EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
+			err := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -185,7 +195,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				k8sClient,
 				dash0v1alpha1.Dash0OperatorConfigurationSpec{},
 			)
-			err := manager.EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
+			err := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -201,6 +211,17 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 	})
 
 	Describe("when updating OpenTelemetry collector resources", func() {
+
+		BeforeEach(func() {
+			// creating a valid monitoring resource beforehand, just so we get past the
+			// m.findAllMonitoringResources step.
+			resource := EnsureMonitoringResourceExistsAndIsAvailable(
+				ctx,
+				k8sClient,
+			)
+			createdObjects = append(createdObjects, resource)
+		})
+
 		It("should update the resources", func() {
 			err := k8sClient.Create(ctx, &corev1.ConfigMap{
 				ObjectMeta: metav1.ObjectMeta{
@@ -219,11 +240,11 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			})
 			Expect(err).ToNot(HaveOccurred())
 
-			err = manager.EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
+			err = manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
-				dash0MonitoringResource,
+				assembleMonitoringResource(),
 				TriggeredByDash0Resource,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -244,17 +265,20 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			firstName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-monitoring-test-resource-1"}
 			firstDash0MonitoringResource := CreateDefaultMonitoringResource(ctx, k8sClient, firstName)
 			createdObjects = append(createdObjects, firstDash0MonitoringResource)
+			setAvailable(ctx, k8sClient, firstDash0MonitoringResource)
 
 			secondName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-monitoring-test-resource-2"}
 			secondDash0MonitoringResource := CreateDefaultMonitoringResource(ctx, k8sClient, secondName)
 			createdObjects = append(createdObjects, secondDash0MonitoringResource)
+			setAvailable(ctx, k8sClient, secondDash0MonitoringResource)
 
 			thirdName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-monitoring-test-resource-3"}
 			thirdDash0MonitoringResource := CreateDefaultMonitoringResource(ctx, k8sClient, thirdName)
 			createdObjects = append(createdObjects, thirdDash0MonitoringResource)
+			setAvailable(ctx, k8sClient, thirdDash0MonitoringResource)
 
 			// Let the manager create the collector so there is something to delete.
-			err := manager.EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
+			err := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -278,9 +302,10 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			resourceName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-monitoring-test-resource-1"}
 			existingDash0MonitoringResource := CreateDefaultMonitoringResource(ctx, k8sClient, resourceName)
 			createdObjects = append(createdObjects, existingDash0MonitoringResource)
+			setAvailable(ctx, k8sClient, existingDash0MonitoringResource)
 
 			// Let the manager create the collector so there is something to delete.
-			err := manager.EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
+			err := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -319,17 +344,17 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 		})
 
 		It("should delete the collector if the Dash0 monitoring resource that is being deleted is the only one left", func() {
-			// create multiple Dash0 monitoring resources
 			resourceName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-monitoring-test-resource-1"}
-			dash0MonitoringResource := CreateDefaultMonitoringResource(ctx, k8sClient, resourceName)
-			createdObjects = append(createdObjects, dash0MonitoringResource)
+			monitoringResource := CreateDefaultMonitoringResource(ctx, k8sClient, resourceName)
+			createdObjects = append(createdObjects, monitoringResource)
+			setAvailable(ctx, k8sClient, monitoringResource)
 
 			// Let the manager create the collector so there is something to delete.
-			err := manager.EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
+			err := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
-				dash0MonitoringResource,
+				monitoringResource,
 				TriggeredByDash0Resource,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -338,7 +363,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			err = manager.RemoveOpenTelemetryCollectorIfNoMonitoringResourceIsLeft(
 				ctx,
 				operatorNamespace,
-				dash0MonitoringResource,
+				monitoringResource,
 			)
 			Expect(err).ToNot(HaveOccurred())
 			// verify the collector is deleted when the Dash0 monitoring resource provided as a parameter is the only
@@ -348,23 +373,53 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 
 		It("should delete the collector if no Dash0 monitoring resource exists", func() {
 			// Let the manager create the collector so there is something to delete.
-			err := manager.EnsureOpenTelemetryCollectorIsDeployedInOperatorNamespace(
+			resource := EnsureMonitoringResourceExistsAndIsAvailable(
+				ctx,
+				k8sClient,
+			)
+			err := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
-				dash0MonitoringResource,
+				resource,
 				TriggeredByDash0Resource,
 			)
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
 
+			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+
 			err = manager.RemoveOpenTelemetryCollectorIfNoMonitoringResourceIsLeft(
 				ctx,
 				operatorNamespace,
-				dash0MonitoringResource,
+				resource,
 			)
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
 		})
 	})
 })
+
+func assembleMonitoringResource() *dash0v1alpha1.Dash0Monitoring {
+	return &dash0v1alpha1.Dash0Monitoring{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "dash0-monitoring-test-resource",
+			Namespace: TestNamespaceName,
+		},
+		Spec: dash0v1alpha1.Dash0MonitoringSpec{
+			Export: &dash0v1alpha1.Export{
+				Dash0: &dash0v1alpha1.Dash0Configuration{
+					Endpoint: EndpointDash0Test,
+					Authorization: dash0v1alpha1.Authorization{
+						Token: &AuthorizationTokenTest,
+					},
+				},
+			},
+		},
+	}
+}
+
+func setAvailable(ctx context.Context, k8sClient client.Client, monitoringResource *dash0v1alpha1.Dash0Monitoring) {
+	monitoringResource.EnsureResourceIsMarkedAsAvailable()
+	Expect(k8sClient.Status().Update(ctx, monitoringResource)).To(Succeed())
+}

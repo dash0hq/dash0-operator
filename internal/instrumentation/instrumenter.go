@@ -312,24 +312,24 @@ func (i *Instrumenter) handleJobJobOnInstrumentation(
 	var requiredAction util.ModificationMode
 	modifyLabels := true
 	createImmutableWorkloadsError := true
-	if util.HasOptedOutOfInstrumenation(objectMeta) && util.InstrumenationAttemptHasFailed(objectMeta) {
+	if util.HasOptedOutOfInstrumentation(objectMeta) && util.InstrumentationAttemptHasFailed(objectMeta) {
 		// There has been an unsuccessful attempt to instrument this job before, but now the user has added the opt-out
 		// label, so we can remove the labels left over from that earlier attempt.
 		// "requiredAction = Instrumentation" in the context of immutable jobs means "remove Dash0 labels from the job",
 		// no other modification will take place.
 		requiredAction = util.ModificationModeUninstrumentation
 		createImmutableWorkloadsError = false
-	} else if util.HasOptedOutOfInstrumenation(objectMeta) && util.HasBeenInstrumentedSuccessfully(objectMeta) {
+	} else if util.HasOptedOutOfInstrumentation(objectMeta) && util.HasBeenInstrumentedSuccessfully(objectMeta) {
 		// This job has been instrumented successfully, presumably by the webhook. Since then, the opt-out label has
 		// been added. The correct action would be to uninstrument it, but since it is immutable, we cannot do that.
 		// We will not actually modify this job at all, but create a log message and a corresponding event.
 		modifyLabels = false
 		requiredAction = util.ModificationModeUninstrumentation
-	} else if util.HasOptedOutOfInstrumenation(objectMeta) {
+	} else if util.HasOptedOutOfInstrumentation(objectMeta) {
 		// has opt-out label and there has been no previous instrumentation attempt
 		logger.Info("not instrumenting this workload due to dash0.com/enable=false")
 		return
-	} else if util.HasBeenInstrumentedSuccessfully(objectMeta) || util.InstrumenationAttemptHasFailed(objectMeta) {
+	} else if util.HasBeenInstrumentedSuccessfully(objectMeta) || util.InstrumentationAttemptHasFailed(objectMeta) {
 		// We already have instrumented this job (via the webhook) or have failed to instrument it, in either case,
 		// there is nothing to do here.
 		return
@@ -473,7 +473,7 @@ func (i *Instrumenter) instrumentWorkload(
 		logger.Info("not updating the existing instrumentation for this workload, it has already been successfully " +
 			"instrumented by the same operator version")
 		return false
-	} else if util.HasOptedOutOfInstrumenationAndIsUninstrumented(workload.getObjectMeta()) {
+	} else if util.HasOptedOutOfInstrumentationAndIsUninstrumented(workload.getObjectMeta()) {
 		logger.Info("not instrumenting this workload due to dash0.com/enable=false")
 		return false
 	} else {
@@ -723,7 +723,7 @@ func (i *Instrumenter) handleJobOnUninstrumentation(ctx context.Context, job bat
 			// since we cannot remove the instrumentation, so we also have to leave the labels in place.
 			createImmutableWorkloadsError = true
 			return nil
-		} else if util.InstrumenationAttemptHasFailed(&job.ObjectMeta) {
+		} else if util.InstrumentationAttemptHasFailed(&job.ObjectMeta) {
 			// There was an attempt to instrument this job (probably by the controller), which has not been successful.
 			// We only need remove the labels from that instrumentation attempt to clean up.
 			newWorkloadModifier(i.Images, i.OTelCollectorBaseUrl, &logger).RemoveLabelsFromImmutableJob(&job)

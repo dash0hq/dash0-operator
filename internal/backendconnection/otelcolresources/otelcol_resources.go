@@ -58,6 +58,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	ctx context.Context,
 	namespace string,
 	images util.Images,
+	allMonitoringResources []dash0v1alpha1.Dash0Monitoring,
 	monitoringResource *dash0v1alpha1.Dash0Monitoring,
 	logger *logr.Logger,
 ) (bool, bool, error) {
@@ -66,7 +67,10 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		return false, false, err
 	}
 
-	export := monitoringResource.Spec.Export
+	var export *dash0v1alpha1.Export
+	if monitoringResource != nil {
+		export = monitoringResource.Spec.Export
+	}
 	if export == nil {
 		if operatorConfigurationResource == nil {
 			return false, false, fmt.Errorf("the provided Dash0Monitoring resource does not have an export " +
@@ -79,10 +83,11 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		}
 	}
 
-	selfMonitoringConfiguration, err := selfmonitoringapiaccess.ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
-		operatorConfigurationResource,
-		logger,
-	)
+	selfMonitoringConfiguration, err :=
+		selfmonitoringapiaccess.ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
+			operatorConfigurationResource,
+			logger,
+		)
 	if err != nil {
 		selfMonitoringConfiguration = selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{
 			SelfMonitoringEnabled: false,
@@ -97,7 +102,11 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		Images:                                  images,
 		DevelopmentMode:                         m.DevelopmentMode,
 	}
-	desiredState, err := assembleDesiredState(config, m.OTelColResourceSpecs, false)
+	desiredState, err := assembleDesiredStateForUpsert(
+		config,
+		allMonitoringResources,
+		m.OTelColResourceSpecs,
+	)
 	if err != nil {
 		return false, false, err
 	}
@@ -329,7 +338,7 @@ func (m *OTelColResourceManager) DeleteResources(
 		Images:                                  dummyImagesForDeletion,
 		DevelopmentMode:                         m.DevelopmentMode,
 	}
-	desiredResources, err := assembleDesiredState(config, m.OTelColResourceSpecs, true)
+	desiredResources, err := assembleDesiredStateForDelete(config, m.OTelColResourceSpecs)
 	if err != nil {
 		return err
 	}

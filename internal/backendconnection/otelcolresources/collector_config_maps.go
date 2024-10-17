@@ -38,9 +38,14 @@ var (
 	authHeaderValue = fmt.Sprintf("Bearer ${env:%s}", authTokenEnvVarName)
 )
 
-func assembleDaemonSetCollectorConfigMap(config *oTelColConfig, forDeletion bool) (*corev1.ConfigMap, error) {
+func assembleDaemonSetCollectorConfigMap(
+	config *oTelColConfig,
+	namespacesWithPrometheusScraping []string,
+	forDeletion bool,
+) (*corev1.ConfigMap, error) {
 	return assembleCollectorConfigMap(
 		config,
+		namespacesWithPrometheusScraping,
 		daemonSetCollectorConfigurationTemplate,
 		DaemonSetCollectorConfigConfigMapName(config.NamePrefix),
 		forDeletion,
@@ -50,6 +55,7 @@ func assembleDaemonSetCollectorConfigMap(config *oTelColConfig, forDeletion bool
 func assembleDeploymentCollectorConfigMap(config *oTelColConfig, forDeletion bool) (*corev1.ConfigMap, error) {
 	return assembleCollectorConfigMap(
 		config,
+		nil,
 		deploymentCollectorConfigurationTemplate,
 		DeploymentCollectorConfigConfigMapName(config.NamePrefix),
 		forDeletion,
@@ -58,6 +64,7 @@ func assembleDeploymentCollectorConfigMap(config *oTelColConfig, forDeletion boo
 
 func assembleCollectorConfigMap(
 	config *oTelColConfig,
+	namespacesWithPrometheusScraping []string,
 	template *template.Template,
 	configMapName string,
 	forDeletion bool,
@@ -70,6 +77,7 @@ func assembleCollectorConfigMap(
 		if err != nil {
 			return nil, fmt.Errorf("cannot assemble the exporters for the configuration: %w", err)
 		}
+
 		collectorConfiguration, err := renderCollectorConfiguration(template,
 			&collectorConfigurationTemplateValues{
 				Exporters: exporters,
@@ -80,7 +88,8 @@ func assembleCollectorConfigMap(
 					// logs will compound in case of log parsing errors
 					config.Namespace,
 				},
-				DevelopmentMode: config.DevelopmentMode,
+				NamespacesWithPrometheusScraping: namespacesWithPrometheusScraping,
+				DevelopmentMode:                  config.DevelopmentMode,
 			})
 		if err != nil {
 			return nil, fmt.Errorf("cannot render the collector configuration template: %w", err)

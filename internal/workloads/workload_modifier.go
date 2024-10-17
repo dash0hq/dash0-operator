@@ -348,7 +348,7 @@ func (m *ResourceModifier) RevertStatefulSet(statefulSet *appsv1.StatefulSet) bo
 }
 
 func (m *ResourceModifier) revertResource(podTemplateSpec *corev1.PodTemplateSpec, meta *metav1.ObjectMeta) bool {
-	if util.InstrumenationAttemptHasFailed(meta) {
+	if util.InstrumentationAttemptHasFailed(meta) {
 		// resource has never been instrumented successfully, only remove labels
 		util.RemoveInstrumentationLabels(meta)
 		util.RemoveInstrumentationLabels(&podTemplateSpec.ObjectMeta)

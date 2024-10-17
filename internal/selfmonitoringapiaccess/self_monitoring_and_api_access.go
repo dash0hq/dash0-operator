@@ -71,13 +71,24 @@ func ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
 	}
 
 	if export.Dash0 != nil {
-		return convertResourceToDash0ExportConfiguration(export, resource.Spec.SelfMonitoring.Enabled, logger)
+		return convertResourceToDash0ExportConfiguration(
+			export,
+			util.ReadBoolPointerWithDefault(resource.Spec.SelfMonitoring.Enabled, true),
+			logger,
+		)
 	}
 	if export.Grpc != nil {
-		return convertResourceToGrpcExportConfiguration(export, resource.Spec.SelfMonitoring.Enabled, logger)
+		return convertResourceToGrpcExportConfiguration(
+			export,
+			util.ReadBoolPointerWithDefault(resource.Spec.SelfMonitoring.Enabled, true),
+			logger,
+		)
 	}
 	if export.Http != nil {
-		return convertResourceToHttpExportConfiguration(export, resource.Spec.SelfMonitoring.Enabled)
+		return convertResourceToHttpExportConfiguration(
+			export,
+			util.ReadBoolPointerWithDefault(resource.Spec.SelfMonitoring.Enabled, true),
+		)
 	}
 	return SelfMonitoringAndApiAccessConfiguration{},
 		fmt.Errorf("no export configuration for self-monitoring has been provided, no self-monitoring telemetry will be sent")

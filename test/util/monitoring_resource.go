@@ -102,7 +102,7 @@ func CreateDefaultMonitoringResource(
 	k8sClient client.Client,
 	monitoringResourceName types.NamespacedName,
 ) *dash0v1alpha1.Dash0Monitoring {
-	resource, err := CreateMonitoringResource(
+	return CreateMonitoringResource(
 		ctx,
 		k8sClient,
 		&dash0v1alpha1.Dash0Monitoring{
@@ -113,11 +113,19 @@ func CreateDefaultMonitoringResource(
 			Spec: MonitoringResourceDefaultSpec,
 		},
 	)
-	Expect(err).NotTo(HaveOccurred())
-	return resource
 }
 
 func CreateMonitoringResource(
+	ctx context.Context,
+	k8sClient client.Client,
+	monitoringResource *dash0v1alpha1.Dash0Monitoring,
+) *dash0v1alpha1.Dash0Monitoring {
+	resource, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, monitoringResource)
+	Expect(err).ToNot(HaveOccurred())
+	return resource
+}
+
+func CreateMonitoringResourceWithPotentialError(
 	ctx context.Context,
 	k8sClient client.Client,
 	monitoringResource *dash0v1alpha1.Dash0Monitoring,

@@ -38,6 +38,9 @@ custom resource definition should match snapshot:
                 metadata:
                   type: object
                 spec:
+                  default:
+                    instrumentWorkloads: all
+                    prometheusScrapingEnabled: true
                   description: |-
                     Dash0MonitoringSpec describes the details of monitoring a single Kubernetes namespace with Dash0 and sending
                     telemetry to an observability backend.
@@ -210,6 +213,13 @@ custom resource definition should match snapshot:
                         - created-and-updated
                         - none
                       type: string
+                    prometheusScrapingEnabled:
+                      default: true
+                      description: |-
+                        If enabled, the operator will configure its OpenTelemetry collector to scrape metrics from pods in the namespace
+                        of this Dash0Monitoring resource according to their prometheus.io/scrape annotations via the OpenTelemetry
+                        Prometheus receiver. This setting is optional, it defaults to true.
+                      type: boolean
                   type: object
                 status:
                   description: Dash0MonitoringStatus defines the observed state of the Dash0Monitoring monitoring resource.

@@ -27,7 +27,7 @@ const (
 
 var _ = Describe("The desired state of the OpenTelemetry Collector resources", func() {
 	It("should fail if no endpoint has been provided", func() {
-		_, err := assembleDesiredState(&oTelColConfig{
+		_, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export: dash0v1alpha1.Export{
@@ -38,17 +38,17 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				},
 			},
 			Images: TestImages,
-		}, &DefaultOTelColResourceSpecs, false)
+		}, nil, &DefaultOTelColResourceSpecs)
 		Expect(err).To(HaveOccurred())
 	})
 
 	It("should describe the desired state as a set of Kubernetes client objects", func() {
-		desiredState, err := assembleDesiredState(&oTelColConfig{
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export:     Dash0ExportWithEndpointAndToken(),
 			Images:     TestImages,
-		}, &DefaultOTelColResourceSpecs, false)
+		}, nil, &DefaultOTelColResourceSpecs)
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(desiredState).To(HaveLen(14))
@@ -168,11 +168,11 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 	})
 
 	It("should use the authorization token directly if provided", func() {
-		desiredState, err := assembleDesiredState(&oTelColConfig{
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export:     Dash0ExportWithEndpointAndToken(),
-		}, &DefaultOTelColResourceSpecs, false)
+		}, nil, &DefaultOTelColResourceSpecs)
 
 		Expect(err).ToNot(HaveOccurred())
 		configMapContent := getCollectorConfigConfigMapContent(desiredState)
@@ -186,11 +186,11 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 	})
 
 	It("should use the secret reference if provided (and no authorization token has been provided)", func() {
-		desiredState, err := assembleDesiredState(&oTelColConfig{
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export:     Dash0ExportWithEndpointAndSecretRef(),
-		}, &DefaultOTelColResourceSpecs, false)
+		}, nil, &DefaultOTelColResourceSpecs)
 
 		Expect(err).ToNot(HaveOccurred())
 		configMapContent := getCollectorConfigConfigMapContent(desiredState)
@@ -206,11 +206,11 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 	})
 
 	It("should not add the auth token env var if no Dash0 exporter is used", func() {
-		desiredState, err := assembleDesiredState(&oTelColConfig{
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export:     HttpExportTest(),
-		}, &DefaultOTelColResourceSpecs, false)
+		}, nil, &DefaultOTelColResourceSpecs)
 
 		Expect(err).ToNot(HaveOccurred())
 		configMapContent := getCollectorConfigConfigMapContent(desiredState)
@@ -224,7 +224,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 	})
 
 	It("should correctly apply enabled self-monitoring on the daemonset", func() {
-		desiredState, err := assembleDesiredState(&oTelColConfig{
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export:     Dash0ExportWithEndpointAndToken(),
@@ -233,7 +233,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				Export:                Dash0ExportWithEndpointTokenAndInsightsDataset(),
 			},
 			Images: TestImages,
-		}, &DefaultOTelColResourceSpecs, false)
+		}, nil, &DefaultOTelColResourceSpecs)
 		Expect(err).NotTo(HaveOccurred())
 
 		daemonSet := getDaemonSet(desiredState)
@@ -249,7 +249,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 	})
 
 	It("should correctly apply disabled self-monitoring on the daemonset", func() {
-		desiredState, err := assembleDesiredState(&oTelColConfig{
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export:     Dash0ExportWithEndpointAndToken(),
@@ -258,7 +258,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				Export:                Dash0ExportWithEndpointTokenAndInsightsDataset(),
 			},
 			Images: TestImages,
-		}, &DefaultOTelColResourceSpecs, false)
+		}, nil, &DefaultOTelColResourceSpecs)
 		Expect(err).NotTo(HaveOccurred())
 
 		daemonSet := getDaemonSet(desiredState)

@@ -210,7 +210,7 @@ func (h *InstrumentationWebhookHandler) handleCronJob(
 	if util.CheckAndDeleteIgnoreOnceLabel(&cronJob.ObjectMeta) {
 		return h.postProcessInstrumentation(request, cronJob, false, true, false, logger)
 	}
-	if util.HasOptedOutOfInstrumenationAndIsUninstrumented(&cronJob.ObjectMeta) {
+	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(&cronJob.ObjectMeta) {
 		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
 	} else if util.WasInstrumentedButHasOptedOutNow(&cronJob.ObjectMeta) {
 		hasBeenModified := h.newWorkloadModifier(logger).RevertCronJob(cronJob)
@@ -237,7 +237,7 @@ func (h *InstrumentationWebhookHandler) handleDaemonSet(
 	if util.CheckAndDeleteIgnoreOnceLabel(&daemonSet.ObjectMeta) {
 		return h.postProcessInstrumentation(request, daemonSet, false, true, false, logger)
 	}
-	if util.HasOptedOutOfInstrumenationAndIsUninstrumented(&daemonSet.ObjectMeta) {
+	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(&daemonSet.ObjectMeta) {
 		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
 	} else if util.WasInstrumentedButHasOptedOutNow(&daemonSet.ObjectMeta) {
 		hasBeenModified := h.newWorkloadModifier(logger).RevertDaemonSet(daemonSet)
@@ -264,7 +264,7 @@ func (h *InstrumentationWebhookHandler) handleDeployment(
 	if util.CheckAndDeleteIgnoreOnceLabel(&deployment.ObjectMeta) {
 		return h.postProcessInstrumentation(request, deployment, false, true, false, logger)
 	}
-	if util.HasOptedOutOfInstrumenationAndIsUninstrumented(&deployment.ObjectMeta) {
+	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(&deployment.ObjectMeta) {
 		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
 	} else if util.WasInstrumentedButHasOptedOutNow(&deployment.ObjectMeta) {
 		hasBeenModified := h.newWorkloadModifier(logger).RevertDeployment(deployment)
@@ -291,7 +291,7 @@ func (h *InstrumentationWebhookHandler) handleJob(
 	if util.CheckAndDeleteIgnoreOnceLabel(&job.ObjectMeta) {
 		return h.postProcessInstrumentation(request, job, false, true, false, logger)
 	}
-	if util.HasOptedOutOfInstrumenationAndIsUninstrumented(&job.ObjectMeta) {
+	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(&job.ObjectMeta) {
 		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
 	} else if util.WasInstrumentedButHasOptedOutNow(&job.ObjectMeta) {
 		// This should not happen, since it can only happen for an admission request with operation=UPDATE, and we are
@@ -321,7 +321,7 @@ func (h *InstrumentationWebhookHandler) handlePod(
 	if util.CheckAndDeleteIgnoreOnceLabel(&pod.ObjectMeta) {
 		return h.postProcessInstrumentation(request, pod, false, true, true, logger)
 	}
-	if util.HasOptedOutOfInstrumenationAndIsUninstrumented(&pod.ObjectMeta) {
+	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(&pod.ObjectMeta) {
 		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
 	} else if util.WasInstrumentedButHasOptedOutNow(&pod.ObjectMeta) {
 		// This should not happen, since it can only happen for an admission request with operation=UPDATE, and we are
@@ -352,7 +352,7 @@ func (h *InstrumentationWebhookHandler) handleReplicaSet(
 	if util.CheckAndDeleteIgnoreOnceLabel(&replicaSet.ObjectMeta) {
 		return h.postProcessInstrumentation(request, replicaSet, false, true, false, logger)
 	}
-	if util.HasOptedOutOfInstrumenationAndIsUninstrumented(&replicaSet.ObjectMeta) {
+	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(&replicaSet.ObjectMeta) {
 		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
 	} else if util.WasInstrumentedButHasOptedOutNow(&replicaSet.ObjectMeta) {
 		hasBeenModified := h.newWorkloadModifier(logger).RevertReplicaSet(replicaSet)
@@ -379,7 +379,7 @@ func (h *InstrumentationWebhookHandler) handleStatefulSet(
 	if util.CheckAndDeleteIgnoreOnceLabel(&statefulSet.ObjectMeta) {
 		return h.postProcessInstrumentation(request, statefulSet, false, true, false, logger)
 	}
-	if util.HasOptedOutOfInstrumenationAndIsUninstrumented(&statefulSet.ObjectMeta) {
+	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(&statefulSet.ObjectMeta) {
 		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
 	} else if util.WasInstrumentedButHasOptedOutNow(&statefulSet.ObjectMeta) {
 		hasBeenModified := h.newWorkloadModifier(logger).RevertStatefulSet(statefulSet)

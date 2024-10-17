@@ -355,6 +355,14 @@ func updateResourceStatus(
 	return nil
 }
 
+// CheckImminentDeletionAndHandleFinalizers checks if the resource is marked for deletion, that is, if it has a deletion
+// timestamp set and whether it has a finalizer set.
+//
+// Returns (isMarkedForDeletion, runCleanupActions, error). If isMarkedForDeletion and runCleanupActions are both true,
+// the resource has a deletion timestamp, but it also still has a finalizer set. The caller is expected to run all
+// cleanup actions for this resource and remove the finalizer, then stop the reconcile.
+// If isMarkedForDeletion is true and runCleanupActions is false, the resource has a deletion timestamp and does not
+// have a finalizer set. The caller does not need to take any particular action and can stop the reconcile.
 func CheckImminentDeletionAndHandleFinalizers(
 	ctx context.Context,
 	k8sClient client.Client,

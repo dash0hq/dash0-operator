@@ -15,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
@@ -472,7 +473,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 						dash0v1alpha1.Dash0OperatorConfigurationSpec{
 							Export: ExportToPrt(config.createExport()),
 							SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-								Enabled: true,
+								Enabled: ptr.To(true),
 							},
 						},
 					)
@@ -518,7 +519,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 					dash0v1alpha1.Dash0OperatorConfigurationSpec{
 						Export: ExportToPrt(config.createExport()),
 						SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-							Enabled: false,
+							Enabled: ptr.To(false),
 						},
 					},
 				)
@@ -556,7 +557,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 					dash0v1alpha1.Dash0OperatorConfigurationSpec{
 						Export: ExportToPrt(Dash0ExportWithEndpointAndToken()),
 						SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-							Enabled: false,
+							Enabled: ptr.To(false),
 						},
 					},
 				)
@@ -603,7 +604,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 						dash0v1alpha1.Dash0OperatorConfigurationSpec{
 							Export: ExportToPrt(Dash0ExportWithEndpointAndToken()),
 							SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-								Enabled: true,
+								Enabled: ptr.To(true),
 							},
 						},
 					)
@@ -637,7 +638,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 						dash0v1alpha1.Dash0OperatorConfigurationSpec{
 							Export: ExportToPrt(Dash0ExportWithEndpointAndToken()),
 							SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-								Enabled: false,
+								Enabled: ptr.To(false),
 							},
 						},
 					)
@@ -650,9 +651,9 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 
 				It("it enables self-monitoring in the controller deployment", func() {
 					resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
-					Expect(resource.Spec.SelfMonitoring.Enabled).To(BeFalse())
+					Expect(*resource.Spec.SelfMonitoring.Enabled).To(BeFalse())
 
-					resource.Spec.SelfMonitoring.Enabled = true
+					resource.Spec.SelfMonitoring.Enabled = ptr.To(true)
 
 					Expect(k8sClient.Update(ctx, resource)).To(Succeed())
 
@@ -683,7 +684,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 						dash0v1alpha1.Dash0OperatorConfigurationSpec{
 							Export: ExportToPrt(Dash0ExportWithEndpointAndToken()),
 							SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-								Enabled: true,
+								Enabled: ptr.To(true),
 							},
 						},
 					)
@@ -700,9 +701,9 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 
 				It("it disables self-monitoring in the controller deployment", func() {
 					resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
-					Expect(resource.Spec.SelfMonitoring.Enabled).To(BeTrue())
+					Expect(*resource.Spec.SelfMonitoring.Enabled).To(BeTrue())
 
-					resource.Spec.SelfMonitoring.Enabled = false
+					resource.Spec.SelfMonitoring.Enabled = ptr.To(false)
 
 					Expect(k8sClient.Update(ctx, resource)).To(Succeed())
 
@@ -730,7 +731,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 						dash0v1alpha1.Dash0OperatorConfigurationSpec{
 							Export: ExportToPrt(Dash0ExportWithEndpointAndToken()),
 							SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-								Enabled: false,
+								Enabled: ptr.To(false),
 							},
 						},
 					)
@@ -747,9 +748,9 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 
 				It("it does not change the controller deployment", func() {
 					resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
-					Expect(resource.Spec.SelfMonitoring.Enabled).To(BeFalse())
+					Expect(*resource.Spec.SelfMonitoring.Enabled).To(BeFalse())
 
-					resource.Spec.SelfMonitoring.Enabled = false
+					resource.Spec.SelfMonitoring.Enabled = ptr.To(false)
 
 					Expect(k8sClient.Update(ctx, resource)).To(Succeed())
 
@@ -781,7 +782,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 					dash0v1alpha1.Dash0OperatorConfigurationSpec{
 						Export: ExportToPrt(Dash0ExportWithEndpointAndToken()),
 						SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-							Enabled: true,
+							Enabled: ptr.To(true),
 						},
 					},
 				)
@@ -838,7 +839,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 					k8sClient,
 					dash0v1alpha1.Dash0OperatorConfigurationSpec{
 						SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-							Enabled: false,
+							Enabled: ptr.To(false),
 						},
 					},
 				)
@@ -863,7 +864,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
 
 				resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
-				Expect(resource.Spec.SelfMonitoring.Enabled).To(BeFalse())
+				Expect(*resource.Spec.SelfMonitoring.Enabled).To(BeFalse())
 
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 

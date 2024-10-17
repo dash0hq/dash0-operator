@@ -69,6 +69,13 @@ type Dash0MonitoringSpec struct {
 	//
 	// +kubebuilder:default=all
 	InstrumentWorkloads InstrumentWorkloadsMode `json:"instrumentWorkloads,omitempty"`
+
+	// If enabled, the operator will configure its OpenTelemetry collector to scrape metrics from pods in the namespace
+	// of this Dash0Monitoring resource according to their prometheus.io/scrape annotations via the OpenTelemetry
+	// Prometheus receiver. This setting is optional, it defaults to true.
+	//
+	// +kubebuilder:default=true
+	PrometheusScrapingEnabled *bool `json:"prometheusScrapingEnabled,omitempty"`
 }
 
 // InstrumentWorkloadsMode describes when exactly workloads will be instrumented.  Only one of the following modes
@@ -109,6 +116,7 @@ type Dash0Monitoring struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
+	// +kubebuilder:default={instrumentWorkloads: "all", prometheusScrapingEnabled: true}
 	Spec   Dash0MonitoringSpec   `json:"spec,omitempty"`
 	Status Dash0MonitoringStatus `json:"status,omitempty"`
 }

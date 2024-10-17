@@ -36,7 +36,7 @@ type Dash0OperatorConfigurationSpec struct {
 // SelfMonitoring describes how the operator will report telemetry about its working to the backend.
 type SelfMonitoring struct {
 	// +kubebuilder:default=true
-	Enabled bool `json:"enabled"`
+	Enabled *bool `json:"enabled"`
 }
 
 // Dash0OperatorConfigurationStatus defines the observed state of the Dash0 operator configuration resource.

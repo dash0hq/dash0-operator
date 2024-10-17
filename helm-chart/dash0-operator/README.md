@@ -214,7 +214,7 @@ kubectl apply -f dash0-monitoring.yaml
 The Dash0 monitoring resource supports additional configuration settings:
 
 * `spec.instrumentWorkloads`: A namespace-wide opt-out for workload instrumentation for the target namespace.
-  There are threepossible settings: `all`, `created-and-updated` and `none`.
+  There are three possible settings: `all`, `created-and-updated` and `none`.
   By default, the setting `all` is assumed.
 
   * `all`: If set to `all` (or omitted), the operator will:
@@ -256,8 +256,13 @@ The Dash0 monitoring resource supports additional configuration settings:
       Newly deployed or updated workloads will be instrumented from the point of the configuration change onwards as
       described above.
 
+* `spec.prometheusScrapingEnabled`: A namespace-wide opt-out for Prometheus scraping for the target namespace.
+  If enabled, the operator will configure its OpenTelemetry collector to scrape metrics from pods in the namespace
+  of this Dash0Monitoring resource according to their prometheus.io/scrape annotations via the OpenTelemetry Prometheus
+  receiver. This setting is optional, it defaults to true.
+
 Here is an example file for a monitoring resource that sets the `spec.instrumentWorkloads` property 
-to `created-and-updated`:
+to `created-and-updated` and disables Prometheus scraping:
 
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1
@@ -265,9 +270,8 @@ kind: Dash0Monitoring
 metadata:
   name: dash0-monitoring-resource
 spec:
-  # Opt-out settings for particular use cases. The default value is "all". Other possible values are
-  # "created-and-updated" and "none".
   instrumentWorkloads: created-and-updated
+  prometheusScrapingEnabled: false
 ```
 
 ### Using a Kubernetes Secret for the Dash0 Authorization Token
