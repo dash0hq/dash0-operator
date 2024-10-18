@@ -127,6 +127,7 @@ func verifyConfigMapContainsString(operatorNamespace string, s string) {
 			"-o",
 			"json",
 		),
+		20*time.Second,
 		s,
 	)
 }
@@ -134,6 +135,7 @@ func verifyConfigMapContainsString(operatorNamespace string, s string) {
 func verifyCollectorContainerLogContainsStrings(
 	operatorNamespace string,
 	containerName string,
+	timeout time.Duration,
 	needles ...string,
 ) {
 	verifyCommandOutputContainsStrings(
@@ -146,6 +148,7 @@ func verifyCollectorContainerLogContainsStrings(
 			"-c",
 			containerName,
 		),
+		timeout,
 		needles...,
 	)
 }

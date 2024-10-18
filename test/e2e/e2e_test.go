@@ -518,6 +518,8 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 				operatorHelmChart,
 			)
 
+			time.Sleep(10 * time.Second)
+
 			By("updating the Dash0 monitoring resource endpoint setting")
 			newEndpoint := "ingress.eu-east-1.aws.dash0-dev.com:4317"
 			updateEndpointOfDash0MonitoringResource(applicationUnderTestNamespace, newEndpoint)
@@ -525,10 +527,14 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			By("verify that the config map has been updated by the controller")
 			verifyConfigMapContainsString(operatorNamespace, newEndpoint)
 
+			// This step sometimes takes quite a while, for some reason the config map change is not seen immediately
+			// from within the collector pod/config-reloader container process, although it polls the file every second.
+			// Thus, we allow a very generous timeout here.
 			By("verify that the configuration reloader says to have triggered a config change")
 			verifyCollectorContainerLogContainsStrings(
 				operatorNamespace,
 				"configuration-reloader",
+				90*time.Second,
 				"Triggering a collector update due to changes to the config files",
 			)
 
@@ -536,6 +542,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			verifyCollectorContainerLogContainsStrings(
 				operatorNamespace,
 				"opentelemetry-collector",
+				20*time.Second,
 				"Received signal from OS",
 				"Config updated, restart service",
 			)
