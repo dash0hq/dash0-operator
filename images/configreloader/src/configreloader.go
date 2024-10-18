@@ -103,15 +103,14 @@ func initializeHashes(configurationFilePaths []string) error {
 	for _, configurationFilePath := range configurationFilePaths {
 		configurationFile, err := os.Open(configurationFilePath)
 		if err != nil {
-			return fmt.Errorf("cannot open '%v' configuration file: %w", configurationFilePath, err)
+			return fmt.Errorf("cannot open configuration file '%v': %w", configurationFilePath, err)
 		}
 		defer configurationFile.Close()
 
 		configurationFileHash := md5.New()
 		if _, err := io.Copy(configurationFileHash, configurationFile); err != nil {
-			return fmt.Errorf("cannot hash '%v' configuration file: %w", configurationFilePath, err)
+			return fmt.Errorf("cannot hash configuration file '%v': %w", configurationFilePath, err)
 		}
-
 		hashValue := hex.EncodeToString(configurationFileHash.Sum(nil))
 		configurationFileHashes[configurationFilePath] = hashValue
 	}
@@ -131,31 +130,33 @@ func checkConfiguration(
 	for _, configurationFilePath := range configurationFilePaths {
 		configurationFile, err := os.Open(configurationFilePath)
 		if err != nil {
-			return false, fmt.Errorf("cannot open '%v' configuration file: %w", configurationFilePath, err)
+			return false, fmt.Errorf("cannot open configuration file '%v': %w", configurationFilePath, err)
 		}
 		defer configurationFile.Close()
 
 		configurationFileHash := md5.New()
 		if _, err := io.Copy(configurationFileHash, configurationFile); err != nil {
-			return false, fmt.Errorf("cannot hash '%v' configuration file: %w", configurationFilePath, err)
+			return false, fmt.Errorf("cannot hash configuration file '%v': %w", configurationFilePath, err)
 		}
-
 		hashValue := hex.EncodeToString(configurationFileHash.Sum(nil))
+
 		if previousConfigurationFileHash, ok := configurationFileHashes[configurationFilePath]; ok {
 			if previousConfigurationFileHash != hashValue {
+				log.Printf("configuration file '%v' has been updated\n", configurationFilePath)
 				updatesConfigurationFilePaths = append(updatesConfigurationFilePaths, configurationFilePath)
-				// Update hash; we cannot check whether the collector *actually* updated,
-				// so we optimistically update the internal state anyhow
 				configurationFileHashes[configurationFilePath] = hashValue
 			}
 		} else {
-			// First time we hash the config file, nothing to do beyond updating
+			// This is the first time we hash this config file, nothing to do beyond updating. This should actually
+			// never happen since we initialize the hashes for all config files at startup in initializeHashes and
+			// config files cannot be added retroactively to a running collector pod.
 			configurationFileHashes[configurationFilePath] = hashValue
+			log.Printf("initialized hash for configuration file '%v'", configurationFilePath)
 		}
 	}
 
 	if len(updatesConfigurationFilePaths) < 1 {
-		// Nothing to do
+		// nothing to do
 		return false, nil
 	}
 
@@ -214,6 +215,7 @@ func parsePidFile(pidFilePath string) (OTelColPid, error) {
 		return 0, fmt.Errorf("pid file '%v' has an unexpected format: expecting a single integer; found additional content: %v", pidFilePath, scanner.Text())
 	}
 
+	log.Printf("parsed collector pid: %v\n", pid)
 	return OTelColPid(pid), nil
 }
 
@@ -227,6 +229,7 @@ func triggerConfigurationReload(collectorPid OTelColPid) error {
 		return fmt.Errorf("cannot find the process with pid '%v': %w", collectorPid, err)
 	}
 
+	log.Printf("sending SIGHUP signal to the process with pid '%v'\n", collectorPid)
 	if err := collectorProcess.Signal(syscall.SIGHUP); err != nil {
 		return fmt.Errorf("an error occurred while sending the SIGHUP signal to the process with pid '%v': %w", collectorPid, err)
 	}
