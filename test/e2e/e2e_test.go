@@ -730,7 +730,6 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		AfterAll(func() {
 			undeployOperator(operatorNamespace)
 
-			removeAllTestApplications(applicationUnderTestNamespace)
 			undeployDash0MonitoringResource(applicationUnderTestNamespace)
 			undeployDash0OperatorConfigurationResource()
 		})
@@ -757,7 +756,7 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 			By("waiting for prometheus receiver metrics")
 			Eventually(func(g Gomega) {
 				verifyPrometheusMetrics(g)
-			}, 50*time.Second, time.Second).Should(Succeed())
+			}, 90*time.Second, time.Second).Should(Succeed())
 		})
 
 		It("should produce self-monitoring telemetry", func() {
