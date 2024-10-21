@@ -1,4 +1,7 @@
-# One base image per line
+# SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# one base image per line
 node:22-alpine
 node:22-bookworm
 node:22-bullseye
@@ -8,3 +11,4 @@ node:20-bullseye
 node:18-alpine
 node:18-bookworm
 node:18-bullseye
+
