@@ -1,4 +1,5 @@
 #!/usr/bin/env sh
+# shellcheck disable=SC2059
 
 # SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
@@ -32,7 +33,7 @@ fi
 
 injector_binary=/dash0-init-container/injector/dash0_injector.so
 if [ ! -f $injector_binary ]; then
-  printf "${RED}error: $injector_binary does not exist, not running any tests.${NC}\n"
+  printf "${RED}error: %s does not exist, not running any tests.${NC}\n" "$injector_binary"
   exit 1
 fi
 

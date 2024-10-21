@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2059
 
 # SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
@@ -31,12 +32,12 @@ while IFS= read -r line; do
     copy_lines=true
   fi
   if [[ $copy_lines == true ]]; then
-    echo $line >> injector/test/docker/Dockerfile-build
+    echo "$line" >> injector/test/docker/Dockerfile-build
   fi
 done < Dockerfile
 
 if [[ ! -e injector/test/docker/Dockerfile-build ]]; then
-  echo "\nError: The file injector/test/docker/Dockerfile-build has not been generated, stopping."
+  printf "\nError: The file injector/test/docker/Dockerfile-build has not been generated, stopping."
   exit 1
 fi
 
@@ -72,6 +73,6 @@ run_tests_for_architecture_and_libc_flavor x86_64 glibc
 run_tests_for_architecture_and_libc_flavor arm64 musl
 run_tests_for_architecture_and_libc_flavor x86_64 musl
 
-echo "$summary"
+printf "$summary\n"
 exit $exit_code
 

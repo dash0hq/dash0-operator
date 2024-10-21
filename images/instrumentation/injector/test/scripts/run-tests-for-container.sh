@@ -53,11 +53,10 @@ echo ---------------------------------------
 echo "testing the library on $ARCH and $LIBC"
 echo ---------------------------------------
 
-set -x
-
 docker rm -f "$container_name" 2> /dev/null
 docker rmi -f "$image_name" 2> /dev/null
 
+set -x
 docker build \
   --platform "$docker_platform" \
   --build-arg "base_image=${base_image}" \
@@ -73,6 +72,4 @@ docker run \
   -it \
   "$image_name" \
   $docker_run_extra_arguments
-
-set +x
-
+{ set +x; } 2> /dev/null

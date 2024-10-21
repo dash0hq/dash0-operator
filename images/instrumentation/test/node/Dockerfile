@@ -1,13 +1,18 @@
-ARG base_image
-ARG instr_image
+# SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
 
-FROM ${instr_image} AS instr
+ARG instrumentation_image=dash0-instrumentation:latest
+ARG base_image=node:20.18-bookworm
+
+FROM ${instrumentation_image} AS init
 
 FROM ${base_image}
 
-# TODO Normalize node.js path
+COPY test-cases /test-cases
 
-COPY ./test-cases /test-cases
+# The following lines emulate the behavior of running the instrumentation image as a Kubernetes init container and
+# setting the LD_PRELOAD environment variable via the operator.
+COPY --from=init /dash0-init-container/*.so /__dash0__/
+COPY --from=init /dash0-init-container/instrumentation /__dash0__/instrumentation
+ENV LD_PRELOAD=/__dash0__/dash0_injector.so
 
-COPY --from=instr /dash0-init-container /__dash0__
-ENV LD_PRELOAD=/__dash0__/injector/dash0_injector.so

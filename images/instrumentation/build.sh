@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
+
+# SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 set -euo pipefail
 
-cd "$(dirname ${BASH_SOURCE})"
+cd "$(dirname "${0}")"
 
 pushd node.js > /dev/null
 ./build.sh
