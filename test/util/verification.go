@@ -23,9 +23,9 @@ type ContainerExpectations struct {
 	VolumeMounts                             int
 	Dash0VolumeMountIdx                      int
 	EnvVars                                  int
-	NodeOptionsEnvVarIdx                     int
-	NodeOptionsValue                         string
-	NodeOptionsUsesValueFrom                 bool
+	LdPreloadEnvVarIdx                       int
+	LdPreloadValue                           string
+	LdPreloadUsesValueFrom                   bool
 	NodeIpIdx                                int
 	Dash0CollectorBaseUrlEnvVarIdx           int
 	Dash0CollectorBaseUrlEnvVarExpectedValue string
@@ -53,7 +53,7 @@ func BasicInstrumentedPodSpecExpectations() PodSpecExpectations {
 			VolumeMounts:                   1,
 			Dash0VolumeMountIdx:            0,
 			EnvVars:                        3,
-			NodeOptionsEnvVarIdx:           0,
+			LdPreloadEnvVarIdx:             0,
 			NodeIpIdx:                      1,
 			Dash0CollectorBaseUrlEnvVarIdx: 2,
 			Dash0CollectorBaseUrlEnvVarExpectedValue://
@@ -255,16 +255,16 @@ func verifyPodSpec(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
 		}
 		Expect(container.Env).To(HaveLen(containerExpectations.EnvVars))
 		for j, envVar := range container.Env {
-			if j == containerExpectations.NodeOptionsEnvVarIdx {
-				Expect(envVar.Name).To(Equal("NODE_OPTIONS"))
-				if containerExpectations.NodeOptionsUsesValueFrom {
+			if j == containerExpectations.LdPreloadEnvVarIdx {
+				Expect(envVar.Name).To(Equal("LD_PRELOAD"))
+				if containerExpectations.LdPreloadUsesValueFrom {
 					Expect(envVar.Value).To(BeEmpty())
 					Expect(envVar.ValueFrom).To(Not(BeNil()))
-				} else if containerExpectations.NodeOptionsValue != "" {
-					Expect(envVar.Value).To(Equal(containerExpectations.NodeOptionsValue))
+				} else if containerExpectations.LdPreloadValue != "" {
+					Expect(envVar.Value).To(Equal(containerExpectations.LdPreloadValue))
 				} else {
 					Expect(envVar.Value).To(Equal(
-						"--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
+						"/__dash0__/dash0_injector.so",
 					))
 				}
 			} else if j == containerExpectations.NodeIpIdx {
