@@ -55,7 +55,7 @@ jobs:
         run: |
           helm plugin install https://github.com/helm-unittest/helm-unittest.git
 
-      - name: test
+      - name: run operator and Helm chart unit tests
         run: |
           make test
 
