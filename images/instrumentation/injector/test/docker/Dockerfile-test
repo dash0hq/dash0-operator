@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+ARG base_image="node:20.18-bookworm"
+FROM ${base_image}
+
+ARG injector_binary=no_value
+# fail build immediately if build arg injector_binary is missing
+RUN test ${injector_binary} != "no_value"
+
+WORKDIR /usr/src/dash0/injector/
+
+COPY app app
+COPY scripts/run-tests-within-container.sh scripts/
+
+RUN echo ${injector_binary}
+
+COPY bin/${injector_binary} /dash0-init-container/injector/dash0_injector.so
+
+COPY docker/noop.js /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry/index.js
+
+CMD ["scripts/run-tests-within-container.sh"]
