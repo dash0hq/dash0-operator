@@ -33,9 +33,9 @@ RUN NPM_CONFIG_UPDATE_NOTIFIER=false \
 FROM alpine:3.19.1
 COPY copy-instrumentation.sh /
 
-# copy node.js artifacts
+# copy artifacts (distros, injector binary) from the build stages to the final image
 RUN mkdir -p /dash0-init-container/instrumentation
-COPY --from=build-injector /dash0-init-container/injector/bin /dash0-init-container/injector
+COPY --from=build-injector /dash0-init-container/injector/bin/dash0_injector.so /dash0-init-container/dash0_injector.so
 COPY --from=build-node.js /dash0-init-container/instrumentation/node.js /dash0-init-container/instrumentation/node.js
 
 WORKDIR /
