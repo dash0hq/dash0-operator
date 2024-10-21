@@ -92,14 +92,16 @@ char *getenv(const char *name)
     {
         if (__strlen(val1) == 0)
         {
-            if (origValue != NULL)
-            {
-                __strcat(val1, origValue);
-                __strcat(val1, " ");
-            }
-
+            // Prepend our --require as the first item to the NODE_OPTIONS string.
             char *nodeOptionsDash0Require = NODE_OPTIONS_DASH0_REQUIRE;
             __strcat(val1, nodeOptionsDash0Require);
+
+            if (origValue != NULL)
+            {
+                // If NODE_OPTIONS were present, append the existing NODE_OPTIONS after our --require.
+                __strcat(val1, " ");
+                __strcat(val1, origValue);
+            }
         }
 
         return val1;
@@ -107,3 +109,4 @@ char *getenv(const char *name)
 
     return origValue;
 }
+
