@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-cd "$(dirname "${0}")"/..
+cd "$(dirname "${BASH_SOURCE[0]}")"/..
 
 # Use DRY_RUN=true to verify that the helm chart can be successfully packaged -- all steps will be executed except for
 # the final git push to the gh-pages branch.
