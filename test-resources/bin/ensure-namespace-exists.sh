@@ -11,6 +11,6 @@ if [[ "${target_namespace}" == default  ]]; then
   exit 0
 fi
 
-if ! kubectl get ns ${target_namespace} &> /dev/null; then
-  kubectl create ns ${target_namespace}
+if ! kubectl get ns "${target_namespace}" &> /dev/null; then
+  kubectl create ns "${target_namespace}"
 fi

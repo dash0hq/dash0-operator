@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-cd "$(dirname "${0}")"
+cd "$(dirname "${BASH_SOURCE[0]}")"
 
 pushd node.js > /dev/null
 ./build.sh
