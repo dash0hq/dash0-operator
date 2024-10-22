@@ -5,9 +5,9 @@
 
 set -euo pipefail
 
-cd "$(dirname ${BASH_SOURCE})"
+cd "$(dirname "${BASH_SOURCE[0]}")"
 
 target_namespace=${1:-test-namespace}
 kind=${2:-deployment}
 
-kubectl delete -n ${target_namespace} -f ${kind}.yaml --ignore-not-found || true
+kubectl delete -n "${target_namespace}" -f "${kind}".yaml --ignore-not-found || true
