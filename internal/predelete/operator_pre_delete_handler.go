@@ -78,6 +78,11 @@ func (r *OperatorPreDeleteHandler) DeleteAllMonitoringResources() error {
 		return err
 	}
 
+	// We do not need to manually delete the Dash0 operator configuration resource. helm uninstall will also remove
+	// both of our CRDs and that will also delete all operator configuration resources. The reason we are having this
+	// predelete handler for the Dash0 monitoring resources is that the monitoring resource has a finalizer and needs
+	// to actually do work (uninstrumenting workload, potentially remove the otel collector) before the resource can be
+	// deleted. The operator configuration resource does not have a finalizer and can be deleted without any cleanup.
 	return nil
 }
 

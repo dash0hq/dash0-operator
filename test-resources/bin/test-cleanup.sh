@@ -61,4 +61,6 @@ kubectl delete clusterrolebinding           --ignore-not-found dash0-operator-ma
 kubectl delete clusterrolebinding           --ignore-not-found dash0-operator-opentelemetry-collector-crb
 kubectl delete clusterrolebinding           --ignore-not-found dash0-operator-proxy-rolebinding
 kubectl delete mutatingwebhookconfiguration --ignore-not-found dash0-operator-injector
+kubectl delete validatingwebhookconfiguration --ignore-not-found dash0-operator-operator-configuration-validator
+kubectl delete validatingwebhookconfiguration --ignore-not-found dash0-operator-monitoring-validator
 

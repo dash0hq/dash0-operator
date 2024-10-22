@@ -232,6 +232,22 @@ spec:
                   of this Dash0Monitoring resource according to their prometheus.io/scrape annotations via the OpenTelemetry
                   Prometheus receiver. This setting is optional, it defaults to true.
                 type: boolean
+              synchronizePersesDashboards:
+                default: true
+                description: |-
+                  If enabled, the operator will watch Perses dashboard resources in this namespace and create corresponding
+                  dashboards in Dash0 via the Dash0 API.
+                  See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-dashboards-with-the-operator
+                  for details. This setting is optional, it defaults to true.
+                type: boolean
+              synchronizePrometheusRules:
+                default: true
+                description: |-
+                  If enabled, the operator will watch Prometheus rule resources in this namespace and create corresponding check
+                  rules in Dash0 via the Dash0 API.
+                  See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-check-rules-with-the-operator
+                  for details. This setting is optional, it defaults to true.
+                type: boolean
             type: object
           status:
             description: Dash0MonitoringStatus defines the observed state of the Dash0Monitoring
@@ -306,6 +322,34 @@ spec:
                   - type
                   type: object
                 type: array
+              persesDashboardSynchronizationResults:
+                additionalProperties:
+                  properties:
+                    synchronizationError:
+                      type: string
+                    synchronizationStatus:
+                      description: |-
+                        SynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
+                        dashboard, Prometheus rule) to the Dash0 API.
+                      enum:
+                      - successful
+                      - partially-successful
+                      - failed
+                      type: string
+                    synchronizedAt:
+                      format: date-time
+                      type: string
+                    validationIssues:
+                      items:
+                        type: string
+                      type: array
+                  required:
+                  - synchronizationStatus
+                  - synchronizedAt
+                  type: object
+                description: Shows results of synchronizing Perses dashboard resources
+                  in this namespace via the Dash0 API.
+                type: object
               previousInstrumentWorkloads:
                 description: The spec.instrumentWorkloads setting that has been observed
                   in the previous reconcile cycle.
@@ -314,6 +358,54 @@ spec:
                 - created-and-updated
                 - none
                 type: string
+              prometheusRuleSynchronizationResults:
+                additionalProperties:
+                  properties:
+                    alertingRulesTotal:
+                      type: integer
+                    invalidRules:
+                      additionalProperties:
+                        items:
+                          type: string
+                        type: array
+                      type: object
+                    invalidRulesTotal:
+                      type: integer
+                    synchronizationErrors:
+                      additionalProperties:
+                        type: string
+                      type: object
+                    synchronizationErrorsTotal:
+                      type: integer
+                    synchronizationStatus:
+                      description: |-
+                        SynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
+                        dashboard, Prometheus rule) to the Dash0 API.
+                      enum:
+                      - successful
+                      - partially-successful
+                      - failed
+                      type: string
+                    synchronizedAt:
+                      format: date-time
+                      type: string
+                    synchronizedRules:
+                      items:
+                        type: string
+                      type: array
+                    synchronizedRulesTotal:
+                      type: integer
+                  required:
+                  - alertingRulesTotal
+                  - invalidRulesTotal
+                  - synchronizationErrorsTotal
+                  - synchronizationStatus
+                  - synchronizedAt
+                  - synchronizedRulesTotal
+                  type: object
+                description: Shows results of synchronizing Prometheus rule resources
+                  in this namespace via the Dash0 API.
+                type: object
             type: object
         type: object
     served: true

@@ -240,6 +240,10 @@ func VerifyMonitoringResourceByNameDoesNotExist(
 	)).To(BeNil())
 }
 
+func DeleteMonitoringResourceIfItExists(ctx context.Context, k8sClient client.Client) {
+	DeleteMonitoringResourceByName(ctx, k8sClient, MonitoringResourceQualifiedName, false)
+}
+
 func DeleteMonitoringResource(ctx context.Context, k8sClient client.Client) {
 	DeleteMonitoringResourceByName(ctx, k8sClient, MonitoringResourceQualifiedName, true)
 }
