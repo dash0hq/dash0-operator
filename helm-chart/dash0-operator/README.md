@@ -31,7 +31,7 @@ To use the operator, you will need provide two configuration values:
 * `endpoint`: The URL of the Dash0 ingress endpoint backend to which telemetry data will be sent.
   This property is mandatory when installing the operator.
   This is the OTLP/gRPC endpoint of your Dash0 organization.
-  The correct OTLP/gRPC endpoint can be copied fom https://app.dash0.com -> organization settings -> "Endpoints" 
+  The correct OTLP/gRPC endpoint can be copied fom https://app.dash0.com -> organization settings -> "Endpoints"
   -> "OTLP/gRPC".
   Note that the correct endpoint value will always start with `ingress.` and end in `dash0.com:4317`.
   Including a protocol prefix (e.g. `https://`) is optional.
@@ -106,7 +106,7 @@ That is, providing `--set operator.dash0Export.enabled=true` and the other backe
 
 On its own, the operator will not do much.
 To actually have the operator monitor your cluster, two more things need to be set up:
-1. a [Dash0 backend connection](#configuring-the-dash0-backend-connection) has to be configured and 
+1. a [Dash0 backend connection](#configuring-the-dash0-backend-connection) has to be configured and
 2. monitoring workloads has to be [enabled per namespace](#enable-dash0-monitoring-for-a-namespace).
 
 Both steps are described in the following sections.
@@ -116,7 +116,7 @@ Both steps are described in the following sections.
 ### Configuring the Dash0 Backend Connection
 
 You can skip this step if you provided `--set operator.dash0Export.enabled=true` together with the endpoint and either
-a token or a secret reference when running `helm install`. In that case, proceed to the next section, 
+a token or a secret reference when running `helm install`. In that case, proceed to the next section,
 [Enable Dash0 Monitoring For a Namespace](#enable-dash0-monitoring-for-a-namespace).
 
 Otherwise, configure the backend connection now by creating a file `dash0-operator-configuration.yaml` with the
@@ -144,7 +144,7 @@ You need to provide two mandatory configuration settings:
 * `spec.export.dash0.endpoint`: The URL of the Dash0 ingress endpoint to which telemetry data will be sent.
   This property is mandatory.
   Replace the value in the example above with the OTLP/gRPC endpoint of your Dash0 organization.
-  The correct OTLP/gRPC endpoint can be copied fom https://app.dash0.com -> organization settings -> "Endpoints" 
+  The correct OTLP/gRPC endpoint can be copied fom https://app.dash0.com -> organization settings -> "Endpoints"
   -> "OTLP/gRPC".
   Note that the correct endpoint value will always start with `ingress.` and end in `dash0.com:4317`.
   Including a protocol prefix (e.g. `https://`) is optional.
@@ -153,7 +153,7 @@ You need to provide two mandatory configuration settings:
   Providing both will cause a validation error when installing the Dash0Monitoring resource.
     * `spec.export.dash0.authorization.token`: Replace the value in the example above with the Dash0 authorization token
       of your organization.
-      The authorization token for your Dash0 organization can be copied from https://app.dash0.com -> organization 
+      The authorization token for your Dash0 organization can be copied from https://app.dash0.com -> organization
       settings -> "Auth Tokens".
       The prefix `Bearer ` must *not* be included in the value.
       Note that the value will be rendered verbatim into a Kubernetes ConfigMap object.
@@ -186,7 +186,7 @@ applying it.
 
 ### Enable Dash0 Monitoring For a Namespace
 
-For _each namespace_ that you want to monitor with Dash0, enable workload monitoring by installing a _Dash0 monitoring
+For _each namespace_ that you want to monitor with Dash0, enable monitoring by installing a _Dash0 monitoring
 resource_ into that namespace:
 
 Create a file `dash0-monitoring.yaml` with the following content:
@@ -256,13 +256,26 @@ The Dash0 monitoring resource supports additional configuration settings:
       Newly deployed or updated workloads will be instrumented from the point of the configuration change onwards as
       described above.
 
+* `spec.synchronizePersesDashboards`: A namespace-wide opt-out for synchronizing Perses dashboard resources found in the
+  target namespace. If enabled, the operator will watch Perses dashboard resources in this namespace and create
+  corresponding dashboards in Dash0 via the Dash0 API.
+  See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-dashboards-with-the-operator
+  for details. This setting is optional, it defaults to true.
+
+* `spec.synchronizePrometheusRules`: A namespace-wide opt-out for synchronizing Prometheus rule resources found in the
+  target namespace. If enabled, the operator will watch Prometheus rule resources in this namespace and create
+  corresponding check rules in Dash0 via the Dash0 API.
+  See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-check-rules-with-the-operator
+  for details. This setting is optional, it defaults to true.
+
 * `spec.prometheusScrapingEnabled`: A namespace-wide opt-out for Prometheus scraping for the target namespace.
   If enabled, the operator will configure its OpenTelemetry collector to scrape metrics from pods in the namespace
   of this Dash0Monitoring resource according to their prometheus.io/scrape annotations via the OpenTelemetry Prometheus
   receiver. This setting is optional, it defaults to true.
 
-Here is an example file for a monitoring resource that sets the `spec.instrumentWorkloads` property 
-to `created-and-updated` and disables Prometheus scraping:
+Here is an example file for a monitoring resource that sets the `spec.instrumentWorkloads` property
+to `created-and-updated` and disables Perses dashboard synchronization, Prometheus rule synchronization as well as
+Prometheus scraping:
 
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1
@@ -271,6 +284,8 @@ metadata:
   name: dash0-monitoring-resource
 spec:
   instrumentWorkloads: created-and-updated
+  synchronizePersesDashboards: false
+  synchronizePrometheusRules: false
   prometheusScrapingEnabled: false
 ```
 
@@ -279,7 +294,7 @@ spec:
 If you want to provide the Dash0 authorization token via a Kubernetes secret instead of providing the token as a string,
 create the secret in the namespace where the Dash0 operator is installed.
 If you followed the guide above, the name of that namespace is `dash0-system`.
-The authorization token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings 
+The authorization token for your Dash0 organization can be copied from https://app.dash0.com -> organization settings
 -> "Auth Tokens".
 You can freely choose the name of the secret and the key of the token within the secret.
 
@@ -297,11 +312,11 @@ With this example command, you would create a secret with the name `dash0-author
 If you installed (or plan to install) the operator into a different namespace, replace the `--namespace` parameter
 accordingly.
 
-The name of the secret as well as the key of the token value within the secret must be provided when referencing the 
+The name of the secret as well as the key of the token value within the secret must be provided when referencing the
 secret during `helm install`, or in the YAML file for the Dash0 operator configuration resource (in the `secretRef`
 property).
 
-For creating the operator configuration resource with `helm install`, the command would look like this, assuming the 
+For creating the operator configuration resource with `helm install`, the command would look like this, assuming the
 secret has been created as shown above:
 
 ```console
@@ -360,7 +375,7 @@ spec:
       apiEndpoint=https://api... # optional, see above
 ```
 
-Note: There are no defaults when using `--set operator.dash0Export.secretRef.name` and 
+Note: There are no defaults when using `--set operator.dash0Export.secretRef.name` and
 `--set operator.dash0Export.secretRef.key` with `helm install`, so for that approach the values must always be
 provided explicitly.
 
@@ -558,6 +573,11 @@ Pre-requisites for this feature:
 * The operator configuration resource must have the `apiEndpoint` property.
 * The operator configuration resource must have a Dash0 export configured with authorization
   (either `token` or `secret-ref`).
+* The operator will only pick up Perses dashboard resources in namespaces that have a Dash0 monitoring resource
+  deployed.
+* The operator will not synchronize Perses dashboard resources in namespaces where the Dash0 monitoring resource
+  has the setting `synchronizePersesDashboards` set to `false`. (This setting is optional and defaults to `true` when
+  omitted.)
 
 Furthermore, the custom resource definition for Perses dashboards needs to be installed in the cluster. There are two
 ways to achieve this:
@@ -569,7 +589,8 @@ kubectl apply --server-side -f https://raw.githubusercontent.com/perses/perses-o
   installation instructions there.
 
 With the prerequisites in place, you can manage Dash0 dashboards via the operator.
-The Dash0 operator will watch for Perses dashboard resources in the cluster and synchronize them with the Dash0 backend:
+The Dash0 operator will watch for Perses dashboard resources in all namespaces that have a Dash0 monitoring resource
+deployed, and synchronize the Perses dashboard resources with the Dash0 backend:
 * When a new Perses dashboard resource is created, the operator will create a corresponding dashboard via Dash0's API.
 * When a Perses dashboard resource is changed, the operator will update the corresponding dashboard via Dash0's API.
 * When a Perses dashboard resource is deleted, the operator will delete the corresponding dashboard via Dash0's API.
@@ -577,7 +598,17 @@ The Dash0 operator will watch for Perses dashboard resources in the cluster and 
 The dashboards created by the operator will be in read-only mode in the Dash0 UI.
 
 If the Dash0 operator configuration resource has the `dataset` property set, the operator will create the dashboards
-in that specified dataset, otherwise they will be created in the `default` dataset.
+in that dataset, otherwise they will be created in the `default` dataset.
+
+When a Perses dashboard resource has been synchronized to Dash0, the operator will write a summary of that
+synchronization operation to the status of the Dash0 monitoring resource in the same namespace. This summary will also
+show whether the dashboard had any validation issues or an error occurred during synchronization:
+```
+Perses Dashboard Synchronization Results:
+  test-namespace/perses-dashboard-test:
+    Synchronization Status:     successful
+    Synchronized At:            2024-10-25T12:02:12Z
+```
 
 ## Managing Dash0 Check Rules with the Operator
 
@@ -588,6 +619,11 @@ Pre-requisites for this feature:
 * The operator configuration resource must have the `apiEndpoint` property.
 * The operator configuration resource must have a Dash0 export configured with authorization
   (either `token` or `secret-ref`).
+* The operator will only pick up Prometheus rule resources in namespaces that have a Dash0 monitoring resource
+  deployed.
+* The operator will not synchronize Prometheus rule resources in namespaces where the Dash0 monitoring resource
+  has the setting `synchronizePrometheusRules` set to `false`. (This setting is optional and defaults to `true` when
+  omitted.)
 
 Furthermore, the custom resource definition for Prometheus rules needs to be installed in the cluster. There are two
 ways to achieve this:
@@ -600,7 +636,8 @@ kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-oper
   installation instructions there.
 
 With the prerequisites in place, you can manage Dash0 check rules via the operator.
-The Dash0 operator will watch for Prometheus rule resources in the cluster and synchronize them with the Dash0 backend:
+The Dash0 operator will watch for Prometheus rule resources in all namespaces that have a Dash0 monitoring resource
+deployed, and synchronize the Prometheus rule resources with the Dash0 backend:
 * When a new Prometheus rule resource is created, the operator will create corresponding check rules via Dash0's API.
 * When a Prometheus rule resource is changed, the operator will update the corresponding check rules via Dash0's API.
 * When a Prometheus rule resource is deleted, the operator will delete the corresponding check rules via Dash0's API.
@@ -609,4 +646,57 @@ Note that a Prometheus rule resource can contain multiple groups, and each of th
 The Dash0 operator will create individual check rules for each rule in each group.
 
 If the Dash0 operator configuration resource has the `dataset` property set, the operator will create the rules
-in that specified dataset, otherwise they will be created in the `default` dataset.
+in that dataset, otherwise they will be created in the `default` dataset.
+
+Prometheus rules will be mapped to Dash0 check rules as follows:
+* Each `rules` list item with an `alert` attribute in all `groups` will be converted to an individual check rule in
+  Dash0.
+* Rules that have the `record` attribute set instead of the `alert` attribute will be ignored.
+* The name of the Dash0 check rule will be `"${group_name} - ${alert}"`, where `${group_name}` is the `name` attribute
+  of the group in the Prometheus rule resource, and `${alert}` is value of the `alert` attribute.
+* The `interval` attribute of the group will be used for the setting "Evaluate every" for each Dash0 check rule in that
+  group.
+* Other attributes in the Prometheus rule are converted to Dash0 check rule attributes as described in the table below.
+* Some annotations and labels are interpreted by Dash0, these are described in the conversion table below.
+  For example, to set the summary of the Dash0 check rule, add an annotation `summary` to the `rules` item in the
+  Prometheus rule resource.
+* If `expr` contains the token `$__threshold`, and neither annotation `threshold-degraded` nor `threshold-critical` is
+  present, the rule will be considered invalid and will not be synchronized to Dash0.
+* The group attribute `limit` is not supported by Dash0 and will be ignored.
+* The group attribute `partial_response_strategy` is not supported by Dash0 and will be ignored.
+* All labels (except for the ones explicitly mentioned in the conversion table below) will be listed under
+  "Additional labels".
+* All annotations (except for the ones explicitly mentioned in the conversion table below) will be listed under
+  "Annotations".
+
+| Prometheus alert rule attribute  | Dash0 Check rule field                                                                                                         | Notes                                                                                                                                                      |
+|----------------------------------|--------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `alert`                          | Name of check rule, prefixed by the group name                                                                                 | must be a non-empty string                                                                                                                                 |
+| `expr`                           | "Expression"                                                                                                                   | must be a non-empty string                                                                                                                                 |
+| `interval` (from group)          | "Evaluate every"                                                                                                               |                                                                                                                                                            |
+| `for`                            | "Grace periods"/"For"                                                                                                          | default: "0s"                                                                                                                                              |
+| `keep_firing_for`                | "Grace periods"/"Keep firing for"                                                                                              | default: "0s"                                                                                                                                              |
+| `annotations/summary`            | "Summary"                                                                                                                      |                                                                                                                                                            |
+| `annotations/description`        | "Description"                                                                                                                  |                                                                                                                                                            |
+| `annotations/threshold-degraded` | Will be used in place of the token `$__threshold` in the expression, to determine whether the check is _degraded_              | If present, needs to a be string that can be parsed to a float value according to the syntax described in https://go.dev/ref/spec#Floating-point_literals. |
+| `annotations/threshold-critical` | Will be used in place of the token `$__threshold` in the expression, to determine whether the check is _critical_              | If present, needs to a be string that can be parsed to a float value according to the syntax described in https://go.dev/ref/spec#Floating-point_literals. |
+| `annotations/*`                  | "Annotations"                                                                                                                  |
+| `labels/*`                       | "Additional labels"                                                                                                            |
+
+When a Prometheus ruls resource has been synchronized to Dash0, the operator will write a summary of that
+synchronization operation to the status of the Dash0 monitoring resource in the same namespace. This summary will also
+show whether any of the rules had validation issues or errors occurred during synchronization:
+```
+Prometheus Rule Synchronization Results:
+  my-namespace/prometheus-example-rules:
+    Synchronization Status:        successful
+    Synchronized At:               2024-10-25T11:59:49Z
+    Alerting Rules Total:          3
+    Synchronized Rules Total:      3
+    Synchronized Rules:
+      dash0/k8s - K8s Deployment replicas mismatch
+      dash0/k8s - K8s pod crash looping
+      dash0/collector - exporter send failed spans
+    Invalid Rules Total:           0
+    Synchronization Errors Total:  0
+```

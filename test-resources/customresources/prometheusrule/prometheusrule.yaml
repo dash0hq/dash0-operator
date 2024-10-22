@@ -9,8 +9,6 @@ spec:
   groups:
     - name: dash0/k8s
       interval: 5m
-      limit: 10
-      partial_response_strategy: warn
       rules:
         - alert: K8s Deployment replicas mismatch
           expr: "kube_deployment_spec_replicas != kube_deployment_status_replicas_available"
@@ -29,12 +27,12 @@ spec:
           annotations:
             description: "Pod labels.namespace/labels.pod is crash looping. VALUE = value, LABELS = labels"
             summary: "K8s pod crash looping K8s pod crash looping {{ $label. k8s_node_name }}"
+            threshold-degraded: "10"
+            threshold-critical: "15"
         - record: will be skipped
           expr: "vector(1)"
     - name: dash0/collector
       interval: 10m
-      limit: 15
-      partial_response_strategy: abort
       rules:
         - alert: exporter send failed spans
           expr: "sum by (cloud_region) (rate(otelcol_exporter_send_failed_spans_total{}[1m])) > $__threshold"
@@ -42,3 +40,5 @@ spec:
           annotations:
             description: "dash0-collector - exporter send failed spans"
             summary: "dash0-collector - exporter send failed spans {{ $labels.cloud_region }}"
+            threshold-degraded: "1000"
+            threshold-critical: "2000"

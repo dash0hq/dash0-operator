@@ -521,6 +521,7 @@ func startDash0Controllers(
 	}
 
 	persesDashboardCrdReconciler := &controller.PersesDashboardCrdReconciler{
+		Client:    k8sClient,
 		AuthToken: envVars.selfMonitoringAndApiAuthToken,
 	}
 	if err := persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, startupTasksK8sClient, &setupLog); err != nil {
@@ -532,6 +533,7 @@ func startDash0Controllers(
 		&setupLog,
 	)
 	prometheusRuleCrdReconciler := &controller.PrometheusRuleCrdReconciler{
+		Client:    k8sClient,
 		AuthToken: envVars.selfMonitoringAndApiAuthToken,
 	}
 	if err := prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, startupTasksK8sClient, &setupLog); err != nil {
