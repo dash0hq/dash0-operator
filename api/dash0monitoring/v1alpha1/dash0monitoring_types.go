@@ -98,6 +98,40 @@ const (
 
 var allInstrumentWorkloadsMode = []InstrumentWorkloadsMode{All, CreatedAndUpdated, None}
 
+// SynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
+// dashboard, Prometheus rule) to the Dash0 API.
+//
+// +kubebuilder:validation:Enum=successful;partially-successful;failed
+type SynchronizationStatus string
+
+const (
+	// Successful means all items have been synchronized.
+	Successful SynchronizationStatus = "successful"
+
+	// PartiallySuccessful means some items have been synchronized and for some the synchronization has failed.
+	PartiallySuccessful SynchronizationStatus = "partially-successful"
+
+	// Failed means synchronization has failed for all items.
+	Failed SynchronizationStatus = "failed"
+)
+
+type PersesDashboardSynchronizationResults struct {
+	SynchronizationStatus SynchronizationStatus `json:"synchronizationStatus"`
+	SynchronizationError  string                `json:"synchronizationError,omitempty"`
+	ValidationIssues      []string              `json:"validationIssues,omitempty"`
+}
+
+type PrometheusRuleSynchronizationResult struct {
+	SynchronizationStatus      SynchronizationStatus `json:"synchronizationStatus"`
+	AlertingRulesTotal         int                   `json:"alertingRulesTotal"`
+	SynchronizedRulesTotal     int                   `json:"synchronizedRulesTotal"`
+	SynchronizedRules          []string              `json:"synchronizedRules,omitempty"`
+	SynchronizationErrorsTotal int                   `json:"synchronizationErrorsTotal"`
+	SynchronizationErrors      map[string]string     `json:"synchronizationErrors,omitempty"`
+	InvalidRulesTotal          int                   `json:"invalidRulesTotal"`
+	InvalidRules               map[string][]string   `json:"invalidRules,omitempty"`
+}
+
 // Dash0MonitoringStatus defines the observed state of the Dash0Monitoring monitoring resource.
 type Dash0MonitoringStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
@@ -105,6 +139,14 @@ type Dash0MonitoringStatus struct {
 	// The spec.instrumentWorkloads setting that has been observed in the previous reconcile cycle.
 	// +kubebuilder:validation:Optional
 	PreviousInstrumentWorkloads InstrumentWorkloadsMode `json:"previousInstrumentWorkloads,omitempty"`
+
+	// Shows results of synchronizing Perses dashboard resources in this namespace via the Dash0 API.
+	// +kubebuilder:validation:Optional
+	PersesDashboardSynchronizationResults map[string]PersesDashboardSynchronizationResults `json:"persesDashboardSynchronizationResults,omitempty"`
+
+	// Shows results of synchronizing Prometheus rule resources in this namespace via the Dash0 API.
+	// +kubebuilder:validation:Optional
+	PrometheusRuleSynchronizationResults map[string]PrometheusRuleSynchronizationResult `json:"prometheusRuleSynchronizationResults,omitempty"`
 }
 
 // Dash0Monitoring is the schema for the Dash0Monitoring API

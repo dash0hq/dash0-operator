@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"strings"
@@ -31,8 +32,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
+
+type ApiConfig struct {
+	Endpoint string
+	Dataset  string
+}
 
 type ApiClient interface {
 	SetApiEndpointAndDataset(*ApiConfig, *logr.Logger)
@@ -69,13 +76,39 @@ type ThirdPartyResourceReconciler interface {
 	GetAuthToken() string
 	GetApiConfig() *atomic.Pointer[ApiConfig]
 	ControllerName() string
+	K8sClient() client.Client
 	HttpClient() *http.Client
-	MapResourceToHttpRequests(*preconditionValidationResult, apiAction, *logr.Logger) ([]*http.Request, error)
+
+	// MapResourceToHttpRequests converts a third-party resource object to a list of HTTP requests that can be sent to
+	// the Dash0 API. It returns:
+	// - the total number of eligible items in the third-party Kubernetes resource,
+	// - the request objects for which the conversion was successful,
+	// - validation issues for items that were invalid and
+	// - synchronization errors that occurred during the conversion.
+	MapResourceToHttpRequests(
+		*preconditionValidationResult,
+		apiAction,
+		*logr.Logger,
+	) (
+		int,
+		[]HttpRequestWithItemName,
+		map[string][]string,
+		map[string]string,
+	)
+	UpdateSynchronizationResultsInStatus(
+		monitoringResource *dash0v1alpha1.Dash0Monitoring,
+		qualifiedName string,
+		status dash0v1alpha1.SynchronizationStatus,
+		itemsTotal int,
+		succesfullySynchronized []string,
+		synchronizationErrorsPerItem map[string]string,
+		validationIssuesPerItem map[string][]string,
+	) interface{}
 }
 
-type ApiConfig struct {
-	Endpoint string
-	Dataset  string
+type HttpRequestWithItemName struct {
+	ItemName string
+	Request  *http.Request
 }
 
 type apiAction int
@@ -86,13 +119,14 @@ const (
 )
 
 type preconditionValidationResult struct {
-	executeRequest bool
-	authToken      string
-	apiEndpoint    string
-	dataset        string
-	k8sNamespace   string
-	k8sName        string
-	spec           map[string]interface{}
+	executeRequest     bool
+	monitoringResource *dash0v1alpha1.Dash0Monitoring
+	authToken          string
+	apiEndpoint        string
+	dataset            string
+	k8sNamespace       string
+	k8sName            string
+	spec               map[string]interface{}
 }
 
 var (
@@ -302,44 +336,47 @@ func urlEncodePathSegment(s string) string {
 }
 
 func upsertViaApi(
+	ctx context.Context,
 	resourceReconciler ThirdPartyResourceReconciler,
 	resource *unstructured.Unstructured,
 	logger *logr.Logger,
 ) error {
-	preconditionChecksResult := validatePreconditions(
+	return synchronizeViaApi(
+		ctx,
 		resourceReconciler,
 		resource,
+		upsert,
+		"Creating/updating",
 		logger,
 	)
-	if !preconditionChecksResult.executeRequest {
-		return nil
-	}
-
-	httpRequests, err := resourceReconciler.MapResourceToHttpRequests(preconditionChecksResult, upsert, logger)
-	if err != nil {
-		return err
-	}
-
-	if len(httpRequests) == 0 {
-		logger.Info(
-			fmt.Sprintf(
-				"%s %s/%s did not contain any %s, skipping.",
-				resourceReconciler.KindDisplayName(),
-				resource.GetNamespace(),
-				resource.GetName(),
-				resourceReconciler.ShortName(),
-			))
-	}
-
-	return executeAllHttpRequests(resourceReconciler, httpRequests, "Creating/updating", logger)
 }
 
 func deleteViaApi(
+	ctx context.Context,
 	resourceReconciler ThirdPartyResourceReconciler,
 	resource *unstructured.Unstructured,
 	logger *logr.Logger,
 ) error {
+	return synchronizeViaApi(
+		ctx,
+		resourceReconciler,
+		resource,
+		delete,
+		"Deleting",
+		logger,
+	)
+}
+
+func synchronizeViaApi(
+	ctx context.Context,
+	resourceReconciler ThirdPartyResourceReconciler,
+	resource *unstructured.Unstructured,
+	action apiAction,
+	actionLabel string,
+	logger *logr.Logger,
+) error {
 	preconditionChecksResult := validatePreconditions(
+		ctx,
 		resourceReconciler,
 		resource,
 		logger,
@@ -348,12 +385,10 @@ func deleteViaApi(
 		return nil
 	}
 
-	httpRequests, err := resourceReconciler.MapResourceToHttpRequests(preconditionChecksResult, delete, logger)
-	if err != nil {
-		return err
-	}
+	itemsTotal, httpRequests, validationIssues, synchronizationErrors :=
+		resourceReconciler.MapResourceToHttpRequests(preconditionChecksResult, action, logger)
 
-	if len(httpRequests) == 0 {
+	if len(httpRequests) == 0 && len(validationIssues) == 0 && len(synchronizationErrors) == 0 {
 		logger.Info(
 			fmt.Sprintf(
 				"%s %s/%s did not contain any %s, skipping.",
@@ -364,16 +399,87 @@ func deleteViaApi(
 			))
 	}
 
-	return executeAllHttpRequests(resourceReconciler, httpRequests, "Deleting", logger)
+	var successfullySynchronized []string
+	var httpErrors map[string]string
+	if len(httpRequests) > 0 {
+		successfullySynchronized, httpErrors =
+			executeAllHttpRequests(resourceReconciler, httpRequests, actionLabel, logger)
+	}
+	if len(httpErrors) > 0 {
+		if synchronizationErrors == nil {
+			synchronizationErrors = make(map[string]string)
+		}
+		// In theory, the following map merge could overwrite synchronization errors from the MapResourceToHttpRequests
+		// stage with errors occurring in executeAllHttpRequests, but items that have an error in MapResourceToHttpRequests
+		// are never converted to requests, so the two maps are disjoint.
+		maps.Copy(synchronizationErrors, httpErrors)
+	}
+	logger.Info(
+		fmt.Sprintf("%s %s %s/%s: %d %s(s), %d successfully synchronized, validation issues: %v, synchronization errors: %v",
+			actionLabel,
+			resourceReconciler.KindDisplayName(),
+			resource.GetNamespace(),
+			resource.GetName(),
+			itemsTotal,
+			resourceReconciler.ShortName(),
+			len(successfullySynchronized),
+			validationIssues,
+			synchronizationErrors,
+		))
+	return writeSynchronizationResult(
+		ctx,
+		resourceReconciler,
+		preconditionChecksResult.monitoringResource,
+		resource,
+		itemsTotal,
+		successfullySynchronized,
+		validationIssues,
+		synchronizationErrors,
+		logger,
+	)
 }
 
 func validatePreconditions(
+	ctx context.Context,
 	resourceReconciler ThirdPartyResourceReconciler,
 	resource *unstructured.Unstructured,
 	logger *logr.Logger,
 ) *preconditionValidationResult {
 	namespace := resource.GetNamespace()
 	name := resource.GetName()
+
+	monitoringRes, err := util.FindUniqueOrMostRecentResourceInScope(
+		ctx,
+		resourceReconciler.K8sClient(),
+		resource.GetNamespace(),
+		&dash0v1alpha1.Dash0Monitoring{},
+		logger,
+	)
+	if err != nil {
+		logger.Error(err,
+			fmt.Sprintf(
+				"An error occurred when looking up the Dash0 monitoring resource in namespace %s while trying to synchronize the %s resource %s.",
+				namespace,
+				resourceReconciler.KindDisplayName(),
+				name,
+			))
+		return &preconditionValidationResult{
+			executeRequest: false,
+		}
+	}
+	if monitoringRes == nil {
+		logger.Info(
+			fmt.Sprintf(
+				"There is no Dash0 monitoring resource in namespace %s, will not synchronize the %s resource %s.",
+				namespace,
+				resourceReconciler.KindDisplayName(),
+				name,
+			))
+		return &preconditionValidationResult{
+			executeRequest: false,
+		}
+	}
+	monitoringResource := monitoringRes.(*dash0v1alpha1.Dash0Monitoring)
 
 	apiConfig := resourceReconciler.GetApiConfig().Load()
 	if !isValidApiConfig(apiConfig) {
@@ -439,50 +545,62 @@ func validatePreconditions(
 	}
 
 	return &preconditionValidationResult{
-		executeRequest: true,
-		authToken:      authToken,
-		apiEndpoint:    apiConfig.Endpoint,
-		dataset:        dataset,
-		k8sNamespace:   namespace,
-		k8sName:        name,
-		spec:           spec,
+		executeRequest:     true,
+		monitoringResource: monitoringResource,
+		authToken:          authToken,
+		apiEndpoint:        apiConfig.Endpoint,
+		dataset:            dataset,
+		k8sNamespace:       namespace,
+		k8sName:            name,
+		spec:               spec,
 	}
 }
 
+// executeAllHttpRequests executes all HTTP requests in the given list and returns the names of the items that were
+// successfully synchronized, as well as a map of name to error message for items that were rejected by the Dash0 API.
 func executeAllHttpRequests(
 	resourceReconciler ThirdPartyResourceReconciler,
-	allRequests []*http.Request,
+	allRequests []HttpRequestWithItemName,
 	actionLabel string,
 	logger *logr.Logger,
-) error {
+) ([]string, map[string]string) {
+	successfullySynchronized := make([]string, 0)
+	httpErrors := make(map[string]string)
 	for _, req := range allRequests {
-		if err := executeSingleHttpRequest(resourceReconciler, req, actionLabel, logger); err != nil {
-			return err
+		if err := executeSingleHttpRequest(resourceReconciler, &req, actionLabel, logger); err != nil {
+			httpErrors[req.ItemName] = err.Error()
+		} else {
+			successfullySynchronized = append(successfullySynchronized, req.ItemName)
 		}
 	}
-	return nil
+	if len(successfullySynchronized) == 0 {
+		successfullySynchronized = nil
+	}
+	return successfullySynchronized, httpErrors
 }
 
 func executeSingleHttpRequest(
 	resourceReconciler ThirdPartyResourceReconciler,
-	req *http.Request,
+	req *HttpRequestWithItemName,
 	actionLabel string,
 	logger *logr.Logger,
 ) error {
 	logger.Info(
 		fmt.Sprintf(
-			"%s %s at %s in Dash0",
+			"%s %s \"%s\" at %s in Dash0",
 			actionLabel,
 			resourceReconciler.ShortName(),
-			req.URL.String(),
+			req.ItemName,
+			req.Request.URL.String(),
 		))
-	res, err := resourceReconciler.HttpClient().Do(req)
+	res, err := resourceReconciler.HttpClient().Do(req.Request)
 	if err != nil {
 		logger.Error(err,
 			fmt.Sprintf(
-				"unable to execute the HTTP request to create/update/delete the %s at %s",
+				"unable to execute the HTTP request to create/update/delete the %s \"%s\" at %s",
 				resourceReconciler.ShortName(),
-				req.URL.String(),
+				req.ItemName,
+				req.Request.URL.String(),
 			))
 		return err
 	}
@@ -502,7 +620,7 @@ func executeSingleHttpRequest(
 
 func handleNon2xxStatusCode(
 	resourceReconciler ThirdPartyResourceReconciler,
-	req *http.Request,
+	req *HttpRequestWithItemName,
 	res *http.Response,
 	logger *logr.Logger,
 ) error {
@@ -512,22 +630,69 @@ func handleNon2xxStatusCode(
 	responseBody, readErr := io.ReadAll(res.Body)
 	if readErr != nil {
 		readBodyErr := fmt.Errorf("unable to read the API response payload after receiving status code %d when "+
-			"trying to udpate/create/delete the %s at %s",
+			"trying to udpate/create/delete the %s \"%s\" at %s",
 			res.StatusCode,
 			resourceReconciler.ShortName(),
-			req.URL.String(),
+			req.ItemName,
+			req.Request.URL.String(),
 		)
 		logger.Error(readBodyErr, "unable to read the API response payload")
 		return readBodyErr
 	}
 
 	statusCodeErr := fmt.Errorf(
-		"unexpected status code %d when updating/creating/deleting the %s at %s, response body is %s",
+		"unexpected status code %d when updating/creating/deleting the %s \"%s\" at %s, response body is %s",
 		res.StatusCode,
 		resourceReconciler.ShortName(),
-		req.URL.String(),
+		req.ItemName,
+		req.Request.URL.String(),
 		string(responseBody),
 	)
 	logger.Error(statusCodeErr, "unexpected status code")
 	return statusCodeErr
+}
+
+func writeSynchronizationResult(
+	ctx context.Context,
+	resourceReconciler ThirdPartyResourceReconciler,
+	monitoringResource *dash0v1alpha1.Dash0Monitoring,
+	resource *unstructured.Unstructured,
+	itemsTotal int,
+	succesfullySynchronized []string,
+	validationIssuesPerItem map[string][]string,
+	synchronizationErrorsPerItem map[string]string,
+	logger *logr.Logger,
+) error {
+	qualifiedName := fmt.Sprintf("%s/%s", resource.GetNamespace(), resource.GetName())
+
+	result := dash0v1alpha1.Failed
+	if len(succesfullySynchronized) > 0 && len(validationIssuesPerItem) == 0 && len(synchronizationErrorsPerItem) == 0 {
+		result = dash0v1alpha1.Successful
+	} else if len(succesfullySynchronized) > 0 {
+		result = dash0v1alpha1.PartiallySuccessful
+	}
+
+	resultForThisResource := resourceReconciler.UpdateSynchronizationResultsInStatus(
+		monitoringResource,
+		qualifiedName,
+		result,
+		itemsTotal,
+		succesfullySynchronized,
+		synchronizationErrorsPerItem,
+		validationIssuesPerItem,
+	)
+
+	if err := resourceReconciler.K8sClient().Status().Update(ctx, monitoringResource); err != nil {
+		logger.Error(
+			err,
+			fmt.Sprintf("failed to update the Dash0 monitoring resource in namespace %s with the synchronization results for %s \"%s\": %v",
+				resource.GetNamespace(),
+				resourceReconciler.ShortName(),
+				qualifiedName,
+				resultForThisResource,
+			))
+		return err
+	}
+
+	return nil
 }

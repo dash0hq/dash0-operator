@@ -7,7 +7,7 @@ package controller
 // - standard library imports
 // - external third-party library imports, except for test libraries
 // - internal imports, except for internal test packages
-// - external third party test libraries
+// - external third-party test libraries
 // - internal test packages
 
 import (

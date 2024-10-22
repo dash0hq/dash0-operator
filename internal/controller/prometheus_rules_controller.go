@@ -28,10 +28,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/yaml"
 
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
 type PrometheusRuleCrdReconciler struct {
+	Client                   client.Client
 	AuthToken                string
 	mgr                      ctrl.Manager
 	skipNameValidation       bool
@@ -50,6 +52,13 @@ type CheckRule struct {
 	Annotations   map[string]string `json:"annotations"` // √
 	Labels        map[string]string `json:"labels"`
 }
+
+const (
+	thresholdReference                             = "$__threshold"
+	thresholdDegradedAnnotation                    = "threshold-degraded"
+	thresholdCriticalAnnotation                    = "threshold-critical"
+	thresholdAnnotationsNonNumericalMessagePattern = "The check rule %s/%s uses the token $__threshold in its expression, but its threshold-%s annotation is not numerical: %s."
+)
 
 var (
 	prometheusRuleCrdReconcileRequestMetric otelmetric.Int64Counter
@@ -106,6 +115,7 @@ func (r *PrometheusRuleCrdReconciler) CreateResourceReconciler(
 	httpClient *http.Client,
 ) {
 	r.prometheusRuleReconciler = &PrometheusRuleReconciler{
+		Client:           r.Client,
 		pseudoClusterUid: pseudoClusterUid,
 		authToken:        authToken,
 		httpClient:       httpClient,
@@ -235,6 +245,7 @@ func (r *PrometheusRuleCrdReconciler) RemoveApiEndpointAndDataset() {
 }
 
 type PrometheusRuleReconciler struct {
+	client.Client
 	isWatching       atomic.Bool
 	pseudoClusterUid types.UID
 	httpClient       *http.Client
@@ -286,6 +297,10 @@ func (r *PrometheusRuleReconciler) ControllerName() string {
 	return "dash0_prometheus_rule_controller"
 }
 
+func (r *PrometheusRuleReconciler) K8sClient() client.Client {
+	return r.Client
+}
+
 func (r *PrometheusRuleReconciler) HttpClient() *http.Client {
 	return r.httpClient
 }
@@ -311,7 +326,7 @@ func (r *PrometheusRuleReconciler) Create(
 	if err := util.RetryWithCustomBackoff(
 		"create rule(s)",
 		func() error {
-			return upsertViaApi(r, e.Object.(*unstructured.Unstructured), &logger)
+			return upsertViaApi(ctx, r, e.Object.(*unstructured.Unstructured), &logger)
 		},
 		retrySettings,
 		true,
@@ -342,7 +357,7 @@ func (r *PrometheusRuleReconciler) Update(
 	if err := util.RetryWithCustomBackoff(
 		"update rule(s)",
 		func() error {
-			return upsertViaApi(r, e.ObjectNew.(*unstructured.Unstructured), &logger)
+			return upsertViaApi(ctx, r, e.ObjectNew.(*unstructured.Unstructured), &logger)
 		},
 		retrySettings,
 		true,
@@ -373,7 +388,7 @@ func (r *PrometheusRuleReconciler) Delete(
 	if err := util.RetryWithCustomBackoff(
 		"delete rule(s)",
 		func() error {
-			return deleteViaApi(r, e.Object.(*unstructured.Unstructured), &logger)
+			return deleteViaApi(ctx, r, e.Object.(*unstructured.Unstructured), &logger)
 		},
 		retrySettings,
 		true,
@@ -405,24 +420,31 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 	preconditionChecksResult *preconditionValidationResult,
 	action apiAction,
 	logger *logr.Logger,
-) ([]*http.Request, error) {
+) (int, []HttpRequestWithItemName, map[string][]string, map[string]string) {
 	specRaw := preconditionChecksResult.spec
-
 	specAsYaml, err := yaml.Marshal(specRaw)
 	if err != nil {
 		logger.Error(err, "unable to marshal the Prometheus rule spec")
-		return nil, err
+		return 0, nil, nil, map[string]string{"*": err.Error()}
 	}
 	ruleSpec := prometheusv1.PrometheusRuleSpec{}
 	if err = yaml.Unmarshal(specAsYaml, &ruleSpec); err != nil {
 		logger.Error(err, "unable to unmarshal the Prometheus rule spec")
-		return nil, err
+		return 0, nil, nil, map[string]string{"*": err.Error()}
 	}
 
 	urlPrefix := r.renderUrlPrefix(preconditionChecksResult)
-	requests := make([]*http.Request, 0)
+	requests := make([]HttpRequestWithItemName, 0)
+	allValidationIssues := make(map[string][]string)
+	allSynchronizationErrors := make(map[string]string)
 	for _, group := range ruleSpec.Groups {
 		for ruleIdx, rule := range group.Rules {
+			itemNameSuffix := rule.Alert
+			if itemNameSuffix == "" {
+				itemNameSuffix = strconv.Itoa(ruleIdx)
+			}
+			itemName := fmt.Sprintf("%s - %s", group.Name, itemNameSuffix)
+
 			checkRuleUrl := fmt.Sprintf(
 				"%s_%s_%d?dataset=%s",
 				urlPrefix,
@@ -430,7 +452,7 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 				ruleIdx,
 				url.QueryEscape(preconditionChecksResult.dataset),
 			)
-			if request, ok := convertRuleToRequest(
+			request, validationIssues, syncError, ok := convertRuleToRequest(
 				checkRuleUrl,
 				action,
 				rule,
@@ -438,13 +460,28 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 				group.Name,
 				group.Interval,
 				logger,
-			); ok {
-				requests = append(requests, request)
+			)
+			if len(validationIssues) > 0 {
+				allValidationIssues[itemName] = validationIssues
+				continue
+			}
+			if syncError != nil {
+				allSynchronizationErrors[itemName] = syncError.Error()
+				continue
+			}
+			if ok {
+				requests = append(requests, HttpRequestWithItemName{
+					ItemName: itemName,
+					Request:  request,
+				})
 			}
 		}
 	}
 
-	return requests, nil
+	return len(requests) + len(allValidationIssues) + len(allSynchronizationErrors),
+		requests,
+		allValidationIssues,
+		allSynchronizationErrors
 }
 
 func (r *PrometheusRuleReconciler) renderUrlPrefix(preconditionCheckResult *preconditionValidationResult) string {
@@ -468,6 +505,11 @@ func (r *PrometheusRuleReconciler) renderUrlPrefix(preconditionCheckResult *prec
 	)
 }
 
+// convertRuleToRequest converts a Prometheus rule to an HTTP request that can be sent to the Dash0 API. It returns the
+// request object if the conversion is successful and there are no validation issues and no synchronization errors.
+// Otherwise, a list of validation issues or a single synchronization errror is returned. There are also rules which we
+// want to silently skip, in which case no rule, no validation issues and no error is returned, but the final boolean
+// return value is false.
 func convertRuleToRequest(
 	checkRuleUrl string,
 	action apiAction,
@@ -476,10 +518,15 @@ func convertRuleToRequest(
 	groupName string,
 	interval *prometheusv1.Duration,
 	logger *logr.Logger,
-) (*http.Request, bool) {
-	checkRule, ok := convertRuleToCheckRule(rule, action, groupName, interval, logger)
+) (*http.Request, []string, error, bool) {
+	checkRule, validationIssues, ok := convertRuleToCheckRule(rule, action, groupName, interval, logger)
+	if len(validationIssues) > 0 {
+		return nil, validationIssues, nil, ok
+	}
 	if !ok {
-		return nil, false
+		// This is for rules that are neither invalid nor erroneuos but that we simply ignore/skip, in particular
+		// recording rules.
+		return nil, nil, nil, false
 	}
 
 	var req *http.Request
@@ -505,19 +552,20 @@ func convertRuleToRequest(
 			nil,
 		)
 	default:
-		logger.Error(fmt.Errorf("unknown API action: %d", action), "unknown API action")
-		return nil, false
+		unknownActionErr := fmt.Errorf("unknown API action: %d", action)
+		logger.Error(unknownActionErr, "unknown API action")
+		return nil, nil, unknownActionErr, false
 	}
 
 	if err != nil {
-		logger.Error(
+		httpError := fmt.Errorf(
+			"unable to create a new HTTP request to %s the rule at %s: %w",
+			actionLabel,
+			checkRuleUrl,
 			err,
-			fmt.Sprintf(
-				"unable to create a new HTTP request to %s the rule at %s",
-				actionLabel,
-				checkRuleUrl,
-			))
-		return nil, false
+		)
+		logger.Error(httpError, "error creating http request")
+		return nil, nil, httpError, false
 	}
 
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", preconditionCheckResult.authToken))
@@ -525,29 +573,41 @@ func convertRuleToRequest(
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	return req, true
+	return req, nil, nil, true
 }
 
+// convertRuleToCheckRule converts a Prometheus rule to a CheckRule. It returns the converted CheckRule if the
+// conversion is successful and there are no validation issues. Otherwise, a list of validation issues is returned.
+// There are also rules which we want to silently skip, in which case no rule and no validation issues are returned,
+// but the boolean return value is false.
 func convertRuleToCheckRule(
 	rule prometheusv1.Rule,
 	action apiAction,
 	groupName string,
 	interval *prometheusv1.Duration,
 	logger *logr.Logger,
-) (*CheckRule, bool) {
+) (*CheckRule, []string, bool) {
 	if rule.Record != "" {
 		logger.Info("Skipping rule with record attribute", "record", rule.Record)
-		return nil, false
+		return nil, nil, false
 	}
 	if rule.Alert == "" {
-		logger.Info("Skipping rule without alert attribute", "record", rule.Record)
-		return nil, false
+		logger.Info(
+			fmt.Sprintf(
+				"Found invalid rule in group %s which has neither a record nor an alert attribute.", groupName))
+		return nil, []string{"rule has neither the alert nor the record attribute"}, false
 	}
 
 	if action == delete {
 		// When deleting a rule, we do not need an actual payload, but do need to skip rules with rule.Record or without
 		// rule.Alert (that is why we still call convertRuleToCheckRule for deletions).
-		return &CheckRule{}, true
+		return &CheckRule{}, nil, true
+	}
+
+	expression := convertIntOrString(rule.Expr)
+	validationIssue := validateThreshold(groupName, rule.Alert, expression, rule.Annotations)
+	if len(validationIssue) > 0 {
+		return nil, validationIssue, false
 	}
 
 	// If action is not delete, it is upsert, and for that we need to create an actual payload, hence we need to convert
@@ -557,12 +617,12 @@ func convertRuleToCheckRule(
 		Interval:      convertDuration(interval),
 		Annotations:   rule.Annotations,
 		Labels:        rule.Labels,
-		Expression:    convertIntOrString(rule.Expr),
+		Expression:    expression,
 		For:           convertDuration(rule.For),
 		KeepFiringFor: convertNonEmptyDuration(rule.KeepFiringFor),
 	}
 
-	return checkRule, true
+	return checkRule, nil, true
 }
 
 func convertDuration(duration *prometheusv1.Duration) string {
@@ -587,4 +647,93 @@ func convertIntOrString(intOrString intstr.IntOrString) string {
 		return strconv.FormatInt(int64(intOrString.IntVal), 10)
 	}
 	return ""
+}
+
+func validateThreshold(
+	groupName string,
+	alert string,
+	expression string,
+	annotations map[string]string,
+) []string {
+	hasThresholdInExpression := strings.Contains(expression, thresholdReference)
+	degradedThresholdValue, hasThresholdDegradedInAnnotation := annotations[thresholdDegradedAnnotation]
+	criticalThresholdValue, hasThresholdCriticalInAnnotation := annotations[thresholdCriticalAnnotation]
+
+	if hasThresholdInExpression && !hasThresholdDegradedInAnnotation && !hasThresholdCriticalInAnnotation {
+		return []string{fmt.Sprintf(
+			"The check rule %s/%s uses the token %s in its expression, but has neither the %s nor the %s "+
+				"annotation.",
+			groupName,
+			alert,
+			thresholdReference,
+			thresholdDegradedAnnotation,
+			thresholdCriticalAnnotation,
+		)}
+	}
+
+	if !hasThresholdDegradedInAnnotation && !hasThresholdCriticalInAnnotation {
+		return nil
+	}
+
+	validationIssues := make([]string, 0)
+	if hasThresholdDegradedInAnnotation {
+		_, err := strconv.ParseFloat(degradedThresholdValue, 64)
+		if err != nil {
+			validationIssues = append(
+				validationIssues,
+				fmt.Sprintf(
+					thresholdAnnotationsNonNumericalMessagePattern,
+					groupName,
+					alert,
+					"degraded",
+					degradedThresholdValue,
+				),
+			)
+		}
+	}
+	if hasThresholdCriticalInAnnotation {
+		_, err := strconv.ParseFloat(criticalThresholdValue, 64)
+		if err != nil {
+			validationIssues = append(
+				validationIssues,
+				fmt.Sprintf(
+					thresholdAnnotationsNonNumericalMessagePattern,
+					groupName,
+					alert,
+					"critical",
+					criticalThresholdValue,
+				),
+			)
+		}
+	}
+
+	return validationIssues
+}
+
+func (r *PrometheusRuleReconciler) UpdateSynchronizationResultsInStatus(
+	monitoringResource *dash0v1alpha1.Dash0Monitoring,
+	qualifiedName string,
+	status dash0v1alpha1.SynchronizationStatus,
+	itemsTotal int,
+	succesfullySynchronized []string,
+	synchronizationErrorsPerItem map[string]string,
+	validationIssuesPerItem map[string][]string,
+) interface{} {
+	previousResults := monitoringResource.Status.PrometheusRuleSynchronizationResults
+	if previousResults == nil {
+		previousResults = make(map[string]dash0v1alpha1.PrometheusRuleSynchronizationResult)
+		monitoringResource.Status.PrometheusRuleSynchronizationResults = previousResults
+	}
+	result := dash0v1alpha1.PrometheusRuleSynchronizationResult{
+		SynchronizationStatus:      status,
+		AlertingRulesTotal:         itemsTotal,
+		SynchronizedRulesTotal:     len(succesfullySynchronized),
+		SynchronizedRules:          succesfullySynchronized,
+		SynchronizationErrorsTotal: len(synchronizationErrorsPerItem),
+		SynchronizationErrors:      synchronizationErrorsPerItem,
+		InvalidRulesTotal:          len(validationIssuesPerItem),
+		InvalidRules:               validationIssuesPerItem,
+	}
+	previousResults[qualifiedName] = result
+	return result
 }
