@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-cd "$(dirname ${BASH_SOURCE})"/../..
+cd "$(dirname "${BASH_SOURCE[0]}")"/../..
 
 target_namespace=${1:-test-namespace}
 kind=${2:-deployment}
@@ -18,11 +18,11 @@ setup_test_environment
 step_counter=1
 
 echo "STEP $step_counter: remove old test resources"
-test-resources/bin/test-cleanup.sh ${target_namespace} false
+test-resources/bin/test-cleanup.sh "${target_namespace}" false
 finish_step
 
 echo "STEP $step_counter: creating target namespace (if necessary)"
-test-resources/bin/ensure-namespace-exists.sh ${target_namespace}
+test-resources/bin/ensure-namespace-exists.sh "${target_namespace}"
 finish_step
 
 echo "STEP $step_counter: creating operator namespace and authorization token secret"
@@ -47,7 +47,7 @@ finish_step
 
 if [[ "${DEPLOY_APPLICATION_UNDER_MONITORING:-}" != false ]]; then
   echo "STEP $step_counter: deploy application under monitoring"
-  test-resources/node.js/express/deploy.sh ${target_namespace} ${kind}
+  test-resources/node.js/express/deploy.sh "${target_namespace}" "${kind}"
   finish_step
 fi
 

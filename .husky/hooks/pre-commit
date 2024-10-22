@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname ${BASH_SOURCE})"/../..
+cd "$(dirname "${BASH_SOURCE[0]}")"/../..
 
 gofmt -s -w .
 

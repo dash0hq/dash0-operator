@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-cd "$(dirname ${BASH_SOURCE})"
+cd "$(dirname "${BASH_SOURCE[0]}")"
 
 target_namespace=${1:-test-namespace}
 kind=${2:-deployment}
@@ -18,5 +18,5 @@ if [[ -f ${kind}.yaml ]]; then
   ../../bin/render-templates.sh
 fi
 
-./undeploy.sh ${target_namespace} ${kind}
-kubectl apply -n ${target_namespace} -f ${kind}.yaml
+./undeploy.sh "${target_namespace}" "${kind}"
+kubectl apply -n "${target_namespace}" -f "${kind}".yaml

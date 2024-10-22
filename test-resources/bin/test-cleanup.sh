@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-cd "$(dirname ${BASH_SOURCE})"/../..
+cd "$(dirname "${BASH_SOURCE[0]}")"/../..
 
 target_namespace=${1:-test-namespace}
 delete_namespace=${2:-true}
@@ -16,17 +16,17 @@ verify_kubectx
 
 resource_types=( cronjob daemonset deployment job pod replicaset statefulset )
 for resource_type in "${resource_types[@]}"; do
-  test-resources/node.js/express/undeploy.sh ${target_namespace} ${resource_type}
+  test-resources/node.js/express/undeploy.sh "${target_namespace}" "${resource_type}"
 done
 
-kubectl delete -n ${target_namespace} -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml --wait=false || true
+kubectl delete -n "${target_namespace}" -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml --wait=false || true
 sleep 1
 kubectl patch -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml -p '{"metadata":{"finalizers":null}}' --type=merge || true
 kubectl delete -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.token.yaml || true
 kubectl delete dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration-auto-resource || true
 
 if [[ "${target_namespace}" != "default" ]] && [[ "${delete_namespace}" == "true" ]]; then
-  kubectl delete ns ${target_namespace} --ignore-not-found
+  kubectl delete ns "${target_namespace}" --ignore-not-found
 fi
 
 helm uninstall --namespace dash0-system dash0-operator --timeout 30s || true
@@ -40,8 +40,8 @@ kubectl delete ns dash0-system --ignore-not-found
 
 # deliberately deleting dashboards & check rules after undeploying the operator to avoid deleting these items in
 # Dash0 every time.
-kubectl delete -n ${target_namespace} -f test-resources/customresources/persesdashboard/persesdashboard.yaml || true
-kubectl delete -n ${target_namespace} -f test-resources/customresources/prometheusrule/prometheusrule.yaml || true
+kubectl delete -n "${target_namespace}" -f test-resources/customresources/persesdashboard/persesdashboard.yaml || true
+kubectl delete -n "${target_namespace}" -f test-resources/customresources/prometheusrule/prometheusrule.yaml || true
 
 kubectl delete --ignore-not-found=true customresourcedefinition dash0monitorings.operator.dash0.com
 kubectl delete --ignore-not-found=true customresourcedefinition dash0operatorconfigurations.operator.dash0.com

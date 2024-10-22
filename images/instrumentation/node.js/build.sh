@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd "$(dirname "$0")"
+cd "$(dirname "${BASH_SOURCE[0]}")"
 
 if [[ "${USE_LOCAL_SOURCES_FOR_NODEJS_DISTRIBUTION:-}" = true ]]; then
   echo "Node.js: using the local sources for @dash0hq/opentelemetry"

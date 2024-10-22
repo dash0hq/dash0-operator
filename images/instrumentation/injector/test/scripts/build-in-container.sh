@@ -5,7 +5,7 @@
 
 set -eu
 
-cd "$(dirname "$0")"/../../..
+cd "$(dirname "${BASH_SOURCE[0]}")"/../../..
 
 if [ -z "${ARCH:-}" ]; then
   ARCH=arm64
