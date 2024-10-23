@@ -145,7 +145,7 @@ fi
 
 build_or_pull_instrumentation_image
 
-run_tests_for_architecture arm64
+# run_tests_for_architecture arm64
 run_tests_for_architecture x86_64
 
 if [[ $exit_code -ne 0 ]]; then

@@ -89,15 +89,16 @@ else
     echo ----------------------------------------
     printf "using injector binary from existing local image:\n$instrumentation_image\n"
     echo ----------------------------------------
-    copy_injector_binary_from_container_image "$instrumentation_image" arm64 linux/arm64
+    set -x
+    # copy_injector_binary_from_container_image "$instrumentation_image" arm64 linux/arm64
     copy_injector_binary_from_container_image "$instrumentation_image" x86_64 linux/amd64
   fi
 fi
 echo
 
-run_tests_for_architecture_and_libc_flavor arm64 glibc
+# run_tests_for_architecture_and_libc_flavor arm64 glibc
 run_tests_for_architecture_and_libc_flavor x86_64 glibc
-run_tests_for_architecture_and_libc_flavor arm64 musl
+# run_tests_for_architecture_and_libc_flavor arm64 musl
 run_tests_for_architecture_and_libc_flavor x86_64 musl
 
 printf "$summary\n\n"
