@@ -13,32 +13,20 @@ NC='\033[0m'
 
 cd "$(dirname "${BASH_SOURCE[0]}")"/..
 
+instrumentation_image="dash0-instrumentation:latest"
+all_docker_platforms=linux/arm64,linux/amd64
 script_dir="test"
 exit_code=0
 summary=""
 
 build_instrumentation_image() {
-  instrumentation_image=${1:-}
-  arch=${2:-}
-  docker_platform=${3:-}
+  echo ----------------------------------------
+  echo "building multi-arch instrumentation image for platforms ${all_docker_platforms}"
+  echo ----------------------------------------
 
-  if [[ -z ${instrumentation_image} ]]; then
-    echo "missing mandatory argument: instrumentation_image"
-    exit 1
-  fi
-  if [[ -z ${arch} ]]; then
-    echo "missing mandatory argument: architecture"
-    exit 1
-  fi
-  if [[ -z ${docker_platform} ]]; then
-    echo "missing mandatory argument: docker_platform"
-    exit 1
-  fi
-
-  echo "building instrumentation image \"${instrumentation_image} for architecture ${arch}"
   if ! build_output=$(
     docker build \
-    --platform "$docker_platform" \
+    --platform "$all_docker_platforms" \
     . \
     -t "${instrumentation_image}" \
     2>&1
@@ -46,6 +34,7 @@ build_instrumentation_image() {
     echo "${build_output}"
     exit 1
   fi
+  echo
 }
 
 run_tests_for_runtime() {
@@ -96,13 +85,16 @@ run_tests_for_architecture() {
     exit 1
   fi
 
-  instrumentation_image="dash0-instrumentation-$arch:latest"
-  build_instrumentation_image "$instrumentation_image" "$arch" "$docker_platform"
+  echo ----------------------------------------
+  echo "running tests for architecture $arch"
+  echo ----------------------------------------
+
   for r in "${script_dir}"/*/ ; do
     runtime=$(basename "$(realpath "${r}")")
-    echo "runtime '${runtime}'"
+    echo "- runtime: '${runtime}'"
+    echo
     grep '^[^#;]' "${script_dir}/${runtime}/base-images" | while read -r base_image ; do
-      echo "base image '${base_image}'"
+      echo "- base image: '${base_image}'"
       image_name_test="test-${runtime}-${arch}:latest"
       echo "building test image for ${arch}/${runtime}/${base_image} with instrumentation image ${instrumentation_image}"
       if ! build_output=$(
@@ -118,9 +110,20 @@ run_tests_for_architecture() {
         exit 1
       fi
       run_tests_for_runtime "${runtime}" "$image_name_test" "$base_image"
+      echo
     done
   done
+  echo
+  echo
 }
+
+dockerDriver="$(docker info -f '{{ .DriverStatus }}')"
+if [[ "$dockerDriver" != *"io.containerd."* ]]; then
+  echo "Error: This script requires that the containerd image store is enabled for Docker, since the script needs to build and use multi-arch images locally. You driver is $dockerDriver. Please see https://docs.docker.com/desktop/containerd/#enable-the-containerd-image-store for instructions on enabling the containerd image store."
+  exit 1
+fi
+
+build_instrumentation_image
 
 run_tests_for_architecture arm64
 run_tests_for_architecture x86_64
