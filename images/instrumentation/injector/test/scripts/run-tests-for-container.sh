@@ -49,9 +49,9 @@ if [ "${INTERACTIVE:-}" = "true" ]; then
 fi
 
 echo
-echo ---------------------------------------
-echo "testing the library on $ARCH and $LIBC"
-echo ---------------------------------------
+echo ----------------------------------------
+echo "testing the injector library on $ARCH and $LIBC"
+echo ----------------------------------------
 
 docker rm -f "$container_name" 2> /dev/null
 docker rmi -f "$image_name" 2> /dev/null
