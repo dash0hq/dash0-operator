@@ -7,6 +7,9 @@ set -eu
 
 cd "$(dirname "${BASH_SOURCE[0]}")"/../../..
 
+# shellcheck source=images/instrumentation/injector/test/scripts/util
+source injector/test/scripts/util
+
 if [ -z "${ARCH:-}" ]; then
   ARCH=arm64
 fi
@@ -36,9 +39,5 @@ docker build \
   -f "$dockerfile_name" \
   -t "$image_name"
 
-container_id=$(docker create "$image_name")
-docker container cp \
-  "$container_id":/dash0-init-container/injector/bin/dash0_injector.so \
-  injector/test/bin/dash0_injector_"$ARCH".so
-docker rm -v "$container_id"
+copy_injector_binary_from_container_image "$image_name" "$ARCH" "$docker_platform"
 

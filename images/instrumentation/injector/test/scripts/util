@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+is_remote_image() {
+  image_name=${1:-}
+  if [[ -z "$image_name" ]]; then
+    echo "error: mandatory argument \"image_name\" is missing"
+    exit 1
+  fi
+
+  if [[ "$image_name" == *"/"* ]]; then
+	return 0
+  else
+	return 1
+  fi
+}
+
+copy_injector_binary_from_container_image() {
+  image_name=${1:-}
+  if [[ -z "$image_name" ]]; then
+    echo "error: mandatory argument \"image_name\" is missing"
+    exit 1
+  fi
+  arch=${2:-}
+  if [[ -z "$arch" ]]; then
+    echo "error: mandatory argument \"arch\" is missing"
+    exit 1
+  fi
+  docker_platform=${3:-}
+  if [[ -z "$docker_platform" ]]; then
+    echo "error: mandatory argument \"docker_platform\" is missing"
+    exit 1
+  fi
+
+  container_id=$(docker create --platform "$docker_platform" "$image_name")
+  docker container cp \
+    "$container_id":/dash0-init-container/dash0_injector.so \
+    injector/test/bin/dash0_injector_"$arch".so
+  docker rm -v "$container_id"
+}
