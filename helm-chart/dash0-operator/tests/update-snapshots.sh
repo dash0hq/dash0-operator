@@ -5,6 +5,6 @@
 
 set -euo pipefail
 
-cd "$(dirname ${BASH_SOURCE})"/..
+cd "$(dirname "${BASH_SOURCE[0]}")"/..
 
 helm unittest -f 'tests/**/*.yaml' --update-snapshot .

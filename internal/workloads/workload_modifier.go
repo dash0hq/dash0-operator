@@ -28,12 +28,10 @@ const (
 	dash0DirectoryEnvVarName          = "DASH0_INSTRUMENTATION_FOLDER_DESTINATION"
 	dash0InstrumentationBaseDirectory = "/__dash0__"
 	dash0InstrumentationDirectory     = "/__dash0__/instrumentation"
-	// envVarLdPreloadName  = "LD_PRELOAD"
-	// envVarLdPreloadValue = "/__dash0__/preload/inject.so"
-	envVarNodeOptionsName           = "NODE_OPTIONS"
-	envVarNodeOptionsValue          = "--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry"
-	envVarDash0CollectorBaseUrlName = "DASH0_OTEL_COLLECTOR_BASE_URL"
-	envVarDash0NodeIp               = "DASH0_NODE_IP"
+	envVarLdPreloadName               = "LD_PRELOAD"
+	envVarLdPreloadValue              = "/__dash0__/dash0_injector.so"
+	envVarDash0CollectorBaseUrlName   = "DASH0_OTEL_COLLECTOR_BASE_URL"
+	envVarDash0NodeIp                 = "DASH0_NODE_IP"
 )
 
 var (
@@ -238,8 +236,7 @@ func (m *ResourceModifier) addMount(container *corev1.Container) {
 }
 
 func (m *ResourceModifier) addEnvironmentVariables(container *corev1.Container, perContainerLogger logr.Logger) {
-	// For now, we directly modify NODE_OPTIONS. Consider migrating to an LD_PRELOAD hook at some point.
-	m.handleNodeOptionsEnvVar(container, perContainerLogger)
+	m.handleLdPreloadEnvVar(container, perContainerLogger)
 
 	m.addOrReplaceEnvironmentVariable(
 		container,
@@ -261,7 +258,7 @@ func (m *ResourceModifier) addEnvironmentVariables(container *corev1.Container, 
 	)
 }
 
-func (m *ResourceModifier) handleNodeOptionsEnvVar(
+func (m *ResourceModifier) handleLdPreloadEnvVar(
 	container *corev1.Container,
 	perContainerLogger logr.Logger,
 ) {
@@ -269,13 +266,13 @@ func (m *ResourceModifier) handleNodeOptionsEnvVar(
 		container.Env = make([]corev1.EnvVar, 0)
 	}
 	idx := slices.IndexFunc(container.Env, func(c corev1.EnvVar) bool {
-		return c.Name == envVarNodeOptionsName
+		return c.Name == envVarLdPreloadName
 	})
 
 	if idx < 0 {
 		container.Env = append(container.Env, corev1.EnvVar{
-			Name:  envVarNodeOptionsName,
-			Value: envVarNodeOptionsValue,
+			Name:  envVarLdPreloadName,
+			Value: envVarLdPreloadValue,
 		})
 	} else {
 		// Note: This needs to be a point to the env var, otherwise updates would only be local to this function.
@@ -285,15 +282,15 @@ func (m *ResourceModifier) handleNodeOptionsEnvVar(
 				fmt.Sprintf(
 					"Dash0 cannot prepend anything to the environment variable %s as it is specified via "+
 						"ValueFrom. This container will not be instrumented.",
-					envVarNodeOptionsName))
+					envVarLdPreloadName))
 			return
 		}
 
-		if !strings.Contains(envVar.Value, envVarNodeOptionsValue) {
+		if !strings.Contains(envVar.Value, envVarLdPreloadValue) {
 			if envVar.Value == "" {
-				envVar.Value = envVarNodeOptionsValue
+				envVar.Value = envVarLdPreloadValue
 			} else {
-				envVar.Value = fmt.Sprintf("%s %s", envVarNodeOptionsValue, envVar.Value)
+				envVar.Value = fmt.Sprintf("%s %s", envVarLdPreloadValue, envVar.Value)
 			}
 		}
 	}
@@ -408,17 +405,17 @@ func (m *ResourceModifier) removeMount(container *corev1.Container) {
 }
 
 func (m *ResourceModifier) removeEnvironmentVariables(container *corev1.Container) {
-	m.removeNodeOptions(container)
+	m.removeLdPreload(container)
 	m.removeEnvironmentVariable(container, envVarDash0NodeIp)
 	m.removeEnvironmentVariable(container, envVarDash0CollectorBaseUrlName)
 }
 
-func (m *ResourceModifier) removeNodeOptions(container *corev1.Container) {
+func (m *ResourceModifier) removeLdPreload(container *corev1.Container) {
 	if container.Env == nil {
 		return
 	}
 	idx := slices.IndexFunc(container.Env, func(c corev1.EnvVar) bool {
-		return c.Name == envVarNodeOptionsName
+		return c.Name == envVarLdPreloadName
 	})
 
 	if idx < 0 {
@@ -428,14 +425,14 @@ func (m *ResourceModifier) removeNodeOptions(container *corev1.Container) {
 		previousValue := envVar.Value
 		if previousValue == "" && envVar.ValueFrom != nil {
 			// Specified via ValueFrom, this has not been done by us, so we assume there is no Dash0-specific
-			// NODE_OPTIONS part.
+			// LD_PRELOAD part.
 			return
-		} else if previousValue == envVarNodeOptionsValue {
+		} else if previousValue == envVarLdPreloadValue {
 			container.Env = slices.Delete(container.Env, idx, idx+1)
 			return
 		}
 
-		container.Env[idx].Value = strings.Replace(previousValue, envVarNodeOptionsValue, "", -1)
+		container.Env[idx].Value = strings.Replace(previousValue, envVarLdPreloadValue, "", -1)
 	}
 }
 

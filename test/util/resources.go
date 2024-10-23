@@ -700,9 +700,9 @@ func DeploymentWithExistingDash0Artifacts(namespace string, name string) *appsv1
 					Value: "value",
 				},
 				{
-					// The operator does not support injecting into containers that already have NODE_OPTIONS set via a
+					// The operator does not support injecting into containers that already have LD_PRELOAD set via a
 					// ValueFrom clause, thus this env var will not be modified.
-					Name:      "NODE_OPTIONS",
+					Name:      "LD_PRELOAD",
 					ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}},
 				},
 				{
@@ -739,8 +739,8 @@ func DeploymentWithExistingDash0Artifacts(namespace string, name string) *appsv1
 					Value: "base url will be replaced",
 				},
 				{
-					Name:  "NODE_OPTIONS",
-					Value: "--require something-else --experimental-modules",
+					Name:  "LD_PRELOAD",
+					Value: "third_party_preload.so another_third_party_preload.so",
 				},
 				{
 					Name:  "DASH0_NODE_IP",
@@ -823,8 +823,8 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 					Value: "value",
 				},
 				{
-					Name:  "NODE_OPTIONS",
-					Value: "--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
+					Name:  "LD_PRELOAD",
+					Value: "/__dash0__/dash0_injector.so",
 				},
 				{
 					Name:      "DASH0_NODE_IP",
@@ -863,8 +863,8 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 					ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}},
 				},
 				{
-					Name:  "NODE_OPTIONS",
-					Value: "--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
+					Name:  "LD_PRELOAD",
+					Value: "/__dash0__/dash0_injector.so",
 				},
 				{
 					Name:  "DASH0_OTEL_COLLECTOR_BASE_URL",
@@ -902,8 +902,8 @@ func simulateInstrumentedPodSpec(podSpec *corev1.PodSpec, meta *metav1.ObjectMet
 	}}
 	container.Env = []corev1.EnvVar{
 		{
-			Name:  "NODE_OPTIONS",
-			Value: "--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
+			Name:  "LD_PRELOAD",
+			Value: "/__dash0__/dash0_injector.so",
 		},
 		{
 			Name:      "DASH0_NODE_IP",
