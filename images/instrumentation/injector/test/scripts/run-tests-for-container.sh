@@ -69,7 +69,6 @@ docker run \
   --platform "$docker_platform" \
   --env EXPECTED_CPU_ARCHITECTURE="$expected_cpu_architecture" \
   --name "$container_name" \
-  -it \
   "$image_name" \
   $docker_run_extra_arguments
 { set +x; } 2> /dev/null
