@@ -44,9 +44,9 @@ run_test_case() {
   existing_node_options_value=${4:-}
   set +e
   if [ "$existing_node_options_value" != "" ]; then
-    test_output=$(LD_PRELOAD="$injector_binary" NODE_OPTIONS="$existing_node_options_value" node index.js "$command")
+    test_output=$(LD_PRELOAD="$injector_binary" TEST_VAR=value NODE_OPTIONS="$existing_node_options_value" node index.js "$command")
   else
-    test_output=$(LD_PRELOAD="$injector_binary" node index.js "$command")
+    test_output=$(LD_PRELOAD="$injector_binary" TEST_VAR=value node index.js "$command")
   fi
   test_exit_code=$?
   set -e
@@ -70,7 +70,7 @@ exit_code=0
 cd app
 
 run_test_case "getenv: returns undefined for non-existing environment variable" non-existing "DOES_NOT_EXIST: -"
-run_test_case "getenv: returns environment variable unchanged" term "TERM: xterm"
+run_test_case "getenv: returns environment variable unchanged" existing "TEST_VAR: value"
 run_test_case "getenv: overrides NODE_OPTIONS if it is not present" node_options "NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry"
 run_test_case "getenv: ask for NODE_OPTIONS (unset) twice" node_options_twice "NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry; NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry"
 run_test_case "getenv: prepends to NODE_OPTIONS if it is present" node_options "NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --no-deprecation" "--no-deprecation"

@@ -13,15 +13,18 @@ on:
       - '*.md'
   workflow_dispatch:
 
+concurrency:
+  group: ci-concurrency-group-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  instrumentation_image_test_tag: ghcr.io/dash0hq/instrumentation-ci-test:${{ github.head_ref || github.ref_name }}
+
 jobs:
   verify:
     name: Build & Test
     runs-on: ubuntu-latest
     timeout-minutes: 15
-
-    concurrency:
-      group: ci-concurrency-group-${{ github.ref }}
-      cancel-in-progress: true
 
     steps:
       - uses: actions/checkout@v4
@@ -59,6 +62,116 @@ jobs:
         run: |
           make test
 
+  injector_binary_and_instrumentation_image_tests:
+    name: Injector Binary & Instrumentation Image Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: get branch name
+        id: branch-name
+        uses: tj-actions/branch-names@v8
+
+      - name: find SHA of last successful workflow run on main branch
+        uses: nrwl/nx-set-shas@v4
+        id: last_succsesfull_commit_main_branch
+        with:
+          # Get the last successful commit on main branch (actually, on the target branch for the PR, but that is
+          # usually main).
+          main-branch-name: ${{ steps.branch-name.outputs.base_ref_branch }}
+          workflow_id: 'ci.yml'
+
+      # We use the changed-files action to potentially skip the injector & instrumentation tests on PRs that contain no
+      # changes for the instrumentation image. This is because running the tests requires to build the instrumentation
+      # image for both arm64 and X86_64, and the cross-platform build is very slow (takes up to 15 minutes). We do
+      # always run these steps when building the main branch or a tag though. By default, changed-files would compare
+      # against the last non-merge commit on the target branch for pull request events (which is used in PR builds), but
+      # together with the nrwl/nx-set-shas step from above we compare against the SHA from the last _successful_ CI
+      # workflow run on the main branch.
+      - name: compile list of relevant changed files for the instrumentation image
+        id: changed-files
+        uses: tj-actions/changed-files@v44
+        with:
+          base_sha: ${{ steps.last_succsesfull_commit_main_branch.outputs.base }}
+          files_yaml: |
+            instrumentation:
+              - .github/workflows/ci.yaml
+              - images/instrumentation/**
+
+      - name: show changed files
+        env:
+          INSTRUMENTATION_CHANGED_FILES_FLAG: ${{ steps.changed-files.outputs.instrumentation_any_changed }}
+          INSTRUMENTATION_CHANGED_FILES_LIST: ${{ steps.changed-files.outputs.instrumentation_all_changed_files }}
+        run: |
+          echo "files for instrumentation image have changed: $INSTRUMENTATION_CHANGED_FILES_FLAG"
+          echo "changed files for instrumentation image: $INSTRUMENTATION_CHANGED_FILES_LIST"
+
+      - name: set up docker buildx
+        uses: docker/setup-buildx-action@v3
+        if: |
+          steps.changed-files.outputs.instrumentation_any_changed == 'true' ||
+          github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
+
+      # Just for building on arm, buildx is enough but doing docker run with --platform=linux/arm64 (which we do when
+      # testing the injector binary and the instrumentation image) requires qemu.
+      - name: set up qemu
+        uses: docker/setup-qemu-action@v3
+        if: |
+          steps.changed-files.outputs.instrumentation_any_changed == 'true' ||
+          github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
+
+      - name: login to GitHub container registry
+        uses: docker/login-action@v3
+        if: |
+          steps.changed-files.outputs.instrumentation_any_changed == 'true' ||
+          github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: build temporary instrumentation image
+        uses: docker/build-push-action@v6
+        if: |
+          steps.changed-files.outputs.instrumentation_any_changed == 'true' ||
+          github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
+        with:
+          context: images/instrumentation
+          tags: ${{ env.instrumentation_image_test_tag }}
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha,scope=instrumentation
+          cache-to: type=gha,mode=max,scope=instrumentation
+          push: true
+
+      - name: injector tests
+        if: |
+          steps.changed-files.outputs.instrumentation_any_changed == 'true' ||
+          github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
+        env:
+          INSTRUMENTATION_IMAGE: ${{ env.instrumentation_image_test_tag }}
+        run: |
+          images/instrumentation/injector/test/scripts/test-all.sh
+
+      - name: instrumentation image tests
+        if: |
+          steps.changed-files.outputs.instrumentation_any_changed == 'true' ||
+          github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
+        env:
+          INSTRUMENTATION_IMAGE: ${{ env.instrumentation_image_test_tag }}
+        run: |
+          images/instrumentation/test/test-all.sh
+
+      - name: delete test image
+        uses: bots-house/ghcr-delete-image-action@v1.1.0
+        if: ${{ always() && ( steps.changed-files.outputs.instrumentation_any_changed == 'true' || github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/') ) }}
+        with:
+          owner: dash0hq
+          name: instrumentation-ci-test
+          token: ${{ secrets.GITHUB_TOKEN }}
+          # delete untagged images from this build (and from earlier builds, if there are any leftovers)
+          untagged-keep-latest: 1
+
   # Builds and potentially pushes all container images. For pushes to PRs/branches, we simply verify that the image
   # build still works, the resulting image will not be pushed to any target registry. For pushes to the main branch, the
   # images are tagged with "main-dev", but not with a version x.y.z. Finally, for pushes to a tag (or when a tag is
@@ -70,9 +183,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - verify
-    concurrency:
-      group: ci-concurrency-group-${{ github.ref }}
-      cancel-in-progress: true
+      - injector_binary_and_instrumentation_image_tests
     timeout-minutes: 60
 
     steps:
@@ -138,10 +249,6 @@ jobs:
     if: ${{ ! contains(github.ref, 'refs/tags/') && github.actor != 'dependabot[bot]'}}
     needs:
       - build-and-push-images
-    concurrency:
-      group: ci-concurrency-group-${{ github.ref }}
-      cancel-in-progress: true
-
     steps:
       - uses: actions/checkout@v4
 
@@ -164,9 +271,6 @@ jobs:
     if: ${{ ! contains(github.ref, 'refs/tags/') && github.actor == 'dependabot[bot]'}}
     needs:
       - build-and-push-images
-    concurrency:
-      group: ci-concurrency-group-${{ github.ref }}
-      cancel-in-progress: true
 
     steps:
       - name: skipping publish helm chart (dry run)
@@ -179,9 +283,6 @@ jobs:
     if: ${{ contains(github.ref, 'refs/tags/') && github.actor != 'dependabot[bot]'}}
     needs:
       - build-and-push-images
-    concurrency:
-      group: ci-concurrency-group-${{ github.ref }}
-      cancel-in-progress: true
 
     steps:
       - uses: actions/checkout@v4

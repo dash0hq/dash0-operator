@@ -23,8 +23,8 @@ function main () {
     case "non-existing":
       echoEnvVar("DOES_NOT_EXIST");
       break;
-    case "term":
-      echoEnvVar("TERM");
+    case "existing":
+      echoEnvVar("TEST_VAR");
       break;
     case "node_options":
       echoEnvVar("NODE_OPTIONS");

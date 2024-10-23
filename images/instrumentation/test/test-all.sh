@@ -13,26 +13,44 @@ NC='\033[0m'
 
 cd "$(dirname "${BASH_SOURCE[0]}")"/..
 
+# shellcheck source=images/instrumentation/injector/test/scripts/util
+source injector/test/scripts/util
+
 instrumentation_image="dash0-instrumentation:latest"
 all_docker_platforms=linux/arm64,linux/amd64
 script_dir="test"
 exit_code=0
 summary=""
 
-build_instrumentation_image() {
-  echo ----------------------------------------
-  echo "building multi-arch instrumentation image for platforms ${all_docker_platforms}"
-  echo ----------------------------------------
+build_or_pull_instrumentation_image() {
+  if [[ -n "${INSTRUMENTATION_IMAGE:-}" ]]; then
+    instrumentation_image="$INSTRUMENTATION_IMAGE"
 
-  if ! build_output=$(
-    docker build \
-    --platform "$all_docker_platforms" \
-    . \
-    -t "${instrumentation_image}" \
-    2>&1
-  ); then
-    echo "${build_output}"
-    exit 1
+    if is_remote_image "$instrumentation_image"; then
+      echo ----------------------------------------
+      echo "fetching instrumentation image from remote repository: $instrumentation_image"
+      echo ----------------------------------------
+      docker pull "$instrumentation_image"
+    else
+      echo ----------------------------------------
+      echo "using existing local instrumentation image: $instrumentation_image"
+      echo ----------------------------------------
+    fi
+  else
+    echo ----------------------------------------
+    echo "building multi-arch instrumentation image for platforms ${all_docker_platforms} from local sources"
+    echo ----------------------------------------
+
+    if ! build_output=$(
+      docker build \
+      --platform "$all_docker_platforms" \
+      . \
+      -t "${instrumentation_image}" \
+      2>&1
+    ); then
+      echo "${build_output}"
+      exit 1
+    fi
   fi
   echo
 }
@@ -117,13 +135,15 @@ run_tests_for_architecture() {
   echo
 }
 
-dockerDriver="$(docker info -f '{{ .DriverStatus }}')"
-if [[ "$dockerDriver" != *"io.containerd."* ]]; then
-  echo "Error: This script requires that the containerd image store is enabled for Docker, since the script needs to build and use multi-arch images locally. You driver is $dockerDriver. Please see https://docs.docker.com/desktop/containerd/#enable-the-containerd-image-store for instructions on enabling the containerd image store."
-  exit 1
+if [[ "${CI:-false}" != true ]]; then
+  dockerDriver="$(docker info -f '{{ .DriverStatus }}')"
+  if [[ "$dockerDriver" != *"io.containerd."* ]]; then
+    echo "Error: This script requires that the containerd image store is enabled for Docker, since the script needs to build and use multi-arch images locally. You driver is $dockerDriver. Please see https://docs.docker.com/desktop/containerd/#enable-the-containerd-image-store for instructions on enabling the containerd image store."
+    exit 1
+  fi
 fi
 
-build_instrumentation_image
+build_or_pull_instrumentation_image
 
 run_tests_for_architecture arm64
 run_tests_for_architecture x86_64
