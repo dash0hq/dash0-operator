@@ -20,6 +20,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+
 	"github.com/h2non/gock"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -34,6 +36,12 @@ var (
 	dashboardApiBasePath = "/api/dashboards/"
 
 	defaultExpectedPathDashboard = fmt.Sprintf("%s.*%s", dashboardApiBasePath, "dash0-operator_.*_test-dataset_test-namespace_test-dashboard")
+
+	defaultExpectedPersesSyncResult = dash0v1alpha1.PersesDashboardSynchronizationResults{
+		SynchronizationStatus: dash0v1alpha1.Successful,
+		SynchronizationError:  "",
+		ValidationIssues:      nil,
+	}
 )
 
 var _ = Describe("The Perses dashboard controller", Ordered, func() {
@@ -149,9 +157,10 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 
 		AfterAll(func() {
 			ensurePersesDashboardCrdDoesNotExist(ctx)
+			EnsureMonitoringResourceDoesNotExist(ctx, k8sClient)
 		})
 
-		It("creates a dashboard", func() {
+		It("it ignores Perses dashboard resource changes if no Dash0 monitoring resource exists in the namespace", func() {
 			expectDashboardPutRequest(defaultExpectedPathDashboard)
 			defer gock.Off()
 
@@ -164,42 +173,12 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 				&controllertest.TypedQueue[reconcile.Request]{},
 			)
 
-			Expect(gock.IsDone()).To(BeTrue())
-		})
-
-		It("updates a dashboard", func() {
-			expectDashboardPutRequest(defaultExpectedPathDashboard)
-			defer gock.Off()
-
-			dashboardResource := createDashboardResource()
-			persesDashboardReconciler.Update(
-				ctx,
-				event.TypedUpdateEvent[client.Object]{
-					ObjectNew: &dashboardResource,
-				},
-				&controllertest.TypedQueue[reconcile.Request]{},
-			)
-
-			Expect(gock.IsDone()).To(BeTrue())
-		})
-
-		It("deletes a dashboard", func() {
-			expectDashboardDeleteRequest(defaultExpectedPathDashboard)
-			defer gock.Off()
-
-			dashboardResource := createDashboardResource()
-			persesDashboardReconciler.Delete(
-				ctx,
-				event.TypedDeleteEvent[client.Object]{
-					Object: &dashboardResource,
-				},
-				&controllertest.TypedQueue[reconcile.Request]{},
-			)
-
-			Expect(gock.IsDone()).To(BeTrue())
+			Expect(gock.IsPending()).To(BeTrue())
 		})
 
 		It("it ignores Perses dashboard resource changes if API endpoint is not configured", func() {
+			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+
 			expectDashboardPutRequest(defaultExpectedPathDashboard)
 			defer gock.Off()
 
@@ -215,12 +194,141 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			)
 
 			Expect(gock.IsPending()).To(BeTrue())
+			verifyNoPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(ctx, k8sClient)
+		})
+
+		It("creates a dashboard", func() {
+			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+
+			expectDashboardPutRequest(defaultExpectedPathDashboard)
+			defer gock.Off()
+
+			dashboardResource := createDashboardResource()
+			persesDashboardReconciler.Create(
+				ctx,
+				event.TypedCreateEvent[client.Object]{
+					Object: &dashboardResource,
+				},
+				&controllertest.TypedQueue[reconcile.Request]{},
+			)
+
+			Expect(gock.IsDone()).To(BeTrue())
+			verifyPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
+				ctx,
+				k8sClient,
+				defaultExpectedPersesSyncResult,
+			)
+		})
+
+		It("updates a dashboard", func() {
+			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+
+			expectDashboardPutRequest(defaultExpectedPathDashboard)
+			defer gock.Off()
+
+			dashboardResource := createDashboardResource()
+			persesDashboardReconciler.Update(
+				ctx,
+				event.TypedUpdateEvent[client.Object]{
+					ObjectNew: &dashboardResource,
+				},
+				&controllertest.TypedQueue[reconcile.Request]{},
+			)
+
+			Expect(gock.IsDone()).To(BeTrue())
+			verifyPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
+				ctx,
+				k8sClient,
+				defaultExpectedPersesSyncResult,
+			)
+		})
+
+		It("deletes a dashboard", func() {
+			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+
+			expectDashboardDeleteRequest(defaultExpectedPathDashboard)
+			defer gock.Off()
+
+			dashboardResource := createDashboardResource()
+			persesDashboardReconciler.Delete(
+				ctx,
+				event.TypedDeleteEvent[client.Object]{
+					Object: &dashboardResource,
+				},
+				&controllertest.TypedQueue[reconcile.Request]{},
+			)
+
+			Expect(gock.IsDone()).To(BeTrue())
+			verifyPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
+				ctx,
+				k8sClient,
+				defaultExpectedPersesSyncResult,
+			)
+		})
+
+		It("reports validation issues for a dashboard", func() {
+			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+
+			dashboardResource := createDashboardResource()
+			spec := dashboardResource.Object["spec"].(map[string]interface{})
+			spec["display"] = "not a map"
+			persesDashboardReconciler.Create(
+				ctx,
+				event.TypedCreateEvent[client.Object]{
+					Object: &dashboardResource,
+				},
+				&controllertest.TypedQueue[reconcile.Request]{},
+			)
+
+			verifyPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
+				ctx,
+				k8sClient,
+				dash0v1alpha1.PersesDashboardSynchronizationResults{
+					SynchronizationStatus: dash0v1alpha1.Failed,
+					SynchronizationError:  "",
+					ValidationIssues:      []string{"spec.display is not a map"},
+				},
+			)
+		})
+
+		It("reports http errors when synchronizing a dashboard", func() {
+			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+
+			gock.New(ApiEndpointTest).
+				Put(defaultExpectedPathDashboard).
+				MatchParam("dataset", DatasetTest).
+				Times(1).
+				Reply(500).
+				JSON(map[string]string{})
+			defer gock.Off()
+
+			dashboardResource := createDashboardResource()
+			persesDashboardReconciler.Create(
+				ctx,
+				event.TypedCreateEvent[client.Object]{
+					Object: &dashboardResource,
+				},
+				&controllertest.TypedQueue[reconcile.Request]{},
+			)
+
+			Expect(gock.IsDone()).To(BeTrue())
+			verifyPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
+				ctx,
+				k8sClient,
+				dash0v1alpha1.PersesDashboardSynchronizationResults{
+					SynchronizationStatus: dash0v1alpha1.Failed,
+					SynchronizationError:  "^unexpected status code 500 when updating/creating/deleting the dashboard \"test-dashboard\" at https://api.dash0.com/api/dashboards/dash0-operator_.*_test-dataset_test-namespace_test-dashboard\\?dataset=test-dataset, response body is {}\n$",
+					ValidationIssues:      nil,
+				},
+			)
 		})
 	})
 })
 
 func createPersesDashboardCrdReconcilerWithoutAuthToken() {
 	persesDashboardCrdReconciler = &PersesDashboardCrdReconciler{
+		Client: k8sClient,
+
 		// We create the controller multiple times in tests, this option is required, otherwise the controller
 		// runtime will complain.
 		skipNameValidation: true,
@@ -229,6 +337,7 @@ func createPersesDashboardCrdReconcilerWithoutAuthToken() {
 
 func createPersesDashboardCrdReconcilerWithAuthToken() {
 	persesDashboardCrdReconciler = &PersesDashboardCrdReconciler{
+		Client:    k8sClient,
 		AuthToken: AuthorizationTokenTest,
 
 		// We create the controller multiple times in tests, this option is required, otherwise the controller
@@ -301,4 +410,37 @@ func ensurePersesDashboardCrdDoesNotExist(ctx context.Context) {
 
 		persesDashboardCrd = nil
 	}
+}
+
+func verifyPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
+	ctx context.Context,
+	k8sClient client.Client,
+	expectedResult dash0v1alpha1.PersesDashboardSynchronizationResults,
+) {
+	Eventually(func(g Gomega) {
+		monRes := LoadMonitoringResourceOrFail(ctx, k8sClient, g)
+		results := monRes.Status.PersesDashboardSynchronizationResults
+		g.Expect(results).NotTo(BeNil())
+		g.Expect(results).To(HaveLen(1))
+		result := results[fmt.Sprintf("%s/%s", TestNamespaceName, "test-dashboard")]
+		g.Expect(result).NotTo(BeNil())
+		if expectedResult.SynchronizationError != "" {
+			// http errors contain a different random path for each run
+			g.Expect(result.SynchronizationError).To(MatchRegexp(expectedResult.SynchronizationError))
+			result.SynchronizationError = ""
+			expectedResult.SynchronizationError = ""
+		}
+		g.Expect(result).To(Equal(expectedResult))
+	}).Should(Succeed())
+}
+
+func verifyNoPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
+	ctx context.Context,
+	k8sClient client.Client,
+) {
+	Consistently(func(g Gomega) {
+		monRes := LoadMonitoringResourceOrFail(ctx, k8sClient, g)
+		results := monRes.Status.PersesDashboardSynchronizationResults
+		g.Expect(results).To(BeNil())
+	}, 200*time.Millisecond, 50*time.Millisecond).Should(Succeed())
 }
