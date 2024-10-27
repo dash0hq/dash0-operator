@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -19,8 +20,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
@@ -33,6 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util"
@@ -54,6 +54,7 @@ type ThirdPartyCrdReconciler interface {
 
 	Manager() ctrl.Manager
 	GetAuthToken() string
+	ClientObject() client.Object
 	KindDisplayName() string
 	Group() string
 	Kind() string
@@ -73,8 +74,10 @@ type ThirdPartyResourceReconciler interface {
 
 	KindDisplayName() string
 	ShortName() string
-	IsWatching() *atomic.Bool
-	SetIsWatching(bool)
+	ControllerStopFunctionLock() *sync.Mutex
+	GetControllerStopFunction() *context.CancelFunc
+	SetControllerStopFunction(*context.CancelFunc)
+	IsWatching() bool
 	GetAuthToken() string
 	GetApiConfig() *atomic.Pointer[ApiConfig]
 	ControllerName() string
@@ -124,13 +127,13 @@ const (
 
 type preconditionValidationResult struct {
 	synchronizeResource bool
+	thirdPartyResource  client.Object
 	monitoringResource  *dash0v1alpha1.Dash0Monitoring
 	authToken           string
 	apiEndpoint         string
 	dataset             string
 	k8sNamespace        string
 	k8sName             string
-	spec                map[string]interface{}
 }
 
 type retryableError struct {
@@ -247,7 +250,12 @@ func maybeStartWatchingThirdPartyResources(
 	isStartup bool,
 	logger *logr.Logger,
 ) {
-	if crdReconciler.ResourceReconciler().IsWatching().Load() {
+	resourceReconciler := crdReconciler.ResourceReconciler()
+
+	resourceReconciler.ControllerStopFunctionLock().Lock()
+	defer resourceReconciler.ControllerStopFunctionLock().Unlock()
+
+	if resourceReconciler.IsWatching() {
 		// we are already watching, do not start a second watch
 		return
 	}
@@ -262,7 +270,7 @@ func maybeStartWatchingThirdPartyResources(
 		return
 	}
 
-	apiConfig := crdReconciler.ResourceReconciler().GetApiConfig().Load()
+	apiConfig := resourceReconciler.GetApiConfig().Load()
 	if !isValidApiConfig(apiConfig) {
 		if !isStartup {
 			// Silently ignore this missing precondition if it happens during the startup of the operator. It will
@@ -289,42 +297,83 @@ func maybeStartWatchingThirdPartyResources(
 			crdReconciler.KindDisplayName(),
 		),
 	)
-	startWatchingThirdPartyResources(crdReconciler, logger)
-}
 
-func startWatchingThirdPartyResources(
-	crdReconciler ThirdPartyCrdReconciler,
-	logger *logr.Logger,
-) {
 	logger.Info(fmt.Sprintf("Setting up a watch for %s custom resources.", crdReconciler.KindDisplayName()))
 
-	unstructuredGvkForPersesDashboards := &unstructured.Unstructured{}
-	unstructuredGvkForPersesDashboards.SetGroupVersionKind(schema.GroupVersionKind{
-		Kind:    crdReconciler.Kind(),
-		Group:   crdReconciler.Group(),
-		Version: crdReconciler.Version(),
-	})
-
-	resourceReconciler := crdReconciler.ResourceReconciler()
-	controllerBuilder := ctrl.NewControllerManagedBy(crdReconciler.Manager()).
-		Named(resourceReconciler.ControllerName()).
-		Watches(
-			unstructuredGvkForPersesDashboards,
-			// Deliberately not using a convenience mechanism like &handler.EnqueueRequestForObject{} (which would
-			// feed all events into the Reconcile method) here, since using the lower-level TypedEventHandler interface
-			// directly allows us to distinguish between create and delete events more easily.
-			resourceReconciler,
-		)
-	if crdReconciler.SkipNameValidation() {
-		controllerBuilder = controllerBuilder.WithOptions(controller.TypedOptions[reconcile.Request]{
-			SkipNameValidation: ptr.To(true),
-		})
-	}
-	if err := controllerBuilder.Complete(resourceReconciler); err != nil {
-		logger.Error(err, "unable to create a new controller for watching Perses dashboards")
+	// Create or recreate the controller for the third-party resource type.
+	// Note: We cannot use the controller builder API here since it does not allow passing in a context for starting the
+	// controller. Instead, we create the controller manually and start it in a goroutine.
+	resourceController, err :=
+		controller.NewTypedUnmanaged[reconcile.Request](
+			resourceReconciler.ControllerName(),
+			crdReconciler.Manager(),
+			controller.Options{
+				Reconciler: resourceReconciler,
+				// We stop the controller everytime the third-party CRD is deleted, and then recreate it if the
+				// third-party CRD is deployed to the cluster again. But the controller-runtime library does not remove
+				// the controller name from the set of controller names when the controller is stopped, so we need to
+				// skip the duplicate name validation check.
+				// See also: https://github.com/kubernetes-sigs/controller-runtime/issues/2983#issuecomment-2440089997.
+				SkipNameValidation: ptr.To(true),
+			})
+	if err != nil {
+		logger.Error(err, fmt.Sprintf("cannot create a new %s", resourceReconciler.ControllerName()))
 		return
 	}
-	resourceReconciler.SetIsWatching(true)
+	logger.Info(fmt.Sprintf("successfully created a new %s", resourceReconciler.ControllerName()))
+
+	// Add the watch for the third-party resource type to the controller.
+	if err = resourceController.Watch(
+		source.Kind(
+			crdReconciler.Manager().GetCache(),
+			crdReconciler.ClientObject(),
+			resourceReconciler,
+		),
+	); err != nil {
+		logger.Error(err, fmt.Sprintf("unable to create a new watch for %s resources", crdReconciler.KindDisplayName()))
+		return
+	}
+	logger.Info(fmt.Sprintf("successfully created a new watch for %s resources", crdReconciler.KindDisplayName()))
+
+	// Start the controller.
+	backgroundCtx := context.Background()
+	childContextForResourceController, stopResourceController := context.WithCancel(backgroundCtx)
+	resourceReconciler.SetControllerStopFunction(&stopResourceController)
+	go func() {
+		if err = resourceController.Start(childContextForResourceController); err != nil {
+			resourceReconciler.SetControllerStopFunction(nil)
+			logger.Error(err, fmt.Sprintf("unable to start the controller %s", resourceReconciler.ControllerName()))
+			return
+		}
+		resourceReconciler.SetControllerStopFunction(nil)
+		logger.Info(fmt.Sprintf("the controller %s has been stopped", resourceReconciler.ControllerName()))
+	}()
+}
+
+func stopWatchingThirdPartyResources(
+	ctx context.Context,
+	crdReconciler ThirdPartyCrdReconciler,
+	logger *logr.Logger) {
+	resourceReconciler := crdReconciler.ResourceReconciler()
+	resourceReconciler.ControllerStopFunctionLock().Lock()
+	defer resourceReconciler.ControllerStopFunctionLock().Unlock()
+
+	cancelFunc := resourceReconciler.GetControllerStopFunction()
+	if cancelFunc == nil {
+		logger.Info(fmt.Sprintf("ignoring attempt to stop the controller %s which seems to be stopped already", resourceReconciler.ControllerName()))
+		return
+	}
+
+	logger.Info(fmt.Sprintf("removing the informer for %s", crdReconciler.KindDisplayName()))
+	if err := crdReconciler.Manager().GetCache().RemoveInformer(
+		ctx,
+		crdReconciler.ClientObject(),
+	); err != nil {
+		logger.Error(err, fmt.Sprintf("unable to remove the informer for %s", crdReconciler.KindDisplayName()))
+	}
+	logger.Info(fmt.Sprintf("stopping the controller %s now", resourceReconciler.ControllerName()))
+	(*cancelFunc)()
+	resourceReconciler.SetControllerStopFunction(nil)
 }
 
 func isValidApiConfig(apiConfig *ApiConfig) bool {
@@ -343,13 +392,13 @@ func urlEncodePathSegment(s string) string {
 func upsertViaApi(
 	ctx context.Context,
 	resourceReconciler ThirdPartyResourceReconciler,
-	resource *unstructured.Unstructured,
+	thirdPartyResource client.Object,
 	logger *logr.Logger,
 ) {
 	synchronizeViaApi(
 		ctx,
 		resourceReconciler,
-		resource,
+		thirdPartyResource,
 		upsert,
 		"Creating/updating",
 		logger,
@@ -359,13 +408,13 @@ func upsertViaApi(
 func deleteViaApi(
 	ctx context.Context,
 	resourceReconciler ThirdPartyResourceReconciler,
-	resource *unstructured.Unstructured,
+	thirdPartyResource client.Object,
 	logger *logr.Logger,
 ) {
 	synchronizeViaApi(
 		ctx,
 		resourceReconciler,
-		resource,
+		thirdPartyResource,
 		delete,
 		"Deleting",
 		logger,
@@ -375,7 +424,7 @@ func deleteViaApi(
 func synchronizeViaApi(
 	ctx context.Context,
 	resourceReconciler ThirdPartyResourceReconciler,
-	resource *unstructured.Unstructured,
+	thirdPartyResource client.Object,
 	action apiAction,
 	actionLabel string,
 	logger *logr.Logger,
@@ -383,7 +432,7 @@ func synchronizeViaApi(
 	preconditionChecksResult := validatePreconditions(
 		ctx,
 		resourceReconciler,
-		resource,
+		thirdPartyResource,
 		logger,
 	)
 	if !preconditionChecksResult.synchronizeResource {
@@ -398,8 +447,8 @@ func synchronizeViaApi(
 			fmt.Sprintf(
 				"%s %s/%s did not contain any %s, skipping.",
 				resourceReconciler.KindDisplayName(),
-				resource.GetNamespace(),
-				resource.GetName(),
+				thirdPartyResource.GetNamespace(),
+				thirdPartyResource.GetName(),
 				resourceReconciler.ShortName(),
 			))
 	}
@@ -423,8 +472,8 @@ func synchronizeViaApi(
 		fmt.Sprintf("%s %s %s/%s: %d %s(s), %d successfully synchronized, validation issues: %v, synchronization errors: %v",
 			actionLabel,
 			resourceReconciler.KindDisplayName(),
-			resource.GetNamespace(),
-			resource.GetName(),
+			thirdPartyResource.GetNamespace(),
+			thirdPartyResource.GetName(),
 			itemsTotal,
 			resourceReconciler.ShortName(),
 			len(successfullySynchronized),
@@ -435,7 +484,7 @@ func synchronizeViaApi(
 		ctx,
 		resourceReconciler,
 		preconditionChecksResult.monitoringResource,
-		resource,
+		thirdPartyResource,
 		itemsTotal,
 		successfullySynchronized,
 		validationIssues,
@@ -447,16 +496,16 @@ func synchronizeViaApi(
 func validatePreconditions(
 	ctx context.Context,
 	resourceReconciler ThirdPartyResourceReconciler,
-	resource *unstructured.Unstructured,
+	thirdPartyResource client.Object,
 	logger *logr.Logger,
 ) *preconditionValidationResult {
-	namespace := resource.GetNamespace()
-	name := resource.GetName()
+	namespace := thirdPartyResource.GetNamespace()
+	name := thirdPartyResource.GetName()
 
 	monitoringRes, err := util.FindUniqueOrMostRecentResourceInScope(
 		ctx,
 		resourceReconciler.K8sClient(),
-		resource.GetNamespace(),
+		thirdPartyResource.GetNamespace(),
 		&dash0v1alpha1.Dash0Monitoring{},
 		logger,
 	)
@@ -534,44 +583,15 @@ func validatePreconditions(
 		dataset = util.DatasetDefault
 	}
 
-	specRaw := resource.Object["spec"]
-	if specRaw == nil {
-		logger.Info(
-			fmt.Sprintf(
-				"%s %s/%s has no spec, the %s(s) from will not be updated in Dash0.",
-				resourceReconciler.KindDisplayName(),
-				namespace,
-				name,
-				resourceReconciler.ShortName(),
-			))
-		return &preconditionValidationResult{
-			synchronizeResource: false,
-		}
-	}
-	spec, ok := specRaw.(map[string]interface{})
-	if !ok {
-		logger.Info(
-			fmt.Sprintf(
-				"The %s spec in %s/%s is not a map, the %s(s) will not be updated in Dash0.",
-				resourceReconciler.KindDisplayName(),
-				namespace,
-				name,
-				resourceReconciler.ShortName(),
-			))
-		return &preconditionValidationResult{
-			synchronizeResource: false,
-		}
-	}
-
 	return &preconditionValidationResult{
 		synchronizeResource: true,
+		thirdPartyResource:  thirdPartyResource,
 		monitoringResource:  monitoringResource,
 		authToken:           authToken,
 		apiEndpoint:         apiConfig.Endpoint,
 		dataset:             dataset,
 		k8sNamespace:        namespace,
 		k8sName:             name,
-		spec:                spec,
 	}
 }
 
@@ -720,14 +740,14 @@ func writeSynchronizationResult(
 	ctx context.Context,
 	resourceReconciler ThirdPartyResourceReconciler,
 	monitoringResource *dash0v1alpha1.Dash0Monitoring,
-	resource *unstructured.Unstructured,
+	thirdPartyResource client.Object,
 	itemsTotal int,
 	succesfullySynchronized []string,
 	validationIssuesPerItem map[string][]string,
 	synchronizationErrorsPerItem map[string]string,
 	logger *logr.Logger,
 ) {
-	qualifiedName := fmt.Sprintf("%s/%s", resource.GetNamespace(), resource.GetName())
+	qualifiedName := fmt.Sprintf("%s/%s", thirdPartyResource.GetNamespace(), thirdPartyResource.GetName())
 
 	result := dash0v1alpha1.Failed
 	if len(succesfullySynchronized) > 0 && len(validationIssuesPerItem) == 0 && len(synchronizationErrorsPerItem) == 0 {
@@ -736,24 +756,90 @@ func writeSynchronizationResult(
 		result = dash0v1alpha1.PartiallySuccessful
 	}
 
-	resultForThisResource := resourceReconciler.UpdateSynchronizationResultsInStatus(
-		monitoringResource,
-		qualifiedName,
-		result,
-		itemsTotal,
-		succesfullySynchronized,
-		synchronizationErrorsPerItem,
-		validationIssuesPerItem,
-	)
+	errAfterRetry := retry.OnError(
+		wait.Backoff{
+			Steps:    3,
+			Duration: 1 * time.Second,
+			Factor:   1.3,
+		},
+		func(err error) bool {
+			return true
+		},
+		func() error {
+			// re-fetch monitoring resource in case it has been modified since the start of the synchronization
+			// operation
+			if err := resourceReconciler.K8sClient().Get(
+				ctx,
+				types.NamespacedName{
+					Namespace: monitoringResource.GetNamespace(),
+					Name:      monitoringResource.GetName(),
+				},
+				monitoringResource); err != nil {
+				logger.Error(
+					err,
+					fmt.Sprintf("failed attempt (might be retried) to fetch the Dash0 monitoring resource %s/%s "+
+						"before updating it with the synchronization results for %s \"%s\": items total %d, "+
+						"successfully synchronized: %v, validation issues: %v, synchronization errors: %v",
+						monitoringResource.GetNamespace(),
+						monitoringResource.GetName(),
+						resourceReconciler.ShortName(),
+						qualifiedName,
+						itemsTotal,
+						succesfullySynchronized,
+						validationIssuesPerItem,
+						synchronizationErrorsPerItem,
+					))
+				return err
+			}
+			resultForThisResource := resourceReconciler.UpdateSynchronizationResultsInStatus(
+				monitoringResource,
+				qualifiedName,
+				result,
+				itemsTotal,
+				succesfullySynchronized,
+				synchronizationErrorsPerItem,
+				validationIssuesPerItem,
+			)
+			if err := resourceReconciler.K8sClient().Status().Update(ctx, monitoringResource); err != nil {
+				logger.Error(
+					err,
+					fmt.Sprintf("failed attempt (might be retried) to update the Dash0 monitoring resource "+
+						"%s/%s with the synchronization results for %s \"%s\": %v",
+						monitoringResource.GetNamespace(),
+						monitoringResource.GetName(),
+						resourceReconciler.ShortName(),
+						qualifiedName,
+						resultForThisResource,
+					))
+				return err
+			}
 
-	if err := resourceReconciler.K8sClient().Status().Update(ctx, monitoringResource); err != nil {
+			logger.Info(
+				fmt.Sprintf("successfully updated the Dash0 monitoring resource %s/%s with the synchronization "+
+					"results for %s \"%s\": %v",
+					monitoringResource.GetNamespace(),
+					monitoringResource.GetName(),
+					resourceReconciler.ShortName(),
+					qualifiedName,
+					resultForThisResource,
+				))
+			return nil
+		})
+
+	if errAfterRetry != nil {
 		logger.Error(
-			err,
-			fmt.Sprintf("failed to update the Dash0 monitoring resource in namespace %s with the synchronization results for %s \"%s\": %v",
-				resource.GetNamespace(),
+			errAfterRetry,
+			fmt.Sprintf("finally failed (no more retries) to update the Dash0 monitoring resource %s/%s with the "+
+				"synchronization results for %s \"%s\": items total %d, successfully synchronized: %v, validation "+
+				"issues: %v, synchronization errors: %v",
+				monitoringResource.GetNamespace(),
+				monitoringResource.GetName(),
 				resourceReconciler.ShortName(),
 				qualifiedName,
-				resultForThisResource,
+				itemsTotal,
+				succesfullySynchronized,
+				validationIssuesPerItem,
+				synchronizationErrorsPerItem,
 			))
 	}
 }
