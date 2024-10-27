@@ -5,7 +5,6 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -13,7 +12,6 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllertest"
@@ -57,7 +55,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 	Describe("the Perses dashboard CRD reconciler", func() {
 
 		AfterEach(func() {
-			ensurePersesDashboardCrdDoesNotExist(ctx)
+			deletePersesDashboardCrdIfItExists(ctx)
 		})
 
 		It("does not create a Perses dashboard resource reconciler if there is no auth token", func() {
@@ -75,7 +73,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 		It("does not start watching Perses dashboards if the CRD does not exist and the API endpoint has not been provided", func() {
 			createPersesDashboardCrdReconcilerWithAuthToken()
 			Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
-			Expect(persesDashboardCrdReconciler.persesDashboardReconciler.isWatching.Load()).To(BeFalse())
+			Expect(isWatchingPersesDashboardResources()).To(BeFalse())
 		})
 
 		It("does not start watching Perses dashboards if the API endpoint has been provided but the CRD does not exist", func() {
@@ -85,26 +83,26 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 				Endpoint: ApiEndpointTest,
 				Dataset:  DatasetTest,
 			}, &logger)
-			Expect(persesDashboardCrdReconciler.persesDashboardReconciler.isWatching.Load()).To(BeFalse())
+			Expect(isWatchingPersesDashboardResources()).To(BeFalse())
 		})
 
 		It("does not start watching Perses dashboards if the CRD exists but the API endpoint has not been provided", func() {
 			createPersesDashboardCrdReconcilerWithAuthToken()
 			ensurePersesDashboardCrdExists(ctx)
 			Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
-			Expect(persesDashboardCrdReconciler.persesDashboardReconciler.isWatching.Load()).To(BeFalse())
+			Expect(isWatchingPersesDashboardResources()).To(BeFalse())
 		})
 
 		It("starts watching Perses dashboards if the CRD exists and the API endpoint has been provided", func() {
 			createPersesDashboardCrdReconcilerWithAuthToken()
 			ensurePersesDashboardCrdExists(ctx)
 			Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
-			Expect(persesDashboardCrdReconciler.persesDashboardReconciler.isWatching.Load()).To(BeFalse())
+			Expect(isWatchingPersesDashboardResources()).To(BeFalse())
 			persesDashboardCrdReconciler.SetApiEndpointAndDataset(&ApiConfig{
 				Endpoint: ApiEndpointTest,
 				Dataset:  DatasetTest,
 			}, &logger)
-			Expect(persesDashboardCrdReconciler.persesDashboardReconciler.isWatching.Load()).To(BeTrue())
+			Expect(isWatchingPersesDashboardResources()).To(BeTrue())
 		})
 
 		It("starts watching Perses dashboards if API endpoint is provided and the CRD is created later on", func() {
@@ -119,7 +117,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 
 			// create the CRD a bit later
 			time.Sleep(100 * time.Millisecond)
-			Expect(persesDashboardCrdReconciler.persesDashboardReconciler.isWatching.Load()).To(BeFalse())
+			Expect(isWatchingPersesDashboardResources()).To(BeFalse())
 			ensurePersesDashboardCrdExists(ctx)
 			// watches are not triggered in unit tests
 			persesDashboardCrdReconciler.Create(
@@ -132,7 +130,78 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 
 			// verify that the controller starts watching when it sees the CRD being created
 			Eventually(func(g Gomega) {
-				g.Expect(persesDashboardCrdReconciler.persesDashboardReconciler.isWatching.Load()).To(BeTrue())
+				g.Expect(isWatchingPersesDashboardResources()).To(BeTrue())
+			}).Should(Succeed())
+		})
+
+		It("stops watching Perses dashboards if the CRD is deleted", func() {
+			createPersesDashboardCrdReconcilerWithAuthToken()
+			ensurePersesDashboardCrdExists(ctx)
+			Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+			Expect(isWatchingPersesDashboardResources()).To(BeFalse())
+			persesDashboardCrdReconciler.SetApiEndpointAndDataset(&ApiConfig{
+				Endpoint: ApiEndpointTest,
+				Dataset:  DatasetTest,
+			}, &logger)
+			Expect(isWatchingPersesDashboardResources()).To(BeTrue())
+
+			deletePersesDashboardCrdIfItExists(ctx)
+			// watches are not triggered in unit tests
+			persesDashboardCrdReconciler.Delete(
+				ctx,
+				event.TypedDeleteEvent[client.Object]{
+					Object: persesDashboardCrd,
+				},
+				&controllertest.TypedQueue[reconcile.Request]{},
+			)
+			Eventually(func(g Gomega) {
+				Expect(isWatchingPersesDashboardResources()).To(BeFalse())
+			}).Should(Succeed())
+		})
+
+		It("can cope with multiple consecutive create & delete events", func() {
+			createPersesDashboardCrdReconcilerWithAuthToken()
+			Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+			persesDashboardCrdReconciler.SetApiEndpointAndDataset(&ApiConfig{
+				Endpoint: ApiEndpointTest,
+				Dataset:  DatasetTest,
+			}, &logger)
+
+			Expect(isWatchingPersesDashboardResources()).To(BeFalse())
+			ensurePersesDashboardCrdExists(ctx)
+			persesDashboardCrdReconciler.Create(
+				ctx,
+				event.TypedCreateEvent[client.Object]{
+					Object: persesDashboardCrd,
+				},
+				&controllertest.TypedQueue[reconcile.Request]{},
+			)
+			Eventually(func(g Gomega) {
+				g.Expect(isWatchingPersesDashboardResources()).To(BeTrue())
+			}).Should(Succeed())
+
+			deletePersesDashboardCrdIfItExists(ctx)
+			persesDashboardCrdReconciler.Delete(
+				ctx,
+				event.TypedDeleteEvent[client.Object]{
+					Object: persesDashboardCrd,
+				},
+				&controllertest.TypedQueue[reconcile.Request]{},
+			)
+			Eventually(func(g Gomega) {
+				g.Expect(isWatchingPersesDashboardResources()).To(BeFalse())
+			}).Should(Succeed())
+
+			ensurePersesDashboardCrdExists(ctx)
+			persesDashboardCrdReconciler.Create(
+				ctx,
+				event.TypedCreateEvent[client.Object]{
+					Object: persesDashboardCrd,
+				},
+				&controllertest.TypedQueue[reconcile.Request]{},
+			)
+			Eventually(func(g Gomega) {
+				g.Expect(isWatchingPersesDashboardResources()).To(BeTrue())
 			}).Should(Succeed())
 		})
 	})
@@ -152,7 +221,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 				Endpoint: ApiEndpointTest,
 				Dataset:  DatasetTest,
 			}, &logger)
-			Expect(persesDashboardCrdReconciler.persesDashboardReconciler.isWatching.Load()).To(BeTrue())
+			Expect(isWatchingPersesDashboardResources()).To(BeTrue())
 			persesDashboardReconciler = persesDashboardCrdReconciler.persesDashboardReconciler
 			// to make tests that involve http retries faster, we do not want to wait for one second for each retry
 			persesDashboardReconciler.overrideHttpRetryDelay(20 * time.Millisecond)
@@ -163,7 +232,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 		})
 
 		AfterAll(func() {
-			ensurePersesDashboardCrdDoesNotExist(ctx)
+			deletePersesDashboardCrdIfItExists(ctx)
 		})
 
 		It("it ignores Perses dashboard resource changes if no Dash0 monitoring resource exists in the namespace", func() {
@@ -174,7 +243,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			persesDashboardReconciler.Create(
 				ctx,
 				event.TypedCreateEvent[client.Object]{
-					Object: &dashboardResource,
+					Object: dashboardResource,
 				},
 				&controllertest.TypedQueue[reconcile.Request]{},
 			)
@@ -194,7 +263,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			persesDashboardReconciler.Create(
 				ctx,
 				event.TypedCreateEvent[client.Object]{
-					Object: &dashboardResource,
+					Object: dashboardResource,
 				},
 				&controllertest.TypedQueue[reconcile.Request]{},
 			)
@@ -215,7 +284,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			persesDashboardReconciler.Create(
 				ctx,
 				event.TypedCreateEvent[client.Object]{
-					Object: &dashboardResource,
+					Object: dashboardResource,
 				},
 				&controllertest.TypedQueue[reconcile.Request]{},
 			)
@@ -234,7 +303,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			persesDashboardReconciler.Create(
 				ctx,
 				event.TypedCreateEvent[client.Object]{
-					Object: &dashboardResource,
+					Object: dashboardResource,
 				},
 				&controllertest.TypedQueue[reconcile.Request]{},
 			)
@@ -257,7 +326,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			persesDashboardReconciler.Update(
 				ctx,
 				event.TypedUpdateEvent[client.Object]{
-					ObjectNew: &dashboardResource,
+					ObjectNew: dashboardResource,
 				},
 				&controllertest.TypedQueue[reconcile.Request]{},
 			)
@@ -280,7 +349,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			persesDashboardReconciler.Delete(
 				ctx,
 				event.TypedDeleteEvent[client.Object]{
-					Object: &dashboardResource,
+					Object: dashboardResource,
 				},
 				&controllertest.TypedQueue[reconcile.Request]{},
 			)
@@ -291,31 +360,6 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 				defaultExpectedPersesSyncResult,
 			)
 			Expect(gock.IsDone()).To(BeTrue())
-		})
-
-		It("reports validation issues for a dashboard", func() {
-			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
-
-			dashboardResource := createDashboardResource()
-			spec := dashboardResource.Object["spec"].(map[string]interface{})
-			spec["display"] = "not a map"
-			persesDashboardReconciler.Create(
-				ctx,
-				event.TypedCreateEvent[client.Object]{
-					Object: &dashboardResource,
-				},
-				&controllertest.TypedQueue[reconcile.Request]{},
-			)
-
-			verifyPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
-				ctx,
-				k8sClient,
-				dash0v1alpha1.PersesDashboardSynchronizationResults{
-					SynchronizationStatus: dash0v1alpha1.Failed,
-					SynchronizationError:  "",
-					ValidationIssues:      []string{"spec.display is not a map"},
-				},
-			)
 		})
 
 		It("reports http errors when synchronizing a dashboard", func() {
@@ -333,7 +377,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			persesDashboardReconciler.Create(
 				ctx,
 				event.TypedCreateEvent[client.Object]{
-					Object: &dashboardResource,
+					Object: dashboardResource,
 				},
 				&controllertest.TypedQueue[reconcile.Request]{},
 			)
@@ -391,8 +435,8 @@ func expectDashboardDeleteRequest(expectedPath string) {
 		JSON(map[string]string{})
 }
 
-func createDashboardResource() unstructured.Unstructured {
-	dashboard := persesv1alpha1.PersesDashboard{
+func createDashboardResource() *persesv1alpha1.PersesDashboard {
+	return &persesv1alpha1.PersesDashboard{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "perses.dev/v1alpha1",
 			Kind:       "PersesDashboard",
@@ -403,12 +447,6 @@ func createDashboardResource() unstructured.Unstructured {
 		},
 		Spec: persesv1alpha1.Dashboard{},
 	}
-	marshalled, err := json.Marshal(dashboard)
-	Expect(err).NotTo(HaveOccurred())
-	unstructuredObject := unstructured.Unstructured{}
-	err = json.Unmarshal(marshalled, &unstructuredObject)
-	Expect(err).NotTo(HaveOccurred())
-	return unstructuredObject
 }
 
 func ensurePersesDashboardCrdExists(ctx context.Context) {
@@ -418,7 +456,7 @@ func ensurePersesDashboardCrdExists(ctx context.Context) {
 	)
 }
 
-func ensurePersesDashboardCrdDoesNotExist(ctx context.Context) {
+func deletePersesDashboardCrdIfItExists(ctx context.Context) {
 	if persesDashboardCrd != nil {
 		err := k8sClient.Delete(ctx, persesDashboardCrd, &client.DeleteOptions{
 			GracePeriodSeconds: new(int64),
@@ -437,6 +475,13 @@ func ensurePersesDashboardCrdDoesNotExist(ctx context.Context) {
 
 		persesDashboardCrd = nil
 	}
+}
+
+func isWatchingPersesDashboardResources() bool {
+	dashboardReconciler := persesDashboardCrdReconciler.persesDashboardReconciler
+	dashboardReconciler.ControllerStopFunctionLock().Lock()
+	defer dashboardReconciler.ControllerStopFunctionLock().Unlock()
+	return dashboardReconciler.IsWatching()
 }
 
 func verifyPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(

@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -19,7 +20,6 @@ import (
 	prometheusv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/util/workqueue"
@@ -28,7 +28,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-	"sigs.k8s.io/yaml"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 )
@@ -40,6 +39,17 @@ type PrometheusRuleCrdReconciler struct {
 	skipNameValidation       bool
 	prometheusRuleReconciler *PrometheusRuleReconciler
 	prometheusRuleCrdExists  atomic.Bool
+}
+
+type PrometheusRuleReconciler struct {
+	client.Client
+	pseudoClusterUid           types.UID
+	httpClient                 *http.Client
+	apiConfig                  atomic.Pointer[ApiConfig]
+	authToken                  string
+	httpRetryDelay             time.Duration
+	controllerStopFunctionLock sync.Mutex
+	controllerStopFunction     *context.CancelFunc
 }
 
 //+kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list;watch
@@ -73,6 +83,10 @@ func (r *PrometheusRuleCrdReconciler) Manager() ctrl.Manager {
 
 func (r *PrometheusRuleCrdReconciler) GetAuthToken() string {
 	return r.AuthToken
+}
+
+func (r *PrometheusRuleCrdReconciler) ClientObject() client.Object {
+	return &prometheusv1.PrometheusRule{}
 }
 
 func (r *PrometheusRuleCrdReconciler) KindDisplayName() string {
@@ -180,10 +194,7 @@ func (r *PrometheusRuleCrdReconciler) Delete(
 	logger.Info("The PrometheusRule custom resource definition has been deleted.")
 	r.prometheusRuleCrdExists.Store(false)
 
-	// Known issue: We would need to stop the watch for the Prometheus rule resources here, but the controller-runtime
-	// does not provide any API to stop a watch.
-	// An error will be logged every ten seconds until the controller process is restarted.
-	// See https://github.com/kubernetes-sigs/controller-runtime/issues/2983.
+	stopWatchingThirdPartyResources(ctx, r, &logger)
 }
 
 func (r *PrometheusRuleCrdReconciler) Generic(
@@ -247,16 +258,6 @@ func (r *PrometheusRuleCrdReconciler) RemoveApiEndpointAndDataset() {
 	r.prometheusRuleReconciler.apiConfig.Store(nil)
 }
 
-type PrometheusRuleReconciler struct {
-	client.Client
-	isWatching       atomic.Bool
-	pseudoClusterUid types.UID
-	httpClient       *http.Client
-	apiConfig        atomic.Pointer[ApiConfig]
-	authToken        string
-	httpRetryDelay   time.Duration
-}
-
 func (r *PrometheusRuleReconciler) InitializeSelfMonitoringMetrics(
 	meter otelmetric.Meter,
 	metricNamePrefix string,
@@ -281,12 +282,20 @@ func (r *PrometheusRuleReconciler) ShortName() string {
 	return "rule"
 }
 
-func (r *PrometheusRuleReconciler) IsWatching() *atomic.Bool {
-	return &r.isWatching
+func (r *PrometheusRuleReconciler) ControllerStopFunctionLock() *sync.Mutex {
+	return &r.controllerStopFunctionLock
 }
 
-func (r *PrometheusRuleReconciler) SetIsWatching(isWatching bool) {
-	r.isWatching.Store(isWatching)
+func (r *PrometheusRuleReconciler) GetControllerStopFunction() *context.CancelFunc {
+	return r.controllerStopFunction
+}
+
+func (r *PrometheusRuleReconciler) SetControllerStopFunction(controllerStopFunction *context.CancelFunc) {
+	r.controllerStopFunction = controllerStopFunction
+}
+
+func (r *PrometheusRuleReconciler) IsWatching() bool {
+	return r.controllerStopFunction != nil
 }
 
 func (r *PrometheusRuleReconciler) GetAuthToken() string {
@@ -346,7 +355,7 @@ func (r *PrometheusRuleReconciler) Create(
 		e.Object.GetName(),
 	)
 
-	upsertViaApi(ctx, r, e.Object.(*unstructured.Unstructured), &logger)
+	upsertViaApi(ctx, r, e.Object, &logger)
 }
 
 func (r *PrometheusRuleReconciler) Update(
@@ -367,7 +376,7 @@ func (r *PrometheusRuleReconciler) Update(
 		e.ObjectNew.GetName(),
 	)
 
-	upsertViaApi(ctx, r, e.ObjectNew.(*unstructured.Unstructured), &logger)
+	upsertViaApi(ctx, r, e.ObjectNew, &logger)
 }
 
 func (r *PrometheusRuleReconciler) Delete(
@@ -388,7 +397,7 @@ func (r *PrometheusRuleReconciler) Delete(
 		e.Object.GetName(),
 	)
 
-	deleteViaApi(ctx, r, e.Object.(*unstructured.Unstructured), &logger)
+	deleteViaApi(ctx, r, e.Object, &logger)
 }
 
 func (r *PrometheusRuleReconciler) Generic(
@@ -414,22 +423,13 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 	action apiAction,
 	logger *logr.Logger,
 ) (int, []HttpRequestWithItemName, map[string][]string, map[string]string) {
-	specRaw := preconditionChecksResult.spec
-	specAsYaml, err := yaml.Marshal(specRaw)
-	if err != nil {
-		logger.Error(err, "unable to marshal the Prometheus rule spec")
-		return 0, nil, nil, map[string]string{"*": err.Error()}
-	}
-	ruleSpec := prometheusv1.PrometheusRuleSpec{}
-	if err = yaml.Unmarshal(specAsYaml, &ruleSpec); err != nil {
-		logger.Error(err, "unable to unmarshal the Prometheus rule spec")
-		return 0, nil, nil, map[string]string{"*": err.Error()}
-	}
-
 	urlPrefix := r.renderUrlPrefix(preconditionChecksResult)
 	requests := make([]HttpRequestWithItemName, 0)
 	allValidationIssues := make(map[string][]string)
 	allSynchronizationErrors := make(map[string]string)
+
+	prometheusRule := preconditionChecksResult.thirdPartyResource.(*prometheusv1.PrometheusRule)
+	ruleSpec := prometheusRule.Spec
 	for _, group := range ruleSpec.Groups {
 		for ruleIdx, rule := range group.Rules {
 			itemNameSuffix := rule.Alert

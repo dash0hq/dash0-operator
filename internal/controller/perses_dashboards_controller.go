@@ -13,13 +13,15 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/go-logr/logr"
+	persesv1alpha1 "github.com/perses/perses-operator/api/v1alpha1"
+	persescommon "github.com/perses/perses/pkg/model/api/v1/common"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -40,6 +42,17 @@ type PersesDashboardCrdReconciler struct {
 	persesDashboardCrdExists  atomic.Bool
 }
 
+type PersesDashboardReconciler struct {
+	client.Client
+	pseudoClusterUid           types.UID
+	httpClient                 *http.Client
+	apiConfig                  atomic.Pointer[ApiConfig]
+	authToken                  string
+	httpRetryDelay             time.Duration
+	controllerStopFunctionLock sync.Mutex
+	controllerStopFunction     *context.CancelFunc
+}
+
 //+kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list;watch
 
 var (
@@ -53,6 +66,10 @@ func (r *PersesDashboardCrdReconciler) Manager() ctrl.Manager {
 
 func (r *PersesDashboardCrdReconciler) GetAuthToken() string {
 	return r.AuthToken
+}
+
+func (r *PersesDashboardCrdReconciler) ClientObject() client.Object {
+	return &persesv1alpha1.PersesDashboard{}
 }
 
 func (r *PersesDashboardCrdReconciler) KindDisplayName() string {
@@ -160,10 +177,7 @@ func (r *PersesDashboardCrdReconciler) Delete(
 	logger.Info("The PersesDashboard custom resource definition has been deleted.")
 	r.persesDashboardCrdExists.Store(false)
 
-	// Known issue: We would need to stop the watch for the Perses dashboard resources here, but the controller-runtime
-	// does not provide any API to stop a watch.
-	// An error will be logged every ten seconds until the controller process is restarted.
-	// See https://github.com/kubernetes-sigs/controller-runtime/issues/2983.
+	stopWatchingThirdPartyResources(ctx, r, &logger)
 }
 
 func (r *PersesDashboardCrdReconciler) Generic(
@@ -227,16 +241,6 @@ func (r *PersesDashboardCrdReconciler) RemoveApiEndpointAndDataset() {
 	r.persesDashboardReconciler.apiConfig.Store(nil)
 }
 
-type PersesDashboardReconciler struct {
-	client.Client
-	isWatching       atomic.Bool
-	pseudoClusterUid types.UID
-	httpClient       *http.Client
-	apiConfig        atomic.Pointer[ApiConfig]
-	authToken        string
-	httpRetryDelay   time.Duration
-}
-
 func (r *PersesDashboardReconciler) InitializeSelfMonitoringMetrics(
 	meter otelmetric.Meter,
 	metricNamePrefix string,
@@ -261,12 +265,20 @@ func (r *PersesDashboardReconciler) ShortName() string {
 	return "dashboard"
 }
 
-func (r *PersesDashboardReconciler) IsWatching() *atomic.Bool {
-	return &r.isWatching
+func (r *PersesDashboardReconciler) ControllerStopFunctionLock() *sync.Mutex {
+	return &r.controllerStopFunctionLock
 }
 
-func (r *PersesDashboardReconciler) SetIsWatching(isWatching bool) {
-	r.isWatching.Store(isWatching)
+func (r *PersesDashboardReconciler) GetControllerStopFunction() *context.CancelFunc {
+	return r.controllerStopFunction
+}
+
+func (r *PersesDashboardReconciler) SetControllerStopFunction(controllerStopFunction *context.CancelFunc) {
+	r.controllerStopFunction = controllerStopFunction
+}
+
+func (r *PersesDashboardReconciler) IsWatching() bool {
+	return r.controllerStopFunction != nil
 }
 
 func (r *PersesDashboardReconciler) GetAuthToken() string {
@@ -326,7 +338,7 @@ func (r *PersesDashboardReconciler) Create(
 		e.Object.GetName(),
 	)
 
-	upsertViaApi(ctx, r, e.Object.(*unstructured.Unstructured), &logger)
+	upsertViaApi(ctx, r, e.Object, &logger)
 }
 
 func (r *PersesDashboardReconciler) Update(
@@ -347,7 +359,7 @@ func (r *PersesDashboardReconciler) Update(
 		e.ObjectNew.GetName(),
 	)
 
-	upsertViaApi(ctx, r, e.ObjectNew.(*unstructured.Unstructured), &logger)
+	upsertViaApi(ctx, r, e.ObjectNew, &logger)
 }
 
 func (r *PersesDashboardReconciler) Delete(
@@ -368,7 +380,7 @@ func (r *PersesDashboardReconciler) Delete(
 		e.Object.GetName(),
 	)
 
-	deleteViaApi(ctx, r, e.Object.(*unstructured.Unstructured), &logger)
+	deleteViaApi(ctx, r, e.Object, &logger)
 }
 
 func (r *PersesDashboardReconciler) Generic(
@@ -405,26 +417,14 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 	switch action {
 	case upsert:
 		actionLabel = "upsert"
-		spec := preconditionChecksResult.spec
-		displayRaw := spec["display"]
-		if displayRaw == nil {
-			spec["display"] = map[string]interface{}{}
-			displayRaw = spec["display"]
+		persesDashboard := preconditionChecksResult.thirdPartyResource.(*persesv1alpha1.PersesDashboard)
+		spec := persesDashboard.Spec
+		if spec.Display == nil {
+			spec.Display = &persescommon.Display{}
 		}
-		display, ok := displayRaw.(map[string]interface{})
-		if !ok {
-			logger.Info("Perses dashboard spec.display is not a map, the dashboard will not be updated in Dash0.")
-			return 1,
-				nil,
-				map[string][]string{
-					itemName: {"spec.display is not a map"},
-				},
-				nil
-		}
-		displayName, ok := display["name"]
-		if !ok || displayName == "" {
+		if spec.Display.Name == "" {
 			// Let the dashboard name default to the perses dashboard resource's namespace + name, if unset.
-			display["name"] = fmt.Sprintf("%s/%s", preconditionChecksResult.k8sNamespace, preconditionChecksResult.k8sName)
+			spec.Display.Name = fmt.Sprintf("%s/%s", preconditionChecksResult.k8sNamespace, preconditionChecksResult.k8sName)
 		}
 
 		// Remove all unnecessary metadata (labels & annotations), we basically only need the dashboard spec.
