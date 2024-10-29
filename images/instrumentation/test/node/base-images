@@ -7,8 +7,5 @@ node:22-bookworm
 node:22-bullseye
 node:20-alpine
 node:20-bookworm
-node:20-bullseye
 node:18-alpine
-node:18-bookworm
 node:18-bullseye
-
