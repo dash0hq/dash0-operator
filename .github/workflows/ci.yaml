@@ -91,7 +91,7 @@ jobs:
       # workflow run on the main branch.
       - name: compile list of relevant changed files for the instrumentation image
         id: changed-files
-        uses: tj-actions/changed-files@v44
+        uses: tj-actions/changed-files@v45
         with:
           base_sha: ${{ steps.last_succsesfull_commit_main_branch.outputs.base }}
           files_yaml: |
