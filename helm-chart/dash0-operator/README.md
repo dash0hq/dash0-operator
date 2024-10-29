@@ -564,6 +564,41 @@ steps again:
 1. set up a [Dash0 backend connection](#configuring-the-dash0-backend-connection) and
 2. enable Dash0 monitoring in each namespace you want to monitor, see [Enable Dash0 Monitoring For a Namespace](#enable-dash0-monitoring-for-a-namespace).
 
+## Automatic Workload Instrumentation
+
+This section provides a quick behind-the-scenes glimpse into how the Dash0 operator's workload instrumentation for
+tracing works, intended for the technically curious reader.
+You can safely skip this section if you are not interested in the technical details.
+
+Workloads in [monitored namespaces](#enable-dash0-monitoring-for-a-namespace) are instrumented by the Dash0 operator
+to enable tracing for supported runtimes out of the box.
+This allows Dash0 users to avoid the hassle of manually adding the OpenTelemetry SDK to their applications—Dash0 takes
+care of it automatically.
+
+To achieve this, the Dash0 operator adds an
+[init container](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/) with the [Dash0 instrumentation
+image](https://github.com/dash0hq/dash0-operator/tree/main/images/instrumentation) to the pod spec of workloads.
+
+The instrumentation image contains the Dash0 OpenTelemetry distributions for all supported runtimes.
+When the init container starts, it copies the Dash0 OpenTelemetry distributions to the target container's file system.
+
+The operator also adds environment variables to the target container to ensure that the Dash0 OpenTelemetry distribution
+has the correct configuration and will get activated at startup.
+
+The activation of the Dash0 OpenTelemetry distribution happens via an `LD_PRELOAD` hook.
+`LD_PRELOAD` is an environment variable that is evaluated by the
+[dynamic linker/loader](https://man7.org/linux/man-pages/man8/ld.so.8.html) when a Linux executable starts.
+It specifies a list of additional shared objects to be loaded before the actual code of the executable.
+The Dash0 instrumentation image adds the Dash0 injector shared object to `LD_PRELOAD`.
+The Dash0 injector is a small binary written in C that adds additional environment variables to the running process by
+hooking into `getenv`.
+For example, it sets (or appends to) `NODE_OPTIONS` to activate the
+[Dash0 OpenTelemetry distribution for Node.js](https://github.com/dash0hq/opentelemetry-js-distribution) to collect 
+tracing data from all Node.js workloads.
+
+If you are curious, the source code for the injector is open source and can be found
+[here](https://github.com/dash0hq/dash0-operator/blob/main/images/instrumentation/injector/src/dash0_injector.c).
+
 ## Managing Dash0 Dashboards with the Operator
 
 You can manage your Dash0 dashboards via the Dash0 Kubernetes operator.

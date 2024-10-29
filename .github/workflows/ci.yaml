@@ -133,7 +133,7 @@ jobs:
       # characters that are not allowed in image tags (most notably slashes in dependabot PRs). We replace all invalid
       # characters with underscores and use the output of this step as the image tag.
       - name: assemble instrumentation test image name
-        id: instrumenation-test-image
+        id: instrumentation-test-image
         # See https://docs.docker.com/reference/cli/docker/image/tag:
         # "The tag must be valid ASCII and can contain lowercase and uppercase letters, digits, underscores, periods,
         # and hyphens."
@@ -148,7 +148,7 @@ jobs:
           github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
         with:
           context: images/instrumentation
-          tags: ${{ steps.instrumenation-test-image.outputs.image_name }}
+          tags: ${{ steps.instrumentation-test-image.outputs.image_name }}
           platforms: linux/amd64,linux/arm64
           cache-from: type=gha,scope=instrumentation
           cache-to: type=gha,mode=max,scope=instrumentation
@@ -159,7 +159,7 @@ jobs:
           steps.changed-files.outputs.instrumentation_any_changed == 'true' ||
           github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
         env:
-          INSTRUMENTATION_IMAGE: ${{ steps.instrumenation-test-image.outputs.image_name }}
+          INSTRUMENTATION_IMAGE: ${{ steps.instrumentation-test-image.outputs.image_name }}
         run: |
           images/instrumentation/injector/test/scripts/test-all.sh
 
@@ -168,7 +168,7 @@ jobs:
           steps.changed-files.outputs.instrumentation_any_changed == 'true' ||
           github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
         env:
-          INSTRUMENTATION_IMAGE: ${{ steps.instrumenation-test-image.outputs.image_name }}
+          INSTRUMENTATION_IMAGE: ${{ steps.instrumentation-test-image.outputs.image_name }}
         run: |
           images/instrumentation/test/test-all.sh
 
