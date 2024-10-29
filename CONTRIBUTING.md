@@ -125,8 +125,8 @@ The e2e tests might sometimes not be the best tool to troubleshoot the operator,
 they deploy in their `AfterAll`/`AfterEach` hooks. The scripts in `test-resources/bin` can be used for these cases:
 * `test-resources/bin/test-scenario-01-aum-operator-cr.sh`: Deploys an application under monitoring (this is 
   abbreviated to "aum" in the name of the script) to the namespace `test-namespace`, then it deploys the operator to
-  the namespace `dash-operator-system`, and finally it deploys the Dash0 monitoring resource to `test-namespace`. This is a
-  test scenario for instrumenting _existing_ workloads via the controller's reconcile loop.   
+  the namespace `dash0-system`, and finally it deploys the Dash0 monitoring resource to `test-namespace`. This is a test
+  scenario for instrumenting _existing_ workloads via the controller's reconcile loop.
 * `test-resources/bin/test-scenario-02-operator-cr-aum.sh`: Deploys the operator to `dash0-system`, then the
   Dash0 monitoring resource to namespace `test-namespace`, and finally an application under monitoring to the namespace
   `test-namespace`. This is a test scenario for instrumenting _new_ workloads at deploy time via the admission webhook.
