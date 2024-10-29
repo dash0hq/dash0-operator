@@ -338,8 +338,12 @@ helm install \
   dash0-operator/dash0-operator
 ```
 
+The Helm chart will validate whether the referenced secret exists and contains the required key.
+You can disable this check by setting `--set operator.dash0Export.disableSecretValidation=true`.
+This can be useful if you want to render the manifests via the Helm chart without accessing a live Kubernetes cluster.
+
 If you do not want to install the operator configuration resource via `helm install` but instead deploy it manually,
-and use a secret reference for the auth token, the following example YAML file would work work with the secret created
+and use a secret reference for the auth token, the following example YAML file would work with the secret created
 above:
 
 ```yaml

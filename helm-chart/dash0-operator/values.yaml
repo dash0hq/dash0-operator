@@ -56,6 +56,11 @@ operator:
       # secret with the command above (see property "name"), then you would set the property to "token".
       key:
 
+    # If secretRef is used, the Helm chart will check if the provided secret actually exists. Set this to true to
+    # disable this check. This can be useful if you want to render the manifests via the Helm charts without accessing a
+    # live Kubernetes cluster.
+    disableSecretValidation: false
+
   # number of replica for the controller manager deployment
   replicaCount: 1
 
