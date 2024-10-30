@@ -249,11 +249,15 @@ func (m *ResourceModifier) addEnvironmentVariables(container *corev1.Container, 
 			},
 		},
 	)
+	collectorBaseUrlPattern := "http://$(%s):%d"
+	if m.instrumentationMetadata.IsIPv6Cluster {
+		collectorBaseUrlPattern = "http://[$(%s)]:%d"
+	}
 	m.addOrReplaceEnvironmentVariable(
 		container,
 		corev1.EnvVar{
 			Name:  envVarDash0CollectorBaseUrlName,
-			Value: fmt.Sprintf("http://$(%s):%d", envVarDash0NodeIp, otelcolresources.OtlpHttpHostPort),
+			Value: fmt.Sprintf(collectorBaseUrlPattern, envVarDash0NodeIp, otelcolresources.OtlpHttpHostPort),
 		},
 	)
 }

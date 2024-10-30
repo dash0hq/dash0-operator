@@ -27,10 +27,10 @@ import (
 
 type Instrumenter struct {
 	client.Client
-	Clientset            *kubernetes.Clientset
-	Recorder             record.EventRecorder
-	Images               util.Images
-	OTelCollectorBaseUrl string
+	Clientset     *kubernetes.Clientset
+	Recorder      record.EventRecorder
+	Images        util.Images
+	IsIPv6Cluster bool
 }
 
 type ImmutableWorkloadError struct {
@@ -356,9 +356,9 @@ func (i *Instrumenter) handleJobJobOnInstrumentation(
 		hasBeenModified := false
 		switch requiredAction {
 		case util.ModificationModeInstrumentation:
-			hasBeenModified = newWorkloadModifier(i.Images, i.OTelCollectorBaseUrl, &logger).AddLabelsToImmutableJob(&job)
+			hasBeenModified = newWorkloadModifier(i.Images, i.IsIPv6Cluster, &logger).AddLabelsToImmutableJob(&job)
 		case util.ModificationModeUninstrumentation:
-			hasBeenModified = newWorkloadModifier(i.Images, i.OTelCollectorBaseUrl, &logger).RemoveLabelsFromImmutableJob(&job)
+			hasBeenModified = newWorkloadModifier(i.Images, i.IsIPv6Cluster, &logger).RemoveLabelsFromImmutableJob(&job)
 		}
 
 		if hasBeenModified {
@@ -497,9 +497,9 @@ func (i *Instrumenter) instrumentWorkload(
 
 		switch requiredAction {
 		case util.ModificationModeInstrumentation:
-			hasBeenModified = workload.instrument(i.Images, i.OTelCollectorBaseUrl, &logger)
+			hasBeenModified = workload.instrument(i.Images, i.IsIPv6Cluster, &logger)
 		case util.ModificationModeUninstrumentation:
-			hasBeenModified = workload.revert(i.Images, i.OTelCollectorBaseUrl, &logger)
+			hasBeenModified = workload.revert(i.Images, i.IsIPv6Cluster, &logger)
 		}
 
 		if hasBeenModified {
@@ -726,7 +726,7 @@ func (i *Instrumenter) handleJobOnUninstrumentation(ctx context.Context, job bat
 		} else if util.InstrumentationAttemptHasFailed(&job.ObjectMeta) {
 			// There was an attempt to instrument this job (probably by the controller), which has not been successful.
 			// We only need remove the labels from that instrumentation attempt to clean up.
-			newWorkloadModifier(i.Images, i.OTelCollectorBaseUrl, &logger).RemoveLabelsFromImmutableJob(&job)
+			newWorkloadModifier(i.Images, i.IsIPv6Cluster, &logger).RemoveLabelsFromImmutableJob(&job)
 
 			// Apparently for jobs we do not need to set the "dash0.com/webhook-ignore-once" label, since changing their
 			// labels does not trigger a new admission request.
@@ -846,7 +846,7 @@ func (i *Instrumenter) revertWorkloadInstrumentation(
 				err,
 			)
 		}
-		hasBeenModified = workload.revert(i.Images, i.OTelCollectorBaseUrl, &logger)
+		hasBeenModified = workload.revert(i.Images, i.IsIPv6Cluster, &logger)
 		if hasBeenModified {
 			// Changing the workload spec sometimes triggers a new admission request, which would re-instrument the
 			// workload via the webhook immediately. To prevent this, we add a label that the webhook can check to
@@ -888,12 +888,12 @@ func (i *Instrumenter) postProcessUninstrumentation(
 	}
 }
 
-func newWorkloadModifier(images util.Images, oTelCollectorBaseUrl string, logger *logr.Logger) *workloads.ResourceModifier {
+func newWorkloadModifier(images util.Images, isIPv6Cluster bool, logger *logr.Logger) *workloads.ResourceModifier {
 	return workloads.NewResourceModifier(
 		util.InstrumentationMetadata{
-			Images:               images,
-			InstrumentedBy:       "controller",
-			OTelCollectorBaseUrl: oTelCollectorBaseUrl,
+			Images:         images,
+			InstrumentedBy: "controller",
+			IsIPv6Cluster:  isIPv6Cluster,
 		},
 		logger,
 	)

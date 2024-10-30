@@ -49,11 +49,11 @@ var _ = Describe("The instrumenter", Ordered, func() {
 		createdObjects = make([]client.Object, 0)
 
 		instrumenter = &Instrumenter{
-			Client:               k8sClient,
-			Clientset:            clientset,
-			Recorder:             recorder,
-			Images:               TestImages,
-			OTelCollectorBaseUrl: OTelCollectorBaseUrlTest,
+			Client:        k8sClient,
+			Clientset:     clientset,
+			Recorder:      recorder,
+			Images:        TestImages,
+			IsIPv6Cluster: false,
 		}
 	})
 

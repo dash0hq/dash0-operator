@@ -23,9 +23,8 @@ import (
 
 var (
 	instrumentationMetadata = util.InstrumentationMetadata{
-		Images:               TestImages,
-		OTelCollectorBaseUrl: OTelCollectorBaseUrlTest,
-		InstrumentedBy:       "modify_test",
+		Images:         TestImages,
+		InstrumentedBy: "modify_test",
 	}
 )
 

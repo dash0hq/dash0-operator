@@ -54,11 +54,11 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 		createdObjects = make([]client.Object, 0)
 
 		instrumenter := &instrumentation.Instrumenter{
-			Client:               k8sClient,
-			Clientset:            clientset,
-			Recorder:             recorder,
-			Images:               TestImages,
-			OTelCollectorBaseUrl: OTelCollectorBaseUrlTest,
+			Client:        k8sClient,
+			Clientset:     clientset,
+			Recorder:      recorder,
+			Images:        TestImages,
+			IsIPv6Cluster: false,
 		}
 		oTelColResourceManager := &otelcolresources.OTelColResourceManager{
 			Client:                  k8sClient,

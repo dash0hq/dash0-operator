@@ -59,8 +59,8 @@ func getImageVersion(image string) string {
 
 type InstrumentationMetadata struct {
 	Images
-	OTelCollectorBaseUrl string
-	InstrumentedBy       string
+	InstrumentedBy string
+	IsIPv6Cluster  bool
 }
 
 type ModificationMode string
