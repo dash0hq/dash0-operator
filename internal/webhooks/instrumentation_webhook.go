@@ -29,10 +29,11 @@ import (
 )
 
 type InstrumentationWebhookHandler struct {
-	Client        client.Client
-	Recorder      record.EventRecorder
-	Images        util.Images
-	IsIPv6Cluster bool
+	Client               client.Client
+	Recorder             record.EventRecorder
+	Images               util.Images
+	OTelCollectorBaseUrl string
+	IsIPv6Cluster        bool
 }
 
 type resourceHandler func(h *InstrumentationWebhookHandler, request admission.Request, gvkLabel string, logger *logr.Logger) admission.Response
@@ -477,9 +478,10 @@ func (h *InstrumentationWebhookHandler) postProcessUninstrumentation(
 func (h *InstrumentationWebhookHandler) newWorkloadModifier(logger *logr.Logger) *workloads.ResourceModifier {
 	return workloads.NewResourceModifier(
 		util.InstrumentationMetadata{
-			Images:         h.Images,
-			InstrumentedBy: "webhook",
-			IsIPv6Cluster:  h.IsIPv6Cluster,
+			Images:               h.Images,
+			InstrumentedBy:       "webhook",
+			OTelCollectorBaseUrl: h.OTelCollectorBaseUrl,
+			IsIPv6Cluster:        h.IsIPv6Cluster,
 		},
 		logger,
 	)

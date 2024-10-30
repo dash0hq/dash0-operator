@@ -111,10 +111,11 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	err = (&InstrumentationWebhookHandler{
-		Client:        k8sClient,
-		Recorder:      manager.GetEventRecorderFor("dash0-webhook"),
-		Images:        TestImages,
-		IsIPv6Cluster: false,
+		Client:               k8sClient,
+		Recorder:             manager.GetEventRecorderFor("dash0-webhook"),
+		Images:               TestImages,
+		OTelCollectorBaseUrl: OTelCollectorBaseUrlTest,
+		IsIPv6Cluster:        false,
 	}).SetupWebhookWithManager(manager)
 	Expect(err).NotTo(HaveOccurred())
 	err = (&OperatorConfigurationValidationWebhookHandler{

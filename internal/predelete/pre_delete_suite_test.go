@@ -90,11 +90,12 @@ var _ = BeforeSuite(func() {
 	Expect(mgr).NotTo(BeNil())
 
 	instrumenter := &instrumentation.Instrumenter{
-		Client:        k8sClient,
-		Clientset:     clientset,
-		Recorder:      mgr.GetEventRecorderFor("dash0-monitoring-controller"),
-		Images:        TestImages,
-		IsIPv6Cluster: false,
+		Client:               k8sClient,
+		Clientset:            clientset,
+		Recorder:             mgr.GetEventRecorderFor("dash0-monitoring-controller"),
+		Images:               TestImages,
+		OTelCollectorBaseUrl: OTelCollectorBaseUrlTest,
+		IsIPv6Cluster:        false,
 	}
 	oTelColResourceManager := &otelcolresources.OTelColResourceManager{
 		Client:                  k8sClient,

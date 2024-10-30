@@ -249,15 +249,31 @@ func (m *ResourceModifier) addEnvironmentVariables(container *corev1.Container, 
 			},
 		},
 	)
+
 	collectorBaseUrlPattern := "http://$(%s):%d"
+
+	// This should actually work - use the node's IPv6 for the collector base URL.
+	// But apparently the Node.js OpenTelemetry SDK tries to resolve that as a a hostname, resulting in
+	// Error: getaddrinfo ENOTFOUND [2a05:d014:1bc2:3702:fc43:fec6:1d88:ace5]\n    at GetAddrInfoReqWrap.onlookup
+	// all [as oncomplete] (node:dns:120:26)
+	// Instead, we fall back to the service URL of the collector.
+	// if m.instrumentationMetadata.IsIPv6Cluster {
+	//	 collectorBaseUrlPattern = "http://[$(%s)]:%d"
+	// }
+	// Would be worth to give this another try after implementing
+	// https://linear.app/dash0/issue/ENG-2132.
+	// If successful, we can then also eliminate the setting OTelCollectorBaseUrl in all components.
+
+	collectorBaseUrl := fmt.Sprintf(collectorBaseUrlPattern, envVarDash0NodeIp, otelcolresources.OtlpHttpHostPort)
 	if m.instrumentationMetadata.IsIPv6Cluster {
-		collectorBaseUrlPattern = "http://[$(%s)]:%d"
+		collectorBaseUrl = m.instrumentationMetadata.OTelCollectorBaseUrl
 	}
+
 	m.addOrReplaceEnvironmentVariable(
 		container,
 		corev1.EnvVar{
 			Name:  envVarDash0CollectorBaseUrlName,
-			Value: fmt.Sprintf(collectorBaseUrlPattern, envVarDash0NodeIp, otelcolresources.OtlpHttpHostPort),
+			Value: collectorBaseUrl,
 		},
 	)
 }

@@ -37,11 +37,12 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 
 		recorder := manager.GetEventRecorderFor("dash0-monitoring-controller")
 		instrumenter := &instrumentation.Instrumenter{
-			Client:        k8sClient,
-			Clientset:     clientset,
-			Recorder:      recorder,
-			Images:        TestImages,
-			IsIPv6Cluster: false,
+			Client:               k8sClient,
+			Clientset:            clientset,
+			Recorder:             recorder,
+			Images:               TestImages,
+			OTelCollectorBaseUrl: OTelCollectorBaseUrlTest,
+			IsIPv6Cluster:        false,
 		}
 		oTelColResourceManager := &otelcolresources.OTelColResourceManager{
 			Client:                  k8sClient,
