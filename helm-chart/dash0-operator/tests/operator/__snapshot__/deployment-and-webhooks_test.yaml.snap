@@ -64,6 +64,10 @@ deployment should match snapshot (default values):
                   valueFrom:
                     fieldRef:
                       fieldPath: metadata.uid
+                - name: MY_POD_IP
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: status.podIP
               image: ghcr.io/dash0hq/operator-controller:0.0.0
               livenessProbe:
                 httpGet:

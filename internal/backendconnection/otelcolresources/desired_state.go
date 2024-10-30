@@ -28,14 +28,8 @@ type oTelColConfig struct {
 	Export                                  dash0v1alpha1.Export
 	SelfMonitoringAndApiAccessConfiguration selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration
 	Images                                  util.Images
+	IsIPv6Cluster                           bool
 	DevelopmentMode                         bool
-}
-
-type collectorConfigurationTemplateValues struct {
-	Exporters                        []OtlpExporter
-	IgnoreLogsFromNamespaces         []string
-	NamespacesWithPrometheusScraping []string
-	DevelopmentMode                  bool
 }
 
 // This type just exists to ensure all created objects go through addCommonMetadata.

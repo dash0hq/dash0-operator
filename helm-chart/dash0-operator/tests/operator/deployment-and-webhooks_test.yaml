@@ -326,8 +326,11 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[9].name
           value: K8S_POD_UID
-      - notExists:
+      - equal:
           path: spec.template.spec.containers[0].env[10].name
+          value: MY_POD_IP
+      - notExists:
+          path: spec.template.spec.containers[0].env[11].name
 
   - it: mutating webhook should have caBundle set
     documentSelector:

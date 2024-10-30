@@ -45,11 +45,11 @@ var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
 		env, err := readDotEnvFile(dotEnvFile)
 		Expect(err).NotTo(HaveOccurred())
 
-		localKubeCtx := env["LOCAL_KUBECTX"]
-		if localKubeCtx == "" {
-			Fail(fmt.Sprintf("The mandatory setting LOCAL_KUBECTX is missing in the file %s.", dotEnvFile))
+		e2eKubeCtx := env["E2E_KUBECTX"]
+		if e2eKubeCtx == "" {
+			Fail(fmt.Sprintf("The mandatory setting E2E_KUBECTX is missing in the file %s.", dotEnvFile))
 		}
-		kubeContextHasBeenChanged, originalKubeContext = setKubeContext(localKubeCtx)
+		kubeContextHasBeenChanged, originalKubeContext = setKubeContext(e2eKubeCtx)
 
 		// Cleans up the test namespace, otlp sink and the operator. Usually this is cleaned up in AfterAll/AfterEach
 		// steps, but for cases where we want to troubleshoot failing e2e tests and have disabled cleanup in After steps

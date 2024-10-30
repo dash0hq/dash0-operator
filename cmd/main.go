@@ -64,6 +64,7 @@ type environmentVariables struct {
 	filelogOffsetSynchImage              string
 	filelogOffsetSynchImagePullPolicy    corev1.PullPolicy
 	selfMonitoringAndApiAuthToken        string
+	podIp                                string
 }
 
 const (
@@ -79,6 +80,7 @@ const (
 	configurationReloaderImagePullPolicyEnvVarName = "DASH0_CONFIGURATION_RELOADER_IMAGE_PULL_POLICY"
 	filelogOffsetSynchImageEnvVarName              = "DASH0_FILELOG_OFFSET_SYNCH_IMAGE"
 	filelogOffsetSynchImagePullPolicyEnvVarName    = "DASH0_FILELOG_OFFSET_SYNCH_IMAGE_PULL_POLICY"
+	podIpEnvVarName                                = "MY_POD_IP"
 
 	developmentModeEnvVarName = "DASH0_DEVELOPMENT_MODE"
 
@@ -404,6 +406,11 @@ func readEnvironmentVariables() error {
 
 	selfMonitoringAndApiAuthToken := os.Getenv(util.SelfMonitoringAndApiAuthTokenEnvVarName)
 
+	podIp, isSet := os.LookupEnv(podIpEnvVarName)
+	if !isSet {
+		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, podIpEnvVarName)
+	}
+
 	envVars = environmentVariables{
 		operatorNamespace:                    operatorNamespace,
 		deploymentName:                       deploymentName,
@@ -418,6 +425,7 @@ func readEnvironmentVariables() error {
 		filelogOffsetSynchImage:              filelogOffsetSynchImage,
 		filelogOffsetSynchImagePullPolicy:    filelogOffsetSynchImagePullPolicy,
 		selfMonitoringAndApiAuthToken:        selfMonitoringAndApiAuthToken,
+		podIp:                                podIp,
 	}
 
 	return nil
@@ -475,6 +483,7 @@ func startDash0Controllers(
 		FilelogOffsetSynchImage:              envVars.filelogOffsetSynchImage,
 		FilelogOffsetSynchImagePullPolicy:    envVars.filelogOffsetSynchImagePullPolicy,
 	}
+	isIPv6Cluster := strings.Count(envVars.podIp, ":") >= 2
 
 	executeStartupTasks(
 		ctx,
@@ -502,6 +511,7 @@ func startDash0Controllers(
 		DeploymentSelfReference: deploymentSelfReference,
 		OTelCollectorNamePrefix: envVars.oTelCollectorNamePrefix,
 		OTelColResourceSpecs:    oTelColResourceSpecs,
+		IsIPv6Cluster:           isIPv6Cluster,
 		DevelopmentMode:         developmentMode,
 	}
 	backendConnectionManager := &backendconnection.BackendConnectionManager{

@@ -34,6 +34,7 @@ type OTelColResourceManager struct {
 	DeploymentSelfReference          *appsv1.Deployment
 	OTelCollectorNamePrefix          string
 	OTelColResourceSpecs             *OTelColResourceSpecs
+	IsIPv6Cluster                    bool
 	DevelopmentMode                  bool
 	obsoleteResourcesHaveBeenDeleted atomic.Bool
 }
@@ -100,6 +101,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		Export:                                  *export,
 		SelfMonitoringAndApiAccessConfiguration: selfMonitoringConfiguration,
 		Images:                                  images,
+		IsIPv6Cluster:                           m.IsIPv6Cluster,
 		DevelopmentMode:                         m.DevelopmentMode,
 	}
 	desiredState, err := assembleDesiredStateForUpsert(
@@ -336,6 +338,7 @@ func (m *OTelColResourceManager) DeleteResources(
 		Export:                                  dash0v1alpha1.Export{},
 		SelfMonitoringAndApiAccessConfiguration: selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{SelfMonitoringEnabled: false},
 		Images:                                  dummyImagesForDeletion,
+		IsIPv6Cluster:                           m.IsIPv6Cluster,
 		DevelopmentMode:                         m.DevelopmentMode,
 	}
 	desiredResources, err := assembleDesiredStateForDelete(config, m.OTelColResourceSpecs)
