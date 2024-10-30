@@ -13,6 +13,8 @@ const requestCounter = new Counter({
   help: 'Number of requests to the test endpoint',
 });
 
+console.log(`DASH0_OTEL_COLLECTOR_BASE_URL: ${process.env.DASH0_OTEL_COLLECTOR_BASE_URL}`);
+
 app.get('/ready', (req, res) => {
   res.sendStatus(204);
 });

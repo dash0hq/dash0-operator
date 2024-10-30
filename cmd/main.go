@@ -467,11 +467,6 @@ func startDash0Controllers(
 		os.Exit(1)
 	}
 
-	oTelCollectorBaseUrl :=
-		fmt.Sprintf(
-			"http://%s-opentelemetry-collector.%s.svc.cluster.local:4318",
-			envVars.oTelCollectorNamePrefix,
-			envVars.operatorNamespace)
 	images := util.Images{
 		OperatorImage:                        envVars.operatorImage,
 		InitContainerImage:                   envVars.initContainerImage,
@@ -491,7 +486,7 @@ func startDash0Controllers(
 		mgr.GetEventRecorderFor("dash0-startup-tasks"),
 		operatorConfiguration,
 		images,
-		oTelCollectorBaseUrl,
+		isIPv6Cluster,
 		&setupLog,
 	)
 
@@ -499,11 +494,11 @@ func startDash0Controllers(
 
 	k8sClient := mgr.GetClient()
 	instrumenter := &instrumentation.Instrumenter{
-		Client:               k8sClient,
-		Clientset:            clientset,
-		Recorder:             mgr.GetEventRecorderFor("dash0-monitoring-controller"),
-		Images:               images,
-		OTelCollectorBaseUrl: oTelCollectorBaseUrl,
+		Client:        k8sClient,
+		Clientset:     clientset,
+		Recorder:      mgr.GetEventRecorderFor("dash0-monitoring-controller"),
+		Images:        images,
+		IsIPv6Cluster: isIPv6Cluster,
 	}
 	oTelColResourceManager := &otelcolresources.OTelColResourceManager{
 		Client:                  k8sClient,
@@ -595,10 +590,10 @@ func startDash0Controllers(
 	)
 
 	if err := (&webhooks.InstrumentationWebhookHandler{
-		Client:               k8sClient,
-		Recorder:             mgr.GetEventRecorderFor("dash0-instrumentation-webhook"),
-		Images:               images,
-		OTelCollectorBaseUrl: oTelCollectorBaseUrl,
+		Client:        k8sClient,
+		Recorder:      mgr.GetEventRecorderFor("dash0-instrumentation-webhook"),
+		Images:        images,
+		IsIPv6Cluster: isIPv6Cluster,
 	}).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the instrumentation webhook: %w", err)
 	}
@@ -661,7 +656,7 @@ func executeStartupTasks(
 	eventRecorder record.EventRecorder,
 	operatorConfiguration *startup.OperatorConfigurationValues,
 	images util.Images,
-	oTelCollectorBaseUrl string,
+	isIPv6Cluster bool,
 	logger *logr.Logger,
 ) {
 	createOperatorConfiguration(
@@ -676,7 +671,7 @@ func executeStartupTasks(
 		clientset,
 		eventRecorder,
 		images,
-		oTelCollectorBaseUrl,
+		isIPv6Cluster,
 	)
 }
 
@@ -686,14 +681,14 @@ func instrumentAtStartup(
 	clientset *kubernetes.Clientset,
 	eventRecorder record.EventRecorder,
 	images util.Images,
-	oTelCollectorBaseUrl string,
+	isIPv6Cluster bool,
 ) {
 	startupInstrumenter := &instrumentation.Instrumenter{
-		Client:               startupTasksK8sClient,
-		Clientset:            clientset,
-		Recorder:             eventRecorder,
-		Images:               images,
-		OTelCollectorBaseUrl: oTelCollectorBaseUrl,
+		Client:        startupTasksK8sClient,
+		Clientset:     clientset,
+		Recorder:      eventRecorder,
+		Images:        images,
+		IsIPv6Cluster: isIPv6Cluster,
 	}
 
 	// Trigger an unconditional apply/update of instrumentation for all workloads in Dash0-enabled namespaces, according
