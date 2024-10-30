@@ -49,7 +49,8 @@ runs:
           type=semver,pattern={{major}}.{{minor}}.{{patch}}
           type=semver,pattern={{major}}.{{minor}}
           type=semver,pattern={{major}}
-          type=ref,enable={{is_default_branch}},suffix=-dev,event=branch
+          type=ref,suffix=-dev,event=branch
+          type=ref,suffix=-pr,event=pr
           type=ref,event=tag
           type=sha
         labels: |
@@ -74,4 +75,4 @@ runs:
         cache-from: type=gha,scope=${{ inputs.imageName }}
         cache-to: type=gha,mode=max,scope=${{ inputs.imageName }}
         # Maintenance note: keep the expression for push in sync with the expression used in "platforms".
-        push: ${{ github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/') }}
+        push: true
