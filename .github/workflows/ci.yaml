@@ -191,6 +191,9 @@ jobs:
   build-and-push-images:
     name: Build Images
     runs-on: ubuntu-latest
+    needs:
+      - verify
+      - injector_binary_and_instrumentation_image_tests
     timeout-minutes: 60
 
     steps:
