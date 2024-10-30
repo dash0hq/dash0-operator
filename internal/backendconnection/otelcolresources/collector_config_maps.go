@@ -16,6 +16,14 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
+type collectorConfigurationTemplateValues struct {
+	Exporters                        []OtlpExporter
+	IgnoreLogsFromNamespaces         []string
+	NamespacesWithPrometheusScraping []string
+	SelfIpReference                  string
+	DevelopmentMode                  bool
+}
+
 type OtlpExporter struct {
 	Name     string
 	Endpoint string
@@ -78,6 +86,10 @@ func assembleCollectorConfigMap(
 			return nil, fmt.Errorf("cannot assemble the exporters for the configuration: %w", err)
 		}
 
+		selfIpReference := "${env:MY_POD_IP}"
+		if config.IsIPv6Cluster {
+			selfIpReference = "[${env:MY_POD_IP}]"
+		}
 		collectorConfiguration, err := renderCollectorConfiguration(template,
 			&collectorConfigurationTemplateValues{
 				Exporters: exporters,
@@ -89,6 +101,7 @@ func assembleCollectorConfigMap(
 					config.Namespace,
 				},
 				NamespacesWithPrometheusScraping: namespacesWithPrometheusScraping,
+				SelfIpReference:                  selfIpReference,
 				DevelopmentMode:                  config.DevelopmentMode,
 			})
 		if err != nil {

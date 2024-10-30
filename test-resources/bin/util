@@ -17,8 +17,18 @@ load_env_file () {
 
 verify_kubectx() {
   current_kubectx=$(kubectl config current-context)
-  if [[ "$current_kubectx" != "${LOCAL_KUBECTX:-}" ]]; then
-	echo "error: The current kubectx is not the expected local kubectx \"${LOCAL_KUBECTX:-}\". Please switch to the local context or set LOCAL_KUBECTX differently in .env. Refusing to run test scenarios/cleanup in a potentially remote context."
+  allowed_contexts_raw="${ALLOWED_KUBECTXS:-}"
+  IFS=',' read -r -a allowed_contexts <<< "$allowed_contexts_raw"
+  current_context_is_allowed=false
+  for allowed_context_name in "${allowed_contexts[@]}"; do
+    trimmed=$(trim "$allowed_context_name")
+    if [[ "$current_kubectx" == "$trimmed" ]]; then
+      current_context_is_allowed=true
+      break
+    fi
+  done
+  if [[ "$current_context_is_allowed" != true ]]; then
+    echo "error: The current kube context \"$current_kubectx\" is not allowed for testing according to the setting ALLOWED_KUBECTXS (current value: \"$allowed_contexts_raw\"). Please switch to an allowed context or set ALLOWED_KUBECTXS differently in .env. Refusing to run test scenarios/cleanup in context where that is potentially dangerous."
 	exit 1
   fi
 }
@@ -136,14 +146,20 @@ wait_for_operator_manager_and_webhook() {
   kubectl wait deployment.apps/dash0-operator-controller --for condition=Available --namespace dash0-system --timeout 30s
 
   echo "waiting for the operator's webhook endpoint to become available..."
+  webhook_available=false
   for ((i=0; i<=100; i++)); do
     endpoints_output=$(kubectl get endpoints --namespace dash0-system dash0-operator-webhook-service)
-    expected_endpoint_regex='dash0-operator-webhook-service[[:blank:]]+[[:digit:]\.]+:9443'
+    expected_endpoint_regex='dash0-operator-webhook-service.+:9443'
     if [[ "$endpoints_output" =~ $expected_endpoint_regex ]]; then
+      webhook_available=true
       break;
     fi
     sleep 0.3
   done
+  if [[ "$webhook_available" != true ]]; then
+    echo "The operator's webhook endpoint never became available."
+    exit 1
+  fi
 
   # We deploy an operator configuration at startup via operator.dash0Export.enabled=true, wait for that resource to
   # become available as well.
@@ -209,4 +225,13 @@ install_third_party_resources() {
     kubectl apply -n ${target_namespace} -f test-resources/customresources/prometheusrule/prometheusrule.yaml
     finish_step
   fi
+}
+
+trim() {
+  local var="$*"
+  # remove leading whitespace characters
+  var="${var#"${var%%[![:space:]]*}"}"
+  # remove trailing whitespace characters
+  var="${var%"${var##*[![:space:]]}"}"
+  printf '%s' "$var"
 }

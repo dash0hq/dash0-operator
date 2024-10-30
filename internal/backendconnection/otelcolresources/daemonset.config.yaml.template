@@ -25,7 +25,7 @@ exporters:
 
 extensions:
   health_check:
-    endpoint: ${env:MY_POD_IP}:13133
+    endpoint: "{{ .SelfIpReference }}:13133"
   file_storage/filelogreceiver_offsets:
     directory: /var/otelcol/filelogreceiver_offsets
     timeout: 1s
@@ -94,10 +94,10 @@ receivers:
   otlp:
     protocols:
       grpc:
-        endpoint: ${env:MY_POD_IP}:4317
+        endpoint: "{{ .SelfIpReference }}:4317"
         max_recv_msg_size_mib: 8388608
       http:
-        endpoint: ${env:MY_POD_IP}:4318
+        endpoint: "{{ .SelfIpReference }}:4318"
 
   kubeletstats:
     auth_type: serviceAccount
@@ -449,5 +449,5 @@ service:
         - pull:
             exporter:
               prometheus:
-                host: "${env:MY_POD_IP}"
+                host: "{{ .SelfIpReference }}"
                 port: 8888

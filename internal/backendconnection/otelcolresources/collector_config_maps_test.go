@@ -6,6 +6,7 @@ package otelcolresources
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
@@ -30,8 +31,9 @@ const (
 )
 
 var (
-	bearerWithAuthToken = fmt.Sprintf("Bearer ${env:%s}", authTokenEnvVarName)
-	pathKeysRegex       = regexp.MustCompile(`^([\w-]+)=([\w-]+)$`)
+	bearerWithAuthToken     = fmt.Sprintf("Bearer ${env:%s}", authTokenEnvVarName)
+	sequenceOfMappingsRegex = regexp.MustCompile(`^([\w-]+)=([\w-]+)$`)
+	sequenceIndexRegex      = regexp.MustCompile(`^(\d+)$`)
 )
 
 var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
@@ -647,6 +649,84 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(metricsReceivers).To(ContainElement("prometheus"))
 		})
 	})
+
+	Describe("on an IPv4 or IPv6 cluster", func() {
+		type ipVersionTestConfig struct {
+			ipv6     bool
+			expected string
+		}
+
+		DescribeTable("should render IPv4 addresses in an IPv4 cluster", func(testConfig *ipVersionTestConfig) {
+			var config = &oTelColConfig{
+				Namespace:  namespace,
+				NamePrefix: namePrefix,
+				Export: dash0v1alpha1.Export{
+					Dash0: &dash0v1alpha1.Dash0Configuration{
+						Endpoint: EndpointDash0Test,
+						Dataset:  "custom-dataset",
+						Authorization: dash0v1alpha1.Authorization{
+							Token: &AuthorizationTokenTest,
+						},
+					},
+				},
+				IsIPv6Cluster: testConfig.ipv6,
+			}
+
+			expected := testConfig.expected
+			configMap, err := assembleDaemonSetCollectorConfigMap(config, nil, false)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			healthCheckEndpoint := readFromMap(collectorConfig, []string{"extensions", "health_check", "endpoint"})
+			grpcOtlpEndpoint := readFromMap(collectorConfig, []string{"receivers", "otlp", "protocols", "grpc", "endpoint"})
+			httpOtlpEndpoint := readFromMap(collectorConfig, []string{"receivers", "otlp", "protocols", "http", "endpoint"})
+			selfMonitoringTelemetryEndpoint := readFromMap(
+				collectorConfig,
+				[]string{
+					"service",
+					"telemetry",
+					"metrics",
+					"readers",
+					"0",
+					"pull",
+					"exporter",
+					"prometheus",
+					"host",
+				})
+			Expect(healthCheckEndpoint).To(Equal(fmt.Sprintf("%s:13133", expected)))
+			Expect(grpcOtlpEndpoint).To(Equal(fmt.Sprintf("%s:4317", expected)))
+			Expect(httpOtlpEndpoint).To(Equal(fmt.Sprintf("%s:4318", expected)))
+			Expect(selfMonitoringTelemetryEndpoint).To(Equal(expected))
+
+			configMap, err = assembleDeploymentCollectorConfigMap(config, false)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig = parseConfigMapContent(configMap)
+			healthCheckEndpoint = readFromMap(collectorConfig, []string{"extensions", "health_check", "endpoint"})
+			selfMonitoringTelemetryEndpoint = readFromMap(
+				collectorConfig,
+				[]string{
+					"service",
+					"telemetry",
+					"metrics",
+					"readers",
+					"0",
+					"pull",
+					"exporter",
+					"prometheus",
+					"host",
+				})
+			Expect(healthCheckEndpoint).To(Equal(fmt.Sprintf("%s:13133", expected)))
+			Expect(selfMonitoringTelemetryEndpoint).To(Equal(expected))
+		}, []TableEntry{
+			Entry("IPv4 cluster", &ipVersionTestConfig{
+				ipv6:     false,
+				expected: "${env:MY_POD_IP}",
+			}),
+			Entry("IPv6 cluster", &ipVersionTestConfig{
+				ipv6:     true,
+				expected: "[${env:MY_POD_IP}]",
+			}),
+		})
+	})
 })
 
 func assembleDaemonSetCollectorConfigMapWithoutScrapingNamespaces(
@@ -730,12 +810,13 @@ func readFromMap(object interface{}, path []string) interface{} {
 	key := path[0]
 	var sub interface{}
 
-	matches := pathKeysRegex.FindStringSubmatch(key)
-	if len(matches) > 0 {
-		// assume we have a list, read by equality comparison with an attribute
+	sequenceOfMappingsMatches := sequenceOfMappingsRegex.FindStringSubmatch(key)
+	sequenceIndexMatches := sequenceIndexRegex.FindStringSubmatch(key)
+	if len(sequenceOfMappingsMatches) > 0 {
+		// assume we have a sequence of objects, read by equality comparison with an attribute
 
-		attributeName := matches[1]
-		attributeValue := matches[2]
+		attributeName := sequenceOfMappingsMatches[1]
+		attributeValue := sequenceOfMappingsMatches[2]
 
 		s, isSlice := object.([]interface{})
 		Expect(isSlice).To(BeTrue(), fmt.Sprintf("expected a []interface{} when reading key %s, got %T", key, object))
@@ -748,6 +829,15 @@ func readFromMap(object interface{}, path []string) interface{} {
 				break
 			}
 		}
+	} else if len(sequenceIndexMatches) > 0 {
+		// assume we have an indexed sequence, read by index
+		indexRaw := sequenceIndexMatches[1]
+		index, err := strconv.Atoi(indexRaw)
+		Expect(err).ToNot(HaveOccurred())
+		s, isSlice := object.([]interface{})
+		Expect(isSlice).To(BeTrue(), fmt.Sprintf("expected a []interface{} when reading key %s, got %T", key, object))
+		Expect(len(s) > index).To(BeTrue())
+		sub = s[index]
 	} else {
 		// assume we have a regular map, read by key
 		m, isMap := object.(map[string]interface{})

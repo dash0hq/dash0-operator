@@ -22,7 +22,7 @@ exporters:
 
 extensions:
   health_check:
-    endpoint: ${env:MY_POD_IP}:13133
+    endpoint: "{{ .SelfIpReference }}:13133"
 
 processors:
   batch: {}
@@ -76,5 +76,5 @@ service:
         - pull:
             exporter:
               prometheus:
-                host: "${env:MY_POD_IP}"
+                host: "{{ .SelfIpReference }}"
                 port: 8888
