@@ -337,6 +337,9 @@ to be compatible with the well-known configuration via annotations.
       output: extract_metadata_from_filepath
       parse_from: body
       parse_to: attributes
+    - type: move
+      from: attributes.log
+      to: body
     # Extract metadata from file path
     - type: regex_parser
       id: extract_metadata_from_filepath
