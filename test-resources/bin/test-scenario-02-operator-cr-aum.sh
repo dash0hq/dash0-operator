@@ -22,11 +22,11 @@ test-resources/bin/test-cleanup.sh "${target_namespace}" false
 finish_step
 
 echo "STEP $step_counter: creating target namespace (if necessary)"
-test-resources/bin/ensure-namespace-exists.sh "${target_namespace}"
+ensure_namespace_exists "${target_namespace}"
 finish_step
 
 echo "STEP $step_counter: creating operator namespace and authorization token secret"
-test-resources/bin/ensure-namespace-exists.sh dash0-system
+ensure_namespace_exists dash0-system
 kubectl create secret \
   generic \
   dash0-authorization-secret \
@@ -72,3 +72,4 @@ if [[ "${DEPLOY_APPLICATION_UNDER_MONITORING:-}" != false ]]; then
 fi
 
 install_third_party_resources
+
