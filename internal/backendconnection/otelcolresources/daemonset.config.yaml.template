@@ -99,7 +99,7 @@ receivers:
       http:
         endpoint: "{{ .SelfIpReference }}:4318"
 
-{{- if .NodeLevelMetricsCollectionEnabled }}
+{{- if .KubernetesInfrastructureMetricsCollectionEnabled }}
   kubeletstats:
     auth_type: serviceAccount
     collection_interval: 20s
@@ -396,7 +396,7 @@ service:
     metrics/downstream:
       receivers:
       - otlp
-{{- if .NodeLevelMetricsCollectionEnabled }}
+{{- if .KubernetesInfrastructureMetricsCollectionEnabled }}
       - kubeletstats
 {{- end }}
 {{- if $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}

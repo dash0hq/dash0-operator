@@ -608,13 +608,13 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		}, testConfigs)
 	})
 
-	Describe("should enable/disable node-level metrics collection", func() {
-		It("should not render the kubeletstats receiver if node-level metrics collection is disabled", func() {
+	Describe("should enable/disable kubernetes infrastructure metrics collection", func() {
+		It("should not render the kubeletstats receiver if kubernetes infrastructure metrics collection is disabled", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
-				Namespace:                         namespace,
-				NamePrefix:                        namePrefix,
-				Export:                            Dash0ExportWithEndpointAndToken(),
-				NodeLevelMetricsCollectionEnabled: false,
+				Namespace:  namespace,
+				NamePrefix: namePrefix,
+				Export:     Dash0ExportWithEndpointAndToken(),
+				KubernetesInfrastructureMetricsCollectionEnabled: false,
 			}, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -626,12 +626,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(metricsReceivers).ToNot(ContainElement("kubeletstats"))
 		})
 
-		It("should render the kubeletstats receiver if node-level metrics collection is enabled", func() {
+		It("should render the kubeletstats receiver if kubernetes infrastructure metrics collection is enabled", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
-				Namespace:                         namespace,
-				NamePrefix:                        namePrefix,
-				Export:                            Dash0ExportWithEndpointAndToken(),
-				NodeLevelMetricsCollectionEnabled: true,
+				Namespace:  namespace,
+				NamePrefix: namePrefix,
+				Export:     Dash0ExportWithEndpointAndToken(),
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
 			}, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)

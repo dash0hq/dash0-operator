@@ -23,15 +23,14 @@ import (
 )
 
 type oTelColConfig struct {
-	Namespace                               string
-	NamePrefix                              string
-	Export                                  dash0v1alpha1.Export
-	SelfMonitoringAndApiAccessConfiguration selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration
-	NodeLevelMetricsCollectionEnabled       bool
-	ClusterMetricsCollectionEnabled         bool
-	Images                                  util.Images
-	IsIPv6Cluster                           bool
-	DevelopmentMode                         bool
+	Namespace                                        string
+	NamePrefix                                       string
+	Export                                           dash0v1alpha1.Export
+	SelfMonitoringAndApiAccessConfiguration          selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration
+	KubernetesInfrastructureMetricsCollectionEnabled bool
+	Images                                           util.Images
+	IsIPv6Cluster                                    bool
+	DevelopmentMode                                  bool
 }
 
 // This type just exists to ensure all created objects go through addCommonMetadata.
@@ -212,7 +211,7 @@ func assembleDesiredState(
 	}
 	desiredState = append(desiredState, addCommonMetadata(collectorDaemonSet))
 
-	if config.ClusterMetricsCollectionEnabled {
+	if config.KubernetesInfrastructureMetricsCollectionEnabled {
 		desiredState = append(desiredState, addCommonMetadata(assembleServiceAccountForDeployment(config)))
 		desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleForDeployment(config)))
 		desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleBindingForDeployment(config)))

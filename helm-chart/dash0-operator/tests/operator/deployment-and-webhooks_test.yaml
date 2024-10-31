@@ -261,10 +261,7 @@ tests:
           value: --operator-configuration-self-monitoring-enabled=true
       - equal:
           path: spec.template.spec.containers[0].args[7]
-          value: --operator-configuration-node-level-metrics-collection-enabled=true
-      - equal:
-          path: spec.template.spec.containers[0].args[8]
-          value: --operator-configuration-cluster-metrics-collection-enabled=true
+          value: --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled=true
 
   - it: should add args for creating an operator configuration resource with a secretRef to the deployment
     documentSelector:
@@ -294,8 +291,14 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].args[6]
           value: --operator-configuration-api-endpoint=https://api.dash0.com
+      - equal:
+          path: spec.template.spec.containers[0].args[7]
+          value: --operator-configuration-self-monitoring-enabled=true
+      - equal:
+          path: spec.template.spec.containers[0].args[8]
+          value: --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled=true
 
-  - it: should disable self-monitoring, node-level and cluster metrics collection
+  - it: should disable self-monitoring & Kubernetes infrastructure metrics collection
     documentSelector:
       path: metadata.name
       value: dash0-operator-controller
@@ -307,8 +310,7 @@ tests:
           token: "very-secret-dash0-auth-token"
           apiEndpoint: https://api.dash0.com
         selfMonitoringEnabled: false
-        nodeLevelMetricsCollectionEnabled: false
-        clusterMetricsCollectionEnabled: false
+        kubernetesInfrastructureMetricsCollectionEnabled: false
     asserts:
       - equal:
           path: spec.template.spec.containers[0].args[3]
@@ -324,10 +326,7 @@ tests:
           value: --operator-configuration-self-monitoring-enabled=false
       - equal:
           path: spec.template.spec.containers[0].args[7]
-          value: --operator-configuration-node-level-metrics-collection-enabled=false
-      - equal:
-          path: spec.template.spec.containers[0].args[8]
-          value: --operator-configuration-cluster-metrics-collection-enabled=false
+          value: --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled=false
 
   - it: should render the "dash0.com/cert-digest" label
     documentSelector:

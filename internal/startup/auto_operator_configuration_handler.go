@@ -30,10 +30,9 @@ type OperatorConfigurationValues struct {
 	Endpoint string
 	Token    string
 	SecretRef
-	ApiEndpoint                       string
-	SelfMonitoringEnabled             bool
-	NodeLevelMetricsCollectionEnabled bool
-	ClusterMetricsCollectionEnabled   bool
+	ApiEndpoint                                      string
+	SelfMonitoringEnabled                            bool
+	KubernetesInfrastructureMetricsCollectionEnabled bool
 }
 
 type AutoOperatorConfigurationResourceHandler struct {
@@ -231,9 +230,8 @@ func (r *AutoOperatorConfigurationResourceHandler) createOperatorConfigurationRe
 			SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 				Enabled: ptr.To(operatorConfiguration.SelfMonitoringEnabled),
 			},
-			Export:                            &dash0Export,
-			NodeLevelMetricsCollectionEnabled: ptr.To(operatorConfiguration.NodeLevelMetricsCollectionEnabled),
-			ClusterMetricsCollectionEnabled:   ptr.To(operatorConfiguration.ClusterMetricsCollectionEnabled),
+			Export: &dash0Export,
+			KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(operatorConfiguration.KubernetesInfrastructureMetricsCollectionEnabled),
 		},
 	}
 	if err := r.Create(ctx, &operatorConfigurationResource); err != nil {

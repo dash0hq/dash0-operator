@@ -25,8 +25,8 @@ const (
 	namespace  = "some-namespace"
 	namePrefix = OTelCollectorNamePrefixTest
 
-	numberOfResourcesWithClusterMetricsCollectionEnabled    = 14
-	numberOfResourcesWithoutClusterMetricsCollectionEnabled = 9
+	numberOfResourcesWithKubernetesInfrastructureMetricsCollectionEnabled    = 14
+	numberOfResourcesWithoutKubernetesInfrastructureMetricsCollectionEnabled = 9
 )
 
 var _ = Describe("The desired state of the OpenTelemetry Collector resources", func() {
@@ -48,15 +48,15 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 	It("should describe the desired state as a set of Kubernetes client objects", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			Namespace:                       namespace,
-			NamePrefix:                      namePrefix,
-			Export:                          Dash0ExportWithEndpointAndToken(),
-			ClusterMetricsCollectionEnabled: true,
-			Images:                          TestImages,
+			Namespace:  namespace,
+			NamePrefix: namePrefix,
+			Export:     Dash0ExportWithEndpointAndToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			Images: TestImages,
 		}, nil, &DefaultOTelColResourceSpecs)
 
 		Expect(err).ToNot(HaveOccurred())
-		Expect(desiredState).To(HaveLen(numberOfResourcesWithClusterMetricsCollectionEnabled))
+		Expect(desiredState).To(HaveLen(numberOfResourcesWithKubernetesInfrastructureMetricsCollectionEnabled))
 
 		for _, wrapper := range desiredState {
 			object := wrapper.object
@@ -177,15 +177,15 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 	It("should omit all resources related to the collector deployment collecting cluster metrics is disabled", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			Namespace:                       namespace,
-			NamePrefix:                      namePrefix,
-			Export:                          Dash0ExportWithEndpointAndToken(),
-			ClusterMetricsCollectionEnabled: false,
-			Images:                          TestImages,
+			Namespace:  namespace,
+			NamePrefix: namePrefix,
+			Export:     Dash0ExportWithEndpointAndToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: false,
+			Images: TestImages,
 		}, nil, &DefaultOTelColResourceSpecs)
 
 		Expect(err).ToNot(HaveOccurred())
-		Expect(desiredState).To(HaveLen(numberOfResourcesWithoutClusterMetricsCollectionEnabled))
+		Expect(desiredState).To(HaveLen(numberOfResourcesWithoutKubernetesInfrastructureMetricsCollectionEnabled))
 
 		collectorConfigConfigMapContent := getDaemonSetCollectorConfigConfigMapContent(desiredState)
 		Expect(collectorConfigConfigMapContent).To(ContainSubstring(fmt.Sprintf("endpoint: %s", EndpointDash0TestQuoted)))
