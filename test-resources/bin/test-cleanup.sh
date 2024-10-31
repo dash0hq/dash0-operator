@@ -47,6 +47,8 @@ kubectl delete secret \
 
 kubectl delete ns dash0-system --ignore-not-found
 
+kubectl delete --ignore-not-found=true -f test-resources/otlp-sink/otlp-sink.yaml --wait
+
 # deliberately deleting dashboards & check rules after undeploying the operator to avoid deleting these items in
 # Dash0 every time.
 kubectl delete -n "${target_namespace}" -f test-resources/customresources/persesdashboard/persesdashboard.yaml || true

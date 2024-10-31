@@ -37,6 +37,18 @@ setup_test_environment () {
   test-resources/bin/render-templates.sh
 }
 
+ensure_namespace_exists() {
+  target_namespace=${1:-test-namespace}
+
+  if [[ "${target_namespace}" == default  ]]; then
+    exit 0
+  fi
+
+  if ! kubectl get ns "$target_namespace" &> /dev/null; then
+    kubectl create ns "$target_namespace"
+  fi
+}
+
 finish_step() {
   ((step_counter++))
   echo
@@ -48,6 +60,8 @@ build_all_images() {
 }
 
 deploy_via_helm() {
+  deploy_otlp_sink_if_requested
+
   helm_install_command="helm install --namespace dash0-system"
   if [[ -n "${OPERATOR_HELM_CHART_VERSION:-}" ]]; then
     helm_install_command+=" --version $OPERATOR_HELM_CHART_VERSION"
@@ -120,15 +134,22 @@ deploy_via_helm() {
 
   # Deploy an operator configuration right away.
   if [[ "${DEPLOY_OPERATOR_CONFIGURATION_VIA_HELM:-}" != false ]]; then
-    helm_install_command+=" --set operator.dash0Export.enabled=true"
-    helm_install_command+=" --set operator.dash0Export.endpoint=ingress.eu-west-1.aws.dash0-dev.com:4317"
-    if [[ "${OPERATOR_CONFIGURATION_VIA_HELM_USE_TOKEN:-}" == true ]]; then
-      helm_install_command+=" --set operator.dash0Export.token=${DASH0_AUTHORIZATION_TOKEN}"
+    if [[ "${USE_OTLP_SINK:-}" == true ]]; then
+      helm_install_command+=" --set operator.dash0Export.enabled=true"
+      helm_install_command+=" --set operator.dash0Export.endpoint=http://otlp-sink.otlp-sink.svc.cluster.local:4317"
+      helm_install_command+=" --set operator.dash0Export.token=dummy-token"
+      # Note: API synchronization (Perses dashboards, Prometheus rules) are not supported when using the OTLP sink.
     else
-      helm_install_command+=" --set operator.dash0Export.secretRef.name=dash0-authorization-secret"
-      helm_install_command+=" --set operator.dash0Export.secretRef.key=token"
+      helm_install_command+=" --set operator.dash0Export.enabled=true"
+      helm_install_command+=" --set operator.dash0Export.endpoint=ingress.eu-west-1.aws.dash0-dev.com:4317"
+      if [[ "${OPERATOR_CONFIGURATION_VIA_HELM_USE_TOKEN:-}" == true ]]; then
+        helm_install_command+=" --set operator.dash0Export.token=${DASH0_AUTHORIZATION_TOKEN}"
+      else
+        helm_install_command+=" --set operator.dash0Export.secretRef.name=dash0-authorization-secret"
+        helm_install_command+=" --set operator.dash0Export.secretRef.key=token"
+      fi
+      helm_install_command+=" --set operator.dash0Export.apiEndpoint=https://api.eu-west-1.aws.dash0-dev.com"
     fi
-    helm_install_command+=" --set operator.dash0Export.apiEndpoint=https://api.eu-west-1.aws.dash0-dev.com"
   fi
 
   helm_install_command+=" dash0-operator"
@@ -191,8 +212,31 @@ has_been_set_to_empty_string() {
   fi
 }
 
+deploy_otlp_sink_if_requested() {
+  if [[ "${USE_OTLP_SINK:-}" != true ]]; then
+	  return
+  fi
+
+  echo "deploying otlp-sink"
+  tmpfile=$(mktemp "${TMPDIR}otlp-sink-yaml.XXXX")
+  trap 'rm -f "$tmpfile"' EXIT
+  otlp_sink_dir="$(realpath "$(pwd)")/test-resources/e2e-test-volumes/otlp-sink"
+  sed "s|/tmp/telemetry|$otlp_sink_dir|g" test-resources/otlp-sink/otlp-sink.yaml > "$tmpfile"
+
+	kubectl apply -f "$tmpfile"
+	kubectl rollout status \
+	  deployment \
+	  otlp-sink \
+	  --namespace otlp-sink \
+	  --timeout 1m
+}
+
 install_operator_configuration_resource() {
-  kubectl apply -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.secret.yaml
+  if [[ "{USE_OTLP_SINK:-}" = "true" ]]; then
+    kubectl apply -f test-resources/customresources/dash0operatorconfiguration/dash0monitoring.otlpsink.yaml
+  else
+    kubectl apply -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.secret.yaml
+  fi
 
   echo "waiting for the operator configuration resource to become available"
   kubectl wait dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration-resource --for condition=Available
@@ -235,3 +279,4 @@ trim() {
   var="${var%"${var##*[![:space:]]}"}"
   printf '%s' "$var"
 }
+
