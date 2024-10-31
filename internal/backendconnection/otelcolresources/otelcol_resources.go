@@ -95,11 +95,22 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		}
 	}
 
+	nodeLevelMetricsCollectionEnabled := true
+	clusterMetricsCollectionEnabled := true
+	if operatorConfigurationResource != nil {
+		nodeLevelMetricsCollectionEnabled =
+			util.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.NodeLevelMetricsCollectionEnabled, true)
+		clusterMetricsCollectionEnabled =
+			util.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.ClusterMetricsCollectionEnabled, true)
+	}
+
 	config := &oTelColConfig{
 		Namespace:                               namespace,
 		NamePrefix:                              m.OTelCollectorNamePrefix,
 		Export:                                  *export,
 		SelfMonitoringAndApiAccessConfiguration: selfMonitoringConfiguration,
+		NodeLevelMetricsCollectionEnabled:       nodeLevelMetricsCollectionEnabled,
+		ClusterMetricsCollectionEnabled:         clusterMetricsCollectionEnabled,
 		Images:                                  images,
 		IsIPv6Cluster:                           m.IsIPv6Cluster,
 		DevelopmentMode:                         m.DevelopmentMode,
@@ -330,6 +341,18 @@ func (m *OTelColResourceManager) DeleteResources(
 	namespace string,
 	logger *logr.Logger,
 ) error {
+	operatorConfigurationResource, err := m.findOperatorConfigurationResource(ctx, logger)
+	if err != nil {
+		return err
+	}
+	nodeLevelMetricsCollectionEnabled := true
+	clusterMetricsCollectionEnabled := true
+	if operatorConfigurationResource != nil {
+		nodeLevelMetricsCollectionEnabled =
+			util.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.NodeLevelMetricsCollectionEnabled, true)
+		clusterMetricsCollectionEnabled =
+			util.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.ClusterMetricsCollectionEnabled, true)
+	}
 	config := &oTelColConfig{
 		Namespace:  namespace,
 		NamePrefix: m.OTelCollectorNamePrefix,
@@ -337,6 +360,8 @@ func (m *OTelColResourceManager) DeleteResources(
 		// collect the kinds and names of all resources that need to be deleted.
 		Export:                                  dash0v1alpha1.Export{},
 		SelfMonitoringAndApiAccessConfiguration: selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{SelfMonitoringEnabled: false},
+		NodeLevelMetricsCollectionEnabled:       nodeLevelMetricsCollectionEnabled,
+		ClusterMetricsCollectionEnabled:         clusterMetricsCollectionEnabled,
 		Images:                                  dummyImagesForDeletion,
 		IsIPv6Cluster:                           m.IsIPv6Cluster,
 		DevelopmentMode:                         m.DevelopmentMode,

@@ -55,8 +55,10 @@ func deployOperatorWithDefaultAutoOperationConfiguration(
 		operatorHelmChartUrl,
 		images,
 		&startup.OperatorConfigurationValues{
-			Endpoint: defaultEndpoint,
-			Token:    defaultToken,
+			Endpoint:                          defaultEndpoint,
+			Token:                             defaultToken,
+			NodeLevelMetricsCollectionEnabled: true,
+			ClusterMetricsCollectionEnabled:   true,
 		},
 	)
 	Expect(err).ToNot(HaveOccurred())

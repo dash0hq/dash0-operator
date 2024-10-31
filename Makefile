@@ -141,8 +141,14 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 .PHONY: test
-test: manifests generate fmt vet envtest ## Run tests.
+test: go-unit-tests helm-unit-tests ## Run tests.
+
+.PHONY: go-unit-tests
+go-unit-tests: manifests generate fmt vet envtest
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
+
+.PHONY: helm-unit-tests
+helm-unit-tests:
 	cd helm-chart/dash0-operator && helm unittest -f 'tests/**/*.yaml' .
 
 # Invoking ginkgo via go run makes sure we use the version from go.mod and not a version installed globally, which

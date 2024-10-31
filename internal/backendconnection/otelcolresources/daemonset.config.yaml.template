@@ -99,6 +99,7 @@ receivers:
       http:
         endpoint: "{{ .SelfIpReference }}:4318"
 
+{{- if .NodeLevelMetricsCollectionEnabled }}
   kubeletstats:
     auth_type: serviceAccount
     collection_interval: 20s
@@ -127,6 +128,7 @@ authority"}
 Thus we add this parameter when the helm chart is installed with --set operator.developmentMode=true for local tests and
 e2e tests. */}}
     insecure_skip_verify: true
+{{- end }}
 {{- end }}
 
 {{- $hasPrometheusScrapingEnabledForAtLeastOneNamespace := gt (len .NamespacesWithPrometheusScraping) 0 }}
@@ -394,7 +396,9 @@ service:
     metrics/downstream:
       receivers:
       - otlp
+{{- if .NodeLevelMetricsCollectionEnabled }}
       - kubeletstats
+{{- end }}
 {{- if $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}
       - prometheus
 {{- end }}

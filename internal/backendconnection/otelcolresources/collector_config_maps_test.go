@@ -608,19 +608,50 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		}, testConfigs)
 	})
 
+	Describe("should enable/disable node-level metrics collection", func() {
+		It("should not render the kubeletstats receiver if node-level metrics collection is disabled", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				Namespace:                         namespace,
+				NamePrefix:                        namePrefix,
+				Export:                            Dash0ExportWithEndpointAndToken(),
+				NodeLevelMetricsCollectionEnabled: false,
+			}, nil, false)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			kubeletstatsReceiver := readFromMap(collectorConfig, []string{"receivers", "kubeletstats"})
+			Expect(kubeletstatsReceiver).To(BeNil())
+
+			pipelines := readPipelines(collectorConfig)
+			metricsReceivers := readPipelineReceivers(pipelines, "metrics/downstream")
+			Expect(metricsReceivers).ToNot(ContainElement("kubeletstats"))
+		})
+
+		It("should render the kubeletstats receiver if node-level metrics collection is enabled", func() {
+			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+				Namespace:                         namespace,
+				NamePrefix:                        namePrefix,
+				Export:                            Dash0ExportWithEndpointAndToken(),
+				NodeLevelMetricsCollectionEnabled: true,
+			}, nil, false)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			kubeletstatsReceiverRaw := readFromMap(collectorConfig, []string{"receivers", "kubeletstats"})
+			Expect(kubeletstatsReceiverRaw).ToNot(BeNil())
+			kubeletstatsReceiver := kubeletstatsReceiverRaw.(map[string]interface{})
+			_, hasInsecureSkipVerifyProperty := kubeletstatsReceiver["insecure_skip_verify"]
+			Expect(hasInsecureSkipVerifyProperty).To(BeFalse())
+
+			pipelines := readPipelines(collectorConfig)
+			metricsReceivers := readPipelineReceivers(pipelines, "metrics/downstream")
+			Expect(metricsReceivers).To(ContainElement("kubeletstats"))
+		})
+	})
+
 	Describe("prometheus scraping config", func() {
 		var config = &oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
-			Export: dash0v1alpha1.Export{
-				Dash0: &dash0v1alpha1.Dash0Configuration{
-					Endpoint: EndpointDash0Test,
-					Dataset:  "custom-dataset",
-					Authorization: dash0v1alpha1.Authorization{
-						Token: &AuthorizationTokenTest,
-					},
-				},
-			},
+			Export:     Dash0ExportWithEndpointAndToken(),
 		}
 
 		It("should not render the prometheus scraping config if no namespaces have scraping enabled", func() {
@@ -658,17 +689,9 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
 		DescribeTable("should render IPv4 addresses in an IPv4 cluster", func(testConfig *ipVersionTestConfig) {
 			var config = &oTelColConfig{
-				Namespace:  namespace,
-				NamePrefix: namePrefix,
-				Export: dash0v1alpha1.Export{
-					Dash0: &dash0v1alpha1.Dash0Configuration{
-						Endpoint: EndpointDash0Test,
-						Dataset:  "custom-dataset",
-						Authorization: dash0v1alpha1.Authorization{
-							Token: &AuthorizationTokenTest,
-						},
-					},
-				},
+				Namespace:     namespace,
+				NamePrefix:    namePrefix,
+				Export:        Dash0ExportWithEndpointAndToken(),
 				IsIPv6Cluster: testConfig.ipv6,
 			}
 
@@ -789,6 +812,7 @@ func readPipelines(collectorConfig map[string]interface{}) map[string]interface{
 	return ((collectorConfig["service"]).(map[string]interface{})["pipelines"]).(map[string]interface{})
 }
 
+//nolint:unparam
 func readPipelineReceivers(pipelines map[string]interface{}, pipelineName string) []interface{} {
 	return readPipelineList(pipelines, pipelineName, "receivers")
 }

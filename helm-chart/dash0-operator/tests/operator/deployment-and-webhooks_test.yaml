@@ -235,7 +235,7 @@ tests:
           path: spec.template.spec.containers[0].resources.requests.memory
           value: 32Mi
 
-  - it: should add args for creating an operator configuration resource with a token to deployment
+  - it: should add args for creating an operator configuration resource with a token to the deployment
     documentSelector:
       path: metadata.name
       value: dash0-operator-controller
@@ -256,9 +256,78 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].args[5]
           value: --operator-configuration-api-endpoint=https://api.dash0.com
-  # Note: We deliberately do not have a test for the operator.dash0Export.secretRef variant, since this would trigger
-  # a check whether the secret actually exists in the cluster, which of course would fail when runnig helm chart unit
-  # tests.
+      - equal:
+          path: spec.template.spec.containers[0].args[6]
+          value: --operator-configuration-self-monitoring-enabled=true
+      - equal:
+          path: spec.template.spec.containers[0].args[7]
+          value: --operator-configuration-node-level-metrics-collection-enabled=true
+      - equal:
+          path: spec.template.spec.containers[0].args[8]
+          value: --operator-configuration-cluster-metrics-collection-enabled=true
+
+  - it: should add args for creating an operator configuration resource with a secretRef to the deployment
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          secretRef:
+            name: secret-name
+            key: secret-key
+          # Disabling secret validation is necessary in Helm unit tests since there is no live cluster to check against.
+          disableSecretValidation: true
+          apiEndpoint: https://api.dash0.com
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args[3]
+          value: --operator-configuration-endpoint=https://ingress.dash0.com
+      - equal:
+          path: spec.template.spec.containers[0].args[4]
+          value: --operator-configuration-secret-ref-name=secret-name
+      - equal:
+          path: spec.template.spec.containers[0].args[5]
+          value: --operator-configuration-secret-ref-key=secret-key
+      - equal:
+          path: spec.template.spec.containers[0].args[6]
+          value: --operator-configuration-api-endpoint=https://api.dash0.com
+
+  - it: should disable self-monitoring, node-level and cluster metrics collection
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+          apiEndpoint: https://api.dash0.com
+        selfMonitoringEnabled: false
+        nodeLevelMetricsCollectionEnabled: false
+        clusterMetricsCollectionEnabled: false
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args[3]
+          value: --operator-configuration-endpoint=https://ingress.dash0.com
+      - equal:
+          path: spec.template.spec.containers[0].args[4]
+          value: --operator-configuration-token=very-secret-dash0-auth-token
+      - equal:
+          path: spec.template.spec.containers[0].args[5]
+          value: --operator-configuration-api-endpoint=https://api.dash0.com
+      - equal:
+          path: spec.template.spec.containers[0].args[6]
+          value: --operator-configuration-self-monitoring-enabled=false
+      - equal:
+          path: spec.template.spec.containers[0].args[7]
+          value: --operator-configuration-node-level-metrics-collection-enabled=false
+      - equal:
+          path: spec.template.spec.containers[0].args[8]
+          value: --operator-configuration-cluster-metrics-collection-enabled=false
 
   - it: should render the "dash0.com/cert-digest" label
     documentSelector:

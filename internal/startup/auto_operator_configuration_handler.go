@@ -30,7 +30,10 @@ type OperatorConfigurationValues struct {
 	Endpoint string
 	Token    string
 	SecretRef
-	ApiEndpoint string
+	ApiEndpoint                       string
+	SelfMonitoringEnabled             bool
+	NodeLevelMetricsCollectionEnabled bool
+	ClusterMetricsCollectionEnabled   bool
 }
 
 type AutoOperatorConfigurationResourceHandler struct {
@@ -226,9 +229,11 @@ func (r *AutoOperatorConfigurationResourceHandler) createOperatorConfigurationRe
 		},
 		Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 			SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-				Enabled: ptr.To(true),
+				Enabled: ptr.To(operatorConfiguration.SelfMonitoringEnabled),
 			},
-			Export: &dash0Export,
+			Export:                            &dash0Export,
+			NodeLevelMetricsCollectionEnabled: ptr.To(operatorConfiguration.NodeLevelMetricsCollectionEnabled),
+			ClusterMetricsCollectionEnabled:   ptr.To(operatorConfiguration.ClusterMetricsCollectionEnabled),
 		},
 	}
 	if err := r.Create(ctx, &operatorConfigurationResource); err != nil {

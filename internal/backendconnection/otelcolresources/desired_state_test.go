@@ -9,6 +9,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
@@ -23,6 +24,9 @@ import (
 const (
 	namespace  = "some-namespace"
 	namePrefix = OTelCollectorNamePrefixTest
+
+	numberOfResourcesWithClusterMetricsCollectionEnabled    = 14
+	numberOfResourcesWithoutClusterMetricsCollectionEnabled = 9
 )
 
 var _ = Describe("The desired state of the OpenTelemetry Collector resources", func() {
@@ -44,14 +48,15 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 	It("should describe the desired state as a set of Kubernetes client objects", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export:     Dash0ExportWithEndpointAndToken(),
-			Images:     TestImages,
+			Namespace:                       namespace,
+			NamePrefix:                      namePrefix,
+			Export:                          Dash0ExportWithEndpointAndToken(),
+			ClusterMetricsCollectionEnabled: true,
+			Images:                          TestImages,
 		}, nil, &DefaultOTelColResourceSpecs)
 
 		Expect(err).ToNot(HaveOccurred())
-		Expect(desiredState).To(HaveLen(14))
+		Expect(desiredState).To(HaveLen(numberOfResourcesWithClusterMetricsCollectionEnabled))
 
 		for _, wrapper := range desiredState {
 			object := wrapper.object
@@ -59,8 +64,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			Expect(annotations).To(HaveLen(1))
 			Expect(annotations["argocd.argoproj.io/sync-options"]).To(Equal("Prune=false"))
 		}
-
-		collectorConfigConfigMapContent := getCollectorConfigConfigMapContent(desiredState)
+		collectorConfigConfigMapContent := getDaemonSetCollectorConfigConfigMapContent(desiredState)
 		Expect(collectorConfigConfigMapContent).To(ContainSubstring(fmt.Sprintf("endpoint: %s", EndpointDash0TestQuoted)))
 		Expect(collectorConfigConfigMapContent).NotTo(ContainSubstring("file/traces"))
 		Expect(collectorConfigConfigMapContent).NotTo(ContainSubstring("file/metrics"))
@@ -165,6 +169,40 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(configReloaderContainer.VolumeMounts).To(
 			ContainElement(MatchVolumeMount("opentelemetry-collector-pidfile", "/etc/otelcol/run")))
 
+		Expect(findObjectByName(desiredState, ExpectedDeploymentServiceAccountName)).ToNot(BeNil())
+		Expect(findObjectByName(desiredState, ExpectedDeploymentClusterRoleName)).ToNot(BeNil())
+		Expect(findObjectByName(desiredState, ExpectedDeploymentClusterRoleBindingName)).ToNot(BeNil())
+		Expect(findObjectByName(desiredState, ExpectedDeploymentCollectorConfigMapName)).ToNot(BeNil())
+	})
+
+	It("should omit all resources related to the collector deployment collecting cluster metrics is disabled", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			Namespace:                       namespace,
+			NamePrefix:                      namePrefix,
+			Export:                          Dash0ExportWithEndpointAndToken(),
+			ClusterMetricsCollectionEnabled: false,
+			Images:                          TestImages,
+		}, nil, &DefaultOTelColResourceSpecs)
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(desiredState).To(HaveLen(numberOfResourcesWithoutClusterMetricsCollectionEnabled))
+
+		collectorConfigConfigMapContent := getDaemonSetCollectorConfigConfigMapContent(desiredState)
+		Expect(collectorConfigConfigMapContent).To(ContainSubstring(fmt.Sprintf("endpoint: %s", EndpointDash0TestQuoted)))
+		Expect(collectorConfigConfigMapContent).NotTo(ContainSubstring("file/traces"))
+		Expect(collectorConfigConfigMapContent).NotTo(ContainSubstring("file/metrics"))
+		Expect(collectorConfigConfigMapContent).NotTo(ContainSubstring("file/logs"))
+
+		fileOffsetConfigMapContent := getFileOffsetConfigMapContent(desiredState)
+		Expect(fileOffsetConfigMapContent).NotTo(BeNil())
+
+		Expect(getDaemonSet(desiredState)).NotTo(BeNil())
+
+		Expect(findObjectByName(desiredState, ExpectedDeploymentServiceAccountName)).To(BeNil())
+		Expect(findObjectByName(desiredState, ExpectedDeploymentClusterRoleName)).To(BeNil())
+		Expect(findObjectByName(desiredState, ExpectedDeploymentClusterRoleBindingName)).To(BeNil())
+		Expect(findObjectByName(desiredState, ExpectedDeploymentCollectorConfigMapName)).To(BeNil())
+		Expect(getDeployment(desiredState)).To(BeNil())
 	})
 
 	It("should use the authorization token directly if provided", func() {
@@ -175,7 +213,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		}, nil, &DefaultOTelColResourceSpecs)
 
 		Expect(err).ToNot(HaveOccurred())
-		configMapContent := getCollectorConfigConfigMapContent(desiredState)
+		configMapContent := getDaemonSetCollectorConfigConfigMapContent(desiredState)
 		Expect(configMapContent).To(ContainSubstring("\"Authorization\": \"Bearer ${env:AUTH_TOKEN}\""))
 
 		daemonSet := getDaemonSet(desiredState)
@@ -193,7 +231,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		}, nil, &DefaultOTelColResourceSpecs)
 
 		Expect(err).ToNot(HaveOccurred())
-		configMapContent := getCollectorConfigConfigMapContent(desiredState)
+		configMapContent := getDaemonSetCollectorConfigConfigMapContent(desiredState)
 		Expect(configMapContent).To(ContainSubstring("\"Authorization\": \"Bearer ${env:AUTH_TOKEN}\""))
 
 		daemonSet := getDaemonSet(desiredState)
@@ -213,7 +251,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		}, nil, &DefaultOTelColResourceSpecs)
 
 		Expect(err).ToNot(HaveOccurred())
-		configMapContent := getCollectorConfigConfigMapContent(desiredState)
+		configMapContent := getDaemonSetCollectorConfigConfigMapContent(desiredState)
 		Expect(configMapContent).NotTo(ContainSubstring("\"Authorization\": \"Bearer ${env:AUTH_TOKEN}\""))
 
 		daemonSet := getDaemonSet(desiredState)
@@ -272,15 +310,13 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 })
 
 func getConfigMap(desiredState []clientObject, name string) *corev1.ConfigMap {
-	for _, object := range desiredState {
-		if cm, ok := object.object.(*corev1.ConfigMap); ok && cm.Name == name {
-			return cm
-		}
+	if object := findObjectByName(desiredState, name); object != nil {
+		return object.(*corev1.ConfigMap)
 	}
 	return nil
 }
 
-func getCollectorConfigConfigMapContent(desiredState []clientObject) string {
+func getDaemonSetCollectorConfigConfigMapContent(desiredState []clientObject) string {
 	cm := getConfigMap(desiredState, ExpectedDaemonSetCollectorConfigMapName)
 	return cm.Data["config.yaml"]
 }
@@ -291,18 +327,23 @@ func getFileOffsetConfigMapContent(desiredState []clientObject) string {
 }
 
 func getDaemonSet(desiredState []clientObject) *appsv1.DaemonSet {
-	for _, object := range desiredState {
-		if ds, ok := object.object.(*appsv1.DaemonSet); ok {
-			return ds
-		}
+	if daemonSet := findObjectByName(desiredState, ExpectedDaemonSetName); daemonSet != nil {
+		return daemonSet.(*appsv1.DaemonSet)
 	}
 	return nil
 }
 
 func getDeployment(desiredState []clientObject) *appsv1.Deployment {
+	if deployment := findObjectByName(desiredState, ExpectedDeploymentName); deployment != nil {
+		return deployment.(*appsv1.Deployment)
+	}
+	return nil
+}
+
+func findObjectByName(desiredState []clientObject, name string) client.Object {
 	for _, object := range desiredState {
-		if d, ok := object.object.(*appsv1.Deployment); ok {
-			return d
+		if object.object.GetName() == name {
+			return object.object
 		}
 	}
 	return nil

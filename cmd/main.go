@@ -121,6 +121,9 @@ func main() {
 	var operatorConfigurationSecretRefName string
 	var operatorConfigurationSecretRefKey string
 	var operatorConfigurationApiEndpoint string
+	var operatorConfigurationSelfMonitoringEnabled bool
+	var operatorConfigurationNodeLevelMetricsCollectionEnabled bool
+	var operatorConfigurationClusterMetricsCollectionEnabled bool
 	var isUninstrumentAll bool
 	var metricsAddr string
 	var enableLeaderElection bool
@@ -128,31 +131,97 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 
-	flag.BoolVar(&isUninstrumentAll, "uninstrument-all", false,
+	flag.BoolVar(
+		&isUninstrumentAll,
+		"uninstrument-all",
+		false,
 		"If set, the process will remove all Dash0 monitoring resources from all namespaces in the cluste, then "+
 			"exit. This will trigger the Dash0 monitoring resources' finalizers in each namespace, which in turn will "+
-			"revert the instrumentation of all workloads in all namespaces.")
-	flag.StringVar(&operatorConfigurationEndpoint, "operator-configuration-endpoint", "",
-		"The Dash0 endpoint gRPC URL for creating an operator configuration resource.")
-	flag.StringVar(&operatorConfigurationToken, "operator-configuration-token", "",
-		"The Dash0 auth token for creating an operator configuration resource.")
-	flag.StringVar(&operatorConfigurationSecretRefName, "operator-configuration-secret-ref-name", "",
+			"revert the instrumentation of all workloads in all namespaces.",
+	)
+	flag.StringVar(
+		&operatorConfigurationEndpoint,
+		"operator-configuration-endpoint",
+		"",
+		"The Dash0 endpoint gRPC URL for creating an operator configuration resource.",
+	)
+	flag.StringVar(
+		&operatorConfigurationToken,
+		"operator-configuration-token",
+		"",
+		"The Dash0 auth token for creating an operator configuration resource.",
+	)
+	flag.StringVar(
+		&operatorConfigurationSecretRefName,
+		"operator-configuration-secret-ref-name",
+		"",
 		"The name of an existing Kubernetes secret containing the Dash0 auth token, used to creating an operator "+
-			"configuration resource.")
-	flag.StringVar(&operatorConfigurationSecretRefKey, "operator-configuration-secret-ref-key", "",
+			"configuration resource.",
+	)
+	flag.StringVar(
+		&operatorConfigurationSecretRefKey,
+		"operator-configuration-secret-ref-key",
+		"",
 		"The key in an existing Kubernetes secret containing the Dash0 auth token, used to creating an operator "+
-			"configuration resource.")
-	flag.StringVar(&operatorConfigurationApiEndpoint, "operator-configuration-api-endpoint", "",
-		"The Dash0 API endpoint for managing dashboards and check rules via the operator.")
-	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
-	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
-	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
+			"configuration resource.",
+	)
+	flag.StringVar(
+		&operatorConfigurationApiEndpoint,
+		"operator-configuration-api-endpoint",
+		"",
+		"The Dash0 API endpoint for managing dashboards and check rules via the operator.",
+	)
+	flag.BoolVar(
+		&operatorConfigurationSelfMonitoringEnabled,
+		"operator-configuration-self-monitoring-enabled",
+		true,
+		"Whether to set selfMonitoring.enabled on the operator configuration resource; will be ignored if "+
+			"operator-configuration-endpoint is not set.",
+	)
+	flag.BoolVar(
+		&operatorConfigurationNodeLevelMetricsCollectionEnabled,
+		"operator-configuration-node-level-metrics-collection-enabled",
+		true,
+		"Whether to set nodeLevelMetricsCollectionEnabled on the operator configuration resource; will be ignored if "+
+			"operator-configuration-endpoint is not set.")
+	flag.BoolVar(
+		&operatorConfigurationClusterMetricsCollectionEnabled,
+		"operator-configuration-cluster-metrics-collection-enabled",
+		true,
+		"Whether to set clusterMetricsCollectionEnabled on the operator configuration resource; will be ignored if "+
+			"operator-configuration-endpoint is not set.",
+	)
+	flag.StringVar(
+		&metricsAddr,
+		"metrics-bind-address",
+		":8080",
+		"The address the metric endpoint binds to.",
+	)
+	flag.StringVar(
+		&probeAddr,
+		"health-probe-bind-address",
+		":8081",
+		"The address the probe endpoint binds to.",
+	)
+	flag.BoolVar(
+		&enableLeaderElection,
+		"leader-elect",
+		false,
 		"Enable leader election for controller manager. "+
-			"Enabling this will ensure there is only one active controller manager.")
-	flag.BoolVar(&secureMetrics, "metrics-secure", false,
-		"If set, the metrics endpoint is served securely.")
-	flag.BoolVar(&enableHTTP2, "enable-http2", false,
-		"If set, HTTP/2 will be enabled for the metrics and webhook servers.")
+			"Enabling this will ensure there is only one active controller manager.",
+	)
+	flag.BoolVar(
+		&secureMetrics,
+		"metrics-secure",
+		false,
+		"If set, the metrics endpoint is served securely.",
+	)
+	flag.BoolVar(
+		&enableHTTP2,
+		"enable-http2",
+		false,
+		"If set, HTTP/2 will be enabled for the metrics and webhook servers.",
+	)
 
 	var developmentMode bool
 	developmentModeRaw, isSet := os.LookupEnv(developmentModeEnvVarName)
@@ -234,6 +303,9 @@ func main() {
 				Name: operatorConfigurationSecretRefName,
 				Key:  operatorConfigurationSecretRefKey,
 			},
+			SelfMonitoringEnabled:             operatorConfigurationSelfMonitoringEnabled,
+			NodeLevelMetricsCollectionEnabled: operatorConfigurationNodeLevelMetricsCollectionEnabled,
+			ClusterMetricsCollectionEnabled:   operatorConfigurationClusterMetricsCollectionEnabled,
 		}
 		if len(operatorConfigurationApiEndpoint) > 0 {
 			operatorConfiguration.ApiEndpoint = operatorConfigurationApiEndpoint

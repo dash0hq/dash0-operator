@@ -17,11 +17,12 @@ import (
 )
 
 type collectorConfigurationTemplateValues struct {
-	Exporters                        []OtlpExporter
-	IgnoreLogsFromNamespaces         []string
-	NamespacesWithPrometheusScraping []string
-	SelfIpReference                  string
-	DevelopmentMode                  bool
+	Exporters                         []OtlpExporter
+	IgnoreLogsFromNamespaces          []string
+	NodeLevelMetricsCollectionEnabled bool
+	NamespacesWithPrometheusScraping  []string
+	SelfIpReference                   string
+	DevelopmentMode                   bool
 }
 
 type OtlpExporter struct {
@@ -100,9 +101,10 @@ func assembleCollectorConfigMap(
 					// logs will compound in case of log parsing errors
 					config.Namespace,
 				},
-				NamespacesWithPrometheusScraping: namespacesWithPrometheusScraping,
-				SelfIpReference:                  selfIpReference,
-				DevelopmentMode:                  config.DevelopmentMode,
+				NodeLevelMetricsCollectionEnabled: config.NodeLevelMetricsCollectionEnabled,
+				NamespacesWithPrometheusScraping:  namespacesWithPrometheusScraping,
+				SelfIpReference:                   selfIpReference,
+				DevelopmentMode:                   config.DevelopmentMode,
 			})
 		if err != nil {
 			return nil, fmt.Errorf("cannot render the collector configuration template: %w", err)
