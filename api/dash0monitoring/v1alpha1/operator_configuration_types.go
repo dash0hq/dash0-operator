@@ -32,18 +32,11 @@ type Dash0OperatorConfigurationSpec struct {
 	// +kubebuilder:default={enabled: true}
 	SelfMonitoring SelfMonitoring `json:"selfMonitoring,omitempty"`
 
-	// If enabled, the operator will configure its OpenTelemetry collector to collect node, pod, container, and volume
-	// metrics from the Kubernetes API server on all nodes via the kubeletstats receiver. This setting is optional, it
-	// defaults to true.
+	// If enabled, the operator will collect Kubernetes infrastructure metrics. This setting is optional, it defaults
+	// to true.
 	//
 	// +kubebuilder:default=true
-	NodeLevelMetricsCollectionEnabled *bool `json:"nodeLevelMetricsCollectionEnabled,omitempty"`
-
-	// If enabled, the operator will configure its OpenTelemetry collector to collect cluster-level Kubernetes metrics
-	// from the Kubernetes API server via the k8sclusterreceiver. This setting is optional, it defaults to true.
-	//
-	// +kubebuilder:default=true
-	ClusterMetricsCollectionEnabled *bool `json:"clusterMetricsCollectionEnabled,omitempty"`
+	KubernetesInfrastructureMetricsCollectionEnabled *bool `json:"kubernetesInfrastructureMetricsCollectionEnabled,omitempty"`
 }
 
 // SelfMonitoring describes how the operator will report telemetry about its working to the backend.

@@ -95,13 +95,10 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		}
 	}
 
-	nodeLevelMetricsCollectionEnabled := true
-	clusterMetricsCollectionEnabled := true
+	kubernetesInfrastructureMetricsCollectionEnabled := true
 	if operatorConfigurationResource != nil {
-		nodeLevelMetricsCollectionEnabled =
-			util.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.NodeLevelMetricsCollectionEnabled, true)
-		clusterMetricsCollectionEnabled =
-			util.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.ClusterMetricsCollectionEnabled, true)
+		kubernetesInfrastructureMetricsCollectionEnabled =
+			util.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.KubernetesInfrastructureMetricsCollectionEnabled, true)
 	}
 
 	config := &oTelColConfig{
@@ -109,11 +106,10 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		NamePrefix:                              m.OTelCollectorNamePrefix,
 		Export:                                  *export,
 		SelfMonitoringAndApiAccessConfiguration: selfMonitoringConfiguration,
-		NodeLevelMetricsCollectionEnabled:       nodeLevelMetricsCollectionEnabled,
-		ClusterMetricsCollectionEnabled:         clusterMetricsCollectionEnabled,
-		Images:                                  images,
-		IsIPv6Cluster:                           m.IsIPv6Cluster,
-		DevelopmentMode:                         m.DevelopmentMode,
+		KubernetesInfrastructureMetricsCollectionEnabled: kubernetesInfrastructureMetricsCollectionEnabled,
+		Images:          images,
+		IsIPv6Cluster:   m.IsIPv6Cluster,
+		DevelopmentMode: m.DevelopmentMode,
 	}
 	desiredState, err := assembleDesiredStateForUpsert(
 		config,
@@ -345,13 +341,10 @@ func (m *OTelColResourceManager) DeleteResources(
 	if err != nil {
 		return err
 	}
-	nodeLevelMetricsCollectionEnabled := true
-	clusterMetricsCollectionEnabled := true
+	kubernetesInfrastructureMetricsCollectionEnabled := true
 	if operatorConfigurationResource != nil {
-		nodeLevelMetricsCollectionEnabled =
-			util.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.NodeLevelMetricsCollectionEnabled, true)
-		clusterMetricsCollectionEnabled =
-			util.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.ClusterMetricsCollectionEnabled, true)
+		kubernetesInfrastructureMetricsCollectionEnabled =
+			util.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.KubernetesInfrastructureMetricsCollectionEnabled, true)
 	}
 	config := &oTelColConfig{
 		Namespace:  namespace,
@@ -360,11 +353,10 @@ func (m *OTelColResourceManager) DeleteResources(
 		// collect the kinds and names of all resources that need to be deleted.
 		Export:                                  dash0v1alpha1.Export{},
 		SelfMonitoringAndApiAccessConfiguration: selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{SelfMonitoringEnabled: false},
-		NodeLevelMetricsCollectionEnabled:       nodeLevelMetricsCollectionEnabled,
-		ClusterMetricsCollectionEnabled:         clusterMetricsCollectionEnabled,
-		Images:                                  dummyImagesForDeletion,
-		IsIPv6Cluster:                           m.IsIPv6Cluster,
-		DevelopmentMode:                         m.DevelopmentMode,
+		KubernetesInfrastructureMetricsCollectionEnabled: kubernetesInfrastructureMetricsCollectionEnabled,
+		Images:          dummyImagesForDeletion,
+		IsIPv6Cluster:   m.IsIPv6Cluster,
+		DevelopmentMode: m.DevelopmentMode,
 	}
 	desiredResources, err := assembleDesiredStateForDelete(config, m.OTelColResourceSpecs)
 	if err != nil {

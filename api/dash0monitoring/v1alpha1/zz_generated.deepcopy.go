@@ -251,13 +251,8 @@ func (in *Dash0OperatorConfigurationSpec) DeepCopyInto(out *Dash0OperatorConfigu
 		(*in).DeepCopyInto(*out)
 	}
 	in.SelfMonitoring.DeepCopyInto(&out.SelfMonitoring)
-	if in.NodeLevelMetricsCollectionEnabled != nil {
-		in, out := &in.NodeLevelMetricsCollectionEnabled, &out.NodeLevelMetricsCollectionEnabled
-		*out = new(bool)
-		**out = **in
-	}
-	if in.ClusterMetricsCollectionEnabled != nil {
-		in, out := &in.ClusterMetricsCollectionEnabled, &out.ClusterMetricsCollectionEnabled
+	if in.KubernetesInfrastructureMetricsCollectionEnabled != nil {
+		in, out := &in.KubernetesInfrastructureMetricsCollectionEnabled, &out.KubernetesInfrastructureMetricsCollectionEnabled
 		*out = new(bool)
 		**out = **in
 	}

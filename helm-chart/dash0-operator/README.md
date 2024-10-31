@@ -186,11 +186,8 @@ Here is a list of configuration options for this resource:
   If enabled, the operator will collect self-monitoring telemetry and send it to the Dash0 Insights dataset of the
   configured Dash0 backend.
   This setting is optional, it defaults to true.
-* `spec.nodeLevelMetricsCollectionEnabled`: If enabled, the operator will configure its OpenTelemetry collector to
-  collect node, pod, container, and volume metrics from the Kubernetes API server on all nodes via the `kubeletstats`
-  receiver. This setting is optional, it defaults to true.
-* `spec.clusterMetricsCollectionEnabled`: If enabled, the operator will configure its OpenTelemetry collector to collect
-  cluster-level Kubernetes metrics from the Kubernetes API server via the `k8sclusterreceiver`.
+* `spec.kubernetesInfrastructureMetricsCollectionEnabled`: If enabled, the operator will collect Kubernetes
+  infrastructure metrics.
   This setting is optional, it defaults to true.
 
 After providing the required values (at least `endpoint` and `authorization`), save the file and apply the resource to

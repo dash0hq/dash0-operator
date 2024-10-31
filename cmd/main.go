@@ -122,8 +122,7 @@ func main() {
 	var operatorConfigurationSecretRefKey string
 	var operatorConfigurationApiEndpoint string
 	var operatorConfigurationSelfMonitoringEnabled bool
-	var operatorConfigurationNodeLevelMetricsCollectionEnabled bool
-	var operatorConfigurationClusterMetricsCollectionEnabled bool
+	var operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled bool
 	var isUninstrumentAll bool
 	var metricsAddr string
 	var enableLeaderElection bool
@@ -179,18 +178,11 @@ func main() {
 			"operator-configuration-endpoint is not set.",
 	)
 	flag.BoolVar(
-		&operatorConfigurationNodeLevelMetricsCollectionEnabled,
-		"operator-configuration-node-level-metrics-collection-enabled",
+		&operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled,
+		"operator-configuration-kubernetes-infrastructure-metrics-collection-enabled",
 		true,
-		"Whether to set nodeLevelMetricsCollectionEnabled on the operator configuration resource; will be ignored if "+
-			"operator-configuration-endpoint is not set.")
-	flag.BoolVar(
-		&operatorConfigurationClusterMetricsCollectionEnabled,
-		"operator-configuration-cluster-metrics-collection-enabled",
-		true,
-		"Whether to set clusterMetricsCollectionEnabled on the operator configuration resource; will be ignored if "+
-			"operator-configuration-endpoint is not set.",
-	)
+		"Whether to set kubernetesInfrastructureMetricsCollectionEnabled on the operator configuration resource; "+
+			"will be ignored if operator-configuration-endpoint is not set.")
 	flag.StringVar(
 		&metricsAddr,
 		"metrics-bind-address",
@@ -303,9 +295,9 @@ func main() {
 				Name: operatorConfigurationSecretRefName,
 				Key:  operatorConfigurationSecretRefKey,
 			},
-			SelfMonitoringEnabled:             operatorConfigurationSelfMonitoringEnabled,
-			NodeLevelMetricsCollectionEnabled: operatorConfigurationNodeLevelMetricsCollectionEnabled,
-			ClusterMetricsCollectionEnabled:   operatorConfigurationClusterMetricsCollectionEnabled,
+			SelfMonitoringEnabled: operatorConfigurationSelfMonitoringEnabled,
+			//nolint:lll
+			KubernetesInfrastructureMetricsCollectionEnabled: operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled,
 		}
 		if len(operatorConfigurationApiEndpoint) > 0 {
 			operatorConfiguration.ApiEndpoint = operatorConfigurationApiEndpoint

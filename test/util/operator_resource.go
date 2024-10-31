@@ -53,8 +53,7 @@ var (
 				},
 			},
 		},
-		NodeLevelMetricsCollectionEnabled: ptr.To(true),
-		ClusterMetricsCollectionEnabled:   ptr.To(true),
+		KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(true),
 	}
 
 	OperatorConfigurationResourceDash0ExportWithoutApiEndpointWithSecretRef = dash0v1alpha1.Dash0OperatorConfigurationSpec{
@@ -68,8 +67,7 @@ var (
 				},
 			},
 		},
-		NodeLevelMetricsCollectionEnabled: ptr.To(true),
-		ClusterMetricsCollectionEnabled:   ptr.To(true),
+		KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(true),
 	}
 
 	OperatorConfigurationResourceDash0ExportWithApiEndpointWithToken = dash0v1alpha1.Dash0OperatorConfigurationSpec{
@@ -84,8 +82,7 @@ var (
 				},
 			},
 		},
-		NodeLevelMetricsCollectionEnabled: ptr.To(true),
-		ClusterMetricsCollectionEnabled:   ptr.To(true),
+		KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(true),
 	}
 
 	OperatorConfigurationResourceDash0ExportWithApiEndpointWithSecretRef = dash0v1alpha1.Dash0OperatorConfigurationSpec{
@@ -100,8 +97,7 @@ var (
 				},
 			},
 		},
-		NodeLevelMetricsCollectionEnabled: ptr.To(true),
-		ClusterMetricsCollectionEnabled:   ptr.To(true),
+		KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(true),
 	}
 
 	OperatorConfigurationResourceWithoutSelfMonitoringWithToken = dash0v1alpha1.Dash0OperatorConfigurationSpec{
@@ -116,8 +112,7 @@ var (
 				},
 			},
 		},
-		NodeLevelMetricsCollectionEnabled: ptr.To(true),
-		ClusterMetricsCollectionEnabled:   ptr.To(true),
+		KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(true),
 	}
 
 	OperatorConfigurationResourceWithoutSelfMonitoringWithSecretRef = dash0v1alpha1.Dash0OperatorConfigurationSpec{
@@ -132,8 +127,7 @@ var (
 				},
 			},
 		},
-		NodeLevelMetricsCollectionEnabled: ptr.To(true),
-		ClusterMetricsCollectionEnabled:   ptr.To(true),
+		KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(true),
 	}
 
 	OperatorConfigurationResourceWithSelfMonitoringWithToken = dash0v1alpha1.Dash0OperatorConfigurationSpec{
@@ -148,8 +142,7 @@ var (
 				},
 			},
 		},
-		NodeLevelMetricsCollectionEnabled: ptr.To(true),
-		ClusterMetricsCollectionEnabled:   ptr.To(true),
+		KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(true),
 	}
 
 	OperatorConfigurationResourceWithSelfMonitoringWithSecretRef = dash0v1alpha1.Dash0OperatorConfigurationSpec{
@@ -164,8 +157,7 @@ var (
 				},
 			},
 		},
-		NodeLevelMetricsCollectionEnabled: ptr.To(true),
-		ClusterMetricsCollectionEnabled:   ptr.To(true),
+		KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(true),
 	}
 
 	OperatorConfigurationResourceDefaultSpec = OperatorConfigurationResourceWithSelfMonitoringWithToken
