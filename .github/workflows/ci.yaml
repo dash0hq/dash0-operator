@@ -137,6 +137,12 @@ jobs:
         # See https://docs.docker.com/reference/cli/docker/image/tag:
         # "The tag must be valid ASCII and can contain lowercase and uppercase letters, digits, underscores, periods,
         # and hyphens."
+        #
+        # TODO something is still not working with some branch names/tag...
+        # failed to push
+        # ghcr.io/dash0hq/instrumentation-ci-test:dependabot_npm_and_yarn_images_instrumentation_node.js_dash0hq_opentelemetry-1.1.8:
+        # unexpected status from POST request to https://ghcr.io/v2/dash0hq/instrumentation-ci-test/blobs/uploads/: 403 Forbidden
+        # This works though: ghcr.io/dash0hq/instrumentation-ci-test:dependabot_npm_and_yarn_images_instrumentation_node_otel_update
         run: |
           export image_tag=$( echo "${{ github.head_ref || github.ref_name }}" |  sed 's/[^a-zA-Z0-9_\.\-]/\_/g' )
           echo "image_name=ghcr.io/dash0hq/instrumentation-ci-test:$image_tag" >> $GITHUB_OUTPUT
