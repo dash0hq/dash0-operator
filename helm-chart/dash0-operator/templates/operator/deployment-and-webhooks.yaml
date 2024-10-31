@@ -105,6 +105,9 @@ spec:
 {{- if .Values.operator.dash0Export.apiEndpoint }}
         - --operator-configuration-api-endpoint={{ .Values.operator.dash0Export.apiEndpoint }}
 {{- end }}
+        - --operator-configuration-self-monitoring-enabled={{ .Values.operator.selfMonitoringEnabled }}
+        - --operator-configuration-node-level-metrics-collection-enabled={{ .Values.operator.nodeLevelMetricsCollectionEnabled }}
+        - --operator-configuration-cluster-metrics-collection-enabled={{ .Values.operator.clusterMetricsCollectionEnabled }}
 {{- end }}
         env:
         - name: DASH0_OPERATOR_NAMESPACE

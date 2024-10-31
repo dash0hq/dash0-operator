@@ -27,6 +27,8 @@ type oTelColConfig struct {
 	NamePrefix                              string
 	Export                                  dash0v1alpha1.Export
 	SelfMonitoringAndApiAccessConfiguration selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration
+	NodeLevelMetricsCollectionEnabled       bool
+	ClusterMetricsCollectionEnabled         bool
 	Images                                  util.Images
 	IsIPv6Cluster                           bool
 	DevelopmentMode                         bool
@@ -210,19 +212,21 @@ func assembleDesiredState(
 	}
 	desiredState = append(desiredState, addCommonMetadata(collectorDaemonSet))
 
-	desiredState = append(desiredState, addCommonMetadata(assembleServiceAccountForDeployment(config)))
-	desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleForDeployment(config)))
-	desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleBindingForDeployment(config)))
-	deploymentCollectorConfigMap, err := assembleDeploymentCollectorConfigMap(config, forDeletion)
-	if err != nil {
-		return desiredState, err
+	if config.ClusterMetricsCollectionEnabled {
+		desiredState = append(desiredState, addCommonMetadata(assembleServiceAccountForDeployment(config)))
+		desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleForDeployment(config)))
+		desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleBindingForDeployment(config)))
+		deploymentCollectorConfigMap, err := assembleDeploymentCollectorConfigMap(config, forDeletion)
+		if err != nil {
+			return desiredState, err
+		}
+		desiredState = append(desiredState, addCommonMetadata(deploymentCollectorConfigMap))
+		collectorDeployment, err := assembleCollectorDeployment(config, resourceSpecs)
+		if err != nil {
+			return desiredState, err
+		}
+		desiredState = append(desiredState, addCommonMetadata(collectorDeployment))
 	}
-	desiredState = append(desiredState, addCommonMetadata(deploymentCollectorConfigMap))
-	collectorDeployment, err := assembleCollectorDeployment(config, resourceSpecs)
-	if err != nil {
-		return desiredState, err
-	}
-	desiredState = append(desiredState, addCommonMetadata(collectorDeployment))
 
 	return desiredState, nil
 }

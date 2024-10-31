@@ -93,6 +93,10 @@ See the section
 [Using a Kubernetes Secret for the Dash0 Authorization Token](#using-a-kubernetes-secret-for-the-dash0-authorization-token)
 for more information on using a Kubernetes secrets with the Dash0 operator.
 
+You can consult the chart's
+[values.yaml](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/values.yaml) for a complete
+list of available configuration settings.
+
 Last but not least, you can also install the operator without providing a Dash0 backend configuration:
 
 ```console
@@ -119,8 +123,8 @@ Both steps are described in the following sections.
 
 ### Configuring the Dash0 Backend Connection
 
-You can skip this step if you provided `--set operator.dash0Export.enabled=true` together with the endpoint and either
-a token or a secret reference when running `helm install`. In that case, proceed to the next section,
+**You can skip this step if you provided `--set operator.dash0Export.enabled=true` together with the endpoint and either
+a token or a secret reference when running `helm install`.** In that case, proceed to the next section,
 [Enable Dash0 Monitoring For a Namespace](#enable-dash0-monitoring-for-a-namespace).
 
 Otherwise, configure the backend connection now by creating a file `dash0-operator-configuration.yaml` with the
@@ -144,7 +148,7 @@ spec:
       apiEndpoint: https://api.....dash0.com # TODO needs to be replaced with the actual value, see below
 ```
 
-You need to provide two mandatory configuration settings:
+Here is a list of configuration options for this resource:
 * `spec.export.dash0.endpoint`: The URL of the Dash0 ingress endpoint to which telemetry data will be sent.
   This property is mandatory.
   Replace the value in the example above with the OTLP/gRPC endpoint of your Dash0 organization.
@@ -178,8 +182,19 @@ You need to provide two mandatory configuration settings:
   to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied fom https://app.dash0.com
   -> organization settings -> "Endpoints" -> "API". The correct endpoint value will always start with "https://api." and
   end in ".dash0.com". If this property is omitted, managing dashboards and check rules via the operator will not work.
+* `spec.selfMonitoring.enabled`: An opt-out for self-monitoring for the operator.
+  If enabled, the operator will collect self-monitoring telemetry and send it to the Dash0 Insights dataset of the
+  configured Dash0 backend.
+  This setting is optional, it defaults to true.
+* `spec.nodeLevelMetricsCollectionEnabled`: If enabled, the operator will configure its OpenTelemetry collector to
+  collect node, pod, container, and volume metrics from the Kubernetes API server on all nodes via the `kubeletstats`
+  receiver. This setting is optional, it defaults to true.
+* `spec.clusterMetricsCollectionEnabled`: If enabled, the operator will configure its OpenTelemetry collector to collect
+  cluster-level Kubernetes metrics from the Kubernetes API server via the `k8sclusterreceiver`.
+  This setting is optional, it defaults to true.
 
-After providing the required values, save the file and apply the resource to the Kubernetes cluster you want to monitor:
+After providing the required values (at least `endpoint` and `authorization`), save the file and apply the resource to
+the Kubernetes cluster you want to monitor:
 
 ```console
 kubectl apply -f dash0-operator-configuration.yaml
