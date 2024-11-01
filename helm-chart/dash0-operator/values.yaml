@@ -23,6 +23,10 @@ operator:
     # `dash0.com:4317`.
     endpoint:
 
+    # Dataset to used for the dash0 operator telemetry. This property is optional, it defaults to "default".
+    # https://www.dash0.com/documentation/dash0/key-concepts/datasets
+    dataset: default
+
     # The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
     # dashboards and check rules via the operator. This property is mandatory. The value needs to be the API endpoint
     # of your Dash0 organization. The correct API endpoint can be copied fom https://app.dash0.com -> organization

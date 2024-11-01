@@ -120,6 +120,7 @@ func main() {
 	var operatorConfigurationToken string
 	var operatorConfigurationSecretRefName string
 	var operatorConfigurationSecretRefKey string
+	var operatorConfigurationApiDataset string
 	var operatorConfigurationApiEndpoint string
 	var operatorConfigurationSelfMonitoringEnabled bool
 	var operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled bool
@@ -163,6 +164,12 @@ func main() {
 		"",
 		"The key in an existing Kubernetes secret containing the Dash0 auth token, used to creating an operator "+
 			"configuration resource.",
+	)
+	flag.StringVar(
+		&operatorConfigurationApiDataset,
+		"operator-configuration-api-dataset",
+		"",
+		"The Dash0 dataset for storing the operator telemetry.",
 	)
 	flag.StringVar(
 		&operatorConfigurationApiEndpoint,

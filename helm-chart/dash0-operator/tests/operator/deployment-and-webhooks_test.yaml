@@ -64,40 +64,40 @@ tests:
     set:
       operator:
         additionalLabels:
-          label1: "value 1"
-          label2: "value 2"
+          label1: 'value 1'
+          label2: 'value 2'
         deploymentAnnotations:
-          annotation1: "value 1"
-          annotation2: "value 2"
+          annotation1: 'value 1'
+          annotation2: 'value 2'
         replicaCount: 3
         podAnnotations:
-          annotation1: "value 1"
-          annotation2: "value 2"
+          annotation1: 'value 1'
+          annotation2: 'value 2'
         podLabels:
-          label1: "value 1"
-          label2: "value 2"
+          label1: 'value 1'
+          label2: 'value 2'
         image:
           repository: custom-operator-image
-          tag: "1.2.3"
+          tag: '1.2.3'
           pullPolicy: Never
         initContainerImage:
           repository: custom-init-container-image
-          tag: "4.5.6"
+          tag: '4.5.6'
           pullPolicy: Always
         imagePullSecrets:
           - name: regcred
           - name: anotherSecret
         collectorImage:
           repository: custom-collector-image
-          tag: "7.8.9"
+          tag: '7.8.9'
           pullPolicy: Never
         configurationReloaderImage:
           repository: custom-configuration-reloader-image
-          tag: "10.11.12"
+          tag: '10.11.12'
           pullPolicy: Always
         filelogOffsetSynchImage:
           repository: custom-filelog-offset-synch-image
-          tag: "13.14.15"
+          tag: '13.14.15'
           pullPolicy: Never
         managerContainerResources:
           limits:
@@ -110,31 +110,31 @@ tests:
     asserts:
       - equal:
           path: metadata.labels['label1']
-          value: "value 1"
+          value: 'value 1'
       - equal:
           path: metadata.labels['label2']
-          value: "value 2"
+          value: 'value 2'
       - equal:
           path: metadata.annotations['annotation1']
-          value: "value 1"
+          value: 'value 1'
       - equal:
           path: metadata.annotations['annotation2']
-          value: "value 2"
+          value: 'value 2'
       - equal:
           path: spec.replicas
           value: 3
       - equal:
           path: spec.template.metadata.annotations['annotation1']
-          value: "value 1"
+          value: 'value 1'
       - equal:
           path: spec.template.metadata.annotations['annotation2']
-          value: "value 2"
+          value: 'value 2'
       - equal:
           path: spec.template.metadata.labels['label1']
-          value: "value 1"
+          value: 'value 1'
       - equal:
           path: spec.template.metadata.labels['label2']
-          value: "value 2"
+          value: 'value 2'
       - equal:
           path: spec.template.spec.imagePullSecrets[0].name
           value: regcred
@@ -169,8 +169,8 @@ tests:
           path: spec.template.spec.containers[0].env[3].value
           value: custom-operator-image:1.2.3
       - equal:
-         path: spec.template.spec.containers[0].env[4].name
-         value: DASH0_INIT_CONTAINER_IMAGE
+          path: spec.template.spec.containers[0].env[4].name
+          value: DASH0_INIT_CONTAINER_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[4].value
           value: custom-init-container-image:4.5.6
@@ -221,7 +221,7 @@ tests:
           value: DASH0_DEVELOPMENT_MODE
       - equal:
           path: spec.template.spec.containers[0].env[12].value
-          value: "true"
+          value: 'true'
       - equal:
           path: spec.template.spec.containers[0].resources.limits.cpu
           value: 123m
@@ -244,7 +244,7 @@ tests:
         dash0Export:
           enabled: true
           endpoint: https://ingress.dash0.com
-          token: "very-secret-dash0-auth-token"
+          token: 'very-secret-dash0-auth-token'
           apiEndpoint: https://api.dash0.com
     asserts:
       - equal:
@@ -262,6 +262,37 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].args[7]
           value: --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled=true
+  - it: should add args for creating an operator configuration resource with a dataset to the deployment
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: 'very-secret-dash0-auth-token'
+          apiEndpoint: https://api.dash0.com
+          dataset: 'e2e-dataset'
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args[3]
+          value: --operator-configuration-endpoint=https://ingress.dash0.com
+      - equal:
+          path: spec.template.spec.containers[0].args[4]
+          value: --operator-configuration-token=very-secret-dash0-auth-token
+      - equal:
+          path: spec.template.spec.containers[0].args[5]
+          value: --operator-configuration-api-endpoint=https://api.dash0.com
+      - equal:
+          path: spec.template.spec.containers[0].args[6]
+          value: --operator-configuration-self-monitoring-enabled=true
+      - equal:
+          path: spec.template.spec.containers[0].args[7]
+          value: --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled=true
+      - equal:
+          path: spec.template.spec.containers[0].args[8]
+          value: --operator-configuration-api-dataset=e2e-dataset
 
   - it: should add args for creating an operator configuration resource with a secretRef to the deployment
     documentSelector:
@@ -307,7 +338,7 @@ tests:
         dash0Export:
           enabled: true
           endpoint: https://ingress.dash0.com
-          token: "very-secret-dash0-auth-token"
+          token: 'very-secret-dash0-auth-token'
           apiEndpoint: https://api.dash0.com
         selfMonitoringEnabled: false
         kubernetesInfrastructureMetricsCollectionEnabled: false
