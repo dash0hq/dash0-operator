@@ -150,4 +150,52 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 			g.Expect(dash0Export.Authorization.SecretRef.Key).To(Equal("test-key"))
 		}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
 	})
+
+	It("should set the API endpoint", func() {
+		Expect(
+			handler.CreateOperatorConfigurationResource(ctx, &OperatorConfigurationValues{
+				Endpoint:    EndpointDash0Test,
+				Token:       AuthorizationTokenTest,
+				ApiEndpoint: ApiEndpointTest,
+			}, &logger),
+		).To(Succeed())
+
+		Eventually(func(g Gomega) {
+			operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name: operatorConfigurationAutoResourceName,
+			}, &operatorConfiguration)
+			g.Expect(err).ToNot(HaveOccurred())
+
+			export := operatorConfiguration.Spec.Export
+			g.Expect(export).ToNot(BeNil())
+			dash0Export := export.Dash0
+			g.Expect(dash0Export).ToNot(BeNil())
+			g.Expect(dash0Export.ApiEndpoint).To(Equal(ApiEndpointTest))
+		}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
+	})
+
+	It("should set a custom dataset", func() {
+		Expect(
+			handler.CreateOperatorConfigurationResource(ctx, &OperatorConfigurationValues{
+				Endpoint: EndpointDash0Test,
+				Token:    AuthorizationTokenTest,
+				Dataset:  "custom",
+			}, &logger),
+		).To(Succeed())
+
+		Eventually(func(g Gomega) {
+			operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name: operatorConfigurationAutoResourceName,
+			}, &operatorConfiguration)
+			g.Expect(err).ToNot(HaveOccurred())
+
+			export := operatorConfiguration.Spec.Export
+			g.Expect(export).ToNot(BeNil())
+			dash0Export := export.Dash0
+			g.Expect(dash0Export).ToNot(BeNil())
+			g.Expect(dash0Export.Dataset).To(Equal("custom"))
+		}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
+	})
 })

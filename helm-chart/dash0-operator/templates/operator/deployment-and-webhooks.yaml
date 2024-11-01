@@ -108,6 +108,9 @@ spec:
         - --operator-configuration-self-monitoring-enabled={{ .Values.operator.selfMonitoringEnabled }}
         - --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled={{ .Values.operator.kubernetesInfrastructureMetricsCollectionEnabled }}
 {{- end }}
+{{- if .Values.operator.dash0Export.dataset }}
+        - --operator-configuration-dataset={{ .Values.operator.dash0Export.dataset }}
+{{- end }}
         env:
         - name: DASH0_OPERATOR_NAMESPACE
           valueFrom:
