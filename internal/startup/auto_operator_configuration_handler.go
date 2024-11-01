@@ -31,6 +31,7 @@ type OperatorConfigurationValues struct {
 	Token    string
 	SecretRef
 	ApiEndpoint                                      string
+	Dataset                                          string
 	SelfMonitoringEnabled                            bool
 	KubernetesInfrastructureMetricsCollectionEnabled bool
 }
@@ -210,6 +211,9 @@ func (r *AutoOperatorConfigurationResourceHandler) createOperatorConfigurationRe
 	}
 	if operatorConfiguration.ApiEndpoint != "" {
 		dash0Export.Dash0.ApiEndpoint = operatorConfiguration.ApiEndpoint
+	}
+	if operatorConfiguration.Dataset != "" {
+		dash0Export.Dash0.Dataset = operatorConfiguration.Dataset
 	}
 	operatorConfigurationResource := dash0v1alpha1.Dash0OperatorConfiguration{
 		ObjectMeta: metav1.ObjectMeta{

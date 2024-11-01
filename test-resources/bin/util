@@ -149,6 +149,9 @@ deploy_via_helm() {
         helm_install_command+=" --set operator.dash0Export.secretRef.key=token"
       fi
       helm_install_command+=" --set operator.dash0Export.apiEndpoint=https://api.eu-west-1.aws.dash0-dev.com"
+      if [[ -n "${OPERATOR_CONFIGURATION_VIA_HELM_DATASET:-}" ]]; then
+        helm_install_command+=" --set operator.dash0Export.dataset=$OPERATOR_CONFIGURATION_VIA_HELM_DATASET"
+      fi
     fi
   fi
 
