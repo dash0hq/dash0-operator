@@ -16,12 +16,12 @@ load_env_file () {
 }
 
 verify_kubectx() {
-  current_kubectx=$(kubectl config current-context)
-  allowed_contexts_raw="${ALLOWED_KUBECTXS:-}"
+  local current_kubectx=$(kubectl config current-context)
+  local allowed_contexts_raw="${ALLOWED_KUBECTXS:-}"
   IFS=',' read -r -a allowed_contexts <<< "$allowed_contexts_raw"
-  current_context_is_allowed=false
+  local current_context_is_allowed=false
   for allowed_context_name in "${allowed_contexts[@]}"; do
-    trimmed=$(trim "$allowed_context_name")
+    local trimmed=$(trim "$allowed_context_name")
     if [[ "$current_kubectx" == "$trimmed" ]]; then
       current_context_is_allowed=true
       break
@@ -38,7 +38,7 @@ setup_test_environment () {
 }
 
 ensure_namespace_exists() {
-  target_namespace=${1:-test-namespace}
+  local target_namespace=${1:-test-namespace}
 
   if [[ "${target_namespace}" == default  ]]; then
     exit 0
@@ -62,7 +62,7 @@ build_all_images() {
 deploy_via_helm() {
   deploy_otlp_sink_if_requested
 
-  helm_install_command="helm install --namespace dash0-system"
+  local helm_install_command="helm install --namespace dash0-system"
   if [[ -n "${OPERATOR_HELM_CHART_VERSION:-}" ]]; then
     helm_install_command+=" --version $OPERATOR_HELM_CHART_VERSION"
   fi
@@ -167,10 +167,10 @@ wait_for_operator_manager_and_webhook() {
   kubectl wait deployment.apps/dash0-operator-controller --for condition=Available --namespace dash0-system --timeout 30s
 
   echo "waiting for the operator's webhook endpoint to become available..."
-  webhook_available=false
+  local webhook_available=false
   for ((i=0; i<=100; i++)); do
-    endpoints_output=$(kubectl get endpoints --namespace dash0-system dash0-operator-webhook-service)
-    expected_endpoint_regex='dash0-operator-webhook-service.+:9443'
+    local endpoints_output=$(kubectl get endpoints --namespace dash0-system dash0-operator-webhook-service)
+    local expected_endpoint_regex='dash0-operator-webhook-service.+:9443'
     if [[ "$endpoints_output" =~ $expected_endpoint_regex ]]; then
       webhook_available=true
       break;
@@ -199,9 +199,9 @@ wait_for_operator_manager_and_webhook() {
 }
 
 has_been_set_to_empty_string() {
-  env_var_name=$1
-  value=${!env_var_name:-}
-  is_set=${!env_var_name+is_set}
+  local env_var_name=$1
+  local value=${!env_var_name:-}
+  local is_set=${!env_var_name+is_set}
 
   if [ -z "$value" ] && [ "$is_set" = "is_set" ]; then
     return 0
@@ -220,7 +220,7 @@ deploy_otlp_sink_if_requested() {
   echo "deploying otlp-sink"
   tmpfile=$(mktemp "${TMPDIR}otlp-sink-yaml.XXXX")
   trap 'rm -f "$tmpfile"' EXIT
-  otlp_sink_dir="$(realpath "$(pwd)")/test-resources/e2e-test-volumes/otlp-sink"
+  local otlp_sink_dir="$(realpath "$(pwd)")/test-resources/e2e-test-volumes/otlp-sink"
   sed "s|/tmp/telemetry|$otlp_sink_dir|g" test-resources/otlp-sink/otlp-sink.yaml > "$tmpfile"
 
 	kubectl apply -f "$tmpfile"

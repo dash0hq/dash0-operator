@@ -1,0 +1,23 @@
+{
+  "name": "query-otlp-ndjson",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "NODE_ENV=development DEBUG=* node ."
+  },
+  "author": "Bastian Krol <bastian.krol@dash0.com>",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "body-parser": "^1.20.3",
+    "bootstrap": "^5.3.3",
+    "cookie-parser": "~1.4.7",
+    "debug": "~4.3.7",
+    "express": "^4.21.1",
+    "http-errors": "~2.0.0",
+    "morgan": "~1.10.0",
+    "nocache": "^4.0.0",
+    "prettier": "^3.3.3",
+    "pug": "3.0.3"
+  }
+}

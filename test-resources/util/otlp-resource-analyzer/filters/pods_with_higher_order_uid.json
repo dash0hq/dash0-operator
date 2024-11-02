@@ -1,0 +1,21 @@
+{
+  "name": "pods *with* higher order workload uid",
+  "op": "and",
+  "filters": [
+    { "op": "is-set", "key": "k8s.pod.uid" },
+    { "op": "is-not-set", "key": "k8s.container.name" },
+    { "op": "value-contains-not", "key": "k8s.namespace.name", "regex": "kube-system" },
+    {
+      "op": "or",
+      "filters": [
+        { "op": "is-set", "key": "k8s.cronjob.uid" },
+        { "op": "is-set", "key": "k8s.daemonset.uid" },
+        { "op": "is-set", "key": "k8s.daemonset.uid" },
+        { "op": "is-set", "key": "k8s.deployment.uid" },
+        { "op": "is-set", "key": "k8s.job.uid" },
+        { "op": "is-set", "key": "k8s.replicaset.uid" },
+        { "op": "is-set", "key": "k8s.statefulset.uid" }
+      ]
+    }
+  ]
+}

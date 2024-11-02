@@ -1,0 +1,9 @@
+{
+  "name": "all pods",
+  "op": "and",
+  "filters": [
+    { "op": "is-set", "key": "k8s.pod.uid" },
+    { "op": "is-not-set", "key": "k8s.container.name" },
+    { "op": "value-contains-not", "key": "k8s.namespace.name", "regex": "kube-system" }
+  ]
+}
