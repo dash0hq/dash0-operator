@@ -1,7 +1,7 @@
 {{- if .Release.IsInstall }}
-The Dash0 Kubernetes operator has been installed successfully from the chart {{ .Chart.Name }}.
+The Dash0 operator has been installed successfully from the chart {{ .Chart.Name }}.
 {{- else }}
-The Dash0 Kubernetes operator has been upgraded successfully from the chart {{ .Chart.Name }}.
+The Dash0 operator has been upgraded successfully from the chart {{ .Chart.Name }}.
 {{- end }}
 * Helm release name: {{ .Release.Name | quote }}
-* Dash0 Kubernetes operator namespace: {{ .Release.Namespace | quote }}
+* Dash0 operator namespace: {{ .Release.Namespace | quote }}

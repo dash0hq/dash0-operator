@@ -1,4 +1,4 @@
-# This file contains the default values for the Dash0 Kubernetes Operator Helm chart.
+# This file contains the default values for the Dash0 Operator Helm chart.
 # Values can be overriden via --set or by providing additional yaml files when running helm install.
 
 # settings for the operator/controller

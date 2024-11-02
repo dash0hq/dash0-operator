@@ -1,21 +1,21 @@
-# Dash0 Kubernetes Operator Helm Chart
+# Dash0 Operator Helm Chart
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/dash0-operator)](https://artifacthub.io/packages/search?repo=dash0-operator)
 
-This repository contains the [Helm](https://helm.sh/) chart for the Dash0 Kubernetes operator.
+This repository contains the [Helm](https://helm.sh/) chart for the Dash0 operator.
 
-The Dash0 Kubernetes Operator makes observability for Kubernetes _easy_.
+The Dash0 Operator makes observability for Kubernetes _easy_.
 Simply install the operator into your cluster to get OpenTelemetry data flowing from your Kubernetes workloads to Dash0.
 
 ## Description
 
-The Dash0 Kubernetes operator installs an OpenTelemetry collector into your cluster that sends data to your Dash0
+The Dash0 operator installs an OpenTelemetry collector into your cluster that sends data to your Dash0
 ingress endpoint, with authentication already configured out of the box. Additionally, it will enable gathering
 OpenTelemetry data from applications deployed to the cluster for a selection of supported runtimes, plus automatic log
 collection and metrics.
 
-The Dash0 Kubernetes operator is currently available as a technical preview.
+The Dash0 operator is currently available as a technical preview.
 
 ## Supported Runtimes
 
@@ -237,7 +237,7 @@ The Dash0 monitoring resource supports additional configuration settings:
       * instrument existing workloads in the target namespace (i.e. workloads already running in the namespace) when
         the Dash0 monitoring resource is deployed,
       * instrument existing workloads or update the instrumentation of already instrumented workloads in the target
-        namespace when the Dash0 Kubernetes operator is first started or restarted (for example when updating the
+        namespace when the Dash0 operator is first started or restarted (for example when updating the
         operator),
       * instrument new workloads in the target namespace when they are deployed, and
       * instrument changed workloads in the target namespace when changes are applied to them.
@@ -250,7 +250,7 @@ The Dash0 monitoring resource supports additional configuration settings:
       * instrument new workloads in the target namespace when they are deployed, and
       * instrument changed workloads in the target namespace when changes are applied to them.
         This setting is useful if you want to avoid pod restarts as a side effect of deploying the Dash0 monitoring
-        resource or restarting the Dash0 Kubernetes operator.
+        resource or restarting the Dash0 operator.
 
   * `none`: You can opt out of instrumenting workloads entirely by setting this option to `none`.
      With `spec.instrumentWorkloads: none`, workloads in the target namespace will never be instrumented to send
@@ -278,13 +278,13 @@ The Dash0 monitoring resource supports additional configuration settings:
 * `spec.synchronizePersesDashboards`: A namespace-wide opt-out for synchronizing Perses dashboard resources found in the
   target namespace. If enabled, the operator will watch Perses dashboard resources in this namespace and create
   corresponding dashboards in Dash0 via the Dash0 API.
-  See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-dashboards-with-the-operator
+  See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-dashboards
   for details. This setting is optional, it defaults to true.
 
 * `spec.synchronizePrometheusRules`: A namespace-wide opt-out for synchronizing Prometheus rule resources found in the
   target namespace. If enabled, the operator will watch Prometheus rule resources in this namespace and create
   corresponding check rules in Dash0 via the Dash0 API.
-  See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-check-rules-with-the-operator
+  See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-check-rules
   for details. This setting is optional, it defaults to true.
 
 * `spec.prometheusScrapingEnabled`: A namespace-wide opt-out for Prometheus scraping for the target namespace.
@@ -510,7 +510,7 @@ This restriction will be lifted once exporting telemetry to different backends p
 
 ## Disable Self-Monitoring
 
-By default, self-monitoring is enabled for the Dash0 Kubernetes operator as soon as you deploy a Das0 operator
+By default, self-monitoring is enabled for the Dash0 operator as soon as you deploy a Das0 operator
 configuration resource with an export.
 That means, the operator will send self-monitoring telemetry to the Dash0 Insights dataset of the configured backend.
 Disabling self-monitoring is available as a setting on the Dash0 operator configuration resource.
@@ -548,7 +548,7 @@ kubectl delete --namespace my-nodejs-applications -f dash0-monitoring.yaml
 
 ## Upgrading
 
-To upgrade the Dash0 Kubernetes Operator to a newer version, run the following commands:
+To upgrade the Dash0 Operator to a newer version, run the following commands:
 
 ```console
 helm repo update dash0-operator
@@ -557,7 +557,7 @@ helm upgrade --namespace dash0-system dash0-operator dash0-operator/dash0-operat
 
 ## Uninstallation
 
-To remove the Dash0 Kubernetes Operator from your cluster, run the following command:
+To remove the Dash0 Operator from your cluster, run the following command:
 
 ```
 helm uninstall dash0-operator --namespace dash0-system
@@ -623,9 +623,24 @@ tracing data from all Node.js workloads.
 If you are curious, the source code for the injector is open source and can be found
 [here](https://github.com/dash0hq/dash0-operator/blob/main/images/instrumentation/injector/src/dash0_injector.c).
 
-## Managing Dash0 Dashboards with the Operator
+## Scraping Prometheus endpoints
 
-You can manage your Dash0 dashboards via the Dash0 Kubernetes operator.
+The Dash0 operator automatically scrapes Prometheus endpoints on pods labelled with the `prometheus.io/*` annotations as defined by the [Prometheus Helm chart](https://github.com/prometheus-community/helm-charts/tree/main/charts/prometheus#scraping-pod-metrics-via-annotations).
+
+The supported annotations are:
+* `prometheus.io/scrape`: Only scrape pods that have a value of `true`, except if `prometheus.io/scrape-slow` is set to `true` as well. Endpoints on pods annotated with this annotation are scraped every minute, i.e., scrape interval is 1 minute, unless `prometheus.io/scrape-slow` is also set to `true`.
+* `prometheus.io/scrape-slow`: If set to `true`, enables scraping for the pod with scrape interval of 5 minutes. If both `prometheus.io/scrape` and `prometheus.io/scrape-slow` are annotated on a pod with both values set to `true`, the pod will be scraped every 5 minutes.
+* `prometheus.io/scheme`: If the metrics endpoint is secured then you will need to set this to `https`.
+* `prometheus.io/path`: Override the metrics endpoint path if it is not the default `/metrics`.
+* `prometheus.io/port`: Override the metrics endpoint port if it is not the default `9102`.
+
+To be scraped, a pod annotated with the `prometheus.io/scrape` or `prometheus.io/scrape-slow` annotations must belong to namespaces that are configured to be monitored by the Dash0 operator (see [Enable Dash0 Monitoring For a Namespace](#enable-dash0-monitoring-for-a-namespace) section).
+
+The scraping of a pod from is executed from the same Kubernetes node as the pod's.
+
+## Managing Dash0 Dashboards
+
+You can manage your Dash0 dashboards via the Dash0 operator.
 
 Pre-requisites for this feature:
 * A Dash0 operator configuration resource has to be installed in the cluster.
@@ -669,9 +684,9 @@ Perses Dashboard Synchronization Results:
     Synchronized At:            2024-10-25T12:02:12Z
 ```
 
-## Managing Dash0 Check Rules with the Operator
+## Managing Dash0 Check Rules
 
-You can manage your Dash0 check rules via the Dash0 Kubernetes operator.
+You can manage your Dash0 check rules via the Dash0 operator.
 
 Pre-requisites for this feature:
 * A Dash0 operator configuration resource has to be installed in the cluster.

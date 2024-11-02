@@ -1,7 +1,7 @@
 dist:
   module: github.com/dash0hq/dash0-operator
   name: dash0-operator-collector
-  description: OpenTelemetry collector managed by the Dash0 Kubernetes operator
+  description: OpenTelemetry collector managed by the Dash0 operator
   otelcol_version: "0.111.0"
   version: "dash0"
   output_path: dist

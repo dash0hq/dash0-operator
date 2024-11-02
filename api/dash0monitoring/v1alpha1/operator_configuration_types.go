@@ -13,7 +13,7 @@ import (
 	dash0common "github.com/dash0hq/dash0-operator/api/dash0monitoring"
 )
 
-// Dash0OperatorConfigurationSpec describes cluster-wide configuration settings for the Dash0 Kubernetes operator.
+// Dash0OperatorConfigurationSpec describes cluster-wide configuration settings for the Dash0 operator.
 type Dash0OperatorConfigurationSpec struct {
 	// The configuration of the default observability backend to which telemetry data will be sent by the operator, as
 	// well as the backend that will receive the operator's self-monitoring data. This property is mandatory.

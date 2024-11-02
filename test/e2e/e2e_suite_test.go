@@ -15,5 +15,5 @@ import (
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
 	_, _ = fmt.Fprint(GinkgoWriter, "Starting dash0-operator suite\n")
-	RunSpecs(t, "Dash0 Kubernetes operator end-to-end test suite")
+	RunSpecs(t, "Dash0 operator end-to-end test suite")
 }

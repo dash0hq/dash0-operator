@@ -213,7 +213,7 @@ jobs:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
           imageName: operator-controller
           imageTitle: Dash0 Kubernetes Operator Controller
-          imageDescription: the controller for the Dash0 Kubernetes operator
+          imageDescription: the controller for the Dash0 operator for Kubernetes
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main
           context: .
 
@@ -233,7 +233,7 @@ jobs:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
           imageName: collector
           imageTitle: Dash0 Kubernetes Collector
-          imageDescription: the OpenTelemetry collector for the Dash0 Kubernetes operator
+          imageDescription: the OpenTelemetry collector for the Dash0 operator for Kubernetes
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/collector
           context: images/collector
 
@@ -243,7 +243,7 @@ jobs:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
           imageName: configuration-reloader
           imageTitle: Dash0 Kubernetes Configuration Reloader
-          imageDescription: the configuration reloader for the Dash0 Kubernetes operator
+          imageDescription: the configuration reloader for the Dash0 operator for Kubernetes
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/configreloader
           context: images
           file: images/configreloader/Dockerfile
@@ -254,7 +254,7 @@ jobs:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
           imageName: filelog-offset-synch
           imageTitle: Dash0 Kubernetes Filelog Offset Synch
-          imageDescription: the filelog offset synch for the Dash0 Kubernetes operator
+          imageDescription: the filelog offset synch for the Dash0 operator for Kubernetes
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main
           context: images
           file: images/filelogoffsetsynch/Dockerfile
