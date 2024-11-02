@@ -1,0 +1,8 @@
+{
+  "name": "pod name without pod uid",
+  "op": "and",
+  "filters": [
+    { "op": "is-set", "key": "k8s.pod.name" },
+    { "op": "is-not-set", "key": "k8s.pod.uid" }
+  ]
+}

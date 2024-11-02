@@ -1,0 +1,4 @@
+{
+  "name": "host name is set",
+  "op": "is-set", "key": "host.name"
+}

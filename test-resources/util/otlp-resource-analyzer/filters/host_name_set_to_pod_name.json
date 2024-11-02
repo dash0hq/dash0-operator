@@ -1,0 +1,8 @@
+{
+  "name": "host name == pod name",
+  "op": "or",
+  "filters": [
+    { "op": "value-contains", "key": "host.name", "regex": "daemonset" },
+    { "op": "value-contains", "key": "host.name", "regex": "deployment" }
+  ]
+}
