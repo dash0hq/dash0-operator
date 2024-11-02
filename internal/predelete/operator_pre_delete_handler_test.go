@@ -39,7 +39,7 @@ var (
 	}
 )
 
-var _ = Describe("Uninstalling the Dash0 Kubernetes operator", Ordered, func() {
+var _ = Describe("Uninstalling the Dash0 operator", Ordered, func() {
 
 	ctx := context.Background()
 	var (

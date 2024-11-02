@@ -31,7 +31,7 @@ var (
 	workingDir string
 )
 
-var _ = Describe("Dash0 Kubernetes Operator", Ordered, func() {
+var _ = Describe("Dash0 Operator", Ordered, func() {
 
 	BeforeAll(func() {
 		// Do not truncate string diff output.

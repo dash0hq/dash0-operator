@@ -38,7 +38,7 @@ custom resource definition should match snapshot:
                 metadata:
                   type: object
                 spec:
-                  description: Dash0OperatorConfigurationSpec describes cluster-wide configuration settings for the Dash0 Kubernetes operator.
+                  description: Dash0OperatorConfigurationSpec describes cluster-wide configuration settings for the Dash0 operator.
                   properties:
                     export:
                       description: |-

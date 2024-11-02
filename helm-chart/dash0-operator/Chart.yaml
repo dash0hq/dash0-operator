@@ -1,7 +1,7 @@
 apiVersion: v2
 name: dash0-operator
 version: "0.0.0" # note: will be replaced when building a release
-description: The Dash0 Kubernetes Operator makes observability easy for every Kubernetes setup, simply install the operator into your cluster to get OpenTelemetry data flowing from your applications and infrastructure to Dash0.
+description: The Dash0 Operator makes observability easy for every Kubernetes setup, simply install the operator into your cluster to get OpenTelemetry data flowing from your applications and infrastructure to Dash0.
 type: application
 keywords:
   - OpenTelemetry

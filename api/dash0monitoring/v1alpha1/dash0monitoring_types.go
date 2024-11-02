@@ -43,7 +43,7 @@ type Dash0MonitoringSpec struct {
 	// * instrument existing workloads in the target namespace (i.e. workloads already running in the namespace) when
 	//   the Dash0 monitoring resource is deployed,
 	// * instrument existing workloads or update the instrumentation of already instrumented workloads in the target
-	//   namespace when the Dash0 Kubernetes operator is first started or restarted (for example when updating the
+	//   namespace when the Dash0 operator is first started or restarted (for example when updating the
 	//   operator),
 	// * instrument new workloads in the target namespace when they are deployed, and
 	// * instrument changed workloads in the target namespace when changes are applied to them.
@@ -55,7 +55,7 @@ type Dash0MonitoringSpec struct {
 	// * instrument new workloads in the target namespace when they are deployed, and
 	// * instrument changed workloads in the target namespace when changes are applied to them.
 	// This setting is useful if you want to avoid pod restarts as a side effect of deploying the Dash0 monitoring
-	// resource or restarting the Dash0 Kubernetes operator.
+	// resource or restarting the Dash0 operator.
 	//
 	// You can opt out of instrumenting workloads entirely by setting this option to `none`. With
 	// `instrumentWorkloads: none`, workloads in the target namespace will never be instrumented to send telemetry to
