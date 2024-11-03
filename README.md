@@ -29,6 +29,12 @@ It also supports scraping Prometheus endpoints exposed by pods according to the 
 
 For more information on how the Dash0 operator scrapes Prometheus endpoints exposed by your applications, see the [Scraping Prometheus endpoints](https://artifacthub.io/packages/helm/dash0-operator/dash0-operator#scraping-prometheus-endpoints) section of the Dash0 operator Helm chart documentation.
 
+### Logs
+
+The Dash0 operator automatically collects pod logs from the pods that it monitors.
+
+For more information on how to have pods monitored by the Dash0 operator, see the [Enable Dash0 Monitoring For a Namespace](https://artifacthub.io/packages/helm/dash0-operator/dash0-operator#enable-dash0-monitoring-for-a-namespace) section of the Dash0 operator Helm chart documentation.
+
 ### Alerting
 
 The Dash0 operator supports the [`PrometheusRule` custom resource definition](https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api.md#monitoring.coreos.com/v1.PrometheusRule) defined by the Prometheus operator.
