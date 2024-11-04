@@ -373,7 +373,7 @@ spec:
           name: dash0-authorization-secret
           key: token
 
-      apiEndpoint=https://api... # optional, see above
+      apiEndpoint: https://api... # optional, see above
 ```
 
 When deploying the operator configuration resource via `kubectl`, the following defaults apply:
@@ -395,7 +395,7 @@ spec:
       authorization:
         secretRef: {}
 
-      apiEndpoint=https://api... # optional, see above
+      apiEndpoint: https://api... # optional, see above
 ```
 
 Note: There are no defaults when using `--set operator.dash0Export.secretRef.name` and
@@ -428,7 +428,7 @@ spec:
       authorization: # see above
         ...
 
-      apiEndpoint=https://api... # optional, see above
+      apiEndpoint: https://api... # optional, see above
 ```
 
 ### Exporting Data to Other Observability Backends
