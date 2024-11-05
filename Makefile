@@ -205,7 +205,7 @@ lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 ##@ Build
 
 .PHONY: build
-build: manifests generate fmt vet ## Build manager binary.
+build: husky-setup-hooks manifests generate fmt vet ## Build manager binary.
 	go build -o bin/manager cmd/main.go
 
 .PHONY: run
@@ -318,6 +318,7 @@ KUBECTL ?= kubectl
 KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
+HUSKY ?= $(LOCALBIN)/husky
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.2.1
@@ -415,3 +416,12 @@ catalog-build: opm ## Build a catalog image.
 .PHONY: catalog-push
 catalog-push: ## Push a catalog image.
 	$(MAKE) docker-push CONTROLLER_IMG=$(CATALOG_IMG)
+
+.PHONY: husky-install
+husky-install:
+	test -s $(HUSKY) || GOBIN=$(LOCALBIN) GO111MODULE=on go install github.com/automation-co/husky@latest
+
+.PHONY: husky-setup-hooks
+husky-setup-hooks: husky-install
+	$(HUSKY) install
+
