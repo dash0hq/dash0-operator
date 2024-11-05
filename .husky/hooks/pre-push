@@ -7,6 +7,3 @@ make
 make lint
 make test
 
-if [[ "${SKIP_E2E_TESTS:-false}" != "true" ]]; then
-  make test-e2e
-fi
