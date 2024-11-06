@@ -5,6 +5,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -255,8 +257,8 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			ruleResource := createDefaultRuleResource()
 			prometheusRuleReconciler.Create(
 				ctx,
-				event.TypedCreateEvent[client.Object]{
-					Object: ruleResource,
+				event.TypedCreateEvent[*unstructured.Unstructured]{
+					Object: &ruleResource,
 				},
 				&controllertest.TypedQueue[reconcile.Request]{},
 			)
@@ -275,8 +277,8 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			ruleResource := createDefaultRuleResource()
 			prometheusRuleReconciler.Create(
 				ctx,
-				event.TypedCreateEvent[client.Object]{
-					Object: ruleResource,
+				event.TypedCreateEvent[*unstructured.Unstructured]{
+					Object: &ruleResource,
 				},
 				&controllertest.TypedQueue[reconcile.Request]{},
 			)
@@ -296,8 +298,8 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			ruleResource := createDefaultRuleResource()
 			prometheusRuleReconciler.Create(
 				ctx,
-				event.TypedCreateEvent[client.Object]{
-					Object: ruleResource,
+				event.TypedCreateEvent[*unstructured.Unstructured]{
+					Object: &ruleResource,
 				},
 				&controllertest.TypedQueue[reconcile.Request]{},
 			)
@@ -315,8 +317,8 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			ruleResource := createDefaultRuleResource()
 			prometheusRuleReconciler.Create(
 				ctx,
-				event.TypedCreateEvent[client.Object]{
-					Object: ruleResource,
+				event.TypedCreateEvent[*unstructured.Unstructured]{
+					Object: &ruleResource,
 				},
 				&controllertest.TypedQueue[reconcile.Request]{},
 			)
@@ -338,8 +340,8 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			ruleResource := createDefaultRuleResource()
 			prometheusRuleReconciler.Update(
 				ctx,
-				event.TypedUpdateEvent[client.Object]{
-					ObjectNew: ruleResource,
+				event.TypedUpdateEvent[*unstructured.Unstructured]{
+					ObjectNew: &ruleResource,
 				},
 				&controllertest.TypedQueue[reconcile.Request]{},
 			)
@@ -361,8 +363,8 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			ruleResource := createDefaultRuleResource()
 			prometheusRuleReconciler.Delete(
 				ctx,
-				event.TypedDeleteEvent[client.Object]{
-					Object: ruleResource,
+				event.TypedDeleteEvent[*unstructured.Unstructured]{
+					Object: &ruleResource,
 				},
 				&controllertest.TypedQueue[reconcile.Request]{},
 			)
@@ -453,8 +455,8 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 				})
 			prometheusRuleReconciler.Create(
 				ctx,
-				event.TypedCreateEvent[client.Object]{
-					Object: ruleResource,
+				event.TypedCreateEvent[*unstructured.Unstructured]{
+					Object: &ruleResource,
 				},
 				&controllertest.TypedQueue[reconcile.Request]{},
 			)
@@ -546,8 +548,8 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 				})
 			prometheusRuleReconciler.Create(
 				ctx,
-				event.TypedCreateEvent[client.Object]{
-					Object: ruleResource,
+				event.TypedCreateEvent[*unstructured.Unstructured]{
+					Object: &ruleResource,
 				},
 				&controllertest.TypedQueue[reconcile.Request]{},
 			)
@@ -981,12 +983,12 @@ func expectRuleDeleteRequests(expectedPaths []string) {
 	}
 }
 
-func createDefaultRuleResource() *prometheusv1.PrometheusRule {
+func createDefaultRuleResource() unstructured.Unstructured {
 	return createRuleResource(createDefaultSpec())
 }
 
-func createRuleResource(spec prometheusv1.PrometheusRuleSpec) *prometheusv1.PrometheusRule {
-	return &prometheusv1.PrometheusRule{
+func createRuleResource(spec prometheusv1.PrometheusRuleSpec) unstructured.Unstructured {
+	rule := prometheusv1.PrometheusRule{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "monitoring.coreos.com/v1",
 			Kind:       "PrometheusRule",
@@ -997,6 +999,12 @@ func createRuleResource(spec prometheusv1.PrometheusRuleSpec) *prometheusv1.Prom
 		},
 		Spec: spec,
 	}
+	marshalled, err := json.Marshal(rule)
+	Expect(err).NotTo(HaveOccurred())
+	unstructuredObject := unstructured.Unstructured{}
+	err = json.Unmarshal(marshalled, &unstructuredObject)
+	Expect(err).NotTo(HaveOccurred())
+	return unstructuredObject
 }
 
 func createDefaultSpec() prometheusv1.PrometheusRuleSpec {

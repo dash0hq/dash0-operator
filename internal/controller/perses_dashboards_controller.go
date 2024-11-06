@@ -18,10 +18,9 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	persesv1alpha1 "github.com/perses/perses-operator/api/v1alpha1"
-	persescommon "github.com/perses/perses/pkg/model/api/v1/common"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -66,10 +65,6 @@ func (r *PersesDashboardCrdReconciler) Manager() ctrl.Manager {
 
 func (r *PersesDashboardCrdReconciler) GetAuthToken() string {
 	return r.AuthToken
-}
-
-func (r *PersesDashboardCrdReconciler) ClientObject() client.Object {
-	return &persesv1alpha1.PersesDashboard{}
 }
 
 func (r *PersesDashboardCrdReconciler) KindDisplayName() string {
@@ -322,7 +317,7 @@ func (r *PersesDashboardReconciler) IsSynchronizationEnabled(monitoringResource 
 
 func (r *PersesDashboardReconciler) Create(
 	ctx context.Context,
-	e event.TypedCreateEvent[client.Object],
+	e event.TypedCreateEvent[*unstructured.Unstructured],
 	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
 ) {
 	if persesDashboardReconcileRequestMetric != nil {
@@ -343,7 +338,7 @@ func (r *PersesDashboardReconciler) Create(
 
 func (r *PersesDashboardReconciler) Update(
 	ctx context.Context,
-	e event.TypedUpdateEvent[client.Object],
+	e event.TypedUpdateEvent[*unstructured.Unstructured],
 	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
 ) {
 	if persesDashboardReconcileRequestMetric != nil {
@@ -364,7 +359,7 @@ func (r *PersesDashboardReconciler) Update(
 
 func (r *PersesDashboardReconciler) Delete(
 	ctx context.Context,
-	e event.TypedDeleteEvent[client.Object],
+	e event.TypedDeleteEvent[*unstructured.Unstructured],
 	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
 ) {
 	if persesDashboardReconcileRequestMetric != nil {
@@ -385,7 +380,7 @@ func (r *PersesDashboardReconciler) Delete(
 
 func (r *PersesDashboardReconciler) Generic(
 	_ context.Context,
-	_ event.TypedGenericEvent[client.Object],
+	_ event.TypedGenericEvent[*unstructured.Unstructured],
 	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
 ) {
 	// ignoring generic events
@@ -417,14 +412,26 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 	switch action {
 	case upsert:
 		actionLabel = "upsert"
-		persesDashboard := preconditionChecksResult.thirdPartyResource.(*persesv1alpha1.PersesDashboard)
-		spec := persesDashboard.Spec
-		if spec.Display == nil {
-			spec.Display = &persescommon.Display{}
+		spec := preconditionChecksResult.thirdPartyResourceSpec
+		displayRaw := spec["display"]
+		if displayRaw == nil {
+			spec["display"] = map[string]interface{}{}
+			displayRaw = spec["display"]
 		}
-		if spec.Display.Name == "" {
+		display, ok := displayRaw.(map[string]interface{})
+		if !ok {
+			logger.Info("Perses dashboard spec.display is not a map, the dashboard will not be updated in Dash0.")
+			return 1,
+				nil,
+				map[string][]string{
+					itemName: {"spec.display is not a map"},
+				},
+				nil
+		}
+		displayName, ok := display["name"]
+		if !ok || displayName == "" {
 			// Let the dashboard name default to the perses dashboard resource's namespace + name, if unset.
-			spec.Display.Name = fmt.Sprintf("%s/%s", preconditionChecksResult.k8sNamespace, preconditionChecksResult.k8sName)
+			display["name"] = fmt.Sprintf("%s/%s", preconditionChecksResult.k8sNamespace, preconditionChecksResult.k8sName)
 		}
 
 		// Remove all unnecessary metadata (labels & annotations), we basically only need the dashboard spec.

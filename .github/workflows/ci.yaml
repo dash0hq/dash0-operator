@@ -77,7 +77,6 @@ jobs:
           # Get the last successful commit on main branch (actually, on the target branch for the PR, but that is
           # usually main).
           main-branch-name: ${{ steps.branch-name.outputs.base_ref_branch }}
-          workflow_id: 'ci.yml'
 
       # We use the changed-files action to potentially skip the injector & instrumentation tests on PRs that contain no
       # changes for the instrumentation image. This is because running the tests requires to build the instrumentation

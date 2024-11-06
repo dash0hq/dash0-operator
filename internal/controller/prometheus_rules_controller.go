@@ -20,6 +20,7 @@ import (
 	prometheusv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/util/workqueue"
@@ -28,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/yaml"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 )
@@ -83,10 +85,6 @@ func (r *PrometheusRuleCrdReconciler) Manager() ctrl.Manager {
 
 func (r *PrometheusRuleCrdReconciler) GetAuthToken() string {
 	return r.AuthToken
-}
-
-func (r *PrometheusRuleCrdReconciler) ClientObject() client.Object {
-	return &prometheusv1.PrometheusRule{}
 }
 
 func (r *PrometheusRuleCrdReconciler) KindDisplayName() string {
@@ -339,7 +337,7 @@ func (r *PrometheusRuleReconciler) IsSynchronizationEnabled(monitoringResource *
 
 func (r *PrometheusRuleReconciler) Create(
 	ctx context.Context,
-	e event.TypedCreateEvent[client.Object],
+	e event.TypedCreateEvent[*unstructured.Unstructured],
 	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
 ) {
 	if prometheusRuleReconcileRequestMetric != nil {
@@ -360,7 +358,7 @@ func (r *PrometheusRuleReconciler) Create(
 
 func (r *PrometheusRuleReconciler) Update(
 	ctx context.Context,
-	e event.TypedUpdateEvent[client.Object],
+	e event.TypedUpdateEvent[*unstructured.Unstructured],
 	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
 ) {
 	if prometheusRuleReconcileRequestMetric != nil {
@@ -381,7 +379,7 @@ func (r *PrometheusRuleReconciler) Update(
 
 func (r *PrometheusRuleReconciler) Delete(
 	ctx context.Context,
-	e event.TypedDeleteEvent[client.Object],
+	e event.TypedDeleteEvent[*unstructured.Unstructured],
 	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
 ) {
 	if prometheusRuleReconcileRequestMetric != nil {
@@ -402,7 +400,7 @@ func (r *PrometheusRuleReconciler) Delete(
 
 func (r *PrometheusRuleReconciler) Generic(
 	_ context.Context,
-	_ event.TypedGenericEvent[client.Object],
+	_ event.TypedGenericEvent[*unstructured.Unstructured],
 	_ workqueue.TypedRateLimitingInterface[reconcile.Request],
 ) {
 	// ignoring generic events
@@ -428,8 +426,18 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 	allValidationIssues := make(map[string][]string)
 	allSynchronizationErrors := make(map[string]string)
 
-	prometheusRule := preconditionChecksResult.thirdPartyResource.(*prometheusv1.PrometheusRule)
-	ruleSpec := prometheusRule.Spec
+	specRaw := preconditionChecksResult.thirdPartyResourceSpec
+	specAsYaml, err := yaml.Marshal(specRaw)
+	if err != nil {
+		logger.Error(err, "unable to marshal the Prometheus rule spec")
+		return 0, nil, nil, map[string]string{"*": err.Error()}
+	}
+	ruleSpec := prometheusv1.PrometheusRuleSpec{}
+	if err = yaml.Unmarshal(specAsYaml, &ruleSpec); err != nil {
+		logger.Error(err, "unable to unmarshal the Prometheus rule spec")
+		return 0, nil, nil, map[string]string{"*": err.Error()}
+	}
+
 	for _, group := range ruleSpec.Groups {
 		for ruleIdx, rule := range group.Rules {
 			itemNameSuffix := rule.Alert

@@ -5,6 +5,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllertest"
@@ -242,8 +244,8 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			dashboardResource := createDashboardResource()
 			persesDashboardReconciler.Create(
 				ctx,
-				event.TypedCreateEvent[client.Object]{
-					Object: dashboardResource,
+				event.TypedCreateEvent[*unstructured.Unstructured]{
+					Object: &dashboardResource,
 				},
 				&controllertest.TypedQueue[reconcile.Request]{},
 			)
@@ -262,8 +264,8 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			dashboardResource := createDashboardResource()
 			persesDashboardReconciler.Create(
 				ctx,
-				event.TypedCreateEvent[client.Object]{
-					Object: dashboardResource,
+				event.TypedCreateEvent[*unstructured.Unstructured]{
+					Object: &dashboardResource,
 				},
 				&controllertest.TypedQueue[reconcile.Request]{},
 			)
@@ -283,8 +285,8 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			dashboardResource := createDashboardResource()
 			persesDashboardReconciler.Create(
 				ctx,
-				event.TypedCreateEvent[client.Object]{
-					Object: dashboardResource,
+				event.TypedCreateEvent[*unstructured.Unstructured]{
+					Object: &dashboardResource,
 				},
 				&controllertest.TypedQueue[reconcile.Request]{},
 			)
@@ -302,8 +304,8 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			dashboardResource := createDashboardResource()
 			persesDashboardReconciler.Create(
 				ctx,
-				event.TypedCreateEvent[client.Object]{
-					Object: dashboardResource,
+				event.TypedCreateEvent[*unstructured.Unstructured]{
+					Object: &dashboardResource,
 				},
 				&controllertest.TypedQueue[reconcile.Request]{},
 			)
@@ -325,8 +327,8 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			dashboardResource := createDashboardResource()
 			persesDashboardReconciler.Update(
 				ctx,
-				event.TypedUpdateEvent[client.Object]{
-					ObjectNew: dashboardResource,
+				event.TypedUpdateEvent[*unstructured.Unstructured]{
+					ObjectNew: &dashboardResource,
 				},
 				&controllertest.TypedQueue[reconcile.Request]{},
 			)
@@ -348,8 +350,8 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			dashboardResource := createDashboardResource()
 			persesDashboardReconciler.Delete(
 				ctx,
-				event.TypedDeleteEvent[client.Object]{
-					Object: dashboardResource,
+				event.TypedDeleteEvent[*unstructured.Unstructured]{
+					Object: &dashboardResource,
 				},
 				&controllertest.TypedQueue[reconcile.Request]{},
 			)
@@ -360,6 +362,31 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 				defaultExpectedPersesSyncResult,
 			)
 			Expect(gock.IsDone()).To(BeTrue())
+		})
+
+		It("reports validation issues for a dashboard", func() {
+			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+
+			dashboardResource := createDashboardResource()
+			spec := dashboardResource.Object["spec"].(map[string]interface{})
+			spec["display"] = "not a map"
+			persesDashboardReconciler.Create(
+				ctx,
+				event.TypedCreateEvent[*unstructured.Unstructured]{
+					Object: &dashboardResource,
+				},
+				&controllertest.TypedQueue[reconcile.Request]{},
+			)
+
+			verifyPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
+				ctx,
+				k8sClient,
+				dash0v1alpha1.PersesDashboardSynchronizationResults{
+					SynchronizationStatus: dash0v1alpha1.Failed,
+					SynchronizationError:  "",
+					ValidationIssues:      []string{"spec.display is not a map"},
+				},
+			)
 		})
 
 		It("reports http errors when synchronizing a dashboard", func() {
@@ -376,8 +403,8 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			dashboardResource := createDashboardResource()
 			persesDashboardReconciler.Create(
 				ctx,
-				event.TypedCreateEvent[client.Object]{
-					Object: dashboardResource,
+				event.TypedCreateEvent[*unstructured.Unstructured]{
+					Object: &dashboardResource,
 				},
 				&controllertest.TypedQueue[reconcile.Request]{},
 			)
@@ -435,8 +462,8 @@ func expectDashboardDeleteRequest(expectedPath string) {
 		JSON(map[string]string{})
 }
 
-func createDashboardResource() *persesv1alpha1.PersesDashboard {
-	return &persesv1alpha1.PersesDashboard{
+func createDashboardResource() unstructured.Unstructured {
+	dashboard := persesv1alpha1.PersesDashboard{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "perses.dev/v1alpha1",
 			Kind:       "PersesDashboard",
@@ -447,6 +474,12 @@ func createDashboardResource() *persesv1alpha1.PersesDashboard {
 		},
 		Spec: persesv1alpha1.Dashboard{},
 	}
+	marshalled, err := json.Marshal(dashboard)
+	Expect(err).NotTo(HaveOccurred())
+	unstructuredObject := unstructured.Unstructured{}
+	err = json.Unmarshal(marshalled, &unstructuredObject)
+	Expect(err).NotTo(HaveOccurred())
+	return unstructuredObject
 }
 
 func ensurePersesDashboardCrdExists(ctx context.Context) {
