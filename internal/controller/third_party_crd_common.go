@@ -20,6 +20,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
@@ -54,7 +56,6 @@ type ThirdPartyCrdReconciler interface {
 
 	Manager() ctrl.Manager
 	GetAuthToken() string
-	ClientObject() client.Object
 	KindDisplayName() string
 	Group() string
 	Kind() string
@@ -69,7 +70,7 @@ type ThirdPartyCrdReconciler interface {
 }
 
 type ThirdPartyResourceReconciler interface {
-	handler.TypedEventHandler[client.Object, reconcile.Request]
+	handler.TypedEventHandler[*unstructured.Unstructured, reconcile.Request]
 	reconcile.TypedReconciler[reconcile.Request]
 
 	KindDisplayName() string
@@ -126,14 +127,14 @@ const (
 )
 
 type preconditionValidationResult struct {
-	synchronizeResource bool
-	thirdPartyResource  client.Object
-	monitoringResource  *dash0v1alpha1.Dash0Monitoring
-	authToken           string
-	apiEndpoint         string
-	dataset             string
-	k8sNamespace        string
-	k8sName             string
+	synchronizeResource    bool
+	thirdPartyResourceSpec map[string]interface{}
+	monitoringResource     *dash0v1alpha1.Dash0Monitoring
+	authToken              string
+	apiEndpoint            string
+	dataset                string
+	k8sNamespace           string
+	k8sName                string
 }
 
 type retryableError struct {
@@ -323,10 +324,21 @@ func maybeStartWatchingThirdPartyResources(
 	logger.Info(fmt.Sprintf("successfully created a new %s", resourceReconciler.ControllerName()))
 
 	// Add the watch for the third-party resource type to the controller.
+	//
+	// Note: We cannot watch for the specific third-party resource type here directly, that is, we cannot establish the
+	// watch using &persesv1alpha1.PersesDashboard{} (or &prometheusv1.PrometheusRule{}) as the second argument when
+	// constructing source.Kind. Doing so, the validation for the resource in question would be triggered before the
+	// resource is handed over to us. This would potentially fail for dashboards, because Dash0 dashboards allow
+	// variable types (like Dash0FilterVariable) that plain vanilla Perses dashboards do not support, and the following
+	// validation error would be triggered:
+	// reflector.go:158] "Unhandled Error"
+	// err="pkg/mod/k8s.io/client-go@v0.31.2/tools/cache/reflector.go:243:
+	// Failed to watch *v1alpha1.PersesDashboard: failed to list *v1alpha1.PersesDashboard: unknown variable.kind
+	// \"Dash0FilterVariable\" used" logger="UnhandledError"
 	if err = resourceController.Watch(
 		source.Kind(
 			crdReconciler.Manager().GetCache(),
-			crdReconciler.ClientObject(),
+			createUnstructuredGvk(crdReconciler),
 			resourceReconciler,
 		),
 	); err != nil {
@@ -367,7 +379,7 @@ func stopWatchingThirdPartyResources(
 	logger.Info(fmt.Sprintf("removing the informer for %s", crdReconciler.KindDisplayName()))
 	if err := crdReconciler.Manager().GetCache().RemoveInformer(
 		ctx,
-		crdReconciler.ClientObject(),
+		createUnstructuredGvk(crdReconciler),
 	); err != nil {
 		logger.Error(err, fmt.Sprintf("unable to remove the informer for %s", crdReconciler.KindDisplayName()))
 	}
@@ -378,6 +390,16 @@ func stopWatchingThirdPartyResources(
 
 func isValidApiConfig(apiConfig *ApiConfig) bool {
 	return apiConfig != nil && apiConfig.Endpoint != ""
+}
+
+func createUnstructuredGvk(crdReconciler ThirdPartyCrdReconciler) *unstructured.Unstructured {
+	unstructuredGvkForThirdPartyResourceType := &unstructured.Unstructured{}
+	unstructuredGvkForThirdPartyResourceType.SetGroupVersionKind(schema.GroupVersionKind{
+		Kind:    crdReconciler.Kind(),
+		Group:   crdReconciler.Group(),
+		Version: crdReconciler.Version(),
+	})
+	return unstructuredGvkForThirdPartyResourceType
 }
 
 func urlEncodePathSegment(s string) string {
@@ -392,7 +414,7 @@ func urlEncodePathSegment(s string) string {
 func upsertViaApi(
 	ctx context.Context,
 	resourceReconciler ThirdPartyResourceReconciler,
-	thirdPartyResource client.Object,
+	thirdPartyResource *unstructured.Unstructured,
 	logger *logr.Logger,
 ) {
 	synchronizeViaApi(
@@ -408,7 +430,7 @@ func upsertViaApi(
 func deleteViaApi(
 	ctx context.Context,
 	resourceReconciler ThirdPartyResourceReconciler,
-	thirdPartyResource client.Object,
+	thirdPartyResource *unstructured.Unstructured,
 	logger *logr.Logger,
 ) {
 	synchronizeViaApi(
@@ -424,7 +446,7 @@ func deleteViaApi(
 func synchronizeViaApi(
 	ctx context.Context,
 	resourceReconciler ThirdPartyResourceReconciler,
-	thirdPartyResource client.Object,
+	thirdPartyResource *unstructured.Unstructured,
 	action apiAction,
 	actionLabel string,
 	logger *logr.Logger,
@@ -496,7 +518,7 @@ func synchronizeViaApi(
 func validatePreconditions(
 	ctx context.Context,
 	resourceReconciler ThirdPartyResourceReconciler,
-	thirdPartyResource client.Object,
+	thirdPartyResource *unstructured.Unstructured,
 	logger *logr.Logger,
 ) *preconditionValidationResult {
 	namespace := thirdPartyResource.GetNamespace()
@@ -583,15 +605,44 @@ func validatePreconditions(
 		dataset = util.DatasetDefault
 	}
 
+	specRaw := thirdPartyResource.Object["spec"]
+	if specRaw == nil {
+		logger.Info(
+			fmt.Sprintf(
+				"%s %s/%s has no spec, the %s(s) from will not be updated in Dash0.",
+				resourceReconciler.KindDisplayName(),
+				namespace,
+				name,
+				resourceReconciler.ShortName(),
+			))
+		return &preconditionValidationResult{
+			synchronizeResource: false,
+		}
+	}
+	spec, ok := specRaw.(map[string]interface{})
+	if !ok {
+		logger.Info(
+			fmt.Sprintf(
+				"The %s spec in %s/%s is not a map, the %s(s) will not be updated in Dash0.",
+				resourceReconciler.KindDisplayName(),
+				namespace,
+				name,
+				resourceReconciler.ShortName(),
+			))
+		return &preconditionValidationResult{
+			synchronizeResource: false,
+		}
+	}
+
 	return &preconditionValidationResult{
-		synchronizeResource: true,
-		thirdPartyResource:  thirdPartyResource,
-		monitoringResource:  monitoringResource,
-		authToken:           authToken,
-		apiEndpoint:         apiConfig.Endpoint,
-		dataset:             dataset,
-		k8sNamespace:        namespace,
-		k8sName:             name,
+		synchronizeResource:    true,
+		thirdPartyResourceSpec: spec,
+		monitoringResource:     monitoringResource,
+		authToken:              authToken,
+		apiEndpoint:            apiConfig.Endpoint,
+		dataset:                dataset,
+		k8sNamespace:           namespace,
+		k8sName:                name,
 	}
 }
 
@@ -740,7 +791,7 @@ func writeSynchronizationResult(
 	ctx context.Context,
 	resourceReconciler ThirdPartyResourceReconciler,
 	monitoringResource *dash0v1alpha1.Dash0Monitoring,
-	thirdPartyResource client.Object,
+	thirdPartyResource *unstructured.Unstructured,
 	itemsTotal int,
 	succesfullySynchronized []string,
 	validationIssuesPerItem map[string][]string,

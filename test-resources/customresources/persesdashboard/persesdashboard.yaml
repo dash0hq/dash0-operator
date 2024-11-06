@@ -55,6 +55,17 @@ spec:
         name: text
         value: test
         constant: true
+    - kind: Dash0FilterVariable
+      spec:
+        attributeKey: cloud_region
+        capturingRegexp: ""
+        display:
+          description: ""
+          hidden: false
+          name: cloud region
+        name: cloud_region
+        operator: is_not_set
+        values: []
   panels:
     defaultTimeSeriesChart:
       kind: Panel
