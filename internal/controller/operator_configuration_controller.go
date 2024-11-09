@@ -19,20 +19,23 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/backendconnection"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
 type OperatorConfigurationReconciler struct {
 	client.Client
-	Clientset               *kubernetes.Clientset
-	ApiClients              []ApiClient
-	Scheme                  *runtime.Scheme
-	Recorder                record.EventRecorder
-	DeploymentSelfReference *appsv1.Deployment
-	DanglingEventsTimeouts  *util.DanglingEventsTimeouts
-	Images                  util.Images
-	DevelopmentMode         bool
+	Clientset                *kubernetes.Clientset
+	ApiClients               []ApiClient
+	Scheme                   *runtime.Scheme
+	Recorder                 record.EventRecorder
+	BackendConnectionManager *backendconnection.BackendConnectionManager
+	DeploymentSelfReference  *appsv1.Deployment
+	DanglingEventsTimeouts   *util.DanglingEventsTimeouts
+	Images                   util.Images
+	OperatorNamespace        string
+	DevelopmentMode          bool
 }
 
 const (
@@ -149,6 +152,9 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		} else {
 			logger.Info("Self-monitoring of the controller deployment has been disabled")
 		}
+		if r.reconcileOpenTelemetryCollector(ctx, &logger) != nil {
+			return ctrl.Result{}, err
+		}
 		return ctrl.Result{}, nil
 	}
 
@@ -244,6 +250,10 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		logger.Info("The controller deployment is up to date.")
 	}
 
+	if r.reconcileOpenTelemetryCollector(ctx, &logger) != nil {
+		return ctrl.Result{}, err
+	}
+
 	resource.EnsureResourceIsMarkedAsAvailable()
 	if err = r.Status().Update(ctx, resource); err != nil {
 		logger.Error(err, updateStatusFailedMessageOperatorConfiguration)
@@ -325,6 +335,23 @@ func (r *OperatorConfigurationReconciler) markAsDegraded(
 	)
 	if err := r.Status().Update(ctx, resource); err != nil {
 		logger.Error(err, "Failed to update Dash0 operator status conditions, requeuing reconcile request.")
+		return err
+	}
+	return nil
+}
+
+func (r *OperatorConfigurationReconciler) reconcileOpenTelemetryCollector(
+	ctx context.Context,
+	logger *logr.Logger,
+) error {
+	if err := r.BackendConnectionManager.ReconcileOpenTelemetryCollector(
+		ctx,
+		r.Images,
+		r.OperatorNamespace,
+		nil,
+		backendconnection.TriggeredByDash0ResourceReconcile,
+	); err != nil {
+		logger.Error(err, "Failed to reconcile the OpenTelemetry collector, requeuing reconcile request.")
 		return err
 	}
 	return nil

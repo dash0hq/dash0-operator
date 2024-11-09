@@ -63,7 +63,14 @@ var (
 		receiver: &appsv1.Deployment{},
 	}
 
-	allExpectedResources = []expectedResource{
+	AllClusterMetricsRelatedResources = []expectedResource{
+		{name: ExpectedDeploymentServiceAccountName, receiver: &corev1.ServiceAccount{}},
+		{name: ExpectedDeploymentClusterRoleName, clusterScoped: true, receiver: &rbacv1.ClusterRole{}},
+		{name: ExpectedDeploymentClusterRoleBindingName, clusterScoped: true, receiver: &rbacv1.ClusterRoleBinding{}},
+		expectedResourceDeploymentConfigMap,
+		expectedResourceDeployment,
+	}
+	AllDaemonSetRelatedResources = []expectedResource{
 		{name: ExpectedDaemonSetServiceAccountName, receiver: &corev1.ServiceAccount{}},
 		expectedResourceDaemonSetConfigMap,
 		{name: ExpectedDaemonSetFilelogOffsetSynchConfigMapName, receiver: &corev1.ConfigMap{}},
@@ -73,12 +80,18 @@ var (
 		{name: ExpectedDaemonSetRoleBindingName, receiver: &rbacv1.RoleBinding{}},
 		{name: ExpectedDaemonSetServiceName, receiver: &corev1.Service{}},
 		expectedResourceDaemonSet,
+	}
+	AllDeploymentRelatedResources = []expectedResource{
 		{name: ExpectedDeploymentServiceAccountName, receiver: &corev1.ServiceAccount{}},
 		{name: ExpectedDeploymentClusterRoleName, clusterScoped: true, receiver: &rbacv1.ClusterRole{}},
 		{name: ExpectedDeploymentClusterRoleBindingName, clusterScoped: true, receiver: &rbacv1.ClusterRoleBinding{}},
 		expectedResourceDeploymentConfigMap,
 		expectedResourceDeployment,
 	}
+	AllExpectedResources = append(
+		AllDaemonSetRelatedResources,
+		AllDeploymentRelatedResources...,
+	)
 )
 
 func VerifyCollectorResources(
@@ -101,17 +114,16 @@ func VerifyAllResourcesExist(
 	k8sClient client.Client,
 	operatorNamespace string,
 ) {
-	for _, expectedRes := range allExpectedResources {
+	for _, expectedRes := range AllExpectedResources {
 		expectedNamespace := operatorNamespace
 		if expectedRes.clusterScoped {
 			expectedNamespace = ""
 		}
-		actualResource := verifyResourceExists(
+		actualResource := VerifyExpectedResourceExists(
 			ctx,
 			k8sClient,
 			expectedNamespace,
-			expectedRes.name,
-			expectedRes.receiver,
+			expectedRes,
 		)
 		if !expectedRes.clusterScoped {
 			verifyOwnerReference(actualResource)
@@ -215,6 +227,15 @@ func VerifyCollectorDeployment(
 	Expect(ports).To(HaveLen(0))
 }
 
+func VerifyExpectedResourceExists(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	expectedResource expectedResource,
+) client.Object {
+	return verifyResourceExists(ctx, k8sClient, namespace, expectedResource.name, expectedResource.receiver)
+}
+
 func verifyResourceExists(
 	ctx context.Context,
 	k8sClient client.Client,
@@ -281,12 +302,11 @@ func getOTelColResource(
 	if expectedRes.clusterScoped {
 		expectedNamespace = ""
 	}
-	return verifyResourceExists(
+	return VerifyExpectedResourceExists(
 		ctx,
 		k8sClient,
 		expectedNamespace,
-		expectedRes.name,
-		expectedRes.receiver,
+		expectedRes,
 	)
 }
 
@@ -295,19 +315,33 @@ func VerifyCollectorResourcesDoNotExist(
 	k8sClient client.Client,
 	operatorNamespace string,
 ) {
-	for _, expectedRes := range allExpectedResources {
+	for _, expectedRes := range AllExpectedResources {
 		expectedNamespace := operatorNamespace
 		if expectedRes.clusterScoped {
 			expectedNamespace = ""
 		}
-		VerifyResourceDoesNotExist(
+		VerifyExpectedResourceDoesNotExist(
 			ctx,
 			k8sClient,
 			expectedNamespace,
-			expectedRes.name,
-			expectedRes.receiver,
+			expectedRes,
 		)
 	}
+}
+
+func VerifyExpectedResourceDoesNotExist(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	expectedResource expectedResource,
+) {
+	VerifyResourceDoesNotExist(
+		ctx,
+		k8sClient,
+		namespace,
+		expectedResource.name,
+		expectedResource.receiver,
+	)
 }
 
 func VerifyResourceDoesNotExist(

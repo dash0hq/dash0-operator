@@ -19,6 +19,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/backendconnection"
+	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 
@@ -463,6 +465,36 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 			EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, controllerDeployment)
 		})
 
+		Describe("when adding the collector resources", func() {
+			BeforeEach(func() {
+				EnsureEmptyMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+			})
+
+			AfterEach(func() {
+				DeleteMonitoringResource(ctx, k8sClient)
+			})
+
+			It("should add the collector resources", func() {
+				// This test does not make too much sense. The validation webhooks do not allow installing a monitoring
+				// resource without export if no operator configuration resource with default export exist, so the order
+				// of operations is slightly unrealistic here.
+				CreateOperatorConfigurationResourceWithSpec(
+					ctx,
+					k8sClient,
+					dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						Export: ptr.To(Dash0ExportWithEndpointAndToken()),
+						SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+							Enabled: ptr.To(false),
+						},
+					},
+				)
+
+				triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+
+				VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
+			})
+		})
+
 		Describe("enabling self-monitoring", func() {
 
 			DescribeTable("it enables self-monitoring in the controller deployment",
@@ -795,6 +827,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 			AfterEach(func() {
 				RemoveOperatorConfigurationResource(ctx, k8sClient)
 				EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, controllerDeployment)
+				DeleteMonitoringResource(ctx, k8sClient)
 			})
 
 			It("it disables self-monitoring in the controller deployment", func() {
@@ -828,6 +861,22 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 					g.Expect(err).NotTo(HaveOccurred())
 					g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
 				}, timeout, pollingInterval).Should(Succeed())
+			})
+
+			// Note: For this test case it is irrelevant whether self-monitoring is enabled or not.
+			It("should remove the collector resources", func() {
+				EnsureEmptyMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+
+				triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+				VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
+
+				resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+
+				triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+				VerifyOperatorConfigurationResourceByNameDoesNotExist(ctx, k8sClient, Default, resource.Name)
+
+				VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
 			})
 		})
 
@@ -908,6 +957,18 @@ func cleanUpDeploymentSpecForDiff(spec *appsv1.DeploymentSpec) {
 }
 
 func createReconciler(controllerDeployment *appsv1.Deployment) *OperatorConfigurationReconciler {
+	oTelColResourceManager := &otelcolresources.OTelColResourceManager{
+		Client:                  k8sClient,
+		Scheme:                  k8sClient.Scheme(),
+		DeploymentSelfReference: DeploymentSelfReference,
+		OTelCollectorNamePrefix: OTelCollectorNamePrefixTest,
+		OTelColResourceSpecs:    &otelcolresources.DefaultOTelColResourceSpecs,
+	}
+	backendConnectionManager := &backendconnection.BackendConnectionManager{
+		Client:                 k8sClient,
+		Clientset:              clientset,
+		OTelColResourceManager: oTelColResourceManager,
+	}
 
 	return &OperatorConfigurationReconciler{
 		Client:    k8sClient,
@@ -917,9 +978,11 @@ func createReconciler(controllerDeployment *appsv1.Deployment) *OperatorConfigur
 			apiClient1,
 			apiClient2,
 		},
-		DeploymentSelfReference: controllerDeployment,
-		DanglingEventsTimeouts:  &DanglingEventsTimeoutsTest,
-		Images:                  TestImages,
+		BackendConnectionManager: backendConnectionManager,
+		DeploymentSelfReference:  controllerDeployment,
+		DanglingEventsTimeouts:   &DanglingEventsTimeoutsTest,
+		Images:                   TestImages,
+		OperatorNamespace:        OperatorNamespace,
 	}
 }
 

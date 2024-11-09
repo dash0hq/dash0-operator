@@ -47,7 +47,6 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/startup"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/webhooks"
-	//+kubebuilder:scaffold:imports
 )
 
 type environmentVariables struct {
@@ -638,11 +637,13 @@ func startDash0Controllers(
 			persesDashboardCrdReconciler,
 			prometheusRuleCrdReconciler,
 		},
-		Scheme:                  mgr.GetScheme(),
-		Recorder:                mgr.GetEventRecorderFor("dash0-operator-configuration-controller"),
-		DeploymentSelfReference: deploymentSelfReference,
-		Images:                  images,
-		DevelopmentMode:         developmentMode,
+		Scheme:                   mgr.GetScheme(),
+		Recorder:                 mgr.GetEventRecorderFor("dash0-operator-configuration-controller"),
+		BackendConnectionManager: backendConnectionManager,
+		DeploymentSelfReference:  deploymentSelfReference,
+		Images:                   images,
+		OperatorNamespace:        envVars.operatorNamespace,
+		DevelopmentMode:          developmentMode,
 	}
 	if err := operatorConfigurationReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the operator configuration reconciler: %w", err)

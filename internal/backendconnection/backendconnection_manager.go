@@ -5,7 +5,6 @@ package backendconnection
 
 import (
 	"context"
-	"fmt"
 	"sync/atomic"
 
 	"github.com/go-logr/logr"
@@ -31,8 +30,8 @@ type BackendConnectionManager struct {
 type BackendConnectionReconcileTrigger string
 
 const (
-	TriggeredByWatchEvent         BackendConnectionReconcileTrigger = "watch"
-	TriggeredByMonitoringResource BackendConnectionReconcileTrigger = "resource"
+	TriggeredByWatchEvent             BackendConnectionReconcileTrigger = "watch"
+	TriggeredByDash0ResourceReconcile BackendConnectionReconcileTrigger = "resource"
 )
 
 func (m *BackendConnectionManager) ReconcileOpenTelemetryCollector(
@@ -49,7 +48,7 @@ func (m *BackendConnectionManager) ReconcileOpenTelemetryCollector(
 				logger.Info("OpenTelemetry collector resources have already been deleted, ignoring reconciliation request.")
 			}
 			return nil
-		} else if trigger == TriggeredByMonitoringResource {
+		} else if trigger == TriggeredByDash0ResourceReconcile {
 			if m.DevelopmentMode {
 				logger.Info("resetting resourcesHaveBeenDeletedByOperator")
 			}
@@ -162,12 +161,6 @@ func (m *BackendConnectionManager) removeOpenTelemetryCollector(
 	operatorNamespace string,
 	logger *logr.Logger,
 ) error {
-	logger.Info(
-		fmt.Sprintf(
-			"Deleting the OpenTelemetry collector Kuberenetes resources in the Dash0 operator namespace %s.",
-			operatorNamespace,
-		))
-
 	if err := m.OTelColResourceManager.DeleteResources(
 		ctx,
 		operatorNamespace,

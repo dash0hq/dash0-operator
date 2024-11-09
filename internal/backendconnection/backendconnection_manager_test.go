@@ -88,7 +88,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 						},
 					},
 				},
-				TriggeredByMonitoringResource,
+				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).To(MatchError(
 				"cannot assemble the exporters for the configuration: no endpoint provided for the Dash0 exporter, unable to create the OpenTelemetry collector"))
@@ -110,7 +110,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 						},
 					},
 				},
-				TriggeredByMonitoringResource,
+				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).To(MatchError(
 				"neither token nor secretRef provided for the Dash0 exporter"))
@@ -138,7 +138,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			)
 			Expect(err).ToNot(HaveOccurred())
 
-			DeleteOperatorConfigurationResource(ctx, k8sClient)
+			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
 		})
 
 		It("should create all resources", func() {
@@ -147,7 +147,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				TestImages,
 				operatorNamespace,
 				assembleMonitoringResource(),
-				TriggeredByMonitoringResource,
+				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
@@ -165,7 +165,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				&dash0v1alpha1.Dash0Monitoring{
 					Spec: dash0v1alpha1.Dash0MonitoringSpec{},
 				},
-				TriggeredByMonitoringResource,
+				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
@@ -179,7 +179,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				&dash0v1alpha1.Dash0Monitoring{
 					Spec: dash0v1alpha1.Dash0MonitoringSpec{},
 				},
-				TriggeredByMonitoringResource,
+				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).To(
 				MatchError(
@@ -202,7 +202,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				&dash0v1alpha1.Dash0Monitoring{
 					Spec: dash0v1alpha1.Dash0MonitoringSpec{},
 				},
-				TriggeredByMonitoringResource,
+				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).To(MatchError("the provided Dash0Monitoring resource does not have an export configuration " +
 				"and the Dash0OperatorConfiguration resource does not have one either"))
@@ -245,7 +245,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				TestImages,
 				operatorNamespace,
 				assembleMonitoringResource(),
-				TriggeredByMonitoringResource,
+				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
@@ -283,7 +283,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				TestImages,
 				operatorNamespace,
 				secondDash0MonitoringResource,
-				TriggeredByMonitoringResource,
+				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
@@ -310,7 +310,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				TestImages,
 				operatorNamespace,
 				existingDash0MonitoringResource,
-				TriggeredByMonitoringResource,
+				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
@@ -355,7 +355,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				TestImages,
 				operatorNamespace,
 				monitoringResource,
-				TriggeredByMonitoringResource,
+				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
@@ -382,7 +382,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				TestImages,
 				operatorNamespace,
 				resource,
-				TriggeredByMonitoringResource,
+				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace)

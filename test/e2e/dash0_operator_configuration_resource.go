@@ -112,6 +112,30 @@ func waitForAutoOperatorConfigurationResourceToBecomeAvailable() {
 		))).To(Succeed())
 }
 
+func updateEndpointOfDash0OperatorConfigurationResource(
+	newEndpoint string,
+) {
+	updateDash0OperatorConfigurationResource(
+		fmt.Sprintf("{\"spec\":{\"export\":{\"dash0\":{\"endpoint\":\"%s\"}}}}", newEndpoint),
+	)
+}
+
+func updateDash0OperatorConfigurationResource(
+	jsonPatch string,
+) {
+	Expect(
+		runAndIgnoreOutput(exec.Command(
+			"kubectl",
+			"patch",
+			"Dash0OperatorConfiguration",
+			dash0OperatorConfigurationResourceName,
+			"--type",
+			"merge",
+			"-p",
+			jsonPatch,
+		))).To(Succeed())
+}
+
 func undeployDash0OperatorConfigurationResource() {
 	By("removing the Dash0 operator configuration resource")
 	Expect(

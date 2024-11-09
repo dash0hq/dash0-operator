@@ -198,7 +198,8 @@ More information can be found via the [Kubebuilder Documentation](https://book.k
 When a new release of the operator changes the instrumentation values (new or changed environment variables, new labels,
 new volumes etc.), we need to make sure that previously instrumented workloads are updated correctly. This should always
 be accompanied by corresponding tests (for example new test cases in `workload_modifier_test.go`, see the test suite
-`"when updating instrumentation from 0.5.1 to 0.6.0"` for an example).
+`"when updating instrumentation from 0.5.1 to 0.6.0"` in commit 300a765a64a42d98dcc6d9a66dccc534b610ab65 for an
+example).
 
 ## Contributing
 

@@ -222,13 +222,6 @@ func CreateOperatorConfigurationResource(
 	return operatorConfigurationResource, err
 }
 
-func DeleteOperatorConfigurationResource(
-	ctx context.Context,
-	k8sClient client.Client,
-) {
-	Expect(k8sClient.DeleteAllOf(ctx, &dash0v1alpha1.Dash0OperatorConfiguration{})).To(Succeed())
-}
-
 func DeleteAllOperatorConfigurationResources(
 	ctx context.Context,
 	k8sClient client.Client,
