@@ -45,39 +45,41 @@ type AutoOperatorConfigurationResourceHandler struct {
 
 const (
 	operatorConfigurationAutoResourceName = "dash0-operator-configuration-auto-resource"
-
-	alreadyExistsMessage = "The operator is configured to deploy an operator configuration resource at startup, but there is already " +
-		"an operator configuration resource in the cluster. Hence no action is necessary. (This is not an error.)"
 )
 
-func (r *AutoOperatorConfigurationResourceHandler) CreateOperatorConfigurationResource(
+func (r *AutoOperatorConfigurationResourceHandler) CreateOrUpdateOperatorConfigurationResource(
 	ctx context.Context,
 	operatorConfiguration *OperatorConfigurationValues,
 	logger *logr.Logger,
 ) error {
-
-	// Fast path: check early on if there is already an operator configuration resource, skip all other steps if so.
-	// We will repeat this check immediately before creating the operator configuration resource, so if the check fails
-	// with an error we will ignore that error for now.
-	allOperatorConfigurationResources := &dash0v1alpha1.Dash0OperatorConfigurationList{}
-	if err := r.List(ctx, allOperatorConfigurationResources); err == nil {
-		if len(allOperatorConfigurationResources.Items) >= 1 {
-			logger.Info(alreadyExistsMessage)
-			return nil
-		}
-	}
-
 	if err := r.validateOperatorConfiguration(operatorConfiguration); err != nil {
 		return err
 	}
 
 	go func() {
-		// There is a validation webhook for operator configuration resources. Thus, before we can create an operator
-		// configuration resource, we need to wait for the webhook endpoint to become available.
+		// There is a validation webhook for operator configuration resources. Thus, before we can create or update an
+		// operator configuration resource, we need to wait for the webhook endpoint to become available.
 		if err := r.waitForWebserviceEndpoint(ctx, logger); err != nil {
 			logger.Error(err, "failed to create the Dash0 operator configuration resource")
 		}
-		if err := r.createOperatorConfigurationResourceWithRetry(ctx, operatorConfiguration, logger); err != nil {
+
+		// Even if we wait for the validation webhook to become available (see above), we sometimes get a couple of
+		// retry attempts that fail with
+		//   create/update operator configuration resource at startup failed in attempt x/6, will be retried.
+		//   [...]
+		//   failed calling webhook \"validate-operator-configuration.dash0.com\":
+		//   failed to call webhook: Post \"https://dash0-operator-webhook-service.dash0-system.svc:443/v1alpha1/validate/operator-configuration?timeout=5s\":
+		//   tls: failed to verify certificate: x509: certificate signed by unknown authority
+		//   (possibly because of \"crypto/rsa: verification error\" while trying to verify candidate authority certificate
+		//   \"dash0-operator-ca\")"
+		//
+		// This self-heals after a few attempts. Still, the log entries might be confusing. To lower the probability of
+		// this happening, we wait for a few seconds before creating/updating the operator configuration resource.
+		if !r.bypassWebhookCheck {
+			time.Sleep(10 * time.Second)
+		}
+
+		if err := r.createOrUpdateOperatorConfigurationResourceWithRetry(ctx, operatorConfiguration, logger); err != nil {
 			logger.Error(err, "failed to create the Dash0 operator configuration resource")
 		}
 	}()
@@ -158,13 +160,13 @@ func (r *AutoOperatorConfigurationResourceHandler) checkWebServiceEndpoint(
 	return fmt.Errorf("the webservice endpoint is not available yet")
 }
 
-func (r *AutoOperatorConfigurationResourceHandler) createOperatorConfigurationResourceWithRetry(
+func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigurationResourceWithRetry(
 	ctx context.Context,
 	operatorConfiguration *OperatorConfigurationValues,
 	logger *logr.Logger,
 ) error {
 	return util.RetryWithCustomBackoff(
-		"create operator configuration resource at startup",
+		"create/update operator configuration resource at startup",
 		func() error {
 			return r.createOperatorConfigurationResourceOnce(ctx, operatorConfiguration, logger)
 		},
@@ -184,15 +186,6 @@ func (r *AutoOperatorConfigurationResourceHandler) createOperatorConfigurationRe
 	operatorConfiguration *OperatorConfigurationValues,
 	logger *logr.Logger,
 ) error {
-	allOperatorConfigurationResources := &dash0v1alpha1.Dash0OperatorConfigurationList{}
-	if err := r.List(ctx, allOperatorConfigurationResources); err != nil {
-		return fmt.Errorf("failed to list all Dash0 operator configuration resources: %w", err)
-	}
-	if len(allOperatorConfigurationResources.Items) >= 1 {
-		logger.Info(alreadyExistsMessage)
-		return nil
-	}
-
 	authorization := dash0v1alpha1.Authorization{}
 	if operatorConfiguration.Token != "" {
 		authorization.Token = &operatorConfiguration.Token
@@ -238,6 +231,23 @@ func (r *AutoOperatorConfigurationResourceHandler) createOperatorConfigurationRe
 			KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(operatorConfiguration.KubernetesInfrastructureMetricsCollectionEnabled),
 		},
 	}
+
+	allOperatorConfigurationResources := &dash0v1alpha1.Dash0OperatorConfigurationList{}
+	if err := r.List(ctx, allOperatorConfigurationResources); err != nil {
+		return fmt.Errorf("failed to list all Dash0 operator configuration resources: %w", err)
+	}
+	if len(allOperatorConfigurationResources.Items) >= 1 {
+		// The validation webhook for the operator configuration resource guarantees that there is only ever one
+		// resource per cluster. Thus, we can arbitrarily update the first item in the list.
+		existingOperatorConfigurationResource := allOperatorConfigurationResources.Items[0]
+		existingOperatorConfigurationResource.Spec = operatorConfigurationResource.Spec
+		if err := r.Update(ctx, &existingOperatorConfigurationResource); err != nil {
+			return fmt.Errorf("failed to update the Dash0 operator configuration resource: %w", err)
+		}
+		logger.Info("the Dash0 operator configuration resource has been updated")
+		return nil
+	}
+
 	if err := r.Create(ctx, &operatorConfigurationResource); err != nil {
 		return fmt.Errorf("failed to create the Dash0 operator configuration resource: %w", err)
 	}
