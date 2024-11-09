@@ -11,10 +11,12 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -118,7 +120,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 
 	Describe("when creating all OpenTelemetry collector resources", func() {
 		AfterEach(func() {
-			DeleteOperatorConfigurationResource(ctx, k8sClient)
+			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
 		})
 
 		It("should create the resources", func() {
@@ -201,6 +203,69 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			Expect(err).To(MatchError("the provided Dash0Monitoring resource does not have an export configuration " +
 				"and the Dash0OperatorConfiguration resource does not have one either"))
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, OperatorNamespace)
+		})
+
+		It("should delete resources that are no longer desired", func() {
+			// reconcile once with KubernetesInfrastructureMetricsCollectionEnabled = true
+			operatorConfigurationResource := CreateDefaultOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+			)
+			_, _, err :=
+				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+					ctx,
+					OperatorNamespace,
+					TestImages,
+					[]dash0v1alpha1.Dash0Monitoring{*monitoringResource},
+					monitoringResource,
+					&logger,
+				)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Verify all resources (in particular also the deployment resources for the cluster metrics) have been
+			// created.
+			for _, expected := range AllExpectedResources {
+				VerifyExpectedResourceExists(
+					ctx,
+					k8sClient,
+					OperatorNamespace,
+					expected,
+				)
+			}
+
+			operatorConfigurationResource.Spec.KubernetesInfrastructureMetricsCollectionEnabled = ptr.To(false)
+			Expect(k8sClient.Update(ctx, operatorConfigurationResource)).To(Succeed())
+
+			// reconcile again with KubernetesInfrastructureMetricsCollectionEnabled = false
+			_, _, err =
+				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+					ctx,
+					OperatorNamespace,
+					TestImages,
+					[]dash0v1alpha1.Dash0Monitoring{*monitoringResource},
+					monitoringResource,
+					&logger,
+				)
+			Expect(err).ToNot(HaveOccurred())
+
+			// Verify that the deployment resources for the cluster metrics have been deleted.
+			for _, expected := range AllClusterMetricsRelatedResources {
+				VerifyExpectedResourceDoesNotExist(
+					ctx,
+					k8sClient,
+					OperatorNamespace,
+					expected,
+				)
+			}
+			// Verify that the daemonset resources still exist.
+			for _, expected := range AllDaemonSetRelatedResources {
+				VerifyExpectedResourceExists(
+					ctx,
+					k8sClient,
+					OperatorNamespace,
+					expected,
+				)
+			}
 		})
 
 		It("should delete outdated resources from older operator versions", func() {

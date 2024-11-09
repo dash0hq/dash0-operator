@@ -149,9 +149,15 @@ deploy_via_helm() {
         helm_install_command+=" --set operator.dash0Export.secretRef.key=token"
       fi
       helm_install_command+=" --set operator.dash0Export.apiEndpoint=https://api.eu-west-1.aws.dash0-dev.com"
-      if [[ -n "${OPERATOR_CONFIGURATION_VIA_HELM_DATASET:-}" ]]; then
-        helm_install_command+=" --set operator.dash0Export.dataset=$OPERATOR_CONFIGURATION_VIA_HELM_DATASET"
-      fi
+    fi
+    if [[ -n "${OPERATOR_CONFIGURATION_VIA_HELM_DATASET:-}" ]]; then
+      helm_install_command+=" --set operator.dash0Export.dataset=$OPERATOR_CONFIGURATION_VIA_HELM_DATASET"
+    fi
+    if [[ "${OPERATOR_CONFIGURATION_VIA_HELM_SELF_MONITORING_ENABLED:-}" == false  ]]; then
+      helm_install_command+=" --set operator.selfMonitoringEnabled=false"
+    fi
+    if [[ "${OPERATOR_CONFIGURATION_VIA_HELM_KUBERNETES_INFRASTRUCTURE_METRICS_COLLECTION_ENABLED:-}" == false  ]]; then
+      helm_install_command+=" --set operator.kubernetesInfrastructureMetricsCollectionEnabled=false"
     fi
   fi
 

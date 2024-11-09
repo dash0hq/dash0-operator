@@ -3,7 +3,7 @@
 
 package controller
 
-// Maintenance note: the canonical order/grouping for imports is:
+// Maintenance note: the canonical order/grouping for imports in tests is:
 // - standard library imports
 // - external third-party library imports, except for test libraries
 // - internal imports, except for internal test packages
@@ -788,7 +788,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 		})
 	})
 
-	Describe("when deleting the Dash0 monitoring resource and removing the collector resources", func() {
+	Describe("when managing the collector resources", func() {
 		BeforeEach(func() {
 			EnsureMonitoringResourceExists(ctx, k8sClient)
 		})
@@ -797,7 +797,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			DeleteMonitoringResource(ctx, k8sClient)
 		})
 
-		It("should remove the collector resources", func() {
+		It("should add and remove the collector resources", func() {
 			triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
 

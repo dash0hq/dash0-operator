@@ -419,6 +419,71 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		})
 	})
 
+	Describe("when updating the Dash0OperatorConfiguration resource", func() {
+		BeforeAll(func() {
+			By("deploy the Dash0 operator")
+			deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images)
+			time.Sleep(10 * time.Second)
+		})
+
+		AfterAll(func() {
+			undeployOperator(operatorNamespace)
+		})
+
+		AfterEach(func() {
+			undeployDash0MonitoringResource(applicationUnderTestNamespace)
+			undeployDash0OperatorConfigurationResource()
+		})
+
+		//nolint:lll
+		It("should update the daemonset collector configuration when updating the Dash0 endpoint in the operator configuration resource", func() {
+			deployDash0OperatorConfigurationResource(dash0OperatorConfigurationValues{
+				SelfMonitoringEnabled: false,
+				Endpoint:              defaultEndpoint,
+				Token:                 defaultToken,
+			})
+			deployDash0MonitoringResource(
+				applicationUnderTestNamespace,
+				dash0MonitoringValues{
+					Endpoint:            "",
+					Token:               "",
+					InstrumentWorkloads: dash0v1alpha1.All,
+				},
+				operatorNamespace,
+				operatorHelmChart,
+			)
+
+			time.Sleep(10 * time.Second)
+
+			By("updating the Dash0 operator configuration endpoint setting")
+			newEndpoint := "ingress.eu-east-1.aws.dash0-dev.com:4317"
+			updateEndpointOfDash0OperatorConfigurationResource(newEndpoint)
+
+			By("verify that the config map has been updated by the controller")
+			verifyConfigMapContainsString(operatorNamespace, newEndpoint)
+
+			// This step sometimes takes quite a while, for some reason the config map change is not seen immediately
+			// from within the collector pod/config-reloader container process, although it polls the file every second.
+			// Thus, we allow a very generous timeout here.
+			By("verify that the configuration reloader says to have triggered a config change")
+			verifyCollectorContainerLogContainsStrings(
+				operatorNamespace,
+				"configuration-reloader",
+				90*time.Second,
+				"Triggering a collector update due to changes to the config files",
+			)
+
+			By("verify that the collector appears to have reloaded its configuration")
+			verifyCollectorContainerLogContainsStrings(
+				operatorNamespace,
+				"opentelemetry-collector",
+				20*time.Second,
+				"Received signal from OS",
+				"Config updated, restart service",
+			)
+		})
+	})
+
 	Describe("when updating the Dash0Monitoring resource", func() {
 		BeforeAll(func() {
 			By("deploy the Dash0 operator")
@@ -510,7 +575,8 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 			)
 		})
 
-		It("should update the daemonset collector configuration when updating the Dash0 endpoint", func() {
+		//nolint:lll
+		It("should update the daemonset collector configuration when updating the Dash0 endpoint in the monitoring resource", func() {
 			deployDash0MonitoringResource(
 				applicationUnderTestNamespace,
 				defaultDash0MonitoringValues,

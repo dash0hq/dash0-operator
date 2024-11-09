@@ -97,6 +97,29 @@ func EnsureMonitoringResourceExistsWithNamespacedName(
 	return object.(*dash0v1alpha1.Dash0Monitoring)
 }
 
+func EnsureEmptyMonitoringResourceExistsAndIsAvailable(
+	ctx context.Context,
+	k8sClient client.Client,
+) *dash0v1alpha1.Dash0Monitoring {
+	object := EnsureKubernetesObjectExists(
+		ctx,
+		k8sClient,
+		MonitoringResourceQualifiedName,
+		&dash0v1alpha1.Dash0Monitoring{},
+		&dash0v1alpha1.Dash0Monitoring{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      MonitoringResourceName,
+				Namespace: TestNamespaceName,
+			},
+			Spec: dash0v1alpha1.Dash0MonitoringSpec{},
+		},
+	)
+	monitoringResource := object.(*dash0v1alpha1.Dash0Monitoring)
+	monitoringResource.EnsureResourceIsMarkedAsAvailable()
+	Expect(k8sClient.Status().Update(ctx, monitoringResource)).To(Succeed())
+	return monitoringResource
+}
+
 func CreateDefaultMonitoringResource(
 	ctx context.Context,
 	k8sClient client.Client,

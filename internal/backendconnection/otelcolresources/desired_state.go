@@ -987,6 +987,9 @@ func assembleDeploymentCollectorContainer(
 	return collectorContainer, nil
 }
 
+// Maintenance note: Names for Kubernetes objects _must_ be unique, otherwise the logic in
+// otelcol_resources.go#deleteResourcesThatAreNoLongerDesired does not work correctly.
+
 func daemonsetServiceAccountName(namePrefix string) string {
 	return renderName(namePrefix, openTelemetryCollector, "sa")
 }

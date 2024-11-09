@@ -412,7 +412,7 @@ func (r *MonitoringReconciler) reconcileOpenTelemetryCollector(
 		r.Images,
 		r.OperatorNamespace,
 		monitoringResource,
-		backendconnection.TriggeredByMonitoringResource,
+		backendconnection.TriggeredByDash0ResourceReconcile,
 	); err != nil {
 		logger.Error(err, "Failed to reconcile the OpenTelemetry collector, requeuing reconcile request.")
 		return err
