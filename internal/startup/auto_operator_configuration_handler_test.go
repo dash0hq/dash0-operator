@@ -46,24 +46,8 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 		DeleteAllOperatorConfigurationResources(ctx, k8sClient)
 	})
 
-	It("should not do anything if there already is an operator configuration resource in the cluster", func() {
-		CreateDefaultOperatorConfigurationResource(ctx, k8sClient)
-		// verify that there is only one resource
-		list := v1alpha1.Dash0OperatorConfigurationList{}
-		Expect(k8sClient.List(ctx, &list)).To(Succeed())
-		Expect(list.Items).To(HaveLen(1))
-		Expect(list.Items[0].Name).To(Equal(OperatorConfigurationResourceName))
-
-		Expect(handler.CreateOperatorConfigurationResource(ctx, &OperatorConfigurationValues{}, &logger)).To(Succeed())
-		// verify that there is _still_ only one resource, and that its name is not the one that would be automatically
-		// created by AutoOperatorConfigurationResourceHandler.
-		Expect(k8sClient.List(ctx, &list)).To(Succeed())
-		Expect(list.Items).To(HaveLen(1))
-		Expect(list.Items[0].Name).To(Equal(OperatorConfigurationResourceName))
-	})
-
 	It("should fail validation if no endpoint has been provided", func() {
-		Expect(handler.CreateOperatorConfigurationResource(ctx, &OperatorConfigurationValues{
+		Expect(handler.CreateOrUpdateOperatorConfigurationResource(ctx, &OperatorConfigurationValues{
 			Token: AuthorizationTokenTest,
 		}, &logger)).To(
 			MatchError(
@@ -72,7 +56,7 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 	})
 
 	It("should fail validation if no token and no secret reference have been provided", func() {
-		Expect(handler.CreateOperatorConfigurationResource(ctx, &OperatorConfigurationValues{
+		Expect(handler.CreateOrUpdateOperatorConfigurationResource(ctx, &OperatorConfigurationValues{
 			Endpoint: AuthorizationTokenTest,
 		}, &logger)).To(
 			MatchError(
@@ -82,7 +66,7 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 	})
 
 	It("should fail validation if no token and no secret reference key have been provided", func() {
-		Expect(handler.CreateOperatorConfigurationResource(ctx, &OperatorConfigurationValues{
+		Expect(handler.CreateOrUpdateOperatorConfigurationResource(ctx, &OperatorConfigurationValues{
 			Endpoint: AuthorizationTokenTest,
 			SecretRef: SecretRef{
 				Name: "test-secret",
@@ -94,9 +78,9 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 						"been provided")))
 	})
 
-	It("should create an operator configuration resource with a token", func() {
+	It("should create a new operator configuration resource with a token", func() {
 		Expect(
-			handler.CreateOperatorConfigurationResource(ctx, &operatorConfigurationValuesWithToken, &logger),
+			handler.CreateOrUpdateOperatorConfigurationResource(ctx, &operatorConfigurationValuesWithToken, &logger),
 		).To(Succeed())
 
 		Eventually(func(g Gomega) {
@@ -122,9 +106,9 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 		}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
 	})
 
-	It("should create an operator configuration resource with a secret reference", func() {
+	It("should create a new operator configuration resource with a secret reference", func() {
 		Expect(
-			handler.CreateOperatorConfigurationResource(ctx, &operatorConfigurationValuesWithSecretRef, &logger),
+			handler.CreateOrUpdateOperatorConfigurationResource(ctx, &operatorConfigurationValuesWithSecretRef, &logger),
 		).To(Succeed())
 
 		Eventually(func(g Gomega) {
@@ -153,7 +137,7 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 
 	It("should set the API endpoint", func() {
 		Expect(
-			handler.CreateOperatorConfigurationResource(ctx, &OperatorConfigurationValues{
+			handler.CreateOrUpdateOperatorConfigurationResource(ctx, &OperatorConfigurationValues{
 				Endpoint:    EndpointDash0Test,
 				Token:       AuthorizationTokenTest,
 				ApiEndpoint: ApiEndpointTest,
@@ -177,7 +161,7 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 
 	It("should set a custom dataset", func() {
 		Expect(
-			handler.CreateOperatorConfigurationResource(ctx, &OperatorConfigurationValues{
+			handler.CreateOrUpdateOperatorConfigurationResource(ctx, &OperatorConfigurationValues{
 				Endpoint: EndpointDash0Test,
 				Token:    AuthorizationTokenTest,
 				Dataset:  "custom",
@@ -196,6 +180,81 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 			dash0Export := export.Dash0
 			g.Expect(dash0Export).ToNot(BeNil())
 			g.Expect(dash0Export.Dataset).To(Equal("custom"))
+		}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
+	})
+
+	It("should update the existing resource if there already is an auto-operator-configuration-resource", func() {
+		Expect(
+			handler.CreateOrUpdateOperatorConfigurationResource(ctx, &OperatorConfigurationValues{
+				Endpoint:              "endpoint-1.dash0.com:4317",
+				Token:                 AuthorizationTokenTest,
+				ApiEndpoint:           "https://api-1.dash0.com",
+				Dataset:               "dataset-1",
+				SelfMonitoringEnabled: false,
+				KubernetesInfrastructureMetricsCollectionEnabled: true,
+			}, &logger),
+		).To(Succeed())
+
+		Eventually(func(g Gomega) {
+			list := v1alpha1.Dash0OperatorConfigurationList{}
+			g.Expect(k8sClient.List(ctx, &list)).To(Succeed())
+			g.Expect(list.Items).To(HaveLen(1))
+			operatorConfiguration := list.Items[0]
+			g.Expect(operatorConfiguration.Name).To(Equal(operatorConfigurationAutoResourceName))
+			g.Expect(operatorConfiguration.Annotations).To(HaveLen(1))
+			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/sync-options"]).To(Equal("Prune=false"))
+			export := operatorConfiguration.Spec.Export
+			g.Expect(export).ToNot(BeNil())
+			dash0Export := export.Dash0
+			g.Expect(dash0Export).ToNot(BeNil())
+			g.Expect(export.Grpc).To(BeNil())
+			g.Expect(export.Http).To(BeNil())
+			g.Expect(dash0Export.Endpoint).To(Equal("endpoint-1.dash0.com:4317"))
+			g.Expect(dash0Export.Authorization.Token).ToNot(BeNil())
+			g.Expect(*dash0Export.Authorization.Token).To(Equal(AuthorizationTokenTest))
+			g.Expect(dash0Export.Authorization.SecretRef).To(BeNil())
+			g.Expect(dash0Export.ApiEndpoint).To(Equal("https://api-1.dash0.com"))
+			g.Expect(dash0Export.Dataset).To(Equal("dataset-1"))
+			g.Expect(*operatorConfiguration.Spec.SelfMonitoring.Enabled).To(BeFalse())
+			g.Expect(*operatorConfiguration.Spec.KubernetesInfrastructureMetricsCollectionEnabled).To(BeTrue())
+		}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
+
+		// Now call the handler a second time, simulating a new startup of the operator manager process, with different
+		// operator-configuration-xxx flags
+		Expect(handler.CreateOrUpdateOperatorConfigurationResource(ctx,
+			&OperatorConfigurationValues{
+				Endpoint:              "endpoint-2.dash0.com:4317",
+				SecretRef:             secretRef,
+				ApiEndpoint:           "https://api-2.dash0.com",
+				Dataset:               "dataset-2",
+				SelfMonitoringEnabled: true,
+				KubernetesInfrastructureMetricsCollectionEnabled: false,
+			}, &logger)).To(Succeed())
+
+		// verify that there is _still_ only one resource, and that its settings have been updated.
+		Eventually(func(g Gomega) {
+			list := v1alpha1.Dash0OperatorConfigurationList{}
+			g.Expect(k8sClient.List(ctx, &list)).To(Succeed())
+			g.Expect(list.Items).To(HaveLen(1))
+			operatorConfiguration := list.Items[0]
+			g.Expect(operatorConfiguration.Name).To(Equal(operatorConfigurationAutoResourceName))
+			g.Expect(operatorConfiguration.Annotations).To(HaveLen(1))
+			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/sync-options"]).To(Equal("Prune=false"))
+			export := operatorConfiguration.Spec.Export
+			g.Expect(export).ToNot(BeNil())
+			dash0Export := export.Dash0
+			g.Expect(dash0Export).ToNot(BeNil())
+			g.Expect(export.Grpc).To(BeNil())
+			g.Expect(export.Http).To(BeNil())
+			g.Expect(dash0Export.Endpoint).To(Equal("endpoint-2.dash0.com:4317"))
+			g.Expect(dash0Export.Authorization.Token).To(BeNil())
+			g.Expect(dash0Export.Authorization.SecretRef).ToNot(BeNil())
+			g.Expect(dash0Export.Authorization.SecretRef.Name).To(Equal("test-secret"))
+			g.Expect(dash0Export.Authorization.SecretRef.Key).To(Equal("test-key"))
+			g.Expect(dash0Export.ApiEndpoint).To(Equal("https://api-2.dash0.com"))
+			g.Expect(dash0Export.Dataset).To(Equal("dataset-2"))
+			g.Expect(*operatorConfiguration.Spec.SelfMonitoring.Enabled).To(BeTrue())
+			g.Expect(*operatorConfiguration.Spec.KubernetesInfrastructureMetricsCollectionEnabled).To(BeFalse())
 		}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
 	})
 })

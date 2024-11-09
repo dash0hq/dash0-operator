@@ -5,8 +5,10 @@ package webhooks
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
+	admissionv1 "k8s.io/api/admission/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -33,7 +35,7 @@ func (h *OperatorConfigurationValidationWebhookHandler) SetupWebhookWithManager(
 	return nil
 }
 
-func (h *OperatorConfigurationValidationWebhookHandler) Handle(_ context.Context, request admission.Request) admission.Response {
+func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Context, request admission.Request) admission.Response {
 	operatorConfigurationResource := &dash0v1alpha1.Dash0OperatorConfiguration{}
 	if _, _, err := decoder.Decode(request.Object.Raw, nil, operatorConfigurationResource); err != nil {
 		return admission.Errored(http.StatusBadRequest, err)
@@ -47,5 +49,20 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(_ context.Context
 				"monitoring telemetry.")
 
 	}
+
+	if request.Operation == admissionv1.Create {
+		allOperatorConfigurationResources := &dash0v1alpha1.Dash0OperatorConfigurationList{}
+		if err := h.Client.List(ctx, allOperatorConfigurationResources); err != nil {
+			return admission.Errored(http.StatusInternalServerError, fmt.Errorf("failed to list all Dash0 operator configuration resources: %w", err))
+		}
+		if len(allOperatorConfigurationResources.Items) > 0 {
+			return admission.Denied(
+				fmt.Sprintf("At least one Dash0 operator configuration resource (%s) already exists in this cluster. "+
+					"Only one operator configuration resource is allowed per cluster.",
+					allOperatorConfigurationResources.Items[0].Name,
+				))
+		}
+	}
+
 	return admission.Allowed("")
 }

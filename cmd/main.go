@@ -820,7 +820,7 @@ func createOperatorConfiguration(
 			OperatorNamespace: envVars.operatorNamespace,
 			NamePrefix:        envVars.oTelCollectorNamePrefix,
 		}
-		if err := handler.CreateOperatorConfigurationResource(ctx, operatorConfiguration, logger); err != nil {
+		if err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, operatorConfiguration, logger); err != nil {
 			logger.Error(err, "Failed to create the requested Dash0 operator configuration resource.")
 		}
 	}
