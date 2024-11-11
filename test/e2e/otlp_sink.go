@@ -19,10 +19,13 @@ func deployOtlpSink(workingDir string) {
 		"%s/test-resources/otlp-sink/otlp-sink.yaml",
 		workingDir,
 	)
-	e2eTestExportDir := fmt.Sprintf(
-		"%s/test-resources/e2e-test-volumes/otlp-sink",
-		workingDir,
-	)
+	var e2eTestExportDir string
+	if !isKindCluster() {
+		e2eTestExportDir = fmt.Sprintf(
+			"%s/test-resources/e2e-test-volumes/otlp-sink",
+			workingDir,
+		)
+	}
 
 	tmpFile, err := os.CreateTemp(os.TempDir(), "otlp-sink-*.yaml")
 	if err != nil {
@@ -38,8 +41,9 @@ func deployOtlpSink(workingDir string) {
 			return fmt.Errorf("could not read otlp-sink manifest: %w", err)
 		}
 
-		manifest = []byte(strings.ReplaceAll(string(manifest), "path: /tmp/telemetry", "path: "+e2eTestExportDir))
-
+		if e2eTestExportDir != "" {
+			manifest = []byte(strings.ReplaceAll(string(manifest), "path: /tmp/telemetry", "path: "+e2eTestExportDir))
+		}
 		if err = os.WriteFile(tmpFile.Name(), manifest, 0644); err != nil {
 			return fmt.Errorf("could not write patched manifest to temporary file: %w", err)
 		}

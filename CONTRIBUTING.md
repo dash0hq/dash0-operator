@@ -64,7 +64,14 @@ This will run the go unit tests as well as the helm chart tests.
 
 ### End-to-End Tests
 
-The end-to-end tests currently only support Kubernetes via Docker Desktop on Mac.
+The end-to-end tests have been tested with [Docker Desktop](https://docs.docker.com/desktop/features/kubernetes/)
+on Mac (with Kubernetes support enabled) and [kind](https://kind.sigs.k8s.io/), as well experimentally against remote
+clusters.
+Docker Desktop is probably the easiest setup to get started with.
+See below for additional instructions for [kind](#running-end-to-end-tests-on-kind).
+
+Copy the file `test-resources/.env.template` to `test-resources/.env` and set `E2E_KUBECTX` to the name of the
+Kubernetes context you want to use for the tests.
 
 To run the end-to-end tests:
 ```
@@ -114,16 +121,74 @@ OPERATOR_HELM_CHART=dash0-operator/dash0-operator \
   make test-e2e
 ```
 
-Note: Unsetting parameters like `CONTROLLER_IMG_REPOSITORY` explicitly (by setting them to an empty string) will lead to the
-end-to-end test not setting those values when deploying via helm, so that the default value from the chart will be used.
-Otherwise, without `CONTROLLER_IMG_REPOSITORY=""` being present, the test suite will use `CONTROLLER_IMG_REPOSITORY=operator-controller` (the
-image built from local sources) as the default setting.
+Note: Unsetting parameters like `CONTROLLER_IMG_REPOSITORY` explicitly (by setting them to an empty string) will lead to
+the end-to-end test not setting those values when deploying via helm, so that the default value from the chart will be
+used.  Otherwise, without `CONTROLLER_IMG_REPOSITORY=""` being present, the test suite will use
+`CONTROLLER_IMG_REPOSITORY=operator-controller` (the image built from local sources) as the default setting.
+
+#### Running End-to-End Tests on kind
+
+To use kind for running the end-to-end tests, you need to create a kind cluster first.
+The file <test-resources/kind-config.yaml> file can be used as a blueprint to create a cluster.
+
+Before creating the cluster, the two hostPath settings in `test-resources/kind-config.yaml` need to be aligned with your
+local file system structure.
+(Alternatively, create a symbolic link from
+`/Users/username/dash0/code/dash0-operator/test-resources/e2e-test-volumes/` to the actual path).
+Also, make sure the path mentioned under `hostPath` is listed in Docker Desktop's settings under
+"Resources -> File sharing".
+
+Then execute the following command to create the cluster:
+
+```
+kind create cluster --name dash0-operator-playground --config test-resources/kind-config.yaml
+```
+
+Also, the [Kubernetes Cloud Provider for KIND](https://github.com/kubernetes-sigs/cloud-provider-kind) needs to be
+running. Install it with the following commands:
+
+```
+go install sigs.k8s.io/cloud-provider-kind@latest
+sudo install ~/go/bin/cloud-provider-kind /usr/local/bin
+```
+
+Then, start it (in a separate shell) with the following command and leave it running:
+```
+sudo cloud-provider-kind
+```
+
+Last but not least, set `E2E_KUBECTX` in `test-resources/.env` to the name of the Kubernetes context that corresponds to
+your kind cluster (e.g. `kind-dash0-operator-playground`).
+
+Optionally, once you are done, execute the following command to delete the cluster:
+
+```
+kind delete cluster --name dash0-operator-playground
+```
+
+#### Running End-to-End Tests against a Remote Cluster
+
+TODO: Add instructions for running the e2e tests against a remote cluster.
+Currently this involves some local ad hoc modifications, like
+* pushing the test image to the remote registry,
+* changing`test-resources/node.js/express/deployment.yaml` and friends
+    * to set the container image `ghcr.io/dash0hq/dash0-operator-nodejs-20-express-test-app:latest"`, and
+    * removing `imagePullPolicy: Never
 
 ### Semi-Manual Test Scenarios
 
 The e2e tests might sometimes not be the best tool to troubleshoot the operator, simply because they remove everything
-they deploy in their `AfterAll`/`AfterEach` hooks. The scripts in `test-resources/bin` can be used for these cases:
-* `test-resources/bin/test-scenario-01-aum-operator-cr.sh`: Deploys an application under monitoring (this is 
+they deploy in their `AfterAll`/`AfterEach` hooks.
+The scripts in `test-resources/bin` can be used for creating a specific scenario and inspecting then its behavior.
+They are also useful to actually report data to an actual Dash0 backend.
+
+If you haven't created `test-resources/.env` yet, copy the file `test-resources/.env.template` to `test-resources/.env`.
+Make sure the comma-separated list `ALLOWED_KUBECTXS` contains the name of the kubernetes you want to use for the test
+scripts.
+Use `kubectx` or `kubectl config set-context` to switch to the desired Kubernetes context before running the scripts.
+If you want to report telemetry to a Dash0 backend, set `DASH0_AUTHORIZATION_TOKEN` as well.
+
+* `test-resources/bin/test-scenario-01-aum-operator-cr.sh`: Deploys an application under monitoring (this is
   abbreviated to "aum" in the name of the script) to the namespace `test-namespace`, then it deploys the operator to
   the namespace `dash0-system`, and finally it deploys the Dash0 monitoring resource to `test-namespace`. This is a test
   scenario for instrumenting _existing_ workloads via the controller's reconcile loop.
@@ -135,11 +200,11 @@ they deploy in their `AfterAll`/`AfterEach` hooks. The scripts in `test-resource
   e2e tests will fail the next time you start them.** Note that all scenario scripts call the cleanup at the beginning,
   so there is no need to clean up between individual invocations of the scenario scripts.
 * All scripts will, by default, use the target namespace `test-namespace` and the workload type `deployment`. They all
-  accept two command line parameters to override these defaults. For example, use 
-  `test-resources/bin/test-scenario-01-aum-operator-cr.sh another-namespace replicaset` to run the scenario with 
+  accept two command line parameters to override these defaults. For example, use
+  `test-resources/bin/test-scenario-01-aum-operator-cr.sh another-namespace replicaset` to run the scenario with
   the target namespace `another-namespace` and a replica set workload.
   * Additional parameterization can be achieved via environment variables, for example:
-      * To run the scenario with the images that have been built from the main branch and pushed to ghcr.io most 
+      * To run the scenario with the images that have been built from the main branch and pushed to ghcr.io most
         recently:
         ```
         CONTROLLER_IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller \
@@ -160,7 +225,7 @@ they deploy in their `AfterAll`/`AfterEach` hooks. The scripts in `test-resource
           test-resources/bin/test-scenario-01-aum-operator-cr.sh
         ```
       * To run the scenario with the helm chart from the official remote repository and the default images referenced in
-        that chart (the Helm repository must have been installed beforehand): 
+        that chart (the Helm repository must have been installed beforehand):
         ```
         OPERATOR_HELM_CHART=dash0-operator/dash0-operator \
           OPERATOR_HELM_CHART_URL=https://dash0hq.github.io/dash0-operator \
@@ -183,7 +248,7 @@ they deploy in their `AfterAll`/`AfterEach` hooks. The scripts in `test-resource
         ```
         Note: Unsetting parameters like `CONTROLLER_IMG_REPOSITORY` explicitly (by setting them to an empty string) will
         lead to the scenario not setting those values when deploying via helm, so that the default value from the chart
-        will actually be used. Otherwise, without `CONTROLLER_IMG_REPOSITORY=""` being present, the test script will use 
+        will actually be used. Otherwise, without `CONTROLLER_IMG_REPOSITORY=""` being present, the test script will use
         `CONTROLLER_IMG_REPOSITORY=operator-controller` (the image built from local sources) as the default setting.
       * You can add `OPERATOR_HELM_CHART_VERSION=0.11.0` to the command above to install a specific version of the
         Helm chart. This can be useful to test upgrade scenarios.

@@ -44,11 +44,11 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		env, err := readDotEnvFile(dotEnvFile)
 		Expect(err).NotTo(HaveOccurred())
 
-		e2eKubeCtx := env["E2E_KUBECTX"]
-		if e2eKubeCtx == "" {
+		e2eKubernetesContext := env["E2E_KUBECTX"]
+		if e2eKubernetesContext == "" {
 			Fail(fmt.Sprintf("The mandatory setting E2E_KUBECTX is missing in the file %s.", dotEnvFile))
 		}
-		kubeContextHasBeenChanged, originalKubeContext = setKubeContext(e2eKubeCtx)
+		kubeContextHasBeenChanged, originalKubeContext = setKubernetesContext(e2eKubernetesContext)
 
 		// Cleans up the test namespace, otlp sink and the operator. Usually this is cleaned up in AfterAll/AfterEach
 		// steps, but for cases where we want to troubleshoot failing e2e tests and have disabled cleanup in After steps
@@ -69,12 +69,13 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 	AfterAll(func() {
 		removeAllTemporaryManifests()
+		undeployNginxIngressController()
 		if applicationUnderTestNamespace != "default" {
 			By("removing namespace for application under test")
 			_ = runAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", applicationUnderTestNamespace))
 		}
 		if kubeContextHasBeenChanged {
-			revertKubeCtx(originalKubeContext)
+			revertKubernetesContext(originalKubeContext)
 		}
 	})
 
@@ -757,7 +758,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 			By("sending a request to the Node.js deployment that will generate a log with a predictable body")
 			now := time.Now()
-			sendRequest(Default, 1207, fmt.Sprintf("/dash0-k8s-operator-test?id=%s", testId))
+			sendRequest(Default, "deployment", 1207, fmt.Sprintf("/dash0-k8s-operator-test?id=%s", testId))
 
 			By("waiting for the the log to appear")
 
