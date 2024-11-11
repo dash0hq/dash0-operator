@@ -70,7 +70,7 @@ func sendRequestAndFindMatchingSpans(
 	checkResourceAttributes bool,
 ) MatchResultList[ptrace.ResourceSpans, ptrace.Span] {
 	if !isBatch {
-		sendRequest(g, port, httpPathWithQuery)
+		sendRequest(g, workloadType, port, httpPathWithQuery)
 	}
 	var resourceMatchFn func(ptrace.ResourceSpans, *ResourceMatchResult[ptrace.ResourceSpans])
 	if checkResourceAttributes {
@@ -84,8 +84,11 @@ func sendRequestAndFindMatchingSpans(
 	)
 }
 
-func sendRequest(g Gomega, port int, httpPathWithQuery string) {
+func sendRequest(g Gomega, workloadType string, port int, httpPathWithQuery string) {
 	url := fmt.Sprintf("http://localhost:%d%s", port, httpPathWithQuery)
+	if isKindCluster() {
+		url = fmt.Sprintf("http://%s/%s%s", kindClusterIngressIp, workloadType, httpPathWithQuery)
+	}
 	client := http.Client{
 		Timeout: 500 * time.Millisecond,
 	}

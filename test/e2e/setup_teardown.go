@@ -66,24 +66,37 @@ func renderTemplates() {
 	Expect(runAndIgnoreOutput(exec.Command("test-resources/bin/render-templates.sh"))).To(Succeed())
 }
 
-func setKubeContext(kubeContextForTest string) (bool, string) {
-	By("reading current kubectx")
-	kubectxOutput, err := run(exec.Command("kubectx", "-c"))
+func setKubernetesContext(kubernetesContextForTest string) (bool, string) {
+	By("reading current Kubernetes context")
+	kubectlCurrentContextOutput, err := run(exec.Command("kubectl", "config", "current-context"))
 	Expect(err).NotTo(HaveOccurred())
-	originalKubeContext := strings.TrimSpace(kubectxOutput)
+	originalCtx := strings.TrimSpace(kubectlCurrentContextOutput)
 
-	if originalKubeContext != kubeContextForTest {
-		By("switching to kubectx docker-desktop, previous context " + originalKubeContext + " will be restored later")
-		Expect(runAndIgnoreOutput(exec.Command("kubectx", "docker-desktop"))).To(Succeed())
-		return true, originalKubeContext
+	if originalCtx != kubernetesContextForTest {
+		By(fmt.Sprintf(
+			"switching to Kubernetes context %s, previous context %s will be restored later",
+			kubernetesContextForTest,
+			originalCtx,
+		))
+		Expect(
+			runAndIgnoreOutput(
+				exec.Command(
+					"kubectl",
+					"config",
+					"use-context",
+					kubernetesContextForTest,
+				))).To(Succeed())
+		return true, originalCtx
 	} else {
-		return false, originalKubeContext
+		// We are already in the correct context.
+		By(fmt.Sprintf("running in Kubernetes context %s", originalCtx))
+		return false, originalCtx
 	}
 }
 
-func revertKubeCtx(originalKubeContext string) {
-	By("switching back to original kubectx " + originalKubeContext)
-	output, err := run(exec.Command("kubectx", originalKubeContext))
+func revertKubernetesContext(originalCtx string) {
+	By("switching back to original Kubernetes context " + originalCtx)
+	output, err := run(exec.Command("kubectl", "config", "use-context", originalCtx))
 	if err != nil {
 		_, _ = fmt.Fprint(GinkgoWriter, err.Error())
 	}

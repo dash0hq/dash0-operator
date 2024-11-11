@@ -35,6 +35,7 @@ verify_kubectx() {
 
 setup_test_environment () {
   test-resources/bin/render-templates.sh
+  check_if_kubectx_is_kind_cluster
 }
 
 ensure_namespace_exists() {
@@ -57,6 +58,32 @@ finish_step() {
 
 build_all_images() {
   make docker-build
+
+  if [[ "$is_kind_cluster" == true ]]; then
+    echo loading images into Kind cluster
+    kind load docker-image \
+      --name $cluster \
+      operator-controller:latest \
+      instrumentation:latest \
+      collector:latest \
+      configuration-reloader:latest \
+      filelog-offset-synch:latest
+  fi
+}
+
+check_if_kubectx_is_kind_cluster() {
+  is_kind_cluster=false
+  if command -v kind >/dev/null 2>&1; then
+    # kind is installed, check if the current kube context is a kind cluster
+    current_kubectx=$(kubectl config current-context)
+    kind_clusters=$(kind get clusters)
+    while IFS= read -r cluster; do
+      if [[ "$current_kubectx" == "kind-$cluster" ]]; then
+        is_kind_cluster=true
+        return
+      fi
+    done <<< "$kind_clusters"
+  fi
 }
 
 deploy_via_helm() {

@@ -99,7 +99,7 @@ func waitForAutoOperatorConfigurationResourceToBecomeAvailable() {
 				"get",
 				"dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration-auto-resource",
 			))).To(Succeed())
-	}, 30*time.Second, 1*time.Second).Should(Succeed())
+	}, 60*time.Second, 1*time.Second).Should(Succeed())
 	Expect(
 		runAndIgnoreOutput(exec.Command(
 			"kubectl",

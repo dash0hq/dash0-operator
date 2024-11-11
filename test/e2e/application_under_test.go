@@ -149,6 +149,13 @@ func rebuildNodeJsApplicationContainerImage() {
 				"-t",
 				"dash0-operator-nodejs-20-express-test-app",
 			))).To(Succeed())
+
+	loadImageToKindClusterIfRequired(
+		ImageSpec{
+			repository: "dash0-operator-nodejs-20-express-test-app",
+			tag:        "latest",
+		}, nil,
+	)
 }
 
 func uninstallNodeJsCronJob(namespace string) error {
