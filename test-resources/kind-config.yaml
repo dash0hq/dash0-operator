@@ -1,0 +1,20 @@
+# See CONTRIBUTING.md -> "Running End-to-End Tests on kind" for instructions to run e2e tests on a kind cluster.
+
+# Before creating a cluster with this config, the two hostPath settings below need to be aligned with your local file
+# system structure. Alternatively, create a symbolic link from
+# /Users/username/dash0/code/dash0-operator/test-resources/e2e-test-volumes/ to the actual path.
+# Also, make sure the path mentioned under `hostPath` is listed in Docker Desktop's settings under
+# "Resources -> File sharing".
+
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+- role: control-plane
+- role: worker
+  extraMounts:
+    - hostPath: /Users/username/dash0/code/dash0-operator/test-resources/e2e-test-volumes/otlp-sink
+      containerPath: /tmp/telemetry
+- role: worker
+  extraMounts:
+    - hostPath: /Users/username/dash0/code/dash0-operator/test-resources/e2e-test-volumes/otlp-sink
+      containerPath: /tmp/telemetry
