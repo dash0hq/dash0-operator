@@ -195,8 +195,13 @@ shellcheck-lint: shellcheck-check-installed
 	@echo "-------------------------------- (linting shell scripts)"
 	find . -name \*.sh | xargs shellcheck -x
 
+.PHONY: prometheus-crd-version-check
+prometheus-crd-version-check:
+	@echo "-------------------------------- (verifying the Prometheus CRD version is in sync)"
+	./test-resources/bin/prometheus-crd-version-check.sh
+
 .PHONY: lint
-lint: golangci-lint helm-chart-lint shellcheck-lint
+lint: golangci-lint helm-chart-lint shellcheck-lint prometheus-crd-version-check
 
 .PHONY: lint-fix
 lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes

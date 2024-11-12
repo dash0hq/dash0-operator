@@ -617,7 +617,7 @@ The Dash0 instrumentation image adds the Dash0 injector shared object to `LD_PRE
 The Dash0 injector is a small binary that adds additional environment variables to the running process by hooking into
 the `getenv` function of the standard library.
 For example, it sets (or appends to) `NODE_OPTIONS` to activate the
-[Dash0 OpenTelemetry distribution for Node.js](https://github.com/dash0hq/opentelemetry-js-distribution) to collect 
+[Dash0 OpenTelemetry distribution for Node.js](https://github.com/dash0hq/opentelemetry-js-distribution) to collect
 tracing data from all Node.js workloads.
 
 If you are curious, the source code for the injector is open source and can be found
@@ -703,7 +703,7 @@ Furthermore, the custom resource definition for Prometheus rules needs to be ins
 ways to achieve this:
 * Install the Prometheus rules custom resource definition with the following command:
 ```console
-kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.78.0/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml
+kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.78.1/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml
 ```
 * Alternatively, install the full kube-prometheus stack Helm chart: Go to
   <https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack> and follow the
