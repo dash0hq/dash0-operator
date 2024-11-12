@@ -205,7 +205,7 @@ jobs:
     needs:
       - verify
       - injector_binary_and_instrumentation_image_tests
-    timeout-minutes: 60
+    timeout-minutes: 90
 
     steps:
       - uses: actions/checkout@v4
