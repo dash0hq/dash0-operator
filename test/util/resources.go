@@ -20,6 +20,8 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/dash0hq/dash0-operator/internal/util"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -880,6 +882,7 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 func simulateInstrumentedResource(podTemplateSpec *corev1.PodTemplateSpec, meta *metav1.ObjectMeta) {
 	simulateInstrumentedPodSpec(&podTemplateSpec.Spec, meta)
 	addInstrumentationLabels(&podTemplateSpec.ObjectMeta, true)
+	AddManagedFields(meta)
 }
 
 func simulateInstrumentedPodSpec(podSpec *corev1.PodSpec, meta *metav1.ObjectMeta) {
@@ -1061,6 +1064,19 @@ func UpdateLabel(meta *metav1.ObjectMeta, key string, value string) {
 
 func RemoveLabel(meta *metav1.ObjectMeta, key string) {
 	delete(meta.Labels, key)
+}
+
+func AddManagedFields(meta *metav1.ObjectMeta) {
+	meta.ManagedFields = append(meta.ManagedFields, metav1.ManagedFieldsEntry{
+		Manager:    util.FieldManager,
+		Operation:  metav1.ManagedFieldsOperationUpdate,
+		Time:       ptr.To(metav1.Now()),
+		FieldsType: "FieldsV1",
+		FieldsV1: &metav1.FieldsV1{
+			//nolint:lll
+			Raw: []byte(`{\"f:metadata\":{\"f:labels\":{\".\":{},\"f:dash0.com/init-container-image\":{},\"f:dash0.com/instrumented\":{},\"f:dash0.com/instrumented-by\":{},\"f:dash0.com/operator-image\":{}}},\"f:spec\":{\"f:template\":{\"f:metadata\":{\"f:labels\":{\"f:dash0.com/init-container-image\":{},\"f:dash0.com/instrumented\":{},\"f:dash0.com/instrumented-by\":{},\"f:dash0.com/operator-image\":{}}},\"f:spec\":{\"f:containers\":{\"k:{\\\"name\\\":\\\"test-container-0\\\"}\":{\"f:env\":{\".\":{},\"k:{\\\"name\\\":\\\"DASH0_NODE_IP\\\"}\":{\".\":{},\"f:name\":{},\"f:valueFrom\":{\".\":{},\"f:fieldRef\":{}}},\"k:{\\\"name\\\":\\\"DASH0_OTEL_COLLECTOR_BASE_URL\\\"}\":{\".\":{},\"f:name\":{},\"f:value\":{}},\"k:{\\\"name\\\":\\\"LD_PRELOAD\\\"}\":{\".\":{},\"f:name\":{},\"f:value\":{}}},\"f:volumeMounts\":{\".\":{},\"k:{\\\"mountPath\\\":\\\"/__dash0__\\\"}\":{\".\":{},\"f:mountPath\":{},\"f:name\":{}}}}},\"f:initContainers\":{\".\":{},\"k:{\\\"name\\\":\\\"dash0-instrumentation\\\"}\":{\".\":{},\"f:env\":{\".\":{},\"k:{\\\"name\\\":\\\"DASH0_INSTRUMENTATION_FOLDER_DESTINATION\\\"}\":{\".\":{},\"f:name\":{},\"f:value\":{}}},\"f:image\":{},\"f:imagePullPolicy\":{},\"f:name\":{},\"f:resources\":{},\"f:securityContext\":{\".\":{},\"f:allowPrivilegeEscalation\":{},\"f:privileged\":{},\"f:readOnlyRootFilesystem\":{},\"f:runAsGroup\":{},\"f:runAsUser\":{}},\"f:terminationMessagePath\":{},\"f:terminationMessagePolicy\":{},\"f:volumeMounts\":{\".\":{},\"k:{\\\"mountPath\\\":\\\"/__dash0__\\\"}\":{\".\":{},\"f:mountPath\":{},\"f:name\":{}}}}},\"f:volumes\":{\".\":{},\"k:{\\\"name\\\":\\\"dash0-instrumentation\\\"}\":{\".\":{},\"f:emptyDir\":{\".\":{},\"f:sizeLimit\":{}},\"f:name\":{}}}}}}}`),
+		},
+	})
 }
 
 func DeleteAllCreatedObjects(

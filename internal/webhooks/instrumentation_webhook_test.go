@@ -55,49 +55,49 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateBasicCronJob),
 			GetFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
 			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedCronJob(workload.Get().(*batchv1.CronJob), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedCronJob(workload.Get().(*batchv1.CronJob), BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
 			},
 		}), Entry("should instrument a new basic daemon set", WorkloadTestConfig{
 			WorkloadNamePrefix: DaemonSetNamePrefix,
 			CreateFn:           WrapDaemonSetFnAsTestableWorkload(CreateBasicDaemonSet),
 			GetFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
 			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedDaemonSet(workload.Get().(*appsv1.DaemonSet), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedDaemonSet(workload.Get().(*appsv1.DaemonSet), BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
 			},
 		}), Entry("should instrument a new basic deployment", WorkloadTestConfig{
 			WorkloadNamePrefix: DeploymentNamePrefix,
 			CreateFn:           WrapDeploymentFnAsTestableWorkload(CreateBasicDeployment),
 			GetFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
 			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedDeployment(workload.Get().(*appsv1.Deployment), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedDeployment(workload.Get().(*appsv1.Deployment), BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
 			},
 		}), Entry("should instrument a new basic job", WorkloadTestConfig{
 			WorkloadNamePrefix: JobNamePrefix,
 			CreateFn:           WrapJobFnAsTestableWorkload(CreateBasicJob),
 			GetFn:              WrapJobFnAsTestableWorkload(GetJob),
 			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedJob(workload.Get().(*batchv1.Job), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedJob(workload.Get().(*batchv1.Job), BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
 			},
 		}), Entry("should instrument a new basic ownerless pod", WorkloadTestConfig{
 			WorkloadNamePrefix: PodNamePrefix,
 			CreateFn:           WrapPodFnAsTestableWorkload(CreateBasicPod),
 			GetFn:              WrapPodFnAsTestableWorkload(GetPod),
 			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedPod(workload.Get().(*corev1.Pod), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedPod(workload.Get().(*corev1.Pod), BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
 			},
 		}), Entry("should instrument a new basic ownerless replica set", WorkloadTestConfig{
 			WorkloadNamePrefix: ReplicaSetNamePrefix,
 			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateBasicReplicaSet),
 			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
 			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet), BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
 			},
 		}), Entry("should instrument a new basic stateful set", WorkloadTestConfig{
 			WorkloadNamePrefix: StatefulSetNamePrefix,
 			CreateFn:           WrapStatefulSetFnAsTestableWorkload(CreateBasicStatefulSet),
 			GetFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
 			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedStatefulSet(workload.Get().(*appsv1.StatefulSet), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedStatefulSet(workload.Get().(*appsv1.StatefulSet), BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
 			},
 		}))
 
@@ -212,7 +212,9 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 							Dash0CollectorBaseUrlEnvVarExpectedValue: OTelCollectorBaseUrlTest,
 						},
 					},
-				})
+				},
+					VerifyNoManagedFields,
+				)
 				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
 			})
 		})
@@ -252,7 +254,9 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 							Dash0CollectorBaseUrlEnvVarExpectedValue: OTelCollectorBaseUrlTest,
 						},
 					},
-				})
+				},
+					VerifyNoManagedFields,
+				)
 				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
 			})
 		})
@@ -327,21 +331,21 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateCronJobWithOptOutLabel),
 			GetFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
 			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedCronJob(workload.Get().(*batchv1.CronJob), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedCronJob(workload.Get().(*batchv1.CronJob), BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
 			},
 		}), Entry("should add Dash0 to an uninstrumented daemon set when dash0.com/enable=false is removed", WorkloadTestConfig{
 			WorkloadNamePrefix: DaemonSetNamePrefix,
 			CreateFn:           WrapDaemonSetFnAsTestableWorkload(CreateDaemonSetWithOptOutLabel),
 			GetFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
 			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedDaemonSet(workload.Get().(*appsv1.DaemonSet), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedDaemonSet(workload.Get().(*appsv1.DaemonSet), BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
 			},
 		}), Entry("should add Dash0 to an uninstrumented deployment when dash0.com/enable=false is removed", WorkloadTestConfig{
 			WorkloadNamePrefix: DeploymentNamePrefix,
 			CreateFn:           WrapDeploymentFnAsTestableWorkload(CreateDeploymentWithOptOutLabel),
 			GetFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
 			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedDeployment(workload.Get().(*appsv1.Deployment), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedDeployment(workload.Get().(*appsv1.Deployment), BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
 			},
 
 			// The test cases for jobs and pods are deliberately missing here, since we do not listen to UPDATE requests
@@ -352,14 +356,14 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateReplicaSetWithOptOutLabel),
 			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
 			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet), BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
 			},
 		}), Entry("should add Dash0 to an uninstrumented stateful set when dash0.com/enable=false is removed", WorkloadTestConfig{
 			WorkloadNamePrefix: StatefulSetNamePrefix,
 			CreateFn:           WrapStatefulSetFnAsTestableWorkload(CreateStatefulSetWithOptOutLabel),
 			GetFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
 			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedStatefulSet(workload.Get().(*appsv1.StatefulSet), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedStatefulSet(workload.Get().(*appsv1.StatefulSet), BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
 			},
 		}))
 
@@ -380,21 +384,21 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateCronJobWithOptOutLabel),
 			GetFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
 			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedCronJob(workload.Get().(*batchv1.CronJob), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedCronJob(workload.Get().(*batchv1.CronJob), BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
 			},
 		}), Entry("should add Dash0 to an uninstrumented daemon set when dash0.com/enable flips from false to true", WorkloadTestConfig{
 			WorkloadNamePrefix: DaemonSetNamePrefix,
 			CreateFn:           WrapDaemonSetFnAsTestableWorkload(CreateDaemonSetWithOptOutLabel),
 			GetFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
 			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedDaemonSet(workload.Get().(*appsv1.DaemonSet), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedDaemonSet(workload.Get().(*appsv1.DaemonSet), BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
 			},
 		}), Entry("should add Dash0 to an uninstrumented deployment when dash0.com/enable flips from false to true", WorkloadTestConfig{
 			WorkloadNamePrefix: DeploymentNamePrefix,
 			CreateFn:           WrapDeploymentFnAsTestableWorkload(CreateDeploymentWithOptOutLabel),
 			GetFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
 			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedDeployment(workload.Get().(*appsv1.Deployment), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedDeployment(workload.Get().(*appsv1.Deployment), BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
 			},
 
 			// The test cases for jobs and pods are deliberately missing here, since we do not listen to UPDATE requests
@@ -405,14 +409,14 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateReplicaSetWithOptOutLabel),
 			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
 			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet), BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
 			},
 		}), Entry("should add Dash0 to an uninstrumented stateful set when dash0.com/enable flips from false to true", WorkloadTestConfig{
 			WorkloadNamePrefix: StatefulSetNamePrefix,
 			CreateFn:           WrapStatefulSetFnAsTestableWorkload(CreateStatefulSetWithOptOutLabel),
 			GetFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
 			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedStatefulSet(workload.Get().(*appsv1.StatefulSet), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedStatefulSet(workload.Get().(*appsv1.StatefulSet), BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
 			},
 		}))
 
@@ -553,7 +557,7 @@ func verifyThatDeploymentIsInstrumented(createdObjects []client.Object) []client
 	workload := CreateBasicDeployment(ctx, k8sClient, TestNamespaceName, name)
 	createdObjects = append(createdObjects, workload)
 	workload = GetDeployment(ctx, k8sClient, TestNamespaceName, name)
-	VerifyModifiedDeployment(workload, BasicInstrumentedPodSpecExpectations())
+	VerifyModifiedDeployment(workload, BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
 	VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
 	return createdObjects
 }

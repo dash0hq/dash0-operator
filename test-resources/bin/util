@@ -60,9 +60,18 @@ build_all_images() {
 }
 
 deploy_via_helm() {
+  run_helm install
+}
+
+update_via_helm() {
+  run_helm upgrade
+}
+
+run_helm() {
   deploy_otlp_sink_if_requested
 
-  local helm_install_command="helm install --namespace dash0-system"
+  local action=${1:-install}
+  local helm_install_command="helm $action --namespace dash0-system"
   if [[ -n "${OPERATOR_HELM_CHART_VERSION:-}" ]]; then
     helm_install_command+=" --version $OPERATOR_HELM_CHART_VERSION"
   fi

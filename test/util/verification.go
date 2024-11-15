@@ -14,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	"github.com/dash0hq/dash0-operator/internal/util"
@@ -39,8 +40,27 @@ type PodSpecExpectations struct {
 	Containers            []ContainerExpectations
 }
 
+type VerifyOpts struct {
+	VerifyManagedFields bool
+	ExpectManagedFields bool
+}
+
 const (
 	eventTimeout = 1 * time.Second
+)
+
+var (
+	ExpectManagedFields = VerifyOpts{
+		VerifyManagedFields: true,
+		ExpectManagedFields: true,
+	}
+	IgnoreManagedFields = VerifyOpts{
+		VerifyManagedFields: false,
+	}
+	VerifyNoManagedFields = VerifyOpts{
+		VerifyManagedFields: true,
+		ExpectManagedFields: false,
+	}
 )
 
 func BasicInstrumentedPodSpecExpectations() PodSpecExpectations {
@@ -62,10 +82,11 @@ func BasicInstrumentedPodSpecExpectations() PodSpecExpectations {
 	}
 }
 
-func VerifyModifiedCronJob(resource *batchv1.CronJob, expectations PodSpecExpectations) {
+func VerifyModifiedCronJob(resource *batchv1.CronJob, expectations PodSpecExpectations, opts ...VerifyOpts) {
 	verifyPodSpec(resource.Spec.JobTemplate.Spec.Template.Spec, expectations)
 	verifyLabelsAfterSuccessfulModification(resource.ObjectMeta)
 	verifyLabelsAfterSuccessfulModification(resource.Spec.JobTemplate.Spec.Template.ObjectMeta)
+	verifyManagedFields(resource.ManagedFields, opts...)
 }
 
 func VerifyUnmodifiedCronJob(resource *batchv1.CronJob) {
@@ -80,10 +101,11 @@ func VerifyCronJobWithOptOutLabel(resource *batchv1.CronJob) {
 	verifyNoDash0Labels(resource.Spec.JobTemplate.Spec.Template.ObjectMeta)
 }
 
-func VerifyModifiedDaemonSet(resource *appsv1.DaemonSet, expectations PodSpecExpectations) {
+func VerifyModifiedDaemonSet(resource *appsv1.DaemonSet, expectations PodSpecExpectations, opts ...VerifyOpts) {
 	verifyPodSpec(resource.Spec.Template.Spec, expectations)
 	verifyLabelsAfterSuccessfulModification(resource.ObjectMeta)
 	verifyLabelsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
+	verifyManagedFields(resource.ManagedFields, opts...)
 }
 
 func VerifyUnmodifiedDaemonSet(resource *appsv1.DaemonSet) {
@@ -98,10 +120,11 @@ func VerifyDaemonSetWithOptOutLabel(resource *appsv1.DaemonSet) {
 	verifyNoDash0Labels(resource.Spec.Template.ObjectMeta)
 }
 
-func VerifyModifiedDeployment(resource *appsv1.Deployment, expectations PodSpecExpectations) {
+func VerifyModifiedDeployment(resource *appsv1.Deployment, expectations PodSpecExpectations, opts ...VerifyOpts) {
 	verifyPodSpec(resource.Spec.Template.Spec, expectations)
 	verifyLabelsAfterSuccessfulModification(resource.ObjectMeta)
 	verifyLabelsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
+	verifyManagedFields(resource.ManagedFields, opts...)
 }
 
 func VerifyUnmodifiedDeployment(resource *appsv1.Deployment) {
@@ -126,10 +149,11 @@ func VerifyDeploymentWithOptOutLabel(resource *appsv1.Deployment) {
 	verifyNoDash0Labels(resource.Spec.Template.ObjectMeta)
 }
 
-func VerifyModifiedJob(resource *batchv1.Job, expectations PodSpecExpectations) {
+func VerifyModifiedJob(resource *batchv1.Job, expectations PodSpecExpectations, opts ...VerifyOpts) {
 	verifyPodSpec(resource.Spec.Template.Spec, expectations)
 	verifyLabelsAfterSuccessfulModification(resource.ObjectMeta)
 	verifyLabelsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
+	verifyManagedFields(resource.ManagedFields, opts...)
 }
 
 func VerifyModifiedJobAfterUnsuccessfulOptOut(resource *batchv1.Job) {
@@ -161,9 +185,10 @@ func VerifyJobWithOptOutLabel(resource *batchv1.Job) {
 	verifyNoDash0Labels(resource.Spec.Template.ObjectMeta)
 }
 
-func VerifyModifiedPod(resource *corev1.Pod, expectations PodSpecExpectations) {
+func VerifyModifiedPod(resource *corev1.Pod, expectations PodSpecExpectations, opts ...VerifyOpts) {
 	verifyPodSpec(resource.Spec, expectations)
 	verifyLabelsAfterSuccessfulModification(resource.ObjectMeta)
+	verifyManagedFields(resource.ManagedFields, opts...)
 }
 
 func VerifyUnmodifiedPod(resource *corev1.Pod) {
@@ -176,10 +201,11 @@ func VerifyPodWithOptOutLabel(resource *corev1.Pod) {
 	verifyLabelsForOptOutWorkload(resource.ObjectMeta)
 }
 
-func VerifyModifiedReplicaSet(resource *appsv1.ReplicaSet, expectations PodSpecExpectations) {
+func VerifyModifiedReplicaSet(resource *appsv1.ReplicaSet, expectations PodSpecExpectations, opts ...VerifyOpts) {
 	verifyPodSpec(resource.Spec.Template.Spec, expectations)
 	verifyLabelsAfterSuccessfulModification(resource.ObjectMeta)
 	verifyLabelsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
+	verifyManagedFields(resource.ManagedFields, opts...)
 }
 
 func VerifyUnmodifiedReplicaSet(resource *appsv1.ReplicaSet) {
@@ -194,10 +220,11 @@ func VerifyReplicaSetWithOptOutLabel(resource *appsv1.ReplicaSet) {
 	verifyNoDash0Labels(resource.Spec.Template.ObjectMeta)
 }
 
-func VerifyModifiedStatefulSet(resource *appsv1.StatefulSet, expectations PodSpecExpectations) {
+func VerifyModifiedStatefulSet(resource *appsv1.StatefulSet, expectations PodSpecExpectations, opts ...VerifyOpts) {
 	verifyPodSpec(resource.Spec.Template.Spec, expectations)
 	verifyLabelsAfterSuccessfulModification(resource.ObjectMeta)
 	verifyLabelsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
+	verifyManagedFields(resource.ManagedFields, opts...)
 }
 
 func VerifyUnmodifiedStatefulSet(resource *appsv1.StatefulSet) {
@@ -348,6 +375,36 @@ func VerifyWebhookIgnoreOnceLabelIsPresentEventually(g Gomega, objectMeta *metav
 
 func VerifyWebhookIgnoreOnceLabelIsAbsent(objectMeta *metav1.ObjectMeta) {
 	Expect(objectMeta.Labels["dash0.com/webhook-ignore-once"]).To(Equal(""))
+}
+
+func verifyManagedFields(managedFields []metav1.ManagedFieldsEntry, opts ...VerifyOpts) {
+	if len(opts) > 1 {
+		Fail("too many VerifyOpts provided")
+	}
+	if len(opts) == 0 {
+		opts = []VerifyOpts{ExpectManagedFields}
+	}
+
+	if !opts[0].VerifyManagedFields {
+		return
+	}
+
+	managedFieldsFromOperator := make([]metav1.ManagedFieldsEntry, 0, 1)
+	for _, mf := range managedFields {
+		if mf.Manager == "dash0-operator" {
+			managedFieldsFromOperator = append(managedFieldsFromOperator, mf)
+		}
+	}
+
+	if opts[0].ExpectManagedFields {
+		Expect(managedFieldsFromOperator).To(HaveLen(1))
+		managedField := managedFieldsFromOperator[0]
+		Expect(string(managedField.Operation)).To(Equal("Update"))
+		fields := string(managedField.FieldsV1.Raw)
+		Expect(fields).To(ContainSubstring("f:labels"))
+	} else {
+		Expect(managedFieldsFromOperator).To(HaveLen(0))
+	}
 }
 
 func VerifyNoEvents(

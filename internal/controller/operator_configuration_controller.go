@@ -232,7 +232,11 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 			return ctrl.Result{}, err
 		}
 
-		if err = r.Client.Update(ctx, controllerDeployment); err != nil {
+		if err = r.Client.Update(
+			ctx,
+			controllerDeployment,
+			&client.UpdateOptions{FieldManager: util.FieldManager},
+		); err != nil {
 			logger.Error(err, "cannot update the controller deployment")
 			if statusUpdateErr := r.markAsDegraded(
 				ctx,
@@ -319,7 +323,7 @@ func (r *OperatorConfigurationReconciler) removeSelfMonitoringAndApiAccessAndUpd
 		return fmt.Errorf("cannot apply settings to disable self-monitoring to the controller deployment: %w", err)
 	}
 
-	return r.Client.Update(ctx, updatedDeployment)
+	return r.Client.Update(ctx, updatedDeployment, &client.UpdateOptions{FieldManager: util.FieldManager})
 }
 
 func (r *OperatorConfigurationReconciler) markAsDegraded(

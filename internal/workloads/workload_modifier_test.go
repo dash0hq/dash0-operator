@@ -41,7 +41,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			hasBeenModified := workloadModifier.ModifyCronJob(workload)
 
 			Expect(hasBeenModified).To(BeTrue())
-			VerifyModifiedCronJob(workload, BasicInstrumentedPodSpecExpectations())
+			VerifyModifiedCronJob(workload, BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 		})
 
 		It("should instrument a basic daemon set", func() {
@@ -49,7 +49,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			hasBeenModified := workloadModifier.ModifyDaemonSet(workload)
 
 			Expect(hasBeenModified).To(BeTrue())
-			VerifyModifiedDaemonSet(workload, BasicInstrumentedPodSpecExpectations())
+			VerifyModifiedDaemonSet(workload, BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 		})
 
 		It("should add Dash0 to a basic deployment", func() {
@@ -57,7 +57,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			hasBeenModified := workloadModifier.ModifyDeployment(workload)
 
 			Expect(hasBeenModified).To(BeTrue())
-			VerifyModifiedDeployment(workload, BasicInstrumentedPodSpecExpectations())
+			VerifyModifiedDeployment(workload, BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 		})
 
 		It("should instrument a deployment that has multiple containers, and already has volumes and init containers", func() {
@@ -90,7 +90,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						Dash0CollectorBaseUrlEnvVarExpectedValue: OTelCollectorBaseUrlTest,
 					},
 				},
-			})
+			},
+				IgnoreManagedFields,
+			)
 		})
 
 		It("should update existing Dash0 artifacts in a deployment", func() {
@@ -125,7 +127,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						Dash0CollectorBaseUrlEnvVarExpectedValue: OTelCollectorBaseUrlTest,
 					},
 				},
-			})
+			},
+				IgnoreManagedFields,
+			)
 		})
 
 		It("should instrument a basic job", func() {
@@ -133,7 +137,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			hasBeenModified := workloadModifier.ModifyJob(workload)
 
 			Expect(hasBeenModified).To(BeTrue())
-			VerifyModifiedJob(workload, BasicInstrumentedPodSpecExpectations())
+			VerifyModifiedJob(workload, BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 		})
 
 		It("should instrument a basic ownerless pod", func() {
@@ -141,7 +145,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			hasBeenModified := workloadModifier.ModifyPod(workload)
 
 			Expect(hasBeenModified).To(BeTrue())
-			VerifyModifiedPod(workload, BasicInstrumentedPodSpecExpectations())
+			VerifyModifiedPod(workload, BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 		})
 
 		It("should not instrument a basic pod owned by another higher level workload", func() {
@@ -157,7 +161,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			hasBeenModified := workloadModifier.ModifyReplicaSet(workload)
 
 			Expect(hasBeenModified).To(BeTrue())
-			VerifyModifiedReplicaSet(workload, BasicInstrumentedPodSpecExpectations())
+			VerifyModifiedReplicaSet(workload, BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 		})
 
 		It("should not instrument a basic replica set that is owned by a deployment", func() {
@@ -173,7 +177,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			hasBeenModified := workloadModifier.ModifyStatefulSet(workload)
 
 			Expect(hasBeenModified).To(BeTrue())
-			VerifyModifiedStatefulSet(workload, BasicInstrumentedPodSpecExpectations())
+			VerifyModifiedStatefulSet(workload, BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 		})
 	})
 
@@ -185,7 +189,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			instrumentedOnce := workload.DeepCopy()
 			hasBeenModified = workloadModifier.ModifyCronJob(workload)
 			Expect(hasBeenModified).To(BeFalse())
-			VerifyModifiedCronJob(workload, BasicInstrumentedPodSpecExpectations())
+			VerifyModifiedCronJob(workload, BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 			Expect(reflect.DeepEqual(instrumentedOnce, workload)).To(BeTrue())
 		})
 
@@ -196,7 +200,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			instrumentedOnce := workload.DeepCopy()
 			hasBeenModified = workloadModifier.ModifyDaemonSet(workload)
 			Expect(hasBeenModified).To(BeFalse())
-			VerifyModifiedDaemonSet(workload, BasicInstrumentedPodSpecExpectations())
+			VerifyModifiedDaemonSet(workload, BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 			Expect(reflect.DeepEqual(instrumentedOnce, workload)).To(BeTrue())
 		})
 
@@ -207,7 +211,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			instrumentedOnce := workload.DeepCopy()
 			hasBeenModified = workloadModifier.ModifyDeployment(workload)
 			Expect(hasBeenModified).To(BeFalse())
-			VerifyModifiedDeployment(workload, BasicInstrumentedPodSpecExpectations())
+			VerifyModifiedDeployment(workload, BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 			Expect(reflect.DeepEqual(instrumentedOnce, workload)).To(BeTrue())
 		})
 
@@ -218,7 +222,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			instrumentedOnce := workload.DeepCopy()
 			hasBeenModified = workloadModifier.ModifyJob(workload)
 			Expect(hasBeenModified).To(BeFalse())
-			VerifyModifiedJob(workload, BasicInstrumentedPodSpecExpectations())
+			VerifyModifiedJob(workload, BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 			Expect(reflect.DeepEqual(instrumentedOnce, workload)).To(BeTrue())
 		})
 
@@ -229,7 +233,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			instrumentedOnce := workload.DeepCopy()
 			hasBeenModified = workloadModifier.ModifyPod(workload)
 			Expect(hasBeenModified).To(BeFalse())
-			VerifyModifiedPod(workload, BasicInstrumentedPodSpecExpectations())
+			VerifyModifiedPod(workload, BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 			Expect(reflect.DeepEqual(instrumentedOnce, workload)).To(BeTrue())
 		})
 
@@ -240,7 +244,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			instrumentedOnce := workload.DeepCopy()
 			hasBeenModified = workloadModifier.ModifyReplicaSet(workload)
 			Expect(hasBeenModified).To(BeFalse())
-			VerifyModifiedReplicaSet(workload, BasicInstrumentedPodSpecExpectations())
+			VerifyModifiedReplicaSet(workload, BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 			Expect(reflect.DeepEqual(instrumentedOnce, workload)).To(BeTrue())
 		})
 
@@ -251,7 +255,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			instrumentedOnce := workload.DeepCopy()
 			hasBeenModified = workloadModifier.ModifyStatefulSet(workload)
 			Expect(hasBeenModified).To(BeFalse())
-			VerifyModifiedStatefulSet(workload, BasicInstrumentedPodSpecExpectations())
+			VerifyModifiedStatefulSet(workload, BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 			Expect(reflect.DeepEqual(instrumentedOnce, workload)).To(BeTrue())
 		})
 	})
@@ -325,7 +329,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			hasBeenModified := workloadModifier.RevertReplicaSet(workload)
 
 			Expect(hasBeenModified).To(BeFalse())
-			VerifyModifiedReplicaSet(workload, BasicInstrumentedPodSpecExpectations())
+			VerifyModifiedReplicaSet(workload, BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 		})
 
 		It("should remove Dash0 from an instrumented stateful set", func() {
