@@ -331,42 +331,42 @@ var _ = Describe("The instrumenter", Ordered, func() {
 			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateInstrumentedCronJob),
 			GetFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
 			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedCronJob(workload.Get().(*batchv1.CronJob), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedCronJob(workload.Get().(*batchv1.CronJob), BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 			},
 		}), Entry("should not touch a successfully instrumented daemon set", WorkloadTestConfig{
 			WorkloadNamePrefix: DaemonSetNamePrefix,
 			CreateFn:           WrapDaemonSetFnAsTestableWorkload(CreateInstrumentedDaemonSet),
 			GetFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
 			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedDaemonSet(workload.Get().(*appsv1.DaemonSet), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedDaemonSet(workload.Get().(*appsv1.DaemonSet), BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 			},
 		}), Entry("should not touch a successfully instrumented deployment", WorkloadTestConfig{
 			WorkloadNamePrefix: DeploymentNamePrefix,
 			CreateFn:           WrapDeploymentFnAsTestableWorkload(CreateInstrumentedDeployment),
 			GetFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
 			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedDeployment(workload.Get().(*appsv1.Deployment), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedDeployment(workload.Get().(*appsv1.Deployment), BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 			},
 		}), Entry("should not touch a successfully instrumented job", WorkloadTestConfig{
 			WorkloadNamePrefix: JobNamePrefix,
 			CreateFn:           WrapJobFnAsTestableWorkload(CreateInstrumentedJob),
 			GetFn:              WrapJobFnAsTestableWorkload(GetJob),
 			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedJob(workload.Get().(*batchv1.Job), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedJob(workload.Get().(*batchv1.Job), BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 			},
 		}), Entry("should not touch a successfully instrumented replica set", WorkloadTestConfig{
 			WorkloadNamePrefix: ReplicaSetNamePrefix,
 			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateInstrumentedReplicaSet),
 			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
 			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet), BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 			},
 		}), Entry("should not touch a successfully instrumented stateful set", WorkloadTestConfig{
 			WorkloadNamePrefix: StatefulSetNamePrefix,
 			CreateFn:           WrapStatefulSetFnAsTestableWorkload(CreateInstrumentedStatefulSet),
 			GetFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
 			VerifyFn: func(workload TestableWorkload) {
-				VerifyModifiedStatefulSet(workload.Get().(*appsv1.StatefulSet), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedStatefulSet(workload.Get().(*appsv1.StatefulSet), BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 			},
 		}),
 		)
@@ -437,7 +437,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 						"been successful. Error message: Dash0 cannot remove the instrumentation from the existing job "+
 						"test-namespace/%s, since this type of workload is immutable.", name),
 				)
-				VerifyModifiedJob(GetJob(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedJob(GetJob(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 			})
 
 			It("should remove instrumentation labels from an existing job for which an instrumentation attempt has failed", func() {
@@ -461,7 +461,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 				uninstrumentWorkloadsIfAvailable(ctx, instrumenter, dash0MonitoringResource, &logger)
 
 				VerifyNoEvents(ctx, clientset, namespace)
-				VerifyModifiedPod(GetPod(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedPod(GetPod(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 			})
 
 			It("should leave existing uninstrumented pod owned by a replica set alone", func() {

@@ -4,10 +4,10 @@
 package util
 
 const (
-	AuthorizationHeaderName = "Authorization"
-	Dash0DatasetHeaderName  = "Dash0-Dataset"
-	DatasetDefault          = "default"
-	DatasetInsights         = "dash0-internal"
-
+	AuthorizationHeaderName                 = "Authorization"
+	Dash0DatasetHeaderName                  = "Dash0-Dataset"
+	DatasetDefault                          = "default"
+	DatasetInsights                         = "dash0-internal"
 	SelfMonitoringAndApiAuthTokenEnvVarName = "SELF_MONITORING_AND_API_AUTH_TOKEN"
+	FieldManager                            = "dash0-operator"
 )

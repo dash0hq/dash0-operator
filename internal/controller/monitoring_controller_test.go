@@ -455,7 +455,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateInstrumentedCronJob),
 			GetFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
 			VerifyPreFn: func(workload TestableWorkload) {
-				VerifyModifiedCronJob(workload.Get().(*batchv1.CronJob), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedCronJob(workload.Get().(*batchv1.CronJob), BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 			},
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyUnmodifiedCronJob(workload.Get().(*batchv1.CronJob))
@@ -465,7 +465,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			CreateFn:           WrapDaemonSetFnAsTestableWorkload(CreateInstrumentedDaemonSet),
 			GetFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
 			VerifyPreFn: func(workload TestableWorkload) {
-				VerifyModifiedDaemonSet(workload.Get().(*appsv1.DaemonSet), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedDaemonSet(workload.Get().(*appsv1.DaemonSet), BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 			},
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyUnmodifiedDaemonSet(workload.Get().(*appsv1.DaemonSet))
@@ -475,7 +475,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			CreateFn:           WrapDeploymentFnAsTestableWorkload(CreateInstrumentedDeployment),
 			GetFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
 			VerifyPreFn: func(workload TestableWorkload) {
-				VerifyModifiedDeployment(workload.Get().(*appsv1.Deployment), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedDeployment(workload.Get().(*appsv1.Deployment), BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 			},
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyUnmodifiedDeployment(workload.Get().(*appsv1.Deployment))
@@ -485,7 +485,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateInstrumentedReplicaSet),
 			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
 			VerifyPreFn: func(workload TestableWorkload) {
-				VerifyModifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet), BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 			},
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyUnmodifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet))
@@ -495,7 +495,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			CreateFn:           WrapStatefulSetFnAsTestableWorkload(CreateInstrumentedStatefulSet),
 			GetFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
 			VerifyPreFn: func(workload TestableWorkload) {
-				VerifyModifiedStatefulSet(workload.Get().(*appsv1.StatefulSet), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedStatefulSet(workload.Get().(*appsv1.StatefulSet), BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 			},
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyUnmodifiedStatefulSet(workload.Get().(*appsv1.StatefulSet))
@@ -597,7 +597,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateBasicCronJob),
 			GetFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
 			VerifyPreFn: func(workload TestableWorkload) {
-				VerifyModifiedCronJob(workload.Get().(*batchv1.CronJob), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedCronJob(workload.Get().(*batchv1.CronJob), BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 			},
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyUnmodifiedCronJob(workload.Get().(*batchv1.CronJob))
@@ -607,7 +607,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			CreateFn:           WrapDaemonSetFnAsTestableWorkload(CreateBasicDaemonSet),
 			GetFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
 			VerifyPreFn: func(workload TestableWorkload) {
-				VerifyModifiedDaemonSet(workload.Get().(*appsv1.DaemonSet), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedDaemonSet(workload.Get().(*appsv1.DaemonSet), BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 			},
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyUnmodifiedDaemonSet(workload.Get().(*appsv1.DaemonSet))
@@ -617,7 +617,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			CreateFn:           WrapDeploymentFnAsTestableWorkload(CreateBasicDeployment),
 			GetFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
 			VerifyPreFn: func(workload TestableWorkload) {
-				VerifyModifiedDeployment(workload.Get().(*appsv1.Deployment), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedDeployment(workload.Get().(*appsv1.Deployment), BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 			},
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyUnmodifiedDeployment(workload.Get().(*appsv1.Deployment))
@@ -627,7 +627,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateBasicReplicaSet),
 			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
 			VerifyPreFn: func(workload TestableWorkload) {
-				VerifyModifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet), BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 			},
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyUnmodifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet))
@@ -637,7 +637,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			CreateFn:           WrapStatefulSetFnAsTestableWorkload(CreateBasicStatefulSet),
 			GetFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
 			VerifyPreFn: func(workload TestableWorkload) {
-				VerifyModifiedStatefulSet(workload.Get().(*appsv1.StatefulSet), BasicInstrumentedPodSpecExpectations())
+				VerifyModifiedStatefulSet(workload.Get().(*appsv1.StatefulSet), BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 			},
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyUnmodifiedStatefulSet(workload.Get().(*appsv1.StatefulSet))
