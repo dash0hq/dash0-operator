@@ -987,6 +987,7 @@ func runInParallelForAllWorkloadTypes[C workloadConfig](
 	workloadConfigs []C,
 	testStep func(C),
 ) {
+	var passedMutex sync.Mutex
 	passed := make(map[string]bool)
 	var wg sync.WaitGroup
 	for _, config := range workloadConfigs {
@@ -999,7 +1000,9 @@ func runInParallelForAllWorkloadTypes[C workloadConfig](
 			e2ePrint("(before test step: %s)\n", workloadTypeString)
 			testStep(cfg)
 			e2ePrint("(after test step: %s)\n", workloadTypeString)
+			passedMutex.Lock()
 			passed[workloadTypeString] = true
+			passedMutex.Unlock()
 		}(config)
 	}
 	wg.Wait()
