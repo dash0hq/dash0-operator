@@ -14,8 +14,17 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ci-concurrency-group-${{ github.ref }}
-  cancel-in-progress: true
+  # Branches and PR all run in their individual, separate concurrency groups (with cancel-in-progress: true). The main
+  # branch and tags (which are used for releases) run in one shared concurrency group (with cancel-in-progress: true).
+  # This allows to schedule a release immediately after merging a PR to main, and have the release's CI build be queued
+  # automatically after the CI build for main has finished. That way, the CI build for the release will be able to reuse
+  # the Docker cache from the CI build for main.
+  group: ci-concurrency-group-${{ (github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')) && 'main-and-tags' || github.ref }}
+  # For branches and PRs, we cancel existing builds if a new commit comes in. For the main branch and tags, we queue
+  # them and let the run one after the other. The reason is that we build multi-arch container images on main and for
+  # tags, which takes a really long time if there are changes. But once they have been build, Docker caching makes the
+  # next builds fast again.
+  cancel-in-progress: ${{ !(github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')) }}
 
 jobs:
   verify:
