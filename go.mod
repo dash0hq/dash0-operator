@@ -13,9 +13,9 @@ require (
 	github.com/onsi/gomega v1.35.1
 	github.com/perses/perses-operator v0.0.0-20240402153734-4ccf03f6c8e6
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.78.1
-	github.com/wI2L/jsondiff v0.6.0
-	go.opentelemetry.io/collector/pdata v1.19.0
-	go.opentelemetry.io/collector/semconv v0.113.0
+	github.com/wI2L/jsondiff v0.6.1
+	go.opentelemetry.io/collector/pdata v1.20.0
+	go.opentelemetry.io/collector/semconv v0.114.0
 	go.opentelemetry.io/otel/metric v1.32.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.31.2
