@@ -157,8 +157,11 @@ jobs:
         # This branch name works though:
         # ghcr.io/dash0hq/instrumentation-ci-test:dependabot_npm_and_yarn_images_instrumentation_node_otel_update
         # This needs a bit more investigation.
+        # Update 2024-11-20: Happened again for
+        # ghcr.io/dash0hq/instrumentation-ci-test:dependabot_npm_and_yarn_images_instrumentation_node.js_dash0hq_opentelemetry-1.1.9:
+        # Let's try with also remove dots and limiting to 60 characters.
         run: |
-          export image_tag=$( echo "${{ github.head_ref || github.ref_name }}" | sed 's/[^a-zA-Z0-9_\.\-]/\_/g' )
+          export image_tag=$( echo "${{ github.head_ref || github.ref_name }}" | sed 's/[^a-zA-Z0-9_\-]/\_/g' | head -c 60 )
           echo "image_name=ghcr.io/dash0hq/instrumentation-ci-test:$image_tag" >> $GITHUB_OUTPUT
 
       - name: build temporary instrumentation image
