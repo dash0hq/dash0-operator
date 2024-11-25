@@ -26,22 +26,38 @@ var (
 )
 
 func verifySpans(g Gomega, isBatch bool, workloadType string, port int, httpPathWithQuery string) {
-	spansFound := sendRequestAndFindMatchingSpans(g, isBatch, workloadType, port, httpPathWithQuery, nil)
-	g.Expect(spansFound).To(BeTrue(),
-		fmt.Sprintf("%s: expected to find at least one matching HTTP server span", workloadType))
+	allMatchResults :=
+		sendRequestAndFindMatchingSpans(
+			g,
+			isBatch,
+			workloadType,
+			port,
+			httpPathWithQuery,
+			nil,
+			true,
+		)
+	allMatchResults.expectAtLeastOneMatch(
+		g,
+		fmt.Sprintf("%s: expected to find at least one matching HTTP server span", workloadType),
+	)
 }
 
-func verifyNoSpans(isBatch bool, workloadType string, port int, httpPathWithQuery string) {
+func verifyNoSpans(g Gomega, isBatch bool, workloadType string, port int, httpPathWithQuery string) {
 	timestampLowerBound := time.Now()
-	spansFound := sendRequestAndFindMatchingSpans(
-		Default,
-		isBatch,
-		"",
-		port,
-		httpPathWithQuery,
-		&timestampLowerBound,
+	allMatchResults :=
+		sendRequestAndFindMatchingSpans(
+			g,
+			isBatch,
+			workloadType,
+			port,
+			httpPathWithQuery,
+			&timestampLowerBound,
+			false,
+		)
+	allMatchResults.expectZeroMatches(
+		g,
+		fmt.Sprintf("%s: expected to find no matching HTTP server span", workloadType),
 	)
-	Expect(spansFound).To(BeFalse(), fmt.Sprintf("%s: expected to find no matching HTTP server span", workloadType))
 }
 
 func sendRequestAndFindMatchingSpans(
@@ -51,12 +67,13 @@ func sendRequestAndFindMatchingSpans(
 	port int,
 	httpPathWithQuery string,
 	timestampLowerBound *time.Time,
-) bool {
+	checkResourceAttributes bool,
+) MatchResultList[ptrace.ResourceSpans, ptrace.Span] {
 	if !isBatch {
 		sendRequest(g, port, httpPathWithQuery)
 	}
-	var resourceMatchFn func(span ptrace.ResourceSpans) bool
-	if workloadType != "" {
+	var resourceMatchFn func(ptrace.ResourceSpans, *ResourceMatchResult[ptrace.ResourceSpans])
+	if checkResourceAttributes {
 		resourceMatchFn = resourceSpansHaveExpectedResourceAttributes(workloadType)
 	}
 	return fileHasMatchingSpan(
@@ -82,16 +99,25 @@ func sendRequest(g Gomega, port int, httpPathWithQuery string) {
 		e2ePrint("could not read http response from %s: %s\n", url, err.Error())
 	}
 	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(responseBody).To(ContainSubstring("We make Observability easy for every developer."))
+	status := response.StatusCode
+	g.Expect(
+		string(responseBody)).To(
+		ContainSubstring("We make Observability easy for every developer."),
+		fmt.Sprintf("unexpected response body for workload type %s at %s, HTTP %d", workloadType, url, status),
+	)
+	g.Expect(status).To(
+		Equal(200),
+		fmt.Sprintf("unexpected status workload type %s at %s", workloadType, url),
+	)
 }
 
 //nolint:all
 func fileHasMatchingSpan(
 	g Gomega,
-	resourceMatchFn func(span ptrace.ResourceSpans) bool,
-	spanMatchFn func(span ptrace.Span) bool,
+	resourceMatchFn func(ptrace.ResourceSpans, *ResourceMatchResult[ptrace.ResourceSpans]),
+	spanMatchFn func(ptrace.Span, *ObjectMatchResult[ptrace.ResourceSpans, ptrace.Span]),
 	timestampLowerBound *time.Time,
-) bool {
+) MatchResultList[ptrace.ResourceSpans, ptrace.Span] {
 	fileHandle, err := os.Open("test-resources/e2e-test-volumes/otlp-sink/traces.jsonl")
 	g.Expect(err).NotTo(HaveOccurred())
 	defer func() {
@@ -100,8 +126,9 @@ func fileHasMatchingSpan(
 	scanner := bufio.NewScanner(fileHandle)
 	scanner.Buffer(make([]byte, tracesJsonMaxLineLength), tracesJsonMaxLineLength)
 
+	matchResults := newMatchResultList[ptrace.ResourceSpans, ptrace.Span]()
+
 	// read file line by line
-	spansFound := false
 	for scanner.Scan() {
 		resourceSpanBytes := scanner.Bytes()
 		traces, err := traceUnmarshaller.UnmarshalTraces(resourceSpanBytes)
@@ -109,105 +136,144 @@ func fileHasMatchingSpan(
 			// ignore lines that cannot be parsed
 			continue
 		}
-		if spansFound = hasMatchingSpans(
+		hasMatchingSpans(
 			traces,
 			resourceMatchFn,
 			spanMatchFn,
 			timestampLowerBound,
-		); spansFound {
-			break
-		}
+			&matchResults,
+		)
 	}
 
 	g.Expect(scanner.Err()).NotTo(HaveOccurred())
 
-	return spansFound
+	return matchResults
 }
 
 //nolint:all
 func hasMatchingSpans(
 	traces ptrace.Traces,
-	resourceMatchFn func(span ptrace.ResourceSpans) bool,
-	spanMatchFn func(span ptrace.Span) bool,
+	resourceMatchFn func(ptrace.ResourceSpans, *ResourceMatchResult[ptrace.ResourceSpans]),
+	spanMatchFn func(ptrace.Span, *ObjectMatchResult[ptrace.ResourceSpans, ptrace.Span]),
 	timestampLowerBound *time.Time,
-) bool {
+	allMatchResults *MatchResultList[ptrace.ResourceSpans, ptrace.Span],
+) {
 	for i := 0; i < traces.ResourceSpans().Len(); i++ {
 		resourceSpan := traces.ResourceSpans().At(i)
+		resourceMatchResult := newResourceMatchResult(resourceSpan)
 		if resourceMatchFn != nil {
-			if !resourceMatchFn(resourceSpan) {
-				continue
-			}
+			resourceMatchFn(resourceSpan, &resourceMatchResult)
 		}
 
 		for j := 0; j < resourceSpan.ScopeSpans().Len(); j++ {
 			scopeSpan := resourceSpan.ScopeSpans().At(j)
 			for k := 0; k < scopeSpan.Spans().Len(); k++ {
 				span := scopeSpan.Spans().At(k)
-				timestampMatch := timestampLowerBound == nil || span.StartTimestamp().AsTime().After(*timestampLowerBound)
-				var spanMatches bool
-				if timestampMatch {
-					spanMatches = spanMatchFn(span)
+				spanMatchResult := newObjectMatchResult[ptrace.ResourceSpans, ptrace.Span](
+					resourceSpan,
+					resourceMatchResult,
+					span,
+				)
+				if timestampLowerBound != nil {
+					if span.StartTimestamp().AsTime().After(*timestampLowerBound) {
+						spanMatchResult.addPassedAssertion("timestamp")
+					} else {
+						spanMatchResult.addFailedAssertion(
+							"timestamp",
+							fmt.Sprintf(
+								"expected timestamp after %s but it was %s",
+								timestampLowerBound.String(),
+								span.StartTimestamp().AsTime().String(),
+							),
+						)
+					}
+				} else {
+					spanMatchResult.addSkippedAssertion("timestamp", "no lower bound provided")
 				}
-				if timestampMatch && spanMatches {
-					return true
-				}
+				spanMatchFn(span, &spanMatchResult)
+				allMatchResults.addResultForObject(spanMatchResult)
 			}
 		}
 	}
-	return false
 }
 
 //nolint:all
-func resourceSpansHaveExpectedResourceAttributes(workloadType string) func(span ptrace.ResourceSpans) bool {
-	return func(resourceSpans ptrace.ResourceSpans) bool {
+func resourceSpansHaveExpectedResourceAttributes(workloadType string) func(
+	ptrace.ResourceSpans,
+	*ResourceMatchResult[ptrace.ResourceSpans],
+) {
+	return func(resourceSpans ptrace.ResourceSpans, matchResult *ResourceMatchResult[ptrace.ResourceSpans]) {
 		attributes := resourceSpans.Resource().Attributes()
 
-		workloadAttributeFound := false
 		if workloadType == "replicaset" {
 			// There is no k8s.replicaset.name attribute.
-			workloadAttributeFound = true
+			matchResult.addSkippedAssertion("k8s.replicaset.name", "not checked, there is no k8s.replicaset.name attribute")
 		} else {
-			workloadKey := fmt.Sprintf("k8s.%s.name", workloadType)
-			expectedWorkloadValue := fmt.Sprintf("dash0-operator-nodejs-20-express-test-%s", workloadType)
-			workloadAttribute, hasWorkloadAttribute := attributes.Get(workloadKey)
-			if hasWorkloadAttribute {
-				if workloadAttribute.Str() == expectedWorkloadValue {
-					workloadAttributeFound = true
-				}
+			workloadNameKey := fmt.Sprintf("k8s.%s.name", workloadType)
+			expectedWorkloadName := fmt.Sprintf("dash0-operator-nodejs-20-express-test-%s", workloadType)
+			actualWorkloadName, hasWorkloadName := attributes.Get(workloadNameKey)
+			if !hasWorkloadName {
+				matchResult.addFailedAssertion(workloadNameKey, fmt.Sprintf("expected %s but the span has no such attribute", expectedWorkloadName))
+			} else if actualWorkloadName.Str() == expectedWorkloadName {
+				matchResult.addPassedAssertion(workloadNameKey)
+			} else {
+				matchResult.addFailedAssertion(workloadNameKey, fmt.Sprintf("expected %s but it was %s", expectedWorkloadName, actualWorkloadName.Str()))
 			}
 		}
 
-		podKey := "k8s.pod.name"
+		podNameKey := "k8s.pod.name"
 		expectedPodName := fmt.Sprintf("dash0-operator-nodejs-20-express-test-%s", workloadType)
 		expectedPodPrefix := fmt.Sprintf("%s-", expectedPodName)
-		podAttributeFound := false
-		podAttribute, hasPodAttribute := attributes.Get(podKey)
+		actualPodName, hasPodAttribute := attributes.Get(podNameKey)
 		if hasPodAttribute {
 			if workloadType == "pod" {
-				if podAttribute.Str() == expectedPodName {
-					podAttributeFound = true
+				if actualPodName.Str() == expectedPodName {
+					matchResult.addPassedAssertion(podNameKey)
+				} else {
+					matchResult.addFailedAssertion(podNameKey, fmt.Sprintf("expected %s but it was %s", expectedPodName, actualPodName.Str()))
 				}
 			} else {
-				if strings.Contains(podAttribute.Str(), expectedPodPrefix) {
-					podAttributeFound = true
+				if strings.Contains(actualPodName.Str(), expectedPodPrefix) {
+					matchResult.addPassedAssertion(podNameKey)
+				} else {
+					matchResult.addFailedAssertion(podNameKey, fmt.Sprintf("expected to contain %s but it was %s", expectedPodName, actualPodName.Str()))
 				}
 			}
+		} else {
+			matchResult.addFailedAssertion(podNameKey, fmt.Sprintf("expected %s but the span has no such attribute", expectedPodName))
 		}
-
-		return workloadAttributeFound && podAttributeFound
 	}
 }
 
-func matchHttpServerSpanWithHttpTarget(expectedTarget string) func(span ptrace.Span) bool {
-	return func(span ptrace.Span) bool {
+func matchHttpServerSpanWithHttpTarget(expectedTarget string) func(
+	ptrace.Span,
+	*ObjectMatchResult[ptrace.ResourceSpans, ptrace.Span],
+) {
+	return func(span ptrace.Span, matchResult *ObjectMatchResult[ptrace.ResourceSpans, ptrace.Span]) {
 		if span.Kind() == ptrace.SpanKindServer {
-			target, hasTarget := span.Attributes().Get("http.target")
-			if hasTarget {
-				if target.Str() == expectedTarget {
-					return true
-				}
-			}
+			matchResult.addPassedAssertion("span.kind")
+		} else {
+			matchResult.addFailedAssertion(
+				"span.kind",
+				fmt.Sprintf("expected a server span, this span has kind \"%s\"", span.Kind().String()),
+			)
 		}
-		return false
+		httpTargetAttrib := "http.target"
+		target, hasTarget := span.Attributes().Get(httpTargetAttrib)
+		if hasTarget {
+			if target.Str() == expectedTarget {
+				matchResult.addPassedAssertion(httpTargetAttrib)
+			} else {
+				matchResult.addFailedAssertion(
+					httpTargetAttrib,
+					fmt.Sprintf("expected %s but it was %s", expectedTarget, target.Str()),
+				)
+			}
+		} else {
+			matchResult.addFailedAssertion(
+				httpTargetAttrib,
+				fmt.Sprintf("expected %s but the span had no such atttribute", expectedTarget),
+			)
+		}
 	}
 }
