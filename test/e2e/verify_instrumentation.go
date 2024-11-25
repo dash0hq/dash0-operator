@@ -141,7 +141,7 @@ func verifyThatInstrumentationIsRevertedEventually(
 			secondsToCheckForSpans,
 		))
 	Consistently(func(g Gomega) {
-		verifyNoSpans(isBatch, workloadType, port, httpPathWithQuery)
+		verifyNoSpans(g, isBatch, workloadType, port, httpPathWithQuery)
 	}, time.Duration(secondsToCheckForSpans)*time.Second, 1*time.Second).Should(Succeed())
 
 	By(fmt.Sprintf("%s: matching spans are no longer captured", workloadType))
