@@ -6,8 +6,11 @@ package e2e
 import (
 	_ "embed"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -404,4 +407,67 @@ func addEnvVarToContainer(testId string, jobTemplateOrManifest map[string]interf
 
 func manifest(workloadType string) string {
 	return fmt.Sprintf("%s/%s.yaml", applicationPath, workloadType)
+}
+
+func sendRequest(g Gomega, workloadType string, port int, httpPathWithQuery string) {
+	executeHttpRequest(
+		g,
+		workloadType,
+		port,
+		httpPathWithQuery,
+		200,
+		"We make Observability easy for every developer.",
+	)
+}
+
+func sendReadyProbe(g Gomega, workloadType string, port int) {
+	executeHttpRequest(
+		g,
+		workloadType,
+		port,
+		"/ready",
+		204,
+		"",
+	)
+}
+
+func executeHttpRequest(
+	g Gomega,
+	workloadType string,
+	port int,
+	httpPathWithQuery string,
+	expectedStatus int,
+	expectedBody string,
+) {
+	url := fmt.Sprintf("http://localhost:%d%s", port, httpPathWithQuery)
+	if isKindCluster() {
+		url = fmt.Sprintf("http://%s/%s%s", kindClusterIngressIp, workloadType, httpPathWithQuery)
+	}
+	httpClient := http.Client{
+		Timeout: 500 * time.Millisecond,
+	}
+	response, err := httpClient.Get(url)
+	g.Expect(err).NotTo(HaveOccurred())
+	defer func() {
+		_ = response.Body.Close()
+	}()
+	responseBody, err := io.ReadAll(response.Body)
+	if err != nil {
+		e2ePrint("could not read http response from %s: %s\n", url, err.Error())
+	}
+	g.Expect(err).NotTo(HaveOccurred())
+	status := response.StatusCode
+	if expectedBody != "" {
+		g.Expect(
+			string(responseBody)).To(
+			ContainSubstring(expectedBody),
+			fmt.Sprintf("unexpected response body for workload type %s at %s, HTTP %d", workloadType, url, status),
+		)
+	}
+	if expectedStatus > 0 {
+		g.Expect(status).To(
+			Equal(expectedStatus),
+			fmt.Sprintf("unexpected status for workload type %s at %s", workloadType, url),
+		)
+	}
 }
