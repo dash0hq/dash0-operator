@@ -756,6 +756,13 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				)
 			}).Should(Succeed())
 
+			By("waiting for the application under test to become ready")
+			Eventually(func(g Gomega) {
+				// Make sure the application under test is up and can serve requests, before sending the actual request
+				// to trigger the unique log message is sent.
+				sendReadyProbe(g, "deployment", 1207)
+			}, 30*time.Second, 300*time.Millisecond).Should(Succeed())
+
 			By("sending a request to the Node.js deployment that will generate a log with a predictable body")
 			now := time.Now()
 			sendRequest(Default, "deployment", 1207, fmt.Sprintf("/dash0-k8s-operator-test?id=%s", testId))
