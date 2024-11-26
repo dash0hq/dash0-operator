@@ -52,6 +52,7 @@ import (
 type environmentVariables struct {
 	operatorNamespace                    string
 	deploymentName                       string
+	webhookServiceName                   string
 	oTelCollectorNamePrefix              string
 	operatorImage                        string
 	initContainerImage                   string
@@ -69,6 +70,7 @@ type environmentVariables struct {
 const (
 	operatorNamespaceEnvVarName                    = "DASH0_OPERATOR_NAMESPACE"
 	deploymentNameEnvVarName                       = "DASH0_DEPLOYMENT_NAME"
+	webhookServiceNameEnvVarName                   = "DASH0_WEBHOOK_SERVICE_NAME"
 	oTelCollectorNamePrefixEnvVarName              = "OTEL_COLLECTOR_NAME_PREFIX"
 	operatorImageEnvVarName                        = "DASH0_OPERATOR_IMAGE"
 	initContainerImageEnvVarName                   = "DASH0_INIT_CONTAINER_IMAGE"
@@ -440,6 +442,11 @@ func readEnvironmentVariables() error {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, deploymentNameEnvVarName)
 	}
 
+	webhookServiceName, isSet := os.LookupEnv(webhookServiceNameEnvVarName)
+	if !isSet {
+		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, webhookServiceNameEnvVarName)
+	}
+
 	oTelCollectorNamePrefix, isSet := os.LookupEnv(oTelCollectorNamePrefixEnvVarName)
 	if !isSet {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, oTelCollectorNamePrefixEnvVarName)
@@ -487,6 +494,7 @@ func readEnvironmentVariables() error {
 	envVars = environmentVariables{
 		operatorNamespace:                    operatorNamespace,
 		deploymentName:                       deploymentName,
+		webhookServiceName:                   webhookServiceName,
 		oTelCollectorNamePrefix:              oTelCollectorNamePrefix,
 		operatorImage:                        operatorImage,
 		initContainerImage:                   initContainerImage,
@@ -816,9 +824,9 @@ func createOperatorConfiguration(
 ) {
 	if operatorConfiguration != nil {
 		handler := startup.AutoOperatorConfigurationResourceHandler{
-			Client:            k8sClient,
-			OperatorNamespace: envVars.operatorNamespace,
-			NamePrefix:        envVars.oTelCollectorNamePrefix,
+			Client:             k8sClient,
+			OperatorNamespace:  envVars.operatorNamespace,
+			WebhookServiceName: envVars.webhookServiceName,
 		}
 		if err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, operatorConfiguration, logger); err != nil {
 			logger.Error(err, "Failed to create the requested Dash0 operator configuration resource.")

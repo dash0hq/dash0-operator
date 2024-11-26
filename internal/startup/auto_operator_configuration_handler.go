@@ -39,7 +39,7 @@ type OperatorConfigurationValues struct {
 type AutoOperatorConfigurationResourceHandler struct {
 	client.Client
 	OperatorNamespace  string
-	NamePrefix         string
+	WebhookServiceName string
 	bypassWebhookCheck bool
 }
 
@@ -52,6 +52,7 @@ func (r *AutoOperatorConfigurationResourceHandler) CreateOrUpdateOperatorConfigu
 	operatorConfiguration *OperatorConfigurationValues,
 	logger *logr.Logger,
 ) error {
+	logger.Info("creating/updating the Dash0 operator configuration resource")
 	if err := r.validateOperatorConfiguration(operatorConfiguration); err != nil {
 		return err
 	}
@@ -59,28 +60,24 @@ func (r *AutoOperatorConfigurationResourceHandler) CreateOrUpdateOperatorConfigu
 	go func() {
 		// There is a validation webhook for operator configuration resources. Thus, before we can create or update an
 		// operator configuration resource, we need to wait for the webhook endpoint to become available.
+		logger.Info(
+			fmt.Sprintf(
+				"waiting for the service %s to become available before creating or updating the Dash0 "+
+					"operator configuration resource",
+				r.WebhookServiceName),
+		)
+
 		if err := r.waitForWebserviceEndpoint(ctx, logger); err != nil {
 			logger.Error(err, "failed to create the Dash0 operator configuration resource")
+			return
 		}
-
-		// Even if we wait for the validation webhook to become available (see above), we sometimes get a couple of
-		// retry attempts that fail with
-		//   create/update operator configuration resource at startup failed in attempt x/6, will be retried.
-		//   [...]
-		//   failed calling webhook \"validate-operator-configuration.dash0.com\":
-		//   failed to call webhook: Post \"https://dash0-operator-webhook-service.dash0-system.svc:443/v1alpha1/validate/operator-configuration?timeout=5s\":
-		//   tls: failed to verify certificate: x509: certificate signed by unknown authority
-		//   (possibly because of \"crypto/rsa: verification error\" while trying to verify candidate authority certificate
-		//   \"dash0-operator-ca\")"
-		//
-		// This self-heals after a few attempts. Still, the log entries might be confusing. To lower the probability of
-		// this happening, we wait for a few seconds before creating/updating the operator configuration resource.
-		if !r.bypassWebhookCheck {
-			time.Sleep(10 * time.Second)
-		}
+		logger.Info(
+			fmt.Sprintf("the service %s is available now", r.WebhookServiceName),
+		)
 
 		if err := r.createOrUpdateOperatorConfigurationResourceWithRetry(ctx, operatorConfiguration, logger); err != nil {
 			logger.Error(err, "failed to create the Dash0 operator configuration resource")
+			return
 		}
 	}()
 	return nil
@@ -133,13 +130,11 @@ func (r *AutoOperatorConfigurationResourceHandler) waitForWebserviceEndpoint(
 	return nil
 }
 
-func (r *AutoOperatorConfigurationResourceHandler) checkWebServiceEndpoint(
-	ctx context.Context,
-) error {
+func (r *AutoOperatorConfigurationResourceHandler) checkWebServiceEndpoint(ctx context.Context) error {
 	endpoints := corev1.Endpoints{}
 	if err := r.Get(ctx, types.NamespacedName{
 		Namespace: r.OperatorNamespace,
-		Name:      fmt.Sprintf("%s-webhook-service", r.NamePrefix),
+		Name:      r.WebhookServiceName,
 	}, &endpoints); err != nil {
 		return err
 	}

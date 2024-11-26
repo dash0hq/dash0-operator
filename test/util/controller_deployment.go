@@ -94,6 +94,10 @@ func createDefaultEnvVars() []corev1.EnvVar {
 			Value: OperatorDeploymentName,
 		},
 		{
+			Name:  "DASH0_WEBHOOK_SERVICE_NAME",
+			Value: OperatorWebhookServiceName,
+		},
+		{
 			Name:  "OTEL_COLLECTOR_NAME_PREFIX",
 			Value: "dash0-system",
 		},
