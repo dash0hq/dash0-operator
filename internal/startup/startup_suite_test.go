@@ -64,7 +64,7 @@ var _ = BeforeSuite(func() {
 	handler = &AutoOperatorConfigurationResourceHandler{
 		Client:             k8sClient,
 		OperatorNamespace:  OperatorNamespace,
-		NamePrefix:         OTelCollectorNamePrefixTest,
+		WebhookServiceName: OperatorWebhookServiceName,
 		bypassWebhookCheck: true,
 	}
 	Expect(err).NotTo(HaveOccurred())

@@ -21,7 +21,8 @@ import (
 )
 
 const (
-	OperatorDeploymentName            = "controller-deployment"
+	OperatorDeploymentName            = "dash0-operator-deployment"
+	OperatorWebhookServiceName        = "dash0-operator-webhook-service"
 	OperatorConfigurationResourceName = "dash0-operator-configuration-test"
 )
 
