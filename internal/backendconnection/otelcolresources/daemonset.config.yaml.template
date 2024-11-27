@@ -124,15 +124,57 @@ receivers:
     collection_interval: 20s
     endpoint: ${env:K8S_NODE_NAME}:10250
     metrics:
-      # deprecated -> container.cpu.usage
-      container.cpu.utilization:
-        enabled: false
+      k8s.node.cpu.usage:
+        enabled: true
       # deprecated -> k8s.node.cpu.usage
       k8s.node.cpu.utilization:
         enabled: false
+      k8s.node.cpu.time:
+        enabled: false
+      k8s.node.memory.rss:
+        enabled: false
+      k8s.node.memory.working_set:
+        enabled: false
+      k8s.node.memory.page_faults:
+        enabled: false
+      k8s.pod.cpu.time:
+        enabled: false
+      k8s.pod.cpu.usage:
+        enabled: true
       # deprecated -> k8s.pod.cpu.usage
       k8s.pod.cpu.utilization:
         enabled: false
+      k8s.pod.cpu_limit_utilization:
+        enabled: true
+      k8s.pod.cpu_request_utilization:
+        enabled: true
+      k8s.pod.memory_limit_utilization:
+        enabled: true
+      k8s.pod.memory_request_utilization:
+        enabled: true
+      k8s.pod.memory.rss:
+        enabled: false
+      k8s.pod.memory.working_set:
+        enabled: false
+      k8s.pod.memory.page_faults:
+        enabled: false
+      k8s.pod.memory.major_page_faults:
+        enabled: false
+      container.cpu.usage:
+        enabled: true
+      # deprecated -> container.cpu.usage
+      container.cpu.utilization:
+        enabled: false
+      container.cpu.time:
+        enabled: false
+      container.memory.rss:
+        enabled: false
+      container.memory.working_set:
+        enabled: false
+      container.memory.page_faults:
+        enabled: false
+      container.memory.major_page_faults:
+         enabled: false
 
 {{- if .DevelopmentMode }}
 {{- /*
