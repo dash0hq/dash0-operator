@@ -916,6 +916,18 @@ func simulateInstrumentedPodSpec(podSpec *corev1.PodSpec, meta *metav1.ObjectMet
 			Name:  "DASH0_OTEL_COLLECTOR_BASE_URL",
 			Value: OTelCollectorBaseUrlTest,
 		},
+		{
+			Name: "DASH0_POD_UID",
+			ValueFrom: &corev1.EnvVarSource{
+				FieldRef: &corev1.ObjectFieldSelector{
+					FieldPath: "metadata.uid",
+				},
+			},
+		},
+		{
+			Name:  "DASH0_CONTAINER_NAME",
+			Value: "test-container-0",
+		},
 	}
 
 	addInstrumentationLabels(meta, true)

@@ -34,6 +34,9 @@ function main () {
       process.stdout.write("; ")
       echoEnvVar("NODE_OPTIONS");
       break;
+    case "otel_resource_attributes":
+      echoEnvVar("OTEL_RESOURCE_ATTRIBUTES");
+      break;
     default:
       console.error(`unknown test case: ${testCase}`);
       process.exit(1)
