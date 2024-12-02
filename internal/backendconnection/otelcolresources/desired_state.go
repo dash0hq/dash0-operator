@@ -330,6 +330,14 @@ func assembleClusterRoleForDaemonSet(config *oTelColConfig) *rbacv1.ClusterRole 
 				Verbs: []string{"get", "watch", "list"},
 			},
 			{
+				APIGroups: []string{""},
+				Resources: []string{
+					// required for Kubeletstats receiver ({request|limit}_utilization metrics)
+					"nodes/proxy",
+				},
+				Verbs: []string{"get"},
+			},
+			{
 				APIGroups: []string{"apps"},
 				Resources: []string{"replicasets"},
 				Verbs:     []string{"get", "watch", "list"},
