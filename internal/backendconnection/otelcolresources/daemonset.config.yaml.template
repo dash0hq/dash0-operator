@@ -122,7 +122,10 @@ receivers:
   kubeletstats:
     auth_type: serviceAccount
     collection_interval: 20s
-    endpoint: ${env:K8S_NODE_NAME}:10250
+    endpoint: '${env:K8S_NODE_NAME}:10250'
+    node: '${env:K8S_NODE_NAME}'
+    k8s_api_config:
+      auth_type: serviceAccount
     metrics:
       # deprecated -> container.cpu.usage
       container.cpu.utilization:
