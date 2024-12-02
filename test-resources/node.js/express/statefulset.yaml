@@ -5,6 +5,9 @@ apiVersion: v1
 kind: Service
 metadata:
   name: dash0-operator-nodejs-20-express-test-statefulset-service
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
 spec:
   selector:
     app: dash0-operator-nodejs-20-express-test-statefulset-app
@@ -49,3 +52,22 @@ spec:
               port: 1210
             initialDelaySeconds: 1
             periodSeconds: 1
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dash0-operator-nodejs-20-express-test-statefulset-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /statefulset(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: dash0-operator-nodejs-20-express-test-statefulset-service
+            port:
+              number: 1210

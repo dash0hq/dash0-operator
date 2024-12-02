@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -45,11 +44,11 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		env, err := readDotEnvFile(dotEnvFile)
 		Expect(err).NotTo(HaveOccurred())
 
-		e2eKubeCtx := env["E2E_KUBECTX"]
-		if e2eKubeCtx == "" {
+		e2eKubernetesContext := env["E2E_KUBECTX"]
+		if e2eKubernetesContext == "" {
 			Fail(fmt.Sprintf("The mandatory setting E2E_KUBECTX is missing in the file %s.", dotEnvFile))
 		}
-		kubeContextHasBeenChanged, originalKubeContext = setKubeContext(e2eKubeCtx)
+		kubeContextHasBeenChanged, originalKubeContext = setKubernetesContext(e2eKubernetesContext)
 
 		// Cleans up the test namespace, otlp sink and the operator. Usually this is cleaned up in AfterAll/AfterEach
 		// steps, but for cases where we want to troubleshoot failing e2e tests and have disabled cleanup in After steps
@@ -70,12 +69,13 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 	AfterAll(func() {
 		removeAllTemporaryManifests()
+		undeployNginxIngressController()
 		if applicationUnderTestNamespace != "default" {
 			By("removing namespace for application under test")
 			_ = runAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", applicationUnderTestNamespace))
 		}
 		if kubeContextHasBeenChanged {
-			revertKubeCtx(originalKubeContext)
+			revertKubernetesContext(originalKubeContext)
 		}
 	})
 
@@ -758,7 +758,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 			By("sending a request to the Node.js deployment that will generate a log with a predictable body")
 			now := time.Now()
-			sendRequest(Default, 1207, fmt.Sprintf("/dash0-k8s-operator-test?id=%s", testId))
+			sendRequest(Default, "deployment", 1207, fmt.Sprintf("/dash0-k8s-operator-test?id=%s", testId))
 
 			By("waiting for the the log to appear")
 
@@ -966,10 +966,6 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 	})
 })
 
-type workloadConfig interface {
-	GetWorkloadType() string
-}
-
 func (wt workloadType) GetWorkloadType() string {
 	return wt.workloadTypeString
 }
@@ -981,43 +977,6 @@ type removalTestNamespaceConfig struct {
 
 func (c removalTestNamespaceConfig) GetWorkloadType() string {
 	return c.workloadType.workloadTypeString
-}
-
-func runInParallelForAllWorkloadTypes[C workloadConfig](
-	workloadConfigs []C,
-	testStep func(C),
-) {
-	var passedMutex sync.Mutex
-	passed := make(map[string]bool)
-	var wg sync.WaitGroup
-	for _, config := range workloadConfigs {
-		workloadTypeString := config.GetWorkloadType()
-		passed[workloadTypeString] = false
-		wg.Add(1)
-		go func(cfg C) {
-			defer GinkgoRecover()
-			defer wg.Done()
-			e2ePrint("(before test step: %s)\n", workloadTypeString)
-			testStep(cfg)
-			e2ePrint("(after test step: %s)\n", workloadTypeString)
-			passedMutex.Lock()
-			passed[workloadTypeString] = true
-			passedMutex.Unlock()
-		}(config)
-	}
-	wg.Wait()
-
-	// Fail early if one of the workloads has not passed the test step. Because of runInParallelForAllWorkloadTypes and
-	// the business with the (required) "defer GinkgoRecover()", Ginkgo needs a little help with that. Without this
-	// additional check, a failure occurring in testStep might not make the test fail immediately, but is only reported
-	// after the whole test has finished. This might lead to some slightly weird and hard-to-understand behavior,
-	// because it looks like the has passed testStep, and then the whole test fails with something that should have been
-	// reported much earlier.
-	for _, config := range workloadConfigs {
-		if !passed[config.GetWorkloadType()] {
-			Fail(fmt.Sprintf("workload %s has not passed a test step executed in parallel", config.GetWorkloadType()))
-		}
-	}
 }
 
 func cleanupAll() {

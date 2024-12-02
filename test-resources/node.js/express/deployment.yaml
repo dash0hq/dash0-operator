@@ -47,5 +47,24 @@ spec:
             httpGet:
               path: /ready
               port: 1207
-            initialDelaySeconds: 5
-            periodSeconds: 10
+            initialDelaySeconds: 1
+            periodSeconds: 1
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dash0-operator-nodejs-20-express-test-deployment-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /deployment(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: dash0-operator-nodejs-20-express-test-deployment-service
+            port:
+              number: 1207

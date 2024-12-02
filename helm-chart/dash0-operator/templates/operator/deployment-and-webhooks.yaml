@@ -118,6 +118,8 @@ spec:
               fieldPath: metadata.namespace
         - name: DASH0_DEPLOYMENT_NAME
           value: {{ include "dash0-operator.deploymentName" . }}
+        - name: DASH0_WEBHOOK_SERVICE_NAME
+          value: {{ include "dash0-operator.webhookServiceName" . }}
         - name: OTEL_COLLECTOR_NAME_PREFIX
           value: {{ .Release.Name | quote }}
         - name: DASH0_OPERATOR_IMAGE
@@ -229,7 +231,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ template "dash0-operator.chartName" . }}-webhook-service
+  name: {{ include "dash0-operator.webhookServiceName" . }}
   namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/name: dash0-operator

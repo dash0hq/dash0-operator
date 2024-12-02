@@ -49,3 +49,22 @@ spec:
               port: 1209
             initialDelaySeconds: 1
             periodSeconds: 1
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dash0-operator-nodejs-20-express-test-replicaset-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /replicaset(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: dash0-operator-nodejs-20-express-test-replicaset-service
+            port:
+              number: 1209

@@ -99,6 +99,8 @@ func rebuildOperatorControllerImage(operatorImage ImageSpec) {
 				renderFullyQualifiedImageName(operatorImage),
 				renderFullyQualifiedImageName(additionalTag),
 			))).To(Succeed())
+
+	loadImageToKindClusterIfRequired(operatorImage, &additionalTag)
 }
 
 func rebuildInstrumentationImage(instrumentationImage ImageSpec) {
@@ -127,6 +129,8 @@ func rebuildInstrumentationImage(instrumentationImage ImageSpec) {
 				renderFullyQualifiedImageName(instrumentationImage),
 				renderFullyQualifiedImageName(additionalTag),
 			))).To(Succeed())
+
+	loadImageToKindClusterIfRequired(instrumentationImage, &additionalTag)
 }
 
 func rebuildCollectorImage(collectorImage ImageSpec) {
@@ -157,6 +161,8 @@ func rebuildCollectorImage(collectorImage ImageSpec) {
 				renderFullyQualifiedImageName(collectorImage),
 				renderFullyQualifiedImageName(additionalTag),
 			))).To(Succeed())
+
+	loadImageToKindClusterIfRequired(collectorImage, &additionalTag)
 }
 
 func rebuildConfigurationReloaderImage(configurationReloaderImage ImageSpec) {
@@ -190,6 +196,8 @@ func rebuildConfigurationReloaderImage(configurationReloaderImage ImageSpec) {
 				renderFullyQualifiedImageName(configurationReloaderImage),
 				renderFullyQualifiedImageName(additionalTag),
 			))).To(Succeed())
+
+	loadImageToKindClusterIfRequired(configurationReloaderImage, &additionalTag)
 }
 
 func rebuildFileLogOffsetSynchImage(fileLogOffsetSynchImage ImageSpec) {
@@ -223,6 +231,8 @@ func rebuildFileLogOffsetSynchImage(fileLogOffsetSynchImage ImageSpec) {
 				renderFullyQualifiedImageName(fileLogOffsetSynchImage),
 				renderFullyQualifiedImageName(additionalTag),
 			))).To(Succeed())
+
+	loadImageToKindClusterIfRequired(fileLogOffsetSynchImage, &additionalTag)
 }
 
 func shouldBuildImageLocally(image ImageSpec) bool {
@@ -237,6 +247,30 @@ func shouldBuildImageLocally(image ImageSpec) bool {
 		return false
 	}
 	return true
+}
+
+func loadImageToKindClusterIfRequired(image ImageSpec, additionalTag *ImageSpec) {
+	if !isKindCluster() {
+		return
+	}
+
+	bothImages := []ImageSpec{image}
+	if additionalTag != nil {
+		bothImages = append(bothImages, *additionalTag)
+	}
+	for _, img := range bothImages {
+		By(fmt.Sprintf("loading the image %s into the kind cluster %s", renderFullyQualifiedImageName(img), kindClusterName))
+		err := runAndIgnoreOutput(
+			exec.Command(
+				"kind",
+				"load",
+				"docker-image",
+				"--name",
+				kindClusterName,
+				renderFullyQualifiedImageName(img),
+			))
+		Expect(err).ToNot(HaveOccurred())
+	}
 }
 
 func isRemoteImage(image ImageSpec) bool {
