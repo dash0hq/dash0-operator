@@ -42,11 +42,12 @@ run_test_case() {
   command=$2
   expected=$3
   existing_node_options_value=${4:-}
+  existing_otel_resource_attributes=${5:-}
   set +e
   if [ "$existing_node_options_value" != "" ]; then
-    test_output=$(LD_PRELOAD="$injector_binary" TEST_VAR=value NODE_OPTIONS="$existing_node_options_value" node index.js "$command")
+    test_output=$(LD_PRELOAD="$injector_binary" TEST_VAR=value DASH0_POD_UID=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff DASH0_CONTAINER_NAME=test-app NODE_OPTIONS="$existing_node_options_value" OTEL_RESOURCE_ATTRIBUTES="${existing_otel_resource_attributes}" node index.js "$command")
   else
-    test_output=$(LD_PRELOAD="$injector_binary" TEST_VAR=value node index.js "$command")
+    test_output=$(LD_PRELOAD="$injector_binary" TEST_VAR=value DASH0_POD_UID=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff DASH0_CONTAINER_NAME=test-app OTEL_RESOURCE_ATTRIBUTES="${existing_otel_resource_attributes}" node index.js "$command")
   fi
   test_exit_code=$?
   set -e
@@ -75,6 +76,8 @@ run_test_case "getenv: overrides NODE_OPTIONS if it is not present" node_options
 run_test_case "getenv: ask for NODE_OPTIONS (unset) twice" node_options_twice "NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry; NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry"
 run_test_case "getenv: prepends to NODE_OPTIONS if it is present" node_options "NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --no-deprecation" "--no-deprecation"
 run_test_case "getenv: ask for NODE_OPTIONS (set) twice" node_options_twice "NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --no-deprecation; NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --no-deprecation" "--no-deprecation"
+run_test_case "getenv: sets k8s.pod.uid and k8s.container.name via OTEL_RESOURCE_ATTRIBUTES" otel_resource_attributes "OTEL_RESOURCE_ATTRIBUTES: k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app" ""
+run_test_case "getenv: sets k8s.pod.uid and k8s.container.name via OTEL_RESOURCE_ATTRIBUTES with pre-existing value" otel_resource_attributes "OTEL_RESOURCE_ATTRIBUTES: k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app,foo=bar" "" "foo=bar"
 
 exit $exit_code
 

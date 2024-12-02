@@ -698,6 +698,12 @@ For example, it sets (or appends to) `NODE_OPTIONS` to activate the
 [Dash0 OpenTelemetry distribution for Node.js](https://github.com/dash0hq/opentelemetry-js-distribution) to collect
 tracing data from all Node.js workloads.
 
+Additionally, the Dash0 injector will use the values of the `DASH0_POD_UID` and `DASH0_CONTAINER_NAME` environment
+variables, added to the instrumented containers by the operator, to populate the resource attributes
+`k8s.pod.uid` and `k8s.container.name` via the `OTEL_RESOURCE_ATTRIBUTES` environment variable.
+These attributes are appended to the existing attributes specified by the original value of the
+`OTEL_RESOURCE_ATTRIBUTES` environment variable, if the latter is set in the environment of the injected process.
+
 If you are curious, the source code for the injector is open source and can be found
 [here](https://github.com/dash0hq/dash0-operator/blob/main/images/instrumentation/injector/src/dash0_injector.c).
 
