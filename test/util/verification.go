@@ -30,6 +30,11 @@ type ContainerExpectations struct {
 	NodeIpIdx                                int
 	Dash0CollectorBaseUrlEnvVarIdx           int
 	Dash0CollectorBaseUrlEnvVarExpectedValue string
+	Dash0NamespaceNameEnvVarIdx              int
+	Dash0PodNameEnvVarIdx                    int
+	Dash0PodUidEnvVarIdx                     int
+	Dash0ContainerNameEnvVarIdx              int
+	Dash0ContainerNameEnvVarExpectedValue    string
 }
 
 type PodSpecExpectations struct {
@@ -70,14 +75,18 @@ func BasicInstrumentedPodSpecExpectations() PodSpecExpectations {
 		InitContainers:        1,
 		Dash0InitContainerIdx: 0,
 		Containers: []ContainerExpectations{{
-			VolumeMounts:                   1,
-			Dash0VolumeMountIdx:            0,
-			EnvVars:                        3,
-			LdPreloadEnvVarIdx:             0,
-			NodeIpIdx:                      1,
-			Dash0CollectorBaseUrlEnvVarIdx: 2,
-			Dash0CollectorBaseUrlEnvVarExpectedValue://
-			OTelCollectorBaseUrlTest,
+			VolumeMounts:                             1,
+			Dash0VolumeMountIdx:                      0,
+			EnvVars:                                  7,
+			LdPreloadEnvVarIdx:                       0,
+			NodeIpIdx:                                1,
+			Dash0CollectorBaseUrlEnvVarIdx:           2,
+			Dash0CollectorBaseUrlEnvVarExpectedValue: OTelCollectorBaseUrlTest,
+			Dash0NamespaceNameEnvVarIdx:              3,
+			Dash0PodNameEnvVarIdx:                    4,
+			Dash0PodUidEnvVarIdx:                     5,
+			Dash0ContainerNameEnvVarIdx:              6,
+			Dash0ContainerNameEnvVarExpectedValue:    "test-container-0",
 		}},
 	}
 }
@@ -305,6 +314,18 @@ func verifyPodSpec(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
 				Expect(envVar.Name).To(Equal("DASH0_OTEL_COLLECTOR_BASE_URL"))
 				Expect(envVar.Value).To(Equal(containerExpectations.Dash0CollectorBaseUrlEnvVarExpectedValue))
 				Expect(envVar.ValueFrom).To(BeNil())
+			} else if j == containerExpectations.Dash0NamespaceNameEnvVarIdx {
+				Expect(envVar.Name).To(Equal("DASH0_NAMESPACE_NAME"))
+				Expect(envVar.ValueFrom.FieldRef.FieldPath).To(Equal("metadata.namespace"))
+			} else if j == containerExpectations.Dash0PodNameEnvVarIdx {
+				Expect(envVar.Name).To(Equal("DASH0_POD_NAME"))
+				Expect(envVar.ValueFrom.FieldRef.FieldPath).To(Equal("metadata.name"))
+			} else if j == containerExpectations.Dash0PodUidEnvVarIdx {
+				Expect(envVar.Name).To(Equal("DASH0_POD_UID"))
+				Expect(envVar.ValueFrom.FieldRef.FieldPath).To(Equal("metadata.uid"))
+			} else if j == containerExpectations.Dash0ContainerNameEnvVarIdx {
+				Expect(envVar.Name).To(Equal("DASH0_CONTAINER_NAME"))
+				Expect(envVar.Value).To(Equal(containerExpectations.Dash0ContainerNameEnvVarExpectedValue))
 			} else {
 				Expect(envVar.Name).To(Equal(fmt.Sprintf("TEST%d", j)))
 			}
