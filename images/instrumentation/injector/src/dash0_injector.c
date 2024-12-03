@@ -12,7 +12,9 @@
   "--require "                                                                 \
   "/__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry"
 #define OTEL_RESOURCE_ATTRIBUTES_ENV_VAR_NAME "OTEL_RESOURCE_ATTRIBUTES"
+#define DASH0_NAMESPACE_NAME_ENV_VAR_NAME "DASH0_NAMESPACE_NAME"
 #define DASH0_POD_UID_ENV_VAR_NAME "DASH0_POD_UID"
+#define DASH0_POD_NAME_ENV_VAR_NAME "DASH0_POD_NAME"
 #define DASH0_POD_CONTAINER_NAME_VAR_NAME "DASH0_CONTAINER_NAME"
 
 extern char **__environ;
@@ -94,8 +96,6 @@ char val2[1012];
 
 char *getenv(const char *name) {
   char *origValue = __getenv(name);
-  char *podUid = __getenv(DASH0_POD_UID_ENV_VAR_NAME);
-  char *containerName = __getenv(DASH0_POD_CONTAINER_NAME_VAR_NAME);
   int l = __strlen(name);
 
   char *otelResourceAttributesVarName = OTEL_RESOURCE_ATTRIBUTES_ENV_VAR_NAME;
@@ -103,9 +103,34 @@ char *getenv(const char *name) {
   if (__strcmp(name, otelResourceAttributesVarName) == 0) {
     // If we have not calculated this env var yet
     if (__strlen(val1) == 0) {
+      char *namespaceName = __getenv(DASH0_NAMESPACE_NAME_ENV_VAR_NAME);
+      char *podUid = __getenv(DASH0_POD_UID_ENV_VAR_NAME);
+      char *podName = __getenv(DASH0_POD_NAME_ENV_VAR_NAME);
+      char *containerName = __getenv(DASH0_POD_CONTAINER_NAME_VAR_NAME);
+
       int catCount = 0;
 
+      if (namespaceName != NULL && __strlen(namespaceName) > 0) {
+        __strcat(val1, "k8s.namespace.name=");
+        __strcat(val1, namespaceName);
+        catCount += 1;
+      }
+
+      if (podName != NULL && __strlen(podName) > 0) {
+        if (catCount > 0) {
+          __strcat(val1, ",");
+        }
+
+        __strcat(val1, "k8s.pod.name=");
+        __strcat(val1, podName);
+        catCount += 1;
+      }
+
       if (podUid != NULL && __strlen(podUid) > 0) {
+        if (catCount > 0) {
+          __strcat(val1, ",");
+        }
+
         __strcat(val1, "k8s.pod.uid=");
         __strcat(val1, podUid);
         catCount += 1;
