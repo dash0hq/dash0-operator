@@ -32,7 +32,9 @@ const (
 	envVarLdPreloadValue              = "/__dash0__/dash0_injector.so"
 	envVarDash0CollectorBaseUrlName   = "DASH0_OTEL_COLLECTOR_BASE_URL"
 	envVarDash0NodeIp                 = "DASH0_NODE_IP"
-	envVarDash0PodUidName             = "DASH0_POD_UID"
+	envVarDash0NamespaceName          = "DASH0_NAMESPACE_NAME"
+	envVarDash0PodName                = "DASH0_POD_NAME"
+	envVarDash0PodUid                 = "DASH0_POD_UID"
 	envVarDash0ContainerName          = "DASH0_CONTAINER_NAME"
 )
 
@@ -282,7 +284,31 @@ func (m *ResourceModifier) addEnvironmentVariables(container *corev1.Container, 
 	m.addOrReplaceEnvironmentVariable(
 		container,
 		corev1.EnvVar{
-			Name: envVarDash0PodUidName,
+			Name: envVarDash0NamespaceName,
+			ValueFrom: &corev1.EnvVarSource{
+				FieldRef: &corev1.ObjectFieldSelector{
+					FieldPath: "metadata.namespace",
+				},
+			},
+		},
+	)
+
+	m.addOrReplaceEnvironmentVariable(
+		container,
+		corev1.EnvVar{
+			Name: envVarDash0PodName,
+			ValueFrom: &corev1.EnvVarSource{
+				FieldRef: &corev1.ObjectFieldSelector{
+					FieldPath: "metadata.name",
+				},
+			},
+		},
+	)
+
+	m.addOrReplaceEnvironmentVariable(
+		container,
+		corev1.EnvVar{
+			Name: envVarDash0PodUid,
 			ValueFrom: &corev1.EnvVarSource{
 				FieldRef: &corev1.ObjectFieldSelector{
 					FieldPath: "metadata.uid",
@@ -450,7 +476,9 @@ func (m *ResourceModifier) removeEnvironmentVariables(container *corev1.Containe
 	m.removeLdPreload(container)
 	m.removeEnvironmentVariable(container, envVarDash0NodeIp)
 	m.removeEnvironmentVariable(container, envVarDash0CollectorBaseUrlName)
-	m.removeEnvironmentVariable(container, envVarDash0PodUidName)
+	m.removeEnvironmentVariable(container, envVarDash0NamespaceName)
+	m.removeEnvironmentVariable(container, envVarDash0PodName)
+	m.removeEnvironmentVariable(container, envVarDash0PodUid)
 	m.removeEnvironmentVariable(container, envVarDash0ContainerName)
 }
 
