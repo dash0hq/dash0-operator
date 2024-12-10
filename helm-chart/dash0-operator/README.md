@@ -227,6 +227,8 @@ If you want to monitor the `default` namespace with Dash0, use the following com
 kubectl apply -f dash0-monitoring.yaml
 ```
 
+### Additional Configuration Per Namespace
+
 The Dash0 monitoring resource supports additional configuration settings:
 
 * `spec.instrumentWorkloads`: A namespace-wide opt-out for workload instrumentation for the target namespace.
@@ -260,7 +262,8 @@ The Dash0 monitoring resource supports additional configuration settings:
   will be intrumented by the operator to send telemetry to Dash0, as described above.
 
   More fine-grained per-workload control over instrumentation is available by setting the label
-  `dash0.com/enable=false` on individual workloads.
+  `dash0.com/enable=false` on individual workloads, see
+  [Disabling Auto-Instrumentation for Specific Workloads](#disabling-auto-instrumentation-for-specific-workloads).
 
   The behavior when changing this setting for an existing Dash0 monitoring resource is as follows:
     * When this setting is updated to `spec.instrumentWorkloads=all` (and it had a different value before): All existing
@@ -307,6 +310,21 @@ spec:
   synchronizePrometheusRules: false
   prometheusScrapingEnabled: false
 ```
+
+The Dash0 operator will instrument the following workload types:
+
+* [CronJobs](https://kubernetes.io/docs/concepts/workloads/controllers/cron-jobs/)
+* [DaemonSets](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/)
+* [Deployments](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/)
+* [Jobs](https://kubernetes.io/docs/concepts/workloads/controllers/job/)
+* [Pods](https://kubernetes.io/docs/concepts/workloads/pods/)
+* [ReplicaSets](https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/)
+* [StatefulSets](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/)
+
+Note that Kubernetes jobs and Kubernetes pods are only instrumented at deploy time, _existing_ jobs and pods cannot be
+instrumented since there is no way to restart them. For all other workload types, the operator can instrument existing
+workloads as well as new workloads at deploy time (depending on the setting of `instrumentWorkloads` in the Dash0
+monitoring resource).
 
 ### Using a Kubernetes Secret for the Dash0 Authorization Token
 
@@ -429,6 +447,66 @@ spec:
         ...
 
       apiEndpoint: https://api... # optional, see above
+```
+
+### Configure Metrics Collection
+
+By default, the operator collects metrics as follows:
+* The operator collects node, pod, container, and volume metrics from the API server on
+  [kubelets](https://kubernetes.io/docs/concepts/architecture/#kubelet)
+  via the
+  [Kubelet Stats Receiver](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/kubeletstatsreceiver/README.md)
+  and cluster-level metrics from the Kubernetes API server
+  via the
+  [Kubernetes Cluster Receiver](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/k8sclusterreceiver/README.md)
+  This can be disabled per cluster by setting `kubernetesInfrastructureMetricsCollectionEnabled: false` in the Dash0
+  operator configuration resource (or by using
+  `--operator-configuration-kubernetes-infrastructure-metrics-collection-enabled=false` when deploying the operator
+  configuration resource via the Helm chart).
+* The Dash0 operator scrapes Prometheus endpoints on pods annotated with the `prometheus.io/*` annotations, as
+  described in the section [Scraping Prometheus endpoints](#scraping-prometheus-endpoints). This can be disabled per
+  namespace by explicitly setting `prometheusScrapingEnabled: false` in the Dash0 monitoring resource.
+
+Disabling or enabling individual metrics via configuration is currently not supported.
+
+### Disabling Auto-Instrumentation for Specific Workloads
+
+In namespaces that are Dash0-monitoring enabled, all supported workload types are automatically instrumented for
+tracing. This process will modify the workload specification, e.g. by adding environment variables, Kubernetes labels
+and an init container. Although this will only result in automatic tracing for supported runtimes, the modifications are
+performed for every workload (as there is no way to tell which runtime a workload uses from the outside).
+
+You can disable these workload modifications for specific workloads by setting the label `dash0.com/enable: "false"` in
+the top level metadata section of the workload specification.
+
+Here is an example for a deployment with this label:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-deployment
+  labels:
+    app: my-deployment-app
+    dash0.com/enable: "false"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: my-deployment-app
+  template:
+    metadata:
+      labels:
+        app: my-deployment-app
+    spec:
+      containers:
+        - name: my-deployment-app
+          image: "some-image:latest"
+```
+
+The label can also be applied by using `kubectl`:
+```
+kubectl label --namespace $YOUR_NAMESPACE --overwrite deployment $YOUR_DEPLOYMENT_NAME dash0.com/enable=false
 ```
 
 ### Exporting Data to Other Observability Backends
@@ -623,20 +701,31 @@ tracing data from all Node.js workloads.
 If you are curious, the source code for the injector is open source and can be found
 [here](https://github.com/dash0hq/dash0-operator/blob/main/images/instrumentation/injector/src/dash0_injector.c).
 
-## Scraping Prometheus endpoints
+## Scraping Prometheus Endpoints
 
-The Dash0 operator automatically scrapes Prometheus endpoints on pods labelled with the `prometheus.io/*` annotations as defined by the [Prometheus Helm chart](https://github.com/prometheus-community/helm-charts/tree/main/charts/prometheus#scraping-pod-metrics-via-annotations).
+The Dash0 operator automatically scrapes Prometheus endpoints on pods labelled with the `prometheus.io/*` annotations as
+defined by the
+[Prometheus Helm chart](https://github.com/prometheus-community/helm-charts/tree/main/charts/prometheus#scraping-pod-metrics-via-annotations).
 
 The supported annotations are:
-* `prometheus.io/scrape`: Only scrape pods that have a value of `true`, except if `prometheus.io/scrape-slow` is set to `true` as well. Endpoints on pods annotated with this annotation are scraped every minute, i.e., scrape interval is 1 minute, unless `prometheus.io/scrape-slow` is also set to `true`.
-* `prometheus.io/scrape-slow`: If set to `true`, enables scraping for the pod with scrape interval of 5 minutes. If both `prometheus.io/scrape` and `prometheus.io/scrape-slow` are annotated on a pod with both values set to `true`, the pod will be scraped every 5 minutes.
+* `prometheus.io/scrape`: Only scrape pods that have a value of `true`, except if `prometheus.io/scrape-slow` is set to
+  `true` as well. Endpoints on pods annotated with this annotation are scraped every minute, i.e., scrape interval is 1
+  minute, unless `prometheus.io/scrape-slow` is also set to `true`.
+* `prometheus.io/scrape-slow`: If set to `true`, enables scraping for the pod with scrape interval of 5 minutes. If both
+  `prometheus.io/scrape` and `prometheus.io/scrape-slow` are annotated on a pod with both values set to `true`, the pod
+  will be scraped every 5 minutes.
 * `prometheus.io/scheme`: If the metrics endpoint is secured then you will need to set this to `https`.
 * `prometheus.io/path`: Override the metrics endpoint path if it is not the default `/metrics`.
 * `prometheus.io/port`: Override the metrics endpoint port if it is not the default `9102`.
 
-To be scraped, a pod annotated with the `prometheus.io/scrape` or `prometheus.io/scrape-slow` annotations must belong to namespaces that are configured to be monitored by the Dash0 operator (see [Enable Dash0 Monitoring For a Namespace](#enable-dash0-monitoring-for-a-namespace) section).
+To be scraped, a pod annotated with the `prometheus.io/scrape` or `prometheus.io/scrape-slow` annotations must belong to
+namespaces that are configured to be monitored by the Dash0 operator
+(see [Enable Dash0 Monitoring For a Namespace](#enable-dash0-monitoring-for-a-namespace) section).
 
-The scraping of a pod from is executed from the same Kubernetes node as the pod's.
+The scraping of a pod is executed from the same Kubernetes node the pod resides on.
+
+This feature can be disabled for a namespace by explicitly setting `prometheusScrapingEnabled: false` in the Dash0
+monitoring resource.
 
 ## Managing Dash0 Dashboards
 
@@ -774,3 +863,27 @@ Prometheus Rule Synchronization Results:
     Invalid Rules Total:           0
     Synchronization Errors Total:  0
 ```
+
+## Notes on Running The Operator on Apple Silicon
+
+When running the operator on an Apple Silicon host (M1, M3 etc.), for example via Docker Desktop, some attention needs
+to be paid to the CPU architecture of images. The architcture of the Kubernetes node for this scenario will be `arm64`.
+When running a single-architecture `amd64` image (as opposed to a single-architecture `arm64` image or a
+[multi-platform build](https://docs.docker.com/build/building/multi-platform/) containing `amd64` as well as `arm64`)
+the operator will prevent the container from starting.
+
+The reason for this is the interaction between Rosetta emulation and how the operator works. The Dash0 instrumentation
+image (which is added as an init container and contains the auto-tracing injector) is a multi-platform image, supporting
+both `amd64` and `arm64`. When this image is pulled from an Apple Silicon machine, it automatically pulls the `arm64`
+variant. That is, the injector binary that is added via the init container is compiled for `arm64`. Now, when the
+application from your `amd64` application image is started, the injector and the application will be incompatible, as
+they have been built for two different CPU architectures.
+
+Under normal circumstances, an `amd64` would not work on an `arm64` Kubernetes node anyway, but in the case of Docker
+Desktop on MacOS, this combination is enabled due to Docker Desktop automatically running `amd64` images via Rosetta2
+emulation.
+
+You can work around this issue by one of the following methods:
+* using an `amd64` Kubernetes node,
+* by building a multi-platform image for your application, or
+* by building the application as an `arm64` image (e.g. by using `--platform=linux/arm64` when building the image).
