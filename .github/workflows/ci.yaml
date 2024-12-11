@@ -142,30 +142,20 @@ jobs:
       # characters with underscores and use the output of this step as the image tag.
       - name: assemble instrumentation test image name
         id: instrumentation-test-image
-        # See https://docs.docker.com/reference/cli/docker/image/tag:
-        # "The tag must be valid ASCII and can contain lowercase and uppercase letters, digits, underscores, periods,
-        # and hyphens."
-        #
-        # TODO something is still not working with some branch names/image tags...
-        # It fails for this branch name:
-        # ghcr.io/dash0hq/instrumentation-ci-test:dependabot_npm_and_yarn_images_instrumentation_node.js_dash0hq_opentelemetry-1.1.8
-        # with:
-        #   failed to push
-        #   ghcr.io/dash0hq/instrumentation-ci-test:dependabot_npm_and_yarn_images_instrumentation_node.js_dash0hq_opentelemetry-1.1.8:
-        #   unexpected status from POST request to https://ghcr.io/v2/dash0hq/instrumentation-ci-test/blobs/uploads/:
-        #   403 Forbidden
-        # This branch name works though:
-        # ghcr.io/dash0hq/instrumentation-ci-test:dependabot_npm_and_yarn_images_instrumentation_node_otel_update
-        # This needs a bit more investigation.
-        # Update 2024-11-20: Happened again for
-        # ghcr.io/dash0hq/instrumentation-ci-test:dependabot_npm_and_yarn_images_instrumentation_node.js_dash0hq_opentelemetry-1.1.9:
-        # Let's try with also remove dots and limiting to 60 characters.
         run: |
           export image_tag=$( echo "${{ github.head_ref || github.ref_name }}" | sed 's/[^a-zA-Z0-9_\-]/\_/g' | head -c 60 )
           echo "image_name=ghcr.io/dash0hq/instrumentation-ci-test:$image_tag" >> $GITHUB_OUTPUT
 
       - name: build temporary instrumentation image
         uses: docker/build-push-action@v6
+        # Dependabot PRs currently fail in this step, see
+        # https://stackoverflow.com/questions/74788092/github-dependabot-doesnt-have-permissions-to-publish-to-ghcr-how-can-i-give-it
+        # This can be worked around by ammending the Dependabot commit and force-pushing it.
+        # (We can probably remove some of the sed-/head-stuff in the previous step, this was introduced because the
+        # suspicion was that the HTTP 403 was somehow related to the image tag, it very probably is not.)
+        # See also: https://docs.github.com/en/code-security/dependabot
+        # Maybe we can also allow Dependabot PRs to dry-run the Helm chart publishing, that is, remove the
+        # github.actor != 'dependabot[bot]' condition we have on those steps.
         if: |
           steps.changed-files.outputs.instrumentation_any_changed == 'true' ||
           github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
