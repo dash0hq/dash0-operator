@@ -10,8 +10,13 @@ import (
 	"os"
 	"os/exec"
 	"text/template"
+	"time"
+
+	"k8s.io/apimachinery/pkg/util/wait"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -69,18 +74,28 @@ func deployDash0MonitoringResource(
 		Expect(os.Remove(renderedResourceFileName)).To(Succeed())
 	}()
 
+	retryLogger := zap.New()
 	By(fmt.Sprintf(
 		"deploying the Dash0 monitoring resource to namespace %s with values %v, operator namespace is %s",
 		namespace, dash0MonitoringValues, operatorNamespace))
-	Expect(
-		runAndIgnoreOutput(exec.Command(
+	err := util.RetryWithCustomBackoff("deploying the Dash0 monitoring resource to namespace", func() error {
+		return runAndIgnoreOutput(exec.Command(
 			"kubectl",
 			"apply",
 			"-n",
 			namespace,
 			"-f",
 			renderedResourceFileName,
-		))).To(Succeed())
+		))
+	},
+		wait.Backoff{
+			Duration: 10 * time.Second,
+			Steps:    3,
+		},
+		true,
+		&retryLogger,
+	)
+	Expect(err).ToNot(HaveOccurred())
 
 	// Deploying the Dash0 monitoring resource will trigger creating the default OpenTelemetry collecor instance.
 	waitForCollectorToStart(operatorNamespace, operatorHelmChart)
