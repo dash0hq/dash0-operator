@@ -27,7 +27,7 @@ Other features like metrics and log collection are independent of the runtime of
 
 ## Prerequisites
 
-- [Kubernetes](https://kubernetes.io/) >= 1.xx
+- [Kubernetes](https://kubernetes.io/) 1.25.16 or later.
 - [Helm](https://helm.sh) >= 3.x, please refer to Helm's [documentation](https://helm.sh/docs/) for more information
   on installing Helm.
 
