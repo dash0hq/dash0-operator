@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/joho/godotenv"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/startup"
@@ -41,12 +42,14 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		workingDir = strings.TrimSpace(pwdOutput)
 		e2ePrint("workingDir: %s\n", workingDir)
 
-		env, err := readDotEnvFile(dotEnvFile)
-		Expect(err).NotTo(HaveOccurred())
-
-		e2eKubernetesContext := env["E2E_KUBECTX"]
+		Expect(godotenv.Load(dotEnvFile)).To(Succeed())
+		e2eKubernetesContext := os.Getenv("E2E_KUBECTX")
 		if e2eKubernetesContext == "" {
-			Fail(fmt.Sprintf("The mandatory setting E2E_KUBECTX is missing in the file %s.", dotEnvFile))
+			Fail(
+				fmt.Sprintf(
+					"The mandatory setting E2E_KUBECTX is missing in your environment variables (and also in the file %s).",
+					dotEnvFile,
+				))
 		}
 		kubeContextHasBeenChanged, originalKubeContext = setKubernetesContext(e2eKubernetesContext)
 
