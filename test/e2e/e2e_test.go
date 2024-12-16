@@ -136,6 +136,19 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					operatorHelmChart,
 				)
 
+				// Note: On kind, this fails sometimes due to missing workload resource attribute
+				//  - k8s.deployment.name: ! FAILED - expected dash0-operator-nodejs-20-express-test-deployment but the
+				//    span has no such attribute
+				//  - k8s.pod.name: passed
+				//  - timestamp: skipped - no lower bound provided
+				//  - span.kind: passed
+				//  - http.target: passed
+				//  Expected
+				//      <bool>: false
+				//  to be true
+				//  In [It] at: /Users/bastian/dco/test/e2e/verify_instrumentation.go:64 @ 11/26/24 10:28:53.645
+				// No amount of retrying helps. Once the collector is in this state, all spans lack that resource
+				// attribute. See comment in spans.go#resourceSpansHaveExpectedResourceAttributes.
 				runInParallelForAllWorkloadTypes(controllerTestWorkloadTypes, func(workloadType workloadType) {
 					By(fmt.Sprintf("verifying that the Node.js %s has been instrumented by the controller",
 						workloadType.workloadTypeString))

@@ -176,6 +176,8 @@ func resourceSpansHaveExpectedResourceAttributes(workloadType string) func(
 	return func(resourceSpans ptrace.ResourceSpans, matchResult *ResourceMatchResult[ptrace.ResourceSpans]) {
 		attributes := resourceSpans.Resource().Attributes()
 
+		// Note: On kind clusters, the workload type attribute (k8s.deployment.name) etc. is often missing. This needs
+		// to be investigated more.
 		if workloadType == "replicaset" {
 			// There is no k8s.replicaset.name attribute.
 			matchResult.addSkippedAssertion("k8s.replicaset.name", "not checked, there is no k8s.replicaset.name attribute")
