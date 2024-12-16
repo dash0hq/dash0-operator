@@ -672,9 +672,10 @@ tracing works, intended for the technically curious reader.
 You can safely skip this section if you are not interested in the technical details.
 
 Workloads in [monitored namespaces](#enable-dash0-monitoring-for-a-namespace) are instrumented by the Dash0 operator
-to enable tracing for [supported runtimes](#supported-runtimes) out of the box.
-This allows Dash0 users to avoid the hassle of manually adding the OpenTelemetry SDK to their applications—Dash0 takes
-care of it automatically.
+to enable tracing for [supported runtimes](#supported-runtimes) out of the box, and to improve Kubernetes-related
+resource attribute auto-detection.
+This allows Dash0 users to avoid the hassle of manually adding the OpenTelemetry SDK to their applications.
+Dash0 takes care of it automatically.
 
 To achieve this, the Dash0 operator adds an
 [init container](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/) with the [Dash0 instrumentation
@@ -698,12 +699,15 @@ For example, it sets (or appends to) `NODE_OPTIONS` to activate the
 [Dash0 OpenTelemetry distribution for Node.js](https://github.com/dash0hq/opentelemetry-js-distribution) to collect
 tracing data from all Node.js workloads.
 
-Additionally, the Dash0 injector will use the values of the `DASH0_NAMESPACE_NAME`, `DASH0_POD_NAME`, `DASH0_POD_UID`
-and `DASH0_CONTAINER_NAME` environment variables, added to the instrumented containers by the operator, to populate
-the resource attributes `k8s.namespace.name`, `k8s.pod.name`, `k8s.pod.uid` and `k8s.container.name` via the
-`OTEL_RESOURCE_ATTRIBUTES` environment variable. These attributes are appended to the existing attributes specified by
-the original value of the `OTEL_RESOURCE_ATTRIBUTES` environment variable, if the latter is set in the environment of
-the injected process.
+Additionally, the Dash0 injector automatically improves Kubernetes-related resource attributes as follows: The operator
+sets the environment variables `DASH0_NAMESPACE_NAME`, `DASH0_POD_NAME`, `DASH0_POD_UID` and `DASH0_CONTAINER_NAME` on
+workloads.
+The Dash0 injector binary picks these values up and uses them to populate the resource attributes `k8s.namespace.name`,
+`k8s.pod.name`, `k8s.pod.uid` and `k8s.container.name` via the `OTEL_RESOURCE_ATTRIBUTES` environment variable.
+If `OTEL_RESOURCE_ATTRIBUTES` is already set on the process, the key-value pairs for these attributes are appended to
+the existing value of `OTEL_RESOURCE_ATTRIBUTES`.
+If `OTEL_RESOURCE_ATTRIBUTES` was not set on the process, the Dash0 injector will add `OTEL_RESOURCE_ATTRIBUTES` as
+a new environment variable.
 
 If you are curious, the source code for the injector is open source and can be found
 [here](https://github.com/dash0hq/dash0-operator/blob/main/images/instrumentation/injector/src/dash0_injector.c).
