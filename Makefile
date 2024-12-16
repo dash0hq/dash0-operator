@@ -172,6 +172,10 @@ golangci-lint: golangci-lint-install
 	@echo "-------------------------------- (linting Go code)"
 	$(GOLANGCI_LINT) run
 
+.PHONY: golang-lint-fix
+golang-lint-fix: golangci-lint-install
+	$(GOLANGCI_LINT) run --fix
+
 .PHONY: helm-chart-lint
 helm-chart-lint:
 	@echo "-------------------------------- (linting Helm charts)"
@@ -200,12 +204,32 @@ prometheus-crd-version-check:
 	@echo "-------------------------------- (verifying the Prometheus CRD version is in sync)"
 	./test-resources/bin/prometheus-crd-version-check.sh
 
+.PHONY: c-lint-installed
+c-lint-installed:
+	@set +x
+	@if ! clang-format --version > /dev/null; then \
+	echo "error: clang-format is not installed. Run 'brew install clang-format' or similar."; \
+	exit 1; \
+	fi
+
+.PHONY: c-lint
+c-lint: c-lint-installed
+ifeq ("${CI}","true")
+	@echo "CI: skip linting C source files via make lint, will run as separate Github action job step"
+else
+	@echo "-------------------------------- (linting C source files)"
+	clang-format --dry-run --Werror images/instrumentation/injector/src/*.c
+endif
+
+.PHONY: c-lint-fix
+c-lint-fix: c-lint-installed
+	clang-format -i images/instrumentation/injector/src/*.c
+
 .PHONY: lint
-lint: golangci-lint helm-chart-lint shellcheck-lint prometheus-crd-version-check
+lint: golangci-lint helm-chart-lint shellcheck-lint prometheus-crd-version-check c-lint
 
 .PHONY: lint-fix
-lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
-	$(GOLANGCI_LINT) run --fix
+lint-fix: golang-lint-fix c-lint-fix
 
 ##@ Build
 
