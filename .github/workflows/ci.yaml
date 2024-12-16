@@ -59,6 +59,12 @@ jobs:
         run: |
           make lint
 
+      - name: lint C sources with clang-format
+        uses: jidicula/clang-format-action@v4.14.0
+        with:
+          clang-format-version: '19'
+          check-path: 'images/instrumentation/injector/src'
+
       - name: install Helm unittest plugin
         shell: bash
         run: |
