@@ -887,3 +887,33 @@ You can work around this issue by one of the following methods:
 * using an `amd64` Kubernetes node,
 * by building a multi-platform image for your application, or
 * by building the application as an `arm64` image (e.g. by using `--platform=linux/arm64` when building the image).
+
+## Notes on Running The Operator on Docker Desktop
+
+Docker Desktop's Kubelet `/stats` endpoint uses a self-signed TLS certificate, which is not even signed by the cluster's certificate authority, and it looks invalid from the point of view of the OpenTelemetry collectors operated by the Dash0 operator.
+
+To ensure that you can still have a good experience trying out the Dash0 operator in a local environment, the Dash0 operator detects that is is running via the Kubernetes integrated in Docker Desktop (by matching the node name against `docker-desktop`) and disables the TLS verification for the receiver that retrieve metrics from the Kubelet `/stats` endpoint. If this is the case, you will see the following entry in the logs of the daemonset operated by the Dash0 operator:
+
+```
+This collector seems to run on a node managed by Docker Desktop's Kubernetes, which is known to have self-signed CA certs for the Kubelet stats endpoint: disabling TLS verification for the kubeletstat receiver
+```
+
+## Notes on Running The Operator on Minikube
+
+Docker Desktop's Kubelet `/stats` endpoint uses a self-signed TLS certificate, which is not even signed by the cluster's certificate authority, and it looks invalid from the point of view of the OpenTelemetry collectors operated by the Dash0 operator.
+
+To ensure that you can still have a good experience trying out the Dash0 operator in a local environment, the Dash0 operator detects that is is running via the Kubernetes integrated in Docker Desktop (by matching the node name against `minikube`) and disables the TLS verification for the receiver that retrieve metrics from the Kubelet `/stats` endpoint. If this is the case, you will see the following entry in the logs of the daemonset operated by the Dash0 operator:
+
+```
+This collector seems to run on a node managed by Minikube, which is known to have self-signed CA certs for the Kubelet stats endpoint: disabling TLS verification for the kubeletstat receiver
+```
+
+Note: if you use a minikube profile (`minikube -p <profile_name>`), the node name will change, and the automatic disablement of TLS verification will not work, resulting on missing metrics in Dash0 about your workloads.
+If this is the case, you can run the Dash0 operator in development mode (which results, among other things, in disabling the TLS verification for the Kubelet `/stats` endpoint) by passing the `--set operator.developmentMode=true` configuration to Helm.
+
+## Notes on Running The Operator on Kind
+
+Kind's Kubelet `/stats` endpoint uses a self-signed TLS certificate, which is not even signed by the cluster's certificate authority, and it looks invalid from the point of view of the OpenTelemetry collectors operated by the Dash0 operator.
+
+Unfortunately, unlike the cases for Docker Desktop and Minikube, there is no known heuristic for an operator to know whether it's running on a Kind cluster.
+If you want to collect Kubelet metrics from a Kind cluster, you will need to run the Dash0 operator in development mode (which results, among other things, in disabling the TLS verification for the Kubelet `/stats` endpoint) by passing the `--set operator.developmentMode=true` configuration to Helm.

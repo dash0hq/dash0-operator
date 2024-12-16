@@ -626,6 +626,13 @@ func assembleCollectorEnvVars(config *oTelColConfig, goMemLimit string) ([]corev
 		},
 	}
 
+	if config.DevelopmentMode {
+		collectorEnv = append(collectorEnv, corev1.EnvVar{
+			Name:  "KUBELET_STATS_TLS_INSECURE",
+			Value: "true",
+		})
+	}
+
 	if config.Export.Dash0 != nil {
 		authTokenEnvVar, err := util.CreateEnvVarForAuthorization(
 			(*(config.Export.Dash0)).Authorization,

@@ -638,8 +638,9 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			kubeletstatsReceiverRaw := readFromMap(collectorConfig, []string{"receivers", "kubeletstats"})
 			Expect(kubeletstatsReceiverRaw).ToNot(BeNil())
 			kubeletstatsReceiver := kubeletstatsReceiverRaw.(map[string]interface{})
-			_, hasInsecureSkipVerifyProperty := kubeletstatsReceiver["insecure_skip_verify"]
-			Expect(hasInsecureSkipVerifyProperty).To(BeFalse())
+			insecureSkipVerifyPropertyValue, hasInsecureSkipVerifyProperty := kubeletstatsReceiver["insecure_skip_verify"]
+			Expect(hasInsecureSkipVerifyProperty).To(BeTrue())
+			Expect(insecureSkipVerifyPropertyValue).To(Equal("${env:KUBELET_STATS_TLS_INSECURE}"))
 
 			pipelines := readPipelines(collectorConfig)
 			metricsReceivers := readPipelineReceivers(pipelines, "metrics/downstream")
