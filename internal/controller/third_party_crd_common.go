@@ -25,6 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -32,6 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
@@ -39,6 +41,10 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
+
+// TODO: possible refactoring: introduce a new type ThirdPartyResourceSynchronizer struct, create a singleton of it,
+// attach it to both third party resource reconciler and move most of the functions in this file to this new type as
+// methods. Then we could get rid of a lot of the interface methods in the ThirdPartyResourceReconciler interface.
 
 type ApiConfig struct {
 	Endpoint string
@@ -83,6 +89,7 @@ type ThirdPartyResourceReconciler interface {
 	GetApiConfig() *atomic.Pointer[ApiConfig]
 	ControllerName() string
 	K8sClient() client.Client
+	Queue() *workqueue.Typed[ThirdPartyResourceSyncJob]
 	HttpClient() *http.Client
 	GetHttpRetryDelay() time.Duration
 	IsSynchronizationEnabled(*dash0v1alpha1.Dash0Monitoring) bool
@@ -112,6 +119,13 @@ type ThirdPartyResourceReconciler interface {
 		synchronizationErrorsPerItem map[string]string,
 		validationIssuesPerItem map[string][]string,
 	) interface{}
+}
+
+type ThirdPartyResourceSyncJob struct {
+	resourceReconciler ThirdPartyResourceReconciler
+	thirdPartyResource *unstructured.Unstructured
+	action             apiAction
+	actionLabel        string
 }
 
 type HttpRequestWithItemName struct {
@@ -412,35 +426,89 @@ func urlEncodePathSegment(s string) string {
 }
 
 func upsertViaApi(
-	ctx context.Context,
 	resourceReconciler ThirdPartyResourceReconciler,
 	thirdPartyResource *unstructured.Unstructured,
-	logger *logr.Logger,
 ) {
-	synchronizeViaApi(
-		ctx,
-		resourceReconciler,
-		thirdPartyResource,
-		upsert,
-		"Creating/updating",
-		logger,
+	// The create/update/delete/... events we receive from K8s are sequential per resource type, that is, we only
+	// receive the next event for a Perses dashboard resource once we have processed the previous one; same for
+	// Prometheus rules. However, we might receive events for different resource types concurrently, that is, one event
+	// each for a Perses dashboard and a Prometheus rules might be processed concurrently. All third party resource
+	// synchronization attempts end with writing to the Dash0 monitoring resource status in the same namespace. These
+	// write attempts will fail if they happen concurrently. Therefore, we add all synchronization attempts to one
+	// queue that is shared across resource types, and only process them one at a time.
+	resourceReconciler.Queue().Add(
+		ThirdPartyResourceSyncJob{
+			resourceReconciler: resourceReconciler,
+			thirdPartyResource: thirdPartyResource,
+			action:             upsert,
+			actionLabel:        "Creating/updating",
+		},
 	)
 }
 
 func deleteViaApi(
-	ctx context.Context,
 	resourceReconciler ThirdPartyResourceReconciler,
 	thirdPartyResource *unstructured.Unstructured,
+) {
+	// See comment in upsertViaApi for an explanation why we use a shared queue for all resource types.
+	resourceReconciler.Queue().Add(
+		ThirdPartyResourceSyncJob{
+			resourceReconciler: resourceReconciler,
+			thirdPartyResource: thirdPartyResource,
+			action:             delete,
+			actionLabel:        "Deleting",
+		},
+	)
+}
+
+func StartProcessingThirdPartySynchronizationQueue(
+	resourceReconcileQueue *workqueue.Typed[ThirdPartyResourceSyncJob],
+	setupLog *logr.Logger,
+) {
+	setupLog.Info("Starting the third-party resource synchronization queue.")
+	go func() {
+		for {
+			ctx := context.Background()
+			logger := log.FromContext(ctx)
+			item, queueShutdown := resourceReconcileQueue.Get()
+			if queueShutdown {
+				logger.Info("The third-party resource synchronization queue has been shut down.")
+				return
+			}
+			logger.Info(
+				fmt.Sprintf(
+					"starting to process third party resource synchronization for %s %s/%s.",
+					item.resourceReconciler.KindDisplayName(),
+					item.thirdPartyResource.GetNamespace(),
+					item.thirdPartyResource.GetName(),
+				))
+
+			synchronizeViaApi(
+				ctx,
+				item.resourceReconciler,
+				item.thirdPartyResource,
+				item.action,
+				item.actionLabel,
+				&logger,
+			)
+			logger.Info(
+				fmt.Sprintf(
+					"finished processing third party resource synchronization for %s %s/%s.",
+					item.resourceReconciler.KindDisplayName(),
+					item.thirdPartyResource.GetNamespace(),
+					item.thirdPartyResource.GetName(),
+				))
+			resourceReconcileQueue.Done(item)
+		}
+	}()
+}
+
+func StopProcessingThirdPartySynchronizationQueue(
+	resourceReconcileQueue *workqueue.Typed[ThirdPartyResourceSyncJob],
 	logger *logr.Logger,
 ) {
-	synchronizeViaApi(
-		ctx,
-		resourceReconciler,
-		thirdPartyResource,
-		delete,
-		"Deleting",
-		logger,
-	)
+	logger.Info("Shutting down the third-party resource synchronization queue.")
+	resourceReconcileQueue.ShutDown()
 }
 
 func synchronizeViaApi(

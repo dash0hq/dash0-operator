@@ -15,6 +15,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllertest"
@@ -34,6 +35,9 @@ import (
 var (
 	prometheusRuleCrdReconciler *PrometheusRuleCrdReconciler
 	prometheusRuleCrd           *apiextensionsv1.CustomResourceDefinition
+	testQueuePrometheusRules    = workqueue.NewTypedWithConfig(workqueue.TypedQueueConfig[ThirdPartyResourceSyncJob]{
+		Name: "dash0-third-party-resource-reconcile-queue",
+	})
 
 	checkRuleApiBasePath = "/api/alerting/check-rules/"
 
@@ -229,6 +233,8 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			ensurePrometheusRuleCrdExists(ctx)
 
 			Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+
+			StartProcessingThirdPartySynchronizationQueue(testQueuePrometheusRules, &logger)
 		})
 
 		BeforeEach(func() {
@@ -248,6 +254,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 
 		AfterAll(func() {
 			deletePrometheusRuleCrdIfItExists(ctx)
+			StopProcessingThirdPartySynchronizationQueue(testQueuePrometheusRules, &logger)
 		})
 
 		It("it ignores Prometheus rule resource changes if no Dash0 monitoring resource exists in the namespace", func() {
@@ -943,6 +950,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 func createPrometheusRuleCrdReconcilerWithoutAuthToken() {
 	prometheusRuleCrdReconciler = &PrometheusRuleCrdReconciler{
 		Client: k8sClient,
+		Queue:  testQueuePrometheusRules,
 
 		// We create the controller multiple times in tests, this option is required, otherwise the controller
 		// runtime will complain.
@@ -953,6 +961,7 @@ func createPrometheusRuleCrdReconcilerWithoutAuthToken() {
 func createPrometheusRuleCrdReconcilerWithAuthToken() {
 	prometheusRuleCrdReconciler = &PrometheusRuleCrdReconciler{
 		Client:    k8sClient,
+		Queue:     testQueuePrometheusRules,
 		AuthToken: AuthorizationTokenTest,
 
 		// We create the controller multiple times in tests, this option is required, otherwise the controller
