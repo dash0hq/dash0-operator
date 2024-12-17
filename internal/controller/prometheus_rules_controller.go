@@ -36,6 +36,7 @@ import (
 
 type PrometheusRuleCrdReconciler struct {
 	Client                   client.Client
+	Queue                    *workqueue.Typed[ThirdPartyResourceSyncJob]
 	AuthToken                string
 	mgr                      ctrl.Manager
 	skipNameValidation       bool
@@ -46,6 +47,7 @@ type PrometheusRuleCrdReconciler struct {
 type PrometheusRuleReconciler struct {
 	client.Client
 	pseudoClusterUid           types.UID
+	queue                      *workqueue.Typed[ThirdPartyResourceSyncJob]
 	httpClient                 *http.Client
 	apiConfig                  atomic.Pointer[ApiConfig]
 	authToken                  string
@@ -130,6 +132,7 @@ func (r *PrometheusRuleCrdReconciler) CreateResourceReconciler(
 ) {
 	r.prometheusRuleReconciler = &PrometheusRuleReconciler{
 		Client:           r.Client,
+		queue:            r.Queue,
 		pseudoClusterUid: pseudoClusterUid,
 		authToken:        authToken,
 		httpClient:       httpClient,
@@ -312,6 +315,10 @@ func (r *PrometheusRuleReconciler) K8sClient() client.Client {
 	return r.Client
 }
 
+func (r *PrometheusRuleReconciler) Queue() *workqueue.Typed[ThirdPartyResourceSyncJob] {
+	return r.queue
+}
+
 func (r *PrometheusRuleReconciler) HttpClient() *http.Client {
 	return r.httpClient
 }
@@ -353,7 +360,7 @@ func (r *PrometheusRuleReconciler) Create(
 		e.Object.GetName(),
 	)
 
-	upsertViaApi(ctx, r, e.Object, &logger)
+	upsertViaApi(r, e.Object)
 }
 
 func (r *PrometheusRuleReconciler) Update(
@@ -374,7 +381,7 @@ func (r *PrometheusRuleReconciler) Update(
 		e.ObjectNew.GetName(),
 	)
 
-	upsertViaApi(ctx, r, e.ObjectNew, &logger)
+	upsertViaApi(r, e.ObjectNew)
 }
 
 func (r *PrometheusRuleReconciler) Delete(
@@ -395,7 +402,7 @@ func (r *PrometheusRuleReconciler) Delete(
 		e.Object.GetName(),
 	)
 
-	deleteViaApi(ctx, r, e.Object, &logger)
+	deleteViaApi(r, e.Object)
 }
 
 func (r *PrometheusRuleReconciler) Generic(

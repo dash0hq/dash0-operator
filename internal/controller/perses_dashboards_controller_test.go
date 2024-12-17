@@ -14,6 +14,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllertest"
@@ -33,6 +34,9 @@ import (
 var (
 	persesDashboardCrdReconciler *PersesDashboardCrdReconciler
 	persesDashboardCrd           *apiextensionsv1.CustomResourceDefinition
+	testQueuePersesDashboards    = workqueue.NewTypedWithConfig(workqueue.TypedQueueConfig[ThirdPartyResourceSyncJob]{
+		Name: "dash0-third-party-resource-reconcile-queue",
+	})
 
 	dashboardApiBasePath = "/api/dashboards/"
 
@@ -216,6 +220,8 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			ensurePersesDashboardCrdExists(ctx)
 
 			Expect(persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+
+			StartProcessingThirdPartySynchronizationQueue(testQueuePersesDashboards, &logger)
 		})
 
 		BeforeEach(func() {
@@ -235,6 +241,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 
 		AfterAll(func() {
 			deletePersesDashboardCrdIfItExists(ctx)
+			StopProcessingThirdPartySynchronizationQueue(testQueuePersesDashboards, &logger)
 		})
 
 		It("it ignores Perses dashboard resource changes if no Dash0 monitoring resource exists in the namespace", func() {
@@ -426,6 +433,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 func createPersesDashboardCrdReconcilerWithoutAuthToken() {
 	persesDashboardCrdReconciler = &PersesDashboardCrdReconciler{
 		Client: k8sClient,
+		Queue:  testQueuePersesDashboards,
 
 		// We create the controller multiple times in tests, this option is required, otherwise the controller
 		// runtime will complain.
@@ -436,6 +444,7 @@ func createPersesDashboardCrdReconcilerWithoutAuthToken() {
 func createPersesDashboardCrdReconcilerWithAuthToken() {
 	persesDashboardCrdReconciler = &PersesDashboardCrdReconciler{
 		Client:    k8sClient,
+		Queue:     testQueuePersesDashboards,
 		AuthToken: AuthorizationTokenTest,
 
 		// We create the controller multiple times in tests, this option is required, otherwise the controller

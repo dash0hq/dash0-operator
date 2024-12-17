@@ -28,6 +28,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -103,6 +104,8 @@ var (
 
 	metricNamePrefix = fmt.Sprintf("%s.", meterName)
 	meter            otelmetric.Meter
+
+	thirdPartyResourceSynchronizationQueue *workqueue.Typed[controller.ThirdPartyResourceSyncJob]
 )
 
 func init() {
@@ -420,6 +423,12 @@ func startOperatorManager(
 		return fmt.Errorf("unable to set up the ready check: %w", err)
 	}
 
+	defer func() {
+		if thirdPartyResourceSynchronizationQueue != nil {
+			controller.StopProcessingThirdPartySynchronizationQueue(thirdPartyResourceSynchronizationQueue, &setupLog)
+		}
+	}()
+
 	setupLog.Info("starting manager")
 	if err = mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		return fmt.Errorf("unable to set up the signal handler: %w", err)
@@ -613,8 +622,14 @@ func startDash0Controllers(
 		return fmt.Errorf("unable to set up the backend connection reconciler: %w", err)
 	}
 
+	thirdPartyResourceSynchronizationQueue =
+		workqueue.NewTypedWithConfig(
+			workqueue.TypedQueueConfig[controller.ThirdPartyResourceSyncJob]{
+				Name: "dash0-third-party-resource-reconcile-queue",
+			})
 	persesDashboardCrdReconciler := &controller.PersesDashboardCrdReconciler{
 		Client:    k8sClient,
+		Queue:     thirdPartyResourceSynchronizationQueue,
 		AuthToken: envVars.selfMonitoringAndApiAuthToken,
 	}
 	if err := persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, startupTasksK8sClient, &setupLog); err != nil {
@@ -627,6 +642,7 @@ func startDash0Controllers(
 	)
 	prometheusRuleCrdReconciler := &controller.PrometheusRuleCrdReconciler{
 		Client:    k8sClient,
+		Queue:     thirdPartyResourceSynchronizationQueue,
 		AuthToken: envVars.selfMonitoringAndApiAuthToken,
 	}
 	if err := prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, startupTasksK8sClient, &setupLog); err != nil {
@@ -637,6 +653,7 @@ func startDash0Controllers(
 		metricNamePrefix,
 		&setupLog,
 	)
+	controller.StartProcessingThirdPartySynchronizationQueue(thirdPartyResourceSynchronizationQueue, &setupLog)
 
 	operatorConfigurationReconciler := &controller.OperatorConfigurationReconciler{
 		Client:    k8sClient,

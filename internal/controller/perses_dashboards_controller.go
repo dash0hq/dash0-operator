@@ -34,6 +34,7 @@ import (
 
 type PersesDashboardCrdReconciler struct {
 	Client                    client.Client
+	Queue                     *workqueue.Typed[ThirdPartyResourceSyncJob]
 	AuthToken                 string
 	mgr                       ctrl.Manager
 	skipNameValidation        bool
@@ -44,6 +45,7 @@ type PersesDashboardCrdReconciler struct {
 type PersesDashboardReconciler struct {
 	client.Client
 	pseudoClusterUid           types.UID
+	queue                      *workqueue.Typed[ThirdPartyResourceSyncJob]
 	httpClient                 *http.Client
 	apiConfig                  atomic.Pointer[ApiConfig]
 	authToken                  string
@@ -110,6 +112,7 @@ func (r *PersesDashboardCrdReconciler) CreateResourceReconciler(
 ) {
 	r.persesDashboardReconciler = &PersesDashboardReconciler{
 		Client:           r.Client,
+		queue:            r.Queue,
 		pseudoClusterUid: pseudoClusterUid,
 		authToken:        authToken,
 		httpClient:       httpClient,
@@ -292,6 +295,10 @@ func (r *PersesDashboardReconciler) K8sClient() client.Client {
 	return r.Client
 }
 
+func (r *PersesDashboardReconciler) Queue() *workqueue.Typed[ThirdPartyResourceSyncJob] {
+	return r.queue
+}
+
 func (r *PersesDashboardReconciler) HttpClient() *http.Client {
 	return r.httpClient
 }
@@ -333,7 +340,7 @@ func (r *PersesDashboardReconciler) Create(
 		e.Object.GetName(),
 	)
 
-	upsertViaApi(ctx, r, e.Object, &logger)
+	upsertViaApi(r, e.Object)
 }
 
 func (r *PersesDashboardReconciler) Update(
@@ -354,7 +361,7 @@ func (r *PersesDashboardReconciler) Update(
 		e.ObjectNew.GetName(),
 	)
 
-	upsertViaApi(ctx, r, e.ObjectNew, &logger)
+	upsertViaApi(r, e.ObjectNew)
 }
 
 func (r *PersesDashboardReconciler) Delete(
@@ -375,7 +382,7 @@ func (r *PersesDashboardReconciler) Delete(
 		e.Object.GetName(),
 	)
 
-	deleteViaApi(ctx, r, e.Object, &logger)
+	deleteViaApi(r, e.Object)
 }
 
 func (r *PersesDashboardReconciler) Generic(
