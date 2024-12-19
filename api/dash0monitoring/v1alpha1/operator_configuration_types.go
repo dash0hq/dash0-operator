@@ -37,6 +37,8 @@ type Dash0OperatorConfigurationSpec struct {
 	//
 	// +kubebuilder:default=true
 	KubernetesInfrastructureMetricsCollectionEnabled *bool `json:"kubernetesInfrastructureMetricsCollectionEnabled,omitempty"`
+
+	AutomaticNamespaceMonitoringRules []AutomaticNamespaceMonitoringRule `json:"automaticNamespaceMonitoringRules"`
 }
 
 // SelfMonitoring describes how the operator will report telemetry about its working to the backend.
@@ -46,6 +48,19 @@ type SelfMonitoring struct {
 	//
 	// +kubebuilder:default=true
 	Enabled *bool `json:"enabled"`
+}
+
+type AutomaticNamespaceMonitoringRule struct {
+	// +kubebuilder:default=true
+	Enabled *bool `json:"enabled"`
+	// When not specified and Enabled==true, all namespaces are monitored
+	LabelSelector client.MatchingLabelsSelector `json:"nameSelector,omitempty"`
+	// When not specified, default settings are used
+	Template Dash0MonitoringSpec `json:"template,omitempty"`
+}
+
+// +kubebuilder:validation:MaxProperties=1
+type AutomaticNamespaceMonitoringRuleMatcher struct {
 }
 
 // Dash0OperatorConfigurationStatus defines the observed state of the Dash0 operator configuration resource.
