@@ -78,6 +78,11 @@ For more information on how the Dash0 operator synchronizes synthetic checks bas
 consult the [Managing Dash0 Synthetic Checks](helm-chart/dash0-operator/README.md#managing-dash0-synthetic-checks)
 section of the Dash0 operator Helm chart documentation.
 
+### Views
+
+The Dash0 operator supports the `Dash0View` custom resource definition which is used to create views on tracing or logging
+data within Dash0.
+
 ## Getting Started
 
 The preferred method of installation is via the operator's

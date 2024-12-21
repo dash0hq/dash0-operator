@@ -115,6 +115,16 @@ rules:
   - list
   - watch
 
+  # Permissions required to watch Dash0 view resources
+- apiGroups:
+    - operator.dash0.com
+  resources:
+    - dash0views
+  verbs:
+    - get
+    - list
+    - watch
+
 # Permissions required to manage the Dash0 monitoring resource, its finalizers and status:
 - apiGroups:
   - operator.dash0.com
