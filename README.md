@@ -47,6 +47,11 @@ For more information on how the Dash0 operator creates check rules based on `Pro
 The Dash0 operator supports the `PersesDashboard` custom resource definition defined by the [Perses operator](https://github.com/perses/perses-operator).
 The Perses dashboards specified in `PersesDashboard` custom resources are used to create [dashboards](https://www.dash0.com/documentation/dash0/dashboards) in Dash0.
 
+### Views
+
+The Dash0 operator supports the `Dash0View` custom resource definition which is used to create views on tracing or logging
+data within Dash0.
+
 ## Getting Started
 
 The preferred method of installation is via the operator's

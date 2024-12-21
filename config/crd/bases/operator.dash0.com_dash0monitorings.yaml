@@ -248,6 +248,13 @@ spec:
                   See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-check-rules-with-the-operator
                   for details. This setting is optional, it defaults to true.
                 type: boolean
+              synchronizeViews:
+                default: true
+                description: |-
+                  If enabled, the operator will watch Dash0 view resources in this namespace and create corresponding views in Dash0 via the Dash0 API.
+                  See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-check-rules-with-the-operator
+                  for details. This setting is optional, it defaults to true.
+                type: boolean
             type: object
           status:
             description: Dash0MonitoringStatus defines the observed state of the Dash0Monitoring
