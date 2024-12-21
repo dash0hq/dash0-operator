@@ -583,6 +583,38 @@ Metrics Service
 ---------------
 */}}
 ---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: {{ template "dash0-operator.chartName" . }}-dash0-view
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: validator
+    app.kubernetes.io/instance: dash0-view-validator-webhook
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+webhooks:
+  - name: validate-dash0-view.dash0.com
+    clientConfig:
+      caBundle: {{ default "" ( $ca.Cert | b64enc ) }}
+      service:
+        name: {{ template "dash0-operator.chartName" . }}-webhook-service
+        namespace: {{ .Release.Namespace }}
+        path: /v1alpha1/validate/monitoring
+    admissionReviewVersions:
+      - v1
+    rules:
+      - apiGroups:
+          - operator.dash0.com
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - dash0views
+    sideEffects: None
+    timeoutSeconds: 5
+---
 apiVersion: v1
 kind: Service
 metadata:
@@ -770,10 +802,10 @@ spec:
                       apiEndpoint:
                         description: |-
                           The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
-                          dashboards and check rules via the operator. This property is optional. The value needs to be the API endpoint
-                          of your Dash0 organization. The correct API endpoint can be copied fom https://app.dash0.com -> organization
-                          settings -> "Endpoints" -> "API". The correct endpoint value will always start with "https://api." and end in
-                          ".dash0.com"
+                          dashboards, check rules, synthetic checks and views via the operator. This property is optional. The value
+                          needs to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied fom
+                          https://app.dash0.com -> organization settings -> "Endpoints" -> "API". The correct endpoint value will always
+                          start with "https://api." and end in ".dash0.com"
                         type: string
                       authorization:
                         description: Mandatory authorization settings for sending
@@ -1257,7 +1289,7 @@ spec:
                       type: string
                     synchronizationStatus:
                       description: |-
-                        SynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
+                        ThirdPartySynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
                         dashboard, Prometheus rule) to the Dash0 API.
                       enum:
                       - successful
@@ -1307,7 +1339,7 @@ spec:
                       type: integer
                     synchronizationStatus:
                       description: |-
-                        SynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
+                        ThirdPartySynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
                         dashboard, Prometheus rule) to the Dash0 API.
                       enum:
                       - successful
@@ -1490,10 +1522,10 @@ spec:
                       apiEndpoint:
                         description: |-
                           The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
-                          dashboards and check rules via the operator. This property is optional. The value needs to be the API endpoint
-                          of your Dash0 organization. The correct API endpoint can be copied fom https://app.dash0.com -> organization
-                          settings -> "Endpoints" -> "API". The correct endpoint value will always start with "https://api." and end in
-                          ".dash0.com"
+                          dashboards, check rules, synthetic checks and views via the operator. This property is optional. The value
+                          needs to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied fom
+                          https://app.dash0.com -> organization settings -> "Endpoints" -> "API". The correct endpoint value will always
+                          start with "https://api." and end in ".dash0.com"
                         type: string
                       authorization:
                         description: Mandatory authorization settings for sending
@@ -2023,7 +2055,7 @@ spec:
                       type: string
                     synchronizationStatus:
                       description: |-
-                        SynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
+                        ThirdPartySynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
                         dashboard, Prometheus rule) to the Dash0 API.
                       enum:
                       - successful
@@ -2174,7 +2206,7 @@ spec:
                       type: integer
                     synchronizationStatus:
                       description: |-
-                        SynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
+                        ThirdPartySynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
                         dashboard, Prometheus rule) to the Dash0 API.
                       enum:
                       - successful

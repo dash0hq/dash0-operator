@@ -189,11 +189,13 @@ Here is a list of configuration options for this resource:
       See https://kubernetes.io/docs/concepts/configuration/secret/ for more information on Kubernetes secrets.
 * <a href="#operatorconfigurationresource.spec.export.dash0.apiEndpoint"><span id="operatorconfigurationresource.spec.export.dash0.apiEndpoint">`spec.export.dash0.apiEndpoint`</span></a>:
   The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
-  dashboards and check rules via the operator. This property is optional.
+  dashboards, check rules, synthetic checks and views via the operator.
+  This property is optional.
   The value needs to be the API endpoint of your Dash0 organization.
   The correct API endpoint can be copied fom https://app.dash0.com -> organization settings -> "Endpoints" -> "API".
   The correct endpoint value will always start with "https://api." and end in ".dash0.com".
-  If this property is omitted, managing dashboards and check rules via the operator will not work.
+  If this property is omitted, managing dashboards, check rules, synthetic checks and views via the operator will not
+  work.
 * <a href="#operatorconfigurationresource.spec.selfMonitoring.enabled"><span id="operatorconfigurationresource.spec.selfMonitoring.enabled">`spec.selfMonitoring.enabled`</span></a>:
   An opt-out for self-monitoring for the operator.
   If enabled, the operator will collect self-monitoring telemetry and send it to the configured Dash0 backend.
@@ -1855,6 +1857,23 @@ want it to collect telemetry, you can set `telemetryCollection.enabled` to `fals
 resource.
 This will disable the telemetry collection by the operator, and it will also instruct the operator to not deploy the
 OpenTelemetry collector in your cluster.
+
+## Managing Dash0 Views
+
+You can manage your Dash0 views via the Dash0 operator.
+
+Pre-requisites for this feature:
+* A Dash0 operator configuration resource has to be installed in the cluster.
+* The operator configuration resource must have the `apiEndpoint` property.
+* The operator configuration resource must have a Dash0 export configured with authorization
+  (either `token` or `secret-ref`).
+* The operator will only pick up Dash0 view resources in namespaces that have a Dash0 monitoring resource
+  deployed.
+* The operator will not synchronize Dash0 view resources in namespaces where the Dash0 monitoring resource
+  has the setting `synchronizeViews` set to `false`. (This setting is optional and defaults to `true` when
+  omitted.)
+
+TODO complete this section...
 
 ## Notes on ArgoCD
 
