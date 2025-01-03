@@ -716,6 +716,11 @@ func DeploymentWithExistingDash0Artifacts(namespace string, name string) *appsv1
 					Name:      "DASH0_OTEL_COLLECTOR_BASE_URL",
 					ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}},
 				},
+				{
+					// this ValueFrom will be removed and replaced by a simple Value
+					Name:      "OTEL_EXPORTER_OTLP_ENDPOINT",
+					ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.namespace"}},
+				},
 			},
 		},
 		{
@@ -737,7 +742,7 @@ func DeploymentWithExistingDash0Artifacts(namespace string, name string) *appsv1
 			},
 			Env: []corev1.EnvVar{
 				{
-					Name:  "DASH0_OTEL_COLLECTOR_BASE_URL",
+					Name:  "OTEL_EXPORTER_OTLP_ENDPOINT",
 					Value: "base url will be replaced",
 				},
 				{
@@ -833,7 +838,7 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 					ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "status.hostIP"}},
 				},
 				{
-					Name:  "DASH0_OTEL_COLLECTOR_BASE_URL",
+					Name:  "OTEL_EXPORTER_OTLP_ENDPOINT",
 					Value: OTelCollectorBaseUrlTest,
 				},
 			},
@@ -870,6 +875,10 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 				},
 				{
 					Name:  "DASH0_OTEL_COLLECTOR_BASE_URL",
+					Value: OTelCollectorBaseUrlTest,
+				},
+				{
+					Name:  "OTEL_EXPORTER_OTLP_ENDPOINT",
 					Value: OTelCollectorBaseUrlTest,
 				},
 			},
@@ -914,6 +923,10 @@ func simulateInstrumentedPodSpec(podSpec *corev1.PodSpec, meta *metav1.ObjectMet
 		},
 		{
 			Name:  "DASH0_OTEL_COLLECTOR_BASE_URL",
+			Value: OTelCollectorBaseUrlTest,
+		},
+		{
+			Name:  "OTEL_EXPORTER_OTLP_ENDPOINT",
 			Value: OTelCollectorBaseUrlTest,
 		},
 		{
@@ -1102,7 +1115,7 @@ func AddManagedFields(meta *metav1.ObjectMeta) {
 		FieldsType: "FieldsV1",
 		FieldsV1: &metav1.FieldsV1{
 			//nolint:lll
-			Raw: []byte(`{\"f:metadata\":{\"f:labels\":{\".\":{},\"f:dash0.com/init-container-image\":{},\"f:dash0.com/instrumented\":{},\"f:dash0.com/instrumented-by\":{},\"f:dash0.com/operator-image\":{}}},\"f:spec\":{\"f:template\":{\"f:metadata\":{\"f:labels\":{\"f:dash0.com/init-container-image\":{},\"f:dash0.com/instrumented\":{},\"f:dash0.com/instrumented-by\":{},\"f:dash0.com/operator-image\":{}}},\"f:spec\":{\"f:containers\":{\"k:{\\\"name\\\":\\\"test-container-0\\\"}\":{\"f:env\":{\".\":{},\"k:{\\\"name\\\":\\\"DASH0_NODE_IP\\\"}\":{\".\":{},\"f:name\":{},\"f:valueFrom\":{\".\":{},\"f:fieldRef\":{}}},\"k:{\\\"name\\\":\\\"DASH0_OTEL_COLLECTOR_BASE_URL\\\"}\":{\".\":{},\"f:name\":{},\"f:value\":{}},\"k:{\\\"name\\\":\\\"LD_PRELOAD\\\"}\":{\".\":{},\"f:name\":{},\"f:value\":{}}},\"f:volumeMounts\":{\".\":{},\"k:{\\\"mountPath\\\":\\\"/__dash0__\\\"}\":{\".\":{},\"f:mountPath\":{},\"f:name\":{}}}}},\"f:initContainers\":{\".\":{},\"k:{\\\"name\\\":\\\"dash0-instrumentation\\\"}\":{\".\":{},\"f:env\":{\".\":{},\"k:{\\\"name\\\":\\\"DASH0_INSTRUMENTATION_FOLDER_DESTINATION\\\"}\":{\".\":{},\"f:name\":{},\"f:value\":{}}},\"f:image\":{},\"f:imagePullPolicy\":{},\"f:name\":{},\"f:resources\":{},\"f:securityContext\":{\".\":{},\"f:allowPrivilegeEscalation\":{},\"f:privileged\":{},\"f:readOnlyRootFilesystem\":{},\"f:runAsGroup\":{},\"f:runAsUser\":{}},\"f:terminationMessagePath\":{},\"f:terminationMessagePolicy\":{},\"f:volumeMounts\":{\".\":{},\"k:{\\\"mountPath\\\":\\\"/__dash0__\\\"}\":{\".\":{},\"f:mountPath\":{},\"f:name\":{}}}}},\"f:volumes\":{\".\":{},\"k:{\\\"name\\\":\\\"dash0-instrumentation\\\"}\":{\".\":{},\"f:emptyDir\":{\".\":{},\"f:sizeLimit\":{}},\"f:name\":{}}}}}}}`),
+			Raw: []byte(`{\"f:metadata\":{\"f:labels\":{\".\":{},\"f:dash0.com/init-container-image\":{},\"f:dash0.com/instrumented\":{},\"f:dash0.com/instrumented-by\":{},\"f:dash0.com/operator-image\":{}}},\"f:spec\":{\"f:template\":{\"f:metadata\":{\"f:labels\":{\"f:dash0.com/init-container-image\":{},\"f:dash0.com/instrumented\":{},\"f:dash0.com/instrumented-by\":{},\"f:dash0.com/operator-image\":{}}},\"f:spec\":{\"f:containers\":{\"k:{\\\"name\\\":\\\"test-container-0\\\"}\":{\"f:env\":{\".\":{},\"k:{\\\"name\\\":\\\"DASH0_NODE_IP\\\"}\":{\".\":{},\"f:name\":{},\"f:valueFrom\":{\".\":{},\"f:fieldRef\":{}}},\"k:{\\\"name\\\":\\\"OTEL_EXPORTER_OTLP_ENDPOINT\\\"}\":{\".\":{},\"f:name\":{},\"f:value\":{}},\"k:{\\\"name\\\":\\\"LD_PRELOAD\\\"}\":{\".\":{},\"f:name\":{},\"f:value\":{}}},\"f:volumeMounts\":{\".\":{},\"k:{\\\"mountPath\\\":\\\"/__dash0__\\\"}\":{\".\":{},\"f:mountPath\":{},\"f:name\":{}}}}},\"f:initContainers\":{\".\":{},\"k:{\\\"name\\\":\\\"dash0-instrumentation\\\"}\":{\".\":{},\"f:env\":{\".\":{},\"k:{\\\"name\\\":\\\"DASH0_INSTRUMENTATION_FOLDER_DESTINATION\\\"}\":{\".\":{},\"f:name\":{},\"f:value\":{}}},\"f:image\":{},\"f:imagePullPolicy\":{},\"f:name\":{},\"f:resources\":{},\"f:securityContext\":{\".\":{},\"f:allowPrivilegeEscalation\":{},\"f:privileged\":{},\"f:readOnlyRootFilesystem\":{},\"f:runAsGroup\":{},\"f:runAsUser\":{}},\"f:terminationMessagePath\":{},\"f:terminationMessagePolicy\":{},\"f:volumeMounts\":{\".\":{},\"k:{\\\"mountPath\\\":\\\"/__dash0__\\\"}\":{\".\":{},\"f:mountPath\":{},\"f:name\":{}}}}},\"f:volumes\":{\".\":{},\"k:{\\\"name\\\":\\\"dash0-instrumentation\\\"}\":{\".\":{},\"f:emptyDir\":{\".\":{},\"f:sizeLimit\":{}},\"f:name\":{}}}}}}}`),
 		},
 	})
 }

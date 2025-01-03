@@ -46,6 +46,7 @@ build_or_pull_instrumentation_image() {
       --platform "$all_docker_platforms" \
       . \
       -t "${instrumentation_image}" \
+      --build-arg "otel_javaagent_version=$(cat ./jvm/version)"\
       2>&1
     ); then
       echo "${build_output}"
@@ -71,7 +72,15 @@ run_tests_for_runtime() {
 
   for t in "${script_dir}"/"${runtime}"/test-cases/*/ ; do
     test=$(basename "$(realpath "${t}")")
-    if docker_run_output=$(docker run \
+
+    if [ "${runtime}" = "jvm" ] && mvn_package_output=$(${script_dir}/${runtime}/test-cases/${test}/mvnw package -f "${script_dir}/${runtime}/test-cases/${test}" 2>&1) && docker_run_output=$(docker run \
+      --env-file="${script_dir}/${runtime}/test-cases/${test}/.env" \
+      "${image_name_test}" \
+      java -jar "/test-cases/${test}/target/app.jar" \
+      2>&1
+    ); then
+      printf "${GREEN}test case \"${test}\": OK${NC}\n"
+    elif [ "${runtime}" = "node" ] && docker_run_output=$(docker run \
       --env-file="${script_dir}/${runtime}/test-cases/${test}/.env" \
       "${image_name_test}" \
       node "/test-cases/${test}" \
@@ -81,6 +90,7 @@ run_tests_for_runtime() {
     else
       printf "${RED}test case \"${test}\": FAIL\n"
       printf "test output:${NC}\n"
+      echo "$mvn_package_output"
       echo "$docker_run_output"
       exit_code=1
       summary="$summary\n${runtime}/${base_image}\t- ${test}:\tfailed"

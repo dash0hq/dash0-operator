@@ -257,6 +257,8 @@ $(eval $@_IMAGE_REPOSITORY = $(1))
 $(eval $@_IMAGE_TAG = $(2))
 $(eval $@_CONTEXT = $(3))
 $(eval $@_DOCKERFILE = $(4))
+$(eval $@_EXTRA_ARGS = $(5))
+
 if [[ -n "$($@_IMAGE_REPOSITORY)" ]]; then                                                                \
   if [[ "$($@_IMAGE_REPOSITORY)" = *"/"* ]]; then                                                         \
     echo "not rebuilding the image $($@_IMAGE_REPOSITORY), this looks like a remote image";               \
@@ -265,8 +267,10 @@ if [[ -n "$($@_IMAGE_REPOSITORY)" ]]; then                                      
     if [[ -z $$dockerfile ]]; then                                                                        \
         dockerfile=$($@_CONTEXT)/Dockerfile;                                                              \
     fi;                                                                                                   \
-    echo $(CONTAINER_TOOL) build -t $($@_IMAGE_REPOSITORY):$($@_IMAGE_TAG) -f $$dockerfile $($@_CONTEXT); \
-    $(CONTAINER_TOOL) build -t $($@_IMAGE_REPOSITORY):$($@_IMAGE_TAG) -f $$dockerfile $($@_CONTEXT);      \
+    echo $(CONTAINER_TOOL) build --no-cache -t $($@_IMAGE_REPOSITORY):$($@_IMAGE_TAG) -f $$dockerfile $($@_CONTEXT)  \
+	  $($@_EXTRA_ARGS);                                                                                   \
+    $(CONTAINER_TOOL) build --no-cache -t $($@_IMAGE_REPOSITORY):$($@_IMAGE_TAG) -f $$dockerfile $($@_CONTEXT)       \
+	  $($@_EXTRA_ARGS);                                                                                   \
   fi;                                                                                                     \
 elif [[ -n "$(OPERATOR_HELM_CHART_URL)" ]]; then                                                          \
   echo "not rebuilding image, a remote Helm chart is used with the default image from the chart";         \
@@ -279,7 +283,8 @@ docker-build-controller: ## Build the manager container image.
 
 .PHONY: docker-build-instrumentation
 docker-build-instrumentation: ## Build the instrumentation image.
-	@$(call build_container_image,$(INSTRUMENTATION_IMG_REPOSITORY),$(INSTRUMENTATION_IMG_TAG),images/instrumentation)
+	$(eval $@_OTEL_JAVAAGENT_VERSION = $(shell cat images/instrumentation/jvm/version))
+	@$(call build_container_image,$(INSTRUMENTATION_IMG_REPOSITORY),$(INSTRUMENTATION_IMG_TAG),images/instrumentation,images/instrumentation/Dockerfile,--build-arg otel_javaagent_version=$($@_OTEL_JAVAAGENT_VERSION))
 
 .PHONY: docker-build-collector
 docker-build-collector: ## Build the OpenTelemetry collector container image.

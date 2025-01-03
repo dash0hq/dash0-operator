@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: spring-micrometer-tracing-otel
+management:
+  tracing:
+    sampling:
+      probability: 1
+  otlp:
+    tracing:
+      transport: http
+      endpoint: http://localhost:4318/v1/traces
