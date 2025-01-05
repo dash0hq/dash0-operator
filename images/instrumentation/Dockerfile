@@ -18,12 +18,11 @@ RUN gcc \
 
 # download OpenTelemetry Java agent
 FROM alpine:3.21.0 AS build-jvm
-ARG otel_javaagent_version="latest"
 RUN apk --no-cache add curl jq
 RUN mkdir -p /dash0-init-container/instrumentation/jvm
 WORKDIR /dash0-init-container/instrumentation/jvm
-ENV VERSION=$otel_javaagent_version
-RUN curl -s "https://api.github.com/repos/open-telemetry/opentelemetry-java-instrumentation/releases/tags/${VERSION}" | \
+COPY jvm/version jvm/version
+RUN curl -s "https://api.github.com/repos/open-telemetry/opentelemetry-java-instrumentation/releases/tags/$(cat jvm/version | tr -d '\n')" | \
   jq -r '.assets[] | select(.content_type == "application/java-archive") | .browser_download_url' | \
   xargs curl -s -L -o opentelemetry-javaagent.jar
 

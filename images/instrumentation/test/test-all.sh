@@ -46,7 +46,6 @@ build_or_pull_instrumentation_image() {
       --platform "$all_docker_platforms" \
       . \
       -t "${instrumentation_image}" \
-      --build-arg "otel_javaagent_version=$(cat ./jvm/version)"\
       2>&1
     ); then
       echo "${build_output}"
