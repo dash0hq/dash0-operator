@@ -21,7 +21,8 @@ The Dash0 operator is currently available as a technical preview.
 
 Supported runtimes for automatic workload instrumentation:
 
-* Node.js 18 and beyond
+* Java 8+
+* Node.js 18+
 
 Other features like metrics and log collection are independent of the runtime of workloads.
 
@@ -878,7 +879,7 @@ Prometheus Rule Synchronization Results:
 ## Notes on Running The Operator on Apple Silicon
 
 When running the operator on an Apple Silicon host (M1, M3 etc.), for example via Docker Desktop, some attention needs
-to be paid to the CPU architecture of images. The architcture of the Kubernetes node for this scenario will be `arm64`.
+to be paid to the CPU architecture of images. The architecture of the Kubernetes node for this scenario will be `arm64`.
 When running a single-architecture `amd64` image (as opposed to a single-architecture `arm64` image or a
 [multi-platform build](https://docs.docker.com/build/building/multi-platform/) containing `amd64` as well as `arm64`)
 the operator will prevent the container from starting.

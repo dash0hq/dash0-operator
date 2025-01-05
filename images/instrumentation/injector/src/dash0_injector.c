@@ -194,8 +194,17 @@ char *getenv(const char *name) {
       // (/proc/env/<pid>) directly, which we cannot affect with the getenv
       // hook. So, instead, we append the resource attributes as the
       // -Dotel.resource.attributes Java system property.
-      // TODO Handle the case when there ALREADY is the
-      // -Dotel.resource.attributes system property set.
+      // If the -Dotel.resource.attributes system property is already set,
+      // the user-defined property will take precedence:
+      //
+      // % JAVA_TOOL_OPTIONS="-Dprop=B" jshell -R -Dprop=A
+      // Picked up JAVA_TOOL_OPTIONS: -Dprop=B
+      // |  Welcome to JShell -- Version 17.0.12
+      // |  For an introduction type: /help intro
+      //
+      // jshell> System.getProperty("prop")
+      // $1 ==> "A"
+
       char *otelResourceAttributesViaEnv =
           __getenv(OTEL_RESOURCE_ATTRIBUTES_ENV_VAR_NAME);
       __strcat(cachedModifiedRuntimeOptionsValue,
