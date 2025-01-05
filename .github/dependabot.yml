@@ -25,7 +25,14 @@ updates:
       development-dependencies:
         dependency-type: "development"
 
+  # Dash0 OpenTelemetry Distro for Node.js
   - package-ecosystem: "npm"
     directory: "images/instrumentation/node.js/"
+    schedule:
+      interval: "daily"
+
+  # OpenTelemetry Java agent
+  - package-ecosystem: "maven"
+    directory: "images/instrumentation/jvm/"
     schedule:
       interval: "daily"
