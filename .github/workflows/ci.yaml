@@ -77,7 +77,7 @@ jobs:
   injector_binary_and_instrumentation_image_tests:
     name: Injector Binary & Instrumentation Image Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
