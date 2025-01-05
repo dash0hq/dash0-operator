@@ -72,24 +72,21 @@ run_tests_for_runtime() {
   for t in "${script_dir}"/"${runtime}"/test-cases/*/ ; do
     test=$(basename "$(realpath "${t}")")
 
-    if [ "${runtime}" = "jvm" ] && docker_run_output=$(docker run \
+    if [ "${runtime}" = "jvm" ] && docker run \
       --env-file="${script_dir}/${runtime}/test-cases/${test}/.env" \
       "${image_name_test}" \
       java -jar "/test-cases/${test}/target/app.jar" \
-      2>&1
-    ); then
+      2>&1; then
       printf "${GREEN}test case \"${test}\": OK${NC}\n"
-    elif [ "${runtime}" = "node" ] && docker_run_output=$(docker run \
+    elif [ "${runtime}" = "node" ] && docker run \
       --env-file="${script_dir}/${runtime}/test-cases/${test}/.env" \
       "${image_name_test}" \
       node "/test-cases/${test}" \
-      2>&1
-    ); then
+      2>&1; then
       printf "${GREEN}test case \"${test}\": OK${NC}\n"
     else
       printf "${RED}test case \"${test}\": FAIL\n"
       printf "test output:${NC}\n"
-      echo "$docker_run_output"
       exit_code=1
       summary="$summary\n${runtime}/${base_image}\t- ${test}:\tfailed"
     fi
@@ -123,18 +120,13 @@ run_tests_for_architecture() {
       echo "- base image: '${base_image}'"
       image_name_test="test-${runtime}-${arch}:latest"
       echo "building test image for ${arch}/${runtime}/${base_image} with instrumentation image ${instrumentation_image}"
-      if ! build_output=$(
-        docker build \
-          --platform "$docker_platform" \
-          --build-arg "instrumentation_image=${instrumentation_image}" \
-          --build-arg "base_image=${base_image}" \
-          "${script_dir}/${runtime}" \
-          -t "$image_name_test" \
-          2>&1
-      ); then
-        echo "${build_output}"
-        exit 1
-      fi
+      docker build \
+        --platform "$docker_platform" \
+        --build-arg "instrumentation_image=${instrumentation_image}" \
+        --build-arg "base_image=${base_image}" \
+        "${script_dir}/${runtime}" \
+        -t "$image_name_test" \
+        2>&1;
       run_tests_for_runtime "${runtime}" "$image_name_test" "$base_image"
       echo
     done
