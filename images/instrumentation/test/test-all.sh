@@ -72,7 +72,7 @@ run_tests_for_runtime() {
   for t in "${script_dir}"/"${runtime}"/test-cases/*/ ; do
     test=$(basename "$(realpath "${t}")")
 
-    if [ "${runtime}" = "jvm" ] && mvn_package_output=$("${script_dir}/${runtime}/test-cases/${test}/mvnw" package -f "${script_dir}/${runtime}/test-cases/${test}" 2>&1) && docker_run_output=$(docker run \
+    if [ "${runtime}" = "jvm" ] && docker_run_output=$(docker run \
       --env-file="${script_dir}/${runtime}/test-cases/${test}/.env" \
       "${image_name_test}" \
       java -jar "/test-cases/${test}/target/app.jar" \
@@ -89,7 +89,6 @@ run_tests_for_runtime() {
     else
       printf "${RED}test case \"${test}\": FAIL\n"
       printf "test output:${NC}\n"
-      echo "$mvn_package_output"
       echo "$docker_run_output"
       exit_code=1
       summary="$summary\n${runtime}/${base_image}\t- ${test}:\tfailed"

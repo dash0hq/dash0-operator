@@ -9,8 +9,9 @@ FROM ${instrumentation_image} AS init
 FROM ${test_image}
 
 COPY test-cases /test-cases
+COPY .m2 /.m2
 
-RUN for test in /test-cases/*; do (cd "/${test}" && JAVA_HOME=$(which java | xargs dirname | xargs dirname) "./mvnw" package); done
+RUN for test in /test-cases/*; do (cd "/${test}" && JAVA_HOME=$(which java | xargs dirname | xargs dirname) "./mvnw" "-gs" "/.m2/settings.xml" package); done
 
 # The following lines emulate the behavior of running the instrumentation image as a Kubernetes init container and
 # setting the LD_PRELOAD environment variable via the operator.

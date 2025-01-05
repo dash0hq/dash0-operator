@@ -1,6 +1,6 @@
 spring:
   application:
-    name: spring-micrometer-tracing-otel
+    name: spring-micrometer-otel
 management:
   tracing:
     sampling:
