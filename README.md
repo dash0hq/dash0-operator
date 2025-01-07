@@ -18,7 +18,8 @@ runtimes, automatic log collection and metrics.
 
 Auto-instrumentation if supported for the following runtimes:
 
-* Node.js 18 and beyond, using [Dash0 Node.js OpenTelemetry Distribution](https://github.com/dash0hq/opentelemetry-js-distribution)
+* Node.js 18+, using [Dash0 Node.js OpenTelemetry distribution](https://github.com/dash0hq/opentelemetry-js-distribution)
+* Java 8+, using the [OpenTelemetry Java agent](https://github.com/open-telemetry/opentelemetry-java-instrumentation)
 
 For more information on how the Dash0 operator automatically traces your applications, see the [Automatic Workload Instrumentation](https://artifacthub.io/packages/helm/dash0-operator/dash0-operator#automatic-workload-instrumentation) section of the Dash0 operator Helm chart documentation.
 
