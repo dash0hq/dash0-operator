@@ -21,20 +21,22 @@ import (
 )
 
 type ContainerExpectations struct {
-	VolumeMounts                             int
-	Dash0VolumeMountIdx                      int
-	EnvVars                                  int
-	LdPreloadEnvVarIdx                       int
-	LdPreloadValue                           string
-	LdPreloadUsesValueFrom                   bool
-	NodeIpIdx                                int
-	Dash0CollectorBaseUrlEnvVarIdx           int
-	Dash0CollectorBaseUrlEnvVarExpectedValue string
-	Dash0NamespaceNameEnvVarIdx              int
-	Dash0PodNameEnvVarIdx                    int
-	Dash0PodUidEnvVarIdx                     int
-	Dash0ContainerNameEnvVarIdx              int
-	Dash0ContainerNameEnvVarExpectedValue    string
+	VolumeMounts                                int
+	Dash0VolumeMountIdx                         int
+	EnvVars                                     int
+	LdPreloadEnvVarIdx                          int
+	LdPreloadValue                              string
+	LdPreloadUsesValueFrom                      bool
+	Dash0NodeIpIdx                              int
+	OtelExporterOtlpEndpointEnvVarIdx           int
+	OtelExporterOtlpEndpointEnvVarExpectedValue string
+	Dash0CollectorBaseUrlEnvVarIdx              int
+	Dash0CollectorBaseUrlEnvVarExpectedValue    string
+	Dash0NamespaceNameEnvVarIdx                 int
+	Dash0PodNameEnvVarIdx                       int
+	Dash0PodUidEnvVarIdx                        int
+	Dash0ContainerNameEnvVarIdx                 int
+	Dash0ContainerNameEnvVarExpectedValue       string
 }
 
 type PodSpecExpectations struct {
@@ -75,18 +77,20 @@ func BasicInstrumentedPodSpecExpectations() PodSpecExpectations {
 		InitContainers:        1,
 		Dash0InitContainerIdx: 0,
 		Containers: []ContainerExpectations{{
-			VolumeMounts:                             1,
-			Dash0VolumeMountIdx:                      0,
-			EnvVars:                                  7,
-			LdPreloadEnvVarIdx:                       0,
-			NodeIpIdx:                                1,
-			Dash0CollectorBaseUrlEnvVarIdx:           2,
-			Dash0CollectorBaseUrlEnvVarExpectedValue: OTelCollectorBaseUrlTest,
-			Dash0NamespaceNameEnvVarIdx:              3,
-			Dash0PodNameEnvVarIdx:                    4,
-			Dash0PodUidEnvVarIdx:                     5,
-			Dash0ContainerNameEnvVarIdx:              6,
-			Dash0ContainerNameEnvVarExpectedValue:    "test-container-0",
+			VolumeMounts:                                1,
+			Dash0VolumeMountIdx:                         0,
+			EnvVars:                                     8,
+			LdPreloadEnvVarIdx:                          0,
+			Dash0NodeIpIdx:                              1,
+			Dash0CollectorBaseUrlEnvVarIdx:              2,
+			Dash0CollectorBaseUrlEnvVarExpectedValue:    OTelCollectorBaseUrlTest,
+			OtelExporterOtlpEndpointEnvVarIdx:           3,
+			OtelExporterOtlpEndpointEnvVarExpectedValue: OTelCollectorBaseUrlTest,
+			Dash0NamespaceNameEnvVarIdx:                 4,
+			Dash0PodNameEnvVarIdx:                       5,
+			Dash0PodUidEnvVarIdx:                        6,
+			Dash0ContainerNameEnvVarIdx:                 7,
+			Dash0ContainerNameEnvVarExpectedValue:       "test-container-0",
 		}},
 	}
 }
@@ -303,7 +307,7 @@ func verifyPodSpec(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
 						"/__dash0__/dash0_injector.so",
 					))
 				}
-			} else if j == containerExpectations.NodeIpIdx {
+			} else if j == containerExpectations.Dash0NodeIpIdx {
 				Expect(envVar.Name).To(Equal("DASH0_NODE_IP"))
 				valueFrom := envVar.ValueFrom
 				Expect(valueFrom).ToNot(BeNil())
@@ -313,6 +317,10 @@ func verifyPodSpec(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
 			} else if j == containerExpectations.Dash0CollectorBaseUrlEnvVarIdx {
 				Expect(envVar.Name).To(Equal("DASH0_OTEL_COLLECTOR_BASE_URL"))
 				Expect(envVar.Value).To(Equal(containerExpectations.Dash0CollectorBaseUrlEnvVarExpectedValue))
+				Expect(envVar.ValueFrom).To(BeNil())
+			} else if j == containerExpectations.OtelExporterOtlpEndpointEnvVarIdx {
+				Expect(envVar.Name).To(Equal("OTEL_EXPORTER_OTLP_ENDPOINT"))
+				Expect(envVar.Value).To(Equal(containerExpectations.OtelExporterOtlpEndpointEnvVarExpectedValue))
 				Expect(envVar.ValueFrom).To(BeNil())
 			} else if j == containerExpectations.Dash0NamespaceNameEnvVarIdx {
 				Expect(envVar.Name).To(Equal("DASH0_NAMESPACE_NAME"))

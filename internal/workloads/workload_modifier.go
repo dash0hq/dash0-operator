@@ -24,18 +24,19 @@ import (
 const (
 	initContainerName = "dash0-instrumentation"
 
-	dash0VolumeName                   = "dash0-instrumentation"
-	dash0DirectoryEnvVarName          = "DASH0_INSTRUMENTATION_FOLDER_DESTINATION"
-	dash0InstrumentationBaseDirectory = "/__dash0__"
-	dash0InstrumentationDirectory     = "/__dash0__/instrumentation"
-	envVarLdPreloadName               = "LD_PRELOAD"
-	envVarLdPreloadValue              = "/__dash0__/dash0_injector.so"
-	envVarDash0CollectorBaseUrlName   = "DASH0_OTEL_COLLECTOR_BASE_URL"
-	envVarDash0NodeIp                 = "DASH0_NODE_IP"
-	envVarDash0NamespaceName          = "DASH0_NAMESPACE_NAME"
-	envVarDash0PodName                = "DASH0_POD_NAME"
-	envVarDash0PodUid                 = "DASH0_POD_UID"
-	envVarDash0ContainerName          = "DASH0_CONTAINER_NAME"
+	dash0VolumeName                    = "dash0-instrumentation"
+	dash0DirectoryEnvVarName           = "DASH0_INSTRUMENTATION_FOLDER_DESTINATION"
+	dash0InstrumentationBaseDirectory  = "/__dash0__"
+	dash0InstrumentationDirectory      = "/__dash0__/instrumentation"
+	envVarLdPreloadName                = "LD_PRELOAD"
+	envVarLdPreloadValue               = "/__dash0__/dash0_injector.so"
+	envVarOtelExporterOtlpEndpointName = "OTEL_EXPORTER_OTLP_ENDPOINT"
+	envVarDash0CollectorBaseUrlName    = "DASH0_OTEL_COLLECTOR_BASE_URL"
+	envVarDash0NodeIp                  = "DASH0_NODE_IP"
+	envVarDash0NamespaceName           = "DASH0_NAMESPACE_NAME"
+	envVarDash0PodName                 = "DASH0_POD_NAME"
+	envVarDash0PodUid                  = "DASH0_POD_UID"
+	envVarDash0ContainerName           = "DASH0_CONTAINER_NAME"
 )
 
 var (
@@ -281,6 +282,15 @@ func (m *ResourceModifier) addEnvironmentVariables(container *corev1.Container, 
 		},
 	)
 
+	// Keep backwards compatibility with the Dash0 Node.js distro
+	m.addOrReplaceEnvironmentVariable(
+		container,
+		corev1.EnvVar{
+			Name:  envVarOtelExporterOtlpEndpointName,
+			Value: collectorBaseUrl,
+		},
+	)
+
 	m.addOrReplaceEnvironmentVariable(
 		container,
 		corev1.EnvVar{
@@ -476,6 +486,7 @@ func (m *ResourceModifier) removeEnvironmentVariables(container *corev1.Containe
 	m.removeLdPreload(container)
 	m.removeEnvironmentVariable(container, envVarDash0NodeIp)
 	m.removeEnvironmentVariable(container, envVarDash0CollectorBaseUrlName)
+	m.removeEnvironmentVariable(container, envVarOtelExporterOtlpEndpointName)
 	m.removeEnvironmentVariable(container, envVarDash0NamespaceName)
 	m.removeEnvironmentVariable(container, envVarDash0PodName)
 	m.removeEnvironmentVariable(container, envVarDash0PodUid)
