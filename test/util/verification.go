@@ -28,10 +28,10 @@ type ContainerExpectations struct {
 	LdPreloadValue                              string
 	LdPreloadUsesValueFrom                      bool
 	Dash0NodeIpIdx                              int
-	OtelExporterOtlpEndpointEnvVarIdx           int
-	OtelExporterOtlpEndpointEnvVarExpectedValue string
 	Dash0CollectorBaseUrlEnvVarIdx              int
 	Dash0CollectorBaseUrlEnvVarExpectedValue    string
+	OtelExporterOtlpEndpointEnvVarIdx           int
+	OtelExporterOtlpEndpointEnvVarExpectedValue string
 	Dash0NamespaceNameEnvVarIdx                 int
 	Dash0PodNameEnvVarIdx                       int
 	Dash0PodUidEnvVarIdx                        int
