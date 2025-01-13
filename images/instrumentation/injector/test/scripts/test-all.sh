@@ -48,15 +48,17 @@ run_tests_for_architecture_and_libc_flavor() {
 copy_lines=false
 rm -f "$dockerfile_injector_build"
 while IFS= read -r line; do
+  if [[ "$line" =~ ^.*injector_build_start.*$ ]]; then
+    copy_lines=true
+    continue
+  fi
+  if [[ $copy_lines == true && "$line" =~ ^.*injector_build_end.*$ ]]; then
+    copy_lines=false
+    continue
+  fi
   if [[ "$line" =~ ^[[:space:]]*#.* ]]; then
     # skip comments
     continue
-  fi
-  if [[ $copy_lines == true && "$line" =~ ^FROM[[:space:]]+.*[[:space:]]+AS[[:space:]]+build-node.js$ ]]; then
-    copy_lines=false
-  fi
-  if [[ "$line" =~ ^FROM[[:space:]]+.*[[:space:]]+AS[[:space:]]+build-injector$ ]]; then
-    copy_lines=true
   fi
   if [[ $copy_lines == true ]]; then
     echo "$line" >> "$dockerfile_injector_build"

@@ -1,3 +1,5 @@
+# injector_build_start - do not remove this line (see images/instrumentation/injector/test/scripts/test-all.sh)
+
 # build injector
 FROM ubuntu:24.04 AS build-injector
 
@@ -15,6 +17,8 @@ RUN gcc \
   -Wl,--version-script=src/dash0_injector.exports.map \
   src/dash0_injector.c \
   -o dash0_injector.so
+
+# injector_build_end - do not remove this line (see images/instrumentation/injector/test/scripts/test-all.sh)
 
 # download OpenTelemetry Java agent
 FROM openjdk:24-jdk-bookworm AS build-jvm
