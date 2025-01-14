@@ -149,7 +149,7 @@ jobs:
       - name: assemble instrumentation test image name
         id: instrumentation-test-image
         run: |
-          export image_tag=$( echo "${{ github.head_ref || github.ref_name }}" | sed 's/[^a-zA-Z0-9_\-]/\_/g' | head -c 60 )
+          export image_tag=$( echo "${{ github.head_ref || github.ref_name }}" | sed 's/[^a-zA-Z0-9_\.\-]/\_/g' )
           echo "image_name=ghcr.io/dash0hq/instrumentation-ci-test:$image_tag" >> $GITHUB_OUTPUT
 
       - name: build temporary instrumentation image
@@ -157,8 +157,8 @@ jobs:
         # Dependabot PRs currently fail in this step, see
         # https://stackoverflow.com/questions/74788092/github-dependabot-doesnt-have-permissions-to-publish-to-ghcr-how-can-i-give-it
         # This can be worked around by ammending the Dependabot commit and force-pushing it.
-        # (We can probably remove some of the sed-/head-stuff in the previous step, this was introduced because the
-        # suspicion was that the HTTP 403 was somehow related to the image tag, it very probably is not.)
+        # (The original suspicion was that the HTTP 403 was somehow related to the image tag, but this is purely a
+        # Dependabot permission issue.)
         # See also: https://docs.github.com/en/code-security/dependabot
         # Maybe we can also allow Dependabot PRs to dry-run the Helm chart publishing, that is, remove the
         # github.actor != 'dependabot[bot]' condition we have on those steps.
