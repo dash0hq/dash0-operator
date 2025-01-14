@@ -61,8 +61,9 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		for _, wrapper := range desiredState {
 			object := wrapper.object
 			annotations := object.GetAnnotations()
-			Expect(annotations).To(HaveLen(1))
+			Expect(annotations).To(HaveLen(2))
 			Expect(annotations["argocd.argoproj.io/sync-options"]).To(Equal("Prune=false"))
+			Expect(annotations["argocd.argoproj.io/compare-options"]).To(Equal("IgnoreExtraneous"))
 		}
 		collectorConfigConfigMapContent := getDaemonSetCollectorConfigConfigMapContent(desiredState)
 		Expect(collectorConfigConfigMapContent).To(ContainSubstring(fmt.Sprintf("endpoint: %s", EndpointDash0TestQuoted)))
