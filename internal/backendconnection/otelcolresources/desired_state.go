@@ -1091,10 +1091,12 @@ func addCommonMetadata(object client.Object) clientObject {
 	//   level resources are pruned (that is basically the same as resources without an owner reference).
 	// * The docs for preventing this on a resource level are here:
 	//   https://argo-cd.readthedocs.io/en/stable/user-guide/sync-options/#no-prune-resources
+	//   https://argo-cd.readthedocs.io/en/stable/user-guide/compare-options/#ignoring-resources-that-are-extraneous
 	if object.GetAnnotations() == nil {
 		object.SetAnnotations(map[string]string{})
 	}
 	object.GetAnnotations()["argocd.argoproj.io/sync-options"] = "Prune=false"
+	object.GetAnnotations()["argocd.argoproj.io/compare-options"] = "IgnoreExtraneous"
 	return clientObject{
 		object: object,
 	}
