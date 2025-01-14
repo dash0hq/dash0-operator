@@ -70,8 +70,10 @@ type CheckRule struct {
 
 const (
 	thresholdReference                             = "$__threshold"
-	thresholdDegradedAnnotation                    = "threshold-degraded"
-	thresholdCriticalAnnotation                    = "threshold-critical"
+	thresholdDegradedAnnotation                    = "dash0-threshold-degraded"
+	thresholdDegradedAnnotationLegacy              = "threshold-degraded"
+	thresholdCriticalAnnotation                    = "dash0-threshold-critical"
+	thresholdCriticalAnnotationLegacy              = "threshold-critical"
 	thresholdAnnotationsMissingMessagePattern      = "the rule uses the token %s in its expression, but has neither the %s nor the %s annotation."
 	thresholdAnnotationsNonNumericalMessagePattern = "the rule uses the token %s in its expression, but its threshold-%s annotation is not numerical: %s."
 )
@@ -675,10 +677,19 @@ func validateThreshold(
 	annotations map[string]string,
 ) []string {
 	hasThresholdInExpression := strings.Contains(expression, thresholdReference)
-	degradedThresholdValue, hasThresholdDegradedInAnnotation := annotations[thresholdDegradedAnnotation]
-	criticalThresholdValue, hasThresholdCriticalInAnnotation := annotations[thresholdCriticalAnnotation]
+	degradedThresholdValue, hasThresholdDegradedAnnotation := annotations[thresholdDegradedAnnotation]
+	if !hasThresholdDegradedAnnotation {
+		// In January 2025, the annotation names were changed to start with "dash0-", that is, threshold-degraded became
+		// dash0-threshold-degraded. For a grace period, we allow both names. At some point we can remove the check for
+		// the legacy name.
+		degradedThresholdValue, hasThresholdDegradedAnnotation = annotations[thresholdDegradedAnnotationLegacy]
+	}
+	criticalThresholdValue, hasThresholdCriticalAnnotation := annotations[thresholdCriticalAnnotation]
+	if !hasThresholdCriticalAnnotation {
+		criticalThresholdValue, hasThresholdCriticalAnnotation = annotations[thresholdCriticalAnnotationLegacy]
+	}
 
-	if hasThresholdInExpression && !hasThresholdDegradedInAnnotation && !hasThresholdCriticalInAnnotation {
+	if hasThresholdInExpression && !hasThresholdDegradedAnnotation && !hasThresholdCriticalAnnotation {
 		return append(validationIssues, fmt.Sprintf(
 			thresholdAnnotationsMissingMessagePattern,
 			thresholdReference,
@@ -687,11 +698,11 @@ func validateThreshold(
 		))
 	}
 
-	if !hasThresholdDegradedInAnnotation && !hasThresholdCriticalInAnnotation {
+	if !hasThresholdDegradedAnnotation && !hasThresholdCriticalAnnotation {
 		return validationIssues
 	}
 
-	if hasThresholdDegradedInAnnotation {
+	if hasThresholdDegradedAnnotation {
 		_, err := strconv.ParseFloat(degradedThresholdValue, 32)
 		if err != nil {
 			validationIssues = append(
@@ -705,7 +716,7 @@ func validateThreshold(
 			)
 		}
 	}
-	if hasThresholdCriticalInAnnotation {
+	if hasThresholdCriticalAnnotation {
 		_, err := strconv.ParseFloat(criticalThresholdValue, 32)
 		if err != nil {
 			validationIssues = append(
