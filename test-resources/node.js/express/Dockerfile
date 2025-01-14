@@ -11,5 +11,4 @@ COPY --chown=node:node package.json .
 COPY --chown=node:node package-lock.json .
 RUN npm ci --omit=dev
 COPY --chown=node:node . .
-EXPOSE 1207
 ENTRYPOINT [ "node", "app.js" ]

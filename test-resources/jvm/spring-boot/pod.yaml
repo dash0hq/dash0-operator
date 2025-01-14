@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: dash0-operator-jvm-spring-boot-test-pod-service
+spec:
+  selector:
+    app: dash0-operator-jvm-spring-boot-test-pod-app
+  ports:
+    - port: 1311
+      targetPort: 1311
+  type: LoadBalancer
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dash0-operator-jvm-spring-boot-test-pod
+  labels:
+    app: dash0-operator-jvm-spring-boot-test-pod-app
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "1311"
+spec:
+  containers:
+    - name: dash0-operator-jvm-spring-boot-test-pod-app
+      image: "dash0-operator-jvm-spring-boot-test-app:latest"
+      env:
+        - name: PORT
+          value: "1311"
+        - name: DASH0_DEBUG
+          value: "true"
+      ports:
+        - containerPort: 1311
+      imagePullPolicy: Never
+      readinessProbe:
+        httpGet:
+          path: /ready
+          port: 1311
+        initialDelaySeconds: 1
+        periodSeconds: 1
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dash0-operator-jvm-spring-boot-test-pod-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /pod(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: dash0-operator-jvm-spring-boot-test-pod-service
+            port:
+              number: 1311

@@ -17,67 +17,83 @@ import (
 
 const (
 	tracesJsonMaxLineLength = 1_048_576
+
+	httpTargetAttrib = "http.target"
+	httpRouteAttrib  = "http.route"
+	urlQueryAttrib   = "url.query"
 )
 
 var (
 	traceUnmarshaller = &ptrace.JSONUnmarshaler{}
 )
 
-func verifySpans(g Gomega, isBatch bool, workloadType string, port int, httpPathWithQuery string) {
+func verifySpans(
+	g Gomega,
+	runtime runtimeType,
+	workloadType workloadType,
+	route string,
+	query string,
+) {
 	allMatchResults :=
 		sendRequestAndFindMatchingSpans(
 			g,
-			isBatch,
+			runtime,
 			workloadType,
-			port,
-			httpPathWithQuery,
+			route,
+			query,
 			nil,
 			true,
 		)
 	allMatchResults.expectAtLeastOneMatch(
 		g,
-		fmt.Sprintf("%s: expected to find at least one matching HTTP server span", workloadType),
+		fmt.Sprintf("%s: expected to find at least one matching HTTP server span", workloadType.workloadTypeString),
 	)
 }
 
-func verifyNoSpans(g Gomega, isBatch bool, workloadType string, port int, httpPathWithQuery string) {
+func verifyNoSpans(
+	g Gomega,
+	runtime runtimeType,
+	workloadType workloadType,
+	route string,
+	query string,
+) {
 	timestampLowerBound := time.Now()
 	allMatchResults :=
 		sendRequestAndFindMatchingSpans(
 			g,
-			isBatch,
+			runtime,
 			workloadType,
-			port,
-			httpPathWithQuery,
+			route,
+			query,
 			&timestampLowerBound,
 			false,
 		)
 	allMatchResults.expectZeroMatches(
 		g,
-		fmt.Sprintf("%s: expected to find no matching HTTP server span", workloadType),
+		fmt.Sprintf("%s: expected to find no matching HTTP server span", workloadType.workloadTypeString),
 	)
 }
 
 func sendRequestAndFindMatchingSpans(
 	g Gomega,
-	isBatch bool,
-	workloadType string,
-	port int,
-	httpPathWithQuery string,
+	runtime runtimeType,
+	workloadType workloadType,
+	route string,
+	query string,
 	timestampLowerBound *time.Time,
 	checkResourceAttributes bool,
 ) MatchResultList[ptrace.ResourceSpans, ptrace.Span] {
-	if !isBatch {
-		sendRequest(g, workloadType, port, httpPathWithQuery)
+	if !workloadType.isBatch {
+		sendRequest(g, runtime, workloadType, route, query)
 	}
 	var resourceMatchFn func(ptrace.ResourceSpans, *ResourceMatchResult[ptrace.ResourceSpans])
 	if checkResourceAttributes {
-		resourceMatchFn = resourceSpansHaveExpectedResourceAttributes(workloadType)
+		resourceMatchFn = resourceSpansHaveExpectedResourceAttributes(runtime, workloadType)
 	}
 	return fileHasMatchingSpan(
 		g,
 		resourceMatchFn,
-		matchHttpServerSpanWithHttpTarget(httpPathWithQuery),
+		matchHttpServerSpanWithHttpTarget(route, query),
 		timestampLowerBound,
 	)
 }
@@ -169,7 +185,7 @@ func hasMatchingSpans(
 }
 
 //nolint:all
-func resourceSpansHaveExpectedResourceAttributes(workloadType string) func(
+func resourceSpansHaveExpectedResourceAttributes(runtime runtimeType, workloadType workloadType) func(
 	ptrace.ResourceSpans,
 	*ResourceMatchResult[ptrace.ResourceSpans],
 ) {
@@ -178,12 +194,12 @@ func resourceSpansHaveExpectedResourceAttributes(workloadType string) func(
 
 		// Note: On kind clusters, the workload type attribute (k8s.deployment.name) etc. is often missing. This needs
 		// to be investigated more.
-		if workloadType == "replicaset" {
+		if workloadType.workloadTypeString == "replicaset" {
 			// There is no k8s.replicaset.name attribute.
 			matchResult.addSkippedAssertion("k8s.replicaset.name", "not checked, there is no k8s.replicaset.name attribute")
 		} else {
-			workloadNameKey := fmt.Sprintf("k8s.%s.name", workloadType)
-			expectedWorkloadName := fmt.Sprintf("dash0-operator-nodejs-20-express-test-%s", workloadType)
+			workloadNameKey := fmt.Sprintf("k8s.%s.name", workloadType.workloadTypeString)
+			expectedWorkloadName := workloadName(runtime, workloadType)
 			actualWorkloadName, hasWorkloadName := attributes.Get(workloadNameKey)
 			if !hasWorkloadName {
 				matchResult.addFailedAssertion(workloadNameKey, fmt.Sprintf("expected %s but the span has no such attribute", expectedWorkloadName))
@@ -195,11 +211,11 @@ func resourceSpansHaveExpectedResourceAttributes(workloadType string) func(
 		}
 
 		podNameKey := "k8s.pod.name"
-		expectedPodName := fmt.Sprintf("dash0-operator-nodejs-20-express-test-%s", workloadType)
+		expectedPodName := workloadName(runtime, workloadType)
 		expectedPodPrefix := fmt.Sprintf("%s-", expectedPodName)
 		actualPodName, hasPodAttribute := attributes.Get(podNameKey)
 		if hasPodAttribute {
-			if workloadType == "pod" {
+			if workloadType.workloadTypeString == "pod" {
 				if actualPodName.Str() == expectedPodName {
 					matchResult.addPassedAssertion(podNameKey)
 				} else {
@@ -218,7 +234,7 @@ func resourceSpansHaveExpectedResourceAttributes(workloadType string) func(
 	}
 }
 
-func matchHttpServerSpanWithHttpTarget(expectedTarget string) func(
+func matchHttpServerSpanWithHttpTarget(expectedRoute string, expectedQuery string) func(
 	ptrace.Span,
 	*ObjectMatchResult[ptrace.ResourceSpans, ptrace.Span],
 ) {
@@ -231,8 +247,11 @@ func matchHttpServerSpanWithHttpTarget(expectedTarget string) func(
 				fmt.Sprintf("expected a server span, this span has kind \"%s\"", span.Kind().String()),
 			)
 		}
-		httpTargetAttrib := "http.target"
+
+		expectedTarget := fmt.Sprintf("%s?%s", expectedRoute, expectedQuery)
 		target, hasTarget := span.Attributes().Get(httpTargetAttrib)
+		route, hasRoute := span.Attributes().Get(httpRouteAttrib)
+		query, hasQuery := span.Attributes().Get(urlQueryAttrib)
 		if hasTarget {
 			if target.Str() == expectedTarget {
 				matchResult.addPassedAssertion(httpTargetAttrib)
@@ -242,10 +261,24 @@ func matchHttpServerSpanWithHttpTarget(expectedTarget string) func(
 					fmt.Sprintf("expected %s but it was %s", expectedTarget, target.Str()),
 				)
 			}
+		} else if hasRoute && hasQuery {
+			if route.Str() == expectedRoute && query.Str() == expectedQuery {
+				matchResult.addPassedAssertion(httpRouteAttrib + " and " + urlQueryAttrib)
+			} else {
+				matchResult.addFailedAssertion(
+					httpRouteAttrib+" and "+urlQueryAttrib,
+					fmt.Sprintf("expected %s & %s but it was %s & %s", expectedRoute, expectedQuery, route.Str(), query.Str()),
+				)
+			}
 		} else {
 			matchResult.addFailedAssertion(
-				httpTargetAttrib,
-				fmt.Sprintf("expected %s but the span had no such atttribute", expectedTarget),
+				httpTargetAttrib+" or ("+httpRouteAttrib+" and "+urlQueryAttrib+")",
+				fmt.Sprintf(
+					"expected %s or (%s and %s) but the span had no such atttribute",
+					expectedTarget,
+					expectedRoute,
+					expectedQuery,
+				),
 			)
 		}
 	}

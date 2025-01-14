@@ -6,11 +6,8 @@ package e2e
 import (
 	_ "embed"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
 	"os/exec"
-	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -18,16 +15,14 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-type workloadType struct {
-	workloadTypeString string
-	port               int
-	isBatch            bool
-	waitCommand        func(string) *exec.Cmd
-}
-
 const (
 	applicationUnderTestNamespace = "e2e-application-under-test-namespace"
-	applicationPath               = "test-resources/node.js/express"
+
+	applicationPathNodeJs = "test-resources/node.js/express"
+	workloadNameNodeJs    = "dash0-operator-nodejs-20-express-test"
+
+	applicationPathJvm = "test-resources/jvm/spring-boot"
+	workloadNameJvm    = "dash0-operator-jvm-spring-boot-test"
 )
 
 var (
@@ -35,21 +30,21 @@ var (
 
 	workloadTypeCronjob = workloadType{
 		workloadTypeString: "cronjob",
-		port:               1205,
+		basePort:           1205,
 		isBatch:            true,
 		waitCommand:        nil,
 	}
 	workloadTypeDaemonSet = workloadType{
 		workloadTypeString: "daemonset",
-		port:               1206,
+		basePort:           1206,
 		isBatch:            false,
-		waitCommand: func(namespace string) *exec.Cmd {
+		waitCommand: func(namespace string, runtime runtimeType) *exec.Cmd {
 			return exec.Command(
 				"kubectl",
 				"rollout",
 				"status",
 				"daemonset",
-				"dash0-operator-nodejs-20-express-test-daemonset",
+				fmt.Sprintf("%s-daemonset", runtime.workloadName),
 				"--namespace",
 				namespace,
 				"--timeout",
@@ -60,12 +55,12 @@ var (
 	workloadTypeDeployment = workloadType{
 		workloadTypeString: "deployment",
 		isBatch:            false,
-		port:               1207,
-		waitCommand: func(namespace string) *exec.Cmd {
+		basePort:           1207,
+		waitCommand: func(namespace string, runtime runtimeType) *exec.Cmd {
 			return exec.Command(
 				"kubectl",
 				"wait",
-				"deployment.apps/dash0-operator-nodejs-20-express-test-deployment",
+				fmt.Sprintf("deployment.apps/%s-deployment", runtime.workloadName),
 				"--for",
 				"condition=Available",
 				"--namespace",
@@ -77,15 +72,15 @@ var (
 	}
 	workloadTypeJob = workloadType{
 		workloadTypeString: "job",
-		port:               1208,
+		basePort:           1208,
 		isBatch:            true,
 		waitCommand:        nil,
 	}
 	workloadTypePod = workloadType{
 		workloadTypeString: "pod",
-		port:               1211,
+		basePort:           1211,
 		isBatch:            false,
-		waitCommand: func(namespace string) *exec.Cmd {
+		waitCommand: func(namespace string, runtime runtimeType) *exec.Cmd {
 			return exec.Command(
 				"kubectl",
 				"wait",
@@ -93,7 +88,7 @@ var (
 				"--namespace",
 				namespace,
 				"--selector",
-				"app=dash0-operator-nodejs-20-express-test-pod-app",
+				fmt.Sprintf("app=%s-pod-app", runtime.workloadName),
 				"--for",
 				"condition=ContainersReady",
 				"--timeout",
@@ -103,9 +98,9 @@ var (
 	}
 	workloadTypeReplicaSet = workloadType{
 		workloadTypeString: "replicaset",
-		port:               1209,
+		basePort:           1209,
 		isBatch:            false,
-		waitCommand: func(namespace string) *exec.Cmd {
+		waitCommand: func(namespace string, runtime runtimeType) *exec.Cmd {
 			return exec.Command(
 				"kubectl",
 				"wait",
@@ -113,7 +108,7 @@ var (
 				"--namespace",
 				namespace,
 				"--selector",
-				"app=dash0-operator-nodejs-20-express-test-replicaset-app",
+				fmt.Sprintf("app=%s-replicaset-app", runtime.workloadName),
 				"--for",
 				"condition=ContainersReady",
 				"--timeout",
@@ -123,15 +118,15 @@ var (
 	}
 	workloadTypeStatefulSet = workloadType{
 		workloadTypeString: "statefulset",
-		port:               1210,
+		basePort:           1210,
 		isBatch:            false,
-		waitCommand: func(namespace string) *exec.Cmd {
+		waitCommand: func(namespace string, runtime runtimeType) *exec.Cmd {
 			return exec.Command(
 				"kubectl",
 				"rollout",
 				"status",
 				"statefulset",
-				"dash0-operator-nodejs-20-express-test-statefulset",
+				fmt.Sprintf("%s-statefulset", runtime.workloadName),
 				"--namespace",
 				namespace,
 				"--timeout",
@@ -139,10 +134,36 @@ var (
 			)
 		},
 	}
+
+	runtimeTypeNodeJs = runtimeType{
+		runtimeTypeLabel: "Node.js",
+		portOffset:       0,
+		workloadName:     workloadNameNodeJs,
+		applicationPath:  applicationPathNodeJs,
+	}
+	runtimeTypeJvm = runtimeType{
+		runtimeTypeLabel: "JVM",
+		portOffset:       100,
+		workloadName:     workloadNameJvm,
+		applicationPath:  applicationPathJvm,
+	}
 )
 
+func rebuildAppUnderTestContainerImages() {
+	rebuildNodeJsApplicationContainerImage()
+	rebuildJvmApplicationContainerImage()
+}
+
 func rebuildNodeJsApplicationContainerImage() {
-	By("building the dash0-operator-nodejs-20-express-test-app image")
+	rebuildApplicationContainerImage(workloadNameNodeJs+"-app", applicationPathNodeJs)
+}
+
+func rebuildJvmApplicationContainerImage() {
+	rebuildApplicationContainerImage(workloadNameJvm+"-app", applicationPathJvm)
+}
+
+func rebuildApplicationContainerImage(imageName string, applicationPath string) {
+	By(fmt.Sprintf("building the %s image", imageName))
 	Expect(
 		runAndIgnoreOutput(
 			exec.Command(
@@ -150,32 +171,32 @@ func rebuildNodeJsApplicationContainerImage() {
 				"build",
 				applicationPath,
 				"-t",
-				"dash0-operator-nodejs-20-express-test-app",
+				imageName,
 			))).To(Succeed())
 
 	loadImageToKindClusterIfRequired(
 		ImageSpec{
-			repository: "dash0-operator-nodejs-20-express-test-app",
+			repository: imageName,
 			tag:        "latest",
 		}, nil,
 	)
 }
 
 func uninstallNodeJsCronJob(namespace string) error {
-	return uninstallNodeJsApplication(namespace, "cronjob")
+	return runKubectlDelete(namespace, "cronjob", runtimeTypeNodeJs)
 }
 
 func installNodeJsDaemonSetWithOptOutLabel(namespace string) error {
-	return installNodeJsApplication(
+	return runKubectlApply(
 		namespace,
-		manifest("daemonset.opt-out"),
+		manifest(runtimeTypeNodeJs, "daemonset.opt-out"),
 		"daemonset",
-		workloadTypeDaemonSet.waitCommand(namespace),
+		workloadTypeDaemonSet.waitCommand(namespace, runtimeTypeNodeJs),
 	)
 }
 
 func uninstallNodeJsDaemonSet(namespace string) error {
-	return uninstallNodeJsApplication(namespace, "daemonset")
+	return runKubectlDelete(namespace, "daemonset", runtimeTypeNodeJs)
 }
 
 //nolint:unparam
@@ -188,7 +209,11 @@ func installNodeJsDeployment(namespace string) error {
 }
 
 func uninstallNodeJsDeployment(namespace string) error {
-	return uninstallNodeJsApplication(namespace, "deployment")
+	return runKubectlDelete(namespace, "deployment", runtimeTypeNodeJs)
+}
+
+func uninstallJvmDeployment(namespace string) error {
+	return runKubectlDelete(namespace, "deployment", runtimeTypeJvm)
 }
 
 func installNodeJsJob(namespace string, testId string) error {
@@ -200,7 +225,7 @@ func installNodeJsJob(namespace string, testId string) error {
 }
 
 func uninstallNodeJsJob(namespace string) error {
-	return uninstallNodeJsApplication(namespace, "job")
+	return runKubectlDelete(namespace, "job", runtimeTypeNodeJs)
 }
 
 func installNodeJsPod(namespace string) error {
@@ -212,11 +237,11 @@ func installNodeJsPod(namespace string) error {
 }
 
 func uninstallNodeJsPod(namespace string) error {
-	return uninstallNodeJsApplication(namespace, "pod")
+	return runKubectlDelete(namespace, "pod", runtimeTypeNodeJs)
 }
 
 func uninstallNodeJsReplicaSet(namespace string) error {
-	return uninstallNodeJsApplication(namespace, "replicaset")
+	return runKubectlDelete(namespace, "replicaset", runtimeTypeNodeJs)
 }
 
 func installNodeJsStatefulSet(namespace string) error {
@@ -228,17 +253,21 @@ func installNodeJsStatefulSet(namespace string) error {
 }
 
 func uninstallNodeJsStatefulSet(namespace string) error {
-	return uninstallNodeJsApplication(namespace, "statefulset")
+	return runKubectlDelete(namespace, "statefulset", runtimeTypeNodeJs)
 }
 
 func installNodeJsWorkload(workloadType workloadType, namespace string, testId string) error {
-	manifestFile := manifest(workloadType.workloadTypeString)
+	return installWorkload(runtimeTypeNodeJs, workloadType, namespace, testId)
+}
+
+func installWorkload(runtime runtimeType, workloadType workloadType, namespace string, testId string) error {
+	manifestFile := manifest(runtime, workloadType.workloadTypeString)
 	if workloadType.isBatch {
 		switch workloadType.workloadTypeString {
 		case "cronjob":
-			manifestFile = addTestIdToCronjobManifest(testId)
+			manifestFile = addTestIdToCronjobManifest(runtime, testId)
 		case "job":
-			manifestFile = addTestIdToJobManifest(testId)
+			manifestFile = addTestIdToJobManifest(runtime, testId)
 		default:
 			return fmt.Errorf("unsupported batch workload type %s", workloadType.workloadTypeString)
 		}
@@ -246,9 +275,9 @@ func installNodeJsWorkload(workloadType workloadType, namespace string, testId s
 
 	var waitCommand *exec.Cmd
 	if workloadType.waitCommand != nil {
-		waitCommand = workloadType.waitCommand(namespace)
+		waitCommand = workloadType.waitCommand(namespace, runtime)
 	}
-	return installNodeJsApplication(
+	return runKubectlApply(
 		namespace,
 		manifestFile,
 		workloadType.workloadTypeString,
@@ -256,7 +285,7 @@ func installNodeJsWorkload(workloadType workloadType, namespace string, testId s
 	)
 }
 
-func installNodeJsApplication(
+func runKubectlApply(
 	namespace string,
 	manifestFile string,
 	workloadTypeString string,
@@ -279,7 +308,7 @@ func installNodeJsApplication(
 	return waitForApplicationToBecomeReady(workloadTypeString, waitCommand)
 }
 
-func uninstallNodeJsApplication(namespace string, workloadType string) error {
+func runKubectlDelete(namespace string, workloadType string, runtime runtimeType) error {
 	return runAndIgnoreOutput(
 		exec.Command(
 			"kubectl",
@@ -288,7 +317,7 @@ func uninstallNodeJsApplication(namespace string, workloadType string) error {
 			namespace,
 			"--ignore-not-found",
 			"-f",
-			manifest(workloadType),
+			manifest(runtime, workloadType),
 		))
 }
 
@@ -297,6 +326,7 @@ func removeAllTestApplications(namespace string) {
 	Expect(uninstallNodeJsCronJob(namespace)).To(Succeed())
 	Expect(uninstallNodeJsDaemonSet(namespace)).To(Succeed())
 	Expect(uninstallNodeJsDeployment(namespace)).To(Succeed())
+	Expect(uninstallJvmDeployment(namespace)).To(Succeed())
 	Expect(uninstallNodeJsJob(namespace)).To(Succeed())
 	Expect(uninstallNodeJsPod(namespace)).To(Succeed())
 	Expect(uninstallNodeJsReplicaSet(namespace)).To(Succeed())
@@ -330,8 +360,8 @@ func removeOptOutLabel(namespace string, workloadType string, workloadName strin
 		))
 }
 
-func addTestIdToCronjobManifest(testId string) string {
-	source := manifest("cronjob")
+func addTestIdToCronjobManifest(runtime runtimeType, testId string) string {
+	source := manifest(runtime, "cronjob")
 	applicationManifestContentRaw, err := os.ReadFile(source)
 	Expect(err).ToNot(HaveOccurred())
 	applicationManifestParsed := make(map[string]interface{})
@@ -346,8 +376,8 @@ func addTestIdToCronjobManifest(testId string) string {
 	return writeManifest("cronjob", testId, updatedApplicationManifestContentRaw)
 }
 
-func addTestIdToJobManifest(testId string) string {
-	source := manifest("job")
+func addTestIdToJobManifest(runtime runtimeType, testId string) string {
+	source := manifest(runtime, "job")
 	applicationManifestContentRaw, err := os.ReadFile(source)
 	Expect(err).ToNot(HaveOccurred())
 	applicationManifestParsed := make(map[string]interface{})
@@ -358,8 +388,8 @@ func addTestIdToJobManifest(testId string) string {
 	return writeManifest("job", testId, updatedApplicationManifestContentRaw)
 }
 
-func writeManifest(workloadTypeString string, testId string, updatedApplicationManifestContentRaw []byte) string {
-	target, err := os.CreateTemp(os.TempDir(), fmt.Sprintf("%s_%s.yaml", workloadTypeString, testId))
+func writeManifest(manifestFileName string, testId string, updatedApplicationManifestContentRaw []byte) string {
+	target, err := os.CreateTemp(os.TempDir(), fmt.Sprintf("%s_%s.yaml", manifestFileName, testId))
 	Expect(err).ToNot(HaveOccurred())
 	targetName := target.Name()
 	temporaryManifestFiles = append(temporaryManifestFiles, targetName)
@@ -405,69 +435,6 @@ func addEnvVarToContainer(testId string, jobTemplateOrManifest map[string]interf
 	return jobSpec
 }
 
-func manifest(workloadType string) string {
-	return fmt.Sprintf("%s/%s.yaml", applicationPath, workloadType)
-}
-
-func sendRequest(g Gomega, workloadType string, port int, httpPathWithQuery string) {
-	executeHttpRequest(
-		g,
-		workloadType,
-		port,
-		httpPathWithQuery,
-		200,
-		"We make Observability easy for every developer.",
-	)
-}
-
-func sendReadyProbe(g Gomega, workloadType string, port int) {
-	executeHttpRequest(
-		g,
-		workloadType,
-		port,
-		"/ready",
-		204,
-		"",
-	)
-}
-
-func executeHttpRequest(
-	g Gomega,
-	workloadType string,
-	port int,
-	httpPathWithQuery string,
-	expectedStatus int,
-	expectedBody string,
-) {
-	url := fmt.Sprintf("http://localhost:%d%s", port, httpPathWithQuery)
-	if isKindCluster() {
-		url = fmt.Sprintf("http://%s/%s%s", kindClusterIngressIp, workloadType, httpPathWithQuery)
-	}
-	httpClient := http.Client{
-		Timeout: 500 * time.Millisecond,
-	}
-	response, err := httpClient.Get(url)
-	g.Expect(err).NotTo(HaveOccurred())
-	defer func() {
-		_ = response.Body.Close()
-	}()
-	responseBody, err := io.ReadAll(response.Body)
-	if err != nil {
-		e2ePrint("could not read http response from %s: %s\n", url, err.Error())
-	}
-	g.Expect(err).NotTo(HaveOccurred())
-	status := response.StatusCode
-	if expectedBody != "" {
-		g.Expect(
-			string(responseBody)).To(
-			ContainSubstring(expectedBody),
-			fmt.Sprintf("unexpected response body for workload type %s at %s, HTTP %d", workloadType, url, status),
-		)
-	}
-	if expectedStatus > 0 {
-		g.Expect(status).To(
-			Equal(expectedStatus),
-			fmt.Sprintf("unexpected status for workload type %s at %s", workloadType, url),
-		)
-	}
+func manifest(runtime runtimeType, manifestFileName string) string {
+	return fmt.Sprintf("%s/%s.yaml", runtime.applicationPath, manifestFileName)
 }

@@ -22,28 +22,28 @@ const (
 
 func verifyThatWorkloadHasBeenInstrumented(
 	namespace string,
-	workloadType string,
-	port int,
-	isBatch bool,
+	runtime runtimeType,
+	workloadType workloadType,
 	testId string,
 	images Images,
 	instrumentationBy string,
 ) {
 	By(fmt.Sprintf("%s: waiting for the workload to get instrumented (polling its labels and events to check)",
-		workloadType))
+		workloadType.workloadTypeString))
 	Eventually(func(g Gomega) {
 		verifyLabels(
 			g,
 			namespace,
+			runtime,
 			workloadType,
 			true,
 			images,
 			instrumentationBy,
 		)
-		verifySuccessfulInstrumentationEvent(g, namespace, workloadType, instrumentationBy)
+		verifySuccessfulInstrumentationEvent(g, namespace, runtime, workloadType, instrumentationBy)
 	}, labelChangeTimeout, pollingInterval).Should(Succeed())
 
-	By(fmt.Sprintf("%s: waiting for spans to be captured", workloadType))
+	By(fmt.Sprintf("%s: waiting for spans to be captured", workloadType.workloadTypeString))
 
 	// For workload types that are available as a service (daemonset, deployment etc.) we send HTTP requests with
 	// a unique ID as a query parameter. When checking the produced spans, we can verify that the span is
@@ -53,31 +53,30 @@ func verifyThatWorkloadHasBeenInstrumented(
 	// For batch workloads (job, cronjob), which are not reachable via a service, the application will call itself via
 	// HTTP instead, which will create spans as well.
 	spanTimeout := verifyTelemetryTimeout
-	if workloadType == cronjob {
+	if workloadType.workloadTypeString == "cronjob" {
 		// Cronjob pods are only scheduled once a minute, so we might need to wait a while for a job to be started
 		// and for spans to become available, hence increasing the timeout for "Eventually" block that waits for spans.
 		spanTimeout = 90 * time.Second
 	}
-	httpPathWithQuery := fmt.Sprintf("/dash0-k8s-operator-test?id=%s", testId)
+	route := "/dash0-k8s-operator-test"
+	query := fmt.Sprintf("id=%s", testId)
 	Eventually(func(g Gomega) {
-		verifySpans(g, isBatch, workloadType, port, httpPathWithQuery)
+		verifySpans(g, runtime, workloadType, route, query)
 	}, spanTimeout, pollingInterval).Should(Succeed())
-	By(fmt.Sprintf("%s: matching spans have been received", workloadType))
+	By(fmt.Sprintf("%s: matching spans have been received", workloadType.workloadTypeString))
 }
 
 func verifyThatInstrumentationHasBeenReverted(
 	namespace string,
-	workloadType string,
-	port int,
-	isBatch bool,
+	runtime runtimeType,
+	workloadType workloadType,
 	testId string,
 	instrumentationBy string,
 ) {
 	verifyThatInstrumentationIsRevertedEventually(
 		namespace,
+		runtime,
 		workloadType,
-		port,
-		isBatch,
 		testId,
 		instrumentationBy,
 		false,
@@ -86,17 +85,15 @@ func verifyThatInstrumentationHasBeenReverted(
 
 func verifyThatInstrumentationHasBeenRevertedAfterAddingOptOutLabel(
 	namespace string,
-	workloadType string,
-	port int,
-	isBatch bool,
+	runtime runtimeType,
+	workloadType workloadType,
 	testId string,
 	instrumentationBy string,
 ) {
 	verifyThatInstrumentationIsRevertedEventually(
 		namespace,
+		runtime,
 		workloadType,
-		port,
-		isBatch,
 		testId,
 		instrumentationBy,
 		true,
@@ -105,46 +102,46 @@ func verifyThatInstrumentationHasBeenRevertedAfterAddingOptOutLabel(
 
 func verifyThatInstrumentationIsRevertedEventually(
 	namespace string,
-	workloadType string,
-	port int,
-	isBatch bool,
+	runtime runtimeType,
+	workloadType workloadType,
 	testId string,
 	instrumentationBy string,
 	expectOptOutLabel bool,
 ) {
 	By(fmt.Sprintf(
 		"%s: waiting for the instrumentation to get removed from the workload (polling its labels and events to check)",
-		workloadType))
+		workloadType.workloadTypeString))
 	Eventually(func(g Gomega) {
 		if expectOptOutLabel {
-			verifyOnlyOptOutLabelIsPresent(g, namespace, workloadType)
+			verifyOnlyOptOutLabelIsPresent(g, namespace, runtime, workloadType)
 		} else {
-			verifyNoDash0Labels(g, namespace, workloadType)
+			verifyNoDash0Labels(g, namespace, runtime, workloadType)
 		}
-		verifySuccessfulUninstrumentationEvent(g, namespace, workloadType, instrumentationBy)
+		verifySuccessfulUninstrumentationEvent(g, namespace, runtime, workloadType, instrumentationBy)
 	}, labelChangeTimeout, pollingInterval).Should(Succeed())
 
 	// Add some buffer time between the workloads being restarted and verifying that no spans are produced/captured.
 	time.Sleep(10 * time.Second)
 
 	secondsToCheckForSpans := 20
-	if workloadType == cronjob {
+	if workloadType.workloadTypeString == cronjob {
 		// Pod for cron jobs only get scheduled once a minute, since the cronjob schedule format does not allow for jobs
 		// starting every second. Thus, to make the test valid, we need to monitor for spans a little bit longer than
 		// for other workload types.
 		secondsToCheckForSpans = 80
 	}
-	httpPathWithQuery := fmt.Sprintf("/dash0-k8s-operator-test?id=%s", testId)
 	By(
 		fmt.Sprintf("%s: verifying that spans are no longer being captured (checking for %d seconds)",
-			workloadType,
+			workloadType.workloadTypeString,
 			secondsToCheckForSpans,
 		))
+	route := "/dash0-k8s-operator-test"
+	query := fmt.Sprintf("id=%s", testId)
 	Consistently(func(g Gomega) {
-		verifyNoSpans(g, isBatch, workloadType, port, httpPathWithQuery)
+		verifyNoSpans(g, runtime, workloadType, route, query)
 	}, time.Duration(secondsToCheckForSpans)*time.Second, 1*time.Second).Should(Succeed())
 
-	By(fmt.Sprintf("%s: matching spans are no longer captured", workloadType))
+	By(fmt.Sprintf("%s: matching spans are no longer captured", workloadType.workloadTypeString))
 }
 
 func waitForApplicationToBecomeReady(workloadType string, waitCommand *exec.Cmd) error {

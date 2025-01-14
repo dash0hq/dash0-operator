@@ -19,7 +19,14 @@ var (
 
 	setupFinishedSuccessfully bool
 
-	requiredPorts = []int{1207, 4317, 4318}
+	requiredPorts = []int{
+		// Node.js workloads
+		1205, 1206, 1207, 1208, 1209, 1210, 1211, //
+		// JVM workloads
+		1305, 1306, 1307, 1308, 1309, 1310, 1311, //
+		// OTel Collector
+		4317, 4318,
+	}
 )
 
 func checkIfRequiredPortsAreBlocked() {
