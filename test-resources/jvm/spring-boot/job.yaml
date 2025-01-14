@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dash0-operator-jvm-spring-boot-test-job
+spec:
+  template:
+    metadata:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "1308"
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: dash0-operator-jvm-spring-boot-test-job-app
+          image: "dash0-operator-jvm-spring-boot-test-app:latest"
+          env:
+            - name: PORT
+              value: "1308"
+            - name: DASH0_DEBUG
+              value: "true"
+            - name: TRIGGER_SELF_AND_EXIT
+              value: "true"
+          ports:
+            - containerPort: 1308
+          imagePullPolicy: Never
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 1308
+            initialDelaySeconds: 1
+            periodSeconds: 1

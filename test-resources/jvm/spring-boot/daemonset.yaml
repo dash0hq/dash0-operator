@@ -1,0 +1,69 @@
+# SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: dash0-operator-jvm-spring-boot-test-daemonset-service
+spec:
+  selector:
+    app: dash0-operator-jvm-spring-boot-test-daemonset-app
+  ports:
+    - port: 1306
+      targetPort: 1306
+  type: LoadBalancer
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: dash0-operator-jvm-spring-boot-test-daemonset
+  labels:
+    app: dash0-operator-jvm-spring-boot-test-daemonset-app
+spec:
+  selector:
+    matchLabels:
+      app: dash0-operator-jvm-spring-boot-test-daemonset-app
+  template:
+    metadata:
+      labels:
+        app: dash0-operator-jvm-spring-boot-test-daemonset-app
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "1306"
+    spec:
+      containers:
+        - name: dash0-operator-jvm-spring-boot-test-daemonset-app
+          image: "dash0-operator-jvm-spring-boot-test-app:latest"
+          env:
+            - name: PORT
+              value: "1306"
+            - name: DASH0_DEBUG
+              value: "true"
+          ports:
+            - containerPort: 1306
+          imagePullPolicy: Never
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 1306
+            initialDelaySeconds: 1
+            periodSeconds: 1
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dash0-operator-jvm-spring-boot-test-daemonset-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /daemonset(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: dash0-operator-jvm-spring-boot-test-daemonset-service
+            port:
+              number: 1306

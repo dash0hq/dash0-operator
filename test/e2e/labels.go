@@ -15,30 +15,35 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func verifyThatFailedInstrumentationAttemptLabelsHaveBeenRemoved(namespace string, workloadType string) {
+func verifyThatFailedInstrumentationAttemptLabelsHaveBeenRemoved(
+	namespace string,
+	runtime runtimeType,
+	workloadType workloadType,
+) {
 	By("waiting for the labels to get removed from the workload")
 	Eventually(func(g Gomega) {
-		verifyNoDash0Labels(g, namespace, workloadType)
+		verifyNoDash0Labels(g, namespace, runtime, workloadType)
 	}, labelChangeTimeout, pollingInterval).Should(Succeed())
 }
 
 func verifyLabels(
 	g Gomega,
 	namespace string,
-	kind string,
+	runtime runtimeType,
+	workloadType workloadType,
 	successful bool,
 	images Images,
 	instrumentationBy string,
 ) {
-	instrumented := readLabel(g, namespace, kind, "dash0.com/instrumented")
+	instrumented := readLabel(g, namespace, runtime, workloadType, "dash0.com/instrumented")
 	g.Expect(instrumented).To(Equal(strconv.FormatBool(successful)))
-	operatorImage := readLabel(g, namespace, kind, "dash0.com/operator-image")
+	operatorImage := readLabel(g, namespace, runtime, workloadType, "dash0.com/operator-image")
 	verifyImageLabel(g, operatorImage, images.operator, "ghcr.io/dash0hq/operator-controller:")
-	initContainerImage := readLabel(g, namespace, kind, "dash0.com/init-container-image")
+	initContainerImage := readLabel(g, namespace, runtime, workloadType, "dash0.com/init-container-image")
 	verifyImageLabel(g, initContainerImage, images.instrumentation, "ghcr.io/dash0hq/instrumentation:")
-	instrumentedBy := readLabel(g, namespace, kind, "dash0.com/instrumented-by")
+	instrumentedBy := readLabel(g, namespace, runtime, workloadType, "dash0.com/instrumented-by")
 	g.Expect(instrumentedBy).To(Equal(instrumentationBy))
-	dash0Enable := readLabel(g, namespace, kind, "dash0.com/enable")
+	dash0Enable := readLabel(g, namespace, runtime, workloadType, "dash0.com/enable")
 	g.Expect(dash0Enable).To(Equal(""))
 }
 
@@ -69,24 +74,30 @@ func renderFullyQualifiedImageName(image ImageSpec) string {
 	return fmt.Sprintf("%s:%s", image.repository, image.tag)
 }
 
-func verifyNoDash0Labels(g Gomega, namespace string, kind string) {
-	verifyNoDash0LabelsOrOnlyOptOut(g, namespace, kind, false)
+func verifyNoDash0Labels(g Gomega, namespace string, runtime runtimeType, workloadType workloadType) {
+	verifyNoDash0LabelsOrOnlyOptOut(g, namespace, runtime, workloadType, false)
 }
 
-func verifyOnlyOptOutLabelIsPresent(g Gomega, namespace string, kind string) {
-	verifyNoDash0LabelsOrOnlyOptOut(g, namespace, kind, true)
+func verifyOnlyOptOutLabelIsPresent(g Gomega, namespace string, runtime runtimeType, workloadType workloadType) {
+	verifyNoDash0LabelsOrOnlyOptOut(g, namespace, runtime, workloadType, true)
 }
 
-func verifyNoDash0LabelsOrOnlyOptOut(g Gomega, namespace string, kind string, expectOptOutLabel bool) {
-	instrumented := readLabel(g, namespace, kind, "dash0.com/instrumented")
+func verifyNoDash0LabelsOrOnlyOptOut(
+	g Gomega,
+	namespace string,
+	runtime runtimeType,
+	workloadType workloadType,
+	expectOptOutLabel bool,
+) {
+	instrumented := readLabel(g, namespace, runtime, workloadType, "dash0.com/instrumented")
 	g.Expect(instrumented).To(Equal(""))
-	operatorVersion := readLabel(g, namespace, kind, "dash0.com/operator-image")
+	operatorVersion := readLabel(g, namespace, runtime, workloadType, "dash0.com/operator-image")
 	g.Expect(operatorVersion).To(Equal(""))
-	initContainerImageVersion := readLabel(g, namespace, kind, "dash0.com/init-container-image")
+	initContainerImageVersion := readLabel(g, namespace, runtime, workloadType, "dash0.com/init-container-image")
 	g.Expect(initContainerImageVersion).To(Equal(""))
-	instrumentedBy := readLabel(g, namespace, kind, "dash0.com/instrumented-by")
+	instrumentedBy := readLabel(g, namespace, runtime, workloadType, "dash0.com/instrumented-by")
 	g.Expect(instrumentedBy).To(Equal(""))
-	dash0Enable := readLabel(g, namespace, kind, "dash0.com/enable")
+	dash0Enable := readLabel(g, namespace, runtime, workloadType, "dash0.com/enable")
 	if expectOptOutLabel {
 		g.Expect(dash0Enable).To(Equal("false"))
 	} else {
@@ -94,14 +105,14 @@ func verifyNoDash0LabelsOrOnlyOptOut(g Gomega, namespace string, kind string, ex
 	}
 }
 
-func readLabel(g Gomega, namespace string, kind string, labelKey string) string {
+func readLabel(g Gomega, namespace string, runtime runtimeType, workloadType workloadType, labelKey string) string {
 	labelValue, err := run(exec.Command(
 		"kubectl",
 		"get",
-		kind,
+		workloadType.workloadTypeString,
 		"--namespace",
 		namespace,
-		fmt.Sprintf("dash0-operator-nodejs-20-express-test-%s", kind),
+		workloadName(runtime, workloadType),
 		"-o",
 		fmt.Sprintf("jsonpath={.metadata.labels['%s']}", strings.ReplaceAll(labelKey, ".", "\\.")),
 	), false)

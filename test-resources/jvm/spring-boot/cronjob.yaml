@@ -1,0 +1,37 @@
+# SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: dash0-operator-jvm-spring-boot-test-cronjob
+spec:
+  schedule: "* * * * *"
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          annotations:
+            prometheus.io/scrape: "true"
+            prometheus.io/port: "1305"
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: dash0-operator-jvm-spring-boot-test-cronjob-app
+              image: "dash0-operator-jvm-spring-boot-test-app:latest"
+              env:
+                - name: PORT
+                  value: "1305"
+                - name: DASH0_DEBUG
+                  value: "true"
+                - name: TRIGGER_SELF_AND_EXIT
+                  value: "true"
+              ports:
+                - containerPort: 1305
+              imagePullPolicy: Never
+              readinessProbe:
+                httpGet:
+                  path: /ready
+                  port: 1305
+                initialDelaySeconds: 1
+                periodSeconds: 1

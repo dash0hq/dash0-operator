@@ -20,12 +20,14 @@ import (
 func verifySuccessfulInstrumentationEvent(
 	g Gomega,
 	namespace string,
-	workloadType string,
+	runtime runtimeType,
+	workloadType workloadType,
 	eventSource string,
 ) {
 	verifyEvent(
 		g,
 		namespace,
+		runtime,
 		workloadType,
 		util.ReasonSuccessfulInstrumentation,
 		fmt.Sprintf("Dash0 instrumentation of this workload by the %s has been successful.", eventSource),
@@ -35,12 +37,14 @@ func verifySuccessfulInstrumentationEvent(
 func verifyFailedInstrumentationEvent(
 	g Gomega,
 	namespace string,
-	workloadType string,
+	runtime runtimeType,
+	workloadType workloadType,
 	message string,
 ) {
 	verifyEvent(
 		g,
 		namespace,
+		runtime,
 		workloadType,
 		util.ReasonFailedInstrumentation,
 		message,
@@ -50,12 +54,14 @@ func verifyFailedInstrumentationEvent(
 func verifySuccessfulUninstrumentationEvent(
 	g Gomega,
 	namespace string,
-	workloadType string,
+	runtime runtimeType,
+	workloadType workloadType,
 	eventSource string,
 ) {
 	verifyEvent(
 		g,
 		namespace,
+		runtime,
 		workloadType,
 		util.ReasonSuccessfulUninstrumentation,
 		fmt.Sprintf("The %s successfully removed the Dash0 instrumentation from this workload.", eventSource),
@@ -65,12 +71,14 @@ func verifySuccessfulUninstrumentationEvent(
 func verifyFailedUninstrumentationEvent(
 	g Gomega,
 	namespace string,
-	workloadType string,
+	runtime runtimeType,
+	workloadType workloadType,
 	message string,
 ) {
 	verifyEvent(
 		g,
 		namespace,
+		runtime,
 		workloadType,
 		util.ReasonFailedUninstrumentation,
 		message,
@@ -80,11 +88,12 @@ func verifyFailedUninstrumentationEvent(
 func verifyEvent(
 	g Gomega,
 	namespace string,
-	workloadType string,
+	runtime runtimeType,
+	workloadType workloadType,
 	reason util.Reason,
 	message string,
 ) {
-	resourceName := fmt.Sprintf("dash0-operator-nodejs-20-express-test-%s", workloadType)
+	resourceName := workloadName(runtime, workloadType)
 	eventsJson, err := run(exec.Command(
 		"kubectl",
 		"events",
@@ -92,7 +101,7 @@ func verifyEvent(
 		"--namespace",
 		namespace,
 		"--for",
-		fmt.Sprintf("%s/%s", workloadType, resourceName),
+		fmt.Sprintf("%s/%s", workloadType.workloadTypeString, resourceName),
 	), false)
 	g.Expect(err).NotTo(HaveOccurred())
 	var events corev1.EventList
