@@ -743,20 +743,25 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 					Expect(rule).To(BeNil())
 				}
 			}, []TableEntry{
+				// Note: running a focussed test in Idea, which uses --focus under the hood does not work when the
+				// test label contains a "$" character. Thus, we refer to $__threshold as threshold in the test labels.
+				// That is:
+				//   go run github.com/onsi/ginkgo/v2/ginkgo -v "--focus=foo bar baz $__threshold whatever"
+				// will run no tests at all.
 				Entry(
-					"expression with $__threshold, no annotations -> invalid",
+					"expression with threshold, no annotations -> invalid",
 					thresholdValidationTestConfig{
 						annotations:              nil,
 						expectedValidationIssues: []string{thresholdAnnotationsMissingMessage()},
 					}),
 				Entry(
-					"expression with $__threshold, no threshold annotation -> invalid",
+					"expression with threshold, no threshold annotation -> invalid",
 					thresholdValidationTestConfig{
 						annotations:              map[string]string{"unrelated": "annotation"},
 						expectedValidationIssues: []string{thresholdAnnotationsMissingMessage()},
 					}),
 				Entry(
-					"expression with $__threshold, degraded annotation -> valid",
+					"expression with threshold, degraded annotation -> valid",
 					thresholdValidationTestConfig{
 						annotations: map[string]string{
 							thresholdDegradedAnnotation: "10",
@@ -764,7 +769,15 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 						expectedValidationIssues: nil,
 					}),
 				Entry(
-					"expression with $__threshold, criticial annotation -> valid",
+					"expression with threshold, legacy degraded annotation -> valid",
+					thresholdValidationTestConfig{
+						annotations: map[string]string{
+							thresholdDegradedAnnotationLegacy: "10",
+						},
+						expectedValidationIssues: nil,
+					}),
+				Entry(
+					"expression with threshold, criticial annotation -> valid",
 					thresholdValidationTestConfig{
 						annotations: map[string]string{
 							thresholdCriticalAnnotation: "10",
@@ -772,12 +785,40 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 						expectedValidationIssues: nil,
 					}),
 				Entry(
-					"expression with $__threshold, both annotations -> valid",
+					"expression with threshold, legacy criticial annotation -> valid",
+					thresholdValidationTestConfig{
+						annotations: map[string]string{
+							thresholdCriticalAnnotationLegacy: "10",
+						},
+						expectedValidationIssues: nil,
+					}),
+				Entry(
+					"expression with threshold, both annotations -> valid",
 					thresholdValidationTestConfig{
 						annotations: map[string]string{
 							"unrelated":                 "annotation",
 							thresholdDegradedAnnotation: "10",
 							thresholdCriticalAnnotation: "5",
+						},
+						expectedValidationIssues: nil,
+					}),
+				Entry(
+					"expression with threshold, both legacy annotations -> valid",
+					thresholdValidationTestConfig{
+						annotations: map[string]string{
+							"unrelated":                       "annotation",
+							thresholdDegradedAnnotationLegacy: "10",
+							thresholdCriticalAnnotationLegacy: "5",
+						},
+						expectedValidationIssues: nil,
+					}),
+				Entry(
+					"expression with threshold, mixed current and legacy annotations -> valid",
+					thresholdValidationTestConfig{
+						annotations: map[string]string{
+							"unrelated":                       "annotation",
+							thresholdDegradedAnnotation:       "10",
+							thresholdCriticalAnnotationLegacy: "5",
 						},
 						expectedValidationIssues: nil,
 					}),

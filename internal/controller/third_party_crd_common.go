@@ -554,22 +554,36 @@ func synchronizeViaApi(
 			synchronizationErrors = make(map[string]string)
 		}
 		// In theory, the following map merge could overwrite synchronization errors from the MapResourceToHttpRequests
-		// stage with errors occurring in executeAllHttpRequests, but items that have an error in MapResourceToHttpRequests
-		// are never converted to requests, so the two maps are disjoint.
+		// stage with errors occurring in executeAllHttpRequests, but items that have an error in
+		// MapResourceToHttpRequests are never converted to requests, so the two maps are disjoint.
 		maps.Copy(synchronizationErrors, httpErrors)
 	}
-	logger.Info(
-		fmt.Sprintf("%s %s %s/%s: %d %s(s), %d successfully synchronized, validation issues: %v, synchronization errors: %v",
-			actionLabel,
-			resourceReconciler.KindDisplayName(),
-			thirdPartyResource.GetNamespace(),
-			thirdPartyResource.GetName(),
-			itemsTotal,
-			resourceReconciler.ShortName(),
-			len(successfullySynchronized),
-			validationIssues,
-			synchronizationErrors,
-		))
+	if len(validationIssues) == 0 && len(synchronizationErrors) == 0 {
+		logger.Info(
+			fmt.Sprintf("%s %s %s/%s: %d %s(s), %d successfully synchronized",
+				actionLabel,
+				resourceReconciler.KindDisplayName(),
+				thirdPartyResource.GetNamespace(),
+				thirdPartyResource.GetName(),
+				itemsTotal,
+				resourceReconciler.ShortName(),
+				len(successfullySynchronized),
+			))
+	} else {
+		logger.Error(
+			fmt.Errorf("validation issues and/or synchronization issues occurred"),
+			fmt.Sprintf("%s %s %s/%s: %d %s(s), %d successfully synchronized, validation issues: %v, synchronization errors: %v",
+				actionLabel,
+				resourceReconciler.KindDisplayName(),
+				thirdPartyResource.GetNamespace(),
+				thirdPartyResource.GetName(),
+				itemsTotal,
+				resourceReconciler.ShortName(),
+				len(successfullySynchronized),
+				validationIssues,
+				synchronizationErrors,
+			))
+	}
 	writeSynchronizationResult(
 		ctx,
 		resourceReconciler,
@@ -894,11 +908,11 @@ func writeSynchronizationResult(
 					Name:      monitoringResource.GetName(),
 				},
 				monitoringResource); err != nil {
-				logger.Error(
-					err,
+				logger.Info(
 					fmt.Sprintf("failed attempt (might be retried) to fetch the Dash0 monitoring resource %s/%s "+
 						"before updating it with the synchronization results for %s \"%s\": items total %d, "+
-						"successfully synchronized: %v, validation issues: %v, synchronization errors: %v",
+						"successfully synchronized: %v, validation issues: %v, synchronization errors: %v; "+
+						"fetch error: %v",
 						monitoringResource.GetNamespace(),
 						monitoringResource.GetName(),
 						resourceReconciler.ShortName(),
@@ -907,6 +921,7 @@ func writeSynchronizationResult(
 						succesfullySynchronized,
 						validationIssuesPerItem,
 						synchronizationErrorsPerItem,
+						err,
 					))
 				return err
 			}
@@ -920,15 +935,15 @@ func writeSynchronizationResult(
 				validationIssuesPerItem,
 			)
 			if err := resourceReconciler.K8sClient().Status().Update(ctx, monitoringResource); err != nil {
-				logger.Error(
-					err,
+				logger.Info(
 					fmt.Sprintf("failed attempt (might be retried) to update the Dash0 monitoring resource "+
-						"%s/%s with the synchronization results for %s \"%s\": %v",
+						"%s/%s with the synchronization results for %s \"%s\": %v; update error: %v",
 						monitoringResource.GetNamespace(),
 						monitoringResource.GetName(),
 						resourceReconciler.ShortName(),
 						qualifiedName,
 						resultForThisResource,
+						err,
 					))
 				return err
 			}
