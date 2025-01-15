@@ -7,11 +7,18 @@
 set -euo pipefail
 shopt -s lastpipe
 
+start_time_build=$(date +%s)
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 NC='\033[0m'
 
 cd "$(dirname "${BASH_SOURCE[0]}")"/..
+
+# shellcheck source=images/instrumentation/test/build_time_profiling
+source ./test/build_time_profiling
+
+trap print_total_build_time_info EXIT
 
 # shellcheck source=images/instrumentation/injector/test/scripts/util
 source injector/test/scripts/util
@@ -23,6 +30,8 @@ exit_code=0
 summary=""
 
 build_or_pull_instrumentation_image() {
+  # shellcheck disable=SC2155
+  local start_time_step=$(date +%s)
   if [[ -n "${INSTRUMENTATION_IMAGE:-}" ]]; then
     instrumentation_image="$INSTRUMENTATION_IMAGE"
 
@@ -36,6 +45,7 @@ build_or_pull_instrumentation_image() {
       echo "using existing local instrumentation image: $instrumentation_image"
       echo ----------------------------------------
     fi
+    store_build_step_duration "pull instrumentation image" "$start_time_step"
   else
     echo ----------------------------------------
     echo "building multi-arch instrumentation image for platforms ${all_docker_platforms} from local sources"
@@ -51,6 +61,8 @@ build_or_pull_instrumentation_image() {
       echo "${build_output}"
       exit 1
     fi
+
+    store_build_step_duration "build instrumentation image" "$start_time_step"
   fi
   echo
 }
@@ -70,6 +82,8 @@ run_tests_for_runtime() {
   fi
 
   for t in "${script_dir}"/"${runtime}"/test-cases/*/ ; do
+    # shellcheck disable=SC2155
+    local start_time_test_case=$(date +%s)
     test=$(basename "$(realpath "${t}")")
 
     case "$runtime" in
@@ -102,6 +116,7 @@ run_tests_for_runtime() {
       exit_code=1
       summary="$summary\n${runtime}/${base_image}\t- ${test}:\tfailed"
     fi
+    store_build_step_duration "test case $image_name_test/$base_image/$test" "$start_time_test_case"
   done
 }
 
@@ -132,6 +147,8 @@ run_tests_for_architecture() {
       echo "- base image: '${base_image}'"
       image_name_test="test-${runtime}-${arch}:latest"
       echo "building test image for ${arch}/${runtime}/${base_image} with instrumentation image ${instrumentation_image}"
+      # shellcheck disable=SC2155
+      local start_time_docker_build=$(date +%s)
       if ! build_output=$(
         docker build \
           --platform "$docker_platform" \
@@ -144,6 +161,7 @@ run_tests_for_architecture() {
         echo "${build_output}"
         exit 1
       fi
+      store_build_step_duration "docker build $arch/$runtime/$base_image" "$start_time_docker_build"
       run_tests_for_runtime "${runtime}" "$image_name_test" "$base_image"
       echo
     done
