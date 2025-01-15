@@ -90,10 +90,12 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 			}, &operatorConfiguration)
 			g.Expect(err).ToNot(HaveOccurred())
 
-			g.Expect(operatorConfiguration.Annotations).To(HaveLen(1))
+			g.Expect(operatorConfiguration.Annotations).To(HaveLen(2))
 			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/sync-options"]).To(Equal("Prune=false"))
+			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/compare-options"]).To(Equal("IgnoreExtraneous"))
 
-			export := operatorConfiguration.Spec.Export
+			spec := operatorConfiguration.Spec
+			export := spec.Export
 			g.Expect(export).ToNot(BeNil())
 			dash0Export := export.Dash0
 			g.Expect(dash0Export).ToNot(BeNil())
@@ -103,6 +105,10 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 			g.Expect(dash0Export.Authorization.Token).ToNot(BeNil())
 			g.Expect(*dash0Export.Authorization.Token).To(Equal(AuthorizationTokenTest))
 			g.Expect(dash0Export.Authorization.SecretRef).To(BeNil())
+			g.Expect(dash0Export.Authorization.SecretRef).To(BeNil())
+			g.Expect(*spec.SelfMonitoring.Enabled).To(BeFalse())
+			g.Expect(*spec.KubernetesInfrastructureMetricsCollectionEnabled).To(BeFalse())
+			g.Expect(spec.ClusterName).To(BeEmpty())
 		}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
 	})
 
@@ -118,8 +124,9 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 			}, &operatorConfiguration)
 			g.Expect(err).ToNot(HaveOccurred())
 
-			g.Expect(operatorConfiguration.Annotations).To(HaveLen(1))
+			g.Expect(operatorConfiguration.Annotations).To(HaveLen(2))
 			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/sync-options"]).To(Equal("Prune=false"))
+			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/compare-options"]).To(Equal("IgnoreExtraneous"))
 
 			export := operatorConfiguration.Spec.Export
 			g.Expect(export).ToNot(BeNil())
@@ -151,6 +158,10 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 			}, &operatorConfiguration)
 			g.Expect(err).ToNot(HaveOccurred())
 
+			g.Expect(operatorConfiguration.Annotations).To(HaveLen(2))
+			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/sync-options"]).To(Equal("Prune=false"))
+			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/compare-options"]).To(Equal("IgnoreExtraneous"))
+
 			export := operatorConfiguration.Spec.Export
 			g.Expect(export).ToNot(BeNil())
 			dash0Export := export.Dash0
@@ -175,11 +186,44 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 			}, &operatorConfiguration)
 			g.Expect(err).ToNot(HaveOccurred())
 
+			g.Expect(operatorConfiguration.Annotations).To(HaveLen(2))
+			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/sync-options"]).To(Equal("Prune=false"))
+			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/compare-options"]).To(Equal("IgnoreExtraneous"))
+
 			export := operatorConfiguration.Spec.Export
 			g.Expect(export).ToNot(BeNil())
 			dash0Export := export.Dash0
 			g.Expect(dash0Export).ToNot(BeNil())
 			g.Expect(dash0Export.Dataset).To(Equal("custom"))
+		}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
+	})
+
+	It("should set the cluster name", func() {
+		Expect(
+			handler.CreateOrUpdateOperatorConfigurationResource(ctx, &OperatorConfigurationValues{
+				Endpoint:    EndpointDash0Test,
+				Token:       AuthorizationTokenTest,
+				ClusterName: "cluster-name",
+			}, &logger),
+		).To(Succeed())
+
+		Eventually(func(g Gomega) {
+			operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
+			err := k8sClient.Get(ctx, types.NamespacedName{
+				Name: operatorConfigurationAutoResourceName,
+			}, &operatorConfiguration)
+			g.Expect(err).ToNot(HaveOccurred())
+
+			g.Expect(operatorConfiguration.Annotations).To(HaveLen(2))
+			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/sync-options"]).To(Equal("Prune=false"))
+			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/compare-options"]).To(Equal("IgnoreExtraneous"))
+
+			spec := operatorConfiguration.Spec
+			export := spec.Export
+			g.Expect(export).ToNot(BeNil())
+			dash0Export := export.Dash0
+			g.Expect(dash0Export).ToNot(BeNil())
+			g.Expect(spec.ClusterName).To(Equal("cluster-name"))
 		}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
 	})
 
@@ -201,8 +245,9 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 			g.Expect(list.Items).To(HaveLen(1))
 			operatorConfiguration := list.Items[0]
 			g.Expect(operatorConfiguration.Name).To(Equal(operatorConfigurationAutoResourceName))
-			g.Expect(operatorConfiguration.Annotations).To(HaveLen(1))
+			g.Expect(operatorConfiguration.Annotations).To(HaveLen(2))
 			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/sync-options"]).To(Equal("Prune=false"))
+			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/compare-options"]).To(Equal("IgnoreExtraneous"))
 			export := operatorConfiguration.Spec.Export
 			g.Expect(export).ToNot(BeNil())
 			dash0Export := export.Dash0
@@ -238,8 +283,9 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 			g.Expect(list.Items).To(HaveLen(1))
 			operatorConfiguration := list.Items[0]
 			g.Expect(operatorConfiguration.Name).To(Equal(operatorConfigurationAutoResourceName))
-			g.Expect(operatorConfiguration.Annotations).To(HaveLen(1))
+			g.Expect(operatorConfiguration.Annotations).To(HaveLen(2))
 			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/sync-options"]).To(Equal("Prune=false"))
+			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/compare-options"]).To(Equal("IgnoreExtraneous"))
 			export := operatorConfiguration.Spec.Export
 			g.Expect(export).ToNot(BeNil())
 			dash0Export := export.Dash0

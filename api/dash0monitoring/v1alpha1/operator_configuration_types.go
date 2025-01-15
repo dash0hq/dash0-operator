@@ -37,6 +37,12 @@ type Dash0OperatorConfigurationSpec struct {
 	//
 	// +kubebuilder:default=true
 	KubernetesInfrastructureMetricsCollectionEnabled *bool `json:"kubernetesInfrastructureMetricsCollectionEnabled,omitempty"`
+
+	// If set, the value will be added as the resource attribute k8s.cluster.name to all telemetry. This setting is
+	// optional. By default, k8s.cluster.name will not be added to telemetry.
+	//
+	// +kubebuilder:validation:Optional
+	ClusterName string `json:"clusterName,omitempty"`
 }
 
 // SelfMonitoring describes how the operator will report telemetry about its working to the backend.

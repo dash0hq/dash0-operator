@@ -27,6 +27,7 @@ func verifyThatWorkloadHasBeenInstrumented(
 	testId string,
 	images Images,
 	instrumentationBy string,
+	expectClusterName bool,
 ) {
 	By(fmt.Sprintf("%s: waiting for the workload to get instrumented (polling its labels and events to check)",
 		workloadType.workloadTypeString))
@@ -61,7 +62,7 @@ func verifyThatWorkloadHasBeenInstrumented(
 	route := "/dash0-k8s-operator-test"
 	query := fmt.Sprintf("id=%s", testId)
 	Eventually(func(g Gomega) {
-		verifySpans(g, runtime, workloadType, route, query)
+		verifySpans(g, runtime, workloadType, route, query, expectClusterName)
 	}, spanTimeout, pollingInterval).Should(Succeed())
 	By(fmt.Sprintf("%s: matching spans have been received", workloadType.workloadTypeString))
 }

@@ -18,6 +18,9 @@ import (
 const (
 	tracesJsonMaxLineLength = 1_048_576
 
+	clusterNameKey = "k8s.cluster.name"
+	podNameKey     = "k8s.pod.name"
+
 	httpTargetAttrib = "http.target"
 	httpRouteAttrib  = "http.route"
 	urlQueryAttrib   = "url.query"
@@ -33,6 +36,7 @@ func verifySpans(
 	workloadType workloadType,
 	route string,
 	query string,
+	expectClusterName bool,
 ) {
 	allMatchResults :=
 		sendRequestAndFindMatchingSpans(
@@ -43,6 +47,7 @@ func verifySpans(
 			query,
 			nil,
 			true,
+			expectClusterName,
 		)
 	allMatchResults.expectAtLeastOneMatch(
 		g,
@@ -67,6 +72,7 @@ func verifyNoSpans(
 			query,
 			&timestampLowerBound,
 			false,
+			false,
 		)
 	allMatchResults.expectZeroMatches(
 		g,
@@ -82,13 +88,14 @@ func sendRequestAndFindMatchingSpans(
 	query string,
 	timestampLowerBound *time.Time,
 	checkResourceAttributes bool,
+	expectClusterName bool,
 ) MatchResultList[ptrace.ResourceSpans, ptrace.Span] {
 	if !workloadType.isBatch {
 		sendRequest(g, runtime, workloadType, route, query)
 	}
 	var resourceMatchFn func(ptrace.ResourceSpans, *ResourceMatchResult[ptrace.ResourceSpans])
 	if checkResourceAttributes {
-		resourceMatchFn = resourceSpansHaveExpectedResourceAttributes(runtime, workloadType)
+		resourceMatchFn = resourceSpansHaveExpectedResourceAttributes(runtime, workloadType, expectClusterName)
 	}
 	return fileHasMatchingSpan(
 		g,
@@ -185,12 +192,26 @@ func hasMatchingSpans(
 }
 
 //nolint:all
-func resourceSpansHaveExpectedResourceAttributes(runtime runtimeType, workloadType workloadType) func(
+func resourceSpansHaveExpectedResourceAttributes(runtime runtimeType, workloadType workloadType, expectClusterName bool) func(
 	ptrace.ResourceSpans,
 	*ResourceMatchResult[ptrace.ResourceSpans],
 ) {
 	return func(resourceSpans ptrace.ResourceSpans, matchResult *ResourceMatchResult[ptrace.ResourceSpans]) {
 		attributes := resourceSpans.Resource().Attributes()
+
+		if expectClusterName {
+			expectedClusterName := "e2e-test-cluster"
+			actualClusterName, hasClusterNameAttribute := attributes.Get(clusterNameKey)
+			if hasClusterNameAttribute {
+				if actualClusterName.Str() == expectedClusterName {
+					matchResult.addPassedAssertion(podNameKey)
+				} else {
+					matchResult.addFailedAssertion(podNameKey, fmt.Sprintf("expected %s but it was %s", expectedClusterName, actualClusterName.Str()))
+				}
+			} else {
+				matchResult.addFailedAssertion(clusterNameKey, fmt.Sprintf("expected %s but the span has no such attribute", expectedClusterName))
+			}
+		}
 
 		// Note: On kind clusters, the workload type attribute (k8s.deployment.name) etc. is often missing. This needs
 		// to be investigated more.
@@ -210,7 +231,6 @@ func resourceSpansHaveExpectedResourceAttributes(runtime runtimeType, workloadTy
 			}
 		}
 
-		podNameKey := "k8s.pod.name"
 		expectedPodName := workloadName(runtime, workloadType)
 		expectedPodPrefix := fmt.Sprintf("%s-", expectedPodName)
 		actualPodName, hasPodAttribute := attributes.Get(podNameKey)

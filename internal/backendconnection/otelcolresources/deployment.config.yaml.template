@@ -63,6 +63,14 @@ processors:
       - from: resource_attribute
         name: k8s.pod.uid
 
+  {{- if .ClusterName }}
+  resource:
+    attributes:
+      - key: k8s.cluster.name
+        value: "{{ .ClusterName }}"
+        action: insert
+  {{- end }}
+
   memory_limiter:
     check_interval: 5s
     limit_percentage: 80
@@ -85,6 +93,9 @@ service:
       - k8s_cluster
       processors:
       - k8sattributes
+      {{- if .ClusterName }}
+      - resource
+      {{- end }}
       - memory_limiter
       - batch
       exporters:
@@ -96,6 +107,10 @@ service:
       {{- end }}
 
   telemetry:
+    {{- if .ClusterName }}
+    resource:
+      "k8s.cluster.name": "{{- .ClusterName }}"
+    {{- end }}
     metrics:
       readers:
         - pull:

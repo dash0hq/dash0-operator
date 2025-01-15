@@ -301,6 +301,38 @@ tests:
           path: spec.template.spec.containers[0].args[8]
           value: --operator-configuration-dataset=test-dataset
 
+  - it: should add args for creating an operator configuration resource with a cluster name to the deployment
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+          apiEndpoint: https://api.dash0.com
+        clusterName: "cluster-name"
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args[3]
+          value: --operator-configuration-endpoint=https://ingress.dash0.com
+      - equal:
+          path: spec.template.spec.containers[0].args[4]
+          value: --operator-configuration-token=very-secret-dash0-auth-token
+      - equal:
+          path: spec.template.spec.containers[0].args[5]
+          value: --operator-configuration-api-endpoint=https://api.dash0.com
+      - equal:
+          path: spec.template.spec.containers[0].args[6]
+          value: --operator-configuration-self-monitoring-enabled=true
+      - equal:
+          path: spec.template.spec.containers[0].args[7]
+          value: --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled=true
+      - equal:
+          path: spec.template.spec.containers[0].args[8]
+          value: --operator-configuration-cluster-name=cluster-name
+
   - it: should add args for creating an operator configuration resource with a secretRef to the deployment
     documentSelector:
       path: metadata.name

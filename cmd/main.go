@@ -128,6 +128,7 @@ func main() {
 	var operatorConfigurationApiEndpoint string
 	var operatorConfigurationSelfMonitoringEnabled bool
 	var operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled bool
+	var operatorConfigurationClusterName string
 	var isUninstrumentAll bool
 	var metricsAddr string
 	var enableLeaderElection bool
@@ -194,6 +195,13 @@ func main() {
 		true,
 		"Whether to set kubernetesInfrastructureMetricsCollectionEnabled on the operator configuration resource; "+
 			"will be ignored if operator-configuration-endpoint is not set.")
+	flag.StringVar(
+		&operatorConfigurationClusterName,
+		"operator-configuration-cluster-name",
+		"",
+		"The clusterName to set on the operator configuration resource; will be ignored if"+
+			"operator-configuration-endpoint is not set. If set, the value will be added as the resource attribute "+
+			"k8s.cluster.name to all telemetry.")
 	flag.StringVar(
 		&metricsAddr,
 		"metrics-bind-address",
@@ -309,6 +317,7 @@ func main() {
 			SelfMonitoringEnabled: operatorConfigurationSelfMonitoringEnabled,
 			//nolint:lll
 			KubernetesInfrastructureMetricsCollectionEnabled: operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled,
+			ClusterName: operatorConfigurationClusterName,
 		}
 		if len(operatorConfigurationApiEndpoint) > 0 {
 			operatorConfiguration.ApiEndpoint = operatorConfigurationApiEndpoint

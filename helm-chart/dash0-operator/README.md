@@ -71,6 +71,7 @@ helm install \
   --set operator.dash0Export.endpoint=REPLACE THIS WITH YOUR DASH0 INGRESS ENDPOINT \
   --set operator.dash0Export.apiEndpoint=REPLACE THIS WITH YOUR DASH0 API ENDPOINT \
   --set operator.dash0Export.token=REPLACE THIS WITH YOUR DASH0 AUTH TOKEN \
+  --set operator.clusterName=REPLACE THIS WITH YOUR THE NAME OF THE CLUSTER (OPTIONAL) \
   dash0-operator \
   dash0-operator/dash0-operator
 ```
@@ -86,6 +87,7 @@ helm install \
   --set operator.dash0Export.apiEndpoint=REPLACE THIS WITH YOUR DASH0 API ENDPOINT \
   --set operator.dash0Export.secretRef.name=REPLACE THIS WITH THE NAME OF AN EXISTING KUBERNETES SECRET \
   --set operator.dash0Export.secretRef.key=REPLACE THIS WITH THE PROPERTY KEY IN THAT SECRET \
+  --set operator.clusterName=REPLACE THIS WITH YOUR THE NAME OF THE CLUSTER (OPTIONAL) \
   dash0-operator \
   dash0-operator/dash0-operator
 ```
@@ -116,7 +118,7 @@ That is, providing `--set operator.dash0Export.enabled=true` and the other backe
 On its own, the operator will not do much.
 To actually have the operator monitor your cluster, two more things need to be set up:
 1. a [Dash0 backend connection](#configuring-the-dash0-backend-connection) has to be configured and
-2. monitoring workloads has to be [enabled per namespace](#enable-dash0-monitoring-for-a-namespace).
+2. monitoring workloads and collecting metrics has to be [enabled per namespace](#enable-dash0-monitoring-for-a-namespace).
 
 Both steps are described in the following sections.
 
@@ -147,6 +149,8 @@ spec:
         token: auth_... # TODO needs to be replaced with the actual value, see below
 
       apiEndpoint: https://api.....dash0.com # TODO needs to be replaced with the actual value, see below
+
+  clusterName: my-kubernetes-cluster # optional, see below
 ```
 
 Here is a list of configuration options for this resource:
@@ -190,6 +194,8 @@ Here is a list of configuration options for this resource:
 * `spec.kubernetesInfrastructureMetricsCollectionEnabled`: If enabled, the operator will collect Kubernetes
   infrastructure metrics.
   This setting is optional, it defaults to true.
+* `spec.clusterName`: If set, the value will be added as the resource attribute `k8s.cluster.name` to all telemetry.
+  This setting is optional. By default, `k8s.cluster.name` will not be added to telemetry.
 
 After providing the required values (at least `endpoint` and `authorization`), save the file and apply the resource to
 the Kubernetes cluster you want to monitor:
@@ -227,6 +233,9 @@ If you want to monitor the `default` namespace with Dash0, use the following com
 ```console
 kubectl apply -f dash0-monitoring.yaml
 ```
+
+Note: Collecting Kubernetes infrastructure metrics (which are not neccessarily related to specific workloads or
+namespaces) also requires that at least one namespace has a Dash0Monitoring resource.
 
 ### Additional Configuration Per Namespace
 
@@ -452,6 +461,8 @@ spec:
 
 ### Configure Metrics Collection
 
+Note: Collecting metrics requires that at least one namespace has a Dash0Monitoring resource.
+
 By default, the operator collects metrics as follows:
 * The operator collects node, pod, container, and volume metrics from the API server on
   [kubelets](https://kubernetes.io/docs/concepts/architecture/#kubelet)
@@ -461,9 +472,8 @@ By default, the operator collects metrics as follows:
   via the
   [Kubernetes Cluster Receiver](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/k8sclusterreceiver/README.md)
   This can be disabled per cluster by setting `kubernetesInfrastructureMetricsCollectionEnabled: false` in the Dash0
-  operator configuration resource (or by using
-  `--operator-configuration-kubernetes-infrastructure-metrics-collection-enabled=false` when deploying the operator
-  configuration resource via the Helm chart).
+  operator configuration resource (or setting the value `operator.kubernetesInfrastructureMetricsCollectionEnabled` to
+  `false` when deploying the operator configuration resource via the Helm chart).
 * The Dash0 operator scrapes Prometheus endpoints on pods annotated with the `prometheus.io/*` annotations, as
   described in the section [Scraping Prometheus endpoints](#scraping-prometheus-endpoints). This can be disabled per
   namespace by explicitly setting `prometheusScrapingEnabled: false` in the Dash0 monitoring resource.

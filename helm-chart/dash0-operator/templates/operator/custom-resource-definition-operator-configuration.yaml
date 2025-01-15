@@ -41,6 +41,11 @@ spec:
             description: Dash0OperatorConfigurationSpec describes cluster-wide configuration
               settings for the Dash0 operator.
             properties:
+              clusterName:
+                description: |-
+                  If set, the value will be added as the resource attribute k8s.cluster.name to all telemetry. This setting is
+                  optional. By default, k8s.cluster.name will not be added to telemetry.
+                type: string
               export:
                 description: |-
                   The configuration of the default observability backend to which telemetry data will be sent by the operator, as

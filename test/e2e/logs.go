@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 
 	. "github.com/onsi/gomega"
@@ -107,9 +106,6 @@ func countMatchingLogRecords(
 func resourceLogRecordsHaveExpectedResourceAttributes(workloadType string) func(span plog.ResourceLogs) bool {
 	return func(resourceLogs plog.ResourceLogs) bool {
 		attributes := resourceLogs.Resource().Attributes()
-		attributes.Range(func(k string, v pcommon.Value) bool {
-			return true
-		})
 
 		workloadAttributeFound := false
 		if workloadType == "replicaset" {

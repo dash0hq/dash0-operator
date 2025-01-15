@@ -10,3 +10,4 @@ spec:
       endpoint: {{ .Endpoint }}
       authorization:
         token: {{ .Token }}
+  clusterName: e2e-test-cluster

@@ -178,6 +178,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 						)],
 						images,
 						"controller",
+						false,
 					)
 				})
 				By("all workloads have been instrumented")
@@ -289,6 +290,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					testId,
 					initialAlternativeImages,
 					"controller",
+					false,
 				)
 
 				// Now update the operator with the actual image names that are used throughout the whole test suite.
@@ -310,6 +312,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					// check that the new image tags have been applied to the workload
 					images,
 					"controller",
+					false,
 				)
 			})
 		})
@@ -352,6 +355,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					testId,
 					images,
 					"webhook",
+					false,
 				)
 			},
 			Entry("should instrument new Node.js cron jobs", workloadTypeCronjob, runtimeTypeNodeJs),
@@ -380,6 +384,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				testId,
 				images,
 				"webhook",
+				false,
 			)
 
 			By("adding the opt-out label to the deployment")
@@ -428,6 +433,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				testId,
 				images,
 				"webhook",
+				false,
 			)
 		})
 	})
@@ -472,6 +478,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				testId,
 				images,
 				"webhook",
+				false,
 			)
 
 			By("verifying that removing the Dash0 monitoring resource attempts to uninstruments the job")
@@ -612,6 +619,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				testId,
 				images,
 				"controller",
+				false,
 			)
 		})
 
@@ -634,6 +642,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				testId,
 				images,
 				"webhook",
+				false,
 			)
 
 			By("updating the Dash0Monitoring resource to InstrumentWorkloads=none")
@@ -737,6 +746,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					testId,
 					images,
 					"webhook",
+					true,
 				)
 			})
 		})
@@ -786,6 +796,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					testId,
 					images,
 					"webhook",
+					true,
 				)
 			})
 		})
@@ -1034,6 +1045,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 						testIds[config.workloadType.workloadTypeString],
 						images,
 						"controller",
+						false,
 					)
 				})
 

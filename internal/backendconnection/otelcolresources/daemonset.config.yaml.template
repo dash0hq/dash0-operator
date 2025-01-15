@@ -104,6 +104,14 @@ processors:
     - sources:
       - from: connection
 
+  {{- if .ClusterName }}
+  resource:
+    attributes:
+      - key: k8s.cluster.name
+        value: "{{ .ClusterName }}"
+        action: insert
+  {{- end }}
+
   memory_limiter:
     check_interval: 5s
     limit_percentage: 80
@@ -349,6 +357,9 @@ service:
       processors:
       - resourcedetection
       - k8sattributes
+      {{- if .ClusterName }}
+      - resource
+      {{- end }}
       - memory_limiter
       - batch
       exporters:
@@ -371,6 +382,9 @@ service:
       processors:
       - resourcedetection
       - k8sattributes
+      {{- if .ClusterName }}
+      - resource
+      {{- end }}
       - memory_limiter
       - batch
       exporters:
@@ -403,6 +417,9 @@ service:
       - forward/logs
       processors:
       - resourcedetection
+      {{- if .ClusterName }}
+      - resource
+      {{- end }}
       - memory_limiter
       - batch
       exporters:
@@ -414,6 +431,10 @@ service:
       {{- end }}
 
   telemetry:
+    {{- if .ClusterName }}
+    resource:
+      "k8s.cluster.name": "{{- .ClusterName }}"
+    {{- end }}
     metrics:
       readers:
         - pull:
