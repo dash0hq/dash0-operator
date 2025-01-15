@@ -107,7 +107,10 @@ spec:
 {{- end }}
         - --operator-configuration-self-monitoring-enabled={{ .Values.operator.selfMonitoringEnabled }}
         - --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled={{ .Values.operator.kubernetesInfrastructureMetricsCollectionEnabled }}
+{{- if .Values.operator.clusterName }}
+        - --operator-configuration-cluster-name={{ .Values.operator.clusterName }}
 {{- end }}
+{{- end }} # closes if .Values.operator.dash0Export.enabled
 {{- if .Values.operator.dash0Export.dataset }}
         - --operator-configuration-dataset={{ .Values.operator.dash0Export.dataset }}
 {{- end }}

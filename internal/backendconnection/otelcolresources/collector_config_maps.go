@@ -20,6 +20,7 @@ type collectorConfigurationTemplateValues struct {
 	Exporters                                        []OtlpExporter
 	IgnoreLogsFromNamespaces                         []string
 	KubernetesInfrastructureMetricsCollectionEnabled bool
+	ClusterName                                      string
 	NamespacesWithPrometheusScraping                 []string
 	SelfIpReference                                  string
 	DevelopmentMode                                  bool
@@ -102,9 +103,10 @@ func assembleCollectorConfigMap(
 					config.Namespace,
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: config.KubernetesInfrastructureMetricsCollectionEnabled,
-				NamespacesWithPrometheusScraping:                 namespacesWithPrometheusScraping,
-				SelfIpReference:                                  selfIpReference,
-				DevelopmentMode:                                  config.DevelopmentMode,
+				ClusterName:                      config.ClusterName,
+				NamespacesWithPrometheusScraping: namespacesWithPrometheusScraping,
+				SelfIpReference:                  selfIpReference,
+				DevelopmentMode:                  config.DevelopmentMode,
 			})
 		if err != nil {
 			return nil, fmt.Errorf("cannot render the collector configuration template: %w", err)

@@ -28,6 +28,7 @@ all_docker_platforms=linux/arm64,linux/amd64
 script_dir="test"
 exit_code=0
 summary=""
+slow_test_threshold_seconds=15
 
 build_or_pull_instrumentation_image() {
   # shellcheck disable=SC2155
@@ -68,16 +69,25 @@ build_or_pull_instrumentation_image() {
 }
 
 run_tests_for_runtime() {
-  local runtime="${1:-}"
-  local image_name_test="${2:-}"
-  local base_image="${3:?}"
+  local docker_platform="${1:-}"
+  local runtime="${2:-}"
+  local image_name_test="${3:-}"
+  local base_image="${4:-}"
 
+  if [[ -z $docker_platform ]]; then
+    echo "missing parameter: docker_platform"
+    exit 1
+  fi
   if [[ -z $runtime ]]; then
     echo "missing parameter: runtime"
     exit 1
   fi
   if [[ -z $image_name_test ]]; then
     echo "missing parameter: image_name_test"
+    exit 1
+  fi
+  if [[ -z $base_image ]]; then
+    echo "missing parameter: base_image"
     exit 1
   fi
 
@@ -103,6 +113,7 @@ run_tests_for_runtime() {
     esac
 
     if docker_run_output=$(docker run \
+      --platform "$docker_platform" \
       --env-file="${script_dir}/${runtime}/test-cases/${test}/.env" \
       "$image_name_test" \
       "${test_cmd[@]}" \
@@ -116,6 +127,16 @@ run_tests_for_runtime() {
       exit_code=1
       summary="$summary\n${runtime}/${base_image}\t- ${test}:\tfailed"
     fi
+
+    # shellcheck disable=SC2155
+    local end_time_test_case=$(date +%s)
+    # shellcheck disable=SC2155
+    local duration_test_case=$((end_time_test_case - start_time_test_case))
+    if [[ "$duration_test_case" -gt "$slow_test_threshold_seconds" ]]; then
+      echo "! slow test case: $image_name_test/$base_image/$test: took $duration_test_case seconds, logging output:"
+      echo "$docker_run_output"
+    fi
+
     store_build_step_duration "test case $image_name_test/$base_image/$test" "$start_time_test_case"
   done
 }
@@ -162,7 +183,7 @@ run_tests_for_architecture() {
         exit 1
       fi
       store_build_step_duration "docker build $arch/$runtime/$base_image" "$start_time_docker_build"
-      run_tests_for_runtime "${runtime}" "$image_name_test" "$base_image"
+      run_tests_for_runtime "$docker_platform" "${runtime}" "$image_name_test" "$base_image"
       echo
     done
   done

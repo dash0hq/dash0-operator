@@ -38,27 +38,28 @@ var (
 
 var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
+	testConfigs := []TableEntry{
+		Entry(
+			"for the DaemonSet",
+			testConfig{
+				assembleConfigMapFunction: assembleDaemonSetCollectorConfigMapWithoutScrapingNamespaces,
+				pipelineNames: []string{
+					"traces/downstream",
+					"metrics/downstream",
+					"logs/downstream",
+				},
+			}),
+		Entry(
+			"for the Deployment",
+			testConfig{
+				assembleConfigMapFunction: assembleDeploymentCollectorConfigMap,
+				pipelineNames: []string{
+					"metrics/downstream",
+				},
+			}),
+	}
+
 	Describe("renders exporters", func() {
-		testConfigs := []TableEntry{
-			Entry(
-				"for the DaemonSet",
-				testConfig{
-					assembleConfigMapFunction: assembleDaemonSetCollectorConfigMapWithoutScrapingNamespaces,
-					pipelineNames: []string{
-						"traces/downstream",
-						"metrics/downstream",
-						"logs/downstream",
-					},
-				}),
-			Entry(
-				"for the Deployment",
-				testConfig{
-					assembleConfigMapFunction: assembleDeploymentCollectorConfigMap,
-					pipelineNames: []string{
-						"metrics/downstream",
-					},
-				}),
-		}
 
 		DescribeTable("should fail if no exporter is configured", func(testConfig testConfig) {
 			_, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
@@ -608,6 +609,71 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		}, testConfigs)
 	})
 
+	DescribeTable("should not render resource processor if the cluster name has not been set", func(testConfig testConfig) {
+		configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+			Namespace:  namespace,
+			NamePrefix: namePrefix,
+			Export: dash0v1alpha1.Export{
+				Dash0: &dash0v1alpha1.Dash0Configuration{
+					Endpoint: EndpointDash0Test,
+					Authorization: dash0v1alpha1.Authorization{
+						Token: &AuthorizationTokenTest,
+					},
+				},
+			},
+		}, false)
+
+		Expect(err).ToNot(HaveOccurred())
+		collectorConfig := parseConfigMapContent(configMap)
+		resourceProcessor := readFromMap(collectorConfig, []string{"processors", "resource"})
+		Expect(resourceProcessor).To(BeNil())
+		verifyProcessorDoesNotAppearInAnyPipeline(collectorConfig, "resource")
+		selfMonitoringTelemetryResource := readFromMap(
+			collectorConfig,
+			[]string{
+				"service",
+				"telemetry",
+				"resource",
+			})
+		Expect(selfMonitoringTelemetryResource).To(BeNil())
+	}, testConfigs)
+
+	DescribeTable("should render resource processor with k8s.cluster.name if available", func(testConfig testConfig) {
+		configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+			Namespace:  namespace,
+			NamePrefix: namePrefix,
+			Export: dash0v1alpha1.Export{
+				Dash0: &dash0v1alpha1.Dash0Configuration{
+					Endpoint: EndpointDash0Test,
+					Authorization: dash0v1alpha1.Authorization{
+						Token: &AuthorizationTokenTest,
+					},
+				},
+			},
+			ClusterName: "cluster-name",
+		}, false)
+
+		Expect(err).ToNot(HaveOccurred())
+		collectorConfig := parseConfigMapContent(configMap)
+		resourceProcessor := readFromMap(collectorConfig, []string{"processors", "resource"})
+		Expect(resourceProcessor).ToNot(BeNil())
+		attributes := readFromMap(resourceProcessor, []string{"attributes"})
+		Expect(attributes).To(HaveLen(1))
+		attrs := attributes.([]interface{})
+		Expect(attrs[0].(map[string]interface{})["key"]).To(Equal("k8s.cluster.name"))
+		Expect(attrs[0].(map[string]interface{})["value"]).To(Equal("cluster-name"))
+		Expect(attrs[0].(map[string]interface{})["action"]).To(Equal("insert"))
+		selfMonitoringTelemetryResource := readFromMap(
+			collectorConfig,
+			[]string{
+				"service",
+				"telemetry",
+				"resource",
+			})
+		Expect(selfMonitoringTelemetryResource).ToNot(BeNil())
+		Expect(selfMonitoringTelemetryResource.(map[string]interface{})["k8s.cluster.name"]).To(Equal("cluster-name"))
+	}, testConfigs)
+
 	Describe("should enable/disable kubernetes infrastructure metrics collection", func() {
 		It("should not render the kubeletstats receiver if kubernetes infrastructure metrics collection is disabled", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
@@ -786,6 +852,19 @@ func verifyDownstreamExportersInPipelines(
 	}
 }
 
+func verifyProcessorDoesNotAppearInAnyPipeline(
+	collectorConfig map[string]interface{},
+	processorName ...string,
+) {
+	pipelines := readPipelines(collectorConfig)
+	Expect(pipelines).ToNot(BeNil())
+	for pipelineName := range pipelines {
+		Expect(pipelineName).ToNot(BeNil())
+		processors := readPipelineProcessors(pipelines, pipelineName)
+		Expect(processors).ToNot(ContainElements(processorName))
+	}
+}
+
 func verifyScrapeJobHasNamespaces(collectorConfig map[string]interface{}, jobName string) {
 	namespacesKubernetesPodsRaw :=
 		readFromMap(
@@ -816,6 +895,10 @@ func readPipelines(collectorConfig map[string]interface{}) map[string]interface{
 //nolint:unparam
 func readPipelineReceivers(pipelines map[string]interface{}, pipelineName string) []interface{} {
 	return readPipelineList(pipelines, pipelineName, "receivers")
+}
+
+func readPipelineProcessors(pipelines map[string]interface{}, pipelineName string) []interface{} {
+	return readPipelineList(pipelines, pipelineName, "processors")
 }
 
 func readPipelineExporters(pipelines map[string]interface{}, pipelineName string) []interface{} {

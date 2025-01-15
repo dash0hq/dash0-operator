@@ -76,7 +76,10 @@ check_if_kubectx_is_kind_cluster() {
   if command -v kind >/dev/null 2>&1; then
     # kind is installed, check if the current kube context is a kind cluster
     current_kubectx=$(kubectl config current-context)
-    kind_clusters=$(kind get clusters)
+    kind_clusters=$(kind get clusters 2>&1)
+    if [[ "$kind_clusters" == "No kind clusters found." ]]; then
+      return
+    fi
     while IFS= read -r cluster; do
       if [[ "$current_kubectx" == "kind-$cluster" ]]; then
         is_kind_cluster=true
@@ -195,6 +198,7 @@ run_helm() {
     if [[ "${OPERATOR_CONFIGURATION_VIA_HELM_KUBERNETES_INFRASTRUCTURE_METRICS_COLLECTION_ENABLED:-}" == false  ]]; then
       helm_install_command+=" --set operator.kubernetesInfrastructureMetricsCollectionEnabled=false"
     fi
+    helm_install_command+=" --set operator.clusterName=local-operator-test-cluster"
   fi
 
   helm_install_command+=" dash0-operator"

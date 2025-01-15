@@ -100,6 +100,7 @@ func deployOperatorWithAutoOperationConfiguration(
 			"operator.dash0Export.secretRef.key",
 			operatorConfigurationValues.SecretRef.Key,
 		)
+		arguments = setHelmParameter(arguments, "operator.clusterName", "e2e-test-cluster")
 	}
 
 	output, err := run(exec.Command("helm", arguments...))

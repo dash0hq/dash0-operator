@@ -28,6 +28,7 @@ type oTelColConfig struct {
 	Export                                           dash0v1alpha1.Export
 	SelfMonitoringAndApiAccessConfiguration          selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration
 	KubernetesInfrastructureMetricsCollectionEnabled bool
+	ClusterName                                      string
 	Images                                           util.Images
 	IsIPv6Cluster                                    bool
 	DevelopmentMode                                  bool
@@ -1084,9 +1085,10 @@ func labels(addOptOutLabel bool) map[string]string {
 }
 
 func addCommonMetadata(object client.Object) clientObject {
-	// For clusters managed by ArgoCD, we need to prevent ArgoCD to prune resources that have no owner reference
-	// which are all cluster-scoped resources, like cluster roles & cluster role bindings. We could add the annotation
-	// to achieve that only to the cluster-scoped resources, but instead we just apply it to all resources we manage.
+	// For clusters managed by ArgoCD, we need to prevent ArgoCD to sync or prune resources that have no owner
+	// reference, which are all cluster-scoped resources, like cluster roles & cluster role bindings. We could add the
+	// annotation to achieve that only to the cluster-scoped resources, but instead we just apply it to all resources we
+	// manage.
 	// * https://github.com/argoproj/argo-cd/issues/4764#issuecomment-722661940 -- this is where they say that only top
 	//   level resources are pruned (that is basically the same as resources without an owner reference).
 	// * The docs for preventing this on a resource level are here:

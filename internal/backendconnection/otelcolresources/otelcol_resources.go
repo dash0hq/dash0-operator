@@ -115,9 +115,11 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	}
 
 	kubernetesInfrastructureMetricsCollectionEnabled := true
+	clusterName := ""
 	if operatorConfigurationResource != nil {
 		kubernetesInfrastructureMetricsCollectionEnabled =
 			util.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.KubernetesInfrastructureMetricsCollectionEnabled, true)
+		clusterName = operatorConfigurationResource.Spec.ClusterName
 	}
 
 	config := &oTelColConfig{
@@ -126,6 +128,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		Export:                                  *export,
 		SelfMonitoringAndApiAccessConfiguration: selfMonitoringConfiguration,
 		KubernetesInfrastructureMetricsCollectionEnabled: kubernetesInfrastructureMetricsCollectionEnabled,
+		ClusterName:     clusterName,
 		Images:          images,
 		IsIPv6Cluster:   m.IsIPv6Cluster,
 		DevelopmentMode: m.DevelopmentMode,
