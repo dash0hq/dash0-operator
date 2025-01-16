@@ -1,4 +1,4 @@
-declare -A all_build_step_times
+declare -a all_build_step_times
 
 print_time() {
   local t="$1"
@@ -6,11 +6,14 @@ print_time() {
 }
 
 store_build_step_duration() {
+  local end=$(date +%s)
   local step_label=$1
   local start=$2
-  local end=$(date +%s)
+  local arch=${3:--}
+  local runtime=${4:--}
+  local base_image=${5:--}
   local duration=$((end - start))
-  all_build_step_times["$step_label"]="$duration"
+  all_build_step_times+=("$step_label|$arch|$runtime|$base_image|$duration")
 }
 
 print_build_step_duration() {
@@ -26,12 +29,19 @@ print_total_build_time_info() {
   local total_build_duration=$((total_build_end - start_time_build))
   local accounted_for_total=0
   echo
-  echo "**build step durations**"
-  for label in "${!all_build_step_times[@]}"; do
-    local d="${all_build_step_times[$label]}"
-    printf "[build time] $label:"'\t'"$(print_time "$d")"'\n'
-    accounted_for_total=$((accounted_for_total + d))
+  echo "**build step durations (CSV)**"
+  echo '"Build Step";"Architecture";"Runtime";"Base Image";"Duration";"Duration (formatted)"'
+  for entry in "${all_build_step_times[@]}"; do
+    IFS="|" read -r -a entry_parsed <<< "${entry}"
+    local step_label=${entry_parsed[0]}
+    local arch=${entry_parsed[1]}
+    local runtime=${entry_parsed[2]}
+    local base_image=${entry_parsed[3]}
+    local duration=${entry_parsed[4]}
+    echo "\"$step_label\";\"$arch\";\"$runtime\";\"$base_image\";\"$duration\";\"$(print_time "$duration")\""
+    accounted_for_total=$((accounted_for_total + duration))
   done
+  echo
 
   echo ----------------------------------------
   echo "**summary**"

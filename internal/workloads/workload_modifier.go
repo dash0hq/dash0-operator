@@ -274,7 +274,6 @@ func (m *ResourceModifier) addEnvironmentVariables(container *corev1.Container, 
 		collectorBaseUrl = m.instrumentationMetadata.OTelCollectorBaseUrl
 	}
 
-	// Keep backwards compatibility with the Dash0 Node.js distro
 	m.addOrReplaceEnvironmentVariable(
 		container,
 		corev1.EnvVar{

@@ -23,12 +23,34 @@ trap print_total_build_time_info EXIT
 # shellcheck source=images/instrumentation/injector/test/scripts/util
 source injector/test/scripts/util
 
+
+echo ----------------------------------------
 instrumentation_image="dash0-instrumentation:latest"
 all_docker_platforms=linux/arm64,linux/amd64
 script_dir="test"
 exit_code=0
 summary=""
 slow_test_threshold_seconds=15
+architectures=""
+if [[ -n "${ARCHITECTURES:-}" ]]; then
+  architectures=("${ARCHITECTURES//,/ }")
+  echo Only testing a subset of architectures: "${architectures[@]}"
+fi
+runtimes=""
+if [[ -n "${RUNTIMES:-}" ]]; then
+  runtimes=("${RUNTIMES//,/ }")
+  echo Only testing a subset of runtimes: "${runtimes[@]}"
+fi
+base_images=""
+if [[ -n "${BASE_IMAGES:-}" ]]; then
+  base_images=("${BASE_IMAGES//,/ }")
+  echo Only testing a subset of base images: "${base_images[@]}"
+fi
+test_cases=""
+if [[ -n "${TEST_CASES:-}" ]]; then
+  test_cases=("${TEST_CASES//,/ }")
+  echo Only running a subset of test cases : "${test_cases[@]}"
+fi
 
 build_or_pull_instrumentation_image() {
   # shellcheck disable=SC2155
@@ -52,15 +74,18 @@ build_or_pull_instrumentation_image() {
     echo "building multi-arch instrumentation image for platforms ${all_docker_platforms} from local sources"
     echo ----------------------------------------
 
-    if ! build_output=$(
+    if ! docker_build_output=$(
       docker build \
       --platform "$all_docker_platforms" \
       . \
       -t "${instrumentation_image}" \
       2>&1
     ); then
-      echo "${build_output}"
+      echo "${docker_build_output}"
       exit 1
+    fi
+    if [[ "${PRINT_DOCKER_OUTPUT:-}" = "true" ]]; then
+      echo "${docker_build_output}"
     fi
 
     store_build_step_duration "build instrumentation image" "$start_time_step"
@@ -69,10 +94,11 @@ build_or_pull_instrumentation_image() {
 }
 
 run_tests_for_runtime() {
-  local docker_platform="${1:-}"
-  local runtime="${2:-}"
-  local image_name_test="${3:-}"
-  local base_image="${4:-}"
+  local arch="${1:-}"
+  local docker_platform="${2:-}"
+  local runtime="${3:-}"
+  local image_name_test="${4:-}"
+  local base_image="${5:-}"
 
   if [[ -z $docker_platform ]]; then
     echo "missing parameter: docker_platform"
@@ -92,6 +118,19 @@ run_tests_for_runtime() {
   fi
 
   for t in "${script_dir}"/"${runtime}"/test-cases/*/ ; do
+    if [[ -n "${test_cases[0]}" ]]; then
+      run_this_test_case="false"
+      for selected_test_case in "${test_cases[@]}"; do
+        if [[ "$t" =~ $selected_test_case ]]; then
+          run_this_test_case="true"
+        fi
+      done
+      if [[ "$run_this_test_case" != "true" ]]; then
+        echo "- skipping test case $t"
+        continue
+      fi
+    fi
+
     # shellcheck disable=SC2155
     local start_time_test_case=$(date +%s)
     test=$(basename "$(realpath "${t}")")
@@ -119,6 +158,9 @@ run_tests_for_runtime() {
       "${test_cmd[@]}" \
       2>&1
     ); then
+      if [[ "${PRINT_DOCKER_OUTPUT:-}" = "true" ]]; then
+        echo "$docker_run_output"
+      fi
       printf "${GREEN}test case \"${test}\": OK${NC}\n"
     else
       printf "${RED}test case \"${test}\": FAIL\n"
@@ -137,7 +179,7 @@ run_tests_for_runtime() {
       echo "$docker_run_output"
     fi
 
-    store_build_step_duration "test case $image_name_test/$base_image/$test" "$start_time_test_case"
+    store_build_step_duration "test case $test" "$start_time_test_case" "$arch" "$runtime" "$base_image"
   done
 }
 
@@ -156,21 +198,45 @@ run_tests_for_architecture() {
     exit 1
   fi
 
-  echo ----------------------------------------
+  echo ========================================
   echo "running tests for architecture $arch"
-  echo ----------------------------------------
-
+  echo ========================================
   for r in "${script_dir}"/*/ ; do
     runtime=$(basename "$(realpath "${r}")")
+
+    if [[ ! -e ${script_dir}/${runtime}/base-images ]]; then
+      continue
+    fi
+    if [[ ! -d ${script_dir}/${runtime}/test-cases ]]; then
+      continue
+    fi
+    if [[ -n "${runtimes[0]}" ]]; then
+      if [[ $(echo "${runtimes[@]}" | grep -o "$runtime" | wc -w) -eq 0 ]]; then
+        echo ----------------------------------------
+        echo "- skipping runtime $runtime"
+        continue
+      fi
+    fi
+
+    echo ----------------------------------------
     echo "- runtime: '${runtime}'"
     echo
     grep '^[^#;]' "${script_dir}/${runtime}/base-images" | while read -r base_image ; do
+      if [[ -n "${base_images[0]}" ]]; then
+        if [[ $(echo "${base_images[@]}" | grep -o "$base_image" | wc -w) -eq 0 ]]; then
+          echo --------------------
+          echo "- skipping base image $base_image"
+          continue
+        fi
+      fi
+
+      echo --------------------
       echo "- base image: '${base_image}'"
       image_name_test="test-${runtime}-${arch}:latest"
       echo "building test image for ${arch}/${runtime}/${base_image} with instrumentation image ${instrumentation_image}"
       # shellcheck disable=SC2155
       local start_time_docker_build=$(date +%s)
-      if ! build_output=$(
+      if ! docker_build_output=$(
         docker build \
           --platform "$docker_platform" \
           --build-arg "instrumentation_image=${instrumentation_image}" \
@@ -179,11 +245,14 @@ run_tests_for_architecture() {
           -t "$image_name_test" \
           2>&1
       ); then
-        echo "${build_output}"
+        echo "${docker_build_output}"
         exit 1
       fi
-      store_build_step_duration "docker build $arch/$runtime/$base_image" "$start_time_docker_build"
-      run_tests_for_runtime "$docker_platform" "${runtime}" "$image_name_test" "$base_image"
+      if [[ "${PRINT_DOCKER_OUTPUT:-}" = "true" ]]; then
+        echo "${docker_build_output}"
+      fi
+      store_build_step_duration "docker build" "$start_time_docker_build" "$arch" "$runtime" "$base_image"
+      run_tests_for_runtime "$arch" "$docker_platform" "${runtime}" "$image_name_test" "$base_image"
       echo
     done
   done
@@ -201,8 +270,22 @@ fi
 
 build_or_pull_instrumentation_image
 
-run_tests_for_architecture arm64
-run_tests_for_architecture x86_64
+declare -a all_architectures=(
+  "arm64"
+  "x86_64"
+)
+
+for arch in "${all_architectures[@]}"; do
+  if [[ -n "${architectures[0]}" ]]; then
+    if [[ $(echo "${architectures[@]}" | grep -o "$arch" | wc -w) -eq 0 ]]; then
+      echo ========================================
+      echo "- skipping CPU architecture $arch"
+      echo ========================================
+      continue
+    fi
+  fi
+  run_tests_for_architecture "$arch"
+done
 
 if [[ $exit_code -ne 0 ]]; then
   printf "\n${RED}There have been failing test cases:"
