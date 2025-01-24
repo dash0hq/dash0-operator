@@ -67,6 +67,14 @@ spec:
         {{- include "dash0-operator.podLabels" . | nindent 8 }}
         {{- end }}
     spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: "dash0.com/enable"
+                operator: "NotIn"
+                values: ["false"]
       containers:
       - name: manager
         image: {{ include "dash0-operator.image" . | quote }}

@@ -451,6 +451,23 @@ func assembleCollectorDaemonSet(config *oTelColConfig, resourceSpecs *OTelColRes
 					Labels: daemonSetMatchLabels,
 				},
 				Spec: corev1.PodSpec{
+					Affinity: &corev1.Affinity{
+						NodeAffinity: &corev1.NodeAffinity{
+							RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+								NodeSelectorTerms: []corev1.NodeSelectorTerm{
+									{
+										MatchExpressions: []corev1.NodeSelectorRequirement{
+											{
+												Key:      dash0OptOutLabelKey,
+												Operator: corev1.NodeSelectorOpNotIn,
+												Values:   []string{"false"},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
 					ServiceAccountName: daemonsetServiceAccountName(config.NamePrefix),
 					SecurityContext:    &corev1.PodSecurityContext{},
 					// This setting is required to enable the configuration reloader process to send Unix signals to the
@@ -911,6 +928,23 @@ func assembleCollectorDeployment(
 					Labels: deploymentMatchLabels,
 				},
 				Spec: corev1.PodSpec{
+					Affinity: &corev1.Affinity{
+						NodeAffinity: &corev1.NodeAffinity{
+							RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+								NodeSelectorTerms: []corev1.NodeSelectorTerm{
+									{
+										MatchExpressions: []corev1.NodeSelectorRequirement{
+											{
+												Key:      dash0OptOutLabelKey,
+												Operator: corev1.NodeSelectorOpNotIn,
+												Values:   []string{"false"},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
 					ServiceAccountName: deploymentServiceAccountName(config.NamePrefix),
 					SecurityContext:    &corev1.PodSecurityContext{},
 					// This setting is required to enable the configuration reloader process to send Unix signals to the

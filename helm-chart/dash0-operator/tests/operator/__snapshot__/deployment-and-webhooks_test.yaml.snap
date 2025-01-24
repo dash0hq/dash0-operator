@@ -29,6 +29,15 @@ deployment should match snapshot (default values):
             app.kubernetes.io/name: dash0-operator
             dash0.com/cert-digest: dJTiBDRVJUSUZJQ
         spec:
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: dash0.com/enable
+                        operator: NotIn
+                        values:
+                          - "false"
           automountServiceAccountToken: true
           containers:
             - args:

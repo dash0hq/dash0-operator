@@ -480,6 +480,31 @@ By default, the operator collects metrics as follows:
 
 Disabling or enabling individual metrics via configuration is currently not supported.
 
+### Preventing Operator Scheduling on Specific Nodes
+
+All the pods deployed by the operator have a default node anti-affinity for the `dash0.com/enable=false` node label.
+That is, if you add the `dash0.com/enable=false` label to a node, none of the pods owned by the operator will schedule
+on that node.
+
+**IMPORTANT:** This includes the daemonset that the operator will set up to receive telemetry from the pods, which might
+leads to situations in which instrumented pods cannot send telemetry because the local node does not have a daemonset
+pod.
+In other words, if you want to monitor workloads with the Dash0 operator and use the `dash0.com/enable=false` node
+anti-affinity, make sure that the workloads you want to monitor have the same anti-affinity:
+
+```yaml
+# Add this to your workloads
+spec:
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: "dash0.com/enable"
+            operator: "NotIn"
+            values: ["false"]
+```
+
 ### Disabling Auto-Instrumentation for Specific Workloads
 
 In namespaces that are Dash0-monitoring enabled, all supported workload types are automatically instrumented for
