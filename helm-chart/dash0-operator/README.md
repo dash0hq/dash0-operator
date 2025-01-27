@@ -183,10 +183,10 @@ Here is a list of configuration options for this resource:
       Additional steps are required to make sure secret values are encrypted.
       See https://kubernetes.io/docs/concepts/configuration/secret/ for more information on Kubernetes secrets.
 * `spec.export.dash0.apiEndpoint`: The base URL of the Dash0 API to talk to. This is not where telemetry will be sent,
-  but it is used for managing dashboards and check rules via the operator. This property is optional. The value needs
+  but it is used for managing dashboards, check rules and views via the operator. This property is optional. The value needs
   to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied fom https://app.dash0.com
   -> organization settings -> "Endpoints" -> "API". The correct endpoint value will always start with "https://api." and
-  end in ".dash0.com". If this property is omitted, managing dashboards and check rules via the operator will not work.
+  end in ".dash0.com". If this property is omitted, managing dashboards, check rules and views via the operator will not work.
 * `spec.selfMonitoring.enabled`: An opt-out for self-monitoring for the operator.
   If enabled, the operator will collect self-monitoring telemetry and send it to the Dash0 Insights dataset of the
   configured Dash0 backend.
@@ -300,14 +300,20 @@ The Dash0 monitoring resource supports additional configuration settings:
   See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-check-rules
   for details. This setting is optional, it defaults to true.
 
+* `spec.synchronizeViews`: A namespace-wide opt-out for synchronizing Dash0 view resources found in the
+  target namespace. If enabled, the operator will watch Dash0 view resources in this namespace and create
+  corresponding views in Dash0 via the Dash0 API.
+  See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-views
+  for details. This setting is optional, it defaults to true.
+
 * `spec.prometheusScrapingEnabled`: A namespace-wide opt-out for Prometheus scraping for the target namespace.
   If enabled, the operator will configure its OpenTelemetry collector to scrape metrics from pods in the namespace
   of this Dash0Monitoring resource according to their prometheus.io/scrape annotations via the OpenTelemetry Prometheus
   receiver. This setting is optional, it defaults to true.
 
 Here is an example file for a monitoring resource that sets the `spec.instrumentWorkloads` property
-to `created-and-updated` and disables Perses dashboard synchronization, Prometheus rule synchronization as well as
-Prometheus scraping:
+to `created-and-updated` and disables Perses dashboard synchronization, Prometheus rule synchronization, Dash0 view
+synchronization as well as Prometheus scraping:
 
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1
@@ -318,6 +324,7 @@ spec:
   instrumentWorkloads: created-and-updated
   synchronizePersesDashboards: false
   synchronizePrometheusRules: false
+  synchronizeViews: false
   prometheusScrapingEnabled: false
 ```
 
@@ -909,6 +916,48 @@ Prometheus Rule Synchronization Results:
       dash0/collector - exporter send failed spans
     Invalid Rules Total:           0
     Synchronization Errors Total:  0
+```
+
+## Managing Dash0 Views
+
+You can manage your Dash0 views via the Dash0 operator.
+
+Pre-requisites for this feature:
+* A Dash0 operator configuration resource has to be installed in the cluster.
+* The operator configuration resource must have the `apiEndpoint` property.
+* The operator configuration resource must have a Dash0 export configured with authorization
+  (either `token` or `secret-ref`).
+* The operator will only pick up Dash0 view resources in namespaces that have a Dash0 monitoring resource
+  deployed.
+* The operator will not synchronize Dash0 view resources in namespaces where the Dash0 monitoring resource
+  has the setting `synchronizeViews` set to `false`. (This setting is optional and defaults to `true` when
+  omitted.)
+
+Furthermore, the custom resource definition for Dash0 views needs to be installed in the cluster. There are two
+ways to achieve this:
+
+**TODO**
+
+With the prerequisites in place, you can manage Dash0 views via the operator.
+The Dash0 operator will watch for Dash0 view resources in all namespaces that have a Dash0 monitoring resource
+deployed, and synchronize the Dash0 view resources with the Dash0 backend:
+* When a new Dash0 view resource is created, the operator will create a corresponding view via Dash0's API.
+* When a Dash0 view resource is changed, the operator will update the corresponding view via Dash0's API.
+* When a Dash0 view resource is deleted, the operator will delete the corresponding view via Dash0's API.
+
+The views created by the operator will be in read-only mode in the Dash0 UI.
+
+If the Dash0 operator configuration resource has the `dataset` property set, the operator will create the views
+in that dataset, otherwise they will be created in the `default` dataset.
+
+When a Dash0 view resource has been synchronized to Dash0, the operator will write a summary of that
+synchronization operation to the status of the Dash0 monitoring resource in the same namespace. This summary will also
+show whether the view had any validation issues or an error occurred during synchronization:
+```
+Dash0 view Synchronization Results:
+  test-namespace/view-test:
+    Synchronization Status:     successful
+    Synchronized At:            2024-10-25T12:02:12Z
 ```
 
 ## Notes on Running The Operator on Apple Silicon
