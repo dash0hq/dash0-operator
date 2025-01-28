@@ -169,11 +169,11 @@ kind delete cluster --name dash0-operator-playground
 #### Running End-to-End Tests against a Remote Cluster
 
 TODO: Add instructions for running the e2e tests against a remote cluster.
-Currently this involves some local ad hoc modifications, like
+Currently, this involves some local ad hoc modifications, like
 * pushing the test image to the remote registry,
 * changing`test-resources/node.js/express/deployment.yaml` and friends
     * to set the container image `ghcr.io/dash0hq/dash0-operator-nodejs-20-express-test-app:latest"`, and
-    * removing `imagePullPolicy: Never
+    * removing `imagePullPolicy: Never`
 
 ### Semi-Manual Test Scenarios
 

@@ -5,7 +5,7 @@ metadata:
 spec:
   export:
     dash0:
-      endpoint: ingress.eu-west-1.aws.dash0-dev.com:4317
+      endpoint: "$DASH0_INGRESS_ENDPOINT"
       authorization:
         token: "$DASH0_AUTHORIZATION_TOKEN"
-      apiEndpoint: https://api.eu-west-1.aws.dash0-dev.com
+      apiEndpoint: "$DASH0_API_ENDPOINT"
