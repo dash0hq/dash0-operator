@@ -186,6 +186,10 @@ func uninstallNodeJsCronJob(namespace string) error {
 	return runKubectlDelete(namespace, "cronjob", runtimeTypeNodeJs)
 }
 
+func uninstallJvmCronJob(namespace string) error {
+	return runKubectlDelete(namespace, "cronjob", runtimeTypeJvm)
+}
+
 func installNodeJsDaemonSetWithOptOutLabel(namespace string) error {
 	return runKubectlApply(
 		namespace,
@@ -197,6 +201,10 @@ func installNodeJsDaemonSetWithOptOutLabel(namespace string) error {
 
 func uninstallNodeJsDaemonSet(namespace string) error {
 	return runKubectlDelete(namespace, "daemonset", runtimeTypeNodeJs)
+}
+
+func uninstallJvmDaemonSet(namespace string) error {
+	return runKubectlDelete(namespace, "daemonset", runtimeTypeJvm)
 }
 
 //nolint:unparam
@@ -228,6 +236,10 @@ func uninstallNodeJsJob(namespace string) error {
 	return runKubectlDelete(namespace, "job", runtimeTypeNodeJs)
 }
 
+func uninstallJvmJob(namespace string) error {
+	return runKubectlDelete(namespace, "job", runtimeTypeJvm)
+}
+
 func installNodeJsPod(namespace string) error {
 	return installNodeJsWorkload(
 		workloadTypePod,
@@ -240,8 +252,16 @@ func uninstallNodeJsPod(namespace string) error {
 	return runKubectlDelete(namespace, "pod", runtimeTypeNodeJs)
 }
 
+func uninstallJvmPod(namespace string) error {
+	return runKubectlDelete(namespace, "pod", runtimeTypeJvm)
+}
+
 func uninstallNodeJsReplicaSet(namespace string) error {
 	return runKubectlDelete(namespace, "replicaset", runtimeTypeNodeJs)
+}
+
+func uninstallJvmReplicaSet(namespace string) error {
+	return runKubectlDelete(namespace, "replicaset", runtimeTypeJvm)
 }
 
 func installNodeJsStatefulSet(namespace string) error {
@@ -254,6 +274,10 @@ func installNodeJsStatefulSet(namespace string) error {
 
 func uninstallNodeJsStatefulSet(namespace string) error {
 	return runKubectlDelete(namespace, "statefulset", runtimeTypeNodeJs)
+}
+
+func uninstallJvmStatefulSet(namespace string) error {
+	return runKubectlDelete(namespace, "statefulset", runtimeTypeJvm)
 }
 
 func installNodeJsWorkload(workloadType workloadType, namespace string, testId string) error {
@@ -324,13 +348,19 @@ func runKubectlDelete(namespace string, workloadType string, runtime runtimeType
 func removeAllTestApplications(namespace string) {
 	By("uninstalling the test applications")
 	Expect(uninstallNodeJsCronJob(namespace)).To(Succeed())
+	Expect(uninstallJvmCronJob(namespace)).To(Succeed())
 	Expect(uninstallNodeJsDaemonSet(namespace)).To(Succeed())
+	Expect(uninstallJvmDaemonSet(namespace)).To(Succeed())
 	Expect(uninstallNodeJsDeployment(namespace)).To(Succeed())
 	Expect(uninstallJvmDeployment(namespace)).To(Succeed())
 	Expect(uninstallNodeJsJob(namespace)).To(Succeed())
+	Expect(uninstallJvmJob(namespace)).To(Succeed())
 	Expect(uninstallNodeJsPod(namespace)).To(Succeed())
+	Expect(uninstallJvmPod(namespace)).To(Succeed())
 	Expect(uninstallNodeJsReplicaSet(namespace)).To(Succeed())
+	Expect(uninstallJvmReplicaSet(namespace)).To(Succeed())
 	Expect(uninstallNodeJsStatefulSet(namespace)).To(Succeed())
+	Expect(uninstallJvmStatefulSet(namespace)).To(Succeed())
 }
 
 func addOptOutLabel(namespace string, workloadType string, workloadName string) error {
