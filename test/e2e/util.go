@@ -8,10 +8,15 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+)
+
+var (
+	verboseHttp bool
 )
 
 func e2ePrint(format string, a ...any) {
@@ -74,7 +79,17 @@ func executeHttpRequest(
 	httpClient := http.Client{
 		Timeout: 500 * time.Millisecond,
 	}
+	if verboseHttp {
+		e2ePrint("%s: sending HTTP GET request\n", url)
+	}
 	response, err := httpClient.Get(url)
+	if verboseHttp {
+		if err != nil {
+			e2ePrint("%s: sent    HTTP GET request: error: %v\n", url, err)
+		} else {
+			e2ePrint("%s: sent    HTTP GET request:  success\n", url)
+		}
+	}
 	g.Expect(err).NotTo(HaveOccurred())
 	defer func() {
 		_ = response.Body.Close()
@@ -86,6 +101,12 @@ func executeHttpRequest(
 	g.Expect(err).NotTo(HaveOccurred())
 	status := response.StatusCode
 	if expectedBody != "" {
+		if verboseHttp {
+			body := string(responseBody)
+			if !strings.Contains(body, expectedBody) {
+				e2ePrint("%s: sent    HTTP GET request: unexpected response body: %s\n", url, body)
+			}
+		}
 		g.Expect(
 			string(responseBody)).To(
 			ContainSubstring(expectedBody),
@@ -93,6 +114,11 @@ func executeHttpRequest(
 		)
 	}
 	if expectedStatus > 0 {
+		if verboseHttp {
+			if status != expectedStatus {
+				e2ePrint("%s: sent    HTTP GET request: unexpected response status: %d\n", url, status)
+			}
+		}
 		g.Expect(status).To(
 			Equal(expectedStatus),
 			fmt.Sprintf("unexpected status for workload type %s at %s", workloadTypeString, url),
