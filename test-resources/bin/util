@@ -180,14 +180,14 @@ run_helm() {
       # Note: API synchronization (Perses dashboards, Prometheus rules) are not supported when using the OTLP sink.
     else
       helm_install_command+=" --set operator.dash0Export.enabled=true"
-      helm_install_command+=" --set operator.dash0Export.endpoint=ingress.eu-west-1.aws.dash0-dev.com:4317"
+      helm_install_command+=" --set operator.dash0Export.endpoint=${DASH0_INGRESS_ENDPOINT}"
       if [[ "${OPERATOR_CONFIGURATION_VIA_HELM_USE_TOKEN:-}" == true ]]; then
         helm_install_command+=" --set operator.dash0Export.token=${DASH0_AUTHORIZATION_TOKEN}"
       else
         helm_install_command+=" --set operator.dash0Export.secretRef.name=dash0-authorization-secret"
         helm_install_command+=" --set operator.dash0Export.secretRef.key=token"
       fi
-      helm_install_command+=" --set operator.dash0Export.apiEndpoint=https://api.eu-west-1.aws.dash0-dev.com"
+      helm_install_command+=" --set operator.dash0Export.apiEndpoint=${DASH0_API_ENDPOINT}"
     fi
     if [[ -n "${OPERATOR_CONFIGURATION_VIA_HELM_DATASET:-}" ]]; then
       helm_install_command+=" --set operator.dash0Export.dataset=$OPERATOR_CONFIGURATION_VIA_HELM_DATASET"
@@ -284,7 +284,7 @@ install_operator_configuration_resource() {
   if [[ "{USE_OTLP_SINK:-}" = "true" ]]; then
     kubectl apply -f test-resources/customresources/dash0operatorconfiguration/dash0monitoring.otlpsink.yaml
   else
-    kubectl apply -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.secret.yaml
+    kubectl apply -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.token.yaml
   fi
 
   echo "waiting for the operator configuration resource to become available"
