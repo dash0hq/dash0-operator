@@ -7,6 +7,7 @@ ARG base_image=node:20.18-bookworm
 FROM ${instrumentation_image} AS init
 
 FROM ${base_image}
+ARG injector_path=/__dash0__/dash0_injector.so
 
 COPY test-cases /test-cases
 
@@ -14,5 +15,5 @@ COPY test-cases /test-cases
 # setting the LD_PRELOAD environment variable via the operator.
 COPY --from=init /dash0-init-container/*.so /__dash0__/
 COPY --from=init /dash0-init-container/instrumentation /__dash0__/instrumentation
-ENV LD_PRELOAD=/__dash0__/dash0_injector.so
+ENV LD_PRELOAD=${injector_path}
 
