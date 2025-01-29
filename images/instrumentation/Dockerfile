@@ -2,11 +2,8 @@
 
 # build injector
 FROM ubuntu:24.04 AS build-injector
-
 RUN apt-get update && \
-  apt-get install --no-install-recommends build-essential -y && \
-  apt-get autoremove -y && \
-  apt-get clean -y
+  apt-get install --no-install-recommends build-essential -y
 
 COPY ./injector /dash0-init-container
 WORKDIR /dash0-init-container
@@ -16,7 +13,18 @@ RUN gcc \
   -fPIC \
   -Wl,--version-script=src/dash0_injector.exports.map \
   src/dash0_injector.c \
-  -o dash0_injector.so
+  -o bin/dash0_injector.so
+
+# build experimental, zig-based injector
+FROM alpine:3.21 AS build-injector-experimental
+
+## Zig is available as a community package on Alpine
+RUN apk add zig --repository=https://dl-cdn.alpinelinux.org/alpine/edge/community
+
+COPY ./injector /dash0-init-container
+ARG TARGETARCH
+WORKDIR /dash0-init-container
+RUN zig build -Dcpu-arch=${TARGETARCH} --summary all
 
 # injector_build_end - do not remove this line (see images/instrumentation/injector/test/scripts/test-all.sh)
 
@@ -42,12 +50,13 @@ RUN NPM_CONFIG_UPDATE_NOTIFIER=false \
   --no-fund=true
 
 # build final image
-FROM alpine:3.19.1
+FROM alpine:3.21
 COPY copy-instrumentation.sh /
 
 # copy artifacts (distros, injector binary) from the build stages to the final image
 RUN mkdir -p /dash0-init-container/instrumentation
-COPY --from=build-injector /dash0-init-container/dash0_injector.so /dash0-init-container/dash0_injector.so
+COPY --from=build-injector /dash0-init-container/bin /dash0-init-container
+COPY --from=build-injector-experimental /dash0-init-container/bin/dash0_injector.so /dash0-init-container/dash0_injector_zig.so
 COPY --from=build-jvm /dash0-init-container/instrumentation/jvm/build /dash0-init-container/instrumentation/jvm
 COPY --from=build-node.js /dash0-init-container/instrumentation/node.js /dash0-init-container/instrumentation/node.js
 
