@@ -1,22 +1,15 @@
 # injector_build_start - do not remove this line (see images/instrumentation/injector/test/scripts/test-all.sh)
 
 # build injector
-FROM ubuntu:24.04 AS build-injector
+FROM alpine:3.21.3 AS build-injector
 
-RUN apt-get update && \
-  apt-get install --no-install-recommends build-essential -y && \
-  apt-get autoremove -y && \
-  apt-get clean -y
+## Zig is available as a community package on Alpine
+RUN apk add zig --repository=https://dl-cdn.alpinelinux.org/alpine/edge/community
 
 COPY ./injector /dash0-init-container
+ARG TARGETARCH
 WORKDIR /dash0-init-container
-RUN gcc \
-  -shared \
-  -nostdlib \
-  -fPIC \
-  -Wl,--version-script=src/dash0_injector.exports.map \
-  src/dash0_injector.c \
-  -o dash0_injector.so
+RUN zig build -Dcpu-arch=${TARGETARCH} --summary all
 
 # injector_build_end - do not remove this line (see images/instrumentation/injector/test/scripts/test-all.sh)
 
@@ -41,13 +34,20 @@ RUN NPM_CONFIG_UPDATE_NOTIFIER=false \
   --no-audit \
   --no-fund=true
 
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build-dotnet
+COPY dotnet /build/dotnet
+WORKDIR /build/dotnet
+RUN dotnet restore
+
 # build final image
 FROM alpine:3.21.3
 COPY copy-instrumentation.sh /
 
 # copy artifacts (distros, injector binary) from the build stages to the final image
 RUN mkdir -p /dash0-init-container/instrumentation
-COPY --from=build-injector /dash0-init-container/dash0_injector.so /dash0-init-container/dash0_injector.so
+COPY --from=build-injector /dash0-init-container/bin/dash0_injector.so /dash0-init-container/dash0_injector.so
+COPY --from=build-dotnet /build/dotnet/bin/otel-instrumentation/glibc /dash0-init-container/instrumentation/dotnet/glibc
+COPY --from=build-dotnet /build/dotnet/bin/otel-instrumentation/muslc /dash0-init-container/instrumentation/dotnet/muslc
 COPY --from=build-jvm /dash0-init-container/instrumentation/jvm/build /dash0-init-container/instrumentation/jvm
 COPY --from=build-node.js /dash0-init-container/instrumentation/node.js /dash0-init-container/instrumentation/node.js
 
