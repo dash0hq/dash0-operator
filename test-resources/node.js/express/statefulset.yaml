@@ -45,6 +45,15 @@ spec:
               value: "true"
           ports:
             - containerPort: 1210
+          resources:
+            limits:
+              cpu: 500m
+              memory: 128Mi
+              ephemeral-storage: 500Mi
+            requests:
+              cpu: 100m
+              memory: 64Mi
+              ephemeral-storage: 500Mi
           imagePullPolicy: Never
           readinessProbe:
             httpGet:

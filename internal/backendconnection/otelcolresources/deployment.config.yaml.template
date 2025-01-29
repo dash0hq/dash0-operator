@@ -71,6 +71,13 @@ processors:
         action: insert
   {{- end }}
 
+  {{- if .NamespaceOttlFilter }}
+  filter/metrics_only_monitored_namespaces:
+    metrics:
+      metric:
+        - {{ .NamespaceOttlFilter }}
+  {{- end }}
+
   memory_limiter:
     check_interval: 5s
     limit_percentage: 80
@@ -95,6 +102,9 @@ service:
       - k8sattributes
       {{- if .ClusterName }}
       - resource
+      {{- end }}
+      {{- if .NamespaceOttlFilter }}
+      - filter/metrics_only_monitored_namespaces
       {{- end }}
       - memory_limiter
       - batch

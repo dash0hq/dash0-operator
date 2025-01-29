@@ -21,6 +21,7 @@ type collectorConfigurationTemplateValues struct {
 	IgnoreLogsFromNamespaces                         []string
 	KubernetesInfrastructureMetricsCollectionEnabled bool
 	ClusterName                                      string
+	NamespaceOttlFilter                              string
 	NamespacesWithPrometheusScraping                 []string
 	SelfIpReference                                  string
 	DevelopmentMode                                  bool
@@ -50,11 +51,13 @@ var (
 
 func assembleDaemonSetCollectorConfigMap(
 	config *oTelColConfig,
+	monitoredNamespaces []string,
 	namespacesWithPrometheusScraping []string,
 	forDeletion bool,
 ) (*corev1.ConfigMap, error) {
 	return assembleCollectorConfigMap(
 		config,
+		monitoredNamespaces,
 		namespacesWithPrometheusScraping,
 		daemonSetCollectorConfigurationTemplate,
 		DaemonSetCollectorConfigConfigMapName(config.NamePrefix),
@@ -62,9 +65,14 @@ func assembleDaemonSetCollectorConfigMap(
 	)
 }
 
-func assembleDeploymentCollectorConfigMap(config *oTelColConfig, forDeletion bool) (*corev1.ConfigMap, error) {
+func assembleDeploymentCollectorConfigMap(
+	config *oTelColConfig,
+	monitoredNamespaces []string,
+	forDeletion bool,
+) (*corev1.ConfigMap, error) {
 	return assembleCollectorConfigMap(
 		config,
+		monitoredNamespaces,
 		nil,
 		deploymentCollectorConfigurationTemplate,
 		DeploymentCollectorConfigConfigMapName(config.NamePrefix),
@@ -74,6 +82,7 @@ func assembleDeploymentCollectorConfigMap(config *oTelColConfig, forDeletion boo
 
 func assembleCollectorConfigMap(
 	config *oTelColConfig,
+	monitoredNamespaces []string,
 	namespacesWithPrometheusScraping []string,
 	template *template.Template,
 	configMapName string,
@@ -92,6 +101,7 @@ func assembleCollectorConfigMap(
 		if config.IsIPv6Cluster {
 			selfIpReference = "[${env:MY_POD_IP}]"
 		}
+		namespaceOttlFilter := renderOttlNamespaceFilter(monitoredNamespaces)
 		collectorConfiguration, err := renderCollectorConfiguration(template,
 			&collectorConfigurationTemplateValues{
 				Exporters: exporters,
@@ -104,6 +114,7 @@ func assembleCollectorConfigMap(
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: config.KubernetesInfrastructureMetricsCollectionEnabled,
 				ClusterName:                      config.ClusterName,
+				NamespaceOttlFilter:              namespaceOttlFilter,
 				NamespacesWithPrometheusScraping: namespacesWithPrometheusScraping,
 				SelfIpReference:                  selfIpReference,
 				DevelopmentMode:                  config.DevelopmentMode,
@@ -129,6 +140,18 @@ func assembleCollectorConfigMap(
 		},
 		Data: configMapData,
 	}, nil
+}
+
+func renderOttlNamespaceFilter(monitoredNamespaces []string) string {
+	// Drop all metrics that have a namespace resource attribute but are from a namespace that is not in the
+	// list of monitored namespaces.
+	namespaceOttlFilter := "resource.attributes[\"k8s.namespace.name\"] != nil\n"
+	for _, namespace := range monitoredNamespaces {
+		// Be wary of indentation, all lines after the first must start with at least 10 spaces for YAML compliance.
+		namespaceOttlFilter = namespaceOttlFilter +
+			fmt.Sprintf("          and resource.attributes[\"k8s.namespace.name\"] != \"%s\"\n", namespace)
+	}
+	return namespaceOttlFilter
 }
 
 func ConvertExportSettingsToExporterList(export dash0v1alpha1.Export) ([]OtlpExporter, error) {

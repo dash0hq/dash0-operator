@@ -29,7 +29,8 @@ func verifyThatWorkloadHasBeenInstrumented(
 	instrumentationBy string,
 	expectClusterName bool,
 ) {
-	By(fmt.Sprintf("%s: waiting for the workload to get instrumented (polling its labels and events to check)",
+	By(fmt.Sprintf("%s %s: waiting for the workload to get instrumented (polling its labels and events to check)",
+		runtime.runtimeTypeLabel,
 		workloadType.workloadTypeString))
 	Eventually(func(g Gomega) {
 		verifyLabels(
@@ -44,7 +45,7 @@ func verifyThatWorkloadHasBeenInstrumented(
 		verifySuccessfulInstrumentationEvent(g, namespace, runtime, workloadType, instrumentationBy)
 	}, labelChangeTimeout, pollingInterval).Should(Succeed())
 
-	By(fmt.Sprintf("%s: waiting for spans to be captured", workloadType.workloadTypeString))
+	By(fmt.Sprintf("%s %s: waiting for spans to be captured", runtime.runtimeTypeLabel, workloadType.workloadTypeString))
 
 	// For workload types that are available as a service (daemonset, deployment etc.) we send HTTP requests with
 	// a unique ID as a query parameter. When checking the produced spans, we can verify that the span is
@@ -64,7 +65,7 @@ func verifyThatWorkloadHasBeenInstrumented(
 	Eventually(func(g Gomega) {
 		verifySpans(g, runtime, workloadType, route, query, expectClusterName)
 	}, spanTimeout, pollingInterval).Should(Succeed())
-	By(fmt.Sprintf("%s: matching spans have been received", workloadType.workloadTypeString))
+	By(fmt.Sprintf("%s %s: matching spans have been received", runtime.runtimeTypeLabel, workloadType.workloadTypeString))
 }
 
 func verifyThatInstrumentationHasBeenReverted(
@@ -110,7 +111,8 @@ func verifyThatInstrumentationIsRevertedEventually(
 	expectOptOutLabel bool,
 ) {
 	By(fmt.Sprintf(
-		"%s: waiting for the instrumentation to get removed from the workload (polling its labels and events to check)",
+		"%s %s: waiting for the instrumentation to get removed from the workload (polling its labels and events to check)",
+		runtime.runtimeTypeLabel,
 		workloadType.workloadTypeString))
 	Eventually(func(g Gomega) {
 		if expectOptOutLabel {
@@ -132,7 +134,8 @@ func verifyThatInstrumentationIsRevertedEventually(
 		secondsToCheckForSpans = 80
 	}
 	By(
-		fmt.Sprintf("%s: verifying that spans are no longer being captured (checking for %d seconds)",
+		fmt.Sprintf("%s %s: verifying that spans are no longer being captured (checking for %d seconds)",
+			runtime.runtimeTypeLabel,
 			workloadType.workloadTypeString,
 			secondsToCheckForSpans,
 		))
@@ -142,16 +145,20 @@ func verifyThatInstrumentationIsRevertedEventually(
 		verifyNoSpans(g, runtime, workloadType, route, query)
 	}, time.Duration(secondsToCheckForSpans)*time.Second, 1*time.Second).Should(Succeed())
 
-	By(fmt.Sprintf("%s: matching spans are no longer captured", workloadType.workloadTypeString))
+	By(fmt.Sprintf(
+		"%s %s: matching spans are no longer captured",
+		runtime.runtimeTypeLabel,
+		workloadType.workloadTypeString,
+	))
 }
 
-func waitForApplicationToBecomeReady(workloadType string, waitCommand *exec.Cmd) error {
-	By(fmt.Sprintf("waiting for %s to become ready", workloadType))
+func waitForApplicationToBecomeReady(runtimeTypeLabel, workloadType string, waitCommand *exec.Cmd) error {
+	By(fmt.Sprintf("waiting for %s %s to become ready", runtimeTypeLabel, workloadType))
 	err := runAndIgnoreOutput(waitCommand)
 	if err != nil {
-		By(fmt.Sprintf("%s never became ready", workloadType))
+		By(fmt.Sprintf("%s %s never became ready", runtimeTypeLabel, workloadType))
 	} else {
-		By(fmt.Sprintf("%s is ready now", workloadType))
+		By(fmt.Sprintf("%s %s is ready now", runtimeTypeLabel, workloadType))
 	}
 	return err
 }

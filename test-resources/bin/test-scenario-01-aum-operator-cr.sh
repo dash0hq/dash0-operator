@@ -9,6 +9,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")"/../..
 
 target_namespace=${1:-test-namespace}
 kind=${2:-deployment}
+additional_namespaces="${ADDITIONAL_NAMESPACES:-false}"
 
 source test-resources/bin/util
 load_env_file
@@ -23,6 +24,10 @@ finish_step
 
 echo "STEP $step_counter: creating target namespace (if necessary)"
 ensure_namespace_exists "${target_namespace}"
+if [[ "$additional_namespaces" = true ]]; then
+  ensure_namespace_exists test-namespace-2
+  ensure_namespace_exists test-namespace-3
+fi
 finish_step
 
 echo "STEP $step_counter: creating operator namespace and authorization token secret"
@@ -48,6 +53,10 @@ finish_step
 if [[ "${DEPLOY_APPLICATION_UNDER_MONITORING:-}" != false ]]; then
   echo "STEP $step_counter: deploy application under monitoring"
   test-resources/node.js/express/deploy.sh "${target_namespace}" "${kind}"
+  if [[ "$additional_namespaces" = true ]]; then
+    test-resources/node.js/express/deploy.sh test-namespace-2 daemonset
+    test-resources/node.js/express/deploy.sh test-namespace-3 statefulset
+  fi
   finish_step
 fi
 
@@ -67,7 +76,7 @@ fi
 
 if [[ "${DEPLOY_MONITORING_RESOURCE:-}" != false ]]; then
   echo "STEP $step_counter: deploy the Dash0 monitoring resource to namespace ${target_namespace}"
-  install_monitoring_resource
+  install_monitoring_resource "$additional_namespaces"
   finish_step
 else
   echo "not deploying a Dash0 monitoring resource"

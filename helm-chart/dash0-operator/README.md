@@ -303,7 +303,8 @@ The Dash0 monitoring resource supports additional configuration settings:
 * `spec.prometheusScrapingEnabled`: A namespace-wide opt-out for Prometheus scraping for the target namespace.
   If enabled, the operator will configure its OpenTelemetry collector to scrape metrics from pods in the namespace
   of this Dash0Monitoring resource according to their prometheus.io/scrape annotations via the OpenTelemetry Prometheus
-  receiver. This setting is optional, it defaults to true.
+  receiver. This setting is optional, it defaults to true. Note that the collection of OpenTelemetry-native metrics is
+  not affected by setting `prometheusScrapingEnabled` to `false` for a namespace.
 
 Here is an example file for a monitoring resource that sets the `spec.instrumentWorkloads` property
 to `created-and-updated` and disables Perses dashboard synchronization, Prometheus rule synchronization as well as
@@ -474,11 +475,17 @@ By default, the operator collects metrics as follows:
   This can be disabled per cluster by setting `kubernetesInfrastructureMetricsCollectionEnabled: false` in the Dash0
   operator configuration resource (or setting the value `operator.kubernetesInfrastructureMetricsCollectionEnabled` to
   `false` when deploying the operator configuration resource via the Helm chart).
+* Namespace-scoped metrics (e.g. metrics related to a workload running in a specific namespace) will only be collected
+  if the namespace is monitored, that is, there is a Dash0 monitoring resource in that namespace.
+* Metrics which are not namespace-scoped (for example node metrics like `k8s.node.*`) will always be collected, unless
+  metrics collection is disabled globally for the cluster (`kubernetesInfrastructureMetricsCollectionEnabled: false`,
+  see above). For technical reasons, metrics collection also does not start if there is no Dash0 monitoring resource at
+  all in the cluster, that is, if no namespace is monitored (this is subject to change in a future version).
 * The Dash0 operator scrapes Prometheus endpoints on pods annotated with the `prometheus.io/*` annotations, as
   described in the section [Scraping Prometheus endpoints](#scraping-prometheus-endpoints). This can be disabled per
   namespace by explicitly setting `prometheusScrapingEnabled: false` in the Dash0 monitoring resource.
 
-Disabling or enabling individual metrics via configuration is currently not supported.
+Disabling or enabling individual metrics via configuration is not supported.
 
 ### Preventing Operator Scheduling on Specific Nodes
 

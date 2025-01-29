@@ -15,16 +15,6 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-const (
-	applicationUnderTestNamespace = "e2e-application-under-test-namespace"
-
-	applicationPathNodeJs = "test-resources/node.js/express"
-	workloadNameNodeJs    = "dash0-operator-nodejs-20-express-test"
-
-	applicationPathJvm = "test-resources/jvm/spring-boot"
-	workloadNameJvm    = "dash0-operator-jvm-spring-boot-test"
-)
-
 var (
 	temporaryManifestFiles []string
 
@@ -194,6 +184,7 @@ func installNodeJsDaemonSetWithOptOutLabel(namespace string) error {
 	return runKubectlApply(
 		namespace,
 		manifest(runtimeTypeNodeJs, "daemonset.opt-out"),
+		runtimeTypeNodeJs.runtimeTypeLabel,
 		"daemonset",
 		workloadTypeDaemonSet.waitCommand(namespace, runtimeTypeNodeJs),
 	)
@@ -304,6 +295,7 @@ func installWorkload(runtime runtimeType, workloadType workloadType, namespace s
 	return runKubectlApply(
 		namespace,
 		manifestFile,
+		runtime.runtimeTypeLabel,
 		workloadType.workloadTypeString,
 		waitCommand,
 	)
@@ -312,6 +304,7 @@ func installWorkload(runtime runtimeType, workloadType workloadType, namespace s
 func runKubectlApply(
 	namespace string,
 	manifestFile string,
+	runtimeLabel string,
 	workloadTypeString string,
 	waitCommand *exec.Cmd,
 ) error {
@@ -329,7 +322,7 @@ func runKubectlApply(
 	if waitCommand == nil {
 		return nil
 	}
-	return waitForApplicationToBecomeReady(workloadTypeString, waitCommand)
+	return waitForApplicationToBecomeReady(runtimeLabel, workloadTypeString, waitCommand)
 }
 
 func runKubectlDelete(namespace string, workloadType string, runtime runtimeType) error {
