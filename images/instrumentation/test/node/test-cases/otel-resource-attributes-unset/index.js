@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 const process = require('node:process');
+const envVarName = 'OTEL_RESOURCE_ATTRIBUTES';
+const expectedValue = "k8s.namespace.name=namespace,k8s.pod.name=pod_name,k8s.pod.uid=pod_uid,k8s.container.name=container_name";
 
-if (process.env["OTEL_RESOURCE_ATTRIBUTES"] !== "k8s.namespace.name=namespace,k8s.pod.name=pod_name,k8s.pod.uid=pod_uid,k8s.container.name=container_name") {
-  console.error(`Unexpected value for OTEL_RESOURCE_ATTRIBUTES: ${process.env["OTEL_RESOURCE_ATTRIBUTES"]}`);
+if (process.env[envVarName] !== expectedValue) {
+  console.error(`Unexpected value for ${envVarName}: expected: '${expectedValue}'; actual: '${process.env[envVarName]}'`);
   process.exit(1);
 }
