@@ -6,6 +6,7 @@ package e2e
 import (
 	"bufio"
 	_ "embed"
+	"fmt"
 	"os"
 	"slices"
 	"strings"
@@ -17,6 +18,8 @@ import (
 
 const (
 	metricsJsonMaxLineLength = 1_048_576
+
+	operatorServiceNamespace = "dash0.operator"
 )
 
 var (
@@ -154,7 +157,11 @@ func verifySelfMonitoringMetrics(g Gomega) {
 		if !isSet {
 			return false
 		}
-		if serviceNamespace.Str() != "dash0.operator" {
+		if serviceNamespace.Str() != operatorServiceNamespace {
+			return false
+		}
+		kubernetesNamespace, isSet := attributes.Get("k8s.namespace.name")
+		if isSet && kubernetesNamespace.Str() != operatorNamespace {
 			return false
 		}
 		_, isSet = attributes.Get("service.name")
@@ -193,6 +200,31 @@ func resourceAttributeMatcher(expectedDeploymentName string) func(resourceMetric
 		attributes := resourceMetrics.Resource().Attributes()
 		var isSet bool
 
+		namespace, isSet := attributes.Get("k8s.namespace.name")
+		if isSet {
+			// Make sure we only collect metrics from monitored namespaces. If the metric has a namespace resource
+			// attribute, it needs to be the only namespaces that has a Dash0Monitoring resource. We allow metrics
+			// that do not have any namespace resource attribute, like all node-related metrics.
+			//.
+			// Deliberately not returning false here, but instead calling Expect directly, and _not_ the Gomega's
+			// instance g.Expect of the surrounding Eventually function, to make the test fail immediately.
+			metricName := "(unknown metric name)"
+			scopeMetrics := resourceMetrics.ScopeMetrics()
+			if scopeMetrics.Len() > 0 {
+				metricsFromArbitraryScope := scopeMetrics.At(0).Metrics()
+				if metricsFromArbitraryScope.Len() > 0 {
+					metricName = metricsFromArbitraryScope.At(0).Name()
+				}
+			}
+			Expect(namespace.Str()).To(Equal(applicationUnderTestNamespace),
+				fmt.Sprintf("Found at least one metric (%s) from a non-monitored namespace (%s); the operator's "+
+					"collectors should only collect metrics from monitored namespaces and metrics that are not "+
+					"namespace-scoped (like Kubernetes node metrics).",
+					metricName,
+					namespace.Str()),
+			)
+		}
+
 		if expectedDeploymentName != "" {
 			deploymentName, isSet := attributes.Get("k8s.deployment.name")
 			if !isSet {
@@ -204,7 +236,7 @@ func resourceAttributeMatcher(expectedDeploymentName string) func(resourceMetric
 		}
 
 		serviceNamespace, isSet := attributes.Get("service.namespace")
-		if isSet && serviceNamespace.Str() == "dash0.operator" {
+		if isSet && serviceNamespace.Str() == operatorServiceNamespace {
 			// make sure we do not accidentally set self-monitoring related resource attributes on other resources
 			return false
 		}

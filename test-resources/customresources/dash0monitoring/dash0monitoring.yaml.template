@@ -1,0 +1,10 @@
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0Monitoring
+metadata:
+  name: dash0-monitoring-resource
+spec:
+  instrumentWorkloads: $INSTRUMENT_WORKLOADS
+  synchronizePersesDashboards: $SYNCHRONIZE_PERSES_DASHBOARDS
+  synchronizePrometheusRules: $SYNCHRONIZE_PROMETHEUS_RULES
+  prometheusScrapingEnabled: $PROMETHEUS_SCRAPING_ENABLED
+

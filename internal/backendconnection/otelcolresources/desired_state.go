@@ -157,14 +157,17 @@ func assembleDesiredStateForUpsert(
 	allMonitoringResources []dash0v1alpha1.Dash0Monitoring,
 	resourceSpecs *OTelColResourceSpecs,
 ) ([]clientObject, error) {
+	monitoredNamespaces := make([]string, 0, len(allMonitoringResources))
 	namespacesWithPrometheusScraping := make([]string, 0, len(allMonitoringResources))
 	for _, monitoringResource := range allMonitoringResources {
+		monitoredNamespaces = append(monitoredNamespaces, monitoringResource.Namespace)
 		if util.ReadBoolPointerWithDefault(monitoringResource.Spec.PrometheusScrapingEnabled, true) {
 			namespacesWithPrometheusScraping = append(namespacesWithPrometheusScraping, monitoringResource.Namespace)
 		}
 	}
 	return assembleDesiredState(
 		config,
+		monitoredNamespaces,
 		namespacesWithPrometheusScraping,
 		resourceSpecs,
 		false,
@@ -178,6 +181,7 @@ func assembleDesiredStateForDelete(
 	return assembleDesiredState(
 		config,
 		nil,
+		nil,
 		resourceSpecs,
 		true,
 	)
@@ -185,6 +189,7 @@ func assembleDesiredStateForDelete(
 
 func assembleDesiredState(
 	config *oTelColConfig,
+	monitoredNamespaces []string,
 	namespacesWithPrometheusScraping []string,
 	resourceSpecs *OTelColResourceSpecs,
 	forDeletion bool,
@@ -193,6 +198,7 @@ func assembleDesiredState(
 	desiredState = append(desiredState, addCommonMetadata(assembleServiceAccountForDaemonSet(config)))
 	daemonSetCollectorConfigMap, err := assembleDaemonSetCollectorConfigMap(
 		config,
+		monitoredNamespaces,
 		namespacesWithPrometheusScraping,
 		forDeletion,
 	)
@@ -216,7 +222,7 @@ func assembleDesiredState(
 		desiredState = append(desiredState, addCommonMetadata(assembleServiceAccountForDeployment(config)))
 		desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleForDeployment(config)))
 		desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleBindingForDeployment(config)))
-		deploymentCollectorConfigMap, err := assembleDeploymentCollectorConfigMap(config, forDeletion)
+		deploymentCollectorConfigMap, err := assembleDeploymentCollectorConfigMap(config, monitoredNamespaces, forDeletion)
 		if err != nil {
 			return desiredState, err
 		}

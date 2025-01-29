@@ -51,7 +51,11 @@ func verifySpans(
 		)
 	allMatchResults.expectAtLeastOneMatch(
 		g,
-		fmt.Sprintf("%s: expected to find at least one matching HTTP server span", workloadType.workloadTypeString),
+		fmt.Sprintf(
+			"%s %s: expected to find at least one matching HTTP server span",
+			runtime.runtimeTypeLabel,
+			workloadType.workloadTypeString,
+		),
 	)
 }
 
@@ -76,7 +80,11 @@ func verifyNoSpans(
 		)
 	allMatchResults.expectZeroMatches(
 		g,
-		fmt.Sprintf("%s: expected to find no matching HTTP server span", workloadType.workloadTypeString),
+		fmt.Sprintf(
+			"%s %s: expected to find no matching HTTP server span",
+			runtime.runtimeTypeLabel,
+			workloadType.workloadTypeString,
+		),
 	)
 }
 

@@ -51,19 +51,6 @@ processors:
           # hostname, see https://kubernetes.io/docs/concepts/containers/container-environment/#container-information.
           enabled: false
 
-  filter/only_dash0_monitored_resources:
-    error_mode: ignore
-    traces:
-      span:
-      - 'resource.attributes["dash0.monitoring.instrumented"] != "true"'
-    metrics:
-      metric:
-      datapoint:
-      - 'resource.attributes["dash0.monitoring.instrumented"] != "true"'
-    logs:
-      log_record:
-      - 'resource.attributes["dash0.monitoring.instrumented"] != "true"'
-
   k8sattributes:
     extract:
       metadata:
@@ -111,6 +98,19 @@ processors:
         value: "{{ .ClusterName }}"
         action: insert
   {{- end }}
+
+  {{- if .NamespaceOttlFilter }}
+  filter/metrics_only_monitored_namespaces:
+    metrics:
+      metric:
+        - {{ .NamespaceOttlFilter }}
+  {{- end }}
+
+  filter/logs_only_dash0_monitored_resources:
+    error_mode: ignore
+    logs:
+      log_record:
+      - 'resource.attributes["dash0.monitoring.instrumented"] != "true"'
 
   memory_limiter:
     check_interval: 5s
@@ -385,6 +385,9 @@ service:
       {{- if .ClusterName }}
       - resource
       {{- end }}
+      {{- if .NamespaceOttlFilter }}
+      - filter/metrics_only_monitored_namespaces
+      {{- end }}
       - memory_limiter
       - batch
       exporters:
@@ -408,7 +411,7 @@ service:
       - filelog/monitored_pods
       processors:
       - k8sattributes
-      - filter/only_dash0_monitored_resources
+      - filter/logs_only_dash0_monitored_resources
       exporters:
       - forward/logs
 

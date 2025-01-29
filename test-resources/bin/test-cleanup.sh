@@ -8,7 +8,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"/../..
 
 target_namespace=${1:-test-namespace}
-delete_namespace=${2:-true}
+delete_namespaces=${2:-true}
 
 source test-resources/bin/util
 load_env_file
@@ -20,6 +20,8 @@ for resource_type in "${resource_types[@]}"; do
 done
 
 kubectl delete -n "${target_namespace}" -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml --wait=false || true
+kubectl delete -n test-namespace-2 -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml --wait=false || true
+kubectl delete -n test-namespace-3 -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml --wait=false || true
 sleep 1
 # If the cluster is in a bad state because an operator image has been deployed that terminates abruptly, the monitoring
 # resource's finalizer will block the deletion of the monitoring resource, and thus also the deletion of the
@@ -34,8 +36,12 @@ kubectl patch -n "${target_namespace}" -f test-resources/customresources/dash0mo
 kubectl delete -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.token.yaml || true
 kubectl delete dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration-auto-resource || true
 
-if [[ "${target_namespace}" != "default" ]] && [[ "${delete_namespace}" == "true" ]]; then
+if [[ "${target_namespace}" != "default" ]] && [[ "${delete_namespaces}" == "true" ]]; then
   kubectl delete ns "${target_namespace}" --ignore-not-found
+fi
+if [[ "${delete_namespaces}" == "true" ]]; then
+  kubectl delete ns test-namespace-2 --ignore-not-found
+  kubectl delete ns test-namespace-3 --ignore-not-found
 fi
 
 helm uninstall --namespace dash0-system dash0-operator --timeout 30s || true
