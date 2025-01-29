@@ -170,12 +170,17 @@ char *getenv(const char *name) {
   char *otelResourceAttributesVarName = OTEL_RESOURCE_ATTRIBUTES_ENV_VAR_NAME;
   char *javaToolOptionsVarName = JAVA_TOOL_OPTIONS_ENV_VAR_NAME;
   char *nodeOptionsVarName = NODE_OPTIONS_ENV_VAR_NAME;
+
   if (__strcmp(name, otelResourceAttributesVarName) == 0) {
     if (__strlen(cachedModifiedOtelResourceAttributesValue) == 0) {
       // This environment variable (OTEL_RESOURCE_ATTRIBUTES) has not been
       // requested before, calculate the modified value and cache it.
       __appendResourceAttributes(cachedModifiedOtelResourceAttributesValue,
                                  origValue);
+    }
+
+    if (__strlen(cachedModifiedOtelResourceAttributesValue) < 1) {
+      return origValue;
     }
 
     return cachedModifiedOtelResourceAttributesValue;

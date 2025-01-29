@@ -26,7 +26,6 @@ source injector/test/scripts/util
 
 echo ----------------------------------------
 instrumentation_image="dash0-instrumentation:latest"
-all_docker_platforms=linux/arm64,linux/amd64
 script_dir="test"
 exit_code=0
 summary=""
@@ -71,12 +70,12 @@ build_or_pull_instrumentation_image() {
     store_build_step_duration "pull instrumentation image" "$start_time_step"
   else
     echo ----------------------------------------
-    echo "building multi-arch instrumentation image for platforms ${all_docker_platforms} from local sources"
+    echo "building instrumentation image for platforms ${architectures[*]} from local sources"
     echo ----------------------------------------
 
     if ! docker_build_output=$(
       docker build \
-      --platform "$all_docker_platforms" \
+      --platform "${architectures[@]}" \
       . \
       -t "${instrumentation_image}" \
       2>&1
@@ -191,11 +190,19 @@ run_tests_for_architecture() {
   fi
   if [ "$arch" = arm64 ]; then
     docker_platform=linux/arm64
-  elif [ "$arch" = x86_64 ]; then
+  elif [ "$arch" = amd64 ]; then
     docker_platform=linux/amd64
   else
     echo "The architecture $arch is not supported."
     exit 1
+  fi
+
+  if [ "${2:-}" = "experimental" ]; then
+    experimental='true'
+    injector_path="/__dash0__/dash0_injector_zig.so"
+  else
+    experimental='false'
+    injector_path="/__dash0__/dash0_injector.so"
   fi
 
   echo ========================================
@@ -233,7 +240,7 @@ run_tests_for_architecture() {
       echo --------------------
       echo "- base image: '${base_image}'"
       image_name_test="test-${runtime}-${arch}:latest"
-      echo "building test image for ${arch}/${runtime}/${base_image} with instrumentation image ${instrumentation_image}"
+      echo "building test image for ${arch}/${runtime}/${base_image} with instrumentation image ${instrumentation_image} (experimental injector: ${experimental})"
       # shellcheck disable=SC2155
       local start_time_docker_build=$(date +%s)
       if ! docker_build_output=$(
@@ -241,6 +248,7 @@ run_tests_for_architecture() {
           --platform "$docker_platform" \
           --build-arg "instrumentation_image=${instrumentation_image}" \
           --build-arg "base_image=${base_image}" \
+          --build-arg "injector_path=${injector_path}" \
           "${script_dir}/${runtime}" \
           -t "$image_name_test" \
           2>&1
@@ -272,7 +280,7 @@ build_or_pull_instrumentation_image
 
 declare -a all_architectures=(
   "arm64"
-  "x86_64"
+  "amd64"
 )
 
 for arch in "${all_architectures[@]}"; do
@@ -285,6 +293,7 @@ for arch in "${all_architectures[@]}"; do
     fi
   fi
   run_tests_for_architecture "$arch"
+  run_tests_for_architecture "$arch" "experimental"
 done
 
 if [[ $exit_code -ne 0 ]]; then
@@ -295,4 +304,3 @@ else
   printf "\n${GREEN}All test cases have passed.${NC}\n"
 fi
 exit $exit_code
-

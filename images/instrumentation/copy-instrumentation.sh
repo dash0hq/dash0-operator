@@ -35,7 +35,11 @@ fi
 cp -R "${DASH0_INSTRUMENTATION_FOLDER_SOURCE}"/ "${DASH0_INSTRUMENTATION_FOLDER_DESTINATION}"
 
 # Copy the injector from the init container to the monitored container.
-cp "${DASH0_INJECTOR_FOLDER_SOURCE}"/*.so "${DASH0_INSTRUMENTATION_FOLDER_DESTINATION}"/
+if [ -n "${DASH0_EXPERIMENTAL_INJECTOR:-}" ]; then
+  cp "${DASH0_INJECTOR_FOLDER_SOURCE}"/dash0_injector_zig.so "${DASH0_INSTRUMENTATION_FOLDER_DESTINATION}"/dash0_injector.so
+else
+  cp "${DASH0_INJECTOR_FOLDER_SOURCE}"/dash0_injector.so "${DASH0_INSTRUMENTATION_FOLDER_DESTINATION}"/dash0_injector.so
+fi
 
 if [ -n "${DASH0_DEBUG:-}" ]; then
   find "${DASH0_INSTRUMENTATION_FOLDER_DESTINATION}"
