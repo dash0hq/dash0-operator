@@ -29,7 +29,7 @@ concurrency:
 jobs:
   verify:
     name: Build & Test
-    runs-on: ubuntu-latest
+    runs-on: 8core_32gb
     timeout-minutes: 15
 
     steps:
@@ -76,7 +76,15 @@ jobs:
 
   injector_binary_and_instrumentation_image_tests:
     name: Injector Binary & Instrumentation Image Tests
-    runs-on: ubuntu-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        # We run the job on separate architectures to avoid using emulation in Docker
+        # for transpiling (which is somehow broken in Zig with QEmu below 9, see
+        # https://github.com/ziglang/zig/issues/22643), and SLOW.
+        runner: ["8core_32gb", "8core_32gb_arm64"]
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
@@ -110,6 +118,16 @@ jobs:
               - .github/workflows/ci.yaml
               - images/instrumentation/**
 
+      - name: builder arch to docker
+        id: docker-arch
+        run: |
+          if [ $(arch) = 'aarch64' ]
+          then
+            echo 'docker_arch=linux/arm64' >> $GITHUB_OUTPUT
+          else
+            echo 'docker_arch=linux/amd64' >> $GITHUB_OUTPUT
+          fi
+
       - name: show changed files
         env:
           INSTRUMENTATION_CHANGED_FILES_FLAG: ${{ steps.changed-files.outputs.instrumentation_any_changed }}
@@ -120,14 +138,6 @@ jobs:
 
       - name: set up docker buildx
         uses: docker/setup-buildx-action@v3
-        if: |
-          steps.changed-files.outputs.instrumentation_any_changed == 'true' ||
-          github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
-
-      # Just for building on arm, buildx is enough but doing docker run with --platform=linux/arm64 (which we do when
-      # testing the injector binary and the instrumentation image) requires qemu.
-      - name: set up qemu
-        uses: docker/setup-qemu-action@v3
         if: |
           steps.changed-files.outputs.instrumentation_any_changed == 'true' ||
           github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
@@ -153,6 +163,7 @@ jobs:
           echo "image_name=ghcr.io/dash0hq/instrumentation-ci-test:$image_tag" >> $GITHUB_OUTPUT
 
       - name: build temporary instrumentation image
+        id: build-test-instrumentation-image
         uses: docker/build-push-action@v6
         # Dependabot PRs currently fail in this step, see
         # https://stackoverflow.com/questions/74788092/github-dependabot-doesnt-have-permissions-to-publish-to-ghcr-how-can-i-give-it
@@ -169,26 +180,19 @@ jobs:
         with:
           context: images/instrumentation
           tags: ${{ steps.instrumentation-test-image.outputs.image_name }}
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ steps.docker-arch.outputs.docker_arch }}
           cache-from: type=gha,scope=instrumentation
           cache-to: type=gha,mode=max,scope=instrumentation
           push: true
-
-      - name: injector tests
-        if: |
-          steps.changed-files.outputs.instrumentation_any_changed == 'true' ||
-          github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
-        env:
-          INSTRUMENTATION_IMAGE: ${{ steps.instrumentation-test-image.outputs.image_name }}
-        run: |
-          images/instrumentation/injector/test/scripts/test-all.sh
 
       - name: instrumentation image tests
         if: |
           steps.changed-files.outputs.instrumentation_any_changed == 'true' ||
           github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
         env:
-          INSTRUMENTATION_IMAGE: ${{ steps.instrumentation-test-image.outputs.image_name }}
+          INSTRUMENTATION_IMAGE: ${{ steps.instrumentation-test-image.outputs.image_name }}@${{ steps.build-test-instrumentation-image.outputs.imageid }}
+          IS_REMOTE_IMAGE: false
+          ARCHITECTURES: ${{ steps.docker-arch.outputs.docker_arch }}
         run: |
           images/instrumentation/test/test-all.sh
 
@@ -210,7 +214,7 @@ jobs:
   # meant for production use.
   build-and-push-images:
     name: Build Images
-    runs-on: ubuntu-latest
+    runs-on: 8core_32gb_arm64
     needs:
       - verify
       - injector_binary_and_instrumentation_image_tests
@@ -275,7 +279,7 @@ jobs:
 
   publish-helm-chart-dry-run:
     name: Publish Helm Chart (Dry Run)
-    runs-on: ubuntu-latest
+    runs-on: 8core_32gb_arm64
     if: ${{ ! contains(github.ref, 'refs/tags/') && github.actor != 'dependabot[bot]'}}
     needs:
       - build-and-push-images
@@ -297,7 +301,8 @@ jobs:
   # branch protection rules reference this property, and it is a required check.
   skip-publish-helm-chart-dry-run-for-dependabot:
     name: Publish Helm Chart (Dry Run)
-    runs-on: ubuntu-latest
+    runs-on: 8core_32gb_arm64
+
     if: ${{ ! contains(github.ref, 'refs/tags/') && github.actor == 'dependabot[bot]'}}
     needs:
       - build-and-push-images
@@ -309,7 +314,7 @@ jobs:
 
   publish-helm-chart:
     name: Publish Helm Chart
-    runs-on: ubuntu-latest
+    runs-on: 8core_32gb_arm64
     if: ${{ contains(github.ref, 'refs/tags/') && github.actor != 'dependabot[bot]'}}
     needs:
       - build-and-push-images
