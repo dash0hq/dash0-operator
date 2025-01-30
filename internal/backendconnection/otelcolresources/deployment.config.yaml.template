@@ -86,7 +86,13 @@ processors:
 receivers:
   k8s_cluster:
     metrics:
+      k8s.container.restarts:
+        enabled: false
       k8s.namespace.phase:
+        enabled: false
+      k8s.replicaset.desired:
+        enabled: false
+      k8s.replicaset.available:
         enabled: false
 
 service:

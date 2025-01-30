@@ -6,7 +6,6 @@ k8s.container.ephemeralstorage_request
 k8s.container.memory_limit
 k8s.container.memory_request
 k8s.container.ready
-k8s.container.restarts
 k8s.container.storage_limit
 k8s.container.storage_request
 k8s.cronjob.active_jobs
@@ -29,8 +28,6 @@ k8s.namespace.phase
 k8s.node.condition
 k8s.pod.phase
 k8s.pod.status_reason
-k8s.replicaset.available
-k8s.replicaset.desired
 k8s.replication_controller.available
 k8s.replication_controller.desired
 k8s.resource_quota.hard_limit
