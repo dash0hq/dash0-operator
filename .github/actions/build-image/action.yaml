@@ -19,8 +19,7 @@ inputs:
     required: true
   disableCache:
     description: "add no_cache: true to the docker/build-push-action step"
-    required: false
-    default: 'false'
+    required: true
   context:
     description: "docker build context directory"
     required: true
@@ -37,50 +36,51 @@ runs:
       run: echo "disableCache is __${{ inputs.disableCache }}__"
       shell: bash
 
-    - name: set up docker buildx
-      uses: docker/setup-buildx-action@v3
+    - name: Dump expression
+      run: echo "__${{ inputs.disableCache == 'true' && true || false }}__"
+      shell: bash
 
-    - name: login to GitHub container registry
-      uses: docker/login-action@v3
-      with:
-        registry: ghcr.io
-        username: ${{ github.repository_owner }}
-        password: ${{ inputs.githubToken }}
-
-    - name: extract metadata (tags, labels) for Docker
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: |
-          ghcr.io/dash0hq/${{ inputs.imageName }}
-        tags: |
-          type=semver,pattern={{major}}.{{minor}}.{{patch}}
-          type=semver,pattern={{major}}.{{minor}}
-          type=semver,pattern={{major}}
-          type=ref,enable={{is_default_branch}},suffix=-dev,event=branch
-          type=ref,event=tag
-          type=sha
-        labels: |
-          org.opencontainers.image.title=${{ inputs.imageTitle }}
-          org.opencontainers.image.description=${{ inputs.imageDescription }}
-          org.opencontainers.image.vendor=Dash0 Inc.
-          org.opencontainers.image.url=${{ inputs.imageUrl }}
-        flavor: |
-          latest=auto
-
-    - name: build and push container image
-      uses: docker/build-push-action@v6
-      with:
-        context: ${{ inputs.context }}
-        file: ${{ inputs.file != '' && inputs.file || format('{0}/Dockerfile', inputs.context) }}
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-        # Maintenance note: keep the expression for building both platforms in sync with the "push" expression.
-        # When not pushing only building amd64 is enough to verify the image can be built, and it is much faster than
-        # building both platforms.
-        platforms: ${{ (github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')) && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
-        cache-from: type=gha,scope=${{ inputs.imageName }}
-        cache-to: type=gha,mode=max,scope=${{ inputs.imageName }}
-        no-cache: ${{ inputs.disableCache }}
-        # Maintenance note: keep the expression for push in sync with the expression used in "platforms".
-        push: ${{ github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/') }}
+#    - name: login to GitHub container registry
+#      uses: docker/login-action@v3
+#      with:
+#        registry: ghcr.io
+#        username: ${{ github.repository_owner }}
+#        password: ${{ inputs.githubToken }}
+#
+#    - name: extract metadata (tags, labels) for Docker
+#      id: meta
+#      uses: docker/metadata-action@v5
+#      with:
+#        images: |
+#          ghcr.io/dash0hq/${{ inputs.imageName }}
+#        tags: |
+#          type=semver,pattern={{major}}.{{minor}}.{{patch}}
+#          type=semver,pattern={{major}}.{{minor}}
+#          type=semver,pattern={{major}}
+#          type=ref,enable={{is_default_branch}},suffix=-dev,event=branch
+#          type=ref,event=tag
+#          type=sha
+#        labels: |
+#          org.opencontainers.image.title=${{ inputs.imageTitle }}
+#          org.opencontainers.image.description=${{ inputs.imageDescription }}
+#          org.opencontainers.image.vendor=Dash0 Inc.
+#          org.opencontainers.image.url=${{ inputs.imageUrl }}
+#        flavor: |
+#          latest=auto
+#
+#    - name: build and push container image
+#      uses: docker/build-push-action@v6
+#      with:
+#        context: ${{ inputs.context }}
+#        file: ${{ inputs.file != '' && inputs.file || format('{0}/Dockerfile', inputs.context) }}
+#        tags: ${{ steps.meta.outputs.tags }}
+#        labels: ${{ steps.meta.outputs.labels }}
+#        # Maintenance note: keep the expression for building both platforms in sync with the "push" expression.
+#        # When not pushing only building amd64 is enough to verify the image can be built, and it is much faster than
+#        # building both platforms.
+#        platforms: ${{ (github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')) && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
+#        cache-from: type=gha,scope=${{ inputs.imageName }}
+#        cache-to: type=gha,mode=max,scope=${{ inputs.imageName }}
+#        no-cache: ${{ if inputs.disableCache == true then 'true' else 'false' }}
+#        # Maintenance note: keep the expression for push in sync with the expression used in "platforms".
+#        push: ${{ github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/') }}
