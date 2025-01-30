@@ -17,6 +17,10 @@ inputs:
   imageUrl:
     description: "URL for the sources of the image"
     required: true
+  disableCache:
+    description: "add no_cache: true to the docker/build-push-action step"
+    required: false
+    default: 'false'
   context:
     description: "docker build context directory"
     required: true
@@ -73,5 +77,6 @@ runs:
         platforms: ${{ (github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')) && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
         cache-from: type=gha,scope=${{ inputs.imageName }}
         cache-to: type=gha,mode=max,scope=${{ inputs.imageName }}
+        no-cache: ${{ inputs.disableCache }}
         # Maintenance note: keep the expression for push in sync with the expression used in "platforms".
         push: ${{ github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/') }}

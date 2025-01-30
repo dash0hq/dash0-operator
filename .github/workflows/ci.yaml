@@ -12,6 +12,12 @@ on:
     paths-ignore:
       - '*.md'
   workflow_dispatch:
+    inputs:
+      disableImageBuildCache:
+        description: "add no_cache: true to the docker/build-push-action steps"
+        type: boolean
+        required: false
+        default: false
 
 concurrency:
   # Branches and PR all run in their individual, separate concurrency groups (with cancel-in-progress: true). The main
@@ -229,6 +235,7 @@ jobs:
           imageTitle: Dash0 Kubernetes Operator Controller
           imageDescription: the controller for the Dash0 operator for Kubernetes
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main
+          disableCache: ${{ inputs.disableImageBuildCache }}
           context: .
 
       - name: build instrumentation image
@@ -239,6 +246,7 @@ jobs:
           imageTitle: Dash0 Instrumentation
           imageDescription: contains Dash0 OpenTelemetry distributions for multiple runtimes
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/instrumentation
+          disableCache: ${{ inputs.disableImageBuildCache }}
           context: images/instrumentation
 
       - name: build collector image
@@ -249,6 +257,7 @@ jobs:
           imageTitle: Dash0 Kubernetes Collector
           imageDescription: the OpenTelemetry collector for the Dash0 operator for Kubernetes
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/collector
+          disableCache: ${{ inputs.disableImageBuildCache }}
           context: images/collector
 
       - name: build configuration reloader image
@@ -259,6 +268,7 @@ jobs:
           imageTitle: Dash0 Kubernetes Configuration Reloader
           imageDescription: the configuration reloader for the Dash0 operator for Kubernetes
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/configreloader
+          disableCache: ${{ inputs.disableImageBuildCache }}
           context: images
           file: images/configreloader/Dockerfile
 
@@ -270,6 +280,7 @@ jobs:
           imageTitle: Dash0 Kubernetes Filelog Offset Synch
           imageDescription: the filelog offset synch for the Dash0 operator for Kubernetes
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main
+          disableCache: ${{ inputs.disableImageBuildCache }}
           context: images
           file: images/filelogoffsetsynch/Dockerfile
 
