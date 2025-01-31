@@ -78,6 +78,16 @@ processors:
         - {{ .NamespaceOttlFilter }}
   {{- end }}
 
+  # Remove noisy replicaset metrics (by default, Kubernetes keeps a history of 10 replicasets for each deployment,
+  # collecting metrics about all of them leads to a lot of metrics with no value). Removing zero-value datapoints
+  # makes sure the backend knows about the actual active replicaset (with desired > 0).
+  filter/drop-replicaset-metrics-zero-value:
+    error_mode: ignore
+    metrics:
+      datapoint:
+      - metric.name == "k8s.replicaset.available" and value_int == 0
+      - metric.name == "k8s.replicaset.desired" and value_int == 0
+
   memory_limiter:
     check_interval: 5s
     limit_percentage: 80
@@ -89,10 +99,6 @@ receivers:
       k8s.container.restarts:
         enabled: false
       k8s.namespace.phase:
-        enabled: false
-      k8s.replicaset.desired:
-        enabled: false
-      k8s.replicaset.available:
         enabled: false
 
 service:
@@ -112,6 +118,7 @@ service:
       {{- if .NamespaceOttlFilter }}
       - filter/metrics_only_monitored_namespaces
       {{- end }}
+      - filter/drop-replicaset-metrics-zero-value
       - memory_limiter
       - batch
       exporters:
