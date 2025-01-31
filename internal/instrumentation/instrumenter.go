@@ -46,6 +46,7 @@ const (
 	workloadNameLabel      = "workload name"
 
 	updateStatusFailedMessage = "Failed to update Dash0 monitoring status conditions, requeuing reconcile request."
+	actor                     = util.ActorController
 )
 
 var (
@@ -342,6 +343,7 @@ func (i *Instrumenter) handleJobJobOnInstrumentation(
 		requiredAction = util.ModificationModeInstrumentation
 	}
 
+	modificationResult := workloads.NewNotModifiedReasonUnknownResult()
 	retryErr := util.Retry("handling immutable job", func() error {
 		if !modifyLabels {
 			return nil
@@ -354,15 +356,18 @@ func (i *Instrumenter) handleJobJobOnInstrumentation(
 			return fmt.Errorf("error when fetching job %s/%s: %w", job.GetNamespace(), job.GetName(), err)
 		}
 
-		hasBeenModified := false
 		switch requiredAction {
 		case util.ModificationModeInstrumentation:
-			hasBeenModified = newWorkloadModifier(i.Images, i.OTelCollectorBaseUrl, i.IsIPv6Cluster, &logger).AddLabelsToImmutableJob(&job)
+			modificationResult =
+				newWorkloadModifier(i.Images, i.OTelCollectorBaseUrl, i.IsIPv6Cluster, &logger).
+					AddLabelsToImmutableJob(&job)
 		case util.ModificationModeUninstrumentation:
-			hasBeenModified = newWorkloadModifier(i.Images, i.OTelCollectorBaseUrl, i.IsIPv6Cluster, &logger).RemoveLabelsFromImmutableJob(&job)
+			modificationResult =
+				newWorkloadModifier(i.Images, i.OTelCollectorBaseUrl, i.IsIPv6Cluster, &logger).
+					RemoveLabelsFromImmutableJob(&job)
 		}
 
-		if hasBeenModified {
+		if modificationResult.HasBeenModified {
 			return i.Client.Update(ctx, &job, &client.UpdateOptions{FieldManager: util.FieldManager})
 		} else {
 			return nil
@@ -374,18 +379,18 @@ func (i *Instrumenter) handleJobJobOnInstrumentation(
 		postProcess = i.postProcessUninstrumentation
 	}
 	if retryErr != nil {
-		postProcess(&job, false, retryErr, &logger)
+		postProcess(&job, workloads.NewNotModifiedDueToErrorResult(), retryErr, &logger)
 	} else if createImmutableWorkloadsError {
 		// One way or another we are in a situation were we would have wanted to instrument/uninstrument the job, but
 		// could not. Passing an ImmutableWorkloadError to postProcess will make sure we write a corresponding log
 		// message and create a corresponding event.
-		postProcess(&job, false, ImmutableWorkloadError{
+		postProcess(&job, workloads.NewNotModifiedImmutableWorkloadCannotBeInstrumentedResult(), ImmutableWorkloadError{
 			workloadType:     "job",
 			workloadName:     fmt.Sprintf("%s/%s", job.GetNamespace(), job.GetName()),
 			modificationMode: requiredAction,
 		}, &logger)
 	} else {
-		postProcess(&job, false, nil, &logger)
+		postProcess(&job, modificationResult, nil, &logger)
 	}
 }
 
@@ -481,7 +486,7 @@ func (i *Instrumenter) instrumentWorkload(
 		requiredAction = util.ModificationModeInstrumentation
 	}
 
-	hasBeenModified := false
+	modificationResult := workloads.NewNotModifiedReasonUnknownResult()
 	retryErr := util.Retry(fmt.Sprintf("instrumenting %s", kind), func() error {
 		if err := i.Client.Get(ctx, client.ObjectKey{
 			Namespace: objectMeta.GetNamespace(),
@@ -498,12 +503,12 @@ func (i *Instrumenter) instrumentWorkload(
 
 		switch requiredAction {
 		case util.ModificationModeInstrumentation:
-			hasBeenModified = workload.instrument(i.Images, i.OTelCollectorBaseUrl, i.IsIPv6Cluster, &logger)
+			modificationResult = workload.instrument(i.Images, i.OTelCollectorBaseUrl, i.IsIPv6Cluster, &logger)
 		case util.ModificationModeUninstrumentation:
-			hasBeenModified = workload.revert(i.Images, i.OTelCollectorBaseUrl, i.IsIPv6Cluster, &logger)
+			modificationResult = workload.revert(i.Images, i.OTelCollectorBaseUrl, i.IsIPv6Cluster, &logger)
 		}
 
-		if hasBeenModified {
+		if modificationResult.HasBeenModified {
 			return i.Client.Update(ctx, workload.asClientObject(), &client.UpdateOptions{FieldManager: util.FieldManager})
 		} else {
 			return nil
@@ -512,16 +517,16 @@ func (i *Instrumenter) instrumentWorkload(
 
 	switch requiredAction {
 	case util.ModificationModeInstrumentation:
-		return i.postProcessInstrumentation(workload.asRuntimeObject(), hasBeenModified, retryErr, &logger)
+		return i.postProcessInstrumentation(workload.asRuntimeObject(), modificationResult, retryErr, &logger)
 	case util.ModificationModeUninstrumentation:
-		return i.postProcessUninstrumentation(workload.asRuntimeObject(), hasBeenModified, retryErr, &logger)
+		return i.postProcessUninstrumentation(workload.asRuntimeObject(), modificationResult, retryErr, &logger)
 	}
 	return false
 }
 
 func (i *Instrumenter) postProcessInstrumentation(
 	resource runtime.Object,
-	hasBeenModified bool,
+	modifcationResult workloads.ModificationResult,
 	retryErr error,
 	logger *logr.Logger,
 ) bool {
@@ -532,19 +537,15 @@ func (i *Instrumenter) postProcessInstrumentation(
 		} else {
 			logger.Error(retryErr, "Dash0 instrumentation by controller has not been successful.")
 		}
-		util.QueueFailedInstrumentationEvent(i.Recorder, resource, "controller", retryErr)
+		util.QueueFailedInstrumentationEvent(i.Recorder, resource, actor, retryErr)
 		return false
-	} else if !hasBeenModified {
-		// TODO This also happens for replica sets owned by a deployment and the log message as well as the message on
-		// the event are unspecific, would be better if we could differentiate between the two cases.
-		// (Also for revert maybe.)
-		logger.Info("Dash0 instrumentation was already present on this workload, or the workload is part of a higher " +
-			"order workload that will be instrumented, no modification by the controller is necessary.")
-		util.QueueNoInstrumentationNecessaryEvent(i.Recorder, resource, "controller")
+	} else if !modifcationResult.HasBeenModified {
+		logger.Info(modifcationResult.RenderReasonMessage(actor))
+		util.QueueNoInstrumentationNecessaryEvent(i.Recorder, resource, modifcationResult.RenderReasonMessage(actor))
 		return false
 	} else {
 		logger.Info("The controller has added Dash0 instrumentation to the workload.")
-		util.QueueSuccessfulInstrumentationEvent(i.Recorder, resource, "controller")
+		util.QueueSuccessfulInstrumentationEvent(i.Recorder, resource, actor)
 		return true
 	}
 }
@@ -702,13 +703,14 @@ func (i *Instrumenter) handleJobOnUninstrumentation(ctx context.Context, job bat
 		return
 	}
 
-	// Note: In contrast to the instrumentation logic, there is no need to check for dash0.com/enable=false here:
-	// If it is set, the workload would not have been instrumented in the first place, hence the label selector filter
-	// looking for dash0.com/instrumented=true would not have matched. Or if the workload is actually instrumented,
-	// although it has dash0.com/enabled=false it must have been set after the instrumentation, in which case
-	// uninstrumenting it is the correct thing to do.
+	// Note: In contrast to the instrumentation logic, there is no need to check for dash0.com/enable=false to determine
+	// the required action here: If dash0.com/enable=false is set, the workload would not have been instrumented in the
+	// first place, hence the label selector filter looking for dash0.com/instrumented=true would not have matched. Or
+	// if the workload is actually instrumented, although it has dash0.com/enabled=false it must have been set after the
+	// instrumentation, in which case uninstrumenting it is the correct thing to do.
 
 	createImmutableWorkloadsError := false
+	modificationResult := workloads.NewNotModifiedReasonUnknownResult()
 	retryErr := util.Retry("removing labels from immutable job", func() error {
 		if err := i.Client.Get(ctx, client.ObjectKey{
 			Namespace: job.GetNamespace(),
@@ -723,17 +725,21 @@ func (i *Instrumenter) handleJobOnUninstrumentation(ctx context.Context, job bat
 			// Deliberately not calling newWorkloadModifier(i.Images, &logger).RemoveLabelsFromImmutableJob(&job) here
 			// since we cannot remove the instrumentation, so we also have to leave the labels in place.
 			createImmutableWorkloadsError = true
+			modificationResult = workloads.NewNotModifiedImmutableWorkloadCannotBeRevertedResult()
 			return nil
 		} else if util.InstrumentationAttemptHasFailed(&job.ObjectMeta) {
 			// There was an attempt to instrument this job (probably by the controller), which has not been successful.
 			// We only need remove the labels from that instrumentation attempt to clean up.
-			newWorkloadModifier(i.Images, i.OTelCollectorBaseUrl, i.IsIPv6Cluster, &logger).RemoveLabelsFromImmutableJob(&job)
+			modificationResult =
+				newWorkloadModifier(i.Images, i.OTelCollectorBaseUrl, i.IsIPv6Cluster, &logger).
+					RemoveLabelsFromImmutableJob(&job)
 
 			// Apparently for jobs we do not need to set the "dash0.com/webhook-ignore-once" label, since changing their
 			// labels does not trigger a new admission request.
 			return i.Client.Update(ctx, &job, &client.UpdateOptions{FieldManager: util.FieldManager})
 		} else {
 			// No dash0.com/instrumented label is present, do nothing.
+			modificationResult = workloads.NewNotModifiedNoChangesResult()
 			return nil
 		}
 	}, &logger)
@@ -741,16 +747,20 @@ func (i *Instrumenter) handleJobOnUninstrumentation(ctx context.Context, job bat
 	if retryErr != nil {
 		// For the case that the job was instrumented, and we could not uninstrument it, we create a
 		// ImmutableWorkloadError inside the retry loop. This error is then handled in the postProcessUninstrumentation.
-		// The same is true for any other error types (for example errors in i.ClientUpdate).
-		i.postProcessUninstrumentation(&job, false, retryErr, &logger)
+		// The same is true for any other error types (for example errors in `i.ClientUpdate).
+		i.postProcessUninstrumentation(&job, workloads.NewNotModifiedDueToErrorResult(), retryErr, &logger)
 	} else if createImmutableWorkloadsError {
-		i.postProcessUninstrumentation(&job, false, ImmutableWorkloadError{
-			workloadType:     "job",
-			workloadName:     fmt.Sprintf("%s/%s", job.GetNamespace(), job.GetName()),
-			modificationMode: util.ModificationModeUninstrumentation,
-		}, &logger)
+		i.postProcessUninstrumentation(
+			&job,
+			workloads.NewNotModifiedImmutableWorkloadCannotBeRevertedResult(),
+			ImmutableWorkloadError{
+				workloadType:     "job",
+				workloadName:     fmt.Sprintf("%s/%s", job.GetNamespace(), job.GetName()),
+				modificationMode: util.ModificationModeUninstrumentation,
+			}, &logger,
+		)
 	} else {
-		i.postProcessUninstrumentation(&job, false, nil, &logger)
+		i.postProcessUninstrumentation(&job, modificationResult, nil, &logger)
 	}
 }
 
@@ -833,7 +843,7 @@ func (i *Instrumenter) revertWorkloadInstrumentation(
 	// although it has dash0.com/enabled=false it must have been set after the instrumentation, in which case
 	// uninstrumenting it is the correct thing to do.
 
-	hasBeenModified := false
+	modificationResult := workloads.NewNotModifiedReasonUnknownResult()
 	retryErr := util.Retry(fmt.Sprintf("uninstrumenting %s", kind), func() error {
 		if err := i.Client.Get(ctx, client.ObjectKey{
 			Namespace: objectMeta.GetNamespace(),
@@ -847,8 +857,8 @@ func (i *Instrumenter) revertWorkloadInstrumentation(
 				err,
 			)
 		}
-		hasBeenModified = workload.revert(i.Images, i.OTelCollectorBaseUrl, i.IsIPv6Cluster, &logger)
-		if hasBeenModified {
+		modificationResult = workload.revert(i.Images, i.OTelCollectorBaseUrl, i.IsIPv6Cluster, &logger)
+		if modificationResult.HasBeenModified {
 			// Changing the workload spec sometimes triggers a new admission request, which would re-instrument the
 			// workload via the webhook immediately. To prevent this, we add a label that the webhook can check to
 			// prevent instrumentation.
@@ -859,12 +869,12 @@ func (i *Instrumenter) revertWorkloadInstrumentation(
 		}
 	}, &logger)
 
-	return i.postProcessUninstrumentation(workload.asRuntimeObject(), hasBeenModified, retryErr, &logger)
+	return i.postProcessUninstrumentation(workload.asRuntimeObject(), modificationResult, retryErr, &logger)
 }
 
 func (i *Instrumenter) postProcessUninstrumentation(
 	resource runtime.Object,
-	hasBeenModified bool,
+	modificationResult workloads.ModificationResult,
 	retryErr error,
 	logger *logr.Logger,
 ) bool {
@@ -875,16 +885,15 @@ func (i *Instrumenter) postProcessUninstrumentation(
 		} else {
 			logger.Error(retryErr, "Dash0's removal of instrumentation by controller has not been successful.")
 		}
-		util.QueueFailedUninstrumentationEvent(i.Recorder, resource, "controller", retryErr)
+		util.QueueFailedUninstrumentationEvent(i.Recorder, resource, actor, retryErr)
 		return false
-	} else if !hasBeenModified {
-		logger.Info("Dash0 instrumentations was not present on this workload, no modification by the controller has " +
-			"been necessary.")
-		util.QueueNoUninstrumentationNecessaryEvent(i.Recorder, resource, "controller")
+	} else if !modificationResult.HasBeenModified {
+		logger.Info(modificationResult.RenderReasonMessage(actor))
+		util.QueueNoUninstrumentationNecessaryEvent(i.Recorder, resource, actor)
 		return false
 	} else {
 		logger.Info("The controller has removed the Dash0 instrumentation from the workload.")
-		util.QueueSuccessfulUninstrumentationEvent(i.Recorder, resource, "controller")
+		util.QueueSuccessfulUninstrumentationEvent(i.Recorder, resource, actor)
 		return true
 	}
 }
@@ -893,7 +902,7 @@ func newWorkloadModifier(images util.Images, oTelCollectorBaseUrl string, isIPv6
 	return workloads.NewResourceModifier(
 		util.InstrumentationMetadata{
 			Images:               images,
-			InstrumentedBy:       "controller",
+			InstrumentedBy:       actor,
 			OTelCollectorBaseUrl: oTelCollectorBaseUrl,
 			IsIPv6Cluster:        isIPv6Cluster,
 		},

@@ -51,7 +51,7 @@ func AddInstrumentationLabels(
 	}
 	addLabel(meta, operatorImageLabelKey, ImageNameToLabel(instrumentationMetadata.OperatorImage))
 	addLabel(meta, initContainerImageLabelKey, ImageNameToLabel(instrumentationMetadata.InitContainerImage))
-	addLabel(meta, instrumentedByLabelKey, instrumentationMetadata.InstrumentedBy)
+	addLabel(meta, instrumentedByLabelKey, string(instrumentationMetadata.InstrumentedBy))
 }
 
 func AddWebhookIgnoreOnceLabel(meta *metav1.ObjectMeta) {

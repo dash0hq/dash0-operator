@@ -463,6 +463,26 @@ func VerifySuccessfulInstrumentationEvent(
 	)
 }
 
+func VerifyInstrumentationViaHigherOrderWorkloadEvent(
+	ctx context.Context,
+	clientset *kubernetes.Clientset,
+	namespace string,
+	resourceName string,
+	eventSource string,
+) *corev1.Event {
+	return verifyEvent(
+		ctx,
+		clientset,
+		namespace,
+		resourceName,
+		util.ReasonNoInstrumentationNecessary,
+		fmt.Sprintf(
+			"The workload is part of a higher order workload that will be instrumented by the %s, "+
+				"no modification by the %s is necessary.",
+			eventSource, eventSource),
+	)
+}
+
 func VerifyNoInstrumentationNecessaryEvent(
 	ctx context.Context,
 	clientset *kubernetes.Clientset,

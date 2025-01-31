@@ -4,12 +4,16 @@
 package webhooks
 
 import (
+	"context"
+
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -21,6 +25,10 @@ import (
 // intentional. However, this test should be used to verify external effects (recording events etc.) that cannot be
 // covered in modify_test.go, while more fine-grained test cases and variations should rather be added to
 // workloads/modify_test.go.
+
+const (
+	testActor = string(util.ActorWebhook)
+)
 
 var _ = Describe("The Dash0 instrumentation webhook", func() {
 	var createdObjects []client.Object
@@ -49,7 +57,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 			createdObjects = append(createdObjects, workload.Get())
 			workload = config.GetFn(ctx, k8sClient, TestNamespaceName, name)
 			config.VerifyFn(workload)
-			VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
+			VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, testActor)
 		}, Entry("should instrument a new basic cron job", WorkloadTestConfig{
 			WorkloadNamePrefix: CronJobNamePrefix,
 			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateBasicCronJob),
@@ -85,10 +93,52 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedPod(workload.Get().(*corev1.Pod), BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
 			},
+		}), Entry("should instrument a new basic pod owned by an unrecognized type", WorkloadTestConfig{
+			WorkloadNamePrefix: PodNamePrefix,
+			CreateFn: WrapPodFnAsTestableWorkload(func(
+				ctx context.Context,
+				k8sClient client.Client,
+				namespace string,
+				name string,
+			) *corev1.Pod {
+				pod := CreateBasicPod(ctx, k8sClient, namespace, name)
+				pod.ObjectMeta.OwnerReferences = []metav1.OwnerReference{{
+					Name:       "strimzi-podset-name",
+					APIVersion: "core.strimzi.io/v1beta2",
+					Kind:       "StrimziPodSet",
+					UID:        "35b829cb-78dc-4544-b7a9-5a8e51b7f322",
+				}}
+				UpdateWorkload(ctx, k8sClient, pod)
+				return pod
+			}),
+			GetFn: WrapPodFnAsTestableWorkload(GetPod),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyModifiedPod(workload.Get().(*corev1.Pod), BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
+			},
 		}), Entry("should instrument a new basic ownerless replica set", WorkloadTestConfig{
 			WorkloadNamePrefix: ReplicaSetNamePrefix,
 			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateBasicReplicaSet),
 			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyModifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet), BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
+			},
+		}), Entry("should instrument a new basic replica set owned by an unrecognized type", WorkloadTestConfig{
+			WorkloadNamePrefix: ReplicaSetNamePrefix,
+			CreateFn: WrapReplicaSetFnAsTestableWorkload(func(ctx context.Context,
+				k8sClient client.Client,
+				namespace string,
+				name string) *appsv1.ReplicaSet {
+				rs := CreateBasicReplicaSet(ctx, k8sClient, namespace, name)
+				rs.OwnerReferences = []metav1.OwnerReference{{
+					Name:       "owner-name",
+					APIVersion: "api/v1beta2",
+					Kind:       "Kind",
+					UID:        "35b829cb-78dc-4544-b7a9-5a8e51b7f322",
+				}}
+				UpdateWorkload(ctx, k8sClient, rs)
+				return rs
+			}),
+			GetFn: WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet), BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
 			},
@@ -117,7 +167,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 				createdObjects = append(createdObjects, workload)
 				workload = GetReplicaSet(ctx, k8sClient, TestNamespaceName, name)
 				VerifyUnmodifiedReplicaSet(workload)
-				VerifyNoInstrumentationNecessaryEvent(ctx, clientset, TestNamespaceName, name, "webhook")
+				VerifyInstrumentationViaHigherOrderWorkloadEvent(ctx, clientset, TestNamespaceName, name, testActor)
 			})
 		})
 
@@ -229,7 +279,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 				},
 					VerifyNoManagedFields,
 				)
-				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
+				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, testActor)
 			})
 		})
 
@@ -285,7 +335,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 				},
 					VerifyNoManagedFields,
 				)
-				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
+				VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, testActor)
 			})
 		})
 
@@ -300,7 +350,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 
 			workload = config.GetFn(ctx, k8sClient, TestNamespaceName, name)
 			config.VerifyFn(workload)
-			VerifySuccessfulUninstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
+			VerifySuccessfulUninstrumentationEvent(ctx, clientset, TestNamespaceName, name, testActor)
 		}, Entry("should remove Dash0 from an instrumented cron job when dash0.com/enable=false is added", WorkloadTestConfig{
 			WorkloadNamePrefix: CronJobNamePrefix,
 			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateInstrumentedCronJob),
@@ -353,7 +403,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 
 			workload = config.GetFn(ctx, k8sClient, TestNamespaceName, name)
 			config.VerifyFn(workload)
-			VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
+			VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, testActor)
 		}, Entry("should add Dash0 to an uninstrumented cron job when dash0.com/enable=false is removed", WorkloadTestConfig{
 			WorkloadNamePrefix: CronJobNamePrefix,
 			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateCronJobWithOptOutLabel),
@@ -406,7 +456,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 
 			workload = config.GetFn(ctx, k8sClient, TestNamespaceName, name)
 			config.VerifyFn(workload)
-			VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
+			VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, testActor)
 		}, Entry("should add Dash0 to an uninstrumented cron job when dash0.com/enable flips from false to true", WorkloadTestConfig{
 			WorkloadNamePrefix: CronJobNamePrefix,
 			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateCronJobWithOptOutLabel),
@@ -586,7 +636,7 @@ func verifyThatDeploymentIsInstrumented(createdObjects []client.Object) []client
 	createdObjects = append(createdObjects, workload)
 	workload = GetDeployment(ctx, k8sClient, TestNamespaceName, name)
 	VerifyModifiedDeployment(workload, BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
-	VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
+	VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, testActor)
 	return createdObjects
 }
 

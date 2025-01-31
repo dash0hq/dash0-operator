@@ -43,6 +43,7 @@ const (
 	optOutAdmissionAllowedMessage    = "not instrumenting this workload due to dash0.com/enable=false"
 	sameVersionNoModificationMessage = "not updating the existing instrumentation for this workload, it has already " +
 		"been successfully instrumented by the same operator version"
+	actor = util.ActorWebhook
 )
 
 var (
@@ -209,18 +210,24 @@ func (h *InstrumentationWebhookHandler) handleCronJob(
 		return responseIfFailed
 	}
 	if util.CheckAndDeleteIgnoreOnceLabel(&cronJob.ObjectMeta) {
-		return h.postProcessInstrumentation(request, cronJob, false, true, false, logger)
+		return h.postProcessInstrumentation(
+			request,
+			cronJob,
+			workloads.NewIgnoredOnceResult(),
+			false,
+			logger,
+		)
 	}
 	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(&cronJob.ObjectMeta) {
 		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
 	} else if util.WasInstrumentedButHasOptedOutNow(&cronJob.ObjectMeta) {
-		hasBeenModified := h.newWorkloadModifier(logger).RevertCronJob(cronJob)
-		return h.postProcessUninstrumentation(request, cronJob, hasBeenModified, false, logger)
+		modificationResult := h.newWorkloadModifier(logger).RevertCronJob(cronJob)
+		return h.postProcessUninstrumentation(request, cronJob, modificationResult, logger)
 	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(&cronJob.ObjectMeta, h.Images) {
 		return logAndReturnAllowed(sameVersionNoModificationMessage, logger)
 	} else {
-		hasBeenModified := h.newWorkloadModifier(logger).ModifyCronJob(cronJob)
-		return h.postProcessInstrumentation(request, cronJob, hasBeenModified, false, false, logger)
+		modificationResult := h.newWorkloadModifier(logger).ModifyCronJob(cronJob)
+		return h.postProcessInstrumentation(request, cronJob, modificationResult, false, logger)
 	}
 }
 
@@ -236,18 +243,18 @@ func (h *InstrumentationWebhookHandler) handleDaemonSet(
 		return responseIfFailed
 	}
 	if util.CheckAndDeleteIgnoreOnceLabel(&daemonSet.ObjectMeta) {
-		return h.postProcessInstrumentation(request, daemonSet, false, true, false, logger)
+		return h.postProcessInstrumentation(request, daemonSet, workloads.NewIgnoredOnceResult(), false, logger)
 	}
 	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(&daemonSet.ObjectMeta) {
 		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
 	} else if util.WasInstrumentedButHasOptedOutNow(&daemonSet.ObjectMeta) {
-		hasBeenModified := h.newWorkloadModifier(logger).RevertDaemonSet(daemonSet)
-		return h.postProcessUninstrumentation(request, daemonSet, hasBeenModified, false, logger)
+		modificationResult := h.newWorkloadModifier(logger).RevertDaemonSet(daemonSet)
+		return h.postProcessUninstrumentation(request, daemonSet, modificationResult, logger)
 	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(&daemonSet.ObjectMeta, h.Images) {
 		return logAndReturnAllowed(sameVersionNoModificationMessage, logger)
 	} else {
-		hasBeenModified := h.newWorkloadModifier(logger).ModifyDaemonSet(daemonSet)
-		return h.postProcessInstrumentation(request, daemonSet, hasBeenModified, false, false, logger)
+		modificationResult := h.newWorkloadModifier(logger).ModifyDaemonSet(daemonSet)
+		return h.postProcessInstrumentation(request, daemonSet, modificationResult, false, logger)
 	}
 }
 
@@ -263,18 +270,18 @@ func (h *InstrumentationWebhookHandler) handleDeployment(
 		return responseIfFailed
 	}
 	if util.CheckAndDeleteIgnoreOnceLabel(&deployment.ObjectMeta) {
-		return h.postProcessInstrumentation(request, deployment, false, true, false, logger)
+		return h.postProcessInstrumentation(request, deployment, workloads.NewIgnoredOnceResult(), false, logger)
 	}
 	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(&deployment.ObjectMeta) {
 		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
 	} else if util.WasInstrumentedButHasOptedOutNow(&deployment.ObjectMeta) {
-		hasBeenModified := h.newWorkloadModifier(logger).RevertDeployment(deployment)
-		return h.postProcessUninstrumentation(request, deployment, hasBeenModified, false, logger)
+		modificationResult := h.newWorkloadModifier(logger).RevertDeployment(deployment)
+		return h.postProcessUninstrumentation(request, deployment, modificationResult, logger)
 	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(&deployment.ObjectMeta, h.Images) {
 		return logAndReturnAllowed(sameVersionNoModificationMessage, logger)
 	} else {
-		hasBeenModified := h.newWorkloadModifier(logger).ModifyDeployment(deployment)
-		return h.postProcessInstrumentation(request, deployment, hasBeenModified, false, false, logger)
+		modificationResult := h.newWorkloadModifier(logger).ModifyDeployment(deployment)
+		return h.postProcessInstrumentation(request, deployment, modificationResult, false, logger)
 	}
 }
 
@@ -290,7 +297,7 @@ func (h *InstrumentationWebhookHandler) handleJob(
 		return responseIfFailed
 	}
 	if util.CheckAndDeleteIgnoreOnceLabel(&job.ObjectMeta) {
-		return h.postProcessInstrumentation(request, job, false, true, false, logger)
+		return h.postProcessInstrumentation(request, job, workloads.NewIgnoredOnceResult(), false, logger)
 	}
 	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(&job.ObjectMeta) {
 		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
@@ -298,13 +305,13 @@ func (h *InstrumentationWebhookHandler) handleJob(
 		// This should not happen, since it can only happen for an admission request with operation=UPDATE, and we are
 		// not listening to udpates for jobs. We cannot uninstrument jobs if the user adds an opt-out label after the
 		// job has been already instrumented, since jobs are immutable.
-		return h.postProcessUninstrumentation(request, job, false, true, logger)
+		return h.postProcessUninstrumentation(request, job, workloads.NewNotModifiedImmutableWorkloadCannotBeRevertedResult(), logger)
 	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(&job.ObjectMeta, h.Images) {
 		// This should not happen either.
 		return logAndReturnAllowed(sameVersionNoModificationMessage, logger)
 	} else {
-		hasBeenModified := h.newWorkloadModifier(logger).ModifyJob(job)
-		return h.postProcessInstrumentation(request, job, hasBeenModified, false, false, logger)
+		modificationResult := h.newWorkloadModifier(logger).ModifyJob(job)
+		return h.postProcessInstrumentation(request, job, modificationResult, false, logger)
 	}
 }
 
@@ -320,7 +327,7 @@ func (h *InstrumentationWebhookHandler) handlePod(
 		return responseIfFailed
 	}
 	if util.CheckAndDeleteIgnoreOnceLabel(&pod.ObjectMeta) {
-		return h.postProcessInstrumentation(request, pod, false, true, true, logger)
+		return h.postProcessInstrumentation(request, pod, workloads.NewIgnoredOnceResult(), true, logger)
 	}
 	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(&pod.ObjectMeta) {
 		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
@@ -329,13 +336,13 @@ func (h *InstrumentationWebhookHandler) handlePod(
 		// not listening to udpates for pods. We cannot uninstrument ownerless pods if the user adds an opt-out label
 		// after the pod has been already instrumented, since we cannot restart ownerless pods, which makes them
 		// effectively immutable.
-		return h.postProcessUninstrumentation(request, pod, false, true, logger)
+		return h.postProcessUninstrumentation(request, pod, workloads.NewNotModifiedImmutableWorkloadCannotBeRevertedResult(), logger)
 	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(&pod.ObjectMeta, h.Images) {
 		// This should not happen either.
 		return logAndReturnAllowed(sameVersionNoModificationMessage, logger)
 	} else {
-		hasBeenModified := h.newWorkloadModifier(logger).ModifyPod(pod)
-		return h.postProcessInstrumentation(request, pod, hasBeenModified, false, true, logger)
+		modificationResult := h.newWorkloadModifier(logger).ModifyPod(pod)
+		return h.postProcessInstrumentation(request, pod, modificationResult, true, logger)
 	}
 }
 
@@ -351,18 +358,18 @@ func (h *InstrumentationWebhookHandler) handleReplicaSet(
 		return responseIfFailed
 	}
 	if util.CheckAndDeleteIgnoreOnceLabel(&replicaSet.ObjectMeta) {
-		return h.postProcessInstrumentation(request, replicaSet, false, true, false, logger)
+		return h.postProcessInstrumentation(request, replicaSet, workloads.NewIgnoredOnceResult(), false, logger)
 	}
 	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(&replicaSet.ObjectMeta) {
 		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
 	} else if util.WasInstrumentedButHasOptedOutNow(&replicaSet.ObjectMeta) {
-		hasBeenModified := h.newWorkloadModifier(logger).RevertReplicaSet(replicaSet)
-		return h.postProcessUninstrumentation(request, replicaSet, hasBeenModified, false, logger)
+		modificationResult := h.newWorkloadModifier(logger).RevertReplicaSet(replicaSet)
+		return h.postProcessUninstrumentation(request, replicaSet, modificationResult, logger)
 	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(&replicaSet.ObjectMeta, h.Images) {
 		return logAndReturnAllowed(sameVersionNoModificationMessage, logger)
 	} else {
-		hasBeenModified := h.newWorkloadModifier(logger).ModifyReplicaSet(replicaSet)
-		return h.postProcessInstrumentation(request, replicaSet, hasBeenModified, false, false, logger)
+		modificationResult := h.newWorkloadModifier(logger).ModifyReplicaSet(replicaSet)
+		return h.postProcessInstrumentation(request, replicaSet, modificationResult, false, logger)
 	}
 }
 
@@ -378,18 +385,18 @@ func (h *InstrumentationWebhookHandler) handleStatefulSet(
 		return responseIfFailed
 	}
 	if util.CheckAndDeleteIgnoreOnceLabel(&statefulSet.ObjectMeta) {
-		return h.postProcessInstrumentation(request, statefulSet, false, true, false, logger)
+		return h.postProcessInstrumentation(request, statefulSet, workloads.NewIgnoredOnceResult(), false, logger)
 	}
 	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(&statefulSet.ObjectMeta) {
 		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
 	} else if util.WasInstrumentedButHasOptedOutNow(&statefulSet.ObjectMeta) {
-		hasBeenModified := h.newWorkloadModifier(logger).RevertStatefulSet(statefulSet)
-		return h.postProcessUninstrumentation(request, statefulSet, hasBeenModified, false, logger)
+		modificationResult := h.newWorkloadModifier(logger).RevertStatefulSet(statefulSet)
+		return h.postProcessUninstrumentation(request, statefulSet, modificationResult, logger)
 	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(&statefulSet.ObjectMeta, h.Images) {
 		return logAndReturnAllowed(sameVersionNoModificationMessage, logger)
 	} else {
-		hasBeenModified := h.newWorkloadModifier(logger).ModifyStatefulSet(statefulSet)
-		return h.postProcessInstrumentation(request, statefulSet, hasBeenModified, false, false, logger)
+		modificationResult := h.newWorkloadModifier(logger).ModifyStatefulSet(statefulSet)
+		return h.postProcessInstrumentation(request, statefulSet, modificationResult, false, logger)
 	}
 }
 
@@ -410,16 +417,15 @@ func (h *InstrumentationWebhookHandler) preProcess(
 func (h *InstrumentationWebhookHandler) postProcessInstrumentation(
 	request admission.Request,
 	resource runtime.Object,
-	hasBeenModified bool,
-	ignored bool,
+	modificationResult workloads.ModificationResult,
 	isPod bool,
 	logger *logr.Logger,
 ) admission.Response {
-	if !ignored && !hasBeenModified {
-		logger.Info("Dash0 instrumentation was already present on this workload, or the workload is part of a higher " +
-			"order workload that will be instrumented, no modification by the webhook is necessary.")
+	if !modificationResult.IgnoredOnce && !modificationResult.HasBeenModified {
+		msg := modificationResult.RenderReasonMessage(actor)
+		logger.Info(msg)
 		if !isPod {
-			util.QueueNoInstrumentationNecessaryEvent(h.Recorder, resource, "webhook")
+			util.QueueNoInstrumentationNecessaryEvent(h.Recorder, resource, msg)
 		}
 		return admission.Allowed("no changes")
 	}
@@ -431,8 +437,10 @@ func (h *InstrumentationWebhookHandler) postProcessInstrumentation(
 		return logErrorAndReturnAllowed(wrappedErr, logger)
 	}
 
-	if ignored {
-		logger.Info("Ignoring this admission request due to the presence of dash0.com/webhook-ignore-once")
+	// For ignored workloads, we still need to return PatchResponseFromRaw. Although we do not modify the workload
+	// itself, we do need to remove the ignore-once label, which is a modification.
+	if modificationResult.IgnoredOnce {
+		logger.Info(modificationResult.RenderReasonMessage(actor))
 		// deliberately not queueing an event for this case
 		return admission.PatchResponseFromRaw(request.Object.Raw, marshalled)
 	}
@@ -445,33 +453,31 @@ func (h *InstrumentationWebhookHandler) postProcessInstrumentation(
 func (h *InstrumentationWebhookHandler) postProcessUninstrumentation(
 	request admission.Request,
 	resource runtime.Object,
-	hasBeenModified bool,
-	immutableWorkload bool,
+	modificationResult workloads.ModificationResult,
 	logger *logr.Logger,
 ) admission.Response {
-	if immutableWorkload {
-		err := errors.New("cannot remove the instrumentation from workload, since this type of workload is immutable")
-		util.QueueFailedUninstrumentationEvent(h.Recorder, resource, "webhook", err)
+	if modificationResult.ImmutableWorkload {
+		err := errors.New(modificationResult.RenderReasonMessage(actor))
+		util.QueueFailedUninstrumentationEvent(h.Recorder, resource, actor, err)
 		logger.Info(err.Error())
 		return admission.Allowed(err.Error())
 	}
 
-	if !hasBeenModified {
-		logger.Info("Dash0 instrumentations was not present on this workload, or the workload is part of a higher " +
-			"order workload that will be uninstrumented, no modification by webhook has been necessary.")
-		util.QueueNoUninstrumentationNecessaryEvent(h.Recorder, resource, "webhook")
+	if !modificationResult.HasBeenModified {
+		logger.Info(modificationResult.RenderReasonMessage(actor))
+		util.QueueNoUninstrumentationNecessaryEvent(h.Recorder, resource, actor)
 		return admission.Allowed("no changes")
 	}
 
 	marshalled, err := json.Marshal(resource)
 	if err != nil {
 		wrappedErr := fmt.Errorf("error when marshalling modfied resource to JSON: %w", err)
-		util.QueueFailedUninstrumentationEvent(h.Recorder, resource, "webhook", wrappedErr)
+		util.QueueFailedUninstrumentationEvent(h.Recorder, resource, actor, wrappedErr)
 		return logErrorAndReturnAllowed(wrappedErr, logger)
 	}
 
 	logger.Info("The webhook has removed the Dash0 instrumentation from the workload.")
-	util.QueueSuccessfulUninstrumentationEvent(h.Recorder, resource, "webhook")
+	util.QueueSuccessfulUninstrumentationEvent(h.Recorder, resource, actor)
 	return admission.PatchResponseFromRaw(request.Object.Raw, marshalled)
 }
 
@@ -479,7 +485,7 @@ func (h *InstrumentationWebhookHandler) newWorkloadModifier(logger *logr.Logger)
 	return workloads.NewResourceModifier(
 		util.InstrumentationMetadata{
 			Images:               h.Images,
-			InstrumentedBy:       "webhook",
+			InstrumentedBy:       actor,
 			OTelCollectorBaseUrl: h.OTelCollectorBaseUrl,
 			IsIPv6Cluster:        h.IsIPv6Cluster,
 		},

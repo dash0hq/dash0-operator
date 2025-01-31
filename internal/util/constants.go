@@ -3,6 +3,8 @@
 
 package util
 
+type WorkloadModifierActor string
+
 const (
 	AuthorizationHeaderName                 = "Authorization"
 	Dash0DatasetHeaderName                  = "Dash0-Dataset"
@@ -10,4 +12,7 @@ const (
 	DatasetInsights                         = "dash0-internal"
 	SelfMonitoringAndApiAuthTokenEnvVarName = "SELF_MONITORING_AND_API_AUTH_TOKEN"
 	FieldManager                            = "dash0-operator"
+
+	ActorController WorkloadModifierActor = "controller"
+	ActorWebhook    WorkloadModifierActor = "webhook"
 )

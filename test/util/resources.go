@@ -362,7 +362,7 @@ func PodOwnedByReplicaSet(namespace string, name string) *corev1.Pod {
 		Namespace: namespace,
 		Name:      name,
 		OwnerReferences: []metav1.OwnerReference{{
-			APIVersion: "apps/v1",
+			APIVersion: util.K8sApiVersionAppsV1,
 			Kind:       "ReplicaSet",
 			Name:       "replicaset",
 			UID:        "1234",
@@ -435,7 +435,7 @@ func ReplicaSetOwnedByDeployment(namespace string, name string) *appsv1.ReplicaS
 		Namespace: namespace,
 		Name:      name,
 		OwnerReferences: []metav1.OwnerReference{{
-			APIVersion: "apps/v1",
+			APIVersion: util.K8sApiVersionAppsV1,
 			Kind:       "Deployment",
 			Name:       "deployment",
 			UID:        "1234",

@@ -241,7 +241,7 @@ func assembleServiceAccountForDaemonSet(config *oTelColConfig) *corev1.ServiceAc
 	return &corev1.ServiceAccount{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ServiceAccount",
-			APIVersion: "v1",
+			APIVersion: util.K8sApiVersionCoreV1,
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      daemonsetServiceAccountName(config.NamePrefix),
@@ -255,7 +255,7 @@ func assembleFilelogOffsetsConfigMap(config *oTelColConfig) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ConfigMap",
-			APIVersion: "v1",
+			APIVersion: util.K8sApiVersionCoreV1,
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      FilelogReceiverOffsetsConfigMapName(config.NamePrefix),
@@ -392,7 +392,7 @@ func assembleService(config *oTelColConfig) *corev1.Service {
 	return &corev1.Service{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Service",
-			APIVersion: "v1",
+			APIVersion: util.K8sApiVersionCoreV1,
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ServiceName(config.NamePrefix),
@@ -436,10 +436,7 @@ func assembleCollectorDaemonSet(config *oTelColConfig, resourceSpecs *OTelColRes
 	}
 
 	collectorDaemonSet := &appsv1.DaemonSet{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "DaemonSet",
-			APIVersion: "apps/v1",
-		},
+		TypeMeta: util.K8sTypeMetaDaemonSet,
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      DaemonSetName(config.NamePrefix),
 			Namespace: config.Namespace,
@@ -780,7 +777,7 @@ func assembleServiceAccountForDeployment(config *oTelColConfig) *corev1.ServiceA
 	return &corev1.ServiceAccount{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ServiceAccount",
-			APIVersion: "v1",
+			APIVersion: util.K8sApiVersionCoreV1,
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      deploymentServiceAccountName(config.NamePrefix),
@@ -912,10 +909,7 @@ func assembleCollectorDeployment(
 	}
 
 	collectorDeployment := &appsv1.Deployment{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Deployment",
-			APIVersion: "apps/v1",
-		},
+		TypeMeta: util.K8sTypeMetaDeployment,
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      DeploymentName(config.NamePrefix),
 			Namespace: config.Namespace,
