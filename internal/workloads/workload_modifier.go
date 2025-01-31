@@ -47,6 +47,94 @@ var (
 	initContainerReadOnlyRootFilesystem         = true
 )
 
+var (
+	NoModificationReasonUnknown NoModificationReasonMessage = func(actor util.WorkloadModifierActor) string {
+		return fmt.Sprintf("No modification by the %s occurred, reason unknown.", actor)
+	}
+	NoModificationReasonNoChanges NoModificationReasonMessage = func(actor util.WorkloadModifierActor) string {
+		return fmt.Sprintf("Dash0 instrumentation was already present on this workload, no modification by the %s is necessary.", actor)
+	}
+	NoModificationReasonError NoModificationReasonMessage = func(actor util.WorkloadModifierActor) string {
+		return fmt.Sprintf("Dash0 instrumentation by %s has not been successful.", actor)
+	}
+	NoModificationReasonOwnedByHigherOrderWorkload NoModificationReasonMessage = func(actor util.WorkloadModifierActor) string {
+		return fmt.Sprintf("The workload is part of a higher order workload that will be instrumented by the webhook, no modification by the %s is necessary.", actor)
+	}
+	NoModificationReasonImmutableWorkloadCannotBeInstrumented NoModificationReasonMessage = func(actor util.WorkloadModifierActor) string {
+		return "cannot instrumentation this workload, since this type of workload is immutable"
+	}
+	NoModificationReasonImmutableWorkloadCannotBeReverted NoModificationReasonMessage = func(actor util.WorkloadModifierActor) string {
+		return "cannot remove the instrumentation from workload, since this type of workload is immutable"
+	}
+	NoModificationReasonIgnoreOnceLabel NoModificationReasonMessage = func(_ util.WorkloadModifierActor) string {
+		return "Ignoring this admission request due to the presence of dash0.com/webhook-ignore-once."
+	}
+)
+
+type NoModificationReasonMessage func(actor util.WorkloadModifierActor) string
+
+type ModificationResult struct {
+	HasBeenModified     bool
+	RenderReasonMessage NoModificationReasonMessage
+	IgnoredOnce         bool
+	ImmutableWorkload   bool
+}
+
+func NewHasBeenModifiedResult() ModificationResult {
+	return ModificationResult{
+		HasBeenModified: true,
+	}
+}
+
+func NewNotModifiedReasonUnknownResult() ModificationResult {
+	return newNotModifiedResult(NoModificationReasonUnknown)
+}
+
+func NewNotModifiedDueToErrorResult() ModificationResult {
+	return newNotModifiedResult(NoModificationReasonError)
+}
+
+func NewNotModifiedOwnedByHigherOrderWorkloadResult() ModificationResult {
+	return newNotModifiedResult(NoModificationReasonOwnedByHigherOrderWorkload)
+}
+
+func NewNotModifiedNoChangesResult() ModificationResult {
+	return newNotModifiedResult(NoModificationReasonNoChanges)
+}
+
+func NewNotModifiedImmutableWorkloadCannotBeInstrumentedResult() ModificationResult {
+	return ModificationResult{
+		HasBeenModified:     false,
+		RenderReasonMessage: NoModificationReasonImmutableWorkloadCannotBeInstrumented,
+		ImmutableWorkload:   true,
+	}
+}
+
+func NewNotModifiedImmutableWorkloadCannotBeRevertedResult() ModificationResult {
+	return ModificationResult{
+		HasBeenModified:     false,
+		RenderReasonMessage: NoModificationReasonImmutableWorkloadCannotBeReverted,
+		ImmutableWorkload:   true,
+	}
+}
+
+func NewIgnoredOnceResult() ModificationResult {
+	return ModificationResult{
+		HasBeenModified:     false,
+		RenderReasonMessage: NoModificationReasonIgnoreOnceLabel,
+		IgnoredOnce:         true,
+	}
+}
+
+func newNotModifiedResult(
+	reason NoModificationReasonMessage,
+) ModificationResult {
+	return ModificationResult{
+		HasBeenModified:     false,
+		RenderReasonMessage: reason,
+	}
+}
+
 type ResourceModifier struct {
 	instrumentationMetadata util.InstrumentationMetadata
 	logger                  *logr.Logger
@@ -62,57 +150,63 @@ func NewResourceModifier(
 	}
 }
 
-func (m *ResourceModifier) ModifyCronJob(cronJob *batchv1.CronJob) bool {
+func (m *ResourceModifier) ModifyCronJob(cronJob *batchv1.CronJob) ModificationResult {
 	return m.modifyResource(&cronJob.Spec.JobTemplate.Spec.Template, &cronJob.ObjectMeta)
 }
 
-func (m *ResourceModifier) ModifyDaemonSet(daemonSet *appsv1.DaemonSet) bool {
+func (m *ResourceModifier) ModifyDaemonSet(daemonSet *appsv1.DaemonSet) ModificationResult {
 	return m.modifyResource(&daemonSet.Spec.Template, &daemonSet.ObjectMeta)
 }
 
-func (m *ResourceModifier) ModifyDeployment(deployment *appsv1.Deployment) bool {
+func (m *ResourceModifier) ModifyDeployment(deployment *appsv1.Deployment) ModificationResult {
 	return m.modifyResource(&deployment.Spec.Template, &deployment.ObjectMeta)
 }
 
-func (m *ResourceModifier) ModifyJob(job *batchv1.Job) bool {
+func (m *ResourceModifier) ModifyJob(job *batchv1.Job) ModificationResult {
 	return m.modifyResource(&job.Spec.Template, &job.ObjectMeta)
 }
 
-func (m *ResourceModifier) AddLabelsToImmutableJob(job *batchv1.Job) bool {
+func (m *ResourceModifier) AddLabelsToImmutableJob(job *batchv1.Job) ModificationResult {
 	util.AddInstrumentationLabels(&job.ObjectMeta, false, m.instrumentationMetadata)
 	// adding labels always works and is a modification that requires an update
-	return true
+	return NewHasBeenModifiedResult()
 }
 
-func (m *ResourceModifier) ModifyPod(pod *corev1.Pod) bool {
-	if m.hasOwnerReference(pod) {
-		return false
+func (m *ResourceModifier) ModifyPod(pod *corev1.Pod) ModificationResult {
+	if m.hasMatchingOwnerReference(pod, []metav1.TypeMeta{
+		util.K8sTypeMetaDaemonSet,
+		util.K8sTypeMetaReplicaSet,
+		util.K8sTypeMetaStatefulSet,
+		util.K8sTypeMetaCronJob,
+		util.K8sTypeMetaJob,
+	}) {
+		return NewNotModifiedOwnedByHigherOrderWorkloadResult()
 	}
-	hasBeenModified := m.modifyPodSpec(&pod.Spec)
-	if hasBeenModified {
-		util.AddInstrumentationLabels(&pod.ObjectMeta, true, m.instrumentationMetadata)
+	if hasBeenModified := m.modifyPodSpec(&pod.Spec); !hasBeenModified {
+		return NewNotModifiedNoChangesResult()
 	}
-	return hasBeenModified
+	util.AddInstrumentationLabels(&pod.ObjectMeta, true, m.instrumentationMetadata)
+	return NewHasBeenModifiedResult()
 }
 
-func (m *ResourceModifier) ModifyReplicaSet(replicaSet *appsv1.ReplicaSet) bool {
-	if m.hasOwnerReference(replicaSet) {
-		return false
+func (m *ResourceModifier) ModifyReplicaSet(replicaSet *appsv1.ReplicaSet) ModificationResult {
+	if m.hasMatchingOwnerReference(replicaSet, []metav1.TypeMeta{util.K8sTypeMetaDeployment}) {
+		return NewNotModifiedOwnedByHigherOrderWorkloadResult()
 	}
 	return m.modifyResource(&replicaSet.Spec.Template, &replicaSet.ObjectMeta)
 }
 
-func (m *ResourceModifier) ModifyStatefulSet(statefulSet *appsv1.StatefulSet) bool {
+func (m *ResourceModifier) ModifyStatefulSet(statefulSet *appsv1.StatefulSet) ModificationResult {
 	return m.modifyResource(&statefulSet.Spec.Template, &statefulSet.ObjectMeta)
 }
 
-func (m *ResourceModifier) modifyResource(podTemplateSpec *corev1.PodTemplateSpec, meta *metav1.ObjectMeta) bool {
-	hasBeenModified := m.modifyPodSpec(&podTemplateSpec.Spec)
-	if hasBeenModified {
-		util.AddInstrumentationLabels(meta, true, m.instrumentationMetadata)
-		util.AddInstrumentationLabels(&podTemplateSpec.ObjectMeta, true, m.instrumentationMetadata)
+func (m *ResourceModifier) modifyResource(podTemplateSpec *corev1.PodTemplateSpec, meta *metav1.ObjectMeta) ModificationResult {
+	if hasBeenModified := m.modifyPodSpec(&podTemplateSpec.Spec); !hasBeenModified {
+		return NewNotModifiedNoChangesResult()
 	}
-	return hasBeenModified
+	util.AddInstrumentationLabels(meta, true, m.instrumentationMetadata)
+	util.AddInstrumentationLabels(&podTemplateSpec.ObjectMeta, true, m.instrumentationMetadata)
+	return NewHasBeenModifiedResult()
 }
 
 func (m *ResourceModifier) modifyPodSpec(podSpec *corev1.PodSpec) bool {
@@ -392,49 +486,51 @@ func (m *ResourceModifier) addOrReplaceEnvironmentVariable(container *corev1.Con
 	}
 }
 
-func (m *ResourceModifier) RevertCronJob(cronJob *batchv1.CronJob) bool {
+func (m *ResourceModifier) RevertCronJob(cronJob *batchv1.CronJob) ModificationResult {
 	return m.revertResource(&cronJob.Spec.JobTemplate.Spec.Template, &cronJob.ObjectMeta)
 }
 
-func (m *ResourceModifier) RevertDaemonSet(daemonSet *appsv1.DaemonSet) bool {
+func (m *ResourceModifier) RevertDaemonSet(daemonSet *appsv1.DaemonSet) ModificationResult {
 	return m.revertResource(&daemonSet.Spec.Template, &daemonSet.ObjectMeta)
 }
 
-func (m *ResourceModifier) RevertDeployment(deployment *appsv1.Deployment) bool {
+func (m *ResourceModifier) RevertDeployment(deployment *appsv1.Deployment) ModificationResult {
 	return m.revertResource(&deployment.Spec.Template, &deployment.ObjectMeta)
 }
 
-func (m *ResourceModifier) RemoveLabelsFromImmutableJob(job *batchv1.Job) bool {
+func (m *ResourceModifier) RemoveLabelsFromImmutableJob(job *batchv1.Job) ModificationResult {
 	util.RemoveInstrumentationLabels(&job.ObjectMeta)
 	// removing labels always works and is a modification that requires an update
-	return true
+	return NewHasBeenModifiedResult()
 }
 
-func (m *ResourceModifier) RevertReplicaSet(replicaSet *appsv1.ReplicaSet) bool {
-	if m.hasOwnerReference(replicaSet) {
-		return false
+func (m *ResourceModifier) RevertReplicaSet(replicaSet *appsv1.ReplicaSet) ModificationResult {
+	if m.hasMatchingOwnerReference(replicaSet, []metav1.TypeMeta{util.K8sTypeMetaDeployment}) {
+		return NewNotModifiedOwnedByHigherOrderWorkloadResult()
 	}
 	return m.revertResource(&replicaSet.Spec.Template, &replicaSet.ObjectMeta)
 }
 
-func (m *ResourceModifier) RevertStatefulSet(statefulSet *appsv1.StatefulSet) bool {
+func (m *ResourceModifier) RevertStatefulSet(statefulSet *appsv1.StatefulSet) ModificationResult {
 	return m.revertResource(&statefulSet.Spec.Template, &statefulSet.ObjectMeta)
 }
 
-func (m *ResourceModifier) revertResource(podTemplateSpec *corev1.PodTemplateSpec, meta *metav1.ObjectMeta) bool {
+func (m *ResourceModifier) revertResource(
+	podTemplateSpec *corev1.PodTemplateSpec,
+	meta *metav1.ObjectMeta,
+) ModificationResult {
 	if util.InstrumentationAttemptHasFailed(meta) {
-		// resource has never been instrumented successfully, only remove labels
+		// workload has never been instrumented successfully, only remove labels
 		util.RemoveInstrumentationLabels(meta)
 		util.RemoveInstrumentationLabels(&podTemplateSpec.ObjectMeta)
-		return true
+		return NewHasBeenModifiedResult()
 	}
-	hasBeenModified := m.revertPodSpec(&podTemplateSpec.Spec)
-	if hasBeenModified {
-		util.RemoveInstrumentationLabels(meta)
-		util.RemoveInstrumentationLabels(&podTemplateSpec.ObjectMeta)
-		return true
+	if hasBeenModified := m.revertPodSpec(&podTemplateSpec.Spec); !hasBeenModified {
+		return NewNotModifiedNoChangesResult()
 	}
-	return false
+	util.RemoveInstrumentationLabels(meta)
+	util.RemoveInstrumentationLabels(&podTemplateSpec.ObjectMeta)
+	return NewHasBeenModifiedResult()
 }
 
 func (m *ResourceModifier) revertPodSpec(podSpec *corev1.PodSpec) bool {
@@ -527,6 +623,17 @@ func (m *ResourceModifier) removeEnvironmentVariable(container *corev1.Container
 	})
 }
 
-func (m *ResourceModifier) hasOwnerReference(workload client.Object) bool {
-	return len(workload.GetOwnerReferences()) > 0
+func (m *ResourceModifier) hasMatchingOwnerReference(workload client.Object, possibleOwnerTypes []metav1.TypeMeta) bool {
+	ownerReferences := workload.GetOwnerReferences()
+	if len(ownerReferences) == 0 {
+		return false
+	}
+	for _, actualOwnerRef := range ownerReferences {
+		for _, ownerType := range possibleOwnerTypes {
+			if actualOwnerRef.APIVersion == ownerType.APIVersion && actualOwnerRef.Kind == ownerType.Kind {
+				return true
+			}
+		}
+	}
+	return false
 }

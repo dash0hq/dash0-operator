@@ -61,7 +61,7 @@ type InstrumentationMetadata struct {
 	Images
 	OTelCollectorBaseUrl string
 	IsIPv6Cluster        bool
-	InstrumentedBy       string
+	InstrumentedBy       WorkloadModifierActor
 }
 
 type ModificationMode string

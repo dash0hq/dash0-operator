@@ -14,6 +14,8 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/dash0hq/dash0-operator/internal/util"
+
 	. "github.com/onsi/gomega"
 )
 
@@ -365,7 +367,7 @@ func verifyOwnerReference(object client.Object) {
 	ownerReferences := object.GetOwnerReferences()
 	Expect(ownerReferences).To(HaveLen(1))
 	ownerReference := ownerReferences[0]
-	Expect(ownerReference.APIVersion).To(Equal("apps/v1"))
+	Expect(ownerReference.APIVersion).To(Equal(util.K8sApiVersionAppsV1))
 	Expect(ownerReference.Kind).To(Equal("Deployment"))
 	Expect(ownerReference.Name).To(Equal(DeploymentSelfReference.Name))
 	Expect(*ownerReference.BlockOwnerDeletion).To(BeTrue())

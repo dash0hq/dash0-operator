@@ -15,7 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func QueueSuccessfulInstrumentationEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource string) {
+func QueueSuccessfulInstrumentationEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource WorkloadModifierActor) {
 	eventRecorder.Event(
 		resource,
 		corev1.EventTypeNormal,
@@ -24,17 +24,17 @@ func QueueSuccessfulInstrumentationEvent(eventRecorder record.EventRecorder, res
 	)
 }
 
-func QueueNoInstrumentationNecessaryEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource string) {
+func QueueNoInstrumentationNecessaryEvent(
+	eventRecorder record.EventRecorder, resource runtime.Object, reason string) {
 	eventRecorder.Event(
 		resource,
 		corev1.EventTypeNormal,
 		string(ReasonNoInstrumentationNecessary),
-		fmt.Sprintf("Dash0 instrumentation was already present on this workload, or the workload is part of a higher "+
-			"order workload that will be instrumented, no modification by the %s is necessary.", eventSource),
+		reason,
 	)
 }
 
-func QueueFailedInstrumentationEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource string, err error) {
+func QueueFailedInstrumentationEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource WorkloadModifierActor, err error) {
 	eventRecorder.Event(
 		resource,
 		corev1.EventTypeWarning,
@@ -43,7 +43,7 @@ func QueueFailedInstrumentationEvent(eventRecorder record.EventRecorder, resourc
 	)
 }
 
-func QueueSuccessfulUninstrumentationEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource string) {
+func QueueSuccessfulUninstrumentationEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource WorkloadModifierActor) {
 	eventRecorder.Event(
 		resource,
 		corev1.EventTypeNormal,
@@ -52,7 +52,7 @@ func QueueSuccessfulUninstrumentationEvent(eventRecorder record.EventRecorder, r
 	)
 }
 
-func QueueNoUninstrumentationNecessaryEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource string) {
+func QueueNoUninstrumentationNecessaryEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource WorkloadModifierActor) {
 	eventRecorder.Event(
 		resource,
 		corev1.EventTypeNormal,
@@ -61,7 +61,7 @@ func QueueNoUninstrumentationNecessaryEvent(eventRecorder record.EventRecorder, 
 	)
 }
 
-func QueueFailedUninstrumentationEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource string, err error) {
+func QueueFailedUninstrumentationEvent(eventRecorder record.EventRecorder, resource runtime.Object, eventSource WorkloadModifierActor, err error) {
 	eventRecorder.Event(
 		resource,
 		corev1.EventTypeWarning,

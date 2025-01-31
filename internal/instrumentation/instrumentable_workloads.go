@@ -12,6 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/dash0hq/dash0-operator/internal/util"
+	"github.com/dash0hq/dash0-operator/internal/workloads"
 )
 
 type instrumentableWorkload interface {
@@ -19,11 +20,11 @@ type instrumentableWorkload interface {
 	getKind() string
 	asRuntimeObject() runtime.Object
 	asClientObject() client.Object
-	instrument(images util.Images, oTelCollectorBaseUrl string, isIPv6Cluster bool, logger *logr.Logger) bool
+	instrument(images util.Images, oTelCollectorBaseUrl string, isIPv6Cluster bool, logger *logr.Logger) workloads.ModificationResult
 	// Strictly speaking, for reverting we do not need the images nor the isIPv6Cluster setting, but for symmetry with
 	// the instrument method and to make sure any WorkloadModifier instance we create actually has valid values, the
 	// revert method accepts them as arguments as well.
-	revert(images util.Images, oTelCollectorBaseUrl string, isIPv6Cluster bool, logger *logr.Logger) bool
+	revert(images util.Images, oTelCollectorBaseUrl string, isIPv6Cluster bool, logger *logr.Logger) workloads.ModificationResult
 }
 
 type cronJobWorkload struct {
@@ -39,7 +40,7 @@ func (w *cronJobWorkload) instrument(
 	oTelCollectorBaseUrl string,
 	isIPv6Cluster bool,
 	logger *logr.Logger,
-) bool {
+) workloads.ModificationResult {
 	return newWorkloadModifier(images, oTelCollectorBaseUrl, isIPv6Cluster, logger).ModifyCronJob(w.cronJob)
 }
 func (w *cronJobWorkload) revert(
@@ -47,7 +48,7 @@ func (w *cronJobWorkload) revert(
 	oTelCollectorBaseUrl string,
 	isIPv6Cluster bool,
 	logger *logr.Logger,
-) bool {
+) workloads.ModificationResult {
 	return newWorkloadModifier(images, oTelCollectorBaseUrl, isIPv6Cluster, logger).RevertCronJob(w.cronJob)
 }
 
@@ -64,7 +65,7 @@ func (w *daemonSetWorkload) instrument(
 	oTelCollectorBaseUrl string,
 	isIPv6Cluster bool,
 	logger *logr.Logger,
-) bool {
+) workloads.ModificationResult {
 	return newWorkloadModifier(images, oTelCollectorBaseUrl, isIPv6Cluster, logger).ModifyDaemonSet(w.daemonSet)
 }
 func (w *daemonSetWorkload) revert(
@@ -72,7 +73,7 @@ func (w *daemonSetWorkload) revert(
 	oTelCollectorBaseUrl string,
 	isIPv6Cluster bool,
 	logger *logr.Logger,
-) bool {
+) workloads.ModificationResult {
 	return newWorkloadModifier(images, oTelCollectorBaseUrl, isIPv6Cluster, logger).RevertDaemonSet(w.daemonSet)
 }
 
@@ -89,7 +90,7 @@ func (w *deploymentWorkload) instrument(
 	oTelCollectorBaseUrl string,
 	isIPv6Cluster bool,
 	logger *logr.Logger,
-) bool {
+) workloads.ModificationResult {
 	return newWorkloadModifier(images, oTelCollectorBaseUrl, isIPv6Cluster, logger).ModifyDeployment(w.deployment)
 }
 func (w *deploymentWorkload) revert(
@@ -97,7 +98,7 @@ func (w *deploymentWorkload) revert(
 	oTelCollectorBaseUrl string,
 	isIPv6Cluster bool,
 	logger *logr.Logger,
-) bool {
+) workloads.ModificationResult {
 	return newWorkloadModifier(images, oTelCollectorBaseUrl, isIPv6Cluster, logger).RevertDeployment(w.deployment)
 }
 
@@ -114,7 +115,7 @@ func (w *replicaSetWorkload) instrument(
 	oTelCollectorBaseUrl string,
 	isIPv6Cluster bool,
 	logger *logr.Logger,
-) bool {
+) workloads.ModificationResult {
 	return newWorkloadModifier(images, oTelCollectorBaseUrl, isIPv6Cluster, logger).ModifyReplicaSet(w.replicaSet)
 }
 func (w *replicaSetWorkload) revert(
@@ -122,7 +123,7 @@ func (w *replicaSetWorkload) revert(
 	oTelCollectorBaseUrl string,
 	isIPv6Cluster bool,
 	logger *logr.Logger,
-) bool {
+) workloads.ModificationResult {
 	return newWorkloadModifier(images, oTelCollectorBaseUrl, isIPv6Cluster, logger).RevertReplicaSet(w.replicaSet)
 }
 
@@ -139,7 +140,7 @@ func (w *statefulSetWorkload) instrument(
 	oTelCollectorBaseUrl string,
 	isIPv6Cluster bool,
 	logger *logr.Logger,
-) bool {
+) workloads.ModificationResult {
 	return newWorkloadModifier(images, oTelCollectorBaseUrl, isIPv6Cluster, logger).ModifyStatefulSet(w.statefulSet)
 }
 func (w *statefulSetWorkload) revert(
@@ -147,6 +148,6 @@ func (w *statefulSetWorkload) revert(
 	oTelCollectorBaseUrl string,
 	isIPv6Cluster bool,
 	logger *logr.Logger,
-) bool {
+) workloads.ModificationResult {
 	return newWorkloadModifier(images, oTelCollectorBaseUrl, isIPv6Cluster, logger).RevertStatefulSet(w.statefulSet)
 }

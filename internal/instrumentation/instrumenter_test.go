@@ -10,10 +10,12 @@ import (
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -24,6 +26,7 @@ import (
 const (
 	olderOperatorControllerImageLabel = "some-registry_com_1234_dash0hq_operator-controller_0.9.8"
 	olderInitContainerImageLabel      = "some-registry_com_1234_dash0hq_instrumentation_2.3.4"
+	testActor                         = string(util.ActorController)
 )
 
 var (
@@ -74,7 +77,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 
 			checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, &logger)
 
-			VerifySuccessfulInstrumentationEvent(ctx, clientset, namespace, name, "controller")
+			VerifySuccessfulInstrumentationEvent(ctx, clientset, namespace, name, testActor)
 			config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 		}, Entry("should instrument an existing cron job", WorkloadTestConfig{
 			WorkloadNamePrefix: CronJobNamePrefix,
@@ -101,6 +104,27 @@ var _ = Describe("The instrumenter", Ordered, func() {
 			WorkloadNamePrefix: ReplicaSetNamePrefix,
 			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateBasicReplicaSet),
 			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyModifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet), BasicInstrumentedPodSpecExpectations())
+			},
+		}), Entry("should instrument an existing replicaset owned by an unrecognized type", WorkloadTestConfig{
+			WorkloadNamePrefix: ReplicaSetNamePrefix,
+			CreateFn: WrapReplicaSetFnAsTestableWorkload(
+				func(ctx context.Context,
+					k8sClient client.Client,
+					namespace string,
+					name string) *appsv1.ReplicaSet {
+					rs := CreateBasicReplicaSet(ctx, k8sClient, namespace, name)
+					rs.OwnerReferences = []metav1.OwnerReference{{
+						Name:       "owner-name",
+						APIVersion: "api/v1beta2",
+						Kind:       "Kind",
+						UID:        "35b829cb-78dc-4544-b7a9-5a8e51b7f322",
+					}}
+					UpdateWorkload(ctx, k8sClient, rs)
+					return rs
+				}),
+			GetFn: WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet), BasicInstrumentedPodSpecExpectations())
 			},
@@ -167,7 +191,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 				replicaSet := CreateReplicaSetOwnedByDeployment(ctx, k8sClient, namespace, name)
 				createdObjects = append(createdObjects, replicaSet)
 
-				//expect(Instrumenter.CheckSettingsAndInstrumentExistingWorkloads(ctx, dash0MonitoringResource, &logger); err != nil {
+				checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, &logger)
 
 				VerifyUnmodifiedReplicaSet(GetReplicaSet(ctx, k8sClient, namespace, name))
 			})
@@ -241,7 +265,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 			UpdateWorkload(ctx, k8sClient, workload.Get())
 			checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, &logger)
 			config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
-			VerifySuccessfulUninstrumentationEvent(ctx, clientset, TestNamespaceName, name, "controller")
+			VerifySuccessfulUninstrumentationEvent(ctx, clientset, TestNamespaceName, name, testActor)
 		}, Entry("should remove Dash0 from an instrumented cron job when dash0.com/enable=false is added", WorkloadTestConfig{
 			WorkloadNamePrefix: CronJobNamePrefix,
 			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateInstrumentedCronJob),
@@ -309,12 +333,12 @@ var _ = Describe("The instrumenter", Ordered, func() {
 				UpdateWorkload(ctx, k8sClient, workload)
 				checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, &logger)
 				VerifyJobWithOptOutLabel(GetJob(ctx, k8sClient, TestNamespaceName, name))
-				VerifyNoUninstrumentationNecessaryEvent(
+				VerifySuccessfulUninstrumentationEvent(
 					ctx,
 					clientset,
 					TestNamespaceName,
 					name,
-					"Dash0 instrumentation was not present on this workload, no modification by the controller has been necessary.",
+					testActor,
 				)
 			})
 		})
@@ -378,7 +402,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 
 			uninstrumentWorkloadsIfAvailable(ctx, instrumenter, dash0MonitoringResource, &logger)
 
-			VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, "controller")
+			VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, testActor)
 			workload = config.GetFn(ctx, k8sClient, TestNamespaceName, name)
 			config.VerifyFn(workload)
 			VerifyWebhookIgnoreOnceLabelIsPresent(workload.GetObjectMeta())
@@ -407,6 +431,27 @@ var _ = Describe("The instrumenter", Ordered, func() {
 			WorkloadNamePrefix: ReplicaSetNamePrefix,
 			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateInstrumentedReplicaSet),
 			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
+			VerifyFn: func(workload TestableWorkload) {
+				VerifyUnmodifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet))
+			},
+		}), Entry("should revert an instrumented replica set owned by an unrecognized type", WorkloadTestConfig{
+			WorkloadNamePrefix: ReplicaSetNamePrefix,
+			CreateFn: WrapReplicaSetFnAsTestableWorkload(
+				func(ctx context.Context,
+					k8sClient client.Client,
+					namespace string,
+					name string) *appsv1.ReplicaSet {
+					rs := CreateInstrumentedReplicaSet(ctx, k8sClient, namespace, name)
+					rs.OwnerReferences = []metav1.OwnerReference{{
+						Name:       "owner-name",
+						APIVersion: "api/v1beta2",
+						Kind:       "Kind",
+						UID:        "35b829cb-78dc-4544-b7a9-5a8e51b7f322",
+					}}
+					UpdateWorkload(ctx, k8sClient, rs)
+					return rs
+				}),
+			GetFn: WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyUnmodifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet))
 			},
@@ -448,7 +493,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 
 				uninstrumentWorkloadsIfAvailable(ctx, instrumenter, dash0MonitoringResource, &logger)
 
-				VerifyNoUninstrumentationNecessaryEvent(ctx, clientset, namespace, name, "Dash0 instrumentation was not present on this workload, no modification by the controller has been necessary.")
+				VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, testActor)
 				VerifyUnmodifiedJob(GetJob(ctx, k8sClient, namespace, name))
 			})
 
@@ -456,6 +501,25 @@ var _ = Describe("The instrumenter", Ordered, func() {
 				name := UniqueName(PodNamePrefix)
 				By("Create an instrumented pod")
 				pod := CreateInstrumentedPod(ctx, k8sClient, namespace, name)
+				createdObjects = append(createdObjects, pod)
+
+				uninstrumentWorkloadsIfAvailable(ctx, instrumenter, dash0MonitoringResource, &logger)
+
+				VerifyNoEvents(ctx, clientset, namespace)
+				VerifyModifiedPod(GetPod(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
+			})
+
+			It("should not revert an instrumented pod owned by an unrecognized type", func() {
+				name := UniqueName(PodNamePrefix)
+				By("Create an instrumented pod")
+				pod := CreateInstrumentedPod(ctx, k8sClient, namespace, name)
+				pod.OwnerReferences = []metav1.OwnerReference{{
+					Name:       "strimzi-podset-name",
+					APIVersion: "core.strimzi.io/v1beta2",
+					Kind:       "StrimziPodSet",
+					UID:        "35b829cb-78dc-4544-b7a9-5a8e51b7f322",
+				}}
+				UpdateWorkload(ctx, k8sClient, pod)
 				createdObjects = append(createdObjects, pod)
 
 				uninstrumentWorkloadsIfAvailable(ctx, instrumenter, dash0MonitoringResource, &logger)
@@ -553,7 +617,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 
 		instrumenter.InstrumentAtStartup(ctx, k8sClient, &logger)
 
-		VerifySuccessfulInstrumentationEvent(ctx, clientset, namespace, name, "controller")
+		VerifySuccessfulInstrumentationEvent(ctx, clientset, namespace, name, testActor)
 		config.VerifyFn(config.GetFn(ctx, k8sClient, namespace, name))
 	}, Entry("should instrument a cron job at startup", WorkloadTestConfig{
 		WorkloadNamePrefix: CronJobNamePrefix,
@@ -625,7 +689,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 		instrumenter.InstrumentAtStartup(ctx, k8sClient, &logger)
 
 		config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
-		VerifySuccessfulInstrumentationEvent(ctx, clientset, namespace, name, "controller")
+		VerifySuccessfulInstrumentationEvent(ctx, clientset, namespace, name, testActor)
 	}, Entry("should override outdated instrumentation settings for a cron job at startup", WorkloadTestConfig{
 		WorkloadNamePrefix: CronJobNamePrefix,
 		CreateFn:           WrapCronJobFnAsTestableWorkload(CreateInstrumentedCronJob),
