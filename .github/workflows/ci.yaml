@@ -27,10 +27,22 @@ concurrency:
   cancel-in-progress: ${{ !(github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')) }}
 
 jobs:
+  check_for_successful_builds_for_same_commit:
+    name: Check for existing successful builds for same commit
+    runs-on: ubuntu-latest
+    outputs:
+      should_skip: ${{ steps.skip_check.outputs.should_skip }}
+    steps:
+      - id: skip_check
+        uses: fkirc/skip-duplicate-actions@v5
+
   verify:
     name: Build & Test
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
+    needs: check_for_successful_builds_for_same_commit
+    if: needs.check_for_successful_builds_for_same_commit.outputs.should_skip != 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -78,6 +90,10 @@ jobs:
     name: Injector Binary & Instrumentation Image Tests
     runs-on: ubuntu-latest
     timeout-minutes: 40
+
+    needs: check_for_successful_builds_for_same_commit
+    if: needs.check_for_successful_builds_for_same_commit.outputs.should_skip != 'true'
+
     steps:
       - uses: actions/checkout@v4
 
@@ -208,7 +224,7 @@ jobs:
   # created), the images are tagged with the version indicated by the tag respectively, and also with latest. That is:
   # Creating a GitHub release (or creating a git tag via other means) will trigger building images tagged with x.y.z
   # meant for production use.
-  build-and-push-images:
+  build_and_push_images:
     name: Build Images
     runs-on: ubuntu-latest
     needs:
@@ -275,12 +291,12 @@ jobs:
           context: images
           file: images/filelogoffsetsynch/Dockerfile
 
-  publish-helm-chart-dry-run:
+  publish_helm_chart_dry_run:
     name: Publish Helm Chart (Dry Run)
     runs-on: ubuntu-latest
     if: ${{ ! contains(github.ref, 'refs/tags/') && github.actor != 'dependabot[bot]'}}
     needs:
-      - build-and-push-images
+      - build_and_push_images
     steps:
       - uses: actions/checkout@v4
 
@@ -295,26 +311,26 @@ jobs:
   # See https://docs.github.com/en/code-security/dependabot/working-with-dependabot/automating-dependabot-with-github-actions#changing-github_token-permissions
   # For that reason, we skip the check whether the Helm chart can still be published for Dependabot update PRs.
   # Those PRs do not change the Helm chart anyway.
-  # Note that the value of the "name" attribute needs to be identical to the publish-helm-chart-dry-run job, since the
+  # Note that the value of the "name" attribute needs to be identical to the publish_helm_chart_dry_run job, since the
   # branch protection rules reference this property, and it is a required check.
-  skip-publish-helm-chart-dry-run-for-dependabot:
+  skip_publish_helm_chart_dry_run_for_dependabot:
     name: Publish Helm Chart (Dry Run)
     runs-on: ubuntu-latest
     if: ${{ ! contains(github.ref, 'refs/tags/') && github.actor == 'dependabot[bot]'}}
     needs:
-      - build-and-push-images
+      - build_and_push_images
 
     steps:
       - name: skipping publish helm chart (dry run)
         run: |
           echo skipping publish helm chart dry run for dependabot commit
 
-  publish-helm-chart:
+  publish_helm_chart:
     name: Publish Helm Chart
     runs-on: ubuntu-latest
     if: ${{ contains(github.ref, 'refs/tags/') && github.actor != 'dependabot[bot]'}}
     needs:
-      - build-and-push-images
+      - build_and_push_images
 
     steps:
       - uses: actions/checkout@v4
