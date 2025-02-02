@@ -30,7 +30,7 @@ all_docker_platforms=linux/arm64,linux/amd64
 script_dir="test"
 exit_code=0
 summary=""
-slow_test_threshold_seconds=15
+slow_test_threshold_seconds=10
 architectures=""
 if [[ -n "${ARCHITECTURES:-}" ]]; then
   architectures=("${ARCHITECTURES//,/ }")
@@ -138,7 +138,11 @@ run_tests_for_runtime() {
     case "$runtime" in
 
       jvm)
-        test_cmd=(java -jar "/test-cases/${test}/target/app.jar")
+        # Suppressing auto instrumentations saves a few seconds per test case, which amounts to a lot for the whole
+        # test suite. We do not test tracing in the instrumentation image tests, so instrumenting is not needed.
+        # The Java agent still unfortunately adds a couple of seconds of startup overhead.
+        # Note: Add -Dotel.javaagent.debug=true for troubleshooting details.
+        test_cmd=(java -jar -Dotel.instrumentation.common.default-enabled=false "/test-cases/${test}/app.jar")
         ;;
 
       node)
