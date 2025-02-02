@@ -8,4 +8,3 @@ node:22-bullseye
 node:20-alpine
 node:20-bookworm
 node:18-alpine
-node:18-bullseye
