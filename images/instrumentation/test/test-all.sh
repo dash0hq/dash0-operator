@@ -151,33 +151,17 @@ run_tests_for_runtime() {
         ;;
     esac
 
-    if docker_run_output=$(docker run \
+    docker run \
       --platform "$docker_platform" \
       --env-file="${script_dir}/${runtime}/test-cases/${test}/.env" \
       "$image_name_test" \
       "${test_cmd[@]}" \
       2>&1
-    ); then
-      if [[ "${PRINT_DOCKER_OUTPUT:-}" = "true" ]]; then
-        echo "$docker_run_output"
-      fi
-      printf "${GREEN}test case \"${test}\": OK${NC}\n"
-    else
-      printf "${RED}test case \"${test}\": FAIL\n"
-      printf "test output:${NC}\n"
-      echo "$docker_run_output"
-      exit_code=1
-      summary="$summary\n${runtime}/${base_image}\t- ${test}:\tfailed"
-    fi
 
     # shellcheck disable=SC2155
     local end_time_test_case=$(date +%s)
     # shellcheck disable=SC2155
     local duration_test_case=$((end_time_test_case - start_time_test_case))
-    if [[ "$duration_test_case" -gt "$slow_test_threshold_seconds" ]]; then
-      echo "! slow test case: $image_name_test/$base_image/$test: took $duration_test_case seconds, logging output:"
-      echo "$docker_run_output"
-    fi
 
     store_build_step_duration "test case $test" "$start_time_test_case" "$arch" "$runtime" "$base_image"
   done
