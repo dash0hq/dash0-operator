@@ -205,6 +205,10 @@ jobs:
           github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
         env:
           INSTRUMENTATION_IMAGE: ${{ steps.instrumentation-test-image.outputs.image_name }}
+          ARCHITECTURES: arm64
+          RUNTIMES: node
+          BASE_IMAGES: node:18-bullseye
+          TEST_CASES: existing-unmodified
         run: |
           images/instrumentation/test/test-all.sh
 
