@@ -59,48 +59,13 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	ctx context.Context,
 	namespace string,
 	images util.Images,
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	allMonitoringResources []dash0v1alpha1.Dash0Monitoring,
-	monitoringResource *dash0v1alpha1.Dash0Monitoring,
+	export *dash0v1alpha1.Export,
 	logger *logr.Logger,
 ) (bool, bool, error) {
-	operatorConfigurationResource, err := m.findOperatorConfigurationResource(ctx, logger)
-	if err != nil {
-		return false, false, err
-	}
-
-	var export *dash0v1alpha1.Export
-	if monitoringResource != nil {
-		export = monitoringResource.Spec.Export
-	}
 	if export == nil {
-		if operatorConfigurationResource == nil || operatorConfigurationResource.Spec.Export == nil {
-			// Validation webhooks prevent adding a monitoring resource without export configuration if there is no
-			// operator configuration resource with a default export. However, we currently allow removing the default
-			// export from the operator configuration via update/patch after a monitoring resource without export has
-			// been installed. Thus, we need to be able to handle this situation. The correct reaction is to delete all
-			// collector resources, since no export is configured.
-			if err = m.DeleteResources(
-				ctx,
-				namespace,
-				logger,
-			); err != nil {
-				logger.Error(
-					err,
-					"Failed to delete the OpenTelemetry collector Kuberenetes resources, requeuing reconcile request.",
-				)
-				// Deliberately not returning this error, instead returning specific errors depending on whether there
-				// is no operator configuration resource or the operator configuration resource does not have an export.
-			}
-		}
-		if operatorConfigurationResource == nil {
-			return false, false, fmt.Errorf("the provided Dash0Monitoring resource does not have an export " +
-				"configuration and no Dash0OperatorConfiguration resource has been found")
-		} else if operatorConfigurationResource.Spec.Export == nil {
-			return false, false, fmt.Errorf("the provided Dash0Monitoring resource does not have an export " +
-				"configuration and the Dash0OperatorConfiguration resource does not have one either")
-		} else {
-			export = operatorConfigurationResource.Spec.Export
-		}
+		return false, false, fmt.Errorf("cannot create or update Dash0 OpenTelemetry collectors without export settings")
 	}
 
 	selfMonitoringConfiguration, err :=
@@ -167,26 +132,6 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	}
 
 	return resourcesHaveBeenCreated, resourcesHaveBeenUpdated, nil
-}
-
-func (m *OTelColResourceManager) findOperatorConfigurationResource(
-	ctx context.Context,
-	logger *logr.Logger,
-) (*dash0v1alpha1.Dash0OperatorConfiguration, error) {
-	operatorConfigurationResource, err := util.FindUniqueOrMostRecentResourceInScope(
-		ctx,
-		m.Client,
-		"", /* cluster-scope, thus no namespace */
-		&dash0v1alpha1.Dash0OperatorConfiguration{},
-		logger,
-	)
-	if err != nil {
-		return nil, err
-	}
-	if operatorConfigurationResource == nil {
-		return nil, nil
-	}
-	return operatorConfigurationResource.(*dash0v1alpha1.Dash0OperatorConfiguration), nil
 }
 
 func (m *OTelColResourceManager) createOrUpdateResource(
@@ -361,10 +306,10 @@ func (m *OTelColResourceManager) DeleteResources(
 	ctx context.Context,
 	namespace string,
 	logger *logr.Logger,
-) error {
+) (bool, error) {
 	logger.Info(
 		fmt.Sprintf(
-			"Deleting the OpenTelemetry collector Kuberenetes resources in the Dash0 operator namespace %s.",
+			"Deleting the OpenTelemetry collector Kubernetes resources in the Dash0 operator namespace %s (if any exist).",
 			namespace,
 		))
 	config := &oTelColConfig{
@@ -384,9 +329,10 @@ func (m *OTelColResourceManager) DeleteResources(
 	}
 	desiredResources, err := assembleDesiredStateForDelete(config, m.OTelColResourceSpecs)
 	if err != nil {
-		return err
+		return false, err
 	}
 	var allErrors []error
+	resourcesHaveBeenDeleted := false
 	for _, wrapper := range desiredResources {
 		desiredResource := wrapper.object
 		err = m.Client.Delete(ctx, desiredResource)
@@ -397,6 +343,7 @@ func (m *OTelColResourceManager) DeleteResources(
 				allErrors = append(allErrors, err)
 			}
 		} else {
+			resourcesHaveBeenDeleted = true
 			logger.Info(fmt.Sprintf(
 				"deleted resource %s/%s",
 				desiredResource.GetNamespace(),
@@ -405,9 +352,9 @@ func (m *OTelColResourceManager) DeleteResources(
 		}
 	}
 	if len(allErrors) > 0 {
-		return errors.Join(allErrors...)
+		return resourcesHaveBeenDeleted, errors.Join(allErrors...)
 	}
-	return nil
+	return resourcesHaveBeenDeleted, nil
 }
 
 func (m *OTelColResourceManager) deleteResourcesThatAreNoLongerDesired(

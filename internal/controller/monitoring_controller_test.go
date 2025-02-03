@@ -106,7 +106,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 				By("Trigger reconcile request")
 				triggerReconcileRequest(ctx, reconciler, "")
 				verifyMonitoringResourceIsAvailable(ctx)
-				VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
+				VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
 			})
 
 			It("should successfully run multiple reconciles (no modifiable workloads exist)", func() {
@@ -123,7 +123,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 				secondAvailableCondition := verifyMonitoringResourceIsAvailable(ctx)
 				Expect(secondAvailableCondition.LastTransitionTime.Time).To(Equal(originalTransitionTimestamp))
 
-				VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
+				VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
 			})
 
 			It("should mark only the most recent resource as available and the other ones as degraded when multiple resources exist", func() {
@@ -799,7 +799,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 		It("should add and remove the collector resources", func() {
 			triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
-			VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
+			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
 
 			monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
 			Expect(k8sClient.Delete(ctx, monitoringResource)).To(Succeed())

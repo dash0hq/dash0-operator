@@ -44,15 +44,52 @@ var (
 	}
 )
 
+func CreateDefaultMonitoringResource(
+	ctx context.Context,
+	k8sClient client.Client,
+	monitoringResourceName types.NamespacedName,
+) *dash0v1alpha1.Dash0Monitoring {
+	return CreateMonitoringResource(
+		ctx,
+		k8sClient,
+		&dash0v1alpha1.Dash0Monitoring{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      monitoringResourceName.Name,
+				Namespace: monitoringResourceName.Namespace,
+			},
+			Spec: MonitoringResourceDefaultSpec,
+		},
+	)
+}
+
+func CreateMonitoringResource(
+	ctx context.Context,
+	k8sClient client.Client,
+	monitoringResource *dash0v1alpha1.Dash0Monitoring,
+) *dash0v1alpha1.Dash0Monitoring {
+	resource, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, monitoringResource)
+	Expect(err).ToNot(HaveOccurred())
+	return resource
+}
+
+func CreateMonitoringResourceWithPotentialError(
+	ctx context.Context,
+	k8sClient client.Client,
+	monitoringResource *dash0v1alpha1.Dash0Monitoring,
+) (*dash0v1alpha1.Dash0Monitoring, error) {
+	err := k8sClient.Create(ctx, monitoringResource)
+	return monitoringResource, err
+}
+
 func EnsureMonitoringResourceExists(
 	ctx context.Context,
 	k8sClient client.Client,
 ) *dash0v1alpha1.Dash0Monitoring {
-	return EnsureMonitoringResourceExistsWithNamespacedName(
+	return EnsureMonitoringResourceWithSpecExistsInNamespace(
 		ctx,
 		k8sClient,
+		MonitoringResourceDefaultSpec,
 		MonitoringResourceQualifiedName,
-		"",
 	)
 }
 
@@ -61,25 +98,52 @@ func EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(
 	k8sClient client.Client,
 	instrumentWorkloads dash0v1alpha1.InstrumentWorkloadsMode,
 ) *dash0v1alpha1.Dash0Monitoring {
-	return EnsureMonitoringResourceExistsWithNamespacedName(
-		ctx,
-		k8sClient,
-		MonitoringResourceQualifiedName,
-		instrumentWorkloads,
-	)
-}
-
-func EnsureMonitoringResourceExistsWithNamespacedName(
-	ctx context.Context,
-	k8sClient client.Client,
-	namespacesName types.NamespacedName,
-	instrumentWorkloads dash0v1alpha1.InstrumentWorkloadsMode,
-) *dash0v1alpha1.Dash0Monitoring {
-	By("creating the Dash0 monitoring resource")
 	spec := MonitoringResourceDefaultSpec
 	if instrumentWorkloads != "" {
 		spec.InstrumentWorkloads = instrumentWorkloads
 	}
+	return EnsureMonitoringResourceWithSpecExistsInNamespace(
+		ctx,
+		k8sClient,
+		spec,
+		MonitoringResourceQualifiedName,
+	)
+}
+
+func EnsureMonitoringResourceWithSpecExists(
+	ctx context.Context,
+	k8sClient client.Client,
+	spec dash0v1alpha1.Dash0MonitoringSpec,
+) *dash0v1alpha1.Dash0Monitoring {
+	return EnsureMonitoringResourceWithSpecExistsInNamespace(
+		ctx,
+		k8sClient,
+		spec,
+		MonitoringResourceQualifiedName,
+	)
+}
+
+func EnsureMonitoringResourceExistsInNamespace(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespacesName types.NamespacedName,
+) *dash0v1alpha1.Dash0Monitoring {
+	return EnsureMonitoringResourceWithSpecExistsInNamespace(
+		ctx,
+		k8sClient,
+		MonitoringResourceDefaultSpec,
+		namespacesName,
+	)
+}
+
+func EnsureMonitoringResourceWithSpecExistsInNamespace(
+	ctx context.Context,
+	k8sClient client.Client,
+	spec dash0v1alpha1.Dash0MonitoringSpec,
+	namespacesName types.NamespacedName,
+) *dash0v1alpha1.Dash0Monitoring {
+	By("creating the Dash0 monitoring resource")
+
 	objectMeta := metav1.ObjectMeta{
 		Name:      namespacesName.Name,
 		Namespace: namespacesName.Namespace,
@@ -120,64 +184,55 @@ func EnsureEmptyMonitoringResourceExistsAndIsAvailable(
 	return monitoringResource
 }
 
-func CreateDefaultMonitoringResource(
-	ctx context.Context,
-	k8sClient client.Client,
-	monitoringResourceName types.NamespacedName,
-) *dash0v1alpha1.Dash0Monitoring {
-	return CreateMonitoringResource(
-		ctx,
-		k8sClient,
-		&dash0v1alpha1.Dash0Monitoring{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      monitoringResourceName.Name,
-				Namespace: monitoringResourceName.Namespace,
-			},
-			Spec: MonitoringResourceDefaultSpec,
-		},
-	)
-}
-
-func CreateMonitoringResource(
-	ctx context.Context,
-	k8sClient client.Client,
-	monitoringResource *dash0v1alpha1.Dash0Monitoring,
-) *dash0v1alpha1.Dash0Monitoring {
-	resource, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, monitoringResource)
-	Expect(err).ToNot(HaveOccurred())
-	return resource
-}
-
-func CreateMonitoringResourceWithPotentialError(
-	ctx context.Context,
-	k8sClient client.Client,
-	monitoringResource *dash0v1alpha1.Dash0Monitoring,
-) (*dash0v1alpha1.Dash0Monitoring, error) {
-	err := k8sClient.Create(ctx, monitoringResource)
-	return monitoringResource, err
-}
-
 func EnsureMonitoringResourceExistsAndIsAvailable(
 	ctx context.Context,
 	k8sClient client.Client,
 ) *dash0v1alpha1.Dash0Monitoring {
-	return EnsureMonitoringResourceExistsAndIsAvailableInNamespace(
+	return EnsureMonitoringResourceWithSpecExistsInNamespaceAndIsAvailable(
 		ctx,
 		k8sClient,
+		MonitoringResourceDefaultSpec,
 		MonitoringResourceQualifiedName,
 	)
 }
 
-func EnsureMonitoringResourceExistsAndIsAvailableInNamespace(
+func EnsureMonitoringResourceWithSpecExistsAndIsAvailable(
 	ctx context.Context,
 	k8sClient client.Client,
-	namespacedName types.NamespacedName,
+	spec dash0v1alpha1.Dash0MonitoringSpec,
 ) *dash0v1alpha1.Dash0Monitoring {
-	monitoringResource := EnsureMonitoringResourceExistsWithNamespacedName(
+	return EnsureMonitoringResourceWithSpecExistsInNamespaceAndIsAvailable(
 		ctx,
 		k8sClient,
-		namespacedName,
-		"",
+		spec,
+		MonitoringResourceQualifiedName,
+	)
+}
+
+func EnsureMonitoringResourceExistsInNamespaceAndIsAvailable(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespacesName types.NamespacedName,
+) *dash0v1alpha1.Dash0Monitoring {
+	return EnsureMonitoringResourceWithSpecExistsInNamespaceAndIsAvailable(
+		ctx,
+		k8sClient,
+		MonitoringResourceDefaultSpec,
+		namespacesName,
+	)
+}
+
+func EnsureMonitoringResourceWithSpecExistsInNamespaceAndIsAvailable(
+	ctx context.Context,
+	k8sClient client.Client,
+	spec dash0v1alpha1.Dash0MonitoringSpec,
+	namespacesName types.NamespacedName,
+) *dash0v1alpha1.Dash0Monitoring {
+	monitoringResource := EnsureMonitoringResourceWithSpecExistsInNamespace(
+		ctx,
+		k8sClient,
+		spec,
+		namespacesName,
 	)
 	monitoringResource.EnsureResourceIsMarkedAsAvailable()
 	Expect(k8sClient.Status().Update(ctx, monitoringResource)).To(Succeed())

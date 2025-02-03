@@ -100,13 +100,15 @@ func VerifyCollectorResources(
 	ctx context.Context,
 	k8sClient client.Client,
 	operatorNamespace string,
+	dash0Endpoint string,
+	authorizationToken string,
 ) {
 	// verify that all expected resources exist and have the expected owner reference
 	VerifyAllResourcesExist(ctx, k8sClient, operatorNamespace)
 
 	// verify a few arbitrary resource in more detail
-	VerifyDaemonSetCollectorConfigMap(ctx, k8sClient, operatorNamespace)
-	VerifyCollectorDaemonSet(ctx, k8sClient, operatorNamespace)
+	VerifyDaemonSetCollectorConfigMap(ctx, k8sClient, operatorNamespace, dash0Endpoint)
+	VerifyCollectorDaemonSet(ctx, k8sClient, operatorNamespace, authorizationToken)
 	VerifyDeploymentCollectorConfigMap(ctx, k8sClient, operatorNamespace)
 	VerifyCollectorDeployment(ctx, k8sClient, operatorNamespace)
 }
@@ -137,8 +139,9 @@ func VerifyDaemonSetCollectorConfigMap(
 	ctx context.Context,
 	k8sClient client.Client,
 	operatorNamespace string,
+	dash0Endpoint string,
 ) {
-	cm_ := verifyResourceExists(
+	cm_ := VerifyResourceExists(
 		ctx,
 		k8sClient,
 		operatorNamespace,
@@ -149,7 +152,7 @@ func VerifyDaemonSetCollectorConfigMap(
 	Expect(cm.Data).To(HaveLen(1))
 	Expect(cm.Data).To(HaveKey("config.yaml"))
 	config := cm.Data["config.yaml"]
-	Expect(config).To(ContainSubstring("endpoint: \"endpoint.dash0.com:4317\""))
+	Expect(config).To(ContainSubstring(fmt.Sprintf("endpoint: \"%s\"", dash0Endpoint)))
 	Expect(config).To(ContainSubstring("\"Authorization\": \"Bearer ${env:AUTH_TOKEN}\""))
 }
 
@@ -157,8 +160,10 @@ func VerifyCollectorDaemonSet(
 	ctx context.Context,
 	k8sClient client.Client,
 	operatorNamespace string,
+	authorizationToken string,
+
 ) *appsv1.DaemonSet {
-	ds_ := verifyResourceExists(
+	ds_ := VerifyResourceExists(
 		ctx,
 		k8sClient,
 		operatorNamespace,
@@ -183,6 +188,8 @@ func VerifyCollectorDaemonSet(
 	Expect(ports[0].ContainerPort).To(Equal(int32(4317)))
 	Expect(ports[1].ContainerPort).To(Equal(int32(4318)))
 
+	Expect(collectorContainer.Env).To(ContainElement(MatchEnvVar("AUTH_TOKEN", authorizationToken)))
+
 	return ds
 }
 
@@ -191,7 +198,7 @@ func VerifyDeploymentCollectorConfigMap(
 	k8sClient client.Client,
 	operatorNamespace string,
 ) {
-	cm_ := verifyResourceExists(
+	cm_ := VerifyResourceExists(
 		ctx,
 		k8sClient,
 		operatorNamespace,
@@ -211,7 +218,7 @@ func VerifyCollectorDeployment(
 	k8sClient client.Client,
 	operatorNamespace string,
 ) {
-	deployment_ := verifyResourceExists(
+	deployment_ := VerifyResourceExists(
 		ctx,
 		k8sClient,
 		operatorNamespace,
@@ -235,10 +242,10 @@ func VerifyExpectedResourceExists(
 	namespace string,
 	expectedResource expectedResource,
 ) client.Object {
-	return verifyResourceExists(ctx, k8sClient, namespace, expectedResource.name, expectedResource.receiver)
+	return VerifyResourceExists(ctx, k8sClient, namespace, expectedResource.name, expectedResource.receiver)
 }
 
-func verifyResourceExists(
+func VerifyResourceExists(
 	ctx context.Context,
 	k8sClient client.Client,
 	namespace string,

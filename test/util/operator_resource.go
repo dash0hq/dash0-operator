@@ -49,6 +49,7 @@ var (
 		},
 		Export: &dash0v1alpha1.Export{
 			Dash0: &dash0v1alpha1.Dash0Configuration{
+				Endpoint: EndpointDash0Test,
 				Authorization: dash0v1alpha1.Authorization{
 					Token: &AuthorizationTokenTest,
 				},
@@ -63,6 +64,7 @@ var (
 		},
 		Export: &dash0v1alpha1.Export{
 			Dash0: &dash0v1alpha1.Dash0Configuration{
+				Endpoint: EndpointDash0Test,
 				Authorization: dash0v1alpha1.Authorization{
 					SecretRef: &SecretRefTest,
 				},
@@ -77,6 +79,7 @@ var (
 		},
 		Export: &dash0v1alpha1.Export{
 			Dash0: &dash0v1alpha1.Dash0Configuration{
+				Endpoint:    EndpointDash0Test,
 				ApiEndpoint: ApiEndpointTest,
 				Authorization: dash0v1alpha1.Authorization{
 					Token: &AuthorizationTokenTest,
@@ -92,6 +95,7 @@ var (
 		},
 		Export: &dash0v1alpha1.Export{
 			Dash0: &dash0v1alpha1.Dash0Configuration{
+				Endpoint:    EndpointDash0Test,
 				ApiEndpoint: ApiEndpointTest,
 				Authorization: dash0v1alpha1.Authorization{
 					SecretRef: &SecretRefTest,
@@ -107,6 +111,7 @@ var (
 		},
 		Export: &dash0v1alpha1.Export{
 			Dash0: &dash0v1alpha1.Dash0Configuration{
+				Endpoint:    EndpointDash0Test,
 				ApiEndpoint: ApiEndpointTest,
 				Authorization: dash0v1alpha1.Authorization{
 					Token: &AuthorizationTokenTest,
@@ -122,6 +127,7 @@ var (
 		},
 		Export: &dash0v1alpha1.Export{
 			Dash0: &dash0v1alpha1.Dash0Configuration{
+				Endpoint:    EndpointDash0Test,
 				ApiEndpoint: ApiEndpointTest,
 				Authorization: dash0v1alpha1.Authorization{
 					SecretRef: &SecretRefTest,
@@ -163,6 +169,14 @@ var (
 
 	OperatorConfigurationResourceDefaultSpec = OperatorConfigurationResourceWithSelfMonitoringWithToken
 )
+
+func DefaultOperatorConfigurationResource() *dash0v1alpha1.Dash0OperatorConfiguration {
+	operatorConfiguration := dash0v1alpha1.Dash0OperatorConfiguration{
+		ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+		Spec:       OperatorConfigurationResourceDefaultSpec,
+	}
+	return &operatorConfiguration
+}
 
 func EnsureControllerDeploymentExists(
 	ctx context.Context,

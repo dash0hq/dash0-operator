@@ -941,6 +941,35 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		})
 	})
 
+	Describe("collect basic metrics without having a Dash0 monitoring resource ", func() {
+		BeforeAll(func() {
+			By("deploy the Dash0 operator")
+			deployOperatorWithDefaultAutoOperationConfiguration(
+				operatorNamespace,
+				operatorHelmChart,
+				operatorHelmChartUrl,
+				images,
+			)
+			time.Sleep(5 * time.Second)
+		})
+
+		AfterAll(func() {
+			undeployOperator(operatorNamespace)
+		})
+
+		BeforeEach(func() {
+			Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+		})
+
+		It("should collect metrics without deploying a Dash0 monitoring resource", func() {
+			By("waiting for metrics")
+			Eventually(func(g Gomega) {
+				verifyKubeletStatsMetrics(g)
+				verifyK8skClusterReceiverMetrics(g)
+			}, 50*time.Second, time.Second).Should(Succeed())
+		})
+	})
+
 	Describe("operator installation", func() {
 
 		It("should fail if asked to create an operator configuration resource with invalid settings", func() {
