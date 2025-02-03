@@ -137,7 +137,7 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		// prometheus scraping) after removing the monitoring resource from this namespace. Or, to be more precise,
 		// when r.reconcileOpenTelemetryCollector runs, the monitoring resource in this namespace is still present, but
 		// it is no longer marked as available.
-		if r.reconcileOpenTelemetryCollector(ctx, nil, &logger) != nil {
+		if err = r.reconcileOpenTelemetryCollector(ctx, nil, &logger); err != nil {
 			return ctrl.Result{}, err
 		}
 
@@ -187,7 +187,7 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	} else if isMarkedForDeletion {
 		// For this particular controller, this branch should actually never run. When we remove the finalizer in the
 		// runCleanupActions branch, the monitoring resource will be deleted immediately. A new reconcile cycle will be
-		// requested for the deletion, which we stop early immediately after the util.VerifyThatUniqueResourceExists
+		// requested for the deletion, which we stop early/immediately after the util.VerifyThatUniqueResourceExists
 		// check, due to checkResourceResult.ResourceDoesNotExist being true. We still want to handle this case
 		// correctly for good measure (reconcile the otel collector, then stop the reconcile of the monitoring
 		// resource).
@@ -288,16 +288,6 @@ func (r *MonitoringReconciler) runCleanupActions(
 		return err
 	}
 
-	if err := r.BackendConnectionManager.RemoveOpenTelemetryCollectorIfNoMonitoringResourceIsLeft(
-		ctx,
-		r.OperatorNamespace,
-		monitoringResource,
-	); err != nil {
-		logger.Error(err, "Failed to check if the OpenTelemetry collector instance needs to be removed or failed "+
-			"removing it.")
-		return err
-	}
-
 	// The Dash0 monitoring resource will be deleted after this reconcile finished. We still need to update its status,
 	// to make sure that when we run r.reconcileOpenTelemetryCollector in the next and final reconcile cycle triggered
 	// by the actual deletion of the resource, the monitoring resource is no longer marked as available; so that this
@@ -305,6 +295,11 @@ func (r *MonitoringReconciler) runCleanupActions(
 	monitoringResource.EnsureResourceIsMarkedAsAboutToBeDeleted()
 	if err := r.Status().Update(ctx, monitoringResource); err != nil {
 		logger.Error(err, updateStatusFailedMessageMonitoring)
+		return err
+	}
+
+	if err := r.reconcileOpenTelemetryCollector(ctx, monitoringResource, logger); err != nil {
+		// err has been logged in r.reconcileOpenTelemetryCollector already
 		return err
 	}
 
@@ -404,9 +399,9 @@ func (r *MonitoringReconciler) reconcileOpenTelemetryCollector(
 	monitoringResource *dash0v1alpha1.Dash0Monitoring,
 	logger *logr.Logger,
 ) error {
-	// This will look up all Dash0 monitoring resources in the cluster (including the one that has just been reconciled,
-	// hence we must only do this _after_ this resource has been updated (e.g. marked as available). Otherwise, the
-	// routing would work with an outdated state.
+	// This will look up all the operator configuration resource and all monitoring resources in the cluster (including
+	// the one that has just been reconciled, hence we must only do this _after_ this resource has been updated (e.g.
+	// marked as available). Otherwise, the reconciliation of the collectors would work with an outdated state.
 	if err := r.BackendConnectionManager.ReconcileOpenTelemetryCollector(
 		ctx,
 		r.Images,

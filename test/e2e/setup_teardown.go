@@ -76,15 +76,28 @@ func renderTemplates() {
 func setKubernetesContext(kubernetesContextForTest string) (bool, string) {
 	By("reading current Kubernetes context")
 	kubectlCurrentContextOutput, err := run(exec.Command("kubectl", "config", "current-context"))
-	Expect(err).NotTo(HaveOccurred())
-	originalCtx := strings.TrimSpace(kubectlCurrentContextOutput)
+	var originalCtx string
+	if err != nil {
+		if strings.Contains(err.Error(), "error: current-context is not set") {
+			originalCtx = ""
+		} else {
+			Expect(err).NotTo(HaveOccurred())
+		}
+	} else {
+		originalCtx = strings.TrimSpace(kubectlCurrentContextOutput)
+	}
 
 	if originalCtx != kubernetesContextForTest {
-		By(fmt.Sprintf(
-			"switching to Kubernetes context %s, previous context %s will be restored later",
-			kubernetesContextForTest,
-			originalCtx,
-		))
+		if originalCtx != "" {
+			By(fmt.Sprintf(
+				"switching to Kubernetes context %s, previous context %s will be restored later",
+				kubernetesContextForTest,
+				originalCtx,
+			))
+		} else {
+			By(fmt.Sprintf("switching to Kubernetes context %s (current-context was unset before)",
+				kubernetesContextForTest))
+		}
 		Expect(
 			runAndIgnoreOutput(
 				exec.Command(
@@ -102,12 +115,21 @@ func setKubernetesContext(kubernetesContextForTest string) (bool, string) {
 }
 
 func revertKubernetesContext(originalCtx string) {
-	By("switching back to original Kubernetes context " + originalCtx)
-	output, err := run(exec.Command("kubectl", "config", "use-context", originalCtx))
-	if err != nil {
-		_, _ = fmt.Fprint(GinkgoWriter, err.Error())
+	if originalCtx != "" {
+		By("switching back to original Kubernetes context " + originalCtx)
+		output, err := run(exec.Command("kubectl", "config", "use-context", originalCtx))
+		if err != nil {
+			_, _ = fmt.Fprint(GinkgoWriter, err.Error())
+		}
+		_, _ = fmt.Fprint(GinkgoWriter, output)
+	} else {
+		By("no Kubernetes context was active before running the e2e tests, thus unsetting current-context")
+		output, err := run(exec.Command("kubectl", "config", "unset", "current-context"))
+		if err != nil {
+			_, _ = fmt.Fprint(GinkgoWriter, err.Error())
+		}
+		_, _ = fmt.Fprint(GinkgoWriter, output)
 	}
-	_, _ = fmt.Fprint(GinkgoWriter, output)
 }
 
 func recreateNamespace(namespace string) {

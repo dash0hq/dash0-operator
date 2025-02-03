@@ -36,6 +36,7 @@ const (
 
 	OTelCollectorBaseUrlTest      = "http://$(DASH0_NODE_IP):40318"
 	EndpointDash0Test             = "endpoint.dash0.com:4317"
+	EndpointDash0TestAlternative  = "endpoint-alternative.dash0.com:4317"
 	EndpointDash0TestQuoted       = "\"endpoint.dash0.com:4317\""
 	EndpointDash0WithProtocolTest = "https://endpoint.dash0.com:4317"
 	EndpointGrpcTest              = "endpoint.backend.com:4317"
@@ -46,8 +47,9 @@ const (
 )
 
 var (
-	AuthorizationTokenTest = "authorization-token"
-	SecretRefTest          = dash0v1alpha1.SecretRef{
+	AuthorizationTokenTest            = "authorization-token"
+	AuthorizationTokenTestAlternative = "authorization-token-test"
+	SecretRefTest                     = dash0v1alpha1.SecretRef{
 		Name: "secret-ref",
 		Key:  "key",
 	}
