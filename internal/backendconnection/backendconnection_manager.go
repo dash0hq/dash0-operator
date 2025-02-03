@@ -5,6 +5,7 @@ package backendconnection
 
 import (
 	"context"
+	"fmt"
 	"sync/atomic"
 
 	"github.com/go-logr/logr"
@@ -34,11 +35,18 @@ const (
 	TriggeredByDash0ResourceReconcile BackendConnectionReconcileTrigger = "resource"
 )
 
+// ReconcileOpenTelemetryCollector can be triggered by a
+//  1. a reconcile request from the Dash0OperatorConfiguration resource.
+//  2. a reconcile request from a Dash0Monitoring resource in the cluster.
+//  3. a change event on one of the OpenTelemetry collector related resources that the operator manages (a change to one
+//     of "our" config maps or similar).
+//
+// The parameter triggeringMonitoringResource is only != nil for case (2).
 func (m *BackendConnectionManager) ReconcileOpenTelemetryCollector(
 	ctx context.Context,
 	images util.Images,
 	operatorNamespace string,
-	monitoringResource *dash0v1alpha1.Dash0Monitoring,
+	triggeringMonitoringResource *dash0v1alpha1.Dash0Monitoring,
 	trigger BackendConnectionReconcileTrigger,
 ) error {
 	logger := log.FromContext(ctx)
@@ -68,24 +76,75 @@ func (m *BackendConnectionManager) ReconcileOpenTelemetryCollector(
 		m.updateInProgress.Store(false)
 	}()
 
+	operatorConfigurationResource, err := m.findOperatorConfigurationResource(ctx, &logger)
+	if err != nil {
+		return err
+	}
 	allMonitoringResources, err := m.findAllMonitoringResources(ctx, &logger)
 	if err != nil {
 		return err
 	}
-	if len(allMonitoringResources) == 0 {
-		return m.removeOpenTelemetryCollector(ctx, operatorNamespace, &logger)
+	var export *dash0v1alpha1.Export
+	if operatorConfigurationResource != nil && operatorConfigurationResource.Spec.Export != nil {
+		export = operatorConfigurationResource.Spec.Export
+	}
+	if export == nil && triggeringMonitoringResource != nil &&
+		triggeringMonitoringResource.IsAvailable() &&
+		triggeringMonitoringResource.Spec.Export != nil {
+		export = triggeringMonitoringResource.Spec.Export
+	}
+	if export == nil {
+		// Using the export setting of an arbitrary monitoring resource is a bandaid as long as we do not allow
+		// exporting, telemetry to different backends per namespace.
+		for _, monitoringResource := range allMonitoringResources {
+			if monitoringResource.Spec.Export != nil {
+				export = monitoringResource.Spec.Export
+				break
+			}
+		}
 	}
 
+	if export != nil {
+		return m.createOrUpdateOpenTelemetryCollector(
+			ctx,
+			operatorNamespace,
+			images,
+			operatorConfigurationResource,
+			allMonitoringResources,
+			export,
+			&logger,
+		)
+	} else {
+		if operatorConfigurationResource != nil {
+			logger.Info(
+				fmt.Sprintf("There is an operator configuration resource (\"%s\"), but it has no export "+
+					"configuration, no Dash0 OpenTelemetry collector will be created, existing Dash0 OpenTelemetry "+
+					"collectors will be removed.", operatorConfigurationResource.Name),
+			)
+		}
+		return m.removeOpenTelemetryCollector(ctx, operatorNamespace, &logger)
+	}
+}
+
+func (m *BackendConnectionManager) createOrUpdateOpenTelemetryCollector(
+	ctx context.Context,
+	operatorNamespace string,
+	images util.Images,
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
+	allMonitoringResources []dash0v1alpha1.Dash0Monitoring,
+	export *dash0v1alpha1.Export,
+	logger *logr.Logger,
+) error {
 	resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 		m.OTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 			ctx,
 			operatorNamespace,
 			images,
+			operatorConfigurationResource,
 			allMonitoringResources,
-			monitoringResource,
-			&logger,
+			export,
+			logger,
 		)
-
 	if err != nil {
 		logger.Error(
 			err,
@@ -94,8 +153,9 @@ func (m *BackendConnectionManager) ReconcileOpenTelemetryCollector(
 		)
 		return err
 	}
-
-	if resourcesHaveBeenCreated {
+	if resourcesHaveBeenCreated && resourcesHaveBeenUpdated {
+		logger.Info("OpenTelemetry collector Kubernetes resources have been created and updated.")
+	} else if resourcesHaveBeenCreated {
 		logger.Info("OpenTelemetry collector Kubernetes resources have been created.")
 	} else if resourcesHaveBeenUpdated {
 		logger.Info("OpenTelemetry collector Kubernetes resources have been updated.")
@@ -103,76 +163,47 @@ func (m *BackendConnectionManager) ReconcileOpenTelemetryCollector(
 	return nil
 }
 
-func (m *BackendConnectionManager) RemoveOpenTelemetryCollectorIfNoMonitoringResourceIsLeft(
-	ctx context.Context,
-	operatorNamespace string,
-	dash0MonitoringResourceToBeDeleted *dash0v1alpha1.Dash0Monitoring,
-) error {
-	m.resourcesHaveBeenDeletedByOperator.Store(true)
-	m.updateInProgress.Store(true)
-	defer func() {
-		m.updateInProgress.Store(false)
-	}()
-
-	logger := log.FromContext(ctx)
-	list := &dash0v1alpha1.Dash0MonitoringList{}
-	err := m.Client.List(
-		ctx,
-		list,
-	)
-
-	if err != nil {
-		logger.Error(err, "Error when checking whether there are any Dash0 monitoring resources left in the cluster.")
-		return err
-	}
-	if len(list.Items) > 1 {
-		// There is still more than one Dash0 monitoring resource in the namespace, do not remove the backend connection.
-		return nil
-	}
-
-	if len(list.Items) == 1 && list.Items[0].UID != dash0MonitoringResourceToBeDeleted.UID {
-		// There is only one Dash0 monitoring resource left, but it is *not* the one that is about to be deleted.
-		// Do not remove the backend connection.
-		logger.Info(
-			"There is only one Dash0 monitoring resource left, but it is not the one being deleted.",
-			"to be deleted/UID",
-			dash0MonitoringResourceToBeDeleted.UID,
-			"to be deleted/namespace",
-			dash0MonitoringResourceToBeDeleted.Namespace,
-			"to be deleted/name",
-			dash0MonitoringResourceToBeDeleted.Name,
-			"existing resource/UID",
-			list.Items[0].UID,
-			"existing resource/namespace",
-			list.Items[0].Namespace,
-			"existing resource/name",
-			list.Items[0].Name,
-		)
-		return nil
-	}
-
-	// Either there is no Dash0 monitoring resource left, or only one and that one is about to be deleted. Delete the
-	// backend connection.
-	return m.removeOpenTelemetryCollector(ctx, operatorNamespace, &logger)
-}
-
 func (m *BackendConnectionManager) removeOpenTelemetryCollector(
 	ctx context.Context,
 	operatorNamespace string,
 	logger *logr.Logger,
 ) error {
-	if err := m.OTelColResourceManager.DeleteResources(
+	resourcesHaveBeenDeleted, err := m.OTelColResourceManager.DeleteResources(
 		ctx,
 		operatorNamespace,
 		logger,
-	); err != nil {
+	)
+	if err != nil {
 		logger.Error(
 			err,
-			"Failed to delete the OpenTelemetry collector Kuberenetes resources, requeuing reconcile request.",
+			"Failed to delete the OpenTelemetry collector Kubernetes resources, requeuing reconcile request.",
 		)
 		return err
 	}
+	if resourcesHaveBeenDeleted {
+		logger.Info("OpenTelemetry collector Kubernetes resources have been deleted.")
+	}
 	return nil
+}
+
+func (m *BackendConnectionManager) findOperatorConfigurationResource(
+	ctx context.Context,
+	logger *logr.Logger,
+) (*dash0v1alpha1.Dash0OperatorConfiguration, error) {
+	operatorConfigurationResource, err := util.FindUniqueOrMostRecentResourceInScope(
+		ctx,
+		m.Client,
+		"", /* cluster-scope, thus no namespace */
+		&dash0v1alpha1.Dash0OperatorConfiguration{},
+		logger,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if operatorConfigurationResource == nil {
+		return nil, nil
+	}
+	return operatorConfigurationResource.(*dash0v1alpha1.Dash0OperatorConfiguration), nil
 }
 
 func (m *BackendConnectionManager) findAllMonitoringResources(

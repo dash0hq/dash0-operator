@@ -140,7 +140,7 @@ func setupNamespaceWithDash0MonitoringResourceAndWorkload(
 	createdObjects []client.Object,
 ) ([]client.Object, *appv1.Deployment) {
 	EnsureNamespaceExists(ctx, k8sClient, dash0MonitoringResourceName.Namespace)
-	EnsureMonitoringResourceExistsAndIsAvailableInNamespace(ctx, k8sClient, dash0MonitoringResourceName)
+	EnsureMonitoringResourceExistsInNamespaceAndIsAvailable(ctx, k8sClient, dash0MonitoringResourceName)
 	deploymentName := UniqueName(DeploymentNamePrefix)
 	deployment := CreateInstrumentedDeployment(ctx, k8sClient, dash0MonitoringResourceName.Namespace, deploymentName)
 	// make sure the monitoring resource has the finalizer
