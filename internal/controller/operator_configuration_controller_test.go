@@ -491,7 +491,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 
 				triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
 
-				VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
+				VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
 			})
 		})
 
@@ -868,7 +868,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				EnsureEmptyMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
 				triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
-				VerifyCollectorResources(ctx, k8sClient, operatorNamespace)
+				VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
 
 				resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
 				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())

@@ -28,6 +28,15 @@ func (mrl *MatchResultList[R, O]) addResultForObject(matchResult ObjectMatchResu
 	mrl.objectResults = append(mrl.objectResults, matchResult)
 }
 
+func (mrl *MatchResultList[R, O]) hasMatch(g Gomega) bool {
+	for _, omr := range mrl.objectResults {
+		if omr.isMatch(g) {
+			return true
+		}
+	}
+	return false
+}
+
 func (mrl *MatchResultList[R, O]) expectAtLeastOneMatch(g Gomega, message string) {
 	var bestMatchScoreSoFar float32 = 0
 	bestMatches := make([]ObjectMatchResult[R, O], 0)
@@ -111,17 +120,20 @@ func (rmr *ResourceMatchResult[R]) addSkippedAssertion(id string, message string
 
 // ObjectMatchResult represents results for one potentially matching object.
 type ObjectMatchResult[R any, O any] struct {
+	name              string
 	resource          R
 	object            O
 	assertionOutcomes []AssertionOutcome
 }
 
 func newObjectMatchResult[R any, O any](
+	name string,
 	resource R,
 	resourceMatchResult ResourceMatchResult[R],
 	object O,
 ) ObjectMatchResult[R, O] {
 	omr := ObjectMatchResult[R, O]{
+		name:              name,
 		resource:          resource,
 		object:            object,
 		assertionOutcomes: make([]AssertionOutcome, 0),
@@ -163,7 +175,7 @@ func (omr *ObjectMatchResult[R, O]) matchScore() float32 {
 }
 
 func (omr ObjectMatchResult[R, O]) String() string {
-	s := ""
+	s := omr.name + ":"
 	for _, ao := range omr.assertionOutcomes {
 		s += fmt.Sprintf("\n%s", ao.String())
 	}

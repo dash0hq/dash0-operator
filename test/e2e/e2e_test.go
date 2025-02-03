@@ -926,6 +926,15 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		})
 
 		It("should produce self-monitoring telemetry", func() {
+			// Note: changing the endpoint will trigger a metric data point for
+			// dash0.operator.manager.monitoring.reconcile_requests to be produced.
+			// Since we do not mess with the endpoint for the operator configuration resource, the self-monitoring
+			// telemetry still ends up in otlp-sink. We do not test explicitly for the dataset header which is set
+			// on the operator manager deployment via the env var OTEL_EXPORTER_OTLP_HEADERS
+			// (with value Authorization=Bearer $(SELF_MONITORING_AND_API_AUTH_TOKEN),Dash0-Dataset=dash0-internal)
+			// as the headers are not available in the telemetry on disk, but there are other tests (for example
+			// operator_configuration_controller_test.go->"enabling self-monitoring"->
+			// "it enables self-monitoring in the controller deployment" that verify this.
 			By("updating the Dash0 monitoring resource endpoint setting")
 			newEndpoint := "ingress.us-east-2.aws.dash0-dev.com:4317"
 			updateEndpointOfDash0MonitoringResource(applicationUnderTestNamespace, newEndpoint)
@@ -938,6 +947,34 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 			Eventually(func(g Gomega) {
 				verifySelfMonitoringMetrics(g)
 			}, 90*time.Second, time.Second).Should(Succeed())
+		})
+	})
+
+	Describe("collect basic metrics without having a Dash0 monitoring resource ", func() {
+		BeforeAll(func() {
+			By("deploy the Dash0 operator")
+			deployOperatorWithDefaultAutoOperationConfiguration(
+				operatorNamespace,
+				operatorHelmChart,
+				operatorHelmChartUrl,
+				images,
+			)
+			time.Sleep(5 * time.Second)
+		})
+
+		AfterAll(func() {
+			undeployOperator(operatorNamespace)
+		})
+
+		BeforeEach(func() {
+			Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+		})
+
+		It("should collect metrics without deploying a Dash0 monitoring resource", func() {
+			By("waiting for metrics")
+			Eventually(func(g Gomega) {
+				verifyNonNamespaceScopedKubeletStatsMetricsOnly(g)
+			}, 50*time.Second, time.Second).Should(Succeed())
 		})
 	})
 
