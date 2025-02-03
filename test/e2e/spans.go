@@ -21,6 +21,8 @@ const (
 	clusterNameKey = "k8s.cluster.name"
 	podNameKey     = "k8s.pod.name"
 
+	timestampKey     = "timestamp"
+	spanKindKey      = "span.kind"
 	httpTargetAttrib = "http.target"
 	httpRouteAttrib  = "http.route"
 	urlQueryAttrib   = "url.query"
@@ -145,6 +147,9 @@ func fileHasMatchingSpan(
 			timestampLowerBound,
 			&matchResults,
 		)
+		if matchResults.hasMatch(g) {
+			break
+		}
 	}
 
 	g.Expect(scanner.Err()).NotTo(HaveOccurred())
@@ -172,16 +177,17 @@ func hasMatchingSpans(
 			for k := 0; k < scopeSpan.Spans().Len(); k++ {
 				span := scopeSpan.Spans().At(k)
 				spanMatchResult := newObjectMatchResult[ptrace.ResourceSpans, ptrace.Span](
+					span.Name(),
 					resourceSpan,
 					resourceMatchResult,
 					span,
 				)
 				if timestampLowerBound != nil {
 					if span.StartTimestamp().AsTime().After(*timestampLowerBound) {
-						spanMatchResult.addPassedAssertion("timestamp")
+						spanMatchResult.addPassedAssertion(timestampKey)
 					} else {
 						spanMatchResult.addFailedAssertion(
-							"timestamp",
+							timestampKey,
 							fmt.Sprintf(
 								"expected timestamp after %s but it was %s",
 								timestampLowerBound.String(),
@@ -190,7 +196,7 @@ func hasMatchingSpans(
 						)
 					}
 				} else {
-					spanMatchResult.addSkippedAssertion("timestamp", "no lower bound provided")
+					spanMatchResult.addSkippedAssertion(timestampKey, "no lower bound provided")
 				}
 				spanMatchFn(span, &spanMatchResult)
 				allMatchResults.addResultForObject(spanMatchResult)
@@ -212,12 +218,12 @@ func resourceSpansHaveExpectedResourceAttributes(runtime runtimeType, workloadTy
 			actualClusterName, hasClusterNameAttribute := attributes.Get(clusterNameKey)
 			if hasClusterNameAttribute {
 				if actualClusterName.Str() == expectedClusterName {
-					matchResult.addPassedAssertion(podNameKey)
+					matchResult.addPassedAssertion(clusterNameKey)
 				} else {
-					matchResult.addFailedAssertion(podNameKey, fmt.Sprintf("expected %s but it was %s", expectedClusterName, actualClusterName.Str()))
+					matchResult.addFailedAssertion(clusterNameKey, fmt.Sprintf("expected %s but it was %s", expectedClusterName, actualClusterName.Str()))
 				}
 			} else {
-				matchResult.addFailedAssertion(clusterNameKey, fmt.Sprintf("expected %s but the span has no such attribute", expectedClusterName))
+				matchResult.addFailedAssertion(clusterNameKey, fmt.Sprintf("expected %s but the span has no such resource attribute", expectedClusterName))
 			}
 		}
 
@@ -231,7 +237,7 @@ func resourceSpansHaveExpectedResourceAttributes(runtime runtimeType, workloadTy
 			expectedWorkloadName := workloadName(runtime, workloadType)
 			actualWorkloadName, hasWorkloadName := attributes.Get(workloadNameKey)
 			if !hasWorkloadName {
-				matchResult.addFailedAssertion(workloadNameKey, fmt.Sprintf("expected %s but the span has no such attribute", expectedWorkloadName))
+				matchResult.addFailedAssertion(workloadNameKey, fmt.Sprintf("expected %s but the span has no such resource attribute", expectedWorkloadName))
 			} else if actualWorkloadName.Str() == expectedWorkloadName {
 				matchResult.addPassedAssertion(workloadNameKey)
 			} else {
@@ -257,7 +263,7 @@ func resourceSpansHaveExpectedResourceAttributes(runtime runtimeType, workloadTy
 				}
 			}
 		} else {
-			matchResult.addFailedAssertion(podNameKey, fmt.Sprintf("expected %s but the span has no such attribute", expectedPodName))
+			matchResult.addFailedAssertion(podNameKey, fmt.Sprintf("expected %s but the span has no such resource attribute", expectedPodName))
 		}
 	}
 }
@@ -268,10 +274,10 @@ func matchHttpServerSpanWithHttpTarget(expectedRoute string, expectedQuery strin
 ) {
 	return func(span ptrace.Span, matchResult *ObjectMatchResult[ptrace.ResourceSpans, ptrace.Span]) {
 		if span.Kind() == ptrace.SpanKindServer {
-			matchResult.addPassedAssertion("span.kind")
+			matchResult.addPassedAssertion(spanKindKey)
 		} else {
 			matchResult.addFailedAssertion(
-				"span.kind",
+				spanKindKey,
 				fmt.Sprintf("expected a server span, this span has kind \"%s\"", span.Kind().String()),
 			)
 		}

@@ -97,8 +97,8 @@ See the section
 for more information on using a Kubernetes secrets with the Dash0 operator.
 
 You can consult the chart's
-[values.yaml](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/values.yaml) for a complete
-list of available configuration settings.
+[values.yaml](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/values.yaml) file for a
+complete list of available configuration settings.
 
 Last but not least, you can also install the operator without providing a Dash0 backend configuration:
 
@@ -118,7 +118,8 @@ That is, providing `--set operator.dash0Export.enabled=true` and the other backe
 On its own, the operator will not do much.
 To actually have the operator monitor your cluster, two more things need to be set up:
 1. a [Dash0 backend connection](#configuring-the-dash0-backend-connection) has to be configured and
-2. monitoring workloads and collecting metrics has to be [enabled per namespace](#enable-dash0-monitoring-for-a-namespace).
+2. monitoring namespaces and their workloads to collect logs, traces and metrics has to be
+   [enabled per namespace](#enable-dash0-monitoring-for-a-namespace).
 
 Both steps are described in the following sections.
 
@@ -207,6 +208,11 @@ kubectl apply -f dash0-operator-configuration.yaml
 The Dash0 operator configuration resource is cluster-scoped, so a specific namespace should not be provided when
 applying it.
 
+Note: All configuration options available in the operator configuration resource can also be configured when letting the
+Helm chart auto-create this resource, as explained in the section [Installation](#installation). You can consult the
+chart's [values.yaml](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/values.yaml) file 
+for a complete list of available configuration settings.
+
 ### Enable Dash0 Monitoring For a Namespace
 
 For _each namespace_ that you want to monitor with Dash0, enable monitoring by installing a _Dash0 monitoring
@@ -234,8 +240,10 @@ If you want to monitor the `default` namespace with Dash0, use the following com
 kubectl apply -f dash0-monitoring.yaml
 ```
 
-Note: Collecting Kubernetes infrastructure metrics (which are not neccessarily related to specific workloads or
-namespaces) also requires that at least one namespace has a Dash0Monitoring resource.
+Note: Even when no monitoring resources has been installed and no namespace is being monitored by Dash0, the Dash0
+operator's collector will collect Kubernetes infrastructure metrics that are not namespace scoped, like node-related
+metrics. The only prerequisite for this is an [operator configuration](#configuring-the-dash0-backend-connection) with
+export settings.
 
 ### Additional Configuration Per Namespace
 
@@ -291,14 +299,13 @@ The Dash0 monitoring resource supports additional configuration settings:
 * `spec.synchronizePersesDashboards`: A namespace-wide opt-out for synchronizing Perses dashboard resources found in the
   target namespace. If enabled, the operator will watch Perses dashboard resources in this namespace and create
   corresponding dashboards in Dash0 via the Dash0 API.
-  See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-dashboards
-  for details. This setting is optional, it defaults to true.
+  See [Managing Dash0 Dashboards](#managing-dash0-dashboards) for details. This setting is optional, it defaults to true.
 
 * `spec.synchronizePrometheusRules`: A namespace-wide opt-out for synchronizing Prometheus rule resources found in the
   target namespace. If enabled, the operator will watch Prometheus rule resources in this namespace and create
   corresponding check rules in Dash0 via the Dash0 API.
-  See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-check-rules
-  for details. This setting is optional, it defaults to true.
+  See [Managing Dash0 Check Rules](#managing-dash0-check-rules) for details. This setting is optional, it defaults to
+  true.
 
 * `spec.prometheusScrapingEnabled`: A namespace-wide opt-out for Prometheus scraping for the target namespace.
   If enabled, the operator will configure its OpenTelemetry collector to scrape metrics from pods in the namespace
@@ -462,8 +469,6 @@ spec:
 
 ### Configure Metrics Collection
 
-Note: Collecting metrics requires that at least one namespace has a Dash0Monitoring resource.
-
 By default, the operator collects metrics as follows:
 * The operator collects node, pod, container, and volume metrics from the API server on
   [kubelets](https://kubernetes.io/docs/concepts/architecture/#kubelet)
@@ -477,13 +482,14 @@ By default, the operator collects metrics as follows:
   `false` when deploying the operator configuration resource via the Helm chart).
 * Namespace-scoped metrics (e.g. metrics related to a workload running in a specific namespace) will only be collected
   if the namespace is monitored, that is, there is a Dash0 monitoring resource in that namespace.
-* Metrics which are not namespace-scoped (for example node metrics like `k8s.node.*`) will always be collected, unless
-  metrics collection is disabled globally for the cluster (`kubernetesInfrastructureMetricsCollectionEnabled: false`,
-  see above). For technical reasons, metrics collection also does not start if there is no Dash0 monitoring resource at
-  all in the cluster, that is, if no namespace is monitored (this is subject to change in a future version).
-* The Dash0 operator scrapes Prometheus endpoints on pods annotated with the `prometheus.io/*` annotations, as
-  described in the section [Scraping Prometheus endpoints](#scraping-prometheus-endpoints). This can be disabled per
-  namespace by explicitly setting `prometheusScrapingEnabled: false` in the Dash0 monitoring resource.
+* The Dash0 operator scrapes Prometheus endpoints on pods annotated with the `prometheus.io/*` annotations in monitored
+  namespaces, as described in the section [Scraping Prometheus endpoints](#scraping-prometheus-endpoints). This can be
+  disabled per namespace by explicitly setting `prometheusScrapingEnabled: false` in the Dash0 monitoring resource.
+* Metrics which are not namespace-scoped (for example node metrics like `k8s.node.*` or host metrics like
+  `system.cpu.utilization`) will always be collected, unless metrics collection is disabled globally for the cluster
+  (`kubernetesInfrastructureMetricsCollectionEnabled: false`, see above). An operator configuration resource with
+  [export settings](#configuring-the-dash0-backend-connection) has to be present in the cluster, otherwise no metrics
+  collection takes place.
 
 Disabling or enabling individual metrics via configuration is not supported.
 
@@ -780,6 +786,11 @@ The scraping of a pod is executed from the same Kubernetes node the pod resides 
 
 This feature can be disabled for a namespace by explicitly setting `prometheusScrapingEnabled: false` in the Dash0
 monitoring resource.
+
+Note: To also have [Kube state metrics available](https://github.com/kubernetes/kube-state-metrics) (which are used
+extensively in [Awesome Prometheus alerts](#https://samber.github.io/awesome-prometheus-alerts/)) scraped and delivered
+to Dash0, you can annotate the kube-state-metrics pod with `prometheus.io/scrape: "true"` and add a Dash0 monitoring
+resource to the namespace it is running in.
 
 ## Managing Dash0 Dashboards
 

@@ -16,6 +16,10 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
+const (
+	commonExportErrorPrefix = "cannot assemble the exporters for the configuration:"
+)
+
 type collectorConfigurationTemplateValues struct {
 	Exporters                                        []OtlpExporter
 	IgnoreLogsFromNamespaces                         []string
@@ -94,7 +98,7 @@ func assembleCollectorConfigMap(
 	} else {
 		exporters, err := ConvertExportSettingsToExporterList(config.Export)
 		if err != nil {
-			return nil, fmt.Errorf("cannot assemble the exporters for the configuration: %w", err)
+			return nil, fmt.Errorf("%s %w", commonExportErrorPrefix, err)
 		}
 
 		selfIpReference := "${env:MY_POD_IP}"
@@ -158,7 +162,7 @@ func ConvertExportSettingsToExporterList(export dash0v1alpha1.Export) ([]OtlpExp
 	var exporters []OtlpExporter
 
 	if export.Dash0 == nil && export.Grpc == nil && export.Http == nil {
-		return nil, fmt.Errorf("no exporter configuration found")
+		return nil, fmt.Errorf("%s no exporter configuration found", commonExportErrorPrefix)
 	}
 
 	if export.Dash0 != nil {
