@@ -52,7 +52,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			NamePrefix: namePrefix,
 			Export:     Dash0ExportWithEndpointAndToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
-			Images: TestImages,
+			UseHostMetricsReceiver:                           true,
+			Images:                                           TestImages,
 		}, nil, &DefaultOTelColResourceSpecs)
 
 		Expect(err).ToNot(HaveOccurred())
@@ -79,7 +80,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(daemonSet.ObjectMeta.Labels["dash0.com/enable"]).To(Equal("false"))
 		podSpec := daemonSet.Spec.Template.Spec
 
-		Expect(podSpec.Volumes).To(HaveLen(5))
+		Expect(podSpec.Volumes).To(HaveLen(6))
 		configMapVolume := findVolumeByName(podSpec.Volumes, "opentelemetry-collector-configmap")
 		Expect(configMapVolume).NotTo(BeNil())
 		Expect(configMapVolume.VolumeSource.ConfigMap.LocalObjectReference.Name).
@@ -92,6 +93,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(pidFileVolume.VolumeSource.EmptyDir).NotTo(BeNil())
 		Expect(findVolumeMountByName(findContainerByName(podSpec.Containers, "opentelemetry-collector").VolumeMounts, "opentelemetry-collector-pidfile")).NotTo(BeNil())
 		Expect(findVolumeMountByName(findContainerByName(podSpec.Containers, "configuration-reloader").VolumeMounts, "opentelemetry-collector-pidfile")).NotTo(BeNil())
+		Expect(findVolumeMountByName(findContainerByName(podSpec.Containers, "opentelemetry-collector").VolumeMounts, "hostfs")).NotTo(BeNil())
 
 		Expect(podSpec.Containers).To(HaveLen(3))
 
@@ -102,7 +104,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		collectorContainerArgs := collectorContainer.Args
 		Expect(collectorContainerArgs).To(HaveLen(1))
 		Expect(collectorContainerArgs[0]).To(Equal("--config=file:/etc/otelcol/conf/config.yaml"))
-		Expect(collectorContainer.VolumeMounts).To(HaveLen(5))
+		Expect(collectorContainer.VolumeMounts).To(HaveLen(6))
 		Expect(collectorContainer.VolumeMounts).To(
 			ContainElement(MatchVolumeMount("opentelemetry-collector-configmap", "/etc/otelcol/conf")))
 		Expect(collectorContainer.VolumeMounts).To(
@@ -113,6 +115,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			ContainElement(MatchVolumeMount("node-docker-container-logs", "/var/lib/docker/containers")))
 		Expect(collectorContainer.VolumeMounts).To(
 			ContainElement(MatchVolumeMount("filelogreceiver-offsets", "/var/otelcol/filelogreceiver_offsets")))
+		Expect(collectorContainer.VolumeMounts).To(ContainElement(MatchVolumeMount("hostfs", "/hostfs")))
 
 		configReloaderContainer := podSpec.Containers[1]
 		Expect(configReloaderContainer).NotTo(BeNil())
@@ -138,8 +141,10 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(configMapVolume).NotTo(BeNil())
 		Expect(configMapVolume.VolumeSource.ConfigMap.LocalObjectReference.Name).
 			To(Equal(ExpectedDeploymentCollectorConfigMapName))
-		Expect(findVolumeMountByName(findContainerByName(podSpec.Containers, "opentelemetry-collector").VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
-		Expect(findVolumeMountByName(findContainerByName(podSpec.Containers, "configuration-reloader").VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
+		Expect(findVolumeMountByName(findContainerByName(podSpec.Containers, "opentelemetry-collector").VolumeMounts,
+			"opentelemetry-collector-configmap")).NotTo(BeNil())
+		Expect(findVolumeMountByName(findContainerByName(podSpec.Containers, "configuration-reloader").VolumeMounts,
+			"opentelemetry-collector-configmap")).NotTo(BeNil())
 
 		Expect(podSpec.Containers).To(HaveLen(2))
 
@@ -176,7 +181,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(findObjectByName(desiredState, ExpectedDeploymentCollectorConfigMapName)).ToNot(BeNil())
 	})
 
-	It("should omit all resources related to the collector deployment collecting cluster metrics is disabled", func() {
+	It("should omit all resources related to the collector deployment if collecting cluster metrics is disabled", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
@@ -197,13 +202,21 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		fileOffsetConfigMapContent := getFileOffsetConfigMapContent(desiredState)
 		Expect(fileOffsetConfigMapContent).NotTo(BeNil())
 
-		Expect(getDaemonSet(desiredState)).NotTo(BeNil())
-
 		Expect(findObjectByName(desiredState, ExpectedDeploymentServiceAccountName)).To(BeNil())
 		Expect(findObjectByName(desiredState, ExpectedDeploymentClusterRoleName)).To(BeNil())
 		Expect(findObjectByName(desiredState, ExpectedDeploymentClusterRoleBindingName)).To(BeNil())
 		Expect(findObjectByName(desiredState, ExpectedDeploymentCollectorConfigMapName)).To(BeNil())
 		Expect(getDeployment(desiredState)).To(BeNil())
+
+		daemonSet := getDaemonSet(desiredState)
+		Expect(daemonSet).NotTo(BeNil())
+		podSpec := daemonSet.Spec.Template.Spec
+		Expect(podSpec.Volumes).To(HaveLen(5))
+		Expect(findVolumeMountByName(findContainerByName(podSpec.Containers, "opentelemetry-collector").VolumeMounts, "hostfs")).To(BeNil())
+		collectorContainer := podSpec.Containers[0]
+		Expect(collectorContainer).NotTo(BeNil())
+		Expect(collectorContainer.VolumeMounts).To(HaveLen(5))
+		Expect(collectorContainer.VolumeMounts).ToNot(ContainElement(MatchVolumeMount("hostfs", "/hostfs")))
 	})
 
 	It("should use the authorization token directly if provided", func() {

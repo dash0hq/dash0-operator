@@ -171,7 +171,77 @@ authority"}
 
 This env var is set in the collector image's entrypoint script or in the daemonset spec if DevelopmentMode is active */}}
     insecure_skip_verify: ${env:KUBELET_STATS_TLS_INSECURE}
-{{- end }}
+{{- end }}{{/* if .KubernetesInfrastructureMetricsCollectionEnabled */}}
+
+{{- if .UseHostMetricsReceiver }}
+  hostmetrics:
+    collection_interval: 60s
+    root_path: /hostfs
+    scrapers:
+      cpu:
+        metrics:
+          # disable all metrics that are enabled by default (there is only one)
+          system.cpu.time:
+            enabled: false
+          # Explicitly enable the cpu utilization metric
+          system.cpu.utilization:
+            enabled: true
+      filesystem:
+        metrics:
+          # disable all metrics that are enabled by default
+          system.filesystem.inodes.usage:
+            enabled: false
+          system.filesystem.usage:
+            enabled: false
+          system.filesystem.utilization:
+            enabled: true
+        {{- /*
+        exclude_fs_types and exclude_mount_points are taken from collector's official helm chart:
+        https://github.com/open-telemetry/opentelemetry-helm-charts/blob/f75b282f2867f1c9689ba9e28083cba15a98b66b/charts/opentelemetry-collector/templates/_config.tpl#L69-L115
+        */}}
+        exclude_fs_types:
+          fs_types:
+          - autofs
+          - binfmt_misc
+          - bpf
+          - cgroup2
+          - configfs
+          - debugfs
+          - devpts
+          - devtmpfs
+          - fusectl
+          - hugetlbfs
+          - iso9660
+          - mqueue
+          - nsfs
+          - overlay
+          - proc
+          - procfs
+          - pstore
+          - rpc_pipefs
+          - securityfs
+          - selinuxfs
+          - squashfs
+          - sysfs
+          - tracefs
+          match_type: strict
+        exclude_mount_points:
+          match_type: regexp
+          mount_points:
+          - /dev/*
+          - /proc/*
+          - /sys/*
+          - /run/k3s/containerd/*
+          - /var/lib/docker/*
+          - /var/lib/kubelet/*
+          - /snap/*
+      memory:
+        metrics:
+          system.memory.usage:
+            enabled: false
+          system.memory.utilization:
+            enabled: true
+{{- end }}{{/* if .UseHostMetricsReceiver */}}
 
 {{- $hasPrometheusScrapingEnabledForAtLeastOneNamespace := gt (len .NamespacesWithPrometheusScraping) 0 }}
 
@@ -375,6 +445,9 @@ service:
       - otlp
 {{- if .KubernetesInfrastructureMetricsCollectionEnabled }}
       - kubeletstats
+{{- end }}
+{{- if .UseHostMetricsReceiver }}
+      - hostmetrics
 {{- end }}
 {{- if $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}
       - prometheus

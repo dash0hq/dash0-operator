@@ -35,6 +35,7 @@ type OTelColResourceManager struct {
 	OTelCollectorNamePrefix          string
 	OTelColResourceSpecs             *OTelColResourceSpecs
 	IsIPv6Cluster                    bool
+	IsDocker                         bool
 	DevelopmentMode                  bool
 	obsoleteResourcesHaveBeenDeleted atomic.Bool
 }
@@ -93,10 +94,16 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		Export:                                  *export,
 		SelfMonitoringAndApiAccessConfiguration: selfMonitoringConfiguration,
 		KubernetesInfrastructureMetricsCollectionEnabled: kubernetesInfrastructureMetricsCollectionEnabled,
-		ClusterName:     clusterName,
-		Images:          images,
-		IsIPv6Cluster:   m.IsIPv6Cluster,
-		DevelopmentMode: m.DevelopmentMode,
+		// The hostmetrics receiver requires mapping the root file system as a volume mount, see
+		// https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/hostmetricsreceiver#collecting-host-metrics-from-inside-a-container-linux-only
+		// This is apparently not supported in Docker, at least not in Docker Desktop. See
+		// https://github.com/prometheus/node_exporter/issues/2002#issuecomment-801763211 and similar.
+		// For this reason, we do not allow enabling the hostmetrics receiver when the node runtime is Docker.
+		UseHostMetricsReceiver: kubernetesInfrastructureMetricsCollectionEnabled && !m.IsDocker,
+		ClusterName:            clusterName,
+		Images:                 images,
+		IsIPv6Cluster:          m.IsIPv6Cluster,
+		DevelopmentMode:        m.DevelopmentMode,
 	}
 	desiredState, err := assembleDesiredStateForUpsert(
 		config,
@@ -323,9 +330,10 @@ func (m *OTelColResourceManager) DeleteResources(
 		// related resources, we always try to delete all collector resources (daemonset & deployment), no matter
 		// whether both sets have been created earlier or not.
 		KubernetesInfrastructureMetricsCollectionEnabled: true,
-		Images:          dummyImagesForDeletion,
-		IsIPv6Cluster:   m.IsIPv6Cluster,
-		DevelopmentMode: m.DevelopmentMode,
+		UseHostMetricsReceiver:                           !m.IsDocker, // irrelevant for deletion
+		Images:                                           dummyImagesForDeletion,
+		IsIPv6Cluster:                                    m.IsIPv6Cluster,
+		DevelopmentMode:                                  m.DevelopmentMode,
 	}
 	desiredResources, err := assembleDesiredStateForDelete(config, m.OTelColResourceSpecs)
 	if err != nil {
