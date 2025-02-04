@@ -99,6 +99,7 @@ var (
 	setupLog = ctrl.Log.WithName("setup")
 
 	startupTasksK8sClient   client.Client
+	isDocker                bool
 	deploymentSelfReference *appsv1.Deployment
 	envVars                 environmentVariables
 
@@ -287,6 +288,11 @@ func main() {
 	if err = initStartupTasksK8sClient(&setupLog); err != nil {
 		os.Exit(1)
 	}
+	detectDocker(
+		ctx,
+		startupTasksK8sClient,
+		&setupLog,
+	)
 	if err = findDeploymentSelfReference(
 		ctx,
 		startupTasksK8sClient,
@@ -294,7 +300,7 @@ func main() {
 		envVars.deploymentName,
 		&setupLog,
 	); err != nil {
-		setupLog.Error(err, "The Dash0 operator manager process to lookup its own deployment.")
+		setupLog.Error(err, "The Dash0 operator manager process to lookup its own deployment failed.")
 		os.Exit(1)
 	}
 
@@ -613,6 +619,7 @@ func startDash0Controllers(
 		OTelCollectorNamePrefix: envVars.oTelCollectorNamePrefix,
 		OTelColResourceSpecs:    oTelColResourceSpecs,
 		IsIPv6Cluster:           isIPv6Cluster,
+		IsDocker:                isDocker,
 		DevelopmentMode:         developmentMode,
 	}
 	backendConnectionManager := &backendconnection.BackendConnectionManager{
@@ -739,6 +746,25 @@ func initStartupTasksK8sClient(logger *logr.Logger) error {
 		return err
 	}
 	return nil
+}
+
+func detectDocker(
+	ctx context.Context,
+	k8sClient client.Client,
+	logger *logr.Logger,
+) {
+	nodeList := &corev1.NodeList{}
+	err := k8sClient.List(ctx, nodeList, &client.ListOptions{Limit: 1})
+	if err != nil {
+		logger.Error(err, "cannot list nodes for container runtime detection")
+		// assume it's not Docker
+		return
+	}
+	for _, node := range nodeList.Items {
+		if strings.Contains(node.Status.NodeInfo.ContainerRuntimeVersion, "docker://") {
+			isDocker = true
+		}
+	}
 }
 
 func findDeploymentSelfReference(

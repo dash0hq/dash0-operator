@@ -28,6 +28,7 @@ type oTelColConfig struct {
 	Export                                           dash0v1alpha1.Export
 	SelfMonitoringAndApiAccessConfiguration          selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration
 	KubernetesInfrastructureMetricsCollectionEnabled bool
+	UseHostMetricsReceiver                           bool
 	ClusterName                                      string
 	Images                                           util.Images
 	IsIPv6Cluster                                    bool
@@ -558,7 +559,7 @@ func assembleCollectorDaemonSetVolumes(
 ) []corev1.Volume {
 	pidFileVolumeSizeLimit := resource.MustParse("1M")
 	offsetsVolumeSizeLimit := resource.MustParse("10M")
-	return []corev1.Volume{
+	volumes := []corev1.Volume{
 		{
 			Name: "filelogreceiver-offsets",
 			VolumeSource: corev1.VolumeSource{
@@ -603,10 +604,24 @@ func assembleCollectorDaemonSetVolumes(
 			},
 		},
 	}
+
+	if config.UseHostMetricsReceiver {
+		// Mounting the entire host file system is required for the hostmetrics receiver, see
+		// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/hostmetricsreceiver/README.md#collecting-host-metrics-from-inside-a-container-linux-only
+		volumes = append(volumes, corev1.Volume{
+			Name: "hostfs",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: "/",
+				},
+			},
+		})
+	}
+	return volumes
 }
 
-func assembleCollectorDaemonSetVolumeMounts() []corev1.VolumeMount {
-	return []corev1.VolumeMount{
+func assembleCollectorDaemonSetVolumeMounts(config *oTelColConfig) []corev1.VolumeMount {
+	volumeMounts := []corev1.VolumeMount{
 		collectorConfigVolume,
 		collectorPidFileMountRW,
 		{
@@ -623,6 +638,17 @@ func assembleCollectorDaemonSetVolumeMounts() []corev1.VolumeMount {
 		},
 		filelogReceiverOffsetsVolumeMount,
 	}
+	if config.UseHostMetricsReceiver {
+		// Mounting the entire host file system is required for the hostmetrics receiver, see
+		// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/hostmetricsreceiver/README.md#collecting-host-metrics-from-inside-a-container-linux-only
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
+			Name:             "hostfs",
+			MountPath:        "/hostfs",
+			ReadOnly:         true,
+			MountPropagation: ptr.To(corev1.MountPropagationHostToContainer),
+		})
+	}
+	return volumeMounts
 }
 
 func assembleCollectorEnvVars(config *oTelColConfig, goMemLimit string) ([]corev1.EnvVar, error) {
@@ -672,7 +698,7 @@ func assembleDaemonSetCollectorContainer(
 	config *oTelColConfig,
 	resourceRequirements ResourceRequirementsWithGoMemLimit,
 ) (corev1.Container, error) {
-	collectorVolumeMounts := assembleCollectorDaemonSetVolumeMounts()
+	collectorVolumeMounts := assembleCollectorDaemonSetVolumeMounts(config)
 	collectorEnv, err := assembleCollectorEnvVars(config, resourceRequirements.GoMemLimit)
 	if err != nil {
 		return corev1.Container{}, err
