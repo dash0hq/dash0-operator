@@ -24,6 +24,7 @@ type collectorConfigurationTemplateValues struct {
 	Exporters                                        []OtlpExporter
 	IgnoreLogsFromNamespaces                         []string
 	KubernetesInfrastructureMetricsCollectionEnabled bool
+	UseHostMetricsReceiver                           bool
 	ClusterName                                      string
 	NamespaceOttlFilter                              string
 	NamespacesWithPrometheusScraping                 []string
@@ -117,11 +118,12 @@ func assembleCollectorConfigMap(
 					config.Namespace,
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: config.KubernetesInfrastructureMetricsCollectionEnabled,
-				ClusterName:                      config.ClusterName,
-				NamespaceOttlFilter:              namespaceOttlFilter,
-				NamespacesWithPrometheusScraping: namespacesWithPrometheusScraping,
-				SelfIpReference:                  selfIpReference,
-				DevelopmentMode:                  config.DevelopmentMode,
+				UseHostMetricsReceiver:                           config.UseHostMetricsReceiver,
+				ClusterName:                                      config.ClusterName,
+				NamespaceOttlFilter:                              namespaceOttlFilter,
+				NamespacesWithPrometheusScraping:                 namespacesWithPrometheusScraping,
+				SelfIpReference:                                  selfIpReference,
+				DevelopmentMode:                                  config.DevelopmentMode,
 			})
 		if err != nil {
 			return nil, fmt.Errorf("cannot render the collector configuration template: %w", err)

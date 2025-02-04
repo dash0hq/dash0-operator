@@ -661,30 +661,35 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		Expect(selfMonitoringTelemetryResource.(map[string]interface{})["k8s.cluster.name"]).To(Equal("cluster-name"))
 	}, testConfigs)
 
-	Describe("should enable/disable kubernetes infrastructure metrics collection", func() {
-		It("should not render the kubeletstats receiver if kubernetes infrastructure metrics collection is disabled", func() {
+	Describe("should enable/disable kubernetes infrastructure metrics collection and the hostmetrics receiver", func() {
+		It("should not render the kubeletstats receiver and hostmetrics if kubernetes infrastructure metrics collection is disabled", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				Namespace:  namespace,
 				NamePrefix: namePrefix,
 				Export:     Dash0ExportWithEndpointAndToken(),
 				KubernetesInfrastructureMetricsCollectionEnabled: false,
+				UseHostMetricsReceiver:                           false,
 			}, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			kubeletstatsReceiver := readFromMap(collectorConfig, []string{"receivers", "kubeletstats"})
 			Expect(kubeletstatsReceiver).To(BeNil())
+			hostmetricsReceiver := readFromMap(collectorConfig, []string{"receivers", "hostmetrics"})
+			Expect(hostmetricsReceiver).To(BeNil())
 
 			pipelines := readPipelines(collectorConfig)
 			metricsReceivers := readPipelineReceivers(pipelines, "metrics/downstream")
 			Expect(metricsReceivers).ToNot(ContainElement("kubeletstats"))
+			Expect(metricsReceivers).ToNot(ContainElement("hostmetrics"))
 		})
 
-		It("should render the kubeletstats receiver if kubernetes infrastructure metrics collection is enabled", func() {
+		It("should render the kubeletstats and hostmetrics receiver if kubernetes infrastructure metrics collection is enabled", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				Namespace:  namespace,
 				NamePrefix: namePrefix,
 				Export:     Dash0ExportWithEndpointAndToken(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
+				UseHostMetricsReceiver:                           true,
 			}, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -694,10 +699,13 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			insecureSkipVerifyPropertyValue, hasInsecureSkipVerifyProperty := kubeletstatsReceiver["insecure_skip_verify"]
 			Expect(hasInsecureSkipVerifyProperty).To(BeTrue())
 			Expect(insecureSkipVerifyPropertyValue).To(Equal("${env:KUBELET_STATS_TLS_INSECURE}"))
+			hostmetricsReceiver := readFromMap(collectorConfig, []string{"receivers", "hostmetrics"})
+			Expect(hostmetricsReceiver).ToNot(BeNil())
 
 			pipelines := readPipelines(collectorConfig)
 			metricsReceivers := readPipelineReceivers(pipelines, "metrics/downstream")
 			Expect(metricsReceivers).To(ContainElement("kubeletstats"))
+			Expect(metricsReceivers).To(ContainElement("hostmetrics"))
 		})
 	})
 
