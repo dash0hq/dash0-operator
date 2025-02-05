@@ -1,0 +1,44 @@
+name: Check for OpenTelemetry Collector Component Updates
+
+on:
+  schedule:
+    - cron: "15 08 * * MON-FRI"
+
+  workflow_dispatch:
+
+jobs:
+  check-and-update:
+    name: check for new available OpenTelemetry collector components  and update the builder config
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: update component versions and create PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          branch_name="update-dash0-collector"
+          git checkout -b $branch_name
+
+          images/collector/update.sh
+
+          # git diff-files --quiet exits with 1 if there were differences, exit code 0 means no differences.
+          if git diff-files --quiet "$builder_config"; then
+            echo "There are no changes, everything up to date.
+          else
+            echo "There are changes, creating PR"
+            git add images/collector/src/builder/config.yaml
+            git commit -m"chore(deps): bump the production dependencies of the Dash0 collector image"
+
+            git push -u origin "$branch_name"
+            gh pr create \
+              -B main \
+              -H $branch_name \
+              --title 'chore(deps): bump the production dependencies of the Dash0 collector image' \
+              --body 'chore(deps): bump the production dependencies of the Dash0 collector image'
+          fi
