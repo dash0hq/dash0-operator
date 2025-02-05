@@ -1,11 +1,11 @@
 FROM golang:1.23-alpine AS builder
 
-RUN apk add --update make git && apk cache clean
+RUN apk add --update git make yq && apk cache clean
 
 COPY ./src /src
 WORKDIR /src
 
-RUN export VERSION=$(cat builder/otelcol-version) \
+RUN export VERSION=$(yq '.dist.otelcol_version' builder/config.yaml) \
  && echo "Using otelcol v${VERSION} as baseline" \
  && go install go.opentelemetry.io/collector/cmd/builder@v${VERSION}
 
