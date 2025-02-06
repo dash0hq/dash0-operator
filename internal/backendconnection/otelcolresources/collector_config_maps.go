@@ -30,6 +30,7 @@ type collectorConfigurationTemplateValues struct {
 	NamespacesWithPrometheusScraping                 []string
 	SelfIpReference                                  string
 	DevelopmentMode                                  bool
+	DebugVerbosityDetailed                           bool
 }
 
 type OtlpExporter struct {
@@ -124,6 +125,7 @@ func assembleCollectorConfigMap(
 				NamespacesWithPrometheusScraping:                 namespacesWithPrometheusScraping,
 				SelfIpReference:                                  selfIpReference,
 				DevelopmentMode:                                  config.DevelopmentMode,
+				DebugVerbosityDetailed:                           config.DebugVerbosityDetailed,
 			})
 		if err != nil {
 			return nil, fmt.Errorf("cannot render the collector configuration template: %w", err)

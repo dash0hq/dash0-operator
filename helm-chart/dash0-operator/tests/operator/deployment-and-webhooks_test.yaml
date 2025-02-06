@@ -107,6 +107,8 @@ tests:
             cpu: 5m
             memory: 32Mi
         developmentMode: true
+        collectors:
+          debugVerbosityDetailed: true
     asserts:
       - equal:
           path: metadata.labels['label1']
@@ -227,6 +229,12 @@ tests:
           value: DASH0_DEVELOPMENT_MODE
       - equal:
           path: spec.template.spec.containers[0].env[13].value
+          value: "true"
+      - equal:
+          path: spec.template.spec.containers[0].env[14].name
+          value: OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED
+      - equal:
+          path: spec.template.spec.containers[0].env[14].value
           value: "true"
       - equal:
           path: spec.template.spec.containers[0].resources.limits.cpu

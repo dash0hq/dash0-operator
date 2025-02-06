@@ -66,6 +66,7 @@ type environmentVariables struct {
 	filelogOffsetSynchImagePullPolicy    corev1.PullPolicy
 	selfMonitoringAndApiAuthToken        string
 	podIp                                string
+	debugVerbosityDetailed               bool
 }
 
 const (
@@ -84,7 +85,8 @@ const (
 	filelogOffsetSynchImagePullPolicyEnvVarName    = "DASH0_FILELOG_OFFSET_SYNCH_IMAGE_PULL_POLICY"
 	podIpEnvVarName                                = "MY_POD_IP"
 
-	developmentModeEnvVarName = "DASH0_DEVELOPMENT_MODE"
+	developmentModeEnvVarName        = "DASH0_DEVELOPMENT_MODE"
+	debugVerbosityDetailedEnvVarName = "OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED"
 
 	oTelColResourceSpecConfigFile = "/etc/config/otelcolresources.yaml"
 
@@ -235,9 +237,9 @@ func main() {
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers.",
 	)
 
-	var developmentMode bool
 	developmentModeRaw, isSet := os.LookupEnv(developmentModeEnvVarName)
-	developmentMode = isSet && strings.ToLower(developmentModeRaw) == "true"
+	developmentMode := isSet && strings.ToLower(developmentModeRaw) == "true"
+
 	var opts zap.Options
 	if developmentMode {
 		opts = zap.Options{
@@ -515,6 +517,9 @@ func readEnvironmentVariables() error {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, podIpEnvVarName)
 	}
 
+	debugVerbosityDetailedRaw, isSet := os.LookupEnv(debugVerbosityDetailedEnvVarName)
+	debugVerbosityDetailed := isSet && strings.ToLower(debugVerbosityDetailedRaw) == "true"
+
 	envVars = environmentVariables{
 		operatorNamespace:                    operatorNamespace,
 		deploymentName:                       deploymentName,
@@ -531,6 +536,7 @@ func readEnvironmentVariables() error {
 		filelogOffsetSynchImagePullPolicy:    filelogOffsetSynchImagePullPolicy,
 		selfMonitoringAndApiAuthToken:        selfMonitoringAndApiAuthToken,
 		podIp:                                podIp,
+		debugVerbosityDetailed:               debugVerbosityDetailed,
 	}
 
 	return nil
@@ -621,6 +627,7 @@ func startDash0Controllers(
 		IsIPv6Cluster:           isIPv6Cluster,
 		IsDocker:                isDocker,
 		DevelopmentMode:         developmentMode,
+		DebugVerbosityDetailed:  envVars.debugVerbosityDetailed,
 	}
 	backendConnectionManager := &backendconnection.BackendConnectionManager{
 		Client:                 k8sClient,

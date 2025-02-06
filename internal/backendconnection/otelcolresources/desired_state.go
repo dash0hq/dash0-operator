@@ -33,6 +33,7 @@ type oTelColConfig struct {
 	Images                                           util.Images
 	IsIPv6Cluster                                    bool
 	DevelopmentMode                                  bool
+	DebugVerbosityDetailed                           bool
 }
 
 // This type just exists to ensure all created objects go through addCommonMetadata.

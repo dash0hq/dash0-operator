@@ -106,6 +106,9 @@ run_helm() {
     helm_install_command+=" --version $OPERATOR_HELM_CHART_VERSION"
   fi
   helm_install_command+=" --set operator.developmentMode=true"
+  if [[ "${OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED:-}" = "true" ]]; then
+    helm_install_command+=" --set operator.collectors.debugVerbosityDetailed=true"
+  fi
   if ! has_been_set_to_empty_string "CONTROLLER_IMG_REPOSITORY"; then
     helm_install_command+=" --set operator.image.repository=${CONTROLLER_IMG_REPOSITORY:-operator-controller}"
   fi
