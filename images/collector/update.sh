@@ -78,9 +78,14 @@ function update_components {
   done
 }
 
-current_beta_version=$(yq '.dist.otelcol_version' "$builder_config" /dev/null) \
-provider_module=$(yq '.providers[0]' "$builder_config")
-current_stable_version="${provider_module#gomod: go\.opentelemetry\.io\/* v}"
+current_beta_version=$(\
+  yq \
+  '.connectors[0].gomod | match(" v(\d+\.\d+\.\d+)$"; "g") | .captures[0].string' \
+  "$builder_config")
+current_stable_version=$(\
+    yq \
+    '.providers[0].gomod | match(" v(\d+\.\d+\.\d+)$"; "g") | .captures[0].string' \
+    "$builder_config")
 
 curl -s https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector/refs/heads/main/versions.yaml > "$core_versions_yaml"
 curl -s https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/heads/main/versions.yaml > "$contrib_versions_yaml"
@@ -91,18 +96,13 @@ new_stable_version=$(yq '.module-sets.stable.version' "$core_versions_yaml")
 new_stable_version="${new_stable_version#v}"
 new_beta_version=$(yq '.module-sets.beta.version' "$core_versions_yaml")
 new_beta_version="${new_beta_version#v}"
-new_contrib_version=$(yq '.module-sets.contrib-base.version' "$contrib_versions_yaml")
+new_contrib_version=$(yq '.module-sets.contrib-base.version | sub("v", "")' "$contrib_versions_yaml")
 echo "Currently using versions:  $current_stable_version/$current_beta_version."
 echo "Latest available versions: core: $new_stable_version/$new_beta_version, contrib: $new_contrib_version."
 
 if [[ "$current_stable_version" != "$new_stable_version" || "$current_beta_version" != "$new_beta_version" ]]; then
   update_components
   echo
-  new_beta_version="$new_beta_version" \
-    yq -i \
-    '.dist.otelcol_version=strenv(new_beta_version)' \
-    "$builder_config"
-
   echo git diff:
   git --no-pager diff -- "$builder_config"
 else
