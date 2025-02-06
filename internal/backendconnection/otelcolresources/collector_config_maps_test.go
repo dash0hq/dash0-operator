@@ -208,6 +208,38 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "debug", "otlp/dash0")
 		}, testConfigs)
 
+		DescribeTable("should render a debug exporter with verbosity: detailed when requested", func(testConfig testConfig) {
+			configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+				Namespace:  namespace,
+				NamePrefix: namePrefix,
+				Export: dash0v1alpha1.Export{
+					Dash0: &dash0v1alpha1.Dash0Configuration{
+						Endpoint: EndpointDash0Test,
+						Authorization: dash0v1alpha1.Authorization{
+							Token: &AuthorizationTokenTest,
+						},
+					},
+				},
+				DevelopmentMode:        false,
+				DebugVerbosityDetailed: true,
+			}, monitoredNamespaces, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]interface{})
+			Expect(exporters).To(HaveLen(2))
+
+			debugExporterRaw := exporters["debug"]
+			Expect(debugExporterRaw).ToNot(BeNil())
+			debugExporter := debugExporterRaw.(map[string]interface{})
+			Expect(debugExporter).To(HaveLen(1))
+			Expect(debugExporter["verbosity"]).To(Equal("detailed"))
+
+			verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "debug", "otlp/dash0")
+		}, testConfigs)
+
 		DescribeTable("should fail to render a gRPC exporter when no endpoint is provided", func(testConfig testConfig) {
 			_, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
 				Namespace:  namespace,

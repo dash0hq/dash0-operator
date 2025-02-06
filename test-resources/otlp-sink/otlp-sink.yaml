@@ -33,8 +33,10 @@ data:
         protocols:
           grpc:
             endpoint: ${env:MY_POD_IP}:4317
+            max_recv_msg_size_mib: 64
           http:
             endpoint: ${env:MY_POD_IP}:4318
+            max_request_body_size: 20971520
     service:
       extensions:
         - health_check

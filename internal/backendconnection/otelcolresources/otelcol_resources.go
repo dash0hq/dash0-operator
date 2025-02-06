@@ -37,6 +37,7 @@ type OTelColResourceManager struct {
 	IsIPv6Cluster                    bool
 	IsDocker                         bool
 	DevelopmentMode                  bool
+	DebugVerbosityDetailed           bool
 	obsoleteResourcesHaveBeenDeleted atomic.Bool
 }
 
@@ -104,6 +105,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		Images:                 images,
 		IsIPv6Cluster:          m.IsIPv6Cluster,
 		DevelopmentMode:        m.DevelopmentMode,
+		DebugVerbosityDetailed: m.DebugVerbosityDetailed,
 	}
 	desiredState, err := assembleDesiredStateForUpsert(
 		config,
@@ -334,6 +336,7 @@ func (m *OTelColResourceManager) DeleteResources(
 		Images:                                           dummyImagesForDeletion,
 		IsIPv6Cluster:                                    m.IsIPv6Cluster,
 		DevelopmentMode:                                  m.DevelopmentMode,
+		DebugVerbosityDetailed:                           m.DebugVerbosityDetailed,
 	}
 	desiredResources, err := assembleDesiredStateForDelete(config, m.OTelColResourceSpecs)
 	if err != nil {

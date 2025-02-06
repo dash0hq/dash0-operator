@@ -1,5 +1,8 @@
 exporters:
-{{- if .DevelopmentMode }}
+{{- if .DebugVerbosityDetailed }}
+  debug:
+    verbosity: detailed
+{{ else if .DevelopmentMode }}
   debug: {}
 {{- end }}
 {{- range $i, $exporter := .Exporters }}
@@ -122,7 +125,7 @@ service:
       - memory_limiter
       - batch
       exporters:
-      {{- if .DevelopmentMode }}
+      {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
       - debug
       {{- end }}
       {{- range $i, $exporter := .Exporters }}

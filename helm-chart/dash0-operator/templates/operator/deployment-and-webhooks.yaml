@@ -163,6 +163,10 @@ spec:
         - name: DASH0_DEVELOPMENT_MODE
           value: {{ .Values.operator.developmentMode | toString | quote }}
         {{- end }}
+        {{- if .Values.operator.collectors.debugVerbosityDetailed }}
+        - name: OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED
+          value: {{ .Values.operator.collectors.debugVerbosityDetailed | toString | quote }}
+        {{- end }}
         - name: K8S_NODE_NAME
           valueFrom:
             fieldRef:
