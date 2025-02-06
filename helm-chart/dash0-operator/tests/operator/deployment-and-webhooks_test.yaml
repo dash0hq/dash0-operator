@@ -109,6 +109,8 @@ tests:
         developmentMode: true
         collectors:
           debugVerbosityDetailed: true
+          sendBatchMaxSize: 32768
+
     asserts:
       - equal:
           path: metadata.labels['label1']
@@ -236,6 +238,12 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[14].value
           value: "true"
+      - equal:
+          path: spec.template.spec.containers[0].env[15].name
+          value: OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE
+      - equal:
+          path: spec.template.spec.containers[0].env[15].value
+          value: "32768"
       - equal:
           path: spec.template.spec.containers[0].resources.limits.cpu
           value: 123m

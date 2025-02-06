@@ -28,7 +28,12 @@ extensions:
     endpoint: "{{ .SelfIpReference }}:13133"
 
 processors:
+{{- if .SendBatchMaxSize }}
+  batch:
+    send_batch_max_size: {{ .SendBatchMaxSize }}
+{{- else }}
   batch: {}
+{{- end }}
 
   k8sattributes:
     extract:

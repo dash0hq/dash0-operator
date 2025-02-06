@@ -291,3 +291,8 @@ operator:
     # If set to true, adds a debug exporter with "verbosity: detailed" to the collectors managed by the operator.
     # This setting produces a large amount of logs and is not suitable for extended production use.
     debugVerbosityDetailed: false
+
+    # If set to a value > 0, the send_batch_max_size parameter will be set for the batch processor of the collectors
+    # managed by the operator. There is usually no need to configure this. The value must be greater than or equal to
+    # 8192, which is the default value for send_batch_size.
+    sendBatchMaxSize: 0
