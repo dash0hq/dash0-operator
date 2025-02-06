@@ -2,40 +2,34 @@ dist:
   module: github.com/dash0hq/dash0-operator
   name: dash0-operator-collector
   description: OpenTelemetry collector managed by the Dash0 operator
-  otelcol_version: "0.111.0"
+  otelcol_version: "0.119.0"
   version: "dash0"
   output_path: dist
-
 connectors:
-  - gomod: "go.opentelemetry.io/collector/connector/forwardconnector v0.111.0"
-
+  - gomod: "go.opentelemetry.io/collector/connector/forwardconnector v0.119.0"
 extensions:
-  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.111.0"
-  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage v0.107.0"
-
+  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension vv0.119.0"
+  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage vv0.119.0"
 exporters:
-  - gomod: "go.opentelemetry.io/collector/exporter/debugexporter v0.111.0"
-  - gomod: "go.opentelemetry.io/collector/exporter/otlpexporter v0.111.0"
-  - gomod: "go.opentelemetry.io/collector/exporter/otlphttpexporter v0.111.0"
-
+  - gomod: "go.opentelemetry.io/collector/exporter/debugexporter v0.119.0"
+  - gomod: "go.opentelemetry.io/collector/exporter/otlpexporter v0.119.0"
+  - gomod: "go.opentelemetry.io/collector/exporter/otlphttpexporter v0.119.0"
 receivers:
-  - gomod: "go.opentelemetry.io/collector/receiver/otlpreceiver v0.111.0"
-  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/filelogreceiver v0.111.0"
-  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.111.0"
-  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8sclusterreceiver v0.111.0"
-  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/kubeletstatsreceiver v0.111.0"
-  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver v0.111.0"
-
+  - gomod: "go.opentelemetry.io/collector/receiver/otlpreceiver v0.119.0"
+  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/filelogreceiver vv0.119.0"
+  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver vv0.119.0"
+  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8sclusterreceiver vv0.119.0"
+  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/kubeletstatsreceiver vv0.119.0"
+  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver vv0.119.0"
 processors:
-  - gomod: "go.opentelemetry.io/collector/processor/batchprocessor v0.111.0"
-  - gomod: "go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.111.0"
-  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor v0.111.0"
-  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.111.0"
-  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/processor/k8sattributesprocessor v0.111.0"
-  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.111.0"
-  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor v0.111.0"
-  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.111.0"
-
+  - gomod: "go.opentelemetry.io/collector/processor/batchprocessor v0.119.0"
+  - gomod: "go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.119.0"
+  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/processor/attributesprocessor vv0.119.0"
+  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor vv0.119.0"
+  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/processor/k8sattributesprocessor vv0.119.0"
+  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor vv0.119.0"
+  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor vv0.119.0"
+  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor vv0.119.0"
 providers:
-  - gomod: go.opentelemetry.io/collector/confmap/provider/envprovider v1.17.0
-  - gomod: go.opentelemetry.io/collector/confmap/provider/fileprovider v1.17.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/envprovider v1.25.0
+  - gomod: go.opentelemetry.io/collector/confmap/provider/fileprovider v1.25.0
