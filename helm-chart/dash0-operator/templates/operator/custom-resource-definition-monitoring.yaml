@@ -65,7 +65,7 @@ spec:
                       apiEndpoint:
                         description: |-
                           The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
-                          dashboards and check rules via the operator. This property is optional. The value needs to be the API endpoint
+                          dashboards, check rules and views via the operator. This property is optional. The value needs to be the API endpoint
                           of your Dash0 organization. The correct API endpoint can be copied fom https://app.dash0.com -> organization
                           settings -> "Endpoints" -> "API". The correct endpoint value will always start with "https://api." and end in
                           ".dash0.com"
@@ -248,6 +248,14 @@ spec:
                   See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-check-rules-with-the-operator
                   for details. This setting is optional, it defaults to true.
                 type: boolean
+              synchronizeViews:
+                default: true
+                description: |-
+                  If enabled, the operator will watch Dash0 view resources in this namespace and create corresponding views
+                  in Dash0 via the Dash0 API.
+                  See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-views-with-the-operator
+                  for details. This setting is optional, it defaults to true.
+                type: boolean
             type: object
           status:
             description: Dash0MonitoringStatus defines the observed state of the Dash0Monitoring
@@ -321,7 +329,7 @@ spec:
                     synchronizationStatus:
                       description: |-
                         SynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
-                        dashboard, Prometheus rule) to the Dash0 API.
+                        dashboard, Prometheus rule, view) to the Dash0 API.
                       enum:
                       - successful
                       - partially-successful
@@ -371,7 +379,7 @@ spec:
                     synchronizationStatus:
                       description: |-
                         SynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
-                        dashboard, Prometheus rule) to the Dash0 API.
+                        dashboard, Prometheus rule, view) to the Dash0 API.
                       enum:
                       - successful
                       - partially-successful
@@ -395,6 +403,34 @@ spec:
                   - synchronizedRulesTotal
                   type: object
                 description: Shows results of synchronizing Prometheus rule resources
+                  in this namespace via the Dash0 API.
+                type: object
+              viewSynchronizationResults:
+                additionalProperties:
+                  properties:
+                    synchronizationError:
+                      type: string
+                    synchronizationStatus:
+                      description: |-
+                        SynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
+                        dashboard, Prometheus rule, view) to the Dash0 API.
+                      enum:
+                        - successful
+                        - partially-successful
+                        - failed
+                      type: string
+                    synchronizedAt:
+                      format: date-time
+                      type: string
+                    validationIssues:
+                      items:
+                        type: string
+                      type: array
+                  required:
+                    - synchronizationStatus
+                    - synchronizedAt
+                  type: object
+                description: Shows results of synchronizing Dash0 view resources
                   in this namespace via the Dash0 API.
                 type: object
             type: object
