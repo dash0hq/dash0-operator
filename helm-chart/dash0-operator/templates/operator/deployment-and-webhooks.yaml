@@ -277,6 +277,7 @@ webhooks:
     service:
       name: {{ template "dash0-operator.chartName" . }}-webhook-service
       namespace: {{ .Release.Namespace }}
+      port: {{ .Values.operator.webhookPort }}
       path: /v1alpha1/inject/dash0
   failurePolicy: Ignore
   rules:
@@ -339,6 +340,7 @@ webhooks:
       service:
         name: {{ template "dash0-operator.chartName" . }}-webhook-service
         namespace: {{ .Release.Namespace }}
+        port: {{ .Values.operator.webhookPort }}
         path: /v1alpha1/validate/operator-configuration
     admissionReviewVersions:
       - v1
@@ -371,6 +373,7 @@ webhooks:
     service:
       name: {{ template "dash0-operator.chartName" . }}-webhook-service
       namespace: {{ .Release.Namespace }}
+      port: {{ .Values.operator.webhookPort }}
       path: /v1alpha1/validate/monitoring
   admissionReviewVersions:
   - v1
