@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 set -euo pipefail
+set -x
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
@@ -11,14 +12,7 @@ core_versions_yaml=core_versions.yaml
 contrib_versions_yaml=contrib_versions.yaml
 builder_config=src/builder/config.yaml
 
-component_types=( \
-  connectors \
-  extensions \
-  exporters \
-  receivers \
-  processors \
-  providers \
-)
+component_types=(connectors extensions exporters receivers processors providers)
 
 function update_components {
   echo "Updating components to new version:"
@@ -85,8 +79,6 @@ current_stable_version="${provider_module#gomod: go\.opentelemetry\.io\/* v}"
 curl -s https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector/refs/heads/main/versions.yaml > "$core_versions_yaml"
 curl -s https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/heads/main/versions.yaml > "$contrib_versions_yaml"
 
-trap "{ rm -f ""$core_versions_yaml""; rm -f ""$contrib_versions_yaml""; }" EXIT
-
 new_stable_version=$(yq '.module-sets.stable.version' "$core_versions_yaml")
 new_stable_version="${new_stable_version#v}"
 new_beta_version=$(yq '.module-sets.beta.version' "$core_versions_yaml")
@@ -103,9 +95,8 @@ if [[ "$current_stable_version" != "$new_stable_version" || "$current_beta_versi
     '.dist.otelcol_version=strenv(new_beta_version)' \
     "$builder_config"
 
-  echo git diff diff:
+  echo git diff:
   git --no-pager diff -- "$builder_config"
 else
   echo "No update necessary, components are up to date."
 fi
-
