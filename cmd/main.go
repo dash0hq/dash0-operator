@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -29,6 +30,7 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
@@ -66,6 +68,7 @@ type environmentVariables struct {
 	filelogOffsetSynchImagePullPolicy    corev1.PullPolicy
 	selfMonitoringAndApiAuthToken        string
 	podIp                                string
+	sendBatchMaxSize                     *uint32
 	debugVerbosityDetailed               bool
 }
 
@@ -87,6 +90,7 @@ const (
 
 	developmentModeEnvVarName        = "DASH0_DEVELOPMENT_MODE"
 	debugVerbosityDetailedEnvVarName = "OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED"
+	sendBatchMaxSizeEnvVarName       = "OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE"
 
 	oTelColResourceSpecConfigFile = "/etc/config/otelcolresources.yaml"
 
@@ -284,7 +288,7 @@ func main() {
 	})
 
 	var err error
-	if err = readEnvironmentVariables(); err != nil {
+	if err = readEnvironmentVariables(&setupLog); err != nil {
 		os.Exit(1)
 	}
 	if err = initStartupTasksK8sClient(&setupLog); err != nil {
@@ -457,7 +461,7 @@ func startOperatorManager(
 	return nil
 }
 
-func readEnvironmentVariables() error {
+func readEnvironmentVariables(logger *logr.Logger) error {
 	operatorNamespace, isSet := os.LookupEnv(operatorNamespaceEnvVarName)
 	if !isSet {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, operatorNamespaceEnvVarName)
@@ -520,6 +524,17 @@ func readEnvironmentVariables() error {
 	debugVerbosityDetailedRaw, isSet := os.LookupEnv(debugVerbosityDetailedEnvVarName)
 	debugVerbosityDetailed := isSet && strings.ToLower(debugVerbosityDetailedRaw) == "true"
 
+	var sendBatchMaxSize *uint32
+	sendBatchMaxSizeRaw, isSet := os.LookupEnv(sendBatchMaxSizeEnvVarName)
+	if isSet {
+		converted, err := strconv.Atoi(sendBatchMaxSizeRaw)
+		if err != nil {
+			logger.Error(err, "Ignoring invalid value for %s: %s", sendBatchMaxSizeEnvVarName, sendBatchMaxSizeRaw)
+		} else {
+			sendBatchMaxSize = ptr.To(uint32(converted))
+		}
+	}
+
 	envVars = environmentVariables{
 		operatorNamespace:                    operatorNamespace,
 		deploymentName:                       deploymentName,
@@ -536,6 +551,7 @@ func readEnvironmentVariables() error {
 		filelogOffsetSynchImagePullPolicy:    filelogOffsetSynchImagePullPolicy,
 		selfMonitoringAndApiAuthToken:        selfMonitoringAndApiAuthToken,
 		podIp:                                podIp,
+		sendBatchMaxSize:                     sendBatchMaxSize,
 		debugVerbosityDetailed:               debugVerbosityDetailed,
 	}
 
@@ -624,6 +640,7 @@ func startDash0Controllers(
 		DeploymentSelfReference: deploymentSelfReference,
 		OTelCollectorNamePrefix: envVars.oTelCollectorNamePrefix,
 		OTelColResourceSpecs:    oTelColResourceSpecs,
+		SendBatchMaxSize:        envVars.sendBatchMaxSize,
 		IsIPv6Cluster:           isIPv6Cluster,
 		IsDocker:                isDocker,
 		DevelopmentMode:         developmentMode,

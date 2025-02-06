@@ -34,6 +34,7 @@ type OTelColResourceManager struct {
 	DeploymentSelfReference          *appsv1.Deployment
 	OTelCollectorNamePrefix          string
 	OTelColResourceSpecs             *OTelColResourceSpecs
+	SendBatchMaxSize                 *uint32
 	IsIPv6Cluster                    bool
 	IsDocker                         bool
 	DevelopmentMode                  bool
@@ -93,6 +94,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		Namespace:                               namespace,
 		NamePrefix:                              m.OTelCollectorNamePrefix,
 		Export:                                  *export,
+		SendBatchMaxSize:                        m.SendBatchMaxSize,
 		SelfMonitoringAndApiAccessConfiguration: selfMonitoringConfiguration,
 		KubernetesInfrastructureMetricsCollectionEnabled: kubernetesInfrastructureMetricsCollectionEnabled,
 		// The hostmetrics receiver requires mapping the root file system as a volume mount, see
@@ -327,6 +329,7 @@ func (m *OTelColResourceManager) DeleteResources(
 		// For deleting the resources, we do not need the actual export settings; we only use assembleDesiredState to
 		// collect the kinds and names of all resources that need to be deleted.
 		Export:                                  dash0v1alpha1.Export{},
+		SendBatchMaxSize:                        m.SendBatchMaxSize,
 		SelfMonitoringAndApiAccessConfiguration: selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{SelfMonitoringEnabled: false},
 		// KubernetesInfrastructureMetricsCollectionEnabled=false would lead to not deleting the collector-deployment-
 		// related resources, we always try to delete all collector resources (daemonset & deployment), no matter

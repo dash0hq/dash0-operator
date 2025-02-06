@@ -22,6 +22,7 @@ const (
 
 type collectorConfigurationTemplateValues struct {
 	Exporters                                        []OtlpExporter
+	SendBatchMaxSize                                 *uint32
 	IgnoreLogsFromNamespaces                         []string
 	KubernetesInfrastructureMetricsCollectionEnabled bool
 	UseHostMetricsReceiver                           bool
@@ -110,7 +111,8 @@ func assembleCollectorConfigMap(
 		namespaceOttlFilter := renderOttlNamespaceFilter(monitoredNamespaces)
 		collectorConfiguration, err := renderCollectorConfiguration(template,
 			&collectorConfigurationTemplateValues{
-				Exporters: exporters,
+				Exporters:        exporters,
+				SendBatchMaxSize: config.SendBatchMaxSize,
 				IgnoreLogsFromNamespaces: []string{
 					// Skipping kube-system, it requires bespoke filtering work
 					"kube-system",

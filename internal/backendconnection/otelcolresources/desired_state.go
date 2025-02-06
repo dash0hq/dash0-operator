@@ -26,6 +26,7 @@ type oTelColConfig struct {
 	Namespace                                        string
 	NamePrefix                                       string
 	Export                                           dash0v1alpha1.Export
+	SendBatchMaxSize                                 *uint32
 	SelfMonitoringAndApiAccessConfiguration          selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration
 	KubernetesInfrastructureMetricsCollectionEnabled bool
 	UseHostMetricsReceiver                           bool

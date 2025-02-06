@@ -167,6 +167,10 @@ spec:
         - name: OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED
           value: {{ .Values.operator.collectors.debugVerbosityDetailed | toString | quote }}
         {{- end }}
+        {{- if gt (int (.Values.operator.collectors.sendBatchMaxSize | default 0)) 0 }}
+        - name: OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE
+          value: {{ .Values.operator.collectors.sendBatchMaxSize | quote }}
+        {{- end }}
         - name: K8S_NODE_NAME
           valueFrom:
             fieldRef:

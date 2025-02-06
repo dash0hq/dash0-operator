@@ -10,6 +10,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/utils/ptr"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util"
@@ -641,6 +642,40 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			)
 		}, testConfigs)
 	})
+
+	DescribeTable("should render batch processor with defaults if SendBatchMaxSize is not requested", func(testConfig testConfig) {
+		configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+			Namespace:        namespace,
+			NamePrefix:       namePrefix,
+			Export:           Dash0ExportWithEndpointAndToken(),
+			SendBatchMaxSize: nil,
+		}, monitoredNamespaces, false)
+
+		Expect(err).ToNot(HaveOccurred())
+		collectorConfig := parseConfigMapContent(configMap)
+		batchProcessorRaw := readFromMap(collectorConfig, []string{"processors", "batch"})
+		Expect(batchProcessorRaw).ToNot(BeNil())
+		batchProcessor := batchProcessorRaw.(map[string]interface{})
+		Expect(batchProcessor).To(HaveLen(0))
+	}, testConfigs)
+
+	DescribeTable("should not set send_batch_max_size on batch processor if requested", func(testConfig testConfig) {
+		configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+			Namespace:        namespace,
+			NamePrefix:       namePrefix,
+			Export:           Dash0ExportWithEndpointAndToken(),
+			SendBatchMaxSize: ptr.To(uint32(16384)),
+		}, monitoredNamespaces, false)
+
+		Expect(err).ToNot(HaveOccurred())
+		collectorConfig := parseConfigMapContent(configMap)
+		batchProcessorRaw := readFromMap(collectorConfig, []string{"processors", "batch"})
+		Expect(batchProcessorRaw).ToNot(BeNil())
+		batchProcessor := batchProcessorRaw.(map[string]interface{})
+		Expect(batchProcessor).To(HaveLen(1))
+		sendBatchMaxSize := readFromMap(batchProcessor, []string{"send_batch_max_size"})
+		Expect(sendBatchMaxSize).To(Equal(16384))
+	}, testConfigs)
 
 	DescribeTable("should not render resource processor if the cluster name has not been set", func(testConfig testConfig) {
 		configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{

@@ -34,7 +34,12 @@ extensions:
     timeout: 1s
 
 processors:
+{{- if .SendBatchMaxSize }}
+  batch:
+    send_batch_max_size: {{ .SendBatchMaxSize }}
+{{- else }}
   batch: {}
+{{- end }}
 
   resourcedetection:
     detectors:
