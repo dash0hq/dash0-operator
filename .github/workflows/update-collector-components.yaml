@@ -15,25 +15,41 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: check if open PR already exists
+        id: open_pr_exists
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr list --json title | grep "chore(deps): bump the production dependencies of the Dash0 collector image" || true
+          if gh pr list --json title | grep "chore(deps): bump the production dependencies of the Dash0 collector image"; then
+            echo pr_exists=true >> $GITHUB_OUTPUT
+            echo "There is already an open pull request to update the Dash0 collector components, remaining steps will be skipped."
+          else
+            echo pr_exists=false >> $GITHUB_OUTPUT
+            echo "No open pull request to update the Dash0 collector components exists, continuing with the workflow."
+          fi
+
       - name: update component versions and create PR
+        if: steps.open_pr_exists.outputs.pr_exists != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          branch_name="update-dash0-collector"
+          branch_name="update-dash0-collector-components"
           git checkout -b $branch_name
 
           images/collector/update.sh
 
           # git diff-files --quiet exits with 1 if there were differences, exit code 0 means no differences.
-          if git diff-files --quiet "$builder_config"; then
-            echo "There are no changes, everything up to date.
+          if git diff-files --quiet src/builder/config.yaml; then
+            echo "There are no changes, everything up to date."
           else
-            echo "There are changes, creating PR"
+            echo "There are changes, creating a pull request."
             git add images/collector/src/builder/config.yaml
-            git commit -m"chore(deps): bump the production dependencies of the Dash0 collector image"
+            git commit --message "chore(deps): bump the production dependencies of the Dash0 collector image"
 
             git push -u origin "$branch_name"
             gh pr create \

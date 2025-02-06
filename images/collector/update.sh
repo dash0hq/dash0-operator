@@ -103,9 +103,8 @@ if [[ "$current_stable_version" != "$new_stable_version" || "$current_beta_versi
     '.dist.otelcol_version=strenv(new_beta_version)' \
     "$builder_config"
 
-  echo git diff diff:
+  echo git diff:
   git --no-pager diff -- "$builder_config"
 else
   echo "No update necessary, components are up to date."
 fi
-
