@@ -303,11 +303,12 @@ func (r *MonitoringReconciler) runCleanupActions(
 		return err
 	}
 
-	controllerutil.RemoveFinalizer(monitoringResource, dash0v1alpha1.MonitoringFinalizerId)
-	if err := r.Update(ctx, monitoringResource); err != nil {
-		logger.Error(err, "Failed to remove the finalizer from the Dash0 monitoring resource, requeuing reconcile "+
-			"request.")
-		return err
+	if finalizersUpdated := controllerutil.RemoveFinalizer(monitoringResource, dash0v1alpha1.MonitoringFinalizerId); finalizersUpdated {
+		if err := r.Update(ctx, monitoringResource); err != nil {
+			logger.Error(err, "Failed to remove the finalizer from the Dash0 monitoring resource, requeuing reconcile "+
+				"request.")
+			return err
+		}
 	}
 	return nil
 }
