@@ -37,6 +37,11 @@ type ContainerExpectations struct {
 	Dash0PodUidEnvVarIdx                        int
 	Dash0ContainerNameEnvVarIdx                 int
 	Dash0ContainerNameEnvVarExpectedValue       string
+	Dash0ServiceNameEnvVarIdx                   int
+	Dash0ServiceNamespaceEnvVarIdx              int
+	Dash0ServiceVersionEnvVarIdx                int
+	Dash0ServiceInstanceIdEnvVarIdx             int
+	Dash0ResourceAttributesEnvVarIdx            int
 }
 
 type PodSpecExpectations struct {
@@ -334,6 +339,38 @@ func verifyPodSpec(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
 			} else if j == containerExpectations.Dash0ContainerNameEnvVarIdx {
 				Expect(envVar.Name).To(Equal("DASH0_CONTAINER_NAME"))
 				Expect(envVar.Value).To(Equal(containerExpectations.Dash0ContainerNameEnvVarExpectedValue))
+			} else if j == containerExpectations.Dash0ServiceNameEnvVarIdx {
+				Expect(envVar.Name).To(Equal("DASH0_SERVICE_NAME"))
+				valueFrom := envVar.ValueFrom
+				Expect(valueFrom).ToNot(BeNil())
+				Expect(valueFrom.FieldRef).ToNot(BeNil())
+				Expect(valueFrom.FieldRef.FieldPath).To(Equal("metadata.labels['app.kubernetes.io/name']"))
+				Expect(envVar.Value).To(BeEmpty())
+			} else if j == containerExpectations.Dash0ServiceNamespaceEnvVarIdx {
+				Expect(envVar.Name).To(Equal("DASH0_SERVICE_NAMESPACE"))
+				valueFrom := envVar.ValueFrom
+				Expect(valueFrom).ToNot(BeNil())
+				Expect(valueFrom.FieldRef).ToNot(BeNil())
+				Expect(valueFrom.FieldRef.FieldPath).To(Equal("metadata.labels['app.kubernetes.io/part-of']"))
+				Expect(envVar.Value).To(BeEmpty())
+			} else if j == containerExpectations.Dash0ServiceVersionEnvVarIdx {
+				Expect(envVar.Name).To(Equal("DASH0_SERVICE_VERSION"))
+				valueFrom := envVar.ValueFrom
+				Expect(valueFrom).ToNot(BeNil())
+				Expect(valueFrom.FieldRef).ToNot(BeNil())
+				Expect(valueFrom.FieldRef.FieldPath).To(Equal("metadata.labels['app.kubernetes.io/version']"))
+				Expect(envVar.Value).To(BeEmpty())
+			} else if j == containerExpectations.Dash0ServiceInstanceIdEnvVarIdx {
+				Expect(envVar.Name).To(Equal("DASH0_SERVICE_INSTANCE_ID"))
+				valueFrom := envVar.ValueFrom
+				Expect(valueFrom).ToNot(BeNil())
+				Expect(valueFrom.FieldRef).ToNot(BeNil())
+				Expect(valueFrom.FieldRef.FieldPath).To(Equal("metadata.labels['app.kubernetes.io/instance']"))
+				Expect(envVar.Value).To(BeEmpty())
+			} else if j == containerExpectations.Dash0ResourceAttributesEnvVarIdx {
+				Expect(envVar.Name).To(Equal("DASH0_RESOURCE_ATTRIBUTES"))
+				Expect(envVar.Value).NotTo(BeEmpty())
+				Expect(envVar.ValueFrom).To(BeNil())
 			} else {
 				Expect(envVar.Name).To(Equal(fmt.Sprintf("TEST%d", j)))
 			}

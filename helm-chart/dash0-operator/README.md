@@ -559,6 +559,41 @@ The label can also be applied by using `kubectl`:
 kubectl label --namespace $YOUR_NAMESPACE --overwrite deployment $YOUR_DEPLOYMENT_NAME dash0.com/enable=false
 ```
 
+### Specifying Additional Resource Attributes for Workloads via Labels and Annotations
+
+**Important:** All the labels and annotations listed in this section must be specified at the level of the *workload*,
+i.e., the deployment, daemonset, statefulset, cronjob, or replicaset, jobs or single pods when those are scheduled
+individually. The labels and annotations specified below will be ignored when they are set in the metadata of the
+pod template
+
+The following [standard Kubernetes labels](https://kubernetes.io/docs/reference/labels-annotations-taints/#labels-annotations-and-taints-used-on-api-objects) 
+are mapped to resource attributes as follows:
+
+* `app.kubernetes.io/name` => `service.name`
+* `app.kubernetes.io/version` => `service.version`
+* `app.kubernetes.io/part-of` => `service.namespace`
+* `app.kubernetes.io/instance` => `service.instance.id`
+
+Note: The `OTEL_SERVICE_NAME` environment variable and the matching `service.*` key specified in the
+`OTEL_RESOURCE_ATTRIBUTES` environment variable will have precedence over the `app.kubernetes.io/name` label.
+
+Additionally, any annotation in the form of `resource.opentelemetry.io/<key>: <value>` will be mapped to the
+`<key>=<value>` resource attribute. For example, the following will result in the `foo=bar` resource attribute:
+
+```yaml
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    resource.opentelemetry.io/foo: bar
+```
+
+Note: the values set to a key `<key>` via the `OTEL_RESOURCE_ATTRIBUTES` environment variable will override the value
+set via the `resource.opentelemetry.io/<key>: <value>` annotations.
+Note: the resource attributes set via the `resource.opentelemetry.io/<key>: <value>` annotations will override the
+resource attributes value set via `app.kubernetes.io/*` labels: for example, `resource.opentelemetry.io/service.name`
+has precendence over `app.kubernetes.io/app`.
+
 ### Exporting Data to Other Observability Backends
 
 Instead of `spec.export.dash0` in the Dash0 operator configuration resource, you can also provide `spec.export.http` or

@@ -1,3 +1,4 @@
+#include <stdbool.h>
 #include <stdint.h>
 #include <unistd.h>
 
@@ -20,6 +21,12 @@
 #define DASH0_POD_UID_ENV_VAR_NAME "DASH0_POD_UID"
 #define DASH0_POD_NAME_ENV_VAR_NAME "DASH0_POD_NAME"
 #define DASH0_POD_CONTAINER_NAME_VAR_NAME "DASH0_CONTAINER_NAME"
+
+#define DASH0_SERVICE_NAME_VAR_NAME "DASH0_SERVICE_NAME"
+#define DASH0_SERVICE_VERSION_VAR_NAME "DASH0_SERVICE_VERSION"
+#define DASH0_SERVICE_NAMESPACE_VAR_NAME "DASH0_SERVICE_NAMESPACE"
+#define DASH0_SERVICE_INSTANCE_ID_VAR_NAME "DASH0_SERVICE_INSTANCE_ID"
+#define DASH0_RESOURCE_ATTRIBUTES_VAR_NAME "DASH0_RESOURCE_ATTRIBUTES"
 
 extern char **__environ;
 
@@ -103,8 +110,13 @@ char *__appendResourceAttributes(const char *buffer, const char *origValue) {
   char *podUid = __getenv(DASH0_POD_UID_ENV_VAR_NAME);
   char *podName = __getenv(DASH0_POD_NAME_ENV_VAR_NAME);
   char *containerName = __getenv(DASH0_POD_CONTAINER_NAME_VAR_NAME);
+  char *serviceName = __getenv(DASH0_SERVICE_NAME_VAR_NAME);
+  char *serviceVersion = __getenv(DASH0_SERVICE_VERSION_VAR_NAME);
+  char *serviceNamespace = __getenv(DASH0_SERVICE_NAMESPACE_VAR_NAME);
+  char *serviceInstanceId = __getenv(DASH0_SERVICE_INSTANCE_ID_VAR_NAME);
+  char *otherResourceAttributes = __getenv(DASH0_RESOURCE_ATTRIBUTES_VAR_NAME);
 
-  int attributeCount = 0;
+  bool isFirst = true;
 
   /*
    * We do not perform octect escaping in the resource attributes as
@@ -121,41 +133,91 @@ char *__appendResourceAttributes(const char *buffer, const char *origValue) {
   if (namespaceName != NULL && __strlen(namespaceName) > 0) {
     __strcat(buffer, "k8s.namespace.name=");
     __strcat(buffer, namespaceName);
-    attributeCount += 1;
+    isFirst = false;
   }
 
   if (podName != NULL && __strlen(podName) > 0) {
-    if (attributeCount > 0) {
+    if (!isFirst) {
       __strcat(buffer, ",");
     }
 
     __strcat(buffer, "k8s.pod.name=");
     __strcat(buffer, podName);
-    attributeCount += 1;
+    isFirst = false;
   }
 
   if (podUid != NULL && __strlen(podUid) > 0) {
-    if (attributeCount > 0) {
+    if (!isFirst) {
       __strcat(buffer, ",");
     }
 
     __strcat(buffer, "k8s.pod.uid=");
     __strcat(buffer, podUid);
-    attributeCount += 1;
+    isFirst = false;
   }
 
   if (containerName != NULL && __strlen(containerName) > 0) {
-    if (attributeCount > 0) {
+    if (!isFirst) {
       __strcat(buffer, ",");
     }
 
     __strcat(buffer, "k8s.container.name=");
     __strcat(buffer, containerName);
-    attributeCount += 1;
+    isFirst = false;
+  }
+
+  if (serviceName != NULL && __strlen(serviceName) > 0) {
+    if (!isFirst) {
+      __strcat(buffer, ",");
+    }
+
+    __strcat(buffer, "service.name=");
+    __strcat(buffer, serviceName);
+    isFirst = false;
+  }
+
+  if (serviceVersion != NULL && __strlen(serviceVersion) > 0) {
+    if (!isFirst) {
+      __strcat(buffer, ",");
+    }
+
+    __strcat(buffer, "service.version=");
+    __strcat(buffer, serviceVersion);
+    isFirst = false;
+  }
+
+  if (serviceNamespace != NULL && __strlen(serviceNamespace) > 0) {
+    if (!isFirst) {
+      __strcat(buffer, ",");
+    }
+
+    __strcat(buffer, "service.namespace=");
+    __strcat(buffer, serviceNamespace);
+    isFirst = false;
+  }
+
+  if (serviceInstanceId != NULL && __strlen(serviceInstanceId) > 0) {
+    if (!isFirst) {
+      __strcat(buffer, ",");
+    }
+
+    __strcat(buffer, "service.instance.id=");
+    __strcat(buffer, serviceInstanceId);
+    isFirst = false;
+  }
+
+  if (otherResourceAttributes != NULL &&
+      __strlen(otherResourceAttributes) > 0) {
+    if (!isFirst) {
+      __strcat(buffer, ",");
+    }
+
+    __strcat(buffer, otherResourceAttributes);
+    isFirst = false;
   }
 
   if (origValue != NULL && __strlen(origValue) > 0) {
-    if (attributeCount > 0) {
+    if (!isFirst) {
       __strcat(buffer, ",");
     }
 

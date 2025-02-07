@@ -558,6 +558,15 @@ func UpdateWorkload(ctx context.Context, k8sClient client.Client, workload clien
 
 func DeploymentWithMoreBellsAndWhistles(namespace string, name string) *appsv1.Deployment {
 	workload := BasicDeployment(namespace, name)
+	workload.ObjectMeta.Annotations = map[string]string{
+		"resource.opentelemetry.io/foo": "bar",
+	}
+	workload.ObjectMeta.Labels = map[string]string{
+		"app.kubernetes.io/name":     "my-service",
+		"app.kubernetes.io/part-of":  "my-service-namespace",
+		"app.kubernetes.io/version":  "v1.0.0",
+		"app.kubernetes.io/instance": "my-service-12345",
+	}
 	podSpec := &workload.Spec.Template.Spec
 	podSpec.Volumes = []corev1.Volume{
 		{
