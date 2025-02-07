@@ -7,6 +7,7 @@ import (
 	"bytes"
 	_ "embed"
 	"fmt"
+	"strings"
 	"text/template"
 
 	corev1 "k8s.io/api/core/v1"
@@ -247,7 +248,9 @@ func renderCollectorConfiguration(
 }
 
 func setGrpcTls(endpoint string, exporter *OtlpExporter) {
-	if endpoint == "http://otlp-sink.otlp-sink.svc.cluster.local:4317" {
+	endpointNormalized := strings.ToLower(endpoint)
+	hasNonTlsPrefix := strings.HasPrefix(endpointNormalized, "http://")
+	if hasNonTlsPrefix {
 		exporter.Insecure = true
 	}
 }
