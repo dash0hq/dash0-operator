@@ -82,6 +82,9 @@ processors:
       - k8s.replicaset.uid
       - k8s.statefulset.name
       - k8s.statefulset.uid
+      # The following two work only if k8s.pod.uid and k8s.container.name are set
+      - container.image.name
+      - container.image.tag
       labels:
       - key: dash0.com/instrumented
         tag_name: dash0.monitoring.instrumented
