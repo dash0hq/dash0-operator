@@ -37,6 +37,11 @@ const (
 	envVarDash0PodName                 = "DASH0_POD_NAME"
 	envVarDash0PodUid                  = "DASH0_POD_UID"
 	envVarDash0ContainerName           = "DASH0_CONTAINER_NAME"
+	envVarDash0ServiceName             = "DASH0_SERVICE_NAME"
+	envVarDash0ServiceNamespace        = "DASH0_SERVICE_NAMESPACE"
+	envVarDash0ServiceVersion          = "DASH0_SERVICE_VERSION"
+	envVarDash0ServiceInstanceId       = "DASH0_SERVICE_INSTANCE_ID"
+	envVarDash0ResourceAttributes      = "DASH0_RESOURCE_ATTRIBUTES"
 )
 
 var (
@@ -182,7 +187,7 @@ func (m *ResourceModifier) ModifyPod(pod *corev1.Pod) ModificationResult {
 	}) {
 		return NewNotModifiedOwnedByHigherOrderWorkloadResult()
 	}
-	if hasBeenModified := m.modifyPodSpec(&pod.Spec); !hasBeenModified {
+	if hasBeenModified := m.modifyPodSpec(&pod.Spec, &pod.ObjectMeta); !hasBeenModified {
 		return NewNotModifiedNoChangesResult()
 	}
 	util.AddInstrumentationLabels(&pod.ObjectMeta, true, m.instrumentationMetadata)
@@ -200,22 +205,22 @@ func (m *ResourceModifier) ModifyStatefulSet(statefulSet *appsv1.StatefulSet) Mo
 	return m.modifyResource(&statefulSet.Spec.Template, &statefulSet.ObjectMeta)
 }
 
-func (m *ResourceModifier) modifyResource(podTemplateSpec *corev1.PodTemplateSpec, meta *metav1.ObjectMeta) ModificationResult {
-	if hasBeenModified := m.modifyPodSpec(&podTemplateSpec.Spec); !hasBeenModified {
+func (m *ResourceModifier) modifyResource(podTemplateSpec *corev1.PodTemplateSpec, podMeta *metav1.ObjectMeta) ModificationResult {
+	if hasBeenModified := m.modifyPodSpec(&podTemplateSpec.Spec, podMeta); !hasBeenModified {
 		return NewNotModifiedNoChangesResult()
 	}
-	util.AddInstrumentationLabels(meta, true, m.instrumentationMetadata)
+	util.AddInstrumentationLabels(podMeta, true, m.instrumentationMetadata)
 	util.AddInstrumentationLabels(&podTemplateSpec.ObjectMeta, true, m.instrumentationMetadata)
 	return NewHasBeenModifiedResult()
 }
 
-func (m *ResourceModifier) modifyPodSpec(podSpec *corev1.PodSpec) bool {
+func (m *ResourceModifier) modifyPodSpec(podSpec *corev1.PodSpec, podMeta *metav1.ObjectMeta) bool {
 	originalSpec := podSpec.DeepCopy()
 	m.addInstrumentationVolume(podSpec)
 	m.addInitContainer(podSpec)
 	for idx := range podSpec.Containers {
 		container := &podSpec.Containers[idx]
-		m.instrumentContainer(container)
+		m.instrumentContainer(podMeta, container)
 	}
 
 	return !reflect.DeepEqual(originalSpec, podSpec)
@@ -309,10 +314,10 @@ func (m *ResourceModifier) createInitContainer(podSpec *corev1.PodSpec) *corev1.
 	return initContainer
 }
 
-func (m *ResourceModifier) instrumentContainer(container *corev1.Container) {
+func (m *ResourceModifier) instrumentContainer(podMeta *metav1.ObjectMeta, container *corev1.Container) {
 	perContainerLogger := m.logger.WithValues("container", container.Name)
 	m.addMount(container)
-	m.addEnvironmentVariables(container, perContainerLogger)
+	m.addEnvironmentVariables(podMeta, container, perContainerLogger)
 }
 
 func (m *ResourceModifier) addMount(container *corev1.Container) {
@@ -334,7 +339,7 @@ func (m *ResourceModifier) addMount(container *corev1.Container) {
 	}
 }
 
-func (m *ResourceModifier) addEnvironmentVariables(container *corev1.Container, perContainerLogger logr.Logger) {
+func (m *ResourceModifier) addEnvironmentVariables(podMeta *metav1.ObjectMeta, container *corev1.Container, perContainerLogger logr.Logger) {
 	m.handleLdPreloadEnvVar(container, perContainerLogger)
 
 	m.addOrReplaceEnvironmentVariable(
@@ -427,6 +432,81 @@ func (m *ResourceModifier) addEnvironmentVariables(container *corev1.Container, 
 			Value: container.Name,
 		},
 	)
+
+	// Mount app.kubernetes.io labels as env vars
+	// `app.kubernetes.io/name` becomes `service.name`
+	// `app.kubernetes.io/version` becomes `service.version`
+	// `app.kubernetes.io/part-of` becomes `service.namespace`
+	// `app.kubernetes.io/instance` becomes `service.instance.id`
+	if _, ok := podMeta.Labels["app.kubernetes.io/name"]; ok {
+		m.addOrReplaceEnvironmentVariable(
+			container,
+			corev1.EnvVar{
+				Name: envVarDash0ServiceName,
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: &corev1.ObjectFieldSelector{
+						FieldPath: "metadata.labels['app.kubernetes.io/name']",
+					},
+				},
+			},
+		)
+	}
+
+	if _, ok := podMeta.Labels["app.kubernetes.io/part-of"]; ok {
+		m.addOrReplaceEnvironmentVariable(
+			container,
+			corev1.EnvVar{
+				Name: envVarDash0ServiceNamespace,
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: &corev1.ObjectFieldSelector{
+						FieldPath: "metadata.labels['app.kubernetes.io/part-of']",
+					},
+				},
+			})
+	}
+
+	if _, ok := podMeta.Labels["app.kubernetes.io/version"]; ok {
+		m.addOrReplaceEnvironmentVariable(
+			container,
+			corev1.EnvVar{
+				Name: envVarDash0ServiceVersion,
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: &corev1.ObjectFieldSelector{
+						FieldPath: "metadata.labels['app.kubernetes.io/version']",
+					},
+				},
+			})
+	}
+
+	if _, ok := podMeta.Labels["app.kubernetes.io/instance"]; ok {
+		m.addOrReplaceEnvironmentVariable(
+			container,
+			corev1.EnvVar{
+				Name: envVarDash0ServiceInstanceId,
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: &corev1.ObjectFieldSelector{
+						FieldPath: "metadata.labels['app.kubernetes.io/instance']",
+					},
+				},
+			})
+	}
+
+	// Annotations resource.opentelemetry.io/your-key: "your-value"
+	resourceAttributes := []string{}
+	for key, value := range podMeta.Annotations {
+		// Kubernetes does not allow duplicate annotation keys so we do not need to check for clashes and ordering
+		if strings.HasPrefix(key, "resource.opentelemetry.io/") {
+			resourceAttributes = append(resourceAttributes, fmt.Sprintf("%s=%s", strings.TrimPrefix(key, "resource.opentelemetry.io/"), value))
+		}
+	}
+	if len(resourceAttributes) > 0 {
+		m.addOrReplaceEnvironmentVariable(
+			container,
+			corev1.EnvVar{
+				Name:  envVarDash0ResourceAttributes,
+				Value: strings.Join(resourceAttributes, ","),
+			})
+	}
 }
 
 func (m *ResourceModifier) handleLdPreloadEnvVar(
@@ -586,6 +666,11 @@ func (m *ResourceModifier) removeEnvironmentVariables(container *corev1.Containe
 	m.removeEnvironmentVariable(container, envVarDash0PodName)
 	m.removeEnvironmentVariable(container, envVarDash0PodUid)
 	m.removeEnvironmentVariable(container, envVarDash0ContainerName)
+	m.removeEnvironmentVariable(container, envVarDash0ServiceNamespace)
+	m.removeEnvironmentVariable(container, envVarDash0ServiceName)
+	m.removeEnvironmentVariable(container, envVarDash0ServiceVersion)
+	m.removeEnvironmentVariable(container, envVarDash0ServiceInstanceId)
+	m.removeEnvironmentVariable(container, envVarDash0ResourceAttributes)
 }
 
 func (m *ResourceModifier) removeLdPreload(container *corev1.Container) {
