@@ -166,6 +166,45 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/dash0")
 		}, testConfigs)
 
+		DescribeTable("should render the Dash0 exporter with the insecure flag if there is an http:// prefix, for forwarding telemetry to another local collector", func(testConfig testConfig) {
+			configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+				Namespace:  namespace,
+				NamePrefix: namePrefix,
+				Export: dash0v1alpha1.Export{
+					Dash0: &dash0v1alpha1.Dash0Configuration{
+						Endpoint: "HTTP://endpoint.dash0.com:1234",
+						Authorization: dash0v1alpha1.Authorization{
+							Token: &AuthorizationTokenTest,
+						},
+					},
+				},
+			}, monitoredNamespaces, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]interface{})
+			Expect(exporters).To(HaveLen(1))
+
+			exporter := exporters["otlp/dash0"]
+			Expect(exporter).ToNot(BeNil())
+			dash0OtlpExporter := exporter.(map[string]interface{})
+			Expect(dash0OtlpExporter).ToNot(BeNil())
+			Expect(dash0OtlpExporter["endpoint"]).To(Equal("HTTP://endpoint.dash0.com:1234"))
+			insecureFlag := readFromMap(dash0OtlpExporter, []string{"tls", "insecure"})
+			Expect(insecureFlag).To(BeTrue())
+			headersRaw := dash0OtlpExporter["headers"]
+			Expect(headersRaw).ToNot(BeNil())
+			headers := headersRaw.(map[string]interface{})
+			Expect(headers).To(HaveLen(1))
+			Expect(headers[util.AuthorizationHeaderName]).To(Equal(bearerWithAuthToken))
+			Expect(headers[util.Dash0DatasetHeaderName]).To(BeNil())
+			Expect(dash0OtlpExporter["encoding"]).To(BeNil())
+
+			verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/dash0")
+		}, testConfigs)
+
 		DescribeTable("should render a debug exporter in development mode", func(testConfig testConfig) {
 			configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
 				Namespace:  namespace,
@@ -300,6 +339,38 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(headers).To(HaveLen(2))
 			Expect(headers["Key1"]).To(Equal("Value1"))
 			Expect(headers["Key2"]).To(Equal("Value2"))
+			Expect(otlpGrpcExporter["encoding"]).To(BeNil())
+
+			verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/grpc")
+		}, testConfigs)
+
+		DescribeTable("should render a gRPC exporter with the insecure flag if there is an http:// prefix, for forwarding telemetry to another local collector", func(testConfig testConfig) {
+			configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+				Namespace:  namespace,
+				NamePrefix: namePrefix,
+				Export: dash0v1alpha1.Export{
+					Grpc: &dash0v1alpha1.GrpcConfiguration{
+						Endpoint: "http://example.com:1234",
+					},
+				},
+			}, monitoredNamespaces, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]interface{})
+			Expect(exporters).To(HaveLen(1))
+
+			exporter2 := exporters["otlp/grpc"]
+			Expect(exporter2).ToNot(BeNil())
+			otlpGrpcExporter := exporter2.(map[string]interface{})
+			Expect(otlpGrpcExporter).ToNot(BeNil())
+			Expect(otlpGrpcExporter["endpoint"]).To(Equal("http://example.com:1234"))
+			insecureFlag := readFromMap(otlpGrpcExporter, []string{"tls", "insecure"})
+			Expect(insecureFlag).To(BeTrue())
+			headersRaw := otlpGrpcExporter["headers"]
+			Expect(headersRaw).To(BeNil())
 			Expect(otlpGrpcExporter["encoding"]).To(BeNil())
 
 			verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/grpc")
