@@ -210,7 +210,7 @@ applying it.
 
 Note: All configuration options available in the operator configuration resource can also be configured when letting the
 Helm chart auto-create this resource, as explained in the section [Installation](#installation). You can consult the
-chart's [values.yaml](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/values.yaml) file 
+chart's [values.yaml](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/values.yaml) file
 for a complete list of available configuration settings.
 
 ### Enable Dash0 Monitoring For a Namespace
@@ -566,7 +566,7 @@ i.e., the deployment, daemonset, statefulset, cronjob, or replicaset, jobs or si
 individually. The labels and annotations specified below will be ignored when they are set in the metadata of the
 pod template
 
-The following [standard Kubernetes labels](https://kubernetes.io/docs/reference/labels-annotations-taints/#labels-annotations-and-taints-used-on-api-objects) 
+The following [standard Kubernetes labels](https://kubernetes.io/docs/reference/labels-annotations-taints/#labels-annotations-and-taints-used-on-api-objects)
 are mapped to resource attributes as follows:
 
 * `app.kubernetes.io/name` => `service.name`
@@ -893,7 +893,7 @@ Furthermore, the custom resource definition for Prometheus rules needs to be ins
 ways to achieve this:
 * Install the Prometheus rules custom resource definition with the following command:
 ```console
-kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.79.2/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml
+kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.80.0/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml
 ```
 * Alternatively, install the full kube-prometheus stack Helm chart: Go to
   <https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack> and follow the
