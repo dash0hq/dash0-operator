@@ -27,7 +27,6 @@ var (
 		Namespace: TestNamespaceName,
 		Name:      MonitoringResourceName,
 	}
-
 	MonitoringResourceDefaultObjectMeta = metav1.ObjectMeta{
 		Name:      MonitoringResourceName,
 		Namespace: TestNamespaceName,

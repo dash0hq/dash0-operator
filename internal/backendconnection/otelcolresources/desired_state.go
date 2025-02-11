@@ -6,6 +6,7 @@ package otelcolresources
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -197,6 +198,11 @@ func assembleDesiredState(
 	resourceSpecs *OTelColResourceSpecs,
 	forDeletion bool,
 ) ([]clientObject, error) {
+	// Make sure the resulting objects (in particular the config maps) are do not depend on the (potentially non-stable)
+	// sort order of the input slices.
+	slices.Sort(monitoredNamespaces)
+	slices.Sort(namespacesWithPrometheusScraping)
+
 	var desiredState []clientObject
 	desiredState = append(desiredState, addCommonMetadata(assembleServiceAccountForDaemonSet(config)))
 	daemonSetCollectorConfigMap, err := assembleDaemonSetCollectorConfigMap(

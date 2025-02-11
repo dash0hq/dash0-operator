@@ -9,6 +9,8 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
@@ -320,6 +322,81 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(selfMonitoringConfiguration.Export.Dash0).To(BeNil())
 		Expect(selfMonitoringConfiguration.Export.Grpc).To(BeNil())
 		Expect(selfMonitoringConfiguration.Export.Http).To(BeNil())
+	})
+
+	It("rendered objects must be stable", func() {
+		mr1 := dash0v1alpha1.Dash0Monitoring{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      MonitoringResourceName,
+				Namespace: "namespace-1",
+			},
+			Spec: dash0v1alpha1.Dash0MonitoringSpec{
+				PrometheusScrapingEnabled: ptr.To(true),
+			},
+		}
+		mr2 := dash0v1alpha1.Dash0Monitoring{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      MonitoringResourceName,
+				Namespace: "namespace-2",
+			},
+			Spec: dash0v1alpha1.Dash0MonitoringSpec{
+				PrometheusScrapingEnabled: ptr.To(true),
+			},
+		}
+		mr3 := dash0v1alpha1.Dash0Monitoring{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      MonitoringResourceName,
+				Namespace: "namespace-3",
+			},
+			Spec: dash0v1alpha1.Dash0MonitoringSpec{
+				PrometheusScrapingEnabled: ptr.To(false),
+			},
+		}
+		mr4 := dash0v1alpha1.Dash0Monitoring{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      MonitoringResourceName,
+				Namespace: "namespace-4",
+			},
+			Spec: dash0v1alpha1.Dash0MonitoringSpec{
+				PrometheusScrapingEnabled: ptr.To(false),
+			},
+		}
+
+		desiredState1, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			Namespace:  namespace,
+			NamePrefix: namePrefix,
+			Export:     Dash0ExportWithEndpointAndToken(),
+			Images:     TestImages,
+		}, []dash0v1alpha1.Dash0Monitoring{mr1, mr2, mr3, mr4}, &DefaultOTelColResourceSpecs)
+		Expect(err).NotTo(HaveOccurred())
+		desiredState2, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			Namespace:  namespace,
+			NamePrefix: namePrefix,
+			Export:     Dash0ExportWithEndpointAndToken(),
+			Images:     TestImages,
+		}, []dash0v1alpha1.Dash0Monitoring{mr3, mr4, mr1, mr2}, &DefaultOTelColResourceSpecs)
+		Expect(err).NotTo(HaveOccurred())
+		desiredState3, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			Namespace:  namespace,
+			NamePrefix: namePrefix,
+			Export:     Dash0ExportWithEndpointAndToken(),
+			Images:     TestImages,
+		}, []dash0v1alpha1.Dash0Monitoring{mr4, mr3, mr2, mr1}, &DefaultOTelColResourceSpecs)
+		Expect(err).NotTo(HaveOccurred())
+		desiredState4, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			Namespace:  namespace,
+			NamePrefix: namePrefix,
+			Export:     Dash0ExportWithEndpointAndToken(),
+			Images:     TestImages,
+		}, []dash0v1alpha1.Dash0Monitoring{mr3, mr1, mr4, mr2}, &DefaultOTelColResourceSpecs)
+		Expect(err).NotTo(HaveOccurred())
+
+		Expect(reflect.DeepEqual(desiredState1, desiredState2)).To(BeTrue())
+		Expect(reflect.DeepEqual(desiredState1, desiredState3)).To(BeTrue())
+		Expect(reflect.DeepEqual(desiredState1, desiredState4)).To(BeTrue())
+		Expect(reflect.DeepEqual(desiredState2, desiredState3)).To(BeTrue())
+		Expect(reflect.DeepEqual(desiredState2, desiredState4)).To(BeTrue())
+		Expect(reflect.DeepEqual(desiredState3, desiredState4)).To(BeTrue())
 	})
 })
 
