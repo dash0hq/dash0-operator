@@ -105,6 +105,9 @@ run_helm() {
   if [[ -n "${OPERATOR_HELM_CHART_VERSION:-}" ]]; then
     helm_install_command+=" --version $OPERATOR_HELM_CHART_VERSION"
   fi
+  if [[ -e test-resources/bin/extra-values.yaml ]]; then
+    helm_install_command+=" --values test-resources/bin/extra-values.yaml"
+  fi
   helm_install_command+=" --set operator.developmentMode=true"
   if [[ "${OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED:-}" = "true" ]]; then
     helm_install_command+=" --set operator.collectors.debugVerbosityDetailed=true"

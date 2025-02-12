@@ -150,68 +150,6 @@ operator:
       memory: 64Mi
       ephemeral-storage: 500Mi
 
-  collectorDaemonSetCollectorContainerResources:
-    limits:
-      # cpu: (no cpu limit by default)
-      memory: 500Mi
-      # storage: (no storage limit by default)
-      # ephemeral-storage: (no ephemeral-storage limit by default)
-    gomemlimit: 400MiB
-    requests:
-      # cpu: (no cpu request by default)
-      memory: 500Mi
-      # storage: (no storage request by default)
-      # ephemeral-storage: (no ephemeral-storage request by default)
-  collectorDaemonSetConfigurationReloaderContainerResources:
-    limits:
-      # cpu: (no cpu limit by default)
-      memory: 12Mi
-      # storage: (no storage limit by default)
-      # ephemeral-storage: (no ephemeral-storage limit by default)
-    gomemlimit: 8MiB
-    requests:
-      # cpu: (no cpu request by default)
-      memory: 12Mi
-      # storage: (no storage request by default)
-      # ephemeral-storage: (no ephemeral-storage request by default)
-  collectorDaemonSetFileLogOffsetSynchContainerResources:
-    limits:
-      # cpu: (no cpu limit by default)
-      memory: 32Mi
-      # storage: (no storage limit by default)
-      # ephemeral-storage: (no ephemeral-storage limit by default)
-    gomemlimit: 24MiB
-    requests:
-      # cpu: (no cpu request by default)
-      memory: 32Mi
-      # storage: (no storage request by default)
-      # ephemeral-storage: (no ephemeral-storage request by default)
-
-  collectorDeploymentCollectorContainerResources:
-    limits:
-      # cpu: (no cpu limit by default)
-      memory: 500Mi
-      # storage: (no storage limit by default)
-      # ephemeral-storage: (no ephemeral-storage limit by default)
-    gomemlimit: 400MiB
-    requests:
-      # cpu: (no cpu request by default)
-      memory: 500Mi
-      # storage: (no storage request by default)
-      # ephemeral-storage: (no ephemeral-storage request by default)
-  collectorDeploymentConfigurationReloaderContainerResources:
-    limits:
-      # cpu: (no cpu limit by default)
-      memory: 12Mi
-      # storage: (no storage limit by default)
-      # ephemeral-storage: (no ephemeral-storage limit by default)
-    gomemlimit: 8MiB
-    requests:
-      # cpu: (no cpu request by default)
-      memory: 12Mi
-      # storage: (no storage request by default)
-      # ephemeral-storage: (no ephemeral-storage request by default)
-
   # the port for the metrics service
   metricsPort: 8443
 
@@ -287,6 +225,7 @@ operator:
   #   "Notes on Running The Operator on Docker Desktop"
   developmentMode: false
 
+  # Settings related to the collectors managed by the operator.
   collectors:
     # If set to true, adds a debug exporter with "verbosity: detailed" to the collectors managed by the operator.
     # This setting produces a large amount of logs and is not suitable for extended production use.
@@ -296,3 +235,91 @@ operator:
     # managed by the operator. There is usually no need to configure this. The value must be greater than or equal to
     # 8192, which is the default value for send_batch_size.
     sendBatchMaxSize: 0
+
+    # Resource settings for the collector container of the DaemonSet collector pods managed by the operator.
+    # There should usually be no reason to override this.
+    daemonSetCollectorContainerResources:
+      limits:
+        # cpu: (no cpu limit by default)
+        memory: 500Mi
+        # storage: (no storage limit by default)
+        # ephemeral-storage: (no ephemeral-storage limit by default)
+      gomemlimit: 400MiB
+      requests:
+        # cpu: (no cpu request by default)
+        memory: 500Mi
+        # storage: (no storage request by default)
+        # ephemeral-storage: (no ephemeral-storage request by default)
+
+    # Resource settings for the configuration reloader container of the DaemonSet collector pods managed by the operator.
+    # There should usually be no reason to override this.
+    daemonSetConfigurationReloaderContainerResources:
+      limits:
+        # cpu: (no cpu limit by default)
+        memory: 12Mi
+        # storage: (no storage limit by default)
+        # ephemeral-storage: (no ephemeral-storage limit by default)
+      gomemlimit: 8MiB
+      requests:
+        # cpu: (no cpu request by default)
+        memory: 12Mi
+        # storage: (no storage request by default)
+        # ephemeral-storage: (no ephemeral-storage request by default)
+
+    # Resource settings for the filelog offset sync container of the DaemonSet collector pods managed by the operator.
+    # There should usually be no reason to override this.
+    daemonSetFileLogOffsetSynchContainerResources:
+      limits:
+        # cpu: (no cpu limit by default)
+        memory: 32Mi
+        # storage: (no storage limit by default)
+        # ephemeral-storage: (no ephemeral-storage limit by default)
+      gomemlimit: 24MiB
+      requests:
+        # cpu: (no cpu request by default)
+        memory: 32Mi
+        # storage: (no storage request by default)
+        # ephemeral-storage: (no ephemeral-storage request by default)
+
+    # Resource settings for the collector container of the Deployment collector pod managed by the operator.
+    # There should usually be no reason to override this.
+    deploymentCollectorContainerResources:
+      limits:
+        # cpu: (no cpu limit by default)
+        memory: 500Mi
+        # storage: (no storage limit by default)
+        # ephemeral-storage: (no ephemeral-storage limit by default)
+      gomemlimit: 400MiB
+      requests:
+        # cpu: (no cpu request by default)
+        memory: 500Mi
+        # storage: (no storage request by default)
+        # ephemeral-storage: (no ephemeral-storage request by default)
+
+    # Resource settings for the configuration reloader container of the Deployment collector pod managed by the operator.
+    # There should usually be no reason to override this.
+    deploymentConfigurationReloaderContainerResources:
+      limits:
+        # cpu: (no cpu limit by default)
+        memory: 12Mi
+        # storage: (no storage limit by default)
+        # ephemeral-storage: (no ephemeral-storage limit by default)
+      gomemlimit: 8MiB
+      requests:
+        # cpu: (no cpu request by default)
+        memory: 12Mi
+        # storage: (no storage request by default)
+        # ephemeral-storage: (no ephemeral-storage request by default)
+
+    # An array of tolerations for the collector DaemonSet pods managed by the operator. This can be used to make sure
+    # that collector pods are scheduled on nodes where they would not be scheduled otherwise due to Kubernetes taints.
+    # Example:
+    # daemonSetTolerations:
+    #   - key: "key1"
+    #     operator: "Equal"
+    #     value: "value1"
+    #     effect: "NoSchedule"
+    #   - key: "key2"
+    #     operator: "Exists"
+    #     effect: "NoSchedule"
+    daemonSetTolerations: []

@@ -1,8 +1,8 @@
-otelcol resources config map should match snapshot:
+otelcol extra config map should match snapshot:
   1: |
     apiVersion: v1
     data:
-      otelcolresources.yaml: |-
+      otelcolextra.yaml: |-
         collectorDaemonSetCollectorContainerResources:
           gomemlimit: 400MiB
           limits:
@@ -21,7 +21,6 @@ otelcol resources config map should match snapshot:
             memory: 32Mi
           requests:
             memory: 32Mi
-
         collectorDeploymentCollectorContainerResources:
           gomemlimit: 400MiB
           limits:
@@ -34,11 +33,13 @@ otelcol resources config map should match snapshot:
             memory: 12Mi
           requests:
             memory: 12Mi
+        daemonSetTolerations:
+          []
     kind: ConfigMap
     metadata:
       labels:
         app.kubernetes.io/component: controller
-        app.kubernetes.io/instance: collector-resources-config-map
+        app.kubernetes.io/instance: collector-extra-config-map
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/name: dash0-operator
         app.kubernetes.io/part-of: dash0-operator

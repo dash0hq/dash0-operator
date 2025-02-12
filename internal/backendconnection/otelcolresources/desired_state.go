@@ -159,7 +159,7 @@ var (
 func assembleDesiredStateForUpsert(
 	config *oTelColConfig,
 	allMonitoringResources []dash0v1alpha1.Dash0Monitoring,
-	resourceSpecs *OTelColResourceSpecs,
+	extraConfig *OTelColExtraConfig,
 ) ([]clientObject, error) {
 	monitoredNamespaces := make([]string, 0, len(allMonitoringResources))
 	namespacesWithPrometheusScraping := make([]string, 0, len(allMonitoringResources))
@@ -173,20 +173,20 @@ func assembleDesiredStateForUpsert(
 		config,
 		monitoredNamespaces,
 		namespacesWithPrometheusScraping,
-		resourceSpecs,
+		extraConfig,
 		false,
 	)
 }
 
 func assembleDesiredStateForDelete(
 	config *oTelColConfig,
-	resourceSpecs *OTelColResourceSpecs,
+	extraConfig *OTelColExtraConfig,
 ) ([]clientObject, error) {
 	return assembleDesiredState(
 		config,
 		nil,
 		nil,
-		resourceSpecs,
+		extraConfig,
 		true,
 	)
 }
@@ -195,7 +195,7 @@ func assembleDesiredState(
 	config *oTelColConfig,
 	monitoredNamespaces []string,
 	namespacesWithPrometheusScraping []string,
-	resourceSpecs *OTelColResourceSpecs,
+	extraConfig *OTelColExtraConfig,
 	forDeletion bool,
 ) ([]clientObject, error) {
 	// Make sure the resulting objects (in particular the config maps) are do not depend on the (potentially non-stable)
@@ -221,7 +221,7 @@ func assembleDesiredState(
 	desiredState = append(desiredState, addCommonMetadata(assembleRole(config)))
 	desiredState = append(desiredState, addCommonMetadata(assembleRoleBinding(config)))
 	desiredState = append(desiredState, addCommonMetadata(assembleService(config)))
-	collectorDaemonSet, err := assembleCollectorDaemonSet(config, resourceSpecs)
+	collectorDaemonSet, err := assembleCollectorDaemonSet(config, extraConfig)
 	if err != nil {
 		return desiredState, err
 	}
@@ -236,7 +236,7 @@ func assembleDesiredState(
 			return desiredState, err
 		}
 		desiredState = append(desiredState, addCommonMetadata(deploymentCollectorConfigMap))
-		collectorDeployment, err := assembleCollectorDeployment(config, resourceSpecs)
+		collectorDeployment, err := assembleCollectorDeployment(config, extraConfig)
 		if err != nil {
 			return desiredState, err
 		}
@@ -435,10 +435,10 @@ func assembleService(config *oTelColConfig) *corev1.Service {
 	}
 }
 
-func assembleCollectorDaemonSet(config *oTelColConfig, resourceSpecs *OTelColResourceSpecs) (*appsv1.DaemonSet, error) {
+func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig *OTelColExtraConfig) (*appsv1.DaemonSet, error) {
 	collectorContainer, err := assembleDaemonSetCollectorContainer(
 		config,
-		resourceSpecs.CollectorDaemonSetCollectorContainerResources,
+		extraConfig.CollectorDaemonSetCollectorContainerResources,
 	)
 	if err != nil {
 		return nil, err
@@ -480,6 +480,7 @@ func assembleCollectorDaemonSet(config *oTelColConfig, resourceSpecs *OTelColRes
 							},
 						},
 					},
+					Tolerations:        extraConfig.DaemonSetTolerations,
 					ServiceAccountName: daemonsetServiceAccountName(config.NamePrefix),
 					SecurityContext:    &corev1.PodSecurityContext{},
 					// This setting is required to enable the configuration reloader process to send Unix signals to the
@@ -487,17 +488,17 @@ func assembleCollectorDaemonSet(config *oTelColConfig, resourceSpecs *OTelColRes
 					ShareProcessNamespace: ptr.To(true),
 					InitContainers: []corev1.Container{assembleFileLogOffsetSynchInitContainer(
 						config,
-						resourceSpecs.CollectorDaemonSetFileLogOffsetSynchContainerResources,
+						extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources,
 					)},
 					Containers: []corev1.Container{
 						collectorContainer,
 						assembleConfigurationReloaderContainer(
 							config,
-							resourceSpecs.CollectorDaemonSetConfigurationReloaderContainerResources,
+							extraConfig.CollectorDaemonSetConfigurationReloaderContainerResources,
 						),
 						assembleFileLogOffsetSynchContainer(
 							config,
-							resourceSpecs.CollectorDaemonSetFileLogOffsetSynchContainerResources,
+							extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources,
 						),
 					},
 					Volumes:     assembleCollectorDaemonSetVolumes(config, configMapItems),
@@ -932,11 +933,11 @@ func assembleClusterRoleBindingForDeployment(config *oTelColConfig) *rbacv1.Clus
 
 func assembleCollectorDeployment(
 	config *oTelColConfig,
-	resourceSpecs *OTelColResourceSpecs,
+	extraConfig *OTelColExtraConfig,
 ) (*appsv1.Deployment, error) {
 	collectorContainer, err := assembleDeploymentCollectorContainer(
 		config,
-		resourceSpecs.CollectorDeploymentCollectorContainerResources,
+		extraConfig.CollectorDeploymentCollectorContainerResources,
 	)
 	if err != nil {
 		return nil, err
@@ -988,7 +989,7 @@ func assembleCollectorDeployment(
 						collectorContainer,
 						assembleConfigurationReloaderContainer(
 							config,
-							resourceSpecs.CollectorDeploymentConfigurationReloaderContainerResources,
+							extraConfig.CollectorDeploymentConfigurationReloaderContainerResources,
 						),
 					},
 					Volumes:     assembleCollectorDeploymentVolumes(config, configMapItems),

@@ -18,17 +18,19 @@ type ResourceRequirementsWithGoMemLimit struct {
 	GoMemLimit string              `json:"gomemlimit,omitempty"`
 }
 
-type OTelColResourceSpecs struct {
+type OTelColExtraConfig struct {
 	CollectorDaemonSetCollectorContainerResources             ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetCollectorContainerResources,omitempty"`
 	CollectorDaemonSetConfigurationReloaderContainerResources ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetConfigurationReloaderContainerResources,omitempty"`
 	CollectorDaemonSetFileLogOffsetSynchContainerResources    ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetFileLogOffsetSynchContainerResources,omitempty"`
 
 	CollectorDeploymentCollectorContainerResources             ResourceRequirementsWithGoMemLimit `json:"collectorDeploymentCollectorContainerResources,omitempty"`
 	CollectorDeploymentConfigurationReloaderContainerResources ResourceRequirementsWithGoMemLimit `json:"collectorDeploymentConfigurationReloaderContainerResources,omitempty"`
+
+	DaemonSetTolerations []corev1.Toleration `json:"daemonSetTolerations,omitempty"`
 }
 
 var (
-	DefaultOTelColResourceSpecs = OTelColResourceSpecs{
+	OTelExtraConfigDefaults = OTelColExtraConfig{
 		CollectorDaemonSetCollectorContainerResources: ResourceRequirementsWithGoMemLimit{
 			Limits: corev1.ResourceList{
 				corev1.ResourceMemory: resource.MustParse("500Mi"),
@@ -77,7 +79,7 @@ var (
 	}
 )
 
-func ReadOTelColResourcesConfiguration(configurationFile string) (*OTelColResourceSpecs, error) {
+func ReadOTelColExtraConfiguration(configurationFile string) (*OTelColExtraConfig, error) {
 	if len(configurationFile) == 0 {
 		return nil, fmt.Errorf("filename is empty")
 	}
@@ -86,32 +88,31 @@ func ReadOTelColResourcesConfiguration(configurationFile string) (*OTelColResour
 		return nil, fmt.Errorf("the configuration file (%s) is missing or cannot be opened %w", configurationFile, err)
 	}
 
-	resourcesSpecs := &OTelColResourceSpecs{}
-	if err = yaml.Unmarshal(content, resourcesSpecs); err != nil {
+	extraConfig := &OTelColExtraConfig{}
+	if err = yaml.Unmarshal(content, extraConfig); err != nil {
 		return nil, fmt.Errorf("cannot unmarshal the configuration file %w", err)
 	}
 	applyDefaults(
-		&resourcesSpecs.CollectorDaemonSetCollectorContainerResources,
-		&DefaultOTelColResourceSpecs.CollectorDaemonSetCollectorContainerResources,
+		&extraConfig.CollectorDaemonSetCollectorContainerResources,
+		&OTelExtraConfigDefaults.CollectorDaemonSetCollectorContainerResources,
 	)
 	applyDefaults(
-		&resourcesSpecs.CollectorDaemonSetConfigurationReloaderContainerResources,
-		&DefaultOTelColResourceSpecs.CollectorDaemonSetConfigurationReloaderContainerResources,
+		&extraConfig.CollectorDaemonSetConfigurationReloaderContainerResources,
+		&OTelExtraConfigDefaults.CollectorDaemonSetConfigurationReloaderContainerResources,
 	)
 	applyDefaults(
-		&resourcesSpecs.CollectorDaemonSetFileLogOffsetSynchContainerResources,
-		&DefaultOTelColResourceSpecs.CollectorDaemonSetFileLogOffsetSynchContainerResources,
+		&extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources,
+		&OTelExtraConfigDefaults.CollectorDaemonSetFileLogOffsetSynchContainerResources,
 	)
 	applyDefaults(
-		&resourcesSpecs.CollectorDeploymentCollectorContainerResources,
-		&DefaultOTelColResourceSpecs.CollectorDeploymentCollectorContainerResources,
+		&extraConfig.CollectorDeploymentCollectorContainerResources,
+		&OTelExtraConfigDefaults.CollectorDeploymentCollectorContainerResources,
 	)
 	applyDefaults(
-		&resourcesSpecs.CollectorDeploymentConfigurationReloaderContainerResources,
-		&DefaultOTelColResourceSpecs.CollectorDeploymentConfigurationReloaderContainerResources,
+		&extraConfig.CollectorDeploymentConfigurationReloaderContainerResources,
+		&OTelExtraConfigDefaults.CollectorDeploymentConfigurationReloaderContainerResources,
 	)
-
-	return resourcesSpecs, nil
+	return extraConfig, nil
 }
 
 func applyDefaults(spec *ResourceRequirementsWithGoMemLimit, defaults *ResourceRequirementsWithGoMemLimit) {

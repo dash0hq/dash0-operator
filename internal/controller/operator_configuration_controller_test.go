@@ -962,7 +962,7 @@ func createReconciler(controllerDeployment *appsv1.Deployment) *OperatorConfigur
 		Scheme:                  k8sClient.Scheme(),
 		DeploymentSelfReference: DeploymentSelfReference,
 		OTelCollectorNamePrefix: OTelCollectorNamePrefixTest,
-		OTelColResourceSpecs:    &otelcolresources.DefaultOTelColResourceSpecs,
+		OTelColExtraConfig:      &otelcolresources.OTelExtraConfigDefaults,
 	}
 	backendConnectionManager := &backendconnection.BackendConnectionManager{
 		Client:                 k8sClient,
