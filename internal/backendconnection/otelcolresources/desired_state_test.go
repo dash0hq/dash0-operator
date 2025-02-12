@@ -44,7 +44,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				},
 			},
 			Images: TestImages,
-		}, nil, &DefaultOTelColResourceSpecs)
+		}, nil, &OTelExtraConfigDefaults)
 		Expect(err).To(HaveOccurred())
 	})
 
@@ -56,7 +56,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			UseHostMetricsReceiver:                           true,
 			Images:                                           TestImages,
-		}, nil, &DefaultOTelColResourceSpecs)
+		}, nil, &OTelExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(desiredState).To(HaveLen(numberOfResourcesWithKubernetesInfrastructureMetricsCollectionEnabled))
@@ -80,101 +80,114 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		daemonSet := getDaemonSet(desiredState)
 		Expect(daemonSet).NotTo(BeNil())
 		Expect(daemonSet.ObjectMeta.Labels["dash0.com/enable"]).To(Equal("false"))
-		podSpec := daemonSet.Spec.Template.Spec
+		daemonSetPodSpec := daemonSet.Spec.Template.Spec
 
-		Expect(podSpec.Volumes).To(HaveLen(6))
-		configMapVolume := findVolumeByName(podSpec.Volumes, "opentelemetry-collector-configmap")
+		Expect(daemonSetPodSpec.Containers).To(HaveLen(3))
+		daemonSetCollectorContainer := daemonSetPodSpec.Containers[0]
+		daemonSetCollectorContainerArgs := daemonSetCollectorContainer.Args
+		daemonSetConfigReloaderContainer := daemonSetPodSpec.Containers[1]
+		daemonSetFileLogOffsetSynchContainer := daemonSetPodSpec.Containers[2]
+
+		Expect(daemonSetPodSpec.Volumes).To(HaveLen(6))
+		configMapVolume := findVolumeByName(daemonSetPodSpec.Volumes, "opentelemetry-collector-configmap")
 		Expect(configMapVolume).NotTo(BeNil())
 		Expect(configMapVolume.VolumeSource.ConfigMap.LocalObjectReference.Name).
 			To(Equal(ExpectedDaemonSetCollectorConfigMapName))
-		Expect(findVolumeMountByName(findContainerByName(podSpec.Containers, "opentelemetry-collector").VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
-		Expect(findVolumeMountByName(findContainerByName(podSpec.Containers, "configuration-reloader").VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
+		Expect(findVolumeMountByName(daemonSetCollectorContainer.VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
+		Expect(findVolumeMountByName(daemonSetConfigReloaderContainer.VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
 
-		pidFileVolume := findVolumeByName(podSpec.Volumes, "opentelemetry-collector-pidfile")
+		pidFileVolume := findVolumeByName(daemonSetPodSpec.Volumes, "opentelemetry-collector-pidfile")
 		Expect(pidFileVolume).NotTo(BeNil())
 		Expect(pidFileVolume.VolumeSource.EmptyDir).NotTo(BeNil())
-		Expect(findVolumeMountByName(findContainerByName(podSpec.Containers, "opentelemetry-collector").VolumeMounts, "opentelemetry-collector-pidfile")).NotTo(BeNil())
-		Expect(findVolumeMountByName(findContainerByName(podSpec.Containers, "configuration-reloader").VolumeMounts, "opentelemetry-collector-pidfile")).NotTo(BeNil())
-		Expect(findVolumeMountByName(findContainerByName(podSpec.Containers, "opentelemetry-collector").VolumeMounts, "hostfs")).NotTo(BeNil())
+		Expect(findVolumeMountByName(daemonSetCollectorContainer.VolumeMounts, "opentelemetry-collector-pidfile")).NotTo(BeNil())
+		Expect(findVolumeMountByName(daemonSetConfigReloaderContainer.VolumeMounts, "opentelemetry-collector-pidfile")).NotTo(BeNil())
+		Expect(findVolumeMountByName(daemonSetCollectorContainer.VolumeMounts, "hostfs")).NotTo(BeNil())
 
-		Expect(podSpec.Containers).To(HaveLen(3))
-
-		collectorContainer := podSpec.Containers[0]
-		Expect(collectorContainer).NotTo(BeNil())
-		Expect(collectorContainer.Image).To(Equal(CollectorImageTest))
-		Expect(collectorContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
-		collectorContainerArgs := collectorContainer.Args
-		Expect(collectorContainerArgs).To(HaveLen(1))
-		Expect(collectorContainerArgs[0]).To(Equal("--config=file:/etc/otelcol/conf/config.yaml"))
-		Expect(collectorContainer.VolumeMounts).To(HaveLen(6))
-		Expect(collectorContainer.VolumeMounts).To(
+		Expect(daemonSetCollectorContainer).NotTo(BeNil())
+		Expect(daemonSetCollectorContainer.Image).To(Equal(CollectorImageTest))
+		Expect(daemonSetCollectorContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
+		Expect(daemonSetCollectorContainer.Resources.Limits.Memory().String()).To(Equal("500Mi"))
+		Expect(daemonSetCollectorContainer.Resources.Requests.Memory().String()).To(Equal("500Mi"))
+		Expect(daemonSetCollectorContainerArgs).To(HaveLen(1))
+		Expect(daemonSetCollectorContainerArgs[0]).To(Equal("--config=file:/etc/otelcol/conf/config.yaml"))
+		Expect(daemonSetCollectorContainer.VolumeMounts).To(HaveLen(6))
+		Expect(daemonSetCollectorContainer.VolumeMounts).To(
 			ContainElement(MatchVolumeMount("opentelemetry-collector-configmap", "/etc/otelcol/conf")))
-		Expect(collectorContainer.VolumeMounts).To(
+		Expect(daemonSetCollectorContainer.VolumeMounts).To(
 			ContainElement(MatchVolumeMount("opentelemetry-collector-pidfile", "/etc/otelcol/run")))
-		Expect(collectorContainer.VolumeMounts).To(
+		Expect(daemonSetCollectorContainer.VolumeMounts).To(
 			ContainElement(MatchVolumeMount("node-pod-logs", "/var/log/pods")))
-		Expect(collectorContainer.VolumeMounts).To(
+		Expect(daemonSetCollectorContainer.VolumeMounts).To(
 			ContainElement(MatchVolumeMount("node-docker-container-logs", "/var/lib/docker/containers")))
-		Expect(collectorContainer.VolumeMounts).To(
+		Expect(daemonSetCollectorContainer.VolumeMounts).To(
 			ContainElement(MatchVolumeMount("filelogreceiver-offsets", "/var/otelcol/filelogreceiver_offsets")))
-		Expect(collectorContainer.VolumeMounts).To(ContainElement(MatchVolumeMount("hostfs", "/hostfs")))
+		Expect(daemonSetCollectorContainer.VolumeMounts).To(ContainElement(MatchVolumeMount("hostfs", "/hostfs")))
 
-		configReloaderContainer := podSpec.Containers[1]
-		Expect(configReloaderContainer).NotTo(BeNil())
-		Expect(configReloaderContainer.Image).To(Equal(ConfigurationReloaderImageTest))
-		Expect(configReloaderContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
-		configReloaderContainerArgs := configReloaderContainer.Args
+		Expect(daemonSetConfigReloaderContainer).NotTo(BeNil())
+		Expect(daemonSetConfigReloaderContainer.Image).To(Equal(ConfigurationReloaderImageTest))
+		Expect(daemonSetConfigReloaderContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
+		Expect(daemonSetConfigReloaderContainer.Resources.Limits.Memory().String()).To(Equal("12Mi"))
+		Expect(daemonSetConfigReloaderContainer.Resources.Requests.Memory().String()).To(Equal("12Mi"))
+		configReloaderContainerArgs := daemonSetConfigReloaderContainer.Args
 		Expect(configReloaderContainerArgs).To(HaveLen(2))
 		Expect(configReloaderContainerArgs[0]).To(Equal("--pidfile=/etc/otelcol/run/pid.file"))
 		Expect(configReloaderContainerArgs[1]).To(Equal("/etc/otelcol/conf/config.yaml"))
-		Expect(configReloaderContainer.VolumeMounts).To(HaveLen(2))
-		Expect(configReloaderContainer.VolumeMounts).To(
+		Expect(daemonSetConfigReloaderContainer.VolumeMounts).To(HaveLen(2))
+		Expect(daemonSetConfigReloaderContainer.VolumeMounts).To(
 			ContainElement(MatchVolumeMount("opentelemetry-collector-configmap", "/etc/otelcol/conf")))
-		Expect(configReloaderContainer.VolumeMounts).To(
+		Expect(daemonSetConfigReloaderContainer.VolumeMounts).To(
 			ContainElement(MatchVolumeMount("opentelemetry-collector-pidfile", "/etc/otelcol/run")))
+
+		Expect(daemonSetFileLogOffsetSynchContainer).NotTo(BeNil())
+		Expect(daemonSetFileLogOffsetSynchContainer.Resources.Limits.Memory().String()).To(Equal("32Mi"))
+		Expect(daemonSetFileLogOffsetSynchContainer.Resources.Requests.Memory().String()).To(Equal("32Mi"))
+
+		Expect(daemonSetPodSpec.Tolerations).To(HaveLen(0))
 
 		deployment := getDeployment(desiredState)
 		Expect(deployment).NotTo(BeNil())
 		Expect(deployment.Labels["dash0.com/enable"]).To(Equal("false"))
-		podSpec = deployment.Spec.Template.Spec
+		deploymentPodSpec := deployment.Spec.Template.Spec
 
-		Expect(podSpec.Volumes).To(HaveLen(2))
-		configMapVolume = findVolumeByName(podSpec.Volumes, "opentelemetry-collector-configmap")
+		Expect(deploymentPodSpec.Containers).To(HaveLen(2))
+		deploymentCollectorContainer := deploymentPodSpec.Containers[0]
+		deploymentConfigReloaderContainer := deploymentPodSpec.Containers[1]
+
+		Expect(deploymentPodSpec.Volumes).To(HaveLen(2))
+		configMapVolume = findVolumeByName(deploymentPodSpec.Volumes, "opentelemetry-collector-configmap")
 		Expect(configMapVolume).NotTo(BeNil())
 		Expect(configMapVolume.VolumeSource.ConfigMap.LocalObjectReference.Name).
 			To(Equal(ExpectedDeploymentCollectorConfigMapName))
-		Expect(findVolumeMountByName(findContainerByName(podSpec.Containers, "opentelemetry-collector").VolumeMounts,
-			"opentelemetry-collector-configmap")).NotTo(BeNil())
-		Expect(findVolumeMountByName(findContainerByName(podSpec.Containers, "configuration-reloader").VolumeMounts,
-			"opentelemetry-collector-configmap")).NotTo(BeNil())
+		Expect(findVolumeMountByName(deploymentCollectorContainer.VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
+		Expect(findVolumeMountByName(deploymentCollectorContainer.VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
 
-		Expect(podSpec.Containers).To(HaveLen(2))
-
-		collectorContainer = podSpec.Containers[0]
-		Expect(collectorContainer).NotTo(BeNil())
-		Expect(collectorContainer.Image).To(Equal(CollectorImageTest))
-		Expect(collectorContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
-		collectorContainerArgs = collectorContainer.Args
-		Expect(collectorContainerArgs).To(HaveLen(1))
-		Expect(collectorContainerArgs[0]).To(Equal("--config=file:/etc/otelcol/conf/config.yaml"))
-		Expect(collectorContainer.VolumeMounts).To(HaveLen(2))
-		Expect(collectorContainer.VolumeMounts).To(
+		Expect(deploymentCollectorContainer).NotTo(BeNil())
+		Expect(deploymentCollectorContainer.Image).To(Equal(CollectorImageTest))
+		Expect(deploymentCollectorContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
+		Expect(deploymentCollectorContainer.Resources.Limits.Memory().String()).To(Equal("500Mi"))
+		Expect(deploymentCollectorContainer.Resources.Requests.Memory().String()).To(Equal("500Mi"))
+		deploymentCollectorContainerArgs := deploymentCollectorContainer.Args
+		Expect(deploymentCollectorContainerArgs).To(HaveLen(1))
+		Expect(deploymentCollectorContainerArgs[0]).To(Equal("--config=file:/etc/otelcol/conf/config.yaml"))
+		Expect(deploymentCollectorContainer.VolumeMounts).To(HaveLen(2))
+		Expect(deploymentCollectorContainer.VolumeMounts).To(
 			ContainElement(MatchVolumeMount("opentelemetry-collector-configmap", "/etc/otelcol/conf")))
-		Expect(collectorContainer.VolumeMounts).To(
+		Expect(deploymentCollectorContainer.VolumeMounts).To(
 			ContainElement(MatchVolumeMount("opentelemetry-collector-pidfile", "/etc/otelcol/run")))
 
-		configReloaderContainer = podSpec.Containers[1]
-		Expect(configReloaderContainer).NotTo(BeNil())
-		Expect(configReloaderContainer.Image).To(Equal(ConfigurationReloaderImageTest))
-		Expect(configReloaderContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
-		configReloaderContainerArgs = configReloaderContainer.Args
-		Expect(configReloaderContainerArgs).To(HaveLen(2))
-		Expect(configReloaderContainerArgs[0]).To(Equal("--pidfile=/etc/otelcol/run/pid.file"))
-		Expect(configReloaderContainerArgs[1]).To(Equal("/etc/otelcol/conf/config.yaml"))
-		Expect(configReloaderContainer.VolumeMounts).To(HaveLen(2))
-		Expect(configReloaderContainer.VolumeMounts).To(
+		Expect(deploymentConfigReloaderContainer).NotTo(BeNil())
+		Expect(deploymentConfigReloaderContainer.Image).To(Equal(ConfigurationReloaderImageTest))
+		Expect(deploymentConfigReloaderContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
+		Expect(deploymentConfigReloaderContainer.Resources.Limits.Memory().String()).To(Equal("12Mi"))
+		Expect(deploymentConfigReloaderContainer.Resources.Requests.Memory().String()).To(Equal("12Mi"))
+		deploymentConfigReloaderContainerArgs := deploymentConfigReloaderContainer.Args
+		Expect(deploymentConfigReloaderContainerArgs).To(HaveLen(2))
+		Expect(deploymentConfigReloaderContainerArgs[0]).To(Equal("--pidfile=/etc/otelcol/run/pid.file"))
+		Expect(deploymentConfigReloaderContainerArgs[1]).To(Equal("/etc/otelcol/conf/config.yaml"))
+		Expect(deploymentConfigReloaderContainer.VolumeMounts).To(HaveLen(2))
+		Expect(deploymentConfigReloaderContainer.VolumeMounts).To(
 			ContainElement(MatchVolumeMount("opentelemetry-collector-configmap", "/etc/otelcol/conf")))
-		Expect(configReloaderContainer.VolumeMounts).To(
+		Expect(deploymentConfigReloaderContainer.VolumeMounts).To(
 			ContainElement(MatchVolumeMount("opentelemetry-collector-pidfile", "/etc/otelcol/run")))
 
 		Expect(findObjectByName(desiredState, ExpectedDeploymentServiceAccountName)).ToNot(BeNil())
@@ -190,7 +203,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			Export:     Dash0ExportWithEndpointAndToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: false,
 			Images: TestImages,
-		}, nil, &DefaultOTelColResourceSpecs)
+		}, nil, &OTelExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(desiredState).To(HaveLen(numberOfResourcesWithoutKubernetesInfrastructureMetricsCollectionEnabled))
@@ -226,7 +239,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export:     Dash0ExportWithEndpointAndToken(),
-		}, nil, &DefaultOTelColResourceSpecs)
+		}, nil, &OTelExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
 		configMapContent := getDaemonSetCollectorConfigConfigMapContent(desiredState)
@@ -244,7 +257,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export:     Dash0ExportWithEndpointAndSecretRef(),
-		}, nil, &DefaultOTelColResourceSpecs)
+		}, nil, &OTelExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
 		configMapContent := getDaemonSetCollectorConfigConfigMapContent(desiredState)
@@ -264,7 +277,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export:     HttpExportTest(),
-		}, nil, &DefaultOTelColResourceSpecs)
+		}, nil, &OTelExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
 		configMapContent := getDaemonSetCollectorConfigConfigMapContent(desiredState)
@@ -287,7 +300,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				Export:                Dash0ExportWithEndpointTokenAndInsightsDataset(),
 			},
 			Images: TestImages,
-		}, nil, &DefaultOTelColResourceSpecs)
+		}, nil, &OTelExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 
 		daemonSet := getDaemonSet(desiredState)
@@ -312,7 +325,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				Export:                Dash0ExportWithEndpointTokenAndInsightsDataset(),
 			},
 			Images: TestImages,
-		}, nil, &DefaultOTelColResourceSpecs)
+		}, nil, &OTelExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 
 		daemonSet := getDaemonSet(desiredState)
@@ -322,6 +335,47 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(selfMonitoringConfiguration.Export.Dash0).To(BeNil())
 		Expect(selfMonitoringConfiguration.Export.Grpc).To(BeNil())
 		Expect(selfMonitoringConfiguration.Export.Http).To(BeNil())
+	})
+
+	It("should render custom tolerations", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			Namespace:  namespace,
+			NamePrefix: namePrefix,
+			Export:     Dash0ExportWithEndpointAndToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			UseHostMetricsReceiver:                           true,
+			Images:                                           TestImages,
+		}, nil, &OTelColExtraConfig{
+			DaemonSetTolerations: []corev1.Toleration{
+				{
+					Key:      "key1",
+					Operator: corev1.TolerationOpEqual,
+					Value:    "value1",
+					Effect:   corev1.TaintEffectNoSchedule,
+				},
+				{
+					Key:      "key2",
+					Operator: corev1.TolerationOpExists,
+					Effect:   corev1.TaintEffectNoSchedule,
+				},
+			},
+		})
+
+		Expect(err).ToNot(HaveOccurred())
+
+		daemonSetPodSpec := getDaemonSet(desiredState).Spec.Template.Spec
+		Expect(daemonSetPodSpec.Tolerations).To(HaveLen(2))
+		Expect(daemonSetPodSpec.Tolerations).To(HaveLen(2))
+		Expect(daemonSetPodSpec.Tolerations[0].Key).To(Equal("key1"))
+		Expect(daemonSetPodSpec.Tolerations[0].Operator).To(Equal(corev1.TolerationOpEqual))
+		Expect(daemonSetPodSpec.Tolerations[0].Value).To(Equal("value1"))
+		Expect(daemonSetPodSpec.Tolerations[0].Effect).To(Equal(corev1.TaintEffectNoSchedule))
+		Expect(daemonSetPodSpec.Tolerations[0].TolerationSeconds).To(BeNil())
+		Expect(daemonSetPodSpec.Tolerations[1].Key).To(Equal("key2"))
+		Expect(daemonSetPodSpec.Tolerations[1].Operator).To(Equal(corev1.TolerationOpExists))
+		Expect(daemonSetPodSpec.Tolerations[1].Value).To(BeEmpty())
+		Expect(daemonSetPodSpec.Tolerations[1].Effect).To(Equal(corev1.TaintEffectNoSchedule))
+		Expect(daemonSetPodSpec.Tolerations[1].TolerationSeconds).To(BeNil())
 	})
 
 	It("rendered objects must be stable", func() {
@@ -367,28 +421,28 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			NamePrefix: namePrefix,
 			Export:     Dash0ExportWithEndpointAndToken(),
 			Images:     TestImages,
-		}, []dash0v1alpha1.Dash0Monitoring{mr1, mr2, mr3, mr4}, &DefaultOTelColResourceSpecs)
+		}, []dash0v1alpha1.Dash0Monitoring{mr1, mr2, mr3, mr4}, &OTelExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 		desiredState2, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export:     Dash0ExportWithEndpointAndToken(),
 			Images:     TestImages,
-		}, []dash0v1alpha1.Dash0Monitoring{mr3, mr4, mr1, mr2}, &DefaultOTelColResourceSpecs)
+		}, []dash0v1alpha1.Dash0Monitoring{mr3, mr4, mr1, mr2}, &OTelExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 		desiredState3, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export:     Dash0ExportWithEndpointAndToken(),
 			Images:     TestImages,
-		}, []dash0v1alpha1.Dash0Monitoring{mr4, mr3, mr2, mr1}, &DefaultOTelColResourceSpecs)
+		}, []dash0v1alpha1.Dash0Monitoring{mr4, mr3, mr2, mr1}, &OTelExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 		desiredState4, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export:     Dash0ExportWithEndpointAndToken(),
 			Images:     TestImages,
-		}, []dash0v1alpha1.Dash0Monitoring{mr3, mr1, mr4, mr2}, &DefaultOTelColResourceSpecs)
+		}, []dash0v1alpha1.Dash0Monitoring{mr3, mr1, mr4, mr2}, &OTelExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(reflect.DeepEqual(desiredState1, desiredState2)).To(BeTrue())

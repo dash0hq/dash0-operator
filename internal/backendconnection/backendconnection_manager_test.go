@@ -45,7 +45,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			Scheme:                  k8sClient.Scheme(),
 			DeploymentSelfReference: DeploymentSelfReference,
 			OTelCollectorNamePrefix: OTelCollectorNamePrefixTest,
-			OTelColResourceSpecs:    &otelcolresources.DefaultOTelColResourceSpecs,
+			OTelColExtraConfig:      &otelcolresources.OTelExtraConfigDefaults,
 		}
 		manager = &BackendConnectionManager{
 			Client:                 k8sClient,

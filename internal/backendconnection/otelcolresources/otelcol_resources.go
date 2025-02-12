@@ -33,7 +33,7 @@ type OTelColResourceManager struct {
 	Scheme                           *runtime.Scheme
 	DeploymentSelfReference          *appsv1.Deployment
 	OTelCollectorNamePrefix          string
-	OTelColResourceSpecs             *OTelColResourceSpecs
+	OTelColExtraConfig               *OTelColExtraConfig
 	SendBatchMaxSize                 *uint32
 	IsIPv6Cluster                    bool
 	IsDocker                         bool
@@ -112,7 +112,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	desiredState, err := assembleDesiredStateForUpsert(
 		config,
 		allMonitoringResources,
-		m.OTelColResourceSpecs,
+		m.OTelColExtraConfig,
 	)
 	if err != nil {
 		return false, false, err
@@ -341,7 +341,7 @@ func (m *OTelColResourceManager) DeleteResources(
 		DevelopmentMode:                                  m.DevelopmentMode,
 		DebugVerbosityDetailed:                           m.DebugVerbosityDetailed,
 	}
-	desiredResources, err := assembleDesiredStateForDelete(config, m.OTelColResourceSpecs)
+	desiredResources, err := assembleDesiredStateForDelete(config, m.OTelColExtraConfig)
 	if err != nil {
 		return false, err
 	}
@@ -382,7 +382,7 @@ func (m *OTelColResourceManager) deleteResourcesThatAreNoLongerDesired(
 	// override actual config settings with settings that will produce all possible resources
 	config.KubernetesInfrastructureMetricsCollectionEnabled = true
 
-	allPossibleResources, err := assembleDesiredStateForDelete(&config, m.OTelColResourceSpecs)
+	allPossibleResources, err := assembleDesiredStateForDelete(&config, m.OTelColExtraConfig)
 	if err != nil {
 		return err
 	}

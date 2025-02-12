@@ -494,15 +494,41 @@ By default, the operator collects metrics as follows:
 
 Disabling or enabling individual metrics via configuration is not supported.
 
-### Preventing Operator Scheduling on Specific Nodes
+### Controlling On Which Nodes the Operator's Collector Pods Are Scheduled
+
+#### Allow Scheduling on Tainted Nodes
+
+The operator uses a Kubernetes daemonset to deploy the OpenTelemetry collector on each node; to collect telemetry from
+that node and workloads running on that node.
+If you use [taints](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/) on certain nodes,
+Kubernetes will not schedule any pods there, preventing the daemonset collector pods to be present on these nodes.
+You can allow the daemonset collector pods to be scheduled there by configuring tolerations matching your taints for the
+collector pods.
+Tolerations can be configured as follows:
+```
+operator:
+  collectors:
+    daemonSetTolerations:
+    - key: key1
+      operator: Equal
+      value: value1
+      effect: NoSchedule
+    - key: key2
+      operator: Exists
+      effect: NoSchedule
+```
+
+Note: The tolerations will be added to the daemonset collector pods, but not to the deployment collector pod.
+
+#### Preventing Operator Scheduling on Specific Nodes
 
 All the pods deployed by the operator have a default node anti-affinity for the `dash0.com/enable=false` node label.
-That is, if you add the `dash0.com/enable=false` label to a node, none of the pods owned by the operator will schedule
-on that node.
+That is, if you add the `dash0.com/enable=false` label to a node, none of the pods owned by the operator will be
+scheduled on that node.
 
 **IMPORTANT:** This includes the daemonset that the operator will set up to receive telemetry from the pods, which might
 leads to situations in which instrumented pods cannot send telemetry because the local node does not have a daemonset
-pod.
+collector pod.
 In other words, if you want to monitor workloads with the Dash0 operator and use the `dash0.com/enable=false` node
 anti-affinity, make sure that the workloads you want to monitor have the same anti-affinity:
 

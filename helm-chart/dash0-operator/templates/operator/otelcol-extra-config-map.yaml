@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "dash0-operator.collectorResourceConfigMapName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: collector-extra-config-map
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+
+{{/*
+Note: Until version 0.45.1, the collector resource values were supposed to be defined at
+operator.collectorDaemonSetCollectorContainerResources; we still allow these value for backwards
+compatibility.
+*/}}
+data:
+  otelcolextra.yaml: |-
+    collectorDaemonSetCollectorContainerResources:
+      {{- toYaml (
+            default
+              .Values.operator.collectors.daemonSetCollectorContainerResources
+              .Values.operator.collectorDaemonSetCollectorContainerResources
+          ) | nindent 6 }}
+    collectorDaemonSetConfigurationReloaderContainerResources:
+      {{- toYaml (
+            default
+              .Values.operator.collectors.daemonSetConfigurationReloaderContainerResources
+              .Values.operator.collectorDaemonSetConfigurationReloaderContainerResources
+          ) | nindent 6 }}
+    collectorDaemonSetFileLogOffsetSynchContainerResources:
+      {{- toYaml (
+            default
+              .Values.operator.collectors.daemonSetFileLogOffsetSynchContainerResources
+              .Values.operator.collectorDaemonSetFileLogOffsetSynchContainerResources
+          ) | nindent 6 }}
+    collectorDeploymentCollectorContainerResources:
+      {{- toYaml (
+            default
+              .Values.operator.collectors.deploymentCollectorContainerResources
+              .Values.operator.collectorDeploymentCollectorContainerResources
+          ) | nindent 6 }}
+    collectorDeploymentConfigurationReloaderContainerResources:
+      {{- toYaml (
+            default
+              .Values.operator.collectors.deploymentConfigurationReloaderContainerResources
+              .Values.operator.collectorDeploymentConfigurationReloaderContainerResources
+          ) | nindent 6 }}
+    daemonSetTolerations:
+      {{- toYaml .Values.operator.collectors.daemonSetTolerations | nindent 6 }}
