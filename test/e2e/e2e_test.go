@@ -43,7 +43,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		e2ePrint("workingDir: %s\n", workingDir)
 
 		Expect(godotenv.Load(dotEnvFile)).To(Succeed())
-		e2eKubernetesContext := os.Getenv("E2E_KUBECTX")
+		e2eKubernetesContext = os.Getenv("E2E_KUBECTX")
 		verboseHttp = strings.ToLower(os.Getenv("E2E_VERBOSE_HTTP")) == "true"
 		if e2eKubernetesContext == "" {
 			Fail(
