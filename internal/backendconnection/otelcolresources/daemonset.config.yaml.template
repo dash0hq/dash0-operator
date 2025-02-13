@@ -1,5 +1,6 @@
 connectors:
-  forward/logs:
+  forward/prometheusmetrics: {}
+  forward/logs: {}
 
 exporters:
 {{- if .DebugVerbosityDetailed }}
@@ -102,8 +103,40 @@ processors:
     - sources:
       - from: connection
 
+  {{- $hasPrometheusScrapingEnabledForAtLeastOneNamespace := gt (len .NamespacesWithPrometheusScraping) 0 }}
+
+  {{- if $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}
+  transform/prometheusserviceattributes:
+    error_mode: ignore
+    metric_statements:
+    - context: datapoint
+      statements:
+
+      # When the scraped service provides the target_info metric with a service_name attribute, use that. See
+      # https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/compatibility/prometheus_and_openmetrics.md#resource-attributes
+      # This enables workloads to determine their service name on their own. We give this rule precedence over the
+      # service.name rule that uses app.kubernetes.io/name
+      - set(resource.attributes["service.name"], resource.attributes["service_name"]) where IsMatch(resource.attributes["service.name"], "dash0-kubernetes-pods-scrape-config.*") and resource.attributes["service_name"] != "dash0-kubernetes-pods-scrape-config"
+
+      # If the service_name was not able to come up with a decent service name, try to get it from the Kubernetes
+      # label app.kubernetes.io/name.
+      - set(resource.attributes["service.name"], attributes["app_kubernetes_io_name"]) where IsMatch(resource.attributes["service.name"], "dash0-kubernetes-pods-scrape-config.*") and attributes["app_kubernetes_io_name"] != nil
+
+      # If the app.kubernetes.io/name label is not present, use the pod name.
+      - set(resource.attributes["service.name"], attributes["pod"]) where IsMatch(resource.attributes["service.name"], "dash0-kubernetes-pods-scrape-config.*") and attributes["pod"] != nil
+
+      # If no other rule worked, set unknown_service:prometheus as the service name. (Otherwise the service name would become "dash0-kubernetes-pods-scrape-config".)
+      - set(resource.attributes["service.name"], "unknown_service:prometheus") where IsMatch(resource.attributes["service.name"], "dash0-kubernetes-pods-scrape-config.*")
+
+      # Also read the other well-known standard Kubernetes labels, like pp.kubernetes.io/version,
+      # app.kubernetes.io/part-of, and pp.kubernetes.io/name and map them to resource attributes.
+      - set(resource.attributes["service.version"], attributes["app_kubernetes_io_version"]) where attributes["app_kubernetes_io_version"] != nil
+      - set(resource.attributes["service.namespace"], attributes["app_kubernetes_io_part_of"]) where attributes["app_kubernetes_io_part_of"] != nil
+      - set(resource.attributes["service.instance.id"], attributes["app_kubernetes_io_instance"]) where attributes["app_kubernetes_io_instance"] != nil
+  {{- end }}
+
   {{- if .ClusterName }}
-  resource:
+  resource/clustername:
     attributes:
       - key: k8s.cluster.name
         value: "{{ .ClusterName }}"
@@ -254,14 +287,12 @@ This env var is set in the collector image's entrypoint script or in the daemons
             enabled: true
 {{- end }}{{/* if .UseHostMetricsReceiver */}}
 
-{{- $hasPrometheusScrapingEnabledForAtLeastOneNamespace := gt (len .NamespacesWithPrometheusScraping) 0 }}
-
 {{- if $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}
   prometheus:
     config:
 {{- /*
-This particular set of scrape config jobs (kubernetes-service-endpoints, kubernetes-service-endpoints-slow,
-kubernetes-pods, kubernetes-pods-slow) is mostly a copy of
+This particular set of scrape config jobs (dash0-kubernetes-pods-scrape-config and
+dash0-kubernetes-pods-scrape-config-slow) is mostly a copy of
 https://github.com/prometheus-community/helm-charts/blob/5adf0ee898e8e5430471cb43a5f9532745c22f81/charts/prometheus/values.yaml
 to be compatible with the well-known configuration via annotations.
 */}}
@@ -276,7 +307,7 @@ to be compatible with the well-known configuration via annotations.
       # to set this to `https` & most likely set the `tls_config` of the scrape config.
       # * `prometheus.io/path`: If the metrics path is not `/metrics` override this.
       # * `prometheus.io/port`: Scrape the pod on the indicated port instead of the default of `9102`.
-      - job_name: 'kubernetes-pods'
+      - job_name: 'dash0-kubernetes-pods-scrape-config'
         honor_labels: true
 
         kubernetes_sd_configs:
@@ -348,7 +379,7 @@ to be compatible with the well-known configuration via annotations.
       # to set this to `https` & most likely set the `tls_config` of the scrape config.
       # * `prometheus.io/path`: If the metrics path is not `/metrics` override this.
       # * `prometheus.io/port`: Scrape the pod on the indicated port instead of the default of `9102`.
-      - job_name: 'kubernetes-pods-slow'
+      - job_name: 'dash0-kubernetes-pods-scrape-config-slow'
         honor_labels: true
 
         scrape_interval: 5m
@@ -439,7 +470,7 @@ service:
       - resourcedetection
       - k8sattributes
       {{- if .ClusterName }}
-      - resource
+      - resource/clustername
       {{- end }}
       - memory_limiter
       - batch
@@ -451,6 +482,16 @@ service:
       - {{ $exporter.Name }}
       {{- end }}
 
+{{- if $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}
+    metrics/prometheus:
+      receivers:
+      - prometheus
+      processors:
+      - transform/prometheusserviceattributes
+      exporters:
+      - forward/prometheusmetrics
+{{- end }}
+
     metrics/downstream:
       receivers:
       - otlp
@@ -461,13 +502,13 @@ service:
       - hostmetrics
 {{- end }}
 {{- if $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}
-      - prometheus
+      - forward/prometheusmetrics
 {{- end }}
       processors:
       - resourcedetection
       - k8sattributes
       {{- if .ClusterName }}
-      - resource
+      - resource/clustername
       {{- end }}
       {{- if .NamespaceOttlFilter }}
       - filter/metrics_only_monitored_namespaces
@@ -505,7 +546,7 @@ service:
       processors:
       - resourcedetection
       {{- if .ClusterName }}
-      - resource
+      - resource/clustername
       {{- end }}
       - memory_limiter
       - batch
