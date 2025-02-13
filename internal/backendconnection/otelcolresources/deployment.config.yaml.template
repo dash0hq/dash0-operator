@@ -72,7 +72,7 @@ processors:
         name: k8s.pod.uid
 
   {{- if .ClusterName }}
-  resource:
+  resource/clustername:
     attributes:
       - key: k8s.cluster.name
         value: "{{ .ClusterName }}"
@@ -121,7 +121,7 @@ service:
       processors:
       - k8sattributes
       {{- if .ClusterName }}
-      - resource
+      - resource/clustername
       {{- end }}
       {{- if .NamespaceOttlFilter }}
       - filter/metrics_only_monitored_namespaces

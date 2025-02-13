@@ -13,6 +13,20 @@ const requestCounter = new Counter({
   help: 'Number of requests to the test endpoint',
 });
 
+if (process.env.CREATE_TARGET_INFO_METRIC) {
+  // See https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/compatibility/prometheus_and_openmetrics.md#resource-attributes:
+  // > In addition to the attributes above, the target info metric is used to supply additional resource attributes. If
+  // > present, the target info metric MUST be dropped from the batch of metrics, and all labels from the target info
+  // > metric MUST be converted to resource attributes attached to all other metrics which are part of the scrape. By
+  // > default, label keys and values MUST NOT be altered (such as replacing _ with . characters in keys).
+  const targetInfoMetric = new Counter({
+    name: 'target_info',
+    help: 'target Target metadata',
+    labelNames: ['service_name'],
+  });
+  targetInfoMetric.inc({ service_name: require('./package.json').name });
+}
+
 console.log(`DASH0_OTEL_COLLECTOR_BASE_URL: ${process.env.DASH0_OTEL_COLLECTOR_BASE_URL}`);
 
 app.get('/ready', (req, res) => {
@@ -30,7 +44,7 @@ app.get('/metrics', async (req, res) => {
 
 app.get('/dash0-k8s-operator-test', (req, res) => {
   requestCounter.inc();
-  const reqId = req.query['id']
+  const reqId = req.query['id'];
   if (reqId) {
     console.log(`processing request ${reqId}`);
   } else {

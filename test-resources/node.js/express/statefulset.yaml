@@ -30,6 +30,10 @@ spec:
     metadata:
       labels:
         app: dash0-operator-nodejs-20-express-test-statefulset-app
+        app.kubernetes.io/name: "test-statefulset"
+        app.kubernetes.io/version: "1.0.0"
+        app.kubernetes.io/part-of: "dash0-operator-test"
+        app.kubernetes.io/instance: "express"
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "1210"
