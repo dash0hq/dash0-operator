@@ -16,7 +16,8 @@ import (
 )
 
 var (
-	verboseHttp bool
+	verboseHttp          bool
+	e2eKubernetesContext string
 )
 
 func e2ePrint(format string, a ...any) {

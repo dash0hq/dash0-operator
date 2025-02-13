@@ -20,6 +20,7 @@ type dash0OperatorConfigurationValues struct {
 	SelfMonitoringEnabled bool
 	Endpoint              string
 	Token                 string
+	ClusterName           string
 }
 
 const (
@@ -57,6 +58,7 @@ func renderDash0OperatorConfigurationResourceTemplate(
 			template.Must(template.New("dash0operatorconfiguration").Parse(dash0OperatorConfigurationResourceSource))
 	}
 
+	dash0OperatorConfigurationValues.ClusterName = e2eKubernetesContext
 	var dash0OperatorConfigurationResource bytes.Buffer
 	Expect(
 		dash0OperatorConfigurationResourceTemplate.Execute(

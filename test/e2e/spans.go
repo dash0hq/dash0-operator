@@ -214,7 +214,7 @@ func resourceSpansHaveExpectedResourceAttributes(runtime runtimeType, workloadTy
 		attributes := resourceSpans.Resource().Attributes()
 
 		if expectClusterName {
-			expectedClusterName := "e2e-test-cluster"
+			expectedClusterName := e2eKubernetesContext
 			actualClusterName, hasClusterNameAttribute := attributes.Get(clusterNameKey)
 			if hasClusterNameAttribute {
 				if actualClusterName.Str() == expectedClusterName {
