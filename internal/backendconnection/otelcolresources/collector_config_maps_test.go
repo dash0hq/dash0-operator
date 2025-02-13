@@ -757,9 +757,9 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
 		Expect(err).ToNot(HaveOccurred())
 		collectorConfig := parseConfigMapContent(configMap)
-		resourceProcessor := readFromMap(collectorConfig, []string{"processors", "resource"})
+		resourceProcessor := readFromMap(collectorConfig, []string{"processors", "resource/clustername"})
 		Expect(resourceProcessor).To(BeNil())
-		verifyProcessorDoesNotAppearInAnyPipeline(collectorConfig, "resource")
+		verifyProcessorDoesNotAppearInAnyPipeline(collectorConfig, "resource/clustername")
 		selfMonitoringTelemetryResource := readFromMap(
 			collectorConfig,
 			[]string{
@@ -780,7 +780,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
 		Expect(err).ToNot(HaveOccurred())
 		collectorConfig := parseConfigMapContent(configMap)
-		resourceProcessor := readFromMap(collectorConfig, []string{"processors", "resource"})
+		resourceProcessor := readFromMap(collectorConfig, []string{"processors", "resource/clustername"})
 		Expect(resourceProcessor).ToNot(BeNil())
 		attributes := readFromMap(resourceProcessor, []string{"attributes"})
 		Expect(attributes).To(HaveLen(1))
@@ -788,6 +788,9 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		Expect(attrs[0].(map[string]interface{})["key"]).To(Equal("k8s.cluster.name"))
 		Expect(attrs[0].(map[string]interface{})["value"]).To(Equal("cluster-name"))
 		Expect(attrs[0].(map[string]interface{})["action"]).To(Equal("insert"))
+		pipelines := readPipelines(collectorConfig)
+		metricsProcessors := readPipelineProcessors(pipelines, "metrics/downstream")
+		Expect(metricsProcessors).To(ContainElement("resource/clustername"))
 		selfMonitoringTelemetryResource := readFromMap(
 			collectorConfig,
 			[]string{
@@ -934,13 +937,23 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			Expect(readFromMap(collectorConfig, []string{"receivers", "prometheus"})).ToNot(BeNil())
-			for _, jobName := range []string{"kubernetes-pods", "kubernetes-pods-slow"} {
+			for _, jobName := range []string{
+				"dash0-kubernetes-pods-scrape-config",
+				"dash0-kubernetes-pods-scrape-config-slow",
+			} {
 				verifyScrapeJobHasNamespaces(collectorConfig, jobName)
 			}
 
 			pipelines := readPipelines(collectorConfig)
-			metricsReceivers := readPipelineReceivers(pipelines, "metrics/downstream")
-			Expect(metricsReceivers).To(ContainElement("prometheus"))
+			prometheusMetricsReceivers := readPipelineReceivers(pipelines, "metrics/prometheus")
+			Expect(prometheusMetricsReceivers).To(ContainElement("prometheus"))
+			prometheusMetricsProcessors := readPipelineProcessors(pipelines, "metrics/prometheus")
+			Expect(prometheusMetricsProcessors).To(ContainElement("transform/prometheusserviceattributes"))
+			prometheusMetricsExporters := readPipelineExporters(pipelines, "metrics/prometheus")
+			Expect(prometheusMetricsExporters).To(ContainElement("forward/prometheusmetrics"))
+
+			downstreamMetricsReceivers := readPipelineReceivers(pipelines, "metrics/downstream")
+			Expect(downstreamMetricsReceivers).To(ContainElement("forward/prometheusmetrics"))
 		})
 	})
 

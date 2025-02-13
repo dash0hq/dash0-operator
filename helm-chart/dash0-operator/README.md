@@ -494,6 +494,29 @@ By default, the operator collects metrics as follows:
 
 Disabling or enabling individual metrics via configuration is not supported.
 
+#### Resource Attributes for Prometheus Scraping
+
+When the operator scrapes Prometheus endpoints on pods, it does not have access to all the same metadata that is
+available to the OpenTelemetry SDK in an instrumented application. For that reason, resource attributes including
+the service name might be different. The operator makes an effort to derive reasonable resource attributes.
+
+The service name is derived as follows:
+
+1. If the scraped service provides the `target_info` metric with a `service_name` attribute, that service name will be 
+   used. See https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/compatibility/prometheus_and_openmetrics.md#resource-attributes
+2. If no service name was found via (1.), but the pod has a `app.kubernetes.io/name` label, the value of that label will
+   be used as the service name.
+3. If no service name was found via (1.) or (2.), the pod name is used as the service name.
+4. If no service name was found via (1.), (2.), or (3.), the service name is set to `unknown_service:prometheus`.
+
+Independent of the service name, the following pod labels will be mapped to resource attribtues as well:
+* `app.kubernetes.io/version` to `service.version`
+* `app.kubernetes.io/part_of` to `service.namespace`
+* `app.kubernetes.io/instance` to `service.instance.id`
+
+Note that in contrast to [Resource Attributes for Workloads via Labels and Annotations](#specifying-additional-resource-attributes-for-workloads-via-labels-and-annotations),
+Prometheus scraping can only see pod labels, not workload level (deployment, daemonset, ...) labels.
+
 ### Controlling On Which Nodes the Operator's Collector Pods Are Scheduled
 
 #### Allow Scheduling on Tainted Nodes

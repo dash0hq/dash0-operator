@@ -8,6 +8,11 @@ metadata:
 spec:
   template:
     metadata:
+      labels:
+        app.kubernetes.io/name: "test-job"
+        app.kubernetes.io/version: "1.0.0"
+        app.kubernetes.io/part-of: "dash0-operator-test"
+        app.kubernetes.io/instance: "express"
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "1208"

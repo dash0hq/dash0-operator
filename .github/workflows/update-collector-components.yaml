@@ -44,7 +44,7 @@ jobs:
           images/collector/update.sh
 
           # git diff-files --quiet exits with 1 if there were differences, exit code 0 means no differences.
-          if git diff-files --quiet src/builder/config.yaml; then
+          if git diff-files --quiet images/collector/src/builder/config.yaml; then
             echo "There are no changes, everything up to date."
           else
             echo "There are changes, creating a pull request."
