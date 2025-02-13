@@ -86,6 +86,13 @@ type Dash0MonitoringSpec struct {
 	// +kubebuilder:default=true
 	SynchronizePrometheusRules *bool `json:"synchronizePrometheusRules,omitempty"`
 
+	// If enabled, the operator will watch Dash0 view resources in this namespace and create corresponding views in Dash0 via the Dash0 API.
+	// See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-check-rules-with-the-operator
+	// for details. This setting is optional, it defaults to true.
+	//
+	// +kubebuilder:default=true
+	SynchronizeViews *bool `json:"synchronizeViews,omitempty"`
+
 	// If enabled, the operator will configure its OpenTelemetry collector to scrape metrics from pods in the namespace
 	// of this Dash0Monitoring resource according to their prometheus.io/scrape annotations via the OpenTelemetry
 	// Prometheus receiver. This setting is optional, it defaults to true.
