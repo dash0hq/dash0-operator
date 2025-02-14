@@ -1,31 +1,16 @@
-exporters:
-{{- if .DebugVerbosityDetailed }}
-  debug:
-    verbosity: detailed
-{{ else if .DevelopmentMode }}
-  debug: {}
-{{- end }}
-{{- range $i, $exporter := .Exporters }}
-  {{ $exporter.Name }}:
-    endpoint: "{{ $exporter.Endpoint }}"
-{{ if $exporter.Insecure }}
-    tls:
-      insecure: true
-{{ end }}
-{{- if $exporter.Headers }}
-    headers:
-{{- range $i, $header := $exporter.Headers }}
-      "{{ $header.Name }}": "{{ $header.Value }}"
-{{- end }}
-{{- end }}
-{{- if $exporter.Encoding }}
-    encoding: "{{ $exporter.Encoding }}"
-{{- end }}
-{{- end }}
-
 extensions:
   health_check:
     endpoint: "{{ .SelfIpReference }}:13133"
+
+
+receivers:
+  k8s_cluster:
+    metrics:
+      k8s.container.restarts:
+        enabled: false
+      k8s.namespace.phase:
+        enabled: false
+
 
 processors:
 {{- if .SendBatchMaxSize }}
@@ -101,13 +86,32 @@ processors:
     limit_percentage: 80
     spike_limit_percentage: 25
 
-receivers:
-  k8s_cluster:
-    metrics:
-      k8s.container.restarts:
-        enabled: false
-      k8s.namespace.phase:
-        enabled: false
+
+exporters:
+{{- if .DebugVerbosityDetailed }}
+  debug:
+    verbosity: detailed
+{{ else if .DevelopmentMode }}
+  debug: {}
+{{- end }}
+{{- range $i, $exporter := .Exporters }}
+  {{ $exporter.Name }}:
+    endpoint: "{{ $exporter.Endpoint }}"
+{{- if $exporter.Insecure }}
+    tls:
+      insecure: true
+{{ end }}
+{{- if $exporter.Headers }}
+    headers:
+{{- range $i, $header := $exporter.Headers }}
+      "{{ $header.Name }}": "{{ $header.Value }}"
+{{- end }}
+{{- end }}
+{{- if $exporter.Encoding }}
+    encoding: "{{ $exporter.Encoding }}"
+{{- end }}
+{{- end }}
+
 
 service:
   extensions:
