@@ -65,7 +65,7 @@ func appendSelfMonitoringEnvVars(env []corev1.EnvVar) []corev1.EnvVar {
 		},
 		corev1.EnvVar{
 			Name:  "OTEL_EXPORTER_OTLP_HEADERS",
-			Value: "Authorization=Bearer $(SELF_MONITORING_AND_API_AUTH_TOKEN),Dash0-Dataset=dash0-internal",
+			Value: "Authorization=Bearer $(SELF_MONITORING_AND_API_AUTH_TOKEN)",
 		},
 		corev1.EnvVar{
 			Name:  "OTEL_EXPORTER_OTLP_PROTOCOL",

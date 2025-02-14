@@ -66,8 +66,8 @@ operator:
     disableSecretValidation: false
 
   # An opt-out for operator self-monitoring. If set to false, self monitoring for the operator will be disabled, that
-  # is, the operator will not send self-monitoring telemetry to the Dash0 Insights dataset of the configured Dash0
-  # backend. This setting is optional, it defaults to true.
+  # is, the operator will not send self-monitoring telemetry to the configured Dash0 backend. This setting is optional,
+  # it defaults to true.
   #
   # This setting has no effect if operator.dash0Export.enabled is false, as no Dash0OperatorConfiguration
   # resource will be created by the Helm chart then.

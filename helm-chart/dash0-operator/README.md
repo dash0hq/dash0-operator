@@ -189,8 +189,7 @@ Here is a list of configuration options for this resource:
   -> organization settings -> "Endpoints" -> "API". The correct endpoint value will always start with "https://api." and
   end in ".dash0.com". If this property is omitted, managing dashboards and check rules via the operator will not work.
 * `spec.selfMonitoring.enabled`: An opt-out for self-monitoring for the operator.
-  If enabled, the operator will collect self-monitoring telemetry and send it to the Dash0 Insights dataset of the
-  configured Dash0 backend.
+  If enabled, the operator will collect self-monitoring telemetry and send it to the configured Dash0 backend.
   This setting is optional, it defaults to true.
 * `spec.kubernetesInfrastructureMetricsCollectionEnabled`: If enabled, the operator will collect Kubernetes
   infrastructure metrics.
@@ -725,7 +724,7 @@ This restriction will be lifted once exporting telemetry to different backends p
 
 By default, self-monitoring is enabled for the Dash0 operator as soon as you deploy a Das0 operator
 configuration resource with an export.
-That means, the operator will send self-monitoring telemetry to the Dash0 Insights dataset of the configured backend.
+That means, the operator will send self-monitoring telemetry to the configured Dash0 backend.
 Disabling self-monitoring is available as a setting on the Dash0 operator configuration resource.
 Dash0 does not recommend to disable the operator's self-monitoring.
 

@@ -15,8 +15,6 @@ import (
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
-	"github.com/dash0hq/dash0-operator/internal/util"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -297,7 +295,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			Export:     Dash0ExportWithEndpointAndToken(),
 			SelfMonitoringAndApiAccessConfiguration: selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{
 				SelfMonitoringEnabled: true,
-				Export:                Dash0ExportWithEndpointTokenAndInsightsDataset(),
+				Export:                Dash0ExportWithEndpointAndToken(),
 			},
 			Images: TestImages,
 		}, nil, &OTelExtraConfigDefaults)
@@ -309,7 +307,32 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(selfMonitoringConfiguration.SelfMonitoringEnabled).To(BeTrue())
 		Expect(selfMonitoringConfiguration.Export.Dash0).ToNot(BeNil())
 		Expect(selfMonitoringConfiguration.Export.Dash0.Endpoint).To(Equal(EndpointDash0WithProtocolTest))
-		Expect(selfMonitoringConfiguration.Export.Dash0.Dataset).To(Equal(util.DatasetInsights))
+		Expect(selfMonitoringConfiguration.Export.Dash0.Dataset).To(BeEmpty())
+		Expect(*selfMonitoringConfiguration.Export.Dash0.Authorization.Token).To(Equal(AuthorizationTokenTest))
+		Expect(selfMonitoringConfiguration.Export.Grpc).To(BeNil())
+		Expect(selfMonitoringConfiguration.Export.Http).To(BeNil())
+	})
+
+	It("should correctly apply enabled self-monitoring with custom dataset on the daemonset", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			Namespace:  namespace,
+			NamePrefix: namePrefix,
+			Export:     Dash0ExportWithEndpointTokenAndCustomDataset(),
+			SelfMonitoringAndApiAccessConfiguration: selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{
+				SelfMonitoringEnabled: true,
+				Export:                Dash0ExportWithEndpointTokenAndCustomDataset(),
+			},
+			Images: TestImages,
+		}, nil, &OTelExtraConfigDefaults)
+		Expect(err).NotTo(HaveOccurred())
+
+		daemonSet := getDaemonSet(desiredState)
+		selfMonitoringConfiguration, err := parseBackSelfMonitoringEnvVarsFromCollectorDaemonSet(daemonSet)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(selfMonitoringConfiguration.SelfMonitoringEnabled).To(BeTrue())
+		Expect(selfMonitoringConfiguration.Export.Dash0).ToNot(BeNil())
+		Expect(selfMonitoringConfiguration.Export.Dash0.Endpoint).To(Equal(EndpointDash0WithProtocolTest))
+		Expect(selfMonitoringConfiguration.Export.Dash0.Dataset).To(Equal(DatasetTest))
 		Expect(*selfMonitoringConfiguration.Export.Dash0.Authorization.Token).To(Equal(AuthorizationTokenTest))
 		Expect(selfMonitoringConfiguration.Export.Grpc).To(BeNil())
 		Expect(selfMonitoringConfiguration.Export.Http).To(BeNil())
@@ -322,7 +345,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			Export:     Dash0ExportWithEndpointAndToken(),
 			SelfMonitoringAndApiAccessConfiguration: selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{
 				SelfMonitoringEnabled: false,
-				Export:                Dash0ExportWithEndpointTokenAndInsightsDataset(),
+				Export:                Dash0ExportWithEndpointAndToken(),
 			},
 			Images: TestImages,
 		}, nil, &OTelExtraConfigDefaults)
