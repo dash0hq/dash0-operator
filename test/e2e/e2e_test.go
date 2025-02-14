@@ -64,7 +64,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 		recreateNamespace(applicationUnderTestNamespace)
 
-		readAndApplyEnvironmentVariables()
+		determineContainerImages()
 		rebuildAllContainerImages()
 		rebuildAppUnderTestContainerImages()
 
@@ -1142,9 +1142,19 @@ func cleanupAll() {
 	uninstallOtlpSink(workingDir)
 }
 
-func readAndApplyEnvironmentVariables() {
+func determineContainerImages() {
 	operatorHelmChart = getEnvOrDefault("OPERATOR_HELM_CHART", operatorHelmChart)
 	operatorHelmChartUrl = getEnvOrDefault("OPERATOR_HELM_CHART_URL", operatorHelmChartUrl)
+
+	// The defaults when using the Helm chart from local sources are:
+	// - use the locally built image with tag latest
+	// - use pull policy "Never"
+	// The defaults when using a remote helm chart are:
+	// - default to not setting an explicit image repository or tag
+	// - default to not setting a pull policy, instead let Kubernetes use the default pull policy
+	if !isLocalHelmChart() {
+		images = emptyImages
+	}
 
 	images.operator.repository = getEnvOrDefault("CONTROLLER_IMG_REPOSITORY", images.operator.repository)
 	images.operator.tag = getEnvOrDefault("CONTROLLER_IMG_TAG", images.operator.tag)
@@ -1196,6 +1206,25 @@ func readAndApplyEnvironmentVariables() {
 		"FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY",
 		images.fileLogOffsetSynch.pullPolicy,
 	)
+
+	if isLocalHelmChart() {
+		// support using the local helm chart with remote images
+		if isRemoteImage(images.operator) {
+			images.operator.pullPolicy = getEnvOrDefault("CONTROLLER_IMG_PULL_POLICY", "")
+		}
+		if isRemoteImage(images.instrumentation) {
+			images.instrumentation.pullPolicy = getEnvOrDefault("INSTRUMENTATION_IMG_PULL_POLICY", "")
+		}
+		if isRemoteImage(images.collector) {
+			images.collector.pullPolicy = getEnvOrDefault("COLLECTOR_IMG_PULL_POLICY", "")
+		}
+		if isRemoteImage(images.configurationReloader) {
+			images.configurationReloader.pullPolicy = getEnvOrDefault("CONFIGURATION_RELOADER_IMG_PULL_POLICY", "")
+		}
+		if isRemoteImage(images.fileLogOffsetSynch) {
+			images.fileLogOffsetSynch.pullPolicy = getEnvOrDefault("FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY", "")
+		}
+	}
 }
 
 func getEnvOrDefault(name string, defaultValue string) string {

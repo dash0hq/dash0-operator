@@ -27,6 +27,10 @@ var (
 	operatorNamespace    = "dash0-system"
 )
 
+func isLocalHelmChart() bool {
+	return operatorHelmChart == localHelmChart
+}
+
 func deployOperator(
 	operatorNamespace string,
 	operatorHelmChart string,
@@ -172,13 +176,13 @@ func ensureDash0OperatorHelmRepoIsInstalled(
 	operatorHelmChart string,
 	operatorHelmChartUrl string,
 ) {
-	if operatorHelmChart == localHelmChart && operatorHelmChartUrl == "" {
+	if isLocalHelmChart() && operatorHelmChartUrl == "" {
 		// installing from local Helm chart sources, no action required
 		return
-	} else if operatorHelmChart == localHelmChart && operatorHelmChartUrl != "" {
+	} else if isLocalHelmChart() && operatorHelmChartUrl != "" {
 		Fail("Invalid test setup: When setting a URL for the Helm chart (OPERATOR_HELM_CHART_URL), you also need to " +
 			"provide a custom name (OPERATOR_HELM_CHART).")
-	} else if operatorHelmChart != localHelmChart && operatorHelmChartUrl == "" {
+	} else if !isLocalHelmChart() && operatorHelmChartUrl == "" {
 		Fail("Invalid test setup: When setting a non-standard name for the operator Helm chart " +
 			"(OPERATOR_HELM_CHART), you also need to provide a URL from where to install it (OPERATOR_HELM_CHART_URL).")
 	} else if operatorHelmChartUrl != "" && !strings.Contains(operatorHelmChart, "/") {
