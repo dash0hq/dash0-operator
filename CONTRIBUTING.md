@@ -82,19 +82,14 @@ The tests can also be run with remote images, like this:
 ```
 CONTROLLER_IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller \
   CONTROLLER_IMG_TAG=main-dev \
-  CONTROLLER_IMG_PULL_POLICY="" \
   INSTRUMENTATION_IMG_REPOSITORY=ghcr.io/dash0hq/instrumentation \
   INSTRUMENTATION_IMG_TAG=main-dev \
-  INSTRUMENTATION_IMG_PULL_POLICY="" \
   COLLECTOR_IMG_REPOSITORY=ghcr.io/dash0hq/collector \
   COLLECTOR_IMG_TAG=main-dev \
-  COLLECTOR_IMG_PULL_POLICY="" \
   CONFIGURATION_RELOADER_IMG_REPOSITORY=ghcr.io/dash0hq/configuration-reloader \
   CONFIGURATION_RELOADER_IMG_TAG=main-dev \
-  CONFIGURATION_RELOADER_IMG_PULL_POLICY="" \
   FILELOG_OFFSET_SYNCH_IMG_REPOSITORY=ghcr.io/dash0hq/filelog-offset-synch \
   FILELOG_OFFSET_SYNCH_IMG_TAG=main-dev \
-  FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY="" \
   make test-e2e
 ```
 
@@ -103,28 +98,8 @@ The test suite can also be run with a Helm chart from a remote repository:
 ```
 OPERATOR_HELM_CHART=dash0-operator/dash0-operator \
   OPERATOR_HELM_CHART_URL=https://dash0hq.github.io/dash0-operator \
-  CONTROLLER_IMG_REPOSITORY="" \
-  CONTROLLER_IMG_TAG="" \
-  CONTROLLER_IMG_PULL_POLICY="" \
-  INSTRUMENTATION_IMG_REPOSITORY="" \
-  INSTRUMENTATION_IMG_TAG="" \
-  INSTRUMENTATION_IMG_PULL_POLICY="" \
-  COLLECTOR_IMG_REPOSITORY="" \
-  COLLECTOR_IMG_TAG="" \
-  COLLECTOR_IMG_PULL_POLICY="" \
-  CONFIGURATION_RELOADER_IMG_REPOSITORY="" \
-  CONFIGURATION_RELOADER_IMG_TAG="" \
-  CONFIGURATION_RELOADER_IMG_PULL_POLICY="" \
-  FILELOG_OFFSET_SYNCH_IMG_REPOSITORY="" \
-  FILELOG_OFFSET_SYNCH_IMG_TAG="" \
-  FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY="" \
   make test-e2e
 ```
-
-Note: Unsetting parameters like `CONTROLLER_IMG_REPOSITORY` explicitly (by setting them to an empty string) will lead to
-the end-to-end test not setting those values when deploying via helm, so that the default value from the chart will be
-used.  Otherwise, without `CONTROLLER_IMG_REPOSITORY=""` being present, the test suite will use
-`CONTROLLER_IMG_REPOSITORY=operator-controller` (the image built from local sources) as the default setting.
 
 #### Running End-to-End Tests on kind
 
@@ -271,76 +246,49 @@ If you want to report telemetry to a Dash0 backend, set `DASH0_AUTHORIZATION_TOK
   with `*_IMG_TAG` will override the fully qualified name of the image. For example, setting
   `CONTROLLER_IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller` and `CONTROLLER_IMG_TAG=0.45.1` will instruct the
   scripts to use `ghcr.io/dash0hq/operator-controller:0.45.1` instead of the locally built operator manager image.
-  To use remote images instead of locally built ones, you might also need to use `*_IMG_PULL_POLICY` to override the
-  pull policy which is set to `Never` by default, e.g. `CONTROLLER_IMG_PULL_POLICY=""`. (Overriding the pull policy with
-  an empty string will make the script revert back to the default image pull policy.) Finally, you can also use
-  `*_IMG_DIGEST` to use a specific image digest instead of an image tag. Here is the full list of image related
-  environment variables:
-    * `COLLECTOR_IMG_DIGEST`
-    * `COLLECTOR_IMG_PULL_POLICY`
-    * `COLLECTOR_IMG_REPOSITORY`
-    * `COLLECTOR_IMG_TAG`
-    * `CONFIGURATION_RELOADER_IMG_DIGEST`
-    * `CONFIGURATION_RELOADER_IMG_PULL_POLICY`
-    * `CONFIGURATION_RELOADER_IMG_REPOSITORY`
-    * `CONFIGURATION_RELOADER_IMG_TAG`
-    * `CONTROLLER_IMG_DIGEST`
-    * `CONTROLLER_IMG_PULL_POLICY`
+  You can also use `*_IMG_DIGEST` to use a specific image digest instead of an image tag.
+  Here is the full list of image related environment variables:
     * `CONTROLLER_IMG_REPOSITORY`
     * `CONTROLLER_IMG_TAG`
-    * `FILELOG_OFFSET_SYNCH_IMG_DIGEST`
-    * `FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY`
-    * `FILELOG_OFFSET_SYNCH_IMG_REPOSITORY`
-    * `FILELOG_OFFSET_SYNCH_IMG_TAG`
-    * `INSTRUMENTATION_IMG_DIGEST`
-    * `INSTRUMENTATION_IMG_PULL_POLICY`
+    * `CONTROLLER_IMG_DIGEST`
+    * `CONTROLLER_IMG_PULL_POLICY`
     * `INSTRUMENTATION_IMG_REPOSITORY`
     * `INSTRUMENTATION_IMG_TAG`
+    * `INSTRUMENTATION_IMG_DIGEST`
+    * `INSTRUMENTATION_IMG_PULL_POLICY`
+    * `COLLECTOR_IMG_REPOSITORY`
+    * `COLLECTOR_IMG_TAG`
+    * `COLLECTOR_IMG_DIGEST`
+    * `COLLECTOR_IMG_PULL_POLICY`
+    * `CONFIGURATION_RELOADER_IMG_REPOSITORY`
+    * `CONFIGURATION_RELOADER_IMG_TAG`
+    * `CONFIGURATION_RELOADER_IMG_DIGEST`
+    * `CONFIGURATION_RELOADER_IMG_PULL_POLICY`
+    * `FILELOG_OFFSET_SYNCH_IMG_REPOSITORY`
+    * `FILELOG_OFFSET_SYNCH_IMG_TAG`
+    * `FILELOG_OFFSET_SYNCH_IMG_DIGEST`
+    * `FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY`
 * To run the scenario with the images that have been built from the main branch and pushed to ghcr.io most recently:
     ```
     CONTROLLER_IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller \
       CONTROLLER_IMG_TAG=main-dev \
-      CONTROLLER_IMG_PULL_POLICY="" \
       INSTRUMENTATION_IMG_REPOSITORY=ghcr.io/dash0hq/instrumentation \
       INSTRUMENTATION_IMG_TAG=main-dev \
-      INSTRUMENTATION_IMG_PULL_POLICY="" \
       COLLECTOR_IMG_REPOSITORY=ghcr.io/dash0hq/collector \
       COLLECTOR_IMG_TAG=main-dev \
-      COLLECTOR_IMG_PULL_POLICY="" \
       CONFIGURATION_RELOADER_IMG_REPOSITORY=ghcr.io/dash0hq/configuration-reloader \
       CONFIGURATION_RELOADER_IMG_TAG=main-dev \
-      CONFIGURATION_RELOADER_IMG_PULL_POLICY="" \
       FILELOG_OFFSET_SYNCH_IMG_REPOSITORY=ghcr.io/dash0hq/filelog-offset-synch \
       FILELOG_OFFSET_SYNCH_IMG_TAG=main-dev \
-      FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY="" \
       test-resources/bin/test-scenario-01-aum-operator-cr.sh
     ```
    * To run the scenario with the helm chart from the official remote repository and the default images referenced in
      that chart (the Helm repository must have been installed beforehand):
      ```
      OPERATOR_HELM_CHART=dash0-operator/dash0-operator \
-       CONTROLLER_IMG_REPOSITORY="" \
-       CONTROLLER_IMG_TAG="" \
-       CONTROLLER_IMG_PULL_POLICY="" \
-       INSTRUMENTATION_IMG_REPOSITORY="" \
-       INSTRUMENTATION_IMG_TAG="" \
-       INSTRUMENTATION_IMG_PULL_POLICY="" \
-       COLLECTOR_IMG_REPOSITORY="" \
-       COLLECTOR_IMG_TAG="" \
-       COLLECTOR_IMG_PULL_POLICY="" \
-       CONFIGURATION_RELOADER_IMG_REPOSITORY="" \
-       CONFIGURATION_RELOADER_IMG_TAG="" \
-       CONFIGURATION_RELOADER_IMG_PULL_POLICY="" \
-       FILELOG_OFFSET_SYNCH_IMG_REPOSITORY="" \
-       FILELOG_OFFSET_SYNCH_IMG_TAG="" \
-       FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY="" \
        test-resources/bin/test-scenario-01-aum-operator-cr.sh
      ```
-     Note: Unsetting parameters like `CONTROLLER_IMG_REPOSITORY` explicitly (by setting them to an empty string) will
-     lead to the scenario not setting those values when deploying via helm, so that the default value from the chart
-     will actually be used. Otherwise, without `CONTROLLER_IMG_REPOSITORY=""` being present, the test script will use
-     `CONTROLLER_IMG_REPOSITORY=operator-controller` (the image built from local sources) as the default setting.
-     * You can add `OPERATOR_HELM_CHART_VERSION=0.11.0` to the command above to install a specific version of the
+   * You can add `OPERATOR_HELM_CHART_VERSION=0.11.0` to the command above to install a specific version of the
        Helm chart. This can be useful to test upgrade scenarios.
 
 ## Make Targets

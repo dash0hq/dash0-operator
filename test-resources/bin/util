@@ -36,6 +36,7 @@ verify_kubectx() {
 setup_test_environment () {
   test-resources/bin/render-templates.sh
   check_if_kubectx_is_kind_cluster
+  determine_container_images
 }
 
 ensure_namespace_exists() {
@@ -56,8 +57,164 @@ finish_step() {
   echo
 }
 
+is_remote_image() {
+  image_name="$1"
+  if [[ $image_name == */* ]]; then
+    printf "true"
+  else
+    printf "false"
+  fi
+}
+
+determine_container_images() {
+  # The defaults when using the Helm chart from local sources are:
+  # - use the locally built image with tag latest
+  # - use pull policy "Never"
+  # The defaults when using a remote helm chart are:
+  # - default to not setting an explicit image repository or tag
+  # - default to not setting a pull policy, instead let Kubernetes use the default pull policy
+  controller_img_repository="operator-controller"
+  controller_img_tag="latest"
+  controller_img_digest=""
+  controller_img_pull_policy="Never"
+  instrumentation_img_repository="instrumentation"
+  instrumentation_img_tag="latest"
+  instrumentation_img_digest=""
+  instrumentation_img_pull_policy="Never"
+  collector_img_repository="collector"
+  collector_img_tag="latest"
+  collector_img_digest=""
+  collector_img_pull_policy="Never"
+  configuration_reloader_img_repository="configuration-reloader"
+  configuration_reloader_img_tag="latest"
+  configuration_reloader_img_digest=""
+  configuration_reloader_img_pull_policy="Never"
+  filelog_offset_synch_img_repository="filelog-offset-synch"
+  filelog_offset_synch_img_tag="latest"
+  filelog_offset_synch_img_digest=""
+  filelog_offset_synch_img_pull_policy="Never"
+
+  operator_helm_chart=${OPERATOR_HELM_CHART:-helm-chart/dash0-operator}
+
+  is_local_helm_chart="true"
+  if [[ "$operator_helm_chart" != "helm-chart/dash0-operator" ]]; then
+    echo "Looks like a remote helm chart or an installed Helm chart is used."
+    is_local_helm_chart="false"
+
+    controller_img_repository=""
+    controller_img_tag=""
+    controller_img_pull_policy=""
+    instrumentation_img_repository=""
+    instrumentation_img_tag=""
+    instrumentation_img_pull_policy=""
+    collector_img_repository=""
+    collector_img_tag=""
+    collector_img_pull_policy=""
+    configuration_reloader_img_repository=""
+    configuration_reloader_img_tag=""
+    configuration_reloader_img_pull_policy=""
+    filelog_offset_synch_img_repository=""
+    filelog_offset_synch_img_tag=""
+    filelog_offset_synch_img_pull_policy=""
+ fi
+
+  if [[ -n "${CONTROLLER_IMG_REPOSITORY:-}" ]]; then
+    controller_img_repository="$CONTROLLER_IMG_REPOSITORY"
+  fi
+  if [[ -n "${CONTROLLER_IMG_TAG:-}" ]]; then
+    controller_img_tag="$CONTROLLER_IMG_TAG"
+  fi
+  if [[ -n "${CONTROLLER_IMG_DIGEST:-}" ]]; then
+    controller_img_digest="$CONTROLLER_IMG_DIGEST"
+  fi
+  if [[ -n "${CONTROLLER_IMG_PULL_POLICY:-}" ]]; then
+    controller_img_pull_policy="$CONTROLLER_IMG_PULL_POLICY"
+  fi
+
+  if [[ -n "${INSTRUMENTATION_IMG_REPOSITORY:-}" ]]; then
+    instrumentation_img_repository="$INSTRUMENTATION_IMG_REPOSITORY"
+  fi
+  if [[ -n "${INSTRUMENTATION_IMG_TAG:-}" ]]; then
+    instrumentation_img_tag="$INSTRUMENTATION_IMG_TAG"
+  fi
+  if [[ -n "${INSTRUMENTATION_IMG_DIGEST:-}" ]]; then
+    instrumentation_img_digest="$INSTRUMENTATION_IMG_DIGEST"
+  fi
+  if [[ -n "${INSTRUMENTATION_IMG_PULL_POLICY:-}" ]]; then
+    instrumentation_img_pull_policy="$INSTRUMENTATION_IMG_PULL_POLICY"
+  fi
+
+  if [[ -n "${COLLECTOR_IMG_REPOSITORY:-}" ]]; then
+    collector_img_repository="$COLLECTOR_IMG_REPOSITORY"
+  fi
+  if [[ -n "${COLLECTOR_IMG_TAG:-}" ]]; then
+    collector_img_tag="$COLLECTOR_IMG_TAG"
+  fi
+  if [[ -n "${COLLECTOR_IMG_DIGEST:-}" ]]; then
+    collector_img_digest="$COLLECTOR_IMG_DIGEST"
+  fi
+  if [[ -n "${COLLECTOR_IMG_PULL_POLICY:-}" ]]; then
+    collector_img_pull_policy="$COLLECTOR_IMG_PULL_POLICY"
+  fi
+
+  if [[ -n "${CONFIGURATION_RELOADER_IMG_REPOSITORY:-}" ]]; then
+    configuration_reloader_img_repository="$CONFIGURATION_RELOADER_IMG_REPOSITORY"
+  fi
+  if [[ -n "${CONFIGURATION_RELOADER_IMG_TAG:-}" ]]; then
+    configuration_reloader_img_tag="$CONFIGURATION_RELOADER_IMG_TAG"
+  fi
+  if [[ -n "${CONFIGURATION_RELOADER_IMG_DIGEST:-}" ]]; then
+    configuration_reloader_img_digest="$CONFIGURATION_RELOADER_IMG_DIGEST"
+  fi
+  if [[ -n "${CONFIGURATION_RELOADER_IMG_PULL_POLICY:-}" ]]; then
+    configuration_reloader_img_pull_policy="$CONFIGURATION_RELOADER_IMG_PULL_POLICY"
+  fi
+
+  if [[ -n "${FILELOG_OFFSET_SYNCH_IMG_REPOSITORY:-}" ]]; then
+    filelog_offset_synch_img_repository="$FILELOG_OFFSET_SYNCH_IMG_REPOSITORY"
+  fi
+  if [[ -n "${FILELOG_OFFSET_SYNCH_IMG_TAG:-}" ]]; then
+    filelog_offset_synch_img_tag="$FILELOG_OFFSET_SYNCH_IMG_TAG"
+  fi
+  if [[ -n "${FILELOG_OFFSET_SYNCH_IMG_DIGEST:-}" ]]; then
+    filelog_offset_synch_img_digest="$FILELOG_OFFSET_SYNCH_IMG_DIGEST"
+  fi
+  if [[ -n "${FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY:-}" ]]; then
+    filelog_offset_synch_img_pull_policy="$FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY"
+  fi
+
+
+  if [[ "$is_local_helm_chart" = "true" ]]; then
+    # support using the local helm chart with remote images
+    if [[ $(is_remote_image "$controller_img_repository") = "true" ]]; then
+      controller_img_pull_policy=""
+    fi
+    if [[ $(is_remote_image "$instrumentation_img_repository") = "true" ]]; then
+      instrumentation_img_pull_policy=""
+    fi
+    if [[ $(is_remote_image "$collector_img_repository") = "true" ]]; then
+      collector_img_pull_policy=""
+    fi
+    if [[ $(is_remote_image "$configuration_reloader_img_repository") = "true" ]]; then
+      configuration_reloader_img_pull_policy=""
+    fi
+    if [[ $(is_remote_image "$filelog_offset_synch_img_repository") = "true" ]]; then
+      filelog_offset_synch_img_pull_policy=""
+    fi
+  fi
+}
+
 build_all_images() {
-  make docker-build
+  CONTROLLER_IMG_REPOSITORY="$controller_img_repository" \
+    CONTROLLER_IMG_TAG="$controller_img_tag" \
+    INSTRUMENTATION_IMG_REPOSITORY="$instrumentation_img_repository" \
+    INSTRUMENTATION_IMG_TAG="$instrumentation_img_tag" \
+    COLLECTOR_IMG_REPOSITORY="$collector_img_repository" \
+    CONFIGURATION_RELOADER_IMG_REPOSITORY="$configuration_reloader_img_repository" \
+    CONFIGURATION_RELOADER_IMG_TAG="$configuration_reloader_img_tag" \
+    FILELOG_OFFSET_SYNCH_IMG_REPOSITORY=$filelog_offset_synch_img_repository \
+    FILELOG_OFFSET_SYNCH_IMG_TAG="$filelog_offset_synch_img_tag" \
+    make docker-build
 
   if [[ "$is_kind_cluster" == true ]]; then
     echo loading images into Kind cluster
@@ -115,69 +272,70 @@ run_helm() {
   if [[ -n "${OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE:-}" ]]; then
     helm_install_command+=" --set operator.collectors.sendBatchMaxSize=$OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE"
   fi
-  if ! has_been_set_to_empty_string "CONTROLLER_IMG_REPOSITORY"; then
-    helm_install_command+=" --set operator.image.repository=${CONTROLLER_IMG_REPOSITORY:-operator-controller}"
+
+  if [[ -n "$controller_img_repository" ]]; then
+    helm_install_command+=" --set operator.image.repository=$controller_img_repository"
   fi
-  if ! has_been_set_to_empty_string "CONTROLLER_IMG_TAG"; then
-    helm_install_command+=" --set operator.image.tag=${CONTROLLER_IMG_TAG:-latest}"
+  if [[ -n "$controller_img_tag" ]]; then
+    helm_install_command+=" --set operator.image.tag=$controller_img_tag"
   fi
-  if [[ -n "${CONTROLLER_IMG_DIGEST:-}" ]]; then
-    helm_install_command+=" --set operator.image.digest=$CONTROLLER_IMG_DIGEST"
+  if [[ -n "$controller_img_digest" ]]; then
+    helm_install_command+=" --set operator.image.digest=$controller_img_digest"
   fi
-  if ! has_been_set_to_empty_string "CONTROLLER_IMG_PULL_POLICY"; then
-    helm_install_command+=" --set operator.image.pullPolicy=${CONTROLLER_IMG_PULL_POLICY:-Never}"
+  if [[ -n "$controller_img_pull_policy" ]]; then
+    helm_install_command+=" --set operator.image.pullPolicy=$controller_img_pull_policy"
   fi
 
-  if ! has_been_set_to_empty_string "INSTRUMENTATION_IMG_REPOSITORY"; then
-    helm_install_command+=" --set operator.initContainerImage.repository=${INSTRUMENTATION_IMG_REPOSITORY:-instrumentation}"
+  if [[ -n "$instrumentation_img_repository" ]]; then
+    helm_install_command+=" --set operator.initContainerImage.repository=$instrumentation_img_repository"
   fi
-  if ! has_been_set_to_empty_string "INSTRUMENTATION_IMG_TAG"; then
-    helm_install_command+=" --set operator.initContainerImage.tag=${INSTRUMENTATION_IMG_TAG:-latest}"
+  if [[ -n "$instrumentation_img_tag" ]]; then
+    helm_install_command+=" --set operator.initContainerImage.tag=$instrumentation_img_tag"
   fi
-  if [[ -n "${INSTRUMENTATION_IMG_DIGEST:-}" ]]; then
-    helm_install_command+=" --set operator.initContainerImage.digest=$INSTRUMENTATION_IMG_DIGEST"
+  if [[ -n "$instrumentation_img_digest" ]]; then
+    helm_install_command+=" --set operator.initContainerImage.digest=$instrumentation_img_digest"
   fi
-  if ! has_been_set_to_empty_string "INSTRUMENTATION_IMG_PULL_POLICY"; then
-    helm_install_command+=" --set operator.initContainerImage.pullPolicy=${INSTRUMENTATION_IMG_PULL_POLICY:-Never}"
-  fi
-
-  if ! has_been_set_to_empty_string "COLLECTOR_IMG_REPOSITORY"; then
-    helm_install_command+=" --set operator.collectorImage.repository=${COLLECTOR_IMG_REPOSITORY:-collector}"
-  fi
-  if ! has_been_set_to_empty_string "COLLECTOR_IMG_TAG"; then
-    helm_install_command+=" --set operator.collectorImage.tag=${COLLECTOR_IMG_TAG:-latest}"
-  fi
-  if [[ -n "${COLLECTOR_IMG_DIGEST:-}" ]]; then
-    helm_install_command+=" --set operator.collectorImage.digest=$COLLECTOR_IMG_DIGEST"
-  fi
-  if ! has_been_set_to_empty_string "COLLECTOR_IMG_PULL_POLICY"; then
-    helm_install_command+=" --set operator.collectorImage.pullPolicy=${COLLECTOR_IMG_PULL_POLICY:-Never}"
+  if [[ -n "$instrumentation_img_pull_policy" ]]; then
+    helm_install_command+=" --set operator.initContainerImage.pullPolicy=$instrumentation_img_pull_policy"
   fi
 
-  if ! has_been_set_to_empty_string "CONFIGURATION_RELOADER_IMG_REPOSITORY"; then
-    helm_install_command+=" --set operator.configurationReloaderImage.repository=${CONFIGURATION_RELOADER_IMG_REPOSITORY:-configuration-reloader}"
+  if [[ -n "$collector_img_repository" ]]; then
+    helm_install_command+=" --set operator.collectorImage.repository=$collector_img_repository"
   fi
-  if ! has_been_set_to_empty_string "CONFIGURATION_RELOADER_IMG_TAG"; then
-    helm_install_command+=" --set operator.configurationReloaderImage.tag=${CONFIGURATION_RELOADER_IMG_TAG:-latest}"
+  if [[ -n "$collector_img_tag" ]]; then
+    helm_install_command+=" --set operator.collectorImage.tag=$collector_img_tag"
   fi
-  if [[ -n "${CONFIGURATION_RELOADER_IMG_DIGEST:-}" ]]; then
-    helm_install_command+=" --set operator.configurationReloaderImage.digest=$CONFIGURATION_RELOADER_IMG_DIGEST"
+  if [[ -n "$collector_img_digest" ]]; then
+    helm_install_command+=" --set operator.collectorImage.digest=$collector_img_digest"
   fi
-  if ! has_been_set_to_empty_string "CONFIGURATION_RELOADER_IMG_PULL_POLICY"; then
-    helm_install_command+=" --set operator.configurationReloaderImage.pullPolicy=${CONFIGURATION_RELOADER_IMG_PULL_POLICY:-Never}"
+  if [[ -n "$collector_img_pull_policy" ]]; then
+    helm_install_command+=" --set operator.collectorImage.pullPolicy=$collector_img_pull_policy"
   fi
 
-  if ! has_been_set_to_empty_string "FILELOG_OFFSET_SYNCH_IMG_REPOSITORY"; then
-    helm_install_command+=" --set operator.filelogOffsetSynchImage.repository=${FILELOG_OFFSET_SYNCH_IMG_REPOSITORY:-filelog-offset-synch}"
+  if [[ -n "$configuration_reloader_img_repository" ]]; then
+    helm_install_command+=" --set operator.configurationReloaderImage.repository=$configuration_reloader_img_repository"
   fi
-  if ! has_been_set_to_empty_string "FILELOG_OFFSET_SYNCH_IMG_TAG"; then
-    helm_install_command+=" --set operator.filelogOffsetSynchImage.tag=${FILELOG_OFFSET_SYNCH_IMG_TAG:-latest}"
+  if [[ -n "$configuration_reloader_img_tag" ]]; then
+    helm_install_command+=" --set operator.configurationReloaderImage.tag=$configuration_reloader_img_tag"
   fi
-  if [[ -n "${FILELOG_OFFSET_SYNCH_IMG_DIGEST:-}" ]]; then
-    helm_install_command+=" --set operator.filelogOffsetSynchImage.digest=$FILELOG_OFFSET_SYNCH_IMG_DIGEST"
+  if [[ -n "$configuration_reloader_img_digest" ]]; then
+    helm_install_command+=" --set operator.configurationReloaderImage.digest=$configuration_reloader_img_digest"
   fi
-  if ! has_been_set_to_empty_string "FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY"; then
-    helm_install_command+=" --set operator.filelogOffsetSynchImage.pullPolicy=${FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY:-Never}"
+  if [[ -n "$configuration_reloader_img_pull_policy" ]]; then
+    helm_install_command+=" --set operator.configurationReloaderImage.pullPolicy=$configuration_reloader_img_pull_policy"
+  fi
+
+  if [[ -n "$filelog_offset_synch_img_repository" ]]; then
+    helm_install_command+=" --set operator.filelogOffsetSynchImage.repository=$filelog_offset_synch_img_repository"
+  fi
+  if [[ -n "$filelog_offset_synch_img_tag" ]]; then
+    helm_install_command+=" --set operator.filelogOffsetSynchImage.tag=$filelog_offset_synch_img_tag"
+  fi
+  if [[ -n "$filelog_offset_synch_img_digest" ]]; then
+    helm_install_command+=" --set operator.filelogOffsetSynchImage.digest=$filelog_offset_synch_img_digest"
+  fi
+  if [[ -n "$filelog_offset_synch_img_pull_policy" ]]; then
+    helm_install_command+=" --set operator.filelogOffsetSynchImage.pullPolicy=$filelog_offset_synch_img_pull_policy"
   fi
 
   # Deploy an operator configuration right away.
@@ -219,7 +377,6 @@ run_helm() {
   wait_for_operator_manager_and_webhook
 }
 
-
 wait_for_operator_manager_and_webhook() {
   echo "waiting for the operator deployment to become available..."
   kubectl wait deployment.apps/dash0-operator-controller --for condition=Available --namespace dash0-system --timeout 30s
@@ -253,20 +410,6 @@ wait_for_operator_manager_and_webhook() {
 	done
 	# wait until the resource has been reconciled and is marked as available
 	kubectl wait dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration-auto-resource --for condition=Available --timeout 30s
-  fi
-}
-
-has_been_set_to_empty_string() {
-  local env_var_name=$1
-  local value=${!env_var_name:-}
-  local is_set=${!env_var_name+is_set}
-
-  if [ -z "$value" ] && [ "$is_set" = "is_set" ]; then
-    return 0
-  elif [ -n "$value" ]; then
-    return 1
-  else
-    return 1
   fi
 }
 

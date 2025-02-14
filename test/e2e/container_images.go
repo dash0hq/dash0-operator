@@ -34,7 +34,7 @@ const (
 )
 
 var (
-	images = Images{
+	localImages = Images{
 		operator: ImageSpec{
 			repository: "operator-controller",
 			tag:        tagLatest,
@@ -61,6 +61,36 @@ var (
 			pullPolicy: "Never",
 		},
 	}
+
+	emptyImages = Images{
+		operator: ImageSpec{
+			repository: "",
+			tag:        "",
+			pullPolicy: "",
+		},
+		instrumentation: ImageSpec{
+			repository: "",
+			tag:        "",
+			pullPolicy: "",
+		},
+		collector: ImageSpec{
+			repository: "",
+			tag:        "",
+			pullPolicy: "",
+		},
+		configurationReloader: ImageSpec{
+			repository: "",
+			tag:        "",
+			pullPolicy: "",
+		},
+		fileLogOffsetSynch: ImageSpec{
+			repository: "",
+			tag:        "",
+			pullPolicy: "",
+		},
+	}
+
+	images = localImages
 )
 
 func rebuildAllContainerImages() {
