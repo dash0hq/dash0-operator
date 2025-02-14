@@ -98,6 +98,18 @@ func Dash0ExportWithEndpointAndToken() dash0v1alpha1.Export {
 	}
 }
 
+func Dash0ExportWithEndpointTokenAndCustomDataset() dash0v1alpha1.Export {
+	return dash0v1alpha1.Export{
+		Dash0: &dash0v1alpha1.Dash0Configuration{
+			Endpoint: EndpointDash0Test,
+			Dataset:  DatasetTest,
+			Authorization: dash0v1alpha1.Authorization{
+				Token: &AuthorizationTokenTest,
+			},
+		},
+	}
+}
+
 func Dash0ExportWithEndpointAndTokenAndApiEndpoint() dash0v1alpha1.Export {
 	return dash0v1alpha1.Export{
 		Dash0: &dash0v1alpha1.Dash0Configuration{
@@ -106,18 +118,6 @@ func Dash0ExportWithEndpointAndTokenAndApiEndpoint() dash0v1alpha1.Export {
 				Token: &AuthorizationTokenTest,
 			},
 			ApiEndpoint: ApiEndpointTest,
-		},
-	}
-}
-
-func Dash0ExportWithEndpointTokenAndInsightsDataset() dash0v1alpha1.Export {
-	return dash0v1alpha1.Export{
-		Dash0: &dash0v1alpha1.Dash0Configuration{
-			Endpoint: EndpointDash0Test,
-			Dataset:  util.DatasetInsights,
-			Authorization: dash0v1alpha1.Authorization{
-				Token: &AuthorizationTokenTest,
-			},
 		},
 	}
 }

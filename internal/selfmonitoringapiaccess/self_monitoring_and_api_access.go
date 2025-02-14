@@ -118,7 +118,7 @@ func convertResourceToDash0ExportConfiguration(
 		Export: dash0v1alpha1.Export{
 			Dash0: &dash0v1alpha1.Dash0Configuration{
 				Endpoint:      dash0Export.Endpoint,
-				Dataset:       util.DatasetInsights,
+				Dataset:       dash0Export.Dataset,
 				Authorization: dash0Export.Authorization,
 				ApiEndpoint:   dash0Export.ApiEndpoint,
 			},
@@ -144,13 +144,7 @@ func convertResourceToGrpcExportConfiguration(
 		Export: dash0v1alpha1.Export{
 			Grpc: &dash0v1alpha1.GrpcConfiguration{
 				Endpoint: grpcExport.Endpoint,
-				Headers: append(
-					grpcExport.Headers,
-					dash0v1alpha1.Header{
-						Name:  util.Dash0DatasetHeaderName,
-						Value: util.DatasetInsights,
-					},
-				),
+				Headers:  grpcExport.Headers,
 			},
 		},
 	}, nil
@@ -171,13 +165,7 @@ func convertResourceToHttpExportConfiguration(
 		Export: dash0v1alpha1.Export{
 			Http: &dash0v1alpha1.HttpConfiguration{
 				Endpoint: httpExport.Endpoint,
-				Headers: append(
-					httpExport.Headers,
-					dash0v1alpha1.Header{
-						Name:  util.Dash0DatasetHeaderName,
-						Value: util.DatasetInsights,
-					},
-				),
+				Headers:  httpExport.Headers,
 				Encoding: httpExport.Encoding,
 			},
 		},

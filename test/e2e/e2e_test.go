@@ -929,12 +929,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 			// Note: changing the endpoint will trigger a metric data point for
 			// dash0.operator.manager.monitoring.reconcile_requests to be produced.
 			// Since we do not mess with the endpoint for the operator configuration resource, the self-monitoring
-			// telemetry still ends up in otlp-sink. We do not test explicitly for the dataset header which is set
-			// on the operator manager deployment via the env var OTEL_EXPORTER_OTLP_HEADERS
-			// (with value Authorization=Bearer $(SELF_MONITORING_AND_API_AUTH_TOKEN),Dash0-Dataset=dash0-internal)
-			// as the headers are not available in the telemetry on disk, but there are other tests (for example
-			// operator_configuration_controller_test.go->"enabling self-monitoring"->
-			// "it enables self-monitoring in the controller deployment" that verify this.
+			// telemetry still ends up in otlp-sink.
 			By("updating the Dash0 monitoring resource endpoint setting")
 			newEndpoint := "ingress.us-east-2.aws.dash0-dev.com:4317"
 			updateEndpointOfDash0MonitoringResource(applicationUnderTestNamespace, newEndpoint)

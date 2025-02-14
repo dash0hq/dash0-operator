@@ -45,8 +45,9 @@ type ApiClientSetRemoveTestConfig struct {
 }
 
 type SelfMonitoringTestConfig struct {
-	createExport func() dash0v1alpha1.Export
-	verify       func(Gomega, selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration, *appsv1.Deployment)
+	createExport    func() dash0v1alpha1.Export
+	verify          func(Gomega, selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration, *appsv1.Deployment, string)
+	expectedDataset string
 }
 
 var (
@@ -521,24 +522,33 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 							)
 						g.Expect(err).NotTo(HaveOccurred())
 						g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeTrue())
-						config.verify(g, selfMonitoringAndApiAccessConfiguration, updatedDeployment)
+						config.verify(g, selfMonitoringAndApiAccessConfiguration, updatedDeployment, config.expectedDataset)
 					}, timeout, pollingInterval).Should(Succeed())
 				},
 				Entry("with a Dash0 export with a token", SelfMonitoringTestConfig{
-					createExport: Dash0ExportWithEndpointAndToken,
-					verify:       verifySelfMonitoringConfigurationDash0Token,
+					createExport:    Dash0ExportWithEndpointAndToken,
+					verify:          verifySelfMonitoringConfigurationDash0Token,
+					expectedDataset: "",
+				}),
+				Entry("with a Dash0 export with a token and a custom dataset", SelfMonitoringTestConfig{
+					createExport:    Dash0ExportWithEndpointTokenAndCustomDataset,
+					verify:          verifySelfMonitoringConfigurationDash0Token,
+					expectedDataset: DatasetTest,
 				}),
 				Entry("with a Dash0 export with a secret ref", SelfMonitoringTestConfig{
-					createExport: Dash0ExportWithEndpointAndSecretRef,
-					verify:       verifySelfMonitoringConfigurationDash0SecretRef,
+					createExport:    Dash0ExportWithEndpointAndSecretRef,
+					verify:          verifySelfMonitoringConfigurationDash0SecretRef,
+					expectedDataset: "",
 				}),
 				Entry("with a Grpc export", SelfMonitoringTestConfig{
-					createExport: GrpcExportTest,
-					verify:       verifySelfMonitoringConfigurationGrpc,
+					createExport:    GrpcExportTest,
+					verify:          verifySelfMonitoringConfigurationGrpc,
+					expectedDataset: "",
 				}),
 				Entry("with an HTTP export", SelfMonitoringTestConfig{
-					createExport: HttpExportTest,
-					verify:       verifySelfMonitoringConfigurationHttp,
+					createExport:    HttpExportTest,
+					verify:          verifySelfMonitoringConfigurationHttp,
+					expectedDataset: "",
 				}),
 			)
 		})
@@ -567,7 +577,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 						)
 					g.Expect(err).NotTo(HaveOccurred())
 					g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
-					config.verify(g, selfMonitoringAndApiAccessConfiguration, updatedDeployment)
+					config.verify(g, selfMonitoringAndApiAccessConfiguration, updatedDeployment, config.expectedDataset)
 				}, timeout, pollingInterval).Should(Succeed())
 			},
 			Entry("with a Dash0 export with a token", SelfMonitoringTestConfig{
@@ -1018,11 +1028,12 @@ func verifySelfMonitoringConfigurationDash0Token(
 	g Gomega,
 	selfMonitoringAndApiAccessConfiguration selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration,
 	_ *appsv1.Deployment,
+	expectedDataset string,
 ) {
 	dash0ExportConfiguration := selfMonitoringAndApiAccessConfiguration.Export.Dash0
 	g.Expect(dash0ExportConfiguration).NotTo(BeNil())
 	g.Expect(dash0ExportConfiguration.Endpoint).To(Equal(EndpointDash0WithProtocolTest))
-	g.Expect(dash0ExportConfiguration.Dataset).To(Equal(util.DatasetInsights))
+	g.Expect(dash0ExportConfiguration.Dataset).To(Equal(expectedDataset))
 	authorization := dash0ExportConfiguration.Authorization
 	g.Expect(authorization).ToNot(BeNil())
 	g.Expect(*authorization.Token).To(Equal(AuthorizationTokenTest))
@@ -1035,11 +1046,12 @@ func verifySelfMonitoringConfigurationDash0SecretRef(
 	g Gomega,
 	selfMonitoringAndApiAccessConfiguration selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration,
 	_ *appsv1.Deployment,
+	expectedDataset string,
 ) {
 	dash0ExportConfiguration := selfMonitoringAndApiAccessConfiguration.Export.Dash0
 	g.Expect(dash0ExportConfiguration).NotTo(BeNil())
 	g.Expect(dash0ExportConfiguration.Endpoint).To(Equal(EndpointDash0WithProtocolTest))
-	g.Expect(dash0ExportConfiguration.Dataset).To(Equal(util.DatasetInsights))
+	g.Expect(dash0ExportConfiguration.Dataset).To(Equal(expectedDataset))
 	authorization := dash0ExportConfiguration.Authorization
 	g.Expect(authorization.Token).To(BeNil())
 	g.Expect(authorization.SecretRef).ToNot(BeNil())
@@ -1053,16 +1065,23 @@ func verifySelfMonitoringConfigurationGrpc(
 	g Gomega,
 	selfMonitoringAndApiAccessConfiguration selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration,
 	_ *appsv1.Deployment,
+	expectedDataset string,
 ) {
 	grpcExportConfiguration := selfMonitoringAndApiAccessConfiguration.Export.Grpc
 	g.Expect(grpcExportConfiguration).NotTo(BeNil())
 	g.Expect(grpcExportConfiguration.Endpoint).To(Equal("dns://" + EndpointGrpcTest))
 	headers := grpcExportConfiguration.Headers
-	g.Expect(headers).To(HaveLen(2))
+	if expectedDataset != "" {
+		g.Expect(headers).To(HaveLen(2))
+	} else {
+		g.Expect(headers).To(HaveLen(1))
+	}
 	g.Expect(headers[0].Name).To(Equal("Key"))
 	g.Expect(headers[0].Value).To(Equal("Value"))
-	g.Expect(headers[1].Name).To(Equal(util.Dash0DatasetHeaderName))
-	g.Expect(headers[1].Value).To(Equal(util.DatasetInsights))
+	if expectedDataset != "" {
+		g.Expect(headers[1].Name).To(Equal(util.Dash0DatasetHeaderName))
+		g.Expect(headers[1].Value).To(Equal(expectedDataset))
+	}
 	g.Expect(selfMonitoringAndApiAccessConfiguration.Export.Dash0).To(BeNil())
 	g.Expect(selfMonitoringAndApiAccessConfiguration.Export.Http).To(BeNil())
 }
@@ -1071,17 +1090,22 @@ func verifySelfMonitoringConfigurationHttp(
 	g Gomega,
 	selfMonitoringAndApiAccessConfiguration selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration,
 	_ *appsv1.Deployment,
+	expectedDataset string,
 ) {
 	httpExportConfiguration := selfMonitoringAndApiAccessConfiguration.Export.Http
 	g.Expect(httpExportConfiguration).NotTo(BeNil())
 	g.Expect(httpExportConfiguration.Endpoint).To(Equal(EndpointHttpTest))
 	g.Expect(httpExportConfiguration.Encoding).To(Equal(dash0v1alpha1.Proto))
 	headers := httpExportConfiguration.Headers
-	g.Expect(headers).To(HaveLen(2))
+	if expectedDataset != "" {
+		g.Expect(headers).To(HaveLen(2))
+	}
 	g.Expect(headers[0].Name).To(Equal("Key"))
 	g.Expect(headers[0].Value).To(Equal("Value"))
-	g.Expect(headers[1].Name).To(Equal(util.Dash0DatasetHeaderName))
-	g.Expect(headers[1].Value).To(Equal(util.DatasetInsights))
+	if expectedDataset != "" {
+		g.Expect(headers[1].Name).To(Equal(util.Dash0DatasetHeaderName))
+		g.Expect(headers[1].Value).To(Equal(expectedDataset))
+	}
 	g.Expect(selfMonitoringAndApiAccessConfiguration.Export.Dash0).To(BeNil())
 	g.Expect(selfMonitoringAndApiAccessConfiguration.Export.Grpc).To(BeNil())
 }
@@ -1090,6 +1114,7 @@ func verifyNoSelfMontoringButAuthTokenEnvVarFromToken(
 	g Gomega,
 	selfMonitoringAndApiAccessConfiguration selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration,
 	controllerDeployment *appsv1.Deployment,
+	_ string,
 ) {
 	g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
 	container := controllerDeployment.Spec.Template.Spec.Containers[0]
@@ -1101,6 +1126,7 @@ func verifyNoSelfMonitoringButAuthTokenEnvVarFromSecretRef(
 	g Gomega,
 	selfMonitoringAndApiAccessConfiguration selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration,
 	controllerDeployment *appsv1.Deployment,
+	_ string,
 ) {
 	g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
 	container := controllerDeployment.Spec.Template.Spec.Containers[0]

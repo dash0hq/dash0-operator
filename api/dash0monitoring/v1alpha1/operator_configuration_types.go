@@ -47,8 +47,8 @@ type Dash0OperatorConfigurationSpec struct {
 
 // SelfMonitoring describes how the operator will report telemetry about its working to the backend.
 type SelfMonitoring struct {
-	// If enabled, the operator will collect self-monitoring telemetry and send it to the Dash0 Insights dataset of
-	// the configured Dash0 backend. This setting is optional, it defaults to true.
+	// If enabled, the operator will collect self-monitoring telemetry and send it to the configured Dash0 backend.
+	// This setting is optional, it defaults to true.
 	//
 	// +kubebuilder:default=true
 	Enabled *bool `json:"enabled"`
