@@ -506,8 +506,9 @@ The service name is derived as follows:
    used. See https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/compatibility/prometheus_and_openmetrics.md#resource-attributes
 2. If no service name was found via (1.), but the pod has a `app.kubernetes.io/name` label, the value of that label will
    be used as the service name.
-3. If no service name was found via (1.) or (2.), the pod name is used as the service name.
-4. If no service name was found via (1.), (2.), or (3.), the service name is set to `unknown_service:prometheus`.
+3. If no service name was found via (1.) or (2.), no service name is set for the Prometheus metrics. If there is other
+   telemetry (tracing, logs, OpenTelemetry metrics) for the same pod in Dash0, and these other signals carry a
+   service name, the Prometheus metrics for this pod will be associated with that service name as well.
 
 Independent of the service name, the following pod labels will be mapped to resource attribtues as well:
 * `app.kubernetes.io/version` to `service.version`

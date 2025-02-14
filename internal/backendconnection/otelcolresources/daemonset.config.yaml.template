@@ -1,32 +1,3 @@
-connectors:
-  forward/prometheusmetrics: {}
-  forward/logs: {}
-
-exporters:
-{{- if .DebugVerbosityDetailed }}
-  debug:
-    verbosity: detailed
-{{ else if .DevelopmentMode }}
-  debug: {}
-{{- end }}
-{{- range $i, $exporter := .Exporters }}
-  {{ $exporter.Name }}:
-    endpoint: "{{ $exporter.Endpoint }}"
-{{ if $exporter.Insecure }}
-    tls:
-      insecure: true
-{{ end }}
-{{- if $exporter.Headers }}
-    headers:
-{{- range $i, $header := $exporter.Headers }}
-      "{{ $header.Name }}": "{{ $header.Value }}"
-{{- end }}
-{{- end }}
-{{- if $exporter.Encoding }}
-    encoding: "{{ $exporter.Encoding }}"
-{{- end }}
-{{- end }}
-
 extensions:
   health_check:
     endpoint: "{{ .SelfIpReference }}:13133"
@@ -34,132 +5,11 @@ extensions:
     directory: /var/otelcol/filelogreceiver_offsets
     timeout: 1s
 
-processors:
-{{- if .SendBatchMaxSize }}
-  batch:
-    send_batch_max_size: {{ .SendBatchMaxSize }}
-{{- else }}
-  batch: {}
-{{- end }}
 
-  resourcedetection:
-    detectors:
-    # note: later detectors override attributes provided by earlier detectors
-    - system
-    - ec2
-    - eks
-    - ecs
-    - gcp
-    - azure
-    - aks
-    - k8snode
-    system:
-      resource_attributes:
-        host.name:
-          # Do not collect host.name via system resource detector, as this would result in the podname being set as the
-          # hostname, see https://kubernetes.io/docs/concepts/containers/container-environment/#container-information.
-          enabled: false
+connectors:
+  forward/prometheusmetrics: {}
+  forward/logs: {}
 
-  k8sattributes:
-    extract:
-      metadata:
-      - k8s.cluster.uid
-      - k8s.cronjob.name
-      # - k8s.cronjob.uid actually not implemented although advertised in k8sattributes' readme.
-      - k8s.daemonset.name
-      - k8s.daemonset.uid
-      - k8s.deployment.name
-      - k8s.deployment.uid
-      - k8s.job.name
-      - k8s.job.uid
-      - k8s.namespace.name
-      - k8s.node.name
-      - k8s.pod.hostname
-      - k8s.pod.ip
-      - k8s.pod.name
-      - k8s.pod.start_time
-      - k8s.pod.uid
-      - k8s.replicaset.name
-      - k8s.replicaset.uid
-      - k8s.statefulset.name
-      - k8s.statefulset.uid
-      # The following two work only if k8s.pod.uid and k8s.container.name are set
-      - container.image.name
-      - container.image.tag
-      labels:
-      - key: dash0.com/instrumented
-        tag_name: dash0.monitoring.instrumented
-        from: pod
-    filter:
-      node_from_env_var: K8S_NODE_NAME
-    passthrough: false
-    pod_association:
-    - sources:
-      - from: resource_attribute
-        name: k8s.pod.ip
-    - sources:
-      - from: resource_attribute
-        name: k8s.pod.uid
-    - sources:
-      - from: connection
-
-  {{- $hasPrometheusScrapingEnabledForAtLeastOneNamespace := gt (len .NamespacesWithPrometheusScraping) 0 }}
-
-  {{- if $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}
-  transform/prometheusserviceattributes:
-    error_mode: ignore
-    metric_statements:
-    - context: datapoint
-      statements:
-
-      # When the scraped service provides the target_info metric with a service_name attribute, use that. See
-      # https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/compatibility/prometheus_and_openmetrics.md#resource-attributes
-      # This enables workloads to determine their service name on their own. We give this rule precedence over the
-      # service.name rule that uses app.kubernetes.io/name
-      - set(resource.attributes["service.name"], resource.attributes["service_name"]) where IsMatch(resource.attributes["service.name"], "dash0-kubernetes-pods-scrape-config.*") and resource.attributes["service_name"] != "dash0-kubernetes-pods-scrape-config"
-
-      # If the service_name was not able to come up with a decent service name, try to get it from the Kubernetes
-      # label app.kubernetes.io/name.
-      - set(resource.attributes["service.name"], attributes["app_kubernetes_io_name"]) where IsMatch(resource.attributes["service.name"], "dash0-kubernetes-pods-scrape-config.*") and attributes["app_kubernetes_io_name"] != nil
-
-      # If the app.kubernetes.io/name label is not present, use the pod name.
-      - set(resource.attributes["service.name"], attributes["pod"]) where IsMatch(resource.attributes["service.name"], "dash0-kubernetes-pods-scrape-config.*") and attributes["pod"] != nil
-
-      # If no other rule worked, set unknown_service:prometheus as the service name. (Otherwise the service name would become "dash0-kubernetes-pods-scrape-config".)
-      - set(resource.attributes["service.name"], "unknown_service:prometheus") where IsMatch(resource.attributes["service.name"], "dash0-kubernetes-pods-scrape-config.*")
-
-      # Also read the other well-known standard Kubernetes labels, like pp.kubernetes.io/version,
-      # app.kubernetes.io/part-of, and pp.kubernetes.io/name and map them to resource attributes.
-      - set(resource.attributes["service.version"], attributes["app_kubernetes_io_version"]) where attributes["app_kubernetes_io_version"] != nil
-      - set(resource.attributes["service.namespace"], attributes["app_kubernetes_io_part_of"]) where attributes["app_kubernetes_io_part_of"] != nil
-      - set(resource.attributes["service.instance.id"], attributes["app_kubernetes_io_instance"]) where attributes["app_kubernetes_io_instance"] != nil
-  {{- end }}
-
-  {{- if .ClusterName }}
-  resource/clustername:
-    attributes:
-      - key: k8s.cluster.name
-        value: "{{ .ClusterName }}"
-        action: insert
-  {{- end }}
-
-  {{- if .NamespaceOttlFilter }}
-  filter/metrics_only_monitored_namespaces:
-    metrics:
-      metric:
-        - {{ .NamespaceOttlFilter }}
-  {{- end }}
-
-  filter/logs_only_dash0_monitored_resources:
-    error_mode: ignore
-    logs:
-      log_record:
-      - 'resource.attributes["dash0.monitoring.instrumented"] != "true"'
-
-  memory_limiter:
-    check_interval: 5s
-    limit_percentage: 80
-    spike_limit_percentage: 25
 
 receivers:
   otlp:
@@ -188,7 +38,6 @@ receivers:
       # deprecated -> k8s.pod.cpu.usage
       k8s.pod.cpu.utilization:
         enabled: false
-
       container.cpu.usage:
         enabled: true
       k8s.node.cpu.usage:
@@ -286,6 +135,8 @@ This env var is set in the collector image's entrypoint script or in the daemons
           system.memory.utilization:
             enabled: true
 {{- end }}{{/* if .UseHostMetricsReceiver */}}
+
+{{- $hasPrometheusScrapingEnabledForAtLeastOneNamespace := gt (len .NamespacesWithPrometheusScraping) 0 }}
 
 {{- if $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}
   prometheus:
@@ -441,7 +292,9 @@ to be compatible with the well-known configuration via annotations.
             target_label: node
 {{- end }}
 
-  # TODO Turn on conditionally for monitored namespaces
+  {{/*
+  TODO Turn on conditionally for monitored namespaces
+  */}}
   filelog/monitored_pods:
     include:
     - /var/log/pods/*/*/*.log
@@ -457,6 +310,160 @@ to be compatible with the well-known configuration via annotations.
     - id: container-parser
       max_log_size: 102400
       type: container
+
+
+processors:
+{{- if .SendBatchMaxSize }}
+  batch:
+    send_batch_max_size: {{ .SendBatchMaxSize }}
+{{- else }}
+  batch: {}
+{{- end }}
+
+  resourcedetection:
+    detectors:
+    # note: later detectors override attributes provided by earlier detectors
+    - system
+    - ec2
+    - eks
+    - ecs
+    - gcp
+    - azure
+    - aks
+    - k8snode
+    system:
+      resource_attributes:
+        host.name:
+          # Do not collect host.name via system resource detector, as this would result in the podname being set as the
+          # hostname, see https://kubernetes.io/docs/concepts/containers/container-environment/#container-information.
+          enabled: false
+
+  k8sattributes:
+    extract:
+      metadata:
+      - k8s.cluster.uid
+      - k8s.cronjob.name
+      # - k8s.cronjob.uid actually not implemented although advertised in k8sattributes' readme.
+      - k8s.daemonset.name
+      - k8s.daemonset.uid
+      - k8s.deployment.name
+      - k8s.deployment.uid
+      - k8s.job.name
+      - k8s.job.uid
+      - k8s.namespace.name
+      - k8s.node.name
+      - k8s.pod.hostname
+      - k8s.pod.ip
+      - k8s.pod.name
+      - k8s.pod.start_time
+      - k8s.pod.uid
+      - k8s.replicaset.name
+      - k8s.replicaset.uid
+      - k8s.statefulset.name
+      - k8s.statefulset.uid
+      # The following two work only if k8s.pod.uid and k8s.container.name are set
+      - container.image.name
+      - container.image.tag
+      labels:
+      - key: dash0.com/instrumented
+        tag_name: dash0.monitoring.instrumented
+        from: pod
+    filter:
+      node_from_env_var: K8S_NODE_NAME
+    passthrough: false
+    pod_association:
+    - sources:
+      - from: resource_attribute
+        name: k8s.pod.ip
+    - sources:
+      - from: resource_attribute
+        name: k8s.pod.uid
+    - sources:
+      - from: connection
+
+  {{- if $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}
+  transform/prometheusserviceattributes:
+    error_mode: ignore
+    metric_statements:
+    - context: datapoint
+      statements:
+
+      # When the scraped service provides the target_info metric with a service_name attribute, use that. See
+      # https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/compatibility/prometheus_and_openmetrics.md#resource-attributes
+      # This enables workloads to determine their service name on their own. We give this rule precedence over the
+      # service.name rule that uses app.kubernetes.io/name
+      - set(resource.attributes["service.name"], resource.attributes["service_name"]) where IsMatch(resource.attributes["service.name"], "dash0-kubernetes-pods-scrape-config.*") and resource.attributes["service_name"] != "dash0-kubernetes-pods-scrape-config"
+
+      # If the service_name was not able to come up with a decent service name, try to get it from the Kubernetes
+      # label app.kubernetes.io/name.
+      - set(resource.attributes["service.name"], attributes["app_kubernetes_io_name"]) where IsMatch(resource.attributes["service.name"], "dash0-kubernetes-pods-scrape-config.*") and attributes["app_kubernetes_io_name"] != nil
+
+      # If no other rule worked, remove the prometheus service name. Otherwise the service name would become the name of
+      # the scrape job, e.g. "dash0-kubernetes-pods-scrape-config". It is better to not have any service name set as all
+      # than that, and let the backend merge the pod data with other telemetry for the pod, as other telemetry might
+      # have a service name.
+      - delete_key(resource.attributes, "service.instance.id") where IsMatch(resource.attributes["service.name"], "dash0-kubernetes-pods-scrape-config.*")
+      - delete_key(resource.attributes, "service.name") where IsMatch(resource.attributes["service.name"], "dash0-kubernetes-pods-scrape-config.*")
+
+      # Also read the other well-known standard Kubernetes labels, like pp.kubernetes.io/version,
+      # app.kubernetes.io/part-of, and pp.kubernetes.io/name and map them to resource attributes.
+      - set(resource.attributes["service.version"], attributes["app_kubernetes_io_version"]) where attributes["app_kubernetes_io_version"] != nil
+      - set(resource.attributes["service.namespace"], attributes["app_kubernetes_io_part_of"]) where attributes["app_kubernetes_io_part_of"] != nil
+      - set(resource.attributes["service.instance.id"], attributes["app_kubernetes_io_instance"]) where attributes["app_kubernetes_io_instance"] != nil
+  {{- end }}
+
+  {{- if .ClusterName }}
+  resource/clustername:
+    attributes:
+      - key: k8s.cluster.name
+        value: "{{ .ClusterName }}"
+        action: insert
+  {{- end }}
+
+  {{ if .NamespaceOttlFilter }}
+  filter/metrics_only_monitored_namespaces:
+    metrics:
+      metric:
+        - {{ .NamespaceOttlFilter }}
+  {{- end }}
+
+  filter/logs_only_dash0_monitored_resources:
+    error_mode: ignore
+    logs:
+      log_record:
+      - 'resource.attributes["dash0.monitoring.instrumented"] != "true"'
+
+  memory_limiter:
+    check_interval: 5s
+    limit_percentage: 80
+    spike_limit_percentage: 25
+
+
+exporters:
+{{- if .DebugVerbosityDetailed }}
+  debug:
+    verbosity: detailed
+{{ else if .DevelopmentMode }}
+  debug: {}
+{{- end }}
+{{- range $i, $exporter := .Exporters }}
+  {{ $exporter.Name }}:
+    endpoint: "{{ $exporter.Endpoint }}"
+{{- if $exporter.Insecure }}
+    tls:
+      insecure: true
+{{ end }}
+{{- if $exporter.Headers }}
+    headers:
+{{- range $i, $header := $exporter.Headers }}
+      "{{ $header.Name }}": "{{ $header.Value }}"
+{{- end }}
+{{- end }}
+{{- if $exporter.Encoding }}
+    encoding: "{{ $exporter.Encoding }}"
+{{- end }}
+{{- end }}
+
 
 service:
   extensions:
