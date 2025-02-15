@@ -1,4 +1,4 @@
-FROM golang:1.23-alpine AS builder
+FROM --platform=${BUILDPLATFORM} golang:1.23-alpine AS builder
 
 RUN apk add --update git make yq && apk cache clean
 
@@ -9,7 +9,10 @@ RUN export builder_version=$(yq '.connectors[0].gomod | match(" v(\d+\.\d+\.\d+)
  && echo "Using OpenTelemetry collector builder version v${builder_version}." \
  && go install go.opentelemetry.io/collector/cmd/builder@v${builder_version}
 
-RUN CGO_ENABLED=0 builder --config=builder/config.yaml \
+ARG TARGETOS
+ARG TARGETARCH
+
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} builder --config=builder/config.yaml \
  && chmod u+x /src/dist/dash0-operator-collector
 
 FROM alpine:3.20.2

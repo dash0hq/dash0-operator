@@ -1,9 +1,23 @@
-# Note: Expects dash0-operator/images as the build context.
-FROM golang:alpine AS builder
-COPY configreloader/src /usr/local/go/src/configreloader
-COPY pkg /usr/local/go/pkg
+# Note: This Dockerfile expects dash0-operator/images as the build context.
+
+FROM --platform=${BUILDPLATFORM} golang:1.24-alpine3.21 AS builder
+
 WORKDIR /usr/local/go/src/configreloader
-RUN CGO_ENABLED=0 go build -ldflags '-extldflags "-static"' configreloader
+
+# Copy go.mod and friends and run go mod download separately before starting the container image build, to improve
+# container build caching.
+COPY configreloader/src/go.mod /usr/local/go/src/configreloader/go.mod
+COPY configreloader/src/go.sum /usr/local/go/src/configreloader/go.sum
+COPY pkg /usr/local/go/pkg
+RUN go mod download
+
+# now copy the actual go sources and compile them
+COPY configreloader/src/*.go /usr/local/go/src/configreloader
+
+ARG TARGETOS
+ARG TARGETARCH
+
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags '-extldflags "-static"' -v configreloader
 
 FROM alpine:3.20.2 AS certs
 RUN apk --update add ca-certificates && apk cache clean
