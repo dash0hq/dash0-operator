@@ -1,10 +1,9 @@
-# Build the manager binary
-FROM golang:1.23 AS builder
-ARG TARGETOS
-ARG TARGETARCH
+FROM --platform=${BUILDPLATFORM} golang:1.23 AS builder
 
 WORKDIR /workspace
-# Copy the Go Modules manifests
+
+# copy the Go Modules manifests individually to improve container build caching (see
+# go mod download step below)
 COPY go.mod go.mod
 COPY go.sum go.sum
 
@@ -12,8 +11,8 @@ COPY go.sum go.sum
 # in go.mod.
 COPY images/pkg/common/ images/pkg/common/
 
-# cache deps before building and copying source so that we don't need to re-download as much
-# and so that source changes don't invalidate our downloaded layer
+# download dependencies before building and copying the sources, so that we don't need to re-download as much
+# and so that source changes do not invalidate the cached container image build layer
 RUN go mod download
 
 # Copy the go source
@@ -21,15 +20,16 @@ COPY cmd/ cmd/
 COPY api/ api/
 COPY internal/ internal/
 
-# Build
-# the GOARCH has not a default value to allow the binary be built according to the host where the command
-# was called. For example, if we call make docker-build in a local env which has the Apple Silicon M1 SO
-# the docker BUILDPLATFORM arg will be linux/arm64 when for Apple x86 it will be linux/amd64. Therefore,
-# by leaving it empty we can ensure that the container and binary shipped on it will have the same platform.
+ARG TARGETOS
+ARG TARGETARCH
+
+# Note: By using --platform=${BUILDPLATFORM} in the FROM statement for the build stage, we run the cross-platform
+# compilation (specifically, cross-CPU-architecture compilation) for the multi-platform image on the platform/CPU
+# architecture of the machine running the docker build, instead of running the build via emulation (QEMU); go build
+# takes care of producing the correct binary for the target architecture on its own.
+# See https://www.docker.com/blog/faster-multi-platform-builds-dockerfile-cross-compilation-guide/.
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -v -a -o manager cmd/main.go
 
-# Use distroless as minimal base image to package the manager binary
-# Refer to https://github.com/GoogleContainerTools/distroless for more details
 FROM gcr.io/distroless/static:nonroot
 WORKDIR /
 COPY --from=builder /workspace/manager .
