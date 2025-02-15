@@ -70,8 +70,6 @@ runs:
         # Maintenance note: keep the expression for building both platforms in sync with the "push" expression.
         # When not pushing only building amd64 is enough to verify the image can be built, and it is much faster than
         # building both platforms.
-        platforms: ${{ (github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')) && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
-        cache-from: type=gha,scope=${{ inputs.imageName }}
-        cache-to: type=gha,mode=max,scope=${{ inputs.imageName }}
+        platforms: 'linux/amd64,linux/arm64'
         # Maintenance note: keep the expression for push in sync with the expression used in "platforms".
-        push: ${{ github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/') }}
+        push: true

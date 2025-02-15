@@ -102,8 +102,6 @@ runs:
         context: images/instrumentation
         tags: ${{ steps.instrumentation-test-image.outputs.image_name }}
         platforms: linux/amd64,linux/arm64
-        cache-from: type=gha,scope=instrumentation
-        cache-to: type=gha,mode=max,scope=instrumentation
         push: true
 
     - name: injector tests
