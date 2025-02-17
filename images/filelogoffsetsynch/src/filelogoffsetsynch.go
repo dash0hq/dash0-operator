@@ -267,7 +267,7 @@ func doSynchOffsetsAndMeasure(ctx context.Context, settings *Settings) error {
 		log.Printf("Cannot update offset files: %v\n", err)
 		updateErrors.Add(ctx, 1, otelmetric.WithAttributes(
 			attribute.String("error.type", "CannotUpdateOffsetFiles"),
-			attribute.String("error.message", err.Error()),
+			attribute.String("error.message", common.TruncateError(err)),
 		))
 	} else if offsetUpdated {
 		updateCountMetric.Add(ctx, 1)

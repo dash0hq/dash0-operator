@@ -144,8 +144,15 @@ vet: ## Run go vet against code.
 test: go-unit-tests helm-unit-tests ## Run tests.
 
 .PHONY: go-unit-tests
-go-unit-tests: manifests generate fmt vet envtest
+go-unit-tests: common-package-unit-tests operator-manager-unit-tests
+
+.PHONY: operator-manager-unit-tests
+operator-manager-unit-tests: manifests generate fmt vet envtest
 	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
+
+.PHONY: common-package-unit-tests
+common-package-unit-tests:
+	go test github.com/dash0hq/dash0-operator/images/pkg/common
 
 .PHONY: helm-unit-tests
 helm-unit-tests:

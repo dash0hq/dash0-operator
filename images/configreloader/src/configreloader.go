@@ -172,15 +172,15 @@ func checkConfiguration(
 	if err != nil {
 		reloadErrorsMetric.Add(ctx, 1, otelmetric.WithAttributes(
 			attribute.String("error.type", "CannotParseCollectorPid"),
-			attribute.String("error.message", err.Error()),
+			attribute.String("error.message", common.TruncateError(err)),
 		))
 		return false, fmt.Errorf("cannot retrieve collector pid: %w", err)
 	}
 
-	if err := triggerConfigurationReload(collectorPid); err != nil {
+	if err = triggerConfigurationReload(collectorPid); err != nil {
 		reloadErrorsMetric.Add(ctx, 1, otelmetric.WithAttributes(
 			attribute.String("error.type", "CannotTriggerCollectorUpdate"),
-			attribute.String("error.message", err.Error()),
+			attribute.String("error.message", common.TruncateError(err)),
 		))
 		return false, fmt.Errorf("cannot trigger collector update: %w", err)
 	}
