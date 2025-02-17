@@ -115,9 +115,10 @@ settings.
 That is, providing `--set operator.dash0Export.enabled=true` and the other backend-related settings when running
 `helm install` is simply a shortcut to deploy the Dash0 operator configuration resource automatically at startup.
 
-On its own, the operator will not do much.
-To actually have the operator monitor your cluster, two more things need to be set up:
-1. a [Dash0 backend connection](#configuring-the-dash0-backend-connection) has to be configured and
+On its own, the operator will only collect Kubernetes metrics.
+To actually have the operator properly monitor your workloads, two more things need to be set up:
+1. a [Dash0 backend connection](#configuring-the-dash0-backend-connection) has to be configured (unless you did that
+   already with the Helm values `operator.dash0Export.*`), and
 2. monitoring namespaces and their workloads to collect logs, traces and metrics has to be
    [enabled per namespace](#enable-dash0-monitoring-for-a-namespace).
 
@@ -218,6 +219,12 @@ for a complete list of available configuration settings.
 
 ### Enable Dash0 Monitoring For a Namespace
 
+*Note:* By default, when enabling Dash0 monitoring for a namespace, all workloads in this namespace will be restarted
+to apply the Dash0 instrumentation.
+If you want to avoid this, set the `instrumentWorkloads` property in the monitoring resource spec to
+`created-and-updated`.
+See below for more information on the `instrumentWorkloads` modes.
+
 For _each namespace_ that you want to monitor with Dash0, enable monitoring by installing a _Dash0 monitoring
 resource_ into that namespace:
 
@@ -253,7 +260,7 @@ export settings.
 The Dash0 monitoring resource supports additional configuration settings:
 
 * <a href="#monitoringresource.spec.instrumentWorkloads"><span id="monitoringresource.spec.instrumentWorkloads">`spec.instrumentWorkloads`</span></a>:
-  A namespace-wide opt-out for workload instrumentation for the target namespace.
+  A namespace-wide configuration for the workload instrumentation strategy for the target namespace.
   There are three possible settings: `all`, `created-and-updated` and `none`.
   By default, the setting `all` is assumed.
 
@@ -261,20 +268,20 @@ The Dash0 monitoring resource supports additional configuration settings:
       * instrument existing workloads in the target namespace (i.e. workloads already running in the namespace) when
         the Dash0 monitoring resource is deployed,
       * instrument existing workloads or update the instrumentation of already instrumented workloads in the target
-        namespace when the Dash0 operator is first started or restarted (for example when updating the
-        operator),
+        namespace when the Dash0 operator is first started or updated to a newer version,,
       * instrument new workloads in the target namespace when they are deployed, and
       * instrument changed workloads in the target namespace when changes are applied to them.
-  Note that the first two actions (instrumenting existing workloads) will result in restarting the pods of the
-  affected workloads.
+    Note that the first two actions (instrumenting existing workloads) will result in restarting the pods of the
+    affected workloads.
+    Use `created-and-updated` if you want to avoid pod restarts.
 
   * `created-and-updated`: If set to `created-and-updated`, the operator will not instrument existing workloads in the
     target namespace.
     Instead, it will only:
       * instrument new workloads in the target namespace when they are deployed, and
       * instrument changed workloads in the target namespace when changes are applied to them.
-        This setting is useful if you want to avoid pod restarts as a side effect of deploying the Dash0 monitoring
-        resource or restarting the Dash0 operator.
+    This setting is useful if you want to avoid pod restarts as a side effect of deploying the Dash0 monitoring
+    resource or restarting the Dash0 operator.
 
   * `none`: You can opt out of instrumenting workloads entirely by setting this option to `none`.
      With `spec.instrumentWorkloads: none`, workloads in the target namespace will never be instrumented to emit

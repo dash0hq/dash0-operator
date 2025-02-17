@@ -19,15 +19,15 @@ verify_kubectx() {
   local current_kubectx=$(kubectl config current-context)
   local allowed_contexts_raw="${ALLOWED_KUBECTXS:-}"
   IFS=',' read -r -a allowed_contexts <<< "$allowed_contexts_raw"
-  local current_context_is_allowed=false
+  local current_context_is_allowed="false"
   for allowed_context_name in "${allowed_contexts[@]}"; do
     local trimmed=$(trim "$allowed_context_name")
     if [[ "$current_kubectx" == "$trimmed" ]]; then
-      current_context_is_allowed=true
+      current_context_is_allowed="true"
       break
     fi
   done
-  if [[ "$current_context_is_allowed" != true ]]; then
+  if [[ "$current_context_is_allowed" != "true" ]]; then
     echo "error: The current kube context \"$current_kubectx\" is not allowed for testing according to the setting ALLOWED_KUBECTXS (current value: \"$allowed_contexts_raw\"). Please switch to an allowed context or set ALLOWED_KUBECTXS differently in .env. Refusing to run test scenarios/cleanup in context where that is potentially dangerous."
 	exit 1
   fi
@@ -93,6 +93,10 @@ determine_container_images() {
   filelog_offset_synch_img_tag="latest"
   filelog_offset_synch_img_digest=""
   filelog_offset_synch_img_pull_policy="Never"
+  secret_ref_resolver_img_repository="secret-ref-resolver"
+  secret_ref_resolver_img_tag="latest"
+  secret_ref_resolver_img_digest=""
+  secret_ref_resolver_img_pull_policy="Never"
 
   operator_helm_chart=${OPERATOR_HELM_CHART:-helm-chart/dash0-operator}
 
@@ -116,7 +120,10 @@ determine_container_images() {
     filelog_offset_synch_img_repository=""
     filelog_offset_synch_img_tag=""
     filelog_offset_synch_img_pull_policy=""
- fi
+    secret_ref_resolver_img_repository=""
+    secret_ref_resolver_img_tag=""
+    secret_ref_resolver_img_pull_policy=""
+  fi
 
   if [[ -n "${CONTROLLER_IMG_REPOSITORY:-}" ]]; then
     controller_img_repository="$CONTROLLER_IMG_REPOSITORY"
@@ -183,6 +190,18 @@ determine_container_images() {
     filelog_offset_synch_img_pull_policy="$FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY"
   fi
 
+  if [[ -n "${SECRET_REF_RESOLVER_IMG_REPOSITORY:-}" ]]; then
+    secret_ref_resolver_img_repository="$SECRET_REF_RESOLVER_IMG_REPOSITORY"
+  fi
+  if [[ -n "${SECRET_REF_RESOLVER_IMG_TAG:-}" ]]; then
+    secret_ref_resolver_img_tag="$SECRET_REF_RESOLVER_IMG_TAG"
+  fi
+  if [[ -n "${SECRET_REF_RESOLVER_IMG_DIGEST:-}" ]]; then
+    secret_ref_resolver_img_digest="$SECRET_REF_RESOLVER_IMG_DIGEST"
+  fi
+  if [[ -n "${SECRET_REF_RESOLVER_IMG_PULL_POLICY:-}" ]]; then
+    secret_ref_resolver_img_pull_policy="$SECRET_REF_RESOLVER_IMG_PULL_POLICY"
+  fi
 
   if [[ "$is_local_helm_chart" = "true" ]]; then
     # support using the local helm chart with remote images
@@ -201,6 +220,9 @@ determine_container_images() {
     if [[ $(is_remote_image "$filelog_offset_synch_img_repository") = "true" ]]; then
       filelog_offset_synch_img_pull_policy=""
     fi
+    if [[ $(is_remote_image "$secret_ref_resolver_img_repository") = "true" ]]; then
+      secret_ref_resolver_img_pull_policy=""
+    fi
   fi
 }
 
@@ -216,7 +238,7 @@ build_all_images() {
     FILELOG_OFFSET_SYNCH_IMG_TAG="$filelog_offset_synch_img_tag" \
     make docker-build
 
-  if [[ "$is_kind_cluster" == true ]]; then
+  if [[ "$is_kind_cluster" == "true" ]]; then
     echo loading images into Kind cluster
     kind load docker-image \
       --name $cluster \
@@ -338,9 +360,22 @@ run_helm() {
     helm_install_command+=" --set operator.filelogOffsetSynchImage.pullPolicy=$filelog_offset_synch_img_pull_policy"
   fi
 
+  if [[ -n "$secret_ref_resolver_img_repository" ]]; then
+    helm_install_command+=" --set operator.secretRefResolverImage.repository=$secret_ref_resolver_img_repository"
+  fi
+  if [[ -n "$secret_ref_resolver_img_tag" ]]; then
+    helm_install_command+=" --set operator.secretRefResolverImage.tag=$secret_ref_resolver_img_tag"
+  fi
+  if [[ -n "$secret_ref_resolver_img_digest" ]]; then
+    helm_install_command+=" --set operator.secretRefResolverImage.digest=$secret_ref_resolver_img_digest"
+  fi
+  if [[ -n "$secret_ref_resolver_img_pull_policy" ]]; then
+    helm_install_command+=" --set operator.secretRefResolverImage.pullPolicy=$secret_ref_resolver_img_pull_policy"
+  fi
+
   # Deploy an operator configuration right away.
   if [[ "${DEPLOY_OPERATOR_CONFIGURATION_VIA_HELM:-}" != "false" ]]; then
-    if [[ "${USE_OTLP_SINK:-}" == true ]]; then
+    if [[ "${USE_OTLP_SINK:-}" == "true" ]]; then
       helm_install_command+=" --set operator.dash0Export.enabled=true"
       helm_install_command+=" --set operator.dash0Export.endpoint=http://otlp-sink.otlp-sink.svc.cluster.local:4317"
       helm_install_command+=" --set operator.dash0Export.token=dummy-token"
@@ -387,12 +422,12 @@ wait_for_operator_manager_and_webhook() {
     local endpoints_output=$(kubectl get endpoints --namespace dash0-system dash0-operator-webhook-service)
     local expected_endpoint_regex='dash0-operator-webhook-service.+:9443'
     if [[ "$endpoints_output" =~ $expected_endpoint_regex ]]; then
-      webhook_available=true
+      webhook_available="true"
       break;
     fi
     sleep 0.3
   done
-  if [[ "$webhook_available" != true ]]; then
+  if [[ "$webhook_available" != "true" ]]; then
     echo "The operator's webhook endpoint never became available."
     exit 1
   fi
@@ -414,7 +449,7 @@ wait_for_operator_manager_and_webhook() {
 }
 
 deploy_otlp_sink_if_requested() {
-  if [[ "${USE_OTLP_SINK:-}" != true ]]; then
+  if [[ "${USE_OTLP_SINK:-}" != "true" ]]; then
 	  return
   fi
 
@@ -450,14 +485,14 @@ install_operator_configuration_resource() {
 install_monitoring_resource() {
   local additional_namespaces=${1:-false}
   kubectl apply -n ${target_namespace} -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml
-  if [[ "$additional_namespaces" = true ]]; then
+  if [[ "$additional_namespaces" = "true" ]]; then
     kubectl apply -n test-namespace-2 -f test-resources/customresources/dash0monitoring/dash0monitoring-2.yaml
     kubectl apply -n test-namespace-3 -f test-resources/customresources/dash0monitoring/dash0monitoring-3.yaml
   fi
 
   echo "waiting for the monitoring resource to become available"
   kubectl wait --namespace ${target_namespace} dash0monitorings.operator.dash0.com/dash0-monitoring-resource --for condition=Available
-  if [[ "$additional_namespaces" = true ]]; then
+  if [[ "$additional_namespaces" = "true" ]]; then
     kubectl wait --namespace test-namespace-2 dash0monitorings.operator.dash0.com/dash0-monitoring-resource --for condition=Available
   fi
 }
@@ -468,12 +503,12 @@ install_third_party_crds() {
 }
 
 install_third_party_resources() {
-  if [[ "${DEPLOY_PERSES_DASHBOARD:-}" == true ]]; then
+  if [[ "${DEPLOY_PERSES_DASHBOARD:-}" == "true" ]]; then
     echo "STEP $step_counter: deploy a Perses dashboard resource to namespace ${target_namespace}"
     kubectl apply -n ${target_namespace} -f test-resources/customresources/persesdashboard/persesdashboard.yaml
     finish_step
   fi
-  if [[ "${DEPLOY_PROMETHEUS_RULE:-}" == true ]]; then
+  if [[ "${DEPLOY_PROMETHEUS_RULE:-}" == "true" ]]; then
     echo "STEP $step_counter: deploy a Prometheus rule resource to namespace ${target_namespace}"
     kubectl apply -n ${target_namespace} -f test-resources/customresources/prometheusrule/prometheusrule.yaml
     finish_step

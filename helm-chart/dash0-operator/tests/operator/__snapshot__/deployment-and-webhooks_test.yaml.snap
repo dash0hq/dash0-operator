@@ -55,6 +55,10 @@ deployment should match snapshot (default values):
                   value: dash0-operator-controller
                 - name: DASH0_WEBHOOK_SERVICE_NAME
                   value: dash0-operator-webhook-service
+                - name: DASH0_SECRET_REF_RESOLVER_DEPLOYMENT_NAME
+                  value: dash0-operator-secret-ref-resolver
+                - name: DASH0_TOKEN_UPDATE_SERVICE_PORT
+                  value: "10443"
                 - name: OTEL_COLLECTOR_NAME_PREFIX
                   value: RELEASE-NAME
                 - name: DASH0_OPERATOR_IMAGE

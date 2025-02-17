@@ -512,25 +512,6 @@ func VerifyInstrumentationViaHigherOrderWorkloadEvent(
 	)
 }
 
-func VerifyNoInstrumentationNecessaryEvent(
-	ctx context.Context,
-	clientset *kubernetes.Clientset,
-	namespace string,
-	resourceName string,
-	eventSource string,
-) *corev1.Event {
-	return verifyEvent(
-		ctx,
-		clientset,
-		namespace,
-		resourceName,
-		util.ReasonNoInstrumentationNecessary,
-		fmt.Sprintf(
-			"Dash0 instrumentation was already present on this workload, or the workload is part of a higher order "+
-				"workload that will be instrumented, no modification by the %s is necessary.", eventSource),
-	)
-}
-
 func VerifyFailedInstrumentationEvent(
 	ctx context.Context,
 	clientset *kubernetes.Clientset,
@@ -597,23 +578,6 @@ func VerifyFailedUninstrumentationEvent(
 		namespace,
 		resourceName,
 		util.ReasonFailedUninstrumentation,
-		message,
-	)
-}
-
-func VerifyNoUninstrumentationNecessaryEvent(
-	ctx context.Context,
-	clientset *kubernetes.Clientset,
-	namespace string,
-	resourceName string,
-	message string,
-) *corev1.Event {
-	return verifyEvent(
-		ctx,
-		clientset,
-		namespace,
-		resourceName,
-		util.ReasonNoUninstrumentationNecessary,
 		message,
 	)
 }

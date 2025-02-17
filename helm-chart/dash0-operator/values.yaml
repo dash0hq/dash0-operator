@@ -1,7 +1,7 @@
 # This file contains the default values for the Dash0 Operator Helm chart.
 # Values can be overriden via --set or by providing additional yaml files when running helm install.
 
-# settings for the operator/controller
+# Settings for the Dash0 operator:
 operator:
 
   # Use the operator.dash0Export settings to configure the connection to the Dash0 backend; telemetry will be sent to
@@ -87,7 +87,7 @@ operator:
   # resource will be created by the Helm chart then.
   clusterName: ""
 
-  # number of replica for the controller manager deployment
+  # number of replicas for the operator manager deployment
   replicaCount: 1
 
   # settings for the service account to be used
@@ -104,31 +104,31 @@ operator:
   #   label2: "value 2"
   additionalLabels: {}
 
-  # additional annotations for the controller manager service, example
+  # additional annotations for the operator manager service, example
   # serviceAnnotations:
   #   annotation1: "value 1"
   #   annotation2: "value 2"
   serviceAnnotations: {}
 
-  # additional annotations for the controller manager deployment, example:
+  # additional annotations for the operator manager deployment, example:
   # deploymentAnnotations:
   #   annotation1: "value 1"
   #   annotation2: "value 2"
   deploymentAnnotations: {}
 
-  # additional annotations for the controller manager pod(s), example:
+  # additional annotations for the operator manager pod(s), example:
   # podAnnotations:
   #   annotation1: "value 1"
   #   annotation2: "value 2"
   podAnnotations: {}
 
-  # additional labels for the controller manager pod(s), example:
+  # additional labels for the operator manager pod(s), example:
   # podLabels:
   #   label1: "value 1"
   #   label2: "value 2"
   podLabels: {}
 
-  # resources for the controller manager container
+  # resources for the operator manager container
   managerContainerResources:
     limits:
       cpu: 500m
@@ -156,7 +156,10 @@ operator:
   # the port for the admission webhook service which instruments new workloads at deploy time
   webhookPort: 443
 
-  # the container image to use for the controller manager component (there should usually be no reason to override this)
+  # the port for the token update service
+  tokenUpdatePort: 10443
+
+  # the container image to use for the operator manager component (there should usually be no reason to override this)
   image:
     # Use a different image entirely. Note that Dash0 does not offer support for Dash0 operator setups that do not use
     # Dash0's official image.
@@ -175,6 +178,17 @@ operator:
     # setups that do not use Dash0's official init container image.
     repository: "ghcr.io/dash0hq/instrumentation"
     # overrides the image tag, which defaults to the chart appVersion.
+    tag:
+    # pull image by digest instead of tag; if this is set, the tag value will be ignored
+    digest:
+    # override the default image pull policy
+    pullPolicy:
+
+  secretRefResolverImage:
+    # Use a different image entirely. Note that Dash0 does not offer support for Dash0 operator setups that do not use
+    # Dash0's official images.
+    repository: "ghcr.io/dash0hq/secret-ref-resolver"
+    # overrides the image tag, which defaults to the chart appVersion
     tag:
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:

@@ -33,9 +33,8 @@ import (
 )
 
 var (
-	prometheusRuleCrdReconciler *PrometheusRuleCrdReconciler
-	prometheusRuleCrd           *apiextensionsv1.CustomResourceDefinition
-	testQueuePrometheusRules    = workqueue.NewTypedWithConfig(workqueue.TypedQueueConfig[ThirdPartyResourceSyncJob]{
+	prometheusRuleCrd        *apiextensionsv1.CustomResourceDefinition
+	testQueuePrometheusRules = workqueue.NewTypedWithConfig(workqueue.TypedQueueConfig[ThirdPartyResourceSyncJob]{
 		Name: "dash0-third-party-resource-reconcile-queue",
 	})
 
@@ -77,66 +76,86 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			deletePrometheusRuleCrdIfItExists(ctx)
 		})
 
-		It("does not create a Prometheus rule resource reconciler if there is no auth token", func() {
-			createPrometheusRuleCrdReconcilerWithoutAuthToken()
-			ensurePrometheusRuleCrdExists(ctx)
+		It("does not start watching Prometheus rules if the CRD does not exist and neither API endpoint nor auth token have been provided", func() {
+			prometheusRuleCrdReconciler := createPrometheusRuleCrdReconciler()
 			Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
-			Expect(prometheusRuleCrdReconciler.prometheusRuleReconciler).To(BeNil())
-			prometheusRuleCrdReconciler.SetApiEndpointAndDataset(&ApiConfig{
+			Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeFalse())
+		})
+
+		It("does not start watching Prometheus rules if the CRD does not exist and the auth token has not been provided", func() {
+			prometheusRuleCrdReconciler := createPrometheusRuleCrdReconciler()
+			Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+			prometheusRuleCrdReconciler.SetApiEndpointAndDataset(ctx, &ApiConfig{
 				Endpoint: ApiEndpointTest,
-				Dataset:  DatasetTest,
+				Dataset:  DatasetCustomTest,
 			}, &logger)
-			Expect(prometheusRuleCrdReconciler.prometheusRuleReconciler).To(BeNil())
+			Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeFalse())
 		})
 
 		It("does not start watching Prometheus rules if the CRD does not exist and the API endpoint has not been provided", func() {
-			createPrometheusRuleCrdReconcilerWithAuthToken()
+			prometheusRuleCrdReconciler := createPrometheusRuleCrdReconciler()
 			Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
-			Expect(isWatchingPrometheusRuleResources()).To(BeFalse())
+			prometheusRuleCrdReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
+			Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeFalse())
 		})
 
-		It("does not start watching Prometheus rules if the API endpoint has been provided but the CRD does not exist", func() {
-			createPrometheusRuleCrdReconcilerWithAuthToken()
+		It("does not start watching Prometheus rules if the API endpoint & auth token have been provided but the CRD does not exist", func() {
+			prometheusRuleCrdReconciler := createPrometheusRuleCrdReconciler()
 			Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
-			prometheusRuleCrdReconciler.SetApiEndpointAndDataset(&ApiConfig{
+			prometheusRuleCrdReconciler.SetApiEndpointAndDataset(ctx, &ApiConfig{
 				Endpoint: ApiEndpointTest,
-				Dataset:  DatasetTest,
+				Dataset:  DatasetCustomTest,
 			}, &logger)
-			Expect(isWatchingPrometheusRuleResources()).To(BeFalse())
+			prometheusRuleCrdReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
+			Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeFalse())
+		})
+
+		It("does not start watching Prometheus rules if the CRD exists but the auth token has not been provided", func() {
+			prometheusRuleCrdReconciler := createPrometheusRuleCrdReconciler()
+			ensurePrometheusRuleCrdExists(ctx)
+			Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
+			prometheusRuleCrdReconciler.SetApiEndpointAndDataset(ctx, &ApiConfig{
+				Endpoint: ApiEndpointTest,
+				Dataset:  DatasetCustomTest,
+			}, &logger)
+			Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeFalse())
 		})
 
 		It("does not start watching Prometheus rules if the CRD exists but the API endpoint has not been provided", func() {
-			createPrometheusRuleCrdReconcilerWithAuthToken()
+			prometheusRuleCrdReconciler := createPrometheusRuleCrdReconciler()
 			ensurePrometheusRuleCrdExists(ctx)
 			Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
-			Expect(isWatchingPrometheusRuleResources()).To(BeFalse())
+			prometheusRuleCrdReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
+			Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeFalse())
 		})
 
-		It("starts watching Prometheus rules if the CRD exists and the API endpoint has been provided", func() {
-			createPrometheusRuleCrdReconcilerWithAuthToken()
+		It("starts watching Prometheus rules if the CRD exists and the API endpoint and auth token have been provided", func() {
 			ensurePrometheusRuleCrdExists(ctx)
+			prometheusRuleCrdReconciler := createPrometheusRuleCrdReconciler()
 			Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
-			Expect(isWatchingPrometheusRuleResources()).To(BeFalse())
-			prometheusRuleCrdReconciler.SetApiEndpointAndDataset(&ApiConfig{
+			Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeFalse())
+			prometheusRuleCrdReconciler.SetApiEndpointAndDataset(ctx, &ApiConfig{
 				Endpoint: ApiEndpointTest,
-				Dataset:  DatasetTest,
+				Dataset:  DatasetCustomTest,
 			}, &logger)
-			Expect(isWatchingPrometheusRuleResources()).To(BeTrue())
+			prometheusRuleCrdReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
+			Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeTrue())
 		})
 
-		It("starts watching Prometheus rules if API endpoint is provided and the CRD is created later on", func() {
-			createPrometheusRuleCrdReconcilerWithAuthToken()
+		It("starts watching Prometheus rules if the API endpoint and auth token have been provided and the CRD is created later on", func() {
+			prometheusRuleCrdReconciler := createPrometheusRuleCrdReconciler()
 			Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
 
-			// provide the API endpoint first
-			prometheusRuleCrdReconciler.SetApiEndpointAndDataset(&ApiConfig{
+			// provide the API endpoint and the auth token first
+			prometheusRuleCrdReconciler.SetApiEndpointAndDataset(ctx, &ApiConfig{
 				Endpoint: ApiEndpointTest,
-				Dataset:  DatasetTest,
+				Dataset:  DatasetCustomTest,
 			}, &logger)
+			prometheusRuleCrdReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
 
 			// create the CRD a bit later
 			time.Sleep(100 * time.Millisecond)
-			Expect(isWatchingPrometheusRuleResources()).To(BeFalse())
+			Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeFalse())
 			ensurePrometheusRuleCrdExists(ctx)
 			// watches are not triggered in unit tests
 			prometheusRuleCrdReconciler.Create(
@@ -149,20 +168,21 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 
 			// verify that the controller starts watching when it sees the CRD being created
 			Eventually(func(g Gomega) {
-				g.Expect(isWatchingPrometheusRuleResources()).To(BeTrue())
+				g.Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeTrue())
 			}).Should(Succeed())
 		})
 
 		It("stops watching Prometheus rules if the CRD is deleted", func() {
-			createPrometheusRuleCrdReconcilerWithAuthToken()
+			prometheusRuleCrdReconciler := createPrometheusRuleCrdReconciler()
 			ensurePrometheusRuleCrdExists(ctx)
 			Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
-			Expect(isWatchingPrometheusRuleResources()).To(BeFalse())
-			prometheusRuleCrdReconciler.SetApiEndpointAndDataset(&ApiConfig{
+			Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeFalse())
+			prometheusRuleCrdReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
+			prometheusRuleCrdReconciler.SetApiEndpointAndDataset(ctx, &ApiConfig{
 				Endpoint: ApiEndpointTest,
-				Dataset:  DatasetTest,
+				Dataset:  DatasetCustomTest,
 			}, &logger)
-			Expect(isWatchingPrometheusRuleResources()).To(BeTrue())
+			Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeTrue())
 
 			deletePrometheusRuleCrdIfItExists(ctx)
 			// watches are not triggered in unit tests
@@ -174,19 +194,20 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 				&controllertest.TypedQueue[reconcile.Request]{},
 			)
 			Eventually(func(g Gomega) {
-				Expect(isWatchingPrometheusRuleResources()).To(BeFalse())
+				Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeFalse())
 			}).Should(Succeed())
 		})
 
 		It("can cope with multiple consecutive create & delete events", func() {
-			createPrometheusRuleCrdReconcilerWithAuthToken()
+			prometheusRuleCrdReconciler := createPrometheusRuleCrdReconciler()
 			Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
-			prometheusRuleCrdReconciler.SetApiEndpointAndDataset(&ApiConfig{
+			prometheusRuleCrdReconciler.SetApiEndpointAndDataset(ctx, &ApiConfig{
 				Endpoint: ApiEndpointTest,
-				Dataset:  DatasetTest,
+				Dataset:  DatasetCustomTest,
 			}, &logger)
+			prometheusRuleCrdReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
 
-			Expect(isWatchingPrometheusRuleResources()).To(BeFalse())
+			Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeFalse())
 			ensurePrometheusRuleCrdExists(ctx)
 			prometheusRuleCrdReconciler.Create(
 				ctx,
@@ -196,7 +217,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 				&controllertest.TypedQueue[reconcile.Request]{},
 			)
 			Eventually(func(g Gomega) {
-				g.Expect(isWatchingPrometheusRuleResources()).To(BeTrue())
+				g.Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeTrue())
 			}).Should(Succeed())
 
 			deletePrometheusRuleCrdIfItExists(ctx)
@@ -208,7 +229,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 				&controllertest.TypedQueue[reconcile.Request]{},
 			)
 			Eventually(func(g Gomega) {
-				g.Expect(isWatchingPrometheusRuleResources()).To(BeFalse())
+				g.Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeFalse())
 			}).Should(Succeed())
 
 			ensurePrometheusRuleCrdExists(ctx)
@@ -220,16 +241,17 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 				&controllertest.TypedQueue[reconcile.Request]{},
 			)
 			Eventually(func(g Gomega) {
-				g.Expect(isWatchingPrometheusRuleResources()).To(BeTrue())
+				g.Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeTrue())
 			}).Should(Succeed())
 		})
 	})
 
 	Describe("the Prometheus rule resource reconciler", func() {
+		var prometheusRuleCrdReconciler *PrometheusRuleCrdReconciler
 		var prometheusRuleReconciler *PrometheusRuleReconciler
 
 		BeforeAll(func() {
-			createPrometheusRuleCrdReconcilerWithAuthToken()
+			prometheusRuleCrdReconciler = createPrometheusRuleCrdReconciler()
 			ensurePrometheusRuleCrdExists(ctx)
 
 			Expect(prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, k8sClient, &logger)).To(Succeed())
@@ -238,11 +260,12 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		})
 
 		BeforeEach(func() {
-			prometheusRuleCrdReconciler.SetApiEndpointAndDataset(&ApiConfig{
+			prometheusRuleCrdReconciler.SetApiEndpointAndDataset(ctx, &ApiConfig{
 				Endpoint: ApiEndpointTest,
-				Dataset:  DatasetTest,
+				Dataset:  DatasetCustomTest,
 			}, &logger)
-			Expect(isWatchingPrometheusRuleResources()).To(BeTrue())
+			prometheusRuleCrdReconciler.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
+			Expect(isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler)).To(BeTrue())
 			prometheusRuleReconciler = prometheusRuleCrdReconciler.prometheusRuleReconciler
 			// to make tests that involve http retries faster, we do not want to wait for one second for each retry
 			prometheusRuleReconciler.overrideHttpRetryDelay(20 * time.Millisecond)
@@ -300,7 +323,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			expectRulePutRequests(defaultExpectedPathsCheckRules)
 			defer gock.Off()
 
-			prometheusRuleCrdReconciler.RemoveApiEndpointAndDataset()
+			prometheusRuleCrdReconciler.RemoveApiEndpointAndDataset(ctx, &logger)
 
 			ruleResource := createDefaultRuleResource()
 			prometheusRuleReconciler.Create(
@@ -394,7 +417,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			} {
 				gock.New(ApiEndpointTest).
 					Put(fmt.Sprintf("%s.*%s", checkRuleApiBasePath, pathRegex)).
-					MatchParam("dataset", DatasetTest).
+					MatchParam("dataset", DatasetCustomTest).
 					Times(1).
 					Reply(200).
 					JSON(map[string]string{})
@@ -406,7 +429,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			} {
 				gock.New(ApiEndpointTest).
 					Put(fmt.Sprintf("%s.*%s", checkRuleApiBasePath, pathRegex)).
-					MatchParam("dataset", DatasetTest).
+					MatchParam("dataset", DatasetCustomTest).
 					Times(1).
 					Reply(401).
 					JSON(map[string]string{})
@@ -501,14 +524,14 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			// failed request, HTTP 401, no retry
 			gock.New(ApiEndpointTest).
 				Put(fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_.*_test-dataset_test-namespace_test-rule_group_1_1")).
-				MatchParam("dataset", DatasetTest).
+				MatchParam("dataset", DatasetCustomTest).
 				Times(1).
 				Reply(401).
 				JSON(map[string]string{})
 			// failed request, HTTP 500, will be retried 3 times
 			gock.New(ApiEndpointTest).
 				Put(fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_.*_test-dataset_test-namespace_test-rule_group_2_1")).
-				MatchParam("dataset", DatasetTest).
+				MatchParam("dataset", DatasetCustomTest).
 				Times(3).
 				Reply(500).
 				JSON(map[string]string{})
@@ -988,22 +1011,10 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 	})
 })
 
-func createPrometheusRuleCrdReconcilerWithoutAuthToken() {
-	prometheusRuleCrdReconciler = &PrometheusRuleCrdReconciler{
+func createPrometheusRuleCrdReconciler() *PrometheusRuleCrdReconciler {
+	return &PrometheusRuleCrdReconciler{
 		Client: k8sClient,
 		Queue:  testQueuePrometheusRules,
-
-		// We create the controller multiple times in tests, this option is required, otherwise the controller
-		// runtime will complain.
-		skipNameValidation: true,
-	}
-}
-
-func createPrometheusRuleCrdReconcilerWithAuthToken() {
-	prometheusRuleCrdReconciler = &PrometheusRuleCrdReconciler{
-		Client:    k8sClient,
-		Queue:     testQueuePrometheusRules,
-		AuthToken: AuthorizationTokenTest,
 
 		// We create the controller multiple times in tests, this option is required, otherwise the controller
 		// runtime will complain.
@@ -1015,7 +1026,7 @@ func expectRulePutRequests(expectedPaths []string) {
 	for _, expectedPath := range expectedPaths {
 		gock.New(ApiEndpointTest).
 			Put(expectedPath).
-			MatchParam("dataset", DatasetTest).
+			MatchParam("dataset", DatasetCustomTest).
 			Times(1).
 			Reply(200).
 			JSON(map[string]string{})
@@ -1026,7 +1037,7 @@ func expectRuleDeleteRequests(expectedPaths []string) {
 	for _, expectedPath := range expectedPaths {
 		gock.New(ApiEndpointTest).
 			Delete(expectedPath).
-			MatchParam("dataset", DatasetTest).
+			MatchParam("dataset", DatasetCustomTest).
 			Times(1).
 			Reply(200).
 			JSON(map[string]string{})
@@ -1122,7 +1133,7 @@ func deletePrometheusRuleCrdIfItExists(ctx context.Context) {
 	}
 }
 
-func isWatchingPrometheusRuleResources() bool {
+func isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler *PrometheusRuleCrdReconciler) bool {
 	ruleReconciler := prometheusRuleCrdReconciler.prometheusRuleReconciler
 	ruleReconciler.ControllerStopFunctionLock().Lock()
 	defer ruleReconciler.ControllerStopFunctionLock().Unlock()

@@ -98,11 +98,11 @@ var _ = BeforeSuite(func() {
 		IsIPv6Cluster:        false,
 	}
 	oTelColResourceManager := &otelcolresources.OTelColResourceManager{
-		Client:                  k8sClient,
-		Scheme:                  k8sClient.Scheme(),
-		DeploymentSelfReference: DeploymentSelfReference,
-		OTelCollectorNamePrefix: OTelCollectorNamePrefixTest,
-		OTelColExtraConfig:      &otelcolresources.OTelExtraConfigDefaults,
+		Client:                    k8sClient,
+		Scheme:                    k8sClient.Scheme(),
+		OperatorManagerDeployment: OperatorManagerDeployment,
+		OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
+		OTelColExtraConfig:        &otelcolresources.OTelExtraConfigDefaults,
 	}
 	backendConnectionManager := &backendconnection.BackendConnectionManager{
 		Client:                 k8sClient,

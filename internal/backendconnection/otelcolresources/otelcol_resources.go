@@ -31,7 +31,7 @@ import (
 type OTelColResourceManager struct {
 	client.Client
 	Scheme                           *runtime.Scheme
-	DeploymentSelfReference          *appsv1.Deployment
+	OperatorManagerDeployment        *appsv1.Deployment
 	OTelCollectorNamePrefix          string
 	OTelColExtraConfig               *OTelColExtraConfig
 	SendBatchMaxSize                 *uint32
@@ -77,7 +77,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 			logger,
 		)
 	if err != nil {
-		selfMonitoringConfiguration = selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{
+		selfMonitoringConfiguration = selfmonitoringapiaccess.SelfMonitoringConfiguration{
 			SelfMonitoringEnabled: false,
 		}
 	}
@@ -91,11 +91,11 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	}
 
 	config := &oTelColConfig{
-		Namespace:                               namespace,
-		NamePrefix:                              m.OTelCollectorNamePrefix,
-		Export:                                  *export,
-		SendBatchMaxSize:                        m.SendBatchMaxSize,
-		SelfMonitoringAndApiAccessConfiguration: selfMonitoringConfiguration,
+		Namespace:                   namespace,
+		NamePrefix:                  m.OTelCollectorNamePrefix,
+		Export:                      *export,
+		SendBatchMaxSize:            m.SendBatchMaxSize,
+		SelfMonitoringConfiguration: selfMonitoringConfiguration,
 		KubernetesInfrastructureMetricsCollectionEnabled: kubernetesInfrastructureMetricsCollectionEnabled,
 		// The hostmetrics receiver requires mapping the root file system as a volume mount, see
 		// https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/hostmetricsreceiver#collecting-host-metrics-from-inside-a-container-linux-only
@@ -275,9 +275,9 @@ func (m *OTelColResourceManager) setOwnerReference(
 	}
 	if err := controllerutil.SetControllerReference(&appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: m.DeploymentSelfReference.Namespace,
-			Name:      m.DeploymentSelfReference.Name,
-			UID:       m.DeploymentSelfReference.UID,
+			Namespace: m.OperatorManagerDeployment.Namespace,
+			Name:      m.OperatorManagerDeployment.Name,
+			UID:       m.OperatorManagerDeployment.UID,
 		},
 	}, object, m.Scheme); err != nil {
 		logger.Error(err, "cannot set owner reference on object")
@@ -328,9 +328,9 @@ func (m *OTelColResourceManager) DeleteResources(
 		NamePrefix: m.OTelCollectorNamePrefix,
 		// For deleting the resources, we do not need the actual export settings; we only use assembleDesiredState to
 		// collect the kinds and names of all resources that need to be deleted.
-		Export:                                  dash0v1alpha1.Export{},
-		SendBatchMaxSize:                        m.SendBatchMaxSize,
-		SelfMonitoringAndApiAccessConfiguration: selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{SelfMonitoringEnabled: false},
+		Export:                      dash0v1alpha1.Export{},
+		SendBatchMaxSize:            m.SendBatchMaxSize,
+		SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{SelfMonitoringEnabled: false},
 		// KubernetesInfrastructureMetricsCollectionEnabled=false would lead to not deleting the collector-deployment-
 		// related resources, we always try to delete all collector resources (daemonset & deployment), no matter
 		// whether both sets have been created earlier or not.

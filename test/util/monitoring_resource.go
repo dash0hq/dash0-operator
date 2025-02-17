@@ -109,32 +109,6 @@ func EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(
 	)
 }
 
-func EnsureMonitoringResourceWithSpecExists(
-	ctx context.Context,
-	k8sClient client.Client,
-	spec dash0v1alpha1.Dash0MonitoringSpec,
-) *dash0v1alpha1.Dash0Monitoring {
-	return EnsureMonitoringResourceWithSpecExistsInNamespace(
-		ctx,
-		k8sClient,
-		spec,
-		MonitoringResourceQualifiedName,
-	)
-}
-
-func EnsureMonitoringResourceExistsInNamespace(
-	ctx context.Context,
-	k8sClient client.Client,
-	namespacesName types.NamespacedName,
-) *dash0v1alpha1.Dash0Monitoring {
-	return EnsureMonitoringResourceWithSpecExistsInNamespace(
-		ctx,
-		k8sClient,
-		MonitoringResourceDefaultSpec,
-		namespacesName,
-	)
-}
-
 func EnsureMonitoringResourceWithSpecExistsInNamespace(
 	ctx context.Context,
 	k8sClient client.Client,

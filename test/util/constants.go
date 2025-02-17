@@ -4,11 +4,13 @@
 package util
 
 import (
+	"fmt"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
@@ -28,6 +30,7 @@ const (
 	ReplicaSetNamePrefix  = "replicaset"
 	StatefulSetNamePrefix = "statefulset"
 
+	OperatorVersionTest            = "1.2.3"
 	OperatorImageTest              = "some-registry.com:1234/dash0hq/operator-controller:1.2.3"
 	InitContainerImageTest         = "some-registry.com:1234/dash0hq/instrumentation:4.5.6"
 	CollectorImageTest             = "some-registry.com:1234/dash0hq/collector:7.8.9"
@@ -42,14 +45,16 @@ const (
 	EndpointGrpcTest              = "endpoint.backend.com:4317"
 	EndpointHttpTest              = "https://endpoint.backend.com:4318"
 
-	ApiEndpointTest = "https://api.dash0.com"
-	DatasetTest     = "test-dataset"
+	ApiEndpointTest   = "https://api.dash0.com"
+	DatasetCustomTest = "test-dataset"
 )
 
 var (
-	AuthorizationTokenTest            = "authorization-token"
-	AuthorizationTokenTestAlternative = "authorization-token-test"
-	SecretRefTest                     = dash0v1alpha1.SecretRef{
+	AuthorizationTokenTest             = "authorization-token-test"
+	AuthorizationHeaderTest            = fmt.Sprintf("Bearer %s", AuthorizationTokenTest)
+	AuthorizationTokenTestAlternative  = "authorization-token-test-alternative"
+	AuthorizationHeaderTestAlternative = fmt.Sprintf("Bearer %s", AuthorizationTokenTestAlternative)
+	SecretRefTest                      = dash0v1alpha1.SecretRef{
 		Name: "secret-ref",
 		Key:  "key",
 	}
@@ -68,11 +73,13 @@ var (
 		FilelogOffsetSynchImagePullPolicy:    corev1.PullAlways,
 	}
 
-	DeploymentSelfReference = &appsv1.Deployment{
+	OperatorManagerDeploymentUIDStr = "2f009c75-d69f-4b02-9d9d-fa17e76f5c1d"
+	OperatorManagerDeploymentUID    = types.UID(OperatorManagerDeploymentUIDStr)
+	OperatorManagerDeployment       = &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: OperatorNamespace,
 			Name:      "unit-test-dash0-operator-controller",
-			UID:       "2f009c75-d69f-4b02-9d9d-fa17e76f5c1d",
+			UID:       types.UID(OperatorManagerDeploymentUIDStr),
 		},
 	}
 
@@ -87,8 +94,12 @@ var (
 	}
 )
 
-func Dash0ExportWithEndpointAndToken() dash0v1alpha1.Export {
-	return dash0v1alpha1.Export{
+func NoExport() *dash0v1alpha1.Export {
+	return nil
+}
+
+func Dash0ExportWithEndpointAndToken() *dash0v1alpha1.Export {
+	return &dash0v1alpha1.Export{
 		Dash0: &dash0v1alpha1.Dash0Configuration{
 			Endpoint: EndpointDash0Test,
 			Authorization: dash0v1alpha1.Authorization{
@@ -98,11 +109,11 @@ func Dash0ExportWithEndpointAndToken() dash0v1alpha1.Export {
 	}
 }
 
-func Dash0ExportWithEndpointTokenAndCustomDataset() dash0v1alpha1.Export {
-	return dash0v1alpha1.Export{
+func Dash0ExportWithEndpointTokenAndCustomDataset() *dash0v1alpha1.Export {
+	return &dash0v1alpha1.Export{
 		Dash0: &dash0v1alpha1.Dash0Configuration{
 			Endpoint: EndpointDash0Test,
-			Dataset:  DatasetTest,
+			Dataset:  DatasetCustomTest,
 			Authorization: dash0v1alpha1.Authorization{
 				Token: &AuthorizationTokenTest,
 			},
@@ -110,20 +121,8 @@ func Dash0ExportWithEndpointTokenAndCustomDataset() dash0v1alpha1.Export {
 	}
 }
 
-func Dash0ExportWithEndpointAndTokenAndApiEndpoint() dash0v1alpha1.Export {
-	return dash0v1alpha1.Export{
-		Dash0: &dash0v1alpha1.Dash0Configuration{
-			Endpoint: EndpointDash0Test,
-			Authorization: dash0v1alpha1.Authorization{
-				Token: &AuthorizationTokenTest,
-			},
-			ApiEndpoint: ApiEndpointTest,
-		},
-	}
-}
-
-func Dash0ExportWithEndpointAndSecretRef() dash0v1alpha1.Export {
-	return dash0v1alpha1.Export{
+func Dash0ExportWithEndpointAndSecretRef() *dash0v1alpha1.Export {
+	return &dash0v1alpha1.Export{
 		Dash0: &dash0v1alpha1.Dash0Configuration{
 			Endpoint: EndpointDash0Test,
 			Authorization: dash0v1alpha1.Authorization{
@@ -133,24 +132,8 @@ func Dash0ExportWithEndpointAndSecretRef() dash0v1alpha1.Export {
 	}
 }
 
-func Dash0ExportWithEndpointAndSecretRefAndApiEndpoint() dash0v1alpha1.Export {
-	return dash0v1alpha1.Export{
-		Dash0: &dash0v1alpha1.Dash0Configuration{
-			Endpoint: EndpointDash0Test,
-			Authorization: dash0v1alpha1.Authorization{
-				SecretRef: &SecretRefTest,
-			},
-			ApiEndpoint: ApiEndpointTest,
-		},
-	}
-}
-
-func ExportToPrt(export dash0v1alpha1.Export) *dash0v1alpha1.Export {
-	return &export
-}
-
-func GrpcExportTest() dash0v1alpha1.Export {
-	return dash0v1alpha1.Export{
+func GrpcExportTest() *dash0v1alpha1.Export {
+	return &dash0v1alpha1.Export{
 		Grpc: &dash0v1alpha1.GrpcConfiguration{
 			Endpoint: EndpointGrpcTest,
 			Headers: []dash0v1alpha1.Header{{
@@ -161,8 +144,8 @@ func GrpcExportTest() dash0v1alpha1.Export {
 	}
 }
 
-func HttpExportTest() dash0v1alpha1.Export {
-	return dash0v1alpha1.Export{
+func HttpExportTest() *dash0v1alpha1.Export {
+	return &dash0v1alpha1.Export{
 		Http: &dash0v1alpha1.HttpConfiguration{
 			Endpoint: EndpointHttpTest,
 			Headers: []dash0v1alpha1.Header{{

@@ -72,13 +72,14 @@ func (e ImmutableWorkloadError) Error() string {
 	)
 }
 
-// InstrumentAtStartup is run once, when the controller process starts. Its main purpose is to upgrade workloads that
-// have already been instrumented, in namespaces where the Dash0 monitoring resource already exists. For those workloads,
-// it is not guaranteed that a reconcile request will be triggered when the operator controller image is updated and
-// restarted - reconcile requests are only triggered when the Dash0 monitoring resource is installed/changed/deleted.
-// Since it runs the full instrumentation process, it might also as a byproduct instrument workloads that are not
-// instrumented yet. It will only cover namespaces where a Dash0 monitoring resource exists, because it works by listing
-// all Dash0 monitoring resources and then instrumenting workloads in the corresponding namespaces.
+// InstrumentAtStartup is run once, when the operator manager process starts. Its main purpose is to upgrade workloads
+// that have already been instrumented, in namespaces where the Dash0 monitoring resource already exists. For those
+// workloads, it is not guaranteed that a reconcile request will be triggered when the operator controller image is
+// updated and restarted - reconcile requests are only triggered when the Dash0 monitoring resource is
+// installed/changed/deleted. Since it runs the full instrumentation process, it might also as a byproduct instrument
+// workloads that are not instrumented yet. It will only cover namespaces where a Dash0 monitoring resource exists,
+// because it works by listing all Dash0 monitoring resources and then instrumenting workloads in the corresponding
+// namespaces.
 func (i *Instrumenter) InstrumentAtStartup(
 	ctx context.Context,
 	k8sClient client.Client,

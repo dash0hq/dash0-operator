@@ -71,7 +71,7 @@ func main() {
 	done := make(chan bool, 1)
 	signal.Notify(shutdown, syscall.SIGTERM)
 
-	meter := common.InitOTelSdk(ctx, meterName, nil)
+	meter := common.InitOTelSdkFromEnvVars(ctx, meterName, nil)
 	initializeSelfMonitoringMetrics(meter)
 
 	go func() {
