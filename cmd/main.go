@@ -19,8 +19,6 @@ import (
 	"github.com/go-logr/logr"
 	persesv1alpha1 "github.com/perses/perses-operator/api/v1alpha1"
 	prometheusv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
-	semconv "go.opentelemetry.io/collector/semconv/v1.27.0"
-	otelmetric "go.opentelemetry.io/otel/metric"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -96,8 +94,6 @@ const (
 
 	//nolint
 	mandatoryEnvVarMissingMessageTemplate = "cannot start the Dash0 operator, the mandatory environment variable \"%s\" is missing"
-
-	meterName = "dash0.operator.manager"
 )
 
 var (
@@ -108,9 +104,6 @@ var (
 	isDocker                bool
 	deploymentSelfReference *appsv1.Deployment
 	envVars                 environmentVariables
-
-	metricNamePrefix = fmt.Sprintf("%s.", meterName)
-	meter            otelmetric.Meter
 
 	thirdPartyResourceSynchronizationQueue *workqueue.Typed[controller.ThirdPartyResourceSyncJob]
 )
@@ -309,13 +302,6 @@ func main() {
 		setupLog.Error(err, "The Dash0 operator manager process to lookup its own deployment failed.")
 		os.Exit(1)
 	}
-
-	meter =
-		common.InitOTelSdk(
-			ctx,
-			meterName,
-			map[string]string{semconv.AttributeK8SDeploymentUID: string(deploymentSelfReference.UID)},
-		)
 
 	var operatorConfiguration *startup.OperatorConfigurationValues
 	if len(operatorConfigurationEndpoint) > 0 {
@@ -675,11 +661,6 @@ func startDash0Controllers(
 	if err := persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, startupTasksK8sClient, &setupLog); err != nil {
 		return fmt.Errorf("unable to set up the Perses dashboard reconciler: %w", err)
 	}
-	persesDashboardCrdReconciler.InitializeSelfMonitoringMetrics(
-		meter,
-		metricNamePrefix,
-		&setupLog,
-	)
 	prometheusRuleCrdReconciler := &controller.PrometheusRuleCrdReconciler{
 		Client:    k8sClient,
 		Queue:     thirdPartyResourceSynchronizationQueue,
@@ -688,12 +669,9 @@ func startDash0Controllers(
 	if err := prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, startupTasksK8sClient, &setupLog); err != nil {
 		return fmt.Errorf("unable to set up the Prometheus rule reconciler: %w", err)
 	}
-	prometheusRuleCrdReconciler.InitializeSelfMonitoringMetrics(
-		meter,
-		metricNamePrefix,
-		&setupLog,
-	)
 	controller.StartProcessingThirdPartySynchronizationQueue(thirdPartyResourceSynchronizationQueue, &setupLog)
+
+	oTelSdkStarter := selfmonitoringapiaccess.NewOTelSdkStarter()
 
 	operatorConfigurationReconciler := &controller.OperatorConfigurationReconciler{
 		Client:    k8sClient,
@@ -706,6 +684,7 @@ func startDash0Controllers(
 		Recorder:                 mgr.GetEventRecorderFor("dash0-operator-configuration-controller"),
 		BackendConnectionManager: backendConnectionManager,
 		DeploymentSelfReference:  deploymentSelfReference,
+		OTelSdkStarter:           oTelSdkStarter,
 		Images:                   images,
 		OperatorNamespace:        envVars.operatorNamespace,
 		DevelopmentMode:          developmentMode,
@@ -713,11 +692,6 @@ func startDash0Controllers(
 	if err := operatorConfigurationReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the operator configuration reconciler: %w", err)
 	}
-	operatorConfigurationReconciler.InitializeSelfMonitoringMetrics(
-		meter,
-		metricNamePrefix,
-		&setupLog,
-	)
 
 	monitoringReconciler := &controller.MonitoringReconciler{
 		Client:                   k8sClient,
@@ -730,11 +704,6 @@ func startDash0Controllers(
 	if err := monitoringReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the monitoring reconciler: %w", err)
 	}
-	monitoringReconciler.InitializeSelfMonitoringMetrics(
-		meter,
-		metricNamePrefix,
-		&setupLog,
-	)
 
 	if err := (&webhooks.InstrumentationWebhookHandler{
 		Client:               k8sClient,
@@ -756,6 +725,17 @@ func startDash0Controllers(
 	}).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the monitoring validation webhook: %w", err)
 	}
+
+	oTelSdkStarter.WaitForOTelConfig(
+		[]selfmonitoringapiaccess.SelfMonitoringClient{
+			operatorConfigurationReconciler,
+			monitoringReconciler,
+			persesDashboardCrdReconciler,
+			prometheusRuleCrdReconciler,
+		},
+	)
+
+	// TODO if available, set value from auto-operator-config right away
 
 	return nil
 }
