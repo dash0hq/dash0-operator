@@ -25,7 +25,6 @@
 #define DASH0_SERVICE_NAME_VAR_NAME "DASH0_SERVICE_NAME"
 #define DASH0_SERVICE_VERSION_VAR_NAME "DASH0_SERVICE_VERSION"
 #define DASH0_SERVICE_NAMESPACE_VAR_NAME "DASH0_SERVICE_NAMESPACE"
-#define DASH0_SERVICE_INSTANCE_ID_VAR_NAME "DASH0_SERVICE_INSTANCE_ID"
 #define DASH0_RESOURCE_ATTRIBUTES_VAR_NAME "DASH0_RESOURCE_ATTRIBUTES"
 
 extern char **__environ;
@@ -113,7 +112,6 @@ char *__appendResourceAttributes(const char *buffer, const char *origValue) {
   char *serviceName = __getenv(DASH0_SERVICE_NAME_VAR_NAME);
   char *serviceVersion = __getenv(DASH0_SERVICE_VERSION_VAR_NAME);
   char *serviceNamespace = __getenv(DASH0_SERVICE_NAMESPACE_VAR_NAME);
-  char *serviceInstanceId = __getenv(DASH0_SERVICE_INSTANCE_ID_VAR_NAME);
   char *otherResourceAttributes = __getenv(DASH0_RESOURCE_ATTRIBUTES_VAR_NAME);
 
   bool isFirst = true;
@@ -193,16 +191,6 @@ char *__appendResourceAttributes(const char *buffer, const char *origValue) {
 
     __strcat(buffer, "service.namespace=");
     __strcat(buffer, serviceNamespace);
-    isFirst = false;
-  }
-
-  if (serviceInstanceId != NULL && __strlen(serviceInstanceId) > 0) {
-    if (!isFirst) {
-      __strcat(buffer, ",");
-    }
-
-    __strcat(buffer, "service.instance.id=");
-    __strcat(buffer, serviceInstanceId);
     isFirst = false;
   }
 

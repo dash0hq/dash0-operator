@@ -40,7 +40,6 @@ const (
 	envVarDash0ServiceName             = "DASH0_SERVICE_NAME"
 	envVarDash0ServiceNamespace        = "DASH0_SERVICE_NAMESPACE"
 	envVarDash0ServiceVersion          = "DASH0_SERVICE_VERSION"
-	envVarDash0ServiceInstanceId       = "DASH0_SERVICE_INSTANCE_ID"
 	envVarDash0ResourceAttributes      = "DASH0_RESOURCE_ATTRIBUTES"
 )
 
@@ -438,7 +437,7 @@ func (m *ResourceModifier) addEnvironmentVariables(podMeta *metav1.ObjectMeta, c
 	// `app.kubernetes.io/version` becomes `service.version`
 	// `app.kubernetes.io/part-of` becomes `service.namespace`
 	// `app.kubernetes.io/instance` becomes `service.instance.id`
-	if _, ok := podMeta.Labels["app.kubernetes.io/name"]; ok {
+	if _, appKubernetesIoNameLabelIsPresent := podMeta.Labels["app.kubernetes.io/name"]; appKubernetesIoNameLabelIsPresent {
 		m.addOrReplaceEnvironmentVariable(
 			container,
 			corev1.EnvVar{
@@ -450,45 +449,32 @@ func (m *ResourceModifier) addEnvironmentVariables(podMeta *metav1.ObjectMeta, c
 				},
 			},
 		)
-	}
 
-	if _, ok := podMeta.Labels["app.kubernetes.io/part-of"]; ok {
-		m.addOrReplaceEnvironmentVariable(
-			container,
-			corev1.EnvVar{
-				Name: envVarDash0ServiceNamespace,
-				ValueFrom: &corev1.EnvVarSource{
-					FieldRef: &corev1.ObjectFieldSelector{
-						FieldPath: "metadata.labels['app.kubernetes.io/part-of']",
+		if _, appKubernetesIoPartOfLabelIsPresent := podMeta.Labels["app.kubernetes.io/part-of"]; appKubernetesIoPartOfLabelIsPresent {
+			m.addOrReplaceEnvironmentVariable(
+				container,
+				corev1.EnvVar{
+					Name: envVarDash0ServiceNamespace,
+					ValueFrom: &corev1.EnvVarSource{
+						FieldRef: &corev1.ObjectFieldSelector{
+							FieldPath: "metadata.labels['app.kubernetes.io/part-of']",
+						},
 					},
-				},
-			})
-	}
+				})
+		}
 
-	if _, ok := podMeta.Labels["app.kubernetes.io/version"]; ok {
-		m.addOrReplaceEnvironmentVariable(
-			container,
-			corev1.EnvVar{
-				Name: envVarDash0ServiceVersion,
-				ValueFrom: &corev1.EnvVarSource{
-					FieldRef: &corev1.ObjectFieldSelector{
-						FieldPath: "metadata.labels['app.kubernetes.io/version']",
+		if _, appKubernetesIoVersionLabelIsPresent := podMeta.Labels["app.kubernetes.io/version"]; appKubernetesIoVersionLabelIsPresent {
+			m.addOrReplaceEnvironmentVariable(
+				container,
+				corev1.EnvVar{
+					Name: envVarDash0ServiceVersion,
+					ValueFrom: &corev1.EnvVarSource{
+						FieldRef: &corev1.ObjectFieldSelector{
+							FieldPath: "metadata.labels['app.kubernetes.io/version']",
+						},
 					},
-				},
-			})
-	}
-
-	if _, ok := podMeta.Labels["app.kubernetes.io/instance"]; ok {
-		m.addOrReplaceEnvironmentVariable(
-			container,
-			corev1.EnvVar{
-				Name: envVarDash0ServiceInstanceId,
-				ValueFrom: &corev1.EnvVarSource{
-					FieldRef: &corev1.ObjectFieldSelector{
-						FieldPath: "metadata.labels['app.kubernetes.io/instance']",
-					},
-				},
-			})
+				})
+		}
 	}
 
 	// Annotations resource.opentelemetry.io/your-key: "your-value"
@@ -669,7 +655,6 @@ func (m *ResourceModifier) removeEnvironmentVariables(container *corev1.Containe
 	m.removeEnvironmentVariable(container, envVarDash0ServiceNamespace)
 	m.removeEnvironmentVariable(container, envVarDash0ServiceName)
 	m.removeEnvironmentVariable(container, envVarDash0ServiceVersion)
-	m.removeEnvironmentVariable(container, envVarDash0ServiceInstanceId)
 	m.removeEnvironmentVariable(container, envVarDash0ResourceAttributes)
 }
 

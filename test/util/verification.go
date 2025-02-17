@@ -40,7 +40,6 @@ type ContainerExpectations struct {
 	Dash0ServiceNameEnvVarIdx                   int
 	Dash0ServiceNamespaceEnvVarIdx              int
 	Dash0ServiceVersionEnvVarIdx                int
-	Dash0ServiceInstanceIdEnvVarIdx             int
 	Dash0ResourceAttributesEnvVarIdx            int
 }
 
@@ -359,13 +358,6 @@ func verifyPodSpec(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
 				Expect(valueFrom).ToNot(BeNil())
 				Expect(valueFrom.FieldRef).ToNot(BeNil())
 				Expect(valueFrom.FieldRef.FieldPath).To(Equal("metadata.labels['app.kubernetes.io/version']"))
-				Expect(envVar.Value).To(BeEmpty())
-			} else if j == containerExpectations.Dash0ServiceInstanceIdEnvVarIdx {
-				Expect(envVar.Name).To(Equal("DASH0_SERVICE_INSTANCE_ID"))
-				valueFrom := envVar.ValueFrom
-				Expect(valueFrom).ToNot(BeNil())
-				Expect(valueFrom.FieldRef).ToNot(BeNil())
-				Expect(valueFrom.FieldRef.FieldPath).To(Equal("metadata.labels['app.kubernetes.io/instance']"))
 				Expect(envVar.Value).To(BeEmpty())
 			} else if j == containerExpectations.Dash0ResourceAttributesEnvVarIdx {
 				Expect(envVar.Name).To(Equal("DASH0_RESOURCE_ATTRIBUTES"))
