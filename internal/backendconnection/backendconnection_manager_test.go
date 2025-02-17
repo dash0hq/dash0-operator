@@ -41,11 +41,11 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 	BeforeEach(func() {
 		createdObjects = make([]client.Object, 0)
 		oTelColResourceManager := &otelcolresources.OTelColResourceManager{
-			Client:                  k8sClient,
-			Scheme:                  k8sClient.Scheme(),
-			DeploymentSelfReference: DeploymentSelfReference,
-			OTelCollectorNamePrefix: OTelCollectorNamePrefixTest,
-			OTelColExtraConfig:      &otelcolresources.OTelExtraConfigDefaults,
+			Client:                    k8sClient,
+			Scheme:                    k8sClient.Scheme(),
+			OperatorManagerDeployment: OperatorManagerDeployment,
+			OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
+			OTelColExtraConfig:        &otelcolresources.OTelExtraConfigDefaults,
 		}
 		manager = &BackendConnectionManager{
 			Client:                 k8sClient,

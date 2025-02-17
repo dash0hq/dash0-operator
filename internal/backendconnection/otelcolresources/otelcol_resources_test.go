@@ -55,12 +55,12 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 
 	BeforeEach(func() {
 		oTelColResourceManager = &OTelColResourceManager{
-			Client:                  k8sClient,
-			Scheme:                  k8sClient.Scheme(),
-			DeploymentSelfReference: DeploymentSelfReference,
-			OTelCollectorNamePrefix: OTelCollectorNamePrefixTest,
-			OTelColExtraConfig:      &OTelExtraConfigDefaults,
-			DevelopmentMode:         true,
+			Client:                    k8sClient,
+			Scheme:                    k8sClient.Scheme(),
+			OperatorManagerDeployment: OperatorManagerDeployment,
+			OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
+			OTelColExtraConfig:        &OTelExtraConfigDefaults,
+			DevelopmentMode:           true,
 		}
 	})
 
@@ -144,7 +144,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					TestImages,
 					nil,
 					nil,
-					ptr.To(Dash0ExportWithEndpointAndToken()),
+					Dash0ExportWithEndpointAndToken(),
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -161,7 +161,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					TestImages,
 					nil,
 					nil,
-					ptr.To(Dash0ExportWithEndpointAndToken()),
+					Dash0ExportWithEndpointAndToken(),
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -181,7 +181,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			Expect(containers).To(HaveLen(3))
 			for _, container := range containers {
 				Expect(container.Env).NotTo(
-					ContainElement(MatchEnvVar("SELF_MONITORING_AND_API_AUTH_TOKEN", AuthorizationTokenTest)))
+					ContainElement(MatchEnvVar("SELF_MONITORING_AUTH_TOKEN", AuthorizationTokenTest)))
 
 			}
 		})
@@ -198,7 +198,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					TestImages,
 					operatorConfiguration,
 					nil,
-					ptr.To(Dash0ExportWithEndpointAndToken()),
+					Dash0ExportWithEndpointAndToken(),
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -218,7 +218,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			Expect(containers).To(HaveLen(3))
 			for _, container := range containers {
 				Expect(container.Env).ToNot(
-					ContainElement(MatchEnvVar("SELF_MONITORING_AND_API_AUTH_TOKEN", AuthorizationTokenTest)))
+					ContainElement(MatchEnvVar("SELF_MONITORING_AUTH_TOKEN", AuthorizationTokenTest)))
 
 			}
 		})
@@ -232,7 +232,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					TestImages,
 					operatorConfiguration,
 					nil,
-					ptr.To(Dash0ExportWithEndpointAndToken()),
+					Dash0ExportWithEndpointAndToken(),
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -252,7 +252,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			Expect(containers).To(HaveLen(3))
 			for _, container := range containers {
 				Expect(container.Env).To(
-					ContainElement(MatchEnvVar("SELF_MONITORING_AND_API_AUTH_TOKEN", AuthorizationTokenTest)))
+					ContainElement(MatchEnvVar("SELF_MONITORING_AUTH_TOKEN", AuthorizationTokenTest)))
 
 			}
 		})
@@ -357,7 +357,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					TestImages,
 					nil,
 					nil,
-					ptr.To(Dash0ExportWithEndpointAndToken()),
+					Dash0ExportWithEndpointAndToken(),
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -388,7 +388,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					TestImages,
 					nil,
 					nil,
-					ptr.To(Dash0ExportWithEndpointAndToken()),
+					Dash0ExportWithEndpointAndToken(),
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -430,7 +430,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					TestImages,
 					nil,
 					nil,
-					ptr.To(Dash0ExportWithEndpointAndToken()),
+					Dash0ExportWithEndpointAndToken(),
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -450,7 +450,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					TestImages,
 					nil,
 					nil,
-					ptr.To(Dash0ExportWithEndpointAndToken()),
+					Dash0ExportWithEndpointAndToken(),
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -474,7 +474,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					TestImages,
 					nil,
 					nil,
-					ptr.To(Dash0ExportWithEndpointAndToken()),
+					Dash0ExportWithEndpointAndToken(),
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -493,7 +493,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				TestImages,
 				nil,
 				nil,
-				ptr.To(Dash0ExportWithEndpointAndToken()),
+				Dash0ExportWithEndpointAndToken(),
 				&logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -507,7 +507,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				TestImages,
 				nil,
 				nil,
-				ptr.To(Dash0ExportWithEndpointAndToken()),
+				Dash0ExportWithEndpointAndToken(),
 				&logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -523,7 +523,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 					TestImages,
 					nil,
 					nil,
-					ptr.To(Dash0ExportWithEndpointAndToken()),
+					Dash0ExportWithEndpointAndToken(),
 					&logger,
 				)
 			Expect(err).ToNot(HaveOccurred())
@@ -543,7 +543,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 				TestImages,
 				nil,
 				nil,
-				ptr.To(Dash0ExportWithEndpointAndToken()),
+				Dash0ExportWithEndpointAndToken(),
 				&logger,
 			)
 			Expect(err).ToNot(HaveOccurred())

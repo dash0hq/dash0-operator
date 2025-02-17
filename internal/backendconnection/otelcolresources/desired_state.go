@@ -28,7 +28,7 @@ type oTelColConfig struct {
 	NamePrefix                                       string
 	Export                                           dash0v1alpha1.Export
 	SendBatchMaxSize                                 *uint32
-	SelfMonitoringAndApiAccessConfiguration          selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration
+	SelfMonitoringConfiguration                      selfmonitoringapiaccess.SelfMonitoringConfiguration
 	KubernetesInfrastructureMetricsCollectionEnabled bool
 	UseHostMetricsReceiver                           bool
 	ClusterName                                      string
@@ -556,10 +556,10 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig *OTelColExtra
 		},
 	}
 
-	if config.SelfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled {
+	if config.SelfMonitoringConfiguration.SelfMonitoringEnabled {
 		err = selfmonitoringapiaccess.EnableSelfMonitoringInCollectorDaemonSet(
 			collectorDaemonSet,
-			config.SelfMonitoringAndApiAccessConfiguration,
+			config.SelfMonitoringConfiguration,
 			config.Images.GetOperatorVersion(),
 			config.DevelopmentMode,
 		)
@@ -1047,10 +1047,10 @@ func assembleCollectorDeployment(
 		},
 	}
 
-	if config.SelfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled {
+	if config.SelfMonitoringConfiguration.SelfMonitoringEnabled {
 		err = selfmonitoringapiaccess.EnableSelfMonitoringInCollectorDeployment(
 			collectorDeployment,
-			config.SelfMonitoringAndApiAccessConfiguration,
+			config.SelfMonitoringConfiguration,
 			config.Images.GetOperatorVersion(),
 			config.DevelopmentMode,
 		)

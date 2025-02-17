@@ -6,6 +6,8 @@ package otelcolresources
 import (
 	"fmt"
 	"reflect"
+	"slices"
+	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -14,12 +16,25 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
+	"github.com/dash0hq/dash0-operator/internal/util"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
+
+type collectorSelfMonitoringExpectations struct {
+	endpoint       string
+	protocol       string
+	authTokenValue string
+	secretRefName  string
+	secretRefKey   string
+	otlpHeaders    map[string]string
+	exportIsDash0  bool
+}
 
 const (
 	namespace  = "some-namespace"
@@ -27,6 +42,10 @@ const (
 
 	numberOfResourcesWithKubernetesInfrastructureMetricsCollectionEnabled    = 14
 	numberOfResourcesWithoutKubernetesInfrastructureMetricsCollectionEnabled = 9
+
+	otelExporterOtlpEndpointEnvVarName = "OTEL_EXPORTER_OTLP_ENDPOINT"
+	otelExporterOtlpHeadersEnvVarName  = "OTEL_EXPORTER_OTLP_HEADERS"
+	otelExporterOtlpProtocolEnvVarName = "OTEL_EXPORTER_OTLP_PROTOCOL"
 )
 
 var _ = Describe("The desired state of the OpenTelemetry Collector resources", func() {
@@ -50,7 +69,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
-			Export:     Dash0ExportWithEndpointAndToken(),
+			Export:     *Dash0ExportWithEndpointAndToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			UseHostMetricsReceiver:                           true,
 			Images:                                           TestImages,
@@ -198,7 +217,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
-			Export:     Dash0ExportWithEndpointAndToken(),
+			Export:     *Dash0ExportWithEndpointAndToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: false,
 			Images: TestImages,
 		}, nil, &OTelExtraConfigDefaults)
@@ -236,7 +255,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
-			Export:     Dash0ExportWithEndpointAndToken(),
+			Export:     *Dash0ExportWithEndpointAndToken(),
 		}, nil, &OTelExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
@@ -254,7 +273,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
-			Export:     Dash0ExportWithEndpointAndSecretRef(),
+			Export:     *Dash0ExportWithEndpointAndSecretRef(),
 		}, nil, &OTelExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
@@ -274,7 +293,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
-			Export:     HttpExportTest(),
+			Export:     *HttpExportTest(),
 		}, nil, &OTelExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
@@ -288,83 +307,179 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(authTokenEnvVar).To(BeNil())
 	})
 
-	It("should correctly apply enabled self-monitoring on the daemonset", func() {
+	It("should correctly apply Dash0 export self-monitoring with token on the daemonset", func() {
+		export := Dash0ExportWithEndpointAndToken()
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
-			Export:     Dash0ExportWithEndpointAndToken(),
-			SelfMonitoringAndApiAccessConfiguration: selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{
+			Export:     *export,
+			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: true,
-				Export:                Dash0ExportWithEndpointAndToken(),
+				Export:                *export,
 			},
 			Images: TestImages,
 		}, nil, &OTelExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 
 		daemonSet := getDaemonSet(desiredState)
-		selfMonitoringConfiguration, err := parseBackSelfMonitoringEnvVarsFromCollectorDaemonSet(daemonSet)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(selfMonitoringConfiguration.SelfMonitoringEnabled).To(BeTrue())
-		Expect(selfMonitoringConfiguration.Export.Dash0).ToNot(BeNil())
-		Expect(selfMonitoringConfiguration.Export.Dash0.Endpoint).To(Equal(EndpointDash0WithProtocolTest))
-		Expect(selfMonitoringConfiguration.Export.Dash0.Dataset).To(BeEmpty())
-		Expect(*selfMonitoringConfiguration.Export.Dash0.Authorization.Token).To(Equal(AuthorizationTokenTest))
-		Expect(selfMonitoringConfiguration.Export.Grpc).To(BeNil())
-		Expect(selfMonitoringConfiguration.Export.Http).To(BeNil())
+
+		verifySelfMonitoringSettings(
+			daemonSet,
+			collectorSelfMonitoringExpectations{
+				exportIsDash0:  true,
+				endpoint:       EndpointDash0WithProtocolTest,
+				protocol:       common.ProtocolGrpc,
+				authTokenValue: AuthorizationTokenTest,
+				otlpHeaders: map[string]string{
+					util.AuthorizationHeaderName: "Bearer $(SELF_MONITORING_AUTH_TOKEN)",
+				},
+			},
+		)
 	})
 
-	It("should correctly apply enabled self-monitoring with custom dataset on the daemonset", func() {
+	It("should correctly apply Dash0 export self-monitoring with a secret ref on the daemonset", func() {
+		export := Dash0ExportWithEndpointAndSecretRef()
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
-			Export:     Dash0ExportWithEndpointTokenAndCustomDataset(),
-			SelfMonitoringAndApiAccessConfiguration: selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{
+			Export:     *export,
+			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: true,
-				Export:                Dash0ExportWithEndpointTokenAndCustomDataset(),
+				Export:                *export,
 			},
 			Images: TestImages,
 		}, nil, &OTelExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 
 		daemonSet := getDaemonSet(desiredState)
-		selfMonitoringConfiguration, err := parseBackSelfMonitoringEnvVarsFromCollectorDaemonSet(daemonSet)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(selfMonitoringConfiguration.SelfMonitoringEnabled).To(BeTrue())
-		Expect(selfMonitoringConfiguration.Export.Dash0).ToNot(BeNil())
-		Expect(selfMonitoringConfiguration.Export.Dash0.Endpoint).To(Equal(EndpointDash0WithProtocolTest))
-		Expect(selfMonitoringConfiguration.Export.Dash0.Dataset).To(Equal(DatasetTest))
-		Expect(*selfMonitoringConfiguration.Export.Dash0.Authorization.Token).To(Equal(AuthorizationTokenTest))
-		Expect(selfMonitoringConfiguration.Export.Grpc).To(BeNil())
-		Expect(selfMonitoringConfiguration.Export.Http).To(BeNil())
+
+		verifySelfMonitoringSettings(
+			daemonSet,
+			collectorSelfMonitoringExpectations{
+				exportIsDash0: true,
+				endpoint:      EndpointDash0WithProtocolTest,
+				protocol:      common.ProtocolGrpc,
+				secretRefName: SecretRefTest.Name,
+				secretRefKey:  SecretRefTest.Key,
+				otlpHeaders: map[string]string{
+					util.AuthorizationHeaderName: "Bearer $(SELF_MONITORING_AUTH_TOKEN)",
+				},
+			},
+		)
 	})
 
-	It("should correctly apply disabled self-monitoring on the daemonset", func() {
+	It("should correctly apply Dash0 export self-monitoring with a custom dataset on the daemonset", func() {
+		export := Dash0ExportWithEndpointTokenAndCustomDataset()
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
-			Export:     Dash0ExportWithEndpointAndToken(),
-			SelfMonitoringAndApiAccessConfiguration: selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{
+			Export:     *export,
+			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+				SelfMonitoringEnabled: true,
+				Export:                *export,
+			},
+			Images: TestImages,
+		}, nil, &OTelExtraConfigDefaults)
+		Expect(err).NotTo(HaveOccurred())
+
+		daemonSet := getDaemonSet(desiredState)
+
+		verifySelfMonitoringSettings(
+			daemonSet,
+			collectorSelfMonitoringExpectations{
+				exportIsDash0:  true,
+				endpoint:       EndpointDash0WithProtocolTest,
+				protocol:       common.ProtocolGrpc,
+				authTokenValue: AuthorizationTokenTest,
+				otlpHeaders: map[string]string{
+					util.AuthorizationHeaderName: "Bearer $(SELF_MONITORING_AUTH_TOKEN)",
+					util.Dash0DatasetHeaderName:  DatasetCustomTest,
+				},
+			},
+		)
+	})
+
+	It("should correctly apply self-monitoring with a gRCP export on the daemonset", func() {
+		export := GrpcExportTest()
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			Namespace:  namespace,
+			NamePrefix: namePrefix,
+			Export:     *export,
+			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+				SelfMonitoringEnabled: true,
+				Export:                *export,
+			},
+			Images: TestImages,
+		}, nil, &OTelExtraConfigDefaults)
+		Expect(err).NotTo(HaveOccurred())
+
+		daemonSet := getDaemonSet(desiredState)
+
+		verifySelfMonitoringSettings(
+			daemonSet,
+			collectorSelfMonitoringExpectations{
+				exportIsDash0: false,
+				endpoint:      "dns://" + EndpointGrpcTest,
+				protocol:      common.ProtocolGrpc,
+				otlpHeaders: map[string]string{
+					"Key": "Value",
+				},
+			},
+		)
+	})
+
+	It("should correctly apply self-monitoring with an HTTP/proto export on the daemonset", func() {
+		export := HttpExportTest()
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			Namespace:  namespace,
+			NamePrefix: namePrefix,
+			Export:     *export,
+			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+				SelfMonitoringEnabled: true,
+				Export:                *export,
+			},
+			Images: TestImages,
+		}, nil, &OTelExtraConfigDefaults)
+		Expect(err).NotTo(HaveOccurred())
+
+		daemonSet := getDaemonSet(desiredState)
+
+		verifySelfMonitoringSettings(
+			daemonSet,
+			collectorSelfMonitoringExpectations{
+				exportIsDash0: false,
+				endpoint:      EndpointHttpTest,
+				protocol:      common.ProtocolHttpProtobuf,
+				otlpHeaders: map[string]string{
+					"Key": "Value",
+				},
+			},
+		)
+	})
+
+	It("should correctly apply disabled self-monitoring settings to the daemonset", func() {
+		export := Dash0ExportWithEndpointAndToken()
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			Namespace:  namespace,
+			NamePrefix: namePrefix,
+			Export:     *export,
+			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: false,
-				Export:                Dash0ExportWithEndpointAndToken(),
 			},
 			Images: TestImages,
 		}, nil, &OTelExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 
 		daemonSet := getDaemonSet(desiredState)
-		selfMonitoringConfiguration, err := parseBackSelfMonitoringEnvVarsFromCollectorDaemonSet(daemonSet)
-		Expect(err).NotTo(HaveOccurred())
-		Expect(selfMonitoringConfiguration.SelfMonitoringEnabled).To(BeFalse())
-		Expect(selfMonitoringConfiguration.Export.Dash0).To(BeNil())
-		Expect(selfMonitoringConfiguration.Export.Grpc).To(BeNil())
-		Expect(selfMonitoringConfiguration.Export.Http).To(BeNil())
+
+		verifyAbsentSelfMonitoringSettings(daemonSet)
 	})
 
 	It("should render custom tolerations", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
-			Export:     Dash0ExportWithEndpointAndToken(),
+			Export:     *Dash0ExportWithEndpointAndToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			UseHostMetricsReceiver:                           true,
 			Images:                                           TestImages,
@@ -442,28 +557,28 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState1, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
-			Export:     Dash0ExportWithEndpointAndToken(),
+			Export:     *Dash0ExportWithEndpointAndToken(),
 			Images:     TestImages,
 		}, []dash0v1alpha1.Dash0Monitoring{mr1, mr2, mr3, mr4}, &OTelExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 		desiredState2, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
-			Export:     Dash0ExportWithEndpointAndToken(),
+			Export:     *Dash0ExportWithEndpointAndToken(),
 			Images:     TestImages,
 		}, []dash0v1alpha1.Dash0Monitoring{mr3, mr4, mr1, mr2}, &OTelExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 		desiredState3, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
-			Export:     Dash0ExportWithEndpointAndToken(),
+			Export:     *Dash0ExportWithEndpointAndToken(),
 			Images:     TestImages,
 		}, []dash0v1alpha1.Dash0Monitoring{mr4, mr3, mr2, mr1}, &OTelExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 		desiredState4, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
-			Export:     Dash0ExportWithEndpointAndToken(),
+			Export:     *Dash0ExportWithEndpointAndToken(),
 			Images:     TestImages,
 		}, []dash0v1alpha1.Dash0Monitoring{mr3, mr1, mr4, mr2}, &OTelExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
@@ -553,41 +668,131 @@ func findVolumeMountByName(objects []corev1.VolumeMount, name string) *corev1.Vo
 	return nil
 }
 
-// Note: There is no real need to parse the env vars on the daemonset back into a SelfMonitoringConfiguration, we could
-// just read the env vars and check that they have the expected values. We might want to refactor/simplify later.
-// However, this also tests the functionality used in
-// selfmonitoring.GetSelfMonitoringConfigurationFromControllerDeployment.
-func parseBackSelfMonitoringEnvVarsFromCollectorDaemonSet(collectorDemonSet *appsv1.DaemonSet) (
-	selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration,
-	error,
+func verifySelfMonitoringSettings(
+	collectorDaemonSet *appsv1.DaemonSet,
+	expectations collectorSelfMonitoringExpectations,
 ) {
-	selfMonitoringConfigurations := make(map[string]selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration)
+	for _, container := range collectorDaemonSet.Spec.Template.Spec.Containers {
+		verifySelfMonitoringEnvVarsForContainer(&container, expectations)
+	}
+}
 
-	for _, container := range collectorDemonSet.Spec.Template.Spec.Containers {
-		if selfMonitoringConfiguration, err :=
-			selfmonitoringapiaccess.ParseSelfMonitoringConfigurationFromContainer(&container); err != nil {
-			return selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{}, err
-		} else {
-			selfMonitoringConfigurations[container.Name] = selfMonitoringConfiguration
-		}
+func verifySelfMonitoringEnvVarsForContainer(
+	container *corev1.Container,
+	expectations collectorSelfMonitoringExpectations,
+) {
+	envVars := container.Env
+	endpoint := parseEndpoint(envVars)
+	if expectations.endpoint == "" {
+		Expect(endpoint).To(BeEmpty())
+	} else {
+		Expect(endpoint).To(Equal(expectations.endpoint))
 	}
 
-	// verify that the configurations on all init containers and regular containers are consistent
-	var referenceMonitoringConfiguration *selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration
-	for _, selfMonitoringConfiguration := range selfMonitoringConfigurations {
-		if referenceMonitoringConfiguration == nil {
-			referenceMonitoringConfiguration = &selfMonitoringConfiguration
-		} else {
-			if !reflect.DeepEqual(*referenceMonitoringConfiguration, selfMonitoringConfiguration) {
-				return selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{},
-					fmt.Errorf("inconsistent self-monitoring configurations: %v", selfMonitoringConfigurations)
+	var protocol string
+	otelExporterOtlpProtocolEnvVarIdx := slices.IndexFunc(envVars, matchOtelExporterOtlpProtocolEnvVar)
+	if otelExporterOtlpProtocolEnvVarIdx >= 0 {
+		protocol = envVars[otelExporterOtlpProtocolEnvVarIdx].Value
+	}
+	if expectations.protocol == "" {
+		Expect(protocol).To(BeEmpty())
+	} else {
+		Expect(protocol).To(Equal(expectations.protocol))
+	}
+
+	otlpHeaders := parseHeadersFromEnvVar(envVars)
+	Expect(otlpHeaders).To(HaveLen(len(expectations.otlpHeaders)))
+	for key, expectedValue := range expectations.otlpHeaders {
+		actualValue := otlpHeaders[key]
+		Expect(actualValue).To(Equal(expectedValue))
+	}
+
+	if expectations.exportIsDash0 {
+		verifyDash0SelfMonitoringEnvVars(envVars, expectations)
+	}
+}
+
+func parseEndpoint(envVars []corev1.EnvVar) string {
+	otelExporterOtlpEndpointEnvVarIdx := slices.IndexFunc(envVars, matchOtelExporterOtlpEndpointEnvVar)
+	if otelExporterOtlpEndpointEnvVarIdx < 0 {
+		return ""
+	}
+	otelExporterOtlpEndpointEnvVar := envVars[otelExporterOtlpEndpointEnvVarIdx]
+	if otelExporterOtlpEndpointEnvVar.Value == "" && otelExporterOtlpEndpointEnvVar.ValueFrom != nil {
+		Fail("retrieving the endpoint from OTEL_EXPORTER_OTLP_ENDPOINT with a ValueFrom source is not supported")
+	} else if otelExporterOtlpEndpointEnvVar.Value == "" {
+		Fail("there is an OTEL_EXPORTER_OTLP_ENDPOINT env var but it has no value")
+	}
+	return otelExporterOtlpEndpointEnvVar.Value
+}
+
+func parseHeadersFromEnvVar(envVars []corev1.EnvVar) map[string]string {
+	otelExporterOtlpHeadersEnvVarValue := ""
+	headers := map[string]string{}
+	if otelExporterOtlpHeadersEnvVarIdx :=
+		slices.IndexFunc(envVars, matchOtelExporterOtlpHeadersEnvVar); otelExporterOtlpHeadersEnvVarIdx >= 0 {
+		otelExporterOtlpHeadersEnvVarValue = envVars[otelExporterOtlpHeadersEnvVarIdx].Value
+		keyValuePairs := strings.Split(otelExporterOtlpHeadersEnvVarValue, ",")
+		for _, keyValuePair := range keyValuePairs {
+			parts := strings.Split(keyValuePair, "=")
+			if len(parts) == 2 {
+				headers[parts[0]] = parts[1]
 			}
 		}
 	}
 
-	if referenceMonitoringConfiguration != nil {
-		return *referenceMonitoringConfiguration, nil
+	return headers
+}
+
+func verifyDash0SelfMonitoringEnvVars(
+	containerEnvVars []corev1.EnvVar,
+	expectations collectorSelfMonitoringExpectations,
+) {
+	// we always put the auth token as the first env var since it is referenced later in the OTLP header env var
+	authTokenEnvVar := containerEnvVars[0]
+	Expect(authTokenEnvVar.Name).To(Equal(selfmonitoringapiaccess.CollectorSelfMonitoringAuthTokenEnvVarName))
+	if expectations.authTokenValue != "" {
+		Expect(authTokenEnvVar.ValueFrom).To(BeNil())
+		Expect(authTokenEnvVar.Value).To(Equal(expectations.authTokenValue))
+	} else if expectations.secretRefName != "" && expectations.secretRefKey != "" {
+		Expect(authTokenEnvVar.Value).To(BeEmpty())
+		valueFrom := authTokenEnvVar.ValueFrom
+		Expect(valueFrom).NotTo(BeNil())
+		secretKeyRef := valueFrom.SecretKeyRef
+		Expect(secretKeyRef).NotTo(BeNil())
+		Expect(secretKeyRef.LocalObjectReference.Name).To(Equal(expectations.secretRefName))
+		Expect(secretKeyRef.Key).To(Equal(expectations.secretRefKey))
 	} else {
-		return selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{}, nil
+		Fail("auth token expectations cannot be verified")
 	}
+}
+
+func matchOtelExporterOtlpProtocolEnvVar(e corev1.EnvVar) bool {
+	return e.Name == otelExporterOtlpProtocolEnvVarName
+}
+
+func matchOtelExporterOtlpEndpointEnvVar(e corev1.EnvVar) bool {
+	return e.Name == otelExporterOtlpEndpointEnvVarName
+}
+
+func matchOtelExporterOtlpHeadersEnvVar(e corev1.EnvVar) bool {
+	return e.Name == otelExporterOtlpHeadersEnvVarName
+}
+
+func verifyAbsentSelfMonitoringSettings(collectorDaemonSet *appsv1.DaemonSet) {
+	for _, container := range collectorDaemonSet.Spec.Template.Spec.Containers {
+		verifyAbsentSelfMonitoringEnvVarsForContainer(&container)
+	}
+}
+
+func verifyAbsentSelfMonitoringEnvVarsForContainer(container *corev1.Container) {
+	envVars := container.Env
+	Expect(parseEndpoint(envVars)).To(BeEmpty())
+	var protocol string
+	otelExporterOtlpProtocolEnvVarIdx := slices.IndexFunc(envVars, matchOtelExporterOtlpProtocolEnvVar)
+	if otelExporterOtlpProtocolEnvVarIdx >= 0 {
+		protocol = envVars[otelExporterOtlpProtocolEnvVarIdx].Value
+	}
+	Expect(protocol).To(BeEmpty())
+	Expect(parseHeadersFromEnvVar(envVars)).To(BeEmpty())
 }

@@ -7,10 +7,8 @@ import (
 	"context"
 	"slices"
 
-	appsv1 "k8s.io/api/apps/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -21,7 +19,6 @@ import (
 )
 
 const (
-	OperatorDeploymentName            = "dash0-operator-deployment"
 	OperatorWebhookServiceName        = "dash0-operator-webhook-service"
 	OperatorConfigurationResourceName = "dash0-operator-configuration-test"
 )
@@ -121,22 +118,6 @@ var (
 		KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(true),
 	}
 
-	OperatorConfigurationResourceWithoutSelfMonitoringWithSecretRef = dash0v1alpha1.Dash0OperatorConfigurationSpec{
-		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-			Enabled: ptr.To(false),
-		},
-		Export: &dash0v1alpha1.Export{
-			Dash0: &dash0v1alpha1.Dash0Configuration{
-				Endpoint:    EndpointDash0Test,
-				ApiEndpoint: ApiEndpointTest,
-				Authorization: dash0v1alpha1.Authorization{
-					SecretRef: &SecretRefTest,
-				},
-			},
-		},
-		KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(true),
-	}
-
 	OperatorConfigurationResourceWithSelfMonitoringWithToken = dash0v1alpha1.Dash0OperatorConfigurationSpec{
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 			Enabled: ptr.To(true),
@@ -152,21 +133,6 @@ var (
 		KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(true),
 	}
 
-	OperatorConfigurationResourceWithSelfMonitoringWithSecretRef = dash0v1alpha1.Dash0OperatorConfigurationSpec{
-		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-			Enabled: ptr.To(true),
-		},
-		Export: &dash0v1alpha1.Export{
-			Dash0: &dash0v1alpha1.Dash0Configuration{
-				Endpoint: EndpointDash0Test,
-				Authorization: dash0v1alpha1.Authorization{
-					SecretRef: &SecretRefTest,
-				},
-			},
-		},
-		KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(true),
-	}
-
 	OperatorConfigurationResourceDefaultSpec = OperatorConfigurationResourceWithSelfMonitoringWithToken
 )
 
@@ -176,29 +142,6 @@ func DefaultOperatorConfigurationResource() *dash0v1alpha1.Dash0OperatorConfigur
 		Spec:       OperatorConfigurationResourceDefaultSpec,
 	}
 	return &operatorConfiguration
-}
-
-func EnsureControllerDeploymentExists(
-	ctx context.Context,
-	k8sClient client.Client,
-	controllerDeployment *appsv1.Deployment,
-) *appsv1.Deployment {
-	deployment := EnsureKubernetesObjectExists(
-		ctx,
-		k8sClient,
-		types.NamespacedName{Namespace: controllerDeployment.Namespace, Name: controllerDeployment.Name},
-		&appsv1.Deployment{},
-		controllerDeployment,
-	)
-	return deployment.(*appsv1.Deployment)
-}
-
-func EnsureControllerDeploymentDoesNotExist(
-	ctx context.Context,
-	k8sClient client.Client,
-	controllerDeployment *appsv1.Deployment,
-) {
-	Expect(k8sClient.Delete(ctx, controllerDeployment)).To(Succeed())
 }
 
 func CreateDefaultOperatorConfigurationResource(
@@ -251,24 +194,6 @@ func LoadOperatorConfigurationResourceByNameIfItExists(
 	name string,
 ) *dash0v1alpha1.Dash0OperatorConfiguration {
 	return LoadOperatorConfigurationResourceByName(ctx, k8sClient, g, name, false)
-}
-
-func LoadOperatorDeploymentOrFail(
-	ctx context.Context,
-	k8sClient client.Client,
-	g Gomega,
-) *appsv1.Deployment {
-	deployment := &appsv1.Deployment{}
-	if err := k8sClient.Get(
-		ctx,
-		types.NamespacedName{Namespace: OperatorNamespace, Name: OperatorDeploymentName},
-		deployment,
-	); err != nil {
-		g.Expect(err).NotTo(HaveOccurred())
-		return nil
-	}
-
-	return deployment
 }
 
 func LoadOperatorConfigurationResourceOrFail(

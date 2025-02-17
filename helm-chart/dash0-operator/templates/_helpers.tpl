@@ -55,22 +55,27 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 {{ include "dash0-operator.chartName" . }}-webhook-service
 {{- end }}
 
+{{- define "dash0-operator.tokenUpdateServiceName" -}}
+{{ include "dash0-operator.chartName" . }}-token-update
+{{- end }}
+
+{{- define "dash0-operator.tokenUpdateServiceUrl" -}}
+https://{{ include "dash0-operator.tokenUpdateServiceName" . }}.{{ .Release.Namespace }}.svc:{{ .Values.operator.tokenUpdatePort }}
+{{- end }}
+
 {{/* the controller manager container image */}}
 {{- define "dash0-operator.image" -}}
 {{- include "dash0-operator.imageRef" (dict "image" .Values.operator.image "context" .) -}}
 {{- end }}
 
-{{- define "dash0-operator.imageTag" -}}
-{{- default .Chart.AppVersion .Values.operator.image.tag }}
+{{/* the secret ref resolver container image */}}
+{{- define "dash0-operator.secretRefResolverImage" -}}
+{{- include "dash0-operator.imageRef" (dict "image" .Values.operator.secretRefResolverImage "context" .) -}}
 {{- end }}
 
 {{/* the init container image */}}
 {{- define "dash0-operator.initContainerImage" -}}
 {{- include "dash0-operator.imageRef" (dict "image" .Values.operator.initContainerImage "context" .) -}}
-{{- end }}
-
-{{- define "dash0-operator.initContainerImageTag" -}}
-{{- default .Chart.AppVersion .Values.operator.initContainerImage.tag }}
 {{- end }}
 
 {{/* the collector image */}}
@@ -104,4 +109,8 @@ securityContext:
   capabilities:
     drop:
     - ALL
+{{- end }}
+
+{{- define "dash0-operator.secretRefResolverDeploymentName" -}}
+{{ include "dash0-operator.chartName" . }}-secret-ref-resolver
 {{- end }}

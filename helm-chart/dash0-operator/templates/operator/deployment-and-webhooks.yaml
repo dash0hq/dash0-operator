@@ -5,11 +5,11 @@
    * generate a self-signed cert and use it across deployment, webhook and service
    * other than lumping all these resourceds in the same file.
   */ -}}
-{{- $altNames := list ( printf "%s-webhook-service.%s.svc" (include "dash0-operator.chartName" . ) .Release.Namespace ) ( printf "%s-metrics.%s.svc" (include "dash0-operator.chartName" . ) .Release.Namespace ) -}}
+{{- $altNames := list ( printf "%s-webhook-service.%s.svc" (include "dash0-operator.chartName" . ) .Release.Namespace ) ( printf "%s-metrics.%s.svc" (include "dash0-operator.chartName" . ) .Release.Namespace ) ( printf "%s-token-update.%s.svc" (include "dash0-operator.chartName" . ) .Release.Namespace ) -}}
 {{- $ca := genCA "dash0-operator-ca" 365 -}}
 {{- $cert := genSignedCert ( include "dash0-operator.chartName" . ) nil $altNames 365 $ca -}}
 {{- /*
-   * On upgrade, we want to avoid the webhook service from routing to older an
+   * On upgrade, we want to avoid the webhook service from routing to an older
    * pod, which will use a different certificate. Therefore, we add a digest
    * of the cert as a label of the controller pods, which we can use in service
    * selector to ensure routing to the newer controller pods.
@@ -131,6 +131,10 @@ spec:
           value: {{ include "dash0-operator.deploymentName" . }}
         - name: DASH0_WEBHOOK_SERVICE_NAME
           value: {{ include "dash0-operator.webhookServiceName" . }}
+        - name: DASH0_SECRET_REF_RESOLVER_DEPLOYMENT_NAME
+          value: {{ include "dash0-operator.secretRefResolverDeploymentName" . }}
+        - name: DASH0_TOKEN_UPDATE_SERVICE_PORT
+          value: {{ .Values.operator.tokenUpdatePort | quote }}
         - name: OTEL_COLLECTOR_NAME_PREFIX
           value: {{ .Release.Name | quote }}
         - name: DASH0_OPERATOR_IMAGE
@@ -246,6 +250,80 @@ spec:
       - name: config-volume
         configMap:
           name: {{ template "dash0-operator.collectorResourceConfigMapName" . }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "dash0-operator.secretRefResolverDeploymentName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: secret-ref-resolver
+    app.kubernetes.io/instance: deployment
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+    dash0.com/enable: "false"
+  {{- with .Values.operator.deploymentAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: dash0-operator
+      app.kubernetes.io/component: secret-ref-resolver
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: secret-ref-resolver
+        {{- if .Values.operator.podAnnotations }}
+        {{- include "dash0-operator.podAnnotations" . | nindent 8 }}
+        {{- end }}
+      labels:
+        app.kubernetes.io/name: dash0-operator
+        app.kubernetes.io/component: secret-ref-resolver
+        dash0.com/cert-digest: {{ $certFingerprint }}
+        {{- if .Values.operator.podLabels }}
+        {{- include "dash0-operator.podLabels" . | nindent 8 }}
+        {{- end }}
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: "dash0.com/enable"
+                    operator: "NotIn"
+                    values: ["false"]
+      containers:
+      - name: secret-ref-resolver
+        image: {{ include "dash0-operator.secretRefResolverImage" . | quote }}
+        {{- if .Values.operator.secretRefResolverImage.pullPolicy }}
+        imagePullPolicy: {{ .Values.operator.secretRefResolverImage.pullPolicy }}
+        {{- end }}
+        env:
+        - name: TOKEN_UPDATE_SERVICE_URL
+          value: {{ include "dash0-operator.tokenUpdateServiceUrl" . }}
+        resources:
+          limits:
+            cpu: 50m
+            memory: 12Mi
+            ephemeral-storage: 50Mi
+          requests:
+            cpu: 30m
+            memory: 12Mi
+            ephemeral-storage: 50Mi
+        {{ include "dash0-operator.restrictiveContainerSecurityContext" . | nindent 8 }}
+        volumeMounts:
+        - name: certificates
+          mountPath: /tmp/k8s-webhook-server/serving-certs
+          readOnly: true
+      automountServiceAccountToken: false
+      volumes:
+      - name: certificates
+        secret:
+          defaultMode: 420
+          secretName: {{ include "dash0-operator.chartName" . }}-certificates
 ---
 apiVersion: v1
 kind: Service
@@ -430,6 +508,31 @@ webhooks:
       - dash0monitorings
   sideEffects: None
   timeoutSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "dash0-operator.tokenUpdateServiceName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: token-update-service
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+  {{- with .Values.operator.serviceAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ports:
+    - name: https
+      port: {{ .Values.operator.tokenUpdatePort }}
+      protocol: TCP
+      targetPort: {{ .Values.operator.tokenUpdatePort }}
+  selector:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: controller
+    dash0.com/cert-digest: {{ $certFingerprint }}
 ---
 apiVersion: v1
 kind: Service

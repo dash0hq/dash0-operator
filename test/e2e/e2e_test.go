@@ -1366,6 +1366,18 @@ func determineContainerImages() {
 		images.fileLogOffsetSynch.pullPolicy,
 	)
 
+	images.secretRefResolver.repository = getEnvOrDefault(
+		"SECRET_REF_RESOLVER_IMG_REPOSITORY",
+		images.secretRefResolver.repository,
+	)
+	images.secretRefResolver.tag = getEnvOrDefault("SECRET_REF_RESOLVER_IMG_TAG", images.secretRefResolver.tag)
+	images.secretRefResolver.digest = getEnvOrDefault("SECRET_REF_RESOLVER_IMG_DIGEST",
+		images.secretRefResolver.digest)
+	images.secretRefResolver.pullPolicy = getEnvOrDefault(
+		"SECRET_REF_RESOLVER_IMG_PULL_POLICY",
+		images.secretRefResolver.pullPolicy,
+	)
+
 	if isLocalHelmChart() {
 		// support using the local helm chart with remote images
 		if isRemoteImage(images.operator) {
@@ -1382,6 +1394,9 @@ func determineContainerImages() {
 		}
 		if isRemoteImage(images.fileLogOffsetSynch) {
 			images.fileLogOffsetSynch.pullPolicy = getEnvOrDefault("FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY", "")
+		}
+		if isRemoteImage(images.secretRefResolver) {
+			images.secretRefResolver.pullPolicy = getEnvOrDefault("SECRET_REF_RESOLVER_IMG_PULL_POLICY", "")
 		}
 	}
 }

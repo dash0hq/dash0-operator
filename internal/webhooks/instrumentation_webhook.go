@@ -303,7 +303,7 @@ func (h *InstrumentationWebhookHandler) handleJob(
 		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
 	} else if util.WasInstrumentedButHasOptedOutNow(&job.ObjectMeta) {
 		// This should not happen, since it can only happen for an admission request with operation=UPDATE, and we are
-		// not listening to udpates for jobs. We cannot uninstrument jobs if the user adds an opt-out label after the
+		// not listening to updates for jobs. We cannot uninstrument jobs if the user adds an opt-out label after the
 		// job has been already instrumented, since jobs are immutable.
 		return h.postProcessUninstrumentation(request, job, workloads.NewNotModifiedImmutableWorkloadCannotBeRevertedResult(), logger)
 	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(&job.ObjectMeta, h.Images) {
@@ -333,7 +333,7 @@ func (h *InstrumentationWebhookHandler) handlePod(
 		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
 	} else if util.WasInstrumentedButHasOptedOutNow(&pod.ObjectMeta) {
 		// This should not happen, since it can only happen for an admission request with operation=UPDATE, and we are
-		// not listening to udpates for pods. We cannot uninstrument ownerless pods if the user adds an opt-out label
+		// not listening to updates for pods. We cannot uninstrument ownerless pods if the user adds an opt-out label
 		// after the pod has been already instrumented, since we cannot restart ownerless pods, which makes them
 		// effectively immutable.
 		return h.postProcessUninstrumentation(request, pod, workloads.NewNotModifiedImmutableWorkloadCannotBeRevertedResult(), logger)

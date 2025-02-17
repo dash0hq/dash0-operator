@@ -81,4 +81,3 @@ if [[ "${DEPLOY_APPLICATION_UNDER_MONITORING:-}" != "false" ]]; then
 fi
 
 install_third_party_resources
-

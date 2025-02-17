@@ -13,10 +13,12 @@ import (
 )
 
 type ImageSpec struct {
-	repository string
-	tag        string
-	digest     string
-	pullPolicy string
+	repository    string
+	tag           string
+	digest        string
+	pullPolicy    string
+	dockerContext string
+	dockerfile    string
 }
 
 type Images struct {
@@ -25,6 +27,7 @@ type Images struct {
 	collector             ImageSpec
 	configurationReloader ImageSpec
 	fileLogOffsetSynch    ImageSpec
+	secretRefResolver     ImageSpec
 }
 
 const (
@@ -36,57 +39,88 @@ const (
 var (
 	localImages = Images{
 		operator: ImageSpec{
-			repository: "operator-controller",
-			tag:        tagLatest,
-			pullPolicy: "Never",
+			repository:    "operator-controller",
+			tag:           tagLatest,
+			pullPolicy:    "Never",
+			dockerContext: ".",
 		},
 		instrumentation: ImageSpec{
-			repository: "instrumentation",
-			tag:        tagLatest,
-			pullPolicy: "Never",
+			repository:    "instrumentation",
+			tag:           tagLatest,
+			pullPolicy:    "Never",
+			dockerContext: "images/instrumentation",
+		},
+		secretRefResolver: ImageSpec{
+			repository:    "secret-ref-resolver",
+			tag:           tagLatest,
+			pullPolicy:    "Never",
+			dockerContext: "images",
+			dockerfile:    "images/secretrefresolver/Dockerfile",
 		},
 		collector: ImageSpec{
-			repository: "collector",
-			tag:        tagLatest,
-			pullPolicy: "Never",
+			repository:    "collector",
+			tag:           tagLatest,
+			pullPolicy:    "Never",
+			dockerContext: "images/collector",
 		},
 		configurationReloader: ImageSpec{
-			repository: "configuration-reloader",
-			tag:        tagLatest,
-			pullPolicy: "Never",
+			repository:    "configuration-reloader",
+			tag:           tagLatest,
+			pullPolicy:    "Never",
+			dockerContext: "images",
+			dockerfile:    "images/configreloader/Dockerfile",
 		},
 		fileLogOffsetSynch: ImageSpec{
-			repository: "filelog-offset-synch",
-			tag:        tagLatest,
-			pullPolicy: "Never",
+			repository:    "filelog-offset-synch",
+			tag:           tagLatest,
+			pullPolicy:    "Never",
+			dockerContext: "images",
+			dockerfile:    "images/filelogoffsetsynch/Dockerfile",
 		},
 	}
 
 	emptyImages = Images{
 		operator: ImageSpec{
-			repository: "",
-			tag:        "",
-			pullPolicy: "",
+			repository:    "",
+			tag:           "",
+			pullPolicy:    "",
+			dockerContext: localImages.operator.dockerContext,
+			dockerfile:    localImages.operator.dockerfile,
 		},
 		instrumentation: ImageSpec{
-			repository: "",
-			tag:        "",
-			pullPolicy: "",
+			repository:    "",
+			tag:           "",
+			pullPolicy:    "",
+			dockerContext: localImages.instrumentation.dockerContext,
+			dockerfile:    localImages.instrumentation.dockerfile,
+		},
+		secretRefResolver: ImageSpec{
+			repository:    "",
+			tag:           "",
+			pullPolicy:    "",
+			dockerContext: localImages.secretRefResolver.dockerContext,
+			dockerfile:    localImages.secretRefResolver.dockerfile,
 		},
 		collector: ImageSpec{
-			repository: "",
-			tag:        "",
-			pullPolicy: "",
+			repository:    "",
+			tag:           "",
+			pullPolicy:    "",
+			dockerContext: localImages.collector.dockerContext,
+			dockerfile:    localImages.collector.dockerfile,
 		},
 		configurationReloader: ImageSpec{
-			repository: "",
-			tag:        "",
-			pullPolicy: "",
+			repository:    "",
+			tag:           "",
+			pullPolicy:    "",
+			dockerContext: localImages.configurationReloader.dockerContext,
+			dockerfile:    localImages.configurationReloader.dockerfile,
 		},
 		fileLogOffsetSynch: ImageSpec{
-			repository: "",
-			tag:        "",
-			pullPolicy: "",
+			repository:    "",
+			tag:           "",
+			pullPolicy:    "",
+			dockerContext: localImages.fileLogOffsetSynch.dockerContext,
+			dockerfile:    localImages.fileLogOffsetSynch.dockerfile,
 		},
 	}
 
@@ -94,128 +128,43 @@ var (
 )
 
 func rebuildAllContainerImages() {
-	rebuildOperatorControllerImage(images.operator)
-	rebuildInstrumentationImage(images.instrumentation)
-	rebuildCollectorImage(images.collector)
-	rebuildConfigurationReloaderImage(images.configurationReloader)
-	rebuildFileLogOffsetSynchImage(images.fileLogOffsetSynch)
+	rebuildLocalImage(images.operator)
+	rebuildLocalImage(images.instrumentation)
+	rebuildLocalImage(images.collector)
+	rebuildLocalImage(images.configurationReloader)
+	rebuildLocalImage(images.fileLogOffsetSynch)
+	rebuildLocalImage(images.secretRefResolver)
 }
 
-func rebuildOperatorControllerImage(operatorImage ImageSpec) {
-	if !shouldBuildImageLocally(operatorImage) {
+func rebuildLocalImage(imageSpec ImageSpec) {
+	if !shouldBuildImageLocally(imageSpec) {
 		return
 	}
 
-	By(fmt.Sprintf("building the operator controller image: %s", renderFullyQualifiedImageName(operatorImage)))
-	Expect(
-		runAndIgnoreOutput(
-			exec.Command(
-				"docker",
-				"build",
-				"-t",
-				fmt.Sprintf("%s:%s", operatorImage.repository, operatorImage.tag),
-				".",
-			))).To(Succeed())
-
-	additionalTag := ImageSpec{
-		repository: operatorImage.repository,
-		tag:        additionalImageTag,
+	By(
+		fmt.Sprintf(
+			"building the %s image: %s",
+			imageSpec.repository,
+			renderFullyQualifiedImageName(imageSpec),
+		))
+	dockerfile := imageSpec.dockerfile
+	if dockerfile == "" {
+		dockerfile = fmt.Sprintf("%s/%s", imageSpec.dockerContext, "Dockerfile")
 	}
-	Expect(
-		runAndIgnoreOutput(
-			exec.Command(
-				"docker",
-				"tag",
-				renderFullyQualifiedImageName(operatorImage),
-				renderFullyQualifiedImageName(additionalTag),
-			))).To(Succeed())
-
-	loadImageToKindClusterIfRequired(operatorImage, &additionalTag)
-}
-
-func rebuildInstrumentationImage(instrumentationImage ImageSpec) {
-	if !shouldBuildImageLocally(instrumentationImage) {
-		return
-	}
-
-	By(fmt.Sprintf("building the instrumentation image: %s", renderFullyQualifiedImageName(instrumentationImage)))
-	Expect(
-		runAndIgnoreOutput(
-			exec.Command(
-				"images/instrumentation/build.sh",
-				instrumentationImage.repository,
-				instrumentationImage.tag,
-			))).To(Succeed())
-
-	additionalTag := ImageSpec{
-		repository: instrumentationImage.repository,
-		tag:        additionalImageTag,
-	}
-	Expect(
-		runAndIgnoreOutput(
-			exec.Command(
-				"docker",
-				"tag",
-				renderFullyQualifiedImageName(instrumentationImage),
-				renderFullyQualifiedImageName(additionalTag),
-			))).To(Succeed())
-
-	loadImageToKindClusterIfRequired(instrumentationImage, &additionalTag)
-}
-
-func rebuildCollectorImage(collectorImage ImageSpec) {
-	if !shouldBuildImageLocally(collectorImage) {
-		return
-	}
-
-	By(fmt.Sprintf("building the collector image: %s", renderFullyQualifiedImageName(collectorImage)))
-	Expect(
-		runAndIgnoreOutput(
-			exec.Command(
-				"docker",
-				"build",
-				"-t",
-				fmt.Sprintf("%s:%s", collectorImage.repository, collectorImage.tag),
-				"images/collector",
-			))).To(Succeed())
-
-	additionalTag := ImageSpec{
-		repository: collectorImage.repository,
-		tag:        additionalImageTag,
-	}
-	Expect(
-		runAndIgnoreOutput(
-			exec.Command(
-				"docker",
-				"tag",
-				renderFullyQualifiedImageName(collectorImage),
-				renderFullyQualifiedImageName(additionalTag),
-			))).To(Succeed())
-
-	loadImageToKindClusterIfRequired(collectorImage, &additionalTag)
-}
-
-func rebuildConfigurationReloaderImage(configurationReloaderImage ImageSpec) {
-	if !shouldBuildImageLocally(configurationReloaderImage) {
-		return
-	}
-
-	By(fmt.Sprintf("building the configuration reloader image: %s",
-		renderFullyQualifiedImageName(configurationReloaderImage)))
 	Expect(
 		runAndIgnoreOutput(
 			exec.Command(
 				"docker",
 				"build",
 				"-f",
-				"images/configreloader/Dockerfile",
+				dockerfile,
 				"-t",
-				fmt.Sprintf("%s:%s", configurationReloaderImage.repository, configurationReloaderImage.tag),
-				"images",
+				fmt.Sprintf("%s:%s", imageSpec.repository, imageSpec.tag),
+				imageSpec.dockerContext,
 			))).To(Succeed())
 
 	additionalTag := ImageSpec{
-		repository: configurationReloaderImage.repository,
+		repository: imageSpec.repository,
 		tag:        additionalImageTag,
 	}
 	Expect(
@@ -223,46 +172,11 @@ func rebuildConfigurationReloaderImage(configurationReloaderImage ImageSpec) {
 			exec.Command(
 				"docker",
 				"tag",
-				renderFullyQualifiedImageName(configurationReloaderImage),
+				renderFullyQualifiedImageName(imageSpec),
 				renderFullyQualifiedImageName(additionalTag),
 			))).To(Succeed())
 
-	loadImageToKindClusterIfRequired(configurationReloaderImage, &additionalTag)
-}
-
-func rebuildFileLogOffsetSynchImage(fileLogOffsetSynchImage ImageSpec) {
-	if !shouldBuildImageLocally(fileLogOffsetSynchImage) {
-		return
-	}
-
-	By(fmt.Sprintf("building the filelog offset synch image: %s",
-		renderFullyQualifiedImageName(fileLogOffsetSynchImage)))
-	Expect(
-		runAndIgnoreOutput(
-			exec.Command(
-				"docker",
-				"build",
-				"-f",
-				"images/filelogoffsetsynch/Dockerfile",
-				"-t",
-				fmt.Sprintf("%s:%s", fileLogOffsetSynchImage.repository, fileLogOffsetSynchImage.tag),
-				"images",
-			))).To(Succeed())
-
-	additionalTag := ImageSpec{
-		repository: fileLogOffsetSynchImage.repository,
-		tag:        additionalImageTag,
-	}
-	Expect(
-		runAndIgnoreOutput(
-			exec.Command(
-				"docker",
-				"tag",
-				renderFullyQualifiedImageName(fileLogOffsetSynchImage),
-				renderFullyQualifiedImageName(additionalTag),
-			))).To(Succeed())
-
-	loadImageToKindClusterIfRequired(fileLogOffsetSynchImage, &additionalTag)
+	loadImageToKindClusterIfRequired(imageSpec, &additionalTag)
 }
 
 func shouldBuildImageLocally(image ImageSpec) bool {

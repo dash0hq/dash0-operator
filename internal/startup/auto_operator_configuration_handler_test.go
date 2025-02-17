@@ -47,18 +47,20 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 	})
 
 	It("should fail validation if no endpoint has been provided", func() {
-		Expect(handler.CreateOrUpdateOperatorConfigurationResource(ctx, &OperatorConfigurationValues{
+		_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, &OperatorConfigurationValues{
 			Token: AuthorizationTokenTest,
-		}, &logger)).To(
+		}, &logger)
+		Expect(err).To(
 			MatchError(
 				ContainSubstring(
 					"invalid operator configuration: --operator-configuration-endpoint has not been provided")))
 	})
 
 	It("should fail validation if no token and no secret reference have been provided", func() {
-		Expect(handler.CreateOrUpdateOperatorConfigurationResource(ctx, &OperatorConfigurationValues{
+		_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, &OperatorConfigurationValues{
 			Endpoint: AuthorizationTokenTest,
-		}, &logger)).To(
+		}, &logger)
+		Expect(err).To(
 			MatchError(
 				ContainSubstring(
 					"neither --operator-configuration-token nor --operator-configuration-secret-ref-name have " +
@@ -66,12 +68,13 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 	})
 
 	It("should fail validation if no token and no secret reference key have been provided", func() {
-		Expect(handler.CreateOrUpdateOperatorConfigurationResource(ctx, &OperatorConfigurationValues{
+		_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, &OperatorConfigurationValues{
 			Endpoint: AuthorizationTokenTest,
 			SecretRef: SecretRef{
 				Name: "test-secret",
 			},
-		}, &logger)).To(
+		}, &logger)
+		Expect(err).To(
 			MatchError(
 				ContainSubstring(
 					"neither --operator-configuration-token nor --operator-configuration-secret-ref-key have " +
@@ -79,9 +82,8 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 	})
 
 	It("should create a new operator configuration resource with a token", func() {
-		Expect(
-			handler.CreateOrUpdateOperatorConfigurationResource(ctx, &operatorConfigurationValuesWithToken, &logger),
-		).To(Succeed())
+		_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, &operatorConfigurationValuesWithToken, &logger)
+		Expect(err).ToNot(HaveOccurred())
 
 		Eventually(func(g Gomega) {
 			operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
@@ -113,9 +115,8 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 	})
 
 	It("should create a new operator configuration resource with a secret reference", func() {
-		Expect(
-			handler.CreateOrUpdateOperatorConfigurationResource(ctx, &operatorConfigurationValuesWithSecretRef, &logger),
-		).To(Succeed())
+		_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, &operatorConfigurationValuesWithSecretRef, &logger)
+		Expect(err).ToNot(HaveOccurred())
 
 		Eventually(func(g Gomega) {
 			operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
@@ -143,13 +144,12 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 	})
 
 	It("should set the API endpoint", func() {
-		Expect(
-			handler.CreateOrUpdateOperatorConfigurationResource(ctx, &OperatorConfigurationValues{
-				Endpoint:    EndpointDash0Test,
-				Token:       AuthorizationTokenTest,
-				ApiEndpoint: ApiEndpointTest,
-			}, &logger),
-		).To(Succeed())
+		_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, &OperatorConfigurationValues{
+			Endpoint:    EndpointDash0Test,
+			Token:       AuthorizationTokenTest,
+			ApiEndpoint: ApiEndpointTest,
+		}, &logger)
+		Expect(err).ToNot(HaveOccurred())
 
 		Eventually(func(g Gomega) {
 			operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
@@ -171,13 +171,12 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 	})
 
 	It("should set a custom dataset", func() {
-		Expect(
-			handler.CreateOrUpdateOperatorConfigurationResource(ctx, &OperatorConfigurationValues{
-				Endpoint: EndpointDash0Test,
-				Token:    AuthorizationTokenTest,
-				Dataset:  "custom",
-			}, &logger),
-		).To(Succeed())
+		_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, &OperatorConfigurationValues{
+			Endpoint: EndpointDash0Test,
+			Token:    AuthorizationTokenTest,
+			Dataset:  "custom",
+		}, &logger)
+		Expect(err).ToNot(HaveOccurred())
 
 		Eventually(func(g Gomega) {
 			operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
@@ -199,13 +198,12 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 	})
 
 	It("should set the cluster name", func() {
-		Expect(
-			handler.CreateOrUpdateOperatorConfigurationResource(ctx, &OperatorConfigurationValues{
-				Endpoint:    EndpointDash0Test,
-				Token:       AuthorizationTokenTest,
-				ClusterName: "cluster-name",
-			}, &logger),
-		).To(Succeed())
+		_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, &OperatorConfigurationValues{
+			Endpoint:    EndpointDash0Test,
+			Token:       AuthorizationTokenTest,
+			ClusterName: "cluster-name",
+		}, &logger)
+		Expect(err).ToNot(HaveOccurred())
 
 		Eventually(func(g Gomega) {
 			operatorConfiguration := v1alpha1.Dash0OperatorConfiguration{}
@@ -228,16 +226,15 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 	})
 
 	It("should update the existing resource if there already is an auto-operator-configuration-resource", func() {
-		Expect(
-			handler.CreateOrUpdateOperatorConfigurationResource(ctx, &OperatorConfigurationValues{
-				Endpoint:              "endpoint-1.dash0.com:4317",
-				Token:                 AuthorizationTokenTest,
-				ApiEndpoint:           "https://api-1.dash0.com",
-				Dataset:               "dataset-1",
-				SelfMonitoringEnabled: false,
-				KubernetesInfrastructureMetricsCollectionEnabled: true,
-			}, &logger),
-		).To(Succeed())
+		_, err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, &OperatorConfigurationValues{
+			Endpoint:              "endpoint-1.dash0.com:4317",
+			Token:                 AuthorizationTokenTest,
+			ApiEndpoint:           "https://api-1.dash0.com",
+			Dataset:               "dataset-1",
+			SelfMonitoringEnabled: false,
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+		}, &logger)
+		Expect(err).ToNot(HaveOccurred())
 
 		Eventually(func(g Gomega) {
 			list := v1alpha1.Dash0OperatorConfigurationList{}
@@ -266,7 +263,7 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 
 		// Now call the handler a second time, simulating a new startup of the operator manager process, with different
 		// operator-configuration-xxx flags
-		Expect(handler.CreateOrUpdateOperatorConfigurationResource(ctx,
+		_, err = handler.CreateOrUpdateOperatorConfigurationResource(ctx,
 			&OperatorConfigurationValues{
 				Endpoint:              "endpoint-2.dash0.com:4317",
 				SecretRef:             secretRef,
@@ -274,7 +271,8 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 				Dataset:               "dataset-2",
 				SelfMonitoringEnabled: true,
 				KubernetesInfrastructureMetricsCollectionEnabled: false,
-			}, &logger)).To(Succeed())
+			}, &logger)
+		Expect(err).ToNot(HaveOccurred())
 
 		// verify that there is _still_ only one resource, and that its settings have been updated.
 		Eventually(func(g Gomega) {

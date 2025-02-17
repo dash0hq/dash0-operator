@@ -376,7 +376,7 @@ func verifyOwnerReference(object client.Object) {
 	ownerReference := ownerReferences[0]
 	Expect(ownerReference.APIVersion).To(Equal(util.K8sApiVersionAppsV1))
 	Expect(ownerReference.Kind).To(Equal("Deployment"))
-	Expect(ownerReference.Name).To(Equal(DeploymentSelfReference.Name))
+	Expect(ownerReference.Name).To(Equal(OperatorManagerDeployment.Name))
 	Expect(*ownerReference.BlockOwnerDeletion).To(BeTrue())
 	Expect(*ownerReference.Controller).To(BeTrue())
 }
