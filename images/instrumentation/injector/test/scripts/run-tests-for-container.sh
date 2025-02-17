@@ -68,6 +68,7 @@ docker build \
 docker run \
   --platform "$docker_platform" \
   --env EXPECTED_CPU_ARCHITECTURE="$expected_cpu_architecture" \
+  --env TEST_CASES="$TEST_CASES" \
   --name "$container_name" \
   "$image_name" \
   $docker_run_extra_arguments
