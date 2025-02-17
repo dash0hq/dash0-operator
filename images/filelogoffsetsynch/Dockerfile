@@ -19,7 +19,7 @@ ARG TARGETARCH
 
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags '-extldflags "-static"' -v filelogoffsetsynch
 
-FROM alpine:3.20.2 AS certs
+FROM --platform=${BUILDPLATFORM} alpine:3.20.2 AS certs
 RUN apk --update add ca-certificates && apk cache clean
 
 FROM scratch
