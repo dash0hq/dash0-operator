@@ -60,17 +60,14 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 {{- include "dash0-operator.imageRef" (dict "image" .Values.operator.image "context" .) -}}
 {{- end }}
 
-{{- define "dash0-operator.imageTag" -}}
-{{- default .Chart.AppVersion .Values.operator.image.tag }}
+{{/* the secret ref satellite container image */}}
+{{- define "dash0-operator.secretRefSatelliteImage" -}}
+{{- include "dash0-operator.imageRef" (dict "image" .Values.operator.secretRefSatelliteImage "context" .) -}}
 {{- end }}
 
 {{/* the init container image */}}
 {{- define "dash0-operator.initContainerImage" -}}
 {{- include "dash0-operator.imageRef" (dict "image" .Values.operator.initContainerImage "context" .) -}}
-{{- end }}
-
-{{- define "dash0-operator.initContainerImageTag" -}}
-{{- default .Chart.AppVersion .Values.operator.initContainerImage.tag }}
 {{- end }}
 
 {{/* the collector image */}}
@@ -104,4 +101,12 @@ securityContext:
   capabilities:
     drop:
     - ALL
+{{- end }}
+
+{{- define "dash0-operator.secretRefSatelliteDeploymentName" -}}
+{{ include "dash0-operator.chartName" . }}-secret-ref-satellite
+{{- end }}
+
+{{- define "dash0-operator.secretRefSatelliteServiceName" -}}
+{{ include "dash0-operator.chartName" . }}-secret-ref-satellite-service
 {{- end }}
