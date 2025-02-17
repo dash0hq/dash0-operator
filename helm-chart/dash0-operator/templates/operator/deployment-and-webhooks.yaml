@@ -422,3 +422,82 @@ spec:
     app.kubernetes.io/name: dash0-operator
     app.kubernetes.io/component: controller
     dash0.com/cert-digest: {{ $certFingerprint }}
+{{/*---*/}}
+{{/*apiVersion: apps/v1*/}}
+{{/*kind: Deployment*/}}
+{{/*metadata:*/}}
+{{/*  name: {{ include "dash0-operator.secretRefSatelliteDeploymentName" . }}*/}}
+{{/*  namespace: {{ .Release.Namespace }}*/}}
+{{/*  labels:*/}}
+{{/*    app.kubernetes.io/name: dash0-operator*/}}
+{{/*    app.kubernetes.io/component: secret-ref-satellite*/}}
+{{/*    app.kubernetes.io/instance: deployment*/}}
+{{/*    {{- include "dash0-operator.labels" . | nindent 4 }}*/}}
+{{/*    dash0.com/enable: "false"*/}}
+{{/*spec:*/}}
+{{/*  replicas: 1*/}}
+{{/*  selector:*/}}
+{{/*    matchLabels:*/}}
+{{/*      app.kubernetes.io/name: dash0-operator*/}}
+{{/*      app.kubernetes.io/component: secret-ref-satellite*/}}
+{{/*  template:*/}}
+{{/*    metadata:*/}}
+{{/*      annotations:*/}}
+{{/*        kubectl.kubernetes.io/default-container: secret-ref-satellite*/}}
+{{/*      labels:*/}}
+{{/*        app.kubernetes.io/name: dash0-operator*/}}
+{{/*        app.kubernetes.io/component: controller*/}}
+{{/*        dash0.com/cert-digest: {{ $certFingerprint }}*/}}
+{{/*    spec:*/}}
+{{/*      containers:*/}}
+{{/*      - name: secret-ref-satellite*/}}
+{{/*        image: {{ include "dash0-operator.secretRefSatelliteImage" . | quote }}*/}}
+{{/*        {{- if .Values.operator.secretRefSatelliteImage.pullPolicy }}*/}}
+{{/*        imagePullPolicy: {{ .Values.operator.secretRefSatelliteImage.pullPolicy }}*/}}
+{{/*        {{- end }}*/}}
+{{/*        # TODO this container does not open ports, should be more aligned with configreloader etc.*/}}
+{{/*        args:*/}}
+{{/*        - --health-probe-bind-address=:8080*/}}
+{{/*        ports:*/}}
+{{/*        - containerPort: 8080*/}}
+{{/*          name: token-server*/}}
+{{/*          protocol: TCP*/}}
+{{/*        resources:*/}}
+{{/*          limits:*/}}
+{{/*            cpu: 100m*/}}
+{{/*            memory: 12Mi*/}}
+{{/*            ephemeral-storage: 100Mi*/}}
+{{/*          requests:*/}}
+{{/*            cpu: 10m*/}}
+{{/*            memory: 12Mi*/}}
+{{/*            ephemeral-storage: 100Mi*/}}
+{{/*        {{ include "dash0-operator.restrictiveContainerSecurityContext" . | nindent 8 }}*/}}
+{{/*        livenessProbe:*/}}
+{{/*          httpGet:*/}}
+{{/*            path: /healthz*/}}
+{{/*            port: 8080*/}}
+{{/*          initialDelaySeconds: 15*/}}
+{{/*          periodSeconds: 20*/}}
+{{/*        readinessProbe:*/}}
+{{/*          httpGet:*/}}
+{{/*            path: /readyz*/}}
+{{/*            port: 8080*/}}
+{{/*          initialDelaySeconds: 5*/}}
+{{/*          periodSeconds: 10*/}}
+{{/*      {{- with .Values.operator.imagePullSecrets }}*/}}
+{{/*      imagePullSecrets:*/}}
+{{/*        {{- toYaml . | nindent 8 }}*/}}
+{{/*      {{- end }}*/}}
+{{/*      securityContext:*/}}
+{{/*        runAsNonRoot: true*/}}
+{{/*        seccompProfile:*/}}
+{{/*          type: RuntimeDefault*/}}
+{{/*      terminationGracePeriodSeconds: 10*/}}
+{{/*      # TODO check if needed*/}}
+{{/*      volumes:*/}}
+{{/*      - name: certificates*/}}
+{{/*        secret:*/}}
+{{/*          defaultMode: 420*/}}
+{{/*          secretName: {{ include "dash0-operator.chartName" . }}-certificates*/}}
+{{/*--*/}}
+{{/*# TODO add service "dash0-operator.secretRefSatelliteServiceName"*/}}
