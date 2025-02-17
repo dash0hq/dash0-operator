@@ -394,22 +394,22 @@ processors:
       # service.name rule that uses app.kubernetes.io/name
       - set(resource.attributes["service.name"], resource.attributes["service_name"]) where IsMatch(resource.attributes["service.name"], "dash0-kubernetes-pods-scrape-config.*") and resource.attributes["service_name"] != "dash0-kubernetes-pods-scrape-config"
 
-      # If the service_name was not able to come up with a decent service name, try to get it from the Kubernetes
-      # label app.kubernetes.io/name.
-      - set(resource.attributes["service.name"], attributes["app_kubernetes_io_name"]) where IsMatch(resource.attributes["service.name"], "dash0-kubernetes-pods-scrape-config.*") and attributes["app_kubernetes_io_name"] != nil
+      # If the previous rule did not yield a good service name (e.g. there is no target_info metric available), we try
+      # to get service attributes from the Kubernetes labels (app.kubernetes.io/name and friends) next. These three
+      # labels are treated as one unit, that is, we only derive service.namespace and service.version from
+      # app.kubernetes.io/version and serivce.namespace from app.kubernetes.io/part_of if we also derive service.name
+      # from app.kubernetes.io/name.
+      - set(resource.attributes["service.version"], attributes["app_kubernetes_io_version"])   where IsMatch(resource.attributes["service.name"], "dash0-kubernetes-pods-scrape-config.*") and attributes["app_kubernetes_io_name"] != nil and attributes["app_kubernetes_io_version"] != nil
+      - set(resource.attributes["service.namespace"], attributes["app_kubernetes_io_part_of"]) where IsMatch(resource.attributes["service.name"], "dash0-kubernetes-pods-scrape-config.*") and attributes["app_kubernetes_io_name"] != nil and attributes["app_kubernetes_io_part_of"] != nil
+      - set(resource.attributes["service.name"], attributes["app_kubernetes_io_name"])         where IsMatch(resource.attributes["service.name"], "dash0-kubernetes-pods-scrape-config.*") and attributes["app_kubernetes_io_name"] != nil
 
-      # If no other rule worked, remove the prometheus service name. Otherwise the service name would become the name of
-      # the scrape job, e.g. "dash0-kubernetes-pods-scrape-config". It is better to not have any service name set as all
-      # than that, and let the backend merge the pod data with other telemetry for the pod, as other telemetry might
-      # have a service name.
+      # If the two rules above did yield a result, remove the prometheus service name. Otherwise the service name would
+      # become the name of the scrape job, e.g. "dash0-kubernetes-pods-scrape-config". It is better to not have any
+      # service name set as all than that, and let the backend merge the pod data with other telemetry for the pod, as
+      # other telemetry might have a service name. We also remove the service.instance.id that was potentially set by
+      # the prometheus receiver, since its value (<host>:<port> of the scraped URL) is not useful either.
       - delete_key(resource.attributes, "service.instance.id") where IsMatch(resource.attributes["service.name"], "dash0-kubernetes-pods-scrape-config.*")
-      - delete_key(resource.attributes, "service.name") where IsMatch(resource.attributes["service.name"], "dash0-kubernetes-pods-scrape-config.*")
-
-      # Also read the other well-known standard Kubernetes labels, like pp.kubernetes.io/version,
-      # app.kubernetes.io/part-of, and pp.kubernetes.io/name and map them to resource attributes.
-      - set(resource.attributes["service.version"], attributes["app_kubernetes_io_version"]) where attributes["app_kubernetes_io_version"] != nil
-      - set(resource.attributes["service.namespace"], attributes["app_kubernetes_io_part_of"]) where attributes["app_kubernetes_io_part_of"] != nil
-      - set(resource.attributes["service.instance.id"], attributes["app_kubernetes_io_instance"]) where attributes["app_kubernetes_io_instance"] != nil
+      - delete_key(resource.attributes, "service.name")        where IsMatch(resource.attributes["service.name"], "dash0-kubernetes-pods-scrape-config.*")
   {{- end }}
 
   {{- if .ClusterName }}

@@ -496,23 +496,29 @@ Disabling or enabling individual metrics via configuration is not supported.
 #### Resource Attributes for Prometheus Scraping
 
 When the operator scrapes Prometheus endpoints on pods, it does not have access to all the same metadata that is
-available to the OpenTelemetry SDK in an instrumented application. For that reason, resource attributes including
-the service name might be different. The operator makes an effort to derive reasonable resource attributes.
+available to the OpenTelemetry SDK in an instrumented application.
+For that reason, resource attributes including the service name might be different.
+The operator makes an effort to derive reasonable resource attributes.
 
-The service name is derived as follows:
+The _service name_ is derived as follows:
 
 1. If the scraped service provides the `target_info` metric with a `service_name` attribute, that service name will be 
-   used. See https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/compatibility/prometheus_and_openmetrics.md#resource-attributes
-2. If no service name was found via (1.), but the pod has a `app.kubernetes.io/name` label, the value of that label will
-   be used as the service name.
-3. If no service name was found via (1.) or (2.), no service name is set for the Prometheus metrics. If there is other
-   telemetry (tracing, logs, OpenTelemetry metrics) for the same pod in Dash0, and these other signals carry a
-   service name, the Prometheus metrics for this pod will be associated with that service name as well.
-
-Independent of the service name, the following pod labels will be mapped to resource attribtues as well:
-* `app.kubernetes.io/version` to `service.version`
-* `app.kubernetes.io/part_of` to `service.namespace`
-* `app.kubernetes.io/instance` to `service.instance.id`
+   used.
+   See https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/compatibility/prometheus_and_openmetrics.md#resource-attributes
+2. If no service name was found via (1.), but the pod has the `app.kubernetes.io/name` label, the value of that label
+   will be used as the service name.
+   If the service name is derived from this pod label, the following pod labels (if present) will be mapped to resource
+   attributes as well:
+    * `app.kubernetes.io/version` to `service.version`
+    * `app.kubernetes.io/part_of` to `service.namespace`
+3. If no service name was found via (1.) or (2.), no service name is set for the Prometheus metrics.
+   If there is other telemetry (tracing, logs, OpenTelemetry metrics) for the same pod in Dash0, and these other signals
+   carry a service name, the Prometheus metrics for this pod will be associated with that service name as well.
+   This is actually the recommendation for handling Prometheus metrics for most users:
+   If you do not have specific reasons to set the service name for Prometheus metrics, the best option is usually to not
+   use the `target_info` metric or the `app.kubernetes.io/name` pod label, but let the Dash0 backend aggregate all
+   telemetry into one service (to see everything in one place), with the service name taken from other signals than
+   Prometheus metrics.
 
 Note that in contrast to [Resource Attributes for Workloads via Labels and Annotations](#specifying-additional-resource-attributes-for-workloads-via-labels-and-annotations),
 Prometheus scraping can only see pod labels, not workload level (deployment, daemonset, ...) labels.
@@ -618,10 +624,9 @@ pod template
 The following [standard Kubernetes labels](https://kubernetes.io/docs/reference/labels-annotations-taints/#labels-annotations-and-taints-used-on-api-objects)
 are mapped to resource attributes as follows:
 
-* `app.kubernetes.io/name` => `service.name`
-* `app.kubernetes.io/version` => `service.version`
-* `app.kubernetes.io/part-of` => `service.namespace`
-* `app.kubernetes.io/instance` => `service.instance.id`
+* `app.kubernetes.io/name` to `service.name`
+* `app.kubernetes.io/version` to `service.version`
+* `app.kubernetes.io/part-of` to `service.namespace`
 
 Note: The `OTEL_SERVICE_NAME` environment variable and the matching `service.*` key specified in the
 `OTEL_RESOURCE_ATTRIBUTES` environment variable will have precedence over the `app.kubernetes.io/name` label.
@@ -641,7 +646,7 @@ Note: the values set to a key `<key>` via the `OTEL_RESOURCE_ATTRIBUTES` environ
 set via the `resource.opentelemetry.io/<key>: <value>` annotations.
 Note: the resource attributes set via the `resource.opentelemetry.io/<key>: <value>` annotations will override the
 resource attributes value set via `app.kubernetes.io/*` labels: for example, `resource.opentelemetry.io/service.name`
-has precendence over `app.kubernetes.io/app`.
+has precendence over `app.kubernetes.io/name`.
 
 ### Exporting Data to Other Observability Backends
 
