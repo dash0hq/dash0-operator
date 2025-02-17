@@ -19,13 +19,29 @@ source injector/test/scripts/util
 # remove all outdated injector binaries
 rm -rf injector/test/bin/*
 
+architectures=""
+if [[ -n "${ARCHITECTURES:-}" ]]; then
+  architectures=("${ARCHITECTURES//,/ }")
+  echo Only testing a subset of architectures: "${architectures[@]}"
+fi
+libc_flavors=""
+if [[ -n "${LIBC_FLAVORS:-}" ]]; then
+  libc_flavors=("${LIBC_FLAVORS//,/ }")
+  echo Only testing a subset of libc flavors: "${libc_flavors[@]}"
+fi
+if [[ -n "${TEST_CASES:-}" ]]; then
+  echo Only running a subset of test cases : "$TEST_CASES"
+else
+  TEST_CASES=""
+fi
+
 exit_code=0
 summary=""
 run_tests_for_architecture_and_libc_flavor() {
   arch=$1
   libc=$2
   set +e
-  ARCH=$arch LIBC=$libc injector/test/scripts/run-tests-for-container.sh
+  ARCH="$arch" LIBC="$libc" TEST_CASES="$TEST_CASES" injector/test/scripts/run-tests-for-container.sh
   test_exit_code=$?
   set -e
   echo
@@ -70,14 +86,33 @@ if [[ ! -e "$dockerfile_injector_build" ]]; then
   exit 1
 fi
 
+declare -a all_architectures=(
+  "arm64"
+  "x86_64"
+)
+declare -a all_libc_flavors=(
+  "glibc"
+  "musl"
+)
+
 instrumentation_image=${INSTRUMENTATION_IMAGE:-}
 if [[ -z "$instrumentation_image" ]]; then
   # build injector binary for both architectures
   echo ----------------------------------------
   echo building the injector binary locally from source
   echo ----------------------------------------
-  ARCH=arm64 injector/test/scripts/build-in-container.sh
-  ARCH=x86_64 injector/test/scripts/build-in-container.sh
+  for arch in "${all_architectures[@]}"; do
+    if [[ -n "${architectures[0]}" ]]; then
+      if [[ $(echo "${architectures[@]}" | grep -o "$arch" | wc -w) -eq 0 ]]; then
+        echo ----------------------------------------
+        echo "skipping build for CPU architecture $arch"
+        echo ----------------------------------------
+        continue
+      fi
+    fi
+
+    ARCH="$arch" injector/test/scripts/build-in-container.sh
+  done
 else
   if is_remote_image "$instrumentation_image"; then
     echo ----------------------------------------
@@ -91,16 +126,53 @@ else
     echo ----------------------------------------
     printf "using injector binary from existing local image:\n$instrumentation_image\n"
     echo ----------------------------------------
-    copy_injector_binary_from_container_image "$instrumentation_image" arm64 linux/arm64
-    copy_injector_binary_from_container_image "$instrumentation_image" x86_64 linux/amd64
+    for arch in "${all_architectures[@]}"; do
+      if [[ -n "${architectures[0]}" ]]; then
+        if [[ $(echo "${architectures[@]}" | grep -o "$arch" | wc -w) -eq 0 ]]; then
+          echo ----------------------------------------
+          echo "skipping copying injector binary from container for CPU architecture $arch"
+          echo ----------------------------------------
+          continue
+        fi
+      fi
+
+      if [[ "$arch" = "arm64" ]]; then
+        docker_platform="linux/arm64"
+      elif [[ "$arch" = "x86_64" ]]; then
+        docker_platform="linux/amd64"
+      else
+        echo "The architecture $arch is not supported."
+        exit 1
+      fi
+      copy_injector_binary_from_container_image "$instrumentation_image" "$arch" "$docker_platform"
+    done
   fi
 fi
 echo
 
-run_tests_for_architecture_and_libc_flavor arm64 glibc
-run_tests_for_architecture_and_libc_flavor x86_64 glibc
-run_tests_for_architecture_and_libc_flavor arm64 musl
-run_tests_for_architecture_and_libc_flavor x86_64 musl
+for arch in "${all_architectures[@]}"; do
+  if [[ -n "${architectures[0]}" ]]; then
+    if [[ $(echo "${architectures[@]}" | grep -o "$arch" | wc -w) -eq 0 ]]; then
+      echo ----------------------------------------
+      echo "skipping tests on CPU architecture $arch"
+      echo ----------------------------------------
+      continue
+    fi
+  fi
+
+  for libc_flavor in "${all_libc_flavors[@]}"; do
+    if [[ -n "${libc_flavors[0]}" ]]; then
+      if [[ $(echo "${libc_flavors[@]}" | grep -o "$libc_flavor" | wc -w) -eq 0 ]]; then
+        echo ----------------------------------------
+        echo "skipping tests for libc flavor $libc_flavor"
+        echo ----------------------------------------
+        continue
+      fi
+    fi
+
+    run_tests_for_architecture_and_libc_flavor "$arch" "$libc_flavor"
+  done
+done
 
 printf "$summary\n\n"
 exit $exit_code

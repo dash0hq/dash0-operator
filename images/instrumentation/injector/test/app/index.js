@@ -12,34 +12,34 @@ function echoEnvVar(envVarName) {
   }
 }
 
-function main () {
-  const testCase = process.argv[2];
-  if (!testCase) {
-    console.error("error: not enough arguments, the name of the test case needs to be specifed");
-    process.exit(1)
+function main() {
+  const command = process.argv[2];
+  if (!command) {
+    console.error('error: not enough arguments, the command for the app under test needs to be specifed');
+    process.exit(1);
   }
 
-  switch (testCase) {
-    case "non-existing":
-      echoEnvVar("DOES_NOT_EXIST");
+  switch (command) {
+    case 'non-existing':
+      echoEnvVar('DOES_NOT_EXIST');
       break;
-    case "existing":
-      echoEnvVar("TEST_VAR");
+    case 'existing':
+      echoEnvVar('TEST_VAR');
       break;
-    case "node_options":
-      echoEnvVar("NODE_OPTIONS");
+    case 'node_options':
+      echoEnvVar('NODE_OPTIONS');
       break;
-    case "node_options_twice":
-      echoEnvVar("NODE_OPTIONS");
-      process.stdout.write("; ")
-      echoEnvVar("NODE_OPTIONS");
+    case 'node_options_twice':
+      echoEnvVar('NODE_OPTIONS');
+      process.stdout.write('; ');
+      echoEnvVar('NODE_OPTIONS');
       break;
-    case "otel_resource_attributes":
-      echoEnvVar("OTEL_RESOURCE_ATTRIBUTES");
+    case 'otel_resource_attributes':
+      echoEnvVar('OTEL_RESOURCE_ATTRIBUTES');
       break;
     default:
-      console.error(`unknown test case: ${testCase}`);
-      process.exit(1)
+      console.error(`unknown test app command: ${command}`);
+      process.exit(1);
   }
 }
 
