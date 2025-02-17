@@ -32,6 +32,7 @@ type OperatorConfigurationReconciler struct {
 	Recorder                 record.EventRecorder
 	BackendConnectionManager *backendconnection.BackendConnectionManager
 	DeploymentSelfReference  *appsv1.Deployment
+	OTelSdkStarter           *selfmonitoringapiaccess.OTelSdkStarter
 	DanglingEventsTimeouts   *util.DanglingEventsTimeouts
 	Images                   util.Images
 	OperatorNamespace        string
@@ -194,6 +195,7 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		}
 	}
 
+	logger.Info("XXX operator configuration reconcile", "operator configuration resource", resource)
 	currentSelfMonitoringAndApiAccessConfiguration, err :=
 		selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromControllerDeployment(
 			r.DeploymentSelfReference,
@@ -220,44 +222,38 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 	if err = r.Client.Get(ctx, client.ObjectKeyFromObject(r.DeploymentSelfReference), controllerDeployment); err != nil {
 		return ctrl.Result{}, fmt.Errorf("cannot fetch the current controller deployment: %w", err)
 	}
+
+	logger.Info("XXX previous self-monitoring/API access config", "config", currentSelfMonitoringAndApiAccessConfiguration)
+	logger.Info("XXX new      self-monitoring/API access config", "config", newSelfMonitoringAndApiAccessConfiguration)
 	if !reflect.DeepEqual(currentSelfMonitoringAndApiAccessConfiguration, newSelfMonitoringAndApiAccessConfiguration) {
-		if err = r.applySelfMonitoringAndApiAccess(
+		// 1. operator_configuration_controller#Reconcile -> operator_configuration_controller#applySelfMonitoringAndApiAccess
+		logger.Info("Applying the new self-monitoring and API access configuration.")
+		r.applySelfMonitoringAndApiAccess(
 			controllerDeployment,
 			newSelfMonitoringAndApiAccessConfiguration,
-		); err != nil {
-			logger.Error(err, "cannot apply self-monitoring configuration to the controller deployment")
-			if statusUpdateErr := r.markAsDegraded(
-				ctx,
-				resource,
-				"CannotUpdatedControllerDeployment",
-				"Could not update the controller deployment to reflect the self-monitoring settings.",
-				&logger,
-			); statusUpdateErr != nil {
-				return ctrl.Result{}, statusUpdateErr
-			}
-			return ctrl.Result{}, err
-		}
+			&logger,
+		)
 
-		if err = r.Client.Update(
-			ctx,
-			controllerDeployment,
-			&client.UpdateOptions{FieldManager: util.FieldManager},
-		); err != nil {
-			logger.Error(err, "cannot update the controller deployment")
-			if statusUpdateErr := r.markAsDegraded(
-				ctx,
-				resource,
-				"CannotUpdatedControllerDeployment",
-				"Could not update the controller deployment.",
-				&logger,
-			); statusUpdateErr != nil {
-				return ctrl.Result{}, statusUpdateErr
-			}
-			return ctrl.Result{}, err
-		}
-		logger.Info("The controller deployment has been updated.")
+		//if err = r.Client.Update(
+		//	ctx,
+		//	controllerDeployment,
+		//	&client.UpdateOptions{FieldManager: util.FieldManager},
+		//); err != nil {
+		//	logger.Error(err, "cannot update the controller deployment")
+		//	if statusUpdateErr := r.markAsDegraded(
+		//		ctx,
+		//		resource,
+		//		"CannotUpdatedControllerDeployment",
+		//		"Could not update the controller deployment.",
+		//		&logger,
+		//	); statusUpdateErr != nil {
+		//		return ctrl.Result{}, statusUpdateErr
+		//	}
+		//	return ctrl.Result{}, err
+		//}
+		//logger.Info("The controller deployment has been updated.")
 	} else {
-		logger.Info("The controller deployment is up to date.")
+		logger.Info("The self-monitoring and API access configuration is up to date.")
 	}
 
 	if r.reconcileOpenTelemetryCollector(ctx, &logger) != nil {
@@ -276,43 +272,47 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 func (r *OperatorConfigurationReconciler) applySelfMonitoringAndApiAccess(
 	controllerDeployment *appsv1.Deployment,
 	selfMonitoringAndApiAccessConfiguration selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration,
-) error {
+	logger *logr.Logger,
+) {
 	if selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled {
-		if err := selfmonitoringapiaccess.EnableSelfMonitoringInControllerDeployment(
+		// 2. operator_configuration_controller#applySelfMonitoringAndApiAccess -> selfmonitoringapiaccess.EnableSelfMonitoringInControllerDeployment
+		selfmonitoringapiaccess.EnableSelfMonitoringInControllerDeployment(
+			r.OTelSdkStarter,
+			selfMonitoringAndApiAccessConfiguration,
 			controllerDeployment,
 			ControllerContainerName,
-			selfMonitoringAndApiAccessConfiguration,
 			r.Images.GetOperatorVersion(),
 			r.DevelopmentMode,
-		); err != nil {
-			return fmt.Errorf("cannot apply settings to enable self-monitoring to the controller deployment: %w", err)
-		}
-	} else if selfMonitoringAndApiAccessConfiguration.HasDash0ApiAccessConfigured() {
-		if err := selfmonitoringapiaccess.UpdateApiTokenWithoutAddingSelfMonitoringToControllerDeployment(
-			controllerDeployment,
-			ControllerContainerName,
-			selfMonitoringAndApiAccessConfiguration.GetDash0Authorization(),
-		); err != nil {
-			return fmt.Errorf("cannot add the Dash0 API token to the controller deployment: %w", err)
-		}
-		if err := selfmonitoringapiaccess.DisableSelfMonitoringInControllerDeployment(
-			controllerDeployment,
-			ControllerContainerName,
-			false,
-		); err != nil {
-			return fmt.Errorf("cannot apply settings to disable self-monitoring to the controller deployment: %w", err)
-		}
-	} else {
-		if err := selfmonitoringapiaccess.DisableSelfMonitoringInControllerDeployment(
-			controllerDeployment,
-			ControllerContainerName,
-			true,
-		); err != nil {
-			return fmt.Errorf("cannot apply settings to the controller deployment to disable self-monitoring and API access: %w", err)
-		}
+			logger,
+		)
+		// TODO bring back the cases below later
+		//} else if selfMonitoringAndApiAccessConfiguration.HasDash0ApiAccessConfigured() {
+		//	// TODO resolve secret ref (potentially) and get the API token
+		//	if err := selfmonitoringapiaccess.UpdateApiTokenWithoutAddingSelfMonitoringToControllerDeployment(
+		//		controllerDeployment,
+		//		ControllerContainerName,
+		//		selfMonitoringAndApiAccessConfiguration.GetDash0Authorization(),
+		//	); err != nil {
+		//		return fmt.Errorf("cannot add the Dash0 API token to the controller deployment: %w", err)
+		//	}
+		//	// TODO remove self-monitoring OTel SDK configuration, stop OTel SDK
+		//	if err := selfmonitoringapiaccess.DisableSelfMonitoringInControllerDeployment(
+		//		controllerDeployment,
+		//		ControllerContainerName,
+		//		false,
+		//	); err != nil {
+		//		return fmt.Errorf("cannot apply settings to disable self-monitoring to the controller deployment: %w", err)
+		//	}
+		//} else {
+		//	// TODO remove self-monitoring OTel SDK configuration, stop OTel SDK
+		//	if err := selfmonitoringapiaccess.DisableSelfMonitoringInControllerDeployment(
+		//		controllerDeployment,
+		//		ControllerContainerName,
+		//		true,
+		//	); err != nil {
+		//		return fmt.Errorf("cannot apply settings to the controller deployment to disable self-monitoring and API access: %w", err)
+		//	}
 	}
-
-	return nil
 }
 
 func (r *OperatorConfigurationReconciler) removeSelfMonitoringAndApiAccessAndUpdate(ctx context.Context) error {
