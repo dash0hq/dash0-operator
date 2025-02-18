@@ -160,6 +160,7 @@ to be compatible with the well-known configuration via annotations.
       # * `prometheus.io/port`: Scrape the pod on the indicated port instead of the default of `9102`.
       - job_name: 'dash0-kubernetes-pods-scrape-config'
         honor_labels: true
+        fallback_scrape_protocol: "PrometheusText1.0.0"
 
         kubernetes_sd_configs:
           - role: pod
@@ -232,6 +233,7 @@ to be compatible with the well-known configuration via annotations.
       # * `prometheus.io/port`: Scrape the pod on the indicated port instead of the default of `9102`.
       - job_name: 'dash0-kubernetes-pods-scrape-config-slow'
         honor_labels: true
+        fallback_scrape_protocol: "PrometheusText1.0.0"
 
         scrape_interval: 5m
         scrape_timeout: 30s
