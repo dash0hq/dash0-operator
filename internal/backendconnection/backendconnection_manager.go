@@ -42,20 +42,25 @@ const (
 //     of "our" config maps or similar).
 //
 // The parameter triggeringMonitoringResource is only != nil for case (2).
+//
+// Returns a boolean flag indicating whether the reconciliation has been performed (true) or has been cancelled, due
+// to another reconcliation already being in progress or because the resource has been deleted by the operator.
+// A return value of (nil, true) does not necessarily indicate that any collector resource has been created, updated, or
+// deleted; it only indicates that the reconciliation has been performed.
 func (m *BackendConnectionManager) ReconcileOpenTelemetryCollector(
 	ctx context.Context,
 	images util.Images,
 	operatorNamespace string,
 	triggeringMonitoringResource *dash0v1alpha1.Dash0Monitoring,
 	trigger BackendConnectionReconcileTrigger,
-) error {
+) (error, bool) {
 	logger := log.FromContext(ctx)
 	if m.resourcesHaveBeenDeletedByOperator.Load() {
 		if trigger == TriggeredByWatchEvent {
 			if m.DevelopmentMode {
 				logger.Info("OpenTelemetry collector resources have already been deleted, ignoring reconciliation request.")
 			}
-			return nil
+			return nil, false
 		} else if trigger == TriggeredByDash0ResourceReconcile {
 			if m.DevelopmentMode {
 				logger.Info("resetting resourcesHaveBeenDeletedByOperator")
@@ -68,7 +73,7 @@ func (m *BackendConnectionManager) ReconcileOpenTelemetryCollector(
 			logger.Info("creation/update of the OpenTelemetry collector resources is already in progress, skipping " +
 				"additional reconciliation request.")
 		}
-		return nil
+		return nil, false
 	}
 
 	m.updateInProgress.Store(true)
@@ -78,11 +83,11 @@ func (m *BackendConnectionManager) ReconcileOpenTelemetryCollector(
 
 	operatorConfigurationResource, err := m.findOperatorConfigurationResource(ctx, &logger)
 	if err != nil {
-		return err
+		return err, false
 	}
 	allMonitoringResources, err := m.findAllMonitoringResources(ctx, &logger)
 	if err != nil {
-		return err
+		return err, false
 	}
 	var export *dash0v1alpha1.Export
 	if operatorConfigurationResource != nil && operatorConfigurationResource.Spec.Export != nil {
@@ -105,7 +110,7 @@ func (m *BackendConnectionManager) ReconcileOpenTelemetryCollector(
 	}
 
 	if export != nil {
-		return m.createOrUpdateOpenTelemetryCollector(
+		err = m.createOrUpdateOpenTelemetryCollector(
 			ctx,
 			operatorNamespace,
 			images,
@@ -114,6 +119,7 @@ func (m *BackendConnectionManager) ReconcileOpenTelemetryCollector(
 			export,
 			&logger,
 		)
+		return err, err == nil
 	} else {
 		if operatorConfigurationResource != nil {
 			logger.Info(
@@ -122,7 +128,8 @@ func (m *BackendConnectionManager) ReconcileOpenTelemetryCollector(
 					"collectors will be removed.", operatorConfigurationResource.Name),
 			)
 		}
-		return m.removeOpenTelemetryCollector(ctx, operatorNamespace, &logger)
+		err = m.removeOpenTelemetryCollector(ctx, operatorNamespace, &logger)
+		return err, err == nil
 	}
 }
 

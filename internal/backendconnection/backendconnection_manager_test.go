@@ -75,7 +75,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				},
 			}
 			monitoringResource.EnsureResourceIsMarkedAsAvailable()
-			err := manager.ReconcileOpenTelemetryCollector(
+			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -84,6 +84,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			)
 			Expect(err).To(MatchError(
 				"cannot assemble the exporters for the configuration: no endpoint provided for the Dash0 exporter, unable to create the OpenTelemetry collector"))
+			Expect(hasBeenReconciled).To(BeFalse())
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
 		})
 
@@ -99,7 +100,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				},
 			}
 			monitoringResource.EnsureResourceIsMarkedAsAvailable()
-			err := manager.ReconcileOpenTelemetryCollector(
+			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -108,6 +109,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			)
 			Expect(err).To(MatchError(
 				"neither token nor secretRef provided for the Dash0 exporter"))
+			Expect(hasBeenReconciled).To(BeFalse())
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
 		})
 	})
@@ -126,7 +128,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 		})
 
 		It("should do nothing if there is no operator configuration resource and also no monitoring resource", func() {
-			err := manager.ReconcileOpenTelemetryCollector(
+			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -134,6 +136,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
 		})
 
@@ -142,7 +145,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				ctx,
 				k8sClient,
 			)
-			err := manager.ReconcileOpenTelemetryCollector(
+			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -150,6 +153,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
 		})
 
@@ -173,7 +177,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				},
 			)
 			createdObjects = append(createdObjects, monitoringResource)
-			err := manager.ReconcileOpenTelemetryCollector(
+			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -181,6 +185,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
 		})
 
@@ -202,7 +207,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			)
 			createdObjects = append(createdObjects, monitoringResource)
 
-			err := manager.ReconcileOpenTelemetryCollector(
+			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -210,6 +215,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
 		})
 
@@ -219,7 +225,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				k8sClient,
 			)
 			createdObjects = append(createdObjects, monitoringResource)
-			err := manager.ReconcileOpenTelemetryCollector(
+			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -227,6 +233,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
 		})
 
@@ -235,7 +242,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				Spec: dash0v1alpha1.Dash0MonitoringSpec{},
 			}
 			monitoringResource.EnsureResourceIsMarkedAsAvailable()
-			err := manager.ReconcileOpenTelemetryCollector(
+			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -243,6 +250,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
 		})
 
@@ -259,7 +267,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 					},
 				},
 			}
-			err := manager.ReconcileOpenTelemetryCollector(
+			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -267,6 +275,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
 		})
 
@@ -276,7 +285,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				k8sClient,
 				dash0v1alpha1.Dash0OperatorConfigurationSpec{},
 			)
-			err := manager.ReconcileOpenTelemetryCollector(
+			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -284,6 +293,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
 		})
 
@@ -297,7 +307,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				Spec: dash0v1alpha1.Dash0MonitoringSpec{},
 			}
 			monitoringResource.EnsureResourceIsMarkedAsAvailable()
-			err := manager.ReconcileOpenTelemetryCollector(
+			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -305,6 +315,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
 		})
 
@@ -326,7 +337,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 					},
 				},
 			}
-			err := manager.ReconcileOpenTelemetryCollector(
+			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -334,6 +345,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
 		})
 
@@ -347,7 +359,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				Spec: dash0v1alpha1.Dash0MonitoringSpec{},
 			}
 			triggeringMonitoringResource.EnsureResourceIsMarkedAsAvailable()
-			err := manager.ReconcileOpenTelemetryCollector(
+			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -355,6 +367,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
 		})
 	})
@@ -389,7 +402,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			})
 			Expect(err).ToNot(HaveOccurred())
 
-			err = manager.ReconcileOpenTelemetryCollector(
+			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -397,6 +410,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
 
 			// verify that all wrong properties that we have set up initially have been removed
@@ -432,7 +446,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			createdObjects = append(createdObjects, monitoringResource)
 
 			// Let the manager create the collector so there is something to delete.
-			err := manager.ReconcileOpenTelemetryCollector(
+			err, _ := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -442,7 +456,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
 
-			err = manager.ReconcileOpenTelemetryCollector(
+			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -450,6 +464,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
 			// verify the collector is not deleted even if the monitoring resource provided as a parameter is the only
 			// one left, when there is still an operator configuration left,
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
@@ -466,7 +481,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				ctx,
 				k8sClient,
 			)
-			err := manager.ReconcileOpenTelemetryCollector(
+			err, _ := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -478,7 +493,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 
 			Expect(k8sClient.Delete(ctx, monitoringResource)).To(Succeed())
 
-			err = manager.ReconcileOpenTelemetryCollector(
+			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -486,6 +501,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
 			// verify the collector is not deleted even if the last monitoring resource has been deleted, but there is
 			// still an operator configuration left,
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
@@ -506,7 +522,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			createdObjects = append(createdObjects, thirdDash0MonitoringResource)
 
 			// Let the manager create the collector so there is something to delete.
-			err := manager.ReconcileOpenTelemetryCollector(
+			err, _ := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -516,7 +532,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
 
-			err = manager.ReconcileOpenTelemetryCollector(
+			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -524,6 +540,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
 			// since other monitoring resources still exist, the collector resources should not be deleted
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
 		})
@@ -534,7 +551,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			createdObjects = append(createdObjects, existingDash0MonitoringResource)
 
 			// Let the manager create the collector so there is something to delete.
-			err := manager.ReconcileOpenTelemetryCollector(
+			err, _ := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -561,7 +578,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 					},
 				},
 			}
-			err = manager.ReconcileOpenTelemetryCollector(
+			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -572,6 +589,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
 		})
 
@@ -581,7 +599,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				k8sClient,
 			)
 
-			err := manager.ReconcileOpenTelemetryCollector(
+			err, _ := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -593,7 +611,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 
 			Expect(k8sClient.Delete(ctx, operatorConfigurationResource)).To(Succeed())
 
-			err = manager.ReconcileOpenTelemetryCollector(
+			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -601,6 +619,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
 			// verify the collector is not deleted even if the last monitoring resource has been deleted, but there is
 			// still an operator configuration left,
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
@@ -631,7 +650,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 					dash0v1alpha1.Dash0MonitoringSpec{}, thirdName)
 			createdObjects = append(createdObjects, thirdDash0MonitoringResource)
 
-			err := manager.ReconcileOpenTelemetryCollector(
+			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -639,11 +658,12 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
 
 			Expect(k8sClient.Delete(ctx, operatorConfigurationResource)).To(Succeed())
 
-			err = manager.ReconcileOpenTelemetryCollector(
+			err, hasBeenReconciled = manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -651,6 +671,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
 			// verify the collector is not deleted even if the last monitoring resource has been deleted, but there is
 			// still an operator configuration left,
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
@@ -662,7 +683,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			createdObjects = append(createdObjects, monitoringResource)
 
 			// Let the manager create the collector so there is something to delete.
-			err := manager.ReconcileOpenTelemetryCollector(
+			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -670,6 +691,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
 
 			// When deleting the resource, it will be marked as about to be deleted=degraded in the finalizer handling
@@ -679,7 +701,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			monitoringResource.EnsureResourceIsMarkedAsAboutToBeDeleted()
 			Expect(k8sClient.Status().Update(ctx, monitoringResource)).To(Succeed())
 
-			err = manager.ReconcileOpenTelemetryCollector(
+			err, hasBeenReconciled = manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -687,6 +709,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
 			// verify the collector is deleted when the monitoring resource provided as a parameter is the only
 			// one left
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
@@ -699,7 +722,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				k8sClient,
 			)
 			createdObjects = append(createdObjects, monitoringResource)
-			err := manager.ReconcileOpenTelemetryCollector(
+			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -707,12 +730,13 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
 
 			Expect(k8sClient.Delete(ctx, monitoringResource)).To(Succeed())
 			createdObjects = createdObjects[0 : len(createdObjects)-1]
 
-			err = manager.ReconcileOpenTelemetryCollector(
+			err, hasBeenReconciled = manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
 				operatorNamespace,
@@ -720,6 +744,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
 		})
 	})

@@ -43,7 +43,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 	ctx := context.Background()
 	var createdObjects []client.Object
 
-	var reconciler *MonitoringReconciler
+	var monitoringReconciler *MonitoringReconciler
 
 	BeforeAll(func() {
 		EnsureTestNamespaceExists(ctx, k8sClient)
@@ -73,7 +73,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			Clientset:              clientset,
 			OTelColResourceManager: oTelColResourceManager,
 		}
-		reconciler = &MonitoringReconciler{
+		monitoringReconciler = &MonitoringReconciler{
 			Client:                   k8sClient,
 			Clientset:                clientset,
 			Instrumenter:             instrumenter,
@@ -104,20 +104,22 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 		Describe("when reconciling", func() {
 			It("should successfully run the first reconcile (no modifiable workloads exist)", func() {
 				By("Trigger reconcile request")
-				triggerReconcileRequest(ctx, reconciler, "")
+				triggerReconcileRequest(ctx, monitoringReconciler)
 				verifyMonitoringResourceIsAvailable(ctx)
 				VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
 			})
 
 			It("should successfully run multiple reconciles (no modifiable workloads exist)", func() {
-				triggerReconcileRequest(ctx, reconciler, "First reconcile request")
+				By("First reconcile request")
+				triggerReconcileRequest(ctx, monitoringReconciler)
 
 				firstAvailableStatusCondition := verifyMonitoringResourceIsAvailable(ctx)
 				originalTransitionTimestamp := firstAvailableStatusCondition.LastTransitionTime.Time
 
 				time.Sleep(50 * time.Millisecond)
 
-				triggerReconcileRequest(ctx, reconciler, "Second reconcile request")
+				By("First reconcile request")
+				triggerReconcileRequest(ctx, monitoringReconciler)
 
 				// The LastTransitionTime should not change with subsequent reconciliations.
 				secondAvailableCondition := verifyMonitoringResourceIsAvailable(ctx)
@@ -127,8 +129,9 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			})
 
 			It("should mark only the most recent resource as available and the other ones as degraded when multiple resources exist", func() {
+				firstName := MonitoringResourceQualifiedName
 				firstMonitoringResource := &dash0v1alpha1.Dash0Monitoring{}
-				Expect(k8sClient.Get(ctx, MonitoringResourceQualifiedName, firstMonitoringResource)).To(Succeed())
+				Expect(k8sClient.Get(ctx, firstName, firstMonitoringResource)).To(Succeed())
 				time.Sleep(10 * time.Millisecond)
 				secondName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-monitoring-test-resource-2"}
 				extraMonitoringResourceNames = append(extraMonitoringResourceNames, secondName)
@@ -138,13 +141,13 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 				extraMonitoringResourceNames = append(extraMonitoringResourceNames, thirdName)
 				CreateDefaultMonitoringResource(ctx, k8sClient, thirdName)
 
-				triggerReconcileRequestForName(ctx, reconciler, "", MonitoringResourceQualifiedName)
-				triggerReconcileRequestForName(ctx, reconciler, "", secondName)
-				triggerReconcileRequestForName(ctx, reconciler, "", thirdName)
+				triggerReconcileRequestForName(ctx, monitoringReconciler, firstName)
+				triggerReconcileRequestForName(ctx, monitoringReconciler, secondName)
+				triggerReconcileRequestForName(ctx, monitoringReconciler, thirdName)
 
 				Eventually(func(g Gomega) {
-					resource1Available := loadCondition(ctx, MonitoringResourceQualifiedName, dash0v1alpha1.ConditionTypeAvailable)
-					resource1Degraded := loadCondition(ctx, MonitoringResourceQualifiedName, dash0v1alpha1.ConditionTypeDegraded)
+					resource1Available := loadCondition(ctx, firstName, dash0v1alpha1.ConditionTypeAvailable)
+					resource1Degraded := loadCondition(ctx, firstName, dash0v1alpha1.ConditionTypeDegraded)
 					resource2Available := loadCondition(ctx, secondName, dash0v1alpha1.ConditionTypeAvailable)
 					resource2Degraded := loadCondition(ctx, secondName, dash0v1alpha1.ConditionTypeDegraded)
 					resource3Available := loadCondition(ctx, thirdName, dash0v1alpha1.ConditionTypeAvailable)
@@ -195,7 +198,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
 			createdObjects = append(createdObjects, workload.Get())
 
-			triggerReconcileRequest(ctx, reconciler, "")
+			triggerReconcileRequest(ctx, monitoringReconciler)
 
 			verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
 			config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
@@ -244,7 +247,8 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			// resource, just to get the `isFirstReconcile` logic out of the way and to add the finalizer.
 			// Alternatively, we could just add the finalizer here directly, but this approach is closer to what usually
 			// happens in production.
-			triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
+			By("Trigger first reconcile request")
+			triggerReconcileRequest(ctx, monitoringReconciler)
 
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
@@ -254,7 +258,8 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
 			Expect(k8sClient.Delete(ctx, monitoringResource)).To(Succeed())
 
-			triggerReconcileRequest(ctx, reconciler, "trigger a reconcile request to revert the instrumented workload")
+			By("trigger a reconcile request to revert the instrumented workload")
+			triggerReconcileRequest(ctx, monitoringReconciler)
 
 			VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, "controller")
 			workload = config.GetFn(ctx, k8sClient, TestNamespaceName, name)
@@ -310,7 +315,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
 			createdObjects = append(createdObjects, workload.Get())
 
-			triggerReconcileRequest(ctx, reconciler, "")
+			triggerReconcileRequest(ctx, monitoringReconciler)
 			VerifyNoEvents(ctx, clientset, namespace)
 			config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 
@@ -320,7 +325,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			// Existing workloads are still not to be instrumented. The new setting only becomes effective when the next
 			// resource is created or updated, and the webhook will take care of that.
 
-			triggerReconcileRequest(ctx, reconciler, "")
+			triggerReconcileRequest(ctx, monitoringReconciler)
 			VerifyNoEvents(ctx, clientset, namespace)
 			config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 		}, Entry("should instrument an existing cron job after switching from instrumentWorkloads=none to instrumentWorkloads=created-and-updated", WorkloadTestConfig{
@@ -368,13 +373,13 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
 			createdObjects = append(createdObjects, workload.Get())
 
-			triggerReconcileRequest(ctx, reconciler, "")
+			triggerReconcileRequest(ctx, monitoringReconciler)
 			VerifyNoEvents(ctx, clientset, namespace)
 			config.VerifyPreFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 
 			UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.All)
 
-			triggerReconcileRequest(ctx, reconciler, "")
+			triggerReconcileRequest(ctx, monitoringReconciler)
 			verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
 			config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 		}, Entry("should instrument an existing cron job after switching from instrumentWorkloads=none to instrumentWorkloads=all", WorkloadTestConfig{
@@ -437,7 +442,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
 			createdObjects = append(createdObjects, workload.Get())
 
-			triggerReconcileRequest(ctx, reconciler, "")
+			triggerReconcileRequest(ctx, monitoringReconciler)
 			VerifyNoEvents(ctx, clientset, namespace)
 			config.VerifyPreFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 
@@ -445,7 +450,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 			UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.None)
 
-			triggerReconcileRequest(ctx, reconciler, "")
+			triggerReconcileRequest(ctx, monitoringReconciler)
 			VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, "controller")
 			workload = config.GetFn(ctx, k8sClient, TestNamespaceName, name)
 			config.VerifyFn(workload)
@@ -510,13 +515,13 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
 			createdObjects = append(createdObjects, workload.Get())
 
-			triggerReconcileRequest(ctx, reconciler, "")
+			triggerReconcileRequest(ctx, monitoringReconciler)
 			VerifyNoEvents(ctx, clientset, namespace)
 			config.VerifyPreFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 
 			UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.All)
 
-			triggerReconcileRequest(ctx, reconciler, "")
+			triggerReconcileRequest(ctx, monitoringReconciler)
 			verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
 			config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 		}, Entry("should instrument an existing cron job after switching from instrumentWorkloads=created-and-updated to instrumentWorkloads=all", WorkloadTestConfig{
@@ -579,7 +584,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
 			createdObjects = append(createdObjects, workload.Get())
 
-			triggerReconcileRequest(ctx, reconciler, "")
+			triggerReconcileRequest(ctx, monitoringReconciler)
 			verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
 			config.VerifyPreFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 
@@ -587,7 +592,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 			UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.None)
 
-			triggerReconcileRequest(ctx, reconciler, "")
+			triggerReconcileRequest(ctx, monitoringReconciler)
 			VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, "controller")
 			workload = config.GetFn(ctx, k8sClient, TestNamespaceName, name)
 			config.VerifyFn(workload)
@@ -652,7 +657,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
 			createdObjects = append(createdObjects, workload.Get())
 
-			triggerReconcileRequest(ctx, reconciler, "")
+			triggerReconcileRequest(ctx, monitoringReconciler)
 			verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
 			config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 
@@ -663,7 +668,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			// Switching from instrumentWorkloads=all to instrumentWorkloads=created-and-updated has no effect.
 			// Already instrumented workloads will not be uninstrumented.
 
-			triggerReconcileRequest(ctx, reconciler, "")
+			triggerReconcileRequest(ctx, monitoringReconciler)
 			VerifyNoEvents(ctx, clientset, namespace)
 			config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 		}, Entry("should remove instrumentation from an existing cron job after switching from instrumentWorkloads=all to instrumentWorkloads=created-and-updated", WorkloadTestConfig{
@@ -707,7 +712,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 	Describe("when the Dash0 monitoring resource does not exist", func() {
 		It("should not instrument workloads", func() {
-			createdObjects = verifyThatDeploymentIsNotBeingInstrumented(ctx, reconciler, createdObjects)
+			createdObjects = verifyThatDeploymentIsNotBeingInstrumented(ctx, monitoringReconciler, createdObjects)
 		})
 	})
 
@@ -723,7 +728,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 		})
 
 		It("should instrument workloads", func() {
-			createdObjects = verifyThatDeploymentIsInstrumented(ctx, reconciler, createdObjects)
+			createdObjects = verifyThatDeploymentIsInstrumented(ctx, monitoringReconciler, createdObjects)
 		})
 	})
 
@@ -768,7 +773,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 		})
 
 		It("should not instrument workloads", func() {
-			createdObjects = verifyThatDeploymentIsNotBeingInstrumented(ctx, reconciler, createdObjects)
+			createdObjects = verifyThatDeploymentIsNotBeingInstrumented(ctx, monitoringReconciler, createdObjects)
 		})
 	})
 
@@ -784,7 +789,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 		})
 
 		It("should not instrument workloads", func() {
-			createdObjects = verifyThatDeploymentIsNotBeingInstrumented(ctx, reconciler, createdObjects)
+			createdObjects = verifyThatDeploymentIsNotBeingInstrumented(ctx, monitoringReconciler, createdObjects)
 		})
 	})
 
@@ -798,25 +803,27 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 		})
 
 		It("should add and remove the collector resources", func() {
-			triggerReconcileRequest(ctx, reconciler, "Trigger first reconcile request")
+			By("Trigger first reconcile request")
+			triggerReconcileRequest(ctx, monitoringReconciler)
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
 
 			monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
 			Expect(k8sClient.Delete(ctx, monitoringResource)).To(Succeed())
-			triggerReconcileRequest(ctx, reconciler, "Trigger a reconcile request to trigger removing the collector resources")
+			By("Trigger a reconcile request to trigger removing the collector resources")
+			triggerReconcileRequest(ctx, monitoringReconciler)
 
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
 		})
 	})
 })
 
-func verifyThatDeploymentIsInstrumented(ctx context.Context, reconciler *MonitoringReconciler, createdObjects []client.Object) []client.Object {
+func verifyThatDeploymentIsInstrumented(ctx context.Context, monitoringReconciler *MonitoringReconciler, createdObjects []client.Object) []client.Object {
 	name := UniqueName(DeploymentNamePrefix)
 	By("Inititalize a deployment")
 	deployment := CreateBasicDeployment(ctx, k8sClient, namespace, name)
 	createdObjects = append(createdObjects, deployment)
 
-	triggerReconcileRequest(ctx, reconciler, "")
+	triggerReconcileRequest(ctx, monitoringReconciler)
 
 	verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
 	VerifyModifiedDeployment(GetDeployment(ctx, k8sClient, namespace, name), BasicInstrumentedPodSpecExpectations())
@@ -824,13 +831,13 @@ func verifyThatDeploymentIsInstrumented(ctx context.Context, reconciler *Monitor
 	return createdObjects
 }
 
-func verifyThatDeploymentIsNotBeingInstrumented(ctx context.Context, reconciler *MonitoringReconciler, createdObjects []client.Object) []client.Object {
+func verifyThatDeploymentIsNotBeingInstrumented(ctx context.Context, monitoringReconciler *MonitoringReconciler, createdObjects []client.Object) []client.Object {
 	name := UniqueName(DeploymentNamePrefix)
 	By("Inititalize a deployment")
 	deployment := CreateDeploymentWithOptOutLabel(ctx, k8sClient, namespace, name)
 	createdObjects = append(createdObjects, deployment)
 
-	triggerReconcileRequest(ctx, reconciler, "")
+	triggerReconcileRequest(ctx, monitoringReconciler)
 
 	VerifyNoEvents(ctx, clientset, namespace)
 	VerifyDeploymentWithOptOutLabel(GetDeployment(ctx, k8sClient, namespace, name))
@@ -838,21 +845,17 @@ func verifyThatDeploymentIsNotBeingInstrumented(ctx context.Context, reconciler 
 	return createdObjects
 }
 
-func triggerReconcileRequest(ctx context.Context, reconciler *MonitoringReconciler, stepMessage string) {
-	triggerReconcileRequestForName(ctx, reconciler, stepMessage, MonitoringResourceQualifiedName)
+func triggerReconcileRequest(ctx context.Context, monitoringReconciler *MonitoringReconciler) {
+	triggerReconcileRequestForName(ctx, monitoringReconciler, MonitoringResourceQualifiedName)
 }
 
 func triggerReconcileRequestForName(
 	ctx context.Context,
-	reconciler *MonitoringReconciler,
-	stepMessage string,
+	monitoringReconciler *MonitoringReconciler,
 	monitoringResourceName types.NamespacedName,
 ) {
-	if stepMessage == "" {
-		stepMessage = "Trigger a monitoring resource reconcile request"
-	}
-	By(stepMessage)
-	_, err := reconciler.Reconcile(ctx, reconcile.Request{
+	By("Trigger a monitoring resource reconcile request")
+	_, err := monitoringReconciler.Reconcile(ctx, reconcile.Request{
 		NamespacedName: monitoringResourceName,
 	})
 	Expect(err).NotTo(HaveOccurred())

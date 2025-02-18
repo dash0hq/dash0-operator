@@ -101,6 +101,7 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 	}
 
 	logger := log.FromContext(ctx)
+	logger.Info("processing reconcile request for an operator configuration resource")
 
 	var resource *dash0v1alpha1.Dash0OperatorConfiguration
 	resourceDeleted := false
@@ -111,32 +112,12 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		&dash0v1alpha1.Dash0OperatorConfiguration{},
 		&logger,
 	)
-	if checkResourceResult.ResourceDoesNotExist {
-		resourceDeleted = true
-	} else if err != nil {
+	if err != nil {
 		return ctrl.Result{}, err
+	} else if checkResourceResult.ResourceDoesNotExist {
+		resourceDeleted = true
 	} else if checkResourceResult.StopReconcile {
 		return ctrl.Result{}, nil
-	}
-
-	if !resourceDeleted {
-		resource = checkResourceResult.Resource.(*dash0v1alpha1.Dash0OperatorConfiguration)
-		stopReconcile, err :=
-			util.VerifyThatResourceIsUniqueInScope(
-				ctx,
-				r.Client,
-				req,
-				resource,
-				updateStatusFailedMessageOperatorConfiguration,
-				&logger,
-			)
-		if err != nil {
-			// Cannot validate whether this resource is normative, requeuing
-			return ctrl.Result{}, err
-		} else if stopReconcile {
-			return ctrl.Result{}, nil
-		}
-		logger.Info("Reconciling the operator configuration resource", "name", req.Name)
 	}
 
 	if resourceDeleted {
@@ -144,17 +125,42 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		for _, apiClient := range r.ApiClients {
 			apiClient.RemoveApiEndpointAndDataset()
 		}
+		// TODO This will trigger a restart of the manager pod, which in turn will trigger the recreation of the
+		// auto operator configuration resource if this has been enabled via Helm, although the user has just deleted
+		// that resource. The solution for this problem is to avoid the manager pod restart for self-monitoring/API
+		// access purposes, see https://linear.app/dash0/issue/ENG-3455/avoid-controller-pod-self-restart-for-self-monitoringapi-auth-token
 		if err = r.removeSelfMonitoringAndApiAccessAndUpdate(ctx); err != nil {
 			logger.Error(err, "cannot disable self-monitoring/API access of the controller deployment, requeuing reconcile request.")
 			return ctrl.Result{
 				Requeue: true,
 			}, nil
 		} else {
+
 			logger.Info("Self-monitoring of the controller deployment has been disabled")
 		}
 		if r.reconcileOpenTelemetryCollector(ctx, &logger) != nil {
 			return ctrl.Result{}, err
 		}
+		return ctrl.Result{}, nil
+	}
+
+	resource = checkResourceResult.Resource.(*dash0v1alpha1.Dash0OperatorConfiguration)
+	if resource.IsDegraded() {
+		logger.Info("The operator configuration resource is degraded, stopping reconciliation.")
+		return ctrl.Result{}, nil
+	}
+	stopReconcile, err :=
+		util.VerifyThatResourceIsUniqueInScope(
+			ctx,
+			r.Client,
+			req,
+			resource,
+			updateStatusFailedMessageOperatorConfiguration,
+			&logger,
+		)
+	if err != nil {
+		return ctrl.Result{}, err
+	} else if stopReconcile {
 		return ctrl.Result{}, nil
 	}
 
@@ -348,7 +354,7 @@ func (r *OperatorConfigurationReconciler) reconcileOpenTelemetryCollector(
 	ctx context.Context,
 	logger *logr.Logger,
 ) error {
-	if err := r.BackendConnectionManager.ReconcileOpenTelemetryCollector(
+	if err, _ := r.BackendConnectionManager.ReconcileOpenTelemetryCollector(
 		ctx,
 		r.Images,
 		r.OperatorNamespace,

@@ -85,6 +85,13 @@ func (d *Dash0OperatorConfiguration) IsAvailable() bool {
 	return false
 }
 
+func (d *Dash0OperatorConfiguration) IsDegraded() bool {
+	if condition := d.getCondition(ConditionTypeDegraded); condition != nil {
+		return condition.Status == metav1.ConditionTrue
+	}
+	return false
+}
+
 func (d *Dash0OperatorConfiguration) getCondition(conditionType ConditionType) *metav1.Condition {
 	for _, c := range d.Status.Conditions {
 		if c.Type == string(conditionType) {
@@ -200,7 +207,7 @@ func (d *Dash0OperatorConfiguration) GetName() string {
 	return d.Name
 }
 
-func (d *Dash0OperatorConfiguration) GetUid() types.UID {
+func (d *Dash0OperatorConfiguration) GetUID() types.UID {
 	return d.UID
 }
 
@@ -222,6 +229,15 @@ func (d *Dash0OperatorConfiguration) IsClusterResource() bool {
 
 func (d *Dash0OperatorConfiguration) RequestToName(ctrl.Request) string {
 	return d.Name
+}
+
+func (d *Dash0OperatorConfiguration) All(list client.ObjectList) []dash0common.Dash0Resource {
+	items := list.(*Dash0OperatorConfigurationList).Items
+	result := make([]dash0common.Dash0Resource, len(items))
+	for i := range items {
+		result[i] = &items[i]
+	}
+	return result
 }
 
 func (d *Dash0OperatorConfiguration) Items(list client.ObjectList) []client.Object {
