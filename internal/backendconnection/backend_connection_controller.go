@@ -115,22 +115,24 @@ func (r *BackendConnectionReconciler) Reconcile(
 	logger := log.FromContext(ctx)
 	logger.Info("reconciling backend connection resources", "request", request)
 
-	if err := r.BackendConnectionManager.ReconcileOpenTelemetryCollector(
+	err, hasBeenReconciled := r.BackendConnectionManager.ReconcileOpenTelemetryCollector(
 		ctx,
 		r.Images,
 		r.OperatorNamespace,
 		nil,
 		TriggeredByWatchEvent,
-	); err != nil {
+	)
+	if err != nil {
 		logger.Error(err, "Failed to create/update backend connection resources.")
 		return reconcile.Result{}, err
 	}
-
-	logger.Info(
-		"successfully reconciled backend connection resources",
-		"request",
-		request,
-	)
+	if hasBeenReconciled {
+		logger.Info(
+			"successfully reconciled backend connection resources",
+			"request",
+			request,
+		)
+	}
 
 	return reconcile.Result{}, nil
 }

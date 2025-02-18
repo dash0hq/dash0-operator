@@ -108,7 +108,7 @@ func (i *Instrumenter) InstrumentAtStartup(
 				Name:      dash0MonitoringResource.Name,
 			},
 		}
-		checkResourceResult, err := util.VerifyThatUniqueResourceExists(
+		checkResourceResult, err := util.VerifyThatUniqueNonDegradedResourceExists(
 			ctx,
 			k8sClient,
 			pseudoReconcileRequest,
@@ -117,7 +117,10 @@ func (i *Instrumenter) InstrumentAtStartup(
 			logger,
 		)
 		if err != nil || checkResourceResult.StopReconcile || checkResourceResult.ResourceDoesNotExist {
-			// if an error occurred, it has already been logged in VerifyThatUniqueResourceExists
+			// if an error occurred, it has already been logged in VerifyThatUniqueNonDegradedResourceExists
+			continue
+		}
+		if checkResourceResult.Resource.IsDegraded() {
 			continue
 		}
 

@@ -15,7 +15,7 @@ type Dash0Resource interface {
 	GetNaturalLanguageResourceTypeName() string
 	Get() client.Object
 	GetName() string
-	GetUid() types.UID
+	GetUID() types.UID
 	GetCreationTimestamp() metav1.Time
 	GetReceiver() client.Object
 	GetListReceiver() client.ObjectList
@@ -23,12 +23,17 @@ type Dash0Resource interface {
 	RequestToName(ctrl.Request) string
 
 	IsAvailable() bool
+	IsDegraded() bool
 	SetAvailableConditionToUnknown()
 	EnsureResourceIsMarkedAsAvailable()
 	EnsureResourceIsMarkedAsDegraded(string, string)
 	EnsureResourceIsMarkedAsAboutToBeDeleted()
 	IsMarkedForDeletion() bool
 
+	// Items returns all items from the given ObjectList as an array of client.Object objects.
 	Items(client.ObjectList) []client.Object
+	// All returns all items from the given ObjectList as an array of Dash0Resource objects.
+	All(client.ObjectList) []Dash0Resource
+	// At returns the item at the given index as a Dash0Resource object.
 	At(client.ObjectList, int) Dash0Resource
 }

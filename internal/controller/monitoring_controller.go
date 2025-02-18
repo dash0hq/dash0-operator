@@ -108,7 +108,7 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	logger := log.FromContext(ctx)
-	logger.Info("processing reconcile request for Dash0 monitoring resource")
+	logger.Info("processing reconcile request for a monitoring resource")
 
 	namespaceStillExists, err := util.CheckIfNamespaceExists(ctx, r.Clientset, req.Namespace, &logger)
 	if err != nil {
@@ -120,7 +120,7 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, nil
 	}
 
-	checkResourceResult, err := util.VerifyThatUniqueResourceExists(
+	checkResourceResult, err := util.VerifyThatUniqueNonDegradedResourceExists(
 		ctx,
 		r.Client,
 		req,
@@ -128,11 +128,11 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		updateStatusFailedMessageMonitoring,
 		&logger,
 	)
-	if checkResourceResult.ResourceDoesNotExist {
-		// If the resource is not found, the checkResourceResult contains IsNotFound err, but we do not want to requeue
-		// the request, hence this condition needs to be checked first, before the `err != nil` check (which requeues
-		// the request).
-
+	if err != nil {
+		// For all errors, we assume it is a temporary error and requeue the request.
+		return ctrl.Result{}, err
+	} else if checkResourceResult.ResourceDoesNotExist {
+		// If the resource is not found, the checkResourceResult, we do not want to requeue the request.
 		// Make sure we update the otel collector config (for example, remove this namespace from the allow list for
 		// prometheus scraping) after removing the monitoring resource from this namespace. Or, to be more precise,
 		// when r.reconcileOpenTelemetryCollector runs, the monitoring resource in this namespace is still present, but
@@ -142,14 +142,23 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 
 		return ctrl.Result{}, nil
-	} else if err != nil {
-		// For all other errors, we assume it is a temporary error and requeue the request.
-		return ctrl.Result{}, err
 	} else if checkResourceResult.StopReconcile {
 		return ctrl.Result{}, nil
 	}
 
 	monitoringResource := checkResourceResult.Resource.(*dash0v1alpha1.Dash0Monitoring)
+
+	if monitoringResource.IsDegraded() {
+		if err = r.removeFinalizerIfMarkedForDeletion(
+			ctx,
+			checkResourceResult.Resource.(*dash0v1alpha1.Dash0Monitoring),
+			&logger,
+		); err != nil {
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
+	}
+
 	isFirstReconcile, err := util.InitStatusConditions(
 		ctx,
 		r.Client,
@@ -187,10 +196,10 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	} else if isMarkedForDeletion {
 		// For this particular controller, this branch should actually never run. When we remove the finalizer in the
 		// runCleanupActions branch, the monitoring resource will be deleted immediately. A new reconcile cycle will be
-		// requested for the deletion, which we stop early/immediately after the util.VerifyThatUniqueResourceExists
-		// check, due to checkResourceResult.ResourceDoesNotExist being true. We still want to handle this case
-		// correctly for good measure (reconcile the otel collector, then stop the reconcile of the monitoring
-		// resource).
+		// requested for the deletion, which we stop early/immediately after the
+		// util.VerifyThatUniqueNonDegradedResourceExists check, due to checkResourceResult.ResourceDoesNotExist being
+		// true. We still want to handle this case correctly for good measure (reconcile the otel collector, then stop
+		// the reconcile of the monitoring resource).
 		if r.reconcileOpenTelemetryCollector(ctx, monitoringResource, &logger) != nil {
 			return ctrl.Result{}, err
 		}
@@ -313,6 +322,30 @@ func (r *MonitoringReconciler) runCleanupActions(
 	return nil
 }
 
+func (r *MonitoringReconciler) removeFinalizerIfMarkedForDeletion(
+	ctx context.Context,
+	monitoringResource *dash0v1alpha1.Dash0Monitoring,
+	logger *logr.Logger,
+) error {
+	if monitoringResource.IsMarkedForDeletion() {
+		if controllerutil.ContainsFinalizer(monitoringResource, dash0v1alpha1.MonitoringFinalizerId) {
+			monitoringResource.EnsureResourceIsMarkedAsAboutToBeDeleted()
+			if err := r.Status().Update(ctx, monitoringResource); err != nil {
+				logger.Error(err, updateStatusFailedMessageMonitoring)
+				return err
+			}
+			if finalizersUpdated := controllerutil.RemoveFinalizer(monitoringResource, dash0v1alpha1.MonitoringFinalizerId); finalizersUpdated {
+				if err := r.Update(ctx, monitoringResource); err != nil {
+					logger.Error(err, "Failed to remove the finalizer from the Dash0 monitoring resource, requeuing reconcile "+
+						"request.")
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
 func (r *MonitoringReconciler) scheduleAttachDanglingEvents(
 	ctx context.Context,
 	monitoringResource *dash0v1alpha1.Dash0Monitoring,
@@ -403,7 +436,7 @@ func (r *MonitoringReconciler) reconcileOpenTelemetryCollector(
 	// This will look up all the operator configuration resource and all monitoring resources in the cluster (including
 	// the one that has just been reconciled, hence we must only do this _after_ this resource has been updated (e.g.
 	// marked as available). Otherwise, the reconciliation of the collectors would work with an outdated state.
-	if err := r.BackendConnectionManager.ReconcileOpenTelemetryCollector(
+	if err, _ := r.BackendConnectionManager.ReconcileOpenTelemetryCollector(
 		ctx,
 		r.Images,
 		r.OperatorNamespace,
