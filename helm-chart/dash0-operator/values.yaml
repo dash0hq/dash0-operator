@@ -132,11 +132,11 @@ operator:
   managerContainerResources:
     limits:
       cpu: 500m
-      memory: 128Mi
+      memory: 256Mi
       ephemeral-storage: 500Mi
     requests:
       cpu: 10m
-      memory: 64Mi
+      memory: 128Mi
       ephemeral-storage: 500Mi
 
   # resources for the kube-rbac-proxy container
