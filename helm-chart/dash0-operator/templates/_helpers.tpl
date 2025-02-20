@@ -55,6 +55,14 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 {{ include "dash0-operator.chartName" . }}-webhook-service
 {{- end }}
 
+{{- define "dash0-operator.tokenUpdateServiceName" -}}
+{{ include "dash0-operator.chartName" . }}-token-update
+{{- end }}
+
+{{- define "dash0-operator.tokenUpdateServiceUrl" -}}
+https://{{ include "dash0-operator.tokenUpdateServiceName" . }}.{{ .Release.Namespace }}.svc:{{ .Values.operator.tokenUpdatePort }}
+{{- end }}
+
 {{/* the controller manager container image */}}
 {{- define "dash0-operator.image" -}}
 {{- include "dash0-operator.imageRef" (dict "image" .Values.operator.image "context" .) -}}
@@ -105,8 +113,4 @@ securityContext:
 
 {{- define "dash0-operator.secretRefSatelliteDeploymentName" -}}
 {{ include "dash0-operator.chartName" . }}-secret-ref-satellite
-{{- end }}
-
-{{- define "dash0-operator.secretRefSatelliteServiceName" -}}
-{{ include "dash0-operator.chartName" . }}-secret-ref-satellite-service
 {{- end }}

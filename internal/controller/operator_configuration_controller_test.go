@@ -988,11 +988,11 @@ func createReconciler(controllerDeployment *appsv1.Deployment) *OperatorConfigur
 			apiClient1,
 			apiClient2,
 		},
-		BackendConnectionManager: backendConnectionManager,
-		DeploymentSelfReference:  controllerDeployment,
-		DanglingEventsTimeouts:   &DanglingEventsTimeoutsTest,
-		Images:                   TestImages,
-		OperatorNamespace:        OperatorNamespace,
+		BackendConnectionManager:        backendConnectionManager,
+		OperatorDeploymentSelfReference: controllerDeployment,
+		DanglingEventsTimeouts:          &DanglingEventsTimeoutsTest,
+		Images:                          TestImages,
+		OperatorNamespace:               OperatorNamespace,
 	}
 }
 

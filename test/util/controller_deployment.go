@@ -98,6 +98,10 @@ func createDefaultEnvVars() []corev1.EnvVar {
 			Value: OperatorWebhookServiceName,
 		},
 		{
+			Name:  "DASH0_SECRET_REF_SATELLITE_DEPLOYMENT_NAME",
+			Value: SecretRefSatelliteDeploymentName,
+		},
+		{
 			Name:  "OTEL_COLLECTOR_NAME_PREFIX",
 			Value: "dash0-system",
 		},

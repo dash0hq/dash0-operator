@@ -37,7 +37,10 @@ After that, you can deploy the operator to your cluster:
     CONFIGURATION_RELOADER_IMG_PULL_POLICY=""
     FILELOG_OFFSET_SYNCH_IMG_REPOSITORY=ghcr.io/dash0hq/filelog-offset-synch \
     FILELOG_OFFSET_SYNCH_IMG_TAG=main-dev \
-    FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY=""
+    FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY="" \
+    SECRET_REF_SATELLITE_IMG_REPOSITORY=ghcr.io/dash0hq/secret-ref-satellite \
+    SECRET_REF_SATELLITE_IMG_TAG=main-dev \
+    SECRET_REF_SATELLITE_IMG_PULL_POLICY=""
   ```
 * The custom resource definition will automatically be installed when deploying the operator. However, you can also do
   that separately via kustomize if required via `make install`.
@@ -90,6 +93,8 @@ CONTROLLER_IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller \
   CONFIGURATION_RELOADER_IMG_TAG=main-dev \
   FILELOG_OFFSET_SYNCH_IMG_REPOSITORY=ghcr.io/dash0hq/filelog-offset-synch \
   FILELOG_OFFSET_SYNCH_IMG_TAG=main-dev \
+  SECRET_REF_SATELLITE_IMG_REPOSITORY=ghcr.io/dash0hq/secret-ref-satellite \
+  SECRET_REF_SATELLITE_IMG_TAG=main-dev \
   make test-e2e
 ```
 
@@ -268,6 +273,9 @@ If you want to report telemetry to a Dash0 backend, set `DASH0_AUTHORIZATION_TOK
     * `FILELOG_OFFSET_SYNCH_IMG_TAG`
     * `FILELOG_OFFSET_SYNCH_IMG_DIGEST`
     * `FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY`
+    * `SECRET_REF_SATELLITE_IMG_REPOSITORY`
+    * `SECRET_REF_SATELLITE_IMG_TAG`
+    * `SECRET_REF_SATELLITE_IMG_PULL_POLICY`
 * To run the scenario with the images that have been built from the main branch and pushed to ghcr.io most recently:
     ```
     CONTROLLER_IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller \
@@ -280,6 +288,8 @@ If you want to report telemetry to a Dash0 backend, set `DASH0_AUTHORIZATION_TOK
       CONFIGURATION_RELOADER_IMG_TAG=main-dev \
       FILELOG_OFFSET_SYNCH_IMG_REPOSITORY=ghcr.io/dash0hq/filelog-offset-synch \
       FILELOG_OFFSET_SYNCH_IMG_TAG=main-dev \
+      SECRET_REF_SATELLITE_IMG_REPOSITORY=ghcr.io/dash0hq/secret-ref-satellite \
+      SECRET_REF_SATELLITE_IMG_TAG=main-dev \
       test-resources/bin/test-scenario-01-aum-operator-cr.sh
     ```
    * To run the scenario with the helm chart from the official remote repository and the default images referenced in
