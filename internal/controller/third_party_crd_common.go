@@ -849,7 +849,7 @@ func convertNon2xxStatusCodeToError(
 	responseBody, readErr := io.ReadAll(res.Body)
 	if readErr != nil {
 		readBodyErr := fmt.Errorf("unable to read the API response payload after receiving status code %d when "+
-			"trying to udpate/create/delete the %s \"%s\" at %s",
+			"trying to update/create/delete the %s \"%s\" at %s",
 			res.StatusCode,
 			resourceReconciler.ShortName(),
 			req.ItemName,

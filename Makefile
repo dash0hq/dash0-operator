@@ -81,6 +81,11 @@ FILELOG_OFFSET_SYNCH_IMG_TAG ?= latest
 FILELOG_OFFSET_SYNCH_IMG ?= $(FILELOG_OFFSET_SYNCH_IMG_REPOSITORY):$(FILELOG_OFFSET_SYNCH_IMG_TAG)
 FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY ?= Never
 
+SECRET_REF_SATELLITE_IMG_REPOSITORY ?= secret-ref-satellite
+SECRET_REF_SATELLITE_IMG_TAG ?= latest
+SECRET_REF_SATELLITE_IMG ?= $(SECRET_REF_SATELLITE_IMG_REPOSITORY):$(SECRET_REF_SATELLITE_IMG_TAG)
+SECRET_REF_SATELLITE_IMG_PULL_POLICY ?= Never
+
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.28.3
 
@@ -254,6 +259,7 @@ run: manifests generate fmt vet ## Run a controller from your host.
 .PHONY: docker-build
 docker-build: \
   docker-build-controller \
+  docker-build-secret-ref-satellite \
   docker-build-instrumentation \
   docker-build-collector \
   docker-build-config-reloader \
@@ -300,6 +306,10 @@ docker-build-config-reloader: ## Build the config reloader container image.
 docker-build-filelog-offset-synch: ## Build the filelog offset synch container image.
 	@$(call build_container_image,$(FILELOG_OFFSET_SYNCH_IMG_REPOSITORY),$(FILELOG_OFFSET_SYNCH_IMG_TAG),images,images/filelogoffsetsynch/Dockerfile)
 
+.PHONY: docker-build-secret-ref-satellite
+docker-build-secret-ref-satellite: ## Build the secret ref satellite container image.
+	@$(call build_container_image,$(SECRET_REF_SATELLITE_IMG_REPOSITORY),$(SECRET_REF_SATELLITE_IMG_TAG),images,images/secretrefsatellite/Dockerfile)
+
 ifndef ignore-not-found
   ignore-not-found = false
 endif
@@ -333,6 +343,9 @@ deploy-via-helm: ## Deploy the controller via helm to the K8s cluster specified 
 		--set operator.filelogOffsetSynchImage.repository=$(FILELOG_OFFSET_SYNCH_IMG_REPOSITORY) \
 		--set operator.filelogOffsetSynchImage.tag=$(FILELOG_OFFSET_SYNCH_IMG_TAG) \
 		--set operator.filelogOffsetSynchImage.pullPolicy=$(FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY) \
+		--set operator.secretRefSatelliteImage.repository=$(SECRET_REF_SATELLITE_IMG_REPOSITORY) \
+		--set operator.secretRefSatelliteImage.tag=$(SECRET_REF_SATELLITE_IMG_TAG) \
+		--set operator.secretRefSatelliteImage.pullPolicy=$(SECRET_REF_SATELLITE_IMG_PULL_POLICY) \
 		--set operator.developmentMode=true \
 		dash0-operator \
 		$(OPERATOR_HELM_CHART)
