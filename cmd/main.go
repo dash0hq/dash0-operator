@@ -54,6 +54,8 @@ type environmentVariables struct {
 	operatorNamespace                    string
 	deploymentName                       string
 	webhookServiceName                   string
+	secretRefSatelliteDeploymentName     string
+	tokenUpdateServicePort               string
 	oTelCollectorNamePrefix              string
 	operatorImage                        string
 	initContainerImage                   string
@@ -74,6 +76,8 @@ const (
 	operatorNamespaceEnvVarName                    = "DASH0_OPERATOR_NAMESPACE"
 	deploymentNameEnvVarName                       = "DASH0_DEPLOYMENT_NAME"
 	webhookServiceNameEnvVarName                   = "DASH0_WEBHOOK_SERVICE_NAME"
+	secretRefSatelliteDeploymentNameEnvVarName     = "DASH0_SECRET_REF_SATELLITE_DEPLOYMENT_NAME"
+	tokenUpdateServicePortEnvVarName               = "DASH0_TOKEN_UPDATE_SERVICE_PORT"
 	oTelCollectorNamePrefixEnvVarName              = "OTEL_COLLECTOR_NAME_PREFIX"
 	operatorImageEnvVarName                        = "DASH0_OPERATOR_IMAGE"
 	initContainerImageEnvVarName                   = "DASH0_INIT_CONTAINER_IMAGE"
@@ -100,12 +104,13 @@ var (
 	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
 
-	startupTasksK8sClient   client.Client
-	isDocker                bool
-	deploymentSelfReference *appsv1.Deployment
-	envVars                 environmentVariables
+	startupTasksK8sClient           client.Client
+	isDocker                        bool
+	operatorDeploymentSelfReference *appsv1.Deployment
+	envVars                         environmentVariables
 
 	thirdPartyResourceSynchronizationQueue *workqueue.Typed[controller.ThirdPartyResourceSyncJob]
+	tokenUpdateService                     *selfmonitoringapiaccess.TokenUpdateService
 )
 
 func init() {
@@ -292,14 +297,14 @@ func main() {
 		startupTasksK8sClient,
 		&setupLog,
 	)
-	if err = findDeploymentSelfReference(
+	if operatorDeploymentSelfReference, err = findDeploymentReference(
 		ctx,
 		startupTasksK8sClient,
 		envVars.operatorNamespace,
 		envVars.deploymentName,
 		&setupLog,
 	); err != nil {
-		setupLog.Error(err, "The Dash0 operator manager process to lookup its own deployment failed.")
+		setupLog.Error(err, "The Dash0 operator manager lookup for its own deployment failed.")
 		os.Exit(1)
 	}
 
@@ -442,6 +447,9 @@ func startOperatorManager(
 	}
 	// ^mgr.Start(...) blocks. It only returns when the manager is terminating.
 
+	if tokenUpdateService != nil {
+		tokenUpdateService.Stop(&setupLog)
+	}
 	common.ShutDownOTelSdk(ctx)
 
 	return nil
@@ -461,6 +469,16 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 	webhookServiceName, isSet := os.LookupEnv(webhookServiceNameEnvVarName)
 	if !isSet {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, webhookServiceNameEnvVarName)
+	}
+
+	secretRefSatelliteDeploymentName, isSet := os.LookupEnv(secretRefSatelliteDeploymentNameEnvVarName)
+	if !isSet {
+		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, secretRefSatelliteDeploymentNameEnvVarName)
+	}
+
+	tokenUpdateServicePort, isSet := os.LookupEnv(tokenUpdateServicePortEnvVarName)
+	if !isSet {
+		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, tokenUpdateServicePortEnvVarName)
 	}
 
 	oTelCollectorNamePrefix, isSet := os.LookupEnv(oTelCollectorNamePrefixEnvVarName)
@@ -525,6 +543,8 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 		operatorNamespace:                    operatorNamespace,
 		deploymentName:                       deploymentName,
 		webhookServiceName:                   webhookServiceName,
+		secretRefSatelliteDeploymentName:     secretRefSatelliteDeploymentName,
+		tokenUpdateServicePort:               tokenUpdateServicePort,
 		oTelCollectorNamePrefix:              oTelCollectorNamePrefix,
 		operatorImage:                        operatorImage,
 		initContainerImage:                   initContainerImage,
@@ -609,7 +629,7 @@ func startDash0Controllers(
 		&setupLog,
 	)
 
-	logCurrentSelfMonitoringSettings(deploymentSelfReference)
+	logCurrentSelfMonitoringSettings(operatorDeploymentSelfReference)
 
 	k8sClient := mgr.GetClient()
 	instrumenter := &instrumentation.Instrumenter{
@@ -623,7 +643,7 @@ func startDash0Controllers(
 	oTelColResourceManager := &otelcolresources.OTelColResourceManager{
 		Client:                  k8sClient,
 		Scheme:                  mgr.GetScheme(),
-		DeploymentSelfReference: deploymentSelfReference,
+		DeploymentSelfReference: operatorDeploymentSelfReference,
 		OTelCollectorNamePrefix: envVars.oTelCollectorNamePrefix,
 		OTelColExtraConfig:      oTelColExtraConfig,
 		SendBatchMaxSize:        envVars.sendBatchMaxSize,
@@ -680,14 +700,15 @@ func startDash0Controllers(
 			persesDashboardCrdReconciler,
 			prometheusRuleCrdReconciler,
 		},
-		Scheme:                   mgr.GetScheme(),
-		Recorder:                 mgr.GetEventRecorderFor("dash0-operator-configuration-controller"),
-		BackendConnectionManager: backendConnectionManager,
-		DeploymentSelfReference:  deploymentSelfReference,
-		OTelSdkStarter:           oTelSdkStarter,
-		Images:                   images,
-		OperatorNamespace:        envVars.operatorNamespace,
-		DevelopmentMode:          developmentMode,
+		Scheme:                           mgr.GetScheme(),
+		Recorder:                         mgr.GetEventRecorderFor("dash0-operator-configuration-controller"),
+		BackendConnectionManager:         backendConnectionManager,
+		OperatorDeploymentSelfReference:  operatorDeploymentSelfReference,
+		OTelSdkStarter:                   oTelSdkStarter,
+		Images:                           images,
+		OperatorNamespace:                envVars.operatorNamespace,
+		SecretRefSatelliteDeploymentName: envVars.secretRefSatelliteDeploymentName,
+		DevelopmentMode:                  developmentMode,
 	}
 	if err := operatorConfigurationReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the operator configuration reconciler: %w", err)
@@ -730,6 +751,8 @@ func startDash0Controllers(
 	}).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the monitoring validation webhook: %w", err)
 	}
+	tokenUpdateService = selfmonitoringapiaccess.NewTokenUpdateService(envVars.tokenUpdateServicePort, oTelSdkStarter)
+	tokenUpdateService.Start(&setupLog)
 
 	oTelSdkStarter.WaitForOTelConfig(
 		[]selfmonitoringapiaccess.SelfMonitoringClient{
@@ -776,30 +799,30 @@ func detectDocker(
 	}
 }
 
-func findDeploymentSelfReference(
+func findDeploymentReference(
 	ctx context.Context,
 	k8sClient client.Client,
 	operatorNamespace string,
 	deploymentName string,
 	logger *logr.Logger,
-) error {
-	deploymentSelfReference = &appsv1.Deployment{}
+) (*appsv1.Deployment, error) {
+	deploymentReference := &appsv1.Deployment{}
 	fullyQualifiedName := fmt.Sprintf("%s/%s", operatorNamespace, deploymentName)
 	if err := k8sClient.Get(ctx, client.ObjectKey{
 		Namespace: operatorNamespace,
 		Name:      deploymentName,
-	}, deploymentSelfReference); err != nil {
-		logger.Error(err, "failed to get self reference for controller deployment")
-		return err
+	}, deploymentReference); err != nil {
+		logger.Error(err, fmt.Sprintf("failed to get reference to deployment %s", deploymentName))
+		return nil, err
 	}
-	if deploymentSelfReference.UID == "" {
-		msg := fmt.Sprintf("self reference for controller deployment %s has no UID", fullyQualifiedName)
+	if deploymentReference.UID == "" {
+		msg := fmt.Sprintf("reference for deployment %s (%s) has no UID", deploymentName, fullyQualifiedName)
 		//nolint:govet,staticcheck
 		err := fmt.Errorf(msg)
 		logger.Error(err, msg)
-		return err
+		return nil, err
 	}
-	return nil
+	return deploymentReference, nil
 }
 
 func executeStartupTasks(
@@ -853,10 +876,11 @@ func instrumentAtStartup(
 	startupInstrumenter.InstrumentAtStartup(ctx, startupTasksK8sClient, &setupLog)
 }
 
-func logCurrentSelfMonitoringSettings(deploymentSelfReference *appsv1.Deployment) {
+func logCurrentSelfMonitoringSettings(operatorDeploymentSelfReference *appsv1.Deployment) {
+	// TODO needs to be updated
 	selfMonitoringAndApiAccessConfiguration, err :=
 		selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromControllerDeployment(
-			deploymentSelfReference,
+			operatorDeploymentSelfReference,
 			controller.ControllerContainerName,
 		)
 	if err != nil {

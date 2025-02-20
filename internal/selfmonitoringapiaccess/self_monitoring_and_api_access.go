@@ -10,14 +10,13 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
-	"go.opentelemetry.io/otel/attribute"
-	semconv "go.opentelemetry.io/otel/semconv/v1.27.0"
+
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
-	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
@@ -403,26 +402,21 @@ func DisableSelfMonitoringInControllerDeployment(
 func EnableSelfMonitoringInControllerDeployment(
 	oTelSdkStarter *OTelSdkStarter,
 	selfMonitoringConfiguration SelfMonitoringAndApiAccessConfiguration,
-	controllerDeployment *appsv1.Deployment,
+	controllerDeploymentUID types.UID,
 	controllerContainerName string,
 	operatorVersion string,
 	developmentMode bool,
 	logger *logr.Logger,
-) {
-	selfMonitoringExport := selfMonitoringConfiguration.Export
-	oTelSdkConfig := ConvertExportConfigurationToOTelSDKConfig(
-		selfMonitoringExport,
-		controllerDeployment,
+) error {
+	logger.Info("XXX calling oTelSdkStarter.SetInput")
+	oTelSdkStarter.SetInput(
+		selfMonitoringConfiguration.Export,
+		controllerDeploymentUID,
 		controllerContainerName,
 		operatorVersion,
 		developmentMode,
+		logger,
 	)
-	if oTelSdkConfig != nil {
-		logger.Info("XXX calling UpdateConfig", "config", oTelSdkConfig)
-		oTelSdkStarter.UpdateConfig(oTelSdkConfig)
-	} else {
-		// TODO remove config to shut down OTel SDK
-	}
 
 	// 	controllerContainerIdx, err := findControllerContainer(controllerDeployment, controllerContainerName)
 	//	if err != nil {
@@ -450,6 +444,7 @@ func EnableSelfMonitoringInControllerDeployment(
 	//		developmentMode,
 	//	)
 	//	controllerDeployment.Spec.Template.Spec.Containers[controllerContainerIdx] = controllerContainer
+	return nil
 }
 
 func UpdateApiTokenWithoutAddingSelfMonitoringToControllerDeployment(
@@ -473,7 +468,7 @@ func UpdateApiTokenWithoutAddingSelfMonitoringToControllerDeployment(
 	authTokenEnvVar = &envVar
 
 	controllerContainer := controllerDeployment.Spec.Template.Spec.Containers[controllerContainerIdx]
-	addAuthTokenToContainer(
+	AddAuthTokenToContainer(
 		&controllerContainer,
 		authTokenEnvVar,
 	)
@@ -588,7 +583,7 @@ func enableSelfMonitoringInContainer(
 	developmentMode bool,
 ) {
 	if authTokenEnvVar != nil {
-		addAuthTokenToContainer(container, authTokenEnvVar)
+		AddAuthTokenToContainer(container, authTokenEnvVar)
 	}
 
 	exportSettings := ConvertExportConfigurationToEnvVarSettings(selfMonitoringExport)
@@ -628,7 +623,7 @@ func enableSelfMonitoringInContainer(
 	}
 }
 
-func addAuthTokenToContainer(container *corev1.Container, authTokenEnvVar *corev1.EnvVar) {
+func AddAuthTokenToContainer(container *corev1.Container, authTokenEnvVar *corev1.EnvVar) {
 	authTokenEnvVarIdx := slices.IndexFunc(container.Env, matchSelfMonitoringAndApiAccessAuthTokenEnvVar)
 	if authTokenEnvVarIdx == 0 {
 		// update the existing value
@@ -711,107 +706,14 @@ func convertHeadersToEnvVarValue(headers []dash0v1alpha1.Header) string {
 	return strings.Join(keyValuePairs, ",")
 }
 
-// ConvertExportConfigurationToOTelSDKConfig is used when enabling self-monitoring from within an already running
-// process. We use this approach for the operator manager.
-func ConvertExportConfigurationToOTelSDKConfig(
-	selfMonitoringExport dash0v1alpha1.Export,
-	controllerDeployment *appsv1.Deployment,
-	controllerContainerName string,
-	operatorVersion string,
-	developmentMode bool,
-) *common.OTelSdkConfig {
-	var endpointAndHeaders *EndpointAndHeaders
-	if selfMonitoringExport.Dash0 != nil {
-		dash0Export := selfMonitoringExport.Dash0
-		// TODO also implement secret ref in addition to token
-		if selfMonitoringExport.Dash0.Authorization.Token == nil {
-			panic("no auth token for self-monitoring available")
-		}
-		headers := []dash0v1alpha1.Header{{
-			Name:  util.AuthorizationHeaderName,
-			Value: fmt.Sprintf("Bearer %s", *selfMonitoringExport.Dash0.Authorization.Token),
-		}}
-		if dash0Export.Dataset != "" && dash0Export.Dataset != util.DatasetDefault {
-			headers = append(headers, dash0v1alpha1.Header{
-				Name:  util.Dash0DatasetHeaderName,
-				Value: dash0Export.Dataset,
-			})
-		}
-		endpointAndHeaders = &EndpointAndHeaders{
-			// Deliberatly not prepending a protocol here, but using the endpoint as-is. When configuring this via env
-			// var OTEL_EXPORTER_OTLP_ENDPOINT, the Go SDK will expect the endpoint to be a valid URL including a
-			// protocol. When setting the endpoint via in-code configuration, no protocol is expected.
-			Endpoint: dash0Export.Endpoint,
-			Protocol: "grpc",
-			Headers:  headers,
-		}
-	} else if selfMonitoringExport.Grpc != nil {
-		endpointAndHeaders = &EndpointAndHeaders{
-			Endpoint: selfMonitoringExport.Grpc.Endpoint,
-			Protocol: "grpc",
-			Headers:  selfMonitoringExport.Grpc.Headers,
-		}
-	} else if selfMonitoringExport.Http != nil {
-		protocol := "http/protobuf"
-		// The Go SDK does not support http/json, so we ignore this setting for now.
-		// if selfMonitoringExport.Http.Encoding == dash0v1alpha1.Json {
-		// 	 protocol = "http/json"
-		// }
-		endpointAndHeaders = &EndpointAndHeaders{
-			Endpoint: selfMonitoringExport.Http.Endpoint,
-			Protocol: protocol,
-			Headers:  selfMonitoringExport.Http.Headers,
-		}
-	}
-
-	if endpointAndHeaders == nil {
-		return nil
-	}
-
-	oTelSdkConfig := &common.OTelSdkConfig{
-		Endpoint: endpointAndHeaders.Endpoint,
-		Protocol: endpointAndHeaders.Protocol,
-		ResourceAttributes: []attribute.KeyValue{
-			{
-				Key:   semconv.ServiceNamespaceKey,
-				Value: attribute.StringValue("dash0.operator"),
-			},
-			{
-				Key:   semconv.ServiceNameKey,
-				Value: attribute.StringValue(controllerContainerName),
-			},
-			{
-				Key:   semconv.ServiceVersionKey,
-				Value: attribute.StringValue(operatorVersion),
-			},
-			{
-				Key:   semconv.K8SDeploymentUIDKey,
-				Value: attribute.StringValue(string(controllerDeployment.UID)),
-			},
-		},
-	}
-	if len(endpointAndHeaders.Headers) > 0 {
-		headers := make(map[string]string)
-		for _, header := range endpointAndHeaders.Headers {
-			headers[header.Name] = header.Value
-		}
-		oTelSdkConfig.Headers = headers
-	}
-	if developmentMode {
-		oTelSdkConfig.LogLevel = "debug"
-	}
-
-	return oTelSdkConfig
-}
-
 func disableSelfMonitoringInContainer(container *corev1.Container, removeAuthToken bool) {
 	if removeAuthToken {
-		removeEnvVar(container, util.SelfMonitoringAndApiAuthTokenEnvVarName)
+		RemoveEnvVar(container, util.SelfMonitoringAndApiAuthTokenEnvVarName)
 	}
-	removeEnvVar(container, otelExporterOtlpEndpointEnvVarName)
-	removeEnvVar(container, otelExporterOtlpProtocolEnvVarName)
-	removeEnvVar(container, otelExporterOtlpHeadersEnvVarName)
-	removeEnvVar(container, otelResourceAttribtuesEnvVarName)
+	RemoveEnvVar(container, otelExporterOtlpEndpointEnvVarName)
+	RemoveEnvVar(container, otelExporterOtlpProtocolEnvVarName)
+	RemoveEnvVar(container, otelExporterOtlpHeadersEnvVarName)
+	RemoveEnvVar(container, otelResourceAttribtuesEnvVarName)
 }
 
 func updateOrAppendEnvVar(container *corev1.Container, name string, value string) {
@@ -830,7 +732,7 @@ func updateOrAppendEnvVar(container *corev1.Container, name string, value string
 	}
 }
 
-func removeEnvVar(container *corev1.Container, name string) {
+func RemoveEnvVar(container *corev1.Container, name string) {
 	idx := slices.IndexFunc(container.Env, func(e corev1.EnvVar) bool {
 		return e.Name == name
 	})
