@@ -23,6 +23,7 @@ import (
 const (
 	OperatorDeploymentName            = "dash0-operator-deployment"
 	OperatorWebhookServiceName        = "dash0-operator-webhook-service"
+	SecretRefSatelliteDeploymentName  = "dash0-operator-secret-ref-satellite"
 	OperatorConfigurationResourceName = "dash0-operator-configuration-test"
 )
 
