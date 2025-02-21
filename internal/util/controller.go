@@ -233,7 +233,7 @@ func VerifyThatResourceIsUniqueInScope(
 			if r.GetUID() == resource.GetUID() {
 				continue
 			}
-			markAsDegraded(r.(dash0common.Dash0Resource), scope, logger)
+			markAsDegradedDueToNonUniqueResource(r.(dash0common.Dash0Resource), scope, logger)
 			if err = k8sClient.Status().Update(ctx, r); err != nil {
 				logger.Error(err, updateStatusFailedMessage)
 				// Deliberately not returning the error here, instead continue the loop and try to mark as many of the
@@ -254,7 +254,7 @@ func VerifyThatResourceIsUniqueInScope(
 			fmt.Sprintf("most recently created %s", resource.GetNaturalLanguageResourceTypeName()),
 			fmt.Sprintf("%s (%s)", mostRecentResource.GetName(), mostRecentResource.GetUID()),
 		)
-		markAsDegraded(resource, scope, logger)
+		markAsDegradedDueToNonUniqueResource(resource, scope, logger)
 		if err := k8sClient.Status().Update(ctx, resource.Get()); err != nil {
 			logger.Error(err, updateStatusFailedMessage)
 			return true, err
@@ -265,7 +265,7 @@ func VerifyThatResourceIsUniqueInScope(
 	}
 }
 
-func markAsDegraded(resource dash0common.Dash0Resource, scope string, logger *logr.Logger) {
+func markAsDegradedDueToNonUniqueResource(resource dash0common.Dash0Resource, scope string, logger *logr.Logger) {
 	logger.Info(fmt.Sprintf("Marking %s (%s) as degraded.", resource.GetName(), resource.GetUID()))
 	resource.EnsureResourceIsMarkedAsDegraded(
 		"NewerResourceIsPresent",
@@ -274,6 +274,25 @@ func markAsDegraded(resource dash0common.Dash0Resource, scope string, logger *lo
 			resource.GetNaturalLanguageResourceTypeName(),
 			scope,
 		))
+}
+
+func MarkOperatorConfigurationAsDegradedAndUpdateStatus(
+	ctx context.Context,
+	subResourceWriter client.SubResourceWriter,
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
+	reason string,
+	message string,
+	logger *logr.Logger,
+) error {
+	operatorConfigurationResource.EnsureResourceIsMarkedAsDegraded(
+		reason,
+		message,
+	)
+	if err := subResourceWriter.Update(ctx, operatorConfigurationResource); err != nil {
+		logger.Error(err, "Failed to update Dash0 operator status conditions, requeuing reconcile request.")
+		return err
+	}
+	return nil
 }
 
 func findAllResourceInstancesInScope(
