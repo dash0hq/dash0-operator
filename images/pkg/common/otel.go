@@ -21,6 +21,12 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
 
+const (
+	ProtocolGrpc         = "grpc"
+	ProtocolHttpProtobuf = "http/protobuf"
+	ProtocolHttpJson     = "http/json"
+)
+
 type OTelSdkConfig struct {
 	Endpoint           string
 	Protocol           string
@@ -47,20 +53,20 @@ func InitOTelSdk(
 		if !protocolIsSet {
 			// http/protobuf is the default transport protocol, see spec:
 			// https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/protocol/exporter.md
-			protocol = "http/protobuf"
+			protocol = ProtocolHttpProtobuf
 		}
 
 		var err error
 		switch protocol {
-		case "grpc":
+		case ProtocolGrpc:
 			if metricExporter, err = otlpmetricgrpc.New(ctx); err != nil {
 				log.Fatalf("Cannot create the OTLP gRPC metrics exporter: %v", err)
 			}
-		case "http/protobuf":
+		case ProtocolHttpProtobuf:
 			if metricExporter, err = otlpmetrichttp.New(ctx); err != nil {
 				log.Fatalf("Cannot create the OTLP HTTP metrics exporter: %v", err)
 			}
-		case "http/json":
+		case ProtocolHttpJson:
 			log.Fatalf("Cannot create the OTLP HTTP exporter: the protocol 'http/json' is currently unsupported")
 		default:
 			log.Fatalf("Unexpected OTLP protocol set as value of the 'OTEL_EXPORTER_OTLP_PROTOCOL' environment variable: %v", protocol)
@@ -110,12 +116,12 @@ func InitOTelSdkWithConfig(
 		if protocol == "" {
 			// http/protobuf is the default transport protocol, see spec:
 			// https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/protocol/exporter.md
-			protocol = "http/protobuf"
+			protocol = ProtocolHttpProtobuf
 		}
 
 		var err error
 		switch protocol {
-		case "grpc":
+		case ProtocolGrpc:
 			logger.Info("XXX InitOTelSdkWithConfig gRPC")
 			options := []otlpmetricgrpc.Option{otlpmetricgrpc.WithEndpoint(oTelSdkConfig.Endpoint)}
 			if len(oTelSdkConfig.Headers) > 0 {
@@ -124,7 +130,7 @@ func InitOTelSdkWithConfig(
 			if metricExporter, err = otlpmetricgrpc.New(ctx, options...); err != nil {
 				log.Fatalf("Cannot create the OTLP gRPC metrics exporter: %v", err)
 			}
-		case "http/protobuf":
+		case ProtocolHttpProtobuf:
 			logger.Info("XXX InitOTelSdkWithConfig HTTP")
 			options := []otlpmetrichttp.Option{otlpmetrichttp.WithEndpoint(oTelSdkConfig.Endpoint)}
 			if len(oTelSdkConfig.Headers) > 0 {
@@ -133,14 +139,15 @@ func InitOTelSdkWithConfig(
 			if metricExporter, err = otlpmetrichttp.New(ctx, options...); err != nil {
 				log.Fatalf("Cannot create the OTLP HTTP metrics exporter: %v", err)
 			}
-		case "http/json":
+		case ProtocolHttpJson:
 			log.Fatalf("Cannot create the OTLP HTTP exporter: the protocol 'http/json' is currently unsupported")
 		default:
 			log.Fatalf("Unexpected OTLP protocol set as value of the 'OTEL_EXPORTER_OTLP_PROTOCOL' environment variable: %v", protocol)
 		}
 
-		// This method is only used for the controller deployment, which has no daemonset UID (since it is a
-		// deployment), and the deployment UID is already contained oTelSdkConfig.ResourceAttributes.
+		// This method is only used for the operator manager deployment, which has no daemonset UID (since it is a
+		// deployment), and the deployment UID is already contained in oTelSdkConfig.ResourceAttributes. Hence, we
+		// ignore the daemonset/deployment UID return values from getKubernetesResourceAttributes here deliberately.
 		podUid, nodeName, _, _ := getKubernetesResourceAttributes()
 		resourceAttributes := assembleResource(ctx, podUid, nodeName, "", "", oTelSdkConfig.ResourceAttributes)
 		sdkMeterProvider := sdkmetric.NewMeterProvider(
