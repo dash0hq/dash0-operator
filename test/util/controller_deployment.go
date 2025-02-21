@@ -8,6 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
@@ -69,7 +70,7 @@ func appendSelfMonitoringEnvVars(env []corev1.EnvVar) []corev1.EnvVar {
 		},
 		corev1.EnvVar{
 			Name:  "OTEL_EXPORTER_OTLP_PROTOCOL",
-			Value: "grpc",
+			Value: common.ProtocolGrpc,
 		},
 		corev1.EnvVar{
 			Name:  "OTEL_RESOURCE_ATTRIBUTES",

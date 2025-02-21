@@ -182,14 +182,14 @@ func DefaultOperatorConfigurationResource() *dash0v1alpha1.Dash0OperatorConfigur
 func EnsureControllerDeploymentExists(
 	ctx context.Context,
 	k8sClient client.Client,
-	controllerDeployment *appsv1.Deployment,
+	operatorManagerDeployment *appsv1.Deployment,
 ) *appsv1.Deployment {
 	deployment := EnsureKubernetesObjectExists(
 		ctx,
 		k8sClient,
-		types.NamespacedName{Namespace: controllerDeployment.Namespace, Name: controllerDeployment.Name},
+		types.NamespacedName{Namespace: operatorManagerDeployment.Namespace, Name: operatorManagerDeployment.Name},
 		&appsv1.Deployment{},
-		controllerDeployment,
+		operatorManagerDeployment,
 	)
 	return deployment.(*appsv1.Deployment)
 }
@@ -197,9 +197,9 @@ func EnsureControllerDeploymentExists(
 func EnsureControllerDeploymentDoesNotExist(
 	ctx context.Context,
 	k8sClient client.Client,
-	controllerDeployment *appsv1.Deployment,
+	operatorManagerDeployment *appsv1.Deployment,
 ) {
-	Expect(k8sClient.Delete(ctx, controllerDeployment)).To(Succeed())
+	Expect(k8sClient.Delete(ctx, operatorManagerDeployment)).To(Succeed())
 }
 
 func CreateDefaultOperatorConfigurationResource(

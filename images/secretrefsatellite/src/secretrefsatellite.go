@@ -127,8 +127,12 @@ func notifyOperatorManagerWithRetry(
 	return retry.OnError(
 		wait.Backoff{
 			Duration: 500 * time.Millisecond,
-			Factor:   1.5,
-			Steps:    5,
+			Factor:   1.1,
+			// Allow for a very generous retry duration with many attempts. (We effectively keep trying for > 10 minutes
+			// here.) We update the secret satellite deployment directly at startup of the operator manager, if a Dash0
+			// export with secret ref is specified for the dash0-operator-configuration-auto-resource via Helm values,
+			// but the operator manager might need some time to also start the token update service web server.
+			Steps: 1200,
 		},
 		func(err error) bool {
 			log.Printf("notifying the operator manager failed, might be retried: %v\n", err)
@@ -187,7 +191,7 @@ func convertNon2xxStatusCodeToError(res *http.Response) error {
 	}
 
 	statusCodeErr := fmt.Errorf(
-		"unexpected status code %d when updating the token, response body is %s",
+		"unexpected status code %d when updating the token, response body is \"%s\"",
 		res.StatusCode,
 		string(responseBody),
 	)

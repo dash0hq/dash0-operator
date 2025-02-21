@@ -85,7 +85,6 @@ func (s *TokenUpdateService) Start(logger *logr.Logger) {
 		Addr:    fmt.Sprintf(":%s", s.port),
 		Handler: mux,
 		BaseContext: func(l net.Listener) context.Context {
-			ctx = context.WithValue(ctx, contextKeyAddress, l.Addr().String())
 			return ctx
 		},
 	}

@@ -34,11 +34,10 @@ type SelfMonitoringClient interface {
 }
 
 type OTelSdkConfigInput struct {
-	export                  dash0v1alpha1.Export
-	controllerDeploymentUID types.UID
-	controllerContainerName string
-	operatorVersion         string
-	developmentMode         bool
+	export                       dash0v1alpha1.Export
+	operatorManagerDeploymentUID types.UID
+	operatorVersion              string
+	developmentMode              bool
 }
 
 type OTelSdkStarter struct {
@@ -46,7 +45,6 @@ type OTelSdkStarter struct {
 	oTelSdkConfigInput     atomic.Pointer[OTelSdkConfigInput]
 	authTokenFromSecretRef atomic.Pointer[string]
 	configCompleteChannel  chan *common.OTelSdkConfig
-	logger                 *logr.Logger
 }
 
 const (
@@ -79,33 +77,35 @@ func (s *OTelSdkStarter) WaitForOTelConfig(selfMonitoringClients []SelfMonitorin
 
 func (s *OTelSdkStarter) SetInput(
 	export dash0v1alpha1.Export,
-	controllerDeploymentUID types.UID,
-	controllerContainerName string,
+	operatorManagerDeploymentUID types.UID,
 	operatorVersion string,
 	developmentMode bool,
 	logger *logr.Logger,
 ) {
+	logger.Info("XXX OTelSdkStarter#SetInput")
 	s.oTelSdkConfigInput.Store(&OTelSdkConfigInput{
-		export:                  export,
-		controllerDeploymentUID: controllerDeploymentUID,
-		controllerContainerName: controllerContainerName,
-		operatorVersion:         operatorVersion,
-		developmentMode:         developmentMode,
+		export:                       export,
+		operatorManagerDeploymentUID: operatorManagerDeploymentUID,
+		operatorVersion:              operatorVersion,
+		developmentMode:              developmentMode,
 	})
 	s.onInputHasChanged(logger)
 }
 
 func (s *OTelSdkStarter) RemoveInput(logger *logr.Logger) {
+	logger.Info("XXX OTelSdkStarter#RemoveInput")
 	s.oTelSdkConfigInput.Store(&OTelSdkConfigInput{})
 	s.onInputHasChanged(logger)
 }
 
 func (s *OTelSdkStarter) SetAuthTokenFromSecretRef(authToken string, logger *logr.Logger) {
+	logger.Info("XXX OTelSdkStarter#SetAuthTokenFromSecretRef")
 	s.authTokenFromSecretRef.Store(ptr.To(authToken))
 	s.onInputHasChanged(logger)
 }
 
 func (s *OTelSdkStarter) RemoveAuthTokenFromSecretRef(logger *logr.Logger) {
+	logger.Info("XXX OTelSdkStarter#RemoveAuthTokenFromSecretRef")
 	s.authTokenFromSecretRef.Store(ptr.To(""))
 	s.onInputHasChanged(logger)
 }
@@ -117,11 +117,14 @@ func (s *OTelSdkStarter) onInputHasChanged(logger *logr.Logger) {
 			s.oTelSdkConfigInput.Load(),
 			s.authTokenFromSecretRef.Load(),
 		)
+	logger.Info(fmt.Sprintf("XXX OTelSdkStarter#onInputHasChanged -> configComplete: %t, current state: %d", configComplete, currentOTelSdkState))
 	if configComplete {
 		if currentOTelSdkState == waitingToBeStarted {
+			logger.Info("XXX starting OTel SDK self-monitoring")
 			s.configCompleteChannel <- oTelSDKConfig
 		} else if currentOTelSdkState == running {
 			// TODO check if config has changed, restart OTel SDK with new config if necessary
+			logger.Info("XXX OTel SDK is already running")
 		} else if currentOTelSdkState == hasBeenShutDown {
 			// TODO restart OTel SDK -- after having called sdkMeterProvider.Shutdown previously, we probably need to
 			// re-create the meter provider and all meters. Maybe otel.go should own `currentOTelSdkState` instead of
@@ -138,6 +141,7 @@ func (s *OTelSdkStarter) onInputHasChanged(logger *logr.Logger) {
 		// configuration resources). Shut down the OTel SDK if it is still active.
 		if currentOTelSdkState == waitingToBeStarted {
 			// nothing to do
+			logger.Info("XXX OTel SDK starter will continue to wait for complete config")
 		} else if currentOTelSdkState == running {
 			// TODO shutdown
 			logger.Error(
@@ -146,6 +150,7 @@ func (s *OTelSdkStarter) onInputHasChanged(logger *logr.Logger) {
 			)
 		} else if currentOTelSdkState == hasBeenShutDown {
 			// nothing to do
+			logger.Info("XXX OTel SDK has already been shut down, nothing to do")
 		} else {
 			logger.Error(
 				fmt.Errorf("unknown OTel SDK state %d", currentOTelSdkState),
@@ -160,6 +165,8 @@ func (s *OTelSdkStarter) waitForCompleteOTelSDKConfiguration(
 ) {
 	// blocks until the config becomes available
 	config := <-s.configCompleteChannel
+	var newState oTelSdkState = running
+	s.currentOTelSdkState.Store(&newState)
 	startOTelSDK(selfMonitoringClients, config)
 }
 
@@ -219,20 +226,20 @@ func convertExportConfigurationToOTelSDKConfig(
 			// var OTEL_EXPORTER_OTLP_ENDPOINT, the Go SDK will expect the endpoint to be a valid URL including a
 			// protocol. When setting the endpoint via in-code configuration, no protocol is expected.
 			Endpoint: dash0Export.Endpoint,
-			Protocol: "grpc",
+			Protocol: common.ProtocolGrpc,
 			Headers:  headers,
 		}
 	} else if selfMonitoringExport.Grpc != nil {
 		endpointAndHeaders = &EndpointAndHeaders{
 			Endpoint: selfMonitoringExport.Grpc.Endpoint,
-			Protocol: "grpc",
+			Protocol: common.ProtocolGrpc,
 			Headers:  selfMonitoringExport.Grpc.Headers,
 		}
 	} else if selfMonitoringExport.Http != nil {
-		protocol := "http/protobuf"
+		protocol := common.ProtocolHttpProtobuf
 		// The Go SDK does not support http/json, so we ignore this setting for now.
 		// if selfMonitoringExport.Http.Encoding == dash0v1alpha1.Json {
-		// 	 protocol = "http/json"
+		// 	 protocol = common.ProtocolHttpJson
 		// }
 		endpointAndHeaders = &EndpointAndHeaders{
 			Endpoint: selfMonitoringExport.Http.Endpoint,
@@ -245,8 +252,7 @@ func convertExportConfigurationToOTelSDKConfig(
 		return nil, false
 	}
 
-	controllerDeploymentUID := oTelSdkConfigInput.controllerDeploymentUID
-	controllerContainerName := oTelSdkConfigInput.controllerContainerName
+	operatorManagerDeploymentUID := oTelSdkConfigInput.operatorManagerDeploymentUID
 	operatorVersion := oTelSdkConfigInput.operatorVersion
 	developmentMode := oTelSdkConfigInput.developmentMode
 	oTelSdkConfig := &common.OTelSdkConfig{
@@ -259,7 +265,7 @@ func convertExportConfigurationToOTelSDKConfig(
 			},
 			{
 				Key:   semconv.ServiceNameKey,
-				Value: attribute.StringValue(controllerContainerName),
+				Value: attribute.StringValue(util.OperatorManagerContainerName),
 			},
 			{
 				Key:   semconv.ServiceVersionKey,
@@ -267,7 +273,7 @@ func convertExportConfigurationToOTelSDKConfig(
 			},
 			{
 				Key:   semconv.K8SDeploymentUIDKey,
-				Value: attribute.StringValue(string(controllerDeploymentUID)),
+				Value: attribute.StringValue(string(operatorManagerDeploymentUID)),
 			},
 		},
 	}
