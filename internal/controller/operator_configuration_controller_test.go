@@ -58,7 +58,7 @@ var (
 
 var _ = Describe("The operation configuration resource controller", Ordered, func() {
 	ctx := context.Background()
-	var controllerDeployment *appsv1.Deployment
+	var operatorManagerDeployment *appsv1.Deployment
 
 	BeforeAll(func() {
 		EnsureTestNamespaceExists(ctx, k8sClient)
@@ -70,18 +70,18 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 		apiClient2 = &DummyApiClient{}
 	})
 
-	Describe("updates the controller deployment", func() {
+	Describe("updates the operator manager deployment", func() {
 		AfterEach(func() {
 			RemoveOperatorConfigurationResource(ctx, k8sClient)
-			EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, controllerDeployment)
+			EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, operatorManagerDeployment)
 		})
 
 		DescribeTable("to reflect self-monitoring and API access auth settings:", func(config SelfMonitoringAndApiAccessTestConfig) {
-			controllerDeployment = config.existingControllerDeployment()
-			EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
-			reconciler = createReconciler(controllerDeployment)
+			operatorManagerDeployment = config.existingControllerDeployment()
+			EnsureControllerDeploymentExists(ctx, k8sClient, operatorManagerDeployment)
+			reconciler = createReconciler(operatorManagerDeployment)
 
-			initialVersion := controllerDeployment.ResourceVersion
+			initialVersion := operatorManagerDeployment.ResourceVersion
 
 			CreateOperatorConfigurationResourceWithSpec(
 				ctx,
@@ -96,7 +96,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 			gomegaTimeout := timeout
 			gomgaWrapper := Eventually
 			if !config.expectK8sClientUpdate {
-				// For test cases where the initial controller deployment is already in the expected state (that is, it
+				// For test cases where the initial operator manager deployment is already in the expected state (that is, it
 				// matches what the operator configuration resource says), we use gomega's Consistently instead of
 				// Eventually to make the test meaningful. We need to make sure that we do not update the controller
 				// deployment at all for these cases.
@@ -358,12 +358,12 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 		})
 
 		DescribeTable("by settings or removing the API config", func(config ApiClientSetRemoveTestConfig) {
-			controllerDeployment = EnsureControllerDeploymentExists(
+			operatorManagerDeployment = EnsureControllerDeploymentExists(
 				ctx,
 				k8sClient,
 				CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth(),
 			)
-			reconciler = createReconciler(controllerDeployment)
+			reconciler = createReconciler(operatorManagerDeployment)
 
 			operatorConfigurationResource := CreateOperatorConfigurationResourceWithSpec(
 				ctx,
@@ -456,14 +456,14 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 		BeforeEach(func() {
 			// When creating the resource, we assume the operator has no
 			// self-monitoring enabled
-			controllerDeployment = CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth()
-			EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
-			reconciler = createReconciler(controllerDeployment)
+			operatorManagerDeployment = CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth()
+			EnsureControllerDeploymentExists(ctx, k8sClient, operatorManagerDeployment)
+			reconciler = createReconciler(operatorManagerDeployment)
 		})
 
 		AfterEach(func() {
 			RemoveOperatorConfigurationResource(ctx, k8sClient)
-			EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, controllerDeployment)
+			EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, operatorManagerDeployment)
 		})
 
 		Describe("when adding the collector resources", func() {
@@ -498,7 +498,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 
 		Describe("enabling self-monitoring", func() {
 
-			DescribeTable("it enables self-monitoring in the controller deployment",
+			DescribeTable("it enables self-monitoring in the operator manager deployment",
 				func(config SelfMonitoringTestConfig) {
 					CreateOperatorConfigurationResourceWithSpec(
 						ctx,
@@ -516,9 +516,8 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 					Eventually(func(g Gomega) {
 						updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
 						selfMonitoringAndApiAccessConfiguration, err :=
-							selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromControllerDeployment(
+							selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
 								updatedDeployment,
-								ControllerContainerName,
 							)
 						g.Expect(err).NotTo(HaveOccurred())
 						g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeTrue())
@@ -553,7 +552,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 			)
 		})
 
-		DescribeTable("it adds the auth token to the controller deployment even if self-monitoring is not enabled",
+		DescribeTable("it adds the auth token to the operator manager deployment even if self-monitoring is not enabled",
 			func(config SelfMonitoringTestConfig) {
 				CreateOperatorConfigurationResourceWithSpec(
 					ctx,
@@ -571,9 +570,8 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				Eventually(func(g Gomega) {
 					updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
 					selfMonitoringAndApiAccessConfiguration, err :=
-						selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromControllerDeployment(
+						selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
 							updatedDeployment,
-							ControllerContainerName,
 						)
 					g.Expect(err).NotTo(HaveOccurred())
 					g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
@@ -592,7 +590,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 
 		Describe("disabling self-monitoring", func() {
 
-			It("it does not change the controller deployment (because self-monitoring was not enabled in the first place)", func() {
+			It("it does not change the operator manager deployment (because self-monitoring was not enabled in the first place)", func() {
 				CreateOperatorConfigurationResourceWithSpec(
 					ctx,
 					k8sClient,
@@ -609,9 +607,8 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				Consistently(func(g Gomega) {
 					updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
 					selfMonitoringAndApiAccessConfiguration, err :=
-						selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromControllerDeployment(
+						selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
 							updatedDeployment,
-							ControllerContainerName,
 						)
 					g.Expect(err).NotTo(HaveOccurred())
 					g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
@@ -629,17 +626,17 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				BeforeEach(func() {
 					// When creating the resource, we assume the operator has
 					// self-monitoring enabled
-					controllerDeployment = CreateControllerDeploymentWithSelfMonitoringWithToken()
-					EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
-					reconciler = createReconciler(controllerDeployment)
+					operatorManagerDeployment = CreateControllerDeploymentWithSelfMonitoringWithToken()
+					EnsureControllerDeploymentExists(ctx, k8sClient, operatorManagerDeployment)
+					reconciler = createReconciler(operatorManagerDeployment)
 				})
 
 				AfterEach(func() {
 					RemoveOperatorConfigurationResource(ctx, k8sClient)
-					EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, controllerDeployment)
+					EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, operatorManagerDeployment)
 				})
 
-				It("it does not change the controller deployment", func() {
+				It("it does not change the operator manager deployment", func() {
 					CreateOperatorConfigurationResourceWithSpec(
 						ctx,
 						k8sClient,
@@ -657,9 +654,8 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 					Consistently(func(g Gomega) {
 						updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
 						selfMonitoringAndApiAccessConfiguration, err :=
-							selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromControllerDeployment(
+							selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
 								updatedDeployment,
-								ControllerContainerName,
 							)
 						g.Expect(err).NotTo(HaveOccurred())
 						g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeTrue())
@@ -670,9 +666,9 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 			Describe("when self-monitoring was previously disabled", func() {
 
 				BeforeEach(func() {
-					controllerDeployment = CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth()
-					EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
-					reconciler = createReconciler(controllerDeployment)
+					operatorManagerDeployment = CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth()
+					EnsureControllerDeploymentExists(ctx, k8sClient, operatorManagerDeployment)
+					reconciler = createReconciler(operatorManagerDeployment)
 
 					CreateOperatorConfigurationResourceWithSpec(
 						ctx,
@@ -688,10 +684,10 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 
 				AfterEach(func() {
 					RemoveOperatorConfigurationResource(ctx, k8sClient)
-					EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, controllerDeployment)
+					EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, operatorManagerDeployment)
 				})
 
-				It("it enables self-monitoring in the controller deployment", func() {
+				It("it enables self-monitoring in the operator manager deployment", func() {
 					resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
 					Expect(*resource.Spec.SelfMonitoring.Enabled).To(BeFalse())
 
@@ -704,9 +700,8 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 					Eventually(func(g Gomega) {
 						updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
 						selfMonitoringAndApiAccessConfiguration, err :=
-							selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromControllerDeployment(
+							selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
 								updatedDeployment,
-								ControllerContainerName,
 							)
 						g.Expect(err).NotTo(HaveOccurred())
 						g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeTrue())
@@ -731,17 +726,17 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 						},
 					)
 
-					controllerDeployment = CreateControllerDeploymentWithSelfMonitoringWithToken()
-					EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
-					reconciler = createReconciler(controllerDeployment)
+					operatorManagerDeployment = CreateControllerDeploymentWithSelfMonitoringWithToken()
+					EnsureControllerDeploymentExists(ctx, k8sClient, operatorManagerDeployment)
+					reconciler = createReconciler(operatorManagerDeployment)
 				})
 
 				AfterEach(func() {
 					RemoveOperatorConfigurationResource(ctx, k8sClient)
-					EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, controllerDeployment)
+					EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, operatorManagerDeployment)
 				})
 
-				It("it disables self-monitoring in the controller deployment", func() {
+				It("it disables self-monitoring in the operator manager deployment", func() {
 					resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
 					Expect(*resource.Spec.SelfMonitoring.Enabled).To(BeTrue())
 
@@ -754,9 +749,8 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 					Eventually(func(g Gomega) {
 						updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
 						selfMonitoringAndApiAccessConfiguration, err :=
-							selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromControllerDeployment(
+							selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
 								updatedDeployment,
-								ControllerContainerName,
 							)
 						g.Expect(err).NotTo(HaveOccurred())
 						g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
@@ -778,17 +772,17 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 						},
 					)
 
-					controllerDeployment = CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth()
-					EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
-					reconciler = createReconciler(controllerDeployment)
+					operatorManagerDeployment = CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth()
+					EnsureControllerDeploymentExists(ctx, k8sClient, operatorManagerDeployment)
+					reconciler = createReconciler(operatorManagerDeployment)
 				})
 
 				AfterEach(func() {
 					RemoveOperatorConfigurationResource(ctx, k8sClient)
-					EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, controllerDeployment)
+					EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, operatorManagerDeployment)
 				})
 
-				It("it does not change the controller deployment", func() {
+				It("it does not change the operator manager deployment", func() {
 					resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
 					Expect(*resource.Spec.SelfMonitoring.Enabled).To(BeFalse())
 
@@ -801,9 +795,8 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 					Consistently(func(g Gomega) {
 						updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
 						selfMonitoringAndApiAccessConfiguration, err :=
-							selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromControllerDeployment(
+							selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
 								updatedDeployment,
-								ControllerContainerName,
 							)
 						g.Expect(err).NotTo(HaveOccurred())
 						g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
@@ -829,22 +822,21 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 					},
 				)
 
-				controllerDeployment = CreateControllerDeploymentWithSelfMonitoringWithToken()
-				EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
-				reconciler = createReconciler(controllerDeployment)
+				operatorManagerDeployment = CreateControllerDeploymentWithSelfMonitoringWithToken()
+				EnsureControllerDeploymentExists(ctx, k8sClient, operatorManagerDeployment)
+				reconciler = createReconciler(operatorManagerDeployment)
 			})
 
 			AfterEach(func() {
 				RemoveOperatorConfigurationResource(ctx, k8sClient)
-				EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, controllerDeployment)
+				EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, operatorManagerDeployment)
 				DeleteMonitoringResource(ctx, k8sClient)
 			})
 
-			It("it disables self-monitoring in the controller deployment", func() {
+			It("it disables self-monitoring in the operator manager deployment", func() {
 				selfMonitoringAndApiAccessConfiguration, err :=
-					selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromControllerDeployment(
-						controllerDeployment,
-						ControllerContainerName,
+					selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
+						operatorManagerDeployment,
 					)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeTrue())
@@ -864,9 +856,8 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				Eventually(func(g Gomega) {
 					updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
 					selfMonitoringAndApiAccessConfiguration, err :=
-						selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromControllerDeployment(
+						selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
 							updatedDeployment,
-							ControllerContainerName,
 						)
 					g.Expect(err).NotTo(HaveOccurred())
 					g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
@@ -903,21 +894,20 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 					},
 				)
 
-				controllerDeployment = CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth()
-				EnsureControllerDeploymentExists(ctx, k8sClient, controllerDeployment)
-				reconciler = createReconciler(controllerDeployment)
+				operatorManagerDeployment = CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth()
+				EnsureControllerDeploymentExists(ctx, k8sClient, operatorManagerDeployment)
+				reconciler = createReconciler(operatorManagerDeployment)
 			})
 
 			AfterEach(func() {
 				RemoveOperatorConfigurationResource(ctx, k8sClient)
-				EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, controllerDeployment)
+				EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, operatorManagerDeployment)
 			})
 
-			It("it does not change the controller deployment", func() {
+			It("it does not change the operator manager deployment", func() {
 				selfMonitoringAndApiAccessConfiguration, err :=
-					selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromControllerDeployment(
-						controllerDeployment,
-						ControllerContainerName,
+					selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
+						operatorManagerDeployment,
 					)
 				Expect(err).NotTo(HaveOccurred())
 				Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
@@ -939,9 +929,8 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				Consistently(func(g Gomega) {
 					updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
 					selfMonitoringAndApiAccessConfiguration, err :=
-						selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromControllerDeployment(
+						selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
 							updatedDeployment,
-							ControllerContainerName,
 						)
 					g.Expect(err).NotTo(HaveOccurred())
 					g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
@@ -966,7 +955,7 @@ func cleanUpDeploymentSpecForDiff(spec *appsv1.DeploymentSpec) {
 	spec.ProgressDeadlineSeconds = nil
 }
 
-func createReconciler(controllerDeployment *appsv1.Deployment) *OperatorConfigurationReconciler {
+func createReconciler(operatorManagerDeployment *appsv1.Deployment) *OperatorConfigurationReconciler {
 	oTelColResourceManager := &otelcolresources.OTelColResourceManager{
 		Client:                  k8sClient,
 		Scheme:                  k8sClient.Scheme(),
@@ -989,7 +978,7 @@ func createReconciler(controllerDeployment *appsv1.Deployment) *OperatorConfigur
 			apiClient2,
 		},
 		BackendConnectionManager:        backendConnectionManager,
-		OperatorDeploymentSelfReference: controllerDeployment,
+		OperatorDeploymentSelfReference: operatorManagerDeployment,
 		DanglingEventsTimeouts:          &DanglingEventsTimeoutsTest,
 		Images:                          TestImages,
 		OperatorNamespace:               OperatorNamespace,
@@ -1113,11 +1102,11 @@ func verifySelfMonitoringConfigurationHttp(
 func verifyNoSelfMontoringButAuthTokenEnvVarFromToken(
 	g Gomega,
 	selfMonitoringAndApiAccessConfiguration selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration,
-	controllerDeployment *appsv1.Deployment,
+	operatorManagerDeployment *appsv1.Deployment,
 	_ string,
 ) {
 	g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
-	container := controllerDeployment.Spec.Template.Spec.Containers[0]
+	container := operatorManagerDeployment.Spec.Template.Spec.Containers[0]
 	g.Expect(container.Env).To(
 		ContainElement(MatchEnvVar("SELF_MONITORING_AND_API_AUTH_TOKEN", AuthorizationTokenTest)))
 }
@@ -1125,11 +1114,11 @@ func verifyNoSelfMontoringButAuthTokenEnvVarFromToken(
 func verifyNoSelfMonitoringButAuthTokenEnvVarFromSecretRef(
 	g Gomega,
 	selfMonitoringAndApiAccessConfiguration selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration,
-	controllerDeployment *appsv1.Deployment,
+	operatorManagerDeployment *appsv1.Deployment,
 	_ string,
 ) {
 	g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
-	container := controllerDeployment.Spec.Template.Spec.Containers[0]
+	container := operatorManagerDeployment.Spec.Template.Spec.Containers[0]
 	g.Expect(container.Env).To(
 		ContainElement(MatchEnvVarValueFrom("SELF_MONITORING_AND_API_AUTH_TOKEN", "secret-ref", "key")))
 }

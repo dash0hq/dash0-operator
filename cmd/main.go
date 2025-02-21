@@ -223,8 +223,8 @@ func main() {
 		&enableLeaderElection,
 		"leader-elect",
 		false,
-		"Enable leader election for controller manager. "+
-			"Enabling this will ensure there is only one active controller manager.",
+		"Enable leader election for operator manager. "+
+			"Enabling this will ensure there is only one active operator manager.",
 	)
 	flag.BoolVar(
 		&secureMetrics,
@@ -308,9 +308,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	var operatorConfiguration *startup.OperatorConfigurationValues
+	var operatorConfigurationValues *startup.OperatorConfigurationValues
 	if len(operatorConfigurationEndpoint) > 0 {
-		operatorConfiguration = &startup.OperatorConfigurationValues{
+		operatorConfigurationValues = &startup.OperatorConfigurationValues{
 			Endpoint: operatorConfigurationEndpoint,
 			Token:    operatorConfigurationToken,
 			SecretRef: startup.SecretRef{
@@ -323,10 +323,10 @@ func main() {
 			ClusterName: operatorConfigurationClusterName,
 		}
 		if len(operatorConfigurationApiEndpoint) > 0 {
-			operatorConfiguration.ApiEndpoint = operatorConfigurationApiEndpoint
+			operatorConfigurationValues.ApiEndpoint = operatorConfigurationApiEndpoint
 		}
 		if len(operatorConfigurationDataset) > 0 {
-			operatorConfiguration.Dataset = operatorConfigurationDataset
+			operatorConfigurationValues.Dataset = operatorConfigurationDataset
 		}
 	}
 
@@ -338,7 +338,7 @@ func main() {
 		webhookServer,
 		probeAddr,
 		enableLeaderElection,
-		operatorConfiguration,
+		operatorConfigurationValues,
 		developmentMode,
 	); err != nil {
 		setupLog.Error(err, "The Dash0 operator manager process failed to start.")
@@ -354,7 +354,7 @@ func startOperatorManager(
 	webhookServer k8swebhook.Server,
 	probeAddr string,
 	enableLeaderElection bool,
-	operatorConfiguration *startup.OperatorConfigurationValues,
+	operatorConfigurationValues *startup.OperatorConfigurationValues,
 	developmentMode bool,
 ) error {
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
@@ -421,7 +421,7 @@ func startOperatorManager(
 		developmentMode,
 	)
 
-	err = startDash0Controllers(ctx, mgr, clientset, operatorConfiguration, developmentMode)
+	err = startDash0Controllers(ctx, mgr, clientset, operatorConfigurationValues, developmentMode)
 	if err != nil {
 		return err
 	}
@@ -592,7 +592,7 @@ func startDash0Controllers(
 	ctx context.Context,
 	mgr manager.Manager,
 	clientset *kubernetes.Clientset,
-	operatorConfiguration *startup.OperatorConfigurationValues,
+	operatorConfigurationValues *startup.OperatorConfigurationValues,
 	developmentMode bool,
 ) error {
 	oTelColExtraConfig, err := readOTelColExtraConfiguration()
@@ -618,11 +618,11 @@ func startDash0Controllers(
 	}
 	isIPv6Cluster := strings.Count(envVars.podIp, ":") >= 2
 
-	executeStartupTasks(
+	operatorConfigurationResource := executeStartupTasks(
 		ctx,
 		clientset,
 		mgr.GetEventRecorderFor("dash0-startup-tasks"),
-		operatorConfiguration,
+		operatorConfigurationValues,
 		images,
 		oTelCollectorBaseUrl,
 		isIPv6Cluster,
@@ -758,6 +758,14 @@ func startDash0Controllers(
 		},
 	)
 
+	startSelfMonitoringIfPossible(
+		ctx,
+		oTelSdkStarter,
+		operatorConfigurationResource,
+		images.GetOperatorVersion(),
+		developmentMode,
+	)
+
 	// TODO if available, set value from auto-operator-config right away
 
 	return nil
@@ -824,16 +832,16 @@ func executeStartupTasks(
 	ctx context.Context,
 	clientset *kubernetes.Clientset,
 	eventRecorder record.EventRecorder,
-	operatorConfiguration *startup.OperatorConfigurationValues,
+	operatorConfigurationValues *startup.OperatorConfigurationValues,
 	images util.Images,
 	oTelCollectorBaseUrl string,
 	isIPv6Cluster bool,
 	logger *logr.Logger,
-) {
-	createOperatorConfiguration(
+) *dash0v1alpha1.Dash0OperatorConfiguration {
+	operatorConfigurationResource := createAutoOperatorConfigurationResource(
 		ctx,
 		startupTasksK8sClient,
-		operatorConfiguration,
+		operatorConfigurationValues,
 		logger,
 	)
 	instrumentAtStartup(
@@ -845,6 +853,7 @@ func executeStartupTasks(
 		oTelCollectorBaseUrl,
 		isIPv6Cluster,
 	)
+	return operatorConfigurationResource
 }
 
 func instrumentAtStartup(
@@ -874,19 +883,18 @@ func instrumentAtStartup(
 func logCurrentSelfMonitoringSettings(operatorDeploymentSelfReference *appsv1.Deployment) {
 	// TODO needs to be updated
 	selfMonitoringAndApiAccessConfiguration, err :=
-		selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromControllerDeployment(
+		selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
 			operatorDeploymentSelfReference,
-			controller.ControllerContainerName,
 		)
 	if err != nil {
-		setupLog.Error(err, "cannot determine whether self-monitoring is enabled in the controller deployment")
+		setupLog.Error(err, "cannot determine whether self-monitoring is enabled in the operator manager deployment")
 	}
 
 	endpointAndHeaders :=
 		selfmonitoringapiaccess.ConvertExportConfigurationToEnvVarSettings(
 			selfMonitoringAndApiAccessConfiguration.Export)
 	setupLog.Info(
-		"Self-monitoring/API access settings on controller deployment:",
+		"Self-monitoring/API access settings on operator manager deployment:",
 		"self-monitoring enabled",
 		selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled,
 		"self-monitoring endpoint",
@@ -896,22 +904,90 @@ func logCurrentSelfMonitoringSettings(operatorDeploymentSelfReference *appsv1.De
 	)
 }
 
-func createOperatorConfiguration(
+func createAutoOperatorConfigurationResource(
 	ctx context.Context,
 	k8sClient client.Client,
-	operatorConfiguration *startup.OperatorConfigurationValues,
+	operatorConfigurationValues *startup.OperatorConfigurationValues,
 	logger *logr.Logger,
+) *dash0v1alpha1.Dash0OperatorConfiguration {
+	if operatorConfigurationValues == nil {
+		return nil
+	}
+	handler := startup.AutoOperatorConfigurationResourceHandler{
+		Client:             k8sClient,
+		OperatorNamespace:  envVars.operatorNamespace,
+		WebhookServiceName: envVars.webhookServiceName,
+	}
+	if operatorConfigurationResource, err :=
+		handler.CreateOrUpdateOperatorConfigurationResource(ctx, operatorConfigurationValues, logger); err != nil {
+		logger.Error(err, "Failed to create the requested Dash0 operator configuration resource.")
+		return nil
+	} else {
+		return operatorConfigurationResource
+	}
+}
+
+// startSelfMonitoringIfPossible starts the OTel SDK directly, instead of waiting for the operator configuration
+// resource to be picked up by a reconcile cycle. That is, if the command line parameters used to start the operator
+// manager process had instructions to create an auto operator configuration resource, executeStartupTasks has already
+// triggered the asynchronous creation of the resource. Instead of waiting for the resource to actually be created, and
+// then waiting for a reconcile request being routed to the OperatorConfigurationController, just for the purpose of
+// initializing the OTel SDK, we can initialize the OTel SDK right away with the values from the command line
+// parameters.
+func startSelfMonitoringIfPossible(
+	ctx context.Context,
+	oTelSdkStarter *selfmonitoringapiaccess.OTelSdkStarter,
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
+	operatorVersion string,
+	developmentMode bool,
 ) {
-	if operatorConfiguration != nil {
-		handler := startup.AutoOperatorConfigurationResourceHandler{
-			Client:             k8sClient,
-			OperatorNamespace:  envVars.operatorNamespace,
-			WebhookServiceName: envVars.webhookServiceName,
-		}
-		if err := handler.CreateOrUpdateOperatorConfigurationResource(ctx, operatorConfiguration, logger); err != nil {
-			logger.Error(err, "Failed to create the requested Dash0 operator configuration resource.")
+	if operatorConfigurationResource == nil ||
+		operatorConfigurationResource.Spec.SelfMonitoring.Enabled == nil ||
+		!*operatorConfigurationResource.Spec.SelfMonitoring.Enabled {
+		setupLog.Info("XXX no opconf auto resource or self-monitoring not enabled, not starting OTel SDK")
+		return
+	}
+
+	selfMonitoringConfiguration, err :=
+		selfmonitoringapiaccess.ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
+			operatorConfigurationResource,
+			&setupLog,
+		)
+	if err != nil {
+		setupLog.Error(
+			err,
+			"cannot generate self-monitoring/API access configuration from operator configuration resource startup values",
+		)
+		return
+	}
+
+	if selfMonitoringConfiguration.Export.Dash0 != nil &&
+		selfMonitoringConfiguration.Export.Dash0.Authorization.SecretRef != nil {
+		setupLog.Info("XXX calling ExchangeSecretRefForTokenIfNecessary at startup")
+		if err = selfmonitoringapiaccess.ExchangeSecretRefForTokenIfNecessary(
+			ctx,
+			startupTasksK8sClient,
+			envVars.operatorNamespace,
+			envVars.secretRefSatelliteDeploymentName,
+			selfMonitoringConfiguration,
+			operatorConfigurationResource,
+			&setupLog,
+		); err != nil {
+			setupLog.Error(err, "cannot exchange secret ref for token")
+			// Deliberately not aborting the rest of the operations here, we will try to exchange the secret ref for a
+			// token again later via the reconcile cycle of the operator configuration controller; there is no reason to
+			// not make the rest of the OTel SDK config available to the oTelSdkStarter here already.
 		}
 	}
+
+	setupLog.Info("XXX calling oTelSdkStarter.SetInput at startup")
+	oTelSdkStarter.SetInput(
+		selfMonitoringConfiguration.Export,
+		operatorDeploymentSelfReference.UID,
+		operatorVersion,
+		developmentMode,
+		&setupLog,
+	)
 }
 
 func deleteMonitoringResourcesInAllNamespaces(logger *logr.Logger) error {

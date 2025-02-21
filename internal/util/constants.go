@@ -11,6 +11,7 @@ const (
 	DatasetDefault                          = "default"
 	SelfMonitoringAndApiAuthTokenEnvVarName = "SELF_MONITORING_AND_API_AUTH_TOKEN"
 	FieldManager                            = "dash0-operator"
+	OperatorManagerContainerName            = "manager"
 
 	ActorController WorkloadModifierActor = "controller"
 	ActorWebhook    WorkloadModifierActor = "webhook"

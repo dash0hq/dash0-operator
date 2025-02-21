@@ -29,17 +29,20 @@ var (
 	//   when wait.Backoff would stop increasing Duration due to either Steps or Cap, retry.OnError instead uses this as
 	//   a trigger to stop retrying, and it returns the last error to the client.
 	//
-	//   // wait.Backoff effectively says that after Steps retries, the duration will no longer change but remain
+	//   // wait.Backoff effectively says that after Steps retries, the duration will no longer change due to `Factor`,
+	//   // but remain constant.
 	//   // However, according to the function godoc comment on wait.backoff.ExponentialBackoff, backoff.Steps is the
-	//   // maximum number of retries. So when the number of unsuccessful retries is equal to "Steps", the retry.OnError
+	//   // maximum number of retries. So when the number of unsuccessful retries is equal to "Steps", retry.OnError
 	//   // gives up and the most recent error is returned to the client.
 	//   Steps: ...
 	//
 	//   // wait.Backoff effectively says that Cap is another way to limit the increase of Duration between retries, in
 	//   // addition to or as an alternative to Steps. When Duration hits Cap, it will no longer be incremented.
-	//   // With retry.OnError retrying is not stopped when the total time has reached Cap (as one might think), but
-	//   // instead it works like this: If factor would increase Duration to a value higher than Cap, then retry.OnError
-	//   // will stop retrying and return the last error.
+	//   // However, according to the function godoc comment on wait.backoff.ExponentialBackoff, retry.OnError gives up
+	//   // once "a sleep truncated by the cap on duration has been completed." That is, when the Duration hits Cap,
+	//   // there is exactly one more retry, and if that is not successful, retry.OnError gives up. Note that Cap is not
+	//   // a limit to the aggregated duration of all retries, but a limit to the Duration between retries, when it is
+	//   // increased via a Factor > 1.0.
 	//   Cap: ...
 	// }
 	defaultRetryBackoff = wait.Backoff{
