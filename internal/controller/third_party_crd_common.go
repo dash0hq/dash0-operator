@@ -115,7 +115,7 @@ type ThirdPartyResourceReconciler interface {
 		qualifiedName string,
 		status dash0v1alpha1.SynchronizationStatus,
 		itemsTotal int,
-		succesfullySynchronized []string,
+		successfullySynchronized []string,
 		synchronizationErrorsPerItem map[string]string,
 		validationIssuesPerItem map[string][]string,
 	) interface{}
@@ -672,7 +672,7 @@ func validatePreconditions(
 	if authToken == "" {
 		logger.Info(
 			fmt.Sprintf(
-				"No auth token is set on the controller deployment, the %s(s) from %s/%s not be updated in Dash0.",
+				"No auth token is set on the operator manager deployment, the %s(s) from %s/%s not be updated in Dash0.",
 				resourceReconciler.ShortName(),
 				namespace,
 				name,
@@ -849,7 +849,7 @@ func convertNon2xxStatusCodeToError(
 	responseBody, readErr := io.ReadAll(res.Body)
 	if readErr != nil {
 		readBodyErr := fmt.Errorf("unable to read the API response payload after receiving status code %d when "+
-			"trying to udpate/create/delete the %s \"%s\" at %s",
+			"trying to update/create/delete the %s \"%s\" at %s",
 			res.StatusCode,
 			resourceReconciler.ShortName(),
 			req.ItemName,
@@ -875,7 +875,7 @@ func writeSynchronizationResult(
 	monitoringResource *dash0v1alpha1.Dash0Monitoring,
 	thirdPartyResource *unstructured.Unstructured,
 	itemsTotal int,
-	succesfullySynchronized []string,
+	successfullySynchronized []string,
 	validationIssuesPerItem map[string][]string,
 	synchronizationErrorsPerItem map[string]string,
 	logger *logr.Logger,
@@ -883,9 +883,9 @@ func writeSynchronizationResult(
 	qualifiedName := fmt.Sprintf("%s/%s", thirdPartyResource.GetNamespace(), thirdPartyResource.GetName())
 
 	result := dash0v1alpha1.Failed
-	if len(succesfullySynchronized) > 0 && len(validationIssuesPerItem) == 0 && len(synchronizationErrorsPerItem) == 0 {
+	if len(successfullySynchronized) > 0 && len(validationIssuesPerItem) == 0 && len(synchronizationErrorsPerItem) == 0 {
 		result = dash0v1alpha1.Successful
-	} else if len(succesfullySynchronized) > 0 {
+	} else if len(successfullySynchronized) > 0 {
 		result = dash0v1alpha1.PartiallySuccessful
 	}
 
@@ -918,7 +918,7 @@ func writeSynchronizationResult(
 						resourceReconciler.ShortName(),
 						qualifiedName,
 						itemsTotal,
-						succesfullySynchronized,
+						successfullySynchronized,
 						validationIssuesPerItem,
 						synchronizationErrorsPerItem,
 						err,
@@ -930,7 +930,7 @@ func writeSynchronizationResult(
 				qualifiedName,
 				result,
 				itemsTotal,
-				succesfullySynchronized,
+				successfullySynchronized,
 				synchronizationErrorsPerItem,
 				validationIssuesPerItem,
 			)
@@ -971,7 +971,7 @@ func writeSynchronizationResult(
 				resourceReconciler.ShortName(),
 				qualifiedName,
 				itemsTotal,
-				succesfullySynchronized,
+				successfullySynchronized,
 				validationIssuesPerItem,
 				synchronizationErrorsPerItem,
 			))

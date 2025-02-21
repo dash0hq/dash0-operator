@@ -26,20 +26,21 @@ import (
 
 type OperatorConfigurationReconciler struct {
 	client.Client
-	Clientset                *kubernetes.Clientset
-	ApiClients               []ApiClient
-	Scheme                   *runtime.Scheme
-	Recorder                 record.EventRecorder
-	BackendConnectionManager *backendconnection.BackendConnectionManager
-	DeploymentSelfReference  *appsv1.Deployment
-	DanglingEventsTimeouts   *util.DanglingEventsTimeouts
-	Images                   util.Images
-	OperatorNamespace        string
-	DevelopmentMode          bool
+	Clientset                        *kubernetes.Clientset
+	ApiClients                       []ApiClient
+	Scheme                           *runtime.Scheme
+	Recorder                         record.EventRecorder
+	BackendConnectionManager         *backendconnection.BackendConnectionManager
+	OperatorDeploymentSelfReference  *appsv1.Deployment // TODO should not be required anymore, remove?
+	OTelSdkStarter                   *selfmonitoringapiaccess.OTelSdkStarter
+	DanglingEventsTimeouts           *util.DanglingEventsTimeouts
+	Images                           util.Images
+	OperatorNamespace                string
+	SecretRefSatelliteDeploymentName string
+	DevelopmentMode                  bool
 }
 
 const (
-	ControllerContainerName                        = "manager"
 	updateStatusFailedMessageOperatorConfiguration = "Failed to update Dash0 operator configuration status " +
 		"conditions, requeuing reconcile request."
 )
@@ -130,13 +131,13 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		// that resource. The solution for this problem is to avoid the manager pod restart for self-monitoring/API
 		// access purposes, see https://linear.app/dash0/issue/ENG-3455/avoid-controller-pod-self-restart-for-self-monitoringapi-auth-token
 		if err = r.removeSelfMonitoringAndApiAccessAndUpdate(ctx); err != nil {
-			logger.Error(err, "cannot disable self-monitoring/API access of the controller deployment, requeuing reconcile request.")
+			logger.Error(err, "cannot disable self-monitoring/API access of the operator manager deployment, requeuing reconcile request.")
 			return ctrl.Result{
 				Requeue: true,
 			}, nil
 		} else {
 
-			logger.Info("Self-monitoring of the controller deployment has been disabled")
+			logger.Info("Self-monitoring of the operator manager deployment has been disabled")
 		}
 		if r.reconcileOpenTelemetryCollector(ctx, &logger) != nil {
 			return ctrl.Result{}, err
@@ -194,13 +195,15 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		}
 	}
 
+	logger.Info("XXX operator configuration reconcile", "operator configuration resource", resource)
+	// TODO the way we retrieve the "current config" is now broken, needs to be fixed (fetch from otelsdkstarter and
+	// also from where ever we end up storing the API access config)
 	currentSelfMonitoringAndApiAccessConfiguration, err :=
-		selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromControllerDeployment(
-			r.DeploymentSelfReference,
-			ControllerContainerName,
+		selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
+			r.OperatorDeploymentSelfReference,
 		)
 	if err != nil {
-		logger.Error(err, "cannot get self-monitoring/API access configuration from controller deployment")
+		logger.Error(err, "cannot get self-monitoring/API access configuration from operator manager deployment")
 		return ctrl.Result{
 			Requeue: true,
 		}, err
@@ -216,21 +219,41 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, err
 	}
 
-	controllerDeployment := &appsv1.Deployment{}
-	if err = r.Client.Get(ctx, client.ObjectKeyFromObject(r.DeploymentSelfReference), controllerDeployment); err != nil {
-		return ctrl.Result{}, fmt.Errorf("cannot fetch the current controller deployment: %w", err)
+	logger.Info(
+		"XXX calling exchangeSecretRefForTokenIfNecessary",
+		"newSelfMonitoringAndApiAccessConfiguration",
+		newSelfMonitoringAndApiAccessConfiguration,
+	)
+	if err = selfmonitoringapiaccess.ExchangeSecretRefForTokenIfNecessary(
+		ctx,
+		r.Client,
+		r.OperatorNamespace,
+		r.SecretRefSatelliteDeploymentName,
+		newSelfMonitoringAndApiAccessConfiguration,
+		resource,
+		&logger,
+	); err != nil {
+		logger.Error(err, "cannot exchange secret ref for token")
+		return ctrl.Result{}, err
 	}
+
+	logger.Info("XXX previous self-monitoring/API access config", "config", currentSelfMonitoringAndApiAccessConfiguration)
+	logger.Info("XXX new      self-monitoring/API access config", "config", newSelfMonitoringAndApiAccessConfiguration)
 	if !reflect.DeepEqual(currentSelfMonitoringAndApiAccessConfiguration, newSelfMonitoringAndApiAccessConfiguration) {
+		// 1. operator_configuration_controller#Reconcile -> operator_configuration_controller#applySelfMonitoringAndApiAccess
+		logger.Info("Applying the new self-monitoring and API access configuration.")
 		if err = r.applySelfMonitoringAndApiAccess(
-			controllerDeployment,
 			newSelfMonitoringAndApiAccessConfiguration,
+			&logger,
 		); err != nil {
-			logger.Error(err, "cannot apply self-monitoring configuration to the controller deployment")
-			if statusUpdateErr := r.markAsDegraded(
+			// TODO error message and status needs update
+			logger.Error(err, "cannot apply self-monitoring configuration to the operator manager deployment")
+			if statusUpdateErr := util.MarkOperatorConfigurationAsDegradedAndUpdateStatus(
 				ctx,
+				r.Status(),
 				resource,
-				"CannotUpdatedControllerDeployment",
-				"Could not update the controller deployment to reflect the self-monitoring settings.",
+				"CannotUpdatedOperatorManagerDeployment",
+				"Could not update the operator manager deployment to reflect the self-monitoring settings.",
 				&logger,
 			); statusUpdateErr != nil {
 				return ctrl.Result{}, statusUpdateErr
@@ -238,26 +261,8 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 			return ctrl.Result{}, err
 		}
 
-		if err = r.Client.Update(
-			ctx,
-			controllerDeployment,
-			&client.UpdateOptions{FieldManager: util.FieldManager},
-		); err != nil {
-			logger.Error(err, "cannot update the controller deployment")
-			if statusUpdateErr := r.markAsDegraded(
-				ctx,
-				resource,
-				"CannotUpdatedControllerDeployment",
-				"Could not update the controller deployment.",
-				&logger,
-			); statusUpdateErr != nil {
-				return ctrl.Result{}, statusUpdateErr
-			}
-			return ctrl.Result{}, err
-		}
-		logger.Info("The controller deployment has been updated.")
 	} else {
-		logger.Info("The controller deployment is up to date.")
+		logger.Info("The self-monitoring and API access configuration is up to date.")
 	}
 
 	if r.reconcileOpenTelemetryCollector(ctx, &logger) != nil {
@@ -274,80 +279,67 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 }
 
 func (r *OperatorConfigurationReconciler) applySelfMonitoringAndApiAccess(
-	controllerDeployment *appsv1.Deployment,
 	selfMonitoringAndApiAccessConfiguration selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration,
+	logger *logr.Logger,
 ) error {
 	if selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled {
-		if err := selfmonitoringapiaccess.EnableSelfMonitoringInControllerDeployment(
-			controllerDeployment,
-			ControllerContainerName,
+		// 2. operator_configuration_controller#applySelfMonitoringAndApiAccess -> selfmonitoringapiaccess.EnableSelfMonitoringInOperatorManagerDeployment
+		if err := selfmonitoringapiaccess.EnableSelfMonitoringInOperatorManagerDeployment(
+			r.OTelSdkStarter,
 			selfMonitoringAndApiAccessConfiguration,
+			r.OperatorDeploymentSelfReference.UID,
 			r.Images.GetOperatorVersion(),
 			r.DevelopmentMode,
+			logger,
 		); err != nil {
-			return fmt.Errorf("cannot apply settings to enable self-monitoring to the controller deployment: %w", err)
+			return fmt.Errorf("cannot add the Dash0 API token to the operator manager deployment: %w", err)
 		}
-	} else if selfMonitoringAndApiAccessConfiguration.HasDash0ApiAccessConfigured() {
-		if err := selfmonitoringapiaccess.UpdateApiTokenWithoutAddingSelfMonitoringToControllerDeployment(
-			controllerDeployment,
-			ControllerContainerName,
-			selfMonitoringAndApiAccessConfiguration.GetDash0Authorization(),
-		); err != nil {
-			return fmt.Errorf("cannot add the Dash0 API token to the controller deployment: %w", err)
-		}
-		if err := selfmonitoringapiaccess.DisableSelfMonitoringInControllerDeployment(
-			controllerDeployment,
-			ControllerContainerName,
-			false,
-		); err != nil {
-			return fmt.Errorf("cannot apply settings to disable self-monitoring to the controller deployment: %w", err)
-		}
-	} else {
-		if err := selfmonitoringapiaccess.DisableSelfMonitoringInControllerDeployment(
-			controllerDeployment,
-			ControllerContainerName,
-			true,
-		); err != nil {
-			return fmt.Errorf("cannot apply settings to the controller deployment to disable self-monitoring and API access: %w", err)
-		}
+		// TODO bring back the cases below later
+		//} else if selfMonitoringAndApiAccessConfiguration.HasDash0ApiAccessConfigured() {
+		//	// TODO resolve secret ref (potentially) and get the API token
+		//	if err := selfmonitoringapiaccess.UpdateApiTokenWithoutAddingSelfMonitoringToOperatorManagerDeployment(
+		//		operatorManagerDeployment,
+		//		OperatorManagerContainerName,
+		//		selfMonitoringAndApiAccessConfiguration.GetDash0Authorization(),
+		//	); err != nil {
+		//		return fmt.Errorf("cannot add the Dash0 API token to the operator manager deployment: %w", err)
+		//	}
+		//	// TODO remove self-monitoring OTel SDK configuration, stop OTel SDK
+		//	if err := selfmonitoringapiaccess.DisableSelfMonitoringInOperatorManagerDeployment(
+		//		operatorManagerDeployment,
+		//		OperatorManagerContainerName,
+		//		false,
+		//	); err != nil {
+		//		return fmt.Errorf("cannot apply settings to disable self-monitoring to the operator manager deployment: %w", err)
+		//	}
+		//} else {
+		//	// TODO remove self-monitoring OTel SDK configuration, stop OTel SDK
+		//	if err := selfmonitoringapiaccess.DisableSelfMonitoringInOperatorManagerDeployment(
+		//		operatorManagerDeployment,
+		//		OperatorManagerContainerName,
+		//		true,
+		//	); err != nil {
+		//		return fmt.Errorf("cannot apply settings to the operator manager deployment to disable self-monitoring and API access: %w", err)
+		//	}
 	}
-
 	return nil
 }
 
 func (r *OperatorConfigurationReconciler) removeSelfMonitoringAndApiAccessAndUpdate(ctx context.Context) error {
-	updatedDeployment := &appsv1.Deployment{}
-	if err := r.Client.Get(ctx, client.ObjectKeyFromObject(r.DeploymentSelfReference), updatedDeployment); err != nil {
-		return fmt.Errorf("cannot fetch the current controller deployment: %w", err)
+	// TODO needs to be updated
+	operatorManagerDeployment := &appsv1.Deployment{}
+	if err := r.Client.Get(ctx, client.ObjectKeyFromObject(r.OperatorDeploymentSelfReference), operatorManagerDeployment); err != nil {
+		return fmt.Errorf("cannot fetch the current operator manager deployment: %w", err)
 	}
 
-	if err := selfmonitoringapiaccess.DisableSelfMonitoringInControllerDeployment(
-		updatedDeployment,
-		ControllerContainerName,
+	if err := selfmonitoringapiaccess.DisableSelfMonitoringInOperatorManagerDeployment(
+		operatorManagerDeployment,
 		true,
 	); err != nil {
-		return fmt.Errorf("cannot apply settings to disable self-monitoring to the controller deployment: %w", err)
+		return fmt.Errorf("cannot apply settings to disable self-monitoring to the operator manager deployment: %w", err)
 	}
 
-	return r.Client.Update(ctx, updatedDeployment, &client.UpdateOptions{FieldManager: util.FieldManager})
-}
-
-func (r *OperatorConfigurationReconciler) markAsDegraded(
-	ctx context.Context,
-	resource *dash0v1alpha1.Dash0OperatorConfiguration,
-	reason string,
-	message string,
-	logger *logr.Logger,
-) error {
-	resource.EnsureResourceIsMarkedAsDegraded(
-		reason,
-		message,
-	)
-	if err := r.Status().Update(ctx, resource); err != nil {
-		logger.Error(err, "Failed to update Dash0 operator status conditions, requeuing reconcile request.")
-		return err
-	}
-	return nil
+	return r.Client.Update(ctx, operatorManagerDeployment, &client.UpdateOptions{FieldManager: util.FieldManager})
 }
 
 func (r *OperatorConfigurationReconciler) reconcileOpenTelemetryCollector(
