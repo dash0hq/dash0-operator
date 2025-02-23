@@ -2,13 +2,13 @@ const std = @import("std");
 
 const null_terminated_string = [*:0]const u8;
 
-const dash0_log_prefix = "Dash0 injector: ";
+const log_prefix = "Dash0 injector: ";
 
 const otel_java_agent_path = "/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar";
-const dash0_java_tool_options_addition = "-javaagent:" ++ otel_java_agent_path;
+const java_tool_options_addition = "-javaagent:" ++ otel_java_agent_path;
 
 const otel_nodejs_module = "/__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry";
-const dash0_node_options_addition = "--require " ++ otel_nodejs_module;
+const node_options_addition = "--require " ++ otel_nodejs_module;
 
 // We need to use a rather "innocent" type here, the actual type involves
 // optionals that cannot be used in global declarations.
@@ -30,12 +30,12 @@ var is_debug = false;
 
 // Keep global pointers to already-calculated values to avoid multiple allocations
 // on repeated lookups.
-var java_tool_options_value_calculated = false;
-var java_tool_options_value: ?null_terminated_string = null;
-var node_options_value_calculated = false;
-var node_options_value: ?null_terminated_string = null;
-var otel_resource_attributes_value_calculated = false;
-var otel_resource_attributes_value: ?null_terminated_string = null;
+var modified_java_tool_options_value_calculated = false;
+var modified_java_tool_options_value: ?null_terminated_string = null;
+var modified_node_options_value_calculated = false;
+var modified_node_options_value: ?null_terminated_string = null;
+var modified_otel_resource_attributes_value_calculated = false;
+var modified_otel_resource_attributes_value: ?null_terminated_string = null;
 
 export fn getenv(name_z: null_terminated_string) ?null_terminated_string {
     const name = std.mem.sliceTo(name_z, 0);
@@ -71,10 +71,12 @@ export fn getenv(name_z: null_terminated_string) ?null_terminated_string {
 
     const res = getEnvValue(name);
 
-    if (res) |value| {
-        printDebug("{s} = '{s}'", .{ name, value });
-    } else {
-        printDebug("{s} = null", .{name});
+    if (is_debug) {
+        if (res) |value| {
+            printDebug("{s} = '{s}'", .{ name, value });
+        } else {
+            printDebug("{s} = null", .{name});
+        }
     }
 
     return res;
@@ -84,32 +86,30 @@ fn getEnvValue(name: [:0]const u8) ?null_terminated_string {
     const original_value = std.posix.getenv(name);
 
     if (std.mem.eql(u8, name, "OTEL_RESOURCE_ATTRIBUTES")) {
-        if (!otel_resource_attributes_value_calculated) {
-            otel_resource_attributes_value = getOtelResourceAttributesValue(name, original_value);
-            otel_resource_attributes_value_calculated = true;
-        } else {
-            std.debug.print("REUSED VALUE\n", .{});
+        if (!modified_otel_resource_attributes_value_calculated) {
+            modified_otel_resource_attributes_value = getModifiedOtelResourceAttributesValue(name, original_value);
+            modified_otel_resource_attributes_value_calculated = true;
         }
 
-        if (otel_resource_attributes_value) |updated_value| {
+        if (modified_otel_resource_attributes_value) |updated_value| {
             return updated_value;
         }
     } else if (std.mem.eql(u8, name, "JAVA_TOOL_OPTIONS")) {
-        if (!java_tool_options_value_calculated) {
-            java_tool_options_value = getJavaToolOptionsValue(name, original_value);
-            java_tool_options_value_calculated = true;
+        if (!modified_java_tool_options_value_calculated) {
+            modified_java_tool_options_value = getModifiedJavaToolOptionsValue(name, original_value);
+            modified_java_tool_options_value_calculated = true;
         }
 
-        if (java_tool_options_value) |updated_value| {
+        if (modified_java_tool_options_value) |updated_value| {
             return updated_value;
         }
     } else if (std.mem.eql(u8, name, "NODE_OPTIONS")) {
-        if (!node_options_value_calculated) {
-            node_options_value = getNodeOptionsValue(name, original_value);
-            node_options_value_calculated = true;
+        if (!modified_node_options_value_calculated) {
+            modified_node_options_value = getModifiedNodeOptionsValue(name, original_value);
+            modified_node_options_value_calculated = true;
         }
 
-        if (node_options_value) |updated_value| {
+        if (modified_node_options_value) |updated_value| {
             return updated_value;
         }
     }
@@ -122,7 +122,7 @@ fn getEnvValue(name: [:0]const u8) ?null_terminated_string {
     return null;
 }
 
-fn getOtelResourceAttributesValue(name: [:0]const u8, original_value: ?[:0]const u8) ?null_terminated_string {
+fn getModifiedOtelResourceAttributesValue(name: [:0]const u8, original_value: ?[:0]const u8) ?null_terminated_string {
     if (getResourceAttributes()) |resource_attributes| {
         defer allocator.free(resource_attributes);
 
@@ -133,7 +133,7 @@ fn getOtelResourceAttributesValue(name: [:0]const u8, original_value: ?[:0]const
             // memory corruption in the parent process. The Libcs can do it too, but
             // they apparently YOLO it.
             const return_buffer = std.fmt.allocPrintZ(allocator, "{s},{s}", .{ resource_attributes, val }) catch |err| {
-                printDebug("Cannot allocate memory to manipulate the value of '{s}': {}", .{ name, err });
+                printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ name, err });
                 return null;
             };
 
@@ -143,7 +143,21 @@ fn getOtelResourceAttributesValue(name: [:0]const u8, original_value: ?[:0]const
             // memory corruption in the parent process. The Libcs can do it too, but
             // they apparently YOLO it.
             const return_buffer = std.fmt.allocPrintZ(allocator, "{s}", .{resource_attributes}) catch |err| {
-                printDebug("Cannot allocate memory to manipulate the value of '{s}': {}", .{ name, err });
+                printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ name, err });
+                return null;
+            };
+
+            return return_buffer.ptr;
+        }
+    } else {
+        // No resource attributes to add. Return a pointer to the current value,
+        // or null if there is no current value.
+        if (original_value) |val| {
+            // Note: We can *never* deallocate this, or we may cause a USE_AFTER_FREE
+            // memory corruption in the parent process. The Libcs can do it too, but
+            // they apparently YOLO it.
+            const return_buffer = std.fmt.allocPrintZ(allocator, "{s}", .{val}) catch |err| {
+                printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ name, err });
                 return null;
             };
 
@@ -151,28 +165,14 @@ fn getOtelResourceAttributesValue(name: [:0]const u8, original_value: ?[:0]const
         }
     }
 
-    // No resource attributes to add. Return a pointer to the current value,
-    // or null if there is no current value.
-    if (original_value) |val| {
-        // Note: We can *never* deallocate this, or we may cause a USE_AFTER_FREE
-        // memory corruption in the parent process. The Libcs can do it too, but
-        // they apparently YOLO it.
-        const return_buffer = std.fmt.allocPrintZ(allocator, "{s}", .{val}) catch |err| {
-            printDebug("Cannot allocate memory to manipulate the value of '{s}': {}", .{ name, err });
-            return null;
-        };
-
-        return return_buffer.ptr;
-    }
-
     return null;
 }
 
-fn getJavaToolOptionsValue(name: [:0]const u8, original_value: ?[:0]const u8) ?null_terminated_string {
+fn getModifiedJavaToolOptionsValue(name: [:0]const u8, original_value: ?[:0]const u8) ?null_terminated_string {
     // Check the existence of the Jar file: by passing a `-javaagent` to a
     // jar file that does not exist or cannot be opened will crash the JVM
     std.fs.cwd().access(otel_java_agent_path, .{}) catch |err| {
-        printDebug("Skipping injection of OTel Java Agent in 'JAVA_TOOL_OPTIONS', because of an issue accessing the Jar file at {s}: {}", .{ otel_java_agent_path, err });
+        printError("Skipping injection of OTel Java Agent in 'JAVA_TOOL_OPTIONS' because of an issue accessing the Jar file at {s}: {}", .{ otel_java_agent_path, err });
         return null;
     };
 
@@ -195,62 +195,66 @@ fn getJavaToolOptionsValue(name: [:0]const u8, original_value: ?[:0]const u8) ?n
         if (getResourceAttributes()) |resource_attributes| {
             defer allocator.free(resource_attributes);
 
+            // If JAVA_TOOL_OPTIONS is already set, append our --javaagent after it.
+
             // Note: We can *never* deallocate this, or we may cause a USE_AFTER_FREE
             // memory corruption in the parent process. The Libcs can do it too, but
             // they apparently YOLO it.
-            const return_buffer = std.fmt.allocPrintZ(allocator, "{s} {s} -Dotel.resource.attributes={s}", .{ val, dash0_java_tool_options_addition, resource_attributes }) catch |err| {
-                printDebug("Cannot allocate memory to manipulate the value of '{s}': {}", .{ name, err });
+            const return_buffer = std.fmt.allocPrintZ(allocator, "{s} {s} -Dotel.resource.attributes={s}", .{ val, java_tool_options_addition, resource_attributes }) catch |err| {
+                printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ name, err });
+                return null;
+            };
+
+            return return_buffer.ptr;
+        } else {
+            // If JAVA_TOOL_OPTIONS is already set, append our --javaagent after it.
+
+            // Note: We can *never* deallocate this, or we may cause a USE_AFTER_FREE
+            // memory corruption in the parent process. The Libcs can do it too, but
+            // they apparently YOLO it.
+            const return_buffer = std.fmt.allocPrintZ(allocator, "{s} {s}", .{ java_tool_options_addition, val }) catch |err| {
+                printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ name, err });
                 return null;
             };
 
             return return_buffer.ptr;
         }
-
-        // If a JAVA_TOOL_OPTIONS is already present, append it after our --javaagent.
-
-        // Note: We can *never* deallocate this, or we may cause a USE_AFTER_FREE
-        // memory corruption in the parent process. The Libcs can do it too, but
-        // they apparently YOLO it.
-        const return_buffer = std.fmt.allocPrintZ(allocator, "{s} {s}", .{ dash0_java_tool_options_addition, val }) catch |err| {
-            printDebug("Cannot allocate memory to manipulate the value of '{s}': {}", .{ name, err });
-            return null;
-        };
-
-        return return_buffer.ptr;
     }
 
-    return dash0_java_tool_options_addition[0..].ptr;
+    return java_tool_options_addition[0..].ptr;
 }
 
-fn getNodeOptionsValue(name: [:0]const u8, original_value: ?[:0]const u8) ?null_terminated_string {
+fn getModifiedNodeOptionsValue(name: [:0]const u8, original_value: ?[:0]const u8) ?null_terminated_string {
     // Check the existence of the Node module: requiring or importing a module
     // that does not exist or cannot be opened will crash the Node.js process
     // with an 'ERR_MODULE_NOT_FOUND' error.
     std.fs.cwd().access(otel_nodejs_module, .{}) catch |err| {
-        printDebug("Skipping injection of OTel Node.js in 'NODE_OPTIONS', because of an issue accessing the Node.js module at {s}: {}", .{ otel_nodejs_module, err });
+        printError("Skipping injection of OTel Node.js module in 'NODE_OPTIONS' because of an issue accessing the Node.js module at {s}: {}", .{ otel_nodejs_module, err });
         return null;
     };
 
     if (original_value) |val| {
-        // If NODE_OPTIONS were present, append it after our --require.
+        // If NODE_OPTIONS is already set, prefix our --require to the original value.
 
         // Note: We can *never* deallocate this, or we may cause a USE_AFTER_FREE
         // memory corruption in the parent process. The Libcs can do it too, but
         // they apparently YOLO it.
-        const return_buffer = std.fmt.allocPrintZ(allocator, "{s} {s}", .{ dash0_node_options_addition, val }) catch |err| {
-            printDebug("Cannot allocate memory to manipulate the value of '{s}': {}", .{ name, err });
+        const return_buffer = std.fmt.allocPrintZ(allocator, "{s} {s}", .{ node_options_addition, val }) catch |err| {
+            printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ name, err });
             return null;
         };
 
         return return_buffer.ptr;
     }
 
-    return dash0_node_options_addition[0..].ptr;
+    return node_options_addition[0..].ptr;
 }
 
+// If `resource_attributes_key` is not null, we append a `{key}={value}`
+// otherwise just `{value}`
 const EnvToResourceAttributeMapping = struct {
     environement_variable_name: []const u8,
-    resource_attributes_key: []const u8,
+    resource_attributes_key: ?[]const u8,
 };
 
 const mappings: [8]EnvToResourceAttributeMapping = .{ EnvToResourceAttributeMapping{
@@ -276,7 +280,7 @@ const mappings: [8]EnvToResourceAttributeMapping = .{ EnvToResourceAttributeMapp
     .resource_attributes_key = "k8s.container.name",
 }, EnvToResourceAttributeMapping{
     .environement_variable_name = "DASH0_RESOURCE_ATTRIBUTES",
-    .resource_attributes_key = "",
+    .resource_attributes_key = null,
 } };
 
 // Called must free the returned []u8 array, if a non-null value is returned.
@@ -290,10 +294,9 @@ fn getResourceAttributes() ?[]u8 {
                     final_len += 1; // ","
                 }
 
-                if (mapping.resource_attributes_key.len > 0) {
-                    final_len += std.fmt.count("{s}={s}", .{ mapping.resource_attributes_key, value });
+                if (mapping.resource_attributes_key) |attribute_key| {
+                    final_len += std.fmt.count("{s}={s}", .{ attribute_key, value });
                 } else {
-                    // DASH0_RESOURCE_ATTRIBUTES
                     final_len += value.len;
                 }
             }
@@ -305,34 +308,34 @@ fn getResourceAttributes() ?[]u8 {
     }
 
     const resource_attributes = allocator.alloc(u8, final_len) catch |err| {
-        printDebug("Cannot allocate memory to prepare the resource attributes (len: {d}): {}", .{ final_len, err });
+        printError("Cannot allocate memory to prepare the resource attributes (len: {d}): {}", .{ final_len, err });
         return null;
     };
 
     var fbs = std.io.fixedBufferStream(resource_attributes);
 
-    var isFirstToken = true;
+    var is_first_token = true;
     for (mappings) |mapping| {
-        if (std.posix.getenv(mapping.environement_variable_name)) |value| {
+        const env_var_name = mapping.environement_variable_name;
+        if (std.posix.getenv(env_var_name)) |value| {
             if (value.len > 0) {
-                if (isFirstToken) {
-                    isFirstToken = false;
+                if (is_first_token) {
+                    is_first_token = false;
                 } else {
                     std.fmt.format(fbs.writer(), ",", .{}) catch |err| {
-                        printDebug("Cannot append ',' delimiter to resource attributes: {}", .{err});
+                        printError("Cannot append ',' delimiter to resource attributes: {}", .{err});
                         return null;
                     };
                 }
 
-                if (mapping.resource_attributes_key.len > 0) {
-                    std.fmt.format(fbs.writer(), "{s}={s}", .{ mapping.resource_attributes_key, value }) catch |err| {
-                        printDebug("Cannot append '{s}={s}' from env var '{s}' to resource attributes: {}", .{ mapping.resource_attributes_key, value, mapping.environement_variable_name, err });
+                if (mapping.resource_attributes_key) |attribute_key| {
+                    std.fmt.format(fbs.writer(), "{s}={s}", .{ attribute_key, value }) catch |err| {
+                        printError("Cannot append '{s}={s}' from env var '{s}' to resource attributes: {}", .{ attribute_key, value, env_var_name, err });
                         return null;
                     };
                 } else {
-                    // DASH0_RESOURCE_ATTRIBUTES
                     std.fmt.format(fbs.writer(), "{s}", .{value}) catch |err| {
-                        printDebug("Cannot append '{s}' from env var '{s}' to resource attributes: {}", .{ value, mapping.environement_variable_name, err });
+                        printError("Cannot append '{s}' from env var '{s}' to resource attributes: {}", .{ value, env_var_name, err });
                         return null;
                     };
                 }
@@ -346,6 +349,24 @@ fn getResourceAttributes() ?[]u8 {
 
 fn printDebug(comptime fmt: []const u8, args: anytype) void {
     if (is_debug) {
-        std.debug.print(dash0_log_prefix ++ fmt ++ "\n", args);
+        std.debug.print(log_prefix ++ fmt ++ "\n", args);
     }
 }
+
+fn printError(comptime fmt: []const u8, args: anytype) void {
+    std.debug.print(log_prefix ++ fmt ++ "\n", args);
+}
+
+// TODO Tests
+//
+// Lookup non-set variable returns null
+// Lookup non-modified variable returns original value
+// Stress-test with additions to env via setenv until reallocation occurs
+// OTEL_RESOURCE_ATTRIBUTES append to existing value
+// OTEL_RESOURCE_ATTRIBUTES without pre-existing value
+// JAVA_TOOL_OPTIONS without Jar file at expected location
+// JAVA_TOOL_OPTIONS with Jar file at expected location but cannot read due to file permissions
+// JAVA_TOOL_OPTIONS happy path
+// NODE_OPTIONS without module at expected location
+// NODE_OPTIONS with module at expected location but cannot read due to file permissions
+// NODE_OPTIONS happy path
