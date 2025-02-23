@@ -21,6 +21,12 @@ const (
 	commonExportErrorPrefix = "cannot assemble the exporters for the configuration:"
 )
 
+type telemetryFilterFlags struct {
+	HasTraceFilter  bool
+	HasMetricFilter bool
+	HasLogFilter    bool
+}
+
 type collectorConfigurationTemplateValues struct {
 	Exporters                                        []OtlpExporter
 	SendBatchMaxSize                                 *uint32
@@ -30,6 +36,8 @@ type collectorConfigurationTemplateValues struct {
 	ClusterName                                      string
 	NamespaceOttlFilter                              string
 	NamespacesWithPrometheusScraping                 []string
+	TelemetryFilters                                 []NamespacedTelemetryFilter
+	TelemetryFilterFlags                             telemetryFilterFlags
 	SelfIpReference                                  string
 	DevelopmentMode                                  bool
 	DebugVerbosityDetailed                           bool
@@ -61,12 +69,14 @@ func assembleDaemonSetCollectorConfigMap(
 	config *oTelColConfig,
 	monitoredNamespaces []string,
 	namespacesWithPrometheusScraping []string,
+	telemetryFilters []NamespacedTelemetryFilter,
 	forDeletion bool,
 ) (*corev1.ConfigMap, error) {
 	return assembleCollectorConfigMap(
 		config,
 		monitoredNamespaces,
 		namespacesWithPrometheusScraping,
+		telemetryFilters,
 		daemonSetCollectorConfigurationTemplate,
 		DaemonSetCollectorConfigConfigMapName(config.NamePrefix),
 		forDeletion,
@@ -76,12 +86,14 @@ func assembleDaemonSetCollectorConfigMap(
 func assembleDeploymentCollectorConfigMap(
 	config *oTelColConfig,
 	monitoredNamespaces []string,
+	telemetryFilters []NamespacedTelemetryFilter,
 	forDeletion bool,
 ) (*corev1.ConfigMap, error) {
 	return assembleCollectorConfigMap(
 		config,
 		monitoredNamespaces,
 		nil,
+		telemetryFilters,
 		deploymentCollectorConfigurationTemplate,
 		DeploymentCollectorConfigConfigMapName(config.NamePrefix),
 		forDeletion,
@@ -92,6 +104,7 @@ func assembleCollectorConfigMap(
 	config *oTelColConfig,
 	monitoredNamespaces []string,
 	namespacesWithPrometheusScraping []string,
+	telemetryFilters []NamespacedTelemetryFilter,
 	template *template.Template,
 	configMapName string,
 	forDeletion bool,
@@ -126,6 +139,8 @@ func assembleCollectorConfigMap(
 				ClusterName:                                      config.ClusterName,
 				NamespaceOttlFilter:                              namespaceOttlFilter,
 				NamespacesWithPrometheusScraping:                 namespacesWithPrometheusScraping,
+				TelemetryFilters:                                 telemetryFilters,
+				TelemetryFilterFlags:                             toTelemetryFilterFlags(telemetryFilters),
 				SelfIpReference:                                  selfIpReference,
 				DevelopmentMode:                                  config.DevelopmentMode,
 				DebugVerbosityDetailed:                           config.DebugVerbosityDetailed,
@@ -151,6 +166,23 @@ func assembleCollectorConfigMap(
 		},
 		Data: configMapData,
 	}, nil
+}
+
+func toTelemetryFilterFlags(telemetryFilters []NamespacedTelemetryFilter) telemetryFilterFlags {
+	flags := telemetryFilterFlags{}
+	for _, telemetryFilter := range telemetryFilters {
+		if telemetryFilter.Traces != nil && telemetryFilter.Traces.HasAnyFilters() {
+			flags.HasTraceFilter = true
+		}
+		if telemetryFilter.Metrics != nil && telemetryFilter.Metrics.HasAnyFilters() {
+			flags.HasMetricFilter = true
+		}
+		if telemetryFilter.Logs != nil && telemetryFilter.Logs.HasAnyFilters() {
+			flags.HasLogFilter = true
+		}
+	}
+	return flags
+
 }
 
 func renderOttlNamespaceFilter(monitoredNamespaces []string) string {

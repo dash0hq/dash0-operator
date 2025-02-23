@@ -92,6 +92,11 @@ type Dash0MonitoringSpec struct {
 	//
 	// +kubebuilder:default=true
 	PrometheusScrapingEnabled *bool `json:"prometheusScrapingEnabled,omitempty"`
+
+	// Optional filters for telemetry data that is collected in this namespace.
+	//
+	// +kubebuilder:validation:Optional
+	TelemetryFilter *TelemetryFilter `json:"telemetryFilter,omitempty"`
 }
 
 // InstrumentWorkloadsMode describes when exactly workloads will be instrumented.  Only one of the following modes
@@ -113,6 +118,144 @@ const (
 )
 
 var allInstrumentWorkloadsMode = []InstrumentWorkloadsMode{All, CreatedAndUpdated, None}
+
+// TelemetryFilter describes filters for telemetry that is collected in a namespace. Telemetry objects (e.g. spans,
+// log record, metrics, ...) matching one of the filter conditions will be dropped.
+type TelemetryFilter struct {
+	// Filters for the traces signal.
+	// This can be used to drop _spans_ or _span events_.
+	//
+	// +kubebuilder:validation:Optional
+	Traces *TraceFilter `json:"traces,omitempty"`
+
+	// Filters for the metrics signal.
+	// This can be used to drop entire _metrics_, or individual _data points_.
+	//
+	// +kubebuilder:validation:Optional
+	Metrics *MetricFilter `json:"metrics,omitempty"`
+
+	// Filters for the logs signal, operating on the level of _log records_:
+	// This can be used to drop _log records_.
+	//
+	// +kubebuilder:validation:Optional
+	Logs *LogFilter `json:"logs,omitempty"`
+}
+
+func (f *TelemetryFilter) HasAnyFilters() bool {
+	if f.Traces != nil && f.Traces.HasAnyFilters() {
+		return true
+	}
+	if f.Metrics != nil && f.Metrics.HasAnyFilters() {
+		return true
+	}
+	if f.Logs != nil && f.Logs.HasAnyFilters() {
+		return true
+	}
+	return false
+}
+
+// TraceFilter describes filters for the "traces" signal. Filters can be defined on the level of spans or spanevents.
+type TraceFilter struct {
+	// A list of conditions for filtering spans.
+	// This is a list of OTTL conditions.
+	// All spans where at least one condition evaluates to true will be dropped.
+	// (That is, the conditions are implicitly connected by a logical OR.)
+	// Example:
+	// - 'attributes["http.route"] == "/ready"'
+	// - 'attributes["http.route"] == "/metrics"'
+	//
+	// +kubebuilder:validation:Optional
+	SpanFilter ObjectTypeFilter `json:"span,omitempty"`
+
+	// A list of conditions for filtering span events.
+	// This is a list of OTTL conditions.
+	// All span events where at least one condition evaluates to true will be dropped.
+	// (That is, the conditions are implicitly connected by a logical OR.)
+	// If all span events for a span are dropped, the span will be left intact.
+	//
+	// +kubebuilder:validation:Optional
+	SpanEventFilter ObjectTypeFilter `json:"spanevent,omitempty"`
+}
+
+func (f *TraceFilter) HasAnyFilters() bool {
+	if f.SpanFilter.HasConditions() {
+		return true
+	}
+	if f.SpanEventFilter.HasConditions() {
+		return true
+	}
+	return false
+}
+
+// MetricFilter describes filters for the "metrics" signal. Filters can be defined on the level of metrics (e.g.
+// metric names) or individual data points.
+type MetricFilter struct {
+	// A list of conditions for filtering metrics.
+	// This is a list of OTTL conditions.
+	// All metrics where at least one condition evaluates to true will be dropped.
+	// (That is, the conditions are implicitly connected by a logical OR.)
+	// Example:
+	// - 'name == "k8s.replicaset.available"'
+	// - 'name == "k8s.replicaset.desired"'
+	// - 'type == METRIC_DATA_TYPE_HISTOGRAM'
+	//
+	// +kubebuilder:validation:Optional
+	MetricFilter ObjectTypeFilter `json:"metric,omitempty"`
+
+	// A list of conditions for filtering metrics data points.
+	// This is a list of OTTL conditions.
+	// All data points where at least one condition evaluates to true will be dropped.
+	// (That is, the conditions are implicitly connected by a logical OR.)
+	// Note: If all datapoints for a metric are dropped, the metric will also be dropped.
+	// Example:
+	// - 'metric.name == "a.noisy.metric.with.many.datapoints" and value_int == 0' # filter metrics by value
+	// - 'resource.attributes["service.name"] == "my_service_name"' # filter data points by resource attributes
+	//
+	// +kubebuilder:validation:Optional
+	DataPointFilter ObjectTypeFilter `json:"datapoint,omitempty"`
+}
+
+func (f *MetricFilter) HasAnyFilters() bool {
+	if f.MetricFilter.HasConditions() {
+		return true
+	}
+	if f.DataPointFilter.HasConditions() {
+		return true
+	}
+	return false
+}
+
+// LogFilter describes filters for the "logs" signal. Filters can be defined on the level of log records.
+type LogFilter struct {
+	// A list of conditions for filtering log records.
+	// This is a list of OTTL conditions.
+	// All log records where at least one condition evaluates to true will be dropped.
+	// (That is, the conditions are implicitly connected by a logical OR.)
+	// Example:
+	// - 'IsMatch(body, ".*password.*")'
+	// - 'severity_number < SEVERITY_NUMBER_WARN'
+	//
+	// +kubebuilder:validation:Optional
+	LogRecordFilter ObjectTypeFilter `json:"logrecord,omitempty"`
+}
+
+func (f *LogFilter) HasAnyFilters() bool {
+	return f.LogRecordFilter.HasConditions()
+}
+
+// ObjectTypeFilter is list of conditions for filtering objects of a specific kind for a particular telemetry signal
+// (e.g. span objects for the "traces" signal).
+type ObjectTypeFilter struct {
+	// A list of conditions for filtering objects of a specific kind for a particular telemetry signal (e.g. span
+	// objects for the "traces" signal). Objects matching at least one of the conditions will be droppped.
+	//
+	// +kubebuilder:validation:Optional
+	Conditions []string `json:"conditions,omitempty"`
+}
+
+func (f *ObjectTypeFilter) HasConditions() bool {
+	return len(f.Conditions) > 0
+}
 
 // SynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
 // dashboard, Prometheus rule) to the Dash0 API.
