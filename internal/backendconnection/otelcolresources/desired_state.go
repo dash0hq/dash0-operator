@@ -43,6 +43,11 @@ type clientObject struct {
 	object client.Object
 }
 
+type NamespacedTelemetryFilter struct {
+	Namespace string
+	dash0v1alpha1.TelemetryFilter
+}
+
 const (
 	OtlpGrpcHostPort = 40317
 	OtlpHttpHostPort = 40318
@@ -163,16 +168,27 @@ func assembleDesiredStateForUpsert(
 ) ([]clientObject, error) {
 	monitoredNamespaces := make([]string, 0, len(allMonitoringResources))
 	namespacesWithPrometheusScraping := make([]string, 0, len(allMonitoringResources))
+	telemetryFilters := make([]NamespacedTelemetryFilter, 0, len(allMonitoringResources))
 	for _, monitoringResource := range allMonitoringResources {
-		monitoredNamespaces = append(monitoredNamespaces, monitoringResource.Namespace)
+		namespace := monitoringResource.Namespace
+		monitoredNamespaces = append(monitoredNamespaces, namespace)
 		if util.ReadBoolPointerWithDefault(monitoringResource.Spec.PrometheusScrapingEnabled, true) {
-			namespacesWithPrometheusScraping = append(namespacesWithPrometheusScraping, monitoringResource.Namespace)
+			namespacesWithPrometheusScraping = append(namespacesWithPrometheusScraping, namespace)
+		}
+
+		telemetryFilterForNamespace := monitoringResource.Spec.TelemetryFilter
+		if telemetryFilterForNamespace != nil && telemetryFilterForNamespace.HasAnyFilters() {
+			telemetryFilters = append(telemetryFilters, NamespacedTelemetryFilter{
+				Namespace:       namespace,
+				TelemetryFilter: *telemetryFilterForNamespace,
+			})
 		}
 	}
 	return assembleDesiredState(
 		config,
 		monitoredNamespaces,
 		namespacesWithPrometheusScraping,
+		telemetryFilters,
 		extraConfig,
 		false,
 	)
@@ -186,6 +202,7 @@ func assembleDesiredStateForDelete(
 		config,
 		nil,
 		nil,
+		nil,
 		extraConfig,
 		true,
 	)
@@ -195,6 +212,7 @@ func assembleDesiredState(
 	config *oTelColConfig,
 	monitoredNamespaces []string,
 	namespacesWithPrometheusScraping []string,
+	telemetryFilters []NamespacedTelemetryFilter,
 	extraConfig *OTelColExtraConfig,
 	forDeletion bool,
 ) ([]clientObject, error) {
@@ -202,6 +220,9 @@ func assembleDesiredState(
 	// sort order of the input slices.
 	slices.Sort(monitoredNamespaces)
 	slices.Sort(namespacesWithPrometheusScraping)
+	slices.SortFunc(telemetryFilters, func(ns1 NamespacedTelemetryFilter, ns2 NamespacedTelemetryFilter) int {
+		return strings.Compare(ns1.Namespace, ns2.Namespace)
+	})
 
 	var desiredState []clientObject
 	desiredState = append(desiredState, addCommonMetadata(assembleServiceAccountForDaemonSet(config)))
@@ -209,6 +230,7 @@ func assembleDesiredState(
 		config,
 		monitoredNamespaces,
 		namespacesWithPrometheusScraping,
+		telemetryFilters,
 		forDeletion,
 	)
 	if err != nil {
@@ -231,7 +253,12 @@ func assembleDesiredState(
 		desiredState = append(desiredState, addCommonMetadata(assembleServiceAccountForDeployment(config)))
 		desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleForDeployment(config)))
 		desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleBindingForDeployment(config)))
-		deploymentCollectorConfigMap, err := assembleDeploymentCollectorConfigMap(config, monitoredNamespaces, forDeletion)
+		deploymentCollectorConfigMap, err := assembleDeploymentCollectorConfigMap(
+			config,
+			monitoredNamespaces,
+			telemetryFilters,
+			forDeletion,
+		)
 		if err != nil {
 			return desiredState, err
 		}

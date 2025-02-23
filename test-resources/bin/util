@@ -434,7 +434,7 @@ deploy_otlp_sink_if_requested() {
 
 install_operator_configuration_resource() {
   if [[ "${USE_OTLP_SINK:-}" = "true" ]]; then
-    kubectl apply -f test-resources/customresources/dash0operatorconfiguration/dash0monitoring.otlpsink.yaml
+    kubectl apply -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.otlpsink.yaml
   else
     kubectl apply -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.token.yaml
   fi
@@ -452,6 +452,7 @@ install_monitoring_resource() {
   kubectl apply -n ${target_namespace} -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml
   if [[ "$additional_namespaces" = true ]]; then
     kubectl apply -n test-namespace-2 -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml
+    kubectl apply -n test-namespace-3 -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml
   fi
 
   echo "waiting for the monitoring resource to become available"

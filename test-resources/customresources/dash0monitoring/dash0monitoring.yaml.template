@@ -7,4 +7,3 @@ spec:
   synchronizePersesDashboards: $SYNCHRONIZE_PERSES_DASHBOARDS
   synchronizePrometheusRules: $SYNCHRONIZE_PROMETHEUS_RULES
   prometheusScrapingEnabled: $PROMETHEUS_SCRAPING_ENABLED
-

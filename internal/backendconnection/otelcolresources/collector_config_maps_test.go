@@ -6,6 +6,7 @@ package otelcolresources
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 
 	"gopkg.in/yaml.v3"
@@ -21,59 +22,105 @@ import (
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
-type testConfig struct {
-	assembleConfigMapFunction func(*oTelColConfig, []string, bool) (*corev1.ConfigMap, error)
-	pipelineNames             []string
+type configMapType string
+type signalType string
+type objectType string
+
+const (
+	configMapTypeDaemonSet  configMapType = "DaemonSet"
+	configMapTypeDeployment configMapType = "Deployment"
+	signalTypeTraces        signalType    = "traces"
+	signalTypeMetrics       signalType    = "metrics"
+	signalTypeLogs          signalType    = "logs"
+	objectTypeSpan          objectType    = "span"
+	objectTypeSpanEvent     objectType    = "spanevent"
+	objectTypeMetric        objectType    = "metric"
+	objectTypeDataPoint     objectType    = "datapoint"
+	objectTypeLogRecord     objectType    = "log_record"
+)
+
+type configMapTypeDefinition struct {
+	cmType                    configMapType
+	assembleConfigMapFunction func(*oTelColConfig, []string, []NamespacedTelemetryFilter, bool) (*corev1.ConfigMap, error)
+	exporterPipelineNames     []string
+}
+
+type conditionExpectationsPerNamespaceAndObjectType map[string]map[objectType][]string
+
+type filterExpectations struct {
+	signalsWithFilters    []signalType
+	conditions            conditionExpectationsPerNamespaceAndObjectType
+	signalsWithoutFilters []signalType
+}
+
+type telemetryFilterTestConfigExpectations struct {
+	namespaces []string
+	daemonset  filterExpectations
+	deployment filterExpectations
+}
+
+type telemetryFilterTestConfig struct {
+	configMapTypeDefinition
+	telemetryFilters []NamespacedTelemetryFilter
+	expectations     telemetryFilterTestConfigExpectations
 }
 
 const (
 	GrpcEndpointTest = "example.com:4317"
 	HttpEndpointTest = "https://example.com:4318"
+	namespace1       = "namespace-1"
+	namespace2       = "namespace-2"
+	namespace3       = "namespace-3"
 )
 
 var (
 	bearerWithAuthToken     = fmt.Sprintf("Bearer ${env:%s}", authTokenEnvVarName)
 	sequenceOfMappingsRegex = regexp.MustCompile(`^([\w-]+)=([\w-]+)$`)
 	sequenceIndexRegex      = regexp.MustCompile(`^(\d+)$`)
-	monitoredNamespaces     = []string{"namespace-1", "namespace-2"}
+	monitoredNamespaces     = []string{namespace1, namespace2}
 )
 
 var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
-	testConfigs := []TableEntry{
-		Entry(
-			"for the DaemonSet",
-			testConfig{
-				assembleConfigMapFunction: assembleDaemonSetCollectorConfigMapWithoutScrapingNamespaces,
-				pipelineNames: []string{
-					"traces/downstream",
-					"metrics/downstream",
-					"logs/downstream",
-				},
-			}),
-		Entry(
-			"for the Deployment",
-			testConfig{
-				assembleConfigMapFunction: assembleDeploymentCollectorConfigMapForTest,
-				pipelineNames: []string{
-					"metrics/downstream",
-				},
-			}),
+	configMapTypeDefinitions := []configMapTypeDefinition{
+		{
+			cmType:                    configMapTypeDaemonSet,
+			assembleConfigMapFunction: assembleDaemonSetCollectorConfigMapWithoutScrapingNamespaces,
+			exporterPipelineNames: []string{
+				"traces/downstream",
+				"metrics/downstream",
+				"logs/downstream",
+			},
+		},
+		{
+			cmType:                    configMapTypeDeployment,
+			assembleConfigMapFunction: assembleDeploymentCollectorConfigMapForTest,
+			exporterPipelineNames: []string{
+				"metrics/downstream",
+			},
+		},
+	}
+
+	var daemonSetAndDeployment []TableEntry
+	for _, cmTypeDef := range configMapTypeDefinitions {
+		daemonSetAndDeployment = append(
+			daemonSetAndDeployment,
+			Entry(fmt.Sprintf("for the %s", string(cmTypeDef.cmType)), cmTypeDef))
 	}
 
 	Describe("renders exporters", func() {
 
-		DescribeTable("should fail if no exporter is configured", func(testConfig testConfig) {
-			_, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+		DescribeTable("should fail if no exporter is configured", func(cmTypeDef configMapTypeDefinition) {
+			_, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				Namespace:  namespace,
 				NamePrefix: namePrefix,
 				Export:     dash0v1alpha1.Export{},
-			}, monitoredNamespaces, false)
+			}, monitoredNamespaces, nil, false)
 			Expect(err).To(HaveOccurred())
-		}, testConfigs)
+		}, daemonSetAndDeployment)
 
-		DescribeTable("should fail to render the Dash0 exporter when no endpoint is provided", func(testConfig testConfig) {
-			_, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+		DescribeTable("should fail to render the Dash0 exporter when no endpoint is provided", func(cmTypeDef configMapTypeDefinition) {
+			_, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				Namespace:  namespace,
 				NamePrefix: namePrefix,
 				Export: dash0v1alpha1.Export{
@@ -83,27 +130,20 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						},
 					},
 				},
-			}, monitoredNamespaces, false)
+			}, monitoredNamespaces, nil, false)
 			Expect(err).To(
 				MatchError(
 					ContainSubstring(
 						"no endpoint provided for the Dash0 exporter, unable to create the OpenTelemetry collector")))
 
-		}, testConfigs)
+		}, daemonSetAndDeployment)
 
-		DescribeTable("should render the Dash0 exporter without other exporters, with default settings", func(testConfig testConfig) {
-			configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+		DescribeTable("should render the Dash0 exporter without other exporters, with default settings", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				Namespace:  namespace,
 				NamePrefix: namePrefix,
-				Export: dash0v1alpha1.Export{
-					Dash0: &dash0v1alpha1.Dash0Configuration{
-						Endpoint: EndpointDash0Test,
-						Authorization: dash0v1alpha1.Authorization{
-							Token: &AuthorizationTokenTest,
-						},
-					},
-				},
-			}, monitoredNamespaces, false)
+				Export:     Dash0ExportWithEndpointAndToken(),
+			}, monitoredNamespaces, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -125,11 +165,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(headers[util.Dash0DatasetHeaderName]).To(BeNil())
 			Expect(dash0OtlpExporter["encoding"]).To(BeNil())
 
-			verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/dash0")
-		}, testConfigs)
+			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlp/dash0")
+		}, daemonSetAndDeployment)
 
-		DescribeTable("should render the Dash0 exporter with custom dataset", func(testConfig testConfig) {
-			configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+		DescribeTable("should render the Dash0 exporter with custom dataset", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				Namespace:  namespace,
 				NamePrefix: namePrefix,
 				Export: dash0v1alpha1.Export{
@@ -141,7 +181,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						},
 					},
 				},
-			}, monitoredNamespaces, false)
+			}, monitoredNamespaces, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -163,11 +203,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(headers[util.Dash0DatasetHeaderName]).To(Equal("custom-dataset"))
 			Expect(dash0OtlpExporter["encoding"]).To(BeNil())
 
-			verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/dash0")
-		}, testConfigs)
+			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlp/dash0")
+		}, daemonSetAndDeployment)
 
-		DescribeTable("should render the Dash0 exporter with the insecure flag if there is an http:// prefix, for forwarding telemetry to another local collector", func(testConfig testConfig) {
-			configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+		DescribeTable("should render the Dash0 exporter with the insecure flag if there is an http:// prefix, for forwarding telemetry to another local collector", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				Namespace:  namespace,
 				NamePrefix: namePrefix,
 				Export: dash0v1alpha1.Export{
@@ -178,7 +218,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						},
 					},
 				},
-			}, monitoredNamespaces, false)
+			}, monitoredNamespaces, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -202,23 +242,16 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(headers[util.Dash0DatasetHeaderName]).To(BeNil())
 			Expect(dash0OtlpExporter["encoding"]).To(BeNil())
 
-			verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/dash0")
-		}, testConfigs)
+			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlp/dash0")
+		}, daemonSetAndDeployment)
 
-		DescribeTable("should render a debug exporter in development mode", func(testConfig testConfig) {
-			configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
-				Namespace:  namespace,
-				NamePrefix: namePrefix,
-				Export: dash0v1alpha1.Export{
-					Dash0: &dash0v1alpha1.Dash0Configuration{
-						Endpoint: EndpointDash0Test,
-						Authorization: dash0v1alpha1.Authorization{
-							Token: &AuthorizationTokenTest,
-						},
-					},
-				},
+		DescribeTable("should render a debug exporter in development mode", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				Namespace:       namespace,
+				NamePrefix:      namePrefix,
+				Export:          Dash0ExportWithEndpointAndToken(),
 				DevelopmentMode: true,
-			}, monitoredNamespaces, false)
+			}, monitoredNamespaces, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -245,24 +278,17 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(headers[util.Dash0DatasetHeaderName]).To(BeNil())
 			Expect(dash0OtlpExporter["encoding"]).To(BeNil())
 
-			verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "debug", "otlp/dash0")
-		}, testConfigs)
+			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "debug", "otlp/dash0")
+		}, daemonSetAndDeployment)
 
-		DescribeTable("should render a debug exporter with verbosity: detailed when requested", func(testConfig testConfig) {
-			configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
-				Namespace:  namespace,
-				NamePrefix: namePrefix,
-				Export: dash0v1alpha1.Export{
-					Dash0: &dash0v1alpha1.Dash0Configuration{
-						Endpoint: EndpointDash0Test,
-						Authorization: dash0v1alpha1.Authorization{
-							Token: &AuthorizationTokenTest,
-						},
-					},
-				},
+		DescribeTable("should render a debug exporter with verbosity: detailed when requested", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				Namespace:              namespace,
+				NamePrefix:             namePrefix,
+				Export:                 Dash0ExportWithEndpointAndToken(),
 				DevelopmentMode:        false,
 				DebugVerbosityDetailed: true,
-			}, monitoredNamespaces, false)
+			}, monitoredNamespaces, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -277,11 +303,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(debugExporter).To(HaveLen(1))
 			Expect(debugExporter["verbosity"]).To(Equal("detailed"))
 
-			verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "debug", "otlp/dash0")
-		}, testConfigs)
+			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "debug", "otlp/dash0")
+		}, daemonSetAndDeployment)
 
-		DescribeTable("should fail to render a gRPC exporter when no endpoint is provided", func(testConfig testConfig) {
-			_, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+		DescribeTable("should fail to render a gRPC exporter when no endpoint is provided", func(cmTypeDef configMapTypeDefinition) {
+			_, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				Namespace:  namespace,
 				NamePrefix: namePrefix,
 				Export: dash0v1alpha1.Export{
@@ -292,16 +318,16 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						}},
 					},
 				},
-			}, monitoredNamespaces, false)
+			}, monitoredNamespaces, nil, false)
 			Expect(err).To(
 				MatchError(
 					ContainSubstring(
 						"no endpoint provided for the gRPC exporter, unable to create the OpenTelemetry collector")))
 
-		}, testConfigs)
+		}, daemonSetAndDeployment)
 
-		DescribeTable("should render an arbitrary gRPC exporter", func(testConfig testConfig) {
-			configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+		DescribeTable("should render an arbitrary gRPC exporter", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				Namespace:  namespace,
 				NamePrefix: namePrefix,
 				Export: dash0v1alpha1.Export{
@@ -319,7 +345,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						},
 					},
 				},
-			}, monitoredNamespaces, false)
+			}, monitoredNamespaces, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -341,11 +367,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(headers["Key2"]).To(Equal("Value2"))
 			Expect(otlpGrpcExporter["encoding"]).To(BeNil())
 
-			verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/grpc")
-		}, testConfigs)
+			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlp/grpc")
+		}, daemonSetAndDeployment)
 
-		DescribeTable("should render a gRPC exporter with the insecure flag if there is an http:// prefix, for forwarding telemetry to another local collector", func(testConfig testConfig) {
-			configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+		DescribeTable("should render a gRPC exporter with the insecure flag if there is an http:// prefix, for forwarding telemetry to another local collector", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				Namespace:  namespace,
 				NamePrefix: namePrefix,
 				Export: dash0v1alpha1.Export{
@@ -353,7 +379,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						Endpoint: "http://example.com:1234",
 					},
 				},
-			}, monitoredNamespaces, false)
+			}, monitoredNamespaces, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -373,11 +399,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(headersRaw).To(BeNil())
 			Expect(otlpGrpcExporter["encoding"]).To(BeNil())
 
-			verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/grpc")
-		}, testConfigs)
+			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlp/grpc")
+		}, daemonSetAndDeployment)
 
-		DescribeTable("should fail to render an HTTP exporter when no endpoint is provided", func(testConfig testConfig) {
-			_, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+		DescribeTable("should fail to render an HTTP exporter when no endpoint is provided", func(cmTypeDef configMapTypeDefinition) {
+			_, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				Namespace:  namespace,
 				NamePrefix: namePrefix,
 				Export: dash0v1alpha1.Export{
@@ -389,15 +415,15 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						Encoding: dash0v1alpha1.Proto,
 					},
 				},
-			}, monitoredNamespaces, false)
+			}, monitoredNamespaces, nil, false)
 			Expect(err).To(
 				MatchError(
 					ContainSubstring(
 						"no endpoint provided for the HTTP exporter, unable to create the OpenTelemetry collector")))
-		}, testConfigs)
+		}, daemonSetAndDeployment)
 
-		DescribeTable("should fail to render an HTTP exporter when no encoding is provided", func(testConfig testConfig) {
-			_, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+		DescribeTable("should fail to render an HTTP exporter when no encoding is provided", func(cmTypeDef configMapTypeDefinition) {
+			_, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				Namespace:  namespace,
 				NamePrefix: namePrefix,
 				Export: dash0v1alpha1.Export{
@@ -409,16 +435,16 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						}},
 					},
 				},
-			}, monitoredNamespaces, false)
+			}, monitoredNamespaces, nil, false)
 			Expect(err).To(
 				MatchError(
 					ContainSubstring(
 						"no encoding provided for the HTTP exporter, unable to create the OpenTelemetry collector")))
 
-		}, testConfigs)
+		}, daemonSetAndDeployment)
 
-		DescribeTable("should render an arbitrary HTTP exporter", func(testConfig testConfig) {
-			configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+		DescribeTable("should render an arbitrary HTTP exporter", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				Namespace:  namespace,
 				NamePrefix: namePrefix,
 				Export: dash0v1alpha1.Export{
@@ -437,7 +463,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						Encoding: dash0v1alpha1.Json,
 					},
 				},
-			}, monitoredNamespaces, false)
+			}, monitoredNamespaces, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -459,11 +485,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(headers["Key2"]).To(Equal("Value2"))
 			Expect(otlpHttpExporter["encoding"]).To(Equal("json"))
 
-			verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlphttp/json")
-		}, testConfigs)
+			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlphttp/json")
+		}, daemonSetAndDeployment)
 
-		DescribeTable("should render the Dash0 exporter together with a gRPC exporter", func(testConfig testConfig) {
-			configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+		DescribeTable("should render the Dash0 exporter together with a gRPC exporter", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				Namespace:  namespace,
 				NamePrefix: namePrefix,
 				Export: dash0v1alpha1.Export{
@@ -481,7 +507,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						}},
 					},
 				},
-			}, monitoredNamespaces, false)
+			}, monitoredNamespaces, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 
 			collectorConfig := parseConfigMapContent(configMap)
@@ -513,11 +539,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(headers["Key1"]).To(Equal("Value1"))
 			Expect(httpExporter["encoding"]).To(BeNil())
 
-			verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/dash0", "otlp/grpc")
-		}, testConfigs)
+			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlp/dash0", "otlp/grpc")
+		}, daemonSetAndDeployment)
 
-		DescribeTable("should render the Dash0 exporter together with an HTTP exporter", func(testConfig testConfig) {
-			configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+		DescribeTable("should render the Dash0 exporter together with an HTTP exporter", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				Namespace:  namespace,
 				NamePrefix: namePrefix,
 				Export: dash0v1alpha1.Export{
@@ -536,7 +562,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						Encoding: dash0v1alpha1.Proto,
 					},
 				},
-			}, monitoredNamespaces, false)
+			}, monitoredNamespaces, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 
 			collectorConfig := parseConfigMapContent(configMap)
@@ -568,11 +594,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(headers["Key1"]).To(Equal("Value1"))
 			Expect(httpExporter["encoding"]).To(Equal("proto"))
 
-			verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/dash0", "otlphttp/proto")
-		}, testConfigs)
+			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlp/dash0", "otlphttp/proto")
+		}, daemonSetAndDeployment)
 
-		DescribeTable("should render a gRPC exporter together with an HTTP exporter", func(testConfig testConfig) {
-			configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+		DescribeTable("should render a gRPC exporter together with an HTTP exporter", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				Namespace:  namespace,
 				NamePrefix: namePrefix,
 				Export: dash0v1alpha1.Export{
@@ -592,7 +618,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						Encoding: dash0v1alpha1.Proto,
 					},
 				},
-			}, monitoredNamespaces, false)
+			}, monitoredNamespaces, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 
 			collectorConfig := parseConfigMapContent(configMap)
@@ -625,11 +651,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(headers["Key2"]).To(Equal("Value2"))
 			Expect(httpExporter["encoding"]).To(Equal("proto"))
 
-			verifyDownstreamExportersInPipelines(collectorConfig, testConfig, "otlp/grpc", "otlphttp/proto")
-		}, testConfigs)
+			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlp/grpc", "otlphttp/proto")
+		}, daemonSetAndDeployment)
 
-		DescribeTable("should render a combination of all three exporter types", func(testConfig testConfig) {
-			configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+		DescribeTable("should render a combination of all three exporter types", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				Namespace:  namespace,
 				NamePrefix: namePrefix,
 				Export: dash0v1alpha1.Export{
@@ -656,7 +682,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					},
 				},
 				DevelopmentMode: true,
-			}, monitoredNamespaces, false)
+			}, monitoredNamespaces, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 
 			collectorConfig := parseConfigMapContent(configMap)
@@ -705,22 +731,22 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
 			verifyDownstreamExportersInPipelines(
 				collectorConfig,
-				testConfig,
+				cmTypeDef,
 				"debug",
 				"otlp/dash0",
 				"otlp/grpc",
 				"otlphttp/json",
 			)
-		}, testConfigs)
+		}, daemonSetAndDeployment)
 	})
 
-	DescribeTable("should render batch processor with defaults if SendBatchMaxSize is not requested", func(testConfig testConfig) {
-		configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+	DescribeTable("should render batch processor with defaults if SendBatchMaxSize is not requested", func(cmTypeDef configMapTypeDefinition) {
+		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 			Namespace:        namespace,
 			NamePrefix:       namePrefix,
 			Export:           Dash0ExportWithEndpointAndToken(),
 			SendBatchMaxSize: nil,
-		}, monitoredNamespaces, false)
+		}, monitoredNamespaces, nil, false)
 
 		Expect(err).ToNot(HaveOccurred())
 		collectorConfig := parseConfigMapContent(configMap)
@@ -728,15 +754,15 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		Expect(batchProcessorRaw).ToNot(BeNil())
 		batchProcessor := batchProcessorRaw.(map[string]interface{})
 		Expect(batchProcessor).To(HaveLen(0))
-	}, testConfigs)
+	}, daemonSetAndDeployment)
 
-	DescribeTable("should not set send_batch_max_size on batch processor if requested", func(testConfig testConfig) {
-		configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+	DescribeTable("should not set send_batch_max_size on batch processor if requested", func(cmTypeDef configMapTypeDefinition) {
+		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 			Namespace:        namespace,
 			NamePrefix:       namePrefix,
 			Export:           Dash0ExportWithEndpointAndToken(),
 			SendBatchMaxSize: ptr.To(uint32(16384)),
-		}, monitoredNamespaces, false)
+		}, monitoredNamespaces, nil, false)
 
 		Expect(err).ToNot(HaveOccurred())
 		collectorConfig := parseConfigMapContent(configMap)
@@ -746,14 +772,14 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		Expect(batchProcessor).To(HaveLen(1))
 		sendBatchMaxSize := readFromMap(batchProcessor, []string{"send_batch_max_size"})
 		Expect(sendBatchMaxSize).To(Equal(16384))
-	}, testConfigs)
+	}, daemonSetAndDeployment)
 
-	DescribeTable("should not render resource processor if the cluster name has not been set", func(testConfig testConfig) {
-		configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+	DescribeTable("should not render resource processor if the cluster name has not been set", func(cmTypeDef configMapTypeDefinition) {
+		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export:     Dash0ExportWithEndpointAndToken(),
-		}, monitoredNamespaces, false)
+		}, monitoredNamespaces, nil, false)
 
 		Expect(err).ToNot(HaveOccurred())
 		collectorConfig := parseConfigMapContent(configMap)
@@ -768,15 +794,15 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				"resource",
 			})
 		Expect(selfMonitoringTelemetryResource).To(BeNil())
-	}, testConfigs)
+	}, daemonSetAndDeployment)
 
-	DescribeTable("should render resource processor with k8s.cluster.name if available", func(testConfig testConfig) {
-		configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+	DescribeTable("should render resource processor with k8s.cluster.name if available", func(cmTypeDef configMapTypeDefinition) {
+		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 			Namespace:   namespace,
 			NamePrefix:  namePrefix,
 			Export:      Dash0ExportWithEndpointAndToken(),
 			ClusterName: "cluster-name",
-		}, monitoredNamespaces, false)
+		}, monitoredNamespaces, nil, false)
 
 		Expect(err).ToNot(HaveOccurred())
 		collectorConfig := parseConfigMapContent(configMap)
@@ -789,7 +815,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		Expect(attrs[0].(map[string]interface{})["value"]).To(Equal("cluster-name"))
 		Expect(attrs[0].(map[string]interface{})["action"]).To(Equal("insert"))
 		pipelines := readPipelines(collectorConfig)
-		metricsProcessors := readPipelineProcessors(pipelines, "metrics/downstream")
+		metricsProcessors := readPipelineProcessors(pipelines, "metrics/collect")
+		Expect(metricsProcessors).ToNot(BeNil())
 		Expect(metricsProcessors).To(ContainElement("resource/clustername"))
 		selfMonitoringTelemetryResource := readFromMap(
 			collectorConfig,
@@ -800,7 +827,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			})
 		Expect(selfMonitoringTelemetryResource).ToNot(BeNil())
 		Expect(selfMonitoringTelemetryResource.(map[string]interface{})["k8s.cluster.name"]).To(Equal("cluster-name"))
-	}, testConfigs)
+	}, daemonSetAndDeployment)
 
 	Describe("should enable/disable kubernetes infrastructure metrics collection and the hostmetrics receiver", func() {
 		It("should not render the kubeletstats receiver and hostmetrics if kubernetes infrastructure metrics collection is disabled", func() {
@@ -810,7 +837,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				Export:     Dash0ExportWithEndpointAndToken(),
 				KubernetesInfrastructureMetricsCollectionEnabled: false,
 				UseHostMetricsReceiver:                           false,
-			}, nil, nil, false)
+			}, nil, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			kubeletstatsReceiver := readFromMap(collectorConfig, []string{"receivers", "kubeletstats"})
@@ -819,7 +846,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(hostmetricsReceiver).To(BeNil())
 
 			pipelines := readPipelines(collectorConfig)
-			metricsReceivers := readPipelineReceivers(pipelines, "metrics/downstream")
+			metricsReceivers := readPipelineReceivers(pipelines, "metrics/collect")
+			Expect(metricsReceivers).ToNot(BeNil())
 			Expect(metricsReceivers).ToNot(ContainElement("kubeletstats"))
 			Expect(metricsReceivers).ToNot(ContainElement("hostmetrics"))
 		})
@@ -831,7 +859,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				Export:     Dash0ExportWithEndpointAndToken(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
 				UseHostMetricsReceiver:                           true,
-			}, nil, nil, false)
+			}, nil, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			kubeletstatsReceiverRaw := readFromMap(collectorConfig, []string{"receivers", "kubeletstats"})
@@ -844,7 +872,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(hostmetricsReceiver).ToNot(BeNil())
 
 			pipelines := readPipelines(collectorConfig)
-			metricsReceivers := readPipelineReceivers(pipelines, "metrics/downstream")
+			metricsReceivers := readPipelineReceivers(pipelines, "metrics/collect")
+			Expect(metricsReceivers).ToNot(BeNil())
 			Expect(metricsReceivers).To(ContainElement("kubeletstats"))
 			Expect(metricsReceivers).To(ContainElement("hostmetrics"))
 		})
@@ -858,6 +887,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		}
 
 		DescribeTable("should render the namespace filter ottl expression", func(testConfig ottlFilterExpressionTestConfig) {
+			expression := renderOttlNamespaceFilter(testConfig.monitoredNamespaces)
+			Expect(expression).To(Equal(testConfig.expectedExpression))
 		}, []TableEntry{
 			Entry("with nil", ottlFilterExpressionTestConfig{
 				monitoredNamespaces: nil,
@@ -868,18 +899,18 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				expectedExpression:  "resource.attributes[\"k8s.namespace.name\"] != nil\n",
 			}),
 			Entry("with one namespace", ottlFilterExpressionTestConfig{
-				monitoredNamespaces: []string{"namespace-1"},
+				monitoredNamespaces: []string{namespace1},
 				expectedExpression: "resource.attributes[\"k8s.namespace.name\"] != nil\n" +
 					"          and resource.attributes[\"k8s.namespace.name\"] != \"namespace-1\"\n",
 			}),
 			Entry("with two namespaces", ottlFilterExpressionTestConfig{
-				monitoredNamespaces: []string{"namespace-1", "namespace-2"},
+				monitoredNamespaces: []string{namespace1, namespace2},
 				expectedExpression: "resource.attributes[\"k8s.namespace.name\"] != nil\n" +
 					"          and resource.attributes[\"k8s.namespace.name\"] != \"namespace-1\"\n" +
 					"          and resource.attributes[\"k8s.namespace.name\"] != \"namespace-2\"\n",
 			}),
 			Entry("with three namespaces", ottlFilterExpressionTestConfig{
-				monitoredNamespaces: []string{"namespace-1", "namespace-2", "namespace-3"},
+				monitoredNamespaces: []string{namespace1, namespace2, namespace3},
 				expectedExpression: "resource.attributes[\"k8s.namespace.name\"] != nil\n" +
 					"          and resource.attributes[\"k8s.namespace.name\"] != \"namespace-1\"\n" +
 					"          and resource.attributes[\"k8s.namespace.name\"] != \"namespace-2\"\n" +
@@ -887,25 +918,26 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			}),
 		})
 
-		DescribeTable("should render the namespace filter and add it to the metrics pipeline", func(testConfig testConfig) {
-			configMap, err := testConfig.assembleConfigMapFunction(&oTelColConfig{
+		DescribeTable("should render the namespace filter and add it to the metrics pipeline", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				Namespace:  namespace,
 				NamePrefix: namePrefix,
 				Export:     Dash0ExportWithEndpointAndToken(),
-			}, monitoredNamespaces, false)
+			}, monitoredNamespaces, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
-			filterProcessor := readFromMap(collectorConfig, []string{"processors", "filter/metrics_only_monitored_namespaces"})
+			filterProcessor := readFromMap(collectorConfig, []string{"processors", "filter/metrics/only_monitored_namespaces"})
 			Expect(filterProcessor).ToNot(BeNil())
 			filters := readFromMap(filterProcessor, []string{"metrics", "metric"})
 			Expect(filters).To(HaveLen(1))
 			filterString := filters.([]interface{})[0].(string)
 			Expect(filterString).To(Equal(`resource.attributes["k8s.namespace.name"] != nil and resource.attributes["k8s.namespace.name"] != "namespace-1" and resource.attributes["k8s.namespace.name"] != "namespace-2"`))
 			pipelines := readPipelines(collectorConfig)
-			metricsProcessors := readPipelineProcessors(pipelines, "metrics/downstream")
-			Expect(metricsProcessors).To(ContainElement("filter/metrics_only_monitored_namespaces"))
-		}, testConfigs)
+			metricsProcessors := readPipelineProcessors(pipelines, "metrics/collect")
+			Expect(metricsProcessors).ToNot(BeNil())
+			Expect(metricsProcessors).To(ContainElement("filter/metrics/only_monitored_namespaces"))
+		}, daemonSetAndDeployment)
 	})
 
 	Describe("prometheus scraping config", func() {
@@ -916,22 +948,24 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		}
 
 		It("should not render the prometheus scraping config if no namespaces have scraping enabled", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(config, nil, nil, false)
+			configMap, err := assembleDaemonSetCollectorConfigMap(config, nil, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			Expect(readFromMap(collectorConfig, []string{"receivers", "prometheus"})).To(BeNil())
 
 			pipelines := readPipelines(collectorConfig)
-			metricsReceivers := readPipelineReceivers(pipelines, "metrics/downstream")
+			metricsReceivers := readPipelineReceivers(pipelines, "metrics/collect")
+			Expect(metricsReceivers).ToNot(BeNil())
 			Expect(metricsReceivers).ToNot(ContainElement("prometheus"))
 		})
 
 		It("should render the prometheus scraping config with all namespaces for which scraping is enabled", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(
 				config,
-				[]string{"namespace1", "namespace2"},
-				[]string{"namespace1", "namespace2"},
+				[]string{"namespace-1", "namespace-2"},
+				[]string{"namespace-1", "namespace-2"},
+				nil,
 				false,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -946,15 +980,276 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
 			pipelines := readPipelines(collectorConfig)
 			prometheusMetricsReceivers := readPipelineReceivers(pipelines, "metrics/prometheus")
+			Expect(prometheusMetricsReceivers).ToNot(BeNil())
 			Expect(prometheusMetricsReceivers).To(ContainElement("prometheus"))
 			prometheusMetricsProcessors := readPipelineProcessors(pipelines, "metrics/prometheus")
-			Expect(prometheusMetricsProcessors).To(ContainElement("transform/prometheusserviceattributes"))
+			Expect(prometheusMetricsProcessors).ToNot(BeNil())
+			Expect(prometheusMetricsProcessors).To(ContainElement("transform/metrics/prometheus_service_attributes"))
 			prometheusMetricsExporters := readPipelineExporters(pipelines, "metrics/prometheus")
-			Expect(prometheusMetricsExporters).To(ContainElement("forward/prometheusmetrics"))
+			Expect(prometheusMetricsExporters).ToNot(BeNil())
+			Expect(prometheusMetricsExporters).To(ContainElement("forward/metrics/prometheus"))
 
-			downstreamMetricsReceivers := readPipelineReceivers(pipelines, "metrics/downstream")
-			Expect(downstreamMetricsReceivers).To(ContainElement("forward/prometheusmetrics"))
+			downstreamMetricsReceivers := readPipelineReceivers(pipelines, "metrics/collect")
+			Expect(downstreamMetricsReceivers).ToNot(BeNil())
+			Expect(downstreamMetricsReceivers).To(ContainElement("forward/metrics/prometheus"))
 		})
+	})
+
+	Describe("configurable filtering of telemetry per namespace", func() {
+		// TODO tests for:
+		// - empty list of monitoring resources
+		// - on monitoring resource without filters
+		// - on monitoring resource with filters
+		// - multiple monitoring resource without filters
+		// - multiple monitoring resource with filters
+		// - multiple monitoring resource, some with and some without filters
+		// - combinations of filters (spans, span events, metrics, data points, log records)
+
+		var telemetryFilterTestConfigs []TableEntry
+		for _, cmTypeDef := range configMapTypeDefinitions {
+			telemetryFilterTestConfigs = slices.Concat(telemetryFilterTestConfigs, []TableEntry{
+
+				Entry(fmt.Sprintf("[config map type: %s]: should filter traces/spans", cmTypeDef.cmType),
+					createFilterTestForSingleObjectType(cmTypeDef,
+						signalTypeTraces,
+						objectTypeSpan,
+						[]string{
+							`attributes["http.route"] == "/ready"`,
+							`attributes["http.route"] == "/metrics"`,
+						},
+						[]string{
+							`attributes["express.type"] == "middleware"`,
+							`attributes["express.type"] == "request_handler"`,
+						},
+					)),
+				Entry(fmt.Sprintf("[config map type: %s]: should filter traces/span events", cmTypeDef.cmType),
+					createFilterTestForSingleObjectType(cmTypeDef,
+						signalTypeTraces,
+						objectTypeSpanEvent,
+						[]string{
+							`attributes["grpc"] == true`,
+							`IsMatch(name, ".*grpc.*")`,
+						},
+						[]string{
+							`an ottl span event condition`,
+							`another ottl span event condition`,
+						},
+					)),
+
+				Entry(fmt.Sprintf("[config map type: %s]: should filter metrics/metrics", cmTypeDef.cmType),
+					createFilterTestForSingleObjectType(cmTypeDef,
+						signalTypeMetrics,
+						objectTypeMetric,
+						[]string{
+							`name == "k8s.replicaset.available"`,
+							`name == "k8s.replicaset.desired"`,
+						},
+						[]string{
+							`type == METRIC_DATA_TYPE_HISTOGRAM`,
+							`type == METRIC_DATA_TYPE_SUMMARY`,
+						},
+					)),
+				Entry(fmt.Sprintf("[config map type: %s]: should filter metrics/data points", cmTypeDef.cmType),
+					createFilterTestForSingleObjectType(cmTypeDef,
+						signalTypeMetrics,
+						objectTypeDataPoint,
+						[]string{
+							`metric.name == "some.metric" and value_int == 0`,
+							`resource.attributes["service.name"] == "my_service_name"`,
+						},
+						[]string{
+							`an ottl metric datapoint condition`,
+							`another ottl metric datapoint condition`,
+						},
+					)),
+
+				Entry(fmt.Sprintf("[config map type: %s]: should filter logs/log records", cmTypeDef.cmType),
+					createFilterTestForSingleObjectType(cmTypeDef,
+						signalTypeLogs,
+						objectTypeLogRecord,
+						[]string{
+							`IsMatch(body, ".*password.*")`,
+							`severity_number < SEVERITY_NUMBER_WARN`,
+						},
+						[]string{
+							`an ottl log record condition`,
+							`another ottl log record condition`,
+						},
+					)),
+
+				Entry(fmt.Sprintf("[config map type: %s]: should filter traces in a subset of namespaces only", cmTypeDef.cmType),
+					telemetryFilterTestConfig{
+						configMapTypeDefinition: cmTypeDef,
+						telemetryFilters: []NamespacedTelemetryFilter{
+							{
+								Namespace: namespace1,
+								TelemetryFilter: dash0v1alpha1.TelemetryFilter{
+									Traces: &dash0v1alpha1.TraceFilter{
+										SpanFilter: dash0v1alpha1.ObjectTypeFilter{
+											Conditions: []string{"span condition 1", "span condition 2"},
+										},
+										SpanEventFilter: dash0v1alpha1.ObjectTypeFilter{
+											Conditions: []string{"span event condition 1", "span event condition 2"},
+										},
+									},
+								},
+							},
+							{
+								Namespace: namespace2,
+								// no filters for this namespace
+							},
+						},
+						expectations: telemetryFilterTestConfigExpectations{
+							namespaces: []string{namespace1},
+							daemonset: filterExpectations{
+								signalsWithFilters:    []signalType{signalTypeTraces},
+								signalsWithoutFilters: []signalType{signalTypeMetrics, signalTypeLogs},
+								conditions: conditionExpectationsPerNamespaceAndObjectType{
+									namespace1: {
+										objectTypeSpan:      []string{"span condition 1", "span condition 2"},
+										objectTypeSpanEvent: []string{"span event condition 1", "span event condition 2"},
+									},
+								},
+							},
+							deployment: emptyFilterExpectations(),
+						},
+					}),
+				//
+			})
+
+		}
+
+		DescribeTable("should filter telemetry", func(testConfig telemetryFilterTestConfig) {
+			configMap, err := testConfig.assembleConfigMapFunction(
+				&oTelColConfig{
+					Namespace:  namespace,
+					NamePrefix: namePrefix,
+					Export:     Dash0ExportWithEndpointAndToken(),
+				},
+				monitoredNamespaces,
+				testConfig.telemetryFilters,
+				false,
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			collectorConfig := parseConfigMapContent(configMap)
+			pipelines := readPipelines(collectorConfig)
+
+			expectedNamespaces := testConfig.expectations.namespaces
+			var expectations filterExpectations
+			switch testConfig.cmType {
+			case configMapTypeDaemonSet:
+				expectations = testConfig.expectations.daemonset
+			case configMapTypeDeployment:
+				expectations = testConfig.expectations.deployment
+			}
+
+			for _, signal := range expectations.signalsWithFilters {
+				routingConnectorRaw :=
+					readFromMap(
+						collectorConfig,
+						[]string{"connectors", fmt.Sprintf("routing/%s/customfilter/send", signal)},
+					)
+				Expect(routingConnectorRaw).ToNot(BeNil())
+				routingConnector := routingConnectorRaw.(map[string]interface{})
+				Expect(routingConnector["default_pipelines"].([]interface{})[0]).To(
+					Equal(fmt.Sprintf("%s/downstream", signal)))
+
+				table := routingConnector["table"].([]interface{})
+				Expect(table).To(HaveLen(len(expectedNamespaces)))
+				for i, ns := range expectedNamespaces {
+					route := table[i].(map[string]interface{})
+					Expect(route["context"]).To(Equal("resource"))
+					Expect(route["condition"]).To(Equal(fmt.Sprintf(`attributes["k8s.namespace.name"] == "%s"`, ns)))
+					routePipelines := route["pipelines"].([]interface{})
+					Expect(routePipelines).To(HaveLen(1))
+					Expect(routePipelines[0]).To(Equal(fmt.Sprintf("%s/filter/%s", signal, ns)))
+				}
+
+				customFilterReturnConnector :=
+					readFromMap(
+						collectorConfig,
+						[]string{"connectors", fmt.Sprintf("forward/%s/customfilter/return", signal)},
+					)
+				Expect(customFilterReturnConnector).ToNot(BeNil(),
+					fmt.Sprintf("config map should have a custom filter return connector for the signal type %s", signal))
+
+				for _, namespace := range expectedNamespaces {
+					filterProcessorName := fmt.Sprintf("filter/%s/%s", signal, namespace)
+					filterProcessorRaw := readFromMap(
+						collectorConfig,
+						[]string{"processors", filterProcessorName},
+					)
+					Expect(filterProcessorRaw).ToNot(BeNil(),
+						fmt.Sprintf("expected filter processor %s to exist, but it didn't", filterProcessorName))
+					filterProcessor := filterProcessorRaw.(map[string]interface{})
+					Expect(filterProcessor["error_mode"]).To(Equal("ignore"))
+
+					hasExpectedConditions := false
+					expectedConditionsPerObjectType := expectations.conditions[namespace]
+					for objectType, expectedConditions := range expectedConditionsPerObjectType {
+						if len(expectedConditions) != 0 {
+							hasExpectedConditions = true
+						}
+						filterConditionsRaw := readFromMap(filterProcessor, []string{string(signal), string(objectType)})
+						Expect(filterConditionsRaw).ToNot(BeNil(),
+							"expected %d filter conditions but there were none for signal \"%s\", namespace \"%s\", and object type \"%s\"",
+							len(expectedConditions), signal, namespace, objectType)
+						actualFilterConditions := filterConditionsRaw.([]interface{})
+						Expect(actualFilterConditions).To(HaveLen(len(expectedConditions)))
+						for i, expectedCondition := range expectedConditions {
+							Expect(actualFilterConditions[i]).To(Equal(expectedCondition))
+						}
+					}
+
+					if !hasExpectedConditions {
+						Fail(
+							fmt.Sprintf("expected conditions are empty for signal %s and namespace %s, although the signal should have filters?",
+								signal, namespace))
+					}
+
+					collectionExporters := readPipelineExporters(pipelines, fmt.Sprintf("%s/collect", signal))
+					Expect(collectionExporters).To(HaveLen(1))
+					Expect(collectionExporters).To(ContainElement(fmt.Sprintf("routing/%s/customfilter/send", signal)))
+				}
+
+				for _, namespace := range expectedNamespaces {
+					filterPipelineName := fmt.Sprintf("%s/filter/%s", signal, namespace)
+					filterPipelineRaw :=
+						readFromMap(pipelines, []string{filterPipelineName})
+					Expect(filterPipelineRaw).ToNot(BeNil(),
+						fmt.Sprintf("expected filter pipeline %s to exist, but it didn't", filterPipelineName))
+					filterPipeline := filterPipelineRaw.(map[string]interface{})
+					Expect(filterPipeline["receivers"].([]interface{})[0]).To(
+						Equal(fmt.Sprintf("routing/%s/customfilter/send", signal)))
+					Expect(filterPipeline["processors"].([]interface{})[0]).To(
+						Equal(fmt.Sprintf("filter/%s/%s", signal, namespace)))
+					Expect(filterPipeline["exporters"].([]interface{})[0]).To(
+						Equal(fmt.Sprintf("forward/%s/customfilter/return", signal)))
+				}
+				// TODO Test that no other filter pipeline exist
+
+				downstreamReceivers := readPipelineReceivers(pipelines, fmt.Sprintf("%s/downstream", signal))
+				Expect(downstreamReceivers).To(HaveLen(2))
+				Expect(downstreamReceivers).To(ContainElement(fmt.Sprintf("forward/%s/customfilter/return", signal)))
+				Expect(downstreamReceivers).To(ContainElement(fmt.Sprintf("routing/%s/customfilter/send", signal)))
+			}
+
+			for _, signal := range expectations.signalsWithoutFilters {
+				connectors := collectorConfig["connectors"]
+				if testConfig.cmType == configMapTypeDeployment && connectors == nil {
+					// The config map does not have any connectors, this can be valid for the deployment config map if
+					// metrics aren't filtered.
+					continue
+				}
+				routingConnector :=
+					readFromMap(
+						collectorConfig,
+						[]string{"connectors", fmt.Sprintf("routing/%s/customfilter/send", signal)},
+					)
+				Expect(routingConnector).To(BeNil())
+			}
+		}, telemetryFilterTestConfigs)
 	})
 
 	Describe("on an IPv4 or IPv6 cluster", func() {
@@ -972,7 +1267,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			}
 
 			expected := testConfig.expected
-			configMap, err := assembleDaemonSetCollectorConfigMap(config, nil, nil, false)
+			configMap, err := assembleDaemonSetCollectorConfigMap(config, nil, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			healthCheckEndpoint := readFromMap(collectorConfig, []string{"extensions", "health_check", "endpoint"})
@@ -996,7 +1291,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(httpOtlpEndpoint).To(Equal(fmt.Sprintf("%s:4318", expected)))
 			Expect(selfMonitoringTelemetryEndpoint).To(Equal(expected))
 
-			configMap, err = assembleDeploymentCollectorConfigMap(config, nil, false)
+			configMap, err = assembleDeploymentCollectorConfigMap(config, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig = parseConfigMapContent(configMap)
 			healthCheckEndpoint = readFromMap(collectorConfig, []string{"extensions", "health_check", "endpoint"})
@@ -1031,12 +1326,14 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 func assembleDaemonSetCollectorConfigMapWithoutScrapingNamespaces(
 	config *oTelColConfig,
 	monitoredNamespaces []string,
+	telemetryFilters []NamespacedTelemetryFilter,
 	forDeletion bool,
 ) (*corev1.ConfigMap, error) {
 	return assembleDaemonSetCollectorConfigMap(
 		config,
 		monitoredNamespaces,
 		nil,
+		telemetryFilters,
 		forDeletion,
 	)
 }
@@ -1044,11 +1341,13 @@ func assembleDaemonSetCollectorConfigMapWithoutScrapingNamespaces(
 func assembleDeploymentCollectorConfigMapForTest(
 	config *oTelColConfig,
 	monitoredNamespaces []string,
+	telemetryFilters []NamespacedTelemetryFilter,
 	forDeletion bool,
 ) (*corev1.ConfigMap, error) {
 	return assembleDeploymentCollectorConfigMap(
 		config,
 		monitoredNamespaces,
+		telemetryFilters,
 		forDeletion,
 	)
 }
@@ -1063,12 +1362,12 @@ func parseConfigMapContent(configMap *corev1.ConfigMap) map[string]interface{} {
 
 func verifyDownstreamExportersInPipelines(
 	collectorConfig map[string]interface{},
-	testConfig testConfig,
+	cmTypeDef configMapTypeDefinition,
 	expectedExporters ...string,
 ) {
 	pipelines := readPipelines(collectorConfig)
 	Expect(pipelines).ToNot(BeNil())
-	for _, pipelineName := range testConfig.pipelineNames {
+	for _, pipelineName := range cmTypeDef.exporterPipelineNames {
 		exporters := readPipelineExporters(pipelines, pipelineName)
 		Expect(exporters).To(HaveLen(len(expectedExporters)))
 		Expect(exporters).To(ContainElements(expectedExporters))
@@ -1095,7 +1394,7 @@ func verifyScrapeJobHasNamespaces(collectorConfig map[string]interface{}, jobNam
 			pathToScrapeJob(jobName),
 		)
 	namespacesKubernetesPods := namespacesKubernetesPodsRaw.([]interface{})
-	Expect(namespacesKubernetesPods).To(ContainElements("namespace1", "namespace2"))
+	Expect(namespacesKubernetesPods).To(ContainElements("namespace-1", "namespace-2"))
 }
 
 func pathToScrapeJob(jobName string) []string {
@@ -1115,7 +1414,6 @@ func readPipelines(collectorConfig map[string]interface{}) map[string]interface{
 	return ((collectorConfig["service"]).(map[string]interface{})["pipelines"]).(map[string]interface{})
 }
 
-//nolint:unparam
 func readPipelineReceivers(pipelines map[string]interface{}, pipelineName string) []interface{} {
 	return readPipelineList(pipelines, pipelineName, "receivers")
 }
@@ -1130,10 +1428,12 @@ func readPipelineExporters(pipelines map[string]interface{}, pipelineName string
 
 func readPipelineList(pipelines map[string]interface{}, pipelineName string, listName string) []interface{} {
 	pipelineRaw := pipelines[pipelineName]
-	Expect(pipelineRaw).ToNot(BeNil())
+	Expect(pipelineRaw).ToNot(BeNil(), fmt.Sprintf("pipeline %s was nil", pipelineName))
 	pipeline := pipelineRaw.(map[string]interface{})
 	listRaw := pipeline[listName]
-	Expect(listRaw).ToNot(BeNil())
+	if listRaw == nil {
+		return nil
+	}
 	return listRaw.([]interface{})
 }
 
@@ -1150,10 +1450,10 @@ func readFromMap(object interface{}, path []string) interface{} {
 		attributeValue := sequenceOfMappingsMatches[2]
 
 		s, isSlice := object.([]interface{})
-		Expect(isSlice).To(BeTrue(), fmt.Sprintf("expected a []interface{} when reading key %s, got %T", key, object))
+		Expect(isSlice).To(BeTrue(), fmt.Sprintf("expected a []interface{} when reading key \"%s\", got %T", key, object))
 		for _, item := range s {
 			m, isMapInSlice := item.(map[string]interface{})
-			Expect(isMapInSlice).To(BeTrue(), fmt.Sprintf("expected a map[string]interface{} when checking an item in the slice read via key %s, got %T", key, object))
+			Expect(isMapInSlice).To(BeTrue(), fmt.Sprintf("expected a map[string]interface{} when checking an item in the slice read via key \"%s\", got %T", key, object))
 			val := m[attributeName]
 			if val == attributeValue {
 				sub = item
@@ -1166,19 +1466,196 @@ func readFromMap(object interface{}, path []string) interface{} {
 		index, err := strconv.Atoi(indexRaw)
 		Expect(err).ToNot(HaveOccurred())
 		s, isSlice := object.([]interface{})
-		Expect(isSlice).To(BeTrue(), fmt.Sprintf("expected a []interface{} when reading key %s, got %T", key, object))
+		Expect(isSlice).To(BeTrue(), fmt.Sprintf("expected a []interface{} when reading key \"%s\", got %T", key, object))
 		Expect(len(s) > index).To(BeTrue())
 		sub = s[index]
 	} else {
 		// assume we have a regular map, read by key
 		m, isMap := object.(map[string]interface{})
-		Expect(isMap).To(BeTrue(), fmt.Sprintf("expected a map[string]interface{} when reading key %s, got %T", key, object))
+		Expect(isMap).To(BeTrue(), fmt.Sprintf("expected a map[string]interface{} when reading key \"%s\", got %T", key, object))
 		sub = m[key]
 	}
 
 	if len(path) == 1 {
 		return sub
 	}
-	Expect(sub).ToNot(BeNil())
+	Expect(sub).ToNot(BeNil(), fmt.Sprintf("expected a nested element to be not nil when reading key \"%s\" in object %v", key, object))
 	return readFromMap(sub, path[1:])
+}
+
+func createFilterTestForSingleObjectType(
+	cmTypeDef configMapTypeDefinition,
+	signalT signalType,
+	objectT objectType,
+	conditionsNamespace1 []string,
+	conditionsNamespace2 []string,
+) telemetryFilterTestConfig {
+	signalsWithoutFiltersDaemonset := allSignals()
+	signalsWithoutFiltersDaemonset = slices.DeleteFunc(signalsWithoutFiltersDaemonset, func(s signalType) bool {
+		return s == signalT
+	})
+	signalsWithoutFiltersDeployment := allSignals()
+	if signalT == signalTypeMetrics {
+		signalsWithoutFiltersDeployment = slices.DeleteFunc(signalsWithoutFiltersDeployment, func(s signalType) bool {
+			return s == signalT
+		})
+	}
+
+	var telemetryFilter1 dash0v1alpha1.TelemetryFilter
+	var telemetryFilter2 dash0v1alpha1.TelemetryFilter
+	switch signalT {
+	case signalTypeTraces:
+		switch objectT {
+		case objectTypeSpan:
+			telemetryFilter1 = dash0v1alpha1.TelemetryFilter{
+				Traces: &dash0v1alpha1.TraceFilter{
+					SpanFilter: dash0v1alpha1.ObjectTypeFilter{
+						Conditions: conditionsNamespace1,
+					},
+				},
+			}
+			telemetryFilter2 = dash0v1alpha1.TelemetryFilter{
+				Traces: &dash0v1alpha1.TraceFilter{
+					SpanFilter: dash0v1alpha1.ObjectTypeFilter{
+						Conditions: conditionsNamespace2,
+					},
+				},
+			}
+		case objectTypeSpanEvent:
+			telemetryFilter1 = dash0v1alpha1.TelemetryFilter{
+				Traces: &dash0v1alpha1.TraceFilter{
+					SpanEventFilter: dash0v1alpha1.ObjectTypeFilter{
+						Conditions: conditionsNamespace1,
+					},
+				},
+			}
+			telemetryFilter2 = dash0v1alpha1.TelemetryFilter{
+				Traces: &dash0v1alpha1.TraceFilter{
+					SpanEventFilter: dash0v1alpha1.ObjectTypeFilter{
+						Conditions: conditionsNamespace2,
+					},
+				},
+			}
+		default:
+			Fail(fmt.Sprintf("unsupported object type %s for signal type %s", objectT, signalT))
+		}
+
+	case signalTypeMetrics:
+		switch objectT {
+		case objectTypeMetric:
+			telemetryFilter1 = dash0v1alpha1.TelemetryFilter{
+				Metrics: &dash0v1alpha1.MetricFilter{
+					MetricFilter: dash0v1alpha1.ObjectTypeFilter{
+						Conditions: conditionsNamespace1,
+					},
+				},
+			}
+			telemetryFilter2 = dash0v1alpha1.TelemetryFilter{
+				Metrics: &dash0v1alpha1.MetricFilter{
+					MetricFilter: dash0v1alpha1.ObjectTypeFilter{
+						Conditions: conditionsNamespace2,
+					},
+				},
+			}
+		case objectTypeDataPoint:
+			telemetryFilter1 = dash0v1alpha1.TelemetryFilter{
+				Metrics: &dash0v1alpha1.MetricFilter{
+					DataPointFilter: dash0v1alpha1.ObjectTypeFilter{
+						Conditions: conditionsNamespace1,
+					},
+				},
+			}
+			telemetryFilter2 = dash0v1alpha1.TelemetryFilter{
+				Metrics: &dash0v1alpha1.MetricFilter{
+					DataPointFilter: dash0v1alpha1.ObjectTypeFilter{
+						Conditions: conditionsNamespace2,
+					},
+				},
+			}
+		default:
+			Fail(fmt.Sprintf("unsupported object type %s for signal type %s", objectT, signalT))
+		}
+
+	case signalTypeLogs:
+		switch objectT {
+		case objectTypeLogRecord:
+			telemetryFilter1 = dash0v1alpha1.TelemetryFilter{
+				Logs: &dash0v1alpha1.LogFilter{
+					LogRecordFilter: dash0v1alpha1.ObjectTypeFilter{
+						Conditions: conditionsNamespace1,
+					},
+				},
+			}
+			telemetryFilter2 = dash0v1alpha1.TelemetryFilter{
+				Logs: &dash0v1alpha1.LogFilter{
+					LogRecordFilter: dash0v1alpha1.ObjectTypeFilter{
+						Conditions: conditionsNamespace2,
+					},
+				},
+			}
+		default:
+			Fail(fmt.Sprintf("unsupported object type %s for signal type %s", objectT, signalT))
+		}
+	}
+
+	daemonSetExpectations := filterExpectations{
+		signalsWithFilters: []signalType{signalT},
+		conditions: conditionExpectationsPerNamespaceAndObjectType{
+			namespace1: {
+				objectT: conditionsNamespace1,
+			},
+			namespace2: {
+				objectT: conditionsNamespace2,
+			},
+		},
+		signalsWithoutFilters: signalsWithoutFiltersDaemonset,
+	}
+	var deploymentExpectations filterExpectations
+	if signalT == signalTypeMetrics {
+		deploymentExpectations = filterExpectations{
+			signalsWithFilters: []signalType{signalT},
+			conditions: conditionExpectationsPerNamespaceAndObjectType{
+				namespace1: {
+					objectT: conditionsNamespace1,
+				},
+				namespace2: {
+					objectT: conditionsNamespace2,
+				},
+			},
+			signalsWithoutFilters: signalsWithoutFiltersDaemonset,
+		}
+	} else {
+		deploymentExpectations = filterExpectations{
+			signalsWithoutFilters: signalsWithoutFiltersDeployment,
+		}
+	}
+
+	return telemetryFilterTestConfig{
+		configMapTypeDefinition: cmTypeDef,
+		telemetryFilters: []NamespacedTelemetryFilter{
+			{
+				Namespace:       namespace1,
+				TelemetryFilter: telemetryFilter1,
+			},
+			{
+				Namespace:       namespace2,
+				TelemetryFilter: telemetryFilter2,
+			},
+		},
+		expectations: telemetryFilterTestConfigExpectations{
+			namespaces: monitoredNamespaces,
+			daemonset:  daemonSetExpectations,
+			deployment: deploymentExpectations,
+		},
+	}
+}
+
+func emptyFilterExpectations() filterExpectations {
+	return filterExpectations{
+		signalsWithoutFilters: allSignals(),
+	}
+}
+
+func allSignals() []signalType {
+	return []signalType{signalTypeTraces, signalTypeMetrics, signalTypeLogs}
 }
