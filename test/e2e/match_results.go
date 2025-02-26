@@ -42,6 +42,7 @@ func (mrl *MatchResultList[R, O]) expectAtLeastOneMatch(g Gomega, message string
 	bestMatches := make([]ObjectMatchResult[R, O], 0)
 	for _, omr := range mrl.objectResults {
 		if omr.isMatch(g) {
+			// We have a match, simply return from the function.
 			return
 		} else {
 			matchScore := omr.matchScore()
@@ -53,6 +54,7 @@ func (mrl *MatchResultList[R, O]) expectAtLeastOneMatch(g Gomega, message string
 			}
 		}
 	}
+	// We didn't find a match the rest of the method is about presenting the most likely matches.
 
 	bestMatchesAsString := ""
 	for i, omr := range bestMatches {

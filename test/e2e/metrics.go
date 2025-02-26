@@ -10,17 +10,24 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"time"
 
 	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/pmetric"
 
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
+type namespaceChecks struct {
+	failOnNamespaceOtherThan    string
+	failOnNamespaceScopedMetric bool
+}
+
 type metricsResourceMatchConfig struct {
-	expectedDeploymentName      string
-	expectPodUid                bool
-	allowNamespaceScopedMetrics bool
+	expectedDeploymentName string
+	expectPodUid           bool
+	namespaceChecks        namespaceChecks
 }
 
 const (
@@ -54,29 +61,37 @@ var (
 	metricsUnmarshaller = &pmetric.JSONUnmarshaler{}
 
 	deploymentMetricsMatchConfig = metricsResourceMatchConfig{
-		expectedDeploymentName:      "dash0-operator-nodejs-20-express-test-deployment",
-		expectPodUid:                true,
-		allowNamespaceScopedMetrics: true,
+		expectedDeploymentName: "dash0-operator-nodejs-20-express-test-deployment",
+		expectPodUid:           true,
+		namespaceChecks: namespaceChecks{
+			failOnNamespaceOtherThan: applicationUnderTestNamespace,
+		},
 	}
 
 	workloadMetricsMatchConfig = metricsResourceMatchConfig{
-		expectedDeploymentName:      "",
-		expectPodUid:                true,
-		allowNamespaceScopedMetrics: true,
+		expectedDeploymentName: "",
+		expectPodUid:           true,
+		namespaceChecks: namespaceChecks{
+			failOnNamespaceOtherThan: applicationUnderTestNamespace,
+		},
 	}
 
 	nodeMetricsMatchConfig = metricsResourceMatchConfig{
-		expectedDeploymentName:      "",
-		expectPodUid:                false,
-		allowNamespaceScopedMetrics: false,
+		expectedDeploymentName: "",
+		expectPodUid:           false,
+		namespaceChecks: namespaceChecks{
+			failOnNamespaceScopedMetric: true,
+		},
 	}
 )
 
-func verifyKubeletStatsMetrics(g Gomega) {
+func verifyKubeletStatsMetrics(g Gomega, timestampLowerBound time.Time) {
 	allMatchResults := fileHasMatchingMetrics(
 		g,
 		resourceAttributeMatcher(deploymentMetricsMatchConfig),
 		metricNameIsMemberOfList(kubeletStatsReceiverMetricNames),
+		deploymentMetricsMatchConfig.namespaceChecks,
+		timestampLowerBound,
 	)
 	allMatchResults.expectAtLeastOneMatch(
 		g,
@@ -84,11 +99,13 @@ func verifyKubeletStatsMetrics(g Gomega) {
 	)
 }
 
-func verifyK8skClusterReceiverMetrics(g Gomega) {
+func verifyK8skClusterReceiverMetrics(g Gomega, timestampLowerBound time.Time) {
 	allMatchResults := fileHasMatchingMetrics(
 		g,
 		resourceAttributeMatcher(workloadMetricsMatchConfig),
 		metricNameIsMemberOfList(k8sClusterReceiverMetricNames),
+		workloadMetricsMatchConfig.namespaceChecks,
+		timestampLowerBound,
 	)
 	allMatchResults.expectAtLeastOneMatch(
 		g,
@@ -96,11 +113,13 @@ func verifyK8skClusterReceiverMetrics(g Gomega) {
 	)
 }
 
-func verifyPrometheusMetrics(g Gomega) {
+func verifyPrometheusMetrics(g Gomega, timestampLowerBound time.Time) {
 	allMatchResults := fileHasMatchingMetrics(
 		g,
 		resourceAttributeMatcher(deploymentMetricsMatchConfig),
 		metricNameIsMemberOfList(prometheusReceiverMetricNames),
+		deploymentMetricsMatchConfig.namespaceChecks,
+		timestampLowerBound,
 	)
 	allMatchResults.expectAtLeastOneMatch(
 		g,
@@ -108,11 +127,13 @@ func verifyPrometheusMetrics(g Gomega) {
 	)
 }
 
-func verifyNonNamespaceScopedKubeletStatsMetricsOnly(g Gomega) {
+func verifyNonNamespaceScopedKubeletStatsMetricsOnly(g Gomega, timestampLowerBound time.Time) {
 	allMatchResults := fileHasMatchingMetrics(
 		g,
 		resourceAttributeMatcher(nodeMetricsMatchConfig),
 		metricNameIsMemberOfList(kubeletStatsReceiverMetricNames),
+		nodeMetricsMatchConfig.namespaceChecks,
+		timestampLowerBound,
 	)
 	allMatchResults.expectAtLeastOneMatch(
 		g,
@@ -124,6 +145,9 @@ func fileHasMatchingMetrics(
 	g Gomega,
 	resourceMatchFn func(pmetric.ResourceMetrics, *ResourceMatchResult[pmetric.ResourceMetrics]),
 	metricMatchFn func(pmetric.Metric, *ObjectMatchResult[pmetric.ResourceMetrics, pmetric.Metric]),
+	namespaceChecks namespaceChecks,
+	timestampLowerBound time.Time,
+
 ) MatchResultList[pmetric.ResourceMetrics, pmetric.Metric] {
 	fileHandle, err := os.Open("test-resources/e2e-test-volumes/otlp-sink/metrics.jsonl")
 	g.Expect(err).NotTo(HaveOccurred())
@@ -147,6 +171,8 @@ func fileHasMatchingMetrics(
 			metrics,
 			resourceMatchFn,
 			metricMatchFn,
+			namespaceChecks,
+			timestampLowerBound,
 			&matchResults,
 		)
 		if matchResults.hasMatch(g) {
@@ -164,23 +190,33 @@ func hasMatchingMetrics(
 	metrics pmetric.Metrics,
 	resourceMatchFn func(pmetric.ResourceMetrics, *ResourceMatchResult[pmetric.ResourceMetrics]),
 	metricMatchFn func(pmetric.Metric, *ObjectMatchResult[pmetric.ResourceMetrics, pmetric.Metric]),
+	namespaceChecks namespaceChecks,
+	timestampLowerBound time.Time,
 	allMatchResults *MatchResultList[pmetric.ResourceMetrics, pmetric.Metric],
 ) {
 	for i := 0; i < metrics.ResourceMetrics().Len(); i++ {
-		resourceMetric := metrics.ResourceMetrics().At(i)
-		resourceMatchResult := newResourceMatchResult(resourceMetric)
-		resourceMatchFn(resourceMetric, &resourceMatchResult)
+		resourceMetrics := metrics.ResourceMetrics().At(i)
+		checkForForbidenResourceAttributes(resourceMetrics, namespaceChecks, timestampLowerBound)
+		resourceMatchResult := newResourceMatchResult(resourceMetrics)
+		resourceMatchFn(resourceMetrics, &resourceMatchResult)
 
-		for j := 0; j < resourceMetric.ScopeMetrics().Len(); j++ {
-			scopeMetric := resourceMetric.ScopeMetrics().At(j)
+		for j := 0; j < resourceMetrics.ScopeMetrics().Len(); j++ {
+			scopeMetric := resourceMetrics.ScopeMetrics().At(j)
 			for k := 0; k < scopeMetric.Metrics().Len(); k++ {
 				metric := scopeMetric.Metrics().At(k)
 				metricMatchResult := newObjectMatchResult[pmetric.ResourceMetrics, pmetric.Metric](
 					metric.Name(),
-					resourceMetric,
+					resourceMetrics,
 					resourceMatchResult,
 					metric,
 				)
+				mostRecentDataPoint := getTimestampOfMostRecentDataPoint(metric)
+				if !mostRecentDataPoint.After(timestampLowerBound) {
+					// This metric and its data points are too old, it is probably from a previously running test case,
+					// ignore it.
+					continue
+				}
+
 				metricMatchFn(metric, &metricMatchResult)
 				allMatchResults.addResultForObject(metricMatchResult)
 			}
@@ -188,7 +224,7 @@ func hasMatchingMetrics(
 	}
 }
 
-func verifySelfMonitoringMetrics(g Gomega) {
+func verifySelfMonitoringMetrics(g Gomega, timestampLowerBound time.Time) {
 	resourceMatchFn := func(
 		resourceMetrics pmetric.ResourceMetrics,
 		matchResult *ResourceMatchResult[pmetric.ResourceMetrics],
@@ -277,6 +313,13 @@ func verifySelfMonitoringMetrics(g Gomega) {
 		g,
 		resourceMatchFn,
 		metricMatchFn,
+		// This test runs with the same timestampLowerBound as other tests ("should produce node-based metrics via the
+		// kubeletstats receiver", "should produce cluster metrics via the k8s_cluster receiver", "should produce
+		// Prometheus metrics via the prometheus receiver", ...), hence we will have collected metrics from the
+		// namespace under monitoring and non-namespaced metrics. In this test, we do not care about the forbidden
+		// metrics check.
+		namespaceChecks{},
+		timestampLowerBound,
 	)
 	allMatchResults.expectAtLeastOneMatch(
 		g,
@@ -289,43 +332,6 @@ func resourceAttributeMatcher(
 ) func(pmetric.ResourceMetrics, *ResourceMatchResult[pmetric.ResourceMetrics]) {
 	return func(resourceMetrics pmetric.ResourceMetrics, matchResult *ResourceMatchResult[pmetric.ResourceMetrics]) {
 		attributes := resourceMetrics.Resource().Attributes()
-
-		namespace, namespaceIsSet := attributes.Get(namespaceNameKey)
-		if namespaceIsSet {
-			// Make sure we only collect metrics from monitored namespaces (or only non-namespace-scoped metrics if no
-			// namespace is monitored). If the metric has a namespace resource attribute, it needs to be the only
-			// namespaces that has a Dash0Monitoring resource. We allow metrics that do not have any namespace resource
-			// attribute, like all node-related metrics.
-			//
-			// Deliberately not returning false here, but instead calling Expect directly, and _not_ the Gomega's
-			// instance g.Expect of the surrounding Eventually function, to make the test fail immediately.
-			metricName := "(unknown metric name)"
-			scopeMetrics := resourceMetrics.ScopeMetrics()
-			if scopeMetrics.Len() > 0 {
-				metricsFromArbitraryScope := scopeMetrics.At(0).Metrics()
-				if metricsFromArbitraryScope.Len() > 0 {
-					metricName = metricsFromArbitraryScope.At(0).Name()
-				}
-			}
-			if matchConfig.allowNamespaceScopedMetrics {
-				Expect(namespace.Str()).To(Equal(applicationUnderTestNamespace),
-					fmt.Sprintf("Found at least one metric (%s) from a non-monitored namespace (%s); the operator's "+
-						"collectors should only collect metrics from monitored namespaces and metrics that are not "+
-						"namespace-scoped (like Kubernetes node metrics).",
-						metricName,
-						namespace.Str()),
-				)
-			} else {
-				Expect(namespaceIsSet).To(BeFalse(),
-					fmt.Sprintf("Found at least one metric (%s) that has k8s.namespace.name set (%s); the operator's "+
-						"collectors in the current configuration should only collect metrics which are not "+
-						"namespace-scoped (like Kubernetes node metrics).",
-						metricName,
-						namespace.Str()),
-				)
-			}
-		}
-
 		if matchConfig.expectedDeploymentName != "" {
 			actualDeploymentName, deploymentNameIsSet := attributes.Get(deploymentNameKey)
 			if !deploymentNameIsSet {
@@ -375,6 +381,58 @@ func resourceAttributeMatcher(
 	}
 }
 
+func checkForForbidenResourceAttributes(
+	resourceMetrics pmetric.ResourceMetrics,
+	namespaceChecks namespaceChecks,
+	timestampLowerBound time.Time,
+) {
+	mostRecentTimestamp := getMostRecentTimestampOfAnyMetricDataPoint(resourceMetrics)
+
+	if !mostRecentTimestamp.After(timestampLowerBound) {
+		// These metrics and their data points are too old, they are probably from a previously running test case,
+		// ignore them.
+		return
+	}
+
+	attributes := resourceMetrics.Resource().Attributes()
+	namespace, namespaceIsSet := attributes.Get(namespaceNameKey)
+	if namespaceIsSet {
+		// Make sure we only collect metrics from monitored namespaces (or only non-namespace-scoped metrics if no
+		// namespace is monitored). If the metric has a namespace resource attribute, it needs to be the only
+		// namespaces that has a Dash0Monitoring resource. We allow metrics that do not have any namespace resource
+		// attribute, like all node-related metrics.
+		//
+		// Deliberately not returning false here, but instead calling Expect directly, and _not_ the Gomega's
+		// instance g.Expect of the surrounding Eventually function, to make the test fail immediately.
+		metricName := "(unknown metric name)"
+		scopeMetrics := resourceMetrics.ScopeMetrics()
+		if scopeMetrics.Len() > 0 {
+			metricsFromArbitraryScope := scopeMetrics.At(0).Metrics()
+			if metricsFromArbitraryScope.Len() > 0 {
+				metricName = metricsFromArbitraryScope.At(0).Name()
+			}
+		}
+		if namespaceChecks.failOnNamespaceOtherThan != "" {
+			Expect(namespace.Str()).To(Equal(namespaceChecks.failOnNamespaceOtherThan),
+				fmt.Sprintf("Found at least one metric (%s) from a non-monitored namespace (%s); the operator's "+
+					"collectors should only collect metrics from monitored namespaces and metrics that are not "+
+					"namespace-scoped (like Kubernetes node metrics).",
+					metricName,
+					namespace.Str()),
+			)
+		}
+		if namespaceChecks.failOnNamespaceScopedMetric {
+			Expect(namespaceIsSet).To(BeFalse(),
+				fmt.Sprintf("Found at least one metric (%s) that has k8s.namespace.name set (%s); the operator's "+
+					"collectors in the current configuration should only collect metrics which are not "+
+					"namespace-scoped (like Kubernetes node metrics).",
+					metricName,
+					namespace.Str()),
+			)
+		}
+	}
+}
+
 func checkPodUid(attributes pcommon.Map, expectPodUid bool, matchResult *ResourceMatchResult[pmetric.ResourceMetrics]) {
 	k8sPodUid, k8sPodUidIsSet := attributes.Get(podUidKey)
 	if expectPodUid && !k8sPodUidIsSet {
@@ -411,4 +469,122 @@ func metricNameIsMemberOfList(metricNameList []string) func(
 
 func parseMetricNameList(metricNameListRaw string) []string {
 	return strings.Split(metricNameListRaw, "\n")
+}
+
+func getMostRecentTimestampOfAnyMetricDataPoint(resourceMetrics pmetric.ResourceMetrics) time.Time {
+	mostRecentTimestamp := time.Unix(0, 0)
+	foundAtLeastOneTimestamp := false
+
+	for j := 0; j < resourceMetrics.ScopeMetrics().Len(); j++ {
+		scopeMetric := resourceMetrics.ScopeMetrics().At(j)
+		for k := 0; k < scopeMetric.Metrics().Len(); k++ {
+			metric := scopeMetric.Metrics().At(k)
+			mostRecentTimestampFromMetric := getTimestampOfMostRecentDataPoint(metric)
+			if mostRecentTimestampFromMetric.After(mostRecentTimestamp) {
+				mostRecentTimestamp = mostRecentTimestampFromMetric
+				foundAtLeastOneTimestamp = true
+			}
+		}
+	}
+	if !foundAtLeastOneTimestamp {
+		Fail("no metric with any data point with a time stamp found")
+	}
+	return mostRecentTimestamp
+}
+
+func getTimestampOfMostRecentDataPoint(metric pmetric.Metric) time.Time {
+	switch metric.Type() {
+	case pmetric.MetricTypeGauge:
+		return getMostRecentTimestamp(metric.Gauge().DataPoints())
+	case pmetric.MetricTypeSum:
+		return getMostRecentTimestamp(metric.Sum().DataPoints())
+	case pmetric.MetricTypeHistogram:
+		return getMostRecentTimestampFromHistogram(metric.Histogram().DataPoints())
+	case pmetric.MetricTypeExponentialHistogram:
+		return getMostRecentTimestampFromExponentialHistogram(metric.ExponentialHistogram().DataPoints())
+	case pmetric.MetricTypeSummary:
+		return getMostRecentTimestampFromSummary(metric.Summary().DataPoints())
+	case pmetric.MetricTypeEmpty:
+		Fail("unexpected metric type: empty")
+		return time.Time{}
+	default:
+		Fail("unknown metric type: " + metric.Type().String())
+		return time.Time{}
+	}
+}
+
+func getMostRecentTimestamp(dataPoints pmetric.NumberDataPointSlice) time.Time {
+	if dataPoints.Len() == 0 {
+		Fail("no metric data points found")
+	}
+	mostRecentTimestamp := time.Unix(0, 0)
+	foundAtLeastOneTimestamp := false
+	for i := 0; i < dataPoints.Len(); i++ {
+		dataPointTimestamp := dataPoints.At(i).Timestamp().AsTime()
+		if dataPointTimestamp.After(mostRecentTimestamp) {
+			mostRecentTimestamp = dataPointTimestamp
+			foundAtLeastOneTimestamp = true
+		}
+	}
+	if !foundAtLeastOneTimestamp {
+		Fail("no metric data point with time stamp found")
+	}
+	return mostRecentTimestamp
+}
+
+func getMostRecentTimestampFromHistogram(dataPoints pmetric.HistogramDataPointSlice) time.Time {
+	if dataPoints.Len() == 0 {
+		Fail("no metric data points found")
+	}
+	t := time.Unix(0, 0)
+	foundAtLeastOneTimestamp := false
+	for i := 0; i < dataPoints.Len(); i++ {
+		ts := dataPoints.At(i).Timestamp().AsTime()
+		if ts.After(t) {
+			t = ts
+			foundAtLeastOneTimestamp = true
+		}
+	}
+	if !foundAtLeastOneTimestamp {
+		Fail("no metric data point with time stamp found")
+	}
+	return t
+}
+
+func getMostRecentTimestampFromExponentialHistogram(dataPoints pmetric.ExponentialHistogramDataPointSlice) time.Time {
+	if dataPoints.Len() == 0 {
+		Fail("no metric data points found")
+	}
+	t := time.Unix(0, 0)
+	foundAtLeastOneTimestamp := false
+	for i := 0; i < dataPoints.Len(); i++ {
+		ts := dataPoints.At(i).Timestamp().AsTime()
+		if ts.After(t) {
+			t = ts
+			foundAtLeastOneTimestamp = true
+		}
+	}
+	if !foundAtLeastOneTimestamp {
+		Fail("no metric data point with time stamp found")
+	}
+	return t
+}
+
+func getMostRecentTimestampFromSummary(dataPoints pmetric.SummaryDataPointSlice) time.Time {
+	if dataPoints.Len() == 0 {
+		Fail("no metric data points found")
+	}
+	t := time.Unix(0, 0)
+	foundAtLeastOneTimestamp := false
+	for i := 0; i < dataPoints.Len(); i++ {
+		ts := dataPoints.At(i).Timestamp().AsTime()
+		if ts.After(t) {
+			t = ts
+			foundAtLeastOneTimestamp = true
+		}
+	}
+	if !foundAtLeastOneTimestamp {
+		Fail("no metric data point with time stamp found")
+	}
+	return t
 }

@@ -38,6 +38,7 @@ func verifySpans(
 	workloadType workloadType,
 	route string,
 	query string,
+	timestampLowerBound time.Time,
 	expectClusterName bool,
 ) {
 	allMatchResults :=
@@ -47,7 +48,7 @@ func verifySpans(
 			workloadType,
 			route,
 			query,
-			nil,
+			timestampLowerBound,
 			true,
 			expectClusterName,
 		)
@@ -67,8 +68,8 @@ func verifyNoSpans(
 	workloadType workloadType,
 	route string,
 	query string,
+	timestampLowerBound time.Time,
 ) {
-	timestampLowerBound := time.Now()
 	allMatchResults :=
 		sendRequestAndFindMatchingSpans(
 			g,
@@ -76,7 +77,7 @@ func verifyNoSpans(
 			workloadType,
 			route,
 			query,
-			&timestampLowerBound,
+			timestampLowerBound,
 			false,
 			false,
 		)
@@ -96,7 +97,7 @@ func sendRequestAndFindMatchingSpans(
 	workloadType workloadType,
 	route string,
 	query string,
-	timestampLowerBound *time.Time,
+	timestampLowerBound time.Time,
 	checkResourceAttributes bool,
 	expectClusterName bool,
 ) MatchResultList[ptrace.ResourceSpans, ptrace.Span] {
@@ -120,7 +121,7 @@ func fileHasMatchingSpan(
 	g Gomega,
 	resourceMatchFn func(ptrace.ResourceSpans, *ResourceMatchResult[ptrace.ResourceSpans]),
 	spanMatchFn func(ptrace.Span, *ObjectMatchResult[ptrace.ResourceSpans, ptrace.Span]),
-	timestampLowerBound *time.Time,
+	timestampLowerBound time.Time,
 ) MatchResultList[ptrace.ResourceSpans, ptrace.Span] {
 	fileHandle, err := os.Open("test-resources/e2e-test-volumes/otlp-sink/traces.jsonl")
 	g.Expect(err).NotTo(HaveOccurred())
@@ -162,7 +163,7 @@ func hasMatchingSpans(
 	traces ptrace.Traces,
 	resourceMatchFn func(ptrace.ResourceSpans, *ResourceMatchResult[ptrace.ResourceSpans]),
 	spanMatchFn func(ptrace.Span, *ObjectMatchResult[ptrace.ResourceSpans, ptrace.Span]),
-	timestampLowerBound *time.Time,
+	timestampLowerBound time.Time,
 	allMatchResults *MatchResultList[ptrace.ResourceSpans, ptrace.Span],
 ) {
 	for i := 0; i < traces.ResourceSpans().Len(); i++ {
@@ -182,22 +183,11 @@ func hasMatchingSpans(
 					resourceMatchResult,
 					span,
 				)
-				if timestampLowerBound != nil {
-					if span.StartTimestamp().AsTime().After(*timestampLowerBound) {
-						spanMatchResult.addPassedAssertion(timestampKey)
-					} else {
-						spanMatchResult.addFailedAssertion(
-							timestampKey,
-							fmt.Sprintf(
-								"expected timestamp after %s but it was %s",
-								timestampLowerBound.String(),
-								span.StartTimestamp().AsTime().String(),
-							),
-						)
-					}
-				} else {
-					spanMatchResult.addSkippedAssertion(timestampKey, "no lower bound provided")
+				if !span.StartTimestamp().AsTime().After(timestampLowerBound) {
+					// This span is too old, it is probably from a previously running test case, ignore it.
+					continue
 				}
+
 				spanMatchFn(span, &spanMatchResult)
 				allMatchResults.addResultForObject(spanMatchResult)
 			}

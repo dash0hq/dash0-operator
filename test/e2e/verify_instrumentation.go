@@ -62,8 +62,9 @@ func verifyThatWorkloadHasBeenInstrumented(
 	}
 	route := "/dash0-k8s-operator-test"
 	query := fmt.Sprintf("id=%s", testId)
+	timestampLowerBound := time.Now()
 	Eventually(func(g Gomega) {
-		verifySpans(g, runtime, workloadType, route, query, expectClusterName)
+		verifySpans(g, runtime, workloadType, route, query, timestampLowerBound, expectClusterName)
 	}, spanTimeout, pollingInterval).Should(Succeed())
 	By(fmt.Sprintf("%s %s: matching spans have been received", runtime.runtimeTypeLabel, workloadType.workloadTypeString))
 }
@@ -141,8 +142,9 @@ func verifyThatInstrumentationIsRevertedEventually(
 		))
 	route := "/dash0-k8s-operator-test"
 	query := fmt.Sprintf("id=%s", testId)
+	timestampLowerBound := time.Now()
 	Consistently(func(g Gomega) {
-		verifyNoSpans(g, runtime, workloadType, route, query)
+		verifyNoSpans(g, runtime, workloadType, route, query, timestampLowerBound)
 	}, time.Duration(secondsToCheckForSpans)*time.Second, 1*time.Second).Should(Succeed())
 
 	By(fmt.Sprintf(
