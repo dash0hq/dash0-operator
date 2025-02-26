@@ -23,7 +23,7 @@ var (
 	logsUnmarshaller = &plog.JSONUnmarshaler{}
 )
 
-func verifyExactlyOneLogRecordIsReported(g Gomega, testId string, timestampLowerBound *time.Time) error {
+func verifyExactlyOneLogRecordIsReported(g Gomega, testId string, timestampLowerBound time.Time) error {
 	logPattern := fmt.Sprintf("processing request %s", testId)
 	matches := fileCountMatchingLogRecords(g, "deployment", logPattern, timestampLowerBound)
 	switch matches {
@@ -37,7 +37,7 @@ func verifyExactlyOneLogRecordIsReported(g Gomega, testId string, timestampLower
 }
 
 //nolint:all
-func fileCountMatchingLogRecords(g Gomega, workloadType string, logBody string, timestampLowerBound *time.Time) int {
+func fileCountMatchingLogRecords(g Gomega, workloadType string, logBody string, timestampLowerBound time.Time) int {
 	fileHandle, err := os.Open("test-resources/e2e-test-volumes/otlp-sink/logs.jsonl")
 	g.Expect(err).NotTo(HaveOccurred())
 	defer func() {
@@ -78,7 +78,7 @@ func countMatchingLogRecords(
 	logs plog.Logs,
 	resourceMatchFn func(span plog.ResourceLogs) bool,
 	logRecordMatchFn func(span plog.LogRecord) bool,
-	timestampLowerBound *time.Time,
+	timestampLowerBound time.Time,
 ) int {
 	matches := 0
 	for i := 0; i < logs.ResourceLogs().Len(); i++ {
@@ -92,8 +92,12 @@ func countMatchingLogRecords(
 			scopeLog := resourceLog.ScopeLogs().At(j)
 			for k := 0; k < scopeLog.LogRecords().Len(); k++ {
 				logRecord := scopeLog.LogRecords().At(k)
-				if (timestampLowerBound == nil || logRecord.Timestamp().AsTime().After(*timestampLowerBound)) &&
-					logRecordMatchFn(logRecord) {
+				if !logRecord.Timestamp().AsTime().After(timestampLowerBound) {
+					// This log record is too old, it is probably from a previously running test case, ignore it.
+					continue
+				}
+
+				if logRecordMatchFn(logRecord) {
 					matches += 1
 				}
 			}

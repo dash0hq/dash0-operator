@@ -68,10 +68,13 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		rebuildAllContainerImages()
 		rebuildAppUnderTestContainerImages()
 
+		deployOtlpSink(workingDir)
+
 		setupFinishedSuccessfully = true
 	})
 
 	AfterAll(func() {
+		uninstallOtlpSink(workingDir)
 		removeAllTemporaryManifests()
 		undeployNginxIngressController()
 		if applicationUnderTestNamespace != "default" {
@@ -83,18 +86,11 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		}
 	})
 
-	BeforeEach(func() {
-		deployOtlpSink(workingDir)
-	})
-
 	AfterEach(func() {
-		if setupFinishedSuccessfully {
-			// As an alternative to undeploying all applications under test (deployment, daemonset, cronjob, ...) we
-			// could also delete the whole namespace for the application under test after each test case to get rid of
-			// all applications (and then recreate the namespace before each test).
-			removeAllTestApplications(applicationUnderTestNamespace)
-			uninstallOtlpSink(workingDir)
-		}
+		// As an alternative to undeploying all applications under test (deployment, daemonset, cronjob, ...) we
+		// could also delete the whole namespace for the application under test after each test case to get rid of
+		// all applications (and then recreate the namespace before each test).
+		removeAllTestApplications(applicationUnderTestNamespace)
 	})
 
 	Describe("controller", func() {
@@ -851,7 +847,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 			}, 30*time.Second, 300*time.Millisecond).Should(Succeed())
 
 			By("sending a request to the Node.js deployment that will generate a log with a predictable body")
-			now := time.Now()
+			timestampLowerBound := time.Now()
 			sendRequest(
 				Default,
 				runtimeTypeNodeJs,
@@ -863,7 +859,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 			By("waiting for the the log to appear")
 
 			Eventually(func(g Gomega) error {
-				return verifyExactlyOneLogRecordIsReported(g, testId, &now)
+				return verifyExactlyOneLogRecordIsReported(g, testId, timestampLowerBound)
 			}, 15*time.Second, pollingInterval).Should(Succeed())
 
 			By("churning collector pods")
@@ -873,17 +869,19 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 			By("verifying that the previous log message is not reported again (checking for 30 seconds)")
 			Consistently(func(g Gomega) error {
-				return verifyExactlyOneLogRecordIsReported(g, testId, &now)
+				return verifyExactlyOneLogRecordIsReported(g, testId, timestampLowerBound)
 			}, 30*time.Second, pollingInterval).Should(Succeed())
 		})
 	})
 
 	Describe("metrics & self-monitoring", func() {
+		var timestampLowerBound time.Time
 		BeforeAll(func() {
 			By("deploy the Dash0 operator")
 			deployOperator(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images)
 
 			deployDash0OperatorConfigurationResource(defaultDash0OperatorConfigurationValues)
+			timestampLowerBound = time.Now()
 			deployDash0MonitoringResource(
 				applicationUnderTestNamespace,
 				defaultDash0MonitoringValues,
@@ -907,21 +905,21 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		It("should produce node-based metrics via the kubeletstats receiver", func() {
 			By("waiting for kubeletstats receiver metrics")
 			Eventually(func(g Gomega) {
-				verifyKubeletStatsMetrics(g)
+				verifyKubeletStatsMetrics(g, timestampLowerBound)
 			}, 50*time.Second, time.Second).Should(Succeed())
 		})
 
 		It("should produce cluster metrics via the k8s_cluster receiver", func() {
 			By("waiting for k8s_cluster receiver metrics")
 			Eventually(func(g Gomega) {
-				verifyK8skClusterReceiverMetrics(g)
+				verifyK8skClusterReceiverMetrics(g, timestampLowerBound)
 			}, 50*time.Second, time.Second).Should(Succeed())
 		})
 
 		It("should produce Prometheus metrics via the prometheus receiver", func() {
 			By("waiting for prometheus receiver metrics")
 			Eventually(func(g Gomega) {
-				verifyPrometheusMetrics(g)
+				verifyPrometheusMetrics(g, timestampLowerBound)
 			}, 90*time.Second, time.Second).Should(Succeed())
 		})
 
@@ -940,12 +938,14 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 			By("waiting for self-monitoring metrics")
 			Eventually(func(g Gomega) {
-				verifySelfMonitoringMetrics(g)
+				verifySelfMonitoringMetrics(g, timestampLowerBound)
 			}, 90*time.Second, time.Second).Should(Succeed())
 		})
 	})
 
 	Describe("collect basic metrics without having a Dash0 monitoring resource ", func() {
+		var timestampLowerBound time.Time
+
 		BeforeAll(func() {
 			By("deploy the Dash0 operator")
 			deployOperatorWithDefaultAutoOperationConfiguration(
@@ -954,6 +954,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				operatorHelmChartUrl,
 				images,
 			)
+			timestampLowerBound = time.Now()
 			time.Sleep(5 * time.Second)
 		})
 
@@ -968,7 +969,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		It("should collect metrics without deploying a Dash0 monitoring resource", func() {
 			By("waiting for metrics")
 			Eventually(func(g Gomega) {
-				verifyNonNamespaceScopedKubeletStatsMetricsOnly(g)
+				verifyNonNamespaceScopedKubeletStatsMetricsOnly(g, timestampLowerBound)
 			}, 50*time.Second, time.Second).Should(Succeed())
 		})
 	})

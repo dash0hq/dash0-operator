@@ -10,11 +10,13 @@ import (
 	"os/exec"
 	"strings"
 
-	//nolint:golint,revive
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
 func deployOtlpSink(workingDir string) {
+	createDirAndDeleteOldExportedTelemetry()
+
 	originalManifest := fmt.Sprintf(
 		"%s/test-resources/otlp-sink/otlp-sink.yaml",
 		workingDir,
@@ -74,6 +76,14 @@ func deployOtlpSink(workingDir string) {
 			),
 		),
 	).To(Succeed())
+}
+
+func createDirAndDeleteOldExportedTelemetry() {
+	_ = os.MkdirAll("test-resources/e2e-test-volumes/otlp-sink", os.ModeDir)
+	By("deleting old telemetry files")
+	_ = os.Remove("test-resources/e2e-test-volumes/otlp-sink/traces.jsonl")
+	_ = os.Remove("test-resources/e2e-test-volumes/otlp-sink/metrics.jsonl")
+	_ = os.Remove("test-resources/e2e-test-volumes/otlp-sink/logs.jsonl")
 }
 
 func uninstallOtlpSink(workingDir string) {

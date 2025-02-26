@@ -67,8 +67,6 @@ func deployDash0MonitoringResource(
 	operatorNamespace string,
 	operatorHelmChart string,
 ) {
-	truncateExportedTelemetry()
-
 	renderedResourceFileName := renderDash0MonitoringResourceTemplate(dash0MonitoringValues)
 	defer func() {
 		Expect(os.Remove(renderedResourceFileName)).To(Succeed())
@@ -138,13 +136,6 @@ func updateDash0MonitoringResource(
 			"-p",
 			jsonPatch,
 		))).To(Succeed())
-}
-
-func truncateExportedTelemetry() {
-	By("truncating old captured telemetry files")
-	_ = os.Truncate("test-resources/e2e-test-volumes/otlp-sink/traces.jsonl", 0)
-	_ = os.Truncate("test-resources/e2e-test-volumes/otlp-sink/metrics.jsonl", 0)
-	_ = os.Truncate("test-resources/e2e-test-volumes/otlp-sink/logs.jsonl", 0)
 }
 
 func undeployDash0MonitoringResource(namespace string) {
