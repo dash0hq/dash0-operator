@@ -96,7 +96,7 @@ type Dash0MonitoringSpec struct {
 	// Optional filters for telemetry data that is collected in this namespace.
 	//
 	// +kubebuilder:validation:Optional
-	TelemetryFilter *TelemetryFilter `json:"telemetryFilter,omitempty"`
+	Filter *Filter `json:"filter,omitempty"`
 }
 
 // InstrumentWorkloadsMode describes when exactly workloads will be instrumented.  Only one of the following modes
@@ -119,9 +119,45 @@ const (
 
 var allInstrumentWorkloadsMode = []InstrumentWorkloadsMode{All, CreatedAndUpdated, None}
 
-// TelemetryFilter describes filters for telemetry that is collected in a namespace. Telemetry objects (e.g. spans,
+// FilterErrorMode determine how the filter processor reacts to errors that occur while processing a condition.
+//
+// +kubebuilder:validation:Enum=ignore;silent;propagate
+type FilterErrorMode string
+
+const (
+	// FilterErrorModeIgnore ignores errors returned by conditions, logs them, and continues with to the next condition.
+	// This is the recommended mode and also the default mode if this property is omitted.
+	FilterErrorModeIgnore FilterErrorMode = "ignore"
+
+	// FilterErrorModeSilent ignores errors returned by conditions, does not log them, and continues with to the next
+	// condition.
+	FilterErrorModeSilent FilterErrorMode = "silent"
+
+	// FilterErrorModePropagate return the error up the processing pipeline. This will result in the payload being
+	// dropped from the collector. Not recommended.
+	FilterErrorModePropagate FilterErrorMode = "propagate"
+)
+
+// Filter describes filters for telemetry that is collected in a namespace. Telemetry objects (e.g. spans,
 // log record, metrics, ...) matching one of the filter conditions will be dropped.
-type TelemetryFilter struct {
+type Filter struct {
+	// An optional field which will determine how the filter processor reacts to errors that occur while processing a
+	// condition. Possible values:
+	// - ignore: ignore errors returned by conditions, log them, continue with to the next condition.
+	//           This is the recommended mode and also the default mode if this property is omitted.
+	// - silent: ignore errors returned by conditions, do not log them, continue with to the next condition.
+	// - propagate: return the error up the processing pipeline. This will result in the payload being dropped from the
+	//           collector. Not recommended.
+	//
+	// This is optional, default to "ignore", there is usually no reason to change this.
+	//
+	// Note that although this can be specified per namespace, the filter conditions will be aggregated into one
+	// single filter processor in the resulting OpenTelemetry collector configuration; if different error modes are
+	// specified in different namespaces, the "most sever" error mode will be used (propagate > ignore > silent).
+	//
+	// +kubebuilder:default=ignore
+	ErrorMode FilterErrorMode `json:"error_mode,omitempty"`
+
 	// Filters for the traces signal.
 	// This can be used to drop _spans_ or _span events_.
 	//
@@ -141,7 +177,7 @@ type TelemetryFilter struct {
 	Logs *LogFilter `json:"logs,omitempty"`
 }
 
-func (f *TelemetryFilter) HasAnyFilters() bool {
+func (f *Filter) HasAnyFilters() bool {
 	if f.Traces != nil && f.Traces.HasAnyFilters() {
 		return true
 	}
@@ -165,7 +201,7 @@ type TraceFilter struct {
 	// - 'attributes["http.route"] == "/metrics"'
 	//
 	// +kubebuilder:validation:Optional
-	SpanFilter ObjectTypeFilter `json:"span,omitempty"`
+	SpanFilter []string `json:"span,omitempty"`
 
 	// A list of conditions for filtering span events.
 	// This is a list of OTTL conditions.
@@ -174,17 +210,11 @@ type TraceFilter struct {
 	// If all span events for a span are dropped, the span will be left intact.
 	//
 	// +kubebuilder:validation:Optional
-	SpanEventFilter ObjectTypeFilter `json:"spanevent,omitempty"`
+	SpanEventFilter []string `json:"spanevent,omitempty"`
 }
 
 func (f *TraceFilter) HasAnyFilters() bool {
-	if f.SpanFilter.HasConditions() {
-		return true
-	}
-	if f.SpanEventFilter.HasConditions() {
-		return true
-	}
-	return false
+	return len(f.SpanFilter) > 0 || len(f.SpanEventFilter) > 0
 }
 
 // MetricFilter describes filters for the "metrics" signal. Filters can be defined on the level of metrics (e.g.
@@ -200,7 +230,7 @@ type MetricFilter struct {
 	// - 'type == METRIC_DATA_TYPE_HISTOGRAM'
 	//
 	// +kubebuilder:validation:Optional
-	MetricFilter ObjectTypeFilter `json:"metric,omitempty"`
+	MetricFilter []string `json:"metric,omitempty"`
 
 	// A list of conditions for filtering metrics data points.
 	// This is a list of OTTL conditions.
@@ -212,17 +242,11 @@ type MetricFilter struct {
 	// - 'resource.attributes["service.name"] == "my_service_name"' # filter data points by resource attributes
 	//
 	// +kubebuilder:validation:Optional
-	DataPointFilter ObjectTypeFilter `json:"datapoint,omitempty"`
+	DataPointFilter []string `json:"datapoint,omitempty"`
 }
 
 func (f *MetricFilter) HasAnyFilters() bool {
-	if f.MetricFilter.HasConditions() {
-		return true
-	}
-	if f.DataPointFilter.HasConditions() {
-		return true
-	}
-	return false
+	return len(f.MetricFilter) > 0 || len(f.DataPointFilter) > 0
 }
 
 // LogFilter describes filters for the "logs" signal. Filters can be defined on the level of log records.
@@ -236,25 +260,11 @@ type LogFilter struct {
 	// - 'severity_number < SEVERITY_NUMBER_WARN'
 	//
 	// +kubebuilder:validation:Optional
-	LogRecordFilter ObjectTypeFilter `json:"logrecord,omitempty"`
+	LogRecordFilter []string `json:"log_records,omitempty"`
 }
 
 func (f *LogFilter) HasAnyFilters() bool {
-	return f.LogRecordFilter.HasConditions()
-}
-
-// ObjectTypeFilter is list of conditions for filtering objects of a specific kind for a particular telemetry signal
-// (e.g. span objects for the "traces" signal).
-type ObjectTypeFilter struct {
-	// A list of conditions for filtering objects of a specific kind for a particular telemetry signal (e.g. span
-	// objects for the "traces" signal). Objects matching at least one of the conditions will be droppped.
-	//
-	// +kubebuilder:validation:Optional
-	Conditions []string `json:"conditions,omitempty"`
-}
-
-func (f *ObjectTypeFilter) HasConditions() bool {
-	return len(f.Conditions) > 0
+	return len(f.LogRecordFilter) > 0
 }
 
 // SynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses

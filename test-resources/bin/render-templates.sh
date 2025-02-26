@@ -37,4 +37,21 @@ cat \
   PROMETHEUS_SCRAPING_ENABLED="${PROMETHEUS_SCRAPING_ENABLED:-true}" \
   envsubst > \
   test-resources/customresources/dash0monitoring/dash0monitoring.yaml
-
+# shellcheck disable=SC2002
+cat \
+  test-resources/customresources/dash0monitoring/dash0monitoring-2.yaml.template | \
+  INSTRUMENT_WORKLOADS="${INSTRUMENT_WORKLOADS:-all}" \
+  SYNCHRONIZE_PERSES_DASHBOARDS="${SYNCHRONIZE_PERSES_DASHBOARDS:-true}" \
+  SYNCHRONIZE_PROMETHEUS_RULES="${SYNCHRONIZE_PROMETHEUS_RULES:-true}" \
+  PROMETHEUS_SCRAPING_ENABLED="${PROMETHEUS_SCRAPING_ENABLED:-true}" \
+  envsubst > \
+  test-resources/customresources/dash0monitoring/dash0monitoring-2.yaml
+# shellcheck disable=SC2002
+cat \
+  test-resources/customresources/dash0monitoring/dash0monitoring-3.yaml.template | \
+  INSTRUMENT_WORKLOADS="${INSTRUMENT_WORKLOADS:-all}" \
+  SYNCHRONIZE_PERSES_DASHBOARDS="${SYNCHRONIZE_PERSES_DASHBOARDS:-true}" \
+  SYNCHRONIZE_PROMETHEUS_RULES="${SYNCHRONIZE_PROMETHEUS_RULES:-true}" \
+  PROMETHEUS_SCRAPING_ENABLED="${PROMETHEUS_SCRAPING_ENABLED:-true}" \
+  envsubst > \
+  test-resources/customresources/dash0monitoring/dash0monitoring-3.yaml

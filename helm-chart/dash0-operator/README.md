@@ -312,9 +312,43 @@ The Dash0 monitoring resource supports additional configuration settings:
   receiver. This setting is optional, it defaults to true. Note that the collection of OpenTelemetry-native metrics is
   not affected by setting `prometheusScrapingEnabled` to `false` for a namespace.
 
-Here is an example file for a monitoring resource that sets the `spec.instrumentWorkloads` property
-to `created-and-updated` and disables Perses dashboard synchronization, Prometheus rule synchronization as well as
-Prometheus scraping:
+* `spec.filter`: An optional custom filter configuration to drop some of the collected telemetry before sending it to
+  Dash0.
+  Filters for a specific telemetry object type (e.g. spans) are lists of
+  [OTTL](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/README.md) expressions.
+  If at least one of the one conditions of a list evaluates to true, the object will be dropped.
+  (That is, conditions are implicitly connected by a logical OR.)
+  The configuration structure is identical to the configuration of the OpenTelemetry collector's
+  [filter processor](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/filterprocessor/README.md).
+  One difference to the filter processor is that the filter rules configured in a Dash0 monitoring resource will only be
+  applied to the telemetry collected in the namespace the monitoring resource is installed in.
+  Telemetry from other namespaces is not affected.
+  Existing configurations for the filter processor can be copied and pasted without syntactical changes.
+    * `spec.filter.traces.span`:
+       A list of OTTL conditions for filtering spans.
+       All spans where at least one condition evaluates to true will be dropped.
+	   (That is, conditions are implicitly connected by a logical OR.)
+    * `spec.traces.spanevent`:
+       A list of OTTL conditions for filtering span events.
+       All span events where at least one condition evaluates to true will be dropped.
+	   If all span events for a span are dropped, the span will be left intact.
+    * `spec.metrics.metric`:
+       A list of OTTL conditions for filtering metrics.
+       All metrics where at least one condition evaluates to true will be dropped.
+    * `spec.metrics.datapoint`:
+       A list of OTTL conditions for filtering individual data points of metrics.
+       All data points where at least one condition evaluates to true will be dropped.
+	   If all datapoints for a metric are dropped, the metric will also be dropped.
+    * `spec.logs.log_record`:
+       A list of OTTL conditions for filtering log records.
+       All log records where at least one condition evaluates to true will be dropped.
+
+Here is an example file for a monitoring resource that
+* sets the instrumenation mode to `created-and-updated`,
+* disables Perses dashboard synchronization,
+* disable Prometheus rule synchronization,
+* disables Prometheus scraping, and
+* sets a couple of filters for all five telemetry object types:
 
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1
@@ -326,6 +360,25 @@ spec:
   synchronizePersesDashboards: false
   synchronizePrometheusRules: false
   prometheusScrapingEnabled: false
+  filter:
+    traces:
+      span:
+      - 'attributes["http.route"] == "/ready"'
+      - 'attributes["http.route"] == "/metrics"'
+      spanevent:
+      - 'attributes["grpc"] == true'
+      - 'IsMatch(name, ".*grpc.*")'
+    metrics:
+      metric:
+      - 'name == "k8s.replicaset.available"'
+      - 'name == "k8s.replicaset.desired"'
+      datapoint:
+      - 'metric.type == METRIC_DATA_TYPE_SUMMARY'
+      - 'resource.attributes["service.name"] == "my_service_name"'
+    logs:
+      log_records:
+      - 'IsMatch(body, ".*password.*")'
+      - 'severity_number < SEVERITY_NUMBER_WARN'
 ```
 
 The Dash0 operator will instrument the following workload types:

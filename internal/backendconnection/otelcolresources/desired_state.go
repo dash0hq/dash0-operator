@@ -43,9 +43,9 @@ type clientObject struct {
 	object client.Object
 }
 
-type NamespacedTelemetryFilter struct {
+type NamespacedFilter struct {
 	Namespace string
-	dash0v1alpha1.TelemetryFilter
+	dash0v1alpha1.Filter
 }
 
 const (
@@ -168,7 +168,7 @@ func assembleDesiredStateForUpsert(
 ) ([]clientObject, error) {
 	monitoredNamespaces := make([]string, 0, len(allMonitoringResources))
 	namespacesWithPrometheusScraping := make([]string, 0, len(allMonitoringResources))
-	telemetryFilters := make([]NamespacedTelemetryFilter, 0, len(allMonitoringResources))
+	filters := make([]NamespacedFilter, 0, len(allMonitoringResources))
 	for _, monitoringResource := range allMonitoringResources {
 		namespace := monitoringResource.Namespace
 		monitoredNamespaces = append(monitoredNamespaces, namespace)
@@ -176,11 +176,11 @@ func assembleDesiredStateForUpsert(
 			namespacesWithPrometheusScraping = append(namespacesWithPrometheusScraping, namespace)
 		}
 
-		telemetryFilterForNamespace := monitoringResource.Spec.TelemetryFilter
-		if telemetryFilterForNamespace != nil && telemetryFilterForNamespace.HasAnyFilters() {
-			telemetryFilters = append(telemetryFilters, NamespacedTelemetryFilter{
-				Namespace:       namespace,
-				TelemetryFilter: *telemetryFilterForNamespace,
+		filterForNamespace := monitoringResource.Spec.Filter
+		if filterForNamespace != nil && filterForNamespace.HasAnyFilters() {
+			filters = append(filters, NamespacedFilter{
+				Namespace: namespace,
+				Filter:    *filterForNamespace,
 			})
 		}
 	}
@@ -188,7 +188,7 @@ func assembleDesiredStateForUpsert(
 		config,
 		monitoredNamespaces,
 		namespacesWithPrometheusScraping,
-		telemetryFilters,
+		filters,
 		extraConfig,
 		false,
 	)
@@ -212,7 +212,7 @@ func assembleDesiredState(
 	config *oTelColConfig,
 	monitoredNamespaces []string,
 	namespacesWithPrometheusScraping []string,
-	telemetryFilters []NamespacedTelemetryFilter,
+	filters []NamespacedFilter,
 	extraConfig *OTelColExtraConfig,
 	forDeletion bool,
 ) ([]clientObject, error) {
@@ -220,7 +220,7 @@ func assembleDesiredState(
 	// sort order of the input slices.
 	slices.Sort(monitoredNamespaces)
 	slices.Sort(namespacesWithPrometheusScraping)
-	slices.SortFunc(telemetryFilters, func(ns1 NamespacedTelemetryFilter, ns2 NamespacedTelemetryFilter) int {
+	slices.SortFunc(filters, func(ns1 NamespacedFilter, ns2 NamespacedFilter) int {
 		return strings.Compare(ns1.Namespace, ns2.Namespace)
 	})
 
@@ -230,7 +230,7 @@ func assembleDesiredState(
 		config,
 		monitoredNamespaces,
 		namespacesWithPrometheusScraping,
-		telemetryFilters,
+		filters,
 		forDeletion,
 	)
 	if err != nil {
@@ -256,7 +256,7 @@ func assembleDesiredState(
 		deploymentCollectorConfigMap, err := assembleDeploymentCollectorConfigMap(
 			config,
 			monitoredNamespaces,
-			telemetryFilters,
+			filters,
 			forDeletion,
 		)
 		if err != nil {

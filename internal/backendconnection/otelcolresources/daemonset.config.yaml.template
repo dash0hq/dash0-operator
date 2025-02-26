@@ -10,63 +10,6 @@ connectors:
   forward/metrics/prometheus: {}
   forward/logs: {}
 
-  # Routing configuration for per-namespace telemetry filters. The signal is routed from the main pipeline to the custom
-  # filter pipeline, if rules are configured for the namespace in question, and then returned back to the main pipeline.
-  # (Think aux send & aux return in an audio mixing console.)
-  {{- if .TelemetryFilters }}
-  {{- if .TelemetryFilterFlags.HasTraceFilter }}
-  # connector for routing traces telemetry to per-namespace filter pipelines
-  routing/traces/customfilter/send:
-    default_pipelines:
-    - traces/downstream
-    table:
-      {{- range $i, $f := .TelemetryFilters }}
-      {{- if (and $f.Traces $f.Traces.HasAnyFilters) }}
-      - context: resource
-        condition: 'attributes["k8s.namespace.name"] == "{{ $f.Namespace }}"'
-        pipelines:
-        - traces/filter/{{ $f.Namespace }}
-      {{- end }}
-      {{- end }}
-  # connector for routing traces telemetry back from per-namespace filter pipelines into the main export pipeline
-  forward/traces/customfilter/return: {}
-  {{- end }}
-  {{- if .TelemetryFilterFlags.HasMetricFilter }}
-  # connector for routing metrics telemetry to per-namespace filter pipelines
-  routing/metrics/customfilter/send:
-    default_pipelines:
-    - metrics/downstream
-    table:
-      {{- range $i, $f := .TelemetryFilters }}
-      {{- if (and $f.Metrics $f.Metrics.HasAnyFilters) }}
-      - context: resource
-        condition: 'attributes["k8s.namespace.name"] == "{{ $f.Namespace }}"'
-        pipelines:
-        - metrics/filter/{{ $f.Namespace }}
-      {{- end }}
-      {{- end }}
-  # connector for routing metrics telemetry back from per-namespace filter pipelines into the main export pipeline
-  forward/metrics/customfilter/return: {}
-  {{- end }}
-  {{- if .TelemetryFilterFlags.HasLogFilter }}
-  # connector for routing logs telemetry to per-namespace filter pipelines
-  routing/logs/customfilter/send:
-    default_pipelines:
-    - logs/downstream
-    table:
-      {{- range $i, $f := .TelemetryFilters }}
-	  {{- if (and $f.Logs $f.Logs.HasAnyFilters) }}
-      - context: resource
-        condition: 'attributes["k8s.namespace.name"] == "{{ $f.Namespace }}"'
-        pipelines:
-        - logs/filter/{{ $f.Namespace }}
-      {{- end }}
-      {{- end }}
-  # connector for routing logs telemetry back from per-namespace filter pipelines into the main export pipeline
-  forward/logs/customfilter/return: {}
-  {{- end }}
-  {{- end }}
-
 
 receivers:
   otlp:
@@ -495,67 +438,51 @@ processors:
       log_record:
       - 'resource.attributes["dash0.monitoring.instrumented"] != "true"'
 
-  {{- if .TelemetryFilters }}
-  {{- if .TelemetryFilterFlags.HasTraceFilter }}
-  {{- range $i, $f := .TelemetryFilters }}
-  {{- if (and $f.Traces $f.Traces.HasAnyFilters) }}
-  filter/traces/{{ $f.Namespace }}:
-    error_mode: ignore
+  {{ if .CustomFilters.HasTraceFilters }}
+  filter/traces/custom_telemetry_filter:
+    error_mode: {{ .CustomFilters.ErrorMode }}
     traces:
-      {{- if (and $f.Traces $f.Traces.SpanFilter.Conditions) }}
+      {{- if .CustomFilters.SpanConditions }}
       span:
-      {{- range $j, $condition := $f.Traces.SpanFilter.Conditions }}
-      - '{{ $condition }}'
+        {{- range $i, $condition := .CustomFilters.SpanConditions }}
+        - '{{ $condition }}'
+        {{- end }}
       {{- end }}
-      {{- end }}
-      {{- if (and $f.Traces $f.Traces.SpanEventFilter.Conditions) }}
+      {{- if .CustomFilters.SpanEventConditions }}
       spanevent:
-      {{- range $j, $condition := $f.Traces.SpanEventFilter.Conditions }}
-      - '{{ $condition }}'
+        {{- range $i, $condition := .CustomFilters.SpanEventConditions }}
+        - '{{ $condition }}'
+        {{- end }}
       {{- end }}
-      {{- end }}
   {{- end }}
-  {{- end }}
-  {{- end }}
-  {{- if .TelemetryFilterFlags.HasMetricFilter }}
-  # In contrast to filter/metrics/only_monitored_namespaces the following metric filters are user-configurable
-  # (per namespace) and opt-in.
-  {{- range $i, $f := .TelemetryFilters }}
-  {{- if (and $f.Metrics $f.Metrics.HasAnyFilters) }}
-  filter/metrics/{{ $f.Namespace }}:
-    error_mode: ignore
+  {{ if .CustomFilters.HasMetricFilters }}
+  filter/metrics/custom_telemetry_filter:
+    error_mode: {{ .CustomFilters.ErrorMode }}
     metrics:
-      {{- if (and $f.Metrics $f.Metrics.MetricFilter.Conditions) }}
+      {{- if .CustomFilters.MetricConditions }}
       metric:
-      {{- range $j, $condition := $f.Metrics.MetricFilter.Conditions }}
-      - '{{ $condition }}'
+        {{- range $i, $condition := .CustomFilters.MetricConditions }}
+        - '{{ $condition }}'
+        {{- end }}
       {{- end }}
-      {{- end }}
-      {{- if (and $f.Metrics $f.Metrics.DataPointFilter.Conditions) }}
+      {{- if .CustomFilters.DataPointConditions }}
       datapoint:
-      {{- range $j, $condition := $f.Metrics.DataPointFilter.Conditions }}
-      - '{{ $condition }}'
+        {{- range $i, $condition := .CustomFilters.DataPointConditions }}
+        - '{{ $condition }}'
+        {{- end }}
       {{- end }}
-      {{- end }}
   {{- end }}
-  {{- end }}
-  {{- end }}
-  {{- if .TelemetryFilterFlags.HasLogFilter }}
-  {{- range $i, $f := .TelemetryFilters }}
-  {{- if (and $f.Logs $f.Logs.HasAnyFilters) }}
-  filter/logs/{{ $f.Namespace }}:
-    error_mode: ignore
+  {{ if .CustomFilters.HasLogFilters }}
+  filter/logs/custom_telemetry_filter:
+    error_mode: {{ .CustomFilters.ErrorMode }}
     logs:
-      {{- if (and $f.Logs $f.Logs.LogRecordFilter.Conditions) }}
+      {{- if .CustomFilters.LogRecordConditions }}
       log_record:
-      {{- range $j, $condition := $f.Logs.LogRecordFilter.Conditions }}
-      - '{{ $condition }}'
+        {{- range $i, $condition := .CustomFilters.LogRecordConditions }}
+        - '{{ $condition }}'
+        {{- end }}
       {{- end }}
-      {{- end }}
   {{- end }}
-  {{- end }}
-  {{- end }}
-  {{- end }}{{/* if .TelemetryFilters */}}
 
   memory_limiter:
     check_interval: 5s
@@ -594,7 +521,7 @@ service:
   - health_check
   - file_storage/filelogreceiver_offsets
   pipelines:
-    traces/collect:
+    traces/downstream:
       receivers:
       - otlp
       processors:
@@ -603,34 +530,11 @@ service:
       {{- if .ClusterName }}
       - resource/clustername
       {{- end }}
-      - memory_limiter # TODO memory_limiter before or after routing?
-      - batch          # TODO batch before or after routing?
-      exporters:
-      - routing/traces/customfilter/send
-
-    {{- if (and .TelemetryFilters .TelemetryFilterFlags.HasTraceFilter) }}
-    {{- range $i, $f := .TelemetryFilters }}
-    {{- if (and $f.Traces $f.Traces.HasAnyFilters) }}
-    traces/filter/{{ $f.Namespace }}:
-      receivers:
-      - routing/traces/customfilter/send
-      processors:
-      - filter/traces/{{ $f.Namespace }}
-      exporters:
-      - forward/traces/customfilter/return
-    {{- end }}
-    {{- end }}
-    {{- end }}
-
-    traces/downstream:
-      receivers:
-      {{- if (and .TelemetryFilters .TelemetryFilterFlags.HasTraceFilter) }}
-      - forward/traces/customfilter/return
+      {{- if .CustomFilters.HasTraceFilters }}
+      - filter/traces/custom_telemetry_filter
       {{- end }}
-      # The routing/traces/customfilter/send receiver needs to be here because this pipeline is declared as the
-      # "default_pipelines" pipeline for the routing connector, i.e. for namespaces without a traces filter. It also is
-      # the only connection from traces/collect if no metrics filters are defined whatsoever.
-      - routing/traces/customfilter/send
+      - memory_limiter
+      - batch
       exporters:
       {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
       - debug
@@ -649,7 +553,7 @@ service:
       - forward/metrics/prometheus
 {{- end }}
 
-    metrics/collect:
+    metrics/downstream:
       receivers:
       - otlp
 {{- if .KubernetesInfrastructureMetricsCollectionEnabled }}
@@ -670,34 +574,11 @@ service:
       {{- if .NamespaceOttlFilter }}
       - filter/metrics/only_monitored_namespaces
       {{- end }}
+      {{- if .CustomFilters.HasMetricFilters }}
+      - filter/metrics/custom_telemetry_filter
+      {{- end }}
       - memory_limiter
       - batch
-      exporters:
-      - routing/metrics/customfilter/send
-
-    {{- if (and .TelemetryFilters .TelemetryFilterFlags.HasMetricFilter) }}
-    {{- range $i, $f := .TelemetryFilters }}
-    {{- if (and $f.Metrics $f.Metrics.HasAnyFilters) }}
-    metrics/filter/{{ $f.Namespace }}:
-      receivers:
-      - routing/metrics/customfilter/send
-      processors:
-      - filter/metrics/{{ $f.Namespace }}
-      exporters:
-      - forward/metrics/customfilter/return
-    {{- end }}
-    {{- end }}
-    {{- end }}
-
-    metrics/downstream:
-      receivers:
-      {{- if (and .TelemetryFilters .TelemetryFilterFlags.HasMetricFilter) }}
-      - forward/metrics/customfilter/return
-      {{- end }}
-      # The routing/metrics/customfilter/send receiver needs to be here because this pipeline is declared as the
-      # "default_pipelines" pipeline for the routing connector, i.e. for namespaces without a metrics filter. It also is
-      # the only connection from metrics/collect if no metrics filters are defined whatsoever.
-      - routing/metrics/customfilter/send
       exporters:
       {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
       - debug
@@ -723,7 +604,7 @@ service:
       exporters:
       - forward/logs
 
-    logs/collect:
+    logs/downstream:
       receivers:
       - forward/logs
       processors:
@@ -731,34 +612,11 @@ service:
       {{- if .ClusterName }}
       - resource/clustername
       {{- end }}
+      {{- if .CustomFilters.HasLogFilters }}
+      - filter/logs/custom_telemetry_filter
+      {{- end }}
       - memory_limiter
       - batch
-      exporters:
-      - routing/logs/customfilter/send
-
-    {{- if (and .TelemetryFilters .TelemetryFilterFlags.HasLogFilter) }}
-    {{- range $i, $f := .TelemetryFilters }}
-    {{- if (and $f.Logs $f.Logs.HasAnyFilters) }}
-    logs/filter/{{ $f.Namespace }}:
-      receivers:
-      - routing/logs/customfilter/send
-      processors:
-      - filter/logs/{{ $f.Namespace }}
-      exporters:
-      - forward/logs/customfilter/return
-    {{- end }}
-    {{- end }}
-    {{- end }}
-
-    logs/downstream:
-      receivers:
-      {{- if (and .TelemetryFilters .TelemetryFilterFlags.HasLogFilter) }}
-      - forward/logs/customfilter/return
-      {{- end }}
-      # The routing/logs/customfilter/send receiver needs to be here because this pipeline is declared as the
-      # "default_pipelines" pipeline for the routing connector, i.e. for namespaces without a logs filter. It also is
-      # the only connection from logs/collect if no logs filters are defined whatsoever.
-      - routing/logs/customfilter/send
       exporters:
       {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
       - debug

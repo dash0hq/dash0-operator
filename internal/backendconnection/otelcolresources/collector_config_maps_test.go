@@ -41,28 +41,27 @@ const (
 
 type configMapTypeDefinition struct {
 	cmType                    configMapType
-	assembleConfigMapFunction func(*oTelColConfig, []string, []NamespacedTelemetryFilter, bool) (*corev1.ConfigMap, error)
+	assembleConfigMapFunction func(*oTelColConfig, []string, []NamespacedFilter, bool) (*corev1.ConfigMap, error)
 	exporterPipelineNames     []string
 }
 
-type conditionExpectationsPerNamespaceAndObjectType map[string]map[objectType][]string
+type conditionExpectationsPerObjectType map[signalType]map[objectType][]string
 
 type filterExpectations struct {
 	signalsWithFilters    []signalType
-	conditions            conditionExpectationsPerNamespaceAndObjectType
+	conditions            conditionExpectationsPerObjectType
 	signalsWithoutFilters []signalType
 }
 
-type telemetryFilterTestConfigExpectations struct {
-	namespaces []string
+type filterTestConfigExpectations struct {
 	daemonset  filterExpectations
 	deployment filterExpectations
 }
 
-type telemetryFilterTestConfig struct {
+type filterTestConfig struct {
 	configMapTypeDefinition
-	telemetryFilters []NamespacedTelemetryFilter
-	expectations     telemetryFilterTestConfigExpectations
+	filters      []NamespacedFilter
+	expectations filterTestConfigExpectations
 }
 
 const (
@@ -815,7 +814,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		Expect(attrs[0].(map[string]interface{})["value"]).To(Equal("cluster-name"))
 		Expect(attrs[0].(map[string]interface{})["action"]).To(Equal("insert"))
 		pipelines := readPipelines(collectorConfig)
-		metricsProcessors := readPipelineProcessors(pipelines, "metrics/collect")
+		metricsProcessors := readPipelineProcessors(pipelines, "metrics/downstream")
 		Expect(metricsProcessors).ToNot(BeNil())
 		Expect(metricsProcessors).To(ContainElement("resource/clustername"))
 		selfMonitoringTelemetryResource := readFromMap(
@@ -846,7 +845,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(hostmetricsReceiver).To(BeNil())
 
 			pipelines := readPipelines(collectorConfig)
-			metricsReceivers := readPipelineReceivers(pipelines, "metrics/collect")
+			metricsReceivers := readPipelineReceivers(pipelines, "metrics/downstream")
 			Expect(metricsReceivers).ToNot(BeNil())
 			Expect(metricsReceivers).ToNot(ContainElement("kubeletstats"))
 			Expect(metricsReceivers).ToNot(ContainElement("hostmetrics"))
@@ -872,7 +871,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(hostmetricsReceiver).ToNot(BeNil())
 
 			pipelines := readPipelines(collectorConfig)
-			metricsReceivers := readPipelineReceivers(pipelines, "metrics/collect")
+			metricsReceivers := readPipelineReceivers(pipelines, "metrics/downstream")
 			Expect(metricsReceivers).ToNot(BeNil())
 			Expect(metricsReceivers).To(ContainElement("kubeletstats"))
 			Expect(metricsReceivers).To(ContainElement("hostmetrics"))
@@ -934,7 +933,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			filterString := filters.([]interface{})[0].(string)
 			Expect(filterString).To(Equal(`resource.attributes["k8s.namespace.name"] != nil and resource.attributes["k8s.namespace.name"] != "namespace-1" and resource.attributes["k8s.namespace.name"] != "namespace-2"`))
 			pipelines := readPipelines(collectorConfig)
-			metricsProcessors := readPipelineProcessors(pipelines, "metrics/collect")
+			metricsProcessors := readPipelineProcessors(pipelines, "metrics/downstream")
 			Expect(metricsProcessors).ToNot(BeNil())
 			Expect(metricsProcessors).To(ContainElement("filter/metrics/only_monitored_namespaces"))
 		}, daemonSetAndDeployment)
@@ -955,7 +954,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(readFromMap(collectorConfig, []string{"receivers", "prometheus"})).To(BeNil())
 
 			pipelines := readPipelines(collectorConfig)
-			metricsReceivers := readPipelineReceivers(pipelines, "metrics/collect")
+			metricsReceivers := readPipelineReceivers(pipelines, "metrics/downstream")
 			Expect(metricsReceivers).ToNot(BeNil())
 			Expect(metricsReceivers).ToNot(ContainElement("prometheus"))
 		})
@@ -989,25 +988,55 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(prometheusMetricsExporters).ToNot(BeNil())
 			Expect(prometheusMetricsExporters).To(ContainElement("forward/metrics/prometheus"))
 
-			downstreamMetricsReceivers := readPipelineReceivers(pipelines, "metrics/collect")
+			downstreamMetricsReceivers := readPipelineReceivers(pipelines, "metrics/downstream")
 			Expect(downstreamMetricsReceivers).ToNot(BeNil())
 			Expect(downstreamMetricsReceivers).To(ContainElement("forward/metrics/prometheus"))
 		})
 	})
 
 	Describe("configurable filtering of telemetry per namespace", func() {
-		// TODO tests for:
-		// - empty list of monitoring resources
-		// - on monitoring resource without filters
-		// - on monitoring resource with filters
-		// - multiple monitoring resource without filters
-		// - multiple monitoring resource with filters
-		// - multiple monitoring resource, some with and some without filters
-		// - combinations of filters (spans, span events, metrics, data points, log records)
-
-		var telemetryFilterTestConfigs []TableEntry
+		var filterTestConfigs []TableEntry
 		for _, cmTypeDef := range configMapTypeDefinitions {
-			telemetryFilterTestConfigs = slices.Concat(telemetryFilterTestConfigs, []TableEntry{
+			filterTestConfigs = slices.Concat(filterTestConfigs, []TableEntry{
+
+				Entry(fmt.Sprintf("[config map type: %s]: should render no filters if filter list is nil", cmTypeDef.cmType),
+					filterTestConfig{
+						configMapTypeDefinition: cmTypeDef,
+						filters:                 nil,
+						expectations: filterTestConfigExpectations{
+							daemonset:  emptyFilterExpectations(),
+							deployment: emptyFilterExpectations(),
+						},
+					}),
+
+				Entry(fmt.Sprintf("[config map type: %s]: should render no filters if filter list is empty", cmTypeDef.cmType),
+					filterTestConfig{
+						configMapTypeDefinition: cmTypeDef,
+						filters:                 []NamespacedFilter{},
+						expectations: filterTestConfigExpectations{
+							daemonset:  emptyFilterExpectations(),
+							deployment: emptyFilterExpectations(),
+						},
+					}),
+
+				Entry(fmt.Sprintf("[config map type: %s]: should render no filters if no filters are configured", cmTypeDef.cmType),
+					filterTestConfig{
+						configMapTypeDefinition: cmTypeDef,
+						filters: []NamespacedFilter{
+							{
+								Namespace: namespace1,
+								// no filters for this namespace
+							},
+							{
+								Namespace: namespace2,
+								// no filters for this namespace
+							},
+						},
+						expectations: filterTestConfigExpectations{
+							daemonset:  emptyFilterExpectations(),
+							deployment: emptyFilterExpectations(),
+						},
+					}),
 
 				Entry(fmt.Sprintf("[config map type: %s]: should filter traces/spans", cmTypeDef.cmType),
 					createFilterTestForSingleObjectType(cmTypeDef,
@@ -1077,20 +1106,17 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						},
 					)),
 
-				Entry(fmt.Sprintf("[config map type: %s]: should filter traces in a subset of namespaces only", cmTypeDef.cmType),
-					telemetryFilterTestConfig{
+				Entry(fmt.Sprintf("[config map type: %s]: should apply trace filter to only one namespace", cmTypeDef.cmType),
+					filterTestConfig{
 						configMapTypeDefinition: cmTypeDef,
-						telemetryFilters: []NamespacedTelemetryFilter{
+						filters: []NamespacedFilter{
 							{
 								Namespace: namespace1,
-								TelemetryFilter: dash0v1alpha1.TelemetryFilter{
+								Filter: dash0v1alpha1.Filter{
+									ErrorMode: dash0v1alpha1.FilterErrorModeIgnore,
 									Traces: &dash0v1alpha1.TraceFilter{
-										SpanFilter: dash0v1alpha1.ObjectTypeFilter{
-											Conditions: []string{"span condition 1", "span condition 2"},
-										},
-										SpanEventFilter: dash0v1alpha1.ObjectTypeFilter{
-											Conditions: []string{"span event condition 1", "span event condition 2"},
-										},
+										SpanFilter:      []string{"span condition 1", "span condition 2"},
+										SpanEventFilter: []string{"span event condition 1", "span event condition 2"},
 									},
 								},
 							},
@@ -1099,27 +1125,242 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 								// no filters for this namespace
 							},
 						},
-						expectations: telemetryFilterTestConfigExpectations{
-							namespaces: []string{namespace1},
+						expectations: filterTestConfigExpectations{
 							daemonset: filterExpectations{
 								signalsWithFilters:    []signalType{signalTypeTraces},
 								signalsWithoutFilters: []signalType{signalTypeMetrics, signalTypeLogs},
-								conditions: conditionExpectationsPerNamespaceAndObjectType{
-									namespace1: {
-										objectTypeSpan:      []string{"span condition 1", "span condition 2"},
-										objectTypeSpanEvent: []string{"span event condition 1", "span event condition 2"},
+								conditions: conditionExpectationsPerObjectType{
+									signalTypeTraces: {
+										objectTypeSpan: []string{
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (span condition 1)`,
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (span condition 2)`,
+										},
+										objectTypeSpanEvent: []string{
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (span event condition 1)`,
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (span event condition 2)`,
+										},
 									},
 								},
 							},
 							deployment: emptyFilterExpectations(),
 						},
 					}),
+
+				Entry(fmt.Sprintf("[config map type: %s]: should apply metric filter to only one namespace", cmTypeDef.cmType),
+					filterTestConfig{
+						configMapTypeDefinition: cmTypeDef,
+						filters: []NamespacedFilter{
+							{
+								Namespace: namespace1,
+								Filter: dash0v1alpha1.Filter{
+									ErrorMode: dash0v1alpha1.FilterErrorModeIgnore,
+									Metrics: &dash0v1alpha1.MetricFilter{
+										MetricFilter:    []string{"metric condition 1", "metric condition 2"},
+										DataPointFilter: []string{"data point condition 1", "data point condition 2"},
+									},
+								},
+							},
+							{
+								Namespace: namespace2,
+								// no filters for this namespace
+							},
+						},
+						expectations: filterTestConfigExpectations{
+							daemonset: filterExpectations{
+								signalsWithFilters:    []signalType{signalTypeMetrics},
+								signalsWithoutFilters: []signalType{signalTypeTraces, signalTypeLogs},
+								conditions: conditionExpectationsPerObjectType{
+									signalTypeMetrics: {
+										objectTypeMetric: []string{
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (metric condition 1)`,
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (metric condition 2)`,
+										},
+										objectTypeDataPoint: []string{
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (data point condition 1)`,
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (data point condition 2)`,
+										},
+									},
+								},
+							},
+							deployment: filterExpectations{
+								signalsWithFilters:    []signalType{signalTypeMetrics},
+								signalsWithoutFilters: []signalType{signalTypeTraces, signalTypeLogs},
+								conditions: conditionExpectationsPerObjectType{
+									signalTypeMetrics: {
+										objectTypeMetric: []string{
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (metric condition 1)`,
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (metric condition 2)`,
+										},
+										objectTypeDataPoint: []string{
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (data point condition 1)`,
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (data point condition 2)`,
+										},
+									},
+								},
+							},
+						},
+					}),
+
+				Entry(fmt.Sprintf("[config map type: %s]: should apply log filter to only one namespace", cmTypeDef.cmType),
+					filterTestConfig{
+						configMapTypeDefinition: cmTypeDef,
+						filters: []NamespacedFilter{
+							{
+								Namespace: namespace1,
+								Filter: dash0v1alpha1.Filter{
+									ErrorMode: dash0v1alpha1.FilterErrorModeIgnore,
+									Logs: &dash0v1alpha1.LogFilter{
+										LogRecordFilter: []string{"log record condition 1", "log record condition 2"},
+									},
+								},
+							},
+							{
+								Namespace: namespace2,
+								// no filters for this namespace
+							},
+						},
+						expectations: filterTestConfigExpectations{
+							daemonset: filterExpectations{
+								signalsWithFilters:    []signalType{signalTypeLogs},
+								signalsWithoutFilters: []signalType{signalTypeTraces, signalTypeMetrics},
+								conditions: conditionExpectationsPerObjectType{
+									signalTypeLogs: {
+										objectTypeLogRecord: []string{
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (log record condition 1)`,
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (log record condition 2)`,
+										},
+									},
+								},
+							},
+							deployment: emptyFilterExpectations(),
+						},
+					}),
+
+				Entry(fmt.Sprintf("[config map type: %s]: should apply filters for all signals to only one namespace", cmTypeDef.cmType),
+					filterTestConfig{
+						configMapTypeDefinition: cmTypeDef,
+						filters: []NamespacedFilter{
+							{
+								Namespace: namespace1,
+								Filter: dash0v1alpha1.Filter{
+									ErrorMode: dash0v1alpha1.FilterErrorModeIgnore,
+									Traces: &dash0v1alpha1.TraceFilter{
+										SpanFilter:      []string{"span condition 1", "span condition 2"},
+										SpanEventFilter: []string{"span event condition 1", "span event condition 2"},
+									},
+									Metrics: &dash0v1alpha1.MetricFilter{
+										MetricFilter:    []string{"metric condition 1", "metric condition 2"},
+										DataPointFilter: []string{"data point condition 1", "data point condition 2"},
+									},
+									Logs: &dash0v1alpha1.LogFilter{
+										LogRecordFilter: []string{"log record condition 1", "log record condition 2"},
+									},
+								},
+							},
+							{
+								Namespace: namespace2,
+								// no filters for this namespace
+							},
+						},
+						expectations: filterTestConfigExpectations{
+							daemonset: filterExpectations{
+								signalsWithFilters:    []signalType{signalTypeTraces, signalTypeMetrics, signalTypeLogs},
+								signalsWithoutFilters: nil,
+								conditions: conditionExpectationsPerObjectType{
+									signalTypeTraces: {
+										objectTypeSpan: []string{
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (span condition 1)`,
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (span condition 2)`,
+										},
+										objectTypeSpanEvent: []string{
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (span event condition 1)`,
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (span event condition 2)`,
+										},
+									},
+									signalTypeMetrics: {
+										objectTypeMetric: []string{
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (metric condition 1)`,
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (metric condition 2)`,
+										},
+										objectTypeDataPoint: []string{
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (data point condition 1)`,
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (data point condition 2)`,
+										},
+									},
+									signalTypeLogs: {
+										objectTypeLogRecord: []string{
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (log record condition 1)`,
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (log record condition 2)`,
+										},
+									},
+								},
+							},
+							deployment: filterExpectations{
+								signalsWithFilters:    []signalType{signalTypeMetrics},
+								signalsWithoutFilters: []signalType{signalTypeTraces, signalTypeLogs},
+								conditions: conditionExpectationsPerObjectType{
+									signalTypeMetrics: {
+										objectTypeMetric: []string{
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (metric condition 1)`,
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (metric condition 2)`,
+										},
+										objectTypeDataPoint: []string{
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (data point condition 1)`,
+											`resource.attributes["k8s.namespace.name"] == "namespace-1" and (data point condition 2)`,
+										},
+									},
+								},
+							},
+						},
+					}),
+
 				//
 			})
 
+			type filterErrorModeTestConfig struct {
+				errorModes []dash0v1alpha1.FilterErrorMode
+				expected   dash0v1alpha1.FilterErrorMode
+			}
+
+			DescribeTable("should use the most severe error mode", func(testConfig filterErrorModeTestConfig) {
+				var filters []NamespacedFilter
+				for _, errorMode := range testConfig.errorModes {
+					filters = append(filters, NamespacedFilter{
+						Namespace: namespace1,
+						Filter: dash0v1alpha1.Filter{
+							ErrorMode: errorMode,
+							Traces: &dash0v1alpha1.TraceFilter{
+								SpanFilter: []string{
+									"condition",
+								},
+							},
+						},
+					})
+				}
+				result := aggregateCustomFilters(filters)
+				Expect(result.ErrorMode).To(Equal(testConfig.expected))
+
+			}, []TableEntry{
+				Entry("no error mode provided", filterErrorModeTestConfig{
+					errorModes: nil,
+					expected:   dash0v1alpha1.FilterErrorModeIgnore,
+				}),
+				Entry("single error mode is used", filterErrorModeTestConfig{
+					errorModes: []dash0v1alpha1.FilterErrorMode{dash0v1alpha1.FilterErrorModeSilent},
+					expected:   dash0v1alpha1.FilterErrorModeSilent,
+				}),
+				Entry("most severe error mode is used", filterErrorModeTestConfig{
+					errorModes: []dash0v1alpha1.FilterErrorMode{
+						dash0v1alpha1.FilterErrorModeSilent,
+						dash0v1alpha1.FilterErrorModeIgnore,
+						dash0v1alpha1.FilterErrorModePropagate,
+					},
+					expected: dash0v1alpha1.FilterErrorModePropagate,
+				}),
+			})
 		}
 
-		DescribeTable("should filter telemetry", func(testConfig telemetryFilterTestConfig) {
+		DescribeTable("filter telemetry", func(testConfig filterTestConfig) {
 			configMap, err := testConfig.assembleConfigMapFunction(
 				&oTelColConfig{
 					Namespace:  namespace,
@@ -1127,15 +1368,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					Export:     Dash0ExportWithEndpointAndToken(),
 				},
 				monitoredNamespaces,
-				testConfig.telemetryFilters,
+				testConfig.filters,
 				false,
 			)
 			Expect(err).ToNot(HaveOccurred())
 
-			collectorConfig := parseConfigMapContent(configMap)
-			pipelines := readPipelines(collectorConfig)
-
-			expectedNamespaces := testConfig.expectations.namespaces
 			var expectations filterExpectations
 			switch testConfig.cmType {
 			case configMapTypeDaemonSet:
@@ -1144,112 +1381,64 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				expectations = testConfig.expectations.deployment
 			}
 
+			collectorConfig := parseConfigMapContent(configMap)
+			pipelines := readPipelines(collectorConfig)
 			for _, signal := range expectations.signalsWithFilters {
-				routingConnectorRaw :=
-					readFromMap(
-						collectorConfig,
-						[]string{"connectors", fmt.Sprintf("routing/%s/customfilter/send", signal)},
-					)
-				Expect(routingConnectorRaw).ToNot(BeNil())
-				routingConnector := routingConnectorRaw.(map[string]interface{})
-				Expect(routingConnector["default_pipelines"].([]interface{})[0]).To(
-					Equal(fmt.Sprintf("%s/downstream", signal)))
+				filterProcessorName := fmt.Sprintf("filter/%s/custom_telemetry_filter", signal)
+				filterProcessorRaw := readFromMap(
+					collectorConfig,
+					[]string{"processors", filterProcessorName},
+				)
+				Expect(filterProcessorRaw).ToNot(BeNil(),
+					fmt.Sprintf("expected filter processor %s to exist, but it didn't", filterProcessorName))
+				filterProcessor := filterProcessorRaw.(map[string]interface{})
+				Expect(filterProcessor["error_mode"]).To(Equal("ignore"))
 
-				table := routingConnector["table"].([]interface{})
-				Expect(table).To(HaveLen(len(expectedNamespaces)))
-				for i, ns := range expectedNamespaces {
-					route := table[i].(map[string]interface{})
-					Expect(route["context"]).To(Equal("resource"))
-					Expect(route["condition"]).To(Equal(fmt.Sprintf(`attributes["k8s.namespace.name"] == "%s"`, ns)))
-					routePipelines := route["pipelines"].([]interface{})
-					Expect(routePipelines).To(HaveLen(1))
-					Expect(routePipelines[0]).To(Equal(fmt.Sprintf("%s/filter/%s", signal, ns)))
-				}
-
-				customFilterReturnConnector :=
-					readFromMap(
-						collectorConfig,
-						[]string{"connectors", fmt.Sprintf("forward/%s/customfilter/return", signal)},
-					)
-				Expect(customFilterReturnConnector).ToNot(BeNil(),
-					fmt.Sprintf("config map should have a custom filter return connector for the signal type %s", signal))
-
-				for _, namespace := range expectedNamespaces {
-					filterProcessorName := fmt.Sprintf("filter/%s/%s", signal, namespace)
-					filterProcessorRaw := readFromMap(
-						collectorConfig,
-						[]string{"processors", filterProcessorName},
-					)
-					Expect(filterProcessorRaw).ToNot(BeNil(),
-						fmt.Sprintf("expected filter processor %s to exist, but it didn't", filterProcessorName))
-					filterProcessor := filterProcessorRaw.(map[string]interface{})
-					Expect(filterProcessor["error_mode"]).To(Equal("ignore"))
-
+				for objectType, expectedConditionsForObjectType := range expectations.conditions[signal] {
 					hasExpectedConditions := false
-					expectedConditionsPerObjectType := expectations.conditions[namespace]
-					for objectType, expectedConditions := range expectedConditionsPerObjectType {
-						if len(expectedConditions) != 0 {
-							hasExpectedConditions = true
-						}
-						filterConditionsRaw := readFromMap(filterProcessor, []string{string(signal), string(objectType)})
-						Expect(filterConditionsRaw).ToNot(BeNil(),
-							"expected %d filter conditions but there were none for signal \"%s\", namespace \"%s\", and object type \"%s\"",
-							len(expectedConditions), signal, namespace, objectType)
-						actualFilterConditions := filterConditionsRaw.([]interface{})
-						Expect(actualFilterConditions).To(HaveLen(len(expectedConditions)))
-						for i, expectedCondition := range expectedConditions {
-							Expect(actualFilterConditions[i]).To(Equal(expectedCondition))
-						}
+					if len(expectedConditionsForObjectType) > 0 {
+						hasExpectedConditions = true
 					}
-
+					filterConditionsRaw := readFromMap(filterProcessor, []string{string(signal), string(objectType)})
+					Expect(filterConditionsRaw).ToNot(BeNil(),
+						"expected %d filter conditions but there were none for signal \"%s\" and object type \"%s\"",
+						len(expectedConditionsForObjectType), signal, objectType)
+					actualFilterConditions := filterConditionsRaw.([]interface{})
+					Expect(actualFilterConditions).To(HaveLen(len(expectedConditionsForObjectType)))
+					for i, expectedCondition := range expectedConditionsForObjectType {
+						Expect(actualFilterConditions[i]).To(Equal(expectedCondition))
+					}
 					if !hasExpectedConditions {
 						Fail(
-							fmt.Sprintf("expected conditions are empty for signal %s and namespace %s, although the signal should have filters?",
-								signal, namespace))
+							fmt.Sprintf(
+								"expected conditions are empty for signal %s and object type %s, although there should "+
+									"be conditions for this combination of signal type and object type; this is "+
+									"probably an error in the test config for this test case",
+								signal,
+								objectType,
+							))
 					}
-
-					collectionExporters := readPipelineExporters(pipelines, fmt.Sprintf("%s/collect", signal))
-					Expect(collectionExporters).To(HaveLen(1))
-					Expect(collectionExporters).To(ContainElement(fmt.Sprintf("routing/%s/customfilter/send", signal)))
 				}
 
-				for _, namespace := range expectedNamespaces {
-					filterPipelineName := fmt.Sprintf("%s/filter/%s", signal, namespace)
-					filterPipelineRaw :=
-						readFromMap(pipelines, []string{filterPipelineName})
-					Expect(filterPipelineRaw).ToNot(BeNil(),
-						fmt.Sprintf("expected filter pipeline %s to exist, but it didn't", filterPipelineName))
-					filterPipeline := filterPipelineRaw.(map[string]interface{})
-					Expect(filterPipeline["receivers"].([]interface{})[0]).To(
-						Equal(fmt.Sprintf("routing/%s/customfilter/send", signal)))
-					Expect(filterPipeline["processors"].([]interface{})[0]).To(
-						Equal(fmt.Sprintf("filter/%s/%s", signal, namespace)))
-					Expect(filterPipeline["exporters"].([]interface{})[0]).To(
-						Equal(fmt.Sprintf("forward/%s/customfilter/return", signal)))
-				}
-				// TODO Test that no other filter pipeline exist
-
-				downstreamReceivers := readPipelineReceivers(pipelines, fmt.Sprintf("%s/downstream", signal))
-				Expect(downstreamReceivers).To(HaveLen(2))
-				Expect(downstreamReceivers).To(ContainElement(fmt.Sprintf("forward/%s/customfilter/return", signal)))
-				Expect(downstreamReceivers).To(ContainElement(fmt.Sprintf("routing/%s/customfilter/send", signal)))
+				downstreamPipelineProcessors := readPipelineProcessors(pipelines, fmt.Sprintf("%s/downstream", signal))
+				Expect(downstreamPipelineProcessors).To(ContainElements(filterProcessorName))
 			}
 
 			for _, signal := range expectations.signalsWithoutFilters {
-				connectors := collectorConfig["connectors"]
-				if testConfig.cmType == configMapTypeDeployment && connectors == nil {
-					// The config map does not have any connectors, this can be valid for the deployment config map if
-					// metrics aren't filtered.
-					continue
-				}
-				routingConnector :=
-					readFromMap(
-						collectorConfig,
-						[]string{"connectors", fmt.Sprintf("routing/%s/customfilter/send", signal)},
-					)
-				Expect(routingConnector).To(BeNil())
+				filterProcessorName := fmt.Sprintf("filter/%s/custom_telemetry_filter", signal)
+				filterProcessorRaw := readFromMap(
+					collectorConfig,
+					[]string{"processors", filterProcessorName},
+				)
+				Expect(filterProcessorRaw).To(BeNil(),
+					fmt.Sprintf("expected filter processor %s to be nil, but it wasn't", filterProcessorName))
+
+				verifyProcessorDoesNotAppearInAnyPipeline(
+					collectorConfig,
+					filterProcessorName,
+				)
 			}
-		}, telemetryFilterTestConfigs)
+		}, filterTestConfigs)
 	})
 
 	Describe("on an IPv4 or IPv6 cluster", func() {
@@ -1326,14 +1515,14 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 func assembleDaemonSetCollectorConfigMapWithoutScrapingNamespaces(
 	config *oTelColConfig,
 	monitoredNamespaces []string,
-	telemetryFilters []NamespacedTelemetryFilter,
+	filters []NamespacedFilter,
 	forDeletion bool,
 ) (*corev1.ConfigMap, error) {
 	return assembleDaemonSetCollectorConfigMap(
 		config,
 		monitoredNamespaces,
 		nil,
-		telemetryFilters,
+		filters,
 		forDeletion,
 	)
 }
@@ -1341,13 +1530,13 @@ func assembleDaemonSetCollectorConfigMapWithoutScrapingNamespaces(
 func assembleDeploymentCollectorConfigMapForTest(
 	config *oTelColConfig,
 	monitoredNamespaces []string,
-	telemetryFilters []NamespacedTelemetryFilter,
+	filters []NamespacedFilter,
 	forDeletion bool,
 ) (*corev1.ConfigMap, error) {
 	return assembleDeploymentCollectorConfigMap(
 		config,
 		monitoredNamespaces,
-		telemetryFilters,
+		filters,
 		forDeletion,
 	)
 }
@@ -1376,7 +1565,7 @@ func verifyDownstreamExportersInPipelines(
 
 func verifyProcessorDoesNotAppearInAnyPipeline(
 	collectorConfig map[string]interface{},
-	processorName ...string,
+	processorName string,
 ) {
 	pipelines := readPipelines(collectorConfig)
 	Expect(pipelines).ToNot(BeNil())
@@ -1489,7 +1678,7 @@ func createFilterTestForSingleObjectType(
 	objectT objectType,
 	conditionsNamespace1 []string,
 	conditionsNamespace2 []string,
-) telemetryFilterTestConfig {
+) filterTestConfig {
 	signalsWithoutFiltersDaemonset := allSignals()
 	signalsWithoutFiltersDaemonset = slices.DeleteFunc(signalsWithoutFiltersDaemonset, func(s signalType) bool {
 		return s == signalT
@@ -1501,39 +1690,35 @@ func createFilterTestForSingleObjectType(
 		})
 	}
 
-	var telemetryFilter1 dash0v1alpha1.TelemetryFilter
-	var telemetryFilter2 dash0v1alpha1.TelemetryFilter
+	var filter1 dash0v1alpha1.Filter
+	var filter2 dash0v1alpha1.Filter
 	switch signalT {
 	case signalTypeTraces:
 		switch objectT {
 		case objectTypeSpan:
-			telemetryFilter1 = dash0v1alpha1.TelemetryFilter{
+			filter1 = dash0v1alpha1.Filter{
+				ErrorMode: dash0v1alpha1.FilterErrorModeIgnore,
 				Traces: &dash0v1alpha1.TraceFilter{
-					SpanFilter: dash0v1alpha1.ObjectTypeFilter{
-						Conditions: conditionsNamespace1,
-					},
+					SpanFilter: conditionsNamespace1,
 				},
 			}
-			telemetryFilter2 = dash0v1alpha1.TelemetryFilter{
+			filter2 = dash0v1alpha1.Filter{
+				ErrorMode: dash0v1alpha1.FilterErrorModeIgnore,
 				Traces: &dash0v1alpha1.TraceFilter{
-					SpanFilter: dash0v1alpha1.ObjectTypeFilter{
-						Conditions: conditionsNamespace2,
-					},
+					SpanFilter: conditionsNamespace2,
 				},
 			}
 		case objectTypeSpanEvent:
-			telemetryFilter1 = dash0v1alpha1.TelemetryFilter{
+			filter1 = dash0v1alpha1.Filter{
+				ErrorMode: dash0v1alpha1.FilterErrorModeIgnore,
 				Traces: &dash0v1alpha1.TraceFilter{
-					SpanEventFilter: dash0v1alpha1.ObjectTypeFilter{
-						Conditions: conditionsNamespace1,
-					},
+					SpanEventFilter: conditionsNamespace1,
 				},
 			}
-			telemetryFilter2 = dash0v1alpha1.TelemetryFilter{
+			filter2 = dash0v1alpha1.Filter{
+				ErrorMode: dash0v1alpha1.FilterErrorModeIgnore,
 				Traces: &dash0v1alpha1.TraceFilter{
-					SpanEventFilter: dash0v1alpha1.ObjectTypeFilter{
-						Conditions: conditionsNamespace2,
-					},
+					SpanEventFilter: conditionsNamespace2,
 				},
 			}
 		default:
@@ -1543,33 +1728,29 @@ func createFilterTestForSingleObjectType(
 	case signalTypeMetrics:
 		switch objectT {
 		case objectTypeMetric:
-			telemetryFilter1 = dash0v1alpha1.TelemetryFilter{
+			filter1 = dash0v1alpha1.Filter{
+				ErrorMode: dash0v1alpha1.FilterErrorModeIgnore,
 				Metrics: &dash0v1alpha1.MetricFilter{
-					MetricFilter: dash0v1alpha1.ObjectTypeFilter{
-						Conditions: conditionsNamespace1,
-					},
+					MetricFilter: conditionsNamespace1,
 				},
 			}
-			telemetryFilter2 = dash0v1alpha1.TelemetryFilter{
+			filter2 = dash0v1alpha1.Filter{
+				ErrorMode: dash0v1alpha1.FilterErrorModeIgnore,
 				Metrics: &dash0v1alpha1.MetricFilter{
-					MetricFilter: dash0v1alpha1.ObjectTypeFilter{
-						Conditions: conditionsNamespace2,
-					},
+					MetricFilter: conditionsNamespace2,
 				},
 			}
 		case objectTypeDataPoint:
-			telemetryFilter1 = dash0v1alpha1.TelemetryFilter{
+			filter1 = dash0v1alpha1.Filter{
+				ErrorMode: dash0v1alpha1.FilterErrorModeIgnore,
 				Metrics: &dash0v1alpha1.MetricFilter{
-					DataPointFilter: dash0v1alpha1.ObjectTypeFilter{
-						Conditions: conditionsNamespace1,
-					},
+					DataPointFilter: conditionsNamespace1,
 				},
 			}
-			telemetryFilter2 = dash0v1alpha1.TelemetryFilter{
+			filter2 = dash0v1alpha1.Filter{
+				ErrorMode: dash0v1alpha1.FilterErrorModeIgnore,
 				Metrics: &dash0v1alpha1.MetricFilter{
-					DataPointFilter: dash0v1alpha1.ObjectTypeFilter{
-						Conditions: conditionsNamespace2,
-					},
+					DataPointFilter: conditionsNamespace2,
 				},
 			}
 		default:
@@ -1579,18 +1760,16 @@ func createFilterTestForSingleObjectType(
 	case signalTypeLogs:
 		switch objectT {
 		case objectTypeLogRecord:
-			telemetryFilter1 = dash0v1alpha1.TelemetryFilter{
+			filter1 = dash0v1alpha1.Filter{
+				ErrorMode: dash0v1alpha1.FilterErrorModeIgnore,
 				Logs: &dash0v1alpha1.LogFilter{
-					LogRecordFilter: dash0v1alpha1.ObjectTypeFilter{
-						Conditions: conditionsNamespace1,
-					},
+					LogRecordFilter: conditionsNamespace1,
 				},
 			}
-			telemetryFilter2 = dash0v1alpha1.TelemetryFilter{
+			filter2 = dash0v1alpha1.Filter{
+				ErrorMode: dash0v1alpha1.FilterErrorModeIgnore,
 				Logs: &dash0v1alpha1.LogFilter{
-					LogRecordFilter: dash0v1alpha1.ObjectTypeFilter{
-						Conditions: conditionsNamespace2,
-					},
+					LogRecordFilter: conditionsNamespace2,
 				},
 			}
 		default:
@@ -1600,12 +1779,12 @@ func createFilterTestForSingleObjectType(
 
 	daemonSetExpectations := filterExpectations{
 		signalsWithFilters: []signalType{signalT},
-		conditions: conditionExpectationsPerNamespaceAndObjectType{
-			namespace1: {
-				objectT: conditionsNamespace1,
-			},
-			namespace2: {
-				objectT: conditionsNamespace2,
+		conditions: conditionExpectationsPerObjectType{
+			signalT: {
+				objectT: slices.Concat(
+					prependNamespaceCheckToAllOttlCondition(namespace1, conditionsNamespace1),
+					prependNamespaceCheckToAllOttlCondition(namespace2, conditionsNamespace2),
+				),
 			},
 		},
 		signalsWithoutFilters: signalsWithoutFiltersDaemonset,
@@ -1614,12 +1793,12 @@ func createFilterTestForSingleObjectType(
 	if signalT == signalTypeMetrics {
 		deploymentExpectations = filterExpectations{
 			signalsWithFilters: []signalType{signalT},
-			conditions: conditionExpectationsPerNamespaceAndObjectType{
-				namespace1: {
-					objectT: conditionsNamespace1,
-				},
-				namespace2: {
-					objectT: conditionsNamespace2,
+			conditions: conditionExpectationsPerObjectType{
+				signalT: {
+					objectT: slices.Concat(
+						prependNamespaceCheckToAllOttlCondition(namespace1, conditionsNamespace1),
+						prependNamespaceCheckToAllOttlCondition(namespace2, conditionsNamespace2),
+					),
 				},
 			},
 			signalsWithoutFilters: signalsWithoutFiltersDaemonset,
@@ -1630,20 +1809,19 @@ func createFilterTestForSingleObjectType(
 		}
 	}
 
-	return telemetryFilterTestConfig{
+	return filterTestConfig{
 		configMapTypeDefinition: cmTypeDef,
-		telemetryFilters: []NamespacedTelemetryFilter{
+		filters: []NamespacedFilter{
 			{
-				Namespace:       namespace1,
-				TelemetryFilter: telemetryFilter1,
+				Namespace: namespace1,
+				Filter:    filter1,
 			},
 			{
-				Namespace:       namespace2,
-				TelemetryFilter: telemetryFilter2,
+				Namespace: namespace2,
+				Filter:    filter2,
 			},
 		},
-		expectations: telemetryFilterTestConfigExpectations{
-			namespaces: monitoredNamespaces,
+		expectations: filterTestConfigExpectations{
 			daemonset:  daemonSetExpectations,
 			deployment: deploymentExpectations,
 		},
@@ -1658,4 +1836,15 @@ func emptyFilterExpectations() filterExpectations {
 
 func allSignals() []signalType {
 	return []signalType{signalTypeTraces, signalTypeMetrics, signalTypeLogs}
+}
+
+func prependNamespaceCheckToAllOttlCondition(namespace string, conditions []string) []string {
+	processedConditions := make([]string, 0, len(conditions))
+	for _, condition := range conditions {
+		processedConditions = append(
+			processedConditions,
+			prependNamespaceCheckToOttlCondition(namespace, condition),
+		)
+	}
+	return processedConditions
 }

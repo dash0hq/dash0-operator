@@ -170,6 +170,111 @@ custom resource definition should match snapshot:
                             - endpoint
                           type: object
                       type: object
+                    filter:
+                      description: Optional filters for telemetry data that is collected in this namespace.
+                      properties:
+                        error_mode:
+                          default: ignore
+                          description: |-
+                            An optional field which will determine how the filter processor reacts to errors that occur while processing a
+                            condition. Possible values:
+                            - ignore: ignore errors returned by conditions, log them, continue with to the next condition.
+                                      This is the recommended mode and also the default mode if this property is omitted.
+                            - silent: ignore errors returned by conditions, do not log them, continue with to the next condition.
+                            - propagate: return the error up the processing pipeline. This will result in the payload being dropped from the
+                                      collector. Not recommended.
+
+
+                            This is optional, default to "ignore", there is usually no reason to change this.
+
+
+                            Note that although this can be specified per namespace, the filter conditions will be aggregated into one
+                            single filter processor in the resulting OpenTelemetry collector configuration; if different error modes are
+                            specified in different namespaces, the "most sever" error mode will be used (propagate > ignore > silent).
+                          enum:
+                            - ignore
+                            - silent
+                            - propagate
+                          type: string
+                        logs:
+                          description: |-
+                            Filters for the logs signal, operating on the level of _log records_:
+                            This can be used to drop _log records_.
+                          properties:
+                            log_records:
+                              description: |-
+                                A list of conditions for filtering log records.
+                                This is a list of OTTL conditions.
+                                All log records where at least one condition evaluates to true will be dropped.
+                                (That is, the conditions are implicitly connected by a logical OR.)
+                                Example:
+                                - 'IsMatch(body, ".*password.*")'
+                                - 'severity_number < SEVERITY_NUMBER_WARN'
+                              items:
+                                type: string
+                              type: array
+                          type: object
+                        metrics:
+                          description: |-
+                            Filters for the metrics signal.
+                            This can be used to drop entire _metrics_, or individual _data points_.
+                          properties:
+                            datapoint:
+                              description: |-
+                                A list of conditions for filtering metrics data points.
+                                This is a list of OTTL conditions.
+                                All data points where at least one condition evaluates to true will be dropped.
+                                (That is, the conditions are implicitly connected by a logical OR.)
+                                Note: If all datapoints for a metric are dropped, the metric will also be dropped.
+                                Example:
+                                - 'metric.name == "a.noisy.metric.with.many.datapoints" and value_int == 0' # filter metrics by value
+                                - 'resource.attributes["service.name"] == "my_service_name"' # filter data points by resource attributes
+                              items:
+                                type: string
+                              type: array
+                            metric:
+                              description: |-
+                                A list of conditions for filtering metrics.
+                                This is a list of OTTL conditions.
+                                All metrics where at least one condition evaluates to true will be dropped.
+                                (That is, the conditions are implicitly connected by a logical OR.)
+                                Example:
+                                - 'name == "k8s.replicaset.available"'
+                                - 'name == "k8s.replicaset.desired"'
+                                - 'type == METRIC_DATA_TYPE_HISTOGRAM'
+                              items:
+                                type: string
+                              type: array
+                          type: object
+                        traces:
+                          description: |-
+                            Filters for the traces signal.
+                            This can be used to drop _spans_ or _span events_.
+                          properties:
+                            span:
+                              description: |-
+                                A list of conditions for filtering spans.
+                                This is a list of OTTL conditions.
+                                All spans where at least one condition evaluates to true will be dropped.
+                                (That is, the conditions are implicitly connected by a logical OR.)
+                                Example:
+                                - 'attributes["http.route"] == "/ready"'
+                                - 'attributes["http.route"] == "/metrics"'
+                              items:
+                                type: string
+                              type: array
+                            spanevent:
+                              description: |-
+                                A list of conditions for filtering span events.
+                                This is a list of OTTL conditions.
+                                All span events where at least one condition evaluates to true will be dropped.
+                                (That is, the conditions are implicitly connected by a logical OR.)
+                                If all span events for a span are dropped, the span will be left intact.
+                              items:
+                                type: string
+                              type: array
+                          type: object
+                      type: object
                     instrumentWorkloads:
                       default: all
                       description: |-
@@ -236,118 +341,6 @@ custom resource definition should match snapshot:
                         See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-check-rules-with-the-operator
                         for details. This setting is optional, it defaults to true.
                       type: boolean
-                    telemetryFilter:
-                      description: Optional filters for telemetry data that is collected in this namespace.
-                      properties:
-                        logs:
-                          description: |-
-                            Filters for the logs signal, operating on the level of _log records_:
-                            This can be used to drop _log records_.
-                          properties:
-                            logrecord:
-                              description: |-
-                                A list of conditions for filtering log records.
-                                This is a list of OTTL conditions.
-                                All log records where at least one condition evaluates to true will be dropped.
-                                (That is, the conditions are implicitly connected by a logical OR.)
-                                Example:
-                                - 'IsMatch(body, ".*password.*")'
-                                - 'severity_number < SEVERITY_NUMBER_WARN'
-                              properties:
-                                conditions:
-                                  description: |-
-                                    A list of conditions for filtering objects of a specific kind for a particular telemetry signal (e.g. span
-                                    objects for the "traces" signal). Objects matching at least one of the conditions will be droppped.
-                                  items:
-                                    type: string
-                                  type: array
-                              type: object
-                          type: object
-                        metrics:
-                          description: |-
-                            Filters for the metrics signal.
-                            This can be used to drop entire _metrics_, or individual _data points_.
-                          properties:
-                            datapoint:
-                              description: |-
-                                A list of conditions for filtering metrics data points.
-                                This is a list of OTTL conditions.
-                                All data points where at least one condition evaluates to true will be dropped.
-                                (That is, the conditions are implicitly connected by a logical OR.)
-                                Note: If all datapoints for a metric are dropped, the metric will also be dropped.
-                                Example:
-                                - 'metric.name == "a.noisy.metric.with.many.datapoints" and value_int == 0' # filter metrics by value
-                                - 'resource.attributes["service.name"] == "my_service_name"' # filter data points by resource attributes
-                              properties:
-                                conditions:
-                                  description: |-
-                                    A list of conditions for filtering objects of a specific kind for a particular telemetry signal (e.g. span
-                                    objects for the "traces" signal). Objects matching at least one of the conditions will be droppped.
-                                  items:
-                                    type: string
-                                  type: array
-                              type: object
-                            metric:
-                              description: |-
-                                A list of conditions for filtering metrics.
-                                This is a list of OTTL conditions.
-                                All metrics where at least one condition evaluates to true will be dropped.
-                                (That is, the conditions are implicitly connected by a logical OR.)
-                                Example:
-                                - 'name == "k8s.replicaset.available"'
-                                - 'name == "k8s.replicaset.desired"'
-                                - 'type == METRIC_DATA_TYPE_HISTOGRAM'
-                              properties:
-                                conditions:
-                                  description: |-
-                                    A list of conditions for filtering objects of a specific kind for a particular telemetry signal (e.g. span
-                                    objects for the "traces" signal). Objects matching at least one of the conditions will be droppped.
-                                  items:
-                                    type: string
-                                  type: array
-                              type: object
-                          type: object
-                        traces:
-                          description: |-
-                            Filters for the traces signal.
-                            This can be used to drop _spans_ or _span events_.
-                          properties:
-                            span:
-                              description: |-
-                                A list of conditions for filtering spans.
-                                This is a list of OTTL conditions.
-                                All spans where at least one condition evaluates to true will be dropped.
-                                (That is, the conditions are implicitly connected by a logical OR.)
-                                Example:
-                                - 'attributes["http.route"] == "/ready"'
-                                - 'attributes["http.route"] == "/metrics"'
-                              properties:
-                                conditions:
-                                  description: |-
-                                    A list of conditions for filtering objects of a specific kind for a particular telemetry signal (e.g. span
-                                    objects for the "traces" signal). Objects matching at least one of the conditions will be droppped.
-                                  items:
-                                    type: string
-                                  type: array
-                              type: object
-                            spanevent:
-                              description: |-
-                                A list of conditions for filtering span events.
-                                This is a list of OTTL conditions.
-                                All span events where at least one condition evaluates to true will be dropped.
-                                (That is, the conditions are implicitly connected by a logical OR.)
-                                If all span events for a span are dropped, the span will be left intact.
-                              properties:
-                                conditions:
-                                  description: |-
-                                    A list of conditions for filtering objects of a specific kind for a particular telemetry signal (e.g. span
-                                    objects for the "traces" signal). Objects matching at least one of the conditions will be droppped.
-                                  items:
-                                    type: string
-                                  type: array
-                              type: object
-                          type: object
-                      type: object
                   type: object
                 status:
                   description: Dash0MonitoringStatus defines the observed state of the Dash0Monitoring monitoring resource.
