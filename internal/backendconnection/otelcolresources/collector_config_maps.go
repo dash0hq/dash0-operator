@@ -21,10 +21,25 @@ const (
 	commonExportErrorPrefix = "cannot assemble the exporters for the configuration:"
 )
 
-type telemetryFilterFlags struct {
-	HasTraceFilter  bool
-	HasMetricFilter bool
-	HasLogFilter    bool
+type customFilters struct {
+	ErrorMode           dash0v1alpha1.FilterErrorMode
+	SpanConditions      []string
+	SpanEventConditions []string
+	MetricConditions    []string
+	DataPointConditions []string
+	LogRecordConditions []string
+}
+
+func (cf *customFilters) HasTraceFilters() bool {
+	return len(cf.SpanConditions) > 0 || len(cf.SpanEventConditions) > 0
+}
+
+func (cf *customFilters) HasMetricFilters() bool {
+	return len(cf.MetricConditions) > 0 || len(cf.DataPointConditions) > 0
+}
+
+func (cf *customFilters) HasLogFilters() bool {
+	return len(cf.LogRecordConditions) > 0
 }
 
 type collectorConfigurationTemplateValues struct {
@@ -36,8 +51,7 @@ type collectorConfigurationTemplateValues struct {
 	ClusterName                                      string
 	NamespaceOttlFilter                              string
 	NamespacesWithPrometheusScraping                 []string
-	TelemetryFilters                                 []NamespacedTelemetryFilter
-	TelemetryFilterFlags                             telemetryFilterFlags
+	CustomFilters                                    customFilters
 	SelfIpReference                                  string
 	DevelopmentMode                                  bool
 	DebugVerbosityDetailed                           bool
@@ -69,14 +83,14 @@ func assembleDaemonSetCollectorConfigMap(
 	config *oTelColConfig,
 	monitoredNamespaces []string,
 	namespacesWithPrometheusScraping []string,
-	telemetryFilters []NamespacedTelemetryFilter,
+	filters []NamespacedFilter,
 	forDeletion bool,
 ) (*corev1.ConfigMap, error) {
 	return assembleCollectorConfigMap(
 		config,
 		monitoredNamespaces,
 		namespacesWithPrometheusScraping,
-		telemetryFilters,
+		filters,
 		daemonSetCollectorConfigurationTemplate,
 		DaemonSetCollectorConfigConfigMapName(config.NamePrefix),
 		forDeletion,
@@ -86,14 +100,14 @@ func assembleDaemonSetCollectorConfigMap(
 func assembleDeploymentCollectorConfigMap(
 	config *oTelColConfig,
 	monitoredNamespaces []string,
-	telemetryFilters []NamespacedTelemetryFilter,
+	filters []NamespacedFilter,
 	forDeletion bool,
 ) (*corev1.ConfigMap, error) {
 	return assembleCollectorConfigMap(
 		config,
 		monitoredNamespaces,
 		nil,
-		telemetryFilters,
+		filters,
 		deploymentCollectorConfigurationTemplate,
 		DeploymentCollectorConfigConfigMapName(config.NamePrefix),
 		forDeletion,
@@ -104,7 +118,7 @@ func assembleCollectorConfigMap(
 	config *oTelColConfig,
 	monitoredNamespaces []string,
 	namespacesWithPrometheusScraping []string,
-	telemetryFilters []NamespacedTelemetryFilter,
+	filters []NamespacedFilter,
 	template *template.Template,
 	configMapName string,
 	forDeletion bool,
@@ -123,6 +137,7 @@ func assembleCollectorConfigMap(
 			selfIpReference = "[${env:MY_POD_IP}]"
 		}
 		namespaceOttlFilter := renderOttlNamespaceFilter(monitoredNamespaces)
+		customTelemetryFilters := aggregateCustomFilters(filters)
 		collectorConfiguration, err := renderCollectorConfiguration(template,
 			&collectorConfigurationTemplateValues{
 				Exporters:        exporters,
@@ -139,8 +154,7 @@ func assembleCollectorConfigMap(
 				ClusterName:                                      config.ClusterName,
 				NamespaceOttlFilter:                              namespaceOttlFilter,
 				NamespacesWithPrometheusScraping:                 namespacesWithPrometheusScraping,
-				TelemetryFilters:                                 telemetryFilters,
-				TelemetryFilterFlags:                             toTelemetryFilterFlags(telemetryFilters),
+				CustomFilters:                                    customTelemetryFilters,
 				SelfIpReference:                                  selfIpReference,
 				DevelopmentMode:                                  config.DevelopmentMode,
 				DebugVerbosityDetailed:                           config.DebugVerbosityDetailed,
@@ -168,23 +182,6 @@ func assembleCollectorConfigMap(
 	}, nil
 }
 
-func toTelemetryFilterFlags(telemetryFilters []NamespacedTelemetryFilter) telemetryFilterFlags {
-	flags := telemetryFilterFlags{}
-	for _, telemetryFilter := range telemetryFilters {
-		if telemetryFilter.Traces != nil && telemetryFilter.Traces.HasAnyFilters() {
-			flags.HasTraceFilter = true
-		}
-		if telemetryFilter.Metrics != nil && telemetryFilter.Metrics.HasAnyFilters() {
-			flags.HasMetricFilter = true
-		}
-		if telemetryFilter.Logs != nil && telemetryFilter.Logs.HasAnyFilters() {
-			flags.HasLogFilter = true
-		}
-	}
-	return flags
-
-}
-
 func renderOttlNamespaceFilter(monitoredNamespaces []string) string {
 	// Drop all metrics that have a namespace resource attribute but are from a namespace that is not in the
 	// list of monitored namespaces.
@@ -195,6 +192,86 @@ func renderOttlNamespaceFilter(monitoredNamespaces []string) string {
 			fmt.Sprintf("          and resource.attributes[\"k8s.namespace.name\"] != \"%s\"\n", namespace)
 	}
 	return namespaceOttlFilter
+}
+
+func aggregateCustomFilters(filtersSpec []NamespacedFilter) customFilters {
+	var errorMode dash0v1alpha1.FilterErrorMode
+	var allSpanFilters []string
+	var allSpanEventFilters []string
+	var allMetricFilters []string
+	var allDataPointFilters []string
+	var allLogRecordFilters []string
+	for _, filterSpecForNamespace := range filtersSpec {
+		if !filterSpecForNamespace.HasAnyFilters() {
+			continue
+		}
+		namespace := filterSpecForNamespace.Namespace
+		if filterSpecForNamespace.Traces != nil && filterSpecForNamespace.Traces.HasAnyFilters() {
+			if len(filterSpecForNamespace.Traces.SpanFilter) > 0 {
+				for _, condition := range filterSpecForNamespace.Traces.SpanFilter {
+					allSpanFilters =
+						append(allSpanFilters, prependNamespaceCheckToOttlCondition(namespace, condition))
+				}
+			}
+			if len(filterSpecForNamespace.Traces.SpanEventFilter) > 0 {
+				for _, condition := range filterSpecForNamespace.Traces.SpanEventFilter {
+					allSpanEventFilters =
+						append(allSpanEventFilters, prependNamespaceCheckToOttlCondition(namespace, condition))
+				}
+			}
+		}
+		if filterSpecForNamespace.Metrics != nil && filterSpecForNamespace.Metrics.HasAnyFilters() {
+			if len(filterSpecForNamespace.Metrics.MetricFilter) > 0 {
+				for _, condition := range filterSpecForNamespace.Metrics.MetricFilter {
+					allMetricFilters =
+						append(allMetricFilters, prependNamespaceCheckToOttlCondition(namespace, condition))
+				}
+			}
+			if len(filterSpecForNamespace.Metrics.DataPointFilter) > 0 {
+				for _, condition := range filterSpecForNamespace.Metrics.DataPointFilter {
+					allDataPointFilters =
+						append(allDataPointFilters, prependNamespaceCheckToOttlCondition(namespace, condition))
+				}
+			}
+		}
+		if filterSpecForNamespace.Logs != nil && filterSpecForNamespace.Logs.HasAnyFilters() {
+			if len(filterSpecForNamespace.Logs.LogRecordFilter) > 0 {
+				for _, condition := range filterSpecForNamespace.Logs.LogRecordFilter {
+					allLogRecordFilters =
+						append(allLogRecordFilters, prependNamespaceCheckToOttlCondition(namespace, condition))
+				}
+			}
+		}
+
+		// Each namespace could specific a different error mode, however, we only render one filterprocessor per signal,
+		// so we use the "most severe" error mode (silent < ignore < propagate).
+		if (errorMode == "") ||
+			(errorMode == dash0v1alpha1.FilterErrorModeSilent &&
+				(filterSpecForNamespace.ErrorMode == dash0v1alpha1.FilterErrorModeIgnore || filterSpecForNamespace.ErrorMode == dash0v1alpha1.FilterErrorModePropagate)) ||
+			(errorMode == dash0v1alpha1.FilterErrorModeIgnore && filterSpecForNamespace.ErrorMode == dash0v1alpha1.FilterErrorModePropagate) {
+			errorMode = filterSpecForNamespace.ErrorMode
+		}
+	}
+
+	if errorMode == "" {
+		// If no error mode has been specified at all, use ignore as the default. This should not actually happen
+		// if there is at least one monitoring resource with a telemetry filter, since the Dash0Monitoring spec
+		// defines a default via +kubebuilder:default=ignore.
+		errorMode = dash0v1alpha1.FilterErrorModeIgnore
+	}
+
+	return customFilters{
+		ErrorMode:           errorMode,
+		SpanConditions:      allSpanFilters,
+		SpanEventConditions: allSpanEventFilters,
+		MetricConditions:    allMetricFilters,
+		DataPointConditions: allDataPointFilters,
+		LogRecordConditions: allLogRecordFilters,
+	}
+}
+
+func prependNamespaceCheckToOttlCondition(namespace string, condition string) string {
+	return fmt.Sprintf(`resource.attributes["k8s.namespace.name"] == "%s" and (%s)`, namespace, condition)
 }
 
 func ConvertExportSettingsToExporterList(export dash0v1alpha1.Export) ([]OtlpExporter, error) {

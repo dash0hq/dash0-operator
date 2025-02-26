@@ -3,29 +3,6 @@ extensions:
     endpoint: "{{ .SelfIpReference }}:13133"
 
 
-{{- if .TelemetryFilters }}
-{{- if .TelemetryFilterFlags.HasMetricFilter }}
-connectors:
-  # Routing configuration for per-namespace telemetry filters. The signal is routed from the main pipeline to the custom
-  # filter pipeline, if rules are configured for the namespace in question, and then returned back to the main pipeline.
-  # (Think aux send & aux return in an audio mixing console.)
-  # connector for routing metrics telemetry to per-namespace filter pipelines
-  routing/metrics/customfilter/send:
-    default_pipelines:
-    - metrics/downstream
-    table:
-      {{- range $i, $f := .TelemetryFilters }}
-      - context: resource
-        condition: 'attributes["k8s.namespace.name"] == "{{ $f.Namespace }}"'
-        pipelines:
-        - metrics/filter/{{ $f.Namespace }}
-      {{- end }}
-  # connector for routing metrics telemetry back from per-namespace filter pipelines into the main export pipeline
-  forward/metrics/customfilter/return: {}
-{{- end }}
-{{- end }}
-
-
 receivers:
   k8s_cluster:
     metrics:
@@ -87,7 +64,7 @@ processors:
         action: insert
   {{- end }}
 
-  {{- if .NamespaceOttlFilter }}
+  {{ if .NamespaceOttlFilter }}
   filter/metrics/only_monitored_namespaces:
     metrics:
       metric:
@@ -104,27 +81,23 @@ processors:
       - metric.name == "k8s.replicaset.available" and value_int == 0
       - metric.name == "k8s.replicaset.desired" and value_int == 0
 
-  {{- if .TelemetryFilters }}
-  {{- if .TelemetryFilterFlags.HasMetricFilter }}
-  {{- range $i, $f := .TelemetryFilters }}
-  filter/metrics/{{ $f.Namespace }}:
+  {{ if .CustomFilters.HasMetricFilters }}
+  filter/metrics/custom_telemetry_filter:
     error_mode: ignore
     metrics:
-      {{- if $f.Metrics.MetricFilter.Conditions }}
+      {{- if .CustomFilters.MetricConditions }}
       metric:
-      {{- range $j, $condition := $f.Metrics.MetricFilter.Conditions }}
-      - '{{ $condition }}'
+        {{- range $i, $condition := .CustomFilters.MetricConditions }}
+        - '{{ $condition }}'
+        {{- end }}
       {{- end }}
-      {{- end }}
-      {{- if $f.Metrics.DataPointFilter.Conditions }}
+      {{- if .CustomFilters.DataPointConditions }}
       datapoint:
-      {{- range $j, $condition := $f.Metrics.DataPointFilter.Conditions }}
-      - '{{ $condition }}'
-      {{- end }}
+        {{- range $i, $condition := .CustomFilters.DataPointConditions }}
+        - '{{ $condition }}'
+        {{- end }}
       {{- end }}
   {{- end }}
-  {{- end }}
-  {{- end }}{{/* if .TelemetryFilters */}}
 
   memory_limiter:
     check_interval: 5s
@@ -164,7 +137,7 @@ service:
 
   pipelines:
 
-    metrics/collect:
+    metrics/downstream:
       receivers:
       - k8s_cluster
       processors:
@@ -176,33 +149,11 @@ service:
       - filter/metrics/only_monitored_namespaces
       {{- end }}
       - filter/drop-replicaset-metrics-zero-value
+      {{- if .CustomFilters.HasMetricFilters }}
+      - filter/metrics/custom_telemetry_filter
+      {{- end }}
       - memory_limiter
       - batch
-      exporters:
-      - routing/metrics/customfilter/send
-
-    {{- if (and .TelemetryFilters .TelemetryFilterFlags.HasMetricFilter) }}
-    {{- range $i, $f := .TelemetryFilters }}
-    # TODO only iterate over namespaces that have a metrics filter
-    metrics/filter/{{ $f.Namespace }}:
-      receivers:
-      - routing/metrics/customfilter/send
-      processors:
-      - filter/metrics/{{ $f.Namespace }}
-      exporters:
-      - forward/metrics/customfilter/return
-    {{- end }}
-    {{- end }}
-
-    metrics/downstream:
-      receivers:
-      {{- if (and .TelemetryFilters .TelemetryFilterFlags.HasMetricFilter) }}
-      - forward/metrics/customfilter/return
-      {{- end }}
-      # The routing/metrics/customfilter/send receiver needs to be here because this pipeline is declared as the
-      # "default_pipelines" pipeline for the routing connector, i.e. for namespaces without a metrics filter. It also is
-      # the only connection from metrics/collect if no metrics filters are defined whatsoever.
-      - routing/metrics/customfilter/send
       exporters:
       {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
       - debug

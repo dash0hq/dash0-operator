@@ -451,8 +451,8 @@ install_monitoring_resource() {
   local additional_namespaces=${1:-false}
   kubectl apply -n ${target_namespace} -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml
   if [[ "$additional_namespaces" = true ]]; then
-    kubectl apply -n test-namespace-2 -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml
-    kubectl apply -n test-namespace-3 -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml
+    kubectl apply -n test-namespace-2 -f test-resources/customresources/dash0monitoring/dash0monitoring-2.yaml
+    kubectl apply -n test-namespace-3 -f test-resources/customresources/dash0monitoring/dash0monitoring-3.yaml
   fi
 
   echo "waiting for the monitoring resource to become available"
