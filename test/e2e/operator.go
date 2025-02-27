@@ -31,13 +31,34 @@ func isLocalHelmChart() bool {
 	return operatorHelmChart == localHelmChart
 }
 
-func deployOperator(
+func deployOperatorWithDefaultAutoOperationConfiguration(
 	operatorNamespace string,
 	operatorHelmChart string,
 	operatorHelmChartUrl string,
 	images Images,
 ) {
-	err := deployOperatorWithAutoOperationConfiguration(
+	err := deployOperator(
+		operatorNamespace,
+		operatorHelmChart,
+		operatorHelmChartUrl,
+		images,
+		&startup.OperatorConfigurationValues{
+			Endpoint:              defaultEndpoint,
+			Token:                 defaultToken,
+			SelfMonitoringEnabled: true,
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+		},
+	)
+	Expect(err).ToNot(HaveOccurred())
+}
+
+func deployOperatorWithoutAutoOperationConfiguration(
+	operatorNamespace string,
+	operatorHelmChart string,
+	operatorHelmChartUrl string,
+	images Images,
+) {
+	err := deployOperator(
 		operatorNamespace,
 		operatorHelmChart,
 		operatorHelmChartUrl,
@@ -47,27 +68,7 @@ func deployOperator(
 	Expect(err).ToNot(HaveOccurred())
 }
 
-func deployOperatorWithDefaultAutoOperationConfiguration(
-	operatorNamespace string,
-	operatorHelmChart string,
-	operatorHelmChartUrl string,
-	images Images,
-) {
-	err := deployOperatorWithAutoOperationConfiguration(
-		operatorNamespace,
-		operatorHelmChart,
-		operatorHelmChartUrl,
-		images,
-		&startup.OperatorConfigurationValues{
-			Endpoint: defaultEndpoint,
-			Token:    defaultToken,
-			KubernetesInfrastructureMetricsCollectionEnabled: true,
-		},
-	)
-	Expect(err).ToNot(HaveOccurred())
-}
-
-func deployOperatorWithAutoOperationConfiguration(
+func deployOperator(
 	operatorNamespace string,
 	operatorHelmChart string,
 	operatorHelmChartUrl string,
@@ -88,7 +89,7 @@ func deployOperatorWithAutoOperationConfiguration(
 		"--create-namespace",
 		"--set", "operator.developmentMode=true",
 	}
-	arguments = addOptionalHelmParameters(arguments, operatorHelmChart, images)
+	arguments = addOptionalHelmParameters(arguments, images)
 
 	if operatorConfigurationValues != nil {
 		arguments = setHelmParameter(arguments, "operator.dash0Export.enabled", "true")
@@ -107,6 +108,9 @@ func deployOperatorWithAutoOperationConfiguration(
 		arguments = setHelmParameter(arguments, "operator.clusterName", e2eKubernetesContext)
 	}
 
+	arguments = append(arguments, operatorHelmReleaseName)
+	arguments = append(arguments, operatorHelmChart)
+
 	output, err := run(exec.Command("helm", arguments...))
 	if err != nil {
 		return err
@@ -117,12 +121,13 @@ func deployOperatorWithAutoOperationConfiguration(
 
 	if operatorConfigurationValues != nil {
 		waitForAutoOperatorConfigurationResourceToBecomeAvailable()
+		waitForCollectorToStart(operatorNamespace, operatorHelmChart)
 	}
 
 	return nil
 }
 
-func addOptionalHelmParameters(arguments []string, operatorHelmChart string, images Images) []string {
+func addOptionalHelmParameters(arguments []string, images Images) []string {
 	arguments = setIfNotEmpty(arguments, "operator.image.repository", images.operator.repository)
 	arguments = setIfNotEmpty(arguments, "operator.image.tag", images.operator.tag)
 	arguments = setIfNotEmpty(arguments, "operator.image.digest", images.operator.digest)
@@ -154,8 +159,6 @@ func addOptionalHelmParameters(arguments []string, operatorHelmChart string, ima
 	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.digest", images.instrumentation.digest)
 	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.pullPolicy", images.instrumentation.pullPolicy)
 
-	arguments = append(arguments, operatorHelmReleaseName)
-	arguments = append(arguments, operatorHelmChart)
 	return arguments
 }
 
@@ -333,7 +336,10 @@ func upgradeOperator(
 		operatorNamespace,
 		"--set", "operator.developmentMode=true",
 	}
-	arguments = addOptionalHelmParameters(arguments, operatorHelmChart, images)
+	arguments = addOptionalHelmParameters(arguments, images)
+
+	arguments = append(arguments, operatorHelmReleaseName)
+	arguments = append(arguments, operatorHelmChart)
 
 	output, err := run(exec.Command("helm", arguments...))
 	Expect(err).NotTo(HaveOccurred())

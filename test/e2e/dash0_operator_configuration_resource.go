@@ -41,12 +41,6 @@ var (
 	//go:embed dash0operatorconfiguration.e2e.yaml.template
 	dash0OperatorConfigurationResourceSource   string
 	dash0OperatorConfigurationResourceTemplate *template.Template
-
-	defaultDash0OperatorConfigurationValues = dash0OperatorConfigurationValues{
-		SelfMonitoringEnabled: true,
-		Endpoint:              defaultEndpoint,
-		Token:                 defaultToken,
-	}
 )
 
 func renderDash0OperatorConfigurationResourceTemplate(
@@ -75,6 +69,8 @@ func renderDash0OperatorConfigurationResourceTemplate(
 
 func deployDash0OperatorConfigurationResource(
 	dash0OperatorConfigurationValues dash0OperatorConfigurationValues,
+	operatorNamespace string,
+	operatorHelmChart string,
 ) {
 	renderedResourceFileName := renderDash0OperatorConfigurationResourceTemplate(dash0OperatorConfigurationValues)
 	defer func() {
@@ -90,6 +86,12 @@ func deployDash0OperatorConfigurationResource(
 			"-f",
 			renderedResourceFileName,
 		))).To(Succeed())
+
+	if dash0OperatorConfigurationValues.Endpoint != "" {
+		// Deploying the Dash0 operator configuration resource with an export will trigger creating the default
+		// OpenTelemetry collector instance.
+		waitForCollectorToStart(operatorNamespace, operatorHelmChart)
+	}
 }
 
 func waitForAutoOperatorConfigurationResourceToBecomeAvailable() {
@@ -118,7 +120,17 @@ func updateEndpointOfDash0OperatorConfigurationResource(
 	newEndpoint string,
 ) {
 	updateDash0OperatorConfigurationResource(
-		fmt.Sprintf("{\"spec\":{\"export\":{\"dash0\":{\"endpoint\":\"%s\"}}}}", newEndpoint),
+		fmt.Sprintf(`
+{
+  "spec": {
+    "export": {
+      "dash0": {
+        "endpoint": "%s"
+      }
+    }
+   }
+}
+`, newEndpoint),
 	)
 }
 

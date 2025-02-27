@@ -388,7 +388,7 @@ func checkForForbidenResourceAttributes(
 ) {
 	mostRecentTimestamp := getMostRecentTimestampOfAnyMetricDataPoint(resourceMetrics)
 
-	if !mostRecentTimestamp.After(timestampLowerBound) {
+	if mostRecentTimestamp.Before(timestampLowerBound) {
 		// These metrics and their data points are too old, they are probably from a previously running test case,
 		// ignore them.
 		return

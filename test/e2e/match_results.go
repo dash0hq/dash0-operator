@@ -152,6 +152,7 @@ func (omr *ObjectMatchResult[R, O]) addFailedAssertion(id string, message string
 	omr.assertionOutcomes = append(omr.assertionOutcomes, newAssertionOutcome(id, assertionFailed, message))
 }
 
+//nolint:unused
 func (omr *ObjectMatchResult[R, O]) addSkippedAssertion(id string, message string) {
 	omr.assertionOutcomes = append(omr.assertionOutcomes, newAssertionOutcome(id, assertionSkipped, message))
 }

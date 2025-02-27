@@ -37,10 +37,14 @@ var (
 	dash0MonitoringResourceSource   string
 	dash0MonitoringResourceTemplate *template.Template
 
-	defaultDash0MonitoringValues = dash0MonitoringValues{
+	dash0MonitoringValuesDefault = dash0MonitoringValues{
+		InstrumentWorkloads: dash0v1alpha1.All,
+	}
+
+	dash0MonitoringValuesWithExport = dash0MonitoringValues{
+		InstrumentWorkloads: dash0v1alpha1.All,
 		Endpoint:            defaultEndpoint,
 		Token:               defaultToken,
-		InstrumentWorkloads: dash0v1alpha1.All,
 	}
 )
 
@@ -65,7 +69,6 @@ func deployDash0MonitoringResource(
 	namespace string,
 	dash0MonitoringValues dash0MonitoringValues,
 	operatorNamespace string,
-	operatorHelmChart string,
 ) {
 	renderedResourceFileName := renderDash0MonitoringResourceTemplate(dash0MonitoringValues)
 	defer func() {
@@ -95,18 +98,39 @@ func deployDash0MonitoringResource(
 	)
 	Expect(err).ToNot(HaveOccurred())
 
-	// Deploying the Dash0 monitoring resource will trigger creating the default OpenTelemetry collecor instance.
-	waitForCollectorToStart(operatorNamespace, operatorHelmChart)
+	waitForMonitoringResourceToBecomeAvailable(namespace)
+
+	if dash0MonitoringValues.Endpoint != "" {
+		// Deploying the Dash0 monitoring with an export will trigger creating the OpenTelemetry collector resources,
+		// assuming there is no operator configuration resource with an export.
+		waitForCollectorToStart(operatorNamespace, operatorHelmChart)
+	}
 }
 
-func updateEndpointOfDash0MonitoringResource(
-	namespace string,
-	newEndpoint string,
-) {
-	updateDash0MonitoringResource(
-		namespace,
-		fmt.Sprintf("{\"spec\":{\"export\":{\"dash0\":{\"endpoint\":\"%s\"}}}}", newEndpoint),
-	)
+func waitForMonitoringResourceToBecomeAvailable(namespace string) {
+	By("waiting for the Dash0 monitoring resource to become available")
+	Eventually(func(g Gomega) {
+		g.Expect(
+			runAndIgnoreOutput(exec.Command(
+				"kubectl",
+				"get",
+				"--namespace",
+				namespace,
+				"dash0monitorings.operator.dash0.com/dash0-monitoring-resource-e2e",
+			))).To(Succeed())
+	}, 60*time.Second, 1*time.Second).Should(Succeed())
+	Expect(
+		runAndIgnoreOutput(exec.Command(
+			"kubectl",
+			"wait",
+			"--namespace",
+			namespace,
+			"dash0monitorings.operator.dash0.com/dash0-monitoring-resource-e2e",
+			"--for",
+			"condition=Available",
+			"--timeout",
+			"30s",
+		))).To(Succeed())
 }
 
 func updateInstrumentWorkloadsModeOfDash0MonitoringResource(
@@ -115,7 +139,13 @@ func updateInstrumentWorkloadsModeOfDash0MonitoringResource(
 ) {
 	updateDash0MonitoringResource(
 		namespace,
-		fmt.Sprintf("{\"spec\":{\"instrumentWorkloads\":\"%s\"}}", instrumentWorkloadsMode),
+		fmt.Sprintf(`
+{
+  "spec": {
+    "instrumentWorkloads": "%s"
+  }
+}
+`, instrumentWorkloadsMode),
 	)
 }
 
