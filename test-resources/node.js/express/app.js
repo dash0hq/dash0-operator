@@ -65,7 +65,7 @@ if (process.env.TRIGGER_SELF_AND_EXIT) {
       process.exit(1);
     }
 
-    for (let i = 0; i < 120; i++) {
+    for (let i = 0; i < 20; i++) {
       await fetch(`http://localhost:${port}/dash0-k8s-operator-test?id=${testId}`);
       await delay(500);
     }

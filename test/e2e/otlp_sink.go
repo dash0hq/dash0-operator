@@ -15,6 +15,7 @@ import (
 )
 
 func deployOtlpSink(workingDir string) {
+
 	createDirAndDeleteOldExportedTelemetry()
 
 	originalManifest := fmt.Sprintf(
@@ -53,6 +54,7 @@ func deployOtlpSink(workingDir string) {
 		return nil
 	}()).To(Succeed())
 
+	By("deploying otlp-sink")
 	Expect(
 		runAndIgnoreOutput(
 			exec.Command(
@@ -62,6 +64,7 @@ func deployOtlpSink(workingDir string) {
 				tmpFile.Name(),
 			))).To(Succeed())
 
+	By("waiting for otlp-sink to become ready")
 	Expect(
 		runAndIgnoreOutput(
 			exec.Command("kubectl",
@@ -84,6 +87,10 @@ func createDirAndDeleteOldExportedTelemetry() {
 	_ = os.Remove("test-resources/e2e-test-volumes/otlp-sink/traces.jsonl")
 	_ = os.Remove("test-resources/e2e-test-volumes/otlp-sink/metrics.jsonl")
 	_ = os.Remove("test-resources/e2e-test-volumes/otlp-sink/logs.jsonl")
+	By("creating telemetry dump files")
+	_, _ = os.Create("test-resources/e2e-test-volumes/otlp-sink/traces.jsonl")
+	_, _ = os.Create("test-resources/e2e-test-volumes/otlp-sink/metrics.jsonl")
+	_, _ = os.Create("test-resources/e2e-test-volumes/otlp-sink/logs.jsonl")
 }
 
 func uninstallOtlpSink(workingDir string) {

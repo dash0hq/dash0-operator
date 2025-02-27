@@ -17,8 +17,6 @@ var (
 	originalKubeContext       string
 	kubeContextHasBeenChanged bool
 
-	setupFinishedSuccessfully bool
-
 	requiredPorts = []int{
 		// Node.js workloads
 		1205, 1206, 1207, 1208, 1209, 1210, 1211, //

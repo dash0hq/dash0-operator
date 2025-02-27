@@ -5,9 +5,11 @@ metadata:
 spec:
   selfMonitoring:
     enabled: {{ .SelfMonitoringEnabled }}
+{{- if .Endpoint }}
   export:
     dash0:
       endpoint: {{ .Endpoint }}
       authorization:
         token: {{ .Token }}
+{{- end }}
   clusterName: {{ .ClusterName }}
