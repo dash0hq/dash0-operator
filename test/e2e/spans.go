@@ -272,7 +272,13 @@ func matchHttpServerSpanWithHttpTarget(expectedRoute string, expectedQuery strin
 			)
 		}
 
-		expectedTarget := fmt.Sprintf("%s?%s", expectedRoute, expectedQuery)
+		var expectedTarget string
+		if expectedQuery != "" {
+			expectedTarget = fmt.Sprintf("%s?%s", expectedRoute, expectedQuery)
+		} else {
+			expectedTarget = expectedRoute
+		}
+
 		target, hasTarget := span.Attributes().Get(httpTargetAttrib)
 		route, hasRoute := span.Attributes().Get(httpRouteAttrib)
 		query, hasQuery := span.Attributes().Get(urlQueryAttrib)

@@ -87,7 +87,7 @@ func (mrl *MatchResultList[R, O]) expectZeroMatches(g Gomega, message string) {
 		g.Expect(len(matchingResults)).To(
 			BeZero(),
 			fmt.Sprintf(
-				"%s -- expected no matching objects but found %d matches, here is an arbitrary matching result: %s",
+				"%s -- expected no matching objects but found %d matches, here is an arbitrary matching result:\n%s",
 				message,
 				len(matchingResults),
 				matchingResults[0].String(),
