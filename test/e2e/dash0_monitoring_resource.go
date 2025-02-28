@@ -12,6 +12,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/Masterminds/sprig/v3"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
@@ -26,6 +27,7 @@ type dash0MonitoringValues struct {
 	InstrumentWorkloads dash0v1alpha1.InstrumentWorkloadsMode
 	Endpoint            string
 	Token               string
+	Filter              string
 }
 
 const (
@@ -52,7 +54,11 @@ func renderDash0MonitoringResourceTemplate(dash0MonitoringValues dash0Monitoring
 	By("render Dash0Monitoring resource template")
 	if dash0MonitoringResourceTemplate == nil {
 		dash0MonitoringResourceTemplate =
-			template.Must(template.New("dash0monitoring").Parse(dash0MonitoringResourceSource))
+			template.Must(
+				template.
+					New("dash0monitoring").
+					Funcs(sprig.FuncMap()).
+					Parse(dash0MonitoringResourceSource))
 	}
 
 	var dash0MonitoringResource bytes.Buffer

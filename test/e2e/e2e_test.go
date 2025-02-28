@@ -699,6 +699,117 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 			})
 		})
 
+		Describe("telemetry filtering", func() {
+
+			// Note: This test case deliberately works without an operator configuration resource, instead only using a
+			// monitoring resource to configure the namespace telemetry filter _and_ the export. If we deployed an
+			// operator configuration resource first, that would create a collector config map without any custom
+			// filters, and start the collector. Then, when we deploy the monitoring resource, the config map would be
+			// updated, but then it takes a bit until the collector is restarted via the configuration reloader. We
+			// can avoid that config change and the config reloading wait time by skipping the operator configuration
+			// resource.
+
+			BeforeEach(func() {
+				deployOperatorWithoutAutoOperationConfiguration(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					images,
+				)
+			})
+
+			AfterEach(func() {
+				undeployDash0MonitoringResource(applicationUnderTestNamespace)
+				undeployOperator(operatorNamespace)
+			})
+
+			It("emits health check spans without filter", func() {
+				deployDash0MonitoringResource(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesWithExport,
+					operatorNamespace,
+				)
+				By("installing the Node.js deployment")
+				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+
+				testId := uuid.New().String()
+				timestampLowerBound := time.Now()
+				By("verifying that the Node.js deployment emits spans")
+				Eventually(func(g Gomega) {
+					verifySpans(
+						g,
+						runtimeTypeNodeJs,
+						workloadTypeDeployment,
+						"/dash0-k8s-operator-test",
+						fmt.Sprintf("id=%s", testId),
+						timestampLowerBound,
+						false,
+					)
+				}, verifyTelemetryTimeout, pollingInterval).Should(Succeed())
+				By("Node.js deployment: matching spans have been received")
+				By("Now searching collected spans for health checks...")
+				matchResults := fileHasMatchingSpan(
+					Default,
+					nil,
+					matchHttpServerSpanWithHttpTarget("/ready", ""),
+					timestampLowerBound,
+				)
+				matchResults.expectAtLeastOneMatch(
+					Default, "Node.js deployment: expected to find /ready check spans")
+			})
+
+			It("does not emit health check spans when filter is active", func() {
+				filter :=
+					`
+traces:
+  span:
+  - 'attributes["http.route"] == "/ready"'
+`
+				deployDash0MonitoringResource(
+					applicationUnderTestNamespace,
+					dash0MonitoringValues{
+						InstrumentWorkloads: dash0v1alpha1.All,
+						Endpoint:            defaultEndpoint,
+						Token:               defaultToken,
+						Filter:              filter,
+					},
+					operatorNamespace,
+				)
+				verifyConfigMapContainsString(
+					operatorNamespace,
+					// nolint:lll
+					`'resource.attributes[\"k8s.namespace.name\"] == \"e2e-application-under-test-namespace\" and (attributes[\"http.route\"] == \"/ready\")'`,
+				)
+				By("installing the Node.js deployment")
+				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+
+				testId := uuid.New().String()
+				timestampLowerBound := time.Now()
+				By("verifying that the Node.js deployment emits spans")
+				Eventually(func(g Gomega) {
+					verifySpans(
+						g,
+						runtimeTypeNodeJs,
+						workloadTypeDeployment,
+						"/dash0-k8s-operator-test",
+						fmt.Sprintf("id=%s", testId),
+						timestampLowerBound,
+						false,
+					)
+				}, verifyTelemetryTimeout, pollingInterval).Should(Succeed())
+				By("Node.js deployment: matching spans have been received")
+				By("Now searching collected spans for health checks...")
+				matchResults := fileHasMatchingSpan(
+					Default,
+					nil,
+					matchHttpServerSpanWithHttpTarget("/ready", ""),
+					timestampLowerBound,
+				)
+				matchResults.expectZeroMatches(
+					Default, "Node.js deployment: expected to find no /ready check spans")
+			})
+		})
+
 		Describe("operator startup", func() {
 			AfterAll(func() {
 				undeployOperator(operatorNamespace)

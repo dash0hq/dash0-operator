@@ -11,3 +11,7 @@ spec:
       authorization:
         token: {{ .Token }}
 {{- end }}
+{{- if .Filter }}
+  filter:
+  {{- .Filter | indent 4 -}}
+{{- end }}

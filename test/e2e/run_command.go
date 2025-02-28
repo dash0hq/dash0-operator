@@ -82,7 +82,7 @@ func getProjectDir() (string, error) {
 
 func verifyCommandOutputContainsStrings(command *exec.Cmd, timeout time.Duration, needles ...string) {
 	Eventually(func(g Gomega) {
-		// We cannot run the same exec.Command multiple times, thus we create a new instance each time instead.
+		// We cannot run the same exec.Command multiple times, thus we create a new instance on each attempt instead.
 		haystack, err := run(exec.Command(command.Args[0], command.Args[1:]...), false)
 		g.Expect(err).ToNot(HaveOccurred())
 		for _, needle := range needles {
