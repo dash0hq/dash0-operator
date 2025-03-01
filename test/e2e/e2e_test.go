@@ -95,7 +95,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 	// setup they require. I.e. all tests that work with a pre-existing operator deployment with the same standard
 	// configuration are grouped together etc. This greatly helps with the test execution speed.
 
-	Describe("with an existing operator deployment", func() {
+	Describe("with an existing operator deployment and operation configuration resource", func() {
 		BeforeAll(func() {
 			By("deploy the Dash0 operator")
 			deployOperatorWithDefaultAutoOperationConfiguration(
@@ -290,7 +290,8 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				verifyDeploymentCollectorConfigMapDoesNotContainStrings(operatorNamespace, " \n")
 			})
 
-		}) // end of suite "with an existing operator deployment::with a deployed Dash0 monitoring resource"
+		}) // end of suite "with an existing operator deployment and operation configuration resource::with a deployed
+		// Dash0 monitoring resource"
 
 		Describe("without a deployed Dash0 monitoring resource", func() {
 			AfterEach(func() {
@@ -569,15 +570,28 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				})
 			})
 
-		}) // end of suite "with an existing operator deployment::without a deployed Dash0 monitoring resource"
+		}) // end of suite "with an existing operator deployment and operation configuration resource::without a
+		// deployed Dash0 monitoring resource"
 
-	}) // end of suite "with an existing operator deployment"
+	}) // end of suite "with an existing operator deployment and operation configuration resource"
 
-	Describe("without an existing operator deployment", func() {
+	Describe("with an existing operator deployment without an operation configuration resource", func() {
+		BeforeAll(func() {
+			By("deploy the Dash0 operator")
+			deployOperatorWithoutAutoOperationConfiguration(
+				operatorNamespace,
+				operatorHelmChart,
+				operatorHelmChartUrl,
+				images,
+			)
+		})
+
+		AfterAll(func() {
+			undeployOperator(operatorNamespace)
+		})
 
 		Describe("using the monitoring resource's connection settings", func() {
 			BeforeAll(func() {
-				deployOperatorWithoutAutoOperationConfiguration(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images)
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
 					dash0MonitoringValuesWithExport,
@@ -587,7 +601,6 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 			AfterAll(func() {
 				undeployDash0MonitoringResource(applicationUnderTestNamespace)
-				undeployOperator(operatorNamespace)
 			})
 
 			It("should instrument workloads and send telemetry to the endpoint configured in the monitoring resource", func() {
@@ -619,7 +632,6 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 			// configuration resource.
 
 			BeforeAll(func() {
-				deployOperatorWithoutAutoOperationConfiguration(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images)
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
 					dash0MonitoringValuesWithExport,
@@ -630,7 +642,6 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 			AfterAll(func() {
 				undeployDash0MonitoringResource(applicationUnderTestNamespace)
-				undeployOperator(operatorNamespace)
 			})
 
 			BeforeEach(func() {
@@ -679,6 +690,10 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				}, 90*time.Second, time.Second).Should(Succeed())
 			})
 		})
+
+	}) // end of suite "with an existing operator deployment without an operation configuration resource"
+
+	Describe("without an existing operator deployment", func() {
 
 		Describe("collect basic metrics without having a Dash0 monitoring resource ", func() {
 
