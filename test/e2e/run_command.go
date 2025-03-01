@@ -90,3 +90,11 @@ func verifyCommandOutputContainsStrings(command *exec.Cmd, timeout time.Duration
 		}
 	}, timeout, time.Second).Should(Succeed())
 }
+
+func verifyCommandOutputDoesNotContainStrings(command *exec.Cmd, needles ...string) {
+	haystack, err := run(exec.Command(command.Args[0], command.Args[1:]...), false)
+	Expect(err).ToNot(HaveOccurred())
+	for _, needle := range needles {
+		Expect(haystack).ToNot(ContainSubstring(needle))
+	}
+}

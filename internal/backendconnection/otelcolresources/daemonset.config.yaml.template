@@ -1,3 +1,21 @@
+{{- /*
+Note: Subtle formatting issues will cause the edit mode in k9s to be thwarted because the actual configmap content will
+be displayed as a single long quoted string with literal \n characters, instead of being properly formatted as yaml. In
+particular, having one or multiple space characters appear directly before a line break will cause this.
+See https://github.com/kubernetes/kubernetes/issues/36222#issuecomment-2006988070. This does not affect the collector,
+as it can still parse the config map perfectly fine, but it makes troubleshooting in k9s inconvenient.
+
+Therefore, for text/template pipelines that might result in no output (in particular comments and `if` conditions),
+avoid starting the pipeline with "{{" if it is indented (i.e. there are space characters before "{{"). This would leave
+spaces followed by a line break in the rendered output.
+Instead, either
+1. start the pipeline with "{{-" (to consume leading whitespace), or
+2. start the pipeline with "{{" but omit indentation, i.e. start the pipeline directly at the start of the line without
+   leading space characters.
+
+Note that the first option will also consume _all_ preceding line breaks, so if a line break is desired in the output,
+use option 2.
+*/}}
 extensions:
   health_check:
     endpoint: "{{ .SelfIpReference }}:13133"
@@ -294,9 +312,9 @@ to be compatible with the well-known configuration via annotations.
             target_label: node
 {{- end }}
 
-  {{/*
+{{/*
   TODO Turn on conditionally for monitored namespaces
-  */}}
+*/}}
   filelog/monitored_pods:
     include:
     - /var/log/pods/*/*/*.log
@@ -422,7 +440,7 @@ processors:
         action: insert
   {{- end }}
 
-  {{ if .NamespaceOttlFilter }}
+{{ if .NamespaceOttlFilter }}
   # This is a standard filter which is always on; metrics collection receivers generate metrics for all namespaces in
   # the cluster, however, we only want to collect metrics from monitored namespaces, hence this filter.
   # See filter/metrics/$namespaceName filters for user-configurable filters per namespace.
@@ -430,7 +448,7 @@ processors:
     metrics:
       metric:
         - {{ .NamespaceOttlFilter }}
-  {{- end }}
+{{- end }}
 
   filter/logs/only_dash0_monitored_resources:
     error_mode: ignore
@@ -438,7 +456,7 @@ processors:
       log_record:
       - 'resource.attributes["dash0.monitoring.instrumented"] != "true"'
 
-  {{ if .CustomFilters.HasTraceFilters }}
+{{ if .CustomFilters.HasTraceFilters }}
   filter/traces/custom_telemetry_filter:
     error_mode: {{ .CustomFilters.ErrorMode }}
     traces:
@@ -454,8 +472,8 @@ processors:
         - '{{ $condition }}'
         {{- end }}
       {{- end }}
-  {{- end }}
-  {{ if .CustomFilters.HasMetricFilters }}
+{{- end }}
+{{ if .CustomFilters.HasMetricFilters }}
   filter/metrics/custom_telemetry_filter:
     error_mode: {{ .CustomFilters.ErrorMode }}
     metrics:
@@ -471,8 +489,8 @@ processors:
         - '{{ $condition }}'
         {{- end }}
       {{- end }}
-  {{- end }}
-  {{ if .CustomFilters.HasLogFilters }}
+{{ end }}
+{{ if .CustomFilters.HasLogFilters }}
   filter/logs/custom_telemetry_filter:
     error_mode: {{ .CustomFilters.ErrorMode }}
     logs:
@@ -482,7 +500,7 @@ processors:
         - '{{ $condition }}'
         {{- end }}
       {{- end }}
-  {{- end }}
+{{- end }}
 
   memory_limiter:
     check_interval: 5s
