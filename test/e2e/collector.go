@@ -14,12 +14,38 @@ import (
 )
 
 var (
-	collectorDaemonSetName           = fmt.Sprintf("%s-opentelemetry-collector-agent-daemonset", operatorHelmReleaseName)
-	collectorDaemonSetNameQualified  = fmt.Sprintf("daemonset/%s", collectorDaemonSetName)
-	collectorDeploymentName          = fmt.Sprintf("%s-cluster-metrics-collector-deployment", operatorHelmReleaseName)
-	collectorDeploymentNameQualified = fmt.Sprintf("deployment/%s", collectorDeploymentName)
-	collectorConfigMapName           = fmt.Sprintf("%s-opentelemetry-collector-agent-cm", operatorHelmReleaseName)
-	collectorConfigMapNameQualified  = fmt.Sprintf("configmap/%s", collectorConfigMapName)
+	collectorDaemonSetName = fmt.Sprintf(
+		"%s-opentelemetry-collector-agent-daemonset",
+		operatorHelmReleaseName,
+	)
+	collectorDaemonSetNameQualified = fmt.Sprintf(
+		"daemonset/%s",
+		collectorDaemonSetName,
+	)
+	collectorDeploymentName = fmt.Sprintf(
+		"%s-cluster-metrics-collector-deployment",
+		operatorHelmReleaseName,
+	)
+	collectorDeploymentNameQualified = fmt.Sprintf(
+		"deployment/%s",
+		collectorDeploymentName,
+	)
+	collectorDaemonSetConfigMapName = fmt.Sprintf(
+		"%s-opentelemetry-collector-agent-cm",
+		operatorHelmReleaseName,
+	)
+	collectorDaemonSetConfigMapNameQualified = fmt.Sprintf(
+		"configmap/%s",
+		collectorDaemonSetConfigMapName,
+	)
+	collectorDeploymentConfigMapName = fmt.Sprintf(
+		"%s-cluster-metrics-collector-cm",
+		operatorHelmReleaseName,
+	)
+	collectorDeploymentConfigMapNameQualified = fmt.Sprintf(
+		"configmap/%s",
+		collectorDeploymentConfigMapName,
+	)
 )
 
 func waitForCollectorToStart(operatorNamespace string, operatorHelmChart string) {
@@ -116,18 +142,50 @@ func verifyThatCollectorHasBeenRemoved(operatorNamespace string) {
 	Eventually(verifyCollectorDeploymentIsGone, 60*time.Second, time.Second).Should(Succeed())
 }
 
-func verifyConfigMapContainsString(operatorNamespace string, s string) {
+func verifyDaemonSetCollectorConfigMapContainsString(operatorNamespace string, s string) {
+	verifyConfigMapContainsString(operatorNamespace, collectorDaemonSetConfigMapNameQualified, s)
+}
+
+// nolint:unused
+func verifyDeploymentCollectorConfigMapContainsString(operatorNamespace string, s string) {
+	verifyConfigMapContainsString(operatorNamespace, collectorDeploymentConfigMapNameQualified, s)
+}
+
+func verifyDaemonSetCollectorConfigMapDoesNotContainStrings(operatorNamespace string, s string) {
+	verifyConfigMapDoesNotContainStrings(operatorNamespace, collectorDaemonSetConfigMapNameQualified, s)
+}
+
+func verifyDeploymentCollectorConfigMapDoesNotContainStrings(operatorNamespace string, s string) {
+	verifyConfigMapDoesNotContainStrings(operatorNamespace, collectorDeploymentConfigMapNameQualified, s)
+}
+
+func verifyConfigMapContainsString(operatorNamespace string, configMapNameQualified, s string) {
 	verifyCommandOutputContainsStrings(
 		exec.Command(
 			"kubectl",
 			"get",
 			"-n",
 			operatorNamespace,
-			collectorConfigMapNameQualified,
+			configMapNameQualified,
 			"-o",
-			"json",
+			`jsonpath="{.data.config\.yaml}"`,
 		),
 		20*time.Second,
+		s,
+	)
+}
+
+func verifyConfigMapDoesNotContainStrings(operatorNamespace string, configMapNameQualified, s string) {
+	verifyCommandOutputDoesNotContainStrings(
+		exec.Command(
+			"kubectl",
+			"get",
+			"-n",
+			operatorNamespace,
+			configMapNameQualified,
+			"-o",
+			`jsonpath="{.data.config\.yaml}"`,
+		),
 		s,
 	)
 }

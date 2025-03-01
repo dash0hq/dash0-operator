@@ -280,6 +280,16 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					}, 30*time.Second, pollingInterval).Should(Succeed())
 				})
 			})
+
+			//nolint:lll
+			It("config maps should not contain empty lines with space characters (that is, config maps should render nicely in k9s edit view)", func() {
+				// See comment at the top of internal/backendconnection/otelcolresources/daemonset.config.yaml.template
+				// This test looks for the problematic pattern (space character before line break) in the rendered
+				// config maps.
+				verifyDaemonSetCollectorConfigMapDoesNotContainStrings(operatorNamespace, " \n")
+				verifyDeploymentCollectorConfigMapDoesNotContainStrings(operatorNamespace, " \n")
+			})
+
 		}) // end of suite "with an existing operator deployment::with a deployed Dash0 monitoring resource"
 
 		Describe("without a deployed Dash0 monitoring resource", func() {
@@ -775,7 +785,7 @@ traces:
 					},
 					operatorNamespace,
 				)
-				verifyConfigMapContainsString(
+				verifyDaemonSetCollectorConfigMapContainsString(
 					operatorNamespace,
 					// nolint:lll
 					`'resource.attributes[\"k8s.namespace.name\"] == \"e2e-application-under-test-namespace\" and (attributes[\"http.route\"] == \"/ready\")'`,
@@ -918,7 +928,7 @@ traces:
 				updateEndpointOfDash0OperatorConfigurationResource(newEndpoint)
 
 				By("verify that the config map has been updated by the controller")
-				verifyConfigMapContainsString(operatorNamespace, newEndpoint)
+				verifyDaemonSetCollectorConfigMapContainsString(operatorNamespace, newEndpoint)
 
 				// This step sometimes takes quite a while, for some reason the config map change is not seen immediately
 				// from within the collector pod/config-reloader container process, although it polls the file every second.

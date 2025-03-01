@@ -64,12 +64,12 @@ processors:
         action: insert
   {{- end }}
 
-  {{ if .NamespaceOttlFilter }}
+{{ if .NamespaceOttlFilter }}
   filter/metrics/only_monitored_namespaces:
     metrics:
       metric:
         - {{ .NamespaceOttlFilter }}
-  {{- end }}
+{{- end }}
 
   # Remove noisy replicaset metrics (by default, Kubernetes keeps a history of 10 replicasets for each deployment,
   # collecting metrics about all of them leads to a lot of metrics with no value). Removing zero-value datapoints
@@ -81,7 +81,7 @@ processors:
       - metric.name == "k8s.replicaset.available" and value_int == 0
       - metric.name == "k8s.replicaset.desired" and value_int == 0
 
-  {{ if .CustomFilters.HasMetricFilters }}
+{{ if .CustomFilters.HasMetricFilters }}
   filter/metrics/custom_telemetry_filter:
     error_mode: ignore
     metrics:
@@ -97,7 +97,7 @@ processors:
         - '{{ $condition }}'
         {{- end }}
       {{- end }}
-  {{- end }}
+{{- end }}
 
   memory_limiter:
     check_interval: 5s
