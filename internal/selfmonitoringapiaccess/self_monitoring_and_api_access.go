@@ -69,6 +69,10 @@ func ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
 		return SelfMonitoringAndApiAccessConfiguration{}, nil
 	}
 
+	if !util.ReadBoolPointerWithDefault(resource.Spec.SelfMonitoring.Enabled, true) {
+		return SelfMonitoringAndApiAccessConfiguration{}, nil
+	}
+
 	export := resource.Spec.Export
 	if export == nil {
 		logger.Info("Invalid configuration of Dash0OperatorConfiguration resource: Self-monitoring is enabled but no " +
@@ -265,228 +269,44 @@ func enableSelfMonitoringInCollector(
 	return nil
 }
 
-func GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
-	operatorManagerDeployment *appsv1.Deployment,
-) (SelfMonitoringAndApiAccessConfiguration, error) {
-	operatorManagerContainerIdx, err := findOperatorManagerContainer(operatorManagerDeployment)
-	if err != nil {
-		return SelfMonitoringAndApiAccessConfiguration{}, &cannotFindContainerByNameError{
-			ContainerName:     util.OperatorManagerContainerName,
-			WorkloadGKV:       operatorManagerDeployment.GroupVersionKind(),
-			WorkloadNamespace: operatorManagerDeployment.Namespace,
-			WorkloadName:      operatorManagerDeployment.Name,
-		}
-	}
-
-	return ParseSelfMonitoringConfigurationFromContainer(&operatorManagerDeployment.Spec.Template.Spec.Containers[operatorManagerContainerIdx])
-}
-
-func ParseSelfMonitoringConfigurationFromContainer(operatorManagerContainer *corev1.Container) (SelfMonitoringAndApiAccessConfiguration, error) {
-	endpoint, err := parseEndpoint(operatorManagerContainer)
-	if err != nil {
-		return SelfMonitoringAndApiAccessConfiguration{}, err
-	}
-
-	dash0Authorization := parseDash0AuthorizationFromEnvVars(operatorManagerContainer)
-	if endpoint == "" {
-		if dash0Authorization != nil {
-			return SelfMonitoringAndApiAccessConfiguration{
-				SelfMonitoringEnabled: false,
-				Export: dash0v1alpha1.Export{
-					Dash0: &dash0v1alpha1.Dash0Configuration{
-						Endpoint:      "",
-						Authorization: *dash0Authorization,
-					},
-				},
-			}, nil
-		} else {
-			return SelfMonitoringAndApiAccessConfiguration{}, nil
-		}
-	}
-
-	protocolFromEnvVar := common.ProtocolGrpc
-	otelExporterOtlpProtocolEnvVarIdx := slices.IndexFunc(operatorManagerContainer.Env, matchOtelExporterOtlpProtocolEnvVar)
-	if otelExporterOtlpProtocolEnvVarIdx >= 0 {
-		protocolFromEnvVar = operatorManagerContainer.Env[otelExporterOtlpProtocolEnvVarIdx].Value
-	}
-
-	headers := parseHeadersFromEnvVar(operatorManagerContainer)
-
-	switch protocolFromEnvVar {
-	case common.ProtocolGrpc:
-		return createDash0OrGrpcConfigurationFromContainer(operatorManagerContainer, endpoint, headers), nil
-	case common.ProtocolHttpJson:
-		return createHttpJsonConfigurationFromContainer(endpoint, headers), nil
-	case common.ProtocolHttpProtobuf:
-		return createHttpProtobufConfigurationFromContainer(endpoint, headers), nil
-
-	default:
-		return SelfMonitoringAndApiAccessConfiguration{}, fmt.Errorf("unsupported protocol %v", protocolFromEnvVar)
-	}
-}
-
-func parseEndpoint(container *corev1.Container) (string, error) {
-	otelExporterOtlpEndpointEnvVarIdx := slices.IndexFunc(container.Env, matchOtelExporterOtlpEndpointEnvVar)
-	if otelExporterOtlpEndpointEnvVarIdx < 0 {
-		return "", nil
-	}
-	otelExporterOtlpEndpointEnvVar := container.Env[otelExporterOtlpEndpointEnvVarIdx]
-	if otelExporterOtlpEndpointEnvVar.Value == "" && otelExporterOtlpEndpointEnvVar.ValueFrom != nil {
-		return "", fmt.Errorf("retrieving the endpoint from OTEL_EXPORTER_OTLP_ENDPOINT with a ValueFrom source is not supported")
-	} else if otelExporterOtlpEndpointEnvVar.Value == "" {
-		return "", fmt.Errorf("no OTEL_EXPORTER_OTLP_ENDPOINT is set")
-	}
-	return otelExporterOtlpEndpointEnvVar.Value, nil
-}
-
-func parseHeadersFromEnvVar(container *corev1.Container) []dash0v1alpha1.Header {
-	otelExporterOtlpHeadersEnvVarValue := ""
-	var headers []dash0v1alpha1.Header
-	if otelExporterOtlpHeadersEnvVarIdx :=
-		slices.IndexFunc(container.Env, matchOtelExporterOtlpHeadersEnvVar); otelExporterOtlpHeadersEnvVarIdx >= 0 {
-		otelExporterOtlpHeadersEnvVarValue = container.Env[otelExporterOtlpHeadersEnvVarIdx].Value
-		keyValuePairs := strings.Split(otelExporterOtlpHeadersEnvVarValue, ",")
-		for _, keyValuePair := range keyValuePairs {
-			parts := strings.Split(keyValuePair, "=")
-			if len(parts) == 2 {
-				headers = append(headers, dash0v1alpha1.Header{
-					Name:  parts[0],
-					Value: parts[1],
-				})
-			}
-		}
-	}
-
-	return headers
-}
-
-func parseDash0AuthorizationFromEnvVars(container *corev1.Container) *dash0v1alpha1.Authorization {
-	if idx := slices.IndexFunc(container.Env, matchSelfMonitoringAndApiAccessAuthTokenEnvVar); idx >= 0 {
-		authTokenEnvVar := container.Env[idx]
-		if authTokenEnvVar.Value != "" {
-			return &dash0v1alpha1.Authorization{
-				Token: &authTokenEnvVar.Value,
-			}
-		} else if authTokenEnvVar.ValueFrom != nil &&
-			authTokenEnvVar.ValueFrom.SecretKeyRef != nil &&
-			authTokenEnvVar.ValueFrom.SecretKeyRef.LocalObjectReference.Name != "" &&
-			authTokenEnvVar.ValueFrom.SecretKeyRef.Key != "" {
-			return &dash0v1alpha1.Authorization{
-				SecretRef: &dash0v1alpha1.SecretRef{
-					Name: authTokenEnvVar.ValueFrom.SecretKeyRef.LocalObjectReference.Name,
-					Key:  authTokenEnvVar.ValueFrom.SecretKeyRef.Key,
-				},
-			}
-		}
-	}
-	return nil
-}
-
-func DisableSelfMonitoringInOperatorManagerDeployment(
-	operatorManagerDeployment *appsv1.Deployment,
-	removeAuthToken bool,
-) error {
-	operatorManagerContainerIdx, err := findOperatorManagerContainer(operatorManagerDeployment)
-	if err != nil {
-		return err
-	}
-
-	operatorManagerContainer := operatorManagerDeployment.Spec.Template.Spec.Containers[operatorManagerContainerIdx]
-	disableSelfMonitoringInContainer(&operatorManagerContainer, removeAuthToken)
-	operatorManagerDeployment.Spec.Template.Spec.Containers[operatorManagerContainerIdx] = operatorManagerContainer
-
-	return nil
-}
-
-func EnableSelfMonitoringInOperatorManagerDeployment(
+func SetSelfMonitoringParametersAndStartSelfMonitoring(
+	ctx context.Context,
 	oTelSdkStarter *OTelSdkStarter,
 	selfMonitoringConfiguration SelfMonitoringAndApiAccessConfiguration,
 	operatorManagerDeploymentUID types.UID,
 	operatorVersion string,
 	developmentMode bool,
 	logger *logr.Logger,
-) error {
-	logger.Info("XXX calling oTelSdkStarter.SetInput")
-	oTelSdkStarter.SetInput(
+) {
+	// TODO maybe remove this and call oTelSdkStarter directly from client call sites?
+	logger.Info("XXX SetSelfMonitoringParametersAndStartSelfMonitoring")
+	logger.Info("XXX -> calling oTelSdkStarter.SetOTelSdkParameters")
+	oTelSdkStarter.SetOTelSdkParameters(
+		ctx,
 		selfMonitoringConfiguration.Export,
 		operatorManagerDeploymentUID,
 		operatorVersion,
 		developmentMode,
 		logger,
 	)
-
-	// 	operatorManagerContainerIdx, err := findOperatorManagerContainer(operatorManagerDeployment, operatorManagerContainerName)
-	//	if err != nil {
-	//		return err
-	//	}
-	//
-	//	selfMonitoringExport := selfMonitoringConfiguration.Export
-	//	var authTokenEnvVar *corev1.EnvVar
-	//	if selfMonitoringExport.Dash0 != nil {
-	//		envVar, err := util.CreateEnvVarForAuthorization(
-	//			(*(selfMonitoringExport.Dash0)).Authorization,
-	//			util.SelfMonitoringAndApiAuthTokenEnvVarName,
-	//		)
-	//		if err != nil {
-	//			return err
-	//		}
-	//		authTokenEnvVar = &envVar
-	//	}
-	//	operatorManagerContainer := operatorManagerDeployment.Spec.Template.Spec.Containers[operatorManagerContainerIdx]
-	//	enableSelfMonitoringInContainer(
-	//		&operatorManagerContainer,
-	//		selfMonitoringExport,
-	//		authTokenEnvVar,
-	//		operatorVersion,
-	//		developmentMode,
-	//	)
-	//	operatorManagerDeployment.Spec.Template.Spec.Containers[operatorManagerContainerIdx] = operatorManagerContainer
-	return nil
 }
 
-func UpdateApiTokenWithoutAddingSelfMonitoringToOperatorManagerDeployment(
-	operatorManagerDeployment *appsv1.Deployment,
-	authorization dash0v1alpha1.Authorization,
-) error {
-	operatorManagerContainerIdx, err := findOperatorManagerContainer(operatorManagerDeployment)
-	if err != nil {
-		return err
-	}
-
-	var authTokenEnvVar *corev1.EnvVar
-	envVar, err := util.CreateEnvVarForAuthorization(
-		authorization,
-		util.SelfMonitoringAndApiAuthTokenEnvVarName,
+func RemoveSelfMonitoringParametersAndStopSelfMonitoring(
+	ctx context.Context,
+	oTelSdkStarter *OTelSdkStarter,
+	logger *logr.Logger,
+) {
+	// TODO maybe remove this and call oTelSdkStarter directly from client call sites?
+	logger.Info("XXX RemoveSelfMonitoringParametersAndStopSelfMonitoring")
+	logger.Info("XXX calling oTelSdkStarter.RemoveOTelSdkParameters")
+	oTelSdkStarter.RemoveOTelSdkParameters(
+		ctx,
+		logger,
 	)
-	if err != nil {
-		return err
-	}
-	authTokenEnvVar = &envVar
-
-	operatorManagerContainer := operatorManagerDeployment.Spec.Template.Spec.Containers[operatorManagerContainerIdx]
-	addAuthTokenToContainer(
-		&operatorManagerContainer,
-		authTokenEnvVar,
+	oTelSdkStarter.RemoveAuthTokenFromSecretRef(
+		ctx,
+		logger,
 	)
-	operatorManagerDeployment.Spec.Template.Spec.Containers[operatorManagerContainerIdx] = operatorManagerContainer
-
-	return nil
-}
-
-func findOperatorManagerContainer(operatorManagerDeployment *appsv1.Deployment) (int, error) {
-	operatorManagerContainerIdx := slices.IndexFunc(operatorManagerDeployment.Spec.Template.Spec.Containers, func(c corev1.Container) bool {
-		return c.Name == util.OperatorManagerContainerName
-	})
-	if operatorManagerContainerIdx >= 0 {
-		return operatorManagerContainerIdx, nil
-	}
-
-	return 0, &cannotFindContainerByNameError{
-		ContainerName:     util.OperatorManagerContainerName,
-		WorkloadGKV:       operatorManagerDeployment.GroupVersionKind(),
-		WorkloadNamespace: operatorManagerDeployment.Namespace,
-		WorkloadName:      operatorManagerDeployment.Name,
-	}
 }
 
 func isDash0Export(endpoint string, headers []dash0v1alpha1.Header) bool {
@@ -494,81 +314,6 @@ func isDash0Export(endpoint string, headers []dash0v1alpha1.Header) bool {
 		slices.ContainsFunc(headers, func(h dash0v1alpha1.Header) bool {
 			return h.Name == util.AuthorizationHeaderName
 		})
-}
-
-func createDash0OrGrpcConfigurationFromContainer(container *corev1.Container, endpoint string, headers []dash0v1alpha1.Header) SelfMonitoringAndApiAccessConfiguration {
-	if isDash0Export(endpoint, headers) {
-		return createDash0ConfigurationFromContainer(container, endpoint, headers)
-	} else {
-		return createGrpcConfigurationFromContainer(endpoint, headers)
-	}
-}
-
-func createDash0ConfigurationFromContainer(container *corev1.Container, endpoint string, headers []dash0v1alpha1.Header) SelfMonitoringAndApiAccessConfiguration {
-	referencesTokenEnvVar := false
-	dataset := ""
-	for _, header := range headers {
-		if header.Name == util.AuthorizationHeaderName && header.Value == authHeaderValue {
-			referencesTokenEnvVar = true
-		} else if header.Name == util.Dash0DatasetHeaderName {
-			dataset = header.Value
-		}
-	}
-
-	dash0Configuration := &dash0v1alpha1.Dash0Configuration{
-		Endpoint: endpoint,
-		Dataset:  dataset,
-	}
-	if referencesTokenEnvVar {
-		authorization := parseDash0AuthorizationFromEnvVars(container)
-		if authorization != nil {
-			dash0Configuration.Authorization = *authorization
-		}
-	}
-	return SelfMonitoringAndApiAccessConfiguration{
-		SelfMonitoringEnabled: true,
-		Export: dash0v1alpha1.Export{
-			Dash0: dash0Configuration,
-		},
-	}
-}
-
-func createGrpcConfigurationFromContainer(endpoint string, headers []dash0v1alpha1.Header) SelfMonitoringAndApiAccessConfiguration {
-	return SelfMonitoringAndApiAccessConfiguration{
-		SelfMonitoringEnabled: true,
-		Export: dash0v1alpha1.Export{
-			Grpc: &dash0v1alpha1.GrpcConfiguration{
-				Endpoint: endpoint,
-				Headers:  headers,
-			},
-		},
-	}
-}
-
-func createHttpProtobufConfigurationFromContainer(endpoint string, headers []dash0v1alpha1.Header) SelfMonitoringAndApiAccessConfiguration {
-	return SelfMonitoringAndApiAccessConfiguration{
-		SelfMonitoringEnabled: true,
-		Export: dash0v1alpha1.Export{
-			Http: &dash0v1alpha1.HttpConfiguration{
-				Endpoint: endpoint,
-				Headers:  headers,
-				Encoding: dash0v1alpha1.Proto,
-			},
-		},
-	}
-}
-
-func createHttpJsonConfigurationFromContainer(endpoint string, headers []dash0v1alpha1.Header) SelfMonitoringAndApiAccessConfiguration {
-	return SelfMonitoringAndApiAccessConfiguration{
-		SelfMonitoringEnabled: true,
-		Export: dash0v1alpha1.Export{
-			Http: &dash0v1alpha1.HttpConfiguration{
-				Endpoint: endpoint,
-				Headers:  headers,
-				Encoding: dash0v1alpha1.Json,
-			},
-		},
-	}
 }
 
 func enableSelfMonitoringInContainer(
@@ -702,16 +447,6 @@ func convertHeadersToEnvVarValue(headers []dash0v1alpha1.Header) string {
 	return strings.Join(keyValuePairs, ",")
 }
 
-func disableSelfMonitoringInContainer(container *corev1.Container, removeAuthToken bool) {
-	if removeAuthToken {
-		removeEnvVar(container, util.SelfMonitoringAndApiAuthTokenEnvVarName)
-	}
-	removeEnvVar(container, otelExporterOtlpEndpointEnvVarName)
-	removeEnvVar(container, otelExporterOtlpProtocolEnvVarName)
-	removeEnvVar(container, otelExporterOtlpHeadersEnvVarName)
-	removeEnvVar(container, otelResourceAttribtuesEnvVarName)
-}
-
 func updateOrAppendEnvVar(container *corev1.Container, name string, value string) {
 	newEnvVar := corev1.EnvVar{
 		Name:  name,
@@ -764,8 +499,8 @@ func ExchangeSecretRefForTokenIfNecessary(
 ) error {
 	dash0Export := selfMonitoringConfiguration.Export.Dash0
 	if dash0Export == nil || dash0Export.Authorization.SecretRef == nil {
-		logger.Info("XXX calling removeSecretRefEnvVartIfNecessary")
-		return removeSecretRefEnvVartIfNecessary(
+		logger.Info("XXX calling removeSecretRefEnvVarIfNecessary")
+		return removeSecretRefEnvVarIfNecessary(
 			ctx,
 			k8sClient,
 			operatorNamespace,
@@ -774,8 +509,8 @@ func ExchangeSecretRefForTokenIfNecessary(
 			logger,
 		)
 	} else {
-		logger.Info("XXX calling upsertSecretRefEnvVartIfNecessary")
-		return upsertSecretRefEnvVartIfNecessary(
+		logger.Info("XXX calling upsertSecretRefEnvVarIfNecessary")
+		return upsertSecretRefEnvVarIfNecessary(
 			ctx,
 			k8sClient,
 			operatorNamespace,
@@ -787,7 +522,7 @@ func ExchangeSecretRefForTokenIfNecessary(
 	}
 }
 
-func upsertSecretRefEnvVartIfNecessary(
+func upsertSecretRefEnvVarIfNecessary(
 	ctx context.Context,
 	k8sClient client.Client,
 	operatorNamespace string,
@@ -796,7 +531,7 @@ func upsertSecretRefEnvVartIfNecessary(
 	dash0Export *dash0v1alpha1.Dash0Configuration,
 	logger *logr.Logger,
 ) error {
-	logger.Info("XXX upsertSecretRefEnvVartIfNecessary")
+	logger.Info("XXX upsertSecretRefEnvVarIfNecessary")
 	if dash0Export == nil {
 		panic("dash0 export is nil")
 	}
@@ -822,7 +557,7 @@ func upsertSecretRefEnvVartIfNecessary(
 	for _, envVar := range secretRefSatelliteContainer.Env {
 		if envVar.Name == util.SelfMonitoringAndApiAuthTokenEnvVarName {
 			// the container already has the secret ref env var
-			logger.Info("XXX container already has SELF_MONITORING_AND_API_AUTH_TOKEN, cancelling upsertSecretRefEnvVartIfNecessary")
+			logger.Info("XXX container already has SELF_MONITORING_AND_API_AUTH_TOKEN, cancelling upsertSecretRefEnvVarIfNecessary")
 			return nil
 		}
 	}
@@ -848,7 +583,7 @@ func upsertSecretRefEnvVartIfNecessary(
 	return updateSecretRefSatelliteDeployment(ctx, k8sClient, secretRefSatelliteDeployment, resource, logger)
 }
 
-func removeSecretRefEnvVartIfNecessary(
+func removeSecretRefEnvVarIfNecessary(
 	ctx context.Context,
 	k8sClient client.Client,
 	operatorNamespace string,
@@ -876,7 +611,7 @@ func removeSecretRefEnvVartIfNecessary(
 	}
 	if !found {
 		// the container does not have the secret ref env var, so there is nothing to remove
-		logger.Info("XXX env var not found, cancelling removeSecretRefEnvVartIfNecessary")
+		logger.Info("XXX env var not found, cancelling removeSecretRefEnvVarIfNecessary")
 		return nil
 	}
 

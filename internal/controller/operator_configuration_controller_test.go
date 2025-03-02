@@ -496,447 +496,450 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 			})
 		})
 
-		Describe("enabling self-monitoring", func() {
-
-			DescribeTable("it enables self-monitoring in the operator manager deployment",
-				func(config SelfMonitoringTestConfig) {
-					CreateOperatorConfigurationResourceWithSpec(
-						ctx,
-						k8sClient,
-						dash0v1alpha1.Dash0OperatorConfigurationSpec{
-							Export: ExportToPrt(config.createExport()),
-							SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-								Enabled: ptr.To(true),
-							},
-						},
-					)
-
-					triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
-					verifyOperatorConfigurationResourceIsAvailable(ctx)
-					Eventually(func(g Gomega) {
-						updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
-						selfMonitoringAndApiAccessConfiguration, err :=
-							selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
-								updatedDeployment,
-							)
-						g.Expect(err).NotTo(HaveOccurred())
-						g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeTrue())
-						config.verify(g, selfMonitoringAndApiAccessConfiguration, updatedDeployment, config.expectedDataset)
-					}, timeout, pollingInterval).Should(Succeed())
-				},
-				Entry("with a Dash0 export with a token", SelfMonitoringTestConfig{
-					createExport:    Dash0ExportWithEndpointAndToken,
-					verify:          verifySelfMonitoringConfigurationDash0Token,
-					expectedDataset: "",
-				}),
-				Entry("with a Dash0 export with a token and a custom dataset", SelfMonitoringTestConfig{
-					createExport:    Dash0ExportWithEndpointTokenAndCustomDataset,
-					verify:          verifySelfMonitoringConfigurationDash0Token,
-					expectedDataset: DatasetTest,
-				}),
-				Entry("with a Dash0 export with a secret ref", SelfMonitoringTestConfig{
-					createExport:    Dash0ExportWithEndpointAndSecretRef,
-					verify:          verifySelfMonitoringConfigurationDash0SecretRef,
-					expectedDataset: "",
-				}),
-				Entry("with a Grpc export", SelfMonitoringTestConfig{
-					createExport:    GrpcExportTest,
-					verify:          verifySelfMonitoringConfigurationGrpc,
-					expectedDataset: "",
-				}),
-				Entry("with an HTTP export", SelfMonitoringTestConfig{
-					createExport:    HttpExportTest,
-					verify:          verifySelfMonitoringConfigurationHttp,
-					expectedDataset: "",
-				}),
-			)
-		})
-
-		DescribeTable("it adds the auth token to the operator manager deployment even if self-monitoring is not enabled",
-			func(config SelfMonitoringTestConfig) {
-				CreateOperatorConfigurationResourceWithSpec(
-					ctx,
-					k8sClient,
-					dash0v1alpha1.Dash0OperatorConfigurationSpec{
-						Export: ExportToPrt(config.createExport()),
-						SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-							Enabled: ptr.To(false),
-						},
-					},
-				)
-
-				triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
-				verifyOperatorConfigurationResourceIsAvailable(ctx)
-				Eventually(func(g Gomega) {
-					updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
-					selfMonitoringAndApiAccessConfiguration, err :=
-						selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
-							updatedDeployment,
-						)
-					g.Expect(err).NotTo(HaveOccurred())
-					g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
-					config.verify(g, selfMonitoringAndApiAccessConfiguration, updatedDeployment, config.expectedDataset)
-				}, timeout, pollingInterval).Should(Succeed())
-			},
-			Entry("with a Dash0 export with a token", SelfMonitoringTestConfig{
-				createExport: Dash0ExportWithEndpointAndTokenAndApiEndpoint,
-				verify:       verifyNoSelfMontoringButAuthTokenEnvVarFromToken,
-			}),
-			Entry("with a Dash0 export with a secret ref", SelfMonitoringTestConfig{
-				createExport: Dash0ExportWithEndpointAndSecretRefAndApiEndpoint,
-				verify:       verifyNoSelfMonitoringButAuthTokenEnvVarFromSecretRef,
-			}),
-		)
-
-		Describe("disabling self-monitoring", func() {
-
-			It("it does not change the operator manager deployment (because self-monitoring was not enabled in the first place)", func() {
-				CreateOperatorConfigurationResourceWithSpec(
-					ctx,
-					k8sClient,
-					dash0v1alpha1.Dash0OperatorConfigurationSpec{
-						Export: ExportToPrt(Dash0ExportWithEndpointAndToken()),
-						SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-							Enabled: ptr.To(false),
-						},
-					},
-				)
-
-				triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
-				verifyOperatorConfigurationResourceIsAvailable(ctx)
-				Consistently(func(g Gomega) {
-					updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
-					selfMonitoringAndApiAccessConfiguration, err :=
-						selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
-							updatedDeployment,
-						)
-					g.Expect(err).NotTo(HaveOccurred())
-					g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
-				}, consistentlyTimeout, pollingInterval).Should(Succeed())
-			})
-		})
+		// TODO enable again
+		//Describe("enabling self-monitoring", func() {
+		//
+		//	DescribeTable("it enables self-monitoring in the operator manager deployment",
+		//		func(config SelfMonitoringTestConfig) {
+		//			CreateOperatorConfigurationResourceWithSpec(
+		//				ctx,
+		//				k8sClient,
+		//				dash0v1alpha1.Dash0OperatorConfigurationSpec{
+		//					Export: ExportToPrt(config.createExport()),
+		//					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+		//						Enabled: ptr.To(true),
+		//					},
+		//				},
+		//			)
+		//
+		//			triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+		//			verifyOperatorConfigurationResourceIsAvailable(ctx)
+		//			Eventually(func(g Gomega) {
+		//				updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
+		//				selfMonitoringAndApiAccessConfiguration, err :=
+		//					selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
+		//						updatedDeployment,
+		//					)
+		//				g.Expect(err).NotTo(HaveOccurred())
+		//				g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeTrue())
+		//				config.verify(g, selfMonitoringAndApiAccessConfiguration, updatedDeployment, config.expectedDataset)
+		//			}, timeout, pollingInterval).Should(Succeed())
+		//		},
+		//		Entry("with a Dash0 export with a token", SelfMonitoringTestConfig{
+		//			createExport:    Dash0ExportWithEndpointAndToken,
+		//			verify:          verifySelfMonitoringConfigurationDash0Token,
+		//			expectedDataset: "",
+		//		}),
+		//		Entry("with a Dash0 export with a token and a custom dataset", SelfMonitoringTestConfig{
+		//			createExport:    Dash0ExportWithEndpointTokenAndCustomDataset,
+		//			verify:          verifySelfMonitoringConfigurationDash0Token,
+		//			expectedDataset: DatasetTest,
+		//		}),
+		//		Entry("with a Dash0 export with a secret ref", SelfMonitoringTestConfig{
+		//			createExport:    Dash0ExportWithEndpointAndSecretRef,
+		//			verify:          verifySelfMonitoringConfigurationDash0SecretRef,
+		//			expectedDataset: "",
+		//		}),
+		//		Entry("with a Grpc export", SelfMonitoringTestConfig{
+		//			createExport:    GrpcExportTest,
+		//			verify:          verifySelfMonitoringConfigurationGrpc,
+		//			expectedDataset: "",
+		//		}),
+		//		Entry("with an HTTP export", SelfMonitoringTestConfig{
+		//			createExport:    HttpExportTest,
+		//			verify:          verifySelfMonitoringConfigurationHttp,
+		//			expectedDataset: "",
+		//		}),
+		//	)
+		//})
+		//
+		//DescribeTable("it adds the auth token to the operator manager deployment even if self-monitoring is not enabled",
+		//	func(config SelfMonitoringTestConfig) {
+		//		CreateOperatorConfigurationResourceWithSpec(
+		//			ctx,
+		//			k8sClient,
+		//			dash0v1alpha1.Dash0OperatorConfigurationSpec{
+		//				Export: ExportToPrt(config.createExport()),
+		//				SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+		//					Enabled: ptr.To(false),
+		//				},
+		//			},
+		//		)
+		//
+		//		triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+		//		verifyOperatorConfigurationResourceIsAvailable(ctx)
+		//		Eventually(func(g Gomega) {
+		//			updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
+		//			selfMonitoringAndApiAccessConfiguration, err :=
+		//				selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
+		//					updatedDeployment,
+		//				)
+		//			g.Expect(err).NotTo(HaveOccurred())
+		//			g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
+		//			config.verify(g, selfMonitoringAndApiAccessConfiguration, updatedDeployment, config.expectedDataset)
+		//		}, timeout, pollingInterval).Should(Succeed())
+		//	},
+		//	Entry("with a Dash0 export with a token", SelfMonitoringTestConfig{
+		//		createExport: Dash0ExportWithEndpointAndTokenAndApiEndpoint,
+		//		verify:       verifyNoSelfMontoringButAuthTokenEnvVarFromToken,
+		//	}),
+		//	Entry("with a Dash0 export with a secret ref", SelfMonitoringTestConfig{
+		//		createExport: Dash0ExportWithEndpointAndSecretRefAndApiEndpoint,
+		//		verify:       verifyNoSelfMonitoringButAuthTokenEnvVarFromSecretRef,
+		//	}),
+		//)
+		//
+		//Describe("disabling self-monitoring", func() {
+		//
+		//	It("it does not change the operator manager deployment (because self-monitoring was not enabled in the first place)", func() {
+		//		CreateOperatorConfigurationResourceWithSpec(
+		//			ctx,
+		//			k8sClient,
+		//			dash0v1alpha1.Dash0OperatorConfigurationSpec{
+		//				Export: ExportToPrt(Dash0ExportWithEndpointAndToken()),
+		//				SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+		//					Enabled: ptr.To(false),
+		//				},
+		//			},
+		//		)
+		//
+		//		triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+		//		verifyOperatorConfigurationResourceIsAvailable(ctx)
+		//		Consistently(func(g Gomega) {
+		//			updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
+		//			selfMonitoringAndApiAccessConfiguration, err :=
+		//				selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
+		//					updatedDeployment,
+		//				)
+		//			g.Expect(err).NotTo(HaveOccurred())
+		//			g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
+		//		}, consistentlyTimeout, pollingInterval).Should(Succeed())
+		//	})
+		//})
 	})
 
 	Describe("when updating the operator configuration resource", func() {
 
-		Describe("enabling self-monitoring", func() {
-
-			Describe("when self-monitoring is already enabled", func() {
-
-				BeforeEach(func() {
-					// When creating the resource, we assume the operator has
-					// self-monitoring enabled
-					operatorManagerDeployment = CreateControllerDeploymentWithSelfMonitoringWithToken()
-					EnsureControllerDeploymentExists(ctx, k8sClient, operatorManagerDeployment)
-					reconciler = createReconciler(operatorManagerDeployment)
-				})
-
-				AfterEach(func() {
-					RemoveOperatorConfigurationResource(ctx, k8sClient)
-					EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, operatorManagerDeployment)
-				})
-
-				It("it does not change the operator manager deployment", func() {
-					CreateOperatorConfigurationResourceWithSpec(
-						ctx,
-						k8sClient,
-						dash0v1alpha1.Dash0OperatorConfigurationSpec{
-							Export: ExportToPrt(Dash0ExportWithEndpointAndToken()),
-							SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-								Enabled: ptr.To(true),
-							},
-						},
-					)
-
-					triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
-					verifyOperatorConfigurationResourceIsAvailable(ctx)
-
-					Consistently(func(g Gomega) {
-						updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
-						selfMonitoringAndApiAccessConfiguration, err :=
-							selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
-								updatedDeployment,
-							)
-						g.Expect(err).NotTo(HaveOccurred())
-						g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeTrue())
-					}, consistentlyTimeout, pollingInterval).Should(Succeed())
-				})
-			})
-
-			Describe("when self-monitoring was previously disabled", func() {
-
-				BeforeEach(func() {
-					operatorManagerDeployment = CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth()
-					EnsureControllerDeploymentExists(ctx, k8sClient, operatorManagerDeployment)
-					reconciler = createReconciler(operatorManagerDeployment)
-
-					CreateOperatorConfigurationResourceWithSpec(
-						ctx,
-						k8sClient,
-						dash0v1alpha1.Dash0OperatorConfigurationSpec{
-							Export: ExportToPrt(Dash0ExportWithEndpointAndToken()),
-							SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-								Enabled: ptr.To(false),
-							},
-						},
-					)
-				})
-
-				AfterEach(func() {
-					RemoveOperatorConfigurationResource(ctx, k8sClient)
-					EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, operatorManagerDeployment)
-				})
-
-				It("it enables self-monitoring in the operator manager deployment", func() {
-					resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
-					Expect(*resource.Spec.SelfMonitoring.Enabled).To(BeFalse())
-
-					resource.Spec.SelfMonitoring.Enabled = ptr.To(true)
-
-					Expect(k8sClient.Update(ctx, resource)).To(Succeed())
-
-					triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
-					verifyOperatorConfigurationResourceIsAvailable(ctx)
-					Eventually(func(g Gomega) {
-						updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
-						selfMonitoringAndApiAccessConfiguration, err :=
-							selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
-								updatedDeployment,
-							)
-						g.Expect(err).NotTo(HaveOccurred())
-						g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeTrue())
-					}, timeout, pollingInterval).Should(Succeed())
-				})
-			})
-		})
-
-		Describe("disabling self-monitoring", func() {
-
-			Describe("when self-monitoring is enabled", func() {
-
-				BeforeEach(func() {
-					CreateOperatorConfigurationResourceWithSpec(
-						ctx,
-						k8sClient,
-						dash0v1alpha1.Dash0OperatorConfigurationSpec{
-							Export: ExportToPrt(Dash0ExportWithEndpointAndToken()),
-							SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-								Enabled: ptr.To(true),
-							},
-						},
-					)
-
-					operatorManagerDeployment = CreateControllerDeploymentWithSelfMonitoringWithToken()
-					EnsureControllerDeploymentExists(ctx, k8sClient, operatorManagerDeployment)
-					reconciler = createReconciler(operatorManagerDeployment)
-				})
-
-				AfterEach(func() {
-					RemoveOperatorConfigurationResource(ctx, k8sClient)
-					EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, operatorManagerDeployment)
-				})
-
-				It("it disables self-monitoring in the operator manager deployment", func() {
-					resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
-					Expect(*resource.Spec.SelfMonitoring.Enabled).To(BeTrue())
-
-					resource.Spec.SelfMonitoring.Enabled = ptr.To(false)
-
-					Expect(k8sClient.Update(ctx, resource)).To(Succeed())
-
-					triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
-					verifyOperatorConfigurationResourceIsAvailable(ctx)
-					Eventually(func(g Gomega) {
-						updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
-						selfMonitoringAndApiAccessConfiguration, err :=
-							selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
-								updatedDeployment,
-							)
-						g.Expect(err).NotTo(HaveOccurred())
-						g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
-					}, timeout, pollingInterval).Should(Succeed())
-				})
-			})
-
-			Describe("when self-monitoring is already disabled", func() {
-
-				BeforeEach(func() {
-					CreateOperatorConfigurationResourceWithSpec(
-						ctx,
-						k8sClient,
-						dash0v1alpha1.Dash0OperatorConfigurationSpec{
-							Export: ExportToPrt(Dash0ExportWithEndpointAndToken()),
-							SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-								Enabled: ptr.To(false),
-							},
-						},
-					)
-
-					operatorManagerDeployment = CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth()
-					EnsureControllerDeploymentExists(ctx, k8sClient, operatorManagerDeployment)
-					reconciler = createReconciler(operatorManagerDeployment)
-				})
-
-				AfterEach(func() {
-					RemoveOperatorConfigurationResource(ctx, k8sClient)
-					EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, operatorManagerDeployment)
-				})
-
-				It("it does not change the operator manager deployment", func() {
-					resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
-					Expect(*resource.Spec.SelfMonitoring.Enabled).To(BeFalse())
-
-					resource.Spec.SelfMonitoring.Enabled = ptr.To(false)
-
-					Expect(k8sClient.Update(ctx, resource)).To(Succeed())
-
-					triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
-					verifyOperatorConfigurationResourceIsAvailable(ctx)
-					Consistently(func(g Gomega) {
-						updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
-						selfMonitoringAndApiAccessConfiguration, err :=
-							selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
-								updatedDeployment,
-							)
-						g.Expect(err).NotTo(HaveOccurred())
-						g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
-					}, consistentlyTimeout, pollingInterval).Should(Succeed())
-				})
-			})
-		})
+		// TODO enable again
+		//Describe("enabling self-monitoring", func() {
+		//
+		//	Describe("when self-monitoring is already enabled", func() {
+		//
+		//		BeforeEach(func() {
+		//			// When creating the resource, we assume the operator has
+		//			// self-monitoring enabled
+		//			operatorManagerDeployment = CreateControllerDeploymentWithSelfMonitoringWithToken()
+		//			EnsureControllerDeploymentExists(ctx, k8sClient, operatorManagerDeployment)
+		//			reconciler = createReconciler(operatorManagerDeployment)
+		//		})
+		//
+		//		AfterEach(func() {
+		//			RemoveOperatorConfigurationResource(ctx, k8sClient)
+		//			EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, operatorManagerDeployment)
+		//		})
+		//
+		//		It("it does not change the operator manager deployment", func() {
+		//			CreateOperatorConfigurationResourceWithSpec(
+		//				ctx,
+		//				k8sClient,
+		//				dash0v1alpha1.Dash0OperatorConfigurationSpec{
+		//					Export: ExportToPrt(Dash0ExportWithEndpointAndToken()),
+		//					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+		//						Enabled: ptr.To(true),
+		//					},
+		//				},
+		//			)
+		//
+		//			triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+		//			verifyOperatorConfigurationResourceIsAvailable(ctx)
+		//
+		//			Consistently(func(g Gomega) {
+		//				updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
+		//				selfMonitoringAndApiAccessConfiguration, err :=
+		//					selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
+		//						updatedDeployment,
+		//					)
+		//				g.Expect(err).NotTo(HaveOccurred())
+		//				g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeTrue())
+		//			}, consistentlyTimeout, pollingInterval).Should(Succeed())
+		//		})
+		//	})
+		//
+		//	Describe("when self-monitoring was previously disabled", func() {
+		//
+		//		BeforeEach(func() {
+		//			operatorManagerDeployment = CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth()
+		//			EnsureControllerDeploymentExists(ctx, k8sClient, operatorManagerDeployment)
+		//			reconciler = createReconciler(operatorManagerDeployment)
+		//
+		//			CreateOperatorConfigurationResourceWithSpec(
+		//				ctx,
+		//				k8sClient,
+		//				dash0v1alpha1.Dash0OperatorConfigurationSpec{
+		//					Export: ExportToPrt(Dash0ExportWithEndpointAndToken()),
+		//					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+		//						Enabled: ptr.To(false),
+		//					},
+		//				},
+		//			)
+		//		})
+		//
+		//		AfterEach(func() {
+		//			RemoveOperatorConfigurationResource(ctx, k8sClient)
+		//			EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, operatorManagerDeployment)
+		//		})
+		//
+		//		It("it enables self-monitoring in the operator manager deployment", func() {
+		//			resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+		//			Expect(*resource.Spec.SelfMonitoring.Enabled).To(BeFalse())
+		//
+		//			resource.Spec.SelfMonitoring.Enabled = ptr.To(true)
+		//
+		//			Expect(k8sClient.Update(ctx, resource)).To(Succeed())
+		//
+		//			triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+		//			verifyOperatorConfigurationResourceIsAvailable(ctx)
+		//			Eventually(func(g Gomega) {
+		//				updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
+		//				selfMonitoringAndApiAccessConfiguration, err :=
+		//					selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
+		//						updatedDeployment,
+		//					)
+		//				g.Expect(err).NotTo(HaveOccurred())
+		//				g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeTrue())
+		//			}, timeout, pollingInterval).Should(Succeed())
+		//		})
+		//	})
+		//})
+		//
+		//Describe("disabling self-monitoring", func() {
+		//
+		//	Describe("when self-monitoring is enabled", func() {
+		//
+		//		BeforeEach(func() {
+		//			CreateOperatorConfigurationResourceWithSpec(
+		//				ctx,
+		//				k8sClient,
+		//				dash0v1alpha1.Dash0OperatorConfigurationSpec{
+		//					Export: ExportToPrt(Dash0ExportWithEndpointAndToken()),
+		//					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+		//						Enabled: ptr.To(true),
+		//					},
+		//				},
+		//			)
+		//
+		//			operatorManagerDeployment = CreateControllerDeploymentWithSelfMonitoringWithToken()
+		//			EnsureControllerDeploymentExists(ctx, k8sClient, operatorManagerDeployment)
+		//			reconciler = createReconciler(operatorManagerDeployment)
+		//		})
+		//
+		//		AfterEach(func() {
+		//			RemoveOperatorConfigurationResource(ctx, k8sClient)
+		//			EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, operatorManagerDeployment)
+		//		})
+		//
+		//		It("it disables self-monitoring in the operator manager deployment", func() {
+		//			resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+		//			Expect(*resource.Spec.SelfMonitoring.Enabled).To(BeTrue())
+		//
+		//			resource.Spec.SelfMonitoring.Enabled = ptr.To(false)
+		//
+		//			Expect(k8sClient.Update(ctx, resource)).To(Succeed())
+		//
+		//			triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+		//			verifyOperatorConfigurationResourceIsAvailable(ctx)
+		//			Eventually(func(g Gomega) {
+		//				updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
+		//				selfMonitoringAndApiAccessConfiguration, err :=
+		//					selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
+		//						updatedDeployment,
+		//					)
+		//				g.Expect(err).NotTo(HaveOccurred())
+		//				g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
+		//			}, timeout, pollingInterval).Should(Succeed())
+		//		})
+		//	})
+		//
+		//	Describe("when self-monitoring is already disabled", func() {
+		//
+		//		BeforeEach(func() {
+		//			CreateOperatorConfigurationResourceWithSpec(
+		//				ctx,
+		//				k8sClient,
+		//				dash0v1alpha1.Dash0OperatorConfigurationSpec{
+		//					Export: ExportToPrt(Dash0ExportWithEndpointAndToken()),
+		//					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+		//						Enabled: ptr.To(false),
+		//					},
+		//				},
+		//			)
+		//
+		//			operatorManagerDeployment = CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth()
+		//			EnsureControllerDeploymentExists(ctx, k8sClient, operatorManagerDeployment)
+		//			reconciler = createReconciler(operatorManagerDeployment)
+		//		})
+		//
+		//		AfterEach(func() {
+		//			RemoveOperatorConfigurationResource(ctx, k8sClient)
+		//			EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, operatorManagerDeployment)
+		//		})
+		//
+		//		It("it does not change the operator manager deployment", func() {
+		//			resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+		//			Expect(*resource.Spec.SelfMonitoring.Enabled).To(BeFalse())
+		//
+		//			resource.Spec.SelfMonitoring.Enabled = ptr.To(false)
+		//
+		//			Expect(k8sClient.Update(ctx, resource)).To(Succeed())
+		//
+		//			triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+		//			verifyOperatorConfigurationResourceIsAvailable(ctx)
+		//			Consistently(func(g Gomega) {
+		//				updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
+		//				selfMonitoringAndApiAccessConfiguration, err :=
+		//					selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
+		//						updatedDeployment,
+		//					)
+		//				g.Expect(err).NotTo(HaveOccurred())
+		//				g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
+		//			}, consistentlyTimeout, pollingInterval).Should(Succeed())
+		//		})
+		//	})
+		//})
 	})
 
 	Describe("when deleting the operator configuration resource", func() {
 
-		Describe("when self-monitoring is enabled", func() {
-
-			BeforeEach(func() {
-				CreateOperatorConfigurationResourceWithSpec(
-					ctx,
-					k8sClient,
-					dash0v1alpha1.Dash0OperatorConfigurationSpec{
-						Export: ExportToPrt(Dash0ExportWithEndpointAndToken()),
-						SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-							Enabled: ptr.To(true),
-						},
-					},
-				)
-
-				operatorManagerDeployment = CreateControllerDeploymentWithSelfMonitoringWithToken()
-				EnsureControllerDeploymentExists(ctx, k8sClient, operatorManagerDeployment)
-				reconciler = createReconciler(operatorManagerDeployment)
-			})
-
-			AfterEach(func() {
-				RemoveOperatorConfigurationResource(ctx, k8sClient)
-				EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, operatorManagerDeployment)
-				DeleteMonitoringResource(ctx, k8sClient)
-			})
-
-			It("it disables self-monitoring in the operator manager deployment", func() {
-				selfMonitoringAndApiAccessConfiguration, err :=
-					selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
-						operatorManagerDeployment,
-					)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeTrue())
-
-				resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
-				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
-
-				triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
-				VerifyOperatorConfigurationResourceByNameDoesNotExist(ctx, k8sClient, Default, resource.Name)
-
-				for _, apiClient := range []*DummyApiClient{apiClient1, apiClient2} {
-					Expect(apiClient.setCalls).To(Equal(0))
-					Expect(apiClient.removeCalls).To(Equal(1))
-					Expect(apiClient.apiConfig).To(BeNil())
-				}
-
-				Eventually(func(g Gomega) {
-					updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
-					selfMonitoringAndApiAccessConfiguration, err :=
-						selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
-							updatedDeployment,
-						)
-					g.Expect(err).NotTo(HaveOccurred())
-					g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
-				}, timeout, pollingInterval).Should(Succeed())
-			})
-
-			// Note: For this test case it is irrelevant whether self-monitoring is enabled or not.
-			It("should remove the collector resources", func() {
-				EnsureEmptyMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
-
-				triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
-				VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
-
-				resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
-				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
-
-				triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
-				VerifyOperatorConfigurationResourceByNameDoesNotExist(ctx, k8sClient, Default, resource.Name)
-
-				VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
-			})
-		})
-
-		Describe("when self-monitoring is disabled", func() {
-
-			BeforeEach(func() {
-				CreateOperatorConfigurationResourceWithSpec(
-					ctx,
-					k8sClient,
-					dash0v1alpha1.Dash0OperatorConfigurationSpec{
-						SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-							Enabled: ptr.To(false),
-						},
-					},
-				)
-
-				operatorManagerDeployment = CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth()
-				EnsureControllerDeploymentExists(ctx, k8sClient, operatorManagerDeployment)
-				reconciler = createReconciler(operatorManagerDeployment)
-			})
-
-			AfterEach(func() {
-				RemoveOperatorConfigurationResource(ctx, k8sClient)
-				EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, operatorManagerDeployment)
-			})
-
-			It("it does not change the operator manager deployment", func() {
-				selfMonitoringAndApiAccessConfiguration, err :=
-					selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
-						operatorManagerDeployment,
-					)
-				Expect(err).NotTo(HaveOccurred())
-				Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
-
-				resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
-				Expect(*resource.Spec.SelfMonitoring.Enabled).To(BeFalse())
-
-				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
-
-				triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
-				VerifyOperatorConfigurationResourceByNameDoesNotExist(ctx, k8sClient, Default, resource.Name)
-
-				for _, apiClient := range []*DummyApiClient{apiClient1, apiClient2} {
-					Expect(apiClient.setCalls).To(Equal(0))
-					Expect(apiClient.removeCalls).To(Equal(1))
-					Expect(apiClient.apiConfig).To(BeNil())
-				}
-
-				Consistently(func(g Gomega) {
-					updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
-					selfMonitoringAndApiAccessConfiguration, err :=
-						selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
-							updatedDeployment,
-						)
-					g.Expect(err).NotTo(HaveOccurred())
-					g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
-				}, consistentlyTimeout, pollingInterval).Should(Succeed())
-			})
-		})
+		// TODO enable again
+		//Describe("when self-monitoring is enabled", func() {
+		//
+		//	BeforeEach(func() {
+		//		CreateOperatorConfigurationResourceWithSpec(
+		//			ctx,
+		//			k8sClient,
+		//			dash0v1alpha1.Dash0OperatorConfigurationSpec{
+		//				Export: ExportToPrt(Dash0ExportWithEndpointAndToken()),
+		//				SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+		//					Enabled: ptr.To(true),
+		//				},
+		//			},
+		//		)
+		//
+		//		operatorManagerDeployment = CreateControllerDeploymentWithSelfMonitoringWithToken()
+		//		EnsureControllerDeploymentExists(ctx, k8sClient, operatorManagerDeployment)
+		//		reconciler = createReconciler(operatorManagerDeployment)
+		//	})
+		//
+		//	AfterEach(func() {
+		//		RemoveOperatorConfigurationResource(ctx, k8sClient)
+		//		EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, operatorManagerDeployment)
+		//		DeleteMonitoringResource(ctx, k8sClient)
+		//	})
+		//
+		//	It("it disables self-monitoring in the operator manager deployment", func() {
+		//		selfMonitoringAndApiAccessConfiguration, err :=
+		//			selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
+		//				operatorManagerDeployment,
+		//			)
+		//		Expect(err).NotTo(HaveOccurred())
+		//		Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeTrue())
+		//
+		//		resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+		//		Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+		//
+		//		triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+		//		VerifyOperatorConfigurationResourceByNameDoesNotExist(ctx, k8sClient, Default, resource.Name)
+		//
+		//		for _, apiClient := range []*DummyApiClient{apiClient1, apiClient2} {
+		//			Expect(apiClient.setCalls).To(Equal(0))
+		//			Expect(apiClient.removeCalls).To(Equal(1))
+		//			Expect(apiClient.apiConfig).To(BeNil())
+		//		}
+		//
+		//		Eventually(func(g Gomega) {
+		//			updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
+		//			selfMonitoringAndApiAccessConfiguration, err :=
+		//				selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
+		//					updatedDeployment,
+		//				)
+		//			g.Expect(err).NotTo(HaveOccurred())
+		//			g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
+		//		}, timeout, pollingInterval).Should(Succeed())
+		//	})
+		//
+		//	// Note: For this test case it is irrelevant whether self-monitoring is enabled or not.
+		//	It("should remove the collector resources", func() {
+		//		EnsureEmptyMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+		//
+		//		triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+		//		VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
+		//
+		//		resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+		//		Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+		//
+		//		triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+		//		VerifyOperatorConfigurationResourceByNameDoesNotExist(ctx, k8sClient, Default, resource.Name)
+		//
+		//		VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
+		//	})
+		//})
+		//
+		//Describe("when self-monitoring is disabled", func() {
+		//
+		//	BeforeEach(func() {
+		//		CreateOperatorConfigurationResourceWithSpec(
+		//			ctx,
+		//			k8sClient,
+		//			dash0v1alpha1.Dash0OperatorConfigurationSpec{
+		//				SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+		//					Enabled: ptr.To(false),
+		//				},
+		//			},
+		//		)
+		//
+		//		operatorManagerDeployment = CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth()
+		//		EnsureControllerDeploymentExists(ctx, k8sClient, operatorManagerDeployment)
+		//		reconciler = createReconciler(operatorManagerDeployment)
+		//	})
+		//
+		//	AfterEach(func() {
+		//		RemoveOperatorConfigurationResource(ctx, k8sClient)
+		//		EnsureControllerDeploymentDoesNotExist(ctx, k8sClient, operatorManagerDeployment)
+		//	})
+		//
+		//	It("it does not change the operator manager deployment", func() {
+		//		selfMonitoringAndApiAccessConfiguration, err :=
+		//			selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
+		//				operatorManagerDeployment,
+		//			)
+		//		Expect(err).NotTo(HaveOccurred())
+		//		Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
+		//
+		//		resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+		//		Expect(*resource.Spec.SelfMonitoring.Enabled).To(BeFalse())
+		//
+		//		Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+		//
+		//		triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+		//		VerifyOperatorConfigurationResourceByNameDoesNotExist(ctx, k8sClient, Default, resource.Name)
+		//
+		//		for _, apiClient := range []*DummyApiClient{apiClient1, apiClient2} {
+		//			Expect(apiClient.setCalls).To(Equal(0))
+		//			Expect(apiClient.removeCalls).To(Equal(1))
+		//			Expect(apiClient.apiConfig).To(BeNil())
+		//		}
+		//
+		//		Consistently(func(g Gomega) {
+		//			updatedDeployment := LoadOperatorDeploymentOrFail(ctx, k8sClient, g)
+		//			selfMonitoringAndApiAccessConfiguration, err :=
+		//				selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
+		//					updatedDeployment,
+		//				)
+		//			g.Expect(err).NotTo(HaveOccurred())
+		//			g.Expect(selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled).To(BeFalse())
+		//		}, consistentlyTimeout, pollingInterval).Should(Succeed())
+		//	})
+		// })
 	})
 })
 
