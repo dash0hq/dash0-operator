@@ -208,7 +208,7 @@ func (r *PersesDashboardCrdReconciler) InitializeSelfMonitoringMetrics(
 		otelmetric.WithUnit("1"),
 		otelmetric.WithDescription("Counter for persesdashboard CRD reconcile requests"),
 	); err != nil {
-		logger.Error(err, "Cannot initialize the metric %s.")
+		logger.Error(err, fmt.Sprintf("Cannot initialize the metric %s.", reconcileRequestMetricName))
 	}
 
 	r.persesDashboardReconciler.InitializeSelfMonitoringMetrics(
@@ -251,7 +251,7 @@ func (r *PersesDashboardReconciler) InitializeSelfMonitoringMetrics(
 		otelmetric.WithUnit("1"),
 		otelmetric.WithDescription("Counter for perses dashboard reconcile requests"),
 	); err != nil {
-		logger.Error(err, "Cannot initialize the metric %s.")
+		logger.Error(err, fmt.Sprintf("Cannot initialize the metric %s.", reconcileRequestMetricName))
 	}
 }
 

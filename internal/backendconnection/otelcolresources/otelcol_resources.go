@@ -249,13 +249,14 @@ func (m *OTelColResourceManager) updateResource(
 		return false, err
 	}
 
-	if m.DevelopmentMode {
-		logger.Info(fmt.Sprintf(
-			"resource %s/%s was out of sync and has been reconciled",
-			desiredResource.GetNamespace(),
-			desiredResource.GetName(),
-		))
-	}
+	// TODO revert
+	//if m.DevelopmentMode {
+	//	logger.Info(fmt.Sprintf(
+	//		"resource %s/%s was out of sync and has been reconciled",
+	//		desiredResource.GetNamespace(),
+	//		desiredResource.GetName(),
+	//	))
+	//}
 
 	return hasChanged, nil
 }

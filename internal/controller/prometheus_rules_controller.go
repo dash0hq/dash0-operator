@@ -230,7 +230,7 @@ func (r *PrometheusRuleCrdReconciler) InitializeSelfMonitoringMetrics(
 		otelmetric.WithUnit("1"),
 		otelmetric.WithDescription("Counter for PrometheusRule CRD reconcile requests"),
 	); err != nil {
-		logger.Error(err, "Cannot initialize the metric %s.")
+		logger.Error(err, fmt.Sprintf("Cannot initialize the metric %s.", reconcileRequestMetricName))
 	}
 
 	r.prometheusRuleReconciler.InitializeSelfMonitoringMetrics(
@@ -273,7 +273,7 @@ func (r *PrometheusRuleReconciler) InitializeSelfMonitoringMetrics(
 		otelmetric.WithUnit("1"),
 		otelmetric.WithDescription("Counter for prometheus rule reconcile requests"),
 	); err != nil {
-		logger.Error(err, "Cannot initialize the metric %s.")
+		logger.Error(err, fmt.Sprintf("Cannot initialize the metric %s.", reconcileRequestMetricName))
 	}
 }
 
