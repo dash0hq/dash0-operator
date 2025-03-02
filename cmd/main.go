@@ -755,6 +755,7 @@ func startDash0Controllers(
 			monitoringReconciler,
 			persesDashboardCrdReconciler,
 			prometheusRuleCrdReconciler,
+			oTelSdkStarter,
 		},
 	)
 

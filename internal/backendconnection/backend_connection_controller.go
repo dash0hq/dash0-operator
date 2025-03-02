@@ -113,9 +113,11 @@ func (r *BackendConnectionReconciler) Reconcile(
 	request reconcile.Request,
 ) (reconcile.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("reconciling backend connection resources", "request", request)
+	// TODO revert
+	// logger.Info("reconciling backend connection resources", "request", request)
 
-	err, hasBeenReconciled := r.BackendConnectionManager.ReconcileOpenTelemetryCollector(
+	// TODO revert
+	err, _ := r.BackendConnectionManager.ReconcileOpenTelemetryCollector(
 		ctx,
 		r.Images,
 		r.OperatorNamespace,
@@ -126,13 +128,14 @@ func (r *BackendConnectionReconciler) Reconcile(
 		logger.Error(err, "Failed to create/update backend connection resources.")
 		return reconcile.Result{}, err
 	}
-	if hasBeenReconciled {
-		logger.Info(
-			"successfully reconciled backend connection resources",
-			"request",
-			request,
-		)
-	}
+	// TODO revert
+	//if hasBeenReconciled {
+	//	logger.Info(
+	//		"successfully reconciled backend connection resources",
+	//		"request",
+	//		request,
+	//	)
+	//}
 
 	return reconcile.Result{}, nil
 }

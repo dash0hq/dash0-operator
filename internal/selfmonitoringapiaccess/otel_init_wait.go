@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"sync/atomic"
+	"time"
 
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/go-logr/logr"
@@ -21,14 +22,6 @@ import (
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 )
 
-type oTelSdkState int
-
-const (
-	waitingToBeStarted = iota
-	running
-	hasBeenShutDown
-)
-
 type SelfMonitoringClient interface {
 	InitializeSelfMonitoringMetrics(otelmetric.Meter, string, *logr.Logger)
 }
@@ -41,10 +34,10 @@ type OTelSdkConfigInput struct {
 }
 
 type OTelSdkStarter struct {
-	currentOTelSdkState    atomic.Pointer[oTelSdkState] // TODO this should maybe be in otel.go instead?
-	oTelSdkConfigInput     atomic.Pointer[OTelSdkConfigInput]
-	authTokenFromSecretRef atomic.Pointer[string]
-	configCompleteChannel  chan *common.OTelSdkConfig
+	sdkIsActive                  atomic.Bool // TODO this should maybe be in otel.go instead?
+	oTelSdkConfigInput           atomic.Pointer[OTelSdkConfigInput]
+	authTokenFromSecretRef       atomic.Pointer[string]
+	startOrRestartOTelSdkChannel chan *common.OTelSdkConfig
 }
 
 const (
@@ -56,7 +49,6 @@ var (
 	meter            otelmetric.Meter
 )
 
-// TODO implement restart of OTel SDK if it has been shut down before and a new config is made available (hasBeenShutDown -> restart -> running)
 // TODO implement restart of OTel SDK if config changes (running -> restart -> running)
 // TODO continue in applySelfMonitoringAndApiAccess, a lot of cases are currently commented out.
 // TODO fix removeSelfMonitoringAndApiAccessAndUpdate
@@ -66,14 +58,12 @@ var (
 // TODO Remove TODO from opconf resource controller line 129 (about not being able to delete the auto opconf resource)
 func NewOTelSdkStarter() *OTelSdkStarter {
 	starter := &OTelSdkStarter{
-		currentOTelSdkState:    atomic.Pointer[oTelSdkState]{},
-		oTelSdkConfigInput:     atomic.Pointer[OTelSdkConfigInput]{},
-		authTokenFromSecretRef: atomic.Pointer[string]{},
-		configCompleteChannel:  make(chan *common.OTelSdkConfig),
+		sdkIsActive:                  atomic.Bool{},
+		oTelSdkConfigInput:           atomic.Pointer[OTelSdkConfigInput]{},
+		authTokenFromSecretRef:       atomic.Pointer[string]{},
+		startOrRestartOTelSdkChannel: make(chan *common.OTelSdkConfig),
 	}
 	// we start with empty values (so we don't have to deal with nil later)
-	var initialState oTelSdkState = waitingToBeStarted
-	starter.currentOTelSdkState.Store(&initialState)
 	starter.oTelSdkConfigInput.Store(&OTelSdkConfigInput{})
 	starter.authTokenFromSecretRef.Store(ptr.To(""))
 	return starter
@@ -122,62 +112,50 @@ func (s *OTelSdkStarter) RemoveAuthTokenFromSecretRef(ctx context.Context, logge
 func (s *OTelSdkStarter) waitForCompleteOTelSDKConfiguration(
 	selfMonitoringClients []SelfMonitoringClient,
 ) {
-	// blocks until the config becomes available
-	config := <-s.configCompleteChannel
-	var newState oTelSdkState = running
-	s.currentOTelSdkState.Store(&newState)
-	startOTelSDK(selfMonitoringClients, config)
+	// TODO exit loop on shutdown
+	for {
+		config := <-s.startOrRestartOTelSdkChannel
+		s.UpdateOTelSdkState(true)
+		startOTelSDK(selfMonitoringClients, config)
+	}
 }
 
 func (s *OTelSdkStarter) onParametersHaveChanged(ctx context.Context, logger *logr.Logger) {
-	currentOTelSdkState := *s.currentOTelSdkState.Load()
+	sdkIsActive := s.sdkIsActive.Load()
 	oTelSDKConfig, configComplete :=
 		convertExportConfigurationToOTelSDKConfig(
 			s.oTelSdkConfigInput.Load(),
 			s.authTokenFromSecretRef.Load(),
 		)
-	logger.Info(fmt.Sprintf("XXX OTelSdkStarter#onParametersHaveChanged -> configComplete: %t, current state: %s", configComplete, stateAsLabel(currentOTelSdkState)))
+	logger.Info(
+		fmt.Sprintf(
+			"XXX OTelSdkStarter#onParametersHaveChanged -> configComplete: %t, currently active: %t",
+			configComplete,
+			sdkIsActive,
+		))
 	if configComplete {
-		if currentOTelSdkState == waitingToBeStarted {
+		if !sdkIsActive {
 			logger.Info("XXX starting OTel SDK self-monitoring")
-			s.configCompleteChannel <- oTelSDKConfig
-		} else if currentOTelSdkState == running {
+			s.startOrRestartOTelSdkChannel <- oTelSDKConfig
+		} else {
 			// TODO check if config has changed, restart OTel SDK with new config if necessary
 			logger.Info("XXX OTel SDK is already running")
-		} else if currentOTelSdkState == hasBeenShutDown {
-			// TODO restart OTel SDK -- after having called sdkMeterProvider.Shutdown previously, we probably need to
-			// re-create the meter provider and all meters. Maybe otel.go should own `currentOTelSdkState` instead of
-			// this module?
-			logger.Error(fmt.Errorf("OTel SDK restart not supported"), "OTel SDK restart not supported")
-			// var newState oTelSdkState = running
-			// s.currentOTelSdkState.Store(&newState)
-		} else {
-			logger.Error(
-				fmt.Errorf("unknown OTel SDK state %d", currentOTelSdkState),
-				"unknown OTel SDK state",
-			)
 		}
 	} else {
 		// The config is not yet complete (or no longer complete after removing required settings from the operator
-		// configuration resources). Shut down the OTel SDK if it is still active.
-		if currentOTelSdkState == waitingToBeStarted {
+		// configuration resources). Shut down the OTel SDK if it is currently active.
+		if !sdkIsActive {
 			// nothing to do
 			logger.Info("XXX OTel SDK starter will continue to wait for complete config")
-		} else if currentOTelSdkState == running {
+		} else {
 			logger.Info("XXX SHUTTING DOWN OTel SDK")
 			s.ShutDownOTelSdk(ctx, logger)
-			var newState oTelSdkState = hasBeenShutDown
-			s.currentOTelSdkState.Store(&newState)
-		} else if currentOTelSdkState == hasBeenShutDown {
-			// nothing to do
-			logger.Info("XXX OTel SDK has already been shut down, nothing to do")
-		} else {
-			logger.Error(
-				fmt.Errorf("unknown OTel SDK state %s", currentOTelSdkState),
-				"unknown OTel SDK state",
-			)
 		}
 	}
+}
+
+func (s *OTelSdkStarter) UpdateOTelSdkState(newState bool) {
+	s.sdkIsActive.Store(newState)
 }
 
 // convertExportConfigurationToOTelSDKConfig is used when enabling self-monitoring from within an already running
@@ -292,6 +270,7 @@ func startOTelSDK(selfMonitoringClients []SelfMonitoringClient, oTelSdkConfig *c
 			oTelSdkConfig,
 			logger,
 		)
+
 	for _, client := range selfMonitoringClients {
 		client.InitializeSelfMonitoringMetrics(
 			meter,
@@ -302,24 +281,36 @@ func startOTelSDK(selfMonitoringClients []SelfMonitoringClient, oTelSdkConfig *c
 }
 
 func (s *OTelSdkStarter) ShutDownOTelSdk(ctx context.Context, logger *logr.Logger) {
-	currentOTelSdkState := *s.currentOTelSdkState.Load()
-	if currentOTelSdkState == running {
-		common.ShutDownOTelSdk(ctx)
+	sdkIsActive := s.sdkIsActive.Load()
+	if sdkIsActive {
+		common.ShutDownOTelSdkThreadSafe(ctx)
+		s.UpdateOTelSdkState(false)
 	} else {
-		logger.Info(fmt.Sprintf("OTel SDK is not running (current state %s), ignoring shutdown request.",
-			stateAsLabel(currentOTelSdkState)))
+		logger.Info("OTel SDK is not running, ignoring shutdown request.")
 	}
 }
 
-func stateAsLabel(state oTelSdkState) string {
-	switch state {
-	case waitingToBeStarted:
-		return "waitingToBeStarted"
-	case running:
-		return "running"
-	case hasBeenShutDown:
-		return "hasBeenShutDown"
-	default:
-		return fmt.Sprintf("unknown (%d)", state)
+// TODO remove dummy metric!
+func (s *OTelSdkStarter) InitializeSelfMonitoringMetrics(
+	meter otelmetric.Meter,
+	metricNamePrefix string,
+	logger *logr.Logger,
+) {
+	metricName := fmt.Sprintf("%s%s", metricNamePrefix, "dummy.heartbeat")
+	var dummyHeartbeat otelmetric.Int64Gauge
+	var err error
+	if dummyHeartbeat, err = meter.Int64Gauge(
+		metricName,
+		otelmetric.WithUnit("1"),
+		otelmetric.WithDescription("Dummy metric"),
+	); err != nil {
+		logger.Error(err, fmt.Sprintf("Cannot initialize the metric %s.", metricName))
 	}
+
+	go func() {
+		for {
+			dummyHeartbeat.Record(context.Background(), 1)
+			time.Sleep(1 * time.Second)
+		}
+	}()
 }

@@ -7,6 +7,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -36,16 +37,20 @@ type OTelSdkConfig struct {
 }
 
 var (
-	meterProvider otelmetric.MeterProvider
-	// TODO the functions slice might need to be thread safe?
+	meterProvider     otelmetric.MeterProvider
 	shutdownFunctions []func(ctx context.Context) error
+	oTelSdkMutex      sync.Mutex
 )
 
-func InitOTelSdk(
+func InitOTelSdkFromEnvVars(
 	ctx context.Context,
 	meterName string,
 	extraResourceAttributes []attribute.KeyValue,
 ) otelmetric.Meter {
+	// InitOTelSdkFromEnvVars is used in the configuration reloader and filelog offset sync container. The OTel SDK
+	// will either be started once at process startup or not. In contrast to InitOTelSdkWithConfig, it will not be
+	// restarted, and the configuration is not modified from different threads. Hence, no thread safety is needed here
+	// and oTelSdkMutex is not used.
 	podUid, nodeName, daemonSetUid, deploymentUid := getKubernetesResourceAttributes()
 	if _, otelExporterEndpointIsSet := os.LookupEnv("OTEL_EXPORTER_OTLP_ENDPOINT"); otelExporterEndpointIsSet {
 		var metricExporter sdkmetric.Exporter
@@ -103,6 +108,15 @@ func InitOTelSdkWithConfig(
 	oTelSdkConfig *OTelSdkConfig,
 	logger logr.Logger,
 ) otelmetric.Meter {
+	// InitOTelSdkWithConfig is used in the operator manager process. Depending on changes to the operator configuration
+	// resouce (in particular, spec.selfMonitoring.enabled and the export config), the OTel SDK might need to be
+	// started, shut down, and restarted multiple times during the lifetime of the operator manager process. This can
+	// potentially be triggered by different threads, thus we need thread safety here.
+	oTelSdkMutex.Lock()
+	defer func() {
+		oTelSdkMutex.Unlock()
+	}()
+
 	logger.Info("XXX InitOTelSdkWithConfig")
 	if oTelSdkConfig.Endpoint != "" {
 		logger.Info("XXX InitOTelSdkWithConfig endpoint available")
@@ -221,6 +235,8 @@ func assembleResource(
 	return resourceAttributes
 }
 
+// ShutDownOTelSdk calls the Shutdown function on the sdkMeterProvider, and removes the references to the
+// sdkMeterProvider and the shutdown functions.
 func ShutDownOTelSdk(ctx context.Context) {
 	if len(shutdownFunctions) == 0 {
 		return
@@ -233,4 +249,18 @@ func ShutDownOTelSdk(ctx context.Context) {
 			log.Printf("Failed to shutdown self monitoring, telemetry may have been lost:%v\n", err)
 		}
 	}
+	shutdownFunctions = nil
+	meterProvider = nil
+}
+
+// ShutDownOTelSdkThreadSafe calls the Shutdown function on the sdkMeterProvider, and removes the references to the
+// sdkMeterProvider and the shutdown functions. This variant of ShutDownOTelSdk is to be used in the operator manager.
+// Auxiliary collector processes like configreloader and filelogoffsetsync can use ShutDownOTelSdk directly.
+func ShutDownOTelSdkThreadSafe(ctx context.Context) {
+	oTelSdkMutex.Lock()
+	defer func() {
+		oTelSdkMutex.Unlock()
+	}()
+
+	ShutDownOTelSdk(ctx)
 }
