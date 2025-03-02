@@ -6,8 +6,6 @@ package controller
 import (
 	"context"
 	"fmt"
-	"reflect"
-
 	"github.com/go-logr/logr"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	appsv1 "k8s.io/api/apps/v1"
@@ -104,7 +102,6 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 	logger := log.FromContext(ctx)
 	logger.Info("processing reconcile request for an operator configuration resource")
 
-	var resource *dash0v1alpha1.Dash0OperatorConfiguration
 	resourceDeleted := false
 	checkResourceResult, err := util.VerifyThatResourceExists(
 		ctx,
@@ -126,27 +123,17 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		for _, apiClient := range r.ApiClients {
 			apiClient.RemoveApiEndpointAndDataset()
 		}
-		// TODO This will trigger a restart of the manager pod, which in turn will trigger the recreation of the
-		// auto operator configuration resource if this has been enabled via Helm, although the user has just deleted
-		// that resource. The solution for this problem is to avoid the manager pod restart for self-monitoring/API
-		// access purposes, see https://linear.app/dash0/issue/ENG-3455/avoid-controller-pod-self-restart-for-self-monitoringapi-auth-token
-		if err = r.removeSelfMonitoringAndApiAccessAndUpdate(ctx); err != nil {
-			logger.Error(err, "cannot disable self-monitoring/API access of the operator manager deployment, requeuing reconcile request.")
-			return ctrl.Result{
-				Requeue: true,
-			}, nil
-		} else {
+		r.removeSelfMonitoringAndApiAccessAndUpdate(ctx, &logger)
+		r.OTelSdkStarter.RemoveAuthTokenFromSecretRef(ctx, &logger)
 
-			logger.Info("Self-monitoring of the operator manager deployment has been disabled")
-		}
 		if r.reconcileOpenTelemetryCollector(ctx, &logger) != nil {
 			return ctrl.Result{}, err
 		}
 		return ctrl.Result{}, nil
 	}
 
-	resource = checkResourceResult.Resource.(*dash0v1alpha1.Dash0OperatorConfiguration)
-	if resource.IsDegraded() {
+	operatorConfigurationResource := checkResourceResult.Resource.(*dash0v1alpha1.Dash0OperatorConfiguration)
+	if operatorConfigurationResource.IsDegraded() {
 		logger.Info("The operator configuration resource is degraded, stopping reconciliation.")
 		return ctrl.Result{}, nil
 	}
@@ -155,7 +142,7 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 			ctx,
 			r.Client,
 			req,
-			resource,
+			operatorConfigurationResource,
 			updateStatusFailedMessageOperatorConfiguration,
 			&logger,
 		)
@@ -168,22 +155,22 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 	if _, err = util.InitStatusConditions(
 		ctx,
 		r.Client,
-		resource,
-		resource.Status.Conditions,
+		operatorConfigurationResource,
+		operatorConfigurationResource.Status.Conditions,
 		&logger,
 	); err != nil {
 		// The error has already been logged in initStatusConditions
 		return ctrl.Result{}, err
 	}
 
-	if resource.HasDash0ApiAccessConfigured() {
-		dataset := resource.Spec.Export.Dash0.Dataset
+	if operatorConfigurationResource.HasDash0ApiAccessConfigured() {
+		dataset := operatorConfigurationResource.Spec.Export.Dash0.Dataset
 		if dataset == "" {
 			dataset = util.DatasetDefault
 		}
 		for _, apiClient := range r.ApiClients {
 			apiClient.SetApiEndpointAndDataset(&ApiConfig{
-				Endpoint: resource.Spec.Export.Dash0.ApiEndpoint,
+				Endpoint: operatorConfigurationResource.Spec.Export.Dash0.ApiEndpoint,
 				Dataset:  dataset,
 			}, &logger)
 		}
@@ -195,82 +182,70 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		}
 	}
 
-	logger.Info("XXX operator configuration reconcile", "operator configuration resource", resource)
-	// TODO the way we retrieve the "current config" is now broken, needs to be fixed (fetch from otelsdkstarter and
-	// also from where ever we end up storing the API access config)
-	currentSelfMonitoringAndApiAccessConfiguration, err :=
-		selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
-			r.OperatorDeploymentSelfReference,
-		)
-	if err != nil {
-		logger.Error(err, "cannot get self-monitoring/API access configuration from operator manager deployment")
-		return ctrl.Result{
-			Requeue: true,
-		}, err
-	}
+	logger.Info("XXX operator configuration reconcile", "operator configuration resource", operatorConfigurationResource)
 
-	newSelfMonitoringAndApiAccessConfiguration, err :=
-		selfmonitoringapiaccess.ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(resource, &logger)
+	selfMonitoringAndApiAccessConfiguration, err :=
+		selfmonitoringapiaccess.ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
+			operatorConfigurationResource,
+			&logger,
+		)
 	if err != nil {
 		logger.Error(
 			err,
 			"cannot generate self-monitoring/API access configuration from operator configuration resource",
 		)
+		r.OTelSdkStarter.RemoveOTelSdkParameters(ctx, &logger)
+		r.OTelSdkStarter.RemoveAuthTokenFromSecretRef(ctx, &logger)
 		return ctrl.Result{}, err
 	}
 
 	logger.Info(
-		"XXX calling exchangeSecretRefForTokenIfNecessary",
+		"XXX calling ExchangeSecretRefForTokenIfNecessary",
 		"newSelfMonitoringAndApiAccessConfiguration",
-		newSelfMonitoringAndApiAccessConfiguration,
+		selfMonitoringAndApiAccessConfiguration,
 	)
 	if err = selfmonitoringapiaccess.ExchangeSecretRefForTokenIfNecessary(
 		ctx,
 		r.Client,
 		r.OperatorNamespace,
 		r.SecretRefSatelliteDeploymentName,
-		newSelfMonitoringAndApiAccessConfiguration,
-		resource,
+		selfMonitoringAndApiAccessConfiguration,
+		operatorConfigurationResource,
 		&logger,
 	); err != nil {
 		logger.Error(err, "cannot exchange secret ref for token")
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("XXX previous self-monitoring/API access config", "config", currentSelfMonitoringAndApiAccessConfiguration)
-	logger.Info("XXX new      self-monitoring/API access config", "config", newSelfMonitoringAndApiAccessConfiguration)
-	if !reflect.DeepEqual(currentSelfMonitoringAndApiAccessConfiguration, newSelfMonitoringAndApiAccessConfiguration) {
-		// 1. operator_configuration_controller#Reconcile -> operator_configuration_controller#applySelfMonitoringAndApiAccess
-		logger.Info("Applying the new self-monitoring and API access configuration.")
-		if err = r.applySelfMonitoringAndApiAccess(
-			newSelfMonitoringAndApiAccessConfiguration,
+	logger.Info("XXX new self-monitoring/API access config", "config", selfMonitoringAndApiAccessConfiguration)
+	// 1. operator_configuration_controller#Reconcile -> operator_configuration_controller#applySelfMonitoringAndApiAccess
+	logger.Info("Applying the new self-monitoring and API access configuration.")
+	if err = r.applySelfMonitoringAndApiAccess(
+		ctx,
+		selfMonitoringAndApiAccessConfiguration,
+		&logger,
+	); err != nil {
+		// TODO error message and status needs update
+		logger.Error(err, "cannot apply self-monitoring configuration to the operator manager deployment")
+		if statusUpdateErr := util.MarkOperatorConfigurationAsDegradedAndUpdateStatus(
+			ctx,
+			r.Status(),
+			operatorConfigurationResource,
+			"CannotUpdatedOperatorManagerDeployment",
+			"Could not update the operator manager deployment to reflect the self-monitoring settings.",
 			&logger,
-		); err != nil {
-			// TODO error message and status needs update
-			logger.Error(err, "cannot apply self-monitoring configuration to the operator manager deployment")
-			if statusUpdateErr := util.MarkOperatorConfigurationAsDegradedAndUpdateStatus(
-				ctx,
-				r.Status(),
-				resource,
-				"CannotUpdatedOperatorManagerDeployment",
-				"Could not update the operator manager deployment to reflect the self-monitoring settings.",
-				&logger,
-			); statusUpdateErr != nil {
-				return ctrl.Result{}, statusUpdateErr
-			}
-			return ctrl.Result{}, err
+		); statusUpdateErr != nil {
+			return ctrl.Result{}, statusUpdateErr
 		}
-
-	} else {
-		logger.Info("The self-monitoring and API access configuration is up to date.")
+		return ctrl.Result{}, err
 	}
 
 	if r.reconcileOpenTelemetryCollector(ctx, &logger) != nil {
 		return ctrl.Result{}, err
 	}
 
-	resource.EnsureResourceIsMarkedAsAvailable()
-	if err = r.Status().Update(ctx, resource); err != nil {
+	operatorConfigurationResource.EnsureResourceIsMarkedAsAvailable()
+	if err = r.Status().Update(ctx, operatorConfigurationResource); err != nil {
 		logger.Error(err, updateStatusFailedMessageOperatorConfiguration)
 		return ctrl.Result{}, fmt.Errorf("cannot mark the Dash0 operator configuration resource as available: %w", err)
 	}
@@ -279,23 +254,22 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 }
 
 func (r *OperatorConfigurationReconciler) applySelfMonitoringAndApiAccess(
+	ctx context.Context,
 	selfMonitoringAndApiAccessConfiguration selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration,
 	logger *logr.Logger,
 ) error {
 	if selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled {
-		// 2. operator_configuration_controller#applySelfMonitoringAndApiAccess -> selfmonitoringapiaccess.EnableSelfMonitoringInOperatorManagerDeployment
-		if err := selfmonitoringapiaccess.EnableSelfMonitoringInOperatorManagerDeployment(
+		// 2. operator_configuration_controller#applySelfMonitoringAndApiAccess -> selfmonitoringapiaccess.SetSelfMonitoringParametersAndStartSelfMonitoring
+		selfmonitoringapiaccess.SetSelfMonitoringParametersAndStartSelfMonitoring(
+			ctx,
 			r.OTelSdkStarter,
 			selfMonitoringAndApiAccessConfiguration,
 			r.OperatorDeploymentSelfReference.UID,
 			r.Images.GetOperatorVersion(),
 			r.DevelopmentMode,
 			logger,
-		); err != nil {
-			return fmt.Errorf("cannot add the Dash0 API token to the operator manager deployment: %w", err)
-		}
-		// TODO bring back the cases below later
-		//} else if selfMonitoringAndApiAccessConfiguration.HasDash0ApiAccessConfigured() {
+		)
+	} else if selfMonitoringAndApiAccessConfiguration.HasDash0ApiAccessConfigured() {
 		//	// TODO resolve secret ref (potentially) and get the API token
 		//	if err := selfmonitoringapiaccess.UpdateApiTokenWithoutAddingSelfMonitoringToOperatorManagerDeployment(
 		//		operatorManagerDeployment,
@@ -304,42 +278,31 @@ func (r *OperatorConfigurationReconciler) applySelfMonitoringAndApiAccess(
 		//	); err != nil {
 		//		return fmt.Errorf("cannot add the Dash0 API token to the operator manager deployment: %w", err)
 		//	}
-		//	// TODO remove self-monitoring OTel SDK configuration, stop OTel SDK
-		//	if err := selfmonitoringapiaccess.DisableSelfMonitoringInOperatorManagerDeployment(
-		//		operatorManagerDeployment,
-		//		OperatorManagerContainerName,
-		//		false,
-		//	); err != nil {
-		//		return fmt.Errorf("cannot apply settings to disable self-monitoring to the operator manager deployment: %w", err)
-		//	}
-		//} else {
-		//	// TODO remove self-monitoring OTel SDK configuration, stop OTel SDK
-		//	if err := selfmonitoringapiaccess.DisableSelfMonitoringInOperatorManagerDeployment(
-		//		operatorManagerDeployment,
-		//		OperatorManagerContainerName,
-		//		true,
-		//	); err != nil {
-		//		return fmt.Errorf("cannot apply settings to the operator manager deployment to disable self-monitoring and API access: %w", err)
-		//	}
+		selfmonitoringapiaccess.RemoveSelfMonitoringParametersAndStopSelfMonitoring(
+			ctx,
+			r.OTelSdkStarter,
+			logger,
+		)
+	} else {
+		selfmonitoringapiaccess.RemoveSelfMonitoringParametersAndStopSelfMonitoring(
+			ctx,
+			r.OTelSdkStarter,
+			logger,
+		)
 	}
 	return nil
 }
 
-func (r *OperatorConfigurationReconciler) removeSelfMonitoringAndApiAccessAndUpdate(ctx context.Context) error {
-	// TODO needs to be updated
-	operatorManagerDeployment := &appsv1.Deployment{}
-	if err := r.Client.Get(ctx, client.ObjectKeyFromObject(r.OperatorDeploymentSelfReference), operatorManagerDeployment); err != nil {
-		return fmt.Errorf("cannot fetch the current operator manager deployment: %w", err)
-	}
-
-	if err := selfmonitoringapiaccess.DisableSelfMonitoringInOperatorManagerDeployment(
-		operatorManagerDeployment,
-		true,
-	); err != nil {
-		return fmt.Errorf("cannot apply settings to disable self-monitoring to the operator manager deployment: %w", err)
-	}
-
-	return r.Client.Update(ctx, operatorManagerDeployment, &client.UpdateOptions{FieldManager: util.FieldManager})
+func (r *OperatorConfigurationReconciler) removeSelfMonitoringAndApiAccessAndUpdate(
+	ctx context.Context,
+	logger *logr.Logger,
+) {
+	// TODO also remove API access config stuff
+	selfmonitoringapiaccess.RemoveSelfMonitoringParametersAndStopSelfMonitoring(
+		ctx,
+		r.OTelSdkStarter,
+		logger,
+	)
 }
 
 func (r *OperatorConfigurationReconciler) reconcileOpenTelemetryCollector(

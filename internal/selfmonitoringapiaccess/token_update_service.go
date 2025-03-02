@@ -61,7 +61,7 @@ func (s *TokenUpdateService) updateAuthToken(w http.ResponseWriter, r *http.Requ
 		w.WriteHeader(http.StatusBadRequest)
 	} else {
 		logger.Info(fmt.Sprintf("%s: processing /update-auth-token request, received auth token", logPrefix))
-		s.oTelSdkStarter.SetAuthTokenFromSecretRef(authToken, &logger)
+		s.oTelSdkStarter.SetAuthTokenFromSecretRef(ctx, authToken, &logger)
 		w.WriteHeader(http.StatusOK)
 	}
 }

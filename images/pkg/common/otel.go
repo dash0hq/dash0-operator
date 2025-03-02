@@ -36,7 +36,8 @@ type OTelSdkConfig struct {
 }
 
 var (
-	meterProvider     otelmetric.MeterProvider
+	meterProvider otelmetric.MeterProvider
+	// TODO the functions slice might need to be thread safe?
 	shutdownFunctions []func(ctx context.Context) error
 )
 
@@ -106,7 +107,7 @@ func InitOTelSdkWithConfig(
 	if oTelSdkConfig.Endpoint != "" {
 		logger.Info("XXX InitOTelSdkWithConfig endpoint available")
 
-		// TODO we currently ignore the log level from the config, setting a log level is cumbersome with OTel Go SDK.
+		// We currently ignore the log level from the config, setting a log level is cumbersome with OTel Go SDK.
 		// Would need to be a new logger with the correct level.
 		// otel.SetLogger(logger)
 

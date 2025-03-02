@@ -38,7 +38,6 @@ import (
 	k8swebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
-	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection"
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/controller"
@@ -106,6 +105,7 @@ var (
 
 	startupTasksK8sClient           client.Client
 	isDocker                        bool
+	oTelSdkStarter                  *selfmonitoringapiaccess.OTelSdkStarter
 	operatorDeploymentSelfReference *appsv1.Deployment
 	envVars                         environmentVariables
 
@@ -412,7 +412,7 @@ func startOperatorManager(
 
 		"operator namespace",
 		envVars.operatorNamespace,
-		"deploymentName",
+		"operator manager deploymentName",
 		envVars.deploymentName,
 		"otel collector name prefix",
 		envVars.oTelCollectorNamePrefix,
@@ -450,7 +450,9 @@ func startOperatorManager(
 	if tokenUpdateService != nil {
 		tokenUpdateService.Stop(&setupLog)
 	}
-	common.ShutDownOTelSdk(ctx)
+	if oTelSdkStarter != nil {
+		oTelSdkStarter.ShutDownOTelSdk(ctx, &setupLog)
+	}
 
 	return nil
 }
@@ -629,8 +631,6 @@ func startDash0Controllers(
 		&setupLog,
 	)
 
-	logCurrentSelfMonitoringSettings(operatorDeploymentSelfReference)
-
 	k8sClient := mgr.GetClient()
 	instrumenter := &instrumentation.Instrumenter{
 		Client:               k8sClient,
@@ -691,7 +691,7 @@ func startDash0Controllers(
 	}
 	controller.StartProcessingThirdPartySynchronizationQueue(thirdPartyResourceSynchronizationQueue, &setupLog)
 
-	oTelSdkStarter := selfmonitoringapiaccess.NewOTelSdkStarter()
+	oTelSdkStarter = selfmonitoringapiaccess.NewOTelSdkStarter()
 
 	operatorConfigurationReconciler := &controller.OperatorConfigurationReconciler{
 		Client:    k8sClient,
@@ -770,8 +770,6 @@ func startDash0Controllers(
 		images.GetOperatorVersion(),
 		developmentMode,
 	)
-
-	// TODO if available, set value from auto-operator-config right away
 
 	return nil
 }
@@ -885,30 +883,6 @@ func instrumentAtStartup(
 	startupInstrumenter.InstrumentAtStartup(ctx, startupTasksK8sClient, &setupLog)
 }
 
-func logCurrentSelfMonitoringSettings(operatorDeploymentSelfReference *appsv1.Deployment) {
-	// TODO needs to be updated
-	selfMonitoringAndApiAccessConfiguration, err :=
-		selfmonitoringapiaccess.GetSelfMonitoringAndApiAccessConfigurationFromOperatorManagerDeployment(
-			operatorDeploymentSelfReference,
-		)
-	if err != nil {
-		setupLog.Error(err, "cannot determine whether self-monitoring is enabled in the operator manager deployment")
-	}
-
-	endpointAndHeaders :=
-		selfmonitoringapiaccess.ConvertExportConfigurationToEnvVarSettings(
-			selfMonitoringAndApiAccessConfiguration.Export)
-	setupLog.Info(
-		"Self-monitoring/API access settings on operator manager deployment:",
-		"self-monitoring enabled",
-		selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled,
-		"self-monitoring endpoint",
-		endpointAndHeaders.Endpoint,
-		"access to Dash0 API (API endpoint & authorization via token or secret-ref)",
-		selfMonitoringAndApiAccessConfiguration.HasDash0ApiAccessConfigured(),
-	)
-}
-
 func createAutoOperatorConfigurationResource(
 	ctx context.Context,
 	k8sClient client.Client,
@@ -985,8 +959,9 @@ func startSelfMonitoringIfPossible(
 		}
 	}
 
-	setupLog.Info("XXX calling oTelSdkStarter.SetInput at startup")
-	oTelSdkStarter.SetInput(
+	setupLog.Info("XXX calling oTelSdkStarter.SetOTelSdkParameters at startup")
+	oTelSdkStarter.SetOTelSdkParameters(
+		ctx,
 		selfMonitoringConfiguration.Export,
 		operatorDeploymentSelfReference.UID,
 		operatorVersion,
