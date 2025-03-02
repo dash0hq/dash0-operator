@@ -48,16 +48,21 @@ const (
 	operatorConfigurationAutoResourceName = "dash0-operator-configuration-auto-resource"
 )
 
+// CreateOrUpdateOperatorConfigurationResource creates or updates the Dash0 operator configuration resource. The
+// function will create/update the resource asynchronously, that is, when the function returns the resource might not
+// have been created/updated yet. The function will optimistically return the resource that is going to be
+// created/updated, without guarantees that the resource will be created/updated successfully.
 func (r *AutoOperatorConfigurationResourceHandler) CreateOrUpdateOperatorConfigurationResource(
 	ctx context.Context,
-	operatorConfiguration *OperatorConfigurationValues,
+	operatorConfigurationValues *OperatorConfigurationValues,
 	logger *logr.Logger,
-) error {
+) (*dash0v1alpha1.Dash0OperatorConfiguration, error) {
 	logger.Info("creating/updating the Dash0 operator configuration resource")
-	if err := r.validateOperatorConfiguration(operatorConfiguration); err != nil {
-		return err
+	if err := r.validateOperatorConfiguration(operatorConfigurationValues); err != nil {
+		return nil, err
 	}
 
+	operatorConfigurationResource := convertValuesToResource(operatorConfigurationValues)
 	go func() {
 		// There is a validation webhook for operator configuration resources. Thus, before we can create or update an
 		// operator configuration resource, we need to wait for the webhook endpoint to become available.
@@ -76,12 +81,14 @@ func (r *AutoOperatorConfigurationResourceHandler) CreateOrUpdateOperatorConfigu
 			fmt.Sprintf("the service %s is available now", r.WebhookServiceName),
 		)
 
-		if err := r.createOrUpdateOperatorConfigurationResourceWithRetry(ctx, operatorConfiguration, logger); err != nil {
+		if err := r.createOrUpdateOperatorConfigurationResourceWithRetry(ctx, operatorConfigurationResource, logger); err != nil {
 			logger.Error(err, "failed to create the Dash0 operator configuration resource")
 			return
 		}
 	}()
-	return nil
+
+	// optimistically return the resource that we are going to create on the validation webhook becomes available
+	return operatorConfigurationResource, nil
 }
 
 func (r *AutoOperatorConfigurationResourceHandler) validateOperatorConfiguration(
@@ -157,13 +164,13 @@ func (r *AutoOperatorConfigurationResourceHandler) checkWebServiceEndpoint(ctx c
 
 func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigurationResourceWithRetry(
 	ctx context.Context,
-	operatorConfiguration *OperatorConfigurationValues,
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	logger *logr.Logger,
 ) error {
 	return util.RetryWithCustomBackoff(
 		"create/update operator configuration resource at startup",
 		func() error {
-			return r.createOperatorConfigurationResourceOnce(ctx, operatorConfiguration, logger)
+			return r.createOperatorConfigurationResourceOnce(ctx, operatorConfigurationResource, logger)
 		},
 		wait.Backoff{
 			Duration: 3 * time.Second,
@@ -177,30 +184,55 @@ func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigu
 
 func (r *AutoOperatorConfigurationResourceHandler) createOperatorConfigurationResourceOnce(
 	ctx context.Context,
-	operatorConfiguration *OperatorConfigurationValues,
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	logger *logr.Logger,
 ) error {
+	allOperatorConfigurationResources := &dash0v1alpha1.Dash0OperatorConfigurationList{}
+	if err := r.List(ctx, allOperatorConfigurationResources); err != nil {
+		return fmt.Errorf("failed to list all Dash0 operator configuration resources: %w", err)
+	}
+	if len(allOperatorConfigurationResources.Items) >= 1 {
+		// The validation webhook for the operator configuration resource guarantees that there is only ever one
+		// resource per cluster. Thus, we can arbitrarily update the first item in the list.
+		existingOperatorConfigurationResource := allOperatorConfigurationResources.Items[0]
+		existingOperatorConfigurationResource.Spec = operatorConfigurationResource.Spec
+		if err := r.Update(ctx, &existingOperatorConfigurationResource); err != nil {
+			return fmt.Errorf("failed to update the Dash0 operator configuration resource: %w", err)
+		}
+		logger.Info("the Dash0 operator configuration resource has been updated")
+		return nil
+	}
+
+	if err := r.Create(ctx, operatorConfigurationResource); err != nil {
+		return fmt.Errorf("failed to create the Dash0 operator configuration resource: %w", err)
+	}
+
+	logger.Info("a Dash0 operator configuration resource has been created")
+	return nil
+}
+
+func convertValuesToResource(operatorConfigurationValues *OperatorConfigurationValues) *dash0v1alpha1.Dash0OperatorConfiguration {
 	authorization := dash0v1alpha1.Authorization{}
-	if operatorConfiguration.Token != "" {
-		authorization.Token = &operatorConfiguration.Token
+	if operatorConfigurationValues.Token != "" {
+		authorization.Token = &operatorConfigurationValues.Token
 	} else {
 		authorization.SecretRef = &dash0v1alpha1.SecretRef{
-			Name: operatorConfiguration.SecretRef.Name,
-			Key:  operatorConfiguration.SecretRef.Key,
+			Name: operatorConfigurationValues.SecretRef.Name,
+			Key:  operatorConfigurationValues.SecretRef.Key,
 		}
 	}
 
 	dash0Export := dash0v1alpha1.Export{
 		Dash0: &dash0v1alpha1.Dash0Configuration{
-			Endpoint:      operatorConfiguration.Endpoint,
+			Endpoint:      operatorConfigurationValues.Endpoint,
 			Authorization: authorization,
 		},
 	}
-	if operatorConfiguration.ApiEndpoint != "" {
-		dash0Export.Dash0.ApiEndpoint = operatorConfiguration.ApiEndpoint
+	if operatorConfigurationValues.ApiEndpoint != "" {
+		dash0Export.Dash0.ApiEndpoint = operatorConfigurationValues.ApiEndpoint
 	}
-	if operatorConfiguration.Dataset != "" {
-		dash0Export.Dash0.Dataset = operatorConfiguration.Dataset
+	if operatorConfigurationValues.Dataset != "" {
+		dash0Export.Dash0.Dataset = operatorConfigurationValues.Dataset
 	}
 	operatorConfigurationResource := dash0v1alpha1.Dash0OperatorConfiguration{
 		ObjectMeta: metav1.ObjectMeta{
@@ -222,34 +254,13 @@ func (r *AutoOperatorConfigurationResourceHandler) createOperatorConfigurationRe
 		},
 		Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 			SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-				Enabled: ptr.To(operatorConfiguration.SelfMonitoringEnabled),
+				Enabled: ptr.To(operatorConfigurationValues.SelfMonitoringEnabled),
 			},
 			Export: &dash0Export,
-			KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(operatorConfiguration.KubernetesInfrastructureMetricsCollectionEnabled),
-			ClusterName: operatorConfiguration.ClusterName,
+			KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(operatorConfigurationValues.KubernetesInfrastructureMetricsCollectionEnabled),
+			ClusterName: operatorConfigurationValues.ClusterName,
 		},
 	}
 
-	allOperatorConfigurationResources := &dash0v1alpha1.Dash0OperatorConfigurationList{}
-	if err := r.List(ctx, allOperatorConfigurationResources); err != nil {
-		return fmt.Errorf("failed to list all Dash0 operator configuration resources: %w", err)
-	}
-	if len(allOperatorConfigurationResources.Items) >= 1 {
-		// The validation webhook for the operator configuration resource guarantees that there is only ever one
-		// resource per cluster. Thus, we can arbitrarily update the first item in the list.
-		existingOperatorConfigurationResource := allOperatorConfigurationResources.Items[0]
-		existingOperatorConfigurationResource.Spec = operatorConfigurationResource.Spec
-		if err := r.Update(ctx, &existingOperatorConfigurationResource); err != nil {
-			return fmt.Errorf("failed to update the Dash0 operator configuration resource: %w", err)
-		}
-		logger.Info("the Dash0 operator configuration resource has been updated")
-		return nil
-	}
-
-	if err := r.Create(ctx, &operatorConfigurationResource); err != nil {
-		return fmt.Errorf("failed to create the Dash0 operator configuration resource: %w", err)
-	}
-
-	logger.Info("a Dash0 operator configuration resource has been created")
-	return nil
+	return &operatorConfigurationResource
 }

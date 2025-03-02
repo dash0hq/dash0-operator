@@ -230,7 +230,7 @@ func (r *PrometheusRuleCrdReconciler) InitializeSelfMonitoringMetrics(
 		otelmetric.WithUnit("1"),
 		otelmetric.WithDescription("Counter for PrometheusRule CRD reconcile requests"),
 	); err != nil {
-		logger.Error(err, "Cannot initialize the metric %s.")
+		logger.Error(err, fmt.Sprintf("Cannot initialize the metric %s.", reconcileRequestMetricName))
 	}
 
 	r.prometheusRuleReconciler.InitializeSelfMonitoringMetrics(
@@ -273,7 +273,7 @@ func (r *PrometheusRuleReconciler) InitializeSelfMonitoringMetrics(
 		otelmetric.WithUnit("1"),
 		otelmetric.WithDescription("Counter for prometheus rule reconcile requests"),
 	); err != nil {
-		logger.Error(err, "Cannot initialize the metric %s.")
+		logger.Error(err, fmt.Sprintf("Cannot initialize the metric %s.", reconcileRequestMetricName))
 	}
 }
 
@@ -739,7 +739,7 @@ func (r *PrometheusRuleReconciler) UpdateSynchronizationResultsInStatus(
 	qualifiedName string,
 	status dash0v1alpha1.SynchronizationStatus,
 	itemsTotal int,
-	succesfullySynchronized []string,
+	successfullySynchronized []string,
 	synchronizationErrorsPerItem map[string]string,
 	validationIssuesPerItem map[string][]string,
 ) interface{} {
@@ -752,8 +752,8 @@ func (r *PrometheusRuleReconciler) UpdateSynchronizationResultsInStatus(
 		SynchronizationStatus:      status,
 		SynchronizedAt:             metav1.Time{Time: time.Now()},
 		AlertingRulesTotal:         itemsTotal,
-		SynchronizedRulesTotal:     len(succesfullySynchronized),
-		SynchronizedRules:          succesfullySynchronized,
+		SynchronizedRulesTotal:     len(successfullySynchronized),
+		SynchronizedRules:          successfullySynchronized,
 		SynchronizationErrorsTotal: len(synchronizationErrorsPerItem),
 		SynchronizationErrors:      synchronizationErrorsPerItem,
 		InvalidRulesTotal:          len(validationIssuesPerItem),
