@@ -6,6 +6,7 @@ package selfmonitoringapiaccess
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"sync/atomic"
 	"time"
 
@@ -36,6 +37,7 @@ type OTelSdkConfigInput struct {
 type OTelSdkStarter struct {
 	sdkIsActive                  atomic.Bool // TODO this should maybe be in otel.go instead?
 	oTelSdkConfigInput           atomic.Pointer[OTelSdkConfigInput]
+	activeOTelSdkConfig          atomic.Pointer[common.OTelSdkConfig]
 	authTokenFromSecretRef       atomic.Pointer[string]
 	startOrRestartOTelSdkChannel chan *common.OTelSdkConfig
 }
@@ -49,7 +51,6 @@ var (
 	meter            otelmetric.Meter
 )
 
-// TODO implement restart of OTel SDK if config changes (running -> restart -> running)
 // TODO continue in applySelfMonitoringAndApiAccess, a lot of cases are currently commented out.
 // TODO fix removeSelfMonitoringAndApiAccessAndUpdate
 // TODO activate otel_init_wait_test.go, write more tests
@@ -60,6 +61,7 @@ func NewOTelSdkStarter() *OTelSdkStarter {
 	starter := &OTelSdkStarter{
 		sdkIsActive:                  atomic.Bool{},
 		oTelSdkConfigInput:           atomic.Pointer[OTelSdkConfigInput]{},
+		activeOTelSdkConfig:          atomic.Pointer[common.OTelSdkConfig]{},
 		authTokenFromSecretRef:       atomic.Pointer[string]{},
 		startOrRestartOTelSdkChannel: make(chan *common.OTelSdkConfig),
 	}
@@ -116,13 +118,14 @@ func (s *OTelSdkStarter) waitForCompleteOTelSDKConfiguration(
 	for {
 		config := <-s.startOrRestartOTelSdkChannel
 		s.UpdateOTelSdkState(true)
+		s.activeOTelSdkConfig.Store(config)
 		startOTelSDK(selfMonitoringClients, config)
 	}
 }
 
 func (s *OTelSdkStarter) onParametersHaveChanged(ctx context.Context, logger *logr.Logger) {
 	sdkIsActive := s.sdkIsActive.Load()
-	oTelSDKConfig, configComplete :=
+	newOTelSDKConfig, configComplete :=
 		convertExportConfigurationToOTelSDKConfig(
 			s.oTelSdkConfigInput.Load(),
 			s.authTokenFromSecretRef.Load(),
@@ -135,21 +138,26 @@ func (s *OTelSdkStarter) onParametersHaveChanged(ctx context.Context, logger *lo
 		))
 	if configComplete {
 		if !sdkIsActive {
-			logger.Info("XXX starting OTel SDK self-monitoring")
-			s.startOrRestartOTelSdkChannel <- oTelSDKConfig
+			logger.Info("XXX (RE)STARTING OTel SDK self-monitoring (was previously inactive)")
+			s.startOrRestartOTelSdkChannel <- newOTelSDKConfig
 		} else {
-			// TODO check if config has changed, restart OTel SDK with new config if necessary
-			logger.Info("XXX OTel SDK is already running")
+			currentlyActiveConfig := s.activeOTelSdkConfig.Load()
+			if !reflect.DeepEqual(currentlyActiveConfig, newOTelSDKConfig) {
+				logger.Info("XXX RESTARTING OTel SDK because config has CHANGED", "PREVIOUS", currentlyActiveConfig, "NEW", newOTelSDKConfig)
+				s.ShutDownOTelSdk(ctx, logger)
+				s.startOrRestartOTelSdkChannel <- newOTelSDKConfig
+			} else {
+				logger.Info("XXX OTel SDK is already running and the configuration has not changed.")
+			}
 		}
 	} else {
-		// The config is not yet complete (or no longer complete after removing required settings from the operator
-		// configuration resources). Shut down the OTel SDK if it is currently active.
-		if !sdkIsActive {
-			// nothing to do
-			logger.Info("XXX OTel SDK starter will continue to wait for complete config")
-		} else {
-			logger.Info("XXX SHUTTING DOWN OTel SDK")
+		if sdkIsActive {
+			// The config is not yet complete (or no longer complete after removing required settings from the operator
+			// configuration resources). Shut down the OTel SDK if it is currently active.
 			s.ShutDownOTelSdk(ctx, logger)
+		} else {
+			// The OTel SDK is not active, and it should not be active, nothing to do.
+			logger.Info("XXX OTel SDK starter will continue to wait for complete config")
 		}
 	}
 }
@@ -283,8 +291,10 @@ func startOTelSDK(selfMonitoringClients []SelfMonitoringClient, oTelSdkConfig *c
 func (s *OTelSdkStarter) ShutDownOTelSdk(ctx context.Context, logger *logr.Logger) {
 	sdkIsActive := s.sdkIsActive.Load()
 	if sdkIsActive {
+		logger.Info("XXX SHUTTING DOWN OTel SDK")
 		common.ShutDownOTelSdkThreadSafe(ctx)
 		s.UpdateOTelSdkState(false)
+		s.activeOTelSdkConfig.Store(&common.OTelSdkConfig{})
 	} else {
 		logger.Info("OTel SDK is not running, ignoring shutdown request.")
 	}
