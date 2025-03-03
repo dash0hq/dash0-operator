@@ -77,7 +77,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 			logger,
 		)
 	if err != nil {
-		selfMonitoringConfiguration = selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{
+		selfMonitoringConfiguration = selfmonitoringapiaccess.SelfMonitoringConfiguration{
 			SelfMonitoringEnabled: false,
 		}
 	}
@@ -91,11 +91,11 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	}
 
 	config := &oTelColConfig{
-		Namespace:                               namespace,
-		NamePrefix:                              m.OTelCollectorNamePrefix,
-		Export:                                  *export,
-		SendBatchMaxSize:                        m.SendBatchMaxSize,
-		SelfMonitoringAndApiAccessConfiguration: selfMonitoringConfiguration,
+		Namespace:                   namespace,
+		NamePrefix:                  m.OTelCollectorNamePrefix,
+		Export:                      *export,
+		SendBatchMaxSize:            m.SendBatchMaxSize,
+		SelfMonitoringConfiguration: selfMonitoringConfiguration,
 		KubernetesInfrastructureMetricsCollectionEnabled: kubernetesInfrastructureMetricsCollectionEnabled,
 		// The hostmetrics receiver requires mapping the root file system as a volume mount, see
 		// https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/hostmetricsreceiver#collecting-host-metrics-from-inside-a-container-linux-only
@@ -249,13 +249,14 @@ func (m *OTelColResourceManager) updateResource(
 		return false, err
 	}
 
-	if m.DevelopmentMode {
-		logger.Info(fmt.Sprintf(
-			"resource %s/%s was out of sync and has been reconciled",
-			desiredResource.GetNamespace(),
-			desiredResource.GetName(),
-		))
-	}
+	// TODO revert
+	//if m.DevelopmentMode {
+	//	logger.Info(fmt.Sprintf(
+	//		"resource %s/%s was out of sync and has been reconciled",
+	//		desiredResource.GetNamespace(),
+	//		desiredResource.GetName(),
+	//	))
+	//}
 
 	return hasChanged, nil
 }
@@ -328,9 +329,9 @@ func (m *OTelColResourceManager) DeleteResources(
 		NamePrefix: m.OTelCollectorNamePrefix,
 		// For deleting the resources, we do not need the actual export settings; we only use assembleDesiredState to
 		// collect the kinds and names of all resources that need to be deleted.
-		Export:                                  dash0v1alpha1.Export{},
-		SendBatchMaxSize:                        m.SendBatchMaxSize,
-		SelfMonitoringAndApiAccessConfiguration: selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{SelfMonitoringEnabled: false},
+		Export:                      dash0v1alpha1.Export{},
+		SendBatchMaxSize:            m.SendBatchMaxSize,
+		SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{SelfMonitoringEnabled: false},
 		// KubernetesInfrastructureMetricsCollectionEnabled=false would lead to not deleting the collector-deployment-
 		// related resources, we always try to delete all collector resources (daemonset & deployment), no matter
 		// whether both sets have been created earlier or not.

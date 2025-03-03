@@ -35,7 +35,6 @@ import (
 type PersesDashboardCrdReconciler struct {
 	Client                    client.Client
 	Queue                     *workqueue.Typed[ThirdPartyResourceSyncJob]
-	AuthToken                 string
 	mgr                       ctrl.Manager
 	skipNameValidation        bool
 	persesDashboardReconciler *PersesDashboardReconciler
@@ -48,7 +47,7 @@ type PersesDashboardReconciler struct {
 	queue                      *workqueue.Typed[ThirdPartyResourceSyncJob]
 	httpClient                 *http.Client
 	apiConfig                  atomic.Pointer[ApiConfig]
-	authToken                  string
+	authToken                  atomic.Pointer[string]
 	httpRetryDelay             time.Duration
 	controllerStopFunctionLock sync.Mutex
 	controllerStopFunction     *context.CancelFunc
@@ -63,10 +62,6 @@ var (
 
 func (r *PersesDashboardCrdReconciler) Manager() ctrl.Manager {
 	return r.mgr
-}
-
-func (r *PersesDashboardCrdReconciler) GetAuthToken() string {
-	return r.AuthToken
 }
 
 func (r *PersesDashboardCrdReconciler) KindDisplayName() string {
@@ -107,14 +102,12 @@ func (r *PersesDashboardCrdReconciler) SkipNameValidation() bool {
 
 func (r *PersesDashboardCrdReconciler) CreateResourceReconciler(
 	pseudoClusterUid types.UID,
-	authToken string,
 	httpClient *http.Client,
 ) {
 	r.persesDashboardReconciler = &PersesDashboardReconciler{
 		Client:           r.Client,
 		queue:            r.Queue,
 		pseudoClusterUid: pseudoClusterUid,
-		authToken:        authToken,
 		httpClient:       httpClient,
 		httpRetryDelay:   1 * time.Second,
 	}
@@ -208,7 +201,7 @@ func (r *PersesDashboardCrdReconciler) InitializeSelfMonitoringMetrics(
 		otelmetric.WithUnit("1"),
 		otelmetric.WithDescription("Counter for persesdashboard CRD reconcile requests"),
 	); err != nil {
-		logger.Error(err, "Cannot initialize the metric %s.")
+		logger.Error(err, fmt.Sprintf("Cannot initialize the metric %s.", reconcileRequestMetricName))
 	}
 
 	r.persesDashboardReconciler.InitializeSelfMonitoringMetrics(
@@ -219,24 +212,37 @@ func (r *PersesDashboardCrdReconciler) InitializeSelfMonitoringMetrics(
 }
 
 func (r *PersesDashboardCrdReconciler) SetApiEndpointAndDataset(
+	ctx context.Context,
 	apiConfig *ApiConfig,
 	logger *logr.Logger) {
-	if r.persesDashboardReconciler == nil {
-		// If no auth token has been set via environment variable, we do not even create the persesDashboardReconciler,
-		// hence this nil check is necessary.
-		return
-	}
 	r.persesDashboardReconciler.apiConfig.Store(apiConfig)
-	maybeStartWatchingThirdPartyResources(r, false, logger)
+	if isValidApiConfig(apiConfig) {
+		maybeStartWatchingThirdPartyResources(r, false, logger)
+	} else {
+		stopWatchingThirdPartyResources(ctx, r, logger)
+	}
 }
 
-func (r *PersesDashboardCrdReconciler) RemoveApiEndpointAndDataset() {
-	if r.persesDashboardReconciler == nil {
-		// If no auth token has been set via environment variable, we do not even create the persesDashboardReconciler,
-		// hence this nil check is necessary.
-		return
-	}
+func (r *PersesDashboardCrdReconciler) RemoveApiEndpointAndDataset(ctx context.Context, logger *logr.Logger) {
 	r.persesDashboardReconciler.apiConfig.Store(nil)
+	stopWatchingThirdPartyResources(ctx, r, logger)
+}
+
+func (r *PersesDashboardCrdReconciler) SetAuthToken(
+	ctx context.Context,
+	authToken string,
+	logger *logr.Logger) {
+	r.persesDashboardReconciler.authToken.Store(&authToken)
+	if authToken != "" {
+		maybeStartWatchingThirdPartyResources(r, false, logger)
+	} else {
+		stopWatchingThirdPartyResources(ctx, r, logger)
+	}
+}
+
+func (r *PersesDashboardCrdReconciler) RemoveAuthToken(ctx context.Context, logger *logr.Logger) {
+	r.persesDashboardReconciler.authToken.Store(nil)
+	stopWatchingThirdPartyResources(ctx, r, logger)
 }
 
 func (r *PersesDashboardReconciler) InitializeSelfMonitoringMetrics(
@@ -251,7 +257,7 @@ func (r *PersesDashboardReconciler) InitializeSelfMonitoringMetrics(
 		otelmetric.WithUnit("1"),
 		otelmetric.WithDescription("Counter for perses dashboard reconcile requests"),
 	); err != nil {
-		logger.Error(err, "Cannot initialize the metric %s.")
+		logger.Error(err, fmt.Sprintf("Cannot initialize the metric %s.", reconcileRequestMetricName))
 	}
 }
 
@@ -280,7 +286,11 @@ func (r *PersesDashboardReconciler) IsWatching() bool {
 }
 
 func (r *PersesDashboardReconciler) GetAuthToken() string {
-	return r.authToken
+	token := r.authToken.Load()
+	if token == nil {
+		return ""
+	}
+	return *token
 }
 
 func (r *PersesDashboardReconciler) GetApiConfig() *atomic.Pointer[ApiConfig] {

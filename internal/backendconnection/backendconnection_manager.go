@@ -142,7 +142,8 @@ func (m *BackendConnectionManager) createOrUpdateOpenTelemetryCollector(
 	export *dash0v1alpha1.Export,
 	logger *logr.Logger,
 ) error {
-	resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
+	// TODO revert
+	_, _, err :=
 		m.OTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 			ctx,
 			operatorNamespace,
@@ -160,13 +161,14 @@ func (m *BackendConnectionManager) createOrUpdateOpenTelemetryCollector(
 		)
 		return err
 	}
-	if resourcesHaveBeenCreated && resourcesHaveBeenUpdated {
-		logger.Info("OpenTelemetry collector Kubernetes resources have been created and updated.")
-	} else if resourcesHaveBeenCreated {
-		logger.Info("OpenTelemetry collector Kubernetes resources have been created.")
-	} else if resourcesHaveBeenUpdated {
-		logger.Info("OpenTelemetry collector Kubernetes resources have been updated.")
-	}
+	// TODO revert
+	//if resourcesHaveBeenCreated && resourcesHaveBeenUpdated {
+	//	logger.Info("OpenTelemetry collector Kubernetes resources have been created and updated.")
+	//} else if resourcesHaveBeenCreated {
+	//	logger.Info("OpenTelemetry collector Kubernetes resources have been created.")
+	//} else if resourcesHaveBeenUpdated {
+	//	logger.Info("OpenTelemetry collector Kubernetes resources have been updated.")
+	//}
 	return nil
 }
 
