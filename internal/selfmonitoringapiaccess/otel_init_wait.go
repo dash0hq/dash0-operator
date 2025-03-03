@@ -51,12 +51,14 @@ var (
 	meter            otelmetric.Meter
 )
 
-// TODO continue in applySelfMonitoringAndApiAccess, a lot of cases are currently commented out.
-// TODO fix removeSelfMonitoringAndApiAccessAndUpdate
-// TODO activate otel_init_wait_test.go, write more tests
-//
-// TODO API access! (and the token for it)
-// TODO Remove TODO from opconf resource controller line 129 (about not being able to delete the auto opconf resource)
+// TODO split self_monitoring_and_api_access.go module into three modules:
+// - collector self monitoring
+// - operator manager self monitoring
+// - api access
+// TODO activate all tests again, write new tests
+// TODO remove all log.Info("XXX...") calls or replace them with proper logging messages
+// TODO go over diff with a very fine toothed comb
+// TODO rebase and squash
 func NewOTelSdkStarter() *OTelSdkStarter {
 	starter := &OTelSdkStarter{
 		sdkIsActive:                  atomic.Bool{},
@@ -99,14 +101,14 @@ func (s *OTelSdkStarter) RemoveOTelSdkParameters(ctx context.Context, logger *lo
 	s.onParametersHaveChanged(ctx, logger)
 }
 
-func (s *OTelSdkStarter) SetAuthTokenFromSecretRef(ctx context.Context, authToken string, logger *logr.Logger) {
-	logger.Info("XXX OTelSdkStarter#SetAuthTokenFromSecretRef")
+func (s *OTelSdkStarter) SetAuthToken(ctx context.Context, authToken string, logger *logr.Logger) {
+	logger.Info("XXX OTelSdkStarter#SetAuthToken")
 	s.authTokenFromSecretRef.Store(ptr.To(authToken))
 	s.onParametersHaveChanged(ctx, logger)
 }
 
-func (s *OTelSdkStarter) RemoveAuthTokenFromSecretRef(ctx context.Context, logger *logr.Logger) {
-	logger.Info("XXX OTelSdkStarter#RemoveAuthTokenFromSecretRef")
+func (s *OTelSdkStarter) RemoveAuthToken(ctx context.Context, logger *logr.Logger) {
+	logger.Info("XXX OTelSdkStarter#RemoveAuthToken")
 	s.authTokenFromSecretRef.Store(ptr.To(""))
 	s.onParametersHaveChanged(ctx, logger)
 }

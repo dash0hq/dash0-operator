@@ -65,7 +65,6 @@ type environmentVariables struct {
 	configurationReloaderImagePullPolicy corev1.PullPolicy
 	filelogOffsetSynchImage              string
 	filelogOffsetSynchImagePullPolicy    corev1.PullPolicy
-	selfMonitoringAndApiAuthToken        string
 	podIp                                string
 	sendBatchMaxSize                     *uint32
 	debugVerbosityDetailed               bool
@@ -520,8 +519,6 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 	filelogOffsetSynchImagePullPolicy :=
 		readOptionalPullPolicyFromEnvironmentVariable(filelogOffsetSynchImagePullPolicyEnvVarName)
 
-	selfMonitoringAndApiAuthToken := os.Getenv(util.SelfMonitoringAndApiAuthTokenEnvVarName)
-
 	podIp, isSet := os.LookupEnv(podIpEnvVarName)
 	if !isSet {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, podIpEnvVarName)
@@ -557,7 +554,6 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 		configurationReloaderImagePullPolicy: configurationReloaderImagePullPolicy,
 		filelogOffsetSynchImage:              filelogOffsetSynchImage,
 		filelogOffsetSynchImagePullPolicy:    filelogOffsetSynchImagePullPolicy,
-		selfMonitoringAndApiAuthToken:        selfMonitoringAndApiAuthToken,
 		podIp:                                podIp,
 		sendBatchMaxSize:                     sendBatchMaxSize,
 		debugVerbosityDetailed:               debugVerbosityDetailed,
@@ -674,17 +670,15 @@ func startDash0Controllers(
 				Name: "dash0-third-party-resource-reconcile-queue",
 			})
 	persesDashboardCrdReconciler := &controller.PersesDashboardCrdReconciler{
-		Client:    k8sClient,
-		Queue:     thirdPartyResourceSynchronizationQueue,
-		AuthToken: envVars.selfMonitoringAndApiAuthToken,
+		Client: k8sClient,
+		Queue:  thirdPartyResourceSynchronizationQueue,
 	}
 	if err := persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, startupTasksK8sClient, &setupLog); err != nil {
 		return fmt.Errorf("unable to set up the Perses dashboard reconciler: %w", err)
 	}
 	prometheusRuleCrdReconciler := &controller.PrometheusRuleCrdReconciler{
-		Client:    k8sClient,
-		Queue:     thirdPartyResourceSynchronizationQueue,
-		AuthToken: envVars.selfMonitoringAndApiAuthToken,
+		Client: k8sClient,
+		Queue:  thirdPartyResourceSynchronizationQueue,
 	}
 	if err := prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, startupTasksK8sClient, &setupLog); err != nil {
 		return fmt.Errorf("unable to set up the Prometheus rule reconciler: %w", err)
@@ -751,7 +745,13 @@ func startDash0Controllers(
 	}).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the monitoring validation webhook: %w", err)
 	}
-	tokenUpdateService = selfmonitoringapiaccess.NewTokenUpdateService(envVars.tokenUpdateServicePort, oTelSdkStarter)
+	tokenUpdateService = selfmonitoringapiaccess.NewTokenUpdateService(
+		envVars.tokenUpdateServicePort,
+		[]selfmonitoringapiaccess.AuthTokenClient{
+			oTelSdkStarter,
+			persesDashboardCrdReconciler,
+			prometheusRuleCrdReconciler,
+		})
 	tokenUpdateService.Start(&setupLog)
 
 	oTelSdkStarter.WaitForOTelConfig(
@@ -764,7 +764,7 @@ func startDash0Controllers(
 		},
 	)
 
-	startSelfMonitoringIfPossible(
+	triggerSecretRefExchangeAndStartSelfMonitoringIfPossible(
 		ctx,
 		oTelSdkStarter,
 		operatorConfigurationResource,
@@ -907,22 +907,46 @@ func createAutoOperatorConfigurationResource(
 	}
 }
 
-// startSelfMonitoringIfPossible starts the OTel SDK directly, instead of waiting for the operator configuration
-// resource to be picked up by a reconcile cycle. That is, if the command line parameters used to start the operator
-// manager process had instructions to create an auto operator configuration resource, executeStartupTasks has already
-// triggered the asynchronous creation of the resource. Instead of waiting for the resource to actually be created, and
-// then waiting for a reconcile request being routed to the OperatorConfigurationController, just for the purpose of
-// initializing the OTel SDK, we can initialize the OTel SDK right away with the values from the command line
-// parameters.
-func startSelfMonitoringIfPossible(
+// triggerSecretRefExchangeAndStartSelfMonitoringIfPossible starts the OTel SDK directly, instead of waiting for the
+// operator configuration resource to be picked up by a reconcile cycle. That is, if the command line parameters used to
+// start the operator manager process had instructions to create an auto operator configuration resource,
+// executeStartupTasks has already triggered the asynchronous creation of the resource. Instead of waiting for the
+// resource to actually be created, and then waiting for a reconcile request being routed to the
+// OperatorConfigurationController, just for the purpose of initializing the OTel SDK, we can initialize the OTel SDK
+// right away with the values from the command line parameters.
+// The function also triggers exchanging the secret ref for a token if necessary (i.e. if the operator configuration
+// resource command line parameters specify a secret ref instead of a token).
+func triggerSecretRefExchangeAndStartSelfMonitoringIfPossible(
 	ctx context.Context,
 	oTelSdkStarter *selfmonitoringapiaccess.OTelSdkStarter,
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	operatorVersion string,
 	developmentMode bool,
 ) {
-	if operatorConfigurationResource == nil ||
-		operatorConfigurationResource.Spec.SelfMonitoring.Enabled == nil ||
+	if operatorConfigurationResource == nil {
+		return
+	}
+
+	if operatorConfigurationResource.Spec.Export != nil &&
+		operatorConfigurationResource.Spec.Export.Dash0 != nil &&
+		operatorConfigurationResource.Spec.Export.Dash0.Authorization.SecretRef != nil {
+		setupLog.Info("XXX calling ExchangeSecretRefForTokenIfNecessary at startup")
+		if err := selfmonitoringapiaccess.ExchangeSecretRefForTokenIfNecessary(
+			ctx,
+			startupTasksK8sClient,
+			envVars.operatorNamespace,
+			envVars.secretRefSatelliteDeploymentName,
+			operatorConfigurationResource,
+			&setupLog,
+		); err != nil {
+			setupLog.Error(err, "cannot exchange secret ref for token")
+			// Deliberately not aborting the rest of the operations here, we will try to exchange the secret ref for a
+			// token again later via the reconcile cycle of the operator configuration controller; there is no reason to
+			// not make the rest of the OTel SDK config available to the oTelSdkStarter here already.
+		}
+	}
+
+	if operatorConfigurationResource.Spec.SelfMonitoring.Enabled == nil ||
 		!*operatorConfigurationResource.Spec.SelfMonitoring.Enabled {
 		setupLog.Info("XXX no opconf auto resource or self-monitoring not enabled, not starting OTel SDK")
 		return
@@ -936,28 +960,9 @@ func startSelfMonitoringIfPossible(
 	if err != nil {
 		setupLog.Error(
 			err,
-			"cannot generate self-monitoring/API access configuration from operator configuration resource startup values",
+			"cannot generate self-monitoring configuration from operator configuration resource startup values",
 		)
 		return
-	}
-
-	if selfMonitoringConfiguration.Export.Dash0 != nil &&
-		selfMonitoringConfiguration.Export.Dash0.Authorization.SecretRef != nil {
-		setupLog.Info("XXX calling ExchangeSecretRefForTokenIfNecessary at startup")
-		if err = selfmonitoringapiaccess.ExchangeSecretRefForTokenIfNecessary(
-			ctx,
-			startupTasksK8sClient,
-			envVars.operatorNamespace,
-			envVars.secretRefSatelliteDeploymentName,
-			selfMonitoringConfiguration,
-			operatorConfigurationResource,
-			&setupLog,
-		); err != nil {
-			setupLog.Error(err, "cannot exchange secret ref for token")
-			// Deliberately not aborting the rest of the operations here, we will try to exchange the secret ref for a
-			// token again later via the reconcile cycle of the operator configuration controller; there is no reason to
-			// not make the rest of the OTel SDK config available to the oTelSdkStarter here already.
-		}
 	}
 
 	setupLog.Info("XXX calling oTelSdkStarter.SetOTelSdkParameters at startup")

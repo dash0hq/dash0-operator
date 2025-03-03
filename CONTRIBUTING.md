@@ -222,6 +222,8 @@ If you want to report telemetry to a Dash0 backend, set `DASH0_AUTHORIZATION_TOK
     * `OPERATOR_CONFIGURATION_VIA_HELM_SELF_MONITORING_ENABLED`: Set this to false to set the respective Helm value to
       false, disabling self-monitoring.
       This defaults to "true".
+    * `OPERATOR_CONFIGURATION_VIA_HELM_USE_TOKEN`: Set this to true to let use an auth token
+      (`DASH0_AUTHORIZATION_TOKEN`) in the operator configuration resource instead of a secret ref.
     * `OPERATOR_HELM_CHART_VERSION`: Set this to use a specific version of the Helm chart. This is meant to be used
       together with `OPERATOR_HELM_CHART=dash0-operator/dash0-operator` or similar, where `OPERATOR_HELM_CHART` refers
       to an already installed remote Helm repository (e.g. https://dash0hq.github.io/dash0-operator) that contains the

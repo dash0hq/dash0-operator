@@ -7,76 +7,10 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	"github.com/dash0hq/dash0-operator/images/pkg/common"
-	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
-func CreateControllerDeploymentWithoutSelfMonitoringWithoutAuth() *appsv1.Deployment {
+func CreateControllerDeployment() *appsv1.Deployment {
 	return createControllerDeployment(createDefaultEnvVars())
-}
-
-func CreateControllerDeploymentWithoutSelfMonitoringWithToken() *appsv1.Deployment {
-	tokenEnvVar := corev1.EnvVar{
-		Name:  util.SelfMonitoringAndApiAuthTokenEnvVarName,
-		Value: AuthorizationTokenTest,
-	}
-	env := append([]corev1.EnvVar{tokenEnvVar}, createDefaultEnvVars()...)
-	return createControllerDeployment(env)
-}
-
-func CreateControllerDeploymentWithoutSelfMonitoringWithSecretRef() *appsv1.Deployment {
-	env := append([]corev1.EnvVar{createSecretRefEnvVar()}, createDefaultEnvVars()...)
-	return createControllerDeployment(env)
-}
-
-func CreateControllerDeploymentWithSelfMonitoringWithToken() *appsv1.Deployment {
-	tokenEnvVar := corev1.EnvVar{
-		Name:  util.SelfMonitoringAndApiAuthTokenEnvVarName,
-		Value: AuthorizationTokenTest,
-	}
-	env := append([]corev1.EnvVar{tokenEnvVar}, createDefaultEnvVars()...)
-	return createControllerDeployment(appendSelfMonitoringEnvVars(env))
-}
-
-func CreateControllerDeploymentWithSelfMonitoringWithSecretRef() *appsv1.Deployment {
-	env := append([]corev1.EnvVar{createSecretRefEnvVar()}, createDefaultEnvVars()...)
-	return createControllerDeployment(appendSelfMonitoringEnvVars(env))
-}
-
-func createSecretRefEnvVar() corev1.EnvVar {
-	return corev1.EnvVar{
-		Name: util.SelfMonitoringAndApiAuthTokenEnvVarName,
-		ValueFrom: &corev1.EnvVarSource{
-			SecretKeyRef: &corev1.SecretKeySelector{
-				LocalObjectReference: corev1.LocalObjectReference{
-					Name: SecretRefTest.Name,
-				},
-				Key: SecretRefTest.Key,
-			},
-		},
-	}
-}
-
-func appendSelfMonitoringEnvVars(env []corev1.EnvVar) []corev1.EnvVar {
-	return append(env,
-		corev1.EnvVar{
-			Name:  "OTEL_EXPORTER_OTLP_ENDPOINT",
-			Value: EndpointDash0WithProtocolTest,
-		},
-		corev1.EnvVar{
-			Name:  "OTEL_EXPORTER_OTLP_HEADERS",
-			Value: "Authorization=Bearer $(SELF_MONITORING_AND_API_AUTH_TOKEN)",
-		},
-		corev1.EnvVar{
-			Name:  "OTEL_EXPORTER_OTLP_PROTOCOL",
-			Value: common.ProtocolGrpc,
-		},
-		corev1.EnvVar{
-			Name:  "OTEL_RESOURCE_ATTRIBUTES",
-			Value: "service.namespace=dash0.operator,service.name=manager,service.version=1.2.3",
-		},
-	)
 }
 
 func createDefaultEnvVars() []corev1.EnvVar {

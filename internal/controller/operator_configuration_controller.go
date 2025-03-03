@@ -121,10 +121,17 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 	if resourceDeleted {
 		logger.Info("Reconciling the deletion of the operator configuration resource", "name", req.Name)
 		for _, apiClient := range r.ApiClients {
-			apiClient.RemoveApiEndpointAndDataset()
+			apiClient.RemoveApiEndpointAndDataset(ctx, &logger)
+			apiClient.RemoveAuthToken(ctx, &logger)
 		}
-		r.removeSelfMonitoringAndApiAccessAndUpdate(ctx, &logger)
-		r.OTelSdkStarter.RemoveAuthTokenFromSecretRef(ctx, &logger)
+		r.OTelSdkStarter.RemoveOTelSdkParameters(
+			ctx,
+			&logger,
+		)
+		r.OTelSdkStarter.RemoveAuthToken(
+			ctx,
+			&logger,
+		)
 
 		if r.reconcileOpenTelemetryCollector(ctx, &logger) != nil {
 			return ctrl.Result{}, err
@@ -163,53 +170,14 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, err
 	}
 
-	if operatorConfigurationResource.HasDash0ApiAccessConfigured() {
-		dataset := operatorConfigurationResource.Spec.Export.Dash0.Dataset
-		if dataset == "" {
-			dataset = util.DatasetDefault
-		}
-		for _, apiClient := range r.ApiClients {
-			apiClient.SetApiEndpointAndDataset(&ApiConfig{
-				Endpoint: operatorConfigurationResource.Spec.Export.Dash0.ApiEndpoint,
-				Dataset:  dataset,
-			}, &logger)
-		}
-	} else {
-		logger.Info("Settings required for managing dashboards or check rules via the operator are missing, the " +
-			"operator will not update dashboards nor check rules in Dash0.")
-		for _, apiClient := range r.ApiClients {
-			apiClient.RemoveApiEndpointAndDataset()
-		}
-	}
-
 	logger.Info("XXX operator configuration reconcile", "operator configuration resource", operatorConfigurationResource)
 
-	selfMonitoringAndApiAccessConfiguration, err :=
-		selfmonitoringapiaccess.ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
-			operatorConfigurationResource,
-			&logger,
-		)
-	if err != nil {
-		logger.Error(
-			err,
-			"cannot generate self-monitoring/API access configuration from operator configuration resource",
-		)
-		r.OTelSdkStarter.RemoveOTelSdkParameters(ctx, &logger)
-		r.OTelSdkStarter.RemoveAuthTokenFromSecretRef(ctx, &logger)
-		return ctrl.Result{}, err
-	}
-
-	logger.Info(
-		"XXX calling ExchangeSecretRefForTokenIfNecessary",
-		"newSelfMonitoringAndApiAccessConfiguration",
-		selfMonitoringAndApiAccessConfiguration,
-	)
+	logger.Info("XXX calling ExchangeSecretRefForTokenIfNecessary")
 	if err = selfmonitoringapiaccess.ExchangeSecretRefForTokenIfNecessary(
 		ctx,
 		r.Client,
 		r.OperatorNamespace,
 		r.SecretRefSatelliteDeploymentName,
-		selfMonitoringAndApiAccessConfiguration,
 		operatorConfigurationResource,
 		&logger,
 	); err != nil {
@@ -217,28 +185,28 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("XXX new self-monitoring/API access config", "config", selfMonitoringAndApiAccessConfiguration)
-	// 1. operator_configuration_controller#Reconcile -> operator_configuration_controller#applySelfMonitoringAndApiAccess
-	logger.Info("Applying the new self-monitoring and API access configuration.")
-	if err = r.applySelfMonitoringAndApiAccess(
-		ctx,
-		selfMonitoringAndApiAccessConfiguration,
-		&logger,
-	); err != nil {
-		// TODO error message and status needs update
-		logger.Error(err, "cannot apply self-monitoring configuration to the operator manager deployment")
-		if statusUpdateErr := util.MarkOperatorConfigurationAsDegradedAndUpdateStatus(
-			ctx,
-			r.Status(),
+	if selfMonitoringConfiguration, err :=
+		selfmonitoringapiaccess.ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
 			operatorConfigurationResource,
-			"CannotUpdatedOperatorManagerDeployment",
-			"Could not update the operator manager deployment to reflect the self-monitoring settings.",
 			&logger,
-		); statusUpdateErr != nil {
-			return ctrl.Result{}, statusUpdateErr
-		}
+		); err != nil {
+		logger.Error(
+			err,
+			"cannot generate self-monitoring configuration from operator configuration resource",
+		)
+		r.OTelSdkStarter.RemoveOTelSdkParameters(ctx, &logger)
+		r.OTelSdkStarter.RemoveAuthToken(ctx, &logger)
 		return ctrl.Result{}, err
+	} else {
+		logger.Info("XXX new self-monitoring config", "config", selfMonitoringConfiguration)
+		r.applyOperatorManagerSelfMonitoringSettings(
+			ctx,
+			selfMonitoringConfiguration,
+			&logger,
+		)
 	}
+
+	r.applyApiAccessSettings(ctx, operatorConfigurationResource, logger)
 
 	if r.reconcileOpenTelemetryCollector(ctx, &logger) != nil {
 		return ctrl.Result{}, err
@@ -253,56 +221,79 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 	return ctrl.Result{}, nil
 }
 
-func (r *OperatorConfigurationReconciler) applySelfMonitoringAndApiAccess(
+func (r *OperatorConfigurationReconciler) applyOperatorManagerSelfMonitoringSettings(
 	ctx context.Context,
-	selfMonitoringAndApiAccessConfiguration selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration,
+	selfMonitoringAndApiAccessConfiguration selfmonitoringapiaccess.SelfMonitoringConfiguration,
 	logger *logr.Logger,
-) error {
+) {
+	logger.Info("XXX applyOperatorManagerSelfMonitoringSettings")
 	if selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled {
-		// 2. operator_configuration_controller#applySelfMonitoringAndApiAccess -> selfmonitoringapiaccess.SetSelfMonitoringParametersAndStartSelfMonitoring
-		selfmonitoringapiaccess.SetSelfMonitoringParametersAndStartSelfMonitoring(
+		r.OTelSdkStarter.SetOTelSdkParameters(
 			ctx,
-			r.OTelSdkStarter,
-			selfMonitoringAndApiAccessConfiguration,
+			selfMonitoringAndApiAccessConfiguration.Export,
 			r.OperatorDeploymentSelfReference.UID,
 			r.Images.GetOperatorVersion(),
 			r.DevelopmentMode,
 			logger,
 		)
-	} else if selfMonitoringAndApiAccessConfiguration.HasDash0ApiAccessConfigured() {
-		//	// TODO resolve secret ref (potentially) and get the API token
-		//	if err := selfmonitoringapiaccess.UpdateApiTokenWithoutAddingSelfMonitoringToOperatorManagerDeployment(
-		//		operatorManagerDeployment,
-		//		OperatorManagerContainerName,
-		//		selfMonitoringAndApiAccessConfiguration.GetDash0Authorization(),
-		//	); err != nil {
-		//		return fmt.Errorf("cannot add the Dash0 API token to the operator manager deployment: %w", err)
-		//	}
-		selfmonitoringapiaccess.RemoveSelfMonitoringParametersAndStopSelfMonitoring(
-			ctx,
-			r.OTelSdkStarter,
-			logger,
-		)
 	} else {
-		selfmonitoringapiaccess.RemoveSelfMonitoringParametersAndStopSelfMonitoring(
+		r.OTelSdkStarter.RemoveOTelSdkParameters(
 			ctx,
-			r.OTelSdkStarter,
 			logger,
 		)
 	}
-	return nil
 }
 
-func (r *OperatorConfigurationReconciler) removeSelfMonitoringAndApiAccessAndUpdate(
+func (r *OperatorConfigurationReconciler) applyApiAccessSettings(
 	ctx context.Context,
-	logger *logr.Logger,
+	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
+	logger logr.Logger,
 ) {
-	// TODO also remove API access config stuff
-	selfmonitoringapiaccess.RemoveSelfMonitoringParametersAndStopSelfMonitoring(
-		ctx,
-		r.OTelSdkStarter,
-		logger,
-	)
+	if operatorConfigurationResource.HasDash0ApiAccessConfigured() {
+		dataset := operatorConfigurationResource.Spec.Export.Dash0.Dataset
+		if dataset == "" {
+			dataset = util.DatasetDefault
+		}
+		for _, apiClient := range r.ApiClients {
+			apiClient.SetApiEndpointAndDataset(
+				ctx,
+				&ApiConfig{
+					Endpoint: operatorConfigurationResource.Spec.Export.Dash0.ApiEndpoint,
+					Dataset:  dataset,
+				}, &logger)
+
+		}
+	} else {
+		logger.Info("The API endpoint setting required for managing dashboards or check rules via the operator is " +
+			"missing or has been removed, the operator will not update dashboards nor check rules in Dash0.")
+		for _, apiClient := range r.ApiClients {
+			apiClient.RemoveApiEndpointAndDataset(ctx, &logger)
+		}
+	}
+
+	var authToken *string
+	usesSecretRef := false
+	if operatorConfigurationResource.Spec.Export != nil &&
+		operatorConfigurationResource.Spec.Export.Dash0 != nil {
+		authToken = operatorConfigurationResource.Spec.Export.Dash0.Authorization.Token
+		usesSecretRef = operatorConfigurationResource.Spec.Export.Dash0.Authorization.SecretRef != nil
+	}
+
+	if !usesSecretRef && authToken != nil && *authToken != "" {
+		for _, apiClient := range r.ApiClients {
+			apiClient.SetAuthToken(ctx, *authToken, &logger)
+		}
+	} else if !usesSecretRef {
+		// If the auth token is provided via a secret ref, we cannot remove it here, as we might accidentally
+		// delete a token that has been resolved via the secret ref satellite. But if the operator configuration
+		// resource does not have a secret ref, we can and should remove the auth token to keep the API client's
+		// state consistent with the operator configuration resource's state.
+		logger.Info("The Dash0 auth token required for managing dashboards or check rules via the operator " +
+			"is missing or has been removed, the operator will not update dashboards nor check rules in Dash0.")
+		for _, apiClient := range r.ApiClients {
+			apiClient.RemoveAuthToken(ctx, &logger)
+		}
+	}
 }
 
 func (r *OperatorConfigurationReconciler) reconcileOpenTelemetryCollector(

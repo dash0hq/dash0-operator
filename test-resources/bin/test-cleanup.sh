@@ -19,6 +19,18 @@ for resource_type in "${resource_types[@]}"; do
   test-resources/node.js/express/undeploy.sh "${target_namespace}" "${resource_type}"
 done
 
+wait_for_third_party_resource_deletion="false"
+if kubectl delete -n "${target_namespace}" -f test-resources/customresources/persesdashboard/persesdashboard.yaml; then
+  wait_for_third_party_resource_deletion="true"
+fi
+if kubectl delete -n "${target_namespace}" -f test-resources/customresources/prometheusrule/prometheusrule.yaml; then
+  wait_for_third_party_resource_deletion="true"
+fi
+if [[ "$wait_for_third_party_resource_deletion" = "true" ]]; then
+  echo "Waiting for third party resource deletion to be synchronized to the Dash0 API."
+  sleep 2
+fi
+
 kubectl delete -n "${target_namespace}" -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml --wait=false || true
 kubectl delete -n test-namespace-2 -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml --wait=false || true
 kubectl delete -n test-namespace-3 -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml --wait=false || true
@@ -54,11 +66,6 @@ kubectl delete secret \
 kubectl delete ns dash0-system --ignore-not-found
 
 kubectl delete --ignore-not-found=true -f test-resources/otlp-sink/otlp-sink.yaml --wait
-
-# deliberately deleting dashboards & check rules after undeploying the operator to avoid deleting these items in
-# Dash0 every time.
-kubectl delete -n "${target_namespace}" -f test-resources/customresources/persesdashboard/persesdashboard.yaml || true
-kubectl delete -n "${target_namespace}" -f test-resources/customresources/prometheusrule/prometheusrule.yaml || true
 
 kubectl delete --ignore-not-found=true customresourcedefinition dash0monitorings.operator.dash0.com
 kubectl delete --ignore-not-found=true customresourcedefinition dash0operatorconfigurations.operator.dash0.com
