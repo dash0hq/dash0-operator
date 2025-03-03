@@ -28,6 +28,7 @@ type dash0MonitoringValues struct {
 	Endpoint            string
 	Token               string
 	Filter              string
+	Transform           string
 }
 
 const (

@@ -13,6 +13,7 @@ import (
 )
 
 const (
+	testEndpoint           = "/dash0-k8s-operator-test"
 	labelChangeTimeout     = 25 * time.Second
 	verifyTelemetryTimeout = 40 * time.Second
 	pollingInterval        = 500 * time.Millisecond
@@ -60,11 +61,10 @@ func verifyThatWorkloadHasBeenInstrumented(
 		// and for spans to become available, hence increasing the timeout for "Eventually" block that waits for spans.
 		spanTimeout = 90 * time.Second
 	}
-	route := "/dash0-k8s-operator-test"
 	query := fmt.Sprintf("id=%s", testId)
 	timestampLowerBound := time.Now()
 	Eventually(func(g Gomega) {
-		verifySpans(g, runtime, workloadType, route, query, timestampLowerBound, expectClusterName)
+		verifySpans(g, runtime, workloadType, testEndpoint, query, timestampLowerBound, expectClusterName)
 	}, spanTimeout, pollingInterval).Should(Succeed())
 	By(fmt.Sprintf("%s %s: matching spans have been received", runtime.runtimeTypeLabel, workloadType.workloadTypeString))
 }
@@ -140,11 +140,10 @@ func verifyThatInstrumentationIsRevertedEventually(
 			workloadType.workloadTypeString,
 			secondsToCheckForSpans,
 		))
-	route := "/dash0-k8s-operator-test"
 	query := fmt.Sprintf("id=%s", testId)
 	timestampLowerBound := time.Now()
 	Consistently(func(g Gomega) {
-		verifyNoSpans(g, runtime, workloadType, route, query, timestampLowerBound)
+		verifyNoSpans(g, runtime, workloadType, testEndpoint, query, timestampLowerBound)
 	}, time.Duration(secondsToCheckForSpans)*time.Second, 1*time.Second).Should(Succeed())
 
 	By(fmt.Sprintf(

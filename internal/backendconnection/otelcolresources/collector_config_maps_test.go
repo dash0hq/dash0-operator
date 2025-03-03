@@ -41,7 +41,7 @@ const (
 
 type configMapTypeDefinition struct {
 	cmType                    configMapType
-	assembleConfigMapFunction func(*oTelColConfig, []string, []NamespacedFilter, bool) (*corev1.ConfigMap, error)
+	assembleConfigMapFunction func(*oTelColConfig, []string, []NamespacedFilter, []NamespacedTransform, bool) (*corev1.ConfigMap, error)
 	exporterPipelineNames     []string
 }
 
@@ -62,6 +62,30 @@ type filterTestConfig struct {
 	configMapTypeDefinition
 	filters      []NamespacedFilter
 	expectations filterTestConfigExpectations
+}
+
+type contextExpectations struct {
+	conditions []string
+	statements []string
+}
+
+type contextExpectationsPerSignalType map[signalType][]contextExpectations
+
+type transformExpectations struct {
+	signalsWithTransforms    []signalType
+	contexts                 contextExpectationsPerSignalType
+	signalsWithoutTransforms []signalType
+}
+
+type transformTestConfigExpectations struct {
+	daemonset  transformExpectations
+	deployment transformExpectations
+}
+
+type transformTestConfig struct {
+	configMapTypeDefinition
+	transforms   []NamespacedTransform
+	expectations transformTestConfigExpectations
 }
 
 const (
@@ -114,7 +138,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				Namespace:  namespace,
 				NamePrefix: namePrefix,
 				Export:     dash0v1alpha1.Export{},
-			}, monitoredNamespaces, nil, false)
+			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).To(HaveOccurred())
 		}, daemonSetAndDeployment)
 
@@ -129,7 +153,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						},
 					},
 				},
-			}, monitoredNamespaces, nil, false)
+			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).To(
 				MatchError(
 					ContainSubstring(
@@ -142,7 +166,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				Namespace:  namespace,
 				NamePrefix: namePrefix,
 				Export:     Dash0ExportWithEndpointAndToken(),
-			}, monitoredNamespaces, nil, false)
+			}, monitoredNamespaces, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -180,7 +204,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						},
 					},
 				},
-			}, monitoredNamespaces, nil, false)
+			}, monitoredNamespaces, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -217,7 +241,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						},
 					},
 				},
-			}, monitoredNamespaces, nil, false)
+			}, monitoredNamespaces, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -250,7 +274,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				NamePrefix:      namePrefix,
 				Export:          Dash0ExportWithEndpointAndToken(),
 				DevelopmentMode: true,
-			}, monitoredNamespaces, nil, false)
+			}, monitoredNamespaces, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -287,7 +311,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				Export:                 Dash0ExportWithEndpointAndToken(),
 				DevelopmentMode:        false,
 				DebugVerbosityDetailed: true,
-			}, monitoredNamespaces, nil, false)
+			}, monitoredNamespaces, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -317,7 +341,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						}},
 					},
 				},
-			}, monitoredNamespaces, nil, false)
+			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).To(
 				MatchError(
 					ContainSubstring(
@@ -344,7 +368,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						},
 					},
 				},
-			}, monitoredNamespaces, nil, false)
+			}, monitoredNamespaces, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -378,7 +402,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						Endpoint: "http://example.com:1234",
 					},
 				},
-			}, monitoredNamespaces, nil, false)
+			}, monitoredNamespaces, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -414,7 +438,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						Encoding: dash0v1alpha1.Proto,
 					},
 				},
-			}, monitoredNamespaces, nil, false)
+			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).To(
 				MatchError(
 					ContainSubstring(
@@ -434,7 +458,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						}},
 					},
 				},
-			}, monitoredNamespaces, nil, false)
+			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).To(
 				MatchError(
 					ContainSubstring(
@@ -462,7 +486,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						Encoding: dash0v1alpha1.Json,
 					},
 				},
-			}, monitoredNamespaces, nil, false)
+			}, monitoredNamespaces, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -506,7 +530,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						}},
 					},
 				},
-			}, monitoredNamespaces, nil, false)
+			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 
 			collectorConfig := parseConfigMapContent(configMap)
@@ -561,7 +585,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						Encoding: dash0v1alpha1.Proto,
 					},
 				},
-			}, monitoredNamespaces, nil, false)
+			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 
 			collectorConfig := parseConfigMapContent(configMap)
@@ -617,7 +641,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						Encoding: dash0v1alpha1.Proto,
 					},
 				},
-			}, monitoredNamespaces, nil, false)
+			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 
 			collectorConfig := parseConfigMapContent(configMap)
@@ -681,7 +705,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					},
 				},
 				DevelopmentMode: true,
-			}, monitoredNamespaces, nil, false)
+			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 
 			collectorConfig := parseConfigMapContent(configMap)
@@ -745,7 +769,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			NamePrefix:       namePrefix,
 			Export:           Dash0ExportWithEndpointAndToken(),
 			SendBatchMaxSize: nil,
-		}, monitoredNamespaces, nil, false)
+		}, monitoredNamespaces, nil, nil, false)
 
 		Expect(err).ToNot(HaveOccurred())
 		collectorConfig := parseConfigMapContent(configMap)
@@ -761,7 +785,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			NamePrefix:       namePrefix,
 			Export:           Dash0ExportWithEndpointAndToken(),
 			SendBatchMaxSize: ptr.To(uint32(16384)),
-		}, monitoredNamespaces, nil, false)
+		}, monitoredNamespaces, nil, nil, false)
 
 		Expect(err).ToNot(HaveOccurred())
 		collectorConfig := parseConfigMapContent(configMap)
@@ -778,7 +802,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Namespace:  namespace,
 			NamePrefix: namePrefix,
 			Export:     Dash0ExportWithEndpointAndToken(),
-		}, monitoredNamespaces, nil, false)
+		}, monitoredNamespaces, nil, nil, false)
 
 		Expect(err).ToNot(HaveOccurred())
 		collectorConfig := parseConfigMapContent(configMap)
@@ -801,7 +825,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			NamePrefix:  namePrefix,
 			Export:      Dash0ExportWithEndpointAndToken(),
 			ClusterName: "cluster-name",
-		}, monitoredNamespaces, nil, false)
+		}, monitoredNamespaces, nil, nil, false)
 
 		Expect(err).ToNot(HaveOccurred())
 		collectorConfig := parseConfigMapContent(configMap)
@@ -836,7 +860,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				Export:     Dash0ExportWithEndpointAndToken(),
 				KubernetesInfrastructureMetricsCollectionEnabled: false,
 				UseHostMetricsReceiver:                           false,
-			}, nil, nil, nil, false)
+			}, nil, nil, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			kubeletstatsReceiver := readFromMap(collectorConfig, []string{"receivers", "kubeletstats"})
@@ -858,7 +882,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				Export:     Dash0ExportWithEndpointAndToken(),
 				KubernetesInfrastructureMetricsCollectionEnabled: true,
 				UseHostMetricsReceiver:                           true,
-			}, nil, nil, nil, false)
+			}, nil, nil, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			kubeletstatsReceiverRaw := readFromMap(collectorConfig, []string{"receivers", "kubeletstats"})
@@ -878,7 +902,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		})
 	})
 
-	Describe("filters metrics by namespace", func() {
+	Describe("discard metrics from unmonitored namespaces", func() {
 
 		type ottlFilterExpressionTestConfig struct {
 			monitoredNamespaces []string
@@ -922,7 +946,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				Namespace:  namespace,
 				NamePrefix: namePrefix,
 				Export:     Dash0ExportWithEndpointAndToken(),
-			}, monitoredNamespaces, nil, false)
+			}, monitoredNamespaces, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -947,7 +971,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		}
 
 		It("should not render the prometheus scraping config if no namespaces have scraping enabled", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(config, nil, nil, nil, false)
+			configMap, err := assembleDaemonSetCollectorConfigMap(config, nil, nil, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
@@ -964,6 +988,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				config,
 				[]string{"namespace-1", "namespace-2"},
 				[]string{"namespace-1", "namespace-2"},
+				nil,
 				nil,
 				false,
 			)
@@ -1113,7 +1138,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 							{
 								Namespace: namespace1,
 								Filter: dash0v1alpha1.Filter{
-									ErrorMode: dash0v1alpha1.FilterErrorModeIgnore,
+									ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
 									Traces: &dash0v1alpha1.TraceFilter{
 										SpanFilter:      []string{"span condition 1", "span condition 2"},
 										SpanEventFilter: []string{"span event condition 1", "span event condition 2"},
@@ -1153,7 +1178,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 							{
 								Namespace: namespace1,
 								Filter: dash0v1alpha1.Filter{
-									ErrorMode: dash0v1alpha1.FilterErrorModeIgnore,
+									ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
 									Metrics: &dash0v1alpha1.MetricFilter{
 										MetricFilter:    []string{"metric condition 1", "metric condition 2"},
 										DataPointFilter: []string{"data point condition 1", "data point condition 2"},
@@ -1208,7 +1233,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 							{
 								Namespace: namespace1,
 								Filter: dash0v1alpha1.Filter{
-									ErrorMode: dash0v1alpha1.FilterErrorModeIgnore,
+									ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
 									Logs: &dash0v1alpha1.LogFilter{
 										LogRecordFilter: []string{"log record condition 1", "log record condition 2"},
 									},
@@ -1243,7 +1268,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 							{
 								Namespace: namespace1,
 								Filter: dash0v1alpha1.Filter{
-									ErrorMode: dash0v1alpha1.FilterErrorModeIgnore,
+									ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
 									Traces: &dash0v1alpha1.TraceFilter{
 										SpanFilter:      []string{"span condition 1", "span condition 2"},
 										SpanEventFilter: []string{"span event condition 1", "span event condition 2"},
@@ -1316,48 +1341,6 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 
 				//
 			})
-
-			type filterErrorModeTestConfig struct {
-				errorModes []dash0v1alpha1.FilterErrorMode
-				expected   dash0v1alpha1.FilterErrorMode
-			}
-
-			DescribeTable("should use the most severe error mode", func(testConfig filterErrorModeTestConfig) {
-				var filters []NamespacedFilter
-				for _, errorMode := range testConfig.errorModes {
-					filters = append(filters, NamespacedFilter{
-						Namespace: namespace1,
-						Filter: dash0v1alpha1.Filter{
-							ErrorMode: errorMode,
-							Traces: &dash0v1alpha1.TraceFilter{
-								SpanFilter: []string{
-									"condition",
-								},
-							},
-						},
-					})
-				}
-				result := aggregateCustomFilters(filters)
-				Expect(result.ErrorMode).To(Equal(testConfig.expected))
-
-			}, []TableEntry{
-				Entry("no error mode provided", filterErrorModeTestConfig{
-					errorModes: nil,
-					expected:   dash0v1alpha1.FilterErrorModeIgnore,
-				}),
-				Entry("single error mode is used", filterErrorModeTestConfig{
-					errorModes: []dash0v1alpha1.FilterErrorMode{dash0v1alpha1.FilterErrorModeSilent},
-					expected:   dash0v1alpha1.FilterErrorModeSilent,
-				}),
-				Entry("most severe error mode is used", filterErrorModeTestConfig{
-					errorModes: []dash0v1alpha1.FilterErrorMode{
-						dash0v1alpha1.FilterErrorModeSilent,
-						dash0v1alpha1.FilterErrorModeIgnore,
-						dash0v1alpha1.FilterErrorModePropagate,
-					},
-					expected: dash0v1alpha1.FilterErrorModePropagate,
-				}),
-			})
 		}
 
 		DescribeTable("filter telemetry", func(testConfig filterTestConfig) {
@@ -1369,6 +1352,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				},
 				monitoredNamespaces,
 				testConfig.filters,
+				nil,
 				false,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -1439,6 +1423,440 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				)
 			}
 		}, filterTestConfigs)
+
+		type filterErrorModeTestConfig struct {
+			errorModes []dash0v1alpha1.FilterTransformErrorMode
+			expected   dash0v1alpha1.FilterTransformErrorMode
+		}
+
+		DescribeTable("filter processor should use the most severe error mode", func(testConfig filterErrorModeTestConfig) {
+			var filters []NamespacedFilter
+			for _, errorMode := range testConfig.errorModes {
+				filters = append(filters, NamespacedFilter{
+					Namespace: namespace1,
+					Filter: dash0v1alpha1.Filter{
+						ErrorMode: errorMode,
+						Traces: &dash0v1alpha1.TraceFilter{
+							SpanFilter: []string{
+								"condition",
+							},
+						},
+					},
+				})
+			}
+			result := aggregateCustomFilters(filters)
+			Expect(result.ErrorMode).To(Equal(testConfig.expected))
+
+		}, []TableEntry{
+			Entry("no error mode provided", filterErrorModeTestConfig{
+				errorModes: nil,
+				expected:   dash0v1alpha1.FilterTransformErrorModeIgnore,
+			}),
+			Entry("single error mode is used", filterErrorModeTestConfig{
+				errorModes: []dash0v1alpha1.FilterTransformErrorMode{dash0v1alpha1.FilterTransformErrorModeSilent},
+				expected:   dash0v1alpha1.FilterTransformErrorModeSilent,
+			}),
+			Entry("most severe error mode is used", filterErrorModeTestConfig{
+				errorModes: []dash0v1alpha1.FilterTransformErrorMode{
+					dash0v1alpha1.FilterTransformErrorModeSilent,
+					dash0v1alpha1.FilterTransformErrorModeIgnore,
+					dash0v1alpha1.FilterTransformErrorModePropagate,
+				},
+				expected: dash0v1alpha1.FilterTransformErrorModePropagate,
+			}),
+		})
+	})
+
+	Describe("configurable transformation of telemetry per namespace", func() {
+		var transformTestConfigs []TableEntry
+		for _, cmTypeDef := range configMapTypeDefinitions {
+			transformTestConfigs = slices.Concat(transformTestConfigs, []TableEntry{
+
+				Entry(fmt.Sprintf("[config map type: %s]: should render no transforms if transform list is nil", cmTypeDef.cmType),
+					transformTestConfig{
+						configMapTypeDefinition: cmTypeDef,
+						transforms:              nil,
+						expectations: transformTestConfigExpectations{
+							daemonset:  emptyTransformExpectations(),
+							deployment: emptyTransformExpectations(),
+						},
+					}),
+
+				Entry(fmt.Sprintf("[config map type: %s]: should render no transforms if transform list is empty", cmTypeDef.cmType),
+					transformTestConfig{
+						configMapTypeDefinition: cmTypeDef,
+						transforms:              []NamespacedTransform{},
+						expectations: transformTestConfigExpectations{
+							daemonset:  emptyTransformExpectations(),
+							deployment: emptyTransformExpectations(),
+						},
+					}),
+
+				Entry(fmt.Sprintf("[config map type: %s]: should render no transforms if no transforms are configured", cmTypeDef.cmType),
+					transformTestConfig{
+						configMapTypeDefinition: cmTypeDef,
+						transforms: []NamespacedTransform{
+							{
+								Namespace: namespace1,
+								// no transforms for this namespace
+							},
+							{
+								Namespace: namespace2,
+								// no transforms for this namespace
+							},
+						},
+						expectations: transformTestConfigExpectations{
+							daemonset:  emptyTransformExpectations(),
+							deployment: emptyTransformExpectations(),
+						},
+					}),
+
+				Entry(fmt.Sprintf("[config map type: %s]: should transform traces", cmTypeDef.cmType),
+					createTransformTestForSingleObjectType(cmTypeDef,
+						signalTypeTraces,
+						[]string{"statement 1", "statement 2"},
+						[]string{"statement 3", "statement 4"},
+					)),
+
+				Entry(fmt.Sprintf("[config map type: %s]: should transform metrics", cmTypeDef.cmType),
+					createTransformTestForSingleObjectType(cmTypeDef,
+						signalTypeMetrics,
+						[]string{"statement 1", "statement 2"},
+						[]string{"statement 3", "statement 4"},
+					)),
+
+				Entry(fmt.Sprintf("[config map type: %s]: should transform logs", cmTypeDef.cmType),
+					createTransformTestForSingleObjectType(cmTypeDef,
+						signalTypeLogs,
+						[]string{"statement 1", "statement 2"},
+						[]string{"statement 3", "statement 4"},
+					)),
+
+				Entry(fmt.Sprintf("[config map type: %s]: should apply trace transform to only one namespace", cmTypeDef.cmType),
+					transformTestConfig{
+						configMapTypeDefinition: cmTypeDef,
+						transforms: []NamespacedTransform{
+							{
+								Namespace: namespace1,
+								Transform: dash0v1alpha1.Transform{
+									ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
+									Traces:    []string{"statement 1", "statement 2"},
+								},
+							},
+							{
+								Namespace: namespace2,
+								// no transforms for this namespace
+							},
+						},
+						expectations: transformTestConfigExpectations{
+							daemonset: transformExpectations{
+								signalsWithTransforms:    []signalType{signalTypeTraces},
+								signalsWithoutTransforms: []signalType{signalTypeMetrics, signalTypeLogs},
+								contexts: contextExpectationsPerSignalType{
+									signalTypeTraces: []contextExpectations{
+										{
+											statements: []string{"statement 1", "statement 2"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
+											},
+										},
+									},
+								},
+							},
+							deployment: emptyTransformExpectations(),
+						},
+					}),
+
+				Entry(fmt.Sprintf("[config map type: %s]: should apply metric transform to only one namespace", cmTypeDef.cmType),
+					transformTestConfig{
+						configMapTypeDefinition: cmTypeDef,
+						transforms: []NamespacedTransform{
+							{
+								Namespace: namespace1,
+								Transform: dash0v1alpha1.Transform{
+									ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
+									Metrics:   []string{"statement 1", "statement 2"},
+								},
+							},
+							{
+								Namespace: namespace2,
+								// no transforms for this namespace
+							},
+						},
+						expectations: transformTestConfigExpectations{
+							daemonset: transformExpectations{
+								signalsWithTransforms:    []signalType{signalTypeMetrics},
+								signalsWithoutTransforms: []signalType{signalTypeTraces, signalTypeLogs},
+								contexts: contextExpectationsPerSignalType{
+									signalTypeMetrics: {
+										{
+											statements: []string{"statement 1", "statement 2"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
+											},
+										},
+									},
+								},
+							},
+							deployment: transformExpectations{
+								signalsWithTransforms:    []signalType{signalTypeMetrics},
+								signalsWithoutTransforms: []signalType{signalTypeTraces, signalTypeLogs},
+								contexts: contextExpectationsPerSignalType{
+									signalTypeMetrics: []contextExpectations{
+										{
+											statements: []string{"statement 1", "statement 2"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
+											},
+										},
+									},
+								},
+							},
+						},
+					}),
+
+				Entry(fmt.Sprintf("[config map type: %s]: should apply log transform to only one namespace", cmTypeDef.cmType),
+					transformTestConfig{
+						configMapTypeDefinition: cmTypeDef,
+						transforms: []NamespacedTransform{
+							{
+								Namespace: namespace2,
+								Transform: dash0v1alpha1.Transform{
+									ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
+									Logs:      []string{"statement 1", "statement 2"},
+								},
+							},
+							{
+								Namespace: namespace1,
+								// no transforms for this namespace
+							},
+						},
+						expectations: transformTestConfigExpectations{
+							daemonset: transformExpectations{
+								signalsWithTransforms:    []signalType{signalTypeLogs},
+								signalsWithoutTransforms: []signalType{signalTypeTraces, signalTypeMetrics},
+								contexts: contextExpectationsPerSignalType{
+									signalTypeLogs: []contextExpectations{
+										{
+											statements: []string{"statement 1", "statement 2"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-2"`,
+											},
+										},
+									},
+								},
+							},
+							deployment: emptyTransformExpectations(),
+						},
+					}),
+
+				Entry(fmt.Sprintf("[config map type: %s]: should apply transforms for all signals to only one namespace", cmTypeDef.cmType),
+					transformTestConfig{
+						configMapTypeDefinition: cmTypeDef,
+						transforms: []NamespacedTransform{
+							{
+								Namespace: namespace1,
+								Transform: dash0v1alpha1.Transform{
+									ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
+									Traces:    []string{"trace statement 1", "trace statement 2"},
+									Metrics:   []string{"metric statement 1", "metric statement 2"},
+									Logs:      []string{"log statement 1", "log statement 2"},
+								},
+							},
+							{
+								Namespace: namespace2,
+								// no transforms for this namespace
+							},
+						},
+						expectations: transformTestConfigExpectations{
+							daemonset: transformExpectations{
+								signalsWithTransforms:    []signalType{signalTypeTraces, signalTypeMetrics, signalTypeLogs},
+								signalsWithoutTransforms: nil,
+								contexts: contextExpectationsPerSignalType{
+									signalTypeTraces: []contextExpectations{
+										{
+											statements: []string{"trace statement 1", "trace statement 2"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
+											},
+										},
+									},
+									signalTypeMetrics: []contextExpectations{
+										{
+											statements: []string{"metric statement 1", "metric statement 2"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
+											},
+										},
+									},
+									signalTypeLogs: []contextExpectations{
+										{
+											statements: []string{"log statement 1", "log statement 2"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
+											},
+										},
+									},
+								},
+							},
+							deployment: transformExpectations{
+								signalsWithTransforms:    []signalType{signalTypeMetrics},
+								signalsWithoutTransforms: []signalType{signalTypeTraces, signalTypeLogs},
+								contexts: contextExpectationsPerSignalType{
+									signalTypeMetrics: {
+										{
+											statements: []string{"metric statement 1", "metric statement 2"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
+											},
+										},
+									},
+								},
+							},
+						},
+					}),
+				//
+			})
+		}
+
+		DescribeTable("transform telemetry", func(testConfig transformTestConfig) {
+			configMap, err := testConfig.assembleConfigMapFunction(
+				&oTelColConfig{
+					Namespace:  namespace,
+					NamePrefix: namePrefix,
+					Export:     Dash0ExportWithEndpointAndToken(),
+				},
+				monitoredNamespaces,
+				nil,
+				testConfig.transforms,
+				false,
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			var expectations transformExpectations
+			switch testConfig.cmType {
+			case configMapTypeDaemonSet:
+				expectations = testConfig.expectations.daemonset
+			case configMapTypeDeployment:
+				expectations = testConfig.expectations.deployment
+			}
+
+			collectorConfig := parseConfigMapContent(configMap)
+			pipelines := readPipelines(collectorConfig)
+			for _, signal := range expectations.signalsWithTransforms {
+				transformProcessorName := fmt.Sprintf("transform/%s/custom_telemetry_transform", signal)
+				transformProcessorRaw := readFromMap(
+					collectorConfig,
+					[]string{"processors", transformProcessorName},
+				)
+				Expect(transformProcessorRaw).ToNot(BeNil(),
+					fmt.Sprintf("expected transform processor %s to exist, but it didn't", transformProcessorName))
+				transformProcessor := transformProcessorRaw.(map[string]interface{})
+				Expect(transformProcessor["error_mode"]).To(Equal("ignore"))
+
+				signalContextsLabel := ""
+				switch signal {
+				case signalTypeTraces:
+					signalContextsLabel = "trace_statements"
+				case signalTypeMetrics:
+					signalContextsLabel = "metric_statements"
+				case signalTypeLogs:
+					signalContextsLabel = "log_statements"
+				default:
+					Fail(fmt.Sprintf("unknown signal type: %s", signal))
+				}
+
+				expectedContexts := expectations.contexts[signal]
+				contextsRaw := readFromMap(transformProcessor, []string{signalContextsLabel})
+				Expect(contextsRaw).ToNot(BeNil(),
+					"expected %d transform context(s) but there were none for signal \"%s\"",
+					len(expectedContexts), signal)
+				contexts := contextsRaw.([]interface{})
+				Expect(contexts).To(HaveLen(len(expectedContexts)))
+
+				for i, expectedContext := range expectedContexts {
+					expectedStatements := expectedContext.statements
+					actualStatementsRaw := readFromMap(contexts[i], []string{"statements"})
+					Expect(actualStatementsRaw).ToNot(BeNil(),
+						"expected %d transform statement(s) but there were none for signal \"%s\"",
+						len(expectedStatements), signal)
+					actualTransformStatements := actualStatementsRaw.([]interface{})
+					Expect(actualTransformStatements).To(HaveLen(len(expectedStatements)))
+					for i, expectedStatement := range expectedStatements {
+						Expect(actualTransformStatements[i]).To(Equal(expectedStatement))
+					}
+
+					expectedConditions := expectedContext.conditions
+					actualConditionsRaw := readFromMap(contexts[i], []string{"conditions"})
+					Expect(actualConditionsRaw).ToNot(BeNil(),
+						"expected %d transform condition(s) but there were none for signal \"%s\"",
+						len(expectedConditions), signal)
+					actualTransformConditions := actualConditionsRaw.([]interface{})
+					Expect(actualTransformConditions).To(HaveLen(len(expectedConditions)))
+					for i, expectedCondition := range expectedConditions {
+						Expect(actualTransformConditions[i]).To(Equal(expectedCondition))
+					}
+				}
+
+				downstreamPipelineProcessors := readPipelineProcessors(pipelines, fmt.Sprintf("%s/downstream", signal))
+				Expect(downstreamPipelineProcessors).To(ContainElements(transformProcessorName))
+			}
+
+			for _, signal := range expectations.signalsWithoutTransforms {
+				transformProcessorName := fmt.Sprintf("transform/%s/custom_telemetry_transform", signal)
+				transformProcessorRaw := readFromMap(
+					collectorConfig,
+					[]string{"processors", transformProcessorName},
+				)
+				Expect(transformProcessorRaw).To(BeNil(),
+					fmt.Sprintf("expected transform processor %s to be nil, but it wasn't", transformProcessorName))
+
+				verifyProcessorDoesNotAppearInAnyPipeline(
+					collectorConfig,
+					transformProcessorName,
+				)
+			}
+		}, transformTestConfigs)
+
+		type transformErrorModeTestConfig struct {
+			errorModes []dash0v1alpha1.FilterTransformErrorMode
+			expected   dash0v1alpha1.FilterTransformErrorMode
+		}
+
+		DescribeTable("transform processor should use the most severe error mode", func(testConfig transformErrorModeTestConfig) {
+			var transforms []NamespacedTransform
+			for _, errorMode := range testConfig.errorModes {
+				transforms = append(transforms, NamespacedTransform{
+					Namespace: namespace1,
+					Transform: dash0v1alpha1.Transform{
+						ErrorMode: errorMode,
+						Traces: []string{
+							"condition",
+						},
+					},
+				})
+			}
+			result := aggregateCustomTransforms(transforms)
+			Expect(result.GlobalErrorMode).To(Equal(testConfig.expected))
+
+		}, []TableEntry{
+			Entry("no error mode provided", transformErrorModeTestConfig{
+				errorModes: nil,
+				expected:   dash0v1alpha1.FilterTransformErrorModeIgnore,
+			}),
+			Entry("single error mode is used", transformErrorModeTestConfig{
+				errorModes: []dash0v1alpha1.FilterTransformErrorMode{dash0v1alpha1.FilterTransformErrorModeSilent},
+				expected:   dash0v1alpha1.FilterTransformErrorModeSilent,
+			}),
+			Entry("most severe error mode is used", transformErrorModeTestConfig{
+				errorModes: []dash0v1alpha1.FilterTransformErrorMode{
+					dash0v1alpha1.FilterTransformErrorModeSilent,
+					dash0v1alpha1.FilterTransformErrorModeIgnore,
+					dash0v1alpha1.FilterTransformErrorModePropagate,
+				},
+				expected: dash0v1alpha1.FilterTransformErrorModePropagate,
+			}),
+		})
 	})
 
 	Describe("on an IPv4 or IPv6 cluster", func() {
@@ -1456,7 +1874,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			}
 
 			expected := testConfig.expected
-			configMap, err := assembleDaemonSetCollectorConfigMap(config, nil, nil, nil, false)
+			configMap, err := assembleDaemonSetCollectorConfigMap(config, nil, nil, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig := parseConfigMapContent(configMap)
 			healthCheckEndpoint := readFromMap(collectorConfig, []string{"extensions", "health_check", "endpoint"})
@@ -1480,7 +1898,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(httpOtlpEndpoint).To(Equal(fmt.Sprintf("%s:4318", expected)))
 			Expect(selfMonitoringTelemetryEndpoint).To(Equal(expected))
 
-			configMap, err = assembleDeploymentCollectorConfigMap(config, nil, nil, false)
+			configMap, err = assembleDeploymentCollectorConfigMap(config, nil, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
 			collectorConfig = parseConfigMapContent(configMap)
 			healthCheckEndpoint = readFromMap(collectorConfig, []string{"extensions", "health_check", "endpoint"})
@@ -1516,6 +1934,7 @@ func assembleDaemonSetCollectorConfigMapWithoutScrapingNamespaces(
 	config *oTelColConfig,
 	monitoredNamespaces []string,
 	filters []NamespacedFilter,
+	transforms []NamespacedTransform,
 	forDeletion bool,
 ) (*corev1.ConfigMap, error) {
 	return assembleDaemonSetCollectorConfigMap(
@@ -1523,6 +1942,7 @@ func assembleDaemonSetCollectorConfigMapWithoutScrapingNamespaces(
 		monitoredNamespaces,
 		nil,
 		filters,
+		transforms,
 		forDeletion,
 	)
 }
@@ -1531,12 +1951,14 @@ func assembleDeploymentCollectorConfigMapForTest(
 	config *oTelColConfig,
 	monitoredNamespaces []string,
 	filters []NamespacedFilter,
+	transforms []NamespacedTransform,
 	forDeletion bool,
 ) (*corev1.ConfigMap, error) {
 	return assembleDeploymentCollectorConfigMap(
 		config,
 		monitoredNamespaces,
 		filters,
+		transforms,
 		forDeletion,
 	)
 }
@@ -1697,26 +2119,26 @@ func createFilterTestForSingleObjectType(
 		switch objectT {
 		case objectTypeSpan:
 			filter1 = dash0v1alpha1.Filter{
-				ErrorMode: dash0v1alpha1.FilterErrorModeIgnore,
+				ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
 				Traces: &dash0v1alpha1.TraceFilter{
 					SpanFilter: conditionsNamespace1,
 				},
 			}
 			filter2 = dash0v1alpha1.Filter{
-				ErrorMode: dash0v1alpha1.FilterErrorModeIgnore,
+				ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
 				Traces: &dash0v1alpha1.TraceFilter{
 					SpanFilter: conditionsNamespace2,
 				},
 			}
 		case objectTypeSpanEvent:
 			filter1 = dash0v1alpha1.Filter{
-				ErrorMode: dash0v1alpha1.FilterErrorModeIgnore,
+				ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
 				Traces: &dash0v1alpha1.TraceFilter{
 					SpanEventFilter: conditionsNamespace1,
 				},
 			}
 			filter2 = dash0v1alpha1.Filter{
-				ErrorMode: dash0v1alpha1.FilterErrorModeIgnore,
+				ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
 				Traces: &dash0v1alpha1.TraceFilter{
 					SpanEventFilter: conditionsNamespace2,
 				},
@@ -1729,26 +2151,26 @@ func createFilterTestForSingleObjectType(
 		switch objectT {
 		case objectTypeMetric:
 			filter1 = dash0v1alpha1.Filter{
-				ErrorMode: dash0v1alpha1.FilterErrorModeIgnore,
+				ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
 				Metrics: &dash0v1alpha1.MetricFilter{
 					MetricFilter: conditionsNamespace1,
 				},
 			}
 			filter2 = dash0v1alpha1.Filter{
-				ErrorMode: dash0v1alpha1.FilterErrorModeIgnore,
+				ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
 				Metrics: &dash0v1alpha1.MetricFilter{
 					MetricFilter: conditionsNamespace2,
 				},
 			}
 		case objectTypeDataPoint:
 			filter1 = dash0v1alpha1.Filter{
-				ErrorMode: dash0v1alpha1.FilterErrorModeIgnore,
+				ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
 				Metrics: &dash0v1alpha1.MetricFilter{
 					DataPointFilter: conditionsNamespace1,
 				},
 			}
 			filter2 = dash0v1alpha1.Filter{
-				ErrorMode: dash0v1alpha1.FilterErrorModeIgnore,
+				ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
 				Metrics: &dash0v1alpha1.MetricFilter{
 					DataPointFilter: conditionsNamespace2,
 				},
@@ -1761,13 +2183,13 @@ func createFilterTestForSingleObjectType(
 		switch objectT {
 		case objectTypeLogRecord:
 			filter1 = dash0v1alpha1.Filter{
-				ErrorMode: dash0v1alpha1.FilterErrorModeIgnore,
+				ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
 				Logs: &dash0v1alpha1.LogFilter{
 					LogRecordFilter: conditionsNamespace1,
 				},
 			}
 			filter2 = dash0v1alpha1.Filter{
-				ErrorMode: dash0v1alpha1.FilterErrorModeIgnore,
+				ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
 				Logs: &dash0v1alpha1.LogFilter{
 					LogRecordFilter: conditionsNamespace2,
 				},
@@ -1843,8 +2265,140 @@ func prependNamespaceCheckToAllOttlCondition(namespace string, conditions []stri
 	for _, condition := range conditions {
 		processedConditions = append(
 			processedConditions,
-			prependNamespaceCheckToOttlCondition(namespace, condition),
+			prependNamespaceCheckToOttlFilterCondition(namespace, condition),
 		)
 	}
 	return processedConditions
+}
+
+func createTransformTestForSingleObjectType(
+	cmTypeDef configMapTypeDefinition,
+	signalT signalType,
+	statementsNamespace1 []string,
+	statementsNamespace2 []string,
+) transformTestConfig {
+	signalsWithoutTransformsDaemonset := allSignals()
+	signalsWithoutTransformsDaemonset = slices.DeleteFunc(signalsWithoutTransformsDaemonset, func(s signalType) bool {
+		return s == signalT
+	})
+	signalsWithoutTransformsDeployment := allSignals()
+	if signalT == signalTypeMetrics {
+		signalsWithoutTransformsDeployment = slices.DeleteFunc(signalsWithoutTransformsDeployment, func(s signalType) bool {
+			return s == signalT
+		})
+	}
+
+	var transform1 dash0v1alpha1.Transform
+	var transform2 dash0v1alpha1.Transform
+	switch signalT {
+	case signalTypeTraces:
+		transform1 = dash0v1alpha1.Transform{
+			ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
+			Traces:    statementsNamespace1,
+		}
+		transform2 = dash0v1alpha1.Transform{
+			ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
+			Traces:    statementsNamespace2,
+		}
+
+	case signalTypeMetrics:
+		transform1 = dash0v1alpha1.Transform{
+			ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
+			Metrics:   statementsNamespace1,
+		}
+		transform2 = dash0v1alpha1.Transform{
+			ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
+			Metrics:   statementsNamespace2,
+		}
+
+	case signalTypeLogs:
+		transform1 = dash0v1alpha1.Transform{
+			ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
+			Logs:      statementsNamespace1,
+		}
+		transform2 = dash0v1alpha1.Transform{
+			ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
+			Logs:      statementsNamespace2,
+		}
+	}
+
+	daemonSetExpectations := transformExpectations{
+		signalsWithTransforms: []signalType{signalT},
+		contexts: contextExpectationsPerSignalType{
+			signalT: []contextExpectations{
+				{
+					conditions: []string{
+						fmt.Sprintf(
+							`resource.attributes["k8s.namespace.name"] == "%s"`,
+							namespace1,
+						)},
+					statements: statementsNamespace1,
+				},
+				{
+					conditions: []string{
+						fmt.Sprintf(
+							`resource.attributes["k8s.namespace.name"] == "%s"`,
+							namespace2,
+						)},
+					statements: statementsNamespace2,
+				},
+			},
+		},
+		signalsWithoutTransforms: signalsWithoutTransformsDaemonset,
+	}
+	var deploymentExpectations transformExpectations
+	if signalT == signalTypeMetrics {
+		deploymentExpectations = transformExpectations{
+			signalsWithTransforms: []signalType{signalT},
+			contexts: contextExpectationsPerSignalType{
+				signalT: []contextExpectations{
+					{
+						conditions: []string{
+							fmt.Sprintf(
+								`resource.attributes["k8s.namespace.name"] == "%s"`,
+								namespace1,
+							)},
+						statements: statementsNamespace1,
+					},
+					{
+						conditions: []string{
+							fmt.Sprintf(
+								`resource.attributes["k8s.namespace.name"] == "%s"`,
+								namespace2,
+							)},
+						statements: statementsNamespace2,
+					},
+				},
+			},
+			signalsWithoutTransforms: signalsWithoutTransformsDaemonset,
+		}
+	} else {
+		deploymentExpectations = transformExpectations{
+			signalsWithoutTransforms: signalsWithoutTransformsDeployment,
+		}
+	}
+
+	return transformTestConfig{
+		configMapTypeDefinition: cmTypeDef,
+		transforms: []NamespacedTransform{
+			{
+				Namespace: namespace1,
+				Transform: transform1,
+			},
+			{
+				Namespace: namespace2,
+				Transform: transform2,
+			},
+		},
+		expectations: transformTestConfigExpectations{
+			daemonset:  daemonSetExpectations,
+			deployment: deploymentExpectations,
+		},
+	}
+}
+
+func emptyTransformExpectations() transformExpectations {
+	return transformExpectations{
+		signalsWithoutTransforms: allSignals(),
+	}
 }
