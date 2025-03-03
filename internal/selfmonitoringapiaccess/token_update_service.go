@@ -15,10 +15,15 @@ import (
 	crlog "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+type AuthTokenClient interface {
+	SetAuthToken(context.Context, string, *logr.Logger)
+	RemoveAuthToken(context.Context, *logr.Logger)
+}
+
 type TokenUpdateService struct {
-	port           string
-	server         *http.Server
-	oTelSdkStarter *OTelSdkStarter
+	port             string
+	server           *http.Server
+	authTokenClients []AuthTokenClient
 }
 
 const (
@@ -33,10 +38,10 @@ var (
 	tlsKey  = fmt.Sprintf("%s/tls.key", certDir)
 )
 
-func NewTokenUpdateService(port string, oTelSdkStarter *OTelSdkStarter) *TokenUpdateService {
+func NewTokenUpdateService(port string, authTokenClients []AuthTokenClient) *TokenUpdateService {
 	return &TokenUpdateService{
-		port:           port,
-		oTelSdkStarter: oTelSdkStarter,
+		port:             port,
+		authTokenClients: authTokenClients,
 	}
 }
 
@@ -61,7 +66,9 @@ func (s *TokenUpdateService) updateAuthToken(w http.ResponseWriter, r *http.Requ
 		w.WriteHeader(http.StatusBadRequest)
 	} else {
 		logger.Info(fmt.Sprintf("%s: processing /update-auth-token request, received auth token", logPrefix))
-		s.oTelSdkStarter.SetAuthTokenFromSecretRef(ctx, authToken, &logger)
+		for _, client := range s.authTokenClients {
+			client.SetAuthToken(ctx, authToken, &logger)
+		}
 		w.WriteHeader(http.StatusOK)
 	}
 }

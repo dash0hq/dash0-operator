@@ -37,7 +37,6 @@ import (
 type PrometheusRuleCrdReconciler struct {
 	Client                   client.Client
 	Queue                    *workqueue.Typed[ThirdPartyResourceSyncJob]
-	AuthToken                string
 	mgr                      ctrl.Manager
 	skipNameValidation       bool
 	prometheusRuleReconciler *PrometheusRuleReconciler
@@ -50,7 +49,7 @@ type PrometheusRuleReconciler struct {
 	queue                      *workqueue.Typed[ThirdPartyResourceSyncJob]
 	httpClient                 *http.Client
 	apiConfig                  atomic.Pointer[ApiConfig]
-	authToken                  string
+	authToken                  atomic.Pointer[string]
 	httpRetryDelay             time.Duration
 	controllerStopFunctionLock sync.Mutex
 	controllerStopFunction     *context.CancelFunc
@@ -85,10 +84,6 @@ var (
 
 func (r *PrometheusRuleCrdReconciler) Manager() ctrl.Manager {
 	return r.mgr
-}
-
-func (r *PrometheusRuleCrdReconciler) GetAuthToken() string {
-	return r.AuthToken
 }
 
 func (r *PrometheusRuleCrdReconciler) KindDisplayName() string {
@@ -129,14 +124,12 @@ func (r *PrometheusRuleCrdReconciler) SkipNameValidation() bool {
 
 func (r *PrometheusRuleCrdReconciler) CreateResourceReconciler(
 	pseudoClusterUid types.UID,
-	authToken string,
 	httpClient *http.Client,
 ) {
 	r.prometheusRuleReconciler = &PrometheusRuleReconciler{
 		Client:           r.Client,
 		queue:            r.Queue,
 		pseudoClusterUid: pseudoClusterUid,
-		authToken:        authToken,
 		httpClient:       httpClient,
 		httpRetryDelay:   1 * time.Second,
 	}
@@ -241,24 +234,37 @@ func (r *PrometheusRuleCrdReconciler) InitializeSelfMonitoringMetrics(
 }
 
 func (r *PrometheusRuleCrdReconciler) SetApiEndpointAndDataset(
+	ctx context.Context,
 	apiConfig *ApiConfig,
 	logger *logr.Logger) {
-	if r.prometheusRuleReconciler == nil {
-		// If no auth token has been set via environment variable, we do not even create the prometheusRuleReconciler,
-		// hence this nil check is necessary.
-		return
-	}
 	r.prometheusRuleReconciler.apiConfig.Store(apiConfig)
-	maybeStartWatchingThirdPartyResources(r, false, logger)
+	if isValidApiConfig(apiConfig) {
+		maybeStartWatchingThirdPartyResources(r, false, logger)
+	} else {
+		stopWatchingThirdPartyResources(ctx, r, logger)
+	}
 }
 
-func (r *PrometheusRuleCrdReconciler) RemoveApiEndpointAndDataset() {
-	if r.prometheusRuleReconciler == nil {
-		// If no auth token has been set via environment variable, we do not even create the prometheusRuleReconciler,
-		// hence this nil check is necessary.
-		return
-	}
+func (r *PrometheusRuleCrdReconciler) RemoveApiEndpointAndDataset(ctx context.Context, logger *logr.Logger) {
 	r.prometheusRuleReconciler.apiConfig.Store(nil)
+	stopWatchingThirdPartyResources(ctx, r, logger)
+}
+
+func (r *PrometheusRuleCrdReconciler) SetAuthToken(
+	ctx context.Context,
+	authToken string,
+	logger *logr.Logger) {
+	r.prometheusRuleReconciler.authToken.Store(&authToken)
+	if authToken != "" {
+		maybeStartWatchingThirdPartyResources(r, false, logger)
+	} else {
+		stopWatchingThirdPartyResources(ctx, r, logger)
+	}
+}
+
+func (r *PrometheusRuleCrdReconciler) RemoveAuthToken(ctx context.Context, logger *logr.Logger) {
+	r.prometheusRuleReconciler.authToken.Store(nil)
+	stopWatchingThirdPartyResources(ctx, r, logger)
 }
 
 func (r *PrometheusRuleReconciler) InitializeSelfMonitoringMetrics(
@@ -302,7 +308,11 @@ func (r *PrometheusRuleReconciler) IsWatching() bool {
 }
 
 func (r *PrometheusRuleReconciler) GetAuthToken() string {
-	return r.authToken
+	token := r.authToken.Load()
+	if token == nil {
+		return ""
+	}
+	return *token
 }
 
 func (r *PrometheusRuleReconciler) GetApiConfig() *atomic.Pointer[ApiConfig] {

@@ -52,8 +52,10 @@ type ApiConfig struct {
 }
 
 type ApiClient interface {
-	SetApiEndpointAndDataset(*ApiConfig, *logr.Logger)
-	RemoveApiEndpointAndDataset()
+	SetApiEndpointAndDataset(context.Context, *ApiConfig, *logr.Logger)
+	RemoveApiEndpointAndDataset(context.Context, *logr.Logger)
+	SetAuthToken(context.Context, string, *logr.Logger)
+	RemoveAuthToken(context.Context, *logr.Logger)
 }
 
 type ThirdPartyCrdReconciler interface {
@@ -61,7 +63,6 @@ type ThirdPartyCrdReconciler interface {
 	reconcile.TypedReconciler[reconcile.Request]
 
 	Manager() ctrl.Manager
-	GetAuthToken() string
 	KindDisplayName() string
 	Group() string
 	Kind() string
@@ -71,7 +72,7 @@ type ThirdPartyCrdReconciler interface {
 	DoesCrdExist() *atomic.Bool
 	SetCrdExists(bool)
 	SkipNameValidation() bool
-	CreateResourceReconciler(types.UID, string, *http.Client)
+	CreateResourceReconciler(types.UID, *http.Client)
 	ResourceReconciler() ThirdPartyResourceReconciler
 }
 
@@ -166,13 +167,6 @@ func SetupThirdPartyCrdReconcilerWithManager(
 	crdReconciler ThirdPartyCrdReconciler,
 	logger *logr.Logger,
 ) error {
-	authToken := crdReconciler.GetAuthToken()
-	if authToken == "" {
-		logger.Info(fmt.Sprintf("No Dash0 auth token has been provided via the operator configuration resource. "+
-			"The operator will not watch for %s resources.", crdReconciler.KindDisplayName()))
-		return nil
-	}
-
 	kubeSystemNamespace := &corev1.Namespace{}
 	if err := k8sClient.Get(ctx, client.ObjectKey{Name: "kube-system"}, kubeSystemNamespace); err != nil {
 		msg := "unable to get the kube-system namespace uid"
@@ -182,7 +176,6 @@ func SetupThirdPartyCrdReconcilerWithManager(
 
 	crdReconciler.CreateResourceReconciler(
 		kubeSystemNamespace.UID,
-		authToken,
 		&http.Client{},
 	)
 
@@ -286,28 +279,48 @@ func maybeStartWatchingThirdPartyResources(
 	}
 
 	apiConfig := resourceReconciler.GetApiConfig().Load()
-	if !isValidApiConfig(apiConfig) {
+	authToken := resourceReconciler.GetAuthToken()
+	if !isValidApiConfig(apiConfig) || authToken == "" {
+		// Silently ignore this missing precondition if it happens during the startup of the operator. It will
+		// be remedied automatically once the operator configuration resource is reconciled for the first time, or
+		// once the secret ref has been resolved via the secret ref satellite.
 		if !isStartup {
-			// Silently ignore this missing precondition if it happens during the startup of the operator. It will
-			// be remedied automatically once the operator configuration resource is reconciled for the first time.
-			logger.Info(
-				fmt.Sprintf(
-					"The %s custom resource definition is present in this cluster, but no Dash0 API endpoint been "+
-						"provided via the operator configuration resource, or the operator configuration resource "+
-						"has not been reconciled yet. The operator will not watch for %s resources. "+
-						"(If there is an operator configuration resource with an API endpoint present in the "+
-						"cluster, it will be reconciled in a few seconds and this message can be safely ignored.)",
-					crdReconciler.QualifiedKind(),
-					crdReconciler.KindDisplayName(),
-				))
+			if !isValidApiConfig(apiConfig) {
+				logger.Info(
+					fmt.Sprintf(
+						"The %s custom resource definition is present in this cluster, but no Dash0 API endpoint has "+
+							"been provided via the operator configuration resource, or the operator configuration "+
+							"resource has not been reconciled yet. The operator will not watch for %s resources. "+
+							"(If there is an operator configuration resource with an API endpoint and a Dash0 auth "+
+							"token or a secret ref present in the cluster, it will be reconciled in a few seconds "+
+							"and this message can be safely ignored.)",
+						crdReconciler.QualifiedKind(),
+						crdReconciler.KindDisplayName(),
+					))
+			}
+			if authToken == "" {
+				logger.Info(
+					fmt.Sprintf(
+						"The %s custom resource definition is present in this cluster, but the Dash0 auth token is "+
+							"not available yet. Either it has not been provided via the operator configuration "+
+							"resource, or the operator configuration resource has not been reconciled yet, or it has "+
+							"been provided as a secret reference which has not been resolved to a token yet. The "+
+							"operator will not watch for %s resources just yet. "+
+							"(If there is an operator configuration resource with an API endpoint and a Dash0 auth "+
+							"token or a secret ref present in the cluster, it will be reconciled and the secret ref "+
+							"(if any) resolved to a token in a few seconds and this message can be safely ignored.)",
+						crdReconciler.QualifiedKind(),
+						crdReconciler.KindDisplayName(),
+					))
+			}
 		}
 		return
 	}
 
 	logger.Info(
 		fmt.Sprintf(
-			"The %s custom resource definition is present in this cluster, and a Dash0 API endpoint has been provided. "+
-				"The operator will watch for %s resources.",
+			"The %s custom resource definition is present in this cluster, and a Dash0 API endpoint and a Dash0 auth "+
+				"token have been provided. The operator will watch for %s resources.",
 			crdReconciler.QualifiedKind(),
 			crdReconciler.KindDisplayName(),
 		),
@@ -654,6 +667,7 @@ func validatePreconditions(
 	}
 
 	apiConfig := resourceReconciler.GetApiConfig().Load()
+	authToken := resourceReconciler.GetAuthToken()
 	if !isValidApiConfig(apiConfig) {
 		logger.Info(
 			fmt.Sprintf(
@@ -667,12 +681,10 @@ func validatePreconditions(
 			synchronizeResource: false,
 		}
 	}
-
-	authToken := resourceReconciler.GetAuthToken()
 	if authToken == "" {
 		logger.Info(
 			fmt.Sprintf(
-				"No auth token is set on the operator manager deployment, the %s(s) from %s/%s not be updated in Dash0.",
+				"No Dash0 auth token is available, the %s(s) from %s/%s will not be updated in Dash0.",
 				resourceReconciler.ShortName(),
 				namespace,
 				name,

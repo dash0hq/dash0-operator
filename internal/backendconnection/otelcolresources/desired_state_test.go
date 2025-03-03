@@ -293,7 +293,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 	//		Namespace:  namespace,
 	//		NamePrefix: namePrefix,
 	//		Export:     Dash0ExportWithEndpointAndToken(),
-	//		SelfMonitoringAndApiAccessConfiguration: selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{
+	//		SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 	//			SelfMonitoringEnabled: true,
 	//			Export:                Dash0ExportWithEndpointAndToken(),
 	//		},
@@ -318,7 +318,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 	//		Namespace:  namespace,
 	//		NamePrefix: namePrefix,
 	//		Export:     Dash0ExportWithEndpointTokenAndCustomDataset(),
-	//		SelfMonitoringAndApiAccessConfiguration: selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{
+	//		SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 	//			SelfMonitoringEnabled: true,
 	//			Export:                Dash0ExportWithEndpointTokenAndCustomDataset(),
 	//		},
@@ -343,7 +343,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 	//		Namespace:  namespace,
 	//		NamePrefix: namePrefix,
 	//		Export:     Dash0ExportWithEndpointAndToken(),
-	//		SelfMonitoringAndApiAccessConfiguration: selfmonitoringapiaccess.SelfMonitoringAndApiAccessConfiguration{
+	//		SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 	//			SelfMonitoringEnabled: false,
 	//			Export:                Dash0ExportWithEndpointAndToken(),
 	//		},
