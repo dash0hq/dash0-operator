@@ -171,7 +171,10 @@ custom resource definition should match snapshot:
                           type: object
                       type: object
                     filter:
-                      description: Optional filters for telemetry data that is collected in this namespace.
+                      description: |-
+                        Optional filters for telemetry data that is collected in this namespace. This can be used to drop entire spans,
+                        span events, metrics, metric data points, or log records. See "Transform" for advanced transformations (e.g.
+                        removing span attributes, metric data point attributes, log record attributes etc.).
                       properties:
                         error_mode:
                           default: ignore
@@ -190,7 +193,7 @@ custom resource definition should match snapshot:
 
                             Note that although this can be specified per namespace, the filter conditions will be aggregated into one
                             single filter processor in the resulting OpenTelemetry collector configuration; if different error modes are
-                            specified in different namespaces, the "most sever" error mode will be used (propagate > ignore > silent).
+                            specified in different namespaces, the "most severe" error mode will be used (propagate > ignore > silent).
                           enum:
                             - ignore
                             - silent
@@ -198,7 +201,7 @@ custom resource definition should match snapshot:
                           type: string
                         logs:
                           description: |-
-                            Filters for the logs signal, operating on the level of _log records_:
+                            Filters for the logs signal.
                             This can be used to drop _log records_.
                           properties:
                             log_records:
@@ -341,6 +344,61 @@ custom resource definition should match snapshot:
                         See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-check-rules-with-the-operator
                         for details. This setting is optional, it defaults to true.
                       type: boolean
+                    transform:
+                      description: |-
+                        Optional custom transformations for telemetry data that is collected in this namespace. This can be used to
+                        remove span attributes, metric data point attributes, log record attributes etc. See "Filter" for basic filters
+                        that can be used to drop entire spans, span events, metrics, metric data points, or log records.
+
+
+                        For each signal type (traces, metrics, logs), a list of OTTL statements can be defined. These will be applied to
+                        the telemetry collected in the namespace, following the order specified in the configuration. Each statement can
+                        access and transform telemetry using OTTL functions.
+                        See https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/transformprocessor
+                        for details and examples. Note that this configuration currently supports the
+                        [basic config style](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md#basic-config)
+                        of the transform processor. The
+                        [advanced config style](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md#advanced-config)
+                        is not supported.
+                      properties:
+                        error_mode:
+                          default: ignore
+                          description: |-
+                            An optional field which will determine how the transform processor reacts to errors that occur while processing a
+                            statement. Possible values:
+                            - ignore: ignore errors returned by statements, log them, continue with to the next statement.
+                            - silent: ignore errors returned by statements, do not log them, continue with to the next statement.
+                            - propagate: return the error up the processing pipeline. This will result in the payload being dropped from the
+                              collector.
+
+
+                            This is optional, default to "ignore".
+
+
+                            Note that although this can be specified per namespace, the transform statements will be aggregated into one
+                            single transform processor in the resulting OpenTelemetry collector configuration; if different error modes are
+                            specified in different namespaces, the "most severe" error mode will be used (propagate > ignore > silent).
+                          enum:
+                            - ignore
+                            - silent
+                            - propagate
+                          type: string
+                        log_statements:
+                          description: Transform statements for the logs signal.
+                          items:
+                            type: string
+                          type: array
+                        metric_statements:
+                          description: Transform statements for the metrics signal.
+                          items:
+                            type: string
+                          type: array
+                        trace_statements:
+                          description: Transform statements for the traces signal.
+                          items:
+                            type: string
+                          type: array
+                      type: object
                   type: object
                 status:
                   description: Dash0MonitoringStatus defines the observed state of the Dash0Monitoring monitoring resource.

@@ -48,6 +48,11 @@ type NamespacedFilter struct {
 	dash0v1alpha1.Filter
 }
 
+type NamespacedTransform struct {
+	Namespace string
+	dash0v1alpha1.Transform
+}
+
 const (
 	OtlpGrpcHostPort = 40317
 	OtlpHttpHostPort = 40318
@@ -169,6 +174,7 @@ func assembleDesiredStateForUpsert(
 	monitoredNamespaces := make([]string, 0, len(allMonitoringResources))
 	namespacesWithPrometheusScraping := make([]string, 0, len(allMonitoringResources))
 	filters := make([]NamespacedFilter, 0, len(allMonitoringResources))
+	transforms := make([]NamespacedTransform, 0, len(allMonitoringResources))
 	for _, monitoringResource := range allMonitoringResources {
 		namespace := monitoringResource.Namespace
 		monitoredNamespaces = append(monitoredNamespaces, namespace)
@@ -183,12 +189,20 @@ func assembleDesiredStateForUpsert(
 				Filter:    *filterForNamespace,
 			})
 		}
+		transformForNamespace := monitoringResource.Spec.Transform
+		if transformForNamespace != nil && transformForNamespace.HasAnyStatements() {
+			transforms = append(transforms, NamespacedTransform{
+				Namespace: namespace,
+				Transform: *transformForNamespace,
+			})
+		}
 	}
 	return assembleDesiredState(
 		config,
 		monitoredNamespaces,
 		namespacesWithPrometheusScraping,
 		filters,
+		transforms,
 		extraConfig,
 		false,
 	)
@@ -203,6 +217,7 @@ func assembleDesiredStateForDelete(
 		nil,
 		nil,
 		nil,
+		nil,
 		extraConfig,
 		true,
 	)
@@ -213,6 +228,7 @@ func assembleDesiredState(
 	monitoredNamespaces []string,
 	namespacesWithPrometheusScraping []string,
 	filters []NamespacedFilter,
+	transforms []NamespacedTransform,
 	extraConfig *OTelColExtraConfig,
 	forDeletion bool,
 ) ([]clientObject, error) {
@@ -223,6 +239,9 @@ func assembleDesiredState(
 	slices.SortFunc(filters, func(ns1 NamespacedFilter, ns2 NamespacedFilter) int {
 		return strings.Compare(ns1.Namespace, ns2.Namespace)
 	})
+	slices.SortFunc(transforms, func(ns1 NamespacedTransform, ns2 NamespacedTransform) int {
+		return strings.Compare(ns1.Namespace, ns2.Namespace)
+	})
 
 	var desiredState []clientObject
 	desiredState = append(desiredState, addCommonMetadata(assembleServiceAccountForDaemonSet(config)))
@@ -231,6 +250,7 @@ func assembleDesiredState(
 		monitoredNamespaces,
 		namespacesWithPrometheusScraping,
 		filters,
+		transforms,
 		forDeletion,
 	)
 	if err != nil {
@@ -257,6 +277,7 @@ func assembleDesiredState(
 			config,
 			monitoredNamespaces,
 			filters,
+			transforms,
 			forDeletion,
 		)
 		if err != nil {

@@ -99,6 +99,27 @@ processors:
       {{- end }}
 {{- end }}
 
+{{ if .CustomTransforms.HasMetricTransforms }}
+  transform/metrics/custom_telemetry_transform:
+    error_mode: {{ .CustomTransforms.GlobalErrorMode }}
+    metric_statements:
+      {{- range $i, $context := .CustomTransforms.MetricContexts }}
+      - statements:
+          {{- range $i, $statement := $context.Statements }}
+          - '{{ $statement }}'
+          {{- end }}
+      {{- if $context.Conditions }}
+        conditions:
+          {{- range $i, $condition := $context.Conditions }}
+          - '{{ $condition }}'
+          {{- end }}
+      {{- end }}
+      {{- if $context.ContextErrorMode }}
+        error_mode: {{ $context.ContextErrorMode }}
+      {{- end }}
+      {{- end }}
+{{- end }}
+
   memory_limiter:
     check_interval: 5s
     limit_percentage: 80
@@ -151,6 +172,9 @@ service:
       - filter/drop-replicaset-metrics-zero-value
       {{- if .CustomFilters.HasMetricFilters }}
       - filter/metrics/custom_telemetry_filter
+      {{- end }}
+      {{- if .CustomTransforms.HasMetricTransforms }}
+      - transform/metrics/custom_telemetry_transform
       {{- end }}
       - memory_limiter
       - batch

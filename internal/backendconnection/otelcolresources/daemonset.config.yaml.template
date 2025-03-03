@@ -502,6 +502,67 @@ processors:
       {{- end }}
 {{- end }}
 
+{{ if .CustomTransforms.HasTraceTransforms }}
+  transform/traces/custom_telemetry_transform:
+    error_mode: {{ .CustomTransforms.GlobalErrorMode }}
+    trace_statements:
+      {{- range $i, $context := .CustomTransforms.TraceContexts }}
+      - statements:
+          {{- range $i, $statement := $context.Statements }}
+          - '{{ $statement }}'
+          {{- end }}
+      {{- if $context.Conditions }}
+        conditions:
+          {{- range $i, $condition := $context.Conditions }}
+          - '{{ $condition }}'
+          {{- end }}
+      {{- end }}
+      {{- if $context.ContextErrorMode }}
+        error_mode: {{ $context.ContextErrorMode }}
+      {{- end }}
+      {{- end }}
+{{- end }}
+{{ if .CustomTransforms.HasMetricTransforms }}
+  transform/metrics/custom_telemetry_transform:
+    error_mode: {{ .CustomTransforms.GlobalErrorMode }}
+    metric_statements:
+      {{- range $i, $context := .CustomTransforms.MetricContexts }}
+      - statements:
+          {{- range $i, $statement := $context.Statements }}
+          - '{{ $statement }}'
+          {{- end }}
+      {{- if $context.Conditions }}
+        conditions:
+          {{- range $i, $condition := $context.Conditions }}
+          - '{{ $condition }}'
+          {{- end }}
+      {{- end }}
+      {{- if $context.ContextErrorMode }}
+        error_mode: {{ $context.ContextErrorMode }}
+      {{- end }}
+      {{- end }}
+{{- end }}
+{{ if .CustomTransforms.HasLogTransforms }}
+  transform/logs/custom_telemetry_transform:
+    error_mode: {{ .CustomTransforms.GlobalErrorMode }}
+    log_statements:
+      {{- range $i, $context := .CustomTransforms.LogContexts }}
+      - statements:
+          {{- range $i, $statement := $context.Statements }}
+          - '{{ $statement }}'
+          {{- end }}
+      {{- if $context.Conditions }}
+        conditions:
+          {{- range $i, $condition := $context.Conditions }}
+          - '{{ $condition }}'
+          {{- end }}
+      {{- end }}
+      {{- if $context.ContextErrorMode }}
+        error_mode: {{ $context.ContextErrorMode }}
+      {{- end }}
+      {{- end }}
+{{- end }}
+
   memory_limiter:
     check_interval: 5s
     limit_percentage: 80
@@ -551,6 +612,9 @@ service:
       {{- if .CustomFilters.HasTraceFilters }}
       - filter/traces/custom_telemetry_filter
       {{- end }}
+      {{- if .CustomTransforms.HasTraceTransforms }}
+      - transform/traces/custom_telemetry_transform
+      {{- end }}
       - memory_limiter
       - batch
       exporters:
@@ -595,6 +659,9 @@ service:
       {{- if .CustomFilters.HasMetricFilters }}
       - filter/metrics/custom_telemetry_filter
       {{- end }}
+      {{- if .CustomTransforms.HasMetricTransforms }}
+      - transform/metrics/custom_telemetry_transform
+      {{- end }}
       - memory_limiter
       - batch
       exporters:
@@ -632,6 +699,9 @@ service:
       {{- end }}
       {{- if .CustomFilters.HasLogFilters }}
       - filter/logs/custom_telemetry_filter
+      {{- end }}
+      {{- if .CustomTransforms.HasLogTransforms }}
+      - transform/logs/custom_telemetry_transform
       {{- end }}
       - memory_limiter
       - batch

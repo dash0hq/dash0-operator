@@ -93,10 +93,29 @@ type Dash0MonitoringSpec struct {
 	// +kubebuilder:default=true
 	PrometheusScrapingEnabled *bool `json:"prometheusScrapingEnabled,omitempty"`
 
-	// Optional filters for telemetry data that is collected in this namespace.
+	// Optional filters for telemetry data that is collected in this namespace. This can be used to drop entire spans,
+	// span events, metrics, metric data points, or log records. See "Transform" for advanced transformations (e.g.
+	// removing span attributes, metric data point attributes, log record attributes etc.).
 	//
 	// +kubebuilder:validation:Optional
 	Filter *Filter `json:"filter,omitempty"`
+
+	// Optional custom transformations for telemetry data that is collected in this namespace. This can be used to
+	// remove span attributes, metric data point attributes, log record attributes etc. See "Filter" for basic filters
+	// that can be used to drop entire spans, span events, metrics, metric data points, or log records.
+	//
+	// For each signal type (traces, metrics, logs), a list of OTTL statements can be defined. These will be applied to
+	// the telemetry collected in the namespace, following the order specified in the configuration. Each statement can
+	// access and transform telemetry using OTTL functions.
+	// See https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/processor/transformprocessor
+	// for details and examples. Note that this configuration currently supports the
+	// [basic config style](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md#basic-config)
+	// of the transform processor. The
+	// [advanced config style](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md#advanced-config)
+	// is not supported.
+	//
+	// +kubebuilder:validation:Optional
+	Transform *Transform `json:"transform,omitempty"`
 }
 
 // InstrumentWorkloadsMode describes when exactly workloads will be instrumented.  Only one of the following modes
@@ -119,27 +138,26 @@ const (
 
 var allInstrumentWorkloadsMode = []InstrumentWorkloadsMode{All, CreatedAndUpdated, None}
 
-// FilterErrorMode determine how the filter processor reacts to errors that occur while processing a condition.
+// FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
+// processing a condition.
 //
 // +kubebuilder:validation:Enum=ignore;silent;propagate
-type FilterErrorMode string
+type FilterTransformErrorMode string
 
 const (
-	// FilterErrorModeIgnore ignores errors returned by conditions, logs them, and continues with to the next condition.
-	// This is the recommended mode and also the default mode if this property is omitted.
-	FilterErrorModeIgnore FilterErrorMode = "ignore"
+	// FilterTransformErrorModeIgnore ignores errors returned by conditions, logs them, and continues with the next
+	// condition or statement.
+	FilterTransformErrorModeIgnore FilterTransformErrorMode = "ignore"
 
-	// FilterErrorModeSilent ignores errors returned by conditions, does not log them, and continues with to the next
-	// condition.
-	FilterErrorModeSilent FilterErrorMode = "silent"
+	// FilterTransformErrorModeSilent ignores errors returned by conditions, does not log them, and continues with the
+	// next condition or statement.
+	FilterTransformErrorModeSilent FilterTransformErrorMode = "silent"
 
-	// FilterErrorModePropagate return the error up the processing pipeline. This will result in the payload being
-	// dropped from the collector. Not recommended.
-	FilterErrorModePropagate FilterErrorMode = "propagate"
+	// FilterTransformErrorModePropagate return the error up the processing pipeline. This will result in the payload
+	// being dropped.
+	FilterTransformErrorModePropagate FilterTransformErrorMode = "propagate"
 )
 
-// Filter describes filters for telemetry that is collected in a namespace. Telemetry objects (e.g. spans,
-// log record, metrics, ...) matching one of the filter conditions will be dropped.
 type Filter struct {
 	// An optional field which will determine how the filter processor reacts to errors that occur while processing a
 	// condition. Possible values:
@@ -153,10 +171,10 @@ type Filter struct {
 	//
 	// Note that although this can be specified per namespace, the filter conditions will be aggregated into one
 	// single filter processor in the resulting OpenTelemetry collector configuration; if different error modes are
-	// specified in different namespaces, the "most sever" error mode will be used (propagate > ignore > silent).
+	// specified in different namespaces, the "most severe" error mode will be used (propagate > ignore > silent).
 	//
 	// +kubebuilder:default=ignore
-	ErrorMode FilterErrorMode `json:"error_mode,omitempty"`
+	ErrorMode FilterTransformErrorMode `json:"error_mode,omitempty"`
 
 	// Filters for the traces signal.
 	// This can be used to drop _spans_ or _span events_.
@@ -170,7 +188,7 @@ type Filter struct {
 	// +kubebuilder:validation:Optional
 	Metrics *MetricFilter `json:"metrics,omitempty"`
 
-	// Filters for the logs signal, operating on the level of _log records_:
+	// Filters for the logs signal.
 	// This can be used to drop _log records_.
 	//
 	// +kubebuilder:validation:Optional
@@ -190,7 +208,6 @@ func (f *Filter) HasAnyFilters() bool {
 	return false
 }
 
-// TraceFilter describes filters for the "traces" signal. Filters can be defined on the level of spans or spanevents.
 type TraceFilter struct {
 	// A list of conditions for filtering spans.
 	// This is a list of OTTL conditions.
@@ -217,8 +234,6 @@ func (f *TraceFilter) HasAnyFilters() bool {
 	return len(f.SpanFilter) > 0 || len(f.SpanEventFilter) > 0
 }
 
-// MetricFilter describes filters for the "metrics" signal. Filters can be defined on the level of metrics (e.g.
-// metric names) or individual data points.
 type MetricFilter struct {
 	// A list of conditions for filtering metrics.
 	// This is a list of OTTL conditions.
@@ -249,7 +264,6 @@ func (f *MetricFilter) HasAnyFilters() bool {
 	return len(f.MetricFilter) > 0 || len(f.DataPointFilter) > 0
 }
 
-// LogFilter describes filters for the "logs" signal. Filters can be defined on the level of log records.
 type LogFilter struct {
 	// A list of conditions for filtering log records.
 	// This is a list of OTTL conditions.
@@ -265,6 +279,52 @@ type LogFilter struct {
 
 func (f *LogFilter) HasAnyFilters() bool {
 	return len(f.LogRecordFilter) > 0
+}
+
+type Transform struct {
+	// An optional field which will determine how the transform processor reacts to errors that occur while processing a
+	// statement. Possible values:
+	// - ignore: ignore errors returned by statements, log them, continue with to the next statement.
+	// - silent: ignore errors returned by statements, do not log them, continue with to the next statement.
+	// - propagate: return the error up the processing pipeline. This will result in the payload being dropped from the
+	//   collector.
+	//
+	// This is optional, default to "ignore".
+	//
+	// Note that although this can be specified per namespace, the transform statements will be aggregated into one
+	// single transform processor in the resulting OpenTelemetry collector configuration; if different error modes are
+	// specified in different namespaces, the "most severe" error mode will be used (propagate > ignore > silent).
+	//
+	// +kubebuilder:default=ignore
+	ErrorMode FilterTransformErrorMode `json:"error_mode,omitempty"`
+
+	// Transform statements for the traces signal.
+	//
+	// +kubebuilder:validation:Optional
+	Traces []string `json:"trace_statements,omitempty"`
+
+	// Transform statements for the metrics signal.
+	//
+	// +kubebuilder:validation:Optional
+	Metrics []string `json:"metric_statements,omitempty"`
+
+	// Transform statements for the logs signal.
+	//
+	// +kubebuilder:validation:Optional
+	Logs []string `json:"log_statements,omitempty"`
+}
+
+func (t *Transform) HasAnyStatements() bool {
+	if len(t.Traces) > 0 {
+		return true
+	}
+	if len(t.Metrics) > 0 {
+		return true
+	}
+	if len(t.Logs) > 0 {
+		return true
+	}
+	return false
 }
 
 // SynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses

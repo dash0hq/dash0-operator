@@ -15,3 +15,7 @@ spec:
   filter:
   {{- .Filter | indent 4 -}}
 {{- end }}
+{{- if .Transform }}
+  transform:
+  {{- .Transform | indent 4 -}}
+{{- end }}

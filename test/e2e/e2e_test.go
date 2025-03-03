@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
+	"go.opentelemetry.io/collector/pdata/ptrace"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/startup"
@@ -259,7 +260,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 						Default,
 						runtimeTypeNodeJs,
 						workloadTypeDeployment,
-						"/dash0-k8s-operator-test",
+						testEndpoint,
 						fmt.Sprintf("id=%s", testId),
 					)
 
@@ -625,11 +626,12 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 			// Note: This test case deliberately works without an operator configuration resource, instead only using a
 			// monitoring resource to enable the namespace for metrics monitoring _and_ the export. If we deployed an
-			// operator configuration resource first, that would create a collector config map with filters to filter
-			// metrics by namespaces, and start the collector. Then, when we deploy the monitoring resource, the config
-			// map would be updated, but then it takes a bit until the collector is restarted via the configuration
-			// reloader. We can avoid that config change and the config reloading wait time by skipping the operator
-			// configuration resource.
+			// operator configuration resource first, that would create a collector config map with the filter
+			// discarding metrics from unmonitored namespaces set to allow only non-namepace scoped metrics (because
+			// no namespace is monitored), and start the collector. Then, when we deploy the monitoring resource, the
+			// config map would be updated, but then it takes a bit until the collector reloads its configuration via
+			// the configuration reloader container. We can avoid that config change and the config reloading wait time
+			// by skipping the operator configuration resource.
 
 			BeforeAll(func() {
 				deployDash0MonitoringResource(
@@ -765,7 +767,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 						g,
 						runtimeTypeNodeJs,
 						workloadTypeDeployment,
-						"/dash0-k8s-operator-test",
+						testEndpoint,
 						fmt.Sprintf("id=%s", testId),
 						timestampLowerBound,
 						false,
@@ -816,7 +818,7 @@ traces:
 						g,
 						runtimeTypeNodeJs,
 						workloadTypeDeployment,
-						"/dash0-k8s-operator-test",
+						testEndpoint,
 						fmt.Sprintf("id=%s", testId),
 						timestampLowerBound,
 						false,
@@ -832,6 +834,125 @@ traces:
 				)
 				matchResults.expectZeroMatches(
 					Default, "Node.js deployment: expected to find no /ready check spans")
+			})
+		})
+
+		Describe("telemetry transformation", func() {
+			// Note: This test case deliberately works without an operator configuration resource, instead only using a
+			// monitoring resource to configure the namespace telemetry transform _and_ the export. If we deployed an
+			// operator configuration resource first, that would create a collector config map without any custom
+			// transforms, and start the collector. Then, when we deploy the monitoring resource, the config map would
+			// be updated, but it takes a bit until the collector is restarted via the configuration reloader. We
+			// can avoid that config change and the config reloading wait time by skipping the operator configuration
+			// resource.
+
+			BeforeEach(func() {
+				deployOperatorWithoutAutoOperationConfiguration(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					images,
+				)
+			})
+
+			AfterEach(func() {
+				undeployDash0MonitoringResource(applicationUnderTestNamespace)
+				undeployOperator(operatorNamespace)
+			})
+
+			It("truncates attributes when the transform is active", func() {
+				transform :=
+					`
+trace_statements:
+- truncate_all(span.attributes, 10)
+`
+				deployDash0MonitoringResource(
+					applicationUnderTestNamespace,
+					dash0MonitoringValues{
+						InstrumentWorkloads: dash0v1alpha1.All,
+						Endpoint:            defaultEndpoint,
+						Token:               defaultToken,
+						Transform:           transform,
+					},
+					operatorNamespace,
+				)
+				verifyDaemonSetCollectorConfigMapContainsString(
+					operatorNamespace,
+					`- 'truncate_all(span.attributes, 10)'`,
+				)
+				verifyDaemonSetCollectorConfigMapContainsString(
+					operatorNamespace,
+					`- 'resource.attributes["k8s.namespace.name"] == "e2e-application-under-test-namespace"'`,
+				)
+				By("installing the Node.js deployment")
+				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+
+				testId := uuid.New().String()
+				timestampLowerBound := time.Now()
+				By("verifying that span attributes have been transformed")
+				Eventually(func(g Gomega) {
+					route := testEndpoint
+					query := fmt.Sprintf("id=%s", testId)
+					sendRequest(g, runtimeTypeNodeJs, workloadTypeDeployment, route, query)
+					resourceMatchFn :=
+						resourceSpansHaveExpectedResourceAttributes(runtimeTypeNodeJs, workloadTypeDeployment, false)
+					spanMatchFn := func(span ptrace.Span, matchResult *ObjectMatchResult[ptrace.ResourceSpans, ptrace.Span]) {
+						if span.Kind() == ptrace.SpanKindServer {
+							matchResult.addPassedAssertion(spanKindKey)
+						} else {
+							matchResult.addFailedAssertion(
+								spanKindKey,
+								fmt.Sprintf("expected a server span, this span has kind \"%s\"", span.Kind().String()),
+							)
+						}
+
+						truncatedRoute := route[0:10]
+						truncatedQuery := query[0:10]
+
+						target, hasTarget := span.Attributes().Get(httpTargetAttrib)
+						route, hasRoute := span.Attributes().Get(httpRouteAttrib)
+						query, hasQuery := span.Attributes().Get(urlQueryAttrib)
+						if hasTarget {
+							if target.Str() == truncatedRoute {
+								matchResult.addPassedAssertion(httpTargetAttrib)
+							} else {
+								matchResult.addFailedAssertion(
+									httpTargetAttrib,
+									fmt.Sprintf("expected %s but it was %s", truncatedRoute, target.Str()),
+								)
+							}
+						} else if hasRoute && hasQuery {
+							if route.Str() == truncatedRoute && query.Str() == truncatedQuery {
+								matchResult.addPassedAssertion(httpRouteAttrib + " and " + urlQueryAttrib)
+							} else {
+								matchResult.addFailedAssertion(
+									httpRouteAttrib+" and "+urlQueryAttrib,
+									fmt.Sprintf("expected %s & %s but it was %s & %s", truncatedRoute, truncatedQuery, route.Str(), query.Str()),
+								)
+							}
+						} else {
+							matchResult.addFailedAssertion(
+								httpTargetAttrib+" or ("+httpRouteAttrib+" and "+urlQueryAttrib+")",
+								fmt.Sprintf(
+									"expected %s or (%s and %s) but the span had no such attributes",
+									truncatedRoute,
+									truncatedRoute,
+									truncatedQuery,
+								),
+							)
+						}
+					}
+					allMatchResults :=
+						fileHasMatchingSpan(
+							g,
+							resourceMatchFn,
+							spanMatchFn,
+							timestampLowerBound,
+						)
+					allMatchResults.expectAtLeastOneMatch(g,
+						"Node.js deployment: expected to find at least one matching HTTP server span with truncated attributes",
+					)
+				}, verifyTelemetryTimeout, pollingInterval).Should(Succeed())
 			})
 		})
 

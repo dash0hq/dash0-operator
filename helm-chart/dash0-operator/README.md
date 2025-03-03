@@ -272,11 +272,11 @@ The Dash0 monitoring resource supports additional configuration settings:
         resource or restarting the Dash0 operator.
 
   * `none`: You can opt out of instrumenting workloads entirely by setting this option to `none`.
-     With `spec.instrumentWorkloads: none`, workloads in the target namespace will never be instrumented to send
-     telemetry to Dash0.
+     With `spec.instrumentWorkloads: none`, workloads in the target namespace will never be instrumented to emit
+     telemetry.
 
   If this setting is omitted, the value `all` is assumed and new/updated as well as existing Kubernetes workloads
-  will be intrumented by the operator to send telemetry to Dash0, as described above.
+  will be intrumented by the operator to emit telemetry, as described above.
 
   More fine-grained per-workload control over instrumentation is available by setting the label
   `dash0.com/enable=false` on individual workloads, see
@@ -313,7 +313,7 @@ The Dash0 monitoring resource supports additional configuration settings:
   not affected by setting `prometheusScrapingEnabled` to `false` for a namespace.
 
 * `spec.filter`: An optional custom filter configuration to drop some of the collected telemetry before sending it to
-  Dash0.
+  the configured telemetry backend.
   Filters for a specific telemetry object type (e.g. spans) are lists of
   [OTTL](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/README.md) expressions.
   If at least one of the one conditions of a list evaluates to true, the object will be dropped.
@@ -343,12 +343,36 @@ The Dash0 monitoring resource supports additional configuration settings:
        A list of OTTL conditions for filtering log records.
        All log records where at least one condition evaluates to true will be dropped.
 
-Here is an example file for a monitoring resource that
+* `spec.transform`: An optional custom transformation configuration that will be applied to the collected telemetry
+  before sending it to the configured telemetry backend.
+  Transformations for a specific telemetry signal (e.g. traces, metrics, logs) are lists of
+  [OTTL](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/README.md) statements.
+  All telemetry for the respective signal will be routed through all transformation statements.
+  The statements are executed in the order they are listed.
+  The configuration structure is identical to the basic configuration style of the OpenTelemetry collector's
+  [transform processor](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md#basic-config).
+  One difference to the transform processor is that the transform rules configured in a Dash0 monitoring resource will
+  only be applied to the telemetry collected in the namespace the monitoring resource is installed in.
+  Telemetry from other namespaces is not affected.
+  If both `spec.filter` and `spec.transform` are configured, the filtering for a given signal (traces, metrics, logs)
+  will be executed _before_ the transform processor.
+  (That is, you cannot assume that transformations have already been applied when writing filter rules.)
+  Existing basic configurations for the transform processor can be copied and pasted without syntactical changes.
+    * `spec.transform.trace_statements`:
+      A list of OTTL statements for transforming trace telemetry.
+    * `spec.transform.metric_statements`:
+      A list of OTTL statements for filtering metric telemetry.
+    * `spec.transform.log_statements`:
+      A list of OTTL statements for filtering log telemetry.
+
+
+Here is comprehensive example for a monitoring resource which
 * sets the instrumenation mode to `created-and-updated`,
 * disables Perses dashboard synchronization,
 * disable Prometheus rule synchronization,
-* disables Prometheus scraping, and
-* sets a couple of filters for all five telemetry object types:
+* disables Prometheus scraping,
+* sets a couple of filters for all five telemetry object types, and
+* applies transformations to limit the length of span attributes, datapoint attributes, and log attributes.
 
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1
@@ -379,6 +403,13 @@ spec:
       log_records:
       - 'IsMatch(body, ".*password.*")'
       - 'severity_number < SEVERITY_NUMBER_WARN'
+  transform:
+    trace_statements:
+    - 'truncate_all(span.attributes, 4096)'
+    metric_statements:
+    - 'truncate_all(datapoint.attributes, 4096)'
+    log_statements:
+    - 'truncate_all(log.attributes, 4096)'
 ```
 
 The Dash0 operator will instrument the following workload types:

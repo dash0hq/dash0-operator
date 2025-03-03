@@ -8,22 +8,3 @@ spec:
   synchronizePersesDashboards: $SYNCHRONIZE_PERSES_DASHBOARDS
   synchronizePrometheusRules: $SYNCHRONIZE_PROMETHEUS_RULES
   prometheusScrapingEnabled: $PROMETHEUS_SCRAPING_ENABLED
-  filter:
-    traces:
-      span:
-      - 'attributes["http.route"] == "/ready"'
-      - 'attributes["http.route"] == "/metrics"'
-      spanevent:
-      - 'attributes["grpc"] == true'
-      - 'IsMatch(name, ".*grpc.*")'
-    metrics:
-      metric:
-      - 'name == "k8s.replicaset.available"'
-      - 'name == "k8s.replicaset.desired"'
-      datapoint:
-      - 'metric.type == METRIC_DATA_TYPE_SUMMARY'
-      - 'resource.attributes["service.name"] == "my_service_name"'
-    logs:
-      log_records:
-      - 'IsMatch(body, ".*password.*")'
-      - 'severity_number < SEVERITY_NUMBER_WARN'
