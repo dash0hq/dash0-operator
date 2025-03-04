@@ -7,6 +7,7 @@ import (
 	"bytes"
 	_ "embed"
 	"fmt"
+	"slices"
 	"strings"
 	"text/template"
 
@@ -44,27 +45,28 @@ func (cf *customFilters) HasLogFilters() bool {
 
 type customTransforms struct {
 	GlobalErrorMode dash0v1alpha1.FilterTransformErrorMode
-	TraceContexts   []customTransformContext
-	MetricContexts  []customTransformContext
-	LogContexts     []customTransformContext
+	TraceGroups     []customTransformGroup
+	MetricGroups    []customTransformGroup
+	LogGroups       []customTransformGroup
 }
 
-type customTransformContext struct {
-	ContextErrorMode dash0v1alpha1.FilterTransformErrorMode
-	Conditions       []string
-	Statements       []string
+type customTransformGroup struct {
+	Context    string
+	ErrorMode  dash0v1alpha1.FilterTransformErrorMode
+	Conditions []string
+	Statements []string
 }
 
 func (ct *customTransforms) HasTraceTransforms() bool {
-	return len(ct.TraceContexts) > 0
+	return len(ct.TraceGroups) > 0
 }
 
 func (ct *customTransforms) HasMetricTransforms() bool {
-	return len(ct.MetricContexts) > 0
+	return len(ct.MetricGroups) > 0
 }
 
 func (ct *customTransforms) HasLogTransforms() bool {
-	return len(ct.LogContexts) > 0
+	return len(ct.LogGroups) > 0
 }
 
 type collectorConfigurationTemplateValues struct {
@@ -304,33 +306,36 @@ func prependNamespaceCheckToOttlFilterCondition(namespace string, condition stri
 
 func aggregateCustomTransforms(transformsSpec []NamespacedTransform) customTransforms {
 	var globalErrorMode dash0v1alpha1.FilterTransformErrorMode
-	var allTraceContexts []customTransformContext
-	var allMetricTraceContexts []customTransformContext
-	var allLogContexts []customTransformContext
-	for _, transformSpecForNamespace := range transformsSpec {
-		if !transformSpecForNamespace.HasAnyStatements() {
+	var allTraceGroups []customTransformGroup
+	var allMetricTraceGroups []customTransformGroup
+	var allLogGroups []customTransformGroup
+	for _, namespacedTransform := range transformsSpec {
+		transform := namespacedTransform.Transform
+		if !transform.HasAnyStatements() {
 			continue
 		}
-		namespace := transformSpecForNamespace.Namespace
-		if len(transformSpecForNamespace.Traces) > 0 {
-			allTraceContexts =
-				append(allTraceContexts,
-					addNamespaceConditionToTransformStatements(namespace, transformSpecForNamespace.Traces))
+		namespace := namespacedTransform.Namespace
+		if len(transform.Traces) > 0 {
+			allTraceGroups =
+				slices.Concat(allTraceGroups,
+					addNamespaceConditionToTransformGroups(namespace, transform.Traces))
 		}
-		if len(transformSpecForNamespace.Metrics) > 0 {
-			allMetricTraceContexts =
-				append(allMetricTraceContexts,
-					addNamespaceConditionToTransformStatements(namespace, transformSpecForNamespace.Metrics))
+		if len(transform.Metrics) > 0 {
+			allMetricTraceGroups =
+				slices.Concat(allMetricTraceGroups,
+					addNamespaceConditionToTransformGroups(namespace, transform.Metrics))
 		}
-		if len(transformSpecForNamespace.Logs) > 0 {
-			allLogContexts =
-				append(allLogContexts,
-					addNamespaceConditionToTransformStatements(namespace, transformSpecForNamespace.Logs))
+		if len(transform.Logs) > 0 {
+			allLogGroups =
+				slices.Concat(allLogGroups,
+					addNamespaceConditionToTransformGroups(namespace, transform.Logs))
 		}
 
-		// Each namespace could specify a different error mode, however, we only render one transformprocessor per
+		// Each namespace could specify a different error mode, however, we only render one transform processor per
 		// signal, so we use the "most severe" error mode (silent < ignore < propagate).
-		globalErrorMode = compareErrorMode(globalErrorMode, transformSpecForNamespace.ErrorMode)
+		if transform.ErrorMode != nil {
+			globalErrorMode = compareErrorMode(globalErrorMode, *transform.ErrorMode)
+		}
 	}
 
 	if globalErrorMode == "" {
@@ -342,17 +347,39 @@ func aggregateCustomTransforms(transformsSpec []NamespacedTransform) customTrans
 
 	return customTransforms{
 		GlobalErrorMode: globalErrorMode,
-		TraceContexts:   allTraceContexts,
-		MetricContexts:  allMetricTraceContexts,
-		LogContexts:     allLogContexts,
+		TraceGroups:     allTraceGroups,
+		MetricGroups:    allMetricTraceGroups,
+		LogGroups:       allLogGroups,
 	}
 }
 
-func addNamespaceConditionToTransformStatements(namespace string, statements []string) customTransformContext {
-	return customTransformContext{
-		Conditions: []string{fmt.Sprintf(`resource.attributes["k8s.namespace.name"] == "%s"`, namespace)},
-		Statements: statements,
+func addNamespaceConditionToTransformGroups(
+	namespace string,
+	transformGroups []dash0v1alpha1.NormalizedTransformGroup,
+) []customTransformGroup {
+	groupsWithNamespaceCondition := make([]customTransformGroup, 0, len(transformGroups))
+	for _, transformGroup := range transformGroups {
+		transformGroupWithNamespaceCondition := customTransformGroup{}
+		if transformGroup.Context != nil && *transformGroup.Context != "" {
+			transformGroupWithNamespaceCondition.Context = *transformGroup.Context
+		}
+		if transformGroup.ErrorMode != nil && *transformGroup.ErrorMode != "" {
+			transformGroupWithNamespaceCondition.ErrorMode = *transformGroup.ErrorMode
+		}
+		if len(transformGroup.Conditions) > 0 {
+			transformGroupWithNamespaceCondition.Conditions = transformGroup.Conditions
+		}
+		transformGroupWithNamespaceCondition.Conditions =
+			append(transformGroupWithNamespaceCondition.Conditions,
+				fmt.Sprintf(`resource.attributes["k8s.namespace.name"] == "%s"`, namespace),
+			)
+		if len(transformGroup.Statements) > 0 {
+			transformGroupWithNamespaceCondition.Statements = transformGroup.Statements
+		}
+
+		groupsWithNamespaceCondition = append(groupsWithNamespaceCondition, transformGroupWithNamespaceCondition)
 	}
+	return groupsWithNamespaceCondition
 }
 
 func compareErrorMode(

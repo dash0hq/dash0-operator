@@ -50,7 +50,7 @@ type NamespacedFilter struct {
 
 type NamespacedTransform struct {
 	Namespace string
-	dash0v1alpha1.Transform
+	Transform dash0v1alpha1.NormalizedTransformSpec
 }
 
 const (
@@ -189,7 +189,7 @@ func assembleDesiredStateForUpsert(
 				Filter:    *filterForNamespace,
 			})
 		}
-		transformForNamespace := monitoringResource.Spec.Transform
+		transformForNamespace := monitoringResource.Spec.NormalizedTransformSpec
 		if transformForNamespace != nil && transformForNamespace.HasAnyStatements() {
 			transforms = append(transforms, NamespacedTransform{
 				Namespace: namespace,

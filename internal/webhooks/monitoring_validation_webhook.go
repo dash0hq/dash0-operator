@@ -10,6 +10,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	loggg "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
@@ -34,8 +35,11 @@ func (h *MonitoringValidationWebhookHandler) SetupWebhookWithManager(mgr ctrl.Ma
 }
 
 func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request admission.Request) admission.Response {
+	logger := loggg.FromContext(ctx)
+
 	monitoringResource := &dash0v1alpha1.Dash0Monitoring{}
 	if _, _, err := decoder.Decode(request.Object.Raw, nil, monitoringResource); err != nil {
+		logger.Info("rejecting invalid monitoring resource", "error", err)
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 

@@ -118,6 +118,7 @@ spec:
                           needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct OTLP/gRPC endpoint can be copied fom
                           https://app.dash0.com -> organization settings -> "Endpoints". The correct endpoint value will always start with
                           `ingress.` and end in `dash0.com:4317`.
+                        minLength: 1
                         type: string
                     required:
                     - authorization

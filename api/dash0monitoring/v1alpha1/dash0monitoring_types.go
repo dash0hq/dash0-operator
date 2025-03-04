@@ -4,6 +4,7 @@
 package v1alpha1
 
 import (
+	"encoding/json"
 	"fmt"
 	"slices"
 
@@ -34,7 +35,7 @@ type Dash0MonitoringSpec struct {
 	// the export setting is present, it has to contain at least one exporter.
 	//
 	// +kubebuilder:validation:Optional
-	Export *Export `json:"export"`
+	Export *Export `json:"export,omitempty"`
 
 	// Global opt-out for workload instrumentation for the target namespace. There are three possible settings: `all`,
 	// `created-and-updated` and `none`. By default, the setting `all` is assumed.
@@ -116,6 +117,9 @@ type Dash0MonitoringSpec struct {
 	//
 	// +kubebuilder:validation:Optional
 	Transform *Transform `json:"transform,omitempty"`
+
+	// Only used internally, this field must not be specified by users.
+	NormalizedTransformSpec *NormalizedTransformSpec `json:"__dash0_internal__normalizedTransform,omitempty"`
 }
 
 // InstrumentWorkloadsMode describes when exactly workloads will be instrumented.  Only one of the following modes
@@ -296,25 +300,35 @@ type Transform struct {
 	// specified in different namespaces, the "most severe" error mode will be used (propagate > ignore > silent).
 	//
 	// +kubebuilder:default=ignore
-	ErrorMode FilterTransformErrorMode `json:"error_mode,omitempty"`
+	ErrorMode *FilterTransformErrorMode `json:"error_mode,omitempty"`
 
-	// Transform statements for the traces signal.
+	// Transform statements (or groups) for the trace signal type.
 	//
-	// +kubebuilder:validation:Optional
-	Traces []string `json:"trace_statements,omitempty"`
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:Schemaless
+	Traces []json.RawMessage `json:"trace_statements,omitempty"`
 
-	// Transform statements for the metrics signal.
+	// Transform statements (or groups) for the metric signal type.
 	//
-	// +kubebuilder:validation:Optional
-	Metrics []string `json:"metric_statements,omitempty"`
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:Schemaless
+	Metrics []json.RawMessage `json:"metric_statements,omitempty"`
 
-	// Transform statements for the logs signal.
+	// Transform statements (or groups) for the log signal type.
 	//
-	// +kubebuilder:validation:Optional
-	Logs []string `json:"log_statements,omitempty"`
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:Schemaless
+	Logs []json.RawMessage `json:"log_statements,omitempty"`
 }
 
-func (t *Transform) HasAnyStatements() bool {
+type NormalizedTransformSpec struct {
+	ErrorMode *FilterTransformErrorMode  `json:"error_mode,omitempty"`
+	Traces    []NormalizedTransformGroup `json:"trace_statements,omitempty"`
+	Metrics   []NormalizedTransformGroup `json:"metric_statements,omitempty"`
+	Logs      []NormalizedTransformGroup `json:"log_statements,omitempty"`
+}
+
+func (t *NormalizedTransformSpec) HasAnyStatements() bool {
 	if len(t.Traces) > 0 {
 		return true
 	}
@@ -325,6 +339,13 @@ func (t *Transform) HasAnyStatements() bool {
 		return true
 	}
 	return false
+}
+
+type NormalizedTransformGroup struct {
+	Context    *string                   `json:"context,omitempty"`
+	ErrorMode  *FilterTransformErrorMode `json:"error_mode,omitempty"`
+	Conditions []string                  `json:"conditions,omitempty"`
+	Statements []string                  `json:"statements,omitempty"`
 }
 
 // SynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses

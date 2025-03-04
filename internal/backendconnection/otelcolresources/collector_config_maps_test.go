@@ -64,16 +64,16 @@ type filterTestConfig struct {
 	expectations filterTestConfigExpectations
 }
 
-type contextExpectations struct {
+type groupExpectations struct {
 	conditions []string
 	statements []string
 }
 
-type contextExpectationsPerSignalType map[signalType][]contextExpectations
+type groupExpectationsPerSignalType map[signalType][]groupExpectations
 
 type transformExpectations struct {
 	signalsWithTransforms    []signalType
-	contexts                 contextExpectationsPerSignalType
+	groups                   groupExpectationsPerSignalType
 	signalsWithoutTransforms []signalType
 }
 
@@ -1538,9 +1538,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						transforms: []NamespacedTransform{
 							{
 								Namespace: namespace1,
-								Transform: dash0v1alpha1.Transform{
-									ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
-									Traces:    []string{"statement 1", "statement 2"},
+								Transform: dash0v1alpha1.NormalizedTransformSpec{
+									ErrorMode: ptr.To(dash0v1alpha1.FilterTransformErrorModeIgnore),
+									Traces: []dash0v1alpha1.NormalizedTransformGroup{
+										{Statements: []string{"statement 1"}},
+										{Statements: []string{"statement 2"}},
+									},
 								},
 							},
 							{
@@ -1552,10 +1555,16 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 							daemonset: transformExpectations{
 								signalsWithTransforms:    []signalType{signalTypeTraces},
 								signalsWithoutTransforms: []signalType{signalTypeMetrics, signalTypeLogs},
-								contexts: contextExpectationsPerSignalType{
-									signalTypeTraces: []contextExpectations{
+								groups: groupExpectationsPerSignalType{
+									signalTypeTraces: []groupExpectations{
 										{
-											statements: []string{"statement 1", "statement 2"},
+											statements: []string{"statement 1"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
+											},
+										},
+										{
+											statements: []string{"statement 2"},
 											conditions: []string{
 												`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
 											},
@@ -1573,9 +1582,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						transforms: []NamespacedTransform{
 							{
 								Namespace: namespace1,
-								Transform: dash0v1alpha1.Transform{
-									ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
-									Metrics:   []string{"statement 1", "statement 2"},
+								Transform: dash0v1alpha1.NormalizedTransformSpec{
+									ErrorMode: ptr.To(dash0v1alpha1.FilterTransformErrorModeIgnore),
+									Metrics: []dash0v1alpha1.NormalizedTransformGroup{
+										{Statements: []string{"statement 1"}},
+										{Statements: []string{"statement 2"}},
+									},
 								},
 							},
 							{
@@ -1587,10 +1599,16 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 							daemonset: transformExpectations{
 								signalsWithTransforms:    []signalType{signalTypeMetrics},
 								signalsWithoutTransforms: []signalType{signalTypeTraces, signalTypeLogs},
-								contexts: contextExpectationsPerSignalType{
+								groups: groupExpectationsPerSignalType{
 									signalTypeMetrics: {
 										{
-											statements: []string{"statement 1", "statement 2"},
+											statements: []string{"statement 1"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
+											},
+										},
+										{
+											statements: []string{"statement 2"},
 											conditions: []string{
 												`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
 											},
@@ -1601,10 +1619,16 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 							deployment: transformExpectations{
 								signalsWithTransforms:    []signalType{signalTypeMetrics},
 								signalsWithoutTransforms: []signalType{signalTypeTraces, signalTypeLogs},
-								contexts: contextExpectationsPerSignalType{
-									signalTypeMetrics: []contextExpectations{
+								groups: groupExpectationsPerSignalType{
+									signalTypeMetrics: []groupExpectations{
 										{
-											statements: []string{"statement 1", "statement 2"},
+											statements: []string{"statement 1"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
+											},
+										},
+										{
+											statements: []string{"statement 2"},
 											conditions: []string{
 												`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
 											},
@@ -1621,9 +1645,12 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						transforms: []NamespacedTransform{
 							{
 								Namespace: namespace2,
-								Transform: dash0v1alpha1.Transform{
-									ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
-									Logs:      []string{"statement 1", "statement 2"},
+								Transform: dash0v1alpha1.NormalizedTransformSpec{
+									ErrorMode: ptr.To(dash0v1alpha1.FilterTransformErrorModeIgnore),
+									Logs: []dash0v1alpha1.NormalizedTransformGroup{
+										{Statements: []string{"statement 1"}},
+										{Statements: []string{"statement 2"}},
+									},
 								},
 							},
 							{
@@ -1635,10 +1662,16 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 							daemonset: transformExpectations{
 								signalsWithTransforms:    []signalType{signalTypeLogs},
 								signalsWithoutTransforms: []signalType{signalTypeTraces, signalTypeMetrics},
-								contexts: contextExpectationsPerSignalType{
-									signalTypeLogs: []contextExpectations{
+								groups: groupExpectationsPerSignalType{
+									signalTypeLogs: []groupExpectations{
 										{
-											statements: []string{"statement 1", "statement 2"},
+											statements: []string{"statement 1"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-2"`,
+											},
+										},
+										{
+											statements: []string{"statement 2"},
 											conditions: []string{
 												`resource.attributes["k8s.namespace.name"] == "namespace-2"`,
 											},
@@ -1656,11 +1689,20 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						transforms: []NamespacedTransform{
 							{
 								Namespace: namespace1,
-								Transform: dash0v1alpha1.Transform{
-									ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
-									Traces:    []string{"trace statement 1", "trace statement 2"},
-									Metrics:   []string{"metric statement 1", "metric statement 2"},
-									Logs:      []string{"log statement 1", "log statement 2"},
+								Transform: dash0v1alpha1.NormalizedTransformSpec{
+									ErrorMode: ptr.To(dash0v1alpha1.FilterTransformErrorModeIgnore),
+									Traces: []dash0v1alpha1.NormalizedTransformGroup{
+										{Statements: []string{"trace statement 1"}},
+										{Statements: []string{"trace statement 2"}},
+									},
+									Metrics: []dash0v1alpha1.NormalizedTransformGroup{
+										{Statements: []string{"metric statement 1"}},
+										{Statements: []string{"metric statement 2"}},
+									},
+									Logs: []dash0v1alpha1.NormalizedTransformGroup{
+										{Statements: []string{"log statement 1"}},
+										{Statements: []string{"log statement 2"}},
+									},
 								},
 							},
 							{
@@ -1672,26 +1714,44 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 							daemonset: transformExpectations{
 								signalsWithTransforms:    []signalType{signalTypeTraces, signalTypeMetrics, signalTypeLogs},
 								signalsWithoutTransforms: nil,
-								contexts: contextExpectationsPerSignalType{
-									signalTypeTraces: []contextExpectations{
+								groups: groupExpectationsPerSignalType{
+									signalTypeTraces: []groupExpectations{
 										{
-											statements: []string{"trace statement 1", "trace statement 2"},
+											statements: []string{"trace statement 1"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
+											},
+										},
+										{
+											statements: []string{"trace statement 2"},
 											conditions: []string{
 												`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
 											},
 										},
 									},
-									signalTypeMetrics: []contextExpectations{
+									signalTypeMetrics: []groupExpectations{
 										{
-											statements: []string{"metric statement 1", "metric statement 2"},
+											statements: []string{"metric statement 1"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
+											},
+										},
+										{
+											statements: []string{"metric statement 2"},
 											conditions: []string{
 												`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
 											},
 										},
 									},
-									signalTypeLogs: []contextExpectations{
+									signalTypeLogs: []groupExpectations{
 										{
-											statements: []string{"log statement 1", "log statement 2"},
+											statements: []string{"log statement 1"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
+											},
+										},
+										{
+											statements: []string{"log statement 2"},
 											conditions: []string{
 												`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
 											},
@@ -1702,10 +1762,16 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 							deployment: transformExpectations{
 								signalsWithTransforms:    []signalType{signalTypeMetrics},
 								signalsWithoutTransforms: []signalType{signalTypeTraces, signalTypeLogs},
-								contexts: contextExpectationsPerSignalType{
+								groups: groupExpectationsPerSignalType{
 									signalTypeMetrics: {
 										{
-											statements: []string{"metric statement 1", "metric statement 2"},
+											statements: []string{"metric statement 1"},
+											conditions: []string{
+												`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
+											},
+										},
+										{
+											statements: []string{"metric statement 2"},
 											conditions: []string{
 												`resource.attributes["k8s.namespace.name"] == "namespace-1"`,
 											},
@@ -1715,6 +1781,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 							},
 						},
 					}),
+
 				//
 			})
 		}
@@ -1754,29 +1821,29 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				transformProcessor := transformProcessorRaw.(map[string]interface{})
 				Expect(transformProcessor["error_mode"]).To(Equal("ignore"))
 
-				signalContextsLabel := ""
+				signalGroupsLabel := ""
 				switch signal {
 				case signalTypeTraces:
-					signalContextsLabel = "trace_statements"
+					signalGroupsLabel = "trace_statements"
 				case signalTypeMetrics:
-					signalContextsLabel = "metric_statements"
+					signalGroupsLabel = "metric_statements"
 				case signalTypeLogs:
-					signalContextsLabel = "log_statements"
+					signalGroupsLabel = "log_statements"
 				default:
 					Fail(fmt.Sprintf("unknown signal type: %s", signal))
 				}
 
-				expectedContexts := expectations.contexts[signal]
-				contextsRaw := readFromMap(transformProcessor, []string{signalContextsLabel})
-				Expect(contextsRaw).ToNot(BeNil(),
-					"expected %d transform context(s) but there were none for signal \"%s\"",
-					len(expectedContexts), signal)
-				contexts := contextsRaw.([]interface{})
-				Expect(contexts).To(HaveLen(len(expectedContexts)))
+				expectedGroups := expectations.groups[signal]
+				groupsRaw := readFromMap(transformProcessor, []string{signalGroupsLabel})
+				Expect(groupsRaw).ToNot(BeNil(),
+					"expected %d transform group(s) but there were none for signal \"%s\"",
+					len(expectedGroups), signal)
+				groups := groupsRaw.([]interface{})
+				Expect(groups).To(HaveLen(len(expectedGroups)))
 
-				for i, expectedContext := range expectedContexts {
-					expectedStatements := expectedContext.statements
-					actualStatementsRaw := readFromMap(contexts[i], []string{"statements"})
+				for i, expectedGroup := range expectedGroups {
+					expectedStatements := expectedGroup.statements
+					actualStatementsRaw := readFromMap(groups[i], []string{"statements"})
 					Expect(actualStatementsRaw).ToNot(BeNil(),
 						"expected %d transform statement(s) but there were none for signal \"%s\"",
 						len(expectedStatements), signal)
@@ -1786,8 +1853,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						Expect(actualTransformStatements[i]).To(Equal(expectedStatement))
 					}
 
-					expectedConditions := expectedContext.conditions
-					actualConditionsRaw := readFromMap(contexts[i], []string{"conditions"})
+					expectedConditions := expectedGroup.conditions
+					actualConditionsRaw := readFromMap(groups[i], []string{"conditions"})
 					Expect(actualConditionsRaw).ToNot(BeNil(),
 						"expected %d transform condition(s) but there were none for signal \"%s\"",
 						len(expectedConditions), signal)
@@ -1828,10 +1895,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			for _, errorMode := range testConfig.errorModes {
 				transforms = append(transforms, NamespacedTransform{
 					Namespace: namespace1,
-					Transform: dash0v1alpha1.Transform{
-						ErrorMode: errorMode,
-						Traces: []string{
-							"condition",
+					Transform: dash0v1alpha1.NormalizedTransformSpec{
+						ErrorMode: ptr.To(errorMode),
+						Traces: []dash0v1alpha1.NormalizedTransformGroup{
+							{Statements: []string{"statement"}},
 						},
 					},
 				})
@@ -2288,44 +2355,56 @@ func createTransformTestForSingleObjectType(
 		})
 	}
 
-	var transform1 dash0v1alpha1.Transform
-	var transform2 dash0v1alpha1.Transform
+	var transform1 dash0v1alpha1.NormalizedTransformSpec
+	var transform2 dash0v1alpha1.NormalizedTransformSpec
 	switch signalT {
 	case signalTypeTraces:
-		transform1 = dash0v1alpha1.Transform{
-			ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
-			Traces:    statementsNamespace1,
+		transform1 = dash0v1alpha1.NormalizedTransformSpec{
+			ErrorMode: ptr.To(dash0v1alpha1.FilterTransformErrorModeIgnore),
+			Traces: []dash0v1alpha1.NormalizedTransformGroup{
+				{Statements: statementsNamespace1},
+			},
 		}
-		transform2 = dash0v1alpha1.Transform{
-			ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
-			Traces:    statementsNamespace2,
+		transform2 = dash0v1alpha1.NormalizedTransformSpec{
+			ErrorMode: ptr.To(dash0v1alpha1.FilterTransformErrorModeIgnore),
+			Traces: []dash0v1alpha1.NormalizedTransformGroup{
+				{Statements: statementsNamespace2},
+			},
 		}
 
 	case signalTypeMetrics:
-		transform1 = dash0v1alpha1.Transform{
-			ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
-			Metrics:   statementsNamespace1,
+		transform1 = dash0v1alpha1.NormalizedTransformSpec{
+			ErrorMode: ptr.To(dash0v1alpha1.FilterTransformErrorModeIgnore),
+			Metrics: []dash0v1alpha1.NormalizedTransformGroup{
+				{Statements: statementsNamespace1},
+			},
 		}
-		transform2 = dash0v1alpha1.Transform{
-			ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
-			Metrics:   statementsNamespace2,
+		transform2 = dash0v1alpha1.NormalizedTransformSpec{
+			ErrorMode: ptr.To(dash0v1alpha1.FilterTransformErrorModeIgnore),
+			Metrics: []dash0v1alpha1.NormalizedTransformGroup{
+				{Statements: statementsNamespace2},
+			},
 		}
 
 	case signalTypeLogs:
-		transform1 = dash0v1alpha1.Transform{
-			ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
-			Logs:      statementsNamespace1,
+		transform1 = dash0v1alpha1.NormalizedTransformSpec{
+			ErrorMode: ptr.To(dash0v1alpha1.FilterTransformErrorModeIgnore),
+			Logs: []dash0v1alpha1.NormalizedTransformGroup{
+				{Statements: statementsNamespace1},
+			},
 		}
-		transform2 = dash0v1alpha1.Transform{
-			ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
-			Logs:      statementsNamespace2,
+		transform2 = dash0v1alpha1.NormalizedTransformSpec{
+			ErrorMode: ptr.To(dash0v1alpha1.FilterTransformErrorModeIgnore),
+			Logs: []dash0v1alpha1.NormalizedTransformGroup{
+				{Statements: statementsNamespace2},
+			},
 		}
 	}
 
 	daemonSetExpectations := transformExpectations{
 		signalsWithTransforms: []signalType{signalT},
-		contexts: contextExpectationsPerSignalType{
-			signalT: []contextExpectations{
+		groups: groupExpectationsPerSignalType{
+			signalT: []groupExpectations{
 				{
 					conditions: []string{
 						fmt.Sprintf(
@@ -2350,8 +2429,8 @@ func createTransformTestForSingleObjectType(
 	if signalT == signalTypeMetrics {
 		deploymentExpectations = transformExpectations{
 			signalsWithTransforms: []signalType{signalT},
-			contexts: contextExpectationsPerSignalType{
-				signalT: []contextExpectations{
+			groups: groupExpectationsPerSignalType{
+				signalT: []groupExpectations{
 					{
 						conditions: []string{
 							fmt.Sprintf(

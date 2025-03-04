@@ -506,19 +506,22 @@ processors:
   transform/traces/custom_telemetry_transform:
     error_mode: {{ .CustomTransforms.GlobalErrorMode }}
     trace_statements:
-      {{- range $i, $context := .CustomTransforms.TraceContexts }}
+      {{- range $i, $group := .CustomTransforms.TraceGroups }}
       - statements:
-          {{- range $i, $statement := $context.Statements }}
+          {{- range $i, $statement := $group.Statements }}
           - '{{ $statement }}'
           {{- end }}
-      {{- if $context.Conditions }}
+      {{- if $group.Conditions }}
         conditions:
-          {{- range $i, $condition := $context.Conditions }}
+          {{- range $i, $condition := $group.Conditions }}
           - '{{ $condition }}'
           {{- end }}
       {{- end }}
-      {{- if $context.ContextErrorMode }}
-        error_mode: {{ $context.ContextErrorMode }}
+      {{- if $group.ErrorMode }}
+        error_mode: {{ $group.ErrorMode }}
+      {{- end }}
+      {{- if $group.Context }}
+        context: {{ $group.Context }}
       {{- end }}
       {{- end }}
 {{- end }}
@@ -526,19 +529,22 @@ processors:
   transform/metrics/custom_telemetry_transform:
     error_mode: {{ .CustomTransforms.GlobalErrorMode }}
     metric_statements:
-      {{- range $i, $context := .CustomTransforms.MetricContexts }}
+      {{- range $i, $group := .CustomTransforms.MetricGroups }}
       - statements:
-          {{- range $i, $statement := $context.Statements }}
+          {{- range $i, $statement := $group.Statements }}
           - '{{ $statement }}'
           {{- end }}
-      {{- if $context.Conditions }}
+      {{- if $group.Conditions }}
         conditions:
-          {{- range $i, $condition := $context.Conditions }}
+          {{- range $i, $condition := $group.Conditions }}
           - '{{ $condition }}'
           {{- end }}
       {{- end }}
-      {{- if $context.ContextErrorMode }}
-        error_mode: {{ $context.ContextErrorMode }}
+      {{- if $group.ErrorMode }}
+        error_mode: {{ $group.ErrorMode }}
+      {{- end }}
+      {{- if $group.Context }}
+        context: {{ $group.Context }}
       {{- end }}
       {{- end }}
 {{- end }}
@@ -546,19 +552,22 @@ processors:
   transform/logs/custom_telemetry_transform:
     error_mode: {{ .CustomTransforms.GlobalErrorMode }}
     log_statements:
-      {{- range $i, $context := .CustomTransforms.LogContexts }}
+      {{- range $i, $group := .CustomTransforms.LogGroups }}
       - statements:
-          {{- range $i, $statement := $context.Statements }}
+          {{- range $i, $statement := $group.Statements }}
           - '{{ $statement }}'
           {{- end }}
-      {{- if $context.Conditions }}
+      {{- if $group.Conditions }}
         conditions:
-          {{- range $i, $condition := $context.Conditions }}
+          {{- range $i, $condition := $group.Conditions }}
           - '{{ $condition }}'
           {{- end }}
       {{- end }}
-      {{- if $context.ContextErrorMode }}
-        error_mode: {{ $context.ContextErrorMode }}
+      {{- if $group.ErrorMode }}
+        error_mode: {{ $group.ErrorMode }}
+      {{- end }}
+      {{- if $group.Context }}
+        context: {{ $group.Context }}
       {{- end }}
       {{- end }}
 {{- end }}

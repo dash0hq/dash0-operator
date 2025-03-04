@@ -64,30 +64,33 @@ func ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
 	}
 
 	export := resource.Spec.Export
+	selfMonitoringIsEnabled := util.ReadBoolPointerWithDefault(resource.Spec.SelfMonitoring.Enabled, true)
 	if export == nil {
-		logger.Info("Invalid configuration of Dash0OperatorConfiguration resource: Self-monitoring is enabled but no " +
-			"export configuration is set. Self-monitoring telemetry will not be sent.")
+		if selfMonitoringIsEnabled {
+			logger.Info("Invalid configuration of Dash0OperatorConfiguration resource: Self-monitoring is enabled " +
+				"but no export configuration is set. Self-monitoring telemetry will not be sent.")
+		}
 		return SelfMonitoringAndApiAccessConfiguration{}, nil
 	}
 
 	if export.Dash0 != nil {
 		return convertResourceToDash0ExportConfiguration(
 			export,
-			util.ReadBoolPointerWithDefault(resource.Spec.SelfMonitoring.Enabled, true),
+			selfMonitoringIsEnabled,
 			logger,
 		)
 	}
 	if export.Grpc != nil {
 		return convertResourceToGrpcExportConfiguration(
 			export,
-			util.ReadBoolPointerWithDefault(resource.Spec.SelfMonitoring.Enabled, true),
+			selfMonitoringIsEnabled,
 			logger,
 		)
 	}
 	if export.Http != nil {
 		return convertResourceToHttpExportConfiguration(
 			export,
-			util.ReadBoolPointerWithDefault(resource.Spec.SelfMonitoring.Enabled, true),
+			selfMonitoringIsEnabled,
 		)
 	}
 	return SelfMonitoringAndApiAccessConfiguration{},

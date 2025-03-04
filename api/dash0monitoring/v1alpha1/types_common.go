@@ -40,6 +40,7 @@ type Dash0Configuration struct {
 	// `ingress.` and end in `dash0.com:4317`.
 	//
 	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:MinLength=1
 	Endpoint string `json:"endpoint"`
 
 	// The name of the Dash0 dataset to which telemetry data will be sent. This property is optional. If omitted, the
@@ -74,14 +75,14 @@ type Authorization struct {
 	// "Auth Tokens".
 	//
 	// +kubebuilder:validation:Optional
-	Token *string `json:"token"` // either token or secret ref, with token taking precedence
+	Token *string `json:"token,omitempty"` // either token or secret ref, with token taking precedence
 
 	// A reference to a Kubernetes secret containing the Dash0 authorization token. This property is optional, and is
 	// ignored if the token property is set. The authorization token for your Dash0 organization can be copied from
 	// https://app.dash0.com -> organization settings -> "Auth Tokens".
 	//
 	// +kubebuilder:validation:Optional
-	SecretRef *SecretRef `json:"secretRef"`
+	SecretRef *SecretRef `json:"secretRef,omitempty"`
 }
 
 type SecretRef struct {

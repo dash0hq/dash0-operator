@@ -44,6 +44,92 @@ spec:
               Dash0MonitoringSpec describes the details of monitoring a single Kubernetes namespace with Dash0 and sending
               telemetry to an observability backend.
             properties:
+              __dash0_internal__normalizedTransform:
+                description: Only used internally, this field must not be specified
+                  by users.
+                properties:
+                  error_mode:
+                    description: |-
+                      FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
+                      processing a condition.
+                    enum:
+                    - ignore
+                    - silent
+                    - propagate
+                    type: string
+                  log_statements:
+                    items:
+                      properties:
+                        conditions:
+                          items:
+                            type: string
+                          type: array
+                        context:
+                          type: string
+                        error_mode:
+                          description: |-
+                            FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
+                            processing a condition.
+                          enum:
+                          - ignore
+                          - silent
+                          - propagate
+                          type: string
+                        statements:
+                          items:
+                            type: string
+                          type: array
+                      type: object
+                    type: array
+                  metric_statements:
+                    items:
+                      properties:
+                        conditions:
+                          items:
+                            type: string
+                          type: array
+                        context:
+                          type: string
+                        error_mode:
+                          description: |-
+                            FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
+                            processing a condition.
+                          enum:
+                          - ignore
+                          - silent
+                          - propagate
+                          type: string
+                        statements:
+                          items:
+                            type: string
+                          type: array
+                      type: object
+                    type: array
+                  trace_statements:
+                    items:
+                      properties:
+                        conditions:
+                          items:
+                            type: string
+                          type: array
+                        context:
+                          type: string
+                        error_mode:
+                          description: |-
+                            FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
+                            processing a condition.
+                          enum:
+                          - ignore
+                          - silent
+                          - propagate
+                          type: string
+                        statements:
+                          items:
+                            type: string
+                          type: array
+                      type: object
+                    type: array
+                type: object
               export:
                 description: |-
                   The configuration of the observability backend to which telemetry data will be sent. This property is optional.
@@ -116,6 +202,7 @@ spec:
                           needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct OTLP/gRPC endpoint can be copied fom
                           https://app.dash0.com -> organization settings -> "Endpoints". The correct endpoint value will always start with
                           `ingress.` and end in `dash0.com:4317`.
+                        minLength: 1
                         type: string
                     required:
                     - authorization
@@ -396,20 +483,17 @@ spec:
                     - propagate
                     type: string
                   log_statements:
-                    description: Transform statements for the logs signal.
-                    items:
-                      type: string
-                    type: array
+                    description: Transform statements (or groups) for the log signal
+                      type.
+                    x-kubernetes-preserve-unknown-fields: true
                   metric_statements:
-                    description: Transform statements for the metrics signal.
-                    items:
-                      type: string
-                    type: array
+                    description: Transform statements (or groups) for the metric signal
+                      type.
+                    x-kubernetes-preserve-unknown-fields: true
                   trace_statements:
-                    description: Transform statements for the traces signal.
-                    items:
-                      type: string
-                    type: array
+                    description: Transform statements (or groups) for the trace signal
+                      type.
+                    x-kubernetes-preserve-unknown-fields: true
                 type: object
             type: object
           status:
