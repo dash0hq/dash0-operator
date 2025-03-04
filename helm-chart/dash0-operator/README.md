@@ -155,26 +155,26 @@ spec:
 ```
 
 Here is a list of configuration options for this resource:
-* `spec.export.dash0.endpoint`: The URL of the Dash0 ingress endpoint to which telemetry data will be sent.
+* <a href="#operatorconfigurationresource.spec.export.dash0.endpoint"><span id="operatorconfigurationresource.spec.export.dash0.endpoint">`spec.export.dash0.endpoint`</span></a>: The URL of the Dash0 ingress endpoint to which telemetry data will be sent.
   This property is mandatory.
   Replace the value in the example above with the OTLP/gRPC endpoint of your Dash0 organization.
   The correct OTLP/gRPC endpoint can be copied fom https://app.dash0.com -> organization settings -> "Endpoints"
   -> "OTLP/gRPC".
   Note that the correct endpoint value will always start with `ingress.` and end in `dash0.com:4317`.
   Including a protocol prefix (e.g. `https://`) is optional.
-* `spec.export.dash0.authorization.token` or `spec.export.dash0.authorization.secretRef`: Exactly one of these two
-  properties needs to be provided.
+* `spec.export.dash0.authorization.token` or `spec.export.dash0.authorization.secretRef`:
+  Exactly one of these two properties needs to be provided.
   Providing both will cause a validation error when installing the Dash0Monitoring resource.
-    * `spec.export.dash0.authorization.token`: Replace the value in the example above with the Dash0 authorization token
-      of your organization.
+    * <a href="#operatorconfigurationresource.spec.export.dash0.authorization.token"><span id="operatorconfigurationresource.spec.export.dash0.authorization.token">`spec.export.dash0.authorization.token`</span></a>:
+      Replace the value in the example above with the Dash0 authorization token of your organization.
       The authorization token for your Dash0 organization can be copied from https://app.dash0.com -> organization
       settings -> "Auth Tokens".
       The prefix `Bearer ` must *not* be included in the value.
       Note that the value will be rendered verbatim into a Kubernetes ConfigMap object.
       Anyone with API access to the Kubernetes cluster will be able to read the value.
       Use the `secretRef` property and a Kubernetes secret if you want to avoid that.
-    * `spec.export.dash0.authorization.secretRef`: A reference to an existing Kubernetes secret in the Dash0 operator's
-      namespace.
+    * <a href="#operatorconfigurationresource.spec.export.dash0.authorization.secretRef"><span id="operatorconfigurationresource.spec.export.dash0.authorization.secretRef">`spec.export.dash0.authorization.secretRef`</span></a>:
+      A reference to an existing Kubernetes secret in the Dash0 operator's namespace.
       See the section [Using a Kubernetes Secret for the Dash0 Authorization Token](#using-a-kubernetes-secret-for-the-dash0-authorization-token)
       for an example file that uses a `secretRef`.
       The secret needs to contain the Dash0 authorization token.
@@ -183,18 +183,22 @@ Here is a list of configuration options for this resource:
       cluster will be able to read the value.
       Additional steps are required to make sure secret values are encrypted.
       See https://kubernetes.io/docs/concepts/configuration/secret/ for more information on Kubernetes secrets.
-* `spec.export.dash0.apiEndpoint`: The base URL of the Dash0 API to talk to. This is not where telemetry will be sent,
-  but it is used for managing dashboards and check rules via the operator. This property is optional. The value needs
-  to be the API endpoint of your Dash0 organization. The correct API endpoint can be copied fom https://app.dash0.com
-  -> organization settings -> "Endpoints" -> "API". The correct endpoint value will always start with "https://api." and
-  end in ".dash0.com". If this property is omitted, managing dashboards and check rules via the operator will not work.
-* `spec.selfMonitoring.enabled`: An opt-out for self-monitoring for the operator.
+* <a href="#operatorconfigurationresource.spec.export.dash0.apiEndpoint"><span id="operatorconfigurationresource.spec.export.dash0.apiEndpoint">`spec.export.dash0.apiEndpoint`</span></a>:
+  The base URL of the Dash0 API to talk to. This is not where telemetry will be sent, but it is used for managing
+  dashboards and check rules via the operator. This property is optional.
+  The value needs to be the API endpoint of your Dash0 organization.
+  The correct API endpoint can be copied fom https://app.dash0.com -> organization settings -> "Endpoints" -> "API".
+  The correct endpoint value will always start with "https://api." and end in ".dash0.com".
+  If this property is omitted, managing dashboards and check rules via the operator will not work.
+* <a href="#operatorconfigurationresource.spec.selfMonitoring.enabled"><span id="operatorconfigurationresource.spec.selfMonitoring.enabled">`spec.selfMonitoring.enabled`</span></a>:
+  An opt-out for self-monitoring for the operator.
   If enabled, the operator will collect self-monitoring telemetry and send it to the configured Dash0 backend.
   This setting is optional, it defaults to true.
-* `spec.kubernetesInfrastructureMetricsCollectionEnabled`: If enabled, the operator will collect Kubernetes
-  infrastructure metrics.
+* <a href="#operatorconfigurationresource.spec.kubernetesInfrastructureMetricsCollectionEnabled"><span id="operatorconfigurationresource.spec.kubernetesInfrastructureMetricsCollectionEnabled">`spec.kubernetesInfrastructureMetricsCollectionEnabled`</span></a>:
+  If enabled, the operator will collect Kubernetes infrastructure metrics.
   This setting is optional, it defaults to true.
-* `spec.clusterName`: If set, the value will be added as the resource attribute `k8s.cluster.name` to all telemetry.
+* <a href="#operatorconfigurationresource.spec.clusterName"><span id="operatorconfigurationresource.spec.clusterName">`spec.clusterName`</span></a>:
+  If set, the value will be added as the resource attribute `k8s.cluster.name` to all telemetry.
   This setting is optional. By default, `k8s.cluster.name` will not be added to telemetry.
 
 After providing the required values (at least `endpoint` and `authorization`), save the file and apply the resource to
@@ -248,7 +252,8 @@ export settings.
 
 The Dash0 monitoring resource supports additional configuration settings:
 
-* `spec.instrumentWorkloads`: A namespace-wide opt-out for workload instrumentation for the target namespace.
+* <a href="#monitoringresource.spec.instrumentWorkloads"><span id="monitoringresource.spec.instrumentWorkloads">`spec.instrumentWorkloads`</span></a>:
+  A namespace-wide opt-out for workload instrumentation for the target namespace.
   There are three possible settings: `all`, `created-and-updated` and `none`.
   By default, the setting `all` is assumed.
 
@@ -295,25 +300,31 @@ The Dash0 monitoring resource supports additional configuration settings:
   Automatic workload instrumentation will automatically add tracing to your workloads. You can read more about what
   exactly this feature entails in the section [Automatic Workload Instrumentation](#automatic-workload-instrumentation).
 
-* `spec.synchronizePersesDashboards`: A namespace-wide opt-out for synchronizing Perses dashboard resources found in the
-  target namespace. If enabled, the operator will watch Perses dashboard resources in this namespace and create
-  corresponding dashboards in Dash0 via the Dash0 API.
-  See [Managing Dash0 Dashboards](#managing-dash0-dashboards) for details. This setting is optional, it defaults to true.
-
-* `spec.synchronizePrometheusRules`: A namespace-wide opt-out for synchronizing Prometheus rule resources found in the
-  target namespace. If enabled, the operator will watch Prometheus rule resources in this namespace and create
-  corresponding check rules in Dash0 via the Dash0 API.
-  See [Managing Dash0 Check Rules](#managing-dash0-check-rules) for details. This setting is optional, it defaults to
+* <a href="#monitoringresource.spec.synchronizePersesDashboards"><span id="monitoringresource.spec.synchronizePersesDashboards">`spec.synchronizePersesDashboards`</span></a>:
+  A namespace-wide opt-out for synchronizing Perses dashboard resources found in the target namespace.
+  If enabled, the operator will watch Perses dashboard resources in this namespace and create corresponding dashboards
+  in Dash0 via the Dash0 API.
+  See [Managing Dash0 Dashboards](#managing-dash0-dashboards) for details. This setting is optional, it defaults to
   true.
 
-* `spec.prometheusScrapingEnabled`: A namespace-wide opt-out for Prometheus scraping for the target namespace.
+* <a href="#monitoringresource.spec.synchronizePrometheusRules"><span id="monitoringresource.spec.synchronizePrometheusRules">`spec.synchronizePrometheusRules`</span></a>:
+  A namespace-wide opt-out for synchronizing Prometheus rule resources found in the target namespace.
+  If enabled, the operator will watch Prometheus rule resources in this namespace and create corresponding check rules
+  in Dash0 via the Dash0 API.
+  See [Managing Dash0 Check Rules](#managing-dash0-check-rules) for details.
+  This setting is optional, it defaults to true.
+
+* <a href="#monitoringresource.spec.prometheusScrapingEnabled"><span id="monitoringresource.spec.prometheusScrapingEnabled">`spec.prometheusScrapingEnabled`</span></a>:
+  A namespace-wide opt-out for Prometheus scraping for the target namespace.
   If enabled, the operator will configure its OpenTelemetry collector to scrape metrics from pods in the namespace
   of this Dash0Monitoring resource according to their prometheus.io/scrape annotations via the OpenTelemetry Prometheus
-  receiver. This setting is optional, it defaults to true. Note that the collection of OpenTelemetry-native metrics is
-  not affected by setting `prometheusScrapingEnabled` to `false` for a namespace.
+  receiver.
+  This setting is optional, it defaults to true. Note that the collection of OpenTelemetry-native metrics is not
+  affected by setting `prometheusScrapingEnabled` to `false` for a namespace.
 
-* `spec.filter`: An optional custom filter configuration to drop some of the collected telemetry before sending it to
-  the configured telemetry backend.
+* <a href="#monitoringresource.spec.filter"><span id="monitoringresource.spec.filter">`spec.filter`</span></a>:
+  An optional custom filter configuration to drop some of the collected telemetry before sending it to the configured
+  telemetry backend.
   Filters for a specific telemetry object type (e.g. spans) are lists of
   [OTTL](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/README.md) expressions.
   If at least one of the one conditions of a list evaluates to true, the object will be dropped.
@@ -328,23 +339,24 @@ The Dash0 monitoring resource supports additional configuration settings:
        A list of OTTL conditions for filtering spans.
        All spans where at least one condition evaluates to true will be dropped.
 	   (That is, conditions are implicitly connected by a logical OR.)
-    * `spec.traces.spanevent`:
+    * `spec.filter.traces.spanevent`:
        A list of OTTL conditions for filtering span events.
        All span events where at least one condition evaluates to true will be dropped.
 	   If all span events for a span are dropped, the span will be left intact.
-    * `spec.metrics.metric`:
+    * `spec.filter.metrics.metric`:
        A list of OTTL conditions for filtering metrics.
        All metrics where at least one condition evaluates to true will be dropped.
-    * `spec.metrics.datapoint`:
+    * `spec.filter.metrics.datapoint`:
        A list of OTTL conditions for filtering individual data points of metrics.
        All data points where at least one condition evaluates to true will be dropped.
 	   If all datapoints for a metric are dropped, the metric will also be dropped.
-    * `spec.logs.log_record`:
+    * `spec.filter.logs.log_record`:
        A list of OTTL conditions for filtering log records.
        All log records where at least one condition evaluates to true will be dropped.
 
-* `spec.transform`: An optional custom transformation configuration that will be applied to the collected telemetry
-  before sending it to the configured telemetry backend.
+* <a href="#monitoringresource.spec.transform"><span id="monitoringresource.spec.transform">`spec.transform`</span></a>:
+  An optional custom transformation configuration that will be applied to the collected telemetry before sending it to
+  the configured telemetry backend.
   Transformations for a specific telemetry signal (e.g. traces, metrics, logs) are lists of
   [OTTL](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/README.md) statements.
   All telemetry for the respective signal will be routed through all transformation statements.
@@ -424,8 +436,8 @@ The Dash0 operator will instrument the following workload types:
 
 Note that Kubernetes jobs and Kubernetes pods are only instrumented at deploy time, _existing_ jobs and pods cannot be
 instrumented since there is no way to restart them. For all other workload types, the operator can instrument existing
-workloads as well as new workloads at deploy time (depending on the setting of `instrumentWorkloads` in the Dash0
-monitoring resource).
+workloads as well as new workloads at deploy time (depending on the setting of
+[`instrumentWorkloads`](#monitoringresource.spec.instrumentWorkloads) in the Dash0 monitoring resource).
 
 #### Dash0 Instrumentation and the Kubernetes Cluster Autoscaler
 
@@ -578,19 +590,23 @@ By default, the operator collects metrics as follows:
   [Kubernetes Cluster Receiver](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/k8sclusterreceiver/README.md),
   and system metrics from the underlying nodes via the
   [Host Metrics Receiver](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/hostmetricsreceiver/README.md).
-  Collecting these metrics can be disabled per cluster by setting `kubernetesInfrastructureMetricsCollectionEnabled: false` in the Dash0
-  operator configuration resource (or setting the value `operator.kubernetesInfrastructureMetricsCollectionEnabled` to
-  `false` when deploying the operator configuration resource via the Helm chart).
+  Collecting these metrics can be disabled per cluster by setting
+  [`kubernetesInfrastructureMetricsCollectionEnabled: false`](#operatorconfigurationresource.spec.kubernetesInfrastructureMetricsCollectionEnabled)
+  in the Dash0 operator configuration resource (or setting the value
+  `operator.kubernetesInfrastructureMetricsCollectionEnabled` to `false` when deploying the operator configuration
+  resource via the Helm chart).
 * Namespace-scoped metrics (e.g. metrics related to a workload running in a specific namespace) will only be collected
   if the namespace is monitored, that is, there is a Dash0 monitoring resource in that namespace.
 * The Dash0 operator scrapes Prometheus endpoints on pods annotated with the `prometheus.io/*` annotations in monitored
-  namespaces, as described in the section [Scraping Prometheus endpoints](#scraping-prometheus-endpoints). This can be
-  disabled per namespace by explicitly setting `prometheusScrapingEnabled: false` in the Dash0 monitoring resource.
+  namespaces, as described in the section [Scraping Prometheus endpoints](#scraping-prometheus-endpoints).
+  This can be disabled per namespace by explicitly setting
+  [`prometheusScrapingEnabled: false`](#monitoringresource.spec.prometheusScrapingEnabled) in the Dash0 monitoring
+  resource.
 * Metrics which are not namespace-scoped (for example node metrics like `k8s.node.*` or host metrics like
   `system.cpu.utilization`) will always be collected, unless metrics collection is disabled globally for the cluster
-  (`kubernetesInfrastructureMetricsCollectionEnabled: false`, see above). An operator configuration resource with
-  [export settings](#configuring-the-dash0-backend-connection) has to be present in the cluster, otherwise no metrics
-  collection takes place.
+  (`kubernetesInfrastructureMetricsCollectionEnabled: false`, see above).
+  An operator configuration resource with [export settings](#configuring-the-dash0-backend-connection) has to be present
+  in the cluster, otherwise no metrics collection takes place.
 
 Disabling or enabling individual metrics via configuration is not supported.
 
@@ -978,8 +994,9 @@ namespaces that are configured to be monitored by the Dash0 operator
 
 The scraping of a pod is executed from the same Kubernetes node the pod resides on.
 
-This feature can be disabled for a namespace by explicitly setting `prometheusScrapingEnabled: false` in the Dash0
-monitoring resource.
+This feature can be disabled for a namespace by explicitly setting
+[`prometheusScrapingEnabled: false`](#monitoringresource.spec.prometheusScrapingEnabled) in the Dash0 monitoring
+resource.
 
 Note: To also have [Kube state metrics available](https://github.com/kubernetes/kube-state-metrics) (which are used
 extensively in [Awesome Prometheus alerts](#https://samber.github.io/awesome-prometheus-alerts/)) scraped and delivered
@@ -998,8 +1015,8 @@ Pre-requisites for this feature:
 * The operator will only pick up Perses dashboard resources in namespaces that have a Dash0 monitoring resource
   deployed.
 * The operator will not synchronize Perses dashboard resources in namespaces where the Dash0 monitoring resource
-  has the setting `synchronizePersesDashboards` set to `false`. (This setting is optional and defaults to `true` when
-  omitted.)
+  has the setting [`synchronizePersesDashboards`](#monitoringresource.spec.synchronizePersesDashboards) set to `false`.
+  (This setting is optional and defaults to `true` when omitted.)
 
 Furthermore, the custom resource definition for Perses dashboards needs to be installed in the cluster. There are two
 ways to achieve this:
@@ -1044,8 +1061,8 @@ Pre-requisites for this feature:
 * The operator will only pick up Prometheus rule resources in namespaces that have a Dash0 monitoring resource
   deployed.
 * The operator will not synchronize Prometheus rule resources in namespaces where the Dash0 monitoring resource
-  has the setting `synchronizePrometheusRules` set to `false`. (This setting is optional and defaults to `true` when
-  omitted.)
+  has the setting [`synchronizePrometheusRules`](#monitoringresource.spec.synchronizePrometheusRules) set to `false`.
+  (This setting is optional and defaults to `true` when omitted.)
 
 Furthermore, the custom resource definition for Prometheus rules needs to be installed in the cluster. There are two
 ways to achieve this:
