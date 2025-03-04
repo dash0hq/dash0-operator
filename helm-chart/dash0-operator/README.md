@@ -361,21 +361,26 @@ The Dash0 monitoring resource supports additional configuration settings:
   [OTTL](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/pkg/ottl/README.md) statements.
   All telemetry for the respective signal will be routed through all transformation statements.
   The statements are executed in the order they are listed.
-  The configuration structure is identical to the basic configuration style of the OpenTelemetry collector's
-  [transform processor](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md#basic-config).
+  The configuration structure is identical to the configuration of the OpenTelemetry collector's
+  [transform processor](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md).
+  Both the
+  [basic configuration style](#https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md#basic-config),
+  and the
+  [advanced configuration style](#https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md#advanced-config)
+  of the transform processor are supported.
   One difference to the transform processor is that the transform rules configured in a Dash0 monitoring resource will
   only be applied to the telemetry collected in the namespace the monitoring resource is installed in.
   Telemetry from other namespaces is not affected.
   If both `spec.filter` and `spec.transform` are configured, the filtering for a given signal (traces, metrics, logs)
   will be executed _before_ the transform processor.
   (That is, you cannot assume that transformations have already been applied when writing filter rules.)
-  Existing basic configurations for the transform processor can be copied and pasted without syntactical changes.
+  Existing configurations for the transform processor can be copied and pasted without syntactical changes.
     * `spec.transform.trace_statements`:
-      A list of OTTL statements for transforming trace telemetry.
+      A list of OTTL statements (or a list of groups in the advanced config style) for transforming trace telemetry.
     * `spec.transform.metric_statements`:
-      A list of OTTL statements for filtering metric telemetry.
+      A list of OTTL statements (or a list of groups in the advanced config style) for filtering metric telemetry.
     * `spec.transform.log_statements`:
-      A list of OTTL statements for filtering log telemetry.
+      A list of OTTL statements (or a list of groups in the advanced config style) for filtering log telemetry.
 
 
 Here is comprehensive example for a monitoring resource which
@@ -384,7 +389,8 @@ Here is comprehensive example for a monitoring resource which
 * disable Prometheus rule synchronization,
 * disables Prometheus scraping,
 * sets a couple of filters for all five telemetry object types, and
-* applies transformations to limit the length of span attributes, datapoint attributes, and log attributes.
+* applies transformations to limit the length of span attributes, datapoint attributes, and log attributes
+  (with the metric transform using the advanced transform config style).
 
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1
@@ -419,7 +425,10 @@ spec:
     trace_statements:
     - 'truncate_all(span.attributes, 4096)'
     metric_statements:
-    - 'truncate_all(datapoint.attributes, 4096)'
+      - conditions:
+        - 'metric.type == METRIC_DATA_TYPE_SUM'
+        statements:
+        - 'truncate_all(datapoint.attributes, 4096)'
     log_statements:
     - 'truncate_all(log.attributes, 4096)'
 ```

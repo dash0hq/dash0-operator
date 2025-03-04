@@ -366,6 +366,39 @@ webhooks:
     timeoutSeconds: 5
 ---
 apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ template "dash0-operator.chartName" . }}-monitoring-mutating
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: validator
+    app.kubernetes.io/instance: monitoring-mutating-webhook
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+webhooks:
+  - name: mutate-monitoring.dash0.com
+    clientConfig:
+      caBundle: {{ default "" ( $ca.Cert | b64enc ) }}
+      service:
+        name: {{ template "dash0-operator.chartName" . }}-webhook-service
+        namespace: {{ .Release.Namespace }}
+        port: {{ .Values.operator.webhookPort }}
+        path: /v1alpha1/mutate/monitoring
+    admissionReviewVersions:
+      - v1
+    rules:
+      - apiGroups:
+          - operator.dash0.com
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - dash0monitorings
+    sideEffects: None
+    timeoutSeconds: 5
+---
+apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
   name: {{ template "dash0-operator.chartName" . }}-monitoring-validator

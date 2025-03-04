@@ -118,10 +118,17 @@ var _ = BeforeSuite(func() {
 		IsIPv6Cluster:        false,
 	}).SetupWebhookWithManager(manager)
 	Expect(err).NotTo(HaveOccurred())
+
 	err = (&OperatorConfigurationValidationWebhookHandler{
 		Client: k8sClient,
 	}).SetupWebhookWithManager(manager)
 	Expect(err).NotTo(HaveOccurred())
+
+	err = (&MonitoringMutatingWebhookHandler{
+		Client: k8sClient,
+	}).SetupWebhookWithManager(manager)
+	Expect(err).NotTo(HaveOccurred())
+
 	err = (&MonitoringValidationWebhookHandler{
 		Client: k8sClient,
 	}).SetupWebhookWithManager(manager)
