@@ -13,7 +13,7 @@ require (
 	github.com/json-iterator/go v1.1.12
 	github.com/onsi/ginkgo/v2 v2.22.2
 	github.com/onsi/gomega v1.36.2
-	github.com/perses/perses-operator v0.1.1
+	github.com/perses/perses-operator v0.1.2
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.80.1
 	github.com/wI2L/jsondiff v0.6.1
 	go.opentelemetry.io/collector/pdata v1.26.0
