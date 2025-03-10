@@ -571,6 +571,25 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				})
 			})
 
+			Describe("self-monitoring telemetry", func() {
+
+				It("should produce self-monitoring telemetry", func() {
+					// Deploying the Dash0 monitoring resource  will trigger a metric data point for
+					// dash0.operator.manager.monitoring.reconcile_requests to be produced.
+					timestampLowerBound := time.Now()
+					deployDash0MonitoringResource(
+						applicationUnderTestNamespace,
+						dash0MonitoringValuesDefault,
+						operatorNamespace,
+					)
+
+					By("waiting for self-monitoring metrics")
+					Eventually(func(g Gomega) {
+						verifySelfMonitoringMetrics(g, timestampLowerBound)
+					}, 90*time.Second, time.Second).Should(Succeed())
+				})
+			})
+
 		}) // end of suite "with an existing operator deployment and operation configuration resource::without a
 		// deployed Dash0 monitoring resource"
 
@@ -668,27 +687,6 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				By("waiting for prometheus receiver metrics")
 				Eventually(func(g Gomega) {
 					verifyPrometheusMetrics(g, timestampLowerBound)
-				}, 90*time.Second, time.Second).Should(Succeed())
-			})
-
-			// TODO this test is temporarily disabled due to the test suite being moved into a scenario without an
-			// operator configuration resource. Needs to be moved into a different suite and reactivated.
-			XIt("should produce self-monitoring telemetry", func() {
-
-				By("updating the Dash0 monitoring resource")
-				// Updating the Dash0 monitoring resource  will trigger a metric data point for
-				// dash0.operator.manager.monitoring.reconcile_requests to be produced. Since we undeploy the
-				// monitoring resource in the AfterAll hook after this test, the change does
-				// not affect anything else (also this suite is not concerned with workload instrumentation or
-				//tracing).
-				updateInstrumentWorkloadsModeOfDash0MonitoringResource(
-					applicationUnderTestNamespace,
-					dash0v1alpha1.CreatedAndUpdated,
-				)
-
-				By("waiting for self-monitoring metrics")
-				Eventually(func(g Gomega) {
-					verifySelfMonitoringMetrics(g, timestampLowerBound)
 				}, 90*time.Second, time.Second).Should(Succeed())
 			})
 		})
