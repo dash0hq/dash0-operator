@@ -471,4 +471,204 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			VerifyUnmodifiedStatefulSet(workload)
 		})
 	})
+
+	Describe("individual modification functions", func() {
+		ctx := context.Background()
+		logger := log.FromContext(ctx)
+		workloadModifier := NewResourceModifier(instrumentationMetadata, &logger)
+
+		type safeToEvictLocalVolumesAnnotationTest struct {
+			input    map[string]string
+			expected map[string]string
+		}
+
+		DescribeTable("should add safe-to-evict local volumes annotation to pod annotations",
+			func(testConfig safeToEvictLocalVolumesAnnotationTest) {
+				podMeta := metav1.ObjectMeta{
+					Annotations: testConfig.input,
+				}
+				workloadModifier.addSafeToEvictLocalVolumesAnnotation(&podMeta)
+				Expect(podMeta.Annotations).To(HaveLen(len(testConfig.expected)))
+				for key, expectedValue := range testConfig.expected {
+					Expect(podMeta.Annotations[key]).To(Equal(expectedValue))
+				}
+			},
+			Entry("should add annotation if annotations are nil", safeToEvictLocalVolumesAnnotationTest{
+				input: nil,
+				expected: map[string]string{
+					"cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes": dash0VolumeName,
+				},
+			}),
+			Entry("should add annotation zero annotations are present", safeToEvictLocalVolumesAnnotationTest{
+				input: map[string]string{},
+				expected: map[string]string{
+					"cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes": dash0VolumeName,
+				},
+			}),
+			Entry("should leave other annotations alone", safeToEvictLocalVolumesAnnotationTest{
+				input: map[string]string{
+					"a": "b",
+					"c": "d",
+				},
+				expected: map[string]string{
+					"cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes": dash0VolumeName,
+					"a": "b",
+					"c": "d",
+				},
+			}),
+			Entry("should add volume name to empty annotation list", safeToEvictLocalVolumesAnnotationTest{
+				input: map[string]string{
+					"cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes": "",
+					"other": "annotation",
+				},
+				expected: map[string]string{
+					"cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes": dash0VolumeName,
+					"other": "annotation",
+				},
+			}),
+			Entry("should add volume name to empty annotation list with whitespace", safeToEvictLocalVolumesAnnotationTest{
+				input: map[string]string{
+					"cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes": "  ",
+					"other": "annotation",
+				},
+				expected: map[string]string{
+					"cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes": dash0VolumeName,
+					"other": "annotation",
+				},
+			}),
+			Entry("should add Dash0 volume name to non-empty annotation list", safeToEvictLocalVolumesAnnotationTest{
+				input: map[string]string{
+					"cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes": "volume-one, volume-two",
+					"other": "annotation",
+				},
+				expected: map[string]string{
+					"cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes": "volume-one,volume-two," + dash0VolumeName,
+					"other": "annotation",
+				},
+			}),
+			Entry("should add Dash0 volume name to non-empty annotation list with whitespace", safeToEvictLocalVolumesAnnotationTest{
+				input: map[string]string{
+					"cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes": "  volume-one , , volume-two  ",
+					"other": "annotation",
+				},
+				expected: map[string]string{
+					"cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes": "volume-one,volume-two," + dash0VolumeName,
+					"other": "annotation",
+				},
+			}),
+			Entry("should leave annotation unchanged if it already has the Dash0 volume name", safeToEvictLocalVolumesAnnotationTest{
+				input: map[string]string{
+					"cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes": "  volume-one ,  dash0-instrumentation , volume-two  ",
+					"other": "annotation",
+				},
+				expected: map[string]string{
+					"cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes": "  volume-one ,  dash0-instrumentation , volume-two  ",
+					"other": "annotation",
+				},
+			}),
+		)
+
+		DescribeTable("should remove safe-to-evict local volume annotation from pod annotations",
+			func(testConfig safeToEvictLocalVolumesAnnotationTest) {
+				podMeta := metav1.ObjectMeta{
+					Annotations: testConfig.input,
+				}
+				workloadModifier.removeSafeToEvictLocalVolumesAnnotation(&podMeta)
+				if testConfig.expected == nil {
+					Expect(podMeta.Annotations).To(BeNil())
+					return
+				}
+				Expect(podMeta.Annotations).To(HaveLen(len(testConfig.expected)))
+				for key, expectedValue := range testConfig.expected {
+					Expect(podMeta.Annotations[key]).To(Equal(expectedValue))
+				}
+			},
+			Entry("should leave nil annotations unchanged", safeToEvictLocalVolumesAnnotationTest{
+				input:    nil,
+				expected: nil,
+			}),
+			Entry("should leave empty annotations unchanged", safeToEvictLocalVolumesAnnotationTest{
+				input:    map[string]string{},
+				expected: map[string]string{},
+			}),
+			Entry("should leave other annotations alone", safeToEvictLocalVolumesAnnotationTest{
+				input: map[string]string{
+					"a": "b",
+					"c": "d",
+				},
+				expected: map[string]string{
+					"a": "b",
+					"c": "d",
+				},
+			}),
+			Entry("should remove Dash0 volume name if it is the only element", safeToEvictLocalVolumesAnnotationTest{
+				input: map[string]string{
+					"cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes": dash0VolumeName,
+					"other": "annotation",
+				},
+				expected: map[string]string{
+					"other": "annotation",
+				},
+			}),
+			Entry("should remove Dash0 volume name if it is the only element, but has surrounding whitespace", safeToEvictLocalVolumesAnnotationTest{
+				input: map[string]string{
+					"cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes": "  dash0-instrumentation  ",
+					"other": "annotation",
+				},
+				expected: map[string]string{
+					"other": "annotation",
+				},
+			}),
+			Entry("should do nothing if the annotation only lists other volumes", safeToEvictLocalVolumesAnnotationTest{
+				input: map[string]string{
+					"cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes": "volume-one, volume-two",
+					"other": "annotation",
+				},
+				expected: map[string]string{
+					"cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes": "volume-one, volume-two",
+					"other": "annotation",
+				},
+			}),
+			Entry("should remove the Dash0 volume name from a list of volumes, at the start", safeToEvictLocalVolumesAnnotationTest{
+				input: map[string]string{
+					"cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes": "dash0-instrumentation,volume-1,volume-2",
+					"other": "annotation",
+				},
+				expected: map[string]string{
+					"cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes": "volume-1,volume-2",
+					"other": "annotation",
+				},
+			}),
+			Entry("should remove the Dash0 volume name from a list of volumes, in the middle", safeToEvictLocalVolumesAnnotationTest{
+				input: map[string]string{
+					"cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes": "volume-1,dash0-instrumentation,volume-2",
+					"other": "annotation",
+				},
+				expected: map[string]string{
+					"cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes": "volume-1,volume-2",
+					"other": "annotation",
+				},
+			}),
+			Entry("should remove the Dash0 volume name from a list of volumes, at the end", safeToEvictLocalVolumesAnnotationTest{
+				input: map[string]string{
+					"cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes": "volume-1,volume-2,dash0-instrumentation",
+					"other": "annotation",
+				},
+				expected: map[string]string{
+					"cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes": "volume-1,volume-2",
+					"other": "annotation",
+				},
+			}),
+			Entry("should remove the Dash0 volume name from a list of volumes with whitepsace", safeToEvictLocalVolumesAnnotationTest{
+				input: map[string]string{
+					"cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes": " volume-1 , dash0-instrumentation , volume-2",
+					"other": "annotation",
+				},
+				expected: map[string]string{
+					"cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes": "volume-1,volume-2",
+					"other": "annotation",
+				},
+			}),
+		)
+	})
 })

@@ -342,9 +342,10 @@ func CreateBasicPod(
 }
 
 func InstrumentedPod(namespace string, name string) *corev1.Pod {
-	workload := BasicPod(namespace, name)
-	simulateInstrumentedPodSpec(&workload.Spec, &workload.ObjectMeta)
-	return workload
+	pod := BasicPod(namespace, name)
+	simulateInstrumentedPodSpec(&pod.Spec, &pod.ObjectMeta)
+	addPodAnnotations(&pod.ObjectMeta)
+	return pod
 }
 
 func CreateInstrumentedPod(
@@ -908,6 +909,7 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 func simulateInstrumentedResource(podTemplateSpec *corev1.PodTemplateSpec, meta *metav1.ObjectMeta) {
 	simulateInstrumentedPodSpec(&podTemplateSpec.Spec, meta)
 	addInstrumentationLabels(&podTemplateSpec.ObjectMeta, true)
+	addPodAnnotations(&podTemplateSpec.ObjectMeta)
 	AddManagedFields(meta)
 }
 
@@ -1101,6 +1103,10 @@ func addInstrumentationLabels(meta *metav1.ObjectMeta, successful bool) {
 	AddLabel(meta, "dash0.com/instrumented-by", "someone")
 }
 
+func addPodAnnotations(meta *metav1.ObjectMeta) {
+	AddAnnotation(meta, safeToEviceLocalVolumesAnnotationName, "dash0-instrumentation")
+}
+
 func AddOptOutLabel(meta *metav1.ObjectMeta) {
 	AddLabel(meta, "dash0.com/enable", "false")
 }
@@ -1114,6 +1120,13 @@ func AddLabel(meta *metav1.ObjectMeta, key string, value string) {
 		meta.Labels = make(map[string]string, 1)
 	}
 	meta.Labels[key] = value
+}
+
+func AddAnnotation(meta *metav1.ObjectMeta, key string, value string) {
+	if meta.Annotations == nil {
+		meta.Annotations = make(map[string]string, 1)
+	}
+	meta.Annotations[key] = value
 }
 
 func UpdateLabel(meta *metav1.ObjectMeta, key string, value string) {

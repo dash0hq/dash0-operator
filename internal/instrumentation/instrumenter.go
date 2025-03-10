@@ -458,26 +458,26 @@ func (i *Instrumenter) instrumentWorkload(
 	workload instrumentableWorkload,
 	reconcileLogger *logr.Logger,
 ) bool {
-	objectMeta := workload.getObjectMeta()
+	workloadMeta := workload.getObjectMeta()
 	kind := workload.getKind()
 	logger := reconcileLogger.WithValues(
 		workkloadTypeLabel,
 		kind,
 		workloadNamespaceLabel,
-		objectMeta.GetNamespace(),
+		workloadMeta.GetNamespace(),
 		workloadNameLabel,
-		objectMeta.GetName(),
+		workloadMeta.GetName(),
 	)
-	if objectMeta.DeletionTimestamp != nil {
+	if workloadMeta.DeletionTimestamp != nil {
 		// do not modify resources that are being deleted
 		logger.Info("not instrumenting this workload since it is about to be deleted (a deletion timestamp is set)")
 		return false
 	}
 
 	var requiredAction util.ModificationMode
-	if util.WasInstrumentedButHasOptedOutNow(objectMeta) {
+	if util.WasInstrumentedButHasOptedOutNow(workloadMeta) {
 		requiredAction = util.ModificationModeUninstrumentation
-	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(objectMeta, i.Images) {
+	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(workloadMeta, i.Images) {
 		// No change necessary, this workload has already been instrumented and an opt-out label (which would need to
 		// trigger uninstrumentation) has not been added since it has been instrumented.
 		logger.Info("not updating the existing instrumentation for this workload, it has already been successfully " +
@@ -493,14 +493,14 @@ func (i *Instrumenter) instrumentWorkload(
 	modificationResult := workloads.NewNotModifiedReasonUnknownResult()
 	retryErr := util.Retry(fmt.Sprintf("instrumenting %s", kind), func() error {
 		if err := i.Client.Get(ctx, client.ObjectKey{
-			Namespace: objectMeta.GetNamespace(),
-			Name:      objectMeta.GetName(),
+			Namespace: workloadMeta.GetNamespace(),
+			Name:      workloadMeta.GetName(),
 		}, workload.asClientObject()); err != nil {
 			return fmt.Errorf(
 				"error when fetching %s %s/%s: %w",
 				kind,
-				objectMeta.GetNamespace(),
-				objectMeta.GetName(),
+				workloadMeta.GetNamespace(),
+				workloadMeta.GetName(),
 				err,
 			)
 		}
