@@ -133,6 +133,19 @@ func addOptionalHelmParameters(arguments []string, images Images) []string {
 	arguments = setIfNotEmpty(arguments, "operator.image.digest", images.operator.digest)
 	arguments = setIfNotEmpty(arguments, "operator.image.pullPolicy", images.operator.pullPolicy)
 
+	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.repository", images.instrumentation.repository)
+	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.tag", images.instrumentation.tag)
+	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.digest", images.instrumentation.digest)
+	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.pullPolicy", images.instrumentation.pullPolicy)
+
+	arguments = setIfNotEmpty(arguments, "operator.secretRefResolverImage.repository",
+		images.secretRefResolver.repository)
+	arguments = setIfNotEmpty(arguments, "operator.secretRefResolverImage.tag", images.secretRefResolver.tag)
+	arguments = setIfNotEmpty(arguments, "operator.secretRefResolverImage.digest",
+		images.secretRefResolver.digest)
+	arguments = setIfNotEmpty(arguments, "operator.secretRefResolverImage.pullPolicy",
+		images.secretRefResolver.pullPolicy)
+
 	arguments = setIfNotEmpty(arguments, "operator.collectorImage.repository", images.collector.repository)
 	arguments = setIfNotEmpty(arguments, "operator.collectorImage.tag", images.collector.tag)
 	arguments = setIfNotEmpty(arguments, "operator.collectorImage.digest", images.collector.digest)
@@ -153,11 +166,6 @@ func addOptionalHelmParameters(arguments []string, images Images) []string {
 		images.fileLogOffsetSynch.digest)
 	arguments = setIfNotEmpty(arguments, "operator.filelogOffsetSynchImage.pullPolicy",
 		images.fileLogOffsetSynch.pullPolicy)
-
-	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.repository", images.instrumentation.repository)
-	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.tag", images.instrumentation.tag)
-	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.digest", images.instrumentation.digest)
-	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.pullPolicy", images.instrumentation.pullPolicy)
 
 	return arguments
 }

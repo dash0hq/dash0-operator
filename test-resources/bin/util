@@ -459,6 +459,16 @@ deploy_otlp_sink_if_requested() {
   local otlp_sink_dir="$(realpath "$(pwd)")/test-resources/e2e-test-volumes/otlp-sink"
   sed "s|/tmp/telemetry|$otlp_sink_dir|g" test-resources/otlp-sink/otlp-sink.yaml > "$tmpfile"
 
+	mkdir -p "$otlp_sink_dir"
+	echo "deleting old OTLP sink old telemetry dump files"
+	rm -rf "$otlp_sink_dir/traces.jsonl"
+	rm -rf "$otlp_sink_dir/metrics.jsonl"
+	rm -rf "$otlp_sink_dir/logs.jsonl"
+	echo "creating OTLP sink old telemetry dump files"
+	touch "$otlp_sink_dir/traces.jsonl"
+	touch "$otlp_sink_dir/metrics.jsonl"
+	touch "$otlp_sink_dir/logs.jsonl"
+
 	kubectl apply -f "$tmpfile"
 	kubectl rollout status \
 	  deployment \

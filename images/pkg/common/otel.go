@@ -7,6 +7,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"regexp"
 	"sync"
 	"time"
 
@@ -21,12 +22,6 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
 
-const (
-	ProtocolGrpc         = "grpc"
-	ProtocolHttpProtobuf = "http/protobuf"
-	ProtocolHttpJson     = "http/json"
-)
-
 type OTelSdkConfig struct {
 	Endpoint           string
 	Protocol           string
@@ -35,10 +30,17 @@ type OTelSdkConfig struct {
 	Headers            map[string]string
 }
 
+const (
+	ProtocolGrpc         = "grpc"
+	ProtocolHttpProtobuf = "http/protobuf"
+	ProtocolHttpJson     = "http/json"
+)
+
 var (
-	meterProvider     otelmetric.MeterProvider
-	shutdownFunctions []func(ctx context.Context) error
-	oTelSdkMutex      sync.Mutex
+	meterProvider       otelmetric.MeterProvider
+	shutdownFunctions   []func(ctx context.Context) error
+	oTelSdkMutex        sync.Mutex
+	endpointSchemeRegex = regexp.MustCompile(`^\w+://`)
 )
 
 func InitOTelSdkFromEnvVars(
@@ -132,7 +134,14 @@ func InitOTelSdkWithConfig(
 		var err error
 		switch protocol {
 		case ProtocolGrpc:
-			options := []otlpmetricgrpc.Option{otlpmetricgrpc.WithEndpoint(oTelSdkConfig.Endpoint)}
+			var options []otlpmetricgrpc.Option
+			if EndpointHasScheme(oTelSdkConfig.Endpoint) {
+				log.Printf("Using a gRPC export for self-monitoring (via WithEndpointURL): %s \n", oTelSdkConfig.Endpoint)
+				options = []otlpmetricgrpc.Option{otlpmetricgrpc.WithEndpointURL(oTelSdkConfig.Endpoint)}
+			} else {
+				log.Printf("Using a gRPC export for self-monitoring (via WithEndpoint): %s\n", oTelSdkConfig.Endpoint)
+				options = []otlpmetricgrpc.Option{otlpmetricgrpc.WithEndpoint(oTelSdkConfig.Endpoint)}
+			}
 			if len(oTelSdkConfig.Headers) > 0 {
 				options = append(options, otlpmetricgrpc.WithHeaders(oTelSdkConfig.Headers))
 			}
@@ -140,7 +149,14 @@ func InitOTelSdkWithConfig(
 				log.Printf("Cannot create the OTLP gRPC metrics exporter: %v\n", err)
 			}
 		case ProtocolHttpProtobuf:
-			options := []otlpmetrichttp.Option{otlpmetrichttp.WithEndpoint(oTelSdkConfig.Endpoint)}
+			var options []otlpmetrichttp.Option
+			if EndpointHasScheme(oTelSdkConfig.Endpoint) {
+				log.Printf("Using an HTTP export for self-monitoring (via WithEndpointURL): %s \n", oTelSdkConfig.Endpoint)
+				options = []otlpmetrichttp.Option{otlpmetrichttp.WithEndpointURL(oTelSdkConfig.Endpoint)}
+			} else {
+				log.Printf("Using an HTTP export for self-monitoring (via WithEndpoint): %s\n", oTelSdkConfig.Endpoint)
+				options = []otlpmetrichttp.Option{otlpmetrichttp.WithEndpoint(oTelSdkConfig.Endpoint)}
+			}
 			if len(oTelSdkConfig.Headers) > 0 {
 				options = append(options, otlpmetrichttp.WithHeaders(oTelSdkConfig.Headers))
 			}
@@ -254,4 +270,8 @@ func ShutDownOTelSdkThreadSafe(ctx context.Context) {
 	}()
 
 	ShutDownOTelSdk(ctx)
+}
+
+func EndpointHasScheme(endpoint string) bool {
+	return endpointSchemeRegex.MatchString(endpoint)
 }

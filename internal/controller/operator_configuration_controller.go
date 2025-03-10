@@ -112,10 +112,12 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		&logger,
 	)
 	if err != nil {
+		logger.Error(err, "operator configuration resource existence check failed")
 		return ctrl.Result{}, err
 	} else if checkResourceResult.ResourceDoesNotExist {
 		resourceDeleted = true
 	} else if checkResourceResult.StopReconcile {
+		logger.Info("stopping operator configuration resource reconcile request after resource existence check")
 		return ctrl.Result{}, nil
 	}
 
@@ -155,8 +157,10 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 			&logger,
 		)
 	if err != nil {
+		logger.Error(err, "error in operator configuration resource uniqueness check")
 		return ctrl.Result{}, err
 	} else if stopReconcile {
+		logger.Info("stopping operator configuration resource reconcile after uniqueness check")
 		return ctrl.Result{}, nil
 	}
 
@@ -167,7 +171,7 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		operatorConfigurationResource.Status.Conditions,
 		&logger,
 	); err != nil {
-		// The error has already been logged in initStatusConditions
+		logger.Error(err, "error when initializing operator configuration resource status conditions")
 		return ctrl.Result{}, err
 	}
 
