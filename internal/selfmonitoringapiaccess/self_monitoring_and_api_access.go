@@ -6,7 +6,6 @@ package selfmonitoringapiaccess
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"slices"
 	"strings"
 
@@ -378,7 +377,7 @@ func prependProtocol(endpoint string, defaultProtocol string) string {
 	// Most gRPC implementations are fine without a protocol, but the Go SDK with gRPC requires the endpoint with a
 	// protocol when setting it via OTEL_EXPORTER_OTLP_ENDPOINT, see
 	// https://github.com/open-telemetry/opentelemetry-go/pull/5632.
-	if !regexp.MustCompile(`^\w+://`).MatchString(endpoint) {
+	if !common.EndpointHasScheme(endpoint) {
 		// See https://grpc.github.io/grpc/core/md_doc_naming.html
 		return defaultProtocol + endpoint
 	}
