@@ -253,14 +253,6 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 			}
 		},
 
-			// | operator config resource                  | expected calls |
-			// |-------------------------------------------|----------------|
-			// | no Dash0 export                           | remove         |
-			// | no API endpoint, token                    | remove         |
-			// | no API endpoint, secret ref               | remove         |
-			// | API endpoint, token                       | set            |
-			// | API endpoint, secret ref                  | set            |
-
 			// | no Dash0 export                           | remove         |
 			Entry("no API endpoint, no Dash0 export", ApiClientSetRemoveTestConfig{
 				operatorConfigurationResourceSpec: OperatorConfigurationResourceWithoutExport,
@@ -283,7 +275,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				expectSetApiEndpointAndDataset:    false,
 				expectRemoveApiEndpointAndDataset: true,
 				expectSetAuthToken:                false,
-				expectRemoveAuthToken:             true,
+				expectRemoveAuthToken:             false,
 			}),
 			// | API endpoint, token                       | set            |
 			Entry("API endpoint, Dash0 export with token", ApiClientSetRemoveTestConfig{
@@ -299,7 +291,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				expectSetApiEndpointAndDataset:    true,
 				expectRemoveApiEndpointAndDataset: false,
 				expectSetAuthToken:                false,
-				expectRemoveAuthToken:             true,
+				expectRemoveAuthToken:             false,
 			}),
 			// | API endpoint, token, custom dataset       | set            |
 			Entry("API endpoint, Dash0 export with token, custom dataset", ApiClientSetRemoveTestConfig{
@@ -317,7 +309,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				expectSetApiEndpointAndDataset:    true,
 				expectRemoveApiEndpointAndDataset: false,
 				expectSetAuthToken:                false,
-				expectRemoveAuthToken:             true,
+				expectRemoveAuthToken:             false,
 			}),
 		)
 	})

@@ -170,7 +170,7 @@ func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigu
 	return util.RetryWithCustomBackoff(
 		"create/update operator configuration resource at startup",
 		func() error {
-			return r.createOperatorConfigurationResourceOnce(ctx, operatorConfigurationResource, logger)
+			return r.createOrUpdateOperatorConfigurationResourceOnce(ctx, operatorConfigurationResource, logger)
 		},
 		wait.Backoff{
 			Duration: 3 * time.Second,
@@ -182,7 +182,7 @@ func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigu
 	)
 }
 
-func (r *AutoOperatorConfigurationResourceHandler) createOperatorConfigurationResourceOnce(
+func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigurationResourceOnce(
 	ctx context.Context,
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	logger *logr.Logger,
@@ -191,10 +191,28 @@ func (r *AutoOperatorConfigurationResourceHandler) createOperatorConfigurationRe
 	if err := r.List(ctx, allOperatorConfigurationResources); err != nil {
 		return fmt.Errorf("failed to list all Dash0 operator configuration resources: %w", err)
 	}
+
 	if len(allOperatorConfigurationResources.Items) >= 1 {
 		// The validation webhook for the operator configuration resource guarantees that there is only ever one
 		// resource per cluster. Thus, we can arbitrarily update the first item in the list.
 		existingOperatorConfigurationResource := allOperatorConfigurationResources.Items[0]
+		// If this is a manually created operator configuration resource, we refuse to overwrite it.
+		if existingOperatorConfigurationResource.Name != operatorConfigurationAutoResourceName {
+			return util.NewRetryableErrorWithFlag(fmt.Errorf(
+				"The configuration provided via Helm instructs the operator manager to create an operator "+
+					"configuration resource at startup, that is, operator.dash0Export.enabled is true and "+
+					"operator.dash0Export.endpoint has been provided. But there is already an operator configuration "+
+					"resource in the cluster with the name %s that has not been created by the operator "+
+					"manager. Replacing a manually created operator configuration resource with values provided via "+
+					"Helm is not supported. Please either delete the existing operator configuration resource or "+
+					"change the Helm values to not create an operator configuration resource at startup, "+
+					"e.g. set operator.dash0Export.enabled to false or remove all operator.dash0Export.* values.",
+				existingOperatorConfigurationResource.Name),
+				// do not retry
+				false,
+			)
+		}
+
 		existingOperatorConfigurationResource.Spec = operatorConfigurationResource.Spec
 		if err := r.Update(ctx, &existingOperatorConfigurationResource); err != nil {
 			return fmt.Errorf("failed to update the Dash0 operator configuration resource: %w", err)

@@ -4,6 +4,7 @@
 package util
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -68,6 +69,18 @@ func RetryWithCustomBackoff(
 	return retry.OnError(
 		backoff,
 		func(err error) bool {
+			// Per default, we assume errors are retriable, use RetryableError with retryable=false to stop retrying.
+			canBeRetried := true
+
+			var retryErr *RetryableError
+			if errors.As(err, &retryErr) {
+				canBeRetried = retryErr.retryable
+			}
+
+			if !canBeRetried {
+				return canBeRetried
+			}
+
 			attempt += 1
 			if attempt < backoff.Steps {
 				if logAttempts {
@@ -79,12 +92,47 @@ func RetryWithCustomBackoff(
 				logger.Error(err,
 					fmt.Sprintf(
 						"%s failed after attempt %d/%d, no more retries left.", operationLabel, attempt, backoff.Steps))
-				// Note: retry.OnError stops retrying correctly after the specified number of Steps, returning this
-				// most recent error, no matter whether we return true or false. The bool return value is only used to
-				// inspect errors and decide whether to they even can be retried or not.
 			}
+
+			// Note: retry.OnError stops retrying correctly after the specified number of Steps, returning this
+			// most recent error, no matter whether we return true or false. The bool return value is only used to
+			// inspect errors and decide whether they even can be retried or not.
 			return true
 		},
 		operation,
 	)
+}
+
+type RetryableError struct {
+	err       error
+	retryable bool
+}
+
+func NewRetryableError(err error) *RetryableError {
+	return &RetryableError{err: err, retryable: false}
+}
+
+func NewRetryableErrorWithFlag(err error, retryable bool) *RetryableError {
+	return &RetryableError{err: err, retryable: retryable}
+}
+
+func (e *RetryableError) Error() string {
+	if e == nil || e.err == nil {
+		return "unknown retryable error"
+	}
+	return e.err.Error()
+}
+
+func (e *RetryableError) SetRetryable(retryable bool) {
+	if e == nil {
+		return
+	}
+	e.retryable = retryable
+}
+
+func (e *RetryableError) IsRetryable() bool {
+	if e == nil {
+		return false
+	}
+	return e.retryable
 }
