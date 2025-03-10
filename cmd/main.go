@@ -841,7 +841,7 @@ func executeStartupTasks(
 	isIPv6Cluster bool,
 	logger *logr.Logger,
 ) *dash0v1alpha1.Dash0OperatorConfiguration {
-	operatorConfigurationResource := createAutoOperatorConfigurationResource(
+	operatorConfigurationResource := createOrUpdateAutoOperatorConfigurationResource(
 		ctx,
 		startupTasksK8sClient,
 		operatorConfigurationValues,
@@ -883,7 +883,7 @@ func instrumentAtStartup(
 	startupInstrumenter.InstrumentAtStartup(ctx, startupTasksK8sClient, &setupLog)
 }
 
-func createAutoOperatorConfigurationResource(
+func createOrUpdateAutoOperatorConfigurationResource(
 	ctx context.Context,
 	k8sClient client.Client,
 	operatorConfigurationValues *startup.OperatorConfigurationValues,

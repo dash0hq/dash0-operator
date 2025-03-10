@@ -100,6 +100,11 @@ You can consult the chart's
 [values.yaml](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/values.yaml) file for a
 complete list of available configuration settings.
 
+See the section
+[Notes on Creating the Operator Configuration Resource Via Helm](#notes-on-creating-the-operator-configuration-resource-via-helm)
+for more information on providing Dash0 export settings via Helm and how it affects manual changes to the operator
+configuration resource.
+
 Last but not least, you can also install the operator without providing a Dash0 backend configuration:
 
 ```console
@@ -216,6 +221,39 @@ Note: All configuration options available in the operator configuration resource
 Helm chart auto-create this resource, as explained in the section [Installation](#installation). You can consult the
 chart's [values.yaml](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/values.yaml) file
 for a complete list of available configuration settings.
+
+### Notes on Creating the Operator Configuration Resource Via Helm
+
+Providing the backend connection settings to the operator via Helm parameters is a _convenience mechanism_ to get
+monitoring started right away when installing the operator.
+Setting `operator.dash0Export.enabled` to `true` and providing other necessary `operator.dash0Export.*` values like
+`operator.dash0Export.endpoint` will instruct the operator manager to create an operator configuration resource with the
+provided values at startup.
+This automatically created operator configuration resource will have the name
+`dash0-operator-configuration-auto-resource`.
+
+If an operator configuration resource with any other name already exists in the cluster (e.g. a manually created
+operator configuration resource), the operator will treat this as an error and refuse to overwrite the existing operator
+configuration resource with the values provided via Helm.
+
+If an operator configuration resource with the name `dash0-operator-configuration-auto-resource` already exists in the
+cluster (e.g. a previous startup of the operator manager has created the resource), the operator manager will
+update/overwrite this resource with the values provided via Helm.
+
+Manual changes to the `dash0-operator-configuration-auto-resource` are permissible for quickly experimenting with
+configuration changes, without an operator restart, but you need to be aware that they will be overwritten with the
+settings provided via Helm the next time the operator manager pod is restarted.
+Possible reasons for a restart of the operator manager pod include upgrading to a new operator version, running
+`helm upgrade ...  dash0-operator dash0-operator/dash0-operator`, or Kubernetes moving the operator manager pod to a
+different node.
+
+For this reason, when using this feature, it is recommended to treat the _Helm values_ as the source of truth for the
+operator configuration.
+Any changes you want to be permanent should be applied via Helm and the `operator.dash0Export.*` settings.
+
+If you would rather retain manual control over the operator configuration resource, you should omit any
+`operator.dash0Export.*` Helm values and create and manage the operator configuration resource manually (that is, via
+kubectl, ArgoCD etc.).
 
 ### Enable Dash0 Monitoring For a Namespace
 

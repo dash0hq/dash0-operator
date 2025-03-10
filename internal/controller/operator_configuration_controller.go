@@ -279,21 +279,16 @@ func (r *OperatorConfigurationReconciler) applyApiAccessSettings(
 		authToken = operatorConfigurationResource.Spec.Export.Dash0.Authorization.Token
 		usesSecretRef = operatorConfigurationResource.Spec.Export.Dash0.Authorization.SecretRef != nil
 	}
-
-	if usesSecretRef {
-		for _, apiClient := range r.ApiClients {
-			apiClient.RemoveAuthToken(ctx, &logger)
-		}
-	} else {
+	if !usesSecretRef {
 		if authToken != nil && *authToken != "" {
 			for _, apiClient := range r.ApiClients {
 				apiClient.SetAuthToken(ctx, *authToken, &logger)
 			}
 		} else {
 			// If the auth token is provided via a secret ref, we cannot remove it here, as we might accidentally
-			// delete a token that has been resolved via the secret ref resolver. But if the operator configuration
-			// resource does not have a secret ref, we can and should remove the auth token to keep the API client's
-			// state consistent with the operator configuration resource's state.
+			// delete a token that has been resolved via the secret ref resolver already. But if the operator
+			// configuration resource does not use a secret ref, we can and should remove the auth token to keep the
+			// API client's state consistent with the operator configuration resource's state.
 			logger.Info("The Dash0 auth token required for managing dashboards or check rules via the operator " +
 				"is missing or has been removed, the operator will not update dashboards nor check rules in Dash0.")
 			for _, apiClient := range r.ApiClients {

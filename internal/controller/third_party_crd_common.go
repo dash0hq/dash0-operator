@@ -5,7 +5,6 @@ package controller
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -150,15 +149,6 @@ type preconditionValidationResult struct {
 	dataset                string
 	k8sNamespace           string
 	k8sName                string
-}
-
-type retryableError struct {
-	err       error
-	retryable bool
-}
-
-func (e *retryableError) Error() string {
-	return e.err.Error()
 }
 
 func SetupThirdPartyCrdReconcilerWithManager(
@@ -778,19 +768,8 @@ func executeSingleHttpRequestWithRetry(
 			req.Request.URL.String(),
 		))
 
-	return retry.OnError(
-		wait.Backoff{
-			Steps:    3,
-			Duration: resourceReconciler.GetHttpRetryDelay(),
-			Factor:   1.5,
-		},
-		func(err error) bool {
-			var retryErr *retryableError
-			if errors.As(err, &retryErr) {
-				return retryErr.retryable
-			}
-			return false
-		},
+	return util.RetryWithCustomBackoff(
+		fmt.Sprintf("http request to %s", req.Request.URL.String()),
 		func() error {
 			return executeSingleHttpRequest(
 				resourceReconciler,
@@ -798,6 +777,13 @@ func executeSingleHttpRequestWithRetry(
 				logger,
 			)
 		},
+		wait.Backoff{
+			Steps:    3,
+			Duration: resourceReconciler.GetHttpRetryDelay(),
+			Factor:   1.5,
+		},
+		true,
+		logger,
 	)
 }
 
@@ -815,29 +801,24 @@ func executeSingleHttpRequest(
 				req.ItemName,
 				req.Request.URL.String(),
 			))
-		return &retryableError{
-			err:       err,
-			retryable: true,
-		}
+		return util.NewRetryableErrorWithFlag(err, true)
 	}
 
 	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
 		// HTTP status is not 2xx, treat this as an error
 		// convertNon2xxStatusCodeToError will also consume and close the response body
-		statusCodeError := convertNon2xxStatusCodeToError(resourceReconciler, req, res)
-		retryableStatusCodeError := &retryableError{
-			err: statusCodeError,
-		}
+		err = convertNon2xxStatusCodeToError(resourceReconciler, req, res)
+		retryableStatusCodeError := util.NewRetryableError(err)
 
 		if res.StatusCode >= http.StatusBadRequest && res.StatusCode < http.StatusInternalServerError {
 			// HTTP 4xx status codes are not retryable
-			retryableStatusCodeError.retryable = false
-			logger.Error(statusCodeError, "unexpected status code")
+			retryableStatusCodeError.SetRetryable(false)
+			logger.Error(err, "unexpected status code")
 			return retryableStatusCodeError
 		} else {
 			// everything else, in particular HTTP 5xx status codes can be retried
-			retryableStatusCodeError.retryable = true
-			logger.Error(statusCodeError, "unexpected status code, request might be retried")
+			retryableStatusCodeError.SetRetryable(true)
+			logger.Error(err, "unexpected status code, request might be retried")
 			return retryableStatusCodeError
 		}
 	}
