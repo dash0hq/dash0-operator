@@ -493,23 +493,6 @@ instrumented since there is no way to restart them. For all other workload types
 workloads as well as new workloads at deploy time (depending on the setting of
 [`instrumentWorkloads`](#monitoringresource.spec.instrumentWorkloads) in the Dash0 monitoring resource).
 
-#### Dash0 Instrumentation and the Kubernetes Cluster Autoscaler
-
-If you rely on the [Kubernes Cluster Autoscaler](https://github.com/kubernetes/autoscaler) to scale down the number
-nodes in your cluster, you need to be aware that Dash0 modifies workloads in monitored namespaces to add
-auto-instrumention capabilities.
-(Unless you specify `instrumentWorkloads: none` in the monitoring resource of the namespace).
-The operator adds an init container and an
-[empty dir volume](https://kubernetes.io/docs/concepts/storage/volumes/#emptydir) to the pod (see
-[Automatic Workload Instrumentation](#automatic-workload-instrumentation) for more details).
-One side effect of addding the empty dir volume to a pod is that the Kubernetes cluster autoscaler will refuse to evict
-this pod, hence it will also refuse to move existing instrumented pods to other nodes for the purpose of scaling down
-the cluster.
-If you want to allow the Kubernetes cluster autoscaler to move instrumented pods to other nodes, you can add the
-following annotation to the pod template of the affected workloads:
-
-See also: https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/FAQ.md#what-types-of-pods-can-prevent-ca-from-removing-a-node
-
 ### Using a Kubernetes Secret for the Dash0 Authorization Token
 
 If you want to provide the Dash0 authorization token via a Kubernetes secret instead of providing the token as a string,
