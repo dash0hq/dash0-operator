@@ -1,4 +1,5 @@
 const std = @import("std");
+const assert = std.debug.assert;
 
 const null_terminated_string = [*:0]const u8;
 
@@ -17,8 +18,8 @@ extern var __environ: [*]u8;
 // We need to allocate memory only to manipulate and return the few environment
 // variables we want to modify. Unmodified values are returned as pointers to
 // the original `__environ` memory. We pre-allocate an obscene 128Kb for it.
-var buffer: [131072:0]u8 = undefined;
-var fba = std.heap.FixedBufferAllocator.init(&buffer);
+var allocator_buffer: [131072:0]u8 = undefined;
+var fba = std.heap.FixedBufferAllocator.init(&allocator_buffer);
 const allocator: std.mem.Allocator = fba.allocator();
 
 // Ensure we process requests synchtonously. LibC is *not* threadsafe
@@ -27,6 +28,7 @@ const allocator: std.mem.Allocator = fba.allocator();
 const _env_mutex = std.Thread.Mutex{};
 
 var is_debug = false;
+var libCFlavor: ?LibCFlavor = null;
 
 // Keep global pointers to already-calculated values to avoid multiple allocations
 // on repeated lookups.
@@ -39,6 +41,11 @@ var modified_otel_resource_attributes_value: ?null_terminated_string = null;
 
 export fn getenv(name_z: null_terminated_string) ?null_terminated_string {
     const name = std.mem.sliceTo(name_z, 0);
+
+    if (libCFlavor == null) {
+        libCFlavor = getLibCFlavor();
+        printError("LibC flavor: {any}", .{libCFlavor});
+    }
 
     // Need to change type from `const` to be able to lock
     var env_mutex = _env_mutex;
@@ -345,6 +352,118 @@ fn getResourceAttributes() ?[]u8 {
 
     // Returns a slice
     return resource_attributes;
+}
+
+const LibCFlavor = enum { UNKNOWN, GLIBC, MULSC };
+
+pub const LibCFlavorError = error{
+    ElfNot64Bit,
+    ElfDynamicStringTableNotFound,
+    ElfDynamicSymbolTableNotFound,
+};
+
+fn getLibCFlavor() LibCFlavor {
+    return doGetLibCFlavor() catch |err| {
+        printError("Cannot determine LibC flavor from ELF metadata of '/proc/self/exe': {}", .{err});
+        return LibCFlavor.UNKNOWN;
+    };
+}
+
+fn doGetLibCFlavor() !LibCFlavor {
+    const self_exe_file = std.fs.openFileAbsolute("/proc/self/exe", .{ .mode = .read_only }) catch |err| {
+        printError("Cannot open '/proc/self/exe': {}", .{err});
+        return LibCFlavor.UNKNOWN;
+    };
+    defer self_exe_file.close();
+
+    const elf_header = std.elf.Header.read(self_exe_file) catch |err| {
+        printError("Cannot read ELF header from '/proc/self/exe': {}", .{err});
+        return LibCFlavor.UNKNOWN;
+    };
+
+    if (!elf_header.is_64) {
+        printError("ELF header from '/proc/self/exe' seems not to be the one of a 64-bit binary", .{});
+        return error.ElfNot64Bit;
+    }
+
+    var sections_header_iterator = elf_header.section_header_iterator(self_exe_file);
+
+    var maybe_dynamic_symbols_table_header: ?std.elf.Elf64_Shdr = null;
+    var maybe_dynamic_strings_table_header: ?std.elf.Elf64_Shdr = null;
+
+    while (try sections_header_iterator.next()) |section_header| {
+        switch (section_header.sh_type) {
+            std.elf.SHT_DYNAMIC => {
+                maybe_dynamic_symbols_table_header = section_header;
+            },
+            std.elf.SHT_DYNSYM => {
+                maybe_dynamic_strings_table_header = section_header;
+            },
+            else => {
+                // Ignore this section
+            },
+        }
+    }
+
+    if (maybe_dynamic_symbols_table_header == null) {
+        return error.ElfDynamicSymbolTableNotFound;
+    }
+
+    if (maybe_dynamic_strings_table_header == null) {
+        return error.ElfDynamicStringTableNotFound;
+    }
+
+    const dynamic_strings_table_header = maybe_dynamic_strings_table_header.?;
+    const dynamic_strings_table_content = try allocator.alloc(u8, dynamic_strings_table_header.sh_size);
+    defer allocator.free(dynamic_strings_table_content);
+
+    try self_exe_file.seekableStream().seekTo(dynamic_strings_table_header.sh_offset);
+    _ = try self_exe_file.reader().readAtLeast(dynamic_strings_table_content, dynamic_strings_table_header.sh_size);
+
+    const dynamic_symbols_table_header = maybe_dynamic_symbols_table_header.?;
+
+    // Look for DT_NEEDED entries in the Dynamic table, they state which libraries were
+    // used at compilation step. Examples:
+    //
+    // Java + GNU LibC
+    //
+    // $ readelf -Wd /usr/bin/java
+    // Dynamic section at offset 0xfd28 contains 30 entries:
+    //   Tag        Type                         Name/Value
+    //  0x0000000000000001 (NEEDED)             Shared library: [libz.so.1]
+    //  0x0000000000000001 (NEEDED)             Shared library: [libjli.so]
+    //  0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]
+    //
+    // Java + muslc
+    //
+    // $ readelf -Wd /usr/bin/java
+    // Dynamic section at offset 0xfd18 contains 33 entries:
+    //   Tag        Type                         Name/Value
+    //  0x0000000000000001 (NEEDED)             Shared library: [libjli.so]
+    //  0x0000000000000001 (NEEDED)             Shared library: [libc.musl-aarch64.so.1]
+    //  0x0
+
+    const dynamic_symbols_count = dynamic_symbols_table_header.sh_size / @sizeOf(std.elf.Elf64_Dyn);
+    for (0..dynamic_symbols_count) |i| {
+        try self_exe_file.seekableStream().seekTo(dynamic_symbols_table_header.sh_offset + i * @sizeOf(std.elf.Elf64_Dyn));
+        const dynamic_symbol = try self_exe_file.reader().readStruct(std.elf.Elf64_Dyn);
+
+        switch (dynamic_symbol.d_tag) {
+            std.elf.DT_NEEDED => {
+                const value_offset = @as(u32, @intCast(dynamic_symbol.d_val));
+
+                try self_exe_file.seekableStream().seekTo(dynamic_strings_table_header.sh_offset + value_offset);
+                const library_name = try self_exe_file.reader().readUntilDelimiterAlloc(allocator, 0, 10000);
+                printError("NEEDED: {s}", .{library_name});
+                // assert(dynamic_strings_table_content.len > value_offset);
+                // const library_name = std.mem.sliceTo(@as([*:0]const u8, @ptrCast(dynamic_strings_table_content.ptr + value_offset)), 0);
+                // printError("NEEDED: {s}", .{library_name});
+            },
+            else => {},
+        }
+    }
+
+    return LibCFlavor.UNKNOWN;
 }
 
 fn printDebug(comptime fmt: []const u8, args: anytype) void {
