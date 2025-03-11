@@ -14,7 +14,7 @@ updates:
       - "/images/configreloader/src"
       - "/images/filelogoffsetsynch/src"
       - "/images/pkg/common"
-      - "/images/secretrefresolver"
+      - "/images/secretrefresolver/src"
     schedule:
       interval: "weekly"
       day: "tuesday"
