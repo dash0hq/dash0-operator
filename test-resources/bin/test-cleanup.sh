@@ -37,13 +37,15 @@ kubectl delete -n test-namespace-3 -f test-resources/customresources/dash0monito
 sleep 1
 # If the cluster is in a bad state because an operator image has been deployed that terminates abruptly, the monitoring
 # resource's finalizer will block the deletion of the monitoring resource, and thus also the deletion of the
-# test-namespace. Also, we cannot remove the finalizer from the resource via kubectl patch if the
-# validatingwebhookconfiguration is not reachable due to the operator image being faulty (the edit made via kubectl
-# patch is send to the validation webhook first, and if the webhook service is not up, the patch never gets executed).
+# test-namespace. Also, we cannot remove the finalizer from the resource via kubectl patch if either the
+# validatingwebhookconfiguration or the mutatingwebhookconfiguration for this resource type is not reachable due to the
+# operator image being faulty or because it already has been removed (the edit made via kubectl patch is send to the
+# webhooks first, and if the webhook service is not up, the patch never gets executed).
 # To get out of this state, we remove the validatingwebhookconfiguration first and then remove the finalizer. All of
 # this is only relevant for local development, a fully tested operator image from an official release cannot get into
 # this state.
 kubectl delete validatingwebhookconfiguration --ignore-not-found dash0-operator-monitoring-validator
+kubectl delete mutatingwebhookconfiguration --ignore-not-found dash0-operator-monitoring-mutating
 kubectl patch -n "${target_namespace}" -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml -p '{"metadata":{"finalizers":null}}' --type=merge --request-timeout=1s || true
 kubectl delete -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.token.yaml || true
 kubectl delete dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration-auto-resource || true

@@ -41,6 +41,8 @@ const (
 	envVarDash0ServiceNamespace        = "DASH0_SERVICE_NAMESPACE"
 	envVarDash0ServiceVersion          = "DASH0_SERVICE_VERSION"
 	envVarDash0ResourceAttributes      = "DASH0_RESOURCE_ATTRIBUTES"
+
+	safeToEviceLocalVolumesAnnotationName = "cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes"
 )
 
 var (
@@ -155,19 +157,35 @@ func NewResourceModifier(
 }
 
 func (m *ResourceModifier) ModifyCronJob(cronJob *batchv1.CronJob) ModificationResult {
-	return m.modifyResource(&cronJob.Spec.JobTemplate.Spec.Template, &cronJob.ObjectMeta)
+	return m.modifyResource(
+		&cronJob.Spec.JobTemplate.Spec.Template,
+		&cronJob.ObjectMeta,
+		&cronJob.Spec.JobTemplate.Spec.Template.ObjectMeta,
+	)
 }
 
 func (m *ResourceModifier) ModifyDaemonSet(daemonSet *appsv1.DaemonSet) ModificationResult {
-	return m.modifyResource(&daemonSet.Spec.Template, &daemonSet.ObjectMeta)
+	return m.modifyResource(
+		&daemonSet.Spec.Template,
+		&daemonSet.ObjectMeta,
+		&daemonSet.Spec.Template.ObjectMeta,
+	)
 }
 
 func (m *ResourceModifier) ModifyDeployment(deployment *appsv1.Deployment) ModificationResult {
-	return m.modifyResource(&deployment.Spec.Template, &deployment.ObjectMeta)
+	return m.modifyResource(
+		&deployment.Spec.Template,
+		&deployment.ObjectMeta,
+		&deployment.Spec.Template.ObjectMeta,
+	)
 }
 
 func (m *ResourceModifier) ModifyJob(job *batchv1.Job) ModificationResult {
-	return m.modifyResource(&job.Spec.Template, &job.ObjectMeta)
+	return m.modifyResource(
+		&job.Spec.Template,
+		&job.ObjectMeta,
+		&job.Spec.Template.ObjectMeta,
+	)
 }
 
 func (m *ResourceModifier) AddLabelsToImmutableJob(job *batchv1.Job) ModificationResult {
@@ -186,7 +204,7 @@ func (m *ResourceModifier) ModifyPod(pod *corev1.Pod) ModificationResult {
 	}) {
 		return NewNotModifiedOwnedByHigherOrderWorkloadResult()
 	}
-	if hasBeenModified := m.modifyPodSpec(&pod.Spec, &pod.ObjectMeta); !hasBeenModified {
+	if hasBeenModified := m.modifyPodSpec(&pod.Spec, &pod.ObjectMeta, &pod.ObjectMeta); !hasBeenModified {
 		return NewNotModifiedNoChangesResult()
 	}
 	util.AddInstrumentationLabels(&pod.ObjectMeta, true, m.instrumentationMetadata)
@@ -197,29 +215,38 @@ func (m *ResourceModifier) ModifyReplicaSet(replicaSet *appsv1.ReplicaSet) Modif
 	if m.hasMatchingOwnerReference(replicaSet, []metav1.TypeMeta{util.K8sTypeMetaDeployment}) {
 		return NewNotModifiedOwnedByHigherOrderWorkloadResult()
 	}
-	return m.modifyResource(&replicaSet.Spec.Template, &replicaSet.ObjectMeta)
+	return m.modifyResource(&replicaSet.Spec.Template, &replicaSet.ObjectMeta, &replicaSet.Spec.Template.ObjectMeta)
 }
 
 func (m *ResourceModifier) ModifyStatefulSet(statefulSet *appsv1.StatefulSet) ModificationResult {
-	return m.modifyResource(&statefulSet.Spec.Template, &statefulSet.ObjectMeta)
+	return m.modifyResource(&statefulSet.Spec.Template, &statefulSet.ObjectMeta, &statefulSet.Spec.Template.ObjectMeta)
 }
 
-func (m *ResourceModifier) modifyResource(podTemplateSpec *corev1.PodTemplateSpec, podMeta *metav1.ObjectMeta) ModificationResult {
-	if hasBeenModified := m.modifyPodSpec(&podTemplateSpec.Spec, podMeta); !hasBeenModified {
+func (m *ResourceModifier) modifyResource(
+	podTemplateSpec *corev1.PodTemplateSpec,
+	workloadMeta *metav1.ObjectMeta,
+	podMeta *metav1.ObjectMeta,
+) ModificationResult {
+	if hasBeenModified := m.modifyPodSpec(&podTemplateSpec.Spec, workloadMeta, podMeta); !hasBeenModified {
 		return NewNotModifiedNoChangesResult()
 	}
-	util.AddInstrumentationLabels(podMeta, true, m.instrumentationMetadata)
+	util.AddInstrumentationLabels(workloadMeta, true, m.instrumentationMetadata)
 	util.AddInstrumentationLabels(&podTemplateSpec.ObjectMeta, true, m.instrumentationMetadata)
 	return NewHasBeenModifiedResult()
 }
 
-func (m *ResourceModifier) modifyPodSpec(podSpec *corev1.PodSpec, podMeta *metav1.ObjectMeta) bool {
+func (m *ResourceModifier) modifyPodSpec(
+	podSpec *corev1.PodSpec,
+	workloadMeta *metav1.ObjectMeta,
+	podMeta *metav1.ObjectMeta,
+) bool {
 	originalSpec := podSpec.DeepCopy()
 	m.addInstrumentationVolume(podSpec)
+	m.addSafeToEvictLocalVolumesAnnotation(podMeta)
 	m.addInitContainer(podSpec)
 	for idx := range podSpec.Containers {
 		container := &podSpec.Containers[idx]
-		m.instrumentContainer(podMeta, container)
+		m.instrumentContainer(container, workloadMeta)
 	}
 
 	return !reflect.DeepEqual(originalSpec, podSpec)
@@ -246,6 +273,44 @@ func (m *ResourceModifier) addInstrumentationVolume(podSpec *corev1.PodSpec) {
 	} else {
 		podSpec.Volumes[idx] = *dash0Volume
 	}
+}
+
+func (m *ResourceModifier) addSafeToEvictLocalVolumesAnnotation(podMeta *metav1.ObjectMeta) {
+	// See
+	// https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/FAQ.md#what-types-of-pods-can-prevent-ca-from-removing-a-node
+	if podMeta.Annotations == nil {
+		podMeta.Annotations = make(map[string]string)
+	}
+
+	annotationValue, annotationIsPresent := podMeta.Annotations[safeToEviceLocalVolumesAnnotationName]
+	if !annotationIsPresent {
+		// The annotation is not present yet, add it with the Dash0 volume name as its only element.
+		podMeta.Annotations[safeToEviceLocalVolumesAnnotationName] = dash0VolumeName
+		return
+	}
+
+	if !strings.Contains(annotationValue, dash0VolumeName) {
+		// The annotation is present, but the Dash0 volume name is not yet listed. Add the volume name.
+		volumeNames := parseAndNormalizeVolumeList(annotationValue)
+		volumeNames = append(volumeNames, dash0VolumeName)
+		podMeta.Annotations[safeToEviceLocalVolumesAnnotationName] = strings.Join(volumeNames, ",")
+		return
+	}
+
+	// The Dash0 volume is already in the list, no change necessary.
+}
+
+func parseAndNormalizeVolumeList(annotationValue string) []string {
+	volumeNames := strings.Split(annotationValue, ",")
+	for i, volumeName := range volumeNames {
+		// normalize " volume-1 , volume-2  " to "volume-1,volume-2"
+		volumeNames[i] = strings.TrimSpace(volumeName)
+	}
+	volumeNames = slices.DeleteFunc(volumeNames, func(volumeName string) bool {
+		// do not return ",dash0-volume" if the original annotation was an empty string for whatever reason
+		return volumeName == ""
+	})
+	return volumeNames
 }
 
 func (m *ResourceModifier) addInitContainer(podSpec *corev1.PodSpec) {
@@ -313,10 +378,10 @@ func (m *ResourceModifier) createInitContainer(podSpec *corev1.PodSpec) *corev1.
 	return initContainer
 }
 
-func (m *ResourceModifier) instrumentContainer(podMeta *metav1.ObjectMeta, container *corev1.Container) {
+func (m *ResourceModifier) instrumentContainer(container *corev1.Container, workloadMeta *metav1.ObjectMeta) {
 	perContainerLogger := m.logger.WithValues("container", container.Name)
 	m.addMount(container)
-	m.addEnvironmentVariables(podMeta, container, perContainerLogger)
+	m.addEnvironmentVariables(container, workloadMeta, perContainerLogger)
 }
 
 func (m *ResourceModifier) addMount(container *corev1.Container) {
@@ -338,7 +403,7 @@ func (m *ResourceModifier) addMount(container *corev1.Container) {
 	}
 }
 
-func (m *ResourceModifier) addEnvironmentVariables(podMeta *metav1.ObjectMeta, container *corev1.Container, perContainerLogger logr.Logger) {
+func (m *ResourceModifier) addEnvironmentVariables(container *corev1.Container, workloadMeta *metav1.ObjectMeta, perContainerLogger logr.Logger) {
 	m.handleLdPreloadEnvVar(container, perContainerLogger)
 
 	m.addOrReplaceEnvironmentVariable(
@@ -432,12 +497,13 @@ func (m *ResourceModifier) addEnvironmentVariables(podMeta *metav1.ObjectMeta, c
 		},
 	)
 
-	// Mount app.kubernetes.io labels as env vars
+	// Mount values from app.kubernetes.io/* workload labels as env vars, those will be picked up by the injector and
+	// turned into resource attributes.
 	// `app.kubernetes.io/name` becomes `service.name`
 	// `app.kubernetes.io/version` becomes `service.version`
 	// `app.kubernetes.io/part-of` becomes `service.namespace`
 	// `app.kubernetes.io/instance` becomes `service.instance.id`
-	if _, appKubernetesIoNameLabelIsPresent := podMeta.Labels["app.kubernetes.io/name"]; appKubernetesIoNameLabelIsPresent {
+	if _, appKubernetesIoNameLabelIsPresent := workloadMeta.Labels["app.kubernetes.io/name"]; appKubernetesIoNameLabelIsPresent {
 		m.addOrReplaceEnvironmentVariable(
 			container,
 			corev1.EnvVar{
@@ -450,7 +516,7 @@ func (m *ResourceModifier) addEnvironmentVariables(podMeta *metav1.ObjectMeta, c
 			},
 		)
 
-		if _, appKubernetesIoPartOfLabelIsPresent := podMeta.Labels["app.kubernetes.io/part-of"]; appKubernetesIoPartOfLabelIsPresent {
+		if _, appKubernetesIoPartOfLabelIsPresent := workloadMeta.Labels["app.kubernetes.io/part-of"]; appKubernetesIoPartOfLabelIsPresent {
 			m.addOrReplaceEnvironmentVariable(
 				container,
 				corev1.EnvVar{
@@ -463,7 +529,7 @@ func (m *ResourceModifier) addEnvironmentVariables(podMeta *metav1.ObjectMeta, c
 				})
 		}
 
-		if _, appKubernetesIoVersionLabelIsPresent := podMeta.Labels["app.kubernetes.io/version"]; appKubernetesIoVersionLabelIsPresent {
+		if _, appKubernetesIoVersionLabelIsPresent := workloadMeta.Labels["app.kubernetes.io/version"]; appKubernetesIoVersionLabelIsPresent {
 			m.addOrReplaceEnvironmentVariable(
 				container,
 				corev1.EnvVar{
@@ -479,7 +545,7 @@ func (m *ResourceModifier) addEnvironmentVariables(podMeta *metav1.ObjectMeta, c
 
 	// Annotations resource.opentelemetry.io/your-key: "your-value"
 	resourceAttributes := []string{}
-	for key, value := range podMeta.Annotations {
+	for key, value := range workloadMeta.Annotations {
 		// Kubernetes does not allow duplicate annotation keys so we do not need to check for clashes and ordering
 		if strings.HasPrefix(key, "resource.opentelemetry.io/") {
 			resourceAttributes = append(resourceAttributes, fmt.Sprintf("%s=%s", strings.TrimPrefix(key, "resource.opentelemetry.io/"), value))
@@ -553,15 +619,27 @@ func (m *ResourceModifier) addOrReplaceEnvironmentVariable(container *corev1.Con
 }
 
 func (m *ResourceModifier) RevertCronJob(cronJob *batchv1.CronJob) ModificationResult {
-	return m.revertResource(&cronJob.Spec.JobTemplate.Spec.Template, &cronJob.ObjectMeta)
+	return m.revertResource(
+		&cronJob.Spec.JobTemplate.Spec.Template,
+		&cronJob.ObjectMeta,
+		&cronJob.Spec.JobTemplate.Spec.Template.ObjectMeta,
+	)
 }
 
 func (m *ResourceModifier) RevertDaemonSet(daemonSet *appsv1.DaemonSet) ModificationResult {
-	return m.revertResource(&daemonSet.Spec.Template, &daemonSet.ObjectMeta)
+	return m.revertResource(
+		&daemonSet.Spec.Template,
+		&daemonSet.ObjectMeta,
+		&daemonSet.Spec.Template.ObjectMeta,
+	)
 }
 
 func (m *ResourceModifier) RevertDeployment(deployment *appsv1.Deployment) ModificationResult {
-	return m.revertResource(&deployment.Spec.Template, &deployment.ObjectMeta)
+	return m.revertResource(
+		&deployment.Spec.Template,
+		&deployment.ObjectMeta,
+		&deployment.Spec.Template.ObjectMeta,
+	)
 }
 
 func (m *ResourceModifier) RemoveLabelsFromImmutableJob(job *batchv1.Job) ModificationResult {
@@ -574,34 +652,44 @@ func (m *ResourceModifier) RevertReplicaSet(replicaSet *appsv1.ReplicaSet) Modif
 	if m.hasMatchingOwnerReference(replicaSet, []metav1.TypeMeta{util.K8sTypeMetaDeployment}) {
 		return NewNotModifiedOwnedByHigherOrderWorkloadResult()
 	}
-	return m.revertResource(&replicaSet.Spec.Template, &replicaSet.ObjectMeta)
+	return m.revertResource(
+		&replicaSet.Spec.Template,
+		&replicaSet.ObjectMeta,
+		&replicaSet.Spec.Template.ObjectMeta,
+	)
 }
 
 func (m *ResourceModifier) RevertStatefulSet(statefulSet *appsv1.StatefulSet) ModificationResult {
-	return m.revertResource(&statefulSet.Spec.Template, &statefulSet.ObjectMeta)
+	return m.revertResource(
+		&statefulSet.Spec.Template,
+		&statefulSet.ObjectMeta,
+		&statefulSet.Spec.Template.ObjectMeta,
+	)
 }
 
 func (m *ResourceModifier) revertResource(
 	podTemplateSpec *corev1.PodTemplateSpec,
-	meta *metav1.ObjectMeta,
+	workloadMeta *metav1.ObjectMeta,
+	podMeta *metav1.ObjectMeta,
 ) ModificationResult {
-	if util.InstrumentationAttemptHasFailed(meta) {
+	if util.InstrumentationAttemptHasFailed(workloadMeta) {
 		// workload has never been instrumented successfully, only remove labels
-		util.RemoveInstrumentationLabels(meta)
+		util.RemoveInstrumentationLabels(workloadMeta)
 		util.RemoveInstrumentationLabels(&podTemplateSpec.ObjectMeta)
 		return NewHasBeenModifiedResult()
 	}
-	if hasBeenModified := m.revertPodSpec(&podTemplateSpec.Spec); !hasBeenModified {
+	if hasBeenModified := m.revertPodSpec(&podTemplateSpec.Spec, podMeta); !hasBeenModified {
 		return NewNotModifiedNoChangesResult()
 	}
-	util.RemoveInstrumentationLabels(meta)
+	util.RemoveInstrumentationLabels(workloadMeta)
 	util.RemoveInstrumentationLabels(&podTemplateSpec.ObjectMeta)
 	return NewHasBeenModifiedResult()
 }
 
-func (m *ResourceModifier) revertPodSpec(podSpec *corev1.PodSpec) bool {
+func (m *ResourceModifier) revertPodSpec(podSpec *corev1.PodSpec, podMeta *metav1.ObjectMeta) bool {
 	originalSpec := podSpec.DeepCopy()
 	m.removeInstrumentationVolume(podSpec)
+	m.removeSafeToEvictLocalVolumesAnnotation(podMeta)
 	m.removeInitContainer(podSpec)
 	for idx := range podSpec.Containers {
 		container := &podSpec.Containers[idx]
@@ -618,6 +706,43 @@ func (m *ResourceModifier) removeInstrumentationVolume(podSpec *corev1.PodSpec) 
 	podSpec.Volumes = slices.DeleteFunc(podSpec.Volumes, func(c corev1.Volume) bool {
 		return c.Name == dash0VolumeName
 	})
+}
+
+func (m *ResourceModifier) removeSafeToEvictLocalVolumesAnnotation(podMeta *metav1.ObjectMeta) {
+	if podMeta.Annotations == nil {
+		// There are no annotations, nothing to remove.
+		return
+	}
+
+	annotationValue, annotationIsPresent := podMeta.Annotations[safeToEviceLocalVolumesAnnotationName]
+	if !annotationIsPresent {
+		// The annotation is not present, nothing to remove.
+		return
+	}
+	if annotationValue == dash0VolumeName {
+		// If the dash0-instrumentation volume is the only volume in the list, remove the annotation entirely.
+		delete(podMeta.Annotations, safeToEviceLocalVolumesAnnotationName)
+		return
+	}
+
+	if !strings.Contains(annotationValue, dash0VolumeName) {
+		// The annotation is present, but it does not contain dash0-instrumentation volume, nothing to remove.
+		return
+	}
+
+	// There are multiple volumes in the list, remove only the dash0-instrumentation volume.
+	volumeNames := parseAndNormalizeVolumeList(annotationValue)
+	volumeNames = slices.Delete(
+		volumeNames,
+		slices.Index(volumeNames, dash0VolumeName),
+		slices.Index(volumeNames, dash0VolumeName)+1,
+	)
+	if len(volumeNames) == 0 {
+		delete(podMeta.Annotations, safeToEviceLocalVolumesAnnotationName)
+		return
+	} else {
+		podMeta.Annotations[safeToEviceLocalVolumesAnnotationName] = strings.Join(volumeNames, ",")
+	}
 }
 
 func (m *ResourceModifier) removeInitContainer(podSpec *corev1.PodSpec) {

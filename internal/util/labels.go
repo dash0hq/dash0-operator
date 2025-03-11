@@ -40,55 +40,55 @@ var (
 type instrumentedState string
 
 func AddInstrumentationLabels(
-	meta *metav1.ObjectMeta,
+	objectMeta *metav1.ObjectMeta,
 	instrumentationSuccess bool,
 	instrumentationMetadata InstrumentationMetadata,
 ) {
 	if instrumentationSuccess {
-		addLabel(meta, instrumentedLabelKey, string(instrumentedLabelValueSuccessful))
+		addLabel(objectMeta, instrumentedLabelKey, string(instrumentedLabelValueSuccessful))
 	} else {
-		addLabel(meta, instrumentedLabelKey, string(instrumentedLabelValueUnsuccessful))
+		addLabel(objectMeta, instrumentedLabelKey, string(instrumentedLabelValueUnsuccessful))
 	}
-	addLabel(meta, operatorImageLabelKey, ImageNameToLabel(instrumentationMetadata.OperatorImage))
-	addLabel(meta, initContainerImageLabelKey, ImageNameToLabel(instrumentationMetadata.InitContainerImage))
-	addLabel(meta, instrumentedByLabelKey, string(instrumentationMetadata.InstrumentedBy))
+	addLabel(objectMeta, operatorImageLabelKey, ImageNameToLabel(instrumentationMetadata.OperatorImage))
+	addLabel(objectMeta, initContainerImageLabelKey, ImageNameToLabel(instrumentationMetadata.InitContainerImage))
+	addLabel(objectMeta, instrumentedByLabelKey, string(instrumentationMetadata.InstrumentedBy))
 }
 
-func AddWebhookIgnoreOnceLabel(meta *metav1.ObjectMeta) {
-	addLabel(meta, webhookIgnoreOnceLabelKey, "true")
+func AddWebhookIgnoreOnceLabel(objectMeta *metav1.ObjectMeta) {
+	addLabel(objectMeta, webhookIgnoreOnceLabelKey, "true")
 }
 
-func addLabel(meta *metav1.ObjectMeta, key string, value string) {
-	if meta.Labels == nil {
-		meta.Labels = make(map[string]string, 1)
+func addLabel(objectMeta *metav1.ObjectMeta, key string, value string) {
+	if objectMeta.Labels == nil {
+		objectMeta.Labels = make(map[string]string, 1)
 	}
-	meta.Labels[key] = value
+	objectMeta.Labels[key] = value
 }
 
-func RemoveInstrumentationLabels(meta *metav1.ObjectMeta) {
-	removeLabel(meta, instrumentedLabelKey)
-	removeLabel(meta, operatorImageLabelKey)
-	removeLabel(meta, initContainerImageLabelKey)
-	removeLabel(meta, instrumentedByLabelKey)
+func RemoveInstrumentationLabels(objectMeta *metav1.ObjectMeta) {
+	removeLabel(objectMeta, instrumentedLabelKey)
+	removeLabel(objectMeta, operatorImageLabelKey)
+	removeLabel(objectMeta, initContainerImageLabelKey)
+	removeLabel(objectMeta, instrumentedByLabelKey)
 }
 
-func removeLabel(meta *metav1.ObjectMeta, key string) {
-	delete(meta.Labels, key)
+func removeLabel(objectMeta *metav1.ObjectMeta, key string) {
+	delete(objectMeta.Labels, key)
 }
 
-func HasBeenInstrumentedSuccessfully(meta *metav1.ObjectMeta) bool {
-	return readInstrumentationState(meta) == instrumentedLabelValueSuccessful
+func HasBeenInstrumentedSuccessfully(objectMeta *metav1.ObjectMeta) bool {
+	return readInstrumentationState(objectMeta) == instrumentedLabelValueSuccessful
 }
 
 func HasBeenInstrumentedSuccessfullyByThisVersion(
-	meta *metav1.ObjectMeta,
+	objectMeta *metav1.ObjectMeta,
 	images Images,
 ) bool {
-	if !HasBeenInstrumentedSuccessfully(meta) {
+	if !HasBeenInstrumentedSuccessfully(objectMeta) {
 		return false
 	}
-	operatorImageValue, operatorImageIsSet := readLabel(meta, operatorImageLabelKey)
-	initContainerImageValue, initContainerImageIsSet := readLabel(meta, initContainerImageLabelKey)
+	operatorImageValue, operatorImageIsSet := readLabel(objectMeta, operatorImageLabelKey)
+	initContainerImageValue, initContainerImageIsSet := readLabel(objectMeta, initContainerImageLabelKey)
 	if !operatorImageIsSet || !initContainerImageIsSet {
 		return false
 	}
@@ -97,12 +97,12 @@ func HasBeenInstrumentedSuccessfullyByThisVersion(
 	return operatorImageValue == expectedOperatorImageLabel && initContainerImageValue == expectedInitContainerImageLabel
 }
 
-func InstrumentationAttemptHasFailed(meta *metav1.ObjectMeta) bool {
-	return readInstrumentationState(meta) == instrumentedLabelValueUnsuccessful
+func InstrumentationAttemptHasFailed(objectMeta *metav1.ObjectMeta) bool {
+	return readInstrumentationState(objectMeta) == instrumentedLabelValueUnsuccessful
 }
 
-func readInstrumentationState(meta *metav1.ObjectMeta) instrumentedState {
-	instrumented, isSet := readLabel(meta, instrumentedLabelKey)
+func readInstrumentationState(objectMeta *metav1.ObjectMeta) instrumentedState {
+	instrumented, isSet := readLabel(objectMeta, instrumentedLabelKey)
 	if !isSet {
 		return instrumentedLabelValueUnknown
 	}
@@ -116,29 +116,29 @@ func readInstrumentationState(meta *metav1.ObjectMeta) instrumentedState {
 	}
 }
 
-func HasOptedOutOfInstrumentation(meta *metav1.ObjectMeta) bool {
-	return hasOptedOutOfInstrumentation(meta)
+func HasOptedOutOfInstrumentation(objectMeta *metav1.ObjectMeta) bool {
+	return hasOptedOutOfInstrumentation(objectMeta)
 }
 
-func HasOptedOutOfInstrumentationAndIsUninstrumented(meta *metav1.ObjectMeta) bool {
-	return hasOptedOutOfInstrumentation(meta) && !HasBeenInstrumentedSuccessfully(meta)
+func HasOptedOutOfInstrumentationAndIsUninstrumented(objectMeta *metav1.ObjectMeta) bool {
+	return hasOptedOutOfInstrumentation(objectMeta) && !HasBeenInstrumentedSuccessfully(objectMeta)
 }
 
-func WasInstrumentedButHasOptedOutNow(meta *metav1.ObjectMeta) bool {
-	return HasBeenInstrumentedSuccessfully(meta) && hasOptedOutOfInstrumentation(meta)
+func WasInstrumentedButHasOptedOutNow(objectMeta *metav1.ObjectMeta) bool {
+	return HasBeenInstrumentedSuccessfully(objectMeta) && hasOptedOutOfInstrumentation(objectMeta)
 }
 
-func hasOptedOutOfInstrumentation(meta *metav1.ObjectMeta) bool {
-	dash0EnabledValue, isSet := readLabel(meta, dash0EnableLabelKey)
+func hasOptedOutOfInstrumentation(objectMeta *metav1.ObjectMeta) bool {
+	dash0EnabledValue, isSet := readLabel(objectMeta, dash0EnableLabelKey)
 	return isSet && dash0EnabledValue == "false"
 }
 
-func CheckAndDeleteIgnoreOnceLabel(meta *metav1.ObjectMeta) bool {
-	if meta.Labels == nil {
+func CheckAndDeleteIgnoreOnceLabel(objectMeta *metav1.ObjectMeta) bool {
+	if objectMeta.Labels == nil {
 		return false
 	}
-	if value, ok := meta.Labels[webhookIgnoreOnceLabelKey]; ok {
-		delete(meta.Labels, webhookIgnoreOnceLabelKey)
+	if value, ok := objectMeta.Labels[webhookIgnoreOnceLabelKey]; ok {
+		delete(objectMeta.Labels, webhookIgnoreOnceLabelKey)
 		return value == "true"
 	}
 	return false
@@ -166,11 +166,11 @@ func ImageNameToLabel(imageName string) string {
 	return label[:63]
 }
 
-func readLabel(meta *metav1.ObjectMeta, key string) (string, bool) {
-	if meta.Labels == nil {
+func readLabel(objectMeta *metav1.ObjectMeta, key string) (string, bool) {
+	if objectMeta.Labels == nil {
 		return "", false
 	}
-	if value, ok := meta.Labels[key]; ok {
+	if value, ok := objectMeta.Labels[key]; ok {
 		return value, true
 	}
 	return "", false

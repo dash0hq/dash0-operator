@@ -58,6 +58,8 @@ type VerifyOpts struct {
 
 const (
 	eventTimeout = 1 * time.Second
+
+	safeToEviceLocalVolumesAnnotationName = "cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes"
 )
 
 var (
@@ -103,6 +105,7 @@ func VerifyModifiedCronJob(resource *batchv1.CronJob, expectations PodSpecExpect
 	verifyPodSpec(resource.Spec.JobTemplate.Spec.Template.Spec, expectations)
 	verifyLabelsAfterSuccessfulModification(resource.ObjectMeta)
 	verifyLabelsAfterSuccessfulModification(resource.Spec.JobTemplate.Spec.Template.ObjectMeta)
+	verifyPodAnnotationsAfterSuccessfulModification(resource.Spec.JobTemplate.Spec.Template.ObjectMeta)
 	verifyManagedFields(resource.ManagedFields, opts...)
 }
 
@@ -110,18 +113,21 @@ func VerifyUnmodifiedCronJob(resource *batchv1.CronJob) {
 	verifyUnmodifiedPodSpec(resource.Spec.JobTemplate.Spec.Template.Spec)
 	verifyNoDash0Labels(resource.ObjectMeta)
 	verifyNoDash0Labels(resource.Spec.JobTemplate.Spec.Template.ObjectMeta)
+	verifyNoDash0PodAnnotations(resource.Spec.JobTemplate.Spec.Template.ObjectMeta)
 }
 
 func VerifyCronJobWithOptOutLabel(resource *batchv1.CronJob) {
 	verifyUnmodifiedPodSpec(resource.Spec.JobTemplate.Spec.Template.Spec)
 	verifyLabelsForOptOutWorkload(resource.ObjectMeta)
 	verifyNoDash0Labels(resource.Spec.JobTemplate.Spec.Template.ObjectMeta)
+	verifyNoDash0PodAnnotations(resource.Spec.JobTemplate.Spec.Template.ObjectMeta)
 }
 
 func VerifyModifiedDaemonSet(resource *appsv1.DaemonSet, expectations PodSpecExpectations, opts ...VerifyOpts) {
 	verifyPodSpec(resource.Spec.Template.Spec, expectations)
 	verifyLabelsAfterSuccessfulModification(resource.ObjectMeta)
 	verifyLabelsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
+	verifyPodAnnotationsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
 	verifyManagedFields(resource.ManagedFields, opts...)
 }
 
@@ -129,18 +135,21 @@ func VerifyUnmodifiedDaemonSet(resource *appsv1.DaemonSet) {
 	verifyUnmodifiedPodSpec(resource.Spec.Template.Spec)
 	verifyNoDash0Labels(resource.ObjectMeta)
 	verifyNoDash0Labels(resource.Spec.Template.ObjectMeta)
+	verifyNoDash0PodAnnotations(resource.Spec.Template.ObjectMeta)
 }
 
 func VerifyDaemonSetWithOptOutLabel(resource *appsv1.DaemonSet) {
 	verifyUnmodifiedPodSpec(resource.Spec.Template.Spec)
 	verifyLabelsForOptOutWorkload(resource.ObjectMeta)
 	verifyNoDash0Labels(resource.Spec.Template.ObjectMeta)
+	verifyNoDash0PodAnnotations(resource.Spec.Template.ObjectMeta)
 }
 
 func VerifyModifiedDeployment(resource *appsv1.Deployment, expectations PodSpecExpectations, opts ...VerifyOpts) {
 	verifyPodSpec(resource.Spec.Template.Spec, expectations)
 	verifyLabelsAfterSuccessfulModification(resource.ObjectMeta)
 	verifyLabelsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
+	verifyPodAnnotationsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
 	verifyManagedFields(resource.ManagedFields, opts...)
 }
 
@@ -152,24 +161,28 @@ func VerifyUnmodifiedDeploymentEventually(g Gomega, resource *appsv1.Deployment)
 	verifyUnmodifiedPodSpecEventually(g, resource.Spec.Template.Spec)
 	verifyNoDash0LabelsEventually(g, resource.ObjectMeta)
 	verifyNoDash0LabelsEventually(g, resource.Spec.Template.ObjectMeta)
+	verifyNoDash0PodAnnotationsEventually(g, resource.Spec.Template.ObjectMeta)
 }
 
 func VerifyRevertedDeployment(resource *appsv1.Deployment, expectations PodSpecExpectations) {
 	verifyPodSpec(resource.Spec.Template.Spec, expectations)
 	verifyNoDash0Labels(resource.ObjectMeta)
 	verifyNoDash0Labels(resource.Spec.Template.ObjectMeta)
+	verifyNoDash0PodAnnotations(resource.Spec.Template.ObjectMeta)
 }
 
 func VerifyDeploymentWithOptOutLabel(resource *appsv1.Deployment) {
 	verifyUnmodifiedPodSpec(resource.Spec.Template.Spec)
 	verifyLabelsForOptOutWorkload(resource.ObjectMeta)
 	verifyNoDash0Labels(resource.Spec.Template.ObjectMeta)
+	verifyNoDash0PodAnnotations(resource.Spec.Template.ObjectMeta)
 }
 
 func VerifyModifiedJob(resource *batchv1.Job, expectations PodSpecExpectations, opts ...VerifyOpts) {
 	verifyPodSpec(resource.Spec.Template.Spec, expectations)
 	verifyLabelsAfterSuccessfulModification(resource.ObjectMeta)
 	verifyLabelsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
+	verifyPodAnnotationsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
 	verifyManagedFields(resource.ManagedFields, opts...)
 }
 
@@ -188,40 +201,47 @@ func VerifyImmutableJobCouldNotBeModified(resource *batchv1.Job) {
 	verifyUnmodifiedPodSpec(resource.Spec.Template.Spec)
 	verifyLabelsAfterFailureToModify(resource.ObjectMeta)
 	verifyNoDash0Labels(resource.Spec.Template.ObjectMeta)
+	verifyNoDash0PodAnnotations(resource.Spec.Template.ObjectMeta)
 }
 
 func VerifyUnmodifiedJob(resource *batchv1.Job) {
 	verifyUnmodifiedPodSpec(resource.Spec.Template.Spec)
 	verifyNoDash0Labels(resource.ObjectMeta)
 	verifyNoDash0Labels(resource.Spec.Template.ObjectMeta)
+	verifyNoDash0PodAnnotations(resource.Spec.Template.ObjectMeta)
 }
 
 func VerifyJobWithOptOutLabel(resource *batchv1.Job) {
 	verifyUnmodifiedPodSpec(resource.Spec.Template.Spec)
 	verifyLabelsForOptOutWorkload(resource.ObjectMeta)
 	verifyNoDash0Labels(resource.Spec.Template.ObjectMeta)
+	verifyNoDash0PodAnnotations(resource.Spec.Template.ObjectMeta)
 }
 
 func VerifyModifiedPod(resource *corev1.Pod, expectations PodSpecExpectations, opts ...VerifyOpts) {
 	verifyPodSpec(resource.Spec, expectations)
 	verifyLabelsAfterSuccessfulModification(resource.ObjectMeta)
+	verifyPodAnnotationsAfterSuccessfulModification(resource.ObjectMeta)
 	verifyManagedFields(resource.ManagedFields, opts...)
 }
 
 func VerifyUnmodifiedPod(resource *corev1.Pod) {
 	verifyUnmodifiedPodSpec(resource.Spec)
 	verifyNoDash0Labels(resource.ObjectMeta)
+	verifyNoDash0PodAnnotations(resource.ObjectMeta)
 }
 
 func VerifyPodWithOptOutLabel(resource *corev1.Pod) {
 	verifyUnmodifiedPodSpec(resource.Spec)
 	verifyLabelsForOptOutWorkload(resource.ObjectMeta)
+	verifyNoDash0PodAnnotations(resource.ObjectMeta)
 }
 
 func VerifyModifiedReplicaSet(resource *appsv1.ReplicaSet, expectations PodSpecExpectations, opts ...VerifyOpts) {
 	verifyPodSpec(resource.Spec.Template.Spec, expectations)
 	verifyLabelsAfterSuccessfulModification(resource.ObjectMeta)
 	verifyLabelsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
+	verifyPodAnnotationsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
 	verifyManagedFields(resource.ManagedFields, opts...)
 }
 
@@ -229,18 +249,21 @@ func VerifyUnmodifiedReplicaSet(resource *appsv1.ReplicaSet) {
 	verifyUnmodifiedPodSpec(resource.Spec.Template.Spec)
 	verifyNoDash0Labels(resource.ObjectMeta)
 	verifyNoDash0Labels(resource.Spec.Template.ObjectMeta)
+	verifyNoDash0PodAnnotations(resource.Spec.Template.ObjectMeta)
 }
 
 func VerifyReplicaSetWithOptOutLabel(resource *appsv1.ReplicaSet) {
 	verifyUnmodifiedPodSpec(resource.Spec.Template.Spec)
 	verifyLabelsForOptOutWorkload(resource.ObjectMeta)
 	verifyNoDash0Labels(resource.Spec.Template.ObjectMeta)
+	verifyNoDash0PodAnnotations(resource.Spec.Template.ObjectMeta)
 }
 
 func VerifyModifiedStatefulSet(resource *appsv1.StatefulSet, expectations PodSpecExpectations, opts ...VerifyOpts) {
 	verifyPodSpec(resource.Spec.Template.Spec, expectations)
 	verifyLabelsAfterSuccessfulModification(resource.ObjectMeta)
 	verifyLabelsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
+	verifyPodAnnotationsAfterSuccessfulModification(resource.Spec.Template.ObjectMeta)
 	verifyManagedFields(resource.ManagedFields, opts...)
 }
 
@@ -248,12 +271,14 @@ func VerifyUnmodifiedStatefulSet(resource *appsv1.StatefulSet) {
 	verifyUnmodifiedPodSpec(resource.Spec.Template.Spec)
 	verifyNoDash0Labels(resource.ObjectMeta)
 	verifyNoDash0Labels(resource.Spec.Template.ObjectMeta)
+	verifyNoDash0PodAnnotations(resource.Spec.Template.ObjectMeta)
 }
 
 func VerifyStatefulSetWithOptOutLabel(resource *appsv1.StatefulSet) {
 	verifyUnmodifiedPodSpec(resource.Spec.Template.Spec)
 	verifyLabelsForOptOutWorkload(resource.ObjectMeta)
 	verifyNoDash0Labels(resource.Spec.Template.ObjectMeta)
+	verifyNoDash0PodAnnotations(resource.Spec.Template.ObjectMeta)
 }
 
 func verifyPodSpec(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
@@ -393,6 +418,10 @@ func verifyLabelsAfterSuccessfulModification(meta metav1.ObjectMeta) {
 	Expect(meta.Labels["dash0.com/enable"]).To(Or(Equal(""), Equal("true")))
 }
 
+func verifyPodAnnotationsAfterSuccessfulModification(podMeta metav1.ObjectMeta) {
+	Expect(podMeta.Annotations[safeToEviceLocalVolumesAnnotationName]).To(Equal("dash0-instrumentation"))
+}
+
 func verifyLabelsAfterFailureToModify(meta metav1.ObjectMeta) {
 	Expect(meta.Labels["dash0.com/instrumented"]).To(Equal("false"))
 	Expect(meta.Labels["dash0.com/operator-image"]).To(Equal("some-registry.com_1234_dash0hq_operator-controller_1.2.3"))
@@ -412,6 +441,15 @@ func verifyNoDash0LabelsEventually(g Gomega, meta metav1.ObjectMeta) {
 	g.Expect(meta.Labels["dash0.com/init-container-image"]).To(Equal(""))
 	g.Expect(meta.Labels["dash0.com/instrumented-by"]).To(Equal(""))
 	g.Expect(meta.Labels["dash0.com/enable"]).To(Equal(""))
+}
+
+func verifyNoDash0PodAnnotations(podMeta metav1.ObjectMeta) {
+	verifyNoDash0PodAnnotationsEventually(Default, podMeta)
+}
+
+func verifyNoDash0PodAnnotationsEventually(g Gomega, podMeta metav1.ObjectMeta) {
+	g.Expect(podMeta.Annotations[safeToEviceLocalVolumesAnnotationName]).
+		NotTo(ContainSubstring("dash0-instrumentation"))
 }
 
 func verifyLabelsForOptOutWorkload(meta metav1.ObjectMeta) {
