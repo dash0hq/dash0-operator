@@ -16,7 +16,10 @@ verify_kubectx
 
 resource_types=( cronjob daemonset deployment job pod replicaset statefulset )
 for resource_type in "${resource_types[@]}"; do
-  test-resources/node.js/express/undeploy.sh "${target_namespace}" "${resource_type}"
+  test-resources/node.js/express/undeploy.sh "$target_namespace" "$resource_type"
+  pushd test-resources/jvm/spring-boot > /dev/null
+    kubectl delete --namespace "$target_namespace" --ignore-not-found -f "$resource_type.yaml"
+  popd > /dev/null
 done
 
 wait_for_third_party_resource_deletion="false"
