@@ -12,11 +12,14 @@ Usage
 
 * `scripts/test-all.sh` to run all tests.
 * `ARCHITECTURES=arm64,x86_64 scripts/test-all.sh` to run tests for a subset of CPU architectures.
-* `LIBC_FLAVORS=glibc,musl scripts/test-all.sh` to run tests for a subset of libc flavors. Can be combined with
-  `ARCHITECTURES`.
+  Can be combined with `LIBC_FLAVORS` and other flags.
+* `LIBC_FLAVORS=glibc,musl scripts/test-all.sh` to run tests for a subset of libc flavors.
+  Can be combined with `ARCHITECTURES` and other flags.
 * `TEST_CASES=twice,mapped scripts/test-all.sh` to only run tests cases whose names contain one of the
   provided strings.
   The test cases are listed in `run-tests-within-container.sh`.
-  Can be combined with `ARCHITECTURES` and `LIBC_FLAVORS`.
+  Can be combined with `ARCHITECTURES`, `LIBC_FLAVORS` etc.
 * `INSTRUMENTATION_IMAGE=... scripts/test-all.sh` use an existing local or remote instrumentation image.
+* `MISSING_ENVIRON_SYMBOL_TESTS=true` also run tests with a binary that does not provide an `__environ` symbol.
+  These are currently off by default.
 
