@@ -493,6 +493,32 @@ install_monitoring_resource() {
   fi
 }
 
+deploy_application_under_monitoring() {
+  if [[ "${DEPLOY_APPLICATION_UNDER_MONITORING:-}" != "false" ]]; then
+    echo "STEP $step_counter: deploy application under monitoring"
+    runtime_under_test="${1:-nodejs}"
+    if [[ "${runtime_under_test:-}" = "nodejs" ]]; then
+      test-resources/node.js/express/deploy.sh "${target_namespace}" "${kind}"
+      if [[ "$additional_namespaces" = true ]]; then
+        test-resources/node.js/express/deploy.sh test-namespace-2 daemonset
+        test-resources/node.js/express/deploy.sh test-namespace-3 statefulset
+      fi
+    elif [[ "${runtime_under_test:-}" = "jvm" ]]; then
+      pushd test-resources/jvm/spring-boot > /dev/null
+      kubectl apply -n "${target_namespace}" -f "${kind}".yaml
+      if [[ "$additional_namespaces" = true ]]; then
+        kubectl apply -n test-namespace-2 -f daemonset.yaml
+        kubectl apply -n test-namespace-3 -f statefulset.yaml
+      fi
+      popd > /dev/null
+    else
+      echo "Error: unknown runtime: $runtime_under_test"
+      exit 1
+    fi
+    finish_step
+  fi
+}
+
 install_third_party_crds() {
   kubectl apply --server-side -f https://raw.githubusercontent.com/perses/perses-operator/main/config/crd/bases/perses.dev_persesdashboards.yaml
   kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.77.1/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml

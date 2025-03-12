@@ -6,6 +6,8 @@
 
 set -euo noglob
 
+home_directory=$(pwd)
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 NC='\033[0m'
@@ -39,19 +41,22 @@ fi
 
 # Runs one test case. Usage:
 #
-#   run_test_case $test_case_label $test_app_command $expected_output $env_vars
+#   run_test_case $test_case_label $working_dir $test_app_command $expected_output $env_vars
 #
 # - test_case_label: a human readable phrase describing the test case
-# - test_app_command: will be passed on to app/index.js as a command line argument and determines the app's behavior
+# - working_dir: the working directory for the test case
+# - test_app_command: the test app executable to run, plus (optionally) additional command line arguments that will be passed on to
+#   the test app
 # - expected_output: The app's output will be compared to this string, the test case is deemed successful if the exit
 #   code is zero and the app's output matches this string
 # - env_vars (optional): Set additional environment variables like NODE_OPTIONS or OTEL_RESOURCE_ATTRIBUTES when running
 #   the test
 run_test_case() {
   test_case_label=$1
-  test_app_command=$2
-  expected=$3
-  env_vars=${4:-}
+  working_dir=$2
+  test_app_command=$3
+  expected=$4
+  env_vars=${5:-}
 
   if [ -n "${TEST_CASES:-}" ]; then
     IFS=,
@@ -73,23 +78,31 @@ run_test_case() {
     fi
   fi
 
+  if [ "${test_case_label#*"__environ"}" != "$test_case_label" ] && [ "${ARCH_UNDER_TEST:-}" = "x86_64" ] && [ "${LIBC_UNDER_TEST:-}" = "musl" ]; then
+    echo "- skipping test case \"$test_case_label\": tests for no __environ are currently disabled for x86_64/musl"
+    return
+  fi
+
+  cd "$working_dir"
   full_command="LD_PRELOAD=""$injector_binary"" TEST_VAR=value DASH0_NAMESPACE_NAME=my-namespace DASH0_POD_NAME=my-pod DASH0_POD_UID=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff DASH0_CONTAINER_NAME=test-app"
   if [ "$env_vars" != "" ]; then
     full_command=" $full_command $env_vars"
   fi
-  full_command=" $full_command node index.js $test_app_command"
-  echo "Running test command: $full_command"
+  full_command=" $full_command $test_app_command"
   set +e
   test_output=$(eval "$full_command")
   test_exit_code=$?
+  cd "$home_directory"
   set -e
   if [ $test_exit_code != 0 ]; then
     printf "${RED}test \"%s\" crashed:${NC}\n" "$test_case_label"
+    echo "test command: $full_command"
     echo "received exit code: $test_exit_code"
     echo "output: $test_output"
     exit_code=1
   elif [ "$test_output" != "$expected" ]; then
     printf "${RED}test \"%s\" failed:${NC}\n" "$test_case_label"
+    echo "test command: $full_command"
     echo "expected: $expected"
     echo "actual:   $test_output"
     exit_code=1
@@ -100,19 +113,82 @@ run_test_case() {
 
 exit_code=0
 
-cd app
+run_test_case \
+  "getenv: returns undefined for non-existing environment variable" \
+  "app" \
+  "node index.js non-existing" \
+  "DOES_NOT_EXIST: -"
+run_test_case \
+  "getenv: returns environment variable unchanged" \
+  "app" \
+  "node index.js existing" \
+  "TEST_VAR: value"
+run_test_case \
+  "getenv: overrides NODE_OPTIONS if it is not present" \
+  "app" \
+  "node index.js node_options" \
+  "NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry"
+run_test_case \
+  "getenv: ask for NODE_OPTIONS (unset) twice" \
+  "app" \
+  "node index.js node_options_twice" \
+  "NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry; NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry"
+run_test_case \
+  "getenv: prepends to NODE_OPTIONS if it is present" \
+  "app" \
+  "node index.js node_options" \
+  "NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --no-deprecation" \
+  "NODE_OPTIONS=--no-deprecation"
+run_test_case \
+  "getenv: ask for NODE_OPTIONS (set) twice" \
+  "app" \
+  "node index.js node_options_twice" \
+  "NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --no-deprecation; NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --no-deprecation" \
+  "NODE_OPTIONS=--no-deprecation"
+run_test_case \
+  "getenv: sets k8s.pod.uid and k8s.container.name via OTEL_RESOURCE_ATTRIBUTES" \
+  "app" \
+  "node index.js otel_resource_attributes" \
+  "OTEL_RESOURCE_ATTRIBUTES: k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app"
+run_test_case \
+  "getenv: sets k8s.pod.uid and k8s.container.name via OTEL_RESOURCE_ATTRIBUTES with pre-existing value" \
+  "app" \
+  "node index.js otel_resource_attributes" \
+  "OTEL_RESOURCE_ATTRIBUTES: k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app,foo=bar" \
+  "OTEL_RESOURCE_ATTRIBUTES=foo=bar"
+run_test_case \
+  "getenv: use mapped app.kubernetes.io labels for service.name and friends" \
+  "app" \
+  "node index.js otel_resource_attributes" \
+  "OTEL_RESOURCE_ATTRIBUTES: k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app,service.name=service-name,service.version=service-version,service.namespace=service-namespace" \
+  "DASH0_SERVICE_NAME=service-name DASH0_SERVICE_VERSION=service-version DASH0_SERVICE_NAMESPACE=service-namespace"
+run_test_case \
+  "getenv: use mapped resource.opentelemetry.io labels as additional resource attributes" \
+  "app" \
+  "node index.js otel_resource_attributes" \
+  "OTEL_RESOURCE_ATTRIBUTES: k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app,aaa=bbb,ccc=ddd" \
+  "DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd"
+run_test_case \
+  "getenv: combine mapped app.kubernetes.io and resource.opentelemetry.io labels" \
+  "app" \
+  "node index.js otel_resource_attributes" \
+  "OTEL_RESOURCE_ATTRIBUTES: k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app,service.name=service-name,service.version=service-version,service.namespace=service-namespace,aaa=bbb,ccc=ddd" \
+  "DASH0_SERVICE_NAME=service-name DASH0_SERVICE_VERSION=service-version DASH0_SERVICE_NAMESPACE=service-namespace DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd"
 
-run_test_case "getenv: returns undefined for non-existing environment variable" non-existing "DOES_NOT_EXIST: -"
-run_test_case "getenv: returns environment variable unchanged" existing "TEST_VAR: value"
-run_test_case "getenv: overrides NODE_OPTIONS if it is not present" node_options "NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry"
-run_test_case "getenv: ask for NODE_OPTIONS (unset) twice" node_options_twice "NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry; NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry"
-run_test_case "getenv: prepends to NODE_OPTIONS if it is present" node_options "NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --no-deprecation" "NODE_OPTIONS=--no-deprecation"
-run_test_case "getenv: ask for NODE_OPTIONS (set) twice" node_options_twice "NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --no-deprecation; NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --no-deprecation" "NODE_OPTIONS=--no-deprecation"
-run_test_case "getenv: sets k8s.pod.uid and k8s.container.name via OTEL_RESOURCE_ATTRIBUTES" otel_resource_attributes "OTEL_RESOURCE_ATTRIBUTES: k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app"
-run_test_case "getenv: sets k8s.pod.uid and k8s.container.name via OTEL_RESOURCE_ATTRIBUTES with pre-existing value" otel_resource_attributes "OTEL_RESOURCE_ATTRIBUTES: k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app,foo=bar" "OTEL_RESOURCE_ATTRIBUTES=foo=bar"
-run_test_case "getenv: use mapped app.kubernetes.io labels for service.name and friends" otel_resource_attributes "OTEL_RESOURCE_ATTRIBUTES: k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app,service.name=service-name,service.version=service-version,service.namespace=service-namespace" "DASH0_SERVICE_NAME=service-name DASH0_SERVICE_VERSION=service-version DASH0_SERVICE_NAMESPACE=service-namespace"
-run_test_case "getenv: use mapped resource.opentelemetry.io labels as additional resource attributes" otel_resource_attributes "OTEL_RESOURCE_ATTRIBUTES: k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app,aaa=bbb,ccc=ddd" "DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd"
-run_test_case "getenv: combine mapped app.kubernetes.io and resource.opentelemetry.io labels" otel_resource_attributes "OTEL_RESOURCE_ATTRIBUTES: k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app,service.name=service-name,service.version=service-version,service.namespace=service-namespace,aaa=bbb,ccc=ddd" "DASH0_SERVICE_NAME=service-name DASH0_SERVICE_VERSION=service-version DASH0_SERVICE_NAMESPACE=service-namespace DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd"
+if [ "${MISSING_ENVIRON_SYMBOL_TESTS:-}" = "true" ]; then
+  # Regression tests for missing __environ symbol:
+  run_test_case \
+    "no __environ symbol: read unset environment variable" \
+    "no_environ_symbol" \
+    "./noenviron" \
+    "The environmet variable \"NO_ENVIRON_TEST_VAR\" is not set."
+  run_test_case \
+    "no __environ symbol: read an environment variable that is set" \
+    "no_environ_symbol" \
+    "./noenviron" \
+    "The environmet variable \"NO_ENVIRON_TEST_VAR\" had the value: \"some-value\"." \
+    "NO_ENVIRON_TEST_VAR=some-value"
+fi
 
 exit $exit_code
 

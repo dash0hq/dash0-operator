@@ -27,13 +27,28 @@ else
   exit 1
 fi
 
-dockerfile_name=injector/test/docker/Dockerfile-build
-image_name=dash0-injector-builder-$ARCH
+if [ -z "${GOARCH:-}" ]; then
+  GOARCH=arm64
+fi
+
+source_file_name=${1:-}
+if [[ -z "$source_file_name" ]]; then
+  echo "error: mandatory argument \"source_file_name\" is missing"
+  exit 1
+fi
+target_file_name=${2:-}
+if [[ -z "$target_file_name" ]]; then
+  echo "error: mandatory argument \"target_file_name\" is missing"
+  exit 1
+fi
+dockerfile_name="${3:-injector/test/docker/Dockerfile-build}"
+image_name="${4:-dash0-injector-builder-$ARCH}"
 container_name=$image_name
+context="${5:-.}"
 
 echo
 echo
-echo ">>> Building the library on $ARCH <<<"
+echo ">>> Building on architecture $ARCH <<<"
 
 docker rmi -f "$image_name" 2> /dev/null
 docker rm -f "$container_name" 2> /dev/null
@@ -41,9 +56,14 @@ docker rm -f "$container_name" 2> /dev/null
 echo "$image_name" >> injector/test/.container_images_to_be_deleted_at_end
 docker build \
   --platform "$docker_platform" \
-  . \
+  --build-arg base_image="${BASE_IMAGE:-not_set}" \
+  "$context" \
   -f "$dockerfile_name" \
   -t "$image_name"
 
-copy_injector_binary_from_container_image "$image_name" "$ARCH" "$docker_platform"
+copy_binary_from_container_image \
+  "$image_name" \
+  "$docker_platform" \
+  "$source_file_name" \
+  "$target_file_name"
 
