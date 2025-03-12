@@ -8,15 +8,30 @@ ARG injector_binary=no_value
 # fail build immediately if build arg injector_binary is missing
 RUN test ${injector_binary} != "no_value"
 
+ARG noenviron_binary=no_value
+# fail build immediately if build arg noenviron_binary is missing
+RUN test ${noenviron_binary} != "no_value"
+
 WORKDIR /usr/src/dash0/injector/
 
 COPY app app
+RUN mkdir no_environ_symbol
+COPY no_environ_symbol/$noenviron_binary no_environ_symbol/noenviron
 COPY scripts/run-tests-within-container.sh scripts/
 
 RUN echo ${injector_binary}
 
 COPY bin/${injector_binary} /dash0-init-container/injector/dash0_injector.so
 
+# Acts as a dummy Dash0 Node.js OTel distro which actually does nothing.
 COPY docker/noop.js /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry/index.js
 
+ARG arch_under_test=no_value
+RUN test ${arch_under_test} != "no_value"
+ENV ARCH_UNDER_TEST=${arch_under_test}
+ARG libc_under_test=no_value
+RUN test ${libc_under_test} != "no_value"
+ENV LIBC_UNDER_TEST=${libc_under_test}
+
 CMD ["scripts/run-tests-within-container.sh"]
+
