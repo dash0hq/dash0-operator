@@ -6,6 +6,7 @@ package util
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -38,9 +39,16 @@ type ContainerExpectations struct {
 	Dash0ContainerNameEnvVarIdx                 int
 	Dash0ContainerNameEnvVarExpectedValue       string
 	Dash0ServiceNameEnvVarIdx                   int
+	Dash0ServiceNameEnvVarValueFrom             bool
+	Dash0ServiceNameEnvVarValue                 string
 	Dash0ServiceNamespaceEnvVarIdx              int
+	Dash0ServiceNamespaceEnvVarValueFrom        bool
+	Dash0ServiceNamespaceEnvVarValue            string
 	Dash0ServiceVersionEnvVarIdx                int
+	Dash0ServiceVersionEnvVarValueFrom          bool
+	Dash0ServiceVersionEnvVarValue              string
 	Dash0ResourceAttributesEnvVarIdx            int
+	Dash0ResourceAttributesEnvVarKeyValuePairs  []string
 }
 
 type PodSpecExpectations struct {
@@ -281,6 +289,7 @@ func VerifyStatefulSetWithOptOutLabel(resource *appsv1.StatefulSet) {
 	verifyNoDash0PodAnnotations(resource.Spec.Template.ObjectMeta)
 }
 
+//nolint:gocyclo
 func verifyPodSpec(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
 	Expect(podSpec.InitContainers).To(HaveLen(expectations.InitContainers))
 	for i, initContainer := range podSpec.InitContainers {
@@ -365,29 +374,58 @@ func verifyPodSpec(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
 				Expect(envVar.Value).To(Equal(containerExpectations.Dash0ContainerNameEnvVarExpectedValue))
 			} else if j == containerExpectations.Dash0ServiceNameEnvVarIdx {
 				Expect(envVar.Name).To(Equal("DASH0_SERVICE_NAME"))
-				valueFrom := envVar.ValueFrom
-				Expect(valueFrom).ToNot(BeNil())
-				Expect(valueFrom.FieldRef).ToNot(BeNil())
-				Expect(valueFrom.FieldRef.FieldPath).To(Equal("metadata.labels['app.kubernetes.io/name']"))
-				Expect(envVar.Value).To(BeEmpty())
+				if containerExpectations.Dash0ServiceNameEnvVarValueFrom {
+					valueFrom := envVar.ValueFrom
+					Expect(valueFrom).ToNot(BeNil())
+					Expect(valueFrom.FieldRef).ToNot(BeNil())
+					Expect(valueFrom.FieldRef.FieldPath).To(Equal("metadata.labels['app.kubernetes.io/name']"))
+					Expect(envVar.Value).To(BeEmpty())
+				} else if containerExpectations.Dash0ServiceNameEnvVarValue != "" {
+					Expect(envVar.Value).To(Equal(containerExpectations.Dash0ServiceNameEnvVarValue))
+					Expect(envVar.ValueFrom).To(BeNil())
+				} else {
+					Fail("Dash0ServiceNameEnvVarIdx is set but there is no value or valueFrom expectation")
+				}
 			} else if j == containerExpectations.Dash0ServiceNamespaceEnvVarIdx {
 				Expect(envVar.Name).To(Equal("DASH0_SERVICE_NAMESPACE"))
-				valueFrom := envVar.ValueFrom
-				Expect(valueFrom).ToNot(BeNil())
-				Expect(valueFrom.FieldRef).ToNot(BeNil())
-				Expect(valueFrom.FieldRef.FieldPath).To(Equal("metadata.labels['app.kubernetes.io/part-of']"))
-				Expect(envVar.Value).To(BeEmpty())
+				if containerExpectations.Dash0ServiceNamespaceEnvVarValueFrom {
+					valueFrom := envVar.ValueFrom
+					Expect(valueFrom).ToNot(BeNil())
+					Expect(valueFrom.FieldRef).ToNot(BeNil())
+					Expect(valueFrom.FieldRef.FieldPath).To(Equal("metadata.labels['app.kubernetes.io/part-of']"))
+					Expect(envVar.Value).To(BeEmpty())
+				} else if containerExpectations.Dash0ServiceNamespaceEnvVarValue != "" {
+					Expect(envVar.Value).To(Equal(containerExpectations.Dash0ServiceNamespaceEnvVarValue))
+					Expect(envVar.ValueFrom).To(BeNil())
+				} else {
+					Fail("Dash0ServiceNamespaceEnvVarIdx is set but there is no value or valueFrom expectation")
+				}
 			} else if j == containerExpectations.Dash0ServiceVersionEnvVarIdx {
 				Expect(envVar.Name).To(Equal("DASH0_SERVICE_VERSION"))
-				valueFrom := envVar.ValueFrom
-				Expect(valueFrom).ToNot(BeNil())
-				Expect(valueFrom.FieldRef).ToNot(BeNil())
-				Expect(valueFrom.FieldRef.FieldPath).To(Equal("metadata.labels['app.kubernetes.io/version']"))
-				Expect(envVar.Value).To(BeEmpty())
+				if containerExpectations.Dash0ServiceVersionEnvVarValueFrom {
+					valueFrom := envVar.ValueFrom
+					Expect(valueFrom).ToNot(BeNil())
+					Expect(valueFrom.FieldRef).ToNot(BeNil())
+					Expect(valueFrom.FieldRef.FieldPath).To(Equal("metadata.labels['app.kubernetes.io/version']"))
+					Expect(envVar.Value).To(BeEmpty())
+				} else if containerExpectations.Dash0ServiceVersionEnvVarValue != "" {
+					Expect(envVar.Value).To(Equal(containerExpectations.Dash0ServiceVersionEnvVarValue))
+					Expect(envVar.ValueFrom).To(BeNil())
+				} else {
+					Fail("Dash0ServiceVersionEnvVarIdx is set but there is no value or valueFrom expectation")
+				}
 			} else if j == containerExpectations.Dash0ResourceAttributesEnvVarIdx {
 				Expect(envVar.Name).To(Equal("DASH0_RESOURCE_ATTRIBUTES"))
-				Expect(envVar.Value).NotTo(BeEmpty())
-				Expect(envVar.ValueFrom).To(BeNil())
+				if len(containerExpectations.Dash0ResourceAttributesEnvVarKeyValuePairs) > 0 {
+					keyValuePairs := strings.Split(envVar.Value, ",")
+					Expect(keyValuePairs).To(HaveLen(len(containerExpectations.Dash0ResourceAttributesEnvVarKeyValuePairs)))
+					for _, expectedPair := range containerExpectations.Dash0ResourceAttributesEnvVarKeyValuePairs {
+						Expect(keyValuePairs).To(ContainElement(expectedPair))
+					}
+					Expect(envVar.ValueFrom).To(BeNil())
+				} else {
+					Fail("Dash0ResourceAttributesEnvVarIdx is set but there is no value expectation")
+				}
 			} else {
 				Expect(envVar.Name).To(Equal(fmt.Sprintf("TEST%d", j)))
 			}
@@ -659,6 +697,42 @@ func verifyEventEventually(
 	for _, event := range allEvents.Items {
 		if success, _ := matcher.Match(event); success {
 			return &event
+		}
+	}
+	return nil
+}
+
+func FindContainerByName(containers []corev1.Container, name string) *corev1.Container {
+	for _, container := range containers {
+		if container.Name == name {
+			return &container
+		}
+	}
+	return nil
+}
+
+func FindEnvVarByName(envVars []corev1.EnvVar, name string) *corev1.EnvVar {
+	for _, envVar := range envVars {
+		if envVar.Name == name {
+			return &envVar
+		}
+	}
+	return nil
+}
+
+func FindVolumeByName(volumes []corev1.Volume, name string) *corev1.Volume {
+	for _, volume := range volumes {
+		if volume.Name == name {
+			return &volume
+		}
+	}
+	return nil
+}
+
+func FindVolumeMountByName(volumeMounts []corev1.VolumeMount, name string) *corev1.VolumeMount {
+	for _, volumeMount := range volumeMounts {
+		if volumeMount.Name == name {
+			return &volumeMount
 		}
 	}
 	return nil

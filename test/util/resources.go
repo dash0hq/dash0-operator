@@ -6,6 +6,7 @@ package util
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strconv"
 
 	"github.com/google/uuid"
@@ -560,13 +561,25 @@ func UpdateWorkload(ctx context.Context, k8sClient client.Client, workload clien
 func DeploymentWithMoreBellsAndWhistles(namespace string, name string) *appsv1.Deployment {
 	workload := BasicDeployment(namespace, name)
 	workload.ObjectMeta.Annotations = map[string]string{
-		"resource.opentelemetry.io/foo": "bar",
+		"resource.opentelemetry.io/workload.only.1":  "workload-value-1",
+		"resource.opentelemetry.io/workload.only.2":  "workload-value-2",
+		"resource.opentelemetry.io/pod.and.workload": "workload-value",
 	}
 	workload.ObjectMeta.Labels = map[string]string{
-		"app.kubernetes.io/name":     "my-service",
-		"app.kubernetes.io/part-of":  "my-service-namespace",
-		"app.kubernetes.io/version":  "v1.0.0",
-		"app.kubernetes.io/instance": "my-service-12345",
+		"app.kubernetes.io/name":    "workload-aki-name",
+		"app.kubernetes.io/part-of": "workload-aki-part-of",
+		"app.kubernetes.io/version": "workload-aki-version",
+	}
+	maps.Copy(workload.Spec.Template.ObjectMeta.Labels,
+		map[string]string{
+			"app.kubernetes.io/name":    "pod-aki-name",
+			"app.kubernetes.io/part-of": "pod-aki-part-of",
+			"app.kubernetes.io/version": "pod-aki-version",
+		})
+	workload.Spec.Template.ObjectMeta.Annotations = map[string]string{
+		"resource.opentelemetry.io/pod.only.1":       "pod-value-1",
+		"resource.opentelemetry.io/pod.only.2":       "pod-value-2",
+		"resource.opentelemetry.io/pod.and.workload": "pod-value",
 	}
 	podSpec := &workload.Spec.Template.Spec
 	podSpec.Volumes = []corev1.Volume{

@@ -771,37 +771,56 @@ The label can also be applied by using `kubectl`:
 kubectl label --namespace $YOUR_NAMESPACE --overwrite deployment $YOUR_DEPLOYMENT_NAME dash0.com/enable=false
 ```
 
-### Specifying Additional Resource Attributes for Workloads via Labels and Annotations
+<span id="specifying-additional-resource-attributes-for-Workloads-via-labels-and-annotations"><!-- local anchor redirect after renaming the topic --></span>
+### Specifying Additional Resource Attributes via Labels and Annotations
 
-**Important:** All the labels and annotations listed in this section must be specified at the level of the *workload*,
-i.e., the deployment, daemonset, statefulset, cronjob, or replicaset, jobs or single pods when those are scheduled
-individually. The labels and annotations specified below will be ignored when they are set in the metadata of the
-pod template
+_Note:_ The labels and annotations listed in this section can be specified at the pod level, or at the workload level
+(i.e., the cronjob, deployment, daemonset, job, replicaset, or statefulset).
+Pod labels and annotations take precedence over workload labels and annotations.
 
-The following [standard Kubernetes labels](https://kubernetes.io/docs/reference/labels-annotations-taints/#labels-annotations-and-taints-used-on-api-objects)
+The following
+[standard Kubernetes labels](https://kubernetes.io/docs/reference/labels-annotations-taints/#labels-annotations-and-taints-used-on-api-objects)
 are mapped to resource attributes as follows:
 
-* `app.kubernetes.io/name` to `service.name`
-* `app.kubernetes.io/version` to `service.version`
-* `app.kubernetes.io/part-of` to `service.namespace`
+* the label `app.kubernetes.io/name` is mapped to `service.name`
+* if `app.kubernetes.io/name` is set, and the label `app.kubernetes.io/version` is also set, it is mapped to `service.version`
+* if `app.kubernetes.io/name` is set, and the label `app.kubernetes.io/part-of` is also set, it is mapped to `service.namespace`
 
-Note: The `OTEL_SERVICE_NAME` environment variable and the matching `service.*` key specified in the
-`OTEL_RESOURCE_ATTRIBUTES` environment variable will have precedence over the `app.kubernetes.io/name` label.
+The operator will not combine pod labels with workload labels for this mapping.
+The labels `app.kubernetes.io/version` and `app.kubernetes.io/part-of` are only read from the pod labels if
+`app.kubernetes.io/name` is present on the pod.
+Similarly, the labels `app.kubernetes.io/version` and `app.kubernetes.io/part-of` are only read from the workload labels
+if `app.kubernetes.io/name` is present on the workload.
+Workload labels are not considered at all if `app.kubernetes.io/name` is present on the pod.
+This ensures that resource attributes are not partially based on pod and partially on workload labels, giving an
+inconsistent result.
 
-Additionally, any annotation in the form of `resource.opentelemetry.io/<key>: <value>` will be mapped to the
-`<key>=<value>` resource attribute. For example, the following will result in the `foo=bar` resource attribute:
+Note: The `OTEL_SERVICE_NAME` environment variable and `service.*` key-value pairs specified in the
+`OTEL_RESOURCE_ATTRIBUTES` environment variable have precedence over attributes derived from the `app.kubernetes.io/*`
+labels.
+
+Additionally, any _annotation_ in the form of `resource.opentelemetry.io/<key>: <value>` will be mapped to the
+resource attribute `<key>=<value>`.
+For example, the following will result in the `my.attribute=my-value` resource attribute:
 
 ```yaml
 apiVersion: v1
 kind: Pod
 metadata:
   annotations:
-    resource.opentelemetry.io/foo: bar
+    resource.opentelemetry.io/my.attribute: my-value
 ```
 
-Note: the values set to a key `<key>` via the `OTEL_RESOURCE_ATTRIBUTES` environment variable will override the value
-set via the `resource.opentelemetry.io/<key>: <value>` annotations.
-Note: the resource attributes set via the `resource.opentelemetry.io/<key>: <value>` annotations will override the
+As with the `app.kubernetes.io/*` labels, the `resource.opentelemetry.io/*` annotations can be set on the pod as well as
+on the workload.
+In contrast to the `app.kubernetes.io/*` labels, mixing workload level and pod annotations is allowed, that is, you
+can set `resource.opentelemetry.io/attribute-one` on the workload and `resource.opentelemetry.io/attribute-two` on the
+pod, and both will be used.
+In case the same `key` is listed both on the workload and on the pod, the pod annotation takes precedence.
+
+Key-value pairs with a specific `key` set via the `OTEL_RESOURCE_ATTRIBUTES` environment variable will override the
+value derived from a `resource.opentelemetry.io/<key>: <value>` annotation.
+Resource attributes set via the `resource.opentelemetry.io/<key>: <value>` annotations will override the
 resource attributes value set via `app.kubernetes.io/*` labels: for example, `resource.opentelemetry.io/service.name`
 has precendence over `app.kubernetes.io/name`.
 

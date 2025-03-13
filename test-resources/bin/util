@@ -236,6 +236,8 @@ build_all_images() {
     CONFIGURATION_RELOADER_IMG_TAG="$configuration_reloader_img_tag" \
     FILELOG_OFFSET_SYNCH_IMG_REPOSITORY=$filelog_offset_synch_img_repository \
     FILELOG_OFFSET_SYNCH_IMG_TAG="$filelog_offset_synch_img_tag" \
+    SECRET_REF_RESOLVER_IMG_REPOSITORY=$secret_ref_resolver_img_repository \
+    SECRET_REF_RESOLVER_IMG_TAG="$secret_ref_resolver_img_tag" \
     make docker-build
 
   if [[ "$is_kind_cluster" == "true" ]]; then
