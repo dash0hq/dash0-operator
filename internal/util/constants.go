@@ -14,4 +14,11 @@ const (
 
 	ActorController WorkloadModifierActor = "controller"
 	ActorWebhook    WorkloadModifierActor = "webhook"
+
+	AppKubernetesIoNameLabel      = "app.kubernetes.io/name"
+	AppKubernetesIoPartOfLabel    = "app.kubernetes.io/part-of"
+	AppKubernetesIoInstanceLabel  = "app.kubernetes.io/instance"
+	AppKubernetesIoComponentLabel = "app.kubernetes.io/component"
+	AppKubernetesIoManagedByLabel = "app.kubernetes.io/managed-by"
+	AppKubernetesIoVersionLabel   = "app.kubernetes.io/version"
 )

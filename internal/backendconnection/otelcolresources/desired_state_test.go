@@ -106,19 +106,19 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		daemonSetFileLogOffsetSynchContainer := daemonSetPodSpec.Containers[2]
 
 		Expect(daemonSetPodSpec.Volumes).To(HaveLen(6))
-		configMapVolume := findVolumeByName(daemonSetPodSpec.Volumes, "opentelemetry-collector-configmap")
+		configMapVolume := FindVolumeByName(daemonSetPodSpec.Volumes, "opentelemetry-collector-configmap")
 		Expect(configMapVolume).NotTo(BeNil())
 		Expect(configMapVolume.VolumeSource.ConfigMap.LocalObjectReference.Name).
 			To(Equal(ExpectedDaemonSetCollectorConfigMapName))
-		Expect(findVolumeMountByName(daemonSetCollectorContainer.VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
-		Expect(findVolumeMountByName(daemonSetConfigReloaderContainer.VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
+		Expect(FindVolumeMountByName(daemonSetCollectorContainer.VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
+		Expect(FindVolumeMountByName(daemonSetConfigReloaderContainer.VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
 
-		pidFileVolume := findVolumeByName(daemonSetPodSpec.Volumes, "opentelemetry-collector-pidfile")
+		pidFileVolume := FindVolumeByName(daemonSetPodSpec.Volumes, "opentelemetry-collector-pidfile")
 		Expect(pidFileVolume).NotTo(BeNil())
 		Expect(pidFileVolume.VolumeSource.EmptyDir).NotTo(BeNil())
-		Expect(findVolumeMountByName(daemonSetCollectorContainer.VolumeMounts, "opentelemetry-collector-pidfile")).NotTo(BeNil())
-		Expect(findVolumeMountByName(daemonSetConfigReloaderContainer.VolumeMounts, "opentelemetry-collector-pidfile")).NotTo(BeNil())
-		Expect(findVolumeMountByName(daemonSetCollectorContainer.VolumeMounts, "hostfs")).NotTo(BeNil())
+		Expect(FindVolumeMountByName(daemonSetCollectorContainer.VolumeMounts, "opentelemetry-collector-pidfile")).NotTo(BeNil())
+		Expect(FindVolumeMountByName(daemonSetConfigReloaderContainer.VolumeMounts, "opentelemetry-collector-pidfile")).NotTo(BeNil())
+		Expect(FindVolumeMountByName(daemonSetCollectorContainer.VolumeMounts, "hostfs")).NotTo(BeNil())
 
 		Expect(daemonSetCollectorContainer).NotTo(BeNil())
 		Expect(daemonSetCollectorContainer.Image).To(Equal(CollectorImageTest))
@@ -171,12 +171,12 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		deploymentConfigReloaderContainer := deploymentPodSpec.Containers[1]
 
 		Expect(deploymentPodSpec.Volumes).To(HaveLen(2))
-		configMapVolume = findVolumeByName(deploymentPodSpec.Volumes, "opentelemetry-collector-configmap")
+		configMapVolume = FindVolumeByName(deploymentPodSpec.Volumes, "opentelemetry-collector-configmap")
 		Expect(configMapVolume).NotTo(BeNil())
 		Expect(configMapVolume.VolumeSource.ConfigMap.LocalObjectReference.Name).
 			To(Equal(ExpectedDeploymentCollectorConfigMapName))
-		Expect(findVolumeMountByName(deploymentCollectorContainer.VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
-		Expect(findVolumeMountByName(deploymentCollectorContainer.VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
+		Expect(FindVolumeMountByName(deploymentCollectorContainer.VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
+		Expect(FindVolumeMountByName(deploymentCollectorContainer.VolumeMounts, "opentelemetry-collector-configmap")).NotTo(BeNil())
 
 		Expect(deploymentCollectorContainer).NotTo(BeNil())
 		Expect(deploymentCollectorContainer.Image).To(Equal(CollectorImageTest))
@@ -226,7 +226,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(desiredState).To(HaveLen(numberOfResourcesWithoutKubernetesInfrastructureMetricsCollectionEnabled))
 
 		collectorConfigConfigMapContent := getDaemonSetCollectorConfigConfigMapContent(desiredState)
-		Expect(collectorConfigConfigMapContent).To(ContainSubstring(fmt.Sprintf("endpoint: %s", EndpointDash0TestQuoted)))
+		Expect(collectorConfigConfigMapContent).To(
+			ContainSubstring(fmt.Sprintf("endpoint: %s", EndpointDash0TestQuoted)))
 		Expect(collectorConfigConfigMapContent).NotTo(ContainSubstring("file/traces"))
 		Expect(collectorConfigConfigMapContent).NotTo(ContainSubstring("file/metrics"))
 		Expect(collectorConfigConfigMapContent).NotTo(ContainSubstring("file/logs"))
@@ -244,7 +245,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(daemonSet).NotTo(BeNil())
 		podSpec := daemonSet.Spec.Template.Spec
 		Expect(podSpec.Volumes).To(HaveLen(5))
-		Expect(findVolumeMountByName(findContainerByName(podSpec.Containers, "opentelemetry-collector").VolumeMounts, "hostfs")).To(BeNil())
+		Expect(FindVolumeMountByName(
+			FindContainerByName(podSpec.Containers, "opentelemetry-collector").VolumeMounts, "hostfs")).To(BeNil())
 		collectorContainer := podSpec.Containers[0]
 		Expect(collectorContainer).NotTo(BeNil())
 		Expect(collectorContainer.VolumeMounts).To(HaveLen(5))
@@ -264,7 +266,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 		daemonSet := getDaemonSet(desiredState)
 
-		authTokenEnvVar := findEnvVarByName(daemonSet.Spec.Template.Spec.Containers[0].Env, "AUTH_TOKEN")
+		authTokenEnvVar := FindEnvVarByName(daemonSet.Spec.Template.Spec.Containers[0].Env, "AUTH_TOKEN")
 		Expect(authTokenEnvVar).NotTo(BeNil())
 		Expect(authTokenEnvVar.Value).To(Equal(AuthorizationTokenTest))
 	})
@@ -283,7 +285,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		daemonSet := getDaemonSet(desiredState)
 		podSpec := daemonSet.Spec.Template.Spec
 		container := podSpec.Containers[0]
-		authTokenEnvVar := findEnvVarByName(container.Env, "AUTH_TOKEN")
+		authTokenEnvVar := FindEnvVarByName(container.Env, "AUTH_TOKEN")
 		Expect(authTokenEnvVar).NotTo(BeNil())
 		Expect(authTokenEnvVar.ValueFrom.SecretKeyRef.Name).To(Equal(SecretRefTest.Name))
 		Expect(authTokenEnvVar.ValueFrom.SecretKeyRef.Key).To(Equal(SecretRefTest.Key))
@@ -303,7 +305,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		daemonSet := getDaemonSet(desiredState)
 		podSpec := daemonSet.Spec.Template.Spec
 		container := podSpec.Containers[0]
-		authTokenEnvVar := findEnvVarByName(container.Env, "AUTH_TOKEN")
+		authTokenEnvVar := FindEnvVarByName(container.Env, "AUTH_TOKEN")
 		Expect(authTokenEnvVar).To(BeNil())
 	})
 
@@ -627,42 +629,6 @@ func findObjectByName(desiredState []clientObject, name string) client.Object {
 	for _, object := range desiredState {
 		if object.object.GetName() == name {
 			return object.object
-		}
-	}
-	return nil
-}
-
-func findContainerByName(objects []corev1.Container, name string) *corev1.Container {
-	for _, object := range objects {
-		if object.Name == name {
-			return &object
-		}
-	}
-	return nil
-}
-
-func findEnvVarByName(objects []corev1.EnvVar, name string) *corev1.EnvVar {
-	for _, object := range objects {
-		if object.Name == name {
-			return &object
-		}
-	}
-	return nil
-}
-
-func findVolumeByName(objects []corev1.Volume, name string) *corev1.Volume {
-	for _, object := range objects {
-		if object.Name == name {
-			return &object
-		}
-	}
-	return nil
-}
-
-func findVolumeMountByName(objects []corev1.VolumeMount, name string) *corev1.VolumeMount {
-	for _, object := range objects {
-		if object.Name == name {
-			return &object
 		}
 	}
 	return nil

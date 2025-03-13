@@ -78,11 +78,7 @@ const (
 	configReloader = "configuration-reloader"
 
 	// label keys
-	appKubernetesIoNameKey           = "app.kubernetes.io/name"
-	appKubernetesIoInstanceKey       = "app.kubernetes.io/instance"
-	appKubernetesIoComponentLabelKey = "app.kubernetes.io/component"
-	appKubernetesIoManagedByKey      = "app.kubernetes.io/managed-by"
-	dash0OptOutLabelKey              = "dash0.com/enable"
+	dash0OptOutLabelKey = "dash0.com/enable"
 
 	// label values
 	appKubernetesIoNameValue      = openTelemetryCollector
@@ -104,14 +100,14 @@ var (
 	rbacApiVersion = fmt.Sprintf("%s/v1", rbacApiGroup)
 
 	daemonSetMatchLabels = map[string]string{
-		appKubernetesIoNameKey:           appKubernetesIoNameValue,
-		appKubernetesIoInstanceKey:       appKubernetesIoInstanceValue,
-		appKubernetesIoComponentLabelKey: daemonSetServiceComponent,
+		util.AppKubernetesIoNameLabel:      appKubernetesIoNameValue,
+		util.AppKubernetesIoInstanceLabel:  appKubernetesIoInstanceValue,
+		util.AppKubernetesIoComponentLabel: daemonSetServiceComponent,
 	}
 	deploymentMatchLabels = map[string]string{
-		appKubernetesIoNameKey:           appKubernetesIoNameValue,
-		appKubernetesIoInstanceKey:       appKubernetesIoInstanceValue,
-		appKubernetesIoComponentLabelKey: deploymentServiceComponent,
+		util.AppKubernetesIoNameLabel:      appKubernetesIoNameValue,
+		util.AppKubernetesIoInstanceLabel:  appKubernetesIoInstanceValue,
+		util.AppKubernetesIoComponentLabel: deploymentServiceComponent,
 	}
 
 	nodeNameFieldSpec = corev1.ObjectFieldSelector{
@@ -474,9 +470,9 @@ func assembleService(config *oTelColConfig) *corev1.Service {
 				},
 			},
 			Selector: map[string]string{
-				appKubernetesIoNameKey:           appKubernetesIoNameValue,
-				appKubernetesIoInstanceKey:       appKubernetesIoInstanceValue,
-				appKubernetesIoComponentLabelKey: daemonSetServiceComponent,
+				util.AppKubernetesIoNameLabel:      appKubernetesIoNameValue,
+				util.AppKubernetesIoInstanceLabel:  appKubernetesIoInstanceValue,
+				util.AppKubernetesIoComponentLabel: daemonSetServiceComponent,
 			},
 			InternalTrafficPolicy: ptr.To(corev1.ServiceInternalTrafficPolicyLocal),
 		},
@@ -1173,7 +1169,7 @@ func ServiceName(namePrefix string) string {
 
 func serviceLabels() map[string]string {
 	lbls := labels(false)
-	lbls[appKubernetesIoComponentLabelKey] = daemonSetServiceComponent
+	lbls[util.AppKubernetesIoComponentLabel] = daemonSetServiceComponent
 	return lbls
 }
 
@@ -1191,9 +1187,9 @@ func renderName(prefix string, parts ...string) string {
 
 func labels(addOptOutLabel bool) map[string]string {
 	lbls := map[string]string{
-		appKubernetesIoNameKey:      appKubernetesIoNameValue,
-		appKubernetesIoInstanceKey:  appKubernetesIoInstanceValue,
-		appKubernetesIoManagedByKey: appKubernetesIoManagedByValue,
+		util.AppKubernetesIoNameLabel:      appKubernetesIoNameValue,
+		util.AppKubernetesIoInstanceLabel:  appKubernetesIoInstanceValue,
+		util.AppKubernetesIoManagedByLabel: appKubernetesIoManagedByValue,
 	}
 	if addOptOutLabel {
 		lbls[dash0OptOutLabelKey] = "false"

@@ -246,7 +246,7 @@ func (m *ResourceModifier) modifyPodSpec(
 	m.addInitContainer(podSpec)
 	for idx := range podSpec.Containers {
 		container := &podSpec.Containers[idx]
-		m.instrumentContainer(container, workloadMeta)
+		m.instrumentContainer(container, workloadMeta, podMeta)
 	}
 
 	return !reflect.DeepEqual(originalSpec, podSpec)
@@ -378,10 +378,14 @@ func (m *ResourceModifier) createInitContainer(podSpec *corev1.PodSpec) *corev1.
 	return initContainer
 }
 
-func (m *ResourceModifier) instrumentContainer(container *corev1.Container, workloadMeta *metav1.ObjectMeta) {
+func (m *ResourceModifier) instrumentContainer(
+	container *corev1.Container,
+	workloadMeta *metav1.ObjectMeta,
+	podMeta *metav1.ObjectMeta,
+) {
 	perContainerLogger := m.logger.WithValues("container", container.Name)
 	m.addMount(container)
-	m.addEnvironmentVariables(container, workloadMeta, perContainerLogger)
+	m.addEnvironmentVariables(container, workloadMeta, podMeta, perContainerLogger)
 }
 
 func (m *ResourceModifier) addMount(container *corev1.Container) {
@@ -403,7 +407,12 @@ func (m *ResourceModifier) addMount(container *corev1.Container) {
 	}
 }
 
-func (m *ResourceModifier) addEnvironmentVariables(container *corev1.Container, workloadMeta *metav1.ObjectMeta, perContainerLogger logr.Logger) {
+func (m *ResourceModifier) addEnvironmentVariables(
+	container *corev1.Container,
+	workloadMeta *metav1.ObjectMeta,
+	podMeta *metav1.ObjectMeta,
+	perContainerLogger logr.Logger,
+) {
 	m.handleLdPreloadEnvVar(container, perContainerLogger)
 
 	m.addOrReplaceEnvironmentVariable(
@@ -421,7 +430,7 @@ func (m *ResourceModifier) addEnvironmentVariables(container *corev1.Container, 
 	collectorBaseUrlPattern := "http://$(%s):%d"
 
 	// This should actually work - use the node's IPv6 for the collector base URL.
-	// But apparently the Node.js OpenTelemetry SDK tries to resolve that as a a hostname, resulting in
+	// But apparently the Node.js OpenTelemetry SDK tries to resolve that as a hostname, resulting in
 	// Error: getaddrinfo ENOTFOUND [2a05:d014:1bc2:3702:fc43:fec6:1d88:ace5]\n    at GetAddrInfoReqWrap.onlookup
 	// all [as oncomplete] (node:dns:120:26)
 	// Instead, we fall back to the service URL of the collector.
@@ -497,66 +506,87 @@ func (m *ResourceModifier) addEnvironmentVariables(container *corev1.Container, 
 		},
 	)
 
-	// Mount values from app.kubernetes.io/* workload labels as env vars, those will be picked up by the injector and
-	// turned into resource attributes.
+	// Add values from app.kubernetes.io/* labels as environment variables. Those will be picked up by the injector and
+	// turned into resource attributes. We will look for the labels in the pod metadata first, and if the pod does not
+	// have them, we will also check the workload labels. Labels will only be used from one of those two levels in a
+	// consistent way, that is, we do not combine app.kubernetes.io/name from the pod with app.kubernetes.io/part-of
+	// from the workload etc.
+	//
 	// `app.kubernetes.io/name` becomes `service.name`
 	// `app.kubernetes.io/version` becomes `service.version`
 	// `app.kubernetes.io/part-of` becomes `service.namespace`
-	// `app.kubernetes.io/instance` becomes `service.instance.id`
-	if _, appKubernetesIoNameLabelIsPresent := workloadMeta.Labels["app.kubernetes.io/name"]; appKubernetesIoNameLabelIsPresent {
+	_, podMetaHasName := podMeta.Labels[util.AppKubernetesIoNameLabel]
+	nameFromWorkloadMeta, workloadMetaHasName := workloadMeta.Labels[util.AppKubernetesIoNameLabel]
+	if podMetaHasName {
+		m.addEnvVarFromLabelFieldSelector(container, envVarDash0ServiceName, util.AppKubernetesIoNameLabel)
+		m.conditionallyAddEnvVarFromLabelFieldSelector(
+			container,
+			podMeta,
+			envVarDash0ServiceNamespace,
+			util.AppKubernetesIoPartOfLabel,
+		)
+		m.conditionallyAddEnvVarFromLabelFieldSelector(
+			container,
+			podMeta,
+			envVarDash0ServiceVersion,
+			util.AppKubernetesIoVersionLabel,
+		)
+	} else if workloadMetaHasName {
 		m.addOrReplaceEnvironmentVariable(
 			container,
 			corev1.EnvVar{
-				Name: envVarDash0ServiceName,
-				ValueFrom: &corev1.EnvVarSource{
-					FieldRef: &corev1.ObjectFieldSelector{
-						FieldPath: "metadata.labels['app.kubernetes.io/name']",
-					},
-				},
+				Name:  envVarDash0ServiceName,
+				Value: nameFromWorkloadMeta,
 			},
 		)
-
-		if _, appKubernetesIoPartOfLabelIsPresent := workloadMeta.Labels["app.kubernetes.io/part-of"]; appKubernetesIoPartOfLabelIsPresent {
+		if partOfFromWorkloadMeta, workloadMetaHasPartOf := workloadMeta.Labels[util.AppKubernetesIoPartOfLabel]; workloadMetaHasPartOf {
 			m.addOrReplaceEnvironmentVariable(
 				container,
 				corev1.EnvVar{
-					Name: envVarDash0ServiceNamespace,
-					ValueFrom: &corev1.EnvVarSource{
-						FieldRef: &corev1.ObjectFieldSelector{
-							FieldPath: "metadata.labels['app.kubernetes.io/part-of']",
-						},
-					},
-				})
+					Name:  envVarDash0ServiceNamespace,
+					Value: partOfFromWorkloadMeta,
+				},
+			)
 		}
-
-		if _, appKubernetesIoVersionLabelIsPresent := workloadMeta.Labels["app.kubernetes.io/version"]; appKubernetesIoVersionLabelIsPresent {
+		if versionFromWorkloadMeta, workloadMetaHasVersion := workloadMeta.Labels[util.AppKubernetesIoVersionLabel]; workloadMetaHasVersion {
 			m.addOrReplaceEnvironmentVariable(
 				container,
 				corev1.EnvVar{
-					Name: envVarDash0ServiceVersion,
-					ValueFrom: &corev1.EnvVarSource{
-						FieldRef: &corev1.ObjectFieldSelector{
-							FieldPath: "metadata.labels['app.kubernetes.io/version']",
-						},
-					},
-				})
+					Name:  envVarDash0ServiceVersion,
+					Value: versionFromWorkloadMeta,
+				},
+			)
 		}
 	}
 
-	// Annotations resource.opentelemetry.io/your-key: "your-value"
-	resourceAttributes := []string{}
-	for key, value := range workloadMeta.Annotations {
-		// Kubernetes does not allow duplicate annotation keys so we do not need to check for clashes and ordering
-		if strings.HasPrefix(key, "resource.opentelemetry.io/") {
-			resourceAttributes = append(resourceAttributes, fmt.Sprintf("%s=%s", strings.TrimPrefix(key, "resource.opentelemetry.io/"), value))
+	// Map annotations resource.opentelemetry.io/your-key: "your-value" to resource attributes.
+	resourceAttributes := map[string]string{}
+	for annotationName, annotationValue := range workloadMeta.Annotations {
+		if strings.HasPrefix(annotationName, "resource.opentelemetry.io/") {
+			resourceAttributeKey := strings.TrimPrefix(annotationName, "resource.opentelemetry.io/")
+			resourceAttributes[resourceAttributeKey] = annotationValue
+		}
+	}
+	// By iterating over the pod annotations _after_ the workload annotations, we ensure that the pod annotations take
+	// precedence over the workload annotations.
+	for annotationName, annotationValue := range podMeta.Annotations {
+		if strings.HasPrefix(annotationName, "resource.opentelemetry.io/") {
+			resourceAttributeKey := strings.TrimPrefix(annotationName, "resource.opentelemetry.io/")
+			resourceAttributes[resourceAttributeKey] = annotationValue
 		}
 	}
 	if len(resourceAttributes) > 0 {
+		var resourceAttributeList []string
+		for resourceAttributeKey, resourceAttributeValue := range resourceAttributes {
+			resourceAttributeList = append(
+				resourceAttributeList,
+				fmt.Sprintf("%s=%s", resourceAttributeKey, resourceAttributeValue))
+		}
 		m.addOrReplaceEnvironmentVariable(
 			container,
 			corev1.EnvVar{
 				Name:  envVarDash0ResourceAttributes,
-				Value: strings.Join(resourceAttributes, ","),
+				Value: strings.Join(resourceAttributeList, ","),
 			})
 	}
 }
@@ -616,6 +646,34 @@ func (m *ResourceModifier) addOrReplaceEnvironmentVariable(container *corev1.Con
 		container.Env[idx].Value = ""
 		container.Env[idx].ValueFrom = envVar.ValueFrom
 	}
+}
+func (m *ResourceModifier) conditionallyAddEnvVarFromLabelFieldSelector(
+	container *corev1.Container,
+	podMeta *metav1.ObjectMeta,
+	envVarName string,
+	labelName string,
+) {
+	if _, podMetaHasLabel := podMeta.Labels[labelName]; podMetaHasLabel {
+		m.addEnvVarFromLabelFieldSelector(container, envVarName, labelName)
+	}
+}
+
+func (m *ResourceModifier) addEnvVarFromLabelFieldSelector(
+	container *corev1.Container,
+	envVarName string,
+	labelName string,
+) {
+	m.addOrReplaceEnvironmentVariable(
+		container,
+		corev1.EnvVar{
+			Name: envVarName,
+			ValueFrom: &corev1.EnvVarSource{
+				FieldRef: &corev1.ObjectFieldSelector{
+					FieldPath: fmt.Sprintf("metadata.labels['%s']", labelName),
+				},
+			},
+		},
+	)
 }
 
 func (m *ResourceModifier) RevertCronJob(cronJob *batchv1.CronJob) ModificationResult {

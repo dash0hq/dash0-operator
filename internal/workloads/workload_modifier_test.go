@@ -5,18 +5,26 @@ package workloads
 
 import (
 	"context"
+	"fmt"
 	"reflect"
+	"strings"
 
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
-
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/dash0hq/dash0-operator/internal/util"
 
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
+
+type envVarExpectation struct {
+	value     string
+	valueFrom string
+}
 
 const (
 	testActor = "actor"
@@ -92,9 +100,19 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						Dash0ContainerNameEnvVarIdx:                 8,
 						Dash0ContainerNameEnvVarExpectedValue:       "test-container-0",
 						Dash0ServiceNameEnvVarIdx:                   9,
+						Dash0ServiceNameEnvVarValueFrom:             true,
 						Dash0ServiceNamespaceEnvVarIdx:              10,
+						Dash0ServiceNamespaceEnvVarValueFrom:        true,
 						Dash0ServiceVersionEnvVarIdx:                11,
+						Dash0ServiceVersionEnvVarValueFrom:          true,
 						Dash0ResourceAttributesEnvVarIdx:            12,
+						Dash0ResourceAttributesEnvVarKeyValuePairs: []string{
+							"workload.only.1=workload-value-1",
+							"workload.only.2=workload-value-2",
+							"pod.and.workload=pod-value",
+							"pod.only.1=pod-value-1",
+							"pod.only.2=pod-value-2",
+						},
 					},
 					{
 						VolumeMounts:                                3,
@@ -112,9 +130,19 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						Dash0ContainerNameEnvVarIdx:                 9,
 						Dash0ContainerNameEnvVarExpectedValue:       "test-container-1",
 						Dash0ServiceNameEnvVarIdx:                   10,
+						Dash0ServiceNameEnvVarValueFrom:             true,
 						Dash0ServiceNamespaceEnvVarIdx:              11,
+						Dash0ServiceNamespaceEnvVarValueFrom:        true,
 						Dash0ServiceVersionEnvVarIdx:                12,
+						Dash0ServiceVersionEnvVarValueFrom:          true,
 						Dash0ResourceAttributesEnvVarIdx:            13,
+						Dash0ResourceAttributesEnvVarKeyValuePairs: []string{
+							"workload.only.1=workload-value-1",
+							"workload.only.2=workload-value-2",
+							"pod.and.workload=pod-value",
+							"pod.only.1=pod-value-1",
+							"pod.only.2=pod-value-2",
+						},
 					},
 				},
 			},
@@ -477,6 +505,203 @@ var _ = Describe("Dash0 Workload Modification", func() {
 		logger := log.FromContext(ctx)
 		workloadModifier := NewResourceModifier(instrumentationMetadata, &logger)
 
+		type objectMetaResourceAttributesTest struct {
+			workloadLabels                  map[string]string
+			workloadAnnotations             map[string]string
+			podLabels                       map[string]string
+			podAnnotations                  map[string]string
+			expectedEnvVars                 map[string]*envVarExpectation
+			expectedResourceAttributeEnvVar []string
+		}
+
+		DescribeTable("should derive resource attributes from labels and annotations",
+			func(testConfig objectMetaResourceAttributesTest) {
+				workloadMeta := metav1.ObjectMeta{}
+				if testConfig.workloadLabels != nil {
+					workloadMeta.Labels = testConfig.workloadLabels
+				}
+				if testConfig.workloadAnnotations != nil {
+					workloadMeta.Annotations = testConfig.workloadAnnotations
+				}
+				podMeta := metav1.ObjectMeta{}
+				if testConfig.podLabels != nil {
+					podMeta.Labels = testConfig.podLabels
+				}
+				if testConfig.podAnnotations != nil {
+					podMeta.Annotations = testConfig.podAnnotations
+				}
+
+				container := &corev1.Container{}
+				workloadModifier.addEnvironmentVariables(
+					container,
+					&workloadMeta,
+					&podMeta,
+					logger,
+				)
+
+				envVars := container.Env
+				verifyEnvVar(testConfig.expectedEnvVars, envVars, envVarDash0ServiceName)
+				verifyEnvVar(testConfig.expectedEnvVars, envVars, envVarDash0ServiceNamespace)
+				verifyEnvVar(testConfig.expectedEnvVars, envVars, envVarDash0ServiceVersion)
+
+				expectedResourceAttributes := testConfig.expectedResourceAttributeEnvVar
+				actualResourceAttributes := FindEnvVarByName(envVars, envVarDash0ResourceAttributes)
+				if expectedResourceAttributes != nil {
+					Expect(actualResourceAttributes).ToNot(BeNil())
+					actualKeyValuePairs := strings.Split(actualResourceAttributes.Value, ",")
+					Expect(actualKeyValuePairs).To(HaveLen(len(expectedResourceAttributes)))
+					for _, expectedKeyValuePair := range expectedResourceAttributes {
+						Expect(actualKeyValuePairs).To(ContainElement(expectedKeyValuePair))
+					}
+				} else {
+					Expect(actualResourceAttributes).To(BeNil())
+				}
+			},
+			Entry("should not add env vars if there is no metadata", objectMetaResourceAttributesTest{
+				expectedEnvVars: map[string]*envVarExpectation{
+					envVarDash0ServiceName:      nil,
+					envVarDash0ServiceNamespace: nil,
+					envVarDash0ServiceVersion:   nil,
+				},
+			}),
+			Entry("should not add env vars if metadata is empty", objectMetaResourceAttributesTest{
+				workloadLabels:      map[string]string{},
+				workloadAnnotations: map[string]string{},
+				podLabels:           map[string]string{},
+				podAnnotations:      map[string]string{},
+				expectedEnvVars: map[string]*envVarExpectation{
+					envVarDash0ServiceName:      nil,
+					envVarDash0ServiceNamespace: nil,
+					envVarDash0ServiceVersion:   nil,
+				},
+			}),
+			Entry("should not add env vars if metadata is unrelated", objectMetaResourceAttributesTest{
+				workloadLabels:      map[string]string{"a": "b"},
+				workloadAnnotations: map[string]string{"a": "b"},
+				podLabels:           map[string]string{"a": "b"},
+				podAnnotations:      map[string]string{"a": "b"},
+				expectedEnvVars: map[string]*envVarExpectation{
+					envVarDash0ServiceName:      nil,
+					envVarDash0ServiceNamespace: nil,
+					envVarDash0ServiceVersion:   nil,
+				},
+			}),
+			Entry("should derive env vars from workload labels", objectMetaResourceAttributesTest{
+				workloadLabels: map[string]string{
+					util.AppKubernetesIoNameLabel:    "workload-name",
+					util.AppKubernetesIoPartOfLabel:  "workload-part-of",
+					util.AppKubernetesIoVersionLabel: "workload-version",
+				},
+				expectedEnvVars: map[string]*envVarExpectation{
+					envVarDash0ServiceName:      {value: "workload-name"},
+					envVarDash0ServiceNamespace: {value: "workload-part-of"},
+					envVarDash0ServiceVersion:   {value: "workload-version"},
+				},
+			}),
+			Entry("should ignore workload labels if name is not set", objectMetaResourceAttributesTest{
+				workloadLabels: map[string]string{
+					util.AppKubernetesIoPartOfLabel:  "workload-part-of",
+					util.AppKubernetesIoVersionLabel: "workload-version",
+				},
+				expectedEnvVars: map[string]*envVarExpectation{
+					envVarDash0ServiceName:      nil,
+					envVarDash0ServiceNamespace: nil,
+					envVarDash0ServiceVersion:   nil,
+				},
+			}),
+			Entry("should derive env vars from pod labels", objectMetaResourceAttributesTest{
+				podLabels: map[string]string{
+					util.AppKubernetesIoNameLabel:    "pod-name",
+					util.AppKubernetesIoPartOfLabel:  "pod-part-of",
+					util.AppKubernetesIoVersionLabel: "pod-version",
+				},
+				expectedEnvVars: map[string]*envVarExpectation{
+					envVarDash0ServiceName:      {valueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoNameLabel)},
+					envVarDash0ServiceNamespace: {valueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoPartOfLabel)},
+					envVarDash0ServiceVersion:   {valueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoVersionLabel)},
+				},
+			}),
+			Entry("should ignore pod labels if name is not set", objectMetaResourceAttributesTest{
+				podLabels: map[string]string{
+					util.AppKubernetesIoPartOfLabel:  "pod-part-of",
+					util.AppKubernetesIoVersionLabel: "pod-version",
+				},
+				expectedEnvVars: map[string]*envVarExpectation{
+					envVarDash0ServiceName:      nil,
+					envVarDash0ServiceNamespace: nil,
+					envVarDash0ServiceVersion:   nil,
+				},
+			}),
+			Entry("pod labels should override workload labels", objectMetaResourceAttributesTest{
+				workloadLabels: map[string]string{
+					util.AppKubernetesIoNameLabel:    "workload-name",
+					util.AppKubernetesIoPartOfLabel:  "workload-part-of",
+					util.AppKubernetesIoVersionLabel: "workload-version",
+				},
+				podLabels: map[string]string{
+					util.AppKubernetesIoNameLabel:    "pod-name",
+					util.AppKubernetesIoPartOfLabel:  "pod-part-of",
+					util.AppKubernetesIoVersionLabel: "pod-version",
+				},
+				expectedEnvVars: map[string]*envVarExpectation{
+					envVarDash0ServiceName:      {valueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoNameLabel)},
+					envVarDash0ServiceNamespace: {valueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoPartOfLabel)},
+					envVarDash0ServiceVersion:   {valueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoVersionLabel)},
+				},
+			}),
+			Entry("should derive resource attributes from workload annotations", objectMetaResourceAttributesTest{
+				workloadAnnotations: map[string]string{
+					"resource.opentelemetry.io/workload.ra.1": "workload-value-1",
+					"resource.opentelemetry.io/workload.ra.2": "workload-value-2",
+				},
+				expectedEnvVars: map[string]*envVarExpectation{
+					envVarDash0ServiceName:      nil,
+					envVarDash0ServiceNamespace: nil,
+					envVarDash0ServiceVersion:   nil,
+				},
+				expectedResourceAttributeEnvVar: []string{
+					"workload.ra.1=workload-value-1",
+					"workload.ra.2=workload-value-2",
+				},
+			}),
+			Entry("should derive resource attributes from pod annotations", objectMetaResourceAttributesTest{
+				podAnnotations: map[string]string{
+					"resource.opentelemetry.io/pod.ra.1": "pod-value-1",
+					"resource.opentelemetry.io/pod.ra.2": "pod-value-2",
+				},
+				expectedEnvVars: map[string]*envVarExpectation{
+					envVarDash0ServiceName:      nil,
+					envVarDash0ServiceNamespace: nil,
+					envVarDash0ServiceVersion:   nil,
+				},
+				expectedResourceAttributeEnvVar: []string{"pod.ra.1=pod-value-1", "pod.ra.2=pod-value-2"},
+			}),
+			Entry("pod annotaions override workload annotations", objectMetaResourceAttributesTest{
+				workloadAnnotations: map[string]string{
+					"resource.opentelemetry.io/workload.ra.1":  "workload-value-1",
+					"resource.opentelemetry.io/workload.ra.2":  "workload-value-2",
+					"resource.opentelemetry.io/occurs-in-both": "workload-value",
+				},
+				podAnnotations: map[string]string{
+					"resource.opentelemetry.io/pod.ra.1":       "pod-value-1",
+					"resource.opentelemetry.io/pod.ra.2":       "pod-value-2",
+					"resource.opentelemetry.io/occurs-in-both": "pod-value",
+				},
+				expectedEnvVars: map[string]*envVarExpectation{
+					envVarDash0ServiceName:      nil,
+					envVarDash0ServiceNamespace: nil,
+					envVarDash0ServiceVersion:   nil,
+				},
+				expectedResourceAttributeEnvVar: []string{
+					"workload.ra.1=workload-value-1",
+					"workload.ra.2=workload-value-2",
+					"pod.ra.1=pod-value-1",
+					"pod.ra.2=pod-value-2",
+					"occurs-in-both=pod-value",
+				},
+			}),
+		)
+
 		type safeToEvictLocalVolumesAnnotationTest struct {
 			input    map[string]string
 			expected map[string]string
@@ -672,3 +897,24 @@ var _ = Describe("Dash0 Workload Modification", func() {
 		)
 	})
 })
+
+func verifyEnvVar(expectedEnvVars map[string]*envVarExpectation, envVars []corev1.EnvVar, name string) {
+	expected := expectedEnvVars[name]
+	actual := FindEnvVarByName(envVars, name)
+	if expected != nil {
+		Expect(actual).ToNot(BeNil())
+		if expected.value != "" {
+			Expect(actual.Value).To(Equal(expected.value))
+			Expect(actual.ValueFrom).To(BeNil())
+		} else if expected.valueFrom != "" {
+			Expect(actual.ValueFrom).ToNot(BeNil())
+			Expect(actual.ValueFrom.FieldRef).ToNot(BeNil())
+			Expect(actual.ValueFrom.FieldRef.FieldPath).To(Equal(expected.valueFrom))
+			Expect(actual.Value).To(BeEmpty())
+		} else {
+			Fail("inconsistent env var expectation")
+		}
+	} else {
+		Expect(actual).To(BeNil())
+	}
+}
