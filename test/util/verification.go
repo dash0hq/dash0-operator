@@ -21,34 +21,17 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
+type EnvVarExpectation struct {
+	Value                         string
+	ValueFrom                     string
+	UnorderedCommaSeparatedValues []string
+}
+
 type ContainerExpectations struct {
-	VolumeMounts                                int
-	Dash0VolumeMountIdx                         int
-	EnvVars                                     int
-	LdPreloadEnvVarIdx                          int
-	LdPreloadValue                              string
-	LdPreloadUsesValueFrom                      bool
-	Dash0NodeIpIdx                              int
-	Dash0CollectorBaseUrlEnvVarIdx              int
-	Dash0CollectorBaseUrlEnvVarExpectedValue    string
-	OtelExporterOtlpEndpointEnvVarIdx           int
-	OtelExporterOtlpEndpointEnvVarExpectedValue string
-	Dash0NamespaceNameEnvVarIdx                 int
-	Dash0PodNameEnvVarIdx                       int
-	Dash0PodUidEnvVarIdx                        int
-	Dash0ContainerNameEnvVarIdx                 int
-	Dash0ContainerNameEnvVarExpectedValue       string
-	Dash0ServiceNameEnvVarIdx                   int
-	Dash0ServiceNameEnvVarValueFrom             bool
-	Dash0ServiceNameEnvVarValue                 string
-	Dash0ServiceNamespaceEnvVarIdx              int
-	Dash0ServiceNamespaceEnvVarValueFrom        bool
-	Dash0ServiceNamespaceEnvVarValue            string
-	Dash0ServiceVersionEnvVarIdx                int
-	Dash0ServiceVersionEnvVarValueFrom          bool
-	Dash0ServiceVersionEnvVarValue              string
-	Dash0ResourceAttributesEnvVarIdx            int
-	Dash0ResourceAttributesEnvVarKeyValuePairs  []string
+	ContainerName       string
+	VolumeMounts        int
+	Dash0VolumeMountIdx int
+	EnvVars             map[string]*EnvVarExpectation
 }
 
 type PodSpecExpectations struct {
@@ -91,20 +74,35 @@ func BasicInstrumentedPodSpecExpectations() PodSpecExpectations {
 		InitContainers:        1,
 		Dash0InitContainerIdx: 0,
 		Containers: []ContainerExpectations{{
-			VolumeMounts:                                1,
-			Dash0VolumeMountIdx:                         0,
-			EnvVars:                                     8,
-			LdPreloadEnvVarIdx:                          0,
-			Dash0NodeIpIdx:                              1,
-			Dash0CollectorBaseUrlEnvVarIdx:              2,
-			Dash0CollectorBaseUrlEnvVarExpectedValue:    OTelCollectorBaseUrlTest,
-			OtelExporterOtlpEndpointEnvVarIdx:           3,
-			OtelExporterOtlpEndpointEnvVarExpectedValue: OTelCollectorBaseUrlTest,
-			Dash0NamespaceNameEnvVarIdx:                 4,
-			Dash0PodNameEnvVarIdx:                       5,
-			Dash0PodUidEnvVarIdx:                        6,
-			Dash0ContainerNameEnvVarIdx:                 7,
-			Dash0ContainerNameEnvVarExpectedValue:       "test-container-0",
+			ContainerName:       "test-container-0",
+			VolumeMounts:        1,
+			Dash0VolumeMountIdx: 0,
+			EnvVars: map[string]*EnvVarExpectation{
+				"LD_PRELOAD": {
+					Value: "/__dash0__/dash0_injector.so",
+				},
+				"DASH0_NODE_IP": {
+					ValueFrom: "status.hostIP",
+				},
+				"DASH0_OTEL_COLLECTOR_BASE_URL": {
+					Value: OTelCollectorBaseUrlTest,
+				},
+				"OTEL_EXPORTER_OTLP_ENDPOINT": {
+					Value: OTelCollectorBaseUrlTest,
+				},
+				"DASH0_NAMESPACE_NAME": {
+					ValueFrom: "metadata.namespace",
+				},
+				"DASH0_POD_NAME": {
+					ValueFrom: "metadata.name",
+				},
+				"DASH0_POD_UID": {
+					ValueFrom: "metadata.uid",
+				},
+				"DASH0_CONTAINER_NAME": {
+					Value: "test-container-0",
+				},
+			},
 		}},
 	}
 }
@@ -291,145 +289,70 @@ func VerifyStatefulSetWithOptOutLabel(resource *appsv1.StatefulSet) {
 
 //nolint:gocyclo
 func verifyPodSpec(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
+	verifyInitContainers(podSpec, expectations)
+	verifyContainers(podSpec, expectations)
+	verifyVolumes(podSpec, expectations)
+}
+
+func verifyInitContainers(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
 	Expect(podSpec.InitContainers).To(HaveLen(expectations.InitContainers))
 	for i, initContainer := range podSpec.InitContainers {
-		if i == expectations.Dash0InitContainerIdx {
-			Expect(initContainer.Name).To(Equal("dash0-instrumentation"))
-			Expect(initContainer.Image).To(Equal(InitContainerImageTest))
-			Expect(initContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
-			Expect(initContainer.Env).To(HaveLen(1))
-			Expect(initContainer.Env).To(ContainElement(MatchEnvVar("DASH0_INSTRUMENTATION_FOLDER_DESTINATION", "/__dash0__")))
-			Expect(initContainer.SecurityContext).NotTo(BeNil())
-			Expect(initContainer.VolumeMounts).To(HaveLen(1))
-			Expect(initContainer.VolumeMounts).To(ContainElement(MatchVolumeMount("dash0-instrumentation", "/__dash0__")))
-		} else {
-			Expect(initContainer.Name).To(Equal(fmt.Sprintf("test-init-container-%d", i)))
-			Expect(initContainer.Env).To(HaveLen(i + 1))
-		}
+		verifyInitContainer(i, expectations, initContainer)
 	}
+}
 
-	Expect(podSpec.Volumes).To(HaveLen(expectations.Volumes))
-	for i, volume := range podSpec.Volumes {
-		if i == expectations.Dash0VolumeIdx {
-			Expect(volume.Name).To(Equal("dash0-instrumentation"))
-			Expect(volume.EmptyDir).NotTo(BeNil())
-		} else {
-			Expect(volume.Name).To(Equal(fmt.Sprintf("test-volume-%d", i)))
-		}
+func verifyInitContainer(i int, expectations PodSpecExpectations, initContainer corev1.Container) {
+	if i == expectations.Dash0InitContainerIdx {
+		verifyDash0InitContainer(initContainer)
+	} else {
+		Expect(initContainer.Name).To(Equal(fmt.Sprintf("test-init-container-%d", i)))
+		Expect(initContainer.Env).To(HaveLen(i + 1))
 	}
+}
 
+func verifyDash0InitContainer(initContainer corev1.Container) {
+	Expect(initContainer.Name).To(Equal("dash0-instrumentation"))
+	Expect(initContainer.Image).To(Equal(InitContainerImageTest))
+	Expect(initContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
+	Expect(initContainer.Env).To(HaveLen(1))
+	Expect(initContainer.Env).To(ContainElement(MatchEnvVar("DASH0_INSTRUMENTATION_FOLDER_DESTINATION", "/__dash0__")))
+	Expect(initContainer.SecurityContext).NotTo(BeNil())
+	Expect(initContainer.VolumeMounts).To(HaveLen(1))
+	Expect(initContainer.VolumeMounts).To(ContainElement(MatchVolumeMount("dash0-instrumentation", "/__dash0__")))
+}
+
+func verifyContainers(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
 	Expect(podSpec.Containers).To(HaveLen(len(expectations.Containers)))
-	for i, container := range podSpec.Containers {
-		Expect(container.Name).To(Equal(fmt.Sprintf("test-container-%d", i)))
-		containerExpectations := expectations.Containers[i]
-		Expect(container.VolumeMounts).To(HaveLen(containerExpectations.VolumeMounts))
-		for j, volumeMount := range container.VolumeMounts {
-			if j == containerExpectations.Dash0VolumeMountIdx {
-				Expect(volumeMount.Name).To(Equal("dash0-instrumentation"))
-				Expect(volumeMount.MountPath).To(Equal("/__dash0__"))
-			} else {
-				Expect(volumeMount.Name).To(Equal(fmt.Sprintf("test-volume-%d", j)))
-			}
+	for containerIdx, container := range podSpec.Containers {
+		verifyContainer(container, expectations.Containers[containerIdx])
+	}
+}
+
+func verifyContainer(container corev1.Container, expectations ContainerExpectations) {
+	Expect(container.Name).To(Equal(expectations.ContainerName))
+	verifyVolumeMounts(container, expectations)
+	verifyEnvironmentVariables(container, expectations, expectations.ContainerName)
+}
+
+func verifyVolumeMounts(container corev1.Container, expectations ContainerExpectations) {
+	Expect(container.VolumeMounts).To(HaveLen(expectations.VolumeMounts))
+	for j, volumeMount := range container.VolumeMounts {
+		if j == expectations.Dash0VolumeMountIdx {
+			Expect(volumeMount.Name).To(Equal("dash0-instrumentation"))
+			Expect(volumeMount.MountPath).To(Equal("/__dash0__"))
+		} else {
+			Expect(volumeMount.Name).To(Equal(fmt.Sprintf("test-volume-%d", j)))
 		}
-		Expect(container.Env).To(HaveLen(containerExpectations.EnvVars))
-		for j, envVar := range container.Env {
-			if j == containerExpectations.LdPreloadEnvVarIdx {
-				Expect(envVar.Name).To(Equal("LD_PRELOAD"))
-				if containerExpectations.LdPreloadUsesValueFrom {
-					Expect(envVar.Value).To(BeEmpty())
-					Expect(envVar.ValueFrom).To(Not(BeNil()))
-				} else if containerExpectations.LdPreloadValue != "" {
-					Expect(envVar.Value).To(Equal(containerExpectations.LdPreloadValue))
-				} else {
-					Expect(envVar.Value).To(Equal(
-						"/__dash0__/dash0_injector.so",
-					))
-				}
-			} else if j == containerExpectations.Dash0NodeIpIdx {
-				Expect(envVar.Name).To(Equal("DASH0_NODE_IP"))
-				valueFrom := envVar.ValueFrom
-				Expect(valueFrom).ToNot(BeNil())
-				Expect(valueFrom.FieldRef).ToNot(BeNil())
-				Expect(valueFrom.FieldRef.FieldPath).To(Equal("status.hostIP"))
-				Expect(envVar.Value).To(BeEmpty())
-			} else if j == containerExpectations.Dash0CollectorBaseUrlEnvVarIdx {
-				Expect(envVar.Name).To(Equal("DASH0_OTEL_COLLECTOR_BASE_URL"))
-				Expect(envVar.Value).To(Equal(containerExpectations.Dash0CollectorBaseUrlEnvVarExpectedValue))
-				Expect(envVar.ValueFrom).To(BeNil())
-			} else if j == containerExpectations.OtelExporterOtlpEndpointEnvVarIdx {
-				Expect(envVar.Name).To(Equal("OTEL_EXPORTER_OTLP_ENDPOINT"))
-				Expect(envVar.Value).To(Equal(containerExpectations.OtelExporterOtlpEndpointEnvVarExpectedValue))
-				Expect(envVar.ValueFrom).To(BeNil())
-			} else if j == containerExpectations.Dash0NamespaceNameEnvVarIdx {
-				Expect(envVar.Name).To(Equal("DASH0_NAMESPACE_NAME"))
-				Expect(envVar.ValueFrom.FieldRef.FieldPath).To(Equal("metadata.namespace"))
-			} else if j == containerExpectations.Dash0PodNameEnvVarIdx {
-				Expect(envVar.Name).To(Equal("DASH0_POD_NAME"))
-				Expect(envVar.ValueFrom.FieldRef.FieldPath).To(Equal("metadata.name"))
-			} else if j == containerExpectations.Dash0PodUidEnvVarIdx {
-				Expect(envVar.Name).To(Equal("DASH0_POD_UID"))
-				Expect(envVar.ValueFrom.FieldRef.FieldPath).To(Equal("metadata.uid"))
-			} else if j == containerExpectations.Dash0ContainerNameEnvVarIdx {
-				Expect(envVar.Name).To(Equal("DASH0_CONTAINER_NAME"))
-				Expect(envVar.Value).To(Equal(containerExpectations.Dash0ContainerNameEnvVarExpectedValue))
-			} else if j == containerExpectations.Dash0ServiceNameEnvVarIdx {
-				Expect(envVar.Name).To(Equal("DASH0_SERVICE_NAME"))
-				if containerExpectations.Dash0ServiceNameEnvVarValueFrom {
-					valueFrom := envVar.ValueFrom
-					Expect(valueFrom).ToNot(BeNil())
-					Expect(valueFrom.FieldRef).ToNot(BeNil())
-					Expect(valueFrom.FieldRef.FieldPath).To(Equal("metadata.labels['app.kubernetes.io/name']"))
-					Expect(envVar.Value).To(BeEmpty())
-				} else if containerExpectations.Dash0ServiceNameEnvVarValue != "" {
-					Expect(envVar.Value).To(Equal(containerExpectations.Dash0ServiceNameEnvVarValue))
-					Expect(envVar.ValueFrom).To(BeNil())
-				} else {
-					Fail("Dash0ServiceNameEnvVarIdx is set but there is no value or valueFrom expectation")
-				}
-			} else if j == containerExpectations.Dash0ServiceNamespaceEnvVarIdx {
-				Expect(envVar.Name).To(Equal("DASH0_SERVICE_NAMESPACE"))
-				if containerExpectations.Dash0ServiceNamespaceEnvVarValueFrom {
-					valueFrom := envVar.ValueFrom
-					Expect(valueFrom).ToNot(BeNil())
-					Expect(valueFrom.FieldRef).ToNot(BeNil())
-					Expect(valueFrom.FieldRef.FieldPath).To(Equal("metadata.labels['app.kubernetes.io/part-of']"))
-					Expect(envVar.Value).To(BeEmpty())
-				} else if containerExpectations.Dash0ServiceNamespaceEnvVarValue != "" {
-					Expect(envVar.Value).To(Equal(containerExpectations.Dash0ServiceNamespaceEnvVarValue))
-					Expect(envVar.ValueFrom).To(BeNil())
-				} else {
-					Fail("Dash0ServiceNamespaceEnvVarIdx is set but there is no value or valueFrom expectation")
-				}
-			} else if j == containerExpectations.Dash0ServiceVersionEnvVarIdx {
-				Expect(envVar.Name).To(Equal("DASH0_SERVICE_VERSION"))
-				if containerExpectations.Dash0ServiceVersionEnvVarValueFrom {
-					valueFrom := envVar.ValueFrom
-					Expect(valueFrom).ToNot(BeNil())
-					Expect(valueFrom.FieldRef).ToNot(BeNil())
-					Expect(valueFrom.FieldRef.FieldPath).To(Equal("metadata.labels['app.kubernetes.io/version']"))
-					Expect(envVar.Value).To(BeEmpty())
-				} else if containerExpectations.Dash0ServiceVersionEnvVarValue != "" {
-					Expect(envVar.Value).To(Equal(containerExpectations.Dash0ServiceVersionEnvVarValue))
-					Expect(envVar.ValueFrom).To(BeNil())
-				} else {
-					Fail("Dash0ServiceVersionEnvVarIdx is set but there is no value or valueFrom expectation")
-				}
-			} else if j == containerExpectations.Dash0ResourceAttributesEnvVarIdx {
-				Expect(envVar.Name).To(Equal("DASH0_RESOURCE_ATTRIBUTES"))
-				if len(containerExpectations.Dash0ResourceAttributesEnvVarKeyValuePairs) > 0 {
-					keyValuePairs := strings.Split(envVar.Value, ",")
-					Expect(keyValuePairs).To(HaveLen(len(containerExpectations.Dash0ResourceAttributesEnvVarKeyValuePairs)))
-					for _, expectedPair := range containerExpectations.Dash0ResourceAttributesEnvVarKeyValuePairs {
-						Expect(keyValuePairs).To(ContainElement(expectedPair))
-					}
-					Expect(envVar.ValueFrom).To(BeNil())
-				} else {
-					Fail("Dash0ResourceAttributesEnvVarIdx is set but there is no value expectation")
-				}
-			} else {
-				Expect(envVar.Name).To(Equal(fmt.Sprintf("TEST%d", j)))
-			}
-		}
+	}
+}
+
+func verifyEnvironmentVariables(container corev1.Container, expectations ContainerExpectations, containerName string) {
+	actualEnvVars := container.Env
+	expectedEnvVars := expectations.EnvVars
+
+	Expect(container.Env).To(HaveLen(len(expectedEnvVars)), containerName)
+	for envVarName, envVarExpectation := range expectedEnvVars {
+		VerifyEnvVarOrUnset(envVarExpectation, actualEnvVars, envVarName, containerName)
 	}
 }
 
@@ -445,6 +368,18 @@ func verifyUnmodifiedPodSpecEventually(g Gomega, podSpec corev1.PodSpec) {
 		g.Expect(container.Name).To(Equal(fmt.Sprintf("test-container-%d", i)))
 		g.Expect(container.VolumeMounts).To(BeEmpty())
 		g.Expect(container.Env).To(BeEmpty())
+	}
+}
+
+func verifyVolumes(podSpec corev1.PodSpec, expectations PodSpecExpectations) {
+	Expect(podSpec.Volumes).To(HaveLen(expectations.Volumes))
+	for i, volume := range podSpec.Volumes {
+		if i == expectations.Dash0VolumeIdx {
+			Expect(volume.Name).To(Equal("dash0-instrumentation"))
+			Expect(volume.EmptyDir).NotTo(BeNil())
+		} else {
+			Expect(volume.Name).To(Equal(fmt.Sprintf("test-volume-%d", i)))
+		}
 	}
 }
 
@@ -700,6 +635,62 @@ func verifyEventEventually(
 		}
 	}
 	return nil
+}
+
+func VerifyEnvVarsFromMap(
+	expectedEnvVars map[string]*EnvVarExpectation,
+	actualEnvVars []corev1.EnvVar,
+) {
+	for name := range expectedEnvVars {
+		VerifyEnvVarOrUnset(expectedEnvVars[name], actualEnvVars, name, "")
+	}
+}
+
+func VerifyEnvVarOrUnset(
+	expectation *EnvVarExpectation,
+	actualEnvVars []corev1.EnvVar,
+	name string,
+	containerName string,
+) {
+	if expectation == nil {
+		Expect(FindEnvVarByName(actualEnvVars, name)).To(BeNil(), containerName)
+	} else {
+		VerifyEnvVar(*expectation, actualEnvVars, name, containerName)
+	}
+}
+
+func VerifyEnvVar(expectation EnvVarExpectation, actualEnvVars []corev1.EnvVar, name string, containerName string) {
+	actualEnvVar := FindEnvVarByName(actualEnvVars, name)
+	msgExtra := containerName + " / " + name
+	Expect(actualEnvVar).ToNot(BeNil(), "%s: expected env var to be set but it was not", msgExtra)
+	if expectation.Value != "" {
+		Expect(expectation.ValueFrom).To(BeEmpty(), "%s: inconsistent env var expectation", msgExtra)
+		Expect(expectation.UnorderedCommaSeparatedValues).To(BeEmpty(), "%s: inconsistent env var expectation", msgExtra)
+
+		Expect(actualEnvVar.Value).To(Equal(expectation.Value), msgExtra)
+		Expect(actualEnvVar.ValueFrom).To(BeNil(), msgExtra)
+	} else if expectation.ValueFrom != "" {
+		Expect(expectation.Value).To(BeEmpty(), "%s: inconsistent env var expectation", msgExtra)
+		Expect(expectation.UnorderedCommaSeparatedValues).To(BeEmpty(), "%s: inconsistent env var expectation", msgExtra)
+
+		Expect(actualEnvVar.ValueFrom).ToNot(BeNil(), msgExtra)
+		Expect(actualEnvVar.ValueFrom.FieldRef).ToNot(BeNil(), msgExtra)
+		Expect(actualEnvVar.ValueFrom.FieldRef.FieldPath).To(Equal(expectation.ValueFrom), msgExtra)
+		Expect(actualEnvVar.Value).To(BeEmpty(), msgExtra)
+	} else if len(expectation.UnorderedCommaSeparatedValues) > 0 {
+		Expect(expectation.Value).To(BeEmpty(), "%s: inconsistent env var expectation", msgExtra)
+		Expect(expectation.ValueFrom).To(BeEmpty(), "%s: inconsistent env var expectation", msgExtra)
+
+		Expect(actualEnvVar.Value).NotTo(BeNil(), msgExtra)
+		keyValuePairs := strings.Split(actualEnvVar.Value, ",")
+		Expect(keyValuePairs).To(HaveLen(len(expectation.UnorderedCommaSeparatedValues)), msgExtra)
+		for _, expectedPair := range expectation.UnorderedCommaSeparatedValues {
+			Expect(keyValuePairs).To(ContainElement(expectedPair), msgExtra)
+		}
+		Expect(actualEnvVar.ValueFrom).To(BeNil(), msgExtra)
+	} else {
+		Fail(fmt.Sprintf("%s: inconsistent env var expectation", msgExtra))
+	}
 }
 
 func FindContainerByName(containers []corev1.Container, name string) *corev1.Container {

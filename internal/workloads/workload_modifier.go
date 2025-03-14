@@ -608,7 +608,7 @@ func (m *ResourceModifier) handleLdPreloadEnvVar(
 			Value: envVarLdPreloadValue,
 		})
 	} else {
-		// Note: This needs to be a point to the env var, otherwise updates would only be local to this function.
+		// Note: This needs to be a pointer to the env var, otherwise updates would only be local to this function.
 		envVar := &container.Env[idx]
 		if envVar.Value == "" && envVar.ValueFrom != nil {
 			perContainerLogger.Info(
@@ -620,7 +620,7 @@ func (m *ResourceModifier) handleLdPreloadEnvVar(
 		}
 
 		if !strings.Contains(envVar.Value, envVarLdPreloadValue) {
-			if envVar.Value == "" {
+			if strings.TrimSpace(envVar.Value) == "" {
 				envVar.Value = envVarLdPreloadValue
 			} else {
 				envVar.Value = fmt.Sprintf("%s %s", envVarLdPreloadValue, envVar.Value)
@@ -858,12 +858,26 @@ func (m *ResourceModifier) removeLdPreload(container *corev1.Container) {
 			// Specified via ValueFrom, this has not been done by us, so we assume there is no Dash0-specific
 			// LD_PRELOAD part.
 			return
-		} else if previousValue == envVarLdPreloadValue {
+		} else if strings.TrimSpace(previousValue) == envVarLdPreloadValue {
 			container.Env = slices.Delete(container.Env, idx, idx+1)
+			return
+		} else if !strings.Contains(previousValue, envVarLdPreloadValue) {
 			return
 		}
 
-		container.Env[idx].Value = strings.Replace(previousValue, envVarLdPreloadValue, "", -1)
+		separator := " "
+		if strings.Contains(previousValue, ":") {
+			separator = ":"
+		}
+		librariesUntrimmed := strings.Split(previousValue, separator)
+		libraries := make([]string, 0, len(librariesUntrimmed))
+		for _, lib := range librariesUntrimmed {
+			libraries = append(libraries, strings.TrimSpace(lib))
+		}
+		libraries = slices.DeleteFunc(libraries, func(lib string) bool {
+			return strings.TrimSpace(lib) == envVarLdPreloadValue || lib == ""
+		})
+		container.Env[idx].Value = strings.Join(libraries, separator)
 	}
 }
 
