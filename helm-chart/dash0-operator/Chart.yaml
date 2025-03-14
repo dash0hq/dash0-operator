@@ -9,9 +9,10 @@ keywords:
   - Monitoring
   - Dash0
   - Node.js
-  # - Python
-  # - Java
+  - Java
+  - JVM
   # - .NET
+  # - Python
 home: https://www.dash0.com/
 sources:
   - https://github.com/dash0hq/dash0-operator

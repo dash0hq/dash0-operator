@@ -244,63 +244,110 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 					Dash0InitContainerIdx: 2,
 					Containers: []ContainerExpectations{
 						{
-							VolumeMounts:                                2,
-							Dash0VolumeMountIdx:                         1,
-							EnvVars:                                     13,
-							LdPreloadEnvVarIdx:                          1,
-							Dash0NodeIpIdx:                              2,
-							Dash0CollectorBaseUrlEnvVarIdx:              3,
-							Dash0CollectorBaseUrlEnvVarExpectedValue:    OTelCollectorBaseUrlTest,
-							OtelExporterOtlpEndpointEnvVarIdx:           4,
-							OtelExporterOtlpEndpointEnvVarExpectedValue: OTelCollectorBaseUrlTest,
-							Dash0NamespaceNameEnvVarIdx:                 5,
-							Dash0PodNameEnvVarIdx:                       6,
-							Dash0PodUidEnvVarIdx:                        7,
-							Dash0ContainerNameEnvVarIdx:                 8,
-							Dash0ContainerNameEnvVarExpectedValue:       "test-container-0",
-							Dash0ServiceNameEnvVarIdx:                   9,
-							Dash0ServiceNameEnvVarValueFrom:             true,
-							Dash0ServiceNamespaceEnvVarIdx:              10,
-							Dash0ServiceNamespaceEnvVarValueFrom:        true,
-							Dash0ServiceVersionEnvVarIdx:                11,
-							Dash0ServiceVersionEnvVarValueFrom:          true,
-							Dash0ResourceAttributesEnvVarIdx:            12,
-							Dash0ResourceAttributesEnvVarKeyValuePairs: []string{
-								"workload.only.1=workload-value-1",
-								"workload.only.2=workload-value-2",
-								"pod.and.workload=pod-value",
-								"pod.only.1=pod-value-1",
-								"pod.only.2=pod-value-2",
+							ContainerName:       "test-container-0",
+							VolumeMounts:        2,
+							Dash0VolumeMountIdx: 1,
+							EnvVars: map[string]*EnvVarExpectation{
+								"TEST0": {
+									Value: "value",
+								},
+								"LD_PRELOAD": {
+									Value: "/__dash0__/dash0_injector.so",
+								},
+								"DASH0_NODE_IP": {
+									ValueFrom: "status.hostIP",
+								},
+								"DASH0_OTEL_COLLECTOR_BASE_URL": {
+									Value: OTelCollectorBaseUrlTest,
+								},
+								"OTEL_EXPORTER_OTLP_ENDPOINT": {
+									Value: OTelCollectorBaseUrlTest,
+								},
+								"DASH0_NAMESPACE_NAME": {
+									ValueFrom: "metadata.namespace",
+								},
+								"DASH0_POD_NAME": {
+									ValueFrom: "metadata.name",
+								},
+								"DASH0_POD_UID": {
+									ValueFrom: "metadata.uid",
+								},
+								"DASH0_CONTAINER_NAME": {
+									Value: "test-container-0",
+								},
+								"DASH0_SERVICE_NAME": {
+									ValueFrom: "metadata.labels['app.kubernetes.io/name']",
+								},
+								"DASH0_SERVICE_NAMESPACE": {
+									ValueFrom: "metadata.labels['app.kubernetes.io/part-of']",
+								},
+								"DASH0_SERVICE_VERSION": {
+									ValueFrom: "metadata.labels['app.kubernetes.io/version']",
+								},
+								"DASH0_RESOURCE_ATTRIBUTES": {
+									UnorderedCommaSeparatedValues: []string{
+										"workload.only.1=workload-value-1",
+										"workload.only.2=workload-value-2",
+										"pod.and.workload=pod-value",
+										"pod.only.1=pod-value-1",
+										"pod.only.2=pod-value-2",
+									},
+								},
 							},
 						},
 						{
-							VolumeMounts:                                3,
-							Dash0VolumeMountIdx:                         2,
-							EnvVars:                                     14,
-							LdPreloadEnvVarIdx:                          2,
-							Dash0NodeIpIdx:                              3,
-							Dash0CollectorBaseUrlEnvVarIdx:              4,
-							Dash0CollectorBaseUrlEnvVarExpectedValue:    OTelCollectorBaseUrlTest,
-							OtelExporterOtlpEndpointEnvVarIdx:           5,
-							OtelExporterOtlpEndpointEnvVarExpectedValue: OTelCollectorBaseUrlTest,
-							Dash0NamespaceNameEnvVarIdx:                 6,
-							Dash0PodNameEnvVarIdx:                       7,
-							Dash0PodUidEnvVarIdx:                        8,
-							Dash0ContainerNameEnvVarIdx:                 9,
-							Dash0ContainerNameEnvVarExpectedValue:       "test-container-1",
-							Dash0ServiceNameEnvVarIdx:                   10,
-							Dash0ServiceNameEnvVarValueFrom:             true,
-							Dash0ServiceNamespaceEnvVarIdx:              11,
-							Dash0ServiceNamespaceEnvVarValueFrom:        true,
-							Dash0ServiceVersionEnvVarIdx:                12,
-							Dash0ServiceVersionEnvVarValueFrom:          true,
-							Dash0ResourceAttributesEnvVarIdx:            13,
-							Dash0ResourceAttributesEnvVarKeyValuePairs: []string{
-								"workload.only.1=workload-value-1",
-								"workload.only.2=workload-value-2",
-								"pod.and.workload=pod-value",
-								"pod.only.1=pod-value-1",
-								"pod.only.2=pod-value-2",
+							ContainerName:       "test-container-1",
+							VolumeMounts:        3,
+							Dash0VolumeMountIdx: 2,
+							EnvVars: map[string]*EnvVarExpectation{
+								"TEST0": {
+									Value: "value",
+								},
+								"TEST1": {
+									ValueFrom: "metadata.namespace",
+								},
+								"LD_PRELOAD": {
+									Value: "/__dash0__/dash0_injector.so",
+								},
+								"DASH0_NODE_IP": {
+									ValueFrom: "status.hostIP",
+								},
+								"DASH0_OTEL_COLLECTOR_BASE_URL": {
+									Value: OTelCollectorBaseUrlTest,
+								},
+								"OTEL_EXPORTER_OTLP_ENDPOINT": {
+									Value: OTelCollectorBaseUrlTest,
+								},
+								"DASH0_NAMESPACE_NAME": {
+									ValueFrom: "metadata.namespace",
+								},
+								"DASH0_POD_NAME": {
+									ValueFrom: "metadata.name",
+								},
+								"DASH0_POD_UID": {
+									ValueFrom: "metadata.uid",
+								},
+								"DASH0_CONTAINER_NAME": {
+									Value: "test-container-1",
+								},
+								"DASH0_SERVICE_NAME": {
+									ValueFrom: "metadata.labels['app.kubernetes.io/name']",
+								},
+								"DASH0_SERVICE_NAMESPACE": {
+									ValueFrom: "metadata.labels['app.kubernetes.io/part-of']",
+								},
+								"DASH0_SERVICE_VERSION": {
+									ValueFrom: "metadata.labels['app.kubernetes.io/version']",
+								},
+								"DASH0_RESOURCE_ATTRIBUTES": {
+									UnorderedCommaSeparatedValues: []string{
+										"workload.only.1=workload-value-1",
+										"workload.only.2=workload-value-2",
+										"pod.and.workload=pod-value",
+										"pod.only.1=pod-value-1",
+										"pod.only.2=pod-value-2",
+									},
+								},
 							},
 						},
 					},
@@ -326,46 +373,74 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 					Dash0InitContainerIdx: 1,
 					Containers: []ContainerExpectations{
 						{
-							VolumeMounts:                                2,
-							Dash0VolumeMountIdx:                         1,
-							EnvVars:                                     9,
-							LdPreloadEnvVarIdx:                          1,
-							LdPreloadUsesValueFrom:                      true,
-							Dash0NodeIpIdx:                              2,
-							Dash0CollectorBaseUrlEnvVarIdx:              3,
-							Dash0CollectorBaseUrlEnvVarExpectedValue:    OTelCollectorBaseUrlTest,
-							OtelExporterOtlpEndpointEnvVarIdx:           4,
-							OtelExporterOtlpEndpointEnvVarExpectedValue: OTelCollectorBaseUrlTest,
-							Dash0NamespaceNameEnvVarIdx:                 5,
-							Dash0PodNameEnvVarIdx:                       6,
-							Dash0PodUidEnvVarIdx:                        7,
-							Dash0ContainerNameEnvVarIdx:                 8,
-							Dash0ContainerNameEnvVarExpectedValue:       "test-container-0",
-							Dash0ServiceNameEnvVarIdx:                   -1,
-							Dash0ServiceNamespaceEnvVarIdx:              -1,
-							Dash0ServiceVersionEnvVarIdx:                -1,
-							Dash0ResourceAttributesEnvVarIdx:            -1,
+							ContainerName:       "test-container-0",
+							VolumeMounts:        2,
+							Dash0VolumeMountIdx: 1,
+							EnvVars: map[string]*EnvVarExpectation{
+								"TEST0": {
+									Value: "value",
+								},
+								"LD_PRELOAD": {
+									// The operator does not support injecting into containers that already have LD_PRELOAD set via a
+									// ValueFrom clause, thus this env var will not be modified.
+									ValueFrom: "metadata.namespace",
+								},
+								"DASH0_NODE_IP": {
+									ValueFrom: "status.hostIP",
+								},
+								"DASH0_OTEL_COLLECTOR_BASE_URL": {
+									Value: OTelCollectorBaseUrlTest,
+								},
+								"OTEL_EXPORTER_OTLP_ENDPOINT": {
+									Value: OTelCollectorBaseUrlTest,
+								},
+								"DASH0_NAMESPACE_NAME": {
+									ValueFrom: "metadata.namespace",
+								},
+								"DASH0_POD_NAME": {
+									ValueFrom: "metadata.name",
+								},
+								"DASH0_POD_UID": {
+									ValueFrom: "metadata.uid",
+								},
+								"DASH0_CONTAINER_NAME": {
+									Value: "test-container-0",
+								},
+							},
 						},
 						{
-							VolumeMounts:                                3,
-							Dash0VolumeMountIdx:                         1,
-							EnvVars:                                     9,
-							LdPreloadEnvVarIdx:                          2,
-							LdPreloadValue:                              "/__dash0__/dash0_injector.so third_party_preload.so another_third_party_preload.so",
-							Dash0NodeIpIdx:                              3,
-							Dash0CollectorBaseUrlEnvVarIdx:              0,
-							Dash0CollectorBaseUrlEnvVarExpectedValue:    OTelCollectorBaseUrlTest,
-							OtelExporterOtlpEndpointEnvVarIdx:           1,
-							OtelExporterOtlpEndpointEnvVarExpectedValue: OTelCollectorBaseUrlTest,
-							Dash0NamespaceNameEnvVarIdx:                 5,
-							Dash0PodNameEnvVarIdx:                       6,
-							Dash0PodUidEnvVarIdx:                        7,
-							Dash0ContainerNameEnvVarIdx:                 8,
-							Dash0ContainerNameEnvVarExpectedValue:       "test-container-1",
-							Dash0ServiceNameEnvVarIdx:                   -1,
-							Dash0ServiceNamespaceEnvVarIdx:              -1,
-							Dash0ServiceVersionEnvVarIdx:                -1,
-							Dash0ResourceAttributesEnvVarIdx:            -1,
+							ContainerName:       "test-container-1",
+							VolumeMounts:        3,
+							Dash0VolumeMountIdx: 1,
+							EnvVars: map[string]*EnvVarExpectation{
+								"LD_PRELOAD": {
+									Value: "/__dash0__/dash0_injector.so third_party_preload.so another_third_party_preload.so",
+								},
+								"DASH0_NODE_IP": {
+									ValueFrom: "status.hostIP",
+								},
+								"DASH0_OTEL_COLLECTOR_BASE_URL": {
+									Value: OTelCollectorBaseUrlTest,
+								},
+								"OTEL_EXPORTER_OTLP_ENDPOINT": {
+									Value: OTelCollectorBaseUrlTest,
+								},
+								"DASH0_NAMESPACE_NAME": {
+									ValueFrom: "metadata.namespace",
+								},
+								"DASH0_POD_NAME": {
+									ValueFrom: "metadata.name",
+								},
+								"DASH0_POD_UID": {
+									ValueFrom: "metadata.uid",
+								},
+								"DASH0_CONTAINER_NAME": {
+									Value: "test-container-1",
+								},
+								"TEST4": {
+									Value: "value",
+								},
+							},
 						},
 					},
 				},

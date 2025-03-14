@@ -858,7 +858,7 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 				},
 				{
 					Name:  "LD_PRELOAD",
-					Value: "/__dash0__/dash0_injector.so",
+					Value: "/some/preload.so /__dash0__/dash0_injector.so /another/preload.so",
 				},
 				{
 					Name:      "DASH0_NODE_IP",

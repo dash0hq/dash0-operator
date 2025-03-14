@@ -21,11 +21,6 @@ import (
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
-type envVarExpectation struct {
-	value     string
-	valueFrom string
-}
-
 const (
 	testActor = "actor"
 )
@@ -85,63 +80,110 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				Dash0InitContainerIdx: 2,
 				Containers: []ContainerExpectations{
 					{
-						VolumeMounts:                                2,
-						Dash0VolumeMountIdx:                         1,
-						EnvVars:                                     13,
-						LdPreloadEnvVarIdx:                          1,
-						Dash0NodeIpIdx:                              2,
-						Dash0CollectorBaseUrlEnvVarIdx:              3,
-						Dash0CollectorBaseUrlEnvVarExpectedValue:    OTelCollectorBaseUrlTest,
-						OtelExporterOtlpEndpointEnvVarIdx:           4,
-						OtelExporterOtlpEndpointEnvVarExpectedValue: OTelCollectorBaseUrlTest,
-						Dash0NamespaceNameEnvVarIdx:                 5,
-						Dash0PodNameEnvVarIdx:                       6,
-						Dash0PodUidEnvVarIdx:                        7,
-						Dash0ContainerNameEnvVarIdx:                 8,
-						Dash0ContainerNameEnvVarExpectedValue:       "test-container-0",
-						Dash0ServiceNameEnvVarIdx:                   9,
-						Dash0ServiceNameEnvVarValueFrom:             true,
-						Dash0ServiceNamespaceEnvVarIdx:              10,
-						Dash0ServiceNamespaceEnvVarValueFrom:        true,
-						Dash0ServiceVersionEnvVarIdx:                11,
-						Dash0ServiceVersionEnvVarValueFrom:          true,
-						Dash0ResourceAttributesEnvVarIdx:            12,
-						Dash0ResourceAttributesEnvVarKeyValuePairs: []string{
-							"workload.only.1=workload-value-1",
-							"workload.only.2=workload-value-2",
-							"pod.and.workload=pod-value",
-							"pod.only.1=pod-value-1",
-							"pod.only.2=pod-value-2",
+						ContainerName:       "test-container-0",
+						VolumeMounts:        2,
+						Dash0VolumeMountIdx: 1,
+						EnvVars: map[string]*EnvVarExpectation{
+							"TEST0": {
+								Value: "value",
+							},
+							"LD_PRELOAD": {
+								Value: "/__dash0__/dash0_injector.so",
+							},
+							"DASH0_NODE_IP": {
+								ValueFrom: "status.hostIP",
+							},
+							"DASH0_OTEL_COLLECTOR_BASE_URL": {
+								Value: OTelCollectorBaseUrlTest,
+							},
+							"OTEL_EXPORTER_OTLP_ENDPOINT": {
+								Value: OTelCollectorBaseUrlTest,
+							},
+							"DASH0_NAMESPACE_NAME": {
+								ValueFrom: "metadata.namespace",
+							},
+							"DASH0_POD_NAME": {
+								ValueFrom: "metadata.name",
+							},
+							"DASH0_POD_UID": {
+								ValueFrom: "metadata.uid",
+							},
+							"DASH0_CONTAINER_NAME": {
+								Value: "test-container-0",
+							},
+							"DASH0_SERVICE_NAME": {
+								ValueFrom: "metadata.labels['app.kubernetes.io/name']",
+							},
+							"DASH0_SERVICE_NAMESPACE": {
+								ValueFrom: "metadata.labels['app.kubernetes.io/part-of']",
+							},
+							"DASH0_SERVICE_VERSION": {
+								ValueFrom: "metadata.labels['app.kubernetes.io/version']",
+							},
+							"DASH0_RESOURCE_ATTRIBUTES": {
+								UnorderedCommaSeparatedValues: []string{
+									"workload.only.1=workload-value-1",
+									"workload.only.2=workload-value-2",
+									"pod.and.workload=pod-value",
+									"pod.only.1=pod-value-1",
+									"pod.only.2=pod-value-2",
+								},
+							},
 						},
 					},
 					{
-						VolumeMounts:                                3,
-						Dash0VolumeMountIdx:                         2,
-						EnvVars:                                     14,
-						LdPreloadEnvVarIdx:                          2,
-						Dash0NodeIpIdx:                              3,
-						Dash0CollectorBaseUrlEnvVarIdx:              4,
-						Dash0CollectorBaseUrlEnvVarExpectedValue:    OTelCollectorBaseUrlTest,
-						OtelExporterOtlpEndpointEnvVarIdx:           5,
-						OtelExporterOtlpEndpointEnvVarExpectedValue: OTelCollectorBaseUrlTest,
-						Dash0NamespaceNameEnvVarIdx:                 6,
-						Dash0PodNameEnvVarIdx:                       7,
-						Dash0PodUidEnvVarIdx:                        8,
-						Dash0ContainerNameEnvVarIdx:                 9,
-						Dash0ContainerNameEnvVarExpectedValue:       "test-container-1",
-						Dash0ServiceNameEnvVarIdx:                   10,
-						Dash0ServiceNameEnvVarValueFrom:             true,
-						Dash0ServiceNamespaceEnvVarIdx:              11,
-						Dash0ServiceNamespaceEnvVarValueFrom:        true,
-						Dash0ServiceVersionEnvVarIdx:                12,
-						Dash0ServiceVersionEnvVarValueFrom:          true,
-						Dash0ResourceAttributesEnvVarIdx:            13,
-						Dash0ResourceAttributesEnvVarKeyValuePairs: []string{
-							"workload.only.1=workload-value-1",
-							"workload.only.2=workload-value-2",
-							"pod.and.workload=pod-value",
-							"pod.only.1=pod-value-1",
-							"pod.only.2=pod-value-2",
+						ContainerName:       "test-container-1",
+						VolumeMounts:        3,
+						Dash0VolumeMountIdx: 2,
+						EnvVars: map[string]*EnvVarExpectation{
+							"TEST0": {
+								Value: "value",
+							},
+							"TEST1": {
+								ValueFrom: "metadata.namespace",
+							},
+							"LD_PRELOAD": {
+								Value: "/__dash0__/dash0_injector.so",
+							},
+							"DASH0_NODE_IP": {
+								ValueFrom: "status.hostIP",
+							},
+							"DASH0_OTEL_COLLECTOR_BASE_URL": {
+								Value: OTelCollectorBaseUrlTest,
+							},
+							"OTEL_EXPORTER_OTLP_ENDPOINT": {
+								Value: OTelCollectorBaseUrlTest,
+							},
+							"DASH0_NAMESPACE_NAME": {
+								ValueFrom: "metadata.namespace",
+							},
+							"DASH0_POD_NAME": {
+								ValueFrom: "metadata.name",
+							},
+							"DASH0_POD_UID": {
+								ValueFrom: "metadata.uid",
+							},
+							"DASH0_CONTAINER_NAME": {
+								Value: "test-container-1",
+							},
+							"DASH0_SERVICE_NAME": {
+								ValueFrom: "metadata.labels['app.kubernetes.io/name']",
+							},
+							"DASH0_SERVICE_NAMESPACE": {
+								ValueFrom: "metadata.labels['app.kubernetes.io/part-of']",
+							},
+							"DASH0_SERVICE_VERSION": {
+								ValueFrom: "metadata.labels['app.kubernetes.io/version']",
+							},
+							"DASH0_RESOURCE_ATTRIBUTES": {
+								UnorderedCommaSeparatedValues: []string{
+									"workload.only.1=workload-value-1",
+									"workload.only.2=workload-value-2",
+									"pod.and.workload=pod-value",
+									"pod.only.1=pod-value-1",
+									"pod.only.2=pod-value-2",
+								},
+							},
 						},
 					},
 				},
@@ -162,46 +204,74 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				Dash0InitContainerIdx: 1,
 				Containers: []ContainerExpectations{
 					{
-						VolumeMounts:                                2,
-						Dash0VolumeMountIdx:                         1,
-						EnvVars:                                     9,
-						LdPreloadEnvVarIdx:                          1,
-						LdPreloadUsesValueFrom:                      true,
-						Dash0NodeIpIdx:                              2,
-						Dash0CollectorBaseUrlEnvVarIdx:              3,
-						Dash0CollectorBaseUrlEnvVarExpectedValue:    OTelCollectorBaseUrlTest,
-						OtelExporterOtlpEndpointEnvVarIdx:           4,
-						OtelExporterOtlpEndpointEnvVarExpectedValue: OTelCollectorBaseUrlTest,
-						Dash0NamespaceNameEnvVarIdx:                 5,
-						Dash0PodNameEnvVarIdx:                       6,
-						Dash0PodUidEnvVarIdx:                        7,
-						Dash0ContainerNameEnvVarIdx:                 8,
-						Dash0ContainerNameEnvVarExpectedValue:       "test-container-0",
-						Dash0ServiceNameEnvVarIdx:                   -1,
-						Dash0ServiceNamespaceEnvVarIdx:              -1,
-						Dash0ServiceVersionEnvVarIdx:                -1,
-						Dash0ResourceAttributesEnvVarIdx:            -1,
+						ContainerName:       "test-container-0",
+						VolumeMounts:        2,
+						Dash0VolumeMountIdx: 1,
+						EnvVars: map[string]*EnvVarExpectation{
+							"TEST0": {
+								Value: "value",
+							},
+							"LD_PRELOAD": {
+								// The operator does not support injecting into containers that already have LD_PRELOAD set via a
+								// ValueFrom clause, thus this env var will not be modified.
+								ValueFrom: "metadata.namespace",
+							},
+							"DASH0_NODE_IP": {
+								ValueFrom: "status.hostIP",
+							},
+							"DASH0_OTEL_COLLECTOR_BASE_URL": {
+								Value: OTelCollectorBaseUrlTest,
+							},
+							"OTEL_EXPORTER_OTLP_ENDPOINT": {
+								Value: OTelCollectorBaseUrlTest,
+							},
+							"DASH0_NAMESPACE_NAME": {
+								ValueFrom: "metadata.namespace",
+							},
+							"DASH0_POD_NAME": {
+								ValueFrom: "metadata.name",
+							},
+							"DASH0_POD_UID": {
+								ValueFrom: "metadata.uid",
+							},
+							"DASH0_CONTAINER_NAME": {
+								Value: "test-container-0",
+							},
+						},
 					},
 					{
-						VolumeMounts:                                3,
-						Dash0VolumeMountIdx:                         1,
-						EnvVars:                                     9,
-						LdPreloadEnvVarIdx:                          2,
-						LdPreloadValue:                              "/__dash0__/dash0_injector.so third_party_preload.so another_third_party_preload.so",
-						Dash0NodeIpIdx:                              3,
-						Dash0CollectorBaseUrlEnvVarIdx:              0,
-						Dash0CollectorBaseUrlEnvVarExpectedValue:    OTelCollectorBaseUrlTest,
-						OtelExporterOtlpEndpointEnvVarIdx:           1,
-						OtelExporterOtlpEndpointEnvVarExpectedValue: OTelCollectorBaseUrlTest,
-						Dash0NamespaceNameEnvVarIdx:                 5,
-						Dash0PodNameEnvVarIdx:                       6,
-						Dash0PodUidEnvVarIdx:                        7,
-						Dash0ContainerNameEnvVarIdx:                 8,
-						Dash0ContainerNameEnvVarExpectedValue:       "test-container-1",
-						Dash0ServiceNameEnvVarIdx:                   -1,
-						Dash0ServiceNamespaceEnvVarIdx:              -1,
-						Dash0ServiceVersionEnvVarIdx:                -1,
-						Dash0ResourceAttributesEnvVarIdx:            -1,
+						ContainerName:       "test-container-1",
+						VolumeMounts:        3,
+						Dash0VolumeMountIdx: 1,
+						EnvVars: map[string]*EnvVarExpectation{
+							"LD_PRELOAD": {
+								Value: "/__dash0__/dash0_injector.so third_party_preload.so another_third_party_preload.so",
+							},
+							"DASH0_NODE_IP": {
+								ValueFrom: "status.hostIP",
+							},
+							"DASH0_OTEL_COLLECTOR_BASE_URL": {
+								Value: OTelCollectorBaseUrlTest,
+							},
+							"OTEL_EXPORTER_OTLP_ENDPOINT": {
+								Value: OTelCollectorBaseUrlTest,
+							},
+							"DASH0_NAMESPACE_NAME": {
+								ValueFrom: "metadata.namespace",
+							},
+							"DASH0_POD_NAME": {
+								ValueFrom: "metadata.name",
+							},
+							"DASH0_POD_UID": {
+								ValueFrom: "metadata.uid",
+							},
+							"DASH0_CONTAINER_NAME": {
+								Value: "test-container-1",
+							},
+							"TEST4": {
+								Value: "value",
+							},
+						},
 					},
 				},
 			},
@@ -424,38 +494,30 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				Dash0InitContainerIdx: -1,
 				Containers: []ContainerExpectations{
 					{
-						VolumeMounts:                      1,
-						Dash0VolumeMountIdx:               -1,
-						EnvVars:                           1,
-						LdPreloadEnvVarIdx:                -1,
-						Dash0NodeIpIdx:                    -1,
-						Dash0CollectorBaseUrlEnvVarIdx:    -1,
-						OtelExporterOtlpEndpointEnvVarIdx: -1,
-						Dash0NamespaceNameEnvVarIdx:       -1,
-						Dash0PodNameEnvVarIdx:             -1,
-						Dash0PodUidEnvVarIdx:              -1,
-						Dash0ContainerNameEnvVarIdx:       -1,
-						Dash0ServiceNameEnvVarIdx:         -1,
-						Dash0ServiceNamespaceEnvVarIdx:    -1,
-						Dash0ServiceVersionEnvVarIdx:      -1,
-						Dash0ResourceAttributesEnvVarIdx:  -1,
+						ContainerName:       "test-container-0",
+						VolumeMounts:        1,
+						Dash0VolumeMountIdx: -1,
+						EnvVars: map[string]*EnvVarExpectation{
+							"TEST0": {
+								Value: "value",
+							},
+							"LD_PRELOAD": {
+								Value: "/some/preload.so /another/preload.so",
+							},
+						},
 					},
 					{
-						VolumeMounts:                      2,
-						Dash0VolumeMountIdx:               -1,
-						EnvVars:                           2,
-						LdPreloadEnvVarIdx:                -1,
-						Dash0NodeIpIdx:                    -1,
-						Dash0CollectorBaseUrlEnvVarIdx:    -1,
-						OtelExporterOtlpEndpointEnvVarIdx: -1,
-						Dash0NamespaceNameEnvVarIdx:       -1,
-						Dash0PodNameEnvVarIdx:             -1,
-						Dash0PodUidEnvVarIdx:              -1,
-						Dash0ContainerNameEnvVarIdx:       -1,
-						Dash0ServiceNameEnvVarIdx:         -1,
-						Dash0ServiceNamespaceEnvVarIdx:    -1,
-						Dash0ServiceVersionEnvVarIdx:      -1,
-						Dash0ResourceAttributesEnvVarIdx:  -1,
+						ContainerName:       "test-container-1",
+						VolumeMounts:        2,
+						Dash0VolumeMountIdx: -1,
+						EnvVars: map[string]*EnvVarExpectation{
+							"TEST0": {
+								Value: "value",
+							},
+							"TEST1": {
+								ValueFrom: "metadata.namespace",
+							},
+						},
 					},
 				},
 			})
@@ -505,12 +567,253 @@ var _ = Describe("Dash0 Workload Modification", func() {
 		logger := log.FromContext(ctx)
 		workloadModifier := NewResourceModifier(instrumentationMetadata, &logger)
 
+		type addLdPreloadTest struct {
+			value       string
+			valueFrom   string
+			expectation EnvVarExpectation
+		}
+
+		DescribeTable("should add the Dash0 injector to LD_PRELOAD",
+			func(testConfig addLdPreloadTest) {
+				container := &corev1.Container{Env: []corev1.EnvVar{}}
+				if testConfig.value != "" {
+					container.Env = append(
+						container.Env,
+						corev1.EnvVar{Name: "LD_PRELOAD", Value: testConfig.value},
+					)
+				} else if testConfig.valueFrom != "" {
+					container.Env = append(
+						container.Env,
+						corev1.EnvVar{
+							Name: "LD_PRELOAD",
+							ValueFrom: &corev1.EnvVarSource{
+								FieldRef: &corev1.ObjectFieldSelector{
+									FieldPath: testConfig.valueFrom,
+								},
+							},
+						},
+					)
+				}
+
+				workloadModifier.handleLdPreloadEnvVar(container, logger)
+
+				VerifyEnvVar(testConfig.expectation, container.Env, envVarLdPreloadName, "")
+			},
+			Entry("should add LD_PRELOAD with only the Dash0 injector if it does not exist", addLdPreloadTest{
+				expectation: EnvVarExpectation{
+					Value: envVarLdPreloadValue,
+				},
+			}),
+			Entry("should add LD_PRELOAD with only the Dash0 injector the env var exists but is empty", addLdPreloadTest{
+				value: "",
+				expectation: EnvVarExpectation{
+					Value: envVarLdPreloadValue,
+				},
+			}),
+			Entry("should add LD_PRELOAD with only the Dash0 injector the env var exists but is only whitespace", addLdPreloadTest{
+				value: "   ",
+				expectation: EnvVarExpectation{
+					Value: envVarLdPreloadValue,
+				},
+			}),
+			Entry("should do nothing if LD_PRELOAD already has the Dash0 injector as its only element", addLdPreloadTest{
+				value: envVarLdPreloadValue,
+				expectation: EnvVarExpectation{
+					Value: envVarLdPreloadValue,
+				},
+			}),
+			Entry("should do nothing if LD_PRELOAD already has the Dash0 injector as its first element", addLdPreloadTest{
+				value: envVarLdPreloadValue + " one.so two.so",
+				expectation: EnvVarExpectation{
+					Value: envVarLdPreloadValue + " one.so two.so",
+				},
+			}),
+			Entry("should do nothing if LD_PRELOAD already has the Dash0 injector in the middle", addLdPreloadTest{
+				value: "one.so " + envVarLdPreloadValue + " two.so",
+				expectation: EnvVarExpectation{
+					Value: "one.so " + envVarLdPreloadValue + " two.so",
+				},
+			}),
+			Entry("should do nothing if LD_PRELOAD already has the Dash0 injector at the end", addLdPreloadTest{
+				value: "one.so two.so " + envVarLdPreloadValue,
+				expectation: EnvVarExpectation{
+					Value: "one.so two.so " + envVarLdPreloadValue,
+				},
+			}),
+			Entry("should prepend the Dash0 injector to LD_PRELOAD if there are other libraries", addLdPreloadTest{
+				value: "one.so",
+				expectation: EnvVarExpectation{
+					Value: envVarLdPreloadValue + " one.so",
+				},
+			}),
+			Entry("should do nothing if LD_PRELOAD exists with ValueFrom", addLdPreloadTest{
+				valueFrom: "whatever",
+				expectation: EnvVarExpectation{
+					ValueFrom: "whatever",
+				},
+			}),
+		)
+
+		type removeLdPreloadTest struct {
+			envVars      []corev1.EnvVar
+			expectations map[string]*EnvVarExpectation
+		}
+
+		DescribeTable("should remove the Dash0 injector from LD_PRELOAD",
+			func(testConfig removeLdPreloadTest) {
+				container := &corev1.Container{Env: testConfig.envVars}
+				workloadModifier.removeLdPreload(container)
+				Expect(container.Env).To(HaveLen(len(testConfig.expectations)))
+				VerifyEnvVarsFromMap(
+					testConfig.expectations,
+					container.Env,
+				)
+			},
+			Entry("should do nothing if tbere are no env vars", removeLdPreloadTest{
+				envVars:      nil,
+				expectations: map[string]*EnvVarExpectation{},
+			}),
+			Entry("should do nothing if there is no LD_PRELOAD", removeLdPreloadTest{
+				envVars: []corev1.EnvVar{
+					{Name: "OTHER", Value: "value"},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					"OTHER": {Value: "value"},
+				},
+			}),
+			Entry("should do nothing if LD_PRELOAD does not list the Dash0 injector", removeLdPreloadTest{
+				envVars: []corev1.EnvVar{
+					{Name: "OTHER", Value: "value"},
+					{Name: envVarLdPreloadName, Value: "one.so  two.so"},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					envVarLdPreloadName: {Value: "one.so  two.so"},
+					"OTHER":             {Value: "value"},
+				},
+			}),
+			Entry("should do nothing if LD_PRELOAD uses ValueFrom", removeLdPreloadTest{
+				envVars: []corev1.EnvVar{
+					{
+						Name: envVarLdPreloadName,
+						ValueFrom: &corev1.EnvVarSource{
+							FieldRef: &corev1.ObjectFieldSelector{
+								FieldPath: "whatever",
+							},
+						},
+					},
+					{Name: "OTHER", Value: "value"},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					envVarLdPreloadName: {ValueFrom: "whatever"},
+					"OTHER":             {Value: "value"},
+				},
+			}),
+			Entry("should remove LD_PRELOAD if the Dash0 injector is the only library", removeLdPreloadTest{
+				envVars: []corev1.EnvVar{
+					{Name: "OTHER", Value: "value"},
+					{Name: envVarLdPreloadName, Value: envVarLdPreloadValue},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					"OTHER": {Value: "value"},
+				},
+			}),
+			Entry("should remove LD_PRELOAD if the Dash0 injector is the only library and has surrounding whitespace", removeLdPreloadTest{
+				envVars: []corev1.EnvVar{
+					{Name: "OTHER", Value: "value"},
+					{Name: envVarLdPreloadName, Value: "  " + envVarLdPreloadValue + "   "},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					"OTHER": {Value: "value"},
+				},
+			}),
+			Entry("should remove the Dash0 injector from LD_PRELOAD at the start (space separated)", removeLdPreloadTest{
+				envVars: []corev1.EnvVar{
+					{Name: "OTHER", Value: "value"},
+					{Name: envVarLdPreloadName, Value: envVarLdPreloadValue + " one.so two.so"},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					"OTHER":             {Value: "value"},
+					envVarLdPreloadName: {Value: "one.so two.so"},
+				},
+			}),
+			Entry("should remove the Dash0 injector from LD_PRELOAD in the middle (space separated)", removeLdPreloadTest{
+				envVars: []corev1.EnvVar{
+					{Name: "OTHER", Value: "value"},
+					{Name: envVarLdPreloadName, Value: "one.so " + envVarLdPreloadValue + " two.so"},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					"OTHER":             {Value: "value"},
+					envVarLdPreloadName: {Value: "one.so two.so"},
+				},
+			}),
+			Entry("should remove the Dash0 injector from LD_PRELOAD with extraneous whitespace (space separated)", removeLdPreloadTest{
+				envVars: []corev1.EnvVar{
+					{Name: "OTHER", Value: "value"},
+					{Name: envVarLdPreloadName, Value: "  one.so    " + envVarLdPreloadValue + "   two.so  "},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					"OTHER":             {Value: "value"},
+					envVarLdPreloadName: {Value: "one.so two.so"},
+				},
+			}),
+			Entry("should remove the Dash0 injector from LD_PRELOAD at the end (space separated)", removeLdPreloadTest{
+				envVars: []corev1.EnvVar{
+					{Name: "OTHER", Value: "value"},
+					{Name: envVarLdPreloadName, Value: "one.so two.so " + envVarLdPreloadValue},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					"OTHER":             {Value: "value"},
+					envVarLdPreloadName: {Value: "one.so two.so"},
+				},
+			}),
+			Entry("should remove the Dash0 injector from LD_PRELOAD at the start (colon separated)", removeLdPreloadTest{
+				envVars: []corev1.EnvVar{
+					{Name: "OTHER", Value: "value"},
+					{Name: envVarLdPreloadName, Value: envVarLdPreloadValue + ":one.so:two.so"},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					"OTHER":             {Value: "value"},
+					envVarLdPreloadName: {Value: "one.so:two.so"},
+				},
+			}),
+			Entry("should remove the Dash0 injector from LD_PRELOAD in the middle (colon separated)", removeLdPreloadTest{
+				envVars: []corev1.EnvVar{
+					{Name: "OTHER", Value: "value"},
+					{Name: envVarLdPreloadName, Value: "one.so:" + envVarLdPreloadValue + ":two.so"},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					"OTHER":             {Value: "value"},
+					envVarLdPreloadName: {Value: "one.so:two.so"},
+				},
+			}),
+			Entry("should remove the Dash0 injector from LD_PRELOAD with extraneous whitespace (colon separated)", removeLdPreloadTest{
+				envVars: []corev1.EnvVar{
+					{Name: "OTHER", Value: "value"},
+					{Name: envVarLdPreloadName, Value: "  one.so  :  " + envVarLdPreloadValue + " :  two.so  "},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					"OTHER":             {Value: "value"},
+					envVarLdPreloadName: {Value: "one.so:two.so"},
+				},
+			}),
+			Entry("should remove the Dash0 injector from LD_PRELOAD at the end (colon separated)", removeLdPreloadTest{
+				envVars: []corev1.EnvVar{
+					{Name: "OTHER", Value: "value"},
+					{Name: envVarLdPreloadName, Value: "one.so:two.so:" + envVarLdPreloadValue},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					"OTHER":             {Value: "value"},
+					envVarLdPreloadName: {Value: "one.so:two.so"},
+				},
+			}),
+		)
+
 		type objectMetaResourceAttributesTest struct {
 			workloadLabels                  map[string]string
 			workloadAnnotations             map[string]string
 			podLabels                       map[string]string
 			podAnnotations                  map[string]string
-			expectedEnvVars                 map[string]*envVarExpectation
+			expectedEnvVars                 map[string]*EnvVarExpectation
 			expectedResourceAttributeEnvVar []string
 		}
 
@@ -540,9 +843,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				)
 
 				envVars := container.Env
-				verifyEnvVar(testConfig.expectedEnvVars, envVars, envVarDash0ServiceName)
-				verifyEnvVar(testConfig.expectedEnvVars, envVars, envVarDash0ServiceNamespace)
-				verifyEnvVar(testConfig.expectedEnvVars, envVars, envVarDash0ServiceVersion)
+				VerifyEnvVarsFromMap(testConfig.expectedEnvVars, envVars)
 
 				expectedResourceAttributes := testConfig.expectedResourceAttributeEnvVar
 				actualResourceAttributes := FindEnvVarByName(envVars, envVarDash0ResourceAttributes)
@@ -558,7 +859,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				}
 			},
 			Entry("should not add env vars if there is no metadata", objectMetaResourceAttributesTest{
-				expectedEnvVars: map[string]*envVarExpectation{
+				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarDash0ServiceName:      nil,
 					envVarDash0ServiceNamespace: nil,
 					envVarDash0ServiceVersion:   nil,
@@ -569,7 +870,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				workloadAnnotations: map[string]string{},
 				podLabels:           map[string]string{},
 				podAnnotations:      map[string]string{},
-				expectedEnvVars: map[string]*envVarExpectation{
+				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarDash0ServiceName:      nil,
 					envVarDash0ServiceNamespace: nil,
 					envVarDash0ServiceVersion:   nil,
@@ -580,7 +881,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				workloadAnnotations: map[string]string{"a": "b"},
 				podLabels:           map[string]string{"a": "b"},
 				podAnnotations:      map[string]string{"a": "b"},
-				expectedEnvVars: map[string]*envVarExpectation{
+				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarDash0ServiceName:      nil,
 					envVarDash0ServiceNamespace: nil,
 					envVarDash0ServiceVersion:   nil,
@@ -592,10 +893,10 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					util.AppKubernetesIoPartOfLabel:  "workload-part-of",
 					util.AppKubernetesIoVersionLabel: "workload-version",
 				},
-				expectedEnvVars: map[string]*envVarExpectation{
-					envVarDash0ServiceName:      {value: "workload-name"},
-					envVarDash0ServiceNamespace: {value: "workload-part-of"},
-					envVarDash0ServiceVersion:   {value: "workload-version"},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarDash0ServiceName:      {Value: "workload-name"},
+					envVarDash0ServiceNamespace: {Value: "workload-part-of"},
+					envVarDash0ServiceVersion:   {Value: "workload-version"},
 				},
 			}),
 			Entry("should ignore workload labels if name is not set", objectMetaResourceAttributesTest{
@@ -603,7 +904,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					util.AppKubernetesIoPartOfLabel:  "workload-part-of",
 					util.AppKubernetesIoVersionLabel: "workload-version",
 				},
-				expectedEnvVars: map[string]*envVarExpectation{
+				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarDash0ServiceName:      nil,
 					envVarDash0ServiceNamespace: nil,
 					envVarDash0ServiceVersion:   nil,
@@ -615,10 +916,10 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					util.AppKubernetesIoPartOfLabel:  "pod-part-of",
 					util.AppKubernetesIoVersionLabel: "pod-version",
 				},
-				expectedEnvVars: map[string]*envVarExpectation{
-					envVarDash0ServiceName:      {valueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoNameLabel)},
-					envVarDash0ServiceNamespace: {valueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoPartOfLabel)},
-					envVarDash0ServiceVersion:   {valueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoVersionLabel)},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarDash0ServiceName:      {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoNameLabel)},
+					envVarDash0ServiceNamespace: {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoPartOfLabel)},
+					envVarDash0ServiceVersion:   {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoVersionLabel)},
 				},
 			}),
 			Entry("should ignore pod labels if name is not set", objectMetaResourceAttributesTest{
@@ -626,7 +927,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					util.AppKubernetesIoPartOfLabel:  "pod-part-of",
 					util.AppKubernetesIoVersionLabel: "pod-version",
 				},
-				expectedEnvVars: map[string]*envVarExpectation{
+				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarDash0ServiceName:      nil,
 					envVarDash0ServiceNamespace: nil,
 					envVarDash0ServiceVersion:   nil,
@@ -643,10 +944,10 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					util.AppKubernetesIoPartOfLabel:  "pod-part-of",
 					util.AppKubernetesIoVersionLabel: "pod-version",
 				},
-				expectedEnvVars: map[string]*envVarExpectation{
-					envVarDash0ServiceName:      {valueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoNameLabel)},
-					envVarDash0ServiceNamespace: {valueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoPartOfLabel)},
-					envVarDash0ServiceVersion:   {valueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoVersionLabel)},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					envVarDash0ServiceName:      {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoNameLabel)},
+					envVarDash0ServiceNamespace: {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoPartOfLabel)},
+					envVarDash0ServiceVersion:   {ValueFrom: fmt.Sprintf("metadata.labels['%s']", util.AppKubernetesIoVersionLabel)},
 				},
 			}),
 			Entry("should derive resource attributes from workload annotations", objectMetaResourceAttributesTest{
@@ -654,7 +955,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					"resource.opentelemetry.io/workload.ra.1": "workload-value-1",
 					"resource.opentelemetry.io/workload.ra.2": "workload-value-2",
 				},
-				expectedEnvVars: map[string]*envVarExpectation{
+				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarDash0ServiceName:      nil,
 					envVarDash0ServiceNamespace: nil,
 					envVarDash0ServiceVersion:   nil,
@@ -669,7 +970,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					"resource.opentelemetry.io/pod.ra.1": "pod-value-1",
 					"resource.opentelemetry.io/pod.ra.2": "pod-value-2",
 				},
-				expectedEnvVars: map[string]*envVarExpectation{
+				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarDash0ServiceName:      nil,
 					envVarDash0ServiceNamespace: nil,
 					envVarDash0ServiceVersion:   nil,
@@ -687,7 +988,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					"resource.opentelemetry.io/pod.ra.2":       "pod-value-2",
 					"resource.opentelemetry.io/occurs-in-both": "pod-value",
 				},
-				expectedEnvVars: map[string]*envVarExpectation{
+				expectedEnvVars: map[string]*EnvVarExpectation{
 					envVarDash0ServiceName:      nil,
 					envVarDash0ServiceNamespace: nil,
 					envVarDash0ServiceVersion:   nil,
@@ -897,24 +1198,3 @@ var _ = Describe("Dash0 Workload Modification", func() {
 		)
 	})
 })
-
-func verifyEnvVar(expectedEnvVars map[string]*envVarExpectation, envVars []corev1.EnvVar, name string) {
-	expected := expectedEnvVars[name]
-	actual := FindEnvVarByName(envVars, name)
-	if expected != nil {
-		Expect(actual).ToNot(BeNil())
-		if expected.value != "" {
-			Expect(actual.Value).To(Equal(expected.value))
-			Expect(actual.ValueFrom).To(BeNil())
-		} else if expected.valueFrom != "" {
-			Expect(actual.ValueFrom).ToNot(BeNil())
-			Expect(actual.ValueFrom.FieldRef).ToNot(BeNil())
-			Expect(actual.ValueFrom.FieldRef.FieldPath).To(Equal(expected.valueFrom))
-			Expect(actual.Value).To(BeEmpty())
-		} else {
-			Fail("inconsistent env var expectation")
-		}
-	} else {
-		Expect(actual).To(BeNil())
-	}
-}
