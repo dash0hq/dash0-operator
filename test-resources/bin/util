@@ -7,6 +7,8 @@
 # Utility functions for manual test scenarios.
 ###############################################################################
 
+operator_namespace=${OPERATOR_NAMESPACE:-operator-namespace}
+
 load_env_file () {
   if [[ ! -f test-resources/.env ]]; then
     echo "error: The file test-resources/.env does not exist. Copy test-resources/.env.template to test-resources/.env and edit it to provide a Dash0 authorization token."
@@ -282,7 +284,7 @@ run_helm() {
   deploy_otlp_sink_if_requested
 
   local action=${1:-install}
-  local helm_install_command="helm $action --namespace dash0-system"
+  local helm_install_command="helm $action --namespace $operator_namespace"
   if [[ -n "${OPERATOR_HELM_CHART_VERSION:-}" ]]; then
     helm_install_command+=" --version $OPERATOR_HELM_CHART_VERSION"
   fi
@@ -416,12 +418,12 @@ run_helm() {
 
 wait_for_operator_manager_and_webhook() {
   echo "waiting for the operator deployment to become available..."
-  kubectl wait deployment.apps/dash0-operator-controller --for condition=Available --namespace dash0-system --timeout 30s
+  kubectl wait deployment.apps/dash0-operator-controller --for condition=Available --namespace "$operator_namespace" --timeout 30s
 
   echo "waiting for the operator's webhook endpoint to become available..."
   local webhook_available="false"
   for ((i=0; i<=100; i++)); do
-    local endpoints_output=$(kubectl get endpoints --namespace dash0-system dash0-operator-webhook-service)
+    local endpoints_output=$(kubectl get endpoints --namespace "$operator_namespace" dash0-operator-webhook-service)
     local expected_endpoint_regex='dash0-operator-webhook-service.+:9443'
     if [[ "$endpoints_output" =~ $expected_endpoint_regex ]]; then
       webhook_available="true"

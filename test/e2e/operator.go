@@ -24,7 +24,7 @@ const (
 var (
 	operatorHelmChart    = localHelmChart
 	operatorHelmChartUrl = ""
-	operatorNamespace    = "dash0-system"
+	operatorNamespace    = "e2e-operator-namespace"
 )
 
 func isLocalHelmChart() bool {

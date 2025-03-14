@@ -7,6 +7,7 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"/../..
 
+operator_namespace=${OPERATOR_NAMESPACE:-operator-namespace}
 target_namespace=${1:-test-namespace}
 delete_namespaces=${2:-true}
 
@@ -58,14 +59,14 @@ if [[ "${delete_namespaces}" == "true" ]]; then
   kubectl delete ns test-namespace-3 --ignore-not-found
 fi
 
-helm uninstall --namespace dash0-system dash0-operator --timeout 30s || true
+helm uninstall --namespace "$operator_namespace" dash0-operator --timeout 30s || true
 
 kubectl delete secret \
-  --namespace dash0-system \
+  --namespace "$operator_namespace" \
   dash0-authorization-secret \
   --ignore-not-found
 
-kubectl delete ns dash0-system --ignore-not-found
+kubectl delete ns "$operator_namespace" --ignore-not-found
 
 kubectl delete --ignore-not-found=true -f test-resources/otlp-sink/otlp-sink.yaml --wait
 

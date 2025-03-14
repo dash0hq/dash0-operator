@@ -19,7 +19,7 @@ import (
 
 const (
 	TestNamespaceName           = "test-namespace"
-	OperatorNamespace           = "dash0-system"
+	OperatorNamespace           = "test-operator-namespace"
 	OTelCollectorNamePrefixTest = "unit-test"
 
 	CronJobNamePrefix     = "cronjob"

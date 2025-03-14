@@ -59,8 +59,12 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 {{ include "dash0-operator.chartName" . }}-token-update
 {{- end }}
 
+{{- define "dash0-operator.tokenUpdateServiceServerName" -}}
+{{ include "dash0-operator.tokenUpdateServiceName" . }}.{{ .Release.Namespace }}.svc
+{{- end }}
+
 {{- define "dash0-operator.tokenUpdateServiceUrl" -}}
-https://{{ include "dash0-operator.tokenUpdateServiceName" . }}.{{ .Release.Namespace }}.svc:{{ .Values.operator.tokenUpdatePort }}
+https://{{ include "dash0-operator.tokenUpdateServiceServerName" . }}:{{ .Values.operator.tokenUpdatePort }}
 {{- end }}
 
 {{/* the controller manager container image */}}

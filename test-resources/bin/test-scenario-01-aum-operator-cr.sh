@@ -7,6 +7,7 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"/../..
 
+operator_namespace=${OPERATOR_NAMESPACE:-operator-namespace}
 target_namespace=${1:-test-namespace}
 kind=${2:-deployment}
 additional_namespaces="${ADDITIONAL_NAMESPACES:-false}"
@@ -31,11 +32,11 @@ fi
 finish_step
 
 echo "STEP $step_counter: creating operator namespace and authorization token secret"
-ensure_namespace_exists dash0-system
+ensure_namespace_exists "$operator_namespace"
 kubectl create secret \
   generic \
   dash0-authorization-secret \
-  --namespace dash0-system \
+  --namespace "$operator_namespace" \
   --from-literal=token="${DASH0_AUTHORIZATION_TOKEN}"
 finish_step
 

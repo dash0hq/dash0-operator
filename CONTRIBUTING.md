@@ -170,9 +170,9 @@ If you want to report telemetry to a Dash0 backend, set `DASH0_AUTHORIZATION_TOK
 
 * `test-resources/bin/test-scenario-01-aum-operator-cr.sh`: Deploys an application under monitoring (this is
   abbreviated to "aum" in the name of the script) to the namespace `test-namespace`, then it deploys the operator to
-  the namespace `dash0-system`, and finally it deploys the Dash0 monitoring resource to `test-namespace`. This is a test
+  the namespace `operator-namespace`, and finally it deploys the Dash0 monitoring resource to `test-namespace`. This is a test
   scenario for instrumenting _existing_ workloads via the controller's reconcile loop.
-* `test-resources/bin/test-scenario-02-operator-cr-aum.sh`: Deploys the operator to `dash0-system`, then the
+* `test-resources/bin/test-scenario-02-operator-cr-aum.sh`: Deploys the operator to `operator-namespace`, then the
   Dash0 monitoring resource to namespace `test-namespace`, and finally an application under monitoring to the namespace
   `test-namespace`. This is a test scenario for instrumenting _new_ workloads at deploy time via the admission webhook.
 * `test-resources/bin/test-cleanup.sh`: This script removes all resources created by the other scripts. **You should
