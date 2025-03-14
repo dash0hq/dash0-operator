@@ -48,8 +48,12 @@ func createSecretRefEnvVar() corev1.EnvVar {
 func createSecretRefResolverDefaultEnvVars() []corev1.EnvVar {
 	return []corev1.EnvVar{
 		{
+			Name:  "TOKEN_UPDATE_SERVICE_SERVER_NAME",
+			Value: "dash0-operator-token-update.operator-namespace.svc",
+		},
+		{
 			Name:  "TOKEN_UPDATE_SERVICE_URL",
-			Value: "https://dash0-operator-token-update.dash0-system.svc:10443",
+			Value: "https://dash0-operator-token-update.operator-namespace.svc:10443",
 		},
 	}
 }

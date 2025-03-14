@@ -60,9 +60,10 @@ import (
 // without this component as well, for example by deploying a one-off pod with the secret mounted as an environment
 // variable or volume and get access to the secret's content that way.
 const (
-	tokenUpdateServiceUrlEnvVarName = "TOKEN_UPDATE_SERVICE_URL"
-	tokenEnvVarName                 = "SELF_MONITORING_AND_API_AUTH_TOKEN"
-	certDir                         = "/tmp/k8s-webhook-server/serving-certs"
+	tokenUpdateServiceServerNameEnvVarName = "TOKEN_UPDATE_SERVICE_SERVER_NAME"
+	tokenUpdateServiceUrlEnvVarName        = "TOKEN_UPDATE_SERVICE_URL"
+	tokenEnvVarName                        = "SELF_MONITORING_AND_API_AUTH_TOKEN"
+	certDir                                = "/tmp/k8s-webhook-server/serving-certs"
 )
 
 var (
@@ -84,13 +85,17 @@ func main() {
 		syscall.SIGQUIT,
 	)
 
+	tokenUpdateServiceServerName := os.Getenv(tokenUpdateServiceServerNameEnvVarName)
+	if tokenUpdateServiceServerName == "" {
+		log.Fatalf("missing environment variable: %s, exiting", tokenUpdateServiceServerNameEnvVarName)
+	}
 	tokenUpdateServiceUrl := os.Getenv(tokenUpdateServiceUrlEnvVarName)
 	if tokenUpdateServiceUrl == "" {
 		log.Fatalf("missing environment variable: %s, exiting", tokenUpdateServiceUrlEnvVarName)
 	}
 	tokenUpdateServiceEndpoint := fmt.Sprintf("%s/update-auth-token", tokenUpdateServiceUrl)
 
-	httpClient := createHttpClient()
+	httpClient := createHttpClient(tokenUpdateServiceServerName)
 
 	// We only read the token env var once, at startup. It is either set or not. If it is not set, the only way to set
 	// it is that the operator manager modifies the secret ref resolver deployment by adding the env var with the
@@ -120,7 +125,7 @@ func main() {
 	log.Println("stopping secret ref resolver")
 }
 
-func createHttpClient() *http.Client {
+func createHttpClient(tokenUpdateServiceServerName string) *http.Client {
 	certPool, err := x509.SystemCertPool()
 	if err != nil {
 		log.Fatalf("error creating certificate pool: %v", err)
@@ -147,7 +152,7 @@ func createHttpClient() *http.Client {
 	tlsConfig := &tls.Config{
 		RootCAs:      certPool,
 		Certificates: []tls.Certificate{x509KeyPair},
-		ServerName:   "dash0-operator-token-update.dash0-system.svc",
+		ServerName:   tokenUpdateServiceServerName,
 	}
 	transport := &http.Transport{
 		TLSClientConfig: tlsConfig,

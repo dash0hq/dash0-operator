@@ -302,6 +302,8 @@ spec:
         imagePullPolicy: {{ .Values.operator.secretRefResolverImage.pullPolicy }}
         {{- end }}
         env:
+        - name: TOKEN_UPDATE_SERVICE_SERVER_NAME
+          value: {{ include "dash0-operator.tokenUpdateServiceServerName" . }}
         - name: TOKEN_UPDATE_SERVICE_URL
           value: {{ include "dash0-operator.tokenUpdateServiceUrl" . }}
         resources:
