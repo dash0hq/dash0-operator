@@ -17,4 +17,5 @@ Usage
   The test cases are listed in `run-tests-within-container.sh`.
   Can be combined with `ARCHITECTURES` and `LIBC_FLAVORS`.
 * `INSTRUMENTATION_IMAGE scripts/test-all.sh` use an existing local or remote instrumentation image.
+  Can be combined with other flags.
 

@@ -19,6 +19,9 @@ source injector/test/scripts/util
 # remove all outdated injector binaries
 rm -rf injector/test/bin/*
 
+# remove outdated test app binaries
+rm -f injector/test/no_environ_symbol/noenviron.*
+
 architectures=""
 if [[ -n "${ARCHITECTURES:-}" ]]; then
   architectures=("${ARCHITECTURES//,/ }")
@@ -95,6 +98,44 @@ declare -a all_libc_flavors=(
   "musl"
 )
 
+# rebuild compiled test apps
+for arch in "${all_architectures[@]}"; do
+  if [[ -n "${architectures[0]}" ]]; then
+    if [[ $(echo "${architectures[@]}" | grep -o "$arch" | wc -w) -eq 0 ]]; then
+      echo "skipping no_environ_symbol test app build for CPU architecture $arch"
+      continue
+    fi
+  fi
+  goarch="$arch"
+  if [[ "$goarch" == "x86_64" ]]; then
+    goarch="amd64"
+  fi
+  for libc_flavor in "${all_libc_flavors[@]}"; do
+    if [[ -n "${libc_flavors[0]}" ]]; then
+      if [[ $(echo "${libc_flavors[@]}" | grep -o "$libc_flavor" | wc -w) -eq 0 ]]; then
+      echo "skipping no_environ_symbol test app build for libc flavor $libc_flavor"
+        continue
+      fi
+    fi
+    if [[ "$libc_flavor" == "glibc" ]]; then
+      no_environ_base_image="golang:1.23.7-bookworm"
+    elif [[ "$libc_flavor" == "musl" ]]; then
+      no_environ_base_image="golang:1.23.7-alpine3.21"
+    fi
+    echo "building the no_environ_symbol test app for CPU architecture $arch [GOARCH=$goarch] and libc flavor $libc_flavor (base image: $no_environ_base_image)"
+    ARCH="$arch" \
+      GOARCH="$goarch" \
+      LIBC="$libc_flavor" \
+      BASE_IMAGE="$no_environ_base_image" \
+      injector/test/scripts/build-in-container.sh \
+        "/workspace/noenviron" \
+        "injector/test/no_environ_symbol/noenviron.$arch.$libc_flavor" \
+        injector/test/no_environ_symbol/Dockerfile-build \
+        "no-environ-symbol-builder-$arch-$libc_flavor" \
+        injector/test/no_environ_symbol
+  done
+done
+
 instrumentation_image=${INSTRUMENTATION_IMAGE:-}
 if [[ -z "$instrumentation_image" ]]; then
   # build injector binary for both architectures
@@ -111,7 +152,10 @@ if [[ -z "$instrumentation_image" ]]; then
       fi
     fi
 
-    ARCH="$arch" injector/test/scripts/build-in-container.sh
+    ARCH="$arch" \
+      injector/test/scripts/build-in-container.sh \
+      "/dash0-init-container/dash0_injector.so" \
+      "injector/test/bin/dash0_injector_$arch.so"
   done
 else
   if is_remote_image "$instrumentation_image"; then
@@ -119,9 +163,17 @@ else
     printf "using injector binary from existing remote image:\n$instrumentation_image\n"
     echo ----------------------------------------
     docker pull --platform linux/arm64 "$instrumentation_image"
-    copy_injector_binary_from_container_image "$instrumentation_image" arm64 linux/arm64
+    copy_binary_from_container_image \
+      "$instrumentation_image" \
+      linux/arm64 \
+      "/dash0-init-container/dash0_injector.so" \
+      "injector/test/bin/dash0_injector_arm64.so"
     docker pull --platform linux/amd64 "$instrumentation_image"
-    copy_injector_binary_from_container_image "$instrumentation_image" x86_64 linux/amd64
+    copy_binary_from_container_image \
+      "$instrumentation_image" \
+      linux/amd64 \
+      "/dash0-init-container/dash0_injector.so" \
+      "injector/test/bin/dash0_injector_x86_64.so"
   else
     echo ----------------------------------------
     printf "using injector binary from existing local image:\n$instrumentation_image\n"
@@ -144,7 +196,11 @@ else
         echo "The architecture $arch is not supported."
         exit 1
       fi
-      copy_injector_binary_from_container_image "$instrumentation_image" "$arch" "$docker_platform"
+      copy_binary_from_container_image \
+        "$instrumentation_image" \
+        "$docker_platform" \
+        "/dash0-init-container/dash0_injector.so" \
+        "injector/test/bin/dash0_injector_$arch.so"
     done
   fi
 fi
@@ -159,7 +215,6 @@ for arch in "${all_architectures[@]}"; do
       continue
     fi
   fi
-
   for libc_flavor in "${all_libc_flavors[@]}"; do
     if [[ -n "${libc_flavors[0]}" ]]; then
       if [[ $(echo "${libc_flavors[@]}" | grep -o "$libc_flavor" | wc -w) -eq 0 ]]; then
@@ -169,10 +224,10 @@ for arch in "${all_architectures[@]}"; do
         continue
       fi
     fi
-
     run_tests_for_architecture_and_libc_flavor "$arch" "$libc_flavor"
   done
 done
 
 printf "$summary\n\n"
 exit $exit_code
+
