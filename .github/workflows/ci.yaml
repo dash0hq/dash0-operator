@@ -34,7 +34,7 @@ jobs:
       should_skip: ${{ steps.skip_check.outputs.should_skip }}
     steps:
       - id: skip_check
-        uses: fkirc/skip-duplicate-actions@v5
+        uses: fkirc/skip-duplicate-actions@f75f66ce1886f00957d99748a42c724f4330bdcf #v5
 
   verify:
     name: Build & Test
@@ -45,9 +45,9 @@ jobs:
     if: needs.check_for_successful_builds_for_same_commit.outputs.should_skip != 'true'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@f111f3307d8850f501ac008e886eec1fd1932a34 #v5
         with:
           go-version: ~1.23
           cache: true
@@ -72,7 +72,7 @@ jobs:
           make lint
 
       - name: lint C sources with clang-format
-        uses: jidicula/clang-format-action@v4.14.0
+        uses: jidicula/clang-format-action@d05cecd4a1a5b7e64c22f5a468456135a43f13f6 #v4.14.0
         with:
           clang-format-version: '19'
           check-path: 'images/instrumentation/injector/src'
@@ -97,7 +97,7 @@ jobs:
     if: needs.check_for_successful_builds_for_same_commit.outputs.should_skip != 'true'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4
         with:
           fetch-depth: 0
 
@@ -128,7 +128,7 @@ jobs:
     timeout-minutes: 120
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4
         with:
           fetch-depth: 0
 
@@ -203,7 +203,7 @@ jobs:
     if: ${{ always() && ! contains(github.ref, 'refs/tags/') && github.actor != 'dependabot[bot]' && needs.build_and_push_images.result == 'success' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4
 
       - name: publish helm chart (dry run)
         run: |
@@ -238,7 +238,7 @@ jobs:
       - build_and_push_images
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4
 
       - name: publish helm chart
         run: |
