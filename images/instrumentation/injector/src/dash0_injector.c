@@ -27,6 +27,10 @@
 #define DASH0_SERVICE_NAMESPACE_VAR_NAME "DASH0_SERVICE_NAMESPACE"
 #define DASH0_RESOURCE_ATTRIBUTES_VAR_NAME "DASH0_RESOURCE_ATTRIBUTES"
 
+// Provide a fallback weak symbol, in case the linked binary
+// does not actually link against a libc flavor.
+__attribute__((weak)) char **__environ = NULL;
+
 extern char **__environ;
 
 size_t __strlen(const char *s) {
@@ -89,6 +93,12 @@ int __strncmp(const char *_l, const char *_r, size_t n) {
 }
 
 char *__getenv(const char *name) {
+  // If we cannot link the __environ symbol,
+  // always return that env var is not set.
+  if (__environ == NULL) {
+    return 0;
+  }
+
   size_t l = __strchrnul(name, '=') - name;
   if (l && !name[l] && __environ)
     for (char **e = __environ; *e; e++)

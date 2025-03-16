@@ -61,6 +61,9 @@ docker build \
   --platform "$docker_platform" \
   --build-arg "base_image=${base_image}" \
   --build-arg "injector_binary=${injector_binary}" \
+  --build-arg "noenviron_binary=noenviron.${ARCH}.${LIBC}" \
+  --build-arg "arch_under_test=${ARCH}" \
+  --build-arg "libc_under_test=${LIBC}" \
   . \
   -f "$dockerfile_name" \
   -t "$image_name"
@@ -73,3 +76,4 @@ docker run \
   "$image_name" \
   $docker_run_extra_arguments
 { set +x; } 2> /dev/null
+
