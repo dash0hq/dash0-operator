@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dotnet-demo-app
+spec:
+  containers:
+  - name: app
+    image: aspnetapp
+    imagePullPolicy: IfNotPresent
+    env:
+    - name: OTEL_LOGS_EXPORTER
+      value: console
+    - name: OTEL_METRICS_EXPORTER
+      value: console
+    - name: OTELTRACES_EXPORTER
+      value: console
+    ports:
+    - containerPort: 8080
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "250m"
+      limits:
+        memory: "256Mi"
+        cpu: "500m"
+  restartPolicy: Always
