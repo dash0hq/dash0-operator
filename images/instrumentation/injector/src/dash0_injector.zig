@@ -1,3 +1,4 @@
+const builtin = @import("builtin");
 const std = @import("std");
 const assert = std.debug.assert;
 
@@ -12,13 +13,6 @@ const otel_nodejs_module = "/__dash0__/instrumentation/node.js/node_modules/@das
 const node_options_addition = "--require " ++ otel_nodejs_module;
 
 const dotnet_path_prefix = "/__dash0__/instrumentation/dotnet";
-const dotnet_coreclr_enable_profiling = "1";
-const dotnet_coreclr_profiler = "{918728DD-259F-4A6A-AC2B-B85E1B658318}";
-const dotnet_coreclr_profiler_path_gnu_libc = dotnet_path_prefix ++ "/glibc/linux-arm64/OpenTelemetry.AutoInstrumentation.Native.so"; // Abstract architecture
-const dotnet_coreclr_profiler_path_musl_libc = dotnet_path_prefix ++ "/muslc/linux-musl-arm64/OpenTelemetry.AutoInstrumentation.Native.so"; // Abstract architecture
-const dotnet_additional_deps = dotnet_path_prefix ++ "/AdditionalDeps";
-const dotnet_shared_store = dotnet_path_prefix ++ "/store";
-const dotnet_startup_hooks = dotnet_path_prefix ++ "/net/OpenTelemetry.AutoInstrumentation.StartupHook.dll";
 
 // We need to use a rather "innocent" type here, the actual type involves
 // optionals that cannot be used in global declarations.
@@ -129,28 +123,33 @@ fn getEnvValue(name: [:0]const u8) ?null_terminated_string {
             return updated_value;
         }
     } else if (std.mem.eql(u8, name, "CORECLR_ENABLE_PROFILING")) {
-        if (getDotnetValues()) |v| {
+        if (getDotNetValues()) |v| {
             return v.coreclr_enable_profiling;
         }
     } else if (std.mem.eql(u8, name, "CORECLR_PROFILER")) {
-        if (getDotnetValues()) |v| {
+        if (getDotNetValues()) |v| {
+            printMessage("Injected the OpenTelemetry .NET instrumentation", .{});
             return v.coreclr_profiler;
         }
     } else if (std.mem.eql(u8, name, "CORECLR_PROFILER_PATH")) {
-        if (getDotnetValues()) |v| {
+        if (getDotNetValues()) |v| {
             return v.coreclr_profiler_path;
         }
     } else if (std.mem.eql(u8, name, "DOTNET_ADDITIONAL_DEPS")) {
-        if (getDotnetValues()) |v| {
+        if (getDotNetValues()) |v| {
             return v.additional_deps;
         }
     } else if (std.mem.eql(u8, name, "DOTNET_SHARED_STORE")) {
-        if (getDotnetValues()) |v| {
+        if (getDotNetValues()) |v| {
             return v.shared_store;
         }
     } else if (std.mem.eql(u8, name, "DOTNET_STARTUP_HOOKS")) {
-        if (getDotnetValues()) |v| {
+        if (getDotNetValues()) |v| {
             return v.startup_hooks;
+        }
+    } else if (std.mem.eql(u8, name, "OTEL_DOTNET_AUTO_HOME")) {
+        if (getDotNetValues()) |v| {
+            return v.otel_auto_home;
         }
     }
 
@@ -208,19 +207,24 @@ fn getModifiedOtelResourceAttributesValue(name: [:0]const u8, original_value: ?[
     return null;
 }
 
-const DotnetValues = struct {
+const DotNetValues = struct {
     coreclr_enable_profiling: null_terminated_string,
     coreclr_profiler: null_terminated_string,
     coreclr_profiler_path: null_terminated_string,
     additional_deps: null_terminated_string,
     shared_store: null_terminated_string,
     startup_hooks: null_terminated_string,
+    otel_auto_home: null_terminated_string,
 };
 
-var dotnet_values: ?DotnetValues = null;
+var dotnet_values: ?DotNetValues = null;
 var libcFlavor: ?LibCFlavor = null;
 
-fn getDotnetValues() ?DotnetValues {
+pub const DotNetError = error{
+    LibCFlavorUnknown,
+};
+
+fn getDotNetValues() ?DotNetValues {
     if (dotnet_values) |val| {
         return val;
     }
@@ -229,33 +233,52 @@ fn getDotnetValues() ?DotnetValues {
         libcFlavor = getLibCFlavor();
     }
 
-    var coreclr_profiler_path: ?null_terminated_string = null;
-    if (libcFlavor) |flavor| {
-        switch (flavor) {
-            LibCFlavor.GNU_LIBC => {
-                coreclr_profiler_path = dotnet_coreclr_profiler_path_gnu_libc;
-            },
-            LibCFlavor.MULSC => {
-                coreclr_profiler_path = dotnet_coreclr_profiler_path_musl_libc;
-            },
-            LibCFlavor.UNKNOWN => {
-                // Ah, bummer
-            },
-        }
+    if (libcFlavor == LibCFlavor.UNKNOWN) {
+        printError("Cannot determine LibC flavor", .{});
+        return null;
     }
 
-    if (coreclr_profiler_path) |path| {
-        dotnet_values = .{
-            .coreclr_enable_profiling = dotnet_coreclr_enable_profiling,
-            .coreclr_profiler = dotnet_coreclr_profiler,
-            .coreclr_profiler_path = path,
-            .additional_deps = dotnet_additional_deps,
-            .shared_store = dotnet_shared_store,
-            .startup_hooks = dotnet_startup_hooks,
+    if (libcFlavor) |flavor| {
+        return doDotNetValues(flavor) catch |err| {
+            printError("Cannot determine .NET environment variables: {}", .{err});
+            return null;
         };
     }
 
-    return dotnet_values;
+    unreachable;
+}
+
+fn doDotNetValues(flavor: LibCFlavor) !DotNetValues {
+    const libc_flavor_prefix = if (flavor == LibCFlavor.GNU_LIBC) "glibc" else "muslc";
+    const platform = if (flavor == LibCFlavor.GNU_LIBC) (if (builtin.cpu.arch == .aarch64) "linux-arm64" else "linux-x64") else (if (builtin.cpu.arch == .aarch64) "linux-musl-arm64" else "linux-musl-x64");
+
+    const coreclr_profiler_path = try std.fmt.allocPrintZ(allocator, "{s}/{s}/{s}/OpenTelemetry.AutoInstrumentation.Native.so", .{
+        dotnet_path_prefix, libc_flavor_prefix, platform,
+    });
+
+    const additional_deps = try std.fmt.allocPrintZ(allocator, "{s}/{s}/AdditionalDeps", .{
+        dotnet_path_prefix, libc_flavor_prefix,
+    });
+
+    const otel_auto_home = try std.fmt.allocPrintZ(allocator, "{s}/{s}", .{ dotnet_path_prefix, libc_flavor_prefix });
+
+    const shared_store = try std.fmt.allocPrintZ(allocator, "{s}/{s}/store", .{
+        dotnet_path_prefix, libc_flavor_prefix,
+    });
+
+    const startup_hooks = try std.fmt.allocPrintZ(allocator, "{s}/{s}/net/OpenTelemetry.AutoInstrumentation.StartupHook.dll", .{
+        dotnet_path_prefix, libc_flavor_prefix,
+    });
+
+    return .{
+        .coreclr_enable_profiling = "1",
+        .coreclr_profiler = "{918728DD-259F-4A6A-AC2B-B85E1B658318}",
+        .coreclr_profiler_path = coreclr_profiler_path,
+        .additional_deps = additional_deps,
+        .otel_auto_home = otel_auto_home,
+        .shared_store = shared_store,
+        .startup_hooks = startup_hooks,
+    };
 }
 
 fn getModifiedJavaToolOptionsValue(name: [:0]const u8, original_value: ?[:0]const u8) ?null_terminated_string {

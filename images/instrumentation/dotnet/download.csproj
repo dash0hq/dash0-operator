@@ -12,10 +12,19 @@
     </ItemGroup> -->
     <Target Name="DownloadOpenTelemetryInstrumentation" DependsOnTargets="Clean" AfterTargets="Build">
         <PropertyGroup>
-            <Platform>arm64</Platform> <!-- Parametrize -->
-            <OtelVersion>v1.11.0</OtelVersion>
+            <IsArm64 Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString())' == 'Arm64'">true</IsArm64>
+            <IsAmd64 Condition="'$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString())' == 'X64'">true</IsAmd64>
+            <OtelVersion>v1.11.0</OtelVersion> <!-- Get Dependabot to update it -->
             <OutputDirectory>$(MSBuildProjectDirectory)/bin/otel-instrumentation</OutputDirectory>
             <ArchivesBaseURL>https://github.com/open-telemetry/opentelemetry-dotnet-instrumentation/releases/download/$(OtelVersion)</ArchivesBaseURL>
+        </PropertyGroup>
+        <PropertyGroup Condition="$(IsArm64) == 'true'">
+            <Platform>arm64</Platform>
+        </PropertyGroup>
+        <PropertyGroup Condition="$(IsAmd64) == 'true'">
+            <Platform>amd64</Platform>
+        </PropertyGroup>
+        <PropertyGroup>
             <GlibcArchiveFileName>opentelemetry-dotnet-instrumentation-linux-glibc-$(Platform).zip</GlibcArchiveFileName>
             <MuslArchiveFileName>opentelemetry-dotnet-instrumentation-linux-musl-$(Platform).zip</MuslArchiveFileName>
             <DownloadUrlGlibc>$(ArchivesBaseURL)/$(GlibcArchiveFileName)</DownloadUrlGlibc>
