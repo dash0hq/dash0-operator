@@ -13,7 +13,7 @@ data:
   config.yaml: |
     extensions:
       health_check:
-        endpoint: ${env:MY_POD_IP}:13100
+        endpoint: ${env:K8S_POD_IP}:13100
 
     exporters:
       debug:
@@ -32,10 +32,10 @@ data:
       otlp:
         protocols:
           grpc:
-            endpoint: ${env:MY_POD_IP}:4317
+            endpoint: ${env:K8S_POD_IP}:4317
             max_recv_msg_size_mib: 64
           http:
-            endpoint: ${env:MY_POD_IP}:4318
+            endpoint: ${env:K8S_POD_IP}:4318
             max_request_body_size: 20971520
     service:
       extensions:
@@ -85,7 +85,7 @@ spec:
         imagePullPolicy: IfNotPresent
         args: ["--config=/etc/otelcol/config/config.yaml"]
         env:
-        - name: MY_POD_IP
+        - name: K8S_POD_IP
           valueFrom:
             fieldRef:
               fieldPath: status.podIP

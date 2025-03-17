@@ -175,15 +175,19 @@ spec:
         - name: OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE
           value: {{ .Values.operator.collectors.sendBatchMaxSize | quote }}
         {{- end }}
-        - name: K8S_NODE_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: spec.nodeName
         - name: K8S_POD_UID
           valueFrom:
             fieldRef:
               fieldPath: metadata.uid
-        - name: MY_POD_IP
+        - name: K8S_NODE_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
+        - name: K8S_NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: K8S_POD_IP
           valueFrom:
             fieldRef:
               fieldPath: status.podIP

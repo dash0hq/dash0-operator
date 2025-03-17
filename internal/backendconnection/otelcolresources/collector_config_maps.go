@@ -74,6 +74,7 @@ type collectorConfigurationTemplateValues struct {
 	SendBatchMaxSize                                 *uint32
 	IgnoreLogsFromNamespaces                         []string
 	KubernetesInfrastructureMetricsCollectionEnabled bool
+	KubeletStatsReceiverConfig                       KubeletStatsReceiverConfig
 	UseHostMetricsReceiver                           bool
 	ClusterName                                      string
 	NamespaceOttlFilter                              string
@@ -91,6 +92,13 @@ type OtlpExporter struct {
 	Headers  []dash0v1alpha1.Header
 	Encoding string
 	Insecure bool
+}
+
+type KubeletStatsReceiverConfig struct {
+	Enabled            bool
+	Endpoint           string
+	AuthType           string
+	InsecureSkipVerify bool
 }
 
 var (
@@ -165,9 +173,9 @@ func assembleCollectorConfigMap(
 			return nil, fmt.Errorf("%s %w", commonExportErrorPrefix, err)
 		}
 
-		selfIpReference := "${env:MY_POD_IP}"
+		selfIpReference := "${env:K8S_POD_IP}"
 		if config.IsIPv6Cluster {
-			selfIpReference = "[${env:MY_POD_IP}]"
+			selfIpReference = "[${env:K8S_POD_IP}]"
 		}
 		namespaceOttlFilter := renderOttlNamespaceFilter(monitoredNamespaces)
 		customTelemetryFilters := aggregateCustomFilters(filters)
@@ -184,6 +192,7 @@ func assembleCollectorConfigMap(
 					config.Namespace,
 				},
 				KubernetesInfrastructureMetricsCollectionEnabled: config.KubernetesInfrastructureMetricsCollectionEnabled,
+				KubeletStatsReceiverConfig:                       config.KubeletStatsReceiverConfig,
 				UseHostMetricsReceiver:                           config.UseHostMetricsReceiver,
 				ClusterName:                                      config.ClusterName,
 				NamespaceOttlFilter:                              namespaceOttlFilter,

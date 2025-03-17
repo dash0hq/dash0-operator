@@ -859,6 +859,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				NamePrefix: namePrefix,
 				Export:     *Dash0ExportWithEndpointAndToken(),
 				KubernetesInfrastructureMetricsCollectionEnabled: false,
+				KubeletStatsReceiverConfig:                       KubeletStatsReceiverConfig{Enabled: false},
 				UseHostMetricsReceiver:                           false,
 			}, nil, nil, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
@@ -875,31 +876,102 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(metricsReceivers).ToNot(ContainElement("hostmetrics"))
 		})
 
-		It("should render the kubeletstats and hostmetrics receiver if kubernetes infrastructure metrics collection is enabled", func() {
-			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
-				Namespace:  namespace,
-				NamePrefix: namePrefix,
-				Export:     *Dash0ExportWithEndpointAndToken(),
-				KubernetesInfrastructureMetricsCollectionEnabled: true,
-				UseHostMetricsReceiver:                           true,
-			}, nil, nil, nil, nil, false)
-			Expect(err).ToNot(HaveOccurred())
-			collectorConfig := parseConfigMapContent(configMap)
-			kubeletstatsReceiverRaw := readFromMap(collectorConfig, []string{"receivers", "kubeletstats"})
-			Expect(kubeletstatsReceiverRaw).ToNot(BeNil())
-			kubeletstatsReceiver := kubeletstatsReceiverRaw.(map[string]interface{})
-			insecureSkipVerifyPropertyValue, hasInsecureSkipVerifyProperty := kubeletstatsReceiver["insecure_skip_verify"]
-			Expect(hasInsecureSkipVerifyProperty).To(BeTrue())
-			Expect(insecureSkipVerifyPropertyValue).To(Equal("${env:KUBELET_STATS_TLS_INSECURE}"))
-			hostmetricsReceiver := readFromMap(collectorConfig, []string{"receivers", "hostmetrics"})
-			Expect(hostmetricsReceiver).ToNot(BeNil())
+		type kubeletStatsReceiverConfigTestWanted struct {
+			endpoint           string
+			authType           string
+			insecureSkipVerify bool
+		}
 
-			pipelines := readPipelines(collectorConfig)
-			metricsReceivers := readPipelineReceivers(pipelines, "metrics/downstream")
-			Expect(metricsReceivers).ToNot(BeNil())
-			Expect(metricsReceivers).To(ContainElement("kubeletstats"))
-			Expect(metricsReceivers).To(ContainElement("hostmetrics"))
-		})
+		type kubeletStatsReceiverConfigTest struct {
+			kubeletStatsReceiverConfig KubeletStatsReceiverConfig
+			wanted                     kubeletStatsReceiverConfigTestWanted
+		}
+
+		DescribeTable("should render the kubeletstats and hostmetrics receiver if kubernetes infrastructure metrics collection is enabled",
+			func(testConfig kubeletStatsReceiverConfigTest) {
+				configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
+					Namespace:  namespace,
+					NamePrefix: namePrefix,
+					Export:     *Dash0ExportWithEndpointAndToken(),
+					KubernetesInfrastructureMetricsCollectionEnabled: true,
+					KubeletStatsReceiverConfig:                       testConfig.kubeletStatsReceiverConfig,
+					UseHostMetricsReceiver:                           true,
+				}, nil, nil, nil, nil, false)
+				Expect(err).ToNot(HaveOccurred())
+				collectorConfig := parseConfigMapContent(configMap)
+				kubeletstatsReceiverRaw := readFromMap(collectorConfig, []string{"receivers", "kubeletstats"})
+				Expect(kubeletstatsReceiverRaw).ToNot(BeNil())
+				kubeletstatsReceiver := kubeletstatsReceiverRaw.(map[string]interface{})
+				endpoint := kubeletstatsReceiver["endpoint"]
+				Expect(endpoint).To(Equal(testConfig.wanted.endpoint))
+				authType := kubeletstatsReceiver["auth_type"]
+				Expect(authType).To(Equal(testConfig.wanted.authType))
+				insecureSkipVerifyPropertyValue, hasInsecureSkipVerifyProperty := kubeletstatsReceiver["insecure_skip_verify"]
+				if testConfig.wanted.insecureSkipVerify {
+					Expect(hasInsecureSkipVerifyProperty).To(BeTrue())
+					Expect(insecureSkipVerifyPropertyValue).To(BeTrue())
+				} else {
+					Expect(hasInsecureSkipVerifyProperty).To(BeFalse())
+				}
+
+				hostmetricsReceiver := readFromMap(collectorConfig, []string{"receivers", "hostmetrics"})
+				Expect(hostmetricsReceiver).ToNot(BeNil())
+
+				pipelines := readPipelines(collectorConfig)
+				metricsReceivers := readPipelineReceivers(pipelines, "metrics/downstream")
+				Expect(metricsReceivers).ToNot(BeNil())
+				Expect(metricsReceivers).To(ContainElement("kubeletstats"))
+				Expect(metricsReceivers).To(ContainElement("hostmetrics"))
+			},
+			[]TableEntry{
+				Entry("should use node name as endpoint", kubeletStatsReceiverConfigTest{
+					kubeletStatsReceiverConfig: KubeletStatsReceiverConfig{
+						Enabled:  true,
+						Endpoint: "https://${env:K8S_NODE_NAME}:10250",
+						AuthType: "serviceAccount",
+					},
+					wanted: kubeletStatsReceiverConfigTestWanted{
+						endpoint: "https://${env:K8S_NODE_NAME}:10250",
+						authType: "serviceAccount",
+					},
+				}),
+				Entry("should use node IP as endpoint", kubeletStatsReceiverConfigTest{
+					kubeletStatsReceiverConfig: KubeletStatsReceiverConfig{
+						Enabled:  true,
+						Endpoint: "https://${env:K8S_NODE_IP}:10250",
+						AuthType: "serviceAccount",
+					},
+					wanted: kubeletStatsReceiverConfigTestWanted{
+						endpoint: "https://${env:K8S_NODE_IP}:10250",
+						authType: "serviceAccount",
+					},
+				}),
+				Entry("should use read-only endpoint", kubeletStatsReceiverConfigTest{
+					kubeletStatsReceiverConfig: KubeletStatsReceiverConfig{
+						Enabled:  true,
+						Endpoint: "http://${env:K8S_NODE_IP}:10255",
+						AuthType: "none",
+					},
+					wanted: kubeletStatsReceiverConfigTestWanted{
+						endpoint: "http://${env:K8S_NODE_IP}:10255",
+						authType: "none",
+					},
+				}),
+				Entry("should use node IP as endpoint with insecure_skip_verify", kubeletStatsReceiverConfigTest{
+					kubeletStatsReceiverConfig: KubeletStatsReceiverConfig{
+						Enabled:            true,
+						Endpoint:           "https://${env:K8S_NODE_IP}:10250",
+						AuthType:           "serviceAccount",
+						InsecureSkipVerify: true,
+					},
+					wanted: kubeletStatsReceiverConfigTestWanted{
+						endpoint:           "https://${env:K8S_NODE_IP}:10250",
+						authType:           "serviceAccount",
+						insecureSkipVerify: true,
+					},
+				}),
+			},
+		)
 	})
 
 	Describe("discard metrics from unmonitored namespaces", func() {
@@ -1987,11 +2059,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		}, []TableEntry{
 			Entry("IPv4 cluster", &ipVersionTestConfig{
 				ipv6:     false,
-				expected: "${env:MY_POD_IP}",
+				expected: "${env:K8S_POD_IP}",
 			}),
 			Entry("IPv6 cluster", &ipVersionTestConfig{
 				ipv6:     true,
-				expected: "[${env:MY_POD_IP}]",
+				expected: "[${env:K8S_POD_IP}]",
 			}),
 		})
 	})

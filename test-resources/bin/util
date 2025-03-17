@@ -248,6 +248,7 @@ build_all_images() {
       --name $cluster \
       operator-controller:latest \
       instrumentation:latest \
+      secret-ref-resolver:latest \
       collector:latest \
       configuration-reloader:latest \
       filelog-offset-synch:latest

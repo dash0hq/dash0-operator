@@ -1211,9 +1211,9 @@ variant. That is, the injector binary that is added via the init container is co
 application from your `amd64` application image is started, the injector and the application will be incompatible, as
 they have been built for two different CPU architectures.
 
-Under normal circumstances, an `amd64` would not work on an `arm64` Kubernetes node anyway, but in the case of Docker
-Desktop on MacOS, this combination is enabled due to Docker Desktop automatically running `amd64` images via Rosetta2
-emulation.
+Under normal circumstances, an `amd64` image would not work on an `arm64` Kubernetes node anyway, but in the case of
+Docker Desktop on MacOS, this combination is enabled due to Docker Desktop automatically running `amd64` images via
+Rosetta2 emulation.
 
 You can work around this issue by one of the following methods:
 * using an `amd64` Kubernetes node,
@@ -1222,52 +1222,8 @@ You can work around this issue by one of the following methods:
 
 ## Notes on Running The Operator on Docker Desktop
 
-Docker Desktop's Kubelet `/stats` endpoint uses a self-signed TLS certificate, which is not even signed by the cluster's
-certificate authority, and it looks invalid from the point of view of the OpenTelemetry collectors operated by the Dash0
-operator.
-
-To ensure that you can still have a good experience trying out the Dash0 operator in a local environment, the Dash0
-operator detects that it is running via the Kubernetes integrated in Docker Desktop (by matching the node name against
-`docker-desktop`) and disables the TLS verification for the receiver that retrieve metrics from the Kubelet `/stats`
-endpoint. If this is the case, you will see the following entry in the logs of the daemonset operated by the Dash0
-operator:
-
-```
-This collector seems to run on a node managed by Docker Desktop's Kubernetes, which is known to have self-signed CA certs for the Kubelet stats endpoint: disabling TLS verification for the kubeletstat receiver
-```
-
-Furthermore, the `hostmetrics` receiver will be disabled when using Docker as the container runtime.
+The `hostmetrics` receiver will be disabled when using Docker as the container runtime.
 
 ## Notes on Running The Operator on Minikube
 
-Docker Desktop's Kubelet `/stats` endpoint uses a self-signed TLS certificate, which is not even signed by the cluster's
-certificate authority, and it looks invalid from the point of view of the OpenTelemetry collectors operated by the Dash0
-operator.
-
-To ensure that you can still have a good experience trying out the Dash0 operator in a local environment, the Dash0
-operator detects that it is running via the Kubernetes integrated in Docker Desktop (by matching the node name against
-`minikube`) and disables the TLS verification for the receiver that retrieve metrics from the Kubelet `/stats` endpoint.
-If this is the case, you will see the following entry in the logs of the daemonset operated by the Dash0 operator:
-
-```
-This collector seems to run on a node managed by Minikube, which is known to have self-signed CA certs for the Kubelet stats endpoint: disabling TLS verification for the kubeletstat receiver
-```
-
-Note: if you use a minikube profile (`minikube -p <profile_name>`), the node name will change, and the automatic
-disablement of TLS verification will not work, resulting on missing metrics in Dash0 about your workloads. If this is
-the case, you can run the Dash0 operator in development mode (which results, among other things, in disabling the TLS
-verification for the Kubelet `/stats` endpoint) by passing the `--set operator.developmentMode=true` configuration to
-Helm.
-
-Furthermore, the `hostmetrics` receiver will be disabled when using Docker as the container runtime.
-
-## Notes on Running The Operator on Kind
-
-Kind's Kubelet `/stats` endpoint uses a self-signed TLS certificate, which is not even signed by the cluster's
-certificate authority, and it looks invalid from the point of view of the OpenTelemetry collectors operated by the Dash0
-operator.
-
-Unfortunately, unlike the cases for Docker Desktop and Minikube, there is no known heuristic for an operator to know
-whether it's running on a Kind cluster. If you want to collect Kubelet metrics from a Kind cluster, you will need to
-run the Dash0 operator in development mode (which results, among other things, in disabling the TLS verification for the
-Kubelet `/stats` endpoint) by passing the `--set operator.developmentMode=true` configuration to Helm.
+The `hostmetrics` receiver will be disabled when using Docker as the container runtime.
