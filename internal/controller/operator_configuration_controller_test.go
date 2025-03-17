@@ -28,6 +28,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	zaputil "github.com/dash0hq/dash0-operator/internal/util/zap"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -63,11 +64,12 @@ type SelfMonitoringTestConfig struct {
 }
 
 var (
-	reconciler                  *OperatorConfigurationReconciler
-	apiClient1                  *DummyApiClient
-	apiClient2                  *DummyApiClient
-	selfMonitoringClientClient1 *DummySelfMonitoringClient
-	selfMonitoringClientClient2 *DummySelfMonitoringClient
+	reconciler                   *OperatorConfigurationReconciler
+	delegatingZapCore            *zaputil.DelegatingZapCore
+	apiClient1                   *DummyApiClient
+	apiClient2                   *DummyApiClient
+	selfMonitoringMetricsClient1 *DummySelfMonitoringMetricsClient
+	selfMonitoringMetricsClient2 *DummySelfMonitoringMetricsClient
 )
 
 var _ = Describe("The operation configuration resource controller", Ordered, func() {
@@ -82,8 +84,8 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 	BeforeEach(func() {
 		apiClient1 = &DummyApiClient{}
 		apiClient2 = &DummyApiClient{}
-		selfMonitoringClientClient1 = &DummySelfMonitoringClient{}
-		selfMonitoringClientClient2 = &DummySelfMonitoringClient{}
+		selfMonitoringMetricsClient1 = &DummySelfMonitoringMetricsClient{}
+		selfMonitoringMetricsClient2 = &DummySelfMonitoringMetricsClient{}
 	})
 
 	Describe("updates the secret ref resolver deployment", func() {
@@ -365,9 +367,9 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 						},
 					)
 
-					reconciler.OTelSdkStarter.WaitForOTelConfig([]selfmonitoringapiaccess.SelfMonitoringClient{
-						selfMonitoringClientClient1,
-						selfMonitoringClientClient2,
+					reconciler.OTelSdkStarter.WaitForOTelConfig([]selfmonitoringapiaccess.SelfMonitoringMetricsClient{
+						selfMonitoringMetricsClient1,
+						selfMonitoringMetricsClient2,
 					})
 					triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
 					verifyOperatorConfigurationResourceIsAvailable(ctx)
@@ -413,13 +415,15 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 							g.Expect(activeOTelSdkConfig).To(BeNil())
 						}
 
-						for _, smc := range []*DummySelfMonitoringClient{
-							selfMonitoringClientClient1,
-							selfMonitoringClientClient2,
+						for _, smc := range []*DummySelfMonitoringMetricsClient{
+							selfMonitoringMetricsClient1,
+							selfMonitoringMetricsClient2,
 						} {
 							if config.expectedSdkIsActive {
+								g.Expect(delegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
 								g.Expect(smc.initializeSelfMonitoringMetrics).To(Equal(1))
 							} else {
+								g.Expect(delegatingZapCore.ForTestOnlyHasDelegate()).To(BeFalse())
 								g.Expect(smc.initializeSelfMonitoringMetrics).To(Equal(0))
 							}
 						}
@@ -520,14 +524,15 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				},
 			)
 
-			reconciler.OTelSdkStarter.WaitForOTelConfig([]selfmonitoringapiaccess.SelfMonitoringClient{
-				selfMonitoringClientClient1,
-				selfMonitoringClientClient2,
+			reconciler.OTelSdkStarter.WaitForOTelConfig([]selfmonitoringapiaccess.SelfMonitoringMetricsClient{
+				selfMonitoringMetricsClient1,
+				selfMonitoringMetricsClient2,
 			})
 			triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
 			verifyOperatorConfigurationResourceIsAvailable(ctx)
 
 			Eventually(func(g Gomega) {
+				g.Expect(delegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
 				sdkIsActive, activeOTelSdkConfig, _ :=
 					reconciler.OTelSdkStarter.ForTestOnlyGetState()
 				g.Expect(sdkIsActive).To(BeTrue())
@@ -551,6 +556,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 
 			// verify the OTel SDK has been shut down
 			Eventually(func(g Gomega) {
+				g.Expect(delegatingZapCore.ForTestOnlyHasDelegate()).To(BeFalse())
 				sdkIsActive, activeOTelSdkConfig, _ :=
 					reconciler.OTelSdkStarter.ForTestOnlyGetState()
 				g.Expect(activeOTelSdkConfig).ToNot(BeNil())
@@ -570,6 +576,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 
 			// verify the OTel SDK has been shut down
 			Eventually(func(g Gomega) {
+				g.Expect(delegatingZapCore.ForTestOnlyHasDelegate()).To(BeFalse())
 				sdkIsActive, _, _ :=
 					reconciler.OTelSdkStarter.ForTestOnlyGetState()
 				g.Expect(sdkIsActive).To(BeFalse())
@@ -587,6 +594,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 
 			// verify the OTel SDK has been started again
 			Eventually(func(g Gomega) {
+				g.Expect(delegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
 				sdkIsActive, activeOTelSdkConfig, _ :=
 					reconciler.OTelSdkStarter.ForTestOnlyGetState()
 				g.Expect(sdkIsActive).To(BeTrue())
@@ -643,6 +651,8 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 			// SDK has been shut down before being restarted, but we can verify the new config values. The aspect of
 			// shutting it down and actually restarting it is covered in otel_init_wait_test.go
 			Eventually(func(g Gomega) {
+				g.Expect(delegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
+
 				sdkIsActive, activeOTelSdkConfig, _ :=
 					reconciler.OTelSdkStarter.ForTestOnlyGetState()
 				g.Expect(sdkIsActive).To(BeTrue())
@@ -690,6 +700,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 			}
 
 			Eventually(func(g Gomega) {
+				g.Expect(delegatingZapCore.ForTestOnlyHasDelegate()).To(BeFalse())
 				sdkIsActive, activeOTelSdkConfig, authTokenFromSecretRef :=
 					reconciler.OTelSdkStarter.ForTestOnlyGetState()
 				g.Expect(sdkIsActive).To(BeFalse())
@@ -749,7 +760,8 @@ func createReconciler() *OperatorConfigurationReconciler {
 		Clientset:              clientset,
 		OTelColResourceManager: oTelColResourceManager,
 	}
-	otelSdkStarter := selfmonitoringapiaccess.NewOTelSdkStarter()
+	delegatingZapCore = zaputil.NewDelegatingZapCore()
+	otelSdkStarter := selfmonitoringapiaccess.NewOTelSdkStarter(delegatingZapCore)
 
 	return &OperatorConfigurationReconciler{
 		Client:    k8sClient,
@@ -833,10 +845,10 @@ func (c *DummyApiClient) ResetCallCounts() {
 	c.removeAuthTokenCalls = 0
 }
 
-type DummySelfMonitoringClient struct {
+type DummySelfMonitoringMetricsClient struct {
 	initializeSelfMonitoringMetrics int
 }
 
-func (c *DummySelfMonitoringClient) InitializeSelfMonitoringMetrics(_ otelmetric.Meter, _ string, _ *logr.Logger) {
+func (c *DummySelfMonitoringMetricsClient) InitializeSelfMonitoringMetrics(_ otelmetric.Meter, _ string, _ *logr.Logger) {
 	c.initializeSelfMonitoringMetrics++
 }

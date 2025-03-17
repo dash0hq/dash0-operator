@@ -17,8 +17,11 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"github.com/go-logr/logr"
+	"github.com/go-logr/zapr"
 	persesv1alpha1 "github.com/perses/perses-operator/api/v1alpha1"
 	prometheusv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -32,7 +35,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	crzap "sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	k8swebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -46,6 +49,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/startup"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	zaputil "github.com/dash0hq/dash0-operator/internal/util/zap"
 	"github.com/dash0hq/dash0-operator/internal/webhooks"
 )
 
@@ -245,20 +249,7 @@ func main() {
 	developmentModeRaw, isSet := os.LookupEnv(developmentModeEnvVarName)
 	developmentMode := isSet && strings.ToLower(developmentModeRaw) == "true"
 
-	var opts zap.Options
-	if developmentMode {
-		opts = zap.Options{
-			Development: true,
-		}
-	} else {
-		opts = zap.Options{
-			Development: false,
-		}
-	}
-	opts.BindFlags(flag.CommandLine)
-	flag.Parse()
-
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+	delegatingZapCore := setUpLogging(developmentMode)
 
 	if isUninstrumentAll {
 		if err := deleteMonitoringResourcesInAllNamespaces(&setupLog); err != nil {
@@ -342,11 +333,54 @@ func main() {
 		probeAddr,
 		enableLeaderElection,
 		operatorConfigurationValues,
+		delegatingZapCore,
 		developmentMode,
 	); err != nil {
 		setupLog.Error(err, "The Dash0 operator manager process failed to start.")
 		os.Exit(1)
 	}
+}
+
+func setUpLogging(developmentMode bool) *zaputil.DelegatingZapCore {
+	var opts crzap.Options
+	if developmentMode {
+		opts = crzap.Options{
+			Development: true,
+		}
+	} else {
+		opts = crzap.Options{
+			Development: false,
+		}
+	}
+	opts.BindFlags(flag.CommandLine)
+	flag.Parse()
+
+	crZapOpts := crzap.UseFlagOptions(&opts)
+	o := zaputil.ConvertOptions([]crzap.Opts{crZapOpts})
+
+	// this basically mimics New<type>Config, but with a custom sink
+	sink := zapcore.AddSync(o.DestWriter)
+
+	o.ZapOpts = append(o.ZapOpts, zap.ErrorOutput(sink))
+	defaultZapCore := zapcore.NewCore(&crzap.KubeAwareEncoder{Encoder: o.Encoder, Verbose: o.Development}, sink, o.Level)
+
+	delegatingZapCore := zaputil.NewDelegatingZapCore()
+
+	// Multiplex log records to stdout (defaultZapCore) and also to the OTel log SDK (delegatingZapCore). Additional
+	// plot twist: The OTel logger will only be initialized later, potentially after the operator configuration has been
+	// reconciled. The delegatingZapCore will buffer all messages logged at startup up to th point when the OTel logger
+	// is actually initialized, then re-spool them to the OTel SDK logger.
+	teeCore := zapcore.NewTee(
+		defaultZapCore,
+		delegatingZapCore,
+	)
+	crZapRawLogger := zaputil.NewRawFromCore(o, teeCore)
+	zapLogger := zapr.NewLogger(crZapRawLogger)
+
+	// Set the created multiplexing logger as the logger for the controller-runtime package.
+	ctrl.SetLogger(zapLogger)
+
+	return delegatingZapCore
 }
 
 func startOperatorManager(
@@ -358,6 +392,7 @@ func startOperatorManager(
 	probeAddr string,
 	enableLeaderElection bool,
 	operatorConfigurationValues *startup.OperatorConfigurationValues,
+	delegatingZapCore *zaputil.DelegatingZapCore,
 	developmentMode bool,
 ) error {
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
@@ -418,7 +453,7 @@ func startOperatorManager(
 		developmentMode,
 	)
 
-	err = startDash0Controllers(ctx, mgr, clientset, operatorConfigurationValues, developmentMode)
+	err = startDash0Controllers(ctx, mgr, clientset, operatorConfigurationValues, delegatingZapCore, developmentMode)
 	if err != nil {
 		return err
 	}
@@ -599,6 +634,7 @@ func startDash0Controllers(
 	mgr manager.Manager,
 	clientset *kubernetes.Clientset,
 	operatorConfigurationValues *startup.OperatorConfigurationValues,
+	delegatingZapCore *zaputil.DelegatingZapCore,
 	developmentMode bool,
 ) error {
 	oTelColExtraConfig, err := readOTelColExtraConfiguration()
@@ -695,7 +731,7 @@ func startDash0Controllers(
 	}
 	controller.StartProcessingThirdPartySynchronizationQueue(thirdPartyResourceSynchronizationQueue, &setupLog)
 
-	oTelSdkStarter = selfmonitoringapiaccess.NewOTelSdkStarter()
+	oTelSdkStarter = selfmonitoringapiaccess.NewOTelSdkStarter(delegatingZapCore)
 
 	operatorConfigurationReconciler := &controller.OperatorConfigurationReconciler{
 		Client:    k8sClient,
@@ -765,7 +801,7 @@ func startDash0Controllers(
 	tokenUpdateService.Start(&setupLog)
 
 	oTelSdkStarter.WaitForOTelConfig(
-		[]selfmonitoringapiaccess.SelfMonitoringClient{
+		[]selfmonitoringapiaccess.SelfMonitoringMetricsClient{
 			operatorConfigurationReconciler,
 			monitoringReconciler,
 			persesDashboardCrdReconciler,

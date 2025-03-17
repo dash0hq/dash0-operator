@@ -8,7 +8,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = Describe("Dash0 Utils", func() {
+var _ = Describe("labels", func() {
 
 	Describe("converting labels", func() {
 		It("should leave normal characters untouched", func() {
