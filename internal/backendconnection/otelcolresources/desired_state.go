@@ -30,6 +30,7 @@ type oTelColConfig struct {
 	SendBatchMaxSize                                 *uint32
 	SelfMonitoringConfiguration                      selfmonitoringapiaccess.SelfMonitoringConfiguration
 	KubernetesInfrastructureMetricsCollectionEnabled bool
+	KubeletStatsReceiverConfig                       KubeletStatsReceiverConfig
 	UseHostMetricsReceiver                           bool
 	ClusterName                                      string
 	Images                                           util.Images
@@ -110,17 +111,26 @@ var (
 		util.AppKubernetesIoComponentLabel: deploymentServiceComponent,
 	}
 
+	nodeIpFieldSpec = corev1.ObjectFieldSelector{
+		FieldPath: "status.hostIP",
+	}
+	k8sNodeIpEnvVar = corev1.EnvVar{
+		Name: "K8S_NODE_IP",
+		ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &nodeIpFieldSpec,
+		},
+	}
 	nodeNameFieldSpec = corev1.ObjectFieldSelector{
 		FieldPath: "spec.nodeName",
-	}
-	podUidFieldSpec = corev1.ObjectFieldSelector{
-		FieldPath: "metadata.uid",
 	}
 	k8sNodeNameEnvVar = corev1.EnvVar{
 		Name: "K8S_NODE_NAME",
 		ValueFrom: &corev1.EnvVarSource{
 			FieldRef: &nodeNameFieldSpec,
 		},
+	}
+	podUidFieldSpec = corev1.ObjectFieldSelector{
+		FieldPath: "metadata.uid",
 	}
 	k8sPodUidEnvVar = corev1.EnvVar{
 		Name: "K8S_POD_UID",
@@ -707,13 +717,14 @@ func assembleCollectorDaemonSetVolumeMounts(config *oTelColConfig) []corev1.Volu
 func assembleCollectorEnvVars(config *oTelColConfig, goMemLimit string) ([]corev1.EnvVar, error) {
 	collectorEnv := []corev1.EnvVar{
 		{
-			Name: "MY_POD_IP",
+			Name: "K8S_POD_IP",
 			ValueFrom: &corev1.EnvVarSource{
 				FieldRef: &corev1.ObjectFieldSelector{
 					FieldPath: "status.podIP",
 				},
 			},
 		},
+		k8sNodeIpEnvVar,
 		k8sNodeNameEnvVar,
 		k8sPodUidEnvVar,
 		{
@@ -724,13 +735,6 @@ func assembleCollectorEnvVars(config *oTelColConfig, goMemLimit string) ([]corev
 			Name:  "GOMEMLIMIT",
 			Value: goMemLimit,
 		},
-	}
-
-	if config.DevelopmentMode {
-		collectorEnv = append(collectorEnv, corev1.EnvVar{
-			Name:  "KUBELET_STATS_TLS_INSECURE",
-			Value: "true",
-		})
 	}
 
 	if config.Export.Dash0 != nil {

@@ -65,6 +65,8 @@ type environmentVariables struct {
 	configurationReloaderImagePullPolicy corev1.PullPolicy
 	filelogOffsetSynchImage              string
 	filelogOffsetSynchImagePullPolicy    corev1.PullPolicy
+	nodeIp                               string
+	nodeName                             string
 	podIp                                string
 	sendBatchMaxSize                     *uint32
 	debugVerbosityDetailed               bool
@@ -86,7 +88,9 @@ const (
 	configurationReloaderImagePullPolicyEnvVarName = "DASH0_CONFIGURATION_RELOADER_IMAGE_PULL_POLICY"
 	filelogOffsetSynchImageEnvVarName              = "DASH0_FILELOG_OFFSET_SYNCH_IMAGE"
 	filelogOffsetSynchImagePullPolicyEnvVarName    = "DASH0_FILELOG_OFFSET_SYNCH_IMAGE_PULL_POLICY"
-	podIpEnvVarName                                = "MY_POD_IP"
+	k8sNodeIpEnvVarName                            = "K8S_NODE_IP"
+	k8sNodeNameEnvVarName                          = "K8S_NODE_NAME"
+	k8sPodIpEnvVarName                             = "K8S_POD_IP"
 
 	developmentModeEnvVarName        = "DASH0_DEVELOPMENT_MODE"
 	debugVerbosityDetailedEnvVarName = "OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED"
@@ -367,17 +371,11 @@ func startOperatorManager(
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "5ae7ac41.dash0.com",
-		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
-		// when the Manager ends. This requires the binary to immediately end when the
-		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
-		// speeds up voluntary leader transitions as the new leader don't have to wait
-		// LeaseDuration time first.
-		//
-		// In the default scaffold provided, the program ends immediately after
-		// the manager stops, so would be fine to enable this option. However,
-		// if you are doing or is intended to do any operation such as perform cleanups
-		// after the manager stops then its usage might be unsafe.
-		// LeaderElectionReleaseOnCancel: true,
+
+		// We are deliberately not setting LeaderElectionReleaseOnCancel to true, since we cannot guarantee that the
+		// operator manager will terminate immediately, we need to shut down a couple of internal components before
+		// terminating (self monitoring OTel SDK shutdown, token update service shutdown, ...).
+		LeaderElectionReleaseOnCancel: false,
 	})
 	if err != nil {
 		return fmt.Errorf("unable to create the manager: %w", err)
@@ -519,9 +517,17 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 	filelogOffsetSynchImagePullPolicy :=
 		readOptionalPullPolicyFromEnvironmentVariable(filelogOffsetSynchImagePullPolicyEnvVarName)
 
-	podIp, isSet := os.LookupEnv(podIpEnvVarName)
+	nodeIp, isSet := os.LookupEnv(k8sNodeIpEnvVarName)
 	if !isSet {
-		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, podIpEnvVarName)
+		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, k8sNodeIpEnvVarName)
+	}
+	nodeName, isSet := os.LookupEnv(k8sNodeNameEnvVarName)
+	if !isSet {
+		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, k8sNodeNameEnvVarName)
+	}
+	podIp, isSet := os.LookupEnv(k8sPodIpEnvVarName)
+	if !isSet {
+		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, k8sPodIpEnvVarName)
 	}
 
 	debugVerbosityDetailedRaw, isSet := os.LookupEnv(debugVerbosityDetailedEnvVarName)
@@ -554,6 +560,8 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 		configurationReloaderImagePullPolicy: configurationReloaderImagePullPolicy,
 		filelogOffsetSynchImage:              filelogOffsetSynchImage,
 		filelogOffsetSynchImagePullPolicy:    filelogOffsetSynchImagePullPolicy,
+		nodeIp:                               nodeIp,
+		nodeName:                             nodeName,
 		podIp:                                podIp,
 		sendBatchMaxSize:                     sendBatchMaxSize,
 		debugVerbosityDetailed:               debugVerbosityDetailed,
@@ -636,18 +644,20 @@ func startDash0Controllers(
 		OTelCollectorBaseUrl: oTelCollectorBaseUrl,
 		IsIPv6Cluster:        isIPv6Cluster,
 	}
-	oTelColResourceManager := &otelcolresources.OTelColResourceManager{
-		Client:                    k8sClient,
-		Scheme:                    mgr.GetScheme(),
-		OperatorManagerDeployment: operatorDeploymentSelfReference,
-		OTelCollectorNamePrefix:   envVars.oTelCollectorNamePrefix,
-		OTelColExtraConfig:        oTelColExtraConfig,
-		SendBatchMaxSize:          envVars.sendBatchMaxSize,
-		IsIPv6Cluster:             isIPv6Cluster,
-		IsDocker:                  isDocker,
-		DevelopmentMode:           developmentMode,
-		DebugVerbosityDetailed:    envVars.debugVerbosityDetailed,
-	}
+	oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
+		k8sClient,
+		mgr.GetScheme(),
+		operatorDeploymentSelfReference,
+		envVars.oTelCollectorNamePrefix,
+		oTelColExtraConfig,
+		envVars.sendBatchMaxSize,
+		envVars.nodeIp,
+		envVars.nodeName,
+		isIPv6Cluster,
+		isDocker,
+		developmentMode,
+		envVars.debugVerbosityDetailed,
+	)
 	backendConnectionManager := &backendconnection.BackendConnectionManager{
 		Client:                 k8sClient,
 		Clientset:              clientset,

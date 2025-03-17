@@ -127,7 +127,7 @@ func (s *OTelSdkStarter) onParametersHaveChanged(ctx context.Context, logger *lo
 		)
 	if configComplete {
 		if !sdkIsActive {
-			logger.Info("starting the OpenTelemetry SDK for self-monitoring", "configuration", newOTelSDKConfig)
+			logger.Info("starting the OpenTelemetry SDK for self-monitoring")
 			s.startOrRestartOTelSdkChannel <- newOTelSDKConfig
 		} else {
 			currentlyActiveConfig := s.activeOTelSdkConfig.Load()
@@ -260,7 +260,7 @@ func convertExportConfigurationToOTelSDKConfig(
 func startOTelSDK(selfMonitoringClients []SelfMonitoringClient, oTelSdkConfig *common.OTelSdkConfig) {
 	ctx := context.Background()
 	logger := log.FromContext(ctx)
-	logger.Info("starting (or restarting) the OpenTelemetry SDK for self-monitoring", "configuration", oTelSdkConfig)
+	logger.Info("starting (or restarting) the OpenTelemetry SDK for self-monitoring")
 	meter =
 		common.InitOTelSdkWithConfig(
 			ctx,

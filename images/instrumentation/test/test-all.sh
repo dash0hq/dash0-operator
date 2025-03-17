@@ -237,7 +237,7 @@ run_tests_for_architecture() {
       echo --------------------
       echo "- base image: '${base_image}'"
       image_name_test="test-${runtime}-${arch}:latest"
-      echo "building test image for ${arch}/${runtime}/${base_image} with instrumentation image ${instrumentation_image}"
+      echo "building test image \"$image_name_test\" for ${arch}/${runtime}/${base_image} with instrumentation image ${instrumentation_image}"
       # shellcheck disable=SC2155
       local start_time_docker_build=$(date +%s)
       if ! docker_build_output=$(

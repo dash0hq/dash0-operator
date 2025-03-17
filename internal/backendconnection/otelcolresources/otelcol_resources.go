@@ -5,9 +5,14 @@ package otelcolresources
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
+	"net"
+	"net/http"
 	"slices"
+	"strings"
 	"sync/atomic"
 
 	"github.com/cisco-open/k8s-objectmatcher/patch"
@@ -35,15 +40,26 @@ type OTelColResourceManager struct {
 	OTelCollectorNamePrefix          string
 	OTelColExtraConfig               *OTelColExtraConfig
 	SendBatchMaxSize                 *uint32
+	NodeIp                           string
+	NodeName                         string
 	IsIPv6Cluster                    bool
 	IsDocker                         bool
 	DevelopmentMode                  bool
 	DebugVerbosityDetailed           bool
 	obsoleteResourcesHaveBeenDeleted atomic.Bool
+	kubeletStatsReceiverConfig       atomic.Pointer[KubeletStatsReceiverConfig]
 }
 
 const (
 	bogusDeploymentPatch = "{\"spec\":{\"strategy\":{\"$retainKeys\":[\"type\"],\"rollingUpdate\":null}}}"
+
+	kubeletStatsNodeNameEndpoint         = "https://${env:K8S_NODE_NAME}:10250"
+	kubeletStatsNodeIpEndpoint           = "https://${env:K8S_NODE_IP}:10250"
+	kubetletStatsReadyOnlyEndpoint       = "http://${env:K8S_NODE_IP}:10255"
+	kubeletStatsAuthTypeServiceAccount   = "serviceAccount"
+	kubeletStatsAuthTypeNone             = "none"
+	kubeletStatsSummaryPath              = "/stats/summary"
+	usingKubeletStatsReceiverEndpointMsg = "Using %s as kubeletstats receiver endpoint."
 )
 
 var (
@@ -56,7 +72,42 @@ var (
 		ConfigurationReloaderImage: "ghcr.io/dash0hq/configuration-reloader:latest",
 		FilelogOffsetSynchImage:    "ghcr.io/dash0hq/filelog-offset-synch:latest",
 	}
+
+	httpClient     = &http.Client{}
+	insecureClient = &http.Client{Transport: &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}}
 )
+
+func NewOTelColResourceManager(
+	k8sClient client.Client,
+	scheme *runtime.Scheme,
+	operatorManagerDeployment *appsv1.Deployment,
+	oTelCollectorNamePrefix string,
+	oTelColExtraConfig *OTelColExtraConfig,
+	sendBatchMaxSize *uint32,
+	nodeIp string,
+	nodeName string,
+	isIPv6Cluster bool,
+	isDocker bool,
+	developmentMode bool,
+	debugVerbosityDetailed bool,
+) *OTelColResourceManager {
+	return &OTelColResourceManager{
+		Client:                    k8sClient,
+		Scheme:                    scheme,
+		OperatorManagerDeployment: operatorManagerDeployment,
+		OTelCollectorNamePrefix:   oTelCollectorNamePrefix,
+		OTelColExtraConfig:        oTelColExtraConfig,
+		SendBatchMaxSize:          sendBatchMaxSize,
+		NodeIp:                    nodeIp,
+		NodeName:                  nodeName,
+		IsIPv6Cluster:             isIPv6Cluster,
+		IsDocker:                  isDocker,
+		DevelopmentMode:           developmentMode,
+		DebugVerbosityDetailed:    debugVerbosityDetailed,
+	}
+}
 
 func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	ctx context.Context,
@@ -89,6 +140,11 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 			util.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.KubernetesInfrastructureMetricsCollectionEnabled, true)
 		clusterName = operatorConfigurationResource.Spec.ClusterName
 	}
+	kubeletStatsReceiverConfig :=
+		m.determineKubeletstatsReceiverEndpoint(
+			kubernetesInfrastructureMetricsCollectionEnabled,
+			logger,
+		)
 
 	config := &oTelColConfig{
 		Namespace:                   namespace,
@@ -97,6 +153,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		SendBatchMaxSize:            m.SendBatchMaxSize,
 		SelfMonitoringConfiguration: selfMonitoringConfiguration,
 		KubernetesInfrastructureMetricsCollectionEnabled: kubernetesInfrastructureMetricsCollectionEnabled,
+		KubeletStatsReceiverConfig:                       kubeletStatsReceiverConfig,
 		// The hostmetrics receiver requires mapping the root file system as a volume mount, see
 		// https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/hostmetricsreceiver#collecting-host-metrics-from-inside-a-container-linux-only
 		// This is apparently not supported in Docker, at least not in Docker Desktop. See
@@ -373,8 +430,6 @@ func (m *OTelColResourceManager) DeleteResources(
 
 func (m *OTelColResourceManager) deleteResourcesThatAreNoLongerDesired(
 	ctx context.Context,
-	// deliberately accepting a value and not a pointer here, so we get a copy of the original config and do not
-	// accidentally modify it.
 	config oTelColConfig,
 	desiredState []clientObject,
 	logger *logr.Logger,
@@ -459,4 +514,190 @@ func (m *OTelColResourceManager) deleteObsoleteResourcesFromPreviousOperatorVers
 
 	m.obsoleteResourcesHaveBeenDeleted.Store(true)
 	return nil
+}
+
+func (m *OTelColResourceManager) determineKubeletstatsReceiverEndpoint(
+	kubernetesInfrastructureMetricsCollectionEnabled bool,
+	logger *logr.Logger,
+) KubeletStatsReceiverConfig {
+	cachedConfig := m.kubeletStatsReceiverConfig.Load()
+	if cachedConfig != nil {
+		return *cachedConfig
+	}
+	if m.NodeName == "" && m.NodeIp == "" {
+		logger.Info("No K8s_NODE_NAME and no K8S_NODE_IP available, skipping kubeletstats receiver endpoint lookup. " +
+			"The kubeletstats receiver will be disabled. Some Kubernetes infrastructure metrics will be missing.")
+		return m.cacheKubeletStatsReceiverConfig(KubeletStatsReceiverConfig{Enabled: false})
+	}
+	if !kubernetesInfrastructureMetricsCollectionEnabled {
+		// We do not need to run the test if we are not going to even use the kubeletstats receiver.
+		logger.Info("Kubernetes infrastructure metrics collection is disabled, skipping kubeletstats receiver endpoint lookup.")
+		return m.cacheKubeletStatsReceiverConfig(KubeletStatsReceiverConfig{Enabled: false})
+	}
+
+	logger.Info(fmt.Sprintf("Attempting DNS lookup for Kubernetes node name %s.", m.NodeName))
+	_, err := net.LookupIP(m.NodeName)
+	if err == nil {
+		logger.Info(fmt.Sprintf("DNS lookup for Kubernetes node name %s has been successful.", m.NodeName))
+		endpoint := kubeletStatsNodeNameEndpoint
+
+		nodeNameEndpointWithPath := fmt.Sprintf("https://%s:10250%s", m.NodeName, kubeletStatsSummaryPath)
+		logger.Info(fmt.Sprintf("Attempting probe request to %s.", nodeNameEndpointWithPath))
+		err = executeHttpRequest(httpClient, nodeNameEndpointWithPath)
+		if err == nil {
+			logger.Info(fmt.Sprintf("Probe request request to %s has been successful.", nodeNameEndpointWithPath))
+			logger.Info(fmt.Sprintf(usingKubeletStatsReceiverEndpointMsg, endpoint))
+			return m.cacheKubeletStatsReceiverConfig(KubeletStatsReceiverConfig{
+				Enabled:            true,
+				Endpoint:           endpoint,
+				AuthType:           kubeletStatsAuthTypeServiceAccount,
+				InsecureSkipVerify: false,
+			})
+		} else if isTlsError(err) {
+			logger.Info(
+				fmt.Sprintf(
+					"Failed to verify certificate for %s, adding insecure_skip_verify to kubeletstats receiver "+
+						"configuration. (%s)",
+					nodeNameEndpointWithPath,
+					err.Error(),
+				))
+			logger.Info(fmt.Sprintf(usingKubeletStatsReceiverEndpointMsg, endpoint))
+			return m.cacheKubeletStatsReceiverConfig(KubeletStatsReceiverConfig{
+				Enabled:            true,
+				Endpoint:           endpoint,
+				AuthType:           kubeletStatsAuthTypeServiceAccount,
+				InsecureSkipVerify: true,
+			})
+		} else {
+			logger.Info(
+				fmt.Sprintf(
+					"DNS lookup for Kubernetes node name %s has been successful, but the probe request to %s resulted "+
+						"in an error: %s. Will try using K8S_NODE_IP next.",
+					m.NodeName,
+					nodeNameEndpointWithPath,
+					err.Error(),
+				))
+		}
+	} else {
+		logger.Info(
+			fmt.Sprintf(
+				"DNS lookup for Kubernetes node name %s failed with error: %s, will try K8S_NODE_IP next.",
+				m.NodeName,
+				err.Error(),
+			))
+	}
+
+	nodeIpEndpointResultsInTlsError := false
+	nodeIpEndpointWithPath := fmt.Sprintf("https://%s:10250%s", m.NodeIp, kubeletStatsSummaryPath)
+	logger.Info(fmt.Sprintf("Attempting probe request %s.", nodeIpEndpointWithPath))
+	err = executeHttpRequest(httpClient, nodeIpEndpointWithPath)
+	if err == nil {
+		endpoint := kubeletStatsNodeIpEndpoint
+		logger.Info(fmt.Sprintf("Probe request request %s has been successful.", nodeIpEndpointWithPath))
+		logger.Info(fmt.Sprintf(usingKubeletStatsReceiverEndpointMsg, endpoint))
+		return m.cacheKubeletStatsReceiverConfig(KubeletStatsReceiverConfig{
+			Enabled:            true,
+			Endpoint:           endpoint,
+			AuthType:           kubeletStatsAuthTypeServiceAccount,
+			InsecureSkipVerify: false,
+		})
+	}
+	if isTlsError(err) {
+		logger.Info(
+			fmt.Sprintf(
+				"Failed to verify certificate for %s. (%s)",
+				nodeIpEndpointWithPath,
+				err.Error(),
+			))
+		nodeIpEndpointResultsInTlsError = true
+	} else {
+		logger.Info(
+			fmt.Sprintf(
+				"The probe request to %s resulted in an error: %s. Will try the read-only endpoint next.",
+				nodeIpEndpointWithPath,
+				err.Error(),
+			))
+	}
+
+	readOnlyNodeIpEndpointWithPath := fmt.Sprintf("http://%s:10255%s", m.NodeIp, kubeletStatsSummaryPath)
+	logger.Info(fmt.Sprintf("Attempting probe request to to read-only endpoint %s.", readOnlyNodeIpEndpointWithPath))
+	err = executeHttpRequest(httpClient, readOnlyNodeIpEndpointWithPath)
+	if err == nil {
+		endpoint := kubetletStatsReadyOnlyEndpoint
+		logger.Info(fmt.Sprintf("Probe request request to read-only endpoint %s has been successful.", readOnlyNodeIpEndpointWithPath))
+		logger.Info(fmt.Sprintf("Using read-only endpoint %s as kubeletstats receiver endpoint.", endpoint))
+		return m.cacheKubeletStatsReceiverConfig(KubeletStatsReceiverConfig{
+			Enabled:            true,
+			Endpoint:           endpoint,
+			AuthType:           kubeletStatsAuthTypeNone,
+			InsecureSkipVerify: false,
+		})
+	} else {
+		logger.Info(
+			fmt.Sprintf(
+				"The probe request to %s resulted in an error: %s.",
+				readOnlyNodeIpEndpointWithPath,
+				err.Error(),
+			))
+	}
+
+	if !nodeIpEndpointResultsInTlsError {
+		return m.cacheKubeletStatsReceiverConfig(m.logErrorAndDisableKubeletStatsReceiver(logger))
+	}
+
+	logger.Info(
+		fmt.Sprintf("Attempting probe request to %s without TLS certificate verification.", nodeIpEndpointWithPath))
+	err = executeHttpRequest(insecureClient, nodeIpEndpointWithPath)
+	if err == nil {
+		endpoint := kubeletStatsNodeIpEndpoint
+		logger.Info(
+			fmt.Sprintf(
+				"Probe request request to %s without TLS certificate verification has been successful.",
+				nodeIpEndpointWithPath,
+			))
+		logger.Info(fmt.Sprintf("Using %s as kubeletstats receiver endpoint with insecure_skip_verify: true.", endpoint))
+		return m.cacheKubeletStatsReceiverConfig(KubeletStatsReceiverConfig{
+			Enabled:            true,
+			Endpoint:           endpoint,
+			AuthType:           kubeletStatsAuthTypeServiceAccount,
+			InsecureSkipVerify: true,
+		})
+	} else {
+		logger.Info(
+			fmt.Sprintf(
+				"The probe request to %s without TLS certificate verification resulted in an error: %s.",
+				readOnlyNodeIpEndpointWithPath,
+				err.Error(),
+			))
+	}
+
+	return m.cacheKubeletStatsReceiverConfig(m.logErrorAndDisableKubeletStatsReceiver(logger))
+}
+
+func (m *OTelColResourceManager) cacheKubeletStatsReceiverConfig(config KubeletStatsReceiverConfig) KubeletStatsReceiverConfig {
+	m.kubeletStatsReceiverConfig.Store(&config)
+	return config
+}
+
+func executeHttpRequest(httpClient *http.Client, endpoint string) error {
+	res, err := httpClient.Get(endpoint)
+	defer func() {
+		if res != nil {
+			_, _ = io.Copy(io.Discard, res.Body)
+			_ = res.Body.Close()
+		}
+	}()
+	return err
+}
+
+func isTlsError(err error) bool {
+	return strings.Contains(err.Error(), "tls: failed to verify certificate:")
+}
+
+func (m *OTelColResourceManager) logErrorAndDisableKubeletStatsReceiver(logger *logr.Logger) KubeletStatsReceiverConfig {
+	logger.Error(
+		fmt.Errorf("cannot determine viable endpoint for kubeletstats receiver endpoint, see above"),
+		"The operator ran out of options when trying to find a viable kubeletstats receiver endpoint. The "+
+			"kubeletstats receiver will be disabled. Some Kubernetes infrastructure metrics will be missing.")
+	return KubeletStatsReceiverConfig{Enabled: false}
 }
