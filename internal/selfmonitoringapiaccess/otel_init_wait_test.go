@@ -15,6 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	zaputil "github.com/dash0hq/dash0-operator/internal/util/zap"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -40,7 +41,7 @@ var _ = Describe("The OTel SDK starter", func() {
 	logger := ptr.To(log.FromContext(ctx))
 
 	It("should start with empty values", func() {
-		oTelSdkStarter := NewOTelSdkStarter()
+		oTelSdkStarter := NewOTelSdkStarter(zaputil.NewDelegatingZapCore())
 		Expect(oTelSdkStarter.sdkIsActive.Load()).To(BeFalse())
 		Expect(*oTelSdkStarter.oTelSdkConfigInput.Load()).To(Equal(OTelSdkConfigInput{}))
 		Expect(oTelSdkStarter.activeOTelSdkConfig.Load()).To(BeNil())
@@ -52,7 +53,7 @@ var _ = Describe("The OTel SDK starter", func() {
 		var mockChannel chan *common.OTelSdkConfig
 
 		BeforeEach(func() {
-			oTelSdkStarter = NewOTelSdkStarter()
+			oTelSdkStarter = NewOTelSdkStarter(zaputil.NewDelegatingZapCore())
 			mockChannel = make(chan *common.OTelSdkConfig, 100)
 			oTelSdkStarter.startOrRestartOTelSdkChannel = mockChannel
 		})
@@ -235,17 +236,20 @@ var _ = Describe("The OTel SDK starter", func() {
 
 	})
 
-	Describe("should notify self monitoring clients", func() {
+	Describe("should notify self monitoring clients and set the logging delegate", func() {
 		var oTelSdkStarter *OTelSdkStarter
+		var delegatingZapCore *zaputil.DelegatingZapCore
 
 		BeforeEach(func() {
-			oTelSdkStarter = NewOTelSdkStarter()
+			delegatingZapCore = zaputil.NewDelegatingZapCore()
+			oTelSdkStarter = NewOTelSdkStarter(delegatingZapCore)
 		})
 
 		It("should notify clients when there is an export with auth token", func() {
+
 			dummyClient1 := &DummyClient{}
 			dummyClient2 := &DummyClient{}
-			oTelSdkStarter.WaitForOTelConfig([]SelfMonitoringClient{
+			oTelSdkStarter.WaitForOTelConfig([]SelfMonitoringMetricsClient{
 				dummyClient1,
 				dummyClient2,
 			})
@@ -260,6 +264,7 @@ var _ = Describe("The OTel SDK starter", func() {
 			)
 
 			Eventually(func(g Gomega) {
+				g.Expect(delegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
 				g.Expect(dummyClient1.hasBeenCalled).To(Equal(1))
 				g.Expect(dummyClient2.hasBeenCalled).To(Equal(1))
 			}).Should(Succeed())

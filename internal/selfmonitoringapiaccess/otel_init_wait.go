@@ -20,9 +20,10 @@ import (
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
+	zaputil "github.com/dash0hq/dash0-operator/internal/util/zap"
 )
 
-type SelfMonitoringClient interface {
+type SelfMonitoringMetricsClient interface {
 	InitializeSelfMonitoringMetrics(otelmetric.Meter, string, *logr.Logger)
 }
 
@@ -34,10 +35,12 @@ type OTelSdkConfigInput struct {
 }
 
 type OTelSdkStarter struct {
-	sdkIsActive                  atomic.Bool
-	oTelSdkConfigInput           atomic.Pointer[OTelSdkConfigInput]
-	activeOTelSdkConfig          atomic.Pointer[common.OTelSdkConfig]
-	authTokenFromSecretRef       atomic.Pointer[string]
+	sdkIsActive            atomic.Bool
+	oTelSdkConfigInput     atomic.Pointer[OTelSdkConfigInput]
+	activeOTelSdkConfig    atomic.Pointer[common.OTelSdkConfig]
+	authTokenFromSecretRef atomic.Pointer[string]
+	delegatingZapCore      *zaputil.DelegatingZapCore
+
 	startOrRestartOTelSdkChannel chan *common.OTelSdkConfig
 	shutDownChannel              chan bool
 }
@@ -48,15 +51,15 @@ const (
 
 var (
 	metricNamePrefix = fmt.Sprintf("%s.", meterName)
-	meter            otelmetric.Meter
 )
 
-func NewOTelSdkStarter() *OTelSdkStarter {
+func NewOTelSdkStarter(delegatingZapCore *zaputil.DelegatingZapCore) *OTelSdkStarter {
 	starter := &OTelSdkStarter{
 		sdkIsActive:                  atomic.Bool{},
 		oTelSdkConfigInput:           atomic.Pointer[OTelSdkConfigInput]{},
 		activeOTelSdkConfig:          atomic.Pointer[common.OTelSdkConfig]{},
 		authTokenFromSecretRef:       atomic.Pointer[string]{},
+		delegatingZapCore:            delegatingZapCore,
 		startOrRestartOTelSdkChannel: make(chan *common.OTelSdkConfig),
 		shutDownChannel:              make(chan bool),
 	}
@@ -66,8 +69,10 @@ func NewOTelSdkStarter() *OTelSdkStarter {
 	return starter
 }
 
-func (s *OTelSdkStarter) WaitForOTelConfig(selfMonitoringClients []SelfMonitoringClient) {
-	go s.waitForCompleteOTelSDKConfiguration(selfMonitoringClients)
+func (s *OTelSdkStarter) WaitForOTelConfig(
+	selfMonitoringMetricsClient []SelfMonitoringMetricsClient,
+) {
+	go s.waitForCompleteOTelSDKConfiguration(selfMonitoringMetricsClient)
 }
 
 func (s *OTelSdkStarter) SetOTelSdkParameters(
@@ -103,14 +108,14 @@ func (s *OTelSdkStarter) RemoveAuthToken(ctx context.Context, logger *logr.Logge
 }
 
 func (s *OTelSdkStarter) waitForCompleteOTelSDKConfiguration(
-	selfMonitoringClients []SelfMonitoringClient,
+	selfMonitoringMetricsClients []SelfMonitoringMetricsClient,
 ) {
 	for {
 		select {
 		case config := <-s.startOrRestartOTelSdkChannel:
 			s.UpdateOTelSdkState(true)
 			s.activeOTelSdkConfig.Store(config)
-			startOTelSDK(selfMonitoringClients, config)
+			startOTelSDK(s.delegatingZapCore, selfMonitoringMetricsClients, config)
 
 		case <-s.shutDownChannel:
 			return
@@ -257,18 +262,28 @@ func convertExportConfigurationToOTelSDKConfig(
 	return oTelSdkConfig, true
 }
 
-func startOTelSDK(selfMonitoringClients []SelfMonitoringClient, oTelSdkConfig *common.OTelSdkConfig) {
+func startOTelSDK(
+	delegatingZapCore *zaputil.DelegatingZapCore,
+	selfMonitoringMetricsClients []SelfMonitoringMetricsClient,
+	oTelSdkConfig *common.OTelSdkConfig,
+) {
 	ctx := context.Background()
 	logger := log.FromContext(ctx)
 	logger.Info("starting (or restarting) the OpenTelemetry SDK for self-monitoring")
-	meter =
+	zapOTelBridge, meter :=
 		common.InitOTelSdkWithConfig(
 			ctx,
 			meterName,
 			oTelSdkConfig,
 		)
 
-	for _, client := range selfMonitoringClients {
+	// Setting the zap OTel bridge as the delegate logger core will spool all messages that have been only logged to
+	// stdout so far (and buffered in the delegating zap core) to the newly created zap OTel bridge, so that we also see
+	// messages from the operator startup in self-monitoring, even if the OTel SDK is delayed until we have found and
+	// reconciled an operator configuration resource.
+	delegatingZapCore.SetDelegate(zapOTelBridge)
+
+	for _, client := range selfMonitoringMetricsClients {
 		client.InitializeSelfMonitoringMetrics(
 			meter,
 			metricNamePrefix,
@@ -280,6 +295,7 @@ func startOTelSDK(selfMonitoringClients []SelfMonitoringClient, oTelSdkConfig *c
 func (s *OTelSdkStarter) ShutDownOTelSdk(ctx context.Context, logger *logr.Logger) {
 	sdkIsActive := s.sdkIsActive.Load()
 	if sdkIsActive {
+		s.delegatingZapCore.UnsetDelegate()
 		logger.Info("shuttingdown the OpenTelemetry SDK, stopping self-monitoring")
 		common.ShutDownOTelSdkThreadSafe(ctx)
 		s.UpdateOTelSdkState(false)

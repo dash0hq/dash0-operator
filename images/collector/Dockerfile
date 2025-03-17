@@ -2,7 +2,7 @@ FROM --platform=${BUILDPLATFORM} golang:1.23-alpine AS builder
 
 RUN apk add --update git make yq && apk cache clean
 
-COPY src /src
+COPY src/builder /src/builder
 WORKDIR /src
 
 RUN export builder_version=$(yq '.connectors[0].gomod | match(" v(\d+\.\d+\.\d+)$"; "g") | .captures[0].string' builder/config.yaml) \
