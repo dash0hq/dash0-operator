@@ -191,6 +191,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: status.podIP
+        - name: K8S_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         ports:
         - containerPort: 9443
           name: webhook-server

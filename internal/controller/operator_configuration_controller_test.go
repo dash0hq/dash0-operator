@@ -346,6 +346,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 						SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 							Enabled: ptr.To(false),
 						},
+						ClusterName: ClusterNameTest,
 					},
 				)
 
@@ -364,6 +365,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 							SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 								Enabled: ptr.To(config.selfMonitoringEnabled),
 							},
+							ClusterName: ClusterNameTest,
 						},
 					)
 
@@ -391,20 +393,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 							g.Expect(activeOTelSdkConfig).ToNot(BeNil())
 							g.Expect(activeOTelSdkConfig.Endpoint).To(Equal(config.expectedEndpoint))
 							g.Expect(activeOTelSdkConfig.Protocol).To(Equal(config.expectedProtocol))
-							g.Expect(activeOTelSdkConfig.ResourceAttributes).To(HaveLen(4))
-
-							g.Expect(
-								getResourceAttribute(activeOTelSdkConfig.ResourceAttributes, "service.namespace")).To(
-								Equal("dash0.operator"))
-							g.Expect(
-								getResourceAttribute(activeOTelSdkConfig.ResourceAttributes, "service.name")).To(
-								Equal("manager"))
-							g.Expect(
-								getResourceAttribute(activeOTelSdkConfig.ResourceAttributes, "service.version")).To(
-								Equal("1.2.3"))
-							g.Expect(
-								getResourceAttribute(activeOTelSdkConfig.ResourceAttributes, "k8s.deployment.uid")).To(
-								Equal(OperatorManagerDeploymentUIDStr))
+							verifyOperatorManagerResourceAttributes(g, activeOTelSdkConfig.ResourceAttributes)
 
 							g.Expect(activeOTelSdkConfig.Headers).To(HaveLen(len(config.expectedHeaders)))
 							for key, value := range config.expectedHeaders {
@@ -521,6 +510,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 						Enabled: ptr.To(true),
 					},
+					ClusterName: ClusterNameTest,
 				},
 			)
 
@@ -602,19 +592,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				g.Expect(activeOTelSdkConfig).ToNot(BeNil())
 				g.Expect(activeOTelSdkConfig.Endpoint).To(Equal(EndpointDash0Test))
 				g.Expect(activeOTelSdkConfig.Protocol).To(Equal(common.ProtocolGrpc))
-				g.Expect(activeOTelSdkConfig.ResourceAttributes).To(HaveLen(4))
-				g.Expect(
-					getResourceAttribute(activeOTelSdkConfig.ResourceAttributes, "service.namespace")).To(
-					Equal("dash0.operator"))
-				g.Expect(
-					getResourceAttribute(activeOTelSdkConfig.ResourceAttributes, "service.name")).To(
-					Equal("manager"))
-				g.Expect(
-					getResourceAttribute(activeOTelSdkConfig.ResourceAttributes, "service.version")).To(
-					Equal("1.2.3"))
-				g.Expect(
-					getResourceAttribute(activeOTelSdkConfig.ResourceAttributes, "k8s.deployment.uid")).To(
-					Equal(OperatorManagerDeploymentUIDStr))
+				verifyOperatorManagerResourceAttributes(g, activeOTelSdkConfig.ResourceAttributes)
 
 				g.Expect(activeOTelSdkConfig.Headers).To(HaveLen(1))
 				g.Expect(activeOTelSdkConfig.Headers[util.AuthorizationHeaderName]).To(Equal(AuthorizationHeaderTest))
@@ -660,19 +638,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				g.Expect(activeOTelSdkConfig).ToNot(BeNil())
 				g.Expect(activeOTelSdkConfig.Endpoint).To(Equal(EndpointDash0TestAlternative))
 				g.Expect(activeOTelSdkConfig.Protocol).To(Equal(common.ProtocolGrpc))
-				g.Expect(activeOTelSdkConfig.ResourceAttributes).To(HaveLen(4))
-				g.Expect(
-					getResourceAttribute(activeOTelSdkConfig.ResourceAttributes, "service.namespace")).To(
-					Equal("dash0.operator"))
-				g.Expect(
-					getResourceAttribute(activeOTelSdkConfig.ResourceAttributes, "service.name")).To(
-					Equal("manager"))
-				g.Expect(
-					getResourceAttribute(activeOTelSdkConfig.ResourceAttributes, "service.version")).To(
-					Equal("1.2.3"))
-				g.Expect(
-					getResourceAttribute(activeOTelSdkConfig.ResourceAttributes, "k8s.deployment.uid")).To(
-					Equal(OperatorManagerDeploymentUIDStr))
+				verifyOperatorManagerResourceAttributes(g, activeOTelSdkConfig.ResourceAttributes)
 
 				g.Expect(activeOTelSdkConfig.Headers).To(HaveLen(2))
 				g.Expect(activeOTelSdkConfig.Headers[util.AuthorizationHeaderName]).To(
@@ -723,6 +689,37 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 	})
 })
 
+func verifyOperatorManagerResourceAttributes(g Gomega, resourceAttributes []attribute.KeyValue) {
+	g.Expect(resourceAttributes).To(HaveLen(9))
+	g.Expect(
+		getResourceAttribute(resourceAttributes, "service.namespace")).To(
+		Equal("dash0-operator"))
+	g.Expect(
+		getResourceAttribute(resourceAttributes, "service.name")).To(
+		Equal("operator-manager"))
+	g.Expect(
+		getResourceAttribute(resourceAttributes, "service.version")).To(
+		Equal("1.2.3"))
+	g.Expect(
+		getResourceAttribute(resourceAttributes, "k8s.cluster.uid")).To(
+		Equal(ClusterUIDTest))
+	g.Expect(
+		getResourceAttribute(resourceAttributes, "k8s.cluster.name")).To(
+		Equal(ClusterNameTest))
+	g.Expect(
+		getResourceAttribute(resourceAttributes, "k8s.namespace.name")).To(
+		Equal(OperatorNamespace))
+	g.Expect(
+		getResourceAttribute(resourceAttributes, "k8s.deployment.uid")).To(
+		Equal(OperatorManagerDeploymentUIDStr))
+	g.Expect(
+		getResourceAttribute(resourceAttributes, "k8s.deployment.name")).To(
+		Equal(OperatorManagerDeploymentName))
+	g.Expect(
+		getResourceAttribute(resourceAttributes, "k8s.pod.name")).To(
+		Equal(OperatorPodName))
+}
+
 func getResourceAttribute(attributes []attribute.KeyValue, key string) string {
 	for _, a := range attributes {
 		if string(a.Key) == key {
@@ -772,7 +769,11 @@ func createReconciler() *OperatorConfigurationReconciler {
 			apiClient2,
 		},
 		BackendConnectionManager:        backendConnectionManager,
+		PseudoClusterUID:                ClusterUIDTest,
+		OperatorDeploymentNamespace:     OperatorManagerDeployment.Namespace,
 		OperatorDeploymentUID:           OperatorManagerDeployment.UID,
+		OperatorDeploymentName:          OperatorManagerDeployment.Name,
+		OperatorManagerPodName:          OperatorPodName,
 		OTelSdkStarter:                  otelSdkStarter,
 		DanglingEventsTimeouts:          &DanglingEventsTimeoutsTest,
 		Images:                          TestImages,
