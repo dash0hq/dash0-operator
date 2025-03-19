@@ -277,7 +277,7 @@ func enableSelfMonitoringInCollectorContainer(
 	updateOrAppendEnvVar(container, otelExporterOtlpProtocolEnvVarName, exportSettings.Protocol)
 	updateOrAppendEnvVar(container, otelResourceAttribtuesEnvVarName,
 		fmt.Sprintf(
-			"service.namespace=dash0.operator,service.name=%s,service.version=%s",
+			"service.namespace=dash0-operator,service.name=%s,service.version=%s",
 			container.Name,
 			operatorVersion,
 		))

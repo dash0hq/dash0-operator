@@ -281,8 +281,14 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[21].valueFrom.fieldRef.fieldPath
           value: status.podIP
-      - notExists:
+      - equal:
           path: spec.template.spec.containers[0].env[22].name
+          value: K8S_POD_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[22].valueFrom.fieldRef.fieldPath
+          value: metadata.name
+      - notExists:
+          path: spec.template.spec.containers[0].env[23].name
       - equal:
           path: spec.template.spec.containers[0].resources.limits.cpu
           value: 123m
@@ -537,8 +543,14 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].env[14].valueFrom.fieldRef.fieldPath
           value: status.podIP
-      - notExists:
+      - equal:
           path: spec.template.spec.containers[0].env[15].name
+          value: K8S_POD_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[15].valueFrom.fieldRef.fieldPath
+          value: metadata.name
+      - notExists:
+          path: spec.template.spec.containers[0].env[16].name
 
   - it: mutating webhook should have caBundle set
     documentSelector:

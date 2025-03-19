@@ -71,6 +71,7 @@ type environmentVariables struct {
 	filelogOffsetSynchImagePullPolicy    corev1.PullPolicy
 	nodeIp                               string
 	nodeName                             string
+	podName                              string
 	podIp                                string
 	sendBatchMaxSize                     *uint32
 	debugVerbosityDetailed               bool
@@ -94,6 +95,7 @@ const (
 	filelogOffsetSynchImagePullPolicyEnvVarName    = "DASH0_FILELOG_OFFSET_SYNCH_IMAGE_PULL_POLICY"
 	k8sNodeIpEnvVarName                            = "K8S_NODE_IP"
 	k8sNodeNameEnvVarName                          = "K8S_NODE_NAME"
+	k8sPodNameEnvVarName                           = "K8S_POD_NAME"
 	k8sPodIpEnvVarName                             = "K8S_POD_IP"
 
 	developmentModeEnvVarName        = "DASH0_DEVELOPMENT_MODE"
@@ -291,6 +293,7 @@ func main() {
 		startupTasksK8sClient,
 		&setupLog,
 	)
+	pseudoClusterUID := readPseudoClusterUid(ctx, startupTasksK8sClient, &setupLog)
 	if operatorDeploymentSelfReference, err = findDeploymentReference(
 		ctx,
 		startupTasksK8sClient,
@@ -334,6 +337,7 @@ func main() {
 		enableLeaderElection,
 		operatorConfigurationValues,
 		delegatingZapCore,
+		pseudoClusterUID,
 		developmentMode,
 	); err != nil {
 		setupLog.Error(err, "The Dash0 operator manager process failed to start.")
@@ -393,6 +397,7 @@ func startOperatorManager(
 	enableLeaderElection bool,
 	operatorConfigurationValues *startup.OperatorConfigurationValues,
 	delegatingZapCore *zaputil.DelegatingZapCore,
+	pseudoClusterUID string,
 	developmentMode bool,
 ) error {
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
@@ -453,7 +458,15 @@ func startOperatorManager(
 		developmentMode,
 	)
 
-	err = startDash0Controllers(ctx, mgr, clientset, operatorConfigurationValues, delegatingZapCore, developmentMode)
+	err = startDash0Controllers(
+		ctx,
+		mgr,
+		clientset,
+		operatorConfigurationValues,
+		delegatingZapCore,
+		pseudoClusterUID,
+		developmentMode,
+	)
 	if err != nil {
 		return err
 	}
@@ -560,6 +573,10 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 	if !isSet {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, k8sNodeNameEnvVarName)
 	}
+	podName, isSet := os.LookupEnv(k8sPodNameEnvVarName)
+	if !isSet {
+		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, k8sPodNameEnvVarName)
+	}
 	podIp, isSet := os.LookupEnv(k8sPodIpEnvVarName)
 	if !isSet {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, k8sPodIpEnvVarName)
@@ -597,6 +614,7 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 		filelogOffsetSynchImagePullPolicy:    filelogOffsetSynchImagePullPolicy,
 		nodeIp:                               nodeIp,
 		nodeName:                             nodeName,
+		podName:                              podName,
 		podIp:                                podIp,
 		sendBatchMaxSize:                     sendBatchMaxSize,
 		debugVerbosityDetailed:               debugVerbosityDetailed,
@@ -635,6 +653,7 @@ func startDash0Controllers(
 	clientset *kubernetes.Clientset,
 	operatorConfigurationValues *startup.OperatorConfigurationValues,
 	delegatingZapCore *zaputil.DelegatingZapCore,
+	pseudoClusterUID string,
 	developmentMode bool,
 ) error {
 	oTelColExtraConfig, err := readOTelColExtraConfiguration()
@@ -743,7 +762,11 @@ func startDash0Controllers(
 		Scheme:                          mgr.GetScheme(),
 		Recorder:                        mgr.GetEventRecorderFor("dash0-operator-configuration-controller"),
 		BackendConnectionManager:        backendConnectionManager,
+		PseudoClusterUID:                pseudoClusterUID,
+		OperatorDeploymentNamespace:     operatorDeploymentSelfReference.Namespace,
 		OperatorDeploymentUID:           operatorDeploymentSelfReference.UID,
+		OperatorDeploymentName:          operatorDeploymentSelfReference.Name,
+		OperatorManagerPodName:          envVars.podName,
 		OTelSdkStarter:                  oTelSdkStarter,
 		Images:                          images,
 		OperatorNamespace:               envVars.operatorNamespace,
@@ -813,6 +836,7 @@ func startDash0Controllers(
 		ctx,
 		oTelSdkStarter,
 		operatorConfigurationResource,
+		pseudoClusterUID,
 		images.GetOperatorVersion(),
 		developmentMode,
 	)
@@ -849,6 +873,16 @@ func detectDocker(
 			isDocker = true
 		}
 	}
+}
+
+func readPseudoClusterUid(ctx context.Context, k8sClient client.Client, logger *logr.Logger) string {
+	kubeSystemNamespace := &corev1.Namespace{}
+	if err := k8sClient.Get(ctx, client.ObjectKey{Name: "kube-system"}, kubeSystemNamespace); err != nil {
+		msg := "unable to get the kube-system namespace uid"
+		logger.Error(err, msg)
+		return "unknown"
+	}
+	return string(kubeSystemNamespace.UID)
 }
 
 func findDeploymentReference(
@@ -965,6 +999,7 @@ func triggerSecretRefExchangeAndStartSelfMonitoringIfPossible(
 	ctx context.Context,
 	oTelSdkStarter *selfmonitoringapiaccess.OTelSdkStarter,
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
+	pseudoClusterUID string,
 	operatorVersion string,
 	developmentMode bool,
 ) {
@@ -1011,7 +1046,11 @@ func triggerSecretRefExchangeAndStartSelfMonitoringIfPossible(
 	oTelSdkStarter.SetOTelSdkParameters(
 		ctx,
 		selfMonitoringConfiguration.Export,
+		pseudoClusterUID,
+		operatorDeploymentSelfReference.Namespace,
 		operatorDeploymentSelfReference.UID,
+		operatorDeploymentSelfReference.Name,
+		envVars.podName,
 		operatorVersion,
 		developmentMode,
 		&setupLog,

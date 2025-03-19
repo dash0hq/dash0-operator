@@ -87,6 +87,10 @@ deployment should match snapshot (default values):
                   valueFrom:
                     fieldRef:
                       fieldPath: status.podIP
+                - name: K8S_POD_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.name
               image: ghcr.io/dash0hq/operator-controller:0.0.0
               livenessProbe:
                 httpGet:

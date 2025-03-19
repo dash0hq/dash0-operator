@@ -33,7 +33,7 @@ type metricsResourceMatchConfig struct {
 const (
 	metricsJsonMaxLineLength = 1_048_576
 
-	operatorServiceNamespace = "dash0.operator"
+	operatorServiceNamespace = "dash0-operator"
 
 	namespaceNameKey    = "k8s.namespace.name"
 	deploymentNameKey   = "k8s.deployment.name"

@@ -28,10 +28,14 @@ type SelfMonitoringMetricsClient interface {
 }
 
 type OTelSdkConfigInput struct {
-	export                       dash0v1alpha1.Export
-	operatorManagerDeploymentUID types.UID
-	operatorVersion              string
-	developmentMode              bool
+	export                        dash0v1alpha1.Export
+	pseudoClusterUid              string
+	operatorNamespace             string
+	operatorManagerDeploymentUID  types.UID
+	operatorManagerDeploymentName string
+	operatorManagerPodName        string
+	operatorVersion               string
+	developmentMode               bool
 }
 
 type OTelSdkStarter struct {
@@ -46,7 +50,9 @@ type OTelSdkStarter struct {
 }
 
 const (
-	meterName = "dash0.operator.manager"
+	operatorManagerServiceNamespace = "dash0-operator"
+	operatorManagerServiceName      = "operator-manager"
+	meterName                       = "dash0.operator.manager"
 )
 
 var (
@@ -78,16 +84,24 @@ func (s *OTelSdkStarter) WaitForOTelConfig(
 func (s *OTelSdkStarter) SetOTelSdkParameters(
 	ctx context.Context,
 	export dash0v1alpha1.Export,
+	pseudoClusterUID string,
+	operatorNamespace string,
 	operatorManagerDeploymentUID types.UID,
+	operatorManagerDeploymentName string,
+	operatorManagerPodName string,
 	operatorVersion string,
 	developmentMode bool,
 	logger *logr.Logger,
 ) {
 	s.oTelSdkConfigInput.Store(&OTelSdkConfigInput{
-		export:                       export,
-		operatorManagerDeploymentUID: operatorManagerDeploymentUID,
-		operatorVersion:              operatorVersion,
-		developmentMode:              developmentMode,
+		export:                        export,
+		operatorManagerDeploymentUID:  operatorManagerDeploymentUID,
+		pseudoClusterUid:              pseudoClusterUID,
+		operatorNamespace:             operatorNamespace,
+		operatorManagerDeploymentName: operatorManagerDeploymentName,
+		operatorManagerPodName:        operatorManagerPodName,
+		operatorVersion:               operatorVersion,
+		developmentMode:               developmentMode,
 	})
 	s.onParametersHaveChanged(ctx, logger)
 }
@@ -223,30 +237,45 @@ func convertExportConfigurationToOTelSDKConfig(
 		return nil, false
 	}
 
-	operatorManagerDeploymentUID := oTelSdkConfigInput.operatorManagerDeploymentUID
-	operatorVersion := oTelSdkConfigInput.operatorVersion
-	developmentMode := oTelSdkConfigInput.developmentMode
-	oTelSdkConfig := &common.OTelSdkConfig{
-		Endpoint: endpointAndHeaders.Endpoint,
-		Protocol: endpointAndHeaders.Protocol,
-		ResourceAttributes: []attribute.KeyValue{
-			{
-				Key:   semconv.ServiceNamespaceKey,
-				Value: attribute.StringValue("dash0.operator"),
-			},
-			{
-				Key:   semconv.ServiceNameKey,
-				Value: attribute.StringValue(util.OperatorManagerContainerName),
-			},
-			{
-				Key:   semconv.ServiceVersionKey,
-				Value: attribute.StringValue(operatorVersion),
-			},
-			{
-				Key:   semconv.K8SDeploymentUIDKey,
-				Value: attribute.StringValue(string(operatorManagerDeploymentUID)),
-			},
+	resourceAttributes := []attribute.KeyValue{
+		{
+			Key:   semconv.ServiceNamespaceKey,
+			Value: attribute.StringValue(operatorManagerServiceNamespace),
 		},
+		{
+			Key:   semconv.ServiceNameKey,
+			Value: attribute.StringValue(operatorManagerServiceName),
+		},
+		{
+			Key:   semconv.ServiceVersionKey,
+			Value: attribute.StringValue(oTelSdkConfigInput.operatorVersion),
+		},
+		{
+			Key:   semconv.K8SClusterUIDKey,
+			Value: attribute.StringValue(string(oTelSdkConfigInput.pseudoClusterUid)),
+		},
+		{
+			Key:   semconv.K8SNamespaceNameKey,
+			Value: attribute.StringValue(oTelSdkConfigInput.operatorNamespace),
+		},
+		{
+			Key:   semconv.K8SDeploymentNameKey,
+			Value: attribute.StringValue(oTelSdkConfigInput.operatorManagerDeploymentName),
+		},
+		{
+			Key:   semconv.K8SDeploymentUIDKey,
+			Value: attribute.StringValue(string(oTelSdkConfigInput.operatorManagerDeploymentUID)),
+		},
+		{
+			Key:   semconv.K8SPodNameKey,
+			Value: attribute.StringValue(oTelSdkConfigInput.operatorManagerPodName),
+		},
+	}
+
+	oTelSdkConfig := &common.OTelSdkConfig{
+		Endpoint:           endpointAndHeaders.Endpoint,
+		Protocol:           endpointAndHeaders.Protocol,
+		ResourceAttributes: resourceAttributes,
 	}
 	if len(endpointAndHeaders.Headers) > 0 {
 		headers := make(map[string]string)
@@ -255,7 +284,7 @@ func convertExportConfigurationToOTelSDKConfig(
 		}
 		oTelSdkConfig.Headers = headers
 	}
-	if developmentMode {
+	if oTelSdkConfigInput.developmentMode {
 		oTelSdkConfig.LogLevel = "debug"
 	}
 

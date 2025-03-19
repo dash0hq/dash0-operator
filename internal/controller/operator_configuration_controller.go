@@ -30,7 +30,11 @@ type OperatorConfigurationReconciler struct {
 	Scheme                          *runtime.Scheme
 	Recorder                        record.EventRecorder
 	BackendConnectionManager        *backendconnection.BackendConnectionManager
+	PseudoClusterUID                string
+	OperatorDeploymentNamespace     string
 	OperatorDeploymentUID           types.UID
+	OperatorDeploymentName          string
+	OperatorManagerPodName          string
 	OTelSdkStarter                  *selfmonitoringapiaccess.OTelSdkStarter
 	DanglingEventsTimeouts          *util.DanglingEventsTimeouts
 	Images                          util.Images
@@ -232,7 +236,11 @@ func (r *OperatorConfigurationReconciler) applyOperatorManagerSelfMonitoringSett
 		r.OTelSdkStarter.SetOTelSdkParameters(
 			ctx,
 			selfMonitoringAndApiAccessConfiguration.Export,
+			r.PseudoClusterUID,
+			r.OperatorDeploymentNamespace,
 			r.OperatorDeploymentUID,
+			r.OperatorDeploymentName,
+			r.OperatorManagerPodName,
 			r.Images.GetOperatorVersion(),
 			r.DevelopmentMode,
 			logger,

@@ -18,8 +18,11 @@ import (
 )
 
 const (
+	ClusterUIDTest              = "cluster-uid-test"
+	ClusterNameTest             = "cluster-name-test"
 	TestNamespaceName           = "test-namespace"
 	OperatorNamespace           = "test-operator-namespace"
+	OperatorPodName             = "test-operator-pod-name"
 	OTelCollectorNamePrefixTest = "unit-test"
 
 	CronJobNamePrefix     = "cronjob"
@@ -75,10 +78,11 @@ var (
 
 	OperatorManagerDeploymentUIDStr = "2f009c75-d69f-4b02-9d9d-fa17e76f5c1d"
 	OperatorManagerDeploymentUID    = types.UID(OperatorManagerDeploymentUIDStr)
+	OperatorManagerDeploymentName   = "unit-test-dash0-operator-controller"
 	OperatorManagerDeployment       = &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: OperatorNamespace,
-			Name:      "unit-test-dash0-operator-controller",
+			Name:      OperatorManagerDeploymentName,
 			UID:       types.UID(OperatorManagerDeploymentUIDStr),
 		},
 	}
