@@ -3,8 +3,8 @@ module github.com/dash0hq/dash0-operator/images/configreloader
 go 1.23.2
 
 require (
-	k8s.io/apimachinery v0.32.2
-	k8s.io/client-go v0.32.2
+	k8s.io/apimachinery v0.32.3
+	k8s.io/client-go v0.32.3
 )
 
 require (

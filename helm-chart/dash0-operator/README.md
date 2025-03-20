@@ -1124,7 +1124,7 @@ Furthermore, the custom resource definition for Prometheus rules needs to be ins
 ways to achieve this:
 * Install the Prometheus rules custom resource definition with the following command:
 ```console
-kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.80.1/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml
+kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.81.0/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml
 ```
 * Alternatively, install the full kube-prometheus stack Helm chart: Go to
   <https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack> and follow the
