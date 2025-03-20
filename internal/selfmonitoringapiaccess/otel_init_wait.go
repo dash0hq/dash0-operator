@@ -30,6 +30,7 @@ type SelfMonitoringMetricsClient interface {
 type OTelSdkConfigInput struct {
 	export                        dash0v1alpha1.Export
 	pseudoClusterUid              string
+	clusterName                   string
 	operatorNamespace             string
 	operatorManagerDeploymentUID  types.UID
 	operatorManagerDeploymentName string
@@ -85,6 +86,7 @@ func (s *OTelSdkStarter) SetOTelSdkParameters(
 	ctx context.Context,
 	export dash0v1alpha1.Export,
 	pseudoClusterUID string,
+	clusterName string,
 	operatorNamespace string,
 	operatorManagerDeploymentUID types.UID,
 	operatorManagerDeploymentName string,
@@ -95,9 +97,10 @@ func (s *OTelSdkStarter) SetOTelSdkParameters(
 ) {
 	s.oTelSdkConfigInput.Store(&OTelSdkConfigInput{
 		export:                        export,
-		operatorManagerDeploymentUID:  operatorManagerDeploymentUID,
+		clusterName:                   clusterName,
 		pseudoClusterUid:              pseudoClusterUID,
 		operatorNamespace:             operatorNamespace,
+		operatorManagerDeploymentUID:  operatorManagerDeploymentUID,
 		operatorManagerDeploymentName: operatorManagerDeploymentName,
 		operatorManagerPodName:        operatorManagerPodName,
 		operatorVersion:               operatorVersion,
@@ -252,7 +255,7 @@ func convertExportConfigurationToOTelSDKConfig(
 		},
 		{
 			Key:   semconv.K8SClusterUIDKey,
-			Value: attribute.StringValue(string(oTelSdkConfigInput.pseudoClusterUid)),
+			Value: attribute.StringValue(oTelSdkConfigInput.pseudoClusterUid),
 		},
 		{
 			Key:   semconv.K8SNamespaceNameKey,
@@ -270,6 +273,17 @@ func convertExportConfigurationToOTelSDKConfig(
 			Key:   semconv.K8SPodNameKey,
 			Value: attribute.StringValue(oTelSdkConfigInput.operatorManagerPodName),
 		},
+	}
+
+	if oTelSdkConfigInput.clusterName != "" {
+		resourceAttributes =
+			append(
+				resourceAttributes,
+				attribute.KeyValue{
+					Key:   semconv.K8SClusterNameKey,
+					Value: attribute.StringValue(oTelSdkConfigInput.clusterName),
+				},
+			)
 	}
 
 	oTelSdkConfig := &common.OTelSdkConfig{

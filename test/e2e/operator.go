@@ -291,7 +291,7 @@ func waitForManagerPodAndWebhookToStart(operatorNamespace string) {
 }
 
 func undeployOperator(operatorNamespace string) {
-	By("undeploying the operator controller")
+	By("undeploying the operator")
 	Expect(
 		runAndIgnoreOutput(
 			exec.Command(

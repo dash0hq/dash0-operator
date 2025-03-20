@@ -427,7 +427,7 @@ func startOperatorManager(
 	}
 
 	setupLog.Info(
-		"configuration:",
+		"operator manager configuration:",
 
 		"operator image",
 		envVars.operatorImage,
@@ -1047,6 +1047,7 @@ func triggerSecretRefExchangeAndStartSelfMonitoringIfPossible(
 		ctx,
 		selfMonitoringConfiguration.Export,
 		pseudoClusterUID,
+		operatorConfigurationResource.Spec.ClusterName,
 		operatorDeploymentSelfReference.Namespace,
 		operatorDeploymentSelfReference.UID,
 		operatorDeploymentSelfReference.Name,

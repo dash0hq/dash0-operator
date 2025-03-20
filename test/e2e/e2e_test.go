@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
+	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
@@ -97,7 +98,9 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 	// configuration are grouped together etc. This greatly helps with the test execution speed.
 
 	Describe("with an existing operator deployment and operation configuration resource", func() {
+		var operatorStartupTimeLowerBound time.Time
 		BeforeAll(func() {
+			operatorStartupTimeLowerBound = time.Now()
 			By("deploy the Dash0 operator")
 			deployOperatorWithDefaultAutoOperationConfiguration(
 				operatorNamespace,
@@ -223,6 +226,31 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				})
 			})
 
+			Describe("self-monitoring log collection", func() {
+				It("has operator manager logs", func() {
+					By("checking for the log record from the operator start")
+					Eventually(func(g Gomega) {
+						verifyAtLeastOneLogRecord(
+							g,
+							selfMonitoringLogsResourceMatcher,
+							func(logRecord plog.LogRecord, matchResult *ObjectMatchResult[plog.ResourceLogs, plog.LogRecord]) {
+								expectedLogBody := "operator manager configuration:"
+								logBody := logRecord.Body().AsString()
+								if logBody == expectedLogBody {
+									matchResult.addPassedAssertion(logBodyKey)
+								} else {
+									matchResult.addFailedAssertion(
+										logBodyKey,
+										fmt.Sprintf("expected %s but it was %s", expectedLogBody, logBody),
+									)
+								}
+							},
+							operatorStartupTimeLowerBound,
+						)
+					}, 15*time.Second, pollingInterval).Should(Succeed())
+				})
+			})
+
 			Describe("log collection", func() {
 				It("does not collect the same logs twice from a file when the collector pod churns", func() {
 					testId := generateTestId(runtimeTypeNodeJs, workloadTypeDeployment)
@@ -264,10 +292,15 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 						fmt.Sprintf("id=%s", testId),
 					)
 
-					By("waiting for the the log to appear")
-
-					Eventually(func(g Gomega) error {
-						return verifyExactlyOneLogRecordIsReported(g, testId, timestampLowerBound)
+					By("waiting for the log to appear")
+					Eventually(func(g Gomega) {
+						verifyExactlyOneLogRecord(
+							g,
+							runtimeTypeNodeJs,
+							workloadTypeDeployment,
+							testId,
+							timestampLowerBound,
+						)
 					}, 15*time.Second, pollingInterval).Should(Succeed())
 
 					By("churning collector pods")
@@ -276,8 +309,14 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					waitForCollectorToStart(operatorNamespace, operatorHelmChart)
 
 					By("verifying that the previous log message is not reported again (checking for 30 seconds)")
-					Consistently(func(g Gomega) error {
-						return verifyExactlyOneLogRecordIsReported(g, testId, timestampLowerBound)
+					Consistently(func(g Gomega) {
+						verifyExactlyOneLogRecord(
+							g,
+							runtimeTypeNodeJs,
+							workloadTypeDeployment,
+							testId,
+							timestampLowerBound,
+						)
 					}, 30*time.Second, pollingInterval).Should(Succeed())
 				})
 			})
@@ -351,7 +390,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 						//  to be true
 						//  In [It] at: /Users/bastian/dco/test/e2e/verify_instrumentation.go:64 @ 11/26/24 10:28:53.645
 						// No amount of retrying helps. Once the collector is in this state, all spans lack that resource
-						// attribute. See comment in spans.go#resourceSpansHaveExpectedResourceAttributes.
+						// attribute. See comment in spans.go#workloadSpansResourceMatcher.
 						runInParallel(workloadTestConfigs, func(c workloadTestConfig) {
 							By(fmt.Sprintf("verifying that the %s %s has been instrumented by the controller",
 								c.runtime.runtimeTypeLabel,
@@ -893,7 +932,7 @@ trace_statements:
 					query := fmt.Sprintf("id=%s", testId)
 					sendRequest(g, runtimeTypeNodeJs, workloadTypeDeployment, route, query)
 					resourceMatchFn :=
-						resourceSpansHaveExpectedResourceAttributes(runtimeTypeNodeJs, workloadTypeDeployment, false)
+						workloadSpansResourceMatcher(runtimeTypeNodeJs, workloadTypeDeployment, false)
 					spanMatchFn := func(span ptrace.Span, matchResult *ObjectMatchResult[ptrace.ResourceSpans, ptrace.Span]) {
 						if span.Kind() == ptrace.SpanKindServer {
 							matchResult.addPassedAssertion(spanKindKey)
