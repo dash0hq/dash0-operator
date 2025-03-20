@@ -76,6 +76,18 @@ func (mrl *MatchResultList[R, O]) expectAtLeastOneMatch(g Gomega, message string
 	))
 }
 
+func (mrl *MatchResultList[R, O]) expectExactlyOneMatch(g Gomega, message string) {
+	mrl.expectAtLeastOneMatch(g, message)
+	numberOfMatches := mrl.numberOfMatches(g)
+	g.Expect(numberOfMatches).To(Equal(1),
+		fmt.Sprintf(
+			"%s -- expected exactly one matching object but there were %d matching objects",
+			message,
+			numberOfMatches,
+		),
+	)
+}
+
 func (mrl *MatchResultList[R, O]) expectZeroMatches(g Gomega, message string) {
 	matchingResults := make([]ObjectMatchResult[R, O], 0)
 	for _, omr := range mrl.objectResults {
@@ -94,6 +106,16 @@ func (mrl *MatchResultList[R, O]) expectZeroMatches(g Gomega, message string) {
 			),
 		)
 	}
+}
+
+func (mrl *MatchResultList[R, O]) numberOfMatches(g Gomega) int {
+	numMatches := 0
+	for _, omr := range mrl.objectResults {
+		if omr.isMatch(g) {
+			numMatches++
+		}
+	}
+	return numMatches
 }
 
 // ResourceMatchResult represents results for a single resource.

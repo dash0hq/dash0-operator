@@ -208,6 +208,7 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		r.applyOperatorManagerSelfMonitoringSettings(
 			ctx,
 			selfMonitoringConfiguration,
+			operatorConfigurationResource.Spec.ClusterName,
 			&logger,
 		)
 	}
@@ -230,6 +231,7 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 func (r *OperatorConfigurationReconciler) applyOperatorManagerSelfMonitoringSettings(
 	ctx context.Context,
 	selfMonitoringAndApiAccessConfiguration selfmonitoringapiaccess.SelfMonitoringConfiguration,
+	clusterName string,
 	logger *logr.Logger,
 ) {
 	if selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled {
@@ -237,6 +239,7 @@ func (r *OperatorConfigurationReconciler) applyOperatorManagerSelfMonitoringSett
 			ctx,
 			selfMonitoringAndApiAccessConfiguration.Export,
 			r.PseudoClusterUID,
+			clusterName,
 			r.OperatorDeploymentNamespace,
 			r.OperatorDeploymentUID,
 			r.OperatorDeploymentName,

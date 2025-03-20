@@ -7,10 +7,10 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"strings"
 	"time"
 
 	"go.opentelemetry.io/collector/pdata/ptrace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.27.0"
 
 	. "github.com/onsi/gomega"
 )
@@ -18,10 +18,6 @@ import (
 const (
 	tracesJsonMaxLineLength = 1_048_576
 
-	clusterNameKey = "k8s.cluster.name"
-	podNameKey     = "k8s.pod.name"
-
-	timestampKey     = "timestamp"
 	spanKindKey      = "span.kind"
 	httpTargetAttrib = "http.target"
 	httpRouteAttrib  = "http.route"
@@ -106,7 +102,7 @@ func sendRequestAndFindMatchingSpans(
 	}
 	var resourceMatchFn func(ptrace.ResourceSpans, *ResourceMatchResult[ptrace.ResourceSpans])
 	if checkResourceAttributes {
-		resourceMatchFn = resourceSpansHaveExpectedResourceAttributes(runtime, workloadType, expectClusterName)
+		resourceMatchFn = workloadSpansResourceMatcher(runtime, workloadType, expectClusterName)
 	}
 	return fileHasMatchingSpan(
 		g,
@@ -148,9 +144,6 @@ func fileHasMatchingSpan(
 			timestampLowerBound,
 			&matchResults,
 		)
-		if matchResults.hasMatch(g) {
-			break
-		}
 	}
 
 	g.Expect(scanner.Err()).NotTo(HaveOccurred())
@@ -177,17 +170,16 @@ func hasMatchingSpans(
 			scopeSpan := resourceSpan.ScopeSpans().At(j)
 			for k := 0; k < scopeSpan.Spans().Len(); k++ {
 				span := scopeSpan.Spans().At(k)
+				if !span.StartTimestamp().AsTime().After(timestampLowerBound) {
+					// This span is too old, it is probably from a previously running test case, ignore it.
+					continue
+				}
 				spanMatchResult := newObjectMatchResult[ptrace.ResourceSpans, ptrace.Span](
 					span.Name(),
 					resourceSpan,
 					resourceMatchResult,
 					span,
 				)
-				if !span.StartTimestamp().AsTime().After(timestampLowerBound) {
-					// This span is too old, it is probably from a previously running test case, ignore it.
-					continue
-				}
-
 				spanMatchFn(span, &spanMatchResult)
 				allMatchResults.addResultForObject(spanMatchResult)
 			}
@@ -196,25 +188,20 @@ func hasMatchingSpans(
 }
 
 //nolint:all
-func resourceSpansHaveExpectedResourceAttributes(runtime runtimeType, workloadType workloadType, expectClusterName bool) func(
+func workloadSpansResourceMatcher(runtime runtimeType, workloadType workloadType, expectClusterName bool) func(
 	ptrace.ResourceSpans,
 	*ResourceMatchResult[ptrace.ResourceSpans],
 ) {
 	return func(resourceSpans ptrace.ResourceSpans, matchResult *ResourceMatchResult[ptrace.ResourceSpans]) {
-		attributes := resourceSpans.Resource().Attributes()
+		resourceAttributes := resourceSpans.Resource().Attributes()
 
 		if expectClusterName {
-			expectedClusterName := e2eKubernetesContext
-			actualClusterName, hasClusterNameAttribute := attributes.Get(clusterNameKey)
-			if hasClusterNameAttribute {
-				if actualClusterName.Str() == expectedClusterName {
-					matchResult.addPassedAssertion(clusterNameKey)
-				} else {
-					matchResult.addFailedAssertion(clusterNameKey, fmt.Sprintf("expected %s but it was %s", expectedClusterName, actualClusterName.Str()))
-				}
-			} else {
-				matchResult.addFailedAssertion(clusterNameKey, fmt.Sprintf("expected %s but the span has no such resource attribute", expectedClusterName))
-			}
+			verifyResourceAttributeEquals(
+				resourceAttributes,
+				string(semconv.K8SClusterNameKey),
+				e2eKubernetesContext,
+				matchResult,
+			)
 		}
 
 		// Note: On kind clusters, the workload type attribute (k8s.deployment.name) etc. is often missing. This needs
@@ -223,37 +210,29 @@ func resourceSpansHaveExpectedResourceAttributes(runtime runtimeType, workloadTy
 			// There is no k8s.replicaset.name attribute.
 			matchResult.addSkippedAssertion("k8s.replicaset.name", "not checked, there is no k8s.replicaset.name attribute")
 		} else {
-			workloadNameKey := fmt.Sprintf("k8s.%s.name", workloadType.workloadTypeString)
-			expectedWorkloadName := workloadName(runtime, workloadType)
-			actualWorkloadName, hasWorkloadName := attributes.Get(workloadNameKey)
-			if !hasWorkloadName {
-				matchResult.addFailedAssertion(workloadNameKey, fmt.Sprintf("expected %s but the span has no such resource attribute", expectedWorkloadName))
-			} else if actualWorkloadName.Str() == expectedWorkloadName {
-				matchResult.addPassedAssertion(workloadNameKey)
-			} else {
-				matchResult.addFailedAssertion(workloadNameKey, fmt.Sprintf("expected %s but it was %s", expectedWorkloadName, actualWorkloadName.Str()))
-			}
+			verifyResourceAttributeEquals(
+				resourceAttributes,
+				fmt.Sprintf("k8s.%s.name", workloadType.workloadTypeString),
+				workloadName(runtime, workloadType),
+				matchResult,
+			)
 		}
 
 		expectedPodName := workloadName(runtime, workloadType)
-		expectedPodPrefix := fmt.Sprintf("%s-", expectedPodName)
-		actualPodName, hasPodAttribute := attributes.Get(podNameKey)
-		if hasPodAttribute {
-			if workloadType.workloadTypeString == "pod" {
-				if actualPodName.Str() == expectedPodName {
-					matchResult.addPassedAssertion(podNameKey)
-				} else {
-					matchResult.addFailedAssertion(podNameKey, fmt.Sprintf("expected %s but it was %s", expectedPodName, actualPodName.Str()))
-				}
-			} else {
-				if strings.Contains(actualPodName.Str(), expectedPodPrefix) {
-					matchResult.addPassedAssertion(podNameKey)
-				} else {
-					matchResult.addFailedAssertion(podNameKey, fmt.Sprintf("expected to contain %s but it was %s", expectedPodName, actualPodName.Str()))
-				}
-			}
+		if workloadType.workloadTypeString == "pod" {
+			verifyResourceAttributeEquals(
+				resourceAttributes,
+				string(semconv.K8SPodNameKey),
+				expectedPodName,
+				matchResult,
+			)
 		} else {
-			matchResult.addFailedAssertion(podNameKey, fmt.Sprintf("expected %s but the span has no such resource attribute", expectedPodName))
+			verifyResourceAttributeStartsWith(
+				resourceAttributes,
+				string(semconv.K8SPodNameKey),
+				fmt.Sprintf("%s-", expectedPodName),
+				matchResult,
+			)
 		}
 	}
 }
