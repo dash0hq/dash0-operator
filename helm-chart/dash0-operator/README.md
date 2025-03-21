@@ -2278,3 +2278,51 @@ The `hostmetrics` receiver will be disabled when using Docker as the container r
 ## Notes on Running The Operator on Minikube
 
 The `hostmetrics` receiver will be disabled when using Docker as the container runtime.
+
+## Troubleshooting
+
+### Create Heap Dumps
+
+The instructions in this section are mainly meant to be used in a shared troubleshooting session with Dash0 support.
+
+_To get a heap dump from the operator manager container:_
+1. Deploy the operator manager with the additional Helm value `operator.pprofPort=1777`.
+2. Take note of the namespace the operator is deployed in (default: `dash0-system`).
+3. Run `kubectl get pod -n <operator-namespace> -l app.kubernetes.io/component=controller` to get the name of the
+   operator manager pod (usually something like `dash0-operator-controller-xxxxxxxxx-xxxxx`, but the name depends on the
+   Helm release name).
+4. Using the information from the previous two steps, run
+   `kubectl debug -n <operator-namespace> -it <operator-manager-pod-name> --image=quay.io/curl/curl --profile=general --custom=<(echo '{"securityContext":{"runAsNonRoot":false,"runAsUser":0}}') -- sh`
+  to get an interactive shell in the operator manager container.
+  `kubectl debug` will attach a debug container with the image `quay.io/curl/curl` to the pod, take note of the
+   container name (something like `debugger-xxxxx`).
+5. Run `curl http://localhost:1777/debug/pprof/heap > /tmp/heap.out` in this shell.
+   Leave the container running for the next step, i.e. do not exit the shell just yet.
+6. In a separate shell, while the `kubectl debug` shell from the previous two steps is still running, run
+  `kubectl cp -n <operator-namespace> -c <debug-containr-name> <operator-manager-pod-name>:/tmp/heap.out dash0-operator-manager-heap.out`.
+  (The command might print `tar: removing leading '/' from member names` to stdout, this can be ignored.)
+7. Exit the `kubectl debug` shell.
+8. Redeploy the operator without the Helm setting `operator.pprofPort=1777`.
+
+_To get a heap dump from a OpenTelemetry collector daemonset container:_
+1. Deploy the operator manager with the additional Helm value `operator.collectors.enablePprofExtension=true`.
+2. Take note of the namespace the operator is deployed in (default: `dash0-system`).
+3. Run `kubectl top pod -n <operator-namespace> -l app.kubernetes.io/component=agent-collector` to get the name of a
+   collector pod that has high memory usage (usually something like
+   `dash0-operator-opentelemetry-collector-agent-daemonset-xxxxx`, but the name depends on the Helm release name).
+4. Using the information from the previous two steps, run
+   `kubectl debug -n <operator-namespace> -it <collector-daemonset-pod-name> --image=quay.io/curl/curl --profile=general --custom=<(echo '{"securityContext":{"runAsNonRoot":false,"runAsUser":0}}') -- sh`
+   to get an interactive shell in the collector container.
+   `kubectl debug` will attach a debug container with the image `quay.io/curl/curl` to the pod, take note of the
+   container name (something like `debugger-xxxxx`).
+5. Run `curl http://localhost:1777/debug/pprof/heap > /tmp/heap.out` in this shell.
+   Leave the container running for the next step, i.e. do not exit the shell just yet.
+6. In a separate shell, while the `kubectl debug` shell from the previous two steps is still running, run
+   `kubectl cp -n <operator-namespace> -c <debug-containr-name> <collector-daemonset-pod-name>:/tmp/heap.out dash0-daemonset-collector.out`
+   (The command might print `tar: removing leading '/' from member names` to stdout, this can be ignored.)
+7. Exit the `kubectl debug` shell.
+8. Redeploy the operator without the Helm setting `operator.collectors.enablePprofExtension=true`.
+
+_To get a heap dump from a OpenTelemetry collector deployment container:_
+* Follow the same steps as for the collector daemonset, but use
+  `-l app.kubernetes.io/component=cluster-metrics-collector` in step (3.).

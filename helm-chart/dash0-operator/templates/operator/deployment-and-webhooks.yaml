@@ -213,6 +213,10 @@ spec:
         - name: DASH0_DEVELOPMENT_MODE
           value: {{ .Values.operator.developmentMode | toString | quote }}
         {{- end }}
+        {{- if .Values.operator.pprofPort }}
+        - name: DASH0_PPROF_PORT
+          value: {{ .Values.operator.pprofPort | toString | quote }}
+        {{- end }}
         {{- if .Values.operator.instrumentation.debug }}
         - name: DASH0_INSTRUMENTATION_DEBUG
           value: {{ .Values.operator.instrumentation.debug | toString | quote }}

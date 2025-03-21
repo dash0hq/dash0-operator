@@ -372,6 +372,13 @@ operator:
   #   "Notes on Running The Operator on Docker Desktop"
   developmentMode: false
 
+  # If set to a value, the operator manager will enable pprof and make it available on the specificied port.
+  # Note that this setting is independent of operator.collectors.enablePprofExtension, which enables pprof for the
+  # collectors.
+  # The default is null, do not override this unless explicitly instructed by Dash0 support. Remove the override
+  # after the operator troubleshooting is finished.
+  pprofPort: null
+
   # Settings related to the modification and instrumentation of workloads in the cluster.
   instrumentation:
     # An optional delay to stagger access to the Kubernetes API server to instrument existing workloads at operator
