@@ -1,4 +1,4 @@
-FROM --platform=${BUILDPLATFORM} golang:1.24-alpine AS builder
+FROM --platform=${BUILDPLATFORM} golang:1.24-alpine3.21 AS builder
 
 RUN apk add --update git make yq && apk cache clean
 
@@ -15,7 +15,7 @@ ARG TARGETARCH
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} builder --config=builder/config.yaml \
  && chmod u+x /src/dist/dash0-operator-collector
 
-FROM alpine:3.20.2
+FROM alpine:3.21.3
 COPY src/image/entrypoint.sh /entrypoint.sh
 COPY --from=builder /src/dist/dash0-operator-collector otelcol
 USER 65532:65532

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 ARG instrumentation_image=dash0-instrumentation:latest
-ARG base_image=node:20.18-bookworm
+ARG base_image=node:20.19.0-bookworm
 
 FROM ${instrumentation_image} AS init
 
