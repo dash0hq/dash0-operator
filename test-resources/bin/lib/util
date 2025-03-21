@@ -456,6 +456,12 @@ run_helm() {
   if [[ "${OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED:-}" = "true" ]]; then
     helm_install_command+=" --set operator.collectors.debugVerbosityDetailed=true"
   fi
+  if [[ -n "${OPERATOR_MANAGER_PPROF_PORT:-}" ]]; then
+    helm_install_command+=" --set operator.pprofPort=$OPERATOR_MANAGER_PPROF_PORT"
+  fi
+  if [[ "${COLLECTOR_ENABLE_PPROF:-}" = "true" ]]; then
+    helm_install_command+=" --set operator.collectors.enablePprofExtension=true"
+  fi
   if [[ -n "${OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE:-}" ]]; then
     helm_install_command+=" --set operator.collectors.sendBatchMaxSize=$OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE"
   fi

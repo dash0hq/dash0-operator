@@ -6,9 +6,11 @@ package startup
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"flag"
 	"fmt"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"strconv"
 	"strings"
@@ -134,6 +136,7 @@ const (
 	oTelCollectorNodeLocalBaseUrlPattern = "http://$(%s):%d"
 
 	developmentModeEnvVarName                 = "DASH0_DEVELOPMENT_MODE"
+	pprofPortEnvVarName                       = "DASH0_PPROF_PORT"
 	instrumentationDebugEnvVarName            = "DASH0_INSTRUMENTATION_DEBUG"
 	disableCollectorResourceWatchesEnvVarName = "DASH0_DISABLE_COLLECTOR_RESOURCE_WATCHES"
 	debugVerbosityDetailedEnvVarName          = "OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED"
@@ -190,6 +193,20 @@ func Start() {
 	// Maintenance note: setupLog is not yet initialized before the call to setUpLogging.
 	delegatingZapCoreWrapper := setUpLogging(crZapOpts)
 	// setupLog is initialized after this point and can be used
+
+	pprofPort := os.Getenv(pprofPortEnvVarName)
+	if pprofPort != "" {
+		go func() {
+			setupLog.Info("starting pprof server", "port", pprofPort)
+			if err := http.ListenAndServe(fmt.Sprintf(":%s", pprofPort), nil); err != nil {
+				if errors.Is(err, http.ErrServerClosed) {
+					setupLog.Info("pprof server has been closed")
+				} else {
+					setupLog.Error(err, "error in pprof server")
+				}
+			}
+		}()
+	}
 
 	if cliArgs.isUninstrumentAll {
 		if err := deleteMonitoringResourcesInAllNamespaces(&setupLog); err != nil {
