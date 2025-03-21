@@ -1,6 +1,6 @@
 module github.com/dash0hq/dash0-operator/images/configreloader
 
-go 1.23.2
+go 1.24.1
 
 require (
 	k8s.io/apimachinery v0.32.3
