@@ -903,8 +903,7 @@ func findDeploymentReference(
 	}
 	if deploymentReference.UID == "" {
 		msg := fmt.Sprintf("reference for deployment %s (%s) has no UID", deploymentName, fullyQualifiedName)
-		//nolint:govet,staticcheck
-		err := fmt.Errorf(msg)
+		err := fmt.Errorf("%s", msg)
 		logger.Error(err, msg)
 		return nil, err
 	}

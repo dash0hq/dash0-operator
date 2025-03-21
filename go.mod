@@ -1,6 +1,6 @@
 module github.com/dash0hq/dash0-operator
 
-go 1.23.4
+go 1.24.1
 
 require (
 	github.com/Masterminds/sprig/v3 v3.3.0
