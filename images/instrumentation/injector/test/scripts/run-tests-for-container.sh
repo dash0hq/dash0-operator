@@ -27,9 +27,9 @@ if [ -z "${LIBC:-}" ]; then
   LIBC=glibc
 fi
 
-base_image=node:20.18-bookworm
+base_image=node:20.19-bookworm
 if [[ "$LIBC" == "musl" ]]; then
-  base_image=node:20.18-alpine3.20
+  base_image=node:20.19.0-alpine3.21
 fi
 
 dockerfile_name="docker/Dockerfile-test"
