@@ -7,17 +7,25 @@ import (
 	"sync"
 )
 
-// Mru is a simple, go-routine safe, ordered most-recently-used cache.
+// Mru is a simple, go-routine safe, ordered, most-recently-used cache.
 type Mru[T any] struct {
 	elements []T
 	limit    int
 	mu       sync.RWMutex
 }
 
+const (
+	defaultSizeLimit = 1000
+)
+
+func NewMruWithDefaultSizeLimit[T any]() *Mru[T] {
+	return NewMru[T](defaultSizeLimit)
+}
+
 func NewMru[T any](limit int) *Mru[T] {
 	return &Mru[T]{
 		limit:    limit,
-		elements: make([]T, 0, limit),
+		elements: make([]T, 0),
 	}
 }
 
@@ -41,13 +49,13 @@ func (mru *Mru[T]) Take() *T {
 	return &el
 }
 
-func (mru *Mru[T]) ForAllAndClean(f func(T)) {
+func (mru *Mru[T]) ForAllAndClear(f func(T)) {
 	mru.mu.Lock()
 	defer mru.mu.Unlock()
 	for _, element := range mru.elements {
 		f(element)
 	}
-	mru.elements = make([]T, 0, mru.limit)
+	mru.elements = make([]T, 0)
 }
 
 func (mru *Mru[T]) Len() int {

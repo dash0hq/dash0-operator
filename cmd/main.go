@@ -110,7 +110,7 @@ const (
 
 var (
 	scheme   = runtime.NewScheme()
-	setupLog = ctrl.Log.WithName("setup")
+	setupLog logr.Logger
 
 	startupTasksK8sClient           client.Client
 	isDocker                        bool
@@ -251,7 +251,9 @@ func main() {
 	developmentModeRaw, isSet := os.LookupEnv(developmentModeEnvVarName)
 	developmentMode := isSet && strings.ToLower(developmentModeRaw) == "true"
 
-	delegatingZapCore := setUpLogging(developmentMode)
+	// Maintenance note: setupLog is not yet initialized before the call to setUpLogging.
+	delegatingZapCoreWrapper := setUpLogging(developmentMode)
+	// setupLog is initialized after this point and can be used
 
 	if isUninstrumentAll {
 		if err := deleteMonitoringResourcesInAllNamespaces(&setupLog); err != nil {
@@ -336,7 +338,7 @@ func main() {
 		probeAddr,
 		enableLeaderElection,
 		operatorConfigurationValues,
-		delegatingZapCore,
+		delegatingZapCoreWrapper,
 		pseudoClusterUID,
 		developmentMode,
 	); err != nil {
@@ -345,7 +347,7 @@ func main() {
 	}
 }
 
-func setUpLogging(developmentMode bool) *zaputil.DelegatingZapCore {
+func setUpLogging(developmentMode bool) *zaputil.DelegatingZapCoreWrapper {
 	var opts crzap.Options
 	if developmentMode {
 		opts = crzap.Options{
@@ -368,7 +370,7 @@ func setUpLogging(developmentMode bool) *zaputil.DelegatingZapCore {
 	o.ZapOpts = append(o.ZapOpts, zap.ErrorOutput(sink))
 	defaultZapCore := zapcore.NewCore(&crzap.KubeAwareEncoder{Encoder: o.Encoder, Verbose: o.Development}, sink, o.Level)
 
-	delegatingZapCore := zaputil.NewDelegatingZapCore()
+	delegatingZapCoreWrapper := zaputil.NewDelegatingZapCoreWrapper()
 
 	// Multiplex log records to stdout (defaultZapCore) and also to the OTel log SDK (delegatingZapCore). Additional
 	// plot twist: The OTel logger will only be initialized later, potentially after the operator configuration has been
@@ -376,7 +378,7 @@ func setUpLogging(developmentMode bool) *zaputil.DelegatingZapCore {
 	// is actually initialized, then re-spool them to the OTel SDK logger.
 	teeCore := zapcore.NewTee(
 		defaultZapCore,
-		delegatingZapCore,
+		delegatingZapCoreWrapper.RootDelegatingZapCore,
 	)
 	crZapRawLogger := zaputil.NewRawFromCore(o, teeCore)
 	zapLogger := zapr.NewLogger(crZapRawLogger)
@@ -384,7 +386,9 @@ func setUpLogging(developmentMode bool) *zaputil.DelegatingZapCore {
 	// Set the created multiplexing logger as the logger for the controller-runtime package.
 	ctrl.SetLogger(zapLogger)
 
-	return delegatingZapCore
+	setupLog = ctrl.Log.WithName("setup")
+
+	return delegatingZapCoreWrapper
 }
 
 func startOperatorManager(
@@ -396,7 +400,7 @@ func startOperatorManager(
 	probeAddr string,
 	enableLeaderElection bool,
 	operatorConfigurationValues *startup.OperatorConfigurationValues,
-	delegatingZapCore *zaputil.DelegatingZapCore,
+	delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper,
 	pseudoClusterUID string,
 	developmentMode bool,
 ) error {
@@ -463,7 +467,7 @@ func startOperatorManager(
 		mgr,
 		clientset,
 		operatorConfigurationValues,
-		delegatingZapCore,
+		delegatingZapCoreWrapper,
 		pseudoClusterUID,
 		developmentMode,
 	)
@@ -652,7 +656,7 @@ func startDash0Controllers(
 	mgr manager.Manager,
 	clientset *kubernetes.Clientset,
 	operatorConfigurationValues *startup.OperatorConfigurationValues,
-	delegatingZapCore *zaputil.DelegatingZapCore,
+	delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper,
 	pseudoClusterUID string,
 	developmentMode bool,
 ) error {
@@ -750,7 +754,7 @@ func startDash0Controllers(
 	}
 	controller.StartProcessingThirdPartySynchronizationQueue(thirdPartyResourceSynchronizationQueue, &setupLog)
 
-	oTelSdkStarter = selfmonitoringapiaccess.NewOTelSdkStarter(delegatingZapCore)
+	oTelSdkStarter = selfmonitoringapiaccess.NewOTelSdkStarter(delegatingZapCoreWrapper)
 
 	operatorConfigurationReconciler := &controller.OperatorConfigurationReconciler{
 		Client:    k8sClient,

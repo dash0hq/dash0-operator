@@ -59,13 +59,13 @@ var _ = Describe("MRU", func() {
 		Expect(mru.elements[2]).To(Equal(5))
 	})
 
-	It("ForAllAndClean", func() {
+	It("ForAllAndClear", func() {
 		mru := NewMru[int](3)
 		mru.Put(1)
 		mru.Put(2)
 		mru.Put(3)
 		var sum int
-		mru.ForAllAndClean(func(element int) {
+		mru.ForAllAndClear(func(element int) {
 			sum += element
 		})
 		Expect(sum).To(Equal(6))

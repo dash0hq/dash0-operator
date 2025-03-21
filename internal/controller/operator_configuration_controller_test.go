@@ -65,7 +65,7 @@ type SelfMonitoringTestConfig struct {
 
 var (
 	reconciler                   *OperatorConfigurationReconciler
-	delegatingZapCore            *zaputil.DelegatingZapCore
+	delegatingZapCoreWrapper     *zaputil.DelegatingZapCoreWrapper
 	apiClient1                   *DummyApiClient
 	apiClient2                   *DummyApiClient
 	selfMonitoringMetricsClient1 *DummySelfMonitoringMetricsClient
@@ -409,10 +409,10 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 							selfMonitoringMetricsClient2,
 						} {
 							if config.expectedSdkIsActive {
-								g.Expect(delegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
+								g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
 								g.Expect(smc.initializeSelfMonitoringMetrics).To(Equal(1))
 							} else {
-								g.Expect(delegatingZapCore.ForTestOnlyHasDelegate()).To(BeFalse())
+								g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeFalse())
 								g.Expect(smc.initializeSelfMonitoringMetrics).To(Equal(0))
 							}
 						}
@@ -522,7 +522,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 			verifyOperatorConfigurationResourceIsAvailable(ctx)
 
 			Eventually(func(g Gomega) {
-				g.Expect(delegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
+				g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
 				sdkIsActive, activeOTelSdkConfig, _ :=
 					reconciler.OTelSdkStarter.ForTestOnlyGetState()
 				g.Expect(sdkIsActive).To(BeTrue())
@@ -546,7 +546,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 
 			// verify the OTel SDK has been shut down
 			Eventually(func(g Gomega) {
-				g.Expect(delegatingZapCore.ForTestOnlyHasDelegate()).To(BeFalse())
+				g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeFalse())
 				sdkIsActive, activeOTelSdkConfig, _ :=
 					reconciler.OTelSdkStarter.ForTestOnlyGetState()
 				g.Expect(activeOTelSdkConfig).ToNot(BeNil())
@@ -566,7 +566,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 
 			// verify the OTel SDK has been shut down
 			Eventually(func(g Gomega) {
-				g.Expect(delegatingZapCore.ForTestOnlyHasDelegate()).To(BeFalse())
+				g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeFalse())
 				sdkIsActive, _, _ :=
 					reconciler.OTelSdkStarter.ForTestOnlyGetState()
 				g.Expect(sdkIsActive).To(BeFalse())
@@ -584,7 +584,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 
 			// verify the OTel SDK has been started again
 			Eventually(func(g Gomega) {
-				g.Expect(delegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
+				g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
 				sdkIsActive, activeOTelSdkConfig, _ :=
 					reconciler.OTelSdkStarter.ForTestOnlyGetState()
 				g.Expect(sdkIsActive).To(BeTrue())
@@ -629,7 +629,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 			// SDK has been shut down before being restarted, but we can verify the new config values. The aspect of
 			// shutting it down and actually restarting it is covered in otel_init_wait_test.go
 			Eventually(func(g Gomega) {
-				g.Expect(delegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
+				g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
 
 				sdkIsActive, activeOTelSdkConfig, _ :=
 					reconciler.OTelSdkStarter.ForTestOnlyGetState()
@@ -666,7 +666,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 			}
 
 			Eventually(func(g Gomega) {
-				g.Expect(delegatingZapCore.ForTestOnlyHasDelegate()).To(BeFalse())
+				g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeFalse())
 				sdkIsActive, activeOTelSdkConfig, authTokenFromSecretRef :=
 					reconciler.OTelSdkStarter.ForTestOnlyGetState()
 				g.Expect(sdkIsActive).To(BeFalse())
@@ -757,8 +757,8 @@ func createReconciler() *OperatorConfigurationReconciler {
 		Clientset:              clientset,
 		OTelColResourceManager: oTelColResourceManager,
 	}
-	delegatingZapCore = zaputil.NewDelegatingZapCore()
-	otelSdkStarter := selfmonitoringapiaccess.NewOTelSdkStarter(delegatingZapCore)
+	delegatingZapCoreWrapper = zaputil.NewDelegatingZapCoreWrapper()
+	otelSdkStarter := selfmonitoringapiaccess.NewOTelSdkStarter(delegatingZapCoreWrapper)
 
 	return &OperatorConfigurationReconciler{
 		Client:    k8sClient,
