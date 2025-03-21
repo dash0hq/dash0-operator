@@ -16,7 +16,7 @@ import (
 type DelegatingZapCore struct {
 	delegate           atomic.Pointer[zapcore.Core]
 	bufferSize         int
-	bufferedLogRecords *Mru[entryWithFields]
+	bufferedLogRecords *Mru[*entryWithFields]
 	level              zapcore.Level
 	fields             []zapcore.Field
 	clones             []*DelegatingZapCore
@@ -123,7 +123,7 @@ func (dc *DelegatingZapCore) Write(entry zapcore.Entry, fields []zapcore.Field) 
 	}
 
 	finalFields := slices.Concat(dc.fields, fields)
-	dc.bufferedLogRecords.Put(entryWithFields{entry: entry, fields: finalFields})
+	dc.bufferedLogRecords.Put(&entryWithFields{entry: entry, fields: finalFields})
 	return nil
 }
 
@@ -144,9 +144,10 @@ func (dc *DelegatingZapCore) Sync() error {
 // The SetDelegate call will also be propagated to all clones created via With previous to this call.
 func (dc *DelegatingZapCore) SetDelegate(delegate zapcore.Core) {
 	dc.delegate.Store(&delegate)
-	dc.bufferedLogRecords.ForAllAndClean(func(entry entryWithFields) {
+	dc.bufferedLogRecords.ForAll(func(entry *entryWithFields) {
 		_ = delegate.Write(entry.entry, entry.fields)
 	})
+	dc.bufferedLogRecords = nil
 
 	for _, clone := range dc.clones {
 		clone.SetDelegate(delegate)
@@ -161,12 +162,14 @@ func (dc *DelegatingZapCore) UnsetDelegate() {
 	for _, clone := range dc.clones {
 		clone.UnsetDelegate()
 	}
+
+	dc.bufferedLogRecords = createBuffer(dc.bufferSize)
 }
 
 func (dc *DelegatingZapCore) ForTestOnlyHasDelegate() bool {
 	return dc.delegate.Load() != nil
 }
 
-func createBuffer(bufferSize int) *Mru[entryWithFields] {
-	return NewMru[entryWithFields](bufferSize)
+func createBuffer(bufferSize int) *Mru[*entryWithFields] {
+	return NewMru[*entryWithFields](bufferSize)
 }
