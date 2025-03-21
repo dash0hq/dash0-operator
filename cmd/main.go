@@ -6,11 +6,15 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
+
+	"net/http"
+	_ "net/http/pprof"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -99,6 +103,7 @@ const (
 	k8sPodIpEnvVarName                             = "K8S_POD_IP"
 
 	developmentModeEnvVarName        = "DASH0_DEVELOPMENT_MODE"
+	pprofPortEnvVarName              = "PPROF_PORT"
 	debugVerbosityDetailedEnvVarName = "OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED"
 	sendBatchMaxSizeEnvVarName       = "OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE"
 
@@ -250,6 +255,20 @@ func main() {
 
 	developmentModeRaw, isSet := os.LookupEnv(developmentModeEnvVarName)
 	developmentMode := isSet && strings.ToLower(developmentModeRaw) == "true"
+
+	pprofPort := os.Getenv(pprofPortEnvVarName)
+	if pprofPort != "" {
+		go func() {
+			fmt.Printf("--- starting pprof on port: \"%s\"\n", pprofPort)
+			if err := http.ListenAndServe(fmt.Sprintf(":%s", pprofPort), nil); err != nil {
+				if errors.Is(err, http.ErrServerClosed) {
+					fmt.Print("--- pprof server has been closed\n")
+				} else {
+					fmt.Printf("--- error in pprof server: %v\n", err)
+				}
+			}
+		}()
+	}
 
 	delegatingZapCore := setUpLogging(developmentMode)
 

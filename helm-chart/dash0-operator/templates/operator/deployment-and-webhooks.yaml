@@ -135,6 +135,10 @@ spec:
           value: {{ include "dash0-operator.secretRefResolverDeploymentName" . }}
         - name: DASH0_TOKEN_UPDATE_SERVICE_PORT
           value: {{ .Values.operator.tokenUpdatePort | quote }}
+        {{- if .Values.operator.pprofPort }}
+        - name: PPROF_PORT
+          value: {{ .Values.operator.pprofPort | quote }}
+        {{- end }}
         - name: OTEL_COLLECTOR_NAME_PREFIX
           value: {{ .Release.Name | quote }}
         - name: DASH0_OPERATOR_IMAGE
@@ -568,3 +572,30 @@ spec:
     app.kubernetes.io/name: dash0-operator
     app.kubernetes.io/component: controller
     dash0.com/cert-digest: {{ $certFingerprint }}
+{{- if .Values.operator.pprofPort }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "dash0-operator.pprofServiceName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: controller
+    app.kubernetes.io/instance: pprof
+    {{- include "dash0-operator.labels" . | nindent 4 }}
+  {{- with .Values.operator.serviceAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ports:
+    - name: https
+      port: {{ .Values.operator.pprofPort }}
+      protocol: TCP
+      targetPort: {{ .Values.operator.pprofPort }}
+  selector:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: controller
+  type: LoadBalancer
+{{- end }}

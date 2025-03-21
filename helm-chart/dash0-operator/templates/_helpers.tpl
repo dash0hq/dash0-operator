@@ -67,6 +67,10 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 https://{{ include "dash0-operator.tokenUpdateServiceServerName" . }}:{{ .Values.operator.tokenUpdatePort }}
 {{- end }}
 
+{{- define "dash0-operator.pprofServiceName" -}}
+{{ include "dash0-operator.chartName" . }}-pprof
+{{- end }}
+
 {{/* the controller manager container image */}}
 {{- define "dash0-operator.image" -}}
 {{- include "dash0-operator.imageRef" (dict "image" .Values.operator.image "context" .) -}}
