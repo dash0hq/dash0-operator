@@ -29,7 +29,7 @@ RUN ./mvnw dependency:copy-dependencies \
   && cp pom.xml ./build/pom.xml
 
 # build Node.js artifacts
-FROM node:20.13.1-alpine3.19 AS build-node.js
+FROM node:20.19.0-alpine3.21 AS build-node.js
 RUN mkdir -p /dash0-init-container/instrumentation/node.js
 WORKDIR /dash0-init-container/instrumentation/node.js
 COPY node.js/package* ./
@@ -42,7 +42,7 @@ RUN NPM_CONFIG_UPDATE_NOTIFIER=false \
   --no-fund=true
 
 # build final image
-FROM alpine:3.19.1
+FROM alpine:3.21.3
 COPY copy-instrumentation.sh /
 
 # copy artifacts (distros, injector binary) from the build stages to the final image
