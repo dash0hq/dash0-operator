@@ -7,7 +7,7 @@ import (
 	"sync"
 )
 
-// Mru is a simple, go-routine safe, ordered most-recently-used cache.
+// Mru is a simple, go-routine safe, ordered, most-recently-used cache.
 type Mru[T any] struct {
 	elements []T
 	limit    int
@@ -17,7 +17,7 @@ type Mru[T any] struct {
 func NewMru[T any](limit int) *Mru[T] {
 	return &Mru[T]{
 		limit:    limit,
-		elements: make([]T, 0, limit),
+		elements: make([]T, 0),
 	}
 }
 
@@ -41,13 +41,12 @@ func (mru *Mru[T]) Take() *T {
 	return &el
 }
 
-func (mru *Mru[T]) ForAllAndClean(f func(T)) {
+func (mru *Mru[T]) ForAll(f func(T)) {
 	mru.mu.Lock()
 	defer mru.mu.Unlock()
 	for _, element := range mru.elements {
 		f(element)
 	}
-	mru.elements = make([]T, 0, mru.limit)
 }
 
 func (mru *Mru[T]) Len() int {
