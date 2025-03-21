@@ -30,7 +30,10 @@ const (
 )
 
 var (
-	workingDir string
+	workingDir                    string
+	metricsServerHasBeenInstalled = false
+
+	stopPodCrashOrOOMKillDetection chan bool
 )
 
 var _ = Describe("Dash0 Operator", Ordered, func() {
@@ -64,6 +67,8 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		checkIfRequiredPortsAreBlocked()
 		renderTemplates()
 
+		metricsServerHasBeenInstalled = ensureMetricsServerIsInstalled()
+
 		recreateNamespace(applicationUnderTestNamespace)
 
 		determineContainerImages()
@@ -71,9 +76,12 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		rebuildAppUnderTestContainerImages()
 
 		deployOtlpSink(workingDir)
+
+		stopPodCrashOrOOMKillDetection = failOnPodCrashOrOOMKill()
 	})
 
 	AfterAll(func() {
+		stopPodCrashOrOOMKillDetection <- true
 		uninstallOtlpSink(workingDir)
 		removeAllTemporaryManifests()
 		undeployNginxIngressController()
@@ -81,6 +89,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 			By("removing namespace for application under test")
 			_ = runAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", applicationUnderTestNamespace))
 		}
+		uninstallMetricsServerIfApplicable(metricsServerHasBeenInstalled)
 		if kubeContextHasBeenChanged {
 			revertKubernetesContext(originalKubeContext)
 		}
@@ -626,6 +635,16 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					Eventually(func(g Gomega) {
 						verifySelfMonitoringMetrics(g, timestampLowerBound)
 					}, 90*time.Second, time.Second).Should(Succeed())
+				})
+			})
+
+			Describe("operator manager memory consumption / memory leak test", func() {
+				It("verify operator manager memory consumption is reasonable", func() {
+					// This test's validity hinges to some degree on the fact that other tests have been executed
+					// previously, using the same operator manager pod without restarting/redeploying it. Thus, a
+					// memory leak would be visible by now. If an OOMKill had occurred before getting here, the
+					// failOnPodCrashOrOOMKill check would have caught it.
+					verifyOperatorManagerPodMemoryUsageIsReasonable()
 				})
 			})
 
