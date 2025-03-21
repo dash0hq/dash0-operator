@@ -4,11 +4,14 @@
 package e2e
 
 import (
+	"encoding/json"
 	"fmt"
 	"os/exec"
 	"regexp"
 	"strings"
 	"time"
+
+	"k8s.io/apimachinery/pkg/api/resource"
 
 	"github.com/dash0hq/dash0-operator/internal/startup"
 
@@ -116,7 +119,7 @@ func deployOperator(
 		return err
 	}
 
-	e2ePrint("output of helm install:\n%s", output)
+	e2ePrint("output of helm install:\n%s\n", output)
 	waitForManagerPodAndWebhookToStart(operatorNamespace)
 
 	if operatorConfigurationValues != nil {
@@ -351,7 +354,7 @@ func upgradeOperator(
 
 	output, err := run(exec.Command("helm", arguments...))
 	Expect(err).NotTo(HaveOccurred())
-	e2ePrint("output of helm upgrade:\n%s", output)
+	e2ePrint("output of helm upgrade:\n%s\n", output)
 
 	By("waiting shortly, to give the operator time to restart after helm upgrade")
 	time.Sleep(5 * time.Second)
@@ -359,4 +362,126 @@ func upgradeOperator(
 	waitForManagerPodAndWebhookToStart(operatorNamespace)
 
 	waitForCollectorToStart(operatorNamespace, operatorHelmChart)
+}
+
+func verifyOperatorManagerPodMemoryUsageIsReasonable() {
+	var memoryUsage int64
+	Eventually(func(g Gomega) {
+		memoryUsage = readOperatorManagerMemoryUsage(g)
+	}, 60*time.Second, 1*time.Second).Should(Succeed())
+	e2ePrint("operator manager pod memory usage: %d", memoryUsage)
+	Expect(memoryUsage).Should(
+		BeNumerically("<=", int64(50_000_000)),
+		"The operator manager pod is using more memory than expected. Check for a potential memory leak.",
+	)
+}
+
+func readOperatorManagerMemoryUsage(g Gomega) int64 {
+	By("getting operator manager memory usage")
+	metricsOutput, err := run(exec.Command(
+		"kubectl",
+		"get",
+		"--namespace",
+		operatorNamespace,
+		"pods.metrics.k8s.io",
+		"--selector", "app.kubernetes.io/name=dash0-operator",
+		"--selector", "app.kubernetes.io/component=controller",
+		"--output",
+		"json",
+	))
+	g.Expect(err).NotTo(HaveOccurred())
+	var metrics map[string]interface{}
+	g.Expect(
+		json.Unmarshal([]byte(metricsOutput), &metrics)).To(
+		Succeed(),
+		"cannot parse metrics output\n%s",
+		metricsOutput,
+	)
+	g.Expect(metrics).To(HaveKey("items"), "unexpected metrics output (no items)\n%s", metricsOutput)
+	itemsRaw := metrics["items"]
+	items, ok := itemsRaw.([]interface{})
+	g.Expect(ok).To(BeTrue(), "unexpected metrics output (items is not an array)\n%s", metricsOutput)
+	g.Expect(items).To(HaveLen(1), "unexpected metrics output (zero items or more than one item)\n%s", metricsOutput)
+
+	itemRaw := items[0]
+	item, ok := itemRaw.(map[string]interface{})
+	g.Expect(ok).To(BeTrue(), "unexpected metrics output (items[0] is not a map)\n%s", metricsOutput)
+	g.Expect(item).To(
+		HaveKey("containers"), "unexpected metrics output (items[0] has no containers)\n%s", metricsOutput)
+	containersRaw := item["containers"]
+	containers, ok := containersRaw.([]interface{})
+	g.Expect(ok).To(BeTrue(), "unexpected metrics output (items[0].containers is not an array)\n%s", metricsOutput)
+	for i, containerRaw := range containers {
+		container, ok := containerRaw.(map[string]interface{})
+		g.Expect(ok).To(BeTrue(),
+			"unexpected metrics output (items[0].containers[%d] is not a map)\n%s", i, metricsOutput)
+		g.Expect(container).To(
+			HaveKey("name"),
+			"unexpected metrics output (items[0].containers[%d] has no name)\n%s", i, metricsOutput)
+		if container["name"] == "manager" {
+			g.Expect(container).To(
+				HaveKey("usage"),
+				"unexpected metrics output (items[0].containers[%d] has no usage)\n%s", i, metricsOutput)
+			usage, ok := container["usage"].(map[string]interface{})
+			g.Expect(ok).To(BeTrue(),
+				"unexpected metrics output (items[0].containers[%d].usage is not a map)\n%s", i, metricsOutput)
+			g.Expect(usage).To(
+				HaveKey("memory"),
+				"unexpected metrics output (items[0].containers[%d].usage has no memory)\n%s", i, metricsOutput)
+			memoryUsageStr, ok := usage["memory"].(string)
+			g.Expect(ok).To(
+				BeTrue(),
+				"unexpected metrics output (items[0].containers[%d].usage.memory is not a string)\n%s",
+				i,
+				metricsOutput,
+			)
+			memoryUsage, err := resource.ParseQuantity(memoryUsageStr)
+			g.Expect(err).To(
+				Succeed(),
+				"unexpected metrics output (cannot parse operator manager pod memory usage: \"%s\")\n%s",
+				memoryUsageStr,
+				metricsOutput,
+			)
+			return memoryUsage.Value()
+		}
+	}
+	g.Expect(false).To(BeTrue(), "could not read the operator manager pod's memory usage\n")
+	return -1
+}
+
+func failOnPodCrashOrOOMKill() chan bool {
+	ticker := time.NewTicker(100 * time.Millisecond)
+	stop := make(chan bool, 1)
+	e2ePrint("Starting pod crash/oom kill detection.\n")
+	go func() {
+		defer GinkgoRecover()
+		for {
+			select {
+			case <-ticker.C:
+				verifyNoPodCrashOrOOMKill()
+			case <-stop:
+				e2ePrint("Stopping pod crash/oom kill detection.\n")
+				ticker.Stop()
+				return
+			}
+		}
+	}()
+
+	return stop
+}
+
+func verifyNoPodCrashOrOOMKill() {
+	output, err := run(exec.Command(
+		"kubectl",
+		"--namespace",
+		operatorNamespace,
+		"get",
+		"pods",
+	), false)
+	Expect(err).ToNot(HaveOccurred())
+	if strings.Contains(output, "OOMKilled") {
+		Fail("A pod has been OOMKilled:\n" + output)
+	} else if strings.Contains(output, "CrashLoopBackOff") {
+		Fail("A pod is in CrashLoopBackOff:\n" + output)
+	}
 }
