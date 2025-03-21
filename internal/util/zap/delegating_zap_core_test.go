@@ -13,7 +13,8 @@ import (
 var _ = Describe("Delegating Zap Core", func() {
 
 	It("Enabled without delegate and default level", func() {
-		delegatingCore := NewDelegatingZapCore()
+		logMessageBuffer := NewMruWithDefaultSizeLimit[*ZapEntryWithFields]()
+		delegatingCore := NewDelegatingZapCore(logMessageBuffer)
 		Expect(delegatingCore.Enabled(zapcore.DebugLevel)).To(BeFalse())
 		Expect(delegatingCore.Enabled(zapcore.InfoLevel)).To(BeTrue())
 		Expect(delegatingCore.Enabled(zapcore.WarnLevel)).To(BeTrue())
@@ -21,7 +22,8 @@ var _ = Describe("Delegating Zap Core", func() {
 	})
 
 	It("Enabled without delegate and custom level", func() {
-		delegatingCore := NewDelegatingZapCore()
+		logMessageBuffer := NewMruWithDefaultSizeLimit[*ZapEntryWithFields]()
+		delegatingCore := NewDelegatingZapCore(logMessageBuffer)
 		delegatingCore.SetBufferingLevel(zapcore.WarnLevel)
 		Expect(delegatingCore.Enabled(zapcore.DebugLevel)).To(BeFalse())
 		Expect(delegatingCore.Enabled(zapcore.InfoLevel)).To(BeFalse())
@@ -30,7 +32,8 @@ var _ = Describe("Delegating Zap Core", func() {
 	})
 
 	It("Enabled with a delegate", func() {
-		delegatingCore := NewDelegatingZapCore()
+		logMessageBuffer := NewMruWithDefaultSizeLimit[*ZapEntryWithFields]()
+		delegatingCore := NewDelegatingZapCore(logMessageBuffer)
 		e := &oddEvenEnabler{}
 		delegatingCore.SetDelegate(zapcore.NewCore(nil, nil, e))
 		Expect(delegatingCore.Enabled(zapcore.DebugLevel)).To(BeFalse())
@@ -45,7 +48,8 @@ var _ = Describe("Delegating Zap Core", func() {
 	})
 
 	It("Enabled with a delegate", func() {
-		delegatingCore := NewDelegatingZapCore()
+		logMessageBuffer := NewMruWithDefaultSizeLimit[*ZapEntryWithFields]()
+		delegatingCore := NewDelegatingZapCore(logMessageBuffer)
 		delegate := &mockDelegate{}
 		delegatingCore.SetDelegate(delegate)
 		entry := zapcore.Entry{Level: zapcore.InfoLevel}
@@ -55,7 +59,8 @@ var _ = Describe("Delegating Zap Core", func() {
 	})
 
 	It("Write without a delegate, hitting the limit", func() {
-		delegatingCore := NewDelegatingZapCoreWithBufferSize(3)
+		logMessageBuffer := NewMru[*ZapEntryWithFields](3)
+		delegatingCore := NewDelegatingZapCore(logMessageBuffer)
 		entry1 := zapcore.Entry{Level: zapcore.InfoLevel}
 		entry2 := zapcore.Entry{Level: zapcore.InfoLevel}
 		entry3 := zapcore.Entry{Level: zapcore.InfoLevel}
@@ -66,56 +71,59 @@ var _ = Describe("Delegating Zap Core", func() {
 		Expect(delegatingCore.Write(entry2, fields)).To(Succeed())
 		Expect(delegatingCore.Write(entry3, fields)).To(Succeed())
 
-		Expect(delegatingCore.bufferedLogRecords.Len()).To(Equal(3))
+		Expect(logMessageBuffer.Len()).To(Equal(3))
 
 		Expect(delegatingCore.Write(entry4, fields)).To(Succeed())
 
-		Expect(delegatingCore.bufferedLogRecords.Len()).To(Equal(3))
-		Expect(delegatingCore.bufferedLogRecords.elements[0]).To(Equal(
-			entryWithFields{
-				entry:  entry2,
-				fields: fields,
+		Expect(logMessageBuffer.Len()).To(Equal(3))
+		Expect(logMessageBuffer.elements[0]).To(Equal(
+			ZapEntryWithFields{
+				Entry:  entry2,
+				Fields: fields,
 			}),
 		)
-		Expect(delegatingCore.bufferedLogRecords.elements[1]).To(Equal(
-			entryWithFields{
-				entry:  entry3,
-				fields: fields,
+		Expect(logMessageBuffer.elements[1]).To(Equal(
+			ZapEntryWithFields{
+				Entry:  entry3,
+				Fields: fields,
 			}),
 		)
-		Expect(delegatingCore.bufferedLogRecords.elements[2]).To(Equal(
-			entryWithFields{
-				entry:  entry4,
-				fields: fields,
+		Expect(logMessageBuffer.elements[2]).To(Equal(
+			ZapEntryWithFields{
+				Entry:  entry4,
+				Fields: fields,
 			}),
 		)
 	})
 
 	It("Write with a delegate", func() {
-		delegatingCore := NewDelegatingZapCore()
+		logMessageBuffer := NewMruWithDefaultSizeLimit[*ZapEntryWithFields]()
+		delegatingCore := NewDelegatingZapCore(logMessageBuffer)
 		delegate := &mockDelegate{}
 		delegatingCore.SetDelegate(delegate)
 		entry := zapcore.Entry{Level: zapcore.InfoLevel}
 		field := zapcore.Field{Key: "key", String: "value"}
 		fields := []zapcore.Field{field}
 		Expect(delegatingCore.Write(entry, fields)).To(Succeed())
-		Expect(delegatingCore.bufferedLogRecords.IsEmpty()).To(BeTrue())
+		Expect(delegatingCore.logMessageBuffer.IsEmpty()).To(BeTrue())
 		Expect(delegate.writtenEntries).To(HaveLen(1))
 		Expect(delegate.writtenEntries[0]).To(Equal(
-			entryWithFields{
-				entry:  entry,
-				fields: fields,
+			ZapEntryWithFields{
+				Entry:  entry,
+				Fields: fields,
 			}),
 		)
 	})
 
 	It("Sync without a delegate", func() {
-		delegatingCore := NewDelegatingZapCore()
+		logMessageBuffer := NewMruWithDefaultSizeLimit[*ZapEntryWithFields]()
+		delegatingCore := NewDelegatingZapCore(logMessageBuffer)
 		Expect(delegatingCore.Sync()).To(Succeed())
 	})
 
 	It("Sync with a delegate", func() {
-		delegatingCore := NewDelegatingZapCore()
+		logMessageBuffer := NewMruWithDefaultSizeLimit[*ZapEntryWithFields]()
+		delegatingCore := NewDelegatingZapCore(logMessageBuffer)
 		delegate := &mockDelegate{}
 		delegatingCore.SetDelegate(delegate)
 		Expect(delegatingCore.Sync()).To(Succeed())
@@ -123,7 +131,8 @@ var _ = Describe("Delegating Zap Core", func() {
 	})
 
 	It("SetDelegate spools buffered messages to new delegate in order", func() {
-		delegatingCore := NewDelegatingZapCore()
+		logMessageBuffer := NewMruWithDefaultSizeLimit[*ZapEntryWithFields]()
+		delegatingCore := NewDelegatingZapCore(logMessageBuffer)
 		entry1 := zapcore.Entry{Level: zapcore.InfoLevel}
 		entry2 := zapcore.Entry{Level: zapcore.InfoLevel}
 		entry3 := zapcore.Entry{Level: zapcore.InfoLevel}
@@ -132,7 +141,7 @@ var _ = Describe("Delegating Zap Core", func() {
 		Expect(delegatingCore.Write(entry1, fields)).To(Succeed())
 		Expect(delegatingCore.Write(entry2, fields)).To(Succeed())
 		Expect(delegatingCore.Write(entry3, fields)).To(Succeed())
-		Expect(delegatingCore.bufferedLogRecords.Len()).To(Equal(3))
+		Expect(delegatingCore.logMessageBuffer.Len()).To(Equal(3))
 		delegate := &mockDelegate{}
 		Expect(delegate.writtenEntries).To(BeEmpty())
 
@@ -140,28 +149,29 @@ var _ = Describe("Delegating Zap Core", func() {
 
 		Expect(delegate.writtenEntries).To(HaveLen(3))
 		Expect(delegate.writtenEntries[0]).To(Equal(
-			entryWithFields{
-				entry:  entry1,
-				fields: fields,
+			ZapEntryWithFields{
+				Entry:  entry1,
+				Fields: fields,
 			}),
 		)
 		Expect(delegate.writtenEntries[1]).To(Equal(
-			entryWithFields{
-				entry:  entry2,
-				fields: fields,
+			ZapEntryWithFields{
+				Entry:  entry2,
+				Fields: fields,
 			}),
 		)
 		Expect(delegate.writtenEntries[2]).To(Equal(
-			entryWithFields{
-				entry:  entry3,
-				fields: fields,
+			ZapEntryWithFields{
+				Entry:  entry3,
+				Fields: fields,
 			}),
 		)
-		Expect(delegatingCore.bufferedLogRecords.IsEmpty()).To(BeTrue())
+		Expect(delegatingCore.logMessageBuffer.IsEmpty()).To(BeTrue())
 	})
 
 	It("With without a delegate returns a clone", func() {
-		originalDelegatingCore := NewDelegatingZapCoreWithBufferSize(13)
+		logMessageBuffer := NewMru[*ZapEntryWithFields](13)
+		originalDelegatingCore := NewDelegatingZapCore(logMessageBuffer)
 		originalDelegatingCore.SetBufferingLevel(zapcore.DebugLevel)
 		entry1 := zapcore.Entry{Level: zapcore.InfoLevel}
 		entry2 := zapcore.Entry{Level: zapcore.InfoLevel}
@@ -170,7 +180,7 @@ var _ = Describe("Delegating Zap Core", func() {
 		// write some log records to the original core
 		Expect(originalDelegatingCore.Write(entry1, writeFields)).To(Succeed())
 		Expect(originalDelegatingCore.Write(entry2, writeFields)).To(Succeed())
-		Expect(originalDelegatingCore.bufferedLogRecords.Len()).To(Equal(2))
+		Expect(logMessageBuffer.Len()).To(Equal(2))
 
 		// create a clone via With
 		withFields1 := []zapcore.Field{
@@ -183,9 +193,8 @@ var _ = Describe("Delegating Zap Core", func() {
 		dc2, ok := dc2Raw.(*DelegatingZapCore)
 		Expect(ok).To(BeTrue())
 		Expect(dc2 == originalDelegatingCore).To(BeFalse())
-		Expect(dc2.bufferSize).To(Equal(13))
 		// we do not copy buffered messages when cloning via With
-		Expect(dc2.bufferedLogRecords.IsEmpty()).To(BeTrue())
+		Expect(dc2.logMessageBuffer.IsEmpty()).To(BeTrue())
 		Expect(dc2.level).To(Equal(zapcore.DebugLevel))
 		Expect(dc2.fields).To(HaveLen(2))
 		Expect(dc2.fields[0].Key).To(Equal("with1"))
@@ -197,10 +206,9 @@ var _ = Describe("Delegating Zap Core", func() {
 		Expect(dc2.Write(entry1, writeFields)).To(Succeed())
 		Expect(dc2.Write(entry2, writeFields)).To(Succeed())
 		Expect(dc2.Write(entry3, writeFields)).To(Succeed())
-		// verify they have been written to the clone
-		Expect(dc2.bufferedLogRecords.Len()).To(Equal(3))
-		// verify they have been not been written to original
-		Expect(originalDelegatingCore.bufferedLogRecords.Len()).To(Equal(2))
+		// verify both write to the same buffer
+		Expect(dc2.logMessageBuffer == originalDelegatingCore.logMessageBuffer).To(BeTrue())
+		Expect(logMessageBuffer.Len()).To(Equal(5))
 
 		// create a clone of the clone
 		withFields2 := []zapcore.Field{
@@ -214,9 +222,9 @@ var _ = Describe("Delegating Zap Core", func() {
 		Expect(ok).To(BeTrue())
 		Expect(dc3 == originalDelegatingCore).To(BeFalse())
 		Expect(dc3 == dc2).To(BeFalse())
-		Expect(dc3.bufferSize).To(Equal(13))
-		Expect(dc3.bufferedLogRecords.IsEmpty()).To(BeTrue())
+		Expect(dc3.logMessageBuffer.IsEmpty()).To(BeTrue())
 		Expect(dc3.level).To(Equal(zapcore.DebugLevel))
+		Expect(dc3.logMessageBuffer == originalDelegatingCore.logMessageBuffer).To(BeTrue())
 		Expect(dc3.fields).To(HaveLen(5))
 		Expect(dc3.fields[0].Key).To(Equal("with1"))
 		Expect(dc3.fields[0].String).To(Equal("value1"))
@@ -231,7 +239,8 @@ var _ = Describe("Delegating Zap Core", func() {
 	})
 
 	It("With delegates the call to the delegate when there is one", func() {
-		delegatingCore := NewDelegatingZapCoreWithBufferSize(13)
+		logMessageBuffer := NewMru[*ZapEntryWithFields](13)
+		delegatingCore := NewDelegatingZapCore(logMessageBuffer)
 		delegatingCore.SetBufferingLevel(zapcore.DebugLevel)
 		delegate := &mockDelegate{}
 		delegatingCore.SetDelegate(delegate)
@@ -262,7 +271,8 @@ var _ = Describe("Delegating Zap Core", func() {
 	})
 
 	It("With keeps track of all clones, SetDelegate and UnsetDelegate are propagated to clones", func() {
-		originalDelegatingCore := NewDelegatingZapCoreWithBufferSize(13)
+		logMessageBuffer := NewMru[*ZapEntryWithFields](13)
+		originalDelegatingCore := NewDelegatingZapCore(logMessageBuffer)
 		originalDelegatingCore.SetBufferingLevel(zapcore.DebugLevel)
 
 		// create two clones of originalDelegatingCore via With
@@ -332,7 +342,7 @@ type mockDelegate struct {
 	checkCalls int
 	syncCalls  int
 
-	writtenEntries []entryWithFields
+	writtenEntries []ZapEntryWithFields
 
 	withReturnValue zapcore.Core
 	withFields      []zapcore.Field
@@ -357,7 +367,7 @@ func (dd *mockDelegate) Check(_ zapcore.Entry, ce *zapcore.CheckedEntry) *zapcor
 }
 
 func (dd *mockDelegate) Write(entry zapcore.Entry, fields []zapcore.Field) error {
-	dd.writtenEntries = append(dd.writtenEntries, entryWithFields{entry: entry, fields: fields})
+	dd.writtenEntries = append(dd.writtenEntries, ZapEntryWithFields{Entry: entry, Fields: fields})
 	return nil
 }
 

@@ -14,34 +14,23 @@ import (
 // delegate, then spools all buffered messages to the delegate. After that, the core will pass all messages to the
 // delegate.
 type DelegatingZapCore struct {
-	delegate           atomic.Pointer[zapcore.Core]
-	bufferSize         int
-	bufferedLogRecords *Mru[entryWithFields]
-	level              zapcore.Level
-	fields             []zapcore.Field
-	clones             []*DelegatingZapCore
+	delegate         atomic.Pointer[zapcore.Core]
+	logMessageBuffer *Mru[*ZapEntryWithFields]
+	level            zapcore.Level
+	fields           []zapcore.Field
+	clones           []*DelegatingZapCore
 }
 
-type entryWithFields struct {
-	entry  zapcore.Entry
-	fields []zapcore.Field
+type ZapEntryWithFields struct {
+	Entry  zapcore.Entry
+	Fields []zapcore.Field
 }
 
-const (
-	defaultBufferSize = 3000
-)
-
-// NewDelegatingZapCore creates a DelegatingZapCore with the default buffer size.
-func NewDelegatingZapCore() *DelegatingZapCore {
-	return NewDelegatingZapCoreWithBufferSize(defaultBufferSize)
-}
-
-// NewDelegatingZapCoreWithBufferSize creates a DelegatingZapCore with a given buffer size.
-func NewDelegatingZapCoreWithBufferSize(bufferSize int) *DelegatingZapCore {
+// NewDelegatingZapCore creates a DelegatingZapCore.
+func NewDelegatingZapCore(logMessageBuffer *Mru[*ZapEntryWithFields]) *DelegatingZapCore {
 	return &DelegatingZapCore{
-		bufferSize:         bufferSize,
-		bufferedLogRecords: createBuffer(bufferSize),
-		level:              zapcore.InfoLevel,
+		logMessageBuffer: logMessageBuffer,
+		level:            zapcore.InfoLevel,
 	}
 }
 
@@ -55,12 +44,11 @@ func (dc *DelegatingZapCore) SetBufferingLevel(lvl zapcore.Level) {
 // fields will also be stored, independent of whether a delegate is set or not.
 func (dc *DelegatingZapCore) With(fields []zapcore.Field) zapcore.Core {
 	clone := DelegatingZapCore{
-		bufferSize: dc.bufferSize,
 		// We deliberately do not clone the buffer, since the original DelegatingZapCore still has the buffered
 		// messages, cloning the buffer as well might lead to emitting log records twice
-		bufferedLogRecords: createBuffer(dc.bufferSize),
-		level:              dc.level,
-		fields:             slices.Concat(dc.fields, fields),
+		logMessageBuffer: dc.logMessageBuffer,
+		level:            dc.level,
+		fields:           slices.Concat(dc.fields, fields),
 	}
 	dc.clones = append(dc.clones, &clone)
 
@@ -123,7 +111,7 @@ func (dc *DelegatingZapCore) Write(entry zapcore.Entry, fields []zapcore.Field) 
 	}
 
 	finalFields := slices.Concat(dc.fields, fields)
-	dc.bufferedLogRecords.Put(entryWithFields{entry: entry, fields: finalFields})
+	dc.logMessageBuffer.Put(&ZapEntryWithFields{Entry: entry, Fields: finalFields})
 	return nil
 }
 
@@ -144,10 +132,6 @@ func (dc *DelegatingZapCore) Sync() error {
 // The SetDelegate call will also be propagated to all clones created via With previous to this call.
 func (dc *DelegatingZapCore) SetDelegate(delegate zapcore.Core) {
 	dc.delegate.Store(&delegate)
-	dc.bufferedLogRecords.ForAllAndClean(func(entry entryWithFields) {
-		_ = delegate.Write(entry.entry, entry.fields)
-	})
-
 	for _, clone := range dc.clones {
 		clone.SetDelegate(delegate)
 	}
@@ -157,7 +141,6 @@ func (dc *DelegatingZapCore) SetDelegate(delegate zapcore.Core) {
 // created via With previous to this call.
 func (dc *DelegatingZapCore) UnsetDelegate() {
 	dc.delegate.Store(nil)
-
 	for _, clone := range dc.clones {
 		clone.UnsetDelegate()
 	}
@@ -165,8 +148,4 @@ func (dc *DelegatingZapCore) UnsetDelegate() {
 
 func (dc *DelegatingZapCore) ForTestOnlyHasDelegate() bool {
 	return dc.delegate.Load() != nil
-}
-
-func createBuffer(bufferSize int) *Mru[entryWithFields] {
-	return NewMru[entryWithFields](bufferSize)
 }

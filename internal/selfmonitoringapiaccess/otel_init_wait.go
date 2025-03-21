@@ -40,11 +40,11 @@ type OTelSdkConfigInput struct {
 }
 
 type OTelSdkStarter struct {
-	sdkIsActive            atomic.Bool
-	oTelSdkConfigInput     atomic.Pointer[OTelSdkConfigInput]
-	activeOTelSdkConfig    atomic.Pointer[common.OTelSdkConfig]
-	authTokenFromSecretRef atomic.Pointer[string]
-	delegatingZapCore      *zaputil.DelegatingZapCore
+	sdkIsActive              atomic.Bool
+	oTelSdkConfigInput       atomic.Pointer[OTelSdkConfigInput]
+	activeOTelSdkConfig      atomic.Pointer[common.OTelSdkConfig]
+	authTokenFromSecretRef   atomic.Pointer[string]
+	delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper
 
 	startOrRestartOTelSdkChannel chan *common.OTelSdkConfig
 	shutDownChannel              chan bool
@@ -60,13 +60,15 @@ var (
 	metricNamePrefix = fmt.Sprintf("%s.", meterName)
 )
 
-func NewOTelSdkStarter(delegatingZapCore *zaputil.DelegatingZapCore) *OTelSdkStarter {
+func NewOTelSdkStarter(
+	delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper,
+) *OTelSdkStarter {
 	starter := &OTelSdkStarter{
 		sdkIsActive:                  atomic.Bool{},
 		oTelSdkConfigInput:           atomic.Pointer[OTelSdkConfigInput]{},
 		activeOTelSdkConfig:          atomic.Pointer[common.OTelSdkConfig]{},
 		authTokenFromSecretRef:       atomic.Pointer[string]{},
-		delegatingZapCore:            delegatingZapCore,
+		delegatingZapCoreWrapper:     delegatingZapCoreWrapper,
 		startOrRestartOTelSdkChannel: make(chan *common.OTelSdkConfig),
 		shutDownChannel:              make(chan bool),
 	}
@@ -132,7 +134,7 @@ func (s *OTelSdkStarter) waitForCompleteOTelSDKConfiguration(
 		case config := <-s.startOrRestartOTelSdkChannel:
 			s.UpdateOTelSdkState(true)
 			s.activeOTelSdkConfig.Store(config)
-			startOTelSDK(s.delegatingZapCore, selfMonitoringMetricsClients, config)
+			startOTelSDK(s.delegatingZapCoreWrapper, selfMonitoringMetricsClients, config)
 
 		case <-s.shutDownChannel:
 			return
@@ -306,7 +308,7 @@ func convertExportConfigurationToOTelSDKConfig(
 }
 
 func startOTelSDK(
-	delegatingZapCore *zaputil.DelegatingZapCore,
+	delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper,
 	selfMonitoringMetricsClients []SelfMonitoringMetricsClient,
 	oTelSdkConfig *common.OTelSdkConfig,
 ) {
@@ -324,7 +326,10 @@ func startOTelSDK(
 	// stdout so far (and buffered in the delegating zap core) to the newly created zap OTel bridge, so that we also see
 	// messages from the operator startup in self-monitoring, even if the OTel SDK is delayed until we have found and
 	// reconciled an operator configuration resource.
-	delegatingZapCore.SetDelegate(zapOTelBridge)
+	delegatingZapCoreWrapper.RootDelegatingZapCore.SetDelegate(zapOTelBridge)
+	delegatingZapCoreWrapper.LogMessageBuffer.ForAllAndClear(func(entry *zaputil.ZapEntryWithFields) {
+		_ = zapOTelBridge.Write(entry.Entry, entry.Fields)
+	})
 
 	for _, client := range selfMonitoringMetricsClients {
 		client.InitializeSelfMonitoringMetrics(
@@ -338,7 +343,7 @@ func startOTelSDK(
 func (s *OTelSdkStarter) ShutDownOTelSdk(ctx context.Context, logger *logr.Logger) {
 	sdkIsActive := s.sdkIsActive.Load()
 	if sdkIsActive {
-		s.delegatingZapCore.UnsetDelegate()
+		s.delegatingZapCoreWrapper.RootDelegatingZapCore.UnsetDelegate()
 		logger.Info("shuttingdown the OpenTelemetry SDK, stopping self-monitoring")
 		common.ShutDownOTelSdkThreadSafe(ctx)
 		s.UpdateOTelSdkState(false)

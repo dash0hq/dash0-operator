@@ -41,7 +41,7 @@ var _ = Describe("The OTel SDK starter", func() {
 	logger := ptr.To(log.FromContext(ctx))
 
 	It("should start with empty values", func() {
-		oTelSdkStarter := NewOTelSdkStarter(zaputil.NewDelegatingZapCore())
+		oTelSdkStarter := NewOTelSdkStarter(zaputil.NewDelegatingZapCoreWrapper())
 		Expect(oTelSdkStarter.sdkIsActive.Load()).To(BeFalse())
 		Expect(*oTelSdkStarter.oTelSdkConfigInput.Load()).To(Equal(OTelSdkConfigInput{}))
 		Expect(oTelSdkStarter.activeOTelSdkConfig.Load()).To(BeNil())
@@ -53,7 +53,7 @@ var _ = Describe("The OTel SDK starter", func() {
 		var mockChannel chan *common.OTelSdkConfig
 
 		BeforeEach(func() {
-			oTelSdkStarter = NewOTelSdkStarter(zaputil.NewDelegatingZapCore())
+			oTelSdkStarter = NewOTelSdkStarter(zaputil.NewDelegatingZapCoreWrapper())
 			mockChannel = make(chan *common.OTelSdkConfig, 100)
 			oTelSdkStarter.startOrRestartOTelSdkChannel = mockChannel
 		})
@@ -288,11 +288,11 @@ var _ = Describe("The OTel SDK starter", func() {
 
 	Describe("should notify self monitoring clients and set the logging delegate", func() {
 		var oTelSdkStarter *OTelSdkStarter
-		var delegatingZapCore *zaputil.DelegatingZapCore
+		var delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper
 
 		BeforeEach(func() {
-			delegatingZapCore = zaputil.NewDelegatingZapCore()
-			oTelSdkStarter = NewOTelSdkStarter(delegatingZapCore)
+			delegatingZapCoreWrapper = zaputil.NewDelegatingZapCoreWrapper()
+			oTelSdkStarter = NewOTelSdkStarter(delegatingZapCoreWrapper)
 		})
 
 		It("should notify clients when there is an export with auth token", func() {
@@ -319,7 +319,7 @@ var _ = Describe("The OTel SDK starter", func() {
 			)
 
 			Eventually(func(g Gomega) {
-				g.Expect(delegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
+				g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
 				g.Expect(dummyClient1.hasBeenCalled).To(Equal(1))
 				g.Expect(dummyClient2.hasBeenCalled).To(Equal(1))
 			}).Should(Succeed())
