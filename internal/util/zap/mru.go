@@ -15,7 +15,7 @@ type Mru[T any] struct {
 }
 
 const (
-	defaultSizeLimit = 1000
+	defaultSizeLimit = 1500
 )
 
 func NewMruWithDefaultSizeLimit[T any]() *Mru[T] {
