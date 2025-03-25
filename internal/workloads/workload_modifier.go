@@ -82,6 +82,7 @@ type NoModificationReasonMessage func(actor util.WorkloadModifierActor) string
 type ModificationResult struct {
 	HasBeenModified     bool
 	RenderReasonMessage NoModificationReasonMessage
+	SkipLogging         bool
 	IgnoredOnce         bool
 	ImmutableWorkload   bool
 }
@@ -101,7 +102,7 @@ func NewNotModifiedDueToErrorResult() ModificationResult {
 }
 
 func NewNotModifiedOwnedByHigherOrderWorkloadResult() ModificationResult {
-	return newNotModifiedResult(NoModificationReasonOwnedByHigherOrderWorkload)
+	return newNotModifiedSkipLoggingResult(NoModificationReasonOwnedByHigherOrderWorkload)
 }
 
 func NewNotModifiedNoChangesResult() ModificationResult {
@@ -138,6 +139,16 @@ func newNotModifiedResult(
 	return ModificationResult{
 		HasBeenModified:     false,
 		RenderReasonMessage: reason,
+	}
+}
+
+func newNotModifiedSkipLoggingResult(
+	reason NoModificationReasonMessage,
+) ModificationResult {
+	return ModificationResult{
+		HasBeenModified:     false,
+		RenderReasonMessage: reason,
+		SkipLogging:         true,
 	}
 }
 

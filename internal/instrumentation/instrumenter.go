@@ -530,7 +530,7 @@ func (i *Instrumenter) instrumentWorkload(
 
 func (i *Instrumenter) postProcessInstrumentation(
 	resource runtime.Object,
-	modifcationResult workloads.ModificationResult,
+	modificationResult workloads.ModificationResult,
 	retryErr error,
 	logger *logr.Logger,
 ) bool {
@@ -543,9 +543,11 @@ func (i *Instrumenter) postProcessInstrumentation(
 		}
 		util.QueueFailedInstrumentationEvent(i.Recorder, resource, actor, retryErr)
 		return false
-	} else if !modifcationResult.HasBeenModified {
-		logger.Info(modifcationResult.RenderReasonMessage(actor))
-		util.QueueNoInstrumentationNecessaryEvent(i.Recorder, resource, modifcationResult.RenderReasonMessage(actor))
+	} else if !modificationResult.HasBeenModified {
+		if !modificationResult.SkipLogging {
+			logger.Info(modificationResult.RenderReasonMessage(actor))
+		}
+		util.QueueNoInstrumentationNecessaryEvent(i.Recorder, resource, modificationResult.RenderReasonMessage(actor))
 		return false
 	} else {
 		logger.Info("The controller has added Dash0 instrumentation to the workload.")
@@ -892,7 +894,9 @@ func (i *Instrumenter) postProcessUninstrumentation(
 		util.QueueFailedUninstrumentationEvent(i.Recorder, resource, actor, retryErr)
 		return false
 	} else if !modificationResult.HasBeenModified {
-		logger.Info(modificationResult.RenderReasonMessage(actor))
+		if !modificationResult.SkipLogging {
+			logger.Info(modificationResult.RenderReasonMessage(actor))
+		}
 		util.QueueNoUninstrumentationNecessaryEvent(i.Recorder, resource, actor)
 		return false
 	} else {
