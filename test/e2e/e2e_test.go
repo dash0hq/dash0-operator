@@ -116,6 +116,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				operatorHelmChart,
 				operatorHelmChartUrl,
 				images,
+				true,
 			)
 		})
 
@@ -764,6 +765,10 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					operatorHelmChart,
 					operatorHelmChartUrl,
 					images,
+					// We are verifying that no namespaced metrics are collected later on in this test, but
+					// self-monitoring metrics are namespaced, so we are deliberately disabling self-monitoring for this
+					// test.
+					false,
 				)
 				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
 				time.Sleep(10 * time.Second)
@@ -1038,6 +1043,7 @@ trace_statements:
 					operatorHelmChart,
 					operatorHelmChartUrl,
 					initialAlternativeImages,
+					true,
 				)
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
@@ -1258,6 +1264,7 @@ trace_statements:
 						operatorHelmChart,
 						operatorHelmChartUrl,
 						images,
+						true,
 					)
 					runInParallel(configs, func(config removalTestNamespaceConfig) {
 						deployDash0MonitoringResource(
