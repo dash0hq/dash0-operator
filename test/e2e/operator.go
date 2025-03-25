@@ -39,6 +39,7 @@ func deployOperatorWithDefaultAutoOperationConfiguration(
 	operatorHelmChart string,
 	operatorHelmChartUrl string,
 	images Images,
+	selfMonitoringEnabled bool,
 ) {
 	err := deployOperator(
 		operatorNamespace,
@@ -48,7 +49,7 @@ func deployOperatorWithDefaultAutoOperationConfiguration(
 		&startup.OperatorConfigurationValues{
 			Endpoint:              defaultEndpoint,
 			Token:                 defaultToken,
-			SelfMonitoringEnabled: true,
+			SelfMonitoringEnabled: selfMonitoringEnabled,
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 		},
 	)
