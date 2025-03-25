@@ -51,6 +51,10 @@ var (
 	endpointSchemeRegex = regexp.MustCompile(`^\w+://`)
 )
 
+func OTelSDKIsConfigured() bool {
+	return os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") != ""
+}
+
 func InitOTelSdkFromEnvVars(
 	ctx context.Context,
 	meterName string,
@@ -60,8 +64,7 @@ func InitOTelSdkFromEnvVars(
 	// will either be started once at process startup or not. In contrast to InitOTelSdkWithConfig, it will not be
 	// restarted, and the configuration is not modified from different threads. Hence, no thread safety is needed here
 	// and oTelSdkMutex is not used.
-	podUid, nodeName, daemonSetUid, deploymentUid := getKubernetesResourceAttributes()
-	if _, otelExporterEndpointIsSet := os.LookupEnv("OTEL_EXPORTER_OTLP_ENDPOINT"); otelExporterEndpointIsSet {
+	if OTelSDKIsConfigured() {
 
 		protocol, protocolIsSet := os.LookupEnv("OTEL_EXPORTER_OTLP_PROTOCOL")
 		if !protocolIsSet {
@@ -71,7 +74,9 @@ func InitOTelSdkFromEnvVars(
 		}
 
 		metricExporter := createMetricExporterFromProtocolEnvVar(ctx, protocol)
+		logExporter := createLogExporterFromProtocolEnvVar(ctx, protocol)
 
+		podUid, nodeName, daemonSetUid, deploymentUid := getKubernetesResourceAttributes()
 		resourceAttributes := assembleResource(
 			ctx,
 			podUid,
@@ -90,16 +95,26 @@ func InitOTelSdkFromEnvVars(
 					sdkmetric.WithInterval(15*time.Second),
 				)),
 		)
+		sdkLoggerProvider := sdklog.NewLoggerProvider(
+			sdklog.WithResource(resourceAttributes),
+			sdklog.WithProcessor(
+				sdklog.NewBatchProcessor(logExporter),
+			),
+		)
 
 		meterProvider = sdkMeterProvider
+		loggerProvider = sdkLoggerProvider
 		shutdownFunctions = []func(ctx context.Context) error{
 			sdkMeterProvider.Shutdown,
+			sdkLoggerProvider.Shutdown,
 		}
 	} else {
 		meterProvider = metricnoop.MeterProvider{}
+		loggerProvider = lognoop.LoggerProvider{}
 	}
 
 	otel.SetMeterProvider(meterProvider)
+	global.SetLoggerProvider(loggerProvider)
 
 	return meterProvider.Meter(meterName)
 }
@@ -122,6 +137,27 @@ func createMetricExporterFromProtocolEnvVar(ctx context.Context, protocol string
 		log.Fatalf("Unexpected OTLP protocol set as value of the 'OTEL_EXPORTER_OTLP_PROTOCOL' environment variable: %v", protocol)
 	}
 	return metricExporter
+}
+
+func createLogExporterFromProtocolEnvVar(ctx context.Context, protocol string) sdklog.Exporter {
+	var logExporter sdklog.Exporter
+	var err error
+
+	switch protocol {
+	case ProtocolGrpc:
+		if logExporter, err = otlploggrpc.New(ctx); err != nil {
+			log.Fatalf("Cannot create the OTLP gRPC log exporter: %v", err)
+		}
+	case ProtocolHttpProtobuf:
+		if logExporter, err = otlploghttp.New(ctx); err != nil {
+			log.Fatalf("Cannot create the OTLP HTTP log exporter: %v", err)
+		}
+	case ProtocolHttpJson:
+		log.Fatalf("Cannot create the OTLP HTTP log exporter: the protocol 'http/json' is currently unsupported")
+	default:
+		log.Fatalf("Unexpected OTLP protocol set as value of the 'OTEL_EXPORTER_OTLP_PROTOCOL' environment variable: %v", protocol)
+	}
+	return logExporter
 }
 
 func InitOTelSdkWithConfig(ctx context.Context, meterName string, oTelSdkConfig *OTelSdkConfig) (*otelzap.Core, otelmetric.Meter) {
@@ -186,8 +222,8 @@ func InitOTelSdkWithConfig(ctx context.Context, meterName string, oTelSdkConfig 
 }
 
 func createMetricExporterFromConfig(ctx context.Context, oTelSdkConfig *OTelSdkConfig) sdkmetric.Exporter {
-	var err error
 	var metricExporter sdkmetric.Exporter
+	var err error
 
 	protocol := oTelSdkConfig.Protocol
 	if protocol == "" {
@@ -236,8 +272,8 @@ func createMetricExporterFromConfig(ctx context.Context, oTelSdkConfig *OTelSdkC
 }
 
 func createLogExporterFromConfig(ctx context.Context, oTelSdkConfig *OTelSdkConfig) sdklog.Exporter {
-	var err error
 	var logExporter sdklog.Exporter
+	var err error
 
 	protocol := oTelSdkConfig.Protocol
 	if protocol == "" {
