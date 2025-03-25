@@ -423,7 +423,9 @@ func (h *InstrumentationWebhookHandler) postProcessInstrumentation(
 ) admission.Response {
 	if !modificationResult.IgnoredOnce && !modificationResult.HasBeenModified {
 		msg := modificationResult.RenderReasonMessage(actor)
-		logger.Info(msg)
+		if !modificationResult.SkipLogging {
+			logger.Info(msg)
+		}
 		if !isPod {
 			util.QueueNoInstrumentationNecessaryEvent(h.Recorder, resource, msg)
 		}
@@ -464,7 +466,9 @@ func (h *InstrumentationWebhookHandler) postProcessUninstrumentation(
 	}
 
 	if !modificationResult.HasBeenModified {
-		logger.Info(modificationResult.RenderReasonMessage(actor))
+		if !modificationResult.SkipLogging {
+			logger.Info(modificationResult.RenderReasonMessage(actor))
+		}
 		util.QueueNoUninstrumentationNecessaryEvent(h.Recorder, resource, actor)
 		return admission.Allowed("no changes")
 	}
