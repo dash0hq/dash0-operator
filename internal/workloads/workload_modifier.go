@@ -362,6 +362,9 @@ func (m *ResourceModifier) createInitContainer(podSpec *corev1.PodSpec) *corev1.
 			RunAsNonRoot:             securityContext.RunAsNonRoot,
 			RunAsUser:                initContainerUser,
 			RunAsGroup:               initContainerGroup,
+			SeccompProfile: &corev1.SeccompProfile{
+				Type: corev1.SeccompProfileTypeRuntimeDefault,
+			},
 		},
 		VolumeMounts: []corev1.VolumeMount{
 			{

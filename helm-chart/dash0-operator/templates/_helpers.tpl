@@ -113,6 +113,15 @@ securityContext:
   capabilities:
     drop:
     - ALL
+  seccompProfile:
+    type: RuntimeDefault
+{{- end }}
+
+{{- define "dash0-operator.restrictivePodSecurityContext" -}}
+securityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
 {{- end }}
 
 {{- define "dash0-operator.secretRefResolverDeploymentName" -}}
