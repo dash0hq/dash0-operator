@@ -125,6 +125,8 @@ deployment should match snapshot (default values):
                     - ALL
                 readOnlyRootFilesystem: true
                 runAsNonRoot: true
+                seccompProfile:
+                  type: RuntimeDefault
               volumeMounts:
                 - mountPath: /tmp/k8s-webhook-server/serving-certs
                   name: certificates
@@ -157,6 +159,10 @@ deployment should match snapshot (default values):
                 capabilities:
                   drop:
                     - ALL
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                seccompProfile:
+                  type: RuntimeDefault
           securityContext:
             runAsNonRoot: true
             seccompProfile:

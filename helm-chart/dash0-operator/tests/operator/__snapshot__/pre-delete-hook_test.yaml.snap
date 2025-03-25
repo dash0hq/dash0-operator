@@ -52,6 +52,8 @@ pre-delete hook job should match snapshot:
                     - ALL
                 readOnlyRootFilesystem: true
                 runAsNonRoot: true
+                seccompProfile:
+                  type: RuntimeDefault
           restartPolicy: OnFailure
           securityContext:
             runAsNonRoot: true

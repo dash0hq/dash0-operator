@@ -536,7 +536,12 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig *OTelColExtra
 					},
 					Tolerations:        extraConfig.DaemonSetTolerations,
 					ServiceAccountName: daemonsetServiceAccountName(config.NamePrefix),
-					SecurityContext:    &corev1.PodSecurityContext{},
+					SecurityContext: &corev1.PodSecurityContext{
+						RunAsNonRoot: ptr.To(true),
+						SeccompProfile: &corev1.SeccompProfile{
+							Type: corev1.SeccompProfileTypeRuntimeDefault,
+						},
+					},
 					// This setting is required to enable the configuration reloader process to send Unix signals to the
 					// collector process.
 					ShareProcessNamespace: ptr.To(true),
@@ -582,10 +587,20 @@ func assembleFileLogOffsetSynchContainer(
 	resourceRequirements ResourceRequirementsWithGoMemLimit,
 ) corev1.Container {
 	filelogOffsetSynchContainer := corev1.Container{
-		Name:            "filelog-offset-synch",
-		Args:            []string{"--mode=synch"},
-		SecurityContext: &corev1.SecurityContext{},
-		Image:           config.Images.FilelogOffsetSynchImage,
+		Name: "filelog-offset-synch",
+		Args: []string{"--mode=synch"},
+		SecurityContext: &corev1.SecurityContext{
+			AllowPrivilegeEscalation: ptr.To(false),
+			ReadOnlyRootFilesystem:   ptr.To(false),
+			RunAsNonRoot:             ptr.To(true),
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{"ALL"},
+			},
+			SeccompProfile: &corev1.SeccompProfile{
+				Type: corev1.SeccompProfileTypeRuntimeDefault,
+			},
+		},
+		Image: config.Images.FilelogOffsetSynchImage,
 		Env: []corev1.EnvVar{
 			{
 				Name:  "GOMEMLIMIT",
@@ -762,10 +777,20 @@ func assembleDaemonSetCollectorContainer(
 	}
 
 	collectorContainer := corev1.Container{
-		Name:            openTelemetryCollector,
-		Args:            []string{"--config=file:" + collectorConfigurationFilePath},
-		SecurityContext: &corev1.SecurityContext{},
-		Image:           config.Images.CollectorImage,
+		Name: openTelemetryCollector,
+		Args: []string{"--config=file:" + collectorConfigurationFilePath},
+		SecurityContext: &corev1.SecurityContext{
+			AllowPrivilegeEscalation: ptr.To(false),
+			ReadOnlyRootFilesystem:   ptr.To(false),
+			RunAsNonRoot:             ptr.To(true),
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{"ALL"},
+			},
+			SeccompProfile: &corev1.SeccompProfile{
+				Type: corev1.SeccompProfileTypeRuntimeDefault,
+			},
+		},
+		Image: config.Images.CollectorImage,
 		Ports: []corev1.ContainerPort{
 			{
 				Name:          "otlp",
@@ -801,8 +826,18 @@ func assembleConfigurationReloaderContainer(config *oTelColConfig, resourceRequi
 			"--pidfile=" + collectorPidFilePath,
 			collectorConfigurationFilePath,
 		},
-		SecurityContext: &corev1.SecurityContext{},
-		Image:           config.Images.ConfigurationReloaderImage,
+		SecurityContext: &corev1.SecurityContext{
+			AllowPrivilegeEscalation: ptr.To(false),
+			ReadOnlyRootFilesystem:   ptr.To(false),
+			RunAsNonRoot:             ptr.To(true),
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{"ALL"},
+			},
+			SeccompProfile: &corev1.SeccompProfile{
+				Type: corev1.SeccompProfileTypeRuntimeDefault,
+			},
+		},
+		Image: config.Images.ConfigurationReloaderImage,
 		Env: []corev1.EnvVar{
 			{
 				Name:  "GOMEMLIMIT",
@@ -822,10 +857,20 @@ func assembleConfigurationReloaderContainer(config *oTelColConfig, resourceRequi
 
 func assembleFileLogOffsetSynchInitContainer(config *oTelColConfig, resourceRequirements ResourceRequirementsWithGoMemLimit) corev1.Container {
 	initFilelogOffsetSynchContainer := corev1.Container{
-		Name:            "filelog-offset-init",
-		Args:            []string{"--mode=init"},
-		SecurityContext: &corev1.SecurityContext{},
-		Image:           config.Images.FilelogOffsetSynchImage,
+		Name: "filelog-offset-init",
+		Args: []string{"--mode=init"},
+		SecurityContext: &corev1.SecurityContext{
+			AllowPrivilegeEscalation: ptr.To(false),
+			ReadOnlyRootFilesystem:   ptr.To(false),
+			RunAsNonRoot:             ptr.To(true),
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{"ALL"},
+			},
+			SeccompProfile: &corev1.SeccompProfile{
+				Type: corev1.SeccompProfileTypeRuntimeDefault,
+			},
+		},
+		Image: config.Images.FilelogOffsetSynchImage,
 		Env: []corev1.EnvVar{
 			{
 				Name:  "GOMEMLIMIT",
@@ -1029,7 +1074,12 @@ func assembleCollectorDeployment(
 						},
 					},
 					ServiceAccountName: deploymentServiceAccountName(config.NamePrefix),
-					SecurityContext:    &corev1.PodSecurityContext{},
+					SecurityContext: &corev1.PodSecurityContext{
+						RunAsNonRoot: ptr.To(true),
+						SeccompProfile: &corev1.SeccompProfile{
+							Type: corev1.SeccompProfileTypeRuntimeDefault,
+						},
+					},
 					// This setting is required to enable the configuration reloader process to send Unix signals to the
 					// collector process.
 					ShareProcessNamespace: ptr.To(true),
@@ -1104,15 +1154,25 @@ func assembleDeploymentCollectorContainer(
 	}
 
 	collectorContainer := corev1.Container{
-		Name:            openTelemetryCollector,
-		Args:            []string{"--config=file:" + collectorConfigurationFilePath},
-		SecurityContext: &corev1.SecurityContext{},
-		Image:           config.Images.CollectorImage,
-		Env:             collectorEnv,
-		LivenessProbe:   &collectorProbe,
-		ReadinessProbe:  &collectorProbe,
-		Resources:       resourceRequirements.ToResourceRequirements(),
-		VolumeMounts:    collectorVolumeMounts,
+		Name: openTelemetryCollector,
+		Args: []string{"--config=file:" + collectorConfigurationFilePath},
+		SecurityContext: &corev1.SecurityContext{
+			AllowPrivilegeEscalation: ptr.To(false),
+			ReadOnlyRootFilesystem:   ptr.To(false),
+			RunAsNonRoot:             ptr.To(true),
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{"ALL"},
+			},
+			SeccompProfile: &corev1.SeccompProfile{
+				Type: corev1.SeccompProfileTypeRuntimeDefault,
+			},
+		},
+		Image:          config.Images.CollectorImage,
+		Env:            collectorEnv,
+		LivenessProbe:  &collectorProbe,
+		ReadinessProbe: &collectorProbe,
+		Resources:      resourceRequirements.ToResourceRequirements(),
+		VolumeMounts:   collectorVolumeMounts,
 	}
 	if config.Images.CollectorImagePullPolicy != "" {
 		collectorContainer.ImagePullPolicy = config.Images.CollectorImagePullPolicy
