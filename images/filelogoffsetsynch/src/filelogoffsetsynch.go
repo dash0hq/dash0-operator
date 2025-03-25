@@ -13,7 +13,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -21,6 +21,8 @@ import (
 	"syscall"
 	"time"
 
+	slogmulti "github.com/samber/slog-multi"
+	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/otel/attribute"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -48,6 +50,8 @@ const (
 )
 
 var (
+	logger *slog.Logger
+
 	currentValue string
 
 	metricNamePrefix = fmt.Sprintf("%s.", meterName)
@@ -65,11 +69,20 @@ var (
 	updateDurationMetric     otelmetric.Float64Histogram
 )
 
-// TODO Add support for sending_queue on separate exporter
-// TODO Set up compaction
-// TODO Set up metrics & logs
 func main() {
 	ctx := context.Background()
+
+	stdOutSlogHandler := slog.NewJSONHandler(os.Stdout, nil)
+	if common.OTelSDKIsConfigured() {
+		logger = slog.New(
+			slogmulti.Fanout(
+				stdOutSlogHandler,
+				otelslog.NewHandler("filelogoffsetsync"),
+			),
+		)
+	} else {
+		logger = slog.New(stdOutSlogHandler)
+	}
 
 	mode := flag.String("mode", "synch",
 		"if set to 'init', it will fetch the offset files from the configmap and store it to the "+
@@ -79,33 +92,39 @@ func main() {
 	flag.Parse()
 
 	if otherArgs := flag.Args(); len(otherArgs) > 0 {
-		log.Fatalln("Unexpected arguments: " + strings.Join(otherArgs, ","))
+		logger.Error("Unexpected arguments: " + strings.Join(otherArgs, ","))
+		os.Exit(1)
 	}
 
 	configMapNamespace, isSet := os.LookupEnv("K8S_CONFIGMAP_NAMESPACE")
 	if !isSet {
-		log.Fatalln("Required env var 'K8S_CONFIGMAP_NAMESPACE' is not set")
+		logger.Error("Required env var 'K8S_CONFIGMAP_NAMESPACE' is not set")
+		os.Exit(1)
 	}
 
 	configMapName, isSet := os.LookupEnv("K8S_CONFIGMAP_NAME")
 	if !isSet {
-		log.Fatalln("Required env var 'K8S_CONFIGMAP_NAME' is not set")
+		logger.Error("Required env var 'K8S_CONFIGMAP_NAME' is not set")
+		os.Exit(1)
 	}
 
 	nodeName, isSet := os.LookupEnv("K8S_NODE_NAME")
 	if !isSet {
-		log.Fatalln("Required env var 'K8S_NODE_NAME' is not set")
+		logger.Error("Required env var 'K8S_NODE_NAME' is not set")
+		os.Exit(1)
 	}
 
 	fileLogOffsetDirectoryPath, isSet := os.LookupEnv("FILELOG_OFFSET_DIRECTORY_PATH")
 	if !isSet {
-		log.Fatalln("Required env var 'FILELOG_OFFSET_DIRECTORY_PATH' is not set")
+		logger.Error("Required env var 'FILELOG_OFFSET_DIRECTORY_PATH' is not set")
+		os.Exit(1)
 	}
 
 	// creates the in-cluster config
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		log.Fatalf("Cannot create the Kube API client: %v\n", err)
+		logger.Error("Cannot create the Kube API client: %v", err)
+		os.Exit(1)
 	}
 
 	meter := common.InitOTelSdkFromEnvVars(ctx, meterName, nil)
@@ -114,7 +133,8 @@ func main() {
 	// creates the clientset
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		log.Fatalf("Cannot create the Kube API client: %v\n", err)
+		logger.Error("cannot create the Kube API client", "error", common.TruncateErrorForLogAttribute(err))
+		os.Exit(1)
 	}
 
 	settings := &Settings{
@@ -128,13 +148,19 @@ func main() {
 	switch *mode {
 	case "init":
 		if restoredFiles, err := initOffsets(ctx, settings); err != nil {
-			log.Fatalf("No offset files restored: %v\n", err)
+			logger.Error("no offset files restored", "error", common.TruncateErrorForLogAttribute(err))
+			os.Exit(1)
 		} else if restoredFiles == 0 {
-			log.Println("No offset files restored")
+			logger.Info("no offset files restored")
 		}
 	case "synch":
 		if err := synchOffsets(ctx, settings); err != nil {
-			log.Fatalf("An error occurred while synching file offsets to configmap: %v\n", err)
+			logger.Error(
+				"an error occurred while synching file offsets to configmap",
+				"error",
+				common.TruncateErrorForLogAttribute(err),
+			)
+			os.Exit(1)
 		}
 	}
 
@@ -142,9 +168,17 @@ func main() {
 }
 
 func initOffsets(ctx context.Context, settings *Settings) (int, error) {
-	configMap, err := settings.Clientset.CoreV1().ConfigMaps(settings.ConfigMapNamespace).Get(ctx, settings.ConfigMapName, metav1.GetOptions{})
+	configMap, err :=
+		settings.Clientset.CoreV1().
+			ConfigMaps(settings.ConfigMapNamespace).
+			Get(ctx, settings.ConfigMapName, metav1.GetOptions{})
 	if err != nil {
-		return 0, fmt.Errorf("cannot retrieve %v/%v config map: %w", settings.ConfigMapNamespace, settings.ConfigMapName, err)
+		return 0, fmt.Errorf(
+			"cannot retrieve %v/%v config map: %w",
+			settings.ConfigMapNamespace,
+			settings.ConfigMapName,
+			err,
+		)
 	}
 
 	offsetBytes, isSet := configMap.BinaryData[settings.NodeName]
@@ -155,7 +189,13 @@ func initOffsets(ctx context.Context, settings *Settings) (int, error) {
 
 	gr, err := gzip.NewReader(bytes.NewReader(offsetBytes))
 	if err != nil {
-		return 0, fmt.Errorf("cannot uncompress '%v' field of %v/%v config map: %w", settings.NodeName, settings.ConfigMapNamespace, settings.ConfigMapName, err)
+		return 0, fmt.Errorf(
+			"cannot uncompress '%v' field of %v/%v config map: %w",
+			settings.NodeName,
+			settings.ConfigMapNamespace,
+			settings.ConfigMapName,
+			err,
+		)
 	}
 
 	tr := tar.NewReader(gr)
@@ -201,7 +241,7 @@ func restoreFile(tr *tar.Reader) (IsArchiveOver, HasRestoredFileFromArchive, err
 			if err := os.Mkdir(nextHeader.Name, 0755); err != nil {
 				return false, false, fmt.Errorf("cannot create directory '%v': %w", nextHeader.Name, err)
 			}
-			log.Printf("Restored directory '%v'\n", nextHeader.Name)
+			logger.Info("restored directory", "name", nextHeader.Name)
 		}
 		return false, false, nil
 	case tar.TypeReg:
@@ -211,17 +251,27 @@ func restoreFile(tr *tar.Reader) (IsArchiveOver, HasRestoredFileFromArchive, err
 		}
 
 		if _, err := io.Copy(file, tr); err != nil {
-			return false, false, fmt.Errorf("cannot write %v bytes to file '%v': %w", nextHeader.Size, nextHeader.Name, err)
+			return false, false, fmt.Errorf(
+				"cannot write %v bytes to file '%v': %w",
+				nextHeader.Size,
+				nextHeader.Name,
+				err,
+			)
 		}
 
 		if err := file.Close(); err != nil {
 			return false, false, fmt.Errorf("cannot close file '%v': %w", nextHeader.Name, err)
 		}
 
-		log.Printf("Restored file '%v' (%v bytes)\n", nextHeader.Name, nextHeader.Size)
+		logger.Info("restored file", "name", nextHeader.Name, "bytes", nextHeader.Size)
 		return false, true, nil
 	default:
-		return false, false, fmt.Errorf("unexpected tar type '%v' for entry '%v' (size: %v)", nextHeader.Typeflag, nextHeader.Name, nextHeader.Size)
+		return false, false, fmt.Errorf(
+			`unexpected tar type '%v' for entry '%v' (size: %v)`,
+			nextHeader.Typeflag,
+			nextHeader.Name,
+			nextHeader.Size,
+		)
 	}
 }
 
@@ -236,13 +286,13 @@ func synchOffsets(ctx context.Context, settings *Settings) error {
 			select {
 			case <-ticker.C:
 				if err := doSynchOffsetsAndMeasure(ctx, settings); err != nil {
-					log.Printf("Cannot update offset files: %v\n", err)
+					logger.Info("cannot update offset files", "error", common.TruncateErrorForLogAttribute(err))
 				}
 			case <-shutdown:
 				ticker.Stop()
 
 				if err := doSynchOffsetsAndMeasure(ctx, settings); err != nil {
-					log.Printf("Cannot update offset files on shutdown: %v\n", err)
+					logger.Info("cannot update offset files on shutdown", "error", common.TruncateErrorForLogAttribute(err))
 				}
 
 				done <- true
@@ -264,10 +314,10 @@ func doSynchOffsetsAndMeasure(ctx context.Context, settings *Settings) error {
 	elapsed := time.Since(start)
 
 	if err != nil {
-		log.Printf("Cannot update offset files: %v\n", err)
+		logger.Info("cannot update offset files", "error", common.TruncateErrorForLogAttribute(err))
 		updateErrors.Add(ctx, 1, otelmetric.WithAttributes(
 			attribute.String("error.type", "CannotUpdateOffsetFiles"),
-			attribute.String("error.message", common.TruncateError(err)),
+			attribute.String("error.message", common.TruncateErrorForMetricAttribute(err)),
 		))
 	} else if offsetUpdated {
 		updateCountMetric.Add(ctx, 1)
@@ -297,15 +347,33 @@ func doSynchOffsets(settings *Settings) (IsOffsetUpdated, OffsetSizeBytes, error
 		return false, -1, nil
 	}
 
-	if err := patchConfigMap(settings.Clientset, settings.NodeName, settings.ConfigMapNamespace, settings.ConfigMapName, newValue); err != nil {
-		return false, -1, fmt.Errorf("cannot store offset files in configmap %v/%v: %w", settings.ConfigMapNamespace, settings.ConfigMapName, err)
+	if err := patchConfigMap(
+		settings.Clientset,
+		settings.NodeName,
+		settings.ConfigMapNamespace,
+		settings.ConfigMapName,
+		newValue,
+	); err != nil {
+		return false, -1,
+			fmt.Errorf(
+				"cannot store offset files in configmap %v/%v: %w",
+				settings.ConfigMapNamespace,
+				settings.ConfigMapName,
+				err,
+			)
 	}
 
 	currentValue = newValue
 	return false, OffsetSizeBytes(len(buf.Bytes())), nil
 }
 
-func patchConfigMap(clientset *kubernetes.Clientset, nodeName string, configMapNamespace string, configMapName string, newValueBase64 string) error {
+func patchConfigMap(
+	clientset *kubernetes.Clientset,
+	nodeName string,
+	configMapNamespace string,
+	configMapName string,
+	newValueBase64 string,
+) error {
 	patch := &patch{
 		BinaryData: map[string]string{
 			nodeName: newValueBase64,
@@ -317,8 +385,23 @@ func patchConfigMap(clientset *kubernetes.Clientset, nodeName string, configMapN
 		return fmt.Errorf("cannot marshal configuration map patch: %w", err)
 	}
 
-	if _, err := clientset.CoreV1().ConfigMaps(configMapNamespace).Patch(context.Background(), configMapName, types.MergePatchType, patchBytes, metav1.PatchOptions{}); err != nil {
-		return fmt.Errorf("cannot update '%v' field of configuration map  %v/%v: %w; merge patch sent: '%v'", nodeName, configMapNamespace, configMapName, err, string(patchBytes))
+	if _, err := clientset.CoreV1().
+		ConfigMaps(configMapNamespace).
+		Patch(
+			context.Background(),
+			configMapName,
+			types.MergePatchType,
+			patchBytes,
+			metav1.PatchOptions{},
+		); err != nil {
+		return fmt.Errorf(
+			"cannot update '%v' field of configuration map  %v/%v: %w; merge patch sent: '%v'",
+			nodeName,
+			configMapNamespace,
+			configMapName,
+			err,
+			string(patchBytes),
+		)
 	}
 
 	return nil
@@ -401,7 +484,8 @@ func initializeSelfMonitoringMetrics(meter otelmetric.Meter) {
 		otelmetric.WithUnit("By"),
 		otelmetric.WithDescription("The size of the compressed offset file"),
 	); err != nil {
-		log.Fatalf("Cannot initialize the OTLP meter for the offset file size gauge: %v", err)
+		logger.Error("Cannot initialize the OTLP meter for the offset file size gauge: %v", err)
+		os.Exit(1)
 	}
 
 	if updateCountMetric, err = meter.Int64Counter(
@@ -409,7 +493,14 @@ func initializeSelfMonitoringMetrics(meter otelmetric.Meter) {
 		otelmetric.WithUnit("1"),
 		otelmetric.WithDescription("Counter of how many times the synch process for filelog offsets occurs"),
 	); err != nil {
-		log.Fatalf("Cannot initialize the metric %s: %v", updateCounterMetricName, err)
+		logger.Error(
+			"cannot initialize the metric %s",
+			"metric.name",
+			updateCounterMetricName,
+			"error",
+			common.TruncateErrorForLogAttribute(err),
+		)
+		os.Exit(1)
 	}
 
 	if updateErrors, err = meter.Int64Counter(
@@ -417,14 +508,30 @@ func initializeSelfMonitoringMetrics(meter otelmetric.Meter) {
 		otelmetric.WithUnit("1"),
 		otelmetric.WithDescription("Error counter for failed filelog offset synch attempts"),
 	); err != nil {
-		log.Fatalf("Cannot initialize the metric %s: %v", updateErrorsMetricName, err)
+		logger.Error(
+			"cannot initialize the metric %s",
+			"metric.name",
+			updateErrorsMetricName,
+			"error",
+			common.TruncateErrorForLogAttribute(err),
+		)
+		os.Exit(1)
 	}
 
 	if updateDurationMetric, err = meter.Float64Histogram(
 		updateDurationMetricName,
 		otelmetric.WithUnit("1s"),
-		otelmetric.WithDescription("Histogram of how long it takes for the synch process for filelog offsets to complete"),
+		otelmetric.WithDescription(
+			"Histogram of how long it takes for the synch process for filelog offsets to complete",
+		),
 	); err != nil {
-		log.Fatalf("Cannot initialize the metric %s: %v", updateDurationMetricName, err)
+		logger.Error(
+			"cannot initialize the metric",
+			"metric.name",
+			updateDurationMetricName,
+			"error",
+			common.TruncateErrorForLogAttribute(err),
+		)
+		os.Exit(1)
 	}
 }

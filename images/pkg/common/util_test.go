@@ -68,8 +68,8 @@ func TestTruncateString(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := TruncateString(tt.input, tt.maxLength); got != tt.want {
-				t.Errorf("TruncateString() = %v, want %v", got, tt.want)
+			if got := truncateString(tt.input, tt.maxLength); got != tt.want {
+				t.Errorf("truncateString() = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -104,8 +104,8 @@ func TestTruncateError(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := TruncateError(tt.input); got != tt.want {
-				t.Errorf("TruncateString():\nwant: \"%v\"\ngot:  \"%v\", ", tt.want, got)
+			if got := TruncateErrorForMetricAttribute(tt.input); got != tt.want {
+				t.Errorf("truncateString():\nwant: \"%v\"\ngot:  \"%v\", ", tt.want, got)
 			}
 		})
 	}
