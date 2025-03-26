@@ -46,8 +46,8 @@ const (
 )
 
 var (
-	defaultInitContainerUser              int64 = 1302
-	defaultInitContainerGroup             int64 = 1302
+	defaultInitContainerUser              int64 = 13020
+	defaultInitContainerGroup             int64 = 13020
 	initContainerAllowPrivilegeEscalation       = false
 	initContainerPrivileged                     = false
 	initContainerReadOnlyRootFilesystem         = true
