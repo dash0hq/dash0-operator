@@ -30,15 +30,15 @@ const (
 )
 
 var (
-	ExpectedDaemonSetServiceAccountName              = fmt.Sprintf("%s-opentelemetry-collector-sa", NamePrefix)
-	ExpectedDaemonSetCollectorConfigMapName          = fmt.Sprintf("%s-opentelemetry-collector-agent-cm", NamePrefix)
-	ExpectedDaemonSetFilelogOffsetSynchConfigMapName = fmt.Sprintf("%s-filelogoffsets-cm", NamePrefix)
-	ExpectedDaemonSetClusterRoleName                 = fmt.Sprintf("%s-opentelemetry-collector-cr", NamePrefix)
-	ExpectedDaemonSetClusterRoleBinding              = fmt.Sprintf("%s-opentelemetry-collector-crb", NamePrefix)
-	ExpectedDaemonSetRoleName                        = fmt.Sprintf("%s-opentelemetry-collector-role", NamePrefix)
-	ExpectedDaemonSetRoleBindingName                 = fmt.Sprintf("%s-opentelemetry-collector-rolebinding", NamePrefix)
-	ExpectedDaemonSetServiceName                     = fmt.Sprintf("%s-opentelemetry-collector-service", NamePrefix)
-	ExpectedDaemonSetName                            = fmt.Sprintf(
+	ExpectedDaemonSetServiceAccountName             = fmt.Sprintf("%s-opentelemetry-collector-sa", NamePrefix)
+	ExpectedDaemonSetCollectorConfigMapName         = fmt.Sprintf("%s-opentelemetry-collector-agent-cm", NamePrefix)
+	ExpectedDaemonSetFilelogOffsetSyncConfigMapName = fmt.Sprintf("%s-filelogoffsets-cm", NamePrefix)
+	ExpectedDaemonSetClusterRoleName                = fmt.Sprintf("%s-opentelemetry-collector-cr", NamePrefix)
+	ExpectedDaemonSetClusterRoleBinding             = fmt.Sprintf("%s-opentelemetry-collector-crb", NamePrefix)
+	ExpectedDaemonSetRoleName                       = fmt.Sprintf("%s-opentelemetry-collector-role", NamePrefix)
+	ExpectedDaemonSetRoleBindingName                = fmt.Sprintf("%s-opentelemetry-collector-rolebinding", NamePrefix)
+	ExpectedDaemonSetServiceName                    = fmt.Sprintf("%s-opentelemetry-collector-service", NamePrefix)
+	ExpectedDaemonSetName                           = fmt.Sprintf(
 		"%s-opentelemetry-collector-agent-daemonset",
 		NamePrefix,
 	)
@@ -75,7 +75,7 @@ var (
 	AllDaemonSetRelatedResources = []expectedResource{
 		{name: ExpectedDaemonSetServiceAccountName, receiver: &corev1.ServiceAccount{}},
 		expectedResourceDaemonSetConfigMap,
-		{name: ExpectedDaemonSetFilelogOffsetSynchConfigMapName, receiver: &corev1.ConfigMap{}},
+		{name: ExpectedDaemonSetFilelogOffsetSyncConfigMapName, receiver: &corev1.ConfigMap{}},
 		{name: ExpectedDaemonSetClusterRoleName, clusterScoped: true, receiver: &rbacv1.ClusterRole{}},
 		{name: ExpectedDaemonSetClusterRoleBinding, clusterScoped: true, receiver: &rbacv1.ClusterRoleBinding{}},
 		{name: ExpectedDaemonSetRoleName, receiver: &rbacv1.Role{}},

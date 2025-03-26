@@ -28,11 +28,11 @@ data:
               .Values.operator.collectors.daemonSetConfigurationReloaderContainerResources
               .Values.operator.collectorDaemonSetConfigurationReloaderContainerResources
           ) | nindent 6 }}
-    collectorDaemonSetFileLogOffsetSynchContainerResources:
+    collectorDaemonSetFileLogOffsetSyncContainerResources:
       {{- toYaml (
             default
-              .Values.operator.collectors.daemonSetFileLogOffsetSynchContainerResources
-              .Values.operator.collectorDaemonSetFileLogOffsetSynchContainerResources
+              .Values.operator.collectors.daemonSetFileLogOffsetSyncContainerResources
+              .Values.operator.collectorDaemonSetFileLogOffsetSyncContainerResources
           ) | nindent 6 }}
     collectorDeploymentCollectorContainerResources:
       {{- toYaml (

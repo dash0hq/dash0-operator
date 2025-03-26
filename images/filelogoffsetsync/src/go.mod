@@ -1,4 +1,4 @@
-module github.com/dash0hq/dash0-operator/images/filelogoffsetsynch
+module github.com/dash0hq/dash0-operator/images/filelogoffsetsync
 
 go 1.24.1
 

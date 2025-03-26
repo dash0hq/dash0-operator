@@ -237,7 +237,7 @@ func enableSelfMonitoringInCollector(
 		authTokenEnvVar = &envVar
 	}
 
-	// For now, we do not instrument init containers. The filelogoffsetsynch init container fails with:
+	// For now, we do not instrument init containers. The filelogoffsetsync init container fails with:
 	//     filelog-offset-init 2024/08/29 21:45:48
 	//     Failed to shutdown metrics provider, metrics data nay have been lost: failed to upload metrics:
 	//     failed to exit idle mode: dns resolver: missing address

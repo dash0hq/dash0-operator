@@ -26,7 +26,7 @@ tests:
             requests:
               memory: 402Mi
               cpu: 502m
-          daemonSetFileLogOffsetSynchContainerResources:
+          daemonSetFileLogOffsetSyncContainerResources:
             limits:
               memory: 103Mi
               cpu: 203m
@@ -78,7 +78,7 @@ tests:
               requests:
                 cpu: 502m
                 memory: 402Mi
-            collectorDaemonSetFileLogOffsetSynchContainerResources:
+            collectorDaemonSetFileLogOffsetSyncContainerResources:
               gomemlimit: 303MiB
               limits:
                 cpu: 203m
@@ -130,7 +130,7 @@ tests:
           requests:
             memory: 402Mi
             cpu: 502m
-        collectorDaemonSetFileLogOffsetSynchContainerResources:
+        collectorDaemonSetFileLogOffsetSyncContainerResources:
           limits:
             memory: 103Mi
             cpu: 203m
@@ -174,7 +174,7 @@ tests:
               requests:
                 cpu: 502m
                 memory: 402Mi
-            collectorDaemonSetFileLogOffsetSynchContainerResources:
+            collectorDaemonSetFileLogOffsetSyncContainerResources:
               gomemlimit: 303MiB
               limits:
                 cpu: 203m

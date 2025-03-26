@@ -91,10 +91,10 @@ determine_container_images() {
   configuration_reloader_img_tag="latest"
   configuration_reloader_img_digest=""
   configuration_reloader_img_pull_policy="Never"
-  filelog_offset_synch_img_repository="filelog-offset-synch"
-  filelog_offset_synch_img_tag="latest"
-  filelog_offset_synch_img_digest=""
-  filelog_offset_synch_img_pull_policy="Never"
+  filelog_offset_sync_img_repository="filelog-offset-sync"
+  filelog_offset_sync_img_tag="latest"
+  filelog_offset_sync_img_digest=""
+  filelog_offset_sync_img_pull_policy="Never"
   secret_ref_resolver_img_repository="secret-ref-resolver"
   secret_ref_resolver_img_tag="latest"
   secret_ref_resolver_img_digest=""
@@ -119,9 +119,9 @@ determine_container_images() {
     configuration_reloader_img_repository=""
     configuration_reloader_img_tag=""
     configuration_reloader_img_pull_policy=""
-    filelog_offset_synch_img_repository=""
-    filelog_offset_synch_img_tag=""
-    filelog_offset_synch_img_pull_policy=""
+    filelog_offset_sync_img_repository=""
+    filelog_offset_sync_img_tag=""
+    filelog_offset_sync_img_pull_policy=""
     secret_ref_resolver_img_repository=""
     secret_ref_resolver_img_tag=""
     secret_ref_resolver_img_pull_policy=""
@@ -179,17 +179,17 @@ determine_container_images() {
     configuration_reloader_img_pull_policy="$CONFIGURATION_RELOADER_IMG_PULL_POLICY"
   fi
 
-  if [[ -n "${FILELOG_OFFSET_SYNCH_IMG_REPOSITORY:-}" ]]; then
-    filelog_offset_synch_img_repository="$FILELOG_OFFSET_SYNCH_IMG_REPOSITORY"
+  if [[ -n "${FILELOG_OFFSET_SYNC_IMG_REPOSITORY:-}" ]]; then
+    filelog_offset_sync_img_repository="$FILELOG_OFFSET_SYNC_IMG_REPOSITORY"
   fi
-  if [[ -n "${FILELOG_OFFSET_SYNCH_IMG_TAG:-}" ]]; then
-    filelog_offset_synch_img_tag="$FILELOG_OFFSET_SYNCH_IMG_TAG"
+  if [[ -n "${FILELOG_OFFSET_SYNC_IMG_TAG:-}" ]]; then
+    filelog_offset_sync_img_tag="$FILELOG_OFFSET_SYNC_IMG_TAG"
   fi
-  if [[ -n "${FILELOG_OFFSET_SYNCH_IMG_DIGEST:-}" ]]; then
-    filelog_offset_synch_img_digest="$FILELOG_OFFSET_SYNCH_IMG_DIGEST"
+  if [[ -n "${FILELOG_OFFSET_SYNC_IMG_DIGEST:-}" ]]; then
+    filelog_offset_sync_img_digest="$FILELOG_OFFSET_SYNC_IMG_DIGEST"
   fi
-  if [[ -n "${FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY:-}" ]]; then
-    filelog_offset_synch_img_pull_policy="$FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY"
+  if [[ -n "${FILELOG_OFFSET_SYNC_IMG_PULL_POLICY:-}" ]]; then
+    filelog_offset_sync_img_pull_policy="$FILELOG_OFFSET_SYNC_IMG_PULL_POLICY"
   fi
 
   if [[ -n "${SECRET_REF_RESOLVER_IMG_REPOSITORY:-}" ]]; then
@@ -219,8 +219,8 @@ determine_container_images() {
     if [[ $(is_remote_image "$configuration_reloader_img_repository") = "true" ]]; then
       configuration_reloader_img_pull_policy=""
     fi
-    if [[ $(is_remote_image "$filelog_offset_synch_img_repository") = "true" ]]; then
-      filelog_offset_synch_img_pull_policy=""
+    if [[ $(is_remote_image "$filelog_offset_sync_img_repository") = "true" ]]; then
+      filelog_offset_sync_img_pull_policy=""
     fi
     if [[ $(is_remote_image "$secret_ref_resolver_img_repository") = "true" ]]; then
       secret_ref_resolver_img_pull_policy=""
@@ -236,8 +236,8 @@ build_all_images() {
     COLLECTOR_IMG_REPOSITORY="$collector_img_repository" \
     CONFIGURATION_RELOADER_IMG_REPOSITORY="$configuration_reloader_img_repository" \
     CONFIGURATION_RELOADER_IMG_TAG="$configuration_reloader_img_tag" \
-    FILELOG_OFFSET_SYNCH_IMG_REPOSITORY=$filelog_offset_synch_img_repository \
-    FILELOG_OFFSET_SYNCH_IMG_TAG="$filelog_offset_synch_img_tag" \
+    FILELOG_OFFSET_SYNC_IMG_REPOSITORY=$filelog_offset_sync_img_repository \
+    FILELOG_OFFSET_SYNC_IMG_TAG="$filelog_offset_sync_img_tag" \
     SECRET_REF_RESOLVER_IMG_REPOSITORY=$secret_ref_resolver_img_repository \
     SECRET_REF_RESOLVER_IMG_TAG="$secret_ref_resolver_img_tag" \
     make docker-build
@@ -251,7 +251,7 @@ build_all_images() {
       secret-ref-resolver:latest \
       collector:latest \
       configuration-reloader:latest \
-      filelog-offset-synch:latest
+      filelog-offset-sync:latest
   fi
 }
 
@@ -352,17 +352,17 @@ run_helm() {
     helm_install_command+=" --set operator.configurationReloaderImage.pullPolicy=$configuration_reloader_img_pull_policy"
   fi
 
-  if [[ -n "$filelog_offset_synch_img_repository" ]]; then
-    helm_install_command+=" --set operator.filelogOffsetSynchImage.repository=$filelog_offset_synch_img_repository"
+  if [[ -n "$filelog_offset_sync_img_repository" ]]; then
+    helm_install_command+=" --set operator.filelogOffsetSyncImage.repository=$filelog_offset_sync_img_repository"
   fi
-  if [[ -n "$filelog_offset_synch_img_tag" ]]; then
-    helm_install_command+=" --set operator.filelogOffsetSynchImage.tag=$filelog_offset_synch_img_tag"
+  if [[ -n "$filelog_offset_sync_img_tag" ]]; then
+    helm_install_command+=" --set operator.filelogOffsetSyncImage.tag=$filelog_offset_sync_img_tag"
   fi
-  if [[ -n "$filelog_offset_synch_img_digest" ]]; then
-    helm_install_command+=" --set operator.filelogOffsetSynchImage.digest=$filelog_offset_synch_img_digest"
+  if [[ -n "$filelog_offset_sync_img_digest" ]]; then
+    helm_install_command+=" --set operator.filelogOffsetSyncImage.digest=$filelog_offset_sync_img_digest"
   fi
-  if [[ -n "$filelog_offset_synch_img_pull_policy" ]]; then
-    helm_install_command+=" --set operator.filelogOffsetSynchImage.pullPolicy=$filelog_offset_synch_img_pull_policy"
+  if [[ -n "$filelog_offset_sync_img_pull_policy" ]]; then
+    helm_install_command+=" --set operator.filelogOffsetSyncImage.pullPolicy=$filelog_offset_sync_img_pull_policy"
   fi
 
   if [[ -n "$secret_ref_resolver_img_repository" ]]; then

@@ -70,7 +70,7 @@ var (
 		InitContainerImage:         "ghcr.io/dash0hq/instrumentation:latest",
 		CollectorImage:             "ghcr.io/dash0hq/collector:latest",
 		ConfigurationReloaderImage: "ghcr.io/dash0hq/configuration-reloader:latest",
-		FilelogOffsetSynchImage:    "ghcr.io/dash0hq/filelog-offset-synch:latest",
+		FilelogOffsetSyncImage:     "ghcr.io/dash0hq/filelog-offset-sync:latest",
 	}
 
 	httpClient     = &http.Client{}

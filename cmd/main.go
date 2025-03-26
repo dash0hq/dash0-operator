@@ -67,8 +67,8 @@ type environmentVariables struct {
 	collectorImagePullPolicy             corev1.PullPolicy
 	configurationReloaderImage           string
 	configurationReloaderImagePullPolicy corev1.PullPolicy
-	filelogOffsetSynchImage              string
-	filelogOffsetSynchImagePullPolicy    corev1.PullPolicy
+	filelogOffsetSyncImage               string
+	filelogOffsetSyncImagePullPolicy     corev1.PullPolicy
 	nodeIp                               string
 	nodeName                             string
 	podName                              string
@@ -91,8 +91,8 @@ const (
 	collectorImageImagePullPolicyEnvVarName        = "DASH0_COLLECTOR_IMAGE_PULL_POLICY"
 	configurationReloaderImageEnvVarName           = "DASH0_CONFIGURATION_RELOADER_IMAGE"
 	configurationReloaderImagePullPolicyEnvVarName = "DASH0_CONFIGURATION_RELOADER_IMAGE_PULL_POLICY"
-	filelogOffsetSynchImageEnvVarName              = "DASH0_FILELOG_OFFSET_SYNCH_IMAGE"
-	filelogOffsetSynchImagePullPolicyEnvVarName    = "DASH0_FILELOG_OFFSET_SYNCH_IMAGE_PULL_POLICY"
+	filelogOffsetSyncImageEnvVarName               = "DASH0_FILELOG_OFFSET_SYNC_IMAGE"
+	filelogOffsetSyncImagePullPolicyEnvVarName     = "DASH0_FILELOG_OFFSET_SYNC_IMAGE_PULL_POLICY"
 	k8sNodeIpEnvVarName                            = "K8S_NODE_IP"
 	k8sNodeNameEnvVarName                          = "K8S_NODE_NAME"
 	k8sPodNameEnvVarName                           = "K8S_POD_NAME"
@@ -562,12 +562,12 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 	configurationReloaderImagePullPolicy :=
 		readOptionalPullPolicyFromEnvironmentVariable(configurationReloaderImagePullPolicyEnvVarName)
 
-	filelogOffsetSynchImage, isSet := os.LookupEnv(filelogOffsetSynchImageEnvVarName)
+	filelogOffsetSyncImage, isSet := os.LookupEnv(filelogOffsetSyncImageEnvVarName)
 	if !isSet {
-		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, filelogOffsetSynchImageEnvVarName)
+		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, filelogOffsetSyncImageEnvVarName)
 	}
-	filelogOffsetSynchImagePullPolicy :=
-		readOptionalPullPolicyFromEnvironmentVariable(filelogOffsetSynchImagePullPolicyEnvVarName)
+	filelogOffsetSyncImagePullPolicy :=
+		readOptionalPullPolicyFromEnvironmentVariable(filelogOffsetSyncImagePullPolicyEnvVarName)
 
 	nodeIp, isSet := os.LookupEnv(k8sNodeIpEnvVarName)
 	if !isSet {
@@ -614,8 +614,8 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 		collectorImagePullPolicy:             collectorImagePullPolicy,
 		configurationReloaderImage:           configurationReloaderImage,
 		configurationReloaderImagePullPolicy: configurationReloaderImagePullPolicy,
-		filelogOffsetSynchImage:              filelogOffsetSynchImage,
-		filelogOffsetSynchImagePullPolicy:    filelogOffsetSynchImagePullPolicy,
+		filelogOffsetSyncImage:               filelogOffsetSyncImage,
+		filelogOffsetSyncImagePullPolicy:     filelogOffsetSyncImagePullPolicy,
 		nodeIp:                               nodeIp,
 		nodeName:                             nodeName,
 		podName:                              podName,
@@ -678,8 +678,8 @@ func startDash0Controllers(
 		CollectorImagePullPolicy:             envVars.collectorImagePullPolicy,
 		ConfigurationReloaderImage:           envVars.configurationReloaderImage,
 		ConfigurationReloaderImagePullPolicy: envVars.configurationReloaderImagePullPolicy,
-		FilelogOffsetSynchImage:              envVars.filelogOffsetSynchImage,
-		FilelogOffsetSynchImagePullPolicy:    envVars.filelogOffsetSynchImagePullPolicy,
+		FilelogOffsetSyncImage:               envVars.filelogOffsetSyncImage,
+		FilelogOffsetSyncImagePullPolicy:     envVars.filelogOffsetSyncImagePullPolicy,
 	}
 	isIPv6Cluster := strings.Count(envVars.podIp, ":") >= 2
 

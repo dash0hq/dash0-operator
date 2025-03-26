@@ -38,7 +38,7 @@ const (
 	InitContainerImageTest         = "some-registry.com:1234/dash0hq/instrumentation:4.5.6"
 	CollectorImageTest             = "some-registry.com:1234/dash0hq/collector:7.8.9"
 	ConfigurationReloaderImageTest = "some-registry.com:1234/dash0hq/configuration-reloader:10.11.12"
-	FilelogOffsetSynchImageTest    = "some-registry.com:1234/dash0hq/filelog-offset-synch:13.14.15"
+	FilelogOffsetSyncImageTest     = "some-registry.com:1234/dash0hq/filelog-offset-sync:13.14.15"
 
 	OTelCollectorBaseUrlTest      = "http://$(DASH0_NODE_IP):40318"
 	EndpointDash0Test             = "endpoint.dash0.com:4317"
@@ -73,8 +73,8 @@ var (
 		CollectorImagePullPolicy:             corev1.PullAlways,
 		ConfigurationReloaderImage:           ConfigurationReloaderImageTest,
 		ConfigurationReloaderImagePullPolicy: corev1.PullAlways,
-		FilelogOffsetSynchImage:              FilelogOffsetSynchImageTest,
-		FilelogOffsetSynchImagePullPolicy:    corev1.PullAlways,
+		FilelogOffsetSyncImage:               FilelogOffsetSyncImageTest,
+		FilelogOffsetSyncImagePullPolicy:     corev1.PullAlways,
 	}
 
 	OperatorManagerDeploymentUIDStr = "2f009c75-d69f-4b02-9d9d-fa17e76f5c1d"

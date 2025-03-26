@@ -21,7 +21,7 @@ type ResourceRequirementsWithGoMemLimit struct {
 type OTelColExtraConfig struct {
 	CollectorDaemonSetCollectorContainerResources             ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetCollectorContainerResources,omitempty"`
 	CollectorDaemonSetConfigurationReloaderContainerResources ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetConfigurationReloaderContainerResources,omitempty"`
-	CollectorDaemonSetFileLogOffsetSynchContainerResources    ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetFileLogOffsetSynchContainerResources,omitempty"`
+	CollectorDaemonSetFileLogOffsetSyncContainerResources     ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetFileLogOffsetSyncContainerResources,omitempty"`
 
 	CollectorDeploymentCollectorContainerResources             ResourceRequirementsWithGoMemLimit `json:"collectorDeploymentCollectorContainerResources,omitempty"`
 	CollectorDeploymentConfigurationReloaderContainerResources ResourceRequirementsWithGoMemLimit `json:"collectorDeploymentConfigurationReloaderContainerResources,omitempty"`
@@ -49,7 +49,7 @@ var (
 				corev1.ResourceMemory: resource.MustParse("12Mi"),
 			},
 		},
-		CollectorDaemonSetFileLogOffsetSynchContainerResources: ResourceRequirementsWithGoMemLimit{
+		CollectorDaemonSetFileLogOffsetSyncContainerResources: ResourceRequirementsWithGoMemLimit{
 			Limits: corev1.ResourceList{
 				corev1.ResourceMemory: resource.MustParse("32Mi"),
 			},
@@ -101,8 +101,8 @@ func ReadOTelColExtraConfiguration(configurationFile string) (*OTelColExtraConfi
 		&OTelExtraConfigDefaults.CollectorDaemonSetConfigurationReloaderContainerResources,
 	)
 	applyDefaults(
-		&extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources,
-		&OTelExtraConfigDefaults.CollectorDaemonSetFileLogOffsetSynchContainerResources,
+		&extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources,
+		&OTelExtraConfigDefaults.CollectorDaemonSetFileLogOffsetSyncContainerResources,
 	)
 	applyDefaults(
 		&extraConfig.CollectorDeploymentCollectorContainerResources,

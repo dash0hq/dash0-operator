@@ -1036,7 +1036,7 @@ trace_statements:
 					instrumentation:       deriveAlternativeImageForUpdateTest(images.instrumentation),
 					collector:             deriveAlternativeImageForUpdateTest(images.collector),
 					configurationReloader: deriveAlternativeImageForUpdateTest(images.configurationReloader),
-					fileLogOffsetSynch:    deriveAlternativeImageForUpdateTest(images.fileLogOffsetSynch),
+					fileLogOffsetSync:     deriveAlternativeImageForUpdateTest(images.fileLogOffsetSync),
 				}
 				deployOperatorWithDefaultAutoOperationConfiguration(
 					operatorNamespace,
@@ -1417,16 +1417,16 @@ func determineContainerImages() {
 		images.configurationReloader.pullPolicy,
 	)
 
-	images.fileLogOffsetSynch.repository = getEnvOrDefault(
-		"FILELOG_OFFSET_SYNCH_IMG_REPOSITORY",
-		images.fileLogOffsetSynch.repository,
+	images.fileLogOffsetSync.repository = getEnvOrDefault(
+		"FILELOG_OFFSET_SYNC_IMG_REPOSITORY",
+		images.fileLogOffsetSync.repository,
 	)
-	images.fileLogOffsetSynch.tag = getEnvOrDefault("FILELOG_OFFSET_SYNCH_IMG_TAG", images.fileLogOffsetSynch.tag)
-	images.fileLogOffsetSynch.digest = getEnvOrDefault("FILELOG_OFFSET_SYNCH_IMG_DIGEST",
-		images.fileLogOffsetSynch.digest)
-	images.fileLogOffsetSynch.pullPolicy = getEnvOrDefault(
-		"FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY",
-		images.fileLogOffsetSynch.pullPolicy,
+	images.fileLogOffsetSync.tag = getEnvOrDefault("FILELOG_OFFSET_SYNC_IMG_TAG", images.fileLogOffsetSync.tag)
+	images.fileLogOffsetSync.digest = getEnvOrDefault("FILELOG_OFFSET_SYNC_IMG_DIGEST",
+		images.fileLogOffsetSync.digest)
+	images.fileLogOffsetSync.pullPolicy = getEnvOrDefault(
+		"FILELOG_OFFSET_SYNC_IMG_PULL_POLICY",
+		images.fileLogOffsetSync.pullPolicy,
 	)
 
 	images.secretRefResolver.repository = getEnvOrDefault(
@@ -1455,8 +1455,8 @@ func determineContainerImages() {
 		if isRemoteImage(images.configurationReloader) {
 			images.configurationReloader.pullPolicy = getEnvOrDefault("CONFIGURATION_RELOADER_IMG_PULL_POLICY", "")
 		}
-		if isRemoteImage(images.fileLogOffsetSynch) {
-			images.fileLogOffsetSynch.pullPolicy = getEnvOrDefault("FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY", "")
+		if isRemoteImage(images.fileLogOffsetSync) {
+			images.fileLogOffsetSync.pullPolicy = getEnvOrDefault("FILELOG_OFFSET_SYNC_IMG_PULL_POLICY", "")
 		}
 		if isRemoteImage(images.secretRefResolver) {
 			images.secretRefResolver.pullPolicy = getEnvOrDefault("SECRET_REF_RESOLVER_IMG_PULL_POLICY", "")

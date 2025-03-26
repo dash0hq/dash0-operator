@@ -46,7 +46,7 @@ type patch struct {
 }
 
 const (
-	meterName = "dash0.operator.filelog_offset_synch"
+	meterName = "dash0.operator.filelog_offset_sync"
 )
 
 var (
@@ -84,9 +84,9 @@ func main() {
 		logger = slog.New(stdOutSlogHandler)
 	}
 
-	mode := flag.String("mode", "synch",
+	mode := flag.String("mode", "sync",
 		"if set to 'init', it will fetch the offset files from the configmap and store it to the "+
-			"path stored at ${FILELOG_OFFSET_DIRECTORY_PATH}; synch mode instead will persist the offset "+
+			"path stored at ${FILELOG_OFFSET_DIRECTORY_PATH}; sync mode instead will persist the offset "+
 			"files at regular intervals")
 
 	flag.Parse()
@@ -127,7 +127,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	meter := common.InitOTelSdkFromEnvVars(ctx, meterName, nil)
+	meter := common.InitOTelSdkFromEnvVars(ctx, meterName, "filelog-offset-sync")
 	initializeSelfMonitoringMetrics(meter)
 
 	// creates the clientset
@@ -153,10 +153,10 @@ func main() {
 		} else if restoredFiles == 0 {
 			logger.Info("no offset files restored")
 		}
-	case "synch":
-		if err := synchOffsets(ctx, settings); err != nil {
+	case "sync":
+		if err := syncOffsets(ctx, settings); err != nil {
 			logger.Error(
-				"an error occurred while synching file offsets to configmap",
+				"an error occurred while syncing file offsets to configmap",
 				"error",
 				common.TruncateErrorForLogAttribute(err),
 			)
@@ -275,7 +275,7 @@ func restoreFile(tr *tar.Reader) (IsArchiveOver, HasRestoredFileFromArchive, err
 	}
 }
 
-func synchOffsets(ctx context.Context, settings *Settings) error {
+func syncOffsets(ctx context.Context, settings *Settings) error {
 	ticker := time.NewTicker(5 * time.Second)
 	shutdown := make(chan os.Signal, 1)
 	done := make(chan bool, 1)
@@ -285,13 +285,13 @@ func synchOffsets(ctx context.Context, settings *Settings) error {
 		for {
 			select {
 			case <-ticker.C:
-				if err := doSynchOffsetsAndMeasure(ctx, settings); err != nil {
+				if err := doSyncOffsetsAndMeasure(ctx, settings); err != nil {
 					logger.Info("cannot update offset files", "error", common.TruncateErrorForLogAttribute(err))
 				}
 			case <-shutdown:
 				ticker.Stop()
 
-				if err := doSynchOffsetsAndMeasure(ctx, settings); err != nil {
+				if err := doSyncOffsetsAndMeasure(ctx, settings); err != nil {
 					logger.Info("cannot update offset files on shutdown", "error", common.TruncateErrorForLogAttribute(err))
 				}
 
@@ -308,9 +308,9 @@ func synchOffsets(ctx context.Context, settings *Settings) error {
 type OffsetSizeBytes int
 type IsOffsetUpdated bool
 
-func doSynchOffsetsAndMeasure(ctx context.Context, settings *Settings) error {
+func doSyncOffsetsAndMeasure(ctx context.Context, settings *Settings) error {
 	start := time.Now()
-	offsetUpdated, offsetUpdateSize, err := doSynchOffsets(settings)
+	offsetUpdated, offsetUpdateSize, err := doSyncOffsets(settings)
 	elapsed := time.Since(start)
 
 	if err != nil {
@@ -328,7 +328,7 @@ func doSynchOffsetsAndMeasure(ctx context.Context, settings *Settings) error {
 	return err
 }
 
-func doSynchOffsets(settings *Settings) (IsOffsetUpdated, OffsetSizeBytes, error) {
+func doSyncOffsets(settings *Settings) (IsOffsetUpdated, OffsetSizeBytes, error) {
 	var buf bytes.Buffer
 
 	// Compress folder to tar, store bytes in configmap
@@ -491,7 +491,7 @@ func initializeSelfMonitoringMetrics(meter otelmetric.Meter) {
 	if updateCountMetric, err = meter.Int64Counter(
 		updateCounterMetricName,
 		otelmetric.WithUnit("1"),
-		otelmetric.WithDescription("Counter of how many times the synch process for filelog offsets occurs"),
+		otelmetric.WithDescription("Counter of how many times the sync process for filelog offsets occurs"),
 	); err != nil {
 		logger.Error(
 			"cannot initialize the metric %s",
@@ -506,7 +506,7 @@ func initializeSelfMonitoringMetrics(meter otelmetric.Meter) {
 	if updateErrors, err = meter.Int64Counter(
 		updateErrorsMetricName,
 		otelmetric.WithUnit("1"),
-		otelmetric.WithDescription("Error counter for failed filelog offset synch attempts"),
+		otelmetric.WithDescription("Error counter for failed filelog offset sync attempts"),
 	); err != nil {
 		logger.Error(
 			"cannot initialize the metric %s",
@@ -522,7 +522,7 @@ func initializeSelfMonitoringMetrics(meter otelmetric.Meter) {
 		updateDurationMetricName,
 		otelmetric.WithUnit("1s"),
 		otelmetric.WithDescription(
-			"Histogram of how long it takes for the synch process for filelog offsets to complete",
+			"Histogram of how long it takes for the sync process for filelog offsets to complete",
 		),
 	); err != nil {
 		logger.Error(

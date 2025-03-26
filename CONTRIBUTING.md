@@ -35,9 +35,9 @@ After that, you can deploy the operator to your cluster:
     CONFIGURATION_RELOADER_IMG_REPOSITORY=ghcr.io/dash0hq/configuration-reloader \
     CONFIGURATION_RELOADER_IMG_TAG=main-dev \
     CONFIGURATION_RELOADER_IMG_PULL_POLICY=""
-    FILELOG_OFFSET_SYNCH_IMG_REPOSITORY=ghcr.io/dash0hq/filelog-offset-synch \
-    FILELOG_OFFSET_SYNCH_IMG_TAG=main-dev \
-    FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY="" \
+    FILELOG_OFFSET_SYNC_IMG_REPOSITORY=ghcr.io/dash0hq/filelog-offset-sync \
+    FILELOG_OFFSET_SYNC_IMG_TAG=main-dev \
+    FILELOG_OFFSET_SYNC_IMG_PULL_POLICY="" \
     SECRET_REF_RESOLVER_IMG_REPOSITORY=ghcr.io/dash0hq/secret-ref-resolver \
     SECRET_REF_RESOLVER_IMG_TAG=main-dev \
     SECRET_REF_RESOLVER_IMG_PULL_POLICY=""
@@ -91,8 +91,8 @@ CONTROLLER_IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller \
   COLLECTOR_IMG_TAG=main-dev \
   CONFIGURATION_RELOADER_IMG_REPOSITORY=ghcr.io/dash0hq/configuration-reloader \
   CONFIGURATION_RELOADER_IMG_TAG=main-dev \
-  FILELOG_OFFSET_SYNCH_IMG_REPOSITORY=ghcr.io/dash0hq/filelog-offset-synch \
-  FILELOG_OFFSET_SYNCH_IMG_TAG=main-dev \
+  FILELOG_OFFSET_SYNC_IMG_REPOSITORY=ghcr.io/dash0hq/filelog-offset-sync \
+  FILELOG_OFFSET_SYNC_IMG_TAG=main-dev \
   SECRET_REF_RESOLVER_IMG_REPOSITORY=ghcr.io/dash0hq/secret-ref-resolver \
   SECRET_REF_RESOLVER_IMG_TAG=main-dev \
   make test-e2e
@@ -274,10 +274,10 @@ If you want to report telemetry to a Dash0 backend, set `DASH0_AUTHORIZATION_TOK
     * `CONFIGURATION_RELOADER_IMG_TAG`
     * `CONFIGURATION_RELOADER_IMG_DIGEST`
     * `CONFIGURATION_RELOADER_IMG_PULL_POLICY`
-    * `FILELOG_OFFSET_SYNCH_IMG_REPOSITORY`
-    * `FILELOG_OFFSET_SYNCH_IMG_TAG`
-    * `FILELOG_OFFSET_SYNCH_IMG_DIGEST`
-    * `FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY`
+    * `FILELOG_OFFSET_SYNC_IMG_REPOSITORY`
+    * `FILELOG_OFFSET_SYNC_IMG_TAG`
+    * `FILELOG_OFFSET_SYNC_IMG_DIGEST`
+    * `FILELOG_OFFSET_SYNC_IMG_PULL_POLICY`
     * `SECRET_REF_RESOLVER_IMG_REPOSITORY`
     * `SECRET_REF_RESOLVER_IMG_TAG`
     * `SECRET_REF_RESOLVER_IMG_PULL_POLICY`
@@ -291,8 +291,8 @@ If you want to report telemetry to a Dash0 backend, set `DASH0_AUTHORIZATION_TOK
       COLLECTOR_IMG_TAG=main-dev \
       CONFIGURATION_RELOADER_IMG_REPOSITORY=ghcr.io/dash0hq/configuration-reloader \
       CONFIGURATION_RELOADER_IMG_TAG=main-dev \
-      FILELOG_OFFSET_SYNCH_IMG_REPOSITORY=ghcr.io/dash0hq/filelog-offset-synch \
-      FILELOG_OFFSET_SYNCH_IMG_TAG=main-dev \
+      FILELOG_OFFSET_SYNC_IMG_REPOSITORY=ghcr.io/dash0hq/filelog-offset-sync \
+      FILELOG_OFFSET_SYNC_IMG_TAG=main-dev \
       SECRET_REF_RESOLVER_IMG_REPOSITORY=ghcr.io/dash0hq/secret-ref-resolver \
       SECRET_REF_RESOLVER_IMG_TAG=main-dev \
       test-resources/bin/test-scenario-01-aum-operator-cr.sh
