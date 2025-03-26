@@ -43,7 +43,7 @@ type PersesDashboardCrdReconciler struct {
 
 type PersesDashboardReconciler struct {
 	client.Client
-	pseudoClusterUid           types.UID
+	pseudoClusterUID           types.UID
 	queue                      *workqueue.Typed[ThirdPartyResourceSyncJob]
 	httpClient                 *http.Client
 	apiConfig                  atomic.Pointer[ApiConfig]
@@ -107,7 +107,7 @@ func (r *PersesDashboardCrdReconciler) CreateResourceReconciler(
 	r.persesDashboardReconciler = &PersesDashboardReconciler{
 		Client:           r.Client,
 		queue:            r.Queue,
-		pseudoClusterUid: pseudoClusterUid,
+		pseudoClusterUID: pseudoClusterUid,
 		httpClient:       httpClient,
 		httpRetryDelay:   1 * time.Second,
 	}
@@ -504,7 +504,7 @@ func (r *PersesDashboardReconciler) renderDashboardUrl(preconditionCheckResult *
 		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
 		// any potential naming collisions (e.g. namespace="abc" & name="def-ghi" vs. namespace="abc-def" & name="ghi").
 		"dash0-operator_%s_%s_%s_%s",
-		r.pseudoClusterUid,
+		r.pseudoClusterUID,
 		urlEncodePathSegment(preconditionCheckResult.dataset),
 		preconditionCheckResult.k8sNamespace,
 		preconditionCheckResult.k8sName,

@@ -30,14 +30,23 @@ import (
 )
 
 type OTelSdkConfig struct {
-	Endpoint           string
-	Protocol           string
-	ResourceAttributes []attribute.KeyValue
-	LogLevel           string
-	Headers            map[string]string
+	Endpoint         string
+	Protocol         string
+	ServiceName      string
+	ServiceVersion   string
+	PseudoClusterUID string
+	ClusterName      string
+	DeploymentUid    string
+	DeploymentName   string
+	ContainerName    string
+
+	LogLevel string
+	Headers  map[string]string
 }
 
 const (
+	OperatorManagerServiceNamespace = "dash0-operator"
+
 	ProtocolGrpc         = "grpc"
 	ProtocolHttpProtobuf = "http/protobuf"
 	ProtocolHttpJson     = "http/json"
@@ -58,7 +67,8 @@ func OTelSDKIsConfigured() bool {
 func InitOTelSdkFromEnvVars(
 	ctx context.Context,
 	meterName string,
-	extraResourceAttributes []attribute.KeyValue,
+	serviceName string,
+	containerName string,
 ) otelmetric.Meter {
 	// InitOTelSdkFromEnvVars is used in the configuration reloader and filelog offset sync container. The OTel SDK
 	// will either be started once at process startup or not. In contrast to InitOTelSdkWithConfig, it will not be
@@ -76,14 +86,20 @@ func InitOTelSdkFromEnvVars(
 		metricExporter := createMetricExporterFromProtocolEnvVar(ctx, protocol)
 		logExporter := createLogExporterFromProtocolEnvVar(ctx, protocol)
 
-		podUid, nodeName, daemonSetUid, deploymentUid := getKubernetesResourceAttributes()
 		resourceAttributes := assembleResource(
 			ctx,
-			podUid,
-			nodeName,
-			daemonSetUid,
-			deploymentUid,
-			extraResourceAttributes,
+			serviceName,
+			// serviceVersion will be read from env var
+			"",
+			// pseudoClusterUID will be read from env var
+			"",
+			// clusterName will be read from env var
+			"",
+			// deploymentUid will be read from env var
+			"",
+			// deploymentName will be read from env var
+			"",
+			containerName,
 		)
 
 		sdkMeterProvider := sdkmetric.NewMeterProvider(
@@ -178,11 +194,16 @@ func InitOTelSdkWithConfig(ctx context.Context, meterName string, oTelSdkConfig 
 		metricExporter := createMetricExporterFromConfig(ctx, oTelSdkConfig)
 		logExporter := createLogExporterFromConfig(ctx, oTelSdkConfig)
 
-		// This method is only used for the operator manager deployment, which has no daemonset UID (since it is a
-		// deployment), and the deployment UID is already contained in oTelSdkConfig.ResourceAttributes. Hence, we
-		// ignore the daemonset/deployment UID return values from getKubernetesResourceAttributes here deliberately.
-		podUid, nodeName, _, _ := getKubernetesResourceAttributes()
-		resourceAttributes := assembleResource(ctx, podUid, nodeName, "", "", oTelSdkConfig.ResourceAttributes)
+		resourceAttributes := assembleResource(
+			ctx,
+			oTelSdkConfig.ServiceName,
+			oTelSdkConfig.ServiceVersion,
+			oTelSdkConfig.PseudoClusterUID,
+			oTelSdkConfig.ClusterName,
+			oTelSdkConfig.DeploymentUid,
+			oTelSdkConfig.DeploymentName,
+			oTelSdkConfig.ContainerName,
+		)
 
 		sdkMeterProvider := sdkmetric.NewMeterProvider(
 			sdkmetric.WithResource(resourceAttributes),
@@ -321,50 +342,81 @@ func createLogExporterFromConfig(ctx context.Context, oTelSdkConfig *OTelSdkConf
 	return logExporter
 }
 
-func getKubernetesResourceAttributes() (string, string, string, string) {
-	podUid, isSet := os.LookupEnv("K8S_POD_UID")
-	if !isSet {
-		log.Println("Env var 'K8S_POD_UID' is not set")
-	}
-
-	nodeName, isSet := os.LookupEnv("K8S_NODE_NAME")
-	if !isSet {
-		log.Println("Env var 'K8S_NODE_NAME' is not set")
-	}
-
-	daemonSetUid := os.Getenv("K8S_DAEMONSET_UID")
-	deploymentUid := os.Getenv("K8S_DEPLOYMENT_UID")
-
-	return podUid, nodeName, daemonSetUid, deploymentUid
-}
-
 func assembleResource(
 	ctx context.Context,
-	podUid string,
-	nodeName string,
-	daemonSetUid string,
+	serviceName,
+	serviceVersion,
+	pseudoClusterUID string,
+	clusterName string,
 	deploymentUid string,
-	extraResourceAttributes []attribute.KeyValue,
+	deploymentName string,
+	containerName string,
 ) *resource.Resource {
-	attributes := make([]attribute.KeyValue, 0, len(extraResourceAttributes)+2)
-	attributes = append(attributes, semconv.K8SPodUID(podUid))
-	attributes = append(attributes, semconv.K8SNodeName(nodeName))
-	if daemonSetUid != "" {
+	var attributes []attribute.KeyValue
+
+	attributes = append(attributes, semconv.ServiceNamespace(OperatorManagerServiceNamespace))
+	if serviceName != "" {
+		attributes = append(attributes, semconv.ServiceName(serviceName))
+	}
+	if serviceVersion != "" {
+		attributes = append(attributes, semconv.ServiceVersion(serviceVersion))
+	} else if serviceVersionFromEnvVar := os.Getenv("SERVICE_VERSION"); serviceVersionFromEnvVar != "" {
+		attributes = append(attributes, semconv.ServiceVersion(serviceVersionFromEnvVar))
+	}
+
+	if pseudoClusterUID != "" {
+		attributes = append(attributes, semconv.K8SClusterUID(pseudoClusterUID))
+	} else if pseudoClusterUidFromEnvVar := os.Getenv("K8S_CLUSTER_UID"); pseudoClusterUidFromEnvVar != "" {
+		attributes = append(attributes, semconv.K8SClusterUID(pseudoClusterUidFromEnvVar))
+	}
+	if clusterName != "" {
+		attributes = append(attributes, semconv.K8SClusterName(clusterName))
+	} else if clusterNameFromEnvVar := os.Getenv("K8S_CLUSTER_NAME"); clusterNameFromEnvVar != "" {
+		attributes = append(attributes, semconv.K8SClusterName(clusterNameFromEnvVar))
+	}
+
+	if nodeName := os.Getenv("K8S_NODE_NAME"); nodeName != "" {
+		attributes = append(attributes, semconv.K8SNodeName(nodeName))
+	}
+
+	if namespace := os.Getenv("DASH0_OPERATOR_NAMESPACE"); namespace != "" {
+		attributes = append(attributes, semconv.K8SNamespaceName(namespace))
+	}
+
+	if daemonSetUid := os.Getenv("K8S_DAEMONSET_UID"); daemonSetUid != "" {
 		attributes = append(attributes, semconv.K8SDaemonSetUID(daemonSetUid))
+	}
+	if daemonSetName := os.Getenv("K8S_DAEMONSET_NAME"); daemonSetName != "" {
+		attributes = append(attributes, semconv.K8SDaemonSetName(daemonSetName))
 	}
 	if deploymentUid != "" {
 		attributes = append(attributes, semconv.K8SDeploymentUID(deploymentUid))
+	} else if deploymentUidFromEnvVar := os.Getenv("K8S_DEPLOYMENT_UID"); deploymentUidFromEnvVar != "" {
+		attributes = append(attributes, semconv.K8SDeploymentUID(deploymentUidFromEnvVar))
 	}
-	for _, keyValue := range extraResourceAttributes {
-		attributes = append(attributes, keyValue)
+	if deploymentName != "" {
+		attributes = append(attributes, semconv.K8SDeploymentName(deploymentName))
+	} else if deploymentNameFromEnvVar := os.Getenv("K8S_DEPLOYMENT_NAME"); deploymentNameFromEnvVar != "" {
+		attributes = append(attributes, semconv.K8SDeploymentName(deploymentNameFromEnvVar))
 	}
-	resourceAttributes, err := resource.New(ctx,
+
+	if podUid := os.Getenv("K8S_POD_UID"); podUid != "" {
+		attributes = append(attributes, semconv.K8SPodUID(podUid))
+	}
+	if podName := os.Getenv("K8S_POD_NAME"); podName != "" {
+		attributes = append(attributes, semconv.K8SPodName(podName))
+	}
+	if containerName != "" {
+		attributes = append(attributes, semconv.K8SContainerName(containerName))
+	}
+
+	resource, err := resource.New(ctx,
 		resource.WithAttributes(attributes...),
 	)
 	if err != nil {
 		log.Printf("Cannot initialize the OpenTelemetry resource: %v\n", err)
 	}
-	return resourceAttributes
+	return resource
 }
 
 // ShutDownOTelSdk calls the Shutdown function on the sdkMeterProvider, and removes the references to the

@@ -243,7 +243,6 @@ func (r *OperatorConfigurationReconciler) applyOperatorManagerSelfMonitoringSett
 			r.OperatorDeploymentNamespace,
 			r.OperatorDeploymentUID,
 			r.OperatorDeploymentName,
-			r.OperatorManagerPodName,
 			r.Images.GetOperatorVersion(),
 			r.DevelopmentMode,
 			logger,

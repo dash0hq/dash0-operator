@@ -32,6 +32,7 @@ type oTelColConfig struct {
 	KubernetesInfrastructureMetricsCollectionEnabled bool
 	KubeletStatsReceiverConfig                       KubeletStatsReceiverConfig
 	UseHostMetricsReceiver                           bool
+	PseudoClusterUID                                 string
 	ClusterName                                      string
 	Images                                           util.Images
 	IsIPv6Cluster                                    bool
@@ -76,7 +77,8 @@ const (
 	daemonSetServiceComponent  = "agent-collector"
 	deploymentServiceComponent = openTelemetryCollectorDeploymentNameSuffix
 
-	configReloader = "configuration-reloader"
+	configReloader    = "configuration-reloader"
+	fileLogOffsetSync = "filelog-offset-sync"
 
 	// label keys
 	dash0OptOutLabelKey = "dash0.com/enable"
@@ -129,6 +131,15 @@ var (
 			FieldRef: &nodeNameFieldSpec,
 		},
 	}
+	namespaceFieldSpec = corev1.ObjectFieldSelector{
+		FieldPath: "metadata.namespace",
+	}
+	namespaceEnvVar = corev1.EnvVar{
+		Name: "DASH0_OPERATOR_NAMESPACE",
+		ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &namespaceFieldSpec,
+		},
+	}
 	podUidFieldSpec = corev1.ObjectFieldSelector{
 		FieldPath: "metadata.uid",
 	}
@@ -136,6 +147,15 @@ var (
 		Name: "K8S_POD_UID",
 		ValueFrom: &corev1.EnvVarSource{
 			FieldRef: &podUidFieldSpec,
+		},
+	}
+	podNameFieldSpec = corev1.ObjectFieldSelector{
+		FieldPath: "metadata.name",
+	}
+	k8sPodNameEnvVar = corev1.EnvVar{
+		Name: "K8S_POD_NAME",
+		ValueFrom: &corev1.EnvVarSource{
+			FieldRef: &podNameFieldSpec,
 		},
 	}
 
@@ -490,18 +510,23 @@ func assembleService(config *oTelColConfig) *corev1.Service {
 }
 
 func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig *OTelColExtraConfig) (*appsv1.DaemonSet, error) {
+	daemonSetName := DaemonSetName(config.NamePrefix)
+	workloadNameEnvVar := corev1.EnvVar{
+		Name:  "K8S_DAEMONSET_NAME",
+		Value: daemonSetName,
+	}
 	collectorContainer, err := assembleDaemonSetCollectorContainer(
 		config,
+		workloadNameEnvVar,
 		extraConfig.CollectorDaemonSetCollectorContainerResources,
 	)
 	if err != nil {
 		return nil, err
 	}
-
 	collectorDaemonSet := &appsv1.DaemonSet{
 		TypeMeta: util.K8sTypeMetaDaemonSet,
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      DaemonSetName(config.NamePrefix),
+			Name:      daemonSetName,
 			Namespace: config.Namespace,
 			Labels:    labels(true),
 		},
@@ -547,16 +572,19 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig *OTelColExtra
 					ShareProcessNamespace: ptr.To(true),
 					InitContainers: []corev1.Container{assembleFileLogOffsetSyncInitContainer(
 						config,
+						workloadNameEnvVar,
 						extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources,
 					)},
 					Containers: []corev1.Container{
 						collectorContainer,
 						assembleConfigurationReloaderContainer(
 							config,
+							workloadNameEnvVar,
 							extraConfig.CollectorDaemonSetConfigurationReloaderContainerResources,
 						),
 						assembleFileLogOffsetSyncContainer(
 							config,
+							workloadNameEnvVar,
 							extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources,
 						),
 					},
@@ -584,10 +612,11 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig *OTelColExtra
 
 func assembleFileLogOffsetSyncContainer(
 	config *oTelColConfig,
+	workloadNameEnvVar corev1.EnvVar,
 	resourceRequirements ResourceRequirementsWithGoMemLimit,
 ) corev1.Container {
 	filelogOffsetSyncContainer := corev1.Container{
-		Name: "filelog-offset-sync",
+		Name: fileLogOffsetSync,
 		Args: []string{"--mode=sync"},
 		SecurityContext: &corev1.SecurityContext{
 			AllowPrivilegeEscalation: ptr.To(false),
@@ -618,8 +647,23 @@ func assembleFileLogOffsetSyncContainer(
 				Name:  "FILELOG_OFFSET_DIRECTORY_PATH",
 				Value: offsetsDirPath,
 			},
+			{
+				Name:  "SERVICE_VERSION",
+				Value: config.Images.GetOperatorVersion(),
+			},
+			{
+				Name:  "K8S_CLUSTER_UID",
+				Value: config.PseudoClusterUID,
+			},
+			{
+				Name:  "K8S_CLUSTER_NAME",
+				Value: config.ClusterName,
+			},
 			k8sNodeNameEnvVar,
+			namespaceEnvVar,
+			workloadNameEnvVar,
 			k8sPodUidEnvVar,
+			k8sPodNameEnvVar,
 		},
 		Resources:    resourceRequirements.ToResourceRequirements(),
 		VolumeMounts: []corev1.VolumeMount{filelogReceiverOffsetsVolumeMount},
@@ -728,7 +772,11 @@ func assembleCollectorDaemonSetVolumeMounts(config *oTelColConfig) []corev1.Volu
 	return volumeMounts
 }
 
-func assembleCollectorEnvVars(config *oTelColConfig, goMemLimit string) ([]corev1.EnvVar, error) {
+func assembleCollectorEnvVars(
+	config *oTelColConfig,
+	workloadNameEnvVar corev1.EnvVar,
+	goMemLimit string,
+) ([]corev1.EnvVar, error) {
 	collectorEnv := []corev1.EnvVar{
 		{
 			Name: "K8S_POD_IP",
@@ -740,7 +788,10 @@ func assembleCollectorEnvVars(config *oTelColConfig, goMemLimit string) ([]corev
 		},
 		k8sNodeIpEnvVar,
 		k8sNodeNameEnvVar,
+		namespaceEnvVar,
+		workloadNameEnvVar,
 		k8sPodUidEnvVar,
+		k8sPodNameEnvVar,
 		{
 			Name:  "DASH0_COLLECTOR_PID_FILE",
 			Value: collectorPidFilePath,
@@ -767,10 +818,11 @@ func assembleCollectorEnvVars(config *oTelColConfig, goMemLimit string) ([]corev
 
 func assembleDaemonSetCollectorContainer(
 	config *oTelColConfig,
+	workloadNameEnvVar corev1.EnvVar,
 	resourceRequirements ResourceRequirementsWithGoMemLimit,
 ) (corev1.Container, error) {
 	collectorVolumeMounts := assembleCollectorDaemonSetVolumeMounts(config)
-	collectorEnv, err := assembleCollectorEnvVars(config, resourceRequirements.GoMemLimit)
+	collectorEnv, err := assembleCollectorEnvVars(config, workloadNameEnvVar, resourceRequirements.GoMemLimit)
 	if err != nil {
 		return corev1.Container{}, err
 	}
@@ -816,7 +868,11 @@ func assembleDaemonSetCollectorContainer(
 	return collectorContainer, nil
 }
 
-func assembleConfigurationReloaderContainer(config *oTelColConfig, resourceRequirements ResourceRequirementsWithGoMemLimit) corev1.Container {
+func assembleConfigurationReloaderContainer(
+	config *oTelColConfig,
+	workloadNameEnvVar corev1.EnvVar,
+	resourceRequirements ResourceRequirementsWithGoMemLimit,
+) corev1.Container {
 	collectorPidFileMountRO := collectorPidFileMountRW
 	collectorPidFileMountRO.ReadOnly = true
 	configurationReloaderContainer := corev1.Container{
@@ -842,8 +898,19 @@ func assembleConfigurationReloaderContainer(config *oTelColConfig, resourceRequi
 				Name:  "GOMEMLIMIT",
 				Value: resourceRequirements.GoMemLimit,
 			},
+			{
+				Name:  "K8S_CLUSTER_UID",
+				Value: config.PseudoClusterUID,
+			},
+			{
+				Name:  "K8S_CLUSTER_NAME",
+				Value: config.ClusterName,
+			},
 			k8sNodeNameEnvVar,
+			namespaceEnvVar,
+			workloadNameEnvVar,
 			k8sPodUidEnvVar,
+			k8sPodNameEnvVar,
 		},
 		Resources:    resourceRequirements.ToResourceRequirements(),
 		VolumeMounts: []corev1.VolumeMount{collectorConfigVolume, collectorPidFileMountRO},
@@ -856,6 +923,7 @@ func assembleConfigurationReloaderContainer(config *oTelColConfig, resourceRequi
 
 func assembleFileLogOffsetSyncInitContainer(
 	config *oTelColConfig,
+	workloadNameEnvVar corev1.EnvVar,
 	resourceRequirements ResourceRequirementsWithGoMemLimit,
 ) corev1.Container {
 	initFilelogOffsetSyncContainer := corev1.Container{
@@ -890,8 +958,19 @@ func assembleFileLogOffsetSyncInitContainer(
 				Name:  "FILELOG_OFFSET_DIRECTORY_PATH",
 				Value: offsetsDirPath,
 			},
+			{
+				Name:  "K8S_CLUSTER_UID",
+				Value: config.PseudoClusterUID,
+			},
+			{
+				Name:  "K8S_CLUSTER_NAME",
+				Value: config.ClusterName,
+			},
 			k8sNodeNameEnvVar,
+			namespaceEnvVar,
+			workloadNameEnvVar,
 			k8sPodUidEnvVar,
+			k8sPodNameEnvVar,
 		},
 		Resources:    resourceRequirements.ToResourceRequirements(),
 		VolumeMounts: []corev1.VolumeMount{filelogReceiverOffsetsVolumeMount},
@@ -1029,18 +1108,23 @@ func assembleCollectorDeployment(
 	config *oTelColConfig,
 	extraConfig *OTelColExtraConfig,
 ) (*appsv1.Deployment, error) {
+	deploymentName := DeploymentName(config.NamePrefix)
+	workloadNameEnvVar := corev1.EnvVar{
+		Name:  "K8S_DEPLOYMENT_NAME",
+		Value: deploymentName,
+	}
 	collectorContainer, err := assembleDeploymentCollectorContainer(
 		config,
+		workloadNameEnvVar,
 		extraConfig.CollectorDeploymentCollectorContainerResources,
 	)
 	if err != nil {
 		return nil, err
 	}
-
 	collectorDeployment := &appsv1.Deployment{
 		TypeMeta: util.K8sTypeMetaDeployment,
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      DeploymentName(config.NamePrefix),
+			Name:      deploymentName,
 			Namespace: config.Namespace,
 			Labels:    labels(true),
 		},
@@ -1088,6 +1172,7 @@ func assembleCollectorDeployment(
 						collectorContainer,
 						assembleConfigurationReloaderContainer(
 							config,
+							workloadNameEnvVar,
 							extraConfig.CollectorDeploymentConfigurationReloaderContainerResources,
 						),
 					},
@@ -1143,13 +1228,14 @@ func assembleCollectorDeploymentVolumes(
 
 func assembleDeploymentCollectorContainer(
 	config *oTelColConfig,
+	workloadNameEnvVar corev1.EnvVar,
 	resourceRequirements ResourceRequirementsWithGoMemLimit,
 ) (corev1.Container, error) {
 	collectorVolumeMounts := []corev1.VolumeMount{
 		collectorConfigVolume,
 		collectorPidFileMountRW,
 	}
-	collectorEnv, err := assembleCollectorEnvVars(config, resourceRequirements.GoMemLimit)
+	collectorEnv, err := assembleCollectorEnvVars(config, workloadNameEnvVar, resourceRequirements.GoMemLimit)
 	if err != nil {
 		return corev1.Container{}, err
 	}

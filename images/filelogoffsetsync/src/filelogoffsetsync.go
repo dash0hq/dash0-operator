@@ -127,7 +127,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	meter := common.InitOTelSdkFromEnvVars(ctx, meterName, "filelog-offset-sync")
+	meter := common.InitOTelSdkFromEnvVars(ctx, meterName, "dash0-operator-collector", "filelog-offset-sync")
 	initializeSelfMonitoringMetrics(meter)
 
 	// creates the clientset

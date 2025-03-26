@@ -42,6 +42,7 @@ type OTelColResourceManager struct {
 	SendBatchMaxSize                 *uint32
 	NodeIp                           string
 	NodeName                         string
+	PseudoClusterUID                 string
 	IsIPv6Cluster                    bool
 	IsDocker                         bool
 	DevelopmentMode                  bool
@@ -88,6 +89,7 @@ func NewOTelColResourceManager(
 	sendBatchMaxSize *uint32,
 	nodeIp string,
 	nodeName string,
+	pseudoClusterUID string,
 	isIPv6Cluster bool,
 	isDocker bool,
 	developmentMode bool,
@@ -102,6 +104,7 @@ func NewOTelColResourceManager(
 		SendBatchMaxSize:          sendBatchMaxSize,
 		NodeIp:                    nodeIp,
 		NodeName:                  nodeName,
+		PseudoClusterUID:          pseudoClusterUID,
 		IsIPv6Cluster:             isIPv6Cluster,
 		IsDocker:                  isDocker,
 		DevelopmentMode:           developmentMode,
@@ -161,6 +164,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		// For this reason, we do not allow enabling the hostmetrics receiver when the node runtime is Docker.
 		UseHostMetricsReceiver: kubernetesInfrastructureMetricsCollectionEnabled && !m.IsDocker,
 		ClusterName:            clusterName,
+		PseudoClusterUID:       m.PseudoClusterUID,
 		Images:                 images,
 		IsIPv6Cluster:          m.IsIPv6Cluster,
 		DevelopmentMode:        m.DevelopmentMode,

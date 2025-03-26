@@ -13,7 +13,6 @@ import (
 	"github.com/go-logr/logr"
 	json "github.com/json-iterator/go"
 	"github.com/wI2L/jsondiff"
-	"go.opentelemetry.io/otel/attribute"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	appsv1 "k8s.io/api/apps/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -393,7 +392,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 							g.Expect(activeOTelSdkConfig).ToNot(BeNil())
 							g.Expect(activeOTelSdkConfig.Endpoint).To(Equal(config.expectedEndpoint))
 							g.Expect(activeOTelSdkConfig.Protocol).To(Equal(config.expectedProtocol))
-							verifyOperatorManagerResourceAttributes(g, activeOTelSdkConfig.ResourceAttributes)
+							verifyOperatorManagerResourceAttributes(g, activeOTelSdkConfig)
 
 							g.Expect(activeOTelSdkConfig.Headers).To(HaveLen(len(config.expectedHeaders)))
 							for key, value := range config.expectedHeaders {
@@ -592,7 +591,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				g.Expect(activeOTelSdkConfig).ToNot(BeNil())
 				g.Expect(activeOTelSdkConfig.Endpoint).To(Equal(EndpointDash0Test))
 				g.Expect(activeOTelSdkConfig.Protocol).To(Equal(common.ProtocolGrpc))
-				verifyOperatorManagerResourceAttributes(g, activeOTelSdkConfig.ResourceAttributes)
+				verifyOperatorManagerResourceAttributes(g, activeOTelSdkConfig)
 
 				g.Expect(activeOTelSdkConfig.Headers).To(HaveLen(1))
 				g.Expect(activeOTelSdkConfig.Headers[util.AuthorizationHeaderName]).To(Equal(AuthorizationHeaderTest))
@@ -638,7 +637,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				g.Expect(activeOTelSdkConfig).ToNot(BeNil())
 				g.Expect(activeOTelSdkConfig.Endpoint).To(Equal(EndpointDash0TestAlternative))
 				g.Expect(activeOTelSdkConfig.Protocol).To(Equal(common.ProtocolGrpc))
-				verifyOperatorManagerResourceAttributes(g, activeOTelSdkConfig.ResourceAttributes)
+				verifyOperatorManagerResourceAttributes(g, activeOTelSdkConfig)
 
 				g.Expect(activeOTelSdkConfig.Headers).To(HaveLen(2))
 				g.Expect(activeOTelSdkConfig.Headers[util.AuthorizationHeaderName]).To(
@@ -689,44 +688,14 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 	})
 })
 
-func verifyOperatorManagerResourceAttributes(g Gomega, resourceAttributes []attribute.KeyValue) {
-	g.Expect(resourceAttributes).To(HaveLen(9))
-	g.Expect(
-		getResourceAttribute(resourceAttributes, "service.namespace")).To(
-		Equal("dash0-operator"))
-	g.Expect(
-		getResourceAttribute(resourceAttributes, "service.name")).To(
-		Equal("operator-manager"))
-	g.Expect(
-		getResourceAttribute(resourceAttributes, "service.version")).To(
-		Equal("1.2.3"))
-	g.Expect(
-		getResourceAttribute(resourceAttributes, "k8s.cluster.uid")).To(
-		Equal(ClusterUIDTest))
-	g.Expect(
-		getResourceAttribute(resourceAttributes, "k8s.cluster.name")).To(
-		Equal(ClusterNameTest))
-	g.Expect(
-		getResourceAttribute(resourceAttributes, "k8s.namespace.name")).To(
-		Equal(OperatorNamespace))
-	g.Expect(
-		getResourceAttribute(resourceAttributes, "k8s.deployment.uid")).To(
-		Equal(OperatorManagerDeploymentUIDStr))
-	g.Expect(
-		getResourceAttribute(resourceAttributes, "k8s.deployment.name")).To(
-		Equal(OperatorManagerDeploymentName))
-	g.Expect(
-		getResourceAttribute(resourceAttributes, "k8s.pod.name")).To(
-		Equal(OperatorPodName))
-}
-
-func getResourceAttribute(attributes []attribute.KeyValue, key string) string {
-	for _, a := range attributes {
-		if string(a.Key) == key {
-			return a.Value.AsString()
-		}
-	}
-	return ""
+func verifyOperatorManagerResourceAttributes(g Gomega, oTelSdkConfig *common.OTelSdkConfig) {
+	g.Expect(oTelSdkConfig.ServiceName).To(Equal("operator-manager"))
+	g.Expect(oTelSdkConfig.ServiceVersion).To(Equal("1.2.3"))
+	g.Expect(oTelSdkConfig.PseudoClusterUID).To(Equal(ClusterUIDTest))
+	g.Expect(oTelSdkConfig.ClusterName).To(Equal(ClusterNameTest))
+	g.Expect(oTelSdkConfig.DeploymentUid).To(Equal(OperatorManagerDeploymentUIDStr))
+	g.Expect(oTelSdkConfig.DeploymentName).To(Equal(OperatorManagerDeploymentName))
+	g.Expect(oTelSdkConfig.ContainerName).To(Equal("operator-manager"))
 }
 
 func cleanUpDeploymentSpecForDiff(spec *appsv1.DeploymentSpec) {

@@ -242,7 +242,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					Eventually(func(g Gomega) {
 						verifyAtLeastOneLogRecord(
 							g,
-							selfMonitoringLogsResourceMatcher,
+							selfMonitoringLogsResourceMatcherOperatorManager,
 							func(logRecord plog.LogRecord, matchResult *ObjectMatchResult[plog.ResourceLogs, plog.LogRecord]) {
 								expectedLogBody := "operator manager configuration:"
 								logBody := logRecord.Body().AsString()

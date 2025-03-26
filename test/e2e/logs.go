@@ -152,7 +152,7 @@ func hasMatchingLogRecords(
 	}
 }
 
-func selfMonitoringLogsResourceMatcher(
+func selfMonitoringLogsResourceMatcherOperatorManager(
 	resourceLogs plog.ResourceLogs,
 	matchResult *ResourceMatchResult[plog.ResourceLogs],
 ) {
@@ -207,6 +207,12 @@ func selfMonitoringLogsResourceMatcher(
 		attributes,
 		string(semconv.K8SPodNameKey),
 		"dash0-operator-controller-",
+		matchResult,
+	)
+	verifyResourceAttributeStartsWith(
+		attributes,
+		string(semconv.K8SContainerNameKey),
+		"operator-manager",
 		matchResult,
 	)
 }
