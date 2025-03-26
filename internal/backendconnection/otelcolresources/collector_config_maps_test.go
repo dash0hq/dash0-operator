@@ -811,14 +811,17 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		resourceProcessor := readFromMap(collectorConfig, []string{"processors", "resource/clustername"})
 		Expect(resourceProcessor).To(BeNil())
 		verifyProcessorDoesNotAppearInAnyPipeline(collectorConfig, "resource/clustername")
-		selfMonitoringTelemetryResource := readFromMap(
+		selfMonitoringTelemetryResourceRaw := readFromMap(
 			collectorConfig,
 			[]string{
 				"service",
 				"telemetry",
 				"resource",
 			})
-		Expect(selfMonitoringTelemetryResource).To(BeNil())
+		Expect(selfMonitoringTelemetryResourceRaw).ToNot(BeNil())
+		selfMonitoringTelemetryResource, ok := selfMonitoringTelemetryResourceRaw.(map[string]interface{})
+		Expect(ok).To(BeTrue())
+		Expect(selfMonitoringTelemetryResource["k8s.cluster.name"]).To(BeNil())
 	}, daemonSetAndDeployment)
 
 	DescribeTable("should render resource processor with k8s.cluster.name if available", func(cmTypeDef configMapTypeDefinition) {

@@ -95,7 +95,7 @@ func main() {
 	done := make(chan bool, 1)
 	signal.Notify(shutdown, syscall.SIGTERM)
 
-	meter := common.InitOTelSdkFromEnvVars(ctx, meterName, nil)
+	meter := common.InitOTelSdkFromEnvVars(ctx, meterName, "dash0-operator-collector", "configuration-reloader")
 	initializeSelfMonitoringMetrics(meter)
 
 	go func() {

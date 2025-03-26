@@ -71,7 +71,6 @@ type environmentVariables struct {
 	filelogOffsetSyncImagePullPolicy     corev1.PullPolicy
 	nodeIp                               string
 	nodeName                             string
-	podName                              string
 	podIp                                string
 	sendBatchMaxSize                     *uint32
 	debugVerbosityDetailed               bool
@@ -95,7 +94,6 @@ const (
 	filelogOffsetSyncImagePullPolicyEnvVarName     = "DASH0_FILELOG_OFFSET_SYNC_IMAGE_PULL_POLICY"
 	k8sNodeIpEnvVarName                            = "K8S_NODE_IP"
 	k8sNodeNameEnvVarName                          = "K8S_NODE_NAME"
-	k8sPodNameEnvVarName                           = "K8S_POD_NAME"
 	k8sPodIpEnvVarName                             = "K8S_POD_IP"
 
 	developmentModeEnvVarName        = "DASH0_DEVELOPMENT_MODE"
@@ -295,7 +293,7 @@ func main() {
 		startupTasksK8sClient,
 		&setupLog,
 	)
-	pseudoClusterUID := readPseudoClusterUid(ctx, startupTasksK8sClient, &setupLog)
+	pseudoClusterUID := readPseudoClusterUID(ctx, startupTasksK8sClient, &setupLog)
 	if operatorDeploymentSelfReference, err = findDeploymentReference(
 		ctx,
 		startupTasksK8sClient,
@@ -577,10 +575,6 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 	if !isSet {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, k8sNodeNameEnvVarName)
 	}
-	podName, isSet := os.LookupEnv(k8sPodNameEnvVarName)
-	if !isSet {
-		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, k8sPodNameEnvVarName)
-	}
 	podIp, isSet := os.LookupEnv(k8sPodIpEnvVarName)
 	if !isSet {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, k8sPodIpEnvVarName)
@@ -618,7 +612,6 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 		filelogOffsetSyncImagePullPolicy:     filelogOffsetSyncImagePullPolicy,
 		nodeIp:                               nodeIp,
 		nodeName:                             nodeName,
-		podName:                              podName,
 		podIp:                                podIp,
 		sendBatchMaxSize:                     sendBatchMaxSize,
 		debugVerbosityDetailed:               debugVerbosityDetailed,
@@ -712,6 +705,7 @@ func startDash0Controllers(
 		envVars.sendBatchMaxSize,
 		envVars.nodeIp,
 		envVars.nodeName,
+		pseudoClusterUID,
 		isIPv6Cluster,
 		isDocker,
 		developmentMode,
@@ -754,8 +748,10 @@ func startDash0Controllers(
 	}
 	controller.StartProcessingThirdPartySynchronizationQueue(thirdPartyResourceSynchronizationQueue, &setupLog)
 
+	setupLog.Info("Creating the self-monitoring OTel SDK starter.")
 	oTelSdkStarter = selfmonitoringapiaccess.NewOTelSdkStarter(delegatingZapCoreWrapper)
 
+	setupLog.Info("Creating the operator configuration resource reconciler.")
 	operatorConfigurationReconciler := &controller.OperatorConfigurationReconciler{
 		Client:    k8sClient,
 		Clientset: clientset,
@@ -770,17 +766,19 @@ func startDash0Controllers(
 		OperatorDeploymentNamespace:     operatorDeploymentSelfReference.Namespace,
 		OperatorDeploymentUID:           operatorDeploymentSelfReference.UID,
 		OperatorDeploymentName:          operatorDeploymentSelfReference.Name,
-		OperatorManagerPodName:          envVars.podName,
 		OTelSdkStarter:                  oTelSdkStarter,
 		Images:                          images,
 		OperatorNamespace:               envVars.operatorNamespace,
 		SecretRefResolverDeploymentName: envVars.secretRefResolverDeploymentName,
 		DevelopmentMode:                 developmentMode,
 	}
+	setupLog.Info("Starting the operator configuration resource reconciler.")
 	if err := operatorConfigurationReconciler.SetupWithManager(mgr); err != nil {
-		return fmt.Errorf("unable to set up the operator configuration reconciler: %w", err)
+		return fmt.Errorf("unable to set up the operator configuration resource reconciler: %w", err)
 	}
+	setupLog.Info("The operator configuration resource reconciler has been started.")
 
+	setupLog.Info("Creating the monitoring resource reconciler.")
 	monitoringReconciler := &controller.MonitoringReconciler{
 		Client:                   k8sClient,
 		Clientset:                clientset,
@@ -789,9 +787,11 @@ func startDash0Controllers(
 		Images:                   images,
 		OperatorNamespace:        envVars.operatorNamespace,
 	}
+	setupLog.Info("Starting the monitoring resource reconciler.")
 	if err := monitoringReconciler.SetupWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to set up the monitoring reconciler: %w", err)
 	}
+	setupLog.Info("The monitoring resource reconciler has been started.")
 
 	if err := (&webhooks.InstrumentationWebhookHandler{
 		Client:               k8sClient,
@@ -879,7 +879,7 @@ func detectDocker(
 	}
 }
 
-func readPseudoClusterUid(ctx context.Context, k8sClient client.Client, logger *logr.Logger) string {
+func readPseudoClusterUID(ctx context.Context, k8sClient client.Client, logger *logr.Logger) string {
 	kubeSystemNamespace := &corev1.Namespace{}
 	if err := k8sClient.Get(ctx, client.ObjectKey{Name: "kube-system"}, kubeSystemNamespace); err != nil {
 		msg := "unable to get the kube-system namespace uid"
@@ -1054,7 +1054,6 @@ func triggerSecretRefExchangeAndStartSelfMonitoringIfPossible(
 		operatorDeploymentSelfReference.Namespace,
 		operatorDeploymentSelfReference.UID,
 		operatorDeploymentSelfReference.Name,
-		envVars.podName,
 		operatorVersion,
 		developmentMode,
 		&setupLog,

@@ -77,6 +77,7 @@ type collectorConfigurationTemplateValues struct {
 	KubernetesInfrastructureMetricsCollectionEnabled bool
 	KubeletStatsReceiverConfig                       KubeletStatsReceiverConfig
 	UseHostMetricsReceiver                           bool
+	PseudoClusterUID                                 string
 	ClusterName                                      string
 	NamespaceOttlFilter                              string
 	NamespacesWithPrometheusScraping                 []string
@@ -201,6 +202,7 @@ func assembleCollectorConfigMap(
 				KubernetesInfrastructureMetricsCollectionEnabled: config.KubernetesInfrastructureMetricsCollectionEnabled,
 				KubeletStatsReceiverConfig:                       config.KubeletStatsReceiverConfig,
 				UseHostMetricsReceiver:                           config.UseHostMetricsReceiver,
+				PseudoClusterUID:                                 config.PseudoClusterUID,
 				ClusterName:                                      config.ClusterName,
 				NamespaceOttlFilter:                              namespaceOttlFilter,
 				NamespacesWithPrometheusScraping:                 namespacesWithPrometheusScraping,
