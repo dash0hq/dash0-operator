@@ -222,8 +222,6 @@ If you want to report telemetry to a Dash0 backend, set `DASH0_AUTHORIZATION_TOK
     * `OPERATOR_CONFIGURATION_VIA_HELM_SELF_MONITORING_ENABLED`: Set this to false to set the respective Helm value to
       false, disabling self-monitoring.
       This defaults to "true".
-    * `OPERATOR_CONFIGURATION_VIA_HELM_USE_TOKEN`: Set this to true to let use an auth token
-      (`DASH0_AUTHORIZATION_TOKEN`) in the operator configuration resource instead of a secret ref.
     * `OPERATOR_HELM_CHART_VERSION`: Set this to use a specific version of the Helm chart. This is meant to be used
       together with `OPERATOR_HELM_CHART=dash0-operator/dash0-operator` or similar, where `OPERATOR_HELM_CHART` refers
       to an already installed remote Helm repository (e.g. https://dash0hq.github.io/dash0-operator) that contains the
@@ -246,6 +244,11 @@ If you want to report telemetry to a Dash0 backend, set `DASH0_AUTHORIZATION_TOK
     * `USE_OTLP_SINK`: Set this to "true" to deploy a local collector named OTLP sink and send telemetry there instead
       of sending it to an actual Dash0 backend.
       This defaults to "false".
+    * `USE_TOKEN`: Set this to true to let use the auth token
+      (`DASH0_AUTHORIZATION_TOKEN`) directly in the operator configuration resource instead of a secret ref.
+      The default is to use the secret ref.
+      This setting is used in both modes, that is, independent of whether `DEPLOY_OPERATOR_CONFIGURATION_VIA_HELM=false`
+      has been provided.
     * Additional configuration for the Helm deployment can be put into `test-resources/bin/extra-values.yaml` (create
       the file if necessary).
 * Additionally, there is a set of four variables for each of the container images to determine which version of the
