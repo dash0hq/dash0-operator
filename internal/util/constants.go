@@ -6,11 +6,10 @@ package util
 type WorkloadModifierActor string
 
 const (
-	AuthorizationHeaderName      = "Authorization"
-	Dash0DatasetHeaderName       = "Dash0-Dataset"
-	DatasetDefault               = "default"
-	FieldManager                 = "dash0-operator"
-	OperatorManagerContainerName = "manager"
+	AuthorizationHeaderName = "Authorization"
+	Dash0DatasetHeaderName  = "Dash0-Dataset"
+	DatasetDefault          = "default"
+	FieldManager            = "dash0-operator"
 
 	ActorController WorkloadModifierActor = "controller"
 	ActorWebhook    WorkloadModifierActor = "webhook"

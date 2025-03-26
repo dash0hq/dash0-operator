@@ -49,6 +49,13 @@ const (
 var (
 	// See https://kubernetes.io/docs/tasks/inject-data-application/define-interdependent-environment-variables/
 	selfMonitoringAuthHeaderValue = fmt.Sprintf("Bearer $(%s)", CollectorSelfMonitoringAuthTokenEnvVarName)
+
+	collectorLogSelfMonitoringPrelude = `
+    logs:
+      processors:
+        - batch:
+            exporter:
+              otlp:`
 )
 
 func (c *SelfMonitoringConfiguration) HasDash0ApiAccessConfigured() bool {
@@ -69,17 +76,15 @@ func ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
 		return SelfMonitoringConfiguration{}, nil
 	}
 
-	if !util.ReadBoolPointerWithDefault(resource.Spec.SelfMonitoring.Enabled, true) {
+	selfMonitoringIsEnabled := util.ReadBoolPointerWithDefault(resource.Spec.SelfMonitoring.Enabled, true)
+	if !selfMonitoringIsEnabled {
 		return SelfMonitoringConfiguration{}, nil
 	}
 
 	export := resource.Spec.Export
-	selfMonitoringIsEnabled := util.ReadBoolPointerWithDefault(resource.Spec.SelfMonitoring.Enabled, true)
 	if export == nil {
-		if selfMonitoringIsEnabled {
-			logger.Info("Invalid configuration of Dash0OperatorConfiguration resource: Self-monitoring is enabled " +
-				"but no export configuration is set. Self-monitoring telemetry will not be sent.")
-		}
+		logger.Info("Invalid configuration of Dash0OperatorConfiguration resource: Self-monitoring is enabled " +
+			"but no export configuration is set. Self-monitoring telemetry will not be sent.")
 		return SelfMonitoringConfiguration{}, nil
 	}
 
@@ -327,6 +332,53 @@ func addAuthTokenToContainer(container *corev1.Container, authTokenEnvVar *corev
 	}
 }
 
+func convertHeadersToEnvVarValue(headers []dash0v1alpha1.Header) string {
+	keyValuePairs := make([]string, 0, len(headers))
+	for _, header := range headers {
+		keyValuePairs = append(keyValuePairs, fmt.Sprintf("%v=%v", header.Name, header.Value))
+	}
+	return strings.Join(keyValuePairs, ",")
+}
+
+func updateOrAppendEnvVar(container *corev1.Container, name string, value string) {
+	newEnvVar := corev1.EnvVar{
+		Name:  name,
+		Value: value,
+	}
+	idx := slices.IndexFunc(container.Env, func(e corev1.EnvVar) bool {
+		return e.Name == name
+	})
+	if idx >= 0 {
+		// We need to update the existing value
+		container.Env[idx] = newEnvVar
+	} else {
+		container.Env = append(container.Env, newEnvVar)
+	}
+}
+
+func removeEnvVar(container *corev1.Container, name string) {
+	idx := slices.IndexFunc(container.Env, func(e corev1.EnvVar) bool {
+		return e.Name == name
+	})
+	if idx >= 0 {
+		container.Env = slices.Delete(container.Env, idx, idx+1)
+	}
+}
+
+func matchOtelExporterOtlpEndpointEnvVar(e corev1.EnvVar) bool {
+	return e.Name == otelExporterOtlpEndpointEnvVarName
+}
+
+func matchOtelExporterOtlpHeadersEnvVar(e corev1.EnvVar) bool {
+	return e.Name == otelExporterOtlpHeadersEnvVarName
+}
+
+func matchEnvVar(envVarName string) func(corev1.EnvVar) bool {
+	return func(e corev1.EnvVar) bool {
+		return e.Name == envVarName
+	}
+}
+
 // ConvertExportConfigurationToEnvVarSettings is used when enabling self-monitoring in a container by configuring
 // the OpenTelemetry Go SDK via _environment variable_. We use this approach for the OTel collector pods that the
 // operator starts.
@@ -384,51 +436,89 @@ func prependProtocol(endpoint string, defaultProtocol string) string {
 	return endpoint
 }
 
-func convertHeadersToEnvVarValue(headers []dash0v1alpha1.Header) string {
-	keyValuePairs := make([]string, 0, len(headers))
-	for _, header := range headers {
-		keyValuePairs = append(keyValuePairs, fmt.Sprintf("%v=%v", header.Name, header.Value))
+// ConvertExportConfigurationToCollectorLogSelfMonitoringPipelineString is used to create a snippet that can be added to
+// the collector config maps for sending the collector's logs to a configured export.
+func ConvertExportConfigurationToCollectorLogSelfMonitoringPipelineString(selfMonitoringConfiguration SelfMonitoringConfiguration) string {
+	if !selfMonitoringConfiguration.SelfMonitoringEnabled {
+		return ""
 	}
-	return strings.Join(keyValuePairs, ",")
+	selfMonitoringExport := selfMonitoringConfiguration.Export
+	if selfMonitoringExport.Dash0 != nil {
+		return convertDash0ExportConfigurationToCollectorLogSelfMonitoringPipelineString(selfMonitoringExport.Dash0)
+	} else if selfMonitoringExport.Grpc != nil {
+		return convertGrpcExportConfigurationToCollectorLogSelfMonitoringPipelineString(selfMonitoringExport.Grpc)
+	} else if selfMonitoringExport.Http != nil {
+		return convertHttpExportConfigurationToCollectorLogSelfMonitoringPipelineString(selfMonitoringExport.Http)
+	}
+	return ""
 }
 
-func updateOrAppendEnvVar(container *corev1.Container, name string, value string) {
-	newEnvVar := corev1.EnvVar{
-		Name:  name,
-		Value: value,
-	}
-	idx := slices.IndexFunc(container.Env, func(e corev1.EnvVar) bool {
-		return e.Name == name
-	})
-	if idx >= 0 {
-		// We need to update the existing value
-		container.Env[idx] = newEnvVar
+func convertDash0ExportConfigurationToCollectorLogSelfMonitoringPipelineString(dash0Export *dash0v1alpha1.Dash0Configuration) string {
+	pipeline := collectorLogSelfMonitoringPrelude +
+		fmt.Sprintf(`
+                protocol: grpc
+                endpoint: %s
+                headers:
+                  %s: "Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"`,
+			dash0Export.Endpoint,
+			util.AuthorizationHeaderName,
+		)
+	if dash0Export.Dataset != "" && dash0Export.Dataset != util.DatasetDefault {
+		pipeline += fmt.Sprintf(`
+                  %s: "%s"
+`, util.Dash0DatasetHeaderName, dash0Export.Dataset)
 	} else {
-		container.Env = append(container.Env, newEnvVar)
+		// Append final newline, which is deliberately not included in the snippet that includes protocol and
+		// endpoint.
+		pipeline += "\n"
 	}
+	return pipeline
 }
 
-func removeEnvVar(container *corev1.Container, name string) {
-	idx := slices.IndexFunc(container.Env, func(e corev1.EnvVar) bool {
-		return e.Name == name
-	})
-	if idx >= 0 {
-		container.Env = slices.Delete(container.Env, idx, idx+1)
+func convertGrpcExportConfigurationToCollectorLogSelfMonitoringPipelineString(grpcExport *dash0v1alpha1.GrpcConfiguration) string {
+	pipeline := collectorLogSelfMonitoringPrelude +
+		fmt.Sprintf(`
+                protocol: grpc
+                endpoint: %s`,
+			grpcExport.Endpoint,
+		)
+	pipeline = appendHeadersToCollectorLogSelfMonitoringPipelineString(pipeline, grpcExport.Headers)
+	pipeline += "\n"
+	return pipeline
+}
+
+func convertHttpExportConfigurationToCollectorLogSelfMonitoringPipelineString(httpExport *dash0v1alpha1.HttpConfiguration) string {
+	encoding := "protobuf"
+	if httpExport.Encoding == dash0v1alpha1.Json {
+		encoding = "json"
 	}
+	pipeline := collectorLogSelfMonitoringPrelude +
+		fmt.Sprintf(`
+                protocol: http/%s
+                endpoint: %s`,
+			encoding,
+			httpExport.Endpoint,
+		)
+	pipeline = appendHeadersToCollectorLogSelfMonitoringPipelineString(pipeline, httpExport.Headers)
+	pipeline += "\n"
+	return pipeline
 }
 
-func matchOtelExporterOtlpEndpointEnvVar(e corev1.EnvVar) bool {
-	return e.Name == otelExporterOtlpEndpointEnvVarName
-}
-
-func matchOtelExporterOtlpHeadersEnvVar(e corev1.EnvVar) bool {
-	return e.Name == otelExporterOtlpHeadersEnvVarName
-}
-
-func matchEnvVar(envVarName string) func(corev1.EnvVar) bool {
-	return func(e corev1.EnvVar) bool {
-		return e.Name == envVarName
+func appendHeadersToCollectorLogSelfMonitoringPipelineString(pipeline string, headers []dash0v1alpha1.Header) string {
+	if len(headers) > 0 {
+		pipeline += `
+                headers:`
 	}
+	for _, header := range headers {
+		if header.Name != "" {
+			pipeline += fmt.Sprintf(`
+                  %s: "%s"`,
+				header.Name,
+				header.Value,
+			)
+		}
+	}
+	return pipeline
 }
 
 func ExchangeSecretRefForTokenIfNecessary(

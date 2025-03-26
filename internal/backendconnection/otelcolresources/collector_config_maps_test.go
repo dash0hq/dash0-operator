@@ -14,6 +14,8 @@ import (
 	"k8s.io/utils/ptr"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	"github.com/dash0hq/dash0-operator/images/pkg/common"
+	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -2067,6 +2069,124 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			}),
 		})
 	})
+
+	Describe("render logs self monitoring pipeline", func() {
+
+		DescribeTable("should not render a log pipeline if self monitoring is not enabled", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				Namespace:  namespace,
+				NamePrefix: namePrefix,
+				Export:     *Dash0ExportWithEndpointAndToken(),
+				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+					SelfMonitoringEnabled: false,
+				},
+			}, monitoredNamespaces, nil, nil, false)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			selfMonitoringLogsPipeline := readSelfMonitoringLogsPipeline(collectorConfig)
+			Expect(selfMonitoringLogsPipeline).To(BeNil())
+		}, daemonSetAndDeployment)
+
+		DescribeTable("should not render a log pipeline if there is no self monitoring export", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				Namespace:  namespace,
+				NamePrefix: namePrefix,
+				Export:     *Dash0ExportWithEndpointAndToken(),
+				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+					SelfMonitoringEnabled: true,
+					Export:                dash0v1alpha1.Export{},
+				},
+			}, monitoredNamespaces, nil, nil, false)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			selfMonitoringLogsPipeline := readSelfMonitoringLogsPipeline(collectorConfig)
+			Expect(selfMonitoringLogsPipeline).To(BeNil())
+		}, daemonSetAndDeployment)
+
+		DescribeTable("should render a log pipeline for a Dash0 export", func(cmTypeDef configMapTypeDefinition) {
+			export := *Dash0ExportWithEndpointAndToken()
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				Namespace:  namespace,
+				NamePrefix: namePrefix,
+				Export:     export,
+				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+					SelfMonitoringEnabled: true,
+					Export:                export,
+				},
+			}, monitoredNamespaces, nil, nil, false)
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			selfMonitoringLogsPipelineRaw := readSelfMonitoringLogsPipeline(collectorConfig)
+			Expect(selfMonitoringLogsPipelineRaw).ToNot(BeNil())
+			selfMonitoringLogsPipeline, ok := selfMonitoringLogsPipelineRaw.(map[string]interface{})
+			Expect(ok).To(BeTrue())
+			otlpExporter := readOtlpExporterFromSelfMonitoringLogsPipeline(selfMonitoringLogsPipeline)
+			Expect(otlpExporter["protocol"]).To(Equal(common.ProtocolGrpc))
+			Expect(otlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
+			headersRaw := otlpExporter["headers"]
+			Expect(headersRaw).ToNot(BeNil())
+			headers, ok := headersRaw.(map[string]interface{})
+			Expect(ok).To(BeTrue())
+			Expect(headers).To(HaveLen(1))
+			Expect(headers[util.AuthorizationHeaderName]).To(Equal("Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"))
+		}, daemonSetAndDeployment)
+	})
+
+	DescribeTable("should render a log pipeline for a gRPC export", func(cmTypeDef configMapTypeDefinition) {
+		export := *GrpcExportTest()
+		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+			Namespace:  namespace,
+			NamePrefix: namePrefix,
+			Export:     export,
+			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+				SelfMonitoringEnabled: true,
+				Export:                export,
+			},
+		}, monitoredNamespaces, nil, nil, false)
+		Expect(err).ToNot(HaveOccurred())
+		collectorConfig := parseConfigMapContent(configMap)
+		selfMonitoringLogsPipelineRaw := readSelfMonitoringLogsPipeline(collectorConfig)
+		Expect(selfMonitoringLogsPipelineRaw).ToNot(BeNil())
+		selfMonitoringLogsPipeline, ok := selfMonitoringLogsPipelineRaw.(map[string]interface{})
+		Expect(ok).To(BeTrue())
+		otlpExporter := readOtlpExporterFromSelfMonitoringLogsPipeline(selfMonitoringLogsPipeline)
+		Expect(otlpExporter["protocol"]).To(Equal(common.ProtocolGrpc))
+		Expect(otlpExporter["endpoint"]).To(Equal(EndpointGrpcTest))
+		headersRaw := otlpExporter["headers"]
+		Expect(headersRaw).ToNot(BeNil())
+		headers, ok := headersRaw.(map[string]interface{})
+		Expect(ok).To(BeTrue())
+		Expect(headers).To(HaveLen(1))
+		Expect(headers["Key"]).To(Equal("Value"))
+	}, daemonSetAndDeployment)
+
+	DescribeTable("should render a log pipeline for an HTTP export", func(cmTypeDef configMapTypeDefinition) {
+		export := *HttpExportTest()
+		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+			Namespace:  namespace,
+			NamePrefix: namePrefix,
+			Export:     export,
+			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
+				SelfMonitoringEnabled: true,
+				Export:                export,
+			},
+		}, monitoredNamespaces, nil, nil, false)
+		Expect(err).ToNot(HaveOccurred())
+		collectorConfig := parseConfigMapContent(configMap)
+		selfMonitoringLogsPipelineRaw := readSelfMonitoringLogsPipeline(collectorConfig)
+		Expect(selfMonitoringLogsPipelineRaw).ToNot(BeNil())
+		selfMonitoringLogsPipeline, ok := selfMonitoringLogsPipelineRaw.(map[string]interface{})
+		Expect(ok).To(BeTrue())
+		otlpExporter := readOtlpExporterFromSelfMonitoringLogsPipeline(selfMonitoringLogsPipeline)
+		Expect(otlpExporter["protocol"]).To(Equal(common.ProtocolHttpProtobuf))
+		Expect(otlpExporter["endpoint"]).To(Equal(EndpointHttpTest))
+		headersRaw := otlpExporter["headers"]
+		Expect(headersRaw).ToNot(BeNil())
+		headers, ok := headersRaw.(map[string]interface{})
+		Expect(ok).To(BeTrue())
+		Expect(headers).To(HaveLen(1))
+		Expect(headers["Key"]).To(Equal("Value"))
+	}, daemonSetAndDeployment)
 })
 
 func assembleDaemonSetCollectorConfigMapWithoutScrapingNamespaces(
@@ -2185,6 +2305,33 @@ func readPipelineList(pipelines map[string]interface{}, pipelineName string, lis
 		return nil
 	}
 	return listRaw.([]interface{})
+}
+
+func readSelfMonitoringLogsPipeline(collectorConfig map[string]interface{}) interface{} {
+	return readFromMap(
+		collectorConfig,
+		[]string{
+			"service",
+			"telemetry",
+			"logs",
+		})
+}
+
+func readOtlpExporterFromSelfMonitoringLogsPipeline(selfMonitoringLogsPipeline map[string]interface{}) map[string]interface{} {
+	otlpExporterRaw := readFromMap(
+		selfMonitoringLogsPipeline,
+		[]string{
+			"processors",
+			"0",
+			"batch",
+			"exporter",
+			"otlp",
+		},
+	)
+	Expect(otlpExporterRaw).ToNot(BeNil())
+	otlpExporter, ok := otlpExporterRaw.(map[string]interface{})
+	Expect(ok).To(BeTrue())
+	return otlpExporter
 }
 
 func readFromMap(object interface{}, path []string) interface{} {

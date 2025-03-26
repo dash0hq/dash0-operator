@@ -728,3 +728,6 @@ service:
               prometheus:
                 host: "{{ .SelfIpReference }}"
                 port: 8888
+{{- if .SelfMonitoringLogsConfig }}
+{{- .SelfMonitoringLogsConfig }}
+{{- end }}

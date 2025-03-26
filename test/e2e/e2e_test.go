@@ -20,7 +20,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/onsi/gomega/format"
+	gomegaformat "github.com/onsi/gomega/format"
 
 	"github.com/dash0hq/dash0-operator/test/util"
 )
@@ -40,7 +40,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 	BeforeAll(func() {
 		// Do not truncate string diff output.
-		format.MaxLength = 0
+		gomegaformat.MaxLength = 0
 
 		pwdOutput, err := run(exec.Command("pwd"), false)
 		Expect(err).NotTo(HaveOccurred())
