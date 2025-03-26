@@ -12,7 +12,7 @@ updates:
     directories:
       - "/"
       - "/images/configreloader/src"
-      - "/images/filelogoffsetsynch/src"
+      - "/images/filelogoffsetsync/src"
       - "/images/pkg/common"
       - "/images/secretrefresolver/src"
     schedule:

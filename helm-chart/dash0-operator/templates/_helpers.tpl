@@ -92,9 +92,9 @@ https://{{ include "dash0-operator.tokenUpdateServiceServerName" . }}:{{ .Values
 {{- include "dash0-operator.imageRef" (dict "image" .Values.operator.configurationReloaderImage "context" .) -}}
 {{- end }}
 
-{{/* the filelog offset synch image */}}
-{{- define "dash0-operator.filelogOffsetSynchImage" -}}
-{{- include "dash0-operator.imageRef" (dict "image" .Values.operator.filelogOffsetSynchImage "context" .) -}}
+{{/* the filelog offset sync image */}}
+{{- define "dash0-operator.filelogOffsetSyncImage" -}}
+{{- include "dash0-operator.imageRef" (dict "image" .Values.operator.filelogOffsetSyncImage "context" .) -}}
 {{- end }}
 
 {{- define "dash0-operator.imageRef" -}}

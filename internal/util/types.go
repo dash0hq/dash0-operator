@@ -37,8 +37,8 @@ type Images struct {
 	CollectorImagePullPolicy             corev1.PullPolicy
 	ConfigurationReloaderImage           string
 	ConfigurationReloaderImagePullPolicy corev1.PullPolicy
-	FilelogOffsetSynchImage              string
-	FilelogOffsetSynchImagePullPolicy    corev1.PullPolicy
+	FilelogOffsetSyncImage               string
+	FilelogOffsetSyncImagePullPolicy     corev1.PullPolicy
 }
 
 func (i Images) GetOperatorVersion() string {

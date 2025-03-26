@@ -157,11 +157,11 @@ spec:
         - name: DASH0_CONFIGURATION_RELOADER_IMAGE_PULL_POLICY
           value: {{ .Values.operator.configurationReloaderImage.pullPolicy }}
         {{- end }}
-        - name: DASH0_FILELOG_OFFSET_SYNCH_IMAGE
-          value: {{ include "dash0-operator.filelogOffsetSynchImage" . | quote }}
-        {{- if .Values.operator.filelogOffsetSynchImage.pullPolicy }}
-        - name: DASH0_FILELOG_OFFSET_SYNCH_IMAGE_PULL_POLICY
-          value: {{ .Values.operator.filelogOffsetSynchImage.pullPolicy }}
+        - name: DASH0_FILELOG_OFFSET_SYNC_IMAGE
+          value: {{ include "dash0-operator.filelogOffsetSyncImage" . | quote }}
+        {{- if .Values.operator.filelogOffsetSyncImage.pullPolicy }}
+        - name: DASH0_FILELOG_OFFSET_SYNC_IMAGE_PULL_POLICY
+          value: {{ .Values.operator.filelogOffsetSyncImage.pullPolicy }}
         {{- end }}
         {{- if .Values.operator.developmentMode }}
         - name: DASH0_DEVELOPMENT_MODE

@@ -41,7 +41,7 @@ func (r *BackendConnectionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 				otelcolresources.DaemonSetCollectorConfigConfigMapName(r.OTelCollectorNamePrefix),
 				otelcolresources.DeploymentCollectorConfigConfigMapName(r.OTelCollectorNamePrefix),
 				// Note: We are deliberately not watching the filelog receiver offsets ConfigMap, since it is updated
-				// frequently by the filelog offset synch container and does not require reconciliation.
+				// frequently by the filelog offset sync container and does not require reconciliation.
 			})).
 		Watches(
 			&rbacv1.ClusterRole{},

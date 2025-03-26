@@ -545,9 +545,9 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig *OTelColExtra
 					// This setting is required to enable the configuration reloader process to send Unix signals to the
 					// collector process.
 					ShareProcessNamespace: ptr.To(true),
-					InitContainers: []corev1.Container{assembleFileLogOffsetSynchInitContainer(
+					InitContainers: []corev1.Container{assembleFileLogOffsetSyncInitContainer(
 						config,
-						extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources,
+						extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources,
 					)},
 					Containers: []corev1.Container{
 						collectorContainer,
@@ -555,9 +555,9 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig *OTelColExtra
 							config,
 							extraConfig.CollectorDaemonSetConfigurationReloaderContainerResources,
 						),
-						assembleFileLogOffsetSynchContainer(
+						assembleFileLogOffsetSyncContainer(
 							config,
-							extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources,
+							extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources,
 						),
 					},
 					Volumes:     assembleCollectorDaemonSetVolumes(config, configMapItems),
@@ -582,13 +582,13 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig *OTelColExtra
 	return collectorDaemonSet, nil
 }
 
-func assembleFileLogOffsetSynchContainer(
+func assembleFileLogOffsetSyncContainer(
 	config *oTelColConfig,
 	resourceRequirements ResourceRequirementsWithGoMemLimit,
 ) corev1.Container {
-	filelogOffsetSynchContainer := corev1.Container{
-		Name: "filelog-offset-synch",
-		Args: []string{"--mode=synch"},
+	filelogOffsetSyncContainer := corev1.Container{
+		Name: "filelog-offset-sync",
+		Args: []string{"--mode=sync"},
 		SecurityContext: &corev1.SecurityContext{
 			AllowPrivilegeEscalation: ptr.To(false),
 			ReadOnlyRootFilesystem:   ptr.To(false),
@@ -600,7 +600,7 @@ func assembleFileLogOffsetSynchContainer(
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
 		},
-		Image: config.Images.FilelogOffsetSynchImage,
+		Image: config.Images.FilelogOffsetSyncImage,
 		Env: []corev1.EnvVar{
 			{
 				Name:  "GOMEMLIMIT",
@@ -614,7 +614,6 @@ func assembleFileLogOffsetSynchContainer(
 				Name:  "K8S_CONFIGMAP_NAME",
 				Value: FilelogReceiverOffsetsConfigMapName(config.NamePrefix),
 			},
-
 			{
 				Name:  "FILELOG_OFFSET_DIRECTORY_PATH",
 				Value: offsetsDirPath,
@@ -625,10 +624,10 @@ func assembleFileLogOffsetSynchContainer(
 		Resources:    resourceRequirements.ToResourceRequirements(),
 		VolumeMounts: []corev1.VolumeMount{filelogReceiverOffsetsVolumeMount},
 	}
-	if config.Images.FilelogOffsetSynchImagePullPolicy != "" {
-		filelogOffsetSynchContainer.ImagePullPolicy = config.Images.FilelogOffsetSynchImagePullPolicy
+	if config.Images.FilelogOffsetSyncImagePullPolicy != "" {
+		filelogOffsetSyncContainer.ImagePullPolicy = config.Images.FilelogOffsetSyncImagePullPolicy
 	}
-	return filelogOffsetSynchContainer
+	return filelogOffsetSyncContainer
 }
 
 func assembleCollectorDaemonSetVolumes(
@@ -855,8 +854,11 @@ func assembleConfigurationReloaderContainer(config *oTelColConfig, resourceRequi
 	return configurationReloaderContainer
 }
 
-func assembleFileLogOffsetSynchInitContainer(config *oTelColConfig, resourceRequirements ResourceRequirementsWithGoMemLimit) corev1.Container {
-	initFilelogOffsetSynchContainer := corev1.Container{
+func assembleFileLogOffsetSyncInitContainer(
+	config *oTelColConfig,
+	resourceRequirements ResourceRequirementsWithGoMemLimit,
+) corev1.Container {
+	initFilelogOffsetSyncContainer := corev1.Container{
 		Name: "filelog-offset-init",
 		Args: []string{"--mode=init"},
 		SecurityContext: &corev1.SecurityContext{
@@ -870,7 +872,7 @@ func assembleFileLogOffsetSynchInitContainer(config *oTelColConfig, resourceRequ
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
 		},
-		Image: config.Images.FilelogOffsetSynchImage,
+		Image: config.Images.FilelogOffsetSyncImage,
 		Env: []corev1.EnvVar{
 			{
 				Name:  "GOMEMLIMIT",
@@ -884,7 +886,6 @@ func assembleFileLogOffsetSynchInitContainer(config *oTelColConfig, resourceRequ
 				Name:  "K8S_CONFIGMAP_NAME",
 				Value: FilelogReceiverOffsetsConfigMapName(config.NamePrefix),
 			},
-
 			{
 				Name:  "FILELOG_OFFSET_DIRECTORY_PATH",
 				Value: offsetsDirPath,
@@ -895,10 +896,10 @@ func assembleFileLogOffsetSynchInitContainer(config *oTelColConfig, resourceRequ
 		Resources:    resourceRequirements.ToResourceRequirements(),
 		VolumeMounts: []corev1.VolumeMount{filelogReceiverOffsetsVolumeMount},
 	}
-	if config.Images.FilelogOffsetSynchImagePullPolicy != "" {
-		initFilelogOffsetSynchContainer.ImagePullPolicy = config.Images.FilelogOffsetSynchImagePullPolicy
+	if config.Images.FilelogOffsetSyncImagePullPolicy != "" {
+		initFilelogOffsetSyncContainer.ImagePullPolicy = config.Images.FilelogOffsetSyncImagePullPolicy
 	}
-	return initFilelogOffsetSynchContainer
+	return initFilelogOffsetSyncContainer
 }
 
 func assembleServiceAccountForDeployment(config *oTelColConfig) *corev1.ServiceAccount {

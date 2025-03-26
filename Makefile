@@ -76,10 +76,10 @@ CONFIGURATION_RELOADER_IMG_TAG ?= latest
 CONFIGURATION_RELOADER_IMG ?= $(CONFIGURATION_RELOADER_IMG_REPOSITORY):$(CONFIGURATION_RELOADER_IMG_TAG)
 CONFIGURATION_RELOADER_IMG_PULL_POLICY ?= Never
 
-FILELOG_OFFSET_SYNCH_IMG_REPOSITORY ?= filelog-offset-synch
-FILELOG_OFFSET_SYNCH_IMG_TAG ?= latest
-FILELOG_OFFSET_SYNCH_IMG ?= $(FILELOG_OFFSET_SYNCH_IMG_REPOSITORY):$(FILELOG_OFFSET_SYNCH_IMG_TAG)
-FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY ?= Never
+FILELOG_OFFSET_SYNC_IMG_REPOSITORY ?= filelog-offset-sync
+FILELOG_OFFSET_SYNC_IMG_TAG ?= latest
+FILELOG_OFFSET_SYNC_IMG ?= $(FILELOG_OFFSET_SYNC_IMG_REPOSITORY):$(FILELOG_OFFSET_SYNC_IMG_TAG)
+FILELOG_OFFSET_SYNC_IMG_PULL_POLICY ?= Never
 
 SECRET_REF_RESOLVER_IMG_REPOSITORY ?= secret-ref-resolver
 SECRET_REF_RESOLVER_IMG_TAG ?= latest
@@ -263,7 +263,7 @@ docker-build: \
   docker-build-instrumentation \
   docker-build-collector \
   docker-build-config-reloader \
-  docker-build-filelog-offset-synch ## Build all container images.
+  docker-build-filelog-offset-sync ## Build all container images.
 
 define build_container_image
 $(eval $@_IMAGE_REPOSITORY = $(1))
@@ -302,9 +302,9 @@ docker-build-collector: ## Build the OpenTelemetry collector container image.
 docker-build-config-reloader: ## Build the config reloader container image.
 	@$(call build_container_image,$(CONFIGURATION_RELOADER_IMG_REPOSITORY),$(CONFIGURATION_RELOADER_IMG_TAG),images,images/configreloader/Dockerfile)
 
-.PHONY: docker-build-filelog-offset-synch
-docker-build-filelog-offset-synch: ## Build the filelog offset synch container image.
-	@$(call build_container_image,$(FILELOG_OFFSET_SYNCH_IMG_REPOSITORY),$(FILELOG_OFFSET_SYNCH_IMG_TAG),images,images/filelogoffsetsynch/Dockerfile)
+.PHONY: docker-build-filelog-offset-sync
+docker-build-filelog-offset-sync: ## Build the filelog offset sync container image.
+	@$(call build_container_image,$(FILELOG_OFFSET_SYNC_IMG_REPOSITORY),$(FILELOG_OFFSET_SYNC_IMG_TAG),images,images/filelogoffsetsync/Dockerfile)
 
 .PHONY: docker-build-secret-ref-resolver
 docker-build-secret-ref-resolver: ## Build the secret ref resolver container image.
@@ -340,9 +340,9 @@ deploy-via-helm: ## Deploy the controller via helm to the K8s cluster specified 
 		--set operator.configurationReloaderImage.repository=$(CONFIGURATION_RELOADER_IMG_REPOSITORY) \
 		--set operator.configurationReloaderImage.tag=$(CONFIGURATION_RELOADER_IMG_TAG) \
 		--set operator.configurationReloaderImage.pullPolicy=$(CONFIGURATION_RELOADER_IMG_PULL_POLICY) \
-		--set operator.filelogOffsetSynchImage.repository=$(FILELOG_OFFSET_SYNCH_IMG_REPOSITORY) \
-		--set operator.filelogOffsetSynchImage.tag=$(FILELOG_OFFSET_SYNCH_IMG_TAG) \
-		--set operator.filelogOffsetSynchImage.pullPolicy=$(FILELOG_OFFSET_SYNCH_IMG_PULL_POLICY) \
+		--set operator.filelogOffsetSyncImage.repository=$(FILELOG_OFFSET_SYNC_IMG_REPOSITORY) \
+		--set operator.filelogOffsetSyncImage.tag=$(FILELOG_OFFSET_SYNC_IMG_TAG) \
+		--set operator.filelogOffsetSyncImage.pullPolicy=$(FILELOG_OFFSET_SYNC_IMG_PULL_POLICY) \
 		--set operator.secretRefResolverImage.repository=$(SECRET_REF_RESOLVER_IMG_REPOSITORY) \
 		--set operator.secretRefResolverImage.tag=$(SECRET_REF_RESOLVER_IMG_TAG) \
 		--set operator.secretRefResolverImage.pullPolicy=$(SECRET_REF_RESOLVER_IMG_PULL_POLICY) \

@@ -54,7 +54,7 @@ var _ = Describe("limits and requests for the otelcol resources", func() {
       memory: 13Mi
       storage: 500Mi
       ephemeral-storage: 500Mi
-  collectorDaemonSetFileLogOffsetSynchContainerResources:
+  collectorDaemonSetFileLogOffsetSyncContainerResources:
     limits:
       cpu: 100m
       memory: 34Mi
@@ -124,15 +124,15 @@ var _ = Describe("limits and requests for the otelcol resources", func() {
 		Expect(extraConfig.CollectorDaemonSetConfigurationReloaderContainerResources.Requests.Storage().String()).To(Equal("500Mi"))
 		Expect(extraConfig.CollectorDaemonSetConfigurationReloaderContainerResources.Requests.StorageEphemeral().String()).To(Equal("500Mi"))
 
-		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources.Limits.Cpu().String()).To(Equal("100m"))
-		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources.Limits.Memory().String()).To(Equal("34Mi"))
-		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources.Limits.Storage().String()).To(Equal("500Mi"))
-		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources.Limits.StorageEphemeral().String()).To(Equal("500Mi"))
-		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources.GoMemLimit).To(Equal("25MiB"))
-		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources.Requests.Cpu().String()).To(Equal("50m"))
-		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources.Requests.Memory().String()).To(Equal("33Mi"))
-		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources.Requests.Storage().String()).To(Equal("500Mi"))
-		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources.Requests.StorageEphemeral().String()).To(Equal("500Mi"))
+		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Limits.Cpu().String()).To(Equal("100m"))
+		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Limits.Memory().String()).To(Equal("34Mi"))
+		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Limits.Storage().String()).To(Equal("500Mi"))
+		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Limits.StorageEphemeral().String()).To(Equal("500Mi"))
+		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.GoMemLimit).To(Equal("25MiB"))
+		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Requests.Cpu().String()).To(Equal("50m"))
+		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Requests.Memory().String()).To(Equal("33Mi"))
+		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Requests.Storage().String()).To(Equal("500Mi"))
+		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Requests.StorageEphemeral().String()).To(Equal("500Mi"))
 
 		Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Cpu().String()).To(Equal("100m"))
 		Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Memory().String()).To(Equal("600Mi"))
@@ -191,15 +191,15 @@ var _ = Describe("limits and requests for the otelcol resources", func() {
 		Expect(extraConfig.CollectorDaemonSetConfigurationReloaderContainerResources.Requests.Storage().IsZero()).To(BeTrue())
 		Expect(extraConfig.CollectorDaemonSetConfigurationReloaderContainerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
 
-		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources.Limits.Cpu().IsZero()).To(BeTrue())
-		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources.Limits.Memory().String()).To(Equal("32Mi"))
-		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources.Limits.Storage().IsZero()).To(BeTrue())
-		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources.Limits.StorageEphemeral().IsZero()).To(BeTrue())
-		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources.GoMemLimit).To(Equal("24MiB"))
-		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources.Requests.Cpu().IsZero()).To(BeTrue())
-		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources.Requests.Memory().String()).To(Equal("32Mi"))
-		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources.Requests.Storage().IsZero()).To(BeTrue())
-		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
+		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Limits.Cpu().IsZero()).To(BeTrue())
+		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Limits.Memory().String()).To(Equal("32Mi"))
+		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Limits.Storage().IsZero()).To(BeTrue())
+		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Limits.StorageEphemeral().IsZero()).To(BeTrue())
+		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.GoMemLimit).To(Equal("24MiB"))
+		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Requests.Cpu().IsZero()).To(BeTrue())
+		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Requests.Memory().String()).To(Equal("32Mi"))
+		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Requests.Storage().IsZero()).To(BeTrue())
+		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
 
 		Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Cpu().IsZero()).To(BeTrue())
 		Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Memory().String()).To(Equal("500Mi"))
@@ -263,15 +263,15 @@ var _ = Describe("limits and requests for the otelcol resources", func() {
 		Expect(extraConfig.CollectorDaemonSetConfigurationReloaderContainerResources.Requests.Storage().IsZero()).To(BeTrue())
 		Expect(extraConfig.CollectorDaemonSetConfigurationReloaderContainerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
 
-		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources.Limits.Cpu().IsZero()).To(BeTrue())
-		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources.Limits.Memory().String()).To(Equal("32Mi"))
-		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources.Limits.Storage().IsZero()).To(BeTrue())
-		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources.Limits.StorageEphemeral().IsZero()).To(BeTrue())
-		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources.GoMemLimit).To(Equal("24MiB"))
-		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources.Requests.Cpu().IsZero()).To(BeTrue())
-		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources.Requests.Memory().String()).To(Equal("32Mi"))
-		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources.Requests.Storage().IsZero()).To(BeTrue())
-		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSynchContainerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
+		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Limits.Cpu().IsZero()).To(BeTrue())
+		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Limits.Memory().String()).To(Equal("32Mi"))
+		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Limits.Storage().IsZero()).To(BeTrue())
+		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Limits.StorageEphemeral().IsZero()).To(BeTrue())
+		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.GoMemLimit).To(Equal("24MiB"))
+		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Requests.Cpu().IsZero()).To(BeTrue())
+		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Requests.Memory().String()).To(Equal("32Mi"))
+		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Requests.Storage().IsZero()).To(BeTrue())
+		Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
 
 		Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Cpu().IsZero()).To(BeTrue())
 		Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Memory().String()).To(Equal("500Mi"))

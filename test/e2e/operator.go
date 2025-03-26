@@ -163,13 +163,13 @@ func addOptionalHelmParameters(arguments []string, images Images) []string {
 	arguments = setIfNotEmpty(arguments, "operator.configurationReloaderImage.pullPolicy",
 		images.configurationReloader.pullPolicy)
 
-	arguments = setIfNotEmpty(arguments, "operator.filelogOffsetSynchImage.repository",
-		images.fileLogOffsetSynch.repository)
-	arguments = setIfNotEmpty(arguments, "operator.filelogOffsetSynchImage.tag", images.fileLogOffsetSynch.tag)
-	arguments = setIfNotEmpty(arguments, "operator.filelogOffsetSynchImage.digest",
-		images.fileLogOffsetSynch.digest)
-	arguments = setIfNotEmpty(arguments, "operator.filelogOffsetSynchImage.pullPolicy",
-		images.fileLogOffsetSynch.pullPolicy)
+	arguments = setIfNotEmpty(arguments, "operator.filelogOffsetSyncImage.repository",
+		images.fileLogOffsetSync.repository)
+	arguments = setIfNotEmpty(arguments, "operator.filelogOffsetSyncImage.tag", images.fileLogOffsetSync.tag)
+	arguments = setIfNotEmpty(arguments, "operator.filelogOffsetSyncImage.digest",
+		images.fileLogOffsetSync.digest)
+	arguments = setIfNotEmpty(arguments, "operator.filelogOffsetSyncImage.pullPolicy",
+		images.fileLogOffsetSync.pullPolicy)
 
 	return arguments
 }

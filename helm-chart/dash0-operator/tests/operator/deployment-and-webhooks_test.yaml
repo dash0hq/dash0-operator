@@ -95,8 +95,8 @@ tests:
           repository: custom-configuration-reloader-image
           tag: "10.11.12"
           pullPolicy: Always
-        filelogOffsetSynchImage:
-          repository: custom-filelog-offset-synch-image
+        filelogOffsetSyncImage:
+          repository: custom-filelog-offset-sync-image
           tag: "13.14.15"
           pullPolicy: Never
         managerContainerResources:
@@ -229,13 +229,13 @@ tests:
           value: Always
       - equal:
           path: spec.template.spec.containers[0].env[13].name
-          value: DASH0_FILELOG_OFFSET_SYNCH_IMAGE
+          value: DASH0_FILELOG_OFFSET_SYNC_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[13].value
-          value: custom-filelog-offset-synch-image:13.14.15
+          value: custom-filelog-offset-sync-image:13.14.15
       - equal:
           path: spec.template.spec.containers[0].env[14].name
-          value: DASH0_FILELOG_OFFSET_SYNCH_IMAGE_PULL_POLICY
+          value: DASH0_FILELOG_OFFSET_SYNC_IMAGE_PULL_POLICY
       - equal:
           path: spec.template.spec.containers[0].env[14].value
           value: Never
@@ -481,7 +481,7 @@ tests:
           digest: sha256:2e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda02
         configurationReloaderImage:
           digest: sha256:3e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda03
-        filelogOffsetSynchImage:
+        filelogOffsetSyncImage:
           digest: sha256:4e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda04
     asserts:
       - equal:
@@ -515,10 +515,10 @@ tests:
           value: ghcr.io/dash0hq/configuration-reloader@sha256:3e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda03
       - equal:
           path: spec.template.spec.containers[0].env[10].name
-          value: DASH0_FILELOG_OFFSET_SYNCH_IMAGE
+          value: DASH0_FILELOG_OFFSET_SYNC_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[10].value
-          value: ghcr.io/dash0hq/filelog-offset-synch@sha256:4e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda04
+          value: ghcr.io/dash0hq/filelog-offset-sync@sha256:4e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda04
       - equal:
           path: spec.template.spec.containers[0].env[11].name
           value: K8S_POD_UID

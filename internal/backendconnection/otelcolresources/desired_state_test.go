@@ -103,7 +103,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		daemonSetCollectorContainer := daemonSetPodSpec.Containers[0]
 		daemonSetCollectorContainerArgs := daemonSetCollectorContainer.Args
 		daemonSetConfigReloaderContainer := daemonSetPodSpec.Containers[1]
-		daemonSetFileLogOffsetSynchContainer := daemonSetPodSpec.Containers[2]
+		daemonSetFileLogOffsetSyncContainer := daemonSetPodSpec.Containers[2]
 
 		Expect(daemonSetPodSpec.Volumes).To(HaveLen(6))
 		configMapVolume := FindVolumeByName(daemonSetPodSpec.Volumes, "opentelemetry-collector-configmap")
@@ -155,9 +155,9 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(daemonSetConfigReloaderContainer.VolumeMounts).To(
 			ContainElement(MatchVolumeMount("opentelemetry-collector-pidfile", "/etc/otelcol/run")))
 
-		Expect(daemonSetFileLogOffsetSynchContainer).NotTo(BeNil())
-		Expect(daemonSetFileLogOffsetSynchContainer.Resources.Limits.Memory().String()).To(Equal("32Mi"))
-		Expect(daemonSetFileLogOffsetSynchContainer.Resources.Requests.Memory().String()).To(Equal("32Mi"))
+		Expect(daemonSetFileLogOffsetSyncContainer).NotTo(BeNil())
+		Expect(daemonSetFileLogOffsetSyncContainer.Resources.Limits.Memory().String()).To(Equal("32Mi"))
+		Expect(daemonSetFileLogOffsetSyncContainer.Resources.Requests.Memory().String()).To(Equal("32Mi"))
 
 		Expect(daemonSetPodSpec.Tolerations).To(HaveLen(0))
 
@@ -607,7 +607,7 @@ func getDaemonSetCollectorConfigConfigMapContent(desiredState []clientObject) st
 }
 
 func getFileOffsetConfigMapContent(desiredState []clientObject) string {
-	cm := getConfigMap(desiredState, ExpectedDaemonSetFilelogOffsetSynchConfigMapName)
+	cm := getConfigMap(desiredState, ExpectedDaemonSetFilelogOffsetSyncConfigMapName)
 	return cm.Data["config.yaml"]
 }
 

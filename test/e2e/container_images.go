@@ -26,7 +26,7 @@ type Images struct {
 	instrumentation       ImageSpec
 	collector             ImageSpec
 	configurationReloader ImageSpec
-	fileLogOffsetSynch    ImageSpec
+	fileLogOffsetSync     ImageSpec
 	secretRefResolver     ImageSpec
 }
 
@@ -70,12 +70,12 @@ var (
 			dockerContext: "images",
 			dockerfile:    "images/configreloader/Dockerfile",
 		},
-		fileLogOffsetSynch: ImageSpec{
-			repository:    "filelog-offset-synch",
+		fileLogOffsetSync: ImageSpec{
+			repository:    "filelog-offset-sync",
 			tag:           tagLatest,
 			pullPolicy:    "Never",
 			dockerContext: "images",
-			dockerfile:    "images/filelogoffsetsynch/Dockerfile",
+			dockerfile:    "images/filelogoffsetsync/Dockerfile",
 		},
 	}
 
@@ -115,12 +115,12 @@ var (
 			dockerContext: localImages.configurationReloader.dockerContext,
 			dockerfile:    localImages.configurationReloader.dockerfile,
 		},
-		fileLogOffsetSynch: ImageSpec{
+		fileLogOffsetSync: ImageSpec{
 			repository:    "",
 			tag:           "",
 			pullPolicy:    "",
-			dockerContext: localImages.fileLogOffsetSynch.dockerContext,
-			dockerfile:    localImages.fileLogOffsetSynch.dockerfile,
+			dockerContext: localImages.fileLogOffsetSync.dockerContext,
+			dockerfile:    localImages.fileLogOffsetSync.dockerfile,
 		},
 	}
 
@@ -132,7 +132,7 @@ func rebuildAllContainerImages() {
 	rebuildLocalImage(images.instrumentation)
 	rebuildLocalImage(images.collector)
 	rebuildLocalImage(images.configurationReloader)
-	rebuildLocalImage(images.fileLogOffsetSynch)
+	rebuildLocalImage(images.fileLogOffsetSync)
 	rebuildLocalImage(images.secretRefResolver)
 }
 

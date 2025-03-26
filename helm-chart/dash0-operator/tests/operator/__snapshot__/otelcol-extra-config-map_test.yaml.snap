@@ -15,7 +15,7 @@ otelcol extra config map should match snapshot:
             memory: 12Mi
           requests:
             memory: 12Mi
-        collectorDaemonSetFileLogOffsetSynchContainerResources:
+        collectorDaemonSetFileLogOffsetSyncContainerResources:
           gomemlimit: 24MiB
           limits:
             memory: 32Mi
