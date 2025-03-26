@@ -46,6 +46,7 @@ const (
 	EndpointDash0TestQuoted       = "\"endpoint.dash0.com:4317\""
 	EndpointDash0WithProtocolTest = "https://endpoint.dash0.com:4317"
 	EndpointGrpcTest              = "endpoint.backend.com:4317"
+	EndpointGrpcWithProtocolTest  = "dns://endpoint.backend.com:4317"
 	EndpointHttpTest              = "https://endpoint.backend.com:4318"
 
 	ApiEndpointTest   = "https://api.dash0.com"

@@ -15,6 +15,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
@@ -82,6 +83,7 @@ type collectorConfigurationTemplateValues struct {
 	CustomFilters                                    customFilters
 	CustomTransforms                                 customTransforms
 	SelfIpReference                                  string
+	SelfMonitoringLogsConfig                         string
 	DevelopmentMode                                  bool
 	DebugVerbosityDetailed                           bool
 }
@@ -180,6 +182,11 @@ func assembleCollectorConfigMap(
 		namespaceOttlFilter := renderOttlNamespaceFilter(monitoredNamespaces)
 		customTelemetryFilters := aggregateCustomFilters(filters)
 		customTelemetryTransforms := aggregateCustomTransforms(transforms)
+		selfMonitoringLogsConfig :=
+			selfmonitoringapiaccess.ConvertExportConfigurationToCollectorLogSelfMonitoringPipelineString(
+				config.SelfMonitoringConfiguration,
+			)
+
 		collectorConfiguration, err := renderCollectorConfiguration(template,
 			&collectorConfigurationTemplateValues{
 				Exporters:        exporters,
@@ -202,6 +209,7 @@ func assembleCollectorConfigMap(
 				SelfIpReference:                                  selfIpReference,
 				DevelopmentMode:                                  config.DevelopmentMode,
 				DebugVerbosityDetailed:                           config.DebugVerbosityDetailed,
+				SelfMonitoringLogsConfig:                         selfMonitoringLogsConfig,
 			})
 		if err != nil {
 			return nil, fmt.Errorf("cannot render the collector configuration template: %w", err)
