@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/collector/pdata/pcommon"
 	"go.opentelemetry.io/collector/pdata/plog"
 	semconv "go.opentelemetry.io/otel/semconv/v1.27.0"
 
@@ -177,23 +178,6 @@ func selfMonitoringLogsResourceMatcherOperatorManager(
 	)
 	verifyResourceAttributeEquals(
 		attributes,
-		string(semconv.K8SClusterNameKey),
-		"docker-desktop",
-		matchResult,
-	)
-	verifyResourceAttributeExists(
-		attributes,
-		string(semconv.K8SClusterUIDKey),
-		matchResult,
-	)
-	verifyResourceAttributeEquals(
-		attributes,
-		string(semconv.K8SNamespaceNameKey),
-		operatorNamespace,
-		matchResult,
-	)
-	verifyResourceAttributeEquals(
-		attributes,
 		string(semconv.K8SDeploymentNameKey),
 		"dash0-operator-controller",
 		matchResult,
@@ -213,6 +197,78 @@ func selfMonitoringLogsResourceMatcherOperatorManager(
 		attributes,
 		string(semconv.K8SContainerNameKey),
 		"operator-manager",
+		matchResult,
+	)
+
+	selfMonitoringCommonResourceMatcher(attributes, matchResult)
+}
+
+func selfMonitoringLogsResourceMatcherCollector(
+	resourceLogs plog.ResourceLogs,
+	matchResult *ResourceMatchResult[plog.ResourceLogs],
+) {
+	attributes := resourceLogs.Resource().Attributes()
+	verifyResourceAttributeEquals(
+		attributes,
+		string(semconv.ServiceNamespaceKey),
+		"dash0-operator",
+		matchResult,
+	)
+	verifyResourceAttributeEquals(
+		attributes,
+		string(semconv.ServiceNameKey),
+		"dash0-operator-collector",
+		matchResult,
+	)
+	verifyResourceAttributeEquals(
+		attributes,
+		string(semconv.ServiceVersionKey),
+		"dash0",
+		matchResult,
+	)
+	verifyResourceAttributeEquals(
+		attributes,
+		string(semconv.K8SDaemonSetNameKey),
+		"e2e-tests-operator-helm-release-opentelemetry-collector-agent-daemonset",
+		matchResult,
+	)
+	verifyResourceAttributeExists(
+		attributes,
+		string(semconv.K8SDaemonSetUIDKey),
+		matchResult,
+	)
+	verifyResourceAttributeStartsWith(
+		attributes,
+		string(semconv.K8SPodNameKey),
+		"e2e-tests-operator-helm-release-opentelemetry-collector-agent-daemonset-",
+		matchResult,
+	)
+	verifyResourceAttributeStartsWith(
+		attributes,
+		string(semconv.K8SContainerNameKey),
+		"opentelemetry-collector",
+		matchResult,
+	)
+
+	selfMonitoringCommonResourceMatcher(attributes, matchResult)
+}
+
+func selfMonitoringCommonResourceMatcher(attributes pcommon.Map, matchResult *ResourceMatchResult[plog.ResourceLogs]) {
+	verifyResourceAttributeEquals(
+		attributes,
+		string(semconv.K8SClusterNameKey),
+		"docker-desktop",
+		matchResult,
+	)
+	verifyResourceAttributeExists(
+		attributes,
+		string(semconv.K8SClusterUIDKey),
+		matchResult,
+	)
+	verifyResourceAttributeEquals(
+		attributes,
+		string(semconv.K8SNamespaceNameKey),
+		operatorNamespace,
 		matchResult,
 	)
 }
