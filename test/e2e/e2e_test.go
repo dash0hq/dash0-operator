@@ -96,15 +96,12 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 	})
 
 	AfterEach(func() {
-		// As an alternative to undeploying all applications under test (deployment, daemonset, cronjob, ...) we
-		// could also delete the whole namespace for the application under test after each test case to get rid of
-		// all applications (and then recreate the namespace before each test).
 		removeAllTestApplications(applicationUnderTestNamespace)
 	})
 
 	// MAINTENANCE NOTE: The test suites (`Describe`) are not necessarily grouped by topics, but they are grouped by the
 	// setup they require. I.e. all tests that work with a pre-existing operator deployment with the same standard
-	// configuration are grouped together etc. This greatly helps with the test execution speed.
+	// configuration are grouped together etc. This helps with the test execution speed.
 
 	Describe("with an existing operator deployment and operation configuration resource", func() {
 		var operatorStartupTimeLowerBound time.Time
@@ -238,7 +235,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 			Describe("self-monitoring log collection", func() {
 				It("has operator manager logs", func() {
-					By("checking for the log record from the operator start")
+					By("checking for the log record from the operator manager start")
 					Eventually(func(g Gomega) {
 						verifyAtLeastOneLogRecord(
 							g,
@@ -258,6 +255,33 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 							operatorStartupTimeLowerBound,
 						)
 					}, 15*time.Second, pollingInterval).Should(Succeed())
+				})
+
+				// Temporarily disabled, since exporting to non-tls endpoints via gRPC does not yet work in the
+				// collector, see https://github.com/open-telemetry/opentelemetry-collector/issues/12701 and
+				// https://github.com/open-telemetry/opentelemetry-go-contrib/pull/6984.
+				// We also need to conditionally add "insecure: true" to the log export.
+				XIt("has collector logs", func() {
+					By("checking for a log record from the collector")
+					Eventually(func(g Gomega) {
+						verifyAtLeastOneLogRecord(
+							g,
+							selfMonitoringLogsResourceMatcherCollector,
+							func(logRecord plog.LogRecord, matchResult *ObjectMatchResult[plog.ResourceLogs, plog.LogRecord]) {
+								expectedLogBody := "Everything is ready. Begin running and processing data."
+								logBody := logRecord.Body().AsString()
+								if logBody == expectedLogBody {
+									matchResult.addPassedAssertion(logBodyKey)
+								} else {
+									matchResult.addFailedAssertion(
+										logBodyKey,
+										fmt.Sprintf("expected %s but it was %s", expectedLogBody, logBody),
+									)
+								}
+							},
+							operatorStartupTimeLowerBound,
+						)
+					}, 45*time.Second, pollingInterval).Should(Succeed())
 				})
 			})
 
