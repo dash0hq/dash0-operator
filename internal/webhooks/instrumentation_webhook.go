@@ -123,17 +123,10 @@ func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admi
 		Namespace: targetNamespace,
 	}); err != nil {
 		if apierrors.IsNotFound(err) {
-			msg := fmt.Sprintf(
+			return admission.Allowed(fmt.Sprintf(
 				"There is no Dash0 monitoring resource in the namespace %s, the workload will not be instrumented by the webhook.",
 				targetNamespace,
-			)
-			if request.Operation == admissionv1.Update {
-				// some operators update the resources they manage very frequently (e.g. every few seconds), do not spam
-				// the log with those requests
-				return admission.Allowed(msg)
-			} else {
-				return logAndReturnAllowed(msg, &logger)
-			}
+			))
 		} else {
 			// Ideally we would queue a failed instrumentation event here, but we didn't decode the workload resource
 			// yet, so there is nothing to bind the event to.
@@ -162,8 +155,6 @@ func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admi
 		}
 	}
 
-	logger.Info("new admission request in a Dash0-enabled workspace")
-
 	dash0MonitoringResource := dash0List.Items[0]
 
 	if !dash0MonitoringResource.IsAvailable() {
@@ -185,8 +176,14 @@ func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admi
 	}
 	instrumentWorkloads := dash0MonitoringResource.ReadInstrumentWorkloadsSetting()
 	if instrumentWorkloads == dash0v1alpha1.None {
-		return logAndReturnAllowed(fmt.Sprintf("Instrumenting workloads is not enabled in namespace %s, this %s "+
-			"workload will not be modified to send telemetry to Dash0.", targetNamespace, actionPartial), &logger)
+		return admission.Allowed(
+			fmt.Sprintf(
+				"Instrumenting workloads is not enabled in namespace %s, this %s workload will not be modified to "+
+					"send telemetry to Dash0.",
+				targetNamespace,
+				actionPartial,
+			),
+		)
 	}
 
 	gkv := request.Kind
@@ -224,7 +221,8 @@ func (h *InstrumentationWebhookHandler) handleCronJob(
 		modificationResult := h.newWorkloadModifier(logger).RevertCronJob(cronJob)
 		return h.postProcessUninstrumentation(request, cronJob, modificationResult, logger)
 	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(&cronJob.ObjectMeta, h.Images) {
-		return logAndReturnAllowed(sameVersionNoModificationMessage, logger)
+		// deliberately not logging this, would be very noisy
+		return admission.Allowed(sameVersionNoModificationMessage)
 	} else {
 		modificationResult := h.newWorkloadModifier(logger).ModifyCronJob(cronJob)
 		return h.postProcessInstrumentation(request, cronJob, modificationResult, false, logger)
@@ -251,7 +249,8 @@ func (h *InstrumentationWebhookHandler) handleDaemonSet(
 		modificationResult := h.newWorkloadModifier(logger).RevertDaemonSet(daemonSet)
 		return h.postProcessUninstrumentation(request, daemonSet, modificationResult, logger)
 	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(&daemonSet.ObjectMeta, h.Images) {
-		return logAndReturnAllowed(sameVersionNoModificationMessage, logger)
+		// deliberately not logging this, would be very noisy
+		return admission.Allowed(sameVersionNoModificationMessage)
 	} else {
 		modificationResult := h.newWorkloadModifier(logger).ModifyDaemonSet(daemonSet)
 		return h.postProcessInstrumentation(request, daemonSet, modificationResult, false, logger)
@@ -278,7 +277,8 @@ func (h *InstrumentationWebhookHandler) handleDeployment(
 		modificationResult := h.newWorkloadModifier(logger).RevertDeployment(deployment)
 		return h.postProcessUninstrumentation(request, deployment, modificationResult, logger)
 	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(&deployment.ObjectMeta, h.Images) {
-		return logAndReturnAllowed(sameVersionNoModificationMessage, logger)
+		// deliberately not logging this, would be very noisy
+		return admission.Allowed(sameVersionNoModificationMessage)
 	} else {
 		modificationResult := h.newWorkloadModifier(logger).ModifyDeployment(deployment)
 		return h.postProcessInstrumentation(request, deployment, modificationResult, false, logger)
@@ -308,7 +308,7 @@ func (h *InstrumentationWebhookHandler) handleJob(
 		return h.postProcessUninstrumentation(request, job, workloads.NewNotModifiedImmutableWorkloadCannotBeRevertedResult(), logger)
 	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(&job.ObjectMeta, h.Images) {
 		// This should not happen either.
-		return logAndReturnAllowed(sameVersionNoModificationMessage, logger)
+		return admission.Allowed(sameVersionNoModificationMessage)
 	} else {
 		modificationResult := h.newWorkloadModifier(logger).ModifyJob(job)
 		return h.postProcessInstrumentation(request, job, modificationResult, false, logger)
@@ -339,7 +339,7 @@ func (h *InstrumentationWebhookHandler) handlePod(
 		return h.postProcessUninstrumentation(request, pod, workloads.NewNotModifiedImmutableWorkloadCannotBeRevertedResult(), logger)
 	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(&pod.ObjectMeta, h.Images) {
 		// This should not happen either.
-		return logAndReturnAllowed(sameVersionNoModificationMessage, logger)
+		return admission.Allowed(sameVersionNoModificationMessage)
 	} else {
 		modificationResult := h.newWorkloadModifier(logger).ModifyPod(pod)
 		return h.postProcessInstrumentation(request, pod, modificationResult, true, logger)
@@ -366,7 +366,8 @@ func (h *InstrumentationWebhookHandler) handleReplicaSet(
 		modificationResult := h.newWorkloadModifier(logger).RevertReplicaSet(replicaSet)
 		return h.postProcessUninstrumentation(request, replicaSet, modificationResult, logger)
 	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(&replicaSet.ObjectMeta, h.Images) {
-		return logAndReturnAllowed(sameVersionNoModificationMessage, logger)
+		// deliberately not logging this, would be very noisy
+		return admission.Allowed(sameVersionNoModificationMessage)
 	} else {
 		modificationResult := h.newWorkloadModifier(logger).ModifyReplicaSet(replicaSet)
 		return h.postProcessInstrumentation(request, replicaSet, modificationResult, false, logger)
@@ -393,7 +394,8 @@ func (h *InstrumentationWebhookHandler) handleStatefulSet(
 		modificationResult := h.newWorkloadModifier(logger).RevertStatefulSet(statefulSet)
 		return h.postProcessUninstrumentation(request, statefulSet, modificationResult, logger)
 	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(&statefulSet.ObjectMeta, h.Images) {
-		return logAndReturnAllowed(sameVersionNoModificationMessage, logger)
+		// deliberately not logging this, would be very noisy
+		return admission.Allowed(sameVersionNoModificationMessage)
 	} else {
 		modificationResult := h.newWorkloadModifier(logger).ModifyStatefulSet(statefulSet)
 		return h.postProcessInstrumentation(request, statefulSet, modificationResult, false, logger)
