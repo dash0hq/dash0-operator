@@ -95,6 +95,10 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		}
 	})
 
+	BeforeEach(func() {
+		createDirAndDeleteOldCollectedLogs()
+	})
+
 	AfterEach(func() {
 		removeAllTestApplications(applicationUnderTestNamespace)
 	})

@@ -13,7 +13,7 @@ import (
 
 // run e2e tests using the Ginkgo runner.
 func TestE2E(t *testing.T) {
-	RegisterFailHandler(Fail)
+	RegisterFailHandler(collectPodInfoAndLogsFailWrapper)
 	_, _ = fmt.Fprint(GinkgoWriter, "Starting dash0-operator suite\n")
 	RunSpecs(t, "Dash0 operator end-to-end test suite")
 }

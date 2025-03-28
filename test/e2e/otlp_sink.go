@@ -25,7 +25,7 @@ func deployOtlpSink(workingDir string) {
 	var e2eTestExportDir string
 	if !isKindCluster() {
 		e2eTestExportDir = fmt.Sprintf(
-			"%s/test-resources/e2e-test-volumes/otlp-sink",
+			"%s/test-resources/e2e/volumes/otlp-sink",
 			workingDir,
 		)
 	}
@@ -82,15 +82,15 @@ func deployOtlpSink(workingDir string) {
 }
 
 func createDirAndDeleteOldExportedTelemetry() {
-	_ = os.MkdirAll("test-resources/e2e-test-volumes/otlp-sink", os.ModeDir)
+	_ = os.MkdirAll("test-resources/e2e/volumes/otlp-sink", 0755)
 	By("deleting old telemetry files")
-	_ = os.Remove("test-resources/e2e-test-volumes/otlp-sink/traces.jsonl")
-	_ = os.Remove("test-resources/e2e-test-volumes/otlp-sink/metrics.jsonl")
-	_ = os.Remove("test-resources/e2e-test-volumes/otlp-sink/logs.jsonl")
+	_ = os.Remove("test-resources/e2e/volumes/otlp-sink/traces.jsonl")
+	_ = os.Remove("test-resources/e2e/volumes/otlp-sink/metrics.jsonl")
+	_ = os.Remove("test-resources/e2e/volumes/otlp-sink/logs.jsonl")
 	By("creating telemetry dump files")
-	_, _ = os.Create("test-resources/e2e-test-volumes/otlp-sink/traces.jsonl")
-	_, _ = os.Create("test-resources/e2e-test-volumes/otlp-sink/metrics.jsonl")
-	_, _ = os.Create("test-resources/e2e-test-volumes/otlp-sink/logs.jsonl")
+	_, _ = os.Create("test-resources/e2e/volumes/otlp-sink/traces.jsonl")
+	_, _ = os.Create("test-resources/e2e/volumes/otlp-sink/metrics.jsonl")
+	_, _ = os.Create("test-resources/e2e/volumes/otlp-sink/logs.jsonl")
 }
 
 func uninstallOtlpSink(workingDir string) {

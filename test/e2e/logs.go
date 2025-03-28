@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	otlpSinkLogsJons      = "test-resources/e2e-test-volumes/otlp-sink/logs.jsonl"
+	otlpSinkLogsJons      = "test-resources/e2e/volumes/otlp-sink/logs.jsonl"
 	logsJsonMaxLineLength = 1_048_576
 
 	logBodyKey = "log.body"

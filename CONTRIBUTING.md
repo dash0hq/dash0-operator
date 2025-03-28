@@ -106,6 +106,13 @@ OPERATOR_HELM_CHART=dash0-operator/dash0-operator \
   make test-e2e
 ```
 
+When an end-to-end test case fails, the test suite automatically collects pod descriptions, config maps and pod logs 
+from the Kubernetes cluster at the time of the failure.
+The collected data can be found in `test-resources/e2e/logs`.
+It is often helpful to understand why the test case has failed.
+In addition, the data that the OpenTelemetry collectors emitted during the last test case can be reviewed in 
+`test-resources/e2e/volumes/otlp-sink`, in `logs.jsonl`, `metrics.jsonl`, and `traces.jsonl` respectively.
+
 #### Running End-to-End Tests on kind
 
 To use kind for running the end-to-end tests, you need to create a kind cluster first.
@@ -114,7 +121,8 @@ The file <test-resources/kind-config.yaml> file can be used as a blueprint to cr
 Before creating the cluster, the two hostPath settings in `test-resources/kind-config.yaml` need to be aligned with your
 local file system structure.
 (Alternatively, create a symbolic link from
-`/Users/username/dash0/code/dash0-operator/test-resources/e2e-test-volumes/` to the actual path).
+`/Users/username/dash0/code/dash0-operator/test-resources/e2e/volumes/` to the actual path, see instructions in
+`test-resources/kind-config.yaml` for details).
 Also, make sure the path mentioned under `hostPath` is listed in Docker Desktop's settings under
 "Resources -> File sharing".
 

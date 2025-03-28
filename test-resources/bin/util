@@ -461,7 +461,7 @@ deploy_otlp_sink_if_requested() {
   echo "deploying otlp-sink"
   tmpfile=$(mktemp "${TMPDIR}otlp-sink-yaml.XXXX")
   trap 'rm -f "$tmpfile"' EXIT
-  local otlp_sink_dir="$(realpath "$(pwd)")/test-resources/e2e-test-volumes/otlp-sink"
+  local otlp_sink_dir="$(realpath "$(pwd)")/test-resources/e2e/volumes/otlp-sink"
   sed "s|/tmp/telemetry|$otlp_sink_dir|g" test-resources/otlp-sink/otlp-sink.yaml > "$tmpfile"
 
 	mkdir -p "$otlp_sink_dir"
