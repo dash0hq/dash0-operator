@@ -17,7 +17,13 @@ COPY filelogoffsetsync/src/*.go /usr/local/go/src/filelogoffsetsync
 ARG TARGETOS
 ARG TARGETARCH
 
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -ldflags '-extldflags "-static"' -v filelogoffsetsync
+RUN CGO_ENABLED=0 \
+    GOOS=${TARGETOS:-linux} \
+    GOARCH=${TARGETARCH} \
+    go build \
+    -ldflags '-extldflags "-static"' \
+    -v \
+    filelogoffsetsync
 
 FROM --platform=${BUILDPLATFORM} alpine:3.21.3 AS certs
 RUN apk --update add ca-certificates && apk cache clean

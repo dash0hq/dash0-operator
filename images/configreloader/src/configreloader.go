@@ -33,7 +33,9 @@ const (
 	// doing something really nonsensical.
 	PID_MAX_LIMIT = 32_768
 
-	meterName = "dash0.operator.configuration_reloader"
+	meterName       = "dash0.operator.configuration_reloader"
+	metricNameLabel = "metric.name"
+	errorLabel      = "error"
 )
 
 var (
@@ -86,7 +88,11 @@ func main() {
 	}
 
 	if err := initializeHashes(configurationFilePaths); err != nil {
-		logger.Error("Cannot initialize hashes of configuration files", "error", common.TruncateErrorForLogAttribute(err))
+		logger.Error(
+			"Cannot initialize hashes of configuration files",
+			errorLabel,
+			common.TruncateErrorForLogAttribute(err),
+		)
 		os.Exit(1)
 	}
 
@@ -109,7 +115,7 @@ func main() {
 				); err != nil {
 					logger.Info(
 						"An error occurred while check for configuration changes",
-						"error",
+						errorLabel,
 						common.TruncateErrorForLogAttribute(err),
 					)
 				} else if isUpdateTriggered {
@@ -289,9 +295,9 @@ func initializeSelfMonitoringMetrics(meter otelmetric.Meter) {
 	); err != nil {
 		logger.Error(
 			"cannot initialize the metric",
-			"metric.name",
+			metricNameLabel,
 			configFilesChangesMetricName,
-			"error",
+			errorLabel,
 			common.TruncateErrorForLogAttribute(err),
 		)
 		os.Exit(1)
@@ -304,9 +310,9 @@ func initializeSelfMonitoringMetrics(meter otelmetric.Meter) {
 	); err != nil {
 		logger.Error(
 			"cannot initialize the metric",
-			"metric.name",
+			metricNameLabel,
 			reloadErrorsMetricName,
-			"error",
+			errorLabel,
 			common.TruncateErrorForLogAttribute(err),
 		)
 		os.Exit(1)

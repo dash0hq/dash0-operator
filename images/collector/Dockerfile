@@ -12,8 +12,11 @@ RUN export builder_version=$(yq '.connectors[0].gomod | match(" v(\d+\.\d+\.\d+)
 ARG TARGETOS
 ARG TARGETARCH
 
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} builder --config=builder/config.yaml \
- && chmod u+x /src/dist/dash0-operator-collector
+RUN CGO_ENABLED=0 \
+    GOOS=${TARGETOS:-linux} \
+    GOARCH=${TARGETARCH} \
+    builder --config=builder/config.yaml && \
+    chmod u+x /src/dist/dash0-operator-collector
 
 FROM alpine:3.21.3
 COPY src/image/entrypoint.sh /entrypoint.sh

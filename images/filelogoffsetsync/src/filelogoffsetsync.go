@@ -46,7 +46,9 @@ type patch struct {
 }
 
 const (
-	meterName = "dash0.operator.filelog_offset_sync"
+	meterName       = "dash0.operator.filelog_offset_sync"
+	metricNameLabel = "metric.name"
+	errorLabel      = "error"
 )
 
 var (
@@ -133,7 +135,7 @@ func main() {
 	// creates the clientset
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		logger.Error("cannot create the Kube API client", "error", common.TruncateErrorForLogAttribute(err))
+		logger.Error("cannot create the Kube API client", errorLabel, common.TruncateErrorForLogAttribute(err))
 		os.Exit(1)
 	}
 
@@ -148,7 +150,7 @@ func main() {
 	switch *mode {
 	case "init":
 		if restoredFiles, err := initOffsets(ctx, settings); err != nil {
-			logger.Error("no offset files restored", "error", common.TruncateErrorForLogAttribute(err))
+			logger.Error("no offset files restored", errorLabel, common.TruncateErrorForLogAttribute(err))
 			os.Exit(1)
 		} else if restoredFiles == 0 {
 			logger.Info("no offset files restored")
@@ -157,7 +159,7 @@ func main() {
 		if err := syncOffsets(ctx, settings); err != nil {
 			logger.Error(
 				"an error occurred while syncing file offsets to configmap",
-				"error",
+				errorLabel,
 				common.TruncateErrorForLogAttribute(err),
 			)
 			os.Exit(1)
@@ -286,13 +288,17 @@ func syncOffsets(ctx context.Context, settings *Settings) error {
 			select {
 			case <-ticker.C:
 				if err := doSyncOffsetsAndMeasure(ctx, settings); err != nil {
-					logger.Info("cannot update offset files", "error", common.TruncateErrorForLogAttribute(err))
+					logger.Info("cannot update offset files", errorLabel, common.TruncateErrorForLogAttribute(err))
 				}
 			case <-shutdown:
 				ticker.Stop()
 
 				if err := doSyncOffsetsAndMeasure(ctx, settings); err != nil {
-					logger.Info("cannot update offset files on shutdown", "error", common.TruncateErrorForLogAttribute(err))
+					logger.Info(
+						"cannot update offset files on shutdown",
+						errorLabel,
+						common.TruncateErrorForLogAttribute(err),
+					)
 				}
 
 				done <- true
@@ -314,7 +320,7 @@ func doSyncOffsetsAndMeasure(ctx context.Context, settings *Settings) error {
 	elapsed := time.Since(start)
 
 	if err != nil {
-		logger.Info("cannot update offset files", "error", common.TruncateErrorForLogAttribute(err))
+		logger.Info("cannot update offset files", errorLabel, common.TruncateErrorForLogAttribute(err))
 		updateErrors.Add(ctx, 1, otelmetric.WithAttributes(
 			attribute.String("error.type", "CannotUpdateOffsetFiles"),
 			attribute.String("error.message", common.TruncateErrorForMetricAttribute(err)),
@@ -495,9 +501,9 @@ func initializeSelfMonitoringMetrics(meter otelmetric.Meter) {
 	); err != nil {
 		logger.Error(
 			"cannot initialize the metric %s",
-			"metric.name",
+			metricNameLabel,
 			updateCounterMetricName,
-			"error",
+			errorLabel,
 			common.TruncateErrorForLogAttribute(err),
 		)
 		os.Exit(1)
@@ -510,9 +516,9 @@ func initializeSelfMonitoringMetrics(meter otelmetric.Meter) {
 	); err != nil {
 		logger.Error(
 			"cannot initialize the metric %s",
-			"metric.name",
+			metricNameLabel,
 			updateErrorsMetricName,
-			"error",
+			errorLabel,
 			common.TruncateErrorForLogAttribute(err),
 		)
 		os.Exit(1)
@@ -527,9 +533,9 @@ func initializeSelfMonitoringMetrics(meter otelmetric.Meter) {
 	); err != nil {
 		logger.Error(
 			"cannot initialize the metric",
-			"metric.name",
+			metricNameLabel,
 			updateDurationMetricName,
-			"error",
+			errorLabel,
 			common.TruncateErrorForLogAttribute(err),
 		)
 		os.Exit(1)
