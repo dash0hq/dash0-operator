@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package backendconnection
+package collectors
 
 import (
 	"fmt"
@@ -30,9 +30,9 @@ var (
 	testEnv   *envtest.Environment
 )
 
-func TestBackendConnectionManager(t *testing.T) {
+func TestCollectorManager(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Backend Connection Manager Suite")
+	RunSpecs(t, "Collector Management Suite")
 }
 
 var _ = BeforeSuite(func() {

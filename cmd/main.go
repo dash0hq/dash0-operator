@@ -41,8 +41,8 @@ import (
 	k8swebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
-	"github.com/dash0hq/dash0-operator/internal/backendconnection"
-	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
+	"github.com/dash0hq/dash0-operator/internal/collectors"
+	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/controller"
 	"github.com/dash0hq/dash0-operator/internal/instrumentation"
 	"github.com/dash0hq/dash0-operator/internal/predelete"
@@ -711,20 +711,20 @@ func startDash0Controllers(
 		developmentMode,
 		envVars.debugVerbosityDetailed,
 	)
-	backendConnectionManager := &backendconnection.BackendConnectionManager{
+	collectorManager := &collectors.CollectorManager{
 		Client:                 k8sClient,
 		Clientset:              clientset,
 		OTelColResourceManager: oTelColResourceManager,
 	}
-	backendConnectionReconciler := &backendconnection.BackendConnectionReconciler{
-		Client:                   k8sClient,
-		BackendConnectionManager: backendConnectionManager,
-		Images:                   images,
-		OperatorNamespace:        envVars.operatorNamespace,
-		OTelCollectorNamePrefix:  envVars.oTelCollectorNamePrefix,
+	collectorReconciler := &collectors.CollectorReconciler{
+		Client:                  k8sClient,
+		CollectorManager:        collectorManager,
+		Images:                  images,
+		OperatorNamespace:       envVars.operatorNamespace,
+		OTelCollectorNamePrefix: envVars.oTelCollectorNamePrefix,
 	}
-	if err := backendConnectionReconciler.SetupWithManager(mgr); err != nil {
-		return fmt.Errorf("unable to set up the backend connection reconciler: %w", err)
+	if err := collectorReconciler.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to set up the collector reconciler: %w", err)
 	}
 
 	thirdPartyResourceSynchronizationQueue =
@@ -761,7 +761,7 @@ func startDash0Controllers(
 		},
 		Scheme:                          mgr.GetScheme(),
 		Recorder:                        mgr.GetEventRecorderFor("dash0-operator-configuration-controller"),
-		BackendConnectionManager:        backendConnectionManager,
+		CollectorManager:                collectorManager,
 		PseudoClusterUID:                pseudoClusterUID,
 		OperatorDeploymentNamespace:     operatorDeploymentSelfReference.Namespace,
 		OperatorDeploymentUID:           operatorDeploymentSelfReference.UID,
@@ -780,12 +780,12 @@ func startDash0Controllers(
 
 	setupLog.Info("Creating the monitoring resource reconciler.")
 	monitoringReconciler := &controller.MonitoringReconciler{
-		Client:                   k8sClient,
-		Clientset:                clientset,
-		Instrumenter:             instrumenter,
-		BackendConnectionManager: backendConnectionManager,
-		Images:                   images,
-		OperatorNamespace:        envVars.operatorNamespace,
+		Client:            k8sClient,
+		Clientset:         clientset,
+		Instrumenter:      instrumenter,
+		CollectorManager:  collectorManager,
+		Images:            images,
+		OperatorNamespace: envVars.operatorNamespace,
 	}
 	setupLog.Info("Starting the monitoring resource reconciler.")
 	if err := monitoringReconciler.SetupWithManager(mgr); err != nil {

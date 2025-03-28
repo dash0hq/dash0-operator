@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package backendconnection
+package collectors
 
 import (
 	"context"
@@ -18,11 +18,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
-	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
+	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
-type BackendConnectionManager struct {
+type CollectorManager struct {
 	client.Client
 	Clientset *kubernetes.Clientset
 	*otelcolresources.OTelColResourceManager
@@ -30,11 +30,11 @@ type BackendConnectionManager struct {
 	resourcesHaveBeenDeletedByOperator atomic.Bool
 }
 
-type BackendConnectionReconcileTrigger string
+type CollectorReconcileTrigger string
 
 const (
-	TriggeredByWatchEvent             BackendConnectionReconcileTrigger = "watch"
-	TriggeredByDash0ResourceReconcile BackendConnectionReconcileTrigger = "resource"
+	TriggeredByWatchEvent             CollectorReconcileTrigger = "watch"
+	TriggeredByDash0ResourceReconcile CollectorReconcileTrigger = "resource"
 )
 
 // ReconcileOpenTelemetryCollector can be triggered by a
@@ -49,12 +49,12 @@ const (
 // to another reconcliation already being in progress or because the resource has been deleted by the operator.
 // A return value of (nil, true) does not necessarily indicate that any collector resource has been created, updated, or
 // deleted; it only indicates that the reconciliation has been performed.
-func (m *BackendConnectionManager) ReconcileOpenTelemetryCollector(
+func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 	ctx context.Context,
 	images util.Images,
 	operatorNamespace string,
 	triggeringMonitoringResource *dash0v1alpha1.Dash0Monitoring,
-	trigger BackendConnectionReconcileTrigger,
+	trigger CollectorReconcileTrigger,
 ) (error, bool) {
 	logger := log.FromContext(ctx)
 	if m.resourcesHaveBeenDeletedByOperator.Load() {
@@ -146,7 +146,7 @@ func (m *BackendConnectionManager) ReconcileOpenTelemetryCollector(
 	}
 }
 
-func (m *BackendConnectionManager) createOrUpdateOpenTelemetryCollector(
+func (m *CollectorManager) createOrUpdateOpenTelemetryCollector(
 	ctx context.Context,
 	operatorNamespace string,
 	images util.Images,
@@ -183,7 +183,7 @@ func (m *BackendConnectionManager) createOrUpdateOpenTelemetryCollector(
 	return nil
 }
 
-func (m *BackendConnectionManager) removeOpenTelemetryCollector(
+func (m *CollectorManager) removeOpenTelemetryCollector(
 	ctx context.Context,
 	operatorNamespace string,
 	logger *logr.Logger,
@@ -206,7 +206,7 @@ func (m *BackendConnectionManager) removeOpenTelemetryCollector(
 	return nil
 }
 
-func (m *BackendConnectionManager) findOperatorConfigurationResource(
+func (m *CollectorManager) findOperatorConfigurationResource(
 	ctx context.Context,
 	logger *logr.Logger,
 ) (*dash0v1alpha1.Dash0OperatorConfiguration, error) {
@@ -226,7 +226,7 @@ func (m *BackendConnectionManager) findOperatorConfigurationResource(
 	return operatorConfigurationResource.(*dash0v1alpha1.Dash0OperatorConfiguration), nil
 }
 
-func (m *BackendConnectionManager) findAllMonitoringResources(
+func (m *CollectorManager) findAllMonitoringResources(
 	ctx context.Context,
 	logger *logr.Logger,
 ) ([]dash0v1alpha1.Dash0Monitoring, error) {

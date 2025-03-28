@@ -23,8 +23,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
-	"github.com/dash0hq/dash0-operator/internal/backendconnection"
-	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
+	"github.com/dash0hq/dash0-operator/internal/collectors"
+	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	zaputil "github.com/dash0hq/dash0-operator/internal/util/zap"
@@ -721,7 +721,7 @@ func createReconciler() *OperatorConfigurationReconciler {
 		OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
 		OTelColExtraConfig:        &otelcolresources.OTelExtraConfigDefaults,
 	}
-	backendConnectionManager := &backendconnection.BackendConnectionManager{
+	collectorManager := &collectors.CollectorManager{
 		Client:                 k8sClient,
 		Clientset:              clientset,
 		OTelColResourceManager: oTelColResourceManager,
@@ -737,7 +737,7 @@ func createReconciler() *OperatorConfigurationReconciler {
 			apiClient1,
 			apiClient2,
 		},
-		BackendConnectionManager:        backendConnectionManager,
+		CollectorManager:                collectorManager,
 		PseudoClusterUID:                ClusterUIDTest,
 		OperatorDeploymentNamespace:     OperatorManagerDeployment.Namespace,
 		OperatorDeploymentUID:           OperatorManagerDeployment.UID,

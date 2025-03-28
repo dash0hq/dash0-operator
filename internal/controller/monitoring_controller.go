@@ -20,19 +20,19 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
-	"github.com/dash0hq/dash0-operator/internal/backendconnection"
+	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/instrumentation"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
 type MonitoringReconciler struct {
 	client.Client
-	Clientset                *kubernetes.Clientset
-	Instrumenter             *instrumentation.Instrumenter
-	BackendConnectionManager *backendconnection.BackendConnectionManager
-	Images                   util.Images
-	OperatorNamespace        string
-	DanglingEventsTimeouts   *util.DanglingEventsTimeouts
+	Clientset              *kubernetes.Clientset
+	Instrumenter           *instrumentation.Instrumenter
+	CollectorManager       *collectors.CollectorManager
+	Images                 util.Images
+	OperatorNamespace      string
+	DanglingEventsTimeouts *util.DanglingEventsTimeouts
 }
 
 const (
@@ -436,12 +436,12 @@ func (r *MonitoringReconciler) reconcileOpenTelemetryCollector(
 	// This will look up all the operator configuration resource and all monitoring resources in the cluster (including
 	// the one that has just been reconciled, hence we must only do this _after_ this resource has been updated (e.g.
 	// marked as available). Otherwise, the reconciliation of the collectors would work with an outdated state.
-	if err, _ := r.BackendConnectionManager.ReconcileOpenTelemetryCollector(
+	if err, _ := r.CollectorManager.ReconcileOpenTelemetryCollector(
 		ctx,
 		r.Images,
 		r.OperatorNamespace,
 		monitoringResource,
-		backendconnection.TriggeredByDash0ResourceReconcile,
+		collectors.TriggeredByDash0ResourceReconcile,
 	); err != nil {
 		logger.Error(err, "Failed to reconcile the OpenTelemetry collector, requeuing reconcile request.")
 		return err
