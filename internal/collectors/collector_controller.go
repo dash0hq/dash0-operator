@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package backendconnection
+package collectors
 
 import (
 	"context"
@@ -19,21 +19,21 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
+	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
-type BackendConnectionReconciler struct {
+type CollectorReconciler struct {
 	client.Client
-	BackendConnectionManager *BackendConnectionManager
-	Images                   util.Images
-	OperatorNamespace        string
-	OTelCollectorNamePrefix  string
+	CollectorManager        *CollectorManager
+	Images                  util.Images
+	OperatorNamespace       string
+	OTelCollectorNamePrefix string
 }
 
-func (r *BackendConnectionReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *CollectorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		Named("dash0backendconnectioncontroller").
+		Named("collectorcontroller").
 		Watches(
 			&corev1.ConfigMap{},
 			&handler.EnqueueRequestForObject{},
@@ -78,11 +78,11 @@ func (r *BackendConnectionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *BackendConnectionReconciler) withNamePredicate(resourceNames []string) builder.Predicates {
+func (r *CollectorReconciler) withNamePredicate(resourceNames []string) builder.Predicates {
 	return builder.WithPredicates(r.createFilterPredicate(resourceNames))
 }
 
-func (r *BackendConnectionReconciler) createFilterPredicate(resourceNames []string) predicate.Funcs {
+func (r *CollectorReconciler) createFilterPredicate(resourceNames []string) predicate.Funcs {
 	resourceNamespace := r.OperatorNamespace
 	return predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
@@ -108,14 +108,14 @@ func resourceMatches(object client.Object, resourceNamespace string, resourceNam
 	return slices.Contains(resourceNames, object.GetName())
 }
 
-func (r *BackendConnectionReconciler) Reconcile(
+func (r *CollectorReconciler) Reconcile(
 	ctx context.Context,
 	request reconcile.Request,
 ) (reconcile.Result, error) {
 	logger := log.FromContext(ctx)
-	logger.Info("reconciling backend connection resources", "request", request)
+	logger.Info("reconciling collector resources", "request", request)
 
-	err, hasBeenReconciled := r.BackendConnectionManager.ReconcileOpenTelemetryCollector(
+	err, hasBeenReconciled := r.CollectorManager.ReconcileOpenTelemetryCollector(
 		ctx,
 		r.Images,
 		r.OperatorNamespace,
@@ -123,12 +123,12 @@ func (r *BackendConnectionReconciler) Reconcile(
 		TriggeredByWatchEvent,
 	)
 	if err != nil {
-		logger.Error(err, "Failed to create/update backend connection resources.")
+		logger.Error(err, "Failed to create/update collector resources.")
 		return reconcile.Result{}, err
 	}
 	if hasBeenReconciled {
 		logger.Info(
-			"successfully reconciled backend connection resources",
+			"successfully reconciled collector resources",
 			"request",
 			request,
 		)

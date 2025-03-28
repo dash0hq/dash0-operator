@@ -16,8 +16,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
-	"github.com/dash0hq/dash0-operator/internal/backendconnection"
-	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
+	"github.com/dash0hq/dash0-operator/internal/collectors"
+	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/controller"
 	"github.com/dash0hq/dash0-operator/internal/instrumentation"
 
@@ -51,20 +51,20 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 			OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
 			OTelColExtraConfig:        &otelcolresources.OTelExtraConfigDefaults,
 		}
-		backendConnectionManager := &backendconnection.BackendConnectionManager{
+		collectorManager := &collectors.CollectorManager{
 			Client:                 k8sClient,
 			Clientset:              clientset,
 			OTelColResourceManager: oTelColResourceManager,
 		}
 
 		reconciler = &controller.MonitoringReconciler{
-			Client:                   k8sClient,
-			Clientset:                clientset,
-			Instrumenter:             instrumenter,
-			Images:                   TestImages,
-			OperatorNamespace:        OperatorNamespace,
-			BackendConnectionManager: backendConnectionManager,
-			DanglingEventsTimeouts:   &DanglingEventsTimeoutsTest,
+			Client:                 k8sClient,
+			Clientset:              clientset,
+			Instrumenter:           instrumenter,
+			Images:                 TestImages,
+			OperatorNamespace:      OperatorNamespace,
+			CollectorManager:       collectorManager,
+			DanglingEventsTimeouts: &DanglingEventsTimeoutsTest,
 		}
 
 		dash0MonitoringResource = EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)

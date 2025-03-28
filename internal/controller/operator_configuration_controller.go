@@ -18,7 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
-	"github.com/dash0hq/dash0-operator/internal/backendconnection"
+	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
@@ -29,7 +29,7 @@ type OperatorConfigurationReconciler struct {
 	ApiClients                      []ApiClient
 	Scheme                          *runtime.Scheme
 	Recorder                        record.EventRecorder
-	BackendConnectionManager        *backendconnection.BackendConnectionManager
+	CollectorManager                *collectors.CollectorManager
 	PseudoClusterUID                string
 	OperatorDeploymentNamespace     string
 	OperatorDeploymentUID           types.UID
@@ -312,12 +312,12 @@ func (r *OperatorConfigurationReconciler) reconcileOpenTelemetryCollector(
 	ctx context.Context,
 	logger *logr.Logger,
 ) error {
-	if err, _ := r.BackendConnectionManager.ReconcileOpenTelemetryCollector(
+	if err, _ := r.CollectorManager.ReconcileOpenTelemetryCollector(
 		ctx,
 		r.Images,
 		r.OperatorNamespace,
 		nil,
-		backendconnection.TriggeredByDash0ResourceReconcile,
+		collectors.TriggeredByDash0ResourceReconcile,
 	); err != nil {
 		logger.Error(err, "Failed to reconcile the OpenTelemetry collector, requeuing reconcile request.")
 		return err
