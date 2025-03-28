@@ -457,12 +457,13 @@ func convertDash0ExportConfigurationToCollectorLogSelfMonitoringPipelineString(d
 	pipeline := collectorLogSelfMonitoringPrelude +
 		fmt.Sprintf(`
                 protocol: grpc
-                endpoint: %s
+                endpoint: %s`, dash0Export.Endpoint)
+	pipeline = addInsecureFlagIfNecessary(pipeline, dash0Export.Endpoint)
+	pipeline += fmt.Sprintf(`
                 headers:
                   %s: "Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"`,
-			dash0Export.Endpoint,
-			util.AuthorizationHeaderName,
-		)
+		util.AuthorizationHeaderName,
+	)
 	if dash0Export.Dataset != "" && dash0Export.Dataset != util.DatasetDefault {
 		pipeline += fmt.Sprintf(`
                   %s: "%s"
@@ -482,6 +483,7 @@ func convertGrpcExportConfigurationToCollectorLogSelfMonitoringPipelineString(gr
                 endpoint: %s`,
 			grpcExport.Endpoint,
 		)
+	pipeline = addInsecureFlagIfNecessary(pipeline, grpcExport.Endpoint)
 	pipeline = appendHeadersToCollectorLogSelfMonitoringPipelineString(pipeline, grpcExport.Headers)
 	pipeline += "\n"
 	return pipeline
@@ -517,6 +519,16 @@ func appendHeadersToCollectorLogSelfMonitoringPipelineString(pipeline string, he
 				header.Value,
 			)
 		}
+	}
+	return pipeline
+}
+
+func addInsecureFlagIfNecessary(pipeline string, endpoint string) string {
+	endpointNormalized := strings.ToLower(endpoint)
+	hasNonTlsPrefix := strings.HasPrefix(endpointNormalized, "http://")
+	if hasNonTlsPrefix {
+		return pipeline + `
+                insecure: true`
 	}
 	return pipeline
 }
