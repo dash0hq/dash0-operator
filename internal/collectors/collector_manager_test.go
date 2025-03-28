@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package backendconnection
+package collectors
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
-	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
+	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -25,13 +25,13 @@ var (
 	operatorNamespace = OperatorNamespace
 )
 
-var _ = Describe("The backend connection manager", Ordered, func() {
+var _ = Describe("The collector manager", Ordered, func() {
 	ctx := context.Background()
 	logger := log.FromContext(ctx)
 
 	var createdObjects []client.Object
 
-	var manager *BackendConnectionManager
+	var manager *CollectorManager
 
 	BeforeAll(func() {
 		EnsureOperatorNamespaceExists(ctx, k8sClient)
@@ -47,7 +47,7 @@ var _ = Describe("The backend connection manager", Ordered, func() {
 			OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
 			OTelColExtraConfig:        &otelcolresources.OTelExtraConfigDefaults,
 		}
-		manager = &BackendConnectionManager{
+		manager = &CollectorManager{
 			Client:                 k8sClient,
 			Clientset:              clientset,
 			OTelColResourceManager: oTelColResourceManager,

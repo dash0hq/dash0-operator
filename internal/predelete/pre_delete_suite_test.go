@@ -20,8 +20,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
-	"github.com/dash0hq/dash0-operator/internal/backendconnection"
-	"github.com/dash0hq/dash0-operator/internal/backendconnection/otelcolresources"
+	"github.com/dash0hq/dash0-operator/internal/collectors"
+	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/controller"
 	"github.com/dash0hq/dash0-operator/internal/instrumentation"
 
@@ -104,19 +104,19 @@ var _ = BeforeSuite(func() {
 		OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
 		OTelColExtraConfig:        &otelcolresources.OTelExtraConfigDefaults,
 	}
-	backendConnectionManager := &backendconnection.BackendConnectionManager{
+	collectorManager := &collectors.CollectorManager{
 		Client:                 k8sClient,
 		Clientset:              clientset,
 		OTelColResourceManager: oTelColResourceManager,
 	}
 	reconciler = &controller.MonitoringReconciler{
-		Client:                   k8sClient,
-		Clientset:                clientset,
-		Images:                   TestImages,
-		Instrumenter:             instrumenter,
-		OperatorNamespace:        OperatorNamespace,
-		BackendConnectionManager: backendConnectionManager,
-		DanglingEventsTimeouts:   &DanglingEventsTimeoutsTest,
+		Client:                 k8sClient,
+		Clientset:              clientset,
+		Images:                 TestImages,
+		Instrumenter:           instrumenter,
+		OperatorNamespace:      OperatorNamespace,
+		CollectorManager:       collectorManager,
+		DanglingEventsTimeouts: &DanglingEventsTimeoutsTest,
 	}
 })
 
