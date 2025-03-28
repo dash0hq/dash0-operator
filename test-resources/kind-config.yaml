@@ -1,8 +1,17 @@
 # See CONTRIBUTING.md -> "Running End-to-End Tests on kind" for instructions to run e2e tests on a kind cluster.
 
 # Before creating a cluster with this config, the two hostPath settings below need to be aligned with your local file
-# system structure. Alternatively, create a symbolic link from
-# /Users/username/dash0/code/dash0-operator/test-resources/e2e-test-volumes/ to the actual path.
+# system structure.
+#
+# Alternatively, create a symbolic link from
+# /Users/username/dash0/code/dash0-operator/test-resources/e2e/volumes to the actual path, with "username" as a literal
+# (do not replace this with your actual username).
+#
+# That is, run the following commands:
+#     mkdir -p /Users/username/dash0/code/dash0-operator/test-resources/e2e
+#     cd /Users/username/dash0/code/dash0-operator/test-resources/e2e/volumes
+#     ln -s /${the-actual-path-to-your-dash0-operator-repository}/test-resources/e2e/volumes volumes
+#
 # Also, make sure the path mentioned under `hostPath` is listed in Docker Desktop's settings under
 # "Resources -> File sharing".
 
@@ -12,9 +21,9 @@ nodes:
 - role: control-plane
 - role: worker
   extraMounts:
-    - hostPath: /Users/username/dash0/code/dash0-operator/test-resources/e2e-test-volumes/otlp-sink
+    - hostPath: /Users/username/dash0/code/dash0-operator/test-resources/e2e/volumes/otlp-sink
       containerPath: /tmp/telemetry
 - role: worker
   extraMounts:
-    - hostPath: /Users/username/dash0/code/dash0-operator/test-resources/e2e-test-volumes/otlp-sink
+    - hostPath: /Users/username/dash0/code/dash0-operator/test-resources/e2e/volumes/otlp-sink
       containerPath: /tmp/telemetry

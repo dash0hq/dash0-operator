@@ -149,7 +149,7 @@ func fileHasMatchingMetrics(
 	timestampLowerBound time.Time,
 
 ) MatchResultList[pmetric.ResourceMetrics, pmetric.Metric] {
-	fileHandle, err := os.Open("test-resources/e2e-test-volumes/otlp-sink/metrics.jsonl")
+	fileHandle, err := os.Open("test-resources/e2e/volumes/otlp-sink/metrics.jsonl")
 	g.Expect(err).NotTo(HaveOccurred())
 	defer func() {
 		_ = fileHandle.Close()

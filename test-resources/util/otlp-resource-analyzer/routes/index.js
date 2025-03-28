@@ -24,7 +24,7 @@ let sourceDirectory;
 if (process.env.SOURCE_DIRECTORY) {
   sourceDirectory = process.env.SOURCE_DIRECTORY;
 } else {
-  sourceDirectory = path.join(__dirname, '..', '..', '..', 'e2e-test-volumes', 'otlp-sink');
+  sourceDirectory = path.join(__dirname, '..', '..', '..', 'e2e', 'volumes', 'otlp-sink');
 }
 
 exports.init = async (req, res, next) => {

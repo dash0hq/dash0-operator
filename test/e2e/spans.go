@@ -119,7 +119,7 @@ func fileHasMatchingSpan(
 	spanMatchFn func(ptrace.Span, *ObjectMatchResult[ptrace.ResourceSpans, ptrace.Span]),
 	timestampLowerBound time.Time,
 ) MatchResultList[ptrace.ResourceSpans, ptrace.Span] {
-	fileHandle, err := os.Open("test-resources/e2e-test-volumes/otlp-sink/traces.jsonl")
+	fileHandle, err := os.Open("test-resources/e2e/volumes/otlp-sink/traces.jsonl")
 	g.Expect(err).NotTo(HaveOccurred())
 	defer func() {
 		_ = fileHandle.Close()
