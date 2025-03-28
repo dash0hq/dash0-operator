@@ -497,6 +497,31 @@ var _ = Describe("self monitoring config conversions", Ordered, func() {
 				},
 			),
 			Entry(
+				"should convert non-TLS Dash0 export",
+				exportToCollectorLogSelfMonitoringPipelineTestConfig{
+					selfMonitoringConfiguration: createSelfMonitoringConfiguration(&dash0v1alpha1.Export{
+						Dash0: &dash0v1alpha1.Dash0Configuration{
+							Endpoint: "http://endpoint.dash0.com:4317",
+							Authorization: dash0v1alpha1.Authorization{
+								Token: &AuthorizationTokenTest,
+							},
+						},
+					}),
+					expectedLogPipelineString: `
+    logs:
+      processors:
+        - batch:
+            exporter:
+              otlp:
+                protocol: grpc
+                endpoint: http://endpoint.dash0.com:4317
+                insecure: true
+                headers:
+                  Authorization: "Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"
+`,
+				},
+			),
+			Entry(
 				"should convert gRPC export without headers",
 				exportToCollectorLogSelfMonitoringPipelineTestConfig{
 					selfMonitoringConfiguration: createSelfMonitoringConfiguration(
@@ -553,6 +578,27 @@ var _ = Describe("self monitoring config conversions", Ordered, func() {
                   Key1: "Value1"
                   Key2: "Value2"
                   KeyWithoutValue: ""
+`,
+				},
+			),
+			Entry(
+				"should convert non-TLS gRPC export",
+				exportToCollectorLogSelfMonitoringPipelineTestConfig{
+					selfMonitoringConfiguration: createSelfMonitoringConfiguration(
+						&dash0v1alpha1.Export{
+							Grpc: &dash0v1alpha1.GrpcConfiguration{
+								Endpoint: "http://endpoint.backend.com:4317",
+							},
+						}),
+					expectedLogPipelineString: `
+    logs:
+      processors:
+        - batch:
+            exporter:
+              otlp:
+                protocol: grpc
+                endpoint: http://endpoint.backend.com:4317
+                insecure: true
 `,
 				},
 			),

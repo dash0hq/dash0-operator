@@ -66,7 +66,10 @@ func getPodLogs(namespace string) {
 func getPodNames(namespace string) []string {
 	podsJson, err := run(exec.Command("kubectl", "-n", namespace, "get", "pods", "--output=json"))
 	if err != nil {
-		e2ePrint("Error in collectPodInfoAndLogsFailWrapper when running kubectl get pods to fetch pod names: %s\n", err.Error())
+		e2ePrint(
+			"Error in collectPodInfoAndLogsFailWrapper when running kubectl get pods to fetch pod names: %s\n",
+			err.Error(),
+		)
 		return nil
 	}
 	var parsedOutput map[string]interface{}
