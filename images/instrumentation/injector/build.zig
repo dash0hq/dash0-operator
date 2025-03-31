@@ -14,7 +14,7 @@ pub fn build(b: *std.Build) !void {
 
     if (b.option([]const u8, "cpu-arch", "The system architecture to compile the injector for; valid options are 'amd64' and 'arch64' (default)")) |val| {
         if (std.mem.eql(u8, "arm64", val)) {
-            // Nothing to do
+            // Already the default
         } else if (std.mem.eql(u8, "amd64", val)) {
             targetCpuArch = std.Target.Cpu.Arch.x86_64;
             targetCpuModel = std.Target.Cpu.Model.generic(std.Target.Cpu.Arch.x86_64);
@@ -52,7 +52,7 @@ pub fn build(b: *std.Build) !void {
     b.default_step = copy_injector_to_bin;
 }
 
-fn copyInjectorFile(step: *std.Build.Step, _: std.Progress.Node) anyerror!void {
+fn copyInjectorFile(step: *std.Build.Step, _: std.Build.Step.MakeOptions) anyerror!void {
     const source_path = step.owner.pathFromRoot("./zig-out/libinjector.so");
     const dest_path = step.owner.pathFromRoot("./bin/dash0_injector.so");
 

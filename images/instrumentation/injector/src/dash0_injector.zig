@@ -527,7 +527,6 @@ fn doGetLibCFlavor() !LibCFlavor {
     //   Tag        Type                         Name/Value
     //  0x0000000000000001 (NEEDED)             Shared library: [libjli.so]
     //  0x0000000000000001 (NEEDED)             Shared library: [libc.musl-aarch64.so.1]
-    //  0x0
 
     // Read dynamic section
     // Read dynamic section
