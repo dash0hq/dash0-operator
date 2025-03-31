@@ -2,25 +2,18 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: dotnet-demo-app
-  labels:
-    app: dotnet-demo-app
-    app.kubernetes.io/name: dotnet-demo-app
-    app.kubernetes.io/version: "1.2.3"
-    app.kubernetes.io/part-of: test
-    app.kubernetes.io/instance: the-one-dotnet
-  annotations:
-    resource.opentelemetry.io/foo: bar
-    resource.opentelemetry.io/foz: baz
 spec:
   containers:
   - name: app
     image: aspnetapp
     imagePullPolicy: IfNotPresent
     env:
-    - name: DASH0_DEBUG
-      value: "true"
-    - name: OTEL_LOG_LEVEL
-      value: debug
+    - name: OTEL_LOGS_EXPORTER
+      value: console
+    - name: OTEL_METRICS_EXPORTER
+      value: console
+    - name: OTELTRACES_EXPORTER
+      value: console
     ports:
     - containerPort: 8080
     resources:

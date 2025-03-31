@@ -16,11 +16,14 @@ const dotnet_path_prefix = "/__dash0__/instrumentation/dotnet";
 
 // We need to use a rather "innocent" type here, the actual type involves
 // optionals that cannot be used in global declarations.
+// TODO Create `_environ` and `environ` aliases
+// TODO Load initial value on lib init by reading `/self/proc/environ`
 extern var __environ: [*]u8;
 
 // We need to allocate memory only to manipulate and return the few environment
 // variables we want to modify. Unmodified values are returned as pointers to
 // the original `__environ` memory. We pre-allocate an obscene 128Kb for it.
+// TODO Make it PageAllocator based
 var allocator_buffer: [131072:0]u8 = undefined;
 var fba = std.heap.FixedBufferAllocator.init(&allocator_buffer);
 const allocator: std.mem.Allocator = fba.allocator();
@@ -96,6 +99,7 @@ fn getEnvValue(name: [:0]const u8) ?null_terminated_string {
         }
 
         if (modified_otel_resource_attributes_value) |updated_value| {
+            printMessage("Modified resource attributes passed via the 'OTEL_RESOURCE_ATTRIBUTES' environment variable");
             return updated_value;
         }
     } else if (std.mem.eql(u8, name, "JAVA_TOOL_OPTIONS")) {
@@ -105,6 +109,7 @@ fn getEnvValue(name: [:0]const u8) ?null_terminated_string {
         }
 
         if (modified_java_tool_options_value) |updated_value| {
+            printMessage("Injected the OpenTelemetry Java agent");
             return updated_value;
         }
     } else if (std.mem.eql(u8, name, "NODE_OPTIONS")) {
@@ -114,6 +119,7 @@ fn getEnvValue(name: [:0]const u8) ?null_terminated_string {
         }
 
         if (modified_node_options_value) |updated_value| {
+            printMessage("Injected the Dash0 Node.js distro");
             return updated_value;
         }
     } else if (std.mem.eql(u8, name, "CORECLR_ENABLE_PROFILING")) {
@@ -122,6 +128,7 @@ fn getEnvValue(name: [:0]const u8) ?null_terminated_string {
         }
     } else if (std.mem.eql(u8, name, "CORECLR_PROFILER")) {
         if (getDotNetValues()) |v| {
+            printMessage("Injected the OpenTelemetry .NET instrumentation");
             return v.coreclr_profiler;
         }
     } else if (std.mem.eql(u8, name, "CORECLR_PROFILER_PATH")) {
@@ -610,6 +617,10 @@ fn printDebug(comptime fmt: []const u8, args: anytype) void {
 }
 
 fn printError(comptime fmt: []const u8, args: anytype) void {
+    std.debug.print(log_prefix ++ fmt ++ "\n", args);
+}
+
+fn printMessage(comptime fmt: []const u8, args: anytype) void {
     std.debug.print(log_prefix ++ fmt ++ "\n", args);
 }
 
