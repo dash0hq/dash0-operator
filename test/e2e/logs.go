@@ -257,7 +257,7 @@ func selfMonitoringCommonResourceMatcher(attributes pcommon.Map, matchResult *Re
 	verifyResourceAttributeEquals(
 		attributes,
 		string(semconv.K8SClusterNameKey),
-		"docker-desktop",
+		e2eKubernetesContext,
 		matchResult,
 	)
 	verifyResourceAttributeExists(

@@ -48,6 +48,11 @@ echo "STEP $step_counter: rebuild images"
 build_all_images
 finish_step
 
+if [[ "${FILELOG_OFFSETS_PVC:-}" == "true" ]]; then
+  deploy_filelog_offsets_pvc
+  finish_step
+fi
+
 echo "STEP $step_counter: deploy the Dash0 operator using helm"
 deploy_via_helm
 finish_step

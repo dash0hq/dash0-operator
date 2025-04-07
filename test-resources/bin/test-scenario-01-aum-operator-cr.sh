@@ -51,6 +51,11 @@ echo "STEP $step_counter: rebuild images"
 build_all_images
 finish_step
 
+if [[ "${FILELOG_OFFSETS_PVC:-}" == "true" ]]; then
+  deploy_filelog_offsets_pvc
+  finish_step
+fi
+
 if [[ "${DEPLOY_APPLICATION_UNDER_MONITORING:-}" != "false" ]]; then
   echo "STEP $step_counter: deploy application under monitoring"
   test-resources/node.js/express/deploy.sh "${target_namespace}" "${kind}"

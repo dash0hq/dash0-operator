@@ -1,0 +1,6 @@
+operator:
+  collectors:
+    filelogOffsetSyncStorageVolume:
+      name: offset-storage
+      persistentVolumeClaim:
+        claimName: offset-storage-claim

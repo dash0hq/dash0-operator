@@ -4,13 +4,8 @@
 package common // import "github.com/dash0hq/dash0-operator/images/pkg/common"
 
 const (
-	DefaultErrorLogAttributeLength    = 300
 	DefaultErrorMetricAttributeLength = 80
 )
-
-func TruncateErrorForLogAttribute(err error) string {
-	return truncateError(err, DefaultErrorLogAttributeLength)
-}
 
 func TruncateErrorForMetricAttribute(err error) string {
 	return truncateError(err, DefaultErrorMetricAttributeLength)

@@ -91,7 +91,7 @@ func main() {
 		logger.Error(
 			"Cannot initialize hashes of configuration files",
 			errorLabel,
-			common.TruncateErrorForLogAttribute(err),
+			err,
 		)
 		os.Exit(1)
 	}
@@ -116,7 +116,7 @@ func main() {
 					logger.Info(
 						"An error occurred while check for configuration changes",
 						errorLabel,
-						common.TruncateErrorForLogAttribute(err),
+						err,
 					)
 				} else if isUpdateTriggered {
 					logger.Info("Triggered collector configuration update")
@@ -298,7 +298,7 @@ func initializeSelfMonitoringMetrics(meter otelmetric.Meter) {
 			metricNameLabel,
 			configFilesChangesMetricName,
 			errorLabel,
-			common.TruncateErrorForLogAttribute(err),
+			err,
 		)
 		os.Exit(1)
 	}
@@ -313,7 +313,7 @@ func initializeSelfMonitoringMetrics(meter otelmetric.Meter) {
 			metricNameLabel,
 			reloadErrorsMetricName,
 			errorLabel,
-			common.TruncateErrorForLogAttribute(err),
+			err,
 		)
 		os.Exit(1)
 	}

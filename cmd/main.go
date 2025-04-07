@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -141,6 +142,7 @@ func main() {
 	var operatorConfigurationSelfMonitoringEnabled bool
 	var operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled bool
 	var operatorConfigurationClusterName string
+	var offsetStorageVolume string
 	var isUninstrumentAll bool
 	var metricsAddr string
 	var enableLeaderElection bool
@@ -214,6 +216,11 @@ func main() {
 		"The clusterName to set on the operator configuration resource; will be ignored if"+
 			"operator-configuration-endpoint is not set. If set, the value will be added as the resource attribute "+
 			"k8s.cluster.name to all telemetry.")
+	flag.StringVar(
+		&offsetStorageVolume,
+		"offset-storage-volume",
+		"",
+		"An optional stringified JSON defining a reference to a volume for filelog offset sync information.")
 	flag.StringVar(
 		&metricsAddr,
 		"metrics-bind-address",
@@ -338,6 +345,7 @@ func main() {
 		operatorConfigurationValues,
 		delegatingZapCoreWrapper,
 		pseudoClusterUID,
+		offsetStorageVolume,
 		developmentMode,
 	); err != nil {
 		setupLog.Error(err, "The Dash0 operator manager process failed to start.")
@@ -400,6 +408,7 @@ func startOperatorManager(
 	operatorConfigurationValues *startup.OperatorConfigurationValues,
 	delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper,
 	pseudoClusterUID string,
+	offsetStorageVolume string,
 	developmentMode bool,
 ) error {
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
@@ -456,6 +465,9 @@ func startOperatorManager(
 		"otel collector name prefix",
 		envVars.oTelCollectorNamePrefix,
 
+		"offset storage volume",
+		offsetStorageVolume,
+
 		"development mode",
 		developmentMode,
 	)
@@ -467,6 +479,7 @@ func startOperatorManager(
 		operatorConfigurationValues,
 		delegatingZapCoreWrapper,
 		pseudoClusterUID,
+		offsetStorageVolume,
 		developmentMode,
 	)
 	if err != nil {
@@ -651,6 +664,7 @@ func startDash0Controllers(
 	operatorConfigurationValues *startup.OperatorConfigurationValues,
 	delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper,
 	pseudoClusterUID string,
+	offsetStorageVolumeJsonString string,
 	developmentMode bool,
 ) error {
 	oTelColExtraConfig, err := readOTelColExtraConfiguration()
@@ -696,6 +710,21 @@ func startDash0Controllers(
 		OTelCollectorBaseUrl: oTelCollectorBaseUrl,
 		IsIPv6Cluster:        isIPv6Cluster,
 	}
+
+	var offsetStorageVolume *corev1.Volume
+	if offsetStorageVolumeJsonString != "" {
+		// remove leading and trailing ' character
+		offsetStorageVolumeJsonString = offsetStorageVolumeJsonString[1 : len(offsetStorageVolumeJsonString)-1]
+		if err = json.Unmarshal([]byte(offsetStorageVolumeJsonString), &offsetStorageVolume); err != nil {
+			setupLog.Error(err,
+				fmt.Sprintf(
+					"cannot parse parameter --offset-storage-volume into a volume: %s",
+					offsetStorageVolumeJsonString,
+				))
+			os.Exit(1)
+		}
+	}
+
 	oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
 		k8sClient,
 		mgr.GetScheme(),
@@ -708,6 +737,7 @@ func startDash0Controllers(
 		pseudoClusterUID,
 		isIPv6Cluster,
 		isDocker,
+		offsetStorageVolume,
 		developmentMode,
 		envVars.debugVerbosityDetailed,
 	)
