@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os/exec"
+	"slices"
 	"strings"
 	"time"
 
@@ -23,7 +24,7 @@ var (
 )
 
 func e2ePrint(format string, a ...any) {
-	fmt.Fprintf(GinkgoWriter, format, a...)
+	fmt.Fprintf(GinkgoWriter, "%v: "+format, slices.Concat([]interface{}{time.Now()}, a)...)
 }
 
 type workloadType struct {

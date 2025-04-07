@@ -193,6 +193,16 @@ var (
 			},
 		},
 	}
+	collectorStartupProbe = corev1.Probe{
+		PeriodSeconds:    2,
+		FailureThreshold: 30,
+		ProbeHandler: corev1.ProbeHandler{
+			HTTPGet: &corev1.HTTPGetAction{
+				Path: "/",
+				Port: intstr.FromInt32(probesHttpPort),
+			},
+		},
+	}
 
 	deploymentReplicas int32 = 1
 )
@@ -898,6 +908,7 @@ func assembleDaemonSetCollectorContainer(
 		},
 		Env:            collectorEnv,
 		LivenessProbe:  &collectorProbe,
+		StartupProbe:   &collectorStartupProbe,
 		ReadinessProbe: &collectorProbe,
 		Resources:      resourceRequirements.ToResourceRequirements(),
 		VolumeMounts:   collectorVolumeMounts,
@@ -1297,6 +1308,7 @@ func assembleDeploymentCollectorContainer(
 		Image:          config.Images.CollectorImage,
 		Env:            collectorEnv,
 		LivenessProbe:  &collectorProbe,
+		StartupProbe:   &collectorStartupProbe,
 		ReadinessProbe: &collectorProbe,
 		Resources:      resourceRequirements.ToResourceRequirements(),
 		VolumeMounts:   collectorVolumeMounts,

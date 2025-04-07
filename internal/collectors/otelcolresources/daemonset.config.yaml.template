@@ -345,6 +345,7 @@ processors:
     - azure
     - aks
     - k8snode
+    timeout: 2s
     system:
       resource_attributes:
         host.name:
