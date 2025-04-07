@@ -125,7 +125,7 @@ func main() {
 	// creates the in-cluster config
 	config, err := rest.InClusterConfig()
 	if err != nil {
-		logger.Error("Cannot create the Kube API client: %v", err)
+		logger.Error("Cannot create the Kube API client.", "error", err)
 		os.Exit(1)
 	}
 
@@ -135,7 +135,7 @@ func main() {
 	// creates the clientset
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		logger.Error("cannot create the Kube API client", errorLabel, common.TruncateErrorForLogAttribute(err))
+		logger.Error("cannot create the Kube API client", errorLabel, err)
 		os.Exit(1)
 	}
 
@@ -150,7 +150,7 @@ func main() {
 	switch *mode {
 	case "init":
 		if restoredFiles, err := initOffsets(ctx, settings); err != nil {
-			logger.Error("no offset files restored", errorLabel, common.TruncateErrorForLogAttribute(err))
+			logger.Error("no offset files restored", errorLabel, err)
 			os.Exit(1)
 		} else if restoredFiles == 0 {
 			logger.Info("no offset files restored")
@@ -160,7 +160,7 @@ func main() {
 			logger.Error(
 				"an error occurred while syncing file offsets to configmap",
 				errorLabel,
-				common.TruncateErrorForLogAttribute(err),
+				err,
 			)
 			os.Exit(1)
 		}
@@ -288,7 +288,7 @@ func syncOffsets(ctx context.Context, settings *Settings) error {
 			select {
 			case <-ticker.C:
 				if err := doSyncOffsetsAndMeasure(ctx, settings); err != nil {
-					logger.Info("cannot update offset files", errorLabel, common.TruncateErrorForLogAttribute(err))
+					logger.Info("cannot update offset files", errorLabel, err)
 				}
 			case <-shutdown:
 				ticker.Stop()
@@ -297,7 +297,7 @@ func syncOffsets(ctx context.Context, settings *Settings) error {
 					logger.Info(
 						"cannot update offset files on shutdown",
 						errorLabel,
-						common.TruncateErrorForLogAttribute(err),
+						err,
 					)
 				}
 
@@ -320,7 +320,7 @@ func doSyncOffsetsAndMeasure(ctx context.Context, settings *Settings) error {
 	elapsed := time.Since(start)
 
 	if err != nil {
-		logger.Info("cannot update offset files", errorLabel, common.TruncateErrorForLogAttribute(err))
+		logger.Info("cannot update offset files", errorLabel, err)
 		updateErrors.Add(ctx, 1, otelmetric.WithAttributes(
 			attribute.String("error.type", "CannotUpdateOffsetFiles"),
 			attribute.String("error.message", common.TruncateErrorForMetricAttribute(err)),
@@ -490,7 +490,7 @@ func initializeSelfMonitoringMetrics(meter otelmetric.Meter) {
 		otelmetric.WithUnit("By"),
 		otelmetric.WithDescription("The size of the compressed offset file"),
 	); err != nil {
-		logger.Error("Cannot initialize the OTLP meter for the offset file size gauge: %v", err)
+		logger.Error("Cannot initialize the OTLP meter for the offset file size gauge.", "error", err)
 		os.Exit(1)
 	}
 
@@ -504,7 +504,7 @@ func initializeSelfMonitoringMetrics(meter otelmetric.Meter) {
 			metricNameLabel,
 			updateCounterMetricName,
 			errorLabel,
-			common.TruncateErrorForLogAttribute(err),
+			err,
 		)
 		os.Exit(1)
 	}
@@ -519,7 +519,7 @@ func initializeSelfMonitoringMetrics(meter otelmetric.Meter) {
 			metricNameLabel,
 			updateErrorsMetricName,
 			errorLabel,
-			common.TruncateErrorForLogAttribute(err),
+			err,
 		)
 		os.Exit(1)
 	}
@@ -536,7 +536,7 @@ func initializeSelfMonitoringMetrics(meter otelmetric.Meter) {
 			metricNameLabel,
 			updateDurationMetricName,
 			errorLabel,
-			common.TruncateErrorForLogAttribute(err),
+			err,
 		)
 		os.Exit(1)
 	}

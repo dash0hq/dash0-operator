@@ -36,8 +36,13 @@ type oTelColConfig struct {
 	ClusterName                                      string
 	Images                                           util.Images
 	IsIPv6Cluster                                    bool
+	OffsetStorageVolume                              *corev1.Volume
 	DevelopmentMode                                  bool
 	DebugVerbosityDetailed                           bool
+}
+
+func (c *oTelColConfig) usesOffsetStorageVolume() bool {
+	return c.OffsetStorageVolume != nil
 }
 
 // This type just exists to ensure all created objects go through addCommonMetadata.
@@ -174,7 +179,7 @@ var (
 		MountPath: filepath.Dir(collectorPidFilePath),
 		ReadOnly:  false,
 	}
-	filelogReceiverOffsetsVolumeMount = corev1.VolumeMount{
+	defaultFilelogReceiverOffsetsVolumeMount = corev1.VolumeMount{
 		Name:      "filelogreceiver-offsets",
 		MountPath: offsetsDirPath,
 		ReadOnly:  false,
@@ -283,7 +288,9 @@ func assembleDesiredState(
 		return desiredState, err
 	}
 	desiredState = append(desiredState, addCommonMetadata(daemonSetCollectorConfigMap))
-	desiredState = append(desiredState, addCommonMetadata(assembleFilelogOffsetsConfigMap(config)))
+	if !config.usesOffsetStorageVolume() {
+		desiredState = append(desiredState, addCommonMetadata(assembleFilelogOffsetsConfigMap(config)))
+	}
 	desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleForDaemonSet(config)))
 	desiredState = append(desiredState, addCommonMetadata(assembleClusterRoleBindingForDaemonSet(config)))
 	desiredState = append(desiredState, addCommonMetadata(assembleRole(config)))
@@ -515,14 +522,76 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig *OTelColExtra
 		Name:  "K8S_DAEMONSET_NAME",
 		Value: daemonSetName,
 	}
+
+	volumes, filelogOffsetsVolume := assembleCollectorDaemonSetVolumes(config, configMapItems)
 	collectorContainer, err := assembleDaemonSetCollectorContainer(
 		config,
 		workloadNameEnvVar,
+		filelogOffsetsVolume,
 		extraConfig.CollectorDaemonSetCollectorContainerResources,
 	)
 	if err != nil {
 		return nil, err
 	}
+
+	podSpec := corev1.PodSpec{
+		Affinity: &corev1.Affinity{
+			NodeAffinity: &corev1.NodeAffinity{
+				RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+					NodeSelectorTerms: []corev1.NodeSelectorTerm{
+						{
+							MatchExpressions: []corev1.NodeSelectorRequirement{
+								{
+									Key:      dash0OptOutLabelKey,
+									Operator: corev1.NodeSelectorOpNotIn,
+									Values:   []string{"false"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		Tolerations:        extraConfig.DaemonSetTolerations,
+		ServiceAccountName: daemonsetServiceAccountName(config.NamePrefix),
+		SecurityContext: &corev1.PodSecurityContext{
+			RunAsNonRoot: ptr.To(true),
+			SeccompProfile: &corev1.SeccompProfile{
+				Type: corev1.SeccompProfileTypeRuntimeDefault,
+			},
+		},
+		// This setting is required to enable the configuration reloader process to send Unix signals to the
+		// collector process.
+		ShareProcessNamespace: ptr.To(true),
+
+		Containers: []corev1.Container{
+			collectorContainer,
+			assembleConfigurationReloaderContainer(
+				config,
+				workloadNameEnvVar,
+				extraConfig.CollectorDaemonSetConfigurationReloaderContainerResources,
+			),
+		},
+		Volumes:     volumes,
+		HostNetwork: false,
+	}
+
+	if !config.usesOffsetStorageVolume() {
+		podSpec.InitContainers = []corev1.Container{assembleFileLogOffsetSyncInitContainer(
+			config,
+			workloadNameEnvVar,
+			extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources,
+		)}
+		podSpec.Containers = append(
+			podSpec.Containers,
+			assembleFileLogOffsetSyncContainer(
+				config,
+				workloadNameEnvVar,
+				extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources,
+			),
+		)
+	}
+
 	collectorDaemonSet := &appsv1.DaemonSet{
 		TypeMeta: util.K8sTypeMetaDaemonSet,
 		ObjectMeta: metav1.ObjectMeta{
@@ -541,56 +610,7 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig *OTelColExtra
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: daemonSetMatchLabels,
 				},
-				Spec: corev1.PodSpec{
-					Affinity: &corev1.Affinity{
-						NodeAffinity: &corev1.NodeAffinity{
-							RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
-								NodeSelectorTerms: []corev1.NodeSelectorTerm{
-									{
-										MatchExpressions: []corev1.NodeSelectorRequirement{
-											{
-												Key:      dash0OptOutLabelKey,
-												Operator: corev1.NodeSelectorOpNotIn,
-												Values:   []string{"false"},
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-					Tolerations:        extraConfig.DaemonSetTolerations,
-					ServiceAccountName: daemonsetServiceAccountName(config.NamePrefix),
-					SecurityContext: &corev1.PodSecurityContext{
-						RunAsNonRoot: ptr.To(true),
-						SeccompProfile: &corev1.SeccompProfile{
-							Type: corev1.SeccompProfileTypeRuntimeDefault,
-						},
-					},
-					// This setting is required to enable the configuration reloader process to send Unix signals to the
-					// collector process.
-					ShareProcessNamespace: ptr.To(true),
-					InitContainers: []corev1.Container{assembleFileLogOffsetSyncInitContainer(
-						config,
-						workloadNameEnvVar,
-						extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources,
-					)},
-					Containers: []corev1.Container{
-						collectorContainer,
-						assembleConfigurationReloaderContainer(
-							config,
-							workloadNameEnvVar,
-							extraConfig.CollectorDaemonSetConfigurationReloaderContainerResources,
-						),
-						assembleFileLogOffsetSyncContainer(
-							config,
-							workloadNameEnvVar,
-							extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources,
-						),
-					},
-					Volumes:     assembleCollectorDaemonSetVolumes(config, configMapItems),
-					HostNetwork: false,
-				},
+				Spec: podSpec,
 			},
 		},
 	}
@@ -666,7 +686,7 @@ func assembleFileLogOffsetSyncContainer(
 			k8sPodNameEnvVar,
 		},
 		Resources:    resourceRequirements.ToResourceRequirements(),
-		VolumeMounts: []corev1.VolumeMount{filelogReceiverOffsetsVolumeMount},
+		VolumeMounts: []corev1.VolumeMount{defaultFilelogReceiverOffsetsVolumeMount},
 	}
 	if config.Images.FilelogOffsetSyncImagePullPolicy != "" {
 		filelogOffsetSyncContainer.ImagePullPolicy = config.Images.FilelogOffsetSyncImagePullPolicy
@@ -677,18 +697,26 @@ func assembleFileLogOffsetSyncContainer(
 func assembleCollectorDaemonSetVolumes(
 	config *oTelColConfig,
 	configMapItems []corev1.KeyToPath,
-) []corev1.Volume {
+) ([]corev1.Volume, corev1.Volume) {
 	pidFileVolumeSizeLimit := resource.MustParse("1M")
 	offsetsVolumeSizeLimit := resource.MustParse("10M")
-	volumes := []corev1.Volume{
-		{
+
+	var filelogOffsetsVolume corev1.Volume
+	if config.usesOffsetStorageVolume() {
+		filelogOffsetsVolume = *config.OffsetStorageVolume
+	} else {
+		filelogOffsetsVolume = corev1.Volume{
 			Name: "filelogreceiver-offsets",
 			VolumeSource: corev1.VolumeSource{
 				EmptyDir: &corev1.EmptyDirVolumeSource{
 					SizeLimit: &offsetsVolumeSizeLimit,
 				},
 			},
-		},
+		}
+	}
+
+	volumes := []corev1.Volume{
+		filelogOffsetsVolume,
 		{
 			Name: "node-pod-logs",
 			VolumeSource: corev1.VolumeSource{
@@ -738,10 +766,21 @@ func assembleCollectorDaemonSetVolumes(
 			},
 		})
 	}
-	return volumes
+	return volumes, filelogOffsetsVolume
 }
 
-func assembleCollectorDaemonSetVolumeMounts(config *oTelColConfig) []corev1.VolumeMount {
+func assembleCollectorDaemonSetVolumeMounts(config *oTelColConfig, filelogOffsetsVolume corev1.Volume) []corev1.VolumeMount {
+	var filelogOffsetVolumeMount corev1.VolumeMount
+	if config.usesOffsetStorageVolume() {
+		filelogOffsetVolumeMount = corev1.VolumeMount{
+			Name:        filelogOffsetsVolume.Name,
+			MountPath:   offsetsDirPath,
+			ReadOnly:    false,
+			SubPathExpr: "$(K8S_NODE_NAME)",
+		}
+	} else {
+		filelogOffsetVolumeMount = defaultFilelogReceiverOffsetsVolumeMount
+	}
 	volumeMounts := []corev1.VolumeMount{
 		collectorConfigVolume,
 		collectorPidFileMountRW,
@@ -757,7 +796,7 @@ func assembleCollectorDaemonSetVolumeMounts(config *oTelColConfig) []corev1.Volu
 			MountPath: "/var/lib/docker/containers",
 			ReadOnly:  true,
 		},
-		filelogReceiverOffsetsVolumeMount,
+		filelogOffsetVolumeMount,
 	}
 	if config.UseHostMetricsReceiver {
 		// Mounting the entire host file system is required for the hostmetrics receiver, see
@@ -819,9 +858,10 @@ func assembleCollectorEnvVars(
 func assembleDaemonSetCollectorContainer(
 	config *oTelColConfig,
 	workloadNameEnvVar corev1.EnvVar,
+	filelogOffsetsVolume corev1.Volume,
 	resourceRequirements ResourceRequirementsWithGoMemLimit,
 ) (corev1.Container, error) {
-	collectorVolumeMounts := assembleCollectorDaemonSetVolumeMounts(config)
+	collectorVolumeMounts := assembleCollectorDaemonSetVolumeMounts(config, filelogOffsetsVolume)
 	collectorEnv, err := assembleCollectorEnvVars(config, workloadNameEnvVar, resourceRequirements.GoMemLimit)
 	if err != nil {
 		return corev1.Container{}, err
@@ -973,7 +1013,7 @@ func assembleFileLogOffsetSyncInitContainer(
 			k8sPodNameEnvVar,
 		},
 		Resources:    resourceRequirements.ToResourceRequirements(),
-		VolumeMounts: []corev1.VolumeMount{filelogReceiverOffsetsVolumeMount},
+		VolumeMounts: []corev1.VolumeMount{defaultFilelogReceiverOffsetsVolumeMount},
 	}
 	if config.Images.FilelogOffsetSyncImagePullPolicy != "" {
 		initFilelogOffsetSyncContainer.ImagePullPolicy = config.Images.FilelogOffsetSyncImagePullPolicy

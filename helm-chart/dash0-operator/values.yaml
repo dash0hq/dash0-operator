@@ -228,7 +228,7 @@ operator:
     pullPolicy:
 
   # the image pull secrets to pull the container images
-  imagePullSecrets: [ ]
+  imagePullSecrets: []
 
   # If set to true, it enables a set of config changes suitable for local development or troubleshooting:
   # - instructs the logger (Zap) of the operator manager to use a Zap development config (stacktraces on warnings, no
@@ -249,6 +249,21 @@ operator:
     # managed by the operator. There is usually no need to configure this. The value must be greater than or equal to
     # 8192, which is the default value for send_batch_size.
     sendBatchMaxSize: 0
+
+    # A reference to a persistent volume to use for the filelog offset sync. Specify this is you have a cluster
+    # with more than pods 100 pods active at the same time. By default, the filelog offset sync will use a config map
+    # for its peristent storage, but ConfigMaps are limited to 1 MB in size. If you have around 100 pods running in
+    # your cluster, the recommendation is to provide volume.
+    #
+    # Here is an example (this assumes that a PersistentVolumeClaim named offset-storage-claim exists):
+    # operator:
+    #   collectors:
+    #     filelogOffsetSyncStorageVolume:
+    #       name: offset-storage
+    #       persistentVolumeClaim:
+    #         claimName: offset-storage-claim
+    #
+    # filelogOffsetSyncStorageVolume: ...
 
     # Resource settings for the collector container of the DaemonSet collector pods managed by the operator.
     # There should usually be no reason to override this.

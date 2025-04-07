@@ -111,6 +111,10 @@ tests:
         collectors:
           debugVerbosityDetailed: true
           sendBatchMaxSize: 32768
+          filelogOffsetSyncStorageVolume:
+            name: offset-storage
+            persistentVolumeClaim:
+              claimName: offset-storage-claim
 
     asserts:
       - equal:
@@ -152,6 +156,18 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].imagePullPolicy
           value: Never
+      - equal:
+          path: spec.template.spec.containers[0].args[0]
+          value: --health-probe-bind-address=:8081
+      - equal:
+          path: spec.template.spec.containers[0].args[1]
+          value: --metrics-bind-address=127.0.0.1:8080
+      - equal:
+          path: spec.template.spec.containers[0].args[2]
+          value: --leader-elect
+      - equal:
+          path: spec.template.spec.containers[0].args[3]
+          value: --offset-storage-volume='{"name":"offset-storage","persistentVolumeClaim":{"claimName":"offset-storage-claim"}}'
       - equal:
           path: spec.template.spec.containers[0].env[0].name
           value: DASH0_OPERATOR_NAMESPACE

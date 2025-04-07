@@ -45,6 +45,7 @@ type OTelColResourceManager struct {
 	PseudoClusterUID                 string
 	IsIPv6Cluster                    bool
 	IsDocker                         bool
+	OffsetStorageVolume              *corev1.Volume
 	DevelopmentMode                  bool
 	DebugVerbosityDetailed           bool
 	obsoleteResourcesHaveBeenDeleted atomic.Bool
@@ -92,6 +93,7 @@ func NewOTelColResourceManager(
 	pseudoClusterUID string,
 	isIPv6Cluster bool,
 	isDocker bool,
+	offsetStorageVolume *corev1.Volume,
 	developmentMode bool,
 	debugVerbosityDetailed bool,
 ) *OTelColResourceManager {
@@ -107,6 +109,7 @@ func NewOTelColResourceManager(
 		PseudoClusterUID:          pseudoClusterUID,
 		IsIPv6Cluster:             isIPv6Cluster,
 		IsDocker:                  isDocker,
+		OffsetStorageVolume:       offsetStorageVolume,
 		DevelopmentMode:           developmentMode,
 		DebugVerbosityDetailed:    debugVerbosityDetailed,
 	}
@@ -167,6 +170,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		PseudoClusterUID:       m.PseudoClusterUID,
 		Images:                 images,
 		IsIPv6Cluster:          m.IsIPv6Cluster,
+		OffsetStorageVolume:    m.OffsetStorageVolume,
 		DevelopmentMode:        m.DevelopmentMode,
 		DebugVerbosityDetailed: m.DebugVerbosityDetailed,
 	}
@@ -399,6 +403,7 @@ func (m *OTelColResourceManager) DeleteResources(
 		UseHostMetricsReceiver:                           !m.IsDocker, // irrelevant for deletion
 		Images:                                           dummyImagesForDeletion,
 		IsIPv6Cluster:                                    m.IsIPv6Cluster,
+		OffsetStorageVolume:                              m.OffsetStorageVolume,
 		DevelopmentMode:                                  m.DevelopmentMode,
 		DebugVerbosityDetailed:                           m.DebugVerbosityDetailed,
 	}

@@ -677,6 +677,32 @@ The _service name_ is derived as follows:
 Note that in contrast to [Resource Attributes for Workloads via Labels and Annotations](#specifying-additional-resource-attributes-for-workloads-via-labels-and-annotations),
 Prometheus scraping can only see pod labels, not workload level (deployment, daemonset, ...) labels.
 
+### Providing a Filelog Offset Volume
+
+The operator's collector uses the filelog receiver to read pod log files for monitored workloads.
+When the collector is restarted (which can happen for various reasons, for example to apply configuration changes),
+it is important that the filelog receiver can continue reading the log files from where it left off.
+If the filelog receiver started to read all log files from the beginning again after a restart, log records would be
+duplicated, that is, they would appear multiple times in Dash0.
+For that purpose, the filelog receiver stores the log file offsets in persistent storage.
+By default, the offsets are stored in a config map in the operator's namespace.
+For small to medium sized clusters, this is usually sufficient, and it requires no additional configuration by users.
+For larger clusters or clusters with many short-lived pods, we recommend providing a persistent volume for storing
+offsets.
+Any persistent volume that is accessible from the collector pods can be used for this purpose.
+The volume can be provided via Helm like this:
+
+```yaml
+operator:
+  collectors:
+    filelogOffsetSyncStorageVolume:
+      # your volume configuration here, for example (assuming a PersistentVolumeClaim named offset-storage-claim
+      # exists):
+      name: offset-storage
+      persistentVolumeClaim:
+        claimName: offset-storage-claim
+```
+
 ### Controlling On Which Nodes the Operator's Collector Pods Are Scheduled
 
 #### Allow Scheduling on Tainted Nodes

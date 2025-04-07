@@ -58,5 +58,5 @@ if [[ "$is_kind_cluster" == true ]]; then
     --output jsonpath='{.status.loadBalancer.ingress[0].ip}'
   )
   echo
-  echo "Use $ingress_ip/dash0-k8s-operator-test to access the test application"
+  echo "Use $ingress_ip/$kind/dash0-k8s-operator-test to access the test application"
 fi
