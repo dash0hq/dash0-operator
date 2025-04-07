@@ -1061,6 +1061,7 @@ trace_statements:
 				initialAlternativeImages := Images{
 					operator:              deriveAlternativeImageForUpdateTest(images.operator),
 					instrumentation:       deriveAlternativeImageForUpdateTest(images.instrumentation),
+					secretRefResolver:     deriveAlternativeImageForUpdateTest(images.secretRefResolver),
 					collector:             deriveAlternativeImageForUpdateTest(images.collector),
 					configurationReloader: deriveAlternativeImageForUpdateTest(images.configurationReloader),
 					fileLogOffsetSync:     deriveAlternativeImageForUpdateTest(images.fileLogOffsetSync),
