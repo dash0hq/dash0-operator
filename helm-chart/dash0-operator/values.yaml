@@ -255,7 +255,20 @@ operator:
     # for its peristent storage, but ConfigMaps are limited to 1 MB in size. If you have around 100 pods running in
     # your cluster, the recommendation is to provide volume.
     #
-    # Here is an example (this assumes that a PersistentVolumeClaim named offset-storage-claim exists):
+    # Here is an example with a hostPath volume (see also https://kubernetes.io/docs/concepts/storage/volumes/#hostpath
+    # for considerations around using hostPath volumes):
+    # operator:
+    #   collectors:
+    #    filelogOffsetSyncStorageVolume:
+    #      name: offset-storage
+    #      hostPath:
+    #        path: /data/dash0-operator/offset-storage
+    #        type: DirectoryOrCreate
+    #
+    # Here is another example based on persistent volume claims. (This assumes that a PersistentVolumeClaim named
+    # offset-storage-claim exists.) See also
+    # https://kubernetes.io/docs/concepts/storage/persistent-volumes/#persistentvolumeclaims and
+    # https://kubernetes.io/docs/concepts/storage/persistent-volumes/#reclaiming.
     # operator:
     #   collectors:
     #     filelogOffsetSyncStorageVolume:

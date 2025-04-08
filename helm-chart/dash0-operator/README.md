@@ -689,15 +689,29 @@ By default, the offsets are stored in a config map in the operator's namespace.
 For small to medium sized clusters, this is usually sufficient, and it requires no additional configuration by users.
 For larger clusters or clusters with many short-lived pods, we recommend providing a persistent volume for storing
 offsets.
-Any persistent volume that is accessible from the collector pods can be used for this purpose.
-The volume can be provided via Helm like this:
 
+Any persistent volume that is accessible from the collector pods can be used for this purpose.
+
+Here is an example with a `hostPath` volume (see also https://kubernetes.io/docs/concepts/storage/volumes/#hostpath
+for considerations around using `hostPath` volumes):
+```yaml
+operator:
+  collectors:
+   filelogOffsetSyncStorageVolume:
+     name: offset-storage
+     hostPath:
+       path: /data/dash0-operator/offset-storage
+       type: DirectoryOrCreate
+```
+
+Here is another example based on persistent volume claims. (This assumes that a PersistentVolumeClaim named
+`offset-storage-claim exists`.) See also
+https://kubernetes.io/docs/concepts/storage/persistent-volumes/#persistentvolumeclaims and
+https://kubernetes.io/docs/concepts/storage/persistent-volumes/#reclaiming.
 ```yaml
 operator:
   collectors:
     filelogOffsetSyncStorageVolume:
-      # your volume configuration here, for example (assuming a PersistentVolumeClaim named offset-storage-claim
-      # exists):
       name: offset-storage
       persistentVolumeClaim:
         claimName: offset-storage-claim
