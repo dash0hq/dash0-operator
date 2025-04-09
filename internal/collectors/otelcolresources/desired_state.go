@@ -24,7 +24,12 @@ import (
 )
 
 type oTelColConfig struct {
-	Namespace                                        string
+	// Namespace is the namespace of the Dash0 operator
+	Namespace string
+
+	// NamePrefix is used as a prefix for OTel collector Kubernetes resources created by the operator, set to value of
+	// the environment variable OTEL_COLLECTOR_NAME_PREFIX, which is set to the Helm release name by the operator Helm
+	// chart.
 	NamePrefix                                       string
 	Export                                           dash0v1alpha1.Export
 	SendBatchMaxSize                                 *uint32
@@ -74,6 +79,9 @@ const (
 	probesHttpPort = 13133
 
 	rbacApiGroup = "rbac.authorization.k8s.io"
+
+	defaultUser  int64 = 65532
+	defaultGroup int64 = 0
 
 	openTelemetryCollector                     = "opentelemetry-collector"
 	openTelemetryCollectorDaemonSetNameSuffix  = "opentelemetry-collector-agent"
@@ -569,6 +577,8 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig *OTelColExtra
 			SeccompProfile: &corev1.SeccompProfile{
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
+			RunAsUser:  ptr.To(defaultUser),
+			RunAsGroup: ptr.To(defaultGroup),
 		},
 		// This setting is required to enable the configuration reloader process to send Unix signals to the
 		// collector process.
@@ -586,12 +596,23 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig *OTelColExtra
 		HostNetwork: false,
 	}
 
-	if !config.usesOffsetStorageVolume() {
-		podSpec.InitContainers = []corev1.Container{assembleFileLogOffsetSyncInitContainer(
-			config,
-			workloadNameEnvVar,
-			extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources,
-		)}
+	if config.usesOffsetStorageVolume() {
+		if config.OffsetStorageVolume.HostPath != nil {
+			// Host path volumes and sub paths in host path volumes are, by default, created for root:root with
+			// permissions set to 755. The OpenTelemetry collector container does not run as root, so it wouldn't be
+			// able to write into the mounted volume. We fix the permissions with an init container.
+			podSpec.InitContainers = []corev1.Container{
+				assembleFileLogVolumeOwnershipInitContainer(filelogOffsetsVolume),
+			}
+		}
+	} else {
+		podSpec.InitContainers = []corev1.Container{
+			assembleFileLogOffsetSyncInitContainer(
+				config,
+				workloadNameEnvVar,
+				extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources,
+			),
+		}
 		podSpec.Containers = append(
 			podSpec.Containers,
 			assembleFileLogOffsetSyncContainer(
@@ -708,13 +729,11 @@ func assembleCollectorDaemonSetVolumes(
 	config *oTelColConfig,
 	configMapItems []corev1.KeyToPath,
 ) ([]corev1.Volume, corev1.Volume) {
-	pidFileVolumeSizeLimit := resource.MustParse("1M")
-	offsetsVolumeSizeLimit := resource.MustParse("10M")
-
 	var filelogOffsetsVolume corev1.Volume
 	if config.usesOffsetStorageVolume() {
 		filelogOffsetsVolume = *config.OffsetStorageVolume
 	} else {
+		offsetsVolumeSizeLimit := resource.MustParse("10M")
 		filelogOffsetsVolume = corev1.Volume{
 			Name: "filelogreceiver-offsets",
 			VolumeSource: corev1.VolumeSource{
@@ -725,6 +744,7 @@ func assembleCollectorDaemonSetVolumes(
 		}
 	}
 
+	pidFileVolumeSizeLimit := resource.MustParse("1M")
 	volumes := []corev1.Volume{
 		filelogOffsetsVolume,
 		{
@@ -779,15 +799,13 @@ func assembleCollectorDaemonSetVolumes(
 	return volumes, filelogOffsetsVolume
 }
 
-func assembleCollectorDaemonSetVolumeMounts(config *oTelColConfig, filelogOffsetsVolume corev1.Volume) []corev1.VolumeMount {
+func assembleCollectorDaemonSetVolumeMounts(
+	config *oTelColConfig,
+	filelogOffsetsVolume corev1.Volume,
+) []corev1.VolumeMount {
 	var filelogOffsetVolumeMount corev1.VolumeMount
 	if config.usesOffsetStorageVolume() {
-		filelogOffsetVolumeMount = corev1.VolumeMount{
-			Name:        filelogOffsetsVolume.Name,
-			MountPath:   offsetsDirPath,
-			ReadOnly:    false,
-			SubPathExpr: "$(K8S_NODE_NAME)",
-		}
+		filelogOffsetVolumeMount = createVolumeMountForUserProvidedFileLogOffsetVolume(filelogOffsetsVolume)
 	} else {
 		filelogOffsetVolumeMount = defaultFilelogReceiverOffsetsVolumeMount
 	}
@@ -819,6 +837,15 @@ func assembleCollectorDaemonSetVolumeMounts(config *oTelColConfig, filelogOffset
 		})
 	}
 	return volumeMounts
+}
+
+func createVolumeMountForUserProvidedFileLogOffsetVolume(filelogOffsetsVolume corev1.Volume) corev1.VolumeMount {
+	return corev1.VolumeMount{
+		Name:        filelogOffsetsVolume.Name,
+		MountPath:   offsetsDirPath,
+		ReadOnly:    false,
+		SubPathExpr: "$(K8S_NODE_NAME)",
+	}
 }
 
 func assembleCollectorEnvVars(
@@ -1030,6 +1057,49 @@ func assembleFileLogOffsetSyncInitContainer(
 		initFilelogOffsetSyncContainer.ImagePullPolicy = config.Images.FilelogOffsetSyncImagePullPolicy
 	}
 	return initFilelogOffsetSyncContainer
+}
+
+func assembleFileLogVolumeOwnershipInitContainer(filelogOffsetsVolume corev1.Volume) corev1.Container {
+	initFilelogOffsetVolumeOwnershipContainer := corev1.Container{
+		Name:  "filelog-offset-volume-ownership",
+		Image: "busybox:1.37.0-glibc",
+		Command: []string{
+			"/bin/chown",
+			"-R",
+			fmt.Sprintf("%d:%d", defaultUser, defaultGroup),
+			offsetsDirPath,
+		},
+		Env: []corev1.EnvVar{
+			k8sNodeNameEnvVar,
+		},
+		SecurityContext: &corev1.SecurityContext{
+			// this container needs to run as root
+			RunAsUser:                ptr.To(int64(0)),
+			RunAsNonRoot:             ptr.To(false),
+			AllowPrivilegeEscalation: ptr.To(false),
+			ReadOnlyRootFilesystem:   ptr.To(false),
+			Privileged:               ptr.To(false),
+			Capabilities: &corev1.Capabilities{
+				Drop: []corev1.Capability{"ALL"},
+				Add:  []corev1.Capability{"CHOWN"},
+			},
+			SeccompProfile: &corev1.SeccompProfile{
+				Type: corev1.SeccompProfileTypeRuntimeDefault,
+			},
+		},
+		Resources: corev1.ResourceRequirements{
+			Limits: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("32Mi"),
+			},
+			Requests: corev1.ResourceList{
+				corev1.ResourceMemory: resource.MustParse("10Mi"),
+			},
+		},
+		VolumeMounts: []corev1.VolumeMount{
+			createVolumeMountForUserProvidedFileLogOffsetVolume(filelogOffsetsVolume),
+		},
+	}
+	return initFilelogOffsetVolumeOwnershipContainer
 }
 
 func assembleServiceAccountForDeployment(config *oTelColConfig) *corev1.ServiceAccount {

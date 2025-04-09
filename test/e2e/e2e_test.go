@@ -289,7 +289,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 			})
 
 			Describe("log collection", func() {
-				It("does not collect the same logs twice from a file when the collector pod churns", func() {
+				It("collects logs, but does not collect the same logs twice from a file when the collector pod churns", func() {
 					testId := generateTestId(runtimeTypeNodeJs, workloadTypeDeployment)
 					deployDash0MonitoringResource(
 						applicationUnderTestNamespace,
@@ -338,10 +338,20 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 							testId,
 							timestampLowerBound,
 						)
-					}, 15*time.Second, pollingInterval).Should(Succeed())
+					}, 1*time.Minute, pollingInterval).Should(Succeed())
 
 					By("churning collector pods")
-					_ = runAndIgnoreOutput(exec.Command("kubectl", "delete", "pods", "-n", operatorNamespace))
+					Expect(
+						runAndIgnoreOutput(
+							exec.Command(
+								"kubectl",
+								"--namespace",
+								operatorNamespace,
+								"delete",
+								"pods",
+								"-l",
+								"app.kubernetes.io/component=agent-collector",
+							))).To(Succeed())
 
 					waitForCollectorToStart(operatorNamespace, operatorHelmChart)
 

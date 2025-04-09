@@ -35,8 +35,11 @@ import (
 
 type OTelColResourceManager struct {
 	client.Client
-	Scheme                           *runtime.Scheme
-	OperatorManagerDeployment        *appsv1.Deployment
+	Scheme                    *runtime.Scheme
+	OperatorManagerDeployment *appsv1.Deployment
+	// OTelCollectorNamePrefix is used as a prefix for OTel collector Kubernetes resources created by the operator, set
+	// to value of the environment variable OTEL_COLLECTOR_NAME_PREFIX, which is set to the Helm release name by the
+	// operator Helm chart.
 	OTelCollectorNamePrefix          string
 	OTelColExtraConfig               *OTelColExtraConfig
 	SendBatchMaxSize                 *uint32
