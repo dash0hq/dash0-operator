@@ -704,6 +704,9 @@ operator:
        type: DirectoryOrCreate
 ```
 
+The directory in the hostPath volume will automatically be created with the correct permissions so that the
+OpenTelemetry collector container can write to it.
+
 Here is another example based on persistent volume claims. (This assumes that a PersistentVolumeClaim named
 `offset-storage-claim exists`.) See also
 https://kubernetes.io/docs/concepts/storage/persistent-volumes/#persistentvolumeclaims and

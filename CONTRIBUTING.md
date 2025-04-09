@@ -219,6 +219,10 @@ If you want to report telemetry to a Dash0 backend, set `DASH0_AUTHORIZATION_TOK
     * `DEPLOY_PROMETHEUS_RULE`: Set to "true" to deploy Prometheus rule resource that will be synched to Dash0 via the
       Dash0 API.
       This defaults to "false".
+    * `FILELOG_OFFSETS_PVC`: Use a persistent volume claim to store filelog offsets, instead of the default config map
+      based storage.
+    * `FILELOG_OFFSETS_HOST_PATH_VOLUME`: Use a `hostPath` volume to store filelog offsets, instead of the default
+      config map based storage.
     * `INSTRUMENT_WORKLOADS`: Set this to "all", "created-and-updated" or "none" to control the `instrumentWorkloads`
       setting of the monitoring resource that will be deployed.
       This defaults to "all".

@@ -310,7 +310,9 @@ run_helm() {
     helm_install_command+=" --set operator.collectors.sendBatchMaxSize=$OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE"
   fi
   if [[ "${FILELOG_OFFSETS_PVC:-}" == "true" ]]; then
-    helm_install_command+=" --values test-resources/bin/filelog-offset-volume-values.yaml"
+    helm_install_command+=" --values test-resources/bin/filelog-offset-volume-pvc-values.yaml"
+  elif [[ "${FILELOG_OFFSETS_HOST_PATH_VOLUME:-}" == "true" ]]; then
+    helm_install_command+=" --values test-resources/bin/filelog-offset-volume-hostpath-values.yaml"
   fi
 
   if [[ -n "$controller_img_repository" ]]; then

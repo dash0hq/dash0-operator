@@ -1,0 +1,7 @@
+operator:
+  collectors:
+    filelogOffsetSyncStorageVolume:
+      name: offset-storage
+      hostPath:
+        path: /data/dash0-operator/offset-storage
+        type: DirectoryOrCreate
