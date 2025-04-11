@@ -87,6 +87,16 @@ operator:
   # resource will be created by the Helm chart then.
   clusterName: ""
 
+  # An optional delay to stagger access to the Kubernetes API server to instrument existing workloads at operator
+  # startup or when enabling instrumentation for a new namespace via the Dash0Monitoring resource. This delay will be
+  # applied after each individual workload.
+  instrumentationDelayAfterEachWorkloadMillis: 0
+
+  # An optional delay to stagger access to the Kubernetes API server to instrument (or update the instrumentation of)
+  # existing workloads at operator startup. This delay will be applied each time all workloads in a namespace have been
+  # processed, before starting with the next namespace.
+  instrumentationDelayAfterEachNamespaceMillis: 0
+
   # number of replicas for the operator manager deployment
   replicaCount: 1
 

@@ -30,7 +30,6 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -143,6 +142,7 @@ func main() {
 	var operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled bool
 	var operatorConfigurationClusterName string
 	var offsetStorageVolume string
+	instrumentationDelays := &instrumentation.DelayConfig{}
 	var isUninstrumentAll bool
 	var metricsAddr string
 	var enableLeaderElection bool
@@ -221,6 +221,20 @@ func main() {
 		"offset-storage-volume",
 		"",
 		"An optional stringified JSON defining a reference to a volume for filelog offset sync information.")
+	flag.Uint64Var(
+		&instrumentationDelays.AfterEachWorkloadMillis,
+		"instrumentation-delay-after-each-workload-millis",
+		0,
+		"An optional delay to stagger access to the Kubernetes API server to instrument existing workloads at "+
+			"operator startup or when enabling instrumentation for a new namespace via Dash0Monitoring resource. This "+
+			"delay will be applied after each individual workload.")
+	flag.Uint64Var(
+		&instrumentationDelays.AfterEachNamespaceMillis,
+		"instrumentation-delay-after-each-namespace-millis",
+		0,
+		"An optional delay to stagger access to the Kubernetes API server to instrument (or update the "+
+			"instrumentation of) existing workloads at operator startup. This delay will be applied each time all "+
+			"workloads in a namespace have been processed, before starting with the next namespace.")
 	flag.StringVar(
 		&metricsAddr,
 		"metrics-bind-address",
@@ -346,6 +360,7 @@ func main() {
 		delegatingZapCoreWrapper,
 		pseudoClusterUID,
 		offsetStorageVolume,
+		instrumentationDelays,
 		developmentMode,
 	); err != nil {
 		setupLog.Error(err, "The Dash0 operator manager process failed to start.")
@@ -409,6 +424,7 @@ func startOperatorManager(
 	delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper,
 	pseudoClusterUID string,
 	offsetStorageVolume string,
+	instrumentationDelays *instrumentation.DelayConfig,
 	developmentMode bool,
 ) error {
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
@@ -464,10 +480,10 @@ func startOperatorManager(
 		envVars.deploymentName,
 		"otel collector name prefix",
 		envVars.oTelCollectorNamePrefix,
-
 		"offset storage volume",
 		offsetStorageVolume,
-
+		"instrumentation delays",
+		instrumentationDelays,
 		"development mode",
 		developmentMode,
 	)
@@ -480,6 +496,7 @@ func startOperatorManager(
 		delegatingZapCoreWrapper,
 		pseudoClusterUID,
 		offsetStorageVolume,
+		instrumentationDelays,
 		developmentMode,
 	)
 	if err != nil {
@@ -501,7 +518,7 @@ func startOperatorManager(
 		}
 	}()
 
-	setupLog.Info("starting manager")
+	setupLog.Info("starting manager (waiting for leader election)")
 	if err = mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		return fmt.Errorf("unable to set up the signal handler: %w", err)
 	}
@@ -665,6 +682,7 @@ func startDash0Controllers(
 	delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper,
 	pseudoClusterUID string,
 	offsetStorageVolumeJsonString string,
+	instrumentationDelays *instrumentation.DelayConfig,
 	developmentMode bool,
 ) error {
 	oTelColExtraConfig, err := readOTelColExtraConfiguration()
@@ -690,26 +708,36 @@ func startDash0Controllers(
 	}
 	isIPv6Cluster := strings.Count(envVars.podIp, ":") >= 2
 
-	operatorConfigurationResource := executeStartupTasks(
-		ctx,
+	startupInstrumenter := instrumentation.NewInstrumenter(
+		// The k8s client will be added later, in internal/startup/instrument_at_startup.go#Start.
+		nil,
 		clientset,
 		mgr.GetEventRecorderFor("dash0-startup-tasks"),
-		operatorConfigurationValues,
 		images,
 		oTelCollectorBaseUrl,
 		isIPv6Cluster,
+		instrumentationDelays,
+	)
+	// register the instrument-at-startup task to run once this operator manager becomes leader
+	if err = mgr.Add(startup.NewInstrumentAtStartupRunnable(mgr, startupInstrumenter)); err != nil {
+		return fmt.Errorf("unable to add instrument-at-startup task: %w", err)
+	}
+	operatorConfigurationResource := executeStartupTasks(
+		ctx,
+		operatorConfigurationValues,
 		&setupLog,
 	)
 
 	k8sClient := mgr.GetClient()
-	instrumenter := &instrumentation.Instrumenter{
-		Client:               k8sClient,
-		Clientset:            clientset,
-		Recorder:             mgr.GetEventRecorderFor("dash0-monitoring-controller"),
-		Images:               images,
-		OTelCollectorBaseUrl: oTelCollectorBaseUrl,
-		IsIPv6Cluster:        isIPv6Cluster,
-	}
+	instrumenter := instrumentation.NewInstrumenter(
+		k8sClient,
+		clientset,
+		mgr.GetEventRecorderFor("dash0-monitoring-controller"),
+		images,
+		oTelCollectorBaseUrl,
+		isIPv6Cluster,
+		instrumentationDelays,
+	)
 
 	var offsetStorageVolume *corev1.Volume
 	if offsetStorageVolumeJsonString != "" {
@@ -946,12 +974,7 @@ func findDeploymentReference(
 
 func executeStartupTasks(
 	ctx context.Context,
-	clientset *kubernetes.Clientset,
-	eventRecorder record.EventRecorder,
 	operatorConfigurationValues *startup.OperatorConfigurationValues,
-	images util.Images,
-	oTelCollectorBaseUrl string,
-	isIPv6Cluster bool,
 	logger *logr.Logger,
 ) *dash0v1alpha1.Dash0OperatorConfiguration {
 	operatorConfigurationResource := createOrUpdateAutoOperatorConfigurationResource(
@@ -960,40 +983,7 @@ func executeStartupTasks(
 		operatorConfigurationValues,
 		logger,
 	)
-	instrumentAtStartup(
-		ctx,
-		startupTasksK8sClient,
-		clientset,
-		eventRecorder,
-		images,
-		oTelCollectorBaseUrl,
-		isIPv6Cluster,
-	)
 	return operatorConfigurationResource
-}
-
-func instrumentAtStartup(
-	ctx context.Context,
-	startupTasksK8sClient client.Client,
-	clientset *kubernetes.Clientset,
-	eventRecorder record.EventRecorder,
-	images util.Images,
-	oTelCollectorBaseUrl string,
-	isIPv6Cluster bool,
-) {
-	startupInstrumenter := &instrumentation.Instrumenter{
-		Client:               startupTasksK8sClient,
-		Clientset:            clientset,
-		Recorder:             eventRecorder,
-		Images:               images,
-		OTelCollectorBaseUrl: oTelCollectorBaseUrl,
-		IsIPv6Cluster:        isIPv6Cluster,
-	}
-
-	// Trigger an unconditional apply/update of instrumentation for all workloads in Dash0-enabled namespaces, according
-	// to the respective settings of the Dash0 monitoring resource in the namespace. See godoc comment on
-	// Instrumenter#InstrumentAtStartup.
-	startupInstrumenter.InstrumentAtStartup(ctx, startupTasksK8sClient, &setupLog)
 }
 
 func createOrUpdateAutoOperatorConfigurationResource(

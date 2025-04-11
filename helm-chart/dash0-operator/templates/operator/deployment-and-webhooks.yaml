@@ -125,6 +125,12 @@ spec:
 {{- if .Values.operator.collectors.filelogOffsetSyncStorageVolume }}
         - --offset-storage-volume='{{ .Values.operator.collectors.filelogOffsetSyncStorageVolume | toJson }}'
 {{- end }}
+{{- if .Values.operator.instrumentationDelayAfterEachWorkloadMillis }}
+        - --instrumentation-delay-after-each-workload-millis={{ .Values.operator.instrumentationDelayAfterEachWorkloadMillis }}
+{{- end }}
+{{- if .Values.operator.instrumentationDelayAfterEachNamespaceMillis }}
+        - --instrumentation-delay-after-each-namespace-millis={{ .Values.operator.instrumentationDelayAfterEachNamespaceMillis }}
+{{- end }}
         env:
         - name: DASH0_OPERATOR_NAMESPACE
           valueFrom:

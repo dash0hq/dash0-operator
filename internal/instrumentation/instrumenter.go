@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
@@ -32,6 +33,18 @@ type Instrumenter struct {
 	Images               util.Images
 	OTelCollectorBaseUrl string
 	IsIPv6Cluster        bool
+	Delays               *DelayConfig
+}
+
+type DelayConfig struct {
+	// AfterEachWorkloadMillis determines the delay to wait after updating a single workload, when instrumenting
+	// workloads in a namespace either when running InstrumentAtStartup or when instrumentation is enabled for a new
+	// workspace via a monitoring resource.
+	AfterEachWorkloadMillis uint64
+
+	// AfterEachNamespace determines the delay to wait after updating the instrumenation in one namespace when running
+	// InstrumentAtStartup.
+	AfterEachNamespaceMillis uint64
 }
 
 type ImmutableWorkloadError struct {
@@ -72,6 +85,26 @@ func (e ImmutableWorkloadError) Error() string {
 	)
 }
 
+func NewInstrumenter(
+	client client.Client,
+	clientset *kubernetes.Clientset,
+	recorder record.EventRecorder,
+	images util.Images,
+	oTelCollectorBaseUrl string,
+	isIPv6Cluster bool,
+	delays *DelayConfig,
+) *Instrumenter {
+	return &Instrumenter{
+		Client:               client,
+		Clientset:            clientset,
+		Recorder:             recorder,
+		Images:               images,
+		OTelCollectorBaseUrl: oTelCollectorBaseUrl,
+		IsIPv6Cluster:        isIPv6Cluster,
+		Delays:               delays,
+	}
+}
+
 // InstrumentAtStartup is run once, when the operator manager process starts. Its main purpose is to upgrade workloads
 // that have already been instrumented, in namespaces where the Dash0 monitoring resource already exists. For those
 // workloads, it is not guaranteed that a reconcile request will be triggered when the operator controller image is
@@ -82,23 +115,27 @@ func (e ImmutableWorkloadError) Error() string {
 // namespaces.
 func (i *Instrumenter) InstrumentAtStartup(
 	ctx context.Context,
-	k8sClient client.Client,
 	logger *logr.Logger,
 ) {
-	logger.Info("Applying/updating instrumentation at controller startup.")
+	logger.Info("Applying/updating instrumentation at manager startup.")
 	allDash0MonitoringResouresInCluster := &dash0v1alpha1.Dash0MonitoringList{}
-	if err := k8sClient.List(
+	if err := i.List(
 		ctx,
 		allDash0MonitoringResouresInCluster,
 		&client.ListOptions{},
 	); err != nil {
-		logger.Error(err, "Failed to list all Dash0 monitoring resources at controller startup.")
+		logger.Error(err, "Failed to list all Dash0 monitoring resources at manager startup.")
 		return
 	}
 
-	logger.Info(fmt.Sprintf("Found %d Dash0 monitoring resources.", len(allDash0MonitoringResouresInCluster.Items)))
+	logger.Info(fmt.Sprintf("Applying/updating instrumentation at manager startup: Found %d Dash0 monitoring resources.", len(allDash0MonitoringResouresInCluster.Items)))
+
 	for _, dash0MonitoringResource := range allDash0MonitoringResouresInCluster.Items {
-		logger.Info(fmt.Sprintf("Processing workloads in Dash0-enabled namespace %s", dash0MonitoringResource.Namespace))
+		logger.Info(
+			fmt.Sprintf(
+				"Applying/updating instrumentation at manager startup: Processing workloads in Dash0-enabled namespace %s",
+				dash0MonitoringResource.Namespace,
+			))
 
 		if dash0MonitoringResource.IsMarkedForDeletion() {
 			continue
@@ -111,7 +148,7 @@ func (i *Instrumenter) InstrumentAtStartup(
 		}
 		checkResourceResult, err := util.VerifyThatUniqueNonDegradedResourceExists(
 			ctx,
-			k8sClient,
+			i.Client,
 			pseudoReconcileRequest,
 			&dash0v1alpha1.Dash0Monitoring{},
 			updateStatusFailedMessage,
@@ -125,8 +162,11 @@ func (i *Instrumenter) InstrumentAtStartup(
 			continue
 		}
 
-		err = i.CheckSettingsAndInstrumentExistingWorkloads(ctx, &dash0MonitoringResource, logger)
-		if err != nil {
+		if err = i.CheckSettingsAndInstrumentExistingWorkloads(
+			ctx,
+			&dash0MonitoringResource,
+			logger,
+		); err != nil {
 			logger.Error(
 				err,
 				"Failed to apply/update instrumentation instrumentation at startup in one namespace.",
@@ -137,7 +177,16 @@ func (i *Instrumenter) InstrumentAtStartup(
 			)
 			continue
 		}
+
+		logger.Info(
+			fmt.Sprintf(
+				"Applying/updating instrumentation at manager startup: Workloads in Dash0-enabled namespace %s have been processed.",
+				dash0MonitoringResource.Namespace,
+			))
+
+		i.pauseAfterEachNamespace()
 	}
+	logger.Info("Applying/updating instrumentation at manager startup has finished.")
 }
 
 // CheckSettingsAndInstrumentExistingWorkloads is the main instrumentation function that is called in the controller's
@@ -212,6 +261,7 @@ func (i *Instrumenter) findAndInstrumentCronJobs(
 	}
 	for _, resource := range matchingWorkloadsInNamespace.Items {
 		i.instrumentCronJob(ctx, resource, logger)
+		i.pauseAfterEachWorkload()
 	}
 	return nil
 }
@@ -238,6 +288,7 @@ func (i *Instrumenter) findAndInstrumentyDaemonSets(
 	}
 	for _, resource := range matchingWorkloadsInNamespace.Items {
 		i.instrumentDaemonSet(ctx, resource, logger)
+		i.pauseAfterEachWorkload()
 	}
 	return nil
 }
@@ -264,6 +315,7 @@ func (i *Instrumenter) findAndInstrumentDeployments(
 	}
 	for _, resource := range matchingWorkloadsInNamespace.Items {
 		i.instrumentDeployment(ctx, resource, logger)
+		i.pauseAfterEachWorkload()
 	}
 	return nil
 }
@@ -291,6 +343,7 @@ func (i *Instrumenter) findAndAddLabelsToImmutableJobsOnInstrumentation(
 
 	for _, job := range matchingWorkloadsInNamespace.Items {
 		i.handleJobJobOnInstrumentation(ctx, job, logger)
+		i.pauseAfterEachWorkload()
 	}
 	return nil
 }
@@ -410,6 +463,7 @@ func (i *Instrumenter) findAndInstrumentReplicaSets(
 	}
 	for _, resource := range matchingWorkloadsInNamespace.Items {
 		i.instrumentReplicaSet(ctx, resource, logger)
+		i.pauseAfterEachWorkload()
 	}
 	return nil
 }
@@ -439,6 +493,7 @@ func (i *Instrumenter) findAndInstrumentStatefulSets(
 	}
 	for _, resource := range matchingWorkloadsInNamespace.Items {
 		i.instrumentStatefulSet(ctx, resource, logger)
+		i.pauseAfterEachWorkload()
 	}
 	return nil
 }
@@ -554,6 +609,32 @@ func (i *Instrumenter) postProcessInstrumentation(
 		util.QueueSuccessfulInstrumentationEvent(i.Recorder, resource, actor)
 		return true
 	}
+}
+
+func (i *Instrumenter) pauseAfterEachWorkload() {
+	if i.DelayAfterEachWorkloadMillis() > 0 {
+		time.Sleep(i.DelayAfterEachWorkloadMillis() * time.Millisecond)
+	}
+}
+
+func (i *Instrumenter) DelayAfterEachWorkloadMillis() time.Duration {
+	if i.Delays == nil {
+		return time.Duration(0)
+	}
+	return time.Duration(i.Delays.AfterEachWorkloadMillis)
+}
+
+func (i *Instrumenter) pauseAfterEachNamespace() {
+	if i.DelayAfterEachNamespaceMillis() > 0 {
+		time.Sleep(i.DelayAfterEachNamespaceMillis() * time.Millisecond)
+	}
+}
+
+func (i *Instrumenter) DelayAfterEachNamespaceMillis() time.Duration {
+	if i.Delays == nil {
+		return time.Duration(0)
+	}
+	return time.Duration(i.Delays.AfterEachNamespaceMillis)
 }
 
 // UninstrumentWorkloadsIfAvailable is the main uninstrumentation function that is called in the controller's reconcile

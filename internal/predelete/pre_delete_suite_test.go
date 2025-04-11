@@ -89,14 +89,15 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(mgr).NotTo(BeNil())
 
-	instrumenter := &instrumentation.Instrumenter{
-		Client:               k8sClient,
-		Clientset:            clientset,
-		Recorder:             mgr.GetEventRecorderFor("dash0-monitoring-controller"),
-		Images:               TestImages,
-		OTelCollectorBaseUrl: OTelCollectorBaseUrlTest,
-		IsIPv6Cluster:        false,
-	}
+	instrumenter := instrumentation.NewInstrumenter(
+		k8sClient,
+		clientset,
+		mgr.GetEventRecorderFor("dash0-monitoring-controller"),
+		TestImages,
+		OTelCollectorBaseUrlTest,
+		false,
+		nil,
+	)
 	oTelColResourceManager := &otelcolresources.OTelColResourceManager{
 		Client:                    k8sClient,
 		Scheme:                    k8sClient.Scheme(),
