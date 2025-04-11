@@ -110,6 +110,8 @@ func deployOperator(
 			operatorConfigurationValues.SecretRef.Key,
 		)
 		arguments = setHelmParameter(arguments, "operator.clusterName", e2eKubernetesContext)
+		arguments = setHelmParameter(arguments, "operator.selfMonitoringEnabled",
+			operatorConfigurationValues.SelfMonitoringEnabled)
 	}
 
 	arguments = append(arguments, operatorHelmReleaseName)
@@ -181,9 +183,9 @@ func setIfNotEmpty(arguments []string, key string, value string) []string {
 	return arguments
 }
 
-func setHelmParameter(arguments []string, key string, value string) []string {
+func setHelmParameter(arguments []string, key string, value interface{}) []string {
 	arguments = append(arguments, "--set")
-	arguments = append(arguments, fmt.Sprintf("%s=%s", key, value))
+	arguments = append(arguments, fmt.Sprintf("%s=%v", key, value))
 	return arguments
 }
 

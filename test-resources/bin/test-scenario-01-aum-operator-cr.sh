@@ -44,7 +44,6 @@ echo "STEP $step_counter: install third-party custom resource definitions"
 install_third_party_crds
 finish_step
 
-
 install_third_party_resources
 
 echo "STEP $step_counter: rebuild images"

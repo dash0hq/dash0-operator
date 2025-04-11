@@ -84,9 +84,14 @@ func RetryWithCustomBackoff(
 			attempt += 1
 			if attempt < backoff.Steps {
 				if logAttempts {
-					logger.Error(err,
+					logger.Info(
 						fmt.Sprintf(
-							"%s failed in attempt %d/%d, will be retried.", operationLabel, attempt, backoff.Steps))
+							"%s failed in attempt %d/%d, will be retried: %v",
+							operationLabel,
+							attempt,
+							backoff.Steps,
+							err,
+						))
 				}
 			} else {
 				logger.Error(err,

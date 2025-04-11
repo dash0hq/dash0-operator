@@ -158,10 +158,9 @@ func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admi
 	dash0MonitoringResource := dash0List.Items[0]
 
 	if !dash0MonitoringResource.IsAvailable() {
-		return logAndReturnAllowed(
-			fmt.Sprintf(
-				"The Dash0 monitoring resource in the namespace %s is not in status available, this workload will "+
-					"not be modified to send telemetry to Dash0.", targetNamespace), &logger)
+		return admission.Allowed(fmt.Sprintf(
+			"The Dash0 monitoring resource in the namespace %s is not in status available, this workload will "+
+				"not be modified to send telemetry to Dash0.", targetNamespace))
 	}
 	if dash0MonitoringResource.IsMarkedForDeletion() {
 		return logAndReturnAllowed(

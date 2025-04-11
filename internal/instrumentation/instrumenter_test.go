@@ -51,14 +51,15 @@ var _ = Describe("The instrumenter", Ordered, func() {
 
 		createdObjects = make([]client.Object, 0)
 
-		instrumenter = &Instrumenter{
-			Client:               k8sClient,
-			Clientset:            clientset,
-			Recorder:             recorder,
-			Images:               TestImages,
-			OTelCollectorBaseUrl: OTelCollectorBaseUrlTest,
-			IsIPv6Cluster:        false,
-		}
+		instrumenter = NewInstrumenter(
+			k8sClient,
+			clientset,
+			recorder,
+			TestImages,
+			OTelCollectorBaseUrlTest,
+			false,
+			nil,
+		)
 	})
 
 	AfterEach(func() {
@@ -615,7 +616,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 		workload := config.CreateFn(ctx, k8sClient, namespace, name)
 		createdObjects = append(createdObjects, workload.Get())
 
-		instrumenter.InstrumentAtStartup(ctx, k8sClient, &logger)
+		instrumenter.InstrumentAtStartup(ctx, &logger)
 
 		VerifySuccessfulInstrumentationEvent(ctx, clientset, namespace, name, testActor)
 		config.VerifyFn(config.GetFn(ctx, k8sClient, namespace, name))
@@ -663,7 +664,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 			job := CreateBasicJob(ctx, k8sClient, namespace, name)
 			createdObjects = append(createdObjects, job)
 
-			instrumenter.InstrumentAtStartup(ctx, k8sClient, &logger)
+			instrumenter.InstrumentAtStartup(ctx, &logger)
 
 			VerifyFailedInstrumentationEvent(
 				ctx,
@@ -686,7 +687,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 		workload.GetObjectMeta().Labels["dash0.com/init-container-image"] = olderInitContainerImageLabel
 		UpdateWorkload(ctx, k8sClient, workload.Get())
 
-		instrumenter.InstrumentAtStartup(ctx, k8sClient, &logger)
+		instrumenter.InstrumentAtStartup(ctx, &logger)
 
 		config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 		VerifySuccessfulInstrumentationEvent(ctx, clientset, namespace, name, testActor)
@@ -736,7 +737,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 			workload.ObjectMeta.Labels["dash0.com/operator-image"] = "some-registry.com_1234_dash0hq_operator-controller_0.9.8"
 			workload.ObjectMeta.Labels["dash0.com/init-container-image"] = "some-registry.com_1234_dash0hq_instrumentation_2.3.4"
 			UpdateWorkload(ctx, k8sClient, workload)
-			instrumenter.InstrumentAtStartup(ctx, k8sClient, &logger)
+			instrumenter.InstrumentAtStartup(ctx, &logger)
 
 			// we do not attempt to update the instrumentation for jobs, since they are immutable
 			workload = GetJob(ctx, k8sClient, TestNamespaceName, name)
