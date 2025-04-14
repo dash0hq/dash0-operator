@@ -271,14 +271,13 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 							g,
 							selfMonitoringLogsResourceMatcherCollector,
 							func(logRecord plog.LogRecord, matchResult *ObjectMatchResult[plog.ResourceLogs, plog.LogRecord]) {
-								expectedLogBody := "Everything is ready. Begin running and processing data."
 								logBody := logRecord.Body().AsString()
-								if logBody == expectedLogBody {
+								if logBody == collectorReadyLogMessage {
 									matchResult.addPassedAssertion(logBodyKey)
 								} else {
 									matchResult.addFailedAssertion(
 										logBodyKey,
-										fmt.Sprintf("expected %s but it was %s", expectedLogBody, logBody),
+										fmt.Sprintf("expected %s but it was %s", collectorReadyLogMessage, logBody),
 									)
 								}
 							},
@@ -329,7 +328,12 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 						fmt.Sprintf("id=%s", testId),
 					)
 
-					By("waiting for the log to appear")
+					By(
+						fmt.Sprintf(
+							"waiting for a log message with body \"processing request %s\" to appear after min timestamp %v",
+							testId,
+							timestampLowerBound,
+						))
 					Eventually(func(g Gomega) {
 						verifyExactlyOneLogRecord(
 							g,
@@ -825,14 +829,19 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		})
 
 		Describe("telemetry filtering", func() {
-
 			// Note: This test case deliberately works without an operator configuration resource, instead only using a
 			// monitoring resource to configure the namespace telemetry filter _and_ the export. If we deployed an
 			// operator configuration resource first, that would create a collector config map without any custom
 			// filters, and start the collector. Then, when we deploy the monitoring resource, the config map would be
-			// updated, but then it takes a bit until the collector is restarted via the configuration reloader. We
-			// can avoid that config change and the config reloading wait time by skipping the operator configuration
-			// resource.
+			// updated, but then it takes a bit until the collector is actually restarted due to the issue fixed in
+			// https://github.com/open-telemetry/opentelemetry-go-contrib/pull/6984 (which is not merged at the time of
+			// writing), because the restart is blocked/delayed by the collector not being able to offload its
+			// self-monitoring logs. We can avoid that config change and the config reloading wait time by skipping the
+			// operator configuration resource.
+			// We should be able to move this suite to the suite
+			// "with an existing operator deployment and operation configuration resource::without deployed Dash0
+			//  monitoring resource"
+			// after https://github.com/open-telemetry/opentelemetry-go-contrib/pull/6984 has been merged and released.
 
 			BeforeEach(func() {
 				deployOperatorWithoutAutoOperationConfiguration(
@@ -890,6 +899,7 @@ traces:
   span:
   - 'attributes["http.route"] == "/ready"'
 `
+				// minTimestampCollectorRestart := time.Now()
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
 					dash0MonitoringValues{
@@ -905,6 +915,17 @@ traces:
 					// nolint:lll
 					`- 'resource.attributes["k8s.namespace.name"] == "e2e-application-under-test-namespace" and (attributes["http.route"] == "/ready")'`,
 				)
+				// TODO reactivate this once we move these tests to the suite
+				// "with an existing operator deployment and operation configuration resource::without deployed Dash0
+				//  monitoring resource"
+				// (waits for https://github.com/open-telemetry/opentelemetry-go-contrib/pull/6984 to be merged and
+				// released)
+				// By("verify that the collector has restarted after the config change")
+				// Eventually(func(g Gomega) {
+				// 	mostRecentCollectorReadyTimeStamp := findMostRecentCollectorReadyLogLine(g)
+				// 	g.Expect(mostRecentCollectorReadyTimeStamp).To(BeTemporally(">", minTimestampCollectorRestart))
+				// }, 30*time.Second, time.Second).Should(Succeed())
+
 				By("installing the Node.js deployment")
 				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
 
@@ -937,12 +958,18 @@ traces:
 
 		Describe("telemetry transformation", func() {
 			// Note: This test case deliberately works without an operator configuration resource, instead only using a
-			// monitoring resource to configure the namespace telemetry transform _and_ the export. If we deployed an
+			// monitoring resource to configure the namespace telemetry filter _and_ the export. If we deployed an
 			// operator configuration resource first, that would create a collector config map without any custom
-			// transforms, and start the collector. Then, when we deploy the monitoring resource, the config map would
-			// be updated, but it takes a bit until the collector is restarted via the configuration reloader. We
-			// can avoid that config change and the config reloading wait time by skipping the operator configuration
-			// resource.
+			// filters, and start the collector. Then, when we deploy the monitoring resource, the config map would be
+			// updated, but then it takes a bit until the collector is actually restarted due to the issue fixed in
+			// https://github.com/open-telemetry/opentelemetry-go-contrib/pull/6984 (which is not merged at the time of
+			// writing), because the restart is blocked/delayed by the collector not being able to offload its
+			// self-monitoring logs. We can avoid that config change and the config reloading wait time by skipping the
+			// operator configuration resource.
+			// We should be able to move this suite to the suite
+			// "with an existing operator deployment and operation configuration resource::without deployed Dash0
+			//  monitoring resource"
+			// after https://github.com/open-telemetry/opentelemetry-go-contrib/pull/6984 has been merged and released.
 
 			BeforeEach(func() {
 				deployOperatorWithoutAutoOperationConfiguration(
@@ -964,6 +991,7 @@ traces:
 trace_statements:
 - truncate_all(span.attributes, 10)
 `
+				// minTimestampCollectorRestart := time.Now()
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
 					dash0MonitoringValues{
@@ -982,6 +1010,17 @@ trace_statements:
 					operatorNamespace,
 					`- 'resource.attributes["k8s.namespace.name"] == "e2e-application-under-test-namespace"'`,
 				)
+				// TODO reactivate this once we move these tests to the suite
+				// "with an existing operator deployment and operation configuration resource::without deployed Dash0
+				//  monitoring resource"
+				// (waits for https://github.com/open-telemetry/opentelemetry-go-contrib/pull/6984 to be merged and
+				// released)
+				// By("verify that the collector has restarted after the config change")
+				// Eventually(func(g Gomega) {
+				//	 mostRecentCollectorReadyTimeStamp := findMostRecentCollectorReadyLogLine(g)
+				//	 g.Expect(mostRecentCollectorReadyTimeStamp).To(BeTemporally(">", minTimestampCollectorRestart))
+				// }, 30*time.Second, time.Second).Should(Succeed())
+
 				By("installing the Node.js deployment")
 				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
 
@@ -1157,7 +1196,11 @@ trace_statements:
 					operatorNamespace,
 				)
 
-				time.Sleep(10 * time.Second)
+				By("waiting for the collector to be ready")
+				var firstCollectorReadyTimeStamp time.Time
+				Eventually(func(g Gomega) {
+					firstCollectorReadyTimeStamp = findMostRecentCollectorReadyLogLine(g)
+				}, 30*time.Second, time.Second).Should(Succeed())
 
 				By("updating the Dash0 operator configuration endpoint setting")
 				newEndpoint := "ingress.eu-east-1.aws.dash0-dev.com:4317"
@@ -1166,14 +1209,11 @@ trace_statements:
 				By("verify that the config map has been updated by the controller")
 				verifyDaemonSetCollectorConfigMapContainsString(operatorNamespace, newEndpoint)
 
-				// This step sometimes takes quite a while, for some reason the config map change is not seen immediately
-				// from within the collector pod/config-reloader container process, although it polls the file every second.
-				// Thus, we allow a very generous timeout here.
 				By("verify that the configuration reloader says to have triggered a config change")
 				verifyCollectorContainerLogContainsStrings(
 					operatorNamespace,
 					"configuration-reloader",
-					90*time.Second,
+					10*time.Second,
 					"Triggering a collector update due to changes to the config files",
 				)
 
@@ -1185,6 +1225,12 @@ trace_statements:
 					"Received signal from OS",
 					"Config updated, restart service",
 				)
+
+				By("verify that the collector has restarted and has become ready once more")
+				Eventually(func(g Gomega) {
+					secondCollectorReadyTimeStamp := findMostRecentCollectorReadyLogLine(g)
+					g.Expect(secondCollectorReadyTimeStamp).To(BeTemporally(">", firstCollectorReadyTimeStamp))
+				}, 30*time.Second, time.Second).Should(Succeed())
 			})
 		})
 

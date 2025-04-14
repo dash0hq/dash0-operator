@@ -46,6 +46,8 @@ var (
 		"configmap/%s",
 		collectorDeploymentConfigMapName,
 	)
+
+	collectorReadyLogMessage = "Everything is ready. Begin running and processing data."
 )
 
 func waitForCollectorToStart(operatorNamespace string, operatorHelmChart string) {
@@ -197,16 +199,57 @@ func verifyCollectorContainerLogContainsStrings(
 	needles ...string,
 ) {
 	verifyCommandOutputContainsStrings(
-		exec.Command(
-			"kubectl",
-			"logs",
-			"-n",
-			operatorNamespace,
-			collectorDaemonSetNameQualified,
-			"-c",
-			containerName,
-		),
+		getLogsViaKubectl(operatorNamespace, collectorDaemonSetNameQualified, containerName),
 		timeout,
 		needles...,
+	)
+}
+
+func findMostRecentCollectorReadyLogLine(g Gomega) time.Time {
+	allCollectorReadyLogLines := getMatchingLogLinesFomCollectorContainerLog(
+		g,
+		operatorNamespace,
+		"opentelemetry-collector",
+		collectorReadyLogMessage,
+	)
+	g.Expect(allCollectorReadyLogLines).ToNot(BeEmpty(),
+		"Expected to find a log line containing the string \"%s\", but no such line has been found.",
+		collectorReadyLogMessage)
+
+	mostRecentCollectorReadyLogLine := allCollectorReadyLogLines[len(allCollectorReadyLogLines)-1]
+	timeStampRaw := strings.Split(mostRecentCollectorReadyLogLine, "\t")[0]
+	timeStamp, err := time.Parse(time.RFC3339, timeStampRaw)
+	Expect(err).ToNot(HaveOccurred(), "could not parse time stamp from collector startup log line")
+	return timeStamp
+}
+
+func getMatchingLogLinesFomCollectorContainerLog(
+	g Gomega,
+	operatorNamespace string,
+	containerName string,
+	needle string,
+) []string {
+	matchingLines := []string{}
+	command := getLogsViaKubectl(operatorNamespace, collectorDaemonSetNameQualified, containerName)
+	logs, err := run(command, true)
+	g.Expect(err).ToNot(HaveOccurred())
+	lines := strings.Split(logs, "\n")
+	for _, line := range lines {
+		if strings.Contains(line, needle) {
+			matchingLines = append(matchingLines, line)
+		}
+	}
+	return matchingLines
+}
+
+func getLogsViaKubectl(namespace string, workloadName string, containerName string) *exec.Cmd {
+	return exec.Command(
+		"kubectl",
+		"logs",
+		"-n",
+		namespace,
+		workloadName,
+		"-c",
+		containerName,
 	)
 }
