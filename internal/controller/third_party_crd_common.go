@@ -5,11 +5,12 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"maps"
 	"net/http"
-	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -94,6 +95,13 @@ type ThirdPartyResourceReconciler interface {
 	GetHttpRetryDelay() time.Duration
 	IsSynchronizationEnabled(*dash0v1alpha1.Dash0Monitoring) bool
 
+	// FetchExistingResourceIdsRequest creates an HTTP request for retrieving the existing IDs from the Dash0
+	// API for a given Kubernetes resource.
+	// FetchExistingResourceIdsRequest is only used for resource types where one Kubernetes resource (say, a
+	// PrometheusRules) is potentially associated with multiple Dash0 api objects (multiple checks). Controllers
+	// which manage objects with a one-to-one relation (like Perses dashboards) should return nil, nil.
+	FetchExistingResourceIdsRequest(*preconditionValidationResult, *logr.Logger) (*http.Request, error)
+
 	// MapResourceToHttpRequests converts a third-party resource object to a list of HTTP requests that can be sent to
 	// the Dash0 API. It returns:
 	// - the total number of eligible items in the third-party Kubernetes resource,
@@ -107,9 +115,18 @@ type ThirdPartyResourceReconciler interface {
 	) (
 		int,
 		[]HttpRequestWithItemName,
+		[]string,
 		map[string][]string,
 		map[string]string,
 	)
+
+	// CreateDeleteRequests produces an HTTP DELETE requests for the third-party resources that still exist in Dash0,
+	// but should not. It does so by comparing the list of IDs of objects that exist in the Dash0 backend with the list
+	// of IDs found in a given Kubernetes resource. This mechanism is only used for resource types where one Kubernetes
+	// resource (say, a PrometheusRules) is potentially associated with multiple Dash0 api objects (multiple checks).
+	// Controllers which manage objects with a one-to-one relation (like Perses dashboards) should return nil, nil.
+	CreateDeleteRequests(*preconditionValidationResult, []string, []string, *logr.Logger) ([]HttpRequestWithItemName, map[string]string)
+
 	UpdateSynchronizationResultsInStatus(
 		monitoringResource *dash0v1alpha1.Dash0Monitoring,
 		qualifiedName string,
@@ -125,12 +142,15 @@ type ThirdPartyResourceSyncJob struct {
 	resourceReconciler ThirdPartyResourceReconciler
 	thirdPartyResource *unstructured.Unstructured
 	action             apiAction
-	actionLabel        string
 }
 
 type HttpRequestWithItemName struct {
 	ItemName string
 	Request  *http.Request
+}
+
+type Dash0ApiObjectWithId struct {
+	Id string `json:"id"`
 }
 
 type apiAction int
@@ -419,15 +439,6 @@ func createUnstructuredGvk(crdReconciler ThirdPartyCrdReconciler) *unstructured.
 	return unstructuredGvkForThirdPartyResourceType
 }
 
-func urlEncodePathSegment(s string) string {
-	return url.PathEscape(
-		// For now the Dash0 backend treats %2F the same as "/", so we need to replace forward slashes with
-		// something other than %2F.
-		// See https://stackoverflow.com/questions/71581828/gin-problem-accessing-url-encoded-path-param-containing-forward-slash
-		strings.ReplaceAll(s, "/", "|"),
-	)
-}
-
 func upsertViaApi(
 	resourceReconciler ThirdPartyResourceReconciler,
 	thirdPartyResource *unstructured.Unstructured,
@@ -444,7 +455,6 @@ func upsertViaApi(
 			resourceReconciler: resourceReconciler,
 			thirdPartyResource: thirdPartyResource,
 			action:             upsert,
-			actionLabel:        "Creating/updating",
 		},
 	)
 }
@@ -459,7 +469,6 @@ func deleteViaApi(
 			resourceReconciler: resourceReconciler,
 			thirdPartyResource: thirdPartyResource,
 			action:             delete,
-			actionLabel:        "Deleting",
 		},
 	)
 }
@@ -491,7 +500,6 @@ func StartProcessingThirdPartySynchronizationQueue(
 				item.resourceReconciler,
 				item.thirdPartyResource,
 				item.action,
-				item.actionLabel,
 				&logger,
 			)
 			logger.Info(
@@ -519,7 +527,6 @@ func synchronizeViaApi(
 	resourceReconciler ThirdPartyResourceReconciler,
 	thirdPartyResource *unstructured.Unstructured,
 	action apiAction,
-	actionLabel string,
 	logger *logr.Logger,
 ) {
 	preconditionChecksResult := validatePreconditions(
@@ -532,9 +539,42 @@ func synchronizeViaApi(
 		return
 	}
 
-	itemsTotal, httpRequests, validationIssues, synchronizationErrors :=
-		resourceReconciler.MapResourceToHttpRequests(preconditionChecksResult, action, logger)
+	var existingIdsFromApi []string
+	if action != delete {
+		var err error
+		existingIdsFromApi, err = fetchExistingIds(resourceReconciler, preconditionChecksResult, logger)
+		if err != nil {
+			// the error has already been logged in fetchExistingIds, but we need to record the failure in the status of
+			// the monitoring resource
+			writeSynchronizationResult(
+				ctx,
+				resourceReconciler,
+				preconditionChecksResult.monitoringResource,
+				thirdPartyResource,
+				0,
+				[]string{},
+				map[string][]string{},
+				map[string]string{"*": err.Error()},
+				logger,
+			)
+			return
+		}
+	}
 
+	itemsTotal, httpRequests, idsInResource, validationIssues, synchronizationErrors :=
+		resourceReconciler.MapResourceToHttpRequests(preconditionChecksResult, action, logger)
+	if action != delete {
+		itemsTotal, httpRequests = addDeleteRequestsForObjectsThatHaveBeenDeletedInTheKubernetesResource(
+			resourceReconciler,
+			preconditionChecksResult,
+			existingIdsFromApi,
+			idsInResource,
+			httpRequests,
+			itemsTotal,
+			synchronizationErrors,
+			logger,
+		)
+	}
 	if len(httpRequests) == 0 && len(validationIssues) == 0 && len(synchronizationErrors) == 0 {
 		logger.Info(
 			fmt.Sprintf(
@@ -550,7 +590,7 @@ func synchronizeViaApi(
 	var httpErrors map[string]string
 	if len(httpRequests) > 0 {
 		successfullySynchronized, httpErrors =
-			executeAllHttpRequests(resourceReconciler, httpRequests, actionLabel, logger)
+			executeAllHttpRequests(resourceReconciler, httpRequests, logger)
 	}
 	if len(httpErrors) > 0 {
 		if synchronizationErrors == nil {
@@ -563,8 +603,7 @@ func synchronizeViaApi(
 	}
 	if len(validationIssues) == 0 && len(synchronizationErrors) == 0 {
 		logger.Info(
-			fmt.Sprintf("%s %s %s/%s: %d %s(s), %d successfully synchronized",
-				actionLabel,
+			fmt.Sprintf("%s %s/%s: %d %s(s), %d successfully synchronized",
 				resourceReconciler.KindDisplayName(),
 				thirdPartyResource.GetNamespace(),
 				thirdPartyResource.GetName(),
@@ -575,8 +614,7 @@ func synchronizeViaApi(
 	} else {
 		logger.Error(
 			fmt.Errorf("validation issues and/or synchronization issues occurred"),
-			fmt.Sprintf("%s %s %s/%s: %d %s(s), %d successfully synchronized, validation issues: %v, synchronization errors: %v",
-				actionLabel,
+			fmt.Sprintf("%s %s/%s: %d %s(s), %d successfully synchronized, validation issues: %v, synchronization errors: %v",
 				resourceReconciler.KindDisplayName(),
 				thirdPartyResource.GetNamespace(),
 				thirdPartyResource.GetName(),
@@ -718,16 +756,89 @@ func validatePreconditions(
 		}
 	}
 
+	apiEndpoint := apiConfig.Endpoint
+	if !strings.HasSuffix(apiEndpoint, "/") {
+		apiEndpoint += "/"
+	}
+
 	return &preconditionValidationResult{
 		synchronizeResource:    true,
 		thirdPartyResourceSpec: spec,
 		monitoringResource:     monitoringResource,
 		authToken:              authToken,
-		apiEndpoint:            apiConfig.Endpoint,
+		apiEndpoint:            apiEndpoint,
 		dataset:                dataset,
 		k8sNamespace:           namespace,
 		k8sName:                name,
 	}
+}
+
+func fetchExistingIds(
+	resourceReconciler ThirdPartyResourceReconciler,
+	preconditionChecksResult *preconditionValidationResult,
+	logger *logr.Logger,
+) ([]string, error) {
+	if fetchExistingIdsRequest, err :=
+		resourceReconciler.FetchExistingResourceIdsRequest(preconditionChecksResult, logger); err != nil {
+		logger.Error(err, "cannot create request to fetch existing IDs")
+		return nil, err
+	} else if fetchExistingIdsRequest != nil {
+		if responseBytes, err := executeSingleHttpRequestWithRetryAndReadBody(
+			resourceReconciler,
+			fetchExistingIdsRequest,
+			logger,
+		); err != nil {
+			logger.Error(err, "cannot fetch existing IDs")
+			return nil, err
+		} else {
+			objectsWithId := make([]Dash0ApiObjectWithId, 0)
+			if err = json.Unmarshal(responseBytes, &objectsWithId); err != nil {
+				logger.Error(
+					err,
+					"cannot parse response after querying existing IDs",
+					"response",
+					string(responseBytes),
+				)
+				return nil, err
+			}
+			existingIdsWithMatchingPrefix := make([]string, 0, len(objectsWithId))
+			for _, objWithId := range objectsWithId {
+				if objWithId.Id != "" {
+					existingIdsWithMatchingPrefix = append(existingIdsWithMatchingPrefix, objWithId.Id)
+				}
+			}
+			return existingIdsWithMatchingPrefix, nil
+		}
+	} else {
+		// this resource reconciler does not support fetching existing IDs
+		return nil, nil
+	}
+}
+
+func addDeleteRequestsForObjectsThatHaveBeenDeletedInTheKubernetesResource(
+	resourceReconciler ThirdPartyResourceReconciler,
+	preconditionChecksResult *preconditionValidationResult,
+	existingIdsFromApi []string,
+	idsInResource []string,
+	httpRequests []HttpRequestWithItemName,
+	itemsTotal int,
+	synchronizationErrors map[string]string,
+	logger *logr.Logger,
+) (int, []HttpRequestWithItemName) {
+	deleteHttpRequests, deleteSynchronizationErrors := resourceReconciler.CreateDeleteRequests(
+		preconditionChecksResult,
+		existingIdsFromApi,
+		idsInResource,
+		logger,
+	)
+	itemsTotal += len(deleteHttpRequests)
+	maps.Copy(synchronizationErrors, deleteSynchronizationErrors)
+	httpRequests = slices.Concat(httpRequests, deleteHttpRequests)
+	return itemsTotal, httpRequests
+}
+
+func addAuthorizationHeader(req *http.Request, preconditionChecksResult *preconditionValidationResult) {
+	req.Header.Set(util.AuthorizationHeaderName, util.RenderAuthorizationHeader(preconditionChecksResult.authToken))
 }
 
 // executeAllHttpRequests executes all HTTP requests in the given list and returns the names of the items that were
@@ -735,13 +846,12 @@ func validatePreconditions(
 func executeAllHttpRequests(
 	resourceReconciler ThirdPartyResourceReconciler,
 	allRequests []HttpRequestWithItemName,
-	actionLabel string,
 	logger *logr.Logger,
 ) ([]string, map[string]string) {
 	successfullySynchronized := make([]string, 0)
 	httpErrors := make(map[string]string)
 	for _, req := range allRequests {
-		if err := executeSingleHttpRequestWithRetry(resourceReconciler, &req, actionLabel, logger); err != nil {
+		if err := executeSingleHttpRequestWithRetryAndDiscardBody(resourceReconciler, &req, logger); err != nil {
 			httpErrors[req.ItemName] = err.Error()
 		} else {
 			successfullySynchronized = append(successfullySynchronized, req.ItemName)
@@ -753,25 +863,24 @@ func executeAllHttpRequests(
 	return successfullySynchronized, httpErrors
 }
 
-func executeSingleHttpRequestWithRetry(
+func executeSingleHttpRequestWithRetryAndDiscardBody(
 	resourceReconciler ThirdPartyResourceReconciler,
 	req *HttpRequestWithItemName,
-	actionLabel string,
 	logger *logr.Logger,
 ) error {
 	logger.Info(
 		fmt.Sprintf(
-			"%s %s \"%s\" at %s in Dash0",
-			actionLabel,
+			"synchronizing %s \"%s\": %s %s in Dash0",
 			resourceReconciler.ShortName(),
 			req.ItemName,
+			req.Request.Method,
 			req.Request.URL.String(),
 		))
 
 	return util.RetryWithCustomBackoff(
 		fmt.Sprintf("http request to %s", req.Request.URL.String()),
 		func() error {
-			return executeSingleHttpRequest(
+			return executeSingleHttpRequestAndDiscardBody(
 				resourceReconciler,
 				req,
 				logger,
@@ -787,7 +896,7 @@ func executeSingleHttpRequestWithRetry(
 	)
 }
 
-func executeSingleHttpRequest(
+func executeSingleHttpRequestAndDiscardBody(
 	resourceReconciler ThirdPartyResourceReconciler,
 	req *HttpRequestWithItemName,
 	logger *logr.Logger,
@@ -796,9 +905,10 @@ func executeSingleHttpRequest(
 	if err != nil {
 		logger.Error(err,
 			fmt.Sprintf(
-				"unable to execute the HTTP request to create/update/delete the %s \"%s\" at %s",
+				"unable to execute the HTTP request to synchronize the %s \"%s\": %s %s",
 				resourceReconciler.ShortName(),
 				req.ItemName,
+				req.Request.Method,
 				req.Request.URL.String(),
 			))
 		return util.NewRetryableErrorWithFlag(err, true)
@@ -831,6 +941,117 @@ func executeSingleHttpRequest(
 	return nil
 }
 
+func executeSingleHttpRequestWithRetryAndReadBody(
+	resourceReconciler ThirdPartyResourceReconciler,
+	req *http.Request,
+	logger *logr.Logger,
+) ([]byte, error) {
+	logger.Info(
+		fmt.Sprintf(
+			"executing request to %s (%s)",
+			req.URL.String(),
+			resourceReconciler.ShortName(),
+		))
+
+	responseBody := &[]byte{}
+	if err := util.RetryWithCustomBackoff(
+		fmt.Sprintf("http request to %s", req.URL.String()),
+		func() error {
+			return executeSingleHttpRequestAndReturnBody(
+				resourceReconciler,
+				req,
+				responseBody,
+				logger,
+			)
+		},
+		wait.Backoff{
+			Steps:    3,
+			Duration: resourceReconciler.GetHttpRetryDelay(),
+			Factor:   1.5,
+		},
+		true,
+		logger,
+	); err != nil {
+		return nil, err
+	} else if responseBody != nil && len(*responseBody) > 0 {
+		return *responseBody, nil
+	} else {
+		return nil, fmt.Errorf("unexpected nil/empty response body")
+	}
+}
+
+func executeSingleHttpRequestAndReturnBody(
+	resourceReconciler ThirdPartyResourceReconciler,
+	req *http.Request,
+	responseBody *[]byte,
+	logger *logr.Logger,
+) error {
+	res, err := resourceReconciler.HttpClient().Do(req)
+	if err != nil {
+		logger.Error(err,
+			fmt.Sprintf(
+				"unable to execute the HTTP request for %s at %s",
+				resourceReconciler.ShortName(),
+				req.URL.String(),
+			))
+		return util.NewRetryableErrorWithFlag(err, true)
+	}
+
+	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
+		// HTTP status is not 2xx, treat this as an error
+		defer func() {
+			_ = res.Body.Close()
+		}()
+		errorResponseBody, readErr := io.ReadAll(res.Body)
+		if readErr != nil {
+			readBodyErr := fmt.Errorf("unable to read the API response payload after receiving status code %d "+
+				"when executing the HTTP request for %s at %s",
+				res.StatusCode,
+				resourceReconciler.ShortName(),
+				req.URL.String(),
+			)
+			return readBodyErr
+		}
+		statusCodeErr := fmt.Errorf(
+			"unexpected status code %d when executing the HTTP request for %s at %s, response body is %s",
+			res.StatusCode,
+			resourceReconciler.ShortName(),
+			req.URL.String(),
+			string(errorResponseBody),
+		)
+		retryableStatusCodeError := util.NewRetryableError(statusCodeErr)
+		if res.StatusCode >= http.StatusBadRequest && res.StatusCode < http.StatusInternalServerError {
+			// HTTP 4xx status codes are not retryable
+			retryableStatusCodeError.SetRetryable(false)
+			logger.Error(err, "unexpected status code")
+			return retryableStatusCodeError
+		} else {
+			// everything else, in particular HTTP 5xx status codes can be retried
+			retryableStatusCodeError.SetRetryable(true)
+			logger.Error(err, "unexpected status code, request might be retried")
+			return retryableStatusCodeError
+		}
+	}
+
+	// HTTP status code was 2xx, read the response body and return it
+	defer func() {
+		_ = res.Body.Close()
+	}()
+
+	if responseBytes, err := io.ReadAll(res.Body); err != nil {
+		logger.Error(err,
+			fmt.Sprintf(
+				"unable to execute the HTTP request for %s at %s",
+				resourceReconciler.ShortName(),
+				req.URL.String(),
+			))
+		return util.NewRetryableErrorWithFlag(err, true)
+	} else {
+		*responseBody = responseBytes
+	}
+	return nil
+}
+
 func convertNon2xxStatusCodeToError(
 	resourceReconciler ThirdPartyResourceReconciler,
 	req *HttpRequestWithItemName,
@@ -842,20 +1063,22 @@ func convertNon2xxStatusCodeToError(
 	responseBody, readErr := io.ReadAll(res.Body)
 	if readErr != nil {
 		readBodyErr := fmt.Errorf("unable to read the API response payload after receiving status code %d when "+
-			"trying to update/create/delete the %s \"%s\" at %s",
+			"trying to synchronizing the %s \"%s\": %s %s",
 			res.StatusCode,
 			resourceReconciler.ShortName(),
 			req.ItemName,
+			req.Request.Method,
 			req.Request.URL.String(),
 		)
 		return readBodyErr
 	}
 
 	statusCodeErr := fmt.Errorf(
-		"unexpected status code %d when updating/creating/deleting the %s \"%s\" at %s, response body is %s",
+		"unexpected status code %d when synchronizing the %s \"%s\": %s %s, response body is %s",
 		res.StatusCode,
 		resourceReconciler.ShortName(),
 		req.ItemName,
+		req.Request.Method,
 		req.Request.URL.String(),
 		string(responseBody),
 	)

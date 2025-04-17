@@ -314,7 +314,7 @@ func main() {
 		startupTasksK8sClient,
 		&setupLog,
 	)
-	pseudoClusterUID := readPseudoClusterUID(ctx, startupTasksK8sClient, &setupLog)
+	pseudoClusterUID := util.ReadPseudoClusterUID(ctx, startupTasksK8sClient, &setupLog)
 	if operatorDeploymentSelfReference, err = findDeploymentReference(
 		ctx,
 		startupTasksK8sClient,
@@ -935,16 +935,6 @@ func detectDocker(
 			isDocker = true
 		}
 	}
-}
-
-func readPseudoClusterUID(ctx context.Context, k8sClient client.Client, logger *logr.Logger) string {
-	kubeSystemNamespace := &corev1.Namespace{}
-	if err := k8sClient.Get(ctx, client.ObjectKey{Name: "kube-system"}, kubeSystemNamespace); err != nil {
-		msg := "unable to get the kube-system namespace uid"
-		logger.Error(err, msg)
-		return "unknown"
-	}
-	return string(kubeSystemNamespace.UID)
 }
 
 func findDeploymentReference(

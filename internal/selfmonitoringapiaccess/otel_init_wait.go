@@ -198,7 +198,7 @@ func convertExportConfigurationToOTelSDKConfig(
 
 		headers := []dash0v1alpha1.Header{{
 			Name:  util.AuthorizationHeaderName,
-			Value: fmt.Sprintf("Bearer %s", *token),
+			Value: util.RenderAuthorizationHeader(*token),
 		}}
 		if dash0Export.Dataset != "" && dash0Export.Dataset != util.DatasetDefault {
 			headers = append(headers, dash0v1alpha1.Header{

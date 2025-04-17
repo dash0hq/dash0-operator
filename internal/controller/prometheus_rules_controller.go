@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,6 +33,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
 type PrometheusRuleCrdReconciler struct {
@@ -63,7 +65,7 @@ type CheckRule struct {
 	For           string            `json:"for,omitempty"`
 	Interval      string            `json:"interval,omitempty"`
 	KeepFiringFor string            `json:"keepFiringFor,omitempty"`
-	Annotations   map[string]string `json:"annotations"` // √
+	Annotations   map[string]string `json:"annotations"`
 	Labels        map[string]string `json:"labels"`
 }
 
@@ -435,27 +437,41 @@ func (r *PrometheusRuleReconciler) Reconcile(
 	return reconcile.Result{}, nil
 }
 
+func (r *PrometheusRuleReconciler) FetchExistingResourceIdsRequest(
+	preconditionChecksResult *preconditionValidationResult,
+	logger *logr.Logger,
+) (*http.Request, error) {
+	checkRulesUrl := r.renderCheckRuleListUrl(preconditionChecksResult)
+	if req, err := http.NewRequest(http.MethodGet, checkRulesUrl, nil); err != nil {
+		return nil, err
+	} else {
+		addAuthorizationHeader(req, preconditionChecksResult)
+		req.Header.Set(util.AcceptHeaderName, util.ApplicationJsonMediaType)
+		return req, nil
+	}
+}
+
 func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 	preconditionChecksResult *preconditionValidationResult,
 	action apiAction,
 	logger *logr.Logger,
-) (int, []HttpRequestWithItemName, map[string][]string, map[string]string) {
-	urlPrefix := r.renderUrlPrefix(preconditionChecksResult)
-	requests := make([]HttpRequestWithItemName, 0)
-	allValidationIssues := make(map[string][]string)
-	allSynchronizationErrors := make(map[string]string)
-
+) (int, []HttpRequestWithItemName, []string, map[string][]string, map[string]string) {
 	specRaw := preconditionChecksResult.thirdPartyResourceSpec
 	specAsYaml, err := yaml.Marshal(specRaw)
 	if err != nil {
 		logger.Error(err, "unable to marshal the Prometheus rule spec")
-		return 0, nil, nil, map[string]string{"*": err.Error()}
+		return 0, nil, nil, nil, map[string]string{"*": err.Error()}
 	}
 	ruleSpec := prometheusv1.PrometheusRuleSpec{}
 	if err = yaml.Unmarshal(specAsYaml, &ruleSpec); err != nil {
 		logger.Error(err, "unable to unmarshal the Prometheus rule spec")
-		return 0, nil, nil, map[string]string{"*": err.Error()}
+		return 0, nil, nil, nil, map[string]string{"*": err.Error()}
 	}
+
+	var idsInResource []string
+	var requests []HttpRequestWithItemName
+	allValidationIssues := make(map[string][]string)
+	allSynchronizationErrors := make(map[string]string)
 
 	for _, group := range ruleSpec.Groups {
 		for ruleIdx, rule := range group.Rules {
@@ -463,15 +479,9 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 			if itemNameSuffix == "" {
 				itemNameSuffix = strconv.Itoa(ruleIdx)
 			}
-			itemName := fmt.Sprintf("%s - %s", group.Name, itemNameSuffix)
-
-			checkRuleUrl := fmt.Sprintf(
-				"%s_%s_%d?dataset=%s",
-				urlPrefix,
-				urlEncodePathSegment(group.Name),
-				ruleIdx,
-				url.QueryEscape(preconditionChecksResult.dataset),
-			)
+			checkRuleName := fmt.Sprintf("%s - %s", group.Name, itemNameSuffix)
+			checkRuleIdNotUrlEncoded, checkRuleIdUrlEncoded := r.renderCheckRuleId(preconditionChecksResult, group, ruleIdx)
+			checkRuleUrl := r.renderCheckRuleUrl(preconditionChecksResult, checkRuleIdUrlEncoded)
 			request, validationIssues, syncError, ok := convertRuleToRequest(
 				checkRuleUrl,
 				action,
@@ -482,46 +492,103 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 				logger,
 			)
 			if len(validationIssues) > 0 {
-				allValidationIssues[itemName] = validationIssues
+				allValidationIssues[checkRuleName] = validationIssues
+				// If a rule becomes temporarily invalid due to a bad edit, we do not want to delete it in Dash0
+				// (assuming it has been valid at some point before and has been synchronized). Instead, we keep the
+				// most recent valid state. To do that, we add its id to the list of ids we have seen (the list will
+				// later be used to determine which of the checks in Dash0 need to be removed because they are no longer
+				// in the K8s resource.
+				idsInResource = append(idsInResource, checkRuleIdNotUrlEncoded)
 				continue
 			}
 			if syncError != nil {
-				allSynchronizationErrors[itemName] = syncError.Error()
+				// If a rule cannot be synchronized temporarily, we do not want to delete it in Dash0 immediately
+				// (assuming the rule has been synchronized before at some point). Instead, we keep the
+				// most recent state. To do that, we add its id to the list of ids we have seen (the list will later
+				// be used to determine which of the checks in Dash0 need to be removed because they are no longer
+				// in the K8s resource.
+				allSynchronizationErrors[checkRuleName] = syncError.Error()
 				continue
 			}
 			if ok {
 				requests = append(requests, HttpRequestWithItemName{
-					ItemName: itemName,
+					ItemName: checkRuleName,
 					Request:  request,
 				})
+				idsInResource = append(idsInResource, checkRuleIdNotUrlEncoded)
 			}
 		}
 	}
 
 	return len(requests) + len(allValidationIssues) + len(allSynchronizationErrors),
 		requests,
+		idsInResource,
 		allValidationIssues,
 		allSynchronizationErrors
 }
 
-func (r *PrometheusRuleReconciler) renderUrlPrefix(preconditionCheckResult *preconditionValidationResult) string {
+// renderCheckRuleListUrl renders the URL to fetch the list of existing check rule IDs from the Dash0 API.
+func (r *PrometheusRuleReconciler) renderCheckRuleListUrl(preconditionChecksResult *preconditionValidationResult) string {
+	return fmt.Sprintf(
+		"%sapi/alerting/check-rules?dataset=%s&idPrefix=%s",
+		preconditionChecksResult.apiEndpoint,
+		url.QueryEscape(preconditionChecksResult.dataset),
+		r.renderCheckRuleIdPrefix(preconditionChecksResult, url.QueryEscape(preconditionChecksResult.dataset)),
+	)
+}
 
-	ruleOriginPrefix := fmt.Sprintf(
+// renderCheckRuleUrl renders the URL for a single Dash0 check rule.
+func (r *PrometheusRuleReconciler) renderCheckRuleUrl(preconditionChecksResult *preconditionValidationResult, checkRuleId string) string {
+	return fmt.Sprintf(
+		"%sapi/alerting/check-rules/%s?dataset=%s",
+		preconditionChecksResult.apiEndpoint,
+		checkRuleId,
+		url.QueryEscape(preconditionChecksResult.dataset),
+	)
+}
+
+// renderCheckRuleId renders the ID of a single Dash0 check rule.
+func (r *PrometheusRuleReconciler) renderCheckRuleId(
+	preconditionChecksResult *preconditionValidationResult,
+	group prometheusv1.RuleGroup,
+	checkIdx int,
+) (string, string) {
+	// For now the Dash0 backend treats %2F the same as "/", so we need to replace forward slashes with
+	// something other than %2F.
+	// See
+	// https://stackoverflow.com/questions/71581828/gin-problem-accessing-url-encoded-path-param-containing-forward-slash
+	groupNameNotUrlEncoded := strings.ReplaceAll(group.Name, "/", "|")
+	groupNameUrlEncoded := url.PathEscape(groupNameNotUrlEncoded)
+	checkIdNotUrlEncoded := fmt.Sprintf(
+		"%s%s_%d",
+		r.renderCheckRuleIdPrefix(preconditionChecksResult, preconditionChecksResult.dataset),
+		groupNameNotUrlEncoded,
+		checkIdx,
+	)
+	checkIdUrlEncoded := fmt.Sprintf(
+		"%s%s_%d",
+		// dataset can only contain letters, numbers, underscores, and hyphens, so we do not need to replace "/" -> "|".
+		r.renderCheckRuleIdPrefix(preconditionChecksResult, url.PathEscape(preconditionChecksResult.dataset)),
+		groupNameUrlEncoded,
+		checkIdx,
+	)
+	return checkIdNotUrlEncoded, checkIdUrlEncoded
+}
+
+// renderCheckRuleIdPrefix renders the common ID prefix for all Dash0 check rules that are created from one
+// Kubernetes PrometheusRule resource.
+func (r *PrometheusRuleReconciler) renderCheckRuleIdPrefix(
+	preconditionChecksResult *preconditionValidationResult,
+	dataset string,
+) string {
+	return fmt.Sprintf(
 		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
 		// any potential naming collisions (e.g. namespace="abc" & name="def-ghi" vs. namespace="abc-def" & name="ghi").
-		"dash0-operator_%s_%s_%s_%s",
+		"dash0-operator_%s_%s_%s_%s_",
 		r.pseudoClusterUID,
-		urlEncodePathSegment(preconditionCheckResult.dataset),
-		preconditionCheckResult.k8sNamespace,
-		preconditionCheckResult.k8sName,
-	)
-	if !strings.HasSuffix(preconditionCheckResult.apiEndpoint, "/") {
-		preconditionCheckResult.apiEndpoint += "/"
-	}
-	return fmt.Sprintf(
-		"%sapi/alerting/check-rules/%s",
-		preconditionCheckResult.apiEndpoint,
-		ruleOriginPrefix,
+		dataset,
+		preconditionChecksResult.k8sNamespace,
+		preconditionChecksResult.k8sName,
 	)
 }
 
@@ -534,7 +601,7 @@ func convertRuleToRequest(
 	checkRuleUrl string,
 	action apiAction,
 	rule prometheusv1.Rule,
-	preconditionCheckResult *preconditionValidationResult,
+	preconditionChecksResult *preconditionValidationResult,
 	groupName string,
 	interval *prometheusv1.Duration,
 	logger *logr.Logger,
@@ -550,24 +617,24 @@ func convertRuleToRequest(
 	}
 
 	var req *http.Request
+	var method string
 	var err error
 
 	//nolint:ineffassign
-	actionLabel := "?"
 	switch action {
 	case upsert:
-		actionLabel = "upsert"
 		serializedCheckRule, _ := json.Marshal(checkRule)
 		requestPayload := bytes.NewBuffer(serializedCheckRule)
+		method = http.MethodPut
 		req, err = http.NewRequest(
-			http.MethodPut,
+			method,
 			checkRuleUrl,
 			requestPayload,
 		)
 	case delete:
-		actionLabel = "delete"
+		method = http.MethodDelete
 		req, err = http.NewRequest(
-			http.MethodDelete,
+			method,
 			checkRuleUrl,
 			nil,
 		)
@@ -579,8 +646,8 @@ func convertRuleToRequest(
 
 	if err != nil {
 		httpError := fmt.Errorf(
-			"unable to create a new HTTP request to %s the rule at %s: %w",
-			actionLabel,
+			"unable to create a new HTTP request to synchronize the rule: %s %s: %w",
+			method,
 			checkRuleUrl,
 			err,
 		)
@@ -588,9 +655,9 @@ func convertRuleToRequest(
 		return nil, nil, httpError, false
 	}
 
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", preconditionCheckResult.authToken))
+	addAuthorizationHeader(req, preconditionChecksResult)
 	if action == upsert {
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
 	}
 
 	return req, nil, nil, true
@@ -742,6 +809,42 @@ func validateThreshold(
 	}
 
 	return validationIssues
+}
+
+func (r *PrometheusRuleReconciler) CreateDeleteRequests(
+	preconditionChecksResult *preconditionValidationResult,
+	existingIdsFromApi []string,
+	idsInResource []string,
+	logger *logr.Logger,
+) ([]HttpRequestWithItemName, map[string]string) {
+	var deleteRequests []HttpRequestWithItemName
+	allSynchronizationErrors := make(map[string]string)
+	for _, existingId := range existingIdsFromApi {
+		if !slices.Contains(idsInResource, existingId) {
+			// This means that the rule has been deleted in the resource, so we need to delete it via the API.
+			deleteUrl := r.renderCheckRuleUrl(preconditionChecksResult, existingId)
+			if req, err := http.NewRequest(
+				http.MethodDelete,
+				deleteUrl,
+				nil,
+			); err != nil {
+				httpError := fmt.Errorf(
+					"unable to create a new HTTP request to delete the rule at %s: %w",
+					deleteUrl,
+					err,
+				)
+				logger.Error(httpError, "error creating http request to delete rule")
+				allSynchronizationErrors[existingId] = httpError.Error()
+			} else {
+				addAuthorizationHeader(req, preconditionChecksResult)
+				deleteRequests = append(deleteRequests, HttpRequestWithItemName{
+					ItemName: existingId + " (deleted)",
+					Request:  req,
+				})
+			}
+		}
+	}
+	return deleteRequests, allSynchronizationErrors
 }
 
 func (r *PrometheusRuleReconciler) UpdateSynchronizationResultsInStatus(

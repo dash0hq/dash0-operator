@@ -3,13 +3,18 @@
 
 package util
 
+import "fmt"
+
 type WorkloadModifierActor string
 
 const (
-	AuthorizationHeaderName = "Authorization"
-	Dash0DatasetHeaderName  = "Dash0-Dataset"
-	DatasetDefault          = "default"
-	FieldManager            = "dash0-operator"
+	AuthorizationHeaderName  = "Authorization"
+	ContentTypeHeaderName    = "Content-Type"
+	AcceptHeaderName         = "Accept"
+	ApplicationJsonMediaType = "application/json"
+	Dash0DatasetHeaderName   = "Dash0-Dataset"
+	DatasetDefault           = "default"
+	FieldManager             = "dash0-operator"
 
 	ActorController WorkloadModifierActor = "controller"
 	ActorWebhook    WorkloadModifierActor = "webhook"
@@ -21,3 +26,7 @@ const (
 	AppKubernetesIoManagedByLabel = "app.kubernetes.io/managed-by"
 	AppKubernetesIoVersionLabel   = "app.kubernetes.io/version"
 )
+
+func RenderAuthorizationHeader(authToken string) string {
+	return fmt.Sprintf("Bearer %s", authToken)
+}
