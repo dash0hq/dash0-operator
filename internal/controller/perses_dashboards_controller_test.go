@@ -450,7 +450,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 				k8sClient,
 				dash0v1alpha1.PersesDashboardSynchronizationResults{
 					SynchronizationStatus: dash0v1alpha1.Failed,
-					SynchronizationError:  "^unexpected status code 503 when updating/creating/deleting the dashboard \"test-dashboard\" at https://api.dash0.com/api/dashboards/dash0-operator_.*_test-dataset_test-namespace_test-dashboard\\?dataset=test-dataset, response body is {}\n$",
+					SynchronizationError:  "^unexpected status code 503 when synchronizing the dashboard \"test-dashboard\": PUT https://api.dash0.com/api/dashboards/dash0-operator_.*_test-dataset_test-namespace_test-dashboard\\?dataset=test-dataset, response body is {}\n$",
 					ValidationIssues:      nil,
 				},
 			)
@@ -473,6 +473,7 @@ func createPersesDashboardCrdReconciler() *PersesDashboardCrdReconciler {
 func expectDashboardPutRequest(expectedPath string) {
 	gock.New(ApiEndpointTest).
 		Put(expectedPath).
+		MatchHeader("Authorization", AuthorizationHeaderTest).
 		MatchParam("dataset", DatasetCustomTest).
 		Times(1).
 		Reply(200).
@@ -482,6 +483,7 @@ func expectDashboardPutRequest(expectedPath string) {
 func expectDashboardDeleteRequest(expectedPath string) {
 	gock.New(ApiEndpointTest).
 		Delete(expectedPath).
+		MatchHeader("Authorization", AuthorizationHeaderTest).
 		MatchParam("dataset", DatasetCustomTest).
 		Times(1).
 		Reply(200).

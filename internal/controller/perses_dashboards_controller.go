@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -30,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
 type PersesDashboardCrdReconciler struct {
@@ -413,22 +413,32 @@ func (r *PersesDashboardReconciler) Reconcile(
 	return reconcile.Result{}, nil
 }
 
+func (r *PersesDashboardReconciler) FetchExistingResourceIdsRequest(
+	_ *preconditionValidationResult,
+	_ *logr.Logger,
+) (*http.Request, error) {
+	// The mechanism to delete individual dashboards when synchronizing one Kubernetes PersesDashboard resource is not
+	// required, since each PersesDashboard only contains one dashboard. It is only needed when the resource type holds
+	// multiple objects that are synchronized (as it is the case for PrometheusRules). Thus, this controller does not
+	// need to implement this method.
+	return nil, nil
+}
+
 func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 	preconditionChecksResult *preconditionValidationResult,
 	action apiAction,
 	logger *logr.Logger,
-) (int, []HttpRequestWithItemName, map[string][]string, map[string]string) {
+) (int, []HttpRequestWithItemName, []string, map[string][]string, map[string]string) {
 	itemName := preconditionChecksResult.k8sName
 	dashboardUrl := r.renderDashboardUrl(preconditionChecksResult)
 
 	var req *http.Request
+	var method string
 	var err error
 
 	//nolint:ineffassign
-	actionLabel := "?"
 	switch action {
 	case upsert:
-		actionLabel = "upsert"
 		spec := preconditionChecksResult.thirdPartyResourceSpec
 		displayRaw := spec["display"]
 		if displayRaw == nil {
@@ -439,6 +449,7 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 		if !ok {
 			logger.Info("Perses dashboard spec.display is not a map, the dashboard will not be updated in Dash0.")
 			return 1,
+				nil,
 				nil,
 				map[string][]string{
 					itemName: {"spec.display is not a map"},
@@ -459,65 +470,77 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 			})
 		requestPayload := bytes.NewBuffer(serializedDashboard)
 
+		method = http.MethodPut
 		req, err = http.NewRequest(
-			http.MethodPut,
+			method,
 			dashboardUrl,
 			requestPayload,
 		)
 	case delete:
-		actionLabel = "delete"
+		method = http.MethodDelete
 		req, err = http.NewRequest(
-			http.MethodDelete,
+			method,
 			dashboardUrl,
 			nil,
 		)
 	default:
 		unknownActionErr := fmt.Errorf("unknown API action: %d", action)
 		logger.Error(unknownActionErr, "unknown API action")
-		return 1, nil, nil, map[string]string{itemName: unknownActionErr.Error()}
+		return 1, nil, nil, nil, map[string]string{itemName: unknownActionErr.Error()}
 	}
 
 	if err != nil {
 		httpError := fmt.Errorf(
-			"unable to create a new HTTP request to %s the dashboard at %s: %w",
-			actionLabel,
+			"unable to create a new HTTP request to synchronize the dashboard: %s %s: %w",
+			method,
 			dashboardUrl,
 			err,
 		)
 		logger.Error(httpError, "error creating http request")
-		return 1, nil, nil, map[string]string{itemName: httpError.Error()}
+		return 1, nil, nil, nil, map[string]string{itemName: httpError.Error()}
 	}
 
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", preconditionChecksResult.authToken))
+	addAuthorizationHeader(req, preconditionChecksResult)
 	if action == upsert {
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set(util.ContentTypeHeaderName, util.ApplicationJsonMediaType)
 	}
 
 	return 1, []HttpRequestWithItemName{{
 		ItemName: itemName,
 		Request:  req,
-	}}, nil, nil
+	}}, nil, nil, nil
 }
 
-func (r *PersesDashboardReconciler) renderDashboardUrl(preconditionCheckResult *preconditionValidationResult) string {
-	dashboardOrigin := fmt.Sprintf(
+func (r *PersesDashboardReconciler) renderDashboardUrl(preconditionChecksResult *preconditionValidationResult) string {
+	datasetUrlEncoded := url.QueryEscape(preconditionChecksResult.dataset)
+	dashboardId := fmt.Sprintf(
 		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
 		// any potential naming collisions (e.g. namespace="abc" & name="def-ghi" vs. namespace="abc-def" & name="ghi").
 		"dash0-operator_%s_%s_%s_%s",
 		r.pseudoClusterUID,
-		urlEncodePathSegment(preconditionCheckResult.dataset),
-		preconditionCheckResult.k8sNamespace,
-		preconditionCheckResult.k8sName,
+		datasetUrlEncoded,
+		preconditionChecksResult.k8sNamespace,
+		preconditionChecksResult.k8sName,
 	)
-	if !strings.HasSuffix(preconditionCheckResult.apiEndpoint, "/") {
-		preconditionCheckResult.apiEndpoint += "/"
-	}
 	return fmt.Sprintf(
 		"%sapi/dashboards/%s?dataset=%s",
-		preconditionCheckResult.apiEndpoint,
-		dashboardOrigin,
-		url.QueryEscape(preconditionCheckResult.dataset),
+		preconditionChecksResult.apiEndpoint,
+		dashboardId,
+		datasetUrlEncoded,
 	)
+}
+
+func (r *PersesDashboardReconciler) CreateDeleteRequests(
+	_ *preconditionValidationResult,
+	_ []string,
+	_ []string,
+	_ *logr.Logger,
+) ([]HttpRequestWithItemName, map[string]string) {
+	// The mechanism to delete individual dashboards when synchronizing one Kubernetes PersesDashboard resource is not
+	// required, since each PersesDashboard only contains one dashboard. It is only needed when the resource type holds
+	// multiple objects that are synchronized (as it is the case for PrometheusRules). Thus, this controller does not
+	// need to implement this method.
+	return nil, nil
 }
 
 func (r *PersesDashboardReconciler) UpdateSynchronizationResultsInStatus(

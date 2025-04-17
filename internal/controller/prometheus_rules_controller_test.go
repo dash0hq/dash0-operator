@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	prometheusv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -24,6 +25,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/util"
 
 	"github.com/h2non/gock"
 	. "github.com/onsi/ginkgo/v2"
@@ -40,19 +42,15 @@ var (
 
 	checkRuleApiBasePath = "/api/alerting/check-rules/"
 
-	defaultExpectedPathsCheckRules = []string{
-		fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_.*_test-dataset_test-namespace_test-rule_group_1_0"),
-		fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_.*_test-dataset_test-namespace_test-rule_group_1_1"),
-		fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_.*_test-dataset_test-namespace_test-rule_group_2_0"),
-		fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_.*_test-dataset_test-namespace_test-rule_group_2_1"),
-	}
-
 	defaultExpectedPrometheusSyncResult = dash0v1alpha1.PrometheusRuleSynchronizationResult{
 		SynchronizationStatus:  dash0v1alpha1.Successful,
 		AlertingRulesTotal:     4,
 		SynchronizedRulesTotal: 4,
 		SynchronizedRules: []string{
-			"group_1 - rule_1_1", "group_1 - rule_1_2", "group_2 - rule_2_1", "group_2 - rule_2_2",
+			"dash0/group_1 - rule_1_1",
+			"dash0/group_1 - rule_1_2",
+			"dash0/group_2 - rule_2_1",
+			"dash0/group_2 - rule_2_2",
 		},
 		SynchronizationErrorsTotal: 0,
 		SynchronizationErrors:      nil,
@@ -64,10 +62,12 @@ var (
 var _ = Describe("The Prometheus rule controller", Ordered, func() {
 	ctx := context.Background()
 	logger := log.FromContext(ctx)
+	var clusterId string
 
 	BeforeAll(func() {
 		EnsureTestNamespaceExists(ctx, k8sClient)
 		EnsureOperatorNamespaceExists(ctx, k8sClient)
+		clusterId = util.ReadPseudoClusterUID(ctx, k8sClient, &logger)
 	})
 
 	Describe("the Prometheus rule CRD reconciler", func() {
@@ -281,7 +281,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		})
 
 		It("it ignores Prometheus rule resource changes if no Dash0 monitoring resource exists in the namespace", func() {
-			expectRulePutRequests(defaultExpectedPathsCheckRules)
+			expectRulePutRequests(defaultExpectedPathsCheckRules(clusterId))
 			defer gock.Off()
 
 			ruleResource := createDefaultRuleResource()
@@ -301,7 +301,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			monitoringResource.Spec.SynchronizePrometheusRules = ptr.To(false)
 			Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 
-			expectRulePutRequests(defaultExpectedPathsCheckRules)
+			expectRulePutRequests(defaultExpectedPathsCheckRules(clusterId))
 			defer gock.Off()
 
 			ruleResource := createDefaultRuleResource()
@@ -320,7 +320,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		It("it ignores Prometheus rule resource changes if the API endpoint is not configured", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
-			expectRulePutRequests(defaultExpectedPathsCheckRules)
+			expectRulePutRequests(defaultExpectedPathsCheckRules(clusterId))
 			defer gock.Off()
 
 			prometheusRuleCrdReconciler.RemoveApiEndpointAndDataset(ctx, &logger)
@@ -341,7 +341,8 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		It("creates check rules", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
-			expectRulePutRequests(defaultExpectedPathsCheckRules)
+			expectFetchIdGetRequest(clusterId)
+			expectRulePutRequests(defaultExpectedPathsCheckRules(clusterId))
 			defer gock.Off()
 
 			ruleResource := createDefaultRuleResource()
@@ -364,7 +365,8 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		It("updates check rules", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
-			expectRulePutRequests(defaultExpectedPathsCheckRules)
+			expectFetchIdGetRequest(clusterId)
+			expectRulePutRequests(defaultExpectedPathsCheckRules(clusterId))
 			defer gock.Off()
 
 			ruleResource := createDefaultRuleResource()
@@ -384,10 +386,164 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			Expect(gock.IsDone()).To(BeTrue())
 		})
 
-		It("deletes check rules", func() {
+		It("deletes individual check rules when the rule has been removed from the PrometheusRules resource", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
-			expectRuleDeleteRequests(defaultExpectedPathsCheckRules)
+			expectFetchIdGetRequest(clusterId)
+			expectRulePutRequests(
+				[]string{
+					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_1_0"),
+					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_2_0"),
+					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_2_1"),
+				},
+			)
+			expectRuleDeleteRequests(
+				[]string{
+					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_1_1"),
+				})
+			defer gock.Off()
+
+			spec := createDefaultSpec()
+			spec.Groups[0].Rules = slices.Delete(spec.Groups[0].Rules, 1, 2)
+			ruleResource := createRuleResource(spec)
+			prometheusRuleReconciler.Update(
+				ctx,
+				event.TypedUpdateEvent[*unstructured.Unstructured]{
+					ObjectNew: &ruleResource,
+				},
+				&controllertest.TypedQueue[reconcile.Request]{},
+			)
+
+			verifyPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
+				ctx,
+				k8sClient,
+				dash0v1alpha1.PrometheusRuleSynchronizationResult{
+					SynchronizationStatus:  dash0v1alpha1.Successful,
+					AlertingRulesTotal:     4,
+					SynchronizedRulesTotal: 4,
+					SynchronizedRules: []string{
+						"dash0/group_1 - rule_1_1",
+						"dash0/group_2 - rule_2_1",
+						"dash0/group_2 - rule_2_2",
+						"dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_1_1 (deleted)",
+					},
+					SynchronizationErrorsTotal: 0,
+					SynchronizationErrors:      nil,
+					InvalidRulesTotal:          0,
+					InvalidRules:               nil,
+				},
+			)
+			Expect(gock.IsDone()).To(BeTrue())
+		})
+
+		It("deletes individual check rules when the group has been removed from the PrometheusRules resource", func() {
+			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+
+			expectFetchIdGetRequest(clusterId)
+			expectRulePutRequests(
+				[]string{
+					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_1_0"),
+					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_1_1"),
+				},
+			)
+			expectRuleDeleteRequests(
+				[]string{
+					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_2_0"),
+					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_2_1"),
+				})
+			defer gock.Off()
+
+			spec := createDefaultSpec()
+			spec.Groups = slices.Delete(spec.Groups, 1, 2)
+			ruleResource := createRuleResource(spec)
+			prometheusRuleReconciler.Update(
+				ctx,
+				event.TypedUpdateEvent[*unstructured.Unstructured]{
+					ObjectNew: &ruleResource,
+				},
+				&controllertest.TypedQueue[reconcile.Request]{},
+			)
+
+			verifyPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
+				ctx,
+				k8sClient,
+				dash0v1alpha1.PrometheusRuleSynchronizationResult{
+					SynchronizationStatus:  dash0v1alpha1.Successful,
+					AlertingRulesTotal:     4,
+					SynchronizedRulesTotal: 4,
+					SynchronizedRules: []string{
+						"dash0/group_1 - rule_1_1",
+						"dash0/group_1 - rule_1_2",
+						"dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_2_0 (deleted)",
+						"dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_2_1 (deleted)",
+					},
+					SynchronizationErrorsTotal: 0,
+					SynchronizationErrors:      nil,
+					InvalidRulesTotal:          0,
+					InvalidRules:               nil,
+				},
+			)
+			Expect(gock.IsDone()).To(BeTrue())
+		})
+
+		It("deletes individual check rules when the group in the PrometheusRules resource has been renamed", func() {
+			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+
+			expectFetchIdGetRequest(clusterId)
+			expectRulePutRequests(
+				[]string{
+					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_1_0"),
+					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_1_1"),
+					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_renamed_0"),
+					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_renamed_1"),
+				},
+			)
+			expectRuleDeleteRequests(
+				[]string{
+					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_2_0"),
+					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_2_1"),
+				})
+			defer gock.Off()
+
+			spec := createDefaultSpec()
+			spec.Groups[1].Name = "renamed"
+			ruleResource := createRuleResource(spec)
+			prometheusRuleReconciler.Update(
+				ctx,
+				event.TypedUpdateEvent[*unstructured.Unstructured]{
+					ObjectNew: &ruleResource,
+				},
+				&controllertest.TypedQueue[reconcile.Request]{},
+			)
+
+			verifyPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
+				ctx,
+				k8sClient,
+				dash0v1alpha1.PrometheusRuleSynchronizationResult{
+					SynchronizationStatus:  dash0v1alpha1.Successful,
+					AlertingRulesTotal:     6,
+					SynchronizedRulesTotal: 6,
+					SynchronizedRules: []string{
+						"dash0/group_1 - rule_1_1",
+						"dash0/group_1 - rule_1_2",
+						"renamed - rule_2_1",
+						"renamed - rule_2_2",
+						"dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_2_0 (deleted)",
+						"dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_2_1 (deleted)",
+					},
+					SynchronizationErrorsTotal: 0,
+					SynchronizationErrors:      nil,
+					InvalidRulesTotal:          0,
+					InvalidRules:               nil,
+				},
+			)
+			Expect(gock.IsDone()).To(BeTrue())
+		})
+
+		It("deletes all check rules when the whole PrometheusRules resource has been deleted", func() {
+			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+
+			expectRuleDeleteRequests(defaultExpectedPathsCheckRules(clusterId))
 			defer gock.Off()
 
 			ruleResource := createDefaultRuleResource()
@@ -410,10 +566,12 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		It("reports validation issues and http errors for Prometheus rules", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
+			expectFetchIdGetRequest(clusterId)
+
 			// successful requests (HTTP 200)
 			for _, pathRegex := range []string{
-				"dash0-operator_.*_test-dataset_test-namespace_test-rule_group_1_2",
-				"dash0-operator_.*_test-dataset_test-namespace_test-rule_group_2_0",
+				fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0\\|group_1_2", clusterId),
+				fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0\\|group_2_0", clusterId),
 			} {
 				gock.New(ApiEndpointTest).
 					Put(fmt.Sprintf("%s.*%s", checkRuleApiBasePath, pathRegex)).
@@ -424,8 +582,8 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			}
 			// failed requests (HTTP 401)
 			for _, pathRegex := range []string{
-				"dash0-operator_.*_test-dataset_test-namespace_test-rule_group_1_1",
-				"dash0-operator_.*_test-dataset_test-namespace_test-rule_group_2_2",
+				fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0\\|group_1_1", clusterId),
+				fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0\\|group_2_2", clusterId),
 			} {
 				gock.New(ApiEndpointTest).
 					Put(fmt.Sprintf("%s.*%s", checkRuleApiBasePath, pathRegex)).
@@ -440,7 +598,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 				prometheusv1.PrometheusRuleSpec{
 					Groups: []prometheusv1.RuleGroup{
 						{
-							Name: "group_1",
+							Name: "dash0/group_1",
 							Rules: []prometheusv1.Rule{
 								{
 									Alert: "rule_1_1", // invalid due to missing threshold annotations
@@ -465,7 +623,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 							},
 						},
 						{
-							Name: "group_2",
+							Name: "dash0/group_2",
 							Rules: []prometheusv1.Rule{
 								{
 									Alert: "rule_2_1", // should be synchronized successfully
@@ -499,19 +657,19 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 					AlertingRulesTotal:     7,
 					SynchronizedRulesTotal: 2,
 					SynchronizedRules: []string{
-						"group_1 - rule_1_3",
-						"group_2 - rule_2_1",
+						"dash0/group_1 - rule_1_3",
+						"dash0/group_2 - rule_2_1",
 					},
 					SynchronizationErrorsTotal: 2,
 					SynchronizationErrors: map[string]string{
-						"group_1 - rule_1_2": "^unexpected status code 401 when updating/creating/deleting the rule \"group_1 - rule_1_2\" at https://api.dash0.com/api/alerting/check-rules/dash0-operator_.*_test-dataset_test-namespace_test-rule_group_1_1\\?dataset=test-dataset, response body is {}\n$",
-						"group_2 - rule_2_3": "^unexpected status code 401 when updating/creating/deleting the rule \"group_2 - rule_2_3\" at https://api.dash0.com/api/alerting/check-rules/dash0-operator_.*_test-dataset_test-namespace_test-rule_group_2_2\\?dataset=test-dataset, response body is {}\n$",
+						"dash0/group_1 - rule_1_2": "^unexpected status code 401 when synchronizing the rule \"dash0/group_1 - rule_1_2\": PUT https://api.dash0.com/api/alerting/check-rules/dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_1_1\\?dataset=test-dataset, response body is {}\n$",
+						"dash0/group_2 - rule_2_3": "^unexpected status code 401 when synchronizing the rule \"dash0/group_2 - rule_2_3\": PUT https://api.dash0.com/api/alerting/check-rules/dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_2_2\\?dataset=test-dataset, response body is {}\n$",
 					},
 					InvalidRulesTotal: 3,
 					InvalidRules: map[string][]string{
-						"group_1 - rule_1_1": {thresholdAnnotationsMissingMessage()},
-						"group_1 - 4":        {"rule has neither the alert nor the record attribute"},
-						"group_2 - rule_2_2": {thresholdAnnotationsMissingMessage()},
+						"dash0/group_1 - rule_1_1": {thresholdAnnotationsMissingMessage()},
+						"dash0/group_1 - 4":        {"rule has neither the alert nor the record attribute"},
+						"dash0/group_2 - rule_2_2": {thresholdAnnotationsMissingMessage()},
 					},
 				},
 			)
@@ -521,16 +679,18 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		It("reports as failed if no Prometheus rule is synchronized succcessul", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
+			expectFetchIdGetRequest(clusterId)
+
 			// failed request, HTTP 401, no retry
 			gock.New(ApiEndpointTest).
-				Put(fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_.*_test-dataset_test-namespace_test-rule_group_1_1")).
+				Put(fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_1_1")).
 				MatchParam("dataset", DatasetCustomTest).
 				Times(1).
 				Reply(401).
 				JSON(map[string]string{})
 			// failed request, HTTP 500, will be retried 3 times
 			gock.New(ApiEndpointTest).
-				Put(fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_.*_test-dataset_test-namespace_test-rule_group_2_1")).
+				Put(fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_2_1")).
 				MatchParam("dataset", DatasetCustomTest).
 				Times(3).
 				Reply(500).
@@ -541,7 +701,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 				prometheusv1.PrometheusRuleSpec{
 					Groups: []prometheusv1.RuleGroup{
 						{
-							Name: "group_1",
+							Name: "dash0/group_1",
 							Rules: []prometheusv1.Rule{
 								{
 									Alert: "rule_1_1", // invalid due to missing threshold annotations
@@ -562,7 +722,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 							},
 						},
 						{
-							Name: "group_2",
+							Name: "dash0/group_2",
 							Rules: []prometheusv1.Rule{
 								{
 									Alert: "rule_2_1", // invalid due to missing threshold annotations
@@ -594,14 +754,14 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 					SynchronizedRules:          nil,
 					SynchronizationErrorsTotal: 2,
 					SynchronizationErrors: map[string]string{
-						"group_1 - rule_1_2": "^unexpected status code 401 when updating/creating/deleting the rule \"group_1 - rule_1_2\" at https://api.dash0.com/api/alerting/check-rules/dash0-operator_.*_test-dataset_test-namespace_test-rule_group_1_1\\?dataset=test-dataset, response body is {}\n$",
-						"group_2 - rule_2_2": "^unexpected status code 500 when updating/creating/deleting the rule \"group_2 - rule_2_2\" at https://api.dash0.com/api/alerting/check-rules/dash0-operator_.*_test-dataset_test-namespace_test-rule_group_2_1\\?dataset=test-dataset, response body is {}\n$",
+						"dash0/group_1 - rule_1_2": "^unexpected status code 401 when synchronizing the rule \"dash0/group_1 - rule_1_2\": PUT https://api.dash0.com/api/alerting/check-rules/dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_1_1\\?dataset=test-dataset, response body is {}\n$",
+						"dash0/group_2 - rule_2_2": "^unexpected status code 500 when synchronizing the rule \"dash0/group_2 - rule_2_2\": PUT https://api.dash0.com/api/alerting/check-rules/dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_2_1\\?dataset=test-dataset, response body is {}\n$",
 					},
 					InvalidRulesTotal: 3,
 					InvalidRules: map[string][]string{
-						"group_1 - rule_1_1": {thresholdAnnotationsMissingMessage()},
-						"group_1 - 3":        {"rule has neither the alert nor the record attribute"},
-						"group_2 - rule_2_1": {thresholdAnnotationsMissingMessage()},
+						"dash0/group_1 - rule_1_1": {thresholdAnnotationsMissingMessage()},
+						"dash0/group_1 - 3":        {"rule has neither the alert nor the record attribute"},
+						"dash0/group_2 - rule_2_1": {thresholdAnnotationsMissingMessage()},
 					},
 				},
 			)
@@ -1022,10 +1182,35 @@ func createPrometheusRuleCrdReconciler() *PrometheusRuleCrdReconciler {
 	}
 }
 
+func expectFetchIdGetRequest(clusterId string) {
+	gock.New(ApiEndpointTest).
+		Get("/api/alerting/check-rules").
+		MatchHeader("Authorization", AuthorizationHeaderTest).
+		MatchParam("dataset", DatasetCustomTest).
+		ParamPresent("idPrefix").
+		Times(1).
+		Reply(200).
+		JSON([]map[string]string{
+			{
+				"id": fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0|group_1_0", clusterId),
+			},
+			{
+				"id": fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0|group_1_1", clusterId),
+			},
+			{
+				"id": fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0|group_2_0", clusterId),
+			},
+			{
+				"id": fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0|group_2_1", clusterId),
+			},
+		})
+}
+
 func expectRulePutRequests(expectedPaths []string) {
 	for _, expectedPath := range expectedPaths {
 		gock.New(ApiEndpointTest).
 			Put(expectedPath).
+			MatchHeader("Authorization", AuthorizationHeaderTest).
 			MatchParam("dataset", DatasetCustomTest).
 			Times(1).
 			Reply(200).
@@ -1037,6 +1222,7 @@ func expectRuleDeleteRequests(expectedPaths []string) {
 	for _, expectedPath := range expectedPaths {
 		gock.New(ApiEndpointTest).
 			Delete(expectedPath).
+			MatchHeader("Authorization", AuthorizationHeaderTest).
 			MatchParam("dataset", DatasetCustomTest).
 			Times(1).
 			Reply(200).
@@ -1072,7 +1258,7 @@ func createDefaultSpec() prometheusv1.PrometheusRuleSpec {
 	return prometheusv1.PrometheusRuleSpec{
 		Groups: []prometheusv1.RuleGroup{
 			{
-				Name: "group_1",
+				Name: "dash0/group_1",
 				Rules: []prometheusv1.Rule{
 					{
 						Alert: "rule_1_1",
@@ -1089,7 +1275,7 @@ func createDefaultSpec() prometheusv1.PrometheusRuleSpec {
 				},
 			},
 			{
-				Name: "group_2",
+				Name: "dash0/group_2",
 				Rules: []prometheusv1.Rule{
 					{
 						Alert: "rule_2_1",
@@ -1138,6 +1324,15 @@ func isWatchingPrometheusRuleResources(prometheusRuleCrdReconciler *PrometheusRu
 	ruleReconciler.ControllerStopFunctionLock().Lock()
 	defer ruleReconciler.ControllerStopFunctionLock().Unlock()
 	return ruleReconciler.IsWatching()
+}
+
+func defaultExpectedPathsCheckRules(clusterId string) []string {
+	return []string{
+		fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_1_0"),
+		fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_1_1"),
+		fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_2_0"),
+		fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_2_1"),
+	}
 }
 
 func verifyPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
