@@ -64,16 +64,32 @@ func (mrl *MatchResultList[R, O]) expectAtLeastOneMatch(g Gomega, message string
 		}
 	}
 	foundMatchingSpan := false
-	g.Expect(foundMatchingSpan).To(BeTrue(), fmt.Sprintf(
-		"%s -- expected at least one matching object but none of the %d objects matched all expectations; here are "+
-			"%d of %d best matches (with a match score of %d/100):\n%s",
-		message,
-		len(mrl.objectResults),
-		numRepresentativeMatchesForOutput,
-		len(bestMatches),
-		int(bestMatchScoreSoFar*100),
-		bestMatchesAsString,
-	))
+	var description string
+	if len(mrl.objectResults) > 0 && len(bestMatches) > 0 {
+		description = fmt.Sprintf(
+			"%s -- expected at least one matching object but none of the %d objects matched all expectations; here are "+
+				"%d of %d best matches (with a match score of %d/100):\n%s",
+			message,
+			len(mrl.objectResults),
+			numRepresentativeMatchesForOutput,
+			len(bestMatches),
+			int(bestMatchScoreSoFar*100),
+			bestMatchesAsString,
+		)
+	} else if len(mrl.objectResults) > 0 {
+		description = fmt.Sprintf(
+			"%s -- expected at least one matching object but none of the %d objects matched all expectations. Also, "+
+				"no best matching objects could be identified.",
+			message,
+			len(mrl.objectResults),
+		)
+	} else {
+		description = fmt.Sprintf(
+			"%s -- expected at least one matching object but no object of this signal type has been captured.",
+			message,
+		)
+	}
+	g.Expect(foundMatchingSpan).To(BeTrue(), description)
 }
 
 func (mrl *MatchResultList[R, O]) expectExactlyOneMatch(g Gomega, message string) {

@@ -33,7 +33,7 @@ func collectPodInfoAndLogsFailWrapper(message string, callerSkip ...int) {
 }
 
 func collectPodInfoAndLogs() {
-	By(fmt.Sprintf("!! Collecting information about pods and their logs in %s", collectedLogsDir))
+	By(fmt.Sprintf("Collecting information about pods and their logs in %s", collectedLogsDir))
 	for _, namespace := range []string{operatorNamespace,
 		applicationUnderTestNamespace,
 		"otlp-sink",
@@ -44,6 +44,10 @@ func collectPodInfoAndLogs() {
 		executeCommandAndStoreOutput(fmt.Sprintf("kubectl -n %s get configmaps", namespace))
 		executeCommandAndStoreOutput(fmt.Sprintf("kubectl -n %s describe configmaps", namespace))
 	}
+	executeCommandAndStoreOutput("kubectl get --all-namespaces dash0monitorings.operator.dash0.com")
+	executeCommandAndStoreOutput("kubectl describe --all-namespaces dash0monitorings.operator.dash0.com")
+	executeCommandAndStoreOutput("kubectl get dash0operatorconfigurations.operator.dash0.com")
+	executeCommandAndStoreOutput("kubectl describe dash0operatorconfigurations.operator.dash0.com")
 	By(fmt.Sprintf(
 		"!! Information about pods and their logs have been collected in %s\n",
 		collectedLogsDir,
@@ -136,7 +140,7 @@ func executeCommandAndStoreOutput(fullCommandLine string) {
 	commandParts := strings.Split(fullCommandLine, " ")
 	fileName := strings.Join(commandParts, "_")
 	fullFileName := fmt.Sprintf("%s/%s", collectedLogsDir, fileName)
-	output, err := run(exec.Command(commandParts[0], commandParts[1:]...))
+	output, err := run(exec.Command(commandParts[0], commandParts[1:]...), false)
 	if err != nil {
 		e2ePrint("Error in collectPodInfoAndLogsFailWrapper for command: %s: %s\n", fullCommandLine, err.Error())
 		return

@@ -7,6 +7,8 @@ const { Counter, collectDefaultMetrics, register } = require('prom-client');
 const port = parseInt(process.env.PORT || '1207');
 const app = express();
 
+let shouldStop = false;
+
 collectDefaultMetrics();
 const requestCounter = new Counter({
   name: 'appundertest_testendointrequestcounter',
@@ -65,11 +67,16 @@ if (process.env.TRIGGER_SELF_AND_EXIT) {
       process.exit(1);
     }
 
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 240; i++) {
       await fetch(`http://localhost:${port}/dash0-k8s-operator-test?id=${testId}`);
+      if (shouldStop) {
+        console.log('terminating job/cronjob due to shouldStop=true');
+        break;
+      }
       await delay(500);
     }
 
+    console.log('calling process.exit(0)');
     process.exit(0);
   })();
 }
@@ -89,6 +96,7 @@ function delay(ms) {
 
 function gracefulShutdown(signalName) {
   return () => {
+    shouldStop=true;
     console.log(`received ${signalName}, stopping server`);
     server.close(() => {
       console.log('server stopped, bye');

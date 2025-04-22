@@ -28,6 +28,8 @@ spec:
               value: "true"
             - name: TRIGGER_SELF_AND_EXIT
               value: "true"
+            #- name: OTEL_LOG_LEVEL
+            #  value: "debug"
           ports:
             - containerPort: 1208
           resources:
