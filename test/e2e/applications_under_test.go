@@ -338,6 +338,41 @@ func runKubectlDelete(namespace string, workloadType string, runtime runtimeType
 		))
 }
 
+func killBatchJobsAndPods(namespace string) {
+	By("deleting job spawned by a cronjob")
+	Expect(runAndIgnoreOutput(
+		exec.Command(
+			"kubectl",
+			"delete",
+			"--namespace",
+			namespace,
+			"--ignore-not-found",
+			"job",
+			"-l",
+			"app.kubernetes.io/name=test-cronjob",
+			"--wait",
+		))).To(Succeed())
+	By("deleting cronjob/job pods")
+	selectors := []string{
+		"app.kubernetes.io/name=test-cronjob",
+		"app.kubernetes.io/name=test-job",
+	}
+	for _, selector := range selectors {
+		Expect(runAndIgnoreOutput(
+			exec.Command(
+				"kubectl",
+				"delete",
+				"--namespace",
+				namespace,
+				"--ignore-not-found",
+				"pod",
+				"-l",
+				selector,
+				"--wait",
+			))).To(Succeed())
+	}
+}
+
 func removeAllTestApplications(namespace string) {
 	By("uninstalling the test applications")
 	Expect(uninstallNodeJsCronJob(namespace)).To(Succeed())

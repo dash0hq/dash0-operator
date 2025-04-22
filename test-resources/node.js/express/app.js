@@ -67,7 +67,7 @@ if (process.env.TRIGGER_SELF_AND_EXIT) {
       process.exit(1);
     }
 
-    for (let i = 0; i < 240; i++) {
+    for (let i = 0; i < 100; i++) {
       await fetch(`http://localhost:${port}/dash0-k8s-operator-test?id=${testId}`);
       if (shouldStop) {
         console.log('terminating job/cronjob due to shouldStop=true');

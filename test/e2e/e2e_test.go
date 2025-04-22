@@ -465,6 +465,12 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 						undeployDash0MonitoringResource(applicationUnderTestNamespace)
 
+						// Deliberately kill any running cronjob or job pods, plus jobs spawned by a cronjob: There
+						// could be old job/cronjob pods still running, those do not get restarted automatically, and
+						// they could still produce spans, because instrumentation was active at the time they were
+						// created.
+						killBatchJobsAndPods(applicationUnderTestNamespace)
+
 						runInParallel(workloadTestConfigs, func(c workloadTestConfig) {
 							verifyThatInstrumentationHasBeenReverted(
 								applicationUnderTestNamespace,
