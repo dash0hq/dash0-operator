@@ -81,11 +81,6 @@ FILELOG_OFFSET_SYNC_IMG_TAG ?= latest
 FILELOG_OFFSET_SYNC_IMG ?= $(FILELOG_OFFSET_SYNC_IMG_REPOSITORY):$(FILELOG_OFFSET_SYNC_IMG_TAG)
 FILELOG_OFFSET_SYNC_IMG_PULL_POLICY ?= Never
 
-SECRET_REF_RESOLVER_IMG_REPOSITORY ?= secret-ref-resolver
-SECRET_REF_RESOLVER_IMG_TAG ?= latest
-SECRET_REF_RESOLVER_IMG ?= $(SECRET_REF_RESOLVER_IMG_REPOSITORY):$(SECRET_REF_RESOLVER_IMG_TAG)
-SECRET_REF_RESOLVER_IMG_PULL_POLICY ?= Never
-
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.28.3
 
@@ -259,7 +254,6 @@ run: manifests generate fmt vet ## Run a controller from your host.
 .PHONY: docker-build
 docker-build: \
   docker-build-controller \
-  docker-build-secret-ref-resolver \
   docker-build-instrumentation \
   docker-build-collector \
   docker-build-config-reloader \
@@ -306,10 +300,6 @@ docker-build-config-reloader: ## Build the config reloader container image.
 docker-build-filelog-offset-sync: ## Build the filelog offset sync container image.
 	@$(call build_container_image,$(FILELOG_OFFSET_SYNC_IMG_REPOSITORY),$(FILELOG_OFFSET_SYNC_IMG_TAG),images,images/filelogoffsetsync/Dockerfile)
 
-.PHONY: docker-build-secret-ref-resolver
-docker-build-secret-ref-resolver: ## Build the secret ref resolver container image.
-	@$(call build_container_image,$(SECRET_REF_RESOLVER_IMG_REPOSITORY),$(SECRET_REF_RESOLVER_IMG_TAG),images,images/secretrefresolver/Dockerfile)
-
 ifndef ignore-not-found
   ignore-not-found = false
 endif
@@ -343,9 +333,6 @@ deploy-via-helm: ## Deploy the controller via helm to the K8s cluster specified 
 		--set operator.filelogOffsetSyncImage.repository=$(FILELOG_OFFSET_SYNC_IMG_REPOSITORY) \
 		--set operator.filelogOffsetSyncImage.tag=$(FILELOG_OFFSET_SYNC_IMG_TAG) \
 		--set operator.filelogOffsetSyncImage.pullPolicy=$(FILELOG_OFFSET_SYNC_IMG_PULL_POLICY) \
-		--set operator.secretRefResolverImage.repository=$(SECRET_REF_RESOLVER_IMG_REPOSITORY) \
-		--set operator.secretRefResolverImage.tag=$(SECRET_REF_RESOLVER_IMG_TAG) \
-		--set operator.secretRefResolverImage.pullPolicy=$(SECRET_REF_RESOLVER_IMG_PULL_POLICY) \
 		--set operator.developmentMode=true \
 		dash0-operator \
 		$(OPERATOR_HELM_CHART)

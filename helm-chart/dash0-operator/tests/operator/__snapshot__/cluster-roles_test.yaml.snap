@@ -75,6 +75,14 @@ cluster roles should match snapshot:
           - get
           - list
       - apiGroups:
+          - ""
+        resources:
+          - secrets
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
           - perses.dev
         resources:
           - persesdashboards

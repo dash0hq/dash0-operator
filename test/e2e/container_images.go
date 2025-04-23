@@ -27,7 +27,6 @@ type Images struct {
 	collector             ImageSpec
 	configurationReloader ImageSpec
 	fileLogOffsetSync     ImageSpec
-	secretRefResolver     ImageSpec
 }
 
 const (
@@ -49,13 +48,6 @@ var (
 			tag:           tagLatest,
 			pullPolicy:    "Never",
 			dockerContext: "images/instrumentation",
-		},
-		secretRefResolver: ImageSpec{
-			repository:    "secret-ref-resolver",
-			tag:           tagLatest,
-			pullPolicy:    "Never",
-			dockerContext: "images",
-			dockerfile:    "images/secretrefresolver/Dockerfile",
 		},
 		collector: ImageSpec{
 			repository:    "collector",
@@ -94,13 +86,6 @@ var (
 			dockerContext: localImages.instrumentation.dockerContext,
 			dockerfile:    localImages.instrumentation.dockerfile,
 		},
-		secretRefResolver: ImageSpec{
-			repository:    "",
-			tag:           "",
-			pullPolicy:    "",
-			dockerContext: localImages.secretRefResolver.dockerContext,
-			dockerfile:    localImages.secretRefResolver.dockerfile,
-		},
 		collector: ImageSpec{
 			repository:    "",
 			tag:           "",
@@ -133,7 +118,6 @@ func rebuildAllContainerImages() {
 	rebuildLocalImage(images.collector)
 	rebuildLocalImage(images.configurationReloader)
 	rebuildLocalImage(images.fileLogOffsetSync)
-	rebuildLocalImage(images.secretRefResolver)
 }
 
 func rebuildLocalImage(imageSpec ImageSpec) {

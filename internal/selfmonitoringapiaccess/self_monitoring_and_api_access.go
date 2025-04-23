@@ -19,6 +19,11 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
+type AuthTokenClient interface {
+	SetAuthToken(context.Context, string, *logr.Logger)
+	RemoveAuthToken(context.Context, *logr.Logger)
+}
+
 type OtlpProtocol string
 
 type SelfMonitoringConfiguration struct {
@@ -33,8 +38,6 @@ type EndpointAndHeaders struct {
 }
 
 const (
-	SecretRefResolverTokenEnvVarName = "SELF_MONITORING_AND_API_AUTH_TOKEN"
-
 	CollectorSelfMonitoringAuthTokenEnvVarName = "SELF_MONITORING_AUTH_TOKEN"
 
 	otelExporterOtlpEndpointEnvVarName = "OTEL_EXPORTER_OTLP_ENDPOINT"
@@ -42,8 +45,6 @@ const (
 	otelExporterOtlpProtocolEnvVarName = "OTEL_EXPORTER_OTLP_PROTOCOL"
 	otelResourceAttribtuesEnvVarName   = "OTEL_RESOURCE_ATTRIBUTES"
 	otelLogLevelEnvVarName             = "OTEL_LOG_LEVEL"
-
-	secretRefResolverContainerIdx = 0
 )
 
 var (
@@ -356,15 +357,6 @@ func updateOrAppendEnvVar(container *corev1.Container, name string, value string
 	}
 }
 
-func removeEnvVar(container *corev1.Container, name string) {
-	idx := slices.IndexFunc(container.Env, func(e corev1.EnvVar) bool {
-		return e.Name == name
-	})
-	if idx >= 0 {
-		container.Env = slices.Delete(container.Env, idx, idx+1)
-	}
-}
-
 func matchOtelExporterOtlpEndpointEnvVar(e corev1.EnvVar) bool {
 	return e.Name == otelExporterOtlpEndpointEnvVarName
 }
@@ -533,175 +525,68 @@ func addInsecureFlagIfNecessary(pipeline string, endpoint string) string {
 	return pipeline
 }
 
-func ExchangeSecretRefForTokenIfNecessary(
+func ExchangeSecretRefForToken(
 	ctx context.Context,
 	k8sClient client.Client,
+	authTokenClients []AuthTokenClient,
 	operatorNamespace string,
-	secretRefResolverDeploymentName string,
 	operatorConfiguration *dash0v1alpha1.Dash0OperatorConfiguration,
 	logger *logr.Logger,
 ) error {
-	if operatorConfiguration == nil ||
-		operatorConfiguration.Spec.Export == nil ||
-		operatorConfiguration.Spec.Export.Dash0 == nil ||
-		operatorConfiguration.Spec.Export.Dash0.Authorization.SecretRef == nil {
-		return removeSecretRefEnvVarIfNecessary(
-			ctx,
-			k8sClient,
-			operatorNamespace,
-			secretRefResolverDeploymentName,
-			operatorConfiguration,
-			logger,
-		)
-	} else {
-		return upsertSecretRefEnvVarIfNecessary(
-			ctx,
-			k8sClient,
-			operatorNamespace,
-			secretRefResolverDeploymentName,
-			operatorConfiguration,
-			operatorConfiguration.Spec.Export.Dash0,
-			logger,
-		)
+	if operatorConfiguration == nil {
+		removeToken(ctx, authTokenClients, logger)
+		return fmt.Errorf("operatorConfiguration is nil")
 	}
-}
-
-func upsertSecretRefEnvVarIfNecessary(
-	ctx context.Context,
-	k8sClient client.Client,
-	operatorNamespace string,
-	secretRefResolverDeploymentName string,
-	operatorConfiguration *dash0v1alpha1.Dash0OperatorConfiguration,
-	dash0Export *dash0v1alpha1.Dash0Configuration,
-	logger *logr.Logger,
-) error {
-	if dash0Export == nil {
-		panic("dash0 export is nil")
+	if operatorConfiguration.Spec.Export == nil {
+		removeToken(ctx, authTokenClients, logger)
+		return fmt.Errorf("operatorConfiguration has no export")
 	}
-	secretRef := dash0Export.Authorization.SecretRef
-	if secretRef == nil {
-		panic("secret ref is nil")
+	if operatorConfiguration.Spec.Export.Dash0 == nil {
+		removeToken(ctx, authTokenClients, logger)
+		return fmt.Errorf("operatorConfiguration has no Dash0 export")
 	}
-
-	secretRefResolverDeployment, err := loadSecretRefResolverDeployment(
-		ctx,
-		k8sClient,
-		operatorNamespace,
-		secretRefResolverDeploymentName,
-	)
-	if err != nil {
-		return err
+	if operatorConfiguration.Spec.Export.Dash0.Authorization.SecretRef == nil {
+		removeToken(ctx, authTokenClients, logger)
+		return fmt.Errorf("operatorConfiguration has no secret ref")
 	}
-
-	secretRefResolverContainer :=
-		secretRefResolverDeployment.Spec.Template.Spec.Containers[secretRefResolverContainerIdx]
-	for _, envVar := range secretRefResolverContainer.Env {
-		if envVar.Name == SecretRefResolverTokenEnvVarName {
-			// the container already has the secret ref env var
-			return nil
-		}
-	}
-
-	// By adding the secret ref as an env var, the secret ref resolver pod&container will be restarted, read the
-	// token value from the env var and report it back via the update token service.
-	logger.Info(fmt.Sprintf("adding %s to secret ref resolver", SecretRefResolverTokenEnvVarName))
-	addAuthTokenToContainer(&secretRefResolverContainer, &corev1.EnvVar{
-		Name: SecretRefResolverTokenEnvVarName,
-		ValueFrom: &corev1.EnvVarSource{
-			SecretKeyRef: &corev1.SecretKeySelector{
-				LocalObjectReference: corev1.LocalObjectReference{
-					Name: secretRef.Name,
-				},
-				Key: secretRef.Key,
-			},
-		},
-	})
-	secretRefResolverDeployment.Spec.Template.Spec.Containers[secretRefResolverContainerIdx] =
-		secretRefResolverContainer
-
-	return updateSecretRefResolverDeployment(ctx, k8sClient, secretRefResolverDeployment, operatorConfiguration, logger)
-}
-
-func removeSecretRefEnvVarIfNecessary(
-	ctx context.Context,
-	k8sClient client.Client,
-	operatorNamespace string,
-	secretRefResolverDeploymentName string,
-	operatorConfiguration *dash0v1alpha1.Dash0OperatorConfiguration,
-	logger *logr.Logger,
-) error {
-	secretRefResolverDeployment, err := loadSecretRefResolverDeployment(
-		ctx,
-		k8sClient,
-		operatorNamespace,
-		secretRefResolverDeploymentName,
-	)
-	if err != nil {
-		return err
-	}
-
-	found := false
-	secretRefResolverContainer := secretRefResolverDeployment.Spec.Template.Spec.Containers[secretRefResolverContainerIdx]
-	for _, envVar := range secretRefResolverContainer.Env {
-		if envVar.Name == SecretRefResolverTokenEnvVarName {
-			found = true
-		}
-	}
-	if !found {
-		// the container does not have the secret ref env var, so there is nothing to remove
-		return nil
-	}
-
-	logger.Info(fmt.Sprintf("removing %s from secret ref resolver", SecretRefResolverTokenEnvVarName))
-	removeEnvVar(&secretRefResolverContainer, SecretRefResolverTokenEnvVarName)
-	secretRefResolverDeployment.Spec.Template.Spec.Containers[secretRefResolverContainerIdx] =
-		secretRefResolverContainer
-
-	return updateSecretRefResolverDeployment(ctx, k8sClient, secretRefResolverDeployment, operatorConfiguration, logger)
-}
-
-func loadSecretRefResolverDeployment(
-	ctx context.Context,
-	k8sClient client.Client,
-	operatorNamespace string,
-	secretRefResolverDeploymentName string,
-) (*appsv1.Deployment, error) {
-	secretRefResolverDeployment := &appsv1.Deployment{}
+	secretRef := operatorConfiguration.Spec.Export.Dash0.Authorization.SecretRef
+	var dash0AuthTokenSecret corev1.Secret
 	if err := k8sClient.Get(
 		ctx,
-		client.ObjectKey{Namespace: operatorNamespace, Name: secretRefResolverDeploymentName},
-		secretRefResolverDeployment,
+		client.ObjectKey{
+			Name:      secretRef.Name,
+			Namespace: operatorNamespace,
+		},
+		&dash0AuthTokenSecret,
 	); err != nil {
-		return nil, fmt.Errorf("cannot fetch the current secret ref resolver deployment: %w", err)
+		removeToken(ctx, authTokenClients, logger)
+		msg := fmt.Sprintf("failed to fetch secret with name %s in namespace %s for Dash0 self-monitoring/API access",
+			secretRef.Name,
+			operatorNamespace,
+		)
+		logger.Error(err, msg)
+		return fmt.Errorf(msg+": %w", err)
+	} else {
+		rawToken, hasToken := dash0AuthTokenSecret.Data[secretRef.Key]
+		if !hasToken || rawToken == nil || len(rawToken) == 0 {
+			removeToken(ctx, authTokenClients, logger)
+			err = fmt.Errorf("secret \"%s/%s\" does not contain key \"%s\"",
+				operatorNamespace,
+				secretRef.Name,
+				secretRef.Key)
+			logger.Error(err, "secret does not contain the expected key")
+			return err
+		}
+		decodedToken := string(rawToken)
+		for _, authTokenClient := range authTokenClients {
+			authTokenClient.SetAuthToken(ctx, decodedToken, logger)
+		}
+		return nil
 	}
-	return secretRefResolverDeployment, nil
 }
 
-func updateSecretRefResolverDeployment(
-	ctx context.Context,
-	k8sClient client.Client,
-	secretRefResolverDeployment *appsv1.Deployment,
-	operatorConfiguration *dash0v1alpha1.Dash0OperatorConfiguration,
-	logger *logr.Logger,
-) error {
-	logger.Info("updating the secret ref resolver deployment")
-	if err := k8sClient.Update(
-		ctx,
-		secretRefResolverDeployment,
-		&client.UpdateOptions{FieldManager: util.FieldManager},
-	); err != nil {
-		logger.Error(err, "cannot update the secret ref resolver deployment")
-		if statusUpdateErr := util.MarkOperatorConfigurationAsDegradedAndUpdateStatus(
-			ctx,
-			k8sClient.Status(),
-			operatorConfiguration,
-			"CannotUpdatedSecretRefResolverDeployment",
-			"Could not update the secret ref resolver deployment.",
-			logger,
-		); statusUpdateErr != nil {
-			return statusUpdateErr
-		}
-		return err
+func removeToken(ctx context.Context, authTokenClients []AuthTokenClient, logger *logr.Logger) {
+	for _, authTokenClient := range authTokenClients {
+		authTokenClient.RemoveAuthToken(ctx, logger)
 	}
-	return nil
 }

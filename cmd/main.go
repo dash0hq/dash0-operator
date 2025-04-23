@@ -57,8 +57,6 @@ type environmentVariables struct {
 	operatorNamespace                    string
 	deploymentName                       string
 	webhookServiceName                   string
-	secretRefResolverDeploymentName      string
-	tokenUpdateServicePort               string
 	oTelCollectorNamePrefix              string
 	operatorImage                        string
 	initContainerImage                   string
@@ -80,8 +78,6 @@ const (
 	operatorNamespaceEnvVarName                    = "DASH0_OPERATOR_NAMESPACE"
 	deploymentNameEnvVarName                       = "DASH0_DEPLOYMENT_NAME"
 	webhookServiceNameEnvVarName                   = "DASH0_WEBHOOK_SERVICE_NAME"
-	secretRefResolverDeploymentNameEnvVarName      = "DASH0_SECRET_REF_RESOLVER_DEPLOYMENT_NAME"
-	tokenUpdateServicePortEnvVarName               = "DASH0_TOKEN_UPDATE_SERVICE_PORT"
 	oTelCollectorNamePrefixEnvVarName              = "OTEL_COLLECTOR_NAME_PREFIX"
 	operatorImageEnvVarName                        = "DASH0_OPERATOR_IMAGE"
 	initContainerImageEnvVarName                   = "DASH0_INIT_CONTAINER_IMAGE"
@@ -117,7 +113,6 @@ var (
 	envVars                         environmentVariables
 
 	thirdPartyResourceSynchronizationQueue *workqueue.Typed[controller.ThirdPartyResourceSyncJob]
-	tokenUpdateService                     *selfmonitoringapiaccess.TokenUpdateService
 )
 
 func init() {
@@ -441,7 +436,7 @@ func startOperatorManager(
 
 		// We are deliberately not setting LeaderElectionReleaseOnCancel to true, since we cannot guarantee that the
 		// operator manager will terminate immediately, we need to shut down a couple of internal components before
-		// terminating (self monitoring OTel SDK shutdown, token update service shutdown, ...).
+		// terminating (self monitoring OTel SDK shutdown etc.).
 		LeaderElectionReleaseOnCancel: false,
 	})
 	if err != nil {
@@ -524,9 +519,6 @@ func startOperatorManager(
 	}
 	// ^mgr.Start(...) blocks. It only returns when the manager is terminating.
 
-	if tokenUpdateService != nil {
-		tokenUpdateService.Stop(&setupLog)
-	}
 	if oTelSdkStarter != nil {
 		oTelSdkStarter.ShutDown(ctx, &setupLog)
 	}
@@ -548,16 +540,6 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 	webhookServiceName, isSet := os.LookupEnv(webhookServiceNameEnvVarName)
 	if !isSet {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, webhookServiceNameEnvVarName)
-	}
-
-	secretRefResolverDeploymentName, isSet := os.LookupEnv(secretRefResolverDeploymentNameEnvVarName)
-	if !isSet {
-		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, secretRefResolverDeploymentNameEnvVarName)
-	}
-
-	tokenUpdateServicePort, isSet := os.LookupEnv(tokenUpdateServicePortEnvVarName)
-	if !isSet {
-		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, tokenUpdateServicePortEnvVarName)
 	}
 
 	oTelCollectorNamePrefix, isSet := os.LookupEnv(oTelCollectorNamePrefixEnvVarName)
@@ -628,8 +610,6 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 		operatorNamespace:                    operatorNamespace,
 		deploymentName:                       deploymentName,
 		webhookServiceName:                   webhookServiceName,
-		secretRefResolverDeploymentName:      secretRefResolverDeploymentName,
-		tokenUpdateServicePort:               tokenUpdateServicePort,
 		oTelCollectorNamePrefix:              oTelCollectorNamePrefix,
 		operatorImage:                        operatorImage,
 		initContainerImage:                   initContainerImage,
@@ -817,18 +797,17 @@ func startDash0Controllers(
 			persesDashboardCrdReconciler,
 			prometheusRuleCrdReconciler,
 		},
-		Scheme:                          mgr.GetScheme(),
-		Recorder:                        mgr.GetEventRecorderFor("dash0-operator-configuration-controller"),
-		CollectorManager:                collectorManager,
-		PseudoClusterUID:                pseudoClusterUID,
-		OperatorDeploymentNamespace:     operatorDeploymentSelfReference.Namespace,
-		OperatorDeploymentUID:           operatorDeploymentSelfReference.UID,
-		OperatorDeploymentName:          operatorDeploymentSelfReference.Name,
-		OTelSdkStarter:                  oTelSdkStarter,
-		Images:                          images,
-		OperatorNamespace:               envVars.operatorNamespace,
-		SecretRefResolverDeploymentName: envVars.secretRefResolverDeploymentName,
-		DevelopmentMode:                 developmentMode,
+		Scheme:                      mgr.GetScheme(),
+		Recorder:                    mgr.GetEventRecorderFor("dash0-operator-configuration-controller"),
+		CollectorManager:            collectorManager,
+		PseudoClusterUID:            pseudoClusterUID,
+		OperatorDeploymentNamespace: operatorDeploymentSelfReference.Namespace,
+		OperatorDeploymentUID:       operatorDeploymentSelfReference.UID,
+		OperatorDeploymentName:      operatorDeploymentSelfReference.Name,
+		OTelSdkStarter:              oTelSdkStarter,
+		Images:                      images,
+		OperatorNamespace:           envVars.operatorNamespace,
+		DevelopmentMode:             developmentMode,
 	}
 	setupLog.Info("Starting the operator configuration resource reconciler.")
 	if err := operatorConfigurationReconciler.SetupWithManager(mgr); err != nil {
@@ -876,14 +855,6 @@ func startDash0Controllers(
 	}).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the monitoring validation webhook: %w", err)
 	}
-	tokenUpdateService = selfmonitoringapiaccess.NewTokenUpdateService(
-		envVars.tokenUpdateServicePort,
-		[]selfmonitoringapiaccess.AuthTokenClient{
-			oTelSdkStarter,
-			persesDashboardCrdReconciler,
-			prometheusRuleCrdReconciler,
-		})
-	tokenUpdateService.Start(&setupLog)
 
 	oTelSdkStarter.WaitForOTelConfig(
 		[]selfmonitoringapiaccess.SelfMonitoringMetricsClient{
@@ -893,10 +864,17 @@ func startDash0Controllers(
 			prometheusRuleCrdReconciler,
 		},
 	)
+	authTokenClients := []selfmonitoringapiaccess.AuthTokenClient{
+		oTelSdkStarter,
+		persesDashboardCrdReconciler,
+		prometheusRuleCrdReconciler,
+	}
+	operatorConfigurationReconciler.AuthTokenClients = authTokenClients
 
 	triggerSecretRefExchangeAndStartSelfMonitoringIfPossible(
 		ctx,
 		oTelSdkStarter,
+		authTokenClients,
 		operatorConfigurationResource,
 		pseudoClusterUID,
 		images.GetOperatorVersion(),
@@ -1011,6 +989,7 @@ func createOrUpdateAutoOperatorConfigurationResource(
 func triggerSecretRefExchangeAndStartSelfMonitoringIfPossible(
 	ctx context.Context,
 	oTelSdkStarter *selfmonitoringapiaccess.OTelSdkStarter,
+	authTokenClients []selfmonitoringapiaccess.AuthTokenClient,
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	pseudoClusterUID string,
 	operatorVersion string,
@@ -1023,11 +1002,11 @@ func triggerSecretRefExchangeAndStartSelfMonitoringIfPossible(
 	if operatorConfigurationResource.Spec.Export != nil &&
 		operatorConfigurationResource.Spec.Export.Dash0 != nil &&
 		operatorConfigurationResource.Spec.Export.Dash0.Authorization.SecretRef != nil {
-		if err := selfmonitoringapiaccess.ExchangeSecretRefForTokenIfNecessary(
+		if err := selfmonitoringapiaccess.ExchangeSecretRefForToken(
 			ctx,
 			startupTasksK8sClient,
+			authTokenClients,
 			envVars.operatorNamespace,
-			envVars.secretRefResolverDeploymentName,
 			operatorConfigurationResource,
 			&setupLog,
 		); err != nil {

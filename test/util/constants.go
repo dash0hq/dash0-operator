@@ -58,6 +58,8 @@ var (
 	AuthorizationHeaderTest            = fmt.Sprintf("Bearer %s", AuthorizationTokenTest)
 	AuthorizationTokenTestAlternative  = "authorization-token-test-alternative"
 	AuthorizationHeaderTestAlternative = fmt.Sprintf("Bearer %s", AuthorizationTokenTestAlternative)
+	AuthorizationTokenTestFromSecret   = "authorization-token-test-from-secret"
+	AuthorizationHeaderTestFromSecret  = fmt.Sprintf("Bearer %s", AuthorizationTokenTestFromSecret)
 	SecretRefTest                      = dash0v1alpha1.SecretRef{
 		Name: "secret-ref",
 		Key:  "key",

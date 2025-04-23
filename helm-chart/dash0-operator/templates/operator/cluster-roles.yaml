@@ -85,6 +85,16 @@ rules:
   - get
   - list
 
+# Permissions required to resolve the secret with the Dash0 auth token:
+- apiGroups:
+    - ""
+  resources:
+    - secrets
+  verbs:
+    - get
+    - list
+    - watch
+
 # Permissions required to watch Perses dashboard resources:
 - apiGroups:
   - perses.dev

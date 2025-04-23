@@ -5,24 +5,19 @@ package controller
 
 import (
 	"context"
-	"fmt"
-	"reflect"
 	"time"
 
-	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/go-logr/logr"
-	json "github.com/json-iterator/go"
-	"github.com/wI2L/jsondiff"
-	otelmetric "go.opentelemetry.io/otel/metric"
-	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
-	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
@@ -35,45 +30,42 @@ import (
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
-type SelfMonitoringAndApiAccessTestConfig struct {
-	existingSecretRefResolverDeployment               func() *appsv1.Deployment
-	operatorConfigurationResourceSpec                 dash0v1alpha1.Dash0OperatorConfigurationSpec
-	expectedSecretRefResolverDeploymentAfterReconcile func() *appsv1.Deployment
-	expectK8sClientUpdate                             bool
-}
-
 type ApiClientSetRemoveTestConfig struct {
 	operatorConfigurationResourceSpec dash0v1alpha1.Dash0OperatorConfigurationSpec
 	dataset                           string
+	createSecret                      *corev1.Secret
 	expectSetApiEndpointAndDataset    bool
 	expectRemoveApiEndpointAndDataset bool
 	expectSetAuthToken                bool
+	expectedAuthToken                 string
 	expectRemoveAuthToken             bool
 }
 
 type SelfMonitoringTestConfig struct {
-	createExport             func() *dash0v1alpha1.Export
-	selfMonitoringEnabled    bool
-	simulateSecretRefResolve bool
-	expectedSdkIsActive      bool
-	expectHasConfig          bool
-	expectedEndpoint         string
-	expectedProtocol         string
-	expectedHeaders          map[string]string
+	createExport          func() *dash0v1alpha1.Export
+	createSecret          *corev1.Secret
+	selfMonitoringEnabled bool
+	expectedSdkIsActive   bool
+	expectHasConfig       bool
+	expectedEndpoint      string
+	expectedProtocol      string
+	expectedHeaders       map[string]string
 }
 
 var (
 	reconciler                   *OperatorConfigurationReconciler
 	delegatingZapCoreWrapper     *zaputil.DelegatingZapCoreWrapper
+	createdObjects               []client.Object
 	apiClient1                   *DummyApiClient
 	apiClient2                   *DummyApiClient
+	authTokenClient1             *DummyAuthTokenClient
+	authTokenClient2             *DummyAuthTokenClient
 	selfMonitoringMetricsClient1 *DummySelfMonitoringMetricsClient
 	selfMonitoringMetricsClient2 *DummySelfMonitoringMetricsClient
 )
 
 var _ = Describe("The operation configuration resource controller", Ordered, func() {
 	ctx := context.Background()
-	var secretRefResolverDeployment *appsv1.Deployment
 
 	BeforeAll(func() {
 		EnsureTestNamespaceExists(ctx, k8sClient)
@@ -81,136 +73,41 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 	})
 
 	BeforeEach(func() {
+		authTokenClient1 = &DummyAuthTokenClient{}
+		authTokenClient2 = &DummyAuthTokenClient{}
 		apiClient1 = &DummyApiClient{}
 		apiClient2 = &DummyApiClient{}
 		selfMonitoringMetricsClient1 = &DummySelfMonitoringMetricsClient{}
 		selfMonitoringMetricsClient2 = &DummySelfMonitoringMetricsClient{}
 	})
 
-	Describe("updates the secret ref resolver deployment", func() {
-		AfterEach(func() {
-			RemoveOperatorConfigurationResource(ctx, k8sClient)
-			EnsureSecretRefResolverDeploymentDoesNotExist(ctx, k8sClient, secretRefResolverDeployment)
-		})
-
-		DescribeTable("to add or remove the secret ref from the operator configuration resource:", func(config SelfMonitoringAndApiAccessTestConfig) {
-			secretRefResolverDeployment =
-				EnsureSecretRefResolverDeploymentExists(ctx, k8sClient, config.existingSecretRefResolverDeployment())
-			reconciler = createReconciler()
-
-			initialVersion := secretRefResolverDeployment.ResourceVersion
-
-			CreateOperatorConfigurationResourceWithSpec(
-				ctx,
-				k8sClient,
-				config.operatorConfigurationResourceSpec,
-			)
-
-			triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
-			verifyOperatorConfigurationResourceIsAvailable(ctx)
-
-			expectedDeploymentAfterReconcile := config.expectedSecretRefResolverDeploymentAfterReconcile()
-			gomegaTimeout := timeout
-			gomgaWrapper := Eventually
-			if !config.expectK8sClientUpdate {
-				// For test cases where the initial controller deployment is already in the expected state (that is, it
-				// matches what the operator configuration resource says), we use gomega's Consistently instead of
-				// Eventually to make the test meaningful. We need to make sure that we do not update the controller
-				// deployment at all for these cases.
-				gomgaWrapper = Consistently
-				gomegaTimeout = consistentlyTimeout
-			}
-
-			gomgaWrapper(func(g Gomega) {
-				actualDeploymentAfterReconcile := LoadSecretRefResolverDeploymentOrFail(ctx, k8sClient, g)
-
-				expectedSpec := expectedDeploymentAfterReconcile.Spec
-				actualSpec := actualDeploymentAfterReconcile.Spec
-
-				for _, spec := range []*appsv1.DeploymentSpec{&expectedSpec, &actualSpec} {
-					// clean up defaults set by K8s, which are not relevant for the test
-					cleanUpDeploymentSpecForDiff(spec)
-				}
-
-				matchesExpectations := reflect.DeepEqual(expectedSpec, actualSpec)
-				if !matchesExpectations {
-					patch, err := jsondiff.Compare(expectedSpec, actualSpec)
-					g.Expect(err).ToNot(HaveOccurred())
-					humanReadableDiff, err := json.MarshalIndent(patch, "", "  ")
-					g.Expect(err).ToNot(HaveOccurred())
-
-					g.Expect(matchesExpectations).To(
-						BeTrue(),
-						fmt.Sprintf("resulting deployment does not match expectations, here is a JSON patch of the differences:\n%s", humanReadableDiff),
-					)
-				}
-
-				if !config.expectK8sClientUpdate {
-					// make sure we did not execute an unnecessary update
-					g.Expect(actualDeploymentAfterReconcile.ResourceVersion).To(Equal(initialVersion))
-				} else {
-					g.Expect(actualDeploymentAfterReconcile.ResourceVersion).ToNot(Equal(initialVersion))
-				}
-
-			}, gomegaTimeout, pollingInterval).Should(Succeed())
-		},
-
-			// | previous deployment state | operator config res | expected deployment afterwards     |
-			// |---------------------------|---------------------|------------------------------------|
-			// | no secret ref env var     | no secret ref       | no secret ref env var (no change)  |
-			// | no secret ref env var     | has secret ref      | has secret ref env var (add)       |
-			// | has secret ref env var    | no secret ref       | no secret ref env var (remove)     |
-			// | has secret ref env var    | has secret ref      | has secret ref env var (no change) |
-
-			// | no secret ref env var     | no secret ref       | no secret ref env var (no change)  |
-			Entry("no secret ref env var -> no secret ref env var", SelfMonitoringAndApiAccessTestConfig{
-				existingSecretRefResolverDeployment:               CreateSecretRefResolverDeploymentWithoutSecretRefEnvVar,
-				operatorConfigurationResourceSpec:                 OperatorConfigurationResourceWithoutSelfMonitoringWithoutAuth,
-				expectedSecretRefResolverDeploymentAfterReconcile: CreateSecretRefResolverDeploymentWithoutSecretRefEnvVar,
-				expectK8sClientUpdate:                             false,
-			}),
-
-			// | no secret ref env var     | has secret ref      | has secret ref env var  (add)      |
-			Entry("no secret ref env var -> has secret ref env var (add)", SelfMonitoringAndApiAccessTestConfig{
-				existingSecretRefResolverDeployment:               CreateSecretRefResolverDeploymentWithoutSecretRefEnvVar,
-				operatorConfigurationResourceSpec:                 OperatorConfigurationResourceDash0ExportWithoutApiEndpointWithSecretRef,
-				expectedSecretRefResolverDeploymentAfterReconcile: CreateSecretRefResolverDeploymentWithSecretRefEnvVar,
-				expectK8sClientUpdate:                             true,
-			}),
-
-			// | has secret ref env var    | no secret ref       | no secret ref env var (remove)     |
-			Entry("has secret ref env var -> no secret ref env var (remove)", SelfMonitoringAndApiAccessTestConfig{
-				existingSecretRefResolverDeployment:               CreateSecretRefResolverDeploymentWithSecretRefEnvVar,
-				operatorConfigurationResourceSpec:                 OperatorConfigurationResourceWithoutSelfMonitoringWithoutAuth,
-				expectedSecretRefResolverDeploymentAfterReconcile: CreateSecretRefResolverDeploymentWithoutSecretRefEnvVar,
-				expectK8sClientUpdate:                             true,
-			}),
-
-			// | has secret ref env var    | has secret ref      | has secret ref env var (no change) |
-			Entry("has secret ref env var -> has secret ref env var (no change)", SelfMonitoringAndApiAccessTestConfig{
-				existingSecretRefResolverDeployment:               CreateSecretRefResolverDeploymentWithSecretRefEnvVar,
-				operatorConfigurationResourceSpec:                 OperatorConfigurationResourceDash0ExportWithoutApiEndpointWithSecretRef,
-				expectedSecretRefResolverDeploymentAfterReconcile: CreateSecretRefResolverDeploymentWithSecretRefEnvVar,
-				expectK8sClientUpdate:                             false,
-			}),
-		)
+	AfterEach(func() {
+		for _, apiClient := range []*DummyApiClient{apiClient1, apiClient2} {
+			apiClient.Reset()
+		}
+		for _, authTokenClient := range []*DummyAuthTokenClient{authTokenClient1, authTokenClient2} {
+			authTokenClient.Reset()
+		}
+		for _, selfMonitoringMetricsClient := range []*DummySelfMonitoringMetricsClient{
+			selfMonitoringMetricsClient1,
+			selfMonitoringMetricsClient2,
+		} {
+			selfMonitoringMetricsClient.Reset()
+		}
+		createdObjects = DeleteAllCreatedObjects(ctx, k8sClient, createdObjects)
 	})
 
-	Describe("updates all registered API clients", func() {
-		BeforeAll(func() {
-			secretRefResolverDeployment = CreateSecretRefResolverDeploymentWithoutSecretRefEnvVar()
-			EnsureSecretRefResolverDeploymentExists(ctx, k8sClient, secretRefResolverDeployment)
-		})
-
-		AfterAll(func() {
-			EnsureSecretRefResolverDeploymentDoesNotExist(ctx, k8sClient, secretRefResolverDeployment)
-		})
-
+	Describe("updates all registered API and auth token clients", func() {
 		AfterEach(func() {
 			RemoveOperatorConfigurationResource(ctx, k8sClient)
 		})
 
-		DescribeTable("by settings or removing the API config", func(config ApiClientSetRemoveTestConfig) {
+		DescribeTable("when setting or removing the API config or authorization", func(config ApiClientSetRemoveTestConfig) {
+			if config.createSecret != nil {
+				Expect(k8sClient.Create(ctx, config.createSecret)).To(Succeed())
+				createdObjects = append(createdObjects, config.createSecret)
+			}
+
 			reconciler = createReconciler()
 			operatorConfigurationResource := CreateOperatorConfigurationResourceWithSpec(
 				ctx,
@@ -241,20 +138,20 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 					Expect(apiClient.removeApiEndpointCalls).To(Equal(1))
 					Expect(apiClient.apiConfig).To(BeNil())
 				}
+			}
+			for _, authTokenClient := range []*DummyAuthTokenClient{authTokenClient1, authTokenClient2} {
 				if config.expectSetAuthToken {
-					Expect(apiClient.setAuthTokenCalls).To(Equal(1))
-					Expect(apiClient.removeAuthTokenCalls).To(Equal(0))
-					Expect(apiClient.authToken).To(Equal(AuthorizationTokenTest))
+					Expect(authTokenClient.SetAuthTokenCalls).To(Equal(1))
+					Expect(authTokenClient.RemoveAuthTokenCalls).To(Equal(0))
 				}
 				if config.expectRemoveAuthToken {
-					Expect(apiClient.setAuthTokenCalls).To(Equal(0))
-					Expect(apiClient.removeAuthTokenCalls).To(Equal(1))
-					Expect(apiClient.authToken).To(Equal(""))
+					Expect(authTokenClient.SetAuthTokenCalls).To(Equal(0))
+					Expect(authTokenClient.RemoveAuthTokenCalls).To(Equal(1))
 				}
+				Expect(authTokenClient.AuthToken).To(Equal(config.expectedAuthToken))
 			}
 		},
 
-			// | no Dash0 export                           | remove         |
 			Entry("no API endpoint, no Dash0 export", ApiClientSetRemoveTestConfig{
 				operatorConfigurationResourceSpec: OperatorConfigurationResourceWithoutExport,
 				expectSetApiEndpointAndDataset:    false,
@@ -262,70 +159,63 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				expectSetAuthToken:                false,
 				expectRemoveAuthToken:             true,
 			}),
-			// | no API endpoint, token                    | remove         |
 			Entry("no API endpoint, Dash0 export with token", ApiClientSetRemoveTestConfig{
 				operatorConfigurationResourceSpec: OperatorConfigurationResourceDash0ExportWithoutApiEndpointWithToken,
 				expectSetApiEndpointAndDataset:    false,
 				expectRemoveApiEndpointAndDataset: true,
 				expectSetAuthToken:                true,
+				expectedAuthToken:                 AuthorizationTokenTest,
 				expectRemoveAuthToken:             false,
 			}),
-			// | no API endpoint, secret ref               | remove         |
 			Entry("no API endpoint, Dash0 export with secret ref", ApiClientSetRemoveTestConfig{
+				createSecret:                      DefaultSecret(),
 				operatorConfigurationResourceSpec: OperatorConfigurationResourceDash0ExportWithoutApiEndpointWithSecretRef,
 				expectSetApiEndpointAndDataset:    false,
 				expectRemoveApiEndpointAndDataset: true,
-				expectSetAuthToken:                false,
+				expectSetAuthToken:                true,
+				expectedAuthToken:                 AuthorizationTokenTestFromSecret,
 				expectRemoveAuthToken:             false,
 			}),
-			// | API endpoint, token                       | set            |
 			Entry("API endpoint, Dash0 export with token", ApiClientSetRemoveTestConfig{
 				operatorConfigurationResourceSpec: OperatorConfigurationResourceDash0ExportWithApiEndpointWithToken,
 				expectSetApiEndpointAndDataset:    true,
 				expectRemoveApiEndpointAndDataset: false,
 				expectSetAuthToken:                true,
+				expectedAuthToken:                 AuthorizationTokenTest,
 				expectRemoveAuthToken:             false,
 			}),
-			// | API endpoint, secret ref                  | set            |
 			Entry("API endpoint, Dash0 export with secret ref", ApiClientSetRemoveTestConfig{
 				operatorConfigurationResourceSpec: OperatorConfigurationResourceDash0ExportWithApiEndpointWithSecretRef,
+				createSecret:                      DefaultSecret(),
 				expectSetApiEndpointAndDataset:    true,
 				expectRemoveApiEndpointAndDataset: false,
-				expectSetAuthToken:                false,
+				expectSetAuthToken:                true,
+				expectedAuthToken:                 AuthorizationTokenTestFromSecret,
 				expectRemoveAuthToken:             false,
 			}),
-			// | API endpoint, token, custom dataset       | set            |
 			Entry("API endpoint, Dash0 export with token, custom dataset", ApiClientSetRemoveTestConfig{
 				operatorConfigurationResourceSpec: OperatorConfigurationResourceDash0ExportWithApiEndpointWithToken,
 				dataset:                           "custom-dataset",
 				expectSetApiEndpointAndDataset:    true,
 				expectRemoveApiEndpointAndDataset: false,
 				expectSetAuthToken:                true,
+				expectedAuthToken:                 AuthorizationTokenTest,
 				expectRemoveAuthToken:             false,
 			}),
-			// | API endpoint, secret ref, custom dataset  | set            |
 			Entry("API endpoint, Dash0 export with secret ref, custom dataset", ApiClientSetRemoveTestConfig{
 				operatorConfigurationResourceSpec: OperatorConfigurationResourceDash0ExportWithApiEndpointWithSecretRef,
 				dataset:                           "custom-dataset",
+				createSecret:                      DefaultSecret(),
 				expectSetApiEndpointAndDataset:    true,
 				expectRemoveApiEndpointAndDataset: false,
-				expectSetAuthToken:                false,
+				expectSetAuthToken:                true,
+				expectedAuthToken:                 AuthorizationTokenTestFromSecret,
 				expectRemoveAuthToken:             false,
 			}),
 		)
 	})
 
 	Describe("when creating the operator configuration resource", func() {
-
-		BeforeAll(func() {
-			secretRefResolverDeployment = CreateSecretRefResolverDeploymentWithoutSecretRefEnvVar()
-			EnsureSecretRefResolverDeploymentExists(ctx, k8sClient, secretRefResolverDeployment)
-		})
-
-		AfterAll(func() {
-			EnsureSecretRefResolverDeploymentDoesNotExist(ctx, k8sClient, secretRefResolverDeployment)
-		})
-
 		BeforeEach(func() {
 			reconciler = createReconciler()
 		})
@@ -356,6 +246,11 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 
 			DescribeTable("it starts the OTel SDK for self-monitoring in the operator manager deployment",
 				func(config SelfMonitoringTestConfig) {
+					if config.createSecret != nil {
+						Expect(k8sClient.Create(ctx, config.createSecret)).To(Succeed())
+						createdObjects = append(createdObjects, config.createSecret)
+					}
+
 					CreateOperatorConfigurationResourceWithSpec(
 						ctx,
 						k8sClient,
@@ -374,15 +269,6 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 					})
 					triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
 					verifyOperatorConfigurationResourceIsAvailable(ctx)
-
-					go func() {
-						time.Sleep(30 * time.Millisecond)
-						if config.simulateSecretRefResolve {
-							ctx := context.Background()
-							logger := log.FromContext(ctx)
-							reconciler.OTelSdkStarter.SetAuthToken(ctx, AuthorizationTokenTest, &logger)
-						}
-					}()
 
 					Eventually(func(g Gomega) {
 						sdkIsActive, activeOTelSdkConfig, _ :=
@@ -409,10 +295,10 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 						} {
 							if config.expectedSdkIsActive {
 								g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
-								g.Expect(smc.initializeSelfMonitoringMetrics).To(Equal(1))
+								g.Expect(smc.InitializeSelfMonitoringMetricsCalls).To(Equal(1))
 							} else {
 								g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeFalse())
-								g.Expect(smc.initializeSelfMonitoringMetrics).To(Equal(0))
+								g.Expect(smc.InitializeSelfMonitoringMetricsCalls).To(Equal(0))
 							}
 						}
 					}, 1*time.Second, pollingInterval).Should(Succeed())
@@ -448,15 +334,15 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 					},
 				}),
 				Entry("with a Dash0 export with a secret ref", SelfMonitoringTestConfig{
-					createExport:             Dash0ExportWithEndpointAndSecretRef,
-					selfMonitoringEnabled:    true,
-					simulateSecretRefResolve: true,
-					expectedSdkIsActive:      true,
-					expectHasConfig:          true,
-					expectedEndpoint:         EndpointDash0Test,
-					expectedProtocol:         common.ProtocolGrpc,
+					createExport:          Dash0ExportWithEndpointAndSecretRef,
+					createSecret:          DefaultSecret(),
+					selfMonitoringEnabled: true,
+					expectedSdkIsActive:   true,
+					expectHasConfig:       true,
+					expectedEndpoint:      EndpointDash0Test,
+					expectedProtocol:      common.ProtocolGrpc,
 					expectedHeaders: map[string]string{
-						util.AuthorizationHeaderName: AuthorizationHeaderTest,
+						util.AuthorizationHeaderName: AuthorizationHeaderTestFromSecret,
 					},
 				}),
 				Entry("with a Grpc export", SelfMonitoringTestConfig{
@@ -486,15 +372,6 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 	})
 
 	Describe("when updating or deleting the existing operator configuration resource", func() {
-
-		BeforeAll(func() {
-			secretRefResolverDeployment = CreateSecretRefResolverDeploymentWithoutSecretRefEnvVar()
-			EnsureSecretRefResolverDeploymentExists(ctx, k8sClient, secretRefResolverDeployment)
-		})
-
-		AfterAll(func() {
-			EnsureSecretRefResolverDeploymentDoesNotExist(ctx, k8sClient, secretRefResolverDeployment)
-		})
 
 		BeforeEach(func() {
 			reconciler = createReconciler()
@@ -527,6 +404,8 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				g.Expect(sdkIsActive).To(BeTrue())
 				g.Expect(activeOTelSdkConfig).ToNot(BeNil())
 			}, 1*time.Second, pollingInterval).Should(Succeed())
+
+			resetCallCounts()
 		})
 
 		AfterEach(func() {
@@ -599,9 +478,6 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 		})
 
 		It("restarts the OTel SDK when it is already running and there is a configuration change", func() {
-			for _, apiClient := range []*DummyApiClient{apiClient1, apiClient2} {
-				apiClient.ResetCallCounts()
-			}
 
 			// update operator configuration, but do not disable self-monitoring, only change endpoint, dataset and
 			// token
@@ -620,8 +496,9 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 			triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
 			verifyOperatorConfigurationResourceIsAvailable(ctx)
 
-			for _, apiClient := range []*DummyApiClient{apiClient1, apiClient2} {
-				Expect(apiClient.setAuthTokenCalls).To(Equal(1))
+			for _, authTokenClient := range []*DummyAuthTokenClient{authTokenClient1, authTokenClient2} {
+				Expect(authTokenClient.SetAuthTokenCalls).To(Equal(1))
+				Expect(authTokenClient.AuthToken).To(Equal(AuthorizationTokenTestAlternative))
 			}
 
 			// Verify the OTel SDK has been restarted - well, within this test case we can not actually verify that the
@@ -647,9 +524,6 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 		})
 
 		It("shuts down the OTel SDK and removes config values from API clients when the operator configuration resource is deleted", func() {
-			for _, apiClient := range []*DummyApiClient{apiClient1, apiClient2} {
-				apiClient.ResetCallCounts()
-			}
 			resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 
@@ -658,10 +532,13 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 
 			for _, apiClient := range []*DummyApiClient{apiClient1, apiClient2} {
 				Expect(apiClient.setApiEndpointCalls).To(Equal(0))
-				Expect(apiClient.setAuthTokenCalls).To(Equal(0))
 				Expect(apiClient.removeApiEndpointCalls).To(Equal(1))
-				Expect(apiClient.removeAuthTokenCalls).To(Equal(1))
 				Expect(apiClient.apiConfig).To(BeNil())
+			}
+			for _, authTokenClient := range []*DummyAuthTokenClient{authTokenClient1, authTokenClient2} {
+				Expect(authTokenClient.SetAuthTokenCalls).To(Equal(0))
+				Expect(authTokenClient.RemoveAuthTokenCalls).To(Equal(1))
+				Expect(authTokenClient.AuthToken).To(Equal(""))
 			}
 
 			Eventually(func(g Gomega) {
@@ -698,21 +575,6 @@ func verifyOperatorManagerResourceAttributes(g Gomega, oTelSdkConfig *common.OTe
 	g.Expect(oTelSdkConfig.ContainerName).To(Equal("operator-manager"))
 }
 
-func cleanUpDeploymentSpecForDiff(spec *appsv1.DeploymentSpec) {
-	for i := range spec.Template.Spec.Containers {
-		spec.Template.Spec.Containers[i].TerminationMessagePath = ""
-		spec.Template.Spec.Containers[i].TerminationMessagePolicy = ""
-		spec.Template.Spec.Containers[i].ImagePullPolicy = ""
-	}
-	spec.Template.Spec.RestartPolicy = ""
-	spec.Template.Spec.DNSPolicy = ""
-	spec.Template.Spec.DeprecatedServiceAccount = ""
-	spec.Template.Spec.SchedulerName = ""
-	spec.Strategy = appsv1.DeploymentStrategy{}
-	spec.RevisionHistoryLimit = nil
-	spec.ProgressDeadlineSeconds = nil
-}
-
 func createReconciler() *OperatorConfigurationReconciler {
 	oTelColResourceManager := &otelcolresources.OTelColResourceManager{
 		Client:                    k8sClient,
@@ -737,17 +599,21 @@ func createReconciler() *OperatorConfigurationReconciler {
 			apiClient1,
 			apiClient2,
 		},
-		CollectorManager:                collectorManager,
-		PseudoClusterUID:                ClusterUIDTest,
-		OperatorDeploymentNamespace:     OperatorManagerDeployment.Namespace,
-		OperatorDeploymentUID:           OperatorManagerDeployment.UID,
-		OperatorDeploymentName:          OperatorManagerDeployment.Name,
-		OperatorManagerPodName:          OperatorPodName,
-		OTelSdkStarter:                  otelSdkStarter,
-		DanglingEventsTimeouts:          &DanglingEventsTimeoutsTest,
-		Images:                          TestImages,
-		OperatorNamespace:               OperatorNamespace,
-		SecretRefResolverDeploymentName: SecretRefResolverDeploymentName,
+		AuthTokenClients: []selfmonitoringapiaccess.AuthTokenClient{
+			otelSdkStarter,
+			authTokenClient1,
+			authTokenClient2,
+		},
+		CollectorManager:            collectorManager,
+		PseudoClusterUID:            ClusterUIDTest,
+		OperatorDeploymentNamespace: OperatorManagerDeployment.Namespace,
+		OperatorDeploymentUID:       OperatorManagerDeployment.UID,
+		OperatorDeploymentName:      OperatorManagerDeployment.Name,
+		OperatorManagerPodName:      OperatorPodName,
+		OTelSdkStarter:              otelSdkStarter,
+		DanglingEventsTimeouts:      &DanglingEventsTimeoutsTest,
+		Images:                      TestImages,
+		OperatorNamespace:           OperatorNamespace,
 	}
 }
 
@@ -779,13 +645,25 @@ func verifyOperatorConfigurationResourceIsAvailable(ctx context.Context) {
 	}, timeout, pollingInterval).Should(Succeed())
 }
 
+func resetCallCounts() {
+	for _, apiClient := range []*DummyApiClient{apiClient1, apiClient2} {
+		apiClient.ResetCallCounts()
+	}
+	for _, authTokenClient := range []*DummyAuthTokenClient{authTokenClient1, authTokenClient2} {
+		authTokenClient.ResetCallCounts()
+	}
+	for _, selfMonitoringMetricsClient := range []*DummySelfMonitoringMetricsClient{
+		selfMonitoringMetricsClient1,
+		selfMonitoringMetricsClient2,
+	} {
+		selfMonitoringMetricsClient.ResetCallCounts()
+	}
+}
+
 type DummyApiClient struct {
 	setApiEndpointCalls    int
 	removeApiEndpointCalls int
 	apiConfig              *ApiConfig
-	setAuthTokenCalls      int
-	removeAuthTokenCalls   int
-	authToken              string
 }
 
 func (c *DummyApiClient) SetApiEndpointAndDataset(_ context.Context, apiConfig *ApiConfig, _ *logr.Logger) {
@@ -798,27 +676,12 @@ func (c *DummyApiClient) RemoveApiEndpointAndDataset(_ context.Context, _ *logr.
 	c.apiConfig = nil
 }
 
-func (c *DummyApiClient) SetAuthToken(_ context.Context, authToken string, _ *logr.Logger) {
-	c.setAuthTokenCalls++
-	c.authToken = authToken
-}
-
-func (c *DummyApiClient) RemoveAuthToken(_ context.Context, _ *logr.Logger) {
-	c.removeAuthTokenCalls++
-	c.authToken = ""
+func (c *DummyApiClient) Reset() {
+	c.ResetCallCounts()
+	c.apiConfig = nil
 }
 
 func (c *DummyApiClient) ResetCallCounts() {
 	c.setApiEndpointCalls = 0
 	c.removeApiEndpointCalls = 0
-	c.setAuthTokenCalls = 0
-	c.removeAuthTokenCalls = 0
-}
-
-type DummySelfMonitoringMetricsClient struct {
-	initializeSelfMonitoringMetrics int
-}
-
-func (c *DummySelfMonitoringMetricsClient) InitializeSelfMonitoringMetrics(_ otelmetric.Meter, _ string, _ *logr.Logger) {
-	c.initializeSelfMonitoringMetrics++
 }

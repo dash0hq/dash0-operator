@@ -166,9 +166,6 @@ operator:
   # the port for the admission webhook service which instruments new workloads at deploy time
   webhookPort: 443
 
-  # the port for the token update service
-  tokenUpdatePort: 10443
-
   # the container image to use for the operator manager component (there should usually be no reason to override this)
   image:
     # Use a different image entirely. Note that Dash0 does not offer support for Dash0 operator setups that do not use
@@ -188,17 +185,6 @@ operator:
     # setups that do not use Dash0's official init container image.
     repository: "ghcr.io/dash0hq/instrumentation"
     # overrides the image tag, which defaults to the chart appVersion.
-    tag:
-    # pull image by digest instead of tag; if this is set, the tag value will be ignored
-    digest:
-    # override the default image pull policy
-    pullPolicy:
-
-  secretRefResolverImage:
-    # Use a different image entirely. Note that Dash0 does not offer support for Dash0 operator setups that do not use
-    # Dash0's official images.
-    repository: "ghcr.io/dash0hq/secret-ref-resolver"
-    # overrides the image tag, which defaults to the chart appVersion
     tag:
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:

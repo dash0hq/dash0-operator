@@ -95,10 +95,6 @@ determine_container_images() {
   filelog_offset_sync_img_tag="latest"
   filelog_offset_sync_img_digest=""
   filelog_offset_sync_img_pull_policy="Never"
-  secret_ref_resolver_img_repository="secret-ref-resolver"
-  secret_ref_resolver_img_tag="latest"
-  secret_ref_resolver_img_digest=""
-  secret_ref_resolver_img_pull_policy="Never"
 
   operator_helm_chart=${OPERATOR_HELM_CHART:-helm-chart/dash0-operator}
 
@@ -122,9 +118,6 @@ determine_container_images() {
     filelog_offset_sync_img_repository=""
     filelog_offset_sync_img_tag=""
     filelog_offset_sync_img_pull_policy=""
-    secret_ref_resolver_img_repository=""
-    secret_ref_resolver_img_tag=""
-    secret_ref_resolver_img_pull_policy=""
   fi
 
   if [[ -n "${CONTROLLER_IMG_REPOSITORY:-}" ]]; then
@@ -192,19 +185,6 @@ determine_container_images() {
     filelog_offset_sync_img_pull_policy="$FILELOG_OFFSET_SYNC_IMG_PULL_POLICY"
   fi
 
-  if [[ -n "${SECRET_REF_RESOLVER_IMG_REPOSITORY:-}" ]]; then
-    secret_ref_resolver_img_repository="$SECRET_REF_RESOLVER_IMG_REPOSITORY"
-  fi
-  if [[ -n "${SECRET_REF_RESOLVER_IMG_TAG:-}" ]]; then
-    secret_ref_resolver_img_tag="$SECRET_REF_RESOLVER_IMG_TAG"
-  fi
-  if [[ -n "${SECRET_REF_RESOLVER_IMG_DIGEST:-}" ]]; then
-    secret_ref_resolver_img_digest="$SECRET_REF_RESOLVER_IMG_DIGEST"
-  fi
-  if [[ -n "${SECRET_REF_RESOLVER_IMG_PULL_POLICY:-}" ]]; then
-    secret_ref_resolver_img_pull_policy="$SECRET_REF_RESOLVER_IMG_PULL_POLICY"
-  fi
-
   if [[ "$is_local_helm_chart" = "true" ]]; then
     # support using the local helm chart with remote images
     if [[ $(is_remote_image "$controller_img_repository") = "true" ]]; then
@@ -222,9 +202,6 @@ determine_container_images() {
     if [[ $(is_remote_image "$filelog_offset_sync_img_repository") = "true" ]]; then
       filelog_offset_sync_img_pull_policy=""
     fi
-    if [[ $(is_remote_image "$secret_ref_resolver_img_repository") = "true" ]]; then
-      secret_ref_resolver_img_pull_policy=""
-    fi
   fi
 }
 
@@ -238,8 +215,6 @@ build_all_images() {
     CONFIGURATION_RELOADER_IMG_TAG="$configuration_reloader_img_tag" \
     FILELOG_OFFSET_SYNC_IMG_REPOSITORY=$filelog_offset_sync_img_repository \
     FILELOG_OFFSET_SYNC_IMG_TAG="$filelog_offset_sync_img_tag" \
-    SECRET_REF_RESOLVER_IMG_REPOSITORY=$secret_ref_resolver_img_repository \
-    SECRET_REF_RESOLVER_IMG_TAG="$secret_ref_resolver_img_tag" \
     make docker-build
 
   if [[ "$is_kind_cluster" == "true" ]]; then
@@ -248,7 +223,6 @@ build_all_images() {
       --name $cluster \
       operator-controller:latest \
       instrumentation:latest \
-      secret-ref-resolver:latest \
       collector:latest \
       configuration-reloader:latest \
       filelog-offset-sync:latest
@@ -378,19 +352,6 @@ run_helm() {
   fi
   if [[ -n "$filelog_offset_sync_img_pull_policy" ]]; then
     helm_install_command+=" --set operator.filelogOffsetSyncImage.pullPolicy=$filelog_offset_sync_img_pull_policy"
-  fi
-
-  if [[ -n "$secret_ref_resolver_img_repository" ]]; then
-    helm_install_command+=" --set operator.secretRefResolverImage.repository=$secret_ref_resolver_img_repository"
-  fi
-  if [[ -n "$secret_ref_resolver_img_tag" ]]; then
-    helm_install_command+=" --set operator.secretRefResolverImage.tag=$secret_ref_resolver_img_tag"
-  fi
-  if [[ -n "$secret_ref_resolver_img_digest" ]]; then
-    helm_install_command+=" --set operator.secretRefResolverImage.digest=$secret_ref_resolver_img_digest"
-  fi
-  if [[ -n "$secret_ref_resolver_img_pull_policy" ]]; then
-    helm_install_command+=" --set operator.secretRefResolverImage.pullPolicy=$secret_ref_resolver_img_pull_policy"
   fi
 
   # Deploy an operator configuration right away.

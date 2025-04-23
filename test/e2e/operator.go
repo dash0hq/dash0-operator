@@ -144,14 +144,6 @@ func addOptionalHelmParameters(arguments []string, images Images) []string {
 	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.digest", images.instrumentation.digest)
 	arguments = setIfNotEmpty(arguments, "operator.initContainerImage.pullPolicy", images.instrumentation.pullPolicy)
 
-	arguments = setIfNotEmpty(arguments, "operator.secretRefResolverImage.repository",
-		images.secretRefResolver.repository)
-	arguments = setIfNotEmpty(arguments, "operator.secretRefResolverImage.tag", images.secretRefResolver.tag)
-	arguments = setIfNotEmpty(arguments, "operator.secretRefResolverImage.digest",
-		images.secretRefResolver.digest)
-	arguments = setIfNotEmpty(arguments, "operator.secretRefResolverImage.pullPolicy",
-		images.secretRefResolver.pullPolicy)
-
 	arguments = setIfNotEmpty(arguments, "operator.collectorImage.repository", images.collector.repository)
 	arguments = setIfNotEmpty(arguments, "operator.collectorImage.tag", images.collector.tag)
 	arguments = setIfNotEmpty(arguments, "operator.collectorImage.digest", images.collector.digest)

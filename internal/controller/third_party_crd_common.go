@@ -54,8 +54,6 @@ type ApiConfig struct {
 type ApiClient interface {
 	SetApiEndpointAndDataset(context.Context, *ApiConfig, *logr.Logger)
 	RemoveApiEndpointAndDataset(context.Context, *logr.Logger)
-	SetAuthToken(context.Context, string, *logr.Logger)
-	RemoveAuthToken(context.Context, *logr.Logger)
 }
 
 type ThirdPartyCrdReconciler interface {
