@@ -7,6 +7,7 @@ import (
 	"context"
 	"slices"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
@@ -285,5 +286,17 @@ func RemoveOperatorConfigurationResourceByName(
 		name,
 	); resource != nil {
 		Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+	}
+}
+
+func DefaultSecret() *corev1.Secret {
+	return &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: OperatorNamespace,
+			Name:      "secret-ref",
+		},
+		Data: map[string][]byte{
+			"key": []byte(AuthorizationTokenTestFromSecret),
+		},
 	}
 }

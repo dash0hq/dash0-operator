@@ -152,17 +152,6 @@ jobs:
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/instrumentation
           context: images/instrumentation
 
-      - name: build secret ref resolver image
-        uses: ./.github/actions/build-image
-        with:
-          githubToken: ${{ secrets.GITHUB_TOKEN }}
-          imageName: secret-ref-resolver
-          imageTitle: Dash0 Kubernetes Secret Ref Resolver
-          imageDescription: the secret ref resolver for the Dash0 operator for Kubernetes
-          imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/secretrefresolver
-          context: images
-          file: images/secretrefresolver/Dockerfile
-
       - name: build collector image
         uses: ./.github/actions/build-image
         with:

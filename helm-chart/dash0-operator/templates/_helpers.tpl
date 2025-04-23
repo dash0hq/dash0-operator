@@ -55,26 +55,9 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 {{ include "dash0-operator.chartName" . }}-webhook-service
 {{- end }}
 
-{{- define "dash0-operator.tokenUpdateServiceName" -}}
-{{ include "dash0-operator.chartName" . }}-token-update
-{{- end }}
-
-{{- define "dash0-operator.tokenUpdateServiceServerName" -}}
-{{ include "dash0-operator.tokenUpdateServiceName" . }}.{{ .Release.Namespace }}.svc
-{{- end }}
-
-{{- define "dash0-operator.tokenUpdateServiceUrl" -}}
-https://{{ include "dash0-operator.tokenUpdateServiceServerName" . }}:{{ .Values.operator.tokenUpdatePort }}
-{{- end }}
-
 {{/* the controller manager container image */}}
 {{- define "dash0-operator.image" -}}
 {{- include "dash0-operator.imageRef" (dict "image" .Values.operator.image "context" .) -}}
-{{- end }}
-
-{{/* the secret ref resolver container image */}}
-{{- define "dash0-operator.secretRefResolverImage" -}}
-{{- include "dash0-operator.imageRef" (dict "image" .Values.operator.secretRefResolverImage "context" .) -}}
 {{- end }}
 
 {{/* the init container image */}}
@@ -122,8 +105,4 @@ securityContext:
   runAsNonRoot: true
   seccompProfile:
     type: RuntimeDefault
-{{- end }}
-
-{{- define "dash0-operator.secretRefResolverDeploymentName" -}}
-{{ include "dash0-operator.chartName" . }}-secret-ref-resolver
 {{- end }}

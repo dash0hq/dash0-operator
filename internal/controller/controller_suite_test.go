@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"runtime"
-	"testing"
 	"time"
 
 	persesv1alpha1 "github.com/perses/perses-operator/api/v1alpha1"
@@ -17,15 +16,17 @@ import (
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+
+	"testing"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/format"
+	"sigs.k8s.io/controller-runtime/pkg/envtest"
 )
 
 const (
@@ -68,8 +69,6 @@ var _ = BeforeSuite(func() {
 
 	Expect(dash0v1alpha1.AddToScheme(scheme.Scheme)).To(Succeed())
 	Expect(persesv1alpha1.AddToScheme(scheme.Scheme)).To(Succeed())
-
-	//+kubebuilder:scaffold:scheme
 
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	Expect(err).NotTo(HaveOccurred())

@@ -6,7 +6,10 @@ package selfmonitoringapiaccess
 import (
 	"context"
 
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
@@ -19,7 +22,7 @@ import (
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
-var _ = Describe("self monitoring config conversions", Ordered, func() {
+var _ = Describe("self monitoring and API access", Ordered, func() {
 
 	ctx := context.Background()
 	logger := ptr.To(log.FromContext(ctx))
@@ -684,6 +687,131 @@ var _ = Describe("self monitoring config conversions", Ordered, func() {
 `,
 				},
 			),
+		)
+	})
+
+	Describe("resolve secret ref to auth token", func() {
+		type exchangeTestConfig struct {
+			operatorConfiguration      *dash0v1alpha1.Dash0OperatorConfiguration
+			secret                     *corev1.Secret
+			expectedError              string
+			expectAuthToken            string
+			expectSetAuthTokenCalls    int
+			expectRemoveAuthTokenCalls int
+		}
+
+		var (
+			authTokenClient1 = &DummyAuthTokenClient{}
+			authTokenClient2 = &DummyAuthTokenClient{}
+			dummyClients     = []*DummyAuthTokenClient{
+				authTokenClient1,
+				authTokenClient2,
+			}
+			createdObjects []client.Object
+		)
+
+		BeforeEach(func() {
+			for _, c := range dummyClients {
+				c.Reset()
+			}
+		})
+
+		AfterEach(func() {
+			createdObjects = DeleteAllCreatedObjects(ctx, k8sClient, createdObjects)
+		})
+
+		DescribeTable("should fetch and decode the auth token", func(testConfig exchangeTestConfig) {
+			if testConfig.secret != nil {
+				EnsureOperatorNamespaceExists(ctx, k8sClient)
+				Expect(k8sClient.Create(ctx, testConfig.secret)).To(Succeed())
+				createdObjects = append(createdObjects, testConfig.secret)
+			}
+			err := ExchangeSecretRefForToken(
+				ctx,
+				k8sClient,
+				[]AuthTokenClient{
+					authTokenClient1,
+					authTokenClient2,
+				},
+				OperatorNamespace,
+				testConfig.operatorConfiguration,
+				logger,
+			)
+			if testConfig.expectedError != "" {
+				Expect(err).To(HaveOccurred())
+				Expect(err).To(MatchError(testConfig.expectedError))
+			} else {
+				Expect(err).ToNot(HaveOccurred())
+			}
+
+			for _, c := range dummyClients {
+				Expect(c.AuthToken).To(Equal(testConfig.expectAuthToken))
+				Expect(c.SetAuthTokenCalls).To(Equal(testConfig.expectSetAuthTokenCalls))
+				Expect(c.RemoveAuthTokenCalls).To(Equal(testConfig.expectRemoveAuthTokenCalls))
+			}
+		},
+			Entry("should error if the operator configuration is nil", exchangeTestConfig{
+				operatorConfiguration:      nil,
+				expectedError:              "operatorConfiguration is nil",
+				expectRemoveAuthTokenCalls: 1,
+			}),
+			Entry("should error if the operator configuration has no export", exchangeTestConfig{
+				operatorConfiguration:      &dash0v1alpha1.Dash0OperatorConfiguration{},
+				expectedError:              "operatorConfiguration has no export",
+				expectRemoveAuthTokenCalls: 1,
+			}),
+			Entry("should error if the operator configuration has no Dash0 export", exchangeTestConfig{
+				operatorConfiguration: &dash0v1alpha1.Dash0OperatorConfiguration{
+					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						Export: &dash0v1alpha1.Export{},
+					},
+				},
+				expectedError:              "operatorConfiguration has no Dash0 export",
+				expectRemoveAuthTokenCalls: 1,
+			}),
+			Entry("should error if the operator configuration has no secret ref", exchangeTestConfig{
+				operatorConfiguration: &dash0v1alpha1.Dash0OperatorConfiguration{
+					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+						Export: &dash0v1alpha1.Export{
+							Dash0: &dash0v1alpha1.Dash0Configuration{},
+						},
+					},
+				},
+				expectedError:              "operatorConfiguration has no secret ref",
+				expectRemoveAuthTokenCalls: 1,
+			}),
+			Entry("should error if the secret does not exist", exchangeTestConfig{
+				operatorConfiguration: &dash0v1alpha1.Dash0OperatorConfiguration{
+					Spec: OperatorConfigurationResourceDash0ExportWithApiEndpointWithSecretRef,
+				},
+				expectedError:              "failed to fetch secret with name secret-ref in namespace test-operator-namespace for Dash0 self-monitoring/API access: secrets \"secret-ref\" not found",
+				expectRemoveAuthTokenCalls: 1,
+			}),
+			Entry("should error if the secret exists but does not have the key", exchangeTestConfig{
+				operatorConfiguration: &dash0v1alpha1.Dash0OperatorConfiguration{
+					Spec: OperatorConfigurationResourceDash0ExportWithApiEndpointWithSecretRef,
+				},
+				secret: &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: OperatorNamespace,
+						Name:      "secret-ref",
+					},
+					Data: map[string][]byte{
+						"wrong-key": []byte("value"),
+					},
+				},
+				expectedError:              "secret \"test-operator-namespace/secret-ref\" does not contain key \"key\"",
+				expectRemoveAuthTokenCalls: 1,
+			}),
+			Entry("should distribute the resolved auth token to all clients", exchangeTestConfig{
+				operatorConfiguration: &dash0v1alpha1.Dash0OperatorConfiguration{
+					Spec: OperatorConfigurationResourceDash0ExportWithApiEndpointWithSecretRef,
+				},
+				secret:                     DefaultSecret(),
+				expectAuthToken:            AuthorizationTokenTestFromSecret,
+				expectSetAuthTokenCalls:    1,
+				expectRemoveAuthTokenCalls: 0,
+			}),
 		)
 	})
 })
