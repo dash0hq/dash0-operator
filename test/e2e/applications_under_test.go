@@ -335,7 +335,7 @@ func runKubectlDelete(namespace string, workloadType string, runtime runtimeType
 			"--ignore-not-found",
 			"-f",
 			manifest(runtime, workloadType),
-		))
+		), false)
 }
 
 func killBatchJobsAndPods(namespace string) {

@@ -1172,14 +1172,16 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 })
 
 func createPrometheusRuleCrdReconciler() *PrometheusRuleCrdReconciler {
-	return &PrometheusRuleCrdReconciler{
-		Client: k8sClient,
-		Queue:  testQueuePrometheusRules,
+	crdReconciler := NewPrometheusRuleCrdReconciler(
+		k8sClient,
+		testQueuePrometheusRules,
+		&DummyLeaderElectionAware{Leader: true},
+	)
 
-		// We create the controller multiple times in tests, this option is required, otherwise the controller
-		// runtime will complain.
-		skipNameValidation: true,
-	}
+	// We create the controller multiple times in tests, this option is required, otherwise the controller
+	// runtime will complain.
+	crdReconciler.skipNameValidation = true
+	return crdReconciler
 }
 
 func expectFetchIdGetRequest(clusterId string) {

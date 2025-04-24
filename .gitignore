@@ -27,4 +27,7 @@ go.work
 *.swo
 *~
 
+# Idea run configs
+.run
+
 dash0-operator-values.yaml

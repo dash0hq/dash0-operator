@@ -106,6 +106,7 @@ var (
 	scheme   = runtime.NewScheme()
 	setupLog logr.Logger
 
+	leaderElectionAwareRunnable     = startup.NewLeaderElectionAwareRunnable()
 	startupTasksK8sClient           client.Client
 	isDocker                        bool
 	oTelSdkStarter                  *selfmonitoringapiaccess.OTelSdkStarter
@@ -698,6 +699,9 @@ func startDash0Controllers(
 		isIPv6Cluster,
 		instrumentationDelays,
 	)
+	if err = mgr.Add(leaderElectionAwareRunnable); err != nil {
+		return fmt.Errorf("unable to add the leader election aware runnable: %w", err)
+	}
 	// register the instrument-at-startup task to run once this operator manager becomes leader
 	if err = mgr.Add(startup.NewInstrumentAtStartupRunnable(mgr, startupInstrumenter)); err != nil {
 		return fmt.Errorf("unable to add instrument-at-startup task: %w", err)
@@ -770,17 +774,19 @@ func startDash0Controllers(
 			workqueue.TypedQueueConfig[controller.ThirdPartyResourceSyncJob]{
 				Name: "dash0-third-party-resource-reconcile-queue",
 			})
-	persesDashboardCrdReconciler := &controller.PersesDashboardCrdReconciler{
-		Client: k8sClient,
-		Queue:  thirdPartyResourceSynchronizationQueue,
-	}
+	persesDashboardCrdReconciler := controller.NewPersesDashboardCrdReconciler(
+		k8sClient,
+		thirdPartyResourceSynchronizationQueue,
+		leaderElectionAwareRunnable,
+	)
 	if err := persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, startupTasksK8sClient, &setupLog); err != nil {
 		return fmt.Errorf("unable to set up the Perses dashboard reconciler: %w", err)
 	}
-	prometheusRuleCrdReconciler := &controller.PrometheusRuleCrdReconciler{
-		Client: k8sClient,
-		Queue:  thirdPartyResourceSynchronizationQueue,
-	}
+	prometheusRuleCrdReconciler := controller.NewPrometheusRuleCrdReconciler(
+		k8sClient,
+		thirdPartyResourceSynchronizationQueue,
+		leaderElectionAwareRunnable,
+	)
 	if err := prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, startupTasksK8sClient, &setupLog); err != nil {
 		return fmt.Errorf("unable to set up the Prometheus rule reconciler: %w", err)
 	}

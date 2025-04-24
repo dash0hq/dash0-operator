@@ -33,12 +33,14 @@ import (
 	"sigs.k8s.io/yaml"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/startup"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
 type PrometheusRuleCrdReconciler struct {
-	Client                   client.Client
-	Queue                    *workqueue.Typed[ThirdPartyResourceSyncJob]
+	client.Client
+	queue                    *workqueue.Typed[ThirdPartyResourceSyncJob]
+	leaderElectionAware      startup.LeaderElectionAware
 	mgr                      ctrl.Manager
 	skipNameValidation       bool
 	prometheusRuleReconciler *PrometheusRuleReconciler
@@ -84,6 +86,18 @@ var (
 	prometheusRuleReconcileRequestMetric    otelmetric.Int64Counter
 )
 
+func NewPrometheusRuleCrdReconciler(
+	k8sClient client.Client,
+	queue *workqueue.Typed[ThirdPartyResourceSyncJob],
+	leaderElectionAware startup.LeaderElectionAware,
+) *PrometheusRuleCrdReconciler {
+	return &PrometheusRuleCrdReconciler{
+		Client:              k8sClient,
+		queue:               queue,
+		leaderElectionAware: leaderElectionAware,
+	}
+}
+
 func (r *PrometheusRuleCrdReconciler) Manager() ctrl.Manager {
 	return r.mgr
 }
@@ -124,13 +138,17 @@ func (r *PrometheusRuleCrdReconciler) SkipNameValidation() bool {
 	return r.skipNameValidation
 }
 
+func (r *PrometheusRuleCrdReconciler) OperatorManagerIsLeader() bool {
+	return r.leaderElectionAware.IsLeader()
+}
+
 func (r *PrometheusRuleCrdReconciler) CreateResourceReconciler(
 	pseudoClusterUID types.UID,
 	httpClient *http.Client,
 ) {
 	r.prometheusRuleReconciler = &PrometheusRuleReconciler{
 		Client:           r.Client,
-		queue:            r.Queue,
+		queue:            r.queue,
 		pseudoClusterUID: pseudoClusterUID,
 		httpClient:       httpClient,
 		httpRetryDelay:   1 * time.Second,
@@ -168,7 +186,7 @@ func (r *PrometheusRuleCrdReconciler) Create(
 	}
 	logger := log.FromContext(ctx)
 	r.prometheusRuleCrdExists.Store(true)
-	maybeStartWatchingThirdPartyResources(r, false, &logger)
+	maybeStartWatchingThirdPartyResources(r, &logger)
 }
 
 func (r *PrometheusRuleCrdReconciler) Update(
@@ -241,7 +259,7 @@ func (r *PrometheusRuleCrdReconciler) SetApiEndpointAndDataset(
 	logger *logr.Logger) {
 	r.prometheusRuleReconciler.apiConfig.Store(apiConfig)
 	if isValidApiConfig(apiConfig) {
-		maybeStartWatchingThirdPartyResources(r, false, logger)
+		maybeStartWatchingThirdPartyResources(r, logger)
 	} else {
 		stopWatchingThirdPartyResources(ctx, r, logger)
 	}
@@ -258,7 +276,7 @@ func (r *PrometheusRuleCrdReconciler) SetAuthToken(
 	logger *logr.Logger) {
 	r.prometheusRuleReconciler.authToken.Store(&authToken)
 	if authToken != "" {
-		maybeStartWatchingThirdPartyResources(r, false, logger)
+		maybeStartWatchingThirdPartyResources(r, logger)
 	} else {
 		stopWatchingThirdPartyResources(ctx, r, logger)
 	}

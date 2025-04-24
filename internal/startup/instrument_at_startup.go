@@ -31,7 +31,7 @@ func NewInstrumentAtStartupRunnable(
 }
 
 // NeedLeaderElection implements the LeaderElectionRunnable interface, which indicates
-// the webhook server doesn't need leader election.
+// that the InstrumentAtStartupRunnable requires leader election.
 func (r *InstrumentAtStartupRunnable) NeedLeaderElection() bool {
 	return true
 }
