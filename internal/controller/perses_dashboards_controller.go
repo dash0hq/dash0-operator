@@ -29,12 +29,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/startup"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
 type PersesDashboardCrdReconciler struct {
-	Client                    client.Client
-	Queue                     *workqueue.Typed[ThirdPartyResourceSyncJob]
+	client.Client
+	queue                     *workqueue.Typed[ThirdPartyResourceSyncJob]
+	leaderElectionAware       startup.LeaderElectionAware
 	mgr                       ctrl.Manager
 	skipNameValidation        bool
 	persesDashboardReconciler *PersesDashboardReconciler
@@ -53,12 +55,22 @@ type PersesDashboardReconciler struct {
 	controllerStopFunction     *context.CancelFunc
 }
 
-//+kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list;watch
-
 var (
 	persesDashboardCrdReconcileRequestMetric otelmetric.Int64Counter
 	persesDashboardReconcileRequestMetric    otelmetric.Int64Counter
 )
+
+func NewPersesDashboardCrdReconciler(
+	k8sClient client.Client,
+	queue *workqueue.Typed[ThirdPartyResourceSyncJob],
+	leaderElectionAware startup.LeaderElectionAware,
+) *PersesDashboardCrdReconciler {
+	return &PersesDashboardCrdReconciler{
+		Client:              k8sClient,
+		queue:               queue,
+		leaderElectionAware: leaderElectionAware,
+	}
+}
 
 func (r *PersesDashboardCrdReconciler) Manager() ctrl.Manager {
 	return r.mgr
@@ -100,13 +112,17 @@ func (r *PersesDashboardCrdReconciler) SkipNameValidation() bool {
 	return r.skipNameValidation
 }
 
+func (r *PersesDashboardCrdReconciler) OperatorManagerIsLeader() bool {
+	return r.leaderElectionAware.IsLeader()
+}
+
 func (r *PersesDashboardCrdReconciler) CreateResourceReconciler(
 	pseudoClusterUid types.UID,
 	httpClient *http.Client,
 ) {
 	r.persesDashboardReconciler = &PersesDashboardReconciler{
 		Client:           r.Client,
-		queue:            r.Queue,
+		queue:            r.queue,
 		pseudoClusterUID: pseudoClusterUid,
 		httpClient:       httpClient,
 		httpRetryDelay:   1 * time.Second,
@@ -144,7 +160,7 @@ func (r *PersesDashboardCrdReconciler) Create(
 	}
 	logger := log.FromContext(ctx)
 	r.persesDashboardCrdExists.Store(true)
-	maybeStartWatchingThirdPartyResources(r, false, &logger)
+	maybeStartWatchingThirdPartyResources(r, &logger)
 }
 
 func (r *PersesDashboardCrdReconciler) Update(
@@ -217,7 +233,7 @@ func (r *PersesDashboardCrdReconciler) SetApiEndpointAndDataset(
 	logger *logr.Logger) {
 	r.persesDashboardReconciler.apiConfig.Store(apiConfig)
 	if isValidApiConfig(apiConfig) {
-		maybeStartWatchingThirdPartyResources(r, false, logger)
+		maybeStartWatchingThirdPartyResources(r, logger)
 	} else {
 		stopWatchingThirdPartyResources(ctx, r, logger)
 	}
@@ -234,7 +250,7 @@ func (r *PersesDashboardCrdReconciler) SetAuthToken(
 	logger *logr.Logger) {
 	r.persesDashboardReconciler.authToken.Store(&authToken)
 	if authToken != "" {
-		maybeStartWatchingThirdPartyResources(r, false, logger)
+		maybeStartWatchingThirdPartyResources(r, logger)
 	} else {
 		stopWatchingThirdPartyResources(ctx, r, logger)
 	}

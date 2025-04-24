@@ -383,6 +383,9 @@ run_helm() {
     fi
     helm_install_command+=" --set operator.clusterName=$(kubectl config current-context)"
   fi
+  if [[ -n "${OPERATOR_REPLICAS:-}" ]]; then
+    helm_install_command+=" --set operator.replicaCount=${OPERATOR_REPLICAS:-1}"
+  fi
 
   helm_install_command+=" dash0-operator"
   helm_install_command+=" ${OPERATOR_HELM_CHART:-helm-chart/dash0-operator}"

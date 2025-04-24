@@ -253,7 +253,7 @@ func waitForManagerPodAndWebhookToStart(operatorNamespace string) {
 		g.Expect(err).NotTo(HaveOccurred())
 		podNames := getNonEmptyLines(podOutput)
 		if len(podNames) != 1 {
-			return fmt.Errorf("expect 1 controller pods running, but got %d -- %s", len(podNames), podOutput)
+			return fmt.Errorf("expect 1 controller pod running, but got %d -- %s", len(podNames), podOutput)
 		}
 		managerPodName = podNames[0]
 		g.Expect(managerPodName).To(ContainSubstring("controller"))

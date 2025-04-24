@@ -71,3 +71,11 @@ func ensureThirdPartyResourceExists(
 
 	return crdObject.(*apiextensionsv1.CustomResourceDefinition)
 }
+
+type DummyLeaderElectionAware struct {
+	Leader bool
+}
+
+func (l *DummyLeaderElectionAware) IsLeader() bool {
+	return l.Leader
+}

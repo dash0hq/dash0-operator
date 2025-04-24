@@ -13,8 +13,8 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func runAndIgnoreOutput(cmd *exec.Cmd) error {
-	_, err := run(cmd)
+func runAndIgnoreOutput(cmd *exec.Cmd, logCommandArgs ...bool) error {
+	_, err := run(cmd, logCommandArgs...)
 	return err
 }
 

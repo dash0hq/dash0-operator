@@ -70,6 +70,7 @@ type ThirdPartyCrdReconciler interface {
 	DoesCrdExist() *atomic.Bool
 	SetCrdExists(bool)
 	SkipNameValidation() bool
+	OperatorManagerIsLeader() bool
 	CreateResourceReconciler(types.UID, *http.Client)
 	ResourceReconciler() ThirdPartyResourceReconciler
 }
@@ -199,7 +200,7 @@ func SetupThirdPartyCrdReconcilerWithManager(
 		}
 	} else {
 		crdReconciler.SetCrdExists(true)
-		maybeStartWatchingThirdPartyResources(crdReconciler, true, logger)
+		maybeStartWatchingThirdPartyResources(crdReconciler, logger)
 	}
 
 	controllerBuilder := ctrl.NewControllerManagedBy(crdReconciler.Manager()).
@@ -263,7 +264,6 @@ func isMatchingCrd(group string, kind string, crd client.Object) bool {
 
 func maybeStartWatchingThirdPartyResources(
 	crdReconciler ThirdPartyCrdReconciler,
-	isStartup bool,
 	logger *logr.Logger,
 ) {
 	resourceReconciler := crdReconciler.ResourceReconciler()
@@ -289,10 +289,16 @@ func maybeStartWatchingThirdPartyResources(
 	apiConfig := resourceReconciler.GetApiConfig().Load()
 	authToken := resourceReconciler.GetAuthToken()
 	if !isValidApiConfig(apiConfig) || authToken == "" {
-		// Silently ignore this missing precondition if it happens during the startup of the operator. It will
-		// be remedied automatically once the operator configuration resource is reconciled for the first time, or
-		// once the secret ref has been resolved via the secret ref resolver.
-		if !isStartup {
+		if !crdReconciler.OperatorManagerIsLeader() {
+			logger.Info(
+				fmt.Sprintf(
+					"The %s custom resource definition is present in this cluster, but this operator manager replica "+
+						"has not (or not yet) been elected as leader. The operator will not watch for %s resources. "+
+						"(This might change once this operator manager replica becomes leader.)",
+					crdReconciler.QualifiedKind(),
+					crdReconciler.KindDisplayName(),
+				))
+		} else {
 			if !isValidApiConfig(apiConfig) {
 				logger.Info(
 					fmt.Sprintf(

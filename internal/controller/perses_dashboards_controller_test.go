@@ -460,14 +460,16 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 })
 
 func createPersesDashboardCrdReconciler() *PersesDashboardCrdReconciler {
-	return &PersesDashboardCrdReconciler{
-		Client: k8sClient,
-		Queue:  testQueuePersesDashboards,
+	crdReconciler := NewPersesDashboardCrdReconciler(
+		k8sClient,
+		testQueuePersesDashboards,
+		&DummyLeaderElectionAware{Leader: true},
+	)
 
-		// We create the controller multiple times in tests, this option is required, otherwise the controller
-		// runtime will complain.
-		skipNameValidation: true,
-	}
+	// We create the controller multiple times in tests, this option is required, otherwise the controller
+	// runtime will complain.
+	crdReconciler.skipNameValidation = true
+	return crdReconciler
 }
 
 func expectDashboardPutRequest(expectedPath string) {
