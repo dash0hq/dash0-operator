@@ -143,17 +143,12 @@ func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admi
 	}
 
 	if len(dash0List.Items) == 0 {
-		msg := fmt.Sprintf(
-			"There is no Dash0 monitoring resource in the namespace %s, the workload will not be instrumented.",
-			targetNamespace,
-		)
-		if request.Operation == admissionv1.Update {
-			// some operators update the resources they manage very frequently (e.g. every few seconds), do not spam
-			// the log with those requests
-			return admission.Allowed(msg)
-		} else {
-			return logAndReturnAllowed(msg, &logger)
-		}
+		return admission.Allowed(
+			fmt.Sprintf(
+				"There is no Dash0 monitoring resource in the namespace %s, the workload will not be instrumented by "+
+					"the webhook.",
+				targetNamespace,
+			))
 	}
 
 	dash0MonitoringResource := dash0List.Items[0]
