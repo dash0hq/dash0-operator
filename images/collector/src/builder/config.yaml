@@ -12,7 +12,7 @@ providers:
   - gomod: "go.opentelemetry.io/collector/confmap/provider/fileprovider v1.30.0"
 receivers:
   - gomod: "go.opentelemetry.io/collector/receiver/otlpreceiver v0.124.0"
-  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/filelogreceiver v0.124.0"
+  - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/filelogreceiver v0.124.1"
   - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.124.0"
   - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8sclusterreceiver v0.124.0"
   - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/receiver/kubeletstatsreceiver v0.124.0"
