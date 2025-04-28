@@ -10,6 +10,8 @@ runs:
   using: "composite"
   steps:
     - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4
+      with:
+        fetch-depth: 0
 
     - name: get branch name
       id: branch-name
@@ -41,17 +43,26 @@ runs:
       run: |
         # Get the base SHA from last successful commit on main branch
         BASE_SHA="${{ steps.last_succsesfull_commit_main_branch.outputs.base }}"
-        
+
+        if [ -z "$BASE_SHA" ]; then
+          echo "Error: No BASE_SHA is available."
+          exit 1
+        fi
+        if [ -z "$GITHUB_SHA" ]; then
+          echo "Error: No GITHUB_SHA is available."
+          exit 1
+        fi
+
         # Get all changed instrumentation files (|| true to prevent grep from returning non-zero exit code)
         INSTRUMENTATION_FILES=$(git diff --name-only --diff-filter=ACMRTUXB "$BASE_SHA" "$GITHUB_SHA" | grep -E "^images/instrumentation/|.github/actions/injector-and-instrumentation-tests/action.yaml" || true)
-        
+
         # Determine if any instrumentation files changed
         if [ -z "$INSTRUMENTATION_FILES" ]; then
           INSTRUMENTATION_CHANGED="false"
         else
           INSTRUMENTATION_CHANGED="true"
         fi
-        
+
         # Output the results
         echo "instrumentation_any_changed=$INSTRUMENTATION_CHANGED" >> $GITHUB_OUTPUT
         echo "instrumentation_all_changed_files<<EOF" >> $GITHUB_OUTPUT
