@@ -14,7 +14,7 @@ type LeaderElectionAware interface {
 	IsLeader() bool
 }
 
-// LeaderElectionAwareRunnable serves the purpos of making the operator manager aware whether it is the current leader
+// LeaderElectionAwareRunnable serves the purpose of making the operator manager aware whether it is the current leader
 // or not.
 type LeaderElectionAwareRunnable struct {
 	isLeader atomic.Bool
@@ -30,7 +30,7 @@ func (r *LeaderElectionAwareRunnable) NeedLeaderElection() bool {
 	return true
 }
 
-// Start runs the instrumentation procedure.
+// Start is the signal from controller-runtime for the runnable that this replica has become leader.
 func (r *LeaderElectionAwareRunnable) Start(ctx context.Context) error {
 	log.FromContext(ctx).Info("This operator manager replica has just become leader.")
 	r.isLeader.Store(true)
