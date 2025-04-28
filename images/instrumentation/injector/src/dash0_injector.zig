@@ -99,7 +99,7 @@ fn getEnvValue(name: [:0]const u8) ?null_terminated_string {
         }
 
         if (modified_otel_resource_attributes_value) |updated_value| {
-            printMessage("Modified resource attributes passed via the 'OTEL_RESOURCE_ATTRIBUTES' environment variable");
+            printMessage("Modified resource attributes passed via the 'OTEL_RESOURCE_ATTRIBUTES' environment variable", .{});
             return updated_value;
         }
     } else if (std.mem.eql(u8, name, "JAVA_TOOL_OPTIONS")) {
@@ -109,7 +109,7 @@ fn getEnvValue(name: [:0]const u8) ?null_terminated_string {
         }
 
         if (modified_java_tool_options_value) |updated_value| {
-            printMessage("Injected the OpenTelemetry Java agent");
+            printMessage("Injected the OpenTelemetry Java agent", .{});
             return updated_value;
         }
     } else if (std.mem.eql(u8, name, "NODE_OPTIONS")) {
@@ -119,7 +119,7 @@ fn getEnvValue(name: [:0]const u8) ?null_terminated_string {
         }
 
         if (modified_node_options_value) |updated_value| {
-            printMessage("Injected the Dash0 Node.js distro");
+            printMessage("Injected the Dash0 Node.js distro", .{});
             return updated_value;
         }
     } else if (std.mem.eql(u8, name, "CORECLR_ENABLE_PROFILING")) {
@@ -128,7 +128,7 @@ fn getEnvValue(name: [:0]const u8) ?null_terminated_string {
         }
     } else if (std.mem.eql(u8, name, "CORECLR_PROFILER")) {
         if (getDotNetValues()) |v| {
-            printMessage("Injected the OpenTelemetry .NET instrumentation");
+            printMessage("Injected the OpenTelemetry .NET instrumentation", .{});
             return v.coreclr_profiler;
         }
     } else if (std.mem.eql(u8, name, "CORECLR_PROFILER_PATH")) {
