@@ -8,9 +8,12 @@ metadata:
 spec:
   template:
     metadata:
+      labels:
+        test.label/key: "label-value"
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "1308"
+        test.annotation/key: "annotation value"
     spec:
       restartPolicy: Never
       containers:

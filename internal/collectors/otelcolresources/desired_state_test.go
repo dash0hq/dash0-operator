@@ -37,9 +37,6 @@ type collectorSelfMonitoringExpectations struct {
 }
 
 const (
-	namespace  = "some-namespace"
-	namePrefix = OTelCollectorNamePrefixTest
-
 	numberOfResourcesWithKubernetesInfrastructureMetricsCollectionEnabled    = 14
 	numberOfResourcesWithoutKubernetesInfrastructureMetricsCollectionEnabled = 9
 
@@ -51,8 +48,8 @@ const (
 var _ = Describe("The desired state of the OpenTelemetry Collector resources", func() {
 	It("should fail if no endpoint has been provided", func() {
 		_, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
 			Export: dash0v1alpha1.Export{
 				Dash0: &dash0v1alpha1.Dash0Configuration{
 					Authorization: dash0v1alpha1.Authorization{
@@ -67,9 +64,9 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 	It("should describe the desired state as a set of Kubernetes client objects", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export:     *Dash0ExportWithEndpointAndToken(),
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Export:            *Dash0ExportWithEndpointAndToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			UseHostMetricsReceiver:                           true,
 			Images:                                           TestImages,
@@ -220,9 +217,9 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 	It("should omit all resources related to the collector deployment if collecting cluster metrics is disabled", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export:     *Dash0ExportWithEndpointAndToken(),
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Export:            *Dash0ExportWithEndpointAndToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: false,
 			Images: TestImages,
 		}, nil, &OTelExtraConfigDefaults)
@@ -260,9 +257,9 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 	It("should use the authorization token directly if provided", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export:     *Dash0ExportWithEndpointAndToken(),
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Export:            *Dash0ExportWithEndpointAndToken(),
 		}, nil, &OTelExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
@@ -278,9 +275,9 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 	It("should use the secret reference if provided (and no authorization token has been provided)", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export:     *Dash0ExportWithEndpointAndSecretRef(),
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Export:            *Dash0ExportWithEndpointAndSecretRef(),
 		}, nil, &OTelExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
@@ -298,9 +295,9 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 	It("should not add the auth token env var if no Dash0 exporter is used", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export:     *HttpExportTest(),
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Export:            *HttpExportTest(),
 		}, nil, &OTelExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
@@ -317,9 +314,9 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 	It("should correctly apply Dash0 export self-monitoring with token on the daemonset", func() {
 		export := Dash0ExportWithEndpointAndToken()
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export:     *export,
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Export:            *export,
 			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: true,
 				Export:                *export,
@@ -347,9 +344,9 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 	It("should correctly apply Dash0 export self-monitoring with a secret ref on the daemonset", func() {
 		export := Dash0ExportWithEndpointAndSecretRef()
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export:     *export,
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Export:            *export,
 			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: true,
 				Export:                *export,
@@ -378,9 +375,9 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 	It("should correctly apply Dash0 export self-monitoring with a custom dataset on the daemonset", func() {
 		export := Dash0ExportWithEndpointTokenAndCustomDataset()
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export:     *export,
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Export:            *export,
 			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: true,
 				Export:                *export,
@@ -409,9 +406,9 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 	It("should correctly apply self-monitoring with a gRCP export on the daemonset", func() {
 		export := GrpcExportTest()
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export:     *export,
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Export:            *export,
 			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: true,
 				Export:                *export,
@@ -438,9 +435,9 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 	It("should correctly apply self-monitoring with an HTTP/proto export on the daemonset", func() {
 		export := HttpExportTest()
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export:     *export,
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Export:            *export,
 			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: true,
 				Export:                *export,
@@ -467,9 +464,9 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 	It("should correctly apply disabled self-monitoring settings to the daemonset", func() {
 		export := Dash0ExportWithEndpointAndToken()
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export:     *export,
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Export:            *export,
 			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: false,
 			},
@@ -484,9 +481,9 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 
 	It("should render custom tolerations", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export:     *Dash0ExportWithEndpointAndToken(),
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Export:            *Dash0ExportWithEndpointAndToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			UseHostMetricsReceiver:                           true,
 			Images:                                           TestImages,
@@ -523,6 +520,121 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(daemonSetPodSpec.Tolerations[1].TolerationSeconds).To(BeNil())
 	})
 
+	It("should collect logs from namespaces, but not from the operator namespace", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Export:            *Dash0ExportWithEndpointAndToken(),
+			Images:            TestImages,
+		}, []dash0v1alpha1.Dash0Monitoring{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      MonitoringResourceName,
+					Namespace: "namespace-1",
+				},
+				Spec: dash0v1alpha1.Dash0MonitoringSpec{
+					LogCollection: dash0v1alpha1.LogCollection{Enabled: ptr.To(true)},
+				},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      MonitoringResourceName,
+					Namespace: OperatorNamespace,
+				},
+				Spec: dash0v1alpha1.Dash0MonitoringSpec{
+					LogCollection: dash0v1alpha1.LogCollection{Enabled: ptr.To(true)},
+				},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      MonitoringResourceName,
+					Namespace: "namespace-2",
+				},
+				Spec: dash0v1alpha1.Dash0MonitoringSpec{
+					LogCollection: dash0v1alpha1.LogCollection{Enabled: ptr.To(true)},
+				},
+			},
+		}, &OTelExtraConfigDefaults)
+		Expect(err).ToNot(HaveOccurred())
+
+		configMapContent := getDaemonSetCollectorConfigConfigMapContent(desiredState)
+		Expect(configMapContent).To(ContainSubstring("- /var/log/pods/namespace-1_*/*/*.log"))
+		Expect(configMapContent).NotTo(ContainSubstring(fmt.Sprintf("- /var/log/pods/%s_*/*/*.log", OperatorNamespace)))
+		Expect(configMapContent).To(ContainSubstring("- /var/log/pods/namespace-2_*/*/*.log"))
+	})
+
+	It("should scrape Prometheus metrics from namespaces when enabled", func() {
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Export:            *Dash0ExportWithEndpointAndToken(),
+			Images:            TestImages,
+		}, []dash0v1alpha1.Dash0Monitoring{
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      MonitoringResourceName,
+					Namespace: "default-to-true",
+				},
+				Spec: dash0v1alpha1.Dash0MonitoringSpec{},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      MonitoringResourceName,
+					Namespace: "new-setting-true",
+				},
+				Spec: dash0v1alpha1.Dash0MonitoringSpec{
+					PrometheusScraping: dash0v1alpha1.PrometheusScraping{Enabled: ptr.To(true)},
+				},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      MonitoringResourceName,
+					Namespace: "deprecated-setting-true",
+				},
+				Spec: dash0v1alpha1.Dash0MonitoringSpec{
+					PrometheusScrapingEnabled: ptr.To(true),
+				},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      MonitoringResourceName,
+					Namespace: "new-setting-false",
+				},
+				Spec: dash0v1alpha1.Dash0MonitoringSpec{
+					PrometheusScraping: dash0v1alpha1.PrometheusScraping{Enabled: ptr.To(false)},
+				},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      MonitoringResourceName,
+					Namespace: "deprecated-setting-false",
+				},
+				Spec: dash0v1alpha1.Dash0MonitoringSpec{
+					PrometheusScrapingEnabled: ptr.To(false),
+				},
+			},
+		}, &OTelExtraConfigDefaults)
+		Expect(err).ToNot(HaveOccurred())
+
+		configMap := getDaemonSetCollectorConfigConfigMap(desiredState)
+		collectorConfig := parseConfigMapContent(configMap)
+		namespaces := readFromMap(collectorConfig, []string{
+			"receivers",
+			"prometheus",
+			"config",
+			"scrape_configs",
+			"job_name=dash0-kubernetes-pods-scrape-config",
+			"kubernetes_sd_configs",
+			"role=pod",
+			"namespaces",
+			"names",
+		})
+		Expect(namespaces).To(HaveLen(3))
+		Expect(namespaces).To(ContainElement("default-to-true"))
+		Expect(namespaces).To(ContainElement("new-setting-true"))
+		Expect(namespaces).To(ContainElement("deprecated-setting-true"))
+	})
+
 	It("should omit the filelog offset containers if a volume is provided for filelog offset storage", func() {
 		offsetStorageVolume := corev1.Volume{
 			Name: "offset-storage-volume",
@@ -533,9 +645,9 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			},
 		}
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export:     *Dash0ExportWithEndpointAndToken(),
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Export:            *Dash0ExportWithEndpointAndToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			UseHostMetricsReceiver:                           true,
 			Images:                                           TestImages,
@@ -571,7 +683,12 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				Namespace: "namespace-1",
 			},
 			Spec: dash0v1alpha1.Dash0MonitoringSpec{
-				PrometheusScrapingEnabled: ptr.To(true),
+				PrometheusScraping: dash0v1alpha1.PrometheusScraping{
+					Enabled: ptr.To(true),
+				},
+				LogCollection: dash0v1alpha1.LogCollection{
+					Enabled: ptr.To(true),
+				},
 			},
 		}
 		mr2 := dash0v1alpha1.Dash0Monitoring{
@@ -580,7 +697,12 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				Namespace: "namespace-2",
 			},
 			Spec: dash0v1alpha1.Dash0MonitoringSpec{
-				PrometheusScrapingEnabled: ptr.To(true),
+				PrometheusScraping: dash0v1alpha1.PrometheusScraping{
+					Enabled: ptr.To(true),
+				},
+				LogCollection: dash0v1alpha1.LogCollection{
+					Enabled: ptr.To(false),
+				},
 			},
 		}
 		mr3 := dash0v1alpha1.Dash0Monitoring{
@@ -589,7 +711,12 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				Namespace: "namespace-3",
 			},
 			Spec: dash0v1alpha1.Dash0MonitoringSpec{
-				PrometheusScrapingEnabled: ptr.To(false),
+				PrometheusScraping: dash0v1alpha1.PrometheusScraping{
+					Enabled: ptr.To(false),
+				},
+				LogCollection: dash0v1alpha1.LogCollection{
+					Enabled: ptr.To(false),
+				},
 			},
 		}
 		mr4 := dash0v1alpha1.Dash0Monitoring{
@@ -598,36 +725,41 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				Namespace: "namespace-4",
 			},
 			Spec: dash0v1alpha1.Dash0MonitoringSpec{
-				PrometheusScrapingEnabled: ptr.To(false),
+				PrometheusScraping: dash0v1alpha1.PrometheusScraping{
+					Enabled: ptr.To(false),
+				},
+				LogCollection: dash0v1alpha1.LogCollection{
+					Enabled: ptr.To(true),
+				},
 			},
 		}
 
 		desiredState1, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export:     *Dash0ExportWithEndpointAndToken(),
-			Images:     TestImages,
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Export:            *Dash0ExportWithEndpointAndToken(),
+			Images:            TestImages,
 		}, []dash0v1alpha1.Dash0Monitoring{mr1, mr2, mr3, mr4}, &OTelExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 		desiredState2, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export:     *Dash0ExportWithEndpointAndToken(),
-			Images:     TestImages,
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Export:            *Dash0ExportWithEndpointAndToken(),
+			Images:            TestImages,
 		}, []dash0v1alpha1.Dash0Monitoring{mr3, mr4, mr1, mr2}, &OTelExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 		desiredState3, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export:     *Dash0ExportWithEndpointAndToken(),
-			Images:     TestImages,
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Export:            *Dash0ExportWithEndpointAndToken(),
+			Images:            TestImages,
 		}, []dash0v1alpha1.Dash0Monitoring{mr4, mr3, mr2, mr1}, &OTelExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 		desiredState4, err := assembleDesiredStateForUpsert(&oTelColConfig{
-			Namespace:  namespace,
-			NamePrefix: namePrefix,
-			Export:     *Dash0ExportWithEndpointAndToken(),
-			Images:     TestImages,
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Export:            *Dash0ExportWithEndpointAndToken(),
+			Images:            TestImages,
 		}, []dash0v1alpha1.Dash0Monitoring{mr3, mr1, mr4, mr2}, &OTelExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -647,9 +779,12 @@ func getConfigMap(desiredState []clientObject, name string) *corev1.ConfigMap {
 	return nil
 }
 
+func getDaemonSetCollectorConfigConfigMap(desiredState []clientObject) *corev1.ConfigMap {
+	return getConfigMap(desiredState, ExpectedDaemonSetCollectorConfigMapName)
+}
+
 func getDaemonSetCollectorConfigConfigMapContent(desiredState []clientObject) string {
-	cm := getConfigMap(desiredState, ExpectedDaemonSetCollectorConfigMapName)
-	return cm.Data["config.yaml"]
+	return getDaemonSetCollectorConfigConfigMap(desiredState).Data["config.yaml"]
 }
 
 func getFileOffsetConfigMapContent(desiredState []clientObject) string {

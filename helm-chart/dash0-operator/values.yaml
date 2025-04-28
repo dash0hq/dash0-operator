@@ -80,6 +80,14 @@ operator:
   # resource will be created by the Helm chart then.
   kubernetesInfrastructureMetricsCollectionEnabled: true
 
+  # An opt-out for collecting pod labels and annotations as resource attributes. If set to false, the operator will
+  # not collect convert pod labels and annotations to resource attributes. This setting is optional, it defaults to
+  # true.
+  #
+  # This setting has no effect if operator.dash0Export.enabled is false, as no Dash0OperatorConfiguration
+  # resource will be created by the Helm chart then.
+  collectPodLabelsAndAnnotationsEnabled: true
+
   # If set, the value will be added as the resource attribute k8s.cluster.name to all telemetry. This setting is
   # optional. Per default, the resource attribute k8s.cluster.name will not be added.
   #

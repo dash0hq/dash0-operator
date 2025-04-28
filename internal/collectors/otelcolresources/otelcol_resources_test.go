@@ -284,7 +284,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			}
 
 			// reconcile again with KubernetesInfrastructureMetricsCollectionEnabled = false
-			operatorConfiguration.Spec.KubernetesInfrastructureMetricsCollectionEnabled = ptr.To(false)
+			operatorConfiguration.Spec.KubernetesInfrastructureMetricsCollection.Enabled = ptr.To(false)
 			_, _, err =
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,

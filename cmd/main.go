@@ -136,6 +136,7 @@ func main() {
 	var operatorConfigurationApiEndpoint string
 	var operatorConfigurationSelfMonitoringEnabled bool
 	var operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled bool
+	var operatorConfigurationCollectPodLabelsAndAnnotationsEnabled bool
 	var operatorConfigurationClusterName string
 	var offsetStorageVolume string
 	instrumentationDelays := &instrumentation.DelayConfig{}
@@ -203,7 +204,13 @@ func main() {
 		&operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled,
 		"operator-configuration-kubernetes-infrastructure-metrics-collection-enabled",
 		true,
-		"Whether to set kubernetesInfrastructureMetricsCollectionEnabled on the operator configuration resource; "+
+		"The value for kubernetesInfrastructureMetricsCollection.enabled on the operator configuration resource; "+
+			"will be ignored if operator-configuration-endpoint is not set.")
+	flag.BoolVar(
+		&operatorConfigurationCollectPodLabelsAndAnnotationsEnabled,
+		"operator-configuration-collect-pod-labels-and-annotations-enabled",
+		true,
+		"The value for collectPodLabelsAndAnnotations.enabled on the operator configuration resource; "+
 			"will be ignored if operator-configuration-endpoint is not set.")
 	flag.StringVar(
 		&operatorConfigurationClusterName,
@@ -334,7 +341,8 @@ func main() {
 			SelfMonitoringEnabled: operatorConfigurationSelfMonitoringEnabled,
 			//nolint:lll
 			KubernetesInfrastructureMetricsCollectionEnabled: operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled,
-			ClusterName: operatorConfigurationClusterName,
+			CollectPodLabelsAndAnnotationsEnabled:            operatorConfigurationCollectPodLabelsAndAnnotationsEnabled,
+			ClusterName:                                      operatorConfigurationClusterName,
 		}
 		if len(operatorConfigurationApiEndpoint) > 0 {
 			operatorConfigurationValues.ApiEndpoint = operatorConfigurationApiEndpoint
@@ -852,7 +860,8 @@ func startDash0Controllers(
 		return fmt.Errorf("unable to create the operator configuration validation webhook: %w", err)
 	}
 	if err := (&webhooks.MonitoringMutatingWebhookHandler{
-		Client: k8sClient,
+		Client:            k8sClient,
+		OperatorNamespace: envVars.operatorNamespace,
 	}).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the monitoring mutating webhook: %w", err)
 	}

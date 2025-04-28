@@ -24,8 +24,8 @@ import (
 )
 
 type oTelColConfig struct {
-	// Namespace is the namespace of the Dash0 operator
-	Namespace string
+	// OperatorNamespace is the namespace of the Dash0 operator
+	OperatorNamespace string
 
 	// NamePrefix is used as a prefix for OTel collector Kubernetes resources created by the operator, set to value of
 	// the environment variable OTEL_COLLECTOR_NAME_PREFIX, which is set to the Helm release name by the operator Helm
@@ -35,6 +35,7 @@ type oTelColConfig struct {
 	SendBatchMaxSize                                 *uint32
 	SelfMonitoringConfiguration                      selfmonitoringapiaccess.SelfMonitoringConfiguration
 	KubernetesInfrastructureMetricsCollectionEnabled bool
+	CollectPodLabelsAndAnnotationsEnabled            bool
 	KubeletStatsReceiverConfig                       KubeletStatsReceiverConfig
 	UseHostMetricsReceiver                           bool
 	PseudoClusterUID                                 string
@@ -221,13 +222,26 @@ func assembleDesiredStateForUpsert(
 	extraConfig *OTelColExtraConfig,
 ) ([]clientObject, error) {
 	monitoredNamespaces := make([]string, 0, len(allMonitoringResources))
+	namespacesWithLogCollection := make([]string, 0, len(allMonitoringResources))
 	namespacesWithPrometheusScraping := make([]string, 0, len(allMonitoringResources))
 	filters := make([]NamespacedFilter, 0, len(allMonitoringResources))
 	transforms := make([]NamespacedTransform, 0, len(allMonitoringResources))
 	for _, monitoringResource := range allMonitoringResources {
 		namespace := monitoringResource.Namespace
 		monitoredNamespaces = append(monitoredNamespaces, namespace)
-		if util.ReadBoolPointerWithDefault(monitoringResource.Spec.PrometheusScrapingEnabled, true) {
+		if util.ReadBoolPointerWithDefault(monitoringResource.Spec.LogCollection.Enabled, true) &&
+			// We deliberately do not allow collecting logs from the operator namespace, these are available via
+			// self-monitoring. Furthermore, if logs from the operator would be enabled via the normal log collection
+			// pipeline, and there was a log parsing error that is being logged into the collector log, this might
+			// create a feedback cycle.
+			namespace != config.OperatorNamespace {
+			namespacesWithLogCollection = append(namespacesWithLogCollection, namespace)
+		}
+		if util.IsOptOutFlagWithDeprecatedVariantEnabled(
+			//nolint:staticcheck
+			monitoringResource.Spec.PrometheusScrapingEnabled,
+			monitoringResource.Spec.PrometheusScraping.Enabled,
+		) {
 			namespacesWithPrometheusScraping = append(namespacesWithPrometheusScraping, namespace)
 		}
 
@@ -249,6 +263,7 @@ func assembleDesiredStateForUpsert(
 	return assembleDesiredState(
 		config,
 		monitoredNamespaces,
+		namespacesWithLogCollection,
 		namespacesWithPrometheusScraping,
 		filters,
 		transforms,
@@ -267,6 +282,7 @@ func assembleDesiredStateForDelete(
 		nil,
 		nil,
 		nil,
+		nil,
 		extraConfig,
 		true,
 	)
@@ -275,6 +291,7 @@ func assembleDesiredStateForDelete(
 func assembleDesiredState(
 	config *oTelColConfig,
 	monitoredNamespaces []string,
+	namespacesWithLogCollection []string,
 	namespacesWithPrometheusScraping []string,
 	filters []NamespacedFilter,
 	transforms []NamespacedTransform,
@@ -284,6 +301,7 @@ func assembleDesiredState(
 	// Make sure the resulting objects (in particular the config maps) are do not depend on the (potentially non-stable)
 	// sort order of the input slices.
 	slices.Sort(monitoredNamespaces)
+	slices.Sort(namespacesWithLogCollection)
 	slices.Sort(namespacesWithPrometheusScraping)
 	slices.SortFunc(filters, func(ns1 NamespacedFilter, ns2 NamespacedFilter) int {
 		return strings.Compare(ns1.Namespace, ns2.Namespace)
@@ -297,6 +315,7 @@ func assembleDesiredState(
 	daemonSetCollectorConfigMap, err := assembleDaemonSetCollectorConfigMap(
 		config,
 		monitoredNamespaces,
+		namespacesWithLogCollection,
 		namespacesWithPrometheusScraping,
 		filters,
 		transforms,
@@ -353,7 +372,7 @@ func assembleServiceAccountForDaemonSet(config *oTelColConfig) *corev1.ServiceAc
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      daemonsetServiceAccountName(config.NamePrefix),
-			Namespace: config.Namespace,
+			Namespace: config.OperatorNamespace,
 			Labels:    labels(false),
 		},
 	}
@@ -367,7 +386,7 @@ func assembleFilelogOffsetsConfigMap(config *oTelColConfig) *corev1.ConfigMap {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      FilelogReceiverOffsetsConfigMapName(config.NamePrefix),
-			Namespace: config.Namespace,
+			Namespace: config.OperatorNamespace,
 			Labels:    labels(false),
 		},
 	}
@@ -381,7 +400,7 @@ func assembleRole(config *oTelColConfig) *rbacv1.Role {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      roleName(config.NamePrefix),
-			Namespace: config.Namespace,
+			Namespace: config.OperatorNamespace,
 			Labels:    labels(false),
 		},
 		Rules: []rbacv1.PolicyRule{
@@ -402,7 +421,7 @@ func assembleRoleBinding(config *oTelColConfig) *rbacv1.RoleBinding {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      roleBindingName(config.NamePrefix),
-			Namespace: config.Namespace,
+			Namespace: config.OperatorNamespace,
 			Labels:    labels(false),
 		},
 		RoleRef: rbacv1.RoleRef{
@@ -413,7 +432,7 @@ func assembleRoleBinding(config *oTelColConfig) *rbacv1.RoleBinding {
 		Subjects: []rbacv1.Subject{{
 			Kind:      "ServiceAccount",
 			Name:      daemonsetServiceAccountName(config.NamePrefix),
-			Namespace: config.Namespace,
+			Namespace: config.OperatorNamespace,
 		}},
 	}
 }
@@ -491,7 +510,7 @@ func assembleClusterRoleBindingForDaemonSet(config *oTelColConfig) *rbacv1.Clust
 		Subjects: []rbacv1.Subject{{
 			Kind:      "ServiceAccount",
 			Name:      daemonsetServiceAccountName(config.NamePrefix),
-			Namespace: config.Namespace,
+			Namespace: config.OperatorNamespace,
 		}},
 	}
 }
@@ -504,7 +523,7 @@ func assembleService(config *oTelColConfig) *corev1.Service {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ServiceName(config.NamePrefix),
-			Namespace: config.Namespace,
+			Namespace: config.OperatorNamespace,
 			Labels:    serviceLabels(),
 		},
 		Spec: corev1.ServiceSpec{
@@ -627,7 +646,7 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig *OTelColExtra
 		TypeMeta: util.K8sTypeMetaDaemonSet,
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      daemonSetName,
-			Namespace: config.Namespace,
+			Namespace: config.OperatorNamespace,
 			Labels:    labels(true),
 		},
 		Spec: appsv1.DaemonSetSpec{
@@ -688,7 +707,7 @@ func assembleFileLogOffsetSyncContainer(
 			},
 			{
 				Name:  "K8S_CONFIGMAP_NAMESPACE",
-				Value: config.Namespace,
+				Value: config.OperatorNamespace,
 			},
 			{
 				Name:  "K8S_CONFIGMAP_NAME",
@@ -1026,7 +1045,7 @@ func assembleFileLogOffsetSyncInitContainer(
 			},
 			{
 				Name:  "K8S_CONFIGMAP_NAMESPACE",
-				Value: config.Namespace,
+				Value: config.OperatorNamespace,
 			},
 			{
 				Name:  "K8S_CONFIGMAP_NAME",
@@ -1110,7 +1129,7 @@ func assembleServiceAccountForDeployment(config *oTelColConfig) *corev1.ServiceA
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      deploymentServiceAccountName(config.NamePrefix),
-			Namespace: config.Namespace,
+			Namespace: config.OperatorNamespace,
 			Labels:    labels(false),
 		},
 	}
@@ -1220,7 +1239,7 @@ func assembleClusterRoleBindingForDeployment(config *oTelColConfig) *rbacv1.Clus
 		Subjects: []rbacv1.Subject{{
 			Kind:      "ServiceAccount",
 			Name:      deploymentServiceAccountName(config.NamePrefix),
-			Namespace: config.Namespace,
+			Namespace: config.OperatorNamespace,
 		}},
 	}
 }
@@ -1246,7 +1265,7 @@ func assembleCollectorDeployment(
 		TypeMeta: util.K8sTypeMetaDeployment,
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      deploymentName,
-			Namespace: config.Namespace,
+			Namespace: config.OperatorNamespace,
 			Labels:    labels(true),
 		},
 		Spec: appsv1.DeploymentSpec{

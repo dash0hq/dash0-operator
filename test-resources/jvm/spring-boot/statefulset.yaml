@@ -30,9 +30,11 @@ spec:
     metadata:
       labels:
         app: dash0-operator-jvm-spring-boot-test-statefulset-app
+        test.label/key: "label-value"
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "1310"
+        test.annotation/key: "annotation value"
     spec:
       terminationGracePeriodSeconds: 3
       containers:

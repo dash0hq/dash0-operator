@@ -51,6 +51,7 @@ func deployOperatorWithDefaultAutoOperationConfiguration(
 			Token:                 defaultToken,
 			SelfMonitoringEnabled: selfMonitoringEnabled,
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			CollectPodLabelsAndAnnotationsEnabled:            true,
 		},
 	)
 	Expect(err).ToNot(HaveOccurred())

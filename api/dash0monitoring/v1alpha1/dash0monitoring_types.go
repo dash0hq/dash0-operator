@@ -37,15 +37,14 @@ type Dash0MonitoringSpec struct {
 	// +kubebuilder:validation:Optional
 	Export *Export `json:"export,omitempty"`
 
-	// Global opt-out for workload instrumentation for the target namespace. There are three possible settings: `all`,
-	// `created-and-updated` and `none`. By default, the setting `all` is assumed.
+	// Opt-out for automatic workload instrumentation for the target namespace. There are three possible settings:
+	// `all`, `created-and-updated` and `none`. By default, the setting `all` is assumed.
 	//
 	// If set to `all` (or omitted), the operator will:
-	// * instrument existing workloads in the target namespace (i.e. workloads already running in the namespace) when
-	//   the Dash0 monitoring resource is deployed,
+	// * automatically instrument existing workloads in the target namespace (i.e. workloads already running in the
+	//   namespace) when the Dash0 monitoring resource is deployed,
 	// * instrument existing workloads or update the instrumentation of already instrumented workloads in the target
-	//   namespace when the Dash0 operator is first started or restarted (for example when updating the
-	//   operator),
+	//   namespace when the Dash0 operator is first started or restarted (for example when updating the operator),
 	// * instrument new workloads in the target namespace when they are deployed, and
 	// * instrument changed workloads in the target namespace when changes are applied to them.
 	// Note that the first two actions (instrumenting existing workloads) will result in restarting the pods of the
@@ -58,12 +57,12 @@ type Dash0MonitoringSpec struct {
 	// This setting is useful if you want to avoid pod restarts as a side effect of deploying the Dash0 monitoring
 	// resource or restarting the Dash0 operator.
 	//
-	// You can opt out of instrumenting workloads entirely by setting this option to `none`. With
+	// You can opt out of automatically instrumenting workloads entirely by setting this option to `none`. With
 	// `instrumentWorkloads: none`, workloads in the target namespace will never be instrumented to send telemetry to
 	// Dash0.
 	//
-	// If this setting is omitted, the value `all` is assumed and new/updated as well as existing Kubernetes workloads
-	// will be intrumented by the operator to send telemetry to Dash0, as described above.
+	// If this setting is omitted, the value `all` is assumed and new, updated as well as existing Kubernetes workloads
+	// will be automatically intrumented by the operator to send telemetry to Dash0, as described above.
 	//
 	// More fine-grained per-workload control over instrumentation is available by setting the label
 	// dash0.com/enable=false on individual workloads.
@@ -71,25 +70,28 @@ type Dash0MonitoringSpec struct {
 	// +kubebuilder:default=all
 	InstrumentWorkloads InstrumentWorkloadsMode `json:"instrumentWorkloads,omitempty"`
 
-	// If enabled, the operator will watch Perses dashboard resources in this namespace and create corresponding
-	// dashboards in Dash0 via the Dash0 API.
-	// See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-dashboards-with-the-operator
-	// for details. This setting is optional, it defaults to true.
+	// Settings for log collection in the target namespace. This setting is optional, by default the operator will
+	// collect pod logs in the target namespace.
 	//
-	// +kubebuilder:default=true
-	SynchronizePersesDashboards *bool `json:"synchronizePersesDashboards,omitempty"`
+	// +kubebuilder:default={enabled: true}
+	LogCollection LogCollection `json:"logCollection,omitempty"`
 
-	// If enabled, the operator will watch Prometheus rule resources in this namespace and create corresponding check
-	// rules in Dash0 via the Dash0 API.
-	// See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-check-rules-with-the-operator
-	// for details. This setting is optional, it defaults to true.
+	// Settings for scraping Prometheus metrics from pods in the target namespace according to their
+	// prometheus.io/scrape annotations. This setting is optional, by default the operator will scrape metrics from pods
+	// with these notations in the target namespace.
 	//
-	// +kubebuilder:default=true
-	SynchronizePrometheusRules *bool `json:"synchronizePrometheusRules,omitempty"`
+	// +kubebuilder:default={enabled: true}
+	PrometheusScraping PrometheusScraping `json:"prometheusScraping,omitempty"`
 
+	// Deprecated: This setting is deprecated. Please use
+	//     prometheusScraping:
+	//       enabled: false
+	// instead of
+	//     prometheusScrapingEnabled: false
+	//
 	// If enabled, the operator will configure its OpenTelemetry collector to scrape metrics from pods in the namespace
 	// of this Dash0Monitoring resource according to their prometheus.io/scrape annotations via the OpenTelemetry
-	// Prometheus receiver. This setting is optional, it defaults to true.
+	// Prometheus receiver. This setting is optional, it defaults to `true`.
 	//
 	// +kubebuilder:default=true
 	PrometheusScrapingEnabled *bool `json:"prometheusScrapingEnabled,omitempty"`
@@ -120,6 +122,22 @@ type Dash0MonitoringSpec struct {
 
 	// Only used internally, this field must not be specified by users.
 	NormalizedTransformSpec *NormalizedTransformSpec `json:"__dash0_internal__normalizedTransform,omitempty"`
+
+	// If enabled, the operator will watch Perses dashboard resources in this namespace and create corresponding
+	// dashboards in Dash0 via the Dash0 API.
+	// See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-dashboards-with-the-operator
+	// for details. This setting is optional, it defaults to `true`.
+	//
+	// +kubebuilder:default=true
+	SynchronizePersesDashboards *bool `json:"synchronizePersesDashboards,omitempty"`
+
+	// If enabled, the operator will watch Prometheus rule resources in this namespace and create corresponding check
+	// rules in Dash0 via the Dash0 API.
+	// See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#managing-dash0-check-rules-with-the-operator
+	// for details. This setting is optional, it defaults to `true`.
+	//
+	// +kubebuilder:default=true
+	SynchronizePrometheusRules *bool `json:"synchronizePrometheusRules,omitempty"`
 }
 
 // InstrumentWorkloadsMode describes when exactly workloads will be instrumented.  Only one of the following modes
@@ -141,6 +159,26 @@ const (
 )
 
 var allInstrumentWorkloadsMode = []InstrumentWorkloadsMode{All, CreatedAndUpdated, None}
+
+type LogCollection struct {
+	// Opt-out for log collection for the target namespace. If set to `false`, the operator will not collect pod logs
+	// in the target namespace and send the resulting log records to Dash0.
+	//
+	// This setting is optional, it defaults to `true`, that is, if this setting is omitted, the value `true` is assumed
+	// and the operator will collect pod logs in the target namespace.
+	//
+	// +kubebuilder:default=true
+	Enabled *bool `json:"enabled"`
+}
+
+type PrometheusScraping struct {
+	// If enabled, the operator will configure its OpenTelemetry collector to scrape metrics from pods in the namespace
+	// of this Dash0Monitoring resource according to their prometheus.io/scrape annotations via the OpenTelemetry
+	// Prometheus receiver. This setting is optional, it defaults to `true`.
+	//
+	// +kubebuilder:default=true
+	Enabled *bool `json:"enabled"`
+}
 
 // FilterTransformErrorMode determine how the filter or the transform processor reacts to errors that occur while
 // processing a condition.

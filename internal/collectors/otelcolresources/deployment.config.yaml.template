@@ -43,10 +43,19 @@ processors:
       - k8s.replicaset.uid
       - k8s.statefulset.name
       - k8s.statefulset.uid
+      # The following two work only if k8s.pod.uid and k8s.container.name are set
+      - container.image.name
+      - container.image.tag
+{{- if .CollectPodLabelsAndAnnotationsEnabled }}
       labels:
-      - key: dash0.com/instrumented
-        tag_name: dash0.monitoring.instrumented
-        from: pod
+        - tag_name: k8s.pod.label.$$1
+          key_regex: (.*)
+          from: pod
+      annotations:
+        - tag_name: k8s.pod.annotation.$$1
+          key_regex: (.*)
+          from: pod
+{{- end }}
     passthrough: false
     pod_association:
     - sources:
@@ -55,6 +64,23 @@ processors:
     - sources:
       - from: resource_attribute
         name: k8s.pod.uid
+
+  # Limit resource attributes to a reasonable maximum length. This is particularly important when transforming
+  # Kubernetes pod annotations to resource attributes, which can hold up to 256KB of data.
+  transform/resources:
+    error_mode: ignore
+    trace_statements:
+      - context: resource
+      - statements:
+        - truncate_all(resource.attributes, 2048)
+    metric_statements:
+      - context: resource
+      - statements:
+        - truncate_all(resource.attributes, 2048)
+    log_statements:
+      - context: resource
+      - statements:
+        - truncate_all(resource.attributes, 2048)
 
   {{- if .ClusterName }}
   resource/clustername:
@@ -179,6 +205,7 @@ service:
       {{- if .CustomTransforms.HasMetricTransforms }}
       - transform/metrics/custom_telemetry_transform
       {{- end }}
+      - transform/resources
       - memory_limiter
       - batch
       exporters:

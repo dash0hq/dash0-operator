@@ -43,6 +43,14 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
+	//nolint:staticcheck
+	if monitoringResource.Spec.PrometheusScrapingEnabled != nil &&
+		//nolint:staticcheck
+		!*monitoringResource.Spec.PrometheusScrapingEnabled {
+		// The deprecated option has been explicitly set to false, log warning to ask users to switch to the new option.
+		logger.Info("Warning: The setting Dash0Monitoring.spec.prometheusScrapingEnabled is deprecated: Please use Dash0Monitoring.spec.prometheusScraping.enabled instead.")
+	}
+
 	if monitoringResource.Spec.Export != nil {
 		return admission.Allowed("")
 	}

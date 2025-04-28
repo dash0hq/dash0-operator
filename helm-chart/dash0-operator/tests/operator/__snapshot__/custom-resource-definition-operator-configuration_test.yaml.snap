@@ -45,6 +45,26 @@ custom resource definition should match snapshot:
                         If set, the value will be added as the resource attribute k8s.cluster.name to all telemetry. This setting is
                         optional. By default, k8s.cluster.name will not be added to telemetry.
                       type: string
+                    collectPodLabelsAndAnnotations:
+                      default:
+                        enabled: true
+                      description: |-
+                        Settings for collecting pod labels and annotations in the target namespace. This setting is optional, by default
+                        the operator will collect pod labels and annotations as resource attributes in the target namespace.
+                      properties:
+                        enabled:
+                          default: true
+                          description: |-
+                            Opt-out for log collecting all pod labels and annotations as resource . If set to `false`, the operator will not
+                            collect Kubernetes labels and annotations as resource attributes.
+
+
+                            This setting is optional, it defaults to `true`, that is, if this setting is omitted, the value `true` is assumed
+                            and the operator will collect pod labels and annotations as resource attributes.
+                          type: boolean
+                      required:
+                        - enabled
+                      type: object
                     export:
                       description: |-
                         The configuration of the default observability backend to which telemetry data will be sent by the operator, as
@@ -113,6 +133,7 @@ custom resource definition should match snapshot:
                                 needs to be the OTLP/gRPC endpoint of your Dash0 organization. The correct OTLP/gRPC endpoint can be copied fom
                                 https://app.dash0.com -> organization settings -> "Endpoints". The correct endpoint value will always start with
                                 `ingress.` and end in `dash0.com:4317`.
+                              minLength: 1
                               type: string
                           required:
                             - authorization
@@ -170,9 +191,32 @@ custom resource definition should match snapshot:
                             - endpoint
                           type: object
                       type: object
+                    kubernetesInfrastructureMetricsCollection:
+                      default:
+                        enabled: true
+                      description: |-
+                        Settings for collecting Kubernetes infrastructure metrics. This setting is optional, by default the operator will
+                        collect Kubernetes infrastructure metrics.
+                      properties:
+                        enabled:
+                          default: true
+                          description: |-
+                            If enabled, the operator will collect Kubernetes infrastructure metrics. This setting is optional, it defaults
+                            to `true`.
+                          type: boolean
+                      required:
+                        - enabled
+                      type: object
                     kubernetesInfrastructureMetricsCollectionEnabled:
                       default: true
                       description: |-
+                        Deprecated: This setting is deprecated. Please use
+                            kubernetesInfrastructureMetricsCollection:
+                              enabled: false
+                        instead of
+                            kubernetesInfrastructureMetricsCollectionEnabled: false
+
+
                         If enabled, the operator will collect Kubernetes infrastructure metrics. This setting is optional, it defaults
                         to true.
                       type: boolean
@@ -185,7 +229,7 @@ custom resource definition should match snapshot:
                           default: true
                           description: |-
                             If enabled, the operator will collect self-monitoring telemetry and send it to the configured Dash0 backend.
-                            This setting is optional, it defaults to true.
+                            This setting is optional, it defaults to `true`.
                           type: boolean
                       required:
                         - enabled
