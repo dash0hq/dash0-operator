@@ -22,7 +22,7 @@ The Dash0 operator is currently available as a technical preview.
 Supported runtimes for automatic workload instrumentation:
 
 * Java 8+
-* Node.js 18+
+* Node.js 16+
 
 Other features like metrics and log collection are independent of the runtime of workloads.
 
