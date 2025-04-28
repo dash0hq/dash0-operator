@@ -73,12 +73,13 @@ func (ct *customTransforms) HasLogTransforms() bool {
 type collectorConfigurationTemplateValues struct {
 	Exporters                                        []OtlpExporter
 	SendBatchMaxSize                                 *uint32
-	IgnoreLogsFromNamespaces                         []string
 	KubernetesInfrastructureMetricsCollectionEnabled bool
+	CollectPodLabelsAndAnnotationsEnabled            bool
 	KubeletStatsReceiverConfig                       KubeletStatsReceiverConfig
 	UseHostMetricsReceiver                           bool
 	PseudoClusterUID                                 string
 	ClusterName                                      string
+	NamespacesWithLogCollection                      []string
 	NamespaceOttlFilter                              string
 	NamespacesWithPrometheusScraping                 []string
 	CustomFilters                                    customFilters
@@ -121,6 +122,7 @@ var (
 func assembleDaemonSetCollectorConfigMap(
 	config *oTelColConfig,
 	monitoredNamespaces []string,
+	namespacesWithLogCollection []string,
 	namespacesWithPrometheusScraping []string,
 	filters []NamespacedFilter,
 	transforms []NamespacedTransform,
@@ -129,6 +131,7 @@ func assembleDaemonSetCollectorConfigMap(
 	return assembleCollectorConfigMap(
 		config,
 		monitoredNamespaces,
+		namespacesWithLogCollection,
 		namespacesWithPrometheusScraping,
 		filters,
 		transforms,
@@ -149,6 +152,7 @@ func assembleDeploymentCollectorConfigMap(
 		config,
 		monitoredNamespaces,
 		nil,
+		nil,
 		filters,
 		transforms,
 		deploymentCollectorConfigurationTemplate,
@@ -160,6 +164,7 @@ func assembleDeploymentCollectorConfigMap(
 func assembleCollectorConfigMap(
 	config *oTelColConfig,
 	monitoredNamespaces []string,
+	namespacesWithLogCollection []string,
 	namespacesWithPrometheusScraping []string,
 	filters []NamespacedFilter,
 	transforms []NamespacedTransform,
@@ -192,18 +197,13 @@ func assembleCollectorConfigMap(
 			&collectorConfigurationTemplateValues{
 				Exporters:        exporters,
 				SendBatchMaxSize: config.SendBatchMaxSize,
-				IgnoreLogsFromNamespaces: []string{
-					// Skipping kube-system, it requires bespoke filtering work
-					"kube-system",
-					// Skipping logs from the operator and the daemonset, otherwise
-					// logs will compound in case of log parsing errors
-					config.Namespace,
-				},
 				KubernetesInfrastructureMetricsCollectionEnabled: config.KubernetesInfrastructureMetricsCollectionEnabled,
+				CollectPodLabelsAndAnnotationsEnabled:            config.CollectPodLabelsAndAnnotationsEnabled,
 				KubeletStatsReceiverConfig:                       config.KubeletStatsReceiverConfig,
 				UseHostMetricsReceiver:                           config.UseHostMetricsReceiver,
 				PseudoClusterUID:                                 config.PseudoClusterUID,
 				ClusterName:                                      config.ClusterName,
+				NamespacesWithLogCollection:                      namespacesWithLogCollection,
 				NamespaceOttlFilter:                              namespaceOttlFilter,
 				NamespacesWithPrometheusScraping:                 namespacesWithPrometheusScraping,
 				CustomFilters:                                    customTelemetryFilters,
@@ -229,7 +229,7 @@ func assembleCollectorConfigMap(
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      configMapName,
-			Namespace: config.Namespace,
+			Namespace: config.OperatorNamespace,
 			Labels:    labels(false),
 		},
 		Data: configMapData,

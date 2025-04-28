@@ -13,9 +13,11 @@ spec:
         app.kubernetes.io/version: "1.0.0"
         app.kubernetes.io/part-of: "dash0-operator-test"
         app.kubernetes.io/instance: "express"
+        test.label/key: "label-value"
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "1208"
+        test.annotation/key: "annotation value"
     spec:
       restartPolicy: Never
       containers:

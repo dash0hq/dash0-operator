@@ -234,6 +234,19 @@ func workloadSpansResourceMatcher(runtime runtimeType, workloadType workloadType
 				matchResult,
 			)
 		}
+
+		verifyResourceAttributeStartsWith(
+			resourceAttributes,
+			"k8s.pod.label.test.label/key",
+			"label-value",
+			matchResult,
+		)
+		verifyResourceAttributeStartsWith(
+			resourceAttributes,
+			"k8s.pod.annotation.test.annotation/key",
+			"annotation value",
+			matchResult,
+		)
 	}
 }
 

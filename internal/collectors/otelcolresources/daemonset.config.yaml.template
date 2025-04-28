@@ -306,14 +306,10 @@ to be compatible with the well-known configuration via annotations.
             target_label: node
 {{- end }}
 
-{{/*
-  TODO Turn on conditionally for monitored namespaces
-*/}}
-  filelog/monitored_pods:
+{{- if .NamespacesWithLogCollection }}
+  filelog:
     include:
-    - /var/log/pods/*/*/*.log
-    exclude:
-{{- range $i, $namespace := .IgnoreLogsFromNamespaces }}
+{{- range $i, $namespace := .NamespacesWithLogCollection }}
     - /var/log/pods/{{ $namespace }}_*/*/*.log
 {{- end}}
     storage: file_storage/filelogreceiver_offsets
@@ -324,7 +320,7 @@ to be compatible with the well-known configuration via annotations.
     - id: container-parser
       max_log_size: 102400
       type: container
-
+{{- end}}
 
 processors:
 {{- if .SendBatchMaxSize }}
@@ -379,10 +375,16 @@ processors:
       # The following two work only if k8s.pod.uid and k8s.container.name are set
       - container.image.name
       - container.image.tag
+{{- if .CollectPodLabelsAndAnnotationsEnabled }}
       labels:
-      - key: dash0.com/instrumented
-        tag_name: dash0.monitoring.instrumented
-        from: pod
+        - tag_name: k8s.pod.label.$$1
+          key_regex: (.*)
+          from: pod
+      annotations:
+        - tag_name: k8s.pod.annotation.$$1
+          key_regex: (.*)
+          from: pod
+{{- end }}
     filter:
       node_from_env_var: K8S_NODE_NAME
     passthrough: false
@@ -395,6 +397,23 @@ processors:
         name: k8s.pod.uid
     - sources:
       - from: connection
+
+  # Limit resource attributes to a reasonable maximum length. This is particularly important when transforming
+  # Kubernetes pod annotations to resource attributes, which can hold up to 256KB of data.
+  transform/resources:
+    error_mode: ignore
+    trace_statements:
+      - context: resource
+      - statements:
+        - truncate_all(resource.attributes, 2048)
+    metric_statements:
+      - context: resource
+      - statements:
+        - truncate_all(resource.attributes, 2048)
+    log_statements:
+      - context: resource
+      - statements:
+        - truncate_all(resource.attributes, 2048)
 
   {{- if $hasPrometheusScrapingEnabledForAtLeastOneNamespace }}
   transform/metrics/prometheus_service_attributes:
@@ -444,12 +463,6 @@ processors:
       metric:
         - {{ .NamespaceOttlFilter }}
 {{- end }}
-
-  filter/logs/only_dash0_monitored_resources:
-    error_mode: ignore
-    logs:
-      log_record:
-      - 'resource.attributes["dash0.monitoring.instrumented"] != "true"'
 
 {{ if .CustomFilters.HasTraceFilters }}
   filter/traces/custom_telemetry_filter:
@@ -619,6 +632,7 @@ service:
       {{- if .CustomTransforms.HasTraceTransforms }}
       - transform/traces/custom_telemetry_transform
       {{- end }}
+      - transform/resources
       - memory_limiter
       - batch
       exporters:
@@ -666,6 +680,7 @@ service:
       {{- if .CustomTransforms.HasMetricTransforms }}
       - transform/metrics/custom_telemetry_transform
       {{- end }}
+      - transform/resources
       - memory_limiter
       - batch
       exporters:
@@ -684,14 +699,15 @@ service:
       exporters:
       - forward/logs
 
+{{- if .NamespacesWithLogCollection }}
     logs/filelog:
       receivers:
-      - filelog/monitored_pods
+      - filelog
       processors:
       - k8sattributes
-      - filter/logs/only_dash0_monitored_resources
       exporters:
       - forward/logs
+{{- end }}
 
     logs/downstream:
       receivers:
@@ -707,6 +723,7 @@ service:
       {{- if .CustomTransforms.HasLogTransforms }}
       - transform/logs/custom_telemetry_transform
       {{- end }}
+      - transform/resources
       - memory_limiter
       - batch
       exporters:

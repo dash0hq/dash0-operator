@@ -109,7 +109,8 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 			g.Expect(dash0Export.Authorization.SecretRef).To(BeNil())
 			g.Expect(dash0Export.Authorization.SecretRef).To(BeNil())
 			g.Expect(*spec.SelfMonitoring.Enabled).To(BeFalse())
-			g.Expect(*spec.KubernetesInfrastructureMetricsCollectionEnabled).To(BeFalse())
+			g.Expect(*spec.KubernetesInfrastructureMetricsCollection.Enabled).To(BeFalse())
+			g.Expect(*spec.CollectPodLabelsAndAnnotations.Enabled).To(BeFalse())
 			g.Expect(spec.ClusterName).To(BeEmpty())
 		}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
 	})
@@ -233,6 +234,7 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 			Dataset:               "dataset-1",
 			SelfMonitoringEnabled: false,
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			CollectPodLabelsAndAnnotationsEnabled:            true,
 		}, &logger)
 		Expect(err).ToNot(HaveOccurred())
 
@@ -258,7 +260,8 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 			g.Expect(dash0Export.ApiEndpoint).To(Equal("https://api-1.dash0.com"))
 			g.Expect(dash0Export.Dataset).To(Equal("dataset-1"))
 			g.Expect(*operatorConfiguration.Spec.SelfMonitoring.Enabled).To(BeFalse())
-			g.Expect(*operatorConfiguration.Spec.KubernetesInfrastructureMetricsCollectionEnabled).To(BeTrue())
+			g.Expect(*operatorConfiguration.Spec.KubernetesInfrastructureMetricsCollection.Enabled).To(BeTrue())
+			g.Expect(*operatorConfiguration.Spec.CollectPodLabelsAndAnnotations.Enabled).To(BeTrue())
 		}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
 
 		// Now call the handler a second time, simulating a new startup of the operator manager process, with different
@@ -271,6 +274,7 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 				Dataset:               "dataset-2",
 				SelfMonitoringEnabled: true,
 				KubernetesInfrastructureMetricsCollectionEnabled: false,
+				CollectPodLabelsAndAnnotationsEnabled:            false,
 			}, &logger)
 		Expect(err).ToNot(HaveOccurred())
 
@@ -298,7 +302,8 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 			g.Expect(dash0Export.ApiEndpoint).To(Equal("https://api-2.dash0.com"))
 			g.Expect(dash0Export.Dataset).To(Equal("dataset-2"))
 			g.Expect(*operatorConfiguration.Spec.SelfMonitoring.Enabled).To(BeTrue())
-			g.Expect(*operatorConfiguration.Spec.KubernetesInfrastructureMetricsCollectionEnabled).To(BeFalse())
+			g.Expect(*operatorConfiguration.Spec.KubernetesInfrastructureMetricsCollection.Enabled).To(BeFalse())
+			g.Expect(*operatorConfiguration.Spec.CollectPodLabelsAndAnnotations.Enabled).To(BeFalse())
 		}, 5*time.Second, 100*time.Millisecond).Should(Succeed())
 	})
 })

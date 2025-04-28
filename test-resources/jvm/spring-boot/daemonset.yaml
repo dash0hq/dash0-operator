@@ -27,9 +27,11 @@ spec:
     metadata:
       labels:
         app: dash0-operator-jvm-spring-boot-test-daemonset-app
+        test.label/key: "label-value"
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "1306"
+        test.annotation/key: "annotation value"
     spec:
       containers:
         - name: dash0-operator-jvm-spring-boot-test-daemonset-app

@@ -32,11 +32,29 @@ type Dash0OperatorConfigurationSpec struct {
 	// +kubebuilder:default={enabled: true}
 	SelfMonitoring SelfMonitoring `json:"selfMonitoring,omitempty"`
 
+	// Settings for collecting Kubernetes infrastructure metrics. This setting is optional, by default the operator will
+	// collect Kubernetes infrastructure metrics.
+	//
+	// +kubebuilder:default={enabled: true}
+	KubernetesInfrastructureMetricsCollection KubernetesInfrastructureMetricsCollection `json:"kubernetesInfrastructureMetricsCollection,omitempty"`
+
+	// Deprecated: This setting is deprecated. Please use
+	//     kubernetesInfrastructureMetricsCollection:
+	//       enabled: false
+	// instead of
+	//     kubernetesInfrastructureMetricsCollectionEnabled: false
+	//
 	// If enabled, the operator will collect Kubernetes infrastructure metrics. This setting is optional, it defaults
 	// to true.
 	//
 	// +kubebuilder:default=true
 	KubernetesInfrastructureMetricsCollectionEnabled *bool `json:"kubernetesInfrastructureMetricsCollectionEnabled,omitempty"`
+
+	// Settings for collecting pod labels and annotations in the target namespace. This setting is optional, by default
+	// the operator will collect pod labels and annotations as resource attributes in the target namespace.
+	//
+	// +kubebuilder:default={enabled: true}
+	CollectPodLabelsAndAnnotations CollectPodLabelsAndAnnotations `json:"collectPodLabelsAndAnnotations,omitempty"`
 
 	// If set, the value will be added as the resource attribute k8s.cluster.name to all telemetry. This setting is
 	// optional. By default, k8s.cluster.name will not be added to telemetry.
@@ -48,7 +66,26 @@ type Dash0OperatorConfigurationSpec struct {
 // SelfMonitoring describes how the operator will report telemetry about its working to the backend.
 type SelfMonitoring struct {
 	// If enabled, the operator will collect self-monitoring telemetry and send it to the configured Dash0 backend.
-	// This setting is optional, it defaults to true.
+	// This setting is optional, it defaults to `true`.
+	//
+	// +kubebuilder:default=true
+	Enabled *bool `json:"enabled"`
+}
+
+type KubernetesInfrastructureMetricsCollection struct {
+	// If enabled, the operator will collect Kubernetes infrastructure metrics. This setting is optional, it defaults
+	// to `true`.
+	//
+	// +kubebuilder:default=true
+	Enabled *bool `json:"enabled"`
+}
+
+type CollectPodLabelsAndAnnotations struct {
+	// Opt-out for log collecting all pod labels and annotations as resource . If set to `false`, the operator will not
+	// collect Kubernetes labels and annotations as resource attributes.
+	//
+	// This setting is optional, it defaults to `true`, that is, if this setting is omitted, the value `true` is assumed
+	// and the operator will collect pod labels and annotations as resource attributes.
 	//
 	// +kubebuilder:default=true
 	Enabled *bool `json:"enabled"`

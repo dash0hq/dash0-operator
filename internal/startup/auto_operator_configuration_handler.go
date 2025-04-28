@@ -34,6 +34,7 @@ type OperatorConfigurationValues struct {
 	Dataset                                          string
 	SelfMonitoringEnabled                            bool
 	KubernetesInfrastructureMetricsCollectionEnabled bool
+	CollectPodLabelsAndAnnotationsEnabled            bool
 	ClusterName                                      string
 }
 
@@ -275,7 +276,12 @@ func convertValuesToResource(operatorConfigurationValues *OperatorConfigurationV
 				Enabled: ptr.To(operatorConfigurationValues.SelfMonitoringEnabled),
 			},
 			Export: &dash0Export,
-			KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(operatorConfigurationValues.KubernetesInfrastructureMetricsCollectionEnabled),
+			KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
+				Enabled: ptr.To(operatorConfigurationValues.KubernetesInfrastructureMetricsCollectionEnabled),
+			},
+			CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
+				Enabled: ptr.To(operatorConfigurationValues.CollectPodLabelsAndAnnotationsEnabled),
+			},
 			ClusterName: operatorConfigurationValues.ClusterName,
 		},
 	}

@@ -21,6 +21,12 @@ import (
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
+type disableLogCollectionTestCase struct {
+	namespace              string
+	monitoringResourceSpec string
+	expectPatch            bool
+}
+
 type normalizeTransformSpecTestCase struct {
 	monitoringResourceSpec string
 	expected               *dash0v1alpha1.NormalizedTransformSpec
@@ -35,21 +41,16 @@ const (
 
 var _ = Describe("The mutation webhook for the monitoring resource", func() {
 
-	Describe("when normalizing the transform spec", Ordered, func() {
-
-		var handler *MonitoringMutatingWebhookHandler
-
-		BeforeAll(func() {
-			handler = &MonitoringMutatingWebhookHandler{}
-		})
-
-		DescribeTable("should normalize the transform spec", func(testCase normalizeTransformSpecTestCase) {
+	Describe("when mutating the operator configuration resource", func() {
+		DescribeTable("should disable log collection in the operator namespace", func(testCase disableLogCollectionTestCase) {
 			var unmarshalledYaml map[string]interface{}
 			Expect(yaml.Unmarshal([]byte(testCase.monitoringResourceSpec), &unmarshalledYaml)).To(Succeed())
 			rawSpecJson, err := json.Marshal(unmarshalledYaml)
 			Expect(err).ToNot(HaveOccurred())
-			response := handler.Handle(ctx, admission.Request{
+			response := monitoringMutatingWebhookHandler.Handle(ctx, admission.Request{
 				AdmissionRequest: admissionv1.AdmissionRequest{
+					Name:      "resource-name",
+					Namespace: testCase.namespace,
 					Object: runtime.RawExtension{
 						Raw: rawSpecJson,
 					},
@@ -57,6 +58,93 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 			})
 
 			Expect(response.Allowed).To(BeTrue())
+
+			var logCollectionPatch interface{}
+			for _, patch := range response.Patches {
+				if patch.Operation == "replace" && patch.Path == "/spec/logCollection/enabled" {
+					logCollectionPatch = patch.Value
+				}
+			}
+
+			if !testCase.expectPatch {
+				Expect(logCollectionPatch).To(BeNil())
+				return
+			}
+
+			// If we patch the logCollection.enabled field, we only ever set it to false.
+			Expect(logCollectionPatch).ToNot(BeNil())
+			Expect(logCollectionPatch).To(BeFalse())
+
+		}, []TableEntry{
+			Entry("with an empty spec in an arbitrary namespace", disableLogCollectionTestCase{
+				namespace: "some-namespace",
+				monitoringResourceSpec: `
+spec: {}
+`,
+				expectPatch: false,
+			}),
+			Entry("with an empty spec in the operator namespace", disableLogCollectionTestCase{
+				namespace: OperatorNamespace,
+				monitoringResourceSpec: `
+spec: {}
+`,
+				expectPatch: false,
+			}),
+			Entry("with log collection disabled in an arbitrary namespace", disableLogCollectionTestCase{
+				namespace: "some-namespace",
+				monitoringResourceSpec: `
+spec: 
+  logCollection:
+    enabled: false
+`,
+				expectPatch: false,
+			}),
+			Entry("with log collection diabled in the operator namespace", disableLogCollectionTestCase{
+				namespace: OperatorNamespace,
+				monitoringResourceSpec: `
+spec: 
+  logCollection:
+    enabled: false
+`,
+				expectPatch: false,
+			}),
+			Entry("with log collection enabled in an arbitrary namespace", disableLogCollectionTestCase{
+				namespace: "some-namespace",
+				monitoringResourceSpec: `
+spec: 
+  logCollection:
+    enabled: true
+`,
+				expectPatch: false,
+			}),
+			Entry("with log collection enabled in the operator namespace", disableLogCollectionTestCase{
+				namespace: OperatorNamespace,
+				monitoringResourceSpec: `
+spec: 
+  logCollection:
+    enabled: true
+`,
+				expectPatch: true,
+			}),
+		})
+
+		DescribeTable("should normalize the transform spec", func(testCase normalizeTransformSpecTestCase) {
+			var unmarshalledYaml map[string]interface{}
+			Expect(yaml.Unmarshal([]byte(testCase.monitoringResourceSpec), &unmarshalledYaml)).To(Succeed())
+			rawSpecJson, err := json.Marshal(unmarshalledYaml)
+			Expect(err).ToNot(HaveOccurred())
+			response := monitoringMutatingWebhookHandler.Handle(ctx, admission.Request{
+				AdmissionRequest: admissionv1.AdmissionRequest{
+					Name:      "resource-name",
+					Namespace: "some-namespace",
+					Object: runtime.RawExtension{
+						Raw: rawSpecJson,
+					},
+				},
+			})
+
+			Expect(response.Allowed).To(BeTrue())
+
 			var normalizedTransformsPatch interface{}
 			for _, patch := range response.Patches {
 				if patch.Operation == "add" && patch.Path == "/spec/__dash0_internal__normalizedTransform" {

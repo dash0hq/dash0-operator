@@ -370,6 +370,9 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].args[7]
           value: --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled=true
+      - equal:
+          path: spec.template.spec.containers[0].args[8]
+          value: --operator-configuration-collect-pod-labels-and-annotations-enabled=true
 
   - it: should add args for creating an operator configuration resource with a custom dataset to the deployment
     documentSelector:
@@ -401,6 +404,9 @@ tests:
           value: --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled=true
       - equal:
           path: spec.template.spec.containers[0].args[8]
+          value: --operator-configuration-collect-pod-labels-and-annotations-enabled=true
+      - equal:
+          path: spec.template.spec.containers[0].args[9]
           value: --operator-configuration-dataset=test-dataset
 
   - it: should add args for creating an operator configuration resource with a cluster name to the deployment
@@ -433,6 +439,9 @@ tests:
           value: --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled=true
       - equal:
           path: spec.template.spec.containers[0].args[8]
+          value: --operator-configuration-collect-pod-labels-and-annotations-enabled=true
+      - equal:
+          path: spec.template.spec.containers[0].args[9]
           value: --operator-configuration-cluster-name=cluster-name
 
   - it: should add args for creating an operator configuration resource with a secretRef to the deployment
@@ -469,6 +478,9 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].args[8]
           value: --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled=true
+      - equal:
+          path: spec.template.spec.containers[0].args[9]
+          value: --operator-configuration-collect-pod-labels-and-annotations-enabled=true
 
   - it: should disable self-monitoring & Kubernetes infrastructure metrics collection
     documentSelector:
@@ -499,6 +511,24 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].args[7]
           value: --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled=false
+
+  - it: should disable pod label and annotation collection
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+          apiEndpoint: https://api.dash0.com
+        selfMonitoringEnabled: false
+        collectPodLabelsAndAnnotationsEnabled: false
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args[8]
+          value: --operator-configuration-collect-pod-labels-and-annotations-enabled=false
 
   - it: should render the "dash0.com/cert-digest" label
     documentSelector:

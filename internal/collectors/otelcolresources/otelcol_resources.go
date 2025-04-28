@@ -120,7 +120,7 @@ func NewOTelColResourceManager(
 
 func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	ctx context.Context,
-	namespace string,
+	operatorNamespace string,
 	images util.Images,
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	allMonitoringResources []dash0v1alpha1.Dash0Monitoring,
@@ -143,10 +143,20 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	}
 
 	kubernetesInfrastructureMetricsCollectionEnabled := true
+	collectPodLabelsAndAnnotationsEnabled := true
 	clusterName := ""
 	if operatorConfigurationResource != nil {
 		kubernetesInfrastructureMetricsCollectionEnabled =
-			util.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.KubernetesInfrastructureMetricsCollectionEnabled, true)
+			util.IsOptOutFlagWithDeprecatedVariantEnabled(
+				//nolint:staticcheck
+				operatorConfigurationResource.Spec.KubernetesInfrastructureMetricsCollectionEnabled,
+				operatorConfigurationResource.Spec.KubernetesInfrastructureMetricsCollection.Enabled,
+			)
+		collectPodLabelsAndAnnotationsEnabled =
+			util.ReadBoolPointerWithDefault(
+				operatorConfigurationResource.Spec.CollectPodLabelsAndAnnotations.Enabled,
+				true,
+			)
 		clusterName = operatorConfigurationResource.Spec.ClusterName
 	}
 	kubeletStatsReceiverConfig :=
@@ -156,12 +166,13 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		)
 
 	config := &oTelColConfig{
-		Namespace:                   namespace,
+		OperatorNamespace:           operatorNamespace,
 		NamePrefix:                  m.OTelCollectorNamePrefix,
 		Export:                      *export,
 		SendBatchMaxSize:            m.SendBatchMaxSize,
 		SelfMonitoringConfiguration: selfMonitoringConfiguration,
 		KubernetesInfrastructureMetricsCollectionEnabled: kubernetesInfrastructureMetricsCollectionEnabled,
+		CollectPodLabelsAndAnnotationsEnabled:            collectPodLabelsAndAnnotationsEnabled,
 		KubeletStatsReceiverConfig:                       kubeletStatsReceiverConfig,
 		// The hostmetrics receiver requires mapping the root file system as a volume mount, see
 		// https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/hostmetricsreceiver#collecting-host-metrics-from-inside-a-container-linux-only
@@ -206,7 +217,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	if err = m.deleteResourcesThatAreNoLongerDesired(ctx, *config, desiredState, logger); err != nil {
 		return resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err
 	}
-	if err = m.deleteObsoleteResourcesFromPreviousOperatorVersions(ctx, namespace, logger); err != nil {
+	if err = m.deleteObsoleteResourcesFromPreviousOperatorVersions(ctx, operatorNamespace, logger); err != nil {
 		return resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err
 	}
 
@@ -383,17 +394,17 @@ func addSelfReferenceUidToAllContainers(containers *[]corev1.Container, envVarNa
 
 func (m *OTelColResourceManager) DeleteResources(
 	ctx context.Context,
-	namespace string,
+	operatorNamespace string,
 	logger *logr.Logger,
 ) (bool, error) {
 	logger.Info(
 		fmt.Sprintf(
 			"Deleting the OpenTelemetry collector Kubernetes resources in the Dash0 operator namespace %s (if any exist).",
-			namespace,
+			operatorNamespace,
 		))
 	config := &oTelColConfig{
-		Namespace:  namespace,
-		NamePrefix: m.OTelCollectorNamePrefix,
+		OperatorNamespace: operatorNamespace,
+		NamePrefix:        m.OTelCollectorNamePrefix,
 		// For deleting the resources, we do not need the actual export settings; we only use assembleDesiredState to
 		// collect the kinds and names of all resources that need to be deleted.
 		Export:                      dash0v1alpha1.Export{},

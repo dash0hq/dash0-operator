@@ -43,6 +43,8 @@ var (
 	testEnv   *envtest.Environment
 	ctx       context.Context
 	cancel    context.CancelFunc
+
+	monitoringMutatingWebhookHandler *MonitoringMutatingWebhookHandler
 )
 
 func TestWebhook(t *testing.T) {
@@ -124,9 +126,11 @@ var _ = BeforeSuite(func() {
 	}).SetupWebhookWithManager(manager)
 	Expect(err).NotTo(HaveOccurred())
 
-	err = (&MonitoringMutatingWebhookHandler{
-		Client: k8sClient,
-	}).SetupWebhookWithManager(manager)
+	monitoringMutatingWebhookHandler = &MonitoringMutatingWebhookHandler{
+		Client:            k8sClient,
+		OperatorNamespace: OperatorNamespace,
+	}
+	err = monitoringMutatingWebhookHandler.SetupWebhookWithManager(manager)
 	Expect(err).NotTo(HaveOccurred())
 
 	err = (&MonitoringValidationWebhookHandler{
