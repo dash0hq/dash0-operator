@@ -157,18 +157,18 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 							true,
 						)
 					},
-					Entry("should instrument new Node.js cron jobs", workloadTypeCronjob, runtimeTypeNodeJs),
-					Entry("should instrument new JVM daemon sets", workloadTypeDaemonSet, runtimeTypeJvm),
 					Entry("should instrument new Node.js daemon sets", workloadTypeDaemonSet, runtimeTypeNodeJs),
-					Entry("should instrument new JVM deployments", workloadTypeDeployment, runtimeTypeJvm),
+					Entry("should instrument new JVM daemon sets", workloadTypeDaemonSet, runtimeTypeJvm),
 					Entry("should instrument new Node.js deployments", workloadTypeDeployment, runtimeTypeNodeJs),
+					Entry("should instrument new JVM deployments", workloadTypeDeployment, runtimeTypeJvm),
 					Entry("should instrument new Node.js jobs", workloadTypeJob, runtimeTypeNodeJs),
-					Entry("should instrument new JVM pods", workloadTypePod, runtimeTypeJvm),
 					Entry("should instrument new Node.js pods", workloadTypePod, runtimeTypeNodeJs),
-					Entry("should instrument new JVM replica sets", workloadTypeReplicaSet, runtimeTypeJvm),
+					Entry("should instrument new JVM pods", workloadTypePod, runtimeTypeJvm),
 					Entry("should instrument new Node.js replica sets", workloadTypeReplicaSet, runtimeTypeNodeJs),
-					Entry("should instrument new JVM stateful sets", workloadTypeStatefulSet, runtimeTypeJvm),
+					Entry("should instrument new JVM replica sets", workloadTypeReplicaSet, runtimeTypeJvm),
 					Entry("should instrument new Node.js stateful sets", workloadTypeStatefulSet, runtimeTypeNodeJs),
+					Entry("should instrument new JVM stateful sets", workloadTypeStatefulSet, runtimeTypeJvm),
+					Entry("should instrument new Node.js cron jobs", workloadTypeCronjob, runtimeTypeNodeJs),
 				)
 
 				It("should revert an instrumented workload when the opt-out label is added after the fact", func() {
