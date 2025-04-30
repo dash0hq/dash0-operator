@@ -5,7 +5,9 @@ package webhooks
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"slices"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -19,6 +21,13 @@ import (
 type MonitoringValidationWebhookHandler struct {
 	Client client.Client
 }
+
+var (
+	restrictedNamespaces = []string{
+		"kube-system",
+		"kube-node-lease",
+	}
+)
 
 func (h *MonitoringValidationWebhookHandler) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	webhook := &admission.Webhook{
@@ -48,7 +57,19 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 		//nolint:staticcheck
 		!*monitoringResource.Spec.PrometheusScrapingEnabled {
 		// The deprecated option has been explicitly set to false, log warning to ask users to switch to the new option.
-		logger.Info("Warning: The setting Dash0Monitoring.spec.prometheusScrapingEnabled is deprecated: Please use Dash0Monitoring.spec.prometheusScraping.enabled instead.")
+		logger.Info("Warning: The setting Dash0Monitoring.spec.prometheusScrapingEnabled is deprecated: Please use " +
+			"Dash0Monitoring.spec.prometheusScraping.enabled instead.")
+	}
+
+	if slices.Contains(restrictedNamespaces, request.Namespace) && monitoringResource.Spec.InstrumentWorkloads != dash0v1alpha1.None {
+		return admission.Denied(
+			fmt.Sprintf(
+				"Rejecting the deployment of Dash0 monitoring resource \"%s\" to the Kubernetes system namespace "+
+					"\"%s\" with instrumentWorkloads=%s, use instrumentWorkloads=none instead.",
+				request.Name,
+				request.Namespace,
+				monitoringResource.Spec.InstrumentWorkloads,
+			))
 	}
 
 	if monitoringResource.Spec.Export != nil {

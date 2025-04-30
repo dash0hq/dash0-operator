@@ -4,6 +4,9 @@
 package webhooks
 
 import (
+	"fmt"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -15,6 +18,12 @@ import (
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
+type kubeSystemTestConfig struct {
+	namespace               string
+	instrumentWorkloadsMode dash0v1alpha1.InstrumentWorkloadsMode
+	expectRejection         bool
+}
+
 var _ = Describe("The validation webhook for the monitoring resource", func() {
 
 	AfterEach(func() {
@@ -25,6 +34,70 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 	})
 
 	Describe("when validating", Ordered, func() {
+
+		DescribeTable("should reject deploying a monitoring resources to kube-system unless instrumentWorkloads=none", func(testConfig kubeSystemTestConfig) {
+			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: testConfig.namespace,
+					Name:      MonitoringResourceName,
+				},
+				Spec: dash0v1alpha1.Dash0MonitoringSpec{
+					InstrumentWorkloads: testConfig.instrumentWorkloadsMode,
+					Export: &dash0v1alpha1.Export{
+						Dash0: &dash0v1alpha1.Dash0Configuration{
+							Endpoint: EndpointDash0Test,
+							Authorization: dash0v1alpha1.Authorization{
+								Token: &AuthorizationTokenTest,
+							},
+						},
+					},
+				},
+			})
+
+			if testConfig.expectRejection {
+				Expect(err).To(MatchError(ContainSubstring(fmt.Sprintf(
+					"admission webhook \"validate-monitoring.dash0.com\" denied the request: Rejecting the deployment "+
+						"of Dash0 monitoring resource \"%s\" to the Kubernetes system namespace \"%s\" with "+
+						"instrumentWorkloads=%s, use instrumentWorkloads=none instead.",
+					MonitoringResourceName,
+					testConfig.namespace,
+					testConfig.instrumentWorkloadsMode,
+				))))
+			} else {
+				Expect(err).ToNot(HaveOccurred())
+			}
+		}, []TableEntry{
+			Entry("reject deploying to kube-system with instrumentWorkloadsMode=all", kubeSystemTestConfig{
+				namespace:               "kube-system",
+				instrumentWorkloadsMode: dash0v1alpha1.All,
+				expectRejection:         true,
+			}),
+			Entry("reject deploying to kube-system with instrumentWorkloadsMode=created-and-updated", kubeSystemTestConfig{
+				namespace:               "kube-system",
+				instrumentWorkloadsMode: dash0v1alpha1.CreatedAndUpdated,
+				expectRejection:         true,
+			}),
+			Entry("allow deploying to kube-system with instrumentWorkloadsMode=none", kubeSystemTestConfig{
+				namespace:               "kube-system",
+				instrumentWorkloadsMode: dash0v1alpha1.None,
+				expectRejection:         false,
+			}),
+			Entry("reject deploying to kube-node-lease with instrumentWorkloadsMode=all", kubeSystemTestConfig{
+				namespace:               "kube-node-lease",
+				instrumentWorkloadsMode: dash0v1alpha1.All,
+				expectRejection:         true,
+			}),
+			Entry("reject deploying to kube-node-lease with instrumentWorkloadsMode=created-and-updated", kubeSystemTestConfig{
+				namespace:               "kube-node-lease",
+				instrumentWorkloadsMode: dash0v1alpha1.CreatedAndUpdated,
+				expectRejection:         true,
+			}),
+			Entry("allow deploying to kube-node-lease with instrumentWorkloadsMode=none", kubeSystemTestConfig{
+				namespace:               "kube-node-lease",
+				instrumentWorkloadsMode: dash0v1alpha1.None,
+				expectRejection:         false,
+			}),
+		})
 
 		It("should reject monitoring resources without export if no operator configuration resource exists", func() {
 			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
