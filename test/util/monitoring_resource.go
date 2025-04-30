@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	MonitoringResourceName = "das0-monitoring-test-resource"
+	MonitoringResourceName = "dash0-monitoring-test-resource"
 )
 
 var (
@@ -28,8 +28,8 @@ var (
 		Name:      MonitoringResourceName,
 	}
 	MonitoringResourceDefaultObjectMeta = metav1.ObjectMeta{
-		Name:      MonitoringResourceName,
 		Namespace: TestNamespaceName,
+		Name:      MonitoringResourceName,
 	}
 	MonitoringResourceDefaultSpec = dash0v1alpha1.Dash0MonitoringSpec{
 		Export: &dash0v1alpha1.Export{
