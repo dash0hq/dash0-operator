@@ -9,3 +9,9 @@ spec:
       authorization:
         token: "$DASH0_AUTHORIZATION_TOKEN"
       apiEndpoint: "$DASH0_API_ENDPOINT"
+  selfMonitoring:
+    enabled: $SELF_MONITORING_ENABLED
+  kubernetesInfrastructureMetricsCollection:
+    enabled: $KUBERNETES_INFRASTRUCTURE_METRICS_COLLECTION_ENABLED
+  collectPodLabelsAndAnnotations:
+    enabled: $COLLECT_POD_LABELS_AND_ANNOTATIONS_ENABLED

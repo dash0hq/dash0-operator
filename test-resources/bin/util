@@ -375,10 +375,10 @@ run_helm() {
     if [[ -n "${OPERATOR_CONFIGURATION_VIA_HELM_DATASET:-}" ]]; then
       helm_install_command+=" --set operator.dash0Export.dataset=$OPERATOR_CONFIGURATION_VIA_HELM_DATASET"
     fi
-    if [[ "${OPERATOR_CONFIGURATION_VIA_HELM_SELF_MONITORING_ENABLED:-}" == "false" ]]; then
+    if [[ "${SELF_MONITORING_ENABLED:-}" == "false" ]]; then
       helm_install_command+=" --set operator.selfMonitoringEnabled=false"
     fi
-    if [[ "${OPERATOR_CONFIGURATION_VIA_HELM_KUBERNETES_INFRASTRUCTURE_METRICS_COLLECTION_ENABLED:-}" == "false" ]]; then
+    if [[ "${KUBERNETES_INFRASTRUCTURE_METRICS_COLLECTION_ENABLED:-}" == "false" ]]; then
       helm_install_command+=" --set operator.kubernetesInfrastructureMetricsCollectionEnabled=false"
     fi
     helm_install_command+=" --set operator.clusterName=$(kubectl config current-context)"

@@ -8,3 +8,9 @@ spec:
       endpoint: http://otlp-sink.otlp-sink.svc.cluster.local:4317
       authorization:
         token: dummy-token
+  selfMonitoring:
+    enabled: $SELF_MONITORING_ENABLED
+  kubernetesInfrastructureMetricsCollection:
+    enabled: $KUBERNETES_INFRASTRUCTURE_METRICS_COLLECTION_ENABLED
+  collectPodLabelsAndAnnotations:
+    enabled: $COLLECT_POD_LABELS_AND_ANNOTATIONS_ENABLED

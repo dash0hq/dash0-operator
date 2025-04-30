@@ -6,6 +6,9 @@ metadata:
   name: dash0-monitoring-resource
 spec:
   instrumentWorkloads: $INSTRUMENT_WORKLOADS
+  logCollection:
+    enabled: $LOG_COLLECTION
+  prometheusScraping:
+    enabled: $PROMETHEUS_SCRAPING_ENABLED
   synchronizePersesDashboards: $SYNCHRONIZE_PERSES_DASHBOARDS
   synchronizePrometheusRules: $SYNCHRONIZE_PROMETHEUS_RULES
-  prometheusScrapingEnabled: $PROMETHEUS_SCRAPING_ENABLED

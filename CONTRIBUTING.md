@@ -193,6 +193,9 @@ If you want to report telemetry to a Dash0 backend, set `DASH0_AUTHORIZATION_TOK
       will refuse to deploy to/delete from any context not on this list. This is a protection against accidentally
       deploying something to or deleting something from a production Kubernetes context.
       It is recommended to set this in `test-resources/.env`.
+    * `COLLECT_POD_LABELS_AND_ANNOTATIONS_ENABLED`: Set this to "false" to disable collecting pod labels and annotations
+      as resource attributes.
+      This defaults to "true".
     * `DASH0_API_ENDPOINT`: The endpoint for API requests (for synching Perses dashboards and Prometheus check rules.
       It is recommended to set this in `test-resources/.env`.
     * `DASH0_AUTHORIZATION_TOKEN`: The authorization token for sending telemetry to the Dash0 ingress endpoint and
@@ -221,14 +224,13 @@ If you want to report telemetry to a Dash0 backend, set `DASH0_AUTHORIZATION_TOK
     * `INSTRUMENT_WORKLOADS`: Set this to "all", "created-and-updated" or "none" to control the `instrumentWorkloads`
       setting of the monitoring resource that will be deployed.
       This defaults to "all".
+    * `LOG_COLLECTION: Set this to "false" to disable collecting logs in monitored namespaces.
+      This defaults to "true".
+    * `KUBERNETES_INFRASTRUCTURE_METRICS_COLLECTION_ENABLED`: Set this to "false" to disable K8s infra metrics
+      collection.
+      This defaults to "true".
     * `OPERATOR_CONFIGURATION_VIA_HELM_DATASET`: Use this to set a custom dataset in the auto operator configuration
       resource.
-    * `OPERATOR_CONFIGURATION_VIA_HELM_KUBERNETES_INFRASTRUCTURE_METRICS_COLLECTION_ENABLED`: Set this to false to
-      set the respective Helm value to false, disabling K8s infra metrics collection.
-      This defaults to "true".
-    * `OPERATOR_CONFIGURATION_VIA_HELM_SELF_MONITORING_ENABLED`: Set this to false to set the respective Helm value to
-      false, disabling self-monitoring.
-      This defaults to "true".
     * `OPERATOR_HELM_CHART_VERSION`: Set this to use a specific version of the Helm chart. This is meant to be used
       together with `OPERATOR_HELM_CHART=dash0-operator/dash0-operator` or similar, where `OPERATOR_HELM_CHART` refers
       to an already installed remote Helm repository (e.g. https://dash0hq.github.io/dash0-operator) that contains the
@@ -241,6 +243,8 @@ If you want to report telemetry to a Dash0 backend, set `DASH0_AUTHORIZATION_TOK
       equal to 8192, which is the default value for `send_batch_size`.
     * `PROMETHEUS_SCRAPING_ENABLED`: Set this to "false" to disable Prometheus scraping in the test namespace via the
       monitoring resource.
+      This defaults to "true".
+    * `SELF_MONITORING_ENABLED`: Set this to "false" to disable the operator's self monitoring.
       This defaults to "true".
     * `SYNCHRONIZE_PERSES_DASHBOARDS`: Set this to "false" to disable synchronizing Perses dashboard resources via the
       Dash0 API.
