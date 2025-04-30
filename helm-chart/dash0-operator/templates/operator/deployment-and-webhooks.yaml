@@ -291,6 +291,13 @@ webhooks:
 - name: inject.dash0.com
   admissionReviewVersions:
   - v1
+  namespaceSelector:
+    matchExpressions:
+      - key: kubernetes.io/metadata.name
+        operator: NotIn
+        values:
+          - kube-system
+          - kube-node-lease
   clientConfig:
     caBundle: {{ default "" ( $ca.Cert | b64enc ) }}
     service:
@@ -312,6 +319,7 @@ webhooks:
     - deployments
     - replicasets
     - statefulsets
+    scope: Namespaced
   - apiGroups:
     - batch
     apiVersions:
@@ -331,6 +339,7 @@ webhooks:
       - CREATE
     resources:
       - jobs
+    scope: Namespaced
   - apiGroups: [""]
     apiVersions:
     - v1
@@ -340,6 +349,7 @@ webhooks:
       - CREATE
     resources:
     - pods
+    scope: Namespaced
   sideEffects: None
   timeoutSeconds: 5
 ---
@@ -373,6 +383,7 @@ webhooks:
           - UPDATE
         resources:
           - dash0operatorconfigurations
+        scope: Cluster
     sideEffects: None
     timeoutSeconds: 5
 ---
@@ -406,6 +417,7 @@ webhooks:
           - UPDATE
         resources:
           - dash0monitorings
+        scope: Namespaced
     sideEffects: None
     timeoutSeconds: 5
 ---
@@ -439,6 +451,7 @@ webhooks:
       - UPDATE
       resources:
       - dash0monitorings
+      scope: Namespaced
   sideEffects: None
   timeoutSeconds: 5
 ---
