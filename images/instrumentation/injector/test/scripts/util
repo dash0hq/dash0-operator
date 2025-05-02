@@ -38,3 +38,4 @@ copy_injector_binary_from_container_image() {
     injector/test/bin/dash0_injector_"$arch".so
   docker rm -v "$container_id"
 }
+

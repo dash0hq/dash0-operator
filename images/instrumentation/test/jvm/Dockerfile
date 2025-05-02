@@ -7,7 +7,6 @@ ARG test_image=openjdk:24-jdk-bookworm
 FROM ${instrumentation_image} AS init
 
 FROM ${test_image}
-ARG injector_path=/__dash0__/dash0_injector.so
 
 COPY test-cases /test-cases
 
@@ -22,4 +21,4 @@ RUN for test in /test-cases/*; do \
 # setting the LD_PRELOAD environment variable via the operator.
 COPY --from=init /dash0-init-container/*.so /__dash0__/
 COPY --from=init /dash0-init-container/instrumentation /__dash0__/instrumentation
-ENV LD_PRELOAD=${injector_path}
+ENV LD_PRELOAD=/__dash0__/dash0_injector.so

@@ -1136,7 +1136,7 @@ If `OTEL_RESOURCE_ATTRIBUTES` was not set on the process, the Dash0 injector wil
 a new environment variable.
 
 If you are curious, the source code for the injector is open source and can be found
-[here](https://github.com/dash0hq/dash0-operator/blob/main/images/instrumentation/injector/src/dash0_injector.c).
+[here](https://github.com/dash0hq/dash0-operator/blob/main/images/instrumentation/injector).
 
 ## Scraping Prometheus Endpoints
 
