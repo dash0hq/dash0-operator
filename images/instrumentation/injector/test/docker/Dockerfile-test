@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-ARG base_image="node:20.19-bookworm"
+ARG base_image="node:22.15.0-bookworm"
 FROM ${base_image}
 
 ARG injector_binary=no_value

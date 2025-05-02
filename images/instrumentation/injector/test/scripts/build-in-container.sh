@@ -7,6 +7,11 @@ set -eu
 
 cd "$(dirname "${BASH_SOURCE[0]}")"/../../..
 
+if ! docker info > /dev/null 2>&1; then
+  echo "This script uses docker, but it looks like Docker is not running. Please start docker and try again."
+  exit 1
+fi
+
 # shellcheck source=images/instrumentation/injector/test/scripts/util
 source injector/test/scripts/util
 

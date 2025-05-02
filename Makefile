@@ -141,7 +141,7 @@ vet: ## Run go vet against code.
 	go vet ./...
 
 .PHONY: test
-test: go-unit-tests helm-unit-tests ## Run tests.
+test: go-unit-tests injector-unit-tests helm-unit-tests
 
 .PHONY: go-unit-tests
 go-unit-tests: common-package-unit-tests operator-manager-unit-tests
@@ -153,6 +153,10 @@ operator-manager-unit-tests: manifests generate fmt vet envtest
 .PHONY: common-package-unit-tests
 common-package-unit-tests:
 	go test github.com/dash0hq/dash0-operator/images/pkg/common
+
+.PHONY: injector-unit-tests
+injector-unit-tests: zig-installed
+	cd images/instrumentation/injector && zig build test
 
 .PHONY: helm-unit-tests
 helm-unit-tests:
@@ -211,32 +215,32 @@ prometheus-crd-version-check:
 	@echo "-------------------------------- (verifying the Prometheus CRD version is in sync)"
 	./test-resources/bin/prometheus-crd-version-check.sh
 
-.PHONY: c-lint-installed
-c-lint-installed:
+.PHONY: zig-installed
+zig-installed:
 	@set +x
-	@if ! clang-format --version > /dev/null; then \
-	echo "error: clang-format is not installed. Run 'brew install clang-format' or similar."; \
+	@if ! zig version > /dev/null; then \
+	echo "error: zig is not installed. Run 'brew install zig' or similar."; \
 	exit 1; \
 	fi
 
-.PHONY: c-lint
-c-lint: c-lint-installed
+.PHONY: zig-fmt-check
+zig-fmt-check: zig-installed
 ifeq ("${CI}","true")
-	@echo "CI: skip linting C source files via make lint, will run as separate Github action job step"
+	@echo "CI: skip linting Zig source files via make lint, will run as separate Github action job step"
 else
-	@echo "-------------------------------- (linting C source files)"
-	clang-format --dry-run --Werror images/instrumentation/injector/src/*.c
+	@echo "-------------------------------- (linting Zig source files)"
+	zig fmt --check images/instrumentation/injector/src
 endif
 
-.PHONY: c-lint-fix
-c-lint-fix: c-lint-installed
-	clang-format -i images/instrumentation/injector/src/*.c
+.PHONY: zig-fmt
+zig-fmt: zig-installed
+	zig fmt images/instrumentation/injector/src
 
 .PHONY: lint
-lint: golangci-lint helm-chart-lint shellcheck-lint prometheus-crd-version-check c-lint
+lint: golangci-lint helm-chart-lint shellcheck-lint prometheus-crd-version-check zig-fmt-check
 
 .PHONY: lint-fix
-lint-fix: golang-lint-fix c-lint-fix
+lint-fix: golang-lint-fix zig-fmt
 
 ##@ Build
 

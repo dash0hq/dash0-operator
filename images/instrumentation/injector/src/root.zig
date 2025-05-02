@@ -1,6 +1,10 @@
+// SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 const builtin = @import("builtin");
 const std = @import("std");
 const assert = std.debug.assert;
+const expect = std.testing.expect;
 
 const null_terminated_string = [*:0]const u8;
 
@@ -16,8 +20,6 @@ const dotnet_path_prefix = "/__dash0__/instrumentation/dotnet";
 
 // We need to use a rather "innocent" type here, the actual type involves
 // optionals that cannot be used in global declarations.
-// TODO Create `_environ` and `environ` aliases
-// TODO Load initial value on lib init by reading `/self/proc/environ`
 extern var __environ: [*]u8;
 
 // We need to allocate memory only to manipulate and return the few environment
@@ -44,6 +46,11 @@ var modified_node_options_value: ?null_terminated_string = null;
 var modified_otel_resource_attributes_value_calculated = false;
 var modified_otel_resource_attributes_value: ?null_terminated_string = null;
 
+// TODO actually write useful unit tests
+test "always succeeds" {
+    try expect(true);
+}
+
 export fn getenv(name_z: null_terminated_string) ?null_terminated_string {
     const name = std.mem.sliceTo(name_z, 0);
 
@@ -69,10 +76,10 @@ export fn getenv(name_z: null_terminated_string) ?null_terminated_string {
     while (environment_optional[environment_count]) |_| : (environment_count += 1) {}
     std.os.environ = @as([*][*:0]u8, @ptrCast(environment_optional))[0..environment_count];
 
-    // Technically, a process could change the value of `DASH0_DEBUG`
+    // Technically, a process could change the value of `DASH0_INJECTOR_DEBUG`
     // after it started (mostly when we debug stuff in REPL) so we look up
     // the value every time.
-    if (std.posix.getenv("DASH0_DEBUG")) |is_debug_raw| {
+    if (std.posix.getenv("DASH0_INJECTOR_DEBUG")) |is_debug_raw| {
         is_debug = std.ascii.eqlIgnoreCase("true", is_debug_raw);
     }
 
@@ -249,7 +256,7 @@ fn getDotNetValues() ?DotNetValues {
 }
 
 fn doDotNetValues(flavor: LibCFlavor) !DotNetValues {
-    const libc_flavor_prefix = if (flavor == LibCFlavor.GNU_LIBC) "glibc" else "muslc";
+    const libc_flavor_prefix = if (flavor == LibCFlavor.GNU_LIBC) "glibc" else "musl";
     const platform = if (flavor == LibCFlavor.GNU_LIBC) (if (builtin.cpu.arch == .aarch64) "linux-arm64" else "linux-x64") else (if (builtin.cpu.arch == .aarch64) "linux-musl-arm64" else "linux-musl-x64");
 
     const coreclr_profiler_path = try std.fmt.allocPrintZ(allocator, "{s}/{s}/{s}/OpenTelemetry.AutoInstrumentation.Native.so", .{
@@ -370,31 +377,41 @@ const EnvToResourceAttributeMapping = struct {
     resource_attributes_key: ?[]const u8,
 };
 
-const mappings: [8]EnvToResourceAttributeMapping = .{ EnvToResourceAttributeMapping{
-    .environement_variable_name = "DASH0_SERVICE_NAME",
-    .resource_attributes_key = "service.name",
-}, EnvToResourceAttributeMapping{
-    .environement_variable_name = "DASH0_SERVICE_NAMESPACE",
-    .resource_attributes_key = "service.namespace",
-}, EnvToResourceAttributeMapping{
-    .environement_variable_name = "DASH0_SERVICE_VERSION",
-    .resource_attributes_key = "service.version",
-}, EnvToResourceAttributeMapping{
-    .environement_variable_name = "DASH0_NAMESPACE_NAME",
-    .resource_attributes_key = "k8s.namespace.name",
-}, EnvToResourceAttributeMapping{
-    .environement_variable_name = "DASH0_POD_NAME",
-    .resource_attributes_key = "k8s.pod.name",
-}, EnvToResourceAttributeMapping{
-    .environement_variable_name = "DASH0_POD_UID",
-    .resource_attributes_key = "k8s.pod.uid",
-}, EnvToResourceAttributeMapping{
-    .environement_variable_name = "DASH0_CONTAINER_NAME",
-    .resource_attributes_key = "k8s.container.name",
-}, EnvToResourceAttributeMapping{
-    .environement_variable_name = "DASH0_RESOURCE_ATTRIBUTES",
-    .resource_attributes_key = null,
-} };
+const mappings: [8]EnvToResourceAttributeMapping =
+    .{
+        EnvToResourceAttributeMapping{
+            .environement_variable_name = "DASH0_NAMESPACE_NAME",
+            .resource_attributes_key = "k8s.namespace.name",
+        },
+        EnvToResourceAttributeMapping{
+            .environement_variable_name = "DASH0_POD_NAME",
+            .resource_attributes_key = "k8s.pod.name",
+        },
+        EnvToResourceAttributeMapping{
+            .environement_variable_name = "DASH0_POD_UID",
+            .resource_attributes_key = "k8s.pod.uid",
+        },
+        EnvToResourceAttributeMapping{
+            .environement_variable_name = "DASH0_CONTAINER_NAME",
+            .resource_attributes_key = "k8s.container.name",
+        },
+        EnvToResourceAttributeMapping{
+            .environement_variable_name = "DASH0_SERVICE_NAME",
+            .resource_attributes_key = "service.name",
+        },
+        EnvToResourceAttributeMapping{
+            .environement_variable_name = "DASH0_SERVICE_VERSION",
+            .resource_attributes_key = "service.version",
+        },
+        EnvToResourceAttributeMapping{
+            .environement_variable_name = "DASH0_SERVICE_NAMESPACE",
+            .resource_attributes_key = "service.namespace",
+        },
+        EnvToResourceAttributeMapping{
+            .environement_variable_name = "DASH0_RESOURCE_ATTRIBUTES",
+            .resource_attributes_key = null,
+        },
+    };
 
 // Called must free the returned []u8 array, if a non-null value is returned.
 fn getResourceAttributes() ?[]u8 {
@@ -527,7 +544,7 @@ fn doGetLibCFlavor() !LibCFlavor {
     //  0x0000000000000001 (NEEDED)             Shared library: [libjli.so]
     //  0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]
     //
-    // Java + muslc
+    // Java + musl
     //
     // $ readelf -Wd /usr/bin/java
     // Dynamic section at offset 0xfd18 contains 33 entries:
@@ -626,11 +643,7 @@ fn printMessage(comptime fmt: []const u8, args: anytype) void {
 
 // TODO Tests
 //
-// Lookup non-set variable returns null
-// Lookup non-modified variable returns original value
 // Stress-test with additions to env via setenv until reallocation occurs
-// OTEL_RESOURCE_ATTRIBUTES append to existing value
-// OTEL_RESOURCE_ATTRIBUTES without pre-existing value
 // JAVA_TOOL_OPTIONS without Jar file at expected location
 // JAVA_TOOL_OPTIONS with Jar file at expected location but cannot read due to file permissions
 // JAVA_TOOL_OPTIONS happy path
