@@ -142,7 +142,13 @@ run_tests_for_runtime() {
         # test suite. We do not test tracing in the instrumentation image tests, so instrumenting is not needed.
         # The Java agent still unfortunately adds a couple of seconds of startup overhead.
         # Note: Add -Dotel.javaagent.debug=true for troubleshooting details.
-        test_cmd=(java -jar -Dotel.instrumentation.common.default-enabled=false "/test-cases/${test}/app.jar")
+        test_cmd=(java -jar)
+        if [[ -f "${script_dir}/${runtime}/test-cases/${test}/system.properties" ]]; then
+          while IFS= read -r prop; do
+            test_cmd+=("$prop")
+          done < "${script_dir}/${runtime}/test-cases/${test}/system.properties"
+        fi
+        test_cmd+=(-Dotel.instrumentation.common.default-enabled=false "/test-cases/${test}/app.jar")
         ;;
 
       node)
@@ -168,6 +174,8 @@ run_tests_for_runtime() {
       printf "${GREEN}test case \"${test}\": OK${NC}\n"
     else
       printf "${RED}test case \"${test}\": FAIL\n"
+      echo "test command was:"
+      echo "${test_cmd[@]}"
       printf "test output:${NC}\n"
       echo "$docker_run_output"
       exit_code=1
