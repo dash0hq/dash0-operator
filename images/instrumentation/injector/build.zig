@@ -9,10 +9,7 @@ pub const InjectorBuildError = error{UnsupportedArchitecturError};
 // declaratively construct a build graph that will be executed by an external
 // runner.
 pub fn build(b: *std.Build) !void {
-    // Standard optimization options allow the person running `zig build` to select
-    // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall. Here we do not
-    // set a preferred release mode, allowing the user to decide how to optimize.
-    const optimize = b.standardOptimizeOption(.{});
+    const optimize = std.builtin.OptimizeMode.ReleaseSafe;
 
     var targetCpuArch = std.Target.Cpu.Arch.aarch64;
     var targetCpuModel = std.Target.Cpu.Model.generic(std.Target.Cpu.Arch.aarch64);

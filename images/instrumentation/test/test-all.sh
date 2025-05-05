@@ -233,7 +233,8 @@ run_tests_for_architecture() {
     echo ----------------------------------------
     echo "- runtime: '${runtime}'"
     echo
-    local base_images_for_runtime=$(grep '^[^#;]' "${script_dir}/${runtime}/base-images")
+    local base_images_for_runtime
+    base_images_for_runtime=$(grep '^[^#;]' "${script_dir}/${runtime}/base-images")
     while read -r base_image ; do
       if [[ -n "${base_images[0]}" ]]; then
         if [[ $(echo "${base_images[@]}" | grep -o "$base_image" | wc -w) -eq 0 ]]; then
