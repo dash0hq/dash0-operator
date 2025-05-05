@@ -878,6 +878,65 @@ Resource attributes set via the `resource.opentelemetry.io/<key>: <value>` annot
 resource attributes value set via `app.kubernetes.io/*` labels: for example, `resource.opentelemetry.io/service.name`
 has precendence over `app.kubernetes.io/name`.
 
+### Sending Data to the OpenTelemetry Collectors Managed by the Dash0 Operator
+
+Besides automatic workload instrumentation (which will make sure that the instrumented workloads send telemetry to the
+OpenTelemetry collectors managed by the operator), you can also send telemetry data from workloads that are not
+instrumented by the operator.
+
+The DaemonSet OpenTelemetry collector managed by the Dash0 operator listens on host port 40318 for HTTP traffic and
+40317 for gRPC traffic.
+Additionally, there is also a service for the DaemonSet collector, which listens on the standard ports, that is 4318 for
+HTTP and 4317 for gRPC.
+
+The preferred way of sending OTLP from your workoad to the Dash0-managed collector is to use node-local traffic via the
+host port.
+To do so, add the following environment variables to your workload:
+```yaml
+env:
+  - name: K8S_NODE_IP
+    valueFrom:
+      fieldRef:
+        fieldPath: status.hostIP
+  - name: OTEL_EXPORTER_OTLP_ENDPOINT
+    value: "http://$(K8S_NODE_IP):40318"
+  - name: OTEL_EXPORTER_OTLP_PROTOCOL
+    value: "http/protobuf"
+```
+
+* Note that listing the definition for `K8S_NODE_IP` _before_ `OTEL_EXPORTER_OTLP_ENDPOINT` is crucial.
+* Adding `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf` is optional when the OpenTelemetry SDK in question uses that
+  protocol as the default.
+* For gRCP, use `OTEL_EXPORTER_OTLP_ENDPOINT=http://$(K8S_NODE_IP):40317` together with
+  `OTEL_EXPORTER_OTLP_PROTOCOL=grpc` instead.
+
+To use the service endpoint instead of the host port, you need to know
+* the Helm release name of the Dash0 operator (for example `dash0-operator`), and
+* the namespace where the Dash0 operator is installed (for example `dash0-system`).
+
+With that information at hand, add the following to your workload:
+
+```yaml
+env:
+  - name: OTEL_EXPORTER_OTLP_ENDPOINT
+    value: "http://${helm-release-name}-opentelemetry-collector-service.${namespace-of-the-dash0-operator}.svc.cluster.local:4318"
+  - name: OTEL_EXPORTER_OTLP_PROTOCOL
+    value: "http/protobuf"
+```
+
+or, for gRPC:
+
+```yaml
+env:
+  - name: OTEL_EXPORTER_OTLP_ENDPOINT
+    value: "http://${helm-release-name}-opentelemetry-collector-service.${namespace-of-the-dash0-operator}.svc.cluster.local:4317"
+  - name: OTEL_EXPORTER_OTLP_PROTOCOL
+    value: "grpc"
+```
+
+In both cases, `${helm-release-name}` and `${namespace-of-the-dash0-operator}` needs to be replaced with the actual
+values.
+
 ### Exporting Data to Other Observability Backends
 
 Instead of `spec.export.dash0` in the Dash0 operator configuration resource, you can also provide `spec.export.http` or
