@@ -3,9 +3,9 @@
 
 const std = @import("std");
 
-const alloc = @import("./allocator.zig");
-const print = @import("./print.zig");
-const types = @import("./types.zig");
+const alloc = @import("allocator.zig");
+const print = @import("print.zig");
+const types = @import("types.zig");
 
 /// A type for a rule to map an environment variable to a resource attribute. The result of applying these rules (via
 /// getResourceAttributes) is a string of key-value pairs, where each pair is of the form key=value, and pairs are
@@ -17,6 +17,8 @@ const EnvToResourceAttributeMapping = struct {
     environement_variable_name: []const u8,
     resource_attributes_key: ?[]const u8,
 };
+
+pub const otel_resource_attributes_env_var_name = "OTEL_RESOURCE_ATTRIBUTES";
 
 /// A list of mappings from environment variables to resource attributes.
 const mappings: [8]EnvToResourceAttributeMapping =
@@ -57,16 +59,26 @@ const mappings: [8]EnvToResourceAttributeMapping =
 
 /// Derive the modified value for OTEL_RESOURCE_ATTRIBUTES based on the original value, and on other resource attributes
 /// provided via the DASH0_* environment variables set by the operator (workload_modifier#addEnvironmentVariables).
-pub fn getModifiedOtelResourceAttributesValue(name: [:0]const u8, original_value: ?[:0]const u8) ?types.NullTerminatedString {
+pub fn getModifiedOtelResourceAttributesValue(original_value: ?[:0]const u8) ?types.NullTerminatedString {
     if (getResourceAttributes()) |resource_attributes| {
         defer alloc.allocator.free(resource_attributes);
 
         if (original_value) |val| {
+            if (val.len == 0) {
+                // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
+                // parent process.
+                const return_buffer = std.fmt.allocPrintZ(alloc.allocator, "{s}", .{resource_attributes}) catch |err| {
+                    print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ otel_resource_attributes_env_var_name, err });
+                    return null;
+                };
+                return return_buffer.ptr;
+            }
+
             // Prepend our resource attributes to the already existing key-value pairs.
             // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
             // parent process.
             const return_buffer = std.fmt.allocPrintZ(alloc.allocator, "{s},{s}", .{ resource_attributes, val }) catch |err| {
-                print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ name, err });
+                print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ otel_resource_attributes_env_var_name, err });
                 return null;
             };
             return return_buffer.ptr;
@@ -74,7 +86,7 @@ pub fn getModifiedOtelResourceAttributesValue(name: [:0]const u8, original_value
             // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
             // parent process.
             const return_buffer = std.fmt.allocPrintZ(alloc.allocator, "{s}", .{resource_attributes}) catch |err| {
-                print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ name, err });
+                print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ otel_resource_attributes_env_var_name, err });
                 return null;
             };
             return return_buffer.ptr;
@@ -86,7 +98,7 @@ pub fn getModifiedOtelResourceAttributesValue(name: [:0]const u8, original_value
             // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
             // parent process.
             const return_buffer = std.fmt.allocPrintZ(alloc.allocator, "{s}", .{val}) catch |err| {
-                print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ name, err });
+                print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ otel_resource_attributes_env_var_name, err });
                 return null;
             };
 
@@ -98,7 +110,8 @@ pub fn getModifiedOtelResourceAttributesValue(name: [:0]const u8, original_value
 }
 
 /// Maps the DASH0_* environment variables that are set by the operator (workload_modifier#addEnvironmentVariables) to a
-/// string that can be used for the value of OTEL_RESOURCE_ATTRIBUTES (or -Dotel.resource.attributes for JVMs).
+/// string that can be used for the value of OTEL_RESOURCE_ATTRIBUTES or -Dotel.resource.attributes (for adding to
+/// JAVA_TOOL_OPTIONS for JVMs).
 ///
 /// Important: The caller must free the returned []u8 array, if a non-null value is returned.
 pub fn getResourceAttributes() ?[]u8 {
