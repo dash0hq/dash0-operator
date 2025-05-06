@@ -3,16 +3,22 @@
 
 const std = @import("std");
 
+const dash0_injector_debug_env_var_name = "DASH0_INJECTOR_DEBUG";
 const log_prefix = "[Dash0 injector] ";
 
 var is_debug = false;
 
 /// Initializes the is_debug flag based on the environment variable DASH0_INJECTOR_DEBUG.
 pub fn initDebugFlag() void {
-    if (std.posix.getenv("DASH0_INJECTOR_DEBUG")) |is_debug_raw| {
+    if (std.posix.getenv(dash0_injector_debug_env_var_name)) |is_debug_raw| {
         is_debug = std.ascii.eqlIgnoreCase("true", is_debug_raw);
     }
 }
+
+pub fn isDebug() bool {
+    return is_debug;
+}
+
 pub fn printDebug(comptime fmt: []const u8, args: anytype) void {
     if (is_debug) {
         std.debug.print(log_prefix ++ fmt ++ "\n", args);
