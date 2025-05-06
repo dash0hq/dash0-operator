@@ -11,24 +11,29 @@ pub const InjectorBuildError = error{UnsupportedArchitecturError};
 pub fn build(b: *std.Build) !void {
     const optimize = std.builtin.OptimizeMode.ReleaseSafe;
 
-    var targetCpuArch = std.Target.Cpu.Arch.aarch64;
-    var targetCpuModel = std.Target.Cpu.Model.generic(std.Target.Cpu.Arch.aarch64);
+    var target_cpu_arch = std.Target.Cpu.Arch.aarch64;
+    var target_cpu_model = std.Target.Cpu.Model.generic(std.Target.Cpu.Arch.aarch64);
+
+    var is_ci = false;
+    if (std.posix.getenv("CI")) |raw| {
+        is_ci = std.ascii.eqlIgnoreCase("true", raw);
+    }
 
     if (b.option([]const u8, "cpu-arch", "The system architecture to compile the injector for; valid options are 'amd64' and 'arm64' (default)")) |val| {
         if (std.mem.eql(u8, "arm64", val)) {
             // Already the default
         } else if (std.mem.eql(u8, "amd64", val)) {
-            targetCpuArch = std.Target.Cpu.Arch.x86_64;
-            targetCpuModel = std.Target.Cpu.Model.generic(std.Target.Cpu.Arch.x86_64);
+            target_cpu_arch = std.Target.Cpu.Arch.x86_64;
+            target_cpu_model = std.Target.Cpu.Model.generic(std.Target.Cpu.Arch.x86_64);
         } else {
             return error.UnsupportedArchitecturError;
         }
     }
 
     const target = b.resolveTargetQuery(.{
-        .cpu_arch = targetCpuArch,
+        .cpu_arch = target_cpu_arch,
         // Skip cpu model detection because the automatic detection for transpiling fails in build
-        .cpu_model = .{ .explicit = targetCpuModel },
+        .cpu_model = .{ .explicit = target_cpu_model },
         .os_tag = .linux,
     });
 
@@ -76,9 +81,12 @@ pub fn build(b: *std.Build) !void {
         .root_source_file = b.path("src/test.zig"),
         .target = testTarget,
         .optimize = optimize,
-        // in contrast to the production module which uses link_libc = false, we deliberately link libc here, to satisfy
-        // the "extern var __environ: [*]u8;" dependency.
-        .link_libc = true,
+        // For some reason, setting link_libc = false does not seem to be effective, and the tests run with
+        // builtin.link_libc=true anyway. This in turn makes makes std.posix.getenv use std.c.environ under the hood
+        // instead of std.os.environ. To make matters worse, on CI the tests crash when accessing std.c.environ and
+        // link_libc is false here. Might be a difference between arm64 and x86_64? Needs more investigation. For now,
+        // we set .link_libc = false locally, knowing that it is being ignored, and set, it to true on CI.
+        .link_libc = is_ci,
         .pic = true,
         .strip = false,
     });

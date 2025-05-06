@@ -3,12 +3,12 @@
 
 const std = @import("std");
 
-const dotnet = @import("./dotnet.zig");
-const jvm = @import("./jvm.zig");
-const node_js = @import("./node_js.zig");
-const print = @import("./print.zig");
-const res_attrs = @import("./resource_attributes.zig");
-const types = @import("./types.zig");
+const dotnet = @import("dotnet.zig");
+const jvm = @import("jvm.zig");
+const node_js = @import("node_js.zig");
+const print = @import("print.zig");
+const res_attrs = @import("resource_attributes.zig");
+const types = @import("types.zig");
 
 const assert = std.debug.assert;
 const testing = std.testing;
@@ -76,31 +76,32 @@ export fn getenv(name_z: types.NullTerminatedString) ?types.NullTerminatedString
 fn getEnvValue(name: [:0]const u8) ?types.NullTerminatedString {
     const original_value = std.posix.getenv(name);
 
-    if (std.mem.eql(u8, name, "OTEL_RESOURCE_ATTRIBUTES")) {
+    if (std.mem.eql(
+        u8,
+        name,
+        res_attrs.otel_resource_attributes_env_var_name,
+    )) {
         if (!modified_otel_resource_attributes_value_calculated) {
-            modified_otel_resource_attributes_value =
-                res_attrs.getModifiedOtelResourceAttributesValue(name, original_value);
+            modified_otel_resource_attributes_value = res_attrs.getModifiedOtelResourceAttributesValue(original_value);
             modified_otel_resource_attributes_value_calculated = true;
         }
         if (modified_otel_resource_attributes_value) |updated_value| {
-            print.printMessage("Modified resource attributes passed via the 'OTEL_RESOURCE_ATTRIBUTES' environment variable", .{});
+            print.printMessage("Modified resource attributes passed via the '{s}' environment variable", .{res_attrs.otel_resource_attributes_env_var_name});
             return updated_value;
         }
-    } else if (std.mem.eql(u8, name, "JAVA_TOOL_OPTIONS")) {
+    } else if (std.mem.eql(u8, name, jvm.java_tool_options_env_var_name)) {
         if (!modified_java_tool_options_value_calculated) {
-            modified_java_tool_options_value = jvm.checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue(
-                name,
-                original_value,
-            );
+            modified_java_tool_options_value = jvm.checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue(original_value);
             modified_java_tool_options_value_calculated = true;
         }
         if (modified_java_tool_options_value) |updated_value| {
             print.printMessage("Injected the OpenTelemetry Java agent", .{});
             return updated_value;
         }
-    } else if (std.mem.eql(u8, name, "NODE_OPTIONS")) {
+    } else if (std.mem.eql(u8, name, node_js.node_options_env_var_name)) {
         if (!modified_node_options_value_calculated) {
-            modified_node_options_value = node_js.getModifiedNodeOptionsValue(name, original_value);
+            modified_node_options_value =
+                node_js.checkNodeJsOTelSdkDistributionAndGetModifiedNodeOptionsValue(original_value);
             modified_node_options_value_calculated = true;
         }
         if (modified_node_options_value) |updated_value| {

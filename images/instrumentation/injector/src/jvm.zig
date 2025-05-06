@@ -3,30 +3,35 @@
 
 const std = @import("std");
 
-const alloc = @import("./allocator.zig");
-const print = @import("./print.zig");
-const res_attrs = @import("./resource_attributes.zig");
-const types = @import("./types.zig");
+const alloc = @import("allocator.zig");
+const print = @import("print.zig");
+const res_attrs = @import("resource_attributes.zig");
+const types = @import("types.zig");
 
 const testing = std.testing;
 
+pub const java_tool_options_env_var_name = "JAVA_TOOL_OPTIONS";
 const otel_java_agent_path = "/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar";
 const javaagent_flag_value = "-javaagent:" ++ otel_java_agent_path;
 
-pub fn checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue(name: [:0]const u8, original_value: ?[:0]const u8) ?types.NullTerminatedString {
+pub fn checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue(original_value: ?[:0]const u8) ?types.NullTerminatedString {
     // Check the existence of the Jar file: by passing a `-javaagent` to a
     // jar file that does not exist or cannot be opened will crash the JVM
     std.fs.cwd().access(otel_java_agent_path, .{}) catch |err| {
-        print.printError("Skipping injection of OTel Java Agent in 'JAVA_TOOL_OPTIONS' because of an issue accessing the Jar file at {s}: {}", .{ otel_java_agent_path, err });
+        print.printError("Skipping injection of OTel Java agent in 'JAVA_TOOL_OPTIONS' because of an issue accessing the Jar file at {s}: {}", .{ otel_java_agent_path, err });
         return null;
     };
 
     const resource_attributes_optional: ?[]u8 = res_attrs.getResourceAttributes();
     return getModifiedJavaToolOptionsValue(
-        name,
         original_value,
         resource_attributes_optional,
     );
+}
+
+test "checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue: should return null if the Java agent cannot be accessed" {
+    const modifiedJavaToolOptions = checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue(null);
+    try testing.expect(modifiedJavaToolOptions == null);
 }
 
 /// Returns the modified value for JAVA_TOOL_OPTIONS, including the -javaagent flag; based on the original value of
@@ -36,14 +41,13 @@ pub fn checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue(name: [:0]const u
 ///
 /// getModifiedJavaToolOptionsValue will free the new_resource_attributes_optional parameter if it is not null
 fn getModifiedJavaToolOptionsValue(
-    name: [:0]const u8,
     original_value_optional: ?[:0]const u8,
     new_resource_attributes_optional: ?[]u8,
 ) ?types.NullTerminatedString {
     // For auto-instrumentation, we inject the -javaagent flag into the JAVA_TOOL_OPTIONS environment variable. In
     // addition, we use JAVA_TOOL_OPTIONS to supply addtional resource attributes. The Java runtime does not look up the
     // OTEL_RESOURCE_ATTRIBUTES environment variable using getenv(), instead it parses the environment block
-    // /proc/env/<pid> directly. We cannot hook into mechanism to introduce additional resource attributes. Instead, we
+    // /proc/<pid>/environ directly. We cannot hook into mechanism to introduce additional resource attributes. Instead, we
     // add them together with the -javaagent flag as the -Dotel.resource.attributes Java system property to
     // JAVA_TOOL_OPTIONS. If the -Dotel.resource.attributes system property already exists in the original
     // JAVA_TOOL_OPTIONS value, we need to merge the two list of key-value pairs. If -Dotel.resource.attributes is
@@ -76,7 +80,7 @@ fn getModifiedJavaToolOptionsValue(
                     originalKvPairs,
                     new_resource_attributes,
                 }) catch |err| {
-                    print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ name, err });
+                    print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ java_tool_options_env_var_name, err });
                     // TODO should we actually return null here? I think it should be the original value instead.
                     return null;
                 };
@@ -88,7 +92,7 @@ fn getModifiedJavaToolOptionsValue(
                         remainingJavaToolOptions,
                         javaagent_flag_value,
                     }) catch |err| {
-                        print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ name, err });
+                        print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ java_tool_options_env_var_name, err });
                         // TODO should we actually return null here? I think it should be the original value instead.
                         return null;
                     };
@@ -103,7 +107,7 @@ fn getModifiedJavaToolOptionsValue(
                     javaagent_flag_value,
                     new_resource_attributes,
                 }) catch |err| {
-                    print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ name, err });
+                    print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ java_tool_options_env_var_name, err });
                     // TODO should we actually return null here? I think it should be the original value instead.
                     return null;
                 };
@@ -115,7 +119,7 @@ fn getModifiedJavaToolOptionsValue(
                     original_value,
                     javaagent_flag_value,
                 }) catch |err| {
-                    print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ name, err });
+                    print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ java_tool_options_env_var_name, err });
                     // TODO should we actually return null here? I think it should be the original value instead.
                     return null;
                 };
@@ -129,7 +133,7 @@ fn getModifiedJavaToolOptionsValue(
                 javaagent_flag_value,
                 new_resource_attributes,
             }) catch |err| {
-                print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ name, err });
+                print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ java_tool_options_env_var_name, err });
                 // TODO should we actually return null here? I think it should be the original value instead.
                 return null;
             };
@@ -143,7 +147,6 @@ fn getModifiedJavaToolOptionsValue(
 
 test "getModifiedJavaToolOptionsValue: should return -javaagent if original value is unset and no resource attributes are provided" {
     const modifiedJavaToolOptions = getModifiedJavaToolOptionsValue(
-        "JAVA_TOOL_OPTIONS",
         null,
         null,
     );
@@ -158,7 +161,6 @@ test "getModifiedJavaToolOptionsValue: should return -javaagent and -Dotel.resou
     var fbs = std.io.fixedBufferStream(resource_attributes);
     _ = try fbs.writer().write("aaa=bbb,ccc=ddd");
     const modifiedJavaToolOptions = getModifiedJavaToolOptionsValue(
-        "JAVA_TOOL_OPTIONS",
         null,
         resource_attributes,
     );
@@ -171,7 +173,6 @@ test "getModifiedJavaToolOptionsValue: should return -javaagent and -Dotel.resou
 test "getModifiedJavaToolOptionsValue: should append -javaagent if original value exists and no resource attributes are provided" {
     const original_value: [:0]const u8 = "-Dsome.property=value"[0.. :0];
     const modifiedJavaToolOptions = getModifiedJavaToolOptionsValue(
-        "JAVA_TOOL_OPTIONS",
         original_value,
         null,
     );
@@ -184,7 +185,6 @@ test "getModifiedJavaToolOptionsValue: should append -javaagent if original valu
 test "getModifiedJavaToolOptionsValue: should append -javaagent if original value exists and has -Dotel.resource.attributes but no new resource attributes are provided, " {
     const original_value: [:0]const u8 = "-Dsome.property=value -Dotel.resource.attributes=www=xxx,yyy=zzz"[0.. :0];
     const modifiedJavaToolOptions = getModifiedJavaToolOptionsValue(
-        "JAVA_TOOL_OPTIONS",
         original_value,
         null,
     );
@@ -200,7 +200,6 @@ test "getModifiedJavaToolOptionsValue: should append -javaagent and -Dotel.resou
     var fbs = std.io.fixedBufferStream(resource_attributes);
     _ = try fbs.writer().write("aaa=bbb,ccc=ddd");
     const modifiedJavaToolOptions = getModifiedJavaToolOptionsValue(
-        "JAVA_TOOL_OPTIONS",
         original_value,
         resource_attributes,
     );
@@ -216,7 +215,6 @@ test "getModifiedJavaToolOptionsValue: should merge new and existing -Dotel.reso
     var fbs = std.io.fixedBufferStream(resource_attributes);
     _ = try fbs.writer().write("aaa=bbb,ccc=ddd");
     const modifiedJavaToolOptions = getModifiedJavaToolOptionsValue(
-        "JAVA_TOOL_OPTIONS",
         original_value,
         resource_attributes,
     );
@@ -232,7 +230,6 @@ test "getModifiedJavaToolOptionsValue: should merge new and existing -Dotel.reso
     var fbs = std.io.fixedBufferStream(resource_attributes);
     _ = try fbs.writer().write("aaa=bbb,ccc=ddd");
     const modifiedJavaToolOptions = getModifiedJavaToolOptionsValue(
-        "JAVA_TOOL_OPTIONS",
         original_value,
         resource_attributes,
     );
@@ -248,7 +245,6 @@ test "getModifiedJavaToolOptionsValue: should merge new and existing -Dotel.reso
     var fbs = std.io.fixedBufferStream(resource_attributes);
     _ = try fbs.writer().write("aaa=bbb,ccc=ddd");
     const modifiedJavaToolOptions = getModifiedJavaToolOptionsValue(
-        "JAVA_TOOL_OPTIONS",
         original_value,
         resource_attributes,
     );
@@ -264,7 +260,6 @@ test "getModifiedJavaToolOptionsValue: should merge new and existing -Dotel.reso
     var fbs = std.io.fixedBufferStream(resource_attributes);
     _ = try fbs.writer().write("aaa=bbb,ccc=ddd");
     const modifiedJavaToolOptions = getModifiedJavaToolOptionsValue(
-        "JAVA_TOOL_OPTIONS",
         original_value,
         resource_attributes,
     );

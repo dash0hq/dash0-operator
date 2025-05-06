@@ -4,9 +4,9 @@
 const builtin = @import("builtin");
 const std = @import("std");
 
-const alloc = @import("./allocator.zig");
-const print = @import("./print.zig");
-const types = @import("./types.zig");
+const alloc = @import("allocator.zig");
+const print = @import("print.zig");
+const types = @import("types.zig");
 
 pub const DotNetValues = struct {
     coreclr_enable_profiling: types.NullTerminatedString,
