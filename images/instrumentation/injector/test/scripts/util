@@ -39,3 +39,25 @@ copy_injector_binary_from_container_image() {
   docker rm -v "$container_id"
 }
 
+cleanup_docker_containers_and_images() {
+  echo "cleaning up containers and container images"
+  echo containers to be deleted:
+  cat injector/test/.containers_to_be_deleted_at_end
+  echo container images to be deleted:
+  cat injector/test/.container_images_to_be_deleted_at_end
+
+  while IFS= read -r container; do
+    if [[ -n "$container" ]]; then
+      docker rm -f "$container" || true
+    fi
+  done < injector/test/.containers_to_be_deleted_at_end
+
+  while IFS= read -r image; do
+    if [[ -n "$image" ]]; then
+      docker rmi -f "$image" || true
+    fi
+  done < injector/test/.container_images_to_be_deleted_at_end
+
+  rm injector/test/.containers_to_be_deleted_at_end
+  rm injector/test/.container_images_to_be_deleted_at_end
+}

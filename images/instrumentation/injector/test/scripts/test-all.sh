@@ -101,6 +101,15 @@ declare -a all_libc_flavors=(
   "musl"
 )
 
+# Remember which containers have been created and which container images have been built or pulled for the test run and
+# delete them at the end via a trap. Otherwise, on systems where the Docker VM has limited disk space (like Docker
+# Desktop on MacOS), the test run will leave behind some fairly large images and hog disk space.
+rm -f injector/test/.containers_to_be_deleted_at_end
+rm -f injector/test/.container_images_to_be_deleted_at_end
+touch injector/test/.containers_to_be_deleted_at_end
+touch injector/test/.container_images_to_be_deleted_at_end
+trap cleanup_docker_containers_and_images EXIT
+
 instrumentation_image=${INSTRUMENTATION_IMAGE:-}
 if [[ -z "$instrumentation_image" ]]; then
   # build injector binary for both architectures
@@ -124,6 +133,7 @@ else
     echo ----------------------------------------
     printf "using injector binary from existing remote image:\n$instrumentation_image\n"
     echo ----------------------------------------
+    echo "$instrumentation_image" >> injector/test/.container_images_to_be_deleted_at_end
     docker pull --platform linux/arm64 "$instrumentation_image"
     copy_injector_binary_from_container_image "$instrumentation_image" arm64 linux/arm64
     docker pull --platform linux/amd64 "$instrumentation_image"

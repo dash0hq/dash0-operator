@@ -83,9 +83,12 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
         // For some reason, setting link_libc = false does not seem to be effective, and the tests run with
         // builtin.link_libc=true anyway. This in turn makes makes std.posix.getenv use std.c.environ under the hood
-        // instead of std.os.environ. To make matters worse, on CI the tests crash when accessing std.c.environ and
-        // link_libc is false here. Might be a difference between arm64 and x86_64? Needs more investigation. For now,
-        // we set .link_libc = false locally, knowing that it is being ignored, and set, it to true on CI.
+        // instead of std.os.environ. To make matters worse, on CI the tests crash with
+        //   /opt/hostedtoolcache/zig/0.14.0/x64/lib/std/c.zig:1:1: error: dependency on libc must be explicitly specified
+        //   in the build command
+        // when accessing std.c.environ and link_libc is false here. Might be a difference between arm64 and x86_64?
+        // Needs more investigation. For now, we set .link_libc = false locally, knowing that it is being ignored, and
+        // set it to true on CI.
         .link_libc = is_ci,
         .pic = true,
         .strip = false,
