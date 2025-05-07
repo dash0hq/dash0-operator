@@ -108,7 +108,7 @@ rm -f injector/test/.containers_to_be_deleted_at_end
 rm -f injector/test/.container_images_to_be_deleted_at_end
 touch injector/test/.containers_to_be_deleted_at_end
 touch injector/test/.container_images_to_be_deleted_at_end
-trap cleanup_docker_containers_and_images EXIT
+trap cleanup_docker_containers_and_images_injector_tests EXIT
 
 instrumentation_image=${INSTRUMENTATION_IMAGE:-}
 if [[ -z "$instrumentation_image" ]]; then
