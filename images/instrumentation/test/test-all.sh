@@ -62,6 +62,7 @@ build_or_pull_instrumentation_image() {
       echo ----------------------------------------
       echo "fetching instrumentation image from remote repository: $instrumentation_image"
       echo ----------------------------------------
+      echo "$instrumentation_image" >> test/.container_images_to_be_deleted_at_end
       docker pull "$instrumentation_image"
     else
       echo ----------------------------------------
@@ -74,6 +75,7 @@ build_or_pull_instrumentation_image() {
     echo "building multi-arch instrumentation image for platforms ${all_docker_platforms} from local sources"
     echo ----------------------------------------
 
+    echo "$instrumentation_image" >> test/.container_images_to_be_deleted_at_end
     if ! docker_build_output=$(
       docker build \
       --platform "$all_docker_platforms" \
@@ -98,21 +100,26 @@ run_tests_for_runtime() {
   local docker_platform="${2:-}"
   local runtime="${3:-}"
   local image_name_test="${4:-}"
-  local base_image="${5:-}"
+  local container_name_test_prefix="${5:-}"
+  local base_image="${6:-}"
 
-  if [[ -z $docker_platform ]]; then
+  if [[ -z "$docker_platform" ]]; then
     echo "missing parameter: docker_platform"
     exit 1
   fi
-  if [[ -z $runtime ]]; then
+  if [[ -z "$runtim" ]]; then
     echo "missing parameter: runtime"
     exit 1
   fi
-  if [[ -z $image_name_test ]]; then
+  if [[ -z "$image_name_test" ]]; then
     echo "missing parameter: image_name_test"
     exit 1
   fi
-  if [[ -z $base_image ]]; then
+  if [[ -z "$container_name_test_prefix" ]]; then
+    echo "missing parameter: container_name_test_prefix"
+    exit 1
+  fi
+  if [[ -z "$base_image" ]]; then
     echo "missing parameter: base_image"
     exit 1
   fi
@@ -161,9 +168,12 @@ run_tests_for_runtime() {
         ;;
     esac
 
+    container_name="$container_name_test_prefix-$test"
+    echo "$container_name" >> test/.containers_to_be_deleted_at_end
     if docker_run_output=$(docker run \
       --platform "$docker_platform" \
       --env-file="${script_dir}/${runtime}/test-cases/${test}/.env" \
+      --name "$container_name" \
       "$image_name_test" \
       "${test_cmd[@]}" \
       2>&1
@@ -246,10 +256,12 @@ run_tests_for_architecture() {
 
       echo --------------------
       echo "- base image: '${base_image}'"
-      image_name_test="test-${runtime}-${arch}:latest"
+      container_name_test_prefix="instrumentation-image-test-${runtime}-${arch}"
+      image_name_test="instrumentation-image-test-${runtime}-${arch}:latest"
       echo "building test image \"$image_name_test\" for ${arch}/${runtime}/${base_image} with instrumentation image ${instrumentation_image}"
       # shellcheck disable=SC2155
       local start_time_docker_build=$(date +%s)
+      echo "$image_name_test" >> test/.container_images_to_be_deleted_at_end
       if ! docker_build_output=$(
         docker build \
           --platform "$docker_platform" \
@@ -266,7 +278,7 @@ run_tests_for_architecture() {
         echo "${docker_build_output}"
       fi
       store_build_step_duration "docker build" "$start_time_docker_build" "$arch" "$runtime" "$base_image"
-      run_tests_for_runtime "$arch" "$docker_platform" "${runtime}" "$image_name_test" "$base_image"
+      run_tests_for_runtime "$arch" "$docker_platform" "${runtime}" "$image_name_test" "$container_name_test_prefix" "$base_image"
       echo
     done <<< "$base_images_for_runtime"
   done
@@ -281,6 +293,15 @@ if [[ "${CI:-false}" != true ]]; then
     exit 1
   fi
 fi
+
+# Remember which containers have been created and which container images have been built or pulled for the test run and
+# delete them at the end via a trap. Otherwise, on systems where the Docker VM has limited disk space (like Docker
+# Desktop on MacOS), the test run will leave behind some fairly large images and hog disk space.
+rm -f test/.containers_to_be_deleted_at_end
+rm -f test/.container_images_to_be_deleted_at_end
+touch test/.containers_to_be_deleted_at_end
+touch test/.container_images_to_be_deleted_at_end
+trap cleanup_docker_containers_and_images_instrumentation_image_tests EXIT
 
 build_or_pull_instrumentation_image
 
