@@ -38,6 +38,7 @@ echo ">>> Building the library on $ARCH <<<"
 docker rmi -f "$image_name" 2> /dev/null
 docker rm -f "$container_name" 2> /dev/null
 
+echo "$image_name" >> injector/test/.container_images_to_be_deleted_at_end
 docker build \
   --platform "$docker_platform" \
   . \
