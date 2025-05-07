@@ -56,6 +56,7 @@ echo ----------------------------------------
 docker rm -f "$container_name" 2> /dev/null
 docker rmi -f "$image_name" 2> /dev/null
 
+echo "$image_name" >> .container_images_to_be_deleted_at_end
 set -x
 docker build \
   --platform "$docker_platform" \
@@ -65,6 +66,7 @@ docker build \
   -f "$dockerfile_name" \
   -t "$image_name"
 
+echo "$container_name" >> .containers_to_be_deleted_at_end
 docker run \
   --platform "$docker_platform" \
   --env EXPECTED_CPU_ARCHITECTURE="$expected_cpu_architecture" \
