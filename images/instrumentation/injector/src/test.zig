@@ -2,7 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // All files with unit tests need to be referenced here:
-pub const _ = @import("root.zig");
+pub const alloc = @import("allocator.zig");
+pub const dotnet = @import("dotnet.zig");
+pub const jvm = @import("jvm.zig");
+pub const node_js = @import("node_js.zig");
+pub const print = @import("print.zig");
+pub const res_attrs = @import("resource_attributes.zig");
+pub const root = @import("root.zig");
+pub const types = @import("types.zig");
 
 // Provide a C-style `char **environ` variable to the linker, to satisfy the
 //   extern var __environ: [*]u8;
