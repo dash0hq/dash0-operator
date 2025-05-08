@@ -56,9 +56,9 @@ test "getModifiedNodeOptionsValue: should return --require if original value is 
 
 test "getModifiedNodeOptionsValue: should prepend --require if original value exists" {
     const original_value: [:0]const u8 = "--abort-on-uncaught-exception"[0.. :0];
-    const modifiedNodeOptionsValue = getModifiedNodeOptionsValue(original_value);
+    const modified_node_options_value = getModifiedNodeOptionsValue(original_value);
     try testing.expectEqualStrings(
         "--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --abort-on-uncaught-exception",
-        std.mem.span(modifiedNodeOptionsValue orelse "-"),
+        std.mem.span(modified_node_options_value orelse "-"),
     );
 }
