@@ -21,8 +21,26 @@ pub const DotNetValues = struct {
 const LibCFlavor = enum { UNKNOWN, GNU_LIBC, MULSC };
 
 const dotnet_path_prefix = "/__dash0__/instrumentation/dotnet";
+var experimental_dotnet_injection_enabled: ?bool = null;
 var cached_dotnet_values: ?DotNetValues = null;
 var cached_libc_flavor: ?LibCFlavor = null;
+
+fn initIsEnabled() void {
+    if (experimental_dotnet_injection_enabled == null) {
+        if (std.posix.getenv("DASH0_EXPERIMENTAL_DOTNET_INJECTION")) |raw| {
+            experimental_dotnet_injection_enabled = std.ascii.eqlIgnoreCase("true", raw);
+        } else {
+            experimental_dotnet_injection_enabled = false;
+        }
+    }
+}
+
+pub fn isEnabled() bool {
+    if (experimental_dotnet_injection_enabled == null) {
+        initIsEnabled();
+    }
+    return experimental_dotnet_injection_enabled orelse false;
+}
 
 pub fn getDotNetValues() ?DotNetValues {
     if (cached_dotnet_values) |val| {
