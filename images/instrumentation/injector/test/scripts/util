@@ -8,7 +8,7 @@ is_remote_image() {
     exit 1
   fi
 
-  if [[ "$image_name" == *"/"* ]]; then
+  if [[ "$image_name" = *"/"* ]]; then
 	return 0
   else
 	return 1

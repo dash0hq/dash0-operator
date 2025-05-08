@@ -24,7 +24,7 @@ verify_kubectx() {
   local current_context_is_allowed="false"
   for allowed_context_name in "${allowed_contexts[@]}"; do
     local trimmed=$(trim "$allowed_context_name")
-    if [[ "$current_kubectx" == "$trimmed" ]]; then
+    if [[ "$current_kubectx" = "$trimmed" ]]; then
       current_context_is_allowed="true"
       break
     fi
@@ -44,7 +44,7 @@ setup_test_environment () {
 ensure_namespace_exists() {
   local target_namespace=${1:-test-namespace}
 
-  if [[ "${target_namespace}" == default  ]]; then
+  if [[ "${target_namespace}" = default  ]]; then
     exit 0
   fi
 
@@ -61,7 +61,7 @@ finish_step() {
 
 is_remote_image() {
   image_name="$1"
-  if [[ $image_name == */* ]]; then
+  if [[ $image_name = */* ]]; then
     printf "true"
   else
     printf "false"
@@ -217,7 +217,7 @@ build_all_images() {
     FILELOG_OFFSET_SYNC_IMG_TAG="$filelog_offset_sync_img_tag" \
     make docker-build
 
-  if [[ "$is_kind_cluster" == "true" ]]; then
+  if [[ "$is_kind_cluster" = "true" ]]; then
     echo loading images into Kind cluster
     kind load docker-image \
       --name $cluster \
@@ -235,11 +235,11 @@ check_if_kubectx_is_kind_cluster() {
     # kind is installed, check if the current kube context is a kind cluster
     current_kubectx=$(kubectl config current-context)
     kind_clusters=$(kind get clusters 2>&1)
-    if [[ "$kind_clusters" == "No kind clusters found." ]]; then
+    if [[ "$kind_clusters" = "No kind clusters found." ]]; then
       return
     fi
     while IFS= read -r cluster; do
-      if [[ "$current_kubectx" == "kind-$cluster" ]]; then
+      if [[ "$current_kubectx" = "kind-$cluster" ]]; then
         is_kind_cluster="true"
         return
       fi
@@ -249,7 +249,7 @@ check_if_kubectx_is_kind_cluster() {
 
 deploy_filelog_offsets_pvc() {
   echo "STEP $step_counter: install filelog offset persistent volume claim"
-  if [[ "$is_kind_cluster" == "true" ]]; then
+  if [[ "$is_kind_cluster" = "true" ]]; then
     kubectl patch persistentvolume offset-storage-volume --type=json -p='[{"op": "remove", "path": "/spec/claimRef"}]j' || true
     kubectl apply -f test-resources/customresources/filelogoffsetpvc/offset-storage-pvc-kind.yaml
   else
@@ -283,9 +283,9 @@ run_helm() {
   if [[ -n "${OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE:-}" ]]; then
     helm_install_command+=" --set operator.collectors.sendBatchMaxSize=$OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE"
   fi
-  if [[ "${FILELOG_OFFSETS_PVC:-}" == "true" ]]; then
+  if [[ "${FILELOG_OFFSETS_PVC:-}" = "true" ]]; then
     helm_install_command+=" --values test-resources/bin/filelog-offset-volume-pvc-values.yaml"
-  elif [[ "${FILELOG_OFFSETS_HOST_PATH_VOLUME:-}" == "true" ]]; then
+  elif [[ "${FILELOG_OFFSETS_HOST_PATH_VOLUME:-}" = "true" ]]; then
     helm_install_command+=" --values test-resources/bin/filelog-offset-volume-hostpath-values.yaml"
   fi
 
@@ -356,7 +356,7 @@ run_helm() {
 
   # Deploy an operator configuration right away.
   if [[ "${DEPLOY_OPERATOR_CONFIGURATION_VIA_HELM:-}" != "false" ]]; then
-    if [[ "${USE_OTLP_SINK:-}" == "true" ]]; then
+    if [[ "${USE_OTLP_SINK:-}" = "true" ]]; then
       helm_install_command+=" --set operator.dash0Export.enabled=true"
       helm_install_command+=" --set operator.dash0Export.endpoint=http://otlp-sink.otlp-sink.svc.cluster.local:4317"
       helm_install_command+=" --set operator.dash0Export.token=dummy-token"
@@ -364,7 +364,7 @@ run_helm() {
     else
       helm_install_command+=" --set operator.dash0Export.enabled=true"
       helm_install_command+=" --set operator.dash0Export.endpoint=${DASH0_INGRESS_ENDPOINT}"
-      if [[ "${USE_TOKEN:-}" == true ]]; then
+      if [[ "${USE_TOKEN:-}" = true ]]; then
         helm_install_command+=" --set operator.dash0Export.token=${DASH0_AUTHORIZATION_TOKEN}"
       else
         helm_install_command+=" --set operator.dash0Export.secretRef.name=dash0-authorization-secret"
@@ -375,10 +375,10 @@ run_helm() {
     if [[ -n "${OPERATOR_CONFIGURATION_VIA_HELM_DATASET:-}" ]]; then
       helm_install_command+=" --set operator.dash0Export.dataset=$OPERATOR_CONFIGURATION_VIA_HELM_DATASET"
     fi
-    if [[ "${SELF_MONITORING_ENABLED:-}" == "false" ]]; then
+    if [[ "${SELF_MONITORING_ENABLED:-}" = "false" ]]; then
       helm_install_command+=" --set operator.selfMonitoringEnabled=false"
     fi
-    if [[ "${KUBERNETES_INFRASTRUCTURE_METRICS_COLLECTION_ENABLED:-}" == "false" ]]; then
+    if [[ "${KUBERNETES_INFRASTRUCTURE_METRICS_COLLECTION_ENABLED:-}" = "false" ]]; then
       helm_install_command+=" --set operator.kubernetesInfrastructureMetricsCollectionEnabled=false"
     fi
     helm_install_command+=" --set operator.clusterName=$(kubectl config current-context)"
@@ -464,7 +464,7 @@ deploy_otlp_sink_if_requested() {
 install_operator_configuration_resource() {
   if [[ "${USE_OTLP_SINK:-}" = "true" ]]; then
     kubectl apply -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.otlpsink.yaml
-  elif [[ "${USE_TOKEN:-}" == true ]]; then
+  elif [[ "${USE_TOKEN:-}" = true ]]; then
     kubectl apply -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.token.yaml
   else
     kubectl apply -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.secret.yaml
@@ -525,12 +525,12 @@ install_third_party_crds() {
 }
 
 install_third_party_resources() {
-  if [[ "${DEPLOY_PERSES_DASHBOARD:-}" == "true" ]]; then
+  if [[ "${DEPLOY_PERSES_DASHBOARD:-}" = "true" ]]; then
     echo "STEP $step_counter: deploy a Perses dashboard resource to namespace ${target_namespace}"
     kubectl apply -n ${target_namespace} -f test-resources/customresources/persesdashboard/persesdashboard.yaml
     finish_step
   fi
-  if [[ "${DEPLOY_PROMETHEUS_RULE:-}" == "true" ]]; then
+  if [[ "${DEPLOY_PROMETHEUS_RULE:-}" = "true" ]]; then
     echo "STEP $step_counter: deploy a Prometheus rule resource to namespace ${target_namespace}"
     kubectl apply -n ${target_namespace} -f test-resources/customresources/prometheusrule/prometheusrule.yaml
     finish_step

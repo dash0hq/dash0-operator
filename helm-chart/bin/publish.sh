@@ -63,7 +63,7 @@ echo "git add & commit"
 git add "dash0-operator-$version.tgz" index.yaml
 git commit -m"feat(chart): publish version $version"
 
-if [[ "${DRY_RUN:-}" == "true" ]]; then
+if [[ "${DRY_RUN:-}" = "true" ]]; then
   echo "executing git push (--dry-run)"
   git push --no-verify --dry-run origin gh-pages
 else

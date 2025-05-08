@@ -286,7 +286,7 @@ run_tests_for_architecture() {
   echo
 }
 
-if [[ "${CI:-false}" != true ]]; then
+if [[ "${CI:-false}" != "true" ]]; then
   dockerDriver="$(docker info -f '{{ .DriverStatus }}')"
   if [[ "$dockerDriver" != *"io.containerd."* ]]; then
     echo "Error: This script requires that the containerd image store is enabled for Docker, since the script needs to build and use multi-arch images locally. You driver is $dockerDriver. Please see https://docs.docker.com/desktop/containerd/#enable-the-containerd-image-store for instructions on enabling the containerd image store."

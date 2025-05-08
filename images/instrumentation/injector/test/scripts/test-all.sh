@@ -77,7 +77,7 @@ while IFS= read -r line; do
     copy_lines=true
     continue
   fi
-  if [[ $copy_lines == true && "$line" =~ ^.*injector_build_end.*$ ]]; then
+  if [[ $copy_lines = "true" && "$line" =~ ^.*injector_build_end.*$ ]]; then
     copy_lines=false
     continue
   fi
@@ -85,7 +85,7 @@ while IFS= read -r line; do
     # skip comments
     continue
   fi
-  if [[ $copy_lines == true ]]; then
+  if [[ $copy_lines = "true" ]]; then
     echo "$line" >> "$dockerfile_injector_build"
   fi
 done < Dockerfile
@@ -126,7 +126,7 @@ if [[ "${MISSING_ENVIRON_SYMBOL_TESTS:-}" = "true" ]]; then
       fi
     fi
     goarch="$arch"
-    if [[ "$goarch" == "x86_64" ]]; then
+    if [[ "$goarch" = "x86_64" ]]; then
       goarch="amd64"
     fi
     for libc_flavor in "${all_libc_flavors[@]}"; do
@@ -136,9 +136,9 @@ if [[ "${MISSING_ENVIRON_SYMBOL_TESTS:-}" = "true" ]]; then
           continue
         fi
       fi
-      if [[ "$libc_flavor" == "glibc" ]]; then
+      if [[ "$libc_flavor" = "glibc" ]]; then
         no_environ_base_image="golang:1.23.7-bookworm"
-      elif [[ "$libc_flavor" == "musl" ]]; then
+      elif [[ "$libc_flavor" = "musl" ]]; then
         no_environ_base_image="golang:1.23.7-alpine3.21"
       fi
       echo "building the no_environ_symbol test app for CPU architecture $arch [GOARCH=$goarch] and libc flavor $libc_flavor (base image: $no_environ_base_image)"

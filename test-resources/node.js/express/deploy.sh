@@ -17,7 +17,7 @@ check_if_kubectx_is_kind_cluster
 if [[ -z ${SKIP_DOCKER_BUILD:-} ]]; then
   docker build . -t dash0-operator-nodejs-20-express-test-app
 
-  if [[ "$is_kind_cluster" == true ]]; then
+  if [[ "$is_kind_cluster" = "true" ]]; then
     echo loading test image into Kind cluster
     kind load docker-image \
       --name "$cluster" \
@@ -32,7 +32,7 @@ fi
 ./undeploy.sh "${target_namespace}" "${kind}"
 kubectl apply -n "${target_namespace}" -f "${kind}".yaml
 
-if [[ "$is_kind_cluster" == true ]]; then
+if [[ "$is_kind_cluster" = "true" ]]; then
   echo
   echo "Note: The test application is running on a kind cluster, make sure cloud-provider-kind is running."
   echo

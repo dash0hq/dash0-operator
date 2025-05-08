@@ -38,11 +38,11 @@ fi
 testCrdFile=test/util/crds/monitoring.coreos.com_prometheusrules.yaml
 versionInTestCrd=$(yq e ".metadata.annotations.\"operator.prometheus.io/version\"" "$testCrdFile")
 versionInTestCrdMatches=false
-if [[ "$versionInTestCrd" == "$moduleVersion" ]]; then
+if [[ "$versionInTestCrd" = "$moduleVersion" ]]; then
   versionInTestCrdMatches=true
 fi
 
-if [[ "$foundInReadme" == "true" ]] && [[ "$versionInTestCrdMatches" == "true" ]]; then
+if [[ "$foundInReadme" = "true" ]] && [[ "$versionInTestCrdMatches" = "true" ]]; then
   exit 0
 fi
 

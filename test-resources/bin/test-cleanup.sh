@@ -54,10 +54,10 @@ kubectl patch -n "${target_namespace}" -f test-resources/customresources/dash0mo
 kubectl delete -f test-resources/customresources/dash0operatorconfiguration/dash0operatorconfiguration.token.yaml || true
 kubectl delete dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration-auto-resource || true
 
-if [[ "${target_namespace}" != "default" ]] && [[ "${delete_namespaces}" == "true" ]]; then
+if [[ "${target_namespace}" != "default" ]] && [[ "${delete_namespaces}" = "true" ]]; then
   kubectl delete ns "${target_namespace}" --ignore-not-found
 fi
-if [[ "${delete_namespaces}" == "true" ]]; then
+if [[ "${delete_namespaces}" = "true" ]]; then
   kubectl delete ns test-namespace-2 --ignore-not-found
   kubectl delete ns test-namespace-3 --ignore-not-found
 fi
