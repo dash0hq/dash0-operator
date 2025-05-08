@@ -26,7 +26,7 @@ finish_step
 
 echo "STEP $step_counter: creating target namespace (if necessary)"
 ensure_namespace_exists "${target_namespace}"
-if [[ "$additional_namespaces" = true ]]; then
+if [[ "$additional_namespaces" = "true" ]]; then
   ensure_namespace_exists test-namespace-2
   ensure_namespace_exists test-namespace-3
 fi
@@ -49,7 +49,7 @@ echo "STEP $step_counter: rebuild images"
 build_all_images
 finish_step
 
-if [[ "${FILELOG_OFFSETS_PVC:-}" == "true" ]]; then
+if [[ "${FILELOG_OFFSETS_PVC:-}" = "true" ]]; then
   deploy_filelog_offsets_pvc
   finish_step
 fi
@@ -58,7 +58,7 @@ echo "STEP $step_counter: deploy the Dash0 operator using helm"
 deploy_via_helm
 finish_step
 
-if [[ "${DEPLOY_OPERATOR_CONFIGURATION_VIA_HELM:-}" == "false" ]]; then
+if [[ "${DEPLOY_OPERATOR_CONFIGURATION_VIA_HELM:-}" = "false" ]]; then
   # if no operator configuration resource has been deployed via the helm chart, deploy one now
   echo "STEP $step_counter: deploy the Dash0 operator configuration resource"
   install_operator_configuration_resource
