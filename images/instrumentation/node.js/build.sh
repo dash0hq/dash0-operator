@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-if [[ "${USE_LOCAL_SOURCES_FOR_NODEJS_DISTRIBUTION:-}" = true ]]; then
+if [[ "${USE_LOCAL_SOURCES_FOR_NODEJS_DISTRIBUTION:-}" = "true" ]]; then
   echo "Node.js: using the local sources for @dash0hq/opentelemetry"
   rm -f dash0hq-opentelemetry-*.tgz
   pushd ../../../../opentelemetry-js-distribution > /dev/null
