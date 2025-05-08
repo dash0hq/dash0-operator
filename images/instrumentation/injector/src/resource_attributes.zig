@@ -59,12 +59,12 @@ const mappings: [8]EnvToResourceAttributeMapping =
 
 /// Derive the modified value for OTEL_RESOURCE_ATTRIBUTES based on the original value, and on other resource attributes
 /// provided via the DASH0_* environment variables set by the operator (workload_modifier#addEnvironmentVariables).
-pub fn getModifiedOtelResourceAttributesValue(original_value: ?[:0]const u8) ?types.NullTerminatedString {
+pub fn getModifiedOtelResourceAttributesValue(original_value_optional: ?[:0]const u8) ?types.NullTerminatedString {
     if (getResourceAttributes()) |resource_attributes| {
         defer alloc.allocator.free(resource_attributes);
 
-        if (original_value) |val| {
-            if (val.len == 0) {
+        if (original_value_optional) |original_value| {
+            if (original_value.len == 0) {
                 // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
                 // parent process.
                 const return_buffer = std.fmt.allocPrintZ(alloc.allocator, "{s}", .{resource_attributes}) catch |err| {
@@ -77,7 +77,7 @@ pub fn getModifiedOtelResourceAttributesValue(original_value: ?[:0]const u8) ?ty
             // Prepend our resource attributes to the already existing key-value pairs.
             // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
             // parent process.
-            const return_buffer = std.fmt.allocPrintZ(alloc.allocator, "{s},{s}", .{ resource_attributes, val }) catch |err| {
+            const return_buffer = std.fmt.allocPrintZ(alloc.allocator, "{s},{s}", .{ resource_attributes, original_value }) catch |err| {
                 print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ otel_resource_attributes_env_var_name, err });
                 return null;
             };
@@ -94,7 +94,7 @@ pub fn getModifiedOtelResourceAttributesValue(original_value: ?[:0]const u8) ?ty
     } else {
         // No resource attributes to add. Return a pointer to the current value,
         // or null if there is no current value.
-        if (original_value) |val| {
+        if (original_value_optional) |val| {
             // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
             // parent process.
             const return_buffer = std.fmt.allocPrintZ(alloc.allocator, "{s}", .{val}) catch |err| {
