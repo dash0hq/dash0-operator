@@ -6,11 +6,15 @@
 
 ## Random Notes
 
-SEE https://unix.stackexchange.com/a/70636 !!
+See https://unix.stackexchange.com/a/70636 !!
 # strings /proc/self/environ
 NODE_VERSION=20.19.0
 HOSTNAME=18d960d2c81a
 ...
+
+http://refspecs.linux-foundation.org/LSB_4.0.0/LSB-Core-generic/LSB-Core-generic/baselib---environ.html
+http://refspecs.linux-foundation.org/LSB_4.0.0/LSB-Core-generic/LSB-Core-generic/normativerefs.html#STD.SUSV3
+https://unix.org/version3/
 
 GLIBC
 =====
