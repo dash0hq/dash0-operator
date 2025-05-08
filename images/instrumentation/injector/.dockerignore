@@ -1,4 +1,0 @@
-test/scripts/*
-test/scripts/run-tests-within-container.sh
-**/*.swp
-**/.DS_Store
