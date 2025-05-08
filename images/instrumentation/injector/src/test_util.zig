@@ -5,9 +5,7 @@
 
 const std = @import("std");
 
-var allocator_buffer: [131072:0]u8 = undefined;
-var fba = std.heap.FixedBufferAllocator.init(&allocator_buffer);
-pub const test_allocator: std.mem.Allocator = fba.allocator();
+pub const test_allocator: std.mem.Allocator = std.heap.page_allocator;
 
 /// Clears all entries from std.c.environ, i.e. all environment variables are discarded. The original content before
 /// making any changes is returned. The caller is expected to reset std.c.environ to the return value of this function

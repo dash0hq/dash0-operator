@@ -73,7 +73,7 @@ test "getResourceAttributes: empty environment" {
     defer test_util.resetStdCEnviron(original_environ);
     if (res_attrs.getResourceAttributes()) |resource_attributes| {
         // we expect getResourceAttributes() to return null
-        defer alloc.allocator.free(resource_attributes);
+        defer alloc.page_allocator.free(resource_attributes);
         return error.TestUnexpectedResult;
     }
 }
@@ -82,7 +82,7 @@ test "getResourceAttributes: namespace only" {
     const original_environ = try test_util.setStdCEnviron(&[1][]const u8{"DASH0_NAMESPACE_NAME=namespace"});
     defer test_util.resetStdCEnviron(original_environ);
     if (res_attrs.getResourceAttributes()) |resource_attributes| {
-        defer alloc.allocator.free(resource_attributes);
+        defer alloc.page_allocator.free(resource_attributes);
         try testing.expectEqualStrings("k8s.namespace.name=namespace", resource_attributes);
     } else {
         return error.TestUnexpectedResult;
@@ -93,7 +93,7 @@ test "getResourceAttributes: pod name only" {
     const original_environ = try test_util.setStdCEnviron(&[1][]const u8{"DASH0_POD_NAME=pod"});
     defer test_util.resetStdCEnviron(original_environ);
     if (res_attrs.getResourceAttributes()) |resource_attributes| {
-        defer alloc.allocator.free(resource_attributes);
+        defer alloc.page_allocator.free(resource_attributes);
         try testing.expectEqualStrings("k8s.pod.name=pod", resource_attributes);
     } else {
         return error.TestUnexpectedResult;
@@ -104,7 +104,7 @@ test "getResourceAttributes: pod uid only" {
     const original_environ = try test_util.setStdCEnviron(&[1][]const u8{"DASH0_POD_UID=uid"});
     defer test_util.resetStdCEnviron(original_environ);
     if (res_attrs.getResourceAttributes()) |resource_attributes| {
-        defer alloc.allocator.free(resource_attributes);
+        defer alloc.page_allocator.free(resource_attributes);
         try testing.expectEqualStrings("k8s.pod.uid=uid", resource_attributes);
     } else {
         return error.TestUnexpectedResult;
@@ -115,7 +115,7 @@ test "getResourceAttributes: container name only" {
     const original_environ = try test_util.setStdCEnviron(&[1][]const u8{"DASH0_CONTAINER_NAME=container"});
     defer test_util.resetStdCEnviron(original_environ);
     if (res_attrs.getResourceAttributes()) |resource_attributes| {
-        defer alloc.allocator.free(resource_attributes);
+        defer alloc.page_allocator.free(resource_attributes);
         try testing.expectEqualStrings("k8s.container.name=container", resource_attributes);
     } else {
         return error.TestUnexpectedResult;
@@ -126,7 +126,7 @@ test "getResourceAttributes: free-form resource attributes only" {
     const original_environ = try test_util.setStdCEnviron(&[1][]const u8{"DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd"});
     defer test_util.resetStdCEnviron(original_environ);
     if (res_attrs.getResourceAttributes()) |resource_attributes| {
-        defer alloc.allocator.free(resource_attributes);
+        defer alloc.page_allocator.free(resource_attributes);
         try testing.expectEqualStrings("aaa=bbb,ccc=ddd", resource_attributes);
     } else {
         return error.TestUnexpectedResult;
@@ -146,7 +146,7 @@ test "getResourceAttributes: everything is set" {
     });
     defer test_util.resetStdCEnviron(original_environ);
     if (res_attrs.getResourceAttributes()) |resource_attributes| {
-        defer alloc.allocator.free(resource_attributes);
+        defer alloc.page_allocator.free(resource_attributes);
         try testing.expectEqualStrings(
             "k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd",
             resource_attributes,

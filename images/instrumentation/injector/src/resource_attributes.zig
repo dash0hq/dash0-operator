@@ -61,13 +61,13 @@ const mappings: [8]EnvToResourceAttributeMapping =
 /// provided via the DASH0_* environment variables set by the operator (workload_modifier#addEnvironmentVariables).
 pub fn getModifiedOtelResourceAttributesValue(original_value_optional: ?[:0]const u8) ?types.NullTerminatedString {
     if (getResourceAttributes()) |resource_attributes| {
-        defer alloc.allocator.free(resource_attributes);
+        defer alloc.page_allocator.free(resource_attributes);
 
         if (original_value_optional) |original_value| {
             if (original_value.len == 0) {
                 // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
                 // parent process.
-                const return_buffer = std.fmt.allocPrintZ(alloc.allocator, "{s}", .{resource_attributes}) catch |err| {
+                const return_buffer = std.fmt.allocPrintZ(alloc.page_allocator, "{s}", .{resource_attributes}) catch |err| {
                     print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ otel_resource_attributes_env_var_name, err });
                     return null;
                 };
@@ -77,7 +77,7 @@ pub fn getModifiedOtelResourceAttributesValue(original_value_optional: ?[:0]cons
             // Prepend our resource attributes to the already existing key-value pairs.
             // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
             // parent process.
-            const return_buffer = std.fmt.allocPrintZ(alloc.allocator, "{s},{s}", .{ resource_attributes, original_value }) catch |err| {
+            const return_buffer = std.fmt.allocPrintZ(alloc.page_allocator, "{s},{s}", .{ resource_attributes, original_value }) catch |err| {
                 print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ otel_resource_attributes_env_var_name, err });
                 return null;
             };
@@ -85,7 +85,7 @@ pub fn getModifiedOtelResourceAttributesValue(original_value_optional: ?[:0]cons
         } else {
             // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
             // parent process.
-            const return_buffer = std.fmt.allocPrintZ(alloc.allocator, "{s}", .{resource_attributes}) catch |err| {
+            const return_buffer = std.fmt.allocPrintZ(alloc.page_allocator, "{s}", .{resource_attributes}) catch |err| {
                 print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ otel_resource_attributes_env_var_name, err });
                 return null;
             };
@@ -97,7 +97,7 @@ pub fn getModifiedOtelResourceAttributesValue(original_value_optional: ?[:0]cons
         if (original_value_optional) |val| {
             // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
             // parent process.
-            const return_buffer = std.fmt.allocPrintZ(alloc.allocator, "{s}", .{val}) catch |err| {
+            const return_buffer = std.fmt.allocPrintZ(alloc.page_allocator, "{s}", .{val}) catch |err| {
                 print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ otel_resource_attributes_env_var_name, err });
                 return null;
             };
@@ -137,7 +137,7 @@ pub fn getResourceAttributes() ?[]u8 {
         return null;
     }
 
-    const resource_attributes = alloc.allocator.alloc(u8, final_len) catch |err| {
+    const resource_attributes = alloc.page_allocator.alloc(u8, final_len) catch |err| {
         print.printError("Cannot allocate memory to prepare the resource attributes (len: {d}): {}", .{ final_len, err });
         return null;
     };
