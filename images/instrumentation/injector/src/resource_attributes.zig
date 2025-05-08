@@ -69,7 +69,7 @@ pub fn getModifiedOtelResourceAttributesValue(original_value_optional: ?[:0]cons
                 // parent process.
                 const return_buffer = std.fmt.allocPrintZ(alloc.page_allocator, "{s}", .{resource_attributes}) catch |err| {
                     print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ otel_resource_attributes_env_var_name, err });
-                    return null;
+                    return original_value;
                 };
                 return return_buffer.ptr;
             }
@@ -79,7 +79,7 @@ pub fn getModifiedOtelResourceAttributesValue(original_value_optional: ?[:0]cons
             // parent process.
             const return_buffer = std.fmt.allocPrintZ(alloc.page_allocator, "{s},{s}", .{ resource_attributes, original_value }) catch |err| {
                 print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ otel_resource_attributes_env_var_name, err });
-                return null;
+                return original_value;
             };
             return return_buffer.ptr;
         } else {
@@ -92,21 +92,20 @@ pub fn getModifiedOtelResourceAttributesValue(original_value_optional: ?[:0]cons
             return return_buffer.ptr;
         }
     } else {
-        // No resource attributes to add. Return a pointer to the current value,
-        // or null if there is no current value.
-        if (original_value_optional) |val| {
+        // No resource attributes to add. Return a pointer to the current value, or null if there is no current value.
+        if (original_value_optional) |original_value| {
             // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
             // parent process.
-            const return_buffer = std.fmt.allocPrintZ(alloc.page_allocator, "{s}", .{val}) catch |err| {
+            const return_buffer = std.fmt.allocPrintZ(alloc.page_allocator, "{s}", .{original_value}) catch |err| {
                 print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ otel_resource_attributes_env_var_name, err });
-                return null;
+                return original_value;
             };
-
             return return_buffer.ptr;
+        } else {
+            // There is no original value, and also nothing to add, return null.
+            return null;
         }
     }
-
-    return null;
 }
 
 /// Maps the DASH0_* environment variables that are set by the operator (workload_modifier#addEnvironmentVariables) to a
