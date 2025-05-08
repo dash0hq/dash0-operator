@@ -107,34 +107,36 @@ fn getEnvValue(name: [:0]const u8) ?types.NullTerminatedString {
             print.printMessage("Injected the Dash0 Node.js distro", .{});
             return updated_value;
         }
-    } else if (std.mem.eql(u8, name, "CORECLR_ENABLE_PROFILING")) {
-        if (dotnet.getDotNetValues()) |v| {
-            return v.coreclr_enable_profiling;
-        }
-    } else if (std.mem.eql(u8, name, "CORECLR_PROFILER")) {
-        if (dotnet.getDotNetValues()) |v| {
-            print.printMessage("Injected the OpenTelemetry .NET instrumentation", .{});
-            return v.coreclr_profiler;
-        }
-    } else if (std.mem.eql(u8, name, "CORECLR_PROFILER_PATH")) {
-        if (dotnet.getDotNetValues()) |v| {
-            return v.coreclr_profiler_path;
-        }
-    } else if (std.mem.eql(u8, name, "DOTNET_ADDITIONAL_DEPS")) {
-        if (dotnet.getDotNetValues()) |v| {
-            return v.additional_deps;
-        }
-    } else if (std.mem.eql(u8, name, "DOTNET_SHARED_STORE")) {
-        if (dotnet.getDotNetValues()) |v| {
-            return v.shared_store;
-        }
-    } else if (std.mem.eql(u8, name, "DOTNET_STARTUP_HOOKS")) {
-        if (dotnet.getDotNetValues()) |v| {
-            return v.startup_hooks;
-        }
-    } else if (std.mem.eql(u8, name, "OTEL_DOTNET_AUTO_HOME")) {
-        if (dotnet.getDotNetValues()) |v| {
-            return v.otel_auto_home;
+    } else if (dotnet.isEnabled()) {
+        if (std.mem.eql(u8, name, "CORECLR_ENABLE_PROFILING")) {
+            if (dotnet.getDotNetValues()) |v| {
+                return v.coreclr_enable_profiling;
+            }
+        } else if (std.mem.eql(u8, name, "CORECLR_PROFILER")) {
+            if (dotnet.getDotNetValues()) |v| {
+                print.printMessage("Injected the OpenTelemetry .NET instrumentation", .{});
+                return v.coreclr_profiler;
+            }
+        } else if (std.mem.eql(u8, name, "CORECLR_PROFILER_PATH")) {
+            if (dotnet.getDotNetValues()) |v| {
+                return v.coreclr_profiler_path;
+            }
+        } else if (std.mem.eql(u8, name, "DOTNET_ADDITIONAL_DEPS")) {
+            if (dotnet.getDotNetValues()) |v| {
+                return v.additional_deps;
+            }
+        } else if (std.mem.eql(u8, name, "DOTNET_SHARED_STORE")) {
+            if (dotnet.getDotNetValues()) |v| {
+                return v.shared_store;
+            }
+        } else if (std.mem.eql(u8, name, "DOTNET_STARTUP_HOOKS")) {
+            if (dotnet.getDotNetValues()) |v| {
+                return v.startup_hooks;
+            }
+        } else if (std.mem.eql(u8, name, "OTEL_DOTNET_AUTO_HOME")) {
+            if (dotnet.getDotNetValues()) |v| {
+                return v.otel_auto_home;
+            }
         }
     }
 
