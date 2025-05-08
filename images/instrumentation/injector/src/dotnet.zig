@@ -74,21 +74,21 @@ fn determineDotNetValues(flavor: LibCFlavor) !DotNetValues {
         else
             (if (builtin.cpu.arch == .aarch64) "linux-musl-arm64" else "linux-musl-x64");
 
-    const coreclr_profiler_path = try std.fmt.allocPrintZ(alloc.allocator, "{s}/{s}/{s}/OpenTelemetry.AutoInstrumentation.Native.so", .{
+    const coreclr_profiler_path = try std.fmt.allocPrintZ(alloc.page_allocator, "{s}/{s}/{s}/OpenTelemetry.AutoInstrumentation.Native.so", .{
         dotnet_path_prefix, libc_flavor_prefix, platform,
     });
 
-    const additional_deps = try std.fmt.allocPrintZ(alloc.allocator, "{s}/{s}/AdditionalDeps", .{
+    const additional_deps = try std.fmt.allocPrintZ(alloc.page_allocator, "{s}/{s}/AdditionalDeps", .{
         dotnet_path_prefix, libc_flavor_prefix,
     });
 
-    const otel_auto_home = try std.fmt.allocPrintZ(alloc.allocator, "{s}/{s}", .{ dotnet_path_prefix, libc_flavor_prefix });
+    const otel_auto_home = try std.fmt.allocPrintZ(alloc.page_allocator, "{s}/{s}", .{ dotnet_path_prefix, libc_flavor_prefix });
 
-    const shared_store = try std.fmt.allocPrintZ(alloc.allocator, "{s}/{s}/store", .{
+    const shared_store = try std.fmt.allocPrintZ(alloc.page_allocator, "{s}/{s}/store", .{
         dotnet_path_prefix, libc_flavor_prefix,
     });
 
-    const startup_hooks = try std.fmt.allocPrintZ(alloc.allocator, "{s}/{s}/net/OpenTelemetry.AutoInstrumentation.StartupHook.dll", .{
+    const startup_hooks = try std.fmt.allocPrintZ(alloc.page_allocator, "{s}/{s}/net/OpenTelemetry.AutoInstrumentation.StartupHook.dll", .{
         dotnet_path_prefix, libc_flavor_prefix,
     });
 
@@ -173,8 +173,8 @@ fn doGetLibCFlavor() !LibCFlavor {
     // Read dynamic section
     try self_exe_file.seekTo(dynamic_symbols_table_offset);
     const dynamic_symbol_count = dynamic_symbols_table_size / @sizeOf(std.elf.Elf64_Dyn);
-    const dynamic_symbols = try alloc.allocator.alloc(std.elf.Elf64_Dyn, dynamic_symbol_count);
-    defer alloc.allocator.free(dynamic_symbols);
+    const dynamic_symbols = try alloc.page_allocator.alloc(std.elf.Elf64_Dyn, dynamic_symbol_count);
+    defer alloc.page_allocator.free(dynamic_symbols);
     _ = try self_exe_file.read(std.mem.sliceAsBytes(dynamic_symbols));
 
     // Find string table address (DT_STRTAB)

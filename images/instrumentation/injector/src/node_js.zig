@@ -35,7 +35,7 @@ fn getModifiedNodeOptionsValue(original_value: ?[:0]const u8) ?types.NullTermina
         // If NODE_OPTIONS is already set, prepend the "--require ..." flag to the original value.
         // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
         // parent process.
-        const return_buffer = std.fmt.allocPrintZ(alloc.allocator, "{s} {s}", .{ require_dash0_nodejs_otel_sdk_distribution, val }) catch |err| {
+        const return_buffer = std.fmt.allocPrintZ(alloc.page_allocator, "{s} {s}", .{ require_dash0_nodejs_otel_sdk_distribution, val }) catch |err| {
             print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ node_options_env_var_name, err });
             return null;
         };
