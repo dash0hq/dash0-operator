@@ -14,9 +14,11 @@ const assert = std.debug.assert;
 const testing = std.testing;
 const expect = testing.expect;
 
-// We need to use a rather "innocent" type here, the actual type involves
-// optionals that cannot be used in global declarations.
-extern var __environ: [*]u8;
+// TODO maybe initialize the initial dummy __environ in a less stupid way :)
+// TODO fixed size buffer meh
+var environ_buffer: [131072]u8 = [_]u8{0} ** 131072;
+const environ_buffer_ptr: *[131072]u8 = &environ_buffer;
+export var __environ: [*]u8 = environ_buffer_ptr;
 
 // Ensure we process requests synchronously. LibC is *not* threadsafe
 // with respect to the environment, but chances are some apps will try
@@ -31,6 +33,46 @@ var modified_node_options_value_calculated = false;
 var modified_node_options_value: ?types.NullTerminatedString = null;
 var modified_otel_resource_attributes_value_calculated = false;
 var modified_otel_resource_attributes_value: ?types.NullTerminatedString = null;
+
+// This is how you can currently do something like `__attribute__((constructor))` in Zig, that is, register a function
+// that runs before main(); export a const named init_array which lists the functions you want to run.
+//
+// Note: Destructor, i.e. things that run after main() are registered similarly via `fini_array`, but they do not run
+// on panic or unhandled signals (so not chance for getting a cheap abnormal process detection mechanism here).
+//
+// There is discussion to provide a more explicit mechanism for init functions in the future, but not much traction so
+// far. Ser https://github.com/ziglang/zig/issues/23574 and https://github.com/ziglang/zig/issues/20382.
+export const init_array: [1]*const fn () callconv(.C) void linksection(".init_array") = .{&initEnviron};
+
+fn initEnviron() callconv(.C) void {
+    _initEnviron() catch @panic("[Dash0 injector] initEnviron failed");
+}
+
+fn _initEnviron() !void {
+    const proc_self_environ_file = try std.fs.openFileAbsolute("/proc/self/environ", .{
+        .mode = std.fs.File.OpenMode.read_only,
+        .lock = std.fs.File.Lock.none,
+    });
+    defer proc_self_environ_file.close();
+
+    // TODO verify if buffering/allocating like this is reasonable.
+    var buf_reader = std.io.bufferedReader(proc_self_environ_file.reader());
+    var in_stream = buf_reader.reader();
+
+    // TODO set a more reasonable (higher) limit or check whether we can read without a specific hard coded limit.
+    const max_proc_self_environ_entry_bytes = 4096;
+
+    var idx: usize = 0;
+    var line_buffer: [max_proc_self_environ_entry_bytes]u8 = undefined;
+    while (try in_stream.readUntilDelimiterOrEof(&line_buffer, 0)) |line| {
+        for (line) |c| {
+            environ_buffer[idx] = c;
+            idx += 1;
+        }
+        environ_buffer[idx] = 0;
+        idx += 1;
+    }
+}
 
 export fn getenv(name_z: types.NullTerminatedString) ?types.NullTerminatedString {
     const name = std.mem.sliceTo(name_z, 0);
