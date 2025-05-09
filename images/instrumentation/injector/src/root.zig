@@ -153,11 +153,4 @@ fn getEnvValue(name: [:0]const u8) ?types.NullTerminatedString {
 
 // TODO Tests
 //
-// Test linking with an executable that does not provide __environ!
 // Stress-test with additions to env via setenv until reallocation occurs
-// JAVA_TOOL_OPTIONS without Jar file at expected location
-// JAVA_TOOL_OPTIONS with Jar file at expected location but cannot read due to file permissions
-// JAVA_TOOL_OPTIONS happy path
-// NODE_OPTIONS without module at expected location
-// NODE_OPTIONS with module at expected location but cannot read due to file permissions
-// NODE_OPTIONS happy path
