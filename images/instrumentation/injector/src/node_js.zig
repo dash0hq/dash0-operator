@@ -12,6 +12,7 @@ const testing = std.testing;
 pub const node_options_env_var_name = "NODE_OPTIONS";
 const dash0_nodejs_otel_sdk_distribution = "/__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry";
 const require_dash0_nodejs_otel_sdk_distribution = "--require " ++ dash0_nodejs_otel_sdk_distribution;
+const injection_happened_msg = "injecting the Dash0 Node.js OpenTelemetry distribution";
 
 pub fn checkNodeJsOTelSdkDistributionAndGetModifiedNodeOptionsValue(original_value_optional: ?[:0]const u8) ?types.NullTerminatedString {
     // Check the existence of the Node module: requiring or importing a module
@@ -49,10 +50,12 @@ fn getModifiedNodeOptionsValue(original_value_optional: ?[:0]const u8) ?types.Nu
             print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ node_options_env_var_name, err });
             return original_value;
         };
+        print.printMessage(injection_happened_msg, .{});
         return return_buffer.ptr;
     }
 
     // If NODE_OPTIONS is not set, simply return the "--require ..." flag.
+    print.printMessage(injection_happened_msg, .{});
     return require_dash0_nodejs_otel_sdk_distribution[0..].ptr;
 }
 
