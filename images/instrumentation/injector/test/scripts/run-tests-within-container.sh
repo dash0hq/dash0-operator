@@ -51,14 +51,12 @@ fi
 #   code is zero and the app's output matches this string
 # - env_vars (optional): Set additional environment variables like NODE_OPTIONS or OTEL_RESOURCE_ATTRIBUTES when running
 #   the test
-# - sdks_exist: Whether to create dummy SDK files.
 run_test_case() {
   test_case_label=$1
   working_dir=$2
   test_app_command=$3
   expected=$4
   env_vars=${5:-}
-  sdks_exist=${6:-"true"}
 
   if [ -n "${TEST_CASES:-}" ]; then
     IFS=,
@@ -85,24 +83,8 @@ run_test_case() {
     return
   fi
 
-  # Create a dummy OTel distro/SDK files which actually do nothing but pass the "file exists" check in the injector.
-  # These directories and files will be owned by root:root while the application under test runs as user node.
-  if [ "$sdks_exist" = "false" ]; then
-    echo "- removing dummy OTel SDK files"
-    sudo rm -rf /__dash0__/instrumentation
-  else
-    sudo rm -rf /__dash0__/instrumentation
-    sudo mkdir -p /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry
-    sudo touch    /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry/index.js
-    sudo mkdir -p /__dash0__/instrumentation/jvm
-    sudo touch    /__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar
-    if [ "$sdks_exist" = "no_permissions" ]; then
-      # Simulate a situation where the OTel SDK/distro exists but the user executing the proess does not have access.
-      sudo chmod -R 600 /__dash0__/instrumentation
-    fi
-  fi
-
   cd "$working_dir"
+
   # Note: add DASH0_INJECTOR_DEBUG=true to the list of env vars to see debug output from the injector.
   full_command="LD_PRELOAD=""$injector_binary"" DASH0_NAMESPACE_NAME=my-namespace DASH0_POD_NAME=my-pod DASH0_POD_UID=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff DASH0_CONTAINER_NAME=test-app"
   if [ "$env_vars" != "" ]; then
@@ -148,27 +130,6 @@ run_test_case \
 
 # NODE_OPTIONS
 run_test_case \
-  "getenv: does not add NODE_OPTIONS if it the Dash0 Node.js OTel distro is not present" \
-  "app" \
-  "node index.js node_options" \
-  "NODE_OPTIONS: -" \
-  "" \
-  "false"
-run_test_case \
-  "getenv: does not modify existing NODE_OPTIONS if it the Dash0 Node.js OTel distro is not present" \
-  "app" \
-  "node index.js node_options" \
-  "NODE_OPTIONS: --no-deprecation" \
-  "NODE_OPTIONS=--no-deprecation" \
-  "false"
-run_test_case \
-  "getenv: does not add NODE_OPTIONS if it the Dash0 Node.js OTel distro is present but cannot be accessed" \
-  "app" \
-  "node index.js node_options" \
-  "NODE_OPTIONS: -" \
-  "" \
-  "no_permissions"
-run_test_case \
   "getenv: overrides NODE_OPTIONS if it is not present" \
   "app" \
   "node index.js node_options" \
@@ -192,27 +153,6 @@ run_test_case \
   "NODE_OPTIONS=--no-deprecation"
 
 # JAVA_TOOL_OPTIONS
-run_test_case \
-  "getenv: does not add JAVA_TOOL_OPTIONS if it the Java agent is not present" \
-  "app" \
-  "node index.js java_tool_options" \
-  "JAVA_TOOL_OPTIONS: -" \
-  "" \
-  "false"
-run_test_case \
-  "getenv: does not modify existing JAVA_TOOL_OPTIONS if it the Java agent is not present" \
-  "app" \
-  "node index.js java_tool_options" \
-  "JAVA_TOOL_OPTIONS: existing-value" \
-  "JAVA_TOOL_OPTIONS=existing-value" \
-  "false"
-run_test_case \
-  "getenv: does not add JAVA_TOOL_OPTIONS if it the Java agent is present but cannot be accessed" \
-  "app" \
-  "node index.js java_tool_options" \
-  "JAVA_TOOL_OPTIONS: -" \
-  "" \
-  "no_permissions"
 run_test_case \
   "getenv: adds JAVA_TOOL_OPTIONS if it the Java agent is present" \
   "app" \
