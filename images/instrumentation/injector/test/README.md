@@ -17,7 +17,7 @@ Usage
   Can be combined with `ARCHITECTURES` and other flags.
 * `TEST_CASES=twice,mapped scripts/test-all.sh` to only run tests cases whose names contain one of the
   provided strings.
-  The test cases are listed in `run-tests-within-container.sh`.
+  The test cases are listed in the different `scripts/*.tests` files.
   Can be combined with `ARCHITECTURES`, `LIBC_FLAVORS` etc.
 * `INSTRUMENTATION_IMAGE=... scripts/test-all.sh` use an existing local or remote instrumentation image.
 * `MISSING_ENVIRON_SYMBOL_TESTS=true` also run tests with a binary that does not provide an `__environ` symbol.

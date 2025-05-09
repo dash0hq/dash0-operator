@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-ARG base_image="node:22.15.0-bookworm"
+ARG base_image="node:22.15.0-bookworm-slim"
 FROM ${base_image}
 
 ARG injector_binary
@@ -28,11 +28,12 @@ RUN echo ${injector_binary}
 
 COPY bin/${injector_binary} /dash0-init-container/injector/dash0_injector.so
 
-# Add dummy Dash0 OTel SDKs/distros which actually do nothing but make the file check in the injector pass.
+# Add an inaccessible dummy Dash0 OTel SDKs/distros.
 RUN mkdir -p /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry && \
   touch /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry/index.js && \
   mkdir -p /__dash0__/instrumentation/jvm && \
-  touch /__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar
+  touch /__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar && \
+  chmod -R 600 /__dash0__/instrumentation
 
 ARG arch_under_test=no_value
 RUN test ${arch_under_test} != "no_value"

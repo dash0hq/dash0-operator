@@ -51,14 +51,13 @@ fi
 #   code is zero and the app's output matches this string
 # - env_vars (optional): Set additional environment variables like NODE_OPTIONS or OTEL_RESOURCE_ATTRIBUTES when running
 #   the test
-# - sdks_exist: Whether to create dummy SDK files.
+# shellcheck disable=SC2317
 run_test_case() {
   test_case_label=$1
   working_dir=$2
   test_app_command=$3
   expected=$4
   env_vars=${5:-}
-  sdks_exist=${6:-"true"}
 
   if [ -n "${TEST_CASES:-}" ]; then
     IFS=,
@@ -83,23 +82,6 @@ run_test_case() {
   if [ "${test_case_label#*"__environ"}" != "$test_case_label" ] && [ "${ARCH_UNDER_TEST:-}" = "x86_64" ] && [ "${LIBC_UNDER_TEST:-}" = "musl" ]; then
     echo "- skipping test case \"$test_case_label\": tests for no __environ are currently disabled for x86_64/musl"
     return
-  fi
-
-  # Create a dummy OTel distro/SDK files which actually do nothing but pass the "file exists" check in the injector.
-  # These directories and files will be owned by root:root while the application under test runs as user node.
-  if [ "$sdks_exist" = "false" ]; then
-    echo "- removing dummy OTel SDK files"
-    sudo rm -rf /__dash0__/instrumentation
-  else
-    sudo rm -rf /__dash0__/instrumentation
-    sudo mkdir -p /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry
-    sudo touch    /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry/index.js
-    sudo mkdir -p /__dash0__/instrumentation/jvm
-    sudo touch    /__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar
-    if [ "$sdks_exist" = "no_permissions" ]; then
-      # Simulate a situation where the OTel SDK/distro exists but the user executing the proess does not have access.
-      sudo chmod -R 600 /__dash0__/instrumentation
-    fi
   fi
 
   cd "$working_dir"
@@ -133,149 +115,8 @@ run_test_case() {
 
 exit_code=0
 
-# Unrelated env vars
-run_test_case \
-  "getenv: returns undefined for non-existing environment variable" \
-  "app" \
-  "node index.js non-existing" \
-  "DOES_NOT_EXIST: -"
-run_test_case \
-  "getenv: returns environment variable unchanged" \
-  "app" \
-  "node index.js existing" \
-  "TEST_VAR: value" \
-  "TEST_VAR=value "
-
-# NODE_OPTIONS
-run_test_case \
-  "getenv: does not add NODE_OPTIONS if it the Dash0 Node.js OTel distro is not present" \
-  "app" \
-  "node index.js node_options" \
-  "NODE_OPTIONS: -" \
-  "" \
-  "false"
-run_test_case \
-  "getenv: does not modify existing NODE_OPTIONS if it the Dash0 Node.js OTel distro is not present" \
-  "app" \
-  "node index.js node_options" \
-  "NODE_OPTIONS: --no-deprecation" \
-  "NODE_OPTIONS=--no-deprecation" \
-  "false"
-run_test_case \
-  "getenv: does not add NODE_OPTIONS if it the Dash0 Node.js OTel distro is present but cannot be accessed" \
-  "app" \
-  "node index.js node_options" \
-  "NODE_OPTIONS: -" \
-  "" \
-  "no_permissions"
-run_test_case \
-  "getenv: overrides NODE_OPTIONS if it is not present" \
-  "app" \
-  "node index.js node_options" \
-  "NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry"
-run_test_case \
-  "getenv: ask for NODE_OPTIONS (unset) twice" \
-  "app" \
-  "node index.js node_options_twice" \
-  "NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry; NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry"
-run_test_case \
-  "getenv: prepends to NODE_OPTIONS if it is present" \
-  "app" \
-  "node index.js node_options" \
-  "NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --no-deprecation" \
-  "NODE_OPTIONS=--no-deprecation"
-run_test_case \
-  "getenv: ask for NODE_OPTIONS (set) twice" \
-  "app" \
-  "node index.js node_options_twice" \
-  "NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --no-deprecation; NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --no-deprecation" \
-  "NODE_OPTIONS=--no-deprecation"
-
-# JAVA_TOOL_OPTIONS
-run_test_case \
-  "getenv: does not add JAVA_TOOL_OPTIONS if it the Java agent is not present" \
-  "app" \
-  "node index.js java_tool_options" \
-  "JAVA_TOOL_OPTIONS: -" \
-  "" \
-  "false"
-run_test_case \
-  "getenv: does not modify existing JAVA_TOOL_OPTIONS if it the Java agent is not present" \
-  "app" \
-  "node index.js java_tool_options" \
-  "JAVA_TOOL_OPTIONS: existing-value" \
-  "JAVA_TOOL_OPTIONS=existing-value" \
-  "false"
-run_test_case \
-  "getenv: does not add JAVA_TOOL_OPTIONS if it the Java agent is present but cannot be accessed" \
-  "app" \
-  "node index.js java_tool_options" \
-  "JAVA_TOOL_OPTIONS: -" \
-  "" \
-  "no_permissions"
-run_test_case \
-  "getenv: adds JAVA_TOOL_OPTIONS if it the Java agent is present" \
-  "app" \
-  "node index.js java_tool_options" \
-  "JAVA_TOOL_OPTIONS: -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar -Dotel.resource.attributes=k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app"
-run_test_case \
-  "getenv: adds the -javaagent to existing JAVA_TOOL_OPTIONS" \
-  "app" \
-  "node index.js java_tool_options" \
-  "JAVA_TOOL_OPTIONS: -some-option -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar -Dotel.resource.attributes=k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app" \
-  "JAVA_TOOL_OPTIONS=-some-option"
-run_test_case \
-  "getenv: merges existing -Dotel.resource.attributes" \
-  "app" \
-  "node index.js java_tool_options" \
-  "JAVA_TOOL_OPTIONS: -Dotel.resource.attributes=my.attr1=value1,my.attr2=value2,k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar" \
-  "JAVA_TOOL_OPTIONS=-Dotel.resource.attributes=my.attr1=value1,my.attr2=value2"
-
-# OTEL_RESOURCE_ATTRIBUTES
-run_test_case \
-  "getenv: sets k8s.pod.uid and k8s.container.name via OTEL_RESOURCE_ATTRIBUTES" \
-  "app" \
-  "node index.js otel_resource_attributes" \
-  "OTEL_RESOURCE_ATTRIBUTES: k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app"
-run_test_case \
-  "getenv: sets k8s.pod.uid and k8s.container.name via OTEL_RESOURCE_ATTRIBUTES with pre-existing value" \
-  "app" \
-  "node index.js otel_resource_attributes" \
-  "OTEL_RESOURCE_ATTRIBUTES: k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app,foo=bar" \
-  "OTEL_RESOURCE_ATTRIBUTES=foo=bar"
-run_test_case \
-  "getenv: use mapped app.kubernetes.io labels for service.name and friends" \
-  "app" \
-  "node index.js otel_resource_attributes" \
-  "OTEL_RESOURCE_ATTRIBUTES: k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app,service.name=service-name,service.version=service-version,service.namespace=service-namespace" \
-  "DASH0_SERVICE_NAME=service-name DASH0_SERVICE_VERSION=service-version DASH0_SERVICE_NAMESPACE=service-namespace"
-run_test_case \
-  "getenv: use mapped resource.opentelemetry.io labels as additional resource attributes" \
-  "app" \
-  "node index.js otel_resource_attributes" \
-  "OTEL_RESOURCE_ATTRIBUTES: k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app,aaa=bbb,ccc=ddd" \
-  "DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd"
-run_test_case \
-  "getenv: combine mapped app.kubernetes.io and resource.opentelemetry.io labels" \
-  "app" \
-  "node index.js otel_resource_attributes" \
-  "OTEL_RESOURCE_ATTRIBUTES: k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app,service.name=service-name,service.version=service-version,service.namespace=service-namespace,aaa=bbb,ccc=ddd" \
-  "DASH0_SERVICE_NAME=service-name DASH0_SERVICE_VERSION=service-version DASH0_SERVICE_NAMESPACE=service-namespace DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd"
-
-if [ "${MISSING_ENVIRON_SYMBOL_TESTS:-}" = "true" ]; then
-  # Regression tests for missing __environ symbol:
-  run_test_case \
-    "no __environ symbol: read unset environment variable" \
-    "no_environ_symbol" \
-    "./noenviron" \
-    "The environmet variable \"NO_ENVIRON_TEST_VAR\" is not set."
-  run_test_case \
-    "no __environ symbol: read an environment variable that is set" \
-    "no_environ_symbol" \
-    "./noenviron" \
-    "The environmet variable \"NO_ENVIRON_TEST_VAR\" had the value: \"some-value\"." \
-    "NO_ENVIRON_TEST_VAR=some-value"
-fi
+# shellcheck source=images/instrumentation/injector/test/scripts/default.tests
+. "scripts/${TEST_SET:-default.tests}"
 
 exit $exit_code
 

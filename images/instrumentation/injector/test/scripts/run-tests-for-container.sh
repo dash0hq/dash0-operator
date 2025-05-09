@@ -27,12 +27,22 @@ if [ -z "${LIBC:-}" ]; then
   LIBC=glibc
 fi
 
+if [ -z "${TEST_SET:-}" ]; then
+  TEST_SET=default.tests
+fi
+
 base_image=node:22.15.0-bookworm
 if [[ "$LIBC" = "musl" ]]; then
   base_image=node:22.15.0-alpine3.21
 fi
 
 dockerfile_name="docker/Dockerfile-test"
+if [[ "$TEST_SET" = "sdk-does-not-exist.tests" ]]; then
+  dockerfile_name="docker/Dockerfile-test-sdk-does-not-exist"
+elif [[ "$TEST_SET" = "sdk-cannot-be-accessed.tests" ]]; then
+  dockerfile_name="docker/Dockerfile-test-sdk-cannot-be-accessed"
+fi
+
 image_name=dash0-injector-test-$ARCH-$LIBC
 container_name=$image_name
 
@@ -47,11 +57,6 @@ if [ "${INTERACTIVE:-}" = "true" ]; then
     exit 1
   fi
 fi
-
-echo
-echo ----------------------------------------
-echo "testing the injector library on $ARCH and $LIBC"
-echo ----------------------------------------
 
 docker rm -f "$container_name" 2> /dev/null
 docker rmi -f "$image_name" 2> /dev/null
@@ -73,6 +78,7 @@ echo "$container_name" >> .containers_to_be_deleted_at_end
 docker run \
   --platform "$docker_platform" \
   --env EXPECTED_CPU_ARCHITECTURE="$expected_cpu_architecture" \
+  --env TEST_SET="$TEST_SET" \
   --env TEST_CASES="$TEST_CASES" \
   --env MISSING_ENVIRON_SYMBOL_TESTS="${MISSING_ENVIRON_SYMBOL_TESTS:-}" \
   --name "$container_name" \

@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# NODE_OPTIONS
+run_test_case \
+  "getenv: does not add NODE_OPTIONS if it the Dash0 Node.js OTel distro is present but cannot be accessed" \
+  "app" \
+  "node index.js node_options" \
+  "NODE_OPTIONS: -"
+
+# JAVA_TOOL_OPTIONS
+run_test_case \
+  "getenv: does not add JAVA_TOOL_OPTIONS if it the Java agent is present but cannot be accessed" \
+  "app" \
+  "node index.js java_tool_options" \
+  "JAVA_TOOL_OPTIONS: -"
+
