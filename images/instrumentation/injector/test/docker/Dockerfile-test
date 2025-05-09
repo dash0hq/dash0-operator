@@ -4,6 +4,17 @@
 ARG base_image="node:22.15.0-bookworm"
 FROM ${base_image}
 
+# Need to repeat ARG base_image since build args are cleared by FROM.
+ARG base_image
+# Install sudo and make the node user a sudoer, so that we can run the script run-tests-within-container.sh as user
+# node, but still create files (via sudo) that the user node does not have permissions for. This is required for the
+# test cases where the OTel SDK/distro exists but is not accessible.
+RUN case ${base_image} in \
+  *alpine*) apk update && apk add sudo ;; \
+  *) apt-get update && apt-get install sudo -y; \
+esac
+RUN echo "node ALL=(ALL:ALL) NOPASSWD: ALL" >> /etc/sudoers.d/node && cat /etc/sudoers.d/node
+
 ARG injector_binary=no_value
 # fail build immediately if build arg injector_binary is missing
 RUN test ${injector_binary} != "no_value"
@@ -23,9 +34,6 @@ RUN echo ${injector_binary}
 
 COPY bin/${injector_binary} /dash0-init-container/injector/dash0_injector.so
 
-# Acts as a dummy Dash0 Node.js OTel distro which actually does nothing.
-COPY docker/noop.js /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry/index.js
-
 ARG arch_under_test=no_value
 RUN test ${arch_under_test} != "no_value"
 ENV ARCH_UNDER_TEST=${arch_under_test}
@@ -33,5 +41,7 @@ ARG libc_under_test=no_value
 RUN test ${libc_under_test} != "no_value"
 ENV LIBC_UNDER_TEST=${libc_under_test}
 
+# Run run-tests-within-container.sh as user node, see comment at the top of the file about installing sudo.
+USER node
 CMD ["scripts/run-tests-within-container.sh"]
 
