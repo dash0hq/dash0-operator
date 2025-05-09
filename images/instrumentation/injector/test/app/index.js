@@ -37,6 +37,9 @@ function main() {
     case 'otel_resource_attributes':
       echoEnvVar('OTEL_RESOURCE_ATTRIBUTES');
       break;
+    case 'java_tool_options':
+      echoEnvVar('JAVA_TOOL_OPTIONS');
+      break;
     default:
       console.error(`unknown test app command: ${command}`);
       process.exit(1);

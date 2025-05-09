@@ -52,6 +52,11 @@ jobs:
           go-version: ~1.24
           cache: true
 
+      - uses: mlugg/setup-zig@a67e68dc5c8281d9608136d3d7ca1b282213e4ac # v1
+        with:
+          # keep in sync with images/instrumentation/injector/zig-version
+          version: 0.14.0
+
       - name: go version
         run: |
           go version
@@ -71,11 +76,9 @@ jobs:
         run: |
           make lint
 
-      - name: lint C sources with clang-format
-        uses: jidicula/clang-format-action@4726374d1aa3c6aecf132e5197e498979588ebc8 #v4.15.0
-        with:
-          clang-format-version: '19'
-          check-path: 'images/instrumentation/injector/src'
+      - name: verify that zig sources are properly formatted
+        run: |
+          zig fmt --check images/instrumentation/injector/src
 
       - name: install Helm unittest plugin
         shell: bash
@@ -84,7 +87,7 @@ jobs:
         run: |
           helm plugin install https://github.com/helm-unittest/helm-unittest.git --version=0.7.2
 
-      - name: run operator and Helm chart unit tests
+      - name: run operator manager, injector and Helm chart unit tests
         run: |
           make test
 

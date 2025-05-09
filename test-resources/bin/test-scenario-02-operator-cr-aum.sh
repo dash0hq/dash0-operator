@@ -10,6 +10,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")"/../..
 operator_namespace=${OPERATOR_NAMESPACE:-operator-namespace}
 target_namespace=${1:-test-namespace}
 kind=${2:-deployment}
+runtime_under_test=${3:-nodejs}
 additional_namespaces="${ADDITIONAL_NAMESPACES:-false}"
 
 source test-resources/bin/util
@@ -25,7 +26,7 @@ finish_step
 
 echo "STEP $step_counter: creating target namespace (if necessary)"
 ensure_namespace_exists "${target_namespace}"
-if [[ "$additional_namespaces" = true ]]; then
+if [[ "$additional_namespaces" = "true" ]]; then
   ensure_namespace_exists test-namespace-2
   ensure_namespace_exists test-namespace-3
 fi
@@ -48,7 +49,7 @@ echo "STEP $step_counter: rebuild images"
 build_all_images
 finish_step
 
-if [[ "${FILELOG_OFFSETS_PVC:-}" == "true" ]]; then
+if [[ "${FILELOG_OFFSETS_PVC:-}" = "true" ]]; then
   deploy_filelog_offsets_pvc
   finish_step
 fi
@@ -57,7 +58,7 @@ echo "STEP $step_counter: deploy the Dash0 operator using helm"
 deploy_via_helm
 finish_step
 
-if [[ "${DEPLOY_OPERATOR_CONFIGURATION_VIA_HELM:-}" == "false" ]]; then
+if [[ "${DEPLOY_OPERATOR_CONFIGURATION_VIA_HELM:-}" = "false" ]]; then
   # if no operator configuration resource has been deployed via the helm chart, deploy one now
   echo "STEP $step_counter: deploy the Dash0 operator configuration resource"
   install_operator_configuration_resource
@@ -70,20 +71,12 @@ fi
 if [[ "${DEPLOY_MONITORING_RESOURCE:-}" != "false" ]]; then
   echo "STEP $step_counter: deploy the Dash0 monitoring resource to namespace ${target_namespace}"
   install_monitoring_resource "$additional_namespaces"
-  finish_step
 else
   echo "not deploying a Dash0 monitoring resource"
   echo
 fi
 
-if [[ "${DEPLOY_APPLICATION_UNDER_MONITORING:-}" != "false" ]]; then
-  echo "STEP $step_counter: deploy application under monitoring"
-  test-resources/node.js/express/deploy.sh "${target_namespace}" "${kind}"
-  if [[ "$additional_namespaces" = true ]]; then
-    test-resources/node.js/express/deploy.sh test-namespace-2 daemonset
-    test-resources/node.js/express/deploy.sh test-namespace-3 statefulset
-  fi
-  finish_step
-fi
+deploy_application_under_monitoring "$runtime_under_test"
 
 install_third_party_resources
+

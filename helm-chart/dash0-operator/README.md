@@ -1117,10 +1117,12 @@ The operator also adds environment variables to the target container to ensure t
 has the correct configuration and will get activated at startup.
 
 The activation of the Dash0 OpenTelemetry distribution happens via an `LD_PRELOAD` hook.
+For that purpose, the Dash0 operator adds the `LD_PRELOAD` environment variable to the pod spec template of the workload.
 `LD_PRELOAD` is an environment variable that is evaluated by the
 [dynamic linker/loader](https://man7.org/linux/man-pages/man8/ld.so.8.html) when a Linux executable starts.
 It specifies a list of additional shared objects to be loaded before the actual code of the executable.
-The Dash0 instrumentation image adds the Dash0 injector shared object to `LD_PRELOAD`.
+The Dash0 instrumentation image (being added as an init container) adds the Dash0 injector shared object and the
+required OpenTelemetry SDKs and distributions to the target container's file system at container startup.
 The Dash0 injector is a small binary that adds additional environment variables to the running process by hooking into
 the `getenv` function of the standard library.
 For example, it sets (or appends to) `NODE_OPTIONS` to activate the
@@ -1137,8 +1139,8 @@ the existing value of `OTEL_RESOURCE_ATTRIBUTES`.
 If `OTEL_RESOURCE_ATTRIBUTES` was not set on the process, the Dash0 injector will add `OTEL_RESOURCE_ATTRIBUTES` as
 a new environment variable.
 
-If you are curious, the source code for the injector is open source and can be found
-[here](https://github.com/dash0hq/dash0-operator/blob/main/images/instrumentation/injector/src/dash0_injector.c).
+If you are curious, the source code for the injector is open source and can be found at
+[here](https://github.com/dash0hq/dash0-operator/blob/main/images/instrumentation/injector).
 
 ## Scraping Prometheus Endpoints
 

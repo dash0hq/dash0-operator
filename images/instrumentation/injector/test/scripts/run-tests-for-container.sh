@@ -27,9 +27,9 @@ if [ -z "${LIBC:-}" ]; then
   LIBC=glibc
 fi
 
-base_image=node:20.19-bookworm
-if [[ "$LIBC" == "musl" ]]; then
-  base_image=node:20.19.0-alpine3.21
+base_image=node:22.15.0-bookworm-slim
+if [[ "$LIBC" = "musl" ]]; then
+  base_image=node:22.15.0-alpine3.21
 fi
 
 dockerfile_name="docker/Dockerfile-test"
@@ -56,20 +56,27 @@ echo ----------------------------------------
 docker rm -f "$container_name" 2> /dev/null
 docker rmi -f "$image_name" 2> /dev/null
 
+echo "$image_name" >> .container_images_to_be_deleted_at_end
 set -x
 docker build \
   --platform "$docker_platform" \
   --build-arg "base_image=${base_image}" \
   --build-arg "injector_binary=${injector_binary}" \
+  --build-arg "noenviron_binary=noenviron.${ARCH}.${LIBC}" \
+  --build-arg "arch_under_test=${ARCH}" \
+  --build-arg "libc_under_test=${LIBC}" \
   . \
   -f "$dockerfile_name" \
   -t "$image_name"
 
+echo "$container_name" >> .containers_to_be_deleted_at_end
 docker run \
   --platform "$docker_platform" \
   --env EXPECTED_CPU_ARCHITECTURE="$expected_cpu_architecture" \
   --env TEST_CASES="$TEST_CASES" \
+  --env MISSING_ENVIRON_SYMBOL_TESTS="${MISSING_ENVIRON_SYMBOL_TESTS:-}" \
   --name "$container_name" \
   "$image_name" \
   $docker_run_extra_arguments
 { set +x; } 2> /dev/null
+

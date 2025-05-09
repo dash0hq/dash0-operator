@@ -1,0 +1,46 @@
+# TODOs
+
+* Implement self-sufficient `*env` functions, so that we can expose our own `__environ` (and `_environ` and `environ`
+  for compat) and avoid depending on something else providing `__environ`, which is not the case for dynamically-linked
+  binaries that do not _also_ bind LibC, like some `zig` and `go` ones.
+
+## Random Notes
+
+SEE https://unix.stackexchange.com/a/70636 !!
+# strings /proc/self/environ
+NODE_VERSION=20.19.0
+HOSTNAME=18d960d2c81a
+...
+
+GLIBC
+=====
+https://github.com/bminor/glibc/blob/master/posix/environ.c
+  /* This must be initialized; we cannot have a weak alias into bss.  */
+  char **__environ = NULL;
+  weak_alias (__environ, environ)
+
+  /* The SVR4 ABI says `_environ' will be the name to use
+     in case the user overrides the weak alias `environ'.  */
+  weak_alias (__environ, _environ)
+
+https://github.com/bminor/glibc/blob/master/csu/init-first.c#L60-L63
+    /* Save the command-line arguments.  */
+    __libc_argc = argc;
+    __libc_argv = argv;
+    __environ = envp;
+
+
+
+MUSL
+====
+https://github.com/ziglang/zig/blob/10bf6964edc6d1a002b0ea313e256701295ba11c/lib/libc/musl/src/env/__environ.c#L4
+  char **__environ = 0;
+  weak_alias(__environ, ___environ);
+  weak_alias(__environ, _environ);
+  weak_alias(__environ, environ);
+
+ZIG
+===
+https://github.com/ziglang/zig/blob/10bf6964edc6d1a002b0ea313e256701295ba11c/lib/libc/musl/src/env/__libc_start_main.c#L23-L26
+
+std.os.getEnvPosix

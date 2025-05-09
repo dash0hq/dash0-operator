@@ -8,13 +8,22 @@ FROM ${instrumentation_image} AS init
 
 FROM ${test_image}
 
+COPY jvm-test-utils /jvm-test-utils
 COPY test-cases /test-cases
 
 RUN export JAVA_HOME=$(which java | xargs dirname | xargs dirname)
+
+WORKDIR /jvm-test-utils
+RUN javac src/com/dash0/injector/testutils/*.java
+
+WORKDIR /
 RUN for test in /test-cases/*; do \
   cd "/${test}" && \
-  javac Main.java && \
-  jar -cfm app.jar MANIFEST.MF *.class \
+  cp -R /jvm-test-utils/src/* . && \
+  javac \
+    -cp /jvm-test-utils/src:"/${test}" \
+    Main.java && \
+  jar --create --file app.jar --manifest MANIFEST.MF -C . . \
 ; done
 
 # The following lines emulate the behavior of running the instrumentation image as a Kubernetes init container and
