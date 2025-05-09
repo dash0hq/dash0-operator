@@ -170,7 +170,7 @@ run_tests_for_runtime() {
 
     container_name="$container_name_test_prefix-$test"
     echo "$container_name" >> test/.containers_to_be_deleted_at_end
-    docker rm -f "$container_name" > /dev/null
+    docker rm -f "$container_name" &> /dev/null
     if docker_run_output=$(docker run \
       --platform "$docker_platform" \
       --env-file="${script_dir}/${runtime}/test-cases/${test}/.env" \
