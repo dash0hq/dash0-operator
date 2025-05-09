@@ -19,7 +19,7 @@ if ! docker info > /dev/null 2>&1; then
 fi
 
 # shellcheck source=images/instrumentation/injector/test/scripts/util
-source injector/test/scripts/util
+. injector/test/scripts/util
 
 # remove all outdated injector binaries
 rm -rf injector/test/bin/*
@@ -48,8 +48,14 @@ summary=""
 run_tests_for_architecture_and_libc_flavor() {
   arch=$1
   libc=$2
+  echo
+  echo ----------------------------------------
+  echo "testing the injector library on $arch and $libc"
+  echo ----------------------------------------
   set +e
-  ARCH="$arch" LIBC="$libc" TEST_CASES="$TEST_CASES" injector/test/scripts/run-tests-for-container.sh
+  ARCH="$arch" LIBC="$libc" TEST_SET=default.tests TEST_CASES="$TEST_CASES" injector/test/scripts/run-tests-for-container.sh
+  ARCH="$arch" LIBC="$libc" TEST_SET=sdk-does-not-exist.tests TEST_CASES="$TEST_CASES" injector/test/scripts/run-tests-for-container.sh
+  ARCH="$arch" LIBC="$libc" TEST_SET=sdk-cannot-be-accessed.tests TEST_CASES="$TEST_CASES" injector/test/scripts/run-tests-for-container.sh
   test_exit_code=$?
   set -e
   echo

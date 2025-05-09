@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# NODE_OPTIONS
+run_test_case \
+  "getenv: does not add NODE_OPTIONS if it the Dash0 Node.js OTel distro is not present" \
+  "app" \
+  "node index.js node_options" \
+  "NODE_OPTIONS: -"
+run_test_case \
+  "getenv: does not modify existing NODE_OPTIONS if it the Dash0 Node.js OTel distro is not present" \
+  "app" \
+  "node index.js node_options" \
+  "NODE_OPTIONS: --no-deprecation" \
+  "NODE_OPTIONS=--no-deprecation"
+
+# JAVA_TOOL_OPTIONS
+run_test_case \
+  "getenv: does not add JAVA_TOOL_OPTIONS if it the Java agent is not present" \
+  "app" \
+  "node index.js java_tool_options" \
+  "JAVA_TOOL_OPTIONS: -"
+run_test_case \
+  "getenv: does not modify existing JAVA_TOOL_OPTIONS if it the Java agent is not present" \
+  "app" \
+  "node index.js java_tool_options" \
+  "JAVA_TOOL_OPTIONS: existing-value" \
+  "JAVA_TOOL_OPTIONS=existing-value"
+

@@ -5,6 +5,7 @@
 # Dockerfile, which only copies the relevant final artifacts from the various build stages.
 injector/test/scripts/*
 !injector/test/scripts/run-tests-within-container.sh
+!injector/test/scripts/*.tests
 injector/.zig-cache
 injector/README.md
 injector/notes

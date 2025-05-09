@@ -13,7 +13,7 @@ if ! docker info > /dev/null 2>&1; then
 fi
 
 # shellcheck source=images/instrumentation/injector/test/scripts/util
-source injector/test/scripts/util
+. injector/test/scripts/util
 
 if [ -z "${ARCH:-}" ]; then
   ARCH=arm64
