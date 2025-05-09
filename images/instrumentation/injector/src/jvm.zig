@@ -13,6 +13,7 @@ const testing = std.testing;
 pub const java_tool_options_env_var_name = "JAVA_TOOL_OPTIONS";
 const otel_java_agent_path = "/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar";
 const javaagent_flag_value = "-javaagent:" ++ otel_java_agent_path;
+const injection_happened_msg = "injecting the Java OpenTelemetry agent";
 
 pub fn checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue(original_value_optional: ?[:0]const u8) ?types.NullTerminatedString {
     // Check the existence of the Jar file: by passing a `-javaagent` to a
@@ -105,11 +106,13 @@ fn getModifiedJavaToolOptionsValue(
                         print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ java_tool_options_env_var_name, err });
                         return original_value;
                     };
+                print.printMessage(injection_happened_msg, .{});
+                print.printMessage(res_attrs.modification_happened_msg, .{java_tool_options_env_var_name});
                 return return_buffer.ptr;
             }
 
-            // JAVA_TOOL_OPTIONS is set but does not contain does not already contain -Dotel.resource.attributes, and
-            // new resource attributes have been provided. Add -javaagent and -Dotel.resource.attributes.
+            // JAVA_TOOL_OPTIONS is set but does not already contain -Dotel.resource.attributes, and new resource
+            // attributes have been provided. Add -javaagent and -Dotel.resource.attributes.
             const return_buffer =
                 std.fmt.allocPrintZ(alloc.page_allocator, "{s} {s} -Dotel.resource.attributes={s}", .{
                     original_value,
@@ -119,6 +122,8 @@ fn getModifiedJavaToolOptionsValue(
                     print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ java_tool_options_env_var_name, err });
                     return original_value;
                 };
+            print.printMessage(res_attrs.modification_happened_msg, .{java_tool_options_env_var_name});
+            print.printMessage(injection_happened_msg, .{});
             return return_buffer.ptr;
         } else {
             // JAVA_TOOL_OPTIONS is set, but no new resource attributes have been provided.
@@ -130,6 +135,7 @@ fn getModifiedJavaToolOptionsValue(
                     print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ java_tool_options_env_var_name, err });
                     return original_value;
                 };
+            print.printMessage(injection_happened_msg, .{});
             return return_buffer.ptr;
         }
     } else {
@@ -143,9 +149,12 @@ fn getModifiedJavaToolOptionsValue(
                 print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ java_tool_options_env_var_name, err });
                 return null;
             };
+            print.printMessage(res_attrs.modification_happened_msg, .{java_tool_options_env_var_name});
+            print.printMessage(injection_happened_msg, .{});
             return return_buffer.ptr;
         } else {
             // JAVA_TOOL_OPTIONS is not set, and no new resource attributes have been provided. Simply return the -javaagent flag.
+            print.printMessage(injection_happened_msg, .{});
             return javaagent_flag_value[0..].ptr;
         }
     }

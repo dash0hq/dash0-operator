@@ -7,6 +7,8 @@ const alloc = @import("allocator.zig");
 const print = @import("print.zig");
 const types = @import("types.zig");
 
+pub const modification_happened_msg = "adding additional OpenTelemetry resources attributes via {s}";
+
 /// A type for a rule to map an environment variable to a resource attribute. The result of applying these rules (via
 /// getResourceAttributes) is a string of key-value pairs, where each pair is of the form key=value, and pairs are
 /// separated by commas. If resource_attributes_key is not null, we append a key-value pair
@@ -71,6 +73,7 @@ pub fn getModifiedOtelResourceAttributesValue(original_value_optional: ?[:0]cons
                     print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ otel_resource_attributes_env_var_name, err });
                     return original_value;
                 };
+                print.printMessage(modification_happened_msg, .{otel_resource_attributes_env_var_name});
                 return return_buffer.ptr;
             }
 
@@ -81,6 +84,7 @@ pub fn getModifiedOtelResourceAttributesValue(original_value_optional: ?[:0]cons
                 print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ otel_resource_attributes_env_var_name, err });
                 return original_value;
             };
+            print.printMessage(modification_happened_msg, .{otel_resource_attributes_env_var_name});
             return return_buffer.ptr;
         } else {
             // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
@@ -89,6 +93,7 @@ pub fn getModifiedOtelResourceAttributesValue(original_value_optional: ?[:0]cons
                 print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ otel_resource_attributes_env_var_name, err });
                 return null;
             };
+            print.printMessage(modification_happened_msg, .{otel_resource_attributes_env_var_name});
             return return_buffer.ptr;
         }
     } else {

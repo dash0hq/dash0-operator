@@ -22,8 +22,11 @@ const LibCFlavor = enum { UNKNOWN, GNU_LIBC, MULSC };
 
 const dotnet_path_prefix = "/__dash0__/instrumentation/dotnet";
 var experimental_dotnet_injection_enabled: ?bool = null;
+// TODO we never write to cached_dotnet_values
 var cached_dotnet_values: ?DotNetValues = null;
 var cached_libc_flavor: ?LibCFlavor = null;
+
+const injection_happened_msg = "injecting the .NET OpenTelemetry instrumentation";
 
 fn initIsEnabled() void {
     if (experimental_dotnet_injection_enabled == null) {
@@ -92,6 +95,7 @@ fn determineDotNetValues(flavor: LibCFlavor) !DotNetValues {
         dotnet_path_prefix, libc_flavor_prefix,
     });
 
+    print.printMessage(injection_happened_msg, .{});
     return .{
         .coreclr_enable_profiling = "1",
         .coreclr_profiler = "{918728DD-259F-4A6A-AC2B-B85E1B658318}",
