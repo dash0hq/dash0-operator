@@ -56,22 +56,15 @@ cleanup_docker_containers_and_images() {
 	exit 1
   fi
 
-  echo "[cleanup] deleting containers:"
-  cat "$base_dir/.containers_to_be_deleted_at_end"
-  echo
-  echo "[cleanup] deleting container images:"
-  cat "$base_dir/.container_images_to_be_deleted_at_end"
-  echo
-
   while IFS= read -r container; do
     if [[ -n "$container" ]]; then
-      docker rm -f "$container" || true
+      docker rm -f "$container" &> /dev/null || true
     fi
   done <<< $(cat "$base_dir/.containers_to_be_deleted_at_end" | sort | uniq)
 
   while IFS= read -r image; do
     if [[ -n "$image" ]]; then
-      docker rmi -f "$image" || true
+      docker rmi -f "$image" &> /dev/null || true
     fi
   done <<< $(cat "$base_dir/.container_images_to_be_deleted_at_end" | sort | uniq)
 

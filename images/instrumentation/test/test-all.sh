@@ -162,6 +162,10 @@ run_tests_for_runtime() {
         test_cmd=(node "/test-cases/${test}")
         ;;
 
+      c)
+        test_cmd=("/test-cases/${test}/app.o")
+        ;;
+
       *)
         echo "Error: Test handler for runtime \"$runtime\" is not implemented. Please update $(basename "$0"), function run_tests_for_runtime."
         exit 1
@@ -187,8 +191,9 @@ run_tests_for_runtime() {
       printf "${RED}test case \"${test}\": FAIL\n"
       echo "test command was:"
       echo "${test_cmd[@]}"
-      printf "test output:${NC}\n"
+      printf "test output:\n\n"
       echo "$docker_run_output"
+      printf "${NC}\n"
       test_exit_code=1
       summary="$summary\n${runtime}/${base_image}\t- ${test}:\tfailed"
     fi
@@ -330,5 +335,7 @@ if [[ $test_exit_code -ne 0 ]]; then
 else
   printf "\n${GREEN}All test cases have passed.${NC}\n"
 fi
+echo
+echo
 exit $test_exit_code
 

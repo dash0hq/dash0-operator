@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 ARG instrumentation_image=dash0-instrumentation:latest
-ARG test_image=openjdk:24-jdk-bookworm
+ARG base_image=openjdk:24-jdk-bookworm
 
 FROM ${instrumentation_image} AS init
 
-FROM ${test_image}
+FROM ${base_image}
 
 COPY jvm-test-utils /jvm-test-utils
 COPY test-cases /test-cases

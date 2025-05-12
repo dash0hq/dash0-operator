@@ -40,34 +40,30 @@ export fn getenv(name_z: types.NullTerminatedString) ?types.NullTerminatedString
     env_mutex.lock();
     defer env_mutex.unlock();
 
-    // Dynamic libs do not get the std.os.environ initialized,
-    // see https://github.com/ziglang/zig/issues/4524.
-    // So we back fill it.
-    // This logic is based on parsing of envp on zig's start.
-    //
-    // We re-bind the environment every time, as we cannot
-    // ensure it did not change since the previous invocation.
-    // Libc implementations can re-allocate the environment
-    // (http://github.com/lattera/glibc/blob/master/stdlib/setenv.c;
-    // https://git.musl-libc.org/cgit/musl/tree/src/env/setenv.c)
-    // if the backing memory location is outgrown by apps modifying
-    // the environment via setenv or putenv.
+    // Dynamic libs do not get the std.os.environ initialized, see https://github.com/ziglang/zig/issues/4524, so we
+    // back fill it. This logic is based on parsing of envp on zig's start. We re-bind the environment every time, as we
+    // cannot ensure it did not change since the previous invocation. Libc implementations can re-allocate the
+    // environment (http://github.com/lattera/glibc/blob/master/stdlib/setenv.c;
+    // https://git.musl-libc.org/cgit/musl/tree/src/env/setenv.c) if the backing memory location is outgrown by apps
+    // modifying the environment via setenv or putenv.
     const environment_optional: [*:null]?[*:0]u8 = @ptrCast(@alignCast(__environ));
     var environment_count: usize = 0;
-    while (environment_optional[environment_count]) |_| : (environment_count += 1) {}
+    if (@intFromPtr(__environ) != 0) { // __environ can be a null pointer, e.g. directly after clearenv()
+        while (environment_optional[environment_count]) |_| : (environment_count += 1) {}
+    }
     std.os.environ = @as([*][*:0]u8, @ptrCast(environment_optional))[0..environment_count];
 
-    // Technically, a process could change the value of `DASH0_INJECTOR_DEBUG`
-    // after it started (mostly when we debug stuff in REPL) so we look up
-    // the value every time.
+    // Technically, a process could change the value of `DASH0_INJECTOR_DEBUG` after it started (mostly when we debug
+    // stuff in REPL) so we look up the value every time.
     print.initDebugFlag();
+    print.printDebug("getenv({s}) called", .{name});
 
     const res = getEnvValue(name);
 
     if (res) |value| {
-        print.printDebug("{s} = '{s}'", .{ name, value });
+        print.printDebug("getenv({s}) -> '{s}'", .{ name, value });
     } else {
-        print.printDebug("{s} = null", .{name});
+        print.printDebug("getenv({s}) -> null", .{name});
     }
 
     return res;
@@ -146,7 +142,3 @@ fn getEnvValue(name: [:0]const u8) ?types.NullTerminatedString {
     // The requested environment variable is not one that we want to modify, and it does not exist. Return null.
     return null;
 }
-
-// TODO Tests
-//
-// Stress-test with additions to env via setenv until reallocation occurs
