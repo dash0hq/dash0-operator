@@ -7,8 +7,6 @@ The Dash0 Operator makes observability for Kubernetes _easy_.
 Install the operator into your cluster and create a Dash0 monitoring resource to get OpenTelemetry data flowing from your applications and
 infrastructure to Dash0.
 
-The Dash0 operator is currently available as a technical preview.
-
 ## Description
 
 The Dash0 operator enables gathering OpenTelemetry data from your workloads for a selection of supported
