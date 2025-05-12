@@ -16,29 +16,38 @@ RUN if [ -z "$noenviron_binary" ]; then \
       exit 1; \
     fi
 
+ARG create_sdk_dummy_files_script
+RUN if [ -z "$create_sdk_dummy_files_script" ]; then \
+      echo "Error: build argument create_sdk_dummy_files_script is required but not set."; \
+      exit 1; \
+    fi
+
 WORKDIR /usr/src/dash0/injector/
 
 COPY app app
 RUN mkdir no_environ_symbol
 COPY no_environ_symbol/$noenviron_binary no_environ_symbol/noenviron
 COPY scripts/run-tests-within-container.sh scripts/
+COPY scripts/create-*.sh scripts/
 COPY scripts/*.tests scripts/
 
 RUN echo ${injector_binary}
 
 COPY bin/${injector_binary} /dash0-init-container/injector/dash0_injector.so
 
-# Add dummy Dash0 OTel SDKs/distros which actually do nothing but make the file check in the injector pass.
-RUN mkdir -p /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry && \
-  touch /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry/index.js && \
-  mkdir -p /__dash0__/instrumentation/jvm && \
-  touch /__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar
+RUN ${create_sdk_dummy_files_script}
 
-ARG arch_under_test=no_value
-RUN test ${arch_under_test} != "no_value"
+ARG arch_under_test
+RUN if [ -z "$arch_under_test" ]; then \
+      echo "Error: build argument arch_under_test is required but not set."; \
+      exit 1; \
+    fi
 ENV ARCH_UNDER_TEST=${arch_under_test}
-ARG libc_under_test=no_value
-RUN test ${libc_under_test} != "no_value"
+ARG libc_under_test
+RUN if [ -z "libc_under_test" ]; then \
+      echo "Error: build argument libc_under_test is required but not set."; \
+      exit 1; \
+    fi
 ENV LIBC_UNDER_TEST=${libc_under_test}
 
 USER node

@@ -37,25 +37,14 @@ if [[ "$LIBC" = "musl" ]]; then
 fi
 
 dockerfile_name="docker/Dockerfile-test"
-if [[ "$TEST_SET" = "sdk-does-not-exist.tests" ]]; then
-  dockerfile_name="docker/Dockerfile-test-sdk-does-not-exist"
-elif [[ "$TEST_SET" = "sdk-cannot-be-accessed.tests" ]]; then
-  dockerfile_name="docker/Dockerfile-test-sdk-cannot-be-accessed"
-fi
-
 image_name=dash0-injector-test-$ARCH-$LIBC
 container_name=$image_name
 
-docker_run_extra_arguments=""
-if [ "${INTERACTIVE:-}" = "true" ]; then
-  if [ "$LIBC" = glibc ]; then
-    docker_run_extra_arguments=/bin/bash
-  elif [ "$LIBC" = musl ]; then
-    docker_run_extra_arguments=/bin/sh
-  else
-    echo "The libc flavor $LIBC is not supported."
-    exit 1
-  fi
+create_sdk_dummy_files_script="scripts/create-sdk-dummy-files.sh"
+if [[ "$TEST_SET" = "sdk-does-not-exist.tests" ]]; then
+  create_sdk_dummy_files_script="scripts/create-no-sdk-dummy-files.sh"
+elif [[ "$TEST_SET" = "sdk-cannot-be-accessed.tests" ]]; then
+  create_sdk_dummy_files_script="scripts/create-inaccessible-sdk-dummy-files.sh"
 fi
 
 docker rm -f "$container_name" 2> /dev/null
@@ -70,9 +59,22 @@ docker build \
   --build-arg "noenviron_binary=noenviron.${ARCH}.${LIBC}" \
   --build-arg "arch_under_test=${ARCH}" \
   --build-arg "libc_under_test=${LIBC}" \
+  --build-arg "create_sdk_dummy_files_script=${create_sdk_dummy_files_script}" \
   . \
   -f "$dockerfile_name" \
   -t "$image_name"
+
+docker_run_extra_arguments=""
+if [ "${INTERACTIVE:-}" = "true" ]; then
+  if [ "$LIBC" = glibc ]; then
+    docker_run_extra_arguments=/bin/bash
+  elif [ "$LIBC" = musl ]; then
+    docker_run_extra_arguments=/bin/sh
+  else
+    echo "The libc flavor $LIBC is not supported."
+    exit 1
+  fi
+fi
 
 echo "$container_name" >> .containers_to_be_deleted_at_end
 docker run \

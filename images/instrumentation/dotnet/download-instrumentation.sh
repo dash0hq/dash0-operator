@@ -40,9 +40,5 @@ download_and_unzip() {
 download_and_unzip musl
 download_and_unzip glibc
 
-ls -la
-ls -la musl
-ls -la glibc
-
 set +x
 
