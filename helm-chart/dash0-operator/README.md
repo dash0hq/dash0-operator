@@ -15,8 +15,6 @@ ingress endpoint, with authentication already configured out of the box. Additio
 OpenTelemetry data from applications deployed to the cluster for a selection of supported runtimes, plus automatic log
 collection and metrics.
 
-The Dash0 operator is currently available as a technical preview.
-
 ## Supported Runtimes
 
 Supported runtimes for automatic workload instrumentation:
