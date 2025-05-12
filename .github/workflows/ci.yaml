@@ -94,7 +94,7 @@ jobs:
   injector_binary_and_instrumentation_image_tests:
     name: Injector Binary & Instrumentation Image Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 60
 
     needs: check_for_successful_builds_for_same_commit
     if: needs.check_for_successful_builds_for_same_commit.outputs.should_skip != 'true'
