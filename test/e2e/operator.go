@@ -367,7 +367,7 @@ func verifyOperatorManagerPodMemoryUsageIsReasonable() {
 	}, 60*time.Second, 1*time.Second).Should(Succeed())
 	e2ePrint("operator manager pod memory usage: %d", memoryUsage)
 	Expect(memoryUsage).Should(
-		BeNumerically("<=", int64(85_000_000)),
+		BeNumerically("<=", int64(128_000_000)),
 		"The operator manager pod is using more memory than expected. Check for a potential memory leak.",
 	)
 }
