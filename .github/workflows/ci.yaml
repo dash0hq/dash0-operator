@@ -52,7 +52,7 @@ jobs:
           go-version: ~1.24
           cache: true
 
-      - uses: mlugg/setup-zig@a67e68dc5c8281d9608136d3d7ca1b282213e4ac # v1
+      - uses: mlugg/setup-zig@aa9ad5c14eb3452e235a441c4f9a8e89f20d97bd # v1
         with:
           # keep in sync with images/instrumentation/injector/zig-version
           version: 0.14.0
