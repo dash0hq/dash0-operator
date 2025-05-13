@@ -1111,6 +1111,7 @@ func assembleFileLogVolumeOwnershipInitContainer(filelogOffsetsVolume corev1.Vol
 				corev1.ResourceMemory: resource.MustParse("32Mi"),
 			},
 			Requests: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("100m"),
 				corev1.ResourceMemory: resource.MustParse("10Mi"),
 			},
 		},
