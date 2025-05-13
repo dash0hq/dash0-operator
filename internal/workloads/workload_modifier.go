@@ -377,6 +377,12 @@ func (m *ResourceModifier) createInitContainer(podSpec *corev1.PodSpec) *corev1.
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
 		},
+		Resources: corev1.ResourceRequirements{
+			Requests: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("250m"),
+				corev1.ResourceMemory: resource.MustParse("150Mi"),
+			},
+		},
 		VolumeMounts: []corev1.VolumeMount{
 			{
 				Name:      dash0VolumeName,
