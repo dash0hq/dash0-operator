@@ -187,9 +187,6 @@ to be compatible with the well-known configuration via annotations.
               {{- end }}
 
         relabel_configs:
-          - source_labels: [ __meta_kubernetes_namespace ]
-            regex: kube-system
-            action: drop
           - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
             action: keep
             regex: true
@@ -263,9 +260,6 @@ to be compatible with the well-known configuration via annotations.
               {{- end }}
 
         relabel_configs:
-          - source_labels: [ __meta_kubernetes_namespace ]
-            regex: kube-system
-            action: drop
           - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape_slow]
             action: keep
             regex: true
