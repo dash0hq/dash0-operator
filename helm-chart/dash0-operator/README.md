@@ -487,21 +487,6 @@ spec:
     - 'truncate_all(log.attributes, 1024)'
 ```
 
-The Dash0 operator will instrument the following workload types:
-
-* [CronJobs](https://kubernetes.io/docs/concepts/workloads/controllers/cron-jobs/)
-* [DaemonSets](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/)
-* [Deployments](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/)
-* [Jobs](https://kubernetes.io/docs/concepts/workloads/controllers/job/)
-* [Pods](https://kubernetes.io/docs/concepts/workloads/pods/)
-* [ReplicaSets](https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/)
-* [StatefulSets](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/)
-
-Note that Kubernetes jobs and Kubernetes pods are only instrumented at deploy time, _existing_ jobs and pods cannot be
-instrumented since there is no way to restart them. For all other workload types, the operator can instrument existing
-workloads as well as new workloads at deploy time (depending on the setting of
-[`instrumentWorkloads`](#monitoringresource.spec.instrumentWorkloads) in the Dash0 monitoring resource).
-
 ### Using a Kubernetes Secret for the Dash0 Authorization Token
 
 If you want to provide the Dash0 authorization token via a Kubernetes secret instead of providing the token as a string,
@@ -786,9 +771,10 @@ spec:
 ### Disabling Auto-Instrumentation for Specific Workloads
 
 In namespaces that are Dash0-monitoring enabled, all supported workload types are automatically instrumented for
-tracing. This process will modify the workload specification, e.g. by adding environment variables, Kubernetes labels
-and an init container. Although this will only result in automatic tracing for supported runtimes, the modifications are
-performed for every workload (as there is no way to tell which runtime a workload uses from the outside).
+tracing and to improve OpenTelemetry resource attributes.
+This process will modify the Pod spec, e.g. by adding environment variables, Kubernetes labels and an init container.
+The modifications are described in detail in the section
+[Automatic Workload Instrumentation](#automatic-workload-instrumentation).
 
 You can disable these workload modifications for specific workloads by setting the label `dash0.com/enable: "false"` in
 the top level metadata section of the workload specification.
@@ -823,7 +809,6 @@ The label can also be applied by using `kubectl`:
 kubectl label --namespace $YOUR_NAMESPACE --overwrite deployment $YOUR_DEPLOYMENT_NAME dash0.com/enable=false
 ```
 
-<span id="specifying-additional-resource-attributes-for-Workloads-via-labels-and-annotations"><!-- local anchor redirect after renaming the topic --></span>
 ### Specifying Additional Resource Attributes via Labels and Annotations
 
 _Note:_ The labels and annotations listed in this section can be specified at the pod level, or at the workload level
@@ -882,6 +867,18 @@ Besides automatic workload instrumentation (which will make sure that the instru
 OpenTelemetry collectors managed by the operator), you can also send telemetry data from workloads that are not
 instrumented by the operator.
 
+To do so, you need to [add an OpenTelemetry SDK](#https://opentelemetry.io/docs/languages/) to your workload.
+
+If the workload is in a namespace that is monitored by Dash0, the OpenTelemetry SDK will automatically be configured to
+send telemetry to the OpenTelemetry collectors managed by the Dash0 operator.
+This is because the operator automatically sets `OTEL_EXPORTER_OTLP_ENDPOINT` to the correct value when applying the
+[automatic workload instrumentation](#automatic-workload-instrumentation).
+
+If the workload is in a namespace that is not monitored by Dash0 (or if
+[`instrumentWorkloads`](#monitoringresource.spec.instrumentWorkloads) is set to `none` in the respective Dash0
+monitoring resource), you need to set the environment variable
+[`OTEL_EXPORTER_OTLP_ENDPOINT`](#https://opentelemetry.io/docs/languages/sdk-configuration/otlp-exporter/) yourself.
+
 The DaemonSet OpenTelemetry collector managed by the Dash0 operator listens on host port 40318 for HTTP traffic and
 40317 for gRPC traffic.
 Additionally, there is also a service for the DaemonSet collector, which listens on the standard ports, that is 4318 for
@@ -934,6 +931,15 @@ env:
 
 In both cases, `${helm-release-name}` and `${namespace-of-the-dash0-operator}` needs to be replaced with the actual
 values.
+
+If the workload is in a namespace that is monitored by Dash0 and
+[workload instrumentation](#monitoringresource.spec.instrumentWorkloads) is enabled, Dash0 will automatically add
+Kubernetes-related OpenTelemetry resource attributes to your telemetry, even if the runtime in question is not
+yet supported by Dash0's auto-instrumentation.
+(There is currently one caveat: The resource attribute auto-detection relies on the process or runtime in question to
+use the Posix function [`getenv`](#https://pubs.opengroup.org/onlinepubs/9799919799/) to read environment variables,
+which is true for almost all runtimes.
+Two notable exceptions are Python and some statically compiled binaries.)
 
 ### Exporting Data to Other Observability Backends
 
@@ -1093,49 +1099,119 @@ steps again:
 
 ## Automatic Workload Instrumentation
 
-This section provides a quick behind-the-scenes glimpse into how the Dash0 operator's workload instrumentation for
-tracing works, intended for the technically curious reader.
+In namespaces that are [enabled for Dash0 monitoring](#enable-dash0-monitoring-for-a-namespace), all supported workload
+types are automatically instrumented by the Dash0 operator, to achieve two goals:
+* Enable tracing for [supported runtimes](#supported-runtimes) out of the box, and
+* improve auto-detection of OpenTelemetry resource attributes.
+
+This allows Dash0 users to avoid the hassle of manually adding the OpenTelemetry SDK to their applications, or to set
+Kubernetes-related resource attributes manually.
+Dash0 simply takes care of it automatically!
+
+Automatic tracing only works for [supported runtimes](#supported-runtimes).
+For other runtimes, you can add an OpenTelemetry SDK to your workloads
+[by other means](#https://opentelemetry.io/docs/languages/).
+
+Auto-detecting OpenTelemetry resource attributes works for _all_ runtimes, that is, for runtimes that are
+supported by Dash0's auto-instrumentation as well as for workloads to which an OpenTelemetry SDK has been added
+otherwise.
+(There is currently one caveat: The resource attribute auto-detection relies on the process or runtime in question to
+use the Posix function [`getenv`](#https://pubs.opengroup.org/onlinepubs/9799919799/) to read environment variables,
+which is true for almost all runtimes.
+Two notable exceptions are Python and some statically compiled binaries.)
+
+The Dash0 operator will instrument the following workload types:
+
+* [CronJobs](https://kubernetes.io/docs/concepts/workloads/controllers/cron-jobs/)
+* [DaemonSets](https://kubernetes.io/docs/concepts/workloads/controllers/daemonset/)
+* [Deployments](https://kubernetes.io/docs/concepts/workloads/controllers/deployment/)
+* [Jobs](https://kubernetes.io/docs/concepts/workloads/controllers/job/)
+* [Pods](https://kubernetes.io/docs/concepts/workloads/pods/)
+* [ReplicaSets](https://kubernetes.io/docs/concepts/workloads/controllers/replicaset/)
+* [StatefulSets](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/)
+
+Note that Kubernetes jobs and Kubernetes pods are only instrumented at deploy time, _existing_ jobs and pods cannot be
+instrumented since there is no way to restart them.
+For all other workload types, the operator can instrument existing workloads as well as new workloads at deploy time
+(depending on the setting of [`instrumentWorkloads`](#monitoringresource.spec.instrumentWorkloads) in the Dash0
+monitoring resource).
+
+The instrumentation process is performed by modifying the Pod spec template (for CronJobs, DaemonSets, Deployments,
+Jobs, ReplicaSets, and StatefulSets) or the Pod spec itself (for standalone Pods).
+
+The modifications that are performed for workloads are the following:
+* add an [`emptyDir` volume](https://kubernetes.io/docs/concepts/storage/volumes/#emptydir) named
+  `dash0-instrumentation` to the pod spec
+* add a volume mount `dash0-instrumentation` to all containers of the pod
+* add an [init container](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/) named
+  `dash0-instrumentation` that will copy the OpenTelemetry SDKs and distributions for supported runtimes to the
+  `dash0-instrumentation` volume mount, so they are available in the target container's file system
+* add or modifying environment variables (`OTEL_EXPORTER_OTLP_ENDPOINT`, `LD_PRELOAD`, and several Dash0-specific
+  variables prefixed with `DASH0_`) to all containers of the pod
+* add the Dash0 injector (see below for details) as a startup hook (via the `LD_PRELOAD` environment variable) to all
+  containers of the pod
+* add the following labels to the workload metadata:
+    * `dash0.com/instrumented`: `true` or `false` depending on whether the workload has been successfully instrumented
+      or not
+    * `dash0.com/operator-image`: the fully qualified image name of the Dash0 operator image that has instrumented this
+      workload
+    * `dash0.com/init-container-image`: the fully qualified image name of the Dash0 instrumentation image that has been
+      added as an init container to the pod spec
+    * `dash0.com/instrumented-by`: either `controller` or `webhook`, depending on which component has instrumented this
+      workload. The controller is responsible for instrumenting existing workloads while the webhook is responsible for
+      instrumenting new workloads at deploy time.
+
+Note: Automatic tracing will only happen for [supported runtimes](#supported-runtimes).
+Nonetheless, the modifications outlined above are performed for _every_ workload.
+One reason for that is that there is no way to tell which runtime a workload uses from the outside, e.g. on the
+Kubernetes level.
+The more important reason is that runtimes that are not (yet) supported for auto-instrumentation still benefit from
+the improved OpenTelemetry resource attribute detection.
+
+The remainder of this section provides a more detailed step-by-step description of how the Dash0 operator's workload
+instrumentation for tracing works internally, intended for the technically curious reader.
 You can safely skip this section if you are not interested in the technical details.
 
-Workloads in [monitored namespaces](#enable-dash0-monitoring-for-a-namespace) are instrumented by the Dash0 operator
-to enable tracing for [supported runtimes](#supported-runtimes) out of the box, and to improve Kubernetes-related
-resource attribute auto-detection.
-This allows Dash0 users to avoid the hassle of manually adding the OpenTelemetry SDK to their applications.
-Dash0 takes care of it automatically.
-
-To achieve this, the Dash0 operator adds an
-[init container](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/) with the [Dash0 instrumentation
-image](https://github.com/dash0hq/dash0-operator/tree/main/images/instrumentation) to the pod spec of workloads.
-
-The instrumentation image contains the Dash0 OpenTelemetry distributions for all supported runtimes.
-When the init container starts, it copies the Dash0 OpenTelemetry distributions to a dedicated shared volume mount that
-has been added by the operator, so they are available in the target container's file system.
-
-The operator also adds environment variables to the target container to ensure that the Dash0 OpenTelemetry distribution
-has the correct configuration and will get activated at startup.
-
-The activation of the Dash0 OpenTelemetry distribution happens via an `LD_PRELOAD` hook.
-For that purpose, the Dash0 operator adds the `LD_PRELOAD` environment variable to the pod spec template of the workload.
-`LD_PRELOAD` is an environment variable that is evaluated by the
-[dynamic linker/loader](https://man7.org/linux/man-pages/man8/ld.so.8.html) when a Linux executable starts.
-It specifies a list of additional shared objects to be loaded before the actual code of the executable.
-The Dash0 instrumentation image (being added as an init container) adds the Dash0 injector shared object and the
-required OpenTelemetry SDKs and distributions to the target container's file system at container startup.
-The Dash0 injector is a small binary that adds additional environment variables to the running process by hooking into
-the `getenv` function of the standard library.
-For example, it sets (or appends to) `NODE_OPTIONS` to activate the
-[Dash0 OpenTelemetry distribution for Node.js](https://github.com/dash0hq/opentelemetry-js-distribution) to collect
-tracing data from all Node.js workloads.
-
-Additionally, the Dash0 injector automatically improves Kubernetes-related resource attributes as follows: The operator
-sets the environment variables `DASH0_NAMESPACE_NAME`, `DASH0_POD_NAME`, `DASH0_POD_UID` and `DASH0_CONTAINER_NAME` on
-workloads.
-The Dash0 injector binary picks these values up and uses them to populate the resource attributes `k8s.namespace.name`,
-`k8s.pod.name`, `k8s.pod.uid` and `k8s.container.name` via the `OTEL_RESOURCE_ATTRIBUTES` environment variable.
-If `OTEL_RESOURCE_ATTRIBUTES` is already set on the process, the key-value pairs for these attributes are appended to
-the existing value of `OTEL_RESOURCE_ATTRIBUTES`.
-If `OTEL_RESOURCE_ATTRIBUTES` was not set on the process, the Dash0 injector will add `OTEL_RESOURCE_ATTRIBUTES` as
-a new environment variable.
+1. The Dash0 operator adds the `dash0-instrumentation` init container with the
+   [Dash0 instrumentation image](https://github.com/dash0hq/dash0-operator/tree/main/images/instrumentation) to the pod
+   spec template of workloads.
+   The instrumentation image contains OpenTelemetry SDKs and distributions for all supported runtimes and the Dash0
+   injector binary.
+2. When the init container starts, it copies the OpenTelemetry distributions and distributions and the injector binary
+   to a dedicated shared volume mount that has been added by the operator, so they are available in the target
+   container's file system.
+   When it has copied all files, the init container exits.
+3. The operator also adds environment variables to the target container to ensure that the OpenTelemetry SDK has the
+   correct configuration and will get activated at startup.
+   The activation of the OpenTelemetry SDK happens via an `LD_PRELOAD` hook.
+   For that purpose, the Dash0 operator adds the `LD_PRELOAD` environment variable to the pod spec template of the
+   workload.
+   `LD_PRELOAD` is an environment variable that is evaluated by the
+   [dynamic linker/loader](https://man7.org/linux/man-pages/man8/ld.so.8.html) when a Linux executable starts.
+   In general, it specifies a list of additional shared objects to be loaded before the actual code of the executable.
+   In this specific case, the Dash0 injector binary is added to the `LD_PRELOAD` list.
+4. At process startup, the Dash0 injector adds additional environment variables to the running process by hooking into
+   the `getenv` function of the standard library.
+   The reason for doing that at process startup and not when modifying the pod spec (where environment variables can
+   also be added and modified) is that the original environment variables are not necessarily fully known at that time.
+   Workloads will sometimes set environment variables in their Dockerfile or in an entrypoint script; those environment
+   variables are only available at process runtime.
+   For example, the Dash0 injector sets (or appends to) `NODE_OPTIONS` to activate the
+   [Dash0 OpenTelemetry distribution for Node.js](https://github.com/dash0hq/opentelemetry-js-distribution) to collect
+   tracing data from all Node.js workloads.
+   For JVMs, the same is achieved by setting (or appending to) the `JAVA_TOOL_OPTIONS` environment variable, namely
+   `-javaagent` and `-Dotel.resource.attributes`).
+   The latter is neccessary because JVMs do not rely on `getenv` to read environment variables.
+5. Additionally, the Dash0 injector automatically improves Kubernetes-related resource attributes as follows:
+   The operator sets the environment variables `DASH0_NAMESPACE_NAME`, `DASH0_POD_NAME`, `DASH0_POD_UID` and
+   `DASH0_CONTAINER_NAME` on workloads.
+   The Dash0 injector binary picks these values up and uses them to populate the resource attributes
+   `k8s.namespace.name`, `k8s.pod.name`, `k8s.pod.uid` and `k8s.container.name` via the `OTEL_RESOURCE_ATTRIBUTES`
+   environment variable.
+   If `OTEL_RESOURCE_ATTRIBUTES` is already set on the process, the key-value pairs for these attributes are appended to
+   the existing value of `OTEL_RESOURCE_ATTRIBUTES`.
+   If `OTEL_RESOURCE_ATTRIBUTES` was not set on the process, the Dash0 injector will add `OTEL_RESOURCE_ATTRIBUTES` as
+   a new environment variable.
 
 If you are curious, the source code for the injector is open source and can be found
 [here](https://github.com/dash0hq/dash0-operator/blob/main/images/instrumentation/injector).
