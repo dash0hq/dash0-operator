@@ -3,3 +3,4 @@
 
 alpine:3.21.3
 debian:bookworm-slim
+ubuntu
