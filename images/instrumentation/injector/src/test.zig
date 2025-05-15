@@ -13,13 +13,6 @@ pub const res_attrs_test = @import("resource_attributes_test.zig");
 pub const root = @import("root.zig");
 pub const types = @import("types.zig");
 
-// Provide a C-style `char **environ` variable to the linker, to satisfy the
-//   extern var __environ: [*]u8;
-// declaration in `root.zig`.
-var ___environ: [100]u8 = [_]u8{0} ** 100;
-const ___environ_ptr: *[100]u8 = &___environ;
-export var __environ: [*]u8 = ___environ_ptr;
-
 test {
     @import("std").testing.refAllDecls(@This());
 }
