@@ -198,14 +198,14 @@ run_tests_for_runtime() {
     #   "$image_name_test" \
     #   nm "/test-cases/${test}/app.o"
     # echo
-    # echo "----------------------------------------"
-    # echo "readelf --wide --sections --symbols --dyn-syms /test-cases/${test}/app.o"
-    # echo "----------------------------------------"
-    # docker run \
-    #   --platform "$docker_platform" \
-    #   "$image_name_test" \
-    #   readelf --wide --sections --symbols --dyn-syms "/test-cases/${test}/app.o"
-    # echo
+#     echo "----------------------------------------"
+#     echo "readelf --wide --sections --symbols --dyn-syms /test-cases/${test}/app.o"
+#     echo "----------------------------------------"
+#     docker run \
+#       --platform "$docker_platform" \
+#       "$image_name_test" \
+#       readelf --wide --sections --symbols --dyn-syms "/test-cases/${test}/app.o"
+#     echo
 
     container_name="$container_name_test_prefix-$test"
     echo "$container_name" >> test/.containers_to_be_deleted_at_end
