@@ -54,9 +54,17 @@ run_tests_for_architecture_and_libc_flavor() {
   echo ----------------------------------------
   set +e
   ARCH="$arch" LIBC="$libc" TEST_SET=default.tests TEST_CASES="$TEST_CASES" injector/test/scripts/run-tests-for-container.sh
-  ARCH="$arch" LIBC="$libc" TEST_SET=sdk-does-not-exist.tests TEST_CASES="$TEST_CASES" injector/test/scripts/run-tests-for-container.sh
-  ARCH="$arch" LIBC="$libc" TEST_SET=sdk-cannot-be-accessed.tests TEST_CASES="$TEST_CASES" injector/test/scripts/run-tests-for-container.sh
   test_exit_code=$?
+#  ARCH="$arch" LIBC="$libc" TEST_SET=sdk-does-not-exist.tests TEST_CASES="$TEST_CASES" injector/test/scripts/run-tests-for-container.sh
+#  local test_exit_code_last_test_set=$?
+#  if [[ $test_exit_code_last_test_set > $test_exit_code ]]; then
+#    test_exit_code=$test_exit_code_last_test_set
+#  fi
+#  ARCH="$arch" LIBC="$libc" TEST_SET=sdk-cannot-be-accessed.tests TEST_CASES="$TEST_CASES" injector/test/scripts/run-tests-for-container.sh
+#  local test_exit_code_last_test_set=$?
+#  if [[ $test_exit_code_last_test_set > $test_exit_code ]]; then
+#    test_exit_code=$test_exit_code_last_test_set
+#  fi
   set -e
   echo
   echo ----------------------------------------

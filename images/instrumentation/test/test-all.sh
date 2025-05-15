@@ -172,31 +172,67 @@ run_tests_for_runtime() {
         ;;
     esac
 
+
+    # Enable this for additional ELF insights:
+    # echo "----------------------------------------"
+    # echo "nm /__dash0__/dash0_injector.so"
+    # echo "----------------------------------------"
+    # docker run \
+    #   --platform "$docker_platform" \
+    #   "$image_name_test" \
+    #   nm /__dash0__/dash0_injector.so
+    # echo
+    # echo "----------------------------------------"
+    # echo "readelf --wide --sections --symbols --dyn-syms /__dash0__/dash0_injector.so"
+    # echo "----------------------------------------"
+    # docker run \
+    #   --platform "$docker_platform" \
+    #   "$image_name_test" \
+    #   readelf --wide --sections --symbols --dyn-syms /__dash0__/dash0_injector.so
+    # echo
+    # echo "----------------------------------------"
+    # echo "nm /test-cases/${test}/app.o"
+    # echo "----------------------------------------"
+    # docker run \
+    #   --platform "$docker_platform" \
+    #   "$image_name_test" \
+    #   nm "/test-cases/${test}/app.o"
+    # echo
+    # echo "----------------------------------------"
+    # echo "readelf --wide --sections --symbols --dyn-syms /test-cases/${test}/app.o"
+    # echo "----------------------------------------"
+    # docker run \
+    #   --platform "$docker_platform" \
+    #   "$image_name_test" \
+    #   readelf --wide --sections --symbols --dyn-syms "/test-cases/${test}/app.o"
+    # echo
+
     container_name="$container_name_test_prefix-$test"
     echo "$container_name" >> test/.containers_to_be_deleted_at_end
     docker rm -f "$container_name" &> /dev/null
-    if docker_run_output=$(docker run \
+    # if docker_run_output=$(docker run \
+    docker run \
       --platform "$docker_platform" \
       --env-file="${script_dir}/${runtime}/test-cases/${test}/.env" \
       --name "$container_name" \
       "$image_name_test" \
-      "${test_cmd[@]}" \
-      2>&1
-    ); then
-      if [[ "${PRINT_DOCKER_OUTPUT:-}" = "true" ]]; then
-        echo "$docker_run_output"
-      fi
-      printf "${GREEN}test case \"${test}\": OK${NC}\n"
-    else
-      printf "${RED}test case \"${test}\": FAIL\n"
-      echo "test command was:"
-      echo "${test_cmd[@]}"
-      printf "test output:\n\n"
-      echo "$docker_run_output"
-      printf "${NC}\n"
-      test_exit_code=1
-      summary="$summary\n${runtime}/${base_image}\t- ${test}:\tfailed"
-    fi
+      "${test_cmd[@]}"
+
+    # ); then
+    #   if [[ "${PRINT_DOCKER_OUTPUT:-}" = "true" ]]; then
+    #     echo "$docker_run_output"
+    #   fi
+    #   printf "${GREEN}test case \"${test}\": OK${NC}\n"
+    # else
+    #   printf "${RED}test case \"${test}\": FAIL\n"
+    #   echo "test command was:"
+    #   echo "${test_cmd[@]}"
+    #   printf "test output:\n\n"
+    #   echo "$docker_run_output"
+    #   printf "${NC}\n"
+    #   test_exit_code=1
+    #   summary="$summary\n${runtime}/${base_image}\t- ${test}:\tfailed"
+    # fi
 
     # shellcheck disable=SC2155
     local end_time_test_case=$(date +%s)

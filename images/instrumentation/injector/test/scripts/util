@@ -45,28 +45,32 @@ copy_binary_from_container_image() {
 }
 
 cleanup_docker_containers_and_images() {
-  if [[ "${DOCKER_CLEANUP_ENABLED:-}" = "false" ]]; then
-	echo "[cleanup] skipping cleanup of containers and images"
-	return
-  fi
+  # Maybe actually only do
+  # docker builder prune --force > /dev/null
+  # ?
+
+  # if [[ "${DOCKER_CLEANUP_ENABLED:-}" = "false" ]]; then
+	# echo "[cleanup] skipping cleanup of containers and images"
+	# return
+  # fi
 
   base_dir=${1:-}
-  if [[ -z "$base_dir" ]]; then
-	echo "error: mandatory argument \"base_dir\" is missing"
-	exit 1
-  fi
+  # if [[ -z "$base_dir" ]]; then
+	# echo "error: mandatory argument \"base_dir\" is missing"
+	# exit 1
+  # fi
 
-  while IFS= read -r container; do
-    if [[ -n "$container" ]]; then
-      docker rm -f "$container" &> /dev/null || true
-    fi
-  done <<< $(cat "$base_dir/.containers_to_be_deleted_at_end" | sort | uniq)
+  # while IFS= read -r container; do
+  #   if [[ -n "$container" ]]; then
+  #     docker rm -f "$container" &> /dev/null || true
+  #   fi
+  # done <<< $(cat "$base_dir/.containers_to_be_deleted_at_end" | sort | uniq)
 
-  while IFS= read -r image; do
-    if [[ -n "$image" ]]; then
-      docker rmi -f "$image" &> /dev/null || true
-    fi
-  done <<< $(cat "$base_dir/.container_images_to_be_deleted_at_end" | sort | uniq)
+  # while IFS= read -r image; do
+  #   if [[ -n "$image" ]]; then
+  #     docker rmi -f "$image" &> /dev/null || true
+  #   fi
+  # done <<< $(cat "$base_dir/.container_images_to_be_deleted_at_end" | sort | uniq)
 
   rm "$base_dir/.containers_to_be_deleted_at_end"
   rm "$base_dir/.container_images_to_be_deleted_at_end"

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 ARCH := $(shell uname -m)
-CFLAGS ?= -Wall -Werror -Wextra -O2
+CFLAGS ?= -Wall -Werror -Wextra -Wl,-z,undefs,--export-dynamic-symbol=__my_environ -O2
 
 TEST_CASES_DIR := test-cases
 SRC_EXT := c
