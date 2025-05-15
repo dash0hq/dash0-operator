@@ -13,6 +13,7 @@ function echoEnvVar(envVarName) {
 }
 
 function main() {
+  console.log(process.env);
   const command = process.argv[2];
   if (!command) {
     console.error('error: not enough arguments, the command for the app under test needs to be specifed');

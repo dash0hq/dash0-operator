@@ -81,6 +81,7 @@ docker run \
   --env TEST_SET="$TEST_SET" \
   --env TEST_CASES="$TEST_CASES" \
   --env MISSING_ENVIRON_SYMBOL_TESTS="${MISSING_ENVIRON_SYMBOL_TESTS:-}" \
+  --env PRINT_TEST_OUTPUT="${PRINT_TEST_OUTPUT:-}" \
   "$image_name" \
   $docker_run_extra_arguments
 { set +x; } 2> /dev/null
