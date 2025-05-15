@@ -16,6 +16,6 @@ Usage
   runtimes and only for a subset of base images.
 * `TEST_CASES=existing,otel-resource npm run test` to only run tests cases whose names contain one of the provided
   strings. Can be combined with `ARCHITECTURES`, `RUNTIMES` etc.
-* Set `PRINT_DOCKER_OUTPUT=true` to always include the output from docker build and docker run. Otherwise the output is
+* Set `PRINT_DOCKER_OUTPUT=true` to always include the output from docker build and docker run. Otherwise, the output is
   only printed to stdout in case of errors.
   

@@ -3,7 +3,6 @@
 
 const std = @import("std");
 
-const alloc = @import("allocator.zig");
 const print = @import("print.zig");
 const res_attrs = @import("resource_attributes.zig");
 const types = @import("types.zig");
@@ -72,7 +71,7 @@ fn getModifiedJavaToolOptionsValue(
     if (original_value_optional) |original_value| {
         // If JAVA_TOOL_OPTIONS is already set, append our values.
         if (new_resource_attributes_optional) |new_resource_attributes| {
-            defer alloc.page_allocator.free(new_resource_attributes);
+            defer std.heap.page_allocator.free(new_resource_attributes);
 
             if (std.mem.indexOf(u8, original_value, "-Dotel.resource.attributes=")) |startIdx| {
                 // JAVA_TOOL_OPTIONS already contains -Dotel.resource.attribute, we need to merge the existing with the new key-value list.
@@ -88,16 +87,16 @@ fn getModifiedJavaToolOptionsValue(
                     remainingJavaToolOptions = "";
                 }
 
-                const mergedKvPairs = std.fmt.allocPrintZ(alloc.page_allocator, "{s},{s}", .{
+                const mergedKvPairs = std.fmt.allocPrintZ(std.heap.page_allocator, "{s},{s}", .{
                     originalKvPairs,
                     new_resource_attributes,
                 }) catch |err| {
                     print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ java_tool_options_env_var_name, err });
                     return original_value;
                 };
-                defer alloc.page_allocator.free(mergedKvPairs);
+                defer std.heap.page_allocator.free(mergedKvPairs);
                 const return_buffer =
-                    std.fmt.allocPrintZ(alloc.page_allocator, "{s}-Dotel.resource.attributes={s}{s} {s}", .{
+                    std.fmt.allocPrintZ(std.heap.page_allocator, "{s}-Dotel.resource.attributes={s}{s} {s}", .{
                         original_value[0..startIdx],
                         mergedKvPairs,
                         remainingJavaToolOptions,
@@ -114,7 +113,7 @@ fn getModifiedJavaToolOptionsValue(
             // JAVA_TOOL_OPTIONS is set but does not already contain -Dotel.resource.attributes, and new resource
             // attributes have been provided. Add -javaagent and -Dotel.resource.attributes.
             const return_buffer =
-                std.fmt.allocPrintZ(alloc.page_allocator, "{s} {s} -Dotel.resource.attributes={s}", .{
+                std.fmt.allocPrintZ(std.heap.page_allocator, "{s} {s} -Dotel.resource.attributes={s}", .{
                     original_value,
                     javaagent_flag_value,
                     new_resource_attributes,
@@ -128,7 +127,7 @@ fn getModifiedJavaToolOptionsValue(
         } else {
             // JAVA_TOOL_OPTIONS is set, but no new resource attributes have been provided.
             const return_buffer =
-                std.fmt.allocPrintZ(alloc.page_allocator, "{s} {s}", .{
+                std.fmt.allocPrintZ(std.heap.page_allocator, "{s} {s}", .{
                     original_value,
                     javaagent_flag_value,
                 }) catch |err| {
@@ -141,8 +140,8 @@ fn getModifiedJavaToolOptionsValue(
     } else {
         // JAVA_TOOL_OPTIONS is not set, but new resource attributes have been provided.
         if (new_resource_attributes_optional) |new_resource_attributes| {
-            defer alloc.page_allocator.free(new_resource_attributes);
-            const return_buffer = std.fmt.allocPrintZ(alloc.page_allocator, "{s} -Dotel.resource.attributes={s}", .{
+            defer std.heap.page_allocator.free(new_resource_attributes);
+            const return_buffer = std.fmt.allocPrintZ(std.heap.page_allocator, "{s} -Dotel.resource.attributes={s}", .{
                 javaagent_flag_value,
                 new_resource_attributes,
             }) catch |err| {
@@ -172,7 +171,7 @@ test "getModifiedJavaToolOptionsValue: should return -javaagent if original valu
 }
 
 test "getModifiedJavaToolOptionsValue: should return -javaagent and -Dotel.resource.attributes if original value is unset and resource attributes are provided" {
-    const resource_attributes: []u8 = try alloc.page_allocator.alloc(u8, 15);
+    const resource_attributes: []u8 = try std.heap.page_allocator.alloc(u8, 15);
     var fbs = std.io.fixedBufferStream(resource_attributes);
     _ = try fbs.writer().write("aaa=bbb,ccc=ddd");
     const modifiedJavaToolOptions = getModifiedJavaToolOptionsValue(
@@ -211,7 +210,7 @@ test "getModifiedJavaToolOptionsValue: should append -javaagent if original valu
 
 test "getModifiedJavaToolOptionsValue: should append -javaagent and -Dotel.resource.attributes if original value exists and resource attributes are provided" {
     const original_value: [:0]const u8 = "-Dsome.property=value"[0.. :0];
-    const resource_attributes: []u8 = try alloc.page_allocator.alloc(u8, 15);
+    const resource_attributes: []u8 = try std.heap.page_allocator.alloc(u8, 15);
     var fbs = std.io.fixedBufferStream(resource_attributes);
     _ = try fbs.writer().write("aaa=bbb,ccc=ddd");
     const modifiedJavaToolOptions = getModifiedJavaToolOptionsValue(
@@ -226,7 +225,7 @@ test "getModifiedJavaToolOptionsValue: should append -javaagent and -Dotel.resou
 
 test "getModifiedJavaToolOptionsValue: should merge new and existing -Dotel.resource.attributes (only property)" {
     const original_value: [:0]const u8 = "-Dotel.resource.attributes=eee=fff,ggg=hhh"[0.. :0];
-    const resource_attributes: []u8 = try alloc.page_allocator.alloc(u8, 15);
+    const resource_attributes: []u8 = try std.heap.page_allocator.alloc(u8, 15);
     var fbs = std.io.fixedBufferStream(resource_attributes);
     _ = try fbs.writer().write("aaa=bbb,ccc=ddd");
     const modifiedJavaToolOptions = getModifiedJavaToolOptionsValue(
@@ -241,7 +240,7 @@ test "getModifiedJavaToolOptionsValue: should merge new and existing -Dotel.reso
 
 test "getModifiedJavaToolOptionsValue: should merge new and existing -Dotel.resource.attributes (at the start)" {
     const original_value: [:0]const u8 = "-Dproperty1=value -Dotel.resource.attributes=eee=fff,ggg=hhh"[0.. :0];
-    const resource_attributes: []u8 = try alloc.page_allocator.alloc(u8, 15);
+    const resource_attributes: []u8 = try std.heap.page_allocator.alloc(u8, 15);
     var fbs = std.io.fixedBufferStream(resource_attributes);
     _ = try fbs.writer().write("aaa=bbb,ccc=ddd");
     const modifiedJavaToolOptions = getModifiedJavaToolOptionsValue(
@@ -256,7 +255,7 @@ test "getModifiedJavaToolOptionsValue: should merge new and existing -Dotel.reso
 
 test "getModifiedJavaToolOptionsValue: should merge new and existing -Dotel.resource.attributes (in the middle)" {
     const original_value: [:0]const u8 = "-Dproperty1=value -Dotel.resource.attributes=eee=fff,ggg=hhh -Dproperty2=value"[0.. :0];
-    const resource_attributes: []u8 = try alloc.page_allocator.alloc(u8, 15);
+    const resource_attributes: []u8 = try std.heap.page_allocator.alloc(u8, 15);
     var fbs = std.io.fixedBufferStream(resource_attributes);
     _ = try fbs.writer().write("aaa=bbb,ccc=ddd");
     const modifiedJavaToolOptions = getModifiedJavaToolOptionsValue(
@@ -271,7 +270,7 @@ test "getModifiedJavaToolOptionsValue: should merge new and existing -Dotel.reso
 
 test "getModifiedJavaToolOptionsValue: should merge new and existing -Dotel.resource.attributes (at the end)" {
     const original_value: [:0]const u8 = "-Dproperty1=value -Dotel.resource.attributes=eee=fff,ggg=hhh"[0.. :0];
-    const resource_attributes: []u8 = try alloc.page_allocator.alloc(u8, 15);
+    const resource_attributes: []u8 = try std.heap.page_allocator.alloc(u8, 15);
     var fbs = std.io.fixedBufferStream(resource_attributes);
     _ = try fbs.writer().write("aaa=bbb,ccc=ddd");
     const modifiedJavaToolOptions = getModifiedJavaToolOptionsValue(
