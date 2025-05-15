@@ -809,6 +809,27 @@ The label can also be applied by using `kubectl`:
 kubectl label --namespace $YOUR_NAMESPACE --overwrite deployment $YOUR_DEPLOYMENT_NAME dash0.com/enable=false
 ```
 
+Note that setting `dash0.com/enable: "false"` will _not_ prevent log collection for pods of workloads with that label,
+in namespaces that have Dash0 [log collection](#monitoringresource.spec.logCollection.enabled) enabled.
+Also, log collection is enabled by default for all monitored namespaces, unless `spec.logCollection.enabled` has been
+set to `false` explicitly in the respective Dash0 monitoring resource.
+Controlling log collection for individual workloads via Kubernetes labels is not supported.
+To disable log collection for specific workloads in namespaces where log collection is enabled, you can add a
+[filter](#monitoringresource.spec.filter) rule to the monitoring resource.
+Here is an example:
+
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0Monitoring
+metadata:
+  name: dash0-monitoring-resource
+spec:
+  filter:
+    logs:
+      log_records:
+      - 'IsMatch(resource.attributes["k8s.pod.name"], "my-workload-name-*")'
+```
+
 ### Specifying Additional Resource Attributes via Labels and Annotations
 
 _Note:_ The labels and annotations listed in this section can be specified at the pod level, or at the workload level
