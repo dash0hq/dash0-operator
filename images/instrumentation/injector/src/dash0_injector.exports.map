@@ -1,7 +1,8 @@
 {
     global:
-        getenv;
+        __my_environ;
         __environ;
+        getenv;
     local:
         *;
 };

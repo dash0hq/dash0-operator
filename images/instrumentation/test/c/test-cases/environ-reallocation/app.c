@@ -42,6 +42,7 @@ void expect_setenv_no_err(const char *name, const char *value, int replace) {
 }
 
 int main() {
+  // TODO check that the value of the __environ pointer actually changes to verify that re-allocation occurs.
   int number_of_calls = 5000;
 
   // putenv

@@ -3,7 +3,6 @@
 
 const std = @import("std");
 
-const alloc = @import("allocator.zig");
 const print = @import("print.zig");
 const types = @import("types.zig");
 
@@ -46,7 +45,7 @@ fn getModifiedNodeOptionsValue(original_value_optional: ?[:0]const u8) ?types.Nu
         // If NODE_OPTIONS is already set, prepend the "--require ..." flag to the original value.
         // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
         // parent process.
-        const return_buffer = std.fmt.allocPrintZ(alloc.page_allocator, "{s} {s}", .{ require_dash0_nodejs_otel_sdk_distribution, original_value }) catch |err| {
+        const return_buffer = std.fmt.allocPrintZ(std.heap.page_allocator, "{s} {s}", .{ require_dash0_nodejs_otel_sdk_distribution, original_value }) catch |err| {
             print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ node_options_env_var_name, err });
             return original_value;
         };
