@@ -4,6 +4,8 @@
 ARCH := $(shell uname -m)
 CFLAGS ?= -Wall -Werror -Wextra -Wl,-z,undefs,--export-dynamic-symbol=__my_environ -O2
 
+# -Wl,-z,undefs,--export-dynamic-symbol=__my_environ
+
 TEST_CASES_DIR := test-cases
 SRC_EXT := c
 
