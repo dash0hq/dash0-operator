@@ -1288,7 +1288,7 @@ Furthermore, the custom resource definition for Perses dashboards needs to be in
 ways to achieve this:
 * Install the Perses dashboard custom resource definition with the following command:
 ```console
-kubectl apply --server-side -f https://raw.githubusercontent.com/perses/perses-operator/main/config/crd/bases/perses.dev_persesdashboards.yaml
+kubectl apply --server-side -f https://raw.githubusercontent.com/perses/perses-operator/refs/tags/v0.1.10/config/crd/bases/perses.dev_persesdashboards.yaml
 ```
 * Alternatively, install the full Perses operator: Go to <https://github.com/perses/perses-operator> and follow the
   installation instructions there.
