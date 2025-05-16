@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+command -v go >/dev/null 2>&1 || {
+  echo "Go needs to be installed, but it isn't. Aborting."
+  exit 1
+}
+command -v jq >/dev/null 2>&1 || {
+  echo "jq needs to be installed, but it isn't. Aborting."
+  exit 1
+}
+
+get_module_version_from_go_mod() {
+  local module_name="$1"
+  module_version=$(go mod edit -json | jq -r ".Require[] | select(.Path==\"$module_name\") | .Version")
+  if [[ -z "$module_version" ]]; then
+    echo "Cannot retrieve the module version for $module_name. Aborting."
+    exit 1
+  fi
+
+  module_version=${module_version:1} # cut of the leading "v" character
+}
+
+check_chart_readme() {
+  local chart_readme="$1"
+  local remote_crd_url="$2"
+  found_in_readme="false"
+  if grep "kubectl apply --server-side -f $remote_crd_url" "$chart_readme" > /dev/null; then
+    found_in_readme="true"
+  fi
+}
+
+check_unit_test_crd() {
+  local unit_test_crd_file="$1"
+  local remote_crd_url="$2"
+  found_in_unit_test_crd="false"
+  if grep "# $remote_crd_url" "$unit_test_crd_file" > /dev/null; then
+    found_in_unit_test_crd="true"
+  fi
+}
+
+check_test_resources_util() {
+  local test_resources_util_file="$1"
+  local kubectl_apply="$2"
+  found_in_test_resources_util_file="false"
+  if grep "$kubectl_apply" "$test_resources_util_file" > /dev/null; then
+    found_in_test_resources_util_file="true"
+  fi
+}
+
+check_all() {
+  check_chart_readme "$chart_readme" "$remote_crd_url"
+  check_unit_test_crd "$unit_test_crd_file" "$remote_crd_url"
+  check_test_resources_util "$test_resources_util_file" "$kubectl_apply"
+
+  if [[ "$found_in_readme" = "true" ]] && [[ "$found_in_unit_test_crd" = "true" ]] && [[ "$found_in_test_resources_util_file" = "true" ]]; then
+    exit 0
+  fi
+
+  echo
+  echo "The version of the Go module $module_name in go.mod ($module_version) is not in sync with other references to its associated CRD. Maybe the Go module has been updated (e.g. by dependabot)? If so, other references have to be updated as well:"
+  echo
+  if [[ "$found_in_readme" != "true" ]]; then
+    echo "* Please update the instruction in $chart_readme for installing the third party CRD to read as follows:"
+    echo "    $kubectl_apply"
+    echo
+  fi
+  if [[ "$found_in_unit_test_crd" != "true" ]]; then
+    echo "* Please update $unit_test_crd_file with the following command:"
+    echo "    echo \"# $remote_crd_url\" > $unit_test_crd_file && curl $remote_crd_url >> $unit_test_crd_file"
+    echo
+  fi
+  if [[ "$found_in_test_resources_util_file" != "true" ]]; then
+    echo "* Please update the function 'install_third_party_crds' in the file $test_resources_util_file to contain the following command:"
+    echo "    $kubectl_apply"
+    echo
+  fi
+
+  exit 1
+}
