@@ -1,0 +1,40 @@
+# This Dockerfile is intended to serve as a development environment for the injector, i.e. mounting the injector
+# directory as a volume to the container and then running the image with `-it` to have a fast feeback cycle when working
+# on injector changes. Use ./start-injector-dev-container.sh to build and run the container.
+ARG base_image=ubuntu:noble
+FROM ${base_image}
+
+ARG zig_architecture
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      binutils \
+      build-essential \
+      ca-certificates \
+      curl \
+      entr \
+      locales \
+      man-db \
+      manpages-dev \
+      manpages-posix \
+      manpages-posix-dev \
+      wget \
+      && \
+    apt-get clean && \
+    localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8
+ENV LANG=en_US.utf8
+
+# Enable LD_DEBUG
+RUN touch /etc/suid-debug
+
+RUN mkdir -p /opt/zig
+WORKDIR /opt/zig
+COPY injector/zig-version .
+RUN ls -la && . /opt/zig/zig-version && \
+  wget -q -O /tmp/zig.tar.gz https://ziglang.org/download/0.14.0/zig-linux-${zig_architecture}-${ZIG_VERSION%-*}.tar.xz && \
+  tar --strip-components=1 -xf /tmp/zig.tar.gz
+ENV PATH="$PATH:/opt/zig"
+
+WORKDIR /home/dash0/instrumentation/injector
+
+CMD ["/bin/bash"]
