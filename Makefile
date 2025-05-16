@@ -215,6 +215,11 @@ prometheus-crd-version-check:
 	@echo "-------------------------------- (verifying the Prometheus CRD version is in sync)"
 	./test-resources/bin/prometheus-crd-version-check.sh
 
+.PHONY: perses-crd-version-check
+perses-crd-version-check:
+	@echo "-------------------------------- (verifying the Perses CRD version is in sync)"
+	./test-resources/bin/perses-crd-version-check.sh
+
 .PHONY: zig-installed
 zig-installed:
 	@set +x
@@ -237,7 +242,7 @@ zig-fmt: zig-installed
 	zig fmt images/instrumentation/injector/src
 
 .PHONY: lint
-lint: golangci-lint helm-chart-lint shellcheck-lint prometheus-crd-version-check zig-fmt-check
+lint: golangci-lint helm-chart-lint shellcheck-lint perses-crd-version-check prometheus-crd-version-check zig-fmt-check
 
 .PHONY: lint-fix
 lint-fix: golang-lint-fix zig-fmt

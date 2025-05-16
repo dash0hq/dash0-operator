@@ -455,11 +455,21 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 	//nolint:ineffassign
 	switch action {
 	case upsert:
-		spec := preconditionChecksResult.thirdPartyResourceSpec
-		displayRaw := spec["display"]
+		specOrConfig := preconditionChecksResult.thirdPartyResourceSpec
+
+		configRaw := specOrConfig["config"]
+		if configRaw != nil {
+			// See https://github.com/perses/perses-operator/pull/128, the CRD spec has been changed, a new wrapper
+			// object "config" has been added around the dashboard spec.
+			if config, ok := configRaw.(map[string]interface{}); ok {
+				specOrConfig = config
+			}
+		}
+
+		displayRaw := specOrConfig["display"]
 		if displayRaw == nil {
-			spec["display"] = map[string]interface{}{}
-			displayRaw = spec["display"]
+			specOrConfig["display"] = map[string]interface{}{}
+			displayRaw = specOrConfig["display"]
 		}
 		display, ok := displayRaw.(map[string]interface{})
 		if !ok {
@@ -482,7 +492,7 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 		serializedDashboard, _ := json.Marshal(
 			map[string]interface{}{
 				"kind": "PersesDashboard",
-				"spec": spec,
+				"spec": specOrConfig,
 			})
 		requestPayload := bytes.NewBuffer(serializedDashboard)
 
