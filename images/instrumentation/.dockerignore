@@ -17,6 +17,7 @@ injector/test/no_environ_symbol
 injector/unit-test-assets
 injector/zig-*.sh
 injector/zig-out
+injector-experiments/
 node.js/build.sh
 test/
 **/*.swp
