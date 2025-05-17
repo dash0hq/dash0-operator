@@ -235,6 +235,7 @@ ifeq ("${CI}","true")
 else
 	@echo "-------------------------------- (linting Zig source files)"
 	zig fmt --check images/instrumentation/injector/src
+	zig fmt --check images/instrumentation/injector-experiments
 endif
 
 .PHONY: zig-fmt
