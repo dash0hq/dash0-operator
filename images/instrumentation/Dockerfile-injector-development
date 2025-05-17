@@ -6,6 +6,8 @@ FROM ${base_image}
 
 ARG zig_architecture
 
+RUN yes | unminimize
+
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       binutils \
@@ -13,18 +15,22 @@ RUN apt-get update && \
       ca-certificates \
       curl \
       entr \
+      less \
       locales \
       man-db \
       manpages-dev \
       manpages-posix \
       manpages-posix-dev \
+      nodejs \
+      openjdk-21-jdk \
+      vim \
       wget \
       && \
     apt-get clean && \
     localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8
 ENV LANG=en_US.utf8
 
-# Enable LD_DEBUG
+# enable LD_DEBUG, required for certain setups
 RUN touch /etc/suid-debug
 
 RUN mkdir -p /opt/zig
