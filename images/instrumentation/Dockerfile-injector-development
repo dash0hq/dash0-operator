@@ -15,6 +15,7 @@ RUN apt-get update && \
       ca-certificates \
       curl \
       entr \
+      gdb \
       less \
       locales \
       man-db \
@@ -23,6 +24,8 @@ RUN apt-get update && \
       manpages-posix-dev \
       nodejs \
       openjdk-21-jdk \
+      python3 \
+      python3-pip \
       vim \
       wget \
       && \
@@ -41,6 +44,6 @@ RUN ls -la && . /opt/zig/zig-version && \
   tar --strip-components=1 -xf /tmp/zig.tar.gz
 ENV PATH="$PATH:/opt/zig"
 
-WORKDIR /home/dash0/instrumentation/injector
+WORKDIR /home/dash0/instrumentation/injector-experiments/zig-to-nodejs/01_export__environ
 
 CMD ["/bin/bash"]
