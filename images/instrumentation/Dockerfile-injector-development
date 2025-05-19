@@ -10,13 +10,19 @@ RUN yes | unminimize
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
+      autoconf \
       binutils \
       build-essential \
       ca-certificates \
       curl \
       entr \
+      file \
       gdb \
       less \
+      libasound2-dev \
+      libcups2-dev \
+      libfontconfig1-dev \
+      libx11-dev libxext-dev libxrender-dev libxrandr-dev libxtst-dev libxt-dev \
       locales \
       man-db \
       manpages-dev \
@@ -26,8 +32,11 @@ RUN apt-get update && \
       openjdk-21-jdk \
       python3 \
       python3-pip \
+      silversearcher-ag \
+      unzip \
       vim \
       wget \
+      zip \
       && \
     apt-get clean && \
     localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8
@@ -39,7 +48,7 @@ RUN touch /etc/suid-debug
 RUN mkdir -p /opt/zig
 WORKDIR /opt/zig
 COPY injector/zig-version .
-RUN ls -la && . /opt/zig/zig-version && \
+RUN . /opt/zig/zig-version && \
   wget -q -O /tmp/zig.tar.gz https://ziglang.org/download/0.14.0/zig-linux-${zig_architecture}-${ZIG_VERSION%-*}.tar.xz && \
   tar --strip-components=1 -xf /tmp/zig.tar.gz
 ENV PATH="$PATH:/opt/zig"
