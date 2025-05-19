@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 .{
-    .name = .zig_to_nodejs,
+    .name = .zig_to_jvm,
     .version = "0.0.0",
-    .fingerprint = 0xff17a9d52efb1115,
+    .fingerprint = 0xea0b47f8e6d58a78,
     .minimum_zig_version = "0.14.0",
     .dependencies = .{},
     .paths = .{
