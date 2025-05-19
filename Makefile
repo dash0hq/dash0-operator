@@ -208,7 +208,7 @@ shellcheck-check-installed:
 .PHONY: shellcheck-lint
 shellcheck-lint: shellcheck-check-installed
 	@echo "-------------------------------- (linting shell scripts)"
-	find . -name \*.sh | xargs shellcheck -x
+	find . -name \*.sh -not -path "./images/instrumentation/injector-experiments/third-party/*" | xargs shellcheck -x
 
 .PHONY: prometheus-crd-version-check
 prometheus-crd-version-check:

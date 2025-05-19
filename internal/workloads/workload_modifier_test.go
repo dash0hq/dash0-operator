@@ -13,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -99,6 +100,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 							"OTEL_EXPORTER_OTLP_ENDPOINT": {
 								Value: OTelCollectorBaseUrlTest,
 							},
+							"OTEL_EXPORTER_OTLP_PROTOCOL": {
+								Value: common.ProtocolHttpProtobuf,
+							},
 							"DASH0_NAMESPACE_NAME": {
 								ValueFrom: "metadata.namespace",
 							},
@@ -153,6 +157,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 							},
 							"OTEL_EXPORTER_OTLP_ENDPOINT": {
 								Value: OTelCollectorBaseUrlTest,
+							},
+							"OTEL_EXPORTER_OTLP_PROTOCOL": {
+								Value: common.ProtocolHttpProtobuf,
 							},
 							"DASH0_NAMESPACE_NAME": {
 								ValueFrom: "metadata.namespace",
@@ -225,6 +232,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 							"OTEL_EXPORTER_OTLP_ENDPOINT": {
 								Value: OTelCollectorBaseUrlTest,
 							},
+							"OTEL_EXPORTER_OTLP_PROTOCOL": {
+								Value: common.ProtocolHttpProtobuf,
+							},
 							"DASH0_NAMESPACE_NAME": {
 								ValueFrom: "metadata.namespace",
 							},
@@ -255,6 +265,9 @@ var _ = Describe("Dash0 Workload Modification", func() {
 							},
 							"OTEL_EXPORTER_OTLP_ENDPOINT": {
 								Value: OTelCollectorBaseUrlTest,
+							},
+							"OTEL_EXPORTER_OTLP_PROTOCOL": {
+								Value: common.ProtocolHttpProtobuf,
 							},
 							"DASH0_NAMESPACE_NAME": {
 								ValueFrom: "metadata.namespace",

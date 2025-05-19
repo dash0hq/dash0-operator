@@ -17,6 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
@@ -31,6 +32,7 @@ const (
 	envVarLdPreloadName                = "LD_PRELOAD"
 	envVarLdPreloadValue               = "/__dash0__/dash0_injector.so"
 	envVarOtelExporterOtlpEndpointName = "OTEL_EXPORTER_OTLP_ENDPOINT"
+	envVarOtelExporterOtlpProtocolName = "OTEL_EXPORTER_OTLP_PROTOCOL"
 	envVarDash0CollectorBaseUrlName    = "DASH0_OTEL_COLLECTOR_BASE_URL"
 	envVarDash0NodeIp                  = "DASH0_NODE_IP"
 	envVarDash0NamespaceName           = "DASH0_NAMESPACE_NAME"
@@ -485,6 +487,14 @@ func (m *ResourceModifier) addEnvironmentVariables(
 	m.addOrReplaceEnvironmentVariable(
 		container,
 		corev1.EnvVar{
+			Name:  envVarOtelExporterOtlpProtocolName,
+			Value: common.ProtocolHttpProtobuf,
+		},
+	)
+
+	m.addOrReplaceEnvironmentVariable(
+		container,
+		corev1.EnvVar{
 			Name: envVarDash0NamespaceName,
 			ValueFrom: &corev1.EnvVarSource{
 				FieldRef: &corev1.ObjectFieldSelector{
@@ -851,6 +861,7 @@ func (m *ResourceModifier) removeEnvironmentVariables(container *corev1.Containe
 	m.removeEnvironmentVariable(container, envVarDash0NodeIp)
 	m.removeEnvironmentVariable(container, envVarDash0CollectorBaseUrlName)
 	m.removeEnvironmentVariable(container, envVarOtelExporterOtlpEndpointName)
+	m.removeEnvironmentVariable(container, envVarOtelExporterOtlpProtocolName)
 	m.removeEnvironmentVariable(container, envVarDash0NamespaceName)
 	m.removeEnvironmentVariable(container, envVarDash0PodName)
 	m.removeEnvironmentVariable(container, envVarDash0PodUid)
