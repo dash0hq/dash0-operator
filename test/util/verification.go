@@ -15,10 +15,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
+	"github.com/dash0hq/dash0-operator/images/pkg/common"
+	"github.com/dash0hq/dash0-operator/internal/util"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
 type EnvVarExpectation struct {
@@ -89,6 +90,9 @@ func BasicInstrumentedPodSpecExpectations() PodSpecExpectations {
 				},
 				"OTEL_EXPORTER_OTLP_ENDPOINT": {
 					Value: OTelCollectorBaseUrlTest,
+				},
+				"OTEL_EXPORTER_OTLP_PROTOCOL": {
+					Value: common.ProtocolHttpProtobuf,
 				},
 				"DASH0_NAMESPACE_NAME": {
 					ValueFrom: "metadata.namespace",

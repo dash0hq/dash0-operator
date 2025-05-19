@@ -892,13 +892,15 @@ To do so, you need to [add an OpenTelemetry SDK](#https://opentelemetry.io/docs/
 
 If the workload is in a namespace that is monitored by Dash0, the OpenTelemetry SDK will automatically be configured to
 send telemetry to the OpenTelemetry collectors managed by the Dash0 operator.
-This is because the operator automatically sets `OTEL_EXPORTER_OTLP_ENDPOINT` to the correct value when applying the
-[automatic workload instrumentation](#automatic-workload-instrumentation).
+This is because the operator automatically sets `OTEL_EXPORTER_OTLP_ENDPOINT` and `OTEL_EXPORTER_OTLP_PROTOCOL` to the
+correct values when applying the [automatic workload instrumentation](#automatic-workload-instrumentation).
 
 If the workload is in a namespace that is not monitored by Dash0 (or if
 [`instrumentWorkloads`](#monitoringresource.spec.instrumentWorkloads) is set to `none` in the respective Dash0
-monitoring resource), you need to set the environment variable
-[`OTEL_EXPORTER_OTLP_ENDPOINT`](#https://opentelemetry.io/docs/languages/sdk-configuration/otlp-exporter/) yourself.
+monitoring resource, or if the workload has the label `dash0.com/enable=false`), you need to set the environment
+variable [`OTEL_EXPORTER_OTLP_ENDPOINT`](#https://opentelemetry.io/docs/languages/sdk-configuration/otlp-exporter/)
+(and optionally also
+[`OTEL_EXPORTER_OTLP_PROTOCOL`](https://opentelemetry.io/docs/specs/otel/protocol/exporter/#specify-protocol)) yourself.
 
 The DaemonSet OpenTelemetry collector managed by the Dash0 operator listens on host port 40318 for HTTP traffic and
 40317 for gRPC traffic.
@@ -1167,8 +1169,8 @@ The modifications that are performed for workloads are the following:
 * add an [init container](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/) named
   `dash0-instrumentation` that will copy the OpenTelemetry SDKs and distributions for supported runtimes to the
   `dash0-instrumentation` volume mount, so they are available in the target container's file system
-* add or modifying environment variables (`OTEL_EXPORTER_OTLP_ENDPOINT`, `LD_PRELOAD`, and several Dash0-specific
-  variables prefixed with `DASH0_`) to all containers of the pod
+* add or modifying environment variables (`OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_PROTOCOL`, `LD_PRELOAD`,
+  and several Dash0-specific variables prefixed with `DASH0_`) to all containers of the pod
 * add the Dash0 injector (see below for details) as a startup hook (via the `LD_PRELOAD` environment variable) to all
   containers of the pod
 * add the following labels to the workload metadata:

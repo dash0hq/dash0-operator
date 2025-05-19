@@ -21,6 +21,7 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -960,6 +961,10 @@ func simulateInstrumentedPodSpec(podSpec *corev1.PodSpec, meta *metav1.ObjectMet
 		{
 			Name:  "OTEL_EXPORTER_OTLP_ENDPOINT",
 			Value: OTelCollectorBaseUrlTest,
+		},
+		{
+			Name:  "OTEL_EXPORTER_OTLP_PROTOCOL",
+			Value: common.ProtocolHttpProtobuf,
 		},
 		{
 			Name: "DASH0_NAMESPACE_NAME",
