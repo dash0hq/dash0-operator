@@ -1,12 +1,16 @@
+{{/*
+This ConfigMap contains structured configuration values (as yaml) for the opertor manager, which would be slightly
+awkward to transmit as command line arguments or environment variables.
+*/}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ template "dash0-operator.collectorResourceConfigMapName" . }}
+  name: {{ template "dash0-operator.extraConfigMapName" . }}
   namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/name: dash0-operator
     app.kubernetes.io/component: controller
-    app.kubernetes.io/instance: collector-extra-config-map
+    app.kubernetes.io/instance: extra-config-map
     {{- include "dash0-operator.labels" . | nindent 4 }}
 
 {{/*
@@ -15,7 +19,7 @@ operator.collectorDaemonSetCollectorContainerResources; we still allow these val
 compatibility.
 */}}
 data:
-  otelcolextra.yaml: |-
+  extra.yaml: |-
     collectorDaemonSetCollectorContainerResources:
       {{- toYaml (
             default

@@ -291,13 +291,11 @@ operator:
       limits:
         # cpu: (no cpu limit by default)
         memory: 500Mi
-        # storage: (no storage limit by default)
         # ephemeral-storage: (no ephemeral-storage limit by default)
       gomemlimit: 400MiB
       requests:
         # cpu: (no cpu request by default)
         memory: 500Mi
-        # storage: (no storage request by default)
         # ephemeral-storage: (no ephemeral-storage request by default)
 
     # Resource settings for the configuration reloader container of the DaemonSet collector pods managed by the operator.
@@ -306,13 +304,11 @@ operator:
       limits:
         # cpu: (no cpu limit by default)
         memory: 12Mi
-        # storage: (no storage limit by default)
         # ephemeral-storage: (no ephemeral-storage limit by default)
       gomemlimit: 8MiB
       requests:
         # cpu: (no cpu request by default)
         memory: 12Mi
-        # storage: (no storage request by default)
         # ephemeral-storage: (no ephemeral-storage request by default)
 
     # Resource settings for the filelog offset sync container of the DaemonSet collector pods managed by the operator.
@@ -321,13 +317,11 @@ operator:
       limits:
         # cpu: (no cpu limit by default)
         memory: 32Mi
-        # storage: (no storage limit by default)
         # ephemeral-storage: (no ephemeral-storage limit by default)
       gomemlimit: 24MiB
       requests:
         # cpu: (no cpu request by default)
         memory: 32Mi
-        # storage: (no storage request by default)
         # ephemeral-storage: (no ephemeral-storage request by default)
 
     # Resource settings for the collector container of the Deployment collector pod managed by the operator.
@@ -336,28 +330,24 @@ operator:
       limits:
         # cpu: (no cpu limit by default)
         memory: 500Mi
-        # storage: (no storage limit by default)
         # ephemeral-storage: (no ephemeral-storage limit by default)
       gomemlimit: 400MiB
       requests:
         # cpu: (no cpu request by default)
         memory: 500Mi
-        # storage: (no storage request by default)
         # ephemeral-storage: (no ephemeral-storage request by default)
 
-    # Resource settings for the configuration reloader container of the Deployment collector pod managed by the operator.
-    # There should usually be no reason to override this.
+    # Resource settings for the configuration reloader container of the Deployment collector pod managed by the
+    # operator. There should usually be no reason to override this.
     deploymentConfigurationReloaderContainerResources:
       limits:
         # cpu: (no cpu limit by default)
         memory: 12Mi
-        # storage: (no storage limit by default)
         # ephemeral-storage: (no ephemeral-storage limit by default)
       gomemlimit: 8MiB
       requests:
         # cpu: (no cpu request by default)
         memory: 12Mi
-        # storage: (no storage request by default)
         # ephemeral-storage: (no ephemeral-storage request by default)
 
     # An array of tolerations for the collector DaemonSet pods managed by the operator. This can be used to make sure

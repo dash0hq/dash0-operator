@@ -219,7 +219,7 @@ var (
 func assembleDesiredStateForUpsert(
 	config *oTelColConfig,
 	allMonitoringResources []dash0v1alpha1.Dash0Monitoring,
-	extraConfig *OTelColExtraConfig,
+	extraConfig *util.ExtraConfig,
 ) ([]clientObject, error) {
 	monitoredNamespaces := make([]string, 0, len(allMonitoringResources))
 	namespacesWithLogCollection := make([]string, 0, len(allMonitoringResources))
@@ -274,7 +274,7 @@ func assembleDesiredStateForUpsert(
 
 func assembleDesiredStateForDelete(
 	config *oTelColConfig,
-	extraConfig *OTelColExtraConfig,
+	extraConfig *util.ExtraConfig,
 ) ([]clientObject, error) {
 	return assembleDesiredState(
 		config,
@@ -295,7 +295,7 @@ func assembleDesiredState(
 	namespacesWithPrometheusScraping []string,
 	filters []NamespacedFilter,
 	transforms []NamespacedTransform,
-	extraConfig *OTelColExtraConfig,
+	extraConfig *util.ExtraConfig,
 	forDeletion bool,
 ) ([]clientObject, error) {
 	// Make sure the resulting objects (in particular the config maps) are do not depend on the (potentially non-stable)
@@ -553,7 +553,7 @@ func assembleService(config *oTelColConfig) *corev1.Service {
 	}
 }
 
-func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig *OTelColExtraConfig) (*appsv1.DaemonSet, error) {
+func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig *util.ExtraConfig) (*appsv1.DaemonSet, error) {
 	daemonSetName := DaemonSetName(config.NamePrefix)
 	workloadNameEnvVar := corev1.EnvVar{
 		Name:  "K8S_DAEMONSET_NAME",
@@ -683,7 +683,7 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig *OTelColExtra
 func assembleFileLogOffsetSyncContainer(
 	config *oTelColConfig,
 	workloadNameEnvVar corev1.EnvVar,
-	resourceRequirements ResourceRequirementsWithGoMemLimit,
+	resourceRequirements util.ResourceRequirementsWithGoMemLimit,
 ) corev1.Container {
 	filelogOffsetSyncContainer := corev1.Container{
 		Name: fileLogOffsetSync,
@@ -915,7 +915,7 @@ func assembleDaemonSetCollectorContainer(
 	config *oTelColConfig,
 	workloadNameEnvVar corev1.EnvVar,
 	filelogOffsetsVolume corev1.Volume,
-	resourceRequirements ResourceRequirementsWithGoMemLimit,
+	resourceRequirements util.ResourceRequirementsWithGoMemLimit,
 ) (corev1.Container, error) {
 	collectorVolumeMounts := assembleCollectorDaemonSetVolumeMounts(config, filelogOffsetsVolume)
 	collectorEnv, err := assembleCollectorEnvVars(config, workloadNameEnvVar, resourceRequirements.GoMemLimit)
@@ -968,7 +968,7 @@ func assembleDaemonSetCollectorContainer(
 func assembleConfigurationReloaderContainer(
 	config *oTelColConfig,
 	workloadNameEnvVar corev1.EnvVar,
-	resourceRequirements ResourceRequirementsWithGoMemLimit,
+	resourceRequirements util.ResourceRequirementsWithGoMemLimit,
 ) corev1.Container {
 	collectorPidFileMountRO := collectorPidFileMountRW
 	collectorPidFileMountRO.ReadOnly = true
@@ -1021,7 +1021,7 @@ func assembleConfigurationReloaderContainer(
 func assembleFileLogOffsetSyncInitContainer(
 	config *oTelColConfig,
 	workloadNameEnvVar corev1.EnvVar,
-	resourceRequirements ResourceRequirementsWithGoMemLimit,
+	resourceRequirements util.ResourceRequirementsWithGoMemLimit,
 ) corev1.Container {
 	initFilelogOffsetSyncContainer := corev1.Container{
 		Name: "filelog-offset-init",
@@ -1247,7 +1247,7 @@ func assembleClusterRoleBindingForDeployment(config *oTelColConfig) *rbacv1.Clus
 
 func assembleCollectorDeployment(
 	config *oTelColConfig,
-	extraConfig *OTelColExtraConfig,
+	extraConfig *util.ExtraConfig,
 ) (*appsv1.Deployment, error) {
 	deploymentName := DeploymentName(config.NamePrefix)
 	workloadNameEnvVar := corev1.EnvVar{
@@ -1370,7 +1370,7 @@ func assembleCollectorDeploymentVolumes(
 func assembleDeploymentCollectorContainer(
 	config *oTelColConfig,
 	workloadNameEnvVar corev1.EnvVar,
-	resourceRequirements ResourceRequirementsWithGoMemLimit,
+	resourceRequirements util.ResourceRequirementsWithGoMemLimit,
 ) (corev1.Container, error) {
 	collectorVolumeMounts := []corev1.VolumeMount{
 		collectorConfigVolume,

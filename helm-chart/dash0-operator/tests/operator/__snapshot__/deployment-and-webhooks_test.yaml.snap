@@ -171,7 +171,7 @@ deployment should match snapshot (default values):
                 defaultMode: 420
                 secretName: dash0-operator-certificates
             - configMap:
-                name: dash0-operator-collector-resources
+                name: dash0-operator-extra-config
               name: config-volume
 metrics service should match snapshot (default settings):
   1: |

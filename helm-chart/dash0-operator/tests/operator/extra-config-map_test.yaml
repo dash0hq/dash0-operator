@@ -1,8 +1,8 @@
-suite: test otelcol extra config map
+suite: test extra config map
 templates:
-  - operator/otelcol-extra-config-map.yaml
+  - operator/extra-config-map.yaml
 tests:
-  - it: otelcol extra config map should match snapshot
+  - it: extra config map should match snapshot
     asserts:
       - matchSnapshot: {}
 
@@ -60,7 +60,7 @@ tests:
               effect: NoSchedule
     asserts:
       - equal:
-          path: data['otelcolextra.yaml']
+          path: data['extra.yaml']
           value:  |-
             collectorDaemonSetCollectorContainerResources:
               gomemlimit: 301MiB
@@ -156,7 +156,7 @@ tests:
             cpu: 505m
     asserts:
       - equal:
-          path: data['otelcolextra.yaml']
+          path: data['extra.yaml']
           value:  |-
             collectorDaemonSetCollectorContainerResources:
               gomemlimit: 301MiB

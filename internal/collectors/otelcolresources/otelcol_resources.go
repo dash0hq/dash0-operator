@@ -41,7 +41,7 @@ type OTelColResourceManager struct {
 	// to value of the environment variable OTEL_COLLECTOR_NAME_PREFIX, which is set to the Helm release name by the
 	// operator Helm chart.
 	OTelCollectorNamePrefix          string
-	OTelColExtraConfig               *OTelColExtraConfig
+	ExtraConfig                      *util.ExtraConfig
 	SendBatchMaxSize                 *uint32
 	NodeIp                           string
 	NodeName                         string
@@ -89,7 +89,7 @@ func NewOTelColResourceManager(
 	scheme *runtime.Scheme,
 	operatorManagerDeployment *appsv1.Deployment,
 	oTelCollectorNamePrefix string,
-	oTelColExtraConfig *OTelColExtraConfig,
+	extraConfig *util.ExtraConfig,
 	sendBatchMaxSize *uint32,
 	nodeIp string,
 	nodeName string,
@@ -105,7 +105,7 @@ func NewOTelColResourceManager(
 		Scheme:                    scheme,
 		OperatorManagerDeployment: operatorManagerDeployment,
 		OTelCollectorNamePrefix:   oTelCollectorNamePrefix,
-		OTelColExtraConfig:        oTelColExtraConfig,
+		ExtraConfig:               extraConfig,
 		SendBatchMaxSize:          sendBatchMaxSize,
 		NodeIp:                    nodeIp,
 		NodeName:                  nodeName,
@@ -191,7 +191,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	desiredState, err := assembleDesiredStateForUpsert(
 		config,
 		allMonitoringResources,
-		m.OTelColExtraConfig,
+		m.ExtraConfig,
 	)
 	if err != nil {
 		return false, false, err
@@ -421,7 +421,7 @@ func (m *OTelColResourceManager) DeleteResources(
 		DevelopmentMode:                                  m.DevelopmentMode,
 		DebugVerbosityDetailed:                           m.DebugVerbosityDetailed,
 	}
-	desiredResources, err := assembleDesiredStateForDelete(config, m.OTelColExtraConfig)
+	desiredResources, err := assembleDesiredStateForDelete(config, m.ExtraConfig)
 	if err != nil {
 		return false, err
 	}
@@ -460,7 +460,7 @@ func (m *OTelColResourceManager) deleteResourcesThatAreNoLongerDesired(
 	// override actual config settings with settings that will produce all possible resources
 	config.KubernetesInfrastructureMetricsCollectionEnabled = true
 
-	allPossibleResources, err := assembleDesiredStateForDelete(&config, m.OTelColExtraConfig)
+	allPossibleResources, err := assembleDesiredStateForDelete(&config, m.ExtraConfig)
 	if err != nil {
 		return err
 	}

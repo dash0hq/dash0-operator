@@ -14,6 +14,7 @@ import (
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
+	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -45,7 +46,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 			Scheme:                    k8sClient.Scheme(),
 			OperatorManagerDeployment: OperatorManagerDeployment,
 			OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
-			OTelColExtraConfig:        &otelcolresources.OTelExtraConfigDefaults,
+			ExtraConfig:               &util.ExtraConfigDefaults,
 		}
 		manager = &CollectorManager{
 			Client:                 k8sClient,

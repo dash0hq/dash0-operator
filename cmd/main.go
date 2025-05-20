@@ -96,7 +96,7 @@ const (
 	debugVerbosityDetailedEnvVarName = "OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED"
 	sendBatchMaxSizeEnvVarName       = "OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE"
 
-	oTelColExtraConfigFile = "/etc/config/otelcolextra.yaml"
+	extraConfigFile = "/etc/config/extra.yaml"
 
 	//nolint
 	mandatoryEnvVarMissingMessageTemplate = "cannot start the Dash0 operator, the mandatory environment variable \"%s\" is missing"
@@ -639,12 +639,14 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 	return nil
 }
 
-func readOTelColExtraConfiguration() (*otelcolresources.OTelColExtraConfig, error) {
-	oTelColExtraSpec, err := otelcolresources.ReadOTelColExtraConfiguration(oTelColExtraConfigFile)
+// readExtraConfigMap reads the config map content, which is basically a container for structured configuration data
+// would be cumbersome to pass in as a command line argument.
+func readExtraConfigMap() (*util.ExtraConfig, error) {
+	extraConfig, err := util.ReadExtraConfiguration(extraConfigFile)
 	if err != nil {
-		return nil, fmt.Errorf("Cannot read configuration file %s: %w", oTelColExtraConfigFile, err)
+		return nil, fmt.Errorf("cannot read configuration file %s: %w", extraConfigFile, err)
 	}
-	return oTelColExtraSpec, nil
+	return extraConfig, nil
 }
 
 func readOptionalPullPolicyFromEnvironmentVariable(envVarName string) corev1.PullPolicy {
@@ -674,7 +676,7 @@ func startDash0Controllers(
 	instrumentationDelays *instrumentation.DelayConfig,
 	developmentMode bool,
 ) error {
-	oTelColExtraConfig, err := readOTelColExtraConfiguration()
+	extraConfig, err := readExtraConfigMap()
 	if err != nil {
 		os.Exit(1)
 	}
@@ -750,7 +752,7 @@ func startDash0Controllers(
 		mgr.GetScheme(),
 		operatorDeploymentSelfReference,
 		envVars.oTelCollectorNamePrefix,
-		oTelColExtraConfig,
+		extraConfig,
 		envVars.sendBatchMaxSize,
 		envVars.nodeIp,
 		envVars.nodeName,
