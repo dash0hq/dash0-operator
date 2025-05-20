@@ -16,6 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -59,7 +60,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			Scheme:                    k8sClient.Scheme(),
 			OperatorManagerDeployment: OperatorManagerDeployment,
 			OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
-			OTelColExtraConfig:        &OTelExtraConfigDefaults,
+			ExtraConfig:               &util.ExtraConfigDefaults,
 			DevelopmentMode:           true,
 		}
 	})

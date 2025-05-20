@@ -58,7 +58,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				},
 			},
 			Images: TestImages,
-		}, nil, &OTelExtraConfigDefaults)
+		}, nil, &util.ExtraConfigDefaults)
 		Expect(err).To(HaveOccurred())
 	})
 
@@ -70,7 +70,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			UseHostMetricsReceiver:                           true,
 			Images:                                           TestImages,
-		}, nil, &OTelExtraConfigDefaults)
+		}, nil, &util.ExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(desiredState).To(HaveLen(numberOfResourcesWithKubernetesInfrastructureMetricsCollectionEnabled))
@@ -222,7 +222,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			Export:            *Dash0ExportWithEndpointAndToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: false,
 			Images: TestImages,
-		}, nil, &OTelExtraConfigDefaults)
+		}, nil, &util.ExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(desiredState).To(HaveLen(numberOfResourcesWithoutKubernetesInfrastructureMetricsCollectionEnabled))
@@ -260,7 +260,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
 			Export:            *Dash0ExportWithEndpointAndToken(),
-		}, nil, &OTelExtraConfigDefaults)
+		}, nil, &util.ExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
 		configMapContent := getDaemonSetCollectorConfigConfigMapContent(desiredState)
@@ -278,7 +278,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
 			Export:            *Dash0ExportWithEndpointAndSecretRef(),
-		}, nil, &OTelExtraConfigDefaults)
+		}, nil, &util.ExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
 		configMapContent := getDaemonSetCollectorConfigConfigMapContent(desiredState)
@@ -298,7 +298,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
 			Export:            *HttpExportTest(),
-		}, nil, &OTelExtraConfigDefaults)
+		}, nil, &util.ExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
 		configMapContent := getDaemonSetCollectorConfigConfigMapContent(desiredState)
@@ -322,7 +322,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				Export:                *export,
 			},
 			Images: TestImages,
-		}, nil, &OTelExtraConfigDefaults)
+		}, nil, &util.ExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 
 		daemonSet := getDaemonSet(desiredState)
@@ -352,7 +352,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				Export:                *export,
 			},
 			Images: TestImages,
-		}, nil, &OTelExtraConfigDefaults)
+		}, nil, &util.ExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 
 		daemonSet := getDaemonSet(desiredState)
@@ -383,7 +383,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				Export:                *export,
 			},
 			Images: TestImages,
-		}, nil, &OTelExtraConfigDefaults)
+		}, nil, &util.ExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 
 		daemonSet := getDaemonSet(desiredState)
@@ -414,7 +414,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				Export:                *export,
 			},
 			Images: TestImages,
-		}, nil, &OTelExtraConfigDefaults)
+		}, nil, &util.ExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 
 		daemonSet := getDaemonSet(desiredState)
@@ -443,7 +443,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				Export:                *export,
 			},
 			Images: TestImages,
-		}, nil, &OTelExtraConfigDefaults)
+		}, nil, &util.ExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 
 		daemonSet := getDaemonSet(desiredState)
@@ -471,7 +471,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 				SelfMonitoringEnabled: false,
 			},
 			Images: TestImages,
-		}, nil, &OTelExtraConfigDefaults)
+		}, nil, &util.ExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 
 		daemonSet := getDaemonSet(desiredState)
@@ -487,7 +487,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			UseHostMetricsReceiver:                           true,
 			Images:                                           TestImages,
-		}, nil, &OTelColExtraConfig{
+		}, nil, &util.ExtraConfig{
 			DaemonSetTolerations: []corev1.Toleration{
 				{
 					Key:      "key1",
@@ -554,7 +554,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 					LogCollection: dash0v1alpha1.LogCollection{Enabled: ptr.To(true)},
 				},
 			},
-		}, &OTelExtraConfigDefaults)
+		}, &util.ExtraConfigDefaults)
 		Expect(err).ToNot(HaveOccurred())
 
 		configMapContent := getDaemonSetCollectorConfigConfigMapContent(desiredState)
@@ -613,7 +613,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 					PrometheusScrapingEnabled: ptr.To(false),
 				},
 			},
-		}, &OTelExtraConfigDefaults)
+		}, &util.ExtraConfigDefaults)
 		Expect(err).ToNot(HaveOccurred())
 
 		configMap := getDaemonSetCollectorConfigConfigMap(desiredState)
@@ -652,7 +652,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			UseHostMetricsReceiver:                           true,
 			Images:                                           TestImages,
 			OffsetStorageVolume:                              &offsetStorageVolume,
-		}, nil, &OTelExtraConfigDefaults)
+		}, nil, &util.ExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(desiredState).To(HaveLen(numberOfResourcesWithKubernetesInfrastructureMetricsCollectionEnabled - 1))
@@ -739,28 +739,28 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			NamePrefix:        namePrefix,
 			Export:            *Dash0ExportWithEndpointAndToken(),
 			Images:            TestImages,
-		}, []dash0v1alpha1.Dash0Monitoring{mr1, mr2, mr3, mr4}, &OTelExtraConfigDefaults)
+		}, []dash0v1alpha1.Dash0Monitoring{mr1, mr2, mr3, mr4}, &util.ExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 		desiredState2, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
 			Export:            *Dash0ExportWithEndpointAndToken(),
 			Images:            TestImages,
-		}, []dash0v1alpha1.Dash0Monitoring{mr3, mr4, mr1, mr2}, &OTelExtraConfigDefaults)
+		}, []dash0v1alpha1.Dash0Monitoring{mr3, mr4, mr1, mr2}, &util.ExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 		desiredState3, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
 			Export:            *Dash0ExportWithEndpointAndToken(),
 			Images:            TestImages,
-		}, []dash0v1alpha1.Dash0Monitoring{mr4, mr3, mr2, mr1}, &OTelExtraConfigDefaults)
+		}, []dash0v1alpha1.Dash0Monitoring{mr4, mr3, mr2, mr1}, &util.ExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 		desiredState4, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
 			Export:            *Dash0ExportWithEndpointAndToken(),
 			Images:            TestImages,
-		}, []dash0v1alpha1.Dash0Monitoring{mr3, mr1, mr4, mr2}, &OTelExtraConfigDefaults)
+		}, []dash0v1alpha1.Dash0Monitoring{mr3, mr1, mr4, mr2}, &util.ExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(reflect.DeepEqual(desiredState1, desiredState2)).To(BeTrue())

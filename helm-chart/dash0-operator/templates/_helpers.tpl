@@ -43,8 +43,8 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 {{- end }}
 
 {{/* otelcol resources config map name */}}
-{{- define "dash0-operator.collectorResourceConfigMapName" -}}
-{{ include "dash0-operator.chartName" . }}-collector-resources
+{{- define "dash0-operator.extraConfigMapName" -}}
+{{ include "dash0-operator.chartName" . }}-extra-config
 {{- end }}
 
 {{- define "dash0-operator.deploymentName" -}}

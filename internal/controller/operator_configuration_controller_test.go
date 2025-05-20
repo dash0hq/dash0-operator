@@ -581,7 +581,7 @@ func createReconciler() *OperatorConfigurationReconciler {
 		Scheme:                    k8sClient.Scheme(),
 		OperatorManagerDeployment: OperatorManagerDeployment,
 		OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
-		OTelColExtraConfig:        &otelcolresources.OTelExtraConfigDefaults,
+		ExtraConfig:               &util.ExtraConfigDefaults,
 	}
 	collectorManager := &collectors.CollectorManager{
 		Client:                 k8sClient,

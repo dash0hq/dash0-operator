@@ -256,7 +256,7 @@ spec:
           secretName: {{ include "dash0-operator.chartName" . }}-certificates
       - name: config-volume
         configMap:
-          name: {{ template "dash0-operator.collectorResourceConfigMapName" . }}
+          name: {{ template "dash0-operator.extraConfigMapName" . }}
 ---
 apiVersion: v1
 kind: Service

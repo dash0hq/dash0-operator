@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package otelcolresources
+package util
 
 import (
 	"os"
@@ -18,7 +18,7 @@ var _ = Describe("limits and requests for the otelcol resources", func() {
 
 	BeforeEach(func() {
 		var err error
-		tmpFile, err = os.CreateTemp(os.TempDir(), "otelcolextra.yaml")
+		tmpFile, err = os.CreateTemp(os.TempDir(), "extra.yaml")
 		Expect(err).ToNot(HaveOccurred())
 	})
 
@@ -101,7 +101,7 @@ var _ = Describe("limits and requests for the otelcol resources", func() {
 `)
 		Expect(err).ToNot(HaveOccurred())
 
-		extraConfig, err := ReadOTelColExtraConfiguration(tmpFile.Name())
+		extraConfig, err := ReadExtraConfiguration(tmpFile.Name())
 		Expect(err).ToNot(HaveOccurred())
 
 		Expect(extraConfig.CollectorDaemonSetCollectorContainerResources.Limits.Cpu().String()).To(Equal("900m"))
@@ -168,7 +168,7 @@ var _ = Describe("limits and requests for the otelcol resources", func() {
 	})
 
 	It("should apply defaults for empty config", func() {
-		extraConfig, err := ReadOTelColExtraConfiguration(tmpFile.Name())
+		extraConfig, err := ReadExtraConfiguration(tmpFile.Name())
 		Expect(err).ToNot(HaveOccurred())
 
 		Expect(extraConfig.CollectorDaemonSetCollectorContainerResources.Limits.Cpu().IsZero()).To(BeTrue())
@@ -240,7 +240,7 @@ var _ = Describe("limits and requests for the otelcol resources", func() {
 `)
 		Expect(err).ToNot(HaveOccurred())
 
-		extraConfig, err := ReadOTelColExtraConfiguration(tmpFile.Name())
+		extraConfig, err := ReadExtraConfiguration(tmpFile.Name())
 		Expect(err).ToNot(HaveOccurred())
 
 		Expect(extraConfig.CollectorDaemonSetCollectorContainerResources.Limits.Cpu().String()).To(Equal("900m"))

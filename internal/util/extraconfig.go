@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package otelcolresources
+package util
 
 import (
 	"fmt"
@@ -18,7 +18,7 @@ type ResourceRequirementsWithGoMemLimit struct {
 	GoMemLimit string              `json:"gomemlimit,omitempty"`
 }
 
-type OTelColExtraConfig struct {
+type ExtraConfig struct {
 	CollectorDaemonSetCollectorContainerResources             ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetCollectorContainerResources,omitempty"`
 	CollectorDaemonSetConfigurationReloaderContainerResources ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetConfigurationReloaderContainerResources,omitempty"`
 	CollectorDaemonSetFileLogOffsetSyncContainerResources     ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetFileLogOffsetSyncContainerResources,omitempty"`
@@ -30,7 +30,7 @@ type OTelColExtraConfig struct {
 }
 
 var (
-	OTelExtraConfigDefaults = OTelColExtraConfig{
+	ExtraConfigDefaults = ExtraConfig{
 		CollectorDaemonSetCollectorContainerResources: ResourceRequirementsWithGoMemLimit{
 			Limits: corev1.ResourceList{
 				corev1.ResourceMemory: resource.MustParse("500Mi"),
@@ -79,7 +79,7 @@ var (
 	}
 )
 
-func ReadOTelColExtraConfiguration(configurationFile string) (*OTelColExtraConfig, error) {
+func ReadExtraConfiguration(configurationFile string) (*ExtraConfig, error) {
 	if len(configurationFile) == 0 {
 		return nil, fmt.Errorf("filename is empty")
 	}
@@ -88,29 +88,29 @@ func ReadOTelColExtraConfiguration(configurationFile string) (*OTelColExtraConfi
 		return nil, fmt.Errorf("the configuration file (%s) is missing or cannot be opened %w", configurationFile, err)
 	}
 
-	extraConfig := &OTelColExtraConfig{}
+	extraConfig := &ExtraConfig{}
 	if err = yaml.Unmarshal(content, extraConfig); err != nil {
 		return nil, fmt.Errorf("cannot unmarshal the configuration file %w", err)
 	}
 	applyDefaults(
 		&extraConfig.CollectorDaemonSetCollectorContainerResources,
-		&OTelExtraConfigDefaults.CollectorDaemonSetCollectorContainerResources,
+		&ExtraConfigDefaults.CollectorDaemonSetCollectorContainerResources,
 	)
 	applyDefaults(
 		&extraConfig.CollectorDaemonSetConfigurationReloaderContainerResources,
-		&OTelExtraConfigDefaults.CollectorDaemonSetConfigurationReloaderContainerResources,
+		&ExtraConfigDefaults.CollectorDaemonSetConfigurationReloaderContainerResources,
 	)
 	applyDefaults(
 		&extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources,
-		&OTelExtraConfigDefaults.CollectorDaemonSetFileLogOffsetSyncContainerResources,
+		&ExtraConfigDefaults.CollectorDaemonSetFileLogOffsetSyncContainerResources,
 	)
 	applyDefaults(
 		&extraConfig.CollectorDeploymentCollectorContainerResources,
-		&OTelExtraConfigDefaults.CollectorDeploymentCollectorContainerResources,
+		&ExtraConfigDefaults.CollectorDeploymentCollectorContainerResources,
 	)
 	applyDefaults(
 		&extraConfig.CollectorDeploymentConfigurationReloaderContainerResources,
-		&OTelExtraConfigDefaults.CollectorDeploymentConfigurationReloaderContainerResources,
+		&ExtraConfigDefaults.CollectorDeploymentConfigurationReloaderContainerResources,
 	)
 	return extraConfig, nil
 }

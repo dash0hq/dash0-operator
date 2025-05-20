@@ -20,6 +20,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/controller"
 	"github.com/dash0hq/dash0-operator/internal/instrumentation"
+	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -50,7 +51,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 			Scheme:                    k8sClient.Scheme(),
 			OperatorManagerDeployment: OperatorManagerDeployment,
 			OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
-			OTelColExtraConfig:        &otelcolresources.OTelExtraConfigDefaults,
+			ExtraConfig:               &util.ExtraConfigDefaults,
 		}
 		collectorManager := &collectors.CollectorManager{
 			Client:                 k8sClient,
