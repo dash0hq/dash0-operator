@@ -6,7 +6,6 @@ package main
 import (
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -112,6 +111,7 @@ var (
 	oTelSdkStarter                  *selfmonitoringapiaccess.OTelSdkStarter
 	operatorDeploymentSelfReference *appsv1.Deployment
 	envVars                         environmentVariables
+	extraConfig                     util.ExtraConfig
 
 	thirdPartyResourceSynchronizationQueue *workqueue.Typed[controller.ThirdPartyResourceSyncJob]
 )
@@ -138,7 +138,6 @@ func main() {
 	var operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled bool
 	var operatorConfigurationCollectPodLabelsAndAnnotationsEnabled bool
 	var operatorConfigurationClusterName string
-	var offsetStorageVolume string
 	instrumentationDelays := &instrumentation.DelayConfig{}
 	var isUninstrumentAll bool
 	var metricsAddr string
@@ -219,11 +218,6 @@ func main() {
 		"The clusterName to set on the operator configuration resource; will be ignored if"+
 			"operator-configuration-endpoint is not set. If set, the value will be added as the resource attribute "+
 			"k8s.cluster.name to all telemetry.")
-	flag.StringVar(
-		&offsetStorageVolume,
-		"offset-storage-volume",
-		"",
-		"An optional stringified JSON defining a reference to a volume for filelog offset sync information.")
 	flag.Uint64Var(
 		&instrumentationDelays.AfterEachWorkloadMillis,
 		"instrumentation-delay-after-each-workload-millis",
@@ -309,6 +303,10 @@ func main() {
 	if err = readEnvironmentVariables(&setupLog); err != nil {
 		os.Exit(1)
 	}
+	if err = readExtraConfigMap(); err != nil {
+		os.Exit(1)
+	}
+
 	if err = initStartupTasksK8sClient(&setupLog); err != nil {
 		os.Exit(1)
 	}
@@ -363,7 +361,6 @@ func main() {
 		operatorConfigurationValues,
 		delegatingZapCoreWrapper,
 		pseudoClusterUID,
-		offsetStorageVolume,
 		instrumentationDelays,
 		developmentMode,
 	); err != nil {
@@ -427,7 +424,6 @@ func startOperatorManager(
 	operatorConfigurationValues *startup.OperatorConfigurationValues,
 	delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper,
 	pseudoClusterUID string,
-	offsetStorageVolume string,
 	instrumentationDelays *instrumentation.DelayConfig,
 	developmentMode bool,
 ) error {
@@ -484,8 +480,10 @@ func startOperatorManager(
 		envVars.deploymentName,
 		"otel collector name prefix",
 		envVars.oTelCollectorNamePrefix,
-		"offset storage volume",
-		offsetStorageVolume,
+
+		"extra config",
+		extraConfig,
+
 		"instrumentation delays",
 		instrumentationDelays,
 		"development mode",
@@ -499,7 +497,6 @@ func startOperatorManager(
 		operatorConfigurationValues,
 		delegatingZapCoreWrapper,
 		pseudoClusterUID,
-		offsetStorageVolume,
 		instrumentationDelays,
 		developmentMode,
 	)
@@ -641,12 +638,13 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 
 // readExtraConfigMap reads the config map content, which is basically a container for structured configuration data
 // would be cumbersome to pass in as a command line argument.
-func readExtraConfigMap() (*util.ExtraConfig, error) {
-	extraConfig, err := util.ReadExtraConfiguration(extraConfigFile)
+func readExtraConfigMap() error {
+	var err error
+	extraConfig, err = util.ReadExtraConfiguration(extraConfigFile)
 	if err != nil {
-		return nil, fmt.Errorf("cannot read configuration file %s: %w", extraConfigFile, err)
+		return fmt.Errorf("cannot read configuration file %s: %w", extraConfigFile, err)
 	}
-	return extraConfig, nil
+	return nil
 }
 
 func readOptionalPullPolicyFromEnvironmentVariable(envVarName string) corev1.PullPolicy {
@@ -672,15 +670,9 @@ func startDash0Controllers(
 	operatorConfigurationValues *startup.OperatorConfigurationValues,
 	delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper,
 	pseudoClusterUID string,
-	offsetStorageVolumeJsonString string,
 	instrumentationDelays *instrumentation.DelayConfig,
 	developmentMode bool,
 ) error {
-	extraConfig, err := readExtraConfigMap()
-	if err != nil {
-		os.Exit(1)
-	}
-
 	oTelCollectorBaseUrl :=
 		fmt.Sprintf(
 			"http://%s-opentelemetry-collector-service.%s.svc.cluster.local:4318",
@@ -709,6 +701,7 @@ func startDash0Controllers(
 		isIPv6Cluster,
 		instrumentationDelays,
 	)
+	var err error
 	if err = mgr.Add(leaderElectionAwareRunnable); err != nil {
 		return fmt.Errorf("unable to add the leader election aware runnable: %w", err)
 	}
@@ -733,20 +726,6 @@ func startDash0Controllers(
 		instrumentationDelays,
 	)
 
-	var offsetStorageVolume *corev1.Volume
-	if offsetStorageVolumeJsonString != "" {
-		// remove leading and trailing ' character
-		offsetStorageVolumeJsonString = offsetStorageVolumeJsonString[1 : len(offsetStorageVolumeJsonString)-1]
-		if err = json.Unmarshal([]byte(offsetStorageVolumeJsonString), &offsetStorageVolume); err != nil {
-			setupLog.Error(err,
-				fmt.Sprintf(
-					"cannot parse parameter --offset-storage-volume into a volume: %s",
-					offsetStorageVolumeJsonString,
-				))
-			os.Exit(1)
-		}
-	}
-
 	oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
 		k8sClient,
 		mgr.GetScheme(),
@@ -759,7 +738,6 @@ func startDash0Controllers(
 		pseudoClusterUID,
 		isIPv6Cluster,
 		isDocker,
-		offsetStorageVolume,
 		developmentMode,
 		envVars.debugVerbosityDetailed,
 	)

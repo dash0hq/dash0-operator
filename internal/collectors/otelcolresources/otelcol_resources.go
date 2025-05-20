@@ -41,14 +41,13 @@ type OTelColResourceManager struct {
 	// to value of the environment variable OTEL_COLLECTOR_NAME_PREFIX, which is set to the Helm release name by the
 	// operator Helm chart.
 	OTelCollectorNamePrefix          string
-	ExtraConfig                      *util.ExtraConfig
+	ExtraConfig                      util.ExtraConfig
 	SendBatchMaxSize                 *uint32
 	NodeIp                           string
 	NodeName                         string
 	PseudoClusterUID                 string
 	IsIPv6Cluster                    bool
 	IsDocker                         bool
-	OffsetStorageVolume              *corev1.Volume
 	DevelopmentMode                  bool
 	DebugVerbosityDetailed           bool
 	obsoleteResourcesHaveBeenDeleted atomic.Bool
@@ -89,14 +88,13 @@ func NewOTelColResourceManager(
 	scheme *runtime.Scheme,
 	operatorManagerDeployment *appsv1.Deployment,
 	oTelCollectorNamePrefix string,
-	extraConfig *util.ExtraConfig,
+	extraConfig util.ExtraConfig,
 	sendBatchMaxSize *uint32,
 	nodeIp string,
 	nodeName string,
 	pseudoClusterUID string,
 	isIPv6Cluster bool,
 	isDocker bool,
-	offsetStorageVolume *corev1.Volume,
 	developmentMode bool,
 	debugVerbosityDetailed bool,
 ) *OTelColResourceManager {
@@ -112,7 +110,6 @@ func NewOTelColResourceManager(
 		PseudoClusterUID:          pseudoClusterUID,
 		IsIPv6Cluster:             isIPv6Cluster,
 		IsDocker:                  isDocker,
-		OffsetStorageVolume:       offsetStorageVolume,
 		DevelopmentMode:           developmentMode,
 		DebugVerbosityDetailed:    debugVerbosityDetailed,
 	}
@@ -184,9 +181,11 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		PseudoClusterUID:       m.PseudoClusterUID,
 		Images:                 images,
 		IsIPv6Cluster:          m.IsIPv6Cluster,
-		OffsetStorageVolume:    m.OffsetStorageVolume,
 		DevelopmentMode:        m.DevelopmentMode,
 		DebugVerbosityDetailed: m.DebugVerbosityDetailed,
+	}
+	if m.ExtraConfig.CollectorFilelogOffsetStorageVolume != nil {
+		config.OffsetStorageVolume = m.ExtraConfig.CollectorFilelogOffsetStorageVolume
 	}
 	desiredState, err := assembleDesiredStateForUpsert(
 		config,
@@ -417,9 +416,11 @@ func (m *OTelColResourceManager) DeleteResources(
 		UseHostMetricsReceiver:                           !m.IsDocker, // irrelevant for deletion
 		Images:                                           dummyImagesForDeletion,
 		IsIPv6Cluster:                                    m.IsIPv6Cluster,
-		OffsetStorageVolume:                              m.OffsetStorageVolume,
 		DevelopmentMode:                                  m.DevelopmentMode,
 		DebugVerbosityDetailed:                           m.DebugVerbosityDetailed,
+	}
+	if m.ExtraConfig.CollectorFilelogOffsetStorageVolume != nil {
+		config.OffsetStorageVolume = m.ExtraConfig.CollectorFilelogOffsetStorageVolume
 	}
 	desiredResources, err := assembleDesiredStateForDelete(config, m.ExtraConfig)
 	if err != nil {

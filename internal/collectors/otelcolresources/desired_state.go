@@ -219,7 +219,7 @@ var (
 func assembleDesiredStateForUpsert(
 	config *oTelColConfig,
 	allMonitoringResources []dash0v1alpha1.Dash0Monitoring,
-	extraConfig *util.ExtraConfig,
+	extraConfig util.ExtraConfig,
 ) ([]clientObject, error) {
 	monitoredNamespaces := make([]string, 0, len(allMonitoringResources))
 	namespacesWithLogCollection := make([]string, 0, len(allMonitoringResources))
@@ -274,7 +274,7 @@ func assembleDesiredStateForUpsert(
 
 func assembleDesiredStateForDelete(
 	config *oTelColConfig,
-	extraConfig *util.ExtraConfig,
+	extraConfig util.ExtraConfig,
 ) ([]clientObject, error) {
 	return assembleDesiredState(
 		config,
@@ -295,7 +295,7 @@ func assembleDesiredState(
 	namespacesWithPrometheusScraping []string,
 	filters []NamespacedFilter,
 	transforms []NamespacedTransform,
-	extraConfig *util.ExtraConfig,
+	extraConfig util.ExtraConfig,
 	forDeletion bool,
 ) ([]clientObject, error) {
 	// Make sure the resulting objects (in particular the config maps) are do not depend on the (potentially non-stable)
@@ -553,7 +553,7 @@ func assembleService(config *oTelColConfig) *corev1.Service {
 	}
 }
 
-func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig *util.ExtraConfig) (*appsv1.DaemonSet, error) {
+func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraConfig) (*appsv1.DaemonSet, error) {
 	daemonSetName := DaemonSetName(config.NamePrefix)
 	workloadNameEnvVar := corev1.EnvVar{
 		Name:  "K8S_DAEMONSET_NAME",
@@ -1247,7 +1247,7 @@ func assembleClusterRoleBindingForDeployment(config *oTelColConfig) *rbacv1.Clus
 
 func assembleCollectorDeployment(
 	config *oTelColConfig,
-	extraConfig *util.ExtraConfig,
+	extraConfig util.ExtraConfig,
 ) (*appsv1.Deployment, error) {
 	deploymentName := DeploymentName(config.NamePrefix)
 	workloadNameEnvVar := corev1.EnvVar{

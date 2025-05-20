@@ -38,6 +38,10 @@ data:
               .Values.operator.collectors.daemonSetFileLogOffsetSyncContainerResources
               .Values.operator.collectorDaemonSetFileLogOffsetSyncContainerResources
           ) | nindent 6 }}
+{{- if .Values.operator.collectors.filelogOffsetSyncStorageVolume }}
+    collectorFilelogOffsetStorageVolume:
+      {{- .Values.operator.collectors.filelogOffsetSyncStorageVolume | toYaml | nindent 6 }}
+{{- end }}
     collectorDeploymentCollectorContainerResources:
       {{- toYaml (
             default

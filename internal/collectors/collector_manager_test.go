@@ -46,7 +46,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 			Scheme:                    k8sClient.Scheme(),
 			OperatorManagerDeployment: OperatorManagerDeployment,
 			OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
-			ExtraConfig:               &util.ExtraConfigDefaults,
+			ExtraConfig:               util.ExtraConfigDefaults,
 		}
 		manager = &CollectorManager{
 			Client:                 k8sClient,

@@ -123,9 +123,6 @@ spec:
 {{- if .Values.operator.dash0Export.dataset }}
         - --operator-configuration-dataset={{ .Values.operator.dash0Export.dataset }}
 {{- end }}
-{{- if .Values.operator.collectors.filelogOffsetSyncStorageVolume }}
-        - --offset-storage-volume='{{ .Values.operator.collectors.filelogOffsetSyncStorageVolume | toJson }}'
-{{- end }}
 {{- if .Values.operator.instrumentationDelayAfterEachWorkloadMillis }}
         - --instrumentation-delay-after-each-workload-millis={{ .Values.operator.instrumentationDelayAfterEachWorkloadMillis }}
 {{- end }}

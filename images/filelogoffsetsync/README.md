@@ -8,10 +8,10 @@ Its main purpose is to ensure that log records are not emitted multiple times by
 pod is restarted.
 
 *Note:* If a user-provided volume is configured via the Helm chart property
-`operator.collectors.filelogOffsetSyncStorageVolume` (or via the `--offset-storage-volume` command line argument for
-the operator manager process), this container image is not used. Instead, the log file offset information is directly
-stored on the user-provided volume. The purpose of this container image is to improve the out-of-the-box experience for
-users with small to medium sized clusters, as they do not need to create or configure a volume.
+`operator.collectors.filelogOffsetSyncStorageVolume`), this container image is not used.
+Instead, the log file offset information is directly stored on the user-provided volume.
+The purpose of this container image is to improve the out-of-the-box experience for users with small- to medium-sized
+clusters, as they do not need to create or configure a volume.
 
 The remainder of this document assumes that the user-provided volume has not been set, and offsets are persisted with
 the help of this container image.
