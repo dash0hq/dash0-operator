@@ -148,10 +148,6 @@ tests:
         collectors:
           debugVerbosityDetailed: true
           sendBatchMaxSize: 32768
-          filelogOffsetSyncStorageVolume:
-            name: offset-storage
-            persistentVolumeClaim:
-              claimName: offset-storage-claim
 
     asserts:
       - equal:
@@ -202,9 +198,8 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].args[2]
           value: --leader-elect
-      - equal:
+      - notExists:
           path: spec.template.spec.containers[0].args[3]
-          value: --offset-storage-volume='{"name":"offset-storage","persistentVolumeClaim":{"claimName":"offset-storage-claim"}}'
       - equal:
           path: spec.template.spec.containers[0].env[0].name
           value: DASH0_OPERATOR_NAMESPACE

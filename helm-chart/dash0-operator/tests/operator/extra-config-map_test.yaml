@@ -6,7 +6,7 @@ tests:
     asserts:
       - matchSnapshot: {}
 
-  - it: should render custom resource settings and tolerations
+  - it: should render custom configuration values
     set:
       operator:
         collectors:
@@ -34,6 +34,10 @@ tests:
             requests:
               memory: 403Mi
               cpu: 503m
+          filelogOffsetSyncStorageVolume:
+            name: offset-storage
+            persistentVolumeClaim:
+              claimName: offset-storage-claim
           deploymentCollectorContainerResources:
             limits:
               memory: 104Mi
@@ -86,6 +90,10 @@ tests:
               requests:
                 cpu: 503m
                 memory: 403Mi
+            collectorFilelogOffsetStorageVolume:
+              name: offset-storage
+              persistentVolumeClaim:
+                claimName: offset-storage-claim
             collectorDeploymentCollectorContainerResources:
               gomemlimit: 304MiB
               limits:
@@ -111,6 +119,8 @@ tests:
                 key: key2
                 operator: Exists
 
+  # This test also verifies that the collectorFilelogOffsetStorageVolume is not rendered if
+  # operator.collectors.filelogOffsetSyncStorageVolume isn't set as a value.
   - it: should render custom resource settings from legacy paths
     set:
       operator:

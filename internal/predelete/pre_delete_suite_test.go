@@ -104,7 +104,7 @@ var _ = BeforeSuite(func() {
 		Scheme:                    k8sClient.Scheme(),
 		OperatorManagerDeployment: OperatorManagerDeployment,
 		OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
-		ExtraConfig:               &util.ExtraConfigDefaults,
+		ExtraConfig:               util.ExtraConfigDefaults,
 	}
 	collectorManager := &collectors.CollectorManager{
 		Client:                 k8sClient,

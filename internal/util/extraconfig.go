@@ -22,6 +22,7 @@ type ExtraConfig struct {
 	CollectorDaemonSetCollectorContainerResources             ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetCollectorContainerResources,omitempty"`
 	CollectorDaemonSetConfigurationReloaderContainerResources ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetConfigurationReloaderContainerResources,omitempty"`
 	CollectorDaemonSetFileLogOffsetSyncContainerResources     ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetFileLogOffsetSyncContainerResources,omitempty"`
+	CollectorFilelogOffsetStorageVolume                       *corev1.Volume                     `json:"collectorFilelogOffsetStorageVolume,omitempty"`
 
 	CollectorDeploymentCollectorContainerResources             ResourceRequirementsWithGoMemLimit `json:"collectorDeploymentCollectorContainerResources,omitempty"`
 	CollectorDeploymentConfigurationReloaderContainerResources ResourceRequirementsWithGoMemLimit `json:"collectorDeploymentConfigurationReloaderContainerResources,omitempty"`
@@ -79,18 +80,18 @@ var (
 	}
 )
 
-func ReadExtraConfiguration(configurationFile string) (*ExtraConfig, error) {
+func ReadExtraConfiguration(configurationFile string) (ExtraConfig, error) {
 	if len(configurationFile) == 0 {
-		return nil, fmt.Errorf("filename is empty")
+		return ExtraConfig{}, fmt.Errorf("filename is empty")
 	}
 	content, err := os.ReadFile(configurationFile)
 	if err != nil {
-		return nil, fmt.Errorf("the configuration file (%s) is missing or cannot be opened %w", configurationFile, err)
+		return ExtraConfig{}, fmt.Errorf("the configuration file (%s) is missing or cannot be opened %w", configurationFile, err)
 	}
 
 	extraConfig := &ExtraConfig{}
 	if err = yaml.Unmarshal(content, extraConfig); err != nil {
-		return nil, fmt.Errorf("cannot unmarshal the configuration file %w", err)
+		return ExtraConfig{}, fmt.Errorf("cannot unmarshal the configuration file %w", err)
 	}
 	applyDefaults(
 		&extraConfig.CollectorDaemonSetCollectorContainerResources,
@@ -112,7 +113,7 @@ func ReadExtraConfiguration(configurationFile string) (*ExtraConfig, error) {
 		&extraConfig.CollectorDeploymentConfigurationReloaderContainerResources,
 		&ExtraConfigDefaults.CollectorDeploymentConfigurationReloaderContainerResources,
 	)
-	return extraConfig, nil
+	return *extraConfig, nil
 }
 
 func applyDefaults(spec *ResourceRequirementsWithGoMemLimit, defaults *ResourceRequirementsWithGoMemLimit) {
