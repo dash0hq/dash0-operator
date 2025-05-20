@@ -42,6 +42,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 			clientset,
 			recorder,
 			TestImages,
+			util.ExtraConfigDefaults,
 			OTelCollectorBaseUrlTest,
 			false,
 			nil,

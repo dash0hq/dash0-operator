@@ -20,6 +20,8 @@ compatibility.
 */}}
 data:
   extra.yaml: |-
+    initContainerResources:
+      {{- .Values.operator.initContainerResources | toYaml | nindent 6 }}
     collectorDaemonSetCollectorContainerResources:
       {{- toYaml (
             default

@@ -19,6 +19,8 @@ type ResourceRequirementsWithGoMemLimit struct {
 }
 
 type ExtraConfig struct {
+	InstrumentationInitContainerResources ResourceRequirementsWithGoMemLimit `json:"initContainerResources"`
+
 	CollectorDaemonSetCollectorContainerResources             ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetCollectorContainerResources,omitempty"`
 	CollectorDaemonSetConfigurationReloaderContainerResources ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetConfigurationReloaderContainerResources,omitempty"`
 	CollectorDaemonSetFileLogOffsetSyncContainerResources     ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetFileLogOffsetSyncContainerResources,omitempty"`
@@ -32,6 +34,12 @@ type ExtraConfig struct {
 
 var (
 	ExtraConfigDefaults = ExtraConfig{
+		InstrumentationInitContainerResources: ResourceRequirementsWithGoMemLimit{
+			Requests: corev1.ResourceList{
+				corev1.ResourceCPU:    resource.MustParse("100m"),
+				corev1.ResourceMemory: resource.MustParse("150Mi"),
+			},
+		},
 		CollectorDaemonSetCollectorContainerResources: ResourceRequirementsWithGoMemLimit{
 			Limits: corev1.ResourceList{
 				corev1.ResourceMemory: resource.MustParse("500Mi"),
@@ -94,6 +102,10 @@ func ReadExtraConfiguration(configurationFile string) (ExtraConfig, error) {
 		return ExtraConfig{}, fmt.Errorf("cannot unmarshal the configuration file %w", err)
 	}
 	applyDefaults(
+		&extraConfig.InstrumentationInitContainerResources,
+		&ExtraConfigDefaults.InstrumentationInitContainerResources,
+	)
+	applyDefaults(
 		&extraConfig.CollectorDaemonSetCollectorContainerResources,
 		&ExtraConfigDefaults.CollectorDaemonSetCollectorContainerResources,
 	)
@@ -116,25 +128,44 @@ func ReadExtraConfiguration(configurationFile string) (ExtraConfig, error) {
 	return *extraConfig, nil
 }
 
+// applyDefaults sets default values for CPU, Memory, and Ephemeral Storage on requests and limits.
 func applyDefaults(spec *ResourceRequirementsWithGoMemLimit, defaults *ResourceRequirementsWithGoMemLimit) {
-	if spec.Limits == nil {
-		spec.Limits = make(corev1.ResourceList)
+	if spec == nil || defaults == nil {
+		// if spec is a nil pointer, we have no target object to update
+		// if defaults is a nil pointer, we have no source object to copy values from
+		return
 	}
-	if spec.Limits.Memory().IsZero() {
-		spec.Limits[corev1.ResourceMemory] =
-			*defaults.Limits.Memory()
+	if defaults.Requests != nil {
+		if spec.Requests == nil {
+			spec.Requests = make(corev1.ResourceList)
+		}
+		applyDefaultValues(spec.Requests, defaults.Requests)
 	}
-	if spec.GoMemLimit == "" {
-		spec.GoMemLimit =
-			defaults.GoMemLimit
+	if defaults.Limits != nil {
+		if spec.Limits == nil {
+			spec.Limits = make(corev1.ResourceList)
+		}
+		applyDefaultValues(spec.Limits, defaults.Limits)
+
 	}
-	if spec.Requests == nil {
-		spec.Requests = make(corev1.ResourceList)
+	if spec.GoMemLimit == "" && defaults.GoMemLimit != "" {
+		spec.GoMemLimit = defaults.GoMemLimit
 	}
-	if spec.Requests.Memory().IsZero() {
-		spec.Requests[corev1.ResourceMemory] =
-			*defaults.Requests.Memory()
+}
+
+// applyDefaultValues sets default values for CPU, Memory, and Ephemeral Storage on either requests or limits, expects
+// both resourceList and defaults to not be nil.
+func applyDefaultValues(resourceList corev1.ResourceList, defaults corev1.ResourceList) {
+	if resourceList.Cpu().IsZero() && !defaults.Cpu().IsZero() {
+		resourceList[corev1.ResourceCPU] = *defaults.Cpu()
 	}
+	if resourceList.Memory().IsZero() && !defaults.Memory().IsZero() {
+		resourceList[corev1.ResourceMemory] = *defaults.Memory()
+	}
+	if resourceList.StorageEphemeral().IsZero() && !defaults.StorageEphemeral().IsZero() {
+		resourceList[corev1.ResourceEphemeralStorage] = *defaults.StorageEphemeral()
+	}
+
 }
 
 func (rr ResourceRequirementsWithGoMemLimit) ToResourceRequirements() corev1.ResourceRequirements {

@@ -42,7 +42,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 
 	ctx := context.Background()
 	logger := log.FromContext(ctx)
-	workloadModifier := NewResourceModifier(instrumentationMetadata, &logger)
+	workloadModifier := NewResourceModifier(instrumentationMetadata, util.ExtraConfigDefaults, &logger)
 
 	Describe("when instrumenting workloads", func() {
 		It("should instrument a basic cron job", func() {
@@ -578,7 +578,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 	Describe("individual modification functions", func() {
 		ctx := context.Background()
 		logger := log.FromContext(ctx)
-		workloadModifier := NewResourceModifier(instrumentationMetadata, &logger)
+		workloadModifier := NewResourceModifier(instrumentationMetadata, util.ExtraConfigDefaults, &logger)
 
 		type addLdPreloadTest struct {
 			value       string

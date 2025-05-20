@@ -156,15 +156,18 @@ func newNotModifiedSkipLoggingResult(
 
 type ResourceModifier struct {
 	instrumentationMetadata util.InstrumentationMetadata
+	extraConfig             util.ExtraConfig
 	logger                  *logr.Logger
 }
 
 func NewResourceModifier(
 	instrumentationMetadata util.InstrumentationMetadata,
+	extraConfig util.ExtraConfig,
 	logger *logr.Logger,
 ) *ResourceModifier {
 	return &ResourceModifier{
 		instrumentationMetadata: instrumentationMetadata,
+		extraConfig:             extraConfig,
 		logger:                  logger,
 	}
 }
@@ -379,12 +382,7 @@ func (m *ResourceModifier) createInitContainer(podSpec *corev1.PodSpec) *corev1.
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
 		},
-		Resources: corev1.ResourceRequirements{
-			Requests: corev1.ResourceList{
-				corev1.ResourceCPU:    resource.MustParse("250m"),
-				corev1.ResourceMemory: resource.MustParse("150Mi"),
-			},
-		},
+		Resources: m.extraConfig.InstrumentationInitContainerResources.ToResourceRequirements(),
 		VolumeMounts: []corev1.VolumeMount{
 			{
 				Name:      dash0VolumeName,
