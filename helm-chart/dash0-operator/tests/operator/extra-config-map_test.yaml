@@ -9,31 +9,46 @@ tests:
   - it: should render custom configuration values
     set:
       operator:
+        initContainerResources:
+          limits:
+            memory: 106Mi
+            cpu: 206m
+            ephemeral-storage: 306Mi
+          requests:
+            memory: 406Mi
+            cpu: 506m
+            ephemeral-storage: 606Mi
         collectors:
           daemonSetCollectorContainerResources:
             limits:
               memory: 101Mi
               cpu: 201m
-            gomemlimit: 301MiB
+              ephemeral-storage: 301Mi
+            gomemlimit: 401MiB
             requests:
-              memory: 401Mi
-              cpu: 501m
+              memory: 501Mi
+              cpu: 601m
+              ephemeral-storage: 701Mi
           daemonSetConfigurationReloaderContainerResources:
             limits:
               memory: 102Mi
               cpu: 202m
-            gomemlimit: 302MiB
+              ephemeral-storage: 302Mi
+            gomemlimit: 402MiB
             requests:
-              memory: 402Mi
-              cpu: 502m
+              memory: 502Mi
+              cpu: 602m
+              ephemeral-storage: 702Mi
           daemonSetFileLogOffsetSyncContainerResources:
             limits:
               memory: 103Mi
               cpu: 203m
-            gomemlimit: 303MiB
+              ephemeral-storage: 303Mi
+            gomemlimit: 403MiB
             requests:
-              memory: 403Mi
-              cpu: 503m
+              memory: 503Mi
+              cpu: 603m
+              ephemeral-storage: 703Mi
           filelogOffsetSyncStorageVolume:
             name: offset-storage
             persistentVolumeClaim:
@@ -42,18 +57,22 @@ tests:
             limits:
               memory: 104Mi
               cpu: 204m
-            gomemlimit: 304MiB
+              ephemeral-storage: 304Mi
+            gomemlimit: 404MiB
             requests:
-              memory: 404Mi
-              cpu: 504m
+              memory: 504Mi
+              cpu: 604m
+              ephemeral-storage: 704Mi
           deploymentConfigurationReloaderContainerResources:
             limits:
               memory: 105Mi
               cpu: 205m
-            gomemlimit: 305MiB
+              ephemeral-storage: 305Mi
+            gomemlimit: 405MiB
             requests:
-              memory: 405Mi
-              cpu: 505m
+              memory: 505Mi
+              cpu: 605m
+              ephemeral-storage: 705Mi
           daemonSetTolerations:
             - key: key1
               operator: Equal
@@ -66,50 +85,69 @@ tests:
       - equal:
           path: data['extra.yaml']
           value:  |-
+            initContainerResources:
+              limits:
+                cpu: 206m
+                ephemeral-storage: 306Mi
+                memory: 106Mi
+              requests:
+                cpu: 506m
+                ephemeral-storage: 606Mi
+                memory: 406Mi
             collectorDaemonSetCollectorContainerResources:
-              gomemlimit: 301MiB
+              gomemlimit: 401MiB
               limits:
                 cpu: 201m
+                ephemeral-storage: 301Mi
                 memory: 101Mi
               requests:
-                cpu: 501m
-                memory: 401Mi
+                cpu: 601m
+                ephemeral-storage: 701Mi
+                memory: 501Mi
             collectorDaemonSetConfigurationReloaderContainerResources:
-              gomemlimit: 302MiB
+              gomemlimit: 402MiB
               limits:
                 cpu: 202m
+                ephemeral-storage: 302Mi
                 memory: 102Mi
               requests:
-                cpu: 502m
-                memory: 402Mi
+                cpu: 602m
+                ephemeral-storage: 702Mi
+                memory: 502Mi
             collectorDaemonSetFileLogOffsetSyncContainerResources:
-              gomemlimit: 303MiB
+              gomemlimit: 403MiB
               limits:
                 cpu: 203m
+                ephemeral-storage: 303Mi
                 memory: 103Mi
               requests:
-                cpu: 503m
-                memory: 403Mi
+                cpu: 603m
+                ephemeral-storage: 703Mi
+                memory: 503Mi
             collectorFilelogOffsetStorageVolume:
               name: offset-storage
               persistentVolumeClaim:
                 claimName: offset-storage-claim
             collectorDeploymentCollectorContainerResources:
-              gomemlimit: 304MiB
+              gomemlimit: 404MiB
               limits:
                 cpu: 204m
+                ephemeral-storage: 304Mi
                 memory: 104Mi
               requests:
-                cpu: 504m
-                memory: 404Mi
+                cpu: 604m
+                ephemeral-storage: 704Mi
+                memory: 504Mi
             collectorDeploymentConfigurationReloaderContainerResources:
-              gomemlimit: 305MiB
+              gomemlimit: 405MiB
               limits:
                 cpu: 205m
+                ephemeral-storage: 305Mi
                 memory: 105Mi
               requests:
-                cpu: 505m
-                memory: 405Mi
+                cpu: 605m
+                ephemeral-storage: 705Mi
+                memory: 505Mi
             daemonSetTolerations:
               - effect: NoSchedule
                 key: key1
@@ -168,6 +206,10 @@ tests:
       - equal:
           path: data['extra.yaml']
           value:  |-
+            initContainerResources:
+              requests:
+                cpu: 10m
+                memory: 150Mi
             collectorDaemonSetCollectorContainerResources:
               gomemlimit: 301MiB
               limits:

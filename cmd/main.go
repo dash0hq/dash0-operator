@@ -697,6 +697,7 @@ func startDash0Controllers(
 		clientset,
 		mgr.GetEventRecorderFor("dash0-startup-tasks"),
 		images,
+		extraConfig,
 		oTelCollectorBaseUrl,
 		isIPv6Cluster,
 		instrumentationDelays,
@@ -721,6 +722,7 @@ func startDash0Controllers(
 		clientset,
 		mgr.GetEventRecorderFor("dash0-monitoring-controller"),
 		images,
+		extraConfig,
 		oTelCollectorBaseUrl,
 		isIPv6Cluster,
 		instrumentationDelays,
@@ -828,6 +830,7 @@ func startDash0Controllers(
 		Client:               k8sClient,
 		Recorder:             mgr.GetEventRecorderFor("dash0-instrumentation-webhook"),
 		Images:               images,
+		ExtraConfig:          extraConfig,
 		OTelCollectorBaseUrl: oTelCollectorBaseUrl,
 		IsIPv6Cluster:        isIPv6Cluster,
 	}).SetupWebhookWithManager(mgr); err != nil {

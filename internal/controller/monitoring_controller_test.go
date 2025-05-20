@@ -59,6 +59,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			clientset,
 			recorder,
 			TestImages,
+			util.ExtraConfigDefaults,
 			OTelCollectorBaseUrlTest,
 			false,
 			nil,

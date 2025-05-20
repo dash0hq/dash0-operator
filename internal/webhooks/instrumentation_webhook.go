@@ -32,6 +32,7 @@ type InstrumentationWebhookHandler struct {
 	Client               client.Client
 	Recorder             record.EventRecorder
 	Images               util.Images
+	ExtraConfig          util.ExtraConfig
 	OTelCollectorBaseUrl string
 	IsIPv6Cluster        bool
 }
@@ -490,6 +491,7 @@ func (h *InstrumentationWebhookHandler) newWorkloadModifier(logger *logr.Logger)
 			OTelCollectorBaseUrl: h.OTelCollectorBaseUrl,
 			IsIPv6Cluster:        h.IsIPv6Cluster,
 		},
+		h.ExtraConfig,
 		logger,
 	)
 }

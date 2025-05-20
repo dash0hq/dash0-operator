@@ -3,6 +3,10 @@ extra config map should match snapshot:
     apiVersion: v1
     data:
       extra.yaml: |-
+        initContainerResources:
+          requests:
+            cpu: 10m
+            memory: 150Mi
         collectorDaemonSetCollectorContainerResources:
           gomemlimit: 400MiB
           limits:

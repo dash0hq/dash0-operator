@@ -95,6 +95,7 @@ var _ = BeforeSuite(func() {
 		clientset,
 		mgr.GetEventRecorderFor("dash0-monitoring-controller"),
 		TestImages,
+		util.ExtraConfigDefaults,
 		OTelCollectorBaseUrlTest,
 		false,
 		nil,

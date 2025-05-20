@@ -168,6 +168,20 @@ operator:
       memory: 64Mi
       ephemeral-storage: 500Mi
 
+  # Resource settings for the dash0-instrumentation init container that will be added to each pod when automatic
+  # workload instrumentation is enabled.
+  initContainerResources:
+    # By default, this container defines no resource limits, but if required, they can be set here.
+    # limits:
+    #   cpu:
+    #   memory:
+    #   ephemeral-storage:
+    requests:
+      cpu: 10m
+      memory: 150Mi
+      # By default, this container defines no ephemeral-storage request limits, but if required, it can be set here.
+      # ephemeral-storage:
+
   # the port for the metrics service
   metricsPort: 8443
 
