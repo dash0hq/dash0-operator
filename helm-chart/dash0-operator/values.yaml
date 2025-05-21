@@ -172,7 +172,8 @@ operator:
   # workload instrumentation is enabled.
   initContainerResources:
     # By default, this container defines no resource limits, but if required, they can be set here.
-    # Note that putting a low CPU limit on the init container might slow down the pod startup considerably.
+    # Note that putting a low CPU limit on the init container might slow down pod startup for instrumented pods
+    # considerably.
     # limits:
     #   cpu:
     #   memory:

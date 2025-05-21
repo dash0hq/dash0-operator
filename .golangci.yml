@@ -38,6 +38,9 @@ linters:
     - unconvert
     - unparam
     - unused
+  exclusions:
+    paths:
+      - "internal/webhooks/vendored/*"
 linters-settings:
   errcheck:
     exclude-functions:
