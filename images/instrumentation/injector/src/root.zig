@@ -11,26 +11,15 @@ const res_attrs = @import("resource_attributes.zig");
 const types = @import("types.zig");
 
 const assert = std.debug.assert;
-const testing = std.testing;
-const expect = testing.expect;
+const expect = std.testing.expect;
 
-// TODO switch to local var again
-var environ_idx: usize = 0;
+var __environ: *[][*:0]c_char = undefined;
 
-// TODO maybe initialize the initial dummy __environ in a less stupid way :)
-// TODO actually, use heap memory here.
-// TODO init with a small dummy value here, overwrite in _initEnviron
-var environ_buffer: [131072]u8 = [_]u8{0} ** 131072;
-const environ_buffer_ptr: *[131072]u8 = &environ_buffer;
-
-// Export __environ as a strong symbol, to override the glibc/musl symbol.
-export var __environ: [*]u8 = environ_buffer_ptr;
-// export var __my_environ: [*]u8 = environ_buffer_ptr;
-
-// Also declare (and thus override) the aliases _environ and environ, see e.g.
-// https://sourceware.org/git/?p=glibc.git;a=blob;f=posix/environ.c
-// export var _environ: [*]u8 = __environ;
-// export var environ: [*]u8 = __environ;
+comptime {
+    @export(&__environ, .{ .name = "__environ", .linkage = .strong });
+    @export(&__environ, .{ .name = "_environ", .linkage = .strong });
+    @export(&__environ, .{ .name = "environ", .linkage = .strong });
+}
 
 // Ensure we process requests synchronously. LibC is *not* threadsafe
 // with respect to the environment, but chances are some apps will try
@@ -59,73 +48,91 @@ var modified_otel_resource_attributes_value: ?types.NullTerminatedString = null;
 export const init_array: [1]*const fn () callconv(.C) void linksection(".init_array") = .{&initEnviron};
 
 fn initEnviron() callconv(.C) void {
-    std.debug.print("initEnviron() START\n", .{});
     _initEnviron() catch @panic("[Dash0 injector] initEnviron failed");
-    std.debug.print("initEnviron() END\n", .{});
 }
 
 fn _initEnviron() !void {
-    // std.debug.print("root.zig#_initEnviron() START\n", .{});
-    // std.debug.print("root.zig#_initEnviron: XXX my_exported pointer: {x}\n", .{@intFromPtr(my_exported)});
-
     const proc_self_environ_path = "/proc/self/environ";
     const proc_self_environ_file = try std.fs.openFileAbsolute(proc_self_environ_path, .{
         .mode = std.fs.File.OpenMode.read_only,
         .lock = std.fs.File.Lock.none,
     });
     defer proc_self_environ_file.close();
-    // std.debug.print("root.zig#_initEnviron() file open done\n", .{});
 
-    // For now, we allocate heap memory for reading /proc/self/environ. We might want to optimize this later.
-    // StackFallbackAllocator might be a good convenient option.
-    var buf_reader = std.io.bufferedReader(proc_self_environ_file.reader());
-    var in_stream = buf_reader.reader();
-    // std.debug.print("root.zig#_initEnviron() init in_stream done\n", .{});
+    // IMPORTANT! /proc/selv/environ skips the final \x00 terminator
+    // TODO Fix max size
+    const environ_buffer_original = try proc_self_environ_file.readToEndAlloc(std.heap.page_allocator, std.math.maxInt(usize));
+    defer std.heap.page_allocator.free(environ_buffer_original);
 
-    // We have not seen OTEL_RESOURCE_ATTRIBUTES /proc/self/environ, add it now.
-    for (res_attrs.otel_resource_attributes_env_var_name) |c| {
-        environ_buffer[environ_idx] = c;
-        environ_idx += 1;
-    }
-    environ_buffer[environ_idx] = '=';
-    environ_idx += 1;
-    for ("k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app") |c| {
-        environ_buffer[environ_idx] = c;
-        environ_idx += 1;
-    }
-    environ_buffer[environ_idx] = 0;
-    environ_idx += 1;
-    // std.debug.print("root.zig#_initEnviron() OTEL_RESOURCE_ATTRIBUTES has been added\n", .{});
+    var otel_resource_attributes_env_var: []c_char = &.{};
+    var otel_resource_attributes_index: usize = 0;
 
-    var init_arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer init_arena.deinit();
-    const init_allocator = init_arena.allocator();
-    // std.debug.print("root.zig#_initEnviron() init init_allocator done\n", .{});
-    // TODO max_size? We currently set std.math.maxInt(usize) which basically means "unlimited", we might want to set
-    // an (arbitrary but reasonable) limit here?
-    // TODO switch to local var again var environ_idx: usize = 0;
-    while (try in_stream.readUntilDelimiterOrEofAlloc(init_allocator, 0, std.math.maxInt(usize))) |environ_entry| {
-        // std.debug.print("root.zig#_initEnviron: read environ entry: {s}\n", .{environ_entry});
-        for (environ_entry) |c| {
-            environ_buffer[environ_idx] = c;
-            environ_idx += 1;
+    if (std.mem.indexOf(c_char, environ_buffer_original, "OTEL_RESOURCE_ATTRIBUTES=")) |start_index| {
+        if (start_index == 0 or
+            // Excess of caution in case there is something out there with a 'POTEL_RESOURCE_ATTRIBUTES' :-)
+            (start_index > 0 and environ_buffer_original[start_index - 1] == '\x00'))
+        {
+            if (std.mem.indexOfPos(c_char, environ_buffer_original, start_index, "\x00")) |end_index| {
+                otel_resource_attributes_env_var = environ_buffer_original[start_index..end_index];
+                otel_resource_attributes_index = start_index;
+            }
         }
-        // add null terminator for this environ entry
-        environ_buffer[environ_idx] = 0;
-        environ_idx += 1;
     }
-    // std.debug.print("root.zig#_initEnviron() /proc/self/environ has been read once\n", .{});
 
-    // Add final null terminator to signify the end of __environ.
-    environ_buffer[environ_idx] = 0;
-    environ_idx += 1;
+    // TODO Get actual values from the environment
+    // TODO Avoid duplication of values already set
+    const additional_values = "k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app";
 
-    std.debug.print("root.zig#_initEnviron: XXX __environ outer pointer: {x}\n", .{@intFromPtr(__environ)});
-    std.debug.print("root.zig#_initEnviron: XXX environ_buffer: {s}\n", .{ environ_buffer[0..environ_idx] });
-    // std.debug.print("root.zig#_initEnviron: XXX __my_environ outer pointer: {x}\n", .{@intFromPtr(__my_environ)});
-    // std.debug.print("root.zig#_initEnviron: XXX __my_environ inner pointer: {x}\n", .{@intFromPtr(my_environ_buffer_ptr)});
-    // std.debug.print("root.zig#_initEnviron: XXX my_environ_buffer: {s}\n", .{ my_environ_buffer[0..environ_idx] });
-    // std.debug.print("root.zig#_initEnviron() END\n", .{});
+    var environ_buffer: [][*:0]u8 = undefined;
+    if (otel_resource_attributes_env_var.len > 0) {
+        // Insert the additional values after the existing OTEL_RESOURCE_ATTRIBUTES
+        environ_buffer = try allocate_env(std.heap.page_allocator, "{s},{s}\x00{s}\x00", .{
+            environ_buffer_original[0 .. otel_resource_attributes_index + otel_resource_attributes_env_var.len],
+            additional_values,
+            environ_buffer_original[otel_resource_attributes_index + 1 + otel_resource_attributes_env_var.len ..],
+        });
+    } else {
+        // Append OTEL_RESOURCE_ATTRIBUTES
+        environ_buffer = try allocate_env(std.heap.page_allocator, "{s}\x00{s}={s}\x00\x00", .{
+            environ_buffer_original[0 .. environ_buffer_original.len - 1], // Skip the last \x00
+            "OTEL_RESOURCE_ATTRIBUTES",
+            additional_values,
+        });
+    }
+
+    std.os.environ = environ_buffer;
+
+    std.debug.print("root.zig#initEnviron: OTEL_RESOURCE_ATTRIBUTES => '{?s}'\n", .{std.posix.getenv("OTEL_RESOURCE_ATTRIBUTES")});
+
+    __environ = &environ_buffer;
+}
+
+fn allocate_env(allocator: std.mem.Allocator, comptime fmt: []const u8, args: anytype) ![][*:0]u8 {
+    const buf = try std.fmt.allocPrint(allocator, fmt, args);
+
+    var result = std.ArrayList([*:0]u8).init(allocator);
+    // We do not need to call `result.deinit()` because we are going to return the result as an owned slice,
+    // which will owned in terms of memory allocation by the caller of this function.
+
+    var index: usize = 0;
+    for (buf, 0..) |c, i| {
+        if (c == 0) {
+            // We have a null terminator, so we need to create a slice from the start of the string to the null terminator
+            // and append it to the result, provided the string is not empty.
+            if (i > index) {
+                try result.append(buf[index..i :0]);
+            } else {
+                break; // Empty string, we can stop processing
+            }
+            index = i + 1;
+        }
+    }
+
+    // Append an empty string at the end to terminate the list
+    const empty_string: [*:0]u8 = "";
+    try result.append(empty_string);
+
+    return try result.toOwnedSlice();
 }
 
 // fn getenv(name_z: types.NullTerminatedString) ?types.NullTerminatedString {
