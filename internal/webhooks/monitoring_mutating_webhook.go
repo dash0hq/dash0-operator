@@ -65,32 +65,13 @@ func (h *MonitoringMutatingWebhookHandler) Handle(ctx context.Context, request a
 	// Normalize spec.transform to the transform processors "advanced" config format.
 	transform := monitoringResource.Spec.Transform
 	if transform != nil {
-		traceTransformGroups, responseStatus, err :=
-			h.normalizeTransformGroupsForOneSignal(transform.Traces, "trace_statements", &logger)
+		var responseStatus int32
+		var err error
+		monitoringResource.Spec.NormalizedTransformSpec, responseStatus, err = normalizeTransform(transform, &logger)
 		if err != nil {
-			logger.Error(err, "error when normalizing transform.trace_statements")
 			return admission.Errored(responseStatus, err)
 		}
-		metricTransformGroups, responseStatus, err :=
-			h.normalizeTransformGroupsForOneSignal(transform.Metrics, "metric_statements", &logger)
-		if err != nil {
-			logger.Error(err, "error when normalizing transform.metric_statements")
-			return admission.Errored(responseStatus, err)
-		}
-		logTransformGroups, responseStatus, err :=
-			h.normalizeTransformGroupsForOneSignal(transform.Logs, "log_statements", &logger)
-		if err != nil {
-			logger.Error(err, "error when normalizing transform.log_statements")
-			return admission.Errored(responseStatus, err)
-		}
-
 		patchRequired = true
-		monitoringResource.Spec.NormalizedTransformSpec = &dash0v1alpha1.NormalizedTransformSpec{
-			ErrorMode: transform.ErrorMode,
-			Traces:    traceTransformGroups,
-			Metrics:   metricTransformGroups,
-			Logs:      logTransformGroups,
-		}
 	}
 
 	if !patchRequired {
@@ -106,7 +87,35 @@ func (h *MonitoringMutatingWebhookHandler) Handle(ctx context.Context, request a
 	return admission.PatchResponseFromRaw(request.Object.Raw, marshalled)
 }
 
-func (h *MonitoringMutatingWebhookHandler) normalizeTransformGroupsForOneSignal(
+func normalizeTransform(transform *dash0v1alpha1.Transform, logger *logr.Logger) (*dash0v1alpha1.NormalizedTransformSpec, int32, error) {
+	traceTransformGroups, responseStatus, err :=
+		normalizeTransformGroupsForOneSignal(transform.Traces, "trace_statements", logger)
+	if err != nil {
+		logger.Error(err, "error when normalizing transform.trace_statements")
+		return nil, responseStatus, err
+	}
+	metricTransformGroups, responseStatus, err :=
+		normalizeTransformGroupsForOneSignal(transform.Metrics, "metric_statements", logger)
+	if err != nil {
+		logger.Error(err, "error when normalizing transform.metric_statements")
+		return nil, responseStatus, err
+	}
+	logTransformGroups, responseStatus, err :=
+		normalizeTransformGroupsForOneSignal(transform.Logs, "log_statements", logger)
+	if err != nil {
+		logger.Error(err, "error when normalizing transform.log_statements")
+		return nil, responseStatus, err
+	}
+
+	return &dash0v1alpha1.NormalizedTransformSpec{
+		ErrorMode: transform.ErrorMode,
+		Traces:    traceTransformGroups,
+		Metrics:   metricTransformGroups,
+		Logs:      logTransformGroups,
+	}, 0, nil
+}
+
+func normalizeTransformGroupsForOneSignal(
 	signalTransformSpec []json.RawMessage,
 	signalTypeKey string,
 	logger *logr.Logger,

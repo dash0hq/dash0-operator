@@ -9,6 +9,10 @@ import (
 	"net/http"
 	"slices"
 
+	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl"
+	"go.opentelemetry.io/collector/component"
+	"go.uber.org/multierr"
+	"go.uber.org/zap"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -16,6 +20,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/webhooks/vendored/opentelemetry-collector-contrib/internal_/filter/filterottl"
+	"github.com/dash0hq/dash0-operator/internal/webhooks/vendored/opentelemetry-collector-contrib/processor/transformprocessor/internal_/common"
+	"github.com/dash0hq/dash0-operator/internal/webhooks/vendored/opentelemetry-collector-contrib/processor/transformprocessor/internal_/logs"
+	"github.com/dash0hq/dash0-operator/internal/webhooks/vendored/opentelemetry-collector-contrib/processor/transformprocessor/internal_/metrics"
+	"github.com/dash0hq/dash0-operator/internal/webhooks/vendored/opentelemetry-collector-contrib/processor/transformprocessor/internal_/traces"
 )
 
 type MonitoringValidationWebhookHandler struct {
@@ -72,44 +81,183 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 			))
 	}
 
-	if monitoringResource.Spec.Export != nil {
-		return admission.Allowed("")
+	admissionResponse, done := h.validateExport(ctx, monitoringResource)
+	if done {
+		return admissionResponse
 	}
 
-	operatorConfigurationList := &dash0v1alpha1.Dash0OperatorConfigurationList{}
-	if err := h.Client.List(ctx, operatorConfigurationList, &client.ListOptions{}); err != nil {
-		if apierrors.IsNotFound(err) {
-			return admission.Denied("The provided Dash0 monitoring resource does not have an export configuration, and no Dash0 operator configuration resource exists.")
-		} else {
-			return admission.Errored(http.StatusInternalServerError, err)
-		}
-	}
-
-	var availableOperatorConfigurations []dash0v1alpha1.Dash0OperatorConfiguration
-	for _, operatorConfiguration := range operatorConfigurationList.Items {
-		if operatorConfiguration.IsAvailable() {
-			availableOperatorConfigurations = append(availableOperatorConfigurations, operatorConfiguration)
-		}
-	}
-
-	if len(availableOperatorConfigurations) == 0 {
-		return admission.Denied(
-			"The provided Dash0 monitoring resource does not have an export configuration, and no Dash0 operator " +
-				"configuration resources are available.")
-	}
-	if len(availableOperatorConfigurations) > 1 {
-		return admission.Denied(
-			"The provided Dash0 monitoring resource does not have an export configuration, and there is more than " +
-				"one available Dash0 operator configuration, remove all but one Dash0 operator configuration resource.")
-	}
-
-	opperatorConfiguration := availableOperatorConfigurations[0]
-
-	if opperatorConfiguration.Spec.Export == nil {
-		return admission.Denied(
-			"The provided Dash0 monitoring resource does not have an export configuration, and the existing Dash0 " +
-				"operator configuration does not have an export configuration either.")
+	admissionResponse, done = h.validateOttl(monitoringResource)
+	if done {
+		return admissionResponse
 	}
 
 	return admission.Allowed("")
+}
+
+func (h *MonitoringValidationWebhookHandler) validateExport(ctx context.Context, monitoringResource *dash0v1alpha1.Dash0Monitoring) (admission.Response, bool) {
+	if monitoringResource.Spec.Export == nil {
+		operatorConfigurationList := &dash0v1alpha1.Dash0OperatorConfigurationList{}
+		if err := h.Client.List(ctx, operatorConfigurationList, &client.ListOptions{}); err != nil {
+			if apierrors.IsNotFound(err) {
+				return admission.Denied("The provided Dash0 monitoring resource does not have an export configuration, and no Dash0 operator configuration resource exists."), true
+			} else {
+				return admission.Errored(http.StatusInternalServerError, err), true
+			}
+		}
+
+		var availableOperatorConfigurations []dash0v1alpha1.Dash0OperatorConfiguration
+		for _, operatorConfiguration := range operatorConfigurationList.Items {
+			if operatorConfiguration.IsAvailable() {
+				availableOperatorConfigurations = append(availableOperatorConfigurations, operatorConfiguration)
+			}
+		}
+
+		if len(availableOperatorConfigurations) == 0 {
+			return admission.Denied(
+				"The provided Dash0 monitoring resource does not have an export configuration, and no Dash0 operator " +
+					"configuration resources are available."), true
+		}
+		if len(availableOperatorConfigurations) > 1 {
+			return admission.Denied(
+				"The provided Dash0 monitoring resource does not have an export configuration, and there is more than " +
+					"one available Dash0 operator configuration, remove all but one Dash0 operator configuration resource."), true
+		}
+
+		opperatorConfiguration := availableOperatorConfigurations[0]
+
+		if opperatorConfiguration.Spec.Export == nil {
+			return admission.Denied(
+				"The provided Dash0 monitoring resource does not have an export configuration, and the existing Dash0 " +
+					"operator configuration does not have an export configuration either."), true
+		}
+	}
+	return admission.Response{}, false
+}
+
+func (h *MonitoringValidationWebhookHandler) validateOttl(monitoringResource *dash0v1alpha1.Dash0Monitoring) (admission.Response, bool) {
+	// Note: Due to dash0v1alpha1.Filter and dash0v1alpha1.Transform using different types than the Config modules in
+	// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.126.0/processor/filterprocessor and
+	// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.126.0/processor/transformprocessor,
+	// we need to vendor in quite a bit of internal code from the collector-contrib repo, see
+	// internal/webhooks/vendored/opentelemetry-collector-contrib. Would be worth trying to refactor
+	// dash0v1alpha1.Filter and dash0v1alpha1.Transform to directly use the types from the collector-contrib repo, then
+	// we might be able to get away with only using collector-contrib's public API only, in particular,
+	// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.126.0/processor/filterprocessor/config.go,
+	// func (cfg *Config) Validate() error, and
+	// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.126.0/processor/transformprocessor/config.go,
+	// func (cfg *Config) Validate() error.
+	if monitoringResource.Spec.Filter != nil {
+		if err := validateFilter(monitoringResource.Spec.Filter); err != nil {
+			return admission.Denied(err.Error()), true
+		}
+	}
+	if monitoringResource.Spec.NormalizedTransformSpec != nil {
+		if err := validateTransform(monitoringResource.Spec.NormalizedTransformSpec); err != nil {
+			return admission.Denied(err.Error()), true
+		}
+	}
+	return admission.Response{}, false
+}
+
+// validateFilter is a modified copy of
+// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.126.0/processor/filterprocessor/config.go,
+// func (cfg *Config) Validate() error {
+func validateFilter(filter *dash0v1alpha1.Filter) error {
+	var errors error
+
+	if filter.Traces != nil {
+		if filter.Traces.SpanFilter != nil {
+			_, err := filterottl.NewBoolExprForSpan(filter.Traces.SpanFilter, filterottl.StandardSpanFuncs(), ottl.PropagateError, component.TelemetrySettings{Logger: zap.NewNop()})
+			errors = multierr.Append(errors, err)
+		}
+		if filter.Traces.SpanEventFilter != nil {
+			_, err := filterottl.NewBoolExprForSpanEvent(filter.Traces.SpanEventFilter, filterottl.StandardSpanEventFuncs(), ottl.PropagateError, component.TelemetrySettings{Logger: zap.NewNop()})
+			errors = multierr.Append(errors, err)
+		}
+	}
+
+	if filter.Metrics != nil {
+		if filter.Metrics.MetricFilter != nil {
+			_, err := filterottl.NewBoolExprForMetric(filter.Metrics.MetricFilter, filterottl.StandardMetricFuncs(), ottl.PropagateError, component.TelemetrySettings{Logger: zap.NewNop()})
+			errors = multierr.Append(errors, err)
+		}
+		if filter.Metrics.DataPointFilter != nil {
+			_, err := filterottl.NewBoolExprForDataPoint(filter.Metrics.DataPointFilter, filterottl.StandardDataPointFuncs(), ottl.PropagateError, component.TelemetrySettings{Logger: zap.NewNop()})
+			errors = multierr.Append(errors, err)
+		}
+	}
+
+	if filter.Logs != nil {
+		if filter.Logs.LogRecordFilter != nil {
+			_, err := filterottl.NewBoolExprForLog(filter.Logs.LogRecordFilter, filterottl.StandardLogFuncs(), ottl.PropagateError, component.TelemetrySettings{Logger: zap.NewNop()})
+			errors = multierr.Append(errors, err)
+		}
+	}
+
+	return errors
+}
+
+// validateTransform is a modified copy of
+// https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.126.0/processor/transformprocessor/config.go,
+// func (cfg *Config) Validate() error {
+func validateTransform(transform *dash0v1alpha1.NormalizedTransformSpec) error {
+	var errors error
+
+	if len(transform.Traces) > 0 {
+		pc, err := common.NewTraceParserCollection(component.TelemetrySettings{Logger: zap.NewNop()}, common.WithSpanParser(traces.SpanFunctions()), common.WithSpanEventParser(traces.SpanEventFunctions()))
+		if err != nil {
+			return err
+		}
+		for _, cs := range transform.Traces {
+			_, err = pc.ParseContextStatements(toContextStatements(cs))
+			if err != nil {
+				errors = multierr.Append(errors, err)
+			}
+		}
+	}
+
+	if len(transform.Metrics) > 0 {
+		pc, err := common.NewMetricParserCollection(component.TelemetrySettings{Logger: zap.NewNop()}, common.WithMetricParser(metrics.MetricFunctions()), common.WithDataPointParser(metrics.DataPointFunctions()))
+		if err != nil {
+			return err
+		}
+		for _, cs := range transform.Metrics {
+			_, err := pc.ParseContextStatements(toContextStatements(cs))
+			if err != nil {
+				errors = multierr.Append(errors, err)
+			}
+		}
+	}
+
+	if len(transform.Logs) > 0 {
+		pc, err := common.NewLogParserCollection(component.TelemetrySettings{Logger: zap.NewNop()}, common.WithLogParser(logs.LogFunctions()))
+		if err != nil {
+			return err
+		}
+		for _, cs := range transform.Logs {
+			_, err = pc.ParseContextStatements(toContextStatements(cs))
+			if err != nil {
+				errors = multierr.Append(errors, err)
+			}
+		}
+	}
+
+	return errors
+}
+
+func toContextStatements(transformGroup dash0v1alpha1.NormalizedTransformGroup) common.ContextStatements {
+	var context common.ContextID
+	if transformGroup.Context != nil {
+		context = common.ContextID(*transformGroup.Context)
+	}
+	var errorMode ottl.ErrorMode
+	if transformGroup.ErrorMode != nil {
+		errorMode = ottl.ErrorMode(*transformGroup.ErrorMode)
+	}
+	return common.ContextStatements{
+		Context:    context,
+		Conditions: transformGroup.Conditions,
+		Statements: transformGroup.Statements,
+		ErrorMode:  errorMode,
+	}
 }

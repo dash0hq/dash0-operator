@@ -372,8 +372,18 @@ spec:
 					},
 					Transform: &dash0v1alpha1.Transform{
 						Traces: []json.RawMessage{
-							[]byte(`"trace statement 1"`),
-							[]byte(`"trace statement 2"`),
+							[]byte(`"truncate_all(span.attributes, 1024)"`),
+						},
+						Metrics: []json.RawMessage{
+							[]byte(`{
+                            "error_mode": "silent",
+					        "conditions": [ "metric.type == METRIC_DATA_TYPE_SUM" ],
+					        "statements": [ "truncate_all(datapoint.attributes, 1024)" ],
+					        "context": "datapoint"
+					    }`),
+						},
+						Logs: []json.RawMessage{
+							[]byte(`"truncate_all(log.attributes, 1024)"`),
 						},
 					},
 				},
@@ -383,22 +393,31 @@ spec:
 			normalizedMonitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
 			normalizedTransformSpec := normalizedMonitoringResource.Spec.NormalizedTransformSpec
 			Expect(normalizedTransformSpec).ToNot(BeNil())
-			Expect(normalizedTransformSpec.Metrics).To(BeNil())
-			Expect(normalizedTransformSpec.Logs).To(BeNil())
-			Expect(normalizedTransformSpec.Traces).To(HaveLen(2))
+			Expect(normalizedTransformSpec.Traces).To(HaveLen(1))
 			t1 := normalizedTransformSpec.Traces[0]
 			Expect(t1.Context).To(BeNil())
 			Expect(t1.ErrorMode).To(BeNil())
 			Expect(t1.Conditions).To(BeNil())
 			Expect(t1.Statements).To(HaveLen(1))
-			Expect(t1.Statements[0]).To(Equal("trace statement 1"))
-			t2 := normalizedTransformSpec.Traces[1]
-			Expect(t2.Context).To(BeNil())
-			Expect(t2.ErrorMode).To(BeNil())
-			Expect(t2.Conditions).To(BeNil())
-			Expect(t2.Statements).To(HaveLen(1))
-			Expect(t2.Statements[0]).To(Equal("trace statement 2"))
-			Expect(err).ToNot(HaveOccurred())
+			Expect(t1.Statements[0]).To(Equal("truncate_all(span.attributes, 1024)"))
+			Expect(normalizedTransformSpec.Metrics).To(HaveLen(1))
+			m1 := normalizedTransformSpec.Metrics[0]
+			Expect(m1.Context).ToNot(BeNil())
+			Expect(*m1.Context).To(Equal("datapoint"))
+			Expect(m1.ErrorMode).ToNot(BeNil())
+			Expect(string(*m1.ErrorMode)).To(Equal("silent"))
+			Expect(m1.Conditions).To(HaveLen(1))
+			Expect(m1.Conditions[0]).To(Equal("metric.type == METRIC_DATA_TYPE_SUM"))
+			Expect(m1.Statements).To(HaveLen(1))
+			Expect(m1.Statements[0]).To(Equal("truncate_all(datapoint.attributes, 1024)"))
+			Expect(normalizedTransformSpec.Logs).To(HaveLen(1))
+			l1 := normalizedTransformSpec.Logs[0]
+			Expect(l1.Context).To(BeNil())
+			Expect(l1.ErrorMode).To(BeNil())
+			Expect(l1.Conditions).To(BeNil())
+			Expect(l1.Statements).To(HaveLen(1))
+			Expect(l1.Statements[0]).To(Equal("truncate_all(log.attributes, 1024)"))
+
 		})
 	})
 })
