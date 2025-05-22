@@ -24,6 +24,22 @@ updates:
         dependency-type: "production"
       development-dependencies:
         dependency-type: "development"
+    # Apparently there is a conflict between the latest batch of k8s.io/* releases and sigs.k8s.io/controller-runtime:
+    #     sigs.k8s.io/controller-runtime/pkg/controller/controllertest
+    #     Error: ../../../go/pkg/mod/sigs.k8s.io/controller-runtime@v0.20.4/pkg/controller/controllertest/util.go:26:35: cannot use &FakeInformer{} (value of type *FakeInformer) as "k8s.io/client-go/tools/cache".SharedIndexInformer value in variable declaration: *FakeInformer does not implement "k8s.io/client-go/tools/cache".SharedIndexInformer (missing method AddEventHandlerWithOptions)
+    #     Error: ../../../go/pkg/mod/sigs.k8s.io/controller-runtime@v0.20.4/pkg/controller/controllertest/util.go:93:9: cannot use f (variable of type *FakeInformer) as "k8s.io/client-go/tools/cache".SharedIndexInformer value in return statement: *FakeInformer does not implement "k8s.io/client-go/tools/cache".SharedIndexInformer (missing method AddEventHandlerWithOptions)
+    #
+    # For that reason, we ignore k8s.io/* updates to 0.33.x until a new release of sigs.k8s.io/controller-runtime is
+    # available.
+    ignore:
+      - dependency-name: "k8s.io/api"
+        versions: ["0.33.x"]
+      - dependency-name: "k8s.io/apiextensions-apiserver"
+        versions: ["0.33.x"]
+      - dependency-name: "k8s.io/apimachinery"
+        versions: ["0.33.x"]
+      - dependency-name: "k8s.io/client-go"
+        versions: ["0.33.x"]
 
   # Dash0 OpenTelemetry Distro for Node.js
   - package-ecosystem: "npm"
