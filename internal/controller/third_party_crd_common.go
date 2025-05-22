@@ -160,14 +160,37 @@ const (
 )
 
 type preconditionValidationResult struct {
-	synchronizeResource    bool
+	// synchronizeResource = false means no sync action whatsoever will happen for this resource, usually because a
+	// precondition for synchronizing resources is not met (no API token etc.)
+	synchronizeResource bool
+
+	// syncDisabledViaLabel = false means that the resource has the label dash0.com/enable=false set; this will turn
+	// any create/update event for the object into a delete request (for most purposes it would be enough to ignore
+	// resources with that label, but when a resource has been synchronized earlier, and then the dash0.com/enable=false
+	// is added after the fact, we need to delete the object in Dash0 to get back into a consistent state)
+	syncDisabledViaLabel bool
+
+	// thirdPartyResourceSpec is the parsed spec of the third-party resource that we are reconciling, as a map
 	thirdPartyResourceSpec map[string]interface{}
-	monitoringResource     *dash0v1alpha1.Dash0Monitoring
-	authToken              string
-	apiEndpoint            string
-	dataset                string
-	k8sNamespace           string
-	k8sName                string
+
+	// monitoringResource is the Dash0 monitoring resource that was found in the same namespace as the third-party
+	// resource
+	monitoringResource *dash0v1alpha1.Dash0Monitoring
+
+	// authToken is the Dash0 auth token that will be used to sync the third-party resource
+	authToken string
+
+	// apiEndpoint is the Dash0 API endpoint that will be used to sync the third-party resource
+	apiEndpoint string
+
+	// dataset is the Dash0 dataset into which the third-party resource will be synchronized
+	dataset string
+
+	// k8sNamespace is Kubernetes namespace in which the third-party resource has been found
+	k8sNamespace string
+
+	// k8sNamespace is Kubernetes name of the third-party resource
+	k8sName string
 }
 
 func SetupThirdPartyCrdReconcilerWithManager(
@@ -543,6 +566,15 @@ func synchronizeViaApi(
 		return
 	}
 
+	if preconditionChecksResult.syncDisabledViaLabel {
+		// The resource has the label dash0.com/enable=false set; thus we override the API action unconditionally with
+		// delete, that is, we ask MapResourceToHttpRequests to create HTTP DELETE requests. For most purposes it would
+		// be enough to ignore resources with that label entirely and issue no HTTP requests, but when a resource has
+		// been synchronized earlier, and then the dash0.com/enable=false is added after the fact, we need to delete the
+		// object in Dash0 to get back into a consistent state)
+		action = delete
+	}
+
 	var existingIdsFromApi []string
 	if action != delete {
 		var err error
@@ -731,7 +763,24 @@ func validatePreconditions(
 		dataset = util.DatasetDefault
 	}
 
-	specRaw := thirdPartyResource.Object["spec"]
+	thirdPartyResourceObject := thirdPartyResource.Object
+	if thirdPartyResourceObject == nil {
+		logger.Info(
+			fmt.Sprintf(
+				"The \"Object\" property in the event for %s in %s/%s is absent or empty, the %s(s) will not be updated in Dash0.",
+				resourceReconciler.KindDisplayName(),
+				namespace,
+				name,
+				resourceReconciler.ShortName(),
+			))
+		return &preconditionValidationResult{
+			synchronizeResource: false,
+		}
+	}
+
+	syncDisabledViaLabel := isSyncDisabledViaLabel(thirdPartyResourceObject)
+
+	specRaw := thirdPartyResourceObject["spec"]
 	if specRaw == nil {
 		logger.Info(
 			fmt.Sprintf(
@@ -767,6 +816,7 @@ func validatePreconditions(
 
 	return &preconditionValidationResult{
 		synchronizeResource:    true,
+		syncDisabledViaLabel:   syncDisabledViaLabel,
 		thirdPartyResourceSpec: spec,
 		monitoringResource:     monitoringResource,
 		authToken:              authToken,
@@ -775,6 +825,21 @@ func validatePreconditions(
 		k8sNamespace:           namespace,
 		k8sName:                name,
 	}
+}
+
+func isSyncDisabledViaLabel(thirdPartyResourceObject map[string]interface{}) bool {
+	if metadataRaw := thirdPartyResourceObject["metadata"]; metadataRaw != nil {
+		if metadata, ok := metadataRaw.(map[string]interface{}); ok {
+			if labelsRaw := metadata["labels"]; labelsRaw != nil {
+				if labels, ok := labelsRaw.(map[string]interface{}); ok {
+					if dash0Enable := labels["dash0.com/enable"]; dash0Enable == "false" {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
 }
 
 func fetchExistingIds(
@@ -918,7 +983,11 @@ func executeSingleHttpRequestAndDiscardBody(
 		return util.NewRetryableErrorWithFlag(err, true)
 	}
 
-	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
+	isUnexpectedStatusCode := res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices
+	if req.Request.Method == http.MethodDelete {
+		isUnexpectedStatusCode = res.StatusCode != http.StatusNotFound && isUnexpectedStatusCode
+	}
+	if isUnexpectedStatusCode {
 		// HTTP status is not 2xx, treat this as an error
 		// convertNon2xxStatusCodeToError will also consume and close the response body
 		err = convertNon2xxStatusCodeToError(resourceReconciler, req, res)

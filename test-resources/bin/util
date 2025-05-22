@@ -520,10 +520,7 @@ deploy_application_under_monitoring() {
 }
 
 install_third_party_crds() {
-  # New CRD format (including the changes from https://github.com/perses/perses-operator/pull/128):
-  kubectl apply --server-side -f https://raw.githubusercontent.com/perses/perses-operator/main/config/crd/bases/perses.dev_persesdashboards.yaml
-  # Old CRD format (excluding the changes from https://github.com/perses/perses-operator/pull/128):
-  # kubectl apply --server-side -f https://raw.githubusercontent.com/perses/perses-operator/refs/tags/v0.1.10/config/crd/bases/perses.dev_persesdashboards.yaml
+  kubectl apply --server-side -f https://raw.githubusercontent.com/perses/perses-operator/refs/tags/v0.1.10/config/crd/bases/perses.dev_persesdashboards.yaml
 
   kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.82.2/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml
 }

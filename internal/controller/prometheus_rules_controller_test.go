@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"slices"
 	"time"
 
@@ -41,6 +42,11 @@ var (
 	})
 
 	checkRuleApiBasePath = "/api/alerting/check-rules/"
+
+	defaultRuleObjectMeta = metav1.ObjectMeta{
+		Name:      "test-rule",
+		Namespace: TestNamespaceName,
+	}
 
 	defaultExpectedPrometheusSyncResult = dash0v1alpha1.PrometheusRuleSynchronizationResult{
 		SynchronizationStatus:  dash0v1alpha1.Successful,
@@ -386,6 +392,76 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			Expect(gock.IsDone()).To(BeTrue())
 		})
 
+		It("updates check rules if dash0.com/enable is set but not to \"false\"", func() {
+			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+
+			expectFetchIdGetRequest(clusterId)
+			expectRulePutRequests(defaultExpectedPathsCheckRules(clusterId))
+			defer gock.Off()
+
+			ruleResource := createDefaultRuleResourceWithEnableLabel("whatever")
+			prometheusRuleReconciler.Update(
+				ctx,
+				event.TypedUpdateEvent[*unstructured.Unstructured]{
+					ObjectNew: &ruleResource,
+				},
+				&controllertest.TypedQueue[reconcile.Request]{},
+			)
+
+			verifyPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
+				ctx,
+				k8sClient,
+				defaultExpectedPrometheusSyncResult,
+			)
+			Expect(gock.IsDone()).To(BeTrue())
+		})
+
+		It("deletes all check rules on Create (and does not try to create them) if labelled with dash0.com/enable=false", func() {
+			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+
+			expectRuleDeleteRequestsWithHttpStatus(defaultExpectedPathsCheckRules(clusterId), http.StatusNotFound)
+			defer gock.Off()
+
+			ruleResource := createDefaultRuleResourceWithEnableLabel("false")
+			prometheusRuleReconciler.Create(
+				ctx,
+				event.TypedCreateEvent[*unstructured.Unstructured]{
+					Object: &ruleResource,
+				},
+				&controllertest.TypedQueue[reconcile.Request]{},
+			)
+
+			verifyPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
+				ctx,
+				k8sClient,
+				defaultExpectedPrometheusSyncResult,
+			)
+			Expect(gock.IsDone()).To(BeTrue())
+		})
+
+		It("deletes all check rules on Update (and does not try to update them) if labelled with dash0.com/enable=false", func() {
+			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+
+			expectRuleDeleteRequests(defaultExpectedPathsCheckRules(clusterId))
+			defer gock.Off()
+
+			ruleResource := createDefaultRuleResourceWithEnableLabel("false")
+			prometheusRuleReconciler.Update(
+				ctx,
+				event.TypedUpdateEvent[*unstructured.Unstructured]{
+					ObjectNew: &ruleResource,
+				},
+				&controllertest.TypedQueue[reconcile.Request]{},
+			)
+
+			verifyPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
+				ctx,
+				k8sClient,
+				defaultExpectedPrometheusSyncResult,
+			)
+			Expect(gock.IsDone()).To(BeTrue())
+		})
+
 		It("deletes individual check rules when the rule has been removed from the PrometheusRules resource", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
@@ -543,7 +619,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		It("deletes all check rules when the whole PrometheusRules resource has been deleted", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
-			expectRuleDeleteRequests(defaultExpectedPathsCheckRules(clusterId))
+			expectRuleDeleteRequestsWithHttpStatus(defaultExpectedPathsCheckRules(clusterId), http.StatusNotFound)
 			defer gock.Off()
 
 			ruleResource := createDefaultRuleResource()
@@ -1221,32 +1297,47 @@ func expectRulePutRequests(expectedPaths []string) {
 }
 
 func expectRuleDeleteRequests(expectedPaths []string) {
+	expectRuleDeleteRequestsWithHttpStatus(expectedPaths, http.StatusOK)
+}
+
+func expectRuleDeleteRequestsWithHttpStatus(expectedPaths []string, status int) {
 	for _, expectedPath := range expectedPaths {
 		gock.New(ApiEndpointTest).
 			Delete(expectedPath).
 			MatchHeader("Authorization", AuthorizationHeaderTest).
 			MatchParam("dataset", DatasetCustomTest).
 			Times(1).
-			Reply(200).
+			Reply(status).
 			JSON(map[string]string{})
 	}
 }
 
 func createDefaultRuleResource() unstructured.Unstructured {
-	return createRuleResource(createDefaultSpec())
+	return createDefaultRuleResourceWithEnableLabel("")
+}
+
+func createDefaultRuleResourceWithEnableLabel(dash0EnableLabelValue string) unstructured.Unstructured {
+	objectMeta := defaultRuleObjectMeta
+	if dash0EnableLabelValue != "" {
+		objectMeta.Labels = map[string]string{
+			"dash0.com/enable": dash0EnableLabelValue,
+		}
+	}
+	return createRuleResourceWithObjectMeta(createDefaultSpec(), objectMeta)
 }
 
 func createRuleResource(spec prometheusv1.PrometheusRuleSpec) unstructured.Unstructured {
+	return createRuleResourceWithObjectMeta(spec, defaultRuleObjectMeta)
+}
+
+func createRuleResourceWithObjectMeta(spec prometheusv1.PrometheusRuleSpec, objectMeta metav1.ObjectMeta) unstructured.Unstructured {
 	rule := prometheusv1.PrometheusRule{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "monitoring.coreos.com/v1",
 			Kind:       "PrometheusRule",
 		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-rule",
-			Namespace: TestNamespaceName,
-		},
-		Spec: spec,
+		ObjectMeta: objectMeta,
+		Spec:       spec,
 	}
 	marshalled, err := json.Marshal(rule)
 	Expect(err).NotTo(HaveOccurred())

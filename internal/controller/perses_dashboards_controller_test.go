@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"time"
 
 	persesv1alpha1 "github.com/perses/perses-operator/api/v1alpha1"
@@ -377,10 +378,33 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			Expect(gock.IsDone()).To(BeTrue())
 		})
 
+		It("updates a dashboard if dash0.com/enable is set but not to \"false\"", func() {
+			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+
+			expectDashboardPutRequest(defaultExpectedPathDashboard)
+			defer gock.Off()
+
+			dashboardResource := createDashboardResourceWithEnableLabel("whatever")
+			persesDashboardReconciler.Update(
+				ctx,
+				event.TypedUpdateEvent[*unstructured.Unstructured]{
+					ObjectNew: &dashboardResource,
+				},
+				&controllertest.TypedQueue[reconcile.Request]{},
+			)
+
+			verifyPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
+				ctx,
+				k8sClient,
+				defaultExpectedPersesSyncResult,
+			)
+			Expect(gock.IsDone()).To(BeTrue())
+		})
+
 		It("deletes a dashboard", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
-			expectDashboardDeleteRequest(defaultExpectedPathDashboard)
+			expectDashboardDeleteRequestWithHttpStatus(defaultExpectedPathDashboard, http.StatusNotFound)
 			defer gock.Off()
 
 			dashboardResource := createDashboardResource()
@@ -388,6 +412,52 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 				ctx,
 				event.TypedDeleteEvent[*unstructured.Unstructured]{
 					Object: &dashboardResource,
+				},
+				&controllertest.TypedQueue[reconcile.Request]{},
+			)
+
+			verifyPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
+				ctx,
+				k8sClient,
+				defaultExpectedPersesSyncResult,
+			)
+			Expect(gock.IsDone()).To(BeTrue())
+		})
+
+		It("deletes a dashboard on Create (and does not try to create it) if labelled with dash0.com/enable=false", func() {
+			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+
+			expectDashboardDeleteRequestWithHttpStatus(defaultExpectedPathDashboard, http.StatusNotFound)
+			defer gock.Off()
+
+			dashboardResource := createDashboardResourceWithEnableLabel("false")
+			persesDashboardReconciler.Create(
+				ctx,
+				event.TypedCreateEvent[*unstructured.Unstructured]{
+					Object: &dashboardResource,
+				},
+				&controllertest.TypedQueue[reconcile.Request]{},
+			)
+
+			verifyPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
+				ctx,
+				k8sClient,
+				defaultExpectedPersesSyncResult,
+			)
+			Expect(gock.IsDone()).To(BeTrue())
+		})
+
+		It("deletes a dashboard on Update (and does not try to update it) if labelled with dash0.com/enable=false", func() {
+			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
+
+			expectDashboardDeleteRequest(defaultExpectedPathDashboard)
+			defer gock.Off()
+
+			dashboardResource := createDashboardResourceWithEnableLabel("false")
+			persesDashboardReconciler.Update(
+				ctx,
+				event.TypedUpdateEvent[*unstructured.Unstructured]{
+					ObjectNew: &dashboardResource,
 				},
 				&controllertest.TypedQueue[reconcile.Request]{},
 			)
@@ -483,26 +553,40 @@ func expectDashboardPutRequest(expectedPath string) {
 }
 
 func expectDashboardDeleteRequest(expectedPath string) {
+	expectDashboardDeleteRequestWithHttpStatus(expectedPath, http.StatusOK)
+}
+
+func expectDashboardDeleteRequestWithHttpStatus(expectedPath string, status int) {
 	gock.New(ApiEndpointTest).
 		Delete(expectedPath).
 		MatchHeader("Authorization", AuthorizationHeaderTest).
 		MatchParam("dataset", DatasetCustomTest).
 		Times(1).
-		Reply(200).
+		Reply(status).
 		JSON(map[string]string{})
 }
 
 func createDashboardResource() unstructured.Unstructured {
+	return createDashboardResourceWithEnableLabel("")
+}
+
+func createDashboardResourceWithEnableLabel(dash0EnableLabelValue string) unstructured.Unstructured {
+	objectMeta := metav1.ObjectMeta{
+		Name:      "test-dashboard",
+		Namespace: TestNamespaceName,
+	}
+	if dash0EnableLabelValue != "" {
+		objectMeta.Labels = map[string]string{
+			"dash0.com/enable": dash0EnableLabelValue,
+		}
+	}
 	dashboard := persesv1alpha1.PersesDashboard{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "perses.dev/v1alpha1",
 			Kind:       "PersesDashboard",
 		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-dashboard",
-			Namespace: TestNamespaceName,
-		},
-		Spec: persesv1alpha1.Dashboard{},
+		ObjectMeta: objectMeta,
+		Spec:       persesv1alpha1.Dashboard{},
 	}
 	marshalled, err := json.Marshal(dashboard)
 	Expect(err).NotTo(HaveOccurred())

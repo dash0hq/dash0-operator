@@ -426,6 +426,8 @@ The Dash0 monitoring resource supports additional configuration settings:
   A namespace-wide opt-out for synchronizing Perses dashboard resources found in the target namespace.
   If enabled, the operator will watch Perses dashboard resources in this namespace and create corresponding dashboards
   in Dash0 via the Dash0 API.
+  More fine-grained per-resource control over synchronization is available by setting the label
+  `dash0.com/enable=false` on individual Perses dashboard resources.
   See [Managing Dash0 Dashboards](#managing-dash0-dashboards) for details. This setting is optional, it defaults to
   true.
 
@@ -433,17 +435,19 @@ The Dash0 monitoring resource supports additional configuration settings:
   A namespace-wide opt-out for synchronizing Prometheus rule resources found in the target namespace.
   If enabled, the operator will watch Prometheus rule resources in this namespace and create corresponding check rules
   in Dash0 via the Dash0 API.
+  More fine-grained per-resource control over synchronization is available by setting the label
+  `dash0.com/enable=false` on individual Prometheus rule resources.
   See [Managing Dash0 Check Rules](#managing-dash0-check-rules) for details.
   This setting is optional, it defaults to true.
 
 Here is comprehensive example for a monitoring resource which
 * sets the instrumenation mode to `created-and-updated`,
-* disables Perses dashboard synchronization,
-* disable Prometheus rule synchronization,
 * disables Prometheus scraping,
-* sets a couple of filters for all five telemetry object types, and
+* sets a couple of filters for all five telemetry object types,
 * applies transformations to limit the length of span attributes, datapoint attributes, and log attributes
-  (with the metric transform using the advanced transform config style).
+  (with the metric transform using the advanced transform config style),
+* disables Perses dashboard synchronization, and
+* disables Prometheus rule synchronization.
 
 ```yaml
 apiVersion: operator.dash0.com/v1alpha1
@@ -452,10 +456,10 @@ metadata:
   name: dash0-monitoring-resource
 spec:
   instrumentWorkloads: created-and-updated
-  synchronizePersesDashboards: false
-  synchronizePrometheusRules: false
+
   prometheusScraping:
     enabled: false
+
   filter:
     traces:
       span:
@@ -475,6 +479,7 @@ spec:
       log_records:
       - 'IsMatch(body, ".*password.*")'
       - 'severity_number < SEVERITY_NUMBER_WARN'
+
   transform:
     trace_statements:
     - 'truncate_all(span.attributes, 1024)'
@@ -485,6 +490,10 @@ spec:
         - 'truncate_all(datapoint.attributes, 1024)'
     log_statements:
     - 'truncate_all(log.attributes, 1024)'
+
+  synchronizePersesDashboards: false
+
+  synchronizePrometheusRules: false
 ```
 
 ### Using a Kubernetes Secret for the Dash0 Authorization Token
@@ -1307,6 +1316,11 @@ The dashboards created by the operator will be in read-only mode in the Dash0 UI
 If the Dash0 operator configuration resource has the `dataset` property set, the operator will create the dashboards
 in that dataset, otherwise they will be created in the `default` dataset.
 
+You can opt out of synchronization for individual Perses dashboard resources by adding the Kubernetes label
+`dash0.com/enable: false` to the Perses dashboard resource.
+If this label is added to a dashboard which has previously been synchronized to Dash0, the operator will delete the
+corresponding dashboard in Dash0.
+
 When a Perses dashboard resource has been synchronized to Dash0, the operator will write a summary of that
 synchronization operation to the status of the Dash0 monitoring resource in the same namespace. This summary will also
 show whether the dashboard had any validation issues or an error occurred during synchronization:
@@ -1369,6 +1383,10 @@ Prometheus rules will be mapped to Dash0 check rules as follows:
   Prometheus rule resource.
 * If `expr` contains the token `$__threshold`, and neither annotation `dash0-threshold-degraded` nor
   `dash0-threshold-critical` is present, the rule will be considered invalid and will not be synchronized to Dash0.
+* If the rule has the annotation `dash0-enabled=false`, the check rule will be synchronized but disabled
+  in Dash0.
+  This Prometheus annotation is not to be confused with the Kubernetes label `dash0.com/enable: false`, which disables
+  synchronization of the entire Prometheus rules resource (and all its check rules) to Dash0 (see below).
 * The group attribute `limit` is not supported by Dash0 and will be ignored.
 * The group attribute `partial_response_strategy` is not supported by Dash0 and will be ignored.
 * All labels (except for the ones explicitly mentioned in the conversion table below) will be listed under
@@ -1391,8 +1409,18 @@ Prometheus rules will be mapped to Dash0 check rules as follows:
 | `annotations/*`                        | "Annotations"                                                                                                     |
 | `labels/*`                             | "Additional labels"                                                                                               |
 
-When a Prometheus ruls resource has been synchronized to Dash0, the operator will write a summary of that
-synchronization operation to the status of the Dash0 monitoring resource in the same namespace. This summary will also
+You can opt out of synchronization for individual Prometheus rules resources by adding the Kubernetes label
+`dash0.com/enable: false` to it.
+If this label is added to a Prometheus rules resource which has previously been synchronized to Dash0, the operator will
+delete all corresponding check rules in Dash0.
+Note that this refers to a _Kubernetes_ label on the Kubernetes resource, and it will affect all check rules contained
+in this Prometheus rules resource.
+This mechanism is not to be confused with the Prometheus annotation `dash0-enabled`, which can be applied to
+individual rules in a Prometheus rules resource, and controls whether the check rule is enabled or disabled in Dash0.
+
+When a Prometheus rules resource has been synchronized to Dash0, the operator will write a summary of that
+synchronization operation to the status of the Dash0 monitoring resource in the same namespace.
+This summary will also
 show whether any of the rules had validation issues or errors occurred during synchronization:
 ```
 Prometheus Rule Synchronization Results:
