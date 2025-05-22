@@ -70,12 +70,15 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		metricsServerHasBeenInstalled = ensureMetricsServerIsInstalled()
 
 		recreateNamespace(applicationUnderTestNamespace)
+		recreateNamespace(dash0ApiMockNamespace)
 
 		determineContainerImages()
 		rebuildAllContainerImages()
 		rebuildAppUnderTestContainerImages()
+		rebuildDash0ApiMockImage()
 
 		deployOtlpSink(workingDir)
+		deployThirdPartyCrds()
 
 		stopPodCrashOrOOMKillDetection = failOnPodCrashOrOOMKill()
 	})
@@ -89,10 +92,12 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 			By("removing namespace for application under test")
 			_ = runAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", applicationUnderTestNamespace))
 		}
+		_ = runAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", dash0ApiMockNamespace))
 		uninstallMetricsServerIfApplicable(metricsServerHasBeenInstalled)
 		if kubeContextHasBeenChanged {
 			revertKubernetesContext(originalKubeContext)
 		}
+		removeThirdPartyCrds()
 	})
 
 	BeforeEach(func() {
@@ -111,7 +116,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		var operatorStartupTimeLowerBound time.Time
 		BeforeAll(func() {
 			operatorStartupTimeLowerBound = time.Now()
-			By("deploy the Dash0 operator")
+			By("deploying the Dash0 operator")
 			deployOperatorWithDefaultAutoOperationConfiguration(
 				operatorNamespace,
 				operatorHelmChart,
@@ -369,6 +374,135 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 							timestampLowerBound,
 						)
 					}, 30*time.Second, pollingInterval).Should(Succeed())
+				})
+			})
+
+			Describe("synchronizing third-party resources", func() {
+				BeforeAll(func() {
+					installDash0ApiMock()
+				})
+
+				AfterEach(func() {
+					cleanupStoredApiRequests()
+					removeThirdPartyResources(applicationUnderTestNamespace)
+				})
+
+				AfterAll(func() {
+					uninstallDash0ApiMock()
+				})
+
+				It("should synchronize Perses dashboards to the Dash0 API", func() {
+					deployPersesDashboardResource(
+						applicationUnderTestNamespace,
+						thirdPartyResourceValues{},
+					)
+
+					//nolint:lll
+					routeRegex := "/api/dashboards/dash0-operator_.*_default_e2e-application-under-test-namespace_perses-dashboard-e2e-test\\?dataset=default"
+
+					By("verifying the dashboard has been synchronized to the Dash0 API via PUT")
+					req := fetchCapturedApiRequest(0)
+					Expect(req.Method).To(Equal("PUT"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+					Expect(req.Body).ToNot(BeNil())
+					Expect(*req.Body).To(ContainSubstring("This is a test dashboard."))
+
+					setOptOutLabelInPersesDashboard(applicationUnderTestNamespace, "false")
+					By("verifying the dashboard has been deleted via the Dash0 API (after setting dash0.com/enable=false)\"")
+					req = fetchCapturedApiRequest(1)
+					Expect(req.Method).To(Equal("DELETE"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+
+					setOptOutLabelInPersesDashboard(applicationUnderTestNamespace, "true")
+					By("verifying the dashboard has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
+					req = fetchCapturedApiRequest(2)
+					Expect(req.Method).To(Equal("PUT"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+					Expect(*req.Body).To(ContainSubstring("This is a test dashboard."))
+
+					removePersesDashboardResource(applicationUnderTestNamespace)
+					By("verifying the dashboard has been deleted via the Dash0 API (after removing the resource)")
+					req = fetchCapturedApiRequest(3)
+					Expect(req.Method).To(Equal("DELETE"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+				})
+
+				//nolint:lll
+				It("should synchronize Prometheus rules to the Dash0 API", func() {
+					deployPrometheusRuleResource(
+						applicationUnderTestNamespace,
+						thirdPartyResourceValues{},
+					)
+
+					routeRegexes := []string{
+						"/api/alerting/check-rules\\?dataset=default&idPrefix=dash0-operator_.*_default_e2e-application-under-test-namespace_prometheus-rules-e2e-test_",
+						"/api/alerting/check-rules/dash0-operator_.*_default_e2e-application-under-test-namespace_prometheus-rules-e2e-test_dash0%7Ck8s_0\\?dataset=default",
+						"/api/alerting/check-rules/dash0-operator_.*_default_e2e-application-under-test-namespace_prometheus-rules-e2e-test_dash0%7Ck8s_1\\?dataset=default",
+						"/api/alerting/check-rules/dash0-operator_.*_default_e2e-application-under-test-namespace_prometheus-rules-e2e-test_dash0%7Ccollector_0\\?dataset=default",
+					}
+					substrings := []string{
+						"dash0/k8s - K8s Deployment replicas mismatch",
+						"dash0/k8s - K8s pod crash looping",
+						"dash0/collector - exporter send failed spans",
+					}
+
+					By("verifying the check rules have been synchronized to the Dash0 API via PUT")
+					requests := fetchCapturedApiRequests(0, 4)
+					Expect(requests).To(HaveLen(4))
+					Expect(requests[0].Method).To(Equal("GET"))
+					Expect(requests[0].Url).To(MatchRegexp(routeRegexes[0]))
+					regexIdx := 1
+					substringIdx := 0
+					for i := 1; i < 4; i++ {
+						req := requests[i]
+						Expect(req.Method).To(Equal("PUT"))
+						Expect(req.Url).To(MatchRegexp(routeRegexes[regexIdx]))
+						regexIdx++
+						Expect(req.Body).ToNot(BeNil())
+						Expect(*req.Body).To(ContainSubstring(substrings[substringIdx]))
+						substringIdx++
+					}
+
+					setOptOutLabelInPrometheusRule(applicationUnderTestNamespace, "false")
+					By("verifying the check rules have been deleted via the Dash0 API (after setting dash0.com/enable=false)\"")
+					requests = fetchCapturedApiRequests(4, 3)
+					Expect(requests).To(HaveLen(3))
+					regexIdx = 1
+					for i := 0; i < 3; i++ {
+						req := requests[i]
+						Expect(req.Method).To(Equal("DELETE"))
+						Expect(req.Url).To(MatchRegexp(routeRegexes[regexIdx]))
+						regexIdx++
+					}
+
+					setOptOutLabelInPrometheusRule(applicationUnderTestNamespace, "true")
+					By("verifying the check rules have been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
+					requests = fetchCapturedApiRequests(7, 4)
+					Expect(requests).To(HaveLen(4))
+					Expect(requests[0].Method).To(Equal("GET"))
+					Expect(requests[0].Url).To(MatchRegexp(routeRegexes[0]))
+					regexIdx = 1
+					substringIdx = 0
+					for i := 1; i < 4; i++ {
+						req := requests[i]
+						Expect(req.Method).To(Equal("PUT"))
+						Expect(req.Url).To(MatchRegexp(routeRegexes[regexIdx]))
+						regexIdx++
+						Expect(*req.Body).To(ContainSubstring(substrings[substringIdx]))
+						substringIdx++
+					}
+
+					removePrometheusRuleResource(applicationUnderTestNamespace)
+					By("verifying the check rules have been deleted via the Dash0 API (after removing the resource)")
+					requests = fetchCapturedApiRequests(11, 3)
+					Expect(requests).To(HaveLen(3))
+					regexIdx = 1
+					for i := 0; i < 3; i++ {
+						req := requests[i]
+						Expect(req.Method).To(Equal("DELETE"))
+						Expect(req.Url).To(MatchRegexp(routeRegexes[regexIdx]))
+						regexIdx++
+					}
 				})
 			})
 
@@ -703,7 +837,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 	Describe("with an existing operator deployment without an operation configuration resource", func() {
 		BeforeAll(func() {
-			By("deploy the Dash0 operator")
+			By("deploying the Dash0 operator")
 			deployOperatorWithoutAutoOperationConfiguration(
 				operatorNamespace,
 				operatorHelmChart,
@@ -806,7 +940,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 			var timestampLowerBound time.Time
 
 			BeforeAll(func() {
-				By("deploy the Dash0 operator and let it create an operator configuration resource")
+				By("deploying the Dash0 operator and let it create an operator configuration resource")
 				deployOperatorWithDefaultAutoOperationConfiguration(
 					operatorNamespace,
 					operatorHelmChart,
@@ -887,7 +1021,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					)
 				}, verifyTelemetryTimeout, pollingInterval).Should(Succeed())
 				By("Node.js deployment: matching spans have been received")
-				By("Now searching collected spans for health checks...")
+				By("now searching collected spans for health checks...")
 				matchResults := fileHasMatchingSpan(
 					Default,
 					nil,
@@ -950,7 +1084,7 @@ traces:
 					)
 				}, verifyTelemetryTimeout, pollingInterval).Should(Succeed())
 				By("Node.js deployment: matching spans have been received")
-				By("Now searching collected spans for health checks...")
+				By("now searching collected spans for health checks...")
 				matchResults := fileHasMatchingSpan(
 					Default,
 					nil,
@@ -1187,9 +1321,11 @@ trace_statements:
 			//nolint:lll
 			It("should update the daemonset collector configuration when updating the Dash0 endpoint in the operator configuration resource", func() {
 				deployDash0OperatorConfigurationResource(dash0OperatorConfigurationValues{
+					ClusterName:           e2eKubernetesContext,
 					SelfMonitoringEnabled: false,
 					Endpoint:              defaultEndpoint,
 					Token:                 defaultToken,
+					ApiEndpoint:           dash0ApiMockServiceBaseUrl,
 				}, operatorNamespace, operatorHelmChart)
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
@@ -1254,9 +1390,11 @@ trace_statements:
 			//nolint:lll
 			It("should remove the OpenTelemetry collector", func() {
 				deployDash0OperatorConfigurationResource(dash0OperatorConfigurationValues{
+					ClusterName:           e2eKubernetesContext,
 					SelfMonitoringEnabled: false,
 					Endpoint:              defaultEndpoint,
 					Token:                 defaultToken,
+					ApiEndpoint:           dash0ApiMockServiceBaseUrl,
 				}, operatorNamespace, operatorHelmChart)
 
 				undeployDash0OperatorConfigurationResource()

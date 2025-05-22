@@ -457,7 +457,6 @@ func (r *PrometheusRuleReconciler) Reconcile(
 
 func (r *PrometheusRuleReconciler) FetchExistingResourceIdsRequest(
 	preconditionChecksResult *preconditionValidationResult,
-	logger *logr.Logger,
 ) (*http.Request, error) {
 	checkRulesUrl := r.renderCheckRuleListUrl(preconditionChecksResult)
 	if req, err := http.NewRequest(http.MethodGet, checkRulesUrl, nil); err != nil {

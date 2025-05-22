@@ -48,6 +48,7 @@ func deployOperatorWithDefaultAutoOperationConfiguration(
 		images,
 		&startup.OperatorConfigurationValues{
 			Endpoint:              defaultEndpoint,
+			ApiEndpoint:           dash0ApiMockServiceBaseUrl,
 			Token:                 defaultToken,
 			SelfMonitoringEnabled: selfMonitoringEnabled,
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
@@ -100,6 +101,7 @@ func deployOperator(
 		arguments = setHelmParameter(arguments, "operator.dash0Export.enabled", "true")
 		arguments = setIfNotEmpty(arguments, "operator.dash0Export.endpoint", operatorConfigurationValues.Endpoint)
 		arguments = setIfNotEmpty(arguments, "operator.dash0Export.token", operatorConfigurationValues.Token)
+		arguments = setIfNotEmpty(arguments, "operator.dash0Export.apiEndpoint", operatorConfigurationValues.ApiEndpoint)
 		arguments = setIfNotEmpty(
 			arguments,
 			"operator.dash0Export.secretRef.name",
@@ -273,7 +275,7 @@ func waitForManagerPodAndWebhookToStart(operatorNamespace string) {
 
 	Eventually(verifyControllerUp, 120*time.Second, time.Second).Should(Succeed())
 
-	By("wait for webhook endpoint to become available")
+	By("waiting for webhook endpoint to become available")
 	Eventually(func(g Gomega) {
 		endpointsOutput, err := run(exec.Command(
 			"kubectl",

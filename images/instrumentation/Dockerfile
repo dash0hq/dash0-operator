@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 # injector_build_start - do not remove this line (see images/instrumentation/injector/test/scripts/test-all.sh)
 
 # build the LD_PRELOAD injector binary

@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
 const (
@@ -25,6 +26,9 @@ func createDirAndDeleteOldCollectedLogs() {
 }
 
 func collectPodInfoAndLogsFailWrapper(message string, callerSkip ...int) {
+	// Reset the fail handler to its default, so failures in collectPodInfoAndLogs() do not trigger
+	// collectPodInfoAndLogs again.
+	RegisterFailHandler(Fail)
 	if len(callerSkip) == 1 {
 		callerSkip[0]++
 	}
@@ -33,10 +37,15 @@ func collectPodInfoAndLogsFailWrapper(message string, callerSkip ...int) {
 }
 
 func collectPodInfoAndLogs() {
-	By(fmt.Sprintf("Collecting information about pods and their logs in %s", collectedLogsDir))
+	By(
+		fmt.Sprintf(
+			"!! A failure has occurred. Collecting information about pods and their logs in %s",
+			collectedLogsDir,
+		))
 	for _, namespace := range []string{operatorNamespace,
 		applicationUnderTestNamespace,
 		"otlp-sink",
+		"dash0-api",
 	} {
 		executeCommandAndStoreOutput(fmt.Sprintf("kubectl -n %s get pods", namespace))
 		executeCommandAndStoreOutput(fmt.Sprintf("kubectl -n %s describe pods", namespace))

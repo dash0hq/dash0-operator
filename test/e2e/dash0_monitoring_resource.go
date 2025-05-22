@@ -4,7 +4,6 @@
 package e2e
 
 import (
-	"bytes"
 	_ "embed"
 	"fmt"
 	"os"
@@ -12,7 +11,6 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/Masterminds/sprig/v3"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
@@ -52,24 +50,13 @@ var (
 )
 
 func renderDash0MonitoringResourceTemplate(dash0MonitoringValues dash0MonitoringValues) string {
-	By("render Dash0Monitoring resource template")
-	if dash0MonitoringResourceTemplate == nil {
-		dash0MonitoringResourceTemplate =
-			template.Must(
-				template.
-					New("dash0monitoring").
-					Funcs(sprig.FuncMap()).
-					Parse(dash0MonitoringResourceSource))
-	}
-
-	var dash0MonitoringResource bytes.Buffer
-	Expect(dash0MonitoringResourceTemplate.Execute(&dash0MonitoringResource, dash0MonitoringValues)).To(Succeed())
-
-	renderedResourceFile, err := os.CreateTemp(os.TempDir(), "dash0monitoring-*.yaml")
-	Expect(err).NotTo(HaveOccurred())
-	Expect(os.WriteFile(renderedResourceFile.Name(), dash0MonitoringResource.Bytes(), 0644)).To(Succeed())
-
-	return renderedResourceFile.Name()
+	By("rendering Dash0Monitoring resource template")
+	dash0MonitoringResourceTemplate = initTemplateOnce(
+		dash0MonitoringResourceTemplate,
+		dash0MonitoringResourceSource,
+		"dash0monitoring",
+	)
+	return renderResourceTemplate(dash0MonitoringResourceTemplate, dash0MonitoringValues, "dash0monitoring")
 }
 
 func deployDash0MonitoringResource(

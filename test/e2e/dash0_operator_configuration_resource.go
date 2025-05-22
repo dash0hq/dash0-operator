@@ -4,7 +4,6 @@
 package e2e
 
 import (
-	"bytes"
 	_ "embed"
 	"fmt"
 	"os"
@@ -20,6 +19,7 @@ type dash0OperatorConfigurationValues struct {
 	SelfMonitoringEnabled bool
 	Endpoint              string
 	Token                 string
+	ApiEndpoint           string
 	ClusterName           string
 }
 
@@ -46,25 +46,17 @@ var (
 func renderDash0OperatorConfigurationResourceTemplate(
 	dash0OperatorConfigurationValues dash0OperatorConfigurationValues,
 ) string {
-	By("render Dash0OperatorConfiguration resource template")
-	if dash0OperatorConfigurationResourceTemplate == nil {
-		dash0OperatorConfigurationResourceTemplate =
-			template.Must(template.New("dash0operatorconfiguration").Parse(dash0OperatorConfigurationResourceSource))
-	}
-
-	dash0OperatorConfigurationValues.ClusterName = e2eKubernetesContext
-	var dash0OperatorConfigurationResource bytes.Buffer
-	Expect(
-		dash0OperatorConfigurationResourceTemplate.Execute(
-			&dash0OperatorConfigurationResource,
-			dash0OperatorConfigurationValues,
-		)).To(Succeed())
-
-	renderedResourceFile, err := os.CreateTemp(os.TempDir(), "dash0operatorconfiguration-*.yaml")
-	Expect(err).NotTo(HaveOccurred())
-	Expect(os.WriteFile(renderedResourceFile.Name(), dash0OperatorConfigurationResource.Bytes(), 0644)).To(Succeed())
-
-	return renderedResourceFile.Name()
+	By("rendering Dash0OperatorConfiguration resource template")
+	dash0OperatorConfigurationResourceTemplate = initTemplateOnce(
+		dash0OperatorConfigurationResourceTemplate,
+		dash0OperatorConfigurationResourceSource,
+		"dash0operatorconfiguration",
+	)
+	return renderResourceTemplate(
+		dash0OperatorConfigurationResourceTemplate,
+		dash0OperatorConfigurationValues,
+		"dash0operatorconfiguration",
+	)
 }
 
 func deployDash0OperatorConfigurationResource(

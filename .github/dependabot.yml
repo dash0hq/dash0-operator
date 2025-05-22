@@ -14,6 +14,7 @@ updates:
       - "/images/configreloader/src"
       - "/images/filelogoffsetsync/src"
       - "/images/pkg/common"
+      - "/test/e2e/dash0-api-mock"
     schedule:
       interval: "weekly"
       day: "tuesday"

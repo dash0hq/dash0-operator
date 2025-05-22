@@ -462,7 +462,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			Expect(gock.IsDone()).To(BeTrue())
 		})
 
-		It("deletes individual check rules when the rule has been removed from the PrometheusRules resource", func() {
+		It("deletes individual check rules when the rule has been removed from the PrometheusRule resource", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
 			expectFetchIdGetRequest(clusterId)
@@ -512,7 +512,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			Expect(gock.IsDone()).To(BeTrue())
 		})
 
-		It("deletes individual check rules when the group has been removed from the PrometheusRules resource", func() {
+		It("deletes individual check rules when the group has been removed from the PrometheusRule resource", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
 			expectFetchIdGetRequest(clusterId)
@@ -562,7 +562,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			Expect(gock.IsDone()).To(BeTrue())
 		})
 
-		It("deletes individual check rules when the group in the PrometheusRules resource has been renamed", func() {
+		It("deletes individual check rules when the group in the PrometheusRule resource has been renamed", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
 			expectFetchIdGetRequest(clusterId)
@@ -616,7 +616,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			Expect(gock.IsDone()).To(BeTrue())
 		})
 
-		It("deletes all check rules when the whole PrometheusRules resource has been deleted", func() {
+		It("deletes all check rules when the whole PrometheusRule resource has been deleted", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
 			expectRuleDeleteRequestsWithHttpStatus(defaultExpectedPathsCheckRules(clusterId), http.StatusNotFound)

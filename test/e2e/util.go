@@ -4,14 +4,18 @@
 package e2e
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
 	"slices"
 	"strings"
+	"text/template"
 	"time"
 
+	"github.com/Masterminds/sprig/v3"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -199,4 +203,27 @@ func verifyResourceAttributeExists[T any](
 			"expected any value but the object had no such resource attribute",
 		)
 	}
+}
+
+func initTemplateOnce(tpl *template.Template, source string, name string) *template.Template {
+	if tpl == nil {
+		tpl =
+			template.Must(
+				template.
+					New(name).
+					Funcs(sprig.FuncMap()).
+					Parse(source))
+	}
+	return tpl
+}
+
+func renderResourceTemplate(tpl *template.Template, values any, filePrefix string) string {
+	var resourceContent bytes.Buffer
+	Expect(tpl.Execute(&resourceContent, values)).To(Succeed())
+
+	renderedResourceFile, err := os.CreateTemp(os.TempDir(), filePrefix+"-*.yaml")
+	Expect(err).NotTo(HaveOccurred())
+	Expect(os.WriteFile(renderedResourceFile.Name(), resourceContent.Bytes(), 0644)).To(Succeed())
+
+	return renderedResourceFile.Name()
 }

@@ -11,5 +11,6 @@ spec:
       endpoint: {{ .Endpoint }}
       authorization:
         token: {{ .Token }}
+      apiEndpoint: {{ .ApiEndpoint }}
 {{- end }}
   clusterName: {{ .ClusterName }}

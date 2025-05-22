@@ -97,9 +97,9 @@ type ThirdPartyResourceReconciler interface {
 	// FetchExistingResourceIdsRequest creates an HTTP request for retrieving the existing IDs from the Dash0
 	// API for a given Kubernetes resource.
 	// FetchExistingResourceIdsRequest is only used for resource types where one Kubernetes resource (say, a
-	// PrometheusRules) is potentially associated with multiple Dash0 api objects (multiple checks). Controllers
+	// PrometheusRule) is potentially associated with multiple Dash0 api objects (multiple checks). Controllers
 	// which manage objects with a one-to-one relation (like Perses dashboards) should return nil, nil.
-	FetchExistingResourceIdsRequest(*preconditionValidationResult, *logr.Logger) (*http.Request, error)
+	FetchExistingResourceIdsRequest(*preconditionValidationResult) (*http.Request, error)
 
 	// MapResourceToHttpRequests converts a third-party resource object to a list of HTTP requests that can be sent to
 	// the Dash0 API. It returns:
@@ -122,7 +122,7 @@ type ThirdPartyResourceReconciler interface {
 	// CreateDeleteRequests produces an HTTP DELETE requests for the third-party resources that still exist in Dash0,
 	// but should not. It does so by comparing the list of IDs of objects that exist in the Dash0 backend with the list
 	// of IDs found in a given Kubernetes resource. This mechanism is only used for resource types where one Kubernetes
-	// resource (say, a PrometheusRules) is potentially associated with multiple Dash0 api objects (multiple checks).
+	// resource (say, a PrometheusRule) is potentially associated with multiple Dash0 api objects (multiple checks).
 	// Controllers which manage objects with a one-to-one relation (like Perses dashboards) should return nil, nil.
 	CreateDeleteRequests(*preconditionValidationResult, []string, []string, *logr.Logger) ([]HttpRequestWithItemName, map[string]string)
 
@@ -848,7 +848,7 @@ func fetchExistingIds(
 	logger *logr.Logger,
 ) ([]string, error) {
 	if fetchExistingIdsRequest, err :=
-		resourceReconciler.FetchExistingResourceIdsRequest(preconditionChecksResult, logger); err != nil {
+		resourceReconciler.FetchExistingResourceIdsRequest(preconditionChecksResult); err != nil {
 		logger.Error(err, "cannot create request to fetch existing IDs")
 		return nil, err
 	} else if fetchExistingIdsRequest != nil {

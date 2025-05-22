@@ -1,0 +1,38 @@
+apiVersion: perses.dev/v1alpha1
+kind: PersesDashboard
+metadata:
+  name: perses-dashboard-e2e-test
+  labels:
+    app.kubernetes.io/name: perses-dashboard-e2e-test
+{{- if .Dash0ComEnabled }}
+    dash0.com/enabled: {{ .Dash0ComEnabled | quote }}
+{{- end }}
+spec:
+  duration: 30m
+  display:
+    name: E2E Test Dashboard
+  panels:
+    fc2f898d-2f49-4090-8c1b-7949da638d66:
+      kind: Panel
+      spec:
+        display:
+          name: Test Panel
+        links: []
+        plugin:
+          kind: Markdown
+          spec:
+            text: This is a test dashboard.
+  layouts:
+  - kind: Grid
+    spec:
+      items:
+      - content:
+          "$ref": "#/spec/panels/fc2f898d-2f49-4090-8c1b-7949da638d66"
+        height: 10
+        width: 24
+        x: 0
+        "y": 0
+      display:
+        title: Test Group
+        collapse:
+          open: true

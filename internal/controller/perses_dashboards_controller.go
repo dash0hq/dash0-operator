@@ -431,11 +431,10 @@ func (r *PersesDashboardReconciler) Reconcile(
 
 func (r *PersesDashboardReconciler) FetchExistingResourceIdsRequest(
 	_ *preconditionValidationResult,
-	_ *logr.Logger,
 ) (*http.Request, error) {
 	// The mechanism to delete individual dashboards when synchronizing one Kubernetes PersesDashboard resource is not
 	// required, since each PersesDashboard only contains one dashboard. It is only needed when the resource type holds
-	// multiple objects that are synchronized (as it is the case for PrometheusRules). Thus, this controller does not
+	// multiple objects that are synchronized (as it is the case for PrometheusRule). Thus, this controller does not
 	// need to implement this method.
 	return nil, nil
 }
@@ -564,7 +563,7 @@ func (r *PersesDashboardReconciler) CreateDeleteRequests(
 ) ([]HttpRequestWithItemName, map[string]string) {
 	// The mechanism to delete individual dashboards when synchronizing one Kubernetes PersesDashboard resource is not
 	// required, since each PersesDashboard only contains one dashboard. It is only needed when the resource type holds
-	// multiple objects that are synchronized (as it is the case for PrometheusRules). Thus, this controller does not
+	// multiple objects that are synchronized (as it is the case for PrometheusRule). Thus, this controller does not
 	// need to implement this method.
 	return nil, nil
 }

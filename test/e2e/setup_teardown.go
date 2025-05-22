@@ -24,6 +24,8 @@ var (
 		1305, 1306, 1307, 1308, 1309, 1310, 1311, //
 		// OTel Collector
 		4317, 4318,
+		// Dash0 API mock server
+		8001,
 	}
 )
 
@@ -67,7 +69,7 @@ func checkIfRequiredPortsAreBlocked() {
 }
 
 func renderTemplates() {
-	By("render yaml templates via render-templates.sh")
+	By("rendering yaml templates via render-templates.sh")
 	Expect(runAndIgnoreOutput(exec.Command("test-resources/bin/render-templates.sh"))).To(Succeed())
 }
 

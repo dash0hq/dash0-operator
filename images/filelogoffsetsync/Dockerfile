@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
 # Note: This Dockerfile expects dash0-operator/images as the build context.
 
 FROM --platform=${BUILDPLATFORM} golang:1.24-alpine3.21 AS builder
