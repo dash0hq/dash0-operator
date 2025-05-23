@@ -139,6 +139,7 @@ func (r *AutoOperatorConfigurationResourceHandler) waitForWebserviceEndpoint(
 	return nil
 }
 
+//nolint:staticcheck
 func (r *AutoOperatorConfigurationResourceHandler) checkWebServiceEndpoint(ctx context.Context) error {
 	endpoints := corev1.Endpoints{}
 	if err := r.Get(ctx, types.NamespacedName{

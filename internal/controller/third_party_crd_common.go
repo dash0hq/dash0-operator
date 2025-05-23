@@ -371,7 +371,6 @@ func maybeStartWatchingThirdPartyResources(
 	resourceController, err :=
 		controller.NewTypedUnmanaged[reconcile.Request](
 			resourceReconciler.ControllerName(),
-			crdReconciler.Manager(),
 			controller.Options{
 				Reconciler: resourceReconciler,
 				// We stop the controller everytime the third-party CRD is deleted, and then recreate it if the
