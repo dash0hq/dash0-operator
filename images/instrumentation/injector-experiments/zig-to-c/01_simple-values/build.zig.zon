@@ -1,0 +1,15 @@
+// SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+// SPDX-License-Identifier: Apache-2.0
+
+.{
+    .name = .symbols,
+    .version = "0.0.0",
+    .fingerprint = 0xdf834d856c639076,
+    .minimum_zig_version = "0.14.0",
+    .dependencies = .{},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "root.zig",
+    },
+}
