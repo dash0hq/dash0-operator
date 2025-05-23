@@ -1193,12 +1193,36 @@ The modifications that are performed for workloads are the following:
       workload. The controller is responsible for instrumenting existing workloads while the webhook is responsible for
       instrumenting new workloads at deploy time.
 
-Note: Automatic tracing will only happen for [supported runtimes](#supported-runtimes).
-Nonetheless, the modifications outlined above are performed for _every_ workload.
-One reason for that is that there is no way to tell which runtime a workload uses from the outside, e.g. on the
-Kubernetes level.
-The more important reason is that runtimes that are not (yet) supported for auto-instrumentation still benefit from
-the improved OpenTelemetry resource attribute detection.
+**Notes:**
+
+1. Automatic tracing will only happen for [supported runtimes](#supported-runtimes).
+   Nonetheless, the modifications outlined above are performed for _every_ workload.
+   One reason for that is that there is no way to tell which runtime a workload uses from the outside, e.g. on the
+   Kubernetes level.
+   The more important reason is that runtimes that are not (yet) supported for auto-instrumentation still benefit from
+   the improved OpenTelemetry resource attribute detection.
+2. The operator operates sets `OTEL_EXPORTER_OTLP_ENDPOINT=http://$(NODE_IP):40318`, that is, it tells the workload to
+   send OTLP traffic to the HTTP port of the OpenTelemetry collector pod on the same host, which belongs to the
+   OpenTelemetry collector DaemonSet managed by the operator.
+   It also sets the protocol accordingly by setting `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`.
+   The protocol `http/protobuf` is the recommended default according to the
+   [OpenTelemetry specification](https://opentelemetry.io/docs/specs/otel/protocol/exporter/#specify-protocol), and it
+   is widely supported.
+   It does so under the assumption that workloads _which have an OpenTelemetry SDK_ use an SDK that respects
+   `OTEL_EXPORTER_OTLP_PROTOCOL` and also has support for the `http/protobuf` protocol.
+   For workloads that have an OpenTelemetry SDK that either does not respect `OTEL_EXPORTER_OTLP_PROTOCOL` (and defaults
+   to `grpc`) or does not have support for `http/protobuf`, this will lead to the SDK trying to establish a gRPC
+   connection to the collector's HTTP endpoint, that is, the SDK will not be able to emit telemetry.
+   SDKs without support for `http/protobuf` are rather rare, but one prominent example is the Kubernetes
+   [ingress-nginx](https://kubernetes.github.io/ingress-nginx/user-guide/third-party-addons/opentelemetry/).
+   The recommended approach is to disable workload instrumentation by the Dash0 operator for these workloads; for
+   example by adding the Kubernetes label `dash0.com/enable: "false"`, or by not installing a Dash0 monitoring resource
+   in the namespace where these workloads are located.
+   The workloads can then be monitored by following the setup described in
+   [Sending Data to the OpenTelemetry Collectors Managed by the Dash0 Operator](#sending-data-to-the-opentelemetry-collectors-managed-by-the-dash0-operator)
+   to have the workload send telemetry to the collectors managed by the Dash0 operator, using gRPC.
+   Note that this is not relevant for workloads that do not have an OpenTelemetry SDK at all, since they will ignore
+   `OTEL_EXPORTER_OTLP_ENDPOINT`.
 
 The remainder of this section provides a more detailed step-by-step description of how the Dash0 operator's workload
 instrumentation for tracing works internally, intended for the technically curious reader.
