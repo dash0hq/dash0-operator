@@ -45,10 +45,6 @@ export function printTotalBuildTimeInfo(): void {
     return;
   }
 
-  const totalBuildEnd = Date.now();
-  const totalBuildDuration = Math.floor((totalBuildEnd - startTimeBuild) / 1000);
-  let accountedForTotal = 0;
-
   console.log();
   console.log('**build step durations (CSV)**');
   console.log('"Build Step";"Architecture";"Runtime";"Base Image";"Duration";"Duration (formatted)"');
@@ -57,17 +53,12 @@ export function printTotalBuildTimeInfo(): void {
     console.log(
       `"${entry.stepLabel}";"${entry.arch}";"${entry.runtime}";"${entry.baseImage}";"${entry.duration}";"${printTime(entry.duration)}"`,
     );
-    accountedForTotal += entry.duration;
   }
   console.log();
 
   console.log('----------------------------------------');
   console.log('**summary**');
   printBuildStepDuration('**total build time**', startTimeBuild);
-
-  const unaccounted = totalBuildDuration - accountedForTotal;
-  console.log(`[build time] build time accounted for by individual build steps:\t${printTime(accountedForTotal)}`);
-  console.log(`[build time] build time unaccounted for by individual build steps:\t${printTime(unaccounted)}`);
 }
 
 function printBuildStepDuration(stepLabel: string, start: number): void {

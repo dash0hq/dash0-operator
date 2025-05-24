@@ -16,6 +16,10 @@ function cleanupDockerContainersAndImages(baseDir: string): void {
     console.log('[cleanup] skipping cleanup of containers and images');
     return;
   }
+  if (process.env.CI) {
+    console.log('[cleanup] skipping cleanup of containers and images on CI');
+    return;
+  }
 
   if (!baseDir) {
     throw new Error('error: mandatory argument "baseDir" is missing');
