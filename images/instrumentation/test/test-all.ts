@@ -3,7 +3,6 @@
 // SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-
 import { promisify } from 'node:util';
 import childProcess from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -28,11 +27,14 @@ console.log('----------------------------------------');
 
 const allDockerPlatforms = 'linux/arm64,linux/amd64';
 const testScriptDir = 'test';
-const slowTestThresholdSeconds = 10;
+const slowTestThresholdSeconds = 60;
 
 let instrumentationImage = 'dash0-instrumentation:latest';
 let testExitCode = 0;
 let summary = '';
+
+let testCasesTotal = 0;
+let testCasesDone = 0;
 
 const architectures = process.env.ARCHITECTURES ? process.env.ARCHITECTURES.split(',') : [];
 if (architectures.length > 0) {
@@ -54,281 +56,6 @@ if (testCases.length > 0) {
   console.log('Only running a subset of test cases:', testCases);
 }
 
-async function buildOrPullInstrumentationImage(): void {
-  const startTimeStep = Date.now();
-
-  if (process.env.INSTRUMENTATION_IMAGE) {
-    instrumentationImage = process.env.INSTRUMENTATION_IMAGE;
-
-    if (isRemoteImage(instrumentationImage)) {
-      console.log('----------------------------------------');
-      console.log(`fetching instrumentation image from remote repository: ${instrumentationImage}`);
-      console.log('----------------------------------------');
-      await writeFile('test/.container_images_to_be_deleted_at_end', instrumentationImage + '\n', { flag: 'a' });
-      await exec(`docker pull "${instrumentationImage}"`);
-    } else {
-      console.log('----------------------------------------');
-      console.log(`using existing local instrumentation image: ${instrumentationImage}`);
-      console.log('----------------------------------------');
-    }
-    storeBuildStepDuration('pull instrumentation image', startTimeStep);
-  } else {
-    console.log('----------------------------------------');
-    console.log(`building multi-arch instrumentation image for platforms ${allDockerPlatforms} from local sources`);
-    console.log('----------------------------------------');
-
-    await writeFile('test/.container_images_to_be_deleted_at_end', instrumentationImage + '\n', { flag: 'a' });
-
-    try {
-      const { stdout: dockerBuildOutputStdOut, stderr: dockerBuildOutputStdErr } = await exec(
-        `docker build --platform "${allDockerPlatforms}" . -t "${instrumentationImage}"`,
-        { encoding: 'utf8', stdio: 'pipe' },
-      );
-
-      if (process.env.PRINT_DOCKER_OUTPUT === 'true') {
-        if (dockerBuildOutputStdOut) {
-          console.log(dockerBuildOutputStdOut);
-        }
-        if (dockerBuildOutputStdErr) {
-          console.log(dockerBuildOutputStdErr);
-        }
-      }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (error: any) {
-      console.log(error.stdout || error.message);
-      process.exit(1);
-    }
-
-    storeBuildStepDuration('build instrumentation image', startTimeStep);
-  }
-  console.log();
-}
-
-async function runTestsForRuntime(
-  arch: string,
-  dockerPlatform: string,
-  runtime: string,
-  imageNameTest: string,
-  containerNameTestPrefix: string,
-  baseImage: string,
-): void {
-  const testCasesDir = `${testScriptDir}/${runtime}/test-cases`;
-  if (!existsSync(testCasesDir)) {
-    return;
-  }
-
-  const testCaseDirs = (await readdir(testCasesDir, { withFileTypes: true }))
-    .filter(dirent => dirent.isDirectory())
-    .map(dirent => `${testCasesDir}/${dirent.name}/`);
-
-  for (const testCaseDir of testCaseDirs) {
-    if (testCases.length > 0) {
-      const shouldRunTestCase = testCases.some(selectedTestCase => testCaseDir.includes(selectedTestCase));
-      if (!shouldRunTestCase) {
-        console.log(`- skipping test case ${testCaseDir}`);
-        continue;
-      }
-    }
-
-    const startTimeTestCase = Date.now();
-    const test = basename(testCaseDir);
-
-    let testCmd: string[];
-
-    switch (runtime) {
-      case 'jvm':
-        testCmd = ['java', '-jar'];
-        const systemPropsFile = `${testScriptDir}/${runtime}/test-cases/${test}/system.properties`;
-        if (existsSync(systemPropsFile)) {
-          const props = (await readFile(systemPropsFile, 'utf8')).split('\n').filter(line => line.trim());
-          testCmd.push(...props);
-        }
-        testCmd.push('-Dotel.instrumentation.common.default-enabled=false', `/test-cases/${test}/app.jar`);
-        break;
-
-      case 'node':
-        testCmd = ['node', `/test-cases/${test}`];
-        break;
-
-      case 'c':
-        testCmd = [`/test-cases/${test}/app.o`];
-        break;
-
-      default:
-        console.error(
-          `Error: Test handler for runtime "${runtime}" is not implemented. Please update test-all.ts, function runTestsForRuntime.`,
-        );
-        process.exit(1);
-    }
-
-    // discard potential left-overs from previous test runs
-    const containerName = `${containerNameTestPrefix}-${test}`;
-    try {
-      await exec(`docker rm -f "${containerName}"`, { stdio: 'ignore' });
-    } catch {
-      // ignore if container doesn't exist
-    }
-
-    try {
-      const envFile = `${testScriptDir}/${runtime}/test-cases/${test}/.env`;
-      const dockerRunCmd = [
-        'docker',
-        'run',
-        '--rm',
-        '--platform',
-        dockerPlatform,
-        '--env-file',
-        envFile,
-        '--name',
-        containerName,
-        imageNameTest,
-        ...testCmd,
-      ]
-        .map(arg => `"${arg}"`)
-        .join(' ');
-
-      const { stdout: dockerRunOutputStdOut, stderr: dockerRunOutputStdErr } = await exec(dockerRunCmd, {
-        encoding: 'utf8',
-        stdio: 'pipe',
-      });
-
-      if (process.env.PRINT_DOCKER_OUTPUT === 'true') {
-        if (dockerRunOutputStdOut) {
-          console.log(dockerRunOutputStdOut);
-        }
-        if (dockerRunOutputStdErr) {
-          console.log(dockerRunOutputStdErr);
-        }
-      }
-      console.log(chalk.green(`test case "${test}": OK`));
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (error: any) {
-      console.log(chalk.red(`test case "${test}": FAIL`));
-      console.log(chalk.red('test command was:'));
-      console.log(chalk.red(testCmd.join(' ')));
-      console.log(chalk.red('test output:\n'));
-      console.log(chalk.red(error.stdout || error.message));
-      testExitCode = 1;
-      summary += `\n${runtime}/${baseImage}\t- ${test}:\tfailed`;
-    }
-
-    const endTimeTestCase = Date.now();
-    const durationTestCase = Math.floor((endTimeTestCase - startTimeTestCase) / 1000);
-    if (durationTestCase > slowTestThresholdSeconds) {
-      console.log(
-        `! slow test case: ${imageNameTest}/${baseImage}/${test}: took ${durationTestCase} seconds, logging output:`,
-      );
-      // Note: dockerRunOutput would need to be captured here if needed
-    }
-
-    storeBuildStepDuration(`test case ${test}`, startTimeTestCase, arch, runtime, baseImage);
-  }
-}
-
-async function runTestsForArchitecture(arch: string): void {
-  let dockerPlatform: string;
-  if (arch === 'arm64') {
-    dockerPlatform = 'linux/arm64';
-  } else if (arch === 'x86_64') {
-    dockerPlatform = 'linux/amd64';
-  } else {
-    throw new Error(`The architecture ${arch} is not supported.`);
-  }
-
-  console.log('========================================');
-  console.log(`running tests for architecture ${arch}`);
-  console.log('========================================');
-
-  const runtimeDirs = (await readdir(testScriptDir, { withFileTypes: true }))
-    .filter(dirent => dirent.isDirectory())
-    .map(dirent => dirent.name);
-
-  for (const runtime of runtimeDirs) {
-    const baseImagesFile = `${testScriptDir}/${runtime}/base-images`;
-    const testCasesDir = `${testScriptDir}/${runtime}/test-cases`;
-
-    if (!existsSync(baseImagesFile) || !existsSync(testCasesDir)) {
-      continue;
-    }
-
-    if (runtimes.length > 0 && !runtimes.includes(runtime)) {
-      console.log('----------------------------------------');
-      console.log(`- skipping runtime ${runtime}`);
-      continue;
-    }
-
-    console.log('----------------------------------------');
-    console.log(`- runtime: '${runtime}'\n`);
-
-    const baseImagesForRuntime = (await readFile(baseImagesFile, 'utf8'))
-      .split('\n')
-      .filter(line => line.trim() && !line.startsWith('#') && !line.startsWith(';'));
-
-    for (const baseImage of baseImagesForRuntime) {
-      if (baseImages.length > 0 && !baseImages.includes(baseImage)) {
-        console.log('--------------------');
-        console.log(`- skipping base image ${baseImage}`);
-        continue;
-      }
-
-      console.log('--------------------');
-      console.log(`- base image: '${baseImage}'`);
-
-      const containerNameTestPrefix = `instrumentation-image-test-${runtime}-${arch}`;
-      const imageNameTest = `instrumentation-image-test-${runtime}-${arch}:latest`;
-
-      console.log(
-        `building test image "${imageNameTest}" for ${arch}/${runtime}/${baseImage} with instrumentation image ${instrumentationImage}`,
-      );
-
-      const startTimeDockerBuild = Date.now();
-      await writeFile('test/.container_images_to_be_deleted_at_end', imageNameTest + '\n', { flag: 'a' });
-
-      try {
-        const dockerBuildCmd = [
-          'docker',
-          'build',
-          '--platform',
-          dockerPlatform,
-          '--build-arg',
-          `instrumentation_image=${instrumentationImage}`,
-          '--build-arg',
-          `base_image=${baseImage}`,
-          `${testScriptDir}/${runtime}`,
-          '-t',
-          imageNameTest,
-        ]
-          .map(arg => `"${arg}"`)
-          .join(' ');
-
-        const { stdout: dockerBuildOutputStdOut, stderr: dockerBuildOutputStdErr } = await exec(dockerBuildCmd, {
-          encoding: 'utf8',
-          stdio: 'pipe',
-        });
-
-        if (process.env.PRINT_DOCKER_OUTPUT === 'true') {
-          if (dockerBuildOutputStdOut) {
-            console.log(dockerBuildOutputStdOut);
-          }
-          if (dockerBuildOutputStdErr) {
-            console.log(dockerBuildOutputStdErr);
-          }
-        }
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } catch (error: any) {
-        console.log(error.stdout || error.message);
-        process.exit(1);
-      }
-
-      storeBuildStepDuration('docker build', startTimeDockerBuild, arch, runtime, baseImage);
-      await runTestsForRuntime(arch, dockerPlatform, runtime, imageNameTest, containerNameTestPrefix, baseImage);
-      console.log();
-    }
-  }
-  console.log('\n');
-}
-
-// Main execution
 async function main(): Promise<void> {
   // Check Docker driver (skip in CI)
   if (process.env.CI !== 'true') {
@@ -366,26 +93,352 @@ async function main(): Promise<void> {
 
   const allArchitectures = ['arm64', 'x86_64'];
 
-  for (const arch of allArchitectures) {
+  const testsPerArchitecture = allArchitectures.filter(arch => {
     if (architectures.length > 0 && !architectures.includes(arch)) {
-      console.log('========================================');
-      console.log(`- skipping CPU architecture ${arch}`);
-      console.log('========================================');
-      continue;
+      log(`========================================
+- skipping CPU architecture ${arch}`);
+      return false;
     }
-    await runTestsForArchitecture(arch);
-  }
+    return true;
+  });
+
+  await Promise.all(testsPerArchitecture.map(arch => runTestsForArchitecture(arch)));
 
   if (testExitCode !== 0) {
-    console.log(chalk.red(`\nThere have been failing test cases:`));
-    console.log(chalk.red(summary));
-    console.log(chalk.red(`\nSee above for details.`));
+    console.log(
+      chalk.red(`\nThere have been failing test cases:
+${summary}
+\nSee above for details.\n`),
+    );
   } else {
-    console.log(chalk.green(`\nAll test cases have passed.`));
+    log(chalk.green(`\nAll test cases have passed.\n`));
   }
-  console.log('\n');
 
   process.exit(testExitCode);
+}
+
+async function buildOrPullInstrumentationImage(): Promise<void> {
+  const startTimeStep = Date.now();
+
+  if (process.env.INSTRUMENTATION_IMAGE) {
+    instrumentationImage = process.env.INSTRUMENTATION_IMAGE;
+
+    if (isRemoteImage(instrumentationImage)) {
+      log(
+        `'----------------------------------------
+fetching instrumentation image from remote repository: ${instrumentationImage}`,
+      );
+      await writeFile('test/.container_images_to_be_deleted_at_end', instrumentationImage + '\n', { flag: 'a' });
+      await exec(`docker pull "${instrumentationImage}"`);
+    } else {
+      log(
+        `----------------------------------------
+using existing local instrumentation image: ${instrumentationImage}`,
+      );
+    }
+    storeBuildStepDuration('pull instrumentation image', startTimeStep);
+  } else {
+    log(
+      `----------------------------------------
+starting: building multi-arch instrumentation image for platforms ${allDockerPlatforms} from local sources`,
+    );
+
+    await writeFile('test/.container_images_to_be_deleted_at_end', instrumentationImage + '\n', { flag: 'a' });
+
+    try {
+      const { stdout: dockerBuildOutputStdOut, stderr: dockerBuildOutputStdErr } = await exec(
+        `docker build --platform "${allDockerPlatforms}" . -t "${instrumentationImage}"`,
+        { encoding: 'utf8' },
+      );
+
+      if (process.env.PRINT_DOCKER_OUTPUT === 'true') {
+        if (dockerBuildOutputStdOut) {
+          log(dockerBuildOutputStdOut);
+        }
+        if (dockerBuildOutputStdErr) {
+          log(dockerBuildOutputStdErr);
+        }
+      }
+      log(
+        `----------------------------------------
+done: building multi-arch instrumentation image for platforms ${allDockerPlatforms} from local sources`,
+      );
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (error: any) {
+      log(error.stdout || error.message);
+      process.exit(1);
+    }
+
+    storeBuildStepDuration('build instrumentation image', startTimeStep);
+  }
+  console.log();
+}
+
+async function runTestsForArchitecture(arch: string): Promise<void> {
+  let dockerPlatform: string;
+  if (arch === 'arm64') {
+    dockerPlatform = 'linux/arm64';
+  } else if (arch === 'x86_64') {
+    dockerPlatform = 'linux/amd64';
+  } else {
+    throw new Error(`The architecture ${arch} is not supported.`);
+  }
+
+  log(`========================================
+running tests for architecture ${arch}`);
+
+  const runtimeDirs = (await readdir(testScriptDir, { withFileTypes: true }))
+    .filter(dirent => dirent.isDirectory())
+    .map(dirent => dirent.name);
+
+  await Promise.all(runtimeDirs.map(runtime => runTestsForArchitectureAndRuntime(arch, dockerPlatform, runtime)));
+
+  console.log('\n');
+}
+
+async function runTestsForArchitectureAndRuntime(arch: string, dockerPlatform: string, runtime: string): Promise<void> {
+  const baseImagesFile = `${testScriptDir}/${runtime}/base-images`;
+  const testCasesDir = `${testScriptDir}/${runtime}/test-cases`;
+
+  if (!existsSync(baseImagesFile) || !existsSync(testCasesDir)) {
+    return;
+  }
+
+  if (runtimes.length > 0 && !runtimes.includes(runtime)) {
+    log(
+      `----------------------------------------
+- ${arch}: skipping runtime '${runtime}'`,
+    );
+    return;
+  }
+
+  log(
+    `----------------------------------------
+- runtime: '${runtime}'`,
+  );
+
+  const baseImagesForRuntime = (await readFile(baseImagesFile, 'utf8'))
+    .split('\n')
+    .filter(line => line.trim() && !line.startsWith('#') && !line.startsWith(';'));
+
+  await Promise.all(
+    baseImagesForRuntime.map(baseImage =>
+      runTestsForArchitectureRuntimeAndBaseImage(arch, dockerPlatform, runtime, baseImage),
+    ),
+  );
+}
+
+async function runTestsForArchitectureRuntimeAndBaseImage(
+  arch: string,
+  dockerPlatform: string,
+  runtime: string,
+  baseImage: string,
+): Promise<void> {
+  if (baseImages.length > 0 && !baseImages.includes(baseImage)) {
+    log(
+      `--------------------
+- ${arch}/${runtime}: skipping base image ${baseImage}`,
+    );
+    return;
+  }
+
+  const baseImageForDockerNames = baseImage.replaceAll(':', '-');
+  const containerNameTestPrefix = `instrumentation-image-test-${arch}-${runtime}-${baseImageForDockerNames}`;
+  const imageNameTest = `instrumentation-image-test-${arch}-${runtime}-${baseImageForDockerNames}:latest`;
+
+  log(
+    `--------------------
+- base image: '${baseImage}'
+  starting: building test image "${imageNameTest}" for ${arch}/${runtime}/${baseImage} with instrumentation image ${instrumentationImage}`,
+  );
+
+  const startTimeDockerBuild = Date.now();
+  await writeFile('test/.container_images_to_be_deleted_at_end', imageNameTest + '\n', { flag: 'a' });
+
+  try {
+    const dockerBuildCmd = [
+      'docker',
+      'build',
+      '--platform',
+      dockerPlatform,
+      '--build-arg',
+      `instrumentation_image=${instrumentationImage}`,
+      '--build-arg',
+      `base_image=${baseImage}`,
+      `${testScriptDir}/${runtime}`,
+      '-t',
+      imageNameTest,
+    ]
+      .map(arg => `"${arg}"`)
+      .join(' ');
+
+    const { stdout: dockerBuildOutputStdOut, stderr: dockerBuildOutputStdErr } = await exec(dockerBuildCmd, {
+      encoding: 'utf8',
+    });
+
+    if (process.env.PRINT_DOCKER_OUTPUT === 'true') {
+      if (dockerBuildOutputStdOut) {
+        log(dockerBuildOutputStdOut);
+      }
+      if (dockerBuildOutputStdErr) {
+        log(dockerBuildOutputStdErr);
+      }
+    }
+    log(
+      `--------------------
+  done: building test image "${imageNameTest}" for ${arch}/${runtime}/${baseImage} with instrumentation image ${instrumentationImage}`,
+    );
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (error: any) {
+    log(error.stdout || error.message);
+    process.exit(1);
+  }
+
+  storeBuildStepDuration('docker build', startTimeDockerBuild, arch, runtime, baseImage);
+  await runTestCases(arch, dockerPlatform, runtime, imageNameTest, containerNameTestPrefix, baseImage);
+  console.log();
+}
+
+async function runTestCases(
+  arch: string,
+  dockerPlatform: string,
+  runtime: string,
+  imageNameTest: string,
+  containerNameTestPrefix: string,
+  baseImage: string,
+): Promise<void> {
+  const testCasesDir = `${testScriptDir}/${runtime}/test-cases`;
+  if (!existsSync(testCasesDir)) {
+    return;
+  }
+
+  const prefix = `${arch}/${runtime}/${baseImage}`;
+  const testCaseDirs = (await readdir(testCasesDir, { withFileTypes: true }))
+    .filter(dirent => dirent.isDirectory())
+    .map(dirent => `${testCasesDir}/${dirent.name}/`);
+
+  for (const testCaseDir of testCaseDirs) {
+    if (testCases.length > 0) {
+      const shouldRunTestCase = testCases.some(selectedTestCase => testCaseDir.includes(selectedTestCase));
+      if (!shouldRunTestCase) {
+        log(`- ${prefix}: skipping test case ${testCaseDir}`);
+        continue;
+      }
+    }
+
+    const startTimeTestCase = Date.now();
+    const test = basename(testCaseDir);
+
+    let testCmd: string[];
+
+    switch (runtime) {
+      case 'jvm':
+        testCmd = ['java', '-jar'];
+        const systemPropsFile = `${testScriptDir}/${runtime}/test-cases/${test}/system.properties`;
+        if (existsSync(systemPropsFile)) {
+          const props = (await readFile(systemPropsFile, 'utf8')).split('\n').filter(line => line.trim());
+          testCmd.push(...props);
+        }
+        testCmd.push('-Dotel.instrumentation.common.default-enabled=false', `/test-cases/${test}/app.jar`);
+        break;
+
+      case 'node':
+        testCmd = ['node', `/test-cases/${test}`];
+        break;
+
+      case 'c':
+        testCmd = [`/test-cases/${test}/app.o`];
+        break;
+
+      default:
+        console.error(
+          `Error: Test handler for runtime "${runtime}" is not implemented. Please update test-all.ts, function runTestCases.`,
+        );
+        process.exit(1);
+    }
+
+    // discard potential left-overs from previous test runs
+    const containerName = `${containerNameTestPrefix}-${test}`;
+    try {
+      await exec(`docker rm -f "${containerName}"`);
+    } catch {
+      // ignore if container doesn't exist
+    }
+
+    try {
+      const envFile = `${testScriptDir}/${runtime}/test-cases/${test}/.env`;
+
+      const dockerRunCmd = [
+        'docker',
+        'run',
+        '--rm',
+        '--platform',
+        dockerPlatform,
+        '--env-file',
+        envFile,
+        '--name',
+        containerName,
+        imageNameTest,
+        ...testCmd,
+      ]
+        .map(arg => `"${arg}"`)
+        .join(' ');
+
+      testCasesTotal++;
+      const { stdout: dockerRunOutputStdOut, stderr: dockerRunOutputStdErr } = await exec(dockerRunCmd, {
+        encoding: 'utf8',
+        stdio: 'pipe',
+      });
+
+      if (process.env.PRINT_DOCKER_OUTPUT === 'true') {
+        if (dockerRunOutputStdOut) {
+          log(dockerRunOutputStdOut);
+        }
+        if (dockerRunOutputStdErr) {
+          log(dockerRunOutputStdErr);
+        }
+      }
+      log(chalk.green(`${prefix.padEnd(32)}\t- test case "${test}": OK`));
+
+      const endTimeTestCase = Date.now();
+      const durationTestCase = Math.floor((endTimeTestCase - startTimeTestCase) / 1000);
+      if (durationTestCase > slowTestThresholdSeconds) {
+        log(
+          `! slow test case: ${imageNameTest}/${baseImage}/${test}: took ${durationTestCase} seconds, logging output:`,
+        );
+        if (dockerRunOutputStdOut) {
+          log(dockerRunOutputStdOut);
+        }
+        if (dockerRunOutputStdErr) {
+          log(dockerRunOutputStdErr);
+        }
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (error: any) {
+      log(
+        chalk.red(
+          `${prefix.padEnd(32)}\t- test case "${test}": FAIL
+test command was:
+${testCmd.join(' ')}
+${error}`,
+        ),
+      );
+      testExitCode = 1;
+      summary += `\n${prefix}\t- ${test}:\tfailed`;
+    } finally {
+      testCasesDone++;
+      log(`${testCasesDone}/(>=${testCasesTotal})`);
+    }
+
+    storeBuildStepDuration(`test case ${test}`, startTimeTestCase, arch, runtime, baseImage);
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function log(message?: any, ...optionalParams: any[]): void {
+  console.log(`${new Date().toLocaleTimeString()}: ${message}`, ...optionalParams);
 }
 
 await main();
