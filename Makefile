@@ -210,22 +210,12 @@ shellcheck-lint: shellcheck-check-installed
 	@echo "-------------------------------- (linting shell scripts)"
 	find . -name \*.sh -not -path "./images/instrumentation/injector-experiments/third-party/*" | xargs shellcheck -x
 
-.PHONY: prometheus-crd-version-check
-prometheus-crd-version-check:
-	@echo "-------------------------------- (verifying the Prometheus CRD version is in sync)"
-	./test-resources/bin/prometheus-crd-version-check.sh
-
-.PHONY: perses-crd-version-check
-perses-crd-version-check:
-	@echo "-------------------------------- (verifying the Perses CRD version is in sync)"
-	./test-resources/bin/perses-crd-version-check.sh
-
 .PHONY: zig-installed
 zig-installed:
 	@set +x
 	@if ! zig version > /dev/null; then \
-	echo "error: zig is not installed. Run 'brew install zig' or similar."; \
-	exit 1; \
+	  echo "error: zig is not installed. Run 'brew install zig' or similar."; \
+	  exit 1; \
 	fi
 
 .PHONY: zig-fmt-check
@@ -237,12 +227,35 @@ else
 	zig fmt --check images/instrumentation/injector/src
 endif
 
+.PHONY: npm-installed
+npm-installed:
+	@set +x
+	@if ! npm --version > /dev/null; then \
+	  echo "error: npm is not installed."; \
+	  exit 1; \
+	fi
+
+.PHONY: instrumentation-test-lint
+instrumentation-test-lint: npm-installed
+	@echo "-------------------------------- (linting the instrumentation tests)"
+	cd images/instrumentation/test && npm ci && npm run lint
+
+.PHONY: prometheus-crd-version-check
+prometheus-crd-version-check:
+	@echo "-------------------------------- (verifying the Prometheus CRD version is in sync)"
+	./test-resources/bin/prometheus-crd-version-check.sh
+
+.PHONY: perses-crd-version-check
+perses-crd-version-check:
+	@echo "-------------------------------- (verifying the Perses CRD version is in sync)"
+	./test-resources/bin/perses-crd-version-check.sh
+
 .PHONY: zig-fmt
 zig-fmt: zig-installed
 	zig fmt images/instrumentation/injector/src
 
 .PHONY: lint
-lint: golangci-lint helm-chart-lint shellcheck-lint perses-crd-version-check prometheus-crd-version-check zig-fmt-check
+lint: golangci-lint helm-chart-lint shellcheck-lint zig-fmt-check instrumentation-test-lint perses-crd-version-check prometheus-crd-version-check
 
 .PHONY: lint-fix
 lint-fix: golang-lint-fix zig-fmt
