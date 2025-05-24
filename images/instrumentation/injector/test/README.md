@@ -1,7 +1,10 @@
+Injector Integration Tests
+==========================
+
 This directory contains isolated integration tests for the injector code.
 The difference to images/instrumentation/test is that the latter tests the whole instrumentation image.
-Also, the tests in this folder do not use multi-platform images, an injector binary is build (in a container) per CPU
-architecture, and then used for testing.
+Also, the tests in this folder do not use multi-platform images; instead, an injector binary is build (in a container)
+per CPU architecture, and then used for testing.
 Note that the Zig source code in images/instrumentation/injector/src also contains Zig unit tests.
 
 The available test cases for the injector integration tests are listed in the files

@@ -1,0 +1,25 @@
+{
+  "name": "dash0-instrumentation-tests",
+  "version": "1.0.0",
+  "description": "TypeScript-based test runner for Dash0 instrumentation images",
+  "main": "test-all.ts",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint",
+    "test": "node --experimental-strip-types test-all.ts",
+    "dev": "node --experimental-strip-types --watch test-all.ts"
+  },
+  "dependencies": {
+    "@types/node": "^22.0.0",
+    "chalk": "^5.4.1"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.27.0",
+    "eslint": "^9.27.0",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.32.1"
+  }
+}

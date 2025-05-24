@@ -13,6 +13,12 @@ runs:
       with:
         fetch-depth: 0
 
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      with:
+        node-version: '24.x'
+        cache: 'npm'
+        cache-dependency-path: images/instrumentation/test/package-lock.json
+
     - name: get branch name
       id: branch-name
       shell: bash
@@ -150,10 +156,12 @@ runs:
       if: |
         steps.changed-files.outputs.instrumentation_any_changed == 'true' ||
         github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
+      working-directory: images/instrumentation/test
       env:
         INSTRUMENTATION_IMAGE: ${{ steps.instrumentation-test-image.outputs.image_name }}
       run: |
-        images/instrumentation/test/test-all.sh
+        npm ci
+        npm run test
 
     - name: delete test image
       uses: bots-house/ghcr-delete-image-action@3827559c68cb4dcdf54d813ea9853be6d468d3a4 #v1.1.0
