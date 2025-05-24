@@ -6,6 +6,8 @@ const envVarName = 'UNDEFINED_ENVIRONMENT_VARIABLE';
 const expectedValue = undefined;
 
 if (process.env[envVarName] !== expectedValue) {
-  console.error(`Unexpected value for ${envVarName}: expected: '${expectedValue}'; actual: '${process.env[envVarName]}'`);
+  console.error(
+    `Unexpected value for ${envVarName}: expected: '${expectedValue}'; actual: '${process.env[envVarName]}'`,
+  );
   process.exit(1);
 }

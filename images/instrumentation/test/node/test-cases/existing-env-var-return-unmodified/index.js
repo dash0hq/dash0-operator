@@ -3,7 +3,7 @@
 
 const process = require('node:process');
 
-if (process.env["AN_ENVIRONMENT_VARIABLE"] !== 'value') {
-  console.error(`Unexpected value for AN_ENVIRONMENT_VARIABLE: ${process.env["AN_ENVIRONMENT_VARIABLE"]}`);
+if (process.env['AN_ENVIRONMENT_VARIABLE'] !== 'value') {
+  console.error(`Unexpected value for AN_ENVIRONMENT_VARIABLE: ${process.env['AN_ENVIRONMENT_VARIABLE']}`);
   process.exit(1);
 }
