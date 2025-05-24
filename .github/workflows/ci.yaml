@@ -54,7 +54,7 @@ jobs:
 
       - uses: mlugg/setup-zig@aa9ad5c14eb3452e235a441c4f9a8e89f20d97bd # v1
         with:
-          # keep in sync with images/instrumentation/injector/zig-version
+          # keep in sync with images/instrumentation/injector/zig-version, if possible
           version: 0.14.0
 
       - name: go version
