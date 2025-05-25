@@ -15,6 +15,16 @@ import chalk from 'chalk';
 import { setStartTimeBuild, storeBuildStepDuration, printTotalBuildTimeInfo } from './build-time-profiling.ts';
 import { isRemoteImage, cleanupDockerImagesInstrumentationImageTests } from './util.ts';
 
+type TestImage = {
+  arch: string;
+  dockerPlatform: string;
+  runtime: string;
+  imageNameTest: string;
+  containerNameTestPrefix: string;
+  baseImage: string;
+  skipped: boolean;
+};
+
 const exec = promisify(childProcess.exec);
 
 setStartTimeBuild();
@@ -102,7 +112,12 @@ async function main(): Promise<void> {
     return true;
   });
 
-  await Promise.all(testsPerArchitecture.map(arch => runTestsForArchitecture(arch)));
+  const buildATasksPerArchitecture = testsPerArchitecture.map(arch => buildTestImagesForArchitecture(arch));
+  const allTestImages = (await Promise.all(buildATasksPerArchitecture)).flat();
+  log(`========================================
+All ${allTestImages.length} test images have been built, starting to run test cases now.`);
+  const runTestTasksPerArchitecture = allTestImages.map(runTestCasesForArchitectureRuntimeAndBaseImage);
+  await Promise.all(runTestTasksPerArchitecture);
 
   if (testExitCode !== 0) {
     console.log(
@@ -175,7 +190,7 @@ done: building multi-arch instrumentation image for platforms ${allDockerPlatfor
   console.log();
 }
 
-async function runTestsForArchitecture(arch: string): Promise<void> {
+async function buildTestImagesForArchitecture(arch: string): Promise<TestImage[]> {
   let dockerPlatform: string;
   if (arch === 'arm64') {
     dockerPlatform = 'linux/arm64';
@@ -185,24 +200,27 @@ async function runTestsForArchitecture(arch: string): Promise<void> {
     throw new Error(`The architecture ${arch} is not supported.`);
   }
 
-  log(`========================================
-running tests for architecture ${arch}`);
-
   const runtimeDirs = (await readdir(testScriptDir, { withFileTypes: true }))
     .filter(dirent => dirent.isDirectory())
     .map(dirent => dirent.name);
 
-  await Promise.all(runtimeDirs.map(runtime => runTestsForArchitectureAndRuntime(arch, dockerPlatform, runtime)));
+  const buildTestImageTasksPerRuntime = runtimeDirs.map(runtime =>
+    buildTestImagesForArchitectureAndRuntime(arch, dockerPlatform, runtime),
+  );
 
-  console.log('\n');
+  return (await Promise.all(buildTestImageTasksPerRuntime)).flat();
 }
 
-async function runTestsForArchitectureAndRuntime(arch: string, dockerPlatform: string, runtime: string): Promise<void> {
+async function buildTestImagesForArchitectureAndRuntime(
+  arch: string,
+  dockerPlatform: string,
+  runtime: string,
+): Promise<TestImage[]> {
   const baseImagesFile = `${testScriptDir}/${runtime}/base-images`;
   const testCasesDir = `${testScriptDir}/${runtime}/test-cases`;
 
   if (!existsSync(baseImagesFile) || !existsSync(testCasesDir)) {
-    return;
+    return [];
   }
 
   if (runtimes.length > 0 && !runtimes.includes(runtime)) {
@@ -210,7 +228,7 @@ async function runTestsForArchitectureAndRuntime(arch: string, dockerPlatform: s
       `----------------------------------------
 - ${arch}: skipping runtime '${runtime}'`,
     );
-    return;
+    return [];
   }
 
   log(
@@ -222,30 +240,39 @@ async function runTestsForArchitectureAndRuntime(arch: string, dockerPlatform: s
     .split('\n')
     .filter(line => line.trim() && !line.startsWith('#') && !line.startsWith(';'));
 
-  await Promise.all(
-    baseImagesForRuntime.map(baseImage =>
-      runTestsForArchitectureRuntimeAndBaseImage(arch, dockerPlatform, runtime, baseImage),
-    ),
+  const buildTasksPerBaseImage = baseImagesForRuntime.map(baseImage =>
+    buildTestImageForArchitectureRuntimeAndBaseImage(arch, dockerPlatform, runtime, baseImage),
   );
+  let testImages = await Promise.all(buildTasksPerBaseImage);
+  testImages = testImages.filter(img => !img.skipped);
+  return testImages;
 }
 
-async function runTestsForArchitectureRuntimeAndBaseImage(
+async function buildTestImageForArchitectureRuntimeAndBaseImage(
   arch: string,
   dockerPlatform: string,
   runtime: string,
   baseImage: string,
-): Promise<void> {
+): Promise<TestImage> {
+  const baseImageForDockerNames = baseImage.replaceAll(':', '-');
+  const containerNameTestPrefix = `instrumentation-image-test-${arch}-${runtime}-${baseImageForDockerNames}`;
+  const imageNameTest = `instrumentation-image-test-${arch}-${runtime}-${baseImageForDockerNames}:latest`;
+
   if (baseImages.length > 0 && !baseImages.includes(baseImage)) {
     log(
       `--------------------
 - ${arch}/${runtime}: skipping base image ${baseImage}`,
     );
-    return;
+    return {
+      arch,
+      dockerPlatform,
+      runtime,
+      imageNameTest,
+      containerNameTestPrefix,
+      baseImage,
+      skipped: true,
+    };
   }
-
-  const baseImageForDockerNames = baseImage.replaceAll(':', '-');
-  const containerNameTestPrefix = `instrumentation-image-test-${arch}-${runtime}-${baseImageForDockerNames}`;
-  const imageNameTest = `instrumentation-image-test-${arch}-${runtime}-${baseImageForDockerNames}:latest`;
 
   log(
     `--------------------
@@ -297,18 +324,34 @@ async function runTestsForArchitectureRuntimeAndBaseImage(
   }
 
   storeBuildStepDuration('docker build', startTimeDockerBuild, arch, runtime, baseImage);
-  await runTestCases(arch, dockerPlatform, runtime, imageNameTest, containerNameTestPrefix, baseImage);
-  console.log();
+
+  return {
+    arch,
+    dockerPlatform,
+    runtime,
+    imageNameTest,
+    containerNameTestPrefix,
+    baseImage,
+    skipped: false,
+  };
 }
 
-async function runTestCases(
-  arch: string,
-  dockerPlatform: string,
-  runtime: string,
-  imageNameTest: string,
-  containerNameTestPrefix: string,
-  baseImage: string,
-): Promise<void> {
+async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestImage): Promise<void> {
+  const {
+    //
+    arch,
+    dockerPlatform,
+    runtime,
+    imageNameTest,
+    containerNameTestPrefix,
+    baseImage,
+    skipped,
+  } = testImage;
+
+  if (skipped) {
+    return;
+  }
+
   const testCasesDir = `${testScriptDir}/${runtime}/test-cases`;
   if (!existsSync(testCasesDir)) {
     return;
@@ -354,7 +397,7 @@ async function runTestCases(
 
       default:
         console.error(
-          `Error: Test handler for runtime "${runtime}" is not implemented. Please update test-all.ts, function runTestCases.`,
+          `Error: Test handler for runtime "${runtime}" is not implemented. Please update test-all.ts, function runTestCasesForArchitectureRuntimeAndBaseImage.`,
         );
         process.exit(1);
     }
@@ -389,7 +432,6 @@ async function runTestCases(
       testCasesTotal++;
       const { stdout: dockerRunOutputStdOut, stderr: dockerRunOutputStdErr } = await exec(dockerRunCmd, {
         encoding: 'utf8',
-        stdio: 'pipe',
       });
 
       if (process.env.PRINT_DOCKER_OUTPUT === 'true') {
@@ -434,6 +476,7 @@ ${error}`,
 
     storeBuildStepDuration(`test case ${test}`, startTimeTestCase, arch, runtime, baseImage);
   }
+  console.log();
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
