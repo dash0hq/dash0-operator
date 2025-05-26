@@ -1,0 +1,173 @@
+name: Injector and Instrumentation Tests
+
+on:
+  workflow_call:
+    secrets:
+      github-token:
+        description: "GitHub token for authentication"
+        required: true
+
+jobs:
+  injector-and-instrumentation-tests:
+    name: Injector and Instrumentation Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24.x'
+          cache: 'npm'
+          cache-dependency-path: images/instrumentation/test/package-lock.json
+
+      - name: get branch name
+        id: branch-name
+        run: |
+          # For push events: use GITHUB_REF_NAME, for PRs: use GITHUB_HEAD_REF
+          echo "branch_name=${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}" >> $GITHUB_OUTPUT
+          # Also set base_ref_branch as it's used in line 25
+          echo "base_ref_branch=${GITHUB_BASE_REF:-main}" >> $GITHUB_OUTPUT
+
+      - name: find SHA of last successful workflow run on main branch
+        uses: nrwl/nx-set-shas@dbe0650947e5f2c81f59190a38512cf49126fe6b #v4
+        id: last_succsesfull_commit_main_branch
+        with:
+          # Get the last successful commit on main branch (actually, on the target branch for the PR, but that is
+          # usually main).
+          main-branch-name: ${{ steps.branch-name.outputs.base_ref_branch }}
+
+      # We use the changed-files action to potentially skip the injector & instrumentation tests on PRs that contain no
+      # changes for the instrumentation image. This is because running the tests requires to build the instrumentation
+      # image for both arm64 and X86_64, and the cross-platform build is very slow (takes up to 15 minutes). We do
+      # always run these steps when building the main branch or a tag though. By default, changed-files would compare
+      # against the last non-merge commit on the target branch for pull request events (which is used in PR builds), but
+      # together with the nrwl/nx-set-shas step from above we compare against the SHA from the last _successful_ CI
+      # workflow run on the main branch.
+      - name: compile list of relevant changed files for the instrumentation image
+        id: changed-files
+        run: |
+          # Get the base SHA from last successful commit on main branch
+          BASE_SHA="${{ steps.last_succsesfull_commit_main_branch.outputs.base }}"
+
+          if [ -z "$BASE_SHA" ]; then
+            echo "Error: No BASE_SHA is available."
+            exit 1
+          fi
+          if [ -z "$GITHUB_SHA" ]; then
+            echo "Error: No GITHUB_SHA is available."
+            exit 1
+          fi
+
+          # Get all changed instrumentation files (|| true to prevent grep from returning non-zero exit code)
+          INSTRUMENTATION_FILES=$(git diff --name-only --diff-filter=ACMRTUXB "$BASE_SHA" "$GITHUB_SHA" | grep -E "^images/instrumentation/|.github/workflows/injector-and-instrumentation-tests.yaml" || true)
+
+          # Determine if any instrumentation files changed
+          if [ -z "$INSTRUMENTATION_FILES" ]; then
+            INSTRUMENTATION_CHANGED="false"
+          else
+            INSTRUMENTATION_CHANGED="true"
+          fi
+
+          # Output the results
+          echo "instrumentation_any_changed=$INSTRUMENTATION_CHANGED" >> $GITHUB_OUTPUT
+          echo "instrumentation_all_changed_files<<EOF" >> $GITHUB_OUTPUT
+          echo "$INSTRUMENTATION_FILES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: show changed files
+        env:
+          INSTRUMENTATION_CHANGED_FILES_FLAG: ${{ steps.changed-files.outputs.instrumentation_any_changed }}
+          INSTRUMENTATION_CHANGED_FILES_LIST: ${{ steps.changed-files.outputs.instrumentation_all_changed_files }}
+        run: |
+          echo "files for instrumentation image have changed: $INSTRUMENTATION_CHANGED_FILES_FLAG"
+          echo "changed files for instrumentation image: $INSTRUMENTATION_CHANGED_FILES_LIST"
+
+      - name: set up docker buildx
+        uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 #v3
+        if: |
+          steps.changed-files.outputs.instrumentation_any_changed == 'true' ||
+          github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
+
+      # Just for building on arm, buildx is enough but doing docker run with --platform=linux/arm64 (which we do when
+      # testing the injector binary and the instrumentation image) requires qemu.
+      - name: set up qemu
+        uses: docker/setup-qemu-action@fcd3152d8ad392d0e9c14d3f0de40f0a88b8ca0e #v3
+        if: |
+          steps.changed-files.outputs.instrumentation_any_changed == 'true' ||
+          github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
+
+      - name: login to GitHub container registry
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 #v3
+        if: |
+          steps.changed-files.outputs.instrumentation_any_changed == 'true' ||
+          github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.github-token }}
+
+      # To enable running the tests for multiple active branches in parallel without risking conflicts, we use the
+      # branch name as part of the image tag. However, we cannot just use the branch name as is, since it may contain
+      # characters that are not allowed in image tags (most notably slashes in dependabot PRs). We replace all invalid
+      # characters with underscores and use the output of this step as the image tag.
+      - name: assemble instrumentation test image name
+        id: instrumentation-test-image
+        run: |
+          export image_tag=$( echo "${{ github.head_ref || github.ref_name }}" | sed 's/[^a-zA-Z0-9_\.\-]/\_/g' )
+          echo "image_name=ghcr.io/dash0hq/instrumentation-ci-test:$image_tag" >> $GITHUB_OUTPUT
+
+      - name: build temporary instrumentation image
+        uses: docker/build-push-action@471d1dc4e07e5cdedd4c2171150001c434f0b7a4 #v6
+        # Dependabot PRs currently fail in this step, see
+        # https://stackoverflow.com/questions/74788092/github-dependabot-doesnt-have-permissions-to-publish-to-ghcr-how-can-i-give-it
+        # This can be worked around by ammending the Dependabot commit and force-pushing it, e.g.
+        #   git commit --amend --signoff && git push --force-with-lease
+        # (The original suspicion was that the HTTP 403 was somehow related to the image tag, but this is purely a
+        # Dependabot permission issue.)
+        # See also: https://docs.github.com/en/code-security/dependabot
+        # Maybe we can also allow Dependabot PRs to dry-run the Helm chart publishing, that is, remove the
+        # github.actor != 'dependabot[bot]' condition we have on those steps.
+        if: |
+          steps.changed-files.outputs.instrumentation_any_changed == 'true' ||
+          github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
+        with:
+          context: images/instrumentation
+          tags: ${{ steps.instrumentation-test-image.outputs.image_name }}
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha,scope=instrumentation
+          cache-to: type=gha,mode=max,scope=instrumentation
+          push: true
+
+      - name: injector tests
+        if: |
+          steps.changed-files.outputs.instrumentation_any_changed == 'true' ||
+          github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
+        env:
+          INSTRUMENTATION_IMAGE: ${{ steps.instrumentation-test-image.outputs.image_name }}
+        run: |
+          images/instrumentation/injector/test/scripts/test-all.sh
+
+      - name: instrumentation image tests
+        if: |
+          steps.changed-files.outputs.instrumentation_any_changed == 'true' ||
+          github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
+        working-directory: images/instrumentation/test
+        env:
+          INSTRUMENTATION_IMAGE: ${{ steps.instrumentation-test-image.outputs.image_name }}
+        run: |
+          npm ci
+          npm run test
+
+      - name: delete test image
+        uses: bots-house/ghcr-delete-image-action@3827559c68cb4dcdf54d813ea9853be6d468d3a4 #v1.1.0
+        if: ${{ always() && ( steps.changed-files.outputs.instrumentation_any_changed == 'true' || github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/') ) }}
+        with:
+          owner: dash0hq
+          name: instrumentation-ci-test
+          token: ${{ secrets.github-token }}
+          # delete untagged images from this build (and from earlier builds, if there are any leftovers)
+          untagged-keep-latest: 1

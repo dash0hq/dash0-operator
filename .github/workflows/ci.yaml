@@ -99,21 +99,11 @@ jobs:
 
   injector_binary_and_instrumentation_image_tests:
     name: Injector Binary & Instrumentation Image Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-
+    uses: ./.github/workflows/injector-and-instrumentation-tests.yaml
+    secrets:
+      github-token: ${{ secrets.GITHUB_TOKEN }}
     needs: check_for_successful_builds_for_same_commit
     if: needs.check_for_successful_builds_for_same_commit.outputs.should_skip != 'true'
-
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 #v4
-        with:
-          fetch-depth: 0
-
-      - name: run test suites
-        uses: ./.github/actions/injector-and-instrumentation-tests
-        with:
-          githubToken: ${{ secrets.GITHUB_TOKEN }}
 
   # Builds and potentially pushes all container images. For pushes to PRs/branches, we simply verify that the image
   # build still works, the resulting image will not be pushed to any target registry. For pushes to the main branch, the
