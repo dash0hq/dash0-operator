@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -141,22 +141,25 @@ func (r *AutoOperatorConfigurationResourceHandler) waitForWebserviceEndpoint(
 
 //nolint:staticcheck
 func (r *AutoOperatorConfigurationResourceHandler) checkWebServiceEndpoint(ctx context.Context) error {
-	endpoints := corev1.Endpoints{}
-	if err := r.Get(ctx, types.NamespacedName{
-		Namespace: r.OperatorNamespace,
-		Name:      r.WebhookServiceName,
-	}, &endpoints); err != nil {
+	labelSelector := labels.SelectorFromSet(map[string]string{"kubernetes.io/service-name": r.WebhookServiceName})
+	endpointSliceList := discoveryv1.EndpointSliceList{}
+	if err := r.List(ctx, &endpointSliceList, &client.ListOptions{
+		Namespace:     r.OperatorNamespace,
+		LabelSelector: labelSelector,
+	}); err != nil {
 		return err
 	}
 
-	for _, subset := range endpoints.Subsets {
-		if len(subset.Addresses) == 0 {
-			// wait for the address to be listed in subset.Addresses instead of subset.NotReadyAddresses
-			continue
-		}
-		for _, port := range subset.Ports {
-			if port.Port == 9443 {
-				return nil
+	for _, endpointSlice := range endpointSliceList.Items {
+		for _, endpoint := range endpointSlice.Endpoints {
+			if endpoint.Conditions.Ready == nil || !*endpoint.Conditions.Ready {
+				// wait for the endpoint to be ready
+				continue
+			}
+			for _, port := range endpointSlice.Ports {
+				if port.Port != nil && *port.Port == 9443 {
+					return nil
+				}
 			}
 		}
 	}
