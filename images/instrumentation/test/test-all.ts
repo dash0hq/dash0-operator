@@ -7,10 +7,12 @@ import { promisify } from 'node:util';
 import childProcess from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { readFile, writeFile, readdir, unlink } from 'node:fs/promises';
+import os from 'node:os';
 import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import chalk from 'chalk';
+import { PromisePool } from '@supercharge/promise-pool';
 
 import { setStartTimeBuild, storeBuildStepDuration, printTotalBuildTimeInfo } from './build-time-profiling.ts';
 import { isRemoteImage, cleanupDockerImagesInstrumentationImageTests } from './util.ts';
@@ -20,20 +22,47 @@ type TestImage = {
   dockerPlatform: string;
   runtime: string;
   imageNameTest: string;
-  containerNameTestPrefix: string;
   baseImage: string;
+};
+
+type BuildTestImagePromise = {
+  testImage: TestImage;
+  promise?: () => Promise<void>;
+  skipped: boolean;
+};
+
+type RunTestCasePromise = {
+  testImage: TestImage;
+  promise?: () => Promise<void>;
   skipped: boolean;
 };
 
 const exec = promisify(childProcess.exec);
+
+console.log('----------------------------------------');
+
+let concurrency: number;
+if (process.env.CONCURRENCY) {
+  const parsedConcurrency = parseInt(process.env.CONCURRENCY, 10);
+  if (!isNaN(parsedConcurrency) && parsedConcurrency > 0) {
+    concurrency = parsedConcurrency;
+    log(`Using concurrency from environment variable CONCURRENCY: ${concurrency}`);
+  } else {
+    concurrency = os.cpus().length;
+    console.error(
+      `Error: Cannot parse the value of the environment variable CONCURRENCY (${process.env.CONCURRENCY}) to a number. Using the default concurrency (number of available CPUs: ${concurrency}).`,
+    );
+  }
+} else {
+  concurrency = os.cpus().length;
+  log(`Using the default concurrency (number of available CPUs: ${concurrency}).`);
+}
 
 setStartTimeBuild();
 
 // Change to script directory
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 process.chdir(resolve(scriptDir, '..'));
-
-console.log('----------------------------------------');
 
 const allDockerPlatforms = 'linux/arm64,linux/amd64';
 const testScriptDir = 'test';
@@ -43,31 +72,28 @@ let instrumentationImage = 'dash0-instrumentation:latest';
 let testExitCode = 0;
 let summary = '';
 
-let testCasesTotal = 0;
-let testCasesDone = 0;
-
 const architectures = process.env.ARCHITECTURES ? process.env.ARCHITECTURES.split(',') : [];
 if (architectures.length > 0) {
-  console.log('Only testing a subset of architectures:', architectures);
+  log('Only testing a subset of architectures:', architectures);
 }
 
 const runtimes = process.env.RUNTIMES ? process.env.RUNTIMES.split(',') : [];
 if (runtimes.length > 0) {
-  console.log('Only testing a subset of runtimes:', runtimes);
+  log('Only testing a subset of runtimes:', runtimes);
 }
 
 const baseImages = process.env.BASE_IMAGES ? process.env.BASE_IMAGES.split(',') : [];
 if (baseImages.length > 0) {
-  console.log('Only testing a subset of base images:', baseImages);
+  log('Only testing a subset of base images:', baseImages);
 }
 
 const testCases = process.env.TEST_CASES ? process.env.TEST_CASES.split(',') : [];
 if (testCases.length > 0) {
-  console.log('Only running a subset of test cases:', testCases);
+  log('Only running a subset of test cases:', testCases);
 }
 
 async function main(): Promise<void> {
-  // Check Docker driver (skip in CI)
+  log('starting instrumentation image tests');
   if (process.env.CI !== 'true') {
     try {
       let { stdout: dockerDriver } = await exec('docker info -f "{{ .DriverStatus }}"', { encoding: 'utf8' });
@@ -103,21 +129,64 @@ async function main(): Promise<void> {
 
   const allArchitectures = ['arm64', 'x86_64'];
 
-  const testsPerArchitecture = allArchitectures.filter(arch => {
+  const testedArchitectures = allArchitectures.filter(arch => {
     if (architectures.length > 0 && !architectures.includes(arch)) {
-      log(`========================================
-- skipping CPU architecture ${arch}`);
+      log(`- skipping CPU architecture '${arch}'`);
       return false;
     }
+    log(`- creating test image build tasks for CPU architecture '${arch}'`);
     return true;
   });
 
-  const buildATasksPerArchitecture = testsPerArchitecture.map(arch => buildTestImagesForArchitecture(arch));
-  const allTestImages = (await Promise.all(buildATasksPerArchitecture)).flat();
-  log(`========================================
-All ${allTestImages.length} test images have been built, starting to run test cases now.`);
-  const runTestTasksPerArchitecture = allTestImages.map(runTestCasesForArchitectureRuntimeAndBaseImage);
-  await Promise.all(runTestTasksPerArchitecture);
+  const createBuildTaskPromises = testedArchitectures.map(arch => buildTestImagesForArchitecture(arch));
+  const allTestImageBuildTasks = (await Promise.all(createBuildTaskPromises)).flat();
+
+  log(`building ${allTestImageBuildTasks.length} test images`);
+  await PromisePool.withConcurrency(concurrency)
+    .for(allTestImageBuildTasks)
+    .handleError(error => {
+      // If the docker build fails, we call process.exit(1) in the catch in createBuildTestImageTask immediately, so we
+      // actually do not get here. This error handler is only for cases where something goes wrong outside the
+      // try-catch.
+      log(`building a test image has failed`);
+      throw error;
+    })
+    .onTaskFinished((_, pool) => {
+      log(
+        `build task progress: ${pool.processedCount()}/${allTestImageBuildTasks.length} (${pool
+          .processedPercentage()
+          .toLocaleString('en-US', { maximumFractionDigits: 1 })}%)`,
+      );
+    })
+    .process(buildTestImagePromise => buildTestImagePromise.promise!());
+
+  log(`all ${allTestImageBuildTasks.length} test images have been built, starting to run test cases now`);
+
+  const allTestImages = allTestImageBuildTasks.map(task => task.testImage);
+
+  const createRunTestCasesTaskPromises = allTestImages.map(runTestCasesForArchitectureRuntimeAndBaseImage);
+  const allRunTestCaseTasks = (await Promise.all(createRunTestCasesTaskPromises)).flat().filter(t => !t.skipped);
+
+  log(`running ${allRunTestCaseTasks.length} test cases`);
+  await PromisePool.withConcurrency(concurrency)
+    .for(allRunTestCaseTasks)
+    .handleError(error => {
+      // If the docker run fails, we record that as a failed test case and continue. This error handler is only for
+      // cases where something goes wrong outside the try-catch, which should basically never happen. We stop execution
+      // in immediately if it does, though.
+      log(`running a test case has crashed`);
+      throw error;
+    })
+    .onTaskFinished((_, pool) => {
+      if (pool.processedCount() % 10 === 0 || pool.processedCount() === allRunTestCaseTasks.length) {
+        log(
+          `test case progress: ${pool.processedCount()}/${allRunTestCaseTasks.length} (${pool
+            .processedPercentage()
+            .toLocaleString('en-US', { maximumFractionDigits: 1 })}%)`,
+        );
+      }
+    })
+    .process(runTestCasePromise => runTestCasePromise.promise!());
 
   if (testExitCode !== 0) {
     console.log(
@@ -126,7 +195,7 @@ ${summary}
 \nSee above for details.\n`),
     );
   } else {
-    log(chalk.green(`\nAll test cases have passed.\n`));
+    log(chalk.green(`All test cases have passed.`));
   }
 
   process.exit(testExitCode);
@@ -139,24 +208,15 @@ async function buildOrPullInstrumentationImage(): Promise<void> {
     instrumentationImage = process.env.INSTRUMENTATION_IMAGE;
 
     if (isRemoteImage(instrumentationImage)) {
-      log(
-        `'----------------------------------------
-fetching instrumentation image from remote repository: ${instrumentationImage}`,
-      );
+      log(`fetching instrumentation image from remote repository: ${instrumentationImage}`);
       await writeFile('test/.container_images_to_be_deleted_at_end', instrumentationImage + '\n', { flag: 'a' });
       await exec(`docker pull "${instrumentationImage}"`);
     } else {
-      log(
-        `----------------------------------------
-using existing local instrumentation image: ${instrumentationImage}`,
-      );
+      log(`using existing local instrumentation image: ${instrumentationImage}`);
     }
     storeBuildStepDuration('pull instrumentation image', startTimeStep);
   } else {
-    log(
-      `----------------------------------------
-starting: building multi-arch instrumentation image for platforms ${allDockerPlatforms} from local sources`,
-    );
+    log(`starting: building multi-arch instrumentation image for platforms ${allDockerPlatforms} from local sources`);
 
     await writeFile('test/.container_images_to_be_deleted_at_end', instrumentationImage + '\n', { flag: 'a' });
 
@@ -174,10 +234,7 @@ starting: building multi-arch instrumentation image for platforms ${allDockerPla
           log(dockerBuildOutputStdErr);
         }
       }
-      log(
-        `----------------------------------------
-done: building multi-arch instrumentation image for platforms ${allDockerPlatforms} from local sources`,
-      );
+      log(`done: building multi-arch instrumentation image for platforms ${allDockerPlatforms} from local sources`);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
@@ -190,7 +247,7 @@ done: building multi-arch instrumentation image for platforms ${allDockerPlatfor
   console.log();
 }
 
-async function buildTestImagesForArchitecture(arch: string): Promise<TestImage[]> {
+async function buildTestImagesForArchitecture(arch: string): Promise<BuildTestImagePromise[]> {
   let dockerPlatform: string;
   if (arch === 'arm64') {
     dockerPlatform = 'linux/arm64';
@@ -207,7 +264,6 @@ async function buildTestImagesForArchitecture(arch: string): Promise<TestImage[]
   const buildTestImageTasksPerRuntime = runtimeDirs.map(runtime =>
     buildTestImagesForArchitectureAndRuntime(arch, dockerPlatform, runtime),
   );
-
   return (await Promise.all(buildTestImageTasksPerRuntime)).flat();
 }
 
@@ -215,7 +271,7 @@ async function buildTestImagesForArchitectureAndRuntime(
   arch: string,
   dockerPlatform: string,
   runtime: string,
-): Promise<TestImage[]> {
+): Promise<BuildTestImagePromise[]> {
   const baseImagesFile = `${testScriptDir}/${runtime}/base-images`;
   const testCasesDir = `${testScriptDir}/${runtime}/test-cases`;
 
@@ -224,17 +280,11 @@ async function buildTestImagesForArchitectureAndRuntime(
   }
 
   if (runtimes.length > 0 && !runtimes.includes(runtime)) {
-    log(
-      `----------------------------------------
-- ${arch}: skipping runtime '${runtime}'`,
-    );
+    log(`- ${arch}: skipping runtime '${runtime}'`);
     return [];
   }
 
-  log(
-    `----------------------------------------
-- runtime: '${runtime}'`,
-  );
+  log(`- ${arch}: creating test image build tasks for runtime: '${runtime}'`);
 
   const baseImagesForRuntime = (await readFile(baseImagesFile, 'utf8'))
     .split('\n')
@@ -248,113 +298,114 @@ async function buildTestImagesForArchitectureAndRuntime(
   return testImages;
 }
 
-async function buildTestImageForArchitectureRuntimeAndBaseImage(
+function buildTestImageForArchitectureRuntimeAndBaseImage(
   arch: string,
   dockerPlatform: string,
   runtime: string,
   baseImage: string,
-): Promise<TestImage> {
+): BuildTestImagePromise {
   const baseImageForDockerNames = baseImage.replaceAll(':', '-');
-  const containerNameTestPrefix = `instrumentation-image-test-${arch}-${runtime}-${baseImageForDockerNames}`;
   const imageNameTest = `instrumentation-image-test-${arch}-${runtime}-${baseImageForDockerNames}:latest`;
 
+  const testImage: TestImage = {
+    arch,
+    dockerPlatform,
+    runtime,
+    imageNameTest,
+    baseImage,
+  };
   if (baseImages.length > 0 && !baseImages.includes(baseImage)) {
-    log(
-      `--------------------
-- ${arch}/${runtime}: skipping base image ${baseImage}`,
-    );
+    log(`- ${arch}/${runtime}: skipping base image ${baseImage}`);
     return {
-      arch,
-      dockerPlatform,
-      runtime,
-      imageNameTest,
-      containerNameTestPrefix,
-      baseImage,
+      testImage,
       skipped: true,
     };
   }
 
-  log(
-    `--------------------
-- base image: '${baseImage}'
-  starting: building test image "${imageNameTest}" for ${arch}/${runtime}/${baseImage} with instrumentation image ${instrumentationImage}`,
-  );
-
-  const startTimeDockerBuild = Date.now();
-  await writeFile('test/.container_images_to_be_deleted_at_end', imageNameTest + '\n', { flag: 'a' });
-
-  try {
-    const dockerBuildCmd = [
-      'docker',
-      'build',
-      '--platform',
-      dockerPlatform,
-      '--build-arg',
-      `instrumentation_image=${instrumentationImage}`,
-      '--build-arg',
-      `base_image=${baseImage}`,
-      `${testScriptDir}/${runtime}`,
-      '-t',
-      imageNameTest,
-    ]
-      .map(arg => `"${arg}"`)
-      .join(' ');
-
-    const { stdout: dockerBuildOutputStdOut, stderr: dockerBuildOutputStdErr } = await exec(dockerBuildCmd, {
-      encoding: 'utf8',
-    });
-
-    if (process.env.PRINT_DOCKER_OUTPUT === 'true') {
-      if (dockerBuildOutputStdOut) {
-        log(dockerBuildOutputStdOut);
-      }
-      if (dockerBuildOutputStdErr) {
-        log(dockerBuildOutputStdErr);
-      }
-    }
-    log(
-      `--------------------
-  done: building test image "${imageNameTest}" for ${arch}/${runtime}/${baseImage} with instrumentation image ${instrumentationImage}`,
-    );
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  } catch (error: any) {
-    log(error.stdout || error.message);
-    process.exit(1);
-  }
-
-  storeBuildStepDuration('docker build', startTimeDockerBuild, arch, runtime, baseImage);
-
-  return {
-    arch,
-    dockerPlatform,
-    runtime,
-    imageNameTest,
-    containerNameTestPrefix,
-    baseImage,
+  const buildTestImagePromise: BuildTestImagePromise = {
+    testImage,
+    promise: createBuildTestImageTask(testImage),
     skipped: false,
+  };
+  return buildTestImagePromise;
+}
+
+function createBuildTestImageTask(testImage: TestImage): () => Promise<void> {
+  // Wrapping the actual process.exec call for "docker build" in a function enables throttling the builds with a
+  // promise pool.
+  return async function () {
+    const {
+      //
+      arch,
+      dockerPlatform,
+      runtime,
+      imageNameTest,
+      baseImage,
+    } = testImage;
+
+    const startTimeDockerBuild = Date.now();
+    await writeFile('test/.container_images_to_be_deleted_at_end', imageNameTest + '\n', { flag: 'a' });
+    log(
+      `starting: building test image "${testImage.imageNameTest}" for ${testImage.arch}/${testImage.runtime}/${testImage.baseImage} with instrumentation image ${instrumentationImage}`,
+    );
+    let dockerBuildCmd;
+    try {
+      dockerBuildCmd = [
+        'docker',
+        'build',
+        '--platform',
+        dockerPlatform,
+        '--build-arg',
+        `instrumentation_image=${instrumentationImage}`,
+        '--build-arg',
+        `base_image=${baseImage}`,
+        `${testScriptDir}/${runtime}`,
+        '-t',
+        imageNameTest,
+      ]
+        .map(arg => `"${arg}"`)
+        .join(' ');
+
+      const { stdout: dockerBuildOutputStdOut, stderr: dockerBuildOutputStdErr } = await exec(dockerBuildCmd, {
+        encoding: 'utf8',
+      });
+
+      if (process.env.PRINT_DOCKER_OUTPUT === 'true') {
+        if (dockerBuildOutputStdOut) {
+          log(dockerBuildOutputStdOut);
+        }
+        if (dockerBuildOutputStdErr) {
+          log(dockerBuildOutputStdErr);
+        }
+      }
+      log(
+        `done: building test image "${imageNameTest}" for ${arch}/${runtime}/${baseImage} with instrumentation image ${instrumentationImage}`,
+      );
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (error: any) {
+      log(
+        `! error: building test image "${imageNameTest}" for ${arch}/${runtime}/${baseImage} with instrumentation image ${instrumentationImage} has failed, docker build command was\n${dockerBuildCmd}`,
+      );
+      log(error.stdout || error.message);
+      process.exit(1);
+    }
+
+    storeBuildStepDuration('docker build', startTimeDockerBuild, arch, runtime, baseImage);
   };
 }
 
-async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestImage): Promise<void> {
+async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestImage): Promise<RunTestCasePromise[]> {
   const {
     //
     arch,
-    dockerPlatform,
     runtime,
-    imageNameTest,
-    containerNameTestPrefix,
     baseImage,
-    skipped,
   } = testImage;
-
-  if (skipped) {
-    return;
-  }
 
   const testCasesDir = `${testScriptDir}/${runtime}/test-cases`;
   if (!existsSync(testCasesDir)) {
-    return;
+    return [];
   }
 
   const prefix = `${arch}/${runtime}/${baseImage}`;
@@ -362,6 +413,7 @@ async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestIma
     .filter(dirent => dirent.isDirectory())
     .map(dirent => `${testCasesDir}/${dirent.name}/`);
 
+  const runTestCasePromises: RunTestCasePromise[] = [];
   for (const testCaseDir of testCaseDirs) {
     if (testCases.length > 0) {
       const shouldRunTestCase = testCases.some(selectedTestCase => testCaseDir.includes(selectedTestCase));
@@ -375,7 +427,6 @@ async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestIma
     const test = basename(testCaseDir);
 
     let testCmd: string[];
-
     switch (runtime) {
       case 'jvm':
         testCmd = ['java', '-jar'];
@@ -401,14 +452,34 @@ async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestIma
         );
         process.exit(1);
     }
+    runTestCasePromises.push({
+      testImage,
+      promise: createRunTestCaseTask(testImage, prefix, test, testCmd, startTimeTestCase),
+      skipped: false,
+    });
+  }
 
-    // discard potential left-overs from previous test runs
-    const containerName = `${containerNameTestPrefix}-${test}`;
-    try {
-      await exec(`docker rm -f "${containerName}"`);
-    } catch {
-      // ignore if container doesn't exist
-    }
+  return runTestCasePromises;
+}
+
+function createRunTestCaseTask(
+  testImage: TestImage,
+  prefix: string,
+  test: string,
+  testCmd: string[],
+  startTimeTestCase: number,
+): () => Promise<void> {
+  // Wrapping the actual process.exec call for "docker run" in a function enables throttling the builds with a
+  // promise pool.
+  return async function () {
+    const {
+      //
+      arch,
+      dockerPlatform,
+      runtime,
+      imageNameTest,
+      baseImage,
+    } = testImage;
 
     try {
       const envFile = `${testScriptDir}/${runtime}/test-cases/${test}/.env`;
@@ -421,15 +492,12 @@ async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestIma
         dockerPlatform,
         '--env-file',
         envFile,
-        '--name',
-        containerName,
         imageNameTest,
         ...testCmd,
       ]
         .map(arg => `"${arg}"`)
         .join(' ');
 
-      testCasesTotal++;
       const { stdout: dockerRunOutputStdOut, stderr: dockerRunOutputStdErr } = await exec(dockerRunCmd, {
         encoding: 'utf8',
       });
@@ -469,14 +537,10 @@ ${error}`,
       );
       testExitCode = 1;
       summary += `\n${prefix}\t- ${test}:\tfailed`;
-    } finally {
-      testCasesDone++;
-      log(`${testCasesDone}/(>=${testCasesTotal})`);
     }
 
     storeBuildStepDuration(`test case ${test}`, startTimeTestCase, arch, runtime, baseImage);
-  }
-  console.log();
+  };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
