@@ -46,11 +46,11 @@ cluster roles should match snapshot:
           - update
           - watch
       - apiGroups:
-          - ""
+          - discovery.k8s.io
         resources:
-          - endpoints
+          - endpointslices
         verbs:
-          - get
+          - list
       - apiGroups:
           - ""
         resources:
