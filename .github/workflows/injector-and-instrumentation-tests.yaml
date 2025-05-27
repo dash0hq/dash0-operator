@@ -120,7 +120,15 @@ jobs:
 
       - name: build temporary instrumentation image
         uses: docker/build-push-action@1dc73863535b631f98b2378be8619f83b136f4a0 #v6
-
+        # Dependabot PRs currently fail in this step, see
+        # https://stackoverflow.com/questions/74788092/github-dependabot-doesnt-have-permissions-to-publish-to-ghcr-how-can-i-give-it
+        # This can be worked around by ammending the Dependabot commit and force-pushing it, e.g.
+        #   git commit --amend --signoff && git push --force-with-lease
+        # (The original suspicion was that the HTTP 403 was somehow related to the image tag, but this is purely a
+        # Dependabot permission issue.)
+        # See also: https://docs.github.com/en/code-security/dependabot
+        # Maybe we can also allow Dependabot PRs to dry-run the Helm chart publishing, that is, remove the
+        # github.actor != 'dependabot[bot]' condition we have on those steps.
         if: |
           steps.changed-files.outputs.instrumentation_any_changed == 'true' ||
           github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
@@ -131,18 +139,6 @@ jobs:
           cache-from: type=gha,scope=instrumentation
           cache-to: type=gha,mode=max,scope=instrumentation
           push: true
-          # For normal CI runs (triggered by pushes etc.), specifying secrets is not necessary, see
-          # https://github.com/docker/build-push-action/blob/master/README.md#git-context:
-          # > Building from the current repository automatically uses the GitHub Token, so it does not need to be
-          # > passed. If you want to authenticate against another private repository, you have to use a secret named
-          # > GIT_AUTH_TOKEN to be able to authenticate against it with Buildx.
-          # But Dependabot PRs would fail in this step without providing secrets here, since Dependabot is by default
-          # not allowed to push to ghcr.io. See also:
-          # https://stackoverflow.com/questions/74788092/github-dependabot-doesnt-have-permissions-to-publish-to-ghcr-how-can-i-give-it
-          # The secret DEPENDABOT_GHCR_IO_PUSH needs to be defined in
-          # https://github.com/dash0hq/dash0-operator/settings/secrets/dependabot.
-          secrets: |
-            GIT_AUTH_TOKEN=${{ secrets.DEPENDABOT_GHCR_IO_PUSH }}
 
       - name: injector tests
         if: |
