@@ -37,3 +37,15 @@ updates:
     directory: "images/instrumentation/jvm/"
     schedule:
       interval: "daily"
+
+# Required to allow PRs triggered by Dependabot to build and push container images, in particular
+# ghcr.io/dash0hq/instrumentation-ci-test used in .github/workflows/injector-and-instrumentation-tests.yaml, that is, to
+# avoid
+#   ERROR: failed to push ghcr.io/dash0hq/instrumentation-ci-test:$branch-name:
+#   unexpected status from POST request to https://ghcr.io/v2/dash0hq/instrumentation-ci-test/blobs/uploads/: 403 Forbidden
+registries:
+  ghcr:
+    type: docker-registry
+    url: ghcr.io
+    username: ${{ github.repository_owner }}
+    password: ${{ secrets.DEPENDABOT_GHCR_IO_PUSH }}
