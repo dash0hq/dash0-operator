@@ -1,0 +1,6 @@
+*.o
+*.so
+.zig-cache
+zig-out
+*.log
+core
