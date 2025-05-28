@@ -7,12 +7,5 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-echo building zig
-zig build
-echo zig build
-echo building C
-make
-echo C build successful
-
-echo running code
-LD_PRELOAD=./libsymbols.so ./app.o
+# shellcheck disable=SC2012,SC2035
+ls *.c *.zig Makefile *.sh | entr ./rebuild-and-run.sh

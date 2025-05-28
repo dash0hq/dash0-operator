@@ -8,7 +8,6 @@ extern char** __environ;
 extern void change_values();
 
 void print_char_ptr_of_ptr(char** str_ptr) {
-
   int idx = 0;
   for (char **kv_pair = str_ptr; *kv_pair; kv_pair++) {
      printf("app.c: __environ address kv pair %d: '%s'\n", idx, *kv_pair);
@@ -37,6 +36,8 @@ int main() {
   printf("app.c: getenv(\"VAR7\"): %s\n", getenv("VAR7"));
   printf("app.c: --------\n");
 
+  // Note: updating an _existing_ env var (that has been written by Zig) from C can lead to a segfault. But not if there
+  // is a write to a new env var in between.
   printf("app.c: changing values from C via putenv\n");
   putenv("VAR6=changed");
   putenv("NEW_VAR=new");

@@ -14,7 +14,7 @@ jdk_binaries_java=java
 # jdk_binaries_jshell=jshell
 
 # Use locally built JDK binaries:
-jdk_binaries_java="$jdk_sources"/build/linux-aarch64-server-release/images/jdk/bin/java
+# jdk_binaries_java="$jdk_sources"/build/linux-aarch64-server-release/images/jdk/bin/java
 # jdk_binaries_jshell="$jdk_sources"/build/linux-aarch64-server-release/images/jdk/bin/jshell
 
 if [[ "$jdk_binaries_java" =~ "/build/" ]]; then
@@ -27,8 +27,9 @@ fi
 
 echo building zig
 zig build
-echo zig build
+echo zig build successful
 
-echo
+echo starting JVM
+ulimit -c unlimited
 set -x
-LD_PRELOAD=./libsymbols.so $jdk_binaries_java -version
+LD_PRELOAD=./zig-out/libsymbols.so $jdk_binaries_java -version

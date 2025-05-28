@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 .{
-    .name = .export_environ,
+    .name = .export_environ_alloc,
     .version = "0.0.0",
-    .fingerprint = 0xc977d5f10fb0fb1c,
+    .fingerprint = 0x19e677767df237ad,
     .minimum_zig_version = "0.14.0",
     .dependencies = .{},
     .paths = .{
