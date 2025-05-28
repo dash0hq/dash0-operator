@@ -4,7 +4,7 @@
 const std = @import("std");
 
 pub fn build(b: *std.Build) !void {
-    const optimize = std.builtin.OptimizeMode.ReleaseSafe;
+    const optimize = std.builtin.OptimizeMode.Debug;
 
     var target_cpu_arch = std.Target.Cpu.Arch.aarch64;
     var target_cpu_model = std.Target.Cpu.Model.generic(std.Target.Cpu.Arch.aarch64);
@@ -46,20 +46,4 @@ pub fn build(b: *std.Build) !void {
     });
 
     b.getInstallStep().dependOn(&b.addInstallArtifact(lib, .{ .dest_dir = .{ .override = .{ .custom = "." } } }).step);
-
-    var copy_library_to_bin = b.step("copy_file", "Copy library file");
-    copy_library_to_bin.makeFn = copyLibraryFile;
-
-    // make the copy step depend on the install step, which then makes it transitively depend on the compile step
-    copy_library_to_bin.dependOn(b.getInstallStep());
-
-    // Make copying the shared library binary to its final location the default step. This wil also implictly
-    // trigger building the library as a dependent build step.
-    b.default_step = copy_library_to_bin;
-}
-
-fn copyLibraryFile(step: *std.Build.Step, _: std.Build.Step.MakeOptions) anyerror!void {
-    const source_path = step.owner.pathFromRoot("./zig-out/libsymbols.so");
-    const dest_path = step.owner.pathFromRoot("./libsymbols.so");
-    try std.fs.copyFileAbsolute(source_path, dest_path, .{});
 }
