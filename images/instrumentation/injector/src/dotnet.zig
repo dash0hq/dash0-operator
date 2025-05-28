@@ -8,6 +8,24 @@ const alloc = @import("allocator.zig");
 const print = @import("print.zig");
 const types = @import("types.zig");
 
+// Note: The CLR bootstrapping code (implemented in C++) uses getenv, but when doing
+// Environment.GetEnvironmentVariable from within a .NET application, it will apparently bypass getenv.
+// That is, while we can inject the OTel SDK and activate tracing for a .NET application, overriding the the getenv
+// function is probably not suitable for overriding
+// environment variables that the OTel SDK looks up from within the CLR (like OTEL_DOTNET_AUTO_HOME,
+// OTEL_RESOURCE_ATTRIBUTES, etc.).
+//
+// Here is an example for the lookup of DOTNET_SHARED_STORE, which happens at runtime startup, via getenv:
+// https://github.com/dotnet/runtime/blob/v9.0.5/src/native/corehost/hostpolicy/shared_store.cpp#L16
+// -> https://github.com/dotnet/runtime/blob/v9.0.5/src/native/corehost/hostmisc/pal.unix.cpp#L954.
+//
+// In contrast to that, the implementation of Environment.GetEnvironmentVariable reads the __environ into a dictionary
+// and then uses that dictionary for all lookups, see here:
+// https://github.com/dotnet/runtime/blob/v9.0.5/src/libraries/System.Private.CoreLib/src/System/Environment.cs#L66 ->
+// - https://github.com/dotnet/runtime/blob/v9.0.5/src/libraries/System.Private.CoreLib/src/System/Environment.Variables.Unix.cs#L15-L32,
+// - https://github.com/dotnet/runtime/blob/v9.0.5/src/libraries/System.Private.CoreLib/src/System/Environment.Variables.Unix.cs#L85-L91, and
+// https://github.com/dotnet/runtime/blob/v9.0.5/src/libraries/System.Private.CoreLib/src/System/Environment.Variables.Unix.cs#L93-L166
+
 pub const DotNetValues = struct {
     coreclr_enable_profiling: types.NullTerminatedString,
     coreclr_profiler: types.NullTerminatedString,
@@ -27,6 +45,7 @@ var cached_dotnet_values: ?DotNetValues = null;
 var cached_libc_flavor: ?LibCFlavor = null;
 
 const injection_happened_msg = "injecting the .NET OpenTelemetry instrumentation";
+var injection_happened_msg_has_been_printed = false;
 
 fn initIsEnabled() void {
     if (experimental_dotnet_injection_enabled == null) {
@@ -95,7 +114,10 @@ fn determineDotNetValues(flavor: LibCFlavor) !DotNetValues {
         dotnet_path_prefix, libc_flavor_prefix,
     });
 
-    print.printMessage(injection_happened_msg, .{});
+    if (!injection_happened_msg_has_been_printed) {
+        print.printMessage(injection_happened_msg, .{});
+        injection_happened_msg_has_been_printed = true;
+    }
     return .{
         .coreclr_enable_profiling = "1",
         .coreclr_profiler = "{918728DD-259F-4A6A-AC2B-B85E1B658318}",
