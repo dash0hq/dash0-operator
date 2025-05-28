@@ -12,6 +12,7 @@ CFLAGS ?= \
   -Wall \
   -Werror \
   -Wextra \
+  -g \
   -Wl,-z,undefs,--export-dynamic-symbol=change_values
 
 .PHONY: all

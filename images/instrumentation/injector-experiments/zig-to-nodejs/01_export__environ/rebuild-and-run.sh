@@ -35,8 +35,9 @@ fi
 
 echo building zig
 zig build
-echo zig build
+echo zig build successful
 
-echo
+echo starting Node.js
+ulimit -c unlimited
 set -x
-LD_PRELOAD=./libsymbols.so "$node_js" script.js
+LD_PRELOAD=./zig-out/libsymbols.so "$node_js" script.js

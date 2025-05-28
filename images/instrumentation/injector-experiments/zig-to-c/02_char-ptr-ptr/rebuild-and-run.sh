@@ -9,10 +9,11 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 
 echo building zig
 zig build
-echo zig build
+echo zig build successful
 echo building C
 make
 echo C build successful
 
 echo running code
-LD_PRELOAD=./libsymbols.so ./app.o
+ulimit -c unlimited
+LD_PRELOAD=./zig-out/libsymbols.so ./app.o
