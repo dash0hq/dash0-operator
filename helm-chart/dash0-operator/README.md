@@ -748,7 +748,7 @@ operator:
 ```
 
 Changing this setting while the operator is already running requires a `helm upgrade`/`helm upgrade --reuse-values` or
-similar to take effect.
+similar, and a restart of the operator manager pods to take effect.
 
 Note: The tolerations will be added to the daemonset collector pods, but not to the deployment collector pod.
 
