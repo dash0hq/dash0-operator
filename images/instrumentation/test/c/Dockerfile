@@ -27,4 +27,3 @@ RUN make
 COPY --from=init /dash0-init-container/*.so /__dash0__/
 COPY --from=init /dash0-init-container/instrumentation /__dash0__/instrumentation
 ENV LD_PRELOAD=/__dash0__/dash0_injector.so
-
