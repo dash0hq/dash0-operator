@@ -1,30 +1,72 @@
+# SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: dash0-operator-dotnet-test-pod-service
+spec:
+  selector:
+    app: dash0-operator-dotnet-test-pod-app
+  ports:
+    - port: 1411
+      targetPort: 1411
+  type: LoadBalancer
+---
 apiVersion: v1
 kind: Pod
 metadata:
-  name: dotnet-demo-app
+  name: dash0-operator-dotnet-test-pod
+  labels:
+    app: dash0-operator-dotnet-test-pod-app
+    test.label/key: "label-value"
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "1411"
+    test.annotation/key: "annotation value"
 spec:
   containers:
-  - name: app
-    image: aspnetapp
-    imagePullPolicy: IfNotPresent
-    env:
-    - name: OTEL_LOGS_EXPORTER
-      value: console
-    - name: OTEL_METRICS_EXPORTER
-      value: console
-    - name: OTELTRACES_EXPORTER
-      value: console
-    - name: DASH0_DEBUG
-      value: "true"
-    ports:
-    - containerPort: 8080
-    resources:
-      limits:
-        cpu: 500m
-        memory: 256Mi
-        ephemeral-storage: 500Mi
-      requests:
-        cpu: 250m
-        memory: 128Mi
-        ephemeral-storage: 500Mi
-  restartPolicy: Always
+    - name: dash0-operator-dotnet-test-pod-app
+      image: "dash0-operator-dotnet-test-app:latest"
+      env:
+        - name: PORT
+          value: "1411"
+        - name: DASH0_DEBUG
+          value: "true"
+      ports:
+        - containerPort: 1411
+      resources:
+        limits:
+          cpu: 500m
+          memory: 256Mi
+          ephemeral-storage: 500Mi
+        requests:
+          cpu: 200m
+          memory: 128Mi
+          ephemeral-storage: 500Mi
+      imagePullPolicy: Never
+      readinessProbe:
+        httpGet:
+          path: /ready
+          port: 1411
+        initialDelaySeconds: 1
+        periodSeconds: 1
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dash0-operator-dotnet-test-pod-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /pod(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: dash0-operator-dotnet-test-pod-service
+            port:
+              number: 1411
