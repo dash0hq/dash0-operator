@@ -126,22 +126,29 @@ var (
 	}
 
 	runtimeTypeNodeJs = runtimeType{
-		runtimeTypeLabel: "Node.js",
+		runtimeTypeLabel: runtimeTypeLabelNodeJs,
 		portOffset:       0,
 		workloadName:     workloadNameNodeJs,
 		applicationPath:  applicationPathNodeJs,
 	}
 	runtimeTypeJvm = runtimeType{
-		runtimeTypeLabel: "JVM",
+		runtimeTypeLabel: runtimeTypeLabelJvm,
 		portOffset:       100,
 		workloadName:     workloadNameJvm,
 		applicationPath:  applicationPathJvm,
+	}
+	runtimeTypeDotnet = runtimeType{
+		runtimeTypeLabel: runtimeTypeLabelDotnet,
+		portOffset:       200,
+		workloadName:     workloadNameDotnet,
+		applicationPath:  applicationPathDotnet,
 	}
 )
 
 func rebuildAppUnderTestContainerImages() {
 	rebuildNodeJsApplicationContainerImage()
 	rebuildJvmApplicationContainerImage()
+	rebuildDotnetApplicationContainerImage()
 }
 
 func rebuildNodeJsApplicationContainerImage() {
@@ -150,6 +157,10 @@ func rebuildNodeJsApplicationContainerImage() {
 
 func rebuildJvmApplicationContainerImage() {
 	rebuildApplicationContainerImage(workloadNameJvm+"-app", applicationPathJvm)
+}
+
+func rebuildDotnetApplicationContainerImage() {
+	rebuildApplicationContainerImage(workloadNameDotnet+"-app", applicationPathDotnet)
 }
 
 func rebuildApplicationContainerImage(imageName string, applicationPath string) {
@@ -176,10 +187,6 @@ func uninstallNodeJsCronJob(namespace string) error {
 	return runKubectlDelete(namespace, "cronjob", runtimeTypeNodeJs)
 }
 
-func uninstallJvmCronJob(namespace string) error {
-	return runKubectlDelete(namespace, "cronjob", runtimeTypeJvm)
-}
-
 func installNodeJsDaemonSetWithOptOutLabel(namespace string) error {
 	return runKubectlApply(
 		namespace,
@@ -196,6 +203,10 @@ func uninstallNodeJsDaemonSet(namespace string) error {
 
 func uninstallJvmDaemonSet(namespace string) error {
 	return runKubectlDelete(namespace, "daemonset", runtimeTypeJvm)
+}
+
+func uninstallDotnetDaemonSet(namespace string) error {
+	return runKubectlDelete(namespace, "daemonset", runtimeTypeDotnet)
 }
 
 //nolint:unparam
@@ -215,6 +226,10 @@ func uninstallJvmDeployment(namespace string) error {
 	return runKubectlDelete(namespace, "deployment", runtimeTypeJvm)
 }
 
+func uninstallDotnetDeployment(namespace string) error {
+	return runKubectlDelete(namespace, "deployment", runtimeTypeDotnet)
+}
+
 func installNodeJsJob(namespace string, testId string) error {
 	return installNodeJsWorkload(
 		workloadTypeJob,
@@ -225,10 +240,6 @@ func installNodeJsJob(namespace string, testId string) error {
 
 func uninstallNodeJsJob(namespace string) error {
 	return runKubectlDelete(namespace, "job", runtimeTypeNodeJs)
-}
-
-func uninstallJvmJob(namespace string) error {
-	return runKubectlDelete(namespace, "job", runtimeTypeJvm)
 }
 
 func installNodeJsPod(namespace string) error {
@@ -247,12 +258,20 @@ func uninstallJvmPod(namespace string) error {
 	return runKubectlDelete(namespace, "pod", runtimeTypeJvm)
 }
 
+func uninstallDotnetPod(namespace string) error {
+	return runKubectlDelete(namespace, "pod", runtimeTypeDotnet)
+}
+
 func uninstallNodeJsReplicaSet(namespace string) error {
 	return runKubectlDelete(namespace, "replicaset", runtimeTypeNodeJs)
 }
 
 func uninstallJvmReplicaSet(namespace string) error {
 	return runKubectlDelete(namespace, "replicaset", runtimeTypeJvm)
+}
+
+func uninstallDotnetReplicaSet(namespace string) error {
+	return runKubectlDelete(namespace, "replicaset", runtimeTypeDotnet)
 }
 
 func installNodeJsStatefulSet(namespace string) error {
@@ -269,6 +288,10 @@ func uninstallNodeJsStatefulSet(namespace string) error {
 
 func uninstallJvmStatefulSet(namespace string) error {
 	return runKubectlDelete(namespace, "statefulset", runtimeTypeJvm)
+}
+
+func uninstallDotnetStatefulSet(namespace string) error {
+	return runKubectlDelete(namespace, "statefulset", runtimeTypeDotnet)
 }
 
 func installNodeJsWorkload(workloadType workloadType, namespace string, testId string) error {
@@ -376,19 +399,22 @@ func killBatchJobsAndPods(namespace string) {
 func removeAllTestApplications(namespace string) {
 	By("uninstalling the test applications")
 	Expect(uninstallNodeJsCronJob(namespace)).To(Succeed())
-	Expect(uninstallJvmCronJob(namespace)).To(Succeed())
 	Expect(uninstallNodeJsDaemonSet(namespace)).To(Succeed())
 	Expect(uninstallJvmDaemonSet(namespace)).To(Succeed())
+	Expect(uninstallDotnetDaemonSet(namespace)).To(Succeed())
 	Expect(uninstallNodeJsDeployment(namespace)).To(Succeed())
 	Expect(uninstallJvmDeployment(namespace)).To(Succeed())
+	Expect(uninstallDotnetDeployment(namespace)).To(Succeed())
 	Expect(uninstallNodeJsJob(namespace)).To(Succeed())
-	Expect(uninstallJvmJob(namespace)).To(Succeed())
 	Expect(uninstallNodeJsPod(namespace)).To(Succeed())
 	Expect(uninstallJvmPod(namespace)).To(Succeed())
+	Expect(uninstallDotnetPod(namespace)).To(Succeed())
 	Expect(uninstallNodeJsReplicaSet(namespace)).To(Succeed())
 	Expect(uninstallJvmReplicaSet(namespace)).To(Succeed())
+	Expect(uninstallDotnetReplicaSet(namespace)).To(Succeed())
 	Expect(uninstallNodeJsStatefulSet(namespace)).To(Succeed())
 	Expect(uninstallJvmStatefulSet(namespace)).To(Succeed())
+	Expect(uninstallDotnetStatefulSet(namespace)).To(Succeed())
 }
 
 func addOptOutLabel(namespace string, workloadType string, workloadName string) error {

@@ -206,20 +206,29 @@ func workloadSpansResourceMatcher(runtime runtimeType, workloadType workloadType
 
 		// Note: On kind clusters, the workload type attribute (k8s.deployment.name) etc. is often missing. This needs
 		// to be investigated more.
+		workloadAttribute := fmt.Sprintf("k8s.%s.name", workloadType.workloadTypeString)
 		if workloadType.workloadTypeString == "replicaset" {
 			// There is no k8s.replicaset.name attribute.
-			matchResult.addSkippedAssertion("k8s.replicaset.name", "not checked, there is no k8s.replicaset.name attribute")
+			matchResult.addSkippedAssertion(workloadAttribute, "not checked, there is no k8s.replicaset.name attribute")
+		} else if runtime.isDotnet() {
+			// .NET currently has none of the resource attribtues that are set via the injector overriding getenv, see
+			// comment in images/instrumentation/injector/src/dotnet.zig.
+			matchResult.addSkippedAssertion(workloadAttribute, "not checked for .NET")
 		} else {
 			verifyResourceAttributeEquals(
 				resourceAttributes,
-				fmt.Sprintf("k8s.%s.name", workloadType.workloadTypeString),
+				workloadAttribute,
 				workloadName(runtime, workloadType),
 				matchResult,
 			)
 		}
 
 		expectedPodName := workloadName(runtime, workloadType)
-		if workloadType.workloadTypeString == "pod" {
+		if runtime.isDotnet() {
+			// .NET currently has none of the resource attribtues that are set via the injector overriding getenv, see
+			// comment in images/instrumentation/injector/src/dotnet.zig.
+			matchResult.addSkippedAssertion(string(semconv.K8SPodNameKey), "not checked for .NET")
+		} else if workloadType.workloadTypeString == "pod" {
 			verifyResourceAttributeEquals(
 				resourceAttributes,
 				string(semconv.K8SPodNameKey),
@@ -235,18 +244,25 @@ func workloadSpansResourceMatcher(runtime runtimeType, workloadType workloadType
 			)
 		}
 
-		verifyResourceAttributeStartsWith(
-			resourceAttributes,
-			"k8s.pod.label.test.label/key",
-			"label-value",
-			matchResult,
-		)
-		verifyResourceAttributeStartsWith(
-			resourceAttributes,
-			"k8s.pod.annotation.test.annotation/key",
-			"annotation value",
-			matchResult,
-		)
+		if runtime.isDotnet() {
+			// .NET currently has none of the resource attribtues that are set via the injector overriding getenv, see
+			// comment in images/instrumentation/injector/src/dotnet.zig.
+			matchResult.addSkippedAssertion("k8s.pod.label.test.label/key", "not checked for .NET")
+			matchResult.addSkippedAssertion("k8s.pod.annotation.test.annotation/key", "not checked for .NET")
+		} else {
+			verifyResourceAttributeStartsWith(
+				resourceAttributes,
+				"k8s.pod.label.test.label/key",
+				"label-value",
+				matchResult,
+			)
+			verifyResourceAttributeStartsWith(
+				resourceAttributes,
+				"k8s.pod.annotation.test.annotation/key",
+				"annotation value",
+				matchResult,
+			)
+		}
 	}
 }
 
@@ -284,7 +300,10 @@ func matchHttpServerSpanWithHttpTarget(expectedRoute string, expectedQuery strin
 				)
 			}
 		} else if hasRoute && hasQuery {
-			if route.Str() == expectedRoute && query.Str() == expectedQuery {
+			if route.Str() == expectedRoute &&
+				(query.Str() == expectedQuery ||
+					// .NET instrumentation includes the "?" in the query attribute
+					query.Str() == "?"+expectedQuery) {
 				matchResult.addPassedAssertion(httpRouteAttrib + " and " + urlQueryAttrib)
 			} else {
 				matchResult.addFailedAssertion(
