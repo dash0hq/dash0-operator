@@ -50,6 +50,7 @@ func run(cmd *exec.Cmd, logCommandArgs ...bool) (string, error) {
 		e2ePrint("output: %s\n", string(output))
 	}
 	if err != nil {
+		e2ePrint(fmt.Sprintf("%s failed with error: (%v) %s", command, err, string(output)))
 		return string(output), fmt.Errorf("%s failed with error: (%v) %s", command, err, string(output))
 	}
 

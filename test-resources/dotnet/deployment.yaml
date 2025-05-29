@@ -40,6 +40,15 @@ spec:
           env:
             - name: PORT
               value: "1407"
+            - name: DASH0_EXPERIMENTAL_DOTNET_INJECTION
+              value: "true"
+            # See https://opentelemetry.io/docs/zero-code/dotnet/instrumentations/#instrumentation-options
+            - name: OTEL_DOTNET_EXPERIMENTAL_ASPNETCORE_DISABLE_URL_QUERY_REDACTION
+              value: "true"
+            - name: OTEL_DOTNET_EXPERIMENTAL_ASPNET_DISABLE_URL_QUERY_REDACTION
+              value: "true"
+            - name: OTEL_DOTNET_EXPERIMENTAL_HTTPCLIENT_DISABLE_URL_QUERY_REDACTION
+              value: "true"
             - name: DASH0_DEBUG
               value: "true"
             - name: DASH0_INJECTOR_DEBUG
