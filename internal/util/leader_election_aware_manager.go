@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package startup
+package util
 
 import (
 	"context"

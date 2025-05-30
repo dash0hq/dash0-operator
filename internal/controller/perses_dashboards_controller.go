@@ -29,14 +29,13 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
-	"github.com/dash0hq/dash0-operator/internal/startup"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
 type PersesDashboardCrdReconciler struct {
 	client.Client
 	queue                     *workqueue.Typed[ThirdPartyResourceSyncJob]
-	leaderElectionAware       startup.LeaderElectionAware
+	leaderElectionAware       util.LeaderElectionAware
 	mgr                       ctrl.Manager
 	skipNameValidation        bool
 	persesDashboardReconciler *PersesDashboardReconciler
@@ -63,7 +62,7 @@ var (
 func NewPersesDashboardCrdReconciler(
 	k8sClient client.Client,
 	queue *workqueue.Typed[ThirdPartyResourceSyncJob],
-	leaderElectionAware startup.LeaderElectionAware,
+	leaderElectionAware util.LeaderElectionAware,
 ) *PersesDashboardCrdReconciler {
 	return &PersesDashboardCrdReconciler{
 		Client:              k8sClient,
