@@ -118,8 +118,7 @@ var _ = BeforeSuite(func() {
 		Recorder:             manager.GetEventRecorderFor("dash0-webhook"),
 		Images:               TestImages,
 		ExtraConfig:          util.ExtraConfigDefaults,
-		OTelCollectorBaseUrl: OTelCollectorBaseUrlTest,
-		IsIPv6Cluster:        false,
+		OTelCollectorBaseUrl: OTelCollectorNodeLocalBaseUrlTest,
 	}).SetupWebhookWithManager(manager)
 	Expect(err).NotTo(HaveOccurred())
 

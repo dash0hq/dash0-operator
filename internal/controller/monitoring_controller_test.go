@@ -60,8 +60,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			recorder,
 			TestImages,
 			util.ExtraConfigDefaults,
-			OTelCollectorBaseUrlTest,
-			false,
+			OTelCollectorNodeLocalBaseUrlTest,
 			nil,
 		)
 		oTelColResourceManager := &otelcolresources.OTelColResourceManager{

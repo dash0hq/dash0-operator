@@ -2,18 +2,6 @@ suite: test deployment
 templates:
   - operator/deployment-and-webhooks.yaml
 tests:
-  - it: secret should contain ca and cert
-    documentSelector:
-      path: metadata.name
-      value: dash0-operator-certificates
-    asserts:
-      - isNotNullOrEmpty:
-          path: data["ca.crt"]
-      - isNotNullOrEmpty:
-          path: data["tls.crt"]
-      - isNotNullOrEmpty:
-          path: data["tls.key"]
-
   - it: deployment should match snapshot (default values)
     documentSelector:
       path: metadata.name
@@ -95,6 +83,18 @@ tests:
       - notExists:
           path: spec.template.spec.containers[0].env[14].name
 
+  - it: secret should contain ca and cert
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-certificates
+    asserts:
+      - isNotNullOrEmpty:
+          path: data["ca.crt"]
+      - isNotNullOrEmpty:
+          path: data["tls.crt"]
+      - isNotNullOrEmpty:
+          path: data["tls.key"]
+
   - it: should render deployment with custom settings
     documentSelector:
       path: metadata.name
@@ -148,6 +148,7 @@ tests:
         collectors:
           debugVerbosityDetailed: true
           sendBatchMaxSize: 32768
+          forceUseServiceUrl: true
 
     asserts:
       - equal:
@@ -198,8 +199,11 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].args[2]
           value: --leader-elect
-      - notExists:
+      - equal:
           path: spec.template.spec.containers[0].args[3]
+          value: --force-use-otel-collector-service-url=true
+      - notExists:
+          path: spec.template.spec.containers[0].args[4]
       - equal:
           path: spec.template.spec.containers[0].env[0].name
           value: DASH0_OPERATOR_NAMESPACE

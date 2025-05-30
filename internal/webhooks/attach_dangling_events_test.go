@@ -43,8 +43,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 			recorder,
 			TestImages,
 			util.ExtraConfigDefaults,
-			OTelCollectorBaseUrlTest,
-			false,
+			OTelCollectorNodeLocalBaseUrlTest,
 			nil,
 		)
 		oTelColResourceManager := &otelcolresources.OTelColResourceManager{

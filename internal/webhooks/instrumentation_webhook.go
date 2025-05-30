@@ -34,7 +34,6 @@ type InstrumentationWebhookHandler struct {
 	Images               util.Images
 	ExtraConfig          util.ExtraConfig
 	OTelCollectorBaseUrl string
-	IsIPv6Cluster        bool
 }
 
 type resourceHandler func(h *InstrumentationWebhookHandler, request admission.Request, gvkLabel string, logger *logr.Logger) admission.Response
@@ -489,7 +488,6 @@ func (h *InstrumentationWebhookHandler) newWorkloadModifier(logger *logr.Logger)
 			Images:               h.Images,
 			InstrumentedBy:       actor,
 			OTelCollectorBaseUrl: h.OTelCollectorBaseUrl,
-			IsIPv6Cluster:        h.IsIPv6Cluster,
 		},
 		h.ExtraConfig,
 		logger,

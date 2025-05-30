@@ -57,8 +57,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 			recorder,
 			TestImages,
 			util.ExtraConfigDefaults,
-			OTelCollectorBaseUrlTest,
-			false,
+			OTelCollectorNodeLocalBaseUrlTest,
 			nil,
 		)
 	})

@@ -34,7 +34,6 @@ const (
 	envVarOtelExporterOtlpEndpointName = "OTEL_EXPORTER_OTLP_ENDPOINT"
 	envVarOtelExporterOtlpProtocolName = "OTEL_EXPORTER_OTLP_PROTOCOL"
 	envVarDash0CollectorBaseUrlName    = "DASH0_OTEL_COLLECTOR_BASE_URL"
-	envVarDash0NodeIp                  = "DASH0_NODE_IP"
 	envVarDash0NamespaceName           = "DASH0_NAMESPACE_NAME"
 	envVarDash0PodName                 = "DASH0_POD_NAME"
 	envVarDash0PodUid                  = "DASH0_POD_UID"
@@ -435,10 +434,12 @@ func (m *ResourceModifier) addEnvironmentVariables(
 ) {
 	m.handleLdPreloadEnvVar(container, perContainerLogger)
 
+	// The DASH0_NODE_IP environment variable is required to resolve the collector base URL, in case it uses the
+	// node-local/host port address. The collectorBaseUrl will be "http://$(DASH0_NODE_IP):40318" in this setup.
 	m.addOrReplaceEnvironmentVariable(
 		container,
 		corev1.EnvVar{
-			Name: envVarDash0NodeIp,
+			Name: otelcolresources.EnvVarDash0NodeIp,
 			ValueFrom: &corev1.EnvVarSource{
 				FieldRef: &corev1.ObjectFieldSelector{
 					FieldPath: "status.hostIP",
@@ -447,25 +448,7 @@ func (m *ResourceModifier) addEnvironmentVariables(
 		},
 	)
 
-	collectorBaseUrlPattern := "http://$(%s):%d"
-
-	// This should actually work - use the node's IPv6 for the collector base URL.
-	// But apparently the Node.js OpenTelemetry SDK tries to resolve that as a hostname, resulting in
-	// Error: getaddrinfo ENOTFOUND [2a05:d014:1bc2:3702:fc43:fec6:1d88:ace5]\n    at GetAddrInfoReqWrap.onlookup
-	// all [as oncomplete] (node:dns:120:26)
-	// Instead, we fall back to the service URL of the collector.
-	// if m.instrumentationMetadata.IsIPv6Cluster {
-	//	 collectorBaseUrlPattern = "http://[$(%s)]:%d"
-	// }
-	// Would be worth to give this another try after implementing
-	// https://linear.app/dash0/issue/ENG-2132.
-	// If successful, we can then also eliminate the setting OTelCollectorBaseUrl in all components.
-
-	collectorBaseUrl := fmt.Sprintf(collectorBaseUrlPattern, envVarDash0NodeIp, otelcolresources.OtlpHttpHostPort)
-	if m.instrumentationMetadata.IsIPv6Cluster {
-		collectorBaseUrl = m.instrumentationMetadata.OTelCollectorBaseUrl
-	}
-
+	collectorBaseUrl := m.instrumentationMetadata.OTelCollectorBaseUrl
 	m.addOrReplaceEnvironmentVariable(
 		container,
 		corev1.EnvVar{
@@ -473,7 +456,6 @@ func (m *ResourceModifier) addEnvironmentVariables(
 			Value: collectorBaseUrl,
 		},
 	)
-
 	m.addOrReplaceEnvironmentVariable(
 		container,
 		corev1.EnvVar{
@@ -481,7 +463,6 @@ func (m *ResourceModifier) addEnvironmentVariables(
 			Value: collectorBaseUrl,
 		},
 	)
-
 	m.addOrReplaceEnvironmentVariable(
 		container,
 		corev1.EnvVar{
@@ -856,7 +837,7 @@ func (m *ResourceModifier) removeMount(container *corev1.Container) {
 
 func (m *ResourceModifier) removeEnvironmentVariables(container *corev1.Container) {
 	m.removeLdPreload(container)
-	m.removeEnvironmentVariable(container, envVarDash0NodeIp)
+	m.removeEnvironmentVariable(container, otelcolresources.EnvVarDash0NodeIp)
 	m.removeEnvironmentVariable(container, envVarDash0CollectorBaseUrlName)
 	m.removeEnvironmentVariable(container, envVarOtelExporterOtlpEndpointName)
 	m.removeEnvironmentVariable(container, envVarOtelExporterOtlpProtocolName)

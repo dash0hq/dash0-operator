@@ -86,10 +86,10 @@ func BasicInstrumentedPodSpecExpectations() PodSpecExpectations {
 					ValueFrom: "status.hostIP",
 				},
 				"DASH0_OTEL_COLLECTOR_BASE_URL": {
-					Value: OTelCollectorBaseUrlTest,
+					Value: OTelCollectorNodeLocalBaseUrlTest,
 				},
 				"OTEL_EXPORTER_OTLP_ENDPOINT": {
-					Value: OTelCollectorBaseUrlTest,
+					Value: OTelCollectorNodeLocalBaseUrlTest,
 				},
 				"OTEL_EXPORTER_OTLP_PROTOCOL": {
 					Value: common.ProtocolHttpProtobuf,

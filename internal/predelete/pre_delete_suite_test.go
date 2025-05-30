@@ -96,8 +96,7 @@ var _ = BeforeSuite(func() {
 		mgr.GetEventRecorderFor("dash0-monitoring-controller"),
 		TestImages,
 		util.ExtraConfigDefaults,
-		OTelCollectorBaseUrlTest,
-		false,
+		OTelCollectorNodeLocalBaseUrlTest,
 		nil,
 	)
 	oTelColResourceManager := &otelcolresources.OTelColResourceManager{

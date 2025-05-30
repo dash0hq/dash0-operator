@@ -123,6 +123,7 @@ spec:
 {{- if .Values.operator.dash0Export.dataset }}
         - --operator-configuration-dataset={{ .Values.operator.dash0Export.dataset }}
 {{- end }}
+        - --force-use-otel-collector-service-url={{ .Values.operator.collectors.forceUseServiceUrl }}
 {{- if .Values.operator.instrumentationDelayAfterEachWorkloadMillis }}
         - --instrumentation-delay-after-each-workload-millis={{ .Values.operator.instrumentationDelayAfterEachWorkloadMillis }}
 {{- end }}

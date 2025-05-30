@@ -270,6 +270,11 @@ operator:
     # 8192, which is the default value for send_batch_size.
     sendBatchMaxSize: 0
 
+    # If set to true, instrumented workloads will be instructed to use the service URL of the OpenTelemetry collector
+    # DaemonSet, instead of sending telemetry via a node-local route to the node's IP address and the collector's host
+    # port. This can be useful if you employ mechanisms that block host ports, like certain Istio configurations.
+    forceUseServiceUrl: false
+
     # A reference to a persistent volume to use for the filelog offset sync. Specify this is you have a cluster
     # with more than pods 100 pods active at the same time. By default, the filelog offset sync will use a config map
     # for its peristent storage, but ConfigMaps are limited to 1 MB in size. If you have around 100 pods running in

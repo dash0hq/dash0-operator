@@ -259,10 +259,10 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 									ValueFrom: "status.hostIP",
 								},
 								"DASH0_OTEL_COLLECTOR_BASE_URL": {
-									Value: OTelCollectorBaseUrlTest,
+									Value: OTelCollectorNodeLocalBaseUrlTest,
 								},
 								"OTEL_EXPORTER_OTLP_ENDPOINT": {
-									Value: OTelCollectorBaseUrlTest,
+									Value: OTelCollectorNodeLocalBaseUrlTest,
 								},
 								"OTEL_EXPORTER_OTLP_PROTOCOL": {
 									Value: common.ProtocolHttpProtobuf,
@@ -317,10 +317,10 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 									ValueFrom: "status.hostIP",
 								},
 								"DASH0_OTEL_COLLECTOR_BASE_URL": {
-									Value: OTelCollectorBaseUrlTest,
+									Value: OTelCollectorNodeLocalBaseUrlTest,
 								},
 								"OTEL_EXPORTER_OTLP_ENDPOINT": {
-									Value: OTelCollectorBaseUrlTest,
+									Value: OTelCollectorNodeLocalBaseUrlTest,
 								},
 								"OTEL_EXPORTER_OTLP_PROTOCOL": {
 									Value: common.ProtocolHttpProtobuf,
@@ -396,10 +396,10 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 									ValueFrom: "status.hostIP",
 								},
 								"DASH0_OTEL_COLLECTOR_BASE_URL": {
-									Value: OTelCollectorBaseUrlTest,
+									Value: OTelCollectorNodeLocalBaseUrlTest,
 								},
 								"OTEL_EXPORTER_OTLP_ENDPOINT": {
-									Value: OTelCollectorBaseUrlTest,
+									Value: OTelCollectorNodeLocalBaseUrlTest,
 								},
 								"OTEL_EXPORTER_OTLP_PROTOCOL": {
 									Value: common.ProtocolHttpProtobuf,
@@ -430,10 +430,10 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 									ValueFrom: "status.hostIP",
 								},
 								"DASH0_OTEL_COLLECTOR_BASE_URL": {
-									Value: OTelCollectorBaseUrlTest,
+									Value: OTelCollectorNodeLocalBaseUrlTest,
 								},
 								"OTEL_EXPORTER_OTLP_ENDPOINT": {
-									Value: OTelCollectorBaseUrlTest,
+									Value: OTelCollectorNodeLocalBaseUrlTest,
 								},
 								"OTEL_EXPORTER_OTLP_PROTOCOL": {
 									Value: common.ProtocolHttpProtobuf,

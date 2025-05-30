@@ -33,7 +33,7 @@ const (
 var (
 	instrumentationMetadata = util.InstrumentationMetadata{
 		Images:               TestImages,
-		OTelCollectorBaseUrl: OTelCollectorBaseUrlTest,
+		OTelCollectorBaseUrl: OTelCollectorNodeLocalBaseUrlTest,
 		InstrumentedBy:       "modify_test",
 	}
 )
@@ -69,6 +69,23 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			VerifyModifiedDeployment(workload, BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 		})
 
+		It("should use the collector service URL instead of the node-local endpoint if requested", func() {
+			workload := BasicDeployment(TestNamespaceName, DeploymentNamePrefix)
+			modificationResult :=
+				NewResourceModifier(util.InstrumentationMetadata{
+					Images:               TestImages,
+					OTelCollectorBaseUrl: OTelCollectorServiceBaseUrlTest,
+					InstrumentedBy:       "modify_test",
+				}, util.ExtraConfigDefaults, &logger).ModifyDeployment(workload)
+
+			Expect(modificationResult.HasBeenModified).To(BeTrue())
+			envVars := workload.Spec.Template.Spec.Containers[0].Env
+			dash0CollectorBaseUrlName := FindEnvVarByName(envVars, envVarDash0CollectorBaseUrlName)
+			Expect(dash0CollectorBaseUrlName.Value).To(Equal(OTelCollectorServiceBaseUrlTest))
+			otelExporterOtlpEndpointName := FindEnvVarByName(envVars, envVarOtelExporterOtlpEndpointName)
+			Expect(otelExporterOtlpEndpointName.Value).To(Equal(OTelCollectorServiceBaseUrlTest))
+		})
+
 		It("should instrument a deployment that has multiple containers, and already has volumes and init containers", func() {
 			workload := DeploymentWithMoreBellsAndWhistles(TestNamespaceName, DeploymentNamePrefix)
 			modificationResult := workloadModifier.ModifyDeployment(workload)
@@ -95,10 +112,10 @@ var _ = Describe("Dash0 Workload Modification", func() {
 								ValueFrom: "status.hostIP",
 							},
 							"DASH0_OTEL_COLLECTOR_BASE_URL": {
-								Value: OTelCollectorBaseUrlTest,
+								Value: OTelCollectorNodeLocalBaseUrlTest,
 							},
 							"OTEL_EXPORTER_OTLP_ENDPOINT": {
-								Value: OTelCollectorBaseUrlTest,
+								Value: OTelCollectorNodeLocalBaseUrlTest,
 							},
 							"OTEL_EXPORTER_OTLP_PROTOCOL": {
 								Value: common.ProtocolHttpProtobuf,
@@ -153,10 +170,10 @@ var _ = Describe("Dash0 Workload Modification", func() {
 								ValueFrom: "status.hostIP",
 							},
 							"DASH0_OTEL_COLLECTOR_BASE_URL": {
-								Value: OTelCollectorBaseUrlTest,
+								Value: OTelCollectorNodeLocalBaseUrlTest,
 							},
 							"OTEL_EXPORTER_OTLP_ENDPOINT": {
-								Value: OTelCollectorBaseUrlTest,
+								Value: OTelCollectorNodeLocalBaseUrlTest,
 							},
 							"OTEL_EXPORTER_OTLP_PROTOCOL": {
 								Value: common.ProtocolHttpProtobuf,
@@ -227,10 +244,10 @@ var _ = Describe("Dash0 Workload Modification", func() {
 								ValueFrom: "status.hostIP",
 							},
 							"DASH0_OTEL_COLLECTOR_BASE_URL": {
-								Value: OTelCollectorBaseUrlTest,
+								Value: OTelCollectorNodeLocalBaseUrlTest,
 							},
 							"OTEL_EXPORTER_OTLP_ENDPOINT": {
-								Value: OTelCollectorBaseUrlTest,
+								Value: OTelCollectorNodeLocalBaseUrlTest,
 							},
 							"OTEL_EXPORTER_OTLP_PROTOCOL": {
 								Value: common.ProtocolHttpProtobuf,
@@ -261,10 +278,10 @@ var _ = Describe("Dash0 Workload Modification", func() {
 								ValueFrom: "status.hostIP",
 							},
 							"DASH0_OTEL_COLLECTOR_BASE_URL": {
-								Value: OTelCollectorBaseUrlTest,
+								Value: OTelCollectorNodeLocalBaseUrlTest,
 							},
 							"OTEL_EXPORTER_OTLP_ENDPOINT": {
-								Value: OTelCollectorBaseUrlTest,
+								Value: OTelCollectorNodeLocalBaseUrlTest,
 							},
 							"OTEL_EXPORTER_OTLP_PROTOCOL": {
 								Value: common.ProtocolHttpProtobuf,
