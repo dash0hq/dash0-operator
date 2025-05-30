@@ -33,14 +33,13 @@ import (
 	"sigs.k8s.io/yaml"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
-	"github.com/dash0hq/dash0-operator/internal/startup"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
 type PrometheusRuleCrdReconciler struct {
 	client.Client
 	queue                    *workqueue.Typed[ThirdPartyResourceSyncJob]
-	leaderElectionAware      startup.LeaderElectionAware
+	leaderElectionAware      util.LeaderElectionAware
 	mgr                      ctrl.Manager
 	skipNameValidation       bool
 	prometheusRuleReconciler *PrometheusRuleReconciler
@@ -89,7 +88,7 @@ var (
 func NewPrometheusRuleCrdReconciler(
 	k8sClient client.Client,
 	queue *workqueue.Typed[ThirdPartyResourceSyncJob],
-	leaderElectionAware startup.LeaderElectionAware,
+	leaderElectionAware util.LeaderElectionAware,
 ) *PrometheusRuleCrdReconciler {
 	return &PrometheusRuleCrdReconciler{
 		Client:              k8sClient,
