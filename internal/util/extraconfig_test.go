@@ -351,9 +351,7 @@ var _ = Describe("limits and requests for containers", func() {
 
 				Expect(extraConfig.InstrumentationInitContainerResources.Limits).To(BeNil())
 				Expect(extraConfig.InstrumentationInitContainerResources.GoMemLimit).To(BeEmpty())
-				Expect(extraConfig.InstrumentationInitContainerResources.Requests.Cpu().String()).To(Equal("100m"))
-				Expect(extraConfig.InstrumentationInitContainerResources.Requests.Memory().String()).To(Equal("150Mi"))
-				Expect(extraConfig.InstrumentationInitContainerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
+				Expect(extraConfig.InstrumentationInitContainerResources.Requests).To(BeNil())
 
 				Expect(extraConfig.CollectorDaemonSetCollectorContainerResources.Limits.Cpu().IsZero()).To(BeTrue())
 				Expect(extraConfig.CollectorDaemonSetCollectorContainerResources.Limits.Memory().String()).To(Equal("500Mi"))
@@ -561,9 +559,7 @@ var _ = Describe("limits and requests for containers", func() {
 				Expect(extraConfig.InstrumentationInitContainerResources.Limits.Memory().IsZero()).To(BeTrue())
 				Expect(extraConfig.InstrumentationInitContainerResources.Limits.StorageEphemeral().IsZero()).To(BeTrue())
 				Expect(extraConfig.InstrumentationInitContainerResources.GoMemLimit).To(BeEmpty())
-				Expect(extraConfig.InstrumentationInitContainerResources.Requests.Cpu().String()).To(Equal("100m"))
-				Expect(extraConfig.InstrumentationInitContainerResources.Requests.Memory().String()).To(Equal("150Mi"))
-				Expect(extraConfig.InstrumentationInitContainerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
+				Expect(extraConfig.InstrumentationInitContainerResources.Requests).To(BeNil())
 
 				Expect(extraConfig.CollectorDaemonSetCollectorContainerResources.Limits.Cpu().String()).To(Equal("900m"))
 				Expect(extraConfig.CollectorDaemonSetCollectorContainerResources.Limits.Memory().String()).To(Equal("500Mi"))
@@ -616,9 +612,7 @@ var _ = Describe("limits and requests for containers", func() {
 
 				containerResources := extraConfig.InstrumentationInitContainerResources.ToResourceRequirements()
 				Expect(containerResources.Limits).To(BeNil())
-				Expect(containerResources.Requests.Cpu().String()).To(Equal("100m"))
-				Expect(containerResources.Requests.Memory().String()).To(Equal("150Mi"))
-				Expect(containerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
+				Expect(containerResources.Requests).To(BeNil())
 
 				containerResources = extraConfig.CollectorDaemonSetCollectorContainerResources.ToResourceRequirements()
 				Expect(containerResources.Limits.Cpu().IsZero()).To(BeTrue())
@@ -812,9 +806,7 @@ var _ = Describe("limits and requests for containers", func() {
 				Expect(containerResources.Limits.Cpu().String()).To(Equal("200m"))
 				Expect(containerResources.Limits.Memory().IsZero()).To(BeTrue())
 				Expect(containerResources.Limits.StorageEphemeral().IsZero()).To(BeTrue())
-				Expect(containerResources.Requests.Cpu().String()).To(Equal("100m"))
-				Expect(containerResources.Requests.Memory().String()).To(Equal("150Mi"))
-				Expect(containerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
+				Expect(containerResources.Requests).To(BeNil())
 
 				containerResources = extraConfig.CollectorDaemonSetCollectorContainerResources.ToResourceRequirements()
 				Expect(containerResources.Limits.Cpu().String()).To(Equal("900m"))

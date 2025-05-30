@@ -34,12 +34,7 @@ type ExtraConfig struct {
 
 var (
 	ExtraConfigDefaults = ExtraConfig{
-		InstrumentationInitContainerResources: ResourceRequirementsWithGoMemLimit{
-			Requests: corev1.ResourceList{
-				corev1.ResourceCPU:    resource.MustParse("100m"),
-				corev1.ResourceMemory: resource.MustParse("150Mi"),
-			},
-		},
+		InstrumentationInitContainerResources: ResourceRequirementsWithGoMemLimit{},
 		CollectorDaemonSetCollectorContainerResources: ResourceRequirementsWithGoMemLimit{
 			Limits: corev1.ResourceList{
 				corev1.ResourceMemory: resource.MustParse("500Mi"),
