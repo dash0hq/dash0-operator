@@ -40,7 +40,9 @@ const (
 	ConfigurationReloaderImageTest = "some-registry.com:1234/dash0hq/configuration-reloader:10.11.12"
 	FilelogOffsetSyncImageTest     = "some-registry.com:1234/dash0hq/filelog-offset-sync:13.14.15"
 
-	OTelCollectorBaseUrlTest      = "http://$(DASH0_NODE_IP):40318"
+	OTelCollectorNodeLocalBaseUrlTest = "http://$(DASH0_NODE_IP):40318"
+	OTelCollectorServiceBaseUrlTest   = //
+	"http://unit-test-opentelemetry-collector-service.test-operator-namespace.svc.cluster.local:4318"
 	EndpointDash0Test             = "endpoint.dash0.com:4317"
 	EndpointDash0TestAlternative  = "endpoint-alternative.dash0.com:4317"
 	EndpointDash0TestQuoted       = "\"endpoint.dash0.com:4317\""

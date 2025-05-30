@@ -91,6 +91,9 @@ const (
 	k8sNodeNameEnvVarName                          = "K8S_NODE_NAME"
 	k8sPodIpEnvVarName                             = "K8S_POD_IP"
 
+	oTelCollectorServiceBaseUrlPattern   = "http://%s-opentelemetry-collector-service.%s.svc.cluster.local:4318"
+	oTelCollectorNodeLocalBaseUrlPattern = "http://$(%s):%d"
+
 	developmentModeEnvVarName        = "DASH0_DEVELOPMENT_MODE"
 	debugVerbosityDetailedEnvVarName = "OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED"
 	sendBatchMaxSizeEnvVarName       = "OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE"
@@ -138,6 +141,7 @@ func main() {
 	var operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled bool
 	var operatorConfigurationCollectPodLabelsAndAnnotationsEnabled bool
 	var operatorConfigurationClusterName string
+	var forceUseOpenTelemetryCollectorServiceUrl bool
 	instrumentationDelays := &instrumentation.DelayConfig{}
 	var isUninstrumentAll bool
 	var metricsAddr string
@@ -218,6 +222,12 @@ func main() {
 		"The clusterName to set on the operator configuration resource; will be ignored if"+
 			"operator-configuration-endpoint is not set. If set, the value will be added as the resource attribute "+
 			"k8s.cluster.name to all telemetry.")
+	flag.BoolVar(
+		&forceUseOpenTelemetryCollectorServiceUrl,
+		"force-use-otel-collector-service-url",
+		false,
+		"When modifying workloads, always use the service URL of the OpenTelemetry collector DaemonSet, instead of "+
+			"routing telemetry from workloads via node-local traffic to the node IP/host port of the collector pod.")
 	flag.Uint64Var(
 		&instrumentationDelays.AfterEachWorkloadMillis,
 		"instrumentation-delay-after-each-workload-millis",
@@ -359,6 +369,7 @@ func main() {
 		probeAddr,
 		enableLeaderElection,
 		operatorConfigurationValues,
+		forceUseOpenTelemetryCollectorServiceUrl,
 		delegatingZapCoreWrapper,
 		pseudoClusterUID,
 		instrumentationDelays,
@@ -411,125 +422,6 @@ func setUpLogging(developmentMode bool) *zaputil.DelegatingZapCoreWrapper {
 	setupLog = ctrl.Log.WithName("setup")
 
 	return delegatingZapCoreWrapper
-}
-
-func startOperatorManager(
-	ctx context.Context,
-	metricsAddr string,
-	secureMetrics bool,
-	tlsOpts []func(*tls.Config),
-	webhookServer k8swebhook.Server,
-	probeAddr string,
-	enableLeaderElection bool,
-	operatorConfigurationValues *startup.OperatorConfigurationValues,
-	delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper,
-	pseudoClusterUID string,
-	instrumentationDelays *instrumentation.DelayConfig,
-	developmentMode bool,
-) error {
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme: scheme,
-		Metrics: metricsserver.Options{
-			BindAddress:   metricsAddr,
-			SecureServing: secureMetrics,
-			TLSOpts:       tlsOpts,
-		},
-		WebhookServer:          webhookServer,
-		HealthProbeBindAddress: probeAddr,
-		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "5ae7ac41.dash0.com",
-
-		// We are deliberately not setting LeaderElectionReleaseOnCancel to true, since we cannot guarantee that the
-		// operator manager will terminate immediately, we need to shut down a couple of internal components before
-		// terminating (self monitoring OTel SDK shutdown etc.).
-		LeaderElectionReleaseOnCancel: false,
-	})
-	if err != nil {
-		return fmt.Errorf("unable to create the manager: %w", err)
-	}
-
-	clientset, err := kubernetes.NewForConfig(mgr.GetConfig())
-	if err != nil {
-		return fmt.Errorf("unable to create the clientset client")
-	}
-
-	setupLog.Info(
-		"operator manager configuration:",
-
-		"operator image",
-		envVars.operatorImage,
-
-		"init container image",
-		envVars.initContainerImage,
-		"init container image pull policy override",
-		envVars.initContainerImagePullPolicy,
-
-		"collector image",
-		envVars.collectorImage,
-		"collector image pull policy override",
-		envVars.collectorImagePullPolicy,
-
-		"configuration reloader image",
-		envVars.configurationReloaderImage,
-		"configuration reloader image pull policy override",
-		envVars.configurationReloaderImagePullPolicy,
-
-		"operator namespace",
-		envVars.operatorNamespace,
-		"operator manager deployment name",
-		envVars.deploymentName,
-		"otel collector name prefix",
-		envVars.oTelCollectorNamePrefix,
-
-		"extra config",
-		extraConfig,
-
-		"instrumentation delays",
-		instrumentationDelays,
-		"development mode",
-		developmentMode,
-	)
-
-	err = startDash0Controllers(
-		ctx,
-		mgr,
-		clientset,
-		operatorConfigurationValues,
-		delegatingZapCoreWrapper,
-		pseudoClusterUID,
-		instrumentationDelays,
-		developmentMode,
-	)
-	if err != nil {
-		return err
-	}
-
-	//+kubebuilder:scaffold:builder
-
-	if err = mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
-		return fmt.Errorf("unable to set up the health check: %w", err)
-	}
-	if err = mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
-		return fmt.Errorf("unable to set up the ready check: %w", err)
-	}
-
-	defer func() {
-		if thirdPartyResourceSynchronizationQueue != nil {
-			controller.StopProcessingThirdPartySynchronizationQueue(thirdPartyResourceSynchronizationQueue, &setupLog)
-		}
-	}()
-
-	setupLog.Info("starting manager (waiting for leader election)")
-	if err = mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-		return fmt.Errorf("unable to set up the signal handler: %w", err)
-	}
-	// ^mgr.Start(...) blocks. It only returns when the manager is terminating.
-
-	if oTelSdkStarter != nil {
-		oTelSdkStarter.ShutDown(ctx, &setupLog)
-	}
-
-	return nil
 }
 
 func readEnvironmentVariables(logger *logr.Logger) error {
@@ -663,21 +555,171 @@ func readOptionalPullPolicyFromEnvironmentVariable(envVarName string) corev1.Pul
 	return ""
 }
 
-func startDash0Controllers(
+func initStartupTasksK8sClient(logger *logr.Logger) error {
+	cfg := ctrl.GetConfigOrDie()
+	var err error
+	if startupTasksK8sClient, err = client.New(cfg, client.Options{
+		Scheme: scheme,
+	}); err != nil {
+		logger.Error(err, "failed to create Kubernetes API client for startup tasks")
+		return err
+	}
+	return nil
+}
+
+func detectDocker(
 	ctx context.Context,
-	mgr manager.Manager,
-	clientset *kubernetes.Clientset,
+	k8sClient client.Client,
+	logger *logr.Logger,
+) {
+	nodeList := &corev1.NodeList{}
+	err := k8sClient.List(ctx, nodeList, &client.ListOptions{Limit: 1})
+	if err != nil {
+		logger.Error(err, "cannot list nodes for container runtime detection")
+		// assume it's not Docker
+		return
+	}
+	for _, node := range nodeList.Items {
+		if strings.Contains(node.Status.NodeInfo.ContainerRuntimeVersion, "docker://") {
+			isDocker = true
+		}
+	}
+}
+
+func startOperatorManager(
+	ctx context.Context,
+	metricsAddr string,
+	secureMetrics bool,
+	tlsOpts []func(*tls.Config),
+	webhookServer k8swebhook.Server,
+	probeAddr string,
+	enableLeaderElection bool,
 	operatorConfigurationValues *startup.OperatorConfigurationValues,
+	forceUseOpenTelemetryCollectorServiceUrl bool,
 	delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper,
 	pseudoClusterUID string,
 	instrumentationDelays *instrumentation.DelayConfig,
 	developmentMode bool,
 ) error {
-	oTelCollectorBaseUrl :=
-		fmt.Sprintf(
-			"http://%s-opentelemetry-collector-service.%s.svc.cluster.local:4318",
-			envVars.oTelCollectorNamePrefix,
-			envVars.operatorNamespace)
+	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+		Scheme: scheme,
+		Metrics: metricsserver.Options{
+			BindAddress:   metricsAddr,
+			SecureServing: secureMetrics,
+			TLSOpts:       tlsOpts,
+		},
+		WebhookServer:          webhookServer,
+		HealthProbeBindAddress: probeAddr,
+		LeaderElection:         enableLeaderElection,
+		LeaderElectionID:       "5ae7ac41.dash0.com",
+
+		// We are deliberately not setting LeaderElectionReleaseOnCancel to true, since we cannot guarantee that the
+		// operator manager will terminate immediately, we need to shut down a couple of internal components before
+		// terminating (self monitoring OTel SDK shutdown etc.).
+		LeaderElectionReleaseOnCancel: false,
+	})
+	if err != nil {
+		return fmt.Errorf("unable to create the manager: %w", err)
+	}
+
+	clientset, err := kubernetes.NewForConfig(mgr.GetConfig())
+	if err != nil {
+		return fmt.Errorf("unable to create the clientset client")
+	}
+
+	setupLog.Info(
+		"operator manager configuration:",
+
+		"operator image",
+		envVars.operatorImage,
+
+		"init container image",
+		envVars.initContainerImage,
+		"init container image pull policy override",
+		envVars.initContainerImagePullPolicy,
+
+		"collector image",
+		envVars.collectorImage,
+		"collector image pull policy override",
+		envVars.collectorImagePullPolicy,
+
+		"configuration reloader image",
+		envVars.configurationReloaderImage,
+		"configuration reloader image pull policy override",
+		envVars.configurationReloaderImagePullPolicy,
+
+		"operator namespace",
+		envVars.operatorNamespace,
+		"operator manager deployment name",
+		envVars.deploymentName,
+		"otel collector name prefix",
+		envVars.oTelCollectorNamePrefix,
+		"force-use OpenTelemetry collector service URL",
+		forceUseOpenTelemetryCollectorServiceUrl,
+
+		"extra config",
+		extraConfig,
+
+		"instrumentation delays",
+		instrumentationDelays,
+		"development mode",
+		developmentMode,
+	)
+
+	err = startDash0Controllers(
+		ctx,
+		mgr,
+		clientset,
+		operatorConfigurationValues,
+		forceUseOpenTelemetryCollectorServiceUrl,
+		delegatingZapCoreWrapper,
+		pseudoClusterUID,
+		instrumentationDelays,
+		developmentMode,
+	)
+	if err != nil {
+		return err
+	}
+
+	//+kubebuilder:scaffold:builder
+
+	if err = mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
+		return fmt.Errorf("unable to set up the health check: %w", err)
+	}
+	if err = mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
+		return fmt.Errorf("unable to set up the ready check: %w", err)
+	}
+
+	defer func() {
+		if thirdPartyResourceSynchronizationQueue != nil {
+			controller.StopProcessingThirdPartySynchronizationQueue(thirdPartyResourceSynchronizationQueue, &setupLog)
+		}
+	}()
+
+	setupLog.Info("starting manager (waiting for leader election)")
+	if err = mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+		return fmt.Errorf("unable to set up the signal handler: %w", err)
+	}
+	// ^mgr.Start(...) blocks. It only returns when the manager is terminating.
+
+	if oTelSdkStarter != nil {
+		oTelSdkStarter.ShutDown(ctx, &setupLog)
+	}
+
+	return nil
+}
+
+func startDash0Controllers(
+	ctx context.Context,
+	mgr manager.Manager,
+	clientset *kubernetes.Clientset,
+	operatorConfigurationValues *startup.OperatorConfigurationValues,
+	forceUseOpenTelemetryCollectorServiceUrl bool,
+	delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper,
+	pseudoClusterUID string,
+	instrumentationDelays *instrumentation.DelayConfig,
+	developmentMode bool,
+) error {
 	images := util.Images{
 		OperatorImage:                        envVars.operatorImage,
 		InitContainerImage:                   envVars.initContainerImage,
@@ -689,7 +731,9 @@ func startDash0Controllers(
 		FilelogOffsetSyncImage:               envVars.filelogOffsetSyncImage,
 		FilelogOffsetSyncImagePullPolicy:     envVars.filelogOffsetSyncImagePullPolicy,
 	}
+
 	isIPv6Cluster := strings.Count(envVars.podIp, ":") >= 2
+	oTelCollectorBaseUrl := determineCollectorBaseUrl(forceUseOpenTelemetryCollectorServiceUrl, isIPv6Cluster)
 
 	startupInstrumenter := instrumentation.NewInstrumenter(
 		// The k8s client will be added later, in internal/startup/instrument_at_startup.go#Start.
@@ -699,7 +743,6 @@ func startDash0Controllers(
 		images,
 		extraConfig,
 		oTelCollectorBaseUrl,
-		isIPv6Cluster,
 		instrumentationDelays,
 	)
 	var err error
@@ -724,7 +767,6 @@ func startDash0Controllers(
 		images,
 		extraConfig,
 		oTelCollectorBaseUrl,
-		isIPv6Cluster,
 		instrumentationDelays,
 	)
 
@@ -832,7 +874,6 @@ func startDash0Controllers(
 		Images:               images,
 		ExtraConfig:          extraConfig,
 		OTelCollectorBaseUrl: oTelCollectorBaseUrl,
-		IsIPv6Cluster:        isIPv6Cluster,
 	}).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the instrumentation webhook: %w", err)
 	}
@@ -882,35 +923,43 @@ func startDash0Controllers(
 	return nil
 }
 
-func initStartupTasksK8sClient(logger *logr.Logger) error {
-	cfg := ctrl.GetConfigOrDie()
-	var err error
-	if startupTasksK8sClient, err = client.New(cfg, client.Options{
-		Scheme: scheme,
-	}); err != nil {
-		logger.Error(err, "failed to create Kubernetes API client for startup tasks")
-		return err
-	}
-	return nil
-}
+func determineCollectorBaseUrl(forceOTelCollectorServiceUrl bool, isIPv6Cluster bool) string {
+	oTelCollectorServiceBaseUrl :=
+		fmt.Sprintf(
+			oTelCollectorServiceBaseUrlPattern,
+			envVars.oTelCollectorNamePrefix,
+			envVars.operatorNamespace)
+	oTelCollectorNodeLocalBaseUrl := fmt.Sprintf(
+		oTelCollectorNodeLocalBaseUrlPattern,
+		otelcolresources.EnvVarDash0NodeIp,
+		otelcolresources.OtlpHttpHostPort,
+	)
 
-func detectDocker(
-	ctx context.Context,
-	k8sClient client.Client,
-	logger *logr.Logger,
-) {
-	nodeList := &corev1.NodeList{}
-	err := k8sClient.List(ctx, nodeList, &client.ListOptions{Limit: 1})
-	if err != nil {
-		logger.Error(err, "cannot list nodes for container runtime detection")
-		// assume it's not Docker
-		return
+	if forceOTelCollectorServiceUrl {
+		return oTelCollectorServiceBaseUrl
 	}
-	for _, node := range nodeList.Items {
-		if strings.Contains(node.Status.NodeInfo.ContainerRuntimeVersion, "docker://") {
-			isDocker = true
-		}
+
+	// Using the node's IPv6 address for the collector base URL should actually just work:
+	// if m.instrumentationMetadata.IsIPv6Cluster {
+	//	 oTelCollectorNodeLocalBaseUrlPattern = "http://[$(%s)]:%d"
+	// }
+	//
+	// But apparently the Node.js OpenTelemetry SDK tries to resolve that as a hostname, resulting in
+	// Error: getaddrinfo ENOTFOUND [2a05:d014:1bc2:3702:fc43:fec6:1d88:ace5]\n    at GetAddrInfoReqWrap.onlookup
+	// all [as oncomplete] (node:dns:120:26)
+	//
+	// To avoid that, we fall back to the service URL of the collector in IPv6 clusters.
+	//
+	// Would be worth to give this another try after implementing
+	// https://linear.app/dash0/issue/ENG-2132.
+	if isIPv6Cluster {
+		return oTelCollectorServiceBaseUrl
 	}
+
+	// By default, and if forceOTelCollectorServiceUrl has not been set, and it is also not an IPv6 cluster, use a
+	// node-local route by sending telemetry from workloads to the OTel collector daemonset pod on the same node via
+	// the node's IP address and the collector's host port.
+	return oTelCollectorNodeLocalBaseUrl
 }
 
 func findDeploymentReference(

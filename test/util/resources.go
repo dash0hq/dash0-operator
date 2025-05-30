@@ -867,11 +867,11 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 				},
 				{
 					Name:  "DASH0_OTEL_COLLECTOR_BASE_URL",
-					Value: OTelCollectorBaseUrlTest,
+					Value: OTelCollectorNodeLocalBaseUrlTest,
 				},
 				{
 					Name:  "OTEL_EXPORTER_OTLP_ENDPOINT",
-					Value: OTelCollectorBaseUrlTest,
+					Value: OTelCollectorNodeLocalBaseUrlTest,
 				},
 			},
 		},
@@ -907,11 +907,11 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 				},
 				{
 					Name:  "DASH0_OTEL_COLLECTOR_BASE_URL",
-					Value: OTelCollectorBaseUrlTest,
+					Value: OTelCollectorNodeLocalBaseUrlTest,
 				},
 				{
 					Name:  "OTEL_EXPORTER_OTLP_ENDPOINT",
-					Value: OTelCollectorBaseUrlTest,
+					Value: OTelCollectorNodeLocalBaseUrlTest,
 				},
 			},
 		},
@@ -956,11 +956,11 @@ func simulateInstrumentedPodSpec(podSpec *corev1.PodSpec, meta *metav1.ObjectMet
 		},
 		{
 			Name:  "DASH0_OTEL_COLLECTOR_BASE_URL",
-			Value: OTelCollectorBaseUrlTest,
+			Value: OTelCollectorNodeLocalBaseUrlTest,
 		},
 		{
 			Name:  "OTEL_EXPORTER_OTLP_ENDPOINT",
-			Value: OTelCollectorBaseUrlTest,
+			Value: OTelCollectorNodeLocalBaseUrlTest,
 		},
 		{
 			Name:  "OTEL_EXPORTER_OTLP_PROTOCOL",
