@@ -170,7 +170,7 @@ operator:
 
   # Resource settings for the dash0-instrumentation init container that will be added to each pod when automatic
   # workload instrumentation is enabled.
-  initContainerResources:
+  initContainerResources: {}
     # By default, this container defines no resource limits, but if required, they can be set here.
     # Note that putting a low CPU limit on the init container might slow down pod startup for instrumented pods
     # considerably.
@@ -178,11 +178,18 @@ operator:
     #   cpu:
     #   memory:
     #   ephemeral-storage:
-    requests:
-      cpu: 100m
-      memory: 150Mi
-      # By default, this container defines no ephemeral-storage request limits, but if required, it can be set here.
-      # ephemeral-storage:
+    #
+    # By default, this container defines no resource requests; if required, they can be set here. However, be aware that
+    # setting requests for init containers might have unintended consequences. In particular, contrary to what one might
+    # think intuitively, requested resources are _not_ freed up after the init container has completed. See the
+    # discussion in https://github.com/kubernetes/kubernetes/issues/124282. This can make setting resource requests
+    # rather expensive and lead to CPU/memory being needlessly reserved by the scheduler for the already finished init
+    # container, although it will actually never be used again.
+    #
+    # requests:
+    #   cpu: 100m
+    #   memory: 150Mi
+    #   ephemeral-storage:
 
   # the port for the metrics service
   metricsPort: 8443

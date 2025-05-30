@@ -207,9 +207,7 @@ tests:
           path: data['extra.yaml']
           value:  |-
             initContainerResources:
-              requests:
-                cpu: 100m
-                memory: 150Mi
+              {}
             collectorDaemonSetCollectorContainerResources:
               gomemlimit: 301MiB
               limits:
