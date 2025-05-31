@@ -1,15 +1,20 @@
-FROM mcr.microsoft.com/dotnet/sdk:9.0-alpine AS build
-WORKDIR /App
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
 
-# Copy everything
-COPY App/ ./
-# Restore as distinct layers
+FROM mcr.microsoft.com/dotnet/sdk:9.0-bookworm-slim AS build
+
+RUN mkdir /App
+WORKDIR /App
+COPY . .
+
+# run dotnet restore as a separate image layer (speeds up docker build)
 RUN dotnet restore
-# Build and publish a release
-RUN dotnet publish -o out
+# build application
+RUN dotnet publish -o .
 
-# Build runtime image
-FROM mcr.microsoft.com/dotnet/aspnet:9.0-alpine
-WORKDIR /App
-COPY --from=build /App/out .
-ENTRYPOINT ["dotnet", "DotNet.Docker.dll"]
+# build the final image
+FROM mcr.microsoft.com/dotnet/aspnet:9.0-bookworm-slim
+
+COPY --from=build /App /App
+WORKDIR /App/
+ENTRYPOINT [ "./app" ]

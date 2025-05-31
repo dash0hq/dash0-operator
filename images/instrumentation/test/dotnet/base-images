@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# See https://mcr.microsoft.com/artifact/mar/dotnet/sdk/about and
+# https://mcr.microsoft.com/en-us/artifact/mar/dotnet/sdk/tags to find tags for the build image.
+# See https://mcr.microsoft.com/artifact/mar/dotnet/aspnet/about and
+# https://mcr.microsoft.com/en-us/artifact/mar/dotnet/aspnet/tags to find tags for the run image.
+
+# one pair of build and run base images per line
+mcr.microsoft.com/dotnet/sdk:9.0-alpine,mcr.microsoft.com/dotnet/aspnet:9.0-alpine
+mcr.microsoft.com/dotnet/sdk:9.0-bookworm-slim,mcr.microsoft.com/dotnet/aspnet:9.0-bookworm-slim

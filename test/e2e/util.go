@@ -45,6 +45,10 @@ type runtimeType struct {
 	applicationPath  string
 }
 
+func (runtime runtimeType) isDotnet() bool {
+	return runtime.runtimeTypeLabel == runtimeTypeLabelDotnet
+}
+
 func workloadName(runtime runtimeType, workloadType workloadType) string {
 	return fmt.Sprintf("%s-%s", runtime.workloadName, workloadType.workloadTypeString)
 }

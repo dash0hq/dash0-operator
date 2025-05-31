@@ -164,15 +164,20 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					},
 					Entry("should instrument new Node.js daemon sets", workloadTypeDaemonSet, runtimeTypeNodeJs),
 					Entry("should instrument new JVM daemon sets", workloadTypeDaemonSet, runtimeTypeJvm),
+					Entry("should instrument new .NET daemon sets", workloadTypeDaemonSet, runtimeTypeDotnet),
 					Entry("should instrument new Node.js deployments", workloadTypeDeployment, runtimeTypeNodeJs),
 					Entry("should instrument new JVM deployments", workloadTypeDeployment, runtimeTypeJvm),
+					Entry("should instrument new .NET deployments", workloadTypeDeployment, runtimeTypeDotnet),
 					Entry("should instrument new Node.js jobs", workloadTypeJob, runtimeTypeNodeJs),
 					Entry("should instrument new Node.js pods", workloadTypePod, runtimeTypeNodeJs),
 					Entry("should instrument new JVM pods", workloadTypePod, runtimeTypeJvm),
+					Entry("should instrument new .NET pods", workloadTypePod, runtimeTypeDotnet),
 					Entry("should instrument new Node.js replica sets", workloadTypeReplicaSet, runtimeTypeNodeJs),
 					Entry("should instrument new JVM replica sets", workloadTypeReplicaSet, runtimeTypeJvm),
+					Entry("should instrument new .NET replica sets", workloadTypeReplicaSet, runtimeTypeDotnet),
 					Entry("should instrument new Node.js stateful sets", workloadTypeStatefulSet, runtimeTypeNodeJs),
 					Entry("should instrument new JVM stateful sets", workloadTypeStatefulSet, runtimeTypeJvm),
+					Entry("should instrument new .NET stateful sets", workloadTypeStatefulSet, runtimeTypeDotnet),
 					Entry("should instrument new Node.js cron jobs", workloadTypeCronjob, runtimeTypeNodeJs),
 				)
 
@@ -1563,6 +1568,7 @@ func workloadTestConfigs() []workloadTestConfig {
 		{workloadType: workloadTypeDaemonSet, runtime: runtimeTypeNodeJs},
 		{workloadType: workloadTypeDeployment, runtime: runtimeTypeNodeJs},
 		{workloadType: workloadTypeDeployment, runtime: runtimeTypeJvm},
+		{workloadType: workloadTypeDeployment, runtime: runtimeTypeDotnet},
 		{workloadType: workloadTypeReplicaSet, runtime: runtimeTypeNodeJs},
 		{workloadType: workloadTypeStatefulSet, runtime: runtimeTypeNodeJs},
 	}
