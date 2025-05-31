@@ -59,8 +59,8 @@ fn getModifiedJavaToolOptionsValue(
     // For auto-instrumentation, we inject the -javaagent flag into the JAVA_TOOL_OPTIONS environment variable. In
     // addition, we use JAVA_TOOL_OPTIONS to supply addtional resource attributes. The Java runtime does not look up the
     // OTEL_RESOURCE_ATTRIBUTES environment variable using getenv(), instead it parses the environment block
-    // /proc/<pid>/environ directly. We cannot hook into mechanism to introduce additional resource attributes. Instead, we
-    // add them together with the -javaagent flag as the -Dotel.resource.attributes Java system property to
+    // /proc/<pid>/environ directly. We cannot hook into this mechanism to introduce additional resource attributes.
+    // Instead, we add them together with the -javaagent flag as the -Dotel.resource.attributes Java system property to
     // JAVA_TOOL_OPTIONS. If the -Dotel.resource.attributes system property already exists in the original
     // JAVA_TOOL_OPTIONS value, we need to merge the two list of key-value pairs. If -Dotel.resource.attributes is
     // supplied via other means (for example via the command line), the value from the command line will override the
