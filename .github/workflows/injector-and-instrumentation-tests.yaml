@@ -10,7 +10,7 @@ on:
 jobs:
   build_image_and_run_injector_tests:
     name: Build Instrumentation Image and Run Injector Tests
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-22.04
     timeout-minutes: 30
 
     outputs:
@@ -152,7 +152,7 @@ jobs:
   run_instrumentation_image_tests_x86_64:
     name: Run Instrumentation Image Tests (x86_64)
     needs: build_image_and_run_injector_tests
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-22.04
     timeout-minutes: 45
 
     steps:
@@ -213,7 +213,7 @@ jobs:
     - build_image_and_run_injector_tests
     - run_instrumentation_image_tests_x86_64
     - run_instrumentation_image_tests_arm64
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-22.04
 
     steps:
       - name: delete test image

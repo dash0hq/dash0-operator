@@ -29,7 +29,7 @@ concurrency:
 jobs:
   check_for_successful_builds_for_same_commit:
     name: Check for existing successful builds for same commit
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-22.04
     outputs:
       should_skip: ${{ steps.skip_check.outputs.should_skip }}
     steps:
@@ -38,7 +38,7 @@ jobs:
 
   verify:
     name: Build & Test
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-22.04
     timeout-minutes: 15
 
     needs: check_for_successful_builds_for_same_commit
@@ -113,7 +113,7 @@ jobs:
   # meant for production use.
   build_and_push_images:
     name: Build Images
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-22.04
     needs:
       - verify
       - injector_binary_and_instrumentation_image_tests
@@ -185,7 +185,7 @@ jobs:
 
   publish_helm_chart_dry_run:
     name: Publish Helm Chart (Dry Run)
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-22.04
     needs:
       - build_and_push_images
     if: ${{ always() && ! contains(github.ref, 'refs/tags/') && github.actor != 'dependabot[bot]' && needs.build_and_push_images.result == 'success' }}
@@ -208,7 +208,7 @@ jobs:
   # branch protection rules reference this property, and it is a required check.
   skip_publish_helm_chart_dry_run_for_dependabot:
     name: Publish Helm Chart (Dry Run)
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-22.04
     if: ${{ always() && ! contains(github.ref, 'refs/tags/') && github.actor == 'dependabot[bot]' && needs.build_and_push_images.result == 'success' }}
     needs:
       - build_and_push_images
@@ -220,7 +220,7 @@ jobs:
 
   publish_helm_chart:
     name: Publish Helm Chart
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-22.04
     if: ${{ always() && contains(github.ref, 'refs/tags/') && github.actor != 'dependabot[bot]' && needs.build_and_push_images.result == 'success' }}
     needs:
       - build_and_push_images

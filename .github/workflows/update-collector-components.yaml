@@ -9,7 +9,7 @@ on:
 jobs:
   check-and-update:
     name: check for new available OpenTelemetry collector components  and update the builder config
-    runs-on: ubuntu-latest
+    runs-on: depot-ubuntu-22.04
     timeout-minutes: 5
 
     steps:
