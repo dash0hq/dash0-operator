@@ -166,7 +166,7 @@ jobs:
           cache: 'npm'
           cache-dependency-path: images/instrumentation/test/package-lock.json
 
-      - name: run instrumentation image tests
+      - name: run instrumentation image tests (x86_64)
         if: |
           needs.build_image_and_run_injector_tests.outputs.instrumentation_any_changed == 'true' ||
           github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
@@ -181,7 +181,7 @@ jobs:
   run_instrumentation_image_tests_arm64:
     name: Run Instrumentation Image Tests (arm64)
     needs: build_image_and_run_injector_tests
-    runs-on: 8core_32gb_arm64
+    runs-on: ubuntu-24.04-arm
     timeout-minutes: 45
 
     steps:
@@ -195,7 +195,7 @@ jobs:
           cache: 'npm'
           cache-dependency-path: images/instrumentation/test/package-lock.json
 
-      - name: run instrumentation image tests
+      - name: run instrumentation image tests (arm64)
         if: |
           needs.build_image_and_run_injector_tests.outputs.instrumentation_any_changed == 'true' ||
           github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
