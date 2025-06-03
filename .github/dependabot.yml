@@ -5,7 +5,7 @@ updates:
     schedule:
       interval: "weekly"
       day: "tuesday"
-      time: "09:00"
+      time: "07:00"
       timezone: "Europe/Berlin"
 
   - package-ecosystem: "gomod"
@@ -14,11 +14,10 @@ updates:
       - "/images/configreloader/src"
       - "/images/filelogoffsetsync/src"
       - "/images/pkg/common"
-      - "/test/e2e/dash0-api-mock"
     schedule:
       interval: "weekly"
       day: "tuesday"
-      time: "09:00"
+      time: "07:10"
       timezone: "Europe/Berlin"
     groups:
       production-dependencies:
@@ -37,3 +36,45 @@ updates:
     directory: "images/instrumentation/jvm/"
     schedule:
       interval: "daily"
+
+  # -----------------------
+  # -- Test applications --
+  # -----------------------
+
+  - package-ecosystem: "gomod"
+    directory: "test/e2e/dash0-api-mock"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "07:15"
+      timezone: "Europe/Berlin"
+    groups:
+      all:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "maven"
+    directory: "test-resources/jvm/spring-boot"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "07:25"
+      timezone: "Europe/Berlin"
+    groups:
+      all:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "npm"
+    directories:
+      - "test-resources/node.js/express"
+      - "test-resources/util/otlp-resource-analyzer"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "07:30"
+      timezone: "Europe/Berlin"
+    groups:
+      all:
+        patterns:
+          - "*"
