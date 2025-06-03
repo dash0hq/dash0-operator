@@ -45,6 +45,7 @@ deployment should match snapshot (default values):
                 - --metrics-bind-address=127.0.0.1:8080
                 - --leader-elect
                 - --force-use-otel-collector-service-url=false
+                - --disable-otel-collector-host-ports=false
               command:
                 - /manager
               env:

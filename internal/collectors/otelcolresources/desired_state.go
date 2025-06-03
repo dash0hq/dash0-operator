@@ -38,6 +38,7 @@ type oTelColConfig struct {
 	CollectPodLabelsAndAnnotationsEnabled            bool
 	KubeletStatsReceiverConfig                       KubeletStatsReceiverConfig
 	UseHostMetricsReceiver                           bool
+	DisableHostPorts                                 bool
 	PseudoClusterUID                                 string
 	ClusterName                                      string
 	Images                                           util.Images
@@ -925,6 +926,21 @@ func assembleDaemonSetCollectorContainer(
 		return corev1.Container{}, err
 	}
 
+	otlpPort := corev1.ContainerPort{
+		Name:          "otlp",
+		Protocol:      corev1.ProtocolTCP,
+		ContainerPort: otlpGrpcPort,
+	}
+	httpPort := corev1.ContainerPort{
+		Name:          "otlp-http",
+		Protocol:      corev1.ProtocolTCP,
+		ContainerPort: otlpHttpPort,
+	}
+	if !config.DisableHostPorts {
+		otlpPort.HostPort = int32(OtlpGrpcHostPort)
+		httpPort.HostPort = int32(OtlpHttpHostPort)
+	}
+
 	collectorContainer := corev1.Container{
 		Name: openTelemetryCollector,
 		Args: []string{"--config=file:" + collectorConfigurationFilePath},
@@ -939,21 +955,8 @@ func assembleDaemonSetCollectorContainer(
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
 		},
-		Image: config.Images.CollectorImage,
-		Ports: []corev1.ContainerPort{
-			{
-				Name:          "otlp",
-				Protocol:      corev1.ProtocolTCP,
-				ContainerPort: otlpGrpcPort,
-				HostPort:      int32(OtlpGrpcHostPort),
-			},
-			{
-				Name:          "otlp-http",
-				Protocol:      corev1.ProtocolTCP,
-				ContainerPort: otlpHttpPort,
-				HostPort:      int32(OtlpHttpHostPort),
-			},
-		},
+		Image:          config.Images.CollectorImage,
+		Ports:          []corev1.ContainerPort{otlpPort, httpPort},
 		Env:            collectorEnv,
 		LivenessProbe:  &collectorProbe,
 		StartupProbe:   &collectorStartupProbe,

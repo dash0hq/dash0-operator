@@ -912,7 +912,9 @@ variable [`OTEL_EXPORTER_OTLP_ENDPOINT`](#https://opentelemetry.io/docs/language
 [`OTEL_EXPORTER_OTLP_PROTOCOL`](https://opentelemetry.io/docs/specs/otel/protocol/exporter/#specify-protocol)) yourself.
 
 The DaemonSet OpenTelemetry collector managed by the Dash0 operator listens on host port 40318 for HTTP traffic and
-40317 for gRPC traffic.
+40317 for gRPC traffic
+(unless the Helm chart has been deployed with `operator.collectors.disableHostPorts=true`, which disables the host
+ports for the collector pods).
 Additionally, there is also a service for the DaemonSet collector, which listens on the standard ports, that is 4318 for
 HTTP and 4317 for gRPC.
 
@@ -1223,6 +1225,11 @@ The modifications that are performed for workloads are the following:
    to have the workload send telemetry to the collectors managed by the Dash0 operator, using gRPC.
    Note that this is not relevant for workloads that do not have an OpenTelemetry SDK at all, since they will ignore
    `OTEL_EXPORTER_OTLP_ENDPOINT`.
+   In case the Dash0 operator Helm chart has been deployed with `operator.collectors.forceUseServiceUrl=true` or
+   `operator.collectors.disableHostPorts=true`, `OTEL_EXPORTER_OTLP_ENDPOINT` is not set to `http://$(NODE_IP):40318`,
+   but to the HTTP port of the DaemonSet collector's service URL
+   `http://${helm-release-name}-opentelemetry-collector-service.${namespace-of-the-dash0-operator}.svc.cluster.local:4318`
+   instead.
 
 The remainder of this section provides a more detailed step-by-step description of how the Dash0 operator's workload
 instrumentation for tracing works internally, intended for the technically curious reader.

@@ -282,6 +282,10 @@ operator:
     # port. This can be useful if you employ mechanisms that block host ports, like certain Istio configurations.
     forceUseServiceUrl: false
 
+    # If set to true, the host ports of the OpenTelemetry collector pods managed by the operator will be disaabled.
+    # Implies forceUseServiceUrl: true.
+    disableHostPorts: false
+
     # A reference to a persistent volume to use for the filelog offset sync. Specify this is you have a cluster
     # with more than pods 100 pods active at the same time. By default, the filelog offset sync will use a config map
     # for its peristent storage, but ConfigMaps are limited to 1 MB in size. If you have around 100 pods running in

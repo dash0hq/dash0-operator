@@ -124,6 +124,7 @@ spec:
         - --operator-configuration-dataset={{ .Values.operator.dash0Export.dataset }}
 {{- end }}
         - --force-use-otel-collector-service-url={{ .Values.operator.collectors.forceUseServiceUrl }}
+        - --disable-otel-collector-host-ports={{ .Values.operator.collectors.disableHostPorts }}
 {{- if .Values.operator.instrumentationDelayAfterEachWorkloadMillis }}
         - --instrumentation-delay-after-each-workload-millis={{ .Values.operator.instrumentationDelayAfterEachWorkloadMillis }}
 {{- end }}
