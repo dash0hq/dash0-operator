@@ -52,6 +52,8 @@ updates:
       all:
         patterns:
           - "*"
+    commit-message:
+      prefix: "test"
 
   - package-ecosystem: "maven"
     directory: "test-resources/jvm/spring-boot"
@@ -64,6 +66,8 @@ updates:
       all:
         patterns:
           - "*"
+    commit-message:
+      prefix: "test"
 
   - package-ecosystem: "npm"
     directories:
@@ -78,3 +82,5 @@ updates:
       all:
         patterns:
           - "*"
+    commit-message:
+      prefix: "test"
