@@ -520,9 +520,8 @@ deploy_application_under_monitoring() {
 }
 
 install_third_party_crds() {
-  kubectl apply --server-side -f https://raw.githubusercontent.com/perses/perses-operator/refs/tags/v0.1.10/config/crd/bases/perses.dev_persesdashboards.yaml
-
-  kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.82.2/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml
+  kubectl apply --server-side -f https://raw.githubusercontent.com/perses/perses-operator/refs/tags/v0.1.12/config/crd/bases/perses.dev_persesdashboards.yaml
+  kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.83.0/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml
 }
 
 install_third_party_resources() {

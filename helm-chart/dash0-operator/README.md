@@ -1323,7 +1323,7 @@ Furthermore, the custom resource definition for Perses dashboards needs to be in
 ways to achieve this:
 * Install the Perses dashboard custom resource definition with the following command:
 ```console
-kubectl apply --server-side -f https://raw.githubusercontent.com/perses/perses-operator/refs/tags/v0.1.10/config/crd/bases/perses.dev_persesdashboards.yaml
+kubectl apply --server-side -f https://raw.githubusercontent.com/perses/perses-operator/refs/tags/v0.1.12/config/crd/bases/perses.dev_persesdashboards.yaml
 ```
 * Alternatively, install the full Perses operator: Go to <https://github.com/perses/perses-operator> and follow the
   installation instructions there.
@@ -1374,7 +1374,7 @@ Furthermore, the custom resource definition for Prometheus rules needs to be ins
 ways to achieve this:
 * Install the Prometheus rules custom resource definition with the following command:
 ```console
-kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.82.2/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml
+kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.83.0/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml
 ```
 * Alternatively, install the full kube-prometheus stack Helm chart: Go to
   <https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack> and follow the
