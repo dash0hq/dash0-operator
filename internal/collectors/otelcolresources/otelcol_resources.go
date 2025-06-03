@@ -48,6 +48,7 @@ type OTelColResourceManager struct {
 	PseudoClusterUID                 string
 	IsIPv6Cluster                    bool
 	IsDocker                         bool
+	DisableHostPorts                 bool
 	DevelopmentMode                  bool
 	DebugVerbosityDetailed           bool
 	obsoleteResourcesHaveBeenDeleted atomic.Bool
@@ -95,6 +96,7 @@ func NewOTelColResourceManager(
 	pseudoClusterUID string,
 	isIPv6Cluster bool,
 	isDocker bool,
+	disableHostPorts bool,
 	developmentMode bool,
 	debugVerbosityDetailed bool,
 ) *OTelColResourceManager {
@@ -109,6 +111,7 @@ func NewOTelColResourceManager(
 		NodeName:                  nodeName,
 		PseudoClusterUID:          pseudoClusterUID,
 		IsIPv6Cluster:             isIPv6Cluster,
+		DisableHostPorts:          disableHostPorts,
 		IsDocker:                  isDocker,
 		DevelopmentMode:           developmentMode,
 		DebugVerbosityDetailed:    debugVerbosityDetailed,
@@ -177,6 +180,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		// https://github.com/prometheus/node_exporter/issues/2002#issuecomment-801763211 and similar.
 		// For this reason, we do not allow enabling the hostmetrics receiver when the node runtime is Docker.
 		UseHostMetricsReceiver: kubernetesInfrastructureMetricsCollectionEnabled && !m.IsDocker,
+		DisableHostPorts:       m.DisableHostPorts,
 		ClusterName:            clusterName,
 		PseudoClusterUID:       m.PseudoClusterUID,
 		Images:                 images,
@@ -413,7 +417,8 @@ func (m *OTelColResourceManager) DeleteResources(
 		// related resources, we always try to delete all collector resources (daemonset & deployment), no matter
 		// whether both sets have been created earlier or not.
 		KubernetesInfrastructureMetricsCollectionEnabled: true,
-		UseHostMetricsReceiver:                           !m.IsDocker, // irrelevant for deletion
+		UseHostMetricsReceiver:                           !m.IsDocker,        // irrelevant for deletion
+		DisableHostPorts:                                 m.DisableHostPorts, // irrelevant for deletion
 		Images:                                           dummyImagesForDeletion,
 		IsIPv6Cluster:                                    m.IsIPv6Cluster,
 		DevelopmentMode:                                  m.DevelopmentMode,

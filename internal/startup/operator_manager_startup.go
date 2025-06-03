@@ -68,6 +68,28 @@ type environmentVariables struct {
 	debugVerbosityDetailed               bool
 }
 
+type commandLineArguments struct {
+	isUninstrumentAll                                                     bool
+	operatorConfigurationEndpoint                                         string
+	operatorConfigurationToken                                            string
+	operatorConfigurationSecretRefName                                    string
+	operatorConfigurationSecretRefKey                                     string
+	operatorConfigurationDataset                                          string
+	operatorConfigurationApiEndpoint                                      string
+	operatorConfigurationSelfMonitoringEnabled                            bool
+	operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled bool
+	operatorConfigurationCollectPodLabelsAndAnnotationsEnabled            bool
+	operatorConfigurationClusterName                                      string
+	forceUseOpenTelemetryCollectorServiceUrl                              bool
+	disableOpenTelemetryCollectorHostPorts                                bool
+	instrumentationDelays                                                 *instrumentation.DelayConfig
+	metricsAddr                                                           string
+	enableLeaderElection                                                  bool
+	probeAddr                                                             string
+	secureMetrics                                                         bool
+	enableHTTP2                                                           bool
+}
+
 const (
 	operatorNamespaceEnvVarName                    = "DASH0_OPERATOR_NAMESPACE"
 	deploymentNameEnvVarName                       = "DASH0_DEPLOYMENT_NAME"
@@ -129,157 +151,19 @@ func init() {
 
 func Start() {
 	ctx := context.Background()
-	var operatorConfigurationEndpoint string
-	var operatorConfigurationToken string
-	var operatorConfigurationSecretRefName string
-	var operatorConfigurationSecretRefKey string
-	var operatorConfigurationDataset string
-	var operatorConfigurationApiEndpoint string
-	var operatorConfigurationSelfMonitoringEnabled bool
-	var operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled bool
-	var operatorConfigurationCollectPodLabelsAndAnnotationsEnabled bool
-	var operatorConfigurationClusterName string
-	var forceUseOpenTelemetryCollectorServiceUrl bool
-	instrumentationDelays := &instrumentation.DelayConfig{}
-	var isUninstrumentAll bool
-	var metricsAddr string
-	var enableLeaderElection bool
-	var probeAddr string
-	var secureMetrics bool
-	var enableHTTP2 bool
-
-	flag.BoolVar(
-		&isUninstrumentAll,
-		"uninstrument-all",
-		false,
-		"If set, the process will remove all Dash0 monitoring resources from all namespaces in the cluste, then "+
-			"exit. This will trigger the Dash0 monitoring resources' finalizers in each namespace, which in turn will "+
-			"revert the instrumentation of all workloads in all namespaces.",
-	)
-	flag.StringVar(
-		&operatorConfigurationEndpoint,
-		"operator-configuration-endpoint",
-		"",
-		"The Dash0 endpoint gRPC URL for creating an operator configuration resource.",
-	)
-	flag.StringVar(
-		&operatorConfigurationToken,
-		"operator-configuration-token",
-		"",
-		"The Dash0 auth token for creating an operator configuration resource.",
-	)
-	flag.StringVar(
-		&operatorConfigurationSecretRefName,
-		"operator-configuration-secret-ref-name",
-		"",
-		"The name of an existing Kubernetes secret containing the Dash0 auth token, used to creating an operator "+
-			"configuration resource.",
-	)
-	flag.StringVar(
-		&operatorConfigurationSecretRefKey,
-		"operator-configuration-secret-ref-key",
-		"",
-		"The key in an existing Kubernetes secret containing the Dash0 auth token, used to creating an operator "+
-			"configuration resource.",
-	)
-	flag.StringVar(
-		&operatorConfigurationDataset,
-		"operator-configuration-dataset",
-		"default",
-		"The Dash0 dataset into which telemetry will be reported and which will be used for API access.",
-	)
-	flag.StringVar(
-		&operatorConfigurationApiEndpoint,
-		"operator-configuration-api-endpoint",
-		"",
-		"The Dash0 API endpoint for managing dashboards and check rules via the operator.",
-	)
-	flag.BoolVar(
-		&operatorConfigurationSelfMonitoringEnabled,
-		"operator-configuration-self-monitoring-enabled",
-		true,
-		"Whether to set selfMonitoring.enabled on the operator configuration resource; will be ignored if "+
-			"operator-configuration-endpoint is not set.",
-	)
-	flag.BoolVar(
-		&operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled,
-		"operator-configuration-kubernetes-infrastructure-metrics-collection-enabled",
-		true,
-		"The value for kubernetesInfrastructureMetricsCollection.enabled on the operator configuration resource; "+
-			"will be ignored if operator-configuration-endpoint is not set.")
-	flag.BoolVar(
-		&operatorConfigurationCollectPodLabelsAndAnnotationsEnabled,
-		"operator-configuration-collect-pod-labels-and-annotations-enabled",
-		true,
-		"The value for collectPodLabelsAndAnnotations.enabled on the operator configuration resource; "+
-			"will be ignored if operator-configuration-endpoint is not set.")
-	flag.StringVar(
-		&operatorConfigurationClusterName,
-		"operator-configuration-cluster-name",
-		"",
-		"The clusterName to set on the operator configuration resource; will be ignored if"+
-			"operator-configuration-endpoint is not set. If set, the value will be added as the resource attribute "+
-			"k8s.cluster.name to all telemetry.")
-	flag.BoolVar(
-		&forceUseOpenTelemetryCollectorServiceUrl,
-		"force-use-otel-collector-service-url",
-		false,
-		"When modifying workloads, always use the service URL of the OpenTelemetry collector DaemonSet, instead of "+
-			"routing telemetry from workloads via node-local traffic to the node IP/host port of the collector pod.")
-	flag.Uint64Var(
-		&instrumentationDelays.AfterEachWorkloadMillis,
-		"instrumentation-delay-after-each-workload-millis",
-		0,
-		"An optional delay to stagger access to the Kubernetes API server to instrument existing workloads at "+
-			"operator startup or when enabling instrumentation for a new namespace via Dash0Monitoring resource. This "+
-			"delay will be applied after each individual workload.")
-	flag.Uint64Var(
-		&instrumentationDelays.AfterEachNamespaceMillis,
-		"instrumentation-delay-after-each-namespace-millis",
-		0,
-		"An optional delay to stagger access to the Kubernetes API server to instrument (or update the "+
-			"instrumentation of) existing workloads at operator startup. This delay will be applied each time all "+
-			"workloads in a namespace have been processed, before starting with the next namespace.")
-	flag.StringVar(
-		&metricsAddr,
-		"metrics-bind-address",
-		":8080",
-		"The address the metric endpoint binds to.",
-	)
-	flag.StringVar(
-		&probeAddr,
-		"health-probe-bind-address",
-		":8081",
-		"The address the probe endpoint binds to.",
-	)
-	flag.BoolVar(
-		&enableLeaderElection,
-		"leader-elect",
-		false,
-		"Enable leader election for operator manager. "+
-			"Enabling this will ensure there is only one active operator manager.",
-	)
-	flag.BoolVar(
-		&secureMetrics,
-		"metrics-secure",
-		false,
-		"If set, the metrics endpoint is served securely.",
-	)
-	flag.BoolVar(
-		&enableHTTP2,
-		"enable-http2",
-		false,
-		"If set, HTTP/2 will be enabled for the metrics and webhook servers.",
-	)
 
 	developmentModeRaw, isSet := os.LookupEnv(developmentModeEnvVarName)
 	developmentMode := isSet && strings.ToLower(developmentModeRaw) == "true"
 
+	cliArgs := defineCommandLineArguments()
+	opts := parseCommandLineOptions(cliArgs, developmentMode)
+	crZapOpts := crzap.UseFlagOptions(&opts)
+
 	// Maintenance note: setupLog is not yet initialized before the call to setUpLogging.
-	delegatingZapCoreWrapper := setUpLogging(developmentMode)
+	delegatingZapCoreWrapper := setUpLogging(crZapOpts)
 	// setupLog is initialized after this point and can be used
 
-	if isUninstrumentAll {
+	if cliArgs.isUninstrumentAll {
 		if err := deleteMonitoringResourcesInAllNamespaces(&setupLog); err != nil {
 			setupLog.Error(err, "deleting the Dash0 monitoring resources in all namespaces failed")
 			os.Exit(1)
@@ -299,7 +183,7 @@ func Start() {
 	}
 
 	tlsOpts := []func(*tls.Config){}
-	if !enableHTTP2 {
+	if !cliArgs.enableHTTP2 {
 		tlsOpts = append(tlsOpts, disableHTTP2)
 	}
 
@@ -336,41 +220,36 @@ func Start() {
 	}
 
 	var operatorConfigurationValues *OperatorConfigurationValues
-	if len(operatorConfigurationEndpoint) > 0 {
+	if len(cliArgs.operatorConfigurationEndpoint) > 0 {
 		operatorConfigurationValues = &OperatorConfigurationValues{
-			Endpoint: operatorConfigurationEndpoint,
-			Token:    operatorConfigurationToken,
+			Endpoint: cliArgs.operatorConfigurationEndpoint,
+			Token:    cliArgs.operatorConfigurationToken,
 			SecretRef: SecretRef{
-				Name: operatorConfigurationSecretRefName,
-				Key:  operatorConfigurationSecretRefKey,
+				Name: cliArgs.operatorConfigurationSecretRefName,
+				Key:  cliArgs.operatorConfigurationSecretRefKey,
 			},
-			SelfMonitoringEnabled: operatorConfigurationSelfMonitoringEnabled,
+			SelfMonitoringEnabled: cliArgs.operatorConfigurationSelfMonitoringEnabled,
 			//nolint:lll
-			KubernetesInfrastructureMetricsCollectionEnabled: operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled,
-			CollectPodLabelsAndAnnotationsEnabled:            operatorConfigurationCollectPodLabelsAndAnnotationsEnabled,
-			ClusterName:                                      operatorConfigurationClusterName,
+			KubernetesInfrastructureMetricsCollectionEnabled: cliArgs.operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled,
+			CollectPodLabelsAndAnnotationsEnabled:            cliArgs.operatorConfigurationCollectPodLabelsAndAnnotationsEnabled,
+			ClusterName:                                      cliArgs.operatorConfigurationClusterName,
 		}
-		if len(operatorConfigurationApiEndpoint) > 0 {
-			operatorConfigurationValues.ApiEndpoint = operatorConfigurationApiEndpoint
+		if len(cliArgs.operatorConfigurationApiEndpoint) > 0 {
+			operatorConfigurationValues.ApiEndpoint = cliArgs.operatorConfigurationApiEndpoint
 		}
-		if len(operatorConfigurationDataset) > 0 {
-			operatorConfigurationValues.Dataset = operatorConfigurationDataset
+		if len(cliArgs.operatorConfigurationDataset) > 0 {
+			operatorConfigurationValues.Dataset = cliArgs.operatorConfigurationDataset
 		}
 	}
 
 	if err = startOperatorManager(
 		ctx,
-		metricsAddr,
-		secureMetrics,
+		cliArgs,
 		tlsOpts,
 		webhookServer,
-		probeAddr,
-		enableLeaderElection,
 		operatorConfigurationValues,
-		forceUseOpenTelemetryCollectorServiceUrl,
 		delegatingZapCoreWrapper,
 		pseudoClusterUID,
-		instrumentationDelays,
 		developmentMode,
 	); err != nil {
 		setupLog.Error(err, "The Dash0 operator manager process failed to start.")
@@ -378,7 +257,142 @@ func Start() {
 	}
 }
 
-func setUpLogging(developmentMode bool) *zaputil.DelegatingZapCoreWrapper {
+func defineCommandLineArguments() *commandLineArguments {
+	cliArgs := &commandLineArguments{}
+	flag.BoolVar(
+		&cliArgs.isUninstrumentAll,
+		"uninstrument-all",
+		false,
+		"If set, the process will remove all Dash0 monitoring resources from all namespaces in the cluste, then "+
+			"exit. This will trigger the Dash0 monitoring resources' finalizers in each namespace, which in turn will "+
+			"revert the instrumentation of all workloads in all namespaces.",
+	)
+	flag.StringVar(
+		&cliArgs.operatorConfigurationEndpoint,
+		"operator-configuration-endpoint",
+		"",
+		"The Dash0 endpoint gRPC URL for creating an operator configuration resource.",
+	)
+	flag.StringVar(
+		&cliArgs.operatorConfigurationToken,
+		"operator-configuration-token",
+		"",
+		"The Dash0 auth token for creating an operator configuration resource.",
+	)
+	flag.StringVar(
+		&cliArgs.operatorConfigurationSecretRefName,
+		"operator-configuration-secret-ref-name",
+		"",
+		"The name of an existing Kubernetes secret containing the Dash0 auth token, used to creating an operator "+
+			"configuration resource.",
+	)
+	flag.StringVar(
+		&cliArgs.operatorConfigurationSecretRefKey,
+		"operator-configuration-secret-ref-key",
+		"",
+		"The key in an existing Kubernetes secret containing the Dash0 auth token, used to creating an operator "+
+			"configuration resource.",
+	)
+	flag.StringVar(
+		&cliArgs.operatorConfigurationDataset,
+		"operator-configuration-dataset",
+		"default",
+		"The Dash0 dataset into which telemetry will be reported and which will be used for API access.",
+	)
+	flag.StringVar(
+		&cliArgs.operatorConfigurationApiEndpoint,
+		"operator-configuration-api-endpoint",
+		"",
+		"The Dash0 API endpoint for managing dashboards and check rules via the operator.",
+	)
+	flag.BoolVar(
+		&cliArgs.operatorConfigurationSelfMonitoringEnabled,
+		"operator-configuration-self-monitoring-enabled",
+		true,
+		"Whether to set selfMonitoring.enabled on the operator configuration resource; will be ignored if "+
+			"operator-configuration-endpoint is not set.",
+	)
+	flag.BoolVar(
+		&cliArgs.operatorConfigurationKubernetesInfrastructureMetricsCollectionEnabled,
+		"operator-configuration-kubernetes-infrastructure-metrics-collection-enabled",
+		true,
+		"The value for kubernetesInfrastructureMetricsCollection.enabled on the operator configuration resource; "+
+			"will be ignored if operator-configuration-endpoint is not set.")
+	flag.BoolVar(
+		&cliArgs.operatorConfigurationCollectPodLabelsAndAnnotationsEnabled,
+		"operator-configuration-collect-pod-labels-and-annotations-enabled",
+		true,
+		"The value for collectPodLabelsAndAnnotations.enabled on the operator configuration resource; "+
+			"will be ignored if operator-configuration-endpoint is not set.")
+	flag.StringVar(
+		&cliArgs.operatorConfigurationClusterName,
+		"operator-configuration-cluster-name",
+		"",
+		"The clusterName to set on the operator configuration resource; will be ignored if"+
+			"operator-configuration-endpoint is not set. If set, the value will be added as the resource attribute "+
+			"k8s.cluster.name to all telemetry.")
+	flag.BoolVar(
+		&cliArgs.forceUseOpenTelemetryCollectorServiceUrl,
+		"force-use-otel-collector-service-url",
+		false,
+		"When modifying workloads, always use the service URL of the OpenTelemetry collector DaemonSet, instead of "+
+			"routing telemetry from workloads via node-local traffic to the node IP/host port of the collector pod.")
+	flag.BoolVar(
+		&cliArgs.disableOpenTelemetryCollectorHostPorts,
+		"disable-otel-collector-host-ports",
+		false,
+		"Disable the host ports of the OpenTelemetry collector pods managed by the operator. Implies "+
+			"--force-use-otel-collector-service-url.")
+	cliArgs.instrumentationDelays = &instrumentation.DelayConfig{}
+	flag.Uint64Var(
+		&cliArgs.instrumentationDelays.AfterEachWorkloadMillis,
+		"instrumentation-delay-after-each-workload-millis",
+		0,
+		"An optional delay to stagger access to the Kubernetes API server to instrument existing workloads at "+
+			"operator startup or when enabling instrumentation for a new namespace via Dash0Monitoring resource. This "+
+			"delay will be applied after each individual workload.")
+	flag.Uint64Var(
+		&cliArgs.instrumentationDelays.AfterEachNamespaceMillis,
+		"instrumentation-delay-after-each-namespace-millis",
+		0,
+		"An optional delay to stagger access to the Kubernetes API server to instrument (or update the "+
+			"instrumentation of) existing workloads at operator startup. This delay will be applied each time all "+
+			"workloads in a namespace have been processed, before starting with the next namespace.")
+	flag.StringVar(
+		&cliArgs.metricsAddr,
+		"metrics-bind-address",
+		":8080",
+		"The address the metric endpoint binds to.",
+	)
+	flag.StringVar(
+		&cliArgs.probeAddr,
+		"health-probe-bind-address",
+		":8081",
+		"The address the probe endpoint binds to.",
+	)
+	flag.BoolVar(
+		&cliArgs.enableLeaderElection,
+		"leader-elect",
+		false,
+		"Enable leader election for operator manager. "+
+			"Enabling this will ensure there is only one active operator manager.",
+	)
+	flag.BoolVar(
+		&cliArgs.secureMetrics,
+		"metrics-secure",
+		false,
+		"If set, the metrics endpoint is served securely.",
+	)
+	flag.BoolVar(
+		&cliArgs.enableHTTP2,
+		"enable-http2",
+		false,
+		"If set, HTTP/2 will be enabled for the metrics and webhook servers.",
+	)
+	return cliArgs
+}
+
+func parseCommandLineOptions(cliArgs *commandLineArguments, developmentMode bool) crzap.Options {
 	var opts crzap.Options
 	if developmentMode {
 		opts = crzap.Options{
@@ -392,7 +406,14 @@ func setUpLogging(developmentMode bool) *zaputil.DelegatingZapCoreWrapper {
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
-	crZapOpts := crzap.UseFlagOptions(&opts)
+	if cliArgs.disableOpenTelemetryCollectorHostPorts {
+		// disableOpenTelemetryCollectorHostPorts implies forceUseOpenTelemetryCollectorServiceUrl
+		cliArgs.forceUseOpenTelemetryCollectorServiceUrl = true
+	}
+	return opts
+}
+
+func setUpLogging(crZapOpts crzap.Opts) *zaputil.DelegatingZapCoreWrapper {
 	o := zaputil.ConvertOptions([]crzap.Opts{crZapOpts})
 
 	// this basically mimics New<type>Config, but with a custom sink
@@ -586,29 +607,24 @@ func detectDocker(
 
 func startOperatorManager(
 	ctx context.Context,
-	metricsAddr string,
-	secureMetrics bool,
+	cliArgs *commandLineArguments,
 	tlsOpts []func(*tls.Config),
 	webhookServer k8swebhook.Server,
-	probeAddr string,
-	enableLeaderElection bool,
 	operatorConfigurationValues *OperatorConfigurationValues,
-	forceUseOpenTelemetryCollectorServiceUrl bool,
 	delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper,
 	pseudoClusterUID string,
-	instrumentationDelays *instrumentation.DelayConfig,
 	developmentMode bool,
 ) error {
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: runtimeScheme,
 		Metrics: metricsserver.Options{
-			BindAddress:   metricsAddr,
-			SecureServing: secureMetrics,
+			BindAddress:   cliArgs.metricsAddr,
+			SecureServing: cliArgs.secureMetrics,
 			TLSOpts:       tlsOpts,
 		},
 		WebhookServer:          webhookServer,
-		HealthProbeBindAddress: probeAddr,
-		LeaderElection:         enableLeaderElection,
+		HealthProbeBindAddress: cliArgs.probeAddr,
+		LeaderElection:         cliArgs.enableLeaderElection,
 		LeaderElectionID:       "5ae7ac41.dash0.com",
 
 		// We are deliberately not setting LeaderElectionReleaseOnCancel to true, since we cannot guarantee that the
@@ -653,13 +669,15 @@ func startOperatorManager(
 		"otel collector name prefix",
 		envVars.oTelCollectorNamePrefix,
 		"force-use OpenTelemetry collector service URL",
-		forceUseOpenTelemetryCollectorServiceUrl,
+		cliArgs.forceUseOpenTelemetryCollectorServiceUrl,
+		"disable OpenTelemetry collector host ports",
+		cliArgs.disableOpenTelemetryCollectorHostPorts,
 
 		"extra config",
 		extraConfig,
 
 		"instrumentation delays",
-		instrumentationDelays,
+		cliArgs.instrumentationDelays,
 		"development mode",
 		developmentMode,
 	)
@@ -668,11 +686,10 @@ func startOperatorManager(
 		ctx,
 		mgr,
 		clientset,
+		cliArgs,
 		operatorConfigurationValues,
-		forceUseOpenTelemetryCollectorServiceUrl,
 		delegatingZapCoreWrapper,
 		pseudoClusterUID,
-		instrumentationDelays,
 		developmentMode,
 	)
 	if err != nil {
@@ -711,11 +728,10 @@ func startDash0Controllers(
 	ctx context.Context,
 	mgr manager.Manager,
 	clientset *kubernetes.Clientset,
+	cliArgs *commandLineArguments,
 	operatorConfigurationValues *OperatorConfigurationValues,
-	forceUseOpenTelemetryCollectorServiceUrl bool,
 	delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper,
 	pseudoClusterUID string,
-	instrumentationDelays *instrumentation.DelayConfig,
 	developmentMode bool,
 ) error {
 	images := util.Images{
@@ -731,7 +747,7 @@ func startDash0Controllers(
 	}
 
 	isIPv6Cluster := strings.Count(envVars.podIp, ":") >= 2
-	oTelCollectorBaseUrl := determineCollectorBaseUrl(forceUseOpenTelemetryCollectorServiceUrl, isIPv6Cluster)
+	oTelCollectorBaseUrl := determineCollectorBaseUrl(cliArgs.forceUseOpenTelemetryCollectorServiceUrl, isIPv6Cluster)
 
 	startupInstrumenter := instrumentation.NewInstrumenter(
 		// The k8s client will be added later, in internal/startup/instrument_at_startup.go#Start.
@@ -741,7 +757,7 @@ func startDash0Controllers(
 		images,
 		extraConfig,
 		oTelCollectorBaseUrl,
-		instrumentationDelays,
+		cliArgs.instrumentationDelays,
 	)
 	var err error
 	if err = mgr.Add(leaderElectionAwareRunnable); err != nil {
@@ -765,7 +781,7 @@ func startDash0Controllers(
 		images,
 		extraConfig,
 		oTelCollectorBaseUrl,
-		instrumentationDelays,
+		cliArgs.instrumentationDelays,
 	)
 
 	oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
@@ -780,6 +796,7 @@ func startDash0Controllers(
 		pseudoClusterUID,
 		isIPv6Cluster,
 		isDocker,
+		cliArgs.disableOpenTelemetryCollectorHostPorts,
 		developmentMode,
 		envVars.debugVerbosityDetailed,
 	)

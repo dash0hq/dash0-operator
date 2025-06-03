@@ -149,6 +149,7 @@ tests:
           debugVerbosityDetailed: true
           sendBatchMaxSize: 32768
           forceUseServiceUrl: true
+          disableHostPorts: true
 
     asserts:
       - equal:
@@ -202,8 +203,11 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].args[3]
           value: --force-use-otel-collector-service-url=true
-      - notExists:
+      - equal:
           path: spec.template.spec.containers[0].args[4]
+          value: --disable-otel-collector-host-ports=true
+      - notExists:
+          path: spec.template.spec.containers[0].args[5]
       - equal:
           path: spec.template.spec.containers[0].env[0].name
           value: DASH0_OPERATOR_NAMESPACE
