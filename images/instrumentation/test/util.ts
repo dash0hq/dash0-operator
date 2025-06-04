@@ -11,20 +11,17 @@ export function isRemoteImage(imageName: string): boolean {
   return imageName.includes('/');
 }
 
-function cleanupDockerContainersAndImages(baseDir: string): void {
+export function cleanupDockerContainerImages(): void {
   if (process.env.DOCKER_CLEANUP_ENABLED === 'false') {
-    console.log('[cleanup] skipping cleanup of containers and images');
+    log('[cleanup] skipping cleanup of containers and images');
     return;
   }
   if (process.env.CI) {
-    console.log('[cleanup] skipping cleanup of containers and images on CI');
+    log('[cleanup] skipping cleanup of containers and images on CI');
     return;
   }
 
-  if (!baseDir) {
-    throw new Error('error: mandatory argument "baseDir" is missing');
-  }
-
+  const baseDir = 'test';
   try {
     const imagesFile = `${baseDir}/.container_images_to_be_deleted_at_end`;
     const images = readFileSync(imagesFile, 'utf8')
@@ -35,6 +32,7 @@ function cleanupDockerContainersAndImages(baseDir: string): void {
     const uniqueImages = [...new Set(images)].sort();
     for (const image of uniqueImages) {
       try {
+        log(`[cleanup] removing image: ${image}`);
         execSync(`docker rmi -f "${image}"`, { stdio: 'ignore' });
       } catch {
         // Ignore errors
@@ -48,6 +46,7 @@ function cleanupDockerContainersAndImages(baseDir: string): void {
   }
 }
 
-export function cleanupDockerImagesInstrumentationImageTests(): void {
-  cleanupDockerContainersAndImages('test');
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function log(message?: any, ...optionalParams: any[]): void {
+  console.log(`${new Date().toLocaleTimeString()}: ${message}`, ...optionalParams);
 }

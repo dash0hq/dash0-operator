@@ -15,7 +15,7 @@ import chalk from 'chalk';
 import { PromisePool } from '@supercharge/promise-pool';
 
 import { setStartTimeBuild, storeBuildStepDuration, printTotalBuildTimeInfo } from './build-time-profiling.ts';
-import { isRemoteImage, cleanupDockerImagesInstrumentationImageTests } from './util.ts';
+import { log, isRemoteImage, cleanupDockerContainerImages } from './util.ts';
 
 type TestImage = {
   arch: string;
@@ -122,7 +122,7 @@ async function main(): Promise<void> {
 
   // run cleanup on exit
   process.on('exit', () => {
-    cleanupDockerImagesInstrumentationImageTests();
+    cleanupDockerContainerImages();
     printTotalBuildTimeInfo();
   });
 
@@ -593,11 +593,6 @@ error: ${error}`,
 
     storeBuildStepDuration(`test case ${test}`, startTimeTestCase, arch, runtime, baseImageRun);
   };
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function log(message?: any, ...optionalParams: any[]): void {
-  console.log(`${new Date().toLocaleTimeString()}: ${message}`, ...optionalParams);
 }
 
 await main();
