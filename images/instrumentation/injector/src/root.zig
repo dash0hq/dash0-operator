@@ -49,11 +49,16 @@ const otel_resource_attributes_env_var_name: []const u8 = "OTEL_RESOURCE_ATTRIBU
 const empty_otel_resource_attributes_env_var: [*:0]const u8 = otel_resource_attributes_env_var_name ++ "=\x00";
 
 fn initEnviron() callconv(.C) void {
+    std.debug.print("[Dash0 injector] {d} STARTING initEnviron()\n", .{std.os.linux.getpid()});
     _initEnviron() catch @panic("[Dash0 injector] initEnviron failed");
+    std.debug.print("[Dash0 injector] {d} DONE initEnviron()\n", .{std.os.linux.getpid()});
 }
+
+// TODO add unit tests for _initEnviron.
 
 // This function MUST be idempotent, as parent processes may pass the environment to child processes
 fn _initEnviron() !void {
+    std.debug.print("[Dash0 injector] {d} STARTING _initEnviron()\n", .{std.os.linux.getpid()});
     const proc_self_environ_path = "/proc/self/environ";
     const proc_self_environ_file = try std.fs.openFileAbsolute(proc_self_environ_path, .{
         .mode = std.fs.File.OpenMode.read_only,
@@ -61,7 +66,7 @@ fn _initEnviron() !void {
     });
     defer proc_self_environ_file.close();
 
-    // IMPORTANT! /proc/selv/environ skips the final \x00 terminator
+    // IMPORTANT! /proc/self/environ skips the final \x00 terminator
     // TODO Fix max size
     const environ_buffer_original = try proc_self_environ_file.readToEndAlloc(std.heap.page_allocator, std.math.maxInt(usize));
 
@@ -96,12 +101,29 @@ fn _initEnviron() !void {
         }
     }
 
-    // Ensure there is the OTEL_RESOURCE_ATTRIBUTES env var, even if empty
     if (!otel_resource_attributes_env_var_found) {
-        try env_vars.append(empty_otel_resource_attributes_env_var[0..]);
-        otel_resource_attributes_env_var_index = env_vars.items.len - 1;
+        std.debug.print("[Dash0 injector] appending OTEL_RESOURCE_ATTRIBUTES as the last env var\n", .{});
+        if (getModifiedOtelResourceAttributesValue(env_vars)) |resource_attributes| {
+            std.debug.print("[Dash0 injector] getModifiedOtelResourceAttributesValue has returned values: {s}\n", .{resource_attributes});
+            try env_vars.append(resource_attributes[0..]);
+        } else {
+            std.debug.print("[Dash0 injector] getModifiedOtelResourceAttributesValue has not returned any values, not appending OTEL_RESOURCE_ATTRIBUTES\n", .{});
+        }
+    } else {
+        std.debug.print("[Dash0 injector] OTEL_RESOURCE_ATTRIBUTES exists, overwriting current value\n", .{});
+        if (getModifiedOtelResourceAttributesValue(env_vars)) |resource_attributes| {
+            std.debug.print("[Dash0 injector] getModifiedOtelResourceAttributesValue has returned values: {s}\n", .{resource_attributes});
+            env_vars.items[otel_resource_attributes_env_var_index] = resource_attributes[0..];
+        } else {
+            std.debug.print("[Dash0 injector] getModifiedOtelResourceAttributesValue has not returned any values, not overwriting OTEL_RESOURCE_ATTRIBUTES\n", .{});
+        }
     }
 
+    // const env_var_foo1: [*:0]const u8 = "FOO1=BAR1";
+    // try env_vars.append(env_var_foo1);
+    // const env_var_foo2: [*:0]const u8 = "FOO2=BAR2";
+    // try env_vars.append(env_var_foo2);
+    // TODO this is nonsense? Should be terminated by a null pointer, not by a null character.
     try env_vars.append(empty_env_var);
 
     const env_var_slices = try env_vars.toOwnedSlice();
@@ -109,15 +131,27 @@ fn _initEnviron() !void {
 
     environ_buffer = try std.heap.page_allocator.alloc(types.NullTerminatedString, env_var_count);
 
+    // TODO make sure the last pointer in environ_buffer is NULL pointer
     for (env_var_slices, 0..) |env_var, i| {
         // We copy the env var slice to the environ_buffer, so that we can modify it later.
         // Note: We do not need to copy the final null terminator, as it is already there.
         environ_buffer[i] = env_var;
     }
 
-    if (getModifiedOtelResourceAttributesValue()) |resource_attributes| {
-        environ_buffer[otel_resource_attributes_env_var_index] = resource_attributes;
+    for (env_var_slices, 0..) |_, i| {
+        std.debug.print("[Dash0 injector] XXX env_var_slices {d} -> {s}\n", .{i, environ_buffer[i]});
     }
+
+    // if (getModifiedOtelResourceAttributesValue()) |resource_attributes| {
+    //     std.debug.print("[Dash0 injector] getModifiedOtelResourceAttributesValue has returned values: {s}\n", .{resource_attributes});
+    //     environ_buffer[otel_resource_attributes_env_var_index] = resource_attributes;
+    // } else {
+    //     std.debug.print("[Dash0 injector] getModifiedOtelResourceAttributesValue has not returned any values\n", .{});
+    // }
+
+    std.debug.print("[Dash0 injector] XXX environ_buffer_original.len: {d}\n", .{environ_buffer_original.len});
+    std.debug.print("[Dash0 injector] XXX environ_buffer.len: {d}\n",.{environ_buffer.len});
+    std.debug.print("[Dash0 injector] XXX otel_resource_attributes_env_var_index: {d}\n",.{ otel_resource_attributes_env_var_index});
 
     __environ = @ptrCast(environ_buffer);
     _environ = __environ;
@@ -126,8 +160,10 @@ fn _initEnviron() !void {
     std.debug.print("[Dash0 injector] Initialized environment\n", .{});
 }
 
-pub fn getEnvVar(name: []const u8) ?types.NullTerminatedString {
-    for (environ_buffer[0..]) |env_var| {
+pub fn getEnvVar(env_vars: std.ArrayList(types.NullTerminatedString), name: []const u8) ?types.NullTerminatedString {
+    // std.debug.print("getEnvVar: looking for {s}\n", .{name});
+    for (env_vars.items) |env_var| {
+        // std.debug.print("getEnvVar: {s}\n", .{env_var});
         const env_var_slice: []const u8 = std.mem.span(env_var);
         if (std.mem.indexOf(u8, env_var_slice, "=")) |j| {
             if (std.mem.eql(u8, name, env_var[0..j])) {
@@ -193,20 +229,22 @@ const mappings: [8]EnvToResourceAttributeMapping =
 
 /// Derive the modified value for OTEL_RESOURCE_ATTRIBUTES based on the original value, and on other resource attributes
 /// provided via the DASH0_* environment variables set by the operator (workload_modifier#addEnvironmentVariables).
-pub fn getModifiedOtelResourceAttributesValue() ?types.NullTerminatedString {
+pub fn getModifiedOtelResourceAttributesValue(env_vars: std.ArrayList(types.NullTerminatedString)) ?types.NullTerminatedString {
     if (modified_otel_resource_attributes_value_calculated) {
-        std.debug.print("OTEL_RESOURCE_ATTRIBUTES already modified\n", .{});
+        std.debug.print("getModifiedOtelResourceAttributesValue: OTEL_RESOURCE_ATTRIBUTES already modified\n", .{});
         // We have already calculated the value, so we can return it.
         return modified_otel_resource_attributes_value;
     }
 
-    std.debug.print("OTEL_RESOURCE_ATTRIBUTES not modified yet\n", .{});
+    std.debug.print("getModifiedOtelResourceAttributesValue: OTEL_RESOURCE_ATTRIBUTES not modified yet\n", .{});
 
-    const original_value_optional = getEnvVar("OTEL_RESOURCE_ATTRIBUTES");
-    if (getResourceAttributes()) |resource_attributes| {
+    const original_value_optional = getEnvVar(env_vars, "OTEL_RESOURCE_ATTRIBUTES");
+    if (getResourceAttributes(env_vars)) |resource_attributes| {
         defer std.heap.page_allocator.free(resource_attributes);
 
         if (original_value_optional) |original_value| {
+            std.debug.print("getModifiedOtelResourceAttributesValue: original value: {s}\n", .{original_value});
+
             // Prepend our resource attributes to the already existing key-value pairs.
             // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
             // parent process.
@@ -220,10 +258,11 @@ pub fn getModifiedOtelResourceAttributesValue() ?types.NullTerminatedString {
             modified_otel_resource_attributes_value = return_buffer.ptr;
             modified_otel_resource_attributes_value_calculated = true;
 
+            std.debug.print("getModifiedOtelResourceAttributesValue: both original value and new values to add are present\n", .{});
             return modified_otel_resource_attributes_value;
         } else {
             // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
-            // parent process.
+            // process.
             const return_buffer = std.fmt.allocPrintZ(std.heap.page_allocator, "{s}={s}", .{ otel_resource_attributes_env_var_name, resource_attributes }) catch |err| {
                 print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ otel_resource_attributes_env_var_name, err });
                 return null;
@@ -232,11 +271,14 @@ pub fn getModifiedOtelResourceAttributesValue() ?types.NullTerminatedString {
             modified_otel_resource_attributes_value = return_buffer.ptr;
             modified_otel_resource_attributes_value_calculated = true;
 
+            // std.debug.print("getModifiedOtelResourceAttributesValue: no original value, but new values to add are present, returning {any}\n", .{modified_otel_resource_attributes_value});
             return modified_otel_resource_attributes_value;
         }
     } else {
         // No resource attributes to add. Return a pointer to the current value, or null if there is no current value.
         if (original_value_optional) |original_value| {
+            std.debug.print("getModifiedOtelResourceAttributesValue: original value: {s}\n", .{original_value});
+
             // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
             // parent process.
             const return_buffer = std.fmt.allocPrintZ(std.heap.page_allocator, "{s}={s}", .{ otel_resource_attributes_env_var_name, original_value }) catch |err| {
@@ -247,10 +289,12 @@ pub fn getModifiedOtelResourceAttributesValue() ?types.NullTerminatedString {
             modified_otel_resource_attributes_value = return_buffer.ptr;
             modified_otel_resource_attributes_value_calculated = true;
 
+            std.debug.print("getModifiedOtelResourceAttributesValue: original value, nothing to add\n", .{});
             return modified_otel_resource_attributes_value;
         } else {
             // There is no original value, and also nothing to add, return null.
             modified_otel_resource_attributes_value_calculated = true;
+            std.debug.print("getModifiedOtelResourceAttributesValue: no original, nothing to add\n", .{});
             return null;
         }
     }
@@ -260,11 +304,12 @@ pub fn getModifiedOtelResourceAttributesValue() ?types.NullTerminatedString {
 /// string that can be used for the value of OTEL_RESOURCE_ATTRIBUTES.
 ///
 /// Important: The caller must free the returned []u8 array, if a non-null value is returned.
-fn getResourceAttributes() ?[]u8 {
+fn getResourceAttributes(env_vars: std.ArrayList(types.NullTerminatedString)) ?[]u8 {
     var final_len: usize = 0;
 
     for (mappings) |mapping| {
-        if (getEnvVar(mapping.environement_variable_name)) |value| {
+        if (getEnvVar(env_vars, mapping.environement_variable_name)) |value| {
+            // std.debug.print("getResourceAttributes: mapping.environement_variable_name: {s} -> {s}\n", .{mapping.environement_variable_name, value});
             if (std.mem.len(value) > 0) {
                 if (final_len > 0) {
                     final_len += 1; // ","
@@ -276,7 +321,9 @@ fn getResourceAttributes() ?[]u8 {
                     final_len += std.mem.len(value);
                 }
             }
-        }
+        } // else {
+        //     std.debug.print("getResourceAttributes: mapping.environement_variable_name: {s} not present \n", .{mapping.environement_variable_name});
+        // }
     }
 
     if (final_len < 1) {
@@ -291,9 +338,10 @@ fn getResourceAttributes() ?[]u8 {
     var fbs = std.io.fixedBufferStream(resource_attributes);
 
     var is_first_token = true;
+    // TODO why do we iterate twice over mappings?
     for (mappings) |mapping| {
         const env_var_name = mapping.environement_variable_name;
-        if (getEnvVar(env_var_name)) |value| {
+        if (getEnvVar(env_vars, env_var_name)) |value| {
             if (std.mem.len(value) > 0) {
                 if (is_first_token) {
                     is_first_token = false;
@@ -319,5 +367,6 @@ fn getResourceAttributes() ?[]u8 {
         }
     }
 
+    std.debug.print("getResourceAttributes: returning {s}\n", .{resource_attributes});
     return resource_attributes;
 }

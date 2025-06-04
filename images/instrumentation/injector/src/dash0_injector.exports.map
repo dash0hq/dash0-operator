@@ -1,8 +1,8 @@
 {
     global:
-        environ;
-        _environ;
         __environ;
+        _environ;
+        environ;
     local:
         *;
 };

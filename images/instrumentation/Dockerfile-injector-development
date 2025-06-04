@@ -53,6 +53,6 @@ RUN . /opt/zig/zig-version && \
   tar --strip-components=1 -xf /tmp/zig.tar.gz
 ENV PATH="$PATH:/opt/zig"
 
-WORKDIR /home/dash0/instrumentation/injector-experiments/zig-to-c/03_export__environ
+WORKDIR /home/dash0/instrumentation/injector
 
 CMD ["/bin/bash"]
