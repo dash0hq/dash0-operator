@@ -80,7 +80,7 @@ fn _initEnviron() !void {
                 if (i > index) {
                     const env_var: [*:0]const u8 = environ_buffer_original[index..i :0];
 
-                    if (std.mem.indexOf(c_char, environ_buffer_original, "OTEL_RESOURCE_ATTRIBUTES=")) |j| {
+                    if (std.mem.indexOf(u8, environ_buffer_original, "OTEL_RESOURCE_ATTRIBUTES=")) |j| {
                         if (j == 0) {
                             otel_resource_attributes_env_var_found = true;
                             otel_resource_attributes_env_var_index = j;
