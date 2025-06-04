@@ -110,14 +110,12 @@ declare -a all_libc_flavors=(
   "musl"
 )
 
-# Remember which containers have been created and which container images have been built or pulled for the test run and
-# delete them at the end via a trap. Otherwise, on systems where the Docker VM has limited disk space (like Docker
-# Desktop on MacOS), the test run will leave behind some fairly large images and hog disk space.
-rm -f injector/test/.containers_to_be_deleted_at_end
+# Remember which container images have been built or pulled for the test run and delete them at the end via a trap.
+# Otherwise, on systems where the Docker VM has limited disk space (like Docker Desktop on MacOS), the test run will
+# leave behind some fairly large images and hog disk space.
 rm -f injector/test/.container_images_to_be_deleted_at_end
-touch injector/test/.containers_to_be_deleted_at_end
 touch injector/test/.container_images_to_be_deleted_at_end
-trap cleanup_docker_containers_and_images_injector_tests EXIT
+trap cleanup_docker_images EXIT
 
 # rebuild compiled test apps
 if [[ "${MISSING_ENVIRON_SYMBOL_TESTS:-}" = "true" ]]; then
