@@ -38,7 +38,6 @@ fi
 
 dockerfile_name="docker/Dockerfile-test"
 image_name=dash0-injector-test-$ARCH-$LIBC
-container_name=$image_name
 
 create_sdk_dummy_files_script="scripts/create-sdk-dummy-files.sh"
 if [[ "$TEST_SET" = "sdk-does-not-exist.tests" ]]; then
@@ -47,7 +46,6 @@ elif [[ "$TEST_SET" = "sdk-cannot-be-accessed.tests" ]]; then
   create_sdk_dummy_files_script="scripts/create-inaccessible-sdk-dummy-files.sh"
 fi
 
-docker rm -f "$container_name" 2> /dev/null
 docker rmi -f "$image_name" 2> /dev/null
 
 echo "$image_name" >> .container_images_to_be_deleted_at_end
@@ -76,14 +74,13 @@ if [ "${INTERACTIVE:-}" = "true" ]; then
   fi
 fi
 
-echo "$container_name" >> .containers_to_be_deleted_at_end
 docker run \
+  --rm \
   --platform "$docker_platform" \
   --env EXPECTED_CPU_ARCHITECTURE="$expected_cpu_architecture" \
   --env TEST_SET="$TEST_SET" \
   --env TEST_CASES="$TEST_CASES" \
   --env MISSING_ENVIRON_SYMBOL_TESTS="${MISSING_ENVIRON_SYMBOL_TESTS:-}" \
-  --name "$container_name" \
   "$image_name" \
   $docker_run_extra_arguments
 { set +x; } 2> /dev/null

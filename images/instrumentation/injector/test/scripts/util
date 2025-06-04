@@ -44,23 +44,13 @@ copy_binary_from_container_image() {
   docker rm -v "$container_id"
 }
 
-cleanup_docker_containers_and_images() {
+cleanup_docker_images() {
   if [[ "${DOCKER_CLEANUP_ENABLED:-}" = "false" ]]; then
-	echo "[cleanup] skipping cleanup of containers and images"
+	echo "[cleanup] skipping cleanup of container images"
 	return
   fi
 
-  base_dir=${1:-}
-  if [[ -z "$base_dir" ]]; then
-	echo "error: mandatory argument \"base_dir\" is missing"
-	exit 1
-  fi
-
-  while IFS= read -r container; do
-    if [[ -n "$container" ]]; then
-      docker rm -f "$container" &> /dev/null || true
-    fi
-  done <<< $(cat "$base_dir/.containers_to_be_deleted_at_end" | sort | uniq)
+  local base_dir="injector/test"
 
   while IFS= read -r image; do
     if [[ -n "$image" ]]; then
@@ -68,14 +58,10 @@ cleanup_docker_containers_and_images() {
     fi
   done <<< $(cat "$base_dir/.container_images_to_be_deleted_at_end" | sort | uniq)
 
-  rm "$base_dir/.containers_to_be_deleted_at_end"
   rm "$base_dir/.container_images_to_be_deleted_at_end"
-}
 
-cleanup_docker_containers_and_images_injector_tests() {
-  cleanup_docker_containers_and_images injector/test
-}
-
-cleanup_docker_containers_and_images_instrumentation_image_tests() {
-  cleanup_docker_containers_and_images test
+  # Actually, instead of keeping track of containers and images, simply running docker builder prune --force might be
+  # more effective. It is a bit invasive though, as it also removes stuff unrelated to the injector/instrumentation test
+  # suite.
+  # docker builder prune --force > /dev/null
 }
