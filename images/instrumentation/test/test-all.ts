@@ -4,9 +4,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { promisify } from 'node:util';
-import childProcess from 'node:child_process';
+import childProcess, { execSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { readFile, writeFile, readdir, unlink } from 'node:fs/promises';
+import { readFileSync, unlinkSync } from 'fs';
 import os from 'node:os';
 import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,7 +16,6 @@ import chalk from 'chalk';
 import { PromisePool } from '@supercharge/promise-pool';
 
 import { setStartTimeBuild, storeBuildStepDuration, printTotalBuildTimeInfo } from './build-time-profiling.ts';
-import { log, isRemoteImage, cleanupDockerContainerImages } from './util.ts';
 
 type TestImage = {
   arch: string;
@@ -40,7 +40,61 @@ type RunTestCasePromise = {
 
 const exec = promisify(childProcess.exec);
 
+setStartTimeBuild();
+
+// Change to script directory
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+process.chdir(resolve(scriptDir, '..'));
+
+const allArchitectures = ['arm64', 'x86_64'];
+const allDockerPlatforms = 'linux/arm64,linux/amd64';
+const testScriptDir = 'test';
+const slowTestThresholdSeconds = 60;
+
+let instrumentationImage = 'dash0-instrumentation:latest';
+let failedTestCases = 0;
+let skippedTestCases = 0;
+let summary = '';
+
 console.log('----------------------------------------');
+
+const architecturesFilter = process.env.ARCHITECTURES ? process.env.ARCHITECTURES.split(',') : [];
+if (architecturesFilter.length > 0) {
+  if (architecturesFilter.some(arch => !allArchitectures.includes(arch))) {
+    console.error(
+      `Error: The ARCHITECTURES environment variable ("${architecturesFilter}") contains an unsupported architecture. Supported architectures are: ${allArchitectures.join(', ')}.`,
+    );
+    process.exit(1);
+  }
+  log('Only testing a subset of architectures:', architecturesFilter);
+}
+
+const allRuntimes = (await readdir(testScriptDir, { withFileTypes: true }))
+  .filter(dirent => dirent.isDirectory())
+  .filter(dirent => dirent.name !== 'node_modules')
+  .map(dirent => dirent.name);
+log(`Found runtime directories: ${allRuntimes.join(', ')}`);
+
+const runtimesFilter = process.env.RUNTIMES ? process.env.RUNTIMES.split(',') : [];
+if (runtimesFilter.length > 0) {
+  if (runtimesFilter.some(runtime => !allRuntimes.includes(runtime))) {
+    console.error(
+      `Error: The RUNTIMES environment variable ("${runtimesFilter}") contains an unsupported runtime. Supported runtimes are: ${allRuntimes.join(', ')}.`,
+    );
+    process.exit(1);
+  }
+  log('Only testing a subset of runtimes:', runtimesFilter);
+}
+
+const baseImagesFilter = process.env.BASE_IMAGES ? process.env.BASE_IMAGES.split(',') : [];
+if (baseImagesFilter.length > 0) {
+  log('Only testing a subset of base images:', baseImagesFilter);
+}
+
+const testCases = process.env.TEST_CASES ? process.env.TEST_CASES.split(',') : [];
+if (testCases.length > 0) {
+  log('Only running a subset of test cases:', testCases);
+}
 
 let concurrency: number;
 if (process.env.CONCURRENCY) {
@@ -57,40 +111,6 @@ if (process.env.CONCURRENCY) {
 } else {
   concurrency = os.cpus().length;
   log(`Using the default concurrency (number of available CPUs: ${concurrency}).`);
-}
-
-setStartTimeBuild();
-
-// Change to script directory
-const scriptDir = dirname(fileURLToPath(import.meta.url));
-process.chdir(resolve(scriptDir, '..'));
-
-const allDockerPlatforms = 'linux/arm64,linux/amd64';
-const testScriptDir = 'test';
-const slowTestThresholdSeconds = 60;
-
-let instrumentationImage = 'dash0-instrumentation:latest';
-let testExitCode = 0;
-let summary = '';
-
-const architecturesFilter = process.env.ARCHITECTURES ? process.env.ARCHITECTURES.split(',') : [];
-if (architecturesFilter.length > 0) {
-  log('Only testing a subset of architectures:', architecturesFilter);
-}
-
-const runtimesFilter = process.env.RUNTIMES ? process.env.RUNTIMES.split(',') : [];
-if (runtimesFilter.length > 0) {
-  log('Only testing a subset of runtimes:', runtimesFilter);
-}
-
-const baseImagesFilter = process.env.BASE_IMAGES ? process.env.BASE_IMAGES.split(',') : [];
-if (baseImagesFilter.length > 0) {
-  log('Only testing a subset of base images:', baseImagesFilter);
-}
-
-const testCases = process.env.TEST_CASES ? process.env.TEST_CASES.split(',') : [];
-if (testCases.length > 0) {
-  log('Only running a subset of test cases:', testCases);
 }
 
 async function main(): Promise<void> {
@@ -127,8 +147,6 @@ async function main(): Promise<void> {
   });
 
   await buildOrPullInstrumentationImage();
-
-  const allArchitectures = ['arm64', 'x86_64'];
 
   const testedArchitectures = allArchitectures.filter(arch => {
     if (architecturesFilter.length > 0 && !architecturesFilter.includes(arch)) {
@@ -195,17 +213,22 @@ async function main(): Promise<void> {
     })
     .process(runTestCasePromise => runTestCasePromise.promise!());
 
-  if (testExitCode !== 0) {
-    log(
-      chalk.red(`\nThere have been failing test cases:
-${summary}
-\nSee above for details.\n`),
-    );
+  log('all tests have been executed\n');
+  if (failedTestCases > 0) {
+    console.log(chalk.red('There have been failing test cases:'));
+    console.log(summary);
+    console.log(chalk.red('See above for details.'));
+    process.exit(failedTestCases);
+  } else if (skippedTestCases > 0) {
+    console.log(chalk.yellow('There are tests that are marked with skip: true in their .testcase.json file:'));
+    console.log(summary);
+    console.log(chalk.yellow('See above for details.'));
+    process.exit(skippedTestCases);
   } else {
-    log(chalk.green(`All test cases have passed.`));
+    console.log(chalk.green(`All test cases have passed.`));
+    console.log(summary);
+    process.exit(0);
   }
-
-  process.exit(testExitCode);
 }
 
 async function buildOrPullInstrumentationImage(): Promise<void> {
@@ -265,12 +288,7 @@ async function buildTestImagesForArchitecture(arch: string): Promise<BuildTestIm
     throw new Error(`The architecture ${arch} is not supported.`);
   }
 
-  const runtimeDirs = (await readdir(testScriptDir, { withFileTypes: true }))
-    .filter(dirent => dirent.isDirectory())
-    .filter(dirent => dirent.name !== 'node_modules')
-    .map(dirent => dirent.name);
-
-  const buildTestImageTasksPerRuntime = runtimeDirs.map(runtime =>
+  const buildTestImageTasksPerRuntime = allRuntimes.map(runtime =>
     buildTestImagesForArchitectureAndRuntime(arch, dockerPlatform, runtime),
   );
   return (await Promise.all(buildTestImageTasksPerRuntime)).flat();
@@ -330,10 +348,7 @@ function buildTestImageForArchitectureRuntimeAndBaseImage(
     baseImageRun = images[1];
   }
 
-  const baseImageStringForImageName = baseImageRun
-      .replaceAll(':', '-')
-      .replaceAll('.', '-')
-      .replaceAll('/', '-');
+  const baseImageStringForImageName = baseImageRun.replaceAll(':', '-').replaceAll('.', '-').replaceAll('/', '-');
   const imageNameTest = `instrumentation-image-test-${arch}-${runtime}-${baseImageStringForImageName}:latest`;
   const testImage: TestImage = {
     arch,
@@ -459,8 +474,8 @@ async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestIma
   }
 
   let baseImageForPrefix = baseImageRun;
-  if ((arch.length + runtime.length + baseImageForPrefix.length) > 32) {
-    baseImageForPrefix = `${baseImageForPrefix.substring(0, 8)}..${baseImageForPrefix.substring(baseImageForPrefix.length-8)}`;
+  if (arch.length + runtime.length + baseImageForPrefix.length > 32) {
+    baseImageForPrefix = `${baseImageForPrefix.substring(0, 8)}..${baseImageForPrefix.substring(baseImageForPrefix.length - 8)}`;
   }
   const prefix = `${arch}/${runtime}/${baseImageForPrefix}`;
   const testCaseDirs = (await readdir(testCasesDir, { withFileTypes: true }))
@@ -541,7 +556,27 @@ function createRunTestCaseTask(
 
     try {
       let dockerRunCmdArray = ['docker', 'run', '--rm', '--platform', dockerPlatform];
-      const envFile = `${testScriptDir}/${runtime}/test-cases/${test}/.env`;
+      const testCasePath = `${testScriptDir}/${runtime}/test-cases/${test}`;
+
+      let testCaseProperties = {};
+      const testCasePropertiesFile = `${testCasePath}/.testcase.json`;
+      if (existsSync(testCasePropertiesFile)) {
+        const testCasePropertiesContent = await readFile(testCasePropertiesFile);
+        try {
+          testCaseProperties = JSON.parse(testCasePropertiesContent);
+        } catch (e) {
+          log(chalk.red(`Error: cannot parse ${testCasePropertiesFile}, ignoring.`));
+        }
+      }
+
+      if (testCaseProperties.skip === true) {
+        log(chalk.yellow(`${prefix.padEnd(32)}\t- test case "${test}": SKIPPED`));
+        skippedTestCases++;
+        summary += chalk.yellow(`\n${prefix.padEnd(32)}\t- ${test}: skipped`);
+        return;
+      }
+
+      const envFile = `${testCasePath}/.env`;
       if (existsSync(envFile)) {
         dockerRunCmdArray = dockerRunCmdArray.concat(['--env-file', envFile]);
       }
@@ -563,6 +598,7 @@ function createRunTestCaseTask(
         }
       }
       log(chalk.green(`${prefix.padEnd(32)}\t- test case "${test}": OK`));
+      summary += chalk.green(`\n${prefix.padEnd(32)}\t- ${test}: OK`);
 
       const endTimeTestCase = Date.now();
       const durationTestCase = Math.floor((endTimeTestCase - startTimeTestCase) / 1000);
@@ -587,12 +623,59 @@ ${testCmd.join(' ')}
 error: ${error}`,
         ),
       );
-      testExitCode = 1;
-      summary += `\n${prefix}\t- ${test}:\tfailed`;
+      failedTestCases++;
+      summary += chalk.red(`\n${prefix.padEnd(32)}\t- ${test}: failed`);
     }
 
     storeBuildStepDuration(`test case ${test}`, startTimeTestCase, arch, runtime, baseImageRun);
   };
+}
+
+function isRemoteImage(imageName: string): boolean {
+  if (!imageName) {
+    throw new Error('error: mandatory argument "imageName" is missing');
+  }
+  return imageName.includes('/');
+}
+
+function cleanupDockerContainerImages(): void {
+  if (process.env.DOCKER_CLEANUP_ENABLED === 'false') {
+    log('[cleanup] skipping cleanup of containers and images');
+    return;
+  }
+  if (process.env.CI) {
+    log('[cleanup] skipping cleanup of containers and images on CI');
+    return;
+  }
+
+  const baseDir = 'test';
+  try {
+    const imagesFile = `${baseDir}/.container_images_to_be_deleted_at_end`;
+    const images = readFileSync(imagesFile, 'utf8')
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0);
+
+    const uniqueImages = [...new Set(images)].sort();
+    for (const image of uniqueImages) {
+      try {
+        log(`[cleanup] removing image: ${image}`);
+        execSync(`docker rmi -f "${image}"`, { stdio: 'ignore' });
+      } catch {
+        // Ignore errors
+      }
+    }
+
+    unlinkSync(imagesFile);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  } catch (error) {
+    // Ignore cleanup errors
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function log(message?: any, ...optionalParams: any[]): void {
+  console.log(`${new Date().toLocaleTimeString()}: ${message}`, ...optionalParams);
 }
 
 await main();
