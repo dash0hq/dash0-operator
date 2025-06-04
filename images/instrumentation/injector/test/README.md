@@ -26,5 +26,5 @@ Usage
 * Set `PRINT_TEST_OUTPUT=true` to always include the output from running the test case. Otherwise, the output is only
   printed to stdout when a test case fails.
 * `MISSING_ENVIRON_SYMBOL_TESTS=true` also run tests with a binary that does not provide an `__environ` symbol.
-  These are currently off by default.
+  These are currently off by default. <- TODO enable those by default
 
