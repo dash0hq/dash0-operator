@@ -7,13 +7,14 @@
   "scripts": {
     "lint": "tsc && eslint",
     "test": "node --experimental-strip-types instrumentation-image-test.ts",
-    "test-within-container": "node --experimental-strip-types instrumentation-image-test.ts --within-container",
+    "test-within-container-jvm": "node --experimental-strip-types instrumentation-image-test.ts --within-container --within-container-runtime jvm",
     "dev": "node --experimental-strip-types --watch instrumentation-image-test.ts"
   },
   "dependencies": {
     "@supercharge/promise-pool": "^3.2.0",
     "@types/node": "^22.0.0",
-    "chalk": "^5.4.1"
+    "chalk": "^5.4.1",
+    "commander": "^14.0.0"
   },
   "engines": {
     "node": ">=24"

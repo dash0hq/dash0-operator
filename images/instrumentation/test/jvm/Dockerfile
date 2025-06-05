@@ -21,9 +21,7 @@ RUN for test in /test-cases/*; do \
   cd "/${test}" && \
   echo "building $test" && \
   cp -R /jvm-test-utils/src/* . && \
-  javac \
-    -cp /jvm-test-utils/src:"/${test}" \
-    Main.java && \
+  javac Main.java && \
   jar --create --file app.jar --manifest MANIFEST.MF -C . . \
 ; done
 

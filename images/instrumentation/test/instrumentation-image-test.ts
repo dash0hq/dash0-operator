@@ -12,8 +12,9 @@ import os from 'node:os';
 import { basename, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import chalk from 'chalk';
 import { PromisePool } from '@supercharge/promise-pool';
+import chalk from 'chalk';
+import { program } from 'commander';
 
 import { setStartTimeBuild, storeBuildStepDuration, printTotalBuildTimeInfo } from './build-time-profiling.ts';
 
@@ -48,7 +49,6 @@ const exec = promisify(childProcess.exec);
 
 setStartTimeBuild();
 
-// Change to script directory
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 process.chdir(resolve(scriptDir, '..'));
 
@@ -120,6 +120,18 @@ if (process.env.CONCURRENCY) {
 }
 
 async function main(): Promise<void> {
+  program.option('--within-container');
+  program.option('-r, --within-container-runtime <runtime>');
+  program.parse();
+  const commandLineOptions = program.opts();
+  if (commandLineOptions.withinContainer) {
+    await runTestsWithinContainer(commandLineOptions);
+  } else {
+    await runAllTests();
+  }
+}
+
+async function runAllTests(): Promise<void> {
   log('starting instrumentation image tests');
   if (process.env.CI !== 'true') {
     try {
@@ -643,6 +655,108 @@ error: ${error}`,
 
     storeBuildStepDuration(`test case ${test}`, startTimeTestCase, arch, runtime, baseImageRun);
   };
+}
+
+async function runTestsWithinContainer(commandLineOptions): Promise<void> {
+  // Note that this only actually works with a subset of the test cases, in particular, the instrumentation assets
+  // (Dash0 Node.js OTel distribution, Java OTel SDK, ...) are not present.
+
+  if (!commandLineOptions.withinContainerRuntime) {
+    console.error(
+      'The runtime to test (c, jvm, node, dotnet, ...) has to be specified via --within-container-runtime when --within-container is used.',
+    );
+    process.exit(1);
+  }
+  const runtime = commandLineOptions.withinContainerRuntime;
+  if (runtime !== 'jvm') {
+    console.error('Currently only the runtime "jvm" is supported with --within-container.');
+    process.exit(1);
+  }
+
+  log('compiling injector');
+  execSync('zig build', {
+    cwd: 'injector',
+    stdio: 'inherit',
+  });
+
+  switch (runtime) {
+    case 'jvm':
+      runTestsWithinContainerJvm();
+      break;
+    default:
+      console.error(`runtime ${runtime} not supported for --within-container-runtime`);
+      process.exit(1);
+  }
+}
+
+async function runTestsWithinContainerJvm(): Promise<void> {
+  log('compiling jvm-test-utils');
+  execSync('javac src/com/dash0/injector/testutils/*.java', {
+    cwd: 'test/jvm/jvm-test-utils',
+    stdio: 'inherit',
+  });
+
+  const testCases = await readdir('test/jvm/test-cases', { withFileTypes: true });
+  testCases.forEach(testCaseDir => {
+    if (!testCaseDir.isDirectory()) {
+      return;
+    }
+    runJvmTestCaseWithinContainer(testCaseDir.name);
+  });
+}
+
+function runJvmTestCaseWithinContainer(testCase: string) {
+  log(`test case: ${testCase}`);
+  const cwd = `test/jvm/test-cases/${testCase}`;
+  cwd: 'test/jvm/test-cases/existing-env-var-return-unmodified',
+    execSync('cp -R ../../jvm-test-utils/src/* .', {
+      cwd,
+      stdio: 'inherit',
+    });
+  execSync('javac Main.java', {
+    cwd,
+    stdio: 'inherit',
+  });
+  execSync('jar --create --file app.jar --manifest MANIFEST.MF -C . .', {
+    cwd,
+    stdio: 'inherit',
+  });
+  const environmentFile = readFileSync(`${cwd}/.env`, 'utf8');
+  const envForTest = environmentFile
+    //
+    .split('\n')
+    .filter(line => !line.startsWith('#'))
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+    .reduce((env, line) => {
+      const parts = line.split('=');
+      if (parts.length < 2) {
+        return env;
+      } else if (parts.length === 2) {
+        env[parts[0]] = parts[1];
+        return env;
+      } else {
+        // for env vars with '=' characters in the value, like OTEL_RESOURCE_ATTRIBUTES=key1=value,key2=value
+        env[parts[0]] = parts.slice(1).join('=');
+        return env;
+      }
+    }, {});
+
+  try {
+    execSync('java -jar -Dotel.instrumentation.common.default-enabled=false app.jar', {
+      cwd,
+      env: {
+        ...process.env,
+        ...envForTest,
+        LD_PRELOAD: '../../../../injector/dash0_injector.so',
+      },
+      stdio: 'pipe',
+    });
+    log('test successful');
+  } catch (e) {
+    // TODO better summary
+    log('test failed: ', e);
+  }
 }
 
 function isRemoteImage(imageName: string): boolean {
