@@ -49,16 +49,18 @@ const otel_resource_attributes_env_var_name: []const u8 = "OTEL_RESOURCE_ATTRIBU
 const empty_otel_resource_attributes_env_var: [*:0]const u8 = otel_resource_attributes_env_var_name ++ "=\x00";
 
 fn initEnviron() callconv(.C) void {
-    std.debug.print("[Dash0 injector] {d} STARTING initEnviron()\n", .{std.os.linux.getpid()});
+    std.debug.print("[Dash0 injector] {d} initEnviron() start\n", .{std.os.linux.getpid()});
     _initEnviron() catch @panic("[Dash0 injector] initEnviron failed");
-    std.debug.print("[Dash0 injector] {d} DONE initEnviron()\n", .{std.os.linux.getpid()});
+    std.debug.print("[Dash0 injector] {d} initEnviron() done\n", .{std.os.linux.getpid()});
 }
 
 // TODO add unit tests for _initEnviron.
 
-// This function MUST be idempotent, as parent processes may pass the environment to child processes
+// TODO This function must be idempotent, as parent processes may pass the environment to child processes, compounding
+// our modification with each nested child process start. Or add a marker env var.
 fn _initEnviron() !void {
-    std.debug.print("[Dash0 injector] {d} STARTING _initEnviron()\n", .{std.os.linux.getpid()});
+    std.debug.print("[Dash0 injector] {d} _initEnviron() start\n", .{std.os.linux.getpid()});
+
     const proc_self_environ_path = "/proc/self/environ";
     const proc_self_environ_file = try std.fs.openFileAbsolute(proc_self_environ_path, .{
         .mode = std.fs.File.OpenMode.read_only,
@@ -68,7 +70,26 @@ fn _initEnviron() !void {
 
     // IMPORTANT! /proc/self/environ skips the final \x00 terminator
     // TODO Fix max size
+    // root@9fc29beca780:/proc/self# hexdump -C environ
+    // 00000000  50 41 54 48 3d 2f 75 73  72 2f 6c 6f 63 61 6c 2f  |PATH=/usr/local/|
+    // 00000010  73 62 69 6e 3a 2f 75 73  72 2f 6c 6f 63 61 6c 2f  |sbin:/usr/local/|
+    // 00000020  62 69 6e 3a 2f 75 73 72  2f 73 62 69 6e 3a 2f 75  |bin:/usr/sbin:/u|
+    // 00000030  73 72 2f 62 69 6e 3a 2f  73 62 69 6e 3a 2f 62 69  |sr/bin:/sbin:/bi|
+    // 00000040  6e 3a 2f 6f 70 74 2f 7a  69 67 00 48 4f 53 54 4e  |n:/opt/zig.HOSTN|
+    // 00000050  41 4d 45 3d 39 66 63 32  39 62 65 63 61 37 38 30  |AME=9fc29beca780|
+    // 00000060  00 54 45 52 4d 3d 78 74  65 72 6d 00 4c 41 4e 47  |.TERM=xterm.LANG|
+    // 00000070  3d 65 6e 5f 55 53 2e 75  74 66 38 00 48 4f 4d 45  |=en_US.utf8.HOME|
+    // 00000080  3d 2f 72 6f 6f 74 00                              |=/root.|
+    // 00000087
+    // root@9fc29beca780:/proc/self#
     const environ_buffer_original = try proc_self_environ_file.readToEndAlloc(std.heap.page_allocator, std.math.maxInt(usize));
+    // TODO ??? defer std.heap.page_allocator.free(environ_buffer_original);
+
+    // TODO use for unit tests for reading original env vars
+    // --{ 80, 65, 84, 72, 61, 47, 117, 115, 114, 47, 108, 111, 99, 97, 108, 47, 111, 112, 101, 110, 106, 100, 107, 45, 50, 52, 47, 98, 105, 110, 58, 47, 117, 115, 114, 47, 108, 111, 99, 97, 108, 47, 115, 98, 105, 110, 58, 47, 117, 115, 114, 47, 108, 111, 99, 97, 108, 47, 98, 105, 110, 58, 47, 117, 115, 114, 47, 115, 98, 105, 110, 58, 47, 117, 115, 114, 47, 98, 105, 110, 58, 47, 115, 98, 105, 110, 58, 47, 98, 105, 110, 0, 72, 79, 83, 84, 78, 65, 77, 69, 61, 56, 99, 55, 53, 99, 100, 52, 49, 100, 50, 97, 53, 0, 68, 65, 83, 72, 48, 95, 78, 65, 77, 69, 83, 80, 65, 67, 69, 95, 78, 65, 77, 69, 61, 110, 97, 109, 101, 115, 112, 97, 99, 101, 0, 68, 65, 83, 72, 48, 95, 80, 79, 68, 95, 85, 73, 68, 61, 112, 111, 100, 95, 117, 105, 100, 0, 68, 65, 83, 72, 48, 95, 80, 79, 68, 95, 78, 65, 77, 69, 61, 112, 111, 100, 95, 110, 97, 109, 101, 0, 68, 65, 83, 72, 48, 95, 67, 79, 78, 84, 65, 73, 78, 69, 82, 95, 78, 65, 77, 69, 61, 99, 111, 110, 116, 97, 105, 110, 101, 114, 95, 110, 97, 109, 101, 0, 79, 84, 69, 76, 95, 76, 79, 71, 83, 95, 69, 88, 80, 79, 82, 84, 69, 82, 61, 110, 111, 110, 101, 0, 79, 84, 69, 76, 95, 77, 69, 84, 82, 73, 67, 83, 95, 69, 88, 80, 79, 82, 84, 69, 82, 61, 110, 111, 110, 101, 0, 79, 84, 69, 76, 95, 84, 82, 65, 67, 69, 83, 95, 69, 88, 80, 79, 82, 84, 69, 82, 61, 110, 111, 110, 101, 0, 74, 65, 86, 65, 95, 72, 79, 77, 69, 61, 47, 117, 115, 114, 47, 108, 111, 99, 97, 108, 47, 111, 112, 101, 110, 106, 100, 107, 45, 50, 52, 0, 76, 65, 78, 71, 61, 67, 46, 85, 84, 70, 45, 56, 0, 74, 65, 86, 65, 95, 86, 69, 82, 83, 73, 79, 78, 61, 50, 52, 0, 76, 68, 95, 80, 82, 69, 76, 79, 65, 68, 61, 47, 95, 95, 100, 97, 115, 104, 48, 95, 95, 47, 100, 97, 115, 104, 48, 95, 105, 110, 106, 101, 99, 116, 111, 114, 46, 115, 111, 0, 72, 79, 77, 69, 61, 47, 114, 111, 111, 116, 0 }---
+    // std.debug.print("\n\n---{d}---\n\n", .{environ_buffer_original});
+    // ---PATH=/usr/local/openjdk-24/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/binHOSTNAME=8c75cd41d2a5DASH0_NAMESPACE_NAME=namespaceDASH0_POD_UID=pod_uidDASH0_POD_NAME=pod_nameDASH0_CONTAINER_NAME=container_nameOTEL_LOGS_EXPORTER=noneOTEL_METRICS_EXPORTER=noneOTEL_TRACES_EXPORTER=noneJAVA_HOME=/usr/local/openjdk-24LANG=C.UTF-8JAVA_VERSION=24LD_PRELOAD=/__dash0__/dash0_injector.soHOME=/root---
+    // std.debug.print("\n\n---{s}---\n\n", .{environ_buffer_original});
 
     var env_vars = std.ArrayList(types.NullTerminatedString).init(std.heap.page_allocator);
     defer env_vars.deinit();
@@ -139,7 +160,7 @@ fn _initEnviron() !void {
     }
 
     for (env_var_slices, 0..) |_, i| {
-        std.debug.print("[Dash0 injector] XXX env_var_slices {d} -> {s}\n", .{i, environ_buffer[i]});
+        std.debug.print("[Dash0 injector] XXX env_var_slices {d} -> {s}\n", .{ i, environ_buffer[i] });
     }
 
     // if (getModifiedOtelResourceAttributesValue()) |resource_attributes| {
@@ -149,15 +170,14 @@ fn _initEnviron() !void {
     //     std.debug.print("[Dash0 injector] getModifiedOtelResourceAttributesValue has not returned any values\n", .{});
     // }
 
-    std.debug.print("[Dash0 injector] XXX environ_buffer_original.len: {d}\n", .{environ_buffer_original.len});
-    std.debug.print("[Dash0 injector] XXX environ_buffer.len: {d}\n",.{environ_buffer.len});
-    std.debug.print("[Dash0 injector] XXX otel_resource_attributes_env_var_index: {d}\n",.{ otel_resource_attributes_env_var_index});
+    std.debug.print("[Dash0 injector] XXX environ_buffer.len: {d}\n", .{environ_buffer.len});
+    std.debug.print("[Dash0 injector] XXX otel_resource_attributes_env_var_index: {d}\n", .{otel_resource_attributes_env_var_index});
 
     __environ = @ptrCast(environ_buffer);
     _environ = __environ;
     environ = __environ;
 
-    std.debug.print("[Dash0 injector] Initialized environment\n", .{});
+    std.debug.print("[Dash0 injector] {d} _initEnviron() done\n", .{std.os.linux.getpid()});
 }
 
 pub fn getEnvVar(env_vars: std.ArrayList(types.NullTerminatedString), name: []const u8) ?types.NullTerminatedString {
@@ -236,7 +256,7 @@ pub fn getModifiedOtelResourceAttributesValue(env_vars: std.ArrayList(types.Null
         return modified_otel_resource_attributes_value;
     }
 
-    std.debug.print("getModifiedOtelResourceAttributesValue: OTEL_RESOURCE_ATTRIBUTES not modified yet\n", .{});
+    std.debug.print("[Dash0 injector] getModifiedOtelResourceAttributesValue: OTEL_RESOURCE_ATTRIBUTES not modified yet\n", .{});
 
     const original_value_optional = getEnvVar(env_vars, "OTEL_RESOURCE_ATTRIBUTES");
     if (getResourceAttributes(env_vars)) |resource_attributes| {
