@@ -17,6 +17,8 @@ import { PromisePool } from '@supercharge/promise-pool';
 
 import { setStartTimeBuild, storeBuildStepDuration, printTotalBuildTimeInfo } from './build-time-profiling.ts';
 
+const __filename = new URL(import.meta.url).pathname;
+
 type TestImage = {
   arch: string;
   dockerPlatform: string;
@@ -36,6 +38,10 @@ type RunTestCasePromise = {
   testImage: TestImage;
   promise?: () => Promise<void>;
   skipped: boolean;
+};
+
+type TestCaseProperties = {
+  skip?: boolean;
 };
 
 const exec = promisify(childProcess.exec);
@@ -299,29 +305,37 @@ async function buildTestImagesForArchitectureAndRuntime(
   dockerPlatform: string,
   runtime: string,
 ): Promise<BuildTestImagePromise[]> {
-  const baseImagesFile = `${testScriptDir}/${runtime}/base-images`;
-  const testCasesDir = `${testScriptDir}/${runtime}/test-cases`;
+  const runtimePathPrefix = `${testScriptDir}/${runtime}`;
+  const dockerFile = `${runtimePathPrefix}/Dockerfile`;
+  const baseImagesFile = `${runtimePathPrefix}/base-images`;
+  const testCasesDir = `${runtimePathPrefix}/test-cases`;
 
+  if (!existsSync(dockerFile)) {
+    log(`- ${arch}: ${runtimePathPrefix} has no Dockerfile, skipping`);
+    return [];
+  }
   if (!existsSync(baseImagesFile)) {
-    log(`- ${arch}: ${testScriptDir}/${runtime} has no base-images file, skipping`);
+    log(`- ${arch}: ${runtimePathPrefix} has no base-images file, skipping`);
     return [];
   }
   if (!existsSync(testCasesDir)) {
-    log(`- ${arch}: ${testScriptDir}/${runtime} has no test-cases directory, skipping`);
+    log(`- ${arch}: ${runtimePathPrefix} has no test-cases directory, skipping`);
     return [];
   }
-
   if (runtimesFilter.length > 0 && !runtimesFilter.includes(runtime)) {
     log(`- ${arch}: skipping runtime '${runtime}'`);
     return [];
   }
 
-  log(`- ${arch}: creating test image build tasks for runtime: '${runtime}'`);
-
   const baseImagesForRuntime = (await readFile(baseImagesFile, 'utf8'))
     .split('\n')
     .filter(line => line.trim() && !line.startsWith('#') && !line.startsWith(';'));
+  if (baseImagesForRuntime.length === 0) {
+    log(`- ${arch}: ${testScriptDir}/${runtime}/base-images does not list any images, skipping`);
+    return [];
+  }
 
+  log(`- ${arch}: creating test image build tasks for runtime: '${runtime}'`);
   const buildTasksPerBaseImage = baseImagesForRuntime.map(baseImage =>
     buildTestImageForArchitectureRuntimeAndBaseImage(arch, dockerPlatform, runtime, baseImage),
   );
@@ -521,7 +535,7 @@ async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestIma
 
       default:
         console.error(
-          `Error: Test handler for runtime "${runtime}" is not implemented. Please update test-all.ts, function runTestCasesForArchitectureRuntimeAndBaseImage.`,
+          `Error: Test handler for runtime "${runtime}" is not implemented. Please update "${__filename}", function runTestCasesForArchitectureRuntimeAndBaseImage.`,
         );
         process.exit(1);
     }
@@ -558,12 +572,12 @@ function createRunTestCaseTask(
       let dockerRunCmdArray = ['docker', 'run', '--rm', '--platform', dockerPlatform];
       const testCasePath = `${testScriptDir}/${runtime}/test-cases/${test}`;
 
-      let testCaseProperties = {};
+      let testCaseProperties: TestCaseProperties = {};
       const testCasePropertiesFile = `${testCasePath}/.testcase.json`;
       if (existsSync(testCasePropertiesFile)) {
         const testCasePropertiesContent = await readFile(testCasePropertiesFile);
         try {
-          testCaseProperties = JSON.parse(testCasePropertiesContent);
+          testCaseProperties = JSON.parse(testCasePropertiesContent.toString());
         } catch (e) {
           log(chalk.red(`Error: cannot parse ${testCasePropertiesFile}, ignoring.`));
         }
