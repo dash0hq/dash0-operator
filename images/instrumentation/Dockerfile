@@ -12,7 +12,7 @@ RUN source /dash0-init-container/zig-version && \
 COPY injector /dash0-init-container
 WORKDIR /dash0-init-container
 ARG TARGETARCH
-RUN zig build -Dcpu-arch=${TARGETARCH} --summary all
+RUN zig build -Dcpu-arch=${TARGETARCH} --prominent-compile-errors --summary none
 
 # injector_build_end - do not remove this line (see images/instrumentation/injector/test/scripts/test-all.sh)
 

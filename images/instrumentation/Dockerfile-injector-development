@@ -1,6 +1,8 @@
 # This Dockerfile is intended to serve as a development environment for the injector, i.e. mounting the injector
 # directory as a volume to the container and then running the image with `-it` to have a fast feeback cycle when working
 # on injector changes. Use ./start-injector-dev-container.sh to build and run the container.
+# It also has dependencies to build the JDK (https://github.com/openjdk/jdk) and Node.js
+# (https://github.com/nodejs/node) from source, which can be helpful to investigate segfaults or other nasties.
 ARG base_image=ubuntu:noble
 FROM ${base_image}
 
@@ -22,6 +24,7 @@ RUN apt-get update && \
       build-essential \
       curl \
       entr \
+      fd-find \
       file \
       gdb \
       less \
@@ -48,7 +51,12 @@ RUN apt-get update && \
     localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8
 ENV LANG=en_US.utf8
 
-# enable LD_DEBUG, required for certain setups
+# Make fd available as `fd` instead of `fdfind`, see
+RUN ln -s $(which fdfind) /usr/local/bin/fd
+# See https://github.com/eradman/entr?tab=readme-ov-file#docker-and-wsl
+ENV ENTR_INOTIFY_WORKAROUND=true
+
+# required for certain setups to enable LD_DEBUG
 RUN touch /etc/suid-debug
 
 RUN mkdir -p /opt/zig
@@ -59,6 +67,6 @@ RUN . /opt/zig/zig-version && \
   tar --strip-components=1 -xf /tmp/zig.tar.gz
 ENV PATH="$PATH:/opt/zig"
 
-WORKDIR /home/dash0/instrumentation/injector
+WORKDIR /home/dash0/instrumentation/test
 
 CMD ["/bin/bash"]
