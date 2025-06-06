@@ -6,7 +6,8 @@ const std = @import("std");
 const dash0_injector_debug_env_var_name = "DASH0_INJECTOR_DEBUG";
 const log_prefix = "[Dash0 injector] ";
 
-// TODO FIX
+// TODO currently hard coded to true, needs to be fixed with reading the DASH0_INJECTOR_DEBUG variable from the original
+// environment read from /proc/self/environ.
 var is_debug = true;
 
 /// Initializes the is_debug flag based on the environment variable DASH0_INJECTOR_DEBUG.
