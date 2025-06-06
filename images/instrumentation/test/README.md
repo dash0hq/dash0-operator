@@ -35,8 +35,8 @@ Usage
 * `RUNTIMES=node,jvm BASE_IMAGES=openjdk:24-jdk-bookworm,openjdk:21-jdk-bookworm npm run test` to run tests for a subset
   of runtimes and only for a subset of base images. Note that base images names are usually different per runtime, see
   the `base-images` file in the respective runtime directory.
-* `TEST_CASES=existing,otel-resource npm run test` to only run tests cases whose names contain one of the provided
-  strings. Can be combined with `ARCHITECTURES`, `RUNTIMES` etc.
+* `TEST_CASES=non-existing-env-var-return-null,otel-resource-attributes-already-set, npm run test` to only run tests
+  cases whose names match one of the provided strings. Can be combined with `ARCHITECTURES`, `RUNTIMES` etc.
 * Set `VERBOSE=true` to always include the output from docker build, docker run and test commands. Otherwise, the output
   is only printed to stdout in case of errors.
 * Set `DOCKER_CLEANUP_ENABLED=false` to disable the automatic docker rmi at the end of the test suites that deletes all
