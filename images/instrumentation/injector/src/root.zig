@@ -249,10 +249,11 @@ pub fn getModifiedOtelResourceAttributesValue(env_vars: *std.ArrayList(types.Nul
     std.debug.print("[Dash0 injector] getModifiedOtelResourceAttributesValue: OTEL_RESOURCE_ATTRIBUTES not modified yet\n", .{});
 
     const original_value_optional, _ = getEnvVar(env_vars, "OTEL_RESOURCE_ATTRIBUTES");
-    if (getResourceAttributes(env_vars)) |resource_attributes| {
-        defer std.heap.page_allocator.free(resource_attributes);
+    const resource_attributes_optional = getResourceAttributes(env_vars);
+    if (original_value_optional) |original_value| {
+        if (resource_attributes_optional) |resource_attributes| {
+            defer std.heap.page_allocator.free(resource_attributes);
 
-        if (original_value_optional) |original_value| {
             std.debug.print("getModifiedOtelResourceAttributesValue: original value: {s}\n", .{original_value});
 
             // Prepend our resource attributes to the already existing key-value pairs.
@@ -271,22 +272,6 @@ pub fn getModifiedOtelResourceAttributesValue(env_vars: *std.ArrayList(types.Nul
             std.debug.print("getModifiedOtelResourceAttributesValue: both original value and new values to add are present\n", .{});
             return modified_otel_resource_attributes_value;
         } else {
-            // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
-            // process.
-            const return_buffer = std.fmt.allocPrintZ(std.heap.page_allocator, "{s}={s}", .{ otel_resource_attributes_env_var_name, resource_attributes }) catch |err| {
-                print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ otel_resource_attributes_env_var_name, err });
-                return null;
-            };
-
-            modified_otel_resource_attributes_value = return_buffer.ptr;
-            modified_otel_resource_attributes_value_calculated = true;
-
-            std.debug.print("getModifiedOtelResourceAttributesValue: no original value, but new values to add are present, returning {any}\n", .{modified_otel_resource_attributes_value});
-            return modified_otel_resource_attributes_value;
-        }
-    } else {
-        // No resource attributes to add. Return a pointer to the current value, or null if there is no current value.
-        if (original_value_optional) |original_value| {
             std.debug.print("getModifiedOtelResourceAttributesValue: original value: {s}\n", .{original_value});
 
             // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
@@ -300,6 +285,23 @@ pub fn getModifiedOtelResourceAttributesValue(env_vars: *std.ArrayList(types.Nul
             modified_otel_resource_attributes_value_calculated = true;
 
             std.debug.print("getModifiedOtelResourceAttributesValue: original value, nothing to add\n", .{});
+            return modified_otel_resource_attributes_value;
+        }
+    } else {
+        if (resource_attributes_optional) |resource_attributes| {
+            defer std.heap.page_allocator.free(resource_attributes);
+
+            // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
+            // process.
+            const return_buffer = std.fmt.allocPrintZ(std.heap.page_allocator, "{s}={s}", .{ otel_resource_attributes_env_var_name, resource_attributes }) catch |err| {
+                print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ otel_resource_attributes_env_var_name, err });
+                return null;
+            };
+
+            modified_otel_resource_attributes_value = return_buffer.ptr;
+            modified_otel_resource_attributes_value_calculated = true;
+
+            std.debug.print("getModifiedOtelResourceAttributesValue: no original value, but new values to add are present, returning {any}\n", .{modified_otel_resource_attributes_value});
             return modified_otel_resource_attributes_value;
         } else {
             // There is no original value, and also nothing to add, return null.
