@@ -14,7 +14,6 @@ const expect = std.testing.expect;
 const testing = std.testing;
 
 var environ_buffer: []types.NullTerminatedString = &.{};
-const empty_env_var: [*:0]const u8 = "\x00";
 
 // export var __environ: [*c]const [*c]const u8 = @as([1][*c]const u8, .{null})[0..].ptr;
 // export var _environ: [*c]const [*c]const u8 = @as([1][*c]const u8, .{null})[0..].ptr;
@@ -99,38 +98,67 @@ fn readProcSelfEnviron(proc_self_environ_path: []const u8) !struct { *std.ArrayL
         print.printError("Cannot open file {s}: {}\n", .{ proc_self_environ_path, err });
         return err;
     };
-
     defer proc_self_environ_file.close();
 
-    // IMPORTANT! /proc/self/environ skips the final \x00 terminator
-    // TODO Fix max size
-    // root@9fc29beca780:/proc/self# hexdump -C environ
-    // 00000000  50 41 54 48 3d 2f 75 73  72 2f 6c 6f 63 61 6c 2f  |PATH=/usr/local/|
-    // 00000010  73 62 69 6e 3a 2f 75 73  72 2f 6c 6f 63 61 6c 2f  |sbin:/usr/local/|
-    // 00000020  62 69 6e 3a 2f 75 73 72  2f 73 62 69 6e 3a 2f 75  |bin:/usr/sbin:/u|
-    // 00000030  73 72 2f 62 69 6e 3a 2f  73 62 69 6e 3a 2f 62 69  |sr/bin:/sbin:/bi|
-    // 00000040  6e 3a 2f 6f 70 74 2f 7a  69 67 00 48 4f 53 54 4e  |n:/opt/zig.HOSTN|
-    // 00000050  41 4d 45 3d 39 66 63 32  39 62 65 63 61 37 38 30  |AME=9fc29beca780|
-    // 00000060  00 54 45 52 4d 3d 78 74  65 72 6d 00 4c 41 4e 47  |.TERM=xterm.LANG|
-    // 00000070  3d 65 6e 5f 55 53 2e 75  74 66 38 00 48 4f 4d 45  |=en_US.utf8.HOME|
-    // 00000080  3d 2f 72 6f 6f 74 00                              |=/root.|
-    // 00000087
-    // root@9fc29beca780:/proc/self#
     const environ_buffer_original = try proc_self_environ_file.readToEndAlloc(std.heap.page_allocator, std.math.maxInt(usize));
-    // TODO ??? defer std.heap.page_allocator.free(environ_buffer_original);
+    // TODO shouldn't we defer std.heap.page_allocator.free(environ_buffer_original);
 
-    // TODO use for unit tests for reading original env vars
-    // --{ 80, 65, 84, 72, 61, 47, 117, 115, 114, 47, 108, 111, 99, 97, 108, 47, 111, 112, 101, 110, 106, 100, 107, 45, 50, 52, 47, 98, 105, 110, 58, 47, 117, 115, 114, 47, 108, 111, 99, 97, 108, 47, 115, 98, 105, 110, 58, 47, 117, 115, 114, 47, 108, 111, 99, 97, 108, 47, 98, 105, 110, 58, 47, 117, 115, 114, 47, 115, 98, 105, 110, 58, 47, 117, 115, 114, 47, 98, 105, 110, 58, 47, 115, 98, 105, 110, 58, 47, 98, 105, 110, 0, 72, 79, 83, 84, 78, 65, 77, 69, 61, 56, 99, 55, 53, 99, 100, 52, 49, 100, 50, 97, 53, 0, 68, 65, 83, 72, 48, 95, 78, 65, 77, 69, 83, 80, 65, 67, 69, 95, 78, 65, 77, 69, 61, 110, 97, 109, 101, 115, 112, 97, 99, 101, 0, 68, 65, 83, 72, 48, 95, 80, 79, 68, 95, 85, 73, 68, 61, 112, 111, 100, 95, 117, 105, 100, 0, 68, 65, 83, 72, 48, 95, 80, 79, 68, 95, 78, 65, 77, 69, 61, 112, 111, 100, 95, 110, 97, 109, 101, 0, 68, 65, 83, 72, 48, 95, 67, 79, 78, 84, 65, 73, 78, 69, 82, 95, 78, 65, 77, 69, 61, 99, 111, 110, 116, 97, 105, 110, 101, 114, 95, 110, 97, 109, 101, 0, 79, 84, 69, 76, 95, 76, 79, 71, 83, 95, 69, 88, 80, 79, 82, 84, 69, 82, 61, 110, 111, 110, 101, 0, 79, 84, 69, 76, 95, 77, 69, 84, 82, 73, 67, 83, 95, 69, 88, 80, 79, 82, 84, 69, 82, 61, 110, 111, 110, 101, 0, 79, 84, 69, 76, 95, 84, 82, 65, 67, 69, 83, 95, 69, 88, 80, 79, 82, 84, 69, 82, 61, 110, 111, 110, 101, 0, 74, 65, 86, 65, 95, 72, 79, 77, 69, 61, 47, 117, 115, 114, 47, 108, 111, 99, 97, 108, 47, 111, 112, 101, 110, 106, 100, 107, 45, 50, 52, 0, 76, 65, 78, 71, 61, 67, 46, 85, 84, 70, 45, 56, 0, 74, 65, 86, 65, 95, 86, 69, 82, 83, 73, 79, 78, 61, 50, 52, 0, 76, 68, 95, 80, 82, 69, 76, 79, 65, 68, 61, 47, 95, 95, 100, 97, 115, 104, 48, 95, 95, 47, 100, 97, 115, 104, 48, 95, 105, 110, 106, 101, 99, 116, 111, 114, 46, 115, 111, 0, 72, 79, 77, 69, 61, 47, 114, 111, 111, 116, 0 }---
-    // std.debug.print("\n\n---{d}---\n\n", .{environ_buffer_original});
-    // ---PATH=/usr/local/openjdk-24/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/binHOSTNAME=8c75cd41d2a5DASH0_NAMESPACE_NAME=namespaceDASH0_POD_UID=pod_uidDASH0_POD_NAME=pod_nameDASH0_CONTAINER_NAME=container_nameOTEL_LOGS_EXPORTER=noneOTEL_METRICS_EXPORTER=noneOTEL_TRACES_EXPORTER=noneJAVA_HOME=/usr/local/openjdk-24LANG=C.UTF-8JAVA_VERSION=24LD_PRELOAD=/__dash0__/dash0_injector.soHOME=/root---
-    // std.debug.print("\n\n---{s}---\n\n", .{environ_buffer_original});
+    return readProcSelfEnvironBuffer(environ_buffer_original);
+}
 
+test "readProcSelfEnviron: read empty /proc/self/environ file" {
+    const filename = "unit_test_proc_self_environ";
+    const proc_self_environ_file = try std.fs.cwd().createFile(filename, .{});
+    defer {
+        proc_self_environ_file.close();
+        std.fs.cwd().deleteFile(filename) catch |err| {
+            std.debug.print("Failed to delete file {s}: {}\n", .{ filename, err });
+        };
+    }
+    const absolute_path = try std.fs.cwd().realpathAlloc(std.heap.page_allocator, filename);
+    defer std.heap.page_allocator.free(absolute_path);
+
+    const env_vars, const otel_resource_attributes_env_var_found, const otel_resource_attributes_env_var_index =
+        try readProcSelfEnviron(absolute_path);
+
+    defer env_vars.deinit();
+    try testing.expectEqual(0, env_vars.items.len);
+    try testing.expect(!otel_resource_attributes_env_var_found);
+    try testing.expectEqual(0, otel_resource_attributes_env_var_index);
+}
+
+test "readProcSelfEnviron: read environment variables)" {
+    const filename = "unit_test_proc_self_environ";
+    const proc_self_environ_file = try std.fs.cwd().createFile(filename, .{});
+    const content = "VAR1=value1\x00VAR2=value2\x00VAR3=value3\x00";
+    _ = try proc_self_environ_file.write(content);
+    defer {
+        proc_self_environ_file.close();
+        std.fs.cwd().deleteFile(filename) catch |err| {
+            std.debug.print("Failed to delete file {s}: {}\n", .{ filename, err });
+        };
+    }
+    const absolute_path = try std.fs.cwd().realpathAlloc(std.heap.page_allocator, filename);
+    defer std.heap.page_allocator.free(absolute_path);
+
+    const env_vars, const otel_resource_attributes_env_var_found, const otel_resource_attributes_env_var_index =
+        try readProcSelfEnviron(absolute_path);
+
+    defer env_vars.deinit();
+    try testing.expectEqual(3, env_vars.items.len);
+    try testing.expect(std.mem.eql(u8, "VAR1=value1", std.mem.span(env_vars.items[0])));
+    try testing.expect(std.mem.eql(u8, "VAR2=value2", std.mem.span(env_vars.items[1])));
+    try testing.expect(std.mem.eql(u8, "VAR3=value3", std.mem.span(env_vars.items[2])));
+    try testing.expect(!otel_resource_attributes_env_var_found);
+    try testing.expectEqual(0, otel_resource_attributes_env_var_index);
+}
+
+// note: unit test for readProcSelfEnviron segfault if this function is not inlined.
+inline fn readProcSelfEnvironBuffer(environ_buffer_original: []const u8) !struct { *std.ArrayList(types.NullTerminatedString), bool, usize } {
     var env_vars = std.ArrayList(types.NullTerminatedString).init(std.heap.page_allocator);
-
     var index: usize = 0;
     var otel_resource_attributes_env_var_found = false;
     var otel_resource_attributes_env_var_index: usize = 0;
-
     if (environ_buffer_original.len > 0) {
         for (environ_buffer_original, 0..) |c, i| {
             if (c == 0) {
@@ -158,24 +186,11 @@ fn readProcSelfEnviron(proc_self_environ_path: []const u8) !struct { *std.ArrayL
     return .{ &env_vars, otel_resource_attributes_env_var_found, otel_resource_attributes_env_var_index };
 }
 
-// TODO factor out method that accepts the file content (environ_buffer_original) and create tests for that.
-test "readProcSelfEnviron: read environment variables)" {
-    const filename = "unit_test_proc_self_environ";
-    const proc_self_environ_file = try std.fs.cwd().createFile(filename, .{});
-    const content = "VAR1=value1\x00VAR2=value2\x00VAR3=value3\x00";
-    _ = try proc_self_environ_file.write(content);
-    defer {
-        proc_self_environ_file.close();
-        std.fs.cwd().deleteFile(filename) catch |err| {
-            std.debug.print("Failed to delete file {s}: {}\n", .{ filename, err });
-        };
-    }
-    const absolute_path = try std.fs.cwd().realpathAlloc(std.heap.page_allocator, filename);
-    defer std.heap.page_allocator.free(absolute_path);
-
-    const env_vars, const otel_resource_attributes_env_var_found, const otel_resource_attributes_env_var_index = try readProcSelfEnviron(absolute_path);
-
+test "readProcSelfEnvironBuffer: read environment variables)" {
+    const env_vars, const otel_resource_attributes_env_var_found, const otel_resource_attributes_env_var_index =
+        try readProcSelfEnvironBuffer("VAR1=value1\x00VAR2=value2\x00VAR3=value3\x00");
     defer env_vars.deinit();
+
     try testing.expectEqual(3, env_vars.items.len);
     try testing.expect(std.mem.eql(u8, "VAR1=value1", std.mem.span(env_vars.items[0])));
     try testing.expect(std.mem.eql(u8, "VAR2=value2", std.mem.span(env_vars.items[1])));
@@ -226,10 +241,11 @@ fn applyModifications(env_vars: *std.ArrayList(types.NullTerminatedString), otel
     }
 
     // TODO enable
-    // try env_vars.append("__DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS=true\x00");
+    // try env_vars.append("__DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS=true\x00"); // ? does it need a null byte
 
     // TODO this is nonsense? Should be terminated by a null pointer, not by a null character.
-    try env_vars.append(empty_env_var);
+    // Do we need that at all?
+    // try env_vars.append("\x00");
 
     const env_var_slices = try env_vars.toOwnedSlice();
     const env_var_count = env_var_slices.len;
