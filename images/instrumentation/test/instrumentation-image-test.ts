@@ -1,4 +1,4 @@
-#!/usr/bin/env node --experimental-strip-types
+#!/usr/bin/env -S node --experimental-strip-types
 
 // SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
@@ -123,7 +123,7 @@ async function main(): Promise<void> {
   program.option('--within-container');
   program.option('-r, --within-container-runtime <runtime>');
   program.parse();
-  const commandLineOptions = program.opts();
+  const commandLineOptions: any = program.opts();
   if (commandLineOptions.withinContainer) {
     await runTestsWithinContainer(commandLineOptions);
   } else {
@@ -231,22 +231,7 @@ async function runAllTests(): Promise<void> {
     })
     .process(runTestCasePromise => runTestCasePromise.promise!());
 
-  log('all tests have been executed\n');
-  if (failedTestCases > 0) {
-    console.log(chalk.red('There have been failing test cases:'));
-    console.log(summary);
-    console.log(chalk.red('See above for details.'));
-    process.exit(failedTestCases);
-  } else if (skippedTestCases > 0) {
-    console.log(chalk.yellow('There are tests that are marked with skip: true in their .testcase.json file:'));
-    console.log(summary);
-    console.log(chalk.yellow('See above for details.'));
-    process.exit(skippedTestCases);
-  } else {
-    console.log(chalk.green(`All test cases have passed.`));
-    console.log(summary);
-    process.exit(0);
-  }
+  printSummary();
 }
 
 async function buildOrPullInstrumentationImage(): Promise<void> {
@@ -294,6 +279,13 @@ async function buildOrPullInstrumentationImage(): Promise<void> {
 
     storeBuildStepDuration('build instrumentation image', startTimeStep);
   }
+}
+
+function isRemoteImage(imageName: string): boolean {
+  if (!imageName) {
+    throw new Error('error: mandatory argument "imageName" is missing');
+  }
+  return imageName.includes('/');
 }
 
 async function buildTestImagesForArchitecture(arch: string): Promise<BuildTestImagePromise[]> {
@@ -519,30 +511,30 @@ async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestIma
     }
 
     const startTimeTestCase = Date.now();
-    const test = basename(testCaseDir);
+    const testCase = basename(testCaseDir);
 
     let testCmd: string[];
     switch (runtime) {
       case 'c':
-        testCmd = [`/test-cases/${test}/app.o`];
+        testCmd = [`/test-cases/${testCase}/app.o`];
         break;
 
       case 'dotnet':
-        testCmd = [`/test-cases/${test}/app`];
+        testCmd = [`/test-cases/${testCase}/app`];
         break;
 
       case 'jvm':
         testCmd = ['java', '-jar'];
-        const systemPropsFile = `${testScriptDir}/${runtime}/test-cases/${test}/system.properties`;
+        const systemPropsFile = `${testScriptDir}/${runtime}/test-cases/${testCase}/system.properties`;
         if (existsSync(systemPropsFile)) {
           const props = (await readFile(systemPropsFile, 'utf8')).split('\n').filter(line => line.trim());
           testCmd.push(...props);
         }
-        testCmd.push('-Dotel.instrumentation.common.default-enabled=false', `/test-cases/${test}/app.jar`);
+        testCmd.push('-Dotel.instrumentation.common.default-enabled=false', `/test-cases/${testCase}/app.jar`);
         break;
 
       case 'node':
-        testCmd = ['node', `/test-cases/${test}`];
+        testCmd = ['node', `/test-cases/${testCase}`];
         break;
 
       default:
@@ -553,7 +545,7 @@ async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestIma
     }
     runTestCasePromises.push({
       testImage,
-      promise: createRunTestCaseTask(testImage, prefix, test, testCmd, startTimeTestCase),
+      promise: createRunTestCaseTask(testImage, prefix, testCase, testCmd, startTimeTestCase),
       skipped: false,
     });
   }
@@ -564,7 +556,7 @@ async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestIma
 function createRunTestCaseTask(
   testImage: TestImage,
   prefix: string,
-  test: string,
+  testCase: string,
   testCmd: string[],
   startTimeTestCase: number,
 ): () => Promise<void> {
@@ -582,7 +574,7 @@ function createRunTestCaseTask(
 
     try {
       let dockerRunCmdArray = ['docker', 'run', '--rm', '--platform', dockerPlatform];
-      const testCasePath = `${testScriptDir}/${runtime}/test-cases/${test}`;
+      const testCasePath = `${testScriptDir}/${runtime}/test-cases/${testCase}`;
 
       let testCaseProperties: TestCaseProperties = {};
       const testCasePropertiesFile = `${testCasePath}/.testcase.json`;
@@ -596,9 +588,9 @@ function createRunTestCaseTask(
       }
 
       if (testCaseProperties.skip === true) {
-        log(chalk.yellow(`${prefix.padEnd(32)}\t- test case "${test}": SKIPPED`));
+        log(chalk.yellow(`${prefix.padEnd(32)}\t- test case "${testCase}": SKIPPED`));
         skippedTestCases++;
-        summary += chalk.yellow(`\n${prefix.padEnd(32)}\t- ${test}: skipped`);
+        summary += chalk.yellow(`\n${prefix.padEnd(32)}\t- ${testCase}: skipped`);
         return;
       }
 
@@ -623,14 +615,14 @@ function createRunTestCaseTask(
           log(dockerRunOutputStdErr);
         }
       }
-      log(chalk.green(`${prefix.padEnd(32)}\t- test case "${test}": OK`));
-      summary += chalk.green(`\n${prefix.padEnd(32)}\t- ${test}: OK`);
+      log(chalk.green(`${prefix.padEnd(32)}\t- test case "${testCase}": OK`));
+      summary += chalk.green(`\n${prefix.padEnd(32)}\t- ${testCase}: OK`);
 
       const endTimeTestCase = Date.now();
       const durationTestCase = Math.floor((endTimeTestCase - startTimeTestCase) / 1000);
       if (durationTestCase > slowTestThresholdSeconds) {
         log(
-          `! slow test case: ${imageNameTest}/${baseImageRun}/${test}: took ${durationTestCase} seconds, logging output:`,
+          `! slow test case: ${imageNameTest}/${baseImageRun}/${testCase}: took ${durationTestCase} seconds, logging output:`,
         );
         if (dockerRunOutputStdOut) {
           log(dockerRunOutputStdOut);
@@ -643,76 +635,103 @@ function createRunTestCaseTask(
     } catch (error: any) {
       log(
         chalk.red(
-          `${prefix.padEnd(32)}\t- test case "${test}": FAIL
+          `${prefix.padEnd(32)}\t- test case "${testCase}": FAIL
 test command was:
 ${testCmd.join(' ')}
 error: ${error}`,
         ),
       );
       failedTestCases++;
-      summary += chalk.red(`\n${prefix.padEnd(32)}\t- ${test}: failed`);
+      summary += chalk.red(`\n${prefix.padEnd(32)}\t- ${testCase}: failed`);
     }
 
-    storeBuildStepDuration(`test case ${test}`, startTimeTestCase, arch, runtime, baseImageRun);
+    storeBuildStepDuration(`test case ${testCase}`, startTimeTestCase, arch, runtime, baseImageRun);
   };
 }
 
-async function runTestsWithinContainer(commandLineOptions): Promise<void> {
+async function runTestsWithinContainer(commandLineOptions: any): Promise<void> {
   // Note that this only actually works with a subset of the test cases, in particular, the instrumentation assets
   // (Dash0 Node.js OTel distribution, Java OTel SDK, ...) are not present.
 
   if (!commandLineOptions.withinContainerRuntime) {
     console.error(
-      'The runtime to test (c, jvm, node, dotnet, ...) has to be specified via --within-container-runtime when --within-container is used.',
+      chalk.red(
+        'The runtime to test (c, jvm, node, dotnet, ...) has to be specified via --within-container-runtime when --within-container is used.',
+      ),
     );
     process.exit(1);
   }
   const runtime = commandLineOptions.withinContainerRuntime;
   if (runtime !== 'jvm') {
-    console.error('Currently only the runtime "jvm" is supported with --within-container.');
+    console.error(chalk.red('Currently only the runtime "jvm" is supported with --within-container.'));
     process.exit(1);
   }
 
-  log('compiling injector');
-  execSync('zig build', {
-    cwd: 'injector',
-    stdio: 'inherit',
-  });
+  log('compiling the injector (zig build)');
+  try {
+    await exec('zig build --prominent-compile-errors --summary none', { cwd: 'injector' });
+  } catch (error) {
+    // @ts-ignore
+    console.error(chalk.red('Compiling the injector failed:\n', error.stderr || error.message || error));
+    process.exit(1);
+  }
 
   switch (runtime) {
     case 'jvm':
-      runTestsWithinContainerJvm();
+      await runTestsWithinContainerJvm();
       break;
     default:
       console.error(`runtime ${runtime} not supported for --within-container-runtime`);
       process.exit(1);
   }
+
+  printSummary();
 }
 
 async function runTestsWithinContainerJvm(): Promise<void> {
   log('compiling jvm-test-utils');
-  execSync('javac src/com/dash0/injector/testutils/*.java', {
-    cwd: 'test/jvm/jvm-test-utils',
-    stdio: 'inherit',
-  });
+  try {
+    await exec('javac src/com/dash0/injector/testutils/*.java', { cwd: 'test/jvm/jvm-test-utils' });
+  } catch (error) {
+    // @ts-ignore
+    console.error(chalk.red('Compiling the injector failed:\n', error.stderr || error.message || error));
+    process.exit(1);
+  }
 
   const testCases = await readdir('test/jvm/test-cases', { withFileTypes: true });
-  testCases.forEach(testCaseDir => {
+  for (const testCaseDir of testCases) {
     if (!testCaseDir.isDirectory()) {
-      return;
+      continue;
     }
-    runJvmTestCaseWithinContainer(testCaseDir.name);
-  });
+    await runJvmTestCaseWithinContainer(testCaseDir.name);
+  }
 }
 
-function runJvmTestCaseWithinContainer(testCase: string) {
-  log(`test case: ${testCase}`);
+async function runJvmTestCaseWithinContainer(testCase: string) {
   const cwd = `test/jvm/test-cases/${testCase}`;
-  cwd: 'test/jvm/test-cases/existing-env-var-return-unmodified',
-    execSync('cp -R ../../jvm-test-utils/src/* .', {
-      cwd,
-      stdio: 'inherit',
-    });
+
+  let testCaseProperties: TestCaseProperties = {};
+  const testCasePropertiesFile = `${cwd}/.testcase.json`;
+  if (existsSync(testCasePropertiesFile)) {
+    const testCasePropertiesContent = await readFile(testCasePropertiesFile);
+    try {
+      testCaseProperties = JSON.parse(testCasePropertiesContent.toString());
+    } catch (e) {
+      log(chalk.red(`Error: cannot parse ${testCasePropertiesFile}, ignoring.`));
+    }
+  }
+
+  if (testCaseProperties.skip === true) {
+    log(chalk.yellow(`- test case "${testCase}": SKIPPED`));
+    skippedTestCases++;
+    summary += chalk.yellow(`\n- ${testCase}: skipped`);
+    return;
+  }
+
+  execSync('cp -R ../../jvm-test-utils/src/* .', {
+    cwd,
+    stdio: 'inherit',
+  });
   execSync('javac Main.java', {
     cwd,
     stdio: 'inherit',
@@ -728,8 +747,8 @@ function runJvmTestCaseWithinContainer(testCase: string) {
     .filter(line => !line.startsWith('#'))
     .map(line => line.trim())
     .filter(line => line.length > 0)
-    .reduce((env, line) => {
-      const parts = line.split('=');
+    .reduce((env: Record<string, string>, line) => {
+      const parts: string[] = line.split('=');
       if (parts.length < 2) {
         return env;
       } else if (parts.length === 2) {
@@ -742,28 +761,49 @@ function runJvmTestCaseWithinContainer(testCase: string) {
       }
     }, {});
 
+  const testCmd = 'java -jar -Dotel.instrumentation.common.default-enabled=false app.jar';
   try {
-    execSync('java -jar -Dotel.instrumentation.common.default-enabled=false app.jar', {
+    await exec(testCmd, {
       cwd,
       env: {
         ...process.env,
         ...envForTest,
         LD_PRELOAD: '../../../../injector/dash0_injector.so',
       },
-      stdio: 'pipe',
     });
-    log('test successful');
-  } catch (e) {
-    // TODO better summary
-    log('test failed: ', e);
+    log(chalk.green(`- test case "${testCase}": OK`));
+    summary += chalk.green(`\n- ${testCase}: OK`);
+  } catch (error) {
+    log(
+      chalk.red(
+        `- test case "${testCase}": FAIL
+test command was:
+${testCmd}
+error: ${error}`,
+      ),
+    );
+    failedTestCases++;
+    summary += chalk.red(`\n- ${testCase}: failed`);
   }
 }
 
-function isRemoteImage(imageName: string): boolean {
-  if (!imageName) {
-    throw new Error('error: mandatory argument "imageName" is missing');
+function printSummary() {
+  log('all tests have been executed\n');
+  if (failedTestCases > 0) {
+    console.log(chalk.red('There have been failing test cases:'));
+    console.log(summary);
+    console.log(chalk.red('See above for details.'));
+    process.exit(failedTestCases);
+  } else if (skippedTestCases > 0) {
+    console.log(chalk.yellow('There are tests that are marked with skip: true in their .testcase.json file:'));
+    console.log(summary);
+    console.log(chalk.yellow('See above for details.'));
+    process.exit(skippedTestCases);
+  } else {
+    console.log(chalk.green(`All test cases have passed.`));
+    console.log(summary);
+    process.exit(0);
   }
-  return imageName.includes('/');
 }
 
 function cleanupDockerContainerImages(): void {

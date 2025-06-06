@@ -60,7 +60,12 @@ fn initEnviron() callconv(.C) void {
 // our modification with each nested child process start. Or add a marker env var.
 fn _initEnviron() !void {
     std.debug.print("[Dash0 injector] {d} _initEnviron() start\n", .{std.os.linux.getpid()});
+    var env_vars, const otel_resource_attributes_env_var_found, const otel_resource_attributes_env_var_index = try readProcSelfEnviron();
+    defer env_vars.deinit();
+    try applyModifications(env_vars, otel_resource_attributes_env_var_found, otel_resource_attributes_env_var_index);
+}
 
+fn readProcSelfEnviron() !struct {*std.ArrayList(types.NullTerminatedString), bool, usize} {
     const proc_self_environ_path = "/proc/self/environ";
     const proc_self_environ_file = try std.fs.openFileAbsolute(proc_self_environ_path, .{
         .mode = std.fs.File.OpenMode.read_only,
@@ -92,7 +97,6 @@ fn _initEnviron() !void {
     // std.debug.print("\n\n---{s}---\n\n", .{environ_buffer_original});
 
     var env_vars = std.ArrayList(types.NullTerminatedString).init(std.heap.page_allocator);
-    defer env_vars.deinit();
 
     var index: usize = 0;
     var otel_resource_attributes_env_var_found = false;
@@ -122,6 +126,10 @@ fn _initEnviron() !void {
         }
     }
 
+    return .{&env_vars, otel_resource_attributes_env_var_found, otel_resource_attributes_env_var_index};
+}
+
+fn applyModifications(env_vars: *std.ArrayList(types.NullTerminatedString), otel_resource_attributes_env_var_found: bool, otel_resource_attributes_env_var_index: usize) !void {
     if (!otel_resource_attributes_env_var_found) {
         std.debug.print("[Dash0 injector] appending OTEL_RESOURCE_ATTRIBUTES as the last env var\n", .{});
         if (getModifiedOtelResourceAttributesValue(env_vars)) |resource_attributes| {
@@ -140,10 +148,6 @@ fn _initEnviron() !void {
         }
     }
 
-    // const env_var_foo1: [*:0]const u8 = "FOO1=BAR1";
-    // try env_vars.append(env_var_foo1);
-    // const env_var_foo2: [*:0]const u8 = "FOO2=BAR2";
-    // try env_vars.append(env_var_foo2);
     // TODO this is nonsense? Should be terminated by a null pointer, not by a null character.
     try env_vars.append(empty_env_var);
 
@@ -152,7 +156,7 @@ fn _initEnviron() !void {
 
     environ_buffer = try std.heap.page_allocator.alloc(types.NullTerminatedString, env_var_count);
 
-    // TODO make sure the last pointer in environ_buffer is NULL pointer
+    // TODO make sure the last pointer in environ_buffer is the NULL pointer
     for (env_var_slices, 0..) |env_var, i| {
         // We copy the env var slice to the environ_buffer, so that we can modify it later.
         // Note: We do not need to copy the final null terminator, as it is already there.
@@ -180,7 +184,7 @@ fn _initEnviron() !void {
     std.debug.print("[Dash0 injector] {d} _initEnviron() done\n", .{std.os.linux.getpid()});
 }
 
-pub fn getEnvVar(env_vars: std.ArrayList(types.NullTerminatedString), name: []const u8) ?types.NullTerminatedString {
+pub fn getEnvVar(env_vars: *std.ArrayList(types.NullTerminatedString), name: []const u8) ?types.NullTerminatedString {
     // std.debug.print("getEnvVar: looking for {s}\n", .{name});
     for (env_vars.items) |env_var| {
         // std.debug.print("getEnvVar: {s}\n", .{env_var});
@@ -249,7 +253,7 @@ const mappings: [8]EnvToResourceAttributeMapping =
 
 /// Derive the modified value for OTEL_RESOURCE_ATTRIBUTES based on the original value, and on other resource attributes
 /// provided via the DASH0_* environment variables set by the operator (workload_modifier#addEnvironmentVariables).
-pub fn getModifiedOtelResourceAttributesValue(env_vars: std.ArrayList(types.NullTerminatedString)) ?types.NullTerminatedString {
+pub fn getModifiedOtelResourceAttributesValue(env_vars: *std.ArrayList(types.NullTerminatedString)) ?types.NullTerminatedString {
     if (modified_otel_resource_attributes_value_calculated) {
         std.debug.print("getModifiedOtelResourceAttributesValue: OTEL_RESOURCE_ATTRIBUTES already modified\n", .{});
         // We have already calculated the value, so we can return it.
@@ -324,7 +328,7 @@ pub fn getModifiedOtelResourceAttributesValue(env_vars: std.ArrayList(types.Null
 /// string that can be used for the value of OTEL_RESOURCE_ATTRIBUTES.
 ///
 /// Important: The caller must free the returned []u8 array, if a non-null value is returned.
-fn getResourceAttributes(env_vars: std.ArrayList(types.NullTerminatedString)) ?[]u8 {
+fn getResourceAttributes(env_vars: *std.ArrayList(types.NullTerminatedString)) ?[]u8 {
     var final_len: usize = 0;
 
     for (mappings) |mapping| {
