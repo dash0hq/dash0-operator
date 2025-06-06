@@ -493,7 +493,7 @@ async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestIma
   const runTestCasePromises: RunTestCasePromise[] = [];
   for (const testCaseDir of testCaseDirs) {
     if (testCaseFilter.length > 0) {
-      const shouldRunTestCase = testCaseFilter.some(selectedTestCase => testCaseDir.includes(selectedTestCase));
+      const shouldRunTestCase = testCaseFilter.some(selectedTestCase => testCaseDir === selectedTestCase);
       if (!shouldRunTestCase) {
         log(`- ${archRuntimeBaseImagePrefix}: skipping test case ${testCaseDir}`);
         skippedTestCases++;
@@ -687,7 +687,7 @@ async function runTestsWithinContainerJvm(): Promise<void> {
     }
     const testCaseDirName = testCaseDir.name;
     if (testCaseFilter.length > 0) {
-      const shouldRunTestCase = testCaseFilter.some(selectedTestCase => testCaseDirName.includes(selectedTestCase));
+      const shouldRunTestCase = testCaseFilter.some(selectedTestCase => testCaseDirName === selectedTestCase);
       if (!shouldRunTestCase) {
         log(chalk.yellow(`- skipping test case ${testCaseDirName}`));
         skippedTestCases++;
