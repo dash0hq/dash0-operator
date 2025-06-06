@@ -37,8 +37,8 @@ Usage
   the `base-images` file in the respective runtime directory.
 * `TEST_CASES=existing,otel-resource npm run test` to only run tests cases whose names contain one of the provided
   strings. Can be combined with `ARCHITECTURES`, `RUNTIMES` etc.
-* Set `PRINT_DOCKER_OUTPUT=true` to always include the output from docker build and docker run. Otherwise, the output is
-  only printed to stdout in case of errors.
+* Set `VERBOSE=true` to always include the output from docker build, docker run and test commands. Otherwise, the output
+  is only printed to stdout in case of errors.
 * Set `DOCKER_CLEANUP_ENABLED=false` to disable the automatic docker rmi at the end of the test suites that deletes all
   images that were built during the tests.
 

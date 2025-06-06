@@ -22,7 +22,6 @@ const __filename = new URL(import.meta.url).pathname;
 
 type TestImage = {
   arch: string;
-  dockerPlatform: string;
   runtime: string;
   imageNameTest: string;
   baseImageBuild: string;
@@ -97,9 +96,9 @@ if (baseImagesFilter.length > 0) {
   log('Only testing a subset of base images:', baseImagesFilter);
 }
 
-const testCases = process.env.TEST_CASES ? process.env.TEST_CASES.split(',') : [];
-if (testCases.length > 0) {
-  log('Only running a subset of test cases:', testCases);
+const testCaseFilter = process.env.TEST_CASES ? process.env.TEST_CASES.split(',') : [];
+if (testCaseFilter.length > 0) {
+  log('Only running a subset of test cases:', testCaseFilter);
 }
 
 let concurrency: number;
@@ -249,19 +248,23 @@ async function buildOrPullInstrumentationImage(): Promise<void> {
     }
     storeBuildStepDuration('pull instrumentation image', startTimeStep);
   } else {
-    log(`starting: building multi-arch instrumentation image for platforms ${allDockerPlatforms} from local sources`);
-
+    let dockerPlatforms = allDockerPlatforms;
+    if (architecturesFilter.length > 0) {
+      // If we do not run the tests for multiple CPU architectures, we do not need to spend the time to build a
+      // multi-arch instrumenation image.
+      dockerPlatforms = architecturesFilter.map(architectureToDockerPlatform).join(',');
+    }
+    log(`starting: building instrumentation image for platform(s) ${dockerPlatforms} from local sources`);
     await writeFile('test/.container_images_to_be_deleted_at_end', instrumentationImage + '\n', { flag: 'a' });
-
     try {
-      const dockerBuildCmd = `docker build --platform "${allDockerPlatforms}" . -t "${instrumentationImage}"`;
-      if (process.env.PRINT_DOCKER_OUTPUT === 'true') {
+      const dockerBuildCmd = `docker build --platform "${dockerPlatforms}" . -t "${instrumentationImage}"`;
+      if (process.env.VERBOSE === 'true') {
         log(`running: ${dockerBuildCmd}`);
       }
       const { stdout: dockerBuildOutputStdOut, stderr: dockerBuildOutputStdErr } = await exec(dockerBuildCmd, {
         encoding: 'utf8',
       });
-      if (process.env.PRINT_DOCKER_OUTPUT === 'true') {
+      if (process.env.VERBOSE === 'true') {
         if (dockerBuildOutputStdOut) {
           log(dockerBuildOutputStdOut);
         }
@@ -269,7 +272,7 @@ async function buildOrPullInstrumentationImage(): Promise<void> {
           log(dockerBuildOutputStdErr);
         }
       }
-      log(`done: building multi-arch instrumentation image for platforms ${allDockerPlatforms} from local sources`);
+      log(`done: building instrumentation image for platform(s) ${dockerPlatforms} from local sources`);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
@@ -289,24 +292,14 @@ function isRemoteImage(imageName: string): boolean {
 }
 
 async function buildTestImagesForArchitecture(arch: string): Promise<BuildTestImagePromise[]> {
-  let dockerPlatform: string;
-  if (arch === 'arm64') {
-    dockerPlatform = 'linux/arm64';
-  } else if (arch === 'x86_64') {
-    dockerPlatform = 'linux/amd64';
-  } else {
-    throw new Error(`The architecture ${arch} is not supported.`);
-  }
-
   const buildTestImageTasksPerRuntime = allRuntimes.map(runtime =>
-    buildTestImagesForArchitectureAndRuntime(arch, dockerPlatform, runtime),
+    buildTestImagesForArchitectureAndRuntime(arch, runtime),
   );
   return (await Promise.all(buildTestImageTasksPerRuntime)).flat();
 }
 
 async function buildTestImagesForArchitectureAndRuntime(
   arch: string,
-  dockerPlatform: string,
   runtime: string,
 ): Promise<BuildTestImagePromise[]> {
   const runtimePathPrefix = `${testScriptDir}/${runtime}`;
@@ -341,7 +334,7 @@ async function buildTestImagesForArchitectureAndRuntime(
 
   log(`- ${arch}: creating test image build tasks for runtime: '${runtime}'`);
   const buildTasksPerBaseImage = baseImagesForRuntime.map(baseImage =>
-    buildTestImageForArchitectureRuntimeAndBaseImage(arch, dockerPlatform, runtime, baseImage),
+    buildTestImageForArchitectureRuntimeAndBaseImage(arch, runtime, baseImage),
   );
   let testImages = await Promise.all(buildTasksPerBaseImage);
   testImages = testImages.filter(img => !img.skipped);
@@ -350,7 +343,6 @@ async function buildTestImagesForArchitectureAndRuntime(
 
 function buildTestImageForArchitectureRuntimeAndBaseImage(
   arch: string,
-  dockerPlatform: string,
   runtime: string,
   baseImageLine: string,
 ): BuildTestImagePromise {
@@ -370,7 +362,6 @@ function buildTestImageForArchitectureRuntimeAndBaseImage(
   const imageNameTest = `instrumentation-image-test-${arch}-${runtime}-${baseImageStringForImageName}:latest`;
   const testImage: TestImage = {
     arch,
-    dockerPlatform,
     runtime,
     imageNameTest,
     baseImageBuild,
@@ -404,7 +395,6 @@ function createBuildTestImageTask(testImage: TestImage): () => Promise<void> {
     const {
       //
       arch,
-      dockerPlatform,
       runtime,
       imageNameTest,
       baseImageBuild,
@@ -422,7 +412,7 @@ function createBuildTestImageTask(testImage: TestImage): () => Promise<void> {
         'docker',
         'build',
         '--platform',
-        dockerPlatform,
+        architectureToDockerPlatform(arch),
         '--build-arg',
         `instrumentation_image=${instrumentationImage}`,
         // Simple Dockerfiles only use one base image to build and run the app under test (if there is even a build
@@ -445,14 +435,14 @@ function createBuildTestImageTask(testImage: TestImage): () => Promise<void> {
         .map(arg => `"${arg}"`)
         .join(' ');
 
-      if (process.env.PRINT_DOCKER_OUTPUT === 'true') {
+      if (process.env.VERBOSE === 'true') {
         log(`running: ${dockerBuildCmd}`);
       }
       const { stdout: dockerBuildOutputStdOut, stderr: dockerBuildOutputStdErr } = await exec(dockerBuildCmd, {
         encoding: 'utf8',
       });
 
-      if (process.env.PRINT_DOCKER_OUTPUT === 'true') {
+      if (process.env.VERBOSE === 'true') {
         if (dockerBuildOutputStdOut) {
           log(dockerBuildOutputStdOut);
         }
@@ -495,17 +485,19 @@ async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestIma
   if (arch.length + runtime.length + baseImageForPrefix.length > 32) {
     baseImageForPrefix = `${baseImageForPrefix.substring(0, 8)}..${baseImageForPrefix.substring(baseImageForPrefix.length - 8)}`;
   }
-  const prefix = `${arch}/${runtime}/${baseImageForPrefix}`;
+  const archRuntimeBaseImagePrefix = `${arch}/${runtime}/${baseImageForPrefix}`;
   const testCaseDirs = (await readdir(testCasesDir, { withFileTypes: true }))
     .filter(dirent => dirent.isDirectory())
     .map(dirent => `${testCasesDir}/${dirent.name}/`);
 
   const runTestCasePromises: RunTestCasePromise[] = [];
   for (const testCaseDir of testCaseDirs) {
-    if (testCases.length > 0) {
-      const shouldRunTestCase = testCases.some(selectedTestCase => testCaseDir.includes(selectedTestCase));
+    if (testCaseFilter.length > 0) {
+      const shouldRunTestCase = testCaseFilter.some(selectedTestCase => testCaseDir.includes(selectedTestCase));
       if (!shouldRunTestCase) {
-        log(`- ${prefix}: skipping test case ${testCaseDir}`);
+        log(`- ${archRuntimeBaseImagePrefix}: skipping test case ${testCaseDir}`);
+        skippedTestCases++;
+        summary += chalk.yellow(`\n${archRuntimeBaseImagePrefix.padEnd(32)}\t- ${testCaseDir}: skipped`);
         continue;
       }
     }
@@ -545,7 +537,7 @@ async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestIma
     }
     runTestCasePromises.push({
       testImage,
-      promise: createRunTestCaseTask(testImage, prefix, testCase, testCmd, startTimeTestCase),
+      promise: createRunTestCaseTask(testImage, archRuntimeBaseImagePrefix, testCase, testCmd, startTimeTestCase),
       skipped: false,
     });
   }
@@ -555,7 +547,7 @@ async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestIma
 
 function createRunTestCaseTask(
   testImage: TestImage,
-  prefix: string,
+  archRuntimeBaseImagePrefix: string,
   testCase: string,
   testCmd: string[],
   startTimeTestCase: number,
@@ -566,14 +558,13 @@ function createRunTestCaseTask(
     const {
       //
       arch,
-      dockerPlatform,
       runtime,
       imageNameTest,
       baseImageRun,
     } = testImage;
 
     try {
-      let dockerRunCmdArray = ['docker', 'run', '--rm', '--platform', dockerPlatform];
+      let dockerRunCmdArray = ['docker', 'run', '--rm', '--platform', architectureToDockerPlatform(arch)];
       const testCasePath = `${testScriptDir}/${runtime}/test-cases/${testCase}`;
 
       let testCaseProperties: TestCaseProperties = {};
@@ -588,9 +579,9 @@ function createRunTestCaseTask(
       }
 
       if (testCaseProperties.skip === true) {
-        log(chalk.yellow(`${prefix.padEnd(32)}\t- test case "${testCase}": SKIPPED`));
+        log(chalk.yellow(`${archRuntimeBaseImagePrefix.padEnd(32)}\t- test case "${testCase}": SKIPPED`));
         skippedTestCases++;
-        summary += chalk.yellow(`\n${prefix.padEnd(32)}\t- ${testCase}: skipped`);
+        summary += chalk.yellow(`\n${archRuntimeBaseImagePrefix.padEnd(32)}\t- ${testCase}: skipped`);
         return;
       }
 
@@ -601,13 +592,13 @@ function createRunTestCaseTask(
       dockerRunCmdArray = dockerRunCmdArray.concat([imageNameTest, ...testCmd]);
       const dockerRunCmd = dockerRunCmdArray.map(arg => `"${arg}"`).join(' ');
 
-      if (process.env.PRINT_DOCKER_OUTPUT === 'true') {
+      if (process.env.VERBOSE === 'true') {
         log(`running: ${dockerRunCmd}`);
       }
       const { stdout: dockerRunOutputStdOut, stderr: dockerRunOutputStdErr } = await exec(dockerRunCmd, {
         encoding: 'utf8',
       });
-      if (process.env.PRINT_DOCKER_OUTPUT === 'true') {
+      if (process.env.VERBOSE === 'true') {
         if (dockerRunOutputStdOut) {
           log(dockerRunOutputStdOut);
         }
@@ -615,8 +606,8 @@ function createRunTestCaseTask(
           log(dockerRunOutputStdErr);
         }
       }
-      log(chalk.green(`${prefix.padEnd(32)}\t- test case "${testCase}": OK`));
-      summary += chalk.green(`\n${prefix.padEnd(32)}\t- ${testCase}: OK`);
+      log(chalk.green(`${archRuntimeBaseImagePrefix.padEnd(32)}\t- test case "${testCase}": OK`));
+      summary += chalk.green(`\n${archRuntimeBaseImagePrefix.padEnd(32)}\t- ${testCase}: OK`);
 
       const endTimeTestCase = Date.now();
       const durationTestCase = Math.floor((endTimeTestCase - startTimeTestCase) / 1000);
@@ -633,16 +624,7 @@ function createRunTestCaseTask(
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
-      log(
-        chalk.red(
-          `${prefix.padEnd(32)}\t- test case "${testCase}": FAIL
-test command was:
-${testCmd.join(' ')}
-error: ${error}`,
-        ),
-      );
-      failedTestCases++;
-      summary += chalk.red(`\n${prefix.padEnd(32)}\t- ${testCase}: failed`);
+      handleTestCaseError(`${archRuntimeBaseImagePrefix.padEnd(32)}\t`, testCase, testCmd.join(' '), error);
     }
 
     storeBuildStepDuration(`test case ${testCase}`, startTimeTestCase, arch, runtime, baseImageRun);
@@ -703,7 +685,17 @@ async function runTestsWithinContainerJvm(): Promise<void> {
     if (!testCaseDir.isDirectory()) {
       continue;
     }
-    await runJvmTestCaseWithinContainer(testCaseDir.name);
+    const testCaseDirName = testCaseDir.name;
+    if (testCaseFilter.length > 0) {
+      const shouldRunTestCase = testCaseFilter.some(selectedTestCase => testCaseDirName.includes(selectedTestCase));
+      if (!shouldRunTestCase) {
+        log(chalk.yellow(`- skipping test case ${testCaseDirName}`));
+        skippedTestCases++;
+        summary += chalk.yellow(`\n- ${testCaseDirName}: skipped`);
+        continue;
+      }
+    }
+    await runJvmTestCaseWithinContainer(testCaseDirName);
   }
 }
 
@@ -763,7 +755,7 @@ async function runJvmTestCaseWithinContainer(testCase: string) {
 
   const testCmd = 'java -jar -Dotel.instrumentation.common.default-enabled=false app.jar';
   try {
-    await exec(testCmd, {
+    const { stdout: testCmdOutputStdOut, stderr: testCmdOutputStdErr } = await exec(testCmd, {
       cwd,
       env: {
         ...process.env,
@@ -771,20 +763,47 @@ async function runJvmTestCaseWithinContainer(testCase: string) {
         LD_PRELOAD: '../../../../injector/dash0_injector.so',
       },
     });
+    if (process.env.VERBOSE === 'true') {
+      if (testCmdOutputStdOut) {
+        log(testCmdOutputStdOut);
+      }
+      if (testCmdOutputStdErr) {
+        log(testCmdOutputStdErr);
+      }
+    }
     log(chalk.green(`- test case "${testCase}": OK`));
     summary += chalk.green(`\n- ${testCase}: OK`);
   } catch (error) {
-    log(
-      chalk.red(
-        `- test case "${testCase}": FAIL
+    handleTestCaseError('', testCase, testCmd, error);
+  }
+}
+
+function handleTestCaseError(prefix: string, testCase: string, testCmd: string, error: any) {
+  let failureMode = 'FAIL';
+  let failureModeSummary = 'failed';
+
+  // Note: Detecting segfaults currently only works when triggering the test from within the container, not via docker
+  // run. The reason is that the SIGSEGV signal is not propagated back from the docker run command. The segfault message
+  // is also not present in stdout or stderr returned from the `await exec(testCmd...`. :-/
+  // @ts-ignore
+  if (error.signal === 'SIGSEGV') {
+    failureMode = 'SEGFAULT';
+    failureModeSummary = 'segfaulted';
+  }
+
+  log(
+    chalk.red(
+      `${prefix}- test case "${testCase}": ${failureMode}
 test command was:
 ${testCmd}
-error: ${error}`,
-      ),
-    );
-    failedTestCases++;
-    summary += chalk.red(`\n- ${testCase}: failed`);
-  }
+
+error:
+${error}`,
+    ),
+  );
+
+  failedTestCases++;
+  summary += chalk.red(`\n${prefix}- ${testCase}: ${failureModeSummary}`);
 }
 
 function printSummary() {
@@ -803,6 +822,16 @@ function printSummary() {
     console.log(chalk.green(`All test cases have passed.`));
     console.log(summary);
     process.exit(0);
+  }
+}
+
+function architectureToDockerPlatform(arch: string): string {
+  if (arch === 'arm64') {
+    return 'linux/arm64';
+  } else if (arch === 'x86_64') {
+    return 'linux/amd64';
+  } else {
+    throw new Error(`The architecture ${arch} is not supported.`);
   }
 }
 
