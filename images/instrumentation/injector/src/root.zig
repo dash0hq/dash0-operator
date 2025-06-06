@@ -48,6 +48,55 @@ export const init_array: [1]*const fn () callconv(.C) void linksection(".init_ar
 const otel_resource_attributes_env_var_name: []const u8 = "OTEL_RESOURCE_ATTRIBUTES";
 const empty_otel_resource_attributes_env_var: [*:0]const u8 = otel_resource_attributes_env_var_name ++ "=\x00";
 
+
+/// A type for a rule to map an environment variable to a resource attribute. The result of applying these rules (via
+/// getResourceAttributes) is a string of key-value pairs, where each pair is of the form key=value, and pairs are
+/// separated by commas. If resource_attributes_key is not null, we append a key-value pair
+/// (that is, ${resource_attributes_key}=${value of environment variable}). If resource_attributes_key is null, the
+/// value of the enivronment variable is expected to already be a key-value pair (or a comma separated list of key-value
+/// pairs), and the value of the enivronment variable is appended as is.
+const EnvToResourceAttributeMapping = struct {
+    environement_variable_name: []const u8,
+    resource_attributes_key: ?[]const u8,
+};
+
+/// A list of mappings from environment variables to resource attributes.
+const mappings: [8]EnvToResourceAttributeMapping =
+.{
+    EnvToResourceAttributeMapping{
+        .environement_variable_name = "DASH0_NAMESPACE_NAME",
+        .resource_attributes_key = "k8s.namespace.name",
+    },
+    EnvToResourceAttributeMapping{
+        .environement_variable_name = "DASH0_POD_NAME",
+        .resource_attributes_key = "k8s.pod.name",
+    },
+    EnvToResourceAttributeMapping{
+        .environement_variable_name = "DASH0_POD_UID",
+        .resource_attributes_key = "k8s.pod.uid",
+    },
+    EnvToResourceAttributeMapping{
+        .environement_variable_name = "DASH0_CONTAINER_NAME",
+        .resource_attributes_key = "k8s.container.name",
+    },
+    EnvToResourceAttributeMapping{
+        .environement_variable_name = "DASH0_SERVICE_NAME",
+        .resource_attributes_key = "service.name",
+    },
+    EnvToResourceAttributeMapping{
+        .environement_variable_name = "DASH0_SERVICE_VERSION",
+        .resource_attributes_key = "service.version",
+    },
+    EnvToResourceAttributeMapping{
+        .environement_variable_name = "DASH0_SERVICE_NAMESPACE",
+        .resource_attributes_key = "service.namespace",
+    },
+    EnvToResourceAttributeMapping{
+        .environement_variable_name = "DASH0_RESOURCE_ATTRIBUTES",
+        .resource_attributes_key = null,
+    },
+};
+
 fn initEnviron() callconv(.C) void {
     const pid = std.os.linux.getpid();
     std.debug.print("[Dash0 injector] {d} initEnviron() start\n", .{pid});
@@ -130,8 +179,30 @@ fn readProcSelfEnviron() !struct { *std.ArrayList(types.NullTerminatedString), b
 }
 
 fn applyModifications(env_vars: *std.ArrayList(types.NullTerminatedString), otel_resource_attributes_env_var_found: bool, otel_resource_attributes_env_var_index: usize) !void {
+    // TODO enable -- unfortunately, calling getEnvVar here segfaults, while it works perfectly well when called from
+    // getModifiedOtelResourceAttributesValue -- oh Zig, why are you so infuriating?
+    // 
+    // const already_modified_optional, _ = getEnvVar(env_vars, "__DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS");
+    // if (already_modified_optional) |already_modified| {
+    //     if (std.mem.eql(u8, std.mem.span(already_modified), "true")) {
+    //         // When this process spawns a child process and passes on its own environment to that child process, it will
+    //         // also pass on LD_PRELOAD, which means the injector will also run for the child process. We need to
+    //         // actively prevent from applying any modifications in the child process, otherwise we would apply
+    //         // modifications twice where we append to an environment variable (like OTEL_RESOURCE_ATTRIBUTES). That is,
+    //         // we would end up with something like
+    //         // OTEL_RESOURCE_ATTRIBUTES=k8s.namespace.name=namespace,k8s.pod.name=pod_name,k8s.pod.uid=pod_uid,k8s.container.name=container_name,k8s.namespace.name=namespace,k8s.pod.name=pod_name,k8s.pod.uid=pod_uid,k8s.container.name=container_name
+    //         std.debug.print("[Dash0 injector] applyModifications(): already instrumented, skipping\n", .{});
+    //         return;
+    //     } else {
+    //         std.debug.print("[Dash0 injector] applyModifications(): not yet instrumented, modifying environment\n", .{});
+    //     }
+    // } else {
+    //     std.debug.print("[Dash0 injector] applyModifications(): not yet instrumented, modifying environment\n", .{});
+    // }
+
     if (!otel_resource_attributes_env_var_found) {
         std.debug.print("[Dash0 injector] potentially appending OTEL_RESOURCE_ATTRIBUTES as the last env var\n", .{});
+
         if (getModifiedOtelResourceAttributesValue(env_vars)) |resource_attributes| {
             std.debug.print("[Dash0 injector] getModifiedOtelResourceAttributesValue has returned values: {s}\n", .{resource_attributes});
             try env_vars.append(resource_attributes[0..]);
@@ -147,6 +218,9 @@ fn applyModifications(env_vars: *std.ArrayList(types.NullTerminatedString), otel
             std.debug.print("[Dash0 injector] getModifiedOtelResourceAttributesValue has not returned any values, not overwriting OTEL_RESOURCE_ATTRIBUTES\n", .{});
         }
     }
+
+    // TODO enable
+    // try env_vars.append("__DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS=true\x00");
 
     // TODO this is nonsense? Should be terminated by a null pointer, not by a null character.
     try env_vars.append(empty_env_var);
@@ -170,72 +244,6 @@ fn applyModifications(env_vars: *std.ArrayList(types.NullTerminatedString), otel
     std.debug.print("[Dash0 injector] {d} _initEnviron() done\n", .{std.os.linux.getpid()});
 }
 
-/// Get the value of an environment variable from the provided env_vars list, which is a list of null-terminated
-/// strings. Returns an the value of the environment variable as an optional, and the index of the environment variable;
-/// the index is only valid if the environment variable was found (i.e. the optional is not null).
-pub fn getEnvVar(env_vars: *std.ArrayList(types.NullTerminatedString), name: []const u8) struct { ?types.NullTerminatedString, usize } {
-    for (env_vars.items, 0..) |env_var, env_var_idx| {
-        const env_var_slice: []const u8 = std.mem.span(env_var);
-        if (std.mem.indexOf(u8, env_var_slice, "=")) |equals_char_idx| {
-            if (std.mem.eql(u8, name, env_var[0..equals_char_idx])) {
-                if (std.mem.len(env_var) == equals_char_idx + 1) {
-                    return .{ null, 0 };
-                }
-                return .{ env_var[equals_char_idx + 1 ..], env_var_idx };
-            }
-        }
-    }
-
-    return .{ null, 0 };
-}
-
-/// A type for a rule to map an environment variable to a resource attribute. The result of applying these rules (via
-/// getResourceAttributes) is a string of key-value pairs, where each pair is of the form key=value, and pairs are
-/// separated by commas. If resource_attributes_key is not null, we append a key-value pair
-/// (that is, ${resource_attributes_key}=${value of environment variable}). If resource_attributes_key is null, the
-/// value of the enivronment variable is expected to already be a key-value pair (or a comma separated list of key-value
-/// pairs), and the value of the enivronment variable is appended as is.
-const EnvToResourceAttributeMapping = struct {
-    environement_variable_name: []const u8,
-    resource_attributes_key: ?[]const u8,
-};
-
-/// A list of mappings from environment variables to resource attributes.
-const mappings: [8]EnvToResourceAttributeMapping =
-    .{
-        EnvToResourceAttributeMapping{
-            .environement_variable_name = "DASH0_NAMESPACE_NAME",
-            .resource_attributes_key = "k8s.namespace.name",
-        },
-        EnvToResourceAttributeMapping{
-            .environement_variable_name = "DASH0_POD_NAME",
-            .resource_attributes_key = "k8s.pod.name",
-        },
-        EnvToResourceAttributeMapping{
-            .environement_variable_name = "DASH0_POD_UID",
-            .resource_attributes_key = "k8s.pod.uid",
-        },
-        EnvToResourceAttributeMapping{
-            .environement_variable_name = "DASH0_CONTAINER_NAME",
-            .resource_attributes_key = "k8s.container.name",
-        },
-        EnvToResourceAttributeMapping{
-            .environement_variable_name = "DASH0_SERVICE_NAME",
-            .resource_attributes_key = "service.name",
-        },
-        EnvToResourceAttributeMapping{
-            .environement_variable_name = "DASH0_SERVICE_VERSION",
-            .resource_attributes_key = "service.version",
-        },
-        EnvToResourceAttributeMapping{
-            .environement_variable_name = "DASH0_SERVICE_NAMESPACE",
-            .resource_attributes_key = "service.namespace",
-        },
-        EnvToResourceAttributeMapping{
-            .environement_variable_name = "DASH0_RESOURCE_ATTRIBUTES",
-            .resource_attributes_key = null,
-        },
-    };
 
 /// Derive the modified value for OTEL_RESOURCE_ATTRIBUTES based on the original value, and on other resource attributes
 /// provided via the DASH0_* environment variables set by the operator (workload_modifier#addEnvironmentVariables).
@@ -380,4 +388,23 @@ fn getResourceAttributes(env_vars: *std.ArrayList(types.NullTerminatedString)) ?
 
     std.debug.print("getResourceAttributes: returning {s}\n", .{resource_attributes});
     return resource_attributes;
+}
+
+/// Get the value of an environment variable from the provided env_vars list, which is a list of null-terminated
+/// strings. Returns an the value of the environment variable as an optional, and the index of the environment variable;
+/// the index is only valid if the environment variable was found (i.e. the optional is not null).
+pub fn getEnvVar(env_vars: *std.ArrayList(types.NullTerminatedString), name: []const u8) struct { ?types.NullTerminatedString, usize } {
+    for (env_vars.items, 0..) |env_var, env_var_idx| {
+        const env_var_slice: []const u8 = std.mem.span(env_var);
+        if (std.mem.indexOf(u8, env_var_slice, "=")) |equals_char_idx| {
+            if (std.mem.eql(u8, name, env_var[0..equals_char_idx])) {
+                if (std.mem.len(env_var) == equals_char_idx + 1) {
+                    return .{ null, 0 };
+                }
+                return .{ env_var[equals_char_idx + 1 ..], env_var_idx };
+            }
+        }
+    }
+
+    return .{ null, 0 };
 }
