@@ -49,9 +49,10 @@ const otel_resource_attributes_env_var_name: []const u8 = "OTEL_RESOURCE_ATTRIBU
 const empty_otel_resource_attributes_env_var: [*:0]const u8 = otel_resource_attributes_env_var_name ++ "=\x00";
 
 fn initEnviron() callconv(.C) void {
-    std.debug.print("[Dash0 injector] {d} initEnviron() start\n", .{std.os.linux.getpid()});
+    const pid = std.os.linux.getpid();
+    std.debug.print("[Dash0 injector] {d} initEnviron() start\n", .{pid});
     _initEnviron() catch @panic("[Dash0 injector] initEnviron failed");
-    std.debug.print("[Dash0 injector] {d} initEnviron() done\n", .{std.os.linux.getpid()});
+    std.debug.print("[Dash0 injector] {d} initEnviron() done\n", .{pid});
 }
 
 // TODO add unit tests for _initEnviron.
@@ -59,13 +60,12 @@ fn initEnviron() callconv(.C) void {
 // TODO This function must be idempotent, as parent processes may pass the environment to child processes, compounding
 // our modification with each nested child process start. Or add a marker env var.
 fn _initEnviron() !void {
-    std.debug.print("[Dash0 injector] {d} _initEnviron() start\n", .{std.os.linux.getpid()});
     var env_vars, const otel_resource_attributes_env_var_found, const otel_resource_attributes_env_var_index = try readProcSelfEnviron();
     defer env_vars.deinit();
     try applyModifications(env_vars, otel_resource_attributes_env_var_found, otel_resource_attributes_env_var_index);
 }
 
-fn readProcSelfEnviron() !struct {*std.ArrayList(types.NullTerminatedString), bool, usize} {
+fn readProcSelfEnviron() !struct { *std.ArrayList(types.NullTerminatedString), bool, usize } {
     const proc_self_environ_path = "/proc/self/environ";
     const proc_self_environ_file = try std.fs.openFileAbsolute(proc_self_environ_path, .{
         .mode = std.fs.File.OpenMode.read_only,
@@ -126,12 +126,12 @@ fn readProcSelfEnviron() !struct {*std.ArrayList(types.NullTerminatedString), bo
         }
     }
 
-    return .{&env_vars, otel_resource_attributes_env_var_found, otel_resource_attributes_env_var_index};
+    return .{ &env_vars, otel_resource_attributes_env_var_found, otel_resource_attributes_env_var_index };
 }
 
 fn applyModifications(env_vars: *std.ArrayList(types.NullTerminatedString), otel_resource_attributes_env_var_found: bool, otel_resource_attributes_env_var_index: usize) !void {
     if (!otel_resource_attributes_env_var_found) {
-        std.debug.print("[Dash0 injector] appending OTEL_RESOURCE_ATTRIBUTES as the last env var\n", .{});
+        std.debug.print("[Dash0 injector] potentially appending OTEL_RESOURCE_ATTRIBUTES as the last env var\n", .{});
         if (getModifiedOtelResourceAttributesValue(env_vars)) |resource_attributes| {
             std.debug.print("[Dash0 injector] getModifiedOtelResourceAttributesValue has returned values: {s}\n", .{resource_attributes});
             try env_vars.append(resource_attributes[0..]);
@@ -139,7 +139,7 @@ fn applyModifications(env_vars: *std.ArrayList(types.NullTerminatedString), otel
             std.debug.print("[Dash0 injector] getModifiedOtelResourceAttributesValue has not returned any values, not appending OTEL_RESOURCE_ATTRIBUTES\n", .{});
         }
     } else {
-        std.debug.print("[Dash0 injector] OTEL_RESOURCE_ATTRIBUTES exists, overwriting current value\n", .{});
+        std.debug.print("[Dash0 injector] OTEL_RESOURCE_ATTRIBUTES exists, potentially overwriting current value\n", .{});
         if (getModifiedOtelResourceAttributesValue(env_vars)) |resource_attributes| {
             std.debug.print("[Dash0 injector] getModifiedOtelResourceAttributesValue has returned values: {s}\n", .{resource_attributes});
             env_vars.items[otel_resource_attributes_env_var_index] = resource_attributes[0..];
@@ -163,20 +163,6 @@ fn applyModifications(env_vars: *std.ArrayList(types.NullTerminatedString), otel
         environ_buffer[i] = env_var;
     }
 
-    for (env_var_slices, 0..) |_, i| {
-        std.debug.print("[Dash0 injector] XXX env_var_slices {d} -> {s}\n", .{ i, environ_buffer[i] });
-    }
-
-    // if (getModifiedOtelResourceAttributesValue()) |resource_attributes| {
-    //     std.debug.print("[Dash0 injector] getModifiedOtelResourceAttributesValue has returned values: {s}\n", .{resource_attributes});
-    //     environ_buffer[otel_resource_attributes_env_var_index] = resource_attributes;
-    // } else {
-    //     std.debug.print("[Dash0 injector] getModifiedOtelResourceAttributesValue has not returned any values\n", .{});
-    // }
-
-    std.debug.print("[Dash0 injector] XXX environ_buffer.len: {d}\n", .{environ_buffer.len});
-    std.debug.print("[Dash0 injector] XXX otel_resource_attributes_env_var_index: {d}\n", .{otel_resource_attributes_env_var_index});
-
     __environ = @ptrCast(environ_buffer);
     _environ = __environ;
     environ = __environ;
@@ -184,23 +170,23 @@ fn applyModifications(env_vars: *std.ArrayList(types.NullTerminatedString), otel
     std.debug.print("[Dash0 injector] {d} _initEnviron() done\n", .{std.os.linux.getpid()});
 }
 
-pub fn getEnvVar(env_vars: *std.ArrayList(types.NullTerminatedString), name: []const u8) ?types.NullTerminatedString {
-    // std.debug.print("getEnvVar: looking for {s}\n", .{name});
-    for (env_vars.items) |env_var| {
-        // std.debug.print("getEnvVar: {s}\n", .{env_var});
+/// Get the value of an environment variable from the provided env_vars list, which is a list of null-terminated
+/// strings. Returns an the value of the environment variable as an optional, and the index of the environment variable;
+/// the index is only valid if the environment variable was found (i.e. the optional is not null).
+pub fn getEnvVar(env_vars: *std.ArrayList(types.NullTerminatedString), name: []const u8) struct { ?types.NullTerminatedString, usize } {
+    for (env_vars.items, 0..) |env_var, env_var_idx| {
         const env_var_slice: []const u8 = std.mem.span(env_var);
-        if (std.mem.indexOf(u8, env_var_slice, "=")) |j| {
-            if (std.mem.eql(u8, name, env_var[0..j])) {
-                if (std.mem.len(env_var) == j + 1) {
-                    return null;
+        if (std.mem.indexOf(u8, env_var_slice, "=")) |equals_char_idx| {
+            if (std.mem.eql(u8, name, env_var[0..equals_char_idx])) {
+                if (std.mem.len(env_var) == equals_char_idx + 1) {
+                    return .{ null, 0 };
                 }
-
-                return env_var[j + 1 ..];
+                return .{ env_var[equals_char_idx + 1 ..], env_var_idx };
             }
         }
     }
 
-    return null;
+    return .{ null, 0 };
 }
 
 /// A type for a rule to map an environment variable to a resource attribute. The result of applying these rules (via
@@ -262,7 +248,7 @@ pub fn getModifiedOtelResourceAttributesValue(env_vars: *std.ArrayList(types.Nul
 
     std.debug.print("[Dash0 injector] getModifiedOtelResourceAttributesValue: OTEL_RESOURCE_ATTRIBUTES not modified yet\n", .{});
 
-    const original_value_optional = getEnvVar(env_vars, "OTEL_RESOURCE_ATTRIBUTES");
+    const original_value_optional, _ = getEnvVar(env_vars, "OTEL_RESOURCE_ATTRIBUTES");
     if (getResourceAttributes(env_vars)) |resource_attributes| {
         defer std.heap.page_allocator.free(resource_attributes);
 
@@ -295,7 +281,7 @@ pub fn getModifiedOtelResourceAttributesValue(env_vars: *std.ArrayList(types.Nul
             modified_otel_resource_attributes_value = return_buffer.ptr;
             modified_otel_resource_attributes_value_calculated = true;
 
-            // std.debug.print("getModifiedOtelResourceAttributesValue: no original value, but new values to add are present, returning {any}\n", .{modified_otel_resource_attributes_value});
+            std.debug.print("getModifiedOtelResourceAttributesValue: no original value, but new values to add are present, returning {any}\n", .{modified_otel_resource_attributes_value});
             return modified_otel_resource_attributes_value;
         }
     } else {
@@ -332,8 +318,8 @@ fn getResourceAttributes(env_vars: *std.ArrayList(types.NullTerminatedString)) ?
     var final_len: usize = 0;
 
     for (mappings) |mapping| {
-        if (getEnvVar(env_vars, mapping.environement_variable_name)) |value| {
-            // std.debug.print("getResourceAttributes: mapping.environement_variable_name: {s} -> {s}\n", .{mapping.environement_variable_name, value});
+        const original_value, _ = getEnvVar(env_vars, mapping.environement_variable_name);
+        if (original_value) |value| {
             if (std.mem.len(value) > 0) {
                 if (final_len > 0) {
                     final_len += 1; // ","
@@ -345,9 +331,7 @@ fn getResourceAttributes(env_vars: *std.ArrayList(types.NullTerminatedString)) ?
                     final_len += std.mem.len(value);
                 }
             }
-        } // else {
-        //     std.debug.print("getResourceAttributes: mapping.environement_variable_name: {s} not present \n", .{mapping.environement_variable_name});
-        // }
+        }
     }
 
     if (final_len < 1) {
@@ -365,7 +349,8 @@ fn getResourceAttributes(env_vars: *std.ArrayList(types.NullTerminatedString)) ?
     // TODO why do we iterate twice over mappings?
     for (mappings) |mapping| {
         const env_var_name = mapping.environement_variable_name;
-        if (getEnvVar(env_vars, env_var_name)) |value| {
+        const original, _ = getEnvVar(env_vars, env_var_name);
+        if (original) |value| {
             if (std.mem.len(value) > 0) {
                 if (is_first_token) {
                     is_first_token = false;
