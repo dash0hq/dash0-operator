@@ -81,15 +81,22 @@ pub fn build(b: *std.Build) !void {
         .root_source_file = b.path("src/test.zig"),
         .target = testTarget,
         .optimize = optimize,
-        // For some reason, setting link_libc = false does not seem to be effective, and the tests run with
+        // For some reason, setting link_libc = false does not seem to be effective on Darwin, and the tests run with
         // builtin.link_libc=true anyway. This in turn makes makes std.posix.getenv use std.c.environ under the hood
-        // instead of std.os.environ. To make matters worse, on CI the tests crash with
-        //   /opt/hostedtoolcache/zig/0.14.0/x64/lib/std/c.zig:1:1: error: dependency on libc must be explicitly specified
-        //   in the build command
-        // when accessing std.c.environ and link_libc is false here. Might be a difference between arm64 and x86_64?
-        // Needs more investigation. For now, we set .link_libc = false locally, knowing that it is being ignored, and
-        // set it to true on CI.
-        .link_libc = is_ci,
+        // instead of std.os.environ.
+        // Also, since introducing the approach of exporting __environ and specifically having an init_array section,
+        // the tests do no longer run on Darwin directly,
+        //   error: LLVM ERROR: Global variable 'init_array' has an invalid section specifier '.init_array': mach-o
+        //   section specifier requires a segment and section separated by a comma.
+        //
+        // Last but not least, on Linux (that is, on CI and also for example in the container started via
+        // ../start-injector-dev-container.sh) the tests crash with
+        //   /opt/hostedtoolcache/zig/0.14.0/x64/lib/std/c.zig:1:1: error: dependency on libc must be explicitly
+        //   specified in the build command
+        // when accessing std.c.environ and link_libc is set to false here. This needs more investigation. For now, we
+        // simply always set .link_libc = true for the tests, even if the production code is built with
+        // .link_libc = false.
+        .link_libc = true,
         .pic = true,
         .strip = false,
     });

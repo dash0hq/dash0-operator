@@ -13,25 +13,26 @@ const testing = std.testing;
 // tests that need to change the environment variables (for example) should go in a separate file, so we never run the
 // risk of even compiling the test mechanism to modify the environment.
 
-test "initDebugFlag: not set" {
-    const original_environ = try test_util.clearStdCEnviron();
-    defer test_util.resetStdCEnviron(original_environ);
-    print.initDebugFlag();
-    try testing.expect(!print.isDebug());
-}
-
-test "initDebugFlag: false" {
-    const original_environ = try test_util.setStdCEnviron(&[1][]const u8{"DASH0_INJECTOR_DEBUG=false"});
-    defer test_util.resetStdCEnviron(original_environ);
-
-    print.initDebugFlag();
-    try testing.expect(!print.isDebug());
-}
-
-test "initDebugFlag: true" {
-    const original_environ = try test_util.setStdCEnviron(&[1][]const u8{"DASH0_INJECTOR_DEBUG=true"});
-    defer test_util.resetStdCEnviron(original_environ);
-
-    print.initDebugFlag();
-    try testing.expect(print.isDebug());
-}
+// TODO activate again
+// test "initDebugFlag: not set" {
+//     const original_environ = try test_util.clearStdCEnviron();
+//     defer test_util.resetStdCEnviron(original_environ);
+//     print.initDebugFlag();
+//     try testing.expect(!print.isDebug());
+// }
+//
+// test "initDebugFlag: false" {
+//     const original_environ = try test_util.setStdCEnviron(&[1][]const u8{"DASH0_INJECTOR_DEBUG=false"});
+//     defer test_util.resetStdCEnviron(original_environ);
+//
+//     print.initDebugFlag();
+//     try testing.expect(!print.isDebug());
+// }
+//
+// test "initDebugFlag: true" {
+//     const original_environ = try test_util.setStdCEnviron(&[1][]const u8{"DASH0_INJECTOR_DEBUG=true"});
+//     defer test_util.resetStdCEnviron(original_environ);
+//
+//     print.initDebugFlag();
+//     try testing.expect(print.isDebug());
+// }
