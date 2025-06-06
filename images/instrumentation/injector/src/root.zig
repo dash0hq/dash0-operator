@@ -17,15 +17,21 @@ const injector = @import("injector.zig");
 // far. See https://github.com/ziglang/zig/issues/23574 and https://github.com/ziglang/zig/issues/20382.
 export const init_array: [1]*const fn () callconv(.C) void linksection(".init_array") = .{&initEnviron};
 
-export var __environ: [*c]const [*c]const u8 = @as([1][*c]const u8, .{null})[0..].ptr;
-export var _environ: [*c]const [*c]const u8 = @as([1][*c]const u8, .{null})[0..].ptr;
-export var environ: [*c]const [*c]const u8 = @as([1][*c]const u8, .{null})[0..].ptr;
+// export var __environ: [*c]const [*c]const u8 = undefined;
+// export var _environ: [*c]const [*c]const u8 = undefined;
+// export var environ: [*c]const [*c]const u8 = undefined;
+
+var __environ: [*c]const [*c]const c_char = undefined;
+
+comptime {
+    @export(&__environ, .{ .name = "__environ", .linkage = .strong });
+    @export(&__environ, .{ .name = "_environ", .linkage = .strong });
+    @export(&__environ, .{ .name = "environ", .linkage = .strong });
+}
 
 fn initEnviron() callconv(.C) void {
     const pid = std.os.linux.getpid();
     std.debug.print("[Dash0 injector] {d} initEnviron() start\n", .{pid});
     __environ = injector._initEnviron("/proc/self/environ") catch @panic("[Dash0 injector] initEnviron failed");
-    _environ = __environ;
-    environ = __environ;
     std.debug.print("[Dash0 injector] {d} initEnviron() done\n", .{pid});
 }
