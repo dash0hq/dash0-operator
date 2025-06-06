@@ -12,7 +12,7 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-if zig build test; then
+if zig build test --prominent-compile-errors --summary none; then
   echo "$(date) tests successful"
   echo
 else
