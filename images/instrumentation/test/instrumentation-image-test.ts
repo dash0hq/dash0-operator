@@ -650,11 +650,6 @@ async function runTestsWithinContainer(commandLineOptions: any): Promise<void> {
     );
     process.exit(1);
   }
-  const runtime = commandLineOptions.withinContainerRuntime;
-  if (runtime !== 'jvm') {
-    console.error(chalk.red('Currently only the runtime "jvm" is supported with --within-container.'));
-    process.exit(1);
-  }
 
   log('compiling the injector (zig build)');
   try {
@@ -665,19 +660,27 @@ async function runTestsWithinContainer(commandLineOptions: any): Promise<void> {
     process.exit(1);
   }
 
+  const runtime = commandLineOptions.withinContainerRuntime;
   switch (runtime) {
     case 'jvm':
-      await runTestsWithinContainerJvm();
+      await runTestsWithinContainerJvm(runtime);
+      break;
+    case 'node':
+      await runTestsWithinContainerNode(runtime);
       break;
     default:
-      console.error(`runtime ${runtime} not supported for --within-container-runtime`);
+      console.error(`runtime "${runtime}" not supported for --within-container-runtime`);
       process.exit(1);
   }
 
   printSummary();
 }
 
-async function runTestsWithinContainerJvm(): Promise<void> {
+async function noOp(): Promise<void> {
+  return;
+}
+
+async function beforeAllJvm(): Promise<void> {
   log('compiling jvm-test-utils');
   try {
     await exec('javac src/com/dash0/injector/testutils/*.java', { cwd: 'test/jvm/jvm-test-utils' });
@@ -686,8 +689,23 @@ async function runTestsWithinContainerJvm(): Promise<void> {
     console.error(chalk.red('Compiling the injector failed:\n', error.stderr || error.message || error));
     process.exit(1);
   }
+}
 
-  const testCases = await readdir('test/jvm/test-cases', { withFileTypes: true });
+async function runTestsWithinContainerJvm(runtime: string): Promise<void> {
+  await runTestsWithinContainerForRuntime(beforeAllJvm, runtime, runJvmTestCaseWithinContainer);
+}
+
+async function runTestsWithinContainerNode(runtime: string): Promise<void> {
+  await runTestsWithinContainerForRuntime(noOp, runtime, runNodeTestCaseWithinContainer);
+}
+
+async function runTestsWithinContainerForRuntime(
+  beforeAll: () => Promise<void>,
+  runtime: string,
+  runTestCase: (testCase: string, cwd: string) => Promise<void>,
+): Promise<void> {
+  await beforeAll();
+  const testCases = await readdir(`test/${runtime}/test-cases`, { withFileTypes: true });
   for (const testCaseDir of testCases) {
     if (!testCaseDir.isDirectory()) {
       continue;
@@ -702,31 +720,40 @@ async function runTestsWithinContainerJvm(): Promise<void> {
         continue;
       }
     }
-    await runJvmTestCaseWithinContainer(testCaseDirName);
+
+    const cwd = `test/${runtime}/test-cases/${testCaseDirName}`;
+    let testCaseProperties: TestCaseProperties = {};
+    const testCasePropertiesFile = `${cwd}/.testcase.json`;
+    if (existsSync(testCasePropertiesFile)) {
+      const testCasePropertiesContent = await readFile(testCasePropertiesFile);
+      try {
+        testCaseProperties = JSON.parse(testCasePropertiesContent.toString());
+      } catch (e) {
+        log(chalk.red(`Error: cannot parse ${testCasePropertiesFile}, ignoring.`));
+      }
+    }
+
+    if (testCaseProperties.skip === true) {
+      log(chalk.yellow(`- test case "${testCaseDirName}": SKIPPED`));
+      skippedTestCases++;
+      summary += chalk.yellow(`\n- ${testCaseDirName}: skipped`);
+      continue;
+    }
+
+    await runTestCase(testCaseDirName, cwd);
   }
 }
 
-async function runJvmTestCaseWithinContainer(testCase: string) {
-  const cwd = `test/jvm/test-cases/${testCase}`;
+async function runJvmTestCaseWithinContainer(testCase: string, cwd: string): Promise<void> {
+  await runTestCaseWithinContainer(
+    testCase,
+    cwd,
+    beforeTestCaseJvm,
+    'java -jar -Dotel.instrumentation.common.default-enabled=false app.jar',
+  );
+}
 
-  let testCaseProperties: TestCaseProperties = {};
-  const testCasePropertiesFile = `${cwd}/.testcase.json`;
-  if (existsSync(testCasePropertiesFile)) {
-    const testCasePropertiesContent = await readFile(testCasePropertiesFile);
-    try {
-      testCaseProperties = JSON.parse(testCasePropertiesContent.toString());
-    } catch (e) {
-      log(chalk.red(`Error: cannot parse ${testCasePropertiesFile}, ignoring.`));
-    }
-  }
-
-  if (testCaseProperties.skip === true) {
-    log(chalk.yellow(`- test case "${testCase}": SKIPPED`));
-    skippedTestCases++;
-    summary += chalk.yellow(`\n- ${testCase}: skipped`);
-    return;
-  }
-
+async function beforeTestCaseJvm(_: string, cwd: string): Promise<void> {
   execSync('cp -R ../../jvm-test-utils/src/* .', {
     cwd,
     stdio: 'inherit',
@@ -739,6 +766,19 @@ async function runJvmTestCaseWithinContainer(testCase: string) {
     cwd,
     stdio: 'inherit',
   });
+}
+
+async function runNodeTestCaseWithinContainer(testCase: string, cwd: string): Promise<void> {
+  await runTestCaseWithinContainer(testCase, cwd, noOp, 'node .');
+}
+
+async function runTestCaseWithinContainer(
+  testCase: string,
+  cwd: string,
+  beforeTestCase: (testCase: string, cwd: string) => Promise<void>,
+  testCmd: string,
+): Promise<void> {
+  await beforeTestCase(testCase, cwd);
   const environmentFile = readFileSync(`${cwd}/.env`, 'utf8');
   const envForTest = environmentFile
     //
@@ -760,7 +800,6 @@ async function runJvmTestCaseWithinContainer(testCase: string) {
       }
     }, {});
 
-  const testCmd = 'java -jar -Dotel.instrumentation.common.default-enabled=false app.jar';
   try {
     const { stdout: testCmdOutputStdOut, stderr: testCmdOutputStdErr } = await exec(testCmd, {
       cwd,
