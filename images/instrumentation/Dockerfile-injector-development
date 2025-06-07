@@ -67,7 +67,6 @@ RUN . /opt/zig/zig-version && \
   tar --strip-components=1 -xf /tmp/zig.tar.gz
 ENV PATH="$PATH:/opt/zig"
 
-# fd .zig ../injector | entr npm run test-within-container-jvm
 WORKDIR /home/dash0/instrumentation/test
 
 CMD ["/bin/bash"]

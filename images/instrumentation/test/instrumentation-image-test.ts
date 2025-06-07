@@ -209,6 +209,13 @@ async function runAllTests(): Promise<void> {
   const createRunTestCasesTaskPromises = allTestImages.map(runTestCasesForArchitectureRuntimeAndBaseImage);
   const allRunTestCaseTasks = (await Promise.all(createRunTestCasesTaskPromises)).flat().filter(t => !t.skipped);
 
+  if (allRunTestCaseTasks.length === 0) {
+    console.error(
+      `Error: No test cases found for the current filter settings (ARCHITECTURES, RUNTIMES, BASE_IMAGES, TEST_CASES, etc.).`,
+    );
+    process.exit(1);
+  }
+
   log(`running ${allRunTestCaseTasks.length} test cases`);
   await PromisePool.withConcurrency(concurrency)
     .for(allRunTestCaseTasks)
@@ -492,8 +499,9 @@ async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestIma
 
   const runTestCasePromises: RunTestCasePromise[] = [];
   for (const testCaseDir of testCaseDirs) {
+    const testCase = basename(testCaseDir);
     if (testCaseFilter.length > 0) {
-      const shouldRunTestCase = testCaseFilter.some(selectedTestCase => testCaseDir === selectedTestCase);
+      const shouldRunTestCase = testCaseFilter.some(selectedTestCase => testCase === selectedTestCase);
       if (!shouldRunTestCase) {
         log(`- ${archRuntimeBaseImagePrefix}: skipping test case ${testCaseDir}`);
         skippedTestCases++;
@@ -503,7 +511,6 @@ async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestIma
     }
 
     const startTimeTestCase = Date.now();
-    const testCase = basename(testCaseDir);
 
     let testCmd: string[];
     switch (runtime) {
@@ -814,7 +821,7 @@ function printSummary() {
     console.log(chalk.red('See above for details.'));
     process.exit(failedTestCases);
   } else if (skippedTestCases > 0) {
-    console.log(chalk.yellow('There are tests that are marked with skip: true in their .testcase.json file:'));
+    console.log(chalk.yellow('Some tests have been skipped:'));
     console.log(summary);
     console.log(chalk.yellow('See above for details.'));
     process.exit(skippedTestCases);
