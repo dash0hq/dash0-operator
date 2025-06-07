@@ -14,6 +14,8 @@ class Program
             Console.Error.WriteLine("DASH0_EXPERIMENTAL_DOTNET_INJECTION is not set.");
         }
 
+        // TODO after migrating the injector to the export-environ approach, we should be able to activate this test.
+
         // This will not work when the injector only overrides getenv, see the comment in
         // images/instrumentation/injector/src/dotnet.zig - overriding getenv only works for CLR bootstrap code, not
         // for environment variable lookups from within a .NET application.
