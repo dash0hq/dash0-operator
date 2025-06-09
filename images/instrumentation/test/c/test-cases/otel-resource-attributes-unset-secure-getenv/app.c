@@ -6,12 +6,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 int main() {
-  // TODO We do not hook into secure_getenv, so this test case currently fails.
-  // For now, it is disabled by default.
-  printf("! test case disabled: otel-resource-attributes-unset-secure-getenv\n");
-  return 0;
+  pid_t pid = getpid();
+  printf("app.c pid: %d\n", pid);
 
   char* name = "OTEL_RESOURCE_ATTRIBUTES";
   char* actual = secure_getenv(name);

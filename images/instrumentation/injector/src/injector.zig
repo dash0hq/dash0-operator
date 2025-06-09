@@ -28,6 +28,9 @@ const empty_otel_resource_attributes_env_var: [*:0]const u8 = otel_resource_attr
 
 // TODO
 // ====
+// - create instrumentation tests that use an entrypoint directly instead of a CMD (which routes via shell parent process)
+// - run tests in the container to make sure we test the mystery segfaults without child processes!, then try to remove
+//   the dreaded function parameters and make it idempotent.
 // - make applyModifications independent from the code that reads the original environment, instead, look up
 //   OTEL_RESOURCE_ATTRIBUTES from the env_vars that have been read.
 // - add unit tests for _initEnviron.

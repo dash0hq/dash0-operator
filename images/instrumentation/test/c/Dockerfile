@@ -11,7 +11,6 @@ FROM ${base_image}
 # Need to repeat ARG base_image since build args are cleared by FROM.
 ARG base_image
 
-# test cases where the OTel SDK/distro exists but is not accessible.
 RUN case ${base_image} in \
   *alpine*) apk update && apk upgrade --no-cache && apk add --no-cache build-base binutils ;; \
   *) apt-get update && apt-get install -y --no-install-recommends build-essential && apt-get clean; \

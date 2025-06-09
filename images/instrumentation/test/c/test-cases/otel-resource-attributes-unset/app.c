@@ -4,8 +4,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 int main() {
+  pid_t pid = getpid();
+  printf("app.c pid: %d\n", pid);
+
   char* name = "OTEL_RESOURCE_ATTRIBUTES";
   char* actual = getenv(name);
   char* expected = "k8s.namespace.name=namespace,k8s.pod.name=pod_name,k8s.pod.uid=pod_uid,k8s.container.name=container_name";

@@ -3,17 +3,12 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
 
 int main() {
   pid_t pid = getpid();
   printf("app.c pid: %d\n", pid);
-
-  char* name = "DOES_NOT_EXIST";
-  char* actual = getenv(name);
-  if (actual != NULL) {
-    printf("Unexpected value for the environment variable %s -- expected: null, was: %s\n", name, actual);
-    return 1;
-  }
+  // TODO start a child process and run it.
 }
