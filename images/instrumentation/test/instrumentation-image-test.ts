@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { promisify } from 'node:util';
-import childProcess, { execSync } from 'node:child_process';
+import childProcess, { execSync, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { readFile, writeFile, readdir, unlink } from 'node:fs/promises';
 import { readFileSync, unlinkSync } from 'fs';
@@ -533,7 +533,7 @@ async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestIma
         break;
 
       case 'node':
-        testCmd = ['node', `/test-cases/${testCase}`];
+        testCmd = ['node', `/test-cases/${testCase}/index.js`];
         break;
 
       default:
@@ -631,7 +631,7 @@ function createRunTestCaseTask(
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
-      handleTestCaseError(`${archRuntimeBaseImagePrefix.padEnd(32)}\t`, testCase, testCmd.join(' '), error);
+      handleTestCaseError(`${archRuntimeBaseImagePrefix.padEnd(32)}\t`, testCase, testCmd.join(' '), [], error);
     }
 
     storeBuildStepDuration(`test case ${testCase}`, startTimeTestCase, arch, runtime, baseImageRun);
@@ -662,6 +662,9 @@ async function runTestsWithinContainer(commandLineOptions: any): Promise<void> {
 
   const runtime = commandLineOptions.withinContainerRuntime;
   switch (runtime) {
+    case 'c':
+      await runTestsWithinContainerC(runtime);
+      break;
     case 'jvm':
       await runTestsWithinContainerJvm(runtime);
       break;
@@ -680,23 +683,93 @@ async function noOp(): Promise<void> {
   return;
 }
 
-async function beforeAllJvm(): Promise<void> {
-  log('compiling jvm-test-utils');
+async function runTestsWithinContainerC(runtime: string): Promise<void> {
+  await runTestsWithinContainerForRuntime(
+    //
+    beforeAllC,
+    runtime,
+    runCTestCaseWithinContainer,
+  );
+}
+
+async function beforeAllC(): Promise<void> {
+  log('compiling C test apps');
   try {
-    await exec('javac src/com/dash0/injector/testutils/*.java', { cwd: 'test/jvm/jvm-test-utils' });
+    await exec('make', { cwd: 'test/c' });
   } catch (error) {
     // @ts-ignore
-    console.error(chalk.red('Compiling the injector failed:\n', error.stderr || error.message || error));
+    console.error(chalk.red('Compiling C test apps failed:\n', error.stderr || error.message || error));
     process.exit(1);
   }
+}
+
+async function runCTestCaseWithinContainer(testCase: string, cwd: string): Promise<void> {
+  await runTestCaseWithinContainer(
+    //
+    testCase,
+    cwd,
+    noOp,
+    `./app.o`,
+    [],
+  );
 }
 
 async function runTestsWithinContainerJvm(runtime: string): Promise<void> {
   await runTestsWithinContainerForRuntime(beforeAllJvm, runtime, runJvmTestCaseWithinContainer);
 }
 
+async function beforeAllJvm(): Promise<void> {
+  log('compiling jvm-test-utils');
+  try {
+    await exec('javac src/com/dash0/injector/testutils/*.java', { cwd: 'test/jvm/jvm-test-utils' });
+  } catch (error) {
+    // @ts-ignore
+    console.error(chalk.red('Compiling jvm-test-utils failed:\n', error.stderr || error.message || error));
+    process.exit(1);
+  }
+}
+
+async function runJvmTestCaseWithinContainer(testCase: string, cwd: string): Promise<void> {
+  await runTestCaseWithinContainer(testCase, cwd, beforeTestCaseJvm, 'java', [
+    '-jar',
+    '-Dotel.instrumentation.common.default-enabled=false',
+    'app.jar',
+  ]);
+}
+
+async function beforeTestCaseJvm(_: string, cwd: string): Promise<void> {
+  execSync('cp -R ../../jvm-test-utils/src/* .', {
+    cwd,
+    stdio: 'inherit',
+  });
+  execSync('javac Main.java', {
+    cwd,
+    stdio: 'inherit',
+  });
+  execSync('jar --create --file app.jar --manifest MANIFEST.MF -C . .', {
+    cwd,
+    stdio: 'inherit',
+  });
+}
+
 async function runTestsWithinContainerNode(runtime: string): Promise<void> {
-  await runTestsWithinContainerForRuntime(noOp, runtime, runNodeTestCaseWithinContainer);
+  await runTestsWithinContainerForRuntime(
+    //
+    noOp,
+    runtime,
+    runNodeTestCaseWithinContainer,
+  );
+}
+
+async function runNodeTestCaseWithinContainer(testCase: string, cwd: string): Promise<void> {
+  await runTestCaseWithinContainer(
+    //
+    testCase,
+    cwd,
+    noOp,
+    'node',
+    ['.'],
+  );
 }
 
 async function runTestsWithinContainerForRuntime(
@@ -744,39 +817,12 @@ async function runTestsWithinContainerForRuntime(
   }
 }
 
-async function runJvmTestCaseWithinContainer(testCase: string, cwd: string): Promise<void> {
-  await runTestCaseWithinContainer(
-    testCase,
-    cwd,
-    beforeTestCaseJvm,
-    'java -jar -Dotel.instrumentation.common.default-enabled=false app.jar',
-  );
-}
-
-async function beforeTestCaseJvm(_: string, cwd: string): Promise<void> {
-  execSync('cp -R ../../jvm-test-utils/src/* .', {
-    cwd,
-    stdio: 'inherit',
-  });
-  execSync('javac Main.java', {
-    cwd,
-    stdio: 'inherit',
-  });
-  execSync('jar --create --file app.jar --manifest MANIFEST.MF -C . .', {
-    cwd,
-    stdio: 'inherit',
-  });
-}
-
-async function runNodeTestCaseWithinContainer(testCase: string, cwd: string): Promise<void> {
-  await runTestCaseWithinContainer(testCase, cwd, noOp, 'node .');
-}
-
 async function runTestCaseWithinContainer(
   testCase: string,
   cwd: string,
   beforeTestCase: (testCase: string, cwd: string) => Promise<void>,
   testCmd: string,
+  testArgs: string[],
 ): Promise<void> {
   await beforeTestCase(testCase, cwd);
   const environmentFile = readFileSync(`${cwd}/.env`, 'utf8');
@@ -801,30 +847,69 @@ async function runTestCaseWithinContainer(
     }, {});
 
   try {
-    const { stdout: testCmdOutputStdOut, stderr: testCmdOutputStdErr } = await exec(testCmd, {
-      cwd,
-      env: {
-        ...process.env,
-        ...envForTest,
-        LD_PRELOAD: '../../../../injector/dash0_injector.so',
-      },
+    await new Promise((resolve, reject) => {
+      // Note: It is important to use child_process.spawn here, and not child_process.exec. child_process.exec would
+      // spawn a shell, and then execute the provided command in that shell. The injector would already modify the
+      // environment for the shell, and then the injector would run again for the actual test command, i.e., we would
+      // run all test cases always in the "instrumented parent process + instrumented child process" configuration.
+      // While that is an imporant scenario that we need to test, there are dedicated tests specifically for this
+      // scenario, and we do not want to run _all_ test cases with that setup.
+      const testChildProcess = spawn(testCmd, testArgs, {
+        cwd,
+        env: {
+          ...process.env,
+          ...envForTest,
+          LD_PRELOAD: '../../../../injector/dash0_injector.so',
+        },
+      });
+      let testCmdOutputStdOut = '';
+      let testCmdOutputStdErr = '';
+      testChildProcess.stdout.on('data', data => {
+        const s = data.toString().trim();
+        if (s.length > 0) {
+          testCmdOutputStdOut += s;
+          testCmdOutputStdOut += '\n';
+        }
+      });
+      testChildProcess.stderr.on('data', data => {
+        const s = data.toString().trim();
+        if (s.length > 0) {
+          testCmdOutputStdErr += s;
+          testCmdOutputStdErr += '\n';
+        }
+      });
+      testChildProcess.on('close', code => {
+        if (code === 0) {
+          if (process.env.VERBOSE === 'true') {
+            log(`test command: ${testCmd} `);
+            if (testCmdOutputStdOut.length > 0) {
+              log(testCmdOutputStdOut);
+            }
+            if (testCmdOutputStdErr.length > 0) {
+              log(testCmdOutputStdErr);
+            }
+          }
+          log(chalk.green(`- test case "${testCase}": OK`));
+          summary += chalk.green(`\n- ${testCase}: OK`);
+          resolve();
+        } else {
+          let errMsg = `Test command "${testCmd}" terminated with exit code ${code}.`;
+          if (testCmdOutputStdOut.length > 0) {
+            errMsg += `\nstdout: ${testCmdOutputStdOut}`;
+          }
+          if (testCmdOutputStdErr.length > 0) {
+            errMsg += `\nstderr: ${testCmdOutputStdErr}`;
+          }
+          reject(new Error(errMsg));
+        }
+      });
     });
-    if (process.env.VERBOSE === 'true') {
-      if (testCmdOutputStdOut) {
-        log(testCmdOutputStdOut);
-      }
-      if (testCmdOutputStdErr) {
-        log(testCmdOutputStdErr);
-      }
-    }
-    log(chalk.green(`- test case "${testCase}": OK`));
-    summary += chalk.green(`\n- ${testCase}: OK`);
   } catch (error) {
-    handleTestCaseError('', testCase, testCmd, error);
+    handleTestCaseError('', testCase, testCmd, testArgs, error);
   }
 }
 
-function handleTestCaseError(prefix: string, testCase: string, testCmd: string, error: any) {
+function handleTestCaseError(prefix: string, testCase: string, testCmd: string, testArgs: string[], error: any) {
   let failureMode = 'FAIL';
   let failureModeSummary = 'failed';
 
@@ -840,9 +925,7 @@ function handleTestCaseError(prefix: string, testCase: string, testCmd: string, 
   log(
     chalk.red(
       `${prefix}- test case "${testCase}": ${failureMode}
-test command was:
-${testCmd}
-
+test command was: ${testCmd} ${testArgs.join(' ')}
 error:
 ${error}`,
     ),
