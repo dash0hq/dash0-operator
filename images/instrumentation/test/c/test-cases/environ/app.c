@@ -4,12 +4,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 extern char** __environ;
 // extern char** __my_environ;
 
 int main() {
-  printf("app.c#main(): START\n");
+  pid_t pid = getpid();
+  printf("app.c pid: %d\n", pid);
 
   printf("app.c#main(): XXX __environ outer pointer: %p\n", __environ);
   printf("app.c#main(): XXX __environ content: %s\n", *__environ);

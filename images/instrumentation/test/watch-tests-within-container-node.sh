@@ -8,3 +8,4 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
 fd .zig ../injector | entr npm run test-within-container-node
+

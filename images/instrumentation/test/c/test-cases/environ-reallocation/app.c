@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 void expect_getenv_value(char* name, char* expected) {
   char* actual = getenv(name);
@@ -42,6 +44,9 @@ void expect_setenv_no_err(const char *name, const char *value, int replace) {
 }
 
 int main() {
+  pid_t pid = getpid();
+  printf("app.c pid: %d\n", pid);
+
   // TODO check that the value of the __environ pointer actually changes to verify that re-allocation occurs.
   int number_of_calls = 5000;
 

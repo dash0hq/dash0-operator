@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 void expect_getenv_value(char* name, char* expected) {
   char* actual = getenv(name);
@@ -50,6 +52,9 @@ void expect_unsetenv_no_err(const char *arg) {
 }
 
 int main() {
+  pid_t pid = getpid();
+  printf("app.c pid: %d\n", pid);
+
   // See
   // https://www.gnu.org/software/libc/manual/html_node/Environment-Access.html
   // for docs on env-related functions.
