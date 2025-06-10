@@ -271,13 +271,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					}, 15*time.Second, pollingInterval).Should(Succeed())
 				})
 
-				// Temporarily disabled, since exporting to non-tls endpoints via gRPC does not yet work in the
-				// collector, see https://github.com/open-telemetry/opentelemetry-collector/issues/12701 and
-				// https://github.com/open-telemetry/opentelemetry-go-contrib/pull/6984.
-				// The PR has been merged in April 2025, the fix is included in release v1.36.0 of
-				// opentelemetry-go-contrib, now waiting for
-				// https://github.com/open-telemetry/opentelemetry-collector/pull/13078 to be merged and released.
-				XIt("has collector logs", func() {
+				It("has collector logs", func() {
 					By("checking for a log record from the collector")
 					Eventually(func(g Gomega) {
 						verifyAtLeastOneLogRecord(
