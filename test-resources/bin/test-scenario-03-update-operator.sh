@@ -24,3 +24,5 @@ echo "STEP $step_counter: deploy the Dash0 operator using helm"
 update_via_helm
 finish_step
 
+finish_scenario
+

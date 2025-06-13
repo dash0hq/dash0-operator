@@ -81,3 +81,5 @@ else
   echo
 fi
 
+finish_scenario
+

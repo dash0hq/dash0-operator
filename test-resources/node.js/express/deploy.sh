@@ -12,7 +12,7 @@ source ../../bin/util
 
 target_namespace=${1:-test-namespace}
 kind=${2:-deployment}
-check_if_kubectx_is_kind_cluster
+check_if_kubectx_is_kind_or_minikube_cluster
 
 if [[ -z ${SKIP_DOCKER_BUILD:-} ]]; then
   docker build . -t dash0-operator-nodejs-20-express-test-app

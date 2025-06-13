@@ -80,3 +80,5 @@ deploy_application_under_monitoring "$runtime_under_test"
 
 install_third_party_resources
 
+finish_scenario
+
