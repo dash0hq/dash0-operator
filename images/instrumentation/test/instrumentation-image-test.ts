@@ -503,7 +503,7 @@ async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestIma
     if (testCaseFilter.length > 0) {
       const shouldRunTestCase = testCaseFilter.some(selectedTestCase => testCase === selectedTestCase);
       if (!shouldRunTestCase) {
-        log(`- ${archRuntimeBaseImagePrefix}: skipping test case ${testCaseDir}`);
+        log(`${archRuntimeBaseImagePrefix.padEnd(32)}\t - skipping test case ${testCaseDir}`);
         skippedTestCases++;
         summary += chalk.yellow(`\n${archRuntimeBaseImagePrefix.padEnd(32)}\t- ${testCaseDir}: skipped`);
         continue;
@@ -586,7 +586,7 @@ function createRunTestCaseTask(
       }
 
       if (testCaseProperties.skip === true) {
-        log(chalk.yellow(`${archRuntimeBaseImagePrefix.padEnd(32)}\t- test case "${testCase}": SKIPPED`));
+        log(chalk.yellow(`${archRuntimeBaseImagePrefix.padEnd(32)}\t- skipping test case "${testCase}"`));
         skippedTestCases++;
         summary += chalk.yellow(`\n${archRuntimeBaseImagePrefix.padEnd(32)}\t- ${testCase}: skipped`);
         return;
@@ -640,16 +640,8 @@ function createRunTestCaseTask(
 
 async function runTestsWithinContainer(commandLineOptions: any): Promise<void> {
   // Note that this only actually works with a subset of the test cases, in particular, the instrumentation assets
-  // (Dash0 Node.js OTel distribution, Java OTel SDK, ...) are not present.
-
-  if (!commandLineOptions.withinContainerRuntime) {
-    console.error(
-      chalk.red(
-        'The runtime to test (c, jvm, node, dotnet, ...) has to be specified via --within-container-runtime when --within-container is used.',
-      ),
-    );
-    process.exit(1);
-  }
+  // (Dash0 Node.js OTel distribution, Java OTel SDK, ...) are not present, so tests that rely on an SDK/distribution
+  // to be actually loaded will not work.
 
   log('compiling the injector (zig build)');
   try {
@@ -660,20 +652,41 @@ async function runTestsWithinContainer(commandLineOptions: any): Promise<void> {
     process.exit(1);
   }
 
-  const runtime = commandLineOptions.withinContainerRuntime;
-  switch (runtime) {
-    case 'c':
-      await runTestsWithinContainerC(runtime);
-      break;
-    case 'jvm':
-      await runTestsWithinContainerJvm(runtime);
-      break;
-    case 'node':
-      await runTestsWithinContainerNode(runtime);
-      break;
-    default:
-      console.error(`runtime "${runtime}" not supported for --within-container-runtime`);
-      process.exit(1);
+  for (let runtime of allRuntimes) {
+    if (runtimesFilter.length > 0 && !runtimesFilter.includes(runtime)) {
+      log(chalk.yellow(`skipping runtime '${runtime}'`));
+      summary += chalk.yellow(`\nruntime '${runtime}': skipped`);
+      continue;
+    }
+    switch (runtime) {
+      case 'c':
+        await runTestsWithinContainerForRuntime(
+          //
+          beforeAllC,
+          runtime,
+          runCTestCaseWithinContainer,
+        );
+        break;
+      case 'jvm':
+        await runTestsWithinContainerForRuntime(
+          //
+          beforeAllJvm,
+          runtime,
+          runJvmTestCaseWithinContainer,
+        );
+        break;
+      case 'node':
+        await runTestsWithinContainerForRuntime(
+          //
+          noOp,
+          runtime,
+          runNodeTestCaseWithinContainer,
+        );
+        break;
+      default:
+        log(chalk.yellow(`runtime "${runtime}" not supported for --within-container, skipping`));
+        summary += chalk.yellow(`\nruntime "${runtime}" not supported for --within-container, skipping`);
+    }
   }
 
   printSummary();
@@ -683,12 +696,39 @@ async function noOp(): Promise<void> {
   return;
 }
 
-async function runTestsWithinContainerC(runtime: string): Promise<void> {
-  await runTestsWithinContainerForRuntime(
+async function runCTestCaseWithinContainer(runtime: string, testCase: string, cwd: string): Promise<void> {
+  await runTestCaseWithinContainer(
     //
-    beforeAllC,
     runtime,
-    runCTestCaseWithinContainer,
+    testCase,
+    cwd,
+    noOp,
+    `./app.o`,
+    [],
+  );
+}
+
+async function runJvmTestCaseWithinContainer(runtime: string, testCase: string, cwd: string): Promise<void> {
+  await runTestCaseWithinContainer(
+    //
+    runtime,
+    testCase,
+    cwd,
+    beforeTestCaseJvm,
+    'java',
+    ['-jar', '-Dotel.instrumentation.common.default-enabled=false', 'app.jar'],
+  );
+}
+
+async function runNodeTestCaseWithinContainer(runtime: string, testCase: string, cwd: string): Promise<void> {
+  await runTestCaseWithinContainer(
+    //
+    runtime,
+    testCase,
+    cwd,
+    noOp,
+    'node',
+    ['.'],
   );
 }
 
@@ -703,21 +743,6 @@ async function beforeAllC(): Promise<void> {
   }
 }
 
-async function runCTestCaseWithinContainer(testCase: string, cwd: string): Promise<void> {
-  await runTestCaseWithinContainer(
-    //
-    testCase,
-    cwd,
-    noOp,
-    `./app.o`,
-    [],
-  );
-}
-
-async function runTestsWithinContainerJvm(runtime: string): Promise<void> {
-  await runTestsWithinContainerForRuntime(beforeAllJvm, runtime, runJvmTestCaseWithinContainer);
-}
-
 async function beforeAllJvm(): Promise<void> {
   log('compiling jvm-test-utils');
   try {
@@ -727,14 +752,6 @@ async function beforeAllJvm(): Promise<void> {
     console.error(chalk.red('Compiling jvm-test-utils failed:\n', error.stderr || error.message || error));
     process.exit(1);
   }
-}
-
-async function runJvmTestCaseWithinContainer(testCase: string, cwd: string): Promise<void> {
-  await runTestCaseWithinContainer(testCase, cwd, beforeTestCaseJvm, 'java', [
-    '-jar',
-    '-Dotel.instrumentation.common.default-enabled=false',
-    'app.jar',
-  ]);
 }
 
 async function beforeTestCaseJvm(_: string, cwd: string): Promise<void> {
@@ -752,32 +769,13 @@ async function beforeTestCaseJvm(_: string, cwd: string): Promise<void> {
   });
 }
 
-async function runTestsWithinContainerNode(runtime: string): Promise<void> {
-  await runTestsWithinContainerForRuntime(
-    //
-    noOp,
-    runtime,
-    runNodeTestCaseWithinContainer,
-  );
-}
-
-async function runNodeTestCaseWithinContainer(testCase: string, cwd: string): Promise<void> {
-  await runTestCaseWithinContainer(
-    //
-    testCase,
-    cwd,
-    noOp,
-    'node',
-    ['.'],
-  );
-}
-
 async function runTestsWithinContainerForRuntime(
   beforeAll: () => Promise<void>,
   runtime: string,
-  runTestCase: (testCase: string, cwd: string) => Promise<void>,
+  runTestCase: (runtime: string, testCase: string, cwd: string) => Promise<void>,
 ): Promise<void> {
   await beforeAll();
+  const prefix = `runtime "${runtime}"`;
   const testCases = await readdir(`test/${runtime}/test-cases`, { withFileTypes: true });
   for (const testCaseDir of testCases) {
     if (!testCaseDir.isDirectory()) {
@@ -787,9 +785,9 @@ async function runTestsWithinContainerForRuntime(
     if (testCaseFilter.length > 0) {
       const shouldRunTestCase = testCaseFilter.some(selectedTestCase => testCaseDirName === selectedTestCase);
       if (!shouldRunTestCase) {
-        log(chalk.yellow(`- skipping test case ${testCaseDirName}`));
+        log(chalk.yellow(`${prefix}\t- skipping test case ${testCaseDirName}`));
         skippedTestCases++;
-        summary += chalk.yellow(`\n- ${testCaseDirName}: skipped`);
+        summary += chalk.yellow(`\n${prefix}\t- ${testCaseDirName}: skipped`);
         continue;
       }
     }
@@ -807,17 +805,18 @@ async function runTestsWithinContainerForRuntime(
     }
 
     if (testCaseProperties.skip === true) {
-      log(chalk.yellow(`- test case "${testCaseDirName}": SKIPPED`));
+      log(chalk.yellow(`${prefix}\t- skipping test case ${testCaseDirName}`));
       skippedTestCases++;
-      summary += chalk.yellow(`\n- ${testCaseDirName}: skipped`);
+      summary += chalk.yellow(`\n${prefix}\t- ${testCaseDirName}: skipped`);
       continue;
     }
 
-    await runTestCase(testCaseDirName, cwd);
+    await runTestCase(runtime, testCaseDirName, cwd);
   }
 }
 
 async function runTestCaseWithinContainer(
+  runtime: string,
   testCase: string,
   cwd: string,
   beforeTestCase: (testCase: string, cwd: string) => Promise<void>,
@@ -825,6 +824,7 @@ async function runTestCaseWithinContainer(
   testArgs: string[],
 ): Promise<void> {
   await beforeTestCase(testCase, cwd);
+  const prefix = `runtime "${runtime}"`;
   const environmentFile = readFileSync(`${cwd}/.env`, 'utf8');
   const envForTest = environmentFile
     //
@@ -889,9 +889,9 @@ async function runTestCaseWithinContainer(
               log(testCmdOutputStdErr);
             }
           }
-          log(chalk.green(`- test case "${testCase}": OK`));
-          summary += chalk.green(`\n- ${testCase}: OK`);
-          resolve();
+          log(chalk.green(`${prefix}\t- test case "${testCase}": OK`));
+          summary += chalk.green(`\n${prefix}\t- ${testCase}: OK`);
+          resolve(null);
         } else {
           let errMsg = `Test command "${testCmd}" terminated with exit code ${code}.`;
           if (testCmdOutputStdOut.length > 0) {
@@ -905,7 +905,7 @@ async function runTestCaseWithinContainer(
       });
     });
   } catch (error) {
-    handleTestCaseError('', testCase, testCmd, testArgs, error);
+    handleTestCaseError(`runtime "${runtime}"`, testCase, testCmd, testArgs, error);
   }
 }
 
