@@ -37,7 +37,7 @@ verify_kubectx() {
 
 setup_test_environment () {
   test-resources/bin/render-templates.sh
-  check_if_kubectx_is_kind_cluster
+  check_if_kubectx_is_kind_or_minikube_cluster
   determine_container_images
 }
 
@@ -229,7 +229,12 @@ build_all_images() {
   fi
 }
 
-check_if_kubectx_is_kind_cluster() {
+check_if_kubectx_is_kind_or_minikube_cluster() {
+  check_if_kubectx_is_kind
+  check_if_kubectx_is_minikube
+}
+
+check_if_kubectx_is_kind() {
   is_kind_cluster="false"
   if command -v kind >/dev/null 2>&1; then
     # kind is installed, check if the current kube context is a kind cluster
@@ -244,6 +249,23 @@ check_if_kubectx_is_kind_cluster() {
         return
       fi
     done <<< "$kind_clusters"
+  fi
+}
+
+check_if_kubectx_is_minikube() {
+  is_minikube_cluster="false"
+  if command -v minikube >/dev/null 2>&1; then
+    # minikube is installed, check if the current kube context is a minikube cluster
+    current_kubectx=$(kubectl config current-context)
+    minikube_clusters=$(minikube profile list --output=json | jq -r '.valid[].Name')
+    while IFS= read -r cluster; do
+      if [[ "$current_kubectx" = "$cluster" ]]; then
+        echo 'Detected minikube cluster, will run `eval $(minikube docker-env)`'
+        is_minikube_cluster="true"
+        eval $(minikube docker-env)
+        return
+      fi
+    done <<< "$minikube_clusters"
   fi
 }
 
@@ -546,3 +568,9 @@ trim() {
   printf '%s' "$var"
 }
 
+finish_scenario() {
+  if [[ "$is_minikube_cluster" = "true" ]]; then
+    echo 'Detected minikube cluster, will run `eval $(minikube docker-env -u)`'
+    eval $(minikube docker-env -u)
+  fi
+}
