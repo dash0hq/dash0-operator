@@ -7,9 +7,7 @@
   "scripts": {
     "lint": "tsc && eslint",
     "test": "node --experimental-strip-types instrumentation-image-test.ts",
-    "test-within-container-c": "node --experimental-strip-types instrumentation-image-test.ts --within-container --within-container-runtime c",
-    "test-within-container-jvm": "node --experimental-strip-types instrumentation-image-test.ts --within-container --within-container-runtime jvm",
-    "test-within-container-node": "node --experimental-strip-types instrumentation-image-test.ts --within-container --within-container-runtime node",
+    "test-within-container": "node --experimental-strip-types instrumentation-image-test.ts --within-container",
     "dev": "node --experimental-strip-types --watch instrumentation-image-test.ts"
   },
   "dependencies": {
