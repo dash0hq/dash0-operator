@@ -7,5 +7,7 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-fd .zig ../injector | entr npm run test-within-container-jvm
+find . -type f -name \*.o -delete
+find . -type f -name \*.class -delete
+find . -type f -name \*.jar -delete
 
