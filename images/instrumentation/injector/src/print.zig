@@ -6,13 +6,15 @@ const std = @import("std");
 const dash0_injector_debug_env_var_name = "DASH0_INJECTOR_DEBUG";
 const log_prefix = "[Dash0 injector] ";
 
-var is_debug = false;
+// TODO currently hard coded to true, needs to be fixed with reading the DASH0_INJECTOR_DEBUG variable from the original
+// environment read from /proc/self/environ.
+var is_debug = true;
 
 /// Initializes the is_debug flag based on the environment variable DASH0_INJECTOR_DEBUG.
 pub fn initDebugFlag() void {
-    if (std.posix.getenv(dash0_injector_debug_env_var_name)) |is_debug_raw| {
-        is_debug = std.ascii.eqlIgnoreCase("true", is_debug_raw);
-    }
+    // if (std.posix.getenv(dash0_injector_debug_env_var_name)) |is_debug_raw| {
+    //     is_debug = std.ascii.eqlIgnoreCase("true", is_debug_raw);
+    // }
 }
 
 pub fn isDebug() bool {

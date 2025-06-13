@@ -20,5 +20,6 @@ injector/zig-out
 injector-experiments/
 node.js/build.sh
 test/
+**/*.javac
 **/*.swp
 **/.DS_Store
