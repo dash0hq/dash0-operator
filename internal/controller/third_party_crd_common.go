@@ -39,6 +39,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/resources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
@@ -682,7 +683,7 @@ func validatePreconditions(
 	namespace := thirdPartyResource.GetNamespace()
 	name := thirdPartyResource.GetName()
 
-	monitoringRes, err := util.FindUniqueOrMostRecentResourceInScope(
+	monitoringRes, err := resources.FindUniqueOrMostRecentResourceInScope(
 		ctx,
 		resourceReconciler.K8sClient(),
 		thirdPartyResource.GetNamespace(),

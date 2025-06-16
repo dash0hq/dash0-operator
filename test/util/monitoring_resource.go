@@ -43,6 +43,26 @@ var (
 	}
 )
 
+func DefaultMonitoringResource() *dash0v1alpha1.Dash0Monitoring {
+	return &dash0v1alpha1.Dash0Monitoring{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      MonitoringResourceName,
+			Namespace: TestNamespaceName,
+		},
+		Spec: MonitoringResourceDefaultSpec,
+	}
+}
+
+func DefaultMonitoringResourceWithName(monitoringResourceName types.NamespacedName) *dash0v1alpha1.Dash0Monitoring {
+	return &dash0v1alpha1.Dash0Monitoring{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      monitoringResourceName.Name,
+			Namespace: monitoringResourceName.Namespace,
+		},
+		Spec: MonitoringResourceDefaultSpec,
+	}
+}
+
 func CreateDefaultMonitoringResource(
 	ctx context.Context,
 	k8sClient client.Client,
@@ -51,13 +71,7 @@ func CreateDefaultMonitoringResource(
 	return CreateMonitoringResource(
 		ctx,
 		k8sClient,
-		&dash0v1alpha1.Dash0Monitoring{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      monitoringResourceName.Name,
-				Namespace: monitoringResourceName.Namespace,
-			},
-			Spec: MonitoringResourceDefaultSpec,
-		},
+		DefaultMonitoringResourceWithName(monitoringResourceName),
 	)
 }
 
@@ -275,6 +289,14 @@ func LoadMonitoringResourceByName(
 	}
 
 	return monitoringResource
+}
+
+func VerifyMonitoringResourceDoesNotExist(
+	ctx context.Context,
+	k8sClient client.Client,
+	g Gomega,
+) {
+	VerifyMonitoringResourceByNameDoesNotExist(ctx, k8sClient, g, MonitoringResourceQualifiedName)
 }
 
 func VerifyMonitoringResourceByNameDoesNotExist(

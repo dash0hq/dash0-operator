@@ -1,21 +1,18 @@
 // SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package util
+package resources
 
 import (
 	"context"
 	"fmt"
 	"sort"
-	"time"
 
 	"github.com/go-logr/logr"
-	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -29,11 +26,6 @@ type CheckResourceResult struct {
 	Resource             dash0common.Dash0Resource
 	StopReconcile        bool
 	ResourceDoesNotExist bool
-}
-
-type DanglingEventsTimeouts struct {
-	InitialTimeout time.Duration
-	Backoff        wait.Backoff
 }
 
 func newCheckResourceResult(
@@ -81,7 +73,7 @@ func CheckIfNamespaceExists(
 //     StopReconcile=true and ResourceDoesNotExist=true, the caller is expected to stop the reconciliation (without
 //     requeing it).
 //   - If the resource exists but has already been marked as degraded by a previous reconcile cycle, the function will
-//     skip the uniqueness check and return the resource StopReconcile=false. The caller is expected to handle the
+//     skip the uniqueness check and return the resource and StopReconcile=false. The caller is expected to handle the
 //     degraded resource adequately.
 //   - If there are multiple resources in the namespace, but the given resource is the most recent one, the function
 //     will return the resource together StopReconcile=false, since the newest resource should be reconciled. The
@@ -107,11 +99,6 @@ func VerifyThatUniqueNonDegradedResourceExists(
 	)
 	if err != nil || checkResourceResult.StopReconcile || checkResourceResult.ResourceDoesNotExist {
 		return checkResourceResult, err
-	}
-	if checkResourceResult.Resource.IsDegraded() {
-		// If the resource has already been marked as degraded by a previous reconcile cylce, we do not check for
-		// uniqueness. The caller needs to handle this situation separately.
-		return checkResourceResult, nil
 	}
 	checkResourceResult.StopReconcile, err =
 		VerifyThatResourceIsUniqueInScope(
@@ -172,8 +159,6 @@ func VerifyThatResourceExists(
 // requeue it.
 // If any error is encountered when searching for other resource etc., that error will be returned, the caller is
 // expected to ignore the bool result and requeue the reconcile request.
-// No checks will be performed for degraded resources, instead (false, nil) is returned immediately. The caller is
-// expected to handle degraded resources separately.
 func VerifyThatResourceIsUniqueInScope(
 	ctx context.Context,
 	k8sClient client.Client,
@@ -182,42 +167,38 @@ func VerifyThatResourceIsUniqueInScope(
 	updateStatusFailedMessage string,
 	logger *logr.Logger,
 ) (bool, error) {
-	if resource.IsDegraded() {
-		// If the resource has already been marked as degraded by a previous reconcile cylce, we do not check for
-		// uniqueness. The caller needs to handle this situation separately.
-		return false, nil
-	}
-
 	scope, allResourcesInScope, err :=
 		findAllResourceInstancesInScope(ctx, k8sClient, req, resource, logger)
 	if err != nil {
+		// stop reconciliation with error
 		return true, err
 	}
 
 	allResources := resource.All(allResourcesInScope)
-	nonDegradedResources := make([]client.Object, 0)
 
-	for _, r := range allResources {
-		// For the purpose of determining whether the resource we are currently reconciling is unique in its scope, we
-		// ignore other resources that have already been marked as degraded.
-		if !r.IsDegraded() {
-			nonDegradedResources = append(nonDegradedResources, r.Get())
-		}
-	}
-
-	if len(nonDegradedResources) <= 1 {
-		// The given resource is unique.
+	if len(allResources) <= 1 {
+		// The given resource is the only existing resource, that is, it is unique.
 		return false, nil
 	}
 
-	// There are multiple instances of the resource in scope (that is, in the same namespace for namespaced
-	// resources, or in the same cluster for cluster-scoped resources). If the resource that is currently being
-	// reconciled is the one that has been most recently created, we assume that this is the source of truth in terms
-	// of configuration settings etc., and we ignore the other instances in this reconcile request (they will be
-	// handled when they are being reconciled). If the currently reconciled resource is not the most recent one, we
-	// set its status to degraded.
-	sort.Sort(SortByCreationTimestamp(nonDegradedResources))
-	mostRecentResource := nonDegradedResources[len(nonDegradedResources)-1]
+	allResourcesAsClientObjects := make([]client.Object, 0)
+	for _, r := range allResources {
+		if !resource.IsMarkedForDeletion() {
+			// For the purpose of determining whether the resource we are currently reconciling is unique in its scope,
+			// we ignore other resources that have already been marked for deletion.
+			allResourcesAsClientObjects = append(allResourcesAsClientObjects, r.Get())
+		}
+	}
+
+	// We already know that there actually are multiple instances of the resource in scope (that is, in the same
+	// namespace for namespaced resources, or in the same cluster for cluster-scoped resources).
+	// If the resource that is currently being reconciled is the one that has been most recently created, we assume that
+	// this is should be the source of truth in terms of configuration settings etc., and we set all other resources to
+	// status degraded.
+	// If the currently reconciled resource is not the most recent one, we set its status to degraded and stop
+	// reconciling it.
+	sort.Sort(SortByCreationTimestamp(allResourcesAsClientObjects))
+	mostRecentResource := allResourcesAsClientObjects[len(allResourcesAsClientObjects)-1]
 	if mostRecentResource.GetUID() == resource.GetUID() {
 		logger.Info(fmt.Sprintf(
 			"At least one other %[1]s exists in this %[2]s. This %[1]s resource (%[3]s) is the most recent one."+
@@ -229,7 +210,7 @@ func VerifyThatResourceIsUniqueInScope(
 
 		// Iterate over all existing resources and mark all other (older) resources as degraded. We cannot rely on
 		// Reconcile being called for them anytime soon, so we need to take care of this here.
-		for _, r := range nonDegradedResources {
+		for _, r := range allResourcesAsClientObjects {
 			if r.GetUID() == resource.GetUID() {
 				continue
 			}
@@ -241,27 +222,47 @@ func VerifyThatResourceIsUniqueInScope(
 			}
 		}
 
-		// continue with the reconcile request for this resource
+		// continue with the reconcile request for this resource (it is the most recent one)
 		return false, nil
 	} else {
-		logger.Info(
-			fmt.Sprintf(
-				"At least one other %[1]s exists in this %[2]s, and at least one other %[1]s has been created "+
-					"more recently than this one. Setting the state of this resource to degraded.",
-				resource.GetNaturalLanguageResourceTypeName(),
-				scope,
-			),
-			fmt.Sprintf("most recently created %s", resource.GetNaturalLanguageResourceTypeName()),
-			fmt.Sprintf("%s (%s)", mostRecentResource.GetName(), mostRecentResource.GetUID()),
-		)
-		markAsDegradedDueToNonUniqueResource(resource, scope, logger)
-		if err := k8sClient.Status().Update(ctx, resource.Get()); err != nil {
-			logger.Error(err, updateStatusFailedMessage)
-			return true, err
+		// The resource that is currently being reconciled is not the most recent one, so we set its status to degraded
+		// (unless it is already degraded for other reaons).
+		if !resource.IsDegraded() {
+			logger.Info(
+				fmt.Sprintf(
+					"At least one other %[1]s exists in this %[2]s, and at least one other %[1]s has been created "+
+						"more recently than this one. Setting the state of this resource to degraded.",
+					resource.GetNaturalLanguageResourceTypeName(),
+					scope,
+				),
+				fmt.Sprintf("most recently created %s", resource.GetNaturalLanguageResourceTypeName()),
+				fmt.Sprintf("%s (%s)", mostRecentResource.GetName(), mostRecentResource.GetUID()),
+			)
+			markAsDegradedDueToNonUniqueResource(resource, scope, logger)
+			if err := k8sClient.Status().Update(ctx, resource.Get()); err != nil {
+				logger.Error(err, updateStatusFailedMessage)
+				return true, err
+			}
 		}
-		// continue with the reconcile request for this resource, the caller still needs to handle the degraded resource
-		// adequately.
-		return false, nil
+
+		// Iterate over all existing resources and mark all resources as degraded except for the most recent one. We
+		// cannot rely on Reconcile being called for them anytime soon, so we need to take care of this here.
+		for _, r := range allResourcesAsClientObjects {
+			if r.GetUID() == mostRecentResource.GetUID() || r.GetUID() == resource.GetUID() {
+				// Do not set the most recent resource to degraded; also, the resource that is currently being
+				// reconciled has already been set to degraded above, so we skip it here.
+				continue
+			}
+			markAsDegradedDueToNonUniqueResource(r.(dash0common.Dash0Resource), scope, logger)
+			if err = k8sClient.Status().Update(ctx, r); err != nil {
+				logger.Error(err, updateStatusFailedMessage)
+				// Deliberately not returning the error here, instead continue the loop and try to mark as many of the
+				// other resources as degraded as possible.
+			}
+		}
+
+		// stop reconciling this resource, it is not the most recent one
+		return true, nil
 	}
 }
 
@@ -274,25 +275,6 @@ func markAsDegradedDueToNonUniqueResource(resource dash0common.Dash0Resource, sc
 			resource.GetNaturalLanguageResourceTypeName(),
 			scope,
 		))
-}
-
-func MarkOperatorConfigurationAsDegradedAndUpdateStatus(
-	ctx context.Context,
-	subResourceWriter client.SubResourceWriter,
-	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
-	reason string,
-	message string,
-	logger *logr.Logger,
-) error {
-	operatorConfigurationResource.EnsureResourceIsMarkedAsDegraded(
-		reason,
-		message,
-	)
-	if err := subResourceWriter.Update(ctx, operatorConfigurationResource); err != nil {
-		logger.Error(err, "Failed to update Dash0 operator status conditions, requeuing reconcile request.")
-		return err
-	}
-	return nil
 }
 
 func findAllResourceInstancesInScope(
@@ -488,32 +470,4 @@ func addFinalizerIfNecessary(
 	}
 	// The resource already had the finalizer, no update necessary.
 	return nil
-}
-
-func CreateEnvVarForAuthorization(
-	dash0Authorization dash0v1alpha1.Authorization,
-	envVarName string,
-) (corev1.EnvVar, error) {
-	token := dash0Authorization.Token
-	secretRef := dash0Authorization.SecretRef
-	if token != nil && *token != "" {
-		return corev1.EnvVar{
-			Name:  envVarName,
-			Value: *token,
-		}, nil
-	} else if secretRef != nil && secretRef.Name != "" && secretRef.Key != "" {
-		return corev1.EnvVar{
-			Name: envVarName,
-			ValueFrom: &corev1.EnvVarSource{
-				SecretKeyRef: &corev1.SecretKeySelector{
-					LocalObjectReference: corev1.LocalObjectReference{
-						Name: secretRef.Name,
-					},
-					Key: secretRef.Key,
-				},
-			},
-		}, nil
-	} else {
-		return corev1.EnvVar{}, fmt.Errorf("neither token nor secretRef provided for the Dash0 exporter")
-	}
 }

@@ -42,7 +42,7 @@ var (
 
 var _ = Describe("The monitoring resource controller", Ordered, func() {
 	ctx := context.Background()
-	var createdObjects []client.Object
+	var createdObjectsMonitoringControllerTest []client.Object
 
 	var monitoringReconciler *MonitoringReconciler
 
@@ -52,7 +52,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 	})
 
 	BeforeEach(func() {
-		createdObjects = make([]client.Object, 0)
+		createdObjectsMonitoringControllerTest = make([]client.Object, 0)
 
 		instrumenter := instrumentation.NewInstrumenter(
 			k8sClient,
@@ -87,7 +87,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 	})
 
 	AfterEach(func() {
-		createdObjects = DeleteAllCreatedObjects(ctx, k8sClient, createdObjects)
+		createdObjectsMonitoringControllerTest = DeleteAllCreatedObjects(ctx, k8sClient, createdObjectsMonitoringControllerTest)
 		DeleteAllEvents(ctx, clientset, namespace)
 	})
 
@@ -148,15 +148,15 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 				triggerReconcileRequestForName(ctx, monitoringReconciler, thirdName)
 
 				Eventually(func(g Gomega) {
-					resource1Available := loadCondition(ctx, firstName, dash0v1alpha1.ConditionTypeAvailable)
-					resource1Degraded := loadCondition(ctx, firstName, dash0v1alpha1.ConditionTypeDegraded)
-					resource2Available := loadCondition(ctx, secondName, dash0v1alpha1.ConditionTypeAvailable)
-					resource2Degraded := loadCondition(ctx, secondName, dash0v1alpha1.ConditionTypeDegraded)
-					resource3Available := loadCondition(ctx, thirdName, dash0v1alpha1.ConditionTypeAvailable)
-					resource3Degraded := loadCondition(ctx, thirdName, dash0v1alpha1.ConditionTypeDegraded)
+					resource1Available := LoadMonitoringResourceStatusCondition(ctx, k8sClient, firstName, dash0v1alpha1.ConditionTypeAvailable)
+					resource1Degraded := LoadMonitoringResourceStatusCondition(ctx, k8sClient, firstName, dash0v1alpha1.ConditionTypeDegraded)
+					resource2Available := LoadMonitoringResourceStatusCondition(ctx, k8sClient, secondName, dash0v1alpha1.ConditionTypeAvailable)
+					resource2Degraded := LoadMonitoringResourceStatusCondition(ctx, k8sClient, secondName, dash0v1alpha1.ConditionTypeDegraded)
+					resource3Available := LoadMonitoringResourceStatusCondition(ctx, k8sClient, thirdName, dash0v1alpha1.ConditionTypeAvailable)
+					resource3Degraded := LoadMonitoringResourceStatusCondition(ctx, k8sClient, thirdName, dash0v1alpha1.ConditionTypeDegraded)
 
 					// The first two resource should have been marked as degraded.
-					verifyCondition(
+					VerifyResourceStatusCondition(
 						g,
 						resource1Available,
 						metav1.ConditionFalse,
@@ -164,7 +164,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 						"There is a more recently created Dash0 monitoring resource in this namespace, please remove all "+
 							"but one resource instance.",
 					)
-					verifyCondition(
+					VerifyResourceStatusCondition(
 						g,
 						resource1Degraded,
 						metav1.ConditionTrue,
@@ -172,15 +172,15 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 						"There is a more recently created Dash0 monitoring resource in this namespace, please remove all "+
 							"but one resource instance.",
 					)
-					verifyCondition(g, resource2Available, metav1.ConditionFalse, "NewerResourceIsPresent",
+					VerifyResourceStatusCondition(g, resource2Available, metav1.ConditionFalse, "NewerResourceIsPresent",
 						"There is a more recently created Dash0 monitoring resource in this namespace, please remove all "+
 							"but one resource instance.")
-					verifyCondition(g, resource2Degraded, metav1.ConditionTrue, "NewerResourceIsPresent",
+					VerifyResourceStatusCondition(g, resource2Degraded, metav1.ConditionTrue, "NewerResourceIsPresent",
 						"There is a more recently created Dash0 monitoring resource in this namespace, please remove all "+
 							"but one resource instance.")
 
 					// The third (and most recent) resource should have been marked as available.
-					verifyCondition(
+					VerifyResourceStatusCondition(
 						g,
 						resource3Available,
 						metav1.ConditionTrue,
@@ -191,6 +191,17 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 				}, timeout, pollingInterval).Should(Succeed())
 			})
+
+			It("should self-heal a degraded resource state", func() {
+				monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
+				monitoringResource.EnsureResourceIsMarkedAsDegraded("TestReason", "This is a test message.")
+				Expect(k8sClient.Status().Update(ctx, monitoringResource)).To(Succeed())
+				verifyMonitoringResourceIsDegraded(ctx)
+
+				// reconciling the resource should self-heal the degraded state
+				triggerReconcileRequest(ctx, monitoringReconciler)
+				verifyMonitoringResourceIsAvailable(ctx)
+			})
 		})
 
 		// Note: This is only one test case for the "instrument existing workloads" scenario, describing the most basic
@@ -198,7 +209,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 		DescribeTable("when instrumenting existing workloads", func(config WorkloadTestConfig) {
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
-			createdObjects = append(createdObjects, workload.Get())
+			createdObjectsMonitoringControllerTest = append(createdObjectsMonitoringControllerTest, workload.Get())
 
 			triggerReconcileRequest(ctx, monitoringReconciler)
 
@@ -254,7 +265,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
-			createdObjects = append(createdObjects, workload.Get())
+			createdObjectsMonitoringControllerTest = append(createdObjectsMonitoringControllerTest, workload.Get())
 
 			By("deleting the Dash0 monitoring resource")
 			monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
@@ -267,6 +278,8 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			workload = config.GetFn(ctx, k8sClient, TestNamespaceName, name)
 			config.VerifyFn(workload)
 			VerifyWebhookIgnoreOnceLabelIsPresent(workload.GetObjectMeta())
+
+			verifyMonitoringResourceDoesNotExist(ctx)
 		}, Entry("should revert an instrumented cron job", WorkloadTestConfig{
 			WorkloadNamePrefix: CronJobNamePrefix,
 			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateInstrumentedCronJob),
@@ -315,7 +328,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
-			createdObjects = append(createdObjects, workload.Get())
+			createdObjectsMonitoringControllerTest = append(createdObjectsMonitoringControllerTest, workload.Get())
 
 			triggerReconcileRequest(ctx, monitoringReconciler)
 			VerifyNoEvents(ctx, clientset, namespace)
@@ -373,7 +386,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
-			createdObjects = append(createdObjects, workload.Get())
+			createdObjectsMonitoringControllerTest = append(createdObjectsMonitoringControllerTest, workload.Get())
 
 			triggerReconcileRequest(ctx, monitoringReconciler)
 			VerifyNoEvents(ctx, clientset, namespace)
@@ -442,7 +455,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
-			createdObjects = append(createdObjects, workload.Get())
+			createdObjectsMonitoringControllerTest = append(createdObjectsMonitoringControllerTest, workload.Get())
 
 			triggerReconcileRequest(ctx, monitoringReconciler)
 			VerifyNoEvents(ctx, clientset, namespace)
@@ -515,7 +528,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
-			createdObjects = append(createdObjects, workload.Get())
+			createdObjectsMonitoringControllerTest = append(createdObjectsMonitoringControllerTest, workload.Get())
 
 			triggerReconcileRequest(ctx, monitoringReconciler)
 			VerifyNoEvents(ctx, clientset, namespace)
@@ -584,7 +597,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
-			createdObjects = append(createdObjects, workload.Get())
+			createdObjectsMonitoringControllerTest = append(createdObjectsMonitoringControllerTest, workload.Get())
 
 			triggerReconcileRequest(ctx, monitoringReconciler)
 			verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
@@ -657,7 +670,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
-			createdObjects = append(createdObjects, workload.Get())
+			createdObjectsMonitoringControllerTest = append(createdObjectsMonitoringControllerTest, workload.Get())
 
 			triggerReconcileRequest(ctx, monitoringReconciler)
 			verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
@@ -714,7 +727,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 	Describe("when the Dash0 monitoring resource does not exist", func() {
 		It("should not instrument workloads", func() {
-			createdObjects = verifyThatDeploymentIsNotBeingInstrumented(ctx, monitoringReconciler, createdObjects)
+			createdObjectsMonitoringControllerTest = verifyThatDeploymentIsNotBeingInstrumented(ctx, monitoringReconciler, createdObjectsMonitoringControllerTest)
 		})
 	})
 
@@ -730,7 +743,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 		})
 
 		It("should instrument workloads", func() {
-			createdObjects = verifyThatDeploymentIsInstrumented(ctx, monitoringReconciler, createdObjects)
+			createdObjectsMonitoringControllerTest = verifyThatDeploymentIsInstrumented(ctx, monitoringReconciler, createdObjectsMonitoringControllerTest)
 		})
 	})
 
@@ -775,7 +788,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 		})
 
 		It("should not instrument workloads", func() {
-			createdObjects = verifyThatDeploymentIsNotBeingInstrumented(ctx, monitoringReconciler, createdObjects)
+			createdObjectsMonitoringControllerTest = verifyThatDeploymentIsNotBeingInstrumented(ctx, monitoringReconciler, createdObjectsMonitoringControllerTest)
 		})
 	})
 
@@ -791,7 +804,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 		})
 
 		It("should not instrument workloads", func() {
-			createdObjects = verifyThatDeploymentIsNotBeingInstrumented(ctx, monitoringReconciler, createdObjects)
+			createdObjectsMonitoringControllerTest = verifyThatDeploymentIsNotBeingInstrumented(ctx, monitoringReconciler, createdObjectsMonitoringControllerTest)
 		})
 	})
 
@@ -815,6 +828,8 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			triggerReconcileRequest(ctx, monitoringReconciler)
 
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
+
+			verifyMonitoringResourceDoesNotExist(ctx)
 		})
 	})
 })
@@ -876,26 +891,28 @@ func verifyMonitoringResourceIsAvailable(ctx context.Context) *metav1.Condition 
 		availableCondition = meta.FindStatusCondition(monitoringResource.Status.Conditions, string(dash0v1alpha1.ConditionTypeAvailable))
 		g.Expect(availableCondition).NotTo(BeNil())
 		g.Expect(availableCondition.Status).To(Equal(metav1.ConditionTrue))
-		degraded := meta.FindStatusCondition(monitoringResource.Status.Conditions, string(dash0v1alpha1.ConditionTypeDegraded))
-		g.Expect(degraded).To(BeNil())
+		degradedCondition := meta.FindStatusCondition(monitoringResource.Status.Conditions, string(dash0v1alpha1.ConditionTypeDegraded))
+		g.Expect(degradedCondition).To(BeNil())
 	}, timeout, pollingInterval).Should(Succeed())
 	return availableCondition
 }
 
-func loadCondition(ctx context.Context, monitoringResourceName types.NamespacedName, conditionType dash0v1alpha1.ConditionType) *metav1.Condition {
-	monitoringResource := LoadMonitoringResourceByNameOrFail(ctx, k8sClient, Default, monitoringResourceName)
-	return meta.FindStatusCondition(monitoringResource.Status.Conditions, string(conditionType))
+func verifyMonitoringResourceIsDegraded(ctx context.Context) *metav1.Condition {
+	var availableCondition *metav1.Condition
+	By("Verifying status conditions")
+	Eventually(func(g Gomega) {
+		monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, g)
+		availableCondition = meta.FindStatusCondition(monitoringResource.Status.Conditions, string(dash0v1alpha1.ConditionTypeAvailable))
+		g.Expect(availableCondition).NotTo(BeNil())
+		g.Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse))
+		degradedCondition := meta.FindStatusCondition(monitoringResource.Status.Conditions, string(dash0v1alpha1.ConditionTypeDegraded))
+		g.Expect(degradedCondition.Status).To(Equal(metav1.ConditionTrue))
+	}, timeout, pollingInterval).Should(Succeed())
+	return availableCondition
 }
 
-func verifyCondition(
-	g Gomega,
-	condition *metav1.Condition,
-	expectedStatus metav1.ConditionStatus,
-	expectedReason string,
-	expectedMessage string,
-) {
-	g.Expect(condition).NotTo(BeNil())
-	g.Expect(condition.Status).To(Equal(expectedStatus))
-	g.Expect(condition.Reason).To(Equal(expectedReason))
-	g.Expect(condition.Message).To(Equal(expectedMessage))
+func verifyMonitoringResourceDoesNotExist(ctx context.Context) {
+	Eventually(func(g Gomega) {
+		VerifyMonitoringResourceDoesNotExist(ctx, k8sClient, g)
+	}, timeout, pollingInterval).Should(Succeed())
 }

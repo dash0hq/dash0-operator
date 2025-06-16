@@ -14,6 +14,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -21,6 +22,7 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
 
@@ -1195,4 +1197,42 @@ func DeleteAllEvents(
 	allEvents, err := clientset.CoreV1().Events(namespace).List(ctx, metav1.ListOptions{})
 	Expect(err).NotTo(HaveOccurred())
 	Expect(allEvents.Items).To(BeEmpty())
+}
+
+func LoadMonitoringResourceStatusCondition(
+	ctx context.Context,
+	k8sClient client.Client,
+	monitoringResourceName types.NamespacedName,
+	conditionType dash0v1alpha1.ConditionType,
+) *metav1.Condition {
+	monitoringResource := LoadMonitoringResourceByNameOrFail(ctx, k8sClient, Default, monitoringResourceName)
+	return meta.FindStatusCondition(monitoringResource.Status.Conditions, string(conditionType))
+}
+
+func LoadOperatorConfigurationResourceStatusCondition(
+	ctx context.Context,
+	k8sClient client.Client,
+	operatorConfigurationResourceName string,
+	conditionType dash0v1alpha1.ConditionType,
+) *metav1.Condition {
+	operatorConfigurationResource := LoadOperatorConfigurationResourceByNameOrFail(
+		ctx,
+		k8sClient,
+		Default,
+		operatorConfigurationResourceName,
+	)
+	return meta.FindStatusCondition(operatorConfigurationResource.Status.Conditions, string(conditionType))
+}
+
+func VerifyResourceStatusCondition(
+	g Gomega,
+	condition *metav1.Condition,
+	expectedStatus metav1.ConditionStatus,
+	expectedReason string,
+	expectedMessage string,
+) {
+	g.Expect(condition).NotTo(BeNil())
+	g.Expect(condition.Status).To(Equal(expectedStatus))
+	g.Expect(condition.Reason).To(Equal(expectedReason))
+	g.Expect(condition.Message).To(Equal(expectedMessage))
 }

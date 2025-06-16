@@ -1,19 +1,17 @@
-// SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+// SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package controller
+package resources
 
 import (
 	"fmt"
 	"path/filepath"
 	"runtime"
-	"time"
 
 	persesv1alpha1 "github.com/perses/perses-operator/api/v1alpha1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -29,23 +27,17 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 )
 
-const (
-	timeout         = 5 * time.Second
-	pollingInterval = 50 * time.Millisecond
-)
-
 var (
 	mgr       ctrl.Manager
 	cfg       *rest.Config
 	k8sClient client.Client
 	clientset *kubernetes.Clientset
-	recorder  record.EventRecorder
 	testEnv   *envtest.Environment
 )
 
-func TestController(t *testing.T) {
+func TestResources(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Controller Suite")
+	RunSpecs(t, "Resources Util Suite")
 }
 
 var _ = BeforeSuite(func() {
@@ -82,7 +74,6 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).NotTo(HaveOccurred())
 	Expect(mgr).NotTo(BeNil())
-	recorder = mgr.GetEventRecorderFor("dash0-controller")
 })
 
 var _ = AfterSuite(func() {

@@ -29,12 +29,6 @@ var (
 		Name: OperatorConfigurationResourceName,
 	}
 
-	OperatorConfigurationResourceWithoutSelfMonitoringWithoutAuth = dash0v1alpha1.Dash0OperatorConfigurationSpec{
-		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
-			Enabled: ptr.To(false),
-		},
-	}
-
 	OperatorConfigurationResourceWithoutExport = dash0v1alpha1.Dash0OperatorConfigurationSpec{
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 			Enabled: ptr.To(false),
@@ -197,6 +191,36 @@ func CreateOperatorConfigurationResourceWithSpec(
 		&dash0v1alpha1.Dash0OperatorConfiguration{
 			ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
 			Spec:       operatorConfigurationSpec,
+		})
+	Expect(err).ToNot(HaveOccurred())
+	return operatorConfigurationResource
+}
+
+func CreateOperatorConfigurationResourceWithName(
+	ctx context.Context,
+	k8sClient client.Client,
+	resourceName string,
+) *dash0v1alpha1.Dash0OperatorConfiguration {
+	operatorConfigurationResource, err := CreateOperatorConfigurationResource(
+		ctx,
+		k8sClient,
+		&dash0v1alpha1.Dash0OperatorConfiguration{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: resourceName,
+			},
+			Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+				SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+					Enabled: ptr.To(false),
+				},
+				Export: &dash0v1alpha1.Export{
+					Dash0: &dash0v1alpha1.Dash0Configuration{
+						Endpoint: EndpointDash0Test,
+						Authorization: dash0v1alpha1.Authorization{
+							Token: &AuthorizationTokenTest,
+						},
+					},
+				},
+			},
 		})
 	Expect(err).ToNot(HaveOccurred())
 	return operatorConfigurationResource

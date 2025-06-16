@@ -22,6 +22,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/resources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/workloads"
 )
@@ -146,7 +147,7 @@ func (i *Instrumenter) InstrumentAtStartup(
 				Name:      dash0MonitoringResource.Name,
 			},
 		}
-		checkResourceResult, err := util.VerifyThatUniqueNonDegradedResourceExists(
+		checkResourceResult, err := resources.VerifyThatUniqueNonDegradedResourceExists(
 			ctx,
 			i.Client,
 			pseudoReconcileRequest,

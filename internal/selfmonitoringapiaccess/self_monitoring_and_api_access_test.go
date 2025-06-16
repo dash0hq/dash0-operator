@@ -707,7 +707,7 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 				authTokenClient1,
 				authTokenClient2,
 			}
-			createdObjects []client.Object
+			createdObjectsSelfMonitoringTest []client.Object
 		)
 
 		BeforeEach(func() {
@@ -717,14 +717,14 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 		})
 
 		AfterEach(func() {
-			createdObjects = DeleteAllCreatedObjects(ctx, k8sClient, createdObjects)
+			createdObjectsSelfMonitoringTest = DeleteAllCreatedObjects(ctx, k8sClient, createdObjectsSelfMonitoringTest)
 		})
 
 		DescribeTable("should fetch and decode the auth token", func(testConfig exchangeTestConfig) {
 			if testConfig.secret != nil {
 				EnsureOperatorNamespaceExists(ctx, k8sClient)
 				Expect(k8sClient.Create(ctx, testConfig.secret)).To(Succeed())
-				createdObjects = append(createdObjects, testConfig.secret)
+				createdObjectsSelfMonitoringTest = append(createdObjectsSelfMonitoringTest, testConfig.secret)
 			}
 			err := ExchangeSecretRefForToken(
 				ctx,
