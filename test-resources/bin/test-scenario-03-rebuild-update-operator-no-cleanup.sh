@@ -7,6 +7,7 @@ set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"/../..
 
+operator_namespace=${OPERATOR_NAMESPACE:-operator-namespace}
 target_namespace=${1:-test-namespace}
 
 source test-resources/bin/util
@@ -20,7 +21,7 @@ echo "STEP $step_counter: rebuild images"
 build_all_images
 finish_step
 
-echo "STEP $step_counter: deploy the Dash0 operator using helm"
+echo "STEP $step_counter: update the Dash0 operator using helm"
 update_via_helm
 finish_step
 

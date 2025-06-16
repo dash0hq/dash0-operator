@@ -30,7 +30,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 	ctx := context.Background()
 	logger := log.FromContext(ctx)
 
-	var createdObjects []client.Object
+	var createdObjectsCollectorManagerTest []client.Object
 
 	var manager *CollectorManager
 
@@ -40,7 +40,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 	})
 
 	BeforeEach(func() {
-		createdObjects = make([]client.Object, 0)
+		createdObjectsCollectorManagerTest = make([]client.Object, 0)
 		oTelColResourceManager := &otelcolresources.OTelColResourceManager{
 			Client:                    k8sClient,
 			Scheme:                    k8sClient.Scheme(),
@@ -56,7 +56,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 	})
 
 	AfterEach(func() {
-		createdObjects = DeleteAllCreatedObjects(ctx, k8sClient, createdObjects)
+		createdObjectsCollectorManagerTest = DeleteAllCreatedObjects(ctx, k8sClient, createdObjectsCollectorManagerTest)
 		DeleteAllEvents(ctx, clientset, operatorNamespace)
 		err := k8sClient.DeleteAllOf(ctx, &corev1.ConfigMap{}, client.InNamespace(operatorNamespace))
 		Expect(err).ToNot(HaveOccurred())
@@ -177,7 +177,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 					},
 				},
 			)
-			createdObjects = append(createdObjects, monitoringResource)
+			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, monitoringResource)
 			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
@@ -206,7 +206,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 					},
 				},
 			)
-			createdObjects = append(createdObjects, monitoringResource)
+			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, monitoringResource)
 
 			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
 				ctx,
@@ -225,7 +225,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 				ctx,
 				k8sClient,
 			)
-			createdObjects = append(createdObjects, monitoringResource)
+			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, monitoringResource)
 			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
@@ -325,7 +325,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 				ctx,
 				k8sClient,
 			)
-			createdObjects = append(createdObjects, existingMonitoringResource)
+			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, existingMonitoringResource)
 			triggeringMonitoringResource := &dash0v1alpha1.Dash0Monitoring{
 				Spec: dash0v1alpha1.Dash0MonitoringSpec{
 					Export: &dash0v1alpha1.Export{
@@ -355,7 +355,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 				ctx,
 				k8sClient,
 			)
-			createdObjects = append(createdObjects, existingMonitoringResource)
+			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, existingMonitoringResource)
 			triggeringMonitoringResource := &dash0v1alpha1.Dash0Monitoring{
 				Spec: dash0v1alpha1.Dash0MonitoringSpec{},
 			}
@@ -382,7 +382,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 				ctx,
 				k8sClient,
 			)
-			createdObjects = append(createdObjects, resource)
+			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, resource)
 		})
 
 		It("should update the resources", func() {
@@ -444,7 +444,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 
 			resourceName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-monitoring-test-resource-1"}
 			monitoringResource := EnsureMonitoringResourceExistsInNamespaceAndIsAvailable(ctx, k8sClient, resourceName)
-			createdObjects = append(createdObjects, monitoringResource)
+			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, monitoringResource)
 
 			// Let the manager create the collector so there is something to delete.
 			err, _ := manager.ReconcileOpenTelemetryCollector(
@@ -512,15 +512,15 @@ var _ = Describe("The collector manager", Ordered, func() {
 			// create multiple monitoring resources
 			firstName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-monitoring-test-resource-1"}
 			firstDash0MonitoringResource := EnsureMonitoringResourceExistsInNamespaceAndIsAvailable(ctx, k8sClient, firstName)
-			createdObjects = append(createdObjects, firstDash0MonitoringResource)
+			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, firstDash0MonitoringResource)
 
 			secondName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-monitoring-test-resource-2"}
 			secondDash0MonitoringResource := EnsureMonitoringResourceExistsInNamespaceAndIsAvailable(ctx, k8sClient, secondName)
-			createdObjects = append(createdObjects, secondDash0MonitoringResource)
+			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, secondDash0MonitoringResource)
 
 			thirdName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-monitoring-test-resource-3"}
 			thirdDash0MonitoringResource := EnsureMonitoringResourceExistsInNamespaceAndIsAvailable(ctx, k8sClient, thirdName)
-			createdObjects = append(createdObjects, thirdDash0MonitoringResource)
+			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, thirdDash0MonitoringResource)
 
 			// Let the manager create the collector so there is something to delete.
 			err, _ := manager.ReconcileOpenTelemetryCollector(
@@ -549,7 +549,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 		It("should not delete the collector if there is no operator configuration resource, but if there one available resource with an export left", func() {
 			resourceName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-monitoring-test-resource-1"}
 			existingDash0MonitoringResource := EnsureMonitoringResourceExistsInNamespaceAndIsAvailable(ctx, k8sClient, resourceName)
-			createdObjects = append(createdObjects, existingDash0MonitoringResource)
+			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, existingDash0MonitoringResource)
 
 			// Let the manager create the collector so there is something to delete.
 			err, _ := manager.ReconcileOpenTelemetryCollector(
@@ -637,19 +637,19 @@ var _ = Describe("The collector manager", Ordered, func() {
 			firstDash0MonitoringResource :=
 				EnsureMonitoringResourceWithSpecExistsInNamespaceAndIsAvailable(ctx, k8sClient,
 					dash0v1alpha1.Dash0MonitoringSpec{}, firstName)
-			createdObjects = append(createdObjects, firstDash0MonitoringResource)
+			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, firstDash0MonitoringResource)
 
 			secondName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-monitoring-test-resource-2"}
 			secondDash0MonitoringResource :=
 				EnsureMonitoringResourceWithSpecExistsInNamespaceAndIsAvailable(ctx, k8sClient,
 					dash0v1alpha1.Dash0MonitoringSpec{}, secondName)
-			createdObjects = append(createdObjects, secondDash0MonitoringResource)
+			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, secondDash0MonitoringResource)
 
 			thirdName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-monitoring-test-resource-3"}
 			thirdDash0MonitoringResource :=
 				EnsureMonitoringResourceWithSpecExistsInNamespaceAndIsAvailable(ctx, k8sClient,
 					dash0v1alpha1.Dash0MonitoringSpec{}, thirdName)
-			createdObjects = append(createdObjects, thirdDash0MonitoringResource)
+			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, thirdDash0MonitoringResource)
 
 			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
 				ctx,
@@ -681,7 +681,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 		It("should delete the collector if there is no operator configuration, and if the monitoring resource that is being deleted is the only one left", func() {
 			resourceName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-monitoring-test-resource-1"}
 			monitoringResource := EnsureMonitoringResourceExistsInNamespaceAndIsAvailable(ctx, k8sClient, resourceName)
-			createdObjects = append(createdObjects, monitoringResource)
+			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, monitoringResource)
 
 			// Let the manager create the collector so there is something to delete.
 			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
@@ -722,7 +722,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 				ctx,
 				k8sClient,
 			)
-			createdObjects = append(createdObjects, monitoringResource)
+			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, monitoringResource)
 			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
 				ctx,
 				TestImages,
@@ -735,7 +735,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
 
 			Expect(k8sClient.Delete(ctx, monitoringResource)).To(Succeed())
-			createdObjects = createdObjects[0 : len(createdObjects)-1]
+			createdObjectsCollectorManagerTest = createdObjectsCollectorManagerTest[0 : len(createdObjectsCollectorManagerTest)-1]
 
 			err, hasBeenReconciled = manager.ReconcileOpenTelemetryCollector(
 				ctx,

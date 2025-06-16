@@ -19,6 +19,7 @@ import (
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/collectors"
+	"github.com/dash0hq/dash0-operator/internal/resources"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
@@ -108,7 +109,7 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 	logger.Info("processing reconcile request for an operator configuration resource")
 
 	resourceDeleted := false
-	checkResourceResult, err := util.VerifyThatResourceExists(
+	checkResourceResult, err := resources.VerifyThatResourceExists(
 		ctx,
 		r.Client,
 		req,
@@ -135,13 +136,9 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 	}
 
 	operatorConfigurationResource := checkResourceResult.Resource.(*dash0v1alpha1.Dash0OperatorConfiguration)
-	if operatorConfigurationResource.IsDegraded() {
-		r.removeAllOperatorConfigurationSettings(ctx, logger)
-		logger.Info("The operator configuration resource is degraded, stopping reconciliation.")
-		return ctrl.Result{}, nil
-	}
+
 	stopReconcile, err :=
-		util.VerifyThatResourceIsUniqueInScope(
+		resources.VerifyThatResourceIsUniqueInScope(
 			ctx,
 			r.Client,
 			req,
@@ -157,7 +154,7 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, nil
 	}
 
-	if _, err = util.InitStatusConditions(
+	if _, err = resources.InitStatusConditions(
 		ctx,
 		r.Client,
 		operatorConfigurationResource,

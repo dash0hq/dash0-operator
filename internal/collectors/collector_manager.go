@@ -19,6 +19,7 @@ import (
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
+	"github.com/dash0hq/dash0-operator/internal/resources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
@@ -210,7 +211,7 @@ func (m *CollectorManager) findOperatorConfigurationResource(
 	ctx context.Context,
 	logger *logr.Logger,
 ) (*dash0v1alpha1.Dash0OperatorConfiguration, error) {
-	operatorConfigurationResource, err := util.FindUniqueOrMostRecentResourceInScope(
+	operatorConfigurationResource, err := resources.FindUniqueOrMostRecentResourceInScope(
 		ctx,
 		m.Client,
 		"", /* cluster-scope, thus no namespace */

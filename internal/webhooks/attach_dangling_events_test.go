@@ -31,7 +31,7 @@ import (
 var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 	var reconciler *controller.MonitoringReconciler
 	var dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring
-	var createdObjects []client.Object
+	var createdObjectsAttachEventsTest []client.Object
 
 	BeforeAll(func() {
 		EnsureOperatorNamespaceExists(ctx, k8sClient)
@@ -77,18 +77,18 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 	})
 
 	BeforeEach(func() {
-		createdObjects = make([]client.Object, 0)
+		createdObjectsAttachEventsTest = make([]client.Object, 0)
 	})
 
 	AfterEach(func() {
-		createdObjects = DeleteAllCreatedObjects(ctx, k8sClient, createdObjects)
+		createdObjectsAttachEventsTest = DeleteAllCreatedObjects(ctx, k8sClient, createdObjectsAttachEventsTest)
 		DeleteAllEvents(ctx, clientset, TestNamespaceName)
 	})
 
 	DescribeTable("when attaching events to their involved objects", func(config WorkloadTestConfig) {
 		name := UniqueName(config.WorkloadNamePrefix)
 		workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
-		createdObjects = append(createdObjects, workload.Get())
+		createdObjectsAttachEventsTest = append(createdObjectsAttachEventsTest, workload.Get())
 		workload = config.GetFn(ctx, k8sClient, TestNamespaceName, name)
 		event := VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, "webhook")
 

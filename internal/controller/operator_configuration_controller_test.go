@@ -53,15 +53,15 @@ type SelfMonitoringTestConfig struct {
 }
 
 var (
-	reconciler                   *OperatorConfigurationReconciler
-	delegatingZapCoreWrapper     *zaputil.DelegatingZapCoreWrapper
-	createdObjects               []client.Object
-	apiClient1                   *DummyApiClient
-	apiClient2                   *DummyApiClient
-	authTokenClient1             *DummyAuthTokenClient
-	authTokenClient2             *DummyAuthTokenClient
-	selfMonitoringMetricsClient1 *DummySelfMonitoringMetricsClient
-	selfMonitoringMetricsClient2 *DummySelfMonitoringMetricsClient
+	reconciler                                        *OperatorConfigurationReconciler
+	delegatingZapCoreWrapper                          *zaputil.DelegatingZapCoreWrapper
+	createdObjectsOperatorConfigurationControllerTest []client.Object
+	apiClient1                                        *DummyApiClient
+	apiClient2                                        *DummyApiClient
+	authTokenClient1                                  *DummyAuthTokenClient
+	authTokenClient2                                  *DummyAuthTokenClient
+	selfMonitoringMetricsClient1                      *DummySelfMonitoringMetricsClient
+	selfMonitoringMetricsClient2                      *DummySelfMonitoringMetricsClient
 )
 
 var _ = Describe("The operation configuration resource controller", Ordered, func() {
@@ -94,7 +94,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 		} {
 			selfMonitoringMetricsClient.Reset()
 		}
-		createdObjects = DeleteAllCreatedObjects(ctx, k8sClient, createdObjects)
+		createdObjectsOperatorConfigurationControllerTest = DeleteAllCreatedObjects(ctx, k8sClient, createdObjectsOperatorConfigurationControllerTest)
 	})
 
 	Describe("updates all registered API and auth token clients", func() {
@@ -105,7 +105,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 		DescribeTable("when setting or removing the API config or authorization", func(config ApiClientSetRemoveTestConfig) {
 			if config.createSecret != nil {
 				Expect(k8sClient.Create(ctx, config.createSecret)).To(Succeed())
-				createdObjects = append(createdObjects, config.createSecret)
+				createdObjectsOperatorConfigurationControllerTest = append(createdObjectsOperatorConfigurationControllerTest, config.createSecret)
 			}
 
 			reconciler = createReconciler()
@@ -122,7 +122,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				expectedDataset = config.dataset
 			}
 
-			triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+			triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
 			verifyOperatorConfigurationResourceIsAvailable(ctx)
 
 			for _, apiClient := range []*DummyApiClient{apiClient1, apiClient2} {
@@ -239,7 +239,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 					},
 				)
 
-				triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+				triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
 
 				VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
 			})
@@ -248,7 +248,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				func(config SelfMonitoringTestConfig) {
 					if config.createSecret != nil {
 						Expect(k8sClient.Create(ctx, config.createSecret)).To(Succeed())
-						createdObjects = append(createdObjects, config.createSecret)
+						createdObjectsOperatorConfigurationControllerTest = append(createdObjectsOperatorConfigurationControllerTest, config.createSecret)
 					}
 
 					CreateOperatorConfigurationResourceWithSpec(
@@ -267,7 +267,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 						selfMonitoringMetricsClient1,
 						selfMonitoringMetricsClient2,
 					})
-					triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+					triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
 					verifyOperatorConfigurationResourceIsAvailable(ctx)
 
 					Eventually(func(g Gomega) {
@@ -394,7 +394,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				selfMonitoringMetricsClient1,
 				selfMonitoringMetricsClient2,
 			})
-			triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+			triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
 			verifyOperatorConfigurationResourceIsAvailable(ctx)
 
 			Eventually(func(g Gomega) {
@@ -419,7 +419,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 			updatedOperatorConfigurationResource.Spec.Export = nil
 			Expect(k8sClient.Update(ctx, updatedOperatorConfigurationResource)).To(Succeed())
 
-			triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+			triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
 			verifyOperatorConfigurationResourceIsAvailable(ctx)
 
 			// verify the OTel SDK has been shut down
@@ -439,7 +439,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 			updatedOperatorConfigurationResource.Spec.Export = nil
 			Expect(k8sClient.Update(ctx, updatedOperatorConfigurationResource)).To(Succeed())
 
-			triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+			triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
 			verifyOperatorConfigurationResourceIsAvailable(ctx)
 
 			// verify the OTel SDK has been shut down
@@ -457,7 +457,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 			updatedOperatorConfigurationResource.Spec.Export = Dash0ExportWithEndpointAndToken()
 			Expect(k8sClient.Update(ctx, updatedOperatorConfigurationResource)).To(Succeed())
 
-			triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+			triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
 			verifyOperatorConfigurationResourceIsAvailable(ctx)
 
 			// verify the OTel SDK has been started again
@@ -493,7 +493,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 			}
 			Expect(k8sClient.Update(ctx, updatedOperatorConfigurationResource)).To(Succeed())
 
-			triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+			triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
 			verifyOperatorConfigurationResourceIsAvailable(ctx)
 
 			for _, authTokenClient := range []*DummyAuthTokenClient{authTokenClient1, authTokenClient2} {
@@ -527,7 +527,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 			resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 
-			triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+			triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
 			VerifyOperatorConfigurationResourceByNameDoesNotExist(ctx, k8sClient, Default, resource.Name)
 
 			for _, apiClient := range []*DummyApiClient{apiClient1, apiClient2} {
@@ -557,10 +557,126 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 			resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
 			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
 
-			triggerOperatorConfigurationReconcileRequest(ctx, reconciler)
+			triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
 			VerifyOperatorConfigurationResourceByNameDoesNotExist(ctx, k8sClient, Default, resource.Name)
 
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
+		})
+	})
+
+	Describe("when self-healing a degraded resource state", func() {
+
+		BeforeEach(func() {
+			reconciler = createReconciler()
+
+			CreateOperatorConfigurationResourceWithSpec(
+				ctx,
+				k8sClient,
+				dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Export: Dash0ExportWithEndpointAndToken(),
+					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+						Enabled: ptr.To(false),
+					},
+					ClusterName: ClusterNameTest,
+				},
+			)
+			triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
+			verifyOperatorConfigurationResourceIsAvailable(ctx)
+
+			// start test in a degraded state
+			resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
+			resource.EnsureResourceIsMarkedAsDegraded("TestReason", "This is a test message.")
+			Expect(k8sClient.Status().Update(ctx, resource)).To(Succeed())
+			verifyOperatorConfigurationResourceIsDegraded(ctx)
+		})
+
+		AfterEach(func() {
+			RemoveOperatorConfigurationResource(ctx, k8sClient)
+		})
+
+		It("reconciling should self-heal the degraded state", func() {
+			triggerOperatorConfigurationReconcileRequest(ctx, reconciler, OperatorConfigurationResourceName)
+			verifyOperatorConfigurationResourceIsAvailable(ctx)
+		})
+	})
+
+	Describe("uniqueness check", func() {
+		It("should mark only the most recent resource as available and the other ones as degraded when multiple resources exist", func() {
+			reconciler = createReconciler()
+			firstName := types.NamespacedName{Name: "resource-1"}
+			firstResource := CreateOperatorConfigurationResourceWithName(
+				ctx,
+				k8sClient,
+				firstName.Name,
+			)
+			createdObjectsOperatorConfigurationControllerTest = append(createdObjectsOperatorConfigurationControllerTest, firstResource)
+			time.Sleep(10 * time.Millisecond)
+
+			secondName := types.NamespacedName{Name: "resource-2"}
+			secondResource := CreateOperatorConfigurationResourceWithName(
+				ctx,
+				k8sClient,
+				secondName.Name,
+			)
+			createdObjectsOperatorConfigurationControllerTest = append(createdObjectsOperatorConfigurationControllerTest, secondResource)
+			time.Sleep(10 * time.Millisecond)
+
+			thirdName := types.NamespacedName{Name: "resource-3"}
+			thirdResource := CreateOperatorConfigurationResourceWithName(
+				ctx,
+				k8sClient,
+				thirdName.Name,
+			)
+			createdObjectsOperatorConfigurationControllerTest = append(createdObjectsOperatorConfigurationControllerTest, thirdResource)
+			time.Sleep(10 * time.Millisecond)
+
+			triggerOperatorConfigurationReconcileRequest(ctx, reconciler, firstName.Name)
+			triggerOperatorConfigurationReconcileRequest(ctx, reconciler, secondName.Name)
+			triggerOperatorConfigurationReconcileRequest(ctx, reconciler, thirdName.Name)
+
+			Eventually(func(g Gomega) {
+				resource1Available := LoadOperatorConfigurationResourceStatusCondition(ctx, k8sClient, firstName.Name, dash0v1alpha1.ConditionTypeAvailable)
+				resource1Degraded := LoadOperatorConfigurationResourceStatusCondition(ctx, k8sClient, firstName.Name, dash0v1alpha1.ConditionTypeDegraded)
+				resource2Available := LoadOperatorConfigurationResourceStatusCondition(ctx, k8sClient, secondName.Name, dash0v1alpha1.ConditionTypeAvailable)
+				resource2Degraded := LoadOperatorConfigurationResourceStatusCondition(ctx, k8sClient, secondName.Name, dash0v1alpha1.ConditionTypeDegraded)
+				resource3Available := LoadOperatorConfigurationResourceStatusCondition(ctx, k8sClient, thirdName.Name, dash0v1alpha1.ConditionTypeAvailable)
+				resource3Degraded := LoadOperatorConfigurationResourceStatusCondition(ctx, k8sClient, thirdName.Name, dash0v1alpha1.ConditionTypeDegraded)
+
+				// The first two resource should have been marked as degraded.
+				VerifyResourceStatusCondition(
+					g,
+					resource1Available,
+					metav1.ConditionFalse,
+					"NewerResourceIsPresent",
+					"There is a more recently created Dash0 operator configuration resource in this cluster, please "+
+						"remove all but one resource instance.",
+				)
+				VerifyResourceStatusCondition(
+					g,
+					resource1Degraded,
+					metav1.ConditionTrue,
+					"NewerResourceIsPresent",
+					"There is a more recently created Dash0 operator configuration resource in this cluster, please "+
+						"remove all but one resource instance.",
+				)
+				VerifyResourceStatusCondition(g, resource2Available, metav1.ConditionFalse, "NewerResourceIsPresent",
+					"There is a more recently created Dash0 operator configuration resource in this cluster, please "+
+						"remove all but one resource instance.")
+				VerifyResourceStatusCondition(g, resource2Degraded, metav1.ConditionTrue, "NewerResourceIsPresent",
+					"There is a more recently created Dash0 operator configuration resource in this cluster, please "+
+						"remove all but one resource instance.")
+
+				// The third (and most recent) resource should have been marked as available.
+				VerifyResourceStatusCondition(
+					g,
+					resource3Available,
+					metav1.ConditionTrue,
+					"ReconcileFinished",
+					"Dash0 operator configuration is available in this cluster now.",
+				)
+				g.Expect(resource3Degraded).To(BeNil())
+
+			}, timeout, pollingInterval).Should(Succeed())
 		})
 	})
 })
@@ -617,8 +733,8 @@ func createReconciler() *OperatorConfigurationReconciler {
 	}
 }
 
-func triggerOperatorConfigurationReconcileRequest(ctx context.Context, reconciler *OperatorConfigurationReconciler) {
-	triggerOperatorReconcileRequestForName(ctx, reconciler, OperatorConfigurationResourceName)
+func triggerOperatorConfigurationReconcileRequest(ctx context.Context, reconciler *OperatorConfigurationReconciler, name string) {
+	triggerOperatorReconcileRequestForName(ctx, reconciler, name)
 }
 
 func triggerOperatorReconcileRequestForName(
@@ -640,8 +756,20 @@ func verifyOperatorConfigurationResourceIsAvailable(ctx context.Context) {
 		resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, g)
 		availableCondition = meta.FindStatusCondition(resource.Status.Conditions, string(dash0v1alpha1.ConditionTypeAvailable))
 		g.Expect(availableCondition.Status).To(Equal(metav1.ConditionTrue))
-		degraded := meta.FindStatusCondition(resource.Status.Conditions, string(dash0v1alpha1.ConditionTypeDegraded))
-		g.Expect(degraded).To(BeNil())
+		degradedCondition := meta.FindStatusCondition(resource.Status.Conditions, string(dash0v1alpha1.ConditionTypeDegraded))
+		g.Expect(degradedCondition).To(BeNil())
+	}, timeout, pollingInterval).Should(Succeed())
+}
+
+func verifyOperatorConfigurationResourceIsDegraded(ctx context.Context) {
+	var availableCondition *metav1.Condition
+	By("Verifying status conditions")
+	Eventually(func(g Gomega) {
+		resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, g)
+		availableCondition = meta.FindStatusCondition(resource.Status.Conditions, string(dash0v1alpha1.ConditionTypeAvailable))
+		g.Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse))
+		degradedCondition := meta.FindStatusCondition(resource.Status.Conditions, string(dash0v1alpha1.ConditionTypeDegraded))
+		g.Expect(degradedCondition.Status).To(Equal(metav1.ConditionTrue))
 	}, timeout, pollingInterval).Should(Succeed())
 }
 

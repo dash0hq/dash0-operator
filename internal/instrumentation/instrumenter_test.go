@@ -36,7 +36,7 @@ var (
 var _ = Describe("The instrumenter", Ordered, func() {
 	ctx := context.Background()
 	logger := log.FromContext(ctx)
-	var createdObjects []client.Object
+	var createdObjectsInstrumenterTest []client.Object
 
 	var instrumenter *Instrumenter
 	var dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring
@@ -49,7 +49,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 	BeforeEach(func() {
 		dash0MonitoringResource = EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
-		createdObjects = make([]client.Object, 0)
+		createdObjectsInstrumenterTest = make([]client.Object, 0)
 
 		instrumenter = NewInstrumenter(
 			k8sClient,
@@ -63,7 +63,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 	})
 
 	AfterEach(func() {
-		createdObjects = DeleteAllCreatedObjects(ctx, k8sClient, createdObjects)
+		createdObjectsInstrumenterTest = DeleteAllCreatedObjects(ctx, k8sClient, createdObjectsInstrumenterTest)
 		DeleteAllEvents(ctx, clientset, namespace)
 
 		DeleteMonitoringResource(ctx, k8sClient)
@@ -74,7 +74,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 		DescribeTable("when instrumenting existing workloads", func(config WorkloadTestConfig) {
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
-			createdObjects = append(createdObjects, workload.Get())
+			createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, workload.Get())
 
 			checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, &logger)
 
@@ -144,7 +144,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 				name := UniqueName(JobNamePrefix)
 				By("Inititalize a job")
 				job := CreateBasicJob(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, job)
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, job)
 
 				checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, &logger)
 
@@ -164,7 +164,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 				name := UniqueName(PodNamePrefix)
 				By("Inititalize a pod")
 				pod := CreateBasicPod(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, pod)
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, pod)
 
 				checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, &logger)
 
@@ -178,7 +178,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 				name := UniqueName(PodNamePrefix)
 				By("Inititalize a pod")
 				pod := CreatePodOwnedByReplicaSet(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, pod)
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, pod)
 
 				checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, &logger)
 
@@ -190,7 +190,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 				name := UniqueName(ReplicaSetNamePrefix)
 				By("Inititalize a replicaset")
 				replicaSet := CreateReplicaSetOwnedByDeployment(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, replicaSet)
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, replicaSet)
 
 				checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, &logger)
 
@@ -201,7 +201,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 		DescribeTable("when existing workloads have the opt-out label", func(config WorkloadTestConfig) {
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, namespace, name)
-			createdObjects = append(createdObjects, workload.Get())
+			createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, workload.Get())
 
 			checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, &logger)
 
@@ -249,7 +249,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 				name := UniqueName(JobNamePrefix)
 				By("Inititalize a job")
 				job := CreateJobWithOptOutLabel(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, job)
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, job)
 
 				checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, &logger)
 
@@ -261,7 +261,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 		DescribeTable("when the opt-out label is added to an already instrumented workload", func(config WorkloadTestConfig) {
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
-			createdObjects = append(createdObjects, workload.Get())
+			createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, workload.Get())
 			AddOptOutLabel(workload.GetObjectMeta())
 			UpdateWorkload(ctx, k8sClient, workload.Get())
 			checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, &logger)
@@ -309,7 +309,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 			It("should report the failure to remove Dash0 from an instrumented job when dash0.com/enable=false is added", func() {
 				name := UniqueName(JobNamePrefix)
 				workload := CreateInstrumentedJob(ctx, k8sClient, TestNamespaceName, name)
-				createdObjects = append(createdObjects, workload)
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, workload)
 				AddOptOutLabel(&workload.ObjectMeta)
 				UpdateWorkload(ctx, k8sClient, workload)
 				checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, &logger)
@@ -329,7 +329,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 				name := UniqueName(JobNamePrefix)
 				workload := CreateJobForWhichAnInstrumentationAttemptHasFailed(
 					ctx, k8sClient, TestNamespaceName, name)
-				createdObjects = append(createdObjects, workload)
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, workload)
 				AddOptOutLabel(&workload.ObjectMeta)
 				UpdateWorkload(ctx, k8sClient, workload)
 				checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, &logger)
@@ -347,7 +347,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 		DescribeTable("when a workload is already instrumented by the same version", func(config WorkloadTestConfig) {
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
-			createdObjects = append(createdObjects, workload.Get())
+			createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, workload.Get())
 			checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, &logger)
 			config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 			VerifyNoEvents(ctx, clientset, TestNamespaceName)
@@ -399,7 +399,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 		DescribeTable("when uninstrumenting workloads when the Dash0 monitoring resource is deleted", func(config WorkloadTestConfig) {
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
-			createdObjects = append(createdObjects, workload.Get())
+			createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, workload.Get())
 
 			uninstrumentWorkloadsIfAvailable(ctx, instrumenter, dash0MonitoringResource, &logger)
 
@@ -470,7 +470,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 				name := UniqueName(JobNamePrefix)
 				By("Create an instrumented job")
 				job := CreateInstrumentedJob(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, job)
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, job)
 
 				uninstrumentWorkloadsIfAvailable(ctx, instrumenter, dash0MonitoringResource, &logger)
 
@@ -490,7 +490,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 				name := UniqueName(JobNamePrefix)
 				By("Create a job with label dash0.com/instrumented=false")
 				job := CreateJobForWhichAnInstrumentationAttemptHasFailed(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, job)
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, job)
 
 				uninstrumentWorkloadsIfAvailable(ctx, instrumenter, dash0MonitoringResource, &logger)
 
@@ -502,7 +502,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 				name := UniqueName(PodNamePrefix)
 				By("Create an instrumented pod")
 				pod := CreateInstrumentedPod(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, pod)
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, pod)
 
 				uninstrumentWorkloadsIfAvailable(ctx, instrumenter, dash0MonitoringResource, &logger)
 
@@ -521,7 +521,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 					UID:        "35b829cb-78dc-4544-b7a9-5a8e51b7f322",
 				}}
 				UpdateWorkload(ctx, k8sClient, pod)
-				createdObjects = append(createdObjects, pod)
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, pod)
 
 				uninstrumentWorkloadsIfAvailable(ctx, instrumenter, dash0MonitoringResource, &logger)
 
@@ -533,7 +533,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 				name := UniqueName(PodNamePrefix)
 				By("Create an instrumented pod owned by a deployment")
 				pod := CreatePodOwnedByReplicaSet(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, pod)
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, pod)
 
 				uninstrumentWorkloadsIfAvailable(ctx, instrumenter, dash0MonitoringResource, &logger)
 
@@ -545,7 +545,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 				name := UniqueName(ReplicaSetNamePrefix)
 				By("Create an instrumented replica set owned by a deployment")
 				replicaSet := CreateReplicaSetOwnedByDeployment(ctx, k8sClient, namespace, name)
-				createdObjects = append(createdObjects, replicaSet)
+				createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, replicaSet)
 
 				uninstrumentWorkloadsIfAvailable(ctx, instrumenter, dash0MonitoringResource, &logger)
 
@@ -557,7 +557,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 		DescribeTable("when attempting to revert the instrumentation on cleanup but the resource has an opt-out label", func(config WorkloadTestConfig) {
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
-			createdObjects = append(createdObjects, workload.Get())
+			createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, workload.Get())
 
 			uninstrumentWorkloadsIfAvailable(ctx, instrumenter, dash0MonitoringResource, &logger)
 
@@ -614,7 +614,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 	DescribeTable("should instrument existing uninstrumented workloads at startup", func(config WorkloadTestConfig) {
 		name := UniqueName(config.WorkloadNamePrefix)
 		workload := config.CreateFn(ctx, k8sClient, namespace, name)
-		createdObjects = append(createdObjects, workload.Get())
+		createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, workload.Get())
 
 		instrumenter.InstrumentAtStartup(ctx, &logger)
 
@@ -662,7 +662,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 		It("should record a failure event when attempting to instrument an existing job at startup and add labels", func() {
 			name := UniqueName(JobNamePrefix)
 			job := CreateBasicJob(ctx, k8sClient, namespace, name)
-			createdObjects = append(createdObjects, job)
+			createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, job)
 
 			instrumenter.InstrumentAtStartup(ctx, &logger)
 
@@ -682,7 +682,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 	DescribeTable("when updating instrumented workloads at startup", func(config WorkloadTestConfig) {
 		name := UniqueName(config.WorkloadNamePrefix)
 		workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
-		createdObjects = append(createdObjects, workload.Get())
+		createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, workload.Get())
 		workload.GetObjectMeta().Labels["dash0.com/operator-image"] = olderOperatorControllerImageLabel
 		workload.GetObjectMeta().Labels["dash0.com/init-container-image"] = olderInitContainerImageLabel
 		UpdateWorkload(ctx, k8sClient, workload.Get())
@@ -733,7 +733,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 		It("should not override outdated instrumentation settings for a job at startup", func() {
 			name := UniqueName(JobNamePrefix)
 			workload := CreateInstrumentedJob(ctx, k8sClient, TestNamespaceName, name)
-			createdObjects = append(createdObjects, workload)
+			createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, workload)
 			workload.ObjectMeta.Labels["dash0.com/operator-image"] = "some-registry.com_1234_dash0hq_operator-controller_0.9.8"
 			workload.ObjectMeta.Labels["dash0.com/init-container-image"] = "some-registry.com_1234_dash0hq_instrumentation_2.3.4"
 			UpdateWorkload(ctx, k8sClient, workload)

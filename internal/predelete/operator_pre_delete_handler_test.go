@@ -43,9 +43,9 @@ var _ = Describe("Uninstalling the Dash0 operator", Ordered, func() {
 
 	ctx := context.Background()
 	var (
-		createdObjects []client.Object
-		deployment1    *appv1.Deployment
-		deployment2    *appv1.Deployment
+		createdObjectsPreDeleteHandlerTest []client.Object
+		deployment1                        *appv1.Deployment
+		deployment2                        *appv1.Deployment
 	)
 
 	BeforeAll(func() {
@@ -53,22 +53,22 @@ var _ = Describe("Uninstalling the Dash0 operator", Ordered, func() {
 	})
 
 	BeforeEach(func() {
-		createdObjects, deployment1 = setupNamespaceWithDash0MonitoringResourceAndWorkload(
+		createdObjectsPreDeleteHandlerTest, deployment1 = setupNamespaceWithDash0MonitoringResourceAndWorkload(
 			ctx,
 			k8sClient,
 			dash0MonitoringResourceName1,
-			createdObjects,
+			createdObjectsPreDeleteHandlerTest,
 		)
-		createdObjects, deployment2 = setupNamespaceWithDash0MonitoringResourceAndWorkload(
+		createdObjectsPreDeleteHandlerTest, deployment2 = setupNamespaceWithDash0MonitoringResourceAndWorkload(
 			ctx,
 			k8sClient,
 			dash0MonitoringResourceName2,
-			createdObjects,
+			createdObjectsPreDeleteHandlerTest,
 		)
 	})
 
 	AfterEach(func() {
-		createdObjects = DeleteAllCreatedObjects(ctx, k8sClient, createdObjects)
+		createdObjectsPreDeleteHandlerTest = DeleteAllCreatedObjects(ctx, k8sClient, createdObjectsPreDeleteHandlerTest)
 		DeleteMonitoringResourceByName(ctx, k8sClient, dash0MonitoringResourceName1, false)
 		DeleteMonitoringResourceByName(ctx, k8sClient, dash0MonitoringResourceName2, false)
 	})

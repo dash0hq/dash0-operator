@@ -5,8 +5,10 @@ package util
 
 import (
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 )
 
 type Reason string
@@ -69,3 +71,8 @@ const (
 	ModificationModeInstrumentation   ModificationMode = "instrumentation"
 	ModificationModeUninstrumentation ModificationMode = "uninstrumentation"
 )
+
+type DanglingEventsTimeouts struct {
+	InitialTimeout time.Duration
+	Backoff        wait.Backoff
+}

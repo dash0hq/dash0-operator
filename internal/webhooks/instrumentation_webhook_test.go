@@ -32,14 +32,14 @@ const (
 )
 
 var _ = Describe("The Dash0 instrumentation webhook", func() {
-	var createdObjects []client.Object
+	var createdObjectsInstrumentationWebhookTest []client.Object
 
 	BeforeEach(func() {
-		createdObjects = make([]client.Object, 0)
+		createdObjectsInstrumentationWebhookTest = make([]client.Object, 0)
 	})
 
 	AfterEach(func() {
-		createdObjects = DeleteAllCreatedObjects(ctx, k8sClient, createdObjects)
+		createdObjectsInstrumentationWebhookTest = DeleteAllCreatedObjects(ctx, k8sClient, createdObjectsInstrumentationWebhookTest)
 		DeleteAllEvents(ctx, clientset, TestNamespaceName)
 	})
 
@@ -55,7 +55,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 		DescribeTable("when mutating new workloads", func(config WorkloadTestConfig) {
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
-			createdObjects = append(createdObjects, workload.Get())
+			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload.Get())
 			workload = config.GetFn(ctx, k8sClient, TestNamespaceName, name)
 			config.VerifyFn(workload)
 			VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, testActor)
@@ -156,7 +156,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 			It("should not instrument a new pod owned by a replica set", func() {
 				name := UniqueName(PodNamePrefix)
 				workload := CreatePodOwnedByReplicaSet(ctx, k8sClient, TestNamespaceName, name)
-				createdObjects = append(createdObjects, workload)
+				createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload)
 				workload = GetPod(ctx, k8sClient, TestNamespaceName, name)
 				VerifyUnmodifiedPod(workload)
 				VerifyNoEvents(ctx, clientset, TestNamespaceName)
@@ -165,7 +165,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 			It("should not instrument a new replica set owned by a deployment", func() {
 				name := UniqueName(ReplicaSetNamePrefix)
 				workload := CreateReplicaSetOwnedByDeployment(ctx, k8sClient, TestNamespaceName, name)
-				createdObjects = append(createdObjects, workload)
+				createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload)
 				workload = GetReplicaSet(ctx, k8sClient, TestNamespaceName, name)
 				VerifyUnmodifiedReplicaSet(workload)
 				VerifyInstrumentationViaHigherOrderWorkloadEvent(ctx, clientset, TestNamespaceName, name, testActor)
@@ -175,7 +175,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 		DescribeTable("when an uninstrumented workload has opted out of instrumentation", func(config WorkloadTestConfig) {
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
-			createdObjects = append(createdObjects, workload.Get())
+			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload.Get())
 			workload = config.GetFn(ctx, k8sClient, TestNamespaceName, name)
 			config.VerifyFn(workload)
 			VerifyNoEvents(ctx, clientset, TestNamespaceName)
@@ -235,7 +235,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 				name := UniqueName(DeploymentNamePrefix)
 				workload := DeploymentWithMoreBellsAndWhistles(TestNamespaceName, name)
 				Expect(k8sClient.Create(ctx, workload)).Should(Succeed())
-				createdObjects = append(createdObjects, workload)
+				createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload)
 
 				workload = GetDeployment(ctx, k8sClient, TestNamespaceName, name)
 				VerifyModifiedDeployment(workload, PodSpecExpectations{
@@ -370,7 +370,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 				name := UniqueName(DeploymentNamePrefix)
 				workload := DeploymentWithExistingDash0Artifacts(TestNamespaceName, name)
 				Expect(k8sClient.Create(ctx, workload)).Should(Succeed())
-				createdObjects = append(createdObjects, workload)
+				createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload)
 
 				workload = GetDeployment(ctx, k8sClient, TestNamespaceName, name)
 				VerifyModifiedDeployment(workload, PodSpecExpectations{
@@ -466,7 +466,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 		DescribeTable("when the opt-out label is added to an already instrumented workload", func(config WorkloadTestConfig) {
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
-			createdObjects = append(createdObjects, workload.Get())
+			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload.Get())
 
 			DeleteAllEvents(ctx, clientset, TestNamespaceName)
 			AddOptOutLabel(workload.GetObjectMeta())
@@ -519,7 +519,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 		DescribeTable("when the opt-out label is removed from a workload that had previously opted out", func(config WorkloadTestConfig) {
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
-			createdObjects = append(createdObjects, workload.Get())
+			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload.Get())
 
 			DeleteAllEvents(ctx, clientset, TestNamespaceName)
 			RemoveOptOutLabel(workload.GetObjectMeta())
@@ -572,7 +572,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 		DescribeTable("when dash0.com/enabled=true is set on a workload that had previously opted out", func(config WorkloadTestConfig) {
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
-			createdObjects = append(createdObjects, workload.Get())
+			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload.Get())
 
 			DeleteAllEvents(ctx, clientset, TestNamespaceName)
 			UpdateLabel(workload.GetObjectMeta(), "dash0.com/enable", "true")
@@ -625,7 +625,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 		DescribeTable("when seeing the webhook-ignore-once label", func(config WorkloadTestConfig) {
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.ConfigureFn(TestNamespaceName, name)
-			createdObjects = append(createdObjects, workload.Get())
+			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload.Get())
 			AddLabel(workload.GetObjectMeta(), "dash0.com/webhook-ignore-once", "true")
 			CreateWorkload(ctx, k8sClient, workload.Get())
 
@@ -687,7 +687,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 
 	Describe("when the Dash0 monitoring resource does not exist", func() {
 		It("should not instrument workloads", func() {
-			createdObjects = verifyThatDeploymentIsNotBeingInstrumented(createdObjects)
+			createdObjectsInstrumentationWebhookTest = verifyThatDeploymentIsNotBeingInstrumented(createdObjectsInstrumentationWebhookTest)
 		})
 	})
 
@@ -701,7 +701,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 		})
 
 		It("should not instrument workloads", func() {
-			createdObjects = verifyThatDeploymentIsNotBeingInstrumented(createdObjects)
+			createdObjectsInstrumentationWebhookTest = verifyThatDeploymentIsNotBeingInstrumented(createdObjectsInstrumentationWebhookTest)
 		})
 	})
 
@@ -717,7 +717,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 		})
 
 		It("should instrument workloads", func() {
-			createdObjects = verifyThatDeploymentIsInstrumented(createdObjects)
+			createdObjectsInstrumentationWebhookTest = verifyThatDeploymentIsInstrumented(createdObjectsInstrumentationWebhookTest)
 		})
 	})
 
@@ -733,7 +733,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 		})
 
 		It("should not instrument workloads", func() {
-			createdObjects = verifyThatDeploymentIsNotBeingInstrumented(createdObjects)
+			createdObjectsInstrumentationWebhookTest = verifyThatDeploymentIsNotBeingInstrumented(createdObjectsInstrumentationWebhookTest)
 		})
 	})
 
@@ -749,7 +749,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 		})
 
 		It("should instrument workloads", func() {
-			createdObjects = verifyThatDeploymentIsInstrumented(createdObjects)
+			createdObjectsInstrumentationWebhookTest = verifyThatDeploymentIsInstrumented(createdObjectsInstrumentationWebhookTest)
 		})
 	})
 })
