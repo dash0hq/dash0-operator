@@ -118,6 +118,9 @@ if (process.env.CONCURRENCY) {
   log(`Using the default concurrency (number of available CPUs: ${concurrency}).`);
 }
 
+const verbose = process.env.VERBOSE === 'true';
+const suppressSkippedInfo = process.env.SUPPRESS_SKIPPED === 'true';
+
 async function main(): Promise<void> {
   program.option('--within-container');
   program.option('-r, --within-container-runtime <runtime>');
@@ -167,7 +170,9 @@ async function runAllTests(): Promise<void> {
 
   const testedArchitectures = allArchitectures.filter(arch => {
     if (architecturesFilter.length > 0 && !architecturesFilter.includes(arch)) {
-      log(`- skipping CPU architecture '${arch}'`);
+      if (!suppressSkippedInfo) {
+        log(`- skipping CPU architecture '${arch}'`);
+      }
       return false;
     }
     log(`- creating test image build tasks for CPU architecture '${arch}'`);
@@ -265,13 +270,13 @@ async function buildOrPullInstrumentationImage(): Promise<void> {
     await writeFile('test/.container_images_to_be_deleted_at_end', instrumentationImage + '\n', { flag: 'a' });
     try {
       const dockerBuildCmd = `docker build --platform "${dockerPlatforms}" . -t "${instrumentationImage}"`;
-      if (process.env.VERBOSE === 'true') {
+      if (verbose) {
         log(`running: ${dockerBuildCmd}`);
       }
       const { stdout: dockerBuildOutputStdOut, stderr: dockerBuildOutputStdErr } = await exec(dockerBuildCmd, {
         encoding: 'utf8',
       });
-      if (process.env.VERBOSE === 'true') {
+      if (verbose) {
         if (dockerBuildOutputStdOut) {
           log(dockerBuildOutputStdOut);
         }
@@ -315,19 +320,27 @@ async function buildTestImagesForArchitectureAndRuntime(
   const testCasesDir = `${runtimePathPrefix}/test-cases`;
 
   if (!existsSync(dockerFile)) {
-    log(`- ${arch}: ${runtimePathPrefix} has no Dockerfile, skipping`);
+    if (!suppressSkippedInfo) {
+      log(`- ${arch}: ${runtimePathPrefix} has no Dockerfile, skipping`);
+    }
     return [];
   }
   if (!existsSync(baseImagesFile)) {
-    log(`- ${arch}: ${runtimePathPrefix} has no base-images file, skipping`);
+    if (!suppressSkippedInfo) {
+      log(`- ${arch}: ${runtimePathPrefix} has no base-images file, skipping`);
+    }
     return [];
   }
   if (!existsSync(testCasesDir)) {
-    log(`- ${arch}: ${runtimePathPrefix} has no test-cases directory, skipping`);
+    if (!suppressSkippedInfo) {
+      log(`- ${arch}: ${runtimePathPrefix} has no test-cases directory, skipping`);
+    }
     return [];
   }
   if (runtimesFilter.length > 0 && !runtimesFilter.includes(runtime)) {
-    log(`- ${arch}: skipping runtime '${runtime}'`);
+    if (!suppressSkippedInfo) {
+      log(`- ${arch}: skipping runtime '${runtime}'`);
+    }
     return [];
   }
 
@@ -335,7 +348,9 @@ async function buildTestImagesForArchitectureAndRuntime(
     .split('\n')
     .filter(line => line.trim() && !line.startsWith('#') && !line.startsWith(';'));
   if (baseImagesForRuntime.length === 0) {
-    log(`- ${arch}: ${testScriptDir}/${runtime}/base-images does not list any images, skipping`);
+    if (!suppressSkippedInfo) {
+      log(`- ${arch}: ${testScriptDir}/${runtime}/base-images does not list any images, skipping`);
+    }
     return [];
   }
 
@@ -380,7 +395,9 @@ function buildTestImageForArchitectureRuntimeAndBaseImage(
     !baseImagesFilter.includes(baseImageBuild) &&
     !baseImagesFilter.includes(baseImageRun)
   ) {
-    log(`- ${arch}/${runtime}: skipping base image ${baseImageLine}`);
+    if (!suppressSkippedInfo) {
+      log(`- ${arch}/${runtime}: skipping base image ${baseImageLine}`);
+    }
     return {
       testImage,
       skipped: true,
@@ -442,14 +459,14 @@ function createBuildTestImageTask(testImage: TestImage): () => Promise<void> {
         .map(arg => `"${arg}"`)
         .join(' ');
 
-      if (process.env.VERBOSE === 'true') {
+      if (verbose) {
         log(`running: ${dockerBuildCmd}`);
       }
       const { stdout: dockerBuildOutputStdOut, stderr: dockerBuildOutputStdErr } = await exec(dockerBuildCmd, {
         encoding: 'utf8',
       });
 
-      if (process.env.VERBOSE === 'true') {
+      if (verbose) {
         if (dockerBuildOutputStdOut) {
           log(dockerBuildOutputStdOut);
         }
@@ -484,7 +501,9 @@ async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestIma
 
   const testCasesDir = `${testScriptDir}/${runtime}/test-cases`;
   if (!existsSync(testCasesDir)) {
-    console.error(`Test case directory does not exist: ${testCasesDir}, skipping`);
+    if (!suppressSkippedInfo) {
+      console.error(`Test case directory does not exist: ${testCasesDir}, skipping`);
+    }
     return [];
   }
 
@@ -503,9 +522,11 @@ async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestIma
     if (testCaseFilter.length > 0) {
       const shouldRunTestCase = testCaseFilter.some(selectedTestCase => testCase === selectedTestCase);
       if (!shouldRunTestCase) {
-        log(`${archRuntimeBaseImagePrefix.padEnd(32)}\t - skipping test case ${testCaseDir}`);
         skippedTestCases++;
-        summary += chalk.yellow(`\n${archRuntimeBaseImagePrefix.padEnd(32)}\t- ${testCaseDir}: skipped`);
+        if (!suppressSkippedInfo) {
+          log(`${archRuntimeBaseImagePrefix.padEnd(32)}\t - skipping test case ${testCaseDir}`);
+          summary += chalk.yellow(`\n${archRuntimeBaseImagePrefix.padEnd(32)}\t- ${testCaseDir}: skipped`);
+        }
         continue;
       }
     }
@@ -586,9 +607,11 @@ function createRunTestCaseTask(
       }
 
       if (testCaseProperties.skip === true) {
-        log(chalk.yellow(`${archRuntimeBaseImagePrefix.padEnd(32)}\t- skipping test case "${testCase}"`));
         skippedTestCases++;
-        summary += chalk.yellow(`\n${archRuntimeBaseImagePrefix.padEnd(32)}\t- ${testCase}: skipped`);
+        if (!suppressSkippedInfo) {
+          log(chalk.yellow(`${archRuntimeBaseImagePrefix.padEnd(32)}\t- skipping test case "${testCase}"`));
+          summary += chalk.yellow(`\n${archRuntimeBaseImagePrefix.padEnd(32)}\t- ${testCase}: skipped`);
+        }
         return;
       }
 
@@ -599,13 +622,13 @@ function createRunTestCaseTask(
       dockerRunCmdArray = dockerRunCmdArray.concat([imageNameTest, ...testCmd]);
       const dockerRunCmd = dockerRunCmdArray.map(arg => `"${arg}"`).join(' ');
 
-      if (process.env.VERBOSE === 'true') {
+      if (verbose) {
         log(`running: ${dockerRunCmd}`);
       }
       const { stdout: dockerRunOutputStdOut, stderr: dockerRunOutputStdErr } = await exec(dockerRunCmd, {
         encoding: 'utf8',
       });
-      if (process.env.VERBOSE === 'true') {
+      if (verbose) {
         if (dockerRunOutputStdOut) {
           log(dockerRunOutputStdOut);
         }
@@ -654,8 +677,10 @@ async function runTestsWithinContainer(commandLineOptions: any): Promise<void> {
 
   for (let runtime of allRuntimes) {
     if (runtimesFilter.length > 0 && !runtimesFilter.includes(runtime)) {
-      log(chalk.yellow(`skipping runtime '${runtime}'`));
-      summary += chalk.yellow(`\nruntime '${runtime}': skipped`);
+      if (!suppressSkippedInfo) {
+        log(chalk.yellow(`skipping runtime '${runtime}'`));
+        summary += chalk.yellow(`\nruntime '${runtime}': skipped`);
+      }
       continue;
     }
     switch (runtime) {
@@ -684,8 +709,10 @@ async function runTestsWithinContainer(commandLineOptions: any): Promise<void> {
         );
         break;
       default:
-        log(chalk.yellow(`runtime "${runtime}" not supported for --within-container, skipping`));
-        summary += chalk.yellow(`\nruntime "${runtime}" not supported for --within-container, skipping`);
+        if (!suppressSkippedInfo) {
+          log(chalk.yellow(`runtime "${runtime}" not supported for --within-container, skipping`));
+          summary += chalk.yellow(`\nruntime "${runtime}" not supported for --within-container, skipping`);
+        }
     }
   }
 
@@ -785,9 +812,11 @@ async function runTestsWithinContainerForRuntime(
     if (testCaseFilter.length > 0) {
       const shouldRunTestCase = testCaseFilter.some(selectedTestCase => testCaseDirName === selectedTestCase);
       if (!shouldRunTestCase) {
-        log(chalk.yellow(`${prefix}\t- skipping test case ${testCaseDirName}`));
         skippedTestCases++;
-        summary += chalk.yellow(`\n${prefix}\t- ${testCaseDirName}: skipped`);
+        if (!suppressSkippedInfo) {
+          log(chalk.yellow(`${prefix}\t- skipping test case ${testCaseDirName}`));
+          summary += chalk.yellow(`\n${prefix}\t- ${testCaseDirName}: skipped`);
+        }
         continue;
       }
     }
@@ -805,9 +834,11 @@ async function runTestsWithinContainerForRuntime(
     }
 
     if (testCaseProperties.skip === true) {
-      log(chalk.yellow(`${prefix}\t- skipping test case ${testCaseDirName}`));
       skippedTestCases++;
-      summary += chalk.yellow(`\n${prefix}\t- ${testCaseDirName}: skipped`);
+      if (!suppressSkippedInfo) {
+        log(chalk.yellow(`${prefix}\t- skipping test case ${testCaseDirName}`));
+        summary += chalk.yellow(`\n${prefix}\t- ${testCaseDirName}: skipped`);
+      }
       continue;
     }
 
@@ -880,7 +911,7 @@ async function runTestCaseWithinContainer(
       });
       testChildProcess.on('close', code => {
         if (code === 0) {
-          if (process.env.VERBOSE === 'true') {
+          if (verbose) {
             log(`test command: ${testCmd} `);
             if (testCmdOutputStdOut.length > 0) {
               log(testCmdOutputStdOut);
@@ -945,7 +976,13 @@ function printSummary() {
   } else if (skippedTestCases > 0) {
     console.log(chalk.yellow('Some tests have been skipped:'));
     console.log(summary);
-    console.log(chalk.yellow('See above for details.'));
+    if (!suppressSkippedInfo) {
+      console.log(chalk.yellow('See above for details.'));
+    } else {
+      console.log(
+        chalk.yellow('Detailed information about skipped test has been suppressed with SUPPRESS_SKIPPED=true.'),
+      );
+    }
     process.exit(skippedTestCases);
   } else {
     console.log(chalk.green(`All test cases have passed.`));
