@@ -98,6 +98,7 @@ var _ = BeforeSuite(func() {
 		util.ExtraConfigDefaults,
 		OTelCollectorNodeLocalBaseUrlTest,
 		nil,
+		false,
 	)
 	oTelColResourceManager := &otelcolresources.OTelColResourceManager{
 		Client:                    k8sClient,

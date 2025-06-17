@@ -65,6 +65,7 @@ type environmentVariables struct {
 	nodeName                             string
 	podIp                                string
 	sendBatchMaxSize                     *uint32
+	instrumentationDebug                 bool
 	debugVerbosityDetailed               bool
 }
 
@@ -112,6 +113,7 @@ const (
 	oTelCollectorNodeLocalBaseUrlPattern = "http://$(%s):%d"
 
 	developmentModeEnvVarName        = "DASH0_DEVELOPMENT_MODE"
+	instrumentationDebugEnvVarName   = "DASH0_INSTRUMENTATION_DEBUG"
 	debugVerbosityDetailedEnvVarName = "OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED"
 	sendBatchMaxSizeEnvVarName       = "OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE"
 
@@ -119,6 +121,8 @@ const (
 
 	//nolint
 	mandatoryEnvVarMissingMessageTemplate = "cannot start the Dash0 operator, the mandatory environment variable \"%s\" is missing"
+
+	envVarValueTrue = "true"
 )
 
 var (
@@ -153,7 +157,7 @@ func Start() {
 	ctx := context.Background()
 
 	developmentModeRaw, isSet := os.LookupEnv(developmentModeEnvVarName)
-	developmentMode := isSet && strings.ToLower(developmentModeRaw) == "true"
+	developmentMode := isSet && strings.ToLower(developmentModeRaw) == envVarValueTrue
 
 	cliArgs := defineCommandLineArguments()
 	opts := parseCommandLineOptions(cliArgs, developmentMode)
@@ -509,8 +513,11 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, k8sPodIpEnvVarName)
 	}
 
+	instrumentationDebugRaw, isSet := os.LookupEnv(instrumentationDebugEnvVarName)
+	instrumentationDebug := isSet && strings.ToLower(instrumentationDebugRaw) == envVarValueTrue
+
 	debugVerbosityDetailedRaw, isSet := os.LookupEnv(debugVerbosityDetailedEnvVarName)
-	debugVerbosityDetailed := isSet && strings.ToLower(debugVerbosityDetailedRaw) == "true"
+	debugVerbosityDetailed := isSet && strings.ToLower(debugVerbosityDetailedRaw) == envVarValueTrue
 
 	var sendBatchMaxSize *uint32
 	sendBatchMaxSizeRaw, isSet := os.LookupEnv(sendBatchMaxSizeEnvVarName)
@@ -541,6 +548,7 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 		nodeName:                             nodeName,
 		podIp:                                podIp,
 		sendBatchMaxSize:                     sendBatchMaxSize,
+		instrumentationDebug:                 instrumentationDebug,
 		debugVerbosityDetailed:               debugVerbosityDetailed,
 	}
 
@@ -680,6 +688,10 @@ func startOperatorManager(
 		cliArgs.instrumentationDelays,
 		"development mode",
 		developmentMode,
+		"verbosity detailed",
+		envVars.debugVerbosityDetailed,
+		"instrumentation debug",
+		envVars.instrumentationDebug,
 	)
 
 	err = startDash0Controllers(
@@ -758,6 +770,7 @@ func startDash0Controllers(
 		extraConfig,
 		oTelCollectorBaseUrl,
 		cliArgs.instrumentationDelays,
+		envVars.instrumentationDebug,
 	)
 	var err error
 	if err = mgr.Add(leaderElectionAwareRunnable); err != nil {
@@ -782,6 +795,7 @@ func startDash0Controllers(
 		extraConfig,
 		oTelCollectorBaseUrl,
 		cliArgs.instrumentationDelays,
+		envVars.instrumentationDebug,
 	)
 
 	oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
@@ -889,6 +903,7 @@ func startDash0Controllers(
 		Images:               images,
 		ExtraConfig:          extraConfig,
 		OTelCollectorBaseUrl: oTelCollectorBaseUrl,
+		InstrumentationDebug: envVars.instrumentationDebug,
 	}).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the instrumentation webhook: %w", err)
 	}

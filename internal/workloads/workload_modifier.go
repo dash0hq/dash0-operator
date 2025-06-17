@@ -25,23 +25,25 @@ import (
 const (
 	initContainerName = "dash0-instrumentation"
 
-	dash0VolumeName                    = "dash0-instrumentation"
-	dash0DirectoryEnvVarName           = "DASH0_INSTRUMENTATION_FOLDER_DESTINATION"
-	dash0InstrumentationBaseDirectory  = "/__dash0__"
-	dash0InstrumentationDirectory      = "/__dash0__/instrumentation"
-	envVarLdPreloadName                = "LD_PRELOAD"
-	envVarLdPreloadValue               = "/__dash0__/dash0_injector.so"
-	envVarOtelExporterOtlpEndpointName = "OTEL_EXPORTER_OTLP_ENDPOINT"
-	envVarOtelExporterOtlpProtocolName = "OTEL_EXPORTER_OTLP_PROTOCOL"
-	envVarDash0CollectorBaseUrlName    = "DASH0_OTEL_COLLECTOR_BASE_URL"
-	envVarDash0NamespaceName           = "DASH0_NAMESPACE_NAME"
-	envVarDash0PodName                 = "DASH0_POD_NAME"
-	envVarDash0PodUid                  = "DASH0_POD_UID"
-	envVarDash0ContainerName           = "DASH0_CONTAINER_NAME"
-	envVarDash0ServiceName             = "DASH0_SERVICE_NAME"
-	envVarDash0ServiceNamespace        = "DASH0_SERVICE_NAMESPACE"
-	envVarDash0ServiceVersion          = "DASH0_SERVICE_VERSION"
-	envVarDash0ResourceAttributes      = "DASH0_RESOURCE_ATTRIBUTES"
+	dash0VolumeName                         = "dash0-instrumentation"
+	dash0DirectoryEnvVarName                = "DASH0_INSTRUMENTATION_FOLDER_DESTINATION"
+	dash0CopyInstrumentationDebugEnvVarName = "DASH0_COPY_INSTRUMENTATION_DEBUG"
+	dash0InstrumentationBaseDirectory       = "/__dash0__"
+	dash0InstrumentationDirectory           = "/__dash0__/instrumentation"
+	envVarLdPreloadName                     = "LD_PRELOAD"
+	envVarLdPreloadValue                    = "/__dash0__/dash0_injector.so"
+	envVarOtelExporterOtlpEndpointName      = "OTEL_EXPORTER_OTLP_ENDPOINT"
+	envVarOtelExporterOtlpProtocolName      = "OTEL_EXPORTER_OTLP_PROTOCOL"
+	envVarDash0CollectorBaseUrlName         = "DASH0_OTEL_COLLECTOR_BASE_URL"
+	envVarDash0NamespaceName                = "DASH0_NAMESPACE_NAME"
+	envVarDash0PodName                      = "DASH0_POD_NAME"
+	envVarDash0PodUid                       = "DASH0_POD_UID"
+	envVarDash0ContainerName                = "DASH0_CONTAINER_NAME"
+	envVarDash0ServiceName                  = "DASH0_SERVICE_NAME"
+	envVarDash0ServiceNamespace             = "DASH0_SERVICE_NAMESPACE"
+	envVarDash0ServiceVersion               = "DASH0_SERVICE_VERSION"
+	envVarDash0ResourceAttributes           = "DASH0_RESOURCE_ATTRIBUTES"
+	dash0InjectorDebugEnvVarName            = "DASH0_INJECTOR_DEBUG"
 
 	safeToEviceLocalVolumesAnnotationName = "cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes"
 )
@@ -361,15 +363,22 @@ func (m *ResourceModifier) createInitContainer(podSpec *corev1.PodSpec) *corev1.
 		initContainerGroup = securityContext.FSGroup
 	}
 
+	initContainerEnv := []corev1.EnvVar{
+		{
+			Name:  dash0DirectoryEnvVarName,
+			Value: dash0InstrumentationBaseDirectory,
+		},
+	}
+	if m.instrumentationMetadata.InstrumentationDebug {
+		initContainerEnv = append(initContainerEnv, corev1.EnvVar{
+			Name:  dash0CopyInstrumentationDebugEnvVarName,
+			Value: "true",
+		})
+	}
 	initContainer := &corev1.Container{
 		Name:  initContainerName,
 		Image: m.instrumentationMetadata.InitContainerImage,
-		Env: []corev1.EnvVar{
-			{
-				Name:  dash0DirectoryEnvVarName,
-				Value: dash0InstrumentationBaseDirectory,
-			},
-		},
+		Env:   initContainerEnv,
 		SecurityContext: &corev1.SecurityContext{
 			AllowPrivilegeEscalation: &initContainerAllowPrivilegeEscalation,
 			Privileged:               &initContainerPrivileged,
@@ -597,6 +606,16 @@ func (m *ResourceModifier) addEnvironmentVariables(
 				Name:  envVarDash0ResourceAttributes,
 				Value: strings.Join(resourceAttributeList, ","),
 			})
+	}
+
+	if m.instrumentationMetadata.InstrumentationDebug {
+		m.addOrReplaceEnvironmentVariable(
+			container,
+			corev1.EnvVar{
+				Name:  dash0InjectorDebugEnvVarName,
+				Value: "true",
+			},
+		)
 	}
 }
 
@@ -849,6 +868,7 @@ func (m *ResourceModifier) removeEnvironmentVariables(container *corev1.Containe
 	m.removeEnvironmentVariable(container, envVarDash0ServiceName)
 	m.removeEnvironmentVariable(container, envVarDash0ServiceVersion)
 	m.removeEnvironmentVariable(container, envVarDash0ResourceAttributes)
+	m.removeEnvironmentVariable(container, dash0InjectorDebugEnvVarName)
 }
 
 func (m *ResourceModifier) removeLdPreload(container *corev1.Container) {

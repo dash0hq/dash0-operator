@@ -35,6 +35,7 @@ type Instrumenter struct {
 	ExtraConfig          util.ExtraConfig
 	OTelCollectorBaseUrl string
 	Delays               *DelayConfig
+	InstrumentationDebug bool
 }
 
 type DelayConfig struct {
@@ -94,6 +95,7 @@ func NewInstrumenter(
 	extraConfig util.ExtraConfig,
 	oTelCollectorBaseUrl string,
 	delays *DelayConfig,
+	instrumentationDebug bool,
 ) *Instrumenter {
 	return &Instrumenter{
 		Client:               client,
@@ -103,6 +105,7 @@ func NewInstrumenter(
 		ExtraConfig:          extraConfig,
 		OTelCollectorBaseUrl: oTelCollectorBaseUrl,
 		Delays:               delays,
+		InstrumentationDebug: instrumentationDebug,
 	}
 }
 
@@ -417,11 +420,11 @@ func (i *Instrumenter) handleJobJobOnInstrumentation(
 		switch requiredAction {
 		case util.ModificationModeInstrumentation:
 			modificationResult =
-				newWorkloadModifier(i.Images, i.ExtraConfig, i.OTelCollectorBaseUrl, &logger).
+				newWorkloadModifier(i.Images, i.ExtraConfig, i.OTelCollectorBaseUrl, i.InstrumentationDebug, &logger).
 					AddLabelsToImmutableJob(&job)
 		case util.ModificationModeUninstrumentation:
 			modificationResult =
-				newWorkloadModifier(i.Images, i.ExtraConfig, i.OTelCollectorBaseUrl, &logger).
+				newWorkloadModifier(i.Images, i.ExtraConfig, i.OTelCollectorBaseUrl, i.InstrumentationDebug, &logger).
 					RemoveLabelsFromImmutableJob(&job)
 		}
 
@@ -563,9 +566,9 @@ func (i *Instrumenter) instrumentWorkload(
 
 		switch requiredAction {
 		case util.ModificationModeInstrumentation:
-			modificationResult = workload.instrument(i.Images, i.ExtraConfig, i.OTelCollectorBaseUrl, &logger)
+			modificationResult = workload.instrument(i.Images, i.ExtraConfig, i.OTelCollectorBaseUrl, i.InstrumentationDebug, &logger)
 		case util.ModificationModeUninstrumentation:
-			modificationResult = workload.revert(i.Images, i.ExtraConfig, i.OTelCollectorBaseUrl, &logger)
+			modificationResult = workload.revert(i.Images, i.ExtraConfig, i.OTelCollectorBaseUrl, i.InstrumentationDebug, &logger)
 		}
 
 		if modificationResult.HasBeenModified {
@@ -819,7 +822,7 @@ func (i *Instrumenter) handleJobOnUninstrumentation(ctx context.Context, job bat
 			// There was an attempt to instrument this job (probably by the controller), which has not been successful.
 			// We only need remove the labels from that instrumentation attempt to clean up.
 			modificationResult =
-				newWorkloadModifier(i.Images, i.ExtraConfig, i.OTelCollectorBaseUrl, &logger).
+				newWorkloadModifier(i.Images, i.ExtraConfig, i.OTelCollectorBaseUrl, i.InstrumentationDebug, &logger).
 					RemoveLabelsFromImmutableJob(&job)
 
 			// Apparently for jobs we do not need to set the "dash0.com/webhook-ignore-once" label, since changing their
@@ -945,7 +948,7 @@ func (i *Instrumenter) revertWorkloadInstrumentation(
 				err,
 			)
 		}
-		modificationResult = workload.revert(i.Images, i.ExtraConfig, i.OTelCollectorBaseUrl, &logger)
+		modificationResult = workload.revert(i.Images, i.ExtraConfig, i.OTelCollectorBaseUrl, i.InstrumentationDebug, &logger)
 		if modificationResult.HasBeenModified {
 			// Changing the workload spec sometimes triggers a new admission request, which would re-instrument the
 			// workload via the webhook immediately. To prevent this, we add a label that the webhook can check to
@@ -992,6 +995,7 @@ func newWorkloadModifier(
 	images util.Images,
 	extraConfig util.ExtraConfig,
 	oTelCollectorBaseUrl string,
+	instrumentationDebug bool,
 	logger *logr.Logger,
 ) *workloads.ResourceModifier {
 	return workloads.NewResourceModifier(
@@ -999,6 +1003,7 @@ func newWorkloadModifier(
 			Images:               images,
 			InstrumentedBy:       actor,
 			OTelCollectorBaseUrl: oTelCollectorBaseUrl,
+			InstrumentationDebug: instrumentationDebug,
 		},
 		extraConfig,
 		logger,

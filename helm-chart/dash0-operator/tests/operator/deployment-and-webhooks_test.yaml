@@ -145,6 +145,10 @@ tests:
             cpu: 5m
             memory: 32Mi
         developmentMode: true
+        instrumentation:
+          delayAfterEachWorkloadMillis: 13
+          delayAfterEachNamespaceMillis: 123
+          debug: true
         collectors:
           debugVerbosityDetailed: true
           sendBatchMaxSize: 32768
@@ -206,8 +210,14 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].args[4]
           value: --disable-otel-collector-host-ports=true
-      - notExists:
+      - equal:
           path: spec.template.spec.containers[0].args[5]
+          value: --instrumentation-delay-after-each-workload-millis=13
+      - equal:
+          path: spec.template.spec.containers[0].args[6]
+          value: --instrumentation-delay-after-each-namespace-millis=123
+      - notExists:
+          path: spec.template.spec.containers[0].args[7]
       - equal:
           path: spec.template.spec.containers[0].env[0].name
           value: DASH0_OPERATOR_NAMESPACE
@@ -291,48 +301,54 @@ tests:
           value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[14].name
-          value: OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED
+          value: DASH0_INSTRUMENTATION_DEBUG
       - equal:
           path: spec.template.spec.containers[0].env[14].value
           value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[15].name
-          value: OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE
+          value: OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED
       - equal:
           path: spec.template.spec.containers[0].env[15].value
-          value: "32768"
+          value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[16].name
-          value: K8S_POD_UID
+          value: OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE
       - equal:
-          path: spec.template.spec.containers[0].env[16].valueFrom.fieldRef.fieldPath
-          value: metadata.uid
+          path: spec.template.spec.containers[0].env[16].value
+          value: "32768"
       - equal:
           path: spec.template.spec.containers[0].env[17].name
-          value: K8S_NODE_IP
+          value: K8S_POD_UID
       - equal:
           path: spec.template.spec.containers[0].env[17].valueFrom.fieldRef.fieldPath
-          value: status.hostIP
+          value: metadata.uid
       - equal:
           path: spec.template.spec.containers[0].env[18].name
-          value: K8S_NODE_NAME
+          value: K8S_NODE_IP
       - equal:
           path: spec.template.spec.containers[0].env[18].valueFrom.fieldRef.fieldPath
-          value: spec.nodeName
+          value: status.hostIP
       - equal:
           path: spec.template.spec.containers[0].env[19].name
-          value: K8S_POD_IP
+          value: K8S_NODE_NAME
       - equal:
           path: spec.template.spec.containers[0].env[19].valueFrom.fieldRef.fieldPath
-          value: status.podIP
+          value: spec.nodeName
       - equal:
           path: spec.template.spec.containers[0].env[20].name
-          value: K8S_POD_NAME
+          value: K8S_POD_IP
       - equal:
           path: spec.template.spec.containers[0].env[20].valueFrom.fieldRef.fieldPath
+          value: status.podIP
+      - equal:
+          path: spec.template.spec.containers[0].env[21].name
+          value: K8S_POD_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[21].valueFrom.fieldRef.fieldPath
           value: metadata.name
       - notExists:
-          path: spec.template.spec.containers[0].env[21].name
+          path: spec.template.spec.containers[0].env[22].name
       - equal:
           path: spec.template.spec.containers[0].resources.limits.cpu
           value: 123m
@@ -345,6 +361,24 @@ tests:
       - equal:
           path: spec.template.spec.containers[0].resources.requests.memory
           value: 32Mi
+
+  - it: should render instrumentation args from legacy paths
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        instrumentationDelayAfterEachWorkloadMillis: 2
+        instrumentationDelayAfterEachNamespaceMillis: 135
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].args[5]
+          value: --instrumentation-delay-after-each-workload-millis=2
+      - equal:
+          path: spec.template.spec.containers[0].args[6]
+          value: --instrumentation-delay-after-each-namespace-millis=135
+      - notExists:
+          path: spec.template.spec.containers[0].args[7]
 
   - it: should add args for creating an operator configuration resource with a token to the deployment
     documentSelector:

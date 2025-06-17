@@ -49,10 +49,6 @@ spec:
               value: "true"
             - name: OTEL_DOTNET_EXPERIMENTAL_HTTPCLIENT_DISABLE_URL_QUERY_REDACTION
               value: "true"
-            - name: DASH0_DEBUG
-              value: "true"
-            - name: DASH0_INJECTOR_DEBUG
-              value: "true"
           ports:
             - containerPort: 1407
           resources:

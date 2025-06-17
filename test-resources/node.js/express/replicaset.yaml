@@ -44,8 +44,6 @@ spec:
           env:
             - name: PORT
               value: "1209"
-            - name: DASH0_DEBUG
-              value: "true"
           ports:
             - containerPort: 1209
           resources:

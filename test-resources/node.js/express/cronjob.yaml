@@ -29,8 +29,6 @@ spec:
               env:
                 - name: PORT
                   value: "1205"
-                - name: DASH0_DEBUG
-                  value: "true"
                 - name: TRIGGER_SELF_AND_EXIT
                   value: "true"
               ports:

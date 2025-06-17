@@ -44,8 +44,6 @@ spec:
           env:
             - name: PORT
               value: "1207"
-            - name: DASH0_DEBUG
-              value: "true"
             # - name: CREATE_TARGET_INFO_METRIC
             #   value: "true"
           ports:

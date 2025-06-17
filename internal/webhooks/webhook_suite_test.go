@@ -119,6 +119,7 @@ var _ = BeforeSuite(func() {
 		Images:               TestImages,
 		ExtraConfig:          util.ExtraConfigDefaults,
 		OTelCollectorBaseUrl: OTelCollectorNodeLocalBaseUrlTest,
+		InstrumentationDebug: false,
 	}).SetupWebhookWithManager(manager)
 	Expect(err).NotTo(HaveOccurred())
 
