@@ -5,8 +5,10 @@
 
 set -eu
 
-if [ -n "${DASH0_DEBUG:-}" ]; then
+copy_options="-R"
+if [ -n "${DASH0_COPY_INSTRUMENTATION_DEBUG:-}" ]; then
   set -x
+  copy_options="-vR"
 fi
 
 cd -P -- "$(dirname -- "$0")"
@@ -25,8 +27,8 @@ fi
 
 # We deliberately do not create the base directory for $DASH0_INSTRUMENTATION_FOLDER_DESTINATION via mkdir, it needs
 # to be an existing mount point provided externally.
-cp -R "${DASH0_INSTRUMENTATION_FOLDER_SOURCE}"/* "${DASH0_INSTRUMENTATION_FOLDER_DESTINATION}"
+cp "$copy_options" "${DASH0_INSTRUMENTATION_FOLDER_SOURCE}"/* "${DASH0_INSTRUMENTATION_FOLDER_DESTINATION}"
 
-if [ -n "${DASH0_DEBUG:-}" ]; then
+if [ -n "${DASH0_COPY_INSTRUMENTATION_DEBUG:-}" ]; then
   find "${DASH0_INSTRUMENTATION_FOLDER_DESTINATION}"
 fi

@@ -63,6 +63,7 @@ type InstrumentationMetadata struct {
 	Images
 	OTelCollectorBaseUrl string
 	InstrumentedBy       WorkloadModifierActor
+	InstrumentationDebug bool
 }
 
 type ModificationMode string

@@ -34,6 +34,7 @@ type InstrumentationWebhookHandler struct {
 	Images               util.Images
 	ExtraConfig          util.ExtraConfig
 	OTelCollectorBaseUrl string
+	InstrumentationDebug bool
 }
 
 type resourceHandler func(h *InstrumentationWebhookHandler, request admission.Request, gvkLabel string, logger *logr.Logger) admission.Response
@@ -488,6 +489,7 @@ func (h *InstrumentationWebhookHandler) newWorkloadModifier(logger *logr.Logger)
 			Images:               h.Images,
 			InstrumentedBy:       actor,
 			OTelCollectorBaseUrl: h.OTelCollectorBaseUrl,
+			InstrumentationDebug: h.InstrumentationDebug,
 		},
 		h.ExtraConfig,
 		logger,

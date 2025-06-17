@@ -40,8 +40,6 @@ spec:
           value: "true"
         - name: DASH0_EXPERIMENTAL_DOTNET_INJECTION
           value: "true"
-        - name: DASH0_DEBUG
-          value: "true"
       ports:
         - containerPort: 1411
       resources:

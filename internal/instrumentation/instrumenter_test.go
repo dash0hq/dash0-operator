@@ -59,6 +59,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 			util.ExtraConfigDefaults,
 			OTelCollectorNodeLocalBaseUrlTest,
 			nil,
+			false,
 		)
 	})
 
@@ -609,6 +610,32 @@ var _ = Describe("The instrumenter", Ordered, func() {
 				VerifyStatefulSetWithOptOutLabel(workload.Get().(*appsv1.StatefulSet))
 			},
 		}))
+
+		It("enables debug environment variables", func() {
+			instrumenterWithDebug := NewInstrumenter(
+				k8sClient,
+				clientset,
+				recorder,
+				TestImages,
+				util.ExtraConfigDefaults,
+				OTelCollectorNodeLocalBaseUrlTest,
+				nil,
+				true,
+			)
+
+			name := UniqueName(DeploymentNamePrefix)
+			workload := CreateBasicDeployment(ctx, k8sClient, TestNamespaceName, name)
+			createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, workload)
+
+			checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenterWithDebug, dash0MonitoringResource, &logger)
+
+			instrumentedDeployment := GetDeployment(ctx, k8sClient, TestNamespaceName, name)
+			podSpec := instrumentedDeployment.Spec.Template.Spec
+			initContainerEnv := podSpec.InitContainers[0].Env
+			Expect(initContainerEnv).To(ContainElement(MatchEnvVar("DASH0_COPY_INSTRUMENTATION_DEBUG", "true")))
+			workloadEnv := podSpec.Containers[0].Env
+			Expect(workloadEnv).To(ContainElement(MatchEnvVar("DASH0_INJECTOR_DEBUG", "true")))
+		})
 	})
 
 	DescribeTable("should instrument existing uninstrumented workloads at startup", func(config WorkloadTestConfig) {

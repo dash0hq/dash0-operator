@@ -20,11 +20,12 @@ type instrumentableWorkload interface {
 	getKind() string
 	asRuntimeObject() runtime.Object
 	asClientObject() client.Object
-	instrument(images util.Images, extraConfig util.ExtraConfig, oTelCollectorBaseUrl string, logger *logr.Logger) workloads.ModificationResult
-	// Strictly speaking, for reverting we do not need the images nor the oTelCollectorBaseUrl setting, but for symmetry
-	// with the instrument method and to make sure any WorkloadModifier instance we create actually has valid values,
-	// the revert method accepts them as arguments as well.
-	revert(images util.Images, extraConfig util.ExtraConfig, oTelCollectorBaseUrl string, logger *logr.Logger) workloads.ModificationResult
+	instrument(images util.Images, extraConfig util.ExtraConfig, oTelCollectorBaseUrl string, instrumentationDebug bool, logger *logr.Logger) workloads.ModificationResult
+	// Strictly speaking, for reverting we do not need the images, nor the oTelCollectorBaseUrl setting, nor the
+	// instrumentationDebug flag, but for symmetry with the instrument method and to make sure any WorkloadModifier
+	// instance we create actually has valid values, the revert method accepts the same arguments as the instrument
+	// method.
+	revert(images util.Images, extraConfig util.ExtraConfig, oTelCollectorBaseUrl string, instrumentationDebug bool, logger *logr.Logger) workloads.ModificationResult
 }
 
 type cronJobWorkload struct {
@@ -39,17 +40,19 @@ func (w *cronJobWorkload) instrument(
 	images util.Images,
 	extraConfig util.ExtraConfig,
 	oTelCollectorBaseUrl string,
+	instrumentationDebug bool,
 	logger *logr.Logger,
 ) workloads.ModificationResult {
-	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, logger).ModifyCronJob(w.cronJob)
+	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, instrumentationDebug, logger).ModifyCronJob(w.cronJob)
 }
 func (w *cronJobWorkload) revert(
 	images util.Images,
 	extraConfig util.ExtraConfig,
 	oTelCollectorBaseUrl string,
+	instrumentationDebug bool,
 	logger *logr.Logger,
 ) workloads.ModificationResult {
-	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, logger).RevertCronJob(w.cronJob)
+	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, instrumentationDebug, logger).RevertCronJob(w.cronJob)
 }
 
 type daemonSetWorkload struct {
@@ -64,17 +67,19 @@ func (w *daemonSetWorkload) instrument(
 	images util.Images,
 	extraConfig util.ExtraConfig,
 	oTelCollectorBaseUrl string,
+	instrumentationDebug bool,
 	logger *logr.Logger,
 ) workloads.ModificationResult {
-	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, logger).ModifyDaemonSet(w.daemonSet)
+	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, instrumentationDebug, logger).ModifyDaemonSet(w.daemonSet)
 }
 func (w *daemonSetWorkload) revert(
 	images util.Images,
 	extraConfig util.ExtraConfig,
 	oTelCollectorBaseUrl string,
+	instrumentationDebug bool,
 	logger *logr.Logger,
 ) workloads.ModificationResult {
-	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, logger).RevertDaemonSet(w.daemonSet)
+	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, instrumentationDebug, logger).RevertDaemonSet(w.daemonSet)
 }
 
 type deploymentWorkload struct {
@@ -89,17 +94,19 @@ func (w *deploymentWorkload) instrument(
 	images util.Images,
 	extraConfig util.ExtraConfig,
 	oTelCollectorBaseUrl string,
+	instrumentationDebug bool,
 	logger *logr.Logger,
 ) workloads.ModificationResult {
-	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, logger).ModifyDeployment(w.deployment)
+	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, instrumentationDebug, logger).ModifyDeployment(w.deployment)
 }
 func (w *deploymentWorkload) revert(
 	images util.Images,
 	extraConfig util.ExtraConfig,
 	oTelCollectorBaseUrl string,
+	instrumentationDebug bool,
 	logger *logr.Logger,
 ) workloads.ModificationResult {
-	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, logger).RevertDeployment(w.deployment)
+	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, instrumentationDebug, logger).RevertDeployment(w.deployment)
 }
 
 type replicaSetWorkload struct {
@@ -114,17 +121,19 @@ func (w *replicaSetWorkload) instrument(
 	images util.Images,
 	extraConfig util.ExtraConfig,
 	oTelCollectorBaseUrl string,
+	instrumentationDebug bool,
 	logger *logr.Logger,
 ) workloads.ModificationResult {
-	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, logger).ModifyReplicaSet(w.replicaSet)
+	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, instrumentationDebug, logger).ModifyReplicaSet(w.replicaSet)
 }
 func (w *replicaSetWorkload) revert(
 	images util.Images,
 	extraConfig util.ExtraConfig,
 	oTelCollectorBaseUrl string,
+	instrumentationDebug bool,
 	logger *logr.Logger,
 ) workloads.ModificationResult {
-	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, logger).RevertReplicaSet(w.replicaSet)
+	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, instrumentationDebug, logger).RevertReplicaSet(w.replicaSet)
 }
 
 type statefulSetWorkload struct {
@@ -139,15 +148,17 @@ func (w *statefulSetWorkload) instrument(
 	images util.Images,
 	extraConfig util.ExtraConfig,
 	oTelCollectorBaseUrl string,
+	instrumentationDebug bool,
 	logger *logr.Logger,
 ) workloads.ModificationResult {
-	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, logger).ModifyStatefulSet(w.statefulSet)
+	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, instrumentationDebug, logger).ModifyStatefulSet(w.statefulSet)
 }
 func (w *statefulSetWorkload) revert(
 	images util.Images,
 	extraConfig util.ExtraConfig,
 	oTelCollectorBaseUrl string,
+	instrumentationDebug bool,
 	logger *logr.Logger,
 ) workloads.ModificationResult {
-	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, logger).RevertStatefulSet(w.statefulSet)
+	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, instrumentationDebug, logger).RevertStatefulSet(w.statefulSet)
 }

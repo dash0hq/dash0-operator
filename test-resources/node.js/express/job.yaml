@@ -26,8 +26,6 @@ spec:
           env:
             - name: PORT
               value: "1208"
-            - name: DASH0_DEBUG
-              value: "true"
             - name: TRIGGER_SELF_AND_EXIT
               value: "true"
             #- name: OTEL_LOG_LEVEL

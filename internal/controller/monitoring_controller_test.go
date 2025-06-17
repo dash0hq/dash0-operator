@@ -62,6 +62,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			util.ExtraConfigDefaults,
 			OTelCollectorNodeLocalBaseUrlTest,
 			nil,
+			false,
 		)
 		oTelColResourceManager := &otelcolresources.OTelColResourceManager{
 			Client:                    k8sClient,
