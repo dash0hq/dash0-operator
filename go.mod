@@ -14,7 +14,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.23.4
 	github.com/onsi/gomega v1.37.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl v0.128.0
-	github.com/perses/perses-operator v0.1.12
+	github.com/perses/perses-operator v0.2.0
 	github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring v0.83.0
 	go.opentelemetry.io/collector/component v1.34.0
 	go.opentelemetry.io/collector/featuregate v1.34.0
@@ -35,7 +35,7 @@ require (
 )
 
 require (
-	cel.dev/expr v0.20.0 // indirect
+	cel.dev/expr v0.23.1 // indirect
 	dario.cat/mergo v1.0.1 // indirect
 	emperror.dev/errors v0.8.1 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
@@ -59,7 +59,7 @@ require (
 	github.com/evanphx/json-patch/v5 v5.9.11 // indirect
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.8.0 // indirect
-	github.com/go-jose/go-jose/v4 v4.0.5 // indirect
+	github.com/go-jose/go-jose/v4 v4.1.0 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/jsonpointer v0.21.0 // indirect
 	github.com/go-openapi/jsonreference v0.21.0 // indirect
@@ -68,9 +68,9 @@ require (
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
+	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/google/btree v1.1.3 // indirect
-	github.com/google/cel-go v0.24.1 // indirect
+	github.com/google/cel-go v0.25.0 // indirect
 	github.com/google/gnostic-models v0.6.9 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/pprof v0.0.0-20250403155104-27863c87afa6 // indirect
@@ -83,11 +83,11 @@ require (
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/labstack/echo/v4 v4.13.3 // indirect
+	github.com/labstack/echo/v4 v4.13.4 // indirect
 	github.com/labstack/gommon v0.4.2 // indirect
 	github.com/magefile/mage v1.15.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
-	github.com/mattn/go-colorable v0.1.13 // indirect
+	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
@@ -98,12 +98,12 @@ require (
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f // indirect
 	github.com/nexucis/lamenv v0.5.2 // indirect
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/coreinternal v0.128.0 // indirect
-	github.com/perses/common v0.27.0 // indirect
-	github.com/perses/perses v0.51.0-beta.0 // indirect
+	github.com/perses/common v0.27.1-0.20250326140707-96e439b14e0e // indirect
+	github.com/perses/perses v0.51.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/client_golang v1.22.0 // indirect
-	github.com/prometheus/client_model v0.6.1 // indirect
-	github.com/prometheus/common v0.63.0 // indirect
+	github.com/prometheus/client_model v0.6.2 // indirect
+	github.com/prometheus/common v0.64.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
@@ -115,8 +115,8 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
-	github.com/zitadel/oidc/v3 v3.36.1 // indirect
-	github.com/zitadel/schema v1.3.0 // indirect
+	github.com/zitadel/oidc/v3 v3.38.1 // indirect
+	github.com/zitadel/schema v1.3.1 // indirect
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/collector/internal/telemetry v0.128.0 // indirect
 	go.opentelemetry.io/collector/pdata/pprofile v0.128.0 // indirect
@@ -134,13 +134,13 @@ require (
 	go.uber.org/automaxprocs v1.6.0 // indirect
 	golang.org/x/crypto v0.38.0 // indirect
 	golang.org/x/net v0.40.0 // indirect
-	golang.org/x/oauth2 v0.28.0 // indirect
+	golang.org/x/oauth2 v0.30.0 // indirect
 	golang.org/x/sync v0.14.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/term v0.32.0 // indirect
 	golang.org/x/text v0.25.0 // indirect
-	golang.org/x/time v0.9.0 // indirect
-	golang.org/x/tools v0.31.0 // indirect
+	golang.org/x/time v0.11.0 // indirect
+	golang.org/x/tools v0.32.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250519155744-55703ea1f237 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250519155744-55703ea1f237 // indirect
