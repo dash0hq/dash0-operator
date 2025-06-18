@@ -22,6 +22,19 @@ else
 fi
 
 image_name="dash0-injector-dev-$ARCHITECTURE"
+container_name="$image_name"
+
+if docker container inspect "$container_name" > /dev/null 2>&1; then
+  if [[ "$( docker container inspect -f '{{.State.Running}}' $container_name )" = "true" ]]; then
+  echo "Container $container_name is already running, joining existing container."
+  docker exec \
+    -it \
+    "$container_name" \
+    /bin/bash
+ fi
+ exit 0
+fi
+
 docker rmi -f "$image_name" 2> /dev/null || true
 docker build \
   --platform "$docker_platform" \
@@ -30,7 +43,6 @@ docker build \
   -t "$image_name" \
   .
 
-container_name="$image_name"
 docker rm -f "$container_name" 2> /dev/null || true
 docker run \
   --rm \
@@ -39,3 +51,4 @@ docker run \
   --volume "$(pwd):/home/dash0/instrumentation" \
   "$image_name" \
   /bin/bash
+
