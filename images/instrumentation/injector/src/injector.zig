@@ -50,6 +50,27 @@ const otel_resource_attributes_env_var_name: []const u8 = "OTEL_RESOURCE_ATTRIBU
 // - more extensive instrumentation tests for .NET, verifying OTEL_RESOURCE_ATTRIBUTES, and the various env vars that
 //   activate tracing.
 
+const EnvVarValueAndIndex = struct {
+    /// The value of the environment variable. If the environment variable is not found, no EnvVarValueAndIndex should
+    /// be returned at all, that is, functions that return EnvVarValueAndIndex always return an optional
+    /// ?EnvVarValueAndIndex.
+    value: types.NullTerminatedString,
+    /// The index of the environment variable in the list of environment variables list.
+    index: usize,
+};
+
+const EnvVarUpdate = struct {
+    /// The value of the environment variable to set.
+    value: types.NullTerminatedString,
+    /// The index of the environment variable in the original environment variables list. If this is true, the required
+    /// action is to replace the environment variable at that index with the new value. If this is false, the required
+    /// action is to append the new value to the end of the environment variables list.
+    replace: bool,
+    /// The index of the environment variable in the original environment variables list. This value is only valid if
+    /// replace is true, otherwise it must be ignored.
+    index: usize,
+};
+
 /// A type for a rule to map an environment variable to a resource attribute. The result of applying these rules (via
 /// getResourceAttributes) is a string of key-value pairs, where each pair is of the form key=value, and pairs are
 /// separated by commas. If resource_attributes_key is not null, we append a key-value pair
@@ -207,17 +228,23 @@ test "readProcSelfEnvironBuffer: read environment variables" {
 
 fn applyModifications(original_env_vars: [](types.NullTerminatedString)) ![](types.NullTerminatedString) {
     var number_of_env_vars_after_modifications: usize = original_env_vars.len;
-    const new_otel_resource_attributes_value_optional = getModifiedOtelResourceAttributesValue(original_env_vars);
-    if (new_otel_resource_attributes_value_optional != null) {
-        number_of_env_vars_after_modifications += 1;
+    const otel_resource_attributes_update_optional = getModifiedOtelResourceAttributesValue(original_env_vars);
+    if (otel_resource_attributes_update_optional) |otel_resource_attributes_update| {
+        if (!otel_resource_attributes_update.replace) {
+            number_of_env_vars_after_modifications += 1;
+        }
     }
 
     const modified_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, number_of_env_vars_after_modifications);
     for (original_env_vars, 0..) |original_env_var, i| {
         modified_env_vars[i] = original_env_var;
     }
-    if (new_otel_resource_attributes_value_optional) |new_otel_resource_attributes_value| {
-        modified_env_vars[original_env_vars.len] = new_otel_resource_attributes_value;
+    if (otel_resource_attributes_update_optional) |otel_resource_attributes_update| {
+        if (!otel_resource_attributes_update.replace) {
+            modified_env_vars[original_env_vars.len] = otel_resource_attributes_update.value;
+        } else {
+            modified_env_vars[otel_resource_attributes_update.index] = otel_resource_attributes_update.value;
+        }
     }
 
     return modified_env_vars;
@@ -335,33 +362,12 @@ test "renderEnvVarsToExport: compose OTEL_RESOURCE_ATTRIBUTES, OTEL_RESOURCE_ATT
 
 /// Derive the modified value for OTEL_RESOURCE_ATTRIBUTES based on the original value, and on other resource attributes
 /// provided via the DASH0_* environment variables set by the operator (workload_modifier#addEnvironmentVariables).
-pub fn getModifiedOtelResourceAttributesValue(env_vars: [](types.NullTerminatedString)) ?types.NullTerminatedString {
-    // if (modified_otel_resource_attributes_value_calculated) {
-    //     std.debug.print("getModifiedOtelResourceAttributesValue: OTEL_RESOURCE_ATTRIBUTES already modified\n", .{});
-    //     // We have already calculated the value, so we can return it.
-    //     return modified_otel_resource_attributes_value;
-    // }
-    //
-    // std.debug.print("[Dash0 injector] getModifiedOtelResourceAttributesValue: OTEL_RESOURCE_ATTRIBUTES not modified yet\n", .{});
-    //
-    // const original_value_optional = getEnvVar(env_vars, "OTEL_RESOURCE_ATTRIBUTES");
-    // if (original_value_optional) |original_value| {
-    //     std.debug.print("[Dash0 injector] original OTEL_RESOURCE_ATTRIBUTES: {s}\n", .{original_value});
-    // } else {
-    //     std.debug.print("[Dash0 injector] no original OTEL_RESOURCE_ATTRIBUTES\n", .{});
-    // }
-    //
-    // // TODO getResourceAttributes segfaults
-    // const resource_attributes_optional = getResourceAttributes(env_vars);
-    // if (resource_attributes_optional) |resource_attributes| {
-    //     std.debug.print("[Dash0 injector] resource attribtues are present: {s}\n", .{resource_attributes});
-    // } else {
-    //     std.debug.print("[Dash0 injector] no resource attributes\n", .{});
-    // }
-
+pub fn getModifiedOtelResourceAttributesValue(env_vars: [](types.NullTerminatedString)) ?EnvVarUpdate {
     const original_value_optional = getEnvVar(env_vars, "OTEL_RESOURCE_ATTRIBUTES");
     const resource_attributes_optional = getResourceAttributes(env_vars);
-    if (original_value_optional) |original_value| {
+    if (original_value_optional) |original_value_and_index| {
+        const original_value = original_value_and_index.value;
+        const original_index = original_value_and_index.index;
         if (resource_attributes_optional) |resource_attributes| {
             defer std.heap.page_allocator.free(resource_attributes);
 
@@ -372,7 +378,7 @@ pub fn getModifiedOtelResourceAttributesValue(env_vars: [](types.NullTerminatedS
             // parent process.
             const return_buffer = std.fmt.allocPrintZ(std.heap.page_allocator, "{s}={s},{s}", .{ otel_resource_attributes_env_var_name, resource_attributes, original_value }) catch |err| {
                 print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ otel_resource_attributes_env_var_name, err });
-                return original_value;
+                return EnvVarUpdate{ .value = original_value, .replace = true, .index = original_index };
             };
 
             std.debug.print("OTEL_RESOURCE_ATTRIBUTES updated to '{s}\n", .{return_buffer});
@@ -380,8 +386,8 @@ pub fn getModifiedOtelResourceAttributesValue(env_vars: [](types.NullTerminatedS
             modified_otel_resource_attributes_value = return_buffer.ptr;
             modified_otel_resource_attributes_value_calculated = true;
 
-            std.debug.print("getModifiedOtelResourceAttributesValue: both original value and new values to add are present\n", .{});
-            return modified_otel_resource_attributes_value;
+            std.debug.print("getModifiedOtelResourceAttributesValue: both original value and new values to add are present, returning {s}\n", .{return_buffer.ptr});
+            return EnvVarUpdate{ .value = return_buffer.ptr, .replace = true, .index = original_index };
         } else {
             std.debug.print("getModifiedOtelResourceAttributesValue: original value: {s}\n", .{original_value});
 
@@ -389,14 +395,14 @@ pub fn getModifiedOtelResourceAttributesValue(env_vars: [](types.NullTerminatedS
             // parent process.
             const return_buffer = std.fmt.allocPrintZ(std.heap.page_allocator, "{s}={s}", .{ otel_resource_attributes_env_var_name, original_value }) catch |err| {
                 print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ otel_resource_attributes_env_var_name, err });
-                return original_value;
+                return EnvVarUpdate{ .value = original_value, .replace = true, .index = original_index };
             };
 
             modified_otel_resource_attributes_value = return_buffer.ptr;
             modified_otel_resource_attributes_value_calculated = true;
 
-            std.debug.print("getModifiedOtelResourceAttributesValue: original value, nothing to add\n", .{});
-            return modified_otel_resource_attributes_value;
+            std.debug.print("getModifiedOtelResourceAttributesValue: original value, nothing to add, returning {s}\n", .{return_buffer.ptr});
+            return EnvVarUpdate{ .value = return_buffer.ptr, .replace = true, .index = original_index };
         }
     } else {
         if (resource_attributes_optional) |resource_attributes| {
@@ -412,12 +418,12 @@ pub fn getModifiedOtelResourceAttributesValue(env_vars: [](types.NullTerminatedS
             modified_otel_resource_attributes_value = return_buffer.ptr;
             modified_otel_resource_attributes_value_calculated = true;
 
-            std.debug.print("getModifiedOtelResourceAttributesValue: no original value, but new values to add are present, returning {any}\n", .{modified_otel_resource_attributes_value});
-            return modified_otel_resource_attributes_value;
+            std.debug.print("getModifiedOtelResourceAttributesValue: no original value, but new values to add are present, returning {s}\n", .{return_buffer.ptr});
+            return EnvVarUpdate{ .value = return_buffer.ptr, .replace = false, .index = 0 };
         } else {
             // There is no original value, and also nothing to add, return null.
             modified_otel_resource_attributes_value_calculated = true;
-            std.debug.print("getModifiedOtelResourceAttributesValue: no original, nothing to add\n", .{});
+            std.debug.print("getModifiedOtelResourceAttributesValue: no original, nothing to add, returning null\n", .{});
             return null;
         }
     }
@@ -431,8 +437,9 @@ fn getResourceAttributes(env_vars: [](types.NullTerminatedString)) ?[]u8 {
     var final_len: usize = 0;
 
     for (mappings) |mapping| {
-        const original_value = getEnvVar(env_vars, mapping.environement_variable_name);
-        if (original_value) |value| {
+        const original_value_and_index_optional = getEnvVar(env_vars, mapping.environement_variable_name);
+        if (original_value_and_index_optional) |original_value_and_index| {
+            const value = original_value_and_index.value;
             if (std.mem.len(value) > 0) {
                 if (final_len > 0) {
                     final_len += 1; // ","
@@ -462,8 +469,9 @@ fn getResourceAttributes(env_vars: [](types.NullTerminatedString)) ?[]u8 {
     // TODO why do we iterate twice over mappings?
     for (mappings) |mapping| {
         const env_var_name = mapping.environement_variable_name;
-        const original = getEnvVar(env_vars, env_var_name);
-        if (original) |value| {
+        const original_value_and_index_optional = getEnvVar(env_vars, env_var_name);
+        if (original_value_and_index_optional) |original_value_and_index| {
+            const value = original_value_and_index.value;
             if (std.mem.len(value) > 0) {
                 if (is_first_token) {
                     is_first_token = false;
@@ -496,15 +504,15 @@ fn getResourceAttributes(env_vars: [](types.NullTerminatedString)) ?[]u8 {
 /// Get the value of an environment variable from the provided env_vars list, which is a list of null-terminated
 /// strings. Returns an the value of the environment variable as an optional, and the index of the environment variable;
 /// the index is only valid if the environment variable was found (i.e. the optional is not null).
-pub fn getEnvVar(env_vars: [](types.NullTerminatedString), name: []const u8) ?types.NullTerminatedString {
-    for (env_vars) |env_var| {
+pub fn getEnvVar(env_vars: [](types.NullTerminatedString), name: []const u8) ?EnvVarValueAndIndex {
+    for (env_vars, 0..) |env_var, idx| {
         const env_var_slice: []const u8 = std.mem.span(env_var);
         if (std.mem.indexOf(u8, env_var_slice, "=")) |equals_char_idx| {
             if (std.mem.eql(u8, name, env_var[0..equals_char_idx])) {
                 if (std.mem.len(env_var) == equals_char_idx + 1) {
                     return null;
                 }
-                return env_var[equals_char_idx + 1 ..];
+                return EnvVarValueAndIndex{ .value = env_var[equals_char_idx + 1 ..], .index = idx };
             }
         }
     }
