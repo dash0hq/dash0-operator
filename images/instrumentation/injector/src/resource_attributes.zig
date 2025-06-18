@@ -148,6 +148,7 @@ pub fn getResourceAttributes() ?[]u8 {
     var fbs = std.io.fixedBufferStream(resource_attributes);
 
     var is_first_token = true;
+    // TODO why do we iterate twice over mappings?
     for (mappings) |mapping| {
         const env_var_name = mapping.environement_variable_name;
         if (std.posix.getenv(env_var_name)) |value| {
