@@ -29,6 +29,6 @@ comptime {
 fn initEnviron() callconv(.C) void {
     const pid = std.os.linux.getpid();
     std.debug.print("[Dash0 injector] {d} initEnviron() start\n", .{pid});
-    __environ_internal, _ = injector._initEnviron("/proc/self/environ") catch @panic("[Dash0 injector] initEnviron failed");
+    __environ_internal = injector._initEnviron("/proc/self/environ") catch @panic("[Dash0 injector] initEnviron failed");
     std.debug.print("[Dash0 injector] {d} initEnviron() done\n", .{pid});
 }

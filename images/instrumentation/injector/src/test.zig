@@ -3,7 +3,7 @@
 
 // All files with unit tests need to be referenced here:
 pub const dotnet = @import("dotnet.zig");
-pub const injector5 = @import("injector.zig");
+pub const injector = @import("injector.zig");
 pub const jvm = @import("jvm.zig");
 pub const node_js = @import("node_js.zig");
 pub const print = @import("print.zig");
