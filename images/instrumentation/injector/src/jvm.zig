@@ -25,8 +25,8 @@ pub fn checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue(env_vars: [](type
     std.fs.cwd().access(otel_java_agent_path, .{}) catch |err| {
         print.printError("Skipping injection of OTel Java agent in 'JAVA_TOOL_OPTIONS' because of an issue accessing the Jar file at {s}: {}", .{ otel_java_agent_path, err });
         if (original_value_and_index_optional) |original_value_and_index| {
-            cache.modification_cache.java_tool_options =
-                cache.CachedModification{
+            cache.injector_cache.java_tool_options =
+                cache.CachedEnvVarModification{
                     .value = original_value_and_index.value,
                     .done = true,
                 };
@@ -36,8 +36,8 @@ pub fn checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue(env_vars: [](type
                 .index = original_value_and_index.index,
             };
         }
-        cache.modification_cache.java_tool_options =
-            cache.CachedModification{
+        cache.injector_cache.java_tool_options =
+            cache.CachedEnvVarModification{
                 .value = null,
                 .done = true,
             };
@@ -51,8 +51,8 @@ pub fn checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue(env_vars: [](type
 }
 
 test "checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue: should return null value if the Java agent cannot be accessed" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 2);
     defer std.heap.page_allocator.free(original_env_vars);
@@ -61,13 +61,13 @@ test "checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue: should return nul
     const env_var_update_optional = checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue(original_env_vars);
     try testing.expect(env_var_update_optional == null);
 
-    try testing.expectEqual(true, cache.modification_cache.java_tool_options.done);
-    try testing.expect(cache.modification_cache.java_tool_options.value == null);
+    try testing.expectEqual(true, cache.injector_cache.java_tool_options.done);
+    try testing.expect(cache.injector_cache.java_tool_options.value == null);
 }
 
 test "checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue: should return the original value if the Java agent cannot be accessed" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 3);
     defer std.heap.page_allocator.free(original_env_vars);
@@ -82,8 +82,8 @@ test "checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue: should return the
     try testing.expectEqual(true, env_var_update.replace);
     try testing.expectEqual(1, env_var_update.index);
 
-    try testing.expectEqual(true, cache.modification_cache.java_tool_options.done);
-    try testing.expectEqualStrings("original value", std.mem.span(cache.modification_cache.java_tool_options.value.?));
+    try testing.expectEqual(true, cache.injector_cache.java_tool_options.done);
+    try testing.expectEqualStrings("original value", std.mem.span(cache.injector_cache.java_tool_options.value.?));
 }
 
 test "checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue: should return -javaagent if original value is unset and the Java agent can be accessed" {
@@ -93,8 +93,8 @@ test "checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue: should return -ja
         test_util.deleteDash0DummyDirectory();
     }
 
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 0);
     defer std.heap.page_allocator.free(original_env_vars);
@@ -106,8 +106,8 @@ test "checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue: should return -ja
     try testing.expectEqual(false, env_var_update.replace);
     try testing.expectEqual(0, env_var_update.index);
 
-    try testing.expectEqual(true, cache.modification_cache.java_tool_options.done);
-    try testing.expectEqualStrings("-javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar", std.mem.span(cache.modification_cache.java_tool_options.value.?));
+    try testing.expectEqual(true, cache.injector_cache.java_tool_options.done);
+    try testing.expectEqualStrings("-javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar", std.mem.span(cache.injector_cache.java_tool_options.value.?));
 }
 
 /// Returns the modified value for JAVA_TOOL_OPTIONS, including the -javaagent flag; based on the original value of
@@ -158,8 +158,8 @@ fn getModifiedJavaToolOptionsValue(
                     new_resource_attributes,
                 }) catch |err| {
                     print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ java_tool_options_env_var_name, err });
-                    cache.modification_cache.java_tool_options =
-                        cache.CachedModification{
+                    cache.injector_cache.java_tool_options =
+                        cache.CachedEnvVarModification{
                             .value = original_value_and_index.value,
                             .done = true,
                         };
@@ -178,8 +178,8 @@ fn getModifiedJavaToolOptionsValue(
                         javaagent_flag_value,
                     }) catch |err| {
                         print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ java_tool_options_env_var_name, err });
-                        cache.modification_cache.java_tool_options =
-                            cache.CachedModification{
+                        cache.injector_cache.java_tool_options =
+                            cache.CachedEnvVarModification{
                                 .value = original_value_and_index.value,
                                 .done = true,
                             };
@@ -191,8 +191,8 @@ fn getModifiedJavaToolOptionsValue(
                     };
                 print.printMessage(injection_happened_msg, .{});
                 print.printMessage(res_attrs.modification_happened_msg, .{java_tool_options_env_var_name});
-                cache.modification_cache.java_tool_options =
-                    cache.CachedModification{
+                cache.injector_cache.java_tool_options =
+                    cache.CachedEnvVarModification{
                         .value = return_buffer.ptr,
                         .done = true,
                     };
@@ -212,8 +212,8 @@ fn getModifiedJavaToolOptionsValue(
                     new_resource_attributes,
                 }) catch |err| {
                     print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ java_tool_options_env_var_name, err });
-                    cache.modification_cache.java_tool_options =
-                        cache.CachedModification{
+                    cache.injector_cache.java_tool_options =
+                        cache.CachedEnvVarModification{
                             .value = original_value_and_index.value,
                             .done = true,
                         };
@@ -225,8 +225,8 @@ fn getModifiedJavaToolOptionsValue(
                 };
             print.printMessage(res_attrs.modification_happened_msg, .{java_tool_options_env_var_name});
             print.printMessage(injection_happened_msg, .{});
-            cache.modification_cache.java_tool_options =
-                cache.CachedModification{
+            cache.injector_cache.java_tool_options =
+                cache.CachedEnvVarModification{
                     .value = return_buffer.ptr,
                     .done = true,
                 };
@@ -243,8 +243,8 @@ fn getModifiedJavaToolOptionsValue(
                     javaagent_flag_value,
                 }) catch |err| {
                     print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ java_tool_options_env_var_name, err });
-                    cache.modification_cache.java_tool_options =
-                        cache.CachedModification{
+                    cache.injector_cache.java_tool_options =
+                        cache.CachedEnvVarModification{
                             .value = original_value_and_index.value,
                             .done = true,
                         };
@@ -255,8 +255,8 @@ fn getModifiedJavaToolOptionsValue(
                     };
                 };
             print.printMessage(injection_happened_msg, .{});
-            cache.modification_cache.java_tool_options =
-                cache.CachedModification{
+            cache.injector_cache.java_tool_options =
+                cache.CachedEnvVarModification{
                     .value = return_buffer.ptr,
                     .done = true,
                 };
@@ -275,8 +275,8 @@ fn getModifiedJavaToolOptionsValue(
                 new_resource_attributes,
             }) catch |err| {
                 print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ java_tool_options_env_var_name, err });
-                cache.modification_cache.java_tool_options =
-                    cache.CachedModification{
+                cache.injector_cache.java_tool_options =
+                    cache.CachedEnvVarModification{
                         .value = null,
                         .done = true,
                     };
@@ -284,8 +284,8 @@ fn getModifiedJavaToolOptionsValue(
             };
             print.printMessage(res_attrs.modification_happened_msg, .{java_tool_options_env_var_name});
             print.printMessage(injection_happened_msg, .{});
-            cache.modification_cache.java_tool_options =
-                cache.CachedModification{
+            cache.injector_cache.java_tool_options =
+                cache.CachedEnvVarModification{
                     .value = return_buffer.ptr,
                     .done = true,
                 };
@@ -297,8 +297,8 @@ fn getModifiedJavaToolOptionsValue(
         } else {
             // JAVA_TOOL_OPTIONS is not set, and no new resource attributes have been provided. Simply return the -javaagent flag.
             print.printMessage(injection_happened_msg, .{});
-            cache.modification_cache.java_tool_options =
-                cache.CachedModification{
+            cache.injector_cache.java_tool_options =
+                cache.CachedEnvVarModification{
                     .value = javaagent_flag_value[0..].ptr,
                     .done = true,
                 };
@@ -312,8 +312,8 @@ fn getModifiedJavaToolOptionsValue(
 }
 
 test "getModifiedJavaToolOptionsValue: should return -javaagent if original value is unset and no resource attributes are provided" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const env_var_update = getModifiedJavaToolOptionsValue(null, null).?;
     try testing.expectEqualStrings(
@@ -323,13 +323,13 @@ test "getModifiedJavaToolOptionsValue: should return -javaagent if original valu
     try testing.expectEqual(false, env_var_update.replace);
     try testing.expectEqual(0, env_var_update.index);
 
-    try testing.expectEqual(true, cache.modification_cache.java_tool_options.done);
-    try testing.expectEqualStrings("-javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar", std.mem.span(cache.modification_cache.java_tool_options.value.?));
+    try testing.expectEqual(true, cache.injector_cache.java_tool_options.done);
+    try testing.expectEqualStrings("-javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar", std.mem.span(cache.injector_cache.java_tool_options.value.?));
 }
 
 test "getModifiedJavaToolOptionsValue: should return -javaagent and -Dotel.resource.attributes if original value is unset and resource attributes are provided" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const resource_attributes: []u8 = try std.heap.page_allocator.alloc(u8, 15);
     var fbs = std.io.fixedBufferStream(resource_attributes);
@@ -345,13 +345,13 @@ test "getModifiedJavaToolOptionsValue: should return -javaagent and -Dotel.resou
     try testing.expectEqual(false, env_var_update.replace);
     try testing.expectEqual(0, env_var_update.index);
 
-    try testing.expectEqual(true, cache.modification_cache.java_tool_options.done);
-    try testing.expectEqualStrings("-javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar -Dotel.resource.attributes=aaa=bbb,ccc=ddd", std.mem.span(cache.modification_cache.java_tool_options.value.?));
+    try testing.expectEqual(true, cache.injector_cache.java_tool_options.done);
+    try testing.expectEqualStrings("-javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar -Dotel.resource.attributes=aaa=bbb,ccc=ddd", std.mem.span(cache.injector_cache.java_tool_options.value.?));
 }
 
 test "getModifiedJavaToolOptionsValue: should append -javaagent if original value exists and no resource attributes are provided" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_value = types.EnvVarValueAndIndex{
         .value = "-Dsome.property=value"[0.. :0],
@@ -368,13 +368,13 @@ test "getModifiedJavaToolOptionsValue: should append -javaagent if original valu
     try testing.expectEqual(true, env_var_update.replace);
     try testing.expectEqual(3, env_var_update.index);
 
-    try testing.expectEqual(true, cache.modification_cache.java_tool_options.done);
-    try testing.expectEqualStrings("-Dsome.property=value -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar", std.mem.span(cache.modification_cache.java_tool_options.value.?));
+    try testing.expectEqual(true, cache.injector_cache.java_tool_options.done);
+    try testing.expectEqualStrings("-Dsome.property=value -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar", std.mem.span(cache.injector_cache.java_tool_options.value.?));
 }
 
 test "getModifiedJavaToolOptionsValue: should append -javaagent if original value exists and has -Dotel.resource.attributes but no new resource attributes are provided, " {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_value = types.EnvVarValueAndIndex{
         .value = "-Dsome.property=value -Dotel.resource.attributes=www=xxx,yyy=zzz"[0.. :0],
@@ -391,13 +391,13 @@ test "getModifiedJavaToolOptionsValue: should append -javaagent if original valu
     try testing.expectEqual(true, env_var_update.replace);
     try testing.expectEqual(3, env_var_update.index);
 
-    try testing.expectEqual(true, cache.modification_cache.java_tool_options.done);
-    try testing.expectEqualStrings("-Dsome.property=value -Dotel.resource.attributes=www=xxx,yyy=zzz -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar", std.mem.span(cache.modification_cache.java_tool_options.value.?));
+    try testing.expectEqual(true, cache.injector_cache.java_tool_options.done);
+    try testing.expectEqualStrings("-Dsome.property=value -Dotel.resource.attributes=www=xxx,yyy=zzz -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar", std.mem.span(cache.injector_cache.java_tool_options.value.?));
 }
 
 test "getModifiedJavaToolOptionsValue: should append -javaagent and -Dotel.resource.attributes if original value exists and resource attributes are provided" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_value = types.EnvVarValueAndIndex{
         .value = "-Dsome.property=value"[0.. :0],
@@ -417,13 +417,13 @@ test "getModifiedJavaToolOptionsValue: should append -javaagent and -Dotel.resou
     try testing.expectEqual(true, env_var_update.replace);
     try testing.expectEqual(3, env_var_update.index);
 
-    try testing.expectEqual(true, cache.modification_cache.java_tool_options.done);
-    try testing.expectEqualStrings("-Dsome.property=value -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar -Dotel.resource.attributes=aaa=bbb,ccc=ddd", std.mem.span(cache.modification_cache.java_tool_options.value.?));
+    try testing.expectEqual(true, cache.injector_cache.java_tool_options.done);
+    try testing.expectEqualStrings("-Dsome.property=value -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar -Dotel.resource.attributes=aaa=bbb,ccc=ddd", std.mem.span(cache.injector_cache.java_tool_options.value.?));
 }
 
 test "getModifiedJavaToolOptionsValue: should merge new and existing -Dotel.resource.attributes (only property)" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_value = types.EnvVarValueAndIndex{
         .value = "-Dotel.resource.attributes=eee=fff,ggg=hhh"[0.. :0],
@@ -443,13 +443,13 @@ test "getModifiedJavaToolOptionsValue: should merge new and existing -Dotel.reso
     try testing.expectEqual(true, env_var_update.replace);
     try testing.expectEqual(3, env_var_update.index);
 
-    try testing.expectEqual(true, cache.modification_cache.java_tool_options.done);
-    try testing.expectEqualStrings("-Dotel.resource.attributes=eee=fff,ggg=hhh,aaa=bbb,ccc=ddd -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar", std.mem.span(cache.modification_cache.java_tool_options.value.?));
+    try testing.expectEqual(true, cache.injector_cache.java_tool_options.done);
+    try testing.expectEqualStrings("-Dotel.resource.attributes=eee=fff,ggg=hhh,aaa=bbb,ccc=ddd -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar", std.mem.span(cache.injector_cache.java_tool_options.value.?));
 }
 
 test "getModifiedJavaToolOptionsValue: should merge new and existing -Dotel.resource.attributes (at the start)" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_value = types.EnvVarValueAndIndex{
         .value = "-Dproperty1=value -Dotel.resource.attributes=eee=fff,ggg=hhh"[0.. :0],
@@ -469,13 +469,13 @@ test "getModifiedJavaToolOptionsValue: should merge new and existing -Dotel.reso
     try testing.expectEqual(true, env_var_update.replace);
     try testing.expectEqual(3, env_var_update.index);
 
-    try testing.expectEqual(true, cache.modification_cache.java_tool_options.done);
-    try testing.expectEqualStrings("-Dproperty1=value -Dotel.resource.attributes=eee=fff,ggg=hhh,aaa=bbb,ccc=ddd -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar", std.mem.span(cache.modification_cache.java_tool_options.value.?));
+    try testing.expectEqual(true, cache.injector_cache.java_tool_options.done);
+    try testing.expectEqualStrings("-Dproperty1=value -Dotel.resource.attributes=eee=fff,ggg=hhh,aaa=bbb,ccc=ddd -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar", std.mem.span(cache.injector_cache.java_tool_options.value.?));
 }
 
 test "getModifiedJavaToolOptionsValue: should merge new and existing -Dotel.resource.attributes (in the middle)" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_value = types.EnvVarValueAndIndex{
         .value = "-Dproperty1=value -Dotel.resource.attributes=eee=fff,ggg=hhh -Dproperty2=value"[0.. :0],
@@ -495,13 +495,13 @@ test "getModifiedJavaToolOptionsValue: should merge new and existing -Dotel.reso
     try testing.expectEqual(true, env_var_update.replace);
     try testing.expectEqual(3, env_var_update.index);
 
-    try testing.expectEqual(true, cache.modification_cache.java_tool_options.done);
-    try testing.expectEqualStrings("-Dproperty1=value -Dotel.resource.attributes=eee=fff,ggg=hhh,aaa=bbb,ccc=ddd -Dproperty2=value -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar", std.mem.span(cache.modification_cache.java_tool_options.value.?));
+    try testing.expectEqual(true, cache.injector_cache.java_tool_options.done);
+    try testing.expectEqualStrings("-Dproperty1=value -Dotel.resource.attributes=eee=fff,ggg=hhh,aaa=bbb,ccc=ddd -Dproperty2=value -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar", std.mem.span(cache.injector_cache.java_tool_options.value.?));
 }
 
 test "getModifiedJavaToolOptionsValue: should merge new and existing -Dotel.resource.attributes (at the end)" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_value = types.EnvVarValueAndIndex{
         .value = "-Dproperty1=value -Dotel.resource.attributes=eee=fff,ggg=hhh"[0.. :0],
@@ -521,6 +521,6 @@ test "getModifiedJavaToolOptionsValue: should merge new and existing -Dotel.reso
     try testing.expectEqual(true, env_var_update.replace);
     try testing.expectEqual(3, env_var_update.index);
 
-    try testing.expectEqual(true, cache.modification_cache.java_tool_options.done);
-    try testing.expectEqualStrings("-Dproperty1=value -Dotel.resource.attributes=eee=fff,ggg=hhh,aaa=bbb,ccc=ddd -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar", std.mem.span(cache.modification_cache.java_tool_options.value.?));
+    try testing.expectEqual(true, cache.injector_cache.java_tool_options.done);
+    try testing.expectEqualStrings("-Dproperty1=value -Dotel.resource.attributes=eee=fff,ggg=hhh,aaa=bbb,ccc=ddd -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar", std.mem.span(cache.injector_cache.java_tool_options.value.?));
 }

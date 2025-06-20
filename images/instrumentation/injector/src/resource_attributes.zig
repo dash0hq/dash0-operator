@@ -80,7 +80,7 @@ pub fn getModifiedOtelResourceAttributesValue(env_vars: [](types.NullTerminatedS
                     return types.EnvVarUpdate{ .value = original_value, .replace = true, .index = original_index };
                 };
                 print.printMessage(modification_happened_msg, .{otel_resource_attributes_env_var_name});
-                cache.modification_cache.otel_resource_attributes = cache.CachedModification{ .value = return_buffer.ptr, .done = true };
+                cache.injector_cache.otel_resource_attributes = cache.CachedEnvVarModification{ .value = return_buffer.ptr, .done = true };
                 return types.EnvVarUpdate{ .value = return_buffer.ptr, .replace = true, .index = original_index };
             }
 
@@ -92,7 +92,7 @@ pub fn getModifiedOtelResourceAttributesValue(env_vars: [](types.NullTerminatedS
                 return types.EnvVarUpdate{ .value = original_value, .replace = true, .index = original_index };
             };
             print.printMessage(modification_happened_msg, .{otel_resource_attributes_env_var_name});
-            cache.modification_cache.otel_resource_attributes = cache.CachedModification{ .value = return_buffer.ptr, .done = true };
+            cache.injector_cache.otel_resource_attributes = cache.CachedEnvVarModification{ .value = return_buffer.ptr, .done = true };
             return types.EnvVarUpdate{ .value = return_buffer.ptr, .replace = true, .index = original_index };
         } else {
             // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
@@ -101,7 +101,7 @@ pub fn getModifiedOtelResourceAttributesValue(env_vars: [](types.NullTerminatedS
                 print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ otel_resource_attributes_env_var_name, err });
                 return types.EnvVarUpdate{ .value = original_value, .replace = true, .index = original_index };
             };
-            cache.modification_cache.otel_resource_attributes = cache.CachedModification{ .value = return_buffer.ptr, .done = true };
+            cache.injector_cache.otel_resource_attributes = cache.CachedEnvVarModification{ .value = return_buffer.ptr, .done = true };
             return types.EnvVarUpdate{ .value = return_buffer.ptr, .replace = true, .index = original_index };
         }
     } else {
@@ -114,19 +114,19 @@ pub fn getModifiedOtelResourceAttributesValue(env_vars: [](types.NullTerminatedS
                 return null;
             };
             print.printMessage(modification_happened_msg, .{otel_resource_attributes_env_var_name});
-            cache.modification_cache.otel_resource_attributes = cache.CachedModification{ .value = return_buffer.ptr, .done = true };
+            cache.injector_cache.otel_resource_attributes = cache.CachedEnvVarModification{ .value = return_buffer.ptr, .done = true };
             return types.EnvVarUpdate{ .value = return_buffer.ptr, .replace = false, .index = 0 };
         } else {
             // There is no original value, and also nothing to add, return null.
-            cache.modification_cache.otel_resource_attributes = cache.CachedModification{ .value = null, .done = true };
+            cache.injector_cache.otel_resource_attributes = cache.CachedEnvVarModification{ .value = null, .done = true };
             return null;
         }
     }
 }
 
 test "getModifiedOtelResourceAttributesValue: no original value, no new resource attributes" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 2);
     defer std.heap.page_allocator.free(original_env_vars);
@@ -134,13 +134,13 @@ test "getModifiedOtelResourceAttributesValue: no original value, no new resource
     original_env_vars[1] = "CCC=ddd";
     const env_var_update_optional = getModifiedOtelResourceAttributesValue(original_env_vars);
     try testing.expect(env_var_update_optional == null);
-    try testing.expectEqual(true, cache.modification_cache.otel_resource_attributes.done);
-    try testing.expectEqual(null, cache.modification_cache.otel_resource_attributes.value);
+    try testing.expectEqual(true, cache.injector_cache.otel_resource_attributes.done);
+    try testing.expectEqual(null, cache.injector_cache.otel_resource_attributes.value);
 }
 
 test "getModifiedOtelResourceAttributesValue: original value is empty string, no new resource attributes" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 3);
     defer std.heap.page_allocator.free(original_env_vars);
@@ -152,13 +152,13 @@ test "getModifiedOtelResourceAttributesValue: original value is empty string, no
     try testing.expectEqual(0, std.mem.len(env_var_update.value));
     try testing.expectEqual(true, env_var_update.replace);
     try testing.expectEqual(1, env_var_update.index);
-    try testing.expectEqual(true, cache.modification_cache.otel_resource_attributes.done);
-    try testing.expectEqualStrings("", std.mem.span(cache.modification_cache.otel_resource_attributes.value.?));
+    try testing.expectEqual(true, cache.injector_cache.otel_resource_attributes.done);
+    try testing.expectEqualStrings("", std.mem.span(cache.injector_cache.otel_resource_attributes.value.?));
 }
 
 test "getModifiedOtelResourceAttributesValue: no original value, only new resource attributes" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 3);
     defer std.heap.page_allocator.free(original_env_vars);
@@ -169,13 +169,13 @@ test "getModifiedOtelResourceAttributesValue: no original value, only new resour
     try testing.expectEqualStrings("k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid", std.mem.span(env_var_update.value));
     try testing.expectEqual(false, env_var_update.replace);
     try testing.expectEqual(0, env_var_update.index);
-    try testing.expectEqual(true, cache.modification_cache.otel_resource_attributes.done);
-    try testing.expectEqualStrings("k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid", std.mem.span(cache.modification_cache.otel_resource_attributes.value.?));
+    try testing.expectEqual(true, cache.injector_cache.otel_resource_attributes.done);
+    try testing.expectEqualStrings("k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid", std.mem.span(cache.injector_cache.otel_resource_attributes.value.?));
 }
 
 test "getModifiedOtelResourceAttributesValue: original value is empty string, new resource attributes present" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 4);
     defer std.heap.page_allocator.free(original_env_vars);
@@ -187,13 +187,13 @@ test "getModifiedOtelResourceAttributesValue: original value is empty string, ne
     try testing.expectEqualStrings("k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid", std.mem.span(env_var_update.value));
     try testing.expectEqual(true, env_var_update.replace);
     try testing.expectEqual(0, env_var_update.index);
-    try testing.expectEqual(true, cache.modification_cache.otel_resource_attributes.done);
-    try testing.expectEqualStrings("k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid", std.mem.span(cache.modification_cache.otel_resource_attributes.value.?));
+    try testing.expectEqual(true, cache.injector_cache.otel_resource_attributes.done);
+    try testing.expectEqualStrings("k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid", std.mem.span(cache.injector_cache.otel_resource_attributes.value.?));
 }
 
 test "getModifiedOtelResourceAttributesValue: original value exists, no new resource attributes" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 3);
     defer std.heap.page_allocator.free(original_env_vars);
@@ -204,13 +204,13 @@ test "getModifiedOtelResourceAttributesValue: original value exists, no new reso
     try testing.expectEqualStrings("aaa=bbb,ccc=ddd", std.mem.span(env_var_update.value));
     try testing.expectEqual(true, env_var_update.replace);
     try testing.expectEqual(2, env_var_update.index);
-    try testing.expectEqual(true, cache.modification_cache.otel_resource_attributes.done);
-    try testing.expectEqualStrings("aaa=bbb,ccc=ddd", std.mem.span(cache.modification_cache.otel_resource_attributes.value.?));
+    try testing.expectEqual(true, cache.injector_cache.otel_resource_attributes.done);
+    try testing.expectEqualStrings("aaa=bbb,ccc=ddd", std.mem.span(cache.injector_cache.otel_resource_attributes.value.?));
 }
 
 test "getModifiedOtelResourceAttributesValue: original value and new resource attributes" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 4);
     defer std.heap.page_allocator.free(original_env_vars);
@@ -222,8 +222,8 @@ test "getModifiedOtelResourceAttributesValue: original value and new resource at
     try testing.expectEqualStrings("k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,aaa=bbb,ccc=ddd", std.mem.span(env_var_update.value));
     try testing.expectEqual(true, env_var_update.replace);
     try testing.expectEqual(2, env_var_update.index);
-    try testing.expectEqual(true, cache.modification_cache.otel_resource_attributes.done);
-    try testing.expectEqualStrings("k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,aaa=bbb,ccc=ddd", std.mem.span(cache.modification_cache.otel_resource_attributes.value.?));
+    try testing.expectEqual(true, cache.injector_cache.otel_resource_attributes.done);
+    try testing.expectEqualStrings("k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,aaa=bbb,ccc=ddd", std.mem.span(cache.injector_cache.otel_resource_attributes.value.?));
 }
 
 /// Maps the DASH0_* environment variables that are set by the operator (workload_modifier#addEnvironmentVariables) to a
@@ -301,8 +301,8 @@ pub fn getResourceAttributes(env_vars: [](types.NullTerminatedString)) ?[]u8 {
 }
 
 test "getResourceAttributes: empty environment" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 0);
     defer std.heap.page_allocator.free(original_env_vars);
@@ -310,8 +310,8 @@ test "getResourceAttributes: empty environment" {
 }
 
 test "getResourceAttributes: Kubernetes namespace only" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 1);
     defer std.heap.page_allocator.free(original_env_vars);
@@ -322,8 +322,8 @@ test "getResourceAttributes: Kubernetes namespace only" {
 }
 
 test "getResourceAttributes: Kubernetes pod name only" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 1);
     defer std.heap.page_allocator.free(original_env_vars);
@@ -334,8 +334,8 @@ test "getResourceAttributes: Kubernetes pod name only" {
 }
 
 test "getResourceAttributes: Kubernetes pod uid only" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 1);
     defer std.heap.page_allocator.free(original_env_vars);
@@ -346,8 +346,8 @@ test "getResourceAttributes: Kubernetes pod uid only" {
 }
 
 test "getResourceAttributes: container name only" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 1);
     defer std.heap.page_allocator.free(original_env_vars);
@@ -358,8 +358,8 @@ test "getResourceAttributes: container name only" {
 }
 
 test "getResourceAttributes: service name only" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 1);
     defer std.heap.page_allocator.free(original_env_vars);
@@ -370,8 +370,8 @@ test "getResourceAttributes: service name only" {
 }
 
 test "getResourceAttributes: service version only" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 1);
     defer std.heap.page_allocator.free(original_env_vars);
@@ -382,8 +382,8 @@ test "getResourceAttributes: service version only" {
 }
 
 test "getResourceAttributes: service namespaces only" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 1);
     defer std.heap.page_allocator.free(original_env_vars);
@@ -395,8 +395,8 @@ test "getResourceAttributes: service namespaces only" {
 }
 
 test "getResourceAttributes: free-form resource attributes only" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 1);
     defer std.heap.page_allocator.free(original_env_vars);
@@ -407,8 +407,8 @@ test "getResourceAttributes: free-form resource attributes only" {
 }
 
 test "getResourceAttributes: everything is set" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 8);
     defer std.heap.page_allocator.free(original_env_vars);
