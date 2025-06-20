@@ -10,7 +10,9 @@ const types = @import("types.zig");
 
 const testing = std.testing;
 
-pub const modification_happened_msg = "adding additional OpenTelemetry resources attributes via {s}";
+pub const otel_resource_attributes_env_var_name: []const u8 = "OTEL_RESOURCE_ATTRIBUTES";
+
+const modification_happened_msg = "adding additional OpenTelemetry resources attributes via {s}";
 
 /// A type for a rule to map an environment variable to a resource attribute. The result of applying these rules (via
 /// getResourceAttributes) is a string of key-value pairs, where each pair is of the form key=value, and pairs are
@@ -23,7 +25,6 @@ const EnvToResourceAttributeMapping = struct {
     resource_attributes_key: ?[]const u8,
 };
 
-pub const otel_resource_attributes_env_var_name = "OTEL_RESOURCE_ATTRIBUTES";
 
 /// A list of mappings from environment variables to resource attributes.
 const mappings: [8]EnvToResourceAttributeMapping =
@@ -234,7 +235,7 @@ test "getModifiedOtelResourceAttributesValue: original value and new resource at
 /// JAVA_TOOL_OPTIONS for JVMs).
 ///
 /// Important: The caller must free the returned []u8 array, if a non-null value is returned.
-pub fn getResourceAttributes(env_vars: [](types.NullTerminatedString)) ?[]u8 {
+fn getResourceAttributes(env_vars: [](types.NullTerminatedString)) ?[]u8 {
     var final_len: usize = 0;
 
     for (mappings) |mapping| {
