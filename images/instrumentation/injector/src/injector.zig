@@ -4,6 +4,7 @@
 const std = @import("std");
 
 const cache = @import("cache.zig");
+const dotnet = @import("dotnet.zig");
 const env = @import("env.zig");
 const jvm = @import("jvm.zig");
 const node_js = @import("node_js.zig");
@@ -24,8 +25,6 @@ const testing = std.testing;
 // - revisit __DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS vs idempotency (maybe later)
 // - handle all error conditions internally, print a warning, do not modify anything and let the instrumented process
 //   continue instead of crashing it.
-// - remove all std.debug.print calls (make them contigent on DASH0_INJECTOR_DEBUG being set). Keep the output of
-//   start/finish with PID as a debug output if DASH0_INJECTOR_DEBUG=true.
 // - add instrumentation test with an empty OTEL_RESOURCE_ATTRIBUTES env var, make sure it gets correctly replaced
 //   (instead of appending a new entry).
 // - at the moment, leaving an env var unmodified is sometimes achieved by returning an EnvVarUpdate with the
@@ -43,10 +42,15 @@ const testing = std.testing;
 //   activate tracing.
 // - double check which intermediate values (strings, slices, ...) we can free and which need to remain allocated.
 // - add readme with instructions, also useful commands like
-//   // VERBOSE=true SUPPRESS_SKIPPED=true RUNTIMES=c,jvm TEST_CASES=otel-resource-attributes-unset,existing-env-var-return-unmodified ./watch-tests-within-container.sh
+//   VERBOSE=true SUPPRESS_SKIPPED=true RUNTIMES=c,jvm TEST_CASES=otel-resource-attributes-unset,existing-env-var-return-unmodified ./watch-tests-within-container.sh
 
 pub fn _initEnviron(proc_self_environ_path: []const u8) ![*c]const [*c]const u8 {
     const original_env_vars = try readProcSelfEnvironFile(proc_self_environ_path);
+    print.initDebugFlag(original_env_vars);
+    if (print.isDebug()) {
+        const pid = std.os.linux.getpid();
+        print.printDebug("starting to instrument process with pid {d}\n", .{pid});
+    }
     const modified_env_vars = try applyModifications(original_env_vars);
     return try renderEnvVarsToExport(modified_env_vars);
 }
