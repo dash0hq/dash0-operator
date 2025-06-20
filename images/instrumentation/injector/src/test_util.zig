@@ -7,7 +7,7 @@ const std = @import("std");
 
 pub const test_allocator: std.mem.Allocator = std.heap.page_allocator;
 
-// TODO remove this
+// TODO remove this?
 
 /// Clears all entries from std.c.environ, i.e. all environment variables are discarded. The original content before
 /// making any changes is returned. The caller is expected to reset std.c.environ to the return value of this function
@@ -50,4 +50,21 @@ pub fn setStdCEnviron(env_vars: []const []const u8) anyerror![*:null]?[*:0]u8 {
 /// setStdCEnviron earler, to restore the original environment after the test is done.
 pub fn resetStdCEnviron(original_environ: [*:null]?[*:0]u8) void {
     std.c.environ = original_environ;
+}
+
+/// The equivalent of `rm -rf /__dash0__`.
+pub fn deleteDash0DummyDirectory() void {
+    const root_dir_or_error = std.fs.openDirAbsolute("/", .{});
+    if (root_dir_or_error) |root_dir| {
+        root_dir.deleteTree("__dash0__") catch |err| {
+            std.debug.print("Failed to delete dummy distribution: {}\n", .{err});
+        };
+    } else |err| {
+        std.debug.print("Failed to open dir for dummy distribution: {}\n", .{err});
+    }
+}
+
+pub fn createDummyDirectory(path: []const u8) !void {
+    const root_dir = try std.fs.openDirAbsolute("/", .{});
+    try root_dir.makePath(path);
 }
