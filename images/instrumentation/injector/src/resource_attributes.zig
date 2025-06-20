@@ -233,20 +233,23 @@ test "getModifiedOtelResourceAttributesValue: original value and new resource at
 /// Important: The caller must free the returned []u8 array, if a non-null value is returned.
 fn getResourceAttributes(env_vars: [](types.NullTerminatedString)) ?[]u8 {
     var final_len: usize = 0;
-
     for (mappings) |mapping| {
-        const original_value_and_index_optional = env.getEnvVar(env_vars, mapping.environement_variable_name);
-        if (original_value_and_index_optional) |original_value_and_index| {
-            const value = original_value_and_index.value;
-            if (std.mem.len(value) > 0) {
+        const dash0_source_env_var_value_and_index_optional =
+            env.getEnvVar(
+                env_vars,
+                mapping.environement_variable_name,
+            );
+        if (dash0_source_env_var_value_and_index_optional) |dash0_source_env_var_value_and_index| {
+            const dash0_source_env_var_value = dash0_source_env_var_value_and_index.value;
+            if (std.mem.len(dash0_source_env_var_value) > 0) {
                 if (final_len > 0) {
                     final_len += 1; // ","
                 }
 
                 if (mapping.resource_attributes_key) |attribute_key| {
-                    final_len += std.fmt.count("{s}={s}", .{ attribute_key, value });
+                    final_len += std.fmt.count("{s}={s}", .{ attribute_key, dash0_source_env_var_value });
                 } else {
-                    final_len += std.mem.len(value);
+                    final_len += std.mem.len(dash0_source_env_var_value);
                 }
             }
         }
@@ -265,11 +268,11 @@ fn getResourceAttributes(env_vars: [](types.NullTerminatedString)) ?[]u8 {
 
     var is_first_token = true;
     for (mappings) |mapping| {
-        const env_var_name = mapping.environement_variable_name;
-        const original_value_and_index_optional = env.getEnvVar(env_vars, env_var_name);
-        if (original_value_and_index_optional) |original_value_and_index| {
-            const value = original_value_and_index.value;
-            if (std.mem.len(value) > 0) {
+        const dash0_source_env_var_name = mapping.environement_variable_name;
+        const dash0_source_env_var_value_and_index_optional = env.getEnvVar(env_vars, dash0_source_env_var_name);
+        if (dash0_source_env_var_value_and_index_optional) |dash0_source_env_var_value_and_index| {
+            const dash0_source_env_var_value = dash0_source_env_var_value_and_index.value;
+            if (std.mem.len(dash0_source_env_var_value) > 0) {
                 if (is_first_token) {
                     is_first_token = false;
                 } else {
@@ -280,13 +283,13 @@ fn getResourceAttributes(env_vars: [](types.NullTerminatedString)) ?[]u8 {
                 }
 
                 if (mapping.resource_attributes_key) |attribute_key| {
-                    std.fmt.format(fbs.writer(), "{s}={s}", .{ attribute_key, value }) catch |err| {
-                        print.printError("Cannot append '{s}={s}' from env var '{s}' to resource attributes: {}", .{ attribute_key, value, env_var_name, err });
+                    std.fmt.format(fbs.writer(), "{s}={s}", .{ attribute_key, dash0_source_env_var_value }) catch |err| {
+                        print.printError("Cannot append '{s}={s}' from env var '{s}' to resource attributes: {}", .{ attribute_key, dash0_source_env_var_value, dash0_source_env_var_name, err });
                         return null;
                     };
                 } else {
-                    std.fmt.format(fbs.writer(), "{s}", .{value}) catch |err| {
-                        print.printError("Cannot append '{s}' from env var '{s}' to resource attributes: {}", .{ value, env_var_name, err });
+                    std.fmt.format(fbs.writer(), "{s}", .{dash0_source_env_var_value}) catch |err| {
+                        print.printError("Cannot append '{s}' from env var '{s}' to resource attributes: {}", .{ dash0_source_env_var_value, dash0_source_env_var_name, err });
                         return null;
                     };
                 }
@@ -306,7 +309,7 @@ test "getResourceAttributes: empty environment" {
     try testing.expect(getResourceAttributes(original_env_vars) == null);
 }
 
-test "getResourceAttributes: namespace only" {
+test "getResourceAttributes: Kubernetes namespace only" {
     cache.modification_cache = cache.emptyModificationCache();
     defer cache.modification_cache = cache.emptyModificationCache();
 
@@ -318,7 +321,7 @@ test "getResourceAttributes: namespace only" {
     try testing.expectEqualStrings("k8s.namespace.name=namespace", resource_attributes);
 }
 
-test "getResourceAttributes: pod name only" {
+test "getResourceAttributes: Kubernetes pod name only" {
     cache.modification_cache = cache.emptyModificationCache();
     defer cache.modification_cache = cache.emptyModificationCache();
 
@@ -330,7 +333,7 @@ test "getResourceAttributes: pod name only" {
     try testing.expectEqualStrings("k8s.pod.name=pod", resource_attributes);
 }
 
-test "getResourceAttributes: pod uid only" {
+test "getResourceAttributes: Kubernetes pod uid only" {
     cache.modification_cache = cache.emptyModificationCache();
     defer cache.modification_cache = cache.emptyModificationCache();
 
@@ -352,6 +355,43 @@ test "getResourceAttributes: container name only" {
     const resource_attributes = getResourceAttributes(original_env_vars).?;
     defer std.heap.page_allocator.free(resource_attributes);
     try testing.expectEqualStrings("k8s.container.name=container", resource_attributes);
+}
+
+test "getResourceAttributes: service name only" {
+    cache.modification_cache = cache.emptyModificationCache();
+    defer cache.modification_cache = cache.emptyModificationCache();
+
+    const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 1);
+    defer std.heap.page_allocator.free(original_env_vars);
+    original_env_vars[0] = "DASH0_SERVICE_NAME=service";
+    const resource_attributes = getResourceAttributes(original_env_vars).?;
+    defer std.heap.page_allocator.free(resource_attributes);
+    try testing.expectEqualStrings("service.name=service", resource_attributes);
+}
+
+test "getResourceAttributes: service version only" {
+    cache.modification_cache = cache.emptyModificationCache();
+    defer cache.modification_cache = cache.emptyModificationCache();
+
+    const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 1);
+    defer std.heap.page_allocator.free(original_env_vars);
+    original_env_vars[0] = "DASH0_SERVICE_VERSION=version";
+    const resource_attributes = getResourceAttributes(original_env_vars).?;
+    defer std.heap.page_allocator.free(resource_attributes);
+    try testing.expectEqualStrings("service.version=version", resource_attributes);
+}
+
+test "getResourceAttributes: service namespaces only" {
+    cache.modification_cache = cache.emptyModificationCache();
+    defer cache.modification_cache = cache.emptyModificationCache();
+
+    const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 1);
+    defer std.heap.page_allocator.free(original_env_vars);
+    original_env_vars[0] = "DASH0_SERVICE_NAMESPACE=servicenamespace";
+    // original_env_vars[0] = "DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd";
+    const resource_attributes = getResourceAttributes(original_env_vars).?;
+    defer std.heap.page_allocator.free(resource_attributes);
+    try testing.expectEqualStrings("service.namespace=servicenamespace", resource_attributes);
 }
 
 test "getResourceAttributes: free-form resource attributes only" {

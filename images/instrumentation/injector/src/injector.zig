@@ -4,30 +4,26 @@
 const std = @import("std");
 
 const cache = @import("cache.zig");
-const dotnet = @import("dotnet.zig");
 const env = @import("env.zig");
-const jvm = @import("jvm.zig");
 const node_js = @import("node_js.zig");
 const print = @import("print.zig");
 const res_attrs = @import("resource_attributes.zig");
+const test_util = @import("test_util.zig");
 const types = @import("types.zig");
 
-const assert = std.debug.assert;
-const expect = std.testing.expect;
 const testing = std.testing;
-
-// VERBOSE=true SUPPRESS_SKIPPED=true RUNTIMES=c,jvm TEST_CASES=otel-resource-attributes-unset,existing-env-var-return-unmodified ./watch-tests-within-container.sh
 
 // TODO
 // ====
-// - move otel resource attributes stuff back to resource_attributes.zig
+// - enable all other env var modifications again (NODE_OPTIONS, JAVA_TOOL_OPTIONS, etc.)
 // - get __DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS going, add tests for child process
 // - revisit __DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS vs idempotency (maybe later)
 // - remove all std.debug.print calls (make them contigent on DASH0_INJECTOR_DEBUG being set).
-// - move OTEL_RESOURCE_ATTRIBUTES back to resource_attributes.zig
 // - add instrumentation test with an empty OTEL_RESOURCE_ATTRIBUTES env var, make sure it gets correctly replaced
 //   (instead of appending a new entry).
-// - enable all other env var modifications again (NODE_OPTIONS, JAVA_TOOL_OPTIONS, etc.)
+// - at the moment, leaving an env var unmodified is sometimes achieved by returning an EnvVarUpdate with the
+//   original value and the original index. For exporting environ, this could as well be null. Or a third value for
+//   env_var_update.replace, ie. "do-not-modifiy". (in case we need the actual original value in the getenv override)
 // - clean up JAVA_TOOL_OPTIONS, we probably still need the -javaagent there, but not the otel resource attributes
 // - add Python test for OTEL_RESOURCE_ATTRIBUTES
 // - repair injector integration tests
@@ -39,6 +35,8 @@ const testing = std.testing;
 // - more extensive instrumentation tests for .NET, verifying OTEL_RESOURCE_ATTRIBUTES, and the various env vars that
 //   activate tracing.
 // - double check which intermediate values (strings, slices, ...) we can free and which need to remain allocated.
+// - add readme with instructions, also useful commands like
+//   // VERBOSE=true SUPPRESS_SKIPPED=true RUNTIMES=c,jvm TEST_CASES=otel-resource-attributes-unset,existing-env-var-return-unmodified ./watch-tests-within-container.sh
 
 pub fn _initEnviron(proc_self_environ_path: []const u8) ![*c]const [*c]const u8 {
     const original_env_vars = try readProcSelfEnvironFile(proc_self_environ_path);
@@ -251,8 +249,18 @@ fn applyModifications(original_env_vars: [](types.NullTerminatedString)) ![](typ
     var number_of_env_vars_after_modifications: usize = original_env_vars.len;
     const otel_resource_attributes_update_optional =
         res_attrs.getModifiedOtelResourceAttributesValue(original_env_vars);
+
     if (otel_resource_attributes_update_optional) |otel_resource_attributes_update| {
         if (!otel_resource_attributes_update.replace) {
+            number_of_env_vars_after_modifications += 1;
+        }
+    }
+
+    const original_node_options_optional = env.getEnvVar(original_env_vars, node_js.node_options_env_var_name);
+    const node_options_update_optional =
+        node_js.checkNodeJsOTelSdkDistributionAndGetModifiedNodeOptionsValue(original_node_options_optional);
+    if (node_options_update_optional) |node_options_update| {
+        if (!node_options_update.replace) {
             number_of_env_vars_after_modifications += 1;
         }
     }
@@ -261,9 +269,14 @@ fn applyModifications(original_env_vars: [](types.NullTerminatedString)) ![](typ
         types.NullTerminatedString,
         number_of_env_vars_after_modifications,
     );
+
+    // copy all original environment variables over to the new slice of modified environment variables
     for (original_env_vars, 0..) |original_env_var, i| {
         modified_env_vars[i] = original_env_var;
     }
+
+    // apply the actual modifications
+    var index_for_appending_env_vars: usize = original_env_vars.len;
     if (otel_resource_attributes_update_optional) |otel_resource_attributes_update| {
         const key_value_pair =
             std.fmt.allocPrintZ(
@@ -278,16 +291,42 @@ fn applyModifications(original_env_vars: [](types.NullTerminatedString)) ![](typ
                 return modified_env_vars;
             };
         if (!otel_resource_attributes_update.replace) {
-            modified_env_vars[original_env_vars.len] = key_value_pair;
+            modified_env_vars[index_for_appending_env_vars] = key_value_pair;
+            index_for_appending_env_vars += 1;
         } else {
             modified_env_vars[otel_resource_attributes_update.index] = key_value_pair;
+        }
+    }
+    if (node_options_update_optional) |node_options_update| {
+        const key_value_pair =
+            std.fmt.allocPrintZ(
+                std.heap.page_allocator,
+                "{s}={s}",
+                .{ node_js.node_options_env_var_name, node_options_update.value },
+            ) catch |err| {
+                print.printError(
+                    "Cannot allocate memory to manipulate the value of '{s}': {}",
+                    .{ node_js.node_options_env_var_name, err },
+                );
+                return modified_env_vars;
+            };
+        if (!node_options_update.replace) {
+            modified_env_vars[index_for_appending_env_vars] = key_value_pair;
+            index_for_appending_env_vars += 1;
+        } else {
+            modified_env_vars[node_options_update.index] = key_value_pair;
         }
     }
 
     return modified_env_vars;
 }
 
-test "applyModifications: no changes" {
+test "applyModifications: append NODE_OPTIONS" {
+    try test_util.createDummyDirectory(node_js.dash0_nodejs_otel_sdk_distribution);
+    defer {
+        test_util.deleteDash0DummyDirectory();
+    }
+
     cache.modification_cache = cache.emptyModificationCache();
     defer cache.modification_cache = cache.emptyModificationCache();
 
@@ -298,10 +337,11 @@ test "applyModifications: no changes" {
     original_env_vars[2] = "VAR3=value3";
 
     const modified_environment = try applyModifications(original_env_vars);
-    try testing.expectEqual(3, modified_environment.len);
+    try testing.expectEqual(4, modified_environment.len);
     try testing.expectEqualStrings("VAR1=value1", std.mem.span(modified_environment[0]));
     try testing.expectEqualStrings("VAR2=value2", std.mem.span(modified_environment[1]));
     try testing.expectEqualStrings("VAR3=value3", std.mem.span(modified_environment[2]));
+    try testing.expectEqualStrings("NODE_OPTIONS=--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry", std.mem.span(modified_environment[3]));
 }
 
 test "applyModifications: compose OTEL_RESOURCE_ATTRIBUTES, OTEL_RESOURCE_ATTRIBUTES not present, source env vars present, other env vars are present" {
