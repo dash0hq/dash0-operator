@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+const builtin = @import("builtin");
 const std = @import("std");
 
 const cache = @import("cache.zig");
@@ -17,10 +18,6 @@ const testing = std.testing;
 
 // TODO
 // ====
-// - enable all other env var modifications again:
-//   - NODE_OPTIONS √
-//   - JAVA_TOOL_OPTIONS: √
-//   - .NET stuff: x
 // - get __DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS going, add tests for child process
 // - revisit __DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS vs idempotency (maybe later)
 // - handle all error conditions internally, print a warning, do not modify anything and let the instrumented process
@@ -220,8 +217,7 @@ test "readProcSelfEnvironFile: read environment variables" {
     try testing.expectEqualStrings("VAR3=value3", std.mem.span(original_env_vars[2]));
 }
 
-// note: unit tests for readProcSelfEnvironFile segfault if this function is not inlined.
-inline fn readProcSelfEnvironBuffer(environ_buffer_original: []const u8) ![](types.NullTerminatedString) {
+fn readProcSelfEnvironBuffer(environ_buffer_original: []const u8) ![](types.NullTerminatedString) {
     var env_vars = std.ArrayList(types.NullTerminatedString).init(std.heap.page_allocator);
     var index: usize = 0;
     if (environ_buffer_original.len > 0) {
@@ -284,6 +280,14 @@ fn applyModifications(original_env_vars: [](types.NullTerminatedString)) ![](typ
         }
     }
 
+    var dotnet_value_optional: ?types.DotnetValues = null;
+    if (dotnet.isEnabled(original_env_vars)) {
+        if (dotnet.getDotnetValues()) |dotnet_values| {
+            dotnet_value_optional = dotnet_values;
+            number_of_env_vars_after_modifications += 7;
+        }
+    }
+
     const modified_env_vars = try std.heap.page_allocator.alloc(
         types.NullTerminatedString,
         number_of_env_vars_after_modifications,
@@ -321,6 +325,18 @@ fn applyModifications(original_env_vars: [](types.NullTerminatedString)) ![](typ
         return modified_env_vars;
     }
 
+    if (dotnet.isEnabled(original_env_vars)) {
+        if (dotnet_value_optional) |dotnet_values| {
+            if (!applyDotnetEnvVarModifications(
+                modified_env_vars,
+                dotnet_values,
+                &index_for_appending_env_vars,
+            )) {
+                return modified_env_vars;
+            }
+        }
+    }
+
     return modified_env_vars;
 }
 
@@ -356,9 +372,73 @@ fn applyEnvVarUpdate(
     return true;
 }
 
+fn applyDotnetEnvVarModifications(
+    modified_env_vars: [](types.NullTerminatedString),
+    dotnet_values: types.DotnetValues,
+    index_for_appending_env_vars: *usize,
+) bool {
+    if (!applyEnvVarUpdate(
+        modified_env_vars,
+        dotnet.coreclr_enable_profiling_env_var_name,
+        dotnet_values.coreclr_enable_profiling,
+        index_for_appending_env_vars,
+    )) {
+        return false;
+    }
+    if (!applyEnvVarUpdate(
+        modified_env_vars,
+        dotnet.coreclr_profiler_env_var_name,
+        dotnet_values.coreclr_profiler,
+        index_for_appending_env_vars,
+    )) {
+        return false;
+    }
+    if (!applyEnvVarUpdate(
+        modified_env_vars,
+        dotnet.coreclr_profiler_path_env_var_name,
+        dotnet_values.coreclr_profiler_path,
+        index_for_appending_env_vars,
+    )) {
+        return false;
+    }
+    if (!applyEnvVarUpdate(
+        modified_env_vars,
+        dotnet.additional_deps_env_var_name,
+        dotnet_values.additional_deps,
+        index_for_appending_env_vars,
+    )) {
+        return false;
+    }
+    if (!applyEnvVarUpdate(
+        modified_env_vars,
+        dotnet.shared_store_env_var_name,
+        dotnet_values.shared_store,
+        index_for_appending_env_vars,
+    )) {
+        return false;
+    }
+    if (!applyEnvVarUpdate(
+        modified_env_vars,
+        dotnet.startup_hooks_env_var_name,
+        dotnet_values.startup_hooks,
+        index_for_appending_env_vars,
+    )) {
+        return false;
+    }
+    if (!applyEnvVarUpdate(
+        modified_env_vars,
+        dotnet.otel_auto_home_env_var_name,
+        dotnet_values.otel_auto_home,
+        index_for_appending_env_vars,
+    )) {
+        return false;
+    }
+    return true;
+}
+
 test "applyModifications: no changes" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 3);
     defer std.heap.page_allocator.free(original_env_vars);
@@ -380,8 +460,8 @@ test "applyModifications: append JAVA_TOOL_OPTIONS" {
         test_util.deleteDash0DummyDirectory();
     }
 
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 3);
     defer std.heap.page_allocator.free(original_env_vars);
@@ -403,8 +483,8 @@ test "applyModifications: append NODE_OPTIONS" {
         test_util.deleteDash0DummyDirectory();
     }
 
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 3);
     defer std.heap.page_allocator.free(original_env_vars);
@@ -421,8 +501,8 @@ test "applyModifications: append NODE_OPTIONS" {
 }
 
 test "applyModifications: compose OTEL_RESOURCE_ATTRIBUTES, OTEL_RESOURCE_ATTRIBUTES not present, source env vars present, other env vars are present" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 17);
     defer std.heap.page_allocator.free(original_env_vars);
@@ -470,8 +550,8 @@ test "applyModifications: compose OTEL_RESOURCE_ATTRIBUTES, OTEL_RESOURCE_ATTRIB
 }
 
 test "applyModifications: compose OTEL_RESOURCE_ATTRIBUTES, OTEL_RESOURCE_ATTRIBUTES present, source env vars present" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 9);
     defer std.heap.page_allocator.free(original_env_vars);
@@ -502,8 +582,8 @@ test "applyModifications: compose OTEL_RESOURCE_ATTRIBUTES, OTEL_RESOURCE_ATTRIB
 }
 
 test "applyModifications: compose OTEL_RESOURCE_ATTRIBUTES, OTEL_RESOURCE_ATTRIBUTES present but empty, source env vars present" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 5);
     defer std.heap.page_allocator.free(original_env_vars);
@@ -525,18 +605,35 @@ test "applyModifications: compose OTEL_RESOURCE_ATTRIBUTES, OTEL_RESOURCE_ATTRIB
     try testing.expectEqualStrings("DASH0_CONTAINER_NAME=container", std.mem.span(modified_env_vars[4]));
 }
 
-test "applyModifications: append JAVA_TOOL_OPTIONS, NODE_OPTIONS, and OTEL_RESOURCE_ATTRIBUTES" {
+test "applyModifications: append OTEL_RESOURCE_ATTRIBUTES, JAVA_TOOL_OPTIONS, NODE_OPTIONS, and .NET environment variables" {
     try test_util.createDummyDirectory("/__dash0__/instrumentation/jvm/");
     _ = try std.fs.createFileAbsolute(jvm.otel_java_agent_path, .{});
     try test_util.createDummyDirectory(node_js.dash0_nodejs_otel_sdk_distribution);
+    const platform = switch (builtin.cpu.arch) {
+        .x86_64 => "linux-x64",
+        .aarch64 => "linux-arm64",
+        else => return error.TestUnexpectedResult,
+    };
+    const dotnetDir = "/__dash0__/instrumentation/dotnet/glibc";
+    try test_util.createDummyDirectory(dotnetDir ++ "/net");
+    const dotnetPlatformDir = dotnetDir ++ "/" ++ platform;
+    try test_util.createDummyDirectory(dotnetPlatformDir);
+    _ = try std.fs.createFileAbsolute(dotnetPlatformDir ++ "/OpenTelemetry.AutoInstrumentation.Native.so", .{});
+    _ = try std.fs.createFileAbsolute(dotnetDir ++ "/AdditionalDeps", .{});
+    _ = try std.fs.createFileAbsolute(dotnetDir ++ "/store", .{});
+    _ = try std.fs.createFileAbsolute(dotnetDir ++ "/net/OpenTelemetry.AutoInstrumentation.StartupHook.dll", .{});
     defer {
         test_util.deleteDash0DummyDirectory();
     }
 
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
-    const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 8);
+    // set a dummy value for the libc flavor just for the test, will be reverted after the test via
+    // `defer cache.injector_cache = cache.emptyInjectorCache()`
+    cache.injector_cache.libc_flavor = types.LibCFlavor.GNU_LIBC;
+
+    const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 9);
     defer std.heap.page_allocator.free(original_env_vars);
     original_env_vars[0] = "DASH0_NAMESPACE_NAME=namespace";
     original_env_vars[1] = "DASH0_POD_NAME=pod";
@@ -546,9 +643,10 @@ test "applyModifications: append JAVA_TOOL_OPTIONS, NODE_OPTIONS, and OTEL_RESOU
     original_env_vars[5] = "DASH0_SERVICE_VERSION=version";
     original_env_vars[6] = "DASH0_SERVICE_NAMESPACE=servicenamespace";
     original_env_vars[7] = "DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd";
+    original_env_vars[8] = "DASH0_EXPERIMENTAL_DOTNET_INJECTION=true";
 
     const modified_env_vars = try applyModifications(original_env_vars);
-    try testing.expectEqual(11, modified_env_vars.len);
+    try testing.expectEqual(19, modified_env_vars.len);
     try testing.expectEqualStrings("DASH0_NAMESPACE_NAME=namespace", std.mem.span(modified_env_vars[0]));
     try testing.expectEqualStrings("DASH0_POD_NAME=pod", std.mem.span(modified_env_vars[1]));
     try testing.expectEqualStrings("DASH0_POD_UID=uid", std.mem.span(modified_env_vars[2]));
@@ -557,17 +655,46 @@ test "applyModifications: append JAVA_TOOL_OPTIONS, NODE_OPTIONS, and OTEL_RESOU
     try testing.expectEqualStrings("DASH0_SERVICE_VERSION=version", std.mem.span(modified_env_vars[5]));
     try testing.expectEqualStrings("DASH0_SERVICE_NAMESPACE=servicenamespace", std.mem.span(modified_env_vars[6]));
     try testing.expectEqualStrings("DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd", std.mem.span(modified_env_vars[7]));
+    try testing.expectEqualStrings("DASH0_EXPERIMENTAL_DOTNET_INJECTION=true", std.mem.span(modified_env_vars[8]));
     try testing.expectEqualStrings(
         "OTEL_RESOURCE_ATTRIBUTES=k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd",
-        std.mem.span(modified_env_vars[8]),
-    );
-    try testing.expectEqualStrings(
-        "JAVA_TOOL_OPTIONS=-javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar -Dotel.resource.attributes=k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd",
         std.mem.span(modified_env_vars[9]),
     );
     try testing.expectEqualStrings(
-        "NODE_OPTIONS=--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
+        "JAVA_TOOL_OPTIONS=-javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar -Dotel.resource.attributes=k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd",
         std.mem.span(modified_env_vars[10]),
+    );
+    try testing.expectEqualStrings(
+        "NODE_OPTIONS=--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
+        std.mem.span(modified_env_vars[11]),
+    );
+    try testing.expectEqualStrings(
+        "CORECLR_ENABLE_PROFILING=1",
+        std.mem.span(modified_env_vars[12]),
+    );
+    try testing.expectEqualStrings(
+        "CORECLR_PROFILER={918728DD-259F-4A6A-AC2B-B85E1B658318}",
+        std.mem.span(modified_env_vars[13]),
+    );
+    try testing.expectEqualStrings(
+        "CORECLR_PROFILER_PATH=/__dash0__/instrumentation/dotnet/glibc/" ++ platform ++ "/OpenTelemetry.AutoInstrumentation.Native.so",
+        std.mem.span(modified_env_vars[14]),
+    );
+    try testing.expectEqualStrings(
+        "DOTNET_ADDITIONAL_DEPS=/__dash0__/instrumentation/dotnet/glibc/AdditionalDeps",
+        std.mem.span(modified_env_vars[15]),
+    );
+    try testing.expectEqualStrings(
+        "DOTNET_SHARED_STORE=/__dash0__/instrumentation/dotnet/glibc/store",
+        std.mem.span(modified_env_vars[16]),
+    );
+    try testing.expectEqualStrings(
+        "DOTNET_STARTUP_HOOKS=/__dash0__/instrumentation/dotnet/glibc/net/OpenTelemetry.AutoInstrumentation.StartupHook.dll",
+        std.mem.span(modified_env_vars[17]),
+    );
+    try testing.expectEqualStrings(
+        "OTEL_DOTNET_AUTO_HOME=/__dash0__/instrumentation/dotnet/glibc",
+        std.mem.span(modified_env_vars[18]),
     );
 }
 
@@ -579,8 +706,8 @@ test "applyModifications: replace JAVA_TOOL_OPTIONS, NODE_OPTIONS, and OTEL_RESO
         test_util.deleteDash0DummyDirectory();
     }
 
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 11);
     defer std.heap.page_allocator.free(original_env_vars);

@@ -28,3 +28,15 @@ pub const EnvVarUpdate = struct {
     /// replace is true, otherwise it must be ignored.
     index: usize,
 };
+
+pub const LibCFlavor = enum { UNKNOWN, GNU_LIBC, MUSL };
+
+pub const DotnetValues = struct {
+    coreclr_enable_profiling: EnvVarUpdate,
+    coreclr_profiler: EnvVarUpdate,
+    coreclr_profiler_path: EnvVarUpdate,
+    additional_deps: EnvVarUpdate,
+    shared_store: EnvVarUpdate,
+    startup_hooks: EnvVarUpdate,
+    otel_auto_home: EnvVarUpdate,
+};

@@ -22,8 +22,8 @@ pub fn checkNodeJsOTelSdkDistributionAndGetModifiedNodeOptionsValue(original_val
     std.fs.cwd().access(dash0_nodejs_otel_sdk_distribution, .{}) catch |err| {
         print.printError("Skipping injection of the Node.js OTel SDK distribution in '{s}' because of an issue accessing the Node.js module at {s}: {}", .{ node_options_env_var_name, dash0_nodejs_otel_sdk_distribution, err });
         if (original_value_and_index_optional) |original_value_and_index| {
-            cache.modification_cache.node_options =
-                cache.CachedModification{
+            cache.injector_cache.node_options =
+                cache.CachedEnvVarModification{
                     .value = original_value_and_index.value,
                     .done = true,
                 };
@@ -33,8 +33,8 @@ pub fn checkNodeJsOTelSdkDistributionAndGetModifiedNodeOptionsValue(original_val
                 .index = original_value_and_index.index,
             };
         }
-        cache.modification_cache.node_options =
-            cache.CachedModification{
+        cache.injector_cache.node_options =
+            cache.CachedEnvVarModification{
                 .value = null,
                 .done = true,
             };
@@ -44,19 +44,19 @@ pub fn checkNodeJsOTelSdkDistributionAndGetModifiedNodeOptionsValue(original_val
 }
 
 test "checkNodeJsOTelDistributionAndGetModifiedNodeOptionsValue: should return null if the Node.js OTel SDK distribution cannot be accessed" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const env_var_update_optional = checkNodeJsOTelSdkDistributionAndGetModifiedNodeOptionsValue(null);
     try testing.expect(env_var_update_optional == null);
 
-    try testing.expectEqual(true, cache.modification_cache.node_options.done);
-    try testing.expect(cache.modification_cache.node_options.value == null);
+    try testing.expectEqual(true, cache.injector_cache.node_options.done);
+    try testing.expect(cache.injector_cache.node_options.value == null);
 }
 
 test "checkNodeJsOTelDistributionAndGetModifiedNodeOptionsValue: should return the original value if the Node.js OTel SDK distribution cannot be accessed" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const env_var_update = checkNodeJsOTelSdkDistributionAndGetModifiedNodeOptionsValue(types.EnvVarValueAndIndex{
         .value = "--abort-on-uncaught-exception"[0.. :0],
@@ -69,8 +69,8 @@ test "checkNodeJsOTelDistributionAndGetModifiedNodeOptionsValue: should return t
     try testing.expectEqual(true, env_var_update.replace);
     try testing.expectEqual(3, env_var_update.index);
 
-    try testing.expectEqual(true, cache.modification_cache.node_options.done);
-    try testing.expectEqualStrings("--abort-on-uncaught-exception", std.mem.span(cache.modification_cache.node_options.value.?));
+    try testing.expectEqual(true, cache.injector_cache.node_options.done);
+    try testing.expectEqualStrings("--abort-on-uncaught-exception", std.mem.span(cache.injector_cache.node_options.value.?));
 }
 
 test "checkNodeJsOTelDistributionAndGetModifiedNodeOptionsValue: should return --require if original value is unset and the Node.js OTel SDK distribution can be accessed" {
@@ -79,8 +79,8 @@ test "checkNodeJsOTelDistributionAndGetModifiedNodeOptionsValue: should return -
         test_util.deleteDash0DummyDirectory();
     }
 
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const env_var_update = checkNodeJsOTelSdkDistributionAndGetModifiedNodeOptionsValue(null).?;
     try testing.expectEqualStrings(
@@ -90,8 +90,8 @@ test "checkNodeJsOTelDistributionAndGetModifiedNodeOptionsValue: should return -
     try testing.expectEqual(false, env_var_update.replace);
     try testing.expectEqual(0, env_var_update.index);
 
-    try testing.expectEqual(true, cache.modification_cache.node_options.done);
-    try testing.expectEqualStrings("--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry", std.mem.span(cache.modification_cache.node_options.value.?));
+    try testing.expectEqual(true, cache.injector_cache.node_options.done);
+    try testing.expectEqualStrings("--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry", std.mem.span(cache.injector_cache.node_options.value.?));
 }
 
 fn getModifiedNodeOptionsValue(original_value_and_index_optional: ?types.EnvVarValueAndIndex) ?types.EnvVarUpdate {
@@ -113,8 +113,8 @@ fn getModifiedNodeOptionsValue(original_value_and_index_optional: ?types.EnvVarV
                 };
             };
         print.printMessage(injection_happened_msg, .{});
-        cache.modification_cache.node_options =
-            cache.CachedModification{ .value = return_buffer.ptr, .done = true };
+        cache.injector_cache.node_options =
+            cache.CachedEnvVarModification{ .value = return_buffer.ptr, .done = true };
         return types.EnvVarUpdate{
             .value = return_buffer.ptr,
             .replace = true,
@@ -124,8 +124,8 @@ fn getModifiedNodeOptionsValue(original_value_and_index_optional: ?types.EnvVarV
 
     // If NODE_OPTIONS is not set, simply return our "--require ..." flag.
     print.printMessage(injection_happened_msg, .{});
-    cache.modification_cache.node_options =
-        cache.CachedModification{
+    cache.injector_cache.node_options =
+        cache.CachedEnvVarModification{
             .value = require_dash0_nodejs_otel_sdk_distribution[0..].ptr,
             .done = true,
         };
@@ -137,8 +137,8 @@ fn getModifiedNodeOptionsValue(original_value_and_index_optional: ?types.EnvVarV
 }
 
 test "getModifiedNodeOptionsValue: should return --require if original value is unset" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const env_var_update = getModifiedNodeOptionsValue(null).?;
     try testing.expectEqualStrings(
@@ -148,13 +148,13 @@ test "getModifiedNodeOptionsValue: should return --require if original value is 
     try testing.expectEqual(false, env_var_update.replace);
     try testing.expectEqual(0, env_var_update.index);
 
-    try testing.expectEqual(true, cache.modification_cache.node_options.done);
-    try testing.expectEqualStrings("--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry", std.mem.span(cache.modification_cache.node_options.value.?));
+    try testing.expectEqual(true, cache.injector_cache.node_options.done);
+    try testing.expectEqualStrings("--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry", std.mem.span(cache.injector_cache.node_options.value.?));
 }
 
 test "getModifiedNodeOptionsValue: should prepend --require if original value exists" {
-    cache.modification_cache = cache.emptyModificationCache();
-    defer cache.modification_cache = cache.emptyModificationCache();
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
 
     const env_var_update = getModifiedNodeOptionsValue(types.EnvVarValueAndIndex{
         .value = "--abort-on-uncaught-exception"[0.. :0],
@@ -167,6 +167,6 @@ test "getModifiedNodeOptionsValue: should prepend --require if original value ex
     try testing.expectEqual(true, env_var_update.replace);
     try testing.expectEqual(3, env_var_update.index);
 
-    try testing.expectEqual(true, cache.modification_cache.node_options.done);
-    try testing.expectEqualStrings("--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --abort-on-uncaught-exception", std.mem.span(cache.modification_cache.node_options.value.?));
+    try testing.expectEqual(true, cache.injector_cache.node_options.done);
+    try testing.expectEqualStrings("--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --abort-on-uncaught-exception", std.mem.span(cache.injector_cache.node_options.value.?));
 }

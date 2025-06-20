@@ -4,6 +4,8 @@
 const builtin = @import("builtin");
 const std = @import("std");
 
+const cache = @import("cache.zig");
+const env = @import("env.zig");
 const print = @import("print.zig");
 const types = @import("types.zig");
 
@@ -27,114 +29,128 @@ const testing = std.testing;
 // - https://github.com/dotnet/runtime/blob/v9.0.5/src/libraries/System.Private.CoreLib/src/System/Environment.Variables.Unix.cs#L85-L91, and
 // https://github.com/dotnet/runtime/blob/v9.0.5/src/libraries/System.Private.CoreLib/src/System/Environment.Variables.Unix.cs#L93-L166
 
-pub const DotnetValues = struct {
-    coreclr_enable_profiling: types.NullTerminatedString,
-    coreclr_profiler: types.NullTerminatedString,
-    coreclr_profiler_path: types.NullTerminatedString,
-    additional_deps: types.NullTerminatedString,
-    shared_store: types.NullTerminatedString,
-    startup_hooks: types.NullTerminatedString,
-    otel_auto_home: types.NullTerminatedString,
-};
-
 const DotnetError = error{
     UnknownLibCFlavor,
     UnsupportedCpuArchitecture,
     OutOfMemory,
 };
 
-const LibCFlavor = enum { UNKNOWN, GNU_LIBC, MUSL };
+pub const coreclr_enable_profiling_env_var_name = "CORECLR_ENABLE_PROFILING";
+pub const coreclr_profiler_env_var_name = "CORECLR_PROFILER";
+pub const coreclr_profiler_path_env_var_name = "CORECLR_PROFILER_PATH";
+pub const additional_deps_env_var_name = "DOTNET_ADDITIONAL_DEPS";
+pub const shared_store_env_var_name = "DOTNET_SHARED_STORE";
+pub const startup_hooks_env_var_name = "DOTNET_STARTUP_HOOKS";
+pub const otel_auto_home_env_var_name = "OTEL_DOTNET_AUTO_HOME";
 
-const dotnet_path_prefix = "/__dash0__/instrumentation/dotnet";
-var experimental_dotnet_injection_enabled: ?bool = null;
-
-var cached_dotnet_values: ?DotnetValues = null;
-var cached_libc_flavor: ?LibCFlavor = null;
+pub const dotnet_path_prefix = "/__dash0__/instrumentation/dotnet";
 
 const injection_happened_msg = "injecting the .NET OpenTelemetry instrumentation";
 var injection_happened_msg_has_been_printed = false;
 
-fn initIsEnabled() void {
-    if (experimental_dotnet_injection_enabled == null) {
-        if (std.posix.getenv("DASH0_EXPERIMENTAL_DOTNET_INJECTION")) |raw| {
-            experimental_dotnet_injection_enabled = std.ascii.eqlIgnoreCase("true", raw);
+fn initIsEnabled(env_vars: [](types.NullTerminatedString)) void {
+    if (cache.injector_cache.experimental_dotnet_injection_enabled == null) {
+        if (env.getEnvVar(env_vars, "DASH0_EXPERIMENTAL_DOTNET_INJECTION")) |experimental_dotnet_injection_enabled_optional| {
+            cache.injector_cache.experimental_dotnet_injection_enabled =
+                std.ascii.eqlIgnoreCase(
+                    std.mem.span(experimental_dotnet_injection_enabled_optional.value),
+                    "true",
+                );
         } else {
-            experimental_dotnet_injection_enabled = false;
+            cache.injector_cache.experimental_dotnet_injection_enabled = false;
         }
     }
 }
 
-pub fn isEnabled() bool {
-    if (experimental_dotnet_injection_enabled == null) {
-        initIsEnabled();
+pub fn isEnabled(env_vars: [](types.NullTerminatedString)) bool {
+    if (cache.injector_cache.experimental_dotnet_injection_enabled == null) {
+        initIsEnabled(env_vars);
     }
-    return experimental_dotnet_injection_enabled orelse false;
+    return cache.injector_cache.experimental_dotnet_injection_enabled orelse false;
 }
 
-pub fn getDotnetValues() ?DotnetValues {
-    if (cached_dotnet_values) |val| {
-        return val;
+pub fn getDotnetValues() ?types.DotnetValues {
+    if (cache.injector_cache.dotnet_values.done) {
+        return cache.injector_cache.dotnet_values.values;
     }
 
-    if (cached_libc_flavor == null) {
-        cached_libc_flavor = getLibCFlavor();
+    if (cache.injector_cache.libc_flavor == null) {
+        cache.injector_cache.libc_flavor = getLibCFlavor();
     }
 
-    if (cached_libc_flavor == LibCFlavor.UNKNOWN) {
+    if (cache.injector_cache.libc_flavor == types.LibCFlavor.UNKNOWN) {
         print.printError("Cannot determine LibC flavor", .{});
+        cache.injector_cache.dotnet_values = cache.CachedDotnetValues{
+            .values = null,
+            .done = true,
+        };
         return null;
     }
 
-    if (cached_libc_flavor) |flavor| {
+    if (cache.injector_cache.libc_flavor) |flavor| {
         const dotnet_values = determineDotnetValues(flavor, builtin.cpu.arch) catch |err| {
             print.printError("Cannot determine .NET environment variables: {}", .{err});
+            cache.injector_cache.dotnet_values = cache.CachedDotnetValues{
+                .values = null,
+                .done = true,
+            };
             return null;
         };
 
         const paths_to_check = [_]types.NullTerminatedString{
-            dotnet_values.coreclr_profiler_path,
-            dotnet_values.additional_deps,
-            dotnet_values.otel_auto_home,
-            dotnet_values.shared_store,
-            dotnet_values.startup_hooks,
+            dotnet_values.coreclr_profiler_path.value,
+            dotnet_values.additional_deps.value,
+            dotnet_values.otel_auto_home.value,
+            dotnet_values.shared_store.value,
+            dotnet_values.startup_hooks.value,
         };
         for (paths_to_check) |p| {
             std.fs.cwd().access(std.mem.span(p), .{}) catch |err| {
                 print.printError("Skipping injection of injecting the .NET OpenTelemetry instrumentation because of an issue accessing {s}: {}", .{ p, err });
+                cache.injector_cache.dotnet_values = cache.CachedDotnetValues{
+                    .values = null,
+                    .done = true,
+                };
                 return null;
             };
         }
 
-        cached_dotnet_values = dotnet_values;
-        return cached_dotnet_values;
+        cache.injector_cache.dotnet_values = cache.CachedDotnetValues{
+            .values = dotnet_values,
+            .done = true,
+        };
+        return dotnet_values;
     }
 
     unreachable;
 }
 
 test "getDotnetValues: should return null value if the profiler path cannot be accessed" {
+    cache.injector_cache = cache.emptyInjectorCache();
+    defer cache.injector_cache = cache.emptyInjectorCache();
+
     const dotnet_values = getDotnetValues();
     try testing.expect(dotnet_values == null);
 }
 
-fn getLibCFlavor() LibCFlavor {
+fn getLibCFlavor() types.LibCFlavor {
     const proc_self_exe_path = "/proc/self/exe";
     return doGetLibCFlavor(proc_self_exe_path) catch |err| {
         print.printError("Cannot determine LibC flavor from ELF metadata of \"{s}\": {}", .{ proc_self_exe_path, err });
-        return LibCFlavor.UNKNOWN;
+        return types.LibCFlavor.UNKNOWN;
     };
 }
 
-fn doGetLibCFlavor(proc_self_exe_path: []const u8) !LibCFlavor {
+fn doGetLibCFlavor(proc_self_exe_path: []const u8) !types.LibCFlavor {
     const proc_self_exe_file = std.fs.openFileAbsolute(proc_self_exe_path, .{ .mode = .read_only }) catch |err| {
         print.printError("Cannot open \"{s}\": {}", .{ proc_self_exe_path, err });
-        return LibCFlavor.UNKNOWN;
+        return types.LibCFlavor.UNKNOWN;
     };
     defer proc_self_exe_file.close();
 
     const elf_header = std.elf.Header.read(proc_self_exe_file) catch |err| {
         print.printError("Cannot read ELF header from  \"{s}\": {}", .{ proc_self_exe_path, err });
-        return LibCFlavor.UNKNOWN;
+        return types.LibCFlavor.UNKNOWN;
     };
 
     if (!elf_header.is_64) {
@@ -248,18 +264,18 @@ fn doGetLibCFlavor(proc_self_exe_path: []const u8) !LibCFlavor {
 
             if (std.mem.indexOf(u8, lib_name, "musl")) |_| {
                 print.printDebug("Identified libc flavor \"musl\" from inspecting \"{s}\"", .{proc_self_exe_path});
-                return LibCFlavor.MUSL;
+                return types.LibCFlavor.MUSL;
             }
 
             if (std.mem.indexOf(u8, lib_name, "libc.so.6")) |_| {
                 print.printDebug("Identified libc flavor \"glibc\" from inspecting \"{s}\"", .{proc_self_exe_path});
-                return LibCFlavor.GNU_LIBC;
+                return types.LibCFlavor.GNU_LIBC;
             }
         }
     }
 
     print.printDebug("No libc flavor could be identified from inspecting \"{s}\"", .{proc_self_exe_path});
-    return LibCFlavor.UNKNOWN;
+    return types.LibCFlavor.UNKNOWN;
 }
 
 test "doGetLibCFlavor: should return libc flavor unknown when file does not exist" {
@@ -317,7 +333,10 @@ test "doGetLibCFlavor: should identify glibc libc flavor (x86_64)" {
     try testing.expectEqual(libc_flavor, .GNU_LIBC);
 }
 
-fn determineDotnetValues(libc_flavor: LibCFlavor, architecture: std.Target.Cpu.Arch) DotnetError!DotnetValues {
+fn determineDotnetValues(
+    libc_flavor: types.LibCFlavor,
+    architecture: std.Target.Cpu.Arch,
+) DotnetError!types.DotnetValues {
     const libc_flavor_prefix =
         switch (libc_flavor) {
             .GNU_LIBC => "glibc",
@@ -361,13 +380,42 @@ fn determineDotnetValues(libc_flavor: LibCFlavor, architecture: std.Target.Cpu.A
         injection_happened_msg_has_been_printed = true;
     }
     return .{
-        .coreclr_enable_profiling = "1",
-        .coreclr_profiler = "{918728DD-259F-4A6A-AC2B-B85E1B658318}",
-        .coreclr_profiler_path = coreclr_profiler_path,
-        .additional_deps = additional_deps,
-        .otel_auto_home = otel_auto_home,
-        .shared_store = shared_store,
-        .startup_hooks = startup_hooks,
+        //
+        .coreclr_enable_profiling = types.EnvVarUpdate{
+            .value = "1",
+            .replace = false,
+            .index = 0,
+        },
+        .coreclr_profiler = types.EnvVarUpdate{
+            .value = "{918728DD-259F-4A6A-AC2B-B85E1B658318}",
+            .replace = false,
+            .index = 0,
+        },
+        .coreclr_profiler_path = types.EnvVarUpdate{
+            .value = coreclr_profiler_path,
+            .replace = false,
+            .index = 0,
+        },
+        .additional_deps = types.EnvVarUpdate{
+            .value = additional_deps,
+            .replace = false,
+            .index = 0,
+        },
+        .otel_auto_home = types.EnvVarUpdate{
+            .value = otel_auto_home,
+            .replace = false,
+            .index = 0,
+        },
+        .shared_store = types.EnvVarUpdate{
+            .value = shared_store,
+            .replace = false,
+            .index = 0,
+        },
+        .startup_hooks = types.EnvVarUpdate{
+            .value = startup_hooks,
+            .replace = false,
+            .index = 0,
+        },
     };
 }
 
@@ -383,31 +431,31 @@ test "determineDotnetValues: should return values for glibc/x86_64" {
     const dotnet_values = try determineDotnetValues(.GNU_LIBC, .x86_64);
     try testing.expectEqualStrings(
         "1",
-        std.mem.span(dotnet_values.coreclr_enable_profiling),
+        std.mem.span(dotnet_values.coreclr_enable_profiling.value),
     );
     try testing.expectEqualStrings(
         "{918728DD-259F-4A6A-AC2B-B85E1B658318}",
-        std.mem.span(dotnet_values.coreclr_profiler),
+        std.mem.span(dotnet_values.coreclr_profiler.value),
     );
     try testing.expectEqualStrings(
         "/__dash0__/instrumentation/dotnet/glibc/linux-x64/OpenTelemetry.AutoInstrumentation.Native.so",
-        std.mem.span(dotnet_values.coreclr_profiler_path),
+        std.mem.span(dotnet_values.coreclr_profiler_path.value),
     );
     try testing.expectEqualStrings(
         "/__dash0__/instrumentation/dotnet/glibc/AdditionalDeps",
-        std.mem.span(dotnet_values.additional_deps),
-    );
-    try testing.expectEqualStrings(
-        "/__dash0__/instrumentation/dotnet/glibc",
-        std.mem.span(dotnet_values.otel_auto_home),
+        std.mem.span(dotnet_values.additional_deps.value),
     );
     try testing.expectEqualStrings(
         "/__dash0__/instrumentation/dotnet/glibc/store",
-        std.mem.span(dotnet_values.shared_store),
+        std.mem.span(dotnet_values.shared_store.value),
     );
     try testing.expectEqualStrings(
         "/__dash0__/instrumentation/dotnet/glibc/net/OpenTelemetry.AutoInstrumentation.StartupHook.dll",
-        std.mem.span(dotnet_values.startup_hooks),
+        std.mem.span(dotnet_values.startup_hooks.value),
+    );
+    try testing.expectEqualStrings(
+        "/__dash0__/instrumentation/dotnet/glibc",
+        std.mem.span(dotnet_values.otel_auto_home.value),
     );
 }
 
@@ -415,31 +463,31 @@ test "determineDotnetValues: should return values for glibc/arm64" {
     const dotnet_values = try determineDotnetValues(.GNU_LIBC, .aarch64);
     try testing.expectEqualStrings(
         "1",
-        std.mem.span(dotnet_values.coreclr_enable_profiling),
+        std.mem.span(dotnet_values.coreclr_enable_profiling.value),
     );
     try testing.expectEqualStrings(
         "{918728DD-259F-4A6A-AC2B-B85E1B658318}",
-        std.mem.span(dotnet_values.coreclr_profiler),
+        std.mem.span(dotnet_values.coreclr_profiler.value),
     );
     try testing.expectEqualStrings(
         "/__dash0__/instrumentation/dotnet/glibc/linux-arm64/OpenTelemetry.AutoInstrumentation.Native.so",
-        std.mem.span(dotnet_values.coreclr_profiler_path),
+        std.mem.span(dotnet_values.coreclr_profiler_path.value),
     );
     try testing.expectEqualStrings(
         "/__dash0__/instrumentation/dotnet/glibc/AdditionalDeps",
-        std.mem.span(dotnet_values.additional_deps),
-    );
-    try testing.expectEqualStrings(
-        "/__dash0__/instrumentation/dotnet/glibc",
-        std.mem.span(dotnet_values.otel_auto_home),
+        std.mem.span(dotnet_values.additional_deps.value),
     );
     try testing.expectEqualStrings(
         "/__dash0__/instrumentation/dotnet/glibc/store",
-        std.mem.span(dotnet_values.shared_store),
+        std.mem.span(dotnet_values.shared_store.value),
     );
     try testing.expectEqualStrings(
         "/__dash0__/instrumentation/dotnet/glibc/net/OpenTelemetry.AutoInstrumentation.StartupHook.dll",
-        std.mem.span(dotnet_values.startup_hooks),
+        std.mem.span(dotnet_values.startup_hooks.value),
+    );
+    try testing.expectEqualStrings(
+        "/__dash0__/instrumentation/dotnet/glibc",
+        std.mem.span(dotnet_values.otel_auto_home.value),
     );
 }
 
@@ -447,31 +495,31 @@ test "determineDotnetValues: should return values for musl/x86_64" {
     const dotnet_values = try determineDotnetValues(.MUSL, .x86_64);
     try testing.expectEqualStrings(
         "1",
-        std.mem.span(dotnet_values.coreclr_enable_profiling),
+        std.mem.span(dotnet_values.coreclr_enable_profiling.value),
     );
     try testing.expectEqualStrings(
         "{918728DD-259F-4A6A-AC2B-B85E1B658318}",
-        std.mem.span(dotnet_values.coreclr_profiler),
+        std.mem.span(dotnet_values.coreclr_profiler.value),
     );
     try testing.expectEqualStrings(
         "/__dash0__/instrumentation/dotnet/musl/linux-musl-x64/OpenTelemetry.AutoInstrumentation.Native.so",
-        std.mem.span(dotnet_values.coreclr_profiler_path),
+        std.mem.span(dotnet_values.coreclr_profiler_path.value),
     );
     try testing.expectEqualStrings(
         "/__dash0__/instrumentation/dotnet/musl/AdditionalDeps",
-        std.mem.span(dotnet_values.additional_deps),
-    );
-    try testing.expectEqualStrings(
-        "/__dash0__/instrumentation/dotnet/musl",
-        std.mem.span(dotnet_values.otel_auto_home),
+        std.mem.span(dotnet_values.additional_deps.value),
     );
     try testing.expectEqualStrings(
         "/__dash0__/instrumentation/dotnet/musl/store",
-        std.mem.span(dotnet_values.shared_store),
+        std.mem.span(dotnet_values.shared_store.value),
     );
     try testing.expectEqualStrings(
         "/__dash0__/instrumentation/dotnet/musl/net/OpenTelemetry.AutoInstrumentation.StartupHook.dll",
-        std.mem.span(dotnet_values.startup_hooks),
+        std.mem.span(dotnet_values.startup_hooks.value),
+    );
+    try testing.expectEqualStrings(
+        "/__dash0__/instrumentation/dotnet/musl",
+        std.mem.span(dotnet_values.otel_auto_home.value),
     );
 }
 
@@ -479,30 +527,30 @@ test "determineDotnetValues: should return values for musl/arm64" {
     const dotnet_values = try determineDotnetValues(.MUSL, .aarch64);
     try testing.expectEqualStrings(
         "1",
-        std.mem.span(dotnet_values.coreclr_enable_profiling),
+        std.mem.span(dotnet_values.coreclr_enable_profiling.value),
     );
     try testing.expectEqualStrings(
         "{918728DD-259F-4A6A-AC2B-B85E1B658318}",
-        std.mem.span(dotnet_values.coreclr_profiler),
+        std.mem.span(dotnet_values.coreclr_profiler.value),
     );
     try testing.expectEqualStrings(
         "/__dash0__/instrumentation/dotnet/musl/linux-musl-arm64/OpenTelemetry.AutoInstrumentation.Native.so",
-        std.mem.span(dotnet_values.coreclr_profiler_path),
+        std.mem.span(dotnet_values.coreclr_profiler_path.value),
     );
     try testing.expectEqualStrings(
         "/__dash0__/instrumentation/dotnet/musl/AdditionalDeps",
-        std.mem.span(dotnet_values.additional_deps),
-    );
-    try testing.expectEqualStrings(
-        "/__dash0__/instrumentation/dotnet/musl",
-        std.mem.span(dotnet_values.otel_auto_home),
+        std.mem.span(dotnet_values.additional_deps.value),
     );
     try testing.expectEqualStrings(
         "/__dash0__/instrumentation/dotnet/musl/store",
-        std.mem.span(dotnet_values.shared_store),
+        std.mem.span(dotnet_values.shared_store.value),
     );
     try testing.expectEqualStrings(
         "/__dash0__/instrumentation/dotnet/musl/net/OpenTelemetry.AutoInstrumentation.StartupHook.dll",
-        std.mem.span(dotnet_values.startup_hooks),
+        std.mem.span(dotnet_values.startup_hooks.value),
+    );
+    try testing.expectEqualStrings(
+        "/__dash0__/instrumentation/dotnet/musl",
+        std.mem.span(dotnet_values.otel_auto_home.value),
     );
 }
