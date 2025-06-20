@@ -3,8 +3,12 @@
 
 const std = @import("std");
 
+const env = @import("env.zig");
+const cache = @import("cache.zig");
 const print = @import("print.zig");
 const types = @import("types.zig");
+
+const testing = std.testing;
 
 pub const modification_happened_msg = "adding additional OpenTelemetry resources attributes via {s}";
 
@@ -60,20 +64,24 @@ const mappings: [8]EnvToResourceAttributeMapping =
 
 /// Derive the modified value for OTEL_RESOURCE_ATTRIBUTES based on the original value, and on other resource attributes
 /// provided via the DASH0_* environment variables set by the operator (workload_modifier#addEnvironmentVariables).
-pub fn getModifiedOtelResourceAttributesValue(original_value_optional: ?[:0]const u8) ?types.NullTerminatedString {
-    const resource_attributes_optional = getResourceAttributes();
-    if (original_value_optional) |original_value| {
+pub fn getModifiedOtelResourceAttributesValue(env_vars: [](types.NullTerminatedString)) ?types.EnvVarUpdate {
+    const original_value_optional = env.getEnvVar(env_vars, otel_resource_attributes_env_var_name);
+    const resource_attributes_optional = getResourceAttributes(env_vars);
+    if (original_value_optional) |original_value_and_index| {
+        const original_value = original_value_and_index.value;
+        const original_index = original_value_and_index.index;
         if (resource_attributes_optional) |resource_attributes| {
             defer std.heap.page_allocator.free(resource_attributes);
-            if (original_value.len == 0) {
+            if (std.mem.len(original_value) == 0) {
                 // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
                 // parent process.
                 const return_buffer = std.fmt.allocPrintZ(std.heap.page_allocator, "{s}", .{resource_attributes}) catch |err| {
                     print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ otel_resource_attributes_env_var_name, err });
-                    return original_value;
+                    return types.EnvVarUpdate{ .value = original_value, .replace = true, .index = original_index };
                 };
                 print.printMessage(modification_happened_msg, .{otel_resource_attributes_env_var_name});
-                return return_buffer.ptr;
+                cache.modification_cache.otel_resource_attributes = cache.CachedModification{ .value = return_buffer.ptr, .done = true };
+                return types.EnvVarUpdate{ .value = return_buffer.ptr, .replace = true, .index = original_index };
             }
 
             // Prepend our resource attributes to the already existing key-value pairs.
@@ -81,34 +89,143 @@ pub fn getModifiedOtelResourceAttributesValue(original_value_optional: ?[:0]cons
             // parent process.
             const return_buffer = std.fmt.allocPrintZ(std.heap.page_allocator, "{s},{s}", .{ resource_attributes, original_value }) catch |err| {
                 print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ otel_resource_attributes_env_var_name, err });
-                return original_value;
+                return types.EnvVarUpdate{ .value = original_value, .replace = true, .index = original_index };
             };
             print.printMessage(modification_happened_msg, .{otel_resource_attributes_env_var_name});
-            return return_buffer.ptr;
+            cache.modification_cache.otel_resource_attributes = cache.CachedModification{ .value = return_buffer.ptr, .done = true };
+            return types.EnvVarUpdate{ .value = return_buffer.ptr, .replace = true, .index = original_index };
         } else {
             // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
             // parent process.
             const return_buffer = std.fmt.allocPrintZ(std.heap.page_allocator, "{s}", .{original_value}) catch |err| {
                 print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ otel_resource_attributes_env_var_name, err });
-                return original_value;
+                return types.EnvVarUpdate{ .value = original_value, .replace = true, .index = original_index };
             };
-            return return_buffer.ptr;
+            cache.modification_cache.otel_resource_attributes = cache.CachedModification{ .value = return_buffer.ptr, .done = true };
+            return types.EnvVarUpdate{ .value = return_buffer.ptr, .replace = true, .index = original_index };
         }
     } else {
         if (resource_attributes_optional) |resource_attributes| {
             defer std.heap.page_allocator.free(resource_attributes);
             // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
-            // parent process.
+            // instrumented process.
             const return_buffer = std.fmt.allocPrintZ(std.heap.page_allocator, "{s}", .{resource_attributes}) catch |err| {
                 print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ otel_resource_attributes_env_var_name, err });
                 return null;
             };
             print.printMessage(modification_happened_msg, .{otel_resource_attributes_env_var_name});
-            return return_buffer.ptr;
+            cache.modification_cache.otel_resource_attributes = cache.CachedModification{ .value = return_buffer.ptr, .done = true };
+            return types.EnvVarUpdate{ .value = return_buffer.ptr, .replace = false, .index = 0 };
         } else {
             // There is no original value, and also nothing to add, return null.
+            cache.modification_cache.otel_resource_attributes = cache.CachedModification{ .value = null, .done = true };
             return null;
         }
+    }
+}
+
+test "getModifiedOtelResourceAttributesValue: no original value, no new resource attributes" {
+    cache.modification_cache = cache.emptyModificationCache();
+    defer cache.modification_cache = cache.emptyModificationCache();
+
+    const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 2);
+    defer std.heap.page_allocator.free(original_env_vars);
+    original_env_vars[0] = "AAA=bbb";
+    original_env_vars[1] = "CCC=ddd";
+    const env_var_update_optional = getModifiedOtelResourceAttributesValue(original_env_vars);
+    try testing.expect(env_var_update_optional == null);
+}
+
+test "getModifiedOtelResourceAttributesValue: original value is empty string, no new resource attributes" {
+    cache.modification_cache = cache.emptyModificationCache();
+    defer cache.modification_cache = cache.emptyModificationCache();
+
+    const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 3);
+    defer std.heap.page_allocator.free(original_env_vars);
+    original_env_vars[0] = "AAA=bbb";
+    original_env_vars[1] = "OTEL_RESOURCE_ATTRIBUTES=";
+    original_env_vars[2] = "CCC=ddd";
+    if (getModifiedOtelResourceAttributesValue(original_env_vars)) |env_var_update| {
+        try testing.expectEqual(0, env_var_update.value[0]);
+        try testing.expectEqual(0, std.mem.len(env_var_update.value));
+        try testing.expectEqual(true, env_var_update.replace);
+        try testing.expectEqual(1, env_var_update.index);
+    } else {
+        return error.TestUnexpectedResult;
+    }
+}
+
+test "getModifiedOtelResourceAttributesValue: no original value, only new resource attributes" {
+    cache.modification_cache = cache.emptyModificationCache();
+    defer cache.modification_cache = cache.emptyModificationCache();
+
+    const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 3);
+    defer std.heap.page_allocator.free(original_env_vars);
+    original_env_vars[0] = "DASH0_NAMESPACE_NAME=namespace";
+    original_env_vars[1] = "DASH0_POD_NAME=pod";
+    original_env_vars[2] = "DASH0_POD_UID=uid";
+    if (getModifiedOtelResourceAttributesValue(original_env_vars)) |env_var_update| {
+        try testing.expectEqualStrings("k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid", std.mem.span(env_var_update.value));
+        try testing.expectEqual(false, env_var_update.replace);
+        try testing.expectEqual(0, env_var_update.index);
+    } else {
+        return error.TestUnexpectedResult;
+    }
+}
+
+test "getModifiedOtelResourceAttributesValue: original value is empty string, new resource attributes present" {
+    cache.modification_cache = cache.emptyModificationCache();
+    defer cache.modification_cache = cache.emptyModificationCache();
+
+    const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 4);
+    defer std.heap.page_allocator.free(original_env_vars);
+    original_env_vars[0] = "OTEL_RESOURCE_ATTRIBUTES=";
+    original_env_vars[1] = "DASH0_NAMESPACE_NAME=namespace";
+    original_env_vars[2] = "DASH0_POD_NAME=pod";
+    original_env_vars[3] = "DASH0_POD_UID=uid";
+    if (getModifiedOtelResourceAttributesValue(original_env_vars)) |env_var_update| {
+        try testing.expectEqualStrings("k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid", std.mem.span(env_var_update.value));
+        try testing.expectEqual(true, env_var_update.replace);
+        try testing.expectEqual(0, env_var_update.index);
+    } else {
+        return error.TestUnexpectedResult;
+    }
+}
+
+test "getModifiedOtelResourceAttributesValue: original value exists, no new resource attributes" {
+    cache.modification_cache = cache.emptyModificationCache();
+    defer cache.modification_cache = cache.emptyModificationCache();
+
+    const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 3);
+    defer std.heap.page_allocator.free(original_env_vars);
+    original_env_vars[0] = "AAA=bbb";
+    original_env_vars[1] = "CCC=ddd";
+    original_env_vars[2] = "OTEL_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd";
+    if (getModifiedOtelResourceAttributesValue(original_env_vars)) |env_var_update| {
+        try testing.expectEqualStrings("aaa=bbb,ccc=ddd", std.mem.span(env_var_update.value));
+        try testing.expectEqual(true, env_var_update.replace);
+        try testing.expectEqual(2, env_var_update.index);
+    } else {
+        return error.TestUnexpectedResult;
+    }
+}
+
+test "getModifiedOtelResourceAttributesValue: original value and new resource attributes" {
+    cache.modification_cache = cache.emptyModificationCache();
+    defer cache.modification_cache = cache.emptyModificationCache();
+
+    const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 4);
+    defer std.heap.page_allocator.free(original_env_vars);
+    original_env_vars[0] = "DASH0_NAMESPACE_NAME=namespace";
+    original_env_vars[1] = "DASH0_POD_NAME=pod";
+    original_env_vars[2] = "OTEL_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd";
+    original_env_vars[3] = "DASH0_POD_UID=uid";
+    if (getModifiedOtelResourceAttributesValue(original_env_vars)) |env_var_update| {
+        try testing.expectEqualStrings("k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,aaa=bbb,ccc=ddd", std.mem.span(env_var_update.value));
+        try testing.expectEqual(true, env_var_update.replace);
+        try testing.expectEqual(2, env_var_update.index);
+    } else {
+        return error.TestUnexpectedResult;
     }
 }
 
@@ -117,12 +234,14 @@ pub fn getModifiedOtelResourceAttributesValue(original_value_optional: ?[:0]cons
 /// JAVA_TOOL_OPTIONS for JVMs).
 ///
 /// Important: The caller must free the returned []u8 array, if a non-null value is returned.
-pub fn getResourceAttributes() ?[]u8 {
+pub fn getResourceAttributes(env_vars: [](types.NullTerminatedString)) ?[]u8 {
     var final_len: usize = 0;
 
     for (mappings) |mapping| {
-        if (std.posix.getenv(mapping.environement_variable_name)) |value| {
-            if (value.len > 0) {
+        const original_value_and_index_optional = env.getEnvVar(env_vars, mapping.environement_variable_name);
+        if (original_value_and_index_optional) |original_value_and_index| {
+            const value = original_value_and_index.value;
+            if (std.mem.len(value) > 0) {
                 if (final_len > 0) {
                     final_len += 1; // ","
                 }
@@ -130,7 +249,7 @@ pub fn getResourceAttributes() ?[]u8 {
                 if (mapping.resource_attributes_key) |attribute_key| {
                     final_len += std.fmt.count("{s}={s}", .{ attribute_key, value });
                 } else {
-                    final_len += value.len;
+                    final_len += std.mem.len(value);
                 }
             }
         }
@@ -148,11 +267,12 @@ pub fn getResourceAttributes() ?[]u8 {
     var fbs = std.io.fixedBufferStream(resource_attributes);
 
     var is_first_token = true;
-    // TODO why do we iterate twice over mappings?
     for (mappings) |mapping| {
         const env_var_name = mapping.environement_variable_name;
-        if (std.posix.getenv(env_var_name)) |value| {
-            if (value.len > 0) {
+        const original_value_and_index_optional = env.getEnvVar(env_vars, env_var_name);
+        if (original_value_and_index_optional) |original_value_and_index| {
+            const value = original_value_and_index.value;
+            if (std.mem.len(value) > 0) {
                 if (is_first_token) {
                     is_first_token = false;
                 } else {
@@ -178,4 +298,117 @@ pub fn getResourceAttributes() ?[]u8 {
     }
 
     return resource_attributes;
+}
+
+test "getResourceAttributes: empty environment" {
+    cache.modification_cache = cache.emptyModificationCache();
+    defer cache.modification_cache = cache.emptyModificationCache();
+
+    const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 0);
+    defer std.heap.page_allocator.free(original_env_vars);
+    if (getResourceAttributes(original_env_vars)) |resource_attributes| {
+        // we expect getResourceAttributes(original_env_vars) to return null
+        defer std.heap.page_allocator.free(resource_attributes);
+        return error.TestUnexpectedResult;
+    }
+}
+
+test "getResourceAttributes: namespace only" {
+    cache.modification_cache = cache.emptyModificationCache();
+    defer cache.modification_cache = cache.emptyModificationCache();
+
+    const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 1);
+    defer std.heap.page_allocator.free(original_env_vars);
+    original_env_vars[0] = "DASH0_NAMESPACE_NAME=namespace";
+    if (getResourceAttributes(original_env_vars)) |resource_attributes| {
+        defer std.heap.page_allocator.free(resource_attributes);
+        try testing.expectEqualStrings("k8s.namespace.name=namespace", resource_attributes);
+    } else {
+        return error.TestUnexpectedResult;
+    }
+}
+
+test "getResourceAttributes: pod name only" {
+    cache.modification_cache = cache.emptyModificationCache();
+    defer cache.modification_cache = cache.emptyModificationCache();
+
+    const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 1);
+    defer std.heap.page_allocator.free(original_env_vars);
+    original_env_vars[0] = "DASH0_POD_NAME=pod";
+    if (getResourceAttributes(original_env_vars)) |resource_attributes| {
+        defer std.heap.page_allocator.free(resource_attributes);
+        try testing.expectEqualStrings("k8s.pod.name=pod", resource_attributes);
+    } else {
+        return error.TestUnexpectedResult;
+    }
+}
+
+test "getResourceAttributes: pod uid only" {
+    cache.modification_cache = cache.emptyModificationCache();
+    defer cache.modification_cache = cache.emptyModificationCache();
+
+    const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 1);
+    defer std.heap.page_allocator.free(original_env_vars);
+    original_env_vars[0] = "DASH0_POD_UID=uid";
+    if (getResourceAttributes(original_env_vars)) |resource_attributes| {
+        defer std.heap.page_allocator.free(resource_attributes);
+        try testing.expectEqualStrings("k8s.pod.uid=uid", resource_attributes);
+    } else {
+        return error.TestUnexpectedResult;
+    }
+}
+
+test "getResourceAttributes: container name only" {
+    cache.modification_cache = cache.emptyModificationCache();
+    defer cache.modification_cache = cache.emptyModificationCache();
+
+    const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 1);
+    defer std.heap.page_allocator.free(original_env_vars);
+    original_env_vars[0] = "DASH0_CONTAINER_NAME=container";
+    if (getResourceAttributes(original_env_vars)) |resource_attributes| {
+        defer std.heap.page_allocator.free(resource_attributes);
+        try testing.expectEqualStrings("k8s.container.name=container", resource_attributes);
+    } else {
+        return error.TestUnexpectedResult;
+    }
+}
+
+test "getResourceAttributes: free-form resource attributes only" {
+    cache.modification_cache = cache.emptyModificationCache();
+    defer cache.modification_cache = cache.emptyModificationCache();
+
+    const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 1);
+    defer std.heap.page_allocator.free(original_env_vars);
+    original_env_vars[0] = "DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd";
+    if (getResourceAttributes(original_env_vars)) |resource_attributes| {
+        defer std.heap.page_allocator.free(resource_attributes);
+        try testing.expectEqualStrings("aaa=bbb,ccc=ddd", resource_attributes);
+    } else {
+        return error.TestUnexpectedResult;
+    }
+}
+
+test "getResourceAttributes: everything is set" {
+    cache.modification_cache = cache.emptyModificationCache();
+    defer cache.modification_cache = cache.emptyModificationCache();
+
+    const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 8);
+    defer std.heap.page_allocator.free(original_env_vars);
+    original_env_vars[0] = "DASH0_NAMESPACE_NAME=namespace";
+    original_env_vars[1] = "DASH0_POD_NAME=pod";
+    original_env_vars[2] = "DASH0_POD_UID=uid";
+    original_env_vars[3] = "DASH0_CONTAINER_NAME=container";
+    original_env_vars[4] = "DASH0_SERVICE_NAME=service";
+    original_env_vars[5] = "DASH0_SERVICE_VERSION=version";
+    original_env_vars[6] = "DASH0_SERVICE_NAMESPACE=servicenamespace";
+    original_env_vars[7] = "DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd";
+    if (getResourceAttributes(original_env_vars)) |resource_attributes| {
+        defer std.heap.page_allocator.free(resource_attributes);
+        try testing.expectEqualStrings(
+            "k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd",
+            resource_attributes,
+        );
+    } else {
+        return error.TestUnexpectedResult;
+    }
 }

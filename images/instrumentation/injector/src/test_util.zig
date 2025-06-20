@@ -7,6 +7,8 @@ const std = @import("std");
 
 pub const test_allocator: std.mem.Allocator = std.heap.page_allocator;
 
+// TODO remove this
+
 /// Clears all entries from std.c.environ, i.e. all environment variables are discarded. The original content before
 /// making any changes is returned. The caller is expected to reset std.c.environ to the return value of this function
 /// when the test is done, for example by calling `defer resetStdCEnviron(original_environ);` directly after calling
