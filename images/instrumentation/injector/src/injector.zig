@@ -20,7 +20,6 @@ const testing = std.testing;
 
 // TODO
 // ====
-// - add unit tests for _initEnviron.
 // - move otel resource attributes stuff back to resource_attributes.zig
 // - get __DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS going, add tests for child process
 // - revisit __DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS vs idempotency (maybe later)
@@ -39,14 +38,122 @@ const testing = std.testing;
 //   importing __environ, _environ, and environ and writing to that.
 // - more extensive instrumentation tests for .NET, verifying OTEL_RESOURCE_ATTRIBUTES, and the various env vars that
 //   activate tracing.
+// - double check which intermediate values (strings, slices, ...) we can free and which need to remain allocated.
 
-// TODO This function must be idempotent, as parent processes may pass the environment to child processes, compounding
-// our modification with each nested child process start. Or add a marker env var.
 pub fn _initEnviron(proc_self_environ_path: []const u8) ![*c]const [*c]const u8 {
     const original_env_vars = try readProcSelfEnvironFile(proc_self_environ_path);
     const modified_env_vars = try applyModifications(original_env_vars);
-    // TODO can we free the two slices?
     return try renderEnvVarsToExport(modified_env_vars);
+}
+
+test "_initEnviron: /proc/self/environ does not exist" {
+    const error_union = _initEnviron("/does/not/exist"); // catch {
+    try testing.expectError(std.fs.File.OpenError.FileNotFound, error_union);
+}
+
+test "_initEnviron: empty /proc/self/environ file" {
+    const filename = "unit_test_proc_self_environ";
+    const proc_self_environ_file = try std.fs.cwd().createFile(filename, .{});
+    defer {
+        proc_self_environ_file.close();
+        std.fs.cwd().deleteFile(filename) catch |err| {
+            std.debug.print("Failed to delete file {s}: {}\n", .{ filename, err });
+        };
+    }
+    const absolute_path = try std.fs.cwd().realpathAlloc(std.heap.page_allocator, filename);
+    defer std.heap.page_allocator.free(absolute_path);
+
+    const __environ_internal = try _initEnviron(absolute_path);
+    try testing.expectEqual(0, std.mem.len(__environ_internal));
+    try testing.expectEqual(null, __environ_internal[0]);
+}
+
+test "_initEnviron: no modifications" {
+    const filename = "unit_test_proc_self_environ";
+    const proc_self_environ_file = try std.fs.cwd().createFile(filename, .{});
+    const content = "VAR1=value1\x00VAR2=value2\x00VAR3=value3\x00";
+    _ = try proc_self_environ_file.write(content);
+    defer {
+        proc_self_environ_file.close();
+        std.fs.cwd().deleteFile(filename) catch |err| {
+            std.debug.print("Failed to delete file {s}: {}\n", .{ filename, err });
+        };
+    }
+    const absolute_path = try std.fs.cwd().realpathAlloc(std.heap.page_allocator, filename);
+    defer std.heap.page_allocator.free(absolute_path);
+
+    const __environ_internal = try _initEnviron(absolute_path);
+
+    try testing.expectEqual(3, std.mem.len(__environ_internal));
+    try testing.expectEqualStrings("VAR1=value1", std.mem.span(__environ_internal[0]));
+    try testing.expectEqualStrings("VAR2=value2", std.mem.span(__environ_internal[1]));
+    try testing.expectEqualStrings("VAR3=value3", std.mem.span(__environ_internal[2]));
+}
+
+test "_initEnviron: append OTEL_RESOURCE_ATTRIBUTES" {
+    const filename = "unit_test_proc_self_environ";
+    const proc_self_environ_file = try std.fs.cwd().createFile(filename, .{});
+    const content = "VAR1=value1\x00DASH0_NAMESPACE_NAME=namespace\x00DASH0_POD_NAME=pod\x00DASH0_POD_UID=uid\x00DASH0_CONTAINER_NAME=container\x00DASH0_SERVICE_NAME=service\x00DASH0_SERVICE_VERSION=version\x00DASH0_SERVICE_NAMESPACE=servicenamespace\x00DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd\x00VAR2=value2\x00";
+    _ = try proc_self_environ_file.write(content);
+    defer {
+        proc_self_environ_file.close();
+        std.fs.cwd().deleteFile(filename) catch |err| {
+            std.debug.print("Failed to delete file {s}: {}\n", .{ filename, err });
+        };
+    }
+    const absolute_path = try std.fs.cwd().realpathAlloc(std.heap.page_allocator, filename);
+    defer std.heap.page_allocator.free(absolute_path);
+
+    const __environ_internal = try _initEnviron(absolute_path);
+
+    try testing.expectEqual(11, std.mem.len(__environ_internal));
+    try testing.expectEqualStrings("VAR1=value1", std.mem.span(__environ_internal[0]));
+    try testing.expectEqualStrings("DASH0_NAMESPACE_NAME=namespace", std.mem.span(__environ_internal[1]));
+    try testing.expectEqualStrings("DASH0_POD_NAME=pod", std.mem.span(__environ_internal[2]));
+    try testing.expectEqualStrings("DASH0_POD_UID=uid", std.mem.span(__environ_internal[3]));
+    try testing.expectEqualStrings("DASH0_CONTAINER_NAME=container", std.mem.span(__environ_internal[4]));
+    try testing.expectEqualStrings("DASH0_SERVICE_NAME=service", std.mem.span(__environ_internal[5]));
+    try testing.expectEqualStrings("DASH0_SERVICE_VERSION=version", std.mem.span(__environ_internal[6]));
+    try testing.expectEqualStrings("DASH0_SERVICE_NAMESPACE=servicenamespace", std.mem.span(__environ_internal[7]));
+    try testing.expectEqualStrings("DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd", std.mem.span(__environ_internal[8]));
+    try testing.expectEqualStrings("VAR2=value2", std.mem.span(__environ_internal[9]));
+    try testing.expectEqualStrings(
+        "OTEL_RESOURCE_ATTRIBUTES=k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd",
+        std.mem.span(__environ_internal[10]),
+    );
+}
+
+test "_initEnviron: replace OTEL_RESOURCE_ATTRIBUTES" {
+    const filename = "unit_test_proc_self_environ";
+    const proc_self_environ_file = try std.fs.cwd().createFile(filename, .{});
+    const content = "VAR1=value1\x00DASH0_NAMESPACE_NAME=namespace\x00DASH0_POD_NAME=pod\x00DASH0_POD_UID=uid\x00DASH0_CONTAINER_NAME=container\x00OTEL_RESOURCE_ATTRIBUTES=www=xxx,yyy=zzz\x00DASH0_SERVICE_NAME=service\x00DASH0_SERVICE_VERSION=version\x00DASH0_SERVICE_NAMESPACE=servicenamespace\x00DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd\x00VAR2=value2\x00";
+    _ = try proc_self_environ_file.write(content);
+    defer {
+        proc_self_environ_file.close();
+        std.fs.cwd().deleteFile(filename) catch |err| {
+            std.debug.print("Failed to delete file {s}: {}\n", .{ filename, err });
+        };
+    }
+    const absolute_path = try std.fs.cwd().realpathAlloc(std.heap.page_allocator, filename);
+    defer std.heap.page_allocator.free(absolute_path);
+
+    const __environ_internal = try _initEnviron(absolute_path);
+
+    try testing.expectEqual(11, std.mem.len(__environ_internal));
+    try testing.expectEqualStrings("VAR1=value1", std.mem.span(__environ_internal[0]));
+    try testing.expectEqualStrings("DASH0_NAMESPACE_NAME=namespace", std.mem.span(__environ_internal[1]));
+    try testing.expectEqualStrings("DASH0_POD_NAME=pod", std.mem.span(__environ_internal[2]));
+    try testing.expectEqualStrings("DASH0_POD_UID=uid", std.mem.span(__environ_internal[3]));
+    try testing.expectEqualStrings("DASH0_CONTAINER_NAME=container", std.mem.span(__environ_internal[4]));
+    try testing.expectEqualStrings(
+        "OTEL_RESOURCE_ATTRIBUTES=k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd,www=xxx,yyy=zzz",
+        std.mem.span(__environ_internal[5]),
+    );
+    try testing.expectEqualStrings("DASH0_SERVICE_NAME=service", std.mem.span(__environ_internal[6]));
+    try testing.expectEqualStrings("DASH0_SERVICE_VERSION=version", std.mem.span(__environ_internal[7]));
+    try testing.expectEqualStrings("DASH0_SERVICE_NAMESPACE=servicenamespace", std.mem.span(__environ_internal[8]));
+    try testing.expectEqualStrings("DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd", std.mem.span(__environ_internal[9]));
+    try testing.expectEqualStrings("VAR2=value2", std.mem.span(__environ_internal[10]));
 }
 
 fn readProcSelfEnvironFile(proc_self_environ_path: []const u8) ![](types.NullTerminatedString) {
@@ -99,9 +206,9 @@ test "readProcSelfEnvironFile: read environment variables" {
     const original_env_vars = try readProcSelfEnvironFile(absolute_path);
 
     try testing.expectEqual(3, original_env_vars.len);
-    try testing.expect(std.mem.eql(u8, "VAR1=value1", std.mem.span(original_env_vars[0])));
-    try testing.expect(std.mem.eql(u8, "VAR2=value2", std.mem.span(original_env_vars[1])));
-    try testing.expect(std.mem.eql(u8, "VAR3=value3", std.mem.span(original_env_vars[2])));
+    try testing.expectEqualStrings("VAR1=value1", std.mem.span(original_env_vars[0]));
+    try testing.expectEqualStrings("VAR2=value2", std.mem.span(original_env_vars[1]));
+    try testing.expectEqualStrings("VAR3=value3", std.mem.span(original_env_vars[2]));
 }
 
 // note: unit tests for readProcSelfEnvironFile segfault if this function is not inlined.
@@ -127,12 +234,17 @@ inline fn readProcSelfEnvironBuffer(environ_buffer_original: []const u8) ![](typ
     return env_vars.toOwnedSlice();
 }
 
+test "readProcSelfEnvironBuffer: empty buffer" {
+    const env_vars = try readProcSelfEnvironBuffer("\x00");
+    try testing.expectEqual(0, env_vars.len);
+}
+
 test "readProcSelfEnvironBuffer: read environment variables" {
     const env_vars = try readProcSelfEnvironBuffer("VAR1=value1\x00VAR2=value2\x00VAR3=value3\x00");
     try testing.expectEqual(3, env_vars.len);
-    try testing.expect(std.mem.eql(u8, "VAR1=value1", std.mem.span(env_vars[0])));
-    try testing.expect(std.mem.eql(u8, "VAR2=value2", std.mem.span(env_vars[1])));
-    try testing.expect(std.mem.eql(u8, "VAR3=value3", std.mem.span(env_vars[2])));
+    try testing.expectEqualStrings("VAR1=value1", std.mem.span(env_vars[0]));
+    try testing.expectEqualStrings("VAR2=value2", std.mem.span(env_vars[1]));
+    try testing.expectEqualStrings("VAR3=value3", std.mem.span(env_vars[2]));
 }
 
 fn applyModifications(original_env_vars: [](types.NullTerminatedString)) ![](types.NullTerminatedString) {
@@ -146,7 +258,8 @@ fn applyModifications(original_env_vars: [](types.NullTerminatedString)) ![](typ
     }
 
     const modified_env_vars = try std.heap.page_allocator.alloc(
-        types.NullTerminatedString, number_of_env_vars_after_modifications,
+        types.NullTerminatedString,
+        number_of_env_vars_after_modifications,
     );
     for (original_env_vars, 0..) |original_env_var, i| {
         modified_env_vars[i] = original_env_var;
@@ -186,9 +299,9 @@ test "applyModifications: no changes" {
 
     const modified_environment = try applyModifications(original_env_vars);
     try testing.expectEqual(3, modified_environment.len);
-    try testing.expect(std.mem.eql(u8, "VAR1=value1", std.mem.span(modified_environment[0])));
-    try testing.expect(std.mem.eql(u8, "VAR2=value2", std.mem.span(modified_environment[1])));
-    try testing.expect(std.mem.eql(u8, "VAR3=value3", std.mem.span(modified_environment[2])));
+    try testing.expectEqualStrings("VAR1=value1", std.mem.span(modified_environment[0]));
+    try testing.expectEqualStrings("VAR2=value2", std.mem.span(modified_environment[1]));
+    try testing.expectEqualStrings("VAR3=value3", std.mem.span(modified_environment[2]));
 }
 
 test "applyModifications: compose OTEL_RESOURCE_ATTRIBUTES, OTEL_RESOURCE_ATTRIBUTES not present, source env vars present, other env vars are present" {
@@ -217,24 +330,27 @@ test "applyModifications: compose OTEL_RESOURCE_ATTRIBUTES, OTEL_RESOURCE_ATTRIB
 
     const modified_env_vars = try applyModifications(original_env_vars);
     try testing.expectEqual(18, modified_env_vars.len);
-    try testing.expect(std.mem.eql(u8, "VAR1=value1", std.mem.span(modified_env_vars[0])));
-    try testing.expect(std.mem.eql(u8, "DASH0_NAMESPACE_NAME=namespace", std.mem.span(modified_env_vars[1])));
-    try testing.expect(std.mem.eql(u8, "VAR2=value2", std.mem.span(modified_env_vars[2])));
-    try testing.expect(std.mem.eql(u8, "DASH0_POD_NAME=pod", std.mem.span(modified_env_vars[3])));
-    try testing.expect(std.mem.eql(u8, "VAR3=value3", std.mem.span(modified_env_vars[4])));
-    try testing.expect(std.mem.eql(u8, "DASH0_POD_UID=uid", std.mem.span(modified_env_vars[5])));
-    try testing.expect(std.mem.eql(u8, "VAR4=value4", std.mem.span(modified_env_vars[6])));
-    try testing.expect(std.mem.eql(u8, "DASH0_CONTAINER_NAME=container", std.mem.span(modified_env_vars[7])));
-    try testing.expect(std.mem.eql(u8, "VAR5=value5", std.mem.span(modified_env_vars[8])));
-    try testing.expect(std.mem.eql(u8, "DASH0_SERVICE_NAME=service", std.mem.span(modified_env_vars[9])));
-    try testing.expect(std.mem.eql(u8, "VAR6=value6", std.mem.span(modified_env_vars[10])));
-    try testing.expect(std.mem.eql(u8, "DASH0_SERVICE_VERSION=version", std.mem.span(modified_env_vars[11])));
-    try testing.expect(std.mem.eql(u8, "VAR7=value7", std.mem.span(modified_env_vars[12])));
-    try testing.expect(std.mem.eql(u8, "DASH0_SERVICE_NAMESPACE=servicenamespace", std.mem.span(modified_env_vars[13])));
-    try testing.expect(std.mem.eql(u8, "VAR8=value8", std.mem.span(modified_env_vars[14])));
-    try testing.expect(std.mem.eql(u8, "DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd", std.mem.span(modified_env_vars[15])));
-    try testing.expect(std.mem.eql(u8, "VAR9=value9", std.mem.span(modified_env_vars[16])));
-    try testing.expect(std.mem.eql(u8, "OTEL_RESOURCE_ATTRIBUTES=k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd", std.mem.span(modified_env_vars[17])));
+    try testing.expectEqualStrings("VAR1=value1", std.mem.span(modified_env_vars[0]));
+    try testing.expectEqualStrings("DASH0_NAMESPACE_NAME=namespace", std.mem.span(modified_env_vars[1]));
+    try testing.expectEqualStrings("VAR2=value2", std.mem.span(modified_env_vars[2]));
+    try testing.expectEqualStrings("DASH0_POD_NAME=pod", std.mem.span(modified_env_vars[3]));
+    try testing.expectEqualStrings("VAR3=value3", std.mem.span(modified_env_vars[4]));
+    try testing.expectEqualStrings("DASH0_POD_UID=uid", std.mem.span(modified_env_vars[5]));
+    try testing.expectEqualStrings("VAR4=value4", std.mem.span(modified_env_vars[6]));
+    try testing.expectEqualStrings("DASH0_CONTAINER_NAME=container", std.mem.span(modified_env_vars[7]));
+    try testing.expectEqualStrings("VAR5=value5", std.mem.span(modified_env_vars[8]));
+    try testing.expectEqualStrings("DASH0_SERVICE_NAME=service", std.mem.span(modified_env_vars[9]));
+    try testing.expectEqualStrings("VAR6=value6", std.mem.span(modified_env_vars[10]));
+    try testing.expectEqualStrings("DASH0_SERVICE_VERSION=version", std.mem.span(modified_env_vars[11]));
+    try testing.expectEqualStrings("VAR7=value7", std.mem.span(modified_env_vars[12]));
+    try testing.expectEqualStrings("DASH0_SERVICE_NAMESPACE=servicenamespace", std.mem.span(modified_env_vars[13]));
+    try testing.expectEqualStrings("VAR8=value8", std.mem.span(modified_env_vars[14]));
+    try testing.expectEqualStrings("DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd", std.mem.span(modified_env_vars[15]));
+    try testing.expectEqualStrings("VAR9=value9", std.mem.span(modified_env_vars[16]));
+    try testing.expectEqualStrings(
+        "OTEL_RESOURCE_ATTRIBUTES=k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd",
+        std.mem.span(modified_env_vars[17]),
+    );
 }
 
 test "applyModifications: compose OTEL_RESOURCE_ATTRIBUTES, OTEL_RESOURCE_ATTRIBUTES present, source env vars present" {
@@ -255,15 +371,18 @@ test "applyModifications: compose OTEL_RESOURCE_ATTRIBUTES, OTEL_RESOURCE_ATTRIB
 
     const modified_env_vars = try applyModifications(original_env_vars);
     try testing.expectEqual(9, modified_env_vars.len);
-    try testing.expect(std.mem.eql(u8, "DASH0_NAMESPACE_NAME=namespace", std.mem.span(modified_env_vars[0])));
-    try testing.expect(std.mem.eql(u8, "DASH0_POD_NAME=pod", std.mem.span(modified_env_vars[1])));
-    try testing.expect(std.mem.eql(u8, "DASH0_POD_UID=uid", std.mem.span(modified_env_vars[2])));
-    try testing.expect(std.mem.eql(u8, "DASH0_CONTAINER_NAME=container", std.mem.span(modified_env_vars[3])));
-    try testing.expect(std.mem.eql(u8, "OTEL_RESOURCE_ATTRIBUTES=k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd,key1=value1,key2=value2", std.mem.span(modified_env_vars[4])));
-    try testing.expect(std.mem.eql(u8, "DASH0_SERVICE_NAME=service", std.mem.span(modified_env_vars[5])));
-    try testing.expect(std.mem.eql(u8, "DASH0_SERVICE_VERSION=version", std.mem.span(modified_env_vars[6])));
-    try testing.expect(std.mem.eql(u8, "DASH0_SERVICE_NAMESPACE=servicenamespace", std.mem.span(modified_env_vars[7])));
-    try testing.expect(std.mem.eql(u8, "DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd", std.mem.span(modified_env_vars[8])));
+    try testing.expectEqualStrings("DASH0_NAMESPACE_NAME=namespace", std.mem.span(modified_env_vars[0]));
+    try testing.expectEqualStrings("DASH0_POD_NAME=pod", std.mem.span(modified_env_vars[1]));
+    try testing.expectEqualStrings("DASH0_POD_UID=uid", std.mem.span(modified_env_vars[2]));
+    try testing.expectEqualStrings("DASH0_CONTAINER_NAME=container", std.mem.span(modified_env_vars[3]));
+    try testing.expectEqualStrings(
+        "OTEL_RESOURCE_ATTRIBUTES=k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd,key1=value1,key2=value2",
+        std.mem.span(modified_env_vars[4]),
+    );
+    try testing.expectEqualStrings("DASH0_SERVICE_NAME=service", std.mem.span(modified_env_vars[5]));
+    try testing.expectEqualStrings("DASH0_SERVICE_VERSION=version", std.mem.span(modified_env_vars[6]));
+    try testing.expectEqualStrings("DASH0_SERVICE_NAMESPACE=servicenamespace", std.mem.span(modified_env_vars[7]));
+    try testing.expectEqualStrings("DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd", std.mem.span(modified_env_vars[8]));
 }
 
 test "applyModifications: compose OTEL_RESOURCE_ATTRIBUTES, OTEL_RESOURCE_ATTRIBUTES present but empty, source env vars present" {
@@ -280,13 +399,19 @@ test "applyModifications: compose OTEL_RESOURCE_ATTRIBUTES, OTEL_RESOURCE_ATTRIB
 
     const modified_env_vars = try applyModifications(original_env_vars);
     try testing.expectEqual(5, modified_env_vars.len);
-    try testing.expect(std.mem.eql(u8, "DASH0_NAMESPACE_NAME=namespace", std.mem.span(modified_env_vars[0])));
-    try testing.expect(std.mem.eql(u8, "DASH0_POD_NAME=pod", std.mem.span(modified_env_vars[1])));
-    try testing.expect(std.mem.eql(u8, "OTEL_RESOURCE_ATTRIBUTES=k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container", std.mem.span(modified_env_vars[2])));
-    try testing.expect(std.mem.eql(u8, "DASH0_POD_UID=uid", std.mem.span(modified_env_vars[3])));
-    try testing.expect(std.mem.eql(u8, "DASH0_CONTAINER_NAME=container", std.mem.span(modified_env_vars[4])));
+    try testing.expectEqualStrings("DASH0_NAMESPACE_NAME=namespace", std.mem.span(modified_env_vars[0]));
+    try testing.expectEqualStrings("DASH0_POD_NAME=pod", std.mem.span(modified_env_vars[1]));
+    try testing.expectEqualStrings(
+        "OTEL_RESOURCE_ATTRIBUTES=k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container",
+        std.mem.span(modified_env_vars[2]),
+    );
+    try testing.expectEqualStrings("DASH0_POD_UID=uid", std.mem.span(modified_env_vars[3]));
+    try testing.expectEqualStrings("DASH0_CONTAINER_NAME=container", std.mem.span(modified_env_vars[4]));
 }
 
 fn renderEnvVarsToExport(env_vars: [](types.NullTerminatedString)) ![*c]const [*c]const u8 {
+    if (env_vars.len == 0) {
+        return @as([1][*c]const u8, .{null})[0..].ptr;
+    }
     return @ptrCast(env_vars);
 }
