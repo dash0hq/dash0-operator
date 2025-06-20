@@ -4,6 +4,7 @@
 const std = @import("std");
 
 const injector = @import("injector.zig");
+const print = @import("print.zig");
 
 // This is how you can currently do something like `__attribute__((constructor))` in Zig, that is, register a function
 // that runs before main(): Export a const named init_array which lists the functions you want to run. This will then
@@ -27,8 +28,12 @@ comptime {
 }
 
 fn initEnviron() callconv(.C) void {
-    const pid = std.os.linux.getpid();
-    std.debug.print("[Dash0 injector] {d} initEnviron() start\n", .{pid});
     __environ_internal = injector._initEnviron("/proc/self/environ") catch @panic("[Dash0 injector] initEnviron failed");
-    std.debug.print("[Dash0 injector] {d} initEnviron() done\n", .{pid});
+    if (print.isDebug()) {
+        // Note: print.isDebug is only initalized after injector._initEnviron, since it requires access to environment
+        // variables, thus the startup message is not printed here but in injector._initEnviron after reading the
+        // environment.
+        const pid = std.os.linux.getpid();
+        print.printDebug("done, successfully instrumented process with pid {d}\n", .{pid});
+    }
 }
