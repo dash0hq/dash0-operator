@@ -40,6 +40,7 @@ const testing = std.testing;
 // - double check which intermediate values (strings, slices, ...) we can free and which need to remain allocated.
 // - add readme with instructions, also useful commands like
 //   VERBOSE=true SUPPRESS_SKIPPED=true RUNTIMES=c,jvm TEST_CASES=otel-resource-attributes-unset,existing-env-var-return-unmodified ./watch-tests-within-container.sh
+//   VERBOSE=true SUPPRESS_SKIPPED=true RUNTIMES=dotnet ./watch-tests-within-container.sh
 
 pub fn _initEnviron(proc_self_environ_path: []const u8) ![*c]const [*c]const u8 {
     const original_env_vars = try readProcSelfEnvironFile(proc_self_environ_path);

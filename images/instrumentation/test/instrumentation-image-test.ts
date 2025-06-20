@@ -6,7 +6,7 @@
 import { promisify } from 'node:util';
 import childProcess, { execSync, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { readFile, writeFile, readdir, unlink } from 'node:fs/promises';
+import { mkdir, open, readdir, readFile, rm, writeFile, unlink } from 'node:fs/promises';
 import { readFileSync, unlinkSync } from 'fs';
 import os from 'node:os';
 import { basename, dirname, resolve } from 'node:path';
@@ -662,9 +662,9 @@ function createRunTestCaseTask(
 }
 
 async function runTestsWithinContainer(commandLineOptions: any): Promise<void> {
-  // Note that this only actually works with a subset of the test cases, in particular, the instrumentation assets
-  // (Dash0 Node.js OTel distribution, Java OTel SDK, ...) are not present, so tests that rely on an SDK/distribution
-  // to be actually loaded will not work.
+  // Create dummy instrumentation assets, so that the injector code that checks for the existence of specific
+  // directories or files will pass:
+  await createDummyInstrumentationAssets();
 
   log('compiling the injector (zig build)');
   try {
@@ -692,6 +692,14 @@ async function runTestsWithinContainer(commandLineOptions: any): Promise<void> {
           runCTestCaseWithinContainer,
         );
         break;
+      case 'dotnet':
+        await runTestsWithinContainerForRuntime(
+          //
+          noOp,
+          runtime,
+          runDotnetTestCaseWithinContainer,
+        );
+        break;
       case 'jvm':
         await runTestsWithinContainerForRuntime(
           //
@@ -717,6 +725,28 @@ async function runTestsWithinContainer(commandLineOptions: any): Promise<void> {
   }
 
   printSummary();
+
+  await rm('/__dash0__/', { recursive: true, force: true });
+}
+
+async function createDummyInstrumentationAssets() {
+  const instrumentationDir = '/__dash0__/instrumentation';
+  await mkdir(instrumentationDir, { recursive: true });
+  const jvmDir = `${instrumentationDir}/jvm`;
+  await mkdir(jvmDir, { recursive: true });
+  await open(`${jvmDir}//opentelemetry-javaagent.jar`, 'a');
+  await mkdir(`${instrumentationDir}/node.js/node_modules/@dash0hq/opentelemetry`, { recursive: true });
+  const dotnetDir = `${instrumentationDir}/dotnet/glibc`;
+  await open(`${dotnetDir}/AdditionalDeps`, 'a');
+  await open(`${dotnetDir}/store`, 'a');
+  await mkdir(`${dotnetDir}/net`, { recursive: true });
+  await open(`${dotnetDir}/net/OpenTelemetry.AutoInstrumentation.StartupHook.dll`, 'a');
+  const platforms = ['linux-x64', 'linux-arm64'];
+  for (const platform of platforms) {
+    const dotnetPlatformDir = `${dotnetDir}/${platform}`;
+    await mkdir(dotnetPlatformDir, { recursive: true });
+    await open(`${dotnetPlatformDir}/OpenTelemetry.AutoInstrumentation.Native.so`, 'a');
+  }
 }
 
 async function noOp(): Promise<void> {
@@ -731,6 +761,18 @@ async function runCTestCaseWithinContainer(runtime: string, testCase: string, cw
     cwd,
     noOp,
     `./app.o`,
+    [],
+  );
+}
+
+async function runDotnetTestCaseWithinContainer(runtime: string, testCase: string, cwd: string): Promise<void> {
+  await runTestCaseWithinContainer(
+    //
+    runtime,
+    testCase,
+    cwd,
+    beforeTestCaseDotnet,
+    `./app`,
     [],
   );
 }
@@ -768,6 +810,17 @@ async function beforeAllC(): Promise<void> {
     console.error(chalk.red('Compiling C test apps failed:\n', error.stderr || error.message || error));
     process.exit(1);
   }
+}
+
+async function beforeTestCaseDotnet(_: string, cwd: string): Promise<void> {
+  execSync('dotnet restore', {
+    cwd,
+    stdio: 'inherit',
+  });
+  execSync('dotnet publish -o .', {
+    cwd,
+    stdio: 'inherit',
+  });
 }
 
 async function beforeAllJvm(): Promise<void> {
