@@ -245,6 +245,7 @@ test "readProcSelfEnvironBuffer: read environment variables" {
     try testing.expectEqualStrings("VAR3=value3", std.mem.span(env_vars[2]));
 }
 
+/// Applies all modifications to the environment variables.
 fn applyModifications(original_env_vars: [](types.NullTerminatedString)) ![](types.NullTerminatedString) {
     var number_of_env_vars_after_modifications: usize = original_env_vars.len;
     const otel_resource_attributes_update_optional =
@@ -277,48 +278,56 @@ fn applyModifications(original_env_vars: [](types.NullTerminatedString)) ![](typ
 
     // apply the actual modifications
     var index_for_appending_env_vars: usize = original_env_vars.len;
-    if (otel_resource_attributes_update_optional) |otel_resource_attributes_update| {
-        const key_value_pair =
-            std.fmt.allocPrintZ(
-                std.heap.page_allocator,
-                "{s}={s}",
-                .{ res_attrs.otel_resource_attributes_env_var_name, otel_resource_attributes_update.value },
-            ) catch |err| {
-                print.printError(
-                    "Cannot allocate memory to manipulate the value of '{s}': {}",
-                    .{ res_attrs.otel_resource_attributes_env_var_name, err },
-                );
-                return modified_env_vars;
-            };
-        if (!otel_resource_attributes_update.replace) {
-            modified_env_vars[index_for_appending_env_vars] = key_value_pair;
-            index_for_appending_env_vars += 1;
-        } else {
-            modified_env_vars[otel_resource_attributes_update.index] = key_value_pair;
-        }
+    if (!applyEnvVarUpdate(
+        modified_env_vars,
+        res_attrs.otel_resource_attributes_env_var_name,
+        otel_resource_attributes_update_optional,
+        &index_for_appending_env_vars,
+    )) {
+        return modified_env_vars;
     }
-    if (node_options_update_optional) |node_options_update| {
-        const key_value_pair =
-            std.fmt.allocPrintZ(
-                std.heap.page_allocator,
-                "{s}={s}",
-                .{ node_js.node_options_env_var_name, node_options_update.value },
-            ) catch |err| {
-                print.printError(
-                    "Cannot allocate memory to manipulate the value of '{s}': {}",
-                    .{ node_js.node_options_env_var_name, err },
-                );
-                return modified_env_vars;
-            };
-        if (!node_options_update.replace) {
-            modified_env_vars[index_for_appending_env_vars] = key_value_pair;
-            index_for_appending_env_vars += 1;
-        } else {
-            modified_env_vars[node_options_update.index] = key_value_pair;
-        }
+    if (!applyEnvVarUpdate(
+        modified_env_vars,
+        node_js.node_options_env_var_name,
+        node_options_update_optional,
+        &index_for_appending_env_vars,
+    )) {
+        return modified_env_vars;
     }
 
     return modified_env_vars;
+}
+
+/// Applies one specific environment variable update to the modified environment variables slice.
+/// Client code is expected to stop trying to modify environment variables if the function returns false (this indicates
+/// that a memory allocation failed).
+fn applyEnvVarUpdate(
+    modified_env_vars: [](types.NullTerminatedString),
+    env_var_name: []const u8,
+    env_var_update_optional: ?types.EnvVarUpdate,
+    index_for_appending_env_vars: *usize,
+) bool {
+    if (env_var_update_optional) |env_var_update| {
+        const key_value_pair =
+            std.fmt.allocPrintZ(
+                std.heap.page_allocator,
+                "{s}={s}",
+                .{ env_var_name, env_var_update.value },
+            ) catch |err| {
+                print.printError(
+                    "Cannot allocate memory to manipulate the value of '{s}': {}",
+                    .{ env_var_name, err },
+                );
+                return false;
+            };
+        if (!env_var_update.replace) {
+            modified_env_vars[index_for_appending_env_vars.*] = key_value_pair;
+            index_for_appending_env_vars.* += 1;
+        } else {
+            modified_env_vars[env_var_update.index] = key_value_pair;
+        }
+    }
+    return true;
 }
 
 test "applyModifications: append NODE_OPTIONS" {
