@@ -21,12 +21,10 @@ const testing = std.testing;
 // TODO
 // ====
 // - add unit tests for _initEnviron.
-// - add tests for caching.
-// - remove all std.debug.print calls
-// - test for env.zig#getEnvVar
 // - move otel resource attributes stuff back to resource_attributes.zig
 // - get __DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS going, add tests for child process
 // - revisit __DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS vs idempotency (maybe later)
+// - remove all std.debug.print calls (make them contigent on DASH0_INJECTOR_DEBUG being set).
 // - move OTEL_RESOURCE_ATTRIBUTES back to resource_attributes.zig
 // - add instrumentation test with an empty OTEL_RESOURCE_ATTRIBUTES env var, make sure it gets correctly replaced
 //   (instead of appending a new entry).
@@ -35,6 +33,8 @@ const testing = std.testing;
 // - add Python test for OTEL_RESOURCE_ATTRIBUTES
 // - repair injector integration tests
 // - enable NO_ENVIRON tests
+// - check Node.js tests -- do we need to add getenv override again?
+// - add tests that cached values are actually used (after adding back override for getenv)
 // - add instrumentation and injector tests that also change the environment via setenv, putenv, and also directly
 //   importing __environ, _environ, and environ and writing to that.
 // - more extensive instrumentation tests for .NET, verifying OTEL_RESOURCE_ATTRIBUTES, and the various env vars that
