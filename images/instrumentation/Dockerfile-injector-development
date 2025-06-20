@@ -3,14 +3,14 @@
 # on injector changes. Use ./start-injector-dev-container.sh to build and run the container.
 # It also has dependencies to build the JDK (https://github.com/openjdk/jdk) and Node.js
 # (https://github.com/nodejs/node) from source, which can be helpful to investigate segfaults or other nasties.
-ARG base_image=ubuntu:noble
+ARG base_image=ubuntu:oracular
 FROM ${base_image}
 
 ARG zig_architecture
 
-RUN yes | unminimize
-
 RUN apt-get update && \
+    apt-get install -y unminimize && \
+    yes | unminimize && \
     apt-get install -y --no-install-recommends \
       curl \
       ca-certificates \
@@ -23,6 +23,7 @@ RUN apt-get update && \
       binutils \
       build-essential \
       curl \
+      dotnet-sdk-9.0 \
       entr \
       fd-find \
       file \
