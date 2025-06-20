@@ -5,6 +5,8 @@ const std = @import("std");
 
 const types = @import("types.zig");
 
+const testing = std.testing;
+
 /// Get the value of an environment variable from the provided env_vars list, which is a list of null-terminated
 /// strings following the pattern VARIABLE_NAME=value. Returns an the value of the environment variable, and the index
 /// where it was found in the provided slice. Returns null if the environment variable is not found. Note that the
@@ -24,4 +26,75 @@ pub fn getEnvVar(env_vars: [](types.NullTerminatedString), name: []const u8) ?ty
         }
     }
     return null;
+}
+
+test "getEnvVar: empty list" {
+    const env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 0);
+    defer std.heap.page_allocator.free(env_vars);
+    if (getEnvVar(env_vars, "ENV_VAR")) |_| {
+        return error.TestUnexpectedResult;
+    }
+}
+
+test "getEnvVar: env var not found" {
+    const env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 5);
+    defer std.heap.page_allocator.free(env_vars);
+    env_vars[0] = "ENV_VAR_1=value1";
+    env_vars[1] = "ENV_VAR_2=value2";
+    env_vars[2] = "ENV_VAR_3=value3";
+    env_vars[3] = "ENV_VAR_4=value4";
+    env_vars[4] = "ENV_VAR_5=value5";
+    try testing.expect(getEnvVar(env_vars, "ENV_VAR_42") == null);
+}
+
+test "getEnvVar: env var found at the beginning" {
+    const env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 5);
+    defer std.heap.page_allocator.free(env_vars);
+    env_vars[0] = "ENV_VAR_1=value1";
+    env_vars[1] = "ENV_VAR_2=value2";
+    env_vars[2] = "ENV_VAR_3=value3";
+    env_vars[3] = "ENV_VAR_4=value4";
+    env_vars[4] = "ENV_VAR_5=value5";
+    const value_and_index = getEnvVar(env_vars, "ENV_VAR_1").?;
+    try testing.expectEqualStrings("value1", std.mem.span(value_and_index.value));
+    try testing.expectEqual(0, value_and_index.index);
+}
+
+test "getEnvVar: env var found in the middle" {
+    const env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 5);
+    defer std.heap.page_allocator.free(env_vars);
+    env_vars[0] = "ENV_VAR_1=value1";
+    env_vars[1] = "ENV_VAR_2=value2";
+    env_vars[2] = "ENV_VAR_3=value3";
+    env_vars[3] = "ENV_VAR_4=value4";
+    env_vars[4] = "ENV_VAR_5=value5";
+    const value_and_index = getEnvVar(env_vars, "ENV_VAR_3").?;
+    try testing.expectEqualStrings("value3", std.mem.span(value_and_index.value));
+    try testing.expectEqual(2, value_and_index.index);
+}
+
+test "getEnvVar: env var found at the end" {
+    const env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 5);
+    defer std.heap.page_allocator.free(env_vars);
+    env_vars[0] = "ENV_VAR_1=value1";
+    env_vars[1] = "ENV_VAR_2=value2";
+    env_vars[2] = "ENV_VAR_3=value3";
+    env_vars[3] = "ENV_VAR_4=value4";
+    env_vars[4] = "ENV_VAR_5=value5";
+    const value_and_index = getEnvVar(env_vars, "ENV_VAR_5").?;
+    try testing.expectEqualStrings("value5", std.mem.span(value_and_index.value));
+    try testing.expectEqual(4, value_and_index.index);
+}
+
+test "getEnvVar: env var value contains additional = characters" {
+    const env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 5);
+    defer std.heap.page_allocator.free(env_vars);
+    env_vars[0] = "ENV_VAR_1=value1";
+    env_vars[1] = "ENV_VAR_2=value2";
+    env_vars[2] = "ENV_VAR_3=aa=bb,cc=dd,ee=ff";
+    env_vars[3] = "ENV_VAR_4=value4";
+    env_vars[4] = "ENV_VAR_5=value5";
+    const value_and_index = getEnvVar(env_vars, "ENV_VAR_3").?;
+    try testing.expectEqualStrings("aa=bb,cc=dd,ee=ff", std.mem.span(value_and_index.value));
+    try testing.expectEqual(2, value_and_index.index);
 }

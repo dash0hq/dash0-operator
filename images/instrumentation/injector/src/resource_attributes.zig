@@ -25,7 +25,6 @@ const EnvToResourceAttributeMapping = struct {
     resource_attributes_key: ?[]const u8,
 };
 
-
 /// A list of mappings from environment variables to resource attributes.
 const mappings: [8]EnvToResourceAttributeMapping =
     .{
@@ -135,6 +134,8 @@ test "getModifiedOtelResourceAttributesValue: no original value, no new resource
     original_env_vars[1] = "CCC=ddd";
     const env_var_update_optional = getModifiedOtelResourceAttributesValue(original_env_vars);
     try testing.expect(env_var_update_optional == null);
+    try testing.expectEqual(true, cache.modification_cache.otel_resource_attributes.done);
+    try testing.expectEqual(null, cache.modification_cache.otel_resource_attributes.value);
 }
 
 test "getModifiedOtelResourceAttributesValue: original value is empty string, no new resource attributes" {
@@ -146,14 +147,13 @@ test "getModifiedOtelResourceAttributesValue: original value is empty string, no
     original_env_vars[0] = "AAA=bbb";
     original_env_vars[1] = "OTEL_RESOURCE_ATTRIBUTES=";
     original_env_vars[2] = "CCC=ddd";
-    if (getModifiedOtelResourceAttributesValue(original_env_vars)) |env_var_update| {
-        try testing.expectEqual(0, env_var_update.value[0]);
-        try testing.expectEqual(0, std.mem.len(env_var_update.value));
-        try testing.expectEqual(true, env_var_update.replace);
-        try testing.expectEqual(1, env_var_update.index);
-    } else {
-        return error.TestUnexpectedResult;
-    }
+    const env_var_update = getModifiedOtelResourceAttributesValue(original_env_vars).?;
+    try testing.expectEqual(0, env_var_update.value[0]);
+    try testing.expectEqual(0, std.mem.len(env_var_update.value));
+    try testing.expectEqual(true, env_var_update.replace);
+    try testing.expectEqual(1, env_var_update.index);
+    try testing.expectEqual(true, cache.modification_cache.otel_resource_attributes.done);
+    try testing.expectEqualStrings("", std.mem.span(cache.modification_cache.otel_resource_attributes.value.?));
 }
 
 test "getModifiedOtelResourceAttributesValue: no original value, only new resource attributes" {
@@ -165,13 +165,12 @@ test "getModifiedOtelResourceAttributesValue: no original value, only new resour
     original_env_vars[0] = "DASH0_NAMESPACE_NAME=namespace";
     original_env_vars[1] = "DASH0_POD_NAME=pod";
     original_env_vars[2] = "DASH0_POD_UID=uid";
-    if (getModifiedOtelResourceAttributesValue(original_env_vars)) |env_var_update| {
-        try testing.expectEqualStrings("k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid", std.mem.span(env_var_update.value));
-        try testing.expectEqual(false, env_var_update.replace);
-        try testing.expectEqual(0, env_var_update.index);
-    } else {
-        return error.TestUnexpectedResult;
-    }
+    const env_var_update = getModifiedOtelResourceAttributesValue(original_env_vars).?;
+    try testing.expectEqualStrings("k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid", std.mem.span(env_var_update.value));
+    try testing.expectEqual(false, env_var_update.replace);
+    try testing.expectEqual(0, env_var_update.index);
+    try testing.expectEqual(true, cache.modification_cache.otel_resource_attributes.done);
+    try testing.expectEqualStrings("k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid", std.mem.span(cache.modification_cache.otel_resource_attributes.value.?));
 }
 
 test "getModifiedOtelResourceAttributesValue: original value is empty string, new resource attributes present" {
@@ -184,13 +183,12 @@ test "getModifiedOtelResourceAttributesValue: original value is empty string, ne
     original_env_vars[1] = "DASH0_NAMESPACE_NAME=namespace";
     original_env_vars[2] = "DASH0_POD_NAME=pod";
     original_env_vars[3] = "DASH0_POD_UID=uid";
-    if (getModifiedOtelResourceAttributesValue(original_env_vars)) |env_var_update| {
-        try testing.expectEqualStrings("k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid", std.mem.span(env_var_update.value));
-        try testing.expectEqual(true, env_var_update.replace);
-        try testing.expectEqual(0, env_var_update.index);
-    } else {
-        return error.TestUnexpectedResult;
-    }
+    const env_var_update = getModifiedOtelResourceAttributesValue(original_env_vars).?;
+    try testing.expectEqualStrings("k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid", std.mem.span(env_var_update.value));
+    try testing.expectEqual(true, env_var_update.replace);
+    try testing.expectEqual(0, env_var_update.index);
+    try testing.expectEqual(true, cache.modification_cache.otel_resource_attributes.done);
+    try testing.expectEqualStrings("k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid", std.mem.span(cache.modification_cache.otel_resource_attributes.value.?));
 }
 
 test "getModifiedOtelResourceAttributesValue: original value exists, no new resource attributes" {
@@ -202,13 +200,12 @@ test "getModifiedOtelResourceAttributesValue: original value exists, no new reso
     original_env_vars[0] = "AAA=bbb";
     original_env_vars[1] = "CCC=ddd";
     original_env_vars[2] = "OTEL_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd";
-    if (getModifiedOtelResourceAttributesValue(original_env_vars)) |env_var_update| {
-        try testing.expectEqualStrings("aaa=bbb,ccc=ddd", std.mem.span(env_var_update.value));
-        try testing.expectEqual(true, env_var_update.replace);
-        try testing.expectEqual(2, env_var_update.index);
-    } else {
-        return error.TestUnexpectedResult;
-    }
+    const env_var_update = getModifiedOtelResourceAttributesValue(original_env_vars).?;
+    try testing.expectEqualStrings("aaa=bbb,ccc=ddd", std.mem.span(env_var_update.value));
+    try testing.expectEqual(true, env_var_update.replace);
+    try testing.expectEqual(2, env_var_update.index);
+    try testing.expectEqual(true, cache.modification_cache.otel_resource_attributes.done);
+    try testing.expectEqualStrings("aaa=bbb,ccc=ddd", std.mem.span(cache.modification_cache.otel_resource_attributes.value.?));
 }
 
 test "getModifiedOtelResourceAttributesValue: original value and new resource attributes" {
@@ -221,13 +218,12 @@ test "getModifiedOtelResourceAttributesValue: original value and new resource at
     original_env_vars[1] = "DASH0_POD_NAME=pod";
     original_env_vars[2] = "OTEL_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd";
     original_env_vars[3] = "DASH0_POD_UID=uid";
-    if (getModifiedOtelResourceAttributesValue(original_env_vars)) |env_var_update| {
-        try testing.expectEqualStrings("k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,aaa=bbb,ccc=ddd", std.mem.span(env_var_update.value));
-        try testing.expectEqual(true, env_var_update.replace);
-        try testing.expectEqual(2, env_var_update.index);
-    } else {
-        return error.TestUnexpectedResult;
-    }
+    const env_var_update = getModifiedOtelResourceAttributesValue(original_env_vars).?;
+    try testing.expectEqualStrings("k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,aaa=bbb,ccc=ddd", std.mem.span(env_var_update.value));
+    try testing.expectEqual(true, env_var_update.replace);
+    try testing.expectEqual(2, env_var_update.index);
+    try testing.expectEqual(true, cache.modification_cache.otel_resource_attributes.done);
+    try testing.expectEqualStrings("k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,aaa=bbb,ccc=ddd", std.mem.span(cache.modification_cache.otel_resource_attributes.value.?));
 }
 
 /// Maps the DASH0_* environment variables that are set by the operator (workload_modifier#addEnvironmentVariables) to a
@@ -307,11 +303,7 @@ test "getResourceAttributes: empty environment" {
 
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 0);
     defer std.heap.page_allocator.free(original_env_vars);
-    if (getResourceAttributes(original_env_vars)) |resource_attributes| {
-        // we expect getResourceAttributes(original_env_vars) to return null
-        defer std.heap.page_allocator.free(resource_attributes);
-        return error.TestUnexpectedResult;
-    }
+    try testing.expect(getResourceAttributes(original_env_vars) == null);
 }
 
 test "getResourceAttributes: namespace only" {
@@ -321,12 +313,9 @@ test "getResourceAttributes: namespace only" {
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 1);
     defer std.heap.page_allocator.free(original_env_vars);
     original_env_vars[0] = "DASH0_NAMESPACE_NAME=namespace";
-    if (getResourceAttributes(original_env_vars)) |resource_attributes| {
-        defer std.heap.page_allocator.free(resource_attributes);
-        try testing.expectEqualStrings("k8s.namespace.name=namespace", resource_attributes);
-    } else {
-        return error.TestUnexpectedResult;
-    }
+    const resource_attributes = getResourceAttributes(original_env_vars).?;
+    defer std.heap.page_allocator.free(resource_attributes);
+    try testing.expectEqualStrings("k8s.namespace.name=namespace", resource_attributes);
 }
 
 test "getResourceAttributes: pod name only" {
@@ -336,12 +325,9 @@ test "getResourceAttributes: pod name only" {
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 1);
     defer std.heap.page_allocator.free(original_env_vars);
     original_env_vars[0] = "DASH0_POD_NAME=pod";
-    if (getResourceAttributes(original_env_vars)) |resource_attributes| {
-        defer std.heap.page_allocator.free(resource_attributes);
-        try testing.expectEqualStrings("k8s.pod.name=pod", resource_attributes);
-    } else {
-        return error.TestUnexpectedResult;
-    }
+    const resource_attributes = getResourceAttributes(original_env_vars).?;
+    defer std.heap.page_allocator.free(resource_attributes);
+    try testing.expectEqualStrings("k8s.pod.name=pod", resource_attributes);
 }
 
 test "getResourceAttributes: pod uid only" {
@@ -351,12 +337,9 @@ test "getResourceAttributes: pod uid only" {
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 1);
     defer std.heap.page_allocator.free(original_env_vars);
     original_env_vars[0] = "DASH0_POD_UID=uid";
-    if (getResourceAttributes(original_env_vars)) |resource_attributes| {
-        defer std.heap.page_allocator.free(resource_attributes);
-        try testing.expectEqualStrings("k8s.pod.uid=uid", resource_attributes);
-    } else {
-        return error.TestUnexpectedResult;
-    }
+    const resource_attributes = getResourceAttributes(original_env_vars).?;
+    defer std.heap.page_allocator.free(resource_attributes);
+    try testing.expectEqualStrings("k8s.pod.uid=uid", resource_attributes);
 }
 
 test "getResourceAttributes: container name only" {
@@ -366,12 +349,9 @@ test "getResourceAttributes: container name only" {
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 1);
     defer std.heap.page_allocator.free(original_env_vars);
     original_env_vars[0] = "DASH0_CONTAINER_NAME=container";
-    if (getResourceAttributes(original_env_vars)) |resource_attributes| {
-        defer std.heap.page_allocator.free(resource_attributes);
-        try testing.expectEqualStrings("k8s.container.name=container", resource_attributes);
-    } else {
-        return error.TestUnexpectedResult;
-    }
+    const resource_attributes = getResourceAttributes(original_env_vars).?;
+    defer std.heap.page_allocator.free(resource_attributes);
+    try testing.expectEqualStrings("k8s.container.name=container", resource_attributes);
 }
 
 test "getResourceAttributes: free-form resource attributes only" {
@@ -381,12 +361,9 @@ test "getResourceAttributes: free-form resource attributes only" {
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 1);
     defer std.heap.page_allocator.free(original_env_vars);
     original_env_vars[0] = "DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd";
-    if (getResourceAttributes(original_env_vars)) |resource_attributes| {
-        defer std.heap.page_allocator.free(resource_attributes);
-        try testing.expectEqualStrings("aaa=bbb,ccc=ddd", resource_attributes);
-    } else {
-        return error.TestUnexpectedResult;
-    }
+    const resource_attributes = getResourceAttributes(original_env_vars).?;
+    defer std.heap.page_allocator.free(resource_attributes);
+    try testing.expectEqualStrings("aaa=bbb,ccc=ddd", resource_attributes);
 }
 
 test "getResourceAttributes: everything is set" {
@@ -403,13 +380,10 @@ test "getResourceAttributes: everything is set" {
     original_env_vars[5] = "DASH0_SERVICE_VERSION=version";
     original_env_vars[6] = "DASH0_SERVICE_NAMESPACE=servicenamespace";
     original_env_vars[7] = "DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd";
-    if (getResourceAttributes(original_env_vars)) |resource_attributes| {
-        defer std.heap.page_allocator.free(resource_attributes);
-        try testing.expectEqualStrings(
-            "k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd",
-            resource_attributes,
-        );
-    } else {
-        return error.TestUnexpectedResult;
-    }
+    const resource_attributes = getResourceAttributes(original_env_vars).?;
+    defer std.heap.page_allocator.free(resource_attributes);
+    try testing.expectEqualStrings(
+        "k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd",
+        resource_attributes,
+    );
 }
