@@ -5,6 +5,7 @@ const std = @import("std");
 
 const cache = @import("cache.zig");
 const env = @import("env.zig");
+const jvm = @import("jvm.zig");
 const node_js = @import("node_js.zig");
 const print = @import("print.zig");
 const res_attrs = @import("resource_attributes.zig");
@@ -15,10 +16,16 @@ const testing = std.testing;
 
 // TODO
 // ====
-// - enable all other env var modifications again (NODE_OPTIONS, JAVA_TOOL_OPTIONS, etc.)
+// - enable all other env var modifications again:
+//   - NODE_OPTIONS √
+//   - JAVA_TOOL_OPTIONS: √
+//   - .NET stuff: x
 // - get __DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS going, add tests for child process
 // - revisit __DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS vs idempotency (maybe later)
-// - remove all std.debug.print calls (make them contigent on DASH0_INJECTOR_DEBUG being set).
+// - handle all error conditions internally, print a warning, do not modify anything and let the instrumented process
+//   continue instead of crashing it.
+// - remove all std.debug.print calls (make them contigent on DASH0_INJECTOR_DEBUG being set). Keep the output of
+//   start/finish with PID as a debug output if DASH0_INJECTOR_DEBUG=true.
 // - add instrumentation test with an empty OTEL_RESOURCE_ATTRIBUTES env var, make sure it gets correctly replaced
 //   (instead of appending a new entry).
 // - at the moment, leaving an env var unmodified is sometimes achieved by returning an EnvVarUpdate with the
@@ -250,9 +257,16 @@ fn applyModifications(original_env_vars: [](types.NullTerminatedString)) ![](typ
     var number_of_env_vars_after_modifications: usize = original_env_vars.len;
     const otel_resource_attributes_update_optional =
         res_attrs.getModifiedOtelResourceAttributesValue(original_env_vars);
-
     if (otel_resource_attributes_update_optional) |otel_resource_attributes_update| {
         if (!otel_resource_attributes_update.replace) {
+            number_of_env_vars_after_modifications += 1;
+        }
+    }
+
+    const java_tool_options_update_optional =
+        jvm.checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue(original_env_vars);
+    if (java_tool_options_update_optional) |java_tool_options_update| {
+        if (!java_tool_options_update.replace) {
             number_of_env_vars_after_modifications += 1;
         }
     }
@@ -282,6 +296,14 @@ fn applyModifications(original_env_vars: [](types.NullTerminatedString)) ![](typ
         modified_env_vars,
         res_attrs.otel_resource_attributes_env_var_name,
         otel_resource_attributes_update_optional,
+        &index_for_appending_env_vars,
+    )) {
+        return modified_env_vars;
+    }
+    if (!applyEnvVarUpdate(
+        modified_env_vars,
+        jvm.java_tool_options_env_var_name,
+        java_tool_options_update_optional,
         &index_for_appending_env_vars,
     )) {
         return modified_env_vars;
@@ -330,6 +352,47 @@ fn applyEnvVarUpdate(
     return true;
 }
 
+test "applyModifications: no changes" {
+    cache.modification_cache = cache.emptyModificationCache();
+    defer cache.modification_cache = cache.emptyModificationCache();
+
+    const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 3);
+    defer std.heap.page_allocator.free(original_env_vars);
+    original_env_vars[0] = "VAR1=value1";
+    original_env_vars[1] = "VAR2=value2";
+    original_env_vars[2] = "VAR3=value3";
+
+    const modified_env_vars = try applyModifications(original_env_vars);
+    try testing.expectEqual(3, modified_env_vars.len);
+    try testing.expectEqualStrings("VAR1=value1", std.mem.span(modified_env_vars[0]));
+    try testing.expectEqualStrings("VAR2=value2", std.mem.span(modified_env_vars[1]));
+    try testing.expectEqualStrings("VAR3=value3", std.mem.span(modified_env_vars[2]));
+}
+
+test "applyModifications: append JAVA_TOOL_OPTIONS" {
+    try test_util.createDummyDirectory("/__dash0__/instrumentation/jvm/");
+    _ = try std.fs.createFileAbsolute(jvm.otel_java_agent_path, .{});
+    defer {
+        test_util.deleteDash0DummyDirectory();
+    }
+
+    cache.modification_cache = cache.emptyModificationCache();
+    defer cache.modification_cache = cache.emptyModificationCache();
+
+    const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 3);
+    defer std.heap.page_allocator.free(original_env_vars);
+    original_env_vars[0] = "VAR1=value1";
+    original_env_vars[1] = "VAR2=value2";
+    original_env_vars[2] = "VAR3=value3";
+
+    const modified_env_vars = try applyModifications(original_env_vars);
+    try testing.expectEqual(4, modified_env_vars.len);
+    try testing.expectEqualStrings("VAR1=value1", std.mem.span(modified_env_vars[0]));
+    try testing.expectEqualStrings("VAR2=value2", std.mem.span(modified_env_vars[1]));
+    try testing.expectEqualStrings("VAR3=value3", std.mem.span(modified_env_vars[2]));
+    try testing.expectEqualStrings("JAVA_TOOL_OPTIONS=-javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar", std.mem.span(modified_env_vars[3]));
+}
+
 test "applyModifications: append NODE_OPTIONS" {
     try test_util.createDummyDirectory(node_js.dash0_nodejs_otel_sdk_distribution);
     defer {
@@ -345,12 +408,12 @@ test "applyModifications: append NODE_OPTIONS" {
     original_env_vars[1] = "VAR2=value2";
     original_env_vars[2] = "VAR3=value3";
 
-    const modified_environment = try applyModifications(original_env_vars);
-    try testing.expectEqual(4, modified_environment.len);
-    try testing.expectEqualStrings("VAR1=value1", std.mem.span(modified_environment[0]));
-    try testing.expectEqualStrings("VAR2=value2", std.mem.span(modified_environment[1]));
-    try testing.expectEqualStrings("VAR3=value3", std.mem.span(modified_environment[2]));
-    try testing.expectEqualStrings("NODE_OPTIONS=--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry", std.mem.span(modified_environment[3]));
+    const modified_env_vars = try applyModifications(original_env_vars);
+    try testing.expectEqual(4, modified_env_vars.len);
+    try testing.expectEqualStrings("VAR1=value1", std.mem.span(modified_env_vars[0]));
+    try testing.expectEqualStrings("VAR2=value2", std.mem.span(modified_env_vars[1]));
+    try testing.expectEqualStrings("VAR3=value3", std.mem.span(modified_env_vars[2]));
+    try testing.expectEqualStrings("NODE_OPTIONS=--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry", std.mem.span(modified_env_vars[3]));
 }
 
 test "applyModifications: compose OTEL_RESOURCE_ATTRIBUTES, OTEL_RESOURCE_ATTRIBUTES not present, source env vars present, other env vars are present" {
@@ -456,6 +519,98 @@ test "applyModifications: compose OTEL_RESOURCE_ATTRIBUTES, OTEL_RESOURCE_ATTRIB
     );
     try testing.expectEqualStrings("DASH0_POD_UID=uid", std.mem.span(modified_env_vars[3]));
     try testing.expectEqualStrings("DASH0_CONTAINER_NAME=container", std.mem.span(modified_env_vars[4]));
+}
+
+test "applyModifications: append JAVA_TOOL_OPTIONS, NODE_OPTIONS, and OTEL_RESOURCE_ATTRIBUTES" {
+    try test_util.createDummyDirectory("/__dash0__/instrumentation/jvm/");
+    _ = try std.fs.createFileAbsolute(jvm.otel_java_agent_path, .{});
+    try test_util.createDummyDirectory(node_js.dash0_nodejs_otel_sdk_distribution);
+    defer {
+        test_util.deleteDash0DummyDirectory();
+    }
+
+    cache.modification_cache = cache.emptyModificationCache();
+    defer cache.modification_cache = cache.emptyModificationCache();
+
+    const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 8);
+    defer std.heap.page_allocator.free(original_env_vars);
+    original_env_vars[0] = "DASH0_NAMESPACE_NAME=namespace";
+    original_env_vars[1] = "DASH0_POD_NAME=pod";
+    original_env_vars[2] = "DASH0_POD_UID=uid";
+    original_env_vars[3] = "DASH0_CONTAINER_NAME=container";
+    original_env_vars[4] = "DASH0_SERVICE_NAME=service";
+    original_env_vars[5] = "DASH0_SERVICE_VERSION=version";
+    original_env_vars[6] = "DASH0_SERVICE_NAMESPACE=servicenamespace";
+    original_env_vars[7] = "DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd";
+
+    const modified_env_vars = try applyModifications(original_env_vars);
+    try testing.expectEqual(11, modified_env_vars.len);
+    try testing.expectEqualStrings("DASH0_NAMESPACE_NAME=namespace", std.mem.span(modified_env_vars[0]));
+    try testing.expectEqualStrings("DASH0_POD_NAME=pod", std.mem.span(modified_env_vars[1]));
+    try testing.expectEqualStrings("DASH0_POD_UID=uid", std.mem.span(modified_env_vars[2]));
+    try testing.expectEqualStrings("DASH0_CONTAINER_NAME=container", std.mem.span(modified_env_vars[3]));
+    try testing.expectEqualStrings("DASH0_SERVICE_NAME=service", std.mem.span(modified_env_vars[4]));
+    try testing.expectEqualStrings("DASH0_SERVICE_VERSION=version", std.mem.span(modified_env_vars[5]));
+    try testing.expectEqualStrings("DASH0_SERVICE_NAMESPACE=servicenamespace", std.mem.span(modified_env_vars[6]));
+    try testing.expectEqualStrings("DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd", std.mem.span(modified_env_vars[7]));
+    try testing.expectEqualStrings(
+        "OTEL_RESOURCE_ATTRIBUTES=k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd",
+        std.mem.span(modified_env_vars[8]),
+    );
+    try testing.expectEqualStrings(
+        "JAVA_TOOL_OPTIONS=-javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar -Dotel.resource.attributes=k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd",
+        std.mem.span(modified_env_vars[9]),
+    );
+    try testing.expectEqualStrings(
+        "NODE_OPTIONS=--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
+        std.mem.span(modified_env_vars[10]),
+    );
+}
+
+test "applyModifications: replace JAVA_TOOL_OPTIONS, NODE_OPTIONS, and OTEL_RESOURCE_ATTRIBUTES" {
+    try test_util.createDummyDirectory("/__dash0__/instrumentation/jvm/");
+    _ = try std.fs.createFileAbsolute(jvm.otel_java_agent_path, .{});
+    try test_util.createDummyDirectory(node_js.dash0_nodejs_otel_sdk_distribution);
+    defer {
+        test_util.deleteDash0DummyDirectory();
+    }
+
+    cache.modification_cache = cache.emptyModificationCache();
+    defer cache.modification_cache = cache.emptyModificationCache();
+
+    const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 11);
+    defer std.heap.page_allocator.free(original_env_vars);
+    original_env_vars[0] = "NODE_OPTIONS=--abort-on-uncaught-exception";
+    original_env_vars[1] = "DASH0_NAMESPACE_NAME=namespace";
+    original_env_vars[2] = "JAVA_TOOL_OPTIONS=-Dproperty1=value -Dotel.resource.attributes=eee=fff,ggg=hhh";
+    original_env_vars[3] = "DASH0_POD_NAME=pod";
+    original_env_vars[4] = "DASH0_POD_UID=uid";
+    original_env_vars[5] = "DASH0_CONTAINER_NAME=container";
+    original_env_vars[6] = "OTEL_RESOURCE_ATTRIBUTES=key1=value1,key2=value2";
+    original_env_vars[7] = "DASH0_SERVICE_NAME=service";
+    original_env_vars[8] = "DASH0_SERVICE_VERSION=version";
+    original_env_vars[9] = "DASH0_SERVICE_NAMESPACE=servicenamespace";
+    original_env_vars[10] = "DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd";
+
+    const modified_env_vars = try applyModifications(original_env_vars);
+    try testing.expectEqual(11, modified_env_vars.len);
+    try testing.expectEqualStrings("NODE_OPTIONS=--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --abort-on-uncaught-exception", std.mem.span(modified_env_vars[0]));
+    try testing.expectEqualStrings("DASH0_NAMESPACE_NAME=namespace", std.mem.span(modified_env_vars[1]));
+    try testing.expectEqualStrings(
+        "JAVA_TOOL_OPTIONS=-Dproperty1=value -Dotel.resource.attributes=eee=fff,ggg=hhh,k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar",
+        std.mem.span(modified_env_vars[2]),
+    );
+    try testing.expectEqualStrings("DASH0_POD_NAME=pod", std.mem.span(modified_env_vars[3]));
+    try testing.expectEqualStrings("DASH0_POD_UID=uid", std.mem.span(modified_env_vars[4]));
+    try testing.expectEqualStrings("DASH0_CONTAINER_NAME=container", std.mem.span(modified_env_vars[5]));
+    try testing.expectEqualStrings(
+        "OTEL_RESOURCE_ATTRIBUTES=k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd,key1=value1,key2=value2",
+        std.mem.span(modified_env_vars[6]),
+    );
+    try testing.expectEqualStrings("DASH0_SERVICE_NAME=service", std.mem.span(modified_env_vars[7]));
+    try testing.expectEqualStrings("DASH0_SERVICE_VERSION=version", std.mem.span(modified_env_vars[8]));
+    try testing.expectEqualStrings("DASH0_SERVICE_NAMESPACE=servicenamespace", std.mem.span(modified_env_vars[9]));
+    try testing.expectEqualStrings("DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd", std.mem.span(modified_env_vars[10]));
 }
 
 fn renderEnvVarsToExport(env_vars: [](types.NullTerminatedString)) ![*c]const [*c]const u8 {

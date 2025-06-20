@@ -15,22 +15,22 @@ pub const dash0_nodejs_otel_sdk_distribution = "/__dash0__/instrumentation/node.
 const require_dash0_nodejs_otel_sdk_distribution = "--require " ++ dash0_nodejs_otel_sdk_distribution;
 const injection_happened_msg = "injecting the Dash0 Node.js OpenTelemetry distribution";
 
-pub fn checkNodeJsOTelSdkDistributionAndGetModifiedNodeOptionsValue(original_value_optional: ?types.EnvVarValueAndIndex) ?types.EnvVarUpdate {
+pub fn checkNodeJsOTelSdkDistributionAndGetModifiedNodeOptionsValue(original_value_and_index_optional: ?types.EnvVarValueAndIndex) ?types.EnvVarUpdate {
     // Check the existence of the Node module: requiring or importing a module
     // that does not exist or cannot be opened will crash the Node.js process
     // with an 'ERR_MODULE_NOT_FOUND' error.
     std.fs.cwd().access(dash0_nodejs_otel_sdk_distribution, .{}) catch |err| {
         print.printError("Skipping injection of the Node.js OTel SDK distribution in '{s}' because of an issue accessing the Node.js module at {s}: {}", .{ node_options_env_var_name, dash0_nodejs_otel_sdk_distribution, err });
-        if (original_value_optional) |original_value| {
+        if (original_value_and_index_optional) |original_value_and_index| {
             cache.modification_cache.node_options =
                 cache.CachedModification{
-                    .value = original_value.value,
+                    .value = original_value_and_index.value,
                     .done = true,
                 };
             return types.EnvVarUpdate{
-                .value = original_value.value,
+                .value = original_value_and_index.value,
                 .replace = true,
-                .index = original_value.index,
+                .index = original_value_and_index.index,
             };
         }
         cache.modification_cache.node_options =
@@ -40,7 +40,7 @@ pub fn checkNodeJsOTelSdkDistributionAndGetModifiedNodeOptionsValue(original_val
             };
         return null;
     };
-    return getModifiedNodeOptionsValue(original_value_optional);
+    return getModifiedNodeOptionsValue(original_value_and_index_optional);
 }
 
 test "checkNodeJsOTelDistributionAndGetModifiedNodeOptionsValue: should return null if the Node.js OTel SDK distribution cannot be accessed" {
@@ -73,7 +73,7 @@ test "checkNodeJsOTelDistributionAndGetModifiedNodeOptionsValue: should return t
     try testing.expectEqualStrings("--abort-on-uncaught-exception", std.mem.span(cache.modification_cache.node_options.value.?));
 }
 
-test "checkNodeJsOTelDistributionAndGetModifiedNodeOptionsValue: should return --require if original value is unset if the Node.js OTel SDK distribution can be accessed" {
+test "checkNodeJsOTelDistributionAndGetModifiedNodeOptionsValue: should return --require if original value is unset and the Node.js OTel SDK distribution can be accessed" {
     try test_util.createDummyDirectory(dash0_nodejs_otel_sdk_distribution);
     defer {
         test_util.deleteDash0DummyDirectory();

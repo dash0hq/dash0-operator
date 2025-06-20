@@ -12,7 +12,7 @@ const testing = std.testing;
 
 pub const otel_resource_attributes_env_var_name: []const u8 = "OTEL_RESOURCE_ATTRIBUTES";
 
-const modification_happened_msg = "adding additional OpenTelemetry resources attributes via {s}";
+pub const modification_happened_msg = "adding additional OpenTelemetry resources attributes via {s}";
 
 /// A type for a rule to map an environment variable to a resource attribute. The result of applying these rules (via
 /// getResourceAttributes) is a string of key-value pairs, where each pair is of the form key=value, and pairs are
@@ -65,9 +65,9 @@ const mappings: [8]EnvToResourceAttributeMapping =
 /// Derive the modified value for OTEL_RESOURCE_ATTRIBUTES based on the original value, and on other resource attributes
 /// provided via the DASH0_* environment variables set by the operator (workload_modifier#addEnvironmentVariables).
 pub fn getModifiedOtelResourceAttributesValue(env_vars: [](types.NullTerminatedString)) ?types.EnvVarUpdate {
-    const original_value_optional = env.getEnvVar(env_vars, otel_resource_attributes_env_var_name);
+    const original_value_and_index_optional = env.getEnvVar(env_vars, otel_resource_attributes_env_var_name);
     const resource_attributes_optional = getResourceAttributes(env_vars);
-    if (original_value_optional) |original_value_and_index| {
+    if (original_value_and_index_optional) |original_value_and_index| {
         const original_value = original_value_and_index.value;
         const original_index = original_value_and_index.index;
         if (resource_attributes_optional) |resource_attributes| {
@@ -231,7 +231,7 @@ test "getModifiedOtelResourceAttributesValue: original value and new resource at
 /// JAVA_TOOL_OPTIONS for JVMs).
 ///
 /// Important: The caller must free the returned []u8 array, if a non-null value is returned.
-fn getResourceAttributes(env_vars: [](types.NullTerminatedString)) ?[]u8 {
+pub fn getResourceAttributes(env_vars: [](types.NullTerminatedString)) ?[]u8 {
     var final_len: usize = 0;
     for (mappings) |mapping| {
         const dash0_source_env_var_value_and_index_optional =
