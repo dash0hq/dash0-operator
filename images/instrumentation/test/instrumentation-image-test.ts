@@ -125,9 +125,10 @@ async function main(): Promise<void> {
   program.option('--within-container');
   program.option('-r, --within-container-runtime <runtime>');
   program.parse();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const commandLineOptions: any = program.opts();
   if (commandLineOptions.withinContainer) {
-    await runTestsWithinContainer(commandLineOptions);
+    await runTestsWithinContainer();
   } else {
     await runAllTests();
   }
@@ -602,7 +603,7 @@ function createRunTestCaseTask(
         try {
           testCaseProperties = JSON.parse(testCasePropertiesContent.toString());
         } catch (e) {
-          log(chalk.red(`Error: cannot parse ${testCasePropertiesFile}, ignoring.`));
+          log(chalk.red(`Error: cannot parse ${testCasePropertiesFile}, ignoring; error: ${e}`));
         }
       }
 
@@ -661,7 +662,7 @@ function createRunTestCaseTask(
   };
 }
 
-async function runTestsWithinContainer(commandLineOptions: any): Promise<void> {
+async function runTestsWithinContainer(): Promise<void> {
   // Create dummy instrumentation assets, so that the injector code that checks for the existence of specific
   // directories or files will pass:
   await createDummyInstrumentationAssets();
@@ -670,12 +671,12 @@ async function runTestsWithinContainer(commandLineOptions: any): Promise<void> {
   try {
     await exec('zig build --prominent-compile-errors --summary none', { cwd: 'injector' });
   } catch (error) {
-    // @ts-ignore
+    // @ts-expect-error error
     console.error(chalk.red('Compiling the injector failed:\n', error.stderr || error.message || error));
     process.exit(1);
   }
 
-  for (let runtime of allRuntimes) {
+  for (const runtime of allRuntimes) {
     if (runtimesFilter.length > 0 && !runtimesFilter.includes(runtime)) {
       if (!suppressSkippedInfo) {
         log(chalk.yellow(`skipping runtime '${runtime}'`));
@@ -806,7 +807,7 @@ async function beforeAllC(): Promise<void> {
   try {
     await exec('make', { cwd: 'test/c' });
   } catch (error) {
-    // @ts-ignore
+    // @ts-expect-error error
     console.error(chalk.red('Compiling C test apps failed:\n', error.stderr || error.message || error));
     process.exit(1);
   }
@@ -828,7 +829,7 @@ async function beforeAllJvm(): Promise<void> {
   try {
     await exec('javac src/com/dash0/injector/testutils/*.java', { cwd: 'test/jvm/jvm-test-utils' });
   } catch (error) {
-    // @ts-ignore
+    // @ts-expect-error error
     console.error(chalk.red('Compiling jvm-test-utils failed:\n', error.stderr || error.message || error));
     process.exit(1);
   }
@@ -882,7 +883,7 @@ async function runTestsWithinContainerForRuntime(
       try {
         testCaseProperties = JSON.parse(testCasePropertiesContent.toString());
       } catch (e) {
-        log(chalk.red(`Error: cannot parse ${testCasePropertiesFile}, ignoring.`));
+        log(chalk.red(`Error: cannot parse ${testCasePropertiesFile}, ignoring; error: ${e}.`));
       }
     }
 
@@ -993,6 +994,7 @@ async function runTestCaseWithinContainer(
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function handleTestCaseError(prefix: string, testCase: string, testCmd: string, testArgs: string[], error: any) {
   let failureMode = 'FAIL';
   let failureModeSummary = 'failed';
@@ -1000,7 +1002,6 @@ function handleTestCaseError(prefix: string, testCase: string, testCmd: string, 
   // Note: Detecting segfaults currently only works when triggering the test from within the container, not via docker
   // run. The reason is that the SIGSEGV signal is not propagated back from the docker run command. The segfault message
   // is also not present in stdout or stderr returned from the `await exec(testCmd...`. :-/
-  // @ts-ignore
   if (error.signal === 'SIGSEGV') {
     failureMode = 'SEGFAULT';
     failureModeSummary = 'segfaulted';
