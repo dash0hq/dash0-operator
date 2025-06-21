@@ -15,9 +15,7 @@ var is_debug = false;
 
 /// Initializes the is_debug flag based on the environment variable DASH0_INJECTOR_DEBUG.
 pub fn initDebugFlag(env_vars: [](types.NullTerminatedString)) void {
-    if (env.getEnvVar(env_vars, dash0_injector_debug_env_var_name)) |debug_env_var| {
-        is_debug = std.ascii.eqlIgnoreCase(std.mem.span(debug_env_var.value), "true");
-    }
+    is_debug = env.isTrue(env_vars, dash0_injector_debug_env_var_name);
 }
 
 test "initDebugFlag: not set, empty environmnet" {

@@ -35,6 +35,8 @@ const DotnetError = error{
     OutOfMemory,
 };
 
+const dash0_experimental_dotnet_injection_env_var_name = "DASH0_EXPERIMENTAL_DOTNET_INJECTION";
+
 pub const coreclr_enable_profiling_env_var_name = "CORECLR_ENABLE_PROFILING";
 pub const coreclr_profiler_env_var_name = "CORECLR_PROFILER";
 pub const coreclr_profiler_path_env_var_name = "CORECLR_PROFILER_PATH";
@@ -50,15 +52,8 @@ var injection_happened_msg_has_been_printed = false;
 
 fn initIsEnabled(env_vars: [](types.NullTerminatedString)) void {
     if (cache.injector_cache.experimental_dotnet_injection_enabled == null) {
-        if (env.getEnvVar(env_vars, "DASH0_EXPERIMENTAL_DOTNET_INJECTION")) |experimental_dotnet_injection_enabled_optional| {
-            cache.injector_cache.experimental_dotnet_injection_enabled =
-                std.ascii.eqlIgnoreCase(
-                    std.mem.span(experimental_dotnet_injection_enabled_optional.value),
-                    "true",
-                );
-        } else {
-            cache.injector_cache.experimental_dotnet_injection_enabled = false;
-        }
+        cache.injector_cache.experimental_dotnet_injection_enabled =
+            env.isTrue(env_vars, dash0_experimental_dotnet_injection_env_var_name);
     }
 }
 

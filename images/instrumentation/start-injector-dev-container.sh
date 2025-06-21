@@ -25,6 +25,7 @@ image_name="dash0-injector-dev-$ARCHITECTURE"
 container_name="$image_name"
 
 if docker container inspect "$container_name" > /dev/null 2>&1; then
+   # shellcheck disable=SC2086
   if [[ "$( docker container inspect -f '{{.State.Running}}' $container_name )" = "true" ]]; then
   echo "Container $container_name is already running, joining existing container."
   docker exec \
