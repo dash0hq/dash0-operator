@@ -2,10 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # one base image per line
-node:22-alpine
+node:24-alpine
+node:24-bookworm-slim
 node:22-bookworm-slim
-node:22-bullseye-slim
 node:20-alpine
-node:20-bookworm-slim
 node:18-alpine
 node:16-bullseye-slim
