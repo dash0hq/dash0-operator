@@ -16,10 +16,21 @@ const types = @import("types.zig");
 
 const testing = std.testing;
 
-// TODO
-// ====
-// - get __DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS going, add tests for child process
-// - revisit __DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS vs idempotency (maybe later)
+const injector_has_applied_modifications_env_var_name = "__DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS";
+
+// remainging TODOs:
+// - investigate the last remaining failing tests:
+//   arm64/node/node:24-alpine - otel-resource-attributes-already-set-but-source-attributes-unset: failed
+//   arm64/node/node:24-alpine - otel-resource-attributes-unset-and-source-attributes-unset: failed
+//   arm64/node/node:20-alpine - otel-resource-attributes-already-set-but-source-attributes-unset: failed
+//   arm64/node/node:20-alpine - otel-resource-attributes-unset-and-source-attributes-unset: failed
+//   arm64/node/node:18-alpine - otel-resource-attributes-already-set-but-source-attributes-unset: failed
+//   arm64/node/node:18-alpine - otel-resource-attributes-unset-and-source-attributes-unset: failed
+// - run tests for all architecture, all base images, etc.
+// - add explicit test for parent process spawning child process (in C)
+// - add a new flag to testcase.json for only skipping tests within the container.
+// - revisit idempotency of individual modifications? -- __DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS might not cut it for
+//   every case? (Like, parent process sets NODE_OPTIONS and then spawns the child...)
 // - handle all error conditions internally, print a warning, do not modify anything and let the instrumented process
 //   continue instead of crashing it.
 // - add instrumentation test with an empty OTEL_RESOURCE_ATTRIBUTES env var, make sure it gets correctly replaced
@@ -255,7 +266,16 @@ test "readProcSelfEnvironBuffer: read environment variables" {
 
 /// Applies all modifications to the environment variables.
 fn applyModifications(original_env_vars: [](types.NullTerminatedString)) ![](types.NullTerminatedString) {
-    var number_of_env_vars_after_modifications: usize = original_env_vars.len;
+    if (env.isTrue(original_env_vars, injector_has_applied_modifications_env_var_name)) {
+        // The parent process has already been instrumented, and it then started a child process (which is the process
+        // we are currently in), also, the child process has inherited the environment from the parent process. This
+        // means all our modifications have already been applied, we must not apply them again.
+        return original_env_vars;
+    }
+
+    // + 1 for __DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS
+    var number_of_env_vars_after_modifications: usize = original_env_vars.len + 1;
+
     const otel_resource_attributes_update_optional =
         res_attrs.getModifiedOtelResourceAttributesValue(original_env_vars);
     if (otel_resource_attributes_update_optional) |otel_resource_attributes_update| {
@@ -299,8 +319,14 @@ fn applyModifications(original_env_vars: [](types.NullTerminatedString)) ![](typ
         modified_env_vars[i] = original_env_var;
     }
 
-    // apply the actual modifications
     var index_for_appending_env_vars: usize = original_env_vars.len;
+
+    // Set a marker environment variable to avoid applying the modifications multiple times, in case the current child
+    // spawns a child process which inherits the environment from this process.
+    modified_env_vars[index_for_appending_env_vars] = injector_has_applied_modifications_env_var_name ++ "=true";
+    index_for_appending_env_vars += 1;
+
+    // apply the actual modifications
     if (!applyEnvVarUpdate(
         modified_env_vars,
         res_attrs.otel_resource_attributes_env_var_name,

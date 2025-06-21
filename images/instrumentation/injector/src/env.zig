@@ -98,3 +98,10 @@ test "getEnvVar: env var value contains additional = characters" {
     try testing.expectEqualStrings("aa=bb,cc=dd,ee=ff", std.mem.span(value_and_index.value));
     try testing.expectEqual(2, value_and_index.index);
 }
+
+pub fn isTrue(env_vars: [](types.NullTerminatedString), name: []const u8) bool {
+    if (getEnvVar(env_vars, name)) |value_and_index| {
+        return std.ascii.eqlIgnoreCase(std.mem.span(value_and_index.value), "true");
+    }
+    return false;
+}
