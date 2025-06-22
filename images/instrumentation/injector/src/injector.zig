@@ -19,14 +19,10 @@ const testing = std.testing;
 const injector_has_applied_modifications_env_var_name = "__DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS";
 
 // remainging TODOs:
-// - investigate the last remaining failing tests:
-//   arm64/node/node:24-alpine - otel-resource-attributes-already-set-but-source-attributes-unset: failed
-//   arm64/node/node:24-alpine - otel-resource-attributes-unset-and-source-attributes-unset: failed
-//   arm64/node/node:20-alpine - otel-resource-attributes-already-set-but-source-attributes-unset: failed
-//   arm64/node/node:20-alpine - otel-resource-attributes-unset-and-source-attributes-unset: failed
-//   arm64/node/node:18-alpine - otel-resource-attributes-already-set-but-source-attributes-unset: failed
-//   arm64/node/node:18-alpine - otel-resource-attributes-unset-and-source-attributes-unset: failed
-// - run tests for all architecture, all base images, etc.
+// - run injector integration tests
+// - try to avoid the reallocation in renderEnvVarsToExport, instead, return the correct type from applyModifications
+//   and add the final null pointer there.
+//   - otherwise, add tests for renderEnvVarsToExport
 // - add explicit test for parent process spawning child process (in C)
 // - add a new flag to testcase.json for only skipping tests within the container.
 // - revisit idempotency of individual modifications? -- __DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS might not cut it for
@@ -58,7 +54,8 @@ pub fn _initEnviron(proc_self_environ_path: []const u8) ![*c]const [*c]const u8 
     print.initDebugFlag(original_env_vars);
     if (print.isDebug()) {
         const pid = std.os.linux.getpid();
-        print.printDebug("starting to instrument process with pid {d}\n", .{pid});
+        const exe = std.fs.selfExePathAlloc(std.heap.page_allocator) catch "?";
+        print.printDebug("starting to instrument process with pid {d} ({s})\n", .{ pid, exe });
     }
     const modified_env_vars = try applyModifications(original_env_vars);
     return try renderEnvVarsToExport(modified_env_vars);
@@ -185,7 +182,7 @@ fn readProcSelfEnvironFile(proc_self_environ_path: []const u8) ![](types.NullTer
     defer proc_self_environ_file.close();
 
     const environ_buffer_original = try proc_self_environ_file.readToEndAlloc(std.heap.page_allocator, std.math.maxInt(usize));
-    // TODO shouldn't we defer std.heap.page_allocator.free(environ_buffer_original);
+    // TODO shouldn't we do `defer std.heap.page_allocator.free(environ_buffer_original);` here?
 
     return readProcSelfEnvironBuffer(environ_buffer_original);
 }
@@ -775,5 +772,21 @@ fn renderEnvVarsToExport(env_vars: [](types.NullTerminatedString)) ![*c]const [*
     if (env_vars.len == 0) {
         return @as([1][*c]const u8, .{null})[0..].ptr;
     }
-    return @ptrCast(env_vars);
+
+    const exported = try std.heap.page_allocator.allocSentinel(
+        [*c]const u8,
+        env_vars.len + 1, // +1 for the final null pointer
+        null,
+    );
+
+    for (env_vars, 0..) |env_var, i| {
+        exported[i] = @ptrCast(env_var);
+    }
+
+    // We need to append a final null pointer to the exported array of pointers. This is the signal for the routines
+    // in glibc/musl/etc. that read from the exported __environ symbol that the list of environment variables has been
+    // read completely.
+    exported[env_vars.len] = null;
+
+    return @ptrCast(exported);
 }

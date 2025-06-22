@@ -18,7 +18,6 @@ const print = @import("print.zig");
 // far. See https://github.com/ziglang/zig/issues/23574 and https://github.com/ziglang/zig/issues/20382.
 export const init_array: [1]*const fn () callconv(.C) void linksection(".init_array") = .{&initEnviron};
 
-// TODO c_char might be better than u8 here?
 var __environ_internal: [*c]const [*c]const u8 = undefined;
 
 comptime {
@@ -34,6 +33,7 @@ fn initEnviron() callconv(.C) void {
         // variables, thus the startup message is not printed here but in injector._initEnviron after reading the
         // environment.
         const pid = std.os.linux.getpid();
-        print.printDebug("done, successfully instrumented process with pid {d}\n", .{pid});
+        const exe = std.fs.selfExePathAlloc(std.heap.page_allocator) catch "?";
+        print.printDebug("done, successfully instrumented process with pid {d} ({s})\n", .{pid, exe});
     }
 }
