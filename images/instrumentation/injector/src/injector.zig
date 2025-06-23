@@ -786,7 +786,8 @@ fn renderEnvVarsToExport(env_vars: [](types.NullTerminatedString)) ![*c]const [*
 
     const exported = try std.heap.page_allocator.allocSentinel(
         [*c]const u8,
-        env_vars.len + 1, // +1 for the final null pointer
+        // +1 for the final null pointer
+        env_vars.len + 1,
         null,
     );
 
@@ -797,7 +798,12 @@ fn renderEnvVarsToExport(env_vars: [](types.NullTerminatedString)) ![*c]const [*
     // We need to append a final null pointer to the exported array of pointers. This is the signal for the routines
     // in glibc/musl/etc. that read from the exported __environ symbol that the list of environment variables has been
     // read completely.
+    //
+    // Implementation note: Appending a null _character_ to the incoming env_vars: [](types.NullTerminatedString) is not
+    // an adequate substitute - the null character is a single byte with a value of zero, which is different from the
+    // NULL pointer, which is a pointer type, i.e. 8 bytes for 64 bit architectures.
     exported[env_vars.len] = null;
+
 
     return @ptrCast(exported);
 }

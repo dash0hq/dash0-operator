@@ -6,7 +6,7 @@
 import { promisify } from 'node:util';
 import childProcess, { execSync, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, open, readdir, readFile, rm, writeFile, unlink } from 'node:fs/promises';
+import { readdir, readFile, writeFile, unlink } from 'node:fs/promises';
 import { readFileSync, unlinkSync } from 'fs';
 import os from 'node:os';
 import { basename, dirname, resolve } from 'node:path';
@@ -663,10 +663,6 @@ function createRunTestCaseTask(
 }
 
 async function runTestsWithinContainer(): Promise<void> {
-  // Create dummy instrumentation assets, so that the injector code that checks for the existence of specific
-  // directories or files will pass:
-  await createDummyInstrumentationAssets();
-
   log('compiling the injector (zig build)');
   try {
     await exec('zig build --prominent-compile-errors --summary none', { cwd: 'injector' });
@@ -726,28 +722,6 @@ async function runTestsWithinContainer(): Promise<void> {
   }
 
   printSummary();
-
-  await rm('/__dash0__/', { recursive: true, force: true });
-}
-
-async function createDummyInstrumentationAssets() {
-  const instrumentationDir = '/__dash0__/instrumentation';
-  await mkdir(instrumentationDir, { recursive: true });
-  const jvmDir = `${instrumentationDir}/jvm`;
-  await mkdir(jvmDir, { recursive: true });
-  await open(`${jvmDir}//opentelemetry-javaagent.jar`, 'a');
-  await mkdir(`${instrumentationDir}/node.js/node_modules/@dash0hq/opentelemetry`, { recursive: true });
-  const dotnetDir = `${instrumentationDir}/dotnet/glibc`;
-  await open(`${dotnetDir}/AdditionalDeps`, 'a');
-  await open(`${dotnetDir}/store`, 'a');
-  await mkdir(`${dotnetDir}/net`, { recursive: true });
-  await open(`${dotnetDir}/net/OpenTelemetry.AutoInstrumentation.StartupHook.dll`, 'a');
-  const platforms = ['linux-x64', 'linux-arm64'];
-  for (const platform of platforms) {
-    const dotnetPlatformDir = `${dotnetDir}/${platform}`;
-    await mkdir(dotnetPlatformDir, { recursive: true });
-    await open(`${dotnetPlatformDir}/OpenTelemetry.AutoInstrumentation.Native.so`, 'a');
-  }
 }
 
 async function noOp(): Promise<void> {

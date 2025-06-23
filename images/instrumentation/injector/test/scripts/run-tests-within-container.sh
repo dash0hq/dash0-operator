@@ -30,7 +30,7 @@ elif [ "$arch" != "$EXPECTED_CPU_ARCHITECTURE" ]; then
   echo "actual:   $arch"
   exit 1
 else
-  printf "${GREEN}verifying CPU architecture %s successful${NC}\n" "$EXPECTED_CPU_ARCHITECTURE"
+  printf "verifying CPU architecture %s successful\n" "$EXPECTED_CPU_ARCHITECTURE"
 fi
 
 injector_binary=/dash0-init-container/injector/dash0_injector.so
