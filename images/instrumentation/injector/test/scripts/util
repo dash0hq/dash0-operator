@@ -52,11 +52,11 @@ cleanup_docker_images() {
 
   local base_dir="injector/test"
 
-  # while IFS= read -r image; do
-  #   if [[ -n "$image" ]]; then
-  #     docker rmi -f "$image" &> /dev/null || true
-  #   fi
-  # done <<< $(cat "$base_dir/.container_images_to_be_deleted_at_end" | sort | uniq)
+  while IFS= read -r image; do
+    if [[ -n "$image" ]]; then
+      docker rmi -f "$image" &> /dev/null || true
+    fi
+  done <<< $(cat "$base_dir/.container_images_to_be_deleted_at_end" | sort | uniq)
 
   rm "$base_dir/.container_images_to_be_deleted_at_end"
 

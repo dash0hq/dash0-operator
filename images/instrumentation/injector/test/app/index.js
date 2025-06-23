@@ -6,14 +6,14 @@ const process = require('node:process');
 function echoEnvVar(envVarName) {
   const envVarValue = process.env[envVarName];
   if (!envVarValue) {
-    process.stdout.write(`{${process.pid}} ${envVarName}: -\n`);
+    process.stdout.write(`${envVarName}: -\n`);
   } else {
-    process.stdout.write(`{${process.pid}} ${envVarName}: ${envVarValue}\n`);
+    process.stdout.write(`${envVarName}: ${envVarValue}\n`);
   }
 }
 
 function main() {
-  process.stdout.write(`{${process.pid}} ${JSON.stringify(process.env, null, 2)}\n`);
+  process.stderr.write(`test app PID: ${process.pid}\n`);
   const command = process.argv[2];
   if (!command) {
     console.error('error: not enough arguments, the command for the app under test needs to be specifed');

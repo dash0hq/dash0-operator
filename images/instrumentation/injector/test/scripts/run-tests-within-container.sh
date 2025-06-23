@@ -66,15 +66,12 @@ run_test_case() {
 
     run_this_test_case="false"
     for selected_test_case in "$@"; do
-      set +e
-      match=$(expr "$test_case_label" : ".*$selected_test_case.*")
-      set -e
-      if [ "$match" -gt 0 ]; then
+      if [ "$test_case_label" = "$selected_test_case" ]; then
         run_this_test_case="true"
       fi
     done
     if [ "$run_this_test_case" != "true" ]; then
-      # echo "- skipping test case \"$test_case_label\""
+      echo "- skipping test case \"$test_case_label\""
       return
     fi
   fi
@@ -113,7 +110,7 @@ run_test_case() {
     exit_code=1
   else
     printf "${GREEN}test \"%s\" successful${NC}\n" "$test_case_label"
-    if [ "${PRINT_TEST_OUTPUT:-}" = "true" ]; then
+    if [ "${VERBOSE:-}" = "true" ]; then
       echo "test command: $full_command"
       echo "output: $test_output"
       echo "--- end of output"

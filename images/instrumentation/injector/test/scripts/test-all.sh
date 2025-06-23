@@ -32,19 +32,47 @@ if [[ -n "${ARCHITECTURES:-}" ]]; then
   architectures=("${ARCHITECTURES//,/ }")
   echo Only testing a subset of architectures: "${architectures[@]}"
 fi
+
 libc_flavors=""
 if [[ -n "${LIBC_FLAVORS:-}" ]]; then
   libc_flavors=("${LIBC_FLAVORS//,/ }")
   echo Only testing a subset of libc flavors: "${libc_flavors[@]}"
 fi
+
+all_test_sets_string=$(find injector/test/scripts/ -name \*.tests -print0 | xargs -0 -n 1 basename | sort | tr '\n' ' ')
+read -ra all_test_sets <<< "$all_test_sets_string"
+echo Found test sets: "${all_test_sets[@]}"
+
+test_sets=""
+if [[ -n "${TEST_SETS:-}" ]]; then
+  test_sets=("${TEST_SETS//,/ }")
+  echo Only running a subset of test sets : "${test_sets[@]}"
+fi
+
 if [[ -n "${TEST_CASES:-}" ]]; then
   echo Only running a subset of test cases : "$TEST_CASES"
 else
   TEST_CASES=""
 fi
 
-exit_code=0
+global_exit_code=0
+test_exit_code_last_test_set=0
 summary=""
+
+run_test_set_for_architecture_and_libc_flavor() {
+  arch=$1
+  libc=$2
+  test_set=$3
+  echo
+  echo "running test set \"$test_set\" on $arch and $libc"
+  set +e
+  ARCH="$arch" LIBC="$libc" TEST_SET="$test_set" TEST_CASES="$TEST_CASES" injector/test/scripts/run-tests-for-container.sh
+  test_exit_code_last_test_set=$?
+  set -e
+  echo
+  echo ----------------------------------------
+}
+
 run_tests_for_architecture_and_libc_flavor() {
   arch=$1
   libc=$2
@@ -52,25 +80,28 @@ run_tests_for_architecture_and_libc_flavor() {
   echo ----------------------------------------
   echo "testing the injector library on $arch and $libc"
   echo ----------------------------------------
-  set +e
-  ARCH="$arch" LIBC="$libc" TEST_SET=default.tests TEST_CASES="$TEST_CASES" injector/test/scripts/run-tests-for-container.sh
-  test_exit_code=$?
-#  ARCH="$arch" LIBC="$libc" TEST_SET=sdk-does-not-exist.tests TEST_CASES="$TEST_CASES" injector/test/scripts/run-tests-for-container.sh
-#  local test_exit_code_last_test_set=$?
-#  if [[ $test_exit_code_last_test_set > $test_exit_code ]]; then
-#    test_exit_code=$test_exit_code_last_test_set
-#  fi
-#  ARCH="$arch" LIBC="$libc" TEST_SET=sdk-cannot-be-accessed.tests TEST_CASES="$TEST_CASES" injector/test/scripts/run-tests-for-container.sh
-#  local test_exit_code_last_test_set=$?
-#  if [[ $test_exit_code_last_test_set > $test_exit_code ]]; then
-#    test_exit_code=$test_exit_code_last_test_set
-#  fi
-  set -e
+
+  test_exit_code=0
+  for test_set in "${all_test_sets[@]}"; do
+    local test_set_name="${test_set%.tests}"
+    if [[ -n "${test_sets[0]}" ]]; then
+      if [[ $(echo "${test_sets[@]}" | grep -o "$test_set_name" | wc -w) -eq 0 ]]; then
+        echo "skipping test set $test_set"
+        continue
+      fi
+    fi
+
+    run_test_set_for_architecture_and_libc_flavor "$arch" "$libc" "$test_set"
+    if [[ $test_exit_code_last_test_set -gt $test_exit_code ]]; then
+      test_exit_code=$test_exit_code_last_test_set
+    fi
+  done
+
   echo
   echo ----------------------------------------
   if [ $test_exit_code != 0 ]; then
     printf "${RED}tests for %s/%s failed (see above for details)${NC}\n" "$arch" "$libc"
-    exit_code=1
+    global_exit_code=1
     summary="$summary\n$arch/$libc:\t${RED}failed${NC}"
   else
     printf "${GREEN}tests for %s/%s were successful${NC}\n" "$arch" "$libc"
@@ -126,60 +157,45 @@ touch injector/test/.container_images_to_be_deleted_at_end
 trap cleanup_docker_images EXIT
 
 # rebuild compiled test apps
-if [[ "${MISSING_ENVIRON_SYMBOL_TESTS:-}" = "true" ]]; then
-  echo ----------------------------------------
-  echo building the no_environ_symbol test app binary
-  echo ----------------------------------------
-  for arch in "${all_architectures[@]}"; do
-    if [[ -n "${architectures[0]}" ]]; then
-      if [[ $(echo "${architectures[@]}" | grep -o "$arch" | wc -w) -eq 0 ]]; then
-        echo "skipping no_environ_symbol test app build for CPU architecture $arch"
+echo ----------------------------------------
+echo building the no_environ_symbol test app binary
+echo ----------------------------------------
+for arch in "${all_architectures[@]}"; do
+  if [[ -n "${architectures[0]}" ]]; then
+    if [[ $(echo "${architectures[@]}" | grep -o "$arch" | wc -w) -eq 0 ]]; then
+      echo "skipping no_environ_symbol test app build for CPU architecture $arch"
+      continue
+    fi
+  fi
+  goarch="$arch"
+  if [[ "$goarch" = "x86_64" ]]; then
+    goarch="amd64"
+  fi
+  for libc_flavor in "${all_libc_flavors[@]}"; do
+    if [[ -n "${libc_flavors[0]}" ]]; then
+      if [[ $(echo "${libc_flavors[@]}" | grep -o "$libc_flavor" | wc -w) -eq 0 ]]; then
+        echo "skipping no_environ_symbol test app build for libc flavor $libc_flavor"
         continue
       fi
     fi
-    goarch="$arch"
-    if [[ "$goarch" = "x86_64" ]]; then
-      goarch="amd64"
+    if [[ "$libc_flavor" = "glibc" ]]; then
+      no_environ_base_image="golang:1.23.7-bookworm"
+    elif [[ "$libc_flavor" = "musl" ]]; then
+      no_environ_base_image="golang:1.23.7-alpine3.21"
     fi
-    for libc_flavor in "${all_libc_flavors[@]}"; do
-      if [[ -n "${libc_flavors[0]}" ]]; then
-        if [[ $(echo "${libc_flavors[@]}" | grep -o "$libc_flavor" | wc -w) -eq 0 ]]; then
-          echo "skipping no_environ_symbol test app build for libc flavor $libc_flavor"
-          continue
-        fi
-      fi
-      if [[ "$libc_flavor" = "glibc" ]]; then
-        no_environ_base_image="golang:1.23.7-bookworm"
-      elif [[ "$libc_flavor" = "musl" ]]; then
-        no_environ_base_image="golang:1.23.7-alpine3.21"
-      fi
-      echo "building the no_environ_symbol test app for CPU architecture $arch [GOARCH=$goarch] and libc flavor $libc_flavor (base image: $no_environ_base_image)"
-      ARCH="$arch" \
-        GOARCH="$goarch" \
-        LIBC="$libc_flavor" \
-        BASE_IMAGE="$no_environ_base_image" \
-        injector/test/scripts/build-in-container.sh \
-          "/workspace/noenviron" \
-          "injector/test/no_environ_symbol/noenviron.$arch.$libc_flavor" \
-          injector/test/no_environ_symbol/Dockerfile-build \
-          "no-environ-symbol-builder-$arch-$libc_flavor" \
-          injector/test/no_environ_symbol
-    done
+    echo "building the no_environ_symbol test app for CPU architecture $arch [GOARCH=$goarch] and libc flavor $libc_flavor (base image: $no_environ_base_image)"
+    ARCH="$arch" \
+      GOARCH="$goarch" \
+      LIBC="$libc_flavor" \
+      BASE_IMAGE="$no_environ_base_image" \
+      injector/test/scripts/build-in-container.sh \
+        "/workspace/noenviron" \
+        "injector/test/no_environ_symbol/noenviron.$arch.$libc_flavor" \
+        injector/test/no_environ_symbol/Dockerfile-build \
+        "no-environ-symbol-builder-$arch-$libc_flavor" \
+        injector/test/no_environ_symbol
   done
-else
-  for arch in "${all_architectures[@]}"; do
-    goarch="$arch"
-    if [[ "$goarch" = "x86_64" ]]; then
-      goarch="amd64"
-    fi
-    for libc_flavor in "${all_libc_flavors[@]}"; do
-      # Produce an empty file so that the instruction
-      #   COPY no_environ_symbol/$noenviron_binary no_environ_symbol/noenviron
-      # in ../docker/Dockerfile-test does not fail.
-      touch "injector/test/no_environ_symbol/noenviron.$arch.$libc_flavor"
-    done
-  done
-fi
+done
 
 instrumentation_image=${INSTRUMENTATION_IMAGE:-}
 if [[ -z "$instrumentation_image" ]]; then
@@ -275,4 +291,4 @@ for arch in "${all_architectures[@]}"; do
 done
 
 printf "$summary\n\n"
-exit $exit_code
+exit $global_exit_code

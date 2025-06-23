@@ -18,13 +18,13 @@ Usage
   Can be combined with `LIBC_FLAVORS` and other flags.
 * `LIBC_FLAVORS=glibc,musl scripts/test-all.sh` to run tests for a subset of libc flavors.
   Can be combined with `ARCHITECTURES` and other flags.
-* `TEST_CASES=twice,mapped scripts/test-all.sh` to only run tests cases whose names contain one of the
+* `TEST_SETS=default,sdk-cannot-be-accessed` to only run a subset of test sets  The test set names are the different
+  `scripts/*.tests` files. Can be combined with `ARCHITECTURES`, `LIBC_FLAVORS` etc.
+* `TEST_CASES=twice,mapped scripts/test-all.sh` to only run tests cases whose names exactly match one of the
   provided strings.
-  The test cases are listed in the different `scripts/*.tests` files.
+  The test cases are listed in the different test sets, i.e. the `scripts/*.tests` files.
   Can be combined with `ARCHITECTURES`, `LIBC_FLAVORS` etc.
 * `INSTRUMENTATION_IMAGE=... scripts/test-all.sh` use an existing local or remote instrumentation image.
-* Set `PRINT_TEST_OUTPUT=true` to always include the output from running the test case. Otherwise, the output is only
+* Set `VERBOSE=true` to always include the output from running the test case. Otherwise, the output is only
   printed to stdout when a test case fails.
-* `MISSING_ENVIRON_SYMBOL_TESTS=true` also run tests with a binary that does not provide an `__environ` symbol.
-  These are currently off by default. <- TODO enable those by default
 

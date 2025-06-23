@@ -19,7 +19,18 @@ const testing = std.testing;
 const injector_has_applied_modifications_env_var_name = "__DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS";
 
 // remainging TODOs:
-// - run injector integration tests
+// - injector integration tests
+//   - if running the node executable directly (without a parent shell process), the injector modifications do not
+//     take effect.
+//   - segfault in bash:
+//     > docker run --platform linux/arm64 -it dash0-injector-test-arm64-glibc /bin/bash
+//       node@362a654b9e57:/usr/src/dash0/injector/app$ LD_PRELOAD=/dash0-init-container/injector/dash0_injector.so DASH0_INJECTOR_DEBUG=true /bin/bash
+//       [Dash0 injector] starting to instrument process with pid 53 (/usr/bin/bash)
+//       [Dash0 injector] injecting the Java OpenTelemetry agent
+//       [Dash0 injector] injecting the Dash0 Node.js OpenTelemetry distribution
+//       [Dash0 injector] done, successfully instrumented process with pid 53 (/usr/bin/bash)
+//       Segmentation fault
+//       -> verify exact byte by byte memory layout
 // - try to avoid the reallocation in renderEnvVarsToExport, instead, return the correct type from applyModifications
 //   and add the final null pointer there.
 //   - otherwise, add tests for renderEnvVarsToExport
