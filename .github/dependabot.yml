@@ -17,7 +17,7 @@ updates:
     schedule:
       interval: "weekly"
       day: "tuesday"
-      time: "07:10"
+      time: "07:05"
       timezone: "Europe/Berlin"
     groups:
       production-dependencies:
@@ -30,6 +30,8 @@ updates:
     directory: "images/instrumentation/node.js/"
     schedule:
       interval: "daily"
+      time: "07:10"
+      timezone: "Europe/Berlin"
 
   # OpenTelemetry Java agent
   - package-ecosystem: "maven"
