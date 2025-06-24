@@ -10,14 +10,14 @@
   "description": "",
   "dependencies": {
     "body-parser": "^2.2.0",
-    "bootstrap": "^5.3.6",
+    "bootstrap": "^5.3.7",
     "cookie-parser": "~1.4.7",
     "debug": "~4.4.1",
     "express": "^5.1.0",
     "http-errors": "~2.0.0",
     "morgan": "~1.10.0",
     "nocache": "^4.0.0",
-    "prettier": "^3.5.3",
+    "prettier": "^3.6.0",
     "pug": "3.0.3"
   }
 }
