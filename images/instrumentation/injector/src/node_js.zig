@@ -23,7 +23,7 @@ pub fn checkNodeJsOTelSdkDistributionAndGetModifiedNodeOptionsValue(original_val
         print.printError("Skipping injection of the Node.js OTel SDK distribution in '{s}' because of an issue accessing the Node.js module at {s}: {}", .{ node_options_env_var_name, dash0_nodejs_otel_sdk_distribution, err });
         if (original_value_and_index_optional) |original_value_and_index| {
             cache.injector_cache.node_options =
-                cache.CachedEnvVarModification{
+                cache.CachedEnvVarValue{
                     .value = original_value_and_index.value,
                     .done = true,
                 };
@@ -34,7 +34,7 @@ pub fn checkNodeJsOTelSdkDistributionAndGetModifiedNodeOptionsValue(original_val
             };
         }
         cache.injector_cache.node_options =
-            cache.CachedEnvVarModification{
+            cache.CachedEnvVarValue{
                 .value = null,
                 .done = true,
             };
@@ -74,7 +74,7 @@ test "checkNodeJsOTelDistributionAndGetModifiedNodeOptionsValue: should return t
 }
 
 test "checkNodeJsOTelDistributionAndGetModifiedNodeOptionsValue: should return --require if original value is unset and the Node.js OTel SDK distribution can be accessed" {
-    try test_util.createDummyDirectory(dash0_nodejs_otel_sdk_distribution);
+    try test_util.createDummyNodeJsDistribution();
     defer {
         test_util.deleteDash0DummyDirectory();
     }
@@ -114,7 +114,7 @@ fn getModifiedNodeOptionsValue(original_value_and_index_optional: ?types.EnvVarV
             };
         print.printMessage(injection_happened_msg, .{});
         cache.injector_cache.node_options =
-            cache.CachedEnvVarModification{ .value = return_buffer.ptr, .done = true };
+            cache.CachedEnvVarValue{ .value = return_buffer.ptr, .done = true };
         return types.EnvVarUpdate{
             .value = return_buffer.ptr,
             .replace = true,
@@ -125,7 +125,7 @@ fn getModifiedNodeOptionsValue(original_value_and_index_optional: ?types.EnvVarV
     // If NODE_OPTIONS is not set, simply return our "--require ..." flag.
     print.printMessage(injection_happened_msg, .{});
     cache.injector_cache.node_options =
-        cache.CachedEnvVarModification{
+        cache.CachedEnvVarValue{
             .value = require_dash0_nodejs_otel_sdk_distribution[0..].ptr,
             .done = true,
         };

@@ -84,7 +84,7 @@ run_test_case() {
   cd "$working_dir"
   full_command="LD_PRELOAD=""$injector_binary"" DASH0_NAMESPACE_NAME=my-namespace DASH0_POD_NAME=my-pod DASH0_POD_UID=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff DASH0_CONTAINER_NAME=test-app"
   # Note: add DASH0_INJECTOR_DEBUG=true to the list of env vars to see debug output from the injector.
-  full_command="$full_command DASH0_INJECTOR_DEBUG=true"
+  # full_command="$full_command DASH0_INJECTOR_DEBUG=true"
   if [ "$env_vars" != "" ]; then
     full_command=" $full_command $env_vars"
   fi

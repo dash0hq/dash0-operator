@@ -1,0 +1,54 @@
+Remaining TODOs
+===============
+
+- investigate whether we need to override putenv and friends
+  - LD_DEBUG=all for a node executable that did not work without the getenv override:
+    - where does the original getenv function get environ, _environ and __environ from?
+    - is there any component that does not bind those to the injector?
+    - why did this not work without overriding getenv?
+- do we need to override secure_getenv?
+- check missing environ tests
+- make cache thread safe
+- implement putenv etc.
+- add tests for __DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS (environ_init as well as environ_api)
+- remove NODE_OPTIONS and JAVA_TOOL_OPTIONS from _initEnviron modifications
+- rerun instrumentation and inject tests
+- injector integration tests
+  - segfault in bash:
+    > docker run --platform linux/arm64 -it dash0-injector-test-arm64-glibc /bin/bash
+      node@362a654b9e57:/usr/src/dash0/injector/app$ LD_PRELOAD=/dash0-init-container/injector/dash0_injector.so DASH0_INJECTOR_DEBUG=true /bin/bash
+      [Dash0 injector] starting to instrument process with pid 53 (/usr/bin/bash)
+      [Dash0 injector] injecting the Java OpenTelemetry agent
+      [Dash0 injector] injecting the Dash0 Node.js OpenTelemetry distribution
+      [Dash0 injector] done, successfully instrumented process with pid 53 (/usr/bin/bash)
+      Segmentation fault
+      -> verify exact byte by byte memory layout
+  - segfault in dotnet-restore
+- try to avoid the reallocation in renderEnvVarsToExport, instead, return the correct type from applyModifications
+  and add the final null pointer there.
+  - otherwise, add tests for renderEnvVarsToExport
+- add explicit test for parent process spawning child process (in C)
+- add a new flag to testcase.json for only skipping tests within the container.
+- revisit idempotency of individual modifications? -- __DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS might not cut it for
+  every case? (Like, parent process sets NODE_OPTIONS and then spawns the child...)
+- handle all error conditions internally, print a warning, do not modify anything and let the instrumented process
+  continue instead of crashing it.
+- add instrumentation test with an empty OTEL_RESOURCE_ATTRIBUTES env var, make sure it gets correctly replaced
+  (instead of appending a new entry).
+- at the moment, leaving an env var unmodified is sometimes achieved by returning an EnvVarUpdate with the
+  original value and the original index. For exporting environ, this could as well be null. Or a third value for
+  env_var_update.replace, ie. "do-not-modifiy". (in case we need the actual original value in the getenv override)
+- clean up JAVA_TOOL_OPTIONS, we probably still need the -javaagent there, but not the otel resource attributes
+- add Python test for OTEL_RESOURCE_ATTRIBUTES
+- repair injector integration tests
+- enable NO_ENVIRON tests
+- check Node.js tests -- do we need to add getenv override again?
+- add tests that cached values are actually used (after adding back override for getenv)
+- add instrumentation and injector tests that also change the environment via setenv, putenv, and also directly
+  importing __environ, _environ, and environ and writing to that.
+- more extensive instrumentation tests for .NET, verifying OTEL_RESOURCE_ATTRIBUTES, and the various env vars that
+  activate tracing.
+- double check which intermediate values (strings, slices, ...) we can free and which need to remain allocated.
+- add readme with instructions, also useful commands like
+  VERBOSE=true SUPPRESS_SKIPPED=true RUNTIMES=c,jvm TEST_CASES=otel-resource-attributes-unset,existing-env-var-return-unmodified ./watch-tests-within-container.sh
+  VERBOSE=true SUPPRESS_SKIPPED=true RUNTIMES=dotnet ./watch-tests-within-container.sh

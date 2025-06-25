@@ -3,6 +3,7 @@
         __environ;
         _environ;
         environ;
+        getenv;
     local:
         *;
 };

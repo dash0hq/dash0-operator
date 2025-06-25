@@ -31,12 +31,14 @@ pub const EnvVarUpdate = struct {
 
 pub const LibCFlavor = enum { UNKNOWN, GNU_LIBC, MUSL };
 
-pub const DotnetValues = struct {
+pub const DotnetEnvVarUpdates = struct {
     coreclr_enable_profiling: EnvVarUpdate,
     coreclr_profiler: EnvVarUpdate,
     coreclr_profiler_path: EnvVarUpdate,
-    additional_deps: EnvVarUpdate,
-    shared_store: EnvVarUpdate,
-    startup_hooks: EnvVarUpdate,
+    dotnet_additional_deps: EnvVarUpdate,
+    dotnet_shared_store: EnvVarUpdate,
+    dotnet_startup_hooks: EnvVarUpdate,
     otel_auto_home: EnvVarUpdate,
 };
+
+pub const injector_has_applied_modifications_env_var_name = "__DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS";

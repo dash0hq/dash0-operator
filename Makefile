@@ -154,6 +154,7 @@ operator-manager-unit-tests: manifests generate fmt vet envtest
 common-package-unit-tests:
 	go test github.com/dash0hq/dash0-operator/images/pkg/common
 
+# TODO skip these on Darwin
 .PHONY: injector-unit-tests
 injector-unit-tests:
 ifeq ($(shell uname -s),Darwin)

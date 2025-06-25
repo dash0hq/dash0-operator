@@ -3,8 +3,10 @@
 
 const std = @import("std");
 
-const injector = @import("injector.zig");
+const environ_api = @import("environ_api.zig");
+const environ_init = @import("environ_init.zig");
 const print = @import("print.zig");
+const types = @import("types.zig");
 
 // This is how you can currently do something like `__attribute__((constructor))` in Zig, that is, register a function
 // that runs before main(): Export a const named init_array which lists the functions you want to run. This will then
@@ -24,16 +26,26 @@ comptime {
     @export(&__environ_internal, .{ .name = "__environ", .linkage = .strong });
     @export(&__environ_internal, .{ .name = "_environ", .linkage = .strong });
     @export(&__environ_internal, .{ .name = "environ", .linkage = .strong });
+    @export(&getenv, .{ .name = "getenv", .linkage = .strong });
 }
 
 fn initEnviron() callconv(.C) void {
-    __environ_internal = injector._initEnviron("/proc/self/environ") catch @panic("[Dash0 injector] initEnviron failed");
+    __environ_internal = environ_init._initEnviron("/proc/self/environ") catch @panic("[Dash0 injector] initEnviron failed");
+    // For very verbose debugging, uncomment the following lines to print all exported environment variables:
+    // const num_env_vars = std.mem.len(__environ_internal);
+    // for (__environ_internal, 0..num_env_vars) |env_var, i| {
+    //     std.debug.print("- initEnviron: {d} -> {s}\n", .{i, env_var});
+    // }
     if (print.isDebug()) {
         // Note: print.isDebug is only initalized after injector._initEnviron, since it requires access to environment
         // variables, thus the startup message is not printed here but in injector._initEnviron after reading the
         // environment.
         const pid = std.os.linux.getpid();
         const exe = std.fs.selfExePathAlloc(std.heap.page_allocator) catch "?";
-        print.printDebug("done, successfully instrumented process with pid {d} ({s})\n", .{pid, exe});
+        print.printDebug("successfully initalized __environ, _environ and environ (pid: {d}, executable: {s})\n", .{ pid, exe });
     }
+}
+
+fn getenv(name: types.NullTerminatedString) callconv(.C) ?types.NullTerminatedString {
+    return environ_api._getenv(environ_init.getCachedOriginalEnvVars(), name);
 }

@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# Regression tests for missing __environ symbol:
+run_test_case \
+  "no __environ symbol: read unset environment variable" \
+  "no_environ_symbol" \
+  "./noenviron" \
+  "The environmet variable \"NO_ENVIRON_TEST_VAR\" is not set."
+run_test_case \
+  "no __environ symbol: read an environment variable that is set" \
+  "no_environ_symbol" \
+  "./noenviron" \
+  "The environmet variable \"NO_ENVIRON_TEST_VAR\" had the value: \"some-value\"." \
+  "NO_ENVIRON_TEST_VAR=some-value"

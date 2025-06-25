@@ -16,57 +16,16 @@ const types = @import("types.zig");
 
 const testing = std.testing;
 
-const injector_has_applied_modifications_env_var_name = "__DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS";
-
-// remainging TODOs:
-// - injector integration tests
-//   - if running the node executable directly (without a parent shell process), the injector modifications do not
-//     take effect.
-//   - segfault in bash:
-//     > docker run --platform linux/arm64 -it dash0-injector-test-arm64-glibc /bin/bash
-//       node@362a654b9e57:/usr/src/dash0/injector/app$ LD_PRELOAD=/dash0-init-container/injector/dash0_injector.so DASH0_INJECTOR_DEBUG=true /bin/bash
-//       [Dash0 injector] starting to instrument process with pid 53 (/usr/bin/bash)
-//       [Dash0 injector] injecting the Java OpenTelemetry agent
-//       [Dash0 injector] injecting the Dash0 Node.js OpenTelemetry distribution
-//       [Dash0 injector] done, successfully instrumented process with pid 53 (/usr/bin/bash)
-//       Segmentation fault
-//       -> verify exact byte by byte memory layout
-// - try to avoid the reallocation in renderEnvVarsToExport, instead, return the correct type from applyModifications
-//   and add the final null pointer there.
-//   - otherwise, add tests for renderEnvVarsToExport
-// - add explicit test for parent process spawning child process (in C)
-// - add a new flag to testcase.json for only skipping tests within the container.
-// - revisit idempotency of individual modifications? -- __DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS might not cut it for
-//   every case? (Like, parent process sets NODE_OPTIONS and then spawns the child...)
-// - handle all error conditions internally, print a warning, do not modify anything and let the instrumented process
-//   continue instead of crashing it.
-// - add instrumentation test with an empty OTEL_RESOURCE_ATTRIBUTES env var, make sure it gets correctly replaced
-//   (instead of appending a new entry).
-// - at the moment, leaving an env var unmodified is sometimes achieved by returning an EnvVarUpdate with the
-//   original value and the original index. For exporting environ, this could as well be null. Or a third value for
-//   env_var_update.replace, ie. "do-not-modifiy". (in case we need the actual original value in the getenv override)
-// - clean up JAVA_TOOL_OPTIONS, we probably still need the -javaagent there, but not the otel resource attributes
-// - add Python test for OTEL_RESOURCE_ATTRIBUTES
-// - repair injector integration tests
-// - enable NO_ENVIRON tests
-// - check Node.js tests -- do we need to add getenv override again?
-// - add tests that cached values are actually used (after adding back override for getenv)
-// - add instrumentation and injector tests that also change the environment via setenv, putenv, and also directly
-//   importing __environ, _environ, and environ and writing to that.
-// - more extensive instrumentation tests for .NET, verifying OTEL_RESOURCE_ATTRIBUTES, and the various env vars that
-//   activate tracing.
-// - double check which intermediate values (strings, slices, ...) we can free and which need to remain allocated.
-// - add readme with instructions, also useful commands like
-//   VERBOSE=true SUPPRESS_SKIPPED=true RUNTIMES=c,jvm TEST_CASES=otel-resource-attributes-unset,existing-env-var-return-unmodified ./watch-tests-within-container.sh
-//   VERBOSE=true SUPPRESS_SKIPPED=true RUNTIMES=dotnet ./watch-tests-within-container.sh
+var cached_original_env_vars: [](types.NullTerminatedString) = undefined;
 
 pub fn _initEnviron(proc_self_environ_path: []const u8) ![*c]const [*c]const u8 {
     const original_env_vars = try readProcSelfEnvironFile(proc_self_environ_path);
+    cached_original_env_vars = original_env_vars;
     print.initDebugFlag(original_env_vars);
     if (print.isDebug()) {
         const pid = std.os.linux.getpid();
         const exe = std.fs.selfExePathAlloc(std.heap.page_allocator) catch "?";
-        print.printDebug("starting to instrument process with pid {d} ({s})\n", .{ pid, exe });
+        print.printDebug("initalizing __environ, _environ and environ (pid: {d}, executable: {s})\n", .{ pid, exe });
     }
     const modified_env_vars = try applyModifications(original_env_vars);
     return try renderEnvVarsToExport(modified_env_vars);
@@ -90,8 +49,9 @@ test "_initEnviron: empty /proc/self/environ file" {
     defer std.heap.page_allocator.free(absolute_path);
 
     const __environ_internal = try _initEnviron(absolute_path);
-    try testing.expectEqual(0, std.mem.len(__environ_internal));
-    try testing.expectEqual(null, __environ_internal[0]);
+    try testing.expectEqual(1, std.mem.len(__environ_internal));
+    try testing.expectEqualStrings("__DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS=true", std.mem.span(__environ_internal[0]));
+    try testing.expectEqual(null, __environ_internal[1]);
 }
 
 test "_initEnviron: no modifications" {
@@ -110,10 +70,11 @@ test "_initEnviron: no modifications" {
 
     const __environ_internal = try _initEnviron(absolute_path);
 
-    try testing.expectEqual(3, std.mem.len(__environ_internal));
+    try testing.expectEqual(4, std.mem.len(__environ_internal));
     try testing.expectEqualStrings("VAR1=value1", std.mem.span(__environ_internal[0]));
     try testing.expectEqualStrings("VAR2=value2", std.mem.span(__environ_internal[1]));
     try testing.expectEqualStrings("VAR3=value3", std.mem.span(__environ_internal[2]));
+    try testing.expectEqualStrings("__DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS=true", std.mem.span(__environ_internal[3]));
 }
 
 test "_initEnviron: append OTEL_RESOURCE_ATTRIBUTES" {
@@ -132,7 +93,7 @@ test "_initEnviron: append OTEL_RESOURCE_ATTRIBUTES" {
 
     const __environ_internal = try _initEnviron(absolute_path);
 
-    try testing.expectEqual(11, std.mem.len(__environ_internal));
+    try testing.expectEqual(12, std.mem.len(__environ_internal));
     try testing.expectEqualStrings("VAR1=value1", std.mem.span(__environ_internal[0]));
     try testing.expectEqualStrings("DASH0_NAMESPACE_NAME=namespace", std.mem.span(__environ_internal[1]));
     try testing.expectEqualStrings("DASH0_POD_NAME=pod", std.mem.span(__environ_internal[2]));
@@ -143,9 +104,10 @@ test "_initEnviron: append OTEL_RESOURCE_ATTRIBUTES" {
     try testing.expectEqualStrings("DASH0_SERVICE_NAMESPACE=servicenamespace", std.mem.span(__environ_internal[7]));
     try testing.expectEqualStrings("DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd", std.mem.span(__environ_internal[8]));
     try testing.expectEqualStrings("VAR2=value2", std.mem.span(__environ_internal[9]));
+    try testing.expectEqualStrings("__DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS=true", std.mem.span(__environ_internal[10]));
     try testing.expectEqualStrings(
         "OTEL_RESOURCE_ATTRIBUTES=k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd",
-        std.mem.span(__environ_internal[10]),
+        std.mem.span(__environ_internal[11]),
     );
 }
 
@@ -165,7 +127,7 @@ test "_initEnviron: replace OTEL_RESOURCE_ATTRIBUTES" {
 
     const __environ_internal = try _initEnviron(absolute_path);
 
-    try testing.expectEqual(11, std.mem.len(__environ_internal));
+    try testing.expectEqual(12, std.mem.len(__environ_internal));
     try testing.expectEqualStrings("VAR1=value1", std.mem.span(__environ_internal[0]));
     try testing.expectEqualStrings("DASH0_NAMESPACE_NAME=namespace", std.mem.span(__environ_internal[1]));
     try testing.expectEqualStrings("DASH0_POD_NAME=pod", std.mem.span(__environ_internal[2]));
@@ -180,6 +142,7 @@ test "_initEnviron: replace OTEL_RESOURCE_ATTRIBUTES" {
     try testing.expectEqualStrings("DASH0_SERVICE_NAMESPACE=servicenamespace", std.mem.span(__environ_internal[8]));
     try testing.expectEqualStrings("DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd", std.mem.span(__environ_internal[9]));
     try testing.expectEqualStrings("VAR2=value2", std.mem.span(__environ_internal[10]));
+    try testing.expectEqualStrings("__DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS=true", std.mem.span(__environ_internal[11]));
 }
 
 fn readProcSelfEnvironFile(proc_self_environ_path: []const u8) ![](types.NullTerminatedString) {
@@ -274,23 +237,18 @@ test "readProcSelfEnvironBuffer: read environment variables" {
 
 /// Applies all modifications to the environment variables.
 fn applyModifications(original_env_vars: [](types.NullTerminatedString)) ![](types.NullTerminatedString) {
-    if (env.isTrue(original_env_vars, injector_has_applied_modifications_env_var_name)) {
+    // Maintenance note: The environment variables modified by environ_init.applyModifications must be kept in sync with
+    // the environment variables modified by the environ_api.modifyEnvVar.
+
+    if (env.isTrue(original_env_vars, types.injector_has_applied_modifications_env_var_name)) {
         // The parent process has already been instrumented, and it then started a child process (which is the process
         // we are currently in), also, the child process has inherited the environment from the parent process. This
         // means all our modifications have already been applied, we must not apply them again.
         return original_env_vars;
     }
 
-    // + 1 for __DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS
+    // +1 for __DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS
     var number_of_env_vars_after_modifications: usize = original_env_vars.len + 1;
-
-    const otel_resource_attributes_update_optional =
-        res_attrs.getModifiedOtelResourceAttributesValue(original_env_vars);
-    if (otel_resource_attributes_update_optional) |otel_resource_attributes_update| {
-        if (!otel_resource_attributes_update.replace) {
-            number_of_env_vars_after_modifications += 1;
-        }
-    }
 
     const java_tool_options_update_optional =
         jvm.checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue(original_env_vars);
@@ -309,10 +267,18 @@ fn applyModifications(original_env_vars: [](types.NullTerminatedString)) ![](typ
         }
     }
 
-    var dotnet_value_optional: ?types.DotnetValues = null;
+    const otel_resource_attributes_update_optional =
+        res_attrs.getModifiedOtelResourceAttributesValue(original_env_vars);
+    if (otel_resource_attributes_update_optional) |otel_resource_attributes_update| {
+        if (!otel_resource_attributes_update.replace) {
+            number_of_env_vars_after_modifications += 1;
+        }
+    }
+
+    var dotnet_value_optional: ?types.DotnetEnvVarUpdates = null;
     if (dotnet.isEnabled(original_env_vars)) {
-        if (dotnet.getDotnetValues()) |dotnet_values| {
-            dotnet_value_optional = dotnet_values;
+        if (dotnet.getDotnetEnvVarUpdates()) |dotnet_env_var_updates| {
+            dotnet_value_optional = dotnet_env_var_updates;
             number_of_env_vars_after_modifications += 7;
         }
     }
@@ -331,18 +297,10 @@ fn applyModifications(original_env_vars: [](types.NullTerminatedString)) ![](typ
 
     // Set a marker environment variable to avoid applying the modifications multiple times, in case the current child
     // spawns a child process which inherits the environment from this process.
-    modified_env_vars[index_for_appending_env_vars] = injector_has_applied_modifications_env_var_name ++ "=true";
+    modified_env_vars[index_for_appending_env_vars] = types.injector_has_applied_modifications_env_var_name ++ "=true";
     index_for_appending_env_vars += 1;
 
     // apply the actual modifications
-    if (!applyEnvVarUpdate(
-        modified_env_vars,
-        res_attrs.otel_resource_attributes_env_var_name,
-        otel_resource_attributes_update_optional,
-        &index_for_appending_env_vars,
-    )) {
-        return modified_env_vars;
-    }
     if (!applyEnvVarUpdate(
         modified_env_vars,
         jvm.java_tool_options_env_var_name,
@@ -359,12 +317,20 @@ fn applyModifications(original_env_vars: [](types.NullTerminatedString)) ![](typ
     )) {
         return modified_env_vars;
     }
+    if (!applyEnvVarUpdate(
+        modified_env_vars,
+        res_attrs.otel_resource_attributes_env_var_name,
+        otel_resource_attributes_update_optional,
+        &index_for_appending_env_vars,
+    )) {
+        return modified_env_vars;
+    }
 
     if (dotnet.isEnabled(original_env_vars)) {
-        if (dotnet_value_optional) |dotnet_values| {
+        if (dotnet_value_optional) |dotnet_env_var_updates| {
             if (!applyDotnetEnvVarModifications(
                 modified_env_vars,
-                dotnet_values,
+                dotnet_env_var_updates,
                 &index_for_appending_env_vars,
             )) {
                 return modified_env_vars;
@@ -409,13 +375,13 @@ fn applyEnvVarUpdate(
 
 fn applyDotnetEnvVarModifications(
     modified_env_vars: [](types.NullTerminatedString),
-    dotnet_values: types.DotnetValues,
+    dotnet_env_var_updates: types.DotnetEnvVarUpdates,
     index_for_appending_env_vars: *usize,
 ) bool {
     if (!applyEnvVarUpdate(
         modified_env_vars,
         dotnet.coreclr_enable_profiling_env_var_name,
-        dotnet_values.coreclr_enable_profiling,
+        dotnet_env_var_updates.coreclr_enable_profiling,
         index_for_appending_env_vars,
     )) {
         return false;
@@ -423,7 +389,7 @@ fn applyDotnetEnvVarModifications(
     if (!applyEnvVarUpdate(
         modified_env_vars,
         dotnet.coreclr_profiler_env_var_name,
-        dotnet_values.coreclr_profiler,
+        dotnet_env_var_updates.coreclr_profiler,
         index_for_appending_env_vars,
     )) {
         return false;
@@ -431,31 +397,31 @@ fn applyDotnetEnvVarModifications(
     if (!applyEnvVarUpdate(
         modified_env_vars,
         dotnet.coreclr_profiler_path_env_var_name,
-        dotnet_values.coreclr_profiler_path,
+        dotnet_env_var_updates.coreclr_profiler_path,
         index_for_appending_env_vars,
     )) {
         return false;
     }
     if (!applyEnvVarUpdate(
         modified_env_vars,
-        dotnet.additional_deps_env_var_name,
-        dotnet_values.additional_deps,
+        dotnet.dotnet_additional_deps_env_var_name,
+        dotnet_env_var_updates.dotnet_additional_deps,
         index_for_appending_env_vars,
     )) {
         return false;
     }
     if (!applyEnvVarUpdate(
         modified_env_vars,
-        dotnet.shared_store_env_var_name,
-        dotnet_values.shared_store,
+        dotnet.dotnet_shared_store_env_var_name,
+        dotnet_env_var_updates.dotnet_shared_store,
         index_for_appending_env_vars,
     )) {
         return false;
     }
     if (!applyEnvVarUpdate(
         modified_env_vars,
-        dotnet.startup_hooks_env_var_name,
-        dotnet_values.startup_hooks,
+        dotnet.dotnet_startup_hooks_env_var_name,
+        dotnet_env_var_updates.dotnet_startup_hooks,
         index_for_appending_env_vars,
     )) {
         return false;
@@ -463,7 +429,7 @@ fn applyDotnetEnvVarModifications(
     if (!applyEnvVarUpdate(
         modified_env_vars,
         dotnet.otel_auto_home_env_var_name,
-        dotnet_values.otel_auto_home,
+        dotnet_env_var_updates.otel_auto_home,
         index_for_appending_env_vars,
     )) {
         return false;
@@ -482,15 +448,15 @@ test "applyModifications: no changes" {
     original_env_vars[2] = "VAR3=value3";
 
     const modified_env_vars = try applyModifications(original_env_vars);
-    try testing.expectEqual(3, modified_env_vars.len);
+    try testing.expectEqual(4, modified_env_vars.len);
     try testing.expectEqualStrings("VAR1=value1", std.mem.span(modified_env_vars[0]));
     try testing.expectEqualStrings("VAR2=value2", std.mem.span(modified_env_vars[1]));
     try testing.expectEqualStrings("VAR3=value3", std.mem.span(modified_env_vars[2]));
+    try testing.expectEqualStrings("__DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS=true", std.mem.span(modified_env_vars[3]));
 }
 
 test "applyModifications: append JAVA_TOOL_OPTIONS" {
-    try test_util.createDummyDirectory("/__dash0__/instrumentation/jvm/");
-    _ = try std.fs.createFileAbsolute(jvm.otel_java_agent_path, .{});
+    try test_util.createDummyJavaAgent();
     defer {
         test_util.deleteDash0DummyDirectory();
     }
@@ -505,15 +471,16 @@ test "applyModifications: append JAVA_TOOL_OPTIONS" {
     original_env_vars[2] = "VAR3=value3";
 
     const modified_env_vars = try applyModifications(original_env_vars);
-    try testing.expectEqual(4, modified_env_vars.len);
+    try testing.expectEqual(5, modified_env_vars.len);
     try testing.expectEqualStrings("VAR1=value1", std.mem.span(modified_env_vars[0]));
     try testing.expectEqualStrings("VAR2=value2", std.mem.span(modified_env_vars[1]));
     try testing.expectEqualStrings("VAR3=value3", std.mem.span(modified_env_vars[2]));
-    try testing.expectEqualStrings("JAVA_TOOL_OPTIONS=-javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar", std.mem.span(modified_env_vars[3]));
+    try testing.expectEqualStrings("__DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS=true", std.mem.span(modified_env_vars[3]));
+    try testing.expectEqualStrings("JAVA_TOOL_OPTIONS=-javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar", std.mem.span(modified_env_vars[4]));
 }
 
 test "applyModifications: append NODE_OPTIONS" {
-    try test_util.createDummyDirectory(node_js.dash0_nodejs_otel_sdk_distribution);
+    try test_util.createDummyNodeJsDistribution();
     defer {
         test_util.deleteDash0DummyDirectory();
     }
@@ -528,11 +495,12 @@ test "applyModifications: append NODE_OPTIONS" {
     original_env_vars[2] = "VAR3=value3";
 
     const modified_env_vars = try applyModifications(original_env_vars);
-    try testing.expectEqual(4, modified_env_vars.len);
+    try testing.expectEqual(5, modified_env_vars.len);
     try testing.expectEqualStrings("VAR1=value1", std.mem.span(modified_env_vars[0]));
     try testing.expectEqualStrings("VAR2=value2", std.mem.span(modified_env_vars[1]));
     try testing.expectEqualStrings("VAR3=value3", std.mem.span(modified_env_vars[2]));
-    try testing.expectEqualStrings("NODE_OPTIONS=--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry", std.mem.span(modified_env_vars[3]));
+    try testing.expectEqualStrings("__DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS=true", std.mem.span(modified_env_vars[3]));
+    try testing.expectEqualStrings("NODE_OPTIONS=--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry", std.mem.span(modified_env_vars[4]));
 }
 
 test "applyModifications: compose OTEL_RESOURCE_ATTRIBUTES, OTEL_RESOURCE_ATTRIBUTES not present, source env vars present, other env vars are present" {
@@ -560,7 +528,7 @@ test "applyModifications: compose OTEL_RESOURCE_ATTRIBUTES, OTEL_RESOURCE_ATTRIB
     original_env_vars[16] = "VAR9=value9";
 
     const modified_env_vars = try applyModifications(original_env_vars);
-    try testing.expectEqual(18, modified_env_vars.len);
+    try testing.expectEqual(19, modified_env_vars.len);
     try testing.expectEqualStrings("VAR1=value1", std.mem.span(modified_env_vars[0]));
     try testing.expectEqualStrings("DASH0_NAMESPACE_NAME=namespace", std.mem.span(modified_env_vars[1]));
     try testing.expectEqualStrings("VAR2=value2", std.mem.span(modified_env_vars[2]));
@@ -578,9 +546,10 @@ test "applyModifications: compose OTEL_RESOURCE_ATTRIBUTES, OTEL_RESOURCE_ATTRIB
     try testing.expectEqualStrings("VAR8=value8", std.mem.span(modified_env_vars[14]));
     try testing.expectEqualStrings("DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd", std.mem.span(modified_env_vars[15]));
     try testing.expectEqualStrings("VAR9=value9", std.mem.span(modified_env_vars[16]));
+    try testing.expectEqualStrings("__DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS=true", std.mem.span(modified_env_vars[17]));
     try testing.expectEqualStrings(
         "OTEL_RESOURCE_ATTRIBUTES=k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd",
-        std.mem.span(modified_env_vars[17]),
+        std.mem.span(modified_env_vars[18]),
     );
 }
 
@@ -601,7 +570,7 @@ test "applyModifications: compose OTEL_RESOURCE_ATTRIBUTES, OTEL_RESOURCE_ATTRIB
     original_env_vars[8] = "DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd";
 
     const modified_env_vars = try applyModifications(original_env_vars);
-    try testing.expectEqual(9, modified_env_vars.len);
+    try testing.expectEqual(10, modified_env_vars.len);
     try testing.expectEqualStrings("DASH0_NAMESPACE_NAME=namespace", std.mem.span(modified_env_vars[0]));
     try testing.expectEqualStrings("DASH0_POD_NAME=pod", std.mem.span(modified_env_vars[1]));
     try testing.expectEqualStrings("DASH0_POD_UID=uid", std.mem.span(modified_env_vars[2]));
@@ -614,6 +583,7 @@ test "applyModifications: compose OTEL_RESOURCE_ATTRIBUTES, OTEL_RESOURCE_ATTRIB
     try testing.expectEqualStrings("DASH0_SERVICE_VERSION=version", std.mem.span(modified_env_vars[6]));
     try testing.expectEqualStrings("DASH0_SERVICE_NAMESPACE=servicenamespace", std.mem.span(modified_env_vars[7]));
     try testing.expectEqualStrings("DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd", std.mem.span(modified_env_vars[8]));
+    try testing.expectEqualStrings("__DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS=true", std.mem.span(modified_env_vars[9]));
 }
 
 test "applyModifications: compose OTEL_RESOURCE_ATTRIBUTES, OTEL_RESOURCE_ATTRIBUTES present but empty, source env vars present" {
@@ -629,7 +599,7 @@ test "applyModifications: compose OTEL_RESOURCE_ATTRIBUTES, OTEL_RESOURCE_ATTRIB
     original_env_vars[4] = "DASH0_CONTAINER_NAME=container";
 
     const modified_env_vars = try applyModifications(original_env_vars);
-    try testing.expectEqual(5, modified_env_vars.len);
+    try testing.expectEqual(6, modified_env_vars.len);
     try testing.expectEqualStrings("DASH0_NAMESPACE_NAME=namespace", std.mem.span(modified_env_vars[0]));
     try testing.expectEqualStrings("DASH0_POD_NAME=pod", std.mem.span(modified_env_vars[1]));
     try testing.expectEqualStrings(
@@ -638,25 +608,11 @@ test "applyModifications: compose OTEL_RESOURCE_ATTRIBUTES, OTEL_RESOURCE_ATTRIB
     );
     try testing.expectEqualStrings("DASH0_POD_UID=uid", std.mem.span(modified_env_vars[3]));
     try testing.expectEqualStrings("DASH0_CONTAINER_NAME=container", std.mem.span(modified_env_vars[4]));
+    try testing.expectEqualStrings("__DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS=true", std.mem.span(modified_env_vars[5]));
 }
 
-test "applyModifications: append OTEL_RESOURCE_ATTRIBUTES, JAVA_TOOL_OPTIONS, NODE_OPTIONS, and .NET environment variables" {
-    try test_util.createDummyDirectory("/__dash0__/instrumentation/jvm/");
-    _ = try std.fs.createFileAbsolute(jvm.otel_java_agent_path, .{});
-    try test_util.createDummyDirectory(node_js.dash0_nodejs_otel_sdk_distribution);
-    const platform = switch (builtin.cpu.arch) {
-        .x86_64 => "linux-x64",
-        .aarch64 => "linux-arm64",
-        else => return error.TestUnexpectedResult,
-    };
-    const dotnetDir = "/__dash0__/instrumentation/dotnet/glibc";
-    try test_util.createDummyDirectory(dotnetDir ++ "/net");
-    const dotnetPlatformDir = dotnetDir ++ "/" ++ platform;
-    try test_util.createDummyDirectory(dotnetPlatformDir);
-    _ = try std.fs.createFileAbsolute(dotnetPlatformDir ++ "/OpenTelemetry.AutoInstrumentation.Native.so", .{});
-    _ = try std.fs.createFileAbsolute(dotnetDir ++ "/AdditionalDeps", .{});
-    _ = try std.fs.createFileAbsolute(dotnetDir ++ "/store", .{});
-    _ = try std.fs.createFileAbsolute(dotnetDir ++ "/net/OpenTelemetry.AutoInstrumentation.StartupHook.dll", .{});
+test "applyModifications: append OTEL_RESOURCE_ATTRIBUTES, JAVA_TOOL_OPTIONS, and .NET environment variables" {
+    try test_util.createAllDummyInstrumentations();
     defer {
         test_util.deleteDash0DummyDirectory();
     }
@@ -681,7 +637,7 @@ test "applyModifications: append OTEL_RESOURCE_ATTRIBUTES, JAVA_TOOL_OPTIONS, NO
     original_env_vars[8] = "DASH0_EXPERIMENTAL_DOTNET_INJECTION=true";
 
     const modified_env_vars = try applyModifications(original_env_vars);
-    try testing.expectEqual(19, modified_env_vars.len);
+    try testing.expectEqual(20, modified_env_vars.len);
     try testing.expectEqualStrings("DASH0_NAMESPACE_NAME=namespace", std.mem.span(modified_env_vars[0]));
     try testing.expectEqualStrings("DASH0_POD_NAME=pod", std.mem.span(modified_env_vars[1]));
     try testing.expectEqualStrings("DASH0_POD_UID=uid", std.mem.span(modified_env_vars[2]));
@@ -691,10 +647,7 @@ test "applyModifications: append OTEL_RESOURCE_ATTRIBUTES, JAVA_TOOL_OPTIONS, NO
     try testing.expectEqualStrings("DASH0_SERVICE_NAMESPACE=servicenamespace", std.mem.span(modified_env_vars[6]));
     try testing.expectEqualStrings("DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd", std.mem.span(modified_env_vars[7]));
     try testing.expectEqualStrings("DASH0_EXPERIMENTAL_DOTNET_INJECTION=true", std.mem.span(modified_env_vars[8]));
-    try testing.expectEqualStrings(
-        "OTEL_RESOURCE_ATTRIBUTES=k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd",
-        std.mem.span(modified_env_vars[9]),
-    );
+    try testing.expectEqualStrings("__DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS=true", std.mem.span(modified_env_vars[9]));
     try testing.expectEqualStrings(
         "JAVA_TOOL_OPTIONS=-javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar -Dotel.resource.attributes=k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd",
         std.mem.span(modified_env_vars[10]),
@@ -704,39 +657,46 @@ test "applyModifications: append OTEL_RESOURCE_ATTRIBUTES, JAVA_TOOL_OPTIONS, NO
         std.mem.span(modified_env_vars[11]),
     );
     try testing.expectEqualStrings(
-        "CORECLR_ENABLE_PROFILING=1",
+        "OTEL_RESOURCE_ATTRIBUTES=k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd",
         std.mem.span(modified_env_vars[12]),
     );
     try testing.expectEqualStrings(
-        "CORECLR_PROFILER={918728DD-259F-4A6A-AC2B-B85E1B658318}",
+        "CORECLR_ENABLE_PROFILING=1",
         std.mem.span(modified_env_vars[13]),
     );
     try testing.expectEqualStrings(
-        "CORECLR_PROFILER_PATH=/__dash0__/instrumentation/dotnet/glibc/" ++ platform ++ "/OpenTelemetry.AutoInstrumentation.Native.so",
+        "CORECLR_PROFILER={918728DD-259F-4A6A-AC2B-B85E1B658318}",
         std.mem.span(modified_env_vars[14]),
     );
+    const expected_profiler_path = comptime "CORECLR_PROFILER_PATH=/__dash0__/instrumentation/dotnet/glibc/" ++
+        test_util.getDotnetPlatformForTest() ++
+        "/OpenTelemetry.AutoInstrumentation.Native.so";
     try testing.expectEqualStrings(
-        "DOTNET_ADDITIONAL_DEPS=/__dash0__/instrumentation/dotnet/glibc/AdditionalDeps",
+        expected_profiler_path,
         std.mem.span(modified_env_vars[15]),
     );
     try testing.expectEqualStrings(
-        "DOTNET_SHARED_STORE=/__dash0__/instrumentation/dotnet/glibc/store",
+        "DOTNET_ADDITIONAL_DEPS=/__dash0__/instrumentation/dotnet/glibc/AdditionalDeps",
         std.mem.span(modified_env_vars[16]),
     );
     try testing.expectEqualStrings(
-        "DOTNET_STARTUP_HOOKS=/__dash0__/instrumentation/dotnet/glibc/net/OpenTelemetry.AutoInstrumentation.StartupHook.dll",
+        "DOTNET_SHARED_STORE=/__dash0__/instrumentation/dotnet/glibc/store",
         std.mem.span(modified_env_vars[17]),
     );
     try testing.expectEqualStrings(
-        "OTEL_DOTNET_AUTO_HOME=/__dash0__/instrumentation/dotnet/glibc",
+        "DOTNET_STARTUP_HOOKS=/__dash0__/instrumentation/dotnet/glibc/net/OpenTelemetry.AutoInstrumentation.StartupHook.dll",
         std.mem.span(modified_env_vars[18]),
+    );
+    try testing.expectEqualStrings(
+        "OTEL_DOTNET_AUTO_HOME=/__dash0__/instrumentation/dotnet/glibc",
+        std.mem.span(modified_env_vars[19]),
     );
 }
 
 test "applyModifications: replace JAVA_TOOL_OPTIONS, NODE_OPTIONS, and OTEL_RESOURCE_ATTRIBUTES" {
-    try test_util.createDummyDirectory("/__dash0__/instrumentation/jvm/");
+    try test_util.createDummyJavaAgent();
     _ = try std.fs.createFileAbsolute(jvm.otel_java_agent_path, .{});
-    try test_util.createDummyDirectory(node_js.dash0_nodejs_otel_sdk_distribution);
+    try test_util.createDummyNodeJsDistribution();
     defer {
         test_util.deleteDash0DummyDirectory();
     }
@@ -759,7 +719,7 @@ test "applyModifications: replace JAVA_TOOL_OPTIONS, NODE_OPTIONS, and OTEL_RESO
     original_env_vars[10] = "DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd";
 
     const modified_env_vars = try applyModifications(original_env_vars);
-    try testing.expectEqual(11, modified_env_vars.len);
+    try testing.expectEqual(12, modified_env_vars.len);
     try testing.expectEqualStrings("NODE_OPTIONS=--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --abort-on-uncaught-exception", std.mem.span(modified_env_vars[0]));
     try testing.expectEqualStrings("DASH0_NAMESPACE_NAME=namespace", std.mem.span(modified_env_vars[1]));
     try testing.expectEqualStrings(
@@ -777,6 +737,7 @@ test "applyModifications: replace JAVA_TOOL_OPTIONS, NODE_OPTIONS, and OTEL_RESO
     try testing.expectEqualStrings("DASH0_SERVICE_VERSION=version", std.mem.span(modified_env_vars[8]));
     try testing.expectEqualStrings("DASH0_SERVICE_NAMESPACE=servicenamespace", std.mem.span(modified_env_vars[9]));
     try testing.expectEqualStrings("DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd", std.mem.span(modified_env_vars[10]));
+    try testing.expectEqualStrings("__DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS=true", std.mem.span(modified_env_vars[11]));
 }
 
 fn renderEnvVarsToExport(env_vars: [](types.NullTerminatedString)) ![*c]const [*c]const u8 {
@@ -804,6 +765,9 @@ fn renderEnvVarsToExport(env_vars: [](types.NullTerminatedString)) ![*c]const [*
     // NULL pointer, which is a pointer type, i.e. 8 bytes for 64 bit architectures.
     exported[env_vars.len] = null;
 
-
     return @ptrCast(exported);
+}
+
+pub fn getCachedOriginalEnvVars() [](types.NullTerminatedString) {
+    return cached_original_env_vars;
 }

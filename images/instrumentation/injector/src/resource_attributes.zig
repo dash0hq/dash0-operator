@@ -80,7 +80,7 @@ pub fn getModifiedOtelResourceAttributesValue(env_vars: [](types.NullTerminatedS
                     return types.EnvVarUpdate{ .value = original_value, .replace = true, .index = original_index };
                 };
                 print.printMessage(modification_happened_msg, .{otel_resource_attributes_env_var_name});
-                cache.injector_cache.otel_resource_attributes = cache.CachedEnvVarModification{ .value = return_buffer.ptr, .done = true };
+                cache.injector_cache.otel_resource_attributes = cache.CachedEnvVarValue{ .value = return_buffer.ptr, .done = true };
                 return types.EnvVarUpdate{ .value = return_buffer.ptr, .replace = true, .index = original_index };
             }
 
@@ -92,7 +92,7 @@ pub fn getModifiedOtelResourceAttributesValue(env_vars: [](types.NullTerminatedS
                 return types.EnvVarUpdate{ .value = original_value, .replace = true, .index = original_index };
             };
             print.printMessage(modification_happened_msg, .{otel_resource_attributes_env_var_name});
-            cache.injector_cache.otel_resource_attributes = cache.CachedEnvVarModification{ .value = return_buffer.ptr, .done = true };
+            cache.injector_cache.otel_resource_attributes = cache.CachedEnvVarValue{ .value = return_buffer.ptr, .done = true };
             return types.EnvVarUpdate{ .value = return_buffer.ptr, .replace = true, .index = original_index };
         } else {
             // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
@@ -101,7 +101,7 @@ pub fn getModifiedOtelResourceAttributesValue(env_vars: [](types.NullTerminatedS
                 print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ otel_resource_attributes_env_var_name, err });
                 return types.EnvVarUpdate{ .value = original_value, .replace = true, .index = original_index };
             };
-            cache.injector_cache.otel_resource_attributes = cache.CachedEnvVarModification{ .value = return_buffer.ptr, .done = true };
+            cache.injector_cache.otel_resource_attributes = cache.CachedEnvVarValue{ .value = return_buffer.ptr, .done = true };
             return types.EnvVarUpdate{ .value = return_buffer.ptr, .replace = true, .index = original_index };
         }
     } else {
@@ -114,11 +114,11 @@ pub fn getModifiedOtelResourceAttributesValue(env_vars: [](types.NullTerminatedS
                 return null;
             };
             print.printMessage(modification_happened_msg, .{otel_resource_attributes_env_var_name});
-            cache.injector_cache.otel_resource_attributes = cache.CachedEnvVarModification{ .value = return_buffer.ptr, .done = true };
+            cache.injector_cache.otel_resource_attributes = cache.CachedEnvVarValue{ .value = return_buffer.ptr, .done = true };
             return types.EnvVarUpdate{ .value = return_buffer.ptr, .replace = false, .index = 0 };
         } else {
             // There is no original value, and also nothing to add, return null.
-            cache.injector_cache.otel_resource_attributes = cache.CachedEnvVarModification{ .value = null, .done = true };
+            cache.injector_cache.otel_resource_attributes = cache.CachedEnvVarValue{ .value = null, .done = true };
             return null;
         }
     }

@@ -26,7 +26,7 @@ pub fn checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue(env_vars: [](type
         print.printError("Skipping injection of OTel Java agent in 'JAVA_TOOL_OPTIONS' because of an issue accessing the Jar file at {s}: {}", .{ otel_java_agent_path, err });
         if (original_value_and_index_optional) |original_value_and_index| {
             cache.injector_cache.java_tool_options =
-                cache.CachedEnvVarModification{
+                cache.CachedEnvVarValue{
                     .value = original_value_and_index.value,
                     .done = true,
                 };
@@ -37,7 +37,7 @@ pub fn checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue(env_vars: [](type
             };
         }
         cache.injector_cache.java_tool_options =
-            cache.CachedEnvVarModification{
+            cache.CachedEnvVarValue{
                 .value = null,
                 .done = true,
             };
@@ -87,8 +87,7 @@ test "checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue: should return the
 }
 
 test "checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue: should return -javaagent if original value is unset and the Java agent can be accessed" {
-    try test_util.createDummyDirectory("/__dash0__/instrumentation/jvm/");
-    _ = try std.fs.createFileAbsolute(otel_java_agent_path, .{});
+    try test_util.createDummyJavaAgent();
     defer {
         test_util.deleteDash0DummyDirectory();
     }
@@ -159,7 +158,7 @@ fn getModifiedJavaToolOptionsValue(
                 }) catch |err| {
                     print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ java_tool_options_env_var_name, err });
                     cache.injector_cache.java_tool_options =
-                        cache.CachedEnvVarModification{
+                        cache.CachedEnvVarValue{
                             .value = original_value_and_index.value,
                             .done = true,
                         };
@@ -179,7 +178,7 @@ fn getModifiedJavaToolOptionsValue(
                     }) catch |err| {
                         print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ java_tool_options_env_var_name, err });
                         cache.injector_cache.java_tool_options =
-                            cache.CachedEnvVarModification{
+                            cache.CachedEnvVarValue{
                                 .value = original_value_and_index.value,
                                 .done = true,
                             };
@@ -192,7 +191,7 @@ fn getModifiedJavaToolOptionsValue(
                 print.printMessage(injection_happened_msg, .{});
                 print.printMessage(res_attrs.modification_happened_msg, .{java_tool_options_env_var_name});
                 cache.injector_cache.java_tool_options =
-                    cache.CachedEnvVarModification{
+                    cache.CachedEnvVarValue{
                         .value = return_buffer.ptr,
                         .done = true,
                     };
@@ -213,7 +212,7 @@ fn getModifiedJavaToolOptionsValue(
                 }) catch |err| {
                     print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ java_tool_options_env_var_name, err });
                     cache.injector_cache.java_tool_options =
-                        cache.CachedEnvVarModification{
+                        cache.CachedEnvVarValue{
                             .value = original_value_and_index.value,
                             .done = true,
                         };
@@ -226,7 +225,7 @@ fn getModifiedJavaToolOptionsValue(
             print.printMessage(res_attrs.modification_happened_msg, .{java_tool_options_env_var_name});
             print.printMessage(injection_happened_msg, .{});
             cache.injector_cache.java_tool_options =
-                cache.CachedEnvVarModification{
+                cache.CachedEnvVarValue{
                     .value = return_buffer.ptr,
                     .done = true,
                 };
@@ -244,7 +243,7 @@ fn getModifiedJavaToolOptionsValue(
                 }) catch |err| {
                     print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ java_tool_options_env_var_name, err });
                     cache.injector_cache.java_tool_options =
-                        cache.CachedEnvVarModification{
+                        cache.CachedEnvVarValue{
                             .value = original_value_and_index.value,
                             .done = true,
                         };
@@ -256,7 +255,7 @@ fn getModifiedJavaToolOptionsValue(
                 };
             print.printMessage(injection_happened_msg, .{});
             cache.injector_cache.java_tool_options =
-                cache.CachedEnvVarModification{
+                cache.CachedEnvVarValue{
                     .value = return_buffer.ptr,
                     .done = true,
                 };
@@ -276,7 +275,7 @@ fn getModifiedJavaToolOptionsValue(
             }) catch |err| {
                 print.printError("Cannot allocate memory to manipulate the value of '{s}': {}", .{ java_tool_options_env_var_name, err });
                 cache.injector_cache.java_tool_options =
-                    cache.CachedEnvVarModification{
+                    cache.CachedEnvVarValue{
                         .value = null,
                         .done = true,
                     };
@@ -285,7 +284,7 @@ fn getModifiedJavaToolOptionsValue(
             print.printMessage(res_attrs.modification_happened_msg, .{java_tool_options_env_var_name});
             print.printMessage(injection_happened_msg, .{});
             cache.injector_cache.java_tool_options =
-                cache.CachedEnvVarModification{
+                cache.CachedEnvVarValue{
                     .value = return_buffer.ptr,
                     .done = true,
                 };
@@ -298,7 +297,7 @@ fn getModifiedJavaToolOptionsValue(
             // JAVA_TOOL_OPTIONS is not set, and no new resource attributes have been provided. Simply return the -javaagent flag.
             print.printMessage(injection_happened_msg, .{});
             cache.injector_cache.java_tool_options =
-                cache.CachedEnvVarModification{
+                cache.CachedEnvVarValue{
                     .value = javaagent_flag_value[0..].ptr,
                     .done = true,
                 };

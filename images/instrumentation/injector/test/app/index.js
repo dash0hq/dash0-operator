@@ -6,9 +6,9 @@ const process = require('node:process');
 function echoEnvVar(envVarName) {
   const envVarValue = process.env[envVarName];
   if (!envVarValue) {
-    process.stdout.write(`${envVarName}: -\n`);
+    process.stdout.write(`${envVarName}: -`);
   } else {
-    process.stdout.write(`${envVarName}: ${envVarValue}\n`);
+    process.stdout.write(`${envVarName}: ${envVarValue}`);
   }
 }
 
