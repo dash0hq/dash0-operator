@@ -25,7 +25,7 @@ fi
 rm -rf injector/test/bin/*
 
 # remove outdated test app binaries
-rm -f injector/test/no_environ_symbol/noenviron.*
+rm -f injector/test/statically-built/staticapp.*
 
 architectures=""
 if [[ -n "${ARCHITECTURES:-}" ]]; then
@@ -157,45 +157,60 @@ touch injector/test/.container_images_to_be_deleted_at_end
 trap cleanup_docker_images EXIT
 
 # rebuild compiled test apps
-echo ----------------------------------------
-echo building the no_environ_symbol test app binary
-echo ----------------------------------------
-for arch in "${all_architectures[@]}"; do
-  if [[ -n "${architectures[0]}" ]]; then
-    if [[ $(echo "${architectures[@]}" | grep -o "$arch" | wc -w) -eq 0 ]]; then
-      echo "skipping no_environ_symbol test app build for CPU architecture $arch"
-      continue
-    fi
-  fi
-  goarch="$arch"
-  if [[ "$goarch" = "x86_64" ]]; then
-    goarch="amd64"
-  fi
-  for libc_flavor in "${all_libc_flavors[@]}"; do
-    if [[ -n "${libc_flavors[0]}" ]]; then
-      if [[ $(echo "${libc_flavors[@]}" | grep -o "$libc_flavor" | wc -w) -eq 0 ]]; then
-        echo "skipping no_environ_symbol test app build for libc flavor $libc_flavor"
+if [[ "${STATICALLY_BUILT_TESTS:-}" = "true" ]]; then
+  echo ----------------------------------------
+  echo building the statically built test app binary
+  echo ----------------------------------------
+  for arch in "${all_architectures[@]}"; do
+    if [[ -n "${architectures[0]}" ]]; then
+      if [[ $(echo "${architectures[@]}" | grep -o "$arch" | wc -w) -eq 0 ]]; then
+        echo "skipping statically built test app build for CPU architecture $arch"
         continue
       fi
     fi
-    if [[ "$libc_flavor" = "glibc" ]]; then
-      no_environ_base_image="golang:1.23.7-bookworm"
-    elif [[ "$libc_flavor" = "musl" ]]; then
-      no_environ_base_image="golang:1.23.7-alpine3.21"
+    goarch="$arch"
+    if [[ "$goarch" = "x86_64" ]]; then
+      goarch="amd64"
     fi
-    echo "building the no_environ_symbol test app for CPU architecture $arch [GOARCH=$goarch] and libc flavor $libc_flavor (base image: $no_environ_base_image)"
-    ARCH="$arch" \
-      GOARCH="$goarch" \
-      LIBC="$libc_flavor" \
-      BASE_IMAGE="$no_environ_base_image" \
-      injector/test/scripts/build-in-container.sh \
-        "/workspace/noenviron" \
-        "injector/test/no_environ_symbol/noenviron.$arch.$libc_flavor" \
-        injector/test/no_environ_symbol/Dockerfile-build \
-        "no-environ-symbol-builder-$arch-$libc_flavor" \
-        injector/test/no_environ_symbol
+    for libc_flavor in "${all_libc_flavors[@]}"; do
+      if [[ -n "${libc_flavors[0]}" ]]; then
+        if [[ $(echo "${libc_flavors[@]}" | grep -o "$libc_flavor" | wc -w) -eq 0 ]]; then
+          echo "skipping the statically build test app build for libc flavor $libc_flavor"
+          continue
+        fi
+      fi
+      if [[ "$libc_flavor" = "glibc" ]]; then
+        statically_built_base_image="golang:1.23.7-bookworm"
+      elif [[ "$libc_flavor" = "musl" ]]; then
+        statically_built_base_image="golang:1.23.7-alpine3.21"
+      fi
+      echo "building the statically built test app for CPU architecture $arch [GOARCH=$goarch] and libc flavor $libc_flavor (base image: $statically_built_base_image)"
+      ARCH="$arch" \
+        GOARCH="$goarch" \
+        LIBC="$libc_flavor" \
+        BASE_IMAGE="$statically_built_base_image" \
+        injector/test/scripts/build-in-container.sh \
+          "/workspace/staticapp" \
+          "injector/test/statically-built/staticapp.$arch.$libc_flavor" \
+          injector/test/statically-built/Dockerfile-build \
+          "statically-built-app-builder-$arch-$libc_flavor" \
+          injector/test/statically-built
+    done
   done
-done
+else
+  for arch in "${all_architectures[@]}"; do
+    goarch="$arch"
+    if [[ "$goarch" = "x86_64" ]]; then
+      goarch="amd64"
+    fi
+    for libc_flavor in "${all_libc_flavors[@]}"; do
+      # Produce an empty file so that the instruction
+      #   COPY statically-built/$statically_built_binary statically-built/staticapp
+      # in ../docker/Dockerfile-test does not fail.
+      touch "injector/test/statically-built/staticapp.$arch.$libc_flavor"
+    done
+  done
+fi
 
 instrumentation_image=${INSTRUMENTATION_IMAGE:-}
 if [[ -z "$instrumentation_image" ]]; then

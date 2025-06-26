@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	envVarName := "NO_ENVIRON_TEST_VAR"
+	envVarName := "STATICALLY_BUILT_TEST_VAR"
 	value, isSet := os.LookupEnv(envVarName)
 	if !isSet {
 		fmt.Printf("The environmet variable \"%s\" is not set.\n", envVarName)

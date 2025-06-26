@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# Regression tests for missing symbols when running the injector as LD_PRELOAD with a statically built and linked binary.
+if [ "${STATICALLY_BUILT_TESTS:-}" = "true" ]; then
+  run_test_case \
+    "statically built binary: read unset environment variable" \
+    "statically-built" \
+    "./staticapp" \
+    "The environmet variable \"STATICALLY_BUILT_TEST_VAR\" is not set."
+  run_test_case \
+    "statically built binary: read an environment variable that is set" \
+    "statically-built" \
+    "./staticapp" \
+    "The environmet variable \"STATICALLY_BUILT_TEST_VAR\" had the value: \"some-value\"." \
+    "STATICALLY_BUILT_TEST_VAR=some-value"
+fi

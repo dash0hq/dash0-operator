@@ -10,9 +10,9 @@ RUN if [ -z "$injector_binary" ]; then \
       exit 1; \
     fi
 
-ARG noenviron_binary
-RUN if [ -z "$noenviron_binary" ]; then \
-      echo "Error: build argument noenviron_binary is required but not set."; \
+ARG statically_built_binary
+RUN if [ -z "$statically_built_binary" ]; then \
+      echo "Error: build argument statically_built_binary is required but not set."; \
       exit 1; \
     fi
 
@@ -25,8 +25,8 @@ RUN if [ -z "$create_sdk_dummy_files_script" ]; then \
 WORKDIR /usr/src/dash0/injector/
 
 COPY app app
-RUN mkdir no_environ_symbol
-COPY no_environ_symbol/$noenviron_binary no_environ_symbol/noenviron
+RUN mkdir statically-built
+COPY statically-built/$statically_built_binary statically-built/staticapp
 COPY scripts/run-tests-within-container.sh scripts/
 COPY scripts/create-*.sh scripts/
 COPY scripts/*.tests scripts/

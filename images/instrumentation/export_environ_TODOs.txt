@@ -41,7 +41,7 @@ Remaining TODOs
 - clean up JAVA_TOOL_OPTIONS, we probably still need the -javaagent there, but not the otel resource attributes
 - add Python test for OTEL_RESOURCE_ATTRIBUTES
 - repair injector integration tests
-- enable NO_ENVIRON tests
+- investigate missing `getauxval` symbol in statically-built tests
 - check Node.js tests -- do we need to add getenv override again?
 - add tests that cached values are actually used (after adding back override for getenv)
 - add instrumentation and injector tests that also change the environment via setenv, putenv, and also directly

@@ -13,7 +13,7 @@ injector/test/.container_images_to_be_deleted_at_end
 injector/test/.containers_to_be_deleted_at_end
 injector/test/README.md
 injector/test/docker
-injector/test/no_environ_symbol
+injector/test/statically-built
 injector/unit-test-assets
 injector/zig-*.sh
 injector/zig-out

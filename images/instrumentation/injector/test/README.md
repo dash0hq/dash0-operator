@@ -27,4 +27,5 @@ Usage
 * `INSTRUMENTATION_IMAGE=... scripts/test-all.sh` use an existing local or remote instrumentation image.
 * Set `VERBOSE=true` to always include the output from running the test case. Otherwise, the output is only
   printed to stdout when a test case fails.
-
+* `STATICALLY_BUILT_TESTS=true` also run tests with a binary that has been statically built and linked.
+  These are currently off by default.
