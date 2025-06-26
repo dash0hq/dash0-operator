@@ -11,6 +11,7 @@ const test_util = @import("test_util.zig");
 const types = @import("types.zig");
 
 const testing = std.testing;
+const expectWithMessage = test_util.expectWithMessage;
 
 // Note: The CLR bootstrapping code (implemented in C++) uses getenv, but when doing
 // Environment.GetEnvironmentVariable from within a .NET application, it will apparently bypass getenv.
@@ -126,7 +127,7 @@ test "getDotnetValues: should return null value if the profiler path cannot be a
     defer cache.injector_cache = cache.emptyInjectorCache();
 
     const dotnet_env_var_updates_optional = getDotnetEnvVarUpdates();
-    try testing.expect(dotnet_env_var_updates_optional == null);
+    try expectWithMessage(dotnet_env_var_updates_optional == null, "dotnet_env_var_updates_optional == null");
 }
 
 test "getDotnetValues: should cache and return values if the profiler path can be accessed" {
@@ -143,7 +144,7 @@ test "getDotnetValues: should cache and return values if the profiler path can b
     cache.injector_cache.libc_flavor = types.LibCFlavor.GNU_LIBC;
 
     const dotnet_env_var_updates_optional = getDotnetEnvVarUpdates();
-    try testing.expect(dotnet_env_var_updates_optional != null);
+    try expectWithMessage(dotnet_env_var_updates_optional != null, "dotnet_env_var_updates_optional != null");
     try testing.expectEqualStrings(
         "1",
         std.mem.span(dotnet_env_var_updates_optional.?.coreclr_enable_profiling.value),
@@ -177,7 +178,7 @@ test "getDotnetValues: should cache and return values if the profiler path can b
         std.mem.span(dotnet_env_var_updates_optional.?.otel_auto_home.value),
     );
 
-    try testing.expect(cache.injector_cache.dotnet_env_var_updates.done);
+    try expectWithMessage(cache.injector_cache.dotnet_env_var_updates.done, "cache.injector_cache.dotnet_env_var_updates.done");
     try testing.expectEqualStrings("1", std.mem.span(cache.injector_cache.dotnet_env_var_updates.values.?.coreclr_enable_profiling.value));
     try testing.expectEqualStrings("{918728DD-259F-4A6A-AC2B-B85E1B658318}", std.mem.span(cache.injector_cache.dotnet_env_var_updates.values.?.coreclr_profiler.value));
     try testing.expectStringStartsWith(

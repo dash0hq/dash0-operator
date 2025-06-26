@@ -6,6 +6,31 @@ const std = @import("std");
 
 pub const test_allocator: std.mem.Allocator = std.heap.page_allocator;
 
+const testing = std.testing;
+
+/// An extended version of std.testing.expect that prints a message in case of failure. Useful for tests that have
+/// multiple expects; this version should generally be used in favor of the original std.testing.expect function.
+pub fn expectWithMessage(
+    ok: bool,
+    comptime message: []const u8,
+) !void {
+    if (!ok) {
+        print("\n====== assertion failed: =========\n", .{});
+        print(message, .{});
+        print("\n==================================\n", .{});
+        return error.TestUnexpectedResult;
+    }
+}
+
+// Copied from Zig's std.testing module.
+fn print(comptime fmt: []const u8, args: anytype) void {
+    if (@inComptime()) {
+        @compileError(std.fmt.comptimePrint(fmt, args));
+    } else if (testing.backend_can_print) {
+        std.debug.print(fmt, args);
+    }
+}
+
 pub fn createAllDummyInstrumentations() !void {
     try createDummyJavaAgent();
     try createDummyNodeJsDistribution();

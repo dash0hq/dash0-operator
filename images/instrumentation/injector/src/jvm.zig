@@ -11,6 +11,7 @@ const test_util = @import("test_util.zig");
 const types = @import("types.zig");
 
 const testing = std.testing;
+const expectWithMessage = test_util.expectWithMessage;
 
 pub const java_tool_options_env_var_name = "JAVA_TOOL_OPTIONS";
 pub const otel_java_agent_path = "/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar";
@@ -59,10 +60,10 @@ test "checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue: should return nul
     original_env_vars[0] = "AAA=bbb";
     original_env_vars[1] = "CCC=ddd";
     const env_var_update_optional = checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue(original_env_vars);
-    try testing.expect(env_var_update_optional == null);
+    try expectWithMessage(env_var_update_optional == null, "env_var_update_optional == null");
 
     try testing.expectEqual(true, cache.injector_cache.java_tool_options.done);
-    try testing.expect(cache.injector_cache.java_tool_options.value == null);
+    try expectWithMessage(cache.injector_cache.java_tool_options.value == null, "cache.injector_cache.java_tool_options.value == null");
 }
 
 test "checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue: should return the original value if the Java agent cannot be accessed" {

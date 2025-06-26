@@ -9,6 +9,7 @@ const test_util = @import("test_util.zig");
 const types = @import("types.zig");
 
 const testing = std.testing;
+const expectWithMessage = test_util.expectWithMessage;
 
 pub const node_options_env_var_name = "NODE_OPTIONS";
 pub const dash0_nodejs_otel_sdk_distribution = "/__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry";
@@ -48,10 +49,10 @@ test "checkNodeJsOTelDistributionAndGetModifiedNodeOptionsValue: should return n
     defer cache.injector_cache = cache.emptyInjectorCache();
 
     const env_var_update_optional = checkNodeJsOTelSdkDistributionAndGetModifiedNodeOptionsValue(null);
-    try testing.expect(env_var_update_optional == null);
+    try expectWithMessage(env_var_update_optional == null, "env_var_update_optional == null");
 
     try testing.expectEqual(true, cache.injector_cache.node_options.done);
-    try testing.expect(cache.injector_cache.node_options.value == null);
+    try expectWithMessage(cache.injector_cache.node_options.value == null, "cache.injector_cache.node_options.value == null");
 }
 
 test "checkNodeJsOTelDistributionAndGetModifiedNodeOptionsValue: should return the original value if the Node.js OTel SDK distribution cannot be accessed" {

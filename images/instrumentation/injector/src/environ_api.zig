@@ -14,6 +14,7 @@ const test_util = @import("test_util.zig");
 const types = @import("types.zig");
 
 const testing = std.testing;
+const expectWithMessage = test_util.expectWithMessage;
 
 pub fn _getenv(original_env_vars: [](types.NullTerminatedString), name_z: types.NullTerminatedString) ?types.NullTerminatedString {
     const name: []const u8 = std.mem.span(name_z);
@@ -40,7 +41,7 @@ test "_getenv: no changes, no original value" {
     original_env_vars[2] = "VAR3=value3";
 
     const value_optional = _getenv(original_env_vars, "VAR4");
-    try testing.expect(value_optional == null);
+    try expectWithMessage(value_optional == null, "value_optional == null");
 }
 
 test "_getenv: no changes, original value is empty string" {
@@ -88,7 +89,7 @@ test "_getenv: add new NODE_OPTIONS value when not set" {
 
     const value_optional = _getenv(original_env_vars, node_js.node_options_env_var_name);
     try testing.expectEqualStrings("--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry", std.mem.span(value_optional.?));
-    try testing.expect(cache.injector_cache.node_options.done);
+    try expectWithMessage(cache.injector_cache.node_options.done, "cache.injector_cache.node_options.done");
     try testing.expectEqualStrings("--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry", std.mem.span(cache.injector_cache.node_options.value.?));
 }
 
@@ -114,7 +115,7 @@ test "_getenv: prepend to existing NODE_OPTIONS value" {
         "--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --abort-on-uncaught-exception",
         std.mem.span(value_optional.?),
     );
-    try testing.expect(cache.injector_cache.node_options.done);
+    try expectWithMessage(cache.injector_cache.node_options.done, "cache.injector_cache.node_options.done");
     try testing.expectEqualStrings("--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --abort-on-uncaught-exception", std.mem.span(cache.injector_cache.node_options.value.?));
 }
 
@@ -208,7 +209,7 @@ test "modifyEnvVar: irrelevant environment variable, no original value" {
     defer std.heap.page_allocator.free(original_env_vars);
 
     const value_optional = modifyEnvVar(original_env_vars, "ENV_VAR");
-    try testing.expect(value_optional == null);
+    try expectWithMessage(value_optional == null, "value_optional == null");
 }
 
 test "modifyEnvVar: irrelevant environment variable, original value is empty string" {
@@ -243,9 +244,9 @@ test "modifyEnvVar: leave JAVA_TOOL_OPTIONS unchanged (null) when not set and Ja
     defer std.heap.page_allocator.free(original_env_vars);
 
     const value_optional = modifyEnvVar(original_env_vars, jvm.java_tool_options_env_var_name);
-    try testing.expect(value_optional == null);
-    try testing.expect(cache.injector_cache.java_tool_options.done);
-    try testing.expect(cache.injector_cache.java_tool_options.value == null);
+    try expectWithMessage(value_optional == null, "value_optional == null");
+    try expectWithMessage(cache.injector_cache.java_tool_options.done, "cache.injector_cache.java_tool_options.done");
+    try expectWithMessage(cache.injector_cache.java_tool_options.value == null, "cache.injector_cache.java_tool_options.value == null");
 }
 
 test "modifyEnvVar: add new JAVA_TOOL_OPTIONS when Java agent is available" {
@@ -262,7 +263,7 @@ test "modifyEnvVar: add new JAVA_TOOL_OPTIONS when Java agent is available" {
 
     const value_optional = modifyEnvVar(original_env_vars, jvm.java_tool_options_env_var_name);
     try testing.expectEqualStrings("-javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar", std.mem.span(value_optional.?));
-    try testing.expect(cache.injector_cache.java_tool_options.done);
+    try expectWithMessage(cache.injector_cache.java_tool_options.done, "cache.injector_cache.java_tool_options.done");
     try testing.expectEqualStrings("-javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar", std.mem.span(cache.injector_cache.java_tool_options.value.?));
 }
 
@@ -276,7 +277,7 @@ test "modifyEnvVar: leave existing JAVA_TOOL_OPTIONS unchanged when Java agent i
 
     const value_optional = modifyEnvVar(original_env_vars, jvm.java_tool_options_env_var_name);
     try testing.expectEqualStrings("-Dsome.property=value", std.mem.span(value_optional.?));
-    try testing.expect(cache.injector_cache.java_tool_options.done);
+    try expectWithMessage(cache.injector_cache.java_tool_options.done, "cache.injector_cache.java_tool_options.done");
     try testing.expectEqualStrings("-Dsome.property=value", std.mem.span(cache.injector_cache.java_tool_options.value.?));
 }
 
@@ -295,7 +296,7 @@ test "modifyEnvVar: append to existing JAVA_TOOL_OPTIONS when Java agent is avai
 
     const value_optional = modifyEnvVar(original_env_vars, jvm.java_tool_options_env_var_name);
     try testing.expectEqualStrings("-Dsome.property=value -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar", std.mem.span(value_optional.?));
-    try testing.expect(cache.injector_cache.java_tool_options.done);
+    try expectWithMessage(cache.injector_cache.java_tool_options.done, "cache.injector_cache.java_tool_options.done");
     try testing.expectEqualStrings("-Dsome.property=value -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar", std.mem.span(cache.injector_cache.java_tool_options.value.?));
 }
 
@@ -312,9 +313,9 @@ test "modifyEnvVar: use cached JAVA_TOOL_OPTIONS null value" {
     defer std.heap.page_allocator.free(original_env_vars);
 
     const value_optional = modifyEnvVar(original_env_vars, jvm.java_tool_options_env_var_name);
-    try testing.expect(value_optional == null);
-    try testing.expect(cache.injector_cache.java_tool_options.done);
-    try testing.expect(cache.injector_cache.java_tool_options.value == null);
+    try expectWithMessage(value_optional == null, "value_optional == null");
+    try expectWithMessage(cache.injector_cache.java_tool_options.done, "cache.injector_cache.java_tool_options.done");
+    try expectWithMessage(cache.injector_cache.java_tool_options.value == null, "cache.injector_cache.java_tool_options.value == null");
 }
 
 test "modifyEnvVar: use cached JAVA_TOOL_OPTIONS value" {
@@ -331,7 +332,7 @@ test "modifyEnvVar: use cached JAVA_TOOL_OPTIONS value" {
 
     const value_optional = modifyEnvVar(original_env_vars, jvm.java_tool_options_env_var_name);
     try testing.expectEqualStrings("cached JAVA_TOOL_OPTIONS value", std.mem.span(value_optional.?));
-    try testing.expect(cache.injector_cache.java_tool_options.done);
+    try expectWithMessage(cache.injector_cache.java_tool_options.done, "cache.injector_cache.java_tool_options.done");
     try testing.expectEqualStrings("cached JAVA_TOOL_OPTIONS value", std.mem.span(cache.injector_cache.java_tool_options.value.?));
 }
 
@@ -344,9 +345,9 @@ test "modifyEnvVar: leave NODE_OPTIONS unchanged (null) when not set and Node.js
     original_env_vars[0] = "ENV_VAR=value";
 
     const value_optional = modifyEnvVar(original_env_vars, node_js.node_options_env_var_name);
-    try testing.expect(value_optional == null);
-    try testing.expect(cache.injector_cache.node_options.done);
-    try testing.expect(cache.injector_cache.node_options.value == null);
+    try expectWithMessage(value_optional == null, "value_optional == null");
+    try expectWithMessage(cache.injector_cache.node_options.done, "cache.injector_cache.node_options.done");
+    try expectWithMessage(cache.injector_cache.node_options.value == null, "cache.injector_cache.node_options.value == null");
 }
 
 test "modifyEnvVar: add new NODE_OPTIONS when Node.js OTel SDK distribution is available" {
@@ -363,7 +364,7 @@ test "modifyEnvVar: add new NODE_OPTIONS when Node.js OTel SDK distribution is a
 
     const value_optional = modifyEnvVar(original_env_vars, node_js.node_options_env_var_name);
     try testing.expectEqualStrings("--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry", std.mem.span(value_optional.?));
-    try testing.expect(cache.injector_cache.node_options.done);
+    try expectWithMessage(cache.injector_cache.node_options.done, "cache.injector_cache.node_options.done");
     try testing.expectEqualStrings("--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry", std.mem.span(cache.injector_cache.node_options.value.?));
 }
 
@@ -377,7 +378,7 @@ test "modifyEnvVar: leave existing NODE_OPTIONS unchanged when Node.js OTel SDK 
 
     const value_optional = modifyEnvVar(original_env_vars, node_js.node_options_env_var_name);
     try testing.expectEqualStrings("--abort-on-uncaught-exception", std.mem.span(value_optional.?));
-    try testing.expect(cache.injector_cache.node_options.done);
+    try expectWithMessage(cache.injector_cache.node_options.done, "cache.injector_cache.node_options.done");
     try testing.expectEqualStrings("--abort-on-uncaught-exception", std.mem.span(cache.injector_cache.node_options.value.?));
 }
 
@@ -396,7 +397,7 @@ test "modifyEnvVar: prepend to existing NODE_OPTIONS when Node.js OTel SDK distr
 
     const value_optional = modifyEnvVar(original_env_vars, node_js.node_options_env_var_name);
     try testing.expectEqualStrings("--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --abort-on-uncaught-exception", std.mem.span(value_optional.?));
-    try testing.expect(cache.injector_cache.node_options.done);
+    try expectWithMessage(cache.injector_cache.node_options.done, "cache.injector_cache.node_options.done");
     try testing.expectEqualStrings("--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --abort-on-uncaught-exception", std.mem.span(cache.injector_cache.node_options.value.?));
 }
 
@@ -413,9 +414,9 @@ test "modifyEnvVar: use cached NODE_OPTIONS null value" {
     defer std.heap.page_allocator.free(original_env_vars);
 
     const value_optional = modifyEnvVar(original_env_vars, node_js.node_options_env_var_name);
-    try testing.expect(value_optional == null);
-    try testing.expect(cache.injector_cache.node_options.done);
-    try testing.expect(cache.injector_cache.node_options.value == null);
+    try expectWithMessage(value_optional == null, "value_optional == null");
+    try expectWithMessage(cache.injector_cache.node_options.done, "cache.injector_cache.node_options.done");
+    try expectWithMessage(cache.injector_cache.node_options.value == null, "cache.injector_cache.node_options.value == null");
 }
 
 test "modifyEnvVar: use cached NODE_OPTIONS value" {
@@ -432,7 +433,7 @@ test "modifyEnvVar: use cached NODE_OPTIONS value" {
 
     const value_optional = modifyEnvVar(original_env_vars, node_js.node_options_env_var_name);
     try testing.expectEqualStrings("cached NODE_OPTIONS value", std.mem.span(value_optional.?));
-    try testing.expect(cache.injector_cache.node_options.done);
+    try expectWithMessage(cache.injector_cache.node_options.done, "cache.injector_cache.node_options.done");
     try testing.expectEqualStrings("cached NODE_OPTIONS value", std.mem.span(cache.injector_cache.node_options.value.?));
 }
 
@@ -456,7 +457,7 @@ test "modifyEnvVar: add new OTEL_RESOURCE_ATTRIBUTES from source env vars" {
         "k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd",
         std.mem.span(value_optional.?),
     );
-    try testing.expect(cache.injector_cache.otel_resource_attributes.done);
+    try expectWithMessage(cache.injector_cache.otel_resource_attributes.done, "cache.injector_cache.otel_resource_attributes.done");
     try testing.expectEqualStrings(
         "k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd",
         std.mem.span(cache.injector_cache.otel_resource_attributes.value.?),
@@ -480,7 +481,7 @@ test "modifyEnvVar: compose OTEL_RESOURCE_ATTRIBUTES, OTEL_RESOURCE_ATTRIBUTES p
         "k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container",
         std.mem.span(value_optional.?),
     );
-    try testing.expect(cache.injector_cache.otel_resource_attributes.done);
+    try expectWithMessage(cache.injector_cache.otel_resource_attributes.done, "cache.injector_cache.otel_resource_attributes.done");
     try testing.expectEqualStrings(
         "k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container",
         std.mem.span(cache.injector_cache.otel_resource_attributes.value.?),
@@ -508,7 +509,7 @@ test "modifyEnvVar: append to existing OTEL_RESOURCE_ATTRIBUTES" {
         "k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd,key1=value1,key2=value2",
         std.mem.span(value_optional.?),
     );
-    try testing.expect(cache.injector_cache.otel_resource_attributes.done);
+    try expectWithMessage(cache.injector_cache.otel_resource_attributes.done, "cache.injector_cache.otel_resource_attributes.done");
     try testing.expectEqualStrings(
         "k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd,key1=value1,key2=value2",
         std.mem.span(cache.injector_cache.otel_resource_attributes.value.?),
@@ -528,9 +529,9 @@ test "modifyEnvVar: use cached OTEL_RESOURCE_ATTRIBUTES null value" {
     defer std.heap.page_allocator.free(original_env_vars);
 
     const value_optional = modifyEnvVar(original_env_vars, res_attrs.otel_resource_attributes_env_var_name);
-    try testing.expect(value_optional == null);
-    try testing.expect(cache.injector_cache.otel_resource_attributes.done);
-    try testing.expect(cache.injector_cache.otel_resource_attributes.value == null);
+    try expectWithMessage(value_optional == null, "value_optional == null");
+    try expectWithMessage(cache.injector_cache.otel_resource_attributes.done, "cache.injector_cache.otel_resource_attributes.done");
+    try expectWithMessage(cache.injector_cache.otel_resource_attributes.value == null, "cache.injector_cache.otel_resource_attributes.value == null");
 }
 
 test "modifyEnvVar: use cached OTEL_RESOURCE_ATTRIBUTES value" {
@@ -547,7 +548,7 @@ test "modifyEnvVar: use cached OTEL_RESOURCE_ATTRIBUTES value" {
 
     const value_optional = modifyEnvVar(original_env_vars, res_attrs.otel_resource_attributes_env_var_name);
     try testing.expectEqualStrings("cached OTEL_RESOURCE_ATTRIBUTES value", std.mem.span(value_optional.?));
-    try testing.expect(cache.injector_cache.otel_resource_attributes.done);
+    try expectWithMessage(cache.injector_cache.otel_resource_attributes.done, "cache.injector_cache.otel_resource_attributes.done");
     try testing.expectEqualStrings("cached OTEL_RESOURCE_ATTRIBUTES value", std.mem.span(cache.injector_cache.otel_resource_attributes.value.?));
 }
 
@@ -568,19 +569,19 @@ test "modifyEnvVar: do not add .NET values if not enabled" {
     defer std.heap.page_allocator.free(original_env_vars);
 
     var value_optional = modifyEnvVar(original_env_vars, dotnet.coreclr_enable_profiling_env_var_name);
-    try testing.expect(value_optional == null);
+    try expectWithMessage(value_optional == null, "value_optional == null");
     value_optional = modifyEnvVar(original_env_vars, dotnet.coreclr_profiler_env_var_name);
-    try testing.expect(value_optional == null);
+    try expectWithMessage(value_optional == null, "value_optional == null");
     value_optional = modifyEnvVar(original_env_vars, dotnet.coreclr_profiler_path_env_var_name);
-    try testing.expect(value_optional == null);
+    try expectWithMessage(value_optional == null, "value_optional == null");
     value_optional = modifyEnvVar(original_env_vars, dotnet.dotnet_additional_deps_env_var_name);
-    try testing.expect(value_optional == null);
+    try expectWithMessage(value_optional == null, "value_optional == null");
     value_optional = modifyEnvVar(original_env_vars, dotnet.dotnet_shared_store_env_var_name);
-    try testing.expect(value_optional == null);
+    try expectWithMessage(value_optional == null, "value_optional == null");
     value_optional = modifyEnvVar(original_env_vars, dotnet.dotnet_startup_hooks_env_var_name);
-    try testing.expect(value_optional == null);
+    try expectWithMessage(value_optional == null, "value_optional == null");
     value_optional = modifyEnvVar(original_env_vars, dotnet.otel_auto_home_env_var_name);
-    try testing.expect(value_optional == null);
+    try expectWithMessage(value_optional == null, "value_optional == null");
 }
 
 test "modifyEnvVar: add new .NET values if enabled" {
@@ -633,7 +634,7 @@ test "modifyEnvVar: add new .NET values if enabled" {
         std.mem.span(value_optional.?),
     );
 
-    try testing.expect(cache.injector_cache.dotnet_env_var_updates.done);
+    try expectWithMessage(cache.injector_cache.dotnet_env_var_updates.done, "cache.injector_cache.dotnet_env_var_updates.done");
     try testing.expectEqualStrings("1", std.mem.span(cache.injector_cache.dotnet_env_var_updates.values.?.coreclr_enable_profiling.value));
     try testing.expectEqualStrings("{918728DD-259F-4A6A-AC2B-B85E1B658318}", std.mem.span(cache.injector_cache.dotnet_env_var_updates.values.?.coreclr_profiler.value));
     try testing.expectEqualStrings(expected_profiler_path, std.mem.span(cache.injector_cache.dotnet_env_var_updates.values.?.coreclr_profiler_path.value));
@@ -664,22 +665,22 @@ test "modifyEnvVar: use cached .NET null values" {
     cache.injector_cache.libc_flavor = types.LibCFlavor.GNU_LIBC;
 
     var value_optional = modifyEnvVar(original_env_vars, dotnet.coreclr_enable_profiling_env_var_name);
-    try testing.expect(value_optional == null);
+    try expectWithMessage(value_optional == null, "value_optional == null");
     value_optional = modifyEnvVar(original_env_vars, dotnet.coreclr_profiler_env_var_name);
-    try testing.expect(value_optional == null);
+    try expectWithMessage(value_optional == null, "value_optional == null");
     value_optional = modifyEnvVar(original_env_vars, dotnet.coreclr_profiler_path_env_var_name);
-    try testing.expect(value_optional == null);
+    try expectWithMessage(value_optional == null, "value_optional == null");
     value_optional = modifyEnvVar(original_env_vars, dotnet.dotnet_additional_deps_env_var_name);
-    try testing.expect(value_optional == null);
+    try expectWithMessage(value_optional == null, "value_optional == null");
     value_optional = modifyEnvVar(original_env_vars, dotnet.dotnet_shared_store_env_var_name);
-    try testing.expect(value_optional == null);
+    try expectWithMessage(value_optional == null, "value_optional == null");
     value_optional = modifyEnvVar(original_env_vars, dotnet.dotnet_startup_hooks_env_var_name);
-    try testing.expect(value_optional == null);
+    try expectWithMessage(value_optional == null, "value_optional == null");
     value_optional = modifyEnvVar(original_env_vars, dotnet.otel_auto_home_env_var_name);
-    try testing.expect(value_optional == null);
+    try expectWithMessage(value_optional == null, "value_optional == null");
 
-    try testing.expect(cache.injector_cache.dotnet_env_var_updates.done);
-    try testing.expect(cache.injector_cache.dotnet_env_var_updates.values == null);
+    try expectWithMessage(cache.injector_cache.dotnet_env_var_updates.done, "cache.injector_cache.dotnet_env_var_updates.done");
+    try expectWithMessage(cache.injector_cache.dotnet_env_var_updates.values == null, "cache.injector_cache.dotnet_env_var_updates.values == null");
 }
 
 test "modifyEnvVar: use cached .NET values" {
@@ -746,7 +747,7 @@ test "modifyEnvVar: use cached .NET values" {
     value_optional = modifyEnvVar(original_env_vars, dotnet.otel_auto_home_env_var_name);
     try testing.expectEqualStrings("cached OTEL_DOTNET_AUTO_HOME value", std.mem.span(value_optional.?));
 
-    try testing.expect(cache.injector_cache.dotnet_env_var_updates.done);
+    try expectWithMessage(cache.injector_cache.dotnet_env_var_updates.done, "cache.injector_cache.dotnet_env_var_updates.done");
     try testing.expectEqualStrings("cached CORECLR_ENABLE_PROFILING value", std.mem.span(cache.injector_cache.dotnet_env_var_updates.values.?.coreclr_enable_profiling.value));
     try testing.expectEqualStrings("cached CORECLR_PROFILER value", std.mem.span(cache.injector_cache.dotnet_env_var_updates.values.?.coreclr_profiler.value));
     try testing.expectEqualStrings("cached CORECLR_PROFILER_PATH value", std.mem.span(cache.injector_cache.dotnet_env_var_updates.values.?.coreclr_profiler_path.value));

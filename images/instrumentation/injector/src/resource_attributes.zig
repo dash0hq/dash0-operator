@@ -6,9 +6,11 @@ const std = @import("std");
 const env = @import("env.zig");
 const cache = @import("cache.zig");
 const print = @import("print.zig");
+const test_util = @import("test_util.zig");
 const types = @import("types.zig");
 
 const testing = std.testing;
+const expectWithMessage = test_util.expectWithMessage;
 
 pub const otel_resource_attributes_env_var_name: []const u8 = "OTEL_RESOURCE_ATTRIBUTES";
 
@@ -133,7 +135,7 @@ test "getModifiedOtelResourceAttributesValue: no original value, no new resource
     original_env_vars[0] = "AAA=bbb";
     original_env_vars[1] = "CCC=ddd";
     const env_var_update_optional = getModifiedOtelResourceAttributesValue(original_env_vars);
-    try testing.expect(env_var_update_optional == null);
+    try expectWithMessage(env_var_update_optional == null, "env_var_update_optional == null");
     try testing.expectEqual(true, cache.injector_cache.otel_resource_attributes.done);
     try testing.expectEqual(null, cache.injector_cache.otel_resource_attributes.value);
 }
@@ -306,7 +308,7 @@ test "getResourceAttributes: empty environment" {
 
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 0);
     defer std.heap.page_allocator.free(original_env_vars);
-    try testing.expect(getResourceAttributes(original_env_vars) == null);
+    try expectWithMessage(getResourceAttributes(original_env_vars) == null, "getResourceAttributes(original_env_vars) == null");
 }
 
 test "getResourceAttributes: Kubernetes namespace only" {

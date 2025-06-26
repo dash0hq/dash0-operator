@@ -4,9 +4,11 @@
 const std = @import("std");
 
 const env = @import("env.zig");
+const test_util = @import("test_util.zig");
 const types = @import("types.zig");
 
 const testing = std.testing;
+const expectWithMessage = test_util.expectWithMessage;
 
 const dash0_injector_debug_env_var_name = "DASH0_INJECTOR_DEBUG";
 const log_prefix = "[Dash0 injector] ";
@@ -26,7 +28,7 @@ test "initDebugFlag: not set, empty environmnet" {
     defer std.heap.page_allocator.free(env_vars);
 
     initDebugFlag(env_vars);
-    try testing.expect(!isDebug());
+    try expectWithMessage(!isDebug(), "!isDebug()");
 }
 
 test "initDebugFlag: DASH0_INJECTOR_DEBUG not set" {
@@ -40,7 +42,7 @@ test "initDebugFlag: DASH0_INJECTOR_DEBUG not set" {
     env_vars[2] = "EEE=fff";
 
     initDebugFlag(env_vars);
-    try testing.expect(!isDebug());
+    try expectWithMessage(!isDebug(), "!isDebug()");
 }
 
 test "initDebugFlag: false" {
@@ -55,7 +57,7 @@ test "initDebugFlag: false" {
     env_vars[3] = "EEE=fff";
 
     initDebugFlag(env_vars);
-    try testing.expect(!isDebug());
+    try expectWithMessage(!isDebug(), "!isDebug()");
 }
 
 test "initDebugFlag: arbitrary string" {
@@ -70,7 +72,7 @@ test "initDebugFlag: arbitrary string" {
     env_vars[3] = "EEE=fff";
 
     initDebugFlag(env_vars);
-    try testing.expect(!isDebug());
+    try expectWithMessage(!isDebug(), "!isDebug()");
 }
 
 test "initDebugFlag: empty string" {
@@ -85,7 +87,7 @@ test "initDebugFlag: empty string" {
     env_vars[3] = "EEE=fff";
 
     initDebugFlag(env_vars);
-    try testing.expect(!isDebug());
+    try expectWithMessage(!isDebug(), "!isDebug()");
 }
 
 test "initDebugFlag: true, only env var" {
@@ -97,7 +99,7 @@ test "initDebugFlag: true, only env var" {
     env_vars[0] = "DASH0_INJECTOR_DEBUG=true";
 
     initDebugFlag(env_vars);
-    try testing.expect(isDebug());
+    try expectWithMessage(isDebug(), "isDebug()");
 }
 
 test "initDebugFlag: true, other env vars present" {
@@ -112,7 +114,7 @@ test "initDebugFlag: true, other env vars present" {
     env_vars[3] = "EEE=fff";
 
     initDebugFlag(env_vars);
-    try testing.expect(isDebug());
+    try expectWithMessage(isDebug(), "isDebug()");
 }
 
 pub fn isDebug() bool {
