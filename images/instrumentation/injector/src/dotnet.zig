@@ -11,7 +11,6 @@ const test_util = @import("test_util.zig");
 const types = @import("types.zig");
 
 const testing = std.testing;
-const expectWithMessage = test_util.expectWithMessage;
 
 // Note: The CLR bootstrapping code (implemented in C++) uses getenv, but when doing
 // Environment.GetEnvironmentVariable from within a .NET application, it will apparently bypass getenv.
@@ -47,7 +46,8 @@ pub const dotnet_shared_store_env_var_name = "DOTNET_SHARED_STORE";
 pub const dotnet_startup_hooks_env_var_name = "DOTNET_STARTUP_HOOKS";
 pub const otel_auto_home_env_var_name = "OTEL_DOTNET_AUTO_HOME";
 
-pub const dotnet_path_prefix = "/__dash0__/instrumentation/dotnet";
+pub const dotnet_path_prefix_default = "/__dash0__/instrumentation/dotnet";
+pub var dotnet_path_prefix: []const u8 = dotnet_path_prefix_default;
 
 const injection_happened_msg = "injecting the .NET OpenTelemetry instrumentation";
 var injection_happened_msg_has_been_printed = false;
@@ -127,14 +127,17 @@ test "getDotnetValues: should return null value if the profiler path cannot be a
     defer cache.injector_cache = cache.emptyInjectorCache();
 
     const dotnet_env_var_updates_optional = getDotnetEnvVarUpdates();
-    try expectWithMessage(dotnet_env_var_updates_optional == null, "dotnet_env_var_updates_optional == null");
+    try test_util.expectWithMessage(dotnet_env_var_updates_optional == null, "dotnet_env_var_updates_optional == null");
 }
 
 test "getDotnetValues: should cache and return values if the profiler path can be accessed" {
-    try test_util.createDummyDotnetInstrumentation();
+    const dirs = try test_util.getDummyInstrumentationDirs();
+    try test_util.createDummyDotnetInstrumentation(dirs);
     defer {
-        test_util.deleteDash0DummyDirectory();
+        test_util.deleteDash0DummyDirectory(dirs);
     }
+    dotnet_path_prefix = dirs.dummy_instrumentation_dotnet_dir;
+    defer dotnet_path_prefix = dotnet_path_prefix_default;
 
     cache.injector_cache = cache.emptyInjectorCache();
     defer cache.injector_cache = cache.emptyInjectorCache();
@@ -144,7 +147,7 @@ test "getDotnetValues: should cache and return values if the profiler path can b
     cache.injector_cache.libc_flavor = types.LibCFlavor.GNU_LIBC;
 
     const dotnet_env_var_updates_optional = getDotnetEnvVarUpdates();
-    try expectWithMessage(dotnet_env_var_updates_optional != null, "dotnet_env_var_updates_optional != null");
+    try test_util.expectWithMessage(dotnet_env_var_updates_optional != null, "dotnet_env_var_updates_optional != null");
     try testing.expectEqualStrings(
         "1",
         std.mem.span(dotnet_env_var_updates_optional.?.coreclr_enable_profiling.value),
@@ -153,7 +156,7 @@ test "getDotnetValues: should cache and return values if the profiler path can b
         "{918728DD-259F-4A6A-AC2B-B85E1B658318}",
         std.mem.span(dotnet_env_var_updates_optional.?.coreclr_profiler.value),
     );
-    try testing.expectStringStartsWith(
+    try test_util.expectStringContains(
         std.mem.span(dotnet_env_var_updates_optional.?.coreclr_profiler_path.value),
         "/__dash0__/instrumentation/dotnet/glibc/linux-",
     );
@@ -161,27 +164,36 @@ test "getDotnetValues: should cache and return values if the profiler path can b
         std.mem.span(dotnet_env_var_updates_optional.?.coreclr_profiler_path.value),
         "OpenTelemetry.AutoInstrumentation.Native.so",
     );
-    try testing.expectEqualStrings(
-        "/__dash0__/instrumentation/dotnet/glibc/AdditionalDeps",
+    try testing.expectStringEndsWith(
         std.mem.span(dotnet_env_var_updates_optional.?.dotnet_additional_deps.value),
+        "/__dash0__/instrumentation/dotnet/glibc/AdditionalDeps",
     );
-    try testing.expectEqualStrings(
-        "/__dash0__/instrumentation/dotnet/glibc/store",
+    try testing.expectStringEndsWith(
         std.mem.span(dotnet_env_var_updates_optional.?.dotnet_shared_store.value),
+        "/__dash0__/instrumentation/dotnet/glibc/store",
     );
-    try testing.expectEqualStrings(
-        "/__dash0__/instrumentation/dotnet/glibc/net/OpenTelemetry.AutoInstrumentation.StartupHook.dll",
+    try testing.expectStringEndsWith(
         std.mem.span(dotnet_env_var_updates_optional.?.dotnet_startup_hooks.value),
+        "/__dash0__/instrumentation/dotnet/glibc/net/OpenTelemetry.AutoInstrumentation.StartupHook.dll",
     );
-    try testing.expectEqualStrings(
-        "/__dash0__/instrumentation/dotnet/glibc",
+    try testing.expectStringEndsWith(
         std.mem.span(dotnet_env_var_updates_optional.?.otel_auto_home.value),
+        "/__dash0__/instrumentation/dotnet/glibc",
     );
 
-    try expectWithMessage(cache.injector_cache.dotnet_env_var_updates.done, "cache.injector_cache.dotnet_env_var_updates.done");
-    try testing.expectEqualStrings("1", std.mem.span(cache.injector_cache.dotnet_env_var_updates.values.?.coreclr_enable_profiling.value));
-    try testing.expectEqualStrings("{918728DD-259F-4A6A-AC2B-B85E1B658318}", std.mem.span(cache.injector_cache.dotnet_env_var_updates.values.?.coreclr_profiler.value));
-    try testing.expectStringStartsWith(
+    try test_util.expectWithMessage(
+        cache.injector_cache.dotnet_env_var_updates.done,
+        "cache.injector_cache.dotnet_env_var_updates.done",
+    );
+    try testing.expectEqualStrings(
+        "1",
+        std.mem.span(cache.injector_cache.dotnet_env_var_updates.values.?.coreclr_enable_profiling.value),
+    );
+    try testing.expectEqualStrings(
+        "{918728DD-259F-4A6A-AC2B-B85E1B658318}",
+        std.mem.span(cache.injector_cache.dotnet_env_var_updates.values.?.coreclr_profiler.value),
+    );
+    try test_util.expectStringContains(
         std.mem.span(cache.injector_cache.dotnet_env_var_updates.values.?.coreclr_profiler_path.value),
         "/__dash0__/instrumentation/dotnet/glibc/linux-",
     );
@@ -189,10 +201,22 @@ test "getDotnetValues: should cache and return values if the profiler path can b
         std.mem.span(cache.injector_cache.dotnet_env_var_updates.values.?.coreclr_profiler_path.value),
         "OpenTelemetry.AutoInstrumentation.Native.so",
     );
-    try testing.expectEqualStrings("/__dash0__/instrumentation/dotnet/glibc/AdditionalDeps", std.mem.span(cache.injector_cache.dotnet_env_var_updates.values.?.dotnet_additional_deps.value));
-    try testing.expectEqualStrings("/__dash0__/instrumentation/dotnet/glibc/store", std.mem.span(cache.injector_cache.dotnet_env_var_updates.values.?.dotnet_shared_store.value));
-    try testing.expectEqualStrings("/__dash0__/instrumentation/dotnet/glibc/net/OpenTelemetry.AutoInstrumentation.StartupHook.dll", std.mem.span(cache.injector_cache.dotnet_env_var_updates.values.?.dotnet_startup_hooks.value));
-    try testing.expectEqualStrings("/__dash0__/instrumentation/dotnet/glibc", std.mem.span(cache.injector_cache.dotnet_env_var_updates.values.?.otel_auto_home.value));
+    try testing.expectStringEndsWith(
+        std.mem.span(cache.injector_cache.dotnet_env_var_updates.values.?.dotnet_additional_deps.value),
+        "/__dash0__/instrumentation/dotnet/glibc/AdditionalDeps",
+    );
+    try testing.expectStringEndsWith(
+        std.mem.span(cache.injector_cache.dotnet_env_var_updates.values.?.dotnet_shared_store.value),
+        "/__dash0__/instrumentation/dotnet/glibc/store",
+    );
+    try testing.expectStringEndsWith(
+        std.mem.span(cache.injector_cache.dotnet_env_var_updates.values.?.dotnet_startup_hooks.value),
+        "/__dash0__/instrumentation/dotnet/glibc/net/OpenTelemetry.AutoInstrumentation.StartupHook.dll",
+    );
+    try testing.expectStringEndsWith(
+        std.mem.span(cache.injector_cache.dotnet_env_var_updates.values.?.otel_auto_home.value),
+        "/__dash0__/instrumentation/dotnet/glibc",
+    );
 }
 
 fn getLibCFlavor() types.LibCFlavor {

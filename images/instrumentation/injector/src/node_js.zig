@@ -9,11 +9,10 @@ const test_util = @import("test_util.zig");
 const types = @import("types.zig");
 
 const testing = std.testing;
-const expectWithMessage = test_util.expectWithMessage;
 
 pub const node_options_env_var_name = "NODE_OPTIONS";
-pub const dash0_nodejs_otel_sdk_distribution = "/__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry";
-const require_dash0_nodejs_otel_sdk_distribution = "--require " ++ dash0_nodejs_otel_sdk_distribution;
+pub const dash0_nodejs_otel_sdk_distribution_default = "/__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry";
+pub var dash0_nodejs_otel_sdk_distribution: []const u8 = dash0_nodejs_otel_sdk_distribution_default;
 const injection_happened_msg = "injecting the Dash0 Node.js OpenTelemetry distribution";
 
 pub fn checkNodeJsOTelSdkDistributionAndGetModifiedNodeOptionsValue(original_value_and_index_optional: ?types.EnvVarValueAndIndex) ?types.EnvVarUpdate {
@@ -49,10 +48,10 @@ test "checkNodeJsOTelDistributionAndGetModifiedNodeOptionsValue: should return n
     defer cache.injector_cache = cache.emptyInjectorCache();
 
     const env_var_update_optional = checkNodeJsOTelSdkDistributionAndGetModifiedNodeOptionsValue(null);
-    try expectWithMessage(env_var_update_optional == null, "env_var_update_optional == null");
+    try test_util.expectWithMessage(env_var_update_optional == null, "env_var_update_optional == null");
 
     try testing.expectEqual(true, cache.injector_cache.node_options.done);
-    try expectWithMessage(cache.injector_cache.node_options.value == null, "cache.injector_cache.node_options.value == null");
+    try test_util.expectWithMessage(cache.injector_cache.node_options.value == null, "cache.injector_cache.node_options.value == null");
 }
 
 test "checkNodeJsOTelDistributionAndGetModifiedNodeOptionsValue: should return the original value if the Node.js OTel SDK distribution cannot be accessed" {
@@ -75,27 +74,45 @@ test "checkNodeJsOTelDistributionAndGetModifiedNodeOptionsValue: should return t
 }
 
 test "checkNodeJsOTelDistributionAndGetModifiedNodeOptionsValue: should return --require if original value is unset and the Node.js OTel SDK distribution can be accessed" {
-    try test_util.createDummyNodeJsDistribution();
+    const dirs = try test_util.getDummyInstrumentationDirs();
+    try test_util.createDummyNodeJsDistribution(dirs);
     defer {
-        test_util.deleteDash0DummyDirectory();
+        test_util.deleteDash0DummyDirectory(dirs);
     }
+    dash0_nodejs_otel_sdk_distribution = dirs.dummy_instrumentation_nodejs_dir;
+    defer dash0_nodejs_otel_sdk_distribution = dash0_nodejs_otel_sdk_distribution_default;
 
     cache.injector_cache = cache.emptyInjectorCache();
     defer cache.injector_cache = cache.emptyInjectorCache();
 
     const env_var_update = checkNodeJsOTelSdkDistributionAndGetModifiedNodeOptionsValue(null).?;
-    try testing.expectEqualStrings(
-        "--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
+    try test_util.expectStringStartAndEnd(
         std.mem.span(env_var_update.value),
+        "--require ",
+        "/__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
     );
     try testing.expectEqual(false, env_var_update.replace);
     try testing.expectEqual(0, env_var_update.index);
 
     try testing.expectEqual(true, cache.injector_cache.node_options.done);
-    try testing.expectEqualStrings("--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry", std.mem.span(cache.injector_cache.node_options.value.?));
+    try test_util.expectStringStartAndEnd(
+        std.mem.span(cache.injector_cache.node_options.value.?),
+        "--require ",
+        "/__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
+    );
 }
 
 fn getModifiedNodeOptionsValue(original_value_and_index_optional: ?types.EnvVarValueAndIndex) ?types.EnvVarUpdate {
+    const require_dash0_nodejs_otel_sdk_distribution =
+        std.fmt.allocPrint(
+            std.heap.page_allocator,
+            "--require {s}",
+            .{dash0_nodejs_otel_sdk_distribution},
+        ) catch |err| {
+            print.printError("Cannot allocate memory to create the --require value for '{s}': {}", .{ node_options_env_var_name, err });
+            return null;
+        };
+
     if (original_value_and_index_optional) |original_value_and_index| {
         // If NODE_OPTIONS is already set, prepend our "--require ..." flag to the original value.
         // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
@@ -124,14 +141,18 @@ fn getModifiedNodeOptionsValue(original_value_and_index_optional: ?types.EnvVarV
     }
 
     // If NODE_OPTIONS is not set, simply return our "--require ..." flag.
+    const require: types.NullTerminatedString = std.heap.page_allocator.dupeZ(u8, require_dash0_nodejs_otel_sdk_distribution) catch |err| {
+        print.printError("Cannot allocate memory to duplicate the --require value for '{s}': {}", .{ node_options_env_var_name, err });
+        return null;
+    };
     print.printMessage(injection_happened_msg, .{});
     cache.injector_cache.node_options =
         cache.CachedEnvVarValue{
-            .value = require_dash0_nodejs_otel_sdk_distribution[0..].ptr,
+            .value = require,
             .done = true,
         };
     return types.EnvVarUpdate{
-        .value = require_dash0_nodejs_otel_sdk_distribution[0..].ptr,
+        .value = require,
         .replace = false,
         .index = 0,
     };

@@ -456,10 +456,13 @@ test "applyModifications: no changes" {
 }
 
 test "applyModifications: append JAVA_TOOL_OPTIONS" {
-    try test_util.createDummyJavaAgent();
+    const dirs = try test_util.getDummyInstrumentationDirs();
+    try test_util.createDummyJavaAgent(dirs);
     defer {
-        test_util.deleteDash0DummyDirectory();
+        test_util.deleteDash0DummyDirectory(dirs);
     }
+    jvm.otel_java_agent_path = dirs.dummy_instrumentation_jvm_agent_path;
+    defer jvm.otel_java_agent_path = jvm.otel_java_agent_path_default;
 
     cache.injector_cache = cache.emptyInjectorCache();
     defer cache.injector_cache = cache.emptyInjectorCache();
@@ -476,14 +479,21 @@ test "applyModifications: append JAVA_TOOL_OPTIONS" {
     try testing.expectEqualStrings("VAR2=value2", std.mem.span(modified_env_vars[1]));
     try testing.expectEqualStrings("VAR3=value3", std.mem.span(modified_env_vars[2]));
     try testing.expectEqualStrings("__DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS=true", std.mem.span(modified_env_vars[3]));
-    try testing.expectEqualStrings("JAVA_TOOL_OPTIONS=-javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar", std.mem.span(modified_env_vars[4]));
+    try test_util.expectStringStartAndEnd(
+        std.mem.span(modified_env_vars[4]),
+        "JAVA_TOOL_OPTIONS=-javaagent:",
+        "/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar",
+    );
 }
 
 test "applyModifications: append NODE_OPTIONS" {
-    try test_util.createDummyNodeJsDistribution();
+    const dirs = try test_util.getDummyInstrumentationDirs();
+    try test_util.createDummyNodeJsDistribution(dirs);
     defer {
-        test_util.deleteDash0DummyDirectory();
+        test_util.deleteDash0DummyDirectory(dirs);
     }
+    node_js.dash0_nodejs_otel_sdk_distribution = dirs.dummy_instrumentation_nodejs_dir;
+    defer node_js.dash0_nodejs_otel_sdk_distribution = node_js.dash0_nodejs_otel_sdk_distribution_default;
 
     cache.injector_cache = cache.emptyInjectorCache();
     defer cache.injector_cache = cache.emptyInjectorCache();
@@ -500,7 +510,11 @@ test "applyModifications: append NODE_OPTIONS" {
     try testing.expectEqualStrings("VAR2=value2", std.mem.span(modified_env_vars[1]));
     try testing.expectEqualStrings("VAR3=value3", std.mem.span(modified_env_vars[2]));
     try testing.expectEqualStrings("__DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS=true", std.mem.span(modified_env_vars[3]));
-    try testing.expectEqualStrings("NODE_OPTIONS=--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry", std.mem.span(modified_env_vars[4]));
+    try test_util.expectStringStartAndEnd(
+        std.mem.span(modified_env_vars[4]),
+        "NODE_OPTIONS=--require ",
+        "/__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
+    );
 }
 
 test "applyModifications: compose OTEL_RESOURCE_ATTRIBUTES, OTEL_RESOURCE_ATTRIBUTES not present, source env vars present, other env vars are present" {
@@ -612,10 +626,17 @@ test "applyModifications: compose OTEL_RESOURCE_ATTRIBUTES, OTEL_RESOURCE_ATTRIB
 }
 
 test "applyModifications: append OTEL_RESOURCE_ATTRIBUTES, JAVA_TOOL_OPTIONS, and .NET environment variables" {
-    try test_util.createAllDummyInstrumentations();
+    const dirs = try test_util.getDummyInstrumentationDirs();
+    try test_util.createAllDummyInstrumentations(dirs);
     defer {
-        test_util.deleteDash0DummyDirectory();
+        test_util.deleteDash0DummyDirectory(dirs);
     }
+    jvm.otel_java_agent_path = dirs.dummy_instrumentation_jvm_agent_path;
+    defer jvm.otel_java_agent_path = jvm.otel_java_agent_path_default;
+    node_js.dash0_nodejs_otel_sdk_distribution = dirs.dummy_instrumentation_nodejs_dir;
+    defer node_js.dash0_nodejs_otel_sdk_distribution = node_js.dash0_nodejs_otel_sdk_distribution_default;
+    dotnet.dotnet_path_prefix = dirs.dummy_instrumentation_dotnet_dir;
+    defer dotnet.dotnet_path_prefix = dotnet.dotnet_path_prefix_default;
 
     cache.injector_cache = cache.emptyInjectorCache();
     defer cache.injector_cache = cache.emptyInjectorCache();
@@ -648,13 +669,15 @@ test "applyModifications: append OTEL_RESOURCE_ATTRIBUTES, JAVA_TOOL_OPTIONS, an
     try testing.expectEqualStrings("DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd", std.mem.span(modified_env_vars[7]));
     try testing.expectEqualStrings("DASH0_EXPERIMENTAL_DOTNET_INJECTION=true", std.mem.span(modified_env_vars[8]));
     try testing.expectEqualStrings("__DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS=true", std.mem.span(modified_env_vars[9]));
-    try testing.expectEqualStrings(
-        "JAVA_TOOL_OPTIONS=-javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar -Dotel.resource.attributes=k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd",
+    try test_util.expectStringStartAndEnd(
         std.mem.span(modified_env_vars[10]),
+        "JAVA_TOOL_OPTIONS=-javaagent:",
+        "/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar -Dotel.resource.attributes=k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd",
     );
-    try testing.expectEqualStrings(
-        "NODE_OPTIONS=--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
+    try test_util.expectStringStartAndEnd(
         std.mem.span(modified_env_vars[11]),
+        "NODE_OPTIONS=--require ",
+        "/__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
     );
     try testing.expectEqualStrings(
         "OTEL_RESOURCE_ATTRIBUTES=k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd",
@@ -668,38 +691,51 @@ test "applyModifications: append OTEL_RESOURCE_ATTRIBUTES, JAVA_TOOL_OPTIONS, an
         "CORECLR_PROFILER={918728DD-259F-4A6A-AC2B-B85E1B658318}",
         std.mem.span(modified_env_vars[14]),
     );
-    const expected_profiler_path = comptime "CORECLR_PROFILER_PATH=/__dash0__/instrumentation/dotnet/glibc/" ++
-        test_util.getDotnetPlatformForTest() ++
-        "/OpenTelemetry.AutoInstrumentation.Native.so";
-    try testing.expectEqualStrings(
-        expected_profiler_path,
+    try testing.expectStringStartsWith(
         std.mem.span(modified_env_vars[15]),
+        "CORECLR_PROFILER_PATH=",
     );
-    try testing.expectEqualStrings(
-        "DOTNET_ADDITIONAL_DEPS=/__dash0__/instrumentation/dotnet/glibc/AdditionalDeps",
+    try test_util.expectStringContains(
+        std.mem.span(modified_env_vars[15]),
+        "/__dash0__/instrumentation/dotnet/glibc/",
+    );
+    try testing.expectStringEndsWith(
+        std.mem.span(modified_env_vars[15]),
+        "/OpenTelemetry.AutoInstrumentation.Native.so",
+    );
+    try test_util.expectStringStartAndEnd(
         std.mem.span(modified_env_vars[16]),
+        "DOTNET_ADDITIONAL_DEPS=",
+        "/__dash0__/instrumentation/dotnet/glibc/AdditionalDeps",
     );
-    try testing.expectEqualStrings(
-        "DOTNET_SHARED_STORE=/__dash0__/instrumentation/dotnet/glibc/store",
+    try test_util.expectStringStartAndEnd(
         std.mem.span(modified_env_vars[17]),
+        "DOTNET_SHARED_STORE=",
+        "/__dash0__/instrumentation/dotnet/glibc/store",
     );
-    try testing.expectEqualStrings(
-        "DOTNET_STARTUP_HOOKS=/__dash0__/instrumentation/dotnet/glibc/net/OpenTelemetry.AutoInstrumentation.StartupHook.dll",
+    try test_util.expectStringStartAndEnd(
         std.mem.span(modified_env_vars[18]),
+        "DOTNET_STARTUP_HOOKS=",
+        "/__dash0__/instrumentation/dotnet/glibc/net/OpenTelemetry.AutoInstrumentation.StartupHook.dll",
     );
-    try testing.expectEqualStrings(
-        "OTEL_DOTNET_AUTO_HOME=/__dash0__/instrumentation/dotnet/glibc",
+    try test_util.expectStringStartAndEnd(
         std.mem.span(modified_env_vars[19]),
+        "OTEL_DOTNET_AUTO_HOME=",
+        "/__dash0__/instrumentation/dotnet/glibc",
     );
 }
 
 test "applyModifications: replace JAVA_TOOL_OPTIONS, NODE_OPTIONS, and OTEL_RESOURCE_ATTRIBUTES" {
-    try test_util.createDummyJavaAgent();
-    _ = try std.fs.createFileAbsolute(jvm.otel_java_agent_path, .{});
-    try test_util.createDummyNodeJsDistribution();
+    const dirs = try test_util.getDummyInstrumentationDirs();
+    try test_util.createDummyJavaAgent(dirs);
+    try test_util.createDummyNodeJsDistribution(dirs);
     defer {
-        test_util.deleteDash0DummyDirectory();
+        test_util.deleteDash0DummyDirectory(dirs);
     }
+    jvm.otel_java_agent_path = dirs.dummy_instrumentation_jvm_agent_path;
+    defer jvm.otel_java_agent_path = jvm.otel_java_agent_path_default;
+    node_js.dash0_nodejs_otel_sdk_distribution = dirs.dummy_instrumentation_nodejs_dir;
+    defer node_js.dash0_nodejs_otel_sdk_distribution = node_js.dash0_nodejs_otel_sdk_distribution_default;
 
     cache.injector_cache = cache.emptyInjectorCache();
     defer cache.injector_cache = cache.emptyInjectorCache();
@@ -720,11 +756,16 @@ test "applyModifications: replace JAVA_TOOL_OPTIONS, NODE_OPTIONS, and OTEL_RESO
 
     const modified_env_vars = try applyModifications(original_env_vars);
     try testing.expectEqual(12, modified_env_vars.len);
-    try testing.expectEqualStrings("NODE_OPTIONS=--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --abort-on-uncaught-exception", std.mem.span(modified_env_vars[0]));
+    try test_util.expectStringStartAndEnd(
+        std.mem.span(modified_env_vars[0]),
+        "NODE_OPTIONS=--require ",
+        "/__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --abort-on-uncaught-exception",
+    );
     try testing.expectEqualStrings("DASH0_NAMESPACE_NAME=namespace", std.mem.span(modified_env_vars[1]));
-    try testing.expectEqualStrings(
-        "JAVA_TOOL_OPTIONS=-Dproperty1=value -Dotel.resource.attributes=eee=fff,ggg=hhh,k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar",
+    try test_util.expectStringStartAndEnd(
         std.mem.span(modified_env_vars[2]),
+        "JAVA_TOOL_OPTIONS=-Dproperty1=value -Dotel.resource.attributes=eee=fff,ggg=hhh,k8s.namespace.name=namespace,k8s.pod.name=pod,k8s.pod.uid=uid,k8s.container.name=container,service.name=service,service.version=version,service.namespace=servicenamespace,aaa=bbb,ccc=ddd -javaagent:",
+        "/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar",
     );
     try testing.expectEqualStrings("DASH0_POD_NAME=pod", std.mem.span(modified_env_vars[3]));
     try testing.expectEqualStrings("DASH0_POD_UID=uid", std.mem.span(modified_env_vars[4]));

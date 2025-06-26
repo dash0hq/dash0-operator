@@ -11,11 +11,10 @@ const test_util = @import("test_util.zig");
 const types = @import("types.zig");
 
 const testing = std.testing;
-const expectWithMessage = test_util.expectWithMessage;
 
 pub const java_tool_options_env_var_name = "JAVA_TOOL_OPTIONS";
-pub const otel_java_agent_path = "/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar";
-const javaagent_flag_value = "-javaagent:" ++ otel_java_agent_path;
+pub const otel_java_agent_path_default = "/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar";
+pub var otel_java_agent_path: []const u8 = otel_java_agent_path_default;
 const injection_happened_msg = "injecting the Java OpenTelemetry agent";
 
 pub fn checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue(env_vars: [](types.NullTerminatedString)) ?types.EnvVarUpdate {
@@ -60,10 +59,10 @@ test "checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue: should return nul
     original_env_vars[0] = "AAA=bbb";
     original_env_vars[1] = "CCC=ddd";
     const env_var_update_optional = checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue(original_env_vars);
-    try expectWithMessage(env_var_update_optional == null, "env_var_update_optional == null");
+    try test_util.expectWithMessage(env_var_update_optional == null, "env_var_update_optional == null");
 
     try testing.expectEqual(true, cache.injector_cache.java_tool_options.done);
-    try expectWithMessage(cache.injector_cache.java_tool_options.value == null, "cache.injector_cache.java_tool_options.value == null");
+    try test_util.expectWithMessage(cache.injector_cache.java_tool_options.value == null, "cache.injector_cache.java_tool_options.value == null");
 }
 
 test "checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue: should return the original value if the Java agent cannot be accessed" {
@@ -88,10 +87,13 @@ test "checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue: should return the
 }
 
 test "checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue: should return -javaagent if original value is unset and the Java agent can be accessed" {
-    try test_util.createDummyJavaAgent();
+    const dirs = try test_util.getDummyInstrumentationDirs();
+    try test_util.createDummyJavaAgent(dirs);
     defer {
-        test_util.deleteDash0DummyDirectory();
+        test_util.deleteDash0DummyDirectory(dirs);
     }
+    otel_java_agent_path = dirs.dummy_instrumentation_jvm_agent_path;
+    defer otel_java_agent_path = otel_java_agent_path_default;
 
     cache.injector_cache = cache.emptyInjectorCache();
     defer cache.injector_cache = cache.emptyInjectorCache();
@@ -99,15 +101,20 @@ test "checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue: should return -ja
     const original_env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 0);
     defer std.heap.page_allocator.free(original_env_vars);
     const env_var_update = checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue(original_env_vars).?;
-    try testing.expectEqualStrings(
-        "-javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar",
+    try test_util.expectStringStartAndEnd(
         std.mem.span(env_var_update.value),
+        "-javaagent:",
+        "/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar",
     );
     try testing.expectEqual(false, env_var_update.replace);
     try testing.expectEqual(0, env_var_update.index);
 
     try testing.expectEqual(true, cache.injector_cache.java_tool_options.done);
-    try testing.expectEqualStrings("-javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar", std.mem.span(cache.injector_cache.java_tool_options.value.?));
+    try test_util.expectStringStartAndEnd(
+        std.mem.span(cache.injector_cache.java_tool_options.value.?),
+        "-javaagent:",
+        "/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar",
+    );
 }
 
 /// Returns the modified value for JAVA_TOOL_OPTIONS, including the -javaagent flag; based on the original value of
@@ -120,6 +127,16 @@ fn getModifiedJavaToolOptionsValue(
     original_value_and_index_optional: ?types.EnvVarValueAndIndex,
     new_resource_attributes_optional: ?[]u8,
 ) ?types.EnvVarUpdate {
+    const javaagent_flag_value =
+        std.fmt.allocPrint(
+            std.heap.page_allocator,
+            "-javaagent:{s}",
+            .{otel_java_agent_path},
+        ) catch |err| {
+            print.printError("Cannot allocate memory to create the -javaagent value for '{s}': {}", .{ java_tool_options_env_var_name, err });
+            return null;
+        };
+
     // For auto-instrumentation, we inject the -javaagent flag into the JAVA_TOOL_OPTIONS environment variable. In
     // addition, we use JAVA_TOOL_OPTIONS to supply addtional resource attributes. The Java runtime does not look up the
     // OTEL_RESOURCE_ATTRIBUTES environment variable using getenv(), instead it parses the environment block
@@ -295,15 +312,20 @@ fn getModifiedJavaToolOptionsValue(
                 .index = 0,
             };
         } else {
-            // JAVA_TOOL_OPTIONS is not set, and no new resource attributes have been provided. Simply return the -javaagent flag.
+            // JAVA_TOOL_OPTIONS is not set, and no new resource attributes have been provided. Simply return the
+            // -javaagent flag.
+            const java_agent_flag: types.NullTerminatedString = std.heap.page_allocator.dupeZ(u8, javaagent_flag_value) catch |err| {
+                print.printError("Cannot allocate memory to duplicate the -javaagent value for '{s}': {}", .{ java_tool_options_env_var_name, err });
+                return null;
+            };
             print.printMessage(injection_happened_msg, .{});
             cache.injector_cache.java_tool_options =
                 cache.CachedEnvVarValue{
-                    .value = javaagent_flag_value[0..].ptr,
+                    .value = java_agent_flag,
                     .done = true,
                 };
             return types.EnvVarUpdate{
-                .value = javaagent_flag_value[0..].ptr,
+                .value = java_agent_flag,
                 .replace = false,
                 .index = 0,
             };

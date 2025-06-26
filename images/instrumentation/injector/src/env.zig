@@ -7,7 +7,6 @@ const test_util = @import("test_util.zig");
 const types = @import("types.zig");
 
 const testing = std.testing;
-const expectWithMessage = test_util.expectWithMessage;
 
 /// Get the value of an environment variable from the provided env_vars list, which is a list of null-terminated
 /// strings following the pattern VARIABLE_NAME=value. Returns an the value of the environment variable, and the index
@@ -46,7 +45,7 @@ test "getEnvVar: env var not found" {
     env_vars[2] = "ENV_VAR_3=value3";
     env_vars[3] = "ENV_VAR_4=value4";
     env_vars[4] = "ENV_VAR_5=value5";
-    try expectWithMessage(getEnvVar(env_vars, "ENV_VAR_42") == null, "etEnvVar(env_vars, \"ENV_VAR_42\") == null");
+    try test_util.expectWithMessage(getEnvVar(env_vars, "ENV_VAR_42") == null, "etEnvVar(env_vars, \"ENV_VAR_42\") == null");
 }
 
 test "getEnvVar: env var found at the beginning" {
