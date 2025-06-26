@@ -1,0 +1,19 @@
+commit sha: cdf607aed296cd27badf596d4b960e32982f89ae (this is an earlier version without getenv override)
+DOCKER_CLEANUP_ENABLED=false ARCHITECTURES=arm64 LIBC_FLAVORS=glibc TEST_SETS=default TEST_CASES="getenv: overrides NODE_OPTIONS if it is not present" test/scripts/test-all.sh
+docker run -it dash0-injector-test-arm64-glibc /bin/bash
+cd app
+LD_PRELOAD=/dash0-init-container/injector/dash0_injector.so node index.js node_options &> /tmp/__environ_modifications_have_no_effect_test_output.txt
+
+OUTPUT:
+=======
+
+[Dash0 injector] starting to instrument process with pid 55 (/usr/local/bin/node)
+
+[Dash0 injector] adding additional OpenTelemetry resources attributes via OTEL_RESOURCE_ATTRIBUTES
+[Dash0 injector] adding additional OpenTelemetry resources attributes via JAVA_TOOL_OPTIONS
+[Dash0 injector] injecting the Java OpenTelemetry agent
+[Dash0 injector] injecting the Dash0 Node.js OpenTelemetry distribution
+[Dash0 injector] done, successfully instrumented process with pid 55 (/usr/local/bin/node)
+
+test app PID: 55
+NODE_OPTIONS: -
