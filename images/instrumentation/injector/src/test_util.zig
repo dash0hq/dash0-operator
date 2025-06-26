@@ -4,8 +4,6 @@
 const builtin = @import("builtin");
 const std = @import("std");
 
-pub const test_allocator: std.mem.Allocator = std.heap.page_allocator;
-
 const testing = std.testing;
 
 /// An extended version of std.testing.expect that prints a message in case of failure. Useful for tests that have
@@ -66,10 +64,27 @@ pub fn getDotnetPlatformForTest() []const u8 {
     };
 }
 
+/// Creates a file at the given path.
+pub fn createDummyFile(path: []const u8) !void {
+    _ = std.fs.createFileAbsolute(path, .{}) catch |err| {
+        print("\n====== setup failed: =============\n", .{});
+        print("ERROR: std.fs.createFileAbsolute({s}) failed in test: {}\n", .{ path, err });
+        return err;
+    };
+}
+
 /// Creates a directory at the given path.
 pub fn createDummyDirectory(path: []const u8) !void {
-    const root_dir = try std.fs.openDirAbsolute("/", .{});
-    try root_dir.makePath(path);
+    const root_dir = std.fs.openDirAbsolute("/", .{}) catch |err| {
+        print("\n====== setup failed: =============\n", .{});
+        print("ERROR: std.fs.openDirAbsolute(\"/\") failed in test: {}\n", .{err});
+        return err;
+    };
+    root_dir.makePath(path) catch |err| {
+        print("\n====== setup failed: =============\n", .{});
+        print("ERROR: root_dir.makePath({s}) failed in test: {}\n", .{ path, err });
+        return err;
+    };
 }
 
 /// The equivalent of `rm -rf /__dash0__`.
@@ -77,9 +92,11 @@ pub fn deleteDash0DummyDirectory() void {
     const root_dir_or_error = std.fs.openDirAbsolute("/", .{});
     if (root_dir_or_error) |root_dir| {
         root_dir.deleteTree("__dash0__") catch |err| {
-            std.debug.print("Failed to delete dummy distribution: {}\n", .{err});
+            print("\n====== cleanup failed: ===========\n", .{});
+            print("root_dir.deleteTree({s}) failed: {}\n", .{ "__dash0__", err });
         };
     } else |err| {
-        std.debug.print("Failed to open dir for dummy distribution: {}\n", .{err});
+        print("\n====== cleanup failed: ===========\n", .{});
+        print("std.fs.openDirAbsolute({s})) failed: {}\n", .{ "/", err });
     }
 }

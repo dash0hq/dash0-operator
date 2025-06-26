@@ -161,7 +161,7 @@ ifeq ($(shell uname -s),Darwin)
 	@echo "Skipping injector-unit-tests on Darwin"
 else
 	@$(MAKE) zig-installed
-	cd images/instrumentation/injector && zig build test
+	cd images/instrumentation/injector && zig build test --prominent-compile-errors
 endif
 
 .PHONY: helm-unit-tests
