@@ -6,7 +6,6 @@ particular how they initialize their internal view of the process environment at
 
 glibc
 -----
- 
 
 In glibc, the variable `__environ` (and its aliases `_environ` and `environ`, see
 https://sourceware.org/git/?p=glibc.git;a=blob;f=posix/environ.c) is the global pointer to the environment variable

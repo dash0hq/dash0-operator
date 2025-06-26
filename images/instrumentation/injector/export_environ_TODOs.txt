@@ -6,26 +6,28 @@ Remaining TODOs
     - where does the original getenv function get environ, _environ and __environ from?
     - is there any component that does not bind those to the injector?
     - why did this not work without overriding getenv?
-- do we need to override secure_getenv?
-- check missing environ tests
-- make cache thread safe
-- implement putenv etc.
-- add tests for __DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS (environ_init as well as environ_api)
-- remove NODE_OPTIONS and JAVA_TOOL_OPTIONS from _initEnviron modifications
-- rerun instrumentation and inject tests
-- injector integration tests
-  - segfault in bash:
-    > docker run --platform linux/arm64 -it dash0-injector-test-arm64-glibc /bin/bash
-      node@362a654b9e57:/usr/src/dash0/injector/app$ LD_PRELOAD=/dash0-init-container/injector/dash0_injector.so DASH0_INJECTOR_DEBUG=true /bin/bash
-      [Dash0 injector] starting to instrument process with pid 53 (/usr/bin/bash)
-      [Dash0 injector] injecting the Java OpenTelemetry agent
-      [Dash0 injector] injecting the Dash0 Node.js OpenTelemetry distribution
-      [Dash0 injector] done, successfully instrumented process with pid 53 (/usr/bin/bash)
+- verify exact byte by byte memory layout of __environ & aliases
+- !! SEGFAULT in dotnet-restore
+- !! SEGFAULT in /bin/bash:
+  docker run --platform linux/arm64 -it dash0-injector-test-arm64-glibc /bin/bash
+  node@362a654b9e57:/usr/src/dash0/injector/app$ LD_PRELOAD=/dash0-init-container/injector/dash0_injector.so DASH0_INJECTOR_DEBUG=true /bin/bash
+  [Dash0 injector] starting to instrument process with pid 53 (/usr/bin/bash)
+  [Dash0 injector] injecting the Java OpenTelemetry agent
+  [Dash0 injector] injecting the Dash0 Node.js OpenTelemetry distribution
+  [Dash0 injector] done, successfully instrumented process with pid 53 (/usr/bin/bash)
       Segmentation fault
-      -> verify exact byte by byte memory layout
-  - segfault in dotnet-restore
+
+- add Node.js, JVM and .NET tests that _write_ environment variables (see
+  images/instrumentation/test/c/test-cases/env-api/app.c as a blueprint)
+- remove all .testcase.json#skip=true flags for instrumentation tests
+- do we need to override secure_getenv?
+- check statically built tests (maybe also convert from an injector integration test to an instrumentation image
+  integration test)
+- make cache thread safe
+- implement putenv etc.?
+- add tests for __DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS (environ_init as well as environ_api)
 - try to avoid the reallocation in renderEnvVarsToExport, instead, return the correct type from applyModifications
-  and add the final null pointer there.
+    and add the final null pointer there.
   - otherwise, add tests for renderEnvVarsToExport
 - add explicit test for parent process spawning child process (in C)
 - add a new flag to testcase.json for only skipping tests within the container.
@@ -48,7 +50,8 @@ Remaining TODOs
   importing __environ, _environ, and environ and writing to that.
 - more extensive instrumentation tests for .NET, verifying OTEL_RESOURCE_ATTRIBUTES, and the various env vars that
   activate tracing.
-- double check which intermediate values (strings, slices, ...) we can free and which need to remain allocated.
+- Cleanup: Double check which intermediate values (strings, slices, ...) we can free and which need to remain allocated.
 - add readme with instructions, also useful commands like
   VERBOSE=true SUPPRESS_SKIPPED=true RUNTIMES=c,jvm TEST_CASES=otel-resource-attributes-unset,existing-env-var-return-unmodified ./watch-tests-within-container.sh
   VERBOSE=true SUPPRESS_SKIPPED=true RUNTIMES=dotnet ./watch-tests-within-container.sh
+- clean up commit history
