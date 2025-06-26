@@ -6,50 +6,89 @@
 ARG base_image=ubuntu:oracular
 FROM ${base_image}
 
+ARG base_image=ubuntu:oracular
 ARG zig_architecture
 
-RUN apt-get update && \
-    apt-get install -y unminimize && \
-    yes | unminimize && \
-    apt-get install -y --no-install-recommends \
-      curl \
-      ca-certificates \
-      && \
-    curl -fsSL https://deb.nodesource.com/setup_24.x -o nodesource_setup.sh && \
-    /bin/bash nodesource_setup.sh && \
-    rm nodesource_setup.sh && \
-    apt-get install -y --no-install-recommends \
-      autoconf \
-      binutils \
-      build-essential \
-      curl \
-      dotnet-sdk-9.0 \
-      entr \
-      fd-find \
-      file \
-      gdb \
-      less \
-      libasound2-dev \
-      libcups2-dev \
-      libfontconfig1-dev \
-      libx11-dev libxext-dev libxrender-dev libxrandr-dev libxtst-dev libxt-dev \
-      locales \
-      man-db \
-      manpages-dev \
-      manpages-posix \
-      manpages-posix-dev \
+# Note:
+# We install _a lot_ of packages for the *Ubuntu* variant of this image, these serve a number of different purposes:
+# - Running the injector Zig unit tests (in images/instrumentation/injector, run zig-test.sh or watch-zig-test.sh)
+# - Running instrumentation image integration tests within the container, without a container image rebuild
+#   (in images/instrumentation/test, run npm run test-within-container or watch-tests-within-container.sh)
+# - build Node.js from source (potentially with local modifications) to troubleshoot the injector when used via
+#   LD_PRELOAD (check out https://github.com/nodejs/node to
+#   images/instrumentation/injector-experiments/third-party/node).
+# - build the OpenJDK from source (potentially with local modifications) to troubleshoot the injector when used via
+#   LD_PRELOAD (check out https://github.com/openjdk/jdk to
+#   images/instrumentation/injector-experiments/third-party/jdk).
+#
+# In contrast, the *Alpine* variant of this image currently only installs enough packages to run the injector Zig unit
+# tests (in images/instrumentation/injector, run zig-test.sh or watch-zig-test.sh).
+
+RUN case ${base_image} in \
+  *ubuntu*) \
+    apt-get update && \
+        apt-get install -y unminimize && \
+        yes | unminimize && \
+        apt-get install -y --no-install-recommends \
+          curl \
+          ca-certificates \
+          && \
+        curl -fsSL https://deb.nodesource.com/setup_24.x -o nodesource_setup.sh && \
+        /bin/bash nodesource_setup.sh && \
+        rm nodesource_setup.sh && \
+        apt-get install -y --no-install-recommends \
+          autoconf \
+          binutils \
+          build-essential \
+          curl \
+          dotnet-sdk-9.0 \
+          entr \
+          fd-find \
+          file \
+          gdb \
+          less \
+          libasound2-dev \
+          libcups2-dev \
+          libfontconfig1-dev \
+          libx11-dev libxext-dev libxrender-dev libxrandr-dev libxtst-dev libxt-dev \
+          locales \
+          man-db \
+          manpages-dev \
+          manpages-posix \
+          manpages-posix-dev \
+          nodejs \
+          openjdk-21-jdk \
+          python3 \
+          python3-pip \
+          silversearcher-ag \
+          unzip \
+          vim \
+          wget \
+          zip \
+          && \
+        apt-get clean && \
+        localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8 \
+    ;; \
+    \
+  *alpine*) \
+    apk update && \
+    apk upgrade --no-cache && \
+    apk add --no-cache \
+      bash \
+	  entr \
+      fd \
       nodejs \
-      openjdk-21-jdk \
-      python3 \
-      python3-pip \
-      silversearcher-ag \
-      unzip \
-      vim \
-      wget \
-      zip \
-      && \
-    apt-get clean && \
-    localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8
+      npm \
+      the_silver_searcher \
+    ;; \
+    \
+  *) \
+    echo "Base image not supported, stopping build." && \
+    exit 1 \
+    ;; \
+    \
+esac
+
 ENV LANG=en_US.utf8
 
 RUN npm config set update-notifier false
