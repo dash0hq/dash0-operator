@@ -154,9 +154,15 @@ operator-manager-unit-tests: manifests generate fmt vet envtest
 common-package-unit-tests:
 	go test github.com/dash0hq/dash0-operator/images/pkg/common
 
+# TODO skip these on Darwin
 .PHONY: injector-unit-tests
-injector-unit-tests: zig-installed
-	cd images/instrumentation/injector && zig build test
+injector-unit-tests:
+ifeq ($(shell uname -s),Darwin)
+	@echo "Skipping injector-unit-tests on Darwin"
+else
+	@$(MAKE) zig-installed
+	cd images/instrumentation/injector && zig build test --prominent-compile-errors
+endif
 
 .PHONY: helm-unit-tests
 helm-unit-tests:

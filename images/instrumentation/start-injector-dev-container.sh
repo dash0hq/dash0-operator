@@ -21,21 +21,45 @@ else
   exit 1
 fi
 
-image_name="dash0-injector-dev-$ARCHITECTURE"
+# Supported base images:
+# - ubuntu:oracular for glibc
+# - alpine:3.21.3 for musl
+BASE_IMAGE="${BASE_IMAGE:-ubuntu:oracular}"
+
+base_image_for_image_name="${BASE_IMAGE//:/-}"
+base_image_for_image_name="${base_image_for_image_name//./-}"
+base_image_for_image_name="${base_image_for_image_name//\//-}"
+image_name="dash0-injector-dev-$ARCHITECTURE-$base_image_for_image_name"
+container_name="$image_name"
+
+if docker container inspect "$container_name" > /dev/null 2>&1; then
+   # shellcheck disable=SC2086
+  if [[ "$( docker container inspect -f '{{.State.Running}}' $container_name )" = "true" ]]; then
+  echo "Container $container_name is already running, joining existing container."
+  docker exec \
+    -it \
+    "$container_name" \
+    /bin/bash
+ fi
+ exit 0
+fi
+
 docker rmi -f "$image_name" 2> /dev/null || true
 docker build \
   --platform "$docker_platform" \
-  --build-arg "zig_architecture=${zig_architecture}" \
+  --build-arg "base_image=$BASE_IMAGE" \
+  --build-arg "zig_architecture=$zig_architecture" \
   -f Dockerfile-injector-development \
   -t "$image_name" \
   .
 
-container_name="$image_name"
 docker rm -f "$container_name" 2> /dev/null || true
 docker run \
   --rm \
+  --platform "$docker_platform" \
   -it \
   --name "$container_name" \
   --volume "$(pwd):/home/dash0/instrumentation" \
   "$image_name" \
   /bin/bash
+
