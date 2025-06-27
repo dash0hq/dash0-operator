@@ -54,7 +54,6 @@ docker build \
   --platform "$docker_platform" \
   --build-arg "base_image=${base_image}" \
   --build-arg "injector_binary=${injector_binary}" \
-  --build-arg "statically_built_binary=staticapp.${ARCH}.${LIBC}" \
   --build-arg "arch_under_test=${ARCH}" \
   --build-arg "libc_under_test=${LIBC}" \
   --build-arg "create_sdk_dummy_files_script=${create_sdk_dummy_files_script}" \

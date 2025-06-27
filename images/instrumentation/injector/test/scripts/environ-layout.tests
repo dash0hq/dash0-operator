@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# Note: We run these test cases with env -i to have full control over the environment passed to the application under
+# test. This also makes it necessary to add LD_PRELOAD to the test command, although the test framework already adds it
+# (but the one from the test framework is cleared by env -i).
+
+run_test_case \
+   "__environ layout: the environment has the expected memory layout when the injector applies no modifications" \
+   "compiled-apps" \
+   "env -i LD_PRELOAD=/dash0-init-container/injector/dash0_injector.so ENV_VAR1=value1 ENV_VAR2=value2 __DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS=true ./environlayoutapp compare-to-snapshot NO_MODIFICATIONS" \
+   "success: everything matches the snapshot"
+
+run_test_case \
+   "__environ layout: the environment has the expected memory layout when the injector applies modifications" \
+   "compiled-apps" \
+   "env -i LD_PRELOAD=/dash0-init-container/injector/dash0_injector.so DASH0_CONTAINER_NAME=test-app DASH0_NAMESPACE_NAME=my-namespace DASH0_POD_NAME=my-pod DASH0_POD_UID=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff ENV_VAR1=value1 ENV_VAR2=value2 ./environlayoutapp compare-to-snapshot WITH_MODIFICATIONS" \
+   "success: everything matches the snapshot"
+
+###############################################################################
+# To create the snapshots, activate the following test cases, then copy the output to environ-layout/environ-layout.c.
+###############################################################################
+
+# run_test_case \
+#   "__environ layout: create snapshort for: the environment has the expected memory layout, when the injector applies no modifications" \
+#   "compiled-apps" \
+#   "env -i ENV_VAR1=value1 ENV_VAR2=value2 __DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS=true ./environlayoutapp create-snapshot NO_MODIFICATIONS" \
+#   "ignore the output mismatch when creating the snapshot"
+
+# run_test_case \
+#   "__environ layout: the environment has the expected memory layout when the injector modifies the initial environment" \
+#   "compiled-apps" \
+#   "env -i DASH0_CONTAINER_NAME=test-app DASH0_NAMESPACE_NAME=my-namespace DASH0_POD_NAME=my-pod DASH0_POD_UID=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff ENV_VAR1=value1 ENV_VAR2=value2 __DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS=true JAVA_TOOL_OPTIONS=-javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar\ -Dotel.resource.attributes=k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app NODE_OPTIONS=--require\ /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry OTEL_RESOURCE_ATTRIBUTES=k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app ./environlayoutapp create-snapshot WITH_MODIFICATIONS " \
+#   "ignore the output mismatch when creating the snapshot"
+

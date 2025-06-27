@@ -4,15 +4,23 @@
 ARG base_image="node:22.15.0-bookworm-slim"
 FROM ${base_image}
 
+ARG arch_under_test
+RUN if [ -z "$arch_under_test" ]; then \
+      echo "Error: build argument arch_under_test is required but not set."; \
+      exit 1; \
+    fi
+ENV ARCH_UNDER_TEST=${arch_under_test}
+
+ARG libc_under_test
+RUN if [ -z "libc_under_test" ]; then \
+      echo "Error: build argument libc_under_test is required but not set."; \
+      exit 1; \
+    fi
+ENV LIBC_UNDER_TEST=${libc_under_test}
+
 ARG injector_binary
 RUN if [ -z "$injector_binary" ]; then \
       echo "Error: build argument injector_binary is required but not set."; \
-      exit 1; \
-    fi
-
-ARG statically_built_binary
-RUN if [ -z "$statically_built_binary" ]; then \
-      echo "Error: build argument statically_built_binary is required but not set."; \
       exit 1; \
     fi
 
@@ -25,8 +33,13 @@ RUN if [ -z "$create_sdk_dummy_files_script" ]; then \
 WORKDIR /usr/src/dash0/injector/
 
 COPY app app
-RUN mkdir statically-built
-COPY statically-built/$statically_built_binary statically-built/staticapp
+
+RUN mkdir compiled-apps
+
+COPY environ-layout/*$arch_under_test.$libc_under_test* compiled-apps/environlayoutapp
+COPY statically-built/*$arch_under_test.$libc_under_test* compiled-apps/staticallybuiltapp
+RUN ls -la compiled-apps/
+
 COPY scripts/run-tests-within-container.sh scripts/
 COPY scripts/create-*.sh scripts/
 COPY scripts/*.tests scripts/
@@ -37,18 +50,6 @@ COPY bin/${injector_binary} /dash0-init-container/injector/dash0_injector.so
 
 RUN ${create_sdk_dummy_files_script}
 
-ARG arch_under_test
-RUN if [ -z "$arch_under_test" ]; then \
-      echo "Error: build argument arch_under_test is required but not set."; \
-      exit 1; \
-    fi
-ENV ARCH_UNDER_TEST=${arch_under_test}
-ARG libc_under_test
-RUN if [ -z "libc_under_test" ]; then \
-      echo "Error: build argument libc_under_test is required but not set."; \
-      exit 1; \
-    fi
-ENV LIBC_UNDER_TEST=${libc_under_test}
 
 USER node
 CMD ["scripts/run-tests-within-container.sh"]

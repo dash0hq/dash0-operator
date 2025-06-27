@@ -25,7 +25,8 @@ fi
 rm -rf injector/test/bin/*
 
 # remove outdated test app binaries
-rm -f injector/test/statically-built/staticapp.*
+rm -f injector/test/environ-layout/environ-layout.*.o
+rm -f injector/test/statically-built/staticallybuiltapp.*
 
 architectures=""
 if [[ -n "${ARCHITECTURES:-}" ]]; then
@@ -46,7 +47,7 @@ echo Found test sets: "${all_test_sets[@]}"
 test_sets=""
 if [[ -n "${TEST_SETS:-}" ]]; then
   test_sets=("${TEST_SETS//,/ }")
-  echo Only running a subset of test sets : "${test_sets[@]}"
+  echo Only running a subset of test sets: "${test_sets[@]}"
 fi
 
 if [[ -n "${TEST_CASES:-}" ]]; then
@@ -156,10 +157,50 @@ rm -f injector/test/.container_images_to_be_deleted_at_end
 touch injector/test/.container_images_to_be_deleted_at_end
 trap cleanup_docker_images EXIT
 
-# rebuild compiled test apps
+###############################################################
+# rebuild all compiled test apps
+###############################################################
+echo ----------------------------------------
+echo building the environ-layout test app binary
+echo ----------------------------------------
+for arch in "${all_architectures[@]}"; do
+  if [[ -n "${architectures[0]}" ]]; then
+    if [[ $(echo "${architectures[@]}" | grep -o "$arch" | wc -w) -eq 0 ]]; then
+      echo "skipping environ-layout test app build for CPU architecture $arch"
+      continue
+    fi
+  fi
+  for libc_flavor in "${all_libc_flavors[@]}"; do
+    if [[ -n "${libc_flavors[0]}" ]]; then
+      if [[ $(echo "${libc_flavors[@]}" | grep -o "$libc_flavor" | wc -w) -eq 0 ]]; then
+        echo "skipping the environ-layout test app build for libc flavor $libc_flavor"
+        continue
+      fi
+    fi
+    if [[ "$libc_flavor" = "glibc" ]]; then
+      environ_layout_base_image="debian:bookworm-slim"
+    elif [[ "$libc_flavor" = "musl" ]]; then
+      environ_layout_base_image="alpine:3.21.3"
+    else
+      echo "Unknown libc flavor: $libc_flavor."
+      exit 1
+    fi
+    echo "building the environ-layout test app for CPU architecture $arch and libc flavor $libc_flavor (base image: $environ_layout_base_image)"
+    ARCH="$arch" \
+      LIBC="$libc_flavor" \
+      BASE_IMAGE="$environ_layout_base_image" \
+      injector/test/scripts/build-in-container.sh \
+        "/workspace/environ-layout.o" \
+        "injector/test/environ-layout/environ-layout.$arch.$libc_flavor.o" \
+        injector/test/environ-layout/Dockerfile-build \
+        "environ-layout-app-builder-$arch-$libc_flavor" \
+        injector/test/environ-layout
+  done
+done
+
 if [[ "${STATICALLY_BUILT_TESTS:-}" = "true" ]]; then
   echo ----------------------------------------
-  echo building the statically built test app binary
+  echo building the statically-built test app binary
   echo ----------------------------------------
   for arch in "${all_architectures[@]}"; do
     if [[ -n "${architectures[0]}" ]]; then
@@ -183,6 +224,9 @@ if [[ "${STATICALLY_BUILT_TESTS:-}" = "true" ]]; then
         statically_built_base_image="golang:1.23.7-bookworm"
       elif [[ "$libc_flavor" = "musl" ]]; then
         statically_built_base_image="golang:1.23.7-alpine3.21"
+      else
+        echo "Unknown libc flavor: $libc_flavor."
+        exit 1
       fi
       echo "building the statically built test app for CPU architecture $arch [GOARCH=$goarch] and libc flavor $libc_flavor (base image: $statically_built_base_image)"
       ARCH="$arch" \
@@ -190,8 +234,8 @@ if [[ "${STATICALLY_BUILT_TESTS:-}" = "true" ]]; then
         LIBC="$libc_flavor" \
         BASE_IMAGE="$statically_built_base_image" \
         injector/test/scripts/build-in-container.sh \
-          "/workspace/staticapp" \
-          "injector/test/statically-built/staticapp.$arch.$libc_flavor" \
+          "/workspace/staticallybuiltapp" \
+          "injector/test/statically-built/staticallybuiltapp.$arch.$libc_flavor" \
           injector/test/statically-built/Dockerfile-build \
           "statically-built-app-builder-$arch-$libc_flavor" \
           injector/test/statically-built
@@ -205,9 +249,9 @@ else
     fi
     for libc_flavor in "${all_libc_flavors[@]}"; do
       # Produce an empty file so that the instruction
-      #   COPY statically-built/$statically_built_binary statically-built/staticapp
+      #   COPY statically-built/*$arch_under_test.$libc_under_test* compiled-apps/staticallybuiltapp
       # in ../docker/Dockerfile-test does not fail.
-      touch "injector/test/statically-built/staticapp.$arch.$libc_flavor"
+      touch "injector/test/statically-built/staticallybuiltapp.$arch.$libc_flavor"
     done
   done
 fi

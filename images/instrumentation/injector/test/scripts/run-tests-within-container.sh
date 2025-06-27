@@ -76,8 +76,8 @@ run_test_case() {
     fi
   fi
 
-  if [ "${test_case_label#*"__environ"}" != "$test_case_label" ] && [ "${ARCH_UNDER_TEST:-}" = "x86_64" ] && [ "${LIBC_UNDER_TEST:-}" = "musl" ]; then
-    echo "- skipping test case \"$test_case_label\": tests for no __environ are currently disabled for x86_64/musl"
+  if [ "${test_case_label#*"statically"}" != "$test_case_label" ] && [ "${ARCH_UNDER_TEST:-}" = "x86_64" ] && [ "${LIBC_UNDER_TEST:-}" = "musl" ]; then
+    echo "- skipping test case \"$test_case_label\": tests for statically built apps are currently disabled for x86_64/musl"
     return
   fi
 

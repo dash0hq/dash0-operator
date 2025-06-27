@@ -6,7 +6,6 @@ Remaining TODOs
     - where does the original getenv function get environ, _environ and __environ from?
     - is there any component that does not bind those to the injector?
     - why did this not work without overriding getenv?
-- verify exact byte by byte memory layout of __environ & aliases
 - !! SEGFAULT in dotnet-restore
 - !! SEGFAULT in /bin/bash:
   docker run --platform linux/arm64 -it dash0-injector-test-arm64-glibc /bin/bash
