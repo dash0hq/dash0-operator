@@ -24,7 +24,6 @@ Remaining TODOs
 - check statically built tests (maybe also convert from an injector integration test to an instrumentation image
   integration test)
 - make cache thread safe
-- implement putenv etc.?
 - add tests for __DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS (environ_init as well as environ_api)
 - try to avoid the reallocation in renderEnvVarsToExport, instead, return the correct type from applyModifications
     and add the final null pointer there.

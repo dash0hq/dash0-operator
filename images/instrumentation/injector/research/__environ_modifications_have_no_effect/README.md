@@ -66,6 +66,8 @@ That could also be a quirk of that particular image or another difference.
 Reproducing
 -----------
 
+### ARM64/glibc
+
 Here are steps to reproduce this for arm64/glibc:
 
 * Check out commit sha: cdf607aed296cd27badf596d4b960e32982f89ae (this is an earlier version without getenv override).
@@ -96,5 +98,27 @@ Second occurence, line 9251-9252:
 62:	binding file node [0] to /dash0-init-container/injector/dash0_injector.so [0]: normal symbol `__environ' [GLIBC_2.17]
 ```
 
+```
+ldd /usr/local/bin/node
+	linux-vdso.so.1 (0x0000ffff9e169000)
+	libdl.so.2 => /lib/aarch64-linux-gnu/libdl.so.2 (0x0000ffff9e100000)
+	libstdc++.so.6 => /lib/aarch64-linux-gnu/libstdc++.so.6 (0x0000ffff9de00000)
+	libm.so.6 => /lib/aarch64-linux-gnu/libm.so.6 (0x0000ffff9e060000)
+	libgcc_s.so.1 => /lib/aarch64-linux-gnu/libgcc_s.so.1 (0x0000ffff9e020000)
+	libpthread.so.0 => /lib/aarch64-linux-gnu/libpthread.so.0 (0x0000ffff9ddd0000)
+	libc.so.6 => /lib/aarch64-linux-gnu/libc.so.6 (0x0000ffff9dc20000)
+	/lib/ld-linux-aarch64.so.1 (0x0000ffff9e12c000)
+```
+
+### ARM64/musl
+
 It would obviouly be quite interesting to get the LD_DEBUG output for the case that works (arm64/musl), but
 unfortunately Alpine is a stubborn arse and refuses to provide any debug output for `LD_DEBUG=all`.
+
+```
+ldd /usr/local/bin/node
+	/lib/ld-musl-aarch64.so.1 (0xffffac98c000)
+	libstdc++.so.6 => /usr/lib/libstdc++.so.6 (0xffffa6000000)
+	libc.musl-aarch64.so.1 => /lib/ld-musl-aarch64.so.1 (0xffffac98c000)
+	libgcc_s.so.1 => /usr/lib/libgcc_s.so.1 (0xffffac95b000)
+```
