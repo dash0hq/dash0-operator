@@ -87,7 +87,7 @@ The effect is apparently not limited to Node.js. In fact, it can be reproduced w
 
 Here are steps to reproduce this for x86_64/glibc:
 
-* Check out commit sha: 282e4f48633b45d3b51eccb31af3bd527416a47c or later.
+Check out commit sha afbe5115693077ece20e54c507e5bfbca6d22a26 or later.
 
 ```
 > DOCKER_CLEANUP_ENABLED=false TEST_SETS=environ-layout.tests scripts/test-all.sh
