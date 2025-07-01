@@ -122,7 +122,6 @@ static void compare_to_snapshot_with_modifications(char** envp) {
   compare_pointer_list_to_snapshot("envp", SNAPSHOT_WITH_MODIFICATIONS_ENVP, envp);
 }
 
-
 int main(int argc, char** argv, char** envp) {
   if (argc < 2) {
     printf("You provided too few arguments, a command is required.\n");

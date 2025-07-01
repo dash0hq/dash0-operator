@@ -91,10 +91,16 @@ Check out commit sha afbe5115693077ece20e54c507e5bfbca6d22a26 or later.
 
 ```
 > DOCKER_CLEANUP_ENABLED=false TEST_SETS=environ-layout.tests scripts/test-all.sh
-> docker run --platform --platform linux/amd64 -it dash0-injector-test-x86_64-glibc /bin/bash
+> docker run --platform linux/amd64 -it dash0-injector-test-x86_64-glibc /bin/bash
 > cd compiled-apps
 > LD_DEBUG=all LD_PRELOAD=/dash0-init-container/injector/dash0_injector.so ./environlayoutapp compare-to-snapshot WITH_MODIFICATIONS &> /tmp/ld_debug_all.txt
 ```
+
+Or, the last step could also be
+```
+env -i LD_DEBUG=all LD_PRELOAD=/dash0-init-container/injector/dash0_injector.so DASH0_CONTAINER_NAME=test-app DASH0_NAMESPACE_NAME=my-namespace DASH0_POD_NAME=my-pod DASH0_POD_UID=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff ENV_VAR1=value1 ENV_VAR2=value2 ./environlayoutapp compare-to-snapshot WITH_MODIFICATIONS
+```
+to actually run the test case with a controlled environment.
 
 The output of running this is in
 `images/instrumentation/injector/research/__environ_modifications_have_no_effect/c_environ_layout/ld_debug_all_x86_64_glibc_FAIL.txt`
@@ -151,6 +157,46 @@ This is an excerpt of the LD_DEBUG=all output for (failing) x86_64/glibc case. T
 That is, when the app under test requests the `__environ` symbol, it is bound to the libc version of `__environ`.
 Then later, the injector requests the same symbol, and it is bound to app under test?
 
+#### x86_64/glibc
+```
+nm ./environlayoutapp
+00000000000040a0 B __environ@GLIBC_2.2.5
+00000000000040a0 V _environ@GLIBC_2.2.5
+00000000000040a0 V _environ@GLIBC_2.2.5
+
+readelf -sW ./environlayoutapp | grep environ
+    15: 00000000000040a0     8 OBJECT  WEAK   DEFAULT   26 _environ@GLIBC_2.2.5 (2)
+    16: 00000000000040a0     8 OBJECT  WEAK   DEFAULT   26 environ@GLIBC_2.2.5 (2)
+    18: 00000000000040a0     8 OBJECT  GLOBAL DEFAULT   26 __environ@GLIBC_2.2.5 (2)
+     3: 0000000000000000     0 FILE    LOCAL  DEFAULT  ABS environ-layout.c
+    34: 00000000000040a0     8 OBJECT  WEAK   DEFAULT   26 _environ@GLIBC_2.2.5
+    39: 00000000000040a0     8 OBJECT  WEAK   DEFAULT   26 environ@GLIBC_2.2.5
+    51: 00000000000040a0     8 OBJECT  GLOBAL DEFAULT   26 __environ@GLIBC_2.2.5
+
+nm /usr/local/bin/node
+0000000006853280 B __environ@@GLIBC_2.2.5
+0000000006853280 V environ@@GLIBC_2.2.5
+
+nm /dash0-init-container/injector/dash0_injector.so | grep environ
+0000000000056da8 B __environ
+0000000000056da8 B _environ
+0000000000056da8 B environ
+00000000000405d0 t environ_init.applyDotnetEnvVarModifications
+0000000000040180 t environ_init.applyEnvVarUpdate
+0000000000056d98 b environ_init.cached_original_env_vars.0
+0000000000056da0 b environ_init.cached_original_env_vars.1
+```
+
+#### nm codes
+
+* If lowercase, the symbol is usually local; if uppercase, the symbol is global (external)
+* B b The symbol is in the BSS data section. This section typically contains zero-initialized or uninitialized data,
+although the exact behavior is system dependent.
+* V v The symbol is a weak object. When a weak defined symbol is linked with a normal defined symbol, the normal defined
+  symbol is used with no error. When a weak undefined symbol is linked and the symbol is not defined, the value of the
+  weak symbol becomes zero with no error. On some systems, uppercase indicates that a default value has been specified.
+* U The symbol is undefined.
+
 ### Comparison With Successful Case (arm64/glibc)
 
 For the **successful** arm64/glibc case, the relevant LD_DEBUG output looks like this. The full output is in
@@ -165,9 +211,41 @@ For the **successful** arm64/glibc case, the relevant LD_DEBUG output looks like
 9:	symbol=__environ;  lookup in file=/dash0-init-container/injector/dash0_injector.so [0]
 ```
 
-A noticeable difference is that in the successfuly case, the first __environ happens almost simultaneously with a lookup
-from the injector. It is still bound to libc though. Then libc is bound to the **injector**, where in the failing case
-libc is bound to the app under test.
+A noticeable difference is that in the successfuly case, the first `__environ` lookup happens almost simultaneously with
+a lookup from the injector. It is still bound to libc though. Then libc is bound to the **injector**, where in the
+failing case libc is bound to the app under test.
+
+Also, in the successful case, the symbol shows up as **undefined** in `nm` and `readelf` for the binary we want to
+instrument. In the failing case, it is not undefined.
+
+```
+nm ./environlayoutapp
+                 U __environ@GLIBC_2.17
+                 U _environ@GLIBC_2.17
+                 U environ@GLIBC_2.17
+
+readelf -sW ./environlayoutapp | grep __environ
+    18: 0000000000000000     0 OBJECT  GLOBAL DEFAULT  UND __environ@GLIBC_2.17 (2)
+   107: 0000000000000000     0 OBJECT  GLOBAL DEFAULT  UND __environ@GLIBC_2.17
+
+nm /dash0-init-container/injector/dash0_injector.so | grep environ
+000000000007a2c8 B __environ
+000000000007a2c8 B _environ
+000000000007a2c8 B environ
+0000000000047214 t environ_init.applyDotnetEnvVarModifications
+0000000000046e1c t environ_init.applyEnvVarUpdate
+000000000007a2e8 b environ_init.cached_original_env_vars.0
+000000000007a2f0 b environ_init.cached_original_env_vars.1
+
+readelf -sW ./environlayoutapp | grep environ
+    13: 0000000000000000     0 OBJECT  GLOBAL DEFAULT  UND _environ@GLIBC_2.17 (2)
+    18: 0000000000000000     0 OBJECT  GLOBAL DEFAULT  UND __environ@GLIBC_2.17 (2)
+    19: 0000000000000000     0 OBJECT  GLOBAL DEFAULT  UND environ@GLIBC_2.17 (2)
+    40: 0000000000000000     0 FILE    LOCAL  DEFAULT  ABS environ-layout.c
+    92: 0000000000000000     0 OBJECT  GLOBAL DEFAULT  UND _environ@GLIBC_2.17
+   107: 0000000000000000     0 OBJECT  GLOBAL DEFAULT  UND __environ@GLIBC_2.17
+   108: 0000000000000000     0 OBJECT  GLOBAL DEFAULT  UND environ@GLIBC_2.17
+```
 
 ### Aside: __environ vs envp
 
@@ -226,6 +304,12 @@ ldd /usr/local/bin/node
 	/lib/ld-linux-aarch64.so.1 (0x0000ffff9e12c000)
 ```
 
+```
+nm /usr/local/bin/node | grep environ
+00000000063e0858 B __environ@@GLIBC_2.17
+00000000063e0858 V environ@@GLIBC_2.17
+```
+
 ### ARM64/musl
 
 It would obviouly be quite interesting to get the LD_DEBUG output for the case that works (arm64/musl), but
@@ -238,3 +322,21 @@ ldd /usr/local/bin/node
 	libc.musl-aarch64.so.1 => /lib/ld-musl-aarch64.so.1 (0xffffac98c000)
 	libgcc_s.so.1 => /usr/lib/libgcc_s.so.1 (0xffffac95b000)
 ```
+
+We can get readelf and nm output though:
+
+```
+> nm /usr/local/bin/node | grep environ
+                 U __environ
+                 U environ
+
+> readelf -sW /usr/local/bin/node | grep environ
+   397: 0000000000000000     0 OBJECT  WEAK   DEFAULT  UND _environ
+   401: 0000000000000000     0 OBJECT  GLOBAL DEFAULT  UND environ
+   481: 0000000000000000     0 OBJECT  WEAK   DEFAULT  UND ___environ
+   507: 0000000000000000     0 OBJECT  GLOBAL DEFAULT  UND __environ
+ 81134: 0000000000000000     0 OBJECT  GLOBAL DEFAULT  UND environ
+198921: 0000000000000000     0 OBJECT  GLOBAL DEFAULT  UND __environ
+```
+
+https://akkadia.org/drepper/dsohowto.pdf

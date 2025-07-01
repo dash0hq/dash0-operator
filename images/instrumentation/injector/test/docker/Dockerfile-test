@@ -4,6 +4,31 @@
 ARG base_image="node:22.15.0-bookworm-slim"
 FROM ${base_image}
 
+#  In case you want to add nm and readelf for debugging to the image:
+# ARG base_image="node:22.15.0-bookworm-slim"
+# RUN case ${base_image} in \
+#   *bookworm*) \
+#     apt-get update && \
+#         apt-get install -y --no-install-recommends \
+#           binutils \
+#           && \
+#         apt-get clean \
+#     ;; \
+#     \
+#   *alpine*) \
+#     apk update && \
+#     apk upgrade --no-cache && \
+#     apk add --no-cache \
+#       binutils \
+#     ;; \
+#     \
+#   *) \
+#     echo "Base image not supported, stopping build." && \
+#     exit 1 \
+#     ;; \
+#     \
+# esac
+
 ARG arch_under_test
 RUN if [ -z "$arch_under_test" ]; then \
       echo "Error: build argument arch_under_test is required but not set."; \
