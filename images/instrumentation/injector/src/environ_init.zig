@@ -18,6 +18,9 @@ const testing = std.testing;
 
 var cached_original_env_vars: [](types.NullTerminatedString) = undefined;
 
+// TODO: TEMPORARY: remove this
+// extern fn setenv(envname: [*:0]const u8, envval: [*:0]const u8, overwrite: i64) callconv(.C) i64;
+
 pub fn _initEnviron(proc_self_environ_path: []const u8) ![*c]const [*c]const u8 {
     const original_env_vars = try readProcSelfEnvironFile(proc_self_environ_path);
     cached_original_env_vars = original_env_vars;
@@ -795,6 +798,18 @@ fn renderEnvVarsToExport(env_vars: [](types.NullTerminatedString)) ![*c]const [*
 
     for (env_vars, 0..) |env_var, i| {
         exported[i] = @ptrCast(env_var);
+
+        // // TODO: TEMPORARY: remove this
+        // Note: calling setenv solves the issue for x86_64/glibc (and arm64/musl works anyway).
+        //       The two musl variants are still broken.
+        // const env_var_slice: []const u8 = std.mem.span(env_var);
+        // if (std.mem.indexOf(u8, env_var_slice, "=")) |equals_char_idx| {
+        //     const name = try std.fmt.allocPrintZ(std.heap.page_allocator, "{s}", .{env_var[0..equals_char_idx]});
+        //     const value = env_var[equals_char_idx + 1 ..];
+        //     std.debug.print("setenv({s}, {s}, {d});\n", .{ name, value, 1 });
+        //     _ = setenv(name, value, 1);
+        // }
+        // // TODO... remove until here
     }
 
     // We need to append a final null pointer to the exported array of pointers. This is the signal for the routines
