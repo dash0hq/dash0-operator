@@ -16,11 +16,12 @@ import (
 )
 
 type dash0OperatorConfigurationValues struct {
-	SelfMonitoringEnabled bool
-	Endpoint              string
-	Token                 string
-	ApiEndpoint           string
-	ClusterName           string
+	SelfMonitoringEnabled      bool
+	Endpoint                   string
+	Token                      string
+	ApiEndpoint                string
+	ClusterName                string
+	TelemetryCollectionEnabled bool
 }
 
 const (
@@ -79,7 +80,7 @@ func deployDash0OperatorConfigurationResource(
 			renderedResourceFileName,
 		))).To(Succeed())
 
-	if dash0OperatorConfigurationValues.Endpoint != "" {
+	if dash0OperatorConfigurationValues.TelemetryCollectionEnabled && dash0OperatorConfigurationValues.Endpoint != "" {
 		// Deploying the Dash0 operator configuration resource with an export will trigger creating the default
 		// OpenTelemetry collector instance.
 		waitForCollectorToStart(operatorNamespace, operatorHelmChart)

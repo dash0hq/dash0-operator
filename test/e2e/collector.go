@@ -117,6 +117,10 @@ func verifyCollectorHasOwnerReference(operatorNamespace string, operatorHelmChar
 }
 
 func verifyThatCollectorHasBeenRemoved(operatorNamespace string) {
+	verifyThatCollectorIsNotDeployed(operatorNamespace)
+}
+
+func verifyThatCollectorIsNotDeployed(operatorNamespace string) {
 	By("validating that the OpenTelemetry collector has been removed")
 	verifyCollectorDaemonSetIsGone := func(g Gomega) {
 		g.Expect(runAndIgnoreOutput(

@@ -38,9 +38,10 @@ type Dash0MonitoringSpec struct {
 	Export *Export `json:"export,omitempty"`
 
 	// Opt-out for automatic workload instrumentation for the target namespace. There are three possible settings:
-	// `all`, `created-and-updated` and `none`. By default, the setting `all` is assumed.
+	// `all`, `created-and-updated` and `none`. By default, the setting `all` is assumed, unless there is an operator
+	// configuration resource with `telemetryCollection.enabled=false`, then the setting `none` is assumed.
 	//
-	// If set to `all` (or omitted), the operator will:
+	// If set to `all`, the operator will:
 	// * automatically instrument existing workloads in the target namespace (i.e. workloads already running in the
 	//   namespace) when the Dash0 monitoring resource is deployed,
 	// * instrument existing workloads or update the instrumentation of already instrumented workloads in the target
@@ -62,25 +63,37 @@ type Dash0MonitoringSpec struct {
 	// Dash0.
 	//
 	// If this setting is omitted, the value `all` is assumed and new, updated as well as existing Kubernetes workloads
-	// will be automatically intrumented by the operator to send telemetry to Dash0, as described above.
+	// will be automatically intrumented by the operator to send telemetry to Dash0, as described above. There is one
+	// exception to this rule: If there is an operator configuration resource with `telemetryCollection.enabled=false`,
+	// then the default setting is `none` instead of `all`, and no workloads will be instrumented by the Dash0 operator.
+	//
+	// It is a validation error to set `telemetryCollection.enabled=false` in the operator configuration resource and
+	// `instrumentWorkloadsMode=all` or `instrumentWorkloadsMode=created-and-updated` in any monitoring resource at the
+	// same time.
 	//
 	// More fine-grained per-workload control over instrumentation is available by setting the label
 	// dash0.com/enable=false on individual workloads.
 	//
-	// +kubebuilder:default=all
+	// +kubebuilder:validation:Optional
 	InstrumentWorkloads InstrumentWorkloadsMode `json:"instrumentWorkloads,omitempty"`
 
 	// Settings for log collection in the target namespace. This setting is optional, by default the operator will
-	// collect pod logs in the target namespace.
+	// collect pod logs in the target namespace; unless there is an operator configuration resource with
+	// `telemetryCollection.enabled=false`, then log collection is off by default. It is a validation error to set
+	// `telemetryCollection.enabled=false` in the operator configuration resource and `logCollection.enabled=true` in any
+	// monitoring resource at the same time.
 	//
-	// +kubebuilder:default={enabled: true}
+	// +kubebuilder:validation:Optional
 	LogCollection LogCollection `json:"logCollection,omitempty"`
 
 	// Settings for scraping Prometheus metrics from pods in the target namespace according to their
 	// prometheus.io/scrape annotations. This setting is optional, by default the operator will scrape metrics from pods
-	// with these notations in the target namespace.
+	// with these notations in the target namespace; unless there is an operator configuration resource with
+	// `telemetryCollection.enabled=false`, then Prometheus scraping is off by default. It is a validation error to set
+	// `telemetryCollection.enabled=false` in the operator configuration resource and `prometheusScraping.enabled=true`
+	// in any monitoring resource at the same time.
 	//
-	// +kubebuilder:default={enabled: true}
+	// +kubebuilder:validation:Optional
 	PrometheusScraping PrometheusScraping `json:"prometheusScraping,omitempty"`
 
 	// Deprecated: This setting is deprecated. Please use
@@ -91,14 +104,19 @@ type Dash0MonitoringSpec struct {
 	//
 	// If enabled, the operator will configure its OpenTelemetry collector to scrape metrics from pods in the namespace
 	// of this Dash0Monitoring resource according to their prometheus.io/scrape annotations via the OpenTelemetry
-	// Prometheus receiver. This setting is optional, it defaults to `true`.
+	// Prometheus receiver. This setting is optional, it defaults to `true`; unless there is an operator configuration
+	// resource with `telemetryCollection.enabled=false`, then it defaults to `false`. It is a validation error to set
+	// `telemetryCollection.enabled=false` in the operator configuration resource and `prometheusScrapingEnabled=true`
+	// in any monitoring resource at the same time.
 	//
-	// +kubebuilder:default=true
+	// +kubebuilder:validation:Optional
 	PrometheusScrapingEnabled *bool `json:"prometheusScrapingEnabled,omitempty"`
 
 	// Optional filters for telemetry data that is collected in this namespace. This can be used to drop entire spans,
 	// span events, metrics, metric data points, or log records. See "Transform" for advanced transformations (e.g.
-	// removing span attributes, metric data point attributes, log record attributes etc.).
+	// removing span attributes, metric data point attributes, log record attributes etc.). This setting is optional,
+	// by default, no filters are applied. It is a validation error to set `telemetryCollection.enabled=false` in the
+	// operator configuration resource and set filters in any monitoring resource at the same time.
 	//
 	// +kubebuilder:validation:Optional
 	Filter *Filter `json:"filter,omitempty"`
@@ -116,6 +134,10 @@ type Dash0MonitoringSpec struct {
 	// of the transform processor. The
 	// [advanced config style](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md#advanced-config)
 	// is not supported.
+	//
+	// This setting is optional, by default, no transformations are applied. It is a validation error to set
+	// `telemetryCollection.enabled=false` in the operator configuration resource and set transforms in any monitoring
+	// resource at the same time.
 	//
 	// +kubebuilder:validation:Optional
 	Transform *Transform `json:"transform,omitempty"`
@@ -165,18 +187,24 @@ type LogCollection struct {
 	// in the target namespace and send the resulting log records to Dash0.
 	//
 	// This setting is optional, it defaults to `true`, that is, if this setting is omitted, the value `true` is assumed
-	// and the operator will collect pod logs in the target namespace.
+	// and the operator will collect pod logs in the target namespace; unless there is an operator configuration
+	// resource with `telemetryCollection.enabled=false`, then log collection is off by default. It is a validation error
+	// to set `telemetryCollection.enabled=false` in the operator configuration resource and
+	// `logCollection.enabled=true` in any monitoring resource at the same time.
 	//
-	// +kubebuilder:default=true
+	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled"`
 }
 
 type PrometheusScraping struct {
 	// If enabled, the operator will configure its OpenTelemetry collector to scrape metrics from pods in the namespace
 	// of this Dash0Monitoring resource according to their prometheus.io/scrape annotations via the OpenTelemetry
-	// Prometheus receiver. This setting is optional, it defaults to `true`.
+	// Prometheus receiver. This setting is optional, it defaults to `true`; unless there is an operator configuration
+	// resource with `telemetryCollection.enabled=false`, then Prometheus scraping is off by default. It is a validation
+	// error to set `telemetryCollection.enabled=false` in the operator configuration resource and
+	// `prometheusScraping.enabled=true` in any monitoring resource at the same time.
 	//
-	// +kubebuilder:default=true
+	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled"`
 }
 

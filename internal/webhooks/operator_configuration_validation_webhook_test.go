@@ -48,7 +48,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				"cluster. Only one operator configuration resource is allowed per cluster.")))
 	})
 
-	It("should reject operator configuration resources without spec (and thus without export) since self-monitoring defaults to true", func() {
+	It("should reject a new operator configuration resource without spec (and thus without export) since self-monitoring defaults to true", func() {
 		_, err := CreateOperatorConfigurationResource(
 			ctx,
 			k8sClient,
@@ -62,7 +62,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				"self-monitoring telemetry.")))
 	})
 
-	It("should reject operator configuration resources without export if self-monitoring is unset and defaults to true", func() {
+	It("should reject a new operator configuration resource without export if self-monitoring is unset and defaults to true", func() {
 		_, err := CreateOperatorConfigurationResource(
 			ctx,
 			k8sClient,
@@ -79,7 +79,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				"self-monitoring telemetry.")))
 	})
 
-	It("should reject operator configuration resources without export if self-monitoring is enabled", func() {
+	It("should reject a new operator configuration resource without export if self-monitoring is enabled", func() {
 		_, err := CreateOperatorConfigurationResource(
 			ctx,
 			k8sClient,
@@ -98,7 +98,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				"self-monitoring telemetry.")))
 	})
 
-	It("should allow an operator configuration resource without export if self-monitoring is disabled", func() {
+	It("should allow a new operator configuration resource without export if self-monitoring is disabled", func() {
 		_, err := CreateOperatorConfigurationResource(
 			ctx,
 			k8sClient,
@@ -113,7 +113,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	It("should allow an operator configuration resource with self-monitoring enabled if it has an export", func() {
+	It("should allow a new operator configuration resource with self-monitoring enabled if it has an export", func() {
 		_, err := CreateOperatorConfigurationResource(
 			ctx,
 			k8sClient,
@@ -122,6 +122,77 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				Spec:       OperatorConfigurationResourceDefaultSpec,
 			})
 		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("should reject a new operator configuration resource with telemetry collection disabled but Kubernetes infra metrics collection explicitly enabled", func() {
+		_, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Export: Dash0ExportWithEndpointAndToken(),
+					KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
+						Enabled: ptr.To(true),
+					},
+					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
+						Enabled: ptr.To(false),
+					},
+				},
+			})
+		Expect(err).To(MatchError(ContainSubstring(
+			"admission webhook \"validate-operator-configuration.dash0.com\" denied the request: The provided " +
+				"Dash0 operator configuration resource has Kubernetes infrastructure metrics collection explicitly " +
+				"enabled, although telemetry collection is disabled. This is an invalid combination. Please either " +
+				"set telemetryCollection.enabled=true or " +
+				"kubernetesInfrastructureMetricsCollection.enabled=false.")))
+	})
+
+	It("should reject a new operator configuration resource with telemetry collection disabled but Kubernetes infra metrics collection explicitly enabled (via legacy setting)", func() {
+		_, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Export: Dash0ExportWithEndpointAndToken(),
+					KubernetesInfrastructureMetricsCollectionEnabled: ptr.To(true),
+					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
+						Enabled: ptr.To(false),
+					},
+				},
+			})
+		Expect(err).To(MatchError(ContainSubstring(
+			"admission webhook \"validate-operator-configuration.dash0.com\" denied the request: The provided " +
+				"Dash0 operator configuration resource has Kubernetes infrastructure metrics collection explicitly " +
+				"enabled (via the deprecated legacy setting kubernetesInfrastructureMetricsCollectionEnabled), " +
+				"although telemetry collection is disabled. This is an invalid combination. Please either set " +
+				"telemetryCollection.enabled=true or " +
+				"kubernetesInfrastructureMetricsCollection.enabled=false.")))
+	})
+
+	It("should reject a new operator configuration resource with telemetry collection disabled but label collection explicitly enabled", func() {
+		_, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Export: Dash0ExportWithEndpointAndToken(),
+					CollectPodLabelsAndAnnotations: dash0v1alpha1.CollectPodLabelsAndAnnotations{
+						Enabled: ptr.To(true),
+					},
+					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
+						Enabled: ptr.To(false),
+					},
+				},
+			})
+		Expect(err).To(MatchError(ContainSubstring(
+			"admission webhook \"validate-operator-configuration.dash0.com\" denied the request: The provided " +
+				"Dash0 operator configuration resource has pod label and annotation collection explicitly " +
+				"enabled, although telemetry collection is disabled. This is an invalid combination. Please either " +
+				"set telemetryCollection.enabled=true or " +
+				"collectPodLabelsAndAnnotations.enabled=false.")))
 	})
 
 	It("should allow updating an existing operator configuration resource", func() {

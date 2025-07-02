@@ -29,13 +29,16 @@ type Dash0OperatorConfigurationSpec struct {
 	Export *Export `json:"export,omitempty"`
 
 	// Global opt-out for self-monitoring for this operator
+	//
 	// +kubebuilder:default={enabled: true}
 	SelfMonitoring SelfMonitoring `json:"selfMonitoring,omitempty"`
 
 	// Settings for collecting Kubernetes infrastructure metrics. This setting is optional, by default the operator will
-	// collect Kubernetes infrastructure metrics.
+	// collect Kubernetes infrastructure metrics; unless `telemetryCollection.enabled` is set to `false`, then
+	// collecting Kubernetes infrastructure metrics is off by default as well. It is a validation error to set
+	// `telemetryCollection.enabled=false` and `kubernetesInfrastructureMetricsCollection.enabled=true` at the same time.
 	//
-	// +kubebuilder:default={enabled: true}
+	// +kubebuilder:validation:Optional
 	KubernetesInfrastructureMetricsCollection KubernetesInfrastructureMetricsCollection `json:"kubernetesInfrastructureMetricsCollection,omitempty"`
 
 	// Deprecated: This setting is deprecated. Please use
@@ -45,15 +48,20 @@ type Dash0OperatorConfigurationSpec struct {
 	//     kubernetesInfrastructureMetricsCollectionEnabled: false
 	//
 	// If enabled, the operator will collect Kubernetes infrastructure metrics. This setting is optional, it defaults
-	// to true.
+	// to true; unless `telemetryCollection.enabled` is set to `false`, then it defaults to `false` as well. It is a
+	// validation error to set `telemetryCollection.enabled=false` and
+	// `kubernetesInfrastructureMetricsCollectionEnabledEnabled=true` at the same time.
 	//
-	// +kubebuilder:default=true
+	// +kubebuilder:validation:Optional
 	KubernetesInfrastructureMetricsCollectionEnabled *bool `json:"kubernetesInfrastructureMetricsCollectionEnabled,omitempty"`
 
 	// Settings for collecting pod labels and annotations in the target namespace. This setting is optional, by default
-	// the operator will collect pod labels and annotations as resource attributes in the target namespace.
+	// the operator will collect pod labels and annotations as resource attributes in the target namespace; unless
+	// `telemetryCollection.enabled` is set to `false`, then collecting pod labels and annotations is off by default as
+	// well. It is a validation error to set `telemetryCollection.enabled=false` and
+	// `collectPodLabelsAndAnnotations.enabled=true` at the same time.
 	//
-	// +kubebuilder:default={enabled: true}
+	// +kubebuilder:validation:Optional
 	CollectPodLabelsAndAnnotations CollectPodLabelsAndAnnotations `json:"collectPodLabelsAndAnnotations,omitempty"`
 
 	// If set, the value will be added as the resource attribute k8s.cluster.name to all telemetry. This setting is
@@ -61,6 +69,12 @@ type Dash0OperatorConfigurationSpec struct {
 	//
 	// +kubebuilder:validation:Optional
 	ClusterName string `json:"clusterName,omitempty"`
+
+	// An opt-out switch for all telemetry collection, and to avoid having the operator deploy OpenTelemetry collectors
+	// to the cluster. This setting is optional, it defaults to true.
+	//
+	// +kubebuilder:default={enabled: true}
+	TelemetryCollection TelemetryCollection `json:"telemetryCollection,omitempty"`
 }
 
 // SelfMonitoring describes how the operator will report telemetry about its working to the backend.
@@ -74,9 +88,12 @@ type SelfMonitoring struct {
 
 type KubernetesInfrastructureMetricsCollection struct {
 	// If enabled, the operator will collect Kubernetes infrastructure metrics. This setting is optional, it defaults
-	// to `true`.
+	// to `true`; unless `telemetryCollection.enabled` is set to `false`, then
+	// `kubernetesInfrastructureMetricsCollection.enabled` defaults to `false` as well. It is a validation error to set
+	// `telemetryCollection.enabled=false` and `kubernetesInfrastructureMetricsCollection.enabled=true` at the same
+	// time.
 	//
-	// +kubebuilder:default=true
+	// +kubebuilder:validation:Optional
 	Enabled *bool `json:"enabled"`
 }
 
@@ -85,7 +102,24 @@ type CollectPodLabelsAndAnnotations struct {
 	// collect Kubernetes labels and annotations as resource attributes.
 	//
 	// This setting is optional, it defaults to `true`, that is, if this setting is omitted, the value `true` is assumed
-	// and the operator will collect pod labels and annotations as resource attributes.
+	// and the operator will collect pod labels and annotations as resource attributes; unless
+	// `telemetryCollection.enabled` is set to `false`, then  `collectPodLabelsAndAnnotations.enabled` defaults to
+	// `false` as well. It is a validation error to set `telemetryCollection.enabled=false` and
+	// `collectPodLabelsAndAnnotations.enabled=true` at the same time.
+	//
+	// +kubebuilder:validation:Optional
+	Enabled *bool `json:"enabled"`
+}
+
+type TelemetryCollection struct {
+	// If disabled, the operator will not collect any telemetry, in particular it will not deploy any OpenTelemetry
+	// collectors to the cluster. This is useful if you want to do infrastructure-as-code (dashboards, check rules) with
+	// the operator, but do not want it to deploy the OpenTelemetry collector. This setting is optional, it defaults to
+	// `true` (i.e. by default telemetry collection is enabled).
+	//
+	// Note that setting this to false does not disable the operator's self-monitoring telemetry, use the setting
+	// selfMonitoring.enabled to disable self-monitoring if required (self-monitoring does not require an OpenTelemetry
+	// collector).
 	//
 	// +kubebuilder:default=true
 	Enabled *bool `json:"enabled"`

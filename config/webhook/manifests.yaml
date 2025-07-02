@@ -35,6 +35,7 @@ webhooks:
     - deployments
     - replicasets
     - statefulsets
+    scope: Namespaced
   - apiGroups:
     - batch
     apiVersions:
@@ -54,6 +55,7 @@ webhooks:
       - CREATE
     resources:
       - jobs
+    scope: Namespaced
   - apiGroups: [""]
     apiVersions:
     - v1
@@ -63,8 +65,42 @@ webhooks:
       - CREATE
     resources:
     - pods
+    scope: Namespaced
   sideEffects: None
   timeoutSeconds: 5
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: dash0-operator--operator-configuration-mutating
+  labels:
+    app.kubernetes.io/name: dash0-operator
+    app.kubernetes.io/component: validator
+    app.kubernetes.io/instance: operator-configuration-mutating-webhook
+    app.kubernetes.io/part-of: dash0-operator
+webhooks:
+  - name: mutate-operator-configuration.dash0.com
+    clientConfig:
+      service:
+        name: dash0-operator--webhook-service
+        namespace: dash0-system
+        port: 443
+        path: /v1alpha1/mutate/operator-configuration
+    admissionReviewVersions:
+      - v1
+    rules:
+      - apiGroups:
+          - operator.dash0.com
+        apiVersions:
+          - v1alpha1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - dash0operatorconfigurations
+        scope: Cluster
+    sideEffects: None
+    timeoutSeconds: 5
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
@@ -81,6 +117,7 @@ webhooks:
       service:
         name: dash0-operator-webhook-service
         namespace: namespace
+        port: 443
         path: /v1alpha1/validate/operator-configuration
     admissionReviewVersions:
       - v1
@@ -94,6 +131,7 @@ webhooks:
           - UPDATE
         resources:
           - dash0operatorconfigurations
+        scope: Cluster
     sideEffects: None
     timeoutSeconds: 5
 ---
@@ -112,6 +150,7 @@ webhooks:
       service:
         name: dash0-operator-webhook-service
         namespace: dash0-system
+        port: 443
         path: /v1alpha1/mutate/monitoring
     admissionReviewVersions:
       - v1
@@ -125,6 +164,7 @@ webhooks:
           - UPDATE
         resources:
           - dash0monitorings
+        scope: Namespaced
     sideEffects: None
     timeoutSeconds: 5
 ---
@@ -143,6 +183,7 @@ webhooks:
       service:
         name: dash0-operator-webhook-service
         namespace: namespace
+        port: 443
         path: /v1alpha1/validate/monitoring
     admissionReviewVersions:
       - v1
@@ -156,5 +197,6 @@ webhooks:
           - UPDATE
         resources:
           - dash0monitorings
+        scope: Namespaced
     sideEffects: None
     timeoutSeconds: 5

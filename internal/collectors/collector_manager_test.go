@@ -9,6 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -141,7 +142,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
 		})
 
-		It("should create the Dash0 collectors based on the operator configuration's export settings ", func() {
+		It("should create the Dash0 collectors based on the operator configuration's export settings", func() {
 			CreateDefaultOperatorConfigurationResource(
 				ctx,
 				k8sClient,
@@ -236,6 +237,28 @@ var _ = Describe("The collector manager", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(hasBeenReconciled).To(BeTrue())
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
+		})
+
+		It("should do nothing if the operator configuration resource has telemetryCollection.enabled=false", func() {
+			CreateOperatorConfigurationResourceWithSpec(
+				ctx,
+				k8sClient,
+				dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
+						Enabled: ptr.To(false),
+					},
+				},
+			)
+			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
+				ctx,
+				TestImages,
+				operatorNamespace,
+				nil,
+				TriggeredByDash0ResourceReconcile,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
+			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
 		})
 
 		It("should do nothing if there is no operator configuration resource and the triggering monitoring resource has no export", func() {
@@ -594,6 +617,37 @@ var _ = Describe("The collector manager", Ordered, func() {
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
 		})
 
+		It("should delete the Dash0 collectors if operator configuration has telemetryCollection.enabled=false ", func() {
+			operatorConfiguration := CreateDefaultOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+			)
+			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
+				ctx,
+				TestImages,
+				operatorNamespace,
+				nil,
+				TriggeredByDash0ResourceReconcile,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
+			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
+
+			operatorConfiguration.Spec.TelemetryCollection.Enabled = ptr.To(false)
+			Expect(k8sClient.Update(ctx, operatorConfiguration)).To(Succeed())
+
+			err, hasBeenReconciled = manager.ReconcileOpenTelemetryCollector(
+				ctx,
+				TestImages,
+				operatorNamespace,
+				nil,
+				TriggeredByDash0ResourceReconcile,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
+			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
+		})
+
 		It("should delete the collector if the operator configuration is deleted and there are no monitoring resources", func() {
 			operatorConfigurationResource := CreateDefaultOperatorConfigurationResource(
 				ctx,
@@ -621,8 +675,6 @@ var _ = Describe("The collector manager", Ordered, func() {
 			)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(hasBeenReconciled).To(BeTrue())
-			// verify the collector is not deleted even if the last monitoring resource has been deleted, but there is
-			// still an operator configuration left,
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
 		})
 

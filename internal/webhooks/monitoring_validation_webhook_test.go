@@ -25,6 +25,11 @@ type kubeSystemTestConfig struct {
 	expectRejection         bool
 }
 
+type monitoringResourceValidationWithTelemetryCollectionOffTestConfig struct {
+	spec          dash0v1alpha1.Dash0MonitoringSpec
+	expectedError string
+}
+
 type ottlValidationTestConfig struct {
 	filter                *dash0v1alpha1.Filter
 	transform             *dash0v1alpha1.Transform
@@ -73,7 +78,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 			} else {
 				Expect(err).ToNot(HaveOccurred())
 			}
-		}, []TableEntry{
+		},
 			Entry("reject deploying to kube-system with instrumentWorkloadsMode=all", kubeSystemTestConfig{
 				namespace:               "kube-system",
 				instrumentWorkloadsMode: dash0v1alpha1.All,
@@ -104,7 +109,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				instrumentWorkloadsMode: dash0v1alpha1.None,
 				expectRejection:         false,
 			}),
-		})
+		)
 
 		It("should reject monitoring resources without export if no operator configuration resource exists", func() {
 			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
@@ -193,6 +198,104 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 
+		DescribeTable("should reject monitoring resource creation with telemetry settings if the operator configuration resource has telemetry collection disabled", func(testConfig monitoringResourceValidationWithTelemetryCollectionOffTestConfig) {
+			operatorConfigurationResource := CreateOperatorConfigurationResourceWithSpec(
+				ctx,
+				k8sClient,
+				dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Export: Dash0ExportWithEndpointAndToken(),
+					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
+						Enabled: ptr.To(false),
+					},
+				},
+			)
+			operatorConfigurationResource.EnsureResourceIsMarkedAsAvailable()
+			Expect(k8sClient.Status().Update(ctx, operatorConfigurationResource)).To(Succeed())
+
+			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
+				ObjectMeta: MonitoringResourceDefaultObjectMeta,
+				Spec:       testConfig.spec,
+			})
+
+			Expect(err).To(MatchError(ContainSubstring(fmt.Sprintf(
+				"admission webhook \"validate-monitoring.dash0.com\" denied the request: %s",
+				testConfig.expectedError,
+			))))
+		},
+			Entry("instrumentWorkloads=all", monitoringResourceValidationWithTelemetryCollectionOffTestConfig{
+				spec: dash0v1alpha1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1alpha1.All,
+				},
+				expectedError: "The Dash0 operator configuration resource has telemetry collection disabled " +
+					"(telemetryCollection.enabled=false), and yet the monitoring resource has the setting " +
+					"instrumentWorkloads=all. This is an invalid combination. Please either set " +
+					"telemetryCollection.enabled=true in the operator configuration resource or set " +
+					"instrumentWorkloads=none in the monitoring resource (or leave it unspecified).",
+			}),
+			Entry("instrumentWorkloads=created-and-updated", monitoringResourceValidationWithTelemetryCollectionOffTestConfig{
+				spec: dash0v1alpha1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1alpha1.CreatedAndUpdated,
+				},
+				expectedError: "The Dash0 operator configuration resource has telemetry collection disabled " +
+					"(telemetryCollection.enabled=false), and yet the monitoring resource has the setting " +
+					"instrumentWorkloads=created-and-updated. This is an invalid combination. Please either set " +
+					"telemetryCollection.enabled=true in the operator configuration resource or set " +
+					"instrumentWorkloads=none in the monitoring resource (or leave it unspecified).",
+			}),
+			Entry("logCollection.enabled=true", monitoringResourceValidationWithTelemetryCollectionOffTestConfig{
+				spec: dash0v1alpha1.Dash0MonitoringSpec{
+					LogCollection: dash0v1alpha1.LogCollection{
+						Enabled: ptr.To(true),
+					},
+				},
+				expectedError: "The Dash0 operator configuration resource has telemetry collection disabled " +
+					"(telemetryCollection.enabled=false), and yet the monitoring resource has the setting " +
+					"logCollection.enabled=true. This is an invalid combination. Please either set " +
+					"telemetryCollection.enabled=true in the operator configuration resource or set " +
+					"logCollection.enabled=false in the monitoring resource (or leave it unspecified).",
+			}),
+			Entry("prometheusScraping.enabled=true", monitoringResourceValidationWithTelemetryCollectionOffTestConfig{
+				spec: dash0v1alpha1.Dash0MonitoringSpec{
+					PrometheusScraping: dash0v1alpha1.PrometheusScraping{
+						Enabled: ptr.To(true),
+					},
+				},
+				expectedError: "The Dash0 operator configuration resource has telemetry collection disabled " +
+					"(telemetryCollection.enabled=false), and yet the monitoring resource has the setting " +
+					"prometheusScraping.enabled=true. This is an invalid combination. Please either set " +
+					"telemetryCollection.enabled=true in the operator configuration resource or set " +
+					"prometheusScraping.enabled=false in the monitoring resource (or leave it unspecified).",
+			}),
+			Entry("prometheusScrapingEnabled=true", monitoringResourceValidationWithTelemetryCollectionOffTestConfig{
+				spec: dash0v1alpha1.Dash0MonitoringSpec{
+					PrometheusScrapingEnabled: ptr.To(true),
+				},
+				expectedError: "The Dash0 operator configuration resource has telemetry collection disabled " +
+					"(telemetryCollection.enabled=false), and yet the monitoring resource has the setting " +
+					"prometheusScrapingEnabled=true. This is an invalid combination. Please either set " +
+					"telemetryCollection.enabled=true in the operator configuration resource or set " +
+					"prometheusScrapingEnabled=false in the monitoring resource (or leave it unspecified).",
+			}),
+			Entry("filter!=nil", monitoringResourceValidationWithTelemetryCollectionOffTestConfig{
+				spec: dash0v1alpha1.Dash0MonitoringSpec{
+					Filter: &dash0v1alpha1.Filter{},
+				},
+				expectedError: "The Dash0 operator configuration resource has telemetry collection disabled " +
+					"(telemetryCollection.enabled=false), and yet the monitoring resource has filter setting. " +
+					"This is an invalid combination. Please either set telemetryCollection.enabled=true in the " +
+					"operator configuration resource or remove the filter setting in the monitoring resource.",
+			}),
+			Entry("transform!=nil", monitoringResourceValidationWithTelemetryCollectionOffTestConfig{
+				spec: dash0v1alpha1.Dash0MonitoringSpec{
+					Transform: &dash0v1alpha1.Transform{},
+				},
+				expectedError: "The Dash0 operator configuration resource has telemetry collection disabled " +
+					"(telemetryCollection.enabled=false), and yet the monitoring resource has a transform setting " +
+					"This is an invalid combination. Please either set telemetryCollection.enabled=true in the " +
+					"operator configuration resource or remove the transform setting in the monitoring resource.",
+			}),
+		)
+
 		DescribeTable("should validate OTTL expressions", func(testConfig ottlValidationTestConfig) {
 			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
 				ObjectMeta: metav1.ObjectMeta{
@@ -220,7 +323,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 			} else {
 				Expect(err).ToNot(HaveOccurred())
 			}
-		}, []TableEntry{
+		},
 			Entry("should allow monitoring resource without filter or transform", ottlValidationTestConfig{}),
 			Entry("should reject monitoring resource with invalid syntax in span filter", ottlValidationTestConfig{
 				filter: &dash0v1alpha1.Filter{
@@ -368,6 +471,6 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 					},
 				},
 			}),
-		})
+		)
 	})
 })

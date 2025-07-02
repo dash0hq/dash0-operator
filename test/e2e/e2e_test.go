@@ -1235,6 +1235,52 @@ trace_statements:
 			})
 		})
 
+		Describe("with operatorConfiguration.telemetryCollection.enabled=false ", func() {
+
+			var timestampLowerBound time.Time
+
+			BeforeAll(func() {
+				By("deploying the Dash0 operator")
+				deployOperatorWithoutAutoOperationConfiguration(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					images,
+				)
+				By("create an operator configuration resource with telemetryCollection.enabled=false")
+				deployDash0OperatorConfigurationResource(dash0OperatorConfigurationValues{
+					SelfMonitoringEnabled:      false,
+					Endpoint:                   defaultEndpoint,
+					Token:                      defaultToken,
+					ApiEndpoint:                dash0ApiMockServiceBaseUrl,
+					ClusterName:                e2eKubernetesContext,
+					TelemetryCollectionEnabled: false,
+				}, operatorNamespace, operatorHelmChart)
+				time.Sleep(5 * time.Second)
+				deployDash0MonitoringResource(
+					applicationUnderTestNamespace,
+					dash0MonitoringValues{
+						InstrumentWorkloads: dash0v1alpha1.None,
+					},
+					operatorNamespace,
+				)
+				time.Sleep(5 * time.Second)
+				timestampLowerBound = time.Now()
+			})
+
+			AfterAll(func() {
+				undeployOperator(operatorNamespace)
+			})
+
+			It("should not collect any telemetry", func() {
+				By("verifying that no metrics are collected")
+				Consistently(func(g Gomega) {
+					verifyNoMetricsAtAll(g, timestampLowerBound)
+				}, 10*time.Second, pollingInterval).Should(Succeed())
+				verifyThatCollectorIsNotDeployed(operatorNamespace)
+			})
+		})
+
 		Describe("operator startup", func() {
 			AfterAll(func() {
 				undeployOperator(operatorNamespace)
@@ -1323,11 +1369,12 @@ trace_statements:
 			//nolint:lll
 			It("should update the daemonset collector configuration when updating the Dash0 endpoint in the operator configuration resource", func() {
 				deployDash0OperatorConfigurationResource(dash0OperatorConfigurationValues{
-					ClusterName:           e2eKubernetesContext,
-					SelfMonitoringEnabled: false,
-					Endpoint:              defaultEndpoint,
-					Token:                 defaultToken,
-					ApiEndpoint:           dash0ApiMockServiceBaseUrl,
+					SelfMonitoringEnabled:      false,
+					Endpoint:                   defaultEndpoint,
+					Token:                      defaultToken,
+					ApiEndpoint:                dash0ApiMockServiceBaseUrl,
+					ClusterName:                e2eKubernetesContext,
+					TelemetryCollectionEnabled: true,
 				}, operatorNamespace, operatorHelmChart)
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
@@ -1392,11 +1439,12 @@ trace_statements:
 			//nolint:lll
 			It("should remove the OpenTelemetry collector", func() {
 				deployDash0OperatorConfigurationResource(dash0OperatorConfigurationValues{
-					ClusterName:           e2eKubernetesContext,
-					SelfMonitoringEnabled: false,
-					Endpoint:              defaultEndpoint,
-					Token:                 defaultToken,
-					ApiEndpoint:           dash0ApiMockServiceBaseUrl,
+					SelfMonitoringEnabled:      false,
+					Endpoint:                   defaultEndpoint,
+					Token:                      defaultToken,
+					ApiEndpoint:                dash0ApiMockServiceBaseUrl,
+					ClusterName:                e2eKubernetesContext,
+					TelemetryCollectionEnabled: true,
 				}, operatorNamespace, operatorHelmChart)
 
 				undeployDash0OperatorConfigurationResource()

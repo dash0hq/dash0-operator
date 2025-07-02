@@ -10,6 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 	"sigs.k8s.io/yaml"
 
@@ -23,8 +24,20 @@ import (
 
 type disableLogCollectionTestCase struct {
 	namespace              string
-	monitoringResourceSpec string
+	monitoringResourceSpec dash0v1alpha1.Dash0MonitoringSpec
 	expectPatch            bool
+	expectedValue          *bool
+}
+
+type monitoringResourceMutationTestConfig struct {
+	telemetryCollectionEnabled bool
+	spec                       dash0v1alpha1.Dash0MonitoringSpec
+	wanted                     dash0v1alpha1.Dash0MonitoringSpec
+}
+
+type normalizeTelemetryRelatedSettingsTestConfig struct {
+	spec   dash0v1alpha1.Dash0MonitoringSpec
+	wanted dash0v1alpha1.Dash0MonitoringSpec
 }
 
 type normalizeTransformSpecTestCase struct {
@@ -40,93 +53,212 @@ const (
 )
 
 var _ = Describe("The mutation webhook for the monitoring resource", func() {
+	logger := log.FromContext(ctx)
 
 	Describe("when mutating the operator configuration resource", func() {
 		DescribeTable("should disable log collection in the operator namespace", func(testCase disableLogCollectionTestCase) {
-			var unmarshalledYaml map[string]interface{}
-			Expect(yaml.Unmarshal([]byte(testCase.monitoringResourceSpec), &unmarshalledYaml)).To(Succeed())
-			rawSpecJson, err := json.Marshal(unmarshalledYaml)
-			Expect(err).ToNot(HaveOccurred())
-			response := monitoringMutatingWebhookHandler.Handle(ctx, admission.Request{
-				AdmissionRequest: admissionv1.AdmissionRequest{
-					Name:      "resource-name",
-					Namespace: testCase.namespace,
-					Object: runtime.RawExtension{
-						Raw: rawSpecJson,
-					},
-				},
-			})
-
-			Expect(response.Allowed).To(BeTrue())
-
-			var logCollectionPatch interface{}
-			for _, patch := range response.Patches {
-				if patch.Operation == "replace" && patch.Path == "/spec/logCollection/enabled" {
-					logCollectionPatch = patch.Value
-				}
+			spec := testCase.monitoringResourceSpec
+			patchRequired := monitoringMutatingWebhookHandler.overrideLogCollectionDefault(
+				toAdmissionRequest(testCase.namespace, spec),
+				&spec,
+				&logger,
+			)
+			Expect(patchRequired).To(Equal(testCase.expectPatch))
+			if testCase.expectPatch {
+				Expect(spec.LogCollection.Enabled).ToNot(BeNil())
 			}
-
-			if !testCase.expectPatch {
-				Expect(logCollectionPatch).To(BeNil())
-				return
+			if testCase.expectedValue != nil {
+				Expect(*spec.LogCollection.Enabled).To(Equal(*testCase.expectedValue))
 			}
-
-			// If we patch the logCollection.enabled field, we only ever set it to false.
-			Expect(logCollectionPatch).ToNot(BeNil())
-			Expect(logCollectionPatch).To(BeFalse())
-
-		}, []TableEntry{
+		},
 			Entry("with an empty spec in an arbitrary namespace", disableLogCollectionTestCase{
-				namespace: "some-namespace",
-				monitoringResourceSpec: `
-spec: {}
-`,
-				expectPatch: false,
+				namespace:              "some-namespace",
+				monitoringResourceSpec: dash0v1alpha1.Dash0MonitoringSpec{},
+				expectPatch:            false,
+				expectedValue:          nil,
 			}),
 			Entry("with an empty spec in the operator namespace", disableLogCollectionTestCase{
-				namespace: OperatorNamespace,
-				monitoringResourceSpec: `
-spec: {}
-`,
-				expectPatch: false,
+				namespace:              OperatorNamespace,
+				monitoringResourceSpec: dash0v1alpha1.Dash0MonitoringSpec{},
+				expectPatch:            true,
+				expectedValue:          ptr.To(false),
 			}),
 			Entry("with log collection disabled in an arbitrary namespace", disableLogCollectionTestCase{
 				namespace: "some-namespace",
-				monitoringResourceSpec: `
-spec: 
-  logCollection:
-    enabled: false
-`,
-				expectPatch: false,
+				monitoringResourceSpec: dash0v1alpha1.Dash0MonitoringSpec{
+					LogCollection: dash0v1alpha1.LogCollection{
+						Enabled: ptr.To(false),
+					},
+				},
+				expectPatch:   false,
+				expectedValue: ptr.To(false),
 			}),
-			Entry("with log collection diabled in the operator namespace", disableLogCollectionTestCase{
+			Entry("with log collection disabled in the operator namespace", disableLogCollectionTestCase{
 				namespace: OperatorNamespace,
-				monitoringResourceSpec: `
-spec: 
-  logCollection:
-    enabled: false
-`,
-				expectPatch: false,
+				monitoringResourceSpec: dash0v1alpha1.Dash0MonitoringSpec{
+					LogCollection: dash0v1alpha1.LogCollection{
+						Enabled: ptr.To(false),
+					},
+				},
+				expectPatch:   false,
+				expectedValue: ptr.To(false),
 			}),
 			Entry("with log collection enabled in an arbitrary namespace", disableLogCollectionTestCase{
 				namespace: "some-namespace",
-				monitoringResourceSpec: `
-spec: 
-  logCollection:
-    enabled: true
-`,
-				expectPatch: false,
+				monitoringResourceSpec: dash0v1alpha1.Dash0MonitoringSpec{
+					LogCollection: dash0v1alpha1.LogCollection{
+						Enabled: ptr.To(true),
+					},
+				},
+				expectPatch:   false,
+				expectedValue: ptr.To(true),
 			}),
 			Entry("with log collection enabled in the operator namespace", disableLogCollectionTestCase{
 				namespace: OperatorNamespace,
-				monitoringResourceSpec: `
-spec: 
-  logCollection:
-    enabled: true
-`,
-				expectPatch: true,
+				monitoringResourceSpec: dash0v1alpha1.Dash0MonitoringSpec{
+					LogCollection: dash0v1alpha1.LogCollection{
+						Enabled: ptr.To(true),
+					},
+				},
+				expectPatch:   true,
+				expectedValue: ptr.To(false),
 			}),
-		})
+		)
+
+		DescribeTable("should normalize the resource spec when telemetry collection is enabled", func(testConfig normalizeTelemetryRelatedSettingsTestConfig) {
+			spec := testConfig.spec
+			monitoringMutatingWebhookHandler.setTelemetryCollectionRelatedDefaults(
+				toAdmissionRequest(TestNamespaceName, spec),
+				&dash0v1alpha1.Dash0OperatorConfigurationSpec{},
+				&spec,
+			)
+			Expect(spec).To(Equal(testConfig.wanted))
+		},
+			Entry("given an empty spec, set all default values",
+				normalizeTelemetryRelatedSettingsTestConfig{
+					spec: dash0v1alpha1.Dash0MonitoringSpec{},
+					wanted: dash0v1alpha1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1alpha1.All,
+						LogCollection: dash0v1alpha1.LogCollection{
+							Enabled: ptr.To(true),
+						},
+						PrometheusScraping: dash0v1alpha1.PrometheusScraping{
+							Enabled: ptr.To(true),
+						},
+						PrometheusScrapingEnabled: ptr.To(true),
+					},
+				}),
+			Entry("given empty structs, set all default values",
+				normalizeTelemetryRelatedSettingsTestConfig{
+					spec: dash0v1alpha1.Dash0MonitoringSpec{
+						LogCollection:      dash0v1alpha1.LogCollection{},
+						PrometheusScraping: dash0v1alpha1.PrometheusScraping{},
+					},
+					wanted: dash0v1alpha1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1alpha1.All,
+						LogCollection: dash0v1alpha1.LogCollection{
+							Enabled: ptr.To(true),
+						},
+						PrometheusScraping: dash0v1alpha1.PrometheusScraping{
+							Enabled: ptr.To(true),
+						},
+						PrometheusScrapingEnabled: ptr.To(true),
+					},
+				}),
+			Entry("do not change values that have been set explicitly",
+				normalizeTelemetryRelatedSettingsTestConfig{
+					spec: dash0v1alpha1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1alpha1.None,
+						LogCollection: dash0v1alpha1.LogCollection{
+							Enabled: ptr.To(false),
+						},
+						PrometheusScraping: dash0v1alpha1.PrometheusScraping{
+							Enabled: ptr.To(false),
+						},
+						PrometheusScrapingEnabled: ptr.To(false),
+					},
+					wanted: dash0v1alpha1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1alpha1.None,
+						LogCollection: dash0v1alpha1.LogCollection{
+							Enabled: ptr.To(false),
+						},
+						PrometheusScraping: dash0v1alpha1.PrometheusScraping{
+							Enabled: ptr.To(false),
+						},
+						PrometheusScrapingEnabled: ptr.To(false),
+					},
+				}),
+		)
+
+		DescribeTable("should normalize the resource spec when telemetry collection is disabled", func(testConfig normalizeTelemetryRelatedSettingsTestConfig) {
+			spec := testConfig.spec
+			monitoringMutatingWebhookHandler.setTelemetryCollectionRelatedDefaults(
+				toAdmissionRequest(TestNamespaceName, spec),
+				&dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
+						Enabled: ptr.To(false),
+					},
+				},
+				&spec,
+			)
+			Expect(spec).To(Equal(testConfig.wanted))
+		},
+			Entry("given an empty spec, set all default values",
+				normalizeTelemetryRelatedSettingsTestConfig{
+					spec: dash0v1alpha1.Dash0MonitoringSpec{},
+					wanted: dash0v1alpha1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1alpha1.None,
+						LogCollection: dash0v1alpha1.LogCollection{
+							Enabled: ptr.To(false),
+						},
+						PrometheusScraping: dash0v1alpha1.PrometheusScraping{
+							Enabled: ptr.To(false),
+						},
+						PrometheusScrapingEnabled: ptr.To(false),
+					},
+				}),
+			Entry("given empty structs, set all default values",
+				normalizeTelemetryRelatedSettingsTestConfig{
+					spec: dash0v1alpha1.Dash0MonitoringSpec{
+						LogCollection:      dash0v1alpha1.LogCollection{},
+						PrometheusScraping: dash0v1alpha1.PrometheusScraping{},
+					},
+					wanted: dash0v1alpha1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1alpha1.None,
+						LogCollection: dash0v1alpha1.LogCollection{
+							Enabled: ptr.To(false),
+						},
+						PrometheusScraping: dash0v1alpha1.PrometheusScraping{
+							Enabled: ptr.To(false),
+						},
+						PrometheusScrapingEnabled: ptr.To(false),
+					},
+				}),
+			Entry("do not change values that have been set explicitly",
+				// this is an invalid config, but the validation is not covered by this test
+				normalizeTelemetryRelatedSettingsTestConfig{
+					spec: dash0v1alpha1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1alpha1.All,
+						LogCollection: dash0v1alpha1.LogCollection{
+							Enabled: ptr.To(true),
+						},
+						PrometheusScraping: dash0v1alpha1.PrometheusScraping{
+							Enabled: ptr.To(true),
+						},
+						PrometheusScrapingEnabled: ptr.To(true),
+					},
+					wanted: dash0v1alpha1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1alpha1.All,
+						LogCollection: dash0v1alpha1.LogCollection{
+							Enabled: ptr.To(true),
+						},
+						PrometheusScraping: dash0v1alpha1.PrometheusScraping{
+							Enabled: ptr.To(true),
+						},
+						PrometheusScrapingEnabled: ptr.To(true),
+					},
+				}),
+		)
 
 		DescribeTable("should normalize the transform spec", func(testCase normalizeTransformSpecTestCase) {
 			var unmarshalledYaml map[string]interface{}
@@ -167,7 +299,7 @@ spec:
 			verifyNormalizedTransformGroupsForOneSignal(expected.Metrics, patchAsMap, "metric_statements")
 			verifyNormalizedTransformGroupsForOneSignal(expected.Logs, patchAsMap, "log_statements")
 
-		}, []TableEntry{
+		},
 			Entry("without a transform spec", normalizeTransformSpecTestCase{
 				monitoringResourceSpec: `
 spec: {}
@@ -346,9 +478,7 @@ spec:
 					},
 				},
 			}),
-
-			//
-		})
+		)
 	})
 
 	Describe("using the actual webhook", func() {
@@ -356,7 +486,64 @@ spec:
 			Expect(
 				k8sClient.DeleteAllOf(ctx, &dash0v1alpha1.Dash0Monitoring{}, client.InNamespace(TestNamespaceName)),
 			).To(Succeed())
+			Expect(k8sClient.DeleteAllOf(ctx, &dash0v1alpha1.Dash0OperatorConfiguration{})).To(Succeed())
 		})
+
+		DescribeTable("should set default values for telemetry related settings", func(testConfig monitoringResourceMutationTestConfig) {
+			operatorConfigurationResource := CreateOperatorConfigurationResourceWithSpec(
+				ctx,
+				k8sClient,
+				dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Export: Dash0ExportWithEndpointAndToken(),
+					TelemetryCollection: dash0v1alpha1.TelemetryCollection{
+						Enabled: ptr.To(testConfig.telemetryCollectionEnabled),
+					},
+				},
+			)
+			operatorConfigurationResource.EnsureResourceIsMarkedAsAvailable()
+			Expect(k8sClient.Status().Update(ctx, operatorConfigurationResource)).To(Succeed())
+
+			updatedResource, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
+				ObjectMeta: MonitoringResourceDefaultObjectMeta,
+				Spec:       testConfig.spec,
+			})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(updatedResource).ToNot(BeNil())
+			Expect(updatedResource.Spec).To(Equal(testConfig.wanted))
+		},
+			Entry("enable all the things if telemetry collection is enabled", monitoringResourceMutationTestConfig{
+				telemetryCollectionEnabled: true,
+				spec:                       dash0v1alpha1.Dash0MonitoringSpec{},
+				wanted: dash0v1alpha1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1alpha1.All,
+					LogCollection: dash0v1alpha1.LogCollection{
+						Enabled: ptr.To(true),
+					},
+					PrometheusScraping: dash0v1alpha1.PrometheusScraping{
+						Enabled: ptr.To(true),
+					},
+					PrometheusScrapingEnabled:   ptr.To(true),
+					SynchronizePersesDashboards: ptr.To(true),
+					SynchronizePrometheusRules:  ptr.To(true),
+				},
+			}),
+			Entry("disable all the things if telemetry collection is disabled", monitoringResourceMutationTestConfig{
+				telemetryCollectionEnabled: false,
+				spec:                       dash0v1alpha1.Dash0MonitoringSpec{},
+				wanted: dash0v1alpha1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1alpha1.None,
+					LogCollection: dash0v1alpha1.LogCollection{
+						Enabled: ptr.To(false),
+					},
+					PrometheusScraping: dash0v1alpha1.PrometheusScraping{
+						Enabled: ptr.To(false),
+					},
+					PrometheusScrapingEnabled:   ptr.To(false),
+					SynchronizePersesDashboards: ptr.To(true),
+					SynchronizePrometheusRules:  ptr.To(true),
+				},
+			}),
+		)
 
 		It("should normalize the transform spec", func() {
 			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
@@ -421,6 +608,22 @@ spec:
 		})
 	})
 })
+
+func toAdmissionRequest(namespace string, spec dash0v1alpha1.Dash0MonitoringSpec) admission.Request {
+	rawJson, err := json.Marshal(dash0v1alpha1.Dash0Monitoring{
+		Spec: spec,
+	})
+	Expect(err).ToNot(HaveOccurred())
+	return admission.Request{
+		AdmissionRequest: admissionv1.AdmissionRequest{
+			Name:      "resource-name",
+			Namespace: namespace,
+			Object: runtime.RawExtension{
+				Raw: rawJson,
+			},
+		},
+	}
+}
 
 func verifyNormalizedTransformGroupsForOneSignal(
 	expectedGroups []dash0v1alpha1.NormalizedTransformGroup,

@@ -45,7 +45,8 @@ var (
 	ctx       context.Context
 	cancel    context.CancelFunc
 
-	monitoringMutatingWebhookHandler *MonitoringMutatingWebhookHandler
+	operatorConfigurationMutatingWebhookHandler *OperatorConfigurationMutatingWebhookHandler
+	monitoringMutatingWebhookHandler            *MonitoringMutatingWebhookHandler
 )
 
 func TestWebhook(t *testing.T) {
@@ -113,6 +114,11 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).NotTo(HaveOccurred())
 
+	// Note: When adding new webhooks, make sure to also add them to the Kustomize configs in
+	// config/webhook/manifests.yaml, not only to the Helm chart. While the Helm chart is used for registering webhooks
+	// in an actual production deployment of the operator, the Kustomize configs are still used for registering
+	// webhooks in the unit tests here; via testEnv = &envtest.Environment.WebhookInstallOptions.Paths
+
 	err = (&InstrumentationWebhookHandler{
 		Client:               k8sClient,
 		Recorder:             manager.GetEventRecorderFor("dash0-webhook"),
@@ -123,9 +129,15 @@ var _ = BeforeSuite(func() {
 	}).SetupWebhookWithManager(manager)
 	Expect(err).NotTo(HaveOccurred())
 
-	err = (&OperatorConfigurationValidationWebhookHandler{
+	err = (&OperatorConfigurationMutatingWebhookHandler{
 		Client: k8sClient,
 	}).SetupWebhookWithManager(manager)
+	Expect(err).NotTo(HaveOccurred())
+
+	operatorConfigurationMutatingWebhookHandler := &OperatorConfigurationValidationWebhookHandler{
+		Client: k8sClient,
+	}
+	err = operatorConfigurationMutatingWebhookHandler.SetupWebhookWithManager(manager)
 	Expect(err).NotTo(HaveOccurred())
 
 	monitoringMutatingWebhookHandler = &MonitoringMutatingWebhookHandler{
