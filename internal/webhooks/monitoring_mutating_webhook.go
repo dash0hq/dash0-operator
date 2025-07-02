@@ -10,10 +10,11 @@ import (
 	"net/http"
 
 	"github.com/go-logr/logr"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	loggg "sigs.k8s.io/controller-runtime/pkg/log"
+	log "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
@@ -40,7 +41,13 @@ func (h *MonitoringMutatingWebhookHandler) SetupWebhookWithManager(mgr ctrl.Mana
 }
 
 func (h *MonitoringMutatingWebhookHandler) Handle(ctx context.Context, request admission.Request) admission.Response {
-	logger := loggg.FromContext(ctx)
+	// Note: The mutating webhook is called before the validating webhook, so we can normalize the resource here and
+	// verify that it is valid (after having been normalized) in the validating webhook.
+	// Note that default values from // +kubebuilder:default comments from
+	// api/dash0monitoring/v1alpha1/dash0monitoring_types.go have already been applied by the time this webhook
+	// is called.
+	// See https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#admission-control-phases.
+	logger := log.FromContext(ctx)
 
 	monitoringResource := &dash0v1alpha1.Dash0Monitoring{}
 	if _, _, err := decoder.Decode(request.Object.Raw, nil, monitoringResource); err != nil {
@@ -48,30 +55,19 @@ func (h *MonitoringMutatingWebhookHandler) Handle(ctx context.Context, request a
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
-	patchRequired := false
-	if request.Namespace == h.OperatorNamespace &&
-		util.ReadBoolPointerWithDefault(monitoringResource.Spec.LogCollection.Enabled, true) {
-		logger.Info(fmt.Sprintf("Automatically disabling log collection in the operator namespace %s. Logs from the "+
-			"operator can be "+
-			"collected via self monitoring, see "+
-			"https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator#operatorconfigurationresource.spec.selfMonitoring.enabled. "+
-			"Collecting them via the filelog receiver is not supported. You can get rid of this log message by "+
-			"explicitly disabling log collection for this namespace, see "+
-			"https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator#monitoringresource.spec.logCollection.enabled.", h.OperatorNamespace))
-		patchRequired = true
-		monitoringResource.Spec.LogCollection.Enabled = ptr.To(false)
+	availableOperatorConfigurations, errorResponse := loadAvailableOperatorConfigurationResources(ctx, h.Client)
+	if errorResponse != nil {
+		return *errorResponse
+	}
+	var operatorConfigurationSpec *dash0v1alpha1.Dash0OperatorConfigurationSpec
+	if len(availableOperatorConfigurations) > 0 {
+		operatorConfigurationSpec = &availableOperatorConfigurations[0].Spec
 	}
 
-	// Normalize spec.transform to the transform processors "advanced" config format.
-	transform := monitoringResource.Spec.Transform
-	if transform != nil {
-		var responseStatus int32
-		var err error
-		monitoringResource.Spec.NormalizedTransformSpec, responseStatus, err = normalizeTransform(transform, &logger)
-		if err != nil {
-			return admission.Errored(responseStatus, err)
-		}
-		patchRequired = true
+	patchRequired, errorResponse := h.normalizeMonitoringResourceSpec(request, operatorConfigurationSpec, &monitoringResource.Spec, &logger)
+
+	if errorResponse != nil {
+		return *errorResponse
 	}
 
 	if !patchRequired {
@@ -80,11 +76,99 @@ func (h *MonitoringMutatingWebhookHandler) Handle(ctx context.Context, request a
 
 	marshalled, err := json.Marshal(monitoringResource)
 	if err != nil {
-		wrappedErr := fmt.Errorf("error when marshalling modfied operator configuration resource to JSON: %w", err)
+		wrappedErr := fmt.Errorf("error when marshalling modfied monitoring resource to JSON: %w", err)
 		return admission.Errored(http.StatusInternalServerError, wrappedErr)
 	}
 
 	return admission.PatchResponseFromRaw(request.Object.Raw, marshalled)
+}
+
+func (h *MonitoringMutatingWebhookHandler) normalizeMonitoringResourceSpec(
+	request admission.Request,
+	operatorConfigurationSpec *dash0v1alpha1.Dash0OperatorConfigurationSpec,
+	monitoringSpec *dash0v1alpha1.Dash0MonitoringSpec,
+	logger *logr.Logger,
+) (bool, *admission.Response) {
+	patchRequired := h.setTelemetryCollectionRelatedDefaults(request, operatorConfigurationSpec, monitoringSpec)
+	patchRequiredForLogCollection := h.overrideLogCollectionDefault(request, monitoringSpec, logger)
+	patchRequired = patchRequired || patchRequiredForLogCollection
+
+	// Normalize spec.transform to the transform processors "advanced" config format.
+	transform := monitoringSpec.Transform
+	if transform != nil {
+		var responseStatus int32
+		var err error
+		monitoringSpec.NormalizedTransformSpec, responseStatus, err = normalizeTransform(transform, logger)
+		if err != nil {
+			errorResponse := admission.Errored(responseStatus, err)
+			return false, &errorResponse
+		}
+		patchRequired = true
+	}
+
+	return patchRequired, nil
+}
+
+func (h *MonitoringMutatingWebhookHandler) setTelemetryCollectionRelatedDefaults(
+	request admission.Request,
+	operatorConfigurationSpec *dash0v1alpha1.Dash0OperatorConfigurationSpec,
+	monitoringSpec *dash0v1alpha1.Dash0MonitoringSpec,
+) bool {
+	patchRequired := false
+	telemetryCollectionEnabled := true
+	if operatorConfigurationSpec != nil {
+		telemetryCollectionEnabled = util.ReadBoolPointerWithDefault(operatorConfigurationSpec.TelemetryCollection.Enabled, true)
+	}
+
+	if monitoringSpec.InstrumentWorkloads == "" {
+		if telemetryCollectionEnabled {
+			monitoringSpec.InstrumentWorkloads = dash0v1alpha1.All
+		} else {
+			monitoringSpec.InstrumentWorkloads = dash0v1alpha1.None
+		}
+		patchRequired = true
+	}
+	if monitoringSpec.LogCollection.Enabled == nil {
+		if request.Namespace == h.OperatorNamespace {
+			monitoringSpec.LogCollection.Enabled = ptr.To(false)
+		} else {
+			monitoringSpec.LogCollection.Enabled = ptr.To(telemetryCollectionEnabled)
+		}
+		patchRequired = true
+	}
+	if monitoringSpec.PrometheusScraping.Enabled == nil {
+		monitoringSpec.PrometheusScraping.Enabled = ptr.To(telemetryCollectionEnabled)
+		patchRequired = true
+	}
+	//nolint:staticcheck
+	if monitoringSpec.PrometheusScrapingEnabled == nil {
+		//nolint:staticcheck
+		monitoringSpec.PrometheusScrapingEnabled = ptr.To(telemetryCollectionEnabled)
+		patchRequired = true
+	}
+	return patchRequired
+}
+
+func (h *MonitoringMutatingWebhookHandler) overrideLogCollectionDefault(
+	request admission.Request,
+	monitoringSpec *dash0v1alpha1.Dash0MonitoringSpec,
+	logger *logr.Logger,
+) bool {
+	if request.Namespace == h.OperatorNamespace &&
+		util.ReadBoolPointerWithDefault(monitoringSpec.LogCollection.Enabled, true) {
+		logger.Info(
+			fmt.Sprintf(
+				"Automatically disabling log collection in the operator namespace %s. Logs from the operator can be "+
+					"collected via self monitoring, see "+
+					"https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator#operatorconfigurationresource.spec.selfMonitoring.enabled. "+
+					"Collecting them via the filelog receiver is not supported. You can get rid of this log message "+
+					"by explicitly disabling log collection for this namespace, see "+
+					"https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator#monitoringresource.spec.logCollection.enabled.",
+				h.OperatorNamespace))
+		monitoringSpec.LogCollection.Enabled = ptr.To(false)
+		return true
+	}
+	return false
 }
 
 func normalizeTransform(transform *dash0v1alpha1.Transform, logger *logr.Logger) (*dash0v1alpha1.NormalizedTransformSpec, int32, error) {
@@ -227,4 +311,24 @@ func normalizeTransformGroupsForOneSignal(
 			fmt.Errorf("unsupported spec.transform.%s[%d] format: %s", signalTypeKey, ctxIdx, jsonPayload)
 	}
 	return allGroups, 0, nil
+}
+
+func loadAvailableOperatorConfigurationResources(
+	ctx context.Context,
+	k8sClient client.Client,
+) ([]dash0v1alpha1.Dash0OperatorConfiguration, *admission.Response) {
+	operatorConfigurationList := &dash0v1alpha1.Dash0OperatorConfigurationList{}
+	if err := k8sClient.List(ctx, operatorConfigurationList, &client.ListOptions{}); err != nil {
+		if !apierrors.IsNotFound(err) {
+			errorResponse := admission.Errored(http.StatusInternalServerError, err)
+			return nil, &errorResponse
+		}
+	}
+	var availableOperatorConfigurations []dash0v1alpha1.Dash0OperatorConfiguration
+	for _, operatorConfiguration := range operatorConfigurationList.Items {
+		if operatorConfiguration.IsAvailable() {
+			availableOperatorConfigurations = append(availableOperatorConfigurations, operatorConfiguration)
+		}
+	}
+	return availableOperatorConfigurations, nil
 }

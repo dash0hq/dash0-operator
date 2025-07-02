@@ -14,3 +14,5 @@ spec:
     enabled: $KUBERNETES_INFRASTRUCTURE_METRICS_COLLECTION_ENABLED
   collectPodLabelsAndAnnotations:
     enabled: $COLLECT_POD_LABELS_AND_ANNOTATIONS_ENABLED
+  telemetryCollection:
+    enabled: $TELEMETRY_COLLECTION_ENABLED

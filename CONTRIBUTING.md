@@ -101,11 +101,11 @@ OPERATOR_HELM_CHART=dash0-operator/dash0-operator \
   make test-e2e
 ```
 
-When an end-to-end test case fails, the test suite automatically collects pod descriptions, config maps and pod logs 
+When an end-to-end test case fails, the test suite automatically collects pod descriptions, config maps and pod logs
 from the Kubernetes cluster at the time of the failure.
 The collected data can be found in `test-resources/e2e/logs`.
 It is often helpful to understand why the test case has failed.
-In addition, the data that the OpenTelemetry collectors emitted during the last test case can be reviewed in 
+In addition, the data that the OpenTelemetry collectors emitted during the last test case can be reviewed in
 `test-resources/e2e/volumes/otlp-sink`, in `logs.jsonl`, `metrics.jsonl`, and `traces.jsonl` respectively.
 
 #### Running End-to-End Tests on kind
@@ -195,7 +195,7 @@ If you want to report telemetry to a Dash0 backend, set `DASH0_AUTHORIZATION_TOK
       It is recommended to set this in `test-resources/.env`.
     * `COLLECT_POD_LABELS_AND_ANNOTATIONS_ENABLED`: Set this to "false" to disable collecting pod labels and annotations
       as resource attributes.
-      This defaults to "true".
+      This defaults to `$TELEMETRY_COLLECTION_ENABLED`, which in turn defaults to "true".
     * `DASH0_API_ENDPOINT`: The endpoint for API requests (for synching Perses dashboards and Prometheus check rules.
       It is recommended to set this in `test-resources/.env`.
     * `DASH0_AUTHORIZATION_TOKEN`: The authorization token for sending telemetry to the Dash0 ingress endpoint and
@@ -223,12 +223,12 @@ If you want to report telemetry to a Dash0 backend, set `DASH0_AUTHORIZATION_TOK
       config map based storage.
     * `INSTRUMENT_WORKLOADS`: Set this to "all", "created-and-updated" or "none" to control the `instrumentWorkloads`
       setting of the monitoring resource that will be deployed.
-      This defaults to "all".
-    * `LOG_COLLECTION: Set this to "false" to disable collecting logs in monitored namespaces.
-      This defaults to "true".
+      This defaults to "all", unless `$TELEMETRY_COLLECTION_ENABLED` is "false", then it defaults to "none".
+    * `LOG_COLLECTION`: Set this to "false" to disable collecting logs in monitored namespaces.
+      This defaults to `$TELEMETRY_COLLECTION_ENABLED`, which in turn defaults to "true".
     * `KUBERNETES_INFRASTRUCTURE_METRICS_COLLECTION_ENABLED`: Set this to "false" to disable K8s infra metrics
       collection.
-      This defaults to "true".
+      This defaults to `$TELEMETRY_COLLECTION_ENABLED`, which in turn defaults to "true".
     * `OPERATOR_CONFIGURATION_VIA_HELM_DATASET`: Use this to set a custom dataset in the auto operator configuration
       resource.
     * `OPERATOR_HELM_CHART_VERSION`: Set this to use a specific version of the Helm chart. This is meant to be used
@@ -243,7 +243,7 @@ If you want to report telemetry to a Dash0 backend, set `DASH0_AUTHORIZATION_TOK
       equal to 8192, which is the default value for `send_batch_size`.
     * `PROMETHEUS_SCRAPING_ENABLED`: Set this to "false" to disable Prometheus scraping in the test namespace via the
       monitoring resource.
-      This defaults to "true".
+      This defaults to `$TELEMETRY_COLLECTION_ENABLED`, which in turn defaults to "true".
     * `SELF_MONITORING_ENABLED`: Set this to "false" to disable the operator's self monitoring.
       This defaults to "true".
     * `SYNCHRONIZE_PERSES_DASHBOARDS`: Set this to "false" to disable synchronizing Perses dashboard resources via the
@@ -251,6 +251,9 @@ If you want to report telemetry to a Dash0 backend, set `DASH0_AUTHORIZATION_TOK
       This defaults to "true".
     * `SYNCHRONIZE_PROMETHEUS_RULES`: Set this to "false" to disable synchronizing Prometheus rule resources via the
       Dash0 API.
+      This defaults to "true".
+    * `TELEMETRY_COLLECTION_ENABLED`: Set this to "false" to instruct the operator to not deploy OpenTelemetry
+      collectors.
       This defaults to "true".
     * `USE_OTLP_SINK`: Set this to "true" to deploy a local collector named OTLP sink and send telemetry there instead
       of sending it to an actual Dash0 backend.

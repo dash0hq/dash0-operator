@@ -123,7 +123,16 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 		}
 	}
 
-	if export != nil {
+	if operatorConfigurationResource != nil && !util.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.TelemetryCollection.Enabled, true) {
+		logger.Info(
+			fmt.Sprintf("Telemetry collection has been disabled explicitly via the operator configuration "+
+				"resource (\"%s\"), property telemetryCollection.enabled=false, no Dash0 OpenTelemetry collector "+
+				"will be created, existing Dash0 OpenTelemetry collectors (if any) will be removed.",
+				operatorConfigurationResource.Name),
+		)
+		err = m.removeOpenTelemetryCollector(ctx, operatorNamespace, &logger)
+		return err, err == nil
+	} else if export != nil {
 		err = m.createOrUpdateOpenTelemetryCollector(
 			ctx,
 			operatorNamespace,
@@ -135,11 +144,13 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 		)
 		return err, err == nil
 	} else {
+		// This should actually never happen, as the operator configuration has a kubebuilder validation comment that
+		// makes the export a required field.
 		if operatorConfigurationResource != nil {
 			logger.Info(
 				fmt.Sprintf("There is an operator configuration resource (\"%s\"), but it has no export "+
 					"configuration, no Dash0 OpenTelemetry collector will be created, existing Dash0 OpenTelemetry "+
-					"collectors will be removed.", operatorConfigurationResource.Name),
+					"collectors (if any) will be removed.", operatorConfigurationResource.Name),
 			)
 		}
 		err = m.removeOpenTelemetryCollector(ctx, operatorNamespace, &logger)

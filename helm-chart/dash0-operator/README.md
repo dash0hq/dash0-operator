@@ -200,15 +200,36 @@ Here is a list of configuration options for this resource:
   This setting is optional, it defaults to true.
 * <a href="#operatorconfigurationresource.spec.kubernetesInfrastructureMetricsCollection.enabled"><span id="operatorconfigurationresource.spec.kubernetesInfrastructureMetricsCollection.enabled">`spec.kubernetesInfrastructureMetricsCollection.enabled`</span></a>:
   If enabled, the operator will collect Kubernetes infrastructure metrics.
-  This setting is optional, it defaults to true.
+  This setting is optional, it defaults to true; unless `telemetryCollection.enabled` is set to `false`, then
+  `kubernetesInfrastructureMetricsCollection.enabled` defaults to `false` as well.
+  It is a validation error to set `telemetryCollection.enabled=false` and
+  `kubernetesInfrastructureMetricsCollection.enabled=true` at the same time.
 * <a href="#operatorconfigurationresource.spec.collectPodLabelsAndAnnotations.enabled"><span id="operatorconfigurationresource.spec.collectPodLabelsAndAnnotations.enabled">`spec.collectPodLabelsAndAnnotations.enabled`</span></a>:
   If enabled, the operator will collect all Kubernetes pod labels and annotations and convert them to resource attributes
   for all spans, log records and metrics.
   The resulting resource attributes are prefixed with `k8s.pod.label.` or `k8s.pod.annotation.` respectively.
-  This setting is optional, it defaults to true.
+  This setting is optional, it defaults to true; unless `telemetryCollection.enabled` is set to `false`, then
+  `collectPodLabelsAndAnnotations.enabled` defaults to `false` as well.
+  It is a validation error to set `telemetryCollection.enabled=false` and `collectPodLabelsAndAnnotations.enabled=true`
+  at the same time.
 * <a href="#operatorconfigurationresource.spec.clusterName"><span id="operatorconfigurationresource.spec.clusterName">`spec.clusterName`</span></a>:
   If set, the value will be added as the resource attribute `k8s.cluster.name` to all telemetry.
   This setting is optional. By default, `k8s.cluster.name` will not be added to telemetry.
+* <a href="#operatorconfigurationresource.spec.telemetryCollection.enabled"><span id="operatorconfigurationresource.spec.telemetryCollection.enabled">`spec.telemetryCollection.enabled`</span></a>:
+  An opt-out switch for all telemetry collection, and to avoid having the operator deploy OpenTelemetry collectors in
+  the cluster.
+  This setting is optional, it defaults to true (that is, by default, OpenTelemetry collectors will be deployed and
+  telemetry will be collected).
+  If telemetry collection is disabled via this switch, the operator will not collect any telemetry, in particular it
+  will not deploy any OpenTelemetry collectors in the cluster.
+  This is useful if you want to use the operator for infrastructure-as-code (e.g. to synchronize dashboards & check
+  rules), but do not want it to deploy the OpenTelemetry collector.
+  Note that setting this to false does not disable the operator's self-monitoring telemetry, use the setting
+  `spec.selfMonitoring.enabled` to disable self-monitoring if required (self-monitoring does not require an
+  OpenTelemetry collector).
+  Also note that this setting is not exposed via Helm, i.e. if you want to set this to false you need to deploy the
+  operator configuration resource manually, i.e. omit the Helm value `operator.dash0Export.enabled` or set it to false,
+  then deploy an operator configuration resource via `kubectl apply -f` or similar.
 
 After providing the required values (at least `endpoint` and `authorization`), save the file and apply the resource to
 the Kubernetes cluster you want to monitor:
@@ -303,17 +324,18 @@ The Dash0 monitoring resource supports additional configuration settings:
 * <a href="#monitoringresource.spec.instrumentWorkloads"><span id="monitoringresource.spec.instrumentWorkloads">`spec.instrumentWorkloads`</span></a>:
   A namespace-wide configuration for the workload instrumentation strategy for the target namespace.
   There are three possible settings: `all`, `created-and-updated` and `none`.
-  By default, the setting `all` is assumed.
+  By default, the setting `all` is assumed; unless there is an operator
+  configuration resource with `telemetryCollection.enabled=false`, then the setting `none` is assumed by default.
 
-  * `all`: If set to `all` (or omitted), the operator will:
+  * `all`: If set to `all`, the operator will:
       * instrument existing workloads in the target namespace (i.e. workloads already running in the namespace) when
         the Dash0 monitoring resource is deployed,
       * instrument existing workloads or update the instrumentation of already instrumented workloads in the target
         namespace when the Dash0 operator is first started or updated to a newer version,,
       * instrument new workloads in the target namespace when they are deployed, and
       * instrument changed workloads in the target namespace when changes are applied to them.
-    Note that the first two actions (instrumenting existing workloads) will result in restarting the pods of the
-    affected workloads.
+    **Note that the first two actions (instrumenting existing workloads) will result in restarting the pods of the
+    affected workloads.**
     Use `created-and-updated` if you want to avoid pod restarts.
 
   * `created-and-updated`: If set to `created-and-updated`, the operator will not instrument existing workloads in the
@@ -330,6 +352,9 @@ The Dash0 monitoring resource supports additional configuration settings:
 
   If this setting is omitted, the value `all` is assumed and new/updated as well as existing Kubernetes workloads
   will be intrumented by the operator to emit telemetry, as described above.
+  There is one exception to this rule: If there is an operator configuration resource with
+  `telemetryCollection.enabled=false`, then the default setting is `none` instead of `all`, and no workloads will be
+  instrumented by the Dash0 operator.
 
   More fine-grained per-workload control over instrumentation is available by setting the label
   `dash0.com/enable=false` on individual workloads, see
@@ -337,30 +362,40 @@ The Dash0 monitoring resource supports additional configuration settings:
 
   The behavior when changing this setting for an existing Dash0 monitoring resource is as follows:
     * When this setting is updated to `spec.instrumentWorkloads=all` (and it had a different value before): All existing
-      uninstrumented workloads will be instrumented.
+      uninstrumented workloads will be instrumented. Their pods will be restarted to apply the instrumentation.
     * When this setting is updated to `spec.instrumentWorkloads=none` (and it had a different value before): The
       instrumentation will be removed from all instrumented workloads.
+      Their pods will be restarted to remove the instrumentation.
+      (After this change, the operator will no longer instrument any workloads nor will it restart any pods.)
     * Updating this value to `spec.instrumentWorkloads=created-and-updated` has no immediate effect; existing
       uninstrumented workloads will not be instrumented, existing instrumented workloads will not be uninstrumented.
       Newly deployed or updated workloads will be instrumented from the point of the configuration change onwards as
       described above.
 
-  Automatic workload instrumentation will automatically add tracing to your workloads. You can read more about what
-  exactly this feature entails in the section [Automatic Workload Instrumentation](#automatic-workload-instrumentation).
+  Automatic workload instrumentation will automatically add tracing to your workloads.
+  You can read more about what exactly this feature entails in the section
+  [Automatic Workload Instrumentation](#automatic-workload-instrumentation).
 
 * <a href="#monitoringresource.spec.logCollection.enabled"><span id="monitoringresource.spec.logCollection.enabled">`spec.logCollection.enabled`</span></a>:
   A namespace-wide opt-out for collecting pod logs via the `filelog` receiver.
   If enabled, the operator will configure its OpenTelemetry collector to watch the log output of all pods in the
   namespace and send the resulting log records to Dash0.
-  This setting is optional, it defaults to true.
+  This setting is optional, it defaults to true; unless there is an operator configuration resource with
+  `telemetryCollection.enabled=false`, then log collection is off by default.
+  It is a validation error to set `telemetryCollection.enabled=false` in the operator configuration resource and
+  `logCollection.enabled=true` in any monitoring resource at the same time.
 
 * <a href="#monitoringresource.spec.prometheusScraping.enabled"><span id="monitoringresource.spec.prometheusScraping.enabled">`spec.prometheusScraping.enabled`</span></a>:
   A namespace-wide opt-out for Prometheus scraping for the target namespace.
   If enabled, the operator will configure its OpenTelemetry collector to scrape metrics from pods in the namespace
   of this Dash0Monitoring resource according to their prometheus.io/scrape annotations via the OpenTelemetry Prometheus
   receiver.
-  This setting is optional, it defaults to true. Note that the collection of OpenTelemetry-native metrics is not
-  affected by setting `prometheusScraping.enabled` to `false` for a namespace.
+  This setting is optional, it defaults to true; unless there is an operator configuration resource with
+  `telemetryCollection.enabled=false`, then Prometheus scraping is off by default.
+  It is a validation error to set `telemetryCollection.enabled=false` in the operator configuration resource and
+  `prometheusScraping.enabled=true` in any monitoring resource at the same time.
+  Note that the collection of OpenTelemetry-native metrics is not
+  affected by setting `prometheusScraping.enabled=false` for a namespace.
 
 * <a href="#monitoringresource.spec.filter"><span id="monitoringresource.spec.filter">`spec.filter`</span></a>:
   An optional custom filter configuration to drop some of the collected telemetry before sending it to the configured
@@ -393,6 +428,9 @@ The Dash0 monitoring resource supports additional configuration settings:
     * `spec.filter.logs.log_record`:
        A list of OTTL conditions for filtering log records.
        All log records where at least one condition evaluates to true will be dropped.
+  This setting is optional, by default, no filters are applied.
+  It is a validation error to set `telemetryCollection.enabled=false` in the operator configuration resource and set
+  filters in any monitoring resource at the same time.
 
 * <a href="#monitoringresource.spec.transform"><span id="monitoringresource.spec.transform">`spec.transform`</span></a>:
   An optional custom transformation configuration that will be applied to the collected telemetry before sending it to
@@ -421,6 +459,9 @@ The Dash0 monitoring resource supports additional configuration settings:
       A list of OTTL statements (or a list of groups in the advanced config style) for filtering metric telemetry.
     * `spec.transform.log_statements`:
       A list of OTTL statements (or a list of groups in the advanced config style) for filtering log telemetry.
+  This setting is optional, by default, no transformations are applied.
+  It is a validation error to set `telemetryCollection.enabled=false` in the operator configuration resource and set
+  transforms in any monitoring resource at the same time.
 
 * <a href="#monitoringresource.spec.synchronizePersesDashboards"><span id="monitoringresource.spec.synchronizePersesDashboards">`spec.synchronizePersesDashboards`</span></a>:
   A namespace-wide opt-out for synchronizing Perses dashboard resources found in the target namespace.
@@ -1362,6 +1403,11 @@ Perses Dashboard Synchronization Results:
     Synchronized At:            2024-10-25T12:02:12Z
 ```
 
+Note: If you only want to manage dashboards and check rules via the Dash0 operator, and you do not want it to collect
+telemetry, you can set `telemetryCollection.enabled` to `false` in the Dash0 operator configuration resource.
+This will disable the telemetry collection by the operator, and it will also instruct the operator to not deploy the
+OpenTelemetry collector in your cluster.
+
 ## Managing Dash0 Check Rules
 
 You can manage your Dash0 check rules via the Dash0 operator.
@@ -1467,6 +1513,11 @@ Prometheus Rule Synchronization Results:
     Invalid Rules Total:           0
     Synchronization Errors Total:  0
 ```
+
+Note: If you only want to manage dashboards and check rules via the Dash0 operator, and you do not want it to collect
+telemetry, you can set `telemetryCollection.enabled` to `false` in the Dash0 operator configuration resource.
+This will disable the telemetry collection by the operator, and it will also instruct the operator to not deploy the
+OpenTelemetry collector in your cluster.
 
 ## Notes on Running The Operator on Apple Silicon
 

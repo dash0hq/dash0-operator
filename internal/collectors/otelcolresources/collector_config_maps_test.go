@@ -928,54 +928,53 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				Expect(metricsReceivers).To(ContainElement("kubeletstats"))
 				Expect(metricsReceivers).To(ContainElement("hostmetrics"))
 			},
-			[]TableEntry{
-				Entry("should use node name as endpoint", kubeletStatsReceiverConfigTest{
-					kubeletStatsReceiverConfig: KubeletStatsReceiverConfig{
-						Enabled:  true,
-						Endpoint: "https://${env:K8S_NODE_NAME}:10250",
-						AuthType: "serviceAccount",
-					},
-					wanted: kubeletStatsReceiverConfigTestWanted{
-						endpoint: "https://${env:K8S_NODE_NAME}:10250",
-						authType: "serviceAccount",
-					},
-				}),
-				Entry("should use node IP as endpoint", kubeletStatsReceiverConfigTest{
-					kubeletStatsReceiverConfig: KubeletStatsReceiverConfig{
-						Enabled:  true,
-						Endpoint: "https://${env:K8S_NODE_IP}:10250",
-						AuthType: "serviceAccount",
-					},
-					wanted: kubeletStatsReceiverConfigTestWanted{
-						endpoint: "https://${env:K8S_NODE_IP}:10250",
-						authType: "serviceAccount",
-					},
-				}),
-				Entry("should use read-only endpoint", kubeletStatsReceiverConfigTest{
-					kubeletStatsReceiverConfig: KubeletStatsReceiverConfig{
-						Enabled:  true,
-						Endpoint: "http://${env:K8S_NODE_IP}:10255",
-						AuthType: "none",
-					},
-					wanted: kubeletStatsReceiverConfigTestWanted{
-						endpoint: "http://${env:K8S_NODE_IP}:10255",
-						authType: "none",
-					},
-				}),
-				Entry("should use node IP as endpoint with insecure_skip_verify", kubeletStatsReceiverConfigTest{
-					kubeletStatsReceiverConfig: KubeletStatsReceiverConfig{
-						Enabled:            true,
-						Endpoint:           "https://${env:K8S_NODE_IP}:10250",
-						AuthType:           "serviceAccount",
-						InsecureSkipVerify: true,
-					},
-					wanted: kubeletStatsReceiverConfigTestWanted{
-						endpoint:           "https://${env:K8S_NODE_IP}:10250",
-						authType:           "serviceAccount",
-						insecureSkipVerify: true,
-					},
-				}),
-			},
+
+			Entry("should use node name as endpoint", kubeletStatsReceiverConfigTest{
+				kubeletStatsReceiverConfig: KubeletStatsReceiverConfig{
+					Enabled:  true,
+					Endpoint: "https://${env:K8S_NODE_NAME}:10250",
+					AuthType: "serviceAccount",
+				},
+				wanted: kubeletStatsReceiverConfigTestWanted{
+					endpoint: "https://${env:K8S_NODE_NAME}:10250",
+					authType: "serviceAccount",
+				},
+			}),
+			Entry("should use node IP as endpoint", kubeletStatsReceiverConfigTest{
+				kubeletStatsReceiverConfig: KubeletStatsReceiverConfig{
+					Enabled:  true,
+					Endpoint: "https://${env:K8S_NODE_IP}:10250",
+					AuthType: "serviceAccount",
+				},
+				wanted: kubeletStatsReceiverConfigTestWanted{
+					endpoint: "https://${env:K8S_NODE_IP}:10250",
+					authType: "serviceAccount",
+				},
+			}),
+			Entry("should use read-only endpoint", kubeletStatsReceiverConfigTest{
+				kubeletStatsReceiverConfig: KubeletStatsReceiverConfig{
+					Enabled:  true,
+					Endpoint: "http://${env:K8S_NODE_IP}:10255",
+					AuthType: "none",
+				},
+				wanted: kubeletStatsReceiverConfigTestWanted{
+					endpoint: "http://${env:K8S_NODE_IP}:10255",
+					authType: "none",
+				},
+			}),
+			Entry("should use node IP as endpoint with insecure_skip_verify", kubeletStatsReceiverConfigTest{
+				kubeletStatsReceiverConfig: KubeletStatsReceiverConfig{
+					Enabled:            true,
+					Endpoint:           "https://${env:K8S_NODE_IP}:10250",
+					AuthType:           "serviceAccount",
+					InsecureSkipVerify: true,
+				},
+				wanted: kubeletStatsReceiverConfigTestWanted{
+					endpoint:           "https://${env:K8S_NODE_IP}:10250",
+					authType:           "serviceAccount",
+					insecureSkipVerify: true,
+				},
+			}),
 		)
 	})
 
@@ -1027,7 +1026,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		DescribeTable("should render the namespace filter ottl expression", func(testConfig ottlFilterExpressionTestConfig) {
 			expression := renderOttlNamespaceFilter(testConfig.monitoredNamespaces)
 			Expect(expression).To(Equal(testConfig.expectedExpression))
-		}, []TableEntry{
+		},
 			Entry("with nil", ottlFilterExpressionTestConfig{
 				monitoredNamespaces: nil,
 				expectedExpression:  "resource.attributes[\"k8s.namespace.name\"] != nil\n",
@@ -1054,7 +1053,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 					"          and resource.attributes[\"k8s.namespace.name\"] != \"namespace-2\"\n" +
 					"          and resource.attributes[\"k8s.namespace.name\"] != \"namespace-3\"\n",
 			}),
-		})
+		)
 
 		DescribeTable("should render the namespace filter and add it to the metrics pipeline", func(cmTypeDef configMapTypeDefinition) {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
@@ -1617,7 +1616,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			result := aggregateCustomFilters(filters)
 			Expect(result.ErrorMode).To(Equal(testConfig.expected))
 
-		}, []TableEntry{
+		},
 			Entry("no error mode provided", filterErrorModeTestConfig{
 				errorModes: nil,
 				expected:   dash0v1alpha1.FilterTransformErrorModeIgnore,
@@ -1634,7 +1633,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				},
 				expected: dash0v1alpha1.FilterTransformErrorModePropagate,
 			}),
-		})
+		)
 	})
 
 	Describe("configurable transformation of telemetry per namespace", func() {
@@ -2076,7 +2075,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			result := aggregateCustomTransforms(transforms)
 			Expect(result.GlobalErrorMode).To(Equal(testConfig.expected))
 
-		}, []TableEntry{
+		},
 			Entry("no error mode provided", transformErrorModeTestConfig{
 				errorModes: nil,
 				expected:   dash0v1alpha1.FilterTransformErrorModeIgnore,
@@ -2093,7 +2092,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				},
 				expected: dash0v1alpha1.FilterTransformErrorModePropagate,
 			}),
-		})
+		)
 	})
 
 	Describe("on an IPv4 or IPv6 cluster", func() {
@@ -2154,7 +2153,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				})
 			Expect(healthCheckEndpoint).To(Equal(fmt.Sprintf("%s:13133", expected)))
 			Expect(selfMonitoringTelemetryEndpoint).To(Equal(expected))
-		}, []TableEntry{
+		},
 			Entry("IPv4 cluster", &ipVersionTestConfig{
 				ipv6:     false,
 				expected: "${env:K8S_POD_IP}",
@@ -2163,7 +2162,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				ipv6:     true,
 				expected: "[${env:K8S_POD_IP}]",
 			}),
-		})
+		)
 	})
 
 	Describe("render logs self monitoring pipeline", func() {

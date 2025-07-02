@@ -48,8 +48,8 @@ const (
 )
 
 var (
-	log     = logf.Log.WithName("instrumentation-webhook")
-	decoder = scheme.Codecs.UniversalDecoder()
+	instrumentationWebhookLog = logf.Log.WithName("instrumentation-webhook")
+	decoder                   = scheme.Codecs.UniversalDecoder()
 
 	routes = routing{
 		"": {
@@ -106,7 +106,7 @@ func (h *InstrumentationWebhookHandler) SetupWebhookWithManager(mgr ctrl.Manager
 }
 
 func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admission.Request) admission.Response {
-	logger := log.WithValues(
+	logger := instrumentationWebhookLog.WithValues(
 		"operation",
 		request.Operation,
 		"gvk",

@@ -13,13 +13,13 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	loggg "sigs.k8s.io/controller-runtime/pkg/log"
+	log "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/webhooks/vendored/opentelemetry-collector-contrib/internal_/filter/filterottl"
 	"github.com/dash0hq/dash0-operator/internal/webhooks/vendored/opentelemetry-collector-contrib/processor/transformprocessor/internal_/common"
 	"github.com/dash0hq/dash0-operator/internal/webhooks/vendored/opentelemetry-collector-contrib/processor/transformprocessor/internal_/logs"
@@ -53,7 +53,10 @@ func (h *MonitoringValidationWebhookHandler) SetupWebhookWithManager(mgr ctrl.Ma
 }
 
 func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request admission.Request) admission.Response {
-	logger := loggg.FromContext(ctx)
+	// Note: The mutating webhook is called before the validating webhook, so we can assume the resource has already
+	// been normalized by the mutating webhook.
+	// See https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#admission-control-phases.
+	logger := log.FromContext(ctx)
 
 	monitoringResource := &dash0v1alpha1.Dash0Monitoring{}
 	if _, _, err := decoder.Decode(request.Object.Raw, nil, monitoringResource); err != nil {
@@ -81,7 +84,16 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 			))
 	}
 
-	admissionResponse, done := h.validateExport(ctx, monitoringResource)
+	availableOperatorConfigurations, errorResponse := loadAvailableOperatorConfigurationResources(ctx, h.Client)
+	if errorResponse != nil {
+		return *errorResponse
+	}
+
+	admissionResponse, done := h.validateExport(availableOperatorConfigurations, monitoringResource)
+	if done {
+		return admissionResponse
+	}
+	admissionResponse, done = h.validateTelemetryRelatedSettingsIfTelemetryCollectionIsDisabled(availableOperatorConfigurations, monitoringResource)
 	if done {
 		return admissionResponse
 	}
@@ -94,24 +106,11 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 	return admission.Allowed("")
 }
 
-func (h *MonitoringValidationWebhookHandler) validateExport(ctx context.Context, monitoringResource *dash0v1alpha1.Dash0Monitoring) (admission.Response, bool) {
+func (h *MonitoringValidationWebhookHandler) validateExport(
+	availableOperatorConfigurations []dash0v1alpha1.Dash0OperatorConfiguration,
+	monitoringResource *dash0v1alpha1.Dash0Monitoring,
+) (admission.Response, bool) {
 	if monitoringResource.Spec.Export == nil {
-		operatorConfigurationList := &dash0v1alpha1.Dash0OperatorConfigurationList{}
-		if err := h.Client.List(ctx, operatorConfigurationList, &client.ListOptions{}); err != nil {
-			if apierrors.IsNotFound(err) {
-				return admission.Denied("The provided Dash0 monitoring resource does not have an export configuration, and no Dash0 operator configuration resource exists."), true
-			} else {
-				return admission.Errored(http.StatusInternalServerError, err), true
-			}
-		}
-
-		var availableOperatorConfigurations []dash0v1alpha1.Dash0OperatorConfiguration
-		for _, operatorConfiguration := range operatorConfigurationList.Items {
-			if operatorConfiguration.IsAvailable() {
-				availableOperatorConfigurations = append(availableOperatorConfigurations, operatorConfiguration)
-			}
-		}
-
 		if len(availableOperatorConfigurations) == 0 {
 			return admission.Denied(
 				"The provided Dash0 monitoring resource does not have an export configuration, and no Dash0 operator " +
@@ -130,6 +129,69 @@ func (h *MonitoringValidationWebhookHandler) validateExport(ctx context.Context,
 				"The provided Dash0 monitoring resource does not have an export configuration, and the existing Dash0 " +
 					"operator configuration does not have an export configuration either."), true
 		}
+	}
+	return admission.Response{}, false
+}
+
+func (h *MonitoringValidationWebhookHandler) validateTelemetryRelatedSettingsIfTelemetryCollectionIsDisabled(
+	availableOperatorConfigurations []dash0v1alpha1.Dash0OperatorConfiguration,
+	monitoringResource *dash0v1alpha1.Dash0Monitoring,
+) (admission.Response, bool) {
+	if len(availableOperatorConfigurations) == 0 {
+		// Since there is no operator configuration available, telemetry collection cannot be disabled via
+		// operatorconfiguration.spec.telemetryCollection.enabled=false, hence no further checks for this aspect are
+		// necessary.
+		return admission.Response{}, false
+	}
+	operatorConfigurationSpec := availableOperatorConfigurations[0].Spec
+	if util.ReadBoolPointerWithDefault(operatorConfigurationSpec.TelemetryCollection.Enabled, true) {
+		return admission.Response{}, false
+	}
+
+	if monitoringResource.Spec.InstrumentWorkloads != dash0v1alpha1.None {
+		return admission.Denied(
+			fmt.Sprintf(
+				"The Dash0 operator configuration resource has telemetry collection disabled "+
+					"(telemetryCollection.enabled=false), and yet the monitoring resource has the setting "+
+					"instrumentWorkloads=%s. This is an invalid combination. Please either set "+
+					"telemetryCollection.enabled=true in the operator configuration resource or set "+
+					"instrumentWorkloads=none in the monitoring resource (or leave it unspecified).",
+				monitoringResource.Spec.InstrumentWorkloads,
+			)), true
+	}
+	if util.ReadBoolPointerWithDefault(monitoringResource.Spec.LogCollection.Enabled, true) {
+		return admission.Denied("The Dash0 operator configuration resource has telemetry collection disabled " +
+			"(telemetryCollection.enabled=false), and yet the monitoring resource has the setting " +
+			"logCollection.enabled=true. This is an invalid combination. Please either set " +
+			"telemetryCollection.enabled=true in the operator configuration resource or set " +
+			"logCollection.enabled=false in the monitoring resource (or leave it unspecified)."), true
+	}
+	if util.ReadBoolPointerWithDefault(monitoringResource.Spec.PrometheusScraping.Enabled, true) {
+		return admission.Denied("The Dash0 operator configuration resource has telemetry collection disabled " +
+			"(telemetryCollection.enabled=false), and yet the monitoring resource has the setting " +
+			"prometheusScraping.enabled=true. This is an invalid combination. Please either set " +
+			"telemetryCollection.enabled=true in the operator configuration resource or set " +
+			"prometheusScraping.enabled=false in the monitoring resource (or leave it unspecified)."), true
+	}
+	//nolint:staticcheck
+	if util.ReadBoolPointerWithDefault(monitoringResource.Spec.PrometheusScrapingEnabled, true) {
+		return admission.Denied("The Dash0 operator configuration resource has telemetry collection disabled " +
+			"(telemetryCollection.enabled=false), and yet the monitoring resource has the setting " +
+			"prometheusScrapingEnabled=true. This is an invalid combination. Please either set " +
+			"telemetryCollection.enabled=true in the operator configuration resource or set " +
+			"prometheusScrapingEnabled=false in the monitoring resource (or leave it unspecified)."), true
+	}
+	if monitoringResource.Spec.Filter != nil {
+		return admission.Denied("The Dash0 operator configuration resource has telemetry collection disabled " +
+			"(telemetryCollection.enabled=false), and yet the monitoring resource has filter setting. " +
+			"This is an invalid combination. Please either set telemetryCollection.enabled=true in the " +
+			"operator configuration resource or remove the filter setting in the monitoring resource."), true
+	}
+	if monitoringResource.Spec.Transform != nil {
+		return admission.Denied("The Dash0 operator configuration resource has telemetry collection disabled " +
+			"(telemetryCollection.enabled=false), and yet the monitoring resource has a transform setting " +
+			"This is an invalid combination. Please either set telemetryCollection.enabled=true in the " +
+			"operator configuration resource or remove the transform setting in the monitoring resource."), true
 	}
 	return admission.Response{}, false
 }

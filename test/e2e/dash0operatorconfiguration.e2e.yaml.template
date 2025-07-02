@@ -14,3 +14,5 @@ spec:
       apiEndpoint: {{ .ApiEndpoint }}
 {{- end }}
   clusterName: {{ .ClusterName }}
+  telemetryCollection:
+    enabled: {{ .TelemetryCollectionEnabled }}

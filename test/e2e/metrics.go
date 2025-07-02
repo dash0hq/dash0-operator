@@ -141,6 +141,20 @@ func verifyNonNamespaceScopedKubeletStatsMetricsOnly(g Gomega, timestampLowerBou
 	)
 }
 
+func verifyNoMetricsAtAll(g Gomega, timestampLowerBound time.Time) {
+	allMatchResults := fileHasMatchingMetrics(
+		g,
+		matchAllResourceAttributeMatcher(),
+		matchAllMetricMatcher(),
+		namespaceChecks{},
+		timestampLowerBound,
+	)
+	allMatchResults.expectZeroMatches(
+		g,
+		"expected to find no metrics",
+	)
+}
+
 func fileHasMatchingMetrics(
 	g Gomega,
 	resourceMatchFn func(pmetric.ResourceMetrics, *ResourceMatchResult[pmetric.ResourceMetrics]),
@@ -469,6 +483,21 @@ func metricNameIsMemberOfList(metricNameList []string) func(
 
 func parseMetricNameList(metricNameListRaw string) []string {
 	return strings.Split(metricNameListRaw, "\n")
+}
+
+func matchAllResourceAttributeMatcher() func(pmetric.ResourceMetrics, *ResourceMatchResult[pmetric.ResourceMetrics]) {
+	return func(_ pmetric.ResourceMetrics, matchResult *ResourceMatchResult[pmetric.ResourceMetrics]) {
+		matchResult.addSkippedAssertion("no-op", "this matcher does not check any resource attributes")
+	}
+}
+
+func matchAllMetricMatcher() func(
+	pmetric.Metric,
+	*ObjectMatchResult[pmetric.ResourceMetrics, pmetric.Metric],
+) {
+	return func(_ pmetric.Metric, matchResult *ObjectMatchResult[pmetric.ResourceMetrics, pmetric.Metric]) {
+		matchResult.addSkippedAssertion("no-op", "this matcher does not check any metric attributes")
+	}
 }
 
 func getMostRecentTimestampOfAnyMetricDataPoint(resourceMetrics pmetric.ResourceMetrics) time.Time {
