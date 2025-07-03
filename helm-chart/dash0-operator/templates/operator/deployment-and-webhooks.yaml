@@ -90,7 +90,7 @@ spec:
 {{- if .Values.operator.dash0Export.enabled }}
 {{- if not .Values.operator.dash0Export.endpoint }}
 {{- fail "Error: operator.dash0Export.enabled is set to true, but you did not provide a value for operator.dash0Export.endpoint. Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator." -}}
-{{- end }}
+{{- end }}{{/* closes "not .Values.operator.dash0Export.endpoint" */}}
         - --operator-configuration-endpoint={{ .Values.operator.dash0Export.endpoint }}
 {{- if .Values.operator.dash0Export.token }}
         - --operator-configuration-token={{ .Values.operator.dash0Export.token }}
@@ -100,29 +100,29 @@ spec:
 {{- if $secret -}}
 {{- if not (index $secret.data .Values.operator.dash0Export.secretRef.key) -}}
 {{- fail (printf "Error: There is a secret named \"%s\" in the target namespace \"%s\", but it does not have the required key \"%s\". Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator." .Values.operator.dash0Export.secretRef.name .Release.Namespace .Values.operator.dash0Export.secretRef.key) -}}
-{{- end -}}
-{{- else -}}
+{{- end -}}{{/* closes "if not (index $secret.data .Values.operator.dash0Export.secretRef.key) -}}" */}}
+{{- else -}}{{/* else for "if $secret" */}}
 {{- fail (printf "Error: There is no secret named \"%s\" in the target namespace \"%s\". Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator." .Values.operator.dash0Export.secretRef.name .Release.Namespace) -}}
-{{- end }}
-{{- end }}
+{{- end }}{{/*closes "if $secret" */}}
+{{- end }}{{/*closes "not .Values.operator.dash0Export.disableSecretValidation" */}}
         - --operator-configuration-secret-ref-name={{ .Values.operator.dash0Export.secretRef.name }}
         - --operator-configuration-secret-ref-key={{ .Values.operator.dash0Export.secretRef.key }}
-{{- else }}
+{{- else }}{{/*else for "Values.operator.dash0Export.token" / "else if (and .Values.operator.dash0Export.secretRef.name .Values.operator.dash0Export.secretRef.key)" */}}
 {{- fail "Error: operator.dash0Export.enabled is set to true, but neither operator.dash0Export.token nor operator.dash0Export.secretRef.name & operator.dash0Export.secretRef.key have been provided. Please refer to the installation instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator." -}}
-{{- end }}
+{{- end }}{{/*closes "if Values.operator.dash0Export.token" */}}
 {{- if .Values.operator.dash0Export.apiEndpoint }}
         - --operator-configuration-api-endpoint={{ .Values.operator.dash0Export.apiEndpoint }}
-{{- end }}
+{{- end }}{{/*closes "if .Values.operator.dash0Export.apiEndpoint" */}}
         - --operator-configuration-self-monitoring-enabled={{ .Values.operator.selfMonitoringEnabled }}
         - --operator-configuration-kubernetes-infrastructure-metrics-collection-enabled={{ .Values.operator.kubernetesInfrastructureMetricsCollectionEnabled }}
         - --operator-configuration-collect-pod-labels-and-annotations-enabled={{ .Values.operator.collectPodLabelsAndAnnotationsEnabled }}
 {{- if .Values.operator.clusterName }}
         - --operator-configuration-cluster-name={{ .Values.operator.clusterName }}
-{{- end }}
-{{- end }} # closes if .Values.operator.dash0Export.enabled
+{{- end }}{{/*closes "if .Values.operator.clusterName" */}}
 {{- if .Values.operator.dash0Export.dataset }}
         - --operator-configuration-dataset={{ .Values.operator.dash0Export.dataset }}
-{{- end }}
+{{- end }}{{/*closes "if .Values.operator.dash0Export.dataset" */}}
+{{- end }}{{/*closes "if .Values.operator.dash0Export.enabled" */}}
         - --force-use-otel-collector-service-url={{ .Values.operator.collectors.forceUseServiceUrl }}
         - --disable-otel-collector-host-ports={{ .Values.operator.collectors.disableHostPorts }}
 {{- if (default .Values.operator.instrumentation.delayAfterEachWorkloadMillis .Values.operator.instrumentationDelayAfterEachWorkloadMillis) }}
@@ -347,8 +347,8 @@ webhooks:
     apiVersions:
     - v1
     operations:
-    # do not listen to UPDATE for pods, we cannot revert instrumentation or do anything on UPDATE requests, since pods
-    # are effectively immutable (we cannot restart ownerless pods)
+      # do not listen to UPDATE for pods, we cannot revert instrumentation or do anything on UPDATE requests, since pods
+      # are effectively immutable (we cannot restart ownerless pods)
       - CREATE
     resources:
     - pods
