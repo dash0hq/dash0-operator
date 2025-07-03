@@ -28,6 +28,11 @@ for resource_type in "${resource_types[@]}"; do
       kubectl delete --namespace "$target_namespace" --ignore-not-found -f "$resource_type.yaml"
     fi
   popd > /dev/null
+  pushd test-resources/python/flask > /dev/null
+    if [[ -f "$resource_type.yaml" ]]; then
+      kubectl delete --namespace "$target_namespace" --ignore-not-found -f "$resource_type.yaml"
+    fi
+  popd > /dev/null
 done
 
 wait_for_third_party_resource_deletion="false"

@@ -24,6 +24,8 @@ var (
 		1306, 1307, 1309, 1310, 1311, //
 		// .NET workloads
 		1406, 1407, 1409, 1410, 1411, //
+		// Python workloads
+		1506, 1507, 1509, 1510, 1511, //
 		// OTel Collector
 		4317, 4318,
 		// Dash0 API mock server

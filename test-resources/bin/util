@@ -516,28 +516,61 @@ install_monitoring_resource() {
 }
 
 deploy_application_under_monitoring() {
-  if [[ "${DEPLOY_APPLICATION_UNDER_MONITORING:-}" != "false" ]]; then
-    echo "STEP $step_counter: deploy application under monitoring"
-    runtime_under_test="${1:-nodejs}"
-    if [[ "${runtime_under_test:-}" = "nodejs" ]]; then
-      test-resources/node.js/express/deploy.sh "${target_namespace}" "${kind}"
-      if [[ "$additional_namespaces" = true ]]; then
-        test-resources/node.js/express/deploy.sh test-namespace-2 daemonset
-        test-resources/node.js/express/deploy.sh test-namespace-3 statefulset
-      fi
-    elif [[ "${runtime_under_test:-}" = "jvm" ]]; then
-      pushd test-resources/jvm/spring-boot > /dev/null
-      kubectl apply -n "${target_namespace}" -f "${kind}".yaml
-      if [[ "$additional_namespaces" = true ]]; then
-        kubectl apply -n test-namespace-2 -f daemonset.yaml
-        kubectl apply -n test-namespace-3 -f statefulset.yaml
-      fi
-      popd > /dev/null
-    else
-      echo "Error: unknown runtime: $runtime_under_test"
-      exit 1
+  if [[ "${DEPLOY_APPLICATION_UNDER_MONITORING:-}" = "false" ]]; then
+    return
+  fi
+
+  runtime_under_test="${1:-nodejs}"
+  echo "STEP $step_counter: deploy application under monitoring ($runtime_under_test)"
+  if [[ "${runtime_under_test:-}" = "nodejs" ]]; then
+    test-resources/node.js/express/deploy.sh "${target_namespace}" "${kind}"
+    if [[ "$additional_namespaces" = true ]]; then
+      test-resources/node.js/express/deploy.sh test-namespace-2 daemonset
+      test-resources/node.js/express/deploy.sh test-namespace-3 statefulset
     fi
-    finish_step
+  elif [[ "${runtime_under_test:-}" = "jvm" ]]; then
+    build_test_application test-resources/jvm/spring-boot dash0-operator-jvm-spring-boot-test-app
+    pushd test-resources/jvm/spring-boot > /dev/null
+    kubectl apply -n "${target_namespace}" -f "${kind}".yaml
+    if [[ "$additional_namespaces" = true ]]; then
+      kubectl apply -n test-namespace-2 -f daemonset.yaml
+      kubectl apply -n test-namespace-3 -f statefulset.yaml
+    fi
+    popd > /dev/null
+  elif [[ "${runtime_under_test:-}" = "python" ]]; then
+    build_test_application test-resources/python/flask dash0-operator-python-flask-test-app
+    pushd test-resources/python/flask > /dev/null
+    kubectl apply -n "${target_namespace}" -f "${kind}".yaml
+    if [[ "$additional_namespaces" = true ]]; then
+      kubectl apply -n test-namespace-2 -f daemonset.yaml
+      kubectl apply -n test-namespace-3 -f statefulset.yaml
+    fi
+    popd > /dev/null
+  else
+    echo "Error: unknown runtime: $runtime_under_test"
+    exit 1
+  fi
+  finish_step
+}
+
+build_test_application() {
+  if [[ "${SKIP_DOCKER_BUILD:-}" = "true" ]]; then
+    return
+  fi
+
+  local app_path="$1"
+  local image_name="$2"
+
+  pushd "$app_path" > /dev/null
+  echo "building container image for application under monitoring ($image_name)"
+  docker build . -t "$image_name"
+  popd > /dev/null
+
+  if [[ "$is_kind_cluster" = "true" ]]; then
+    echo loading test image into Kind cluster
+    kind load docker-image \
+      --name "$cluster" \
+      "$image_name:latest"
   fi
 }
 
