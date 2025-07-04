@@ -246,13 +246,13 @@ func (r *MonitoringReconciler) manageInstrumentWorkloadsModeChanges(
 
 	var requiredAction util.ModificationMode
 	if !isFirstReconcile {
-		if previous != dash0v1alpha1.All && previous != "" && current == dash0v1alpha1.All {
+		if previous != dash0v1alpha1.InstrumentWorkloadsModeAll && previous != "" && current == dash0v1alpha1.InstrumentWorkloadsModeAll {
 			logger.Info(fmt.Sprintf(
 				"The instrumentWorkloads mode has changed from \"%s\" to \"%s\" (or it is absent, in which case it"+
 					"defaults to \"all\"). Workloads in this namespace will now be instrumented so they send "+
 					"telemetry to Dash0.", previous, current))
 			requiredAction = util.ModificationModeInstrumentation
-		} else if previous != dash0v1alpha1.None && current == dash0v1alpha1.None {
+		} else if previous != dash0v1alpha1.InstrumentWorkloadsModeNone && current == dash0v1alpha1.InstrumentWorkloadsModeNone {
 			logger.Info(fmt.Sprintf(
 				"The instrumentWorkloads mode has changed from \"%s\" to \"%s\". Instrumented workloads in this "+
 					"namespace will now be uninstrumented, they will no longer send telemetry to Dash0.",

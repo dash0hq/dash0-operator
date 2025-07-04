@@ -202,14 +202,14 @@ func (i *Instrumenter) CheckSettingsAndInstrumentExistingWorkloads(
 	logger *logr.Logger,
 ) error {
 	instrumentWorkloadsMode := dash0MonitoringResource.ReadInstrumentWorkloadsMode()
-	if instrumentWorkloadsMode == dash0v1alpha1.None {
+	if instrumentWorkloadsMode == dash0v1alpha1.InstrumentWorkloadsModeNone {
 		logger.Info(
 			"Instrumentation is not enabled, neither new nor existing workloads will be modified to send telemetry " +
 				"to Dash0.",
 		)
 		return nil
 	}
-	if instrumentWorkloadsMode == dash0v1alpha1.CreatedAndUpdated {
+	if instrumentWorkloadsMode == dash0v1alpha1.InstrumentWorkloadsModeCreatedAndUpdated {
 		logger.Info(
 			"Instrumenting existing workloads is not enabled, only new or updated workloads will be modified (at " +
 				"deploy time) to send telemetry to Dash0.",

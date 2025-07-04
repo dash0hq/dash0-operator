@@ -178,17 +178,22 @@ type InstrumentWorkloads struct {
 type InstrumentWorkloadsMode string
 
 const (
-	// All allows instrumenting existing as well as new and updated workloads.
-	All InstrumentWorkloadsMode = "all"
+	// InstrumentWorkloadsModeAll allows instrumenting existing as well as new and updated workloads.
+	InstrumentWorkloadsModeAll InstrumentWorkloadsMode = "all"
 
-	// CreatedAndUpdated disables instrumenting existing workloads, but new and updated workloads will be instrumented.
-	CreatedAndUpdated InstrumentWorkloadsMode = "created-and-updated"
+	// InstrumentWorkloadsModeCreatedAndUpdated disables instrumenting existing workloads, but new and updated workloads
+	// will be instrumented.
+	InstrumentWorkloadsModeCreatedAndUpdated InstrumentWorkloadsMode = "created-and-updated"
 
-	// None will disable instrumentation of workloads entirely for a namespace.
-	None InstrumentWorkloadsMode = "none"
+	// InstrumentWorkloadsModeNone will disable instrumentation of workloads entirely for a namespace.
+	InstrumentWorkloadsModeNone InstrumentWorkloadsMode = "none"
 )
 
-var AllInstrumentWorkloadsMode = []InstrumentWorkloadsMode{All, CreatedAndUpdated, None}
+var AllInstrumentWorkloadsMode = []InstrumentWorkloadsMode{
+	InstrumentWorkloadsModeAll,
+	InstrumentWorkloadsModeCreatedAndUpdated,
+	InstrumentWorkloadsModeNone,
+}
 
 type LogCollection struct {
 	// Opt-out for log collection for the target namespace. If set to `false`, the operator will not collect pod logs
@@ -491,10 +496,10 @@ type Dash0Monitoring struct {
 func (d *Dash0Monitoring) ReadInstrumentWorkloadsMode() InstrumentWorkloadsMode {
 	instrumentWorkloadsMode := d.Spec.InstrumentWorkloads.Mode
 	if instrumentWorkloadsMode == "" {
-		return All
+		return InstrumentWorkloadsModeAll
 	}
 	if !slices.Contains(AllInstrumentWorkloadsMode, instrumentWorkloadsMode) {
-		return All
+		return InstrumentWorkloadsModeAll
 	}
 	return instrumentWorkloadsMode
 }

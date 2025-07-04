@@ -736,7 +736,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 						dash0MonitoringValues{
 							Endpoint:                defaultEndpoint,
 							Token:                   defaultToken,
-							InstrumentWorkloadsMode: dash0v1alpha1.None,
+							InstrumentWorkloadsMode: dash0v1alpha1.InstrumentWorkloadsModeNone,
 						},
 						operatorNamespace,
 					)
@@ -751,7 +751,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 					updateInstrumentWorkloadsModeOfDash0MonitoringResource(
 						applicationUnderTestNamespace,
-						dash0v1alpha1.All,
+						dash0v1alpha1.InstrumentWorkloadsModeAll,
 					)
 
 					By("verifying that the Node.js stateful set has been instrumented by the controller")
@@ -790,7 +790,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					By("updating the Dash0Monitoring resource to instrumentWorkloads.mode=none")
 					updateInstrumentWorkloadsModeOfDash0MonitoringResource(
 						applicationUnderTestNamespace,
-						dash0v1alpha1.None,
+						dash0v1alpha1.InstrumentWorkloadsModeNone,
 					)
 
 					verifyThatInstrumentationHasBeenReverted(
@@ -882,7 +882,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 			})
 		})
 
-		Describe("metrics & self-monitoring", func() {
+		Describe("metrics collection", func() {
 			var timestampLowerBound time.Time
 
 			// Note: This test case deliberately works without an operator configuration resource, instead only using a
@@ -1045,7 +1045,7 @@ traces:
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
 					dash0MonitoringValues{
-						InstrumentWorkloadsMode: dash0v1alpha1.All,
+						InstrumentWorkloadsMode: dash0v1alpha1.InstrumentWorkloadsModeAll,
 						Endpoint:                defaultEndpoint,
 						Token:                   defaultToken,
 						Filter:                  filter,
@@ -1137,7 +1137,7 @@ trace_statements:
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
 					dash0MonitoringValues{
-						InstrumentWorkloadsMode: dash0v1alpha1.All,
+						InstrumentWorkloadsMode: dash0v1alpha1.InstrumentWorkloadsModeAll,
 						Endpoint:                defaultEndpoint,
 						Token:                   defaultToken,
 						Transform:               transform,
@@ -1260,7 +1260,7 @@ trace_statements:
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
 					dash0MonitoringValues{
-						InstrumentWorkloadsMode: dash0v1alpha1.None,
+						InstrumentWorkloadsMode: dash0v1alpha1.InstrumentWorkloadsModeNone,
 					},
 					operatorNamespace,
 				)
@@ -1379,7 +1379,7 @@ trace_statements:
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
 					dash0MonitoringValues{
-						InstrumentWorkloadsMode: dash0v1alpha1.All,
+						InstrumentWorkloadsMode: dash0v1alpha1.InstrumentWorkloadsModeAll,
 						Endpoint:                "",
 						Token:                   "",
 					},
