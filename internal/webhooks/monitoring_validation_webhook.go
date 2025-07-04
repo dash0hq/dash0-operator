@@ -74,7 +74,7 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 	}
 
 	instrumentWorkloadsMode := monitoringResource.Spec.InstrumentWorkloads.Mode
-	if slices.Contains(restrictedNamespaces, request.Namespace) && instrumentWorkloadsMode != dash0v1alpha1.None {
+	if slices.Contains(restrictedNamespaces, request.Namespace) && instrumentWorkloadsMode != dash0v1alpha1.InstrumentWorkloadsModeNone {
 		return admission.Denied(
 			fmt.Sprintf(
 				"Rejecting the deployment of Dash0 monitoring resource \"%s\" to the Kubernetes system namespace "+
@@ -149,7 +149,7 @@ func (h *MonitoringValidationWebhookHandler) validateTelemetryRelatedSettingsIfT
 		return admission.Response{}, false
 	}
 
-	if monitoringResource.Spec.InstrumentWorkloads.Mode != dash0v1alpha1.None {
+	if monitoringResource.Spec.InstrumentWorkloads.Mode != dash0v1alpha1.InstrumentWorkloadsModeNone {
 		return admission.Denied(
 			fmt.Sprintf(
 				"The Dash0 operator configuration resource has telemetry collection disabled "+

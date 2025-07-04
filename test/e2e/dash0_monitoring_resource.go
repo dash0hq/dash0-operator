@@ -39,11 +39,11 @@ var (
 	dash0MonitoringResourceTemplate *template.Template
 
 	dash0MonitoringValuesDefault = dash0MonitoringValues{
-		InstrumentWorkloadsMode: dash0v1alpha1.All,
+		InstrumentWorkloadsMode: dash0v1alpha1.InstrumentWorkloadsModeAll,
 	}
 
 	dash0MonitoringValuesWithExport = dash0MonitoringValues{
-		InstrumentWorkloadsMode: dash0v1alpha1.All,
+		InstrumentWorkloadsMode: dash0v1alpha1.InstrumentWorkloadsModeAll,
 		Endpoint:                defaultEndpoint,
 		Token:                   defaultToken,
 	}

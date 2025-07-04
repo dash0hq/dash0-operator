@@ -146,7 +146,7 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 					spec: dash0v1alpha1.Dash0MonitoringSpec{},
 					wanted: dash0v1alpha1.Dash0MonitoringSpec{
 						InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
-							Mode: dash0v1alpha1.All,
+							Mode: dash0v1alpha1.InstrumentWorkloadsModeAll,
 						},
 						LogCollection: dash0v1alpha1.LogCollection{
 							Enabled: ptr.To(true),
@@ -165,7 +165,7 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 					},
 					wanted: dash0v1alpha1.Dash0MonitoringSpec{
 						InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
-							Mode: dash0v1alpha1.All,
+							Mode: dash0v1alpha1.InstrumentWorkloadsModeAll,
 						},
 						LogCollection: dash0v1alpha1.LogCollection{
 							Enabled: ptr.To(true),
@@ -180,7 +180,7 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 				normalizeTelemetryRelatedSettingsTestConfig{
 					spec: dash0v1alpha1.Dash0MonitoringSpec{
 						InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
-							Mode: dash0v1alpha1.None,
+							Mode: dash0v1alpha1.InstrumentWorkloadsModeNone,
 						},
 						LogCollection: dash0v1alpha1.LogCollection{
 							Enabled: ptr.To(false),
@@ -192,7 +192,7 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 					},
 					wanted: dash0v1alpha1.Dash0MonitoringSpec{
 						InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
-							Mode: dash0v1alpha1.None,
+							Mode: dash0v1alpha1.InstrumentWorkloadsModeNone,
 						},
 						LogCollection: dash0v1alpha1.LogCollection{
 							Enabled: ptr.To(false),
@@ -223,7 +223,7 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 					spec: dash0v1alpha1.Dash0MonitoringSpec{},
 					wanted: dash0v1alpha1.Dash0MonitoringSpec{
 						InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
-							Mode: dash0v1alpha1.None,
+							Mode: dash0v1alpha1.InstrumentWorkloadsModeNone,
 						},
 						LogCollection: dash0v1alpha1.LogCollection{
 							Enabled: ptr.To(false),
@@ -242,7 +242,7 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 					},
 					wanted: dash0v1alpha1.Dash0MonitoringSpec{
 						InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
-							Mode: dash0v1alpha1.None,
+							Mode: dash0v1alpha1.InstrumentWorkloadsModeNone,
 						},
 						LogCollection: dash0v1alpha1.LogCollection{
 							Enabled: ptr.To(false),
@@ -258,7 +258,7 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 				normalizeTelemetryRelatedSettingsTestConfig{
 					spec: dash0v1alpha1.Dash0MonitoringSpec{
 						InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
-							Mode: dash0v1alpha1.All,
+							Mode: dash0v1alpha1.InstrumentWorkloadsModeAll,
 						},
 						LogCollection: dash0v1alpha1.LogCollection{
 							Enabled: ptr.To(true),
@@ -270,7 +270,7 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 					},
 					wanted: dash0v1alpha1.Dash0MonitoringSpec{
 						InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
-							Mode: dash0v1alpha1.All,
+							Mode: dash0v1alpha1.InstrumentWorkloadsModeAll,
 						},
 						LogCollection: dash0v1alpha1.LogCollection{
 							Enabled: ptr.To(true),
@@ -609,7 +609,7 @@ spec:
 				spec:                       dash0v1alpha1.Dash0MonitoringSpec{},
 				wanted: dash0v1alpha1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
-						Mode: dash0v1alpha1.All,
+						Mode: dash0v1alpha1.InstrumentWorkloadsModeAll,
 					},
 					LogCollection: dash0v1alpha1.LogCollection{
 						Enabled: ptr.To(true),
@@ -627,7 +627,7 @@ spec:
 				spec:                       dash0v1alpha1.Dash0MonitoringSpec{},
 				wanted: dash0v1alpha1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
-						Mode: dash0v1alpha1.None,
+						Mode: dash0v1alpha1.InstrumentWorkloadsModeNone,
 					},
 					LogCollection: dash0v1alpha1.LogCollection{
 						Enabled: ptr.To(false),

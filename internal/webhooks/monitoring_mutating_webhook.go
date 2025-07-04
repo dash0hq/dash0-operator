@@ -165,9 +165,9 @@ func (h *MonitoringMutatingWebhookHandler) setTelemetryCollectionRelatedDefaults
 
 	if monitoringSpec.InstrumentWorkloads.Mode == "" {
 		if telemetryCollectionEnabled {
-			monitoringSpec.InstrumentWorkloads.Mode = dash0v1alpha1.All
+			monitoringSpec.InstrumentWorkloads.Mode = dash0v1alpha1.InstrumentWorkloadsModeAll
 		} else {
-			monitoringSpec.InstrumentWorkloads.Mode = dash0v1alpha1.None
+			monitoringSpec.InstrumentWorkloads.Mode = dash0v1alpha1.InstrumentWorkloadsModeNone
 		}
 		patchRequired = true
 	}

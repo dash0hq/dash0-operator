@@ -708,7 +708,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 	Describe("when the Dash0 monitoring resource exists and is available and has instrumentWorkloads.mode=all set explicitly", Ordered, func() {
 		BeforeAll(func() {
 			dash0MonitoringResource := EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
-			dash0MonitoringResource.Spec.InstrumentWorkloads.Mode = dash0v1alpha1.All
+			dash0MonitoringResource.Spec.InstrumentWorkloads.Mode = dash0v1alpha1.InstrumentWorkloadsModeAll
 			Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
 		})
 
@@ -724,7 +724,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 	Describe("when the Dash0 monitoring resource exists and is available but has instrumentWorkloads.mode=none set", Ordered, func() {
 		BeforeAll(func() {
 			dash0MonitoringResource := EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
-			dash0MonitoringResource.Spec.InstrumentWorkloads.Mode = dash0v1alpha1.None
+			dash0MonitoringResource.Spec.InstrumentWorkloads.Mode = dash0v1alpha1.InstrumentWorkloadsModeNone
 			Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
 		})
 
@@ -740,7 +740,7 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 	Describe("when the Dash0 monitoring resource exists and is available and has instrumentWorkloads.mode=created-and-updated set", Ordered, func() {
 		BeforeAll(func() {
 			dash0MonitoringResource := EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
-			dash0MonitoringResource.Spec.InstrumentWorkloads.Mode = dash0v1alpha1.CreatedAndUpdated
+			dash0MonitoringResource.Spec.InstrumentWorkloads.Mode = dash0v1alpha1.InstrumentWorkloadsModeCreatedAndUpdated
 			Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
 		})
 
