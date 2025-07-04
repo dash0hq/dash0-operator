@@ -1,0 +1,22 @@
+docker run -it dash0-injector-test-arm64-musl /bin/ash
+/usr/src/dash0/injector $ LD_PRELOAD=/dash0-init-container/injector/dash0_injector.so node -e "console.log(process.env)
+
+/usr/src/dash0/injector $ LD_PRELOAD=/dash0-init-container/injector/dash0_injector.so node -e "console.log(process.env)"
+[Dash0 injector] injecting the Java OpenTelemetry agent
+[Dash0 injector] injecting the Dash0 Node.js OpenTelemetry distribution
+{
+  NODE_VERSION: '22.15.0',
+  HOSTNAME: '159ba02a1451',
+  YARN_VERSION: '1.22.22',
+  SHLVL: '2',
+  HOME: '/home/node',
+  LIBC_UNDER_TEST: 'musl',
+  TERM: 'xterm',
+  PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+  LD_PRELOAD: '/dash0-init-container/injector/dash0_injector.so',
+  PWD: '/usr/src/dash0/injector',
+  ARCH_UNDER_TEST: 'arm64',
+  __DASH0_INJECTOR_HAS_APPLIED_MODIFICATIONS: 'true',
+  JAVA_TOOL_OPTIONS: '-javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar',
+  NODE_OPTIONS: '--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry'
+}

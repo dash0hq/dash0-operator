@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+ARG base_image="debian:bookworm-slim"
+FROM ${base_image}
+ARG base_image
+
+RUN case ${base_image} in \
+  *alpine*) apk update && apk upgrade --no-cache && apk add --no-cache build-base binutils ;; \
+  *) apt-get update && apt-get install -y --no-install-recommends build-essential && apt-get clean; \
+esac
+
+WORKDIR /workspace
+
+COPY Makefile .
+COPY *.c .
+
+RUN make
+

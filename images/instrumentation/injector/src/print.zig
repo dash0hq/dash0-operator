@@ -3,16 +3,117 @@
 
 const std = @import("std");
 
+const env = @import("env.zig");
+const test_util = @import("test_util.zig");
+const types = @import("types.zig");
+
+const testing = std.testing;
+
 const dash0_injector_debug_env_var_name = "DASH0_INJECTOR_DEBUG";
 const log_prefix = "[Dash0 injector] ";
 
 var is_debug = false;
 
 /// Initializes the is_debug flag based on the environment variable DASH0_INJECTOR_DEBUG.
-pub fn initDebugFlag() void {
-    if (std.posix.getenv(dash0_injector_debug_env_var_name)) |is_debug_raw| {
-        is_debug = std.ascii.eqlIgnoreCase("true", is_debug_raw);
-    }
+pub fn initDebugFlag(env_vars: [](types.NullTerminatedString)) void {
+    is_debug = env.isTrue(env_vars, dash0_injector_debug_env_var_name);
+}
+
+test "initDebugFlag: not set, empty environmnet" {
+    const original_value = is_debug;
+    defer is_debug = original_value;
+
+    const env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 0);
+    defer std.heap.page_allocator.free(env_vars);
+
+    initDebugFlag(env_vars);
+    try test_util.expectWithMessage(!isDebug(), "!isDebug()");
+}
+
+test "initDebugFlag: DASH0_INJECTOR_DEBUG not set" {
+    const original_value = is_debug;
+    defer is_debug = original_value;
+
+    const env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 3);
+    defer std.heap.page_allocator.free(env_vars);
+    env_vars[0] = "AAA=bbb";
+    env_vars[1] = "CCC=ddd";
+    env_vars[2] = "EEE=fff";
+
+    initDebugFlag(env_vars);
+    try test_util.expectWithMessage(!isDebug(), "!isDebug()");
+}
+
+test "initDebugFlag: false" {
+    const original_value = is_debug;
+    defer is_debug = original_value;
+
+    const env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 4);
+    defer std.heap.page_allocator.free(env_vars);
+    env_vars[0] = "AAA=bbb";
+    env_vars[1] = "DASH0_INJECTOR_DEBUG=false";
+    env_vars[2] = "CCC=ddd";
+    env_vars[3] = "EEE=fff";
+
+    initDebugFlag(env_vars);
+    try test_util.expectWithMessage(!isDebug(), "!isDebug()");
+}
+
+test "initDebugFlag: arbitrary string" {
+    const original_value = is_debug;
+    defer is_debug = original_value;
+
+    const env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 4);
+    defer std.heap.page_allocator.free(env_vars);
+    env_vars[0] = "AAA=bbb";
+    env_vars[1] = "DASH0_INJECTOR_DEBUG=whatever";
+    env_vars[2] = "CCC=ddd";
+    env_vars[3] = "EEE=fff";
+
+    initDebugFlag(env_vars);
+    try test_util.expectWithMessage(!isDebug(), "!isDebug()");
+}
+
+test "initDebugFlag: empty string" {
+    const original_value = is_debug;
+    defer is_debug = original_value;
+
+    const env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 4);
+    defer std.heap.page_allocator.free(env_vars);
+    env_vars[0] = "AAA=bbb";
+    env_vars[1] = "DASH0_INJECTOR_DEBUG=";
+    env_vars[2] = "CCC=ddd";
+    env_vars[3] = "EEE=fff";
+
+    initDebugFlag(env_vars);
+    try test_util.expectWithMessage(!isDebug(), "!isDebug()");
+}
+
+test "initDebugFlag: true, only env var" {
+    const original_value = is_debug;
+    defer is_debug = original_value;
+
+    const env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 1);
+    defer std.heap.page_allocator.free(env_vars);
+    env_vars[0] = "DASH0_INJECTOR_DEBUG=true";
+
+    initDebugFlag(env_vars);
+    try test_util.expectWithMessage(isDebug(), "isDebug()");
+}
+
+test "initDebugFlag: true, other env vars present" {
+    const original_value = is_debug;
+    defer is_debug = original_value;
+
+    const env_vars = try std.heap.page_allocator.alloc(types.NullTerminatedString, 4);
+    defer std.heap.page_allocator.free(env_vars);
+    env_vars[0] = "AAA=bbb";
+    env_vars[1] = "DASH0_INJECTOR_DEBUG=true";
+    env_vars[2] = "CCC=ddd";
+    env_vars[3] = "EEE=fff";
+
+    initDebugFlag(env_vars);
+    try test_util.expectWithMessage(isDebug(), "isDebug()");
 }
 
 pub fn isDebug() bool {

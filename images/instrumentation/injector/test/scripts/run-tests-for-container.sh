@@ -54,7 +54,6 @@ docker build \
   --platform "$docker_platform" \
   --build-arg "base_image=${base_image}" \
   --build-arg "injector_binary=${injector_binary}" \
-  --build-arg "noenviron_binary=noenviron.${ARCH}.${LIBC}" \
   --build-arg "arch_under_test=${ARCH}" \
   --build-arg "libc_under_test=${LIBC}" \
   --build-arg "create_sdk_dummy_files_script=${create_sdk_dummy_files_script}" \
@@ -80,7 +79,8 @@ docker run \
   --env EXPECTED_CPU_ARCHITECTURE="$expected_cpu_architecture" \
   --env TEST_SET="$TEST_SET" \
   --env TEST_CASES="$TEST_CASES" \
-  --env MISSING_ENVIRON_SYMBOL_TESTS="${MISSING_ENVIRON_SYMBOL_TESTS:-}" \
+  --env STATICALLY_BUILT_TESTS="${STATICALLY_BUILT_TESTS:-}" \
+  --env VERBOSE="${VERBOSE:-}" \
   "$image_name" \
   $docker_run_extra_arguments
 { set +x; } 2> /dev/null

@@ -3,8 +3,13 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 int main() {
+  pid_t pid = getpid();
+  printf("app.c pid: %d\n", pid);
+
   char* name = "DOES_NOT_EXIST";
   char* actual = getenv(name);
   if (actual != NULL) {
