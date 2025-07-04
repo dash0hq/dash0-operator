@@ -325,7 +325,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 		})
 
 		DescribeTable("when switching from instrumentWorkloads.mode=none to instrumentWorkloads.mode=created-and-updated", func(config WorkloadTestConfig) {
-			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.None)
+			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.InstrumentWorkloadsModeNone)
 
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
@@ -335,7 +335,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			VerifyNoEvents(ctx, clientset, namespace)
 			config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 
-			UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.CreatedAndUpdated)
+			UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.InstrumentWorkloadsModeCreatedAndUpdated)
 
 			// Switching from instrumentWorkloads.mode=none to instrumentWorkloads.mode=created-and-updated has no effect.
 			// Existing workloads are still not to be instrumented. The new setting only becomes effective when the next
@@ -383,7 +383,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 		)
 
 		DescribeTable("when instrumenting existing workloads after switching from instrumentWorkloads.mode=none to instrumentWorkloads.mode=all", func(config WorkloadTestConfig) {
-			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.None)
+			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.InstrumentWorkloadsModeNone)
 
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
@@ -393,7 +393,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			VerifyNoEvents(ctx, clientset, namespace)
 			config.VerifyPreFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 
-			UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.All)
+			UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.InstrumentWorkloadsModeAll)
 
 			triggerReconcileRequest(ctx, monitoringReconciler)
 			verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
@@ -452,7 +452,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 		)
 
 		DescribeTable("when removing instrumentation from workloads after switching from instrumentWorkloads.mode=created-and-updated to instrumentWorkloads.mode=none", func(config WorkloadTestConfig) {
-			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.CreatedAndUpdated)
+			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.InstrumentWorkloadsModeCreatedAndUpdated)
 
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
@@ -464,7 +464,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 			DeleteAllEvents(ctx, clientset, namespace)
 
-			UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.None)
+			UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.InstrumentWorkloadsModeNone)
 
 			triggerReconcileRequest(ctx, monitoringReconciler)
 			VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, "controller")
@@ -525,7 +525,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 		)
 
 		DescribeTable("when instrumenting existing workloads after switching from instrumentWorkloads.mode=created-and-updated to instrumentWorkloads.mode=all", func(config WorkloadTestConfig) {
-			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.CreatedAndUpdated)
+			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.InstrumentWorkloadsModeCreatedAndUpdated)
 
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
@@ -535,7 +535,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			VerifyNoEvents(ctx, clientset, namespace)
 			config.VerifyPreFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 
-			UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.All)
+			UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.InstrumentWorkloadsModeAll)
 
 			triggerReconcileRequest(ctx, monitoringReconciler)
 			verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
@@ -594,7 +594,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 		)
 
 		DescribeTable("when removing instrumentation from workloads after switching from instrumentWorkloads.mode=all to instrumentWorkloads.mode=none", func(config WorkloadTestConfig) {
-			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.All)
+			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.InstrumentWorkloadsModeAll)
 
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
@@ -606,7 +606,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 			DeleteAllEvents(ctx, clientset, namespace)
 
-			UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.None)
+			UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.InstrumentWorkloadsModeNone)
 
 			triggerReconcileRequest(ctx, monitoringReconciler)
 			VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, "controller")
@@ -667,7 +667,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 		)
 
 		DescribeTable("when switching from instrumentWorkloads.mode=all to instrumentWorkloads.mode=created-and-updated", func(config WorkloadTestConfig) {
-			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.All)
+			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.InstrumentWorkloadsModeAll)
 
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
@@ -679,7 +679,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 			DeleteAllEvents(ctx, clientset, namespace)
 
-			UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.CreatedAndUpdated)
+			UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.InstrumentWorkloadsModeCreatedAndUpdated)
 
 			// Switching from instrumentWorkloads.mode=all to instrumentWorkloads.mode=created-and-updated has no effect.
 			// Already instrumented workloads will not be uninstrumented.
@@ -735,7 +735,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 	Describe("when the Dash0 monitoring resource exists and has instrumentWorkloads.mode=all set explicitly", Ordered, func() {
 		BeforeAll(func() {
 			monitoringResource := EnsureMonitoringResourceExists(ctx, k8sClient)
-			monitoringResource.Spec.InstrumentWorkloads.Mode = dash0v1alpha1.All
+			monitoringResource.Spec.InstrumentWorkloads.Mode = dash0v1alpha1.InstrumentWorkloadsModeAll
 			Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 		})
 
@@ -782,7 +782,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 	Describe("when the Dash0 monitoring resource exists but has instrumentWorkloads.mode=none set", Ordered, func() {
 		BeforeAll(func() {
 			monitoringResource := EnsureMonitoringResourceExists(ctx, k8sClient)
-			monitoringResource.Spec.InstrumentWorkloads.Mode = dash0v1alpha1.None
+			monitoringResource.Spec.InstrumentWorkloads.Mode = dash0v1alpha1.InstrumentWorkloadsModeNone
 			Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 		})
 
@@ -798,7 +798,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 	Describe("when the Dash0 monitoring resource exists but has instrumentWorkloads.mode=created-and-updated set", Ordered, func() {
 		BeforeAll(func() {
 			monitoringResource := EnsureMonitoringResourceExists(ctx, k8sClient)
-			monitoringResource.Spec.InstrumentWorkloads.Mode = dash0v1alpha1.CreatedAndUpdated
+			monitoringResource.Spec.InstrumentWorkloads.Mode = dash0v1alpha1.InstrumentWorkloadsModeCreatedAndUpdated
 			Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 		})
 

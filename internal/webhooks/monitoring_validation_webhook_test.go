@@ -83,32 +83,32 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 		},
 			Entry("reject deploying to kube-system with instrumentWorkloads.mode=all", kubeSystemTestConfig{
 				namespace:               "kube-system",
-				instrumentWorkloadsMode: dash0v1alpha1.All,
+				instrumentWorkloadsMode: dash0v1alpha1.InstrumentWorkloadsModeAll,
 				expectRejection:         true,
 			}),
 			Entry("reject deploying to kube-system with instrumentWorkloads.mode=created-and-updated", kubeSystemTestConfig{
 				namespace:               "kube-system",
-				instrumentWorkloadsMode: dash0v1alpha1.CreatedAndUpdated,
+				instrumentWorkloadsMode: dash0v1alpha1.InstrumentWorkloadsModeCreatedAndUpdated,
 				expectRejection:         true,
 			}),
 			Entry("allow deploying to kube-system with instrumentWorkloads.mode=none", kubeSystemTestConfig{
 				namespace:               "kube-system",
-				instrumentWorkloadsMode: dash0v1alpha1.None,
+				instrumentWorkloadsMode: dash0v1alpha1.InstrumentWorkloadsModeNone,
 				expectRejection:         false,
 			}),
 			Entry("reject deploying to kube-node-lease with instrumentWorkloads.mode=all", kubeSystemTestConfig{
 				namespace:               "kube-node-lease",
-				instrumentWorkloadsMode: dash0v1alpha1.All,
+				instrumentWorkloadsMode: dash0v1alpha1.InstrumentWorkloadsModeAll,
 				expectRejection:         true,
 			}),
 			Entry("reject deploying to kube-node-lease with instrumentWorkloads.mode=created-and-updated", kubeSystemTestConfig{
 				namespace:               "kube-node-lease",
-				instrumentWorkloadsMode: dash0v1alpha1.CreatedAndUpdated,
+				instrumentWorkloadsMode: dash0v1alpha1.InstrumentWorkloadsModeCreatedAndUpdated,
 				expectRejection:         true,
 			}),
 			Entry("allow deploying to kube-node-lease with instrumentWorkloads.mode=none", kubeSystemTestConfig{
 				namespace:               "kube-node-lease",
-				instrumentWorkloadsMode: dash0v1alpha1.None,
+				instrumentWorkloadsMode: dash0v1alpha1.InstrumentWorkloadsModeNone,
 				expectRejection:         false,
 			}),
 		)
@@ -118,7 +118,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				ObjectMeta: MonitoringResourceDefaultObjectMeta,
 				Spec: dash0v1alpha1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
-						Mode: dash0v1alpha1.All,
+						Mode: dash0v1alpha1.InstrumentWorkloadsModeAll,
 					},
 				},
 			})
@@ -144,7 +144,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				ObjectMeta: MonitoringResourceDefaultObjectMeta,
 				Spec: dash0v1alpha1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
-						Mode: dash0v1alpha1.All,
+						Mode: dash0v1alpha1.InstrumentWorkloadsModeAll,
 					},
 				},
 			})
@@ -171,7 +171,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				ObjectMeta: MonitoringResourceDefaultObjectMeta,
 				Spec: dash0v1alpha1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
-						Mode: dash0v1alpha1.All,
+						Mode: dash0v1alpha1.InstrumentWorkloadsModeAll,
 					},
 				},
 			})
@@ -191,7 +191,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				ObjectMeta: MonitoringResourceDefaultObjectMeta,
 				Spec: dash0v1alpha1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
-						Mode: dash0v1alpha1.All,
+						Mode: dash0v1alpha1.InstrumentWorkloadsModeAll,
 					},
 				},
 			})
@@ -235,7 +235,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 			Entry("instrumentWorkloads.mode=all", monitoringResourceValidationWithTelemetryCollectionOffTestConfig{
 				spec: dash0v1alpha1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
-						Mode: dash0v1alpha1.All,
+						Mode: dash0v1alpha1.InstrumentWorkloadsModeAll,
 					},
 				},
 				expectedError: "The Dash0 operator configuration resource has telemetry collection disabled " +
@@ -247,7 +247,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 			Entry("instrumentWorkloads.mode=created-and-updated", monitoringResourceValidationWithTelemetryCollectionOffTestConfig{
 				spec: dash0v1alpha1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
-						Mode: dash0v1alpha1.CreatedAndUpdated,
+						Mode: dash0v1alpha1.InstrumentWorkloadsModeCreatedAndUpdated,
 					},
 				},
 				expectedError: "The Dash0 operator configuration resource has telemetry collection disabled " +
