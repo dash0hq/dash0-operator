@@ -221,8 +221,8 @@ If you want to report telemetry to a Dash0 backend, set `DASH0_AUTHORIZATION_TOK
       based storage.
     * `FILELOG_OFFSETS_HOST_PATH_VOLUME`: Use a `hostPath` volume to store filelog offsets, instead of the default
       config map based storage.
-    * `INSTRUMENT_WORKLOADS`: Set this to "all", "created-and-updated" or "none" to control the `instrumentWorkloads`
-      setting of the monitoring resource that will be deployed.
+    * `INSTRUMENT_WORKLOADS_MODE`: Set this to "all", "created-and-updated" or "none" to control the
+      `instrumentWorkloads.mode` setting of the monitoring resource that will be deployed.
       This defaults to "all", unless `$TELEMETRY_COLLECTION_ENABLED` is "false", then it defaults to "none".
     * `LOG_COLLECTION`: Set this to "false" to disable collecting logs in monitored namespaces.
       This defaults to `$TELEMETRY_COLLECTION_ENABLED`, which in turn defaults to "true".

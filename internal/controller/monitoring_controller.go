@@ -201,9 +201,9 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	var requiredAction util.ModificationMode
 	monitoringResource, requiredAction, err =
-		r.manageInstrumentWorkloadsChanges(ctx, monitoringResource, isFirstReconcile, &logger)
+		r.manageInstrumentWorkloadsModeChanges(ctx, monitoringResource, isFirstReconcile, &logger)
 	if err != nil {
-		// The error has already been logged in manageInstrumentWorkloadsChanges
+		// The error has already been logged in manageInstrumentWorkloadsModeChanges
 		return ctrl.Result{}, err
 	}
 
@@ -235,26 +235,26 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	return ctrl.Result{}, nil
 }
 
-func (r *MonitoringReconciler) manageInstrumentWorkloadsChanges(
+func (r *MonitoringReconciler) manageInstrumentWorkloadsModeChanges(
 	ctx context.Context,
 	monitoringResource *dash0v1alpha1.Dash0Monitoring,
 	isFirstReconcile bool,
 	logger *logr.Logger,
 ) (*dash0v1alpha1.Dash0Monitoring, util.ModificationMode, error) {
-	previous := monitoringResource.Status.PreviousInstrumentWorkloads
-	current := monitoringResource.ReadInstrumentWorkloadsSetting()
+	previous := monitoringResource.Status.PreviousInstrumentWorkloadsMode
+	current := monitoringResource.ReadInstrumentWorkloadsMode()
 
 	var requiredAction util.ModificationMode
 	if !isFirstReconcile {
 		if previous != dash0v1alpha1.All && previous != "" && current == dash0v1alpha1.All {
 			logger.Info(fmt.Sprintf(
-				"The instrumentWorkloads setting has changed from \"%s\" to \"%s\" (or it is absent, in which case it"+
+				"The instrumentWorkloads mode has changed from \"%s\" to \"%s\" (or it is absent, in which case it"+
 					"defaults to \"all\"). Workloads in this namespace will now be instrumented so they send "+
 					"telemetry to Dash0.", previous, current))
 			requiredAction = util.ModificationModeInstrumentation
 		} else if previous != dash0v1alpha1.None && current == dash0v1alpha1.None {
 			logger.Info(fmt.Sprintf(
-				"The instrumentWorkloads setting has changed from \"%s\" to \"%s\". Instrumented workloads in this "+
+				"The instrumentWorkloads mode has changed from \"%s\" to \"%s\". Instrumented workloads in this "+
 					"namespace will now be uninstrumented, they will no longer send telemetry to Dash0.",
 				previous,
 				current))
@@ -263,9 +263,9 @@ func (r *MonitoringReconciler) manageInstrumentWorkloadsChanges(
 	}
 
 	if previous != current {
-		monitoringResource.Status.PreviousInstrumentWorkloads = current
+		monitoringResource.Status.PreviousInstrumentWorkloadsMode = current
 		if err := r.Status().Update(ctx, monitoringResource); err != nil {
-			logger.Error(err, "Failed to update the previous instrumentWorkloads status on the Dash0 monitoring "+
+			logger.Error(err, "Failed to update the previous instrumentWorkloads mode status on the Dash0 monitoring "+
 				"resource, requeuing reconcile request.")
 			return monitoringResource, "", err
 		}

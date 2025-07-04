@@ -170,8 +170,8 @@ func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admi
 	if request.Operation == admissionv1.Update {
 		actionPartial = "updated"
 	}
-	instrumentWorkloads := dash0MonitoringResource.ReadInstrumentWorkloadsSetting()
-	if instrumentWorkloads == dash0v1alpha1.None {
+	instrumentWorkloadsMode := dash0MonitoringResource.ReadInstrumentWorkloadsMode()
+	if instrumentWorkloadsMode == dash0v1alpha1.None {
 		return admission.Allowed(
 			fmt.Sprintf(
 				"Instrumenting workloads is not enabled in namespace %s, this %s workload will not be modified to "+

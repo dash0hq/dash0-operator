@@ -47,14 +47,16 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 
 	Describe("when validating", Ordered, func() {
 
-		DescribeTable("should reject deploying a monitoring resources to kube-system unless instrumentWorkloads=none", func(testConfig kubeSystemTestConfig) {
+		DescribeTable("should reject deploying a monitoring resources to kube-system unless instrumentWorkloads.mode=none", func(testConfig kubeSystemTestConfig) {
 			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: testConfig.namespace,
 					Name:      MonitoringResourceName,
 				},
 				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					InstrumentWorkloads: testConfig.instrumentWorkloadsMode,
+					InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
+						Mode: testConfig.instrumentWorkloadsMode,
+					},
 					Export: &dash0v1alpha1.Export{
 						Dash0: &dash0v1alpha1.Dash0Configuration{
 							Endpoint: EndpointDash0Test,
@@ -70,7 +72,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				Expect(err).To(MatchError(ContainSubstring(fmt.Sprintf(
 					"admission webhook \"validate-monitoring.dash0.com\" denied the request: Rejecting the deployment "+
 						"of Dash0 monitoring resource \"%s\" to the Kubernetes system namespace \"%s\" with "+
-						"instrumentWorkloads=%s, use instrumentWorkloads=none instead.",
+						"instrumentWorkloads.mode=%s, use instrumentWorkloads.mode=none instead.",
 					MonitoringResourceName,
 					testConfig.namespace,
 					testConfig.instrumentWorkloadsMode,
@@ -79,32 +81,32 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				Expect(err).ToNot(HaveOccurred())
 			}
 		},
-			Entry("reject deploying to kube-system with instrumentWorkloadsMode=all", kubeSystemTestConfig{
+			Entry("reject deploying to kube-system with instrumentWorkloads.mode=all", kubeSystemTestConfig{
 				namespace:               "kube-system",
 				instrumentWorkloadsMode: dash0v1alpha1.All,
 				expectRejection:         true,
 			}),
-			Entry("reject deploying to kube-system with instrumentWorkloadsMode=created-and-updated", kubeSystemTestConfig{
+			Entry("reject deploying to kube-system with instrumentWorkloads.mode=created-and-updated", kubeSystemTestConfig{
 				namespace:               "kube-system",
 				instrumentWorkloadsMode: dash0v1alpha1.CreatedAndUpdated,
 				expectRejection:         true,
 			}),
-			Entry("allow deploying to kube-system with instrumentWorkloadsMode=none", kubeSystemTestConfig{
+			Entry("allow deploying to kube-system with instrumentWorkloads.mode=none", kubeSystemTestConfig{
 				namespace:               "kube-system",
 				instrumentWorkloadsMode: dash0v1alpha1.None,
 				expectRejection:         false,
 			}),
-			Entry("reject deploying to kube-node-lease with instrumentWorkloadsMode=all", kubeSystemTestConfig{
+			Entry("reject deploying to kube-node-lease with instrumentWorkloads.mode=all", kubeSystemTestConfig{
 				namespace:               "kube-node-lease",
 				instrumentWorkloadsMode: dash0v1alpha1.All,
 				expectRejection:         true,
 			}),
-			Entry("reject deploying to kube-node-lease with instrumentWorkloadsMode=created-and-updated", kubeSystemTestConfig{
+			Entry("reject deploying to kube-node-lease with instrumentWorkloads.mode=created-and-updated", kubeSystemTestConfig{
 				namespace:               "kube-node-lease",
 				instrumentWorkloadsMode: dash0v1alpha1.CreatedAndUpdated,
 				expectRejection:         true,
 			}),
-			Entry("allow deploying to kube-node-lease with instrumentWorkloadsMode=none", kubeSystemTestConfig{
+			Entry("allow deploying to kube-node-lease with instrumentWorkloads.mode=none", kubeSystemTestConfig{
 				namespace:               "kube-node-lease",
 				instrumentWorkloadsMode: dash0v1alpha1.None,
 				expectRejection:         false,
@@ -115,7 +117,9 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
 				ObjectMeta: MonitoringResourceDefaultObjectMeta,
 				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					InstrumentWorkloads: dash0v1alpha1.All,
+					InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
+						Mode: dash0v1alpha1.All,
+					},
 				},
 			})
 			Expect(err).To(MatchError(ContainSubstring("admission webhook \"validate-monitoring.dash0.com\" denied " +
@@ -139,7 +143,9 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
 				ObjectMeta: MonitoringResourceDefaultObjectMeta,
 				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					InstrumentWorkloads: dash0v1alpha1.All,
+					InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
+						Mode: dash0v1alpha1.All,
+					},
 				},
 			})
 
@@ -164,7 +170,9 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
 				ObjectMeta: MonitoringResourceDefaultObjectMeta,
 				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					InstrumentWorkloads: dash0v1alpha1.All,
+					InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
+						Mode: dash0v1alpha1.All,
+					},
 				},
 			})
 
@@ -182,7 +190,9 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
 				ObjectMeta: MonitoringResourceDefaultObjectMeta,
 				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					InstrumentWorkloads: dash0v1alpha1.All,
+					InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
+						Mode: dash0v1alpha1.All,
+					},
 				},
 			})
 
@@ -222,25 +232,29 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				testConfig.expectedError,
 			))))
 		},
-			Entry("instrumentWorkloads=all", monitoringResourceValidationWithTelemetryCollectionOffTestConfig{
+			Entry("instrumentWorkloads.mode=all", monitoringResourceValidationWithTelemetryCollectionOffTestConfig{
 				spec: dash0v1alpha1.Dash0MonitoringSpec{
-					InstrumentWorkloads: dash0v1alpha1.All,
+					InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
+						Mode: dash0v1alpha1.All,
+					},
 				},
 				expectedError: "The Dash0 operator configuration resource has telemetry collection disabled " +
 					"(telemetryCollection.enabled=false), and yet the monitoring resource has the setting " +
-					"instrumentWorkloads=all. This is an invalid combination. Please either set " +
+					"instrumentWorkloads.mode=all. This is an invalid combination. Please either set " +
 					"telemetryCollection.enabled=true in the operator configuration resource or set " +
-					"instrumentWorkloads=none in the monitoring resource (or leave it unspecified).",
+					"instrumentWorkloads.mode=none in the monitoring resource (or leave it unspecified).",
 			}),
-			Entry("instrumentWorkloads=created-and-updated", monitoringResourceValidationWithTelemetryCollectionOffTestConfig{
+			Entry("instrumentWorkloads.mode=created-and-updated", monitoringResourceValidationWithTelemetryCollectionOffTestConfig{
 				spec: dash0v1alpha1.Dash0MonitoringSpec{
-					InstrumentWorkloads: dash0v1alpha1.CreatedAndUpdated,
+					InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
+						Mode: dash0v1alpha1.CreatedAndUpdated,
+					},
 				},
 				expectedError: "The Dash0 operator configuration resource has telemetry collection disabled " +
 					"(telemetryCollection.enabled=false), and yet the monitoring resource has the setting " +
-					"instrumentWorkloads=created-and-updated. This is an invalid combination. Please either set " +
+					"instrumentWorkloads.mode=created-and-updated. This is an invalid combination. Please either set " +
 					"telemetryCollection.enabled=true in the operator configuration resource or set " +
-					"instrumentWorkloads=none in the monitoring resource (or leave it unspecified).",
+					"instrumentWorkloads.mode=none in the monitoring resource (or leave it unspecified).",
 			}),
 			Entry("logCollection.enabled=true", monitoringResourceValidationWithTelemetryCollectionOffTestConfig{
 				spec: dash0v1alpha1.Dash0MonitoringSpec{

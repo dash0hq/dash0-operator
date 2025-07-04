@@ -37,45 +37,12 @@ type Dash0MonitoringSpec struct {
 	// +kubebuilder:validation:Optional
 	Export *Export `json:"export,omitempty"`
 
-	// Opt-out for automatic workload instrumentation for the target namespace. There are three possible settings:
-	// `all`, `created-and-updated` and `none`. By default, the setting `all` is assumed, unless there is an operator
-	// configuration resource with `telemetryCollection.enabled=false`, then the setting `none` is assumed.
-	//
-	// If set to `all`, the operator will:
-	// * automatically instrument existing workloads in the target namespace (i.e. workloads already running in the
-	//   namespace) when the Dash0 monitoring resource is deployed,
-	// * instrument existing workloads or update the instrumentation of already instrumented workloads in the target
-	//   namespace when the Dash0 operator is first started or restarted (for example when updating the operator),
-	// * instrument new workloads in the target namespace when they are deployed, and
-	// * instrument changed workloads in the target namespace when changes are applied to them.
-	// Note that the first two actions (instrumenting existing workloads) will result in restarting the pods of the
-	// affected workloads.
-	//
-	// If set to `created-and-updated`, the operator will not instrument existing workloads in the target namespace.
-	// Instead, it will only:
-	// * instrument new workloads in the target namespace when they are deployed, and
-	// * instrument changed workloads in the target namespace when changes are applied to them.
-	// This setting is useful if you want to avoid pod restarts as a side effect of deploying the Dash0 monitoring
-	// resource or restarting the Dash0 operator.
-	//
-	// You can opt out of automatically instrumenting workloads entirely by setting this option to `none`. With
-	// `instrumentWorkloads: none`, workloads in the target namespace will never be instrumented to send telemetry to
-	// Dash0.
-	//
-	// If this setting is omitted, the value `all` is assumed and new, updated as well as existing Kubernetes workloads
-	// will be automatically intrumented by the operator to send telemetry to Dash0, as described above. There is one
-	// exception to this rule: If there is an operator configuration resource with `telemetryCollection.enabled=false`,
-	// then the default setting is `none` instead of `all`, and no workloads will be instrumented by the Dash0 operator.
-	//
-	// It is a validation error to set `telemetryCollection.enabled=false` in the operator configuration resource and
-	// `instrumentWorkloadsMode=all` or `instrumentWorkloadsMode=created-and-updated` in any monitoring resource at the
-	// same time.
-	//
-	// More fine-grained per-workload control over instrumentation is available by setting the label
-	// dash0.com/enable=false on individual workloads.
+	// Settings for automatic instrumentation of workloads in the target namespace. This setting is optional, by default
+	// the operator will instrument existing workloads, as well as new workloads at deploy time and changed workloads
+	// when they are updated.
 	//
 	// +kubebuilder:validation:Optional
-	InstrumentWorkloads InstrumentWorkloadsMode `json:"instrumentWorkloads,omitempty"`
+	InstrumentWorkloads InstrumentWorkloads `json:"instrumentWorkloads,omitempty"`
 
 	// Settings for log collection in the target namespace. This setting is optional, by default the operator will
 	// collect pod logs in the target namespace; unless there is an operator configuration resource with
@@ -162,9 +129,50 @@ type Dash0MonitoringSpec struct {
 	SynchronizePrometheusRules *bool `json:"synchronizePrometheusRules,omitempty"`
 }
 
+type InstrumentWorkloads struct {
+	// Opt-out for automatic workload instrumentation for the target namespace. There are three possible settings:
+	// `all`, `created-and-updated` and `none`. By default, the setting `all` is assumed, unless there is an operator
+	// configuration resource with `telemetryCollection.enabled=false`, then the setting `none` is assumed.
+	//
+	// If set to `all`, the operator will:
+	// * automatically instrument existing workloads in the target namespace (i.e. workloads already running in the
+	//   namespace) when the Dash0 monitoring resource is deployed,
+	// * instrument existing workloads or update the instrumentation of already instrumented workloads in the target
+	//   namespace when the Dash0 operator is first started or restarted (for example when updating the operator),
+	// * instrument new workloads in the target namespace when they are deployed, and
+	// * instrument changed workloads in the target namespace when changes are applied to them.
+	// Note that the first two actions (instrumenting existing workloads) will result in restarting the pods of the
+	// affected workloads.
+	//
+	// If set to `created-and-updated`, the operator will not instrument existing workloads in the target namespace.
+	// Instead, it will only:
+	// * instrument new workloads in the target namespace when they are deployed, and
+	// * instrument changed workloads in the target namespace when changes are applied to them.
+	// This setting is useful if you want to avoid pod restarts as a side effect of deploying the Dash0 monitoring
+	// resource or restarting the Dash0 operator.
+	//
+	// You can opt out of automatically instrumenting workloads entirely by setting this option to `none`. With
+	// `mode: none`, workloads in the target namespace will never be instrumented to send telemetry to Dash0.
+	//
+	// If this setting is omitted, the value `all` is assumed and new, updated as well as existing Kubernetes workloads
+	// will be automatically intrumented by the operator to send telemetry to Dash0, as described above. There is one
+	// exception to this rule: If there is an operator configuration resource with `telemetryCollection.enabled=false`,
+	// then the default setting is `none` instead of `all`, and no workloads will be instrumented by the Dash0 operator.
+	//
+	// It is a validation error to set `telemetryCollection.enabled=false` in the operator configuration resource and
+	// `mode: all` or `mode: created-and-updated` in any monitoring resource at the
+	// same time.
+	//
+	// More fine-grained per-workload control over instrumentation is available by setting the label
+	// dash0.com/enable=false on individual workloads.
+	//
+	// +kubebuilder:validation:Optional
+	Mode InstrumentWorkloadsMode `json:"mode,omitempty"`
+}
+
 // InstrumentWorkloadsMode describes when exactly workloads will be instrumented.  Only one of the following modes
 // may be specified. If none of the following policies is specified, the default one is All. See
-// Dash0MonitoringSpec#InstrumentWorkloads for more details.
+// Dash0MonitoringSpec.InstrumentWorkloads.Mode for more details.
 //
 // +kubebuilder:validation:Enum=all;created-and-updated;none
 type InstrumentWorkloadsMode string
@@ -180,7 +188,7 @@ const (
 	None InstrumentWorkloadsMode = "none"
 )
 
-var allInstrumentWorkloadsMode = []InstrumentWorkloadsMode{All, CreatedAndUpdated, None}
+var AllInstrumentWorkloadsMode = []InstrumentWorkloadsMode{All, CreatedAndUpdated, None}
 
 type LogCollection struct {
 	// Opt-out for log collection for the target namespace. If set to `false`, the operator will not collect pod logs
@@ -454,9 +462,9 @@ type PrometheusRuleSynchronizationResult struct {
 type Dash0MonitoringStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 
-	// The spec.instrumentWorkloads setting that has been observed in the previous reconcile cycle.
+	// The spec.instrumentWorkloads.mode setting that has been observed in the previous reconcile cycle.
 	// +kubebuilder:validation:Optional
-	PreviousInstrumentWorkloads InstrumentWorkloadsMode `json:"previousInstrumentWorkloads,omitempty"`
+	PreviousInstrumentWorkloadsMode InstrumentWorkloadsMode `json:"previousInstrumentWorkloads,omitempty"`
 
 	// Shows results of synchronizing Perses dashboard resources in this namespace via the Dash0 API.
 	// +kubebuilder:validation:Optional
@@ -476,20 +484,19 @@ type Dash0Monitoring struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	// +kubebuilder:default={instrumentWorkloads: "all", prometheusScrapingEnabled: true}
 	Spec   Dash0MonitoringSpec   `json:"spec,omitempty"`
 	Status Dash0MonitoringStatus `json:"status,omitempty"`
 }
 
-func (d *Dash0Monitoring) ReadInstrumentWorkloadsSetting() InstrumentWorkloadsMode {
-	instrumentWorkloads := d.Spec.InstrumentWorkloads
-	if instrumentWorkloads == "" {
+func (d *Dash0Monitoring) ReadInstrumentWorkloadsMode() InstrumentWorkloadsMode {
+	instrumentWorkloadsMode := d.Spec.InstrumentWorkloads.Mode
+	if instrumentWorkloadsMode == "" {
 		return All
 	}
-	if !slices.Contains(allInstrumentWorkloadsMode, instrumentWorkloads) {
+	if !slices.Contains(AllInstrumentWorkloadsMode, instrumentWorkloadsMode) {
 		return All
 	}
-	return instrumentWorkloads
+	return instrumentWorkloadsMode
 }
 
 func (d *Dash0Monitoring) IsMarkedForDeletion() bool {

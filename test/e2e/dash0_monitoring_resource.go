@@ -22,11 +22,11 @@ import (
 )
 
 type dash0MonitoringValues struct {
-	InstrumentWorkloads dash0v1alpha1.InstrumentWorkloadsMode
-	Endpoint            string
-	Token               string
-	Filter              string
-	Transform           string
+	InstrumentWorkloadsMode dash0v1alpha1.InstrumentWorkloadsMode
+	Endpoint                string
+	Token                   string
+	Filter                  string
+	Transform               string
 }
 
 const (
@@ -39,13 +39,13 @@ var (
 	dash0MonitoringResourceTemplate *template.Template
 
 	dash0MonitoringValuesDefault = dash0MonitoringValues{
-		InstrumentWorkloads: dash0v1alpha1.All,
+		InstrumentWorkloadsMode: dash0v1alpha1.All,
 	}
 
 	dash0MonitoringValuesWithExport = dash0MonitoringValues{
-		InstrumentWorkloads: dash0v1alpha1.All,
-		Endpoint:            defaultEndpoint,
-		Token:               defaultToken,
+		InstrumentWorkloadsMode: dash0v1alpha1.All,
+		Endpoint:                defaultEndpoint,
+		Token:                   defaultToken,
 	}
 )
 
@@ -136,7 +136,9 @@ func updateInstrumentWorkloadsModeOfDash0MonitoringResource(
 		fmt.Sprintf(`
 {
   "spec": {
-    "instrumentWorkloads": "%s"
+    "instrumentWorkloads": {
+      "mode": "%s"
+    }
   }
 }
 `, instrumentWorkloadsMode),

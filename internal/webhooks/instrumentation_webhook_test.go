@@ -705,10 +705,10 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 		})
 	})
 
-	Describe("when the Dash0 monitoring resource exists and is available and has InstrumentWorkloads=all set explicitly", Ordered, func() {
+	Describe("when the Dash0 monitoring resource exists and is available and has instrumentWorkloads.mode=all set explicitly", Ordered, func() {
 		BeforeAll(func() {
 			dash0MonitoringResource := EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
-			dash0MonitoringResource.Spec.InstrumentWorkloads = dash0v1alpha1.All
+			dash0MonitoringResource.Spec.InstrumentWorkloads.Mode = dash0v1alpha1.All
 			Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
 		})
 
@@ -721,10 +721,10 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 		})
 	})
 
-	Describe("when the Dash0 monitoring resource exists and is available but has InstrumentWorkloads=none set", Ordered, func() {
+	Describe("when the Dash0 monitoring resource exists and is available but has instrumentWorkloads.mode=none set", Ordered, func() {
 		BeforeAll(func() {
 			dash0MonitoringResource := EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
-			dash0MonitoringResource.Spec.InstrumentWorkloads = dash0v1alpha1.None
+			dash0MonitoringResource.Spec.InstrumentWorkloads.Mode = dash0v1alpha1.None
 			Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
 		})
 
@@ -737,10 +737,10 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 		})
 	})
 
-	Describe("when the Dash0 monitoring resource exists and is available and has InstrumentWorkloads=created-and-updated set", Ordered, func() {
+	Describe("when the Dash0 monitoring resource exists and is available and has instrumentWorkloads.mode=created-and-updated set", Ordered, func() {
 		BeforeAll(func() {
 			dash0MonitoringResource := EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
-			dash0MonitoringResource.Spec.InstrumentWorkloads = dash0v1alpha1.CreatedAndUpdated
+			dash0MonitoringResource.Spec.InstrumentWorkloads.Mode = dash0v1alpha1.CreatedAndUpdated
 			Expect(k8sClient.Update(ctx, dash0MonitoringResource)).To(Succeed())
 		})
 
