@@ -729,14 +729,14 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 			})
 
 			Describe("when updating the Dash0Monitoring resource", func() {
-				It("should instrument workloads when the Dash0Monitoring resource is switched from instrumentWorkloads=none to instrumentWorkloads=all", func() { //nolint
+				It("should instrument workloads when the Dash0Monitoring resource is switched from instrumentWorkloads.mode=none to instrumentWorkloads.mode=all", func() { //nolint
 					testId := generateTestId(runtimeTypeNodeJs, workloadTypeStatefulSet)
 					deployDash0MonitoringResource(
 						applicationUnderTestNamespace,
 						dash0MonitoringValues{
-							Endpoint:            defaultEndpoint,
-							Token:               defaultToken,
-							InstrumentWorkloads: dash0v1alpha1.None,
+							Endpoint:                defaultEndpoint,
+							Token:                   defaultToken,
+							InstrumentWorkloadsMode: dash0v1alpha1.None,
 						},
 						operatorNamespace,
 					)
@@ -766,7 +766,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					)
 				})
 
-				It("should revert an instrumented workload when the Dash0Monitoring resource is switched from instrumentWorkloads=all to instrumentWorkloads=none", func() { //nolint
+				It("should revert an instrumented workload when the Dash0Monitoring resource is switched from instrumentWorkloads.mode=all to instrumentWorkloads.mode=none", func() { //nolint
 					testId := generateTestId(runtimeTypeNodeJs, workloadTypeDeployment)
 					deployDash0MonitoringResource(
 						applicationUnderTestNamespace,
@@ -787,7 +787,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 						true,
 					)
 
-					By("updating the Dash0Monitoring resource to InstrumentWorkloads=none")
+					By("updating the Dash0Monitoring resource to instrumentWorkloads.mode=none")
 					updateInstrumentWorkloadsModeOfDash0MonitoringResource(
 						applicationUnderTestNamespace,
 						dash0v1alpha1.None,
@@ -1045,10 +1045,10 @@ traces:
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
 					dash0MonitoringValues{
-						InstrumentWorkloads: dash0v1alpha1.All,
-						Endpoint:            defaultEndpoint,
-						Token:               defaultToken,
-						Filter:              filter,
+						InstrumentWorkloadsMode: dash0v1alpha1.All,
+						Endpoint:                defaultEndpoint,
+						Token:                   defaultToken,
+						Filter:                  filter,
 					},
 					operatorNamespace,
 				)
@@ -1137,10 +1137,10 @@ trace_statements:
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
 					dash0MonitoringValues{
-						InstrumentWorkloads: dash0v1alpha1.All,
-						Endpoint:            defaultEndpoint,
-						Token:               defaultToken,
-						Transform:           transform,
+						InstrumentWorkloadsMode: dash0v1alpha1.All,
+						Endpoint:                defaultEndpoint,
+						Token:                   defaultToken,
+						Transform:               transform,
 					},
 					operatorNamespace,
 				)
@@ -1260,7 +1260,7 @@ trace_statements:
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
 					dash0MonitoringValues{
-						InstrumentWorkloads: dash0v1alpha1.None,
+						InstrumentWorkloadsMode: dash0v1alpha1.None,
 					},
 					operatorNamespace,
 				)
@@ -1379,9 +1379,9 @@ trace_statements:
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
 					dash0MonitoringValues{
-						InstrumentWorkloads: dash0v1alpha1.All,
-						Endpoint:            "",
-						Token:               "",
+						InstrumentWorkloadsMode: dash0v1alpha1.All,
+						Endpoint:                "",
+						Token:                   "",
 					},
 					operatorNamespace,
 				)

@@ -15,7 +15,7 @@ import (
 	"go.uber.org/zap"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	log "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
@@ -73,14 +73,15 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 			"Dash0Monitoring.spec.prometheusScraping.enabled instead.")
 	}
 
-	if slices.Contains(restrictedNamespaces, request.Namespace) && monitoringResource.Spec.InstrumentWorkloads != dash0v1alpha1.None {
+	instrumentWorkloadsMode := monitoringResource.Spec.InstrumentWorkloads.Mode
+	if slices.Contains(restrictedNamespaces, request.Namespace) && instrumentWorkloadsMode != dash0v1alpha1.None {
 		return admission.Denied(
 			fmt.Sprintf(
 				"Rejecting the deployment of Dash0 monitoring resource \"%s\" to the Kubernetes system namespace "+
-					"\"%s\" with instrumentWorkloads=%s, use instrumentWorkloads=none instead.",
+					"\"%s\" with instrumentWorkloads.mode=%s, use instrumentWorkloads.mode=none instead.",
 				request.Name,
 				request.Namespace,
-				monitoringResource.Spec.InstrumentWorkloads,
+				instrumentWorkloadsMode,
 			))
 	}
 
@@ -148,15 +149,15 @@ func (h *MonitoringValidationWebhookHandler) validateTelemetryRelatedSettingsIfT
 		return admission.Response{}, false
 	}
 
-	if monitoringResource.Spec.InstrumentWorkloads != dash0v1alpha1.None {
+	if monitoringResource.Spec.InstrumentWorkloads.Mode != dash0v1alpha1.None {
 		return admission.Denied(
 			fmt.Sprintf(
 				"The Dash0 operator configuration resource has telemetry collection disabled "+
 					"(telemetryCollection.enabled=false), and yet the monitoring resource has the setting "+
-					"instrumentWorkloads=%s. This is an invalid combination. Please either set "+
+					"instrumentWorkloads.mode=%s. This is an invalid combination. Please either set "+
 					"telemetryCollection.enabled=true in the operator configuration resource or set "+
-					"instrumentWorkloads=none in the monitoring resource (or leave it unspecified).",
-				monitoringResource.Spec.InstrumentWorkloads,
+					"instrumentWorkloads.mode=none in the monitoring resource (or leave it unspecified).",
+				monitoringResource.Spec.InstrumentWorkloads.Mode,
 			)), true
 	}
 	if util.ReadBoolPointerWithDefault(monitoringResource.Spec.LogCollection.Enabled, true) {

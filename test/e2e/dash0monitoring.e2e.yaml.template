@@ -3,7 +3,8 @@ kind: Dash0Monitoring
 metadata:
   name: dash0-monitoring-resource-e2e
 spec:
-  instrumentWorkloads: {{ .InstrumentWorkloads }}
+  instrumentWorkloads:
+    mode: {{ .InstrumentWorkloadsMode }}
 {{- if .Endpoint }}
   export:
     dash0:
