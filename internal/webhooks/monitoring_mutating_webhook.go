@@ -14,7 +14,7 @@ import (
 	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	log "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
@@ -49,8 +49,14 @@ func (h *MonitoringMutatingWebhookHandler) Handle(ctx context.Context, request a
 	// See https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#admission-control-phases.
 	logger := log.FromContext(ctx)
 
+	rawResource := request.Object.Raw
+	rawResource, errorResponse := h.normalizeLegacyInstrumentWorkloadsStringSetting(rawResource, logger)
+	if errorResponse != nil {
+		return *errorResponse
+	}
+
 	monitoringResource := &dash0v1alpha1.Dash0Monitoring{}
-	if _, _, err := decoder.Decode(request.Object.Raw, nil, monitoringResource); err != nil {
+	if _, _, err := decoder.Decode(rawResource, nil, monitoringResource); err != nil {
 		logger.Info("rejecting invalid monitoring resource", "error", err)
 		return admission.Errored(http.StatusBadRequest, err)
 	}
@@ -81,6 +87,43 @@ func (h *MonitoringMutatingWebhookHandler) Handle(ctx context.Context, request a
 	}
 
 	return admission.PatchResponseFromRaw(request.Object.Raw, marshalled)
+}
+
+func (h *MonitoringMutatingWebhookHandler) normalizeLegacyInstrumentWorkloadsStringSetting(rawResource []byte, logger logr.Logger) ([]byte, *admission.Response) {
+	parsedResourceAsMap := map[string]interface{}{}
+	if err := json.Unmarshal(rawResource, &parsedResourceAsMap); err != nil {
+		logger.Info("rejecting invalid monitoring resource", "error", err)
+		errorResponse := admission.Errored(http.StatusBadRequest, err)
+		return nil, &errorResponse
+	} else {
+		specRaw := parsedResourceAsMap["spec"]
+		if specRaw != nil {
+			spec, ok := specRaw.(map[string]interface{})
+			if ok {
+				instrumentWorkloadsRaw := spec["instrumentWorkloads"]
+				if instrumentWorkloadsRaw != nil {
+					instrumentWorkloadsString, instrumentWorkloadsIsLegacyStringSetting := instrumentWorkloadsRaw.(string)
+					if instrumentWorkloadsIsLegacyStringSetting {
+						spec["instrumentWorkloads"] = map[string]interface{}{
+							"mode": instrumentWorkloadsString,
+						}
+						rawResource, err = json.Marshal(parsedResourceAsMap)
+						if err != nil {
+							err = fmt.Errorf("failed to re-serialize resource payload when normalizing legacy "+
+								"instrumentWorkloads string setting: %w; you can avoid this type of error by updating "+
+								"your monitoring resource from \"instrumentWorkloads: %s\" to "+
+								"\"instrumentWorkloads: { mode: %s }\"",
+								err, instrumentWorkloadsString, instrumentWorkloadsString)
+							logger.Error(err, "error")
+							errorResponse := admission.Errored(http.StatusInternalServerError, err)
+							return nil, &errorResponse
+						}
+					}
+				}
+			}
+		}
+	}
+	return rawResource, nil
 }
 
 func (h *MonitoringMutatingWebhookHandler) normalizeMonitoringResourceSpec(
@@ -120,11 +163,11 @@ func (h *MonitoringMutatingWebhookHandler) setTelemetryCollectionRelatedDefaults
 		telemetryCollectionEnabled = util.ReadBoolPointerWithDefault(operatorConfigurationSpec.TelemetryCollection.Enabled, true)
 	}
 
-	if monitoringSpec.InstrumentWorkloads == "" {
+	if monitoringSpec.InstrumentWorkloads.Mode == "" {
 		if telemetryCollectionEnabled {
-			monitoringSpec.InstrumentWorkloads = dash0v1alpha1.All
+			monitoringSpec.InstrumentWorkloads.Mode = dash0v1alpha1.All
 		} else {
-			monitoringSpec.InstrumentWorkloads = dash0v1alpha1.None
+			monitoringSpec.InstrumentWorkloads.Mode = dash0v1alpha1.None
 		}
 		patchRequired = true
 	}
