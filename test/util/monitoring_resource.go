@@ -109,11 +109,11 @@ func EnsureMonitoringResourceExists(
 func EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(
 	ctx context.Context,
 	k8sClient client.Client,
-	instrumentWorkloads dash0v1alpha1.InstrumentWorkloadsMode,
+	instrumentWorkloadsMode dash0v1alpha1.InstrumentWorkloadsMode,
 ) *dash0v1alpha1.Dash0Monitoring {
 	spec := MonitoringResourceDefaultSpec
-	if instrumentWorkloads != "" {
-		spec.InstrumentWorkloads = instrumentWorkloads
+	if instrumentWorkloadsMode != "" {
+		spec.InstrumentWorkloads.Mode = instrumentWorkloadsMode
 	}
 	return EnsureMonitoringResourceWithSpecExistsInNamespace(
 		ctx,
@@ -364,6 +364,6 @@ func UpdateInstrumentWorkloadsMode(
 	instrumentWorkloads dash0v1alpha1.InstrumentWorkloadsMode,
 ) {
 	monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
-	monitoringResource.Spec.InstrumentWorkloads = instrumentWorkloads
+	monitoringResource.Spec.InstrumentWorkloads.Mode = instrumentWorkloads
 	Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 }

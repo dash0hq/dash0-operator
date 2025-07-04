@@ -22,6 +22,12 @@ import (
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
+type normalizeLegacyInstrumentWorkloadsStringSettingTestCase struct {
+	monitoringResourceSpec    string
+	expectPatch               bool
+	expectInstrumentationMode string
+}
+
 type disableLogCollectionTestCase struct {
 	namespace              string
 	monitoringResourceSpec dash0v1alpha1.Dash0MonitoringSpec
@@ -56,6 +62,7 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 	logger := log.FromContext(ctx)
 
 	Describe("when mutating the operator configuration resource", func() {
+
 		DescribeTable("should disable log collection in the operator namespace", func(testCase disableLogCollectionTestCase) {
 			spec := testCase.monitoringResourceSpec
 			patchRequired := monitoringMutatingWebhookHandler.overrideLogCollectionDefault(
@@ -138,7 +145,9 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 				normalizeTelemetryRelatedSettingsTestConfig{
 					spec: dash0v1alpha1.Dash0MonitoringSpec{},
 					wanted: dash0v1alpha1.Dash0MonitoringSpec{
-						InstrumentWorkloads: dash0v1alpha1.All,
+						InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
+							Mode: dash0v1alpha1.All,
+						},
 						LogCollection: dash0v1alpha1.LogCollection{
 							Enabled: ptr.To(true),
 						},
@@ -155,7 +164,9 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 						PrometheusScraping: dash0v1alpha1.PrometheusScraping{},
 					},
 					wanted: dash0v1alpha1.Dash0MonitoringSpec{
-						InstrumentWorkloads: dash0v1alpha1.All,
+						InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
+							Mode: dash0v1alpha1.All,
+						},
 						LogCollection: dash0v1alpha1.LogCollection{
 							Enabled: ptr.To(true),
 						},
@@ -168,7 +179,9 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 			Entry("do not change values that have been set explicitly",
 				normalizeTelemetryRelatedSettingsTestConfig{
 					spec: dash0v1alpha1.Dash0MonitoringSpec{
-						InstrumentWorkloads: dash0v1alpha1.None,
+						InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
+							Mode: dash0v1alpha1.None,
+						},
 						LogCollection: dash0v1alpha1.LogCollection{
 							Enabled: ptr.To(false),
 						},
@@ -178,7 +191,9 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 						PrometheusScrapingEnabled: ptr.To(false),
 					},
 					wanted: dash0v1alpha1.Dash0MonitoringSpec{
-						InstrumentWorkloads: dash0v1alpha1.None,
+						InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
+							Mode: dash0v1alpha1.None,
+						},
 						LogCollection: dash0v1alpha1.LogCollection{
 							Enabled: ptr.To(false),
 						},
@@ -207,7 +222,9 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 				normalizeTelemetryRelatedSettingsTestConfig{
 					spec: dash0v1alpha1.Dash0MonitoringSpec{},
 					wanted: dash0v1alpha1.Dash0MonitoringSpec{
-						InstrumentWorkloads: dash0v1alpha1.None,
+						InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
+							Mode: dash0v1alpha1.None,
+						},
 						LogCollection: dash0v1alpha1.LogCollection{
 							Enabled: ptr.To(false),
 						},
@@ -224,7 +241,9 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 						PrometheusScraping: dash0v1alpha1.PrometheusScraping{},
 					},
 					wanted: dash0v1alpha1.Dash0MonitoringSpec{
-						InstrumentWorkloads: dash0v1alpha1.None,
+						InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
+							Mode: dash0v1alpha1.None,
+						},
 						LogCollection: dash0v1alpha1.LogCollection{
 							Enabled: ptr.To(false),
 						},
@@ -238,7 +257,9 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 				// this is an invalid config, but the validation is not covered by this test
 				normalizeTelemetryRelatedSettingsTestConfig{
 					spec: dash0v1alpha1.Dash0MonitoringSpec{
-						InstrumentWorkloads: dash0v1alpha1.All,
+						InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
+							Mode: dash0v1alpha1.All,
+						},
 						LogCollection: dash0v1alpha1.LogCollection{
 							Enabled: ptr.To(true),
 						},
@@ -248,7 +269,9 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 						PrometheusScrapingEnabled: ptr.To(true),
 					},
 					wanted: dash0v1alpha1.Dash0MonitoringSpec{
-						InstrumentWorkloads: dash0v1alpha1.All,
+						InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
+							Mode: dash0v1alpha1.All,
+						},
 						LogCollection: dash0v1alpha1.LogCollection{
 							Enabled: ptr.To(true),
 						},
@@ -267,7 +290,7 @@ var _ = Describe("The mutation webhook for the monitoring resource", func() {
 			Expect(err).ToNot(HaveOccurred())
 			response := monitoringMutatingWebhookHandler.Handle(ctx, admission.Request{
 				AdmissionRequest: admissionv1.AdmissionRequest{
-					Name:      "resource-name",
+					Name:      MonitoringResourceName,
 					Namespace: "some-namespace",
 					Object: runtime.RawExtension{
 						Raw: rawSpecJson,
@@ -479,6 +502,76 @@ spec:
 				},
 			}),
 		)
+
+		DescribeTable("should normalize legacy instrumentWorkload string settings", func(testCase normalizeLegacyInstrumentWorkloadsStringSettingTestCase) {
+			var unmarshalledYaml map[string]interface{}
+			Expect(yaml.Unmarshal([]byte(testCase.monitoringResourceSpec), &unmarshalledYaml)).To(Succeed())
+			rawSpecJson, err := json.Marshal(unmarshalledYaml)
+			Expect(err).ToNot(HaveOccurred())
+			response := monitoringMutatingWebhookHandler.Handle(ctx, admission.Request{
+				AdmissionRequest: admissionv1.AdmissionRequest{
+					Name:      MonitoringResourceName,
+					Namespace: TestNamespaceName,
+					Object: runtime.RawExtension{
+						Raw: rawSpecJson,
+					},
+				},
+			})
+
+			Expect(response.Allowed).To(BeTrue())
+
+			var instrumentWorkloadsPatchRaw interface{}
+			for _, patch := range response.Patches {
+				if patch.Operation == "replace" && patch.Path == "/spec/instrumentWorkloads" {
+					instrumentWorkloadsPatchRaw = patch.Value
+				}
+			}
+
+			if !testCase.expectPatch {
+				Expect(instrumentWorkloadsPatchRaw).To(BeNil())
+				return
+			}
+
+			Expect(instrumentWorkloadsPatchRaw).ToNot(BeNil())
+			instrumentWorkloadsPatch, ok := instrumentWorkloadsPatchRaw.(map[string]interface{})
+			Expect(ok).To(BeTrue())
+			Expect(instrumentWorkloadsPatch["mode"]).To(Equal(testCase.expectInstrumentationMode))
+		},
+			Entry("with instrumentWorkloads=all setting", normalizeLegacyInstrumentWorkloadsStringSettingTestCase{
+				monitoringResourceSpec: `
+spec:
+  instrumentWorkloads: all
+`,
+				expectPatch:               true,
+				expectInstrumentationMode: "all",
+			}),
+			Entry("with instrumentWorkloads=created-and-updated", normalizeLegacyInstrumentWorkloadsStringSettingTestCase{
+				monitoringResourceSpec: `
+spec:
+  instrumentWorkloads: created-and-updated
+`,
+				expectPatch:               true,
+				expectInstrumentationMode: "created-and-updated",
+			}),
+			Entry("with instrumentWorkloads=none", normalizeLegacyInstrumentWorkloadsStringSettingTestCase{
+				monitoringResourceSpec: `
+spec:
+  instrumentWorkloads: none
+`,
+				expectPatch:               true,
+				expectInstrumentationMode: "none",
+			}),
+			// This invalid value is not caught by the mutating webhook, it will be caught by the validation webhook
+			// later on.
+			Entry("with an invalid instrumentWorkloads", normalizeLegacyInstrumentWorkloadsStringSettingTestCase{
+				monitoringResourceSpec: `
+spec:
+  instrumentWorkloads: invalid
+`,
+				expectPatch:               true,
+				expectInstrumentationMode: "invalid",
+			}),
+		)
 	})
 
 	Describe("using the actual webhook", func() {
@@ -515,7 +608,9 @@ spec:
 				telemetryCollectionEnabled: true,
 				spec:                       dash0v1alpha1.Dash0MonitoringSpec{},
 				wanted: dash0v1alpha1.Dash0MonitoringSpec{
-					InstrumentWorkloads: dash0v1alpha1.All,
+					InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
+						Mode: dash0v1alpha1.All,
+					},
 					LogCollection: dash0v1alpha1.LogCollection{
 						Enabled: ptr.To(true),
 					},
@@ -531,7 +626,9 @@ spec:
 				telemetryCollectionEnabled: false,
 				spec:                       dash0v1alpha1.Dash0MonitoringSpec{},
 				wanted: dash0v1alpha1.Dash0MonitoringSpec{
-					InstrumentWorkloads: dash0v1alpha1.None,
+					InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
+						Mode: dash0v1alpha1.None,
+					},
 					LogCollection: dash0v1alpha1.LogCollection{
 						Enabled: ptr.To(false),
 					},
@@ -616,7 +713,7 @@ func toAdmissionRequest(namespace string, spec dash0v1alpha1.Dash0MonitoringSpec
 	Expect(err).ToNot(HaveOccurred())
 	return admission.Request{
 		AdmissionRequest: admissionv1.AdmissionRequest{
-			Name:      "resource-name",
+			Name:      MonitoringResourceName,
 			Namespace: namespace,
 			Object: runtime.RawExtension{
 				Raw: rawJson,
