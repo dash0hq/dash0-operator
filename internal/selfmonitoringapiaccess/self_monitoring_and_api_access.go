@@ -449,7 +449,7 @@ func convertDash0ExportConfigurationToCollectorLogSelfMonitoringPipelineString(d
 	pipeline := collectorLogSelfMonitoringPrelude +
 		fmt.Sprintf(`
                 protocol: grpc
-                endpoint: %s`, dash0Export.Endpoint)
+                endpoint: %s`, prependProtocol(dash0Export.Endpoint, "https://"))
 	pipeline = addInsecureFlagIfNecessary(pipeline, dash0Export.Endpoint)
 	pipeline += fmt.Sprintf(`
                 headers:
@@ -473,7 +473,7 @@ func convertGrpcExportConfigurationToCollectorLogSelfMonitoringPipelineString(gr
 		fmt.Sprintf(`
                 protocol: grpc
                 endpoint: %s`,
-			grpcExport.Endpoint,
+			prependProtocol(grpcExport.Endpoint, "dns://"),
 		)
 	pipeline = addInsecureFlagIfNecessary(pipeline, grpcExport.Endpoint)
 	pipeline = appendHeadersToCollectorLogSelfMonitoringPipelineString(pipeline, grpcExport.Headers)
