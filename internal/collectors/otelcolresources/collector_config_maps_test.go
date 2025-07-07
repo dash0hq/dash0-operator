@@ -2217,7 +2217,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			Expect(ok).To(BeTrue())
 			otlpExporter := readOtlpExporterFromSelfMonitoringLogsPipeline(selfMonitoringLogsPipeline)
 			Expect(otlpExporter["protocol"]).To(Equal(common.ProtocolGrpc))
-			Expect(otlpExporter["endpoint"]).To(Equal(EndpointDash0Test))
+			Expect(otlpExporter["endpoint"]).To(Equal(EndpointDash0WithProtocolTest))
 			headersRaw := otlpExporter["headers"]
 			Expect(headersRaw).ToNot(BeNil())
 			headers, ok := headersRaw.(map[string]interface{})
@@ -2246,7 +2246,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		Expect(ok).To(BeTrue())
 		otlpExporter := readOtlpExporterFromSelfMonitoringLogsPipeline(selfMonitoringLogsPipeline)
 		Expect(otlpExporter["protocol"]).To(Equal(common.ProtocolGrpc))
-		Expect(otlpExporter["endpoint"]).To(Equal(EndpointGrpcTest))
+		Expect(otlpExporter["endpoint"]).To(Equal(EndpointGrpcWithProtocolTest))
 		headersRaw := otlpExporter["headers"]
 		Expect(headersRaw).ToNot(BeNil())
 		headers, ok := headersRaw.(map[string]interface{})

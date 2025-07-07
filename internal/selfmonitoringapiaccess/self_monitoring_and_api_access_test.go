@@ -419,7 +419,7 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
             exporter:
               otlp:
                 protocol: grpc
-                endpoint: endpoint.dash0.com:4317
+                endpoint: https://endpoint.dash0.com:4317
                 headers:
                   Authorization: "Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"
 `
@@ -431,7 +431,7 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
             exporter:
               otlp:
                 protocol: grpc
-                endpoint: endpoint.dash0.com:4317
+                endpoint: https://endpoint.dash0.com:4317
                 headers:
                   Authorization: "Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"
                   Dash0-Dataset: "test-dataset"
@@ -540,7 +540,7 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
             exporter:
               otlp:
                 protocol: grpc
-                endpoint: endpoint.backend.com:4317
+                endpoint: dns://endpoint.backend.com:4317
 `,
 				},
 			),
@@ -576,7 +576,7 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
             exporter:
               otlp:
                 protocol: grpc
-                endpoint: endpoint.backend.com:4317
+                endpoint: dns://endpoint.backend.com:4317
                 headers:
                   Key1: "Value1"
                   Key2: "Value2"
