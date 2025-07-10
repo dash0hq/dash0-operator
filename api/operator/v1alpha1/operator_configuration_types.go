@@ -10,7 +10,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	dash0common "github.com/dash0hq/dash0-operator/api/dash0monitoring"
+	dash0common "github.com/dash0hq/dash0-operator/api/operator"
 )
 
 // Dash0OperatorConfigurationSpec describes cluster-wide configuration settings for the Dash0 operator.

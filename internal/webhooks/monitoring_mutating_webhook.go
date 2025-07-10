@@ -17,7 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
@@ -44,7 +44,7 @@ func (h *MonitoringMutatingWebhookHandler) Handle(ctx context.Context, request a
 	// Note: The mutating webhook is called before the validating webhook, so we can normalize the resource here and
 	// verify that it is valid (after having been normalized) in the validating webhook.
 	// Note that default values from // +kubebuilder:default comments from
-	// api/dash0monitoring/v1alpha1/dash0monitoring_types.go have already been applied by the time this webhook
+	// api/operator/v1alpha1/dash0monitoring_types.go have already been applied by the time this webhook
 	// is called.
 	// See https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#admission-control-phases.
 	logger := log.FromContext(ctx)
