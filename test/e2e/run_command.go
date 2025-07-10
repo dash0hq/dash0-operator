@@ -40,7 +40,6 @@ func run(cmd *exec.Cmd, logCommandArgs ...bool) (string, error) {
 		e2ePrint("chdir dir: %s\n", err)
 	}
 
-	cmd.Env = append(os.Environ(), "GO111MODULE=on")
 	command := strings.Join(cmd.Args, " ")
 	if logCommand {
 		e2ePrint("running: %s\n", command)

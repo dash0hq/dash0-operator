@@ -390,7 +390,7 @@ $(KUSTOMIZE): $(LOCALBIN)
 		echo "$(LOCALBIN)/kustomize version is not expected $(KUSTOMIZE_VERSION). Removing it before installing."; \
 		rm -rf $(LOCALBIN)/kustomize; \
 	fi
-	test -s $(LOCALBIN)/kustomize || GOBIN=$(LOCALBIN) GO111MODULE=on go install sigs.k8s.io/kustomize/kustomize/v5@$(KUSTOMIZE_VERSION)
+	test -s $(LOCALBIN)/kustomize || GOBIN=$(LOCALBIN) go install sigs.k8s.io/kustomize/kustomize/v5@$(KUSTOMIZE_VERSION)
 
 .PHONY: controller-gen
 controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary. If wrong version is installed, it will be overwritten.
@@ -478,7 +478,7 @@ catalog-push: ## Push a catalog image.
 
 .PHONY: husky-install
 husky-install:
-	test -s $(HUSKY) || GOBIN=$(LOCALBIN) GO111MODULE=on go install github.com/automation-co/husky@latest
+	test -s $(HUSKY) || GOBIN=$(LOCALBIN) go install github.com/automation-co/husky@latest
 
 .PHONY: husky-setup-hooks
 husky-setup-hooks: husky-install
