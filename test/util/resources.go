@@ -22,7 +22,7 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
 
@@ -1213,7 +1213,7 @@ func LoadMonitoringResourceStatusCondition(
 	ctx context.Context,
 	k8sClient client.Client,
 	monitoringResourceName types.NamespacedName,
-	conditionType dash0v1alpha1.ConditionType,
+	conditionType dash0common.ConditionType,
 ) *metav1.Condition {
 	monitoringResource := LoadMonitoringResourceByNameOrFail(ctx, k8sClient, Default, monitoringResourceName)
 	return meta.FindStatusCondition(monitoringResource.Status.Conditions, string(conditionType))
@@ -1223,7 +1223,7 @@ func LoadOperatorConfigurationResourceStatusCondition(
 	ctx context.Context,
 	k8sClient client.Client,
 	operatorConfigurationResourceName string,
-	conditionType dash0v1alpha1.ConditionType,
+	conditionType dash0common.ConditionType,
 ) *metav1.Condition {
 	operatorConfigurationResource := LoadOperatorConfigurationResourceByNameOrFail(
 		ctx,

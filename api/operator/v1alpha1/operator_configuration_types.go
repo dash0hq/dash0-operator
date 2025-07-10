@@ -10,7 +10,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	dash0common "github.com/dash0hq/dash0-operator/api/operator"
+	dash0operator "github.com/dash0hq/dash0-operator/api/operator"
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 )
 
 // Dash0OperatorConfigurationSpec describes cluster-wide configuration settings for the Dash0 operator.
@@ -26,7 +27,7 @@ type Dash0OperatorConfigurationSpec struct {
 	// encoding is not supported for self-monitoring telemetry.
 	//
 	// +kubebuilder:validation:Required
-	Export *Export `json:"export,omitempty"`
+	Export *dash0common.Export `json:"export,omitempty"`
 
 	// Global opt-out for self-monitoring for this operator
 	//
@@ -155,20 +156,20 @@ func (d *Dash0OperatorConfiguration) IsMarkedForDeletion() bool {
 }
 
 func (d *Dash0OperatorConfiguration) IsAvailable() bool {
-	if condition := d.getCondition(ConditionTypeAvailable); condition != nil {
+	if condition := d.getCondition(dash0common.ConditionTypeAvailable); condition != nil {
 		return condition.Status == metav1.ConditionTrue
 	}
 	return false
 }
 
 func (d *Dash0OperatorConfiguration) IsDegraded() bool {
-	if condition := d.getCondition(ConditionTypeDegraded); condition != nil {
+	if condition := d.getCondition(dash0common.ConditionTypeDegraded); condition != nil {
 		return condition.Status == metav1.ConditionTrue
 	}
 	return false
 }
 
-func (d *Dash0OperatorConfiguration) getCondition(conditionType ConditionType) *metav1.Condition {
+func (d *Dash0OperatorConfiguration) getCondition(conditionType dash0common.ConditionType) *metav1.Condition {
 	for _, c := range d.Status.Conditions {
 		if c.Type == string(conditionType) {
 			return &c
@@ -182,7 +183,7 @@ func (d *Dash0OperatorConfiguration) SetAvailableConditionToUnknown() {
 	meta.SetStatusCondition(
 		&d.Status.Conditions,
 		metav1.Condition{
-			Type:    string(ConditionTypeAvailable),
+			Type:    string(dash0common.ConditionTypeAvailable),
 			Status:  metav1.ConditionUnknown,
 			Reason:  "ReconcileStarted",
 			Message: "Dash0 has started resource reconciliation for the cluster-wide operator configuration.",
@@ -190,7 +191,7 @@ func (d *Dash0OperatorConfiguration) SetAvailableConditionToUnknown() {
 	meta.SetStatusCondition(
 		&d.Status.Conditions,
 		metav1.Condition{
-			Type:    string(ConditionTypeDegraded),
+			Type:    string(dash0common.ConditionTypeDegraded),
 			Status:  metav1.ConditionTrue,
 			Reason:  "ReconcileStarted",
 			Message: "Dash0 operator configuration resource reconciliation is in progress.",
@@ -204,12 +205,12 @@ func (d *Dash0OperatorConfiguration) EnsureResourceIsMarkedAsAvailable() {
 	meta.SetStatusCondition(
 		&d.Status.Conditions,
 		metav1.Condition{
-			Type:    string(ConditionTypeAvailable),
+			Type:    string(dash0common.ConditionTypeAvailable),
 			Status:  metav1.ConditionTrue,
 			Reason:  "ReconcileFinished",
 			Message: "Dash0 operator configuration is available in this cluster now.",
 		})
-	meta.RemoveStatusCondition(&d.Status.Conditions, string(ConditionTypeDegraded))
+	meta.RemoveStatusCondition(&d.Status.Conditions, string(dash0common.ConditionTypeDegraded))
 }
 
 func (d *Dash0OperatorConfiguration) EnsureResourceIsMarkedAsAboutToBeDeleted() {
@@ -229,7 +230,7 @@ func (d *Dash0OperatorConfiguration) EnsureResourceIsMarkedAsDegraded(
 	meta.SetStatusCondition(
 		&d.Status.Conditions,
 		metav1.Condition{
-			Type:    string(ConditionTypeAvailable),
+			Type:    string(dash0common.ConditionTypeAvailable),
 			Status:  metav1.ConditionFalse,
 			Reason:  reason,
 			Message: message,
@@ -237,7 +238,7 @@ func (d *Dash0OperatorConfiguration) EnsureResourceIsMarkedAsDegraded(
 	meta.SetStatusCondition(
 		&d.Status.Conditions,
 		metav1.Condition{
-			Type:    string(ConditionTypeDegraded),
+			Type:    string(dash0common.ConditionTypeDegraded),
 			Status:  metav1.ConditionTrue,
 			Reason:  reason,
 			Message: message,
@@ -251,7 +252,7 @@ func (d *Dash0OperatorConfiguration) HasDash0ApiAccessConfigured() bool {
 		(d.Spec.Export.Dash0.Authorization.Token != nil || d.Spec.Export.Dash0.Authorization.SecretRef != nil)
 }
 
-func (d *Dash0OperatorConfiguration) GetDash0AuthorizationIfConfigured() *Authorization {
+func (d *Dash0OperatorConfiguration) GetDash0AuthorizationIfConfigured() *dash0common.Authorization {
 	if d.Spec.Export == nil {
 		return nil
 	}
@@ -307,9 +308,9 @@ func (d *Dash0OperatorConfiguration) RequestToName(ctrl.Request) string {
 	return d.Name
 }
 
-func (d *Dash0OperatorConfiguration) All(list client.ObjectList) []dash0common.Dash0Resource {
+func (d *Dash0OperatorConfiguration) All(list client.ObjectList) []dash0operator.Dash0Resource {
 	items := list.(*Dash0OperatorConfigurationList).Items
-	result := make([]dash0common.Dash0Resource, len(items))
+	result := make([]dash0operator.Dash0Resource, len(items))
 	for i := range items {
 		result[i] = &items[i]
 	}
@@ -325,7 +326,7 @@ func (d *Dash0OperatorConfiguration) Items(list client.ObjectList) []client.Obje
 	return result
 }
 
-func (d *Dash0OperatorConfiguration) At(list client.ObjectList, index int) dash0common.Dash0Resource {
+func (d *Dash0OperatorConfiguration) At(list client.ObjectList, index int) dash0operator.Dash0Resource {
 	return &list.(*Dash0OperatorConfigurationList).Items[index]
 }
 

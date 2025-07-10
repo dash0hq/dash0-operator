@@ -36,6 +36,7 @@ import (
 	k8swebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/controller"
@@ -146,6 +147,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(runtimeScheme))
 	utilruntime.Must(dash0v1alpha1.AddToScheme(runtimeScheme))
+	utilruntime.Must(dash0v1beta1.AddToScheme(runtimeScheme))
 
 	// required for Perses dashboard controller and Prometheus rules controller.
 	utilruntime.Must(apiextensionsv1.AddToScheme(runtimeScheme))
@@ -928,6 +930,9 @@ func startDash0Controllers(
 		Client: k8sClient,
 	}).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the monitoring validation webhook: %w", err)
+	}
+	if err := webhooks.SetupDash0MonitoringConversionWebhookWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to create the monitoring conversion webhook: %w", err)
 	}
 
 	oTelSdkStarter.WaitForOTelConfig(

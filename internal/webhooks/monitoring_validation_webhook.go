@@ -18,7 +18,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/webhooks/vendored/opentelemetry-collector-contrib/internal_/filter/filterottl"
 	"github.com/dash0hq/dash0-operator/internal/webhooks/vendored/opentelemetry-collector-contrib/processor/transformprocessor/internal_/common"
@@ -47,7 +49,7 @@ func (h *MonitoringValidationWebhookHandler) SetupWebhookWithManager(mgr ctrl.Ma
 	if err != nil {
 		return err
 	}
-	mgr.GetWebhookServer().Register("/v1alpha1/validate/monitoring", handler)
+	mgr.GetWebhookServer().Register("/monitoring/validate", handler)
 
 	return nil
 }
@@ -58,23 +60,14 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 	// See https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#admission-control-phases.
 	logger := log.FromContext(ctx)
 
-	monitoringResource := &dash0v1alpha1.Dash0Monitoring{}
+	monitoringResource := &dash0v1beta1.Dash0Monitoring{}
 	if _, _, err := decoder.Decode(request.Object.Raw, nil, monitoringResource); err != nil {
 		logger.Info("rejecting invalid monitoring resource", "error", err)
 		return admission.Errored(http.StatusBadRequest, err)
 	}
 
-	//nolint:staticcheck
-	if monitoringResource.Spec.PrometheusScrapingEnabled != nil &&
-		//nolint:staticcheck
-		!*monitoringResource.Spec.PrometheusScrapingEnabled {
-		// The deprecated option has been explicitly set to false, log warning to ask users to switch to the new option.
-		logger.Info("Warning: The setting Dash0Monitoring.spec.prometheusScrapingEnabled is deprecated: Please use " +
-			"Dash0Monitoring.spec.prometheusScraping.enabled instead.")
-	}
-
 	instrumentWorkloadsMode := monitoringResource.Spec.InstrumentWorkloads.Mode
-	if slices.Contains(restrictedNamespaces, request.Namespace) && instrumentWorkloadsMode != dash0v1alpha1.InstrumentWorkloadsModeNone {
+	if slices.Contains(restrictedNamespaces, request.Namespace) && instrumentWorkloadsMode != dash0common.InstrumentWorkloadsModeNone {
 		return admission.Denied(
 			fmt.Sprintf(
 				"Rejecting the deployment of Dash0 monitoring resource \"%s\" to the Kubernetes system namespace "+
@@ -109,7 +102,7 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 
 func (h *MonitoringValidationWebhookHandler) validateExport(
 	availableOperatorConfigurations []dash0v1alpha1.Dash0OperatorConfiguration,
-	monitoringResource *dash0v1alpha1.Dash0Monitoring,
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
 ) (admission.Response, bool) {
 	if monitoringResource.Spec.Export == nil {
 		if len(availableOperatorConfigurations) == 0 {
@@ -136,7 +129,7 @@ func (h *MonitoringValidationWebhookHandler) validateExport(
 
 func (h *MonitoringValidationWebhookHandler) validateTelemetryRelatedSettingsIfTelemetryCollectionIsDisabled(
 	availableOperatorConfigurations []dash0v1alpha1.Dash0OperatorConfiguration,
-	monitoringResource *dash0v1alpha1.Dash0Monitoring,
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
 ) (admission.Response, bool) {
 	if len(availableOperatorConfigurations) == 0 {
 		// Since there is no operator configuration available, telemetry collection cannot be disabled via
@@ -149,7 +142,7 @@ func (h *MonitoringValidationWebhookHandler) validateTelemetryRelatedSettingsIfT
 		return admission.Response{}, false
 	}
 
-	if monitoringResource.Spec.InstrumentWorkloads.Mode != dash0v1alpha1.InstrumentWorkloadsModeNone {
+	if monitoringResource.Spec.InstrumentWorkloads.Mode != dash0common.InstrumentWorkloadsModeNone {
 		return admission.Denied(
 			fmt.Sprintf(
 				"The Dash0 operator configuration resource has telemetry collection disabled "+
@@ -174,14 +167,6 @@ func (h *MonitoringValidationWebhookHandler) validateTelemetryRelatedSettingsIfT
 			"telemetryCollection.enabled=true in the operator configuration resource or set " +
 			"prometheusScraping.enabled=false in the monitoring resource (or leave it unspecified)."), true
 	}
-	//nolint:staticcheck
-	if util.ReadBoolPointerWithDefault(monitoringResource.Spec.PrometheusScrapingEnabled, true) {
-		return admission.Denied("The Dash0 operator configuration resource has telemetry collection disabled " +
-			"(telemetryCollection.enabled=false), and yet the monitoring resource has the setting " +
-			"prometheusScrapingEnabled=true. This is an invalid combination. Please either set " +
-			"telemetryCollection.enabled=true in the operator configuration resource or set " +
-			"prometheusScrapingEnabled=false in the monitoring resource (or leave it unspecified)."), true
-	}
 	if monitoringResource.Spec.Filter != nil {
 		return admission.Denied("The Dash0 operator configuration resource has telemetry collection disabled " +
 			"(telemetryCollection.enabled=false), and yet the monitoring resource has filter setting. " +
@@ -197,13 +182,13 @@ func (h *MonitoringValidationWebhookHandler) validateTelemetryRelatedSettingsIfT
 	return admission.Response{}, false
 }
 
-func (h *MonitoringValidationWebhookHandler) validateOttl(monitoringResource *dash0v1alpha1.Dash0Monitoring) (admission.Response, bool) {
-	// Note: Due to dash0v1alpha1.Filter and dash0v1alpha1.Transform using different types than the Config modules in
+func (h *MonitoringValidationWebhookHandler) validateOttl(monitoringResource *dash0v1beta1.Dash0Monitoring) (admission.Response, bool) {
+	// Note: Due to dash0common.Filter and dash0common.Transform using different types than the Config modules in
 	// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.126.0/processor/filterprocessor and
 	// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.126.0/processor/transformprocessor,
 	// we need to vendor in quite a bit of internal code from the collector-contrib repo, see
 	// internal/webhooks/vendored/opentelemetry-collector-contrib. Would be worth trying to refactor
-	// dash0v1alpha1.Filter and dash0v1alpha1.Transform to directly use the types from the collector-contrib repo, then
+	// dash0common.Filter and dash0common.Transform to directly use the types from the collector-contrib repo, then
 	// we might be able to get away with only using collector-contrib's public API only, in particular,
 	// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.126.0/processor/filterprocessor/config.go,
 	// func (cfg *Config) Validate() error, and
@@ -225,7 +210,7 @@ func (h *MonitoringValidationWebhookHandler) validateOttl(monitoringResource *da
 // validateFilter is a modified copy of
 // https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/v0.126.0/processor/filterprocessor/config.go,
 // func (cfg *Config) Validate() error {
-func validateFilter(filter *dash0v1alpha1.Filter) error {
+func validateFilter(filter *dash0common.Filter) error {
 	var errors error
 
 	if filter.Traces != nil {
@@ -263,7 +248,7 @@ func validateFilter(filter *dash0v1alpha1.Filter) error {
 // validateTransform is a modified copy of
 // https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/refs/tags/v0.126.0/processor/transformprocessor/config.go,
 // func (cfg *Config) Validate() error {
-func validateTransform(transform *dash0v1alpha1.NormalizedTransformSpec) error {
+func validateTransform(transform *dash0common.NormalizedTransformSpec) error {
 	var errors error
 
 	if len(transform.Traces) > 0 {
@@ -308,7 +293,7 @@ func validateTransform(transform *dash0v1alpha1.NormalizedTransformSpec) error {
 	return errors
 }
 
-func toContextStatements(transformGroup dash0v1alpha1.NormalizedTransformGroup) common.ContextStatements {
+func toContextStatements(transformGroup dash0common.NormalizedTransformGroup) common.ContextStatements {
 	var context common.ContextID
 	if transformGroup.Context != nil {
 		context = common.ContextID(*transformGroup.Context)

@@ -32,7 +32,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/yaml"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
@@ -362,7 +363,7 @@ func (r *PrometheusRuleReconciler) overrideHttpRetryDelay(delay time.Duration) {
 	r.httpRetryDelay = delay
 }
 
-func (r *PrometheusRuleReconciler) IsSynchronizationEnabled(monitoringResource *dash0v1alpha1.Dash0Monitoring) bool {
+func (r *PrometheusRuleReconciler) IsSynchronizationEnabled(monitoringResource *dash0v1beta1.Dash0Monitoring) bool {
 	if monitoringResource == nil {
 		return false
 	}
@@ -864,9 +865,9 @@ func (r *PrometheusRuleReconciler) CreateDeleteRequests(
 }
 
 func (r *PrometheusRuleReconciler) UpdateSynchronizationResultsInStatus(
-	monitoringResource *dash0v1alpha1.Dash0Monitoring,
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	qualifiedName string,
-	status dash0v1alpha1.SynchronizationStatus,
+	status dash0common.SynchronizationStatus,
 	itemsTotal int,
 	successfullySynchronized []string,
 	synchronizationErrorsPerItem map[string]string,
@@ -874,10 +875,10 @@ func (r *PrometheusRuleReconciler) UpdateSynchronizationResultsInStatus(
 ) interface{} {
 	previousResults := monitoringResource.Status.PrometheusRuleSynchronizationResults
 	if previousResults == nil {
-		previousResults = make(map[string]dash0v1alpha1.PrometheusRuleSynchronizationResult)
+		previousResults = make(map[string]dash0common.PrometheusRuleSynchronizationResult)
 		monitoringResource.Status.PrometheusRuleSynchronizationResults = previousResults
 	}
-	result := dash0v1alpha1.PrometheusRuleSynchronizationResult{
+	result := dash0common.PrometheusRuleSynchronizationResult{
 		SynchronizationStatus:      status,
 		SynchronizedAt:             metav1.Time{Time: time.Now()},
 		AlertingRulesTotal:         itemsTotal,

@@ -30,7 +30,7 @@ func (h *OperatorConfigurationMutatingWebhookHandler) SetupWebhookWithManager(mg
 	if err != nil {
 		return err
 	}
-	mgr.GetWebhookServer().Register("/v1alpha1/mutate/operator-configuration", handler)
+	mgr.GetWebhookServer().Register("/operator-configuration/mutate", handler)
 
 	return nil
 }

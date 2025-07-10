@@ -23,14 +23,29 @@ resources:
   version: v1alpha1
   webhooks:
     defaulting: true
+    conversion: true
     webhookVersion: v1
 - api:
     crdVersion: v1
-    namespaced: false
+    namespaced: true
+  domain: dash0.com
+  group: operator
+  kind: Dash0Monitoring
+  path: github.com/dash0hq/dash0-operator/api/operator/v1beta1
+  version: v1beta1
+  webhooks:
+    defaulting: true
+    conversion: true
+    webhookVersion: v1
+- api:
+    crdVersion: v1
   controller: true
   domain: dash0.com
   group: operator
   kind: Dash0OperatorConfiguration
   path: github.com/dash0hq/dash0-operator/api/operator/v1alpha1
   version: v1alpha1
+  webhooks:
+    defaulting: true
+    webhookVersion: v1
 version: "3"

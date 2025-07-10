@@ -25,7 +25,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
 
 	"github.com/h2non/gock"
@@ -48,8 +48,8 @@ var (
 		Namespace: TestNamespaceName,
 	}
 
-	defaultExpectedPrometheusSyncResult = dash0v1alpha1.PrometheusRuleSynchronizationResult{
-		SynchronizationStatus:  dash0v1alpha1.Successful,
+	defaultExpectedPrometheusSyncResult = dash0common.PrometheusRuleSynchronizationResult{
+		SynchronizationStatus:  dash0common.Successful,
 		AlertingRulesTotal:     4,
 		SynchronizedRulesTotal: 4,
 		SynchronizedRules: []string{
@@ -493,8 +493,8 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			verifyPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
 				ctx,
 				k8sClient,
-				dash0v1alpha1.PrometheusRuleSynchronizationResult{
-					SynchronizationStatus:  dash0v1alpha1.Successful,
+				dash0common.PrometheusRuleSynchronizationResult{
+					SynchronizationStatus:  dash0common.Successful,
 					AlertingRulesTotal:     4,
 					SynchronizedRulesTotal: 4,
 					SynchronizedRules: []string{
@@ -543,8 +543,8 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			verifyPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
 				ctx,
 				k8sClient,
-				dash0v1alpha1.PrometheusRuleSynchronizationResult{
-					SynchronizationStatus:  dash0v1alpha1.Successful,
+				dash0common.PrometheusRuleSynchronizationResult{
+					SynchronizationStatus:  dash0common.Successful,
 					AlertingRulesTotal:     4,
 					SynchronizedRulesTotal: 4,
 					SynchronizedRules: []string{
@@ -595,8 +595,8 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			verifyPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
 				ctx,
 				k8sClient,
-				dash0v1alpha1.PrometheusRuleSynchronizationResult{
-					SynchronizationStatus:  dash0v1alpha1.Successful,
+				dash0common.PrometheusRuleSynchronizationResult{
+					SynchronizationStatus:  dash0common.Successful,
 					AlertingRulesTotal:     6,
 					SynchronizedRulesTotal: 6,
 					SynchronizedRules: []string{
@@ -728,8 +728,8 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			verifyPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
 				ctx,
 				k8sClient,
-				dash0v1alpha1.PrometheusRuleSynchronizationResult{
-					SynchronizationStatus:  dash0v1alpha1.PartiallySuccessful,
+				dash0common.PrometheusRuleSynchronizationResult{
+					SynchronizationStatus:  dash0common.PartiallySuccessful,
 					AlertingRulesTotal:     7,
 					SynchronizedRulesTotal: 2,
 					SynchronizedRules: []string{
@@ -823,8 +823,8 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			verifyPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
 				ctx,
 				k8sClient,
-				dash0v1alpha1.PrometheusRuleSynchronizationResult{
-					SynchronizationStatus:      dash0v1alpha1.Failed,
+				dash0common.PrometheusRuleSynchronizationResult{
+					SynchronizationStatus:      dash0common.Failed,
 					AlertingRulesTotal:         5,
 					SynchronizedRulesTotal:     0,
 					SynchronizedRules:          nil,
@@ -1431,7 +1431,7 @@ func defaultExpectedPathsCheckRules(clusterId string) []string {
 func verifyPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
 	ctx context.Context,
 	k8sClient client.Client,
-	expectedResult dash0v1alpha1.PrometheusRuleSynchronizationResult,
+	expectedResult dash0common.PrometheusRuleSynchronizationResult,
 ) {
 	Eventually(func(g Gomega) {
 		monRes := LoadMonitoringResourceOrFail(ctx, k8sClient, g)

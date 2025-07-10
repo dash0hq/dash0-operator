@@ -11,7 +11,9 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -21,18 +23,18 @@ import (
 
 type kubeSystemTestConfig struct {
 	namespace               string
-	instrumentWorkloadsMode dash0v1alpha1.InstrumentWorkloadsMode
+	instrumentWorkloadsMode dash0common.InstrumentWorkloadsMode
 	expectRejection         bool
 }
 
 type monitoringResourceValidationWithTelemetryCollectionOffTestConfig struct {
-	spec          dash0v1alpha1.Dash0MonitoringSpec
+	spec          dash0v1beta1.Dash0MonitoringSpec
 	expectedError string
 }
 
 type ottlValidationTestConfig struct {
-	filter                *dash0v1alpha1.Filter
-	transform             *dash0v1alpha1.Transform
+	filter                *dash0common.Filter
+	transform             *dash0common.Transform
 	expectErrorSubstrings []string
 }
 
@@ -40,7 +42,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 
 	AfterEach(func() {
 		Expect(
-			k8sClient.DeleteAllOf(ctx, &dash0v1alpha1.Dash0Monitoring{}, client.InNamespace(TestNamespaceName)),
+			k8sClient.DeleteAllOf(ctx, &dash0v1beta1.Dash0Monitoring{}, client.InNamespace(TestNamespaceName)),
 		).To(Succeed())
 		Expect(k8sClient.DeleteAllOf(ctx, &dash0v1alpha1.Dash0OperatorConfiguration{})).To(Succeed())
 	})
@@ -48,19 +50,19 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 	Describe("when validating", Ordered, func() {
 
 		DescribeTable("should reject deploying a monitoring resources to kube-system unless instrumentWorkloads.mode=none", func(testConfig kubeSystemTestConfig) {
-			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
+			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1beta1.Dash0Monitoring{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: testConfig.namespace,
 					Name:      MonitoringResourceName,
 				},
-				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						Mode: testConfig.instrumentWorkloadsMode,
 					},
-					Export: &dash0v1alpha1.Export{
-						Dash0: &dash0v1alpha1.Dash0Configuration{
+					Export: &dash0common.Export{
+						Dash0: &dash0common.Dash0Configuration{
 							Endpoint: EndpointDash0Test,
-							Authorization: dash0v1alpha1.Authorization{
+							Authorization: dash0common.Authorization{
 								Token: &AuthorizationTokenTest,
 							},
 						},
@@ -83,42 +85,42 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 		},
 			Entry("reject deploying to kube-system with instrumentWorkloads.mode=all", kubeSystemTestConfig{
 				namespace:               "kube-system",
-				instrumentWorkloadsMode: dash0v1alpha1.InstrumentWorkloadsModeAll,
+				instrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeAll,
 				expectRejection:         true,
 			}),
 			Entry("reject deploying to kube-system with instrumentWorkloads.mode=created-and-updated", kubeSystemTestConfig{
 				namespace:               "kube-system",
-				instrumentWorkloadsMode: dash0v1alpha1.InstrumentWorkloadsModeCreatedAndUpdated,
+				instrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
 				expectRejection:         true,
 			}),
 			Entry("allow deploying to kube-system with instrumentWorkloads.mode=none", kubeSystemTestConfig{
 				namespace:               "kube-system",
-				instrumentWorkloadsMode: dash0v1alpha1.InstrumentWorkloadsModeNone,
+				instrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeNone,
 				expectRejection:         false,
 			}),
 			Entry("reject deploying to kube-node-lease with instrumentWorkloads.mode=all", kubeSystemTestConfig{
 				namespace:               "kube-node-lease",
-				instrumentWorkloadsMode: dash0v1alpha1.InstrumentWorkloadsModeAll,
+				instrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeAll,
 				expectRejection:         true,
 			}),
 			Entry("reject deploying to kube-node-lease with instrumentWorkloads.mode=created-and-updated", kubeSystemTestConfig{
 				namespace:               "kube-node-lease",
-				instrumentWorkloadsMode: dash0v1alpha1.InstrumentWorkloadsModeCreatedAndUpdated,
+				instrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
 				expectRejection:         true,
 			}),
 			Entry("allow deploying to kube-node-lease with instrumentWorkloads.mode=none", kubeSystemTestConfig{
 				namespace:               "kube-node-lease",
-				instrumentWorkloadsMode: dash0v1alpha1.InstrumentWorkloadsModeNone,
+				instrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeNone,
 				expectRejection:         false,
 			}),
 		)
 
 		It("should reject monitoring resources without export if no operator configuration resource exists", func() {
-			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
+			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1beta1.Dash0Monitoring{
 				ObjectMeta: MonitoringResourceDefaultObjectMeta,
-				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
-						Mode: dash0v1alpha1.InstrumentWorkloadsModeAll,
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						Mode: dash0common.InstrumentWorkloadsModeAll,
 					},
 				},
 			})
@@ -140,11 +142,11 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 
 			// deliberately not marking the operator configuration resource as available for this test
 
-			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
+			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1beta1.Dash0Monitoring{
 				ObjectMeta: MonitoringResourceDefaultObjectMeta,
-				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
-						Mode: dash0v1alpha1.InstrumentWorkloadsModeAll,
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						Mode: dash0common.InstrumentWorkloadsModeAll,
 					},
 				},
 			})
@@ -167,11 +169,11 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 			operatorConfigurationResource.EnsureResourceIsMarkedAsAvailable()
 			Expect(k8sClient.Status().Update(ctx, operatorConfigurationResource)).To(Succeed())
 
-			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
+			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1beta1.Dash0Monitoring{
 				ObjectMeta: MonitoringResourceDefaultObjectMeta,
-				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
-						Mode: dash0v1alpha1.InstrumentWorkloadsModeAll,
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						Mode: dash0common.InstrumentWorkloadsModeAll,
 					},
 				},
 			})
@@ -187,11 +189,11 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 			operatorConfigurationResource.EnsureResourceIsMarkedAsAvailable()
 			Expect(k8sClient.Status().Update(ctx, operatorConfigurationResource)).To(Succeed())
 
-			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
+			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1beta1.Dash0Monitoring{
 				ObjectMeta: MonitoringResourceDefaultObjectMeta,
-				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
-						Mode: dash0v1alpha1.InstrumentWorkloadsModeAll,
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						Mode: dash0common.InstrumentWorkloadsModeAll,
 					},
 				},
 			})
@@ -200,7 +202,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 		})
 
 		It("should allow monitoring resource creation with export settings", func() {
-			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
+			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1beta1.Dash0Monitoring{
 				ObjectMeta: MonitoringResourceDefaultObjectMeta,
 				Spec:       MonitoringResourceDefaultSpec,
 			})
@@ -222,7 +224,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 			operatorConfigurationResource.EnsureResourceIsMarkedAsAvailable()
 			Expect(k8sClient.Status().Update(ctx, operatorConfigurationResource)).To(Succeed())
 
-			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
+			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1beta1.Dash0Monitoring{
 				ObjectMeta: MonitoringResourceDefaultObjectMeta,
 				Spec:       testConfig.spec,
 			})
@@ -233,9 +235,9 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 			))))
 		},
 			Entry("instrumentWorkloads.mode=all", monitoringResourceValidationWithTelemetryCollectionOffTestConfig{
-				spec: dash0v1alpha1.Dash0MonitoringSpec{
-					InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
-						Mode: dash0v1alpha1.InstrumentWorkloadsModeAll,
+				spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						Mode: dash0common.InstrumentWorkloadsModeAll,
 					},
 				},
 				expectedError: "The Dash0 operator configuration resource has telemetry collection disabled " +
@@ -245,9 +247,9 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 					"instrumentWorkloads.mode=none in the monitoring resource (or leave it unspecified).",
 			}),
 			Entry("instrumentWorkloads.mode=created-and-updated", monitoringResourceValidationWithTelemetryCollectionOffTestConfig{
-				spec: dash0v1alpha1.Dash0MonitoringSpec{
-					InstrumentWorkloads: dash0v1alpha1.InstrumentWorkloads{
-						Mode: dash0v1alpha1.InstrumentWorkloadsModeCreatedAndUpdated,
+				spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						Mode: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
 					},
 				},
 				expectedError: "The Dash0 operator configuration resource has telemetry collection disabled " +
@@ -257,8 +259,8 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 					"instrumentWorkloads.mode=none in the monitoring resource (or leave it unspecified).",
 			}),
 			Entry("logCollection.enabled=true", monitoringResourceValidationWithTelemetryCollectionOffTestConfig{
-				spec: dash0v1alpha1.Dash0MonitoringSpec{
-					LogCollection: dash0v1alpha1.LogCollection{
+				spec: dash0v1beta1.Dash0MonitoringSpec{
+					LogCollection: dash0common.LogCollection{
 						Enabled: ptr.To(true),
 					},
 				},
@@ -269,8 +271,8 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 					"logCollection.enabled=false in the monitoring resource (or leave it unspecified).",
 			}),
 			Entry("prometheusScraping.enabled=true", monitoringResourceValidationWithTelemetryCollectionOffTestConfig{
-				spec: dash0v1alpha1.Dash0MonitoringSpec{
-					PrometheusScraping: dash0v1alpha1.PrometheusScraping{
+				spec: dash0v1beta1.Dash0MonitoringSpec{
+					PrometheusScraping: dash0common.PrometheusScraping{
 						Enabled: ptr.To(true),
 					},
 				},
@@ -280,19 +282,9 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 					"telemetryCollection.enabled=true in the operator configuration resource or set " +
 					"prometheusScraping.enabled=false in the monitoring resource (or leave it unspecified).",
 			}),
-			Entry("prometheusScrapingEnabled=true", monitoringResourceValidationWithTelemetryCollectionOffTestConfig{
-				spec: dash0v1alpha1.Dash0MonitoringSpec{
-					PrometheusScrapingEnabled: ptr.To(true),
-				},
-				expectedError: "The Dash0 operator configuration resource has telemetry collection disabled " +
-					"(telemetryCollection.enabled=false), and yet the monitoring resource has the setting " +
-					"prometheusScrapingEnabled=true. This is an invalid combination. Please either set " +
-					"telemetryCollection.enabled=true in the operator configuration resource or set " +
-					"prometheusScrapingEnabled=false in the monitoring resource (or leave it unspecified).",
-			}),
 			Entry("filter!=nil", monitoringResourceValidationWithTelemetryCollectionOffTestConfig{
-				spec: dash0v1alpha1.Dash0MonitoringSpec{
-					Filter: &dash0v1alpha1.Filter{},
+				spec: dash0v1beta1.Dash0MonitoringSpec{
+					Filter: &dash0common.Filter{},
 				},
 				expectedError: "The Dash0 operator configuration resource has telemetry collection disabled " +
 					"(telemetryCollection.enabled=false), and yet the monitoring resource has filter setting. " +
@@ -300,8 +292,8 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 					"operator configuration resource or remove the filter setting in the monitoring resource.",
 			}),
 			Entry("transform!=nil", monitoringResourceValidationWithTelemetryCollectionOffTestConfig{
-				spec: dash0v1alpha1.Dash0MonitoringSpec{
-					Transform: &dash0v1alpha1.Transform{},
+				spec: dash0v1beta1.Dash0MonitoringSpec{
+					Transform: &dash0common.Transform{},
 				},
 				expectedError: "The Dash0 operator configuration resource has telemetry collection disabled " +
 					"(telemetryCollection.enabled=false), and yet the monitoring resource has a transform setting " +
@@ -311,16 +303,16 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 		)
 
 		DescribeTable("should validate OTTL expressions", func(testConfig ottlValidationTestConfig) {
-			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1alpha1.Dash0Monitoring{
+			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1beta1.Dash0Monitoring{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: TestNamespaceName,
 					Name:      MonitoringResourceName,
 				},
-				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					Export: &dash0v1alpha1.Export{
-						Dash0: &dash0v1alpha1.Dash0Configuration{
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					Export: &dash0common.Export{
+						Dash0: &dash0common.Dash0Configuration{
 							Endpoint: EndpointDash0Test,
-							Authorization: dash0v1alpha1.Authorization{
+							Authorization: dash0common.Authorization{
 								Token: &AuthorizationTokenTest,
 							},
 						},
@@ -340,8 +332,8 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 		},
 			Entry("should allow monitoring resource without filter or transform", ottlValidationTestConfig{}),
 			Entry("should reject monitoring resource with invalid syntax in span filter", ottlValidationTestConfig{
-				filter: &dash0v1alpha1.Filter{
-					Traces: &dash0v1alpha1.TraceFilter{
+				filter: &dash0common.Filter{
+					Traces: &dash0common.TraceFilter{
 						SpanFilter: []string{
 							"invalid_syntax(...",
 						},
@@ -353,8 +345,8 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				},
 			}),
 			Entry("should reject monitoring resource with invalid syntax in span event filter", ottlValidationTestConfig{
-				filter: &dash0v1alpha1.Filter{
-					Traces: &dash0v1alpha1.TraceFilter{
+				filter: &dash0common.Filter{
+					Traces: &dash0common.TraceFilter{
 						SpanEventFilter: []string{
 							"invalid_syntax(...",
 						},
@@ -366,8 +358,8 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				},
 			}),
 			Entry("should reject monitoring resource with invalid syntax in metric filter", ottlValidationTestConfig{
-				filter: &dash0v1alpha1.Filter{
-					Metrics: &dash0v1alpha1.MetricFilter{
+				filter: &dash0common.Filter{
+					Metrics: &dash0common.MetricFilter{
 						MetricFilter: []string{
 							`IsMatch(name, "^kafka\.consumer\.(?!records_consumed_total).*")`,
 							`IsMatch(name, "^kafka\.producer\.(?!record_error_rate).*")`,
@@ -381,8 +373,8 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				},
 			}),
 			Entry("should reject monitoring resource with invalid syntax in metric datapoint filter", ottlValidationTestConfig{
-				filter: &dash0v1alpha1.Filter{
-					Metrics: &dash0v1alpha1.MetricFilter{
+				filter: &dash0common.Filter{
+					Metrics: &dash0common.MetricFilter{
 						DataPointFilter: []string{
 							"invalid_syntax(...",
 						},
@@ -394,8 +386,8 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				},
 			}),
 			Entry("should reject monitoring resource with invalid syntax in log record filter", ottlValidationTestConfig{
-				filter: &dash0v1alpha1.Filter{
-					Logs: &dash0v1alpha1.LogFilter{
+				filter: &dash0common.Filter{
+					Logs: &dash0common.LogFilter{
 						LogRecordFilter: []string{
 							"invalid_syntax(...",
 						},
@@ -407,8 +399,8 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				},
 			}),
 			Entry("should allow monitoring resource with valid filter", ottlValidationTestConfig{
-				filter: &dash0v1alpha1.Filter{
-					Traces: &dash0v1alpha1.TraceFilter{
+				filter: &dash0common.Filter{
+					Traces: &dash0common.TraceFilter{
 						SpanFilter: []string{
 							`attributes["http.route"] == "/ready"`,
 							`attributes["http.route"] == "/metrics"`,
@@ -418,7 +410,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 							`IsMatch(name, ".*grpc.*")`,
 						},
 					},
-					Metrics: &dash0v1alpha1.MetricFilter{
+					Metrics: &dash0common.MetricFilter{
 						MetricFilter: []string{
 							`name == "k8s.replicaset.available"`,
 							`name == "k8s.replicaset.desired"`,
@@ -428,7 +420,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 							`resource.attributes["service.name"] == "my_service_name"`,
 						},
 					},
-					Logs: &dash0v1alpha1.LogFilter{
+					Logs: &dash0common.LogFilter{
 						LogRecordFilter: []string{
 							`IsMatch(body, ".*password.*")`,
 							`severity_number < SEVERITY_NUMBER_WARN`,
@@ -437,7 +429,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				},
 			}),
 			Entry("should reject monitoring resource with invalid traces transform", ottlValidationTestConfig{
-				transform: &dash0v1alpha1.Transform{
+				transform: &dash0common.Transform{
 					Traces: []json.RawMessage{
 						[]byte(`"invalid_syntax(..."`),
 					},
@@ -448,7 +440,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				},
 			}),
 			Entry("should reject monitoring resource with invalid metrics transform", ottlValidationTestConfig{
-				transform: &dash0v1alpha1.Transform{
+				transform: &dash0common.Transform{
 					Metrics: []json.RawMessage{
 						[]byte(`"invalid_syntax(..."`),
 					},
@@ -459,7 +451,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				},
 			}),
 			Entry("should reject monitoring resource with invalid logs transform", ottlValidationTestConfig{
-				transform: &dash0v1alpha1.Transform{
+				transform: &dash0common.Transform{
 					Logs: []json.RawMessage{
 						[]byte(`"invalid_syntax(..."`),
 					},
@@ -470,7 +462,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				},
 			}),
 			Entry("should allow monitoring resource with valid transform", ottlValidationTestConfig{
-				transform: &dash0v1alpha1.Transform{
+				transform: &dash0common.Transform{
 					Traces: []json.RawMessage{
 						[]byte(`"truncate_all(span.attributes, 1024)"`),
 					},

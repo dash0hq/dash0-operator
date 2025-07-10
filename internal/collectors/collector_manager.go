@@ -17,7 +17,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/resources"
 	"github.com/dash0hq/dash0-operator/internal/util"
@@ -54,7 +56,7 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 	ctx context.Context,
 	images util.Images,
 	operatorNamespace string,
-	triggeringMonitoringResource *dash0v1alpha1.Dash0Monitoring,
+	triggeringMonitoringResource *dash0v1beta1.Dash0Monitoring,
 	trigger CollectorReconcileTrigger,
 ) (error, bool) {
 	logger := log.FromContext(ctx)
@@ -92,7 +94,7 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 	if err != nil {
 		return err, false
 	}
-	var export *dash0v1alpha1.Export
+	var export *dash0common.Export
 	if operatorConfigurationResource != nil && operatorConfigurationResource.Spec.Export != nil {
 		export = operatorConfigurationResource.Spec.Export
 	}
@@ -111,7 +113,7 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 		// accidentally pick a different monitoring resource each time).
 		slices.SortFunc(
 			allMonitoringResources,
-			func(mr1 dash0v1alpha1.Dash0Monitoring, mr2 dash0v1alpha1.Dash0Monitoring) int {
+			func(mr1 dash0v1beta1.Dash0Monitoring, mr2 dash0v1beta1.Dash0Monitoring) int {
 				return strings.Compare(mr1.Namespace, mr2.Namespace)
 			},
 		)
@@ -163,8 +165,8 @@ func (m *CollectorManager) createOrUpdateOpenTelemetryCollector(
 	operatorNamespace string,
 	images util.Images,
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
-	allMonitoringResources []dash0v1alpha1.Dash0Monitoring,
-	export *dash0v1alpha1.Export,
+	allMonitoringResources []dash0v1beta1.Dash0Monitoring,
+	export *dash0common.Export,
 	logger *logr.Logger,
 ) error {
 	resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
@@ -241,8 +243,8 @@ func (m *CollectorManager) findOperatorConfigurationResource(
 func (m *CollectorManager) findAllMonitoringResources(
 	ctx context.Context,
 	logger *logr.Logger,
-) ([]dash0v1alpha1.Dash0Monitoring, error) {
-	monitoringResourceList := dash0v1alpha1.Dash0MonitoringList{}
+) ([]dash0v1beta1.Dash0Monitoring, error) {
+	monitoringResourceList := dash0v1beta1.Dash0MonitoringList{}
 	if err := m.List(
 		ctx,
 		&monitoringResourceList,
@@ -253,11 +255,11 @@ func (m *CollectorManager) findAllMonitoringResources(
 	}
 
 	// filter monitoring resources that are not in state available
-	monitoringResources := make([]dash0v1alpha1.Dash0Monitoring, 0, len(monitoringResourceList.Items))
+	monitoringResources := make([]dash0v1beta1.Dash0Monitoring, 0, len(monitoringResourceList.Items))
 	for _, mr := range monitoringResourceList.Items {
 		availableCondition := meta.FindStatusCondition(
 			mr.Status.Conditions,
-			string(dash0v1alpha1.ConditionTypeAvailable),
+			string(dash0common.ConditionTypeAvailable),
 		)
 		if availableCondition == nil || availableCondition.Status != metav1.ConditionTrue {
 			continue
