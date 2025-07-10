@@ -7,6 +7,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -210,10 +211,10 @@ var _ = Describe("The validation webhook for the operator configuration resource
 		Expect(err).ToNot(HaveOccurred())
 
 		operatorConfiguration.Spec.SelfMonitoring.Enabled = ptr.To(true)
-		operatorConfiguration.Spec.Export = &dash0v1alpha1.Export{
-			Dash0: &dash0v1alpha1.Dash0Configuration{
+		operatorConfiguration.Spec.Export = &dash0common.Export{
+			Dash0: &dash0common.Dash0Configuration{
 				Endpoint: EndpointDash0Test,
-				Authorization: dash0v1alpha1.Authorization{
+				Authorization: dash0common.Authorization{
 					Token: &AuthorizationTokenTest,
 				},
 			},

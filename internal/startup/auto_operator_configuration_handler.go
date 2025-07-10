@@ -16,6 +16,7 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 
 	"github.com/dash0hq/dash0-operator/internal/util"
@@ -239,18 +240,18 @@ func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigu
 }
 
 func convertValuesToResource(operatorConfigurationValues *OperatorConfigurationValues) *dash0v1alpha1.Dash0OperatorConfiguration {
-	authorization := dash0v1alpha1.Authorization{}
+	authorization := dash0common.Authorization{}
 	if operatorConfigurationValues.Token != "" {
 		authorization.Token = &operatorConfigurationValues.Token
 	} else {
-		authorization.SecretRef = &dash0v1alpha1.SecretRef{
+		authorization.SecretRef = &dash0common.SecretRef{
 			Name: operatorConfigurationValues.SecretRef.Name,
 			Key:  operatorConfigurationValues.SecretRef.Key,
 		}
 	}
 
-	dash0Export := dash0v1alpha1.Export{
-		Dash0: &dash0v1alpha1.Dash0Configuration{
+	dash0Export := dash0common.Export{
+		Dash0: &dash0common.Dash0Configuration{
 			Endpoint:      operatorConfigurationValues.Endpoint,
 			Authorization: authorization,
 		},

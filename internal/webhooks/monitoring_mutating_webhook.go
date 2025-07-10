@@ -17,7 +17,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
@@ -35,7 +37,7 @@ func (h *MonitoringMutatingWebhookHandler) SetupWebhookWithManager(mgr ctrl.Mana
 	if err != nil {
 		return err
 	}
-	mgr.GetWebhookServer().Register("/v1alpha1/mutate/monitoring", handler)
+	mgr.GetWebhookServer().Register("/monitoring/mutate", handler)
 
 	return nil
 }
@@ -49,14 +51,8 @@ func (h *MonitoringMutatingWebhookHandler) Handle(ctx context.Context, request a
 	// See https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#admission-control-phases.
 	logger := log.FromContext(ctx)
 
-	rawResource := request.Object.Raw
-	rawResource, errorResponse := h.normalizeLegacyInstrumentWorkloadsStringSetting(rawResource, logger)
-	if errorResponse != nil {
-		return *errorResponse
-	}
-
-	monitoringResource := &dash0v1alpha1.Dash0Monitoring{}
-	if _, _, err := decoder.Decode(rawResource, nil, monitoringResource); err != nil {
+	monitoringResource := &dash0v1beta1.Dash0Monitoring{}
+	if _, _, err := decoder.Decode(request.Object.Raw, nil, monitoringResource); err != nil {
 		logger.Info("rejecting invalid monitoring resource", "error", err)
 		return admission.Errored(http.StatusBadRequest, err)
 	}
@@ -89,47 +85,10 @@ func (h *MonitoringMutatingWebhookHandler) Handle(ctx context.Context, request a
 	return admission.PatchResponseFromRaw(request.Object.Raw, marshalled)
 }
 
-func (h *MonitoringMutatingWebhookHandler) normalizeLegacyInstrumentWorkloadsStringSetting(rawResource []byte, logger logr.Logger) ([]byte, *admission.Response) {
-	parsedResourceAsMap := map[string]interface{}{}
-	if err := json.Unmarshal(rawResource, &parsedResourceAsMap); err != nil {
-		logger.Info("rejecting invalid monitoring resource", "error", err)
-		errorResponse := admission.Errored(http.StatusBadRequest, err)
-		return nil, &errorResponse
-	} else {
-		specRaw := parsedResourceAsMap["spec"]
-		if specRaw != nil {
-			spec, ok := specRaw.(map[string]interface{})
-			if ok {
-				instrumentWorkloadsRaw := spec["instrumentWorkloads"]
-				if instrumentWorkloadsRaw != nil {
-					instrumentWorkloadsString, instrumentWorkloadsIsLegacyStringSetting := instrumentWorkloadsRaw.(string)
-					if instrumentWorkloadsIsLegacyStringSetting {
-						spec["instrumentWorkloads"] = map[string]interface{}{
-							"mode": instrumentWorkloadsString,
-						}
-						rawResource, err = json.Marshal(parsedResourceAsMap)
-						if err != nil {
-							err = fmt.Errorf("failed to re-serialize resource payload when normalizing legacy "+
-								"instrumentWorkloads string setting: %w; you can avoid this type of error by updating "+
-								"your monitoring resource from \"instrumentWorkloads: %s\" to "+
-								"\"instrumentWorkloads: { mode: %s }\"",
-								err, instrumentWorkloadsString, instrumentWorkloadsString)
-							logger.Error(err, "error")
-							errorResponse := admission.Errored(http.StatusInternalServerError, err)
-							return nil, &errorResponse
-						}
-					}
-				}
-			}
-		}
-	}
-	return rawResource, nil
-}
-
 func (h *MonitoringMutatingWebhookHandler) normalizeMonitoringResourceSpec(
 	request admission.Request,
 	operatorConfigurationSpec *dash0v1alpha1.Dash0OperatorConfigurationSpec,
-	monitoringSpec *dash0v1alpha1.Dash0MonitoringSpec,
+	monitoringSpec *dash0v1beta1.Dash0MonitoringSpec,
 	logger *logr.Logger,
 ) (bool, *admission.Response) {
 	patchRequired := h.setTelemetryCollectionRelatedDefaults(request, operatorConfigurationSpec, monitoringSpec)
@@ -155,7 +114,7 @@ func (h *MonitoringMutatingWebhookHandler) normalizeMonitoringResourceSpec(
 func (h *MonitoringMutatingWebhookHandler) setTelemetryCollectionRelatedDefaults(
 	request admission.Request,
 	operatorConfigurationSpec *dash0v1alpha1.Dash0OperatorConfigurationSpec,
-	monitoringSpec *dash0v1alpha1.Dash0MonitoringSpec,
+	monitoringSpec *dash0v1beta1.Dash0MonitoringSpec,
 ) bool {
 	patchRequired := false
 	telemetryCollectionEnabled := true
@@ -165,9 +124,9 @@ func (h *MonitoringMutatingWebhookHandler) setTelemetryCollectionRelatedDefaults
 
 	if monitoringSpec.InstrumentWorkloads.Mode == "" {
 		if telemetryCollectionEnabled {
-			monitoringSpec.InstrumentWorkloads.Mode = dash0v1alpha1.InstrumentWorkloadsModeAll
+			monitoringSpec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeAll
 		} else {
-			monitoringSpec.InstrumentWorkloads.Mode = dash0v1alpha1.InstrumentWorkloadsModeNone
+			monitoringSpec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeNone
 		}
 		patchRequired = true
 	}
@@ -183,18 +142,12 @@ func (h *MonitoringMutatingWebhookHandler) setTelemetryCollectionRelatedDefaults
 		monitoringSpec.PrometheusScraping.Enabled = ptr.To(telemetryCollectionEnabled)
 		patchRequired = true
 	}
-	//nolint:staticcheck
-	if monitoringSpec.PrometheusScrapingEnabled == nil {
-		//nolint:staticcheck
-		monitoringSpec.PrometheusScrapingEnabled = ptr.To(telemetryCollectionEnabled)
-		patchRequired = true
-	}
 	return patchRequired
 }
 
 func (h *MonitoringMutatingWebhookHandler) overrideLogCollectionDefault(
 	request admission.Request,
-	monitoringSpec *dash0v1alpha1.Dash0MonitoringSpec,
+	monitoringSpec *dash0v1beta1.Dash0MonitoringSpec,
 	logger *logr.Logger,
 ) bool {
 	if request.Namespace == h.OperatorNamespace &&
@@ -214,7 +167,7 @@ func (h *MonitoringMutatingWebhookHandler) overrideLogCollectionDefault(
 	return false
 }
 
-func normalizeTransform(transform *dash0v1alpha1.Transform, logger *logr.Logger) (*dash0v1alpha1.NormalizedTransformSpec, int32, error) {
+func normalizeTransform(transform *dash0common.Transform, logger *logr.Logger) (*dash0common.NormalizedTransformSpec, int32, error) {
 	traceTransformGroups, responseStatus, err :=
 		normalizeTransformGroupsForOneSignal(transform.Traces, "trace_statements", logger)
 	if err != nil {
@@ -234,7 +187,7 @@ func normalizeTransform(transform *dash0v1alpha1.Transform, logger *logr.Logger)
 		return nil, responseStatus, err
 	}
 
-	return &dash0v1alpha1.NormalizedTransformSpec{
+	return &dash0common.NormalizedTransformSpec{
 		ErrorMode: transform.ErrorMode,
 		Traces:    traceTransformGroups,
 		Metrics:   metricTransformGroups,
@@ -246,8 +199,8 @@ func normalizeTransformGroupsForOneSignal(
 	signalTransformSpec []json.RawMessage,
 	signalTypeKey string,
 	logger *logr.Logger,
-) ([]dash0v1alpha1.NormalizedTransformGroup, int32, error) {
-	var allGroups []dash0v1alpha1.NormalizedTransformGroup
+) ([]dash0common.NormalizedTransformGroup, int32, error) {
+	var allGroups []dash0common.NormalizedTransformGroup
 	for ctxIdx, transformGroup := range signalTransformSpec {
 		jsonPayload, err := transformGroup.MarshalJSON()
 		if err != nil {
@@ -262,7 +215,7 @@ func normalizeTransformGroupsForOneSignal(
 		}
 		flatStatement, isString := groupUnmarshalled.(string)
 		if isString {
-			allGroups = append(allGroups, dash0v1alpha1.NormalizedTransformGroup{
+			allGroups = append(allGroups, dash0common.NormalizedTransformGroup{
 				Statements: []string{flatStatement},
 			})
 			continue
@@ -270,14 +223,14 @@ func normalizeTransformGroupsForOneSignal(
 
 		groupAsMap, isMap := groupUnmarshalled.(map[string]interface{})
 		if isMap {
-			normalizedGroup := dash0v1alpha1.NormalizedTransformGroup{}
+			normalizedGroup := dash0common.NormalizedTransformGroup{}
 			if contextSpec, hasContext := groupAsMap["context"]; hasContext && contextSpec != nil {
 				ctxSpecString := contextSpec.(string)
 				normalizedGroup.Context = &ctxSpecString
 			}
 			if errorModeRaw, hasErrorMode := groupAsMap["error_mode"]; hasErrorMode {
 				if errorMode, ok := errorModeRaw.(string); ok {
-					em := dash0v1alpha1.FilterTransformErrorMode(errorMode)
+					em := dash0common.FilterTransformErrorMode(errorMode)
 					normalizedGroup.ErrorMode = &em
 				} else {
 					logger.Error(

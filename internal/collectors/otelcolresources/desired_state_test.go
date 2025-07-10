@@ -15,7 +15,8 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
@@ -50,9 +51,9 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		_, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export: dash0v1alpha1.Export{
-				Dash0: &dash0v1alpha1.Dash0Configuration{
-					Authorization: dash0v1alpha1.Authorization{
+			Export: dash0common.Export{
+				Dash0: &dash0common.Dash0Configuration{
+					Authorization: dash0common.Authorization{
 						Token: &AuthorizationTokenTest,
 					},
 				},
@@ -526,14 +527,14 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			NamePrefix:        namePrefix,
 			Export:            *Dash0ExportWithEndpointAndToken(),
 			Images:            TestImages,
-		}, []dash0v1alpha1.Dash0Monitoring{
+		}, []dash0v1beta1.Dash0Monitoring{
 			{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      MonitoringResourceName,
 					Namespace: "namespace-1",
 				},
-				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					LogCollection: dash0v1alpha1.LogCollection{Enabled: ptr.To(true)},
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					LogCollection: dash0common.LogCollection{Enabled: ptr.To(true)},
 				},
 			},
 			{
@@ -541,8 +542,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 					Name:      MonitoringResourceName,
 					Namespace: OperatorNamespace,
 				},
-				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					LogCollection: dash0v1alpha1.LogCollection{Enabled: ptr.To(true)},
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					LogCollection: dash0common.LogCollection{Enabled: ptr.To(true)},
 				},
 			},
 			{
@@ -550,8 +551,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 					Name:      MonitoringResourceName,
 					Namespace: "namespace-2",
 				},
-				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					LogCollection: dash0v1alpha1.LogCollection{Enabled: ptr.To(true)},
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					LogCollection: dash0common.LogCollection{Enabled: ptr.To(true)},
 				},
 			},
 		}, util.ExtraConfigDefaults)
@@ -569,30 +570,21 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			NamePrefix:        namePrefix,
 			Export:            *Dash0ExportWithEndpointAndToken(),
 			Images:            TestImages,
-		}, []dash0v1alpha1.Dash0Monitoring{
+		}, []dash0v1beta1.Dash0Monitoring{
 			{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      MonitoringResourceName,
 					Namespace: "default-to-true",
 				},
-				Spec: dash0v1alpha1.Dash0MonitoringSpec{},
+				Spec: dash0v1beta1.Dash0MonitoringSpec{},
 			},
 			{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      MonitoringResourceName,
-					Namespace: "new-setting-true",
+					Namespace: "explicitly-set",
 				},
-				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					PrometheusScraping: dash0v1alpha1.PrometheusScraping{Enabled: ptr.To(true)},
-				},
-			},
-			{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      MonitoringResourceName,
-					Namespace: "deprecated-setting-true",
-				},
-				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					PrometheusScrapingEnabled: ptr.To(true),
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					PrometheusScraping: dash0common.PrometheusScraping{Enabled: ptr.To(true)},
 				},
 			},
 			{
@@ -600,17 +592,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 					Name:      MonitoringResourceName,
 					Namespace: "new-setting-false",
 				},
-				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					PrometheusScraping: dash0v1alpha1.PrometheusScraping{Enabled: ptr.To(false)},
-				},
-			},
-			{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      MonitoringResourceName,
-					Namespace: "deprecated-setting-false",
-				},
-				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					PrometheusScrapingEnabled: ptr.To(false),
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					PrometheusScraping: dash0common.PrometheusScraping{Enabled: ptr.To(false)},
 				},
 			},
 		}, util.ExtraConfigDefaults)
@@ -629,10 +612,9 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			"namespaces",
 			"names",
 		})
-		Expect(namespaces).To(HaveLen(3))
+		Expect(namespaces).To(HaveLen(2))
 		Expect(namespaces).To(ContainElement("default-to-true"))
-		Expect(namespaces).To(ContainElement("new-setting-true"))
-		Expect(namespaces).To(ContainElement("deprecated-setting-true"))
+		Expect(namespaces).To(ContainElement("explicitly-set"))
 	})
 
 	It("should omit the filelog offset containers if a volume is provided for filelog offset storage", func() {
@@ -677,58 +659,58 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 	})
 
 	It("rendered objects must be stable", func() {
-		mr1 := dash0v1alpha1.Dash0Monitoring{
+		mr1 := dash0v1beta1.Dash0Monitoring{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      MonitoringResourceName,
 				Namespace: "namespace-1",
 			},
-			Spec: dash0v1alpha1.Dash0MonitoringSpec{
-				PrometheusScraping: dash0v1alpha1.PrometheusScraping{
+			Spec: dash0v1beta1.Dash0MonitoringSpec{
+				PrometheusScraping: dash0common.PrometheusScraping{
 					Enabled: ptr.To(true),
 				},
-				LogCollection: dash0v1alpha1.LogCollection{
+				LogCollection: dash0common.LogCollection{
 					Enabled: ptr.To(true),
 				},
 			},
 		}
-		mr2 := dash0v1alpha1.Dash0Monitoring{
+		mr2 := dash0v1beta1.Dash0Monitoring{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      MonitoringResourceName,
 				Namespace: "namespace-2",
 			},
-			Spec: dash0v1alpha1.Dash0MonitoringSpec{
-				PrometheusScraping: dash0v1alpha1.PrometheusScraping{
+			Spec: dash0v1beta1.Dash0MonitoringSpec{
+				PrometheusScraping: dash0common.PrometheusScraping{
 					Enabled: ptr.To(true),
 				},
-				LogCollection: dash0v1alpha1.LogCollection{
+				LogCollection: dash0common.LogCollection{
 					Enabled: ptr.To(false),
 				},
 			},
 		}
-		mr3 := dash0v1alpha1.Dash0Monitoring{
+		mr3 := dash0v1beta1.Dash0Monitoring{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      MonitoringResourceName,
 				Namespace: "namespace-3",
 			},
-			Spec: dash0v1alpha1.Dash0MonitoringSpec{
-				PrometheusScraping: dash0v1alpha1.PrometheusScraping{
+			Spec: dash0v1beta1.Dash0MonitoringSpec{
+				PrometheusScraping: dash0common.PrometheusScraping{
 					Enabled: ptr.To(false),
 				},
-				LogCollection: dash0v1alpha1.LogCollection{
+				LogCollection: dash0common.LogCollection{
 					Enabled: ptr.To(false),
 				},
 			},
 		}
-		mr4 := dash0v1alpha1.Dash0Monitoring{
+		mr4 := dash0v1beta1.Dash0Monitoring{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      MonitoringResourceName,
 				Namespace: "namespace-4",
 			},
-			Spec: dash0v1alpha1.Dash0MonitoringSpec{
-				PrometheusScraping: dash0v1alpha1.PrometheusScraping{
+			Spec: dash0v1beta1.Dash0MonitoringSpec{
+				PrometheusScraping: dash0common.PrometheusScraping{
 					Enabled: ptr.To(false),
 				},
-				LogCollection: dash0v1alpha1.LogCollection{
+				LogCollection: dash0common.LogCollection{
 					Enabled: ptr.To(true),
 				},
 			},
@@ -739,28 +721,28 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 			NamePrefix:        namePrefix,
 			Export:            *Dash0ExportWithEndpointAndToken(),
 			Images:            TestImages,
-		}, []dash0v1alpha1.Dash0Monitoring{mr1, mr2, mr3, mr4}, util.ExtraConfigDefaults)
+		}, []dash0v1beta1.Dash0Monitoring{mr1, mr2, mr3, mr4}, util.ExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 		desiredState2, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
 			Export:            *Dash0ExportWithEndpointAndToken(),
 			Images:            TestImages,
-		}, []dash0v1alpha1.Dash0Monitoring{mr3, mr4, mr1, mr2}, util.ExtraConfigDefaults)
+		}, []dash0v1beta1.Dash0Monitoring{mr3, mr4, mr1, mr2}, util.ExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 		desiredState3, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
 			Export:            *Dash0ExportWithEndpointAndToken(),
 			Images:            TestImages,
-		}, []dash0v1alpha1.Dash0Monitoring{mr4, mr3, mr2, mr1}, util.ExtraConfigDefaults)
+		}, []dash0v1beta1.Dash0Monitoring{mr4, mr3, mr2, mr1}, util.ExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 		desiredState4, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
 			Export:            *Dash0ExportWithEndpointAndToken(),
 			Images:            TestImages,
-		}, []dash0v1alpha1.Dash0Monitoring{mr3, mr1, mr4, mr2}, util.ExtraConfigDefaults)
+		}, []dash0v1beta1.Dash0Monitoring{mr3, mr1, mr4, mr2}, util.ExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 
 		Expect(reflect.DeepEqual(desiredState1, desiredState2)).To(BeTrue())

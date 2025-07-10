@@ -12,10 +12,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 )
 
 const (
@@ -31,11 +32,21 @@ var (
 		Namespace: TestNamespaceName,
 		Name:      MonitoringResourceName,
 	}
-	MonitoringResourceDefaultSpec = dash0v1alpha1.Dash0MonitoringSpec{
-		Export: &dash0v1alpha1.Export{
-			Dash0: &dash0v1alpha1.Dash0Configuration{
+	MonitoringResourceObjectMetaWithLabelAndAnnotation = metav1.ObjectMeta{
+		Namespace: TestNamespaceName,
+		Name:      MonitoringResourceName,
+		Labels: map[string]string{
+			"test-label": "test-value",
+		},
+		Annotations: map[string]string{
+			"test-annotation": "test-value",
+		},
+	}
+	MonitoringResourceDefaultSpec = dash0v1beta1.Dash0MonitoringSpec{
+		Export: &dash0common.Export{
+			Dash0: &dash0common.Dash0Configuration{
 				Endpoint: EndpointDash0Test,
-				Authorization: dash0v1alpha1.Authorization{
+				Authorization: dash0common.Authorization{
 					Token: &AuthorizationTokenTest,
 				},
 			},
@@ -43,18 +54,15 @@ var (
 	}
 )
 
-func DefaultMonitoringResource() *dash0v1alpha1.Dash0Monitoring {
-	return &dash0v1alpha1.Dash0Monitoring{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      MonitoringResourceName,
-			Namespace: TestNamespaceName,
-		},
-		Spec: MonitoringResourceDefaultSpec,
+func DefaultMonitoringResource() *dash0v1beta1.Dash0Monitoring {
+	return &dash0v1beta1.Dash0Monitoring{
+		ObjectMeta: MonitoringResourceDefaultObjectMeta,
+		Spec:       MonitoringResourceDefaultSpec,
 	}
 }
 
-func DefaultMonitoringResourceWithName(monitoringResourceName types.NamespacedName) *dash0v1alpha1.Dash0Monitoring {
-	return &dash0v1alpha1.Dash0Monitoring{
+func DefaultMonitoringResourceWithName(monitoringResourceName types.NamespacedName) *dash0v1beta1.Dash0Monitoring {
+	return &dash0v1beta1.Dash0Monitoring{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      monitoringResourceName.Name,
 			Namespace: monitoringResourceName.Namespace,
@@ -67,7 +75,7 @@ func CreateDefaultMonitoringResource(
 	ctx context.Context,
 	k8sClient client.Client,
 	monitoringResourceName types.NamespacedName,
-) *dash0v1alpha1.Dash0Monitoring {
+) *dash0v1beta1.Dash0Monitoring {
 	return CreateMonitoringResource(
 		ctx,
 		k8sClient,
@@ -78,8 +86,8 @@ func CreateDefaultMonitoringResource(
 func CreateMonitoringResource(
 	ctx context.Context,
 	k8sClient client.Client,
-	monitoringResource *dash0v1alpha1.Dash0Monitoring,
-) *dash0v1alpha1.Dash0Monitoring {
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
+) *dash0v1beta1.Dash0Monitoring {
 	resource, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, monitoringResource)
 	Expect(err).ToNot(HaveOccurred())
 	return resource
@@ -88,8 +96,8 @@ func CreateMonitoringResource(
 func CreateMonitoringResourceWithPotentialError(
 	ctx context.Context,
 	k8sClient client.Client,
-	monitoringResource *dash0v1alpha1.Dash0Monitoring,
-) (*dash0v1alpha1.Dash0Monitoring, error) {
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
+) (*dash0v1beta1.Dash0Monitoring, error) {
 	err := k8sClient.Create(ctx, monitoringResource)
 	return monitoringResource, err
 }
@@ -97,7 +105,7 @@ func CreateMonitoringResourceWithPotentialError(
 func EnsureMonitoringResourceExists(
 	ctx context.Context,
 	k8sClient client.Client,
-) *dash0v1alpha1.Dash0Monitoring {
+) *dash0v1beta1.Dash0Monitoring {
 	return EnsureMonitoringResourceWithSpecExistsInNamespace(
 		ctx,
 		k8sClient,
@@ -109,8 +117,8 @@ func EnsureMonitoringResourceExists(
 func EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(
 	ctx context.Context,
 	k8sClient client.Client,
-	instrumentWorkloadsMode dash0v1alpha1.InstrumentWorkloadsMode,
-) *dash0v1alpha1.Dash0Monitoring {
+	instrumentWorkloadsMode dash0common.InstrumentWorkloadsMode,
+) *dash0v1beta1.Dash0Monitoring {
 	spec := MonitoringResourceDefaultSpec
 	if instrumentWorkloadsMode != "" {
 		spec.InstrumentWorkloads.Mode = instrumentWorkloadsMode
@@ -126,9 +134,9 @@ func EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(
 func EnsureMonitoringResourceWithSpecExistsInNamespace(
 	ctx context.Context,
 	k8sClient client.Client,
-	spec dash0v1alpha1.Dash0MonitoringSpec,
+	spec dash0v1beta1.Dash0MonitoringSpec,
 	namespacesName types.NamespacedName,
-) *dash0v1alpha1.Dash0Monitoring {
+) *dash0v1beta1.Dash0Monitoring {
 	By("creating the Dash0 monitoring resource")
 
 	objectMeta := metav1.ObjectMeta{
@@ -139,33 +147,33 @@ func EnsureMonitoringResourceWithSpecExistsInNamespace(
 		ctx,
 		k8sClient,
 		MonitoringResourceQualifiedName,
-		&dash0v1alpha1.Dash0Monitoring{},
-		&dash0v1alpha1.Dash0Monitoring{
+		&dash0v1beta1.Dash0Monitoring{},
+		&dash0v1beta1.Dash0Monitoring{
 			ObjectMeta: objectMeta,
 			Spec:       spec,
 		},
 	)
-	return object.(*dash0v1alpha1.Dash0Monitoring)
+	return object.(*dash0v1beta1.Dash0Monitoring)
 }
 
 func EnsureEmptyMonitoringResourceExistsAndIsAvailable(
 	ctx context.Context,
 	k8sClient client.Client,
-) *dash0v1alpha1.Dash0Monitoring {
+) *dash0v1beta1.Dash0Monitoring {
 	object := EnsureKubernetesObjectExists(
 		ctx,
 		k8sClient,
 		MonitoringResourceQualifiedName,
-		&dash0v1alpha1.Dash0Monitoring{},
-		&dash0v1alpha1.Dash0Monitoring{
+		&dash0v1beta1.Dash0Monitoring{},
+		&dash0v1beta1.Dash0Monitoring{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      MonitoringResourceName,
 				Namespace: TestNamespaceName,
 			},
-			Spec: dash0v1alpha1.Dash0MonitoringSpec{},
+			Spec: dash0v1beta1.Dash0MonitoringSpec{},
 		},
 	)
-	monitoringResource := object.(*dash0v1alpha1.Dash0Monitoring)
+	monitoringResource := object.(*dash0v1beta1.Dash0Monitoring)
 	monitoringResource.EnsureResourceIsMarkedAsAvailable()
 	Expect(k8sClient.Status().Update(ctx, monitoringResource)).To(Succeed())
 	return monitoringResource
@@ -174,7 +182,7 @@ func EnsureEmptyMonitoringResourceExistsAndIsAvailable(
 func EnsureMonitoringResourceExistsAndIsAvailable(
 	ctx context.Context,
 	k8sClient client.Client,
-) *dash0v1alpha1.Dash0Monitoring {
+) *dash0v1beta1.Dash0Monitoring {
 	return EnsureMonitoringResourceWithSpecExistsInNamespaceAndIsAvailable(
 		ctx,
 		k8sClient,
@@ -186,8 +194,8 @@ func EnsureMonitoringResourceExistsAndIsAvailable(
 func EnsureMonitoringResourceWithSpecExistsAndIsAvailable(
 	ctx context.Context,
 	k8sClient client.Client,
-	spec dash0v1alpha1.Dash0MonitoringSpec,
-) *dash0v1alpha1.Dash0Monitoring {
+	spec dash0v1beta1.Dash0MonitoringSpec,
+) *dash0v1beta1.Dash0Monitoring {
 	return EnsureMonitoringResourceWithSpecExistsInNamespaceAndIsAvailable(
 		ctx,
 		k8sClient,
@@ -200,7 +208,7 @@ func EnsureMonitoringResourceExistsInNamespaceAndIsAvailable(
 	ctx context.Context,
 	k8sClient client.Client,
 	namespacesName types.NamespacedName,
-) *dash0v1alpha1.Dash0Monitoring {
+) *dash0v1beta1.Dash0Monitoring {
 	return EnsureMonitoringResourceWithSpecExistsInNamespaceAndIsAvailable(
 		ctx,
 		k8sClient,
@@ -212,9 +220,9 @@ func EnsureMonitoringResourceExistsInNamespaceAndIsAvailable(
 func EnsureMonitoringResourceWithSpecExistsInNamespaceAndIsAvailable(
 	ctx context.Context,
 	k8sClient client.Client,
-	spec dash0v1alpha1.Dash0MonitoringSpec,
+	spec dash0v1beta1.Dash0MonitoringSpec,
 	namespacesName types.NamespacedName,
-) *dash0v1alpha1.Dash0Monitoring {
+) *dash0v1beta1.Dash0Monitoring {
 	monitoringResource := EnsureMonitoringResourceWithSpecExistsInNamespace(
 		ctx,
 		k8sClient,
@@ -229,7 +237,7 @@ func EnsureMonitoringResourceWithSpecExistsInNamespaceAndIsAvailable(
 func EnsureMonitoringResourceExistsAndIsDegraded(
 	ctx context.Context,
 	k8sClient client.Client,
-) *dash0v1alpha1.Dash0Monitoring {
+) *dash0v1beta1.Dash0Monitoring {
 	monitoringResource := EnsureMonitoringResourceExists(ctx, k8sClient)
 	monitoringResource.EnsureResourceIsMarkedAsDegraded(
 		"TestReasonForDegradation",
@@ -244,7 +252,7 @@ func LoadMonitoringResourceByNameIfItExists(
 	k8sClient client.Client,
 	g Gomega,
 	monitoringResourceName types.NamespacedName,
-) *dash0v1alpha1.Dash0Monitoring {
+) *dash0v1beta1.Dash0Monitoring {
 	return LoadMonitoringResourceByName(ctx, k8sClient, g, monitoringResourceName, false)
 }
 
@@ -252,7 +260,7 @@ func LoadMonitoringResourceOrFail(
 	ctx context.Context,
 	k8sClient client.Client,
 	g Gomega,
-) *dash0v1alpha1.Dash0Monitoring {
+) *dash0v1beta1.Dash0Monitoring {
 	return LoadMonitoringResourceByNameOrFail(ctx, k8sClient, g, MonitoringResourceQualifiedName)
 }
 
@@ -261,7 +269,7 @@ func LoadMonitoringResourceByNameOrFail(
 	k8sClient client.Client,
 	g Gomega,
 	monitoringResourceName types.NamespacedName,
-) *dash0v1alpha1.Dash0Monitoring {
+) *dash0v1beta1.Dash0Monitoring {
 	return LoadMonitoringResourceByName(ctx, k8sClient, g, monitoringResourceName, true)
 }
 
@@ -271,8 +279,8 @@ func LoadMonitoringResourceByName(
 	g Gomega,
 	monitoringResourceName types.NamespacedName,
 	failTestsOnNonExists bool,
-) *dash0v1alpha1.Dash0Monitoring {
-	monitoringResource := &dash0v1alpha1.Dash0Monitoring{}
+) *dash0v1beta1.Dash0Monitoring {
+	monitoringResource := &dash0v1beta1.Dash0Monitoring{}
 	if err := k8sClient.Get(ctx, monitoringResourceName, monitoringResource); err != nil {
 		if apierrors.IsNotFound(err) {
 			if failTestsOnNonExists {
@@ -350,9 +358,9 @@ func DeleteMonitoringResourceByName(
 func removeFinalizerFromMonitoringResource(
 	ctx context.Context,
 	k8sClient client.Client,
-	monitoringResource *dash0v1alpha1.Dash0Monitoring,
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
 ) {
-	finalizerHasBeenRemoved := controllerutil.RemoveFinalizer(monitoringResource, dash0v1alpha1.MonitoringFinalizerId)
+	finalizerHasBeenRemoved := controllerutil.RemoveFinalizer(monitoringResource, dash0common.MonitoringFinalizerId)
 	if finalizerHasBeenRemoved {
 		Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 	}
@@ -361,7 +369,7 @@ func removeFinalizerFromMonitoringResource(
 func UpdateInstrumentWorkloadsMode(
 	ctx context.Context,
 	k8sClient client.Client,
-	instrumentWorkloads dash0v1alpha1.InstrumentWorkloadsMode,
+	instrumentWorkloads dash0common.InstrumentWorkloadsMode,
 ) {
 	monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
 	monitoringResource.Spec.InstrumentWorkloads.Mode = instrumentWorkloads

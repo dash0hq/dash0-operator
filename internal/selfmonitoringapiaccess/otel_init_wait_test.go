@@ -14,7 +14,7 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	zaputil "github.com/dash0hq/dash0-operator/internal/util/zap"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -201,10 +201,10 @@ var _ = Describe("The OTel SDK starter", func() {
 
 			oTelSdkStarter.SetOTelSdkParameters(
 				ctx,
-				dash0v1alpha1.Export{
-					Dash0: &dash0v1alpha1.Dash0Configuration{
+				dash0common.Export{
+					Dash0: &dash0common.Dash0Configuration{
 						Endpoint: EndpointDash0TestAlternative,
-						Authorization: dash0v1alpha1.Authorization{
+						Authorization: dash0common.Authorization{
 							Token: &AuthorizationTokenTest,
 						},
 					},
@@ -247,10 +247,10 @@ var _ = Describe("The OTel SDK starter", func() {
 
 			oTelSdkStarter.SetOTelSdkParameters(
 				ctx,
-				dash0v1alpha1.Export{
-					Dash0: &dash0v1alpha1.Dash0Configuration{
+				dash0common.Export{
+					Dash0: &dash0common.Dash0Configuration{
 						Endpoint: EndpointDash0Test,
-						Authorization: dash0v1alpha1.Authorization{
+						Authorization: dash0common.Authorization{
 							Token: &AuthorizationTokenTestAlternative,
 						},
 					},

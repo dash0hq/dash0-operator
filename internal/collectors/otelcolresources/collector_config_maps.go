@@ -14,7 +14,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
@@ -24,7 +24,7 @@ const (
 )
 
 type customFilters struct {
-	ErrorMode           dash0v1alpha1.FilterTransformErrorMode
+	ErrorMode           dash0common.FilterTransformErrorMode
 	SpanConditions      []string
 	SpanEventConditions []string
 	MetricConditions    []string
@@ -45,7 +45,7 @@ func (cf *customFilters) HasLogFilters() bool {
 }
 
 type customTransforms struct {
-	GlobalErrorMode dash0v1alpha1.FilterTransformErrorMode
+	GlobalErrorMode dash0common.FilterTransformErrorMode
 	TraceGroups     []customTransformGroup
 	MetricGroups    []customTransformGroup
 	LogGroups       []customTransformGroup
@@ -53,7 +53,7 @@ type customTransforms struct {
 
 type customTransformGroup struct {
 	Context    string
-	ErrorMode  dash0v1alpha1.FilterTransformErrorMode
+	ErrorMode  dash0common.FilterTransformErrorMode
 	Conditions []string
 	Statements []string
 }
@@ -93,7 +93,7 @@ type collectorConfigurationTemplateValues struct {
 type OtlpExporter struct {
 	Name     string
 	Endpoint string
-	Headers  []dash0v1alpha1.Header
+	Headers  []dash0common.Header
 	Encoding string
 	Insecure bool
 }
@@ -249,7 +249,7 @@ func renderOttlNamespaceFilter(monitoredNamespaces []string) string {
 }
 
 func aggregateCustomFilters(filtersSpec []NamespacedFilter) customFilters {
-	var errorMode dash0v1alpha1.FilterTransformErrorMode
+	var errorMode dash0common.FilterTransformErrorMode
 	var allSpanFilters []string
 	var allSpanEventFilters []string
 	var allMetricFilters []string
@@ -306,7 +306,7 @@ func aggregateCustomFilters(filtersSpec []NamespacedFilter) customFilters {
 		// If no error mode has been specified at all, use ignore as the default. This should not actually happen
 		// if there is at least one monitoring resource with a telemetry filter, since the Dash0Monitoring spec
 		// defines a default via +kubebuilder:default=ignore.
-		errorMode = dash0v1alpha1.FilterTransformErrorModeIgnore
+		errorMode = dash0common.FilterTransformErrorModeIgnore
 	}
 
 	return customFilters{
@@ -324,7 +324,7 @@ func prependNamespaceCheckToOttlFilterCondition(namespace string, condition stri
 }
 
 func aggregateCustomTransforms(transformsSpec []NamespacedTransform) customTransforms {
-	var globalErrorMode dash0v1alpha1.FilterTransformErrorMode
+	var globalErrorMode dash0common.FilterTransformErrorMode
 	var allTraceGroups []customTransformGroup
 	var allMetricTraceGroups []customTransformGroup
 	var allLogGroups []customTransformGroup
@@ -361,7 +361,7 @@ func aggregateCustomTransforms(transformsSpec []NamespacedTransform) customTrans
 		// If no error mode has been specified at all, use ignore as the default. This should not actually happen
 		// if there is at least one monitoring resource with a transform configuration, since the Dash0Monitoring spec
 		// defines a default via +kubebuilder:default=ignore.
-		globalErrorMode = dash0v1alpha1.FilterTransformErrorModeIgnore
+		globalErrorMode = dash0common.FilterTransformErrorModeIgnore
 	}
 
 	return customTransforms{
@@ -374,7 +374,7 @@ func aggregateCustomTransforms(transformsSpec []NamespacedTransform) customTrans
 
 func addNamespaceConditionToTransformGroups(
 	namespace string,
-	transformGroups []dash0v1alpha1.NormalizedTransformGroup,
+	transformGroups []dash0common.NormalizedTransformGroup,
 ) []customTransformGroup {
 	groupsWithNamespaceCondition := make([]customTransformGroup, 0, len(transformGroups))
 	for _, transformGroup := range transformGroups {
@@ -402,19 +402,19 @@ func addNamespaceConditionToTransformGroups(
 }
 
 func compareErrorMode(
-	errorMode1 dash0v1alpha1.FilterTransformErrorMode,
-	errorMode2 dash0v1alpha1.FilterTransformErrorMode,
-) dash0v1alpha1.FilterTransformErrorMode {
+	errorMode1 dash0common.FilterTransformErrorMode,
+	errorMode2 dash0common.FilterTransformErrorMode,
+) dash0common.FilterTransformErrorMode {
 	if (errorMode1 == "") ||
-		(errorMode1 == dash0v1alpha1.FilterTransformErrorModeSilent &&
-			(errorMode2 == dash0v1alpha1.FilterTransformErrorModeIgnore || errorMode2 == dash0v1alpha1.FilterTransformErrorModePropagate)) ||
-		(errorMode1 == dash0v1alpha1.FilterTransformErrorModeIgnore && errorMode2 == dash0v1alpha1.FilterTransformErrorModePropagate) {
+		(errorMode1 == dash0common.FilterTransformErrorModeSilent &&
+			(errorMode2 == dash0common.FilterTransformErrorModeIgnore || errorMode2 == dash0common.FilterTransformErrorModePropagate)) ||
+		(errorMode1 == dash0common.FilterTransformErrorModeIgnore && errorMode2 == dash0common.FilterTransformErrorModePropagate) {
 		return errorMode2
 	}
 	return errorMode1
 }
 
-func ConvertExportSettingsToExporterList(export dash0v1alpha1.Export) ([]OtlpExporter, error) {
+func ConvertExportSettingsToExporterList(export dash0common.Export) ([]OtlpExporter, error) {
 	var exporters []OtlpExporter
 
 	if export.Dash0 == nil && export.Grpc == nil && export.Http == nil {
@@ -426,12 +426,12 @@ func ConvertExportSettingsToExporterList(export dash0v1alpha1.Export) ([]OtlpExp
 		if d0.Endpoint == "" {
 			return nil, fmt.Errorf("no endpoint provided for the Dash0 exporter, unable to create the OpenTelemetry collector")
 		}
-		headers := []dash0v1alpha1.Header{{
+		headers := []dash0common.Header{{
 			Name:  util.AuthorizationHeaderName,
 			Value: authHeaderValue,
 		}}
 		if d0.Dataset != "" && d0.Dataset != util.DatasetDefault {
-			headers = append(headers, dash0v1alpha1.Header{
+			headers = append(headers, dash0common.Header{
 				Name:  util.Dash0DatasetHeaderName,
 				Value: d0.Dataset,
 			})

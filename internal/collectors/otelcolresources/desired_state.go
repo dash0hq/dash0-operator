@@ -18,7 +18,8 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
@@ -31,7 +32,7 @@ type oTelColConfig struct {
 	// the environment variable OTEL_COLLECTOR_NAME_PREFIX, which is set to the Helm release name by the operator Helm
 	// chart.
 	NamePrefix                                       string
-	Export                                           dash0v1alpha1.Export
+	Export                                           dash0common.Export
 	SendBatchMaxSize                                 *uint32
 	SelfMonitoringConfiguration                      selfmonitoringapiaccess.SelfMonitoringConfiguration
 	KubernetesInfrastructureMetricsCollectionEnabled bool
@@ -59,12 +60,12 @@ type clientObject struct {
 
 type NamespacedFilter struct {
 	Namespace string
-	dash0v1alpha1.Filter
+	dash0common.Filter
 }
 
 type NamespacedTransform struct {
 	Namespace string
-	Transform dash0v1alpha1.NormalizedTransformSpec
+	Transform dash0common.NormalizedTransformSpec
 }
 
 const (
@@ -221,7 +222,7 @@ var (
 
 func assembleDesiredStateForUpsert(
 	config *oTelColConfig,
-	allMonitoringResources []dash0v1alpha1.Dash0Monitoring,
+	allMonitoringResources []dash0v1beta1.Dash0Monitoring,
 	extraConfig util.ExtraConfig,
 ) ([]clientObject, error) {
 	monitoredNamespaces := make([]string, 0, len(allMonitoringResources))
@@ -240,11 +241,7 @@ func assembleDesiredStateForUpsert(
 			namespace != config.OperatorNamespace {
 			namespacesWithLogCollection = append(namespacesWithLogCollection, namespace)
 		}
-		if util.IsOptOutFlagWithDeprecatedVariantEnabled(
-			//nolint:staticcheck
-			monitoringResource.Spec.PrometheusScrapingEnabled,
-			monitoringResource.Spec.PrometheusScraping.Enabled,
-		) {
+		if util.ReadBoolPointerWithDefault(monitoringResource.Spec.PrometheusScraping.Enabled, true) {
 			namespacesWithPrometheusScraping = append(namespacesWithPrometheusScraping, namespace)
 		}
 

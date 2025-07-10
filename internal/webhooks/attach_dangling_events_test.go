@@ -15,7 +15,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/controller"
@@ -30,7 +30,7 @@ import (
 
 var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 	var reconciler *controller.MonitoringReconciler
-	var dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring
+	var dash0MonitoringResource *dash0v1beta1.Dash0Monitoring
 	var createdObjectsAttachEventsTest []client.Object
 
 	BeforeAll(func() {
@@ -162,7 +162,7 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 func triggerReconcileRequest(
 	ctx context.Context,
 	reconciler *controller.MonitoringReconciler,
-	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
+	dash0MonitoringResource *dash0v1beta1.Dash0Monitoring,
 ) {
 	By("Trigger reconcile request")
 	_, err := reconciler.Reconcile(ctx, reconcile.Request{

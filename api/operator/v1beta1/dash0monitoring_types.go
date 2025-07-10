@@ -1,7 +1,7 @@
-// SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+// SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package v1alpha1
+package v1beta1
 
 import (
 	"fmt"
@@ -10,20 +10,11 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/conversion"
 
 	dash0operator "github.com/dash0hq/dash0-operator/api/operator"
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
-	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
-	"github.com/dash0hq/dash0-operator/internal/util"
-)
-
-const (
-	annotationNameSpecInstrumentWorkloadsTraceContextPropagators           = "dash0.com/spec.instrumentWorkloads.traceContext.propagators"
-	annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators = "dash0.com/status.previousInstrumentWorkloads.traceContext.propagators"
 )
 
 // Dash0MonitoringSpec describes the details of monitoring a single Kubernetes namespace with Dash0 and sending
@@ -42,45 +33,12 @@ type Dash0MonitoringSpec struct {
 	// +kubebuilder:validation:Optional
 	Export *dash0common.Export `json:"export,omitempty"`
 
-	// Opt-out for automatic workload instrumentation for the target namespace. There are three possible settings:
-	// `all`, `created-and-updated` and `none`. By default, the setting `all` is assumed, unless there is an operator
-	// configuration resource with `telemetryCollection.enabled=false`, then the setting `none` is assumed.
-	//
-	// If set to `all`, the operator will:
-	// * automatically instrument existing workloads in the target namespace (i.e. workloads already running in the
-	//   namespace) when the Dash0 monitoring resource is deployed,
-	// * instrument existing workloads or update the instrumentation of already instrumented workloads in the target
-	//   namespace when the Dash0 operator is first started or restarted (for example when updating the operator),
-	// * instrument new workloads in the target namespace when they are deployed, and
-	// * instrument changed workloads in the target namespace when changes are applied to them.
-	// Note that the first two actions (instrumenting existing workloads) will result in restarting the pods of the
-	// affected workloads.
-	//
-	// If set to `created-and-updated`, the operator will not instrument existing workloads in the target namespace.
-	// Instead, it will only:
-	// * instrument new workloads in the target namespace when they are deployed, and
-	// * instrument changed workloads in the target namespace when changes are applied to them.
-	// This setting is useful if you want to avoid pod restarts as a side effect of deploying the Dash0 monitoring
-	// resource or restarting the Dash0 operator.
-	//
-	// You can opt out of automatically instrumenting workloads entirely by setting this option to `none`. With
-	// `instrumentWorkloads: none`, workloads in the target namespace will never be instrumented to send telemetry to
-	// Dash0.
-	//
-	// If this setting is omitted, the value `all` is assumed and new, updated as well as existing Kubernetes workloads
-	// will be automatically intrumented by the operator to send telemetry to Dash0, as described above. There is one
-	// exception to this rule: If there is an operator configuration resource with `telemetryCollection.enabled=false`,
-	// then the default setting is `none` instead of `all`, and no workloads will be instrumented by the Dash0 operator.
-	//
-	// It is a validation error to set `telemetryCollection.enabled=false` in the operator configuration resource and
-	// `instrumentWorkloadsMode=all` or `instrumentWorkloadsMode=created-and-updated` in any monitoring resource at the
-	// same time.
-	//
-	// More fine-grained per-workload control over instrumentation is available by setting the label
-	// dash0.com/enable=false on individual workloads.
+	// Settings for automatic instrumentation of workloads in the target namespace. This setting is optional, by default
+	// the operator will instrument existing workloads, as well as new workloads at deploy time and changed workloads
+	// when they are updated.
 	//
 	// +kubebuilder:validation:Optional
-	InstrumentWorkloads dash0common.InstrumentWorkloadsMode `json:"instrumentWorkloads,omitempty"`
+	InstrumentWorkloads InstrumentWorkloads `json:"instrumentWorkloads,omitempty"`
 
 	// Settings for log collection in the target namespace. This setting is optional, by default the operator will
 	// collect pod logs in the target namespace; unless there is an operator configuration resource with
@@ -100,22 +58,6 @@ type Dash0MonitoringSpec struct {
 	//
 	// +kubebuilder:validation:Optional
 	PrometheusScraping dash0common.PrometheusScraping `json:"prometheusScraping,omitempty"`
-
-	// Deprecated: This setting is deprecated. Please use
-	//     prometheusScraping:
-	//       enabled: false
-	// instead of
-	//     prometheusScrapingEnabled: false
-	//
-	// If enabled, the operator will configure its OpenTelemetry collector to scrape metrics from pods in the namespace
-	// of this Dash0Monitoring resource according to their prometheus.io/scrape annotations via the OpenTelemetry
-	// Prometheus receiver. This setting is optional, it defaults to `true`; unless there is an operator configuration
-	// resource with `telemetryCollection.enabled=false`, then it defaults to `false`. It is a validation error to set
-	// `telemetryCollection.enabled=false` in the operator configuration resource and `prometheusScrapingEnabled=true`
-	// in any monitoring resource at the same time.
-	//
-	// +kubebuilder:validation:Optional
-	PrometheusScrapingEnabled *bool `json:"prometheusScrapingEnabled,omitempty"`
 
 	// Optional filters for telemetry data that is collected in this namespace. This can be used to drop entire spans,
 	// span events, metrics, metric data points, or log records. See "Transform" for advanced transformations (e.g.
@@ -167,13 +109,77 @@ type Dash0MonitoringSpec struct {
 	SynchronizePrometheusRules *bool `json:"synchronizePrometheusRules,omitempty"`
 }
 
+type InstrumentWorkloads struct {
+	// Opt-out for automatic workload instrumentation for the target namespace. There are three possible settings:
+	// `all`, `created-and-updated` and `none`. By default, the setting `all` is assumed, unless there is an operator
+	// configuration resource with `telemetryCollection.enabled=false`, then the setting `none` is assumed.
+	//
+	// If set to `all`, the operator will:
+	// * automatically instrument existing workloads in the target namespace (i.e. workloads already running in the
+	//   namespace) when the Dash0 monitoring resource is deployed,
+	// * instrument existing workloads or update the instrumentation of already instrumented workloads in the target
+	//   namespace when the Dash0 operator is first started or restarted (for example when updating the operator),
+	// * instrument new workloads in the target namespace when they are deployed, and
+	// * instrument changed workloads in the target namespace when changes are applied to them.
+	// Note that the first two actions (instrumenting existing workloads) will result in restarting the pods of the
+	// affected workloads.
+	//
+	// If set to `created-and-updated`, the operator will not instrument existing workloads in the target namespace.
+	// Instead, it will only:
+	// * instrument new workloads in the target namespace when they are deployed, and
+	// * instrument changed workloads in the target namespace when changes are applied to them.
+	// This setting is useful if you want to avoid pod restarts as a side effect of deploying the Dash0 monitoring
+	// resource or restarting the Dash0 operator.
+	//
+	// You can opt out of automatically instrumenting workloads entirely by setting this option to `none`. With
+	// `mode: none`, workloads in the target namespace will never be instrumented to send telemetry to Dash0.
+	//
+	// If this setting is omitted, the value `all` is assumed and new, updated as well as existing Kubernetes workloads
+	// will be automatically intrumented by the operator to send telemetry to Dash0, as described above. There is one
+	// exception to this rule: If there is an operator configuration resource with `telemetryCollection.enabled=false`,
+	// then the default setting is `none` instead of `all`, and no workloads will be instrumented by the Dash0 operator.
+	//
+	// It is a validation error to set `telemetryCollection.enabled=false` in the operator configuration resource and
+	// `mode: all` or `mode: created-and-updated` in any monitoring resource at the
+	// same time.
+	//
+	// More fine-grained per-workload control over instrumentation is available by setting the label
+	// dash0.com/enable=false on individual workloads.
+	//
+	// +kubebuilder:validation:Optional
+	Mode dash0common.InstrumentWorkloadsMode `json:"mode,omitempty"`
+
+	// Optional settings for how trace context is handled in instrumented workloads.
+	//
+	// +kubebuilder:validation:Optional
+	TraceContext TraceContext `json:"traceContext,omitempty"`
+}
+
+type TraceContext struct {
+	// An optional comma-separated list of trace context propagators. If set, the environment variable OTEL_PROPAGATORS
+	// is added to workloads with the value of this field. This allows configuring the OpenTelemetry SDK to use specific
+	// propagators for trace context propagation. The value can be a comma-separated list of propagators, for exampmle
+	// "traceparent,aws" for the W3C trace context traceparent header and AWS X-Ray headers.
+	//
+	// Note that you usually want to list the preferred propagator last, if multiple propagators are specified. The
+	// reason is that both `Extract` (reading trace context information from headers and adding it to the span) and
+	// `Inject` (addding trace context information to headers on outgoing requests) are both run in the order in which
+	// the propagators are defined. For extract that means that the _last one wins_, if multiple propagators extract the
+	// same information (e.g. trace ID and span ID). Hence, the need to specify them in reverse order of priority.
+	//
+	// By default, the value is not set and the environment variable OTEL_PROPAGATORS will not be added to workloads.
+	//
+	// +kubebuilder:validation:Optional
+	Propagators *string `json:"propagators,omitempty"`
+}
+
 // Dash0MonitoringStatus defines the observed state of the Dash0Monitoring monitoring resource.
 type Dash0MonitoringStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 
-	// The spec.instrumentWorkloads settings that have been observed in the previous reconcile cycle.
+	// The spec.instrumentWorkloads.mode setting that has been observed in the previous reconcile cycle.
 	// +kubebuilder:validation:Optional
-	PreviousInstrumentWorkloads dash0common.InstrumentWorkloadsMode `json:"previousInstrumentWorkloads,omitempty"`
+	PreviousInstrumentWorkloads InstrumentWorkloads `json:"previousInstrumentWorkloads,omitempty"`
 
 	// Shows results of synchronizing Perses dashboard resources in this namespace via the Dash0 API.
 	// +kubebuilder:validation:Optional
@@ -189,7 +195,8 @@ type Dash0MonitoringStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +groupName=operator.dash0.com
-// +kubebuilder:conversion:spoke
+// +kubebuilder:storageversion
+// +kubebuilder:conversion:hub
 type Dash0Monitoring struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -198,15 +205,19 @@ type Dash0Monitoring struct {
 	Status Dash0MonitoringStatus `json:"status,omitempty"`
 }
 
-func (d *Dash0Monitoring) ReadInstrumentWorkloadsSetting() dash0common.InstrumentWorkloadsMode {
-	instrumentWorkloads := d.Spec.InstrumentWorkloads
-	if instrumentWorkloads == "" {
+// Hub marks this version as the hub for conversions, all other versions are implicitly spokes. See
+// https://book.kubebuilder.io/multiversion-tutorial/conversion-concepts.
+func (*Dash0Monitoring) Hub() {}
+
+func (d *Dash0Monitoring) ReadInstrumentWorkloadsMode() dash0common.InstrumentWorkloadsMode {
+	instrumentWorkloadsMode := d.Spec.InstrumentWorkloads.Mode
+	if instrumentWorkloadsMode == "" {
 		return dash0common.InstrumentWorkloadsModeAll
 	}
-	if !slices.Contains(dash0common.AllInstrumentWorkloadsMode, instrumentWorkloads) {
+	if !slices.Contains(dash0common.AllInstrumentWorkloadsMode, instrumentWorkloadsMode) {
 		return dash0common.InstrumentWorkloadsModeAll
 	}
-	return instrumentWorkloads
+	return instrumentWorkloadsMode
 }
 
 func (d *Dash0Monitoring) IsMarkedForDeletion() bool {
@@ -377,86 +388,4 @@ type Dash0MonitoringList struct {
 
 func init() {
 	SchemeBuilder.Register(&Dash0Monitoring{}, &Dash0MonitoringList{})
-}
-
-// ConvertFrom converts the hub version (v1beta1) to this Dash0Monitoring resource version (v1alpha1).
-func (dst *Dash0Monitoring) ConvertFrom(srcRaw conversion.Hub) error {
-	src := srcRaw.(*dash0v1beta1.Dash0Monitoring)
-	dst.ObjectMeta = src.ObjectMeta
-	dst.Spec.Export = src.Spec.Export
-	dst.Spec.InstrumentWorkloads = src.Spec.InstrumentWorkloads.Mode
-	if src.Spec.InstrumentWorkloads.TraceContext.Propagators != nil && *src.Spec.InstrumentWorkloads.TraceContext.Propagators != "" {
-		if dst.ObjectMeta.Annotations == nil {
-			dst.ObjectMeta.Annotations = make(map[string]string)
-		}
-		dst.ObjectMeta.Annotations[annotationNameSpecInstrumentWorkloadsTraceContextPropagators] =
-			*src.Spec.InstrumentWorkloads.TraceContext.Propagators
-	}
-	dst.Spec.LogCollection = src.Spec.LogCollection
-	dst.Spec.PrometheusScraping = src.Spec.PrometheusScraping
-	dst.Spec.PrometheusScraping.Enabled = src.Spec.PrometheusScraping.Enabled
-	dst.Spec.Filter = src.Spec.Filter
-	dst.Spec.Transform = src.Spec.Transform
-	dst.Spec.NormalizedTransformSpec = src.Spec.NormalizedTransformSpec
-	dst.Spec.SynchronizePersesDashboards = src.Spec.SynchronizePersesDashboards
-	dst.Spec.SynchronizePrometheusRules = src.Spec.SynchronizePrometheusRules
-	dst.Status.Conditions = src.Status.Conditions
-	dst.Status.PreviousInstrumentWorkloads = src.Status.PreviousInstrumentWorkloads.Mode
-	if src.Status.PreviousInstrumentWorkloads.TraceContext.Propagators != nil && *src.Status.PreviousInstrumentWorkloads.TraceContext.Propagators != "" {
-		if dst.ObjectMeta.Annotations == nil {
-			dst.ObjectMeta.Annotations = make(map[string]string)
-		}
-		dst.ObjectMeta.Annotations[annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators] =
-			*src.Status.PreviousInstrumentWorkloads.TraceContext.Propagators
-	}
-	dst.Status.PersesDashboardSynchronizationResults = src.Status.PersesDashboardSynchronizationResults
-	dst.Status.PrometheusRuleSynchronizationResults = src.Status.PrometheusRuleSynchronizationResults
-	return nil
-}
-
-// ConvertTo converts this Dash0Monitoring resource (v1alpha1) to the hub version (v1beta1).
-func (src *Dash0Monitoring) ConvertTo(dstRaw conversion.Hub) error {
-	dst := dstRaw.(*dash0v1beta1.Dash0Monitoring)
-	dst.ObjectMeta = src.ObjectMeta
-	dst.Spec.Export = src.Spec.Export
-	dst.Spec.InstrumentWorkloads = dash0v1beta1.InstrumentWorkloads{
-		Mode: src.Spec.InstrumentWorkloads,
-	}
-	if src.ObjectMeta.Annotations != nil {
-		propagators, propagatorsFound :=
-			src.ObjectMeta.Annotations[annotationNameSpecInstrumentWorkloadsTraceContextPropagators]
-		if propagatorsFound && propagators != "" {
-			dst.Spec.InstrumentWorkloads.TraceContext.Propagators = ptr.To(propagators)
-		}
-		delete(dst.ObjectMeta.Annotations, annotationNameSpecInstrumentWorkloadsTraceContextPropagators)
-	}
-	dst.Spec.LogCollection = src.Spec.LogCollection
-	dst.Spec.PrometheusScraping = src.Spec.PrometheusScraping
-	prometheusScrapingEnabledLegacy := util.ReadBoolPointerWithDefault(src.Spec.PrometheusScrapingEnabled, true)
-	prometheusScrapingEnabledNew := util.ReadBoolPointerWithDefault(src.Spec.PrometheusScraping.Enabled, true)
-	if !prometheusScrapingEnabledLegacy || !prometheusScrapingEnabledNew {
-		// If either setting has been disabled explicitly, the Prometheus scraping has to be disabled in the v1beta1
-		// version as well.
-		dst.Spec.PrometheusScraping.Enabled = ptr.To(false)
-	}
-	dst.Spec.Filter = src.Spec.Filter
-	dst.Spec.Transform = src.Spec.Transform
-	dst.Spec.NormalizedTransformSpec = src.Spec.NormalizedTransformSpec
-	dst.Spec.SynchronizePersesDashboards = src.Spec.SynchronizePersesDashboards
-	dst.Spec.SynchronizePrometheusRules = src.Spec.SynchronizePrometheusRules
-	dst.Status.Conditions = src.Status.Conditions
-	dst.Status.PreviousInstrumentWorkloads = dash0v1beta1.InstrumentWorkloads{
-		Mode: src.Status.PreviousInstrumentWorkloads,
-	}
-	if src.ObjectMeta.Annotations != nil {
-		previousPropagators, previousPropagatorsFound :=
-			src.ObjectMeta.Annotations[annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators]
-		if previousPropagatorsFound && previousPropagators != "" {
-			dst.Status.PreviousInstrumentWorkloads.TraceContext.Propagators = ptr.To(previousPropagators)
-		}
-		delete(dst.ObjectMeta.Annotations, annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators)
-	}
-	dst.Status.PersesDashboardSynchronizationResults = src.Status.PersesDashboardSynchronizationResults
-	dst.Status.PrometheusRuleSynchronizationResults = src.Status.PrometheusRuleSynchronizationResults
-	return nil
 }

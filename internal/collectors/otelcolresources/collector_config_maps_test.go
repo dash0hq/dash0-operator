@@ -13,7 +13,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/utils/ptr"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
@@ -139,7 +139,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			_, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export:            dash0v1alpha1.Export{},
+				Export:            dash0common.Export{},
 			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).To(HaveOccurred())
 		}, daemonSetAndDeployment)
@@ -148,9 +148,9 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			_, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0v1alpha1.Export{
-					Dash0: &dash0v1alpha1.Dash0Configuration{
-						Authorization: dash0v1alpha1.Authorization{
+				Export: dash0common.Export{
+					Dash0: &dash0common.Dash0Configuration{
+						Authorization: dash0common.Authorization{
 							Token: &AuthorizationTokenTest,
 						},
 					},
@@ -197,11 +197,11 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0v1alpha1.Export{
-					Dash0: &dash0v1alpha1.Dash0Configuration{
+				Export: dash0common.Export{
+					Dash0: &dash0common.Dash0Configuration{
 						Endpoint: EndpointDash0Test,
 						Dataset:  "custom-dataset",
-						Authorization: dash0v1alpha1.Authorization{
+						Authorization: dash0common.Authorization{
 							Token: &AuthorizationTokenTest,
 						},
 					},
@@ -235,10 +235,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0v1alpha1.Export{
-					Dash0: &dash0v1alpha1.Dash0Configuration{
+				Export: dash0common.Export{
+					Dash0: &dash0common.Dash0Configuration{
 						Endpoint: "HTTP://endpoint.dash0.com:1234",
-						Authorization: dash0v1alpha1.Authorization{
+						Authorization: dash0common.Authorization{
 							Token: &AuthorizationTokenTest,
 						},
 					},
@@ -335,9 +335,9 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			_, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0v1alpha1.Export{
-					Grpc: &dash0v1alpha1.GrpcConfiguration{
-						Headers: []dash0v1alpha1.Header{{
+				Export: dash0common.Export{
+					Grpc: &dash0common.GrpcConfiguration{
+						Headers: []dash0common.Header{{
 							Name:  "Key1",
 							Value: "Value1",
 						}},
@@ -355,10 +355,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0v1alpha1.Export{
-					Grpc: &dash0v1alpha1.GrpcConfiguration{
+				Export: dash0common.Export{
+					Grpc: &dash0common.GrpcConfiguration{
 						Endpoint: GrpcEndpointTest,
-						Headers: []dash0v1alpha1.Header{
+						Headers: []dash0common.Header{
 							{
 								Name:  "Key1",
 								Value: "Value1",
@@ -399,8 +399,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0v1alpha1.Export{
-					Grpc: &dash0v1alpha1.GrpcConfiguration{
+				Export: dash0common.Export{
+					Grpc: &dash0common.GrpcConfiguration{
 						Endpoint: "http://example.com:1234",
 					},
 				},
@@ -431,13 +431,13 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			_, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0v1alpha1.Export{
-					Http: &dash0v1alpha1.HttpConfiguration{
-						Headers: []dash0v1alpha1.Header{{
+				Export: dash0common.Export{
+					Http: &dash0common.HttpConfiguration{
+						Headers: []dash0common.Header{{
 							Name:  "Key1",
 							Value: "Value1",
 						}},
-						Encoding: dash0v1alpha1.Proto,
+						Encoding: dash0common.Proto,
 					},
 				},
 			}, monitoredNamespaces, nil, nil, false)
@@ -451,10 +451,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			_, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0v1alpha1.Export{
-					Http: &dash0v1alpha1.HttpConfiguration{
+				Export: dash0common.Export{
+					Http: &dash0common.HttpConfiguration{
 						Endpoint: HttpEndpointTest,
-						Headers: []dash0v1alpha1.Header{{
+						Headers: []dash0common.Header{{
 							Name:  "Key1",
 							Value: "Value1",
 						}},
@@ -472,10 +472,10 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0v1alpha1.Export{
-					Http: &dash0v1alpha1.HttpConfiguration{
+				Export: dash0common.Export{
+					Http: &dash0common.HttpConfiguration{
 						Endpoint: HttpEndpointTest,
-						Headers: []dash0v1alpha1.Header{
+						Headers: []dash0common.Header{
 							{
 								Name:  "Key1",
 								Value: "Value1",
@@ -485,7 +485,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 								Value: "Value2",
 							},
 						},
-						Encoding: dash0v1alpha1.Json,
+						Encoding: dash0common.Json,
 					},
 				},
 			}, monitoredNamespaces, nil, nil, false)
@@ -517,16 +517,16 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0v1alpha1.Export{
-					Dash0: &dash0v1alpha1.Dash0Configuration{
+				Export: dash0common.Export{
+					Dash0: &dash0common.Dash0Configuration{
 						Endpoint: EndpointDash0Test,
-						Authorization: dash0v1alpha1.Authorization{
+						Authorization: dash0common.Authorization{
 							Token: &AuthorizationTokenTest,
 						},
 					},
-					Grpc: &dash0v1alpha1.GrpcConfiguration{
+					Grpc: &dash0common.GrpcConfiguration{
 						Endpoint: HttpEndpointTest,
-						Headers: []dash0v1alpha1.Header{{
+						Headers: []dash0common.Header{{
 							Name:  "Key1",
 							Value: "Value1",
 						}},
@@ -571,20 +571,20 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0v1alpha1.Export{
-					Dash0: &dash0v1alpha1.Dash0Configuration{
+				Export: dash0common.Export{
+					Dash0: &dash0common.Dash0Configuration{
 						Endpoint: EndpointDash0Test,
-						Authorization: dash0v1alpha1.Authorization{
+						Authorization: dash0common.Authorization{
 							Token: &AuthorizationTokenTest,
 						},
 					},
-					Http: &dash0v1alpha1.HttpConfiguration{
+					Http: &dash0common.HttpConfiguration{
 						Endpoint: HttpEndpointTest,
-						Headers: []dash0v1alpha1.Header{{
+						Headers: []dash0common.Header{{
 							Name:  "Key1",
 							Value: "Value1",
 						}},
-						Encoding: dash0v1alpha1.Proto,
+						Encoding: dash0common.Proto,
 					},
 				},
 			}, monitoredNamespaces, nil, nil, false)
@@ -626,21 +626,21 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0v1alpha1.Export{
-					Grpc: &dash0v1alpha1.GrpcConfiguration{
+				Export: dash0common.Export{
+					Grpc: &dash0common.GrpcConfiguration{
 						Endpoint: GrpcEndpointTest,
-						Headers: []dash0v1alpha1.Header{{
+						Headers: []dash0common.Header{{
 							Name:  "Key1",
 							Value: "Value1",
 						}},
 					},
-					Http: &dash0v1alpha1.HttpConfiguration{
+					Http: &dash0common.HttpConfiguration{
 						Endpoint: HttpEndpointTest,
-						Headers: []dash0v1alpha1.Header{{
+						Headers: []dash0common.Header{{
 							Name:  "Key2",
 							Value: "Value2",
 						}},
-						Encoding: dash0v1alpha1.Proto,
+						Encoding: dash0common.Proto,
 					},
 				},
 			}, monitoredNamespaces, nil, nil, false)
@@ -683,27 +683,27 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0v1alpha1.Export{
-					Dash0: &dash0v1alpha1.Dash0Configuration{
+				Export: dash0common.Export{
+					Dash0: &dash0common.Dash0Configuration{
 						Endpoint: EndpointDash0Test,
-						Authorization: dash0v1alpha1.Authorization{
+						Authorization: dash0common.Authorization{
 							Token: &AuthorizationTokenTest,
 						},
 					},
-					Grpc: &dash0v1alpha1.GrpcConfiguration{
+					Grpc: &dash0common.GrpcConfiguration{
 						Endpoint: GrpcEndpointTest,
-						Headers: []dash0v1alpha1.Header{{
+						Headers: []dash0common.Header{{
 							Name:  "Key1",
 							Value: "Value1",
 						}},
 					},
-					Http: &dash0v1alpha1.HttpConfiguration{
+					Http: &dash0common.HttpConfiguration{
 						Endpoint: HttpEndpointTest,
-						Headers: []dash0v1alpha1.Header{{
+						Headers: []dash0common.Header{{
 							Name:  "Key2",
 							Value: "Value2",
 						}},
-						Encoding: dash0v1alpha1.Json,
+						Encoding: dash0common.Json,
 					},
 				},
 				DevelopmentMode: true,
@@ -1306,9 +1306,9 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						filters: []NamespacedFilter{
 							{
 								Namespace: namespace1,
-								Filter: dash0v1alpha1.Filter{
-									ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
-									Traces: &dash0v1alpha1.TraceFilter{
+								Filter: dash0common.Filter{
+									ErrorMode: dash0common.FilterTransformErrorModeIgnore,
+									Traces: &dash0common.TraceFilter{
 										SpanFilter:      []string{"span condition 1", "span condition 2"},
 										SpanEventFilter: []string{"span event condition 1", "span event condition 2"},
 									},
@@ -1346,9 +1346,9 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						filters: []NamespacedFilter{
 							{
 								Namespace: namespace1,
-								Filter: dash0v1alpha1.Filter{
-									ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
-									Metrics: &dash0v1alpha1.MetricFilter{
+								Filter: dash0common.Filter{
+									ErrorMode: dash0common.FilterTransformErrorModeIgnore,
+									Metrics: &dash0common.MetricFilter{
 										MetricFilter:    []string{"metric condition 1", "metric condition 2"},
 										DataPointFilter: []string{"data point condition 1", "data point condition 2"},
 									},
@@ -1401,9 +1401,9 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						filters: []NamespacedFilter{
 							{
 								Namespace: namespace1,
-								Filter: dash0v1alpha1.Filter{
-									ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
-									Logs: &dash0v1alpha1.LogFilter{
+								Filter: dash0common.Filter{
+									ErrorMode: dash0common.FilterTransformErrorModeIgnore,
+									Logs: &dash0common.LogFilter{
 										LogRecordFilter: []string{"log record condition 1", "log record condition 2"},
 									},
 								},
@@ -1436,17 +1436,17 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						filters: []NamespacedFilter{
 							{
 								Namespace: namespace1,
-								Filter: dash0v1alpha1.Filter{
-									ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
-									Traces: &dash0v1alpha1.TraceFilter{
+								Filter: dash0common.Filter{
+									ErrorMode: dash0common.FilterTransformErrorModeIgnore,
+									Traces: &dash0common.TraceFilter{
 										SpanFilter:      []string{"span condition 1", "span condition 2"},
 										SpanEventFilter: []string{"span event condition 1", "span event condition 2"},
 									},
-									Metrics: &dash0v1alpha1.MetricFilter{
+									Metrics: &dash0common.MetricFilter{
 										MetricFilter:    []string{"metric condition 1", "metric condition 2"},
 										DataPointFilter: []string{"data point condition 1", "data point condition 2"},
 									},
-									Logs: &dash0v1alpha1.LogFilter{
+									Logs: &dash0common.LogFilter{
 										LogRecordFilter: []string{"log record condition 1", "log record condition 2"},
 									},
 								},
@@ -1594,8 +1594,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		}, filterTestConfigs)
 
 		type filterErrorModeTestConfig struct {
-			errorModes []dash0v1alpha1.FilterTransformErrorMode
-			expected   dash0v1alpha1.FilterTransformErrorMode
+			errorModes []dash0common.FilterTransformErrorMode
+			expected   dash0common.FilterTransformErrorMode
 		}
 
 		DescribeTable("filter processor should use the most severe error mode", func(testConfig filterErrorModeTestConfig) {
@@ -1603,9 +1603,9 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			for _, errorMode := range testConfig.errorModes {
 				filters = append(filters, NamespacedFilter{
 					Namespace: namespace1,
-					Filter: dash0v1alpha1.Filter{
+					Filter: dash0common.Filter{
 						ErrorMode: errorMode,
-						Traces: &dash0v1alpha1.TraceFilter{
+						Traces: &dash0common.TraceFilter{
 							SpanFilter: []string{
 								"condition",
 							},
@@ -1619,19 +1619,19 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		},
 			Entry("no error mode provided", filterErrorModeTestConfig{
 				errorModes: nil,
-				expected:   dash0v1alpha1.FilterTransformErrorModeIgnore,
+				expected:   dash0common.FilterTransformErrorModeIgnore,
 			}),
 			Entry("single error mode is used", filterErrorModeTestConfig{
-				errorModes: []dash0v1alpha1.FilterTransformErrorMode{dash0v1alpha1.FilterTransformErrorModeSilent},
-				expected:   dash0v1alpha1.FilterTransformErrorModeSilent,
+				errorModes: []dash0common.FilterTransformErrorMode{dash0common.FilterTransformErrorModeSilent},
+				expected:   dash0common.FilterTransformErrorModeSilent,
 			}),
 			Entry("most severe error mode is used", filterErrorModeTestConfig{
-				errorModes: []dash0v1alpha1.FilterTransformErrorMode{
-					dash0v1alpha1.FilterTransformErrorModeSilent,
-					dash0v1alpha1.FilterTransformErrorModeIgnore,
-					dash0v1alpha1.FilterTransformErrorModePropagate,
+				errorModes: []dash0common.FilterTransformErrorMode{
+					dash0common.FilterTransformErrorModeSilent,
+					dash0common.FilterTransformErrorModeIgnore,
+					dash0common.FilterTransformErrorModePropagate,
 				},
-				expected: dash0v1alpha1.FilterTransformErrorModePropagate,
+				expected: dash0common.FilterTransformErrorModePropagate,
 			}),
 		)
 	})
@@ -1707,9 +1707,9 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						transforms: []NamespacedTransform{
 							{
 								Namespace: namespace1,
-								Transform: dash0v1alpha1.NormalizedTransformSpec{
-									ErrorMode: ptr.To(dash0v1alpha1.FilterTransformErrorModeIgnore),
-									Traces: []dash0v1alpha1.NormalizedTransformGroup{
+								Transform: dash0common.NormalizedTransformSpec{
+									ErrorMode: ptr.To(dash0common.FilterTransformErrorModeIgnore),
+									Traces: []dash0common.NormalizedTransformGroup{
 										{Statements: []string{"statement 1"}},
 										{Statements: []string{"statement 2"}},
 									},
@@ -1751,9 +1751,9 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						transforms: []NamespacedTransform{
 							{
 								Namespace: namespace1,
-								Transform: dash0v1alpha1.NormalizedTransformSpec{
-									ErrorMode: ptr.To(dash0v1alpha1.FilterTransformErrorModeIgnore),
-									Metrics: []dash0v1alpha1.NormalizedTransformGroup{
+								Transform: dash0common.NormalizedTransformSpec{
+									ErrorMode: ptr.To(dash0common.FilterTransformErrorModeIgnore),
+									Metrics: []dash0common.NormalizedTransformGroup{
 										{Statements: []string{"statement 1"}},
 										{Statements: []string{"statement 2"}},
 									},
@@ -1814,9 +1814,9 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						transforms: []NamespacedTransform{
 							{
 								Namespace: namespace2,
-								Transform: dash0v1alpha1.NormalizedTransformSpec{
-									ErrorMode: ptr.To(dash0v1alpha1.FilterTransformErrorModeIgnore),
-									Logs: []dash0v1alpha1.NormalizedTransformGroup{
+								Transform: dash0common.NormalizedTransformSpec{
+									ErrorMode: ptr.To(dash0common.FilterTransformErrorModeIgnore),
+									Logs: []dash0common.NormalizedTransformGroup{
 										{Statements: []string{"statement 1"}},
 										{Statements: []string{"statement 2"}},
 									},
@@ -1858,17 +1858,17 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 						transforms: []NamespacedTransform{
 							{
 								Namespace: namespace1,
-								Transform: dash0v1alpha1.NormalizedTransformSpec{
-									ErrorMode: ptr.To(dash0v1alpha1.FilterTransformErrorModeIgnore),
-									Traces: []dash0v1alpha1.NormalizedTransformGroup{
+								Transform: dash0common.NormalizedTransformSpec{
+									ErrorMode: ptr.To(dash0common.FilterTransformErrorModeIgnore),
+									Traces: []dash0common.NormalizedTransformGroup{
 										{Statements: []string{"trace statement 1"}},
 										{Statements: []string{"trace statement 2"}},
 									},
-									Metrics: []dash0v1alpha1.NormalizedTransformGroup{
+									Metrics: []dash0common.NormalizedTransformGroup{
 										{Statements: []string{"metric statement 1"}},
 										{Statements: []string{"metric statement 2"}},
 									},
-									Logs: []dash0v1alpha1.NormalizedTransformGroup{
+									Logs: []dash0common.NormalizedTransformGroup{
 										{Statements: []string{"log statement 1"}},
 										{Statements: []string{"log statement 2"}},
 									},
@@ -2055,8 +2055,8 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		}, transformTestConfigs)
 
 		type transformErrorModeTestConfig struct {
-			errorModes []dash0v1alpha1.FilterTransformErrorMode
-			expected   dash0v1alpha1.FilterTransformErrorMode
+			errorModes []dash0common.FilterTransformErrorMode
+			expected   dash0common.FilterTransformErrorMode
 		}
 
 		DescribeTable("transform processor should use the most severe error mode", func(testConfig transformErrorModeTestConfig) {
@@ -2064,9 +2064,9 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			for _, errorMode := range testConfig.errorModes {
 				transforms = append(transforms, NamespacedTransform{
 					Namespace: namespace1,
-					Transform: dash0v1alpha1.NormalizedTransformSpec{
+					Transform: dash0common.NormalizedTransformSpec{
 						ErrorMode: ptr.To(errorMode),
-						Traces: []dash0v1alpha1.NormalizedTransformGroup{
+						Traces: []dash0common.NormalizedTransformGroup{
 							{Statements: []string{"statement"}},
 						},
 					},
@@ -2078,19 +2078,19 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		},
 			Entry("no error mode provided", transformErrorModeTestConfig{
 				errorModes: nil,
-				expected:   dash0v1alpha1.FilterTransformErrorModeIgnore,
+				expected:   dash0common.FilterTransformErrorModeIgnore,
 			}),
 			Entry("single error mode is used", transformErrorModeTestConfig{
-				errorModes: []dash0v1alpha1.FilterTransformErrorMode{dash0v1alpha1.FilterTransformErrorModeSilent},
-				expected:   dash0v1alpha1.FilterTransformErrorModeSilent,
+				errorModes: []dash0common.FilterTransformErrorMode{dash0common.FilterTransformErrorModeSilent},
+				expected:   dash0common.FilterTransformErrorModeSilent,
 			}),
 			Entry("most severe error mode is used", transformErrorModeTestConfig{
-				errorModes: []dash0v1alpha1.FilterTransformErrorMode{
-					dash0v1alpha1.FilterTransformErrorModeSilent,
-					dash0v1alpha1.FilterTransformErrorModeIgnore,
-					dash0v1alpha1.FilterTransformErrorModePropagate,
+				errorModes: []dash0common.FilterTransformErrorMode{
+					dash0common.FilterTransformErrorModeSilent,
+					dash0common.FilterTransformErrorModeIgnore,
+					dash0common.FilterTransformErrorModePropagate,
 				},
-				expected: dash0v1alpha1.FilterTransformErrorModePropagate,
+				expected: dash0common.FilterTransformErrorModePropagate,
 			}),
 		)
 	})
@@ -2189,7 +2189,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				Export:            *Dash0ExportWithEndpointAndToken(),
 				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 					SelfMonitoringEnabled: true,
-					Export:                dash0v1alpha1.Export{},
+					Export:                dash0common.Export{},
 				},
 			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
@@ -2494,34 +2494,34 @@ func createFilterTestForSingleObjectType(
 		})
 	}
 
-	var filter1 dash0v1alpha1.Filter
-	var filter2 dash0v1alpha1.Filter
+	var filter1 dash0common.Filter
+	var filter2 dash0common.Filter
 	switch signalT {
 	case signalTypeTraces:
 		switch objectT {
 		case objectTypeSpan:
-			filter1 = dash0v1alpha1.Filter{
-				ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
-				Traces: &dash0v1alpha1.TraceFilter{
+			filter1 = dash0common.Filter{
+				ErrorMode: dash0common.FilterTransformErrorModeIgnore,
+				Traces: &dash0common.TraceFilter{
 					SpanFilter: conditionsNamespace1,
 				},
 			}
-			filter2 = dash0v1alpha1.Filter{
-				ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
-				Traces: &dash0v1alpha1.TraceFilter{
+			filter2 = dash0common.Filter{
+				ErrorMode: dash0common.FilterTransformErrorModeIgnore,
+				Traces: &dash0common.TraceFilter{
 					SpanFilter: conditionsNamespace2,
 				},
 			}
 		case objectTypeSpanEvent:
-			filter1 = dash0v1alpha1.Filter{
-				ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
-				Traces: &dash0v1alpha1.TraceFilter{
+			filter1 = dash0common.Filter{
+				ErrorMode: dash0common.FilterTransformErrorModeIgnore,
+				Traces: &dash0common.TraceFilter{
 					SpanEventFilter: conditionsNamespace1,
 				},
 			}
-			filter2 = dash0v1alpha1.Filter{
-				ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
-				Traces: &dash0v1alpha1.TraceFilter{
+			filter2 = dash0common.Filter{
+				ErrorMode: dash0common.FilterTransformErrorModeIgnore,
+				Traces: &dash0common.TraceFilter{
 					SpanEventFilter: conditionsNamespace2,
 				},
 			}
@@ -2532,28 +2532,28 @@ func createFilterTestForSingleObjectType(
 	case signalTypeMetrics:
 		switch objectT {
 		case objectTypeMetric:
-			filter1 = dash0v1alpha1.Filter{
-				ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
-				Metrics: &dash0v1alpha1.MetricFilter{
+			filter1 = dash0common.Filter{
+				ErrorMode: dash0common.FilterTransformErrorModeIgnore,
+				Metrics: &dash0common.MetricFilter{
 					MetricFilter: conditionsNamespace1,
 				},
 			}
-			filter2 = dash0v1alpha1.Filter{
-				ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
-				Metrics: &dash0v1alpha1.MetricFilter{
+			filter2 = dash0common.Filter{
+				ErrorMode: dash0common.FilterTransformErrorModeIgnore,
+				Metrics: &dash0common.MetricFilter{
 					MetricFilter: conditionsNamespace2,
 				},
 			}
 		case objectTypeDataPoint:
-			filter1 = dash0v1alpha1.Filter{
-				ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
-				Metrics: &dash0v1alpha1.MetricFilter{
+			filter1 = dash0common.Filter{
+				ErrorMode: dash0common.FilterTransformErrorModeIgnore,
+				Metrics: &dash0common.MetricFilter{
 					DataPointFilter: conditionsNamespace1,
 				},
 			}
-			filter2 = dash0v1alpha1.Filter{
-				ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
-				Metrics: &dash0v1alpha1.MetricFilter{
+			filter2 = dash0common.Filter{
+				ErrorMode: dash0common.FilterTransformErrorModeIgnore,
+				Metrics: &dash0common.MetricFilter{
 					DataPointFilter: conditionsNamespace2,
 				},
 			}
@@ -2564,15 +2564,15 @@ func createFilterTestForSingleObjectType(
 	case signalTypeLogs:
 		switch objectT {
 		case objectTypeLogRecord:
-			filter1 = dash0v1alpha1.Filter{
-				ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
-				Logs: &dash0v1alpha1.LogFilter{
+			filter1 = dash0common.Filter{
+				ErrorMode: dash0common.FilterTransformErrorModeIgnore,
+				Logs: &dash0common.LogFilter{
 					LogRecordFilter: conditionsNamespace1,
 				},
 			}
-			filter2 = dash0v1alpha1.Filter{
-				ErrorMode: dash0v1alpha1.FilterTransformErrorModeIgnore,
-				Logs: &dash0v1alpha1.LogFilter{
+			filter2 = dash0common.Filter{
+				ErrorMode: dash0common.FilterTransformErrorModeIgnore,
+				Logs: &dash0common.LogFilter{
 					LogRecordFilter: conditionsNamespace2,
 				},
 			}
@@ -2670,47 +2670,47 @@ func createTransformTestForSingleObjectType(
 		})
 	}
 
-	var transform1 dash0v1alpha1.NormalizedTransformSpec
-	var transform2 dash0v1alpha1.NormalizedTransformSpec
+	var transform1 dash0common.NormalizedTransformSpec
+	var transform2 dash0common.NormalizedTransformSpec
 	switch signalT {
 	case signalTypeTraces:
-		transform1 = dash0v1alpha1.NormalizedTransformSpec{
-			ErrorMode: ptr.To(dash0v1alpha1.FilterTransformErrorModeIgnore),
-			Traces: []dash0v1alpha1.NormalizedTransformGroup{
+		transform1 = dash0common.NormalizedTransformSpec{
+			ErrorMode: ptr.To(dash0common.FilterTransformErrorModeIgnore),
+			Traces: []dash0common.NormalizedTransformGroup{
 				{Statements: statementsNamespace1},
 			},
 		}
-		transform2 = dash0v1alpha1.NormalizedTransformSpec{
-			ErrorMode: ptr.To(dash0v1alpha1.FilterTransformErrorModeIgnore),
-			Traces: []dash0v1alpha1.NormalizedTransformGroup{
+		transform2 = dash0common.NormalizedTransformSpec{
+			ErrorMode: ptr.To(dash0common.FilterTransformErrorModeIgnore),
+			Traces: []dash0common.NormalizedTransformGroup{
 				{Statements: statementsNamespace2},
 			},
 		}
 
 	case signalTypeMetrics:
-		transform1 = dash0v1alpha1.NormalizedTransformSpec{
-			ErrorMode: ptr.To(dash0v1alpha1.FilterTransformErrorModeIgnore),
-			Metrics: []dash0v1alpha1.NormalizedTransformGroup{
+		transform1 = dash0common.NormalizedTransformSpec{
+			ErrorMode: ptr.To(dash0common.FilterTransformErrorModeIgnore),
+			Metrics: []dash0common.NormalizedTransformGroup{
 				{Statements: statementsNamespace1},
 			},
 		}
-		transform2 = dash0v1alpha1.NormalizedTransformSpec{
-			ErrorMode: ptr.To(dash0v1alpha1.FilterTransformErrorModeIgnore),
-			Metrics: []dash0v1alpha1.NormalizedTransformGroup{
+		transform2 = dash0common.NormalizedTransformSpec{
+			ErrorMode: ptr.To(dash0common.FilterTransformErrorModeIgnore),
+			Metrics: []dash0common.NormalizedTransformGroup{
 				{Statements: statementsNamespace2},
 			},
 		}
 
 	case signalTypeLogs:
-		transform1 = dash0v1alpha1.NormalizedTransformSpec{
-			ErrorMode: ptr.To(dash0v1alpha1.FilterTransformErrorModeIgnore),
-			Logs: []dash0v1alpha1.NormalizedTransformGroup{
+		transform1 = dash0common.NormalizedTransformSpec{
+			ErrorMode: ptr.To(dash0common.FilterTransformErrorModeIgnore),
+			Logs: []dash0common.NormalizedTransformGroup{
 				{Statements: statementsNamespace1},
 			},
 		}
-		transform2 = dash0v1alpha1.NormalizedTransformSpec{
-			ErrorMode: ptr.To(dash0v1alpha1.FilterTransformErrorModeIgnore),
-			Logs: []dash0v1alpha1.NormalizedTransformGroup{
+		transform2 = dash0common.NormalizedTransformSpec{
+			ErrorMode: ptr.To(dash0common.FilterTransformErrorModeIgnore),
+			Logs: []dash0common.NormalizedTransformGroup{
 				{Statements: statementsNamespace2},
 			},
 		}
