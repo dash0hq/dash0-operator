@@ -8,7 +8,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 )
 
 const (
