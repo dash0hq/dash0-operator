@@ -20,7 +20,7 @@ webhooks:
     service:
       name: dash0-operator-webhook-service
       namespace: dash0-system
-      path: /v1alpha1/inject/dash0
+      path: /workloads/inject
   failurePolicy: Ignore
   rules:
   - apiGroups:
@@ -85,7 +85,7 @@ webhooks:
         name: dash0-operator--webhook-service
         namespace: dash0-system
         port: 443
-        path: /v1alpha1/mutate/operator-configuration
+        path: /operator-configuration/mutate
     admissionReviewVersions:
       - v1
     rules:
@@ -118,7 +118,7 @@ webhooks:
         name: dash0-operator-webhook-service
         namespace: namespace
         port: 443
-        path: /v1alpha1/validate/operator-configuration
+        path: /operator-configuration/validate
     admissionReviewVersions:
       - v1
     rules:
@@ -151,14 +151,14 @@ webhooks:
         name: dash0-operator-webhook-service
         namespace: dash0-system
         port: 443
-        path: /v1alpha1/mutate/monitoring
+        path: /monitoring/mutate
     admissionReviewVersions:
       - v1
     rules:
       - apiGroups:
           - operator.dash0.com
         apiVersions:
-          - v1alpha1
+          - v1beta1
         operations:
           - CREATE
           - UPDATE
@@ -184,14 +184,14 @@ webhooks:
         name: dash0-operator-webhook-service
         namespace: namespace
         port: 443
-        path: /v1alpha1/validate/monitoring
+        path: /monitoring/validate
     admissionReviewVersions:
       - v1
     rules:
       - apiGroups:
           - operator.dash0.com
         apiVersions:
-          - v1alpha1
+          - v1beta1
         operations:
           - CREATE
           - UPDATE

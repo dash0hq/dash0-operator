@@ -766,3 +766,12 @@ tests:
       - equal:
           path: spec.ports[0].port
           value: 9554
+
+  - it: monitoring resource CRD should match snapshot
+    documentSelector:
+      path: metadata.name
+      value: dash0monitorings.operator.dash0.com
+    asserts:
+      - matchSnapshot:
+          path:
+            spec.versions

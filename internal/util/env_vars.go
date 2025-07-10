@@ -8,7 +8,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 )
 
 const (
@@ -17,7 +17,7 @@ const (
 )
 
 func CreateEnvVarForAuthorization(
-	dash0Authorization dash0v1alpha1.Authorization,
+	dash0Authorization dash0common.Authorization,
 	envVarName string,
 ) (corev1.EnvVar, error) {
 	token := dash0Authorization.Token

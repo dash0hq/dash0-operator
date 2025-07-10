@@ -12,6 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
@@ -90,7 +91,7 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 				resourceToSelfMonitoringTestConfig{
 					operatorConfigurationSpec: &dash0v1alpha1.Dash0OperatorConfigurationSpec{
 						SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: ptr.To(true)},
-						Export:         &dash0v1alpha1.Export{},
+						Export:         &dash0common.Export{},
 					},
 					expectError: true,
 				},
@@ -139,19 +140,19 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 				resourceToSelfMonitoringTestConfig{
 					operatorConfigurationSpec: &dash0v1alpha1.Dash0OperatorConfigurationSpec{
 						SelfMonitoring: dash0v1alpha1.SelfMonitoring{Enabled: ptr.To(true)},
-						Export: &dash0v1alpha1.Export{
-							Dash0: &dash0v1alpha1.Dash0Configuration{
+						Export: &dash0common.Export{
+							Dash0: &dash0common.Dash0Configuration{
 								Endpoint: EndpointDash0Test,
-								Authorization: dash0v1alpha1.Authorization{
+								Authorization: dash0common.Authorization{
 									Token: &AuthorizationTokenTest,
 								},
 							},
-							Grpc: &dash0v1alpha1.GrpcConfiguration{
+							Grpc: &dash0common.GrpcConfiguration{
 								Endpoint: EndpointGrpcTest,
 							},
-							Http: &dash0v1alpha1.HttpConfiguration{
+							Http: &dash0common.HttpConfiguration{
 								Endpoint: EndpointHttpTest,
-								Encoding: dash0v1alpha1.Proto,
+								Encoding: dash0common.Proto,
 							},
 						},
 					},
@@ -193,7 +194,7 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 	Describe("convert export settings to env vars", func() {
 
 		type exportToEnvVarsTestConfig struct {
-			export                     dash0v1alpha1.Export
+			export                     dash0common.Export
 			expectedEndpointAndHeaders EndpointAndHeaders
 		}
 
@@ -204,7 +205,7 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 			Entry(
 				"should return empty result if there are no exports",
 				exportToEnvVarsTestConfig{
-					export:                     dash0v1alpha1.Export{},
+					export:                     dash0common.Export{},
 					expectedEndpointAndHeaders: EndpointAndHeaders{},
 				},
 			),
@@ -215,7 +216,7 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 					expectedEndpointAndHeaders: EndpointAndHeaders{
 						Endpoint: EndpointDash0WithProtocolTest,
 						Protocol: common.ProtocolGrpc,
-						Headers: []dash0v1alpha1.Header{{
+						Headers: []dash0common.Header{{
 							Name:  util.AuthorizationHeaderName,
 							Value: "Bearer $(SELF_MONITORING_AUTH_TOKEN)",
 						}},
@@ -229,7 +230,7 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 					expectedEndpointAndHeaders: EndpointAndHeaders{
 						Endpoint: EndpointDash0WithProtocolTest,
 						Protocol: common.ProtocolGrpc,
-						Headers: []dash0v1alpha1.Header{{
+						Headers: []dash0common.Header{{
 							Name:  util.AuthorizationHeaderName,
 							Value: "Bearer $(SELF_MONITORING_AUTH_TOKEN)",
 						}},
@@ -243,7 +244,7 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 					expectedEndpointAndHeaders: EndpointAndHeaders{
 						Endpoint: EndpointDash0WithProtocolTest,
 						Protocol: common.ProtocolGrpc,
-						Headers: []dash0v1alpha1.Header{
+						Headers: []dash0common.Header{
 							{
 								Name:  util.AuthorizationHeaderName,
 								Value: "Bearer $(SELF_MONITORING_AUTH_TOKEN)",
@@ -259,25 +260,25 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 			Entry(
 				"should ignore grpc and http exports if a Dash0 export is present",
 				exportToEnvVarsTestConfig{
-					export: dash0v1alpha1.Export{
-						Dash0: &dash0v1alpha1.Dash0Configuration{
+					export: dash0common.Export{
+						Dash0: &dash0common.Dash0Configuration{
 							Endpoint: EndpointDash0Test,
-							Authorization: dash0v1alpha1.Authorization{
+							Authorization: dash0common.Authorization{
 								Token: &AuthorizationTokenTest,
 							},
 						},
-						Grpc: &dash0v1alpha1.GrpcConfiguration{
+						Grpc: &dash0common.GrpcConfiguration{
 							Endpoint: EndpointGrpcTest,
 						},
-						Http: &dash0v1alpha1.HttpConfiguration{
+						Http: &dash0common.HttpConfiguration{
 							Endpoint: EndpointHttpTest,
-							Encoding: dash0v1alpha1.Proto,
+							Encoding: dash0common.Proto,
 						},
 					},
 					expectedEndpointAndHeaders: EndpointAndHeaders{
 						Endpoint: EndpointDash0WithProtocolTest,
 						Protocol: common.ProtocolGrpc,
-						Headers: []dash0v1alpha1.Header{{
+						Headers: []dash0common.Header{{
 							Name:  util.AuthorizationHeaderName,
 							Value: "Bearer $(SELF_MONITORING_AUTH_TOKEN)",
 						}},
@@ -287,10 +288,10 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 			Entry(
 				"should convert gRPC export",
 				exportToEnvVarsTestConfig{
-					export: dash0v1alpha1.Export{
-						Grpc: &dash0v1alpha1.GrpcConfiguration{
+					export: dash0common.Export{
+						Grpc: &dash0common.GrpcConfiguration{
 							Endpoint: EndpointGrpcWithProtocolTest,
-							Headers: []dash0v1alpha1.Header{{
+							Headers: []dash0common.Header{{
 								Name:  "Key",
 								Value: "Value",
 							}},
@@ -299,7 +300,7 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 					expectedEndpointAndHeaders: EndpointAndHeaders{
 						Endpoint: EndpointGrpcWithProtocolTest,
 						Protocol: common.ProtocolGrpc,
-						Headers: []dash0v1alpha1.Header{{
+						Headers: []dash0common.Header{{
 							Name:  "Key",
 							Value: "Value",
 						}},
@@ -313,7 +314,7 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 					expectedEndpointAndHeaders: EndpointAndHeaders{
 						Endpoint: EndpointGrpcWithProtocolTest,
 						Protocol: common.ProtocolGrpc,
-						Headers: []dash0v1alpha1.Header{{
+						Headers: []dash0common.Header{{
 							Name:  "Key",
 							Value: "Value",
 						}},
@@ -327,7 +328,7 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 					expectedEndpointAndHeaders: EndpointAndHeaders{
 						Endpoint: EndpointHttpTest,
 						Protocol: common.ProtocolHttpProtobuf,
-						Headers: []dash0v1alpha1.Header{{
+						Headers: []dash0common.Header{{
 							Name:  "Key",
 							Value: "Value",
 						}},
@@ -337,20 +338,20 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 			Entry(
 				"should overide HTTP/json to HTTP/protobuf",
 				exportToEnvVarsTestConfig{
-					export: dash0v1alpha1.Export{
-						Http: &dash0v1alpha1.HttpConfiguration{
+					export: dash0common.Export{
+						Http: &dash0common.HttpConfiguration{
 							Endpoint: EndpointHttpTest,
-							Headers: []dash0v1alpha1.Header{{
+							Headers: []dash0common.Header{{
 								Name:  "Key",
 								Value: "Value",
 							}},
-							Encoding: dash0v1alpha1.Json,
+							Encoding: dash0common.Json,
 						},
 					},
 					expectedEndpointAndHeaders: EndpointAndHeaders{
 						Endpoint: EndpointHttpTest,
 						Protocol: common.ProtocolHttpProtobuf,
-						Headers: []dash0v1alpha1.Header{{
+						Headers: []dash0common.Header{{
 							Name:  "Key",
 							Value: "Value",
 						}},
@@ -452,7 +453,7 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 			Entry(
 				"should return empty result if there are no exports",
 				exportToCollectorLogSelfMonitoringPipelineTestConfig{
-					selfMonitoringConfiguration: createSelfMonitoringConfiguration(&dash0v1alpha1.Export{}),
+					selfMonitoringConfiguration: createSelfMonitoringConfiguration(&dash0common.Export{}),
 					expectedLogPipelineString:   "",
 				},
 			),
@@ -481,19 +482,19 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 				"should ignore grpc and http exports if a Dash0 export is present",
 				exportToCollectorLogSelfMonitoringPipelineTestConfig{
 					selfMonitoringConfiguration: createSelfMonitoringConfiguration(
-						&dash0v1alpha1.Export{
-							Dash0: &dash0v1alpha1.Dash0Configuration{
+						&dash0common.Export{
+							Dash0: &dash0common.Dash0Configuration{
 								Endpoint: EndpointDash0Test,
-								Authorization: dash0v1alpha1.Authorization{
+								Authorization: dash0common.Authorization{
 									Token: &AuthorizationTokenTest,
 								},
 							},
-							Grpc: &dash0v1alpha1.GrpcConfiguration{
+							Grpc: &dash0common.GrpcConfiguration{
 								Endpoint: EndpointGrpcTest,
 							},
-							Http: &dash0v1alpha1.HttpConfiguration{
+							Http: &dash0common.HttpConfiguration{
 								Endpoint: EndpointHttpTest,
-								Encoding: dash0v1alpha1.Proto,
+								Encoding: dash0common.Proto,
 							},
 						}),
 					expectedLogPipelineString: dash0ExportExpectedLogPipelineString,
@@ -502,10 +503,10 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 			Entry(
 				"should convert non-TLS Dash0 export",
 				exportToCollectorLogSelfMonitoringPipelineTestConfig{
-					selfMonitoringConfiguration: createSelfMonitoringConfiguration(&dash0v1alpha1.Export{
-						Dash0: &dash0v1alpha1.Dash0Configuration{
+					selfMonitoringConfiguration: createSelfMonitoringConfiguration(&dash0common.Export{
+						Dash0: &dash0common.Dash0Configuration{
 							Endpoint: "http://endpoint.dash0.com:4317",
-							Authorization: dash0v1alpha1.Authorization{
+							Authorization: dash0common.Authorization{
 								Token: &AuthorizationTokenTest,
 							},
 						},
@@ -528,8 +529,8 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 				"should convert gRPC export without headers",
 				exportToCollectorLogSelfMonitoringPipelineTestConfig{
 					selfMonitoringConfiguration: createSelfMonitoringConfiguration(
-						&dash0v1alpha1.Export{
-							Grpc: &dash0v1alpha1.GrpcConfiguration{
+						&dash0common.Export{
+							Grpc: &dash0common.GrpcConfiguration{
 								Endpoint: EndpointGrpcTest,
 							},
 						}),
@@ -548,10 +549,10 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 				"should convert gRPC export",
 				exportToCollectorLogSelfMonitoringPipelineTestConfig{
 					selfMonitoringConfiguration: createSelfMonitoringConfiguration(
-						&dash0v1alpha1.Export{
-							Grpc: &dash0v1alpha1.GrpcConfiguration{
+						&dash0common.Export{
+							Grpc: &dash0common.GrpcConfiguration{
 								Endpoint: EndpointGrpcTest,
-								Headers: []dash0v1alpha1.Header{
+								Headers: []dash0common.Header{
 									{
 										Name:  "Key1",
 										Value: "Value1",
@@ -588,8 +589,8 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 				"should convert non-TLS gRPC export",
 				exportToCollectorLogSelfMonitoringPipelineTestConfig{
 					selfMonitoringConfiguration: createSelfMonitoringConfiguration(
-						&dash0v1alpha1.Export{
-							Grpc: &dash0v1alpha1.GrpcConfiguration{
+						&dash0common.Export{
+							Grpc: &dash0common.GrpcConfiguration{
 								Endpoint: "http://endpoint.backend.com:4317",
 							},
 						}),
@@ -609,10 +610,10 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 				"should convert HTTP/protobuf export",
 				exportToCollectorLogSelfMonitoringPipelineTestConfig{
 					selfMonitoringConfiguration: createSelfMonitoringConfiguration(
-						&dash0v1alpha1.Export{
-							Http: &dash0v1alpha1.HttpConfiguration{
+						&dash0common.Export{
+							Http: &dash0common.HttpConfiguration{
 								Endpoint: EndpointHttpTest,
-								Headers: []dash0v1alpha1.Header{
+								Headers: []dash0common.Header{
 									{
 										Name:  "Key1",
 										Value: "Value1",
@@ -628,7 +629,7 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 										Value: "ValueWithoutName",
 									},
 								},
-								Encoding: dash0v1alpha1.Proto,
+								Encoding: dash0common.Proto,
 							},
 						}),
 					expectedLogPipelineString: `
@@ -650,10 +651,10 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 				"should convert HTTP/json export",
 				exportToCollectorLogSelfMonitoringPipelineTestConfig{
 					selfMonitoringConfiguration: createSelfMonitoringConfiguration(
-						&dash0v1alpha1.Export{
-							Http: &dash0v1alpha1.HttpConfiguration{
+						&dash0common.Export{
+							Http: &dash0common.HttpConfiguration{
 								Endpoint: EndpointHttpTest,
-								Headers: []dash0v1alpha1.Header{
+								Headers: []dash0common.Header{
 									{
 										Name:  "Key1",
 										Value: "Value1",
@@ -669,7 +670,7 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 										Value: "ValueWithoutName",
 									},
 								},
-								Encoding: dash0v1alpha1.Json,
+								Encoding: dash0common.Json,
 							},
 						}),
 					expectedLogPipelineString: `
@@ -763,7 +764,7 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 			Entry("should error if the operator configuration has no Dash0 export", exchangeTestConfig{
 				operatorConfiguration: &dash0v1alpha1.Dash0OperatorConfiguration{
 					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
-						Export: &dash0v1alpha1.Export{},
+						Export: &dash0common.Export{},
 					},
 				},
 				expectedError:              "operatorConfiguration has no Dash0 export",
@@ -772,8 +773,8 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 			Entry("should error if the operator configuration has no secret ref", exchangeTestConfig{
 				operatorConfiguration: &dash0v1alpha1.Dash0OperatorConfiguration{
 					Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
-						Export: &dash0v1alpha1.Export{
-							Dash0: &dash0v1alpha1.Dash0Configuration{},
+						Export: &dash0common.Export{
+							Dash0: &dash0common.Dash0Configuration{},
 						},
 					},
 				},
@@ -816,7 +817,7 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 	})
 })
 
-func createSelfMonitoringConfiguration(export *dash0v1alpha1.Export) SelfMonitoringConfiguration {
+func createSelfMonitoringConfiguration(export *dash0common.Export) SelfMonitoringConfiguration {
 	return SelfMonitoringConfiguration{
 		SelfMonitoringEnabled: true,
 		Export:                *export,

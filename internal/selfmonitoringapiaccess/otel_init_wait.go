@@ -15,7 +15,7 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	zaputil "github.com/dash0hq/dash0-operator/internal/util/zap"
@@ -26,7 +26,7 @@ type SelfMonitoringMetricsClient interface {
 }
 
 type OTelSdkConfigInput struct {
-	export                        dash0v1alpha1.Export
+	export                        dash0common.Export
 	pseudoClusterUID              string
 	clusterName                   string
 	operatorNamespace             string
@@ -83,7 +83,7 @@ func (s *OTelSdkStarter) WaitForOTelConfig(
 
 func (s *OTelSdkStarter) SetOTelSdkParameters(
 	ctx context.Context,
-	export dash0v1alpha1.Export,
+	export dash0common.Export,
 	pseudoClusterUID string,
 	clusterName string,
 	operatorNamespace string,
@@ -196,12 +196,12 @@ func convertExportConfigurationToOTelSDKConfig(
 			return nil, false
 		}
 
-		headers := []dash0v1alpha1.Header{{
+		headers := []dash0common.Header{{
 			Name:  util.AuthorizationHeaderName,
 			Value: util.RenderAuthorizationHeader(*token),
 		}}
 		if dash0Export.Dataset != "" && dash0Export.Dataset != util.DatasetDefault {
-			headers = append(headers, dash0v1alpha1.Header{
+			headers = append(headers, dash0common.Header{
 				Name:  util.Dash0DatasetHeaderName,
 				Value: dash0Export.Dataset,
 			})
@@ -223,7 +223,7 @@ func convertExportConfigurationToOTelSDKConfig(
 	} else if selfMonitoringExport.Http != nil {
 		protocol := common.ProtocolHttpProtobuf
 		// The Go SDK does not support http/json, so we ignore this setting for now.
-		// if selfMonitoringExport.Http.Encoding == dash0v1alpha1.Json {
+		// if selfMonitoringExport.Http.Encoding == dash0common.Json {
 		// 	 protocol = common.ProtocolHttpJson
 		// }
 		endpointAndHeaders = &EndpointAndHeaders{

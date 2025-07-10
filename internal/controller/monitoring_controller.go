@@ -19,7 +19,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/instrumentation"
 	"github.com/dash0hq/dash0-operator/internal/resources"
@@ -59,7 +60,7 @@ func (r *MonitoringReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		r.DanglingEventsTimeouts = defaultDanglingEventsTimeouts
 	}
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&dash0v1alpha1.Dash0Monitoring{}).
+		For(&dash0v1beta1.Dash0Monitoring{}).
 		Complete(r)
 }
 
@@ -125,7 +126,7 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		ctx,
 		r.Client,
 		req,
-		&dash0v1alpha1.Dash0Monitoring{},
+		&dash0v1beta1.Dash0Monitoring{},
 		updateStatusFailedMessageMonitoring,
 		&logger,
 	)
@@ -147,7 +148,7 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, nil
 	}
 
-	monitoringResource := checkResourceResult.Resource.(*dash0v1alpha1.Dash0Monitoring)
+	monitoringResource := checkResourceResult.Resource.(*dash0v1beta1.Dash0Monitoring)
 
 	isFirstReconcile, err := resources.InitStatusConditions(
 		ctx,
@@ -165,7 +166,7 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		ctx,
 		r.Client,
 		monitoringResource,
-		dash0v1alpha1.MonitoringFinalizerId,
+		dash0common.MonitoringFinalizerId,
 		&logger,
 	)
 	if err != nil {
@@ -237,22 +238,22 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 func (r *MonitoringReconciler) manageInstrumentWorkloadsModeChanges(
 	ctx context.Context,
-	monitoringResource *dash0v1alpha1.Dash0Monitoring,
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	isFirstReconcile bool,
 	logger *logr.Logger,
-) (*dash0v1alpha1.Dash0Monitoring, util.ModificationMode, error) {
-	previous := monitoringResource.Status.PreviousInstrumentWorkloadsMode
+) (*dash0v1beta1.Dash0Monitoring, util.ModificationMode, error) {
+	previous := monitoringResource.Status.PreviousInstrumentWorkloads.Mode
 	current := monitoringResource.ReadInstrumentWorkloadsMode()
 
 	var requiredAction util.ModificationMode
 	if !isFirstReconcile {
-		if previous != dash0v1alpha1.InstrumentWorkloadsModeAll && previous != "" && current == dash0v1alpha1.InstrumentWorkloadsModeAll {
+		if previous != dash0common.InstrumentWorkloadsModeAll && previous != "" && current == dash0common.InstrumentWorkloadsModeAll {
 			logger.Info(fmt.Sprintf(
 				"The instrumentWorkloads mode has changed from \"%s\" to \"%s\" (or it is absent, in which case it"+
 					"defaults to \"all\"). Workloads in this namespace will now be instrumented so they send "+
 					"telemetry to Dash0.", previous, current))
 			requiredAction = util.ModificationModeInstrumentation
-		} else if previous != dash0v1alpha1.InstrumentWorkloadsModeNone && current == dash0v1alpha1.InstrumentWorkloadsModeNone {
+		} else if previous != dash0common.InstrumentWorkloadsModeNone && current == dash0common.InstrumentWorkloadsModeNone {
 			logger.Info(fmt.Sprintf(
 				"The instrumentWorkloads mode has changed from \"%s\" to \"%s\". Instrumented workloads in this "+
 					"namespace will now be uninstrumented, they will no longer send telemetry to Dash0.",
@@ -263,7 +264,7 @@ func (r *MonitoringReconciler) manageInstrumentWorkloadsModeChanges(
 	}
 
 	if previous != current {
-		monitoringResource.Status.PreviousInstrumentWorkloadsMode = current
+		monitoringResource.Status.PreviousInstrumentWorkloads.Mode = current
 		if err := r.Status().Update(ctx, monitoringResource); err != nil {
 			logger.Error(err, "Failed to update the previous instrumentWorkloads mode status on the Dash0 monitoring "+
 				"resource, requeuing reconcile request.")
@@ -275,7 +276,7 @@ func (r *MonitoringReconciler) manageInstrumentWorkloadsModeChanges(
 
 func (r *MonitoringReconciler) runCleanupActions(
 	ctx context.Context,
-	monitoringResource *dash0v1alpha1.Dash0Monitoring,
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	logger *logr.Logger,
 ) error {
 	if err := r.Instrumenter.UninstrumentWorkloadsIfAvailable(
@@ -302,7 +303,7 @@ func (r *MonitoringReconciler) runCleanupActions(
 		return err
 	}
 
-	if finalizersUpdated := controllerutil.RemoveFinalizer(monitoringResource, dash0v1alpha1.MonitoringFinalizerId); finalizersUpdated {
+	if finalizersUpdated := controllerutil.RemoveFinalizer(monitoringResource, dash0common.MonitoringFinalizerId); finalizersUpdated {
 		if err := r.Update(ctx, monitoringResource); err != nil {
 			logger.Error(err, "Failed to remove the finalizer from the Dash0 monitoring resource, requeuing reconcile "+
 				"request.")
@@ -314,7 +315,7 @@ func (r *MonitoringReconciler) runCleanupActions(
 
 func (r *MonitoringReconciler) scheduleAttachDanglingEvents(
 	ctx context.Context,
-	monitoringResource *dash0v1alpha1.Dash0Monitoring,
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	logger *logr.Logger,
 ) {
 	// execute the attachment in a separate go routine to not block the main reconcile loop
@@ -336,7 +337,7 @@ func (r *MonitoringReconciler) scheduleAttachDanglingEvents(
  */
 func (r *MonitoringReconciler) attachDanglingEvents(
 	ctx context.Context,
-	monitoringResource *dash0v1alpha1.Dash0Monitoring,
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	logger *logr.Logger,
 ) {
 	namespace := monitoringResource.Namespace
@@ -396,7 +397,7 @@ func (r *MonitoringReconciler) attachDanglingEvents(
 
 func (r *MonitoringReconciler) reconcileOpenTelemetryCollector(
 	ctx context.Context,
-	monitoringResource *dash0v1alpha1.Dash0Monitoring,
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	logger *logr.Logger,
 ) error {
 	// This will look up all the operator configuration resource and all monitoring resources in the cluster (including

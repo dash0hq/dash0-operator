@@ -14,6 +14,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
@@ -28,13 +29,13 @@ type OtlpProtocol string
 
 type SelfMonitoringConfiguration struct {
 	SelfMonitoringEnabled bool
-	Export                dash0v1alpha1.Export
+	Export                dash0common.Export
 }
 
 type EndpointAndHeaders struct {
 	Endpoint string
 	Protocol string
-	Headers  []dash0v1alpha1.Header
+	Headers  []dash0common.Header
 }
 
 const (
@@ -64,7 +65,7 @@ func (c *SelfMonitoringConfiguration) HasDash0ApiAccessConfigured() bool {
 		(c.Export.Dash0.Authorization.Token != nil || c.Export.Dash0.Authorization.SecretRef != nil)
 }
 
-func (c *SelfMonitoringConfiguration) GetDash0Authorization() dash0v1alpha1.Authorization {
+func (c *SelfMonitoringConfiguration) GetDash0Authorization() dash0common.Authorization {
 	return c.Export.Dash0.Authorization
 }
 
@@ -113,7 +114,7 @@ func ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
 }
 
 func convertResourceToDash0ExportConfiguration(
-	export *dash0v1alpha1.Export,
+	export *dash0common.Export,
 	selfMonitoringEnabled bool,
 	logger *logr.Logger,
 ) (SelfMonitoringConfiguration, error) {
@@ -133,8 +134,8 @@ func convertResourceToDash0ExportConfiguration(
 	dash0Export := export.Dash0
 	return SelfMonitoringConfiguration{
 		SelfMonitoringEnabled: selfMonitoringEnabled,
-		Export: dash0v1alpha1.Export{
-			Dash0: &dash0v1alpha1.Dash0Configuration{
+		Export: dash0common.Export{
+			Dash0: &dash0common.Dash0Configuration{
 				Endpoint:      dash0Export.Endpoint,
 				Dataset:       dash0Export.Dataset,
 				Authorization: dash0Export.Authorization,
@@ -145,7 +146,7 @@ func convertResourceToDash0ExportConfiguration(
 }
 
 func convertResourceToGrpcExportConfiguration(
-	export *dash0v1alpha1.Export,
+	export *dash0common.Export,
 	selfMonitoringEnabled bool,
 	logger *logr.Logger,
 ) (SelfMonitoringConfiguration, error) {
@@ -159,8 +160,8 @@ func convertResourceToGrpcExportConfiguration(
 	grpcExport := export.Grpc
 	return SelfMonitoringConfiguration{
 		SelfMonitoringEnabled: selfMonitoringEnabled,
-		Export: dash0v1alpha1.Export{
-			Grpc: &dash0v1alpha1.GrpcConfiguration{
+		Export: dash0common.Export{
+			Grpc: &dash0common.GrpcConfiguration{
 				Endpoint: grpcExport.Endpoint,
 				Headers:  grpcExport.Headers,
 			},
@@ -169,19 +170,19 @@ func convertResourceToGrpcExportConfiguration(
 }
 
 func convertResourceToHttpExportConfiguration(
-	export *dash0v1alpha1.Export,
+	export *dash0common.Export,
 	selfMonitoringEnabled bool,
 ) (SelfMonitoringConfiguration, error) {
 	httpExport := export.Http
-	if httpExport.Encoding == dash0v1alpha1.Json {
+	if httpExport.Encoding == dash0common.Json {
 		return SelfMonitoringConfiguration{
 			SelfMonitoringEnabled: false,
 		}, fmt.Errorf("using an HTTP exporter with JSON encoding self-monitoring is not supported")
 	}
 	return SelfMonitoringConfiguration{
 		SelfMonitoringEnabled: selfMonitoringEnabled,
-		Export: dash0v1alpha1.Export{
-			Http: &dash0v1alpha1.HttpConfiguration{
+		Export: dash0common.Export{
+			Http: &dash0common.HttpConfiguration{
 				Endpoint: httpExport.Endpoint,
 				Headers:  httpExport.Headers,
 				Encoding: httpExport.Encoding,
@@ -268,7 +269,7 @@ func enableSelfMonitoringInCollector(
 
 func enableSelfMonitoringInCollectorContainer(
 	container *corev1.Container,
-	selfMonitoringExport dash0v1alpha1.Export,
+	selfMonitoringExport dash0common.Export,
 	authTokenEnvVar *corev1.EnvVar,
 	operatorVersion string,
 	developmentMode bool,
@@ -332,7 +333,7 @@ func addAuthTokenToContainer(container *corev1.Container, authTokenEnvVar *corev
 	}
 }
 
-func convertHeadersToEnvVarValue(headers []dash0v1alpha1.Header) string {
+func convertHeadersToEnvVarValue(headers []dash0common.Header) string {
 	keyValuePairs := make([]string, 0, len(headers))
 	for _, header := range headers {
 		keyValuePairs = append(keyValuePairs, fmt.Sprintf("%v=%v", header.Name, header.Value))
@@ -373,15 +374,15 @@ func matchEnvVar(envVarName string) func(corev1.EnvVar) bool {
 // ConvertExportConfigurationToEnvVarSettings is used when enabling self-monitoring in a container by configuring
 // the OpenTelemetry Go SDK via _environment variable_. We use this approach for the OTel collector pods that the
 // operator starts.
-func ConvertExportConfigurationToEnvVarSettings(selfMonitoringExport dash0v1alpha1.Export) EndpointAndHeaders {
+func ConvertExportConfigurationToEnvVarSettings(selfMonitoringExport dash0common.Export) EndpointAndHeaders {
 	if selfMonitoringExport.Dash0 != nil {
 		dash0Export := selfMonitoringExport.Dash0
-		headers := []dash0v1alpha1.Header{{
+		headers := []dash0common.Header{{
 			Name:  util.AuthorizationHeaderName,
 			Value: selfMonitoringAuthHeaderValue,
 		}}
 		if dash0Export.Dataset != "" && dash0Export.Dataset != util.DatasetDefault {
-			headers = append(headers, dash0v1alpha1.Header{
+			headers = append(headers, dash0common.Header{
 				Name:  util.Dash0DatasetHeaderName,
 				Value: dash0Export.Dataset,
 			})
@@ -404,7 +405,7 @@ func ConvertExportConfigurationToEnvVarSettings(selfMonitoringExport dash0v1alph
 	if selfMonitoringExport.Http != nil {
 		protocol := common.ProtocolHttpProtobuf
 		// The Go SDK does not support http/json, so we ignore this setting for now.
-		// if selfMonitoringExport.Http.Encoding == dash0v1alpha1.Json {
+		// if selfMonitoringExport.Http.Encoding == dash0common.Json {
 		// 	 protocol = common.ProtocolHttpJson
 		// }
 		return EndpointAndHeaders{
@@ -444,7 +445,7 @@ func ConvertExportConfigurationToCollectorLogSelfMonitoringPipelineString(selfMo
 	return ""
 }
 
-func convertDash0ExportConfigurationToCollectorLogSelfMonitoringPipelineString(dash0Export *dash0v1alpha1.Dash0Configuration) string {
+func convertDash0ExportConfigurationToCollectorLogSelfMonitoringPipelineString(dash0Export *dash0common.Dash0Configuration) string {
 	pipeline := collectorLogSelfMonitoringPrelude +
 		fmt.Sprintf(`
                 protocol: grpc
@@ -467,7 +468,7 @@ func convertDash0ExportConfigurationToCollectorLogSelfMonitoringPipelineString(d
 	return pipeline
 }
 
-func convertGrpcExportConfigurationToCollectorLogSelfMonitoringPipelineString(grpcExport *dash0v1alpha1.GrpcConfiguration) string {
+func convertGrpcExportConfigurationToCollectorLogSelfMonitoringPipelineString(grpcExport *dash0common.GrpcConfiguration) string {
 	pipeline := collectorLogSelfMonitoringPrelude +
 		fmt.Sprintf(`
                 protocol: grpc
@@ -480,9 +481,9 @@ func convertGrpcExportConfigurationToCollectorLogSelfMonitoringPipelineString(gr
 	return pipeline
 }
 
-func convertHttpExportConfigurationToCollectorLogSelfMonitoringPipelineString(httpExport *dash0v1alpha1.HttpConfiguration) string {
+func convertHttpExportConfigurationToCollectorLogSelfMonitoringPipelineString(httpExport *dash0common.HttpConfiguration) string {
 	encoding := "protobuf"
-	if httpExport.Encoding == dash0v1alpha1.Json {
+	if httpExport.Encoding == dash0common.Json {
 		encoding = "json"
 	}
 	pipeline := collectorLogSelfMonitoringPrelude +
@@ -497,7 +498,7 @@ func convertHttpExportConfigurationToCollectorLogSelfMonitoringPipelineString(ht
 	return pipeline
 }
 
-func appendHeadersToCollectorLogSelfMonitoringPipelineString(pipeline string, headers []dash0v1alpha1.Header) string {
+func appendHeadersToCollectorLogSelfMonitoringPipelineString(pipeline string, headers []dash0common.Header) string {
 	if len(headers) > 0 {
 		pipeline += `
                 headers:`

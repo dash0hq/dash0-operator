@@ -28,7 +28,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
@@ -336,7 +337,7 @@ func (r *PersesDashboardReconciler) overrideHttpRetryDelay(delay time.Duration) 
 	r.httpRetryDelay = delay
 }
 
-func (r *PersesDashboardReconciler) IsSynchronizationEnabled(monitoringResource *dash0v1alpha1.Dash0Monitoring) bool {
+func (r *PersesDashboardReconciler) IsSynchronizationEnabled(monitoringResource *dash0v1beta1.Dash0Monitoring) bool {
 	if monitoringResource == nil {
 		return false
 	}
@@ -568,9 +569,9 @@ func (r *PersesDashboardReconciler) CreateDeleteRequests(
 }
 
 func (r *PersesDashboardReconciler) UpdateSynchronizationResultsInStatus(
-	monitoringResource *dash0v1alpha1.Dash0Monitoring,
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	qualifiedName string,
-	status dash0v1alpha1.SynchronizationStatus,
+	status dash0common.SynchronizationStatus,
 	_ int,
 	_ []string,
 	synchronizationErrors map[string]string,
@@ -578,13 +579,13 @@ func (r *PersesDashboardReconciler) UpdateSynchronizationResultsInStatus(
 ) interface{} {
 	previousResults := monitoringResource.Status.PersesDashboardSynchronizationResults
 	if previousResults == nil {
-		previousResults = make(map[string]dash0v1alpha1.PersesDashboardSynchronizationResults)
+		previousResults = make(map[string]dash0common.PersesDashboardSynchronizationResults)
 		monitoringResource.Status.PersesDashboardSynchronizationResults = previousResults
 	}
 
 	// A Perses dashboard resource can only contain one dashboard, so its SynchronizationResults struct is considerably
 	// simpler than the PrometheusRuleSynchronizationResults struct.
-	result := dash0v1alpha1.PersesDashboardSynchronizationResults{
+	result := dash0common.PersesDashboardSynchronizationResults{
 		SynchronizedAt:        metav1.Time{Time: time.Now()},
 		SynchronizationStatus: status,
 	}

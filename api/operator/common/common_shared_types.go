@@ -1,7 +1,10 @@
-// SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+// SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package v1alpha1
+package common
+
+// This file contains common types used in multiple custom resource definitions (e.g. Dash0Monitoring and
+// Dash0OperatorConfiguration), and potentially also in multiple versions of those.
 
 type ConditionType string
 
