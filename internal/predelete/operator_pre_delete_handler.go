@@ -18,6 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 )
 
 const (
@@ -38,11 +39,13 @@ func NewOperatorPreDeleteHandler() (*OperatorPreDeleteHandler, error) {
 func NewOperatorPreDeleteHandlerFromConfig(config *rest.Config) (*OperatorPreDeleteHandler, error) {
 	logger := ctrl.Log.WithName("dash0-uninstrument-all")
 	s := runtime.NewScheme()
-	err := dash0v1alpha1.AddToScheme(s)
-	if err != nil {
+	if err := dash0v1alpha1.AddToScheme(s); err != nil {
 		return nil, err
 	}
-	client, err := client.NewWithWatch(config, client.Options{
+	if err := dash0v1beta1.AddToScheme(s); err != nil {
+		return nil, err
+	}
+	k8sClient, err := client.NewWithWatch(config, client.Options{
 		Scheme: s,
 	})
 	if err != nil {
@@ -50,7 +53,7 @@ func NewOperatorPreDeleteHandlerFromConfig(config *rest.Config) (*OperatorPreDel
 	}
 
 	return &OperatorPreDeleteHandler{
-		client:  client,
+		client:  k8sClient,
 		logger:  &logger,
 		timeout: defaultTimeout,
 	}, nil
@@ -87,7 +90,7 @@ func (r *OperatorPreDeleteHandler) DeleteAllMonitoringResources() error {
 }
 
 func (r *OperatorPreDeleteHandler) findAllAndRequestDeletion(ctx context.Context) (int, error) {
-	allDash0MonitoringResources := &dash0v1alpha1.Dash0MonitoringList{}
+	allDash0MonitoringResources := &dash0v1beta1.Dash0MonitoringList{}
 	err := r.client.List(ctx, allDash0MonitoringResources)
 	if err != nil {
 		errMsg := err.Error()
@@ -113,7 +116,7 @@ func (r *OperatorPreDeleteHandler) findAllAndRequestDeletion(ctx context.Context
 		// You would think that the following call without the "client.InNamespace(namespace)" would delete all
 		// resources across all namespaces in one go, but instead it fails with "the server could not find the requested
 		// resource". Same for the dynamic client.
-		err = r.client.DeleteAllOf(ctx, &dash0v1alpha1.Dash0Monitoring{}, client.InNamespace(namespace))
+		err = r.client.DeleteAllOf(ctx, &dash0v1beta1.Dash0Monitoring{}, client.InNamespace(namespace))
 		if err != nil {
 			r.logger.Error(err, fmt.Sprintf("Failed to delete Dash0 monitoring resource in namespace %s.", namespace))
 		} else {
@@ -130,7 +133,7 @@ func (r *OperatorPreDeleteHandler) waitForAllDash0MonitoringResourcesToBeFinaliz
 	ctx context.Context,
 	totalNumberOfDash0MonitoringResources int,
 ) error {
-	watcher, err := r.client.Watch(ctx, &dash0v1alpha1.Dash0MonitoringList{})
+	watcher, err := r.client.Watch(ctx, &dash0v1beta1.Dash0MonitoringList{})
 	if err != nil {
 		r.logger.Error(err, "failed to watch Dash0 monitoring resources across all namespaces to wait for deletion")
 		return fmt.Errorf("failed to watch Dash0 monitoring resources across all namespaces to wait for deletion: %w", err)
@@ -186,7 +189,7 @@ func (r *OperatorPreDeleteHandler) watchAndProcessEvents(
 	for event := range watcher.ResultChan() {
 		switch event.Type {
 		case watch.Deleted:
-			namespace := event.Object.(*dash0v1alpha1.Dash0Monitoring).Namespace
+			namespace := event.Object.(*dash0v1beta1.Dash0Monitoring).Namespace
 			*channelToSignalDeletions <- namespace
 		}
 	}

@@ -16,6 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/collectors"
@@ -42,7 +43,7 @@ type ApiClientSetRemoveTestConfig struct {
 }
 
 type SelfMonitoringTestConfig struct {
-	createExport          func() *dash0v1alpha1.Export
+	createExport          func() *dash0common.Export
 	createSecret          *corev1.Secret
 	selfMonitoringEnabled bool
 	expectedSdkIsActive   bool
@@ -482,10 +483,10 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 			// update operator configuration, but do not disable self-monitoring, only change endpoint, dataset and
 			// token
 			updatedOperatorConfigurationResource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, Default)
-			updatedOperatorConfigurationResource.Spec.Export = &dash0v1alpha1.Export{
-				Dash0: &dash0v1alpha1.Dash0Configuration{
+			updatedOperatorConfigurationResource.Spec.Export = &dash0common.Export{
+				Dash0: &dash0common.Dash0Configuration{
 					Endpoint: EndpointDash0TestAlternative,
-					Authorization: dash0v1alpha1.Authorization{
+					Authorization: dash0common.Authorization{
 						Token: &AuthorizationTokenTestAlternative,
 					},
 					Dataset: DatasetCustomTest,
@@ -635,12 +636,12 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 			triggerOperatorConfigurationReconcileRequest(ctx, reconciler, thirdName.Name)
 
 			Eventually(func(g Gomega) {
-				resource1Available := LoadOperatorConfigurationResourceStatusCondition(ctx, k8sClient, firstName.Name, dash0v1alpha1.ConditionTypeAvailable)
-				resource1Degraded := LoadOperatorConfigurationResourceStatusCondition(ctx, k8sClient, firstName.Name, dash0v1alpha1.ConditionTypeDegraded)
-				resource2Available := LoadOperatorConfigurationResourceStatusCondition(ctx, k8sClient, secondName.Name, dash0v1alpha1.ConditionTypeAvailable)
-				resource2Degraded := LoadOperatorConfigurationResourceStatusCondition(ctx, k8sClient, secondName.Name, dash0v1alpha1.ConditionTypeDegraded)
-				resource3Available := LoadOperatorConfigurationResourceStatusCondition(ctx, k8sClient, thirdName.Name, dash0v1alpha1.ConditionTypeAvailable)
-				resource3Degraded := LoadOperatorConfigurationResourceStatusCondition(ctx, k8sClient, thirdName.Name, dash0v1alpha1.ConditionTypeDegraded)
+				resource1Available := LoadOperatorConfigurationResourceStatusCondition(ctx, k8sClient, firstName.Name, dash0common.ConditionTypeAvailable)
+				resource1Degraded := LoadOperatorConfigurationResourceStatusCondition(ctx, k8sClient, firstName.Name, dash0common.ConditionTypeDegraded)
+				resource2Available := LoadOperatorConfigurationResourceStatusCondition(ctx, k8sClient, secondName.Name, dash0common.ConditionTypeAvailable)
+				resource2Degraded := LoadOperatorConfigurationResourceStatusCondition(ctx, k8sClient, secondName.Name, dash0common.ConditionTypeDegraded)
+				resource3Available := LoadOperatorConfigurationResourceStatusCondition(ctx, k8sClient, thirdName.Name, dash0common.ConditionTypeAvailable)
+				resource3Degraded := LoadOperatorConfigurationResourceStatusCondition(ctx, k8sClient, thirdName.Name, dash0common.ConditionTypeDegraded)
 
 				// The first two resource should have been marked as degraded.
 				VerifyResourceStatusCondition(
@@ -754,9 +755,9 @@ func verifyOperatorConfigurationResourceIsAvailable(ctx context.Context) {
 	By("Verifying status conditions")
 	Eventually(func(g Gomega) {
 		resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, g)
-		availableCondition = meta.FindStatusCondition(resource.Status.Conditions, string(dash0v1alpha1.ConditionTypeAvailable))
+		availableCondition = meta.FindStatusCondition(resource.Status.Conditions, string(dash0common.ConditionTypeAvailable))
 		g.Expect(availableCondition.Status).To(Equal(metav1.ConditionTrue))
-		degradedCondition := meta.FindStatusCondition(resource.Status.Conditions, string(dash0v1alpha1.ConditionTypeDegraded))
+		degradedCondition := meta.FindStatusCondition(resource.Status.Conditions, string(dash0common.ConditionTypeDegraded))
 		g.Expect(degradedCondition).To(BeNil())
 	}, timeout, pollingInterval).Should(Succeed())
 }
@@ -766,9 +767,9 @@ func verifyOperatorConfigurationResourceIsDegraded(ctx context.Context) {
 	By("Verifying status conditions")
 	Eventually(func(g Gomega) {
 		resource := LoadOperatorConfigurationResourceOrFail(ctx, k8sClient, g)
-		availableCondition = meta.FindStatusCondition(resource.Status.Conditions, string(dash0v1alpha1.ConditionTypeAvailable))
+		availableCondition = meta.FindStatusCondition(resource.Status.Conditions, string(dash0common.ConditionTypeAvailable))
 		g.Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse))
-		degradedCondition := meta.FindStatusCondition(resource.Status.Conditions, string(dash0v1alpha1.ConditionTypeDegraded))
+		degradedCondition := meta.FindStatusCondition(resource.Status.Conditions, string(dash0common.ConditionTypeDegraded))
 		g.Expect(degradedCondition.Status).To(Equal(metav1.ConditionTrue))
 	}, timeout, pollingInterval).Should(Succeed())
 }

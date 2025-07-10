@@ -13,7 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
@@ -62,7 +62,7 @@ var (
 	AuthorizationHeaderTestAlternative = fmt.Sprintf("Bearer %s", AuthorizationTokenTestAlternative)
 	AuthorizationTokenTestFromSecret   = "authorization-token-test-from-secret"
 	AuthorizationHeaderTestFromSecret  = fmt.Sprintf("Bearer %s", AuthorizationTokenTestFromSecret)
-	SecretRefTest                      = dash0v1alpha1.SecretRef{
+	SecretRefTest                      = dash0common.SecretRef{
 		Name: "secret-ref",
 		Key:  "key",
 	}
@@ -103,49 +103,49 @@ var (
 	}
 )
 
-func NoExport() *dash0v1alpha1.Export {
+func NoExport() *dash0common.Export {
 	return nil
 }
 
-func Dash0ExportWithEndpointAndToken() *dash0v1alpha1.Export {
-	return &dash0v1alpha1.Export{
-		Dash0: &dash0v1alpha1.Dash0Configuration{
+func Dash0ExportWithEndpointAndToken() *dash0common.Export {
+	return &dash0common.Export{
+		Dash0: &dash0common.Dash0Configuration{
 			Endpoint: EndpointDash0Test,
-			Authorization: dash0v1alpha1.Authorization{
+			Authorization: dash0common.Authorization{
 				Token: &AuthorizationTokenTest,
 			},
 		},
 	}
 }
 
-func Dash0ExportWithEndpointTokenAndCustomDataset() *dash0v1alpha1.Export {
-	return &dash0v1alpha1.Export{
-		Dash0: &dash0v1alpha1.Dash0Configuration{
+func Dash0ExportWithEndpointTokenAndCustomDataset() *dash0common.Export {
+	return &dash0common.Export{
+		Dash0: &dash0common.Dash0Configuration{
 			Endpoint: EndpointDash0Test,
 			Dataset:  DatasetCustomTest,
-			Authorization: dash0v1alpha1.Authorization{
+			Authorization: dash0common.Authorization{
 				Token: &AuthorizationTokenTest,
 			},
 		},
 	}
 }
 
-func Dash0ExportWithEndpointAndSecretRef() *dash0v1alpha1.Export {
-	return &dash0v1alpha1.Export{
-		Dash0: &dash0v1alpha1.Dash0Configuration{
+func Dash0ExportWithEndpointAndSecretRef() *dash0common.Export {
+	return &dash0common.Export{
+		Dash0: &dash0common.Dash0Configuration{
 			Endpoint: EndpointDash0Test,
-			Authorization: dash0v1alpha1.Authorization{
+			Authorization: dash0common.Authorization{
 				SecretRef: &SecretRefTest,
 			},
 		},
 	}
 }
 
-func GrpcExportTest() *dash0v1alpha1.Export {
-	return &dash0v1alpha1.Export{
-		Grpc: &dash0v1alpha1.GrpcConfiguration{
+func GrpcExportTest() *dash0common.Export {
+	return &dash0common.Export{
+		Grpc: &dash0common.GrpcConfiguration{
 			Endpoint: EndpointGrpcTest,
-			Headers: []dash0v1alpha1.Header{{
+			Headers: []dash0common.Header{{
 				Name:  "Key",
 				Value: "Value",
 			}},
@@ -153,15 +153,15 @@ func GrpcExportTest() *dash0v1alpha1.Export {
 	}
 }
 
-func HttpExportTest() *dash0v1alpha1.Export {
-	return &dash0v1alpha1.Export{
-		Http: &dash0v1alpha1.HttpConfiguration{
+func HttpExportTest() *dash0common.Export {
+	return &dash0common.Export{
+		Http: &dash0common.HttpConfiguration{
 			Endpoint: EndpointHttpTest,
-			Headers: []dash0v1alpha1.Header{{
+			Headers: []dash0common.Header{{
 				Name:  "Key",
 				Value: "Value",
 			}},
-			Encoding: dash0v1alpha1.Proto,
+			Encoding: dash0common.Proto,
 		},
 	}
 }

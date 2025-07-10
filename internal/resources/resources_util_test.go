@@ -13,7 +13,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -33,7 +34,7 @@ type statusExpectations struct {
 }
 
 type verifyThatResourceIsUniqueInScopeTest struct {
-	createResources          func() *dash0v1alpha1.Dash0Monitoring
+	createResources          func() *dash0v1beta1.Dash0Monitoring
 	expectedStopReconcile    bool
 	expectedStatusConditions map[types.NamespacedName]statusExpectations
 }
@@ -130,13 +131,13 @@ var _ = Describe("resource util functions", Ordered, func() {
 
 		Eventually(func(g Gomega) {
 			for resName, expectations := range testConfig.expectedStatusConditions {
-				availableCondition := LoadMonitoringResourceStatusCondition(ctx, k8sClient, resName, dash0v1alpha1.ConditionTypeAvailable)
+				availableCondition := LoadMonitoringResourceStatusCondition(ctx, k8sClient, resName, dash0common.ConditionTypeAvailable)
 				verifyResourceStatusCondition(
 					g,
 					availableCondition,
 					expectations.available,
 				)
-				degradedCondition := LoadMonitoringResourceStatusCondition(ctx, k8sClient, resName, dash0v1alpha1.ConditionTypeDegraded)
+				degradedCondition := LoadMonitoringResourceStatusCondition(ctx, k8sClient, resName, dash0common.ConditionTypeDegraded)
 				verifyResourceStatusCondition(
 					g,
 					degradedCondition,
@@ -150,7 +151,7 @@ var _ = Describe("resource util functions", Ordered, func() {
 			expectedStopReconcile: false,
 		}),
 		Entry("one degraded resource", verifyThatResourceIsUniqueInScopeTest{
-			createResources: func() *dash0v1alpha1.Dash0Monitoring {
+			createResources: func() *dash0v1beta1.Dash0Monitoring {
 				resource := CreateDefaultMonitoringResource(ctx, k8sClient, resourceName1)
 				createdObjectsResourcesUtilTest = append(createdObjectsResourcesUtilTest, resource)
 				resource.EnsureResourceIsMarkedAsDegraded(statusConditionReason, statusConditionMessage)
@@ -163,7 +164,7 @@ var _ = Describe("resource util functions", Ordered, func() {
 			},
 		}),
 		Entry("one available resource", verifyThatResourceIsUniqueInScopeTest{
-			createResources: func() *dash0v1alpha1.Dash0Monitoring {
+			createResources: func() *dash0v1beta1.Dash0Monitoring {
 				resource := CreateDefaultMonitoringResource(ctx, k8sClient, resourceName1)
 				createdObjectsResourcesUtilTest = append(createdObjectsResourcesUtilTest, resource)
 				resource.EnsureResourceIsMarkedAsAvailable()
@@ -176,7 +177,7 @@ var _ = Describe("resource util functions", Ordered, func() {
 			},
 		}),
 		Entry("multiple resources, the reconciled resource is the most recent one and it is degraded", verifyThatResourceIsUniqueInScopeTest{
-			createResources: func() *dash0v1alpha1.Dash0Monitoring {
+			createResources: func() *dash0v1beta1.Dash0Monitoring {
 				resource1 := CreateDefaultMonitoringResource(ctx, k8sClient, resourceName1)
 				createdObjectsResourcesUtilTest = append(createdObjectsResourcesUtilTest, resource1)
 				resource1.EnsureResourceIsMarkedAsAvailable()
@@ -209,7 +210,7 @@ var _ = Describe("resource util functions", Ordered, func() {
 			},
 		}),
 		Entry("multiple resources, the reconciled resource is the most recent one and it is available", verifyThatResourceIsUniqueInScopeTest{
-			createResources: func() *dash0v1alpha1.Dash0Monitoring {
+			createResources: func() *dash0v1beta1.Dash0Monitoring {
 				resource1 := CreateDefaultMonitoringResource(ctx, k8sClient, resourceName1)
 				createdObjectsResourcesUtilTest = append(createdObjectsResourcesUtilTest, resource1)
 				resource1.EnsureResourceIsMarkedAsAvailable()
@@ -242,7 +243,7 @@ var _ = Describe("resource util functions", Ordered, func() {
 			},
 		}),
 		Entry("multiple resources, the reconciled resource is not the ost recent one", verifyThatResourceIsUniqueInScopeTest{
-			createResources: func() *dash0v1alpha1.Dash0Monitoring {
+			createResources: func() *dash0v1beta1.Dash0Monitoring {
 				resource1 := CreateDefaultMonitoringResource(ctx, k8sClient, resourceName1)
 				createdObjectsResourcesUtilTest = append(createdObjectsResourcesUtilTest, resource1)
 				resource1.EnsureResourceIsMarkedAsAvailable()

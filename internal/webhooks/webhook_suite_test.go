@@ -27,6 +27,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -62,9 +63,22 @@ var _ = BeforeSuite(func() {
 	ctx, cancel = context.WithCancel(context.TODO())
 
 	By("bootstrapping test environment")
+	var err error
+	scheme := apimachineryruntime.NewScheme()
+	Expect(clientgoscheme.AddToScheme(scheme)).To(Succeed())
+	Expect(dash0v1alpha1.AddToScheme(scheme)).To(Succeed())
+	Expect(dash0v1beta1.AddToScheme(scheme)).To(Succeed())
+	Expect(admissionv1.AddToScheme(scheme)).To(Succeed())
+
 	testEnv = &envtest.Environment{
-		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
-		ErrorIfCRDPathMissing: false,
+		CRDDirectoryPaths: []string{
+			filepath.Join("..", "..", "config", "crd", "bases"),
+		},
+		CRDInstallOptions: envtest.CRDInstallOptions{
+			// Note: passing the scheme with our CRDs to envtest is required for testing conversion webhooks.
+			Scheme: scheme,
+		},
+		ErrorIfCRDPathMissing: true,
 		BinaryAssetsDirectory: filepath.Join("..", "..", "bin", "k8s",
 			fmt.Sprintf("1.28.3-%s-%s", runtime.GOOS, runtime.GOARCH)),
 		WebhookInstallOptions: envtest.WebhookInstallOptions{
@@ -73,21 +87,9 @@ var _ = BeforeSuite(func() {
 	}
 	Expect(testEnv).NotTo(BeNil())
 
-	var err error
 	cfg, err = testEnv.Start()
 	Expect(err).NotTo(HaveOccurred())
 	Expect(cfg).NotTo(BeNil())
-
-	scheme := apimachineryruntime.NewScheme()
-	err = clientgoscheme.AddToScheme(scheme)
-	Expect(err).NotTo(HaveOccurred())
-	err = dash0v1alpha1.AddToScheme(scheme)
-	Expect(err).NotTo(HaveOccurred())
-
-	err = admissionv1.AddToScheme(scheme)
-	Expect(err).NotTo(HaveOccurred())
-
-	//+kubebuilder:scaffold:scheme
 
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme})
 	Expect(err).NotTo(HaveOccurred())
@@ -119,38 +121,35 @@ var _ = BeforeSuite(func() {
 	// in an actual production deployment of the operator, the Kustomize configs are still used for registering
 	// webhooks in the unit tests here; via testEnv = &envtest.Environment.WebhookInstallOptions.Paths
 
-	err = (&InstrumentationWebhookHandler{
+	Expect((&InstrumentationWebhookHandler{
 		Client:               k8sClient,
 		Recorder:             manager.GetEventRecorderFor("dash0-webhook"),
 		Images:               TestImages,
 		ExtraConfig:          util.ExtraConfigDefaults,
 		OTelCollectorBaseUrl: OTelCollectorNodeLocalBaseUrlTest,
 		InstrumentationDebug: false,
-	}).SetupWebhookWithManager(manager)
-	Expect(err).NotTo(HaveOccurred())
+	}).SetupWebhookWithManager(manager)).To(Succeed())
 
-	err = (&OperatorConfigurationMutatingWebhookHandler{
+	Expect((&OperatorConfigurationMutatingWebhookHandler{
 		Client: k8sClient,
-	}).SetupWebhookWithManager(manager)
-	Expect(err).NotTo(HaveOccurred())
+	}).SetupWebhookWithManager(manager)).To(Succeed())
 
 	operatorConfigurationMutatingWebhookHandler := &OperatorConfigurationValidationWebhookHandler{
 		Client: k8sClient,
 	}
-	err = operatorConfigurationMutatingWebhookHandler.SetupWebhookWithManager(manager)
-	Expect(err).NotTo(HaveOccurred())
+	Expect(operatorConfigurationMutatingWebhookHandler.SetupWebhookWithManager(manager)).To(Succeed())
+
+	Expect(SetupDash0MonitoringConversionWebhookWithManager(manager)).To(Succeed())
 
 	monitoringMutatingWebhookHandler = &MonitoringMutatingWebhookHandler{
 		Client:            k8sClient,
 		OperatorNamespace: OperatorNamespace,
 	}
-	err = monitoringMutatingWebhookHandler.SetupWebhookWithManager(manager)
-	Expect(err).NotTo(HaveOccurred())
+	Expect(monitoringMutatingWebhookHandler.SetupWebhookWithManager(manager)).To(Succeed())
 
-	err = (&MonitoringValidationWebhookHandler{
+	Expect((&MonitoringValidationWebhookHandler{
 		Client: k8sClient,
-	}).SetupWebhookWithManager(manager)
-	Expect(err).NotTo(HaveOccurred())
+	}).SetupWebhookWithManager(manager)).To(Succeed())
 
 	//+kubebuilder:scaffold:webhook
 

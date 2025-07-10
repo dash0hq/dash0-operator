@@ -31,7 +31,7 @@ func (h *OperatorConfigurationValidationWebhookHandler) SetupWebhookWithManager(
 	if err != nil {
 		return err
 	}
-	mgr.GetWebhookServer().Register("/v1alpha1/validate/operator-configuration", handler)
+	mgr.GetWebhookServer().Register("/operator-configuration/validate", handler)
 
 	return nil
 }

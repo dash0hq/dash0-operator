@@ -13,6 +13,7 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -39,10 +40,10 @@ var (
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 			Enabled: ptr.To(false),
 		},
-		Export: &dash0v1alpha1.Export{
-			Dash0: &dash0v1alpha1.Dash0Configuration{
+		Export: &dash0common.Export{
+			Dash0: &dash0common.Dash0Configuration{
 				Endpoint: EndpointDash0Test,
-				Authorization: dash0v1alpha1.Authorization{
+				Authorization: dash0common.Authorization{
 					Token: &AuthorizationTokenTest,
 				},
 			},
@@ -59,10 +60,10 @@ var (
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 			Enabled: ptr.To(false),
 		},
-		Export: &dash0v1alpha1.Export{
-			Dash0: &dash0v1alpha1.Dash0Configuration{
+		Export: &dash0common.Export{
+			Dash0: &dash0common.Dash0Configuration{
 				Endpoint: EndpointDash0Test,
-				Authorization: dash0v1alpha1.Authorization{
+				Authorization: dash0common.Authorization{
 					SecretRef: &SecretRefTest,
 				},
 			},
@@ -79,11 +80,11 @@ var (
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 			Enabled: ptr.To(false),
 		},
-		Export: &dash0v1alpha1.Export{
-			Dash0: &dash0v1alpha1.Dash0Configuration{
+		Export: &dash0common.Export{
+			Dash0: &dash0common.Dash0Configuration{
 				Endpoint:    EndpointDash0Test,
 				ApiEndpoint: ApiEndpointTest,
-				Authorization: dash0v1alpha1.Authorization{
+				Authorization: dash0common.Authorization{
 					Token: &AuthorizationTokenTest,
 				},
 			},
@@ -100,11 +101,11 @@ var (
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 			Enabled: ptr.To(false),
 		},
-		Export: &dash0v1alpha1.Export{
-			Dash0: &dash0v1alpha1.Dash0Configuration{
+		Export: &dash0common.Export{
+			Dash0: &dash0common.Dash0Configuration{
 				Endpoint:    EndpointDash0Test,
 				ApiEndpoint: ApiEndpointTest,
-				Authorization: dash0v1alpha1.Authorization{
+				Authorization: dash0common.Authorization{
 					SecretRef: &SecretRefTest,
 				},
 			},
@@ -121,11 +122,11 @@ var (
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 			Enabled: ptr.To(false),
 		},
-		Export: &dash0v1alpha1.Export{
-			Dash0: &dash0v1alpha1.Dash0Configuration{
+		Export: &dash0common.Export{
+			Dash0: &dash0common.Dash0Configuration{
 				Endpoint:    EndpointDash0Test,
 				ApiEndpoint: ApiEndpointTest,
-				Authorization: dash0v1alpha1.Authorization{
+				Authorization: dash0common.Authorization{
 					Token: &AuthorizationTokenTest,
 				},
 			},
@@ -142,10 +143,10 @@ var (
 		SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 			Enabled: ptr.To(true),
 		},
-		Export: &dash0v1alpha1.Export{
-			Dash0: &dash0v1alpha1.Dash0Configuration{
+		Export: &dash0common.Export{
+			Dash0: &dash0common.Dash0Configuration{
 				Endpoint: EndpointDash0Test,
-				Authorization: dash0v1alpha1.Authorization{
+				Authorization: dash0common.Authorization{
 					Token: &AuthorizationTokenTest,
 				},
 			},
@@ -212,10 +213,10 @@ func CreateOperatorConfigurationResourceWithName(
 				SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 					Enabled: ptr.To(false),
 				},
-				Export: &dash0v1alpha1.Export{
-					Dash0: &dash0v1alpha1.Dash0Configuration{
+				Export: &dash0common.Export{
+					Dash0: &dash0common.Dash0Configuration{
 						Endpoint: EndpointDash0Test,
-						Authorization: dash0v1alpha1.Authorization{
+						Authorization: dash0common.Authorization{
 							Token: &AuthorizationTokenTest,
 						},
 					},

@@ -23,7 +23,8 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/workloads"
 )
@@ -100,7 +101,7 @@ func (h *InstrumentationWebhookHandler) SetupWebhookWithManager(mgr ctrl.Manager
 	if err != nil {
 		return err
 	}
-	mgr.GetWebhookServer().Register("/v1alpha1/inject/dash0", handler)
+	mgr.GetWebhookServer().Register("/workloads/inject", handler)
 
 	return nil
 }
@@ -119,7 +120,7 @@ func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admi
 
 	targetNamespace := request.Namespace
 
-	dash0List := &dash0v1alpha1.Dash0MonitoringList{}
+	dash0List := &dash0v1beta1.Dash0MonitoringList{}
 	if err := h.Client.List(ctx, dash0List, &client.ListOptions{
 		Namespace: targetNamespace,
 	}); err != nil {
@@ -171,7 +172,7 @@ func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admi
 		actionPartial = "updated"
 	}
 	instrumentWorkloadsMode := dash0MonitoringResource.ReadInstrumentWorkloadsMode()
-	if instrumentWorkloadsMode == dash0v1alpha1.InstrumentWorkloadsModeNone {
+	if instrumentWorkloadsMode == dash0common.InstrumentWorkloadsModeNone {
 		return admission.Allowed(
 			fmt.Sprintf(
 				"Instrumenting workloads is not enabled in namespace %s, this %s workload will not be modified to "+

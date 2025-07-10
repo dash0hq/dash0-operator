@@ -13,7 +13,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 
@@ -65,11 +67,11 @@ var _ = Describe("The collector manager", Ordered, func() {
 
 	Describe("when validation checks fail", func() {
 		It("should fail if no endpoint is provided", func() {
-			monitoringResource := &dash0v1alpha1.Dash0Monitoring{
-				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					Export: &dash0v1alpha1.Export{
-						Dash0: &dash0v1alpha1.Dash0Configuration{
-							Authorization: dash0v1alpha1.Authorization{
+			monitoringResource := &dash0v1beta1.Dash0Monitoring{
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					Export: &dash0common.Export{
+						Dash0: &dash0common.Dash0Configuration{
+							Authorization: dash0common.Authorization{
 								Token: &AuthorizationTokenTest,
 							},
 						},
@@ -91,12 +93,12 @@ var _ = Describe("The collector manager", Ordered, func() {
 		})
 
 		It("should fail if neither authorization token nor secret ref are provided for Dash0 exporter", func() {
-			monitoringResource := &dash0v1alpha1.Dash0Monitoring{
-				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					Export: &dash0v1alpha1.Export{
-						Dash0: &dash0v1alpha1.Dash0Configuration{
+			monitoringResource := &dash0v1beta1.Dash0Monitoring{
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					Export: &dash0common.Export{
+						Dash0: &dash0common.Dash0Configuration{
 							Endpoint:      EndpointDash0Test,
-							Authorization: dash0v1alpha1.Authorization{},
+							Authorization: dash0common.Authorization{},
 						},
 					},
 				},
@@ -167,11 +169,11 @@ var _ = Describe("The collector manager", Ordered, func() {
 			monitoringResource := EnsureMonitoringResourceWithSpecExistsAndIsAvailable(
 				ctx,
 				k8sClient,
-				dash0v1alpha1.Dash0MonitoringSpec{
-					Export: &dash0v1alpha1.Export{
-						Dash0: &dash0v1alpha1.Dash0Configuration{
+				dash0v1beta1.Dash0MonitoringSpec{
+					Export: &dash0common.Export{
+						Dash0: &dash0common.Dash0Configuration{
 							Endpoint: EndpointDash0TestAlternative,
-							Authorization: dash0v1alpha1.Authorization{
+							Authorization: dash0common.Authorization{
 								Token: &AuthorizationTokenTestAlternative,
 							},
 						},
@@ -196,11 +198,11 @@ var _ = Describe("The collector manager", Ordered, func() {
 			monitoringResource := EnsureMonitoringResourceWithSpecExistsAndIsAvailable(
 				ctx,
 				k8sClient,
-				dash0v1alpha1.Dash0MonitoringSpec{
-					Export: &dash0v1alpha1.Export{
-						Dash0: &dash0v1alpha1.Dash0Configuration{
+				dash0v1beta1.Dash0MonitoringSpec{
+					Export: &dash0common.Export{
+						Dash0: &dash0common.Dash0Configuration{
 							Endpoint: EndpointDash0TestAlternative,
-							Authorization: dash0v1alpha1.Authorization{
+							Authorization: dash0common.Authorization{
 								Token: &AuthorizationTokenTestAlternative,
 							},
 						},
@@ -262,8 +264,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 		})
 
 		It("should do nothing if there is no operator configuration resource and the triggering monitoring resource has no export", func() {
-			monitoringResource := &dash0v1alpha1.Dash0Monitoring{
-				Spec: dash0v1alpha1.Dash0MonitoringSpec{},
+			monitoringResource := &dash0v1beta1.Dash0Monitoring{
+				Spec: dash0v1beta1.Dash0MonitoringSpec{},
 			}
 			monitoringResource.EnsureResourceIsMarkedAsAvailable()
 			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
@@ -279,12 +281,12 @@ var _ = Describe("The collector manager", Ordered, func() {
 		})
 
 		It("should do nothing if there is no operator configuration resource and the triggering monitoring resource is not marked as available", func() {
-			monitoringResource := &dash0v1alpha1.Dash0Monitoring{
-				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					Export: &dash0v1alpha1.Export{
-						Dash0: &dash0v1alpha1.Dash0Configuration{
+			monitoringResource := &dash0v1beta1.Dash0Monitoring{
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					Export: &dash0common.Export{
+						Dash0: &dash0common.Dash0Configuration{
 							Endpoint: EndpointDash0TestAlternative,
-							Authorization: dash0v1alpha1.Authorization{
+							Authorization: dash0common.Authorization{
 								Token: &AuthorizationTokenTestAlternative,
 							},
 						},
@@ -327,8 +329,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 				k8sClient,
 				dash0v1alpha1.Dash0OperatorConfigurationSpec{},
 			)
-			monitoringResource := &dash0v1alpha1.Dash0Monitoring{
-				Spec: dash0v1alpha1.Dash0MonitoringSpec{},
+			monitoringResource := &dash0v1beta1.Dash0Monitoring{
+				Spec: dash0v1beta1.Dash0MonitoringSpec{},
 			}
 			monitoringResource.EnsureResourceIsMarkedAsAvailable()
 			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
@@ -349,12 +351,12 @@ var _ = Describe("The collector manager", Ordered, func() {
 				k8sClient,
 			)
 			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, existingMonitoringResource)
-			triggeringMonitoringResource := &dash0v1alpha1.Dash0Monitoring{
-				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					Export: &dash0v1alpha1.Export{
-						Dash0: &dash0v1alpha1.Dash0Configuration{
+			triggeringMonitoringResource := &dash0v1beta1.Dash0Monitoring{
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					Export: &dash0common.Export{
+						Dash0: &dash0common.Dash0Configuration{
 							Endpoint: EndpointDash0TestAlternative,
-							Authorization: dash0v1alpha1.Authorization{
+							Authorization: dash0common.Authorization{
 								Token: &AuthorizationTokenTestAlternative,
 							},
 						},
@@ -379,8 +381,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 				k8sClient,
 			)
 			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, existingMonitoringResource)
-			triggeringMonitoringResource := &dash0v1alpha1.Dash0Monitoring{
-				Spec: dash0v1alpha1.Dash0MonitoringSpec{},
+			triggeringMonitoringResource := &dash0v1beta1.Dash0Monitoring{
+				Spec: dash0v1beta1.Dash0MonitoringSpec{},
 			}
 			triggeringMonitoringResource.EnsureResourceIsMarkedAsAvailable()
 			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
@@ -585,17 +587,17 @@ var _ = Describe("The collector manager", Ordered, func() {
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
 
-			triggeringMonitoringResourceNotAvailable := &dash0v1alpha1.Dash0Monitoring{
+			triggeringMonitoringResourceNotAvailable := &dash0v1beta1.Dash0Monitoring{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: "some-other-namespace",
 					Name:      "name",
 					UID:       "3c0e72bb-26a7-40a4-bbdd-b1c978278fc5",
 				},
-				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					Export: &dash0v1alpha1.Export{
-						Dash0: &dash0v1alpha1.Dash0Configuration{
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					Export: &dash0common.Export{
+						Dash0: &dash0common.Dash0Configuration{
 							Endpoint: EndpointDash0Test,
-							Authorization: dash0v1alpha1.Authorization{
+							Authorization: dash0common.Authorization{
 								Token: &AuthorizationTokenTest,
 							},
 						},
@@ -688,19 +690,19 @@ var _ = Describe("The collector manager", Ordered, func() {
 			firstName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-monitoring-test-resource-1"}
 			firstDash0MonitoringResource :=
 				EnsureMonitoringResourceWithSpecExistsInNamespaceAndIsAvailable(ctx, k8sClient,
-					dash0v1alpha1.Dash0MonitoringSpec{}, firstName)
+					dash0v1beta1.Dash0MonitoringSpec{}, firstName)
 			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, firstDash0MonitoringResource)
 
 			secondName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-monitoring-test-resource-2"}
 			secondDash0MonitoringResource :=
 				EnsureMonitoringResourceWithSpecExistsInNamespaceAndIsAvailable(ctx, k8sClient,
-					dash0v1alpha1.Dash0MonitoringSpec{}, secondName)
+					dash0v1beta1.Dash0MonitoringSpec{}, secondName)
 			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, secondDash0MonitoringResource)
 
 			thirdName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-monitoring-test-resource-3"}
 			thirdDash0MonitoringResource :=
 				EnsureMonitoringResourceWithSpecExistsInNamespaceAndIsAvailable(ctx, k8sClient,
-					dash0v1alpha1.Dash0MonitoringSpec{}, thirdName)
+					dash0v1beta1.Dash0MonitoringSpec{}, thirdName)
 			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, thirdDash0MonitoringResource)
 
 			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
@@ -803,17 +805,17 @@ var _ = Describe("The collector manager", Ordered, func() {
 	})
 })
 
-func assembleMonitoringResource(endpoint string, authorizationToken string) *dash0v1alpha1.Dash0Monitoring {
-	monitoringResource := &dash0v1alpha1.Dash0Monitoring{
+func assembleMonitoringResource(endpoint string, authorizationToken string) *dash0v1beta1.Dash0Monitoring {
+	monitoringResource := &dash0v1beta1.Dash0Monitoring{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "dash0-monitoring-test-resource",
 			Namespace: TestNamespaceName,
 		},
-		Spec: dash0v1alpha1.Dash0MonitoringSpec{
-			Export: &dash0v1alpha1.Export{
-				Dash0: &dash0v1alpha1.Dash0Configuration{
+		Spec: dash0v1beta1.Dash0MonitoringSpec{
+			Export: &dash0common.Export{
+				Dash0: &dash0common.Dash0Configuration{
 					Endpoint: endpoint,
-					Authorization: dash0v1alpha1.Authorization{
+					Authorization: dash0common.Authorization{
 						Token: &authorizationToken,
 					},
 				},
