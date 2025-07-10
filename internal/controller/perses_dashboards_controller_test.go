@@ -23,7 +23,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 
 	"github.com/h2non/gock"
 	. "github.com/onsi/ginkgo/v2"
@@ -42,8 +42,8 @@ var (
 
 	defaultExpectedPathDashboard = fmt.Sprintf("%s.*%s", dashboardApiBasePath, "dash0-operator_.*_test-dataset_test-namespace_test-dashboard")
 
-	defaultExpectedPersesSyncResult = dash0v1alpha1.PersesDashboardSynchronizationResults{
-		SynchronizationStatus: dash0v1alpha1.Successful,
+	defaultExpectedPersesSyncResult = dash0common.PersesDashboardSynchronizationResults{
+		SynchronizationStatus: dash0common.Successful,
 		SynchronizationError:  "",
 		ValidationIssues:      nil,
 	}
@@ -487,8 +487,8 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			verifyPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
 				ctx,
 				k8sClient,
-				dash0v1alpha1.PersesDashboardSynchronizationResults{
-					SynchronizationStatus: dash0v1alpha1.Failed,
+				dash0common.PersesDashboardSynchronizationResults{
+					SynchronizationStatus: dash0common.Failed,
 					SynchronizationError:  "",
 					ValidationIssues:      []string{"spec.display is not a map"},
 				},
@@ -518,8 +518,8 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			verifyPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
 				ctx,
 				k8sClient,
-				dash0v1alpha1.PersesDashboardSynchronizationResults{
-					SynchronizationStatus: dash0v1alpha1.Failed,
+				dash0common.PersesDashboardSynchronizationResults{
+					SynchronizationStatus: dash0common.Failed,
 					SynchronizationError:  "^unexpected status code 503 when synchronizing the dashboard \"test-dashboard\": PUT https://api.dash0.com/api/dashboards/dash0-operator_.*_test-dataset_test-namespace_test-dashboard\\?dataset=test-dataset, response body is {}\n$",
 					ValidationIssues:      nil,
 				},
@@ -634,7 +634,7 @@ func isWatchingPersesDashboardResources(persesDashboardCrdReconciler *PersesDash
 func verifyPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
 	ctx context.Context,
 	k8sClient client.Client,
-	expectedResult dash0v1alpha1.PersesDashboardSynchronizationResults,
+	expectedResult dash0common.PersesDashboardSynchronizationResults,
 ) {
 	Eventually(func(g Gomega) {
 		monRes := LoadMonitoringResourceOrFail(ctx, k8sClient, g)

@@ -18,18 +18,18 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
-	dash0common "github.com/dash0hq/dash0-operator/api/operator"
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0operator "github.com/dash0hq/dash0-operator/api/operator"
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 )
 
 type CheckResourceResult struct {
-	Resource             dash0common.Dash0Resource
+	Resource             dash0operator.Dash0Resource
 	StopReconcile        bool
 	ResourceDoesNotExist bool
 }
 
 func newCheckResourceResult(
-	resource dash0common.Dash0Resource,
+	resource dash0operator.Dash0Resource,
 	stopReconcile bool,
 	resourceDoesNotExist bool,
 ) CheckResourceResult {
@@ -86,7 +86,7 @@ func VerifyThatUniqueNonDegradedResourceExists(
 	ctx context.Context,
 	k8sClient client.Client,
 	req ctrl.Request,
-	resourcePrototype dash0common.Dash0Resource,
+	resourcePrototype dash0operator.Dash0Resource,
 	updateStatusFailedMessage string,
 	logger *logr.Logger,
 ) (CheckResourceResult, error) {
@@ -120,7 +120,7 @@ func VerifyThatResourceExists(
 	ctx context.Context,
 	k8sClient client.Client,
 	req ctrl.Request,
-	resourcePrototype dash0common.Dash0Resource,
+	resourcePrototype dash0operator.Dash0Resource,
 	logger *logr.Logger,
 ) (CheckResourceResult, error) {
 	resource := resourcePrototype.GetReceiver()
@@ -146,7 +146,7 @@ func VerifyThatResourceExists(
 	}
 
 	// We have found a resource and return it.
-	return newCheckResourceResult(resource.(dash0common.Dash0Resource), false, false), nil
+	return newCheckResourceResult(resource.(dash0operator.Dash0Resource), false, false), nil
 }
 
 // VerifyThatResourceIsUniqueInScope checks whether there are any additional resources of the same type
@@ -163,7 +163,7 @@ func VerifyThatResourceIsUniqueInScope(
 	ctx context.Context,
 	k8sClient client.Client,
 	req ctrl.Request,
-	resource dash0common.Dash0Resource,
+	resource dash0operator.Dash0Resource,
 	updateStatusFailedMessage string,
 	logger *logr.Logger,
 ) (bool, error) {
@@ -214,7 +214,7 @@ func VerifyThatResourceIsUniqueInScope(
 			if r.GetUID() == resource.GetUID() {
 				continue
 			}
-			markAsDegradedDueToNonUniqueResource(r.(dash0common.Dash0Resource), scope, logger)
+			markAsDegradedDueToNonUniqueResource(r.(dash0operator.Dash0Resource), scope, logger)
 			if err = k8sClient.Status().Update(ctx, r); err != nil {
 				logger.Error(err, updateStatusFailedMessage)
 				// Deliberately not returning the error here, instead continue the loop and try to mark as many of the
@@ -253,7 +253,7 @@ func VerifyThatResourceIsUniqueInScope(
 				// reconciled has already been set to degraded above, so we skip it here.
 				continue
 			}
-			markAsDegradedDueToNonUniqueResource(r.(dash0common.Dash0Resource), scope, logger)
+			markAsDegradedDueToNonUniqueResource(r.(dash0operator.Dash0Resource), scope, logger)
 			if err = k8sClient.Status().Update(ctx, r); err != nil {
 				logger.Error(err, updateStatusFailedMessage)
 				// Deliberately not returning the error here, instead continue the loop and try to mark as many of the
@@ -266,7 +266,7 @@ func VerifyThatResourceIsUniqueInScope(
 	}
 }
 
-func markAsDegradedDueToNonUniqueResource(resource dash0common.Dash0Resource, scope string, logger *logr.Logger) {
+func markAsDegradedDueToNonUniqueResource(resource dash0operator.Dash0Resource, scope string, logger *logr.Logger) {
 	logger.Info(fmt.Sprintf("Marking %s (%s) as degraded.", resource.GetName(), resource.GetUID()))
 	resource.EnsureResourceIsMarkedAsDegraded(
 		"NewerResourceIsPresent",
@@ -281,7 +281,7 @@ func findAllResourceInstancesInScope(
 	ctx context.Context,
 	k8sClient client.Client,
 	req ctrl.Request,
-	resource dash0common.Dash0Resource,
+	resource dash0operator.Dash0Resource,
 	logger *logr.Logger,
 ) (string, client.ObjectList, error) {
 	scope := "namespace"
@@ -318,9 +318,9 @@ func FindUniqueOrMostRecentResourceInScope(
 	ctx context.Context,
 	k8sClient client.Client,
 	namespace string,
-	resourcePrototype dash0common.Dash0Resource,
+	resourcePrototype dash0operator.Dash0Resource,
 	logger *logr.Logger,
-) (dash0common.Dash0Resource, error) {
+) (dash0operator.Dash0Resource, error) {
 	_, allResourcesInScope, err := findAllResourceInstancesInScope(
 		ctx,
 		k8sClient,
@@ -340,9 +340,9 @@ func FindUniqueOrMostRecentResourceInScope(
 }
 
 func findMostRecentResource(
-	resourcePrototype dash0common.Dash0Resource,
+	resourcePrototype dash0operator.Dash0Resource,
 	allResourcesInScope client.ObjectList,
-) dash0common.Dash0Resource {
+) dash0operator.Dash0Resource {
 	items := resourcePrototype.Items(allResourcesInScope)
 	if len(items) == 0 {
 		return nil
@@ -371,7 +371,7 @@ func (s SortByCreationTimestamp) Less(i, j int) bool {
 func InitStatusConditions(
 	ctx context.Context,
 	k8sClient client.Client,
-	resource dash0common.Dash0Resource,
+	resource dash0operator.Dash0Resource,
 	conditions []metav1.Condition,
 	logger *logr.Logger,
 ) (bool, error) {
@@ -384,7 +384,7 @@ func InitStatusConditions(
 	} else if availableCondition :=
 		meta.FindStatusCondition(
 			conditions,
-			string(dash0v1alpha1.ConditionTypeAvailable),
+			string(dash0common.ConditionTypeAvailable),
 		); availableCondition == nil {
 		resource.SetAvailableConditionToUnknown()
 		needsRefresh = true
@@ -402,7 +402,7 @@ func InitStatusConditions(
 func updateResourceStatus(
 	ctx context.Context,
 	k8sClient client.Client,
-	resource dash0common.Dash0Resource,
+	resource dash0operator.Dash0Resource,
 	logger *logr.Logger,
 ) error {
 	if err := k8sClient.Status().Update(ctx, resource.Get()); err != nil {
@@ -427,7 +427,7 @@ func updateResourceStatus(
 func CheckImminentDeletionAndHandleFinalizers(
 	ctx context.Context,
 	k8sClient client.Client,
-	resource dash0common.Dash0Resource,
+	resource dash0operator.Dash0Resource,
 	finalizerId string,
 	logger *logr.Logger,
 ) (bool, bool, error) {
@@ -461,7 +461,7 @@ func CheckImminentDeletionAndHandleFinalizers(
 func addFinalizerIfNecessary(
 	ctx context.Context,
 	k8sClient client.Client,
-	resource dash0common.Dash0Resource,
+	resource dash0operator.Dash0Resource,
 	finalizerId string,
 ) error {
 	finalizerHasBeenAdded := controllerutil.AddFinalizer(resource.Get(), finalizerId)

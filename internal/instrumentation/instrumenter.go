@@ -21,7 +21,8 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/resources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/workloads"
@@ -122,7 +123,7 @@ func (i *Instrumenter) InstrumentAtStartup(
 	logger *logr.Logger,
 ) {
 	logger.Info("Applying/updating instrumentation at manager startup.")
-	allDash0MonitoringResouresInCluster := &dash0v1alpha1.Dash0MonitoringList{}
+	allDash0MonitoringResouresInCluster := &dash0v1beta1.Dash0MonitoringList{}
 	if err := i.List(
 		ctx,
 		allDash0MonitoringResouresInCluster,
@@ -154,7 +155,7 @@ func (i *Instrumenter) InstrumentAtStartup(
 			ctx,
 			i.Client,
 			pseudoReconcileRequest,
-			&dash0v1alpha1.Dash0Monitoring{},
+			&dash0v1beta1.Dash0Monitoring{},
 			updateStatusFailedMessage,
 			logger,
 		)
@@ -198,18 +199,18 @@ func (i *Instrumenter) InstrumentAtStartup(
 // accodingly.
 func (i *Instrumenter) CheckSettingsAndInstrumentExistingWorkloads(
 	ctx context.Context,
-	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
+	dash0MonitoringResource *dash0v1beta1.Dash0Monitoring,
 	logger *logr.Logger,
 ) error {
 	instrumentWorkloadsMode := dash0MonitoringResource.ReadInstrumentWorkloadsMode()
-	if instrumentWorkloadsMode == dash0v1alpha1.InstrumentWorkloadsModeNone {
+	if instrumentWorkloadsMode == dash0common.InstrumentWorkloadsModeNone {
 		logger.Info(
 			"Instrumentation is not enabled, neither new nor existing workloads will be modified to send telemetry " +
 				"to Dash0.",
 		)
 		return nil
 	}
-	if instrumentWorkloadsMode == dash0v1alpha1.InstrumentWorkloadsModeCreatedAndUpdated {
+	if instrumentWorkloadsMode == dash0common.InstrumentWorkloadsModeCreatedAndUpdated {
 		logger.Info(
 			"Instrumenting existing workloads is not enabled, only new or updated workloads will be modified (at " +
 				"deploy time) to send telemetry to Dash0.",
@@ -228,7 +229,7 @@ func (i *Instrumenter) CheckSettingsAndInstrumentExistingWorkloads(
 
 func (i *Instrumenter) instrumentAllWorkloads(
 	ctx context.Context,
-	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
+	dash0MonitoringResource *dash0v1beta1.Dash0Monitoring,
 	logger *logr.Logger,
 ) error {
 	namespace := dash0MonitoringResource.Namespace
@@ -646,7 +647,7 @@ func (i *Instrumenter) DelayAfterEachNamespaceMillis() time.Duration {
 // workloads.
 func (i *Instrumenter) UninstrumentWorkloadsIfAvailable(
 	ctx context.Context,
-	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
+	dash0MonitoringResource *dash0v1beta1.Dash0Monitoring,
 	logger *logr.Logger,
 ) error {
 	if dash0MonitoringResource.IsAvailable() {
@@ -664,7 +665,7 @@ func (i *Instrumenter) UninstrumentWorkloadsIfAvailable(
 
 func (i *Instrumenter) uninstrumentWorkloads(
 	ctx context.Context,
-	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
+	dash0MonitoringResource *dash0v1beta1.Dash0Monitoring,
 	logger *logr.Logger,
 ) error {
 	namespace := dash0MonitoringResource.Namespace

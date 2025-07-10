@@ -28,7 +28,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
@@ -123,8 +125,8 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	operatorNamespace string,
 	images util.Images,
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
-	allMonitoringResources []dash0v1alpha1.Dash0Monitoring,
-	export *dash0v1alpha1.Export,
+	allMonitoringResources []dash0v1beta1.Dash0Monitoring,
+	export *dash0common.Export,
 	logger *logr.Logger,
 ) (bool, bool, error) {
 	if export == nil {
@@ -410,7 +412,7 @@ func (m *OTelColResourceManager) DeleteResources(
 		NamePrefix:        m.OTelCollectorNamePrefix,
 		// For deleting the resources, we do not need the actual export settings; we only use assembleDesiredState to
 		// collect the kinds and names of all resources that need to be deleted.
-		Export:                      dash0v1alpha1.Export{},
+		Export:                      dash0common.Export{},
 		SendBatchMaxSize:            m.SendBatchMaxSize,
 		SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{SelfMonitoringEnabled: false},
 		// KubernetesInfrastructureMetricsCollectionEnabled=false would lead to not deleting the collector-deployment-

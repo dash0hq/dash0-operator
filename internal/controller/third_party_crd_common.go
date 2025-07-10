@@ -38,7 +38,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/resources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
@@ -93,7 +94,7 @@ type ThirdPartyResourceReconciler interface {
 	Queue() *workqueue.Typed[ThirdPartyResourceSyncJob]
 	HttpClient() *http.Client
 	GetHttpRetryDelay() time.Duration
-	IsSynchronizationEnabled(*dash0v1alpha1.Dash0Monitoring) bool
+	IsSynchronizationEnabled(*dash0v1beta1.Dash0Monitoring) bool
 
 	// FetchExistingResourceIdsRequest creates an HTTP request for retrieving the existing IDs from the Dash0
 	// API for a given Kubernetes resource.
@@ -128,9 +129,9 @@ type ThirdPartyResourceReconciler interface {
 	CreateDeleteRequests(*preconditionValidationResult, []string, []string, *logr.Logger) ([]HttpRequestWithItemName, map[string]string)
 
 	UpdateSynchronizationResultsInStatus(
-		monitoringResource *dash0v1alpha1.Dash0Monitoring,
+		monitoringResource *dash0v1beta1.Dash0Monitoring,
 		qualifiedName string,
-		status dash0v1alpha1.SynchronizationStatus,
+		status dash0common.SynchronizationStatus,
 		itemsTotal int,
 		successfullySynchronized []string,
 		synchronizationErrorsPerItem map[string]string,
@@ -176,7 +177,7 @@ type preconditionValidationResult struct {
 
 	// monitoringResource is the Dash0 monitoring resource that was found in the same namespace as the third-party
 	// resource
-	monitoringResource *dash0v1alpha1.Dash0Monitoring
+	monitoringResource *dash0v1beta1.Dash0Monitoring
 
 	// authToken is the Dash0 auth token that will be used to sync the third-party resource
 	authToken string
@@ -687,7 +688,7 @@ func validatePreconditions(
 		ctx,
 		resourceReconciler.K8sClient(),
 		thirdPartyResource.GetNamespace(),
-		&dash0v1alpha1.Dash0Monitoring{},
+		&dash0v1beta1.Dash0Monitoring{},
 		logger,
 	)
 	if err != nil {
@@ -714,7 +715,7 @@ func validatePreconditions(
 			synchronizeResource: false,
 		}
 	}
-	monitoringResource := monitoringRes.(*dash0v1alpha1.Dash0Monitoring)
+	monitoringResource := monitoringRes.(*dash0v1beta1.Dash0Monitoring)
 
 	if !resourceReconciler.IsSynchronizationEnabled(monitoringResource) {
 		logger.Info(
@@ -1161,7 +1162,7 @@ func convertNon2xxStatusCodeToError(
 func writeSynchronizationResult(
 	ctx context.Context,
 	resourceReconciler ThirdPartyResourceReconciler,
-	monitoringResource *dash0v1alpha1.Dash0Monitoring,
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	thirdPartyResource *unstructured.Unstructured,
 	itemsTotal int,
 	successfullySynchronized []string,
@@ -1171,11 +1172,11 @@ func writeSynchronizationResult(
 ) {
 	qualifiedName := fmt.Sprintf("%s/%s", thirdPartyResource.GetNamespace(), thirdPartyResource.GetName())
 
-	result := dash0v1alpha1.Failed
+	result := dash0common.Failed
 	if len(successfullySynchronized) > 0 && len(validationIssuesPerItem) == 0 && len(synchronizationErrorsPerItem) == 0 {
-		result = dash0v1alpha1.Successful
+		result = dash0common.Successful
 	} else if len(successfullySynchronized) > 0 {
-		result = dash0v1alpha1.PartiallySuccessful
+		result = dash0common.PartiallySuccessful
 	}
 
 	errAfterRetry := retry.OnError(

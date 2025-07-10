@@ -14,7 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -22,7 +22,7 @@ import (
 )
 
 type dash0MonitoringValues struct {
-	InstrumentWorkloadsMode dash0v1alpha1.InstrumentWorkloadsMode
+	InstrumentWorkloadsMode dash0common.InstrumentWorkloadsMode
 	Endpoint                string
 	Token                   string
 	Filter                  string
@@ -39,11 +39,11 @@ var (
 	dash0MonitoringResourceTemplate *template.Template
 
 	dash0MonitoringValuesDefault = dash0MonitoringValues{
-		InstrumentWorkloadsMode: dash0v1alpha1.InstrumentWorkloadsModeAll,
+		InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeAll,
 	}
 
 	dash0MonitoringValuesWithExport = dash0MonitoringValues{
-		InstrumentWorkloadsMode: dash0v1alpha1.InstrumentWorkloadsModeAll,
+		InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeAll,
 		Endpoint:                defaultEndpoint,
 		Token:                   defaultToken,
 	}
@@ -129,7 +129,7 @@ func waitForMonitoringResourceToBecomeAvailable(namespace string) {
 
 func updateInstrumentWorkloadsModeOfDash0MonitoringResource(
 	namespace string,
-	instrumentWorkloadsMode dash0v1alpha1.InstrumentWorkloadsMode,
+	instrumentWorkloadsMode dash0common.InstrumentWorkloadsMode,
 ) {
 	updateDash0MonitoringResource(
 		namespace,
