@@ -14,7 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 )
 
 type OperatorConfigurationMutatingWebhookHandler struct {
@@ -39,7 +39,7 @@ func (h *OperatorConfigurationMutatingWebhookHandler) Handle(_ context.Context, 
 	// Note: The mutating webhook is called before the validating webhook, so we can normalize the resource here and
 	// verify that it is valid (after having been normalized) in the validating webhook.
 	// Note that default values from // +kubebuilder:default comments from
-	// api/dash0monitoring/v1alpha1/operator_configuration_types.go have already been applied by the time this webhook
+	// api/operator/v1alpha1/operator_configuration_types.go have already been applied by the time this webhook
 	// is called.
 	// See https://kubernetes.io/docs/reference/access-authn-authz/admission-controllers/#admission-control-phases.
 	operatorConfigurationResource := &dash0v1alpha1.Dash0OperatorConfiguration{}

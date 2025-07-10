@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-package dash0monitoring
+package operator
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
