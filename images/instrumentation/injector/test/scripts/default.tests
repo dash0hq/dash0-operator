@@ -19,23 +19,23 @@ run_test_case \
   "getenv: overrides NODE_OPTIONS if it is not present" \
   "app" \
   "node index.js node_options" \
-  "NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry"
+  "NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0/opentelemetry"
 run_test_case \
   "getenv: ask for NODE_OPTIONS (unset) twice" \
   "app" \
   "node index.js node_options_twice" \
-  "NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry; NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry"
+  "NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0/opentelemetry; NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0/opentelemetry"
 run_test_case \
   "getenv: prepends to NODE_OPTIONS if it is present" \
   "app" \
   "node index.js node_options" \
-  "NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --no-deprecation" \
+  "NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0/opentelemetry --no-deprecation" \
   "NODE_OPTIONS=--no-deprecation"
 run_test_case \
   "getenv: ask for NODE_OPTIONS (set) twice" \
   "app" \
   "node index.js node_options_twice" \
-  "NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --no-deprecation; NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --no-deprecation" \
+  "NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0/opentelemetry --no-deprecation; NODE_OPTIONS: --require /__dash0__/instrumentation/node.js/node_modules/@dash0/opentelemetry --no-deprecation" \
   "NODE_OPTIONS=--no-deprecation"
 
 # JAVA_TOOL_OPTIONS
