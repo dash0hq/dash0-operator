@@ -10,7 +10,7 @@ const types = @import("types.zig");
 const testing = std.testing;
 
 pub const node_options_env_var_name = "NODE_OPTIONS";
-const dash0_nodejs_otel_sdk_distribution = "/__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry";
+const dash0_nodejs_otel_sdk_distribution = "/__dash0__/instrumentation/node.js/node_modules/@dash0/opentelemetry";
 const require_dash0_nodejs_otel_sdk_distribution = "--require " ++ dash0_nodejs_otel_sdk_distribution;
 const injection_happened_msg = "injecting the Dash0 Node.js OpenTelemetry distribution";
 
@@ -62,7 +62,7 @@ fn getModifiedNodeOptionsValue(original_value_optional: ?[:0]const u8) ?types.Nu
 test "getModifiedNodeOptionsValue: should return --require if original value is unset" {
     const modifiedNodeOptionsValue = getModifiedNodeOptionsValue(null);
     try testing.expectEqualStrings(
-        "--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
+        "--require /__dash0__/instrumentation/node.js/node_modules/@dash0/opentelemetry",
         std.mem.span(modifiedNodeOptionsValue orelse "-"),
     );
 }
@@ -71,7 +71,7 @@ test "getModifiedNodeOptionsValue: should prepend --require if original value ex
     const original_value: [:0]const u8 = "--abort-on-uncaught-exception"[0.. :0];
     const modified_node_options_value = getModifiedNodeOptionsValue(original_value);
     try testing.expectEqualStrings(
-        "--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry --abort-on-uncaught-exception",
+        "--require /__dash0__/instrumentation/node.js/node_modules/@dash0/opentelemetry --abort-on-uncaught-exception",
         std.mem.span(modified_node_options_value orelse "-"),
     );
 }
