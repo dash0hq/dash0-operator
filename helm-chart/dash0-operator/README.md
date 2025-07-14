@@ -1531,6 +1531,72 @@ telemetry, you can set `telemetryCollection.enabled` to `false` in the Dash0 ope
 This will disable the telemetry collection by the operator, and it will also instruct the operator to not deploy the
 OpenTelemetry collector in your cluster.
 
+## Notes on ArgoCD
+
+As many other Helm charts, the Dash0 operator Helm chart regenerates TLS certificates for in-cluster communication,
+that is, for its services and webhooks.
+The certificate will be regenerated every time the Dash0 operator Helm chart is applied.
+For users deploying the Dash0 operator via ArgoCD, and in particular without using ArgoCD's auto-sync feature, the
+certificates and derived data (`ca.crt`, `tls.crt`, `tls.key`, `caBundle`) will show up as a diff in the ArgoCD UI.
+The certificate is also regenerated everytime the hard refresh option is used in ArgoCD, since this action will trigger
+rendering the Helm chart templates again, even if nothing has changed in the git repository.
+
+To avoid this, you can instruct ArgoCD to ignore these particular differences.
+Here is an example for an `argoproj.io/v1alpha1.Application` resource with `ignoreDifferences`:
+
+```yaml
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: dash0-operator
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+
+  source:
+    chart: dash0-operator
+    repoURL: https://dash0hq.github.io/dash0-operator
+    targetRevision: ...
+
+  # ... your current spec for the dash0-operator ArgoCD application
+
+  # Ignore certificates which are generated on the fly during Helm chart template rendering:
+  ignoreDifferences:
+    - kind: Secret
+      name: dash0-operator-certificates
+      jsonPointers:
+        - /data/ca.crt
+        - /data/tls.crt
+        - /data/tls.key
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      name: dash0-operator-injector
+      jsonPointers:
+        - /webhooks/0/clientConfig/caBundle
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      name: dash0-operator-monitoring-mutating
+      jsonPointers:
+        - /webhooks/0/clientConfig/caBundle
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      name: dash0-operator-operator-configuration-mutating
+      jsonPointers:
+        - /webhooks/0/clientConfig/caBundle
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      name: dash0-operator-monitoring-validator
+      jsonPointers:
+        - /webhooks/0/clientConfig/caBundle
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      name: dash0-operator-operator-configuration-validator
+      jsonPointers:
+        - /webhooks/0/clientConfig/caBundle
+```
+
 ## Notes on Kyverno Admission Controller
 
 In clusters that have the
