@@ -764,6 +764,18 @@ operator:
         claimName: offset-storage-claim
 ```
 
+Using a volume instead of the default config map approach is also helpful if you have webhooks in your cluster which
+process every config map update.
+One known example is the
+[Kyverno admission controller](https://kyverno.io/docs/introduction/how-kyverno-works/#kubernetes-admission-controls).
+When operating Kyverno in the same cluster as the Dash0 operator, it is highly recommended to either use a volume for
+filelog offsets, or to [exclude](https://kyverno.io/docs/installation/customization/#resource-filters) ConfigMaps (or
+all resource types) in the Dash0 operator's namespace from Kyverno's processing.
+Leaving Kyverno processing in place and using the config map filelog offset storage can lead to severe performance
+issues, since the default config map for filelog offsets is updated very frequently.
+This can cause Kyverno to consume a lot of CPU and memory resources, potentially even leading to OOMKills of the Kyverno
+admission controller.
+
 ### Controlling On Which Nodes the Operator's Collector Pods Are Scheduled
 
 #### Allow Scheduling on Tainted Nodes
@@ -1518,6 +1530,19 @@ Note: If you only want to manage dashboards and check rules via the Dash0 operat
 telemetry, you can set `telemetryCollection.enabled` to `false` in the Dash0 operator configuration resource.
 This will disable the telemetry collection by the operator, and it will also instruct the operator to not deploy the
 OpenTelemetry collector in your cluster.
+
+## Notes on Kyverno Admission Controller
+
+In clusters that have the
+[Kyverno admission controller](https://kyverno.io/docs/introduction/how-kyverno-works/#kubernetes-admission-controls)
+deployed, it is highly recommended to either [use a volume for filelog offsets](#providing-a-filelog-offset-volume)
+instead of the default filelog offset config map, or to
+[exclude](https://kyverno.io/docs/installation/customization/#resource-filters) ConfigMaps (or all resource types) in
+the Dash0 operator's namespace from Kyverno's processing.
+Leaving Kyverno processing in place and using the config map filelog offset storage can lead to severe performance
+issues, since the default config map for filelog offsets is updated very frequently.
+This can cause Kyverno to consume a lot of CPU and memory resources, potentially even leading to OOMKills of the Kyverno
+admission controller.
 
 ## Notes on Running The Operator on Apple Silicon
 
