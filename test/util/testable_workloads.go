@@ -26,6 +26,7 @@ type WorkloadTestConfig struct {
 type TestableWorkload interface {
 	Get() client.Object
 	GetObjectMeta() *metav1.ObjectMeta
+	GetPodSpec() *corev1.PodSpec
 }
 
 type CronJobTestableWorkload struct {
@@ -34,6 +35,9 @@ type CronJobTestableWorkload struct {
 
 func (w CronJobTestableWorkload) Get() client.Object                { return w.cronJob }
 func (w CronJobTestableWorkload) GetObjectMeta() *metav1.ObjectMeta { return &w.cronJob.ObjectMeta }
+func (w CronJobTestableWorkload) GetPodSpec() *corev1.PodSpec {
+	return &w.cronJob.Spec.JobTemplate.Spec.Template.Spec
+}
 func WrapConfigureCronJobFnAsTestableWorkload(
 	fn func(string, string) *batchv1.CronJob,
 ) func(string, string) TestableWorkload {
@@ -55,6 +59,9 @@ type DaemonSetTestableWorkload struct {
 
 func (w DaemonSetTestableWorkload) Get() client.Object                { return w.daemonSet }
 func (w DaemonSetTestableWorkload) GetObjectMeta() *metav1.ObjectMeta { return &w.daemonSet.ObjectMeta }
+func (w DaemonSetTestableWorkload) GetPodSpec() *corev1.PodSpec {
+	return &w.daemonSet.Spec.Template.Spec
+}
 func WrapConfigureDaemonSetFnAsTestableWorkload(
 	fn func(string, string) *appsv1.DaemonSet,
 ) func(string, string) TestableWorkload {
@@ -77,6 +84,9 @@ type DeploymentTestableWorkload struct {
 func (w DeploymentTestableWorkload) Get() client.Object { return w.deployment }
 func (w DeploymentTestableWorkload) GetObjectMeta() *metav1.ObjectMeta {
 	return &w.deployment.ObjectMeta
+}
+func (w DeploymentTestableWorkload) GetPodSpec() *corev1.PodSpec {
+	return &w.deployment.Spec.Template.Spec
 }
 func WrapConfigureDeploymentFnAsTestableWorkload(
 	fn func(string, string) *appsv1.Deployment,
@@ -101,6 +111,9 @@ func (w JobTestableWorkload) Get() client.Object { return w.job }
 func (w JobTestableWorkload) GetObjectMeta() *metav1.ObjectMeta {
 	return &w.job.ObjectMeta
 }
+func (w JobTestableWorkload) GetPodSpec() *corev1.PodSpec {
+	return &w.job.Spec.Template.Spec
+}
 func WrapConfigureJobFnAsTestableWorkload(
 	fn func(string, string) *batchv1.Job,
 ) func(string, string) TestableWorkload {
@@ -123,6 +136,9 @@ type PodTestableWorkload struct {
 func (w PodTestableWorkload) Get() client.Object { return w.pod }
 func (w PodTestableWorkload) GetObjectMeta() *metav1.ObjectMeta {
 	return &w.pod.ObjectMeta
+}
+func (w PodTestableWorkload) GetPodSpec() *corev1.PodSpec {
+	return &w.pod.Spec
 }
 func WrapConfigurePodFnAsTestableWorkload(
 	fn func(string, string) *corev1.Pod,
@@ -147,6 +163,9 @@ func (w ReplicaSetTestableWorkload) Get() client.Object { return w.replicaSet }
 func (w ReplicaSetTestableWorkload) GetObjectMeta() *metav1.ObjectMeta {
 	return &w.replicaSet.ObjectMeta
 }
+func (w ReplicaSetTestableWorkload) GetPodSpec() *corev1.PodSpec {
+	return &w.replicaSet.Spec.Template.Spec
+}
 func WrapConfigureReplicaSetFnAsTestableWorkload(
 	fn func(string, string) *appsv1.ReplicaSet,
 ) func(string, string) TestableWorkload {
@@ -169,6 +188,9 @@ type StatefulSetTestableWorkload struct {
 func (w StatefulSetTestableWorkload) Get() client.Object { return w.statefulSet }
 func (w StatefulSetTestableWorkload) GetObjectMeta() *metav1.ObjectMeta {
 	return &w.statefulSet.ObjectMeta
+}
+func (w StatefulSetTestableWorkload) GetPodSpec() *corev1.PodSpec {
+	return &w.statefulSet.Spec.Template.Spec
 }
 func WrapConfigureStatefulSetFnAsTestableWorkload(
 	fn func(string, string) *appsv1.StatefulSet,

@@ -293,7 +293,7 @@ resource_ into that namespace:
 Create a file `dash0-monitoring.yaml` with the following content:
 
 ```yaml
-apiVersion: operator.dash0.com/v1alpha1
+apiVersion: operator.dash0.com/v1beta1
 kind: Dash0Monitoring
 metadata:
   name: dash0-monitoring-resource
@@ -321,11 +321,13 @@ export settings.
 
 The Dash0 monitoring resource supports additional configuration settings:
 
-* <a href="#monitoringresource.spec.instrumentWorkloads"><span id="monitoringresource.spec.instrumentWorkloads">`spec.instrumentWorkloads`</span></a>:
+* <a href="#monitoringresource.spec.instrumentWorkloads.mode"><span id="monitoringresource.spec.instrumentWorkloads.mode">`spec.instrumentWorkloads.mode`</span></a>:
   A namespace-wide configuration for the workload instrumentation strategy for the target namespace.
   There are three possible settings: `all`, `created-and-updated` and `none`.
   By default, the setting `all` is assumed; unless there is an operator
   configuration resource with `telemetryCollection.enabled=false`, then the setting `none` is assumed by default.
+  Note that `spec.instrumentWorkloads.mode` is the path for this setting starting with version `v1beta1` of the Dash0
+  monitoring resource; when using `v1alpha1`, the path is `spec.instrumentWorkloads`.
 
   * `all`: If set to `all`, the operator will:
       * instrument existing workloads in the target namespace (i.e. workloads already running in the namespace) when
@@ -375,6 +377,23 @@ The Dash0 monitoring resource supports additional configuration settings:
   Automatic workload instrumentation will automatically add tracing to your workloads.
   You can read more about what exactly this feature entails in the section
   [Automatic Workload Instrumentation](#automatic-workload-instrumentation).
+
+* <a href="#monitoringresource.spec.instrumentWorkloads.traceContext.propagators"><a href="#monitoringresource.spec.instrumentWorkloads.traceContext.propagators"><span id="monitoringresource.spec.instrumentWorkloads.traceContext.propagators">`spec.instrumentWorkloads.traceContext.propagators`</span></a>:
+  When set, the operator will add the environment variable `OTEL_PROPAGATORS` to all instrumented workloads in the
+  target namespace.
+  This environment variable determines which trace context propagation headers an OTel SDK uses.
+  Setting this can be useful if the workloads in this namespace interact with services do not use the W3C trace context
+  standard header `traceparent` for trace context propagation, but for example AWS X-Ray (`X-Amzn-Trace-Id`).
+  The value of the setting will be validated, it needs to be a comma-separated list of valid propagators.
+  See <https://opentelemetry.io/docs/languages/sdk-configuration/general/#otel_propagators> for more information.
+
+  When the option is no set, the operator will not set the environment variable `OTEL_PROPAGATORS`.
+  If the option is set in the monitoring resource at some point and then later removed again, the operator will remove
+  the environment variable from instrumented workloads if and only if the value of the environment variable matches the
+  previously used setting in the monitoring resource.
+  This is done to prevent accidentally removing an `OTEL_PROPAGATORS` environment variable that has been set manually
+  and not by the operator.
+  (For that purpose, the previous setting is stored in the monitoring resource's status.)
 
 * <a href="#monitoringresource.spec.logCollection.enabled"><span id="monitoringresource.spec.logCollection.enabled">`spec.logCollection.enabled`</span></a>:
   A namespace-wide opt-out for collecting pod logs via the `filelog` receiver.
@@ -491,7 +510,7 @@ Here is comprehensive example for a monitoring resource which
 * disables Prometheus rule synchronization.
 
 ```yaml
-apiVersion: operator.dash0.com/v1alpha1
+apiVersion: operator.dash0.com/v1beta1
 kind: Dash0Monitoring
 metadata:
   name: dash0-monitoring-resource
@@ -881,7 +900,7 @@ To disable log collection for specific workloads in namespaces where log collect
 Here is an example:
 
 ```yaml
-apiVersion: operator.dash0.com/v1alpha1
+apiVersion: operator.dash0.com/v1beta1
 kind: Dash0Monitoring
 metadata:
   name: dash0-monitoring-resource
@@ -958,8 +977,8 @@ This is because the operator automatically sets `OTEL_EXPORTER_OTLP_ENDPOINT` an
 correct values when applying the [automatic workload instrumentation](#automatic-workload-instrumentation).
 
 If the workload is in a namespace that is not monitored by Dash0 (or if
-[`instrumentWorkloads`](#monitoringresource.spec.instrumentWorkloads) is set to `none` in the respective Dash0
-monitoring resource, or if the workload has the label `dash0.com/enable=false`), you need to set the environment
+[`spec.instrumentWorkloads.mode`](#monitoringresource.spec.instrumentWorkloads.mode) is set to `none` in the respective
+Dash0 monitoring resource, or if the workload has the label `dash0.com/enable=false`), you need to set the environment
 variable [`OTEL_EXPORTER_OTLP_ENDPOINT`](#https://opentelemetry.io/docs/languages/sdk-configuration/otlp-exporter/)
 (and optionally also
 [`OTEL_EXPORTER_OTLP_PROTOCOL`](https://opentelemetry.io/docs/specs/otel/protocol/exporter/#specify-protocol)) yourself.
@@ -1020,7 +1039,7 @@ In both cases, `${helm-release-name}` and `${namespace-of-the-dash0-operator}` n
 values.
 
 If the workload is in a namespace that is monitored by Dash0 and
-[workload instrumentation](#monitoringresource.spec.instrumentWorkloads) is enabled, Dash0 will automatically add
+[workload instrumentation](#monitoringresource.spec.instrumentWorkloads.mode) is enabled, Dash0 will automatically add
 Kubernetes-related OpenTelemetry resource attributes to your telemetry, even if the runtime in question is not
 yet supported by Dash0's auto-instrumentation.
 (There is currently one caveat: The resource attribute auto-detection relies on the process or runtime in question to
@@ -1152,6 +1171,65 @@ helm repo update dash0-operator
 helm upgrade --namespace dash0-system dash0-operator dash0-operator/dash0-operator
 ```
 
+## CRD Version Updates
+
+Occasionally, the custom resource definitions (CRDs) used by the Dash0 operator (Dash0OperatorConfiguration,
+Dash0Monitoring) will be updated to new versions.
+Whenever possible, this will happen in a way that requires no manual intervention by users.
+This section contains details about CRD version updates and version migrations.
+
+### Operator Version 0.71.0: operator.dash0.com/v1alpha1/Dash0Monitoring -> operator.dash0.com/v1beta1/Dash0Monitoring
+
+With operator version 0.71.0, the Dash0 operator's `Dash0Monitoring` custom resource definition (CRD) has been updated
+from version `v1alpha1` to `v1beta1`.
+The operator handles both versions correctly, that is version `v1alpha1` to `v1beta1` are both fully supported.
+Here is what you need to know about this version update for `Dash0Monitoring`:
+- If you have existing `Dash0Monitoring` resources in version `v1alpha1` in your cluster, they will be automatically
+  converted on the fly and stored as `v1beta1` resources by Kubernetes when you upgrade the operator from a 
+  version < 0.71.0 to a version 0.71.0 or later.
+- After the upgrade to version 0.71.0, you can still deploy new `Dash0Monitoring` resource in version `v1alpha1`
+  (for example via `kubectl apply`).
+  They will be automatically converted and stored as `v1beta1` resources by Kubernetes.
+- If you want to migrate a `Dash0Monitoring` template from version `v1alpha1` to `v1beta1`, follow these steps:
+    - If the template specifies the workload instrumentation mode via `spec.instrumentWorkloads`, replace that with
+      `spec.instrumentWorkloads.mode`.
+      That is:
+      ```yaml
+        spec:
+          instrumentWorkloads: created-and-updated
+      ```
+      becomes
+      ```yaml
+      spec:
+        instrumentWorkloads:
+          mode: created-and-updated
+      ```
+    - If the template contains the attribute `spec.prometheusScrapingEnabled`, replace that with
+      `spec.prometheusScraping.enabled`.
+      That is:
+      ```yaml
+        spec:
+          prometheusScrapingEnabled: true
+      ```
+      becomes
+      ```yaml
+      spec:
+        prometheusScraping:
+          enabled: true
+      ```
+      The attribute `spec.prometheusScraping.enabled` is also already valid for `v1alpha1`, so this particular change
+      can be applied independently of the CRD version change.
+- We recommend to update your templates from `v1alpha1` to `v1beta1` at some point.
+  However, there are currently no plans to remove support for version `v1alpha1`.
+- If you want to use the new [trace context propagators](#monitoringresource.spec.instrumentWorkloads.traceContext.propagators)
+  option that has been added in version 0.71.0, you need to use version `v1beta1` of the `Dash0Monitoring` resource.
+- After upgrading to operator version 0.71.0 or later, you can no longer easily downgrade to a version before 0.71.0.
+  In particular, this downgrade would require to manually delete all `Dash0Monitoring` resources in the cluster.
+  The reason is that the Dash0Monitoring resource are now stored as version `v1beta1` by Kubernetes and there is no
+  automatic downward conversion from `v1beta1` back to `v1alpha1`.
+- The only supported version for `Dash0OperatorConfiguration` is still `v1alpha1`, that is, trying to use
+  `operator.dash0.com/v1beta1/Dash0OperatorConfiguration` will not work.
+
 ## Uninstallation
 
 To remove the Dash0 Operator from your cluster, run the following command:
@@ -1220,8 +1298,8 @@ The Dash0 operator will instrument the following workload types:
 Note that Kubernetes jobs and Kubernetes pods are only instrumented at deploy time, _existing_ jobs and pods cannot be
 instrumented since there is no way to restart them.
 For all other workload types, the operator can instrument existing workloads as well as new workloads at deploy time
-(depending on the setting of [`instrumentWorkloads`](#monitoringresource.spec.instrumentWorkloads) in the Dash0
-monitoring resource).
+(depending on the setting of [`spec.instrumentWorkloads.mode`](#monitoringresource.spec.instrumentWorkloads.mode) in the
+Dash0 monitoring resource).
 
 The instrumentation process is performed by modifying the Pod spec template (for CronJobs, DaemonSets, Deployments,
 Jobs, ReplicaSets, and StatefulSets) or the Pod spec itself (for standalone Pods).

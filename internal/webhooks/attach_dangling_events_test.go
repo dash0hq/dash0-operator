@@ -41,11 +41,13 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 			k8sClient,
 			clientset,
 			recorder,
-			TestImages,
-			util.ExtraConfigDefaults,
-			OTelCollectorNodeLocalBaseUrlTest,
-			nil,
-			false,
+			util.ClusterInstrumentationConfig{
+				Images:                TestImages,
+				OTelCollectorBaseUrl:  OTelCollectorNodeLocalBaseUrlTest,
+				ExtraConfig:           util.ExtraConfigDefaults,
+				InstrumentationDelays: nil,
+				InstrumentationDebug:  false,
+			},
 		)
 		oTelColResourceManager := &otelcolresources.OTelColResourceManager{
 			Client:                    k8sClient,
