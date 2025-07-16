@@ -59,11 +59,32 @@ func getImageVersion(image string) string {
 	return ""
 }
 
-type InstrumentationMetadata struct {
+// ClusterInstrumentationConfig holds configuration values relevant for instrumenting workloads which apply to the whole
+// cluster, e.g. settings from the helm chart or the operator configuration resource.
+type ClusterInstrumentationConfig struct {
 	Images
-	OTelCollectorBaseUrl string
-	InstrumentedBy       WorkloadModifierActor
-	InstrumentationDebug bool
+	OTelCollectorBaseUrl  string
+	ExtraConfig           ExtraConfig
+	InstrumentationDelays *DelayConfig
+	InstrumentationDebug  bool
+}
+
+type DelayConfig struct {
+	// AfterEachWorkloadMillis determines the delay to wait after updating a single workload, when instrumenting
+	// workloads in a namespace either when running InstrumentAtStartup or when instrumentation is enabled for a new
+	// workspace via a monitoring resource.
+	AfterEachWorkloadMillis uint64
+
+	// AfterEachNamespace determines the delay to wait after updating the instrumenation in one namespace when running
+	// InstrumentAtStartup.
+	AfterEachNamespaceMillis uint64
+}
+
+// NamespaceInstrumentationConfig holds configuration values relevant for instrumenting workloads which apply to one
+// namespace, e.g. settings from the monitoring resource.
+type NamespaceInstrumentationConfig struct {
+	TraceContextPropagators         *string
+	PreviousTraceContextPropagators *string
 }
 
 type ModificationMode string

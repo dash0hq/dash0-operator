@@ -38,6 +38,10 @@ var (
 	dash0MonitoringResourceSource   string
 	dash0MonitoringResourceTemplate *template.Template
 
+	//go:embed dash0monitoring.e2e.v1alpha1.yaml.template
+	dash0MonitoringResourceV1Alpha1Source   string
+	dash0MonitoringResourceV1Alpha1Template *template.Template
+
 	dash0MonitoringValuesDefault = dash0MonitoringValues{
 		InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeAll,
 	}
@@ -59,20 +63,57 @@ func renderDash0MonitoringResourceTemplate(dash0MonitoringValues dash0Monitoring
 	return renderResourceTemplate(dash0MonitoringResourceTemplate, dash0MonitoringValues, "dash0monitoring")
 }
 
+func renderDash0MonitoringResourceTemplateV1Alpha1(dash0MonitoringValues dash0MonitoringValues) string {
+	By("rendering Dash0Monitoring resource template")
+	dash0MonitoringResourceTemplate = initTemplateOnce(
+		dash0MonitoringResourceV1Alpha1Template,
+		dash0MonitoringResourceV1Alpha1Source,
+		"dash0monitoring",
+	)
+	return renderResourceTemplate(dash0MonitoringResourceTemplate, dash0MonitoringValues, "dash0monitoring-v1alpha1")
+}
+
 func deployDash0MonitoringResource(
 	namespace string,
 	dash0MonitoringValues dash0MonitoringValues,
 	operatorNamespace string,
 ) {
 	renderedResourceFileName := renderDash0MonitoringResourceTemplate(dash0MonitoringValues)
+	deployRenderedMonitoringResource(
+		namespace,
+		dash0MonitoringValues,
+		operatorNamespace,
+		renderedResourceFileName,
+	)
+}
+
+func deployDash0MonitoringResourceV1Alpha1(
+	namespace string,
+	dash0MonitoringValues dash0MonitoringValues,
+	operatorNamespace string,
+) {
+	renderedResourceFileName := renderDash0MonitoringResourceTemplateV1Alpha1(dash0MonitoringValues)
+	deployRenderedMonitoringResource(
+		namespace,
+		dash0MonitoringValues,
+		operatorNamespace,
+		renderedResourceFileName,
+	)
+}
+
+func deployRenderedMonitoringResource(
+	namespace string,
+	dash0MonitoringValues dash0MonitoringValues,
+	operatorNamespace string,
+	renderedResourceFileName string,
+) {
 	defer func() {
 		Expect(os.Remove(renderedResourceFileName)).To(Succeed())
 	}()
-
 	retryLogger := zap.New()
 	By(fmt.Sprintf(
-		"deploying the Dash0 monitoring resource to namespace %s with values %v, operator namespace is %s",
-		namespace, dash0MonitoringValues, operatorNamespace))
+		"deploying the Dash0 monitoring resource to namespace %s with values %v from file %s, operator namespace is %s",
+		namespace, dash0MonitoringValues, renderedResourceFileName, operatorNamespace))
 	err := util.RetryWithCustomBackoff("deploying the Dash0 monitoring resource to namespace", func() error {
 		return runAndIgnoreOutput(exec.Command(
 			"kubectl",

@@ -121,14 +121,16 @@ var _ = BeforeSuite(func() {
 	// in an actual production deployment of the operator, the Kustomize configs are still used for registering
 	// webhooks in the unit tests here; via testEnv = &envtest.Environment.WebhookInstallOptions.Paths
 
-	Expect((&InstrumentationWebhookHandler{
-		Client:               k8sClient,
-		Recorder:             manager.GetEventRecorderFor("dash0-webhook"),
-		Images:               TestImages,
-		ExtraConfig:          util.ExtraConfigDefaults,
-		OTelCollectorBaseUrl: OTelCollectorNodeLocalBaseUrlTest,
-		InstrumentationDebug: false,
-	}).SetupWebhookWithManager(manager)).To(Succeed())
+	Expect(NewInstrumentationWebhookHandler(
+		k8sClient,
+		manager.GetEventRecorderFor("dash0-webhook"),
+		util.ClusterInstrumentationConfig{
+			Images:               TestImages,
+			ExtraConfig:          util.ExtraConfigDefaults,
+			OTelCollectorBaseUrl: OTelCollectorNodeLocalBaseUrlTest,
+			InstrumentationDebug: false,
+		},
+	).SetupWebhookWithManager(manager)).To(Succeed())
 
 	Expect((&OperatorConfigurationMutatingWebhookHandler{
 		Client: k8sClient,

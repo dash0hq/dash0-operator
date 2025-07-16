@@ -21,23 +21,6 @@ import (
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
-type kubeSystemTestConfig struct {
-	namespace               string
-	instrumentWorkloadsMode dash0common.InstrumentWorkloadsMode
-	expectRejection         bool
-}
-
-type monitoringResourceValidationWithTelemetryCollectionOffTestConfig struct {
-	spec          dash0v1beta1.Dash0MonitoringSpec
-	expectedError string
-}
-
-type ottlValidationTestConfig struct {
-	filter                *dash0common.Filter
-	transform             *dash0common.Transform
-	expectErrorSubstrings []string
-}
-
 var _ = Describe("The validation webhook for the monitoring resource", func() {
 
 	AfterEach(func() {
@@ -48,6 +31,12 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 	})
 
 	Describe("when validating", Ordered, func() {
+
+		type kubeSystemTestConfig struct {
+			namespace               string
+			instrumentWorkloadsMode dash0common.InstrumentWorkloadsMode
+			expectRejection         bool
+		}
 
 		DescribeTable("should reject deploying a monitoring resources to kube-system unless instrumentWorkloads.mode=none", func(testConfig kubeSystemTestConfig) {
 			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1beta1.Dash0Monitoring{
@@ -210,6 +199,11 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 
+		type monitoringResourceValidationWithTelemetryCollectionOffTestConfig struct {
+			spec          dash0v1beta1.Dash0MonitoringSpec
+			expectedError string
+		}
+
 		DescribeTable("should reject monitoring resource creation with telemetry settings if the operator configuration resource has telemetry collection disabled", func(testConfig monitoringResourceValidationWithTelemetryCollectionOffTestConfig) {
 			operatorConfigurationResource := CreateOperatorConfigurationResourceWithSpec(
 				ctx,
@@ -301,6 +295,134 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 					"operator configuration resource or remove the transform setting in the monitoring resource.",
 			}),
 		)
+
+		type traceContextPropagatorseValidationTestConfig struct {
+			spec          dash0v1beta1.Dash0MonitoringSpec
+			expectedError string
+		}
+
+		DescribeTable("should validate trace context propagators", func(testConfig traceContextPropagatorseValidationTestConfig) {
+			operatorConfigurationResource := CreateOperatorConfigurationResourceWithSpec(
+				ctx,
+				k8sClient,
+				dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Export: Dash0ExportWithEndpointAndToken(),
+				},
+			)
+			operatorConfigurationResource.EnsureResourceIsMarkedAsAvailable()
+			Expect(k8sClient.Status().Update(ctx, operatorConfigurationResource)).To(Succeed())
+
+			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1beta1.Dash0Monitoring{
+				ObjectMeta: MonitoringResourceDefaultObjectMeta,
+				Spec:       testConfig.spec,
+			})
+
+			if testConfig.expectedError == "" {
+				Expect(err).ToNot(HaveOccurred())
+			} else {
+				Expect(err).To(MatchError(ContainSubstring(fmt.Sprintf(
+					"admission webhook \"validate-monitoring.dash0.com\" denied the request: %s",
+					testConfig.expectedError,
+				))))
+			}
+		},
+			Entry("should allow all propagators=nil", traceContextPropagatorseValidationTestConfig{
+				spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						TraceContext: dash0v1beta1.TraceContext{
+							Propagators: nil,
+						},
+					},
+				},
+				expectedError: "",
+			}),
+			Entry("should allow propagators = empty string", traceContextPropagatorseValidationTestConfig{
+				spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						TraceContext: dash0v1beta1.TraceContext{
+							// setting will be ignored during workload modifications
+							Propagators: ptr.To(""),
+						},
+					},
+				},
+				expectedError: "",
+			}),
+			Entry("should allow propagators = only whitespace", traceContextPropagatorseValidationTestConfig{
+				spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						TraceContext: dash0v1beta1.TraceContext{
+							// setting will be ignored during workload modifications
+							Propagators: ptr.To("   "),
+						},
+					},
+				},
+				expectedError: "",
+			}),
+			Entry("should allow single valid propagator", traceContextPropagatorseValidationTestConfig{
+				spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						TraceContext: dash0v1beta1.TraceContext{
+							Propagators: ptr.To("xray"),
+						},
+					},
+				},
+				expectedError: "",
+			}),
+			Entry("should allow list of valid propagators", traceContextPropagatorseValidationTestConfig{
+				spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						TraceContext: dash0v1beta1.TraceContext{
+							Propagators: ptr.To("tracecontext,baggage,b3,b3multi,jaeger,xray,ottrace,none"),
+						},
+					},
+				},
+				expectedError: "",
+			}),
+			Entry("should reject a single unknown propagator", traceContextPropagatorseValidationTestConfig{
+				spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						TraceContext: dash0v1beta1.TraceContext{
+							Propagators: ptr.To("unknown"),
+						},
+					},
+				},
+				expectedError: "The instrumentWorkloads.traceContext.propagators setting (\"unknown\") in the Dash0 " +
+					"monitoring resource contains an unknown propagator value: \"unknown\". Valid trace context " +
+					"propagators are tracecontext, baggage, b3, b3multi, jaeger, xray, ottrace, none. Please remove " +
+					"the invalid propagator from the list.",
+			}),
+			Entry("should reject list with at least one unknown propagator", traceContextPropagatorseValidationTestConfig{
+				spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						TraceContext: dash0v1beta1.TraceContext{
+							Propagators: ptr.To("tracecontext,baggage,b3,unknown,b3multi,jaeger,xray,ottrace,none"),
+						},
+					},
+				},
+				expectedError: "The instrumentWorkloads.traceContext.propagators setting " +
+					"(\"tracecontext,baggage,b3,unknown,b3multi,jaeger,xray,ottrace,none\") in the Dash0 monitoring " +
+					"resource contains an unknown propagator value: \"unknown\". Valid trace context propagators are " +
+					"tracecontext, baggage, b3, b3multi, jaeger, xray, ottrace, none. Please remove the invalid " +
+					"propagator from the list.",
+			}),
+			Entry("should reject comma-separated list with empty items", traceContextPropagatorseValidationTestConfig{
+				spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						TraceContext: dash0v1beta1.TraceContext{
+							Propagators: ptr.To(","),
+						},
+					},
+				},
+				expectedError: "The instrumentWorkloads.traceContext.propagators setting (\",\") in the Dash0 " +
+					"monitoring resource contains an empty value. Please remove the empty value.",
+			}),
+		)
+
+		type ottlValidationTestConfig struct {
+			filter                *dash0common.Filter
+			transform             *dash0common.Transform
+			expectErrorSubstrings []string
+		}
 
 		DescribeTable("should validate OTTL expressions", func(testConfig ottlValidationTestConfig) {
 			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1beta1.Dash0Monitoring{

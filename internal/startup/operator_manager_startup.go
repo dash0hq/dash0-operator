@@ -84,7 +84,7 @@ type commandLineArguments struct {
 	operatorConfigurationClusterName                                      string
 	forceUseOpenTelemetryCollectorServiceUrl                              bool
 	disableOpenTelemetryCollectorHostPorts                                bool
-	instrumentationDelays                                                 *instrumentation.DelayConfig
+	instrumentationDelays                                                 *util.DelayConfig
 	metricsAddr                                                           string
 	enableLeaderElection                                                  bool
 	probeAddr                                                             string
@@ -349,7 +349,7 @@ func defineCommandLineArguments() *commandLineArguments {
 		false,
 		"Disable the host ports of the OpenTelemetry collector pods managed by the operator. Implies "+
 			"--force-use-otel-collector-service-url.")
-	cliArgs.instrumentationDelays = &instrumentation.DelayConfig{}
+	cliArgs.instrumentationDelays = &util.DelayConfig{}
 	flag.Uint64Var(
 		&cliArgs.instrumentationDelays.AfterEachWorkloadMillis,
 		"instrumentation-delay-after-each-workload-millis",
@@ -763,16 +763,19 @@ func startDash0Controllers(
 	isIPv6Cluster := strings.Count(envVars.podIp, ":") >= 2
 	oTelCollectorBaseUrl := determineCollectorBaseUrl(cliArgs.forceUseOpenTelemetryCollectorServiceUrl, isIPv6Cluster)
 
+	clusterInstrumentationConfig := util.ClusterInstrumentationConfig{
+		Images:                images,
+		OTelCollectorBaseUrl:  oTelCollectorBaseUrl,
+		ExtraConfig:           extraConfig,
+		InstrumentationDelays: cliArgs.instrumentationDelays,
+		InstrumentationDebug:  envVars.instrumentationDebug,
+	}
 	startupInstrumenter := instrumentation.NewInstrumenter(
 		// The k8s client will be added later, in internal/startup/instrument_at_startup.go#Start.
 		nil,
 		clientset,
 		mgr.GetEventRecorderFor("dash0-startup-tasks"),
-		images,
-		extraConfig,
-		oTelCollectorBaseUrl,
-		cliArgs.instrumentationDelays,
-		envVars.instrumentationDebug,
+		clusterInstrumentationConfig,
 	)
 	var err error
 	if err = mgr.Add(leaderElectionAwareRunnable); err != nil {
@@ -793,11 +796,7 @@ func startDash0Controllers(
 		k8sClient,
 		clientset,
 		mgr.GetEventRecorderFor("dash0-monitoring-controller"),
-		images,
-		extraConfig,
-		oTelCollectorBaseUrl,
-		cliArgs.instrumentationDelays,
-		envVars.instrumentationDebug,
+		clusterInstrumentationConfig,
 	)
 
 	oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
@@ -899,14 +898,11 @@ func startDash0Controllers(
 	}
 	setupLog.Info("The monitoring resource reconciler has been started.")
 
-	if err := (&webhooks.InstrumentationWebhookHandler{
-		Client:               k8sClient,
-		Recorder:             mgr.GetEventRecorderFor("dash0-instrumentation-webhook"),
-		Images:               images,
-		ExtraConfig:          extraConfig,
-		OTelCollectorBaseUrl: oTelCollectorBaseUrl,
-		InstrumentationDebug: envVars.instrumentationDebug,
-	}).SetupWebhookWithManager(mgr); err != nil {
+	if err := webhooks.NewInstrumentationWebhookHandler(
+		k8sClient,
+		mgr.GetEventRecorderFor("dash0-instrumentation-webhook"),
+		clusterInstrumentationConfig,
+	).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the instrumentation webhook: %w", err)
 	}
 
@@ -980,7 +976,7 @@ func determineCollectorBaseUrl(forceOTelCollectorServiceUrl bool, isIPv6Cluster 
 	}
 
 	// Using the node's IPv6 address for the collector base URL should actually just work:
-	// if m.instrumentationMetadata.IsIPv6Cluster {
+	// if m.clusterInstrumentationConfig.IsIPv6Cluster {
 	//	 oTelCollectorNodeLocalBaseUrlPattern = "http://[$(%s)]:%d"
 	// }
 	//

@@ -375,3 +375,13 @@ func UpdateInstrumentWorkloadsMode(
 	monitoringResource.Spec.InstrumentWorkloads.Mode = instrumentWorkloads
 	Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 }
+
+func UpdateInstrumentWorkloadsTraceContextPropagators(
+	ctx context.Context,
+	k8sClient client.Client,
+	traceContextPropagators *string,
+) {
+	monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
+	monitoringResource.Spec.InstrumentWorkloads.TraceContext.Propagators = traceContextPropagators
+	Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
+}
