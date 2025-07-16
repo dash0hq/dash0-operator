@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl"
 	"go.opentelemetry.io/collector/component"
@@ -37,6 +38,17 @@ var (
 	restrictedNamespaces = []string{
 		"kube-system",
 		"kube-node-lease",
+	}
+	// See https://opentelemetry.io/docs/languages/sdk-configuration/general/#otel_propagators.
+	validTraceContextPropagators = []string{
+		"tracecontext",
+		"baggage",
+		"b3",
+		"b3multi",
+		"jaeger",
+		"xray",
+		"ottrace",
+		"none",
 	}
 )
 
@@ -82,7 +94,6 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 	if errorResponse != nil {
 		return *errorResponse
 	}
-
 	admissionResponse, done := h.validateExport(availableOperatorConfigurations, monitoringResource)
 	if done {
 		return admissionResponse
@@ -91,7 +102,10 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 	if done {
 		return admissionResponse
 	}
-
+	admissionResponse, done = h.validateTraceContextPropagators(monitoringResource)
+	if done {
+		return admissionResponse
+	}
 	admissionResponse, done = h.validateOttl(monitoringResource)
 	if done {
 		return admissionResponse
@@ -178,6 +192,39 @@ func (h *MonitoringValidationWebhookHandler) validateTelemetryRelatedSettingsIfT
 			"(telemetryCollection.enabled=false), and yet the monitoring resource has a transform setting " +
 			"This is an invalid combination. Please either set telemetryCollection.enabled=true in the " +
 			"operator configuration resource or remove the transform setting in the monitoring resource."), true
+	}
+	return admission.Response{}, false
+}
+
+func (h *MonitoringValidationWebhookHandler) validateTraceContextPropagators(monitoringResource *dash0v1beta1.Dash0Monitoring) (admission.Response, bool) {
+	propagatorsRaw := monitoringResource.Spec.InstrumentWorkloads.TraceContext.Propagators
+	if propagatorsRaw == nil || strings.TrimSpace(*propagatorsRaw) == "" {
+		return admission.Response{}, false
+	}
+	propagators := strings.Split(*propagatorsRaw, ",")
+	for _, propagatorRaw := range propagators {
+		propagator := strings.TrimSpace(propagatorRaw)
+		if propagator == "" {
+			return admission.Denied(
+					fmt.Sprintf(
+						"The instrumentWorkloads.traceContext.propagators setting (\"%s\") in the Dash0 monitoring "+
+							"resource contains an empty value. Please remove the empty value.",
+						*propagatorsRaw,
+					)),
+				true
+		}
+		if !slices.Contains(validTraceContextPropagators, propagator) {
+			return admission.Denied(
+					fmt.Sprintf(
+						"The instrumentWorkloads.traceContext.propagators setting (\"%s\") in the Dash0 monitoring "+
+							"resource contains an unknown propagator value: \"%s\". Valid trace context propagators "+
+							"are %s. Please remove the invalid propagator from the list.",
+						*propagatorsRaw,
+						propagator,
+						strings.Join(validTraceContextPropagators, ", "),
+					)),
+				true
+		}
 	}
 	return admission.Response{}, false
 }
