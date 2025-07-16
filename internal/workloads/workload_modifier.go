@@ -40,6 +40,7 @@ const (
 	envVarLdPreloadValue                    = "/__dash0__/dash0_injector.so"
 	envVarOtelExporterOtlpEndpointName      = "OTEL_EXPORTER_OTLP_ENDPOINT"
 	envVarOtelExporterOtlpProtocolName      = "OTEL_EXPORTER_OTLP_PROTOCOL"
+	envVarOtelPropagatorsName               = "OTEL_PROPAGATORS"
 	envVarDash0CollectorBaseUrlName         = "DASH0_OTEL_COLLECTOR_BASE_URL"
 	envVarDash0NamespaceName                = "DASH0_NAMESPACE_NAME"
 	envVarDash0PodName                      = "DASH0_POD_NAME"
@@ -505,6 +506,17 @@ func (m *ResourceModifier) addEnvironmentVariables(
 		},
 	)
 
+	if m.namespaceInstrumentationConfig.TraceContextPropagators != nil &&
+		strings.TrimSpace(*m.namespaceInstrumentationConfig.TraceContextPropagators) != "" {
+		m.addButDoNotReplaceEnvironmentVariable(
+			container,
+			corev1.EnvVar{
+				Name:  envVarOtelPropagatorsName,
+				Value: strings.TrimSpace(*m.namespaceInstrumentationConfig.TraceContextPropagators),
+			},
+		)
+	}
+
 	m.addOrReplaceEnvironmentVariable(
 		container,
 		corev1.EnvVar{
@@ -755,6 +767,22 @@ func (m *ResourceModifier) addOrReplaceEnvironmentVariable(container *corev1.Con
 		container.Env[idx].ValueFrom = envVar.ValueFrom
 	}
 }
+
+func (m *ResourceModifier) addButDoNotReplaceEnvironmentVariable(container *corev1.Container, envVar corev1.EnvVar) {
+	if container.Env == nil {
+		container.Env = make([]corev1.EnvVar, 0)
+	}
+	idx := slices.IndexFunc(container.Env, func(c corev1.EnvVar) bool {
+		return c.Name == envVar.Name
+	})
+
+	if idx >= 0 {
+		// variable already exists, do nothing
+		return
+	}
+	container.Env = append(container.Env, envVar)
+}
+
 func (m *ResourceModifier) conditionallyAddEnvVarFromLabelFieldSelector(
 	container *corev1.Container,
 	podMeta *metav1.ObjectMeta,
@@ -941,6 +969,7 @@ func (m *ResourceModifier) removeEnvironmentVariables(container *corev1.Containe
 	m.removeEnvironmentVariable(container, envVarDash0CollectorBaseUrlName)
 	m.removeEnvironmentVariable(container, envVarOtelExporterOtlpEndpointName)
 	m.removeEnvironmentVariable(container, envVarOtelExporterOtlpProtocolName)
+	m.removeOtelPropagatorsIfCurrentValueMatchesConfig(container)
 	m.removeEnvironmentVariable(container, envVarDash0NamespaceName)
 	m.removeEnvironmentVariable(container, envVarDash0PodName)
 	m.removeEnvironmentVariable(container, envVarDash0PodUidName)
@@ -991,6 +1020,27 @@ func (m *ResourceModifier) removeLdPreload(container *corev1.Container) {
 		return strings.TrimSpace(lib) == envVarLdPreloadValue || lib == ""
 	})
 	container.Env[idx].Value = strings.Join(libraries, separator)
+}
+
+func (m *ResourceModifier) removeOtelPropagatorsIfCurrentValueMatchesConfig(container *corev1.Container) {
+	if m.namespaceInstrumentationConfig.TraceContextPropagators != nil &&
+		strings.TrimSpace(*m.namespaceInstrumentationConfig.TraceContextPropagators) != "" {
+		idx := slices.IndexFunc(container.Env, func(c corev1.EnvVar) bool {
+			return c.Name == envVarOtelPropagatorsName
+		})
+		if idx < 0 {
+			// env var is not set, nothing to do
+			return
+		}
+		existingEnvVar := container.Env[idx]
+		if existingEnvVar.ValueFrom != nil {
+			// if OTEL_PROPAGATORS is set via ValueFrom, it hasn't been set by us, leave it alone
+			return
+		}
+		if strings.TrimSpace(existingEnvVar.Value) == strings.TrimSpace(*m.namespaceInstrumentationConfig.TraceContextPropagators) {
+			m.removeEnvironmentVariable(container, envVarOtelPropagatorsName)
+		}
+	}
 }
 
 func (m *ResourceModifier) removeEnvironmentVariable(container *corev1.Container, name string) {

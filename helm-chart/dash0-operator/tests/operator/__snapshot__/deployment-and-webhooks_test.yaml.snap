@@ -1303,7 +1303,7 @@ monitoring resource CRD should match snapshot:
                             An optional comma-separated list of trace context propagators. If set, the environment variable OTEL_PROPAGATORS
                             is added to workloads with the value of this field. This allows configuring the OpenTelemetry SDK to use specific
                             propagators for trace context propagation. The value can be a comma-separated list of propagators, for exampmle
-                            "traceparent,aws" for the W3C trace context traceparent header and AWS X-Ray headers.
+                            "tracecontext,xray" for the W3C trace context traceparent header and AWS X-Ray headers.
 
 
                             Note that you usually want to list the preferred propagator last, if multiple propagators are specified. The
@@ -1314,6 +1314,10 @@ monitoring resource CRD should match snapshot:
 
 
                             By default, the value is not set and the environment variable OTEL_PROPAGATORS will not be added to workloads.
+                            (The default values for OpenTelemetry SDKs when OTEL_PROPAGATORS is not set is "tracecontext,baggage".)
+
+
+                            See also: https://opentelemetry.io/docs/languages/sdk-configuration/general/#otel_propagators
                           type: string
                       type: object
                   type: object
@@ -1594,7 +1598,7 @@ monitoring resource CRD should match snapshot:
                             An optional comma-separated list of trace context propagators. If set, the environment variable OTEL_PROPAGATORS
                             is added to workloads with the value of this field. This allows configuring the OpenTelemetry SDK to use specific
                             propagators for trace context propagation. The value can be a comma-separated list of propagators, for exampmle
-                            "traceparent,aws" for the W3C trace context traceparent header and AWS X-Ray headers.
+                            "tracecontext,xray" for the W3C trace context traceparent header and AWS X-Ray headers.
 
 
                             Note that you usually want to list the preferred propagator last, if multiple propagators are specified. The
@@ -1605,6 +1609,10 @@ monitoring resource CRD should match snapshot:
 
 
                             By default, the value is not set and the environment variable OTEL_PROPAGATORS will not be added to workloads.
+                            (The default values for OpenTelemetry SDKs when OTEL_PROPAGATORS is not set is "tracecontext,baggage".)
+
+
+                            See also: https://opentelemetry.io/docs/languages/sdk-configuration/general/#otel_propagators
                           type: string
                       type: object
                   type: object

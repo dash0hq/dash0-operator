@@ -1698,7 +1698,7 @@ spec:
                           An optional comma-separated list of trace context propagators. If set, the environment variable OTEL_PROPAGATORS
                           is added to workloads with the value of this field. This allows configuring the OpenTelemetry SDK to use specific
                           propagators for trace context propagation. The value can be a comma-separated list of propagators, for exampmle
-                          "traceparent,aws" for the W3C trace context traceparent header and AWS X-Ray headers.
+                          "tracecontext,xray" for the W3C trace context traceparent header and AWS X-Ray headers.
 
 
                           Note that you usually want to list the preferred propagator last, if multiple propagators are specified. The
@@ -1709,6 +1709,10 @@ spec:
 
 
                           By default, the value is not set and the environment variable OTEL_PROPAGATORS will not be added to workloads.
+                          (The default values for OpenTelemetry SDKs when OTEL_PROPAGATORS is not set is "tracecontext,baggage".)
+
+
+                          See also: https://opentelemetry.io/docs/languages/sdk-configuration/general/#otel_propagators
                         type: string
                     type: object
                 type: object
@@ -1988,7 +1992,7 @@ spec:
                           An optional comma-separated list of trace context propagators. If set, the environment variable OTEL_PROPAGATORS
                           is added to workloads with the value of this field. This allows configuring the OpenTelemetry SDK to use specific
                           propagators for trace context propagation. The value can be a comma-separated list of propagators, for exampmle
-                          "traceparent,aws" for the W3C trace context traceparent header and AWS X-Ray headers.
+                          "tracecontext,xray" for the W3C trace context traceparent header and AWS X-Ray headers.
 
 
                           Note that you usually want to list the preferred propagator last, if multiple propagators are specified. The
@@ -1999,6 +2003,10 @@ spec:
 
 
                           By default, the value is not set and the environment variable OTEL_PROPAGATORS will not be added to workloads.
+                          (The default values for OpenTelemetry SDKs when OTEL_PROPAGATORS is not set is "tracecontext,baggage".)
+
+
+                          See also: https://opentelemetry.io/docs/languages/sdk-configuration/general/#otel_propagators
                         type: string
                     type: object
                 type: object
@@ -2057,6 +2065,12 @@ spec:
     subresources:
       status: {}
 
+{{/*
+Maintenance note: When synchronizing helm-chart/dash0-operator/templates/operator/deployment-and-webhooks.yaml
+with config/crd/bases/operator.dash0.com_dash0monitorings.yaml after changing the CRD Golang types under
+api/operator, note that the the conversion webhook will not be generated in
+config/crd/bases/operator.dash0.com_dash0monitorings.yaml; hence, this diff is to be ignored.
+*/}}
   conversion:
     strategy: Webhook
     webhook:
@@ -2068,7 +2082,9 @@ spec:
           name: {{ template "dash0-operator.chartName" . }}-webhook-service
           namespace: {{ .Release.Namespace }}
           port: {{ .Values.operator.webhookPort }}
-          # Looks like it is currently not possible to convince controller-runtime to serve the conversion webhook at a
-          # different path than "/convert". Something like "/monitoring/conversion" would be better. This might
-          # become an issue once we need a conversion webhook for the Dash0OperatorConfiguration resource as well.
+{{/*
+Looks like it is currently not possible to convince controller-runtime to serve the conversion webhook at a different
+path than "/convert". Something like "/monitoring/conversion" would be better. This might become an issue once we need
+a conversion webhook for the Dash0OperatorConfiguration resource as well.
+*/}}
           path: /convert

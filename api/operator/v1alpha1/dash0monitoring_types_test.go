@@ -190,12 +190,12 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 			}),
 			Entry("with propagators annotation", convertToTestCase{
 				srcSpec:               &Dash0MonitoringSpec{},
-				propagatorsAnnotation: ptr.To("traceparent,aws"),
+				propagatorsAnnotation: ptr.To("tracecontext,xray"),
 				srcStatus:             &Dash0MonitoringStatus{},
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("traceparent,aws"),
+							Propagators: ptr.To("tracecontext,xray"),
 						},
 					},
 				},
@@ -203,33 +203,33 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 			}),
 			Entry("with previous propagators annotation", convertToTestCase{
 				srcSpec:                       &Dash0MonitoringSpec{},
-				previousPropagatorsAnnotation: ptr.To("traceparent,aws"),
+				previousPropagatorsAnnotation: ptr.To("tracecontext,xray"),
 				srcStatus:                     &Dash0MonitoringStatus{},
 				expectedDstSpec:               dash0v1beta1.Dash0MonitoringSpec{},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("traceparent,aws"),
+							Propagators: ptr.To("tracecontext,xray"),
 						},
 					},
 				},
 			}),
 			Entry("with both propagators annotations", convertToTestCase{
 				srcSpec:                       &Dash0MonitoringSpec{},
-				propagatorsAnnotation:         ptr.To("traceparent,aws"),
-				previousPropagatorsAnnotation: ptr.To("aws"),
+				propagatorsAnnotation:         ptr.To("tracecontext,xray"),
+				previousPropagatorsAnnotation: ptr.To("xray"),
 				srcStatus:                     &Dash0MonitoringStatus{},
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("traceparent,aws"),
+							Propagators: ptr.To("tracecontext,xray"),
 						},
 					},
 				},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("aws"),
+							Propagators: ptr.To("xray"),
 						},
 					},
 				},
@@ -354,47 +354,47 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				srcSpec: &dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("traceparent,aws"),
+							Propagators: ptr.To("tracecontext,xray"),
 						},
 					},
 				},
 				srcStatus:                   &dash0v1beta1.Dash0MonitoringStatus{},
 				expectedDstSpec:             Dash0MonitoringSpec{},
 				expectedDstStatus:           Dash0MonitoringStatus{},
-				expectPropagatorsAnnotation: ptr.To("traceparent,aws"),
+				expectPropagatorsAnnotation: ptr.To("tracecontext,xray"),
 			}),
 			Entry("with status.previousInstrumentWorkloads.traceContext.propagators", convertFromTestCase{
 				srcSpec: &dash0v1beta1.Dash0MonitoringSpec{},
 				srcStatus: &dash0v1beta1.Dash0MonitoringStatus{
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("aws"),
+							Propagators: ptr.To("xray"),
 						},
 					},
 				},
 				expectedDstSpec:                     Dash0MonitoringSpec{},
 				expectedDstStatus:                   Dash0MonitoringStatus{},
-				expectPreviousPropagatorsAnnotation: ptr.To("aws"),
+				expectPreviousPropagatorsAnnotation: ptr.To("xray"),
 			}),
 			Entry("with propagators in both attributes", convertFromTestCase{
 				srcSpec: &dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("traceparent,aws"),
+							Propagators: ptr.To("tracecontext,xray"),
 						},
 					},
 				},
 				srcStatus: &dash0v1beta1.Dash0MonitoringStatus{
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("aws"),
+							Propagators: ptr.To("xray"),
 						},
 					},
 				},
 				expectedDstSpec:                     Dash0MonitoringSpec{},
 				expectedDstStatus:                   Dash0MonitoringStatus{},
-				expectPropagatorsAnnotation:         ptr.To("traceparent,aws"),
-				expectPreviousPropagatorsAnnotation: ptr.To("aws"),
+				expectPropagatorsAnnotation:         ptr.To("tracecontext,xray"),
+				expectPreviousPropagatorsAnnotation: ptr.To("xray"),
 			}),
 		)
 	})
