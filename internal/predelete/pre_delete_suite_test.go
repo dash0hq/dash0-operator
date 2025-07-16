@@ -96,11 +96,13 @@ var _ = BeforeSuite(func() {
 		k8sClient,
 		clientset,
 		mgr.GetEventRecorderFor("dash0-monitoring-controller"),
-		TestImages,
-		util.ExtraConfigDefaults,
-		OTelCollectorNodeLocalBaseUrlTest,
-		nil,
-		false,
+		util.ClusterInstrumentationConfig{
+			Images:                TestImages,
+			OTelCollectorBaseUrl:  OTelCollectorNodeLocalBaseUrlTest,
+			ExtraConfig:           util.ExtraConfigDefaults,
+			InstrumentationDelays: nil,
+			InstrumentationDebug:  false,
+		},
 	)
 	oTelColResourceManager := &otelcolresources.OTelColResourceManager{
 		Client:                    k8sClient,

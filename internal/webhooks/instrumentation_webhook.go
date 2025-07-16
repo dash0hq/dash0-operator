@@ -486,13 +486,14 @@ func (h *InstrumentationWebhookHandler) postProcessUninstrumentation(
 
 func (h *InstrumentationWebhookHandler) newWorkloadModifier(logger *logr.Logger) *workloads.ResourceModifier {
 	return workloads.NewResourceModifier(
-		util.InstrumentationMetadata{
+		util.ClusterInstrumentationConfig{
 			Images:               h.Images,
-			InstrumentedBy:       actor,
 			OTelCollectorBaseUrl: h.OTelCollectorBaseUrl,
+			ExtraConfig:          h.ExtraConfig,
 			InstrumentationDebug: h.InstrumentationDebug,
 		},
-		h.ExtraConfig,
+		util.NamespaceInstrumentationConfig{},
+		actor,
 		logger,
 	)
 }

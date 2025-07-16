@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	testActor = "actor"
+	testActor = util.WorkloadModifierActor("actor")
 )
 
 // Maintenance note: There is some overlap of test cases between this file and dash0_webhook_test.go. This is
@@ -31,10 +31,10 @@ const (
 // be used to verify external effects (recording events etc.) that cannot be covered in this test.
 
 var (
-	instrumentationMetadata = util.InstrumentationMetadata{
+	clusterInstrumentationConfig = util.ClusterInstrumentationConfig{
 		Images:               TestImages,
 		OTelCollectorBaseUrl: OTelCollectorNodeLocalBaseUrlTest,
-		InstrumentedBy:       "modify_test",
+		ExtraConfig:          util.ExtraConfigDefaults,
 	}
 )
 
@@ -42,7 +42,12 @@ var _ = Describe("Dash0 Workload Modification", func() {
 
 	ctx := context.Background()
 	logger := log.FromContext(ctx)
-	workloadModifier := NewResourceModifier(instrumentationMetadata, util.ExtraConfigDefaults, &logger)
+	workloadModifier := NewResourceModifier(
+		clusterInstrumentationConfig,
+		util.NamespaceInstrumentationConfig{},
+		testActor,
+		&logger,
+	)
 
 	type envVarModificationTest struct {
 		envVars      []corev1.EnvVar
@@ -77,11 +82,16 @@ var _ = Describe("Dash0 Workload Modification", func() {
 		It("should use the collector service URL instead of the node-local endpoint if requested", func() {
 			workload := BasicDeployment(TestNamespaceName, DeploymentNamePrefix)
 			modificationResult :=
-				NewResourceModifier(util.InstrumentationMetadata{
-					Images:               TestImages,
-					OTelCollectorBaseUrl: OTelCollectorServiceBaseUrlTest,
-					InstrumentedBy:       "modify_test",
-				}, util.ExtraConfigDefaults, &logger).ModifyDeployment(workload)
+				NewResourceModifier(
+					util.ClusterInstrumentationConfig{
+						Images:               TestImages,
+						OTelCollectorBaseUrl: OTelCollectorServiceBaseUrlTest,
+						ExtraConfig:          util.ExtraConfigDefaults,
+					},
+					util.NamespaceInstrumentationConfig{},
+					util.WorkloadModifierActor("modify_test"),
+					&logger,
+				).ModifyDeployment(workload)
 
 			Expect(modificationResult.HasBeenModified).To(BeTrue())
 			envVars := workload.Spec.Template.Spec.Containers[0].Env
@@ -600,7 +610,12 @@ var _ = Describe("Dash0 Workload Modification", func() {
 	Describe("individual modification functions", func() {
 		ctx := context.Background()
 		logger := log.FromContext(ctx)
-		workloadModifier := NewResourceModifier(instrumentationMetadata, util.ExtraConfigDefaults, &logger)
+		workloadModifier := NewResourceModifier(
+			clusterInstrumentationConfig,
+			util.NamespaceInstrumentationConfig{},
+			testActor,
+			&logger,
+		)
 
 		type addLdPreloadTest struct {
 			value       string

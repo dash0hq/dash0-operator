@@ -30,24 +30,9 @@ import (
 
 type Instrumenter struct {
 	client.Client
-	Clientset            *kubernetes.Clientset
-	Recorder             record.EventRecorder
-	Images               util.Images
-	ExtraConfig          util.ExtraConfig
-	OTelCollectorBaseUrl string
-	Delays               *DelayConfig
-	InstrumentationDebug bool
-}
-
-type DelayConfig struct {
-	// AfterEachWorkloadMillis determines the delay to wait after updating a single workload, when instrumenting
-	// workloads in a namespace either when running InstrumentAtStartup or when instrumentation is enabled for a new
-	// workspace via a monitoring resource.
-	AfterEachWorkloadMillis uint64
-
-	// AfterEachNamespace determines the delay to wait after updating the instrumenation in one namespace when running
-	// InstrumentAtStartup.
-	AfterEachNamespaceMillis uint64
+	Clientset                    *kubernetes.Clientset
+	Recorder                     record.EventRecorder
+	ClusterInstrumentationConfig util.ClusterInstrumentationConfig
 }
 
 type ImmutableWorkloadError struct {
@@ -92,21 +77,13 @@ func NewInstrumenter(
 	client client.Client,
 	clientset *kubernetes.Clientset,
 	recorder record.EventRecorder,
-	images util.Images,
-	extraConfig util.ExtraConfig,
-	oTelCollectorBaseUrl string,
-	delays *DelayConfig,
-	instrumentationDebug bool,
+	clusterInstrumentationConfig util.ClusterInstrumentationConfig,
 ) *Instrumenter {
 	return &Instrumenter{
-		Client:               client,
-		Clientset:            clientset,
-		Recorder:             recorder,
-		Images:               images,
-		ExtraConfig:          extraConfig,
-		OTelCollectorBaseUrl: oTelCollectorBaseUrl,
-		Delays:               delays,
-		InstrumentationDebug: instrumentationDebug,
+		Client:                       client,
+		Clientset:                    clientset,
+		Recorder:                     recorder,
+		ClusterInstrumentationConfig: clusterInstrumentationConfig,
 	}
 }
 
@@ -421,11 +398,19 @@ func (i *Instrumenter) handleJobJobOnInstrumentation(
 		switch requiredAction {
 		case util.ModificationModeInstrumentation:
 			modificationResult =
-				newWorkloadModifier(i.Images, i.ExtraConfig, i.OTelCollectorBaseUrl, i.InstrumentationDebug, &logger).
+				newWorkloadModifier(
+					i.ClusterInstrumentationConfig,
+					i.getNamespaceInstrumentationConfig(),
+					&logger,
+				).
 					AddLabelsToImmutableJob(&job)
 		case util.ModificationModeUninstrumentation:
 			modificationResult =
-				newWorkloadModifier(i.Images, i.ExtraConfig, i.OTelCollectorBaseUrl, i.InstrumentationDebug, &logger).
+				newWorkloadModifier(
+					i.ClusterInstrumentationConfig,
+					i.getNamespaceInstrumentationConfig(),
+					&logger,
+				).
 					RemoveLabelsFromImmutableJob(&job)
 		}
 
@@ -537,7 +522,7 @@ func (i *Instrumenter) instrumentWorkload(
 	var requiredAction util.ModificationMode
 	if util.WasInstrumentedButHasOptedOutNow(workloadMeta) {
 		requiredAction = util.ModificationModeUninstrumentation
-	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(workloadMeta, i.Images) {
+	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(workloadMeta, i.ClusterInstrumentationConfig.Images) {
 		// No change necessary, this workload has already been instrumented and an opt-out label (which would need to
 		// trigger uninstrumentation) has not been added since it has been instrumented.
 		logger.Info("not updating the existing instrumentation for this workload, it has already been successfully " +
@@ -567,9 +552,17 @@ func (i *Instrumenter) instrumentWorkload(
 
 		switch requiredAction {
 		case util.ModificationModeInstrumentation:
-			modificationResult = workload.instrument(i.Images, i.ExtraConfig, i.OTelCollectorBaseUrl, i.InstrumentationDebug, &logger)
+			modificationResult = workload.instrument(
+				i.ClusterInstrumentationConfig,
+				i.getNamespaceInstrumentationConfig(),
+				&logger,
+			)
 		case util.ModificationModeUninstrumentation:
-			modificationResult = workload.revert(i.Images, i.ExtraConfig, i.OTelCollectorBaseUrl, i.InstrumentationDebug, &logger)
+			modificationResult = workload.revert(
+				i.ClusterInstrumentationConfig,
+				i.getNamespaceInstrumentationConfig(),
+				&logger,
+			)
 		}
 
 		if modificationResult.HasBeenModified {
@@ -623,10 +616,10 @@ func (i *Instrumenter) pauseAfterEachWorkload() {
 }
 
 func (i *Instrumenter) DelayAfterEachWorkloadMillis() time.Duration {
-	if i.Delays == nil {
+	if i.ClusterInstrumentationConfig.InstrumentationDelays == nil {
 		return time.Duration(0)
 	}
-	return time.Duration(i.Delays.AfterEachWorkloadMillis)
+	return time.Duration(i.ClusterInstrumentationConfig.InstrumentationDelays.AfterEachWorkloadMillis)
 }
 
 func (i *Instrumenter) pauseAfterEachNamespace() {
@@ -636,10 +629,10 @@ func (i *Instrumenter) pauseAfterEachNamespace() {
 }
 
 func (i *Instrumenter) DelayAfterEachNamespaceMillis() time.Duration {
-	if i.Delays == nil {
+	if i.ClusterInstrumentationConfig.InstrumentationDelays == nil {
 		return time.Duration(0)
 	}
-	return time.Duration(i.Delays.AfterEachNamespaceMillis)
+	return time.Duration(i.ClusterInstrumentationConfig.InstrumentationDelays.AfterEachNamespaceMillis)
 }
 
 // UninstrumentWorkloadsIfAvailable is the main uninstrumentation function that is called in the controller's reconcile
@@ -823,7 +816,11 @@ func (i *Instrumenter) handleJobOnUninstrumentation(ctx context.Context, job bat
 			// There was an attempt to instrument this job (probably by the controller), which has not been successful.
 			// We only need remove the labels from that instrumentation attempt to clean up.
 			modificationResult =
-				newWorkloadModifier(i.Images, i.ExtraConfig, i.OTelCollectorBaseUrl, i.InstrumentationDebug, &logger).
+				newWorkloadModifier(
+					i.ClusterInstrumentationConfig,
+					i.getNamespaceInstrumentationConfig(),
+					&logger,
+				).
 					RemoveLabelsFromImmutableJob(&job)
 
 			// Apparently for jobs we do not need to set the "dash0.com/webhook-ignore-once" label, since changing their
@@ -949,7 +946,11 @@ func (i *Instrumenter) revertWorkloadInstrumentation(
 				err,
 			)
 		}
-		modificationResult = workload.revert(i.Images, i.ExtraConfig, i.OTelCollectorBaseUrl, i.InstrumentationDebug, &logger)
+		modificationResult = workload.revert(
+			i.ClusterInstrumentationConfig,
+			i.getNamespaceInstrumentationConfig(),
+			&logger,
+		)
 		if modificationResult.HasBeenModified {
 			// Changing the workload spec sometimes triggers a new admission request, which would re-instrument the
 			// workload via the webhook immediately. To prevent this, we add a label that the webhook can check to
@@ -993,20 +994,14 @@ func (i *Instrumenter) postProcessUninstrumentation(
 }
 
 func newWorkloadModifier(
-	images util.Images,
-	extraConfig util.ExtraConfig,
-	oTelCollectorBaseUrl string,
-	instrumentationDebug bool,
+	clusterInstrumentationConfig util.ClusterInstrumentationConfig,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) *workloads.ResourceModifier {
 	return workloads.NewResourceModifier(
-		util.InstrumentationMetadata{
-			Images:               images,
-			InstrumentedBy:       actor,
-			OTelCollectorBaseUrl: oTelCollectorBaseUrl,
-			InstrumentationDebug: instrumentationDebug,
-		},
-		extraConfig,
+		clusterInstrumentationConfig,
+		namespaceInstrumentationConfig,
+		actor,
 		logger,
 	)
 }
@@ -1063,5 +1058,10 @@ func (i *Instrumenter) restartPodsOfReplicaSet(
 					replicaSet.UID,
 				))
 		}
+	}
+}
+
+func (i *Instrumenter) getNamespaceInstrumentationConfig() util.NamespaceInstrumentationConfig {
+	return util.NamespaceInstrumentationConfig{
 	}
 }

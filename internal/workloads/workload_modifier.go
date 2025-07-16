@@ -166,20 +166,33 @@ func newNotModifiedSkipLoggingResult(
 }
 
 type ResourceModifier struct {
-	instrumentationMetadata util.InstrumentationMetadata
-	extraConfig             util.ExtraConfig
-	logger                  *logr.Logger
+	// configuration values relevant for instrumenting workloads which apply to the whole cluster, e.g. settings from
+	// the helm chart or the operator configuration resource.
+	clusterInstrumentationConfig util.ClusterInstrumentationConfig
+
+	// configuration values relevant for instrumenting workloads which apply to one namespace, e.g. settings from the
+	// monitoring resource.
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig
+
+	// the name of the component that applies the resource modifications, this will be written to the
+	// dash0.com/instrumented-by label
+	actor util.WorkloadModifierActor
+
+	// the logger to use for logging messages during the resource modification process
+	logger *logr.Logger
 }
 
 func NewResourceModifier(
-	instrumentationMetadata util.InstrumentationMetadata,
-	extraConfig util.ExtraConfig,
+	clusterInstrumentationConfig util.ClusterInstrumentationConfig,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	actor util.WorkloadModifierActor,
 	logger *logr.Logger,
 ) *ResourceModifier {
 	return &ResourceModifier{
-		instrumentationMetadata: instrumentationMetadata,
-		extraConfig:             extraConfig,
-		logger:                  logger,
+		clusterInstrumentationConfig:   clusterInstrumentationConfig,
+		namespaceInstrumentationConfig: namespaceInstrumentationConfig,
+		actor:                          actor,
+		logger:                         logger,
 	}
 }
 
@@ -216,7 +229,7 @@ func (m *ResourceModifier) ModifyJob(job *batchv1.Job) ModificationResult {
 }
 
 func (m *ResourceModifier) AddLabelsToImmutableJob(job *batchv1.Job) ModificationResult {
-	util.AddInstrumentationLabels(&job.ObjectMeta, false, m.instrumentationMetadata)
+	util.AddInstrumentationLabels(&job.ObjectMeta, false, m.clusterInstrumentationConfig, m.actor)
 	// adding labels always works and is a modification that requires an update
 	return NewHasBeenModifiedResult()
 }
@@ -234,7 +247,7 @@ func (m *ResourceModifier) ModifyPod(pod *corev1.Pod) ModificationResult {
 	if hasBeenModified := m.modifyPodSpec(&pod.Spec, &pod.ObjectMeta, &pod.ObjectMeta); !hasBeenModified {
 		return NewNotModifiedNoChangesResult()
 	}
-	util.AddInstrumentationLabels(&pod.ObjectMeta, true, m.instrumentationMetadata)
+	util.AddInstrumentationLabels(&pod.ObjectMeta, true, m.clusterInstrumentationConfig, m.actor)
 	return NewHasBeenModifiedResult()
 }
 
@@ -257,8 +270,8 @@ func (m *ResourceModifier) modifyResource(
 	if hasBeenModified := m.modifyPodSpec(&podTemplateSpec.Spec, workloadMeta, podMeta); !hasBeenModified {
 		return NewNotModifiedNoChangesResult()
 	}
-	util.AddInstrumentationLabels(workloadMeta, true, m.instrumentationMetadata)
-	util.AddInstrumentationLabels(&podTemplateSpec.ObjectMeta, true, m.instrumentationMetadata)
+	util.AddInstrumentationLabels(workloadMeta, true, m.clusterInstrumentationConfig, m.actor)
+	util.AddInstrumentationLabels(&podTemplateSpec.ObjectMeta, true, m.clusterInstrumentationConfig, m.actor)
 	return NewHasBeenModifiedResult()
 }
 
@@ -379,7 +392,7 @@ func (m *ResourceModifier) createInitContainer(podSpec *corev1.PodSpec) *corev1.
 			Value: dash0InstrumentationBaseDirectory,
 		},
 	}
-	if m.instrumentationMetadata.InstrumentationDebug {
+	if m.clusterInstrumentationConfig.InstrumentationDebug {
 		initContainerEnv = append(initContainerEnv, corev1.EnvVar{
 			Name:  dash0CopyInstrumentationDebugEnvVarName,
 			Value: "true",
@@ -387,7 +400,7 @@ func (m *ResourceModifier) createInitContainer(podSpec *corev1.PodSpec) *corev1.
 	}
 	initContainer := &corev1.Container{
 		Name:  initContainerName,
-		Image: m.instrumentationMetadata.InitContainerImage,
+		Image: m.clusterInstrumentationConfig.InitContainerImage,
 		Env:   initContainerEnv,
 		SecurityContext: &corev1.SecurityContext{
 			AllowPrivilegeEscalation: &initContainerAllowPrivilegeEscalation,
@@ -400,7 +413,7 @@ func (m *ResourceModifier) createInitContainer(podSpec *corev1.PodSpec) *corev1.
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
 		},
-		Resources: m.extraConfig.InstrumentationInitContainerResources.ToResourceRequirements(),
+		Resources: m.clusterInstrumentationConfig.ExtraConfig.InstrumentationInitContainerResources.ToResourceRequirements(),
 		VolumeMounts: []corev1.VolumeMount{
 			{
 				Name:      dash0VolumeName,
@@ -410,8 +423,8 @@ func (m *ResourceModifier) createInitContainer(podSpec *corev1.PodSpec) *corev1.
 		},
 	}
 
-	if m.instrumentationMetadata.InitContainerImagePullPolicy != "" {
-		initContainer.ImagePullPolicy = m.instrumentationMetadata.InitContainerImagePullPolicy
+	if m.clusterInstrumentationConfig.InitContainerImagePullPolicy != "" {
+		initContainer.ImagePullPolicy = m.clusterInstrumentationConfig.InitContainerImagePullPolicy
 	}
 	return initContainer
 }
@@ -469,7 +482,7 @@ func (m *ResourceModifier) addEnvironmentVariables(
 		},
 	)
 
-	collectorBaseUrl := m.instrumentationMetadata.OTelCollectorBaseUrl
+	collectorBaseUrl := m.clusterInstrumentationConfig.OTelCollectorBaseUrl
 	m.addOrReplaceEnvironmentVariable(
 		container,
 		corev1.EnvVar{
@@ -633,7 +646,7 @@ func (m *ResourceModifier) addEnvironmentVariables(
 			})
 	}
 
-	if m.instrumentationMetadata.InstrumentationDebug {
+	if m.clusterInstrumentationConfig.InstrumentationDebug {
 		m.addOrReplaceEnvironmentVariable(
 			container,
 			corev1.EnvVar{
