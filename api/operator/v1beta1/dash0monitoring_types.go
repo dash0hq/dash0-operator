@@ -15,6 +15,7 @@ import (
 
 	dash0operator "github.com/dash0hq/dash0-operator/api/operator"
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
 // Dash0MonitoringSpec describes the details of monitoring a single Kubernetes namespace with Dash0 and sending
@@ -159,7 +160,7 @@ type TraceContext struct {
 	// An optional comma-separated list of trace context propagators. If set, the environment variable OTEL_PROPAGATORS
 	// is added to workloads with the value of this field. This allows configuring the OpenTelemetry SDK to use specific
 	// propagators for trace context propagation. The value can be a comma-separated list of propagators, for exampmle
-	// "traceparent,aws" for the W3C trace context traceparent header and AWS X-Ray headers.
+	// "tracecontext,xray" for the W3C trace context traceparent header and AWS X-Ray headers.
 	//
 	// Note that you usually want to list the preferred propagator last, if multiple propagators are specified. The
 	// reason is that both `Extract` (reading trace context information from headers and adding it to the span) and
@@ -168,6 +169,9 @@ type TraceContext struct {
 	// same information (e.g. trace ID and span ID). Hence, the need to specify them in reverse order of priority.
 	//
 	// By default, the value is not set and the environment variable OTEL_PROPAGATORS will not be added to workloads.
+	// (The default values for OpenTelemetry SDKs when OTEL_PROPAGATORS is not set is "tracecontext,baggage".)
+	//
+	// See also: https://opentelemetry.io/docs/languages/sdk-configuration/general/#otel_propagators
 	//
 	// +kubebuilder:validation:Optional
 	Propagators *string `json:"propagators,omitempty"`
@@ -375,6 +379,13 @@ func (d *Dash0Monitoring) Items(list client.ObjectList) []client.Object {
 
 func (d *Dash0Monitoring) At(list client.ObjectList, index int) dash0operator.Dash0Resource {
 	return &list.(*Dash0MonitoringList).Items[index]
+}
+
+func (d *Dash0Monitoring) GetNamespaceInstrumentationConfig() util.NamespaceInstrumentationConfig {
+	return util.NamespaceInstrumentationConfig{
+		TraceContextPropagators:         d.Spec.InstrumentWorkloads.TraceContext.Propagators,
+		PreviousTraceContextPropagators: d.Status.PreviousInstrumentWorkloads.TraceContext.Propagators,
+	}
 }
 
 //+kubebuilder:object:root=true

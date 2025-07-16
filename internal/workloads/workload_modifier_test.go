@@ -11,6 +11,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
@@ -23,7 +24,7 @@ import (
 )
 
 const (
-	testActor = "actor"
+	testActor = util.WorkloadModifierActor("actor")
 )
 
 // Maintenance note: There is some overlap of test cases between this file and dash0_webhook_test.go. This is
@@ -31,10 +32,10 @@ const (
 // be used to verify external effects (recording events etc.) that cannot be covered in this test.
 
 var (
-	instrumentationMetadata = util.InstrumentationMetadata{
+	clusterInstrumentationConfig = util.ClusterInstrumentationConfig{
 		Images:               TestImages,
 		OTelCollectorBaseUrl: OTelCollectorNodeLocalBaseUrlTest,
-		InstrumentedBy:       "modify_test",
+		ExtraConfig:          util.ExtraConfigDefaults,
 	}
 )
 
@@ -42,7 +43,12 @@ var _ = Describe("Dash0 Workload Modification", func() {
 
 	ctx := context.Background()
 	logger := log.FromContext(ctx)
-	workloadModifier := NewResourceModifier(instrumentationMetadata, util.ExtraConfigDefaults, &logger)
+	workloadModifier := NewResourceModifier(
+		clusterInstrumentationConfig,
+		util.NamespaceInstrumentationConfig{},
+		testActor,
+		&logger,
+	)
 
 	type envVarModificationTest struct {
 		envVars      []corev1.EnvVar
@@ -77,11 +83,16 @@ var _ = Describe("Dash0 Workload Modification", func() {
 		It("should use the collector service URL instead of the node-local endpoint if requested", func() {
 			workload := BasicDeployment(TestNamespaceName, DeploymentNamePrefix)
 			modificationResult :=
-				NewResourceModifier(util.InstrumentationMetadata{
-					Images:               TestImages,
-					OTelCollectorBaseUrl: OTelCollectorServiceBaseUrlTest,
-					InstrumentedBy:       "modify_test",
-				}, util.ExtraConfigDefaults, &logger).ModifyDeployment(workload)
+				NewResourceModifier(
+					util.ClusterInstrumentationConfig{
+						Images:               TestImages,
+						OTelCollectorBaseUrl: OTelCollectorServiceBaseUrlTest,
+						ExtraConfig:          util.ExtraConfigDefaults,
+					},
+					util.NamespaceInstrumentationConfig{},
+					testActor,
+					&logger,
+				).ModifyDeployment(workload)
 
 			Expect(modificationResult.HasBeenModified).To(BeTrue())
 			envVars := workload.Spec.Template.Spec.Containers[0].Env
@@ -600,7 +611,12 @@ var _ = Describe("Dash0 Workload Modification", func() {
 	Describe("individual modification functions", func() {
 		ctx := context.Background()
 		logger := log.FromContext(ctx)
-		workloadModifier := NewResourceModifier(instrumentationMetadata, util.ExtraConfigDefaults, &logger)
+		workloadModifier := NewResourceModifier(
+			clusterInstrumentationConfig,
+			util.NamespaceInstrumentationConfig{},
+			testActor,
+			&logger,
+		)
 
 		type addLdPreloadTest struct {
 			value       string
@@ -1248,7 +1264,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				},
 				expectedResourceAttributeEnvVar: []string{"pod.ra.1=pod-value-1", "pod.ra.2=pod-value-2"},
 			}),
-			Entry("pod annotaions override workload annotations", objectMetaResourceAttributesTest{
+			Entry("pod annotations override workload annotations", objectMetaResourceAttributesTest{
 				workloadAnnotations: map[string]string{
 					"resource.opentelemetry.io/workload.ra.1":  "workload-value-1",
 					"resource.opentelemetry.io/workload.ra.2":  "workload-value-2",
@@ -1270,6 +1286,284 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					"pod.ra.1=pod-value-1",
 					"pod.ra.2=pod-value-2",
 					"occurs-in-both=pod-value",
+				},
+			}),
+		)
+
+		type otelPropagatorsTest struct {
+			existingEnvVars                       []corev1.EnvVar
+			namespaceInstrumentationConfig        util.NamespaceInstrumentationConfig
+			expectedPreInstrumentationCheckResult bool
+			expectedEnvVars                       map[string]*EnvVarExpectation
+		}
+
+		DescribeTable("should add or update OTEL_PROPAGATORS",
+			func(testConfig otelPropagatorsTest) {
+				container := &corev1.Container{}
+				if testConfig.existingEnvVars != nil {
+					container.Env = testConfig.existingEnvVars
+				}
+
+				// addEnvironmentVariables/handleOTelPropagatorsEnvVar and
+				// otelPropagatorsEnvVarWillBeUpdatedForAtLeastOneContainer are called at different points in time,
+				// but they deliberately share the exact same logic. We opportunistically test both methods here.
+				preInstrumentationCheckResult := otelPropagatorsEnvVarWillBeUpdatedForAtLeastOneContainer([]corev1.Container{
+					*container,
+				}, testConfig.namespaceInstrumentationConfig)
+				Expect(preInstrumentationCheckResult).To(Equal(testConfig.expectedPreInstrumentationCheckResult))
+
+				NewResourceModifier(
+					clusterInstrumentationConfig,
+					testConfig.namespaceInstrumentationConfig,
+					testActor,
+					&logger,
+				).addEnvironmentVariables(
+					container,
+					&metav1.ObjectMeta{},
+					&metav1.ObjectMeta{},
+					logger,
+				)
+
+				envVars := container.Env
+				VerifyEnvVarsFromMap(testConfig.expectedEnvVars, envVars)
+			},
+			Entry("should not add OTEL_PROPAGATORS if not configured", otelPropagatorsTest{
+				namespaceInstrumentationConfig:        util.NamespaceInstrumentationConfig{},
+				expectedPreInstrumentationCheckResult: false,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					util.OtelPropagatorsEnvVarName: nil,
+				},
+			}),
+			Entry("should leave existing OTEL_PROPAGATORS in place if not configured and the existing value has not been set by the operator (no previous setting in monitoring resource status)", otelPropagatorsTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  util.OtelPropagatorsEnvVarName,
+					Value: "tracecontext,baggage",
+				}},
+				namespaceInstrumentationConfig:        util.NamespaceInstrumentationConfig{},
+				expectedPreInstrumentationCheckResult: false,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					util.OtelPropagatorsEnvVarName: {Value: "tracecontext,baggage"},
+				},
+			}),
+			Entry("should leave existing OTEL_PROPAGATORS in place if not configured and the existing value has not been set by the operator (previous setting from monitoring resource status does not match current value)", otelPropagatorsTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  util.OtelPropagatorsEnvVarName,
+					Value: "tracecontext,baggage",
+				}},
+				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
+					PreviousTraceContextPropagators: ptr.To("something,else"),
+				},
+				expectedPreInstrumentationCheckResult: false,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					util.OtelPropagatorsEnvVarName: {Value: "tracecontext,baggage"},
+				},
+			}),
+			Entry("should remove existing OTEL_PROPAGATORS if not configured and the existing value has been set by the operator", otelPropagatorsTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  util.OtelPropagatorsEnvVarName,
+					Value: "tracecontext,baggage",
+				}},
+				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
+					PreviousTraceContextPropagators: ptr.To("tracecontext,baggage"),
+				},
+				expectedPreInstrumentationCheckResult: true,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					util.OtelPropagatorsEnvVarName: nil,
+				},
+			}),
+			Entry("should not add OTEL_PROPAGATORS if configured as empty string", otelPropagatorsTest{
+				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
+					TraceContextPropagators: ptr.To(""),
+				},
+				expectedPreInstrumentationCheckResult: false,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					util.OtelPropagatorsEnvVarName: nil,
+				},
+			}),
+			Entry("should not add OTEL_PROPAGATORS if configured string is only whitespace", otelPropagatorsTest{
+				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
+					TraceContextPropagators: ptr.To("   "),
+				},
+				expectedPreInstrumentationCheckResult: false,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					util.OtelPropagatorsEnvVarName: nil,
+				},
+			}),
+			Entry("should add OTEL_PROPAGATORS if configured and the env var does not exist on the container", otelPropagatorsTest{
+				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
+					TraceContextPropagators: ptr.To("tracecontext,xray"),
+				},
+				expectedPreInstrumentationCheckResult: true,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					util.OtelPropagatorsEnvVarName: {Value: "tracecontext,xray"},
+				},
+			}),
+			Entry("should not update existing OTEL_PROPAGATORS, even if configured, if the current setting uses ValueFrom", otelPropagatorsTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name: util.OtelPropagatorsEnvVarName,
+					ValueFrom: &corev1.EnvVarSource{
+						FieldRef: &corev1.ObjectFieldSelector{
+							FieldPath: "field.path",
+						},
+					},
+				}},
+				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
+					TraceContextPropagators: ptr.To("tracecontext,xray"),
+				},
+				expectedPreInstrumentationCheckResult: false,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					util.OtelPropagatorsEnvVarName: {ValueFrom: "field.path"},
+				},
+			}),
+			Entry("should not update existing OTEL_PROPAGATORS, even if configured, if the current setting has not been set by the operator (no previous setting in monitoring resource status)", otelPropagatorsTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  util.OtelPropagatorsEnvVarName,
+					Value: "jaeger,b3multi",
+				}},
+				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
+					TraceContextPropagators: ptr.To("tracecontext,xray"),
+				},
+				expectedPreInstrumentationCheckResult: false,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					util.OtelPropagatorsEnvVarName: {Value: "jaeger,b3multi"},
+				},
+			}),
+			Entry("should not update existing OTEL_PROPAGATORS, even if configured, if the current setting has not been set by the operator (non-matching previous setting in monitoring resource status)", otelPropagatorsTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  util.OtelPropagatorsEnvVarName,
+					Value: "jaeger,b3multi",
+				}},
+				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
+					TraceContextPropagators:         ptr.To("tracecontext,xray"),
+					PreviousTraceContextPropagators: ptr.To("something,else"),
+				},
+				expectedPreInstrumentationCheckResult: false,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					util.OtelPropagatorsEnvVarName: {Value: "jaeger,b3multi"},
+				},
+			}),
+			Entry("should update existing OTEL_PROPAGATORS if configured, if the current setting has been set by the operator", otelPropagatorsTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  util.OtelPropagatorsEnvVarName,
+					Value: "jaeger,b3multi",
+				}},
+				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
+					TraceContextPropagators:         ptr.To("tracecontext,xray"),
+					PreviousTraceContextPropagators: ptr.To("jaeger,b3multi"),
+				},
+				expectedPreInstrumentationCheckResult: true,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					util.OtelPropagatorsEnvVarName: {Value: "tracecontext,xray"},
+				},
+			}),
+			Entry("should not update existing OTEL_PROPAGATORS if the value already matches", otelPropagatorsTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  util.OtelPropagatorsEnvVarName,
+					Value: "tracecontext,xray",
+				}},
+				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
+					TraceContextPropagators:         ptr.To("tracecontext,xray"),
+					PreviousTraceContextPropagators: ptr.To("tracecontext,xray"),
+				},
+				expectedPreInstrumentationCheckResult: false,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					util.OtelPropagatorsEnvVarName: {Value: "tracecontext,xray"},
+				},
+			}),
+			Entry("should not override existing OTEL_PROPAGATORS with ValueFrom, even if configured", otelPropagatorsTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name: util.OtelPropagatorsEnvVarName,
+					ValueFrom: &corev1.EnvVarSource{
+						FieldRef: &corev1.ObjectFieldSelector{
+							// unrealistic ValueFrom ref, but does not matter for the test
+							FieldPath: "tracecontext,xray",
+						},
+					},
+				}},
+				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
+					TraceContextPropagators: ptr.To("tracecontext,xray"),
+				},
+				expectedPreInstrumentationCheckResult: false,
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					util.OtelPropagatorsEnvVarName: {ValueFrom: "tracecontext,xray"},
+				},
+			}),
+		)
+
+		DescribeTable("should remove OTEL_PROPAGATORS when uninstrumentig workloads",
+			func(testConfig otelPropagatorsTest) {
+				container := &corev1.Container{}
+				if testConfig.existingEnvVars != nil {
+					container.Env = testConfig.existingEnvVars
+				}
+
+				NewResourceModifier(
+					clusterInstrumentationConfig,
+					testConfig.namespaceInstrumentationConfig,
+					testActor,
+					&logger,
+				).removeEnvironmentVariables(container)
+
+				envVars := container.Env
+				VerifyEnvVarsFromMap(testConfig.expectedEnvVars, envVars)
+			},
+			Entry("should not remove OTEL_PROPAGATORS if not configured", otelPropagatorsTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  util.OtelPropagatorsEnvVarName,
+					Value: "tracecontext,xray",
+				}},
+				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					util.OtelPropagatorsEnvVarName: {Value: "tracecontext,xray"},
+				},
+			}),
+			Entry("should not remove OTEL_PROPAGATORS if configured but configured value does not match env var", otelPropagatorsTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  util.OtelPropagatorsEnvVarName,
+					Value: "jaeger,b3multi",
+				}},
+				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
+					TraceContextPropagators: ptr.To("tracecontext,xray"),
+				},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					util.OtelPropagatorsEnvVarName: {Value: "jaeger,b3multi"},
+				},
+			}),
+			Entry("should not remove OTEL_PROPAGATORS if configured but existing env var uses ValueFrom", otelPropagatorsTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name: util.OtelPropagatorsEnvVarName,
+					ValueFrom: &corev1.EnvVarSource{
+						FieldRef: &corev1.ObjectFieldSelector{
+							// unrealistic ValueFrom ref, but does not matter for the test
+							FieldPath: "tracecontext,xray",
+						},
+					},
+				}},
+				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
+					TraceContextPropagators: ptr.To("tracecontext,xray"),
+				},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					util.OtelPropagatorsEnvVarName: {ValueFrom: "tracecontext,xray"},
+				},
+			}),
+			Entry("should remove OTEL_PROPAGATORS if configured and configured value matches env var", otelPropagatorsTest{
+				existingEnvVars: []corev1.EnvVar{{
+					Name:  util.OtelPropagatorsEnvVarName,
+					Value: "tracecontext,xray",
+				}},
+				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
+					TraceContextPropagators: ptr.To("tracecontext,xray"),
+				},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					util.OtelPropagatorsEnvVarName: nil,
+				},
+			}),
+			Entry("should do nothing if env var is not set", otelPropagatorsTest{
+				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{
+					TraceContextPropagators: ptr.To("tracecontext,xray"),
+				},
+				expectedEnvVars: map[string]*EnvVarExpectation{
+					util.OtelPropagatorsEnvVarName: nil,
 				},
 			}),
 		)

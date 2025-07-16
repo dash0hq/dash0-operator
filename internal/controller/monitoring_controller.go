@@ -37,6 +37,13 @@ type MonitoringReconciler struct {
 	DanglingEventsTimeouts *util.DanglingEventsTimeouts
 }
 
+type statusUpdateInfo struct {
+	previousInstrumentWorkloadsMode dash0common.InstrumentWorkloadsMode
+	currentInstrumentWorkloadsMode  dash0common.InstrumentWorkloadsMode
+	previousTraceContextPropagators *string
+	currentTraceContextPropagators  *string
+}
+
 const (
 	updateStatusFailedMessageMonitoring = "Failed to update Dash0 monitoring status conditions, requeuing reconcile request."
 )
@@ -201,12 +208,8 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	}
 
 	var requiredAction util.ModificationMode
-	monitoringResource, requiredAction, err =
-		r.manageInstrumentWorkloadsModeChanges(ctx, monitoringResource, isFirstReconcile, &logger)
-	if err != nil {
-		// The error has already been logged in manageInstrumentWorkloadsModeChanges
-		return ctrl.Result{}, err
-	}
+	monitoringResource, requiredAction, statusUpdate :=
+		r.manageInstrumentWorkloadsChanges(monitoringResource, isFirstReconcile, &logger)
 
 	if isFirstReconcile || requiredAction == util.ModificationModeInstrumentation {
 		if err = r.Instrumenter.CheckSettingsAndInstrumentExistingWorkloads(ctx, monitoringResource, &logger); err != nil {
@@ -223,9 +226,8 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	r.scheduleAttachDanglingEvents(ctx, monitoringResource, &logger)
 
-	monitoringResource.EnsureResourceIsMarkedAsAvailable()
-	if err = r.Status().Update(ctx, monitoringResource); err != nil {
-		logger.Error(err, updateStatusFailedMessageMonitoring)
+	if err = r.updateStatusAfterReconcile(ctx, monitoringResource, statusUpdate, &logger); err != nil {
+		// The error has already been logged in updateStatusAfterReconcile
 		return ctrl.Result{}, err
 	}
 
@@ -236,42 +238,51 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	return ctrl.Result{}, nil
 }
 
-func (r *MonitoringReconciler) manageInstrumentWorkloadsModeChanges(
-	ctx context.Context,
+func (r *MonitoringReconciler) manageInstrumentWorkloadsChanges(
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	isFirstReconcile bool,
 	logger *logr.Logger,
-) (*dash0v1beta1.Dash0Monitoring, util.ModificationMode, error) {
-	previous := monitoringResource.Status.PreviousInstrumentWorkloads.Mode
-	current := monitoringResource.ReadInstrumentWorkloadsMode()
+) (*dash0v1beta1.Dash0Monitoring, util.ModificationMode, statusUpdateInfo) {
+	previousInstrumentWorkloadsMode := monitoringResource.Status.PreviousInstrumentWorkloads.Mode
+	currentInstrumentWorkloadsMode := monitoringResource.ReadInstrumentWorkloadsMode()
+
+	previousTraceContextPropagators := monitoringResource.Status.PreviousInstrumentWorkloads.TraceContext.Propagators
+	currentTraceContextPropagators := monitoringResource.Spec.InstrumentWorkloads.TraceContext.Propagators
 
 	var requiredAction util.ModificationMode
 	if !isFirstReconcile {
-		if previous != dash0common.InstrumentWorkloadsModeAll && previous != "" && current == dash0common.InstrumentWorkloadsModeAll {
+		if previousInstrumentWorkloadsMode != dash0common.InstrumentWorkloadsModeAll && previousInstrumentWorkloadsMode != "" && currentInstrumentWorkloadsMode == dash0common.InstrumentWorkloadsModeAll {
 			logger.Info(fmt.Sprintf(
 				"The instrumentWorkloads mode has changed from \"%s\" to \"%s\" (or it is absent, in which case it"+
 					"defaults to \"all\"). Workloads in this namespace will now be instrumented so they send "+
-					"telemetry to Dash0.", previous, current))
+					"telemetry to Dash0.", previousInstrumentWorkloadsMode, currentInstrumentWorkloadsMode))
 			requiredAction = util.ModificationModeInstrumentation
-		} else if previous != dash0common.InstrumentWorkloadsModeNone && current == dash0common.InstrumentWorkloadsModeNone {
+		} else if previousInstrumentWorkloadsMode != dash0common.InstrumentWorkloadsModeNone && currentInstrumentWorkloadsMode == dash0common.InstrumentWorkloadsModeNone {
 			logger.Info(fmt.Sprintf(
 				"The instrumentWorkloads mode has changed from \"%s\" to \"%s\". Instrumented workloads in this "+
 					"namespace will now be uninstrumented, they will no longer send telemetry to Dash0.",
-				previous,
-				current))
+				previousInstrumentWorkloadsMode,
+				currentInstrumentWorkloadsMode))
 			requiredAction = util.ModificationModeUninstrumentation
+		}
+
+		// If the mode switched to "none" and we need to uninstrument, changes in individual settings (like trace
+		// context propagators) are irrelevant. If the mode switched to "all" and we need to instrument because of that,
+		// changes in individual settings are also irrelevant. We only need to compare individual settings if the
+		// required action is "" so far, for example if the instrumentation mode has not changed.
+		if requiredAction == "" {
+			if util.IsStringPointerValueDifferent(previousTraceContextPropagators, currentTraceContextPropagators) {
+				requiredAction = util.ModificationModeInstrumentation
+			}
 		}
 	}
 
-	if previous != current {
-		monitoringResource.Status.PreviousInstrumentWorkloads.Mode = current
-		if err := r.Status().Update(ctx, monitoringResource); err != nil {
-			logger.Error(err, "Failed to update the previous instrumentWorkloads mode status on the Dash0 monitoring "+
-				"resource, requeuing reconcile request.")
-			return monitoringResource, "", err
-		}
+	return monitoringResource, requiredAction, statusUpdateInfo{
+		previousInstrumentWorkloadsMode: previousInstrumentWorkloadsMode,
+		currentInstrumentWorkloadsMode:  currentInstrumentWorkloadsMode,
+		previousTraceContextPropagators: previousTraceContextPropagators,
+		currentTraceContextPropagators:  currentTraceContextPropagators,
 	}
-	return monitoringResource, requiredAction, nil
 }
 
 func (r *MonitoringReconciler) runCleanupActions(
@@ -318,7 +329,7 @@ func (r *MonitoringReconciler) scheduleAttachDanglingEvents(
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	logger *logr.Logger,
 ) {
-	// execute the attachment in a separate go routine to not block the main reconcile loop
+	// execute the event attaching in a separate go routine to not block the main reconcile loop
 	go func() {
 		if r.DanglingEventsTimeouts.InitialTimeout > 0 {
 			// wait a bit before attempting to attach dangling events, since the K8s resources do not exist yet when
@@ -400,7 +411,7 @@ func (r *MonitoringReconciler) reconcileOpenTelemetryCollector(
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	logger *logr.Logger,
 ) error {
-	// This will look up all the operator configuration resource and all monitoring resources in the cluster (including
+	// This will look up the operator configuration resource and all monitoring resources in the cluster (including
 	// the one that has just been reconciled, hence we must only do this _after_ this resource has been updated (e.g.
 	// marked as available). Otherwise, the reconciliation of the collectors would work with an outdated state.
 	if err, _ := r.CollectorManager.ReconcileOpenTelemetryCollector(
@@ -411,6 +422,26 @@ func (r *MonitoringReconciler) reconcileOpenTelemetryCollector(
 		collectors.TriggeredByDash0ResourceReconcile,
 	); err != nil {
 		logger.Error(err, "Failed to reconcile the OpenTelemetry collector, requeuing reconcile request.")
+		return err
+	}
+	return nil
+}
+
+func (r *MonitoringReconciler) updateStatusAfterReconcile(
+	ctx context.Context,
+	monitoringResource *dash0v1beta1.Dash0Monitoring,
+	statusUpdate statusUpdateInfo,
+	logger *logr.Logger,
+) error {
+	monitoringResource.EnsureResourceIsMarkedAsAvailable()
+	if statusUpdate.previousInstrumentWorkloadsMode != statusUpdate.currentInstrumentWorkloadsMode {
+		monitoringResource.Status.PreviousInstrumentWorkloads.Mode = statusUpdate.currentInstrumentWorkloadsMode
+	}
+	if util.IsStringPointerValueDifferent(statusUpdate.previousTraceContextPropagators, statusUpdate.currentTraceContextPropagators) {
+		monitoringResource.Status.PreviousInstrumentWorkloads.TraceContext.Propagators = statusUpdate.currentTraceContextPropagators
+	}
+	if err := r.Status().Update(ctx, monitoringResource); err != nil {
+		logger.Error(err, updateStatusFailedMessageMonitoring)
 		return err
 	}
 	return nil
