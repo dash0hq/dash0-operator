@@ -1,10 +1,11 @@
 # This resource will be used for the namespace test-namespace-3 if ADDITIONAL_NAMESPACES=true has been provided.
-apiVersion: operator.dash0.com/v1alpha1
+apiVersion: operator.dash0.com/v1beta1
 kind: Dash0Monitoring
 metadata:
   name: dash0-monitoring-resource
 spec:
-  instrumentWorkloads: $INSTRUMENT_WORKLOADS_MODE
+  instrumentWorkloads:
+    mode: $INSTRUMENT_WORKLOADS_MODE
   logCollection:
     enabled: $LOG_COLLECTION
   prometheusScraping:

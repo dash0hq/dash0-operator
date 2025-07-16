@@ -24,69 +24,77 @@ const (
 	AuthorizationTokenTest = "authorization-token-test"
 )
 
-
 var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 
 	type convertToTestCase struct {
-		srcSpec                       *Dash0MonitoringSpec
-		srcStatus                     *Dash0MonitoringStatus
-		propagatorsAnnotation         *string
-		previousPropagatorsAnnotation *string
-		expectedDstSpec               dash0v1beta1.Dash0MonitoringSpec
-		expectedDstStatus             dash0v1beta1.Dash0MonitoringStatus
+		srcObjectMeta         metav1.ObjectMeta
+		srcSpec               Dash0MonitoringSpec
+		srcStatus             Dash0MonitoringStatus
+		expectedDstObjectMeta metav1.ObjectMeta
+		expectedDstSpec       dash0v1beta1.Dash0MonitoringSpec
+		expectedDstStatus     dash0v1beta1.Dash0MonitoringStatus
 	}
 
 	Describe("converting to and from hub version", func() {
 
 		DescribeTable("should convert v1alpha1 to hub version", func(testConfig convertToTestCase) {
-			objectMeta := testObjectMeta()
-			if testConfig.propagatorsAnnotation != nil {
-				objectMeta.Annotations[annotationNameSpecInstrumentWorkloadsTraceContextPropagators] =
-					*testConfig.propagatorsAnnotation
-			}
-			if testConfig.previousPropagatorsAnnotation != nil {
-				objectMeta.Annotations[annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators] =
-					*testConfig.previousPropagatorsAnnotation
-			}
+			objectMeta := testConfig.srcObjectMeta
 			src := &Dash0Monitoring{
 				TypeMeta: metav1.TypeMeta{
 					Kind: "Dash0Monitoring",
 				},
 				ObjectMeta: objectMeta,
-			}
-			if testConfig.srcSpec != nil {
-				src.Spec = *testConfig.srcSpec
-			}
-			if testConfig.srcStatus != nil {
-				src.Status = *testConfig.srcStatus
+				Spec:       testConfig.srcSpec,
+				Status:     testConfig.srcStatus,
 			}
 			dst := dash0v1beta1.Dash0Monitoring{}
 			hub := conversion.Hub(&dst)
 
 			Expect(src.ConvertTo(hub)).To(Succeed())
 
-			Expect(dst.Namespace).To(Equal(TestNamespaceName))
-			Expect(dst.Name).To(Equal(MonitoringResourceName))
-			Expect(dst.Labels).To(HaveLen(1))
-			Expect(dst.Labels["test-label"]).To(Equal("test-value"))
-			Expect(dst.Annotations).To(HaveLen(1))
-			Expect(dst.Annotations["test-annotation"]).To(Equal("test-value"))
+			Expect(dst.ObjectMeta).To(Equal(testConfig.expectedDstObjectMeta))
 			Expect(dst.Spec).To(Equal(testConfig.expectedDstSpec))
 			Expect(dst.Status).To(Equal(testConfig.expectedDstStatus))
 		},
-			Entry("no spec, no status", convertToTestCase{
-				srcSpec:           nil,
+			Entry("empty object meta, empty spec, empty status", convertToTestCase{
+				srcObjectMeta:         metav1.ObjectMeta{},
+				srcSpec:               Dash0MonitoringSpec{},
+				srcStatus:             Dash0MonitoringStatus{},
+				expectedDstObjectMeta: metav1.ObjectMeta{},
+				expectedDstSpec:       dash0v1beta1.Dash0MonitoringSpec{},
+				expectedDstStatus:     dash0v1beta1.Dash0MonitoringStatus{},
+			}),
+			Entry("object meta has no annotations, empty spec, empty status", convertToTestCase{
+				srcObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+					Labels: map[string]string{
+						"test-label": "test-value",
+					},
+				},
+				srcSpec:   Dash0MonitoringSpec{},
+				srcStatus: Dash0MonitoringStatus{},
+				expectedDstObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+					Labels: map[string]string{
+						"test-label": "test-value",
+					},
+				},
 				expectedDstSpec:   dash0v1beta1.Dash0MonitoringSpec{},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{},
 			}),
 			Entry("empty spec, empty status", convertToTestCase{
-				srcSpec:           &Dash0MonitoringSpec{},
-				srcStatus:         &Dash0MonitoringStatus{},
-				expectedDstSpec:   dash0v1beta1.Dash0MonitoringSpec{},
-				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{},
+				srcObjectMeta:         testObjectMeta(),
+				srcSpec:               Dash0MonitoringSpec{},
+				srcStatus:             Dash0MonitoringStatus{},
+				expectedDstObjectMeta: testObjectMeta(),
+				expectedDstSpec:       dash0v1beta1.Dash0MonitoringSpec{},
+				expectedDstStatus:     dash0v1beta1.Dash0MonitoringStatus{},
 			}),
 			Entry("full spec, full status", convertToTestCase{
-				srcSpec: &Dash0MonitoringSpec{
+				srcObjectMeta: testObjectMeta(),
+				srcSpec: Dash0MonitoringSpec{
 					Export:              testExport(),
 					InstrumentWorkloads: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
 					LogCollection: dash0common.LogCollection{
@@ -101,7 +109,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 					SynchronizePersesDashboards: ptr.To(false),
 					SynchronizePrometheusRules:  ptr.To(false),
 				},
-				srcStatus: &Dash0MonitoringStatus{
+				srcStatus: Dash0MonitoringStatus{
 					Conditions: []metav1.Condition{
 						{
 							Type:   string(dash0common.ConditionTypeAvailable),
@@ -110,6 +118,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 					},
 					PreviousInstrumentWorkloads: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
 				},
+				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
 					Export: testExport(),
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
@@ -140,9 +149,11 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				},
 			}),
 			Entry("convert legacy prometheus scraping setting (disabled only via legacy setting)", convertToTestCase{
-				srcSpec: &Dash0MonitoringSpec{
+				srcObjectMeta: testObjectMeta(),
+				srcSpec: Dash0MonitoringSpec{
 					PrometheusScrapingEnabled: ptr.To(false),
 				},
+				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
 					PrometheusScraping: dash0common.PrometheusScraping{
 						Enabled: ptr.To(false),
@@ -150,12 +161,14 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				},
 			}),
 			Entry("convert legacy prometheus scraping setting (disabled via both settings)", convertToTestCase{
-				srcSpec: &Dash0MonitoringSpec{
+				srcObjectMeta: testObjectMeta(),
+				srcSpec: Dash0MonitoringSpec{
 					PrometheusScraping: dash0common.PrometheusScraping{
 						Enabled: ptr.To(false),
 					},
 					PrometheusScrapingEnabled: ptr.To(false),
 				},
+				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
 					PrometheusScraping: dash0common.PrometheusScraping{
 						Enabled: ptr.To(false),
@@ -163,12 +176,14 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				},
 			}),
 			Entry("convert legacy prometheus scraping setting (legacy false, new setting true)", convertToTestCase{
-				srcSpec: &Dash0MonitoringSpec{
+				srcObjectMeta: testObjectMeta(),
+				srcSpec: Dash0MonitoringSpec{
 					PrometheusScraping: dash0common.PrometheusScraping{
 						Enabled: ptr.To(true),
 					},
 					PrometheusScrapingEnabled: ptr.To(false),
 				},
+				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
 					PrometheusScraping: dash0common.PrometheusScraping{
 						Enabled: ptr.To(false),
@@ -176,12 +191,14 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				},
 			}),
 			Entry("convert legacy prometheus scraping setting (legacy true, new setting false)", convertToTestCase{
-				srcSpec: &Dash0MonitoringSpec{
+				srcObjectMeta: testObjectMeta(),
+				srcSpec: Dash0MonitoringSpec{
 					PrometheusScraping: dash0common.PrometheusScraping{
 						Enabled: ptr.To(false),
 					},
 					PrometheusScrapingEnabled: ptr.To(true),
 				},
+				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
 					PrometheusScraping: dash0common.PrometheusScraping{
 						Enabled: ptr.To(false),
@@ -189,47 +206,80 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				},
 			}),
 			Entry("with propagators annotation", convertToTestCase{
-				srcSpec:               &Dash0MonitoringSpec{},
-				propagatorsAnnotation: ptr.To("traceparent,aws"),
-				srcStatus:             &Dash0MonitoringStatus{},
+				srcObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+					Labels: map[string]string{
+						"test-label": "test-value",
+					},
+					Annotations: map[string]string{
+						"test-annotation": "test-value",
+						annotationNameSpecInstrumentWorkloadsTraceContextPropagators: "tracecontext,xray",
+					},
+				},
+				srcSpec:               Dash0MonitoringSpec{},
+				srcStatus:             Dash0MonitoringStatus{},
+				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("traceparent,aws"),
+							Propagators: ptr.To("tracecontext,xray"),
 						},
 					},
 				},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{},
 			}),
 			Entry("with previous propagators annotation", convertToTestCase{
-				srcSpec:                       &Dash0MonitoringSpec{},
-				previousPropagatorsAnnotation: ptr.To("traceparent,aws"),
-				srcStatus:                     &Dash0MonitoringStatus{},
-				expectedDstSpec:               dash0v1beta1.Dash0MonitoringSpec{},
+				srcObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+					Labels: map[string]string{
+						"test-label": "test-value",
+					},
+					Annotations: map[string]string{
+						"test-annotation": "test-value",
+						annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators: "tracecontext,xray",
+					},
+				},
+				srcSpec:               Dash0MonitoringSpec{},
+				srcStatus:             Dash0MonitoringStatus{},
+				expectedDstObjectMeta: testObjectMeta(),
+				expectedDstSpec:       dash0v1beta1.Dash0MonitoringSpec{},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("traceparent,aws"),
+							Propagators: ptr.To("tracecontext,xray"),
 						},
 					},
 				},
 			}),
 			Entry("with both propagators annotations", convertToTestCase{
-				srcSpec:                       &Dash0MonitoringSpec{},
-				propagatorsAnnotation:         ptr.To("traceparent,aws"),
-				previousPropagatorsAnnotation: ptr.To("aws"),
-				srcStatus:                     &Dash0MonitoringStatus{},
+				srcObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+					Labels: map[string]string{
+						"test-label": "test-value",
+					},
+					Annotations: map[string]string{
+						"test-annotation": "test-value",
+						annotationNameSpecInstrumentWorkloadsTraceContextPropagators:           "tracecontext,xray",
+						annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators: "xray",
+					},
+				},
+				srcSpec:               Dash0MonitoringSpec{},
+				srcStatus:             Dash0MonitoringStatus{},
+				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("traceparent,aws"),
+							Propagators: ptr.To("tracecontext,xray"),
 						},
 					},
 				},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("aws"),
+							Propagators: ptr.To("xray"),
 						},
 					},
 				},
@@ -237,12 +287,12 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 		)
 
 		type convertFromTestCase struct {
-			srcSpec                             *dash0v1beta1.Dash0MonitoringSpec
-			srcStatus                           *dash0v1beta1.Dash0MonitoringStatus
-			expectedDstSpec                     Dash0MonitoringSpec
-			expectedDstStatus                   Dash0MonitoringStatus
-			expectPropagatorsAnnotation         *string
-			expectPreviousPropagatorsAnnotation *string
+			srcObjectMeta         metav1.ObjectMeta
+			srcSpec               dash0v1beta1.Dash0MonitoringSpec
+			srcStatus             dash0v1beta1.Dash0MonitoringStatus
+			expectedDstObjectMeta metav1.ObjectMeta
+			expectedDstSpec       Dash0MonitoringSpec
+			expectedDstStatus     Dash0MonitoringStatus
 		}
 
 		DescribeTable("should convert from hub version to v1alpha1", func(testConfig convertFromTestCase) {
@@ -250,54 +300,58 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				TypeMeta: metav1.TypeMeta{
 					Kind: "Dash0Monitoring",
 				},
-				ObjectMeta: testObjectMeta(),
-			}
-			if testConfig.srcSpec != nil {
-				src.Spec = *testConfig.srcSpec
-			}
-			if testConfig.srcStatus != nil {
-				src.Status = *testConfig.srcStatus
+				ObjectMeta: testConfig.srcObjectMeta,
+				Spec:       testConfig.srcSpec,
+				Status:     testConfig.srcStatus,
 			}
 			dst := &Dash0Monitoring{}
 			hub := conversion.Hub(&src)
 
 			Expect(dst.ConvertFrom(hub)).To(Succeed())
 
-			Expect(dst.Namespace).To(Equal(TestNamespaceName))
-			Expect(dst.Name).To(Equal(MonitoringResourceName))
-			Expect(dst.Labels).To(HaveLen(1))
-			Expect(dst.Labels["test-label"]).To(Equal("test-value"))
-			if testConfig.expectPropagatorsAnnotation != nil && testConfig.expectPreviousPropagatorsAnnotation != nil {
-				Expect(dst.Annotations).To(HaveLen(3))
-			} else if testConfig.expectPropagatorsAnnotation != nil || testConfig.expectPreviousPropagatorsAnnotation != nil {
-				Expect(dst.Annotations).To(HaveLen(2))
-			} else {
-				Expect(dst.Annotations).To(HaveLen(1))
-			}
-			Expect(dst.Annotations["test-annotation"]).To(Equal("test-value"))
-
-			if testConfig.expectPropagatorsAnnotation != nil {
-				Expect(dst.Annotations[annotationNameSpecInstrumentWorkloadsTraceContextPropagators]).To(Equal(*testConfig.expectPropagatorsAnnotation))
-			} else if testConfig.expectPreviousPropagatorsAnnotation != nil {
-				Expect(dst.Annotations[annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators]).To(Equal(*testConfig.expectPreviousPropagatorsAnnotation))
-			}
-
+			Expect(dst.ObjectMeta).To(Equal(testConfig.expectedDstObjectMeta))
 			Expect(dst.Spec).To(Equal(testConfig.expectedDstSpec))
 			Expect(dst.Status).To(Equal(testConfig.expectedDstStatus))
 		},
-			Entry("no spec, no status", convertFromTestCase{
-				srcSpec:           nil,
+			Entry("empty object meta, empty spec, empty status", convertFromTestCase{
+				srcObjectMeta:         metav1.ObjectMeta{},
+				srcSpec:               dash0v1beta1.Dash0MonitoringSpec{},
+				srcStatus:             dash0v1beta1.Dash0MonitoringStatus{},
+				expectedDstObjectMeta: metav1.ObjectMeta{},
+				expectedDstSpec:       Dash0MonitoringSpec{},
+				expectedDstStatus:     Dash0MonitoringStatus{},
+			}),
+			Entry("object meta has no annotations, empty spec, empty status", convertFromTestCase{
+				srcObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+					Labels: map[string]string{
+						"test-label": "test-value",
+					},
+				},
+				srcSpec:   dash0v1beta1.Dash0MonitoringSpec{},
+				srcStatus: dash0v1beta1.Dash0MonitoringStatus{},
+				expectedDstObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+					Labels: map[string]string{
+						"test-label": "test-value",
+					},
+				},
 				expectedDstSpec:   Dash0MonitoringSpec{},
 				expectedDstStatus: Dash0MonitoringStatus{},
 			}),
 			Entry("empty spec, empty status", convertFromTestCase{
-				srcSpec:           &dash0v1beta1.Dash0MonitoringSpec{},
-				srcStatus:         &dash0v1beta1.Dash0MonitoringStatus{},
-				expectedDstSpec:   Dash0MonitoringSpec{},
-				expectedDstStatus: Dash0MonitoringStatus{},
+				srcObjectMeta:         testObjectMeta(),
+				srcSpec:               dash0v1beta1.Dash0MonitoringSpec{},
+				srcStatus:             dash0v1beta1.Dash0MonitoringStatus{},
+				expectedDstObjectMeta: testObjectMeta(),
+				expectedDstSpec:       Dash0MonitoringSpec{},
+				expectedDstStatus:     Dash0MonitoringStatus{},
 			}),
 			Entry("full spec, full status", convertFromTestCase{
-				srcSpec: &dash0v1beta1.Dash0MonitoringSpec{
+				srcObjectMeta: testObjectMeta(),
+				srcSpec: dash0v1beta1.Dash0MonitoringSpec{
 					Export: testExport(),
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						Mode: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
@@ -314,7 +368,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 					SynchronizePersesDashboards: ptr.To(false),
 					SynchronizePrometheusRules:  ptr.To(false),
 				},
-				srcStatus: &dash0v1beta1.Dash0MonitoringStatus{
+				srcStatus: dash0v1beta1.Dash0MonitoringStatus{
 					Conditions: []metav1.Condition{
 						{
 							Type:   string(dash0common.ConditionTypeAvailable),
@@ -325,6 +379,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 						Mode: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
 					},
 				},
+				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: Dash0MonitoringSpec{
 					Export:              testExport(),
 					InstrumentWorkloads: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
@@ -351,50 +406,159 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				},
 			}),
 			Entry("with spec.instrumentWorkloads.traceContext.propagators", convertFromTestCase{
-				srcSpec: &dash0v1beta1.Dash0MonitoringSpec{
+				srcObjectMeta: testObjectMeta(),
+				srcSpec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("traceparent,aws"),
+							Propagators: ptr.To("tracecontext,xray"),
 						},
 					},
 				},
-				srcStatus:                   &dash0v1beta1.Dash0MonitoringStatus{},
-				expectedDstSpec:             Dash0MonitoringSpec{},
-				expectedDstStatus:           Dash0MonitoringStatus{},
-				expectPropagatorsAnnotation: ptr.To("traceparent,aws"),
+				srcStatus: dash0v1beta1.Dash0MonitoringStatus{},
+				expectedDstObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+					Labels: map[string]string{
+						"test-label": "test-value",
+					},
+					Annotations: map[string]string{
+						"test-annotation": "test-value",
+						annotationNameSpecInstrumentWorkloadsTraceContextPropagators: "tracecontext,xray",
+					},
+				},
+				expectedDstSpec:   Dash0MonitoringSpec{},
+				expectedDstStatus: Dash0MonitoringStatus{},
 			}),
 			Entry("with status.previousInstrumentWorkloads.traceContext.propagators", convertFromTestCase{
-				srcSpec: &dash0v1beta1.Dash0MonitoringSpec{},
-				srcStatus: &dash0v1beta1.Dash0MonitoringStatus{
+				srcObjectMeta: testObjectMeta(),
+				srcSpec:       dash0v1beta1.Dash0MonitoringSpec{},
+				srcStatus: dash0v1beta1.Dash0MonitoringStatus{
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("aws"),
+							Propagators: ptr.To("xray"),
 						},
 					},
 				},
-				expectedDstSpec:                     Dash0MonitoringSpec{},
-				expectedDstStatus:                   Dash0MonitoringStatus{},
-				expectPreviousPropagatorsAnnotation: ptr.To("aws"),
+				expectedDstObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+					Labels: map[string]string{
+						"test-label": "test-value",
+					},
+					Annotations: map[string]string{
+						"test-annotation": "test-value",
+						annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators: "xray",
+					},
+				},
+				expectedDstSpec:   Dash0MonitoringSpec{},
+				expectedDstStatus: Dash0MonitoringStatus{},
 			}),
 			Entry("with propagators in both attributes", convertFromTestCase{
-				srcSpec: &dash0v1beta1.Dash0MonitoringSpec{
+				srcObjectMeta: testObjectMeta(),
+				srcSpec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("traceparent,aws"),
+							Propagators: ptr.To("tracecontext,xray"),
 						},
 					},
 				},
-				srcStatus: &dash0v1beta1.Dash0MonitoringStatus{
+				srcStatus: dash0v1beta1.Dash0MonitoringStatus{
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("aws"),
+							Propagators: ptr.To("xray"),
 						},
 					},
 				},
-				expectedDstSpec:                     Dash0MonitoringSpec{},
-				expectedDstStatus:                   Dash0MonitoringStatus{},
-				expectPropagatorsAnnotation:         ptr.To("traceparent,aws"),
-				expectPreviousPropagatorsAnnotation: ptr.To("aws"),
+				expectedDstObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+					Labels: map[string]string{
+						"test-label": "test-value",
+					},
+					Annotations: map[string]string{
+						"test-annotation": "test-value",
+						annotationNameSpecInstrumentWorkloadsTraceContextPropagators:           "tracecontext,xray",
+						annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators: "xray",
+					},
+				},
+				expectedDstSpec:   Dash0MonitoringSpec{},
+				expectedDstStatus: Dash0MonitoringStatus{},
+			}),
+			Entry("with nil src annotations and spec.instrumentWorkloads.traceContext.propagators", convertFromTestCase{
+				srcObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+				},
+				srcSpec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						TraceContext: dash0v1beta1.TraceContext{
+							Propagators: ptr.To("tracecontext,xray"),
+						},
+					},
+				},
+				srcStatus: dash0v1beta1.Dash0MonitoringStatus{},
+				expectedDstObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+					Annotations: map[string]string{
+						annotationNameSpecInstrumentWorkloadsTraceContextPropagators: "tracecontext,xray",
+					},
+				},
+				expectedDstSpec:   Dash0MonitoringSpec{},
+				expectedDstStatus: Dash0MonitoringStatus{},
+			}),
+			Entry("with nil src annotations and status.previousInstrumentWorkloads.traceContext.propagators", convertFromTestCase{
+				srcObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+				},
+				srcSpec: dash0v1beta1.Dash0MonitoringSpec{},
+				srcStatus: dash0v1beta1.Dash0MonitoringStatus{
+					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						TraceContext: dash0v1beta1.TraceContext{
+							Propagators: ptr.To("xray"),
+						},
+					},
+				},
+				expectedDstObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+					Annotations: map[string]string{
+						annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators: "xray",
+					},
+				},
+				expectedDstSpec:   Dash0MonitoringSpec{},
+				expectedDstStatus: Dash0MonitoringStatus{},
+			}),
+			Entry("with nil src annotations and propagators in both attributes", convertFromTestCase{
+				srcObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+				},
+				srcSpec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						TraceContext: dash0v1beta1.TraceContext{
+							Propagators: ptr.To("tracecontext,xray"),
+						},
+					},
+				},
+				srcStatus: dash0v1beta1.Dash0MonitoringStatus{
+					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						TraceContext: dash0v1beta1.TraceContext{
+							Propagators: ptr.To("xray"),
+						},
+					},
+				},
+				expectedDstObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+					Annotations: map[string]string{
+						annotationNameSpecInstrumentWorkloadsTraceContextPropagators:           "tracecontext,xray",
+						annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators: "xray",
+					},
+				},
+				expectedDstSpec:   Dash0MonitoringSpec{},
+				expectedDstStatus: Dash0MonitoringStatus{},
 			}),
 		)
 	})

@@ -30,24 +30,9 @@ import (
 
 type Instrumenter struct {
 	client.Client
-	Clientset            *kubernetes.Clientset
-	Recorder             record.EventRecorder
-	Images               util.Images
-	ExtraConfig          util.ExtraConfig
-	OTelCollectorBaseUrl string
-	Delays               *DelayConfig
-	InstrumentationDebug bool
-}
-
-type DelayConfig struct {
-	// AfterEachWorkloadMillis determines the delay to wait after updating a single workload, when instrumenting
-	// workloads in a namespace either when running InstrumentAtStartup or when instrumentation is enabled for a new
-	// workspace via a monitoring resource.
-	AfterEachWorkloadMillis uint64
-
-	// AfterEachNamespace determines the delay to wait after updating the instrumenation in one namespace when running
-	// InstrumentAtStartup.
-	AfterEachNamespaceMillis uint64
+	Clientset                    *kubernetes.Clientset
+	Recorder                     record.EventRecorder
+	ClusterInstrumentationConfig util.ClusterInstrumentationConfig
 }
 
 type ImmutableWorkloadError struct {
@@ -92,21 +77,13 @@ func NewInstrumenter(
 	client client.Client,
 	clientset *kubernetes.Clientset,
 	recorder record.EventRecorder,
-	images util.Images,
-	extraConfig util.ExtraConfig,
-	oTelCollectorBaseUrl string,
-	delays *DelayConfig,
-	instrumentationDebug bool,
+	clusterInstrumentationConfig util.ClusterInstrumentationConfig,
 ) *Instrumenter {
 	return &Instrumenter{
-		Client:               client,
-		Clientset:            clientset,
-		Recorder:             recorder,
-		Images:               images,
-		ExtraConfig:          extraConfig,
-		OTelCollectorBaseUrl: oTelCollectorBaseUrl,
-		Delays:               delays,
-		InstrumentationDebug: instrumentationDebug,
+		Client:                       client,
+		Clientset:                    clientset,
+		Recorder:                     recorder,
+		ClusterInstrumentationConfig: clusterInstrumentationConfig,
 	}
 }
 
@@ -234,12 +211,12 @@ func (i *Instrumenter) instrumentAllWorkloads(
 ) error {
 	namespace := dash0MonitoringResource.Namespace
 
-	errCronJobs := i.findAndInstrumentCronJobs(ctx, namespace, logger)
-	errDaemonSets := i.findAndInstrumentyDaemonSets(ctx, namespace, logger)
-	errDeployments := i.findAndInstrumentDeployments(ctx, namespace, logger)
-	errJobs := i.findAndAddLabelsToImmutableJobsOnInstrumentation(ctx, namespace, logger)
-	errReplicaSets := i.findAndInstrumentReplicaSets(ctx, namespace, logger)
-	errStatefulSets := i.findAndInstrumentStatefulSets(ctx, namespace, logger)
+	errCronJobs := i.findAndInstrumentCronJobs(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(), logger)
+	errDaemonSets := i.findAndInstrumentyDaemonSets(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(), logger)
+	errDeployments := i.findAndInstrumentDeployments(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(), logger)
+	errJobs := i.findAndAddLabelsToImmutableJobsOnInstrumentation(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(), logger)
+	errReplicaSets := i.findAndInstrumentReplicaSets(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(), logger)
+	errStatefulSets := i.findAndInstrumentStatefulSets(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(), logger)
 	combinedErrors := errors.Join(
 		errCronJobs,
 		errDaemonSets,
@@ -257,6 +234,7 @@ func (i *Instrumenter) instrumentAllWorkloads(
 func (i *Instrumenter) findAndInstrumentCronJobs(
 	ctx context.Context,
 	namespace string,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
@@ -265,7 +243,7 @@ func (i *Instrumenter) findAndInstrumentCronJobs(
 		return fmt.Errorf("error when querying cron jobs: %w", err)
 	}
 	for _, resource := range matchingWorkloadsInNamespace.Items {
-		i.instrumentCronJob(ctx, resource, logger)
+		i.instrumentCronJob(ctx, resource, namespaceInstrumentationConfig, logger)
 		i.pauseAfterEachWorkload()
 	}
 	return nil
@@ -274,16 +252,22 @@ func (i *Instrumenter) findAndInstrumentCronJobs(
 func (i *Instrumenter) instrumentCronJob(
 	ctx context.Context,
 	cronJob batchv1.CronJob,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	reconcileLogger *logr.Logger,
 ) {
-	i.instrumentWorkload(ctx, &cronJobWorkload{
-		cronJob: &cronJob,
-	}, reconcileLogger)
+	i.instrumentWorkload(
+		ctx,
+		&cronJobWorkload{
+			cronJob: &cronJob,
+		},
+		namespaceInstrumentationConfig,
+		reconcileLogger)
 }
 
 func (i *Instrumenter) findAndInstrumentyDaemonSets(
 	ctx context.Context,
 	namespace string,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
@@ -292,7 +276,7 @@ func (i *Instrumenter) findAndInstrumentyDaemonSets(
 		return fmt.Errorf("error when querying daemon sets: %w", err)
 	}
 	for _, resource := range matchingWorkloadsInNamespace.Items {
-		i.instrumentDaemonSet(ctx, resource, logger)
+		i.instrumentDaemonSet(ctx, resource, namespaceInstrumentationConfig, logger)
 		i.pauseAfterEachWorkload()
 	}
 	return nil
@@ -301,16 +285,23 @@ func (i *Instrumenter) findAndInstrumentyDaemonSets(
 func (i *Instrumenter) instrumentDaemonSet(
 	ctx context.Context,
 	daemonSet appsv1.DaemonSet,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	reconcileLogger *logr.Logger,
 ) {
-	i.instrumentWorkload(ctx, &daemonSetWorkload{
-		daemonSet: &daemonSet,
-	}, reconcileLogger)
+	i.instrumentWorkload(
+		ctx,
+		&daemonSetWorkload{
+			daemonSet: &daemonSet,
+		},
+		namespaceInstrumentationConfig,
+		reconcileLogger,
+	)
 }
 
 func (i *Instrumenter) findAndInstrumentDeployments(
 	ctx context.Context,
 	namespace string,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
@@ -319,7 +310,7 @@ func (i *Instrumenter) findAndInstrumentDeployments(
 		return fmt.Errorf("error when querying deployments: %w", err)
 	}
 	for _, resource := range matchingWorkloadsInNamespace.Items {
-		i.instrumentDeployment(ctx, resource, logger)
+		i.instrumentDeployment(ctx, resource, namespaceInstrumentationConfig, logger)
 		i.pauseAfterEachWorkload()
 	}
 	return nil
@@ -328,16 +319,22 @@ func (i *Instrumenter) findAndInstrumentDeployments(
 func (i *Instrumenter) instrumentDeployment(
 	ctx context.Context,
 	deployment appsv1.Deployment,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	reconcileLogger *logr.Logger,
 ) {
-	i.instrumentWorkload(ctx, &deploymentWorkload{
-		deployment: &deployment,
-	}, reconcileLogger)
+	i.instrumentWorkload(
+		ctx, &deploymentWorkload{
+			deployment: &deployment,
+		},
+		namespaceInstrumentationConfig,
+		reconcileLogger,
+	)
 }
 
 func (i *Instrumenter) findAndAddLabelsToImmutableJobsOnInstrumentation(
 	ctx context.Context,
 	namespace string,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
@@ -347,15 +344,16 @@ func (i *Instrumenter) findAndAddLabelsToImmutableJobsOnInstrumentation(
 	}
 
 	for _, job := range matchingWorkloadsInNamespace.Items {
-		i.handleJobJobOnInstrumentation(ctx, job, logger)
+		i.handleJobOnInstrumentation(ctx, job, namespaceInstrumentationConfig, logger)
 		i.pauseAfterEachWorkload()
 	}
 	return nil
 }
 
-func (i *Instrumenter) handleJobJobOnInstrumentation(
+func (i *Instrumenter) handleJobOnInstrumentation(
 	ctx context.Context,
 	job batchv1.Job,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	reconcileLogger *logr.Logger,
 ) {
 	logger := reconcileLogger.WithValues(
@@ -421,11 +419,19 @@ func (i *Instrumenter) handleJobJobOnInstrumentation(
 		switch requiredAction {
 		case util.ModificationModeInstrumentation:
 			modificationResult =
-				newWorkloadModifier(i.Images, i.ExtraConfig, i.OTelCollectorBaseUrl, i.InstrumentationDebug, &logger).
+				newWorkloadModifier(
+					i.ClusterInstrumentationConfig,
+					namespaceInstrumentationConfig,
+					&logger,
+				).
 					AddLabelsToImmutableJob(&job)
 		case util.ModificationModeUninstrumentation:
 			modificationResult =
-				newWorkloadModifier(i.Images, i.ExtraConfig, i.OTelCollectorBaseUrl, i.InstrumentationDebug, &logger).
+				newWorkloadModifier(
+					i.ClusterInstrumentationConfig,
+					namespaceInstrumentationConfig,
+					&logger,
+				).
 					RemoveLabelsFromImmutableJob(&job)
 		}
 
@@ -459,6 +465,7 @@ func (i *Instrumenter) handleJobJobOnInstrumentation(
 func (i *Instrumenter) findAndInstrumentReplicaSets(
 	ctx context.Context,
 	namespace string,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
@@ -467,7 +474,7 @@ func (i *Instrumenter) findAndInstrumentReplicaSets(
 		return fmt.Errorf("error when querying replica sets: %w", err)
 	}
 	for _, resource := range matchingWorkloadsInNamespace.Items {
-		i.instrumentReplicaSet(ctx, resource, logger)
+		i.instrumentReplicaSet(ctx, resource, namespaceInstrumentationConfig, logger)
 		i.pauseAfterEachWorkload()
 	}
 	return nil
@@ -476,11 +483,17 @@ func (i *Instrumenter) findAndInstrumentReplicaSets(
 func (i *Instrumenter) instrumentReplicaSet(
 	ctx context.Context,
 	replicaSet appsv1.ReplicaSet,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	reconcileLogger *logr.Logger,
 ) {
-	hasBeenUpdated := i.instrumentWorkload(ctx, &replicaSetWorkload{
-		replicaSet: &replicaSet,
-	}, reconcileLogger)
+	hasBeenUpdated := i.instrumentWorkload(
+		ctx,
+		&replicaSetWorkload{
+			replicaSet: &replicaSet,
+		},
+		namespaceInstrumentationConfig,
+		reconcileLogger,
+	)
 
 	if hasBeenUpdated {
 		i.restartPodsOfReplicaSet(ctx, replicaSet, reconcileLogger)
@@ -490,6 +503,7 @@ func (i *Instrumenter) instrumentReplicaSet(
 func (i *Instrumenter) findAndInstrumentStatefulSets(
 	ctx context.Context,
 	namespace string,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err := i.Clientset.AppsV1().StatefulSets(namespace).List(ctx, util.EmptyListOptions)
@@ -497,7 +511,7 @@ func (i *Instrumenter) findAndInstrumentStatefulSets(
 		return fmt.Errorf("error when querying stateful sets: %w", err)
 	}
 	for _, resource := range matchingWorkloadsInNamespace.Items {
-		i.instrumentStatefulSet(ctx, resource, logger)
+		i.instrumentStatefulSet(ctx, resource, namespaceInstrumentationConfig, logger)
 		i.pauseAfterEachWorkload()
 	}
 	return nil
@@ -506,19 +520,26 @@ func (i *Instrumenter) findAndInstrumentStatefulSets(
 func (i *Instrumenter) instrumentStatefulSet(
 	ctx context.Context,
 	statefulSet appsv1.StatefulSet,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	reconcileLogger *logr.Logger,
 ) {
-	i.instrumentWorkload(ctx, &statefulSetWorkload{
-		statefulSet: &statefulSet,
-	}, reconcileLogger)
+	i.instrumentWorkload(
+		ctx, &statefulSetWorkload{
+			statefulSet: &statefulSet,
+		},
+		namespaceInstrumentationConfig,
+		reconcileLogger,
+	)
 }
 
 func (i *Instrumenter) instrumentWorkload(
 	ctx context.Context,
 	workload instrumentableWorkload,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	reconcileLogger *logr.Logger,
 ) bool {
 	workloadMeta := workload.getObjectMeta()
+	containers := workload.getPodSpec().Containers
 	kind := workload.getKind()
 	logger := reconcileLogger.WithValues(
 		workkloadTypeLabel,
@@ -537,7 +558,7 @@ func (i *Instrumenter) instrumentWorkload(
 	var requiredAction util.ModificationMode
 	if util.WasInstrumentedButHasOptedOutNow(workloadMeta) {
 		requiredAction = util.ModificationModeUninstrumentation
-	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(workloadMeta, i.Images) {
+	} else if workloads.InstrumentationIsUpToDate(workloadMeta, containers, i.ClusterInstrumentationConfig.Images, namespaceInstrumentationConfig) {
 		// No change necessary, this workload has already been instrumented and an opt-out label (which would need to
 		// trigger uninstrumentation) has not been added since it has been instrumented.
 		logger.Info("not updating the existing instrumentation for this workload, it has already been successfully " +
@@ -567,9 +588,17 @@ func (i *Instrumenter) instrumentWorkload(
 
 		switch requiredAction {
 		case util.ModificationModeInstrumentation:
-			modificationResult = workload.instrument(i.Images, i.ExtraConfig, i.OTelCollectorBaseUrl, i.InstrumentationDebug, &logger)
+			modificationResult = workload.instrument(
+				i.ClusterInstrumentationConfig,
+				namespaceInstrumentationConfig,
+				&logger,
+			)
 		case util.ModificationModeUninstrumentation:
-			modificationResult = workload.revert(i.Images, i.ExtraConfig, i.OTelCollectorBaseUrl, i.InstrumentationDebug, &logger)
+			modificationResult = workload.revert(
+				i.ClusterInstrumentationConfig,
+				namespaceInstrumentationConfig,
+				&logger,
+			)
 		}
 
 		if modificationResult.HasBeenModified {
@@ -623,10 +652,10 @@ func (i *Instrumenter) pauseAfterEachWorkload() {
 }
 
 func (i *Instrumenter) DelayAfterEachWorkloadMillis() time.Duration {
-	if i.Delays == nil {
+	if i.ClusterInstrumentationConfig.InstrumentationDelays == nil {
 		return time.Duration(0)
 	}
-	return time.Duration(i.Delays.AfterEachWorkloadMillis)
+	return time.Duration(i.ClusterInstrumentationConfig.InstrumentationDelays.AfterEachWorkloadMillis)
 }
 
 func (i *Instrumenter) pauseAfterEachNamespace() {
@@ -636,10 +665,10 @@ func (i *Instrumenter) pauseAfterEachNamespace() {
 }
 
 func (i *Instrumenter) DelayAfterEachNamespaceMillis() time.Duration {
-	if i.Delays == nil {
+	if i.ClusterInstrumentationConfig.InstrumentationDelays == nil {
 		return time.Duration(0)
 	}
-	return time.Duration(i.Delays.AfterEachNamespaceMillis)
+	return time.Duration(i.ClusterInstrumentationConfig.InstrumentationDelays.AfterEachNamespaceMillis)
 }
 
 // UninstrumentWorkloadsIfAvailable is the main uninstrumentation function that is called in the controller's reconcile
@@ -670,12 +699,12 @@ func (i *Instrumenter) uninstrumentWorkloads(
 ) error {
 	namespace := dash0MonitoringResource.Namespace
 
-	errCronJobs := i.findAndUninstrumentCronJobs(ctx, namespace, logger)
-	errDaemonSets := i.findAndUninstrumentDaemonSets(ctx, namespace, logger)
-	errDeployments := i.findAndUninstrumentDeployments(ctx, namespace, logger)
-	errJobs := i.findAndHandleJobOnUninstrumentation(ctx, namespace, logger)
-	errReplicaSets := i.findAndUninstrumentReplicaSets(ctx, namespace, logger)
-	errStatefulSets := i.findAndUninstrumentStatefulSets(ctx, namespace, logger)
+	errCronJobs := i.findAndUninstrumentCronJobs(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(), logger)
+	errDaemonSets := i.findAndUninstrumentDaemonSets(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(), logger)
+	errDeployments := i.findAndUninstrumentDeployments(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(), logger)
+	errJobs := i.findAndHandleJobOnUninstrumentation(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(), logger)
+	errReplicaSets := i.findAndUninstrumentReplicaSets(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(), logger)
+	errStatefulSets := i.findAndUninstrumentStatefulSets(ctx, namespace, dash0MonitoringResource.GetNamespaceInstrumentationConfig(), logger)
 	combinedErrors := errors.Join(
 		errCronJobs,
 		errDaemonSets,
@@ -693,6 +722,7 @@ func (i *Instrumenter) uninstrumentWorkloads(
 func (i *Instrumenter) findAndUninstrumentCronJobs(
 	ctx context.Context,
 	namespace string,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
@@ -701,7 +731,7 @@ func (i *Instrumenter) findAndUninstrumentCronJobs(
 		return fmt.Errorf("error when querying instrumented cron jobs: %w", err)
 	}
 	for _, resource := range matchingWorkloadsInNamespace.Items {
-		i.uninstrumentCronJob(ctx, resource, logger)
+		i.uninstrumentCronJob(ctx, resource, namespaceInstrumentationConfig, logger)
 	}
 	return nil
 }
@@ -709,21 +739,32 @@ func (i *Instrumenter) findAndUninstrumentCronJobs(
 func (i *Instrumenter) uninstrumentCronJob(
 	ctx context.Context,
 	cronJob batchv1.CronJob,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	reconcileLogger *logr.Logger,
 ) {
-	i.revertWorkloadInstrumentation(ctx, &cronJobWorkload{
-		cronJob: &cronJob,
-	}, reconcileLogger)
+	i.revertWorkloadInstrumentation(
+		ctx,
+		&cronJobWorkload{
+			cronJob: &cronJob,
+		},
+		namespaceInstrumentationConfig,
+		reconcileLogger,
+	)
 }
 
-func (i *Instrumenter) findAndUninstrumentDaemonSets(ctx context.Context, namespace string, logger *logr.Logger) error {
+func (i *Instrumenter) findAndUninstrumentDaemonSets(
+	ctx context.Context,
+	namespace string,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	logger *logr.Logger,
+) error {
 	matchingWorkloadsInNamespace, err :=
 		i.Clientset.AppsV1().DaemonSets(namespace).List(ctx, util.WorkloadsWithDash0InstrumentedLabelFilter)
 	if err != nil {
 		return fmt.Errorf("error when querying instrumented daemon sets: %w", err)
 	}
 	for _, resource := range matchingWorkloadsInNamespace.Items {
-		i.uninstrumentDaemonSet(ctx, resource, logger)
+		i.uninstrumentDaemonSet(ctx, resource, namespaceInstrumentationConfig, logger)
 	}
 	return nil
 }
@@ -731,16 +772,23 @@ func (i *Instrumenter) findAndUninstrumentDaemonSets(ctx context.Context, namesp
 func (i *Instrumenter) uninstrumentDaemonSet(
 	ctx context.Context,
 	daemonSet appsv1.DaemonSet,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	reconcileLogger *logr.Logger,
 ) {
-	i.revertWorkloadInstrumentation(ctx, &daemonSetWorkload{
-		daemonSet: &daemonSet,
-	}, reconcileLogger)
+	i.revertWorkloadInstrumentation(
+		ctx,
+		&daemonSetWorkload{
+			daemonSet: &daemonSet,
+		},
+		namespaceInstrumentationConfig,
+		reconcileLogger,
+	)
 }
 
 func (i *Instrumenter) findAndUninstrumentDeployments(
 	ctx context.Context,
 	namespace string,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
@@ -749,7 +797,7 @@ func (i *Instrumenter) findAndUninstrumentDeployments(
 		return fmt.Errorf("error when querying instrumented deployments: %w", err)
 	}
 	for _, resource := range matchingWorkloadsInNamespace.Items {
-		i.uninstrumentDeployment(ctx, resource, logger)
+		i.uninstrumentDeployment(ctx, resource, namespaceInstrumentationConfig, logger)
 	}
 	return nil
 }
@@ -757,16 +805,23 @@ func (i *Instrumenter) findAndUninstrumentDeployments(
 func (i *Instrumenter) uninstrumentDeployment(
 	ctx context.Context,
 	deployment appsv1.Deployment,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	reconcileLogger *logr.Logger,
 ) {
-	i.revertWorkloadInstrumentation(ctx, &deploymentWorkload{
-		deployment: &deployment,
-	}, reconcileLogger)
+	i.revertWorkloadInstrumentation(
+		ctx,
+		&deploymentWorkload{
+			deployment: &deployment,
+		},
+		namespaceInstrumentationConfig,
+		reconcileLogger,
+	)
 }
 
 func (i *Instrumenter) findAndHandleJobOnUninstrumentation(
 	ctx context.Context,
 	namespace string,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err := i.Clientset.BatchV1().Jobs(namespace).List(ctx, util.WorkloadsWithDash0InstrumentedLabelFilter)
@@ -775,12 +830,17 @@ func (i *Instrumenter) findAndHandleJobOnUninstrumentation(
 	}
 
 	for _, job := range matchingWorkloadsInNamespace.Items {
-		i.handleJobOnUninstrumentation(ctx, job, logger)
+		i.handleJobOnUninstrumentation(ctx, job, namespaceInstrumentationConfig, logger)
 	}
 	return nil
 }
 
-func (i *Instrumenter) handleJobOnUninstrumentation(ctx context.Context, job batchv1.Job, reconcileLogger *logr.Logger) {
+func (i *Instrumenter) handleJobOnUninstrumentation(
+	ctx context.Context,
+	job batchv1.Job,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	reconcileLogger *logr.Logger,
+) {
 	logger := reconcileLogger.WithValues(
 		workkloadTypeLabel,
 		"Job",
@@ -823,7 +883,11 @@ func (i *Instrumenter) handleJobOnUninstrumentation(ctx context.Context, job bat
 			// There was an attempt to instrument this job (probably by the controller), which has not been successful.
 			// We only need remove the labels from that instrumentation attempt to clean up.
 			modificationResult =
-				newWorkloadModifier(i.Images, i.ExtraConfig, i.OTelCollectorBaseUrl, i.InstrumentationDebug, &logger).
+				newWorkloadModifier(
+					i.ClusterInstrumentationConfig,
+					namespaceInstrumentationConfig,
+					&logger,
+				).
 					RemoveLabelsFromImmutableJob(&job)
 
 			// Apparently for jobs we do not need to set the "dash0.com/webhook-ignore-once" label, since changing their
@@ -859,6 +923,7 @@ func (i *Instrumenter) handleJobOnUninstrumentation(ctx context.Context, job bat
 func (i *Instrumenter) findAndUninstrumentReplicaSets(
 	ctx context.Context,
 	namespace string,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
@@ -867,15 +932,25 @@ func (i *Instrumenter) findAndUninstrumentReplicaSets(
 		return fmt.Errorf("error when querying instrumented replica sets: %w", err)
 	}
 	for _, resource := range matchingWorkloadsInNamespace.Items {
-		i.uninstrumentReplicaSet(ctx, resource, logger)
+		i.uninstrumentReplicaSet(ctx, resource, namespaceInstrumentationConfig, logger)
 	}
 	return nil
 }
 
-func (i *Instrumenter) uninstrumentReplicaSet(ctx context.Context, replicaSet appsv1.ReplicaSet, reconcileLogger *logr.Logger) {
-	hasBeenUpdated := i.revertWorkloadInstrumentation(ctx, &replicaSetWorkload{
-		replicaSet: &replicaSet,
-	}, reconcileLogger)
+func (i *Instrumenter) uninstrumentReplicaSet(
+	ctx context.Context,
+	replicaSet appsv1.ReplicaSet,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	reconcileLogger *logr.Logger,
+) {
+	hasBeenUpdated := i.revertWorkloadInstrumentation(
+		ctx,
+		&replicaSetWorkload{
+			replicaSet: &replicaSet,
+		},
+		namespaceInstrumentationConfig,
+		reconcileLogger,
+	)
 
 	if hasBeenUpdated {
 		i.restartPodsOfReplicaSet(ctx, replicaSet, reconcileLogger)
@@ -885,6 +960,7 @@ func (i *Instrumenter) uninstrumentReplicaSet(ctx context.Context, replicaSet ap
 func (i *Instrumenter) findAndUninstrumentStatefulSets(
 	ctx context.Context,
 	namespace string,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) error {
 	matchingWorkloadsInNamespace, err :=
@@ -893,7 +969,7 @@ func (i *Instrumenter) findAndUninstrumentStatefulSets(
 		return fmt.Errorf("error when querying instrumented stateful sets: %w", err)
 	}
 	for _, resource := range matchingWorkloadsInNamespace.Items {
-		i.uninstrumentStatefulSet(ctx, resource, logger)
+		i.uninstrumentStatefulSet(ctx, resource, namespaceInstrumentationConfig, logger)
 	}
 	return nil
 }
@@ -901,16 +977,23 @@ func (i *Instrumenter) findAndUninstrumentStatefulSets(
 func (i *Instrumenter) uninstrumentStatefulSet(
 	ctx context.Context,
 	statefulSet appsv1.StatefulSet,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	reconcileLogger *logr.Logger,
 ) {
-	i.revertWorkloadInstrumentation(ctx, &statefulSetWorkload{
-		statefulSet: &statefulSet,
-	}, reconcileLogger)
+	i.revertWorkloadInstrumentation(
+		ctx,
+		&statefulSetWorkload{
+			statefulSet: &statefulSet,
+		},
+		namespaceInstrumentationConfig,
+		reconcileLogger,
+	)
 }
 
 func (i *Instrumenter) revertWorkloadInstrumentation(
 	ctx context.Context,
 	workload instrumentableWorkload,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	reconcileLogger *logr.Logger,
 ) bool {
 	objectMeta := workload.getObjectMeta()
@@ -949,7 +1032,11 @@ func (i *Instrumenter) revertWorkloadInstrumentation(
 				err,
 			)
 		}
-		modificationResult = workload.revert(i.Images, i.ExtraConfig, i.OTelCollectorBaseUrl, i.InstrumentationDebug, &logger)
+		modificationResult = workload.revert(
+			i.ClusterInstrumentationConfig,
+			namespaceInstrumentationConfig,
+			&logger,
+		)
 		if modificationResult.HasBeenModified {
 			// Changing the workload spec sometimes triggers a new admission request, which would re-instrument the
 			// workload via the webhook immediately. To prevent this, we add a label that the webhook can check to
@@ -993,20 +1080,14 @@ func (i *Instrumenter) postProcessUninstrumentation(
 }
 
 func newWorkloadModifier(
-	images util.Images,
-	extraConfig util.ExtraConfig,
-	oTelCollectorBaseUrl string,
-	instrumentationDebug bool,
+	clusterInstrumentationConfig util.ClusterInstrumentationConfig,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) *workloads.ResourceModifier {
 	return workloads.NewResourceModifier(
-		util.InstrumentationMetadata{
-			Images:               images,
-			InstrumentedBy:       actor,
-			OTelCollectorBaseUrl: oTelCollectorBaseUrl,
-			InstrumentationDebug: instrumentationDebug,
-		},
-		extraConfig,
+		clusterInstrumentationConfig,
+		namespaceInstrumentationConfig,
+		actor,
 		logger,
 	)
 }
