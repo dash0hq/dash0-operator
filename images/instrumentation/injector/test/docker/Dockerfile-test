@@ -4,6 +4,21 @@
 ARG base_image="node:22.15.0-bookworm-slim"
 FROM ${base_image}
 
+
+ARG arch_under_test
+RUN if [ -z "$arch_under_test" ]; then \
+      echo "Error: build argument arch_under_test is required but not set."; \
+      exit 1; \
+    fi
+ENV ARCH_UNDER_TEST=${arch_under_test}
+
+ARG libc_under_test
+RUN if [ -z "libc_under_test" ]; then \
+      echo "Error: build argument libc_under_test is required but not set."; \
+      exit 1; \
+    fi
+ENV LIBC_UNDER_TEST=${libc_under_test}
+
 ARG injector_binary
 RUN if [ -z "$injector_binary" ]; then \
       echo "Error: build argument injector_binary is required but not set."; \
@@ -37,18 +52,6 @@ COPY bin/${injector_binary} /dash0-init-container/injector/dash0_injector.so
 
 RUN ${create_sdk_dummy_files_script}
 
-ARG arch_under_test
-RUN if [ -z "$arch_under_test" ]; then \
-      echo "Error: build argument arch_under_test is required but not set."; \
-      exit 1; \
-    fi
-ENV ARCH_UNDER_TEST=${arch_under_test}
-ARG libc_under_test
-RUN if [ -z "libc_under_test" ]; then \
-      echo "Error: build argument libc_under_test is required but not set."; \
-      exit 1; \
-    fi
-ENV LIBC_UNDER_TEST=${libc_under_test}
 
 USER node
 CMD ["scripts/run-tests-within-container.sh"]

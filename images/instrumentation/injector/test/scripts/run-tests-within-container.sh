@@ -30,7 +30,7 @@ elif [ "$arch" != "$EXPECTED_CPU_ARCHITECTURE" ]; then
   echo "actual:   $arch"
   exit 1
 else
-  printf "${GREEN}verifying CPU architecture %s successful${NC}\n" "$EXPECTED_CPU_ARCHITECTURE"
+  printf "verifying CPU architecture %s successful\n" "$EXPECTED_CPU_ARCHITECTURE"
 fi
 
 injector_binary=/dash0-init-container/injector/dash0_injector.so
@@ -60,11 +60,29 @@ run_test_case() {
   env_vars=${5:-}
 
   if [ -n "${TEST_CASES:-}" ]; then
+    # Only run test case if there is an _exact match_ for the test case label in the comma-separated list $TEST_CASES.
     IFS=,
     # shellcheck disable=SC2086
     set -- $TEST_CASES""
 
     run_this_test_case="false"
+    for selected_test_case in "$@"; do
+      if [ "$test_case_label" = "$selected_test_case" ]; then
+        run_this_test_case="true"
+      fi
+    done
+    if [ "$run_this_test_case" != "true" ]; then
+      echo "- skipping test case \"$test_case_label\""
+      return
+    fi
+  fi
+  if [ -n "${TEST_CASES_CONTAINING:-}" ]; then
+    # Only run test case if the test case label contains one of the strings from the comma-separated list
+    # $TEST_CASES_CONTAINING as a substring.
+    IFS=,
+    # shellcheck disable=SC2086
+    set -- $TEST_CASES_CONTAINING""
+     run_this_test_case="false"
     for selected_test_case in "$@"; do
       set +e
       match=$(expr "$test_case_label" : ".*$selected_test_case.*")
@@ -85,8 +103,9 @@ run_test_case() {
   fi
 
   cd "$working_dir"
-  # Note: add DASH0_INJECTOR_DEBUG=true to the list of env vars to see debug output from the injector.
   full_command="LD_PRELOAD=""$injector_binary"" DASH0_NAMESPACE_NAME=my-namespace DASH0_POD_NAME=my-pod DASH0_POD_UID=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff DASH0_CONTAINER_NAME=test-app"
+  # Note: add DASH0_INJECTOR_DEBUG=true to the list of env vars to see debug output from the injector.
+  # full_command="$full_command DASH0_INJECTOR_DEBUG=true"
   if [ "$env_vars" != "" ]; then
     full_command=" $full_command $env_vars"
   fi
@@ -101,15 +120,22 @@ run_test_case() {
     echo "test command: $full_command"
     echo "received exit code: $test_exit_code"
     echo "output: $test_output"
+    echo "--- end of output"
     exit_code=1
   elif [ "$test_output" != "$expected" ]; then
     printf "${RED}test \"%s\" failed:${NC}\n" "$test_case_label"
     echo "test command: $full_command"
     echo "expected: $expected"
     echo "actual:   $test_output"
+    echo "--- end of output"
     exit_code=1
   else
     printf "${GREEN}test \"%s\" successful${NC}\n" "$test_case_label"
+    if [ "${VERBOSE:-}" = "true" ]; then
+      echo "test command: $full_command"
+      echo "output: $test_output"
+      echo "--- end of output"
+    fi
   fi
 }
 

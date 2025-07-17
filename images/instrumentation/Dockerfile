@@ -12,7 +12,7 @@ RUN source /dash0-init-container/zig-version && \
 COPY injector /dash0-init-container
 WORKDIR /dash0-init-container
 ARG TARGETARCH
-RUN zig build -Dcpu-arch=${TARGETARCH} --summary all
+RUN zig build -Dcpu-arch=${TARGETARCH} --prominent-compile-errors --summary none
 
 # injector_build_end - do not remove this line (see images/instrumentation/injector/test/scripts/test-all.sh)
 
@@ -25,7 +25,7 @@ RUN ./mvnw dependency:copy-dependencies \
   && cp pom.xml ./build/pom.xml
 
 # build Node.js artifacts
-FROM node:22.15.0-alpine3.21 AS build-node.js
+FROM node:22.15.0-alpine3.21 AS build-node-js
 RUN mkdir -p /dash0-init-container/instrumentation/node.js
 WORKDIR /dash0-init-container/instrumentation/node.js
 COPY node.js/package* .
@@ -56,7 +56,7 @@ COPY --from=build-injector /dash0-init-container/dash0_injector.so /dash0-init-c
 COPY --from=build-dotnet /glibc /dash0-init-container/instrumentation/dotnet/glibc
 COPY --from=build-dotnet /musl /dash0-init-container/instrumentation/dotnet/musl
 COPY --from=build-jvm /dash0-init-container/instrumentation/jvm/build /dash0-init-container/instrumentation/jvm
-COPY --from=build-node.js /dash0-init-container/instrumentation/node.js /dash0-init-container/instrumentation/node.js
+COPY --from=build-node-js /dash0-init-container/instrumentation/node.js /dash0-init-container/instrumentation/node.js
 
 WORKDIR /
 CMD ["/copy-instrumentation.sh"]

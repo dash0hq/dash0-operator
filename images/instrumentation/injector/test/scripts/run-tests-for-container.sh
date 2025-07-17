@@ -80,7 +80,9 @@ docker run \
   --env EXPECTED_CPU_ARCHITECTURE="$expected_cpu_architecture" \
   --env TEST_SET="$TEST_SET" \
   --env TEST_CASES="$TEST_CASES" \
+  --env TEST_CASES_CONTAINING="$TEST_CASES_CONTAINING" \
   --env MISSING_ENVIRON_SYMBOL_TESTS="${MISSING_ENVIRON_SYMBOL_TESTS:-}" \
+  --env VERBOSE="${VERBOSE:-}" \
   "$image_name" \
   $docker_run_extra_arguments
 { set +x; } 2> /dev/null
