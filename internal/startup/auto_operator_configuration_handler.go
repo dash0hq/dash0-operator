@@ -47,6 +47,10 @@ type AutoOperatorConfigurationResourceHandler struct {
 
 const (
 	operatorConfigurationAutoResourceName = "dash0-operator-configuration-auto-resource"
+
+	argoCdAyncOptionsAnnotationKey    = "argocd.argoproj.io/sync-options"
+	argoCdCompareOptionsAnnotationKey = "argocd.argoproj.io/compare-options"
+	managedByHelmAnnotationKey        = "dash0.com/managed-by-helm"
 )
 
 // CreateOrUpdateOperatorConfigurationResource creates or updates the Dash0 operator configuration resource. The
@@ -271,8 +275,14 @@ func convertValuesToResource(operatorConfigurationValues *OperatorConfigurationV
 				// * The docs for preventing this on a resource level are here:
 				//   https://argo-cd.readthedocs.io/en/stable/user-guide/sync-options/#no-prune-resources
 				//   https://argo-cd.readthedocs.io/en/stable/user-guide/compare-options/#ignoring-resources-that-are-extraneous
-				"argocd.argoproj.io/sync-options":    "Prune=false",
-				"argocd.argoproj.io/compare-options": "IgnoreExtraneous",
+				argoCdAyncOptionsAnnotationKey:    "Prune=false",
+				argoCdCompareOptionsAnnotationKey: "IgnoreExtraneous",
+				managedByHelmAnnotationKey: "DO NOT EDIT THIS RESOURCE. This operator configuration resource is " +
+					"managed by the operator Helm chart (Helm values operator.dash0Export.*), manual modifications " +
+					"to this resource (i.e. via kubectl or k9s) will be overwritten when the operator manager is " +
+					"restarted or the operator is updated to a new version. See " +
+					"https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#" +
+					"notes-on-creating-the-operator-configuration-resource-via-helm.",
 			},
 		},
 		Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
