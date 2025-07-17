@@ -32,19 +32,63 @@ if [[ -n "${ARCHITECTURES:-}" ]]; then
   architectures=("${ARCHITECTURES//,/ }")
   echo Only testing a subset of architectures: "${architectures[@]}"
 fi
+
 libc_flavors=""
 if [[ -n "${LIBC_FLAVORS:-}" ]]; then
   libc_flavors=("${LIBC_FLAVORS//,/ }")
   echo Only testing a subset of libc flavors: "${libc_flavors[@]}"
 fi
+
+all_test_sets_string=$(find injector/test/scripts/ -name \*.tests -print0 | xargs -0 -n 1 basename | sort | tr '\n' ' ')
+read -ra all_test_sets <<< "$all_test_sets_string"
+echo Found test sets: "${all_test_sets[@]}"
+
+test_sets=""
+if [[ -n "${TEST_SETS:-}" ]]; then
+  test_sets=("${TEST_SETS//,/ }")
+  echo Only running a subset of test sets: "${test_sets[@]}"
+fi
+
+if [[ -n "${TEST_CASES:-}" && -n "${TEST_CASES_CONTAINING:-}"  ]]; then
+  echo "Error: TEST_CASES and TEST_CASES_CONTAINING are mutually exclusive, please set at most one of them."
+  exit 1
+fi
+
 if [[ -n "${TEST_CASES:-}" ]]; then
-  echo Only running a subset of test cases : "$TEST_CASES"
+  echo Only running a subset of test cases: "$TEST_CASES"
 else
   TEST_CASES=""
 fi
 
-exit_code=0
+if [[ -n "${TEST_CASES_CONTAINING:-}" ]]; then
+  echo Only running test cases which contain: "$TEST_CASES_CONTAINING"
+else
+  TEST_CASES_CONTAINING=""
+fi
+
+global_exit_code=0
+test_exit_code_last_test_set=0
 summary=""
+
+run_test_set_for_architecture_and_libc_flavor() {
+  arch=$1
+  libc=$2
+  test_set=$3
+  echo
+  echo "running test set \"$test_set\" on $arch and $libc"
+  set +e
+  ARCH="$arch" \
+    LIBC="$libc" \
+    TEST_SET="$test_set" \
+    TEST_CASES="$TEST_CASES" \
+    TEST_CASES_CONTAINING="$TEST_CASES_CONTAINING" \
+    injector/test/scripts/run-tests-for-container.sh
+  test_exit_code_last_test_set=$?
+  set -e
+  echo
+  echo ----------------------------------------
+}
+
 run_tests_for_architecture_and_libc_flavor() {
   arch=$1
   libc=$2
@@ -52,17 +96,28 @@ run_tests_for_architecture_and_libc_flavor() {
   echo ----------------------------------------
   echo "testing the injector library on $arch and $libc"
   echo ----------------------------------------
-  set +e
-  ARCH="$arch" LIBC="$libc" TEST_SET=default.tests TEST_CASES="$TEST_CASES" injector/test/scripts/run-tests-for-container.sh
-  ARCH="$arch" LIBC="$libc" TEST_SET=sdk-does-not-exist.tests TEST_CASES="$TEST_CASES" injector/test/scripts/run-tests-for-container.sh
-  ARCH="$arch" LIBC="$libc" TEST_SET=sdk-cannot-be-accessed.tests TEST_CASES="$TEST_CASES" injector/test/scripts/run-tests-for-container.sh
-  test_exit_code=$?
-  set -e
+
+  test_exit_code=0
+  for test_set in "${all_test_sets[@]}"; do
+    local test_set_name="${test_set%.tests}"
+    if [[ -n "${test_sets[0]}" ]]; then
+      if [[ $(echo "${test_sets[@]}" | grep -o "$test_set_name" | wc -w) -eq 0 ]]; then
+        echo "skipping test set $test_set"
+        continue
+      fi
+    fi
+
+    run_test_set_for_architecture_and_libc_flavor "$arch" "$libc" "$test_set"
+    if [[ $test_exit_code_last_test_set -gt $test_exit_code ]]; then
+      test_exit_code=$test_exit_code_last_test_set
+    fi
+  done
+
   echo
   echo ----------------------------------------
   if [ $test_exit_code != 0 ]; then
     printf "${RED}tests for %s/%s failed (see above for details)${NC}\n" "$arch" "$libc"
-    exit_code=1
+    global_exit_code=1
     summary="$summary\n$arch/$libc:\t${RED}failed${NC}"
   else
     printf "${GREEN}tests for %s/%s were successful${NC}\n" "$arch" "$libc"
@@ -117,7 +172,9 @@ rm -f injector/test/.container_images_to_be_deleted_at_end
 touch injector/test/.container_images_to_be_deleted_at_end
 trap cleanup_docker_images EXIT
 
-# rebuild compiled test apps
+###############################################################
+# rebuild all compiled test apps
+###############################################################
 if [[ "${MISSING_ENVIRON_SYMBOL_TESTS:-}" = "true" ]]; then
   echo ----------------------------------------
   echo building the no_environ_symbol test app binary
@@ -267,4 +324,4 @@ for arch in "${all_architectures[@]}"; do
 done
 
 printf "$summary\n\n"
-exit $exit_code
+exit $global_exit_code
