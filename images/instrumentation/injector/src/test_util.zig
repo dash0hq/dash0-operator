@@ -18,7 +18,7 @@ pub fn clearStdCEnviron() anyerror![*:null]?[*:0]u8 {
     return original_environ;
 }
 
-/// Sets the given key value pairs as the only content of std.c.environ. Everything else in std.c.environ is discarded.
+/// Sets the given key-value pairs as the only content of std.c.environ. Everything else in std.c.environ is discarded.
 /// The original content before making any changes is returned. The caller is expected to reset std.c.environ to
 /// the return value of this function when the test is done, for example by calling
 /// `defer resetStdCEnviron(original_environ);` directly after calling this function (where original_environ is the

@@ -86,7 +86,8 @@ fn getEnvValue(name: [:0]const u8) ?types.NullTerminatedString {
         }
     } else if (std.mem.eql(u8, name, jvm.java_tool_options_env_var_name)) {
         if (!modified_java_tool_options_value_calculated) {
-            modified_java_tool_options_value = jvm.checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue(original_value);
+            modified_java_tool_options_value =
+                jvm.checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue(original_value);
             modified_java_tool_options_value_calculated = true;
         }
         if (modified_java_tool_options_value) |updated_value| {
