@@ -92,9 +92,15 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 			}, &operatorConfiguration)
 			g.Expect(err).ToNot(HaveOccurred())
 
-			g.Expect(operatorConfiguration.Annotations).To(HaveLen(2))
+			g.Expect(operatorConfiguration.Annotations).To(HaveLen(3))
 			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/sync-options"]).To(Equal("Prune=false"))
 			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/compare-options"]).To(Equal("IgnoreExtraneous"))
+			g.Expect(operatorConfiguration.Annotations[managedByHelmAnnotationKey]).To(Equal(
+				"DO NOT EDIT THIS RESOURCE. This operator configuration resource is managed by the operator Helm " +
+					"chart (Helm values operator.dash0Export.*), manual modifications to this resource (i.e. via " +
+					"kubectl or k9s) will be overwritten when the operator manager is restarted or the operator is " +
+					"updated to a new version. See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/" +
+					"dash0-operator/README.md#notes-on-creating-the-operator-configuration-resource-via-helm."))
 
 			spec := operatorConfiguration.Spec
 			export := spec.Export
@@ -126,7 +132,7 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 			}, &operatorConfiguration)
 			g.Expect(err).ToNot(HaveOccurred())
 
-			g.Expect(operatorConfiguration.Annotations).To(HaveLen(2))
+			g.Expect(operatorConfiguration.Annotations).To(HaveLen(3))
 			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/sync-options"]).To(Equal("Prune=false"))
 			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/compare-options"]).To(Equal("IgnoreExtraneous"))
 
@@ -159,7 +165,7 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 			}, &operatorConfiguration)
 			g.Expect(err).ToNot(HaveOccurred())
 
-			g.Expect(operatorConfiguration.Annotations).To(HaveLen(2))
+			g.Expect(operatorConfiguration.Annotations).To(HaveLen(3))
 			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/sync-options"]).To(Equal("Prune=false"))
 			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/compare-options"]).To(Equal("IgnoreExtraneous"))
 
@@ -186,7 +192,7 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 			}, &operatorConfiguration)
 			g.Expect(err).ToNot(HaveOccurred())
 
-			g.Expect(operatorConfiguration.Annotations).To(HaveLen(2))
+			g.Expect(operatorConfiguration.Annotations).To(HaveLen(3))
 			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/sync-options"]).To(Equal("Prune=false"))
 			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/compare-options"]).To(Equal("IgnoreExtraneous"))
 
@@ -213,7 +219,7 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 			}, &operatorConfiguration)
 			g.Expect(err).ToNot(HaveOccurred())
 
-			g.Expect(operatorConfiguration.Annotations).To(HaveLen(2))
+			g.Expect(operatorConfiguration.Annotations).To(HaveLen(3))
 			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/sync-options"]).To(Equal("Prune=false"))
 			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/compare-options"]).To(Equal("IgnoreExtraneous"))
 
@@ -244,9 +250,10 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 			g.Expect(list.Items).To(HaveLen(1))
 			operatorConfiguration := list.Items[0]
 			g.Expect(operatorConfiguration.Name).To(Equal(operatorConfigurationAutoResourceName))
-			g.Expect(operatorConfiguration.Annotations).To(HaveLen(2))
+			g.Expect(operatorConfiguration.Annotations).To(HaveLen(3))
 			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/sync-options"]).To(Equal("Prune=false"))
 			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/compare-options"]).To(Equal("IgnoreExtraneous"))
+
 			export := operatorConfiguration.Spec.Export
 			g.Expect(export).ToNot(BeNil())
 			dash0Export := export.Dash0
@@ -285,7 +292,7 @@ var _ = Describe("Create an operator configuration resource at startup", Ordered
 			g.Expect(list.Items).To(HaveLen(1))
 			operatorConfiguration := list.Items[0]
 			g.Expect(operatorConfiguration.Name).To(Equal(operatorConfigurationAutoResourceName))
-			g.Expect(operatorConfiguration.Annotations).To(HaveLen(2))
+			g.Expect(operatorConfiguration.Annotations).To(HaveLen(3))
 			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/sync-options"]).To(Equal("Prune=false"))
 			g.Expect(operatorConfiguration.Annotations["argocd.argoproj.io/compare-options"]).To(Equal("IgnoreExtraneous"))
 			export := operatorConfiguration.Spec.Export
