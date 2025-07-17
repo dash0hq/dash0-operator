@@ -51,11 +51,30 @@ run_test_case \
   "JAVA_TOOL_OPTIONS: -some-option -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar -Dotel.resource.attributes=k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app" \
   "JAVA_TOOL_OPTIONS=-some-option"
 run_test_case \
-  "getenv: merges existing -Dotel.resource.attributes" \
+  "getenv: merges existing -Dotel.resource.attributes in JAVA_TOOL_OPTIONS" \
   "app" \
   "node index.js java_tool_options" \
   "JAVA_TOOL_OPTIONS: -Dotel.resource.attributes=my.attr1=value1,my.attr2=value2,k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar" \
   "JAVA_TOOL_OPTIONS=-Dotel.resource.attributes=my.attr1=value1,my.attr2=value2"
+run_test_case \
+  "getenv: merges existing OTEL_RESOURCE_ATTRIBUTES if JAVA_TOOL_OPTIONS is not set" \
+  "app" \
+  "node index.js java_tool_options" \
+  "JAVA_TOOL_OPTIONS: -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar -Dotel.resource.attributes=my.attr1=value1,my.attr2=value2,k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app" \
+  "OTEL_RESOURCE_ATTRIBUTES=my.attr1=value1,my.attr2=value2"
+run_test_case \
+  "getenv: merges existing OTEL_RESOURCE_ATTRIBUTES if JAVA_TOOL_OPTIONS is set but does not have -Dotel.resource.attributes" \
+  "app" \
+  "node index.js java_tool_options" \
+  "JAVA_TOOL_OPTIONS: -some-option -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar -Dotel.resource.attributes=my.attr1=value1,my.attr2=value2,k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app" \
+  "OTEL_RESOURCE_ATTRIBUTES=my.attr1=value1,my.attr2=value2 JAVA_TOOL_OPTIONS=-some-option"
+# The Java OTel SDK will ignore OTEL_RESOURCE_ATTRIBUTES if JAVA_TOOL_OPTIONS and has -Dotel.resource.attributes is set, so we replicate this behavior.R
+run_test_case \
+  "getenv: do not merge existing OTEL_RESOURCE_ATTRIBUTES if JAVA_TOOL_OPTIONS and has -Dotel.resource.attributes" \
+  "app" \
+  "node index.js java_tool_options" \
+  "JAVA_TOOL_OPTIONS: -Dotel.resource.attributes=my.attr3=value3,my.attr4=value4,k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar" \
+  "OTEL_RESOURCE_ATTRIBUTES=my.attr1=value1,my.attr2=value2 JAVA_TOOL_OPTIONS=-Dotel.resource.attributes=my.attr3=value3,my.attr4=value4"
 
 # OTEL_RESOURCE_ATTRIBUTES
 run_test_case \
