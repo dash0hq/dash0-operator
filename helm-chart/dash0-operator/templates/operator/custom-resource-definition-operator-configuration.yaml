@@ -14,7 +14,23 @@ spec:
     singular: dash0operatorconfiguration
   scope: Cluster
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.telemetryCollection.enabled
+      name: Collect Telemetry
+      type: boolean
+    - jsonPath: .spec.kubernetesInfrastructureMetricsCollection.enabled
+      name: Collect Metrics
+      type: boolean
+    - jsonPath: .spec.collectPodLabelsAndAnnotations.enabled
+      name: Collect Pod Meta
+      type: boolean
+    - jsonPath: .status.conditions[?(@.type == "Available")].status
+      name: Available
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: Dash0OperatorConfiguration is the schema for the Dash0OperatorConfiguration
