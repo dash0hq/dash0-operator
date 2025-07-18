@@ -44,6 +44,11 @@ var _ = Describe("Dash0 Workload Modification", func() {
 	logger := log.FromContext(ctx)
 	workloadModifier := NewResourceModifier(instrumentationMetadata, util.ExtraConfigDefaults, &logger)
 
+	type envVarModificationTest struct {
+		envVars      []corev1.EnvVar
+		expectations map[string]*EnvVarExpectation
+	}
+
 	Describe("when instrumenting workloads", func() {
 		It("should instrument a basic cron job", func() {
 			workload := BasicCronJob(TestNamespaceName, CronJobNamePrefix)
@@ -684,13 +689,8 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			}),
 		)
 
-		type removeLdPreloadTest struct {
-			envVars      []corev1.EnvVar
-			expectations map[string]*EnvVarExpectation
-		}
-
 		DescribeTable("should remove the Dash0 injector from LD_PRELOAD",
-			func(testConfig removeLdPreloadTest) {
+			func(testConfig envVarModificationTest) {
 				container := &corev1.Container{Env: testConfig.envVars}
 				workloadModifier.removeLdPreload(container)
 				Expect(container.Env).To(HaveLen(len(testConfig.expectations)))
@@ -699,11 +699,11 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					container.Env,
 				)
 			},
-			Entry("should do nothing if tbere are no env vars", removeLdPreloadTest{
+			Entry("should do nothing if there are no env vars", envVarModificationTest{
 				envVars:      nil,
 				expectations: map[string]*EnvVarExpectation{},
 			}),
-			Entry("should do nothing if there is no LD_PRELOAD", removeLdPreloadTest{
+			Entry("should do nothing if there is no LD_PRELOAD", envVarModificationTest{
 				envVars: []corev1.EnvVar{
 					{Name: "OTHER", Value: "value"},
 				},
@@ -711,7 +711,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					"OTHER": {Value: "value"},
 				},
 			}),
-			Entry("should do nothing if LD_PRELOAD does not list the Dash0 injector", removeLdPreloadTest{
+			Entry("should do nothing if LD_PRELOAD does not list the Dash0 injector", envVarModificationTest{
 				envVars: []corev1.EnvVar{
 					{Name: "OTHER", Value: "value"},
 					{Name: envVarLdPreloadName, Value: "one.so  two.so"},
@@ -721,7 +721,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					"OTHER":             {Value: "value"},
 				},
 			}),
-			Entry("should do nothing if LD_PRELOAD uses ValueFrom", removeLdPreloadTest{
+			Entry("should do nothing if LD_PRELOAD uses ValueFrom", envVarModificationTest{
 				envVars: []corev1.EnvVar{
 					{
 						Name: envVarLdPreloadName,
@@ -738,7 +738,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					"OTHER":             {Value: "value"},
 				},
 			}),
-			Entry("should remove LD_PRELOAD if the Dash0 injector is the only library", removeLdPreloadTest{
+			Entry("should remove LD_PRELOAD if the Dash0 injector is the only library", envVarModificationTest{
 				envVars: []corev1.EnvVar{
 					{Name: "OTHER", Value: "value"},
 					{Name: envVarLdPreloadName, Value: envVarLdPreloadValue},
@@ -747,7 +747,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					"OTHER": {Value: "value"},
 				},
 			}),
-			Entry("should remove LD_PRELOAD if the Dash0 injector is the only library and has surrounding whitespace", removeLdPreloadTest{
+			Entry("should remove LD_PRELOAD if the Dash0 injector is the only library and has surrounding whitespace", envVarModificationTest{
 				envVars: []corev1.EnvVar{
 					{Name: "OTHER", Value: "value"},
 					{Name: envVarLdPreloadName, Value: "  " + envVarLdPreloadValue + "   "},
@@ -756,7 +756,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					"OTHER": {Value: "value"},
 				},
 			}),
-			Entry("should remove the Dash0 injector from LD_PRELOAD at the start (space separated)", removeLdPreloadTest{
+			Entry("should remove the Dash0 injector from LD_PRELOAD at the start (space separated)", envVarModificationTest{
 				envVars: []corev1.EnvVar{
 					{Name: "OTHER", Value: "value"},
 					{Name: envVarLdPreloadName, Value: envVarLdPreloadValue + " one.so two.so"},
@@ -766,7 +766,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					envVarLdPreloadName: {Value: "one.so two.so"},
 				},
 			}),
-			Entry("should remove the Dash0 injector from LD_PRELOAD in the middle (space separated)", removeLdPreloadTest{
+			Entry("should remove the Dash0 injector from LD_PRELOAD in the middle (space separated)", envVarModificationTest{
 				envVars: []corev1.EnvVar{
 					{Name: "OTHER", Value: "value"},
 					{Name: envVarLdPreloadName, Value: "one.so " + envVarLdPreloadValue + " two.so"},
@@ -776,7 +776,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					envVarLdPreloadName: {Value: "one.so two.so"},
 				},
 			}),
-			Entry("should remove the Dash0 injector from LD_PRELOAD with extraneous whitespace (space separated)", removeLdPreloadTest{
+			Entry("should remove the Dash0 injector from LD_PRELOAD with extraneous whitespace (space separated)", envVarModificationTest{
 				envVars: []corev1.EnvVar{
 					{Name: "OTHER", Value: "value"},
 					{Name: envVarLdPreloadName, Value: "  one.so    " + envVarLdPreloadValue + "   two.so  "},
@@ -786,7 +786,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					envVarLdPreloadName: {Value: "one.so two.so"},
 				},
 			}),
-			Entry("should remove the Dash0 injector from LD_PRELOAD at the end (space separated)", removeLdPreloadTest{
+			Entry("should remove the Dash0 injector from LD_PRELOAD at the end (space separated)", envVarModificationTest{
 				envVars: []corev1.EnvVar{
 					{Name: "OTHER", Value: "value"},
 					{Name: envVarLdPreloadName, Value: "one.so two.so " + envVarLdPreloadValue},
@@ -796,7 +796,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					envVarLdPreloadName: {Value: "one.so two.so"},
 				},
 			}),
-			Entry("should remove the Dash0 injector from LD_PRELOAD at the start (colon separated)", removeLdPreloadTest{
+			Entry("should remove the Dash0 injector from LD_PRELOAD at the start (colon separated)", envVarModificationTest{
 				envVars: []corev1.EnvVar{
 					{Name: "OTHER", Value: "value"},
 					{Name: envVarLdPreloadName, Value: envVarLdPreloadValue + ":one.so:two.so"},
@@ -806,7 +806,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					envVarLdPreloadName: {Value: "one.so:two.so"},
 				},
 			}),
-			Entry("should remove the Dash0 injector from LD_PRELOAD in the middle (colon separated)", removeLdPreloadTest{
+			Entry("should remove the Dash0 injector from LD_PRELOAD in the middle (colon separated)", envVarModificationTest{
 				envVars: []corev1.EnvVar{
 					{Name: "OTHER", Value: "value"},
 					{Name: envVarLdPreloadName, Value: "one.so:" + envVarLdPreloadValue + ":two.so"},
@@ -816,7 +816,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					envVarLdPreloadName: {Value: "one.so:two.so"},
 				},
 			}),
-			Entry("should remove the Dash0 injector from LD_PRELOAD with extraneous whitespace (colon separated)", removeLdPreloadTest{
+			Entry("should remove the Dash0 injector from LD_PRELOAD with extraneous whitespace (colon separated)", envVarModificationTest{
 				envVars: []corev1.EnvVar{
 					{Name: "OTHER", Value: "value"},
 					{Name: envVarLdPreloadName, Value: "  one.so  :  " + envVarLdPreloadValue + " :  two.so  "},
@@ -826,7 +826,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					envVarLdPreloadName: {Value: "one.so:two.so"},
 				},
 			}),
-			Entry("should remove the Dash0 injector from LD_PRELOAD at the end (colon separated)", removeLdPreloadTest{
+			Entry("should remove the Dash0 injector from LD_PRELOAD at the end (colon separated)", envVarModificationTest{
 				envVars: []corev1.EnvVar{
 					{Name: "OTHER", Value: "value"},
 					{Name: envVarLdPreloadName, Value: "one.so:two.so:" + envVarLdPreloadValue},
@@ -834,6 +834,124 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				expectations: map[string]*EnvVarExpectation{
 					"OTHER":             {Value: "value"},
 					envVarLdPreloadName: {Value: "one.so:two.so"},
+				},
+			}),
+		)
+
+		DescribeTable("should clean up legacy env vars",
+			func(testConfig envVarModificationTest) {
+				container := &corev1.Container{Env: testConfig.envVars}
+				workloadModifier.removeLegacyEnvironmentVariables(container)
+				Expect(container.Env).To(HaveLen(len(testConfig.expectations)))
+				VerifyEnvVarsFromMap(
+					testConfig.expectations,
+					container.Env,
+				)
+			},
+			Entry("should do nothing if there are no env vars", envVarModificationTest{
+				envVars:      nil,
+				expectations: map[string]*EnvVarExpectation{},
+			}),
+			Entry("should do nothing if there is no NODE_OPTIONS", envVarModificationTest{
+				envVars: []corev1.EnvVar{
+					{Name: "OTHER", Value: "value"},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					"OTHER": {Value: "value"},
+				},
+			}),
+			Entry("should do nothing if NODE_OPTIONS does not list the legacy Dash0 Node.js OTel distribution", envVarModificationTest{
+				envVars: []corev1.EnvVar{
+					{Name: "OTHER", Value: "value"},
+					{Name: legacyEnvVarNodeOptionsName, Value: " --abort-on-uncaught-exception  --enable-fips "},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					legacyEnvVarNodeOptionsName: {Value: " --abort-on-uncaught-exception  --enable-fips "},
+					"OTHER":                     {Value: "value"},
+				},
+			}),
+			Entry("should do nothing if NODE_OPTIONS uses ValueFrom", envVarModificationTest{
+				envVars: []corev1.EnvVar{
+					{
+						Name: legacyEnvVarNodeOptionsName,
+						ValueFrom: &corev1.EnvVarSource{
+							FieldRef: &corev1.ObjectFieldSelector{
+								FieldPath: "whatever",
+							},
+						},
+					},
+					{Name: "OTHER", Value: "value"},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					legacyEnvVarNodeOptionsName: {ValueFrom: "whatever"},
+					"OTHER":                     {Value: "value"},
+				},
+			}),
+			Entry("should remove NODE_OPTIONS entirely if the Dash0 --require is the only option", envVarModificationTest{
+				envVars: []corev1.EnvVar{
+					{Name: "OTHER", Value: "value"},
+					{Name: legacyEnvVarNodeOptionsName, Value: legacyEnvVarNodeOptionsValue},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					"OTHER": {Value: "value"},
+				},
+			}),
+			Entry("should remove NODE_OPTIONS entirely if the Dash0 --require is the only option and has surrounding whitespace", envVarModificationTest{
+				envVars: []corev1.EnvVar{
+					{Name: "OTHER", Value: "value"},
+					{Name: legacyEnvVarNodeOptionsName, Value: "  " + legacyEnvVarNodeOptionsValue + "   "},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					"OTHER": {Value: "value"},
+				},
+			}),
+			Entry("should remove the Dash0 --require from NODE_OPTIONS at the start", envVarModificationTest{
+				envVars: []corev1.EnvVar{
+					{Name: "OTHER", Value: "value"},
+					{Name: legacyEnvVarNodeOptionsName, Value: legacyEnvVarNodeOptionsValue + " --abort-on-uncaught-exception --enable-fips"},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					"OTHER":                     {Value: "value"},
+					legacyEnvVarNodeOptionsName: {Value: "--abort-on-uncaught-exception --enable-fips"},
+				},
+			}),
+			Entry("should remove the Dash0 --require from NODE_OPTIONS in the middle", envVarModificationTest{
+				envVars: []corev1.EnvVar{
+					{Name: "OTHER", Value: "value"},
+					{Name: legacyEnvVarNodeOptionsName, Value: "--abort-on-uncaught-exception " + legacyEnvVarNodeOptionsValue + " --enable-fips"},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					"OTHER":                     {Value: "value"},
+					legacyEnvVarNodeOptionsName: {Value: "--abort-on-uncaught-exception --enable-fips"},
+				},
+			}),
+			Entry("should remove the Dash0 --require from NODE_OPTIONS with extraneous whitespace", envVarModificationTest{
+				envVars: []corev1.EnvVar{
+					{Name: "OTHER", Value: "value"},
+					{Name: legacyEnvVarNodeOptionsName, Value: "  --abort-on-uncaught-exception    " + legacyEnvVarNodeOptionsValue + "   --enable-fips  "},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					"OTHER":                     {Value: "value"},
+					legacyEnvVarNodeOptionsName: {Value: "  --abort-on-uncaught-exception      --enable-fips  "},
+				},
+			}),
+			Entry("should remove the Dash0 --require from NODE_OPTIONS at the end", envVarModificationTest{
+				envVars: []corev1.EnvVar{
+					{Name: "OTHER", Value: "value"},
+					{Name: legacyEnvVarNodeOptionsName, Value: "--abort-on-uncaught-exception --enable-fips " + legacyEnvVarNodeOptionsValue},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					"OTHER":                     {Value: "value"},
+					legacyEnvVarNodeOptionsName: {Value: "--abort-on-uncaught-exception --enable-fips"},
+				},
+			}),
+			Entry("should remove DASH0_SERVICE_INSTANCE_ID", envVarModificationTest{
+				envVars: []corev1.EnvVar{
+					{Name: "OTHER", Value: "value"},
+					{Name: "DASH0_SERVICE_INSTANCE_ID", Value: "foobar"},
+				},
+				expectations: map[string]*EnvVarExpectation{
+					"OTHER": {Value: "value"},
 				},
 			}),
 		)
