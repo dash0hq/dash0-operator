@@ -36,6 +36,11 @@ verify_kubectx() {
 }
 
 setup_test_environment () {
+  if ! docker info > /dev/null 2>&1; then
+    echo "This script uses docker, but it looks like Docker is not running. Please start docker and try again."
+    exit 1
+  fi
+
   test-resources/bin/render-templates.sh
   check_if_kubectx_is_kind_or_minikube_cluster
   determine_container_images

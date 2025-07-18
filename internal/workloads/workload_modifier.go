@@ -22,6 +22,12 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
+type containerHasServiceAttributes struct {
+	serviceName      bool
+	serviceNamespace bool
+	serviceVersion   bool
+}
+
 const (
 	initContainerName = "dash0-instrumentation"
 
@@ -37,12 +43,12 @@ const (
 	envVarDash0CollectorBaseUrlName         = "DASH0_OTEL_COLLECTOR_BASE_URL"
 	envVarDash0NamespaceName                = "DASH0_NAMESPACE_NAME"
 	envVarDash0PodName                      = "DASH0_POD_NAME"
-	envVarDash0PodUid                       = "DASH0_POD_UID"
+	envVarDash0PodUidName                   = "DASH0_POD_UID"
 	envVarDash0ContainerName                = "DASH0_CONTAINER_NAME"
 	envVarDash0ServiceName                  = "DASH0_SERVICE_NAME"
 	envVarDash0ServiceNamespace             = "DASH0_SERVICE_NAMESPACE"
-	envVarDash0ServiceVersion               = "DASH0_SERVICE_VERSION"
-	envVarDash0ResourceAttributes           = "DASH0_RESOURCE_ATTRIBUTES"
+	envVarDash0ServiceVersionName           = "DASH0_SERVICE_VERSION"
+	envVarDash0ResourceAttributesName       = "DASH0_RESOURCE_ATTRIBUTES"
 	dash0InjectorDebugEnvVarName            = "DASH0_INJECTOR_DEBUG"
 
 	safeToEviceLocalVolumesAnnotationName = "cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes"
@@ -513,7 +519,7 @@ func (m *ResourceModifier) addEnvironmentVariables(
 	m.addOrReplaceEnvironmentVariable(
 		container,
 		corev1.EnvVar{
-			Name: envVarDash0PodUid,
+			Name: envVarDash0PodUidName,
 			ValueFrom: &corev1.EnvVarSource{
 				FieldRef: &corev1.ObjectFieldSelector{
 					FieldPath: "metadata.uid",
@@ -541,45 +547,58 @@ func (m *ResourceModifier) addEnvironmentVariables(
 	// `app.kubernetes.io/part-of` becomes `service.namespace`
 	_, podMetaHasName := podMeta.Labels[util.AppKubernetesIoNameLabel]
 	nameFromWorkloadMeta, workloadMetaHasName := workloadMeta.Labels[util.AppKubernetesIoNameLabel]
+	hasServiceAttributes := m.checkContainerForServiceAttributes(container)
 	if podMetaHasName {
-		m.addEnvVarFromLabelFieldSelector(container, envVarDash0ServiceName, util.AppKubernetesIoNameLabel)
-		m.conditionallyAddEnvVarFromLabelFieldSelector(
-			container,
-			podMeta,
-			envVarDash0ServiceNamespace,
-			util.AppKubernetesIoPartOfLabel,
-		)
-		m.conditionallyAddEnvVarFromLabelFieldSelector(
-			container,
-			podMeta,
-			envVarDash0ServiceVersion,
-			util.AppKubernetesIoVersionLabel,
-		)
+		if !hasServiceAttributes.serviceName {
+			m.addEnvVarFromLabelFieldSelector(container, envVarDash0ServiceName, util.AppKubernetesIoNameLabel)
+		}
+		if !hasServiceAttributes.serviceNamespace {
+			m.conditionallyAddEnvVarFromLabelFieldSelector(
+				container,
+				podMeta,
+				envVarDash0ServiceNamespace,
+				util.AppKubernetesIoPartOfLabel,
+			)
+		}
+		if !hasServiceAttributes.serviceVersion {
+			m.conditionallyAddEnvVarFromLabelFieldSelector(
+				container,
+				podMeta,
+				envVarDash0ServiceVersionName,
+				util.AppKubernetesIoVersionLabel,
+			)
+		}
 	} else if workloadMetaHasName {
-		m.addOrReplaceEnvironmentVariable(
-			container,
-			corev1.EnvVar{
-				Name:  envVarDash0ServiceName,
-				Value: nameFromWorkloadMeta,
-			},
-		)
-		if partOfFromWorkloadMeta, workloadMetaHasPartOf := workloadMeta.Labels[util.AppKubernetesIoPartOfLabel]; workloadMetaHasPartOf {
+		if !hasServiceAttributes.serviceName {
 			m.addOrReplaceEnvironmentVariable(
 				container,
 				corev1.EnvVar{
-					Name:  envVarDash0ServiceNamespace,
-					Value: partOfFromWorkloadMeta,
+					Name:  envVarDash0ServiceName,
+					Value: nameFromWorkloadMeta,
 				},
 			)
 		}
-		if versionFromWorkloadMeta, workloadMetaHasVersion := workloadMeta.Labels[util.AppKubernetesIoVersionLabel]; workloadMetaHasVersion {
-			m.addOrReplaceEnvironmentVariable(
-				container,
-				corev1.EnvVar{
-					Name:  envVarDash0ServiceVersion,
-					Value: versionFromWorkloadMeta,
-				},
-			)
+		if !hasServiceAttributes.serviceNamespace {
+			if partOfFromWorkloadMeta, workloadMetaHasPartOf := workloadMeta.Labels[util.AppKubernetesIoPartOfLabel]; workloadMetaHasPartOf {
+				m.addOrReplaceEnvironmentVariable(
+					container,
+					corev1.EnvVar{
+						Name:  envVarDash0ServiceNamespace,
+						Value: partOfFromWorkloadMeta,
+					},
+				)
+			}
+		}
+		if !hasServiceAttributes.serviceVersion {
+			if versionFromWorkloadMeta, workloadMetaHasVersion := workloadMeta.Labels[util.AppKubernetesIoVersionLabel]; workloadMetaHasVersion {
+				m.addOrReplaceEnvironmentVariable(
+					container,
+					corev1.EnvVar{
+						Name:  envVarDash0ServiceVersionName,
+						Value: versionFromWorkloadMeta,
+					},
+				)
+			}
 		}
 	}
 
@@ -609,7 +628,7 @@ func (m *ResourceModifier) addEnvironmentVariables(
 		m.addOrReplaceEnvironmentVariable(
 			container,
 			corev1.EnvVar{
-				Name:  envVarDash0ResourceAttributes,
+				Name:  envVarDash0ResourceAttributesName,
 				Value: strings.Join(resourceAttributeList, ","),
 			})
 	}
@@ -661,6 +680,48 @@ func (m *ResourceModifier) handleLdPreloadEnvVar(
 			}
 		}
 	}
+}
+
+func (m *ResourceModifier) checkContainerForServiceAttributes(container *corev1.Container) containerHasServiceAttributes {
+	hasServiceAttributes := containerHasServiceAttributes{}
+	otelServiceName := getEnvVar(container, util.OtelServiceNameEnvVarName)
+	otelResourceAttributes := getEnvVar(container, util.OtelResourceAttributesEnvVarName)
+	var otelResourceAttributesKeyValuePairs []string
+	if otelResourceAttributes != nil &&
+		otelResourceAttributes.ValueFrom == nil &&
+		strings.TrimSpace(otelResourceAttributes.Value) != "" {
+		otelResourceAttributesKeyValuePairsRaw := strings.Split(otelResourceAttributes.Value, ",")
+		otelResourceAttributesKeyValuePairs = make([]string, len(otelResourceAttributesKeyValuePairsRaw))
+		for i, keyValuePair := range otelResourceAttributesKeyValuePairsRaw {
+			otelResourceAttributesKeyValuePairs[i] = strings.ReplaceAll(strings.TrimSpace(keyValuePair), " ", "")
+		}
+	}
+
+	if otelServiceName != nil && (otelServiceName.ValueFrom != nil || strings.TrimSpace(otelServiceName.Value) != "") {
+		hasServiceAttributes.serviceName = true
+	}
+	for _, keyValuePair := range otelResourceAttributesKeyValuePairs {
+		if strings.HasPrefix(keyValuePair, "service.name=") {
+			hasServiceAttributes.serviceName = true
+		}
+		if strings.HasPrefix(keyValuePair, "service.namespace=") {
+			hasServiceAttributes.serviceNamespace = true
+		}
+		if strings.HasPrefix(keyValuePair, "service.version=") {
+			hasServiceAttributes.serviceVersion = true
+		}
+	}
+	return hasServiceAttributes
+}
+
+func getEnvVar(container *corev1.Container, name string) *corev1.EnvVar {
+	idx := slices.IndexFunc(container.Env, func(c corev1.EnvVar) bool {
+		return c.Name == name
+	})
+	if idx >= 0 {
+		return &container.Env[idx]
+	}
+	return nil
 }
 
 func (m *ResourceModifier) addOrReplaceEnvironmentVariable(container *corev1.Container, envVar corev1.EnvVar) {
@@ -869,12 +930,12 @@ func (m *ResourceModifier) removeEnvironmentVariables(container *corev1.Containe
 	m.removeEnvironmentVariable(container, envVarOtelExporterOtlpProtocolName)
 	m.removeEnvironmentVariable(container, envVarDash0NamespaceName)
 	m.removeEnvironmentVariable(container, envVarDash0PodName)
-	m.removeEnvironmentVariable(container, envVarDash0PodUid)
+	m.removeEnvironmentVariable(container, envVarDash0PodUidName)
 	m.removeEnvironmentVariable(container, envVarDash0ContainerName)
 	m.removeEnvironmentVariable(container, envVarDash0ServiceNamespace)
 	m.removeEnvironmentVariable(container, envVarDash0ServiceName)
-	m.removeEnvironmentVariable(container, envVarDash0ServiceVersion)
-	m.removeEnvironmentVariable(container, envVarDash0ResourceAttributes)
+	m.removeEnvironmentVariable(container, envVarDash0ServiceVersionName)
+	m.removeEnvironmentVariable(container, envVarDash0ResourceAttributesName)
 	m.removeEnvironmentVariable(container, dash0InjectorDebugEnvVarName)
 }
 
