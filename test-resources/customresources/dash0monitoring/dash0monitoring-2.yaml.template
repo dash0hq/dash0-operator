@@ -4,7 +4,7 @@ kind: Dash0Monitoring
 metadata:
   name: dash0-monitoring-resource
 spec:
-  instrumentWorkloads: $INSTRUMENT_WORKLOADS
+  instrumentWorkloads: $INSTRUMENT_WORKLOADS_MODE
   logCollection:
     enabled: $LOG_COLLECTION
   prometheusScraping:

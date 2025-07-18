@@ -22,7 +22,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/instrumentation"
@@ -58,11 +59,13 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			k8sClient,
 			clientset,
 			recorder,
-			TestImages,
-			util.ExtraConfigDefaults,
-			OTelCollectorNodeLocalBaseUrlTest,
-			nil,
-			false,
+			util.ClusterInstrumentationConfig{
+				Images:                TestImages,
+				OTelCollectorBaseUrl:  OTelCollectorNodeLocalBaseUrlTest,
+				ExtraConfig:           util.ExtraConfigDefaults,
+				InstrumentationDelays: nil,
+				InstrumentationDebug:  false,
+			},
 		)
 		oTelColResourceManager := &otelcolresources.OTelColResourceManager{
 			Client:                    k8sClient,
@@ -133,7 +136,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 			It("should mark only the most recent resource as available and the other ones as degraded when multiple resources exist", func() {
 				firstName := MonitoringResourceQualifiedName
-				firstMonitoringResource := &dash0v1alpha1.Dash0Monitoring{}
+				firstMonitoringResource := &dash0v1beta1.Dash0Monitoring{}
 				Expect(k8sClient.Get(ctx, firstName, firstMonitoringResource)).To(Succeed())
 				time.Sleep(10 * time.Millisecond)
 				secondName := types.NamespacedName{Namespace: TestNamespaceName, Name: "dash0-monitoring-test-resource-2"}
@@ -149,12 +152,12 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 				triggerReconcileRequestForName(ctx, monitoringReconciler, thirdName)
 
 				Eventually(func(g Gomega) {
-					resource1Available := LoadMonitoringResourceStatusCondition(ctx, k8sClient, firstName, dash0v1alpha1.ConditionTypeAvailable)
-					resource1Degraded := LoadMonitoringResourceStatusCondition(ctx, k8sClient, firstName, dash0v1alpha1.ConditionTypeDegraded)
-					resource2Available := LoadMonitoringResourceStatusCondition(ctx, k8sClient, secondName, dash0v1alpha1.ConditionTypeAvailable)
-					resource2Degraded := LoadMonitoringResourceStatusCondition(ctx, k8sClient, secondName, dash0v1alpha1.ConditionTypeDegraded)
-					resource3Available := LoadMonitoringResourceStatusCondition(ctx, k8sClient, thirdName, dash0v1alpha1.ConditionTypeAvailable)
-					resource3Degraded := LoadMonitoringResourceStatusCondition(ctx, k8sClient, thirdName, dash0v1alpha1.ConditionTypeDegraded)
+					resource1Available := LoadMonitoringResourceStatusCondition(ctx, k8sClient, firstName, dash0common.ConditionTypeAvailable)
+					resource1Degraded := LoadMonitoringResourceStatusCondition(ctx, k8sClient, firstName, dash0common.ConditionTypeDegraded)
+					resource2Available := LoadMonitoringResourceStatusCondition(ctx, k8sClient, secondName, dash0common.ConditionTypeAvailable)
+					resource2Degraded := LoadMonitoringResourceStatusCondition(ctx, k8sClient, secondName, dash0common.ConditionTypeDegraded)
+					resource3Available := LoadMonitoringResourceStatusCondition(ctx, k8sClient, thirdName, dash0common.ConditionTypeAvailable)
+					resource3Degraded := LoadMonitoringResourceStatusCondition(ctx, k8sClient, thirdName, dash0common.ConditionTypeDegraded)
 
 					// The first two resource should have been marked as degraded.
 					VerifyResourceStatusCondition(
@@ -319,13 +322,13 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 		}))
 	})
 
-	Describe("when the instrumentWorkloads setting changes on an existing Dash0 monitoring resource", Ordered, func() {
+	Describe("when the instrumentWorkloads mode changes on an existing Dash0 monitoring resource", Ordered, func() {
 		AfterEach(func() {
 			DeleteMonitoringResource(ctx, k8sClient)
 		})
 
-		DescribeTable("when switching from instrumentWorkloads=none to instrumentWorkloads=created-and-updated", func(config WorkloadTestConfig) {
-			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.None)
+		DescribeTable("when switching from instrumentWorkloads.mode=none to instrumentWorkloads.mode=created-and-updated", func(config WorkloadTestConfig) {
+			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0common.InstrumentWorkloadsModeNone)
 
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
@@ -335,44 +338,44 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			VerifyNoEvents(ctx, clientset, namespace)
 			config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 
-			UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.CreatedAndUpdated)
+			UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0common.InstrumentWorkloadsModeCreatedAndUpdated)
 
-			// Switching from instrumentWorkloads=none to instrumentWorkloads=created-and-updated has no effect.
+			// Switching from instrumentWorkloads.mode=none to instrumentWorkloads.mode=created-and-updated has no effect.
 			// Existing workloads are still not to be instrumented. The new setting only becomes effective when the next
 			// resource is created or updated, and the webhook will take care of that.
 
 			triggerReconcileRequest(ctx, monitoringReconciler)
 			VerifyNoEvents(ctx, clientset, namespace)
 			config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
-		}, Entry("should instrument an existing cron job after switching from instrumentWorkloads=none to instrumentWorkloads=created-and-updated", WorkloadTestConfig{
+		}, Entry("should instrument an existing cron job after switching from instrumentWorkloads.mode=none to instrumentWorkloads.mode=created-and-updated", WorkloadTestConfig{
 			WorkloadNamePrefix: CronJobNamePrefix,
 			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateBasicCronJob),
 			GetFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyUnmodifiedCronJob(workload.Get().(*batchv1.CronJob))
 			},
-		}), Entry("should instrument an existing daemon set after switching from instrumentWorkloads=none to instrumentWorkloads=created-and-updated", WorkloadTestConfig{
+		}), Entry("should instrument an existing daemon set after switching from instrumentWorkloads.mode=none to instrumentWorkloads.mode=created-and-updated", WorkloadTestConfig{
 			WorkloadNamePrefix: DaemonSetNamePrefix,
 			CreateFn:           WrapDaemonSetFnAsTestableWorkload(CreateBasicDaemonSet),
 			GetFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyUnmodifiedDaemonSet(workload.Get().(*appsv1.DaemonSet))
 			},
-		}), Entry("should instrument an existing deployment after switching from instrumentWorkloads=none to instrumentWorkloads=created-and-updated", WorkloadTestConfig{
+		}), Entry("should instrument an existing deployment after switching from instrumentWorkloads.mode=none to instrumentWorkloads.mode=created-and-updated", WorkloadTestConfig{
 			WorkloadNamePrefix: DeploymentNamePrefix,
 			CreateFn:           WrapDeploymentFnAsTestableWorkload(CreateBasicDeployment),
 			GetFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyUnmodifiedDeployment(workload.Get().(*appsv1.Deployment))
 			},
-		}), Entry("should instrument an existing ownerless replicaset after switching from instrumentWorkloads=none to instrumentWorkloads=created-and-updated", WorkloadTestConfig{
+		}), Entry("should instrument an existing ownerless replicaset after switching from instrumentWorkloads.mode=none to instrumentWorkloads.mode=created-and-updated", WorkloadTestConfig{
 			WorkloadNamePrefix: ReplicaSetNamePrefix,
 			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateBasicReplicaSet),
 			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyUnmodifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet))
 			},
-		}), Entry("should instrument an existing stateful set after switching from instrumentWorkloads=none to instrumentWorkloads=created-and-updated", WorkloadTestConfig{
+		}), Entry("should instrument an existing stateful set after switching from instrumentWorkloads.mode=none to instrumentWorkloads.mode=created-and-updated", WorkloadTestConfig{
 			WorkloadNamePrefix: StatefulSetNamePrefix,
 			CreateFn:           WrapStatefulSetFnAsTestableWorkload(CreateBasicStatefulSet),
 			GetFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
@@ -382,8 +385,8 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 		}),
 		)
 
-		DescribeTable("when instrumenting existing workloads after switching from instrumentWorkloads=none to instrumentWorkloads=all", func(config WorkloadTestConfig) {
-			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.None)
+		DescribeTable("when instrumenting existing workloads after switching from instrumentWorkloads.mode=none to instrumentWorkloads.mode=all", func(config WorkloadTestConfig) {
+			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0common.InstrumentWorkloadsModeNone)
 
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
@@ -393,12 +396,12 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			VerifyNoEvents(ctx, clientset, namespace)
 			config.VerifyPreFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 
-			UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.All)
+			UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0common.InstrumentWorkloadsModeAll)
 
 			triggerReconcileRequest(ctx, monitoringReconciler)
 			verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
 			config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
-		}, Entry("should instrument an existing cron job after switching from instrumentWorkloads=none to instrumentWorkloads=all", WorkloadTestConfig{
+		}, Entry("should instrument an existing cron job after switching from instrumentWorkloads.mode=none to instrumentWorkloads.mode=all", WorkloadTestConfig{
 			WorkloadNamePrefix: CronJobNamePrefix,
 			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateBasicCronJob),
 			GetFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
@@ -408,7 +411,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedCronJob(workload.Get().(*batchv1.CronJob), BasicInstrumentedPodSpecExpectations())
 			},
-		}), Entry("should instrument an existing daemon set after switching from instrumentWorkloads=none to instrumentWorkloads=all", WorkloadTestConfig{
+		}), Entry("should instrument an existing daemon set after switching from instrumentWorkloads.mode=none to instrumentWorkloads.mode=all", WorkloadTestConfig{
 			WorkloadNamePrefix: DaemonSetNamePrefix,
 			CreateFn:           WrapDaemonSetFnAsTestableWorkload(CreateBasicDaemonSet),
 			GetFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
@@ -418,7 +421,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedDaemonSet(workload.Get().(*appsv1.DaemonSet), BasicInstrumentedPodSpecExpectations())
 			},
-		}), Entry("should instrument an existing deployment after switching from instrumentWorkloads=none to instrumentWorkloads=all", WorkloadTestConfig{
+		}), Entry("should instrument an existing deployment after switching from instrumentWorkloads.mode=none to instrumentWorkloads.mode=all", WorkloadTestConfig{
 			WorkloadNamePrefix: DeploymentNamePrefix,
 			CreateFn:           WrapDeploymentFnAsTestableWorkload(CreateBasicDeployment),
 			GetFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
@@ -428,7 +431,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedDeployment(workload.Get().(*appsv1.Deployment), BasicInstrumentedPodSpecExpectations())
 			},
-		}), Entry("should instrument an existing ownerless replicaset after switching from instrumentWorkloads=none to instrumentWorkloads=all", WorkloadTestConfig{
+		}), Entry("should instrument an existing ownerless replicaset after switching from instrumentWorkloads.mode=none to instrumentWorkloads.mode=all", WorkloadTestConfig{
 			WorkloadNamePrefix: ReplicaSetNamePrefix,
 			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateBasicReplicaSet),
 			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
@@ -438,7 +441,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet), BasicInstrumentedPodSpecExpectations())
 			},
-		}), Entry("should instrument an existing stateful set after switching from instrumentWorkloads=none to instrumentWorkloads=all", WorkloadTestConfig{
+		}), Entry("should instrument an existing stateful set after switching from instrumentWorkloads.mode=none to instrumentWorkloads.mode=all", WorkloadTestConfig{
 			WorkloadNamePrefix: StatefulSetNamePrefix,
 			CreateFn:           WrapStatefulSetFnAsTestableWorkload(CreateBasicStatefulSet),
 			GetFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
@@ -451,8 +454,8 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 		}),
 		)
 
-		DescribeTable("when removing instrumentation from workloads after switching from instrumentWorkloads=created-and-updated to instrumentWorkloads=none", func(config WorkloadTestConfig) {
-			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.CreatedAndUpdated)
+		DescribeTable("when removing instrumentation from workloads after switching from instrumentWorkloads.mode=created-and-updated to instrumentWorkloads.mode=none", func(config WorkloadTestConfig) {
+			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0common.InstrumentWorkloadsModeCreatedAndUpdated)
 
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
@@ -464,14 +467,14 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 			DeleteAllEvents(ctx, clientset, namespace)
 
-			UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.None)
+			UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0common.InstrumentWorkloadsModeNone)
 
 			triggerReconcileRequest(ctx, monitoringReconciler)
 			VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, "controller")
 			workload = config.GetFn(ctx, k8sClient, TestNamespaceName, name)
 			config.VerifyFn(workload)
 			VerifyWebhookIgnoreOnceLabelIsPresent(workload.GetObjectMeta())
-		}, Entry("should remove instrumentation from an existing cron job after switching from instrumentWorkloads=created-and-updated to instrumentWorkloads=none", WorkloadTestConfig{
+		}, Entry("should remove instrumentation from an existing cron job after switching from instrumentWorkloads.mode=created-and-updated to instrumentWorkloads.mode=none", WorkloadTestConfig{
 			WorkloadNamePrefix: CronJobNamePrefix,
 			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateInstrumentedCronJob),
 			GetFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
@@ -481,7 +484,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyUnmodifiedCronJob(workload.Get().(*batchv1.CronJob))
 			},
-		}), Entry("should remove instrumentation from an existing daemon set after switching from instrumentWorkloads=created-and-updated to instrumentWorkloads=none", WorkloadTestConfig{
+		}), Entry("should remove instrumentation from an existing daemon set after switching from instrumentWorkloads.mode=created-and-updated to instrumentWorkloads.mode=none", WorkloadTestConfig{
 			WorkloadNamePrefix: DaemonSetNamePrefix,
 			CreateFn:           WrapDaemonSetFnAsTestableWorkload(CreateInstrumentedDaemonSet),
 			GetFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
@@ -491,7 +494,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyUnmodifiedDaemonSet(workload.Get().(*appsv1.DaemonSet))
 			},
-		}), Entry("should remove instrumentation from an existing deployment after switching from instrumentWorkloads=created-and-updated to instrumentWorkloads=none", WorkloadTestConfig{
+		}), Entry("should remove instrumentation from an existing deployment after switching from instrumentWorkloads.mode=created-and-updated to instrumentWorkloads.mode=none", WorkloadTestConfig{
 			WorkloadNamePrefix: DeploymentNamePrefix,
 			CreateFn:           WrapDeploymentFnAsTestableWorkload(CreateInstrumentedDeployment),
 			GetFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
@@ -501,7 +504,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyUnmodifiedDeployment(workload.Get().(*appsv1.Deployment))
 			},
-		}), Entry("should remove instrumentation from an existing ownerless replicaset after switching from instrumentWorkloads=created-and-updated to instrumentWorkloads=none", WorkloadTestConfig{
+		}), Entry("should remove instrumentation from an existing ownerless replicaset after switching from instrumentWorkloads.mode=created-and-updated to instrumentWorkloads.mode=none", WorkloadTestConfig{
 			WorkloadNamePrefix: ReplicaSetNamePrefix,
 			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateInstrumentedReplicaSet),
 			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
@@ -511,7 +514,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyUnmodifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet))
 			},
-		}), Entry("should remove instrumentation from an existing stateful set after switching from instrumentWorkloads=created-and-updated to instrumentWorkloads=none", WorkloadTestConfig{
+		}), Entry("should remove instrumentation from an existing stateful set after switching from instrumentWorkloads.mode=created-and-updated to instrumentWorkloads.mode=none", WorkloadTestConfig{
 			WorkloadNamePrefix: StatefulSetNamePrefix,
 			CreateFn:           WrapStatefulSetFnAsTestableWorkload(CreateInstrumentedStatefulSet),
 			GetFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
@@ -524,8 +527,8 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 		}),
 		)
 
-		DescribeTable("when instrumenting existing workloads after switching from instrumentWorkloads=created-and-updated to instrumentWorkloads=all", func(config WorkloadTestConfig) {
-			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.CreatedAndUpdated)
+		DescribeTable("when instrumenting existing workloads after switching from instrumentWorkloads.mode=created-and-updated to instrumentWorkloads.mode=all", func(config WorkloadTestConfig) {
+			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0common.InstrumentWorkloadsModeCreatedAndUpdated)
 
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
@@ -535,12 +538,12 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			VerifyNoEvents(ctx, clientset, namespace)
 			config.VerifyPreFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
 
-			UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.All)
+			UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0common.InstrumentWorkloadsModeAll)
 
 			triggerReconcileRequest(ctx, monitoringReconciler)
 			verifyStatusConditionAndSuccessfulInstrumentationEvent(ctx, namespace, name)
 			config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
-		}, Entry("should instrument an existing cron job after switching from instrumentWorkloads=created-and-updated to instrumentWorkloads=all", WorkloadTestConfig{
+		}, Entry("should instrument an existing cron job after switching from instrumentWorkloads.mode=created-and-updated to instrumentWorkloads.mode=all", WorkloadTestConfig{
 			WorkloadNamePrefix: CronJobNamePrefix,
 			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateBasicCronJob),
 			GetFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
@@ -550,7 +553,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedCronJob(workload.Get().(*batchv1.CronJob), BasicInstrumentedPodSpecExpectations())
 			},
-		}), Entry("should instrument an existing daemon set after switching from instrumentWorkloads=created-and-updated to instrumentWorkloads=all", WorkloadTestConfig{
+		}), Entry("should instrument an existing daemon set after switching from instrumentWorkloads.mode=created-and-updated to instrumentWorkloads.mode=all", WorkloadTestConfig{
 			WorkloadNamePrefix: DaemonSetNamePrefix,
 			CreateFn:           WrapDaemonSetFnAsTestableWorkload(CreateBasicDaemonSet),
 			GetFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
@@ -560,7 +563,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedDaemonSet(workload.Get().(*appsv1.DaemonSet), BasicInstrumentedPodSpecExpectations())
 			},
-		}), Entry("should instrument an existing deployment after switching from instrumentWorkloads=created-and-updated to instrumentWorkloads=all", WorkloadTestConfig{
+		}), Entry("should instrument an existing deployment after switching from instrumentWorkloads.mode=created-and-updated to instrumentWorkloads.mode=all", WorkloadTestConfig{
 			WorkloadNamePrefix: DeploymentNamePrefix,
 			CreateFn:           WrapDeploymentFnAsTestableWorkload(CreateBasicDeployment),
 			GetFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
@@ -570,7 +573,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedDeployment(workload.Get().(*appsv1.Deployment), BasicInstrumentedPodSpecExpectations())
 			},
-		}), Entry("should instrument an existing ownerless replicaset after switching from instrumentWorkloads=created-and-updated to instrumentWorkloads=all", WorkloadTestConfig{
+		}), Entry("should instrument an existing ownerless replicaset after switching from instrumentWorkloads.mode=created-and-updated to instrumentWorkloads.mode=all", WorkloadTestConfig{
 			WorkloadNamePrefix: ReplicaSetNamePrefix,
 			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateBasicReplicaSet),
 			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
@@ -580,7 +583,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet), BasicInstrumentedPodSpecExpectations())
 			},
-		}), Entry("should instrument an existing stateful set after switching from instrumentWorkloads=created-and-updated to instrumentWorkloads=all", WorkloadTestConfig{
+		}), Entry("should instrument an existing stateful set after switching from instrumentWorkloads.mode=created-and-updated to instrumentWorkloads.mode=all", WorkloadTestConfig{
 			WorkloadNamePrefix: StatefulSetNamePrefix,
 			CreateFn:           WrapStatefulSetFnAsTestableWorkload(CreateBasicStatefulSet),
 			GetFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
@@ -593,8 +596,8 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 		}),
 		)
 
-		DescribeTable("when removing instrumentation from workloads after switching from instrumentWorkloads=all to instrumentWorkloads=none", func(config WorkloadTestConfig) {
-			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.All)
+		DescribeTable("when removing instrumentation from workloads after switching from instrumentWorkloads.mode=all to instrumentWorkloads.mode=none", func(config WorkloadTestConfig) {
+			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0common.InstrumentWorkloadsModeAll)
 
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
@@ -606,14 +609,14 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 			DeleteAllEvents(ctx, clientset, namespace)
 
-			UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.None)
+			UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0common.InstrumentWorkloadsModeNone)
 
 			triggerReconcileRequest(ctx, monitoringReconciler)
 			VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, "controller")
 			workload = config.GetFn(ctx, k8sClient, TestNamespaceName, name)
 			config.VerifyFn(workload)
 			VerifyWebhookIgnoreOnceLabelIsPresent(workload.GetObjectMeta())
-		}, Entry("should remove instrumentation from an existing cron job after switching from instrumentWorkloads=all to instrumentWorkloads=none", WorkloadTestConfig{
+		}, Entry("should remove instrumentation from an existing cron job after switching from instrumentWorkloads.mode=all to instrumentWorkloads.mode=none", WorkloadTestConfig{
 			WorkloadNamePrefix: CronJobNamePrefix,
 			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateBasicCronJob),
 			GetFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
@@ -623,7 +626,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyUnmodifiedCronJob(workload.Get().(*batchv1.CronJob))
 			},
-		}), Entry("should remove instrumentation from an existing daemon set after switching from instrumentWorkloads=all to instrumentWorkloads=none", WorkloadTestConfig{
+		}), Entry("should remove instrumentation from an existing daemon set after switching from instrumentWorkloads.mode=all to instrumentWorkloads.mode=none", WorkloadTestConfig{
 			WorkloadNamePrefix: DaemonSetNamePrefix,
 			CreateFn:           WrapDaemonSetFnAsTestableWorkload(CreateBasicDaemonSet),
 			GetFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
@@ -633,7 +636,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyUnmodifiedDaemonSet(workload.Get().(*appsv1.DaemonSet))
 			},
-		}), Entry("should remove instrumentation from an existing deployment after switching from instrumentWorkloads=all to instrumentWorkloads=none", WorkloadTestConfig{
+		}), Entry("should remove instrumentation from an existing deployment after switching from instrumentWorkloads.mode=all to instrumentWorkloads.mode=none", WorkloadTestConfig{
 			WorkloadNamePrefix: DeploymentNamePrefix,
 			CreateFn:           WrapDeploymentFnAsTestableWorkload(CreateBasicDeployment),
 			GetFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
@@ -643,7 +646,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyUnmodifiedDeployment(workload.Get().(*appsv1.Deployment))
 			},
-		}), Entry("should remove instrumentation from an existing ownerless replicaset after switching from instrumentWorkloads=all to instrumentWorkloads=none", WorkloadTestConfig{
+		}), Entry("should remove instrumentation from an existing ownerless replicaset after switching from instrumentWorkloads.mode=all to instrumentWorkloads.mode=none", WorkloadTestConfig{
 			WorkloadNamePrefix: ReplicaSetNamePrefix,
 			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateBasicReplicaSet),
 			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
@@ -653,7 +656,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyUnmodifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet))
 			},
-		}), Entry("should remove instrumentation from an existing stateful set after switching from instrumentWorkloads=all to instrumentWorkloads=none", WorkloadTestConfig{
+		}), Entry("should remove instrumentation from an existing stateful set after switching from instrumentWorkloads.mode=all to instrumentWorkloads.mode=none", WorkloadTestConfig{
 			WorkloadNamePrefix: StatefulSetNamePrefix,
 			CreateFn:           WrapStatefulSetFnAsTestableWorkload(CreateBasicStatefulSet),
 			GetFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
@@ -666,8 +669,8 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 		}),
 		)
 
-		DescribeTable("when switching from instrumentWorkloads=all to instrumentWorkloads=created-and-updated", func(config WorkloadTestConfig) {
-			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.All)
+		DescribeTable("when switching from instrumentWorkloads.mode=all to instrumentWorkloads.mode=created-and-updated", func(config WorkloadTestConfig) {
+			EnsureMonitoringResourceExistsWithInstrumentWorkloadsMode(ctx, k8sClient, dash0common.InstrumentWorkloadsModeAll)
 
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
@@ -679,43 +682,43 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 			DeleteAllEvents(ctx, clientset, namespace)
 
-			UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0v1alpha1.CreatedAndUpdated)
+			UpdateInstrumentWorkloadsMode(ctx, k8sClient, dash0common.InstrumentWorkloadsModeCreatedAndUpdated)
 
-			// Switching from instrumentWorkloads=all to instrumentWorkloads=created-and-updated has no effect.
+			// Switching from instrumentWorkloads.mode=all to instrumentWorkloads.mode=created-and-updated has no effect.
 			// Already instrumented workloads will not be uninstrumented.
 
 			triggerReconcileRequest(ctx, monitoringReconciler)
 			VerifyNoEvents(ctx, clientset, namespace)
 			config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
-		}, Entry("should remove instrumentation from an existing cron job after switching from instrumentWorkloads=all to instrumentWorkloads=created-and-updated", WorkloadTestConfig{
+		}, Entry("should remove instrumentation from an existing cron job after switching from instrumentWorkloads.mode=all to instrumentWorkloads.mode=created-and-updated", WorkloadTestConfig{
 			WorkloadNamePrefix: CronJobNamePrefix,
 			CreateFn:           WrapCronJobFnAsTestableWorkload(CreateBasicCronJob),
 			GetFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedCronJob(workload.Get().(*batchv1.CronJob), BasicInstrumentedPodSpecExpectations())
 			},
-		}), Entry("should remove instrumentation from an existing daemon set after switching from instrumentWorkloads=all to instrumentWorkloads=created-and-updated", WorkloadTestConfig{
+		}), Entry("should remove instrumentation from an existing daemon set after switching from instrumentWorkloads.mode=all to instrumentWorkloads.mode=created-and-updated", WorkloadTestConfig{
 			WorkloadNamePrefix: DaemonSetNamePrefix,
 			CreateFn:           WrapDaemonSetFnAsTestableWorkload(CreateBasicDaemonSet),
 			GetFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedDaemonSet(workload.Get().(*appsv1.DaemonSet), BasicInstrumentedPodSpecExpectations())
 			},
-		}), Entry("should remove instrumentation from an existing deployment after switching from instrumentWorkloads=all to instrumentWorkloads=created-and-updated", WorkloadTestConfig{
+		}), Entry("should remove instrumentation from an existing deployment after switching from instrumentWorkloads.mode=all to instrumentWorkloads.mode=created-and-updated", WorkloadTestConfig{
 			WorkloadNamePrefix: DeploymentNamePrefix,
 			CreateFn:           WrapDeploymentFnAsTestableWorkload(CreateBasicDeployment),
 			GetFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedDeployment(workload.Get().(*appsv1.Deployment), BasicInstrumentedPodSpecExpectations())
 			},
-		}), Entry("should remove instrumentation from an existing ownerless replicaset after switching from instrumentWorkloads=all to instrumentWorkloads=created-and-updated", WorkloadTestConfig{
+		}), Entry("should remove instrumentation from an existing ownerless replicaset after switching from instrumentWorkloads.mode=all to instrumentWorkloads.mode=created-and-updated", WorkloadTestConfig{
 			WorkloadNamePrefix: ReplicaSetNamePrefix,
 			CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateBasicReplicaSet),
 			GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
 			VerifyFn: func(workload TestableWorkload) {
 				VerifyModifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet), BasicInstrumentedPodSpecExpectations())
 			},
-		}), Entry("should remove instrumentation from an existing stateful set after switching from instrumentWorkloads=all to instrumentWorkloads=created-and-updated", WorkloadTestConfig{
+		}), Entry("should remove instrumentation from an existing stateful set after switching from instrumentWorkloads.mode=all to instrumentWorkloads.mode=created-and-updated", WorkloadTestConfig{
 			WorkloadNamePrefix: StatefulSetNamePrefix,
 			CreateFn:           WrapStatefulSetFnAsTestableWorkload(CreateBasicStatefulSet),
 			GetFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
@@ -732,10 +735,10 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 		})
 	})
 
-	Describe("when the Dash0 monitoring resource exists and has InstrumentWorkloads=all set explicitly", Ordered, func() {
+	Describe("when the Dash0 monitoring resource exists and has instrumentWorkloads.mode=all set explicitly", Ordered, func() {
 		BeforeAll(func() {
 			monitoringResource := EnsureMonitoringResourceExists(ctx, k8sClient)
-			monitoringResource.Spec.InstrumentWorkloads = dash0v1alpha1.All
+			monitoringResource.Spec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeAll
 			Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 		})
 
@@ -751,17 +754,19 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 	Describe("when the Dash0 monitoring resource exists and has an invalid InstrumentWorkloads setting", Ordered, func() {
 		It("should not allow creating the resource with an invalid value", func() {
 			By("creating the Dash0 monitoring resource")
-			Expect(k8sClient.Create(ctx, &dash0v1alpha1.Dash0Monitoring{
+			Expect(k8sClient.Create(ctx, &dash0v1beta1.Dash0Monitoring{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      MonitoringResourceQualifiedName.Name,
 					Namespace: MonitoringResourceQualifiedName.Namespace,
 				},
-				Spec: dash0v1alpha1.Dash0MonitoringSpec{
-					InstrumentWorkloads: "invalid",
-					Export: &dash0v1alpha1.Export{
-						Dash0: &dash0v1alpha1.Dash0Configuration{
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						Mode: "invalid",
+					},
+					Export: &dash0common.Export{
+						Dash0: &dash0common.Dash0Configuration{
 							Endpoint: EndpointDash0Test,
-							Authorization: dash0v1alpha1.Authorization{
+							Authorization: dash0common.Authorization{
 								Token: &AuthorizationTokenTest,
 							},
 						},
@@ -772,15 +777,15 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 
 		It("should not allow to update the resource with an invalid value", func() {
 			monitoringResource := EnsureMonitoringResourceExists(ctx, k8sClient)
-			monitoringResource.Spec.InstrumentWorkloads = "invalid"
+			monitoringResource.Spec.InstrumentWorkloads.Mode = "invalid"
 			Expect(k8sClient.Update(ctx, monitoringResource)).ToNot(Succeed())
 		})
 	})
 
-	Describe("when the Dash0 monitoring resource exists but has InstrumentWorkloads=none set", Ordered, func() {
+	Describe("when the Dash0 monitoring resource exists but has instrumentWorkloads.mode=none set", Ordered, func() {
 		BeforeAll(func() {
 			monitoringResource := EnsureMonitoringResourceExists(ctx, k8sClient)
-			monitoringResource.Spec.InstrumentWorkloads = dash0v1alpha1.None
+			monitoringResource.Spec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeNone
 			Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 		})
 
@@ -793,10 +798,10 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 		})
 	})
 
-	Describe("when the Dash0 monitoring resource exists but has InstrumentWorkloads=created-and-updated set", Ordered, func() {
+	Describe("when the Dash0 monitoring resource exists but has instrumentWorkloads.mode=created-and-updated set", Ordered, func() {
 		BeforeAll(func() {
 			monitoringResource := EnsureMonitoringResourceExists(ctx, k8sClient)
-			monitoringResource.Spec.InstrumentWorkloads = dash0v1alpha1.CreatedAndUpdated
+			monitoringResource.Spec.InstrumentWorkloads.Mode = dash0common.InstrumentWorkloadsModeCreatedAndUpdated
 			Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 		})
 
@@ -889,10 +894,10 @@ func verifyMonitoringResourceIsAvailable(ctx context.Context) *metav1.Condition 
 	By("Verifying status conditions")
 	Eventually(func(g Gomega) {
 		monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, g)
-		availableCondition = meta.FindStatusCondition(monitoringResource.Status.Conditions, string(dash0v1alpha1.ConditionTypeAvailable))
+		availableCondition = meta.FindStatusCondition(monitoringResource.Status.Conditions, string(dash0common.ConditionTypeAvailable))
 		g.Expect(availableCondition).NotTo(BeNil())
 		g.Expect(availableCondition.Status).To(Equal(metav1.ConditionTrue))
-		degradedCondition := meta.FindStatusCondition(monitoringResource.Status.Conditions, string(dash0v1alpha1.ConditionTypeDegraded))
+		degradedCondition := meta.FindStatusCondition(monitoringResource.Status.Conditions, string(dash0common.ConditionTypeDegraded))
 		g.Expect(degradedCondition).To(BeNil())
 	}, timeout, pollingInterval).Should(Succeed())
 	return availableCondition
@@ -903,10 +908,10 @@ func verifyMonitoringResourceIsDegraded(ctx context.Context) *metav1.Condition {
 	By("Verifying status conditions")
 	Eventually(func(g Gomega) {
 		monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, g)
-		availableCondition = meta.FindStatusCondition(monitoringResource.Status.Conditions, string(dash0v1alpha1.ConditionTypeAvailable))
+		availableCondition = meta.FindStatusCondition(monitoringResource.Status.Conditions, string(dash0common.ConditionTypeAvailable))
 		g.Expect(availableCondition).NotTo(BeNil())
 		g.Expect(availableCondition.Status).To(Equal(metav1.ConditionFalse))
-		degradedCondition := meta.FindStatusCondition(monitoringResource.Status.Conditions, string(dash0v1alpha1.ConditionTypeDegraded))
+		degradedCondition := meta.FindStatusCondition(monitoringResource.Status.Conditions, string(dash0common.ConditionTypeDegraded))
 		g.Expect(degradedCondition.Status).To(Equal(metav1.ConditionTrue))
 	}, timeout, pollingInterval).Should(Succeed())
 	return availableCondition

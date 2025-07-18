@@ -42,16 +42,17 @@ type instrumentedState string
 func AddInstrumentationLabels(
 	objectMeta *metav1.ObjectMeta,
 	instrumentationSuccess bool,
-	instrumentationMetadata InstrumentationMetadata,
+	clusterInstrumentationConfig ClusterInstrumentationConfig,
+	actor WorkloadModifierActor,
 ) {
 	if instrumentationSuccess {
 		addLabel(objectMeta, instrumentedLabelKey, string(instrumentedLabelValueSuccessful))
 	} else {
 		addLabel(objectMeta, instrumentedLabelKey, string(instrumentedLabelValueUnsuccessful))
 	}
-	addLabel(objectMeta, operatorImageLabelKey, ImageNameToLabel(instrumentationMetadata.OperatorImage))
-	addLabel(objectMeta, initContainerImageLabelKey, ImageNameToLabel(instrumentationMetadata.InitContainerImage))
-	addLabel(objectMeta, instrumentedByLabelKey, string(instrumentationMetadata.InstrumentedBy))
+	addLabel(objectMeta, operatorImageLabelKey, ImageNameToLabel(clusterInstrumentationConfig.OperatorImage))
+	addLabel(objectMeta, initContainerImageLabelKey, ImageNameToLabel(clusterInstrumentationConfig.InitContainerImage))
+	addLabel(objectMeta, instrumentedByLabelKey, string(actor))
 }
 
 func AddWebhookIgnoreOnceLabel(objectMeta *metav1.ObjectMeta) {

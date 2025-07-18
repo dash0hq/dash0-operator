@@ -35,7 +35,8 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	k8swebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/collectors"
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/controller"
@@ -83,7 +84,7 @@ type commandLineArguments struct {
 	operatorConfigurationClusterName                                      string
 	forceUseOpenTelemetryCollectorServiceUrl                              bool
 	disableOpenTelemetryCollectorHostPorts                                bool
-	instrumentationDelays                                                 *instrumentation.DelayConfig
+	instrumentationDelays                                                 *util.DelayConfig
 	metricsAddr                                                           string
 	enableLeaderElection                                                  bool
 	probeAddr                                                             string
@@ -146,6 +147,7 @@ var (
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(runtimeScheme))
 	utilruntime.Must(dash0v1alpha1.AddToScheme(runtimeScheme))
+	utilruntime.Must(dash0v1beta1.AddToScheme(runtimeScheme))
 
 	// required for Perses dashboard controller and Prometheus rules controller.
 	utilruntime.Must(apiextensionsv1.AddToScheme(runtimeScheme))
@@ -347,7 +349,7 @@ func defineCommandLineArguments() *commandLineArguments {
 		false,
 		"Disable the host ports of the OpenTelemetry collector pods managed by the operator. Implies "+
 			"--force-use-otel-collector-service-url.")
-	cliArgs.instrumentationDelays = &instrumentation.DelayConfig{}
+	cliArgs.instrumentationDelays = &util.DelayConfig{}
 	flag.Uint64Var(
 		&cliArgs.instrumentationDelays.AfterEachWorkloadMillis,
 		"instrumentation-delay-after-each-workload-millis",
@@ -761,16 +763,19 @@ func startDash0Controllers(
 	isIPv6Cluster := strings.Count(envVars.podIp, ":") >= 2
 	oTelCollectorBaseUrl := determineCollectorBaseUrl(cliArgs.forceUseOpenTelemetryCollectorServiceUrl, isIPv6Cluster)
 
+	clusterInstrumentationConfig := util.ClusterInstrumentationConfig{
+		Images:                images,
+		OTelCollectorBaseUrl:  oTelCollectorBaseUrl,
+		ExtraConfig:           extraConfig,
+		InstrumentationDelays: cliArgs.instrumentationDelays,
+		InstrumentationDebug:  envVars.instrumentationDebug,
+	}
 	startupInstrumenter := instrumentation.NewInstrumenter(
 		// The k8s client will be added later, in internal/startup/instrument_at_startup.go#Start.
 		nil,
 		clientset,
 		mgr.GetEventRecorderFor("dash0-startup-tasks"),
-		images,
-		extraConfig,
-		oTelCollectorBaseUrl,
-		cliArgs.instrumentationDelays,
-		envVars.instrumentationDebug,
+		clusterInstrumentationConfig,
 	)
 	var err error
 	if err = mgr.Add(leaderElectionAwareRunnable); err != nil {
@@ -791,11 +796,7 @@ func startDash0Controllers(
 		k8sClient,
 		clientset,
 		mgr.GetEventRecorderFor("dash0-monitoring-controller"),
-		images,
-		extraConfig,
-		oTelCollectorBaseUrl,
-		cliArgs.instrumentationDelays,
-		envVars.instrumentationDebug,
+		clusterInstrumentationConfig,
 	)
 
 	oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
@@ -929,6 +930,9 @@ func startDash0Controllers(
 	}).SetupWebhookWithManager(mgr); err != nil {
 		return fmt.Errorf("unable to create the monitoring validation webhook: %w", err)
 	}
+	if err := webhooks.SetupDash0MonitoringConversionWebhookWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to create the monitoring conversion webhook: %w", err)
+	}
 
 	oTelSdkStarter.WaitForOTelConfig(
 		[]selfmonitoringapiaccess.SelfMonitoringMetricsClient{
@@ -975,7 +979,7 @@ func determineCollectorBaseUrl(forceOTelCollectorServiceUrl bool, isIPv6Cluster 
 	}
 
 	// Using the node's IPv6 address for the collector base URL should actually just work:
-	// if m.instrumentationMetadata.IsIPv6Cluster {
+	// if m.clusterInstrumentationConfig.IsIPv6Cluster {
 	//	 oTelCollectorNodeLocalBaseUrlPattern = "http://[$(%s)]:%d"
 	// }
 	//
