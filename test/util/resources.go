@@ -776,6 +776,11 @@ func DeploymentWithExistingDash0Artifacts(namespace string, name string) *appsv1
 					Value: "base url will be replaced",
 				},
 				{
+					// to test the removal of the legacy NODE_OPTIONS setting prior to operator version 0.28.0.
+					Name:  "NODE_OPTIONS",
+					Value: "--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
+				},
+				{
 					Name:  "LD_PRELOAD",
 					Value: "third_party_preload.so another_third_party_preload.so",
 				},
@@ -858,6 +863,11 @@ func InstrumentedDeploymentWithMoreBellsAndWhistles(namespace string, name strin
 				{
 					Name:  "TEST0",
 					Value: "value",
+				},
+				{
+					// to test the removal of the legacy NODE_OPTIONS setting prior to operator version 0.28.0.
+					Name:  "NODE_OPTIONS",
+					Value: "--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry",
 				},
 				{
 					Name:  "LD_PRELOAD",

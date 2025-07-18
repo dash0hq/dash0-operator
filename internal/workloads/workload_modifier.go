@@ -46,6 +46,10 @@ const (
 	dash0InjectorDebugEnvVarName            = "DASH0_INJECTOR_DEBUG"
 
 	safeToEviceLocalVolumesAnnotationName = "cluster-autoscaler.kubernetes.io/safe-to-evict-local-volumes"
+
+	// legacy environment variables
+	legacyEnvVarNodeOptionsName  = "NODE_OPTIONS"
+	legacyEnvVarNodeOptionsValue = "--require /__dash0__/instrumentation/node.js/node_modules/@dash0hq/opentelemetry"
 )
 
 var (
@@ -441,6 +445,8 @@ func (m *ResourceModifier) addEnvironmentVariables(
 	podMeta *metav1.ObjectMeta,
 	perContainerLogger logr.Logger,
 ) {
+	m.removeLegacyEnvironmentVariables(container)
+
 	m.handleLdPreloadEnvVar(container, perContainerLogger)
 
 	// The DASH0_NODE_IP environment variable is required to resolve the collector base URL, in case it uses the
@@ -855,6 +861,7 @@ func (m *ResourceModifier) removeMount(container *corev1.Container) {
 }
 
 func (m *ResourceModifier) removeEnvironmentVariables(container *corev1.Container) {
+	m.removeLegacyEnvironmentVariables(container)
 	m.removeLdPreload(container)
 	m.removeEnvironmentVariable(container, otelcolresources.EnvVarDash0NodeIp)
 	m.removeEnvironmentVariable(container, envVarDash0CollectorBaseUrlName)
@@ -881,34 +888,35 @@ func (m *ResourceModifier) removeLdPreload(container *corev1.Container) {
 
 	if idx < 0 {
 		return
-	} else {
-		envVar := container.Env[idx]
-		previousValue := envVar.Value
-		if previousValue == "" && envVar.ValueFrom != nil {
-			// Specified via ValueFrom, this has not been done by us, so we assume there is no Dash0-specific
-			// LD_PRELOAD part.
-			return
-		} else if strings.TrimSpace(previousValue) == envVarLdPreloadValue {
-			container.Env = slices.Delete(container.Env, idx, idx+1)
-			return
-		} else if !strings.Contains(previousValue, envVarLdPreloadValue) {
-			return
-		}
-
-		separator := " "
-		if strings.Contains(previousValue, ":") {
-			separator = ":"
-		}
-		librariesUntrimmed := strings.Split(previousValue, separator)
-		libraries := make([]string, 0, len(librariesUntrimmed))
-		for _, lib := range librariesUntrimmed {
-			libraries = append(libraries, strings.TrimSpace(lib))
-		}
-		libraries = slices.DeleteFunc(libraries, func(lib string) bool {
-			return strings.TrimSpace(lib) == envVarLdPreloadValue || lib == ""
-		})
-		container.Env[idx].Value = strings.Join(libraries, separator)
 	}
+
+	envVar := container.Env[idx]
+	previousValue := envVar.Value
+	if previousValue == "" && envVar.ValueFrom != nil {
+		// Specified via ValueFrom, this has not been done by us, so we assume there is no Dash0-specific
+		// LD_PRELOAD part.
+		return
+	}
+	if strings.TrimSpace(previousValue) == envVarLdPreloadValue {
+		container.Env = slices.Delete(container.Env, idx, idx+1)
+		return
+	} else if !strings.Contains(previousValue, envVarLdPreloadValue) {
+		return
+	}
+
+	separator := " "
+	if strings.Contains(previousValue, ":") {
+		separator = ":"
+	}
+	librariesUntrimmed := strings.Split(previousValue, separator)
+	libraries := make([]string, 0, len(librariesUntrimmed))
+	for _, lib := range librariesUntrimmed {
+		libraries = append(libraries, strings.TrimSpace(lib))
+	}
+	libraries = slices.DeleteFunc(libraries, func(lib string) bool {
+		return strings.TrimSpace(lib) == envVarLdPreloadValue || lib == ""
+	})
+	container.Env[idx].Value = strings.Join(libraries, separator)
 }
 
 func (m *ResourceModifier) removeEnvironmentVariable(container *corev1.Container, name string) {
@@ -918,6 +926,63 @@ func (m *ResourceModifier) removeEnvironmentVariable(container *corev1.Container
 	container.Env = slices.DeleteFunc(container.Env, func(c corev1.EnvVar) bool {
 		return c.Name == name
 	})
+}
+
+// removeLegacyEnvironmentVariables removes environment variables that previous versions of the operator added to
+// workloads, but which are no longer set. When operator versions <= x set the env var EXAMPLE_VAR, and operator version
+// x + 1 stops setting it, it would never be removed without us actively cleaning up.
+func (m *ResourceModifier) removeLegacyEnvironmentVariables(container *corev1.Container) {
+	m.removeLegacyEnvVarNodeOptions(container)
+	m.removeEnvironmentVariable(container, "DASH0_SERVICE_INSTANCE_ID")
+}
+
+func (m *ResourceModifier) removeLegacyEnvVarNodeOptions(container *corev1.Container) {
+	if container.Env == nil {
+		return
+	}
+	idx := slices.IndexFunc(container.Env, func(c corev1.EnvVar) bool {
+		return c.Name == legacyEnvVarNodeOptionsName
+	})
+
+	if idx < 0 {
+		return
+	}
+
+	envVar := container.Env[idx]
+	previousValue := envVar.Value
+	if previousValue == "" && envVar.ValueFrom != nil {
+		// Specified via ValueFrom, this has not been done by us, so we assume there is no Dash0-specific
+		// NODE_OPTIONS part.
+		return
+	}
+	if !strings.Contains(previousValue, legacyEnvVarNodeOptionsValue) {
+		// NODE_OPTIONS does not contain the Dash0 --require, nothing to do.
+		return
+	}
+
+	if strings.TrimSpace(previousValue) == legacyEnvVarNodeOptionsValue {
+		container.Env = slices.Delete(container.Env, idx, idx+1)
+		return
+	}
+
+	// for cases where other options are listed after our --require value
+	newValue := strings.Replace(previousValue, legacyEnvVarNodeOptionsValue+" ", "", -1)
+	// for cases where other options are listed before our --require value (if the previous replace command worked, this
+	// one will not match)
+	newValue = strings.Replace(newValue, " "+legacyEnvVarNodeOptionsValue, "", -1)
+	// this should have been handled earlier (the Dash0 --require is the only option present), but just in case
+	// (if one of the previous replace commands worked, this one will not match)
+	newValue = strings.Replace(newValue, legacyEnvVarNodeOptionsValue, "", -1)
+	if strings.TrimSpace(newValue) == "" {
+		// if it was only our --require, surrounded by whitespace, we have an empty string now and can remove the env
+		// var entirely
+		container.Env = slices.Delete(container.Env, idx, idx+1)
+		return
+	}
+
+	// there are other options left, so leave the env var in place and only update the value with the string where the
+	// Dash0 --require has been removed.
+	container.Env[idx].Value = newValue
 }
 
 func (m *ResourceModifier) hasMatchingOwnerReference(workload client.Object, possibleOwnerTypes []metav1.TypeMeta) bool {
