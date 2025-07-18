@@ -43,7 +43,6 @@ const (
 	otelExporterOtlpEndpointEnvVarName = "OTEL_EXPORTER_OTLP_ENDPOINT"
 	otelExporterOtlpHeadersEnvVarName  = "OTEL_EXPORTER_OTLP_HEADERS"
 	otelExporterOtlpProtocolEnvVarName = "OTEL_EXPORTER_OTLP_PROTOCOL"
-	otelResourceAttribtuesEnvVarName   = "OTEL_RESOURCE_ATTRIBUTES"
 	otelLogLevelEnvVarName             = "OTEL_LOG_LEVEL"
 )
 
@@ -281,7 +280,7 @@ func enableSelfMonitoringInCollectorContainer(
 	exportSettings := ConvertExportConfigurationToEnvVarSettings(selfMonitoringExport)
 	updateOrAppendEnvVar(container, otelExporterOtlpEndpointEnvVarName, exportSettings.Endpoint)
 	updateOrAppendEnvVar(container, otelExporterOtlpProtocolEnvVarName, exportSettings.Protocol)
-	updateOrAppendEnvVar(container, otelResourceAttribtuesEnvVarName,
+	updateOrAppendEnvVar(container, util.OtelResourceAttributesEnvVarName,
 		fmt.Sprintf(
 			"service.namespace=dash0-operator,service.name=%s,service.version=%s",
 			container.Name,
