@@ -460,6 +460,8 @@ func assembleClusterRoleForDaemonSet(config *oTelColConfig) *rbacv1.ClusterRole 
 					"configmaps",
 					// required for Kubelet Metrics/Kubeletstats receiver
 					"nodes/stats",
+					"persistentvolumes",
+					"persistentvolumeclaims",
 					// required for Prometheus receiver
 					"endpoints",
 					"services",

@@ -64,6 +64,25 @@ spec:
               port: 1207
             initialDelaySeconds: 1
             periodSeconds: 1
+          # For testing k8s.volume.* metrics with a volume:
+          # volumeMounts:
+          # - name: test-volume
+          #   mountPath: /etc/test-volume
+          #   readOnly: false
+      # For testing k8s.volume.* metrics with a hostPath volume:
+      # volumes:
+      # -  name: test-volume
+      #    hostPath:
+      #      path: /data/dash0-operator/test
+      #      type: DirectoryOrCreate
+      #
+      # For testing k8s.volume.* metrics with a PVC volume, requires to execute
+      #     kubectl apply -f test-resources/node.js/express/test-pvc.yaml
+      # before deploying. Looks like metrics for PVC-based volumes are currently not collected?
+      # volumes:
+      # - name: test-volume
+      #   persistentVolumeClaim:
+      #     claimName: test-pvc-volume
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress

@@ -225,7 +225,7 @@ build_all_images() {
   if [[ "$is_kind_cluster" = "true" ]]; then
     echo loading images into Kind cluster
     kind load docker-image \
-      --name $cluster \
+      --name "$kind_cluster_name" \
       operator-controller:latest \
       instrumentation:latest \
       collector:latest \
@@ -251,6 +251,7 @@ check_if_kubectx_is_kind() {
     while IFS= read -r cluster; do
       if [[ "$current_kubectx" = "kind-$cluster" ]]; then
         is_kind_cluster="true"
+        kind_cluster_name="$cluster"
         return
       fi
     done <<< "$kind_clusters"
@@ -574,7 +575,7 @@ build_test_application() {
   if [[ "$is_kind_cluster" = "true" ]]; then
     echo loading test image into Kind cluster
     kind load docker-image \
-      --name "$cluster" \
+      --name "$kind_cluster_name" \
       "$image_name:latest"
   fi
 }

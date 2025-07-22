@@ -239,6 +239,8 @@ rules:
   resources:
   - configmaps
   - pods
+  - persistentvolumes
+  - persistentvolumeclaims
   - namespaces
   - nodes
   - nodes/stats

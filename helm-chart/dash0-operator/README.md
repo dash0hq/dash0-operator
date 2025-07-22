@@ -730,7 +730,7 @@ If the filelog receiver started to read all log files from the beginning again a
 duplicated, that is, they would appear multiple times in Dash0.
 For that purpose, the filelog receiver stores the log file offsets in persistent storage.
 By default, the offsets are stored in a config map in the operator's namespace.
-For small to medium sized clusters, this is usually sufficient, and it requires no additional configuration by users.
+For small- to medium-sized clusters, this is usually sufficient, and it requires no additional configuration by users.
 For larger clusters or clusters with many short-lived pods, we recommend providing a persistent volume for storing
 offsets.
 
