@@ -12,9 +12,9 @@ extra config map should match snapshot:
           requests:
             memory: 500Mi
         collectorDaemonSetConfigurationReloaderContainerResources:
-          gomemlimit: 8MiB
+          gomemlimit: 18MiB
           limits:
-            memory: 12Mi
+            memory: 24Mi
           requests:
             memory: 12Mi
         collectorDaemonSetFileLogOffsetSyncContainerResources:
@@ -30,9 +30,9 @@ extra config map should match snapshot:
           requests:
             memory: 500Mi
         collectorDeploymentConfigurationReloaderContainerResources:
-          gomemlimit: 8MiB
+          gomemlimit: 18MiB
           limits:
-            memory: 12Mi
+            memory: 24Mi
           requests:
             memory: 12Mi
         daemonSetTolerations:
