@@ -718,7 +718,23 @@ spec:
     storage: false
     subresources:
       status: {}
-  - name: v1beta1
+  - additionalPrinterColumns:
+    - jsonPath: .spec.instrumentWorkloads.mode
+      name: Instrument Workloads
+      type: string
+    - jsonPath: .spec.logCollection.enabled
+      name: Collect Logs
+      type: boolean
+    - jsonPath: .spec.prometheusScraping.enabled
+      name: Prometheus Scraping
+      type: boolean
+    - jsonPath: .status.conditions[?(@.type == "Available")].status
+      name: Available
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1beta1
     schema:
       openAPIV3Schema:
         description: Dash0Monitoring is the schema for the Dash0Monitoring API
