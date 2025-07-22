@@ -201,6 +201,11 @@ type Dash0MonitoringStatus struct {
 // +groupName=operator.dash0.com
 // +kubebuilder:storageversion
 // +kubebuilder:conversion:hub
+// +kubebuilder:printcolumn:name="Instrument Workloads",type="string",JSONPath=".spec.instrumentWorkloads.mode"
+// +kubebuilder:printcolumn:name="Collect Logs",type="boolean",JSONPath=".spec.logCollection.enabled"
+// +kubebuilder:printcolumn:name="Prometheus Scraping",type="boolean",JSONPath=".spec.prometheusScraping.enabled"
+// +kubebuilder:printcolumn:name="Available",type="string",JSONPath=`.status.conditions[?(@.type == "Available")].status`
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 type Dash0Monitoring struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
