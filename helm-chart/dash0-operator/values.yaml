@@ -340,9 +340,9 @@ operator:
     daemonSetConfigurationReloaderContainerResources:
       limits:
         # cpu: (no cpu limit by default)
-        memory: 12Mi
+        memory: 24Mi
         # ephemeral-storage: (no ephemeral-storage limit by default)
-      gomemlimit: 8MiB
+      gomemlimit: 18MiB
       requests:
         # cpu: (no cpu request by default)
         memory: 12Mi
@@ -379,9 +379,9 @@ operator:
     deploymentConfigurationReloaderContainerResources:
       limits:
         # cpu: (no cpu limit by default)
-        memory: 12Mi
+        memory: 24Mi
         # ephemeral-storage: (no ephemeral-storage limit by default)
-      gomemlimit: 8MiB
+      gomemlimit: 18MiB
       requests:
         # cpu: (no cpu request by default)
         memory: 12Mi
