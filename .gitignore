@@ -32,3 +32,5 @@ go.work
 .run
 
 dash0-operator-values.yaml
+
+.claude/settings.local.json
