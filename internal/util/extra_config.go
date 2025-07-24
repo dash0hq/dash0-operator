@@ -4,11 +4,17 @@
 package util
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"time"
 
+	"github.com/bep/debounce"
+	"github.com/fsnotify/fsnotify"
+	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/yaml"
 )
 
@@ -34,6 +40,15 @@ type ExtraConfig struct {
 
 	DaemonSetTolerations []corev1.Toleration `json:"daemonSetTolerations,omitempty"`
 }
+
+type ExtraConfigClient interface {
+	UpdateExtraConfig(context.Context, ExtraConfig, *logr.Logger)
+}
+
+const (
+	extraConfigDir  = "/etc/config"
+	extraConfigFile = "/etc/config/extra.yaml"
+)
 
 var (
 	ExtraConfigDefaults = ExtraConfig{
@@ -86,7 +101,13 @@ var (
 	}
 )
 
-func ReadExtraConfiguration(configurationFile string) (ExtraConfig, error) {
+// ReadExtraConfigMap reads the config map content from the default location
+func ReadExtraConfigMap() (ExtraConfig, error) {
+	return readExtraConfigurationFromFile(extraConfigFile)
+}
+
+// readExtraConfigurationFromFile reads the config map content from the given file path.
+func readExtraConfigurationFromFile(configurationFile string) (ExtraConfig, error) {
 	if len(configurationFile) == 0 {
 		return ExtraConfig{}, fmt.Errorf("filename is empty")
 	}
@@ -170,5 +191,88 @@ func (rr ResourceRequirementsWithGoMemLimit) ToResourceRequirements() corev1.Res
 	return corev1.ResourceRequirements{
 		Limits:   rr.Limits,
 		Requests: rr.Requests,
+	}
+}
+
+type ExtraConfigWatcher struct {
+	watcher *fsnotify.Watcher
+	clients []ExtraConfigClient
+}
+
+func NewExtraConfigWatcher() *ExtraConfigWatcher {
+	return &ExtraConfigWatcher{
+		clients: make([]ExtraConfigClient, 0),
+	}
+}
+
+func (w *ExtraConfigWatcher) StartWatch(logger *logr.Logger) error {
+	return w.watchConfigurationDirectory(extraConfigDir, extraConfigFile, logger)
+}
+
+func (w *ExtraConfigWatcher) AddClient(client ExtraConfigClient) {
+	w.clients = append(w.clients, client)
+}
+
+func (w *ExtraConfigWatcher) watchConfigurationDirectory(
+	configurationDir string,
+	extraConfigFile string,
+	setupLogger *logr.Logger,
+) error {
+	var err error
+	w.watcher, err = fsnotify.NewWatcher()
+	if err != nil {
+		setupLogger.Error(err, "cannot establish file watcher")
+		return err
+	}
+
+	// When the config map is changed, and Kubernetes finally updates it, there a couple of file system events
+	// (copying to old file to a backup location, creating the new content as a temporary file, renaming that to
+	// the actual name, etc.). Therefore, we debounce these events and only update clients after a debounce timeout of
+	// 1 second.
+	debouncedFileWatchEvents := debounce.New(1 * time.Second)
+	go func() {
+		for {
+			select {
+			case _, ok := <-w.watcher.Events:
+				if !ok {
+					return
+				}
+				ctx := context.Background()
+				logger := log.FromContext(ctx)
+				debouncedFileWatchEvents(func() {
+					extraConfig, err := readExtraConfigurationFromFile(extraConfigFile)
+					if err != nil {
+						logger.Error(err, "cannot read extra config map file after it has been updated")
+						return
+					}
+					for _, client := range w.clients {
+						client.UpdateExtraConfig(ctx, extraConfig, &logger)
+					}
+				})
+			case fsnotifyErr, ok := <-w.watcher.Errors:
+				if !ok {
+					return
+				}
+				ctx := context.Background()
+				logger := log.FromContext(ctx)
+				logger.Error(fsnotifyErr, "extra config map file watcher error")
+			}
+		}
+	}()
+
+	// Watch the parent directory of the extra config map file. Watching the file directly only works once, since
+	// updating the file include a remove operation on the file system level, and fsnotify removes the watch silently
+	// once the path added via watcher.Add is removed.
+	// Also, firing the fsnotify event can take a minute or a bit more after the config map has been changed.
+	if err = w.watcher.Add(configurationDir); err != nil {
+		setupLogger.Error(err, "cannot add watcher for extra config directory", "directory", configurationDir)
+		return err
+	}
+	return nil
+}
+
+func (w *ExtraConfigWatcher) CloseWatch() {
+	if w.watcher != nil {
+		_ = w.watcher.Close()
 	}
 }

@@ -49,15 +49,6 @@ func (matcher *MatchEnvVarMatcher) NegatedFailureMessage(actual interface{}) (me
 	return format.Message(actual, fmt.Sprintf("not %s", matcher.message()))
 }
 
-func MatchEnvVarValueFrom(name string, secretName string, secretKey string, args ...interface{}) gomega.OmegaMatcher {
-	return &MatchEnvVarValueFromSecretMatcher{
-		Name:       name,
-		SecretName: secretName,
-		SecretKey:  secretKey,
-		Args:       args,
-	}
-}
-
 type MatchEnvVarValueFromSecretMatcher struct {
 	Name       string
 	SecretName string
@@ -99,6 +90,40 @@ func (matcher *MatchEnvVarValueFromSecretMatcher) NegatedFailureMessage(actual i
 	return format.Message(actual, fmt.Sprintf("not %s", matcher.message()))
 }
 
+func MatchVolume(name string, args ...interface{}) gomega.OmegaMatcher {
+	return &MatchVolumeMatcher{
+		Name: name,
+		Args: args,
+	}
+}
+
+type MatchVolumeMatcher struct {
+	Name string
+	Args []interface{}
+}
+
+func (matcher *MatchVolumeMatcher) Match(actual interface{}) (success bool, err error) {
+	volume, ok := actual.(corev1.Volume)
+	if !ok {
+		return false, fmt.Errorf(
+			"MatchVolume matcher requires a corev1.Volume. Got:\n%s",
+			format.Object(actual, 1))
+	}
+	return matcher.Name == volume.Name, nil
+}
+
+func (matcher *MatchVolumeMatcher) FailureMessage(actual interface{}) (message string) {
+	return format.Message(actual, matcher.message())
+}
+
+func (matcher *MatchVolumeMatcher) message() string {
+	return fmt.Sprintf("to contain volume with name %s", matcher.Name)
+}
+
+func (matcher *MatchVolumeMatcher) NegatedFailureMessage(actual interface{}) (message string) {
+	return format.Message(actual, fmt.Sprintf("not %s", matcher.message()))
+}
+
 func MatchVolumeMount(name string, mountPath string, args ...interface{}) gomega.OmegaMatcher {
 	return &MatchVolumeMountMatcher{
 		Name:      name,
@@ -114,13 +139,13 @@ type MatchVolumeMountMatcher struct {
 }
 
 func (matcher *MatchVolumeMountMatcher) Match(actual interface{}) (success bool, err error) {
-	volumeMount, ok := actual.(corev1.VolumeMount)
+	volume, ok := actual.(corev1.VolumeMount)
 	if !ok {
 		return false, fmt.Errorf(
 			"MatchVolumeMount matcher requires a corev1.VolumeMount. Got:\n%s",
 			format.Object(actual, 1))
 	}
-	return matcher.Name == volumeMount.Name && matcher.MountPath == volumeMount.MountPath, nil
+	return matcher.Name == volume.Name && matcher.MountPath == volume.MountPath, nil
 }
 
 func (matcher *MatchVolumeMountMatcher) FailureMessage(actual interface{}) (message string) {
@@ -128,7 +153,7 @@ func (matcher *MatchVolumeMountMatcher) FailureMessage(actual interface{}) (mess
 }
 
 func (matcher *MatchVolumeMountMatcher) message() string {
-	return fmt.Sprintf("to contain mount volume with name %s and mount path %s", matcher.Name, matcher.MountPath)
+	return fmt.Sprintf("to contain volume mount with name %s and mount path %s", matcher.Name, matcher.MountPath)
 }
 
 func (matcher *MatchVolumeMountMatcher) NegatedFailureMessage(actual interface{}) (message string) {
