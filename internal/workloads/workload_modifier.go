@@ -184,7 +184,7 @@ func InstrumentationIsUpToDate(
 type ResourceModifier struct {
 	// configuration values relevant for instrumenting workloads which apply to the whole cluster, e.g. settings from
 	// the helm chart or the operator configuration resource.
-	clusterInstrumentationConfig util.ClusterInstrumentationConfig
+	clusterInstrumentationConfig *util.ClusterInstrumentationConfig
 
 	// configuration values relevant for instrumenting workloads which apply to one namespace, e.g. settings from the
 	// monitoring resource.
@@ -199,7 +199,7 @@ type ResourceModifier struct {
 }
 
 func NewResourceModifier(
-	clusterInstrumentationConfig util.ClusterInstrumentationConfig,
+	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	actor util.WorkloadModifierActor,
 	logger *logr.Logger,
@@ -392,6 +392,10 @@ func (m *ResourceModifier) addInitContainer(podSpec *corev1.PodSpec) {
 func (m *ResourceModifier) createInitContainer(podSpec *corev1.PodSpec) *corev1.Container {
 	initContainerUser := &defaultInitContainerUser
 	initContainerGroup := &defaultInitContainerGroup
+	extraConfig := m.clusterInstrumentationConfig.ExtraConfig.Load()
+	if extraConfig == nil {
+		panic("extra config is nil in createInitContainer")
+	}
 
 	securityContext := podSpec.SecurityContext
 	if securityContext == nil {
@@ -429,7 +433,7 @@ func (m *ResourceModifier) createInitContainer(podSpec *corev1.PodSpec) *corev1.
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
 		},
-		Resources: m.clusterInstrumentationConfig.ExtraConfig.InstrumentationInitContainerResources.ToResourceRequirements(),
+		Resources: (*extraConfig).InstrumentationInitContainerResources.ToResourceRequirements(),
 		VolumeMounts: []corev1.VolumeMount{
 			{
 				Name:      dash0VolumeName,

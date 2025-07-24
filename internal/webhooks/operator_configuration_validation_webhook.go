@@ -22,6 +22,14 @@ type OperatorConfigurationValidationWebhookHandler struct {
 	Client client.Client
 }
 
+func NewOperatorConfigurationValidationWebhookHandler(
+	k8sClient client.Client,
+) *OperatorConfigurationValidationWebhookHandler {
+	return &OperatorConfigurationValidationWebhookHandler{
+		Client: k8sClient,
+	}
+}
+
 func (h *OperatorConfigurationValidationWebhookHandler) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	webhook := &admission.Webhook{
 		Handler: h,

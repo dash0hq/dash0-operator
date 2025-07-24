@@ -5,8 +5,11 @@ package collectors
 
 import (
 	"context"
+	"slices"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/utils/ptr"
@@ -35,7 +38,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 
 	var createdObjectsCollectorManagerTest []client.Object
 
-	var manager *CollectorManager
+	var collectorManager *CollectorManager
 
 	BeforeAll(func() {
 		EnsureOperatorNamespaceExists(ctx, k8sClient)
@@ -44,18 +47,23 @@ var _ = Describe("The collector manager", Ordered, func() {
 
 	BeforeEach(func() {
 		createdObjectsCollectorManagerTest = make([]client.Object, 0)
-		oTelColResourceManager := &otelcolresources.OTelColResourceManager{
-			Client:                    k8sClient,
-			Scheme:                    k8sClient.Scheme(),
-			OperatorManagerDeployment: OperatorManagerDeployment,
-			OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
-			ExtraConfig:               util.ExtraConfigDefaults,
-		}
-		manager = &CollectorManager{
-			Client:                 k8sClient,
-			Clientset:              clientset,
-			OTelColResourceManager: oTelColResourceManager,
-		}
+		oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
+			k8sClient,
+			k8sClient.Scheme(),
+			OperatorManagerDeployment,
+			util.CollectorConfig{
+				Images:                  TestImages,
+				OperatorNamespace:       operatorNamespace,
+				OTelCollectorNamePrefix: OTelCollectorNamePrefixTest,
+			},
+		)
+		collectorManager = NewCollectorManager(
+			k8sClient,
+			clientset,
+			util.ExtraConfigDefaults,
+			false,
+			oTelColResourceManager,
+		)
 	})
 
 	AfterEach(func() {
@@ -79,10 +87,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 				},
 			}
 			monitoringResource.EnsureResourceIsMarkedAsAvailable()
-			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				monitoringResource,
 				TriggeredByDash0ResourceReconcile,
 			)
@@ -104,10 +110,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 				},
 			}
 			monitoringResource.EnsureResourceIsMarkedAsAvailable()
-			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				monitoringResource,
 				TriggeredByDash0ResourceReconcile,
 			)
@@ -121,9 +125,9 @@ var _ = Describe("The collector manager", Ordered, func() {
 	Describe("when creating OpenTelemetry collector resources", func() {
 
 		AfterEach(func() {
-			_, err := manager.OTelColResourceManager.DeleteResources(
+			_, err := collectorManager.oTelColResourceManager.DeleteResources(
 				ctx,
-				operatorNamespace,
+				util.ExtraConfigDefaults,
 				&logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -132,10 +136,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 		})
 
 		It("should do nothing if there is no operator configuration resource and also no monitoring resource", func() {
-			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				nil,
 				TriggeredByDash0ResourceReconcile,
 			)
@@ -149,10 +151,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 				ctx,
 				k8sClient,
 			)
-			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				nil,
 				TriggeredByDash0ResourceReconcile,
 			)
@@ -181,10 +181,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 				},
 			)
 			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, monitoringResource)
-			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				assembleMonitoringResource(EndpointDash0TestAlternative, AuthorizationTokenTestAlternative),
 				TriggeredByDash0ResourceReconcile,
 			)
@@ -211,10 +209,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 			)
 			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, monitoringResource)
 
-			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				assembleMonitoringResource(EndpointDash0Test, AuthorizationTokenTest),
 				TriggeredByDash0ResourceReconcile,
 			)
@@ -229,10 +225,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 				k8sClient,
 			)
 			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, monitoringResource)
-			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				nil,
 				TriggeredByDash0ResourceReconcile,
 			)
@@ -251,10 +245,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 					},
 				},
 			)
-			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				nil,
 				TriggeredByDash0ResourceReconcile,
 			)
@@ -268,10 +260,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 				Spec: dash0v1beta1.Dash0MonitoringSpec{},
 			}
 			monitoringResource.EnsureResourceIsMarkedAsAvailable()
-			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				monitoringResource,
 				TriggeredByDash0ResourceReconcile,
 			)
@@ -293,10 +283,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 					},
 				},
 			}
-			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				monitoringResource,
 				TriggeredByDash0ResourceReconcile,
 			)
@@ -311,10 +299,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 				k8sClient,
 				dash0v1alpha1.Dash0OperatorConfigurationSpec{},
 			)
-			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				nil,
 				TriggeredByDash0ResourceReconcile,
 			)
@@ -333,10 +319,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 				Spec: dash0v1beta1.Dash0MonitoringSpec{},
 			}
 			monitoringResource.EnsureResourceIsMarkedAsAvailable()
-			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				monitoringResource,
 				TriggeredByDash0ResourceReconcile,
 			)
@@ -363,10 +347,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 					},
 				},
 			}
-			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				triggeringMonitoringResource,
 				TriggeredByDash0ResourceReconcile,
 			)
@@ -385,10 +367,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 				Spec: dash0v1beta1.Dash0MonitoringSpec{},
 			}
 			triggeringMonitoringResource.EnsureResourceIsMarkedAsAvailable()
-			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				triggeringMonitoringResource,
 				TriggeredByDash0ResourceReconcile,
 			)
@@ -428,10 +408,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 			})
 			Expect(err).ToNot(HaveOccurred())
 
-			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				nil,
 				TriggeredByDash0ResourceReconcile,
 			)
@@ -451,9 +429,9 @@ var _ = Describe("The collector manager", Ordered, func() {
 	Describe("when deciding whether to delete the OpenTelemetry collector resources", func() {
 
 		AfterEach(func() {
-			_, err := manager.OTelColResourceManager.DeleteResources(
+			_, err := collectorManager.oTelColResourceManager.DeleteResources(
 				ctx,
-				operatorNamespace,
+				util.ExtraConfigDefaults,
 				&logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -472,20 +450,16 @@ var _ = Describe("The collector manager", Ordered, func() {
 			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, monitoringResource)
 
 			// Let the manager create the collector so there is something to delete.
-			err, _ := manager.ReconcileOpenTelemetryCollector(
+			_, err := collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				monitoringResource,
 				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
 
-			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				monitoringResource,
 				TriggeredByDash0ResourceReconcile,
 			)
@@ -507,10 +481,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 				ctx,
 				k8sClient,
 			)
-			err, _ := manager.ReconcileOpenTelemetryCollector(
+			_, err := collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				monitoringResource,
 				TriggeredByDash0ResourceReconcile,
 			)
@@ -519,10 +491,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 
 			Expect(k8sClient.Delete(ctx, monitoringResource)).To(Succeed())
 
-			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				monitoringResource,
 				TriggeredByDash0ResourceReconcile,
 			)
@@ -548,20 +518,16 @@ var _ = Describe("The collector manager", Ordered, func() {
 			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, thirdDash0MonitoringResource)
 
 			// Let the manager create the collector so there is something to delete.
-			err, _ := manager.ReconcileOpenTelemetryCollector(
+			_, err := collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				secondDash0MonitoringResource,
 				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
 			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
 
-			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				secondDash0MonitoringResource,
 				TriggeredByDash0ResourceReconcile,
 			)
@@ -577,10 +543,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, existingDash0MonitoringResource)
 
 			// Let the manager create the collector so there is something to delete.
-			err, _ := manager.ReconcileOpenTelemetryCollector(
+			_, err := collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				existingDash0MonitoringResource,
 				TriggeredByDash0ResourceReconcile,
 			)
@@ -604,10 +568,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 					},
 				},
 			}
-			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				// Here the triggering monitoring resource has an export but is not marked as available, so it will not
 				// contribute towards retaining the collector resources; the existing monitoring resource created above
 				// has an export and is available, so ultimately, the collector resources are not deleted.
@@ -624,10 +586,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 				ctx,
 				k8sClient,
 			)
-			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				nil,
 				TriggeredByDash0ResourceReconcile,
 			)
@@ -638,10 +598,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 			operatorConfiguration.Spec.TelemetryCollection.Enabled = ptr.To(false)
 			Expect(k8sClient.Update(ctx, operatorConfiguration)).To(Succeed())
 
-			err, hasBeenReconciled = manager.ReconcileOpenTelemetryCollector(
+			hasBeenReconciled, err = collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				nil,
 				TriggeredByDash0ResourceReconcile,
 			)
@@ -656,10 +614,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 				k8sClient,
 			)
 
-			err, _ := manager.ReconcileOpenTelemetryCollector(
+			_, err := collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				nil,
 				TriggeredByDash0ResourceReconcile,
 			)
@@ -668,10 +624,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 
 			Expect(k8sClient.Delete(ctx, operatorConfigurationResource)).To(Succeed())
 
-			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				nil,
 				TriggeredByDash0ResourceReconcile,
 			)
@@ -705,10 +659,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 					dash0v1beta1.Dash0MonitoringSpec{}, thirdName)
 			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, thirdDash0MonitoringResource)
 
-			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				nil,
 				TriggeredByDash0ResourceReconcile,
 			)
@@ -718,10 +670,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 
 			Expect(k8sClient.Delete(ctx, operatorConfigurationResource)).To(Succeed())
 
-			err, hasBeenReconciled = manager.ReconcileOpenTelemetryCollector(
+			hasBeenReconciled, err = collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				nil,
 				TriggeredByDash0ResourceReconcile,
 			)
@@ -738,10 +688,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, monitoringResource)
 
 			// Let the manager create the collector so there is something to delete.
-			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				monitoringResource,
 				TriggeredByDash0ResourceReconcile,
 			)
@@ -756,10 +704,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 			monitoringResource.EnsureResourceIsMarkedAsAboutToBeDeleted()
 			Expect(k8sClient.Status().Update(ctx, monitoringResource)).To(Succeed())
 
-			err, hasBeenReconciled = manager.ReconcileOpenTelemetryCollector(
+			hasBeenReconciled, err = collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				monitoringResource,
 				TriggeredByDash0ResourceReconcile,
 			)
@@ -777,10 +723,8 @@ var _ = Describe("The collector manager", Ordered, func() {
 				k8sClient,
 			)
 			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, monitoringResource)
-			err, hasBeenReconciled := manager.ReconcileOpenTelemetryCollector(
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				monitoringResource,
 				TriggeredByDash0ResourceReconcile,
 			)
@@ -791,16 +735,139 @@ var _ = Describe("The collector manager", Ordered, func() {
 			Expect(k8sClient.Delete(ctx, monitoringResource)).To(Succeed())
 			createdObjectsCollectorManagerTest = createdObjectsCollectorManagerTest[0 : len(createdObjectsCollectorManagerTest)-1]
 
-			err, hasBeenReconciled = manager.ReconcileOpenTelemetryCollector(
+			hasBeenReconciled, err = collectorManager.ReconcileOpenTelemetryCollector(
 				ctx,
-				TestImages,
-				operatorNamespace,
 				nil,
 				TriggeredByDash0ResourceReconcile,
 			)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(hasBeenReconciled).To(BeTrue())
 			VerifyCollectorResourcesDoNotExist(ctx, k8sClient, operatorNamespace)
+		})
+	})
+
+	Describe("when updating the extra config map", func() {
+		BeforeEach(func() {
+			// creating a valid monitoring resource beforehand, just so we get past the
+			// m.findAllMonitoringResources step.
+			resource := EnsureMonitoringResourceExistsAndIsAvailable(
+				ctx,
+				k8sClient,
+			)
+			createdObjectsCollectorManagerTest = append(createdObjectsCollectorManagerTest, resource)
+		})
+
+		AfterEach(func() {
+			_, err := collectorManager.oTelColResourceManager.DeleteResources(
+				ctx,
+				util.ExtraConfigDefaults,
+				&logger,
+			)
+			Expect(err).ToNot(HaveOccurred())
+
+			DeleteAllOperatorConfigurationResources(ctx, k8sClient)
+		})
+
+		It("should ignore updates if extra config map content has not changed", func() {
+			CreateDefaultOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+			)
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(
+				ctx,
+				nil,
+				TriggeredByDash0ResourceReconcile,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
+			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
+
+			collectorManager.UpdateExtraConfig(ctx, util.ExtraConfigDefaults, &logger)
+			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
+		})
+
+		It("should apply updates if extra config map content has changed", func() {
+			CreateDefaultOperatorConfigurationResource(
+				ctx,
+				k8sClient,
+			)
+			hasBeenReconciled, err := collectorManager.ReconcileOpenTelemetryCollector(
+				ctx,
+				nil,
+				TriggeredByDash0ResourceReconcile,
+			)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(hasBeenReconciled).To(BeTrue())
+			VerifyCollectorResources(ctx, k8sClient, operatorNamespace, EndpointDash0Test, AuthorizationTokenTest)
+
+			changedConfig := util.ExtraConfigDefaults
+			changedConfig.CollectorDaemonSetCollectorContainerResources = util.ResourceRequirementsWithGoMemLimit{
+				Limits: corev1.ResourceList{
+					corev1.ResourceMemory: resource.MustParse("600Mi"),
+				},
+				GoMemLimit: "500MiB",
+				Requests: corev1.ResourceList{
+					corev1.ResourceMemory: resource.MustParse("600Mi"),
+				},
+			}
+			changedConfig.CollectorFilelogOffsetStorageVolume = &corev1.Volume{
+				Name: "offset-storage",
+				VolumeSource: corev1.VolumeSource{
+					HostPath: &corev1.HostPathVolumeSource{
+						Path: "/data/dash0-operator/offset-storage",
+						Type: ptr.To(corev1.HostPathDirectoryOrCreate),
+					},
+				},
+			}
+			changedConfig.DaemonSetTolerations = []corev1.Toleration{
+				{
+					Key:      "test-key",
+					Operator: corev1.TolerationOpEqual,
+					Value:    "test-value",
+					Effect:   corev1.TaintEffectNoSchedule,
+				},
+			}
+			collectorManager.UpdateExtraConfig(ctx, changedConfig, &logger)
+
+			ds_ := VerifyResourceExists(
+				ctx,
+				k8sClient,
+				operatorNamespace,
+				ExpectedDaemonSetName,
+				&appsv1.DaemonSet{},
+			)
+			ds := ds_.(*appsv1.DaemonSet)
+			podSpec := ds.Spec.Template.Spec
+			initContainers := podSpec.InitContainers
+			Expect(initContainers).To(HaveLen(1))
+			Expect(initContainers[0].Name).To(Equal("filelog-offset-volume-ownership"))
+			containers := podSpec.Containers
+			Expect(containers).To(HaveLen(2))
+
+			collectorContainerIdx := slices.IndexFunc(containers, func(c corev1.Container) bool {
+				return c.Name == "opentelemetry-collector"
+			})
+			collectorContainer := containers[collectorContainerIdx]
+			Expect(collectorContainer.Resources.Limits.Memory().String()).To(Equal("600Mi"))
+			Expect(collectorContainer.Resources.Requests.Memory().String()).To(Equal("600Mi"))
+			Expect(collectorContainer.Env).To(ContainElement(MatchEnvVar("GOMEMLIMIT", "500MiB")))
+
+			Expect(podSpec.Volumes).To(ContainElement(MatchVolume("offset-storage")))
+			offsetStorageVolumeIdx := slices.IndexFunc(podSpec.Volumes, func(c corev1.Volume) bool {
+				return c.Name == "offset-storage"
+			})
+			offsetStorageVolume := podSpec.Volumes[offsetStorageVolumeIdx]
+			Expect(offsetStorageVolume.HostPath).ToNot(BeNil())
+			Expect(offsetStorageVolume.HostPath.Path).To(Equal("/data/dash0-operator/offset-storage"))
+			Expect(offsetStorageVolume.HostPath.Type).ToNot(BeNil())
+			Expect(*offsetStorageVolume.HostPath.Type).To(Equal(corev1.HostPathDirectoryOrCreate))
+
+			Expect(podSpec.Tolerations).To(HaveLen(1))
+			toleration := podSpec.Tolerations[0]
+			Expect(toleration.Key).To(Equal("test-key"))
+			Expect(toleration.Operator).To(Equal(corev1.TolerationOpEqual))
+			Expect(toleration.Value).To(Equal("test-value"))
+			Expect(toleration.Effect).To(Equal(corev1.TaintEffectNoSchedule))
 		})
 	})
 })
