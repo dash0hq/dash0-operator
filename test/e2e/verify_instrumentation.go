@@ -69,6 +69,7 @@ func verifyThatWorkloadHasBeenInstrumented(
 	By(fmt.Sprintf("%s %s: matching spans have been received", runtime.runtimeTypeLabel, workloadType.workloadTypeString))
 }
 
+//nolint:unparam
 func verifyThatInstrumentationHasBeenReverted(
 	namespace string,
 	runtime runtimeType,

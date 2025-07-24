@@ -14,7 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -22,11 +22,11 @@ import (
 )
 
 type dash0MonitoringValues struct {
-	InstrumentWorkloads dash0v1alpha1.InstrumentWorkloadsMode
-	Endpoint            string
-	Token               string
-	Filter              string
-	Transform           string
+	InstrumentWorkloadsMode dash0common.InstrumentWorkloadsMode
+	Endpoint                string
+	Token                   string
+	Filter                  string
+	Transform               string
 }
 
 const (
@@ -38,14 +38,18 @@ var (
 	dash0MonitoringResourceSource   string
 	dash0MonitoringResourceTemplate *template.Template
 
+	//go:embed dash0monitoring.e2e.v1alpha1.yaml.template
+	dash0MonitoringResourceV1Alpha1Source   string
+	dash0MonitoringResourceV1Alpha1Template *template.Template
+
 	dash0MonitoringValuesDefault = dash0MonitoringValues{
-		InstrumentWorkloads: dash0v1alpha1.All,
+		InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeAll,
 	}
 
 	dash0MonitoringValuesWithExport = dash0MonitoringValues{
-		InstrumentWorkloads: dash0v1alpha1.All,
-		Endpoint:            defaultEndpoint,
-		Token:               defaultToken,
+		InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeAll,
+		Endpoint:                defaultEndpoint,
+		Token:                   defaultToken,
 	}
 )
 
@@ -59,20 +63,57 @@ func renderDash0MonitoringResourceTemplate(dash0MonitoringValues dash0Monitoring
 	return renderResourceTemplate(dash0MonitoringResourceTemplate, dash0MonitoringValues, "dash0monitoring")
 }
 
+func renderDash0MonitoringResourceTemplateV1Alpha1(dash0MonitoringValues dash0MonitoringValues) string {
+	By("rendering Dash0Monitoring resource template")
+	dash0MonitoringResourceTemplate = initTemplateOnce(
+		dash0MonitoringResourceV1Alpha1Template,
+		dash0MonitoringResourceV1Alpha1Source,
+		"dash0monitoring",
+	)
+	return renderResourceTemplate(dash0MonitoringResourceTemplate, dash0MonitoringValues, "dash0monitoring-v1alpha1")
+}
+
 func deployDash0MonitoringResource(
 	namespace string,
 	dash0MonitoringValues dash0MonitoringValues,
 	operatorNamespace string,
 ) {
 	renderedResourceFileName := renderDash0MonitoringResourceTemplate(dash0MonitoringValues)
+	deployRenderedMonitoringResource(
+		namespace,
+		dash0MonitoringValues,
+		operatorNamespace,
+		renderedResourceFileName,
+	)
+}
+
+func deployDash0MonitoringResourceV1Alpha1(
+	namespace string,
+	dash0MonitoringValues dash0MonitoringValues,
+	operatorNamespace string,
+) {
+	renderedResourceFileName := renderDash0MonitoringResourceTemplateV1Alpha1(dash0MonitoringValues)
+	deployRenderedMonitoringResource(
+		namespace,
+		dash0MonitoringValues,
+		operatorNamespace,
+		renderedResourceFileName,
+	)
+}
+
+func deployRenderedMonitoringResource(
+	namespace string,
+	dash0MonitoringValues dash0MonitoringValues,
+	operatorNamespace string,
+	renderedResourceFileName string,
+) {
 	defer func() {
 		Expect(os.Remove(renderedResourceFileName)).To(Succeed())
 	}()
-
 	retryLogger := zap.New()
 	By(fmt.Sprintf(
-		"deploying the Dash0 monitoring resource to namespace %s with values %v, operator namespace is %s",
-		namespace, dash0MonitoringValues, operatorNamespace))
+		"deploying the Dash0 monitoring resource to namespace %s with values %v from file %s, operator namespace is %s",
+		namespace, dash0MonitoringValues, renderedResourceFileName, operatorNamespace))
 	err := util.RetryWithCustomBackoff("deploying the Dash0 monitoring resource to namespace", func() error {
 		return runAndIgnoreOutput(exec.Command(
 			"kubectl",
@@ -129,14 +170,16 @@ func waitForMonitoringResourceToBecomeAvailable(namespace string) {
 
 func updateInstrumentWorkloadsModeOfDash0MonitoringResource(
 	namespace string,
-	instrumentWorkloadsMode dash0v1alpha1.InstrumentWorkloadsMode,
+	instrumentWorkloadsMode dash0common.InstrumentWorkloadsMode,
 ) {
 	updateDash0MonitoringResource(
 		namespace,
 		fmt.Sprintf(`
 {
   "spec": {
-    "instrumentWorkloads": "%s"
+    "instrumentWorkloads": {
+      "mode": "%s"
+    }
   }
 }
 `, instrumentWorkloadsMode),

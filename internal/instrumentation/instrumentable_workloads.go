@@ -7,6 +7,7 @@ import (
 	"github.com/go-logr/logr"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -17,15 +18,20 @@ import (
 
 type instrumentableWorkload interface {
 	getObjectMeta() *metav1.ObjectMeta
+	getPodSpec() corev1.PodSpec
 	getKind() string
 	asRuntimeObject() runtime.Object
 	asClientObject() client.Object
-	instrument(images util.Images, extraConfig util.ExtraConfig, oTelCollectorBaseUrl string, instrumentationDebug bool, logger *logr.Logger) workloads.ModificationResult
-	// Strictly speaking, for reverting we do not need the images, nor the oTelCollectorBaseUrl setting, nor the
-	// instrumentationDebug flag, but for symmetry with the instrument method and to make sure any WorkloadModifier
-	// instance we create actually has valid values, the revert method accepts the same arguments as the instrument
-	// method.
-	revert(images util.Images, extraConfig util.ExtraConfig, oTelCollectorBaseUrl string, instrumentationDebug bool, logger *logr.Logger) workloads.ModificationResult
+	instrument(
+		clusterInstrumentationConfig util.ClusterInstrumentationConfig,
+		namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+		logger *logr.Logger,
+	) workloads.ModificationResult
+	revert(
+		clusterInstrumentationConfig util.ClusterInstrumentationConfig,
+		namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+		logger *logr.Logger,
+	) workloads.ModificationResult
 }
 
 type cronJobWorkload struct {
@@ -33,26 +39,25 @@ type cronJobWorkload struct {
 }
 
 func (w *cronJobWorkload) getObjectMeta() *metav1.ObjectMeta { return &w.cronJob.ObjectMeta }
-func (w *cronJobWorkload) getKind() string                   { return "CronJob" }
-func (w *cronJobWorkload) asRuntimeObject() runtime.Object   { return w.cronJob }
-func (w *cronJobWorkload) asClientObject() client.Object     { return w.cronJob }
+func (w *cronJobWorkload) getPodSpec() corev1.PodSpec {
+	return w.cronJob.Spec.JobTemplate.Spec.Template.Spec
+}
+func (w *cronJobWorkload) getKind() string                 { return "CronJob" }
+func (w *cronJobWorkload) asRuntimeObject() runtime.Object { return w.cronJob }
+func (w *cronJobWorkload) asClientObject() client.Object   { return w.cronJob }
 func (w *cronJobWorkload) instrument(
-	images util.Images,
-	extraConfig util.ExtraConfig,
-	oTelCollectorBaseUrl string,
-	instrumentationDebug bool,
+	clusterInstrumentationConfig util.ClusterInstrumentationConfig,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) workloads.ModificationResult {
-	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, instrumentationDebug, logger).ModifyCronJob(w.cronJob)
+	return newWorkloadModifier(clusterInstrumentationConfig, namespaceInstrumentationConfig, logger).ModifyCronJob(w.cronJob)
 }
 func (w *cronJobWorkload) revert(
-	images util.Images,
-	extraConfig util.ExtraConfig,
-	oTelCollectorBaseUrl string,
-	instrumentationDebug bool,
+	clusterInstrumentationConfig util.ClusterInstrumentationConfig,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) workloads.ModificationResult {
-	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, instrumentationDebug, logger).RevertCronJob(w.cronJob)
+	return newWorkloadModifier(clusterInstrumentationConfig, namespaceInstrumentationConfig, logger).RevertCronJob(w.cronJob)
 }
 
 type daemonSetWorkload struct {
@@ -60,26 +65,25 @@ type daemonSetWorkload struct {
 }
 
 func (w *daemonSetWorkload) getObjectMeta() *metav1.ObjectMeta { return &w.daemonSet.ObjectMeta }
-func (w *daemonSetWorkload) getKind() string                   { return "DaemonSet" }
-func (w *daemonSetWorkload) asRuntimeObject() runtime.Object   { return w.daemonSet }
-func (w *daemonSetWorkload) asClientObject() client.Object     { return w.daemonSet }
+func (w *daemonSetWorkload) getPodSpec() corev1.PodSpec {
+	return w.daemonSet.Spec.Template.Spec
+}
+func (w *daemonSetWorkload) getKind() string                 { return "DaemonSet" }
+func (w *daemonSetWorkload) asRuntimeObject() runtime.Object { return w.daemonSet }
+func (w *daemonSetWorkload) asClientObject() client.Object   { return w.daemonSet }
 func (w *daemonSetWorkload) instrument(
-	images util.Images,
-	extraConfig util.ExtraConfig,
-	oTelCollectorBaseUrl string,
-	instrumentationDebug bool,
+	clusterInstrumentationConfig util.ClusterInstrumentationConfig,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) workloads.ModificationResult {
-	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, instrumentationDebug, logger).ModifyDaemonSet(w.daemonSet)
+	return newWorkloadModifier(clusterInstrumentationConfig, namespaceInstrumentationConfig, logger).ModifyDaemonSet(w.daemonSet)
 }
 func (w *daemonSetWorkload) revert(
-	images util.Images,
-	extraConfig util.ExtraConfig,
-	oTelCollectorBaseUrl string,
-	instrumentationDebug bool,
+	clusterInstrumentationConfig util.ClusterInstrumentationConfig,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) workloads.ModificationResult {
-	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, instrumentationDebug, logger).RevertDaemonSet(w.daemonSet)
+	return newWorkloadModifier(clusterInstrumentationConfig, namespaceInstrumentationConfig, logger).RevertDaemonSet(w.daemonSet)
 }
 
 type deploymentWorkload struct {
@@ -87,26 +91,25 @@ type deploymentWorkload struct {
 }
 
 func (w *deploymentWorkload) getObjectMeta() *metav1.ObjectMeta { return &w.deployment.ObjectMeta }
-func (w *deploymentWorkload) getKind() string                   { return "Deployment" }
-func (w *deploymentWorkload) asRuntimeObject() runtime.Object   { return w.deployment }
-func (w *deploymentWorkload) asClientObject() client.Object     { return w.deployment }
+func (w *deploymentWorkload) getPodSpec() corev1.PodSpec {
+	return w.deployment.Spec.Template.Spec
+}
+func (w *deploymentWorkload) getKind() string                 { return "Deployment" }
+func (w *deploymentWorkload) asRuntimeObject() runtime.Object { return w.deployment }
+func (w *deploymentWorkload) asClientObject() client.Object   { return w.deployment }
 func (w *deploymentWorkload) instrument(
-	images util.Images,
-	extraConfig util.ExtraConfig,
-	oTelCollectorBaseUrl string,
-	instrumentationDebug bool,
+	clusterInstrumentationConfig util.ClusterInstrumentationConfig,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) workloads.ModificationResult {
-	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, instrumentationDebug, logger).ModifyDeployment(w.deployment)
+	return newWorkloadModifier(clusterInstrumentationConfig, namespaceInstrumentationConfig, logger).ModifyDeployment(w.deployment)
 }
 func (w *deploymentWorkload) revert(
-	images util.Images,
-	extraConfig util.ExtraConfig,
-	oTelCollectorBaseUrl string,
-	instrumentationDebug bool,
+	clusterInstrumentationConfig util.ClusterInstrumentationConfig,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) workloads.ModificationResult {
-	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, instrumentationDebug, logger).RevertDeployment(w.deployment)
+	return newWorkloadModifier(clusterInstrumentationConfig, namespaceInstrumentationConfig, logger).RevertDeployment(w.deployment)
 }
 
 type replicaSetWorkload struct {
@@ -114,26 +117,25 @@ type replicaSetWorkload struct {
 }
 
 func (w *replicaSetWorkload) getObjectMeta() *metav1.ObjectMeta { return &w.replicaSet.ObjectMeta }
-func (w *replicaSetWorkload) getKind() string                   { return "ReplicaSet" }
-func (w *replicaSetWorkload) asRuntimeObject() runtime.Object   { return w.replicaSet }
-func (w *replicaSetWorkload) asClientObject() client.Object     { return w.replicaSet }
+func (w *replicaSetWorkload) getPodSpec() corev1.PodSpec {
+	return w.replicaSet.Spec.Template.Spec
+}
+func (w *replicaSetWorkload) getKind() string                 { return "ReplicaSet" }
+func (w *replicaSetWorkload) asRuntimeObject() runtime.Object { return w.replicaSet }
+func (w *replicaSetWorkload) asClientObject() client.Object   { return w.replicaSet }
 func (w *replicaSetWorkload) instrument(
-	images util.Images,
-	extraConfig util.ExtraConfig,
-	oTelCollectorBaseUrl string,
-	instrumentationDebug bool,
+	clusterInstrumentationConfig util.ClusterInstrumentationConfig,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) workloads.ModificationResult {
-	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, instrumentationDebug, logger).ModifyReplicaSet(w.replicaSet)
+	return newWorkloadModifier(clusterInstrumentationConfig, namespaceInstrumentationConfig, logger).ModifyReplicaSet(w.replicaSet)
 }
 func (w *replicaSetWorkload) revert(
-	images util.Images,
-	extraConfig util.ExtraConfig,
-	oTelCollectorBaseUrl string,
-	instrumentationDebug bool,
+	clusterInstrumentationConfig util.ClusterInstrumentationConfig,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) workloads.ModificationResult {
-	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, instrumentationDebug, logger).RevertReplicaSet(w.replicaSet)
+	return newWorkloadModifier(clusterInstrumentationConfig, namespaceInstrumentationConfig, logger).RevertReplicaSet(w.replicaSet)
 }
 
 type statefulSetWorkload struct {
@@ -141,24 +143,23 @@ type statefulSetWorkload struct {
 }
 
 func (w *statefulSetWorkload) getObjectMeta() *metav1.ObjectMeta { return &w.statefulSet.ObjectMeta }
-func (w *statefulSetWorkload) getKind() string                   { return "StatefulSet" }
-func (w *statefulSetWorkload) asRuntimeObject() runtime.Object   { return w.statefulSet }
-func (w *statefulSetWorkload) asClientObject() client.Object     { return w.statefulSet }
+func (w *statefulSetWorkload) getPodSpec() corev1.PodSpec {
+	return w.statefulSet.Spec.Template.Spec
+}
+func (w *statefulSetWorkload) getKind() string                 { return "StatefulSet" }
+func (w *statefulSetWorkload) asRuntimeObject() runtime.Object { return w.statefulSet }
+func (w *statefulSetWorkload) asClientObject() client.Object   { return w.statefulSet }
 func (w *statefulSetWorkload) instrument(
-	images util.Images,
-	extraConfig util.ExtraConfig,
-	oTelCollectorBaseUrl string,
-	instrumentationDebug bool,
+	clusterInstrumentationConfig util.ClusterInstrumentationConfig,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) workloads.ModificationResult {
-	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, instrumentationDebug, logger).ModifyStatefulSet(w.statefulSet)
+	return newWorkloadModifier(clusterInstrumentationConfig, namespaceInstrumentationConfig, logger).ModifyStatefulSet(w.statefulSet)
 }
 func (w *statefulSetWorkload) revert(
-	images util.Images,
-	extraConfig util.ExtraConfig,
-	oTelCollectorBaseUrl string,
-	instrumentationDebug bool,
+	clusterInstrumentationConfig util.ClusterInstrumentationConfig,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) workloads.ModificationResult {
-	return newWorkloadModifier(images, extraConfig, oTelCollectorBaseUrl, instrumentationDebug, logger).RevertStatefulSet(w.statefulSet)
+	return newWorkloadModifier(clusterInstrumentationConfig, namespaceInstrumentationConfig, logger).RevertStatefulSet(w.statefulSet)
 }

@@ -23,21 +23,25 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 	"github.com/dash0hq/dash0-operator/internal/workloads"
 )
 
 type InstrumentationWebhookHandler struct {
-	Client               client.Client
-	Recorder             record.EventRecorder
-	Images               util.Images
-	ExtraConfig          util.ExtraConfig
-	OTelCollectorBaseUrl string
-	InstrumentationDebug bool
+	Client                       client.Client
+	Recorder                     record.EventRecorder
+	ClusterInstrumentationConfig util.ClusterInstrumentationConfig
 }
 
-type resourceHandler func(h *InstrumentationWebhookHandler, request admission.Request, gvkLabel string, logger *logr.Logger) admission.Response
+type resourceHandler func(
+	h *InstrumentationWebhookHandler,
+	request admission.Request,
+	gvkLabel string,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	logger *logr.Logger,
+) admission.Response
 type routing map[string]map[string]map[string]resourceHandler
 
 const (
@@ -85,11 +89,24 @@ var (
 		h *InstrumentationWebhookHandler,
 		request admission.Request,
 		gvkLabel string,
+		namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 		logger *logr.Logger,
 	) admission.Response {
 		return logAndReturnAllowed(fmt.Sprintf("resource type not supported: %s", gvkLabel), logger)
 	}
 )
+
+func NewInstrumentationWebhookHandler(
+	client client.Client,
+	recorder record.EventRecorder,
+	clusterInstrumentationConfig util.ClusterInstrumentationConfig,
+) *InstrumentationWebhookHandler {
+	return &InstrumentationWebhookHandler{
+		Client:                       client,
+		Recorder:                     recorder,
+		ClusterInstrumentationConfig: clusterInstrumentationConfig,
+	}
+}
 
 func (h *InstrumentationWebhookHandler) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	webhook := &admission.Webhook{
@@ -100,7 +117,7 @@ func (h *InstrumentationWebhookHandler) SetupWebhookWithManager(mgr ctrl.Manager
 	if err != nil {
 		return err
 	}
-	mgr.GetWebhookServer().Register("/v1alpha1/inject/dash0", handler)
+	mgr.GetWebhookServer().Register("/workloads/inject", handler)
 
 	return nil
 }
@@ -119,7 +136,7 @@ func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admi
 
 	targetNamespace := request.Namespace
 
-	dash0List := &dash0v1alpha1.Dash0MonitoringList{}
+	dash0List := &dash0v1beta1.Dash0MonitoringList{}
 	if err := h.Client.List(ctx, dash0List, &client.ListOptions{
 		Namespace: targetNamespace,
 	}); err != nil {
@@ -170,8 +187,8 @@ func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admi
 	if request.Operation == admissionv1.Update {
 		actionPartial = "updated"
 	}
-	instrumentWorkloads := dash0MonitoringResource.ReadInstrumentWorkloadsSetting()
-	if instrumentWorkloads == dash0v1alpha1.None {
+	instrumentWorkloadsMode := dash0MonitoringResource.ReadInstrumentWorkloadsMode()
+	if instrumentWorkloadsMode == dash0common.InstrumentWorkloadsModeNone {
 		return admission.Allowed(
 			fmt.Sprintf(
 				"Instrumenting workloads is not enabled in namespace %s, this %s workload will not be modified to "+
@@ -187,13 +204,19 @@ func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admi
 	version := gkv.Version
 	kind := gkv.Kind
 	gvkLabel := fmt.Sprintf("%s/%s.%s", group, version, kind)
-
-	return routes.routeFor(group, kind, version)(h, request, gvkLabel, &logger)
+	return routes.routeFor(group, kind, version)(
+		h,
+		request,
+		gvkLabel,
+		dash0MonitoringResource.GetNamespaceInstrumentationConfig(),
+		&logger,
+	)
 }
 
 func (h *InstrumentationWebhookHandler) handleCronJob(
 	request admission.Request,
 	gvkLabel string,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) admission.Response {
 	cronJob := &batchv1.CronJob{}
@@ -214,13 +237,18 @@ func (h *InstrumentationWebhookHandler) handleCronJob(
 	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(&cronJob.ObjectMeta) {
 		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
 	} else if util.WasInstrumentedButHasOptedOutNow(&cronJob.ObjectMeta) {
-		modificationResult := h.newWorkloadModifier(logger).RevertCronJob(cronJob)
+		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).RevertCronJob(cronJob)
 		return h.postProcessUninstrumentation(request, cronJob, modificationResult, logger)
-	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(&cronJob.ObjectMeta, h.Images) {
+	} else if workloads.InstrumentationIsUpToDate(
+		&cronJob.ObjectMeta,
+		cronJob.Spec.JobTemplate.Spec.Template.Spec.Containers,
+		h.ClusterInstrumentationConfig.Images,
+		namespaceInstrumentationConfig,
+	) {
 		// deliberately not logging this, would be very noisy
 		return admission.Allowed(sameVersionNoModificationMessage)
 	} else {
-		modificationResult := h.newWorkloadModifier(logger).ModifyCronJob(cronJob)
+		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).ModifyCronJob(cronJob)
 		return h.postProcessInstrumentation(request, cronJob, modificationResult, false, logger)
 	}
 }
@@ -228,6 +256,7 @@ func (h *InstrumentationWebhookHandler) handleCronJob(
 func (h *InstrumentationWebhookHandler) handleDaemonSet(
 	request admission.Request,
 	gvkLabel string,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) admission.Response {
 	daemonSet := &appsv1.DaemonSet{}
@@ -242,13 +271,18 @@ func (h *InstrumentationWebhookHandler) handleDaemonSet(
 	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(&daemonSet.ObjectMeta) {
 		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
 	} else if util.WasInstrumentedButHasOptedOutNow(&daemonSet.ObjectMeta) {
-		modificationResult := h.newWorkloadModifier(logger).RevertDaemonSet(daemonSet)
+		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).RevertDaemonSet(daemonSet)
 		return h.postProcessUninstrumentation(request, daemonSet, modificationResult, logger)
-	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(&daemonSet.ObjectMeta, h.Images) {
+	} else if workloads.InstrumentationIsUpToDate(
+		&daemonSet.ObjectMeta,
+		daemonSet.Spec.Template.Spec.Containers,
+		h.ClusterInstrumentationConfig.Images,
+		namespaceInstrumentationConfig,
+	) {
 		// deliberately not logging this, would be very noisy
 		return admission.Allowed(sameVersionNoModificationMessage)
 	} else {
-		modificationResult := h.newWorkloadModifier(logger).ModifyDaemonSet(daemonSet)
+		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).ModifyDaemonSet(daemonSet)
 		return h.postProcessInstrumentation(request, daemonSet, modificationResult, false, logger)
 	}
 }
@@ -256,6 +290,7 @@ func (h *InstrumentationWebhookHandler) handleDaemonSet(
 func (h *InstrumentationWebhookHandler) handleDeployment(
 	request admission.Request,
 	gvkLabel string,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) admission.Response {
 	deployment := &appsv1.Deployment{}
@@ -270,13 +305,18 @@ func (h *InstrumentationWebhookHandler) handleDeployment(
 	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(&deployment.ObjectMeta) {
 		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
 	} else if util.WasInstrumentedButHasOptedOutNow(&deployment.ObjectMeta) {
-		modificationResult := h.newWorkloadModifier(logger).RevertDeployment(deployment)
+		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).RevertDeployment(deployment)
 		return h.postProcessUninstrumentation(request, deployment, modificationResult, logger)
-	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(&deployment.ObjectMeta, h.Images) {
+	} else if workloads.InstrumentationIsUpToDate(
+		&deployment.ObjectMeta,
+		deployment.Spec.Template.Spec.Containers,
+		h.ClusterInstrumentationConfig.Images,
+		namespaceInstrumentationConfig,
+	) {
 		// deliberately not logging this, would be very noisy
 		return admission.Allowed(sameVersionNoModificationMessage)
 	} else {
-		modificationResult := h.newWorkloadModifier(logger).ModifyDeployment(deployment)
+		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).ModifyDeployment(deployment)
 		return h.postProcessInstrumentation(request, deployment, modificationResult, false, logger)
 	}
 }
@@ -284,6 +324,7 @@ func (h *InstrumentationWebhookHandler) handleDeployment(
 func (h *InstrumentationWebhookHandler) handleJob(
 	request admission.Request,
 	gvkLabel string,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) admission.Response {
 	job := &batchv1.Job{}
@@ -302,11 +343,16 @@ func (h *InstrumentationWebhookHandler) handleJob(
 		// not listening to updates for jobs. We cannot uninstrument jobs if the user adds an opt-out label after the
 		// job has been already instrumented, since jobs are immutable.
 		return h.postProcessUninstrumentation(request, job, workloads.NewNotModifiedImmutableWorkloadCannotBeRevertedResult(), logger)
-	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(&job.ObjectMeta, h.Images) {
+	} else if workloads.InstrumentationIsUpToDate(
+		&job.ObjectMeta,
+		job.Spec.Template.Spec.Containers,
+		h.ClusterInstrumentationConfig.Images,
+		namespaceInstrumentationConfig,
+	) {
 		// This should not happen either.
 		return admission.Allowed(sameVersionNoModificationMessage)
 	} else {
-		modificationResult := h.newWorkloadModifier(logger).ModifyJob(job)
+		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).ModifyJob(job)
 		return h.postProcessInstrumentation(request, job, modificationResult, false, logger)
 	}
 }
@@ -314,6 +360,7 @@ func (h *InstrumentationWebhookHandler) handleJob(
 func (h *InstrumentationWebhookHandler) handlePod(
 	request admission.Request,
 	gvkLabel string,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) admission.Response {
 	pod := &corev1.Pod{}
@@ -333,11 +380,16 @@ func (h *InstrumentationWebhookHandler) handlePod(
 		// after the pod has been already instrumented, since we cannot restart ownerless pods, which makes them
 		// effectively immutable.
 		return h.postProcessUninstrumentation(request, pod, workloads.NewNotModifiedImmutableWorkloadCannotBeRevertedResult(), logger)
-	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(&pod.ObjectMeta, h.Images) {
+	} else if workloads.InstrumentationIsUpToDate(
+		&pod.ObjectMeta,
+		pod.Spec.Containers,
+		h.ClusterInstrumentationConfig.Images,
+		namespaceInstrumentationConfig,
+	) {
 		// This should not happen either.
 		return admission.Allowed(sameVersionNoModificationMessage)
 	} else {
-		modificationResult := h.newWorkloadModifier(logger).ModifyPod(pod)
+		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).ModifyPod(pod)
 		return h.postProcessInstrumentation(request, pod, modificationResult, true, logger)
 	}
 }
@@ -345,6 +397,7 @@ func (h *InstrumentationWebhookHandler) handlePod(
 func (h *InstrumentationWebhookHandler) handleReplicaSet(
 	request admission.Request,
 	gvkLabel string,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) admission.Response {
 	replicaSet := &appsv1.ReplicaSet{}
@@ -359,13 +412,18 @@ func (h *InstrumentationWebhookHandler) handleReplicaSet(
 	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(&replicaSet.ObjectMeta) {
 		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
 	} else if util.WasInstrumentedButHasOptedOutNow(&replicaSet.ObjectMeta) {
-		modificationResult := h.newWorkloadModifier(logger).RevertReplicaSet(replicaSet)
+		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).RevertReplicaSet(replicaSet)
 		return h.postProcessUninstrumentation(request, replicaSet, modificationResult, logger)
-	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(&replicaSet.ObjectMeta, h.Images) {
+	} else if workloads.InstrumentationIsUpToDate(
+		&replicaSet.ObjectMeta,
+		replicaSet.Spec.Template.Spec.Containers,
+		h.ClusterInstrumentationConfig.Images,
+		namespaceInstrumentationConfig,
+	) {
 		// deliberately not logging this, would be very noisy
 		return admission.Allowed(sameVersionNoModificationMessage)
 	} else {
-		modificationResult := h.newWorkloadModifier(logger).ModifyReplicaSet(replicaSet)
+		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).ModifyReplicaSet(replicaSet)
 		return h.postProcessInstrumentation(request, replicaSet, modificationResult, false, logger)
 	}
 }
@@ -373,6 +431,7 @@ func (h *InstrumentationWebhookHandler) handleReplicaSet(
 func (h *InstrumentationWebhookHandler) handleStatefulSet(
 	request admission.Request,
 	gvkLabel string,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) admission.Response {
 	statefulSet := &appsv1.StatefulSet{}
@@ -387,13 +446,18 @@ func (h *InstrumentationWebhookHandler) handleStatefulSet(
 	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(&statefulSet.ObjectMeta) {
 		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
 	} else if util.WasInstrumentedButHasOptedOutNow(&statefulSet.ObjectMeta) {
-		modificationResult := h.newWorkloadModifier(logger).RevertStatefulSet(statefulSet)
+		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).RevertStatefulSet(statefulSet)
 		return h.postProcessUninstrumentation(request, statefulSet, modificationResult, logger)
-	} else if util.HasBeenInstrumentedSuccessfullyByThisVersion(&statefulSet.ObjectMeta, h.Images) {
+	} else if workloads.InstrumentationIsUpToDate(
+		&statefulSet.ObjectMeta,
+		statefulSet.Spec.Template.Spec.Containers,
+		h.ClusterInstrumentationConfig.Images,
+		namespaceInstrumentationConfig,
+	) {
 		// deliberately not logging this, would be very noisy
 		return admission.Allowed(sameVersionNoModificationMessage)
 	} else {
-		modificationResult := h.newWorkloadModifier(logger).ModifyStatefulSet(statefulSet)
+		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).ModifyStatefulSet(statefulSet)
 		return h.postProcessInstrumentation(request, statefulSet, modificationResult, false, logger)
 	}
 }
@@ -483,15 +547,14 @@ func (h *InstrumentationWebhookHandler) postProcessUninstrumentation(
 	return admission.PatchResponseFromRaw(request.Object.Raw, marshalled)
 }
 
-func (h *InstrumentationWebhookHandler) newWorkloadModifier(logger *logr.Logger) *workloads.ResourceModifier {
+func (h *InstrumentationWebhookHandler) newWorkloadModifier(
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	logger *logr.Logger,
+) *workloads.ResourceModifier {
 	return workloads.NewResourceModifier(
-		util.InstrumentationMetadata{
-			Images:               h.Images,
-			InstrumentedBy:       actor,
-			OTelCollectorBaseUrl: h.OTelCollectorBaseUrl,
-			InstrumentationDebug: h.InstrumentationDebug,
-		},
-		h.ExtraConfig,
+		h.ClusterInstrumentationConfig,
+		namespaceInstrumentationConfig,
+		actor,
 		logger,
 	)
 }

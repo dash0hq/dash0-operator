@@ -15,6 +15,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
@@ -165,21 +166,49 @@ func newNotModifiedSkipLoggingResult(
 	}
 }
 
+func InstrumentationIsUpToDate(
+	objectMeta *metav1.ObjectMeta,
+	containers []corev1.Container,
+	images util.Images,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+) bool {
+	if !util.HasBeenInstrumentedSuccessfullyByThisVersion(objectMeta, images) {
+		return false
+	}
+	if otelPropagatorsEnvVarWillBeUpdatedForAtLeastOneContainer(containers, namespaceInstrumentationConfig) {
+		return false
+	}
+	return true
+}
+
 type ResourceModifier struct {
-	instrumentationMetadata util.InstrumentationMetadata
-	extraConfig             util.ExtraConfig
-	logger                  *logr.Logger
+	// configuration values relevant for instrumenting workloads which apply to the whole cluster, e.g. settings from
+	// the helm chart or the operator configuration resource.
+	clusterInstrumentationConfig util.ClusterInstrumentationConfig
+
+	// configuration values relevant for instrumenting workloads which apply to one namespace, e.g. settings from the
+	// monitoring resource.
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig
+
+	// the name of the component that applies the resource modifications, this will be written to the
+	// dash0.com/instrumented-by label
+	actor util.WorkloadModifierActor
+
+	// the logger to use for logging messages during the resource modification process
+	logger *logr.Logger
 }
 
 func NewResourceModifier(
-	instrumentationMetadata util.InstrumentationMetadata,
-	extraConfig util.ExtraConfig,
+	clusterInstrumentationConfig util.ClusterInstrumentationConfig,
+	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
+	actor util.WorkloadModifierActor,
 	logger *logr.Logger,
 ) *ResourceModifier {
 	return &ResourceModifier{
-		instrumentationMetadata: instrumentationMetadata,
-		extraConfig:             extraConfig,
-		logger:                  logger,
+		clusterInstrumentationConfig:   clusterInstrumentationConfig,
+		namespaceInstrumentationConfig: namespaceInstrumentationConfig,
+		actor:                          actor,
+		logger:                         logger,
 	}
 }
 
@@ -216,7 +245,7 @@ func (m *ResourceModifier) ModifyJob(job *batchv1.Job) ModificationResult {
 }
 
 func (m *ResourceModifier) AddLabelsToImmutableJob(job *batchv1.Job) ModificationResult {
-	util.AddInstrumentationLabels(&job.ObjectMeta, false, m.instrumentationMetadata)
+	util.AddInstrumentationLabels(&job.ObjectMeta, false, m.clusterInstrumentationConfig, m.actor)
 	// adding labels always works and is a modification that requires an update
 	return NewHasBeenModifiedResult()
 }
@@ -234,7 +263,7 @@ func (m *ResourceModifier) ModifyPod(pod *corev1.Pod) ModificationResult {
 	if hasBeenModified := m.modifyPodSpec(&pod.Spec, &pod.ObjectMeta, &pod.ObjectMeta); !hasBeenModified {
 		return NewNotModifiedNoChangesResult()
 	}
-	util.AddInstrumentationLabels(&pod.ObjectMeta, true, m.instrumentationMetadata)
+	util.AddInstrumentationLabels(&pod.ObjectMeta, true, m.clusterInstrumentationConfig, m.actor)
 	return NewHasBeenModifiedResult()
 }
 
@@ -257,8 +286,8 @@ func (m *ResourceModifier) modifyResource(
 	if hasBeenModified := m.modifyPodSpec(&podTemplateSpec.Spec, workloadMeta, podMeta); !hasBeenModified {
 		return NewNotModifiedNoChangesResult()
 	}
-	util.AddInstrumentationLabels(workloadMeta, true, m.instrumentationMetadata)
-	util.AddInstrumentationLabels(&podTemplateSpec.ObjectMeta, true, m.instrumentationMetadata)
+	util.AddInstrumentationLabels(workloadMeta, true, m.clusterInstrumentationConfig, m.actor)
+	util.AddInstrumentationLabels(&podTemplateSpec.ObjectMeta, true, m.clusterInstrumentationConfig, m.actor)
 	return NewHasBeenModifiedResult()
 }
 
@@ -379,7 +408,7 @@ func (m *ResourceModifier) createInitContainer(podSpec *corev1.PodSpec) *corev1.
 			Value: dash0InstrumentationBaseDirectory,
 		},
 	}
-	if m.instrumentationMetadata.InstrumentationDebug {
+	if m.clusterInstrumentationConfig.InstrumentationDebug {
 		initContainerEnv = append(initContainerEnv, corev1.EnvVar{
 			Name:  dash0CopyInstrumentationDebugEnvVarName,
 			Value: "true",
@@ -387,7 +416,7 @@ func (m *ResourceModifier) createInitContainer(podSpec *corev1.PodSpec) *corev1.
 	}
 	initContainer := &corev1.Container{
 		Name:  initContainerName,
-		Image: m.instrumentationMetadata.InitContainerImage,
+		Image: m.clusterInstrumentationConfig.InitContainerImage,
 		Env:   initContainerEnv,
 		SecurityContext: &corev1.SecurityContext{
 			AllowPrivilegeEscalation: &initContainerAllowPrivilegeEscalation,
@@ -400,7 +429,7 @@ func (m *ResourceModifier) createInitContainer(podSpec *corev1.PodSpec) *corev1.
 				Type: corev1.SeccompProfileTypeRuntimeDefault,
 			},
 		},
-		Resources: m.extraConfig.InstrumentationInitContainerResources.ToResourceRequirements(),
+		Resources: m.clusterInstrumentationConfig.ExtraConfig.InstrumentationInitContainerResources.ToResourceRequirements(),
 		VolumeMounts: []corev1.VolumeMount{
 			{
 				Name:      dash0VolumeName,
@@ -410,8 +439,8 @@ func (m *ResourceModifier) createInitContainer(podSpec *corev1.PodSpec) *corev1.
 		},
 	}
 
-	if m.instrumentationMetadata.InitContainerImagePullPolicy != "" {
-		initContainer.ImagePullPolicy = m.instrumentationMetadata.InitContainerImagePullPolicy
+	if m.clusterInstrumentationConfig.InitContainerImagePullPolicy != "" {
+		initContainer.ImagePullPolicy = m.clusterInstrumentationConfig.InitContainerImagePullPolicy
 	}
 	return initContainer
 }
@@ -457,7 +486,7 @@ func (m *ResourceModifier) addEnvironmentVariables(
 
 	// The DASH0_NODE_IP environment variable is required to resolve the collector base URL, in case it uses the
 	// node-local/host port address. The collectorBaseUrl will be "http://$(DASH0_NODE_IP):40318" in this setup.
-	m.addOrReplaceEnvironmentVariable(
+	addOrReplaceEnvironmentVariable(
 		container,
 		corev1.EnvVar{
 			Name: otelcolresources.EnvVarDash0NodeIp,
@@ -469,22 +498,22 @@ func (m *ResourceModifier) addEnvironmentVariables(
 		},
 	)
 
-	collectorBaseUrl := m.instrumentationMetadata.OTelCollectorBaseUrl
-	m.addOrReplaceEnvironmentVariable(
+	collectorBaseUrl := m.clusterInstrumentationConfig.OTelCollectorBaseUrl
+	addOrReplaceEnvironmentVariable(
 		container,
 		corev1.EnvVar{
 			Name:  envVarDash0CollectorBaseUrlName,
 			Value: collectorBaseUrl,
 		},
 	)
-	m.addOrReplaceEnvironmentVariable(
+	addOrReplaceEnvironmentVariable(
 		container,
 		corev1.EnvVar{
 			Name:  envVarOtelExporterOtlpEndpointName,
 			Value: collectorBaseUrl,
 		},
 	)
-	m.addOrReplaceEnvironmentVariable(
+	addOrReplaceEnvironmentVariable(
 		container,
 		corev1.EnvVar{
 			Name:  envVarOtelExporterOtlpProtocolName,
@@ -492,7 +521,9 @@ func (m *ResourceModifier) addEnvironmentVariables(
 		},
 	)
 
-	m.addOrReplaceEnvironmentVariable(
+	m.handleOTelPropagatorsEnvVar(container)
+
+	addOrReplaceEnvironmentVariable(
 		container,
 		corev1.EnvVar{
 			Name: envVarDash0NamespaceName,
@@ -504,7 +535,7 @@ func (m *ResourceModifier) addEnvironmentVariables(
 		},
 	)
 
-	m.addOrReplaceEnvironmentVariable(
+	addOrReplaceEnvironmentVariable(
 		container,
 		corev1.EnvVar{
 			Name: envVarDash0PodName,
@@ -516,7 +547,7 @@ func (m *ResourceModifier) addEnvironmentVariables(
 		},
 	)
 
-	m.addOrReplaceEnvironmentVariable(
+	addOrReplaceEnvironmentVariable(
 		container,
 		corev1.EnvVar{
 			Name: envVarDash0PodUidName,
@@ -528,7 +559,7 @@ func (m *ResourceModifier) addEnvironmentVariables(
 		},
 	)
 
-	m.addOrReplaceEnvironmentVariable(
+	addOrReplaceEnvironmentVariable(
 		container,
 		corev1.EnvVar{
 			Name:  envVarDash0ContainerName,
@@ -570,7 +601,7 @@ func (m *ResourceModifier) addEnvironmentVariables(
 		}
 	} else if workloadMetaHasName {
 		if !hasServiceAttributes.serviceName {
-			m.addOrReplaceEnvironmentVariable(
+			addOrReplaceEnvironmentVariable(
 				container,
 				corev1.EnvVar{
 					Name:  envVarDash0ServiceName,
@@ -580,7 +611,7 @@ func (m *ResourceModifier) addEnvironmentVariables(
 		}
 		if !hasServiceAttributes.serviceNamespace {
 			if partOfFromWorkloadMeta, workloadMetaHasPartOf := workloadMeta.Labels[util.AppKubernetesIoPartOfLabel]; workloadMetaHasPartOf {
-				m.addOrReplaceEnvironmentVariable(
+				addOrReplaceEnvironmentVariable(
 					container,
 					corev1.EnvVar{
 						Name:  envVarDash0ServiceNamespace,
@@ -591,7 +622,7 @@ func (m *ResourceModifier) addEnvironmentVariables(
 		}
 		if !hasServiceAttributes.serviceVersion {
 			if versionFromWorkloadMeta, workloadMetaHasVersion := workloadMeta.Labels[util.AppKubernetesIoVersionLabel]; workloadMetaHasVersion {
-				m.addOrReplaceEnvironmentVariable(
+				addOrReplaceEnvironmentVariable(
 					container,
 					corev1.EnvVar{
 						Name:  envVarDash0ServiceVersionName,
@@ -625,7 +656,7 @@ func (m *ResourceModifier) addEnvironmentVariables(
 				resourceAttributeList,
 				fmt.Sprintf("%s=%s", resourceAttributeKey, resourceAttributeValue))
 		}
-		m.addOrReplaceEnvironmentVariable(
+		addOrReplaceEnvironmentVariable(
 			container,
 			corev1.EnvVar{
 				Name:  envVarDash0ResourceAttributesName,
@@ -633,8 +664,8 @@ func (m *ResourceModifier) addEnvironmentVariables(
 			})
 	}
 
-	if m.instrumentationMetadata.InstrumentationDebug {
-		m.addOrReplaceEnvironmentVariable(
+	if m.clusterInstrumentationConfig.InstrumentationDebug {
+		addOrReplaceEnvironmentVariable(
 			container,
 			corev1.EnvVar{
 				Name:  dash0InjectorDebugEnvVarName,
@@ -682,10 +713,120 @@ func (m *ResourceModifier) handleLdPreloadEnvVar(
 	}
 }
 
+func otelPropagatorsEnvVarWillBeUpdatedForAtLeastOneContainer(containers []corev1.Container, namespaceInstrumentationConfig util.NamespaceInstrumentationConfig) bool {
+	for _, container := range containers {
+		if otelPropagatorsCanBeUpdatedForContainer(ptr.To(container), namespaceInstrumentationConfig) {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *ResourceModifier) handleOTelPropagatorsEnvVar(container *corev1.Container) {
+	if otelPropagatorsCanBeUpdatedForContainer(container, m.namespaceInstrumentationConfig) {
+		if util.IsEmpty(m.namespaceInstrumentationConfig.TraceContextPropagators) {
+			removeEnvironmentVariable(container, util.OtelPropagatorsEnvVarName)
+		} else {
+			addOrReplaceEnvironmentVariable(
+				container,
+				corev1.EnvVar{
+					Name:  util.OtelPropagatorsEnvVarName,
+					Value: strings.TrimSpace(*m.namespaceInstrumentationConfig.TraceContextPropagators),
+				},
+			)
+		}
+	}
+}
+
+func otelPropagatorsCanBeUpdatedForContainer(container *corev1.Container, namespaceInstrumentationConfig util.NamespaceInstrumentationConfig) bool {
+	envVarOnContainer := util.GetEnvVar(container, util.OtelPropagatorsEnvVarName)
+
+	if envVarOnContainer != nil && envVarOnContainer.ValueFrom != nil {
+		// The environment variable OTEL_PROPAGATORS is set via ValueFrom, it was not set by the Dash0 operator, and
+		// the operator is not supposed to change it, no matter what the monitoring resource specifies.
+		return false
+	}
+
+	if util.IsEmpty(namespaceInstrumentationConfig.TraceContextPropagators) {
+		// The monitoring resource does not have spec.instrumentWorkloads.traceContext.propagators set. We might need
+		// to remove the environment variable OTEL_PROPAGATORS from the container, but only if there is such an
+		// environment variable, and it has been set by the operator.
+
+		if util.IsEnvVarUnsetOrEmpty(envVarOnContainer) {
+			// The monitoring resource does not have spec.instrumentWorkloads.traceContext.propagators set, and the
+			// container does not have the environment variable OTEL_PROPAGATORS set, hence nothing needs to be changed.
+			return false
+		} else {
+			// The monitoring resource does not have spec.instrumentWorkloads.traceContext.propagators set, but the
+			// container has the environment variable OTEL_PROPAGATORS set. If it has been set by the operator, we
+			// need to remove it, otherwise we leave it as is. To determine whether it has been set by the operator,
+			// we compare the current env var value against the previous requested setting in the monitoring resource.
+			if util.IsEmpty(namespaceInstrumentationConfig.PreviousTraceContextPropagators) {
+				// There is no previous trace context propagators setting, apparently the env var has not been set by
+				// the operator, do nothing.
+				return false
+			}
+			if envVarOnContainer != nil &&
+				strings.TrimSpace(envVarOnContainer.Value) == strings.TrimSpace(*namespaceInstrumentationConfig.PreviousTraceContextPropagators) {
+				// There previous trace context propagators setting matches the current env var value, apparently the
+				// env var has been set by the operator, remove it.
+				return true
+			} else {
+				// There previous trace context propagators setting exists, but it does not match the current env var
+				// value, apparently the env var has not been set by the operator, so we do not remove it.
+				return false
+			}
+		}
+	} // if util.IsEmpty(namespaceInstrumentationConfig.TraceContextPropagators) {
+
+	// The monitoring resource does have a spec.instrumentWorkloads.traceContext.propagators value. We might need
+	// to add or update the environment variable OTEL_PROPAGATORS from the container
+
+	if util.IsEnvVarUnsetOrEmpty(envVarOnContainer) {
+		// The container currently does not have the OTEL_PROPAGATORS environment variable set. It is safe to add it,
+		// as there is no risk of us overwriting an environment variable that was set by the user directly on the pod
+		// spec.
+		return true
+	} else {
+		currentEnvVarValue := (*envVarOnContainer).Value
+		desiredValueFromMonitoringResource := *namespaceInstrumentationConfig.TraceContextPropagators
+
+		if strings.TrimSpace(currentEnvVarValue) == strings.TrimSpace(desiredValueFromMonitoringResource) {
+			// The environment variable is already up to date, no change is required.
+			return false
+		}
+
+		// The container already has the OTEL_PROPAGATORS environment variable, and it has a different value then
+		// requested in the monitoring resource. We can only change the value safely if the current value has been set
+		// by the operator, which we can determine by checking the previous requested setting in the monitoring
+		// resource's status.
+
+		if util.IsEmpty(namespaceInstrumentationConfig.PreviousTraceContextPropagators) {
+			// There is no previous trace context propagators setting, apparently the env var has not been set by
+			// the operator, do nothing.
+			return false
+		}
+
+		// The monitoring resource does have a spec.instrumentWorkloads.traceContext.propagators value, but the
+		// container already has this environment variable set. We only overwrite the current env var if its value
+		// matches the previous requested setting in the monitoring resource, which indicates the current env var has
+		// been set by the operator.
+		if strings.TrimSpace(envVarOnContainer.Value) == strings.TrimSpace(*namespaceInstrumentationConfig.PreviousTraceContextPropagators) {
+			// The previous trace context propagators setting matches the current env var value, apparently the current
+			// env var has been set by the operator, update it with the new value from the monitoring resource.
+			return true
+		} else {
+			// The previous trace context propagators setting does not match the current env var value, hence the env
+			// var has not been set by the operator, do nothing.
+			return false
+		}
+	}
+}
+
 func (m *ResourceModifier) checkContainerForServiceAttributes(container *corev1.Container) containerHasServiceAttributes {
 	hasServiceAttributes := containerHasServiceAttributes{}
-	otelServiceName := getEnvVar(container, util.OtelServiceNameEnvVarName)
-	otelResourceAttributes := getEnvVar(container, util.OtelResourceAttributesEnvVarName)
+	otelServiceName := util.GetEnvVar(container, util.OtelServiceNameEnvVarName)
+	otelResourceAttributes := util.GetEnvVar(container, util.OtelResourceAttributesEnvVarName)
 	var otelResourceAttributesKeyValuePairs []string
 	if otelResourceAttributes != nil &&
 		otelResourceAttributes.ValueFrom == nil &&
@@ -714,17 +855,7 @@ func (m *ResourceModifier) checkContainerForServiceAttributes(container *corev1.
 	return hasServiceAttributes
 }
 
-func getEnvVar(container *corev1.Container, name string) *corev1.EnvVar {
-	idx := slices.IndexFunc(container.Env, func(c corev1.EnvVar) bool {
-		return c.Name == name
-	})
-	if idx >= 0 {
-		return &container.Env[idx]
-	}
-	return nil
-}
-
-func (m *ResourceModifier) addOrReplaceEnvironmentVariable(container *corev1.Container, envVar corev1.EnvVar) {
+func addOrReplaceEnvironmentVariable(container *corev1.Container, envVar corev1.EnvVar) {
 	if container.Env == nil {
 		container.Env = make([]corev1.EnvVar, 0)
 	}
@@ -742,6 +873,7 @@ func (m *ResourceModifier) addOrReplaceEnvironmentVariable(container *corev1.Con
 		container.Env[idx].ValueFrom = envVar.ValueFrom
 	}
 }
+
 func (m *ResourceModifier) conditionallyAddEnvVarFromLabelFieldSelector(
 	container *corev1.Container,
 	podMeta *metav1.ObjectMeta,
@@ -758,7 +890,7 @@ func (m *ResourceModifier) addEnvVarFromLabelFieldSelector(
 	envVarName string,
 	labelName string,
 ) {
-	m.addOrReplaceEnvironmentVariable(
+	addOrReplaceEnvironmentVariable(
 		container,
 		corev1.EnvVar{
 			Name: envVarName,
@@ -924,19 +1056,20 @@ func (m *ResourceModifier) removeMount(container *corev1.Container) {
 func (m *ResourceModifier) removeEnvironmentVariables(container *corev1.Container) {
 	m.removeLegacyEnvironmentVariables(container)
 	m.removeLdPreload(container)
-	m.removeEnvironmentVariable(container, otelcolresources.EnvVarDash0NodeIp)
-	m.removeEnvironmentVariable(container, envVarDash0CollectorBaseUrlName)
-	m.removeEnvironmentVariable(container, envVarOtelExporterOtlpEndpointName)
-	m.removeEnvironmentVariable(container, envVarOtelExporterOtlpProtocolName)
-	m.removeEnvironmentVariable(container, envVarDash0NamespaceName)
-	m.removeEnvironmentVariable(container, envVarDash0PodName)
-	m.removeEnvironmentVariable(container, envVarDash0PodUidName)
-	m.removeEnvironmentVariable(container, envVarDash0ContainerName)
-	m.removeEnvironmentVariable(container, envVarDash0ServiceNamespace)
-	m.removeEnvironmentVariable(container, envVarDash0ServiceName)
-	m.removeEnvironmentVariable(container, envVarDash0ServiceVersionName)
-	m.removeEnvironmentVariable(container, envVarDash0ResourceAttributesName)
-	m.removeEnvironmentVariable(container, dash0InjectorDebugEnvVarName)
+	removeEnvironmentVariable(container, otelcolresources.EnvVarDash0NodeIp)
+	removeEnvironmentVariable(container, envVarDash0CollectorBaseUrlName)
+	removeEnvironmentVariable(container, envVarOtelExporterOtlpEndpointName)
+	removeEnvironmentVariable(container, envVarOtelExporterOtlpProtocolName)
+	m.removeOtelPropagatorsIfCurrentValueMatchesConfig(container)
+	removeEnvironmentVariable(container, envVarDash0NamespaceName)
+	removeEnvironmentVariable(container, envVarDash0PodName)
+	removeEnvironmentVariable(container, envVarDash0PodUidName)
+	removeEnvironmentVariable(container, envVarDash0ContainerName)
+	removeEnvironmentVariable(container, envVarDash0ServiceNamespace)
+	removeEnvironmentVariable(container, envVarDash0ServiceName)
+	removeEnvironmentVariable(container, envVarDash0ServiceVersionName)
+	removeEnvironmentVariable(container, envVarDash0ResourceAttributesName)
+	removeEnvironmentVariable(container, dash0InjectorDebugEnvVarName)
 }
 
 func (m *ResourceModifier) removeLdPreload(container *corev1.Container) {
@@ -980,7 +1113,28 @@ func (m *ResourceModifier) removeLdPreload(container *corev1.Container) {
 	container.Env[idx].Value = strings.Join(libraries, separator)
 }
 
-func (m *ResourceModifier) removeEnvironmentVariable(container *corev1.Container, name string) {
+func (m *ResourceModifier) removeOtelPropagatorsIfCurrentValueMatchesConfig(container *corev1.Container) {
+	if m.namespaceInstrumentationConfig.TraceContextPropagators != nil &&
+		strings.TrimSpace(*m.namespaceInstrumentationConfig.TraceContextPropagators) != "" {
+		idx := slices.IndexFunc(container.Env, func(c corev1.EnvVar) bool {
+			return c.Name == util.OtelPropagatorsEnvVarName
+		})
+		if idx < 0 {
+			// env var is not set, nothing to do
+			return
+		}
+		existingEnvVar := container.Env[idx]
+		if existingEnvVar.ValueFrom != nil {
+			// if OTEL_PROPAGATORS is set via ValueFrom, it hasn't been set by us, leave it alone
+			return
+		}
+		if strings.TrimSpace(existingEnvVar.Value) == strings.TrimSpace(*m.namespaceInstrumentationConfig.TraceContextPropagators) {
+			removeEnvironmentVariable(container, util.OtelPropagatorsEnvVarName)
+		}
+	}
+}
+
+func removeEnvironmentVariable(container *corev1.Container, name string) {
 	if container.Env == nil {
 		return
 	}
@@ -994,7 +1148,7 @@ func (m *ResourceModifier) removeEnvironmentVariable(container *corev1.Container
 // x + 1 stops setting it, it would never be removed without us actively cleaning up.
 func (m *ResourceModifier) removeLegacyEnvironmentVariables(container *corev1.Container) {
 	m.removeLegacyEnvVarNodeOptions(container)
-	m.removeEnvironmentVariable(container, "DASH0_SERVICE_INSTANCE_ID")
+	removeEnvironmentVariable(container, "DASH0_SERVICE_INSTANCE_ID")
 }
 
 func (m *ResourceModifier) removeLegacyEnvVarNodeOptions(container *corev1.Container) {

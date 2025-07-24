@@ -15,7 +15,7 @@ import (
 	"go.opentelemetry.io/collector/pdata/plog"
 	"go.opentelemetry.io/collector/pdata/ptrace"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	"github.com/dash0hq/dash0-operator/internal/startup"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -525,152 +525,149 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				undeployDash0MonitoringResource(applicationUnderTestNamespace)
 			})
 
-			Describe("monitoring resource controller", func() {
+			Describe("when instrumenting existing workloads", func() {
 
-				Describe("when instrumenting existing workloads", func() {
+				It("should instrument and uninstrument all workload types", func() {
+					testIds := make(map[string]string)
+					workloadTestConfigs := workloadTestConfigs()
+					for _, c := range workloadTestConfigs {
+						mapKey := fmt.Sprintf(
+							"%s-%s",
+							c.runtime.runtimeTypeLabel,
+							c.workloadType.workloadTypeString,
+						)
+						testIds[mapKey] = generateTestId(c.runtime, c.workloadType)
+					}
 
-					It("should instrument and uninstrument all workload types", func() {
-						testIds := make(map[string]string)
-						workloadTestConfigs := workloadTestConfigs()
-						for _, c := range workloadTestConfigs {
-							mapKey := fmt.Sprintf(
+					By("deploying all workloads")
+					runInParallel(workloadTestConfigs, func(c workloadTestConfig) {
+						By(
+							fmt.Sprintf(
+								"deploying the %s %s", c.runtime.runtimeTypeLabel, c.workloadType.workloadTypeString))
+						Expect(installWorkload(
+							c.runtime,
+							c.workloadType,
+							applicationUnderTestNamespace,
+							testIds[fmt.Sprintf(
 								"%s-%s",
 								c.runtime.runtimeTypeLabel,
 								c.workloadType.workloadTypeString,
-							)
-							testIds[mapKey] = generateTestId(c.runtime, c.workloadType)
-						}
+							)],
+						)).To(Succeed())
+					})
+					By("all workloads have been deployed")
 
-						By("deploying all workloads")
-						runInParallel(workloadTestConfigs, func(c workloadTestConfig) {
-							By(
-								fmt.Sprintf(
-									"deploying the %s %s", c.runtime.runtimeTypeLabel, c.workloadType.workloadTypeString))
-							Expect(installWorkload(
-								c.runtime,
-								c.workloadType,
-								applicationUnderTestNamespace,
-								testIds[fmt.Sprintf(
-									"%s-%s",
-									c.runtime.runtimeTypeLabel,
-									c.workloadType.workloadTypeString,
-								)],
-							)).To(Succeed())
-						})
-						By("all workloads have been deployed")
+					deployDash0MonitoringResource(
+						applicationUnderTestNamespace,
+						dash0MonitoringValuesDefault,
+						operatorNamespace,
+					)
 
-						deployDash0MonitoringResource(
+					// Note: On kind, this fails sometimes due to missing workload resource attribute
+					//  - k8s.deployment.name: ! FAILED - expected dash0-operator-nodejs-20-express-test-deployment but the
+					//    span has no such attribute
+					//  - k8s.pod.name: passed
+					//  - timestamp: skipped - no lower bound provided
+					//  - span.kind: passed
+					//  - http.target: passed
+					//  Expected
+					//      <bool>: false
+					//  to be true
+					//  In [It] at: /Users/bastian/dco/test/e2e/verify_instrumentation.go:64 @ 11/26/24 10:28:53.645
+					// No amount of retrying helps. Once the collector is in this state, all spans lack that resource
+					// attribute. See comment in spans.go#workloadSpansResourceMatcher.
+					runInParallel(workloadTestConfigs, func(c workloadTestConfig) {
+						By(fmt.Sprintf("verifying that the %s %s has been instrumented by the controller",
+							c.runtime.runtimeTypeLabel,
+							c.workloadType.workloadTypeString,
+						))
+						verifyThatWorkloadHasBeenInstrumented(
 							applicationUnderTestNamespace,
-							dash0MonitoringValuesDefault,
-							operatorNamespace,
-						)
-
-						// Note: On kind, this fails sometimes due to missing workload resource attribute
-						//  - k8s.deployment.name: ! FAILED - expected dash0-operator-nodejs-20-express-test-deployment but the
-						//    span has no such attribute
-						//  - k8s.pod.name: passed
-						//  - timestamp: skipped - no lower bound provided
-						//  - span.kind: passed
-						//  - http.target: passed
-						//  Expected
-						//      <bool>: false
-						//  to be true
-						//  In [It] at: /Users/bastian/dco/test/e2e/verify_instrumentation.go:64 @ 11/26/24 10:28:53.645
-						// No amount of retrying helps. Once the collector is in this state, all spans lack that resource
-						// attribute. See comment in spans.go#workloadSpansResourceMatcher.
-						runInParallel(workloadTestConfigs, func(c workloadTestConfig) {
-							By(fmt.Sprintf("verifying that the %s %s has been instrumented by the controller",
+							c.runtime,
+							c.workloadType,
+							testIds[fmt.Sprintf(
+								"%s-%s",
 								c.runtime.runtimeTypeLabel,
 								c.workloadType.workloadTypeString,
-							))
-							verifyThatWorkloadHasBeenInstrumented(
-								applicationUnderTestNamespace,
-								c.runtime,
-								c.workloadType,
-								testIds[fmt.Sprintf(
-									"%s-%s",
-									c.runtime.runtimeTypeLabel,
-									c.workloadType.workloadTypeString,
-								)],
-								images,
-								"controller",
-								true,
-							)
-						})
-						By("all workloads have been instrumented")
-
-						undeployDash0MonitoringResource(applicationUnderTestNamespace)
-
-						// Deliberately kill any running cronjob or job pods, plus jobs spawned by a cronjob: There
-						// could be old job/cronjob pods still running, those do not get restarted automatically, and
-						// they could still produce spans, because instrumentation was active at the time they were
-						// created.
-						killBatchJobsAndPods(applicationUnderTestNamespace)
-
-						runInParallel(workloadTestConfigs, func(c workloadTestConfig) {
-							verifyThatInstrumentationHasBeenReverted(
-								applicationUnderTestNamespace,
-								c.runtime,
-								c.workloadType,
-								testIds[fmt.Sprintf(
-									"%s-%s",
-									c.runtime.runtimeTypeLabel,
-									c.workloadType.workloadTypeString,
-								)],
-								"controller",
-							)
-						})
-						By("all workloads have been reverted")
-					})
-				})
-
-				Describe("when it detects existing jobs or ownerless pods", func() {
-					It("should label immutable jobs accordingly", func() {
-						testId := generateTestId(runtimeTypeNodeJs, workloadTypeJob)
-						By("installing the Node.js job")
-						Expect(installNodeJsJob(applicationUnderTestNamespace, testId)).To(Succeed())
-						deployDash0MonitoringResource(
-							applicationUnderTestNamespace,
-							dash0MonitoringValuesDefault,
-							operatorNamespace,
+							)],
+							images,
+							"controller",
+							true,
 						)
-						By("verifying that the Node.js job has been labelled by the controller and that an event has been emitted")
-						Eventually(func(g Gomega) {
-							verifyLabels(g, applicationUnderTestNamespace, runtimeTypeNodeJs, workloadTypeJob, false, images, "controller")
-							verifyFailedInstrumentationEvent(
-								g,
-								applicationUnderTestNamespace,
-								runtimeTypeNodeJs,
-								workloadTypeJob,
-								"Dash0 instrumentation of this workload by the controller has not been successful. "+
-									"Error message: Dash0 cannot instrument the existing job "+
-									"e2e-application-under-test-namespace/dash0-operator-nodejs-20-express-test-job, since "+
-									"this type of workload is immutable.",
-							)
-						}, labelChangeTimeout, pollingInterval).Should(Succeed())
+					})
+					By("all workloads have been instrumented")
 
-						undeployDash0MonitoringResource(applicationUnderTestNamespace)
+					undeployDash0MonitoringResource(applicationUnderTestNamespace)
 
-						verifyThatFailedInstrumentationAttemptLabelsHaveBeenRemoved(
+					// Deliberately kill any running cronjob or job pods, plus jobs spawned by a cronjob: There
+					// could be old job/cronjob pods still running, those do not get restarted automatically, and
+					// they could still produce spans, because instrumentation was active at the time they were
+					// created.
+					killBatchJobsAndPods(applicationUnderTestNamespace)
+
+					runInParallel(workloadTestConfigs, func(c workloadTestConfig) {
+						verifyThatInstrumentationHasBeenReverted(
+							applicationUnderTestNamespace,
+							c.runtime,
+							c.workloadType,
+							testIds[fmt.Sprintf(
+								"%s-%s",
+								c.runtime.runtimeTypeLabel,
+								c.workloadType.workloadTypeString,
+							)],
+							"controller",
+						)
+					})
+					By("all workloads have been reverted")
+				})
+			})
+
+			Describe("when it detects existing jobs or ownerless pods", func() {
+				It("should label immutable jobs accordingly", func() {
+					testId := generateTestId(runtimeTypeNodeJs, workloadTypeJob)
+					By("installing the Node.js job")
+					Expect(installNodeJsJob(applicationUnderTestNamespace, testId)).To(Succeed())
+					deployDash0MonitoringResource(
+						applicationUnderTestNamespace,
+						dash0MonitoringValuesDefault,
+						operatorNamespace,
+					)
+					By("verifying that the Node.js job has been labelled by the controller and that an event has been emitted")
+					Eventually(func(g Gomega) {
+						verifyLabels(g, applicationUnderTestNamespace, runtimeTypeNodeJs, workloadTypeJob, false, images, "controller")
+						verifyFailedInstrumentationEvent(
+							g,
 							applicationUnderTestNamespace,
 							runtimeTypeNodeJs,
 							workloadTypeJob,
+							"Dash0 instrumentation of this workload by the controller has not been successful. "+
+								"Error message: Dash0 cannot instrument the existing job "+
+								"e2e-application-under-test-namespace/dash0-operator-nodejs-20-express-test-job, since "+
+								"this type of workload is immutable.",
 						)
-					})
+					}, labelChangeTimeout, pollingInterval).Should(Succeed())
 
-					It("should ignore existing pods", func() {
-						By("installing the Node.js pod")
-						Expect(installNodeJsPod(applicationUnderTestNamespace)).To(Succeed())
-						deployDash0MonitoringResource(
-							applicationUnderTestNamespace,
-							dash0MonitoringValuesDefault,
-							operatorNamespace,
-						)
-						By("verifying that the Node.js pod has not been labelled")
-						Eventually(func(g Gomega) {
-							verifyNoDash0Labels(g, applicationUnderTestNamespace, runtimeTypeNodeJs, workloadTypePod)
-						}, labelChangeTimeout, pollingInterval).Should(Succeed())
-					})
+					undeployDash0MonitoringResource(applicationUnderTestNamespace)
+
+					verifyThatFailedInstrumentationAttemptLabelsHaveBeenRemoved(
+						applicationUnderTestNamespace,
+						runtimeTypeNodeJs,
+						workloadTypeJob,
+					)
+				})
+
+				It("should ignore existing pods", func() {
+					By("installing the Node.js pod")
+					Expect(installNodeJsPod(applicationUnderTestNamespace)).To(Succeed())
+					deployDash0MonitoringResource(
+						applicationUnderTestNamespace,
+						dash0MonitoringValuesDefault,
+						operatorNamespace,
+					)
+					By("verifying that the Node.js pod has not been labelled")
+					Eventually(func(g Gomega) {
+						verifyNoDash0Labels(g, applicationUnderTestNamespace, runtimeTypeNodeJs, workloadTypePod)
+					}, labelChangeTimeout, pollingInterval).Should(Succeed())
 				})
 			})
 
@@ -729,14 +726,14 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 			})
 
 			Describe("when updating the Dash0Monitoring resource", func() {
-				It("should instrument workloads when the Dash0Monitoring resource is switched from instrumentWorkloads=none to instrumentWorkloads=all", func() { //nolint
+				It("should instrument workloads when the Dash0Monitoring resource is switched from instrumentWorkloads.mode=none to instrumentWorkloads.mode=all", func() { //nolint
 					testId := generateTestId(runtimeTypeNodeJs, workloadTypeStatefulSet)
 					deployDash0MonitoringResource(
 						applicationUnderTestNamespace,
 						dash0MonitoringValues{
-							Endpoint:            defaultEndpoint,
-							Token:               defaultToken,
-							InstrumentWorkloads: dash0v1alpha1.None,
+							Endpoint:                defaultEndpoint,
+							Token:                   defaultToken,
+							InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeNone,
 						},
 						operatorNamespace,
 					)
@@ -751,7 +748,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 					updateInstrumentWorkloadsModeOfDash0MonitoringResource(
 						applicationUnderTestNamespace,
-						dash0v1alpha1.All,
+						dash0common.InstrumentWorkloadsModeAll,
 					)
 
 					By("verifying that the Node.js stateful set has been instrumented by the controller")
@@ -766,7 +763,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					)
 				})
 
-				It("should revert an instrumented workload when the Dash0Monitoring resource is switched from instrumentWorkloads=all to instrumentWorkloads=none", func() { //nolint
+				It("should revert an instrumented workload when the Dash0Monitoring resource is switched from instrumentWorkloads.mode=all to instrumentWorkloads.mode=none", func() { //nolint
 					testId := generateTestId(runtimeTypeNodeJs, workloadTypeDeployment)
 					deployDash0MonitoringResource(
 						applicationUnderTestNamespace,
@@ -787,10 +784,10 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 						true,
 					)
 
-					By("updating the Dash0Monitoring resource to InstrumentWorkloads=none")
+					By("updating the Dash0Monitoring resource to instrumentWorkloads.mode=none")
 					updateInstrumentWorkloadsModeOfDash0MonitoringResource(
 						applicationUnderTestNamespace,
-						dash0v1alpha1.None,
+						dash0common.InstrumentWorkloadsModeNone,
 					)
 
 					verifyThatInstrumentationHasBeenReverted(
@@ -819,6 +816,44 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					Eventually(func(g Gomega) {
 						verifySelfMonitoringMetrics(g, timestampLowerBound)
 					}, 90*time.Second, time.Second).Should(Succeed())
+				})
+			})
+
+			Describe("when using the v1alpha1 version of the monitoring resource", func() {
+
+				It("should instrument and uninstrument workloads", func() {
+					testId := generateTestId(runtimeTypeNodeJs, workloadTypeDeployment)
+
+					By("installing the Node.js deployment")
+					Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+
+					By("deploying the v1alpha1 Dash0 monitoring resource")
+					deployDash0MonitoringResourceV1Alpha1(
+						applicationUnderTestNamespace,
+						dash0MonitoringValuesDefault,
+						operatorNamespace,
+					)
+
+					By("verifying that the Node.js workload has been instrumented by the controller")
+					verifyThatWorkloadHasBeenInstrumented(
+						applicationUnderTestNamespace,
+						runtimeTypeNodeJs,
+						workloadTypeDeployment,
+						testId,
+						images,
+						"controller",
+						true,
+					)
+					By("removing the Dash0 monitoring resource")
+					undeployDash0MonitoringResource(applicationUnderTestNamespace)
+					By("verifying that the Node.js deployment has been uninstrumented")
+					verifyThatInstrumentationHasBeenReverted(
+						applicationUnderTestNamespace,
+						runtimeTypeNodeJs,
+						workloadTypeDeployment,
+						testId,
+						"controller",
+					)
 				})
 			})
 
@@ -882,7 +917,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 			})
 		})
 
-		Describe("metrics & self-monitoring", func() {
+		Describe("metrics collection", func() {
 			var timestampLowerBound time.Time
 
 			// Note: This test case deliberately works without an operator configuration resource, instead only using a
@@ -1045,10 +1080,10 @@ traces:
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
 					dash0MonitoringValues{
-						InstrumentWorkloads: dash0v1alpha1.All,
-						Endpoint:            defaultEndpoint,
-						Token:               defaultToken,
-						Filter:              filter,
+						InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeAll,
+						Endpoint:                defaultEndpoint,
+						Token:                   defaultToken,
+						Filter:                  filter,
 					},
 					operatorNamespace,
 				)
@@ -1137,10 +1172,10 @@ trace_statements:
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
 					dash0MonitoringValues{
-						InstrumentWorkloads: dash0v1alpha1.All,
-						Endpoint:            defaultEndpoint,
-						Token:               defaultToken,
-						Transform:           transform,
+						InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeAll,
+						Endpoint:                defaultEndpoint,
+						Token:                   defaultToken,
+						Transform:               transform,
 					},
 					operatorNamespace,
 				)
@@ -1260,7 +1295,7 @@ trace_statements:
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
 					dash0MonitoringValues{
-						InstrumentWorkloads: dash0v1alpha1.None,
+						InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeNone,
 					},
 					operatorNamespace,
 				)
@@ -1379,9 +1414,9 @@ trace_statements:
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
 					dash0MonitoringValues{
-						InstrumentWorkloads: dash0v1alpha1.All,
-						Endpoint:            "",
-						Token:               "",
+						InstrumentWorkloadsMode: dash0common.InstrumentWorkloadsModeAll,
+						Endpoint:                "",
+						Token:                   "",
 					},
 					operatorNamespace,
 				)

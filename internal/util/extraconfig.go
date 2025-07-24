@@ -18,6 +18,9 @@ type ResourceRequirementsWithGoMemLimit struct {
 	GoMemLimit string              `json:"gomemlimit,omitempty"`
 }
 
+// ExtraConfig holds the additional configuration values for the operator, which the operator reads from
+// /etc/config/extra.yaml at startup, mostly Kubernetes-related settings like resource requests, resource limits, the
+// filelog offset volume and tolerations for the collector daemonset.
 type ExtraConfig struct {
 	InstrumentationInitContainerResources ResourceRequirementsWithGoMemLimit `json:"initContainerResources"`
 

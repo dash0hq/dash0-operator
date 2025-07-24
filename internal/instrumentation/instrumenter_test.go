@@ -14,7 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
-	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/dash0monitoring/v1alpha1"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -39,7 +39,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 	var createdObjectsInstrumenterTest []client.Object
 
 	var instrumenter *Instrumenter
-	var dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring
+	var dash0MonitoringResource *dash0v1beta1.Dash0Monitoring
 
 	BeforeAll(func() {
 		EnsureTestNamespaceExists(ctx, k8sClient)
@@ -55,11 +55,13 @@ var _ = Describe("The instrumenter", Ordered, func() {
 			k8sClient,
 			clientset,
 			recorder,
-			TestImages,
-			util.ExtraConfigDefaults,
-			OTelCollectorNodeLocalBaseUrlTest,
-			nil,
-			false,
+			util.ClusterInstrumentationConfig{
+				Images:                TestImages,
+				OTelCollectorBaseUrl:  OTelCollectorNodeLocalBaseUrlTest,
+				ExtraConfig:           util.ExtraConfigDefaults,
+				InstrumentationDelays: nil,
+				InstrumentationDebug:  false,
+			},
 		)
 	})
 
@@ -616,11 +618,13 @@ var _ = Describe("The instrumenter", Ordered, func() {
 				k8sClient,
 				clientset,
 				recorder,
-				TestImages,
-				util.ExtraConfigDefaults,
-				OTelCollectorNodeLocalBaseUrlTest,
-				nil,
-				true,
+				util.ClusterInstrumentationConfig{
+					Images:                TestImages,
+					OTelCollectorBaseUrl:  OTelCollectorNodeLocalBaseUrlTest,
+					ExtraConfig:           util.ExtraConfigDefaults,
+					InstrumentationDelays: nil,
+					InstrumentationDebug:  true,
+				},
 			)
 
 			name := UniqueName(DeploymentNamePrefix)
@@ -780,7 +784,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 func checkSettingsAndInstrumentExistingWorkloads(
 	ctx context.Context,
 	instrumenter *Instrumenter,
-	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
+	dash0MonitoringResource *dash0v1beta1.Dash0Monitoring,
 	logger *logr.Logger,
 ) {
 	Expect(
@@ -794,7 +798,7 @@ func checkSettingsAndInstrumentExistingWorkloads(
 func uninstrumentWorkloadsIfAvailable(
 	ctx context.Context,
 	instrumenter *Instrumenter,
-	dash0MonitoringResource *dash0v1alpha1.Dash0Monitoring,
+	dash0MonitoringResource *dash0v1beta1.Dash0Monitoring,
 	logger *logr.Logger,
 ) {
 	Expect(
