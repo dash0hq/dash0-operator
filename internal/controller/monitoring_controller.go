@@ -29,12 +29,10 @@ import (
 
 type MonitoringReconciler struct {
 	client.Client
-	Clientset              *kubernetes.Clientset
-	Instrumenter           *instrumentation.Instrumenter
-	CollectorManager       *collectors.CollectorManager
-	Images                 util.Images
-	OperatorNamespace      string
-	DanglingEventsTimeouts *util.DanglingEventsTimeouts
+	clientset              *kubernetes.Clientset
+	instrumenter           *instrumentation.Instrumenter
+	collectorManager       *collectors.CollectorManager
+	danglingEventsTimeouts *util.DanglingEventsTimeouts
 }
 
 type statusUpdateInfo struct {
@@ -62,9 +60,25 @@ var (
 	monitoringReconcileRequestMetric otelmetric.Int64Counter
 )
 
+func NewMonitoringReconciler(
+	k8sClient client.Client,
+	clientset *kubernetes.Clientset,
+	instrumenter *instrumentation.Instrumenter,
+	collectorManager *collectors.CollectorManager,
+	danglingEventsTimeouts *util.DanglingEventsTimeouts,
+) *MonitoringReconciler {
+	return &MonitoringReconciler{
+		Client:                 k8sClient,
+		clientset:              clientset,
+		instrumenter:           instrumenter,
+		collectorManager:       collectorManager,
+		danglingEventsTimeouts: danglingEventsTimeouts,
+	}
+}
+
 func (r *MonitoringReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	if r.DanglingEventsTimeouts == nil {
-		r.DanglingEventsTimeouts = defaultDanglingEventsTimeouts
+	if r.danglingEventsTimeouts == nil {
+		r.danglingEventsTimeouts = defaultDanglingEventsTimeouts
 	}
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&dash0v1beta1.Dash0Monitoring{}).
@@ -119,7 +133,7 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	logger := log.FromContext(ctx)
 	logger.Info("processing reconcile request for a monitoring resource")
 
-	namespaceStillExists, err := resources.CheckIfNamespaceExists(ctx, r.Clientset, req.Namespace, &logger)
+	namespaceStillExists, err := resources.CheckIfNamespaceExists(ctx, r.clientset, req.Namespace, &logger)
 	if err != nil {
 		// The error has already been logged in checkIfNamespaceExists.
 		return ctrl.Result{}, err
@@ -212,13 +226,13 @@ func (r *MonitoringReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		r.manageInstrumentWorkloadsChanges(monitoringResource, isFirstReconcile, &logger)
 
 	if isFirstReconcile || requiredAction == util.ModificationModeInstrumentation {
-		if err = r.Instrumenter.CheckSettingsAndInstrumentExistingWorkloads(ctx, monitoringResource, &logger); err != nil {
+		if err = r.instrumenter.CheckSettingsAndInstrumentExistingWorkloads(ctx, monitoringResource, &logger); err != nil {
 			// The error has already been logged in checkSettingsAndInstrumentExistingWorkloads
 			logger.Info("Requeuing reconcile request.")
 			return ctrl.Result{}, err
 		}
 	} else if requiredAction == util.ModificationModeUninstrumentation {
-		if err = r.Instrumenter.UninstrumentWorkloadsIfAvailable(ctx, monitoringResource, &logger); err != nil {
+		if err = r.instrumenter.UninstrumentWorkloadsIfAvailable(ctx, monitoringResource, &logger); err != nil {
 			logger.Error(err, "Failed to uninstrument workloads, requeuing reconcile request.")
 			return ctrl.Result{}, err
 		}
@@ -290,7 +304,7 @@ func (r *MonitoringReconciler) runCleanupActions(
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	logger *logr.Logger,
 ) error {
-	if err := r.Instrumenter.UninstrumentWorkloadsIfAvailable(
+	if err := r.instrumenter.UninstrumentWorkloadsIfAvailable(
 		ctx,
 		monitoringResource,
 		logger,
@@ -331,10 +345,10 @@ func (r *MonitoringReconciler) scheduleAttachDanglingEvents(
 ) {
 	// execute the event attaching in a separate go routine to not block the main reconcile loop
 	go func() {
-		if r.DanglingEventsTimeouts.InitialTimeout > 0 {
+		if r.danglingEventsTimeouts.InitialTimeout > 0 {
 			// wait a bit before attempting to attach dangling events, since the K8s resources do not exist yet when
 			// the webhook queues the events
-			time.Sleep(r.DanglingEventsTimeouts.InitialTimeout)
+			time.Sleep(r.danglingEventsTimeouts.InitialTimeout)
 		}
 		r.attachDanglingEvents(ctx, monitoringResource, logger)
 	}()
@@ -352,8 +366,8 @@ func (r *MonitoringReconciler) attachDanglingEvents(
 	logger *logr.Logger,
 ) {
 	namespace := monitoringResource.Namespace
-	eventApi := r.Clientset.CoreV1().Events(namespace)
-	backoff := r.DanglingEventsTimeouts.Backoff
+	eventApi := r.clientset.CoreV1().Events(namespace)
+	backoff := r.danglingEventsTimeouts.Backoff
 	for _, eventType := range util.AllEvents {
 		retryErr := util.RetryWithCustomBackoff(
 			"attaching dangling event to involved object",
@@ -414,10 +428,8 @@ func (r *MonitoringReconciler) reconcileOpenTelemetryCollector(
 	// This will look up the operator configuration resource and all monitoring resources in the cluster (including
 	// the one that has just been reconciled, hence we must only do this _after_ this resource has been updated (e.g.
 	// marked as available). Otherwise, the reconciliation of the collectors would work with an outdated state.
-	if err, _ := r.CollectorManager.ReconcileOpenTelemetryCollector(
+	if _, err := r.collectorManager.ReconcileOpenTelemetryCollector(
 		ctx,
-		r.Images,
-		r.OperatorNamespace,
 		monitoringResource,
 		collectors.TriggeredByDash0ResourceReconcile,
 	); err != nil {

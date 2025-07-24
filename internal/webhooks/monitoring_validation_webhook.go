@@ -34,6 +34,14 @@ type MonitoringValidationWebhookHandler struct {
 	Client client.Client
 }
 
+func NewMonitoringValidationWebhookHandler(
+	k8sClient client.Client,
+) *MonitoringValidationWebhookHandler {
+	return &MonitoringValidationWebhookHandler{
+		Client: k8sClient,
+	}
+}
+
 var (
 	restrictedNamespaces = []string{
 		"kube-system",

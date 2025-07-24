@@ -32,7 +32,7 @@ type Instrumenter struct {
 	client.Client
 	Clientset                    *kubernetes.Clientset
 	Recorder                     record.EventRecorder
-	ClusterInstrumentationConfig util.ClusterInstrumentationConfig
+	ClusterInstrumentationConfig *util.ClusterInstrumentationConfig
 }
 
 type ImmutableWorkloadError struct {
@@ -77,14 +77,21 @@ func NewInstrumenter(
 	client client.Client,
 	clientset *kubernetes.Clientset,
 	recorder record.EventRecorder,
-	clusterInstrumentationConfig util.ClusterInstrumentationConfig,
+	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
 ) *Instrumenter {
+	if clusterInstrumentationConfig == nil {
+		panic("clusterInstrumentationConfig must not be nil")
+	}
 	return &Instrumenter{
 		Client:                       client,
 		Clientset:                    clientset,
 		Recorder:                     recorder,
 		ClusterInstrumentationConfig: clusterInstrumentationConfig,
 	}
+}
+
+func (i *Instrumenter) UpdateExtraConfig(_ context.Context, extraConfig util.ExtraConfig, _ *logr.Logger) {
+	i.ClusterInstrumentationConfig.ExtraConfig.Store(&extraConfig)
 }
 
 // InstrumentAtStartup is run once, when the operator manager process starts. Its main purpose is to upgrade workloads
@@ -681,7 +688,7 @@ func (i *Instrumenter) UninstrumentWorkloadsIfAvailable(
 ) error {
 	if dash0MonitoringResource.IsAvailable() {
 		logger.Info("Reverting Dash0's modifications to workloads that have been instrumented to make them send telemetry to Dash0.")
-		if err := i.uninstrumentWorkloads(ctx, dash0MonitoringResource, logger); err != nil {
+		if err := i.uninstrumentAllWorkloads(ctx, dash0MonitoringResource, logger); err != nil {
 			logger.Error(err, "Uninstrumenting existing workloads failed.")
 			return err
 		}
@@ -692,7 +699,7 @@ func (i *Instrumenter) UninstrumentWorkloadsIfAvailable(
 	return nil
 }
 
-func (i *Instrumenter) uninstrumentWorkloads(
+func (i *Instrumenter) uninstrumentAllWorkloads(
 	ctx context.Context,
 	dash0MonitoringResource *dash0v1beta1.Dash0Monitoring,
 	logger *logr.Logger,
@@ -1080,7 +1087,7 @@ func (i *Instrumenter) postProcessUninstrumentation(
 }
 
 func newWorkloadModifier(
-	clusterInstrumentationConfig util.ClusterInstrumentationConfig,
+	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
 	namespaceInstrumentationConfig util.NamespaceInstrumentationConfig,
 	logger *logr.Logger,
 ) *workloads.ResourceModifier {

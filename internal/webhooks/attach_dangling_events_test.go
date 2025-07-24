@@ -41,36 +41,39 @@ var _ = Describe("The Dash0 webhook and the Dash0 controller", Ordered, func() {
 			k8sClient,
 			clientset,
 			recorder,
-			util.ClusterInstrumentationConfig{
-				Images:                TestImages,
-				OTelCollectorBaseUrl:  OTelCollectorNodeLocalBaseUrlTest,
-				ExtraConfig:           util.ExtraConfigDefaults,
-				InstrumentationDelays: nil,
-				InstrumentationDebug:  false,
+			util.NewClusterInstrumentationConfig(
+				TestImages,
+				OTelCollectorNodeLocalBaseUrlTest,
+				util.ExtraConfigDefaults,
+				nil,
+				false,
+			),
+		)
+		oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
+			k8sClient,
+			k8sClient.Scheme(),
+			OperatorManagerDeployment,
+			util.CollectorConfig{
+				Images:                  TestImages,
+				OperatorNamespace:       OperatorNamespace,
+				OTelCollectorNamePrefix: OTelCollectorNamePrefixTest,
 			},
 		)
-		oTelColResourceManager := &otelcolresources.OTelColResourceManager{
-			Client:                    k8sClient,
-			Scheme:                    k8sClient.Scheme(),
-			OperatorManagerDeployment: OperatorManagerDeployment,
-			OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
-			ExtraConfig:               util.ExtraConfigDefaults,
-		}
-		collectorManager := &collectors.CollectorManager{
-			Client:                 k8sClient,
-			Clientset:              clientset,
-			OTelColResourceManager: oTelColResourceManager,
-		}
+		collectorManager := collectors.NewCollectorManager(
+			k8sClient,
+			clientset,
+			util.ExtraConfigDefaults,
+			false,
+			oTelColResourceManager,
+		)
 
-		reconciler = &controller.MonitoringReconciler{
-			Client:                 k8sClient,
-			Clientset:              clientset,
-			Instrumenter:           instrumenter,
-			Images:                 TestImages,
-			OperatorNamespace:      OperatorNamespace,
-			CollectorManager:       collectorManager,
-			DanglingEventsTimeouts: &DanglingEventsTimeoutsTest,
-		}
+		reconciler = controller.NewMonitoringReconciler(
+			k8sClient,
+			clientset,
+			instrumenter,
+			collectorManager,
+			&DanglingEventsTimeoutsTest,
+		)
 
 		dash0MonitoringResource = EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 	})

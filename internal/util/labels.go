@@ -42,7 +42,7 @@ type instrumentedState string
 func AddInstrumentationLabels(
 	objectMeta *metav1.ObjectMeta,
 	instrumentationSuccess bool,
-	clusterInstrumentationConfig ClusterInstrumentationConfig,
+	clusterInstrumentationConfig *ClusterInstrumentationConfig,
 	actor WorkloadModifierActor,
 ) {
 	if instrumentationSuccess {

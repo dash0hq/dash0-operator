@@ -5,6 +5,7 @@ package util
 
 import (
 	"strings"
+	"sync/atomic"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -31,6 +32,23 @@ var AllEvents = []Reason{
 	ReasonFailedUninstrumentation,
 }
 
+type CollectorConfig struct {
+	Images            Images
+	OperatorNamespace string
+	// OTelCollectorNamePrefix is used as a prefix for OTel collector Kubernetes resources created by the operator, set
+	// to value of the environment variable OTEL_COLLECTOR_NAME_PREFIX, which is set to the Helm release name by the
+	// operator Helm chart.
+	OTelCollectorNamePrefix string
+	SendBatchMaxSize        *uint32
+	NodeIp                  string
+	NodeName                string
+	PseudoClusterUID        string
+	IsIPv6Cluster           bool
+	IsDocker                bool
+	DisableHostPorts        bool
+	DevelopmentMode         bool
+	DebugVerbosityDetailed  bool
+}
 type Images struct {
 	OperatorImage                        string
 	InitContainerImage                   string
@@ -64,9 +82,26 @@ func getImageVersion(image string) string {
 type ClusterInstrumentationConfig struct {
 	Images
 	OTelCollectorBaseUrl  string
-	ExtraConfig           ExtraConfig
+	ExtraConfig           atomic.Pointer[ExtraConfig]
 	InstrumentationDelays *DelayConfig
 	InstrumentationDebug  bool
+}
+
+func NewClusterInstrumentationConfig(
+	images Images,
+	oTelCollectorBaseUrl string,
+	extraConfig ExtraConfig,
+	instrumentationDelays *DelayConfig,
+	instrumentationDebug bool,
+) *ClusterInstrumentationConfig {
+	c := &ClusterInstrumentationConfig{
+		Images:                images,
+		OTelCollectorBaseUrl:  oTelCollectorBaseUrl,
+		InstrumentationDelays: instrumentationDelays,
+		InstrumentationDebug:  instrumentationDebug,
+	}
+	c.ExtraConfig.Store(&extraConfig)
+	return c
 }
 
 type DelayConfig struct {

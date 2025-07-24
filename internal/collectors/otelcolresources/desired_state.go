@@ -1436,6 +1436,10 @@ func DeploymentCollectorConfigConfigMapName(namePrefix string) string {
 	return renderName(namePrefix, openTelemetryCollectorDeploymentNameSuffix, "cm")
 }
 
+func OperatorExtracConfigConfigMapName(namePrefix string) string {
+	return renderName(namePrefix, "extra-config")
+}
+
 func DaemonSetClusterRoleName(namePrefix string) string {
 	return renderName(namePrefix, openTelemetryCollector, "cr")
 }

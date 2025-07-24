@@ -9,10 +9,8 @@ import (
 
 	"github.com/go-logr/logr"
 	otelmetric "go.opentelemetry.io/otel/metric"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -26,22 +24,20 @@ import (
 
 type OperatorConfigurationReconciler struct {
 	client.Client
-	Clientset                   *kubernetes.Clientset
-	ApiClients                  []ApiClient
-	AuthTokenClients            []selfmonitoringapiaccess.AuthTokenClient
-	Scheme                      *runtime.Scheme
-	Recorder                    record.EventRecorder
-	CollectorManager            *collectors.CollectorManager
-	PseudoClusterUID            string
-	OperatorDeploymentNamespace string
-	OperatorDeploymentUID       types.UID
-	OperatorDeploymentName      string
+	clientset                   *kubernetes.Clientset
+	apiClients                  []ApiClient
+	authTokenClients            []selfmonitoringapiaccess.AuthTokenClient
+	collectorManager            *collectors.CollectorManager
+	pseudoClusterUID            string
+	operatorDeploymentNamespace string
+	operatorDeploymentUID       types.UID
+	operatorDeploymentName      string
 	OperatorManagerPodName      string
-	OTelSdkStarter              *selfmonitoringapiaccess.OTelSdkStarter
+	oTelSdkStarter              *selfmonitoringapiaccess.OTelSdkStarter
 	DanglingEventsTimeouts      *util.DanglingEventsTimeouts
-	Images                      util.Images
-	OperatorNamespace           string
-	DevelopmentMode             bool
+	images                      util.Images
+	operatorNamespace           string
+	developmentMode             bool
 }
 
 const (
@@ -52,6 +48,40 @@ const (
 var (
 	operatorReconcileRequestMetric otelmetric.Int64Counter
 )
+
+func NewOperatorConfigurationReconciler(
+	k8sClient client.Client,
+	clientset *kubernetes.Clientset,
+	apiClients []ApiClient,
+	collectorManager *collectors.CollectorManager,
+	pseudoClusterUID string,
+	operatorDeploymentNamespace string,
+	operatorDeploymentUID types.UID,
+	operatorDeploymentName string,
+	oTelSdkStarter *selfmonitoringapiaccess.OTelSdkStarter,
+	images util.Images,
+	operatorNamespace string,
+	developmentMode bool,
+) *OperatorConfigurationReconciler {
+	return &OperatorConfigurationReconciler{
+		Client:                      k8sClient,
+		clientset:                   clientset,
+		apiClients:                  apiClients,
+		collectorManager:            collectorManager,
+		pseudoClusterUID:            pseudoClusterUID,
+		operatorDeploymentNamespace: operatorDeploymentNamespace,
+		operatorDeploymentUID:       operatorDeploymentUID,
+		operatorDeploymentName:      operatorDeploymentName,
+		oTelSdkStarter:              oTelSdkStarter,
+		images:                      images,
+		operatorNamespace:           operatorNamespace,
+		developmentMode:             developmentMode,
+	}
+}
+
+func (r *OperatorConfigurationReconciler) SetAuthTokenClients(authTokenClients []selfmonitoringapiaccess.AuthTokenClient) {
+	r.authTokenClients = authTokenClients
+}
 
 func (r *OperatorConfigurationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if r.DanglingEventsTimeouts == nil {
@@ -181,7 +211,7 @@ func (r *OperatorConfigurationReconciler) Reconcile(ctx context.Context, req ctr
 			err,
 			"cannot generate self-monitoring configuration from operator configuration resource",
 		)
-		r.OTelSdkStarter.RemoveOTelSdkParameters(ctx, &logger)
+		r.oTelSdkStarter.RemoveOTelSdkParameters(ctx, &logger)
 		return ctrl.Result{}, err
 	}
 
@@ -221,8 +251,8 @@ func (r *OperatorConfigurationReconciler) handleDash0Authorization(
 			if err := selfmonitoringapiaccess.ExchangeSecretRefForToken(
 				ctx,
 				r.Client,
-				r.AuthTokenClients,
-				r.OperatorNamespace,
+				r.authTokenClients,
+				r.operatorNamespace,
 				operatorConfigurationResource,
 				logger,
 			); err != nil {
@@ -233,20 +263,20 @@ func (r *OperatorConfigurationReconciler) handleDash0Authorization(
 			*operatorConfigurationResource.Spec.Export.Dash0.Authorization.Token != "" {
 			// The operator configuration resource uses a token literal to provide the Dash0 auth token, distribute the
 			// token value to all clients that need an auth token.
-			for _, authTokenClient := range r.AuthTokenClients {
+			for _, authTokenClient := range r.authTokenClients {
 				authTokenClient.SetAuthToken(ctx, *operatorConfigurationResource.Spec.Export.Dash0.Authorization.Token, logger)
 			}
 		} else {
 			// The operator configuration resource neither has a secret ref nor a token literal, remove the auth token
 			// from all clients.
-			for _, authTokenClient := range r.AuthTokenClients {
+			for _, authTokenClient := range r.authTokenClients {
 				authTokenClient.RemoveAuthToken(ctx, logger)
 			}
 		}
 	} else {
 		// The operator configuration resource has no Dash0 export and hence also no auth token, remove the auth token
 		// from all clients.
-		for _, authTokenClient := range r.AuthTokenClients {
+		for _, authTokenClient := range r.authTokenClients {
 			authTokenClient.RemoveAuthToken(ctx, logger)
 		}
 	}
@@ -260,20 +290,20 @@ func (r *OperatorConfigurationReconciler) applyOperatorManagerSelfMonitoringSett
 	logger *logr.Logger,
 ) {
 	if selfMonitoringAndApiAccessConfiguration.SelfMonitoringEnabled {
-		r.OTelSdkStarter.SetOTelSdkParameters(
+		r.oTelSdkStarter.SetOTelSdkParameters(
 			ctx,
 			selfMonitoringAndApiAccessConfiguration.Export,
-			r.PseudoClusterUID,
+			r.pseudoClusterUID,
 			clusterName,
-			r.OperatorDeploymentNamespace,
-			r.OperatorDeploymentUID,
-			r.OperatorDeploymentName,
-			r.Images.GetOperatorVersion(),
-			r.DevelopmentMode,
+			r.operatorDeploymentNamespace,
+			r.operatorDeploymentUID,
+			r.operatorDeploymentName,
+			r.images.GetOperatorVersion(),
+			r.developmentMode,
 			logger,
 		)
 	} else {
-		r.OTelSdkStarter.RemoveOTelSdkParameters(
+		r.oTelSdkStarter.RemoveOTelSdkParameters(
 			ctx,
 			logger,
 		)
@@ -290,7 +320,7 @@ func (r *OperatorConfigurationReconciler) applyApiAccessSettings(
 		if dataset == "" {
 			dataset = util.DatasetDefault
 		}
-		for _, apiClient := range r.ApiClients {
+		for _, apiClient := range r.apiClients {
 			apiClient.SetApiEndpointAndDataset(
 				ctx,
 				&ApiConfig{
@@ -302,21 +332,21 @@ func (r *OperatorConfigurationReconciler) applyApiAccessSettings(
 	} else {
 		logger.Info("The API endpoint setting required for managing dashboards or check rules via the operator is " +
 			"missing or has been removed, the operator will not update dashboards nor check rules in Dash0.")
-		for _, apiClient := range r.ApiClients {
+		for _, apiClient := range r.apiClients {
 			apiClient.RemoveApiEndpointAndDataset(ctx, &logger)
 		}
 	}
 }
 
 func (r *OperatorConfigurationReconciler) removeAllOperatorConfigurationSettings(ctx context.Context, logger logr.Logger) {
-	for _, apiClient := range r.ApiClients {
+	for _, apiClient := range r.apiClients {
 		apiClient.RemoveApiEndpointAndDataset(ctx, &logger)
 	}
-	r.OTelSdkStarter.RemoveOTelSdkParameters(
+	r.oTelSdkStarter.RemoveOTelSdkParameters(
 		ctx,
 		&logger,
 	)
-	for _, authTokenClient := range r.AuthTokenClients {
+	for _, authTokenClient := range r.authTokenClients {
 		authTokenClient.RemoveAuthToken(ctx, &logger)
 	}
 }
@@ -325,10 +355,8 @@ func (r *OperatorConfigurationReconciler) reconcileOpenTelemetryCollector(
 	ctx context.Context,
 	logger *logr.Logger,
 ) error {
-	if err, _ := r.CollectorManager.ReconcileOpenTelemetryCollector(
+	if _, err := r.collectorManager.ReconcileOpenTelemetryCollector(
 		ctx,
-		r.Images,
-		r.OperatorNamespace,
 		nil,
 		collectors.TriggeredByDash0ResourceReconcile,
 	); err != nil {

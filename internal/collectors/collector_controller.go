@@ -20,15 +20,25 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
-	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
 type CollectorReconciler struct {
 	client.Client
-	CollectorManager        *CollectorManager
-	Images                  util.Images
-	OperatorNamespace       string
-	OTelCollectorNamePrefix string
+	collectorManager        *CollectorManager
+	operatorNamespace       string
+	oTelCollectorNamePrefix string
+}
+
+func NewCollectorReconciler(
+	k8sClient client.Client,
+	collectorManager *CollectorManager,
+	oTelCollectorNamePrefix string,
+) *CollectorReconciler {
+	return &CollectorReconciler{
+		Client:                  k8sClient,
+		collectorManager:        collectorManager,
+		oTelCollectorNamePrefix: oTelCollectorNamePrefix,
+	}
 }
 
 func (r *CollectorReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -38,8 +48,8 @@ func (r *CollectorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&corev1.ConfigMap{},
 			&handler.EnqueueRequestForObject{},
 			r.withNamePredicate([]string{
-				otelcolresources.DaemonSetCollectorConfigConfigMapName(r.OTelCollectorNamePrefix),
-				otelcolresources.DeploymentCollectorConfigConfigMapName(r.OTelCollectorNamePrefix),
+				otelcolresources.DaemonSetCollectorConfigConfigMapName(r.oTelCollectorNamePrefix),
+				otelcolresources.DeploymentCollectorConfigConfigMapName(r.oTelCollectorNamePrefix),
 				// Note: We are deliberately not watching the filelog receiver offsets ConfigMap, since it is updated
 				// frequently by the filelog offset sync container and does not require reconciliation.
 			})).
@@ -47,33 +57,33 @@ func (r *CollectorReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&rbacv1.ClusterRole{},
 			&handler.EnqueueRequestForObject{},
 			r.withNamePredicate([]string{
-				otelcolresources.DaemonSetClusterRoleName(r.OTelCollectorNamePrefix),
-				otelcolresources.DeploymentClusterRoleName(r.OTelCollectorNamePrefix),
+				otelcolresources.DaemonSetClusterRoleName(r.oTelCollectorNamePrefix),
+				otelcolresources.DeploymentClusterRoleName(r.oTelCollectorNamePrefix),
 			})).
 		Watches(
 			&rbacv1.ClusterRoleBinding{},
 			&handler.EnqueueRequestForObject{},
 			r.withNamePredicate([]string{
-				otelcolresources.DeploymentClusterRoleBindingName(r.OTelCollectorNamePrefix),
-				otelcolresources.DeploymentClusterRoleName(r.OTelCollectorNamePrefix),
+				otelcolresources.DeploymentClusterRoleBindingName(r.oTelCollectorNamePrefix),
+				otelcolresources.DeploymentClusterRoleName(r.oTelCollectorNamePrefix),
 			})).
 		Watches(
 			&corev1.Service{},
 			&handler.EnqueueRequestForObject{},
 			r.withNamePredicate([]string{
-				otelcolresources.ServiceName(r.OTelCollectorNamePrefix),
+				otelcolresources.ServiceName(r.oTelCollectorNamePrefix),
 			})).
 		Watches(
 			&appsv1.DaemonSet{},
 			&handler.EnqueueRequestForObject{},
 			r.withNamePredicate([]string{
-				otelcolresources.DaemonSetName(r.OTelCollectorNamePrefix),
+				otelcolresources.DaemonSetName(r.oTelCollectorNamePrefix),
 			})).
 		Watches(
 			&appsv1.Deployment{},
 			&handler.EnqueueRequestForObject{},
 			r.withNamePredicate([]string{
-				otelcolresources.DeploymentName(r.OTelCollectorNamePrefix),
+				otelcolresources.DeploymentName(r.oTelCollectorNamePrefix),
 			})).
 		Complete(r)
 }
@@ -83,7 +93,7 @@ func (r *CollectorReconciler) withNamePredicate(resourceNames []string) builder.
 }
 
 func (r *CollectorReconciler) createFilterPredicate(resourceNames []string) predicate.Funcs {
-	resourceNamespace := r.OperatorNamespace
+	resourceNamespace := r.operatorNamespace
 	return predicate.Funcs{
 		CreateFunc: func(e event.CreateEvent) bool {
 			return resourceMatches(e.Object, resourceNamespace, resourceNames)
@@ -115,10 +125,8 @@ func (r *CollectorReconciler) Reconcile(
 	logger := log.FromContext(ctx)
 	logger.Info("reconciling collector resources", "request", request)
 
-	err, hasBeenReconciled := r.CollectorManager.ReconcileOpenTelemetryCollector(
+	hasBeenReconciled, err := r.collectorManager.ReconcileOpenTelemetryCollector(
 		ctx,
-		r.Images,
-		r.OperatorNamespace,
 		nil,
 		TriggeredByWatchEvent,
 	)

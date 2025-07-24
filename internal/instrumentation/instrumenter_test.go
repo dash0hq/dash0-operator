@@ -55,13 +55,13 @@ var _ = Describe("The instrumenter", Ordered, func() {
 			k8sClient,
 			clientset,
 			recorder,
-			util.ClusterInstrumentationConfig{
-				Images:                TestImages,
-				OTelCollectorBaseUrl:  OTelCollectorNodeLocalBaseUrlTest,
-				ExtraConfig:           util.ExtraConfigDefaults,
-				InstrumentationDelays: nil,
-				InstrumentationDebug:  false,
-			},
+			util.NewClusterInstrumentationConfig(
+				TestImages,
+				OTelCollectorNodeLocalBaseUrlTest,
+				util.ExtraConfigDefaults,
+				nil,
+				false,
+			),
 		)
 	})
 
@@ -618,13 +618,13 @@ var _ = Describe("The instrumenter", Ordered, func() {
 				k8sClient,
 				clientset,
 				recorder,
-				util.ClusterInstrumentationConfig{
-					Images:                TestImages,
-					OTelCollectorBaseUrl:  OTelCollectorNodeLocalBaseUrlTest,
-					ExtraConfig:           util.ExtraConfigDefaults,
-					InstrumentationDelays: nil,
-					InstrumentationDebug:  true,
-				},
+				util.NewClusterInstrumentationConfig(
+					TestImages,
+					OTelCollectorNodeLocalBaseUrlTest,
+					util.ExtraConfigDefaults,
+					nil,
+					true,
+				),
 			)
 
 			name := UniqueName(DeploymentNamePrefix)

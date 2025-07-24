@@ -124,34 +124,26 @@ var _ = BeforeSuite(func() {
 	Expect(NewInstrumentationWebhookHandler(
 		k8sClient,
 		manager.GetEventRecorderFor("dash0-webhook"),
-		util.ClusterInstrumentationConfig{
-			Images:               TestImages,
-			ExtraConfig:          util.ExtraConfigDefaults,
-			OTelCollectorBaseUrl: OTelCollectorNodeLocalBaseUrlTest,
-			InstrumentationDebug: false,
-		},
+		util.NewClusterInstrumentationConfig(
+			TestImages,
+			OTelCollectorNodeLocalBaseUrlTest,
+			util.ExtraConfigDefaults,
+			nil,
+			false,
+		),
 	).SetupWebhookWithManager(manager)).To(Succeed())
 
-	Expect((&OperatorConfigurationMutatingWebhookHandler{
-		Client: k8sClient,
-	}).SetupWebhookWithManager(manager)).To(Succeed())
-
-	operatorConfigurationMutatingWebhookHandler := &OperatorConfigurationValidationWebhookHandler{
-		Client: k8sClient,
-	}
+	operatorConfigurationMutatingWebhookHandler = NewOperatorConfigurationMutatingWebhookHandler(k8sClient)
 	Expect(operatorConfigurationMutatingWebhookHandler.SetupWebhookWithManager(manager)).To(Succeed())
+
+	Expect(NewOperatorConfigurationValidationWebhookHandler(k8sClient).SetupWebhookWithManager(manager)).To(Succeed())
 
 	Expect(SetupDash0MonitoringConversionWebhookWithManager(manager)).To(Succeed())
 
-	monitoringMutatingWebhookHandler = &MonitoringMutatingWebhookHandler{
-		Client:            k8sClient,
-		OperatorNamespace: OperatorNamespace,
-	}
+	monitoringMutatingWebhookHandler = NewMonitoringMutatingWebhookHandler(k8sClient, OperatorNamespace)
 	Expect(monitoringMutatingWebhookHandler.SetupWebhookWithManager(manager)).To(Succeed())
 
-	Expect((&MonitoringValidationWebhookHandler{
-		Client: k8sClient,
-	}).SetupWebhookWithManager(manager)).To(Succeed())
+	Expect(NewMonitoringValidationWebhookHandler(k8sClient).SetupWebhookWithManager(manager)).To(Succeed())
 
 	//+kubebuilder:scaffold:webhook
 

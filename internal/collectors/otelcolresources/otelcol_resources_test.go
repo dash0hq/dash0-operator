@@ -55,20 +55,23 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 	})
 
 	BeforeEach(func() {
-		oTelColResourceManager = &OTelColResourceManager{
-			Client:                    k8sClient,
-			Scheme:                    k8sClient.Scheme(),
-			OperatorManagerDeployment: OperatorManagerDeployment,
-			OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
-			ExtraConfig:               util.ExtraConfigDefaults,
-			DevelopmentMode:           true,
-		}
+		oTelColResourceManager = NewOTelColResourceManager(
+			k8sClient,
+			k8sClient.Scheme(),
+			OperatorManagerDeployment,
+			util.CollectorConfig{
+				Images:                  TestImages,
+				OperatorNamespace:       OperatorNamespace,
+				OTelCollectorNamePrefix: OTelCollectorNamePrefixTest,
+				DevelopmentMode:         true,
+			},
+		)
 	})
 
 	AfterEach(func() {
 		_, err := oTelColResourceManager.DeleteResources(
 			ctx,
-			OperatorNamespace,
+			util.ExtraConfigDefaults,
 			&logger,
 		)
 		Expect(err).ToNot(HaveOccurred())
@@ -127,8 +130,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			_, _, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
-					OperatorNamespace,
-					TestImages,
+					util.ExtraConfigDefaults,
 					nil,
 					nil,
 					nil,
@@ -141,8 +143,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
-					OperatorNamespace,
-					TestImages,
+					util.ExtraConfigDefaults,
 					nil,
 					nil,
 					Dash0ExportWithEndpointAndToken(),
@@ -158,8 +159,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
-					OperatorNamespace,
-					TestImages,
+					util.ExtraConfigDefaults,
 					nil,
 					nil,
 					Dash0ExportWithEndpointAndToken(),
@@ -195,8 +195,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
-					OperatorNamespace,
-					TestImages,
+					util.ExtraConfigDefaults,
 					operatorConfiguration,
 					nil,
 					Dash0ExportWithEndpointAndToken(),
@@ -229,8 +228,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
-					OperatorNamespace,
-					TestImages,
+					util.ExtraConfigDefaults,
 					operatorConfiguration,
 					nil,
 					Dash0ExportWithEndpointAndToken(),
@@ -264,8 +262,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			_, _, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
-					OperatorNamespace,
-					TestImages,
+					util.ExtraConfigDefaults,
 					operatorConfiguration,
 					nil,
 					operatorConfiguration.Spec.Export,
@@ -289,8 +286,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			_, _, err =
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
-					OperatorNamespace,
-					TestImages,
+					util.ExtraConfigDefaults,
 					operatorConfiguration,
 					nil,
 					operatorConfiguration.Spec.Export,
@@ -354,8 +350,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			_, _, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
-					OperatorNamespace,
-					TestImages,
+					util.ExtraConfigDefaults,
 					nil,
 					nil,
 					Dash0ExportWithEndpointAndToken(),
@@ -385,8 +380,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			_, _, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
-					OperatorNamespace,
-					TestImages,
+					util.ExtraConfigDefaults,
 					nil,
 					nil,
 					Dash0ExportWithEndpointAndToken(),
@@ -427,8 +421,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
-					OperatorNamespace,
-					TestImages,
+					util.ExtraConfigDefaults,
 					nil,
 					nil,
 					Dash0ExportWithEndpointAndToken(),
@@ -447,8 +440,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			_, _, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
-					OperatorNamespace,
-					TestImages,
+					util.ExtraConfigDefaults,
 					nil,
 					nil,
 					Dash0ExportWithEndpointAndToken(),
@@ -471,8 +463,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			resourcesHaveBeenCreated, _, err :=
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
-					OperatorNamespace,
-					TestImages,
+					util.ExtraConfigDefaults,
 					nil,
 					nil,
 					Dash0ExportWithEndpointAndToken(),
@@ -490,8 +481,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			// create resources
 			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 				ctx,
-				OperatorNamespace,
-				TestImages,
+				util.ExtraConfigDefaults,
 				nil,
 				nil,
 				Dash0ExportWithEndpointAndToken(),
@@ -504,8 +494,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			// resources).
 			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 				ctx,
-				OperatorNamespace,
-				TestImages,
+				util.ExtraConfigDefaults,
 				nil,
 				nil,
 				Dash0ExportWithEndpointAndToken(),
@@ -520,8 +509,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err =
 				oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 					ctx,
-					OperatorNamespace,
-					TestImages,
+					util.ExtraConfigDefaults,
 					nil,
 					nil,
 					Dash0ExportWithEndpointAndToken(),
@@ -540,8 +528,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			// create resources (so there is something to delete)
 			_, _, err := oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 				ctx,
-				OperatorNamespace,
-				TestImages,
+				util.ExtraConfigDefaults,
 				nil,
 				nil,
 				Dash0ExportWithEndpointAndToken(),
@@ -553,7 +540,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			// delete everything again
 			resourcesHaveBeenDeleted, err := oTelColResourceManager.DeleteResources(
 				ctx,
-				OperatorNamespace,
+				util.ExtraConfigDefaults,
 				&logger,
 			)
 			Expect(err).ToNot(HaveOccurred())
@@ -565,7 +552,7 @@ var _ = Describe("The OpenTelemetry Collector resource manager", Ordered, func()
 			// deletion took place
 			resourcesHaveBeenDeleted, err = oTelColResourceManager.DeleteResources(
 				ctx,
-				OperatorNamespace,
+				util.ExtraConfigDefaults,
 				&logger,
 			)
 			Expect(err).ToNot(HaveOccurred())

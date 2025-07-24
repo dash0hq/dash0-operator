@@ -264,7 +264,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 						},
 					)
 
-					reconciler.OTelSdkStarter.WaitForOTelConfig([]selfmonitoringapiaccess.SelfMonitoringMetricsClient{
+					reconciler.oTelSdkStarter.WaitForOTelConfig([]selfmonitoringapiaccess.SelfMonitoringMetricsClient{
 						selfMonitoringMetricsClient1,
 						selfMonitoringMetricsClient2,
 					})
@@ -273,7 +273,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 
 					Eventually(func(g Gomega) {
 						sdkIsActive, activeOTelSdkConfig, _ :=
-							reconciler.OTelSdkStarter.ForTestOnlyGetState()
+							reconciler.oTelSdkStarter.ForTestOnlyGetState()
 						g.Expect(sdkIsActive).To(Equal(config.expectedSdkIsActive))
 						if config.expectHasConfig {
 							g.Expect(activeOTelSdkConfig).ToNot(BeNil())
@@ -391,7 +391,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				},
 			)
 
-			reconciler.OTelSdkStarter.WaitForOTelConfig([]selfmonitoringapiaccess.SelfMonitoringMetricsClient{
+			reconciler.oTelSdkStarter.WaitForOTelConfig([]selfmonitoringapiaccess.SelfMonitoringMetricsClient{
 				selfMonitoringMetricsClient1,
 				selfMonitoringMetricsClient2,
 			})
@@ -401,7 +401,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 			Eventually(func(g Gomega) {
 				g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
 				sdkIsActive, activeOTelSdkConfig, _ :=
-					reconciler.OTelSdkStarter.ForTestOnlyGetState()
+					reconciler.oTelSdkStarter.ForTestOnlyGetState()
 				g.Expect(sdkIsActive).To(BeTrue())
 				g.Expect(activeOTelSdkConfig).ToNot(BeNil())
 			}, 1*time.Second, pollingInterval).Should(Succeed())
@@ -427,7 +427,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 			Eventually(func(g Gomega) {
 				g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeFalse())
 				sdkIsActive, activeOTelSdkConfig, _ :=
-					reconciler.OTelSdkStarter.ForTestOnlyGetState()
+					reconciler.oTelSdkStarter.ForTestOnlyGetState()
 				g.Expect(activeOTelSdkConfig).ToNot(BeNil())
 				g.Expect(sdkIsActive).To(BeFalse())
 			}, 1*time.Second, pollingInterval).Should(Succeed())
@@ -447,7 +447,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 			Eventually(func(g Gomega) {
 				g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeFalse())
 				sdkIsActive, _, _ :=
-					reconciler.OTelSdkStarter.ForTestOnlyGetState()
+					reconciler.oTelSdkStarter.ForTestOnlyGetState()
 				g.Expect(sdkIsActive).To(BeFalse())
 			}, 1*time.Second, pollingInterval).Should(Succeed())
 
@@ -465,7 +465,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 			Eventually(func(g Gomega) {
 				g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
 				sdkIsActive, activeOTelSdkConfig, _ :=
-					reconciler.OTelSdkStarter.ForTestOnlyGetState()
+					reconciler.oTelSdkStarter.ForTestOnlyGetState()
 				g.Expect(sdkIsActive).To(BeTrue())
 
 				g.Expect(activeOTelSdkConfig).ToNot(BeNil())
@@ -509,7 +509,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeTrue())
 
 				sdkIsActive, activeOTelSdkConfig, _ :=
-					reconciler.OTelSdkStarter.ForTestOnlyGetState()
+					reconciler.oTelSdkStarter.ForTestOnlyGetState()
 				g.Expect(sdkIsActive).To(BeTrue())
 
 				g.Expect(activeOTelSdkConfig).ToNot(BeNil())
@@ -545,7 +545,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 			Eventually(func(g Gomega) {
 				g.Expect(delegatingZapCoreWrapper.RootDelegatingZapCore.ForTestOnlyHasDelegate()).To(BeFalse())
 				sdkIsActive, activeOTelSdkConfig, authTokenFromSecretRef :=
-					reconciler.OTelSdkStarter.ForTestOnlyGetState()
+					reconciler.oTelSdkStarter.ForTestOnlyGetState()
 				g.Expect(sdkIsActive).To(BeFalse())
 				g.Expect(activeOTelSdkConfig).To(BeNil())
 				g.Expect(authTokenFromSecretRef).To(BeNil())
@@ -693,45 +693,49 @@ func verifyOperatorManagerResourceAttributes(g Gomega, oTelSdkConfig *common.OTe
 }
 
 func createReconciler() *OperatorConfigurationReconciler {
-	oTelColResourceManager := &otelcolresources.OTelColResourceManager{
-		Client:                    k8sClient,
-		Scheme:                    k8sClient.Scheme(),
-		OperatorManagerDeployment: OperatorManagerDeployment,
-		OTelCollectorNamePrefix:   OTelCollectorNamePrefixTest,
-		ExtraConfig:               util.ExtraConfigDefaults,
-	}
-	collectorManager := &collectors.CollectorManager{
-		Client:                 k8sClient,
-		Clientset:              clientset,
-		OTelColResourceManager: oTelColResourceManager,
-	}
+	oTelColResourceManager := otelcolresources.NewOTelColResourceManager(
+		k8sClient,
+		k8sClient.Scheme(),
+		OperatorManagerDeployment,
+		util.CollectorConfig{
+			Images:                  TestImages,
+			OperatorNamespace:       operatorNamespace,
+			OTelCollectorNamePrefix: OTelCollectorNamePrefixTest,
+		},
+	)
+	collectorManager := collectors.NewCollectorManager(
+		k8sClient,
+		clientset,
+		util.ExtraConfigDefaults,
+		false,
+		oTelColResourceManager,
+	)
 	delegatingZapCoreWrapper = zaputil.NewDelegatingZapCoreWrapper()
 	otelSdkStarter := selfmonitoringapiaccess.NewOTelSdkStarter(delegatingZapCoreWrapper)
 
-	return &OperatorConfigurationReconciler{
-		Client:    k8sClient,
-		Clientset: clientset,
-		Recorder:  recorder,
-		ApiClients: []ApiClient{
+	operatorConfigurationReconciler := NewOperatorConfigurationReconciler(
+		k8sClient,
+		clientset,
+		[]ApiClient{
 			apiClient1,
 			apiClient2,
 		},
-		AuthTokenClients: []selfmonitoringapiaccess.AuthTokenClient{
-			otelSdkStarter,
-			authTokenClient1,
-			authTokenClient2,
-		},
-		CollectorManager:            collectorManager,
-		PseudoClusterUID:            ClusterUIDTest,
-		OperatorDeploymentNamespace: OperatorManagerDeployment.Namespace,
-		OperatorDeploymentUID:       OperatorManagerDeployment.UID,
-		OperatorDeploymentName:      OperatorManagerDeployment.Name,
-		OperatorManagerPodName:      OperatorPodName,
-		OTelSdkStarter:              otelSdkStarter,
-		DanglingEventsTimeouts:      &DanglingEventsTimeoutsTest,
-		Images:                      TestImages,
-		OperatorNamespace:           OperatorNamespace,
-	}
+		collectorManager,
+		ClusterUIDTest,
+		OperatorManagerDeployment.Namespace,
+		OperatorManagerDeployment.UID,
+		OperatorManagerDeployment.Name,
+		otelSdkStarter,
+		TestImages,
+		OperatorNamespace,
+		false,
+	)
+	operatorConfigurationReconciler.SetAuthTokenClients([]selfmonitoringapiaccess.AuthTokenClient{
+		otelSdkStarter,
+		authTokenClient1,
+		authTokenClient2,
+	})
+	return operatorConfigurationReconciler
 }
 
 func triggerOperatorConfigurationReconcileRequest(ctx context.Context, reconciler *OperatorConfigurationReconciler, name string) {

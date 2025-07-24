@@ -32,11 +32,13 @@ const (
 // be used to verify external effects (recording events etc.) that cannot be covered in this test.
 
 var (
-	clusterInstrumentationConfig = util.ClusterInstrumentationConfig{
-		Images:               TestImages,
-		OTelCollectorBaseUrl: OTelCollectorNodeLocalBaseUrlTest,
-		ExtraConfig:          util.ExtraConfigDefaults,
-	}
+	clusterInstrumentationConfig = util.NewClusterInstrumentationConfig(
+		TestImages,
+		OTelCollectorNodeLocalBaseUrlTest,
+		util.ExtraConfigDefaults,
+		nil,
+		false,
+	)
 )
 
 var _ = Describe("Dash0 Workload Modification", func() {
@@ -84,11 +86,13 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			workload := BasicDeployment(TestNamespaceName, DeploymentNamePrefix)
 			modificationResult :=
 				NewResourceModifier(
-					util.ClusterInstrumentationConfig{
-						Images:               TestImages,
-						OTelCollectorBaseUrl: OTelCollectorServiceBaseUrlTest,
-						ExtraConfig:          util.ExtraConfigDefaults,
-					},
+					util.NewClusterInstrumentationConfig(
+						TestImages,
+						OTelCollectorServiceBaseUrlTest,
+						util.ExtraConfigDefaults,
+						nil,
+						false,
+					),
 					util.NamespaceInstrumentationConfig{},
 					testActor,
 					&logger,

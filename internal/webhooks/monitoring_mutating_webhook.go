@@ -25,7 +25,17 @@ import (
 
 type MonitoringMutatingWebhookHandler struct {
 	Client            client.Client
-	OperatorNamespace string
+	operatorNamespace string
+}
+
+func NewMonitoringMutatingWebhookHandler(
+	k8sClient client.Client,
+	OperatorNamespace string,
+) *MonitoringMutatingWebhookHandler {
+	return &MonitoringMutatingWebhookHandler{
+		Client:            k8sClient,
+		operatorNamespace: OperatorNamespace,
+	}
 }
 
 func (h *MonitoringMutatingWebhookHandler) SetupWebhookWithManager(mgr ctrl.Manager) error {
@@ -131,7 +141,7 @@ func (h *MonitoringMutatingWebhookHandler) setTelemetryCollectionRelatedDefaults
 		patchRequired = true
 	}
 	if monitoringSpec.LogCollection.Enabled == nil {
-		if request.Namespace == h.OperatorNamespace {
+		if request.Namespace == h.operatorNamespace {
 			monitoringSpec.LogCollection.Enabled = ptr.To(false)
 		} else {
 			monitoringSpec.LogCollection.Enabled = ptr.To(telemetryCollectionEnabled)
@@ -150,7 +160,7 @@ func (h *MonitoringMutatingWebhookHandler) overrideLogCollectionDefault(
 	monitoringSpec *dash0v1beta1.Dash0MonitoringSpec,
 	logger *logr.Logger,
 ) bool {
-	if request.Namespace == h.OperatorNamespace &&
+	if request.Namespace == h.operatorNamespace &&
 		util.ReadBoolPointerWithDefault(monitoringSpec.LogCollection.Enabled, true) {
 		logger.Info(
 			fmt.Sprintf(
@@ -160,7 +170,7 @@ func (h *MonitoringMutatingWebhookHandler) overrideLogCollectionDefault(
 					"Collecting them via the filelog receiver is not supported. You can get rid of this log message "+
 					"by explicitly disabling log collection for this namespace, see "+
 					"https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator#monitoringresource.spec.logCollection.enabled.",
-				h.OperatorNamespace))
+				h.operatorNamespace))
 		monitoringSpec.LogCollection.Enabled = ptr.To(false)
 		return true
 	}
