@@ -32,7 +32,7 @@ import (
 type InstrumentationWebhookHandler struct {
 	Client                       client.Client
 	Recorder                     record.EventRecorder
-	ClusterInstrumentationConfig util.ClusterInstrumentationConfig
+	ClusterInstrumentationConfig *util.ClusterInstrumentationConfig
 }
 
 type resourceHandler func(
@@ -99,8 +99,11 @@ var (
 func NewInstrumentationWebhookHandler(
 	client client.Client,
 	recorder record.EventRecorder,
-	clusterInstrumentationConfig util.ClusterInstrumentationConfig,
+	clusterInstrumentationConfig *util.ClusterInstrumentationConfig,
 ) *InstrumentationWebhookHandler {
+	if clusterInstrumentationConfig == nil {
+		panic("clusterInstrumentationConfig must not be nil")
+	}
 	return &InstrumentationWebhookHandler{
 		Client:                       client,
 		Recorder:                     recorder,
@@ -120,6 +123,10 @@ func (h *InstrumentationWebhookHandler) SetupWebhookWithManager(mgr ctrl.Manager
 	mgr.GetWebhookServer().Register("/workloads/inject", handler)
 
 	return nil
+}
+
+func (h *InstrumentationWebhookHandler) UpdateExtraConfig(_ context.Context, extraConfig util.ExtraConfig, _ *logr.Logger) {
+	h.ClusterInstrumentationConfig.ExtraConfig.Store(&extraConfig)
 }
 
 func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admission.Request) admission.Response {
@@ -204,6 +211,7 @@ func (h *InstrumentationWebhookHandler) Handle(ctx context.Context, request admi
 	version := gkv.Version
 	kind := gkv.Kind
 	gvkLabel := fmt.Sprintf("%s/%s.%s", group, version, kind)
+
 	return routes.routeFor(group, kind, version)(
 		h,
 		request,

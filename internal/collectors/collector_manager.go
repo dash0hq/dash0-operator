@@ -6,6 +6,7 @@ package collectors
 import (
 	"context"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -27,8 +28,10 @@ import (
 
 type CollectorManager struct {
 	client.Client
-	Clientset *kubernetes.Clientset
-	*otelcolresources.OTelColResourceManager
+	clientset                          *kubernetes.Clientset
+	oTelColResourceManager             *otelcolresources.OTelColResourceManager
+	extraConfig                        atomic.Pointer[util.ExtraConfig]
+	developmentMode                    bool
 	updateInProgress                   atomic.Bool
 	resourcesHaveBeenDeletedByOperator atomic.Bool
 }
@@ -40,11 +43,44 @@ const (
 	TriggeredByDash0ResourceReconcile CollectorReconcileTrigger = "resource"
 )
 
+func NewCollectorManager(
+	k8sClient client.Client,
+	clientset *kubernetes.Clientset,
+	extraConfig util.ExtraConfig,
+	developmentMode bool,
+	oTelColResourceManager *otelcolresources.OTelColResourceManager,
+) *CollectorManager {
+	m := &CollectorManager{
+		Client:                 k8sClient,
+		clientset:              clientset,
+		developmentMode:        developmentMode,
+		oTelColResourceManager: oTelColResourceManager,
+	}
+	m.extraConfig.Store(&extraConfig)
+	return m
+}
+
+func (m *CollectorManager) UpdateExtraConfig(ctx context.Context, newConfig util.ExtraConfig, logger *logr.Logger) {
+	previousConfig := m.extraConfig.Swap(&newConfig)
+	if previousConfig == nil || !reflect.DeepEqual(*previousConfig, newConfig) {
+		hasBeenReconciled, err := m.ReconcileOpenTelemetryCollector(ctx, nil, TriggeredByWatchEvent)
+		if err != nil {
+			logger.Error(err, "Failed to create/update collector resources after extra config map update.")
+		}
+		if hasBeenReconciled {
+			logger.Info("successfully reconciled collector resources after extra config map update")
+		}
+	} else {
+		logger.Info("ignoring extra config map update, both the new and the old extra config map have the same content")
+	}
+}
+
 // ReconcileOpenTelemetryCollector can be triggered by a
 //  1. a reconcile request from the Dash0OperatorConfiguration resource.
 //  2. a reconcile request from a Dash0Monitoring resource in the cluster.
 //  3. a change event on one of the OpenTelemetry collector related resources that the operator manages (a change to one
 //     of "our" config maps or similar).
+//  4. a file change event picked up by the extra config map watcher
 //
 // The parameter triggeringMonitoringResource is only != nil for case (2).
 //
@@ -54,31 +90,29 @@ const (
 // deleted; it only indicates that the reconciliation has been performed.
 func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 	ctx context.Context,
-	images util.Images,
-	operatorNamespace string,
 	triggeringMonitoringResource *dash0v1beta1.Dash0Monitoring,
 	trigger CollectorReconcileTrigger,
-) (error, bool) {
+) (bool, error) {
 	logger := log.FromContext(ctx)
 	if m.resourcesHaveBeenDeletedByOperator.Load() {
 		if trigger == TriggeredByWatchEvent {
-			if m.DevelopmentMode {
+			if m.developmentMode {
 				logger.Info("OpenTelemetry collector resources have already been deleted, ignoring reconciliation request.")
 			}
-			return nil, false
+			return false, nil
 		} else if trigger == TriggeredByDash0ResourceReconcile {
-			if m.DevelopmentMode {
+			if m.developmentMode {
 				logger.Info("resetting resourcesHaveBeenDeletedByOperator")
 			}
 			m.resourcesHaveBeenDeletedByOperator.Store(false)
 		}
 	}
 	if m.updateInProgress.Load() {
-		if m.DevelopmentMode {
+		if m.developmentMode {
 			logger.Info("creation/update of the OpenTelemetry collector resources is already in progress, skipping " +
 				"additional reconciliation request.")
 		}
-		return nil, false
+		return false, nil
 	}
 
 	m.updateInProgress.Store(true)
@@ -88,11 +122,11 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 
 	operatorConfigurationResource, err := m.findOperatorConfigurationResource(ctx, &logger)
 	if err != nil {
-		return err, false
+		return false, err
 	}
 	allMonitoringResources, err := m.findAllMonitoringResources(ctx, &logger)
 	if err != nil {
-		return err, false
+		return false, err
 	}
 	var export *dash0common.Export
 	if operatorConfigurationResource != nil && operatorConfigurationResource.Spec.Export != nil {
@@ -125,6 +159,10 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 		}
 	}
 
+	extraConfig := m.extraConfig.Load()
+	if extraConfig == nil {
+		return false, fmt.Errorf("extra config is nil in CollectorManager#ReconcileOpenTelemetryCollector")
+	}
 	if operatorConfigurationResource != nil && !util.ReadBoolPointerWithDefault(operatorConfigurationResource.Spec.TelemetryCollection.Enabled, true) {
 		logger.Info(
 			fmt.Sprintf("Telemetry collection has been disabled explicitly via the operator configuration "+
@@ -132,19 +170,18 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 				"will be created, existing Dash0 OpenTelemetry collectors (if any) will be removed.",
 				operatorConfigurationResource.Name),
 		)
-		err = m.removeOpenTelemetryCollector(ctx, operatorNamespace, &logger)
-		return err, err == nil
+		err = m.removeOpenTelemetryCollector(ctx, *extraConfig, &logger)
+		return err == nil, err
 	} else if export != nil {
 		err = m.createOrUpdateOpenTelemetryCollector(
 			ctx,
-			operatorNamespace,
-			images,
 			operatorConfigurationResource,
 			allMonitoringResources,
+			*extraConfig,
 			export,
 			&logger,
 		)
-		return err, err == nil
+		return err == nil, err
 	} else {
 		// This should actually never happen, as the operator configuration has a kubebuilder validation comment that
 		// makes the export a required field.
@@ -155,25 +192,23 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 					"collectors (if any) will be removed.", operatorConfigurationResource.Name),
 			)
 		}
-		err = m.removeOpenTelemetryCollector(ctx, operatorNamespace, &logger)
-		return err, err == nil
+		err = m.removeOpenTelemetryCollector(ctx, *extraConfig, &logger)
+		return err == nil, err
 	}
 }
 
 func (m *CollectorManager) createOrUpdateOpenTelemetryCollector(
 	ctx context.Context,
-	operatorNamespace string,
-	images util.Images,
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	allMonitoringResources []dash0v1beta1.Dash0Monitoring,
+	extraConfig util.ExtraConfig,
 	export *dash0common.Export,
 	logger *logr.Logger,
 ) error {
 	resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
-		m.OTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
+		m.oTelColResourceManager.CreateOrUpdateOpenTelemetryCollectorResources(
 			ctx,
-			operatorNamespace,
-			images,
+			extraConfig,
 			operatorConfigurationResource,
 			allMonitoringResources,
 			export,
@@ -199,12 +234,12 @@ func (m *CollectorManager) createOrUpdateOpenTelemetryCollector(
 
 func (m *CollectorManager) removeOpenTelemetryCollector(
 	ctx context.Context,
-	operatorNamespace string,
+	extraConfig util.ExtraConfig,
 	logger *logr.Logger,
 ) error {
-	resourcesHaveBeenDeleted, err := m.OTelColResourceManager.DeleteResources(
+	resourcesHaveBeenDeleted, err := m.oTelColResourceManager.DeleteResources(
 		ctx,
-		operatorNamespace,
+		extraConfig,
 		logger,
 	)
 	if err != nil {

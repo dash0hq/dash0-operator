@@ -1206,7 +1206,7 @@ Here is what you need to know about this version update for `Dash0Monitoring`:
           mode: created-and-updated
       ```
       If the template does not specify the workload instrumentation mode explicitly (that is, it relies on using the
-      default instrumentation mode), no change is necessary here. 
+      default instrumentation mode), no change is necessary here.
     - If the template contains the attribute `spec.prometheusScrapingEnabled`, replace that with
       `spec.prometheusScraping.enabled`.
       That is:

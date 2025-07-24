@@ -21,6 +21,14 @@ type OperatorConfigurationMutatingWebhookHandler struct {
 	Client client.Client
 }
 
+func NewOperatorConfigurationMutatingWebhookHandler(
+	k8sClient client.Client,
+) *OperatorConfigurationMutatingWebhookHandler {
+	return &OperatorConfigurationMutatingWebhookHandler{
+		Client: k8sClient,
+	}
+}
+
 func (h *OperatorConfigurationMutatingWebhookHandler) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	webhook := &admission.Webhook{
 		Handler: h,

@@ -37,22 +37,9 @@ import (
 
 type OTelColResourceManager struct {
 	client.Client
-	Scheme                    *runtime.Scheme
-	OperatorManagerDeployment *appsv1.Deployment
-	// OTelCollectorNamePrefix is used as a prefix for OTel collector Kubernetes resources created by the operator, set
-	// to value of the environment variable OTEL_COLLECTOR_NAME_PREFIX, which is set to the Helm release name by the
-	// operator Helm chart.
-	OTelCollectorNamePrefix          string
-	ExtraConfig                      util.ExtraConfig
-	SendBatchMaxSize                 *uint32
-	NodeIp                           string
-	NodeName                         string
-	PseudoClusterUID                 string
-	IsIPv6Cluster                    bool
-	IsDocker                         bool
-	DisableHostPorts                 bool
-	DevelopmentMode                  bool
-	DebugVerbosityDetailed           bool
+	scheme                           *runtime.Scheme
+	operatorManagerDeployment        *appsv1.Deployment
+	collectorConfig                  util.CollectorConfig
 	obsoleteResourcesHaveBeenDeleted atomic.Bool
 	kubeletStatsReceiverConfig       atomic.Pointer[KubeletStatsReceiverConfig]
 }
@@ -90,40 +77,19 @@ func NewOTelColResourceManager(
 	k8sClient client.Client,
 	scheme *runtime.Scheme,
 	operatorManagerDeployment *appsv1.Deployment,
-	oTelCollectorNamePrefix string,
-	extraConfig util.ExtraConfig,
-	sendBatchMaxSize *uint32,
-	nodeIp string,
-	nodeName string,
-	pseudoClusterUID string,
-	isIPv6Cluster bool,
-	isDocker bool,
-	disableHostPorts bool,
-	developmentMode bool,
-	debugVerbosityDetailed bool,
+	collectorConfig util.CollectorConfig,
 ) *OTelColResourceManager {
 	return &OTelColResourceManager{
 		Client:                    k8sClient,
-		Scheme:                    scheme,
-		OperatorManagerDeployment: operatorManagerDeployment,
-		OTelCollectorNamePrefix:   oTelCollectorNamePrefix,
-		ExtraConfig:               extraConfig,
-		SendBatchMaxSize:          sendBatchMaxSize,
-		NodeIp:                    nodeIp,
-		NodeName:                  nodeName,
-		PseudoClusterUID:          pseudoClusterUID,
-		IsIPv6Cluster:             isIPv6Cluster,
-		DisableHostPorts:          disableHostPorts,
-		IsDocker:                  isDocker,
-		DevelopmentMode:           developmentMode,
-		DebugVerbosityDetailed:    debugVerbosityDetailed,
+		scheme:                    scheme,
+		operatorManagerDeployment: operatorManagerDeployment,
+		collectorConfig:           collectorConfig,
 	}
 }
 
 func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	ctx context.Context,
-	operatorNamespace string,
-	images util.Images,
+	extraConfig util.ExtraConfig,
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	allMonitoringResources []dash0v1beta1.Dash0Monitoring,
 	export *dash0common.Export,
@@ -168,10 +134,10 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		)
 
 	config := &oTelColConfig{
-		OperatorNamespace:           operatorNamespace,
-		NamePrefix:                  m.OTelCollectorNamePrefix,
+		OperatorNamespace:           m.collectorConfig.OperatorNamespace,
+		NamePrefix:                  m.collectorConfig.OTelCollectorNamePrefix,
 		Export:                      *export,
-		SendBatchMaxSize:            m.SendBatchMaxSize,
+		SendBatchMaxSize:            m.collectorConfig.SendBatchMaxSize,
 		SelfMonitoringConfiguration: selfMonitoringConfiguration,
 		KubernetesInfrastructureMetricsCollectionEnabled: kubernetesInfrastructureMetricsCollectionEnabled,
 		CollectPodLabelsAndAnnotationsEnabled:            collectPodLabelsAndAnnotationsEnabled,
@@ -181,22 +147,22 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		// This is apparently not supported in Docker, at least not in Docker Desktop. See
 		// https://github.com/prometheus/node_exporter/issues/2002#issuecomment-801763211 and similar.
 		// For this reason, we do not allow enabling the hostmetrics receiver when the node runtime is Docker.
-		UseHostMetricsReceiver: kubernetesInfrastructureMetricsCollectionEnabled && !m.IsDocker,
-		DisableHostPorts:       m.DisableHostPorts,
+		UseHostMetricsReceiver: kubernetesInfrastructureMetricsCollectionEnabled && !m.collectorConfig.IsDocker,
+		DisableHostPorts:       m.collectorConfig.DisableHostPorts,
 		ClusterName:            clusterName,
-		PseudoClusterUID:       m.PseudoClusterUID,
-		Images:                 images,
-		IsIPv6Cluster:          m.IsIPv6Cluster,
-		DevelopmentMode:        m.DevelopmentMode,
-		DebugVerbosityDetailed: m.DebugVerbosityDetailed,
+		PseudoClusterUID:       m.collectorConfig.PseudoClusterUID,
+		Images:                 m.collectorConfig.Images,
+		IsIPv6Cluster:          m.collectorConfig.IsIPv6Cluster,
+		DevelopmentMode:        m.collectorConfig.DevelopmentMode,
+		DebugVerbosityDetailed: m.collectorConfig.DebugVerbosityDetailed,
 	}
-	if m.ExtraConfig.CollectorFilelogOffsetStorageVolume != nil {
-		config.OffsetStorageVolume = m.ExtraConfig.CollectorFilelogOffsetStorageVolume
+	if extraConfig.CollectorFilelogOffsetStorageVolume != nil {
+		config.OffsetStorageVolume = extraConfig.CollectorFilelogOffsetStorageVolume
 	}
 	desiredState, err := assembleDesiredStateForUpsert(
 		config,
 		allMonitoringResources,
-		m.ExtraConfig,
+		extraConfig,
 	)
 	if err != nil {
 		return false, false, err
@@ -219,10 +185,10 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		}
 	}
 
-	if err = m.deleteResourcesThatAreNoLongerDesired(ctx, *config, desiredState, logger); err != nil {
+	if err = m.deleteResourcesThatAreNoLongerDesired(ctx, *config, extraConfig, desiredState, logger); err != nil {
 		return resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err
 	}
-	if err = m.deleteObsoleteResourcesFromPreviousOperatorVersions(ctx, operatorNamespace, logger); err != nil {
+	if err = m.deleteObsoleteResourcesFromPreviousOperatorVersions(ctx, m.collectorConfig.OperatorNamespace, logger); err != nil {
 		return resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err
 	}
 
@@ -333,7 +299,7 @@ func (m *OTelColResourceManager) updateResource(
 		return false, err
 	}
 
-	if m.DevelopmentMode {
+	if m.collectorConfig.DevelopmentMode {
 		logger.Info(fmt.Sprintf(
 			"resource %s/%s was out of sync and has been reconciled",
 			desiredResource.GetNamespace(),
@@ -359,11 +325,11 @@ func (m *OTelColResourceManager) setOwnerReference(
 	}
 	if err := controllerutil.SetControllerReference(&appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: m.OperatorManagerDeployment.Namespace,
-			Name:      m.OperatorManagerDeployment.Name,
-			UID:       m.OperatorManagerDeployment.UID,
+			Namespace: m.operatorManagerDeployment.Namespace,
+			Name:      m.operatorManagerDeployment.Name,
+			UID:       m.operatorManagerDeployment.UID,
 		},
-	}, object, m.Scheme); err != nil {
+	}, object, m.scheme); err != nil {
 		logger.Error(err, "cannot set owner reference on object")
 		return err
 	}
@@ -373,10 +339,10 @@ func (m *OTelColResourceManager) setOwnerReference(
 func (m *OTelColResourceManager) amendDeploymentAndDaemonSetWithSelfReferenceUIDs(existingResource client.Object, desiredResource client.Object) {
 	name := desiredResource.GetName()
 	uid := existingResource.GetUID()
-	if name == DaemonSetName(m.OTelCollectorNamePrefix) {
+	if name == DaemonSetName(m.collectorConfig.OTelCollectorNamePrefix) {
 		daemonset := desiredResource.(*appsv1.DaemonSet)
 		addSelfReferenceUidToAllContainers(&daemonset.Spec.Template.Spec.Containers, "K8S_DAEMONSET_UID", uid)
-	} else if name == DeploymentName(m.OTelCollectorNamePrefix) {
+	} else if name == DeploymentName(m.collectorConfig.OTelCollectorNamePrefix) {
 		deployment := desiredResource.(*appsv1.Deployment)
 		addSelfReferenceUidToAllContainers(&deployment.Spec.Template.Spec.Containers, "K8S_DEPLOYMENT_UID", uid)
 	}
@@ -399,37 +365,37 @@ func addSelfReferenceUidToAllContainers(containers *[]corev1.Container, envVarNa
 
 func (m *OTelColResourceManager) DeleteResources(
 	ctx context.Context,
-	operatorNamespace string,
+	extraConfig util.ExtraConfig,
 	logger *logr.Logger,
 ) (bool, error) {
 	logger.Info(
 		fmt.Sprintf(
 			"Deleting the OpenTelemetry collector Kubernetes resources in the Dash0 operator namespace %s (if any exist).",
-			operatorNamespace,
+			m.collectorConfig.OperatorNamespace,
 		))
 	config := &oTelColConfig{
-		OperatorNamespace: operatorNamespace,
-		NamePrefix:        m.OTelCollectorNamePrefix,
+		OperatorNamespace: m.collectorConfig.OperatorNamespace,
+		NamePrefix:        m.collectorConfig.OTelCollectorNamePrefix,
 		// For deleting the resources, we do not need the actual export settings; we only use assembleDesiredState to
 		// collect the kinds and names of all resources that need to be deleted.
 		Export:                      dash0common.Export{},
-		SendBatchMaxSize:            m.SendBatchMaxSize,
+		SendBatchMaxSize:            m.collectorConfig.SendBatchMaxSize,
 		SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{SelfMonitoringEnabled: false},
 		// KubernetesInfrastructureMetricsCollectionEnabled=false would lead to not deleting the collector-deployment-
 		// related resources, we always try to delete all collector resources (daemonset & deployment), no matter
 		// whether both sets have been created earlier or not.
 		KubernetesInfrastructureMetricsCollectionEnabled: true,
-		UseHostMetricsReceiver:                           !m.IsDocker,        // irrelevant for deletion
-		DisableHostPorts:                                 m.DisableHostPorts, // irrelevant for deletion
+		UseHostMetricsReceiver:                           !m.collectorConfig.IsDocker,        // irrelevant for deletion
+		DisableHostPorts:                                 m.collectorConfig.DisableHostPorts, // irrelevant for deletion
 		Images:                                           dummyImagesForDeletion,
-		IsIPv6Cluster:                                    m.IsIPv6Cluster,
-		DevelopmentMode:                                  m.DevelopmentMode,
-		DebugVerbosityDetailed:                           m.DebugVerbosityDetailed,
+		IsIPv6Cluster:                                    m.collectorConfig.IsIPv6Cluster,
+		DevelopmentMode:                                  m.collectorConfig.DevelopmentMode,
+		DebugVerbosityDetailed:                           m.collectorConfig.DebugVerbosityDetailed,
 	}
-	if m.ExtraConfig.CollectorFilelogOffsetStorageVolume != nil {
-		config.OffsetStorageVolume = m.ExtraConfig.CollectorFilelogOffsetStorageVolume
+	if extraConfig.CollectorFilelogOffsetStorageVolume != nil {
+		config.OffsetStorageVolume = extraConfig.CollectorFilelogOffsetStorageVolume
 	}
-	desiredResources, err := assembleDesiredStateForDelete(config, m.ExtraConfig)
+	desiredResources, err := assembleDesiredStateForDelete(config, extraConfig)
 	if err != nil {
 		return false, err
 	}
@@ -462,13 +428,14 @@ func (m *OTelColResourceManager) DeleteResources(
 func (m *OTelColResourceManager) deleteResourcesThatAreNoLongerDesired(
 	ctx context.Context,
 	config oTelColConfig,
+	extraConfig util.ExtraConfig,
 	desiredState []clientObject,
 	logger *logr.Logger,
 ) error {
 	// override actual config settings with settings that will produce all possible resources
 	config.KubernetesInfrastructureMetricsCollectionEnabled = true
 
-	allPossibleResources, err := assembleDesiredStateForDelete(&config, m.ExtraConfig)
+	allPossibleResources, err := assembleDesiredStateForDelete(&config, extraConfig)
 	if err != nil {
 		return err
 	}
@@ -520,7 +487,7 @@ func (m *OTelColResourceManager) deleteObsoleteResourcesFromPreviousOperatorVers
 	}
 	obsoleteResources := compileObsoleteResources(
 		namespace,
-		m.OTelCollectorNamePrefix,
+		m.collectorConfig.OTelCollectorNamePrefix,
 	)
 	var allErrors []error
 	for _, obsoleteResource := range obsoleteResources {
@@ -555,7 +522,7 @@ func (m *OTelColResourceManager) determineKubeletstatsReceiverEndpoint(
 	if cachedConfig != nil {
 		return *cachedConfig
 	}
-	if m.NodeName == "" && m.NodeIp == "" {
+	if m.collectorConfig.NodeName == "" && m.collectorConfig.NodeIp == "" {
 		logger.Info("No K8s_NODE_NAME and no K8S_NODE_IP available, skipping kubeletstats receiver endpoint lookup. " +
 			"The kubeletstats receiver will be disabled. Some Kubernetes infrastructure metrics will be missing.")
 		return m.cacheKubeletStatsReceiverConfig(KubeletStatsReceiverConfig{Enabled: false})
@@ -566,13 +533,13 @@ func (m *OTelColResourceManager) determineKubeletstatsReceiverEndpoint(
 		return m.cacheKubeletStatsReceiverConfig(KubeletStatsReceiverConfig{Enabled: false})
 	}
 
-	logger.Info(fmt.Sprintf("Attempting DNS lookup for Kubernetes node name %s.", m.NodeName))
-	_, err := net.LookupIP(m.NodeName)
+	logger.Info(fmt.Sprintf("Attempting DNS lookup for Kubernetes node name %s.", m.collectorConfig.NodeName))
+	_, err := net.LookupIP(m.collectorConfig.NodeName)
 	if err == nil {
-		logger.Info(fmt.Sprintf("DNS lookup for Kubernetes node name %s has been successful.", m.NodeName))
+		logger.Info(fmt.Sprintf("DNS lookup for Kubernetes node name %s has been successful.", m.collectorConfig.NodeName))
 		endpoint := kubeletStatsNodeNameEndpoint
 
-		nodeNameEndpointWithPath := fmt.Sprintf("https://%s:10250%s", m.NodeName, kubeletStatsSummaryPath)
+		nodeNameEndpointWithPath := fmt.Sprintf("https://%s:10250%s", m.collectorConfig.NodeName, kubeletStatsSummaryPath)
 		logger.Info(fmt.Sprintf("Attempting probe request to %s.", nodeNameEndpointWithPath))
 		err = executeHttpRequest(httpClient, nodeNameEndpointWithPath)
 		if err == nil {
@@ -604,7 +571,7 @@ func (m *OTelColResourceManager) determineKubeletstatsReceiverEndpoint(
 				fmt.Sprintf(
 					"DNS lookup for Kubernetes node name %s has been successful, but the probe request to %s resulted "+
 						"in an error: %s. Will try using K8S_NODE_IP next.",
-					m.NodeName,
+					m.collectorConfig.NodeName,
 					nodeNameEndpointWithPath,
 					err.Error(),
 				))
@@ -613,13 +580,13 @@ func (m *OTelColResourceManager) determineKubeletstatsReceiverEndpoint(
 		logger.Info(
 			fmt.Sprintf(
 				"DNS lookup for Kubernetes node name %s failed with error: %s, will try K8S_NODE_IP next.",
-				m.NodeName,
+				m.collectorConfig.NodeName,
 				err.Error(),
 			))
 	}
 
 	nodeIpEndpointResultsInTlsError := false
-	nodeIpEndpointWithPath := fmt.Sprintf("https://%s:10250%s", m.NodeIp, kubeletStatsSummaryPath)
+	nodeIpEndpointWithPath := fmt.Sprintf("https://%s:10250%s", m.collectorConfig.NodeIp, kubeletStatsSummaryPath)
 	logger.Info(fmt.Sprintf("Attempting probe request %s.", nodeIpEndpointWithPath))
 	err = executeHttpRequest(httpClient, nodeIpEndpointWithPath)
 	if err == nil {
@@ -650,7 +617,7 @@ func (m *OTelColResourceManager) determineKubeletstatsReceiverEndpoint(
 			))
 	}
 
-	readOnlyNodeIpEndpointWithPath := fmt.Sprintf("http://%s:10255%s", m.NodeIp, kubeletStatsSummaryPath)
+	readOnlyNodeIpEndpointWithPath := fmt.Sprintf("http://%s:10255%s", m.collectorConfig.NodeIp, kubeletStatsSummaryPath)
 	logger.Info(fmt.Sprintf("Attempting probe request to to read-only endpoint %s.", readOnlyNodeIpEndpointWithPath))
 	err = executeHttpRequest(httpClient, readOnlyNodeIpEndpointWithPath)
 	if err == nil {
