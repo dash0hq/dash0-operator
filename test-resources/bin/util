@@ -512,12 +512,15 @@ install_monitoring_resource() {
   if [[ "$additional_namespaces" = "true" ]]; then
     kubectl apply -n test-namespace-2 -f test-resources/customresources/dash0monitoring/dash0monitoring-2.yaml
     kubectl apply -n test-namespace-3 -f test-resources/customresources/dash0monitoring/dash0monitoring-3.yaml
+    kubectl apply -n routed-namespace -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml
   fi
 
   echo "waiting for the monitoring resource to become available"
   kubectl wait --namespace ${target_namespace} dash0monitorings.operator.dash0.com/dash0-monitoring-resource --for condition=Available
   if [[ "$additional_namespaces" = "true" ]]; then
     kubectl wait --namespace test-namespace-2 dash0monitorings.operator.dash0.com/dash0-monitoring-resource --for condition=Available
+    kubectl wait --namespace test-namespace-3 dash0monitorings.operator.dash0.com/dash0-monitoring-resource --for condition=Available
+    kubectl wait --namespace routed-namespace dash0monitorings.operator.dash0.com/dash0-monitoring-resource --for condition=Available
   fi
 }
 
@@ -533,6 +536,7 @@ deploy_application_under_monitoring() {
     if [[ "$additional_namespaces" = true ]]; then
       test-resources/node.js/express/deploy.sh test-namespace-2 daemonset
       test-resources/node.js/express/deploy.sh test-namespace-3 statefulset
+      test-resources/node.js/express/deploy.sh routed-namespace replicaset
     fi
   elif [[ "${runtime_under_test:-}" = "jvm" ]]; then
     build_test_application test-resources/jvm/spring-boot dash0-operator-jvm-spring-boot-test-app
@@ -541,6 +545,7 @@ deploy_application_under_monitoring() {
     if [[ "$additional_namespaces" = true ]]; then
       kubectl apply -n test-namespace-2 -f daemonset.yaml
       kubectl apply -n test-namespace-3 -f statefulset.yaml
+      kubectl apply -n routed-namespace -f replicaset.yaml
     fi
     popd > /dev/null
   elif [[ "${runtime_under_test:-}" = "python" ]]; then
@@ -550,6 +555,7 @@ deploy_application_under_monitoring() {
     if [[ "$additional_namespaces" = true ]]; then
       kubectl apply -n test-namespace-2 -f daemonset.yaml
       kubectl apply -n test-namespace-3 -f statefulset.yaml
+      kubectl apply -n routed-namespace -f replicaset.yaml
     fi
     popd > /dev/null
   else
