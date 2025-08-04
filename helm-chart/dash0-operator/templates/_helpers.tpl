@@ -65,6 +65,15 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 {{- include "dash0-operator.imageRef" (dict "image" .Values.operator.initContainerImage "context" .) -}}
 {{- end }}
 
+{{/* the kube rbac proxy image */}}
+{{- define "dash0-operator.kubeRbacProxyImage" -}}
+{{- if .Values.operator.kubeRbacProxyImage.digest -}}
+{{- printf "%s@%s" .Values.operator.kubeRbacProxyImage.repository .Values.operator.kubeRbacProxyImage.digest }}
+{{- else -}}
+{{- printf "%s:%s" .Values.operator.kubeRbacProxyImage.repository .Values.operator.kubeRbacProxyImage.tag }}
+{{- end }}
+{{- end }}
+
 {{/* the collector image */}}
 {{- define "dash0-operator.collectorImage" -}}
 {{- include "dash0-operator.imageRef" (dict "image" .Values.operator.collectorImage "context" .) -}}
