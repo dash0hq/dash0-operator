@@ -92,13 +92,8 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 	extraConfig util.ExtraConfig,
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	allMonitoringResources []dash0v1beta1.Dash0Monitoring,
-	export *dash0common.Export,
 	logger *logr.Logger,
 ) (bool, bool, error) {
-	if export == nil {
-		return false, false, fmt.Errorf("cannot create or update Dash0 OpenTelemetry collectors without export settings")
-	}
-
 	selfMonitoringConfiguration, err :=
 		selfmonitoringapiaccess.ConvertOperatorConfigurationResourceToSelfMonitoringConfiguration(
 			operatorConfigurationResource,
@@ -133,10 +128,12 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 			logger,
 		)
 
+	// TODO we currently allow having no operator configuration resource if all monitoring reources have their own
+	// export. Maybe we should not allow that?
+	// Can we render a reasonable daemonset collector config without a default export?
 	config := &oTelColConfig{
 		OperatorNamespace:           m.collectorConfig.OperatorNamespace,
 		NamePrefix:                  m.collectorConfig.OTelCollectorNamePrefix,
-		Export:                      *export,
 		SendBatchMaxSize:            m.collectorConfig.SendBatchMaxSize,
 		SelfMonitoringConfiguration: selfMonitoringConfiguration,
 		KubernetesInfrastructureMetricsCollectionEnabled: kubernetesInfrastructureMetricsCollectionEnabled,
@@ -156,6 +153,20 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		DevelopmentMode:        m.collectorConfig.DevelopmentMode,
 		DebugVerbosityDetailed: m.collectorConfig.DebugVerbosityDetailed,
 	}
+
+	if operatorConfigurationResource != nil {
+		config.DefaultExport = operatorConfigurationResource.Spec.Export
+	}
+	perNamespaceExports := make(map[string]dash0common.Export)
+	for _, monitoringResource := range allMonitoringResources {
+		if monitoringResource.Spec.Export != nil {
+			perNamespaceExports[monitoringResource.Namespace] = *monitoringResource.Spec.Export
+		}
+	}
+	if len(perNamespaceExports) > 0 {
+		config.PerNamespaceExports = perNamespaceExports
+	}
+
 	if extraConfig.CollectorFilelogOffsetStorageVolume != nil {
 		config.OffsetStorageVolume = extraConfig.CollectorFilelogOffsetStorageVolume
 	}
@@ -376,9 +387,11 @@ func (m *OTelColResourceManager) DeleteResources(
 	config := &oTelColConfig{
 		OperatorNamespace: m.collectorConfig.OperatorNamespace,
 		NamePrefix:        m.collectorConfig.OTelCollectorNamePrefix,
-		// For deleting the resources, we do not need the actual export settings; we only use assembleDesiredState to
-		// collect the kinds and names of all resources that need to be deleted.
-		Export:                      dash0common.Export{},
+		// For deleting the resources, we do not need the actual export settings; nor do we need the per-namespace
+		// export settings from individual monitoring resources. We only use assembleDesiredState to collect the kinds
+		// and names of all resources that need to be deleted.
+		DefaultExport:               nil,
+		PerNamespaceExports:         nil,
 		SendBatchMaxSize:            m.collectorConfig.SendBatchMaxSize,
 		SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{SelfMonitoringEnabled: false},
 		// KubernetesInfrastructureMetricsCollectionEnabled=false would lead to not deleting the collector-deployment-

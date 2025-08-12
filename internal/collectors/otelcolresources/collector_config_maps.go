@@ -177,7 +177,7 @@ func assembleCollectorConfigMap(
 	if forDeletion {
 		configMapData = map[string]string{}
 	} else {
-		exporterMap, err := ConvertExportSettingsToExporterMap(config.Export)
+		exporterMap, err := ConvertExportSettingsToExporterMap(config.DefaultExport, config.PerNamespaceExports)
 		if err != nil {
 			return nil, fmt.Errorf("%s %w", commonExportErrorPrefix, err)
 		}
@@ -416,14 +416,36 @@ func compareErrorMode(
 	return errorMode1
 }
 
-func ConvertExportSettingsToExporterMap(export dash0common.Export) (map[string][]OtlpExporter, error) {
-	exporterMap := make(map[string][]OtlpExporter)
-	exporterMap["default"] = []OtlpExporter{}
+// TODO
+// - actually use the exporter settings from the Dash0Monitoring resources
+// - also create different exporters for other export types, e.g. gRPC, HTTP
+// - ...?
 
+func ConvertExportSettingsToExporterMap(
+	defaultExport dash0common.Export,
+	perNamespaceExports map[string]dash0common.Export,
+) (map[string][]OtlpExporter, error) {
+	exporterMap := make(map[string][]OtlpExporter)
+	var err error
+	exporterMap["_default"], err = convertExportSettingsToExporterList(defaultExport)
+	if err != nil {
+		return nil, err
+	}
+	for namespace, export := range perNamespaceExports {
+		exporterMap[namespace], err = convertExportSettingsToExporterList(export)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return exporterMap, nil
+}
+
+func convertExportSettingsToExporterList(export dash0common.Export) ([]OtlpExporter, error) {
 	if export.Dash0 == nil && export.Grpc == nil && export.Http == nil {
 		return nil, fmt.Errorf("%s no exporter configuration found", commonExportErrorPrefix)
 	}
 
+	var exporters []OtlpExporter
 	if export.Dash0 != nil {
 		d0 := export.Dash0
 		if d0.Endpoint == "" {
@@ -439,26 +461,26 @@ func ConvertExportSettingsToExporterMap(export dash0common.Export) (map[string][
 				Value: d0.Dataset,
 			})
 		}
-		dash0ExporterDefault := OtlpExporter{
+		dash0Exporter := OtlpExporter{
 			Name:     "otlp/dash0/_default",
 			Endpoint: export.Dash0.Endpoint,
 			Headers:  headers,
 		}
-		setGrpcTls(export.Dash0.Endpoint, &dash0ExporterDefault)
-		exporterMap["default"] = append(exporterMap["default"], dash0ExporterDefault)
+		setGrpcTls(export.Dash0.Endpoint, &dash0Exporter)
+		exporters = append(exporters, dash0Exporter)
 
-		headersRouted := headers
-		headersRouted = append(headersRouted, dash0common.Header{
-			Name:  util.Dash0DatasetHeaderName,
-			Value: "routed",
-		})
-		dash0ExporterForRoutedNamespace := OtlpExporter{
-			Name:     "otlp/dash0/routed-namespace",
-			Endpoint: export.Dash0.Endpoint,
-			Headers:  headersRouted,
-		}
-		setGrpcTls(export.Dash0.Endpoint, &dash0ExporterForRoutedNamespace)
-		exporterMap["routed"] = []OtlpExporter{dash0ExporterForRoutedNamespace}
+		//headersRouted := headers
+		//headersRouted = append(headersRouted, dash0common.Header{
+		//	Name:  util.Dash0DatasetHeaderName,
+		//	Value: "routed",
+		//})
+		//dash0ExporterForRoutedNamespace := OtlpExporter{
+		//	Name:     "otlp/dash0/routed-namespace",
+		//	Endpoint: export.Dash0.Endpoint,
+		//	Headers:  headersRouted,
+		//}
+		//setGrpcTls(export.Dash0.Endpoint, &dash0ExporterForRoutedNamespace)
+		//exporterMap["routed"] = []OtlpExporter{dash0ExporterForRoutedNamespace}
 	}
 
 	if export.Grpc != nil {
@@ -475,7 +497,7 @@ func ConvertExportSettingsToExporterMap(export dash0common.Export) (map[string][
 		if len(grpc.Headers) > 0 {
 			grpcExporter.Headers = grpc.Headers
 		}
-		exporterMap["default"] = append(exporterMap["default"], grpcExporter)
+		exporters = append(exporters, grpcExporter)
 	}
 
 	if export.Http != nil {
@@ -495,10 +517,10 @@ func ConvertExportSettingsToExporterMap(export dash0common.Export) (map[string][
 		if len(http.Headers) > 0 {
 			httpExporter.Headers = http.Headers
 		}
-		exporterMap["default"] = append(exporterMap["default"], httpExporter)
+		exporters = append(exporters, httpExporter)
 	}
 
-	return exporterMap, nil
+	return exporters, nil
 }
 
 func renderCollectorConfiguration(

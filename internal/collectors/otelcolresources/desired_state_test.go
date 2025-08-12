@@ -51,7 +51,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		_, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export: dash0common.Export{
+			DefaultExport: dash0common.Export{
 				Dash0: &dash0common.Dash0Configuration{
 					Authorization: dash0common.Authorization{
 						Token: &AuthorizationTokenTest,
@@ -67,7 +67,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			DefaultExport:     *Dash0ExportWithEndpointAndToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			UseHostMetricsReceiver:                           true,
 			Images:                                           TestImages,
@@ -220,7 +220,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			DefaultExport:     *Dash0ExportWithEndpointAndToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: false,
 			Images: TestImages,
 		}, nil, util.ExtraConfigDefaults)
@@ -260,7 +260,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			DefaultExport:     *Dash0ExportWithEndpointAndToken(),
 		}, nil, util.ExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
@@ -278,7 +278,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndSecretRef(),
+			DefaultExport:     *Dash0ExportWithEndpointAndSecretRef(),
 		}, nil, util.ExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
@@ -298,7 +298,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *HttpExportTest(),
+			DefaultExport:     *HttpExportTest(),
 		}, nil, util.ExtraConfigDefaults)
 
 		Expect(err).ToNot(HaveOccurred())
@@ -317,7 +317,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *export,
+			DefaultExport:     *export,
 			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: true,
 				Export:                *export,
@@ -347,7 +347,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *export,
+			DefaultExport:     *export,
 			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: true,
 				Export:                *export,
@@ -378,7 +378,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *export,
+			DefaultExport:     *export,
 			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: true,
 				Export:                *export,
@@ -409,7 +409,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *export,
+			DefaultExport:     *export,
 			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: true,
 				Export:                *export,
@@ -438,7 +438,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *export,
+			DefaultExport:     *export,
 			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: true,
 				Export:                *export,
@@ -467,7 +467,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *export,
+			DefaultExport:     *export,
 			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: false,
 			},
@@ -484,7 +484,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			DefaultExport:     *Dash0ExportWithEndpointAndToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			UseHostMetricsReceiver:                           true,
 			Images:                                           TestImages,
@@ -525,7 +525,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			DefaultExport:     *Dash0ExportWithEndpointAndToken(),
 			Images:            TestImages,
 		}, []dash0v1beta1.Dash0Monitoring{
 			{
@@ -568,7 +568,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			DefaultExport:     *Dash0ExportWithEndpointAndToken(),
 			Images:            TestImages,
 		}, []dash0v1beta1.Dash0Monitoring{
 			{
@@ -629,7 +629,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			DefaultExport:     *Dash0ExportWithEndpointAndToken(),
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			UseHostMetricsReceiver:                           true,
 			Images:                                           TestImages,
@@ -719,28 +719,28 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		desiredState1, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			DefaultExport:     *Dash0ExportWithEndpointAndToken(),
 			Images:            TestImages,
 		}, []dash0v1beta1.Dash0Monitoring{mr1, mr2, mr3, mr4}, util.ExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 		desiredState2, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			DefaultExport:     *Dash0ExportWithEndpointAndToken(),
 			Images:            TestImages,
 		}, []dash0v1beta1.Dash0Monitoring{mr3, mr4, mr1, mr2}, util.ExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 		desiredState3, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			DefaultExport:     *Dash0ExportWithEndpointAndToken(),
 			Images:            TestImages,
 		}, []dash0v1beta1.Dash0Monitoring{mr4, mr3, mr2, mr1}, util.ExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())
 		desiredState4, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			DefaultExport:     *Dash0ExportWithEndpointAndToken(),
 			Images:            TestImages,
 		}, []dash0v1beta1.Dash0Monitoring{mr3, mr1, mr4, mr2}, util.ExtraConfigDefaults)
 		Expect(err).NotTo(HaveOccurred())

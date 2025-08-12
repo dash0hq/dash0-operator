@@ -32,7 +32,8 @@ type oTelColConfig struct {
 	// the environment variable OTEL_COLLECTOR_NAME_PREFIX, which is set to the Helm release name by the operator Helm
 	// chart.
 	NamePrefix                                       string
-	Export                                           dash0common.Export
+	DefaultExport                                    *dash0common.Export
+	PerNamespaceExports                              map[string]dash0common.Export
 	SendBatchMaxSize                                 *uint32
 	SelfMonitoringConfiguration                      selfmonitoringapiaccess.SelfMonitoringConfiguration
 	KubernetesInfrastructureMetricsCollectionEnabled bool
@@ -899,9 +900,9 @@ func assembleCollectorEnvVars(
 		},
 	}
 
-	if config.Export.Dash0 != nil {
+	if config.DefaultExport.Dash0 != nil {
 		authTokenEnvVar, err := util.CreateEnvVarForAuthorization(
-			(*(config.Export.Dash0)).Authorization,
+			(*(config.DefaultExport.Dash0)).Authorization,
 			authTokenEnvVarName,
 		)
 		if err != nil {
