@@ -28,6 +28,8 @@ connectors:
   forward/metrics/prometheus: {}
   forward/logs: {}
 
+  # TODO dynamically generate the routing table, if there is a monitoring resource with an export
+  # Also, there might not be a default export for the default_pipelines
   routing/traces:
     default_pipelines: [traces/export/_default]
     error_mode: ignore
@@ -626,6 +628,7 @@ exporters:
 {{ else if .DevelopmentMode }}
   debug: {}
 {{- end }}
+# TODO ExportersDefault might be nil or empty
 {{- range $i, $exporter := .ExportersDefault }}
   {{ $exporter.Name }}:
     endpoint: "{{ $exporter.Endpoint }}"

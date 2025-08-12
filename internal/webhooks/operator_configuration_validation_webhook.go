@@ -68,11 +68,28 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 	}
 
 	if util.ReadBoolPointerWithDefault(spec.SelfMonitoring.Enabled, true) &&
+		util.ReadBoolPointerWithDefault(spec.KubernetesInfrastructureMetricsCollection.Enabled, true) &&
+		spec.Export == nil {
+		return admission.Denied(
+			"The provided Dash0 operator configuration resource has self-monitoring and Kubernetes " +
+				"infrastructure metrics collection enabled, but it does not have an export configuration. Either " +
+				"disable self-monitoring and Kubernetes infrastructure metrics collection or provide an export " +
+				"configuration for telemetry.")
+	}
+	if util.ReadBoolPointerWithDefault(spec.SelfMonitoring.Enabled, true) &&
 		spec.Export == nil {
 		return admission.Denied(
 			"The provided Dash0 operator configuration resource has self-monitoring enabled, but it does not have an " +
 				"export configuration. Either disable self-monitoring or provide an export configuration for self-" +
 				"monitoring telemetry.")
+
+	}
+	if util.ReadBoolPointerWithDefault(spec.KubernetesInfrastructureMetricsCollection.Enabled, true) &&
+		spec.Export == nil {
+		return admission.Denied(
+			"The provided Dash0 operator configuration resource has Kubernetes infrastructure metrics collection " +
+				"enabled, but it does not have an export configuration. Either disable Kubernetes infrastructure " +
+				"metrics collection or provide an export configuration for telemetry.")
 
 	}
 

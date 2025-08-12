@@ -139,7 +139,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			_, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export:            dash0common.Export{},
+				DefaultExport:     dash0common.Export{},
 			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).To(HaveOccurred())
 		}, daemonSetAndDeployment)
@@ -148,7 +148,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			_, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
+				DefaultExport: dash0common.Export{
 					Dash0: &dash0common.Dash0Configuration{
 						Authorization: dash0common.Authorization{
 							Token: &AuthorizationTokenTest,
@@ -167,7 +167,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export:            *Dash0ExportWithEndpointAndToken(),
+				DefaultExport:     *Dash0ExportWithEndpointAndToken(),
 			}, monitoredNamespaces, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
@@ -197,7 +197,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
+				DefaultExport: dash0common.Export{
 					Dash0: &dash0common.Dash0Configuration{
 						Endpoint: EndpointDash0Test,
 						Dataset:  "custom-dataset",
@@ -235,7 +235,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
+				DefaultExport: dash0common.Export{
 					Dash0: &dash0common.Dash0Configuration{
 						Endpoint: "HTTP://endpoint.dash0.com:1234",
 						Authorization: dash0common.Authorization{
@@ -274,7 +274,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export:            *Dash0ExportWithEndpointAndToken(),
+				DefaultExport:     *Dash0ExportWithEndpointAndToken(),
 				DevelopmentMode:   true,
 			}, monitoredNamespaces, nil, nil, false)
 
@@ -310,7 +310,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace:      OperatorNamespace,
 				NamePrefix:             namePrefix,
-				Export:                 *Dash0ExportWithEndpointAndToken(),
+				DefaultExport:          *Dash0ExportWithEndpointAndToken(),
 				DevelopmentMode:        false,
 				DebugVerbosityDetailed: true,
 			}, monitoredNamespaces, nil, nil, false)
@@ -335,7 +335,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			_, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
+				DefaultExport: dash0common.Export{
 					Grpc: &dash0common.GrpcConfiguration{
 						Headers: []dash0common.Header{{
 							Name:  "Key1",
@@ -355,7 +355,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
+				DefaultExport: dash0common.Export{
 					Grpc: &dash0common.GrpcConfiguration{
 						Endpoint: GrpcEndpointTest,
 						Headers: []dash0common.Header{
@@ -399,7 +399,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
+				DefaultExport: dash0common.Export{
 					Grpc: &dash0common.GrpcConfiguration{
 						Endpoint: "http://example.com:1234",
 					},
@@ -431,7 +431,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			_, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
+				DefaultExport: dash0common.Export{
 					Http: &dash0common.HttpConfiguration{
 						Headers: []dash0common.Header{{
 							Name:  "Key1",
@@ -451,7 +451,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			_, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
+				DefaultExport: dash0common.Export{
 					Http: &dash0common.HttpConfiguration{
 						Endpoint: HttpEndpointTest,
 						Headers: []dash0common.Header{{
@@ -472,7 +472,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
+				DefaultExport: dash0common.Export{
 					Http: &dash0common.HttpConfiguration{
 						Endpoint: HttpEndpointTest,
 						Headers: []dash0common.Header{
@@ -517,7 +517,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
+				DefaultExport: dash0common.Export{
 					Dash0: &dash0common.Dash0Configuration{
 						Endpoint: EndpointDash0Test,
 						Authorization: dash0common.Authorization{
@@ -571,7 +571,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
+				DefaultExport: dash0common.Export{
 					Dash0: &dash0common.Dash0Configuration{
 						Endpoint: EndpointDash0Test,
 						Authorization: dash0common.Authorization{
@@ -626,7 +626,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
+				DefaultExport: dash0common.Export{
 					Grpc: &dash0common.GrpcConfiguration{
 						Endpoint: GrpcEndpointTest,
 						Headers: []dash0common.Header{{
@@ -683,7 +683,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export: dash0common.Export{
+				DefaultExport: dash0common.Export{
 					Dash0: &dash0common.Dash0Configuration{
 						Endpoint: EndpointDash0Test,
 						Authorization: dash0common.Authorization{
@@ -769,7 +769,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			DefaultExport:     *Dash0ExportWithEndpointAndToken(),
 			SendBatchMaxSize:  nil,
 		}, monitoredNamespaces, nil, nil, false)
 
@@ -785,7 +785,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			DefaultExport:     *Dash0ExportWithEndpointAndToken(),
 			SendBatchMaxSize:  ptr.To(uint32(16384)),
 		}, monitoredNamespaces, nil, nil, false)
 
@@ -803,7 +803,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			DefaultExport:     *Dash0ExportWithEndpointAndToken(),
 		}, monitoredNamespaces, nil, nil, false)
 
 		Expect(err).ToNot(HaveOccurred())
@@ -817,7 +817,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			DefaultExport:     *Dash0ExportWithEndpointAndToken(),
 			ClusterName:       "cluster-name",
 		}, monitoredNamespaces, nil, nil, false)
 
@@ -842,7 +842,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export:            *Dash0ExportWithEndpointAndToken(),
+				DefaultExport:     *Dash0ExportWithEndpointAndToken(),
 				KubernetesInfrastructureMetricsCollectionEnabled: false,
 				KubeletStatsReceiverConfig:                       KubeletStatsReceiverConfig{Enabled: false},
 				UseHostMetricsReceiver:                           false,
@@ -877,7 +877,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				configMap, err := assembleDaemonSetCollectorConfigMap(&oTelColConfig{
 					OperatorNamespace: OperatorNamespace,
 					NamePrefix:        namePrefix,
-					Export:            *Dash0ExportWithEndpointAndToken(),
+					DefaultExport:     *Dash0ExportWithEndpointAndToken(),
 					KubernetesInfrastructureMetricsCollectionEnabled: true,
 					KubeletStatsReceiverConfig:                       testConfig.kubeletStatsReceiverConfig,
 					UseHostMetricsReceiver:                           true,
@@ -963,7 +963,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace:                     OperatorNamespace,
 				NamePrefix:                            namePrefix,
-				Export:                                *Dash0ExportWithEndpointAndToken(),
+				DefaultExport:                         *Dash0ExportWithEndpointAndToken(),
 				CollectPodLabelsAndAnnotationsEnabled: false,
 			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
@@ -981,7 +981,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace:                     OperatorNamespace,
 				NamePrefix:                            namePrefix,
-				Export:                                *Dash0ExportWithEndpointAndToken(),
+				DefaultExport:                         *Dash0ExportWithEndpointAndToken(),
 				CollectPodLabelsAndAnnotationsEnabled: true,
 			}, monitoredNamespaces, nil, nil, false)
 			Expect(err).ToNot(HaveOccurred())
@@ -1039,7 +1039,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export:            *Dash0ExportWithEndpointAndToken(),
+				DefaultExport:     *Dash0ExportWithEndpointAndToken(),
 			}, monitoredNamespaces, nil, nil, false)
 
 			Expect(err).ToNot(HaveOccurred())
@@ -1061,7 +1061,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		var config = &oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			DefaultExport:     *Dash0ExportWithEndpointAndToken(),
 		}
 
 		It("should not render the prometheus scraping config if no namespace has scraping enabled", func() {
@@ -1118,7 +1118,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		var config = &oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            *Dash0ExportWithEndpointAndToken(),
+			DefaultExport:     *Dash0ExportWithEndpointAndToken(),
 		}
 
 		It("should not render the filelog receiver if no namespace has log collection enabled", func() {
@@ -1497,7 +1497,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				&oTelColConfig{
 					OperatorNamespace: OperatorNamespace,
 					NamePrefix:        namePrefix,
-					Export:            *Dash0ExportWithEndpointAndToken(),
+					DefaultExport:     *Dash0ExportWithEndpointAndToken(),
 				},
 				monitoredNamespaces,
 				testConfig.filters,
@@ -1940,7 +1940,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 				&oTelColConfig{
 					OperatorNamespace: OperatorNamespace,
 					NamePrefix:        namePrefix,
-					Export:            *Dash0ExportWithEndpointAndToken(),
+					DefaultExport:     *Dash0ExportWithEndpointAndToken(),
 				},
 				monitoredNamespaces,
 				nil,
@@ -2085,7 +2085,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			var config = &oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export:            *Dash0ExportWithEndpointAndToken(),
+				DefaultExport:     *Dash0ExportWithEndpointAndToken(),
 				IsIPv6Cluster:     testConfig.ipv6,
 			}
 
@@ -2123,7 +2123,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export:            *Dash0ExportWithEndpointAndToken(),
+				DefaultExport:     *Dash0ExportWithEndpointAndToken(),
 				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 					SelfMonitoringEnabled: false,
 				},
@@ -2137,7 +2137,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export:            *Dash0ExportWithEndpointAndToken(),
+				DefaultExport:     *Dash0ExportWithEndpointAndToken(),
 				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 					SelfMonitoringEnabled: true,
 					Export:                dash0common.Export{},
@@ -2153,7 +2153,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
 				NamePrefix:        namePrefix,
-				Export:            export,
+				DefaultExport:     export,
 				SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 					SelfMonitoringEnabled: true,
 					Export:                export,
@@ -2197,7 +2197,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            export,
+			DefaultExport:     export,
 			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: true,
 				Export:                export,
@@ -2240,7 +2240,7 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 		configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
-			Export:            export,
+			DefaultExport:     export,
 			SelfMonitoringConfiguration: selfmonitoringapiaccess.SelfMonitoringConfiguration{
 				SelfMonitoringEnabled: true,
 				Export:                export,
