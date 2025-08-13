@@ -814,7 +814,8 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 					By("waiting for self-monitoring metrics")
 					Eventually(func(g Gomega) {
-						verifySelfMonitoringMetrics(g, timestampLowerBound)
+						verifyOperatorSelfMonitoringMetrics(g, timestampLowerBound)
+						verifyCollectorSelfMonitoringMetrics(g, timestampLowerBound)
 					}, 90*time.Second, time.Second).Should(Succeed())
 				})
 			})

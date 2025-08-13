@@ -4,7 +4,7 @@ dist:
   module: github.com/dash0hq/dash0-operator
   name: dash0-operator-collector
   description: OpenTelemetry collector managed by the Dash0 operator
-  version: "dash0"
+  version: "0.132.0"
   output_path: dist
 extensions:
   - gomod: "github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.132.0"
