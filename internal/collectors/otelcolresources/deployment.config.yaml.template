@@ -216,6 +216,7 @@ service:
       - {{ $exporter.Name }}
       {{- end }}
 
+{{- if .InternalTelemetryEnabled }}
   telemetry:
     resource:
       "k8s.cluster.uid": "{{- .PseudoClusterUID }}"
@@ -229,13 +230,11 @@ service:
       "k8s.pod.uid": "${env:K8S_POD_UID}"
       "k8s.pod.name": "${env:K8S_POD_NAME}"
       "k8s.container.name": "opentelemetry-collector"
-    metrics:
-      readers:
-        - pull:
-            exporter:
-              prometheus:
-                host: "{{ .SelfIpReference }}"
-                port: 8888
+
+{{- if .SelfMonitoringMetricsConfig }}
+{{- .SelfMonitoringMetricsConfig }}
+{{- end }}
 {{- if .SelfMonitoringLogsConfig }}
 {{- .SelfMonitoringLogsConfig }}
+{{- end }}
 {{- end }}

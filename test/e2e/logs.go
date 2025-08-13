@@ -220,10 +220,9 @@ func selfMonitoringLogsResourceMatcherCollector(
 		"dash0-operator-collector",
 		matchResult,
 	)
-	verifyResourceAttributeEquals(
+	verifyResourceAttributeExists(
 		attributes,
 		string(semconv.ServiceVersionKey),
-		"dash0",
 		matchResult,
 	)
 	verifyResourceAttributeEquals(

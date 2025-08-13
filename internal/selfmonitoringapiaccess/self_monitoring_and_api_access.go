@@ -51,7 +51,13 @@ var (
 	// See https://kubernetes.io/docs/tasks/inject-data-application/define-interdependent-environment-variables/
 	selfMonitoringAuthHeaderValue = fmt.Sprintf("Bearer $(%s)", CollectorSelfMonitoringAuthTokenEnvVarName)
 
-	collectorLogSelfMonitoringPrelude = `
+	collectorMetricsSelfMonitoringPrelude = `
+    metrics:
+      readers:
+        - periodic:
+            exporter:
+              otlp:`
+	collectorLogsSelfMonitoringPrelude = `
     logs:
       processors:
         - batch:
@@ -428,25 +434,47 @@ func prependProtocol(endpoint string, defaultProtocol string) string {
 	return endpoint
 }
 
-// ConvertExportConfigurationToCollectorLogSelfMonitoringPipelineString is used to create a snippet that can be added to
+// ConvertExportConfigurationToCollectorMetricsSelfMonitoringPipelineString is used to create a snippet that can be
+// added to the collector config maps for sending the collector's metrics to a configured export.
+func ConvertExportConfigurationToCollectorMetricsSelfMonitoringPipelineString(selfMonitoringConfiguration SelfMonitoringConfiguration) string {
+	return convertExportConfigurationToCollectorSelfMonitoringPipelineString(
+		collectorMetricsSelfMonitoringPrelude,
+		selfMonitoringConfiguration,
+	)
+}
+
+// ConvertExportConfigurationToCollectorLogsSelfMonitoringPipelineString is used to create a snippet that can be added to
 // the collector config maps for sending the collector's logs to a configured export.
-func ConvertExportConfigurationToCollectorLogSelfMonitoringPipelineString(selfMonitoringConfiguration SelfMonitoringConfiguration) string {
+func ConvertExportConfigurationToCollectorLogsSelfMonitoringPipelineString(selfMonitoringConfiguration SelfMonitoringConfiguration) string {
+	return convertExportConfigurationToCollectorSelfMonitoringPipelineString(
+		collectorLogsSelfMonitoringPrelude,
+		selfMonitoringConfiguration,
+	)
+}
+
+func convertExportConfigurationToCollectorSelfMonitoringPipelineString(
+	prelude string,
+	selfMonitoringConfiguration SelfMonitoringConfiguration,
+) string {
 	if !selfMonitoringConfiguration.SelfMonitoringEnabled {
 		return ""
 	}
 	selfMonitoringExport := selfMonitoringConfiguration.Export
 	if selfMonitoringExport.Dash0 != nil {
-		return convertDash0ExportConfigurationToCollectorLogSelfMonitoringPipelineString(selfMonitoringExport.Dash0)
+		return convertDash0ExportConfigurationToCollectorLogSelfMonitoringPipelineString(prelude, selfMonitoringExport.Dash0)
 	} else if selfMonitoringExport.Grpc != nil {
-		return convertGrpcExportConfigurationToCollectorLogSelfMonitoringPipelineString(selfMonitoringExport.Grpc)
+		return convertGrpcExportConfigurationToCollectorLogSelfMonitoringPipelineString(prelude, selfMonitoringExport.Grpc)
 	} else if selfMonitoringExport.Http != nil {
-		return convertHttpExportConfigurationToCollectorLogSelfMonitoringPipelineString(selfMonitoringExport.Http)
+		return convertHttpExportConfigurationToCollectorLogSelfMonitoringPipelineString(prelude, selfMonitoringExport.Http)
 	}
 	return ""
 }
 
-func convertDash0ExportConfigurationToCollectorLogSelfMonitoringPipelineString(dash0Export *dash0common.Dash0Configuration) string {
-	pipeline := collectorLogSelfMonitoringPrelude +
+func convertDash0ExportConfigurationToCollectorLogSelfMonitoringPipelineString(
+	prelude string,
+	dash0Export *dash0common.Dash0Configuration,
+) string {
+	pipeline := prelude +
 		fmt.Sprintf(`
                 protocol: grpc
                 endpoint: %s`, prependProtocol(dash0Export.Endpoint, "https://"))
@@ -468,8 +496,11 @@ func convertDash0ExportConfigurationToCollectorLogSelfMonitoringPipelineString(d
 	return pipeline
 }
 
-func convertGrpcExportConfigurationToCollectorLogSelfMonitoringPipelineString(grpcExport *dash0common.GrpcConfiguration) string {
-	pipeline := collectorLogSelfMonitoringPrelude +
+func convertGrpcExportConfigurationToCollectorLogSelfMonitoringPipelineString(
+	prelude string,
+	grpcExport *dash0common.GrpcConfiguration,
+) string {
+	pipeline := prelude +
 		fmt.Sprintf(`
                 protocol: grpc
                 endpoint: %s`,
@@ -481,12 +512,15 @@ func convertGrpcExportConfigurationToCollectorLogSelfMonitoringPipelineString(gr
 	return pipeline
 }
 
-func convertHttpExportConfigurationToCollectorLogSelfMonitoringPipelineString(httpExport *dash0common.HttpConfiguration) string {
+func convertHttpExportConfigurationToCollectorLogSelfMonitoringPipelineString(
+	prelude string,
+	httpExport *dash0common.HttpConfiguration,
+) string {
 	encoding := "protobuf"
 	if httpExport.Encoding == dash0common.Json {
 		encoding = "json"
 	}
-	pipeline := collectorLogSelfMonitoringPrelude +
+	pipeline := prelude +
 		fmt.Sprintf(`
                 protocol: http/%s
                 endpoint: %s`,

@@ -238,7 +238,7 @@ func hasMatchingMetrics(
 	}
 }
 
-func verifySelfMonitoringMetrics(g Gomega, timestampLowerBound time.Time) {
+func verifyOperatorSelfMonitoringMetrics(g Gomega, timestampLowerBound time.Time) {
 	resourceMatchFn := func(
 		resourceMetrics pmetric.ResourceMetrics,
 		matchResult *ResourceMatchResult[pmetric.ResourceMetrics],
@@ -269,7 +269,7 @@ func verifySelfMonitoringMetrics(g Gomega, timestampLowerBound time.Time) {
 			)
 		} else {
 			// We are deliberately not requesting the namespace to be set to produce a match; the self-monitoring
-			// telemetry does not go through the k8sattributes processor, in fact it does neithr go through the
+			// telemetry does not go through the k8sattributes processor, in fact it does neither go through the
 			// daemonset collector nor the cluster metrics collector, instead it is sent directly to the export
 			// endpoint, hence it does not have extended Kubernetes resource attributes attached.
 			matchResult.addPassedAssertion(namespaceNameKey)
@@ -337,7 +337,111 @@ func verifySelfMonitoringMetrics(g Gomega, timestampLowerBound time.Time) {
 	)
 	allMatchResults.expectAtLeastOneMatch(
 		g,
-		"expected to find at least one matching self-monitoring metric",
+		"expected to find at least one matching operator self-monitoring metric",
+	)
+}
+
+func verifyCollectorSelfMonitoringMetrics(g Gomega, timestampLowerBound time.Time) {
+	resourceMatchFn := func(
+		resourceMetrics pmetric.ResourceMetrics,
+		matchResult *ResourceMatchResult[pmetric.ResourceMetrics],
+	) {
+		attributes := resourceMetrics.Resource().Attributes()
+		var isSet bool
+
+		serviceNamespace, isSet := attributes.Get(serviceNamespaceKey)
+		if !isSet {
+			matchResult.addFailedAssertion(
+				serviceNamespaceKey,
+				fmt.Sprintf("expected %s but the metric has no such resource attribute", operatorServiceNamespace),
+			)
+		} else if serviceNamespace.Str() != operatorServiceNamespace {
+			matchResult.addFailedAssertion(
+				serviceNamespaceKey,
+				fmt.Sprintf("expected %s but it was %s", operatorServiceNamespace, serviceNamespace.Str()),
+			)
+		} else {
+			matchResult.addPassedAssertion(serviceNamespaceKey)
+		}
+
+		kubernetesNamespace, isSet := attributes.Get(namespaceNameKey)
+		if !isSet {
+			matchResult.addFailedAssertion(
+				namespaceNameKey,
+				fmt.Sprintf("expected %s but the metric has no such resource attribute", operatorNamespace),
+			)
+		} else if kubernetesNamespace.Str() != operatorNamespace {
+			matchResult.addFailedAssertion(
+				namespaceNameKey,
+				fmt.Sprintf("expected %s but it was %s", operatorNamespace, kubernetesNamespace.Str()),
+			)
+		} else {
+			matchResult.addPassedAssertion(namespaceNameKey)
+		}
+
+		_, isSet = attributes.Get(serviceNameKey)
+		if !isSet {
+			matchResult.addFailedAssertion(
+				serviceNameKey,
+				"expected attribute to be set, but the metric has no such resource attribute",
+			)
+		} else {
+			matchResult.addPassedAssertion(serviceNameKey)
+		}
+
+		_, isSet = attributes.Get(serviceVersionKey)
+		if !isSet {
+			matchResult.addFailedAssertion(
+				serviceVersionKey,
+				"expected attribute to be set, but the metric has no such resource attribute",
+			)
+		} else {
+			matchResult.addPassedAssertion(serviceVersionKey)
+		}
+
+		_, isSet = attributes.Get(nodeNameKey)
+		if !isSet {
+			matchResult.addFailedAssertion(
+				nodeNameKey,
+				"expected attribute to be set, but the metric has no such resource attribute",
+			)
+		} else {
+			matchResult.addPassedAssertion(nodeNameKey)
+		}
+
+		checkPodUid(attributes, true, matchResult)
+	}
+
+	metricMatchFn := func(
+		metric pmetric.Metric,
+		matchResult *ObjectMatchResult[pmetric.ResourceMetrics, pmetric.Metric],
+	) {
+		actualMetricName := metric.Name()
+		if strings.HasPrefix(metric.Name(), "otelcol_") {
+			matchResult.addPassedAssertion(metricNameKey)
+		} else {
+			matchResult.addFailedAssertion(
+				metricNameKey,
+				fmt.Sprintf("the metric name did not start with \"otelcol_\", it was %s", actualMetricName),
+			)
+		}
+	}
+
+	allMatchResults := fileHasMatchingMetrics(
+		g,
+		resourceMatchFn,
+		metricMatchFn,
+		// This test runs with the same timestampLowerBound as other tests ("should produce node-based metrics via the
+		// kubeletstats receiver", "should produce cluster metrics via the k8s_cluster receiver", "should produce
+		// Prometheus metrics via the prometheus receiver", ...), hence we will have collected metrics from the
+		// namespace under monitoring and non-namespaced metrics. In this test, we do not care about the forbidden
+		// metrics check.
+		namespaceChecks{},
+		timestampLowerBound,
+	)
+	allMatchResults.expectAtLeastOneMatch(
+		g,
+		"expected to find at least one matching collector self-monitoring metric",
 	)
 }
 
