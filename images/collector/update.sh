@@ -76,6 +76,11 @@ function update_components {
     done <<< "$modules"
 
   done
+
+  new_version="$new_beta_version" \
+    yq -i \
+    '.dist.version |= strenv(new_version)' \
+    "$builder_config"
 }
 
 current_beta_version=$(\

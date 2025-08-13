@@ -405,15 +405,301 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 		)
 	})
 
-	Describe("convert export settings to collector log self-monitoring pipeline string", func() {
+	Describe("convert export settings to collector metrics self-monitoring pipeline string", func() {
 
-		type exportToCollectorLogSelfMonitoringPipelineTestConfig struct {
-			selfMonitoringConfiguration SelfMonitoringConfiguration
-			expectedLogPipelineString   string
+		type exportToCollectorMetricsSelfMonitoringPipelineTestConfig struct {
+			selfMonitoringConfiguration   SelfMonitoringConfiguration
+			expectedMetricsPipelineString string
 		}
 
 		var (
-			dash0ExportExpectedLogPipelineString = `
+			dash0ExportExpectedMetricsPipelineString = `
+    metrics:
+      readers:
+        - periodic:
+            exporter:
+              otlp:
+                protocol: grpc
+                endpoint: https://endpoint.dash0.com:4317
+                headers:
+                  Authorization: "Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"
+`
+
+			dash0ExportWithCustomDatasetExpectedMetricsPipelineString = `
+    metrics:
+      readers:
+        - periodic:
+            exporter:
+              otlp:
+                protocol: grpc
+                endpoint: https://endpoint.dash0.com:4317
+                headers:
+                  Authorization: "Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"
+                  Dash0-Dataset: "test-dataset"
+`
+		)
+
+		DescribeTable("should convert the self monitoring configuration", func(testConfig exportToCollectorMetricsSelfMonitoringPipelineTestConfig) {
+			logPipeline := ConvertExportConfigurationToCollectorMetricsSelfMonitoringPipelineString(testConfig.selfMonitoringConfiguration)
+			Expect(logPipeline).To(Equal(testConfig.expectedMetricsPipelineString))
+		},
+			Entry(
+				"should return empty result if self monitoring is disabled",
+				exportToCollectorMetricsSelfMonitoringPipelineTestConfig{
+					selfMonitoringConfiguration:   SelfMonitoringConfiguration{SelfMonitoringEnabled: false},
+					expectedMetricsPipelineString: "",
+				},
+			),
+			Entry(
+				"should return empty result if there are no exports",
+				exportToCollectorMetricsSelfMonitoringPipelineTestConfig{
+					selfMonitoringConfiguration:   createSelfMonitoringConfiguration(&dash0common.Export{}),
+					expectedMetricsPipelineString: "",
+				},
+			),
+			Entry(
+				"should convert Dash0 export with token",
+				exportToCollectorMetricsSelfMonitoringPipelineTestConfig{
+					selfMonitoringConfiguration:   createSelfMonitoringConfiguration(Dash0ExportWithEndpointAndToken()),
+					expectedMetricsPipelineString: dash0ExportExpectedMetricsPipelineString,
+				},
+			),
+			Entry(
+				"should convert Dash0 export with secret ref",
+				exportToCollectorMetricsSelfMonitoringPipelineTestConfig{
+					selfMonitoringConfiguration:   createSelfMonitoringConfiguration(Dash0ExportWithEndpointAndSecretRef()),
+					expectedMetricsPipelineString: dash0ExportExpectedMetricsPipelineString,
+				},
+			),
+			Entry(
+				"should use custom dataset",
+				exportToCollectorMetricsSelfMonitoringPipelineTestConfig{
+					selfMonitoringConfiguration:   createSelfMonitoringConfiguration(Dash0ExportWithEndpointTokenAndCustomDataset()),
+					expectedMetricsPipelineString: dash0ExportWithCustomDatasetExpectedMetricsPipelineString,
+				},
+			),
+			Entry(
+				"should ignore grpc and http exports if a Dash0 export is present",
+				exportToCollectorMetricsSelfMonitoringPipelineTestConfig{
+					selfMonitoringConfiguration: createSelfMonitoringConfiguration(
+						&dash0common.Export{
+							Dash0: &dash0common.Dash0Configuration{
+								Endpoint: EndpointDash0Test,
+								Authorization: dash0common.Authorization{
+									Token: &AuthorizationTokenTest,
+								},
+							},
+							Grpc: &dash0common.GrpcConfiguration{
+								Endpoint: EndpointGrpcTest,
+							},
+							Http: &dash0common.HttpConfiguration{
+								Endpoint: EndpointHttpTest,
+								Encoding: dash0common.Proto,
+							},
+						}),
+					expectedMetricsPipelineString: dash0ExportExpectedMetricsPipelineString,
+				},
+			),
+			Entry(
+				"should convert non-TLS Dash0 export",
+				exportToCollectorMetricsSelfMonitoringPipelineTestConfig{
+					selfMonitoringConfiguration: createSelfMonitoringConfiguration(&dash0common.Export{
+						Dash0: &dash0common.Dash0Configuration{
+							Endpoint: "http://endpoint.dash0.com:4317",
+							Authorization: dash0common.Authorization{
+								Token: &AuthorizationTokenTest,
+							},
+						},
+					}),
+					expectedMetricsPipelineString: `
+    metrics:
+      readers:
+        - periodic:
+            exporter:
+              otlp:
+                protocol: grpc
+                endpoint: http://endpoint.dash0.com:4317
+                insecure: true
+                headers:
+                  Authorization: "Bearer ${env:SELF_MONITORING_AUTH_TOKEN}"
+`,
+				},
+			),
+			Entry(
+				"should convert gRPC export without headers",
+				exportToCollectorMetricsSelfMonitoringPipelineTestConfig{
+					selfMonitoringConfiguration: createSelfMonitoringConfiguration(
+						&dash0common.Export{
+							Grpc: &dash0common.GrpcConfiguration{
+								Endpoint: EndpointGrpcTest,
+							},
+						}),
+					expectedMetricsPipelineString: `
+    metrics:
+      readers:
+        - periodic:
+            exporter:
+              otlp:
+                protocol: grpc
+                endpoint: dns://endpoint.backend.com:4317
+`,
+				},
+			),
+			Entry(
+				"should convert gRPC export",
+				exportToCollectorMetricsSelfMonitoringPipelineTestConfig{
+					selfMonitoringConfiguration: createSelfMonitoringConfiguration(
+						&dash0common.Export{
+							Grpc: &dash0common.GrpcConfiguration{
+								Endpoint: EndpointGrpcTest,
+								Headers: []dash0common.Header{
+									{
+										Name:  "Key1",
+										Value: "Value1",
+									},
+									{
+										Name:  "Key2",
+										Value: "Value2",
+									},
+									{
+										Name: "KeyWithoutValue",
+									},
+									{
+										Value: "ValueWithoutName",
+									},
+								},
+							},
+						}),
+					expectedMetricsPipelineString: `
+    metrics:
+      readers:
+        - periodic:
+            exporter:
+              otlp:
+                protocol: grpc
+                endpoint: dns://endpoint.backend.com:4317
+                headers:
+                  Key1: "Value1"
+                  Key2: "Value2"
+                  KeyWithoutValue: ""
+`,
+				},
+			),
+			Entry(
+				"should convert non-TLS gRPC export",
+				exportToCollectorMetricsSelfMonitoringPipelineTestConfig{
+					selfMonitoringConfiguration: createSelfMonitoringConfiguration(
+						&dash0common.Export{
+							Grpc: &dash0common.GrpcConfiguration{
+								Endpoint: "http://endpoint.backend.com:4317",
+							},
+						}),
+					expectedMetricsPipelineString: `
+    metrics:
+      readers:
+        - periodic:
+            exporter:
+              otlp:
+                protocol: grpc
+                endpoint: http://endpoint.backend.com:4317
+                insecure: true
+`,
+				},
+			),
+			Entry(
+				"should convert HTTP/protobuf export",
+				exportToCollectorMetricsSelfMonitoringPipelineTestConfig{
+					selfMonitoringConfiguration: createSelfMonitoringConfiguration(
+						&dash0common.Export{
+							Http: &dash0common.HttpConfiguration{
+								Endpoint: EndpointHttpTest,
+								Headers: []dash0common.Header{
+									{
+										Name:  "Key1",
+										Value: "Value1",
+									},
+									{
+										Name:  "Key2",
+										Value: "Value2",
+									},
+									{
+										Name: "KeyWithoutValue",
+									},
+									{
+										Value: "ValueWithoutName",
+									},
+								},
+								Encoding: dash0common.Proto,
+							},
+						}),
+					expectedMetricsPipelineString: `
+    metrics:
+      readers:
+        - periodic:
+            exporter:
+              otlp:
+                protocol: http/protobuf
+                endpoint: https://endpoint.backend.com:4318
+                headers:
+                  Key1: "Value1"
+                  Key2: "Value2"
+                  KeyWithoutValue: ""
+`,
+				},
+			),
+			Entry(
+				"should convert HTTP/json export",
+				exportToCollectorMetricsSelfMonitoringPipelineTestConfig{
+					selfMonitoringConfiguration: createSelfMonitoringConfiguration(
+						&dash0common.Export{
+							Http: &dash0common.HttpConfiguration{
+								Endpoint: EndpointHttpTest,
+								Headers: []dash0common.Header{
+									{
+										Name:  "Key1",
+										Value: "Value1",
+									},
+									{
+										Name:  "Key2",
+										Value: "Value2",
+									},
+									{
+										Name: "KeyWithoutValue",
+									},
+									{
+										Value: "ValueWithoutName",
+									},
+								},
+								Encoding: dash0common.Json,
+							},
+						}),
+					expectedMetricsPipelineString: `
+    metrics:
+      readers:
+        - periodic:
+            exporter:
+              otlp:
+                protocol: http/json
+                endpoint: https://endpoint.backend.com:4318
+                headers:
+                  Key1: "Value1"
+                  Key2: "Value2"
+                  KeyWithoutValue: ""
+`,
+				},
+			),
+		)
+	})
+
+	Describe("convert export settings to collector logs self-monitoring pipeline string", func() {
+
+		type exportToCollectorLogsSelfMonitoringPipelineTestConfig struct {
+			selfMonitoringConfiguration SelfMonitoringConfiguration
+			expectedLogsPipelineString  string
+		}
+
+		var (
+			dash0ExportExpectedLogsPipelineString = `
     logs:
       processors:
         - batch:
@@ -439,48 +725,48 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 `
 		)
 
-		DescribeTable("should convert the export self monitoring env vars", func(testConfig exportToCollectorLogSelfMonitoringPipelineTestConfig) {
-			logPipeline := ConvertExportConfigurationToCollectorLogSelfMonitoringPipelineString(testConfig.selfMonitoringConfiguration)
-			Expect(logPipeline).To(Equal(testConfig.expectedLogPipelineString))
+		DescribeTable("should convert the self monitoring configuration", func(testConfig exportToCollectorLogsSelfMonitoringPipelineTestConfig) {
+			logPipeline := ConvertExportConfigurationToCollectorLogsSelfMonitoringPipelineString(testConfig.selfMonitoringConfiguration)
+			Expect(logPipeline).To(Equal(testConfig.expectedLogsPipelineString))
 		},
 			Entry(
 				"should return empty result if self monitoring is disabled",
-				exportToCollectorLogSelfMonitoringPipelineTestConfig{
+				exportToCollectorLogsSelfMonitoringPipelineTestConfig{
 					selfMonitoringConfiguration: SelfMonitoringConfiguration{SelfMonitoringEnabled: false},
-					expectedLogPipelineString:   "",
+					expectedLogsPipelineString:  "",
 				},
 			),
 			Entry(
 				"should return empty result if there are no exports",
-				exportToCollectorLogSelfMonitoringPipelineTestConfig{
+				exportToCollectorLogsSelfMonitoringPipelineTestConfig{
 					selfMonitoringConfiguration: createSelfMonitoringConfiguration(&dash0common.Export{}),
-					expectedLogPipelineString:   "",
+					expectedLogsPipelineString:  "",
 				},
 			),
 			Entry(
 				"should convert Dash0 export with token",
-				exportToCollectorLogSelfMonitoringPipelineTestConfig{
+				exportToCollectorLogsSelfMonitoringPipelineTestConfig{
 					selfMonitoringConfiguration: createSelfMonitoringConfiguration(Dash0ExportWithEndpointAndToken()),
-					expectedLogPipelineString:   dash0ExportExpectedLogPipelineString,
+					expectedLogsPipelineString:  dash0ExportExpectedLogsPipelineString,
 				},
 			),
 			Entry(
 				"should convert Dash0 export with secret ref",
-				exportToCollectorLogSelfMonitoringPipelineTestConfig{
+				exportToCollectorLogsSelfMonitoringPipelineTestConfig{
 					selfMonitoringConfiguration: createSelfMonitoringConfiguration(Dash0ExportWithEndpointAndSecretRef()),
-					expectedLogPipelineString:   dash0ExportExpectedLogPipelineString,
+					expectedLogsPipelineString:  dash0ExportExpectedLogsPipelineString,
 				},
 			),
 			Entry(
 				"should use custom dataset",
-				exportToCollectorLogSelfMonitoringPipelineTestConfig{
+				exportToCollectorLogsSelfMonitoringPipelineTestConfig{
 					selfMonitoringConfiguration: createSelfMonitoringConfiguration(Dash0ExportWithEndpointTokenAndCustomDataset()),
-					expectedLogPipelineString:   dash0ExportWithCustomDatasetExpectedLogPipelineString,
+					expectedLogsPipelineString:  dash0ExportWithCustomDatasetExpectedLogPipelineString,
 				},
 			),
 			Entry(
 				"should ignore grpc and http exports if a Dash0 export is present",
-				exportToCollectorLogSelfMonitoringPipelineTestConfig{
+				exportToCollectorLogsSelfMonitoringPipelineTestConfig{
 					selfMonitoringConfiguration: createSelfMonitoringConfiguration(
 						&dash0common.Export{
 							Dash0: &dash0common.Dash0Configuration{
@@ -497,12 +783,12 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 								Encoding: dash0common.Proto,
 							},
 						}),
-					expectedLogPipelineString: dash0ExportExpectedLogPipelineString,
+					expectedLogsPipelineString: dash0ExportExpectedLogsPipelineString,
 				},
 			),
 			Entry(
 				"should convert non-TLS Dash0 export",
-				exportToCollectorLogSelfMonitoringPipelineTestConfig{
+				exportToCollectorLogsSelfMonitoringPipelineTestConfig{
 					selfMonitoringConfiguration: createSelfMonitoringConfiguration(&dash0common.Export{
 						Dash0: &dash0common.Dash0Configuration{
 							Endpoint: "http://endpoint.dash0.com:4317",
@@ -511,7 +797,7 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 							},
 						},
 					}),
-					expectedLogPipelineString: `
+					expectedLogsPipelineString: `
     logs:
       processors:
         - batch:
@@ -527,14 +813,14 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 			),
 			Entry(
 				"should convert gRPC export without headers",
-				exportToCollectorLogSelfMonitoringPipelineTestConfig{
+				exportToCollectorLogsSelfMonitoringPipelineTestConfig{
 					selfMonitoringConfiguration: createSelfMonitoringConfiguration(
 						&dash0common.Export{
 							Grpc: &dash0common.GrpcConfiguration{
 								Endpoint: EndpointGrpcTest,
 							},
 						}),
-					expectedLogPipelineString: `
+					expectedLogsPipelineString: `
     logs:
       processors:
         - batch:
@@ -547,7 +833,7 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 			),
 			Entry(
 				"should convert gRPC export",
-				exportToCollectorLogSelfMonitoringPipelineTestConfig{
+				exportToCollectorLogsSelfMonitoringPipelineTestConfig{
 					selfMonitoringConfiguration: createSelfMonitoringConfiguration(
 						&dash0common.Export{
 							Grpc: &dash0common.GrpcConfiguration{
@@ -570,7 +856,7 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 								},
 							},
 						}),
-					expectedLogPipelineString: `
+					expectedLogsPipelineString: `
     logs:
       processors:
         - batch:
@@ -587,14 +873,14 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 			),
 			Entry(
 				"should convert non-TLS gRPC export",
-				exportToCollectorLogSelfMonitoringPipelineTestConfig{
+				exportToCollectorLogsSelfMonitoringPipelineTestConfig{
 					selfMonitoringConfiguration: createSelfMonitoringConfiguration(
 						&dash0common.Export{
 							Grpc: &dash0common.GrpcConfiguration{
 								Endpoint: "http://endpoint.backend.com:4317",
 							},
 						}),
-					expectedLogPipelineString: `
+					expectedLogsPipelineString: `
     logs:
       processors:
         - batch:
@@ -608,7 +894,7 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 			),
 			Entry(
 				"should convert HTTP/protobuf export",
-				exportToCollectorLogSelfMonitoringPipelineTestConfig{
+				exportToCollectorLogsSelfMonitoringPipelineTestConfig{
 					selfMonitoringConfiguration: createSelfMonitoringConfiguration(
 						&dash0common.Export{
 							Http: &dash0common.HttpConfiguration{
@@ -632,7 +918,7 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 								Encoding: dash0common.Proto,
 							},
 						}),
-					expectedLogPipelineString: `
+					expectedLogsPipelineString: `
     logs:
       processors:
         - batch:
@@ -649,7 +935,7 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 			),
 			Entry(
 				"should convert HTTP/json export",
-				exportToCollectorLogSelfMonitoringPipelineTestConfig{
+				exportToCollectorLogsSelfMonitoringPipelineTestConfig{
 					selfMonitoringConfiguration: createSelfMonitoringConfiguration(
 						&dash0common.Export{
 							Http: &dash0common.HttpConfiguration{
@@ -673,7 +959,7 @@ var _ = Describe("self monitoring and API access", Ordered, func() {
 								Encoding: dash0common.Json,
 							},
 						}),
-					expectedLogPipelineString: `
+					expectedLogsPipelineString: `
     logs:
       processors:
         - batch:

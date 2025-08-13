@@ -85,6 +85,8 @@ type collectorConfigurationTemplateValues struct {
 	CustomFilters                                    customFilters
 	CustomTransforms                                 customTransforms
 	SelfIpReference                                  string
+	InternalTelemetryEnabled                         bool
+	SelfMonitoringMetricsConfig                      string
 	SelfMonitoringLogsConfig                         string
 	DevelopmentMode                                  bool
 	DebugVerbosityDetailed                           bool
@@ -188,8 +190,12 @@ func assembleCollectorConfigMap(
 		namespaceOttlFilter := renderOttlNamespaceFilter(monitoredNamespaces)
 		customTelemetryFilters := aggregateCustomFilters(filters)
 		customTelemetryTransforms := aggregateCustomTransforms(transforms)
+		selfMonitoringMetricsConfig :=
+			selfmonitoringapiaccess.ConvertExportConfigurationToCollectorMetricsSelfMonitoringPipelineString(
+				config.SelfMonitoringConfiguration,
+			)
 		selfMonitoringLogsConfig :=
-			selfmonitoringapiaccess.ConvertExportConfigurationToCollectorLogSelfMonitoringPipelineString(
+			selfmonitoringapiaccess.ConvertExportConfigurationToCollectorLogsSelfMonitoringPipelineString(
 				config.SelfMonitoringConfiguration,
 			)
 
@@ -209,9 +215,11 @@ func assembleCollectorConfigMap(
 				CustomFilters:                                    customTelemetryFilters,
 				CustomTransforms:                                 customTelemetryTransforms,
 				SelfIpReference:                                  selfIpReference,
+				InternalTelemetryEnabled:                         selfMonitoringMetricsConfig != "" || selfMonitoringLogsConfig != "",
+				SelfMonitoringMetricsConfig:                      selfMonitoringMetricsConfig,
+				SelfMonitoringLogsConfig:                         selfMonitoringLogsConfig,
 				DevelopmentMode:                                  config.DevelopmentMode,
 				DebugVerbosityDetailed:                           config.DebugVerbosityDetailed,
-				SelfMonitoringLogsConfig:                         selfMonitoringLogsConfig,
 			})
 		if err != nil {
 			return nil, fmt.Errorf("cannot render the collector configuration template: %w", err)
