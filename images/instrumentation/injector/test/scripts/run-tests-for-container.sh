@@ -61,6 +61,7 @@ docker build \
   . \
   -f "$dockerfile_name" \
   -t "$image_name"
+{ set +x; } 2> /dev/null
 
 docker_run_extra_arguments=""
 if [ "${INTERACTIVE:-}" = "true" ]; then
@@ -74,6 +75,7 @@ if [ "${INTERACTIVE:-}" = "true" ]; then
   fi
 fi
 
+set -x
 docker run \
   --rm \
   --platform "$docker_platform" \
