@@ -13,6 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
+	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
 
@@ -683,6 +684,76 @@ var _ = Describe("The Dash0 instrumentation webhook", func() {
 				VerifyUnmodifiedStatefulSet(workload.Get().(*appsv1.StatefulSet))
 			},
 		}))
+	})
+
+	Describe("with a custom instrument workloads label selector", Ordered, func() {
+		BeforeAll(func() {
+			EnsureMonitoringResourceWithSpecExistsAndIsAvailable(
+				ctx,
+				k8sClient,
+				dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: "dash0-auto-instrument=yes",
+					},
+					Export: &dash0common.Export{
+						Dash0: &dash0common.Dash0Configuration{
+							Endpoint: EndpointDash0Test,
+							Authorization: dash0common.Authorization{
+								Token: &AuthorizationTokenTest,
+							},
+						},
+					},
+				},
+			)
+		})
+
+		AfterAll(func() {
+			DeleteMonitoringResource(ctx, k8sClient)
+		})
+
+		It("when a new uninstrumented workload matches the custom auto-instrumentation label selector", func() {
+			name := UniqueName(DeploymentNamePrefix)
+			deployment := BasicDeployment(TestNamespaceName, name)
+			deployment.Labels = map[string]string{"dash0-auto-instrument": "yes"}
+
+			workload := CreateWorkload(ctx, k8sClient, deployment)
+			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload)
+
+			deployment = GetDeployment(ctx, k8sClient, TestNamespaceName, name)
+			VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, testActor)
+			VerifyModifiedDeployment(deployment, BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
+		})
+
+		It("when a new uninstrumented workload does not match the custom auto-instrumentation label selector", func() {
+			name := UniqueName(DeploymentNamePrefix)
+			deployment := BasicDeployment(TestNamespaceName, name)
+
+			workload := CreateWorkload(ctx, k8sClient, deployment)
+			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload)
+
+			deployment = GetDeployment(ctx, k8sClient, TestNamespaceName, name)
+			VerifyNoEvents(ctx, clientset, TestNamespaceName)
+			VerifyUnmodifiedDeployment(deployment)
+		})
+
+		It("when an instrumented workload no longer matches the custom auto-instrumentation label selector", func() {
+			name := UniqueName(DeploymentNamePrefix)
+			deployment := BasicDeployment(TestNamespaceName, name)
+			deployment.Labels = map[string]string{"dash0-auto-instrument": "yes"}
+			workload := CreateWorkload(ctx, k8sClient, deployment)
+			createdObjectsInstrumentationWebhookTest = append(createdObjectsInstrumentationWebhookTest, workload)
+			deployment = GetDeployment(ctx, k8sClient, TestNamespaceName, name)
+			VerifySuccessfulInstrumentationEvent(ctx, clientset, TestNamespaceName, name, testActor)
+			VerifyModifiedDeployment(deployment, BasicInstrumentedPodSpecExpectations(), VerifyNoManagedFields)
+
+			DeleteAllEvents(ctx, clientset, TestNamespaceName)
+			deployment.Labels["dash0-auto-instrument"] = "nope"
+			UpdateWorkload(ctx, k8sClient, deployment)
+
+			VerifySuccessfulUninstrumentationEvent(ctx, clientset, TestNamespaceName, name, testActor)
+			deployment = GetDeployment(ctx, k8sClient, TestNamespaceName, name)
+			VerifyUnmodifiedDeployment(deployment)
+		})
 	})
 
 	Describe("when the Dash0 monitoring resource does not exist", func() {

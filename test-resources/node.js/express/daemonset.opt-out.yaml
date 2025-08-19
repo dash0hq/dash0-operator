@@ -20,6 +20,9 @@ metadata:
   labels:
     app: dash0-operator-nodejs-20-express-test-daemonset-app
     dash0.com/enable: "false"
+    # Used in the end-to-end test "Dash0 Operator ... with a custom auto-instrumentation label selector - should
+    # instrument workloads that match the label selector".
+    instrument-with-dash0: "yes"
 spec:
   selector:
     matchLabels:

@@ -5,6 +5,9 @@ metadata:
 spec:
   instrumentWorkloads:
     mode: {{ .InstrumentWorkloadsMode }}
+{{- if .InstrumentWorkloadsLabelSelector }}
+    labelSelector: {{ .InstrumentWorkloadsLabelSelector }}
+{{- end }}
 {{- if .Endpoint }}
   export:
     dash0:

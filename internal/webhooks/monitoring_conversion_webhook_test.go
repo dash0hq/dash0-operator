@@ -14,6 +14,7 @@ import (
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
+	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -97,7 +98,8 @@ var _ = Describe("The conversion webhook for the monitoring resource", Ordered, 
 			// the mutating webhook will apply all defaults, so the expected spec will be all default values
 			expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
 				InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-					Mode: dash0common.InstrumentWorkloadsModeAll,
+					LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+					Mode:          dash0common.InstrumentWorkloadsModeAll,
 				},
 				LogCollection: dash0common.LogCollection{
 					Enabled: ptr.To(true),
@@ -125,7 +127,8 @@ var _ = Describe("The conversion webhook for the monitoring resource", Ordered, 
 			},
 			expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
 				InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-					Mode: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
+					LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+					Mode:          dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
 				},
 				LogCollection: dash0common.LogCollection{
 					Enabled: ptr.To(false),

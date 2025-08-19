@@ -14,6 +14,7 @@ import (
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
+	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -22,6 +23,11 @@ import (
 )
 
 var _ = Describe("The validation webhook for the monitoring resource", func() {
+
+	type validationTestConfig struct {
+		spec          dash0v1beta1.Dash0MonitoringSpec
+		expectedError string
+	}
 
 	AfterEach(func() {
 		Expect(
@@ -199,12 +205,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 
-		type monitoringResourceValidationWithTelemetryCollectionOffTestConfig struct {
-			spec          dash0v1beta1.Dash0MonitoringSpec
-			expectedError string
-		}
-
-		DescribeTable("should reject monitoring resource creation with telemetry settings if the operator configuration resource has telemetry collection disabled", func(testConfig monitoringResourceValidationWithTelemetryCollectionOffTestConfig) {
+		DescribeTable("should reject monitoring resource creation with telemetry settings if the operator configuration resource has telemetry collection disabled", func(testConfig validationTestConfig) {
 			operatorConfigurationResource := CreateOperatorConfigurationResourceWithSpec(
 				ctx,
 				k8sClient,
@@ -228,7 +229,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				testConfig.expectedError,
 			))))
 		},
-			Entry("instrumentWorkloads.mode=all", monitoringResourceValidationWithTelemetryCollectionOffTestConfig{
+			Entry("instrumentWorkloads.mode=all", validationTestConfig{
 				spec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						Mode: dash0common.InstrumentWorkloadsModeAll,
@@ -240,7 +241,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 					"telemetryCollection.enabled=true in the operator configuration resource or set " +
 					"instrumentWorkloads.mode=none in the monitoring resource (or leave it unspecified).",
 			}),
-			Entry("instrumentWorkloads.mode=created-and-updated", monitoringResourceValidationWithTelemetryCollectionOffTestConfig{
+			Entry("instrumentWorkloads.mode=created-and-updated", validationTestConfig{
 				spec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						Mode: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
@@ -252,7 +253,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 					"telemetryCollection.enabled=true in the operator configuration resource or set " +
 					"instrumentWorkloads.mode=none in the monitoring resource (or leave it unspecified).",
 			}),
-			Entry("logCollection.enabled=true", monitoringResourceValidationWithTelemetryCollectionOffTestConfig{
+			Entry("logCollection.enabled=true", validationTestConfig{
 				spec: dash0v1beta1.Dash0MonitoringSpec{
 					LogCollection: dash0common.LogCollection{
 						Enabled: ptr.To(true),
@@ -264,7 +265,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 					"telemetryCollection.enabled=true in the operator configuration resource or set " +
 					"logCollection.enabled=false in the monitoring resource (or leave it unspecified).",
 			}),
-			Entry("prometheusScraping.enabled=true", monitoringResourceValidationWithTelemetryCollectionOffTestConfig{
+			Entry("prometheusScraping.enabled=true", validationTestConfig{
 				spec: dash0v1beta1.Dash0MonitoringSpec{
 					PrometheusScraping: dash0common.PrometheusScraping{
 						Enabled: ptr.To(true),
@@ -276,7 +277,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 					"telemetryCollection.enabled=true in the operator configuration resource or set " +
 					"prometheusScraping.enabled=false in the monitoring resource (or leave it unspecified).",
 			}),
-			Entry("filter!=nil", monitoringResourceValidationWithTelemetryCollectionOffTestConfig{
+			Entry("filter!=nil", validationTestConfig{
 				spec: dash0v1beta1.Dash0MonitoringSpec{
 					Filter: &dash0common.Filter{},
 				},
@@ -285,7 +286,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 					"This is an invalid combination. Please either set telemetryCollection.enabled=true in the " +
 					"operator configuration resource or remove the filter setting in the monitoring resource.",
 			}),
-			Entry("transform!=nil", monitoringResourceValidationWithTelemetryCollectionOffTestConfig{
+			Entry("transform!=nil", validationTestConfig{
 				spec: dash0v1beta1.Dash0MonitoringSpec{
 					Transform: &dash0common.Transform{},
 				},
@@ -296,12 +297,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 			}),
 		)
 
-		type traceContextPropagatorseValidationTestConfig struct {
-			spec          dash0v1beta1.Dash0MonitoringSpec
-			expectedError string
-		}
-
-		DescribeTable("should validate trace context propagators", func(testConfig traceContextPropagatorseValidationTestConfig) {
+		DescribeTable("should validate the auto-instrumentation label selector", func(testConfig validationTestConfig) {
 			operatorConfigurationResource := CreateOperatorConfigurationResourceWithSpec(
 				ctx,
 				k8sClient,
@@ -326,7 +322,98 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				))))
 			}
 		},
-			Entry("should allow all propagators=nil", traceContextPropagatorseValidationTestConfig{
+			Entry("should allow the default value", validationTestConfig{
+				spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						// if the user omits the label selector, this default is set via
+						// +kubebuilder:default=dash0.com/enable!=false
+						// in api/operator/.../dash0monitoring_types.go
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+					},
+				},
+				expectedError: "",
+			}),
+			Entry("should reject an empty string (should not happen)", validationTestConfig{
+				spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						// This should not actually happen, due to
+						// +kubebuilder:default=dash0.com/enable!=false
+						// in api/operator/.../dash0monitoring_types.go
+						LabelSelector: "",
+					},
+				},
+				expectedError: "",
+			}),
+			Entry("should allow a custom selector with equals", validationTestConfig{
+				spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: "custom/dash0-instrument=true",
+					},
+				},
+				expectedError: "",
+			}),
+			Entry("should allow a custom selector with double equals", validationTestConfig{
+				spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: "  custom/dash0-instrument == true  ",
+					},
+				},
+				expectedError: "",
+			}),
+			Entry("should allow a custom selector with multiple equality-based requirements", validationTestConfig{
+				spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: "environment=production,tier!=frontend",
+					},
+				},
+				expectedError: "",
+			}),
+			Entry("should allow a complex selectors including set-based requirements", validationTestConfig{
+				spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: "some-label, environment in (production, qa), tier notin (frontend, backend), stage!=dev",
+					},
+				},
+				expectedError: "",
+			}),
+			Entry("should reject invalid selectors", validationTestConfig{
+				spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: "environment>qa",
+					},
+				},
+				expectedError: "The instrumentWorkloads.labelSelector setting (\"environment>qa\") in the Dash0 " +
+					"monitoring resource is invalid and cannot be parsed: unable to parse requirement: values[0]: " +
+					"Invalid value: \"qa\": for 'Gt', 'Lt' operators, the value must be an integer.",
+			}),
+		)
+
+		DescribeTable("should validate trace context propagators", func(testConfig validationTestConfig) {
+			operatorConfigurationResource := CreateOperatorConfigurationResourceWithSpec(
+				ctx,
+				k8sClient,
+				dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Export: Dash0ExportWithEndpointAndToken(),
+				},
+			)
+			operatorConfigurationResource.EnsureResourceIsMarkedAsAvailable()
+			Expect(k8sClient.Status().Update(ctx, operatorConfigurationResource)).To(Succeed())
+
+			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1beta1.Dash0Monitoring{
+				ObjectMeta: MonitoringResourceDefaultObjectMeta,
+				Spec:       testConfig.spec,
+			})
+
+			if testConfig.expectedError == "" {
+				Expect(err).ToNot(HaveOccurred())
+			} else {
+				Expect(err).To(MatchError(ContainSubstring(fmt.Sprintf(
+					"admission webhook \"validate-monitoring.dash0.com\" denied the request: %s",
+					testConfig.expectedError,
+				))))
+			}
+		},
+			Entry("should allow all propagators=nil", validationTestConfig{
 				spec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
@@ -336,7 +423,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				},
 				expectedError: "",
 			}),
-			Entry("should allow propagators = empty string", traceContextPropagatorseValidationTestConfig{
+			Entry("should allow propagators = empty string", validationTestConfig{
 				spec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
@@ -347,7 +434,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				},
 				expectedError: "",
 			}),
-			Entry("should allow propagators = only whitespace", traceContextPropagatorseValidationTestConfig{
+			Entry("should allow propagators = only whitespace", validationTestConfig{
 				spec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
@@ -358,7 +445,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				},
 				expectedError: "",
 			}),
-			Entry("should allow single valid propagator", traceContextPropagatorseValidationTestConfig{
+			Entry("should allow single valid propagator", validationTestConfig{
 				spec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
@@ -368,7 +455,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				},
 				expectedError: "",
 			}),
-			Entry("should allow list of valid propagators", traceContextPropagatorseValidationTestConfig{
+			Entry("should allow list of valid propagators", validationTestConfig{
 				spec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
@@ -378,7 +465,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 				},
 				expectedError: "",
 			}),
-			Entry("should reject a single unknown propagator", traceContextPropagatorseValidationTestConfig{
+			Entry("should reject a single unknown propagator", validationTestConfig{
 				spec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
@@ -391,7 +478,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 					"propagators are tracecontext, baggage, b3, b3multi, jaeger, xray, ottrace, none. Please remove " +
 					"the invalid propagator from the list.",
 			}),
-			Entry("should reject list with at least one unknown propagator", traceContextPropagatorseValidationTestConfig{
+			Entry("should reject list with at least one unknown propagator", validationTestConfig{
 				spec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{
@@ -405,7 +492,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 					"tracecontext, baggage, b3, b3multi, jaeger, xray, ottrace, none. Please remove the invalid " +
 					"propagator from the list.",
 			}),
-			Entry("should reject comma-separated list with empty items", traceContextPropagatorseValidationTestConfig{
+			Entry("should reject comma-separated list with empty items", validationTestConfig{
 				spec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
 						TraceContext: dash0v1beta1.TraceContext{

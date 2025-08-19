@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.uber.org/multierr"
 	"go.uber.org/zap"
+	"k8s.io/apimachinery/pkg/labels"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -110,6 +111,10 @@ func (h *MonitoringValidationWebhookHandler) Handle(ctx context.Context, request
 	if done {
 		return admissionResponse
 	}
+	admissionResponse, done = h.validateLabelSelector(monitoringResource)
+	if done {
+		return admissionResponse
+	}
 	admissionResponse, done = h.validateTraceContextPropagators(monitoringResource)
 	if done {
 		return admissionResponse
@@ -200,6 +205,23 @@ func (h *MonitoringValidationWebhookHandler) validateTelemetryRelatedSettingsIfT
 			"(telemetryCollection.enabled=false), and yet the monitoring resource has a transform setting " +
 			"This is an invalid combination. Please either set telemetryCollection.enabled=true in the " +
 			"operator configuration resource or remove the transform setting in the monitoring resource."), true
+	}
+	return admission.Response{}, false
+}
+
+func (h *MonitoringValidationWebhookHandler) validateLabelSelector(monitoringResource *dash0v1beta1.Dash0Monitoring) (admission.Response, bool) {
+	labelSelectorRaw := monitoringResource.Spec.InstrumentWorkloads.LabelSelector
+	if strings.TrimSpace(labelSelectorRaw) == "" {
+		return admission.Denied(
+			"The instrumentWorkloads.labelSelector setting in the Dash0 monitoring resource is empty, which is " +
+				"invalid. This is a bug in the Dash0 operator. Please report it to Dash0.",
+		), true
+	}
+	_, err := labels.Parse(labelSelectorRaw)
+	if err != nil {
+		return admission.Denied(fmt.Sprintf(
+			"The instrumentWorkloads.labelSelector setting (\"%s\") in the Dash0 monitoring resource is invalid and "+
+				"cannot be parsed: %v.", labelSelectorRaw, err)), true
 	}
 	return admission.Response{}, false
 }
