@@ -22,11 +22,12 @@ import (
 )
 
 type dash0MonitoringValues struct {
-	InstrumentWorkloadsMode dash0common.InstrumentWorkloadsMode
-	Endpoint                string
-	Token                   string
-	Filter                  string
-	Transform               string
+	InstrumentWorkloadsMode          dash0common.InstrumentWorkloadsMode
+	InstrumentWorkloadsLabelSelector string
+	Endpoint                         string
+	Token                            string
+	Filter                           string
+	Transform                        string
 }
 
 const (

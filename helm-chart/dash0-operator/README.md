@@ -321,7 +321,7 @@ export settings.
 
 The Dash0 monitoring resource supports additional configuration settings:
 
-* <a href="#monitoringresource.spec.instrumentWorkloads.mode"><span id="monitoringresource.spec.instrumentWorkloads.mode">`spec.instrumentWorkloads.mode`</span></a>:
+* <a href="#monitoringresource.spec.instrumentWorkloads.mode"><span id="monitoringresource.spec.instrumentWorkloads.mode"><span id="monitoringresource.spec.instrumentWorkloads">`spec.instrumentWorkloads.mode`</span></span></a>:
   A namespace-wide configuration for the workload instrumentation strategy for the target namespace.
   There are three possible settings: `all`, `created-and-updated` and `none`.
   By default, the setting `all` is assumed; unless there is an operator
@@ -378,7 +378,12 @@ The Dash0 monitoring resource supports additional configuration settings:
   You can read more about what exactly this feature entails in the section
   [Automatic Workload Instrumentation](#automatic-workload-instrumentation).
 
-* <a href="#monitoringresource.spec.instrumentWorkloads.traceContext.propagators"><a href="#monitoringresource.spec.instrumentWorkloads.traceContext.propagators"><span id="monitoringresource.spec.instrumentWorkloads.traceContext.propagators">`spec.instrumentWorkloads.traceContext.propagators`</span></a>:
+* <a href="#monitoringresource.spec.instrumentWorkloads.labelSelector"><span id="monitoringresource.spec.instrumentWorkloads.labelSelector">`spec.instrumentWorkloads.labelSelector`</span></a>:
+  A custom Kubernetes [label selector](https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors)
+  for controlling the workload instrumentation on the level of individual workloads, see
+  [Using a Custom Label Selector to Control Auto-Instrumentation](#using-a-custom-label-selector-to-control-auto-instrumentation).
+
+* <a href="#monitoringresource.spec.instrumentWorkloads.traceContext.propagators"><span id="monitoringresource.spec.instrumentWorkloads.traceContext.propagators">`spec.instrumentWorkloads.traceContext.propagators`</span></a>:
   When set, the operator will add the environment variable `OTEL_PROPAGATORS` to all instrumented workloads in the
   target namespace.
   This environment variable determines which trace context propagation headers an OTel SDK uses.
@@ -501,7 +506,7 @@ The Dash0 monitoring resource supports additional configuration settings:
   This setting is optional, it defaults to true.
 
 Here is comprehensive example for a monitoring resource which
-* sets the instrumenation mode to `created-and-updated`,
+* sets the instrumentation mode to `created-and-updated`,
 * disables Prometheus scraping,
 * sets a couple of filters for all five telemetry object types,
 * applies transformations to limit the length of span attributes, datapoint attributes, and log attributes
@@ -851,14 +856,19 @@ spec:
 
 ### Disabling Auto-Instrumentation for Specific Workloads
 
-In namespaces that are Dash0-monitoring enabled, all supported workload types are automatically instrumented for
-tracing and to improve OpenTelemetry resource attributes.
+In namespaces that are Dash0-monitoring enabled, all workloads are automatically instrumented for tracing and to improve
+OpenTelemetry resource attributes.
 This process will modify the Pod spec, e.g. by adding environment variables, Kubernetes labels and an init container.
 The modifications are described in detail in the section
 [Automatic Workload Instrumentation](#automatic-workload-instrumentation).
 
 You can disable these workload modifications for specific workloads by setting the label `dash0.com/enable: "false"` in
 the top level metadata section of the workload specification.
+
+Note: The actual label selector for enabling or disabling workload modification can be customized in the Dash0 
+monitoring resource.
+The label `dash0.com/enable: "false"` can be used when no custom label selector has been configured in the Dash0
+monitoring resource, see [Using a Custom Label Selector to Control Auto-Instrumentation](#using-a-custom-label-selector-to-control-auto-instrumentation).
 
 Here is an example for a deployment with this label:
 
@@ -910,6 +920,41 @@ spec:
       log_records:
       - 'IsMatch(resource.attributes["k8s.pod.name"], "my-workload-name-*")'
 ```
+
+#### Using a Custom Label Selector to Control Auto-Instrumentation
+
+By providing a custom Kubernetes
+[label selector](https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors) in
+[`spec.instrumentWorkloads.labelSelector`](#monitoringresource.spec.instrumentWorkloads.labelSelector) in a Dash0
+monitoring resource, you can control which workloads in this namespace will be instrumented by the Dash0 operator.
+
+- Workloads which match this label selector will be instrumented, subject to the value of
+  `spec.instrumentWorkloads.mode`.
+- Workloads which do not match this label selector will never be instrumented, regardless of the value of
+  `spec.instrumentWorkloads.mode`.
+- The setting `spec.instrumentWorkloads.labelSelector` setting is ignored if `spec.instrumentWorkloads.mode=none`.
+
+If not set explicitly, this label selector assumes the value `"dash0.com/enable!=false"` by default.
+That is, when no expicit label selector is provided via `spec.instrumentWorkloads.labelSelector`, workloads which
+
+- do not have the label `dash0.com/enable` at all, or
+- have the label `dash0.com/enable` with a value other than `"false"`
+
+will be instrumented, as explained in the [previous section](#disabling-auto-instrumentation-for-specific-workloads).
+
+It is recommended to leave this setting unset (i.e. leave the default `"dash0.com/enable!=false"` in place), unless you
+have a specific use case that requires a different label selector.
+
+One such use case is implementing an opt-in model for workload instrumentation instead of the usual opt-out model.
+That is, instead of instrumenting all workloads in a namespace by default and only disabling instrumentation for a few
+specific workloads, you want to deliberately turn on auto-instrumentation for a few specific workloads and leave all
+others uninstrumented.
+Use a label selector with equals (`=`) instead of not-equals (`!=`) to achieve this, for example
+`auto-instrument-this-workload-with-dash0="true"`.
+
+Note that opting out of auto-instrumentation and workload modification via a label/label selector will _not_ prevent log
+collection for pods in namespaces that have Dash0 [log collection](#monitoringresource.spec.logCollection.enabled)
+enabled, see previous section for details.
 
 ### Specifying Additional Resource Attributes via Labels and Annotations
 
@@ -978,8 +1023,9 @@ correct values when applying the [automatic workload instrumentation](#automatic
 
 If the workload is in a namespace that is not monitored by Dash0 (or if
 [`spec.instrumentWorkloads.mode`](#monitoringresource.spec.instrumentWorkloads.mode) is set to `none` in the respective
-Dash0 monitoring resource, or if the workload has the label `dash0.com/enable=false`), you need to set the environment
-variable [`OTEL_EXPORTER_OTLP_ENDPOINT`](#https://opentelemetry.io/docs/languages/sdk-configuration/otlp-exporter/)
+Dash0 monitoring resource, or if the workload has opted out of auto-instrumentations via a
+[label](#disabling-auto-instrumentation-for-specific-workloads), you need to set the environment variable
+[`OTEL_EXPORTER_OTLP_ENDPOINT`](#https://opentelemetry.io/docs/languages/sdk-configuration/otlp-exporter/)
 (and optionally also
 [`OTEL_EXPORTER_OTLP_PROTOCOL`](https://opentelemetry.io/docs/specs/otel/protocol/exporter/#specify-protocol)) yourself.
 
@@ -1355,8 +1401,9 @@ The modifications that are performed for workloads are the following:
    SDKs without support for `http/protobuf` are rather rare, but one prominent example is the Kubernetes
    [ingress-nginx](https://kubernetes.github.io/ingress-nginx/user-guide/third-party-addons/opentelemetry/).
    The recommended approach is to disable workload instrumentation by the Dash0 operator for these workloads; for
-   example by adding the Kubernetes label `dash0.com/enable: "false"`, or by not installing a Dash0 monitoring resource
-   in the namespace where these workloads are located.
+   example by opting out of auto-instrumentation via a workload label (i.e. `dash0.com/enable: "false"`, see
+   [Disabling Auto-Instrumentation for Specific Workloads](#disabling-auto-instrumentation-for-specific-workloads)),
+   or by not installing a Dash0 monitoring resource in the namespace where these workloads are located.
    The workloads can then be monitored by following the setup described in
    [Sending Data to the OpenTelemetry Collectors Managed by the Dash0 Operator](#sending-data-to-the-opentelemetry-collectors-managed-by-the-dash0-operator)
    to have the workload send telemetry to the collectors managed by the Dash0 operator, using gRPC.
@@ -1488,6 +1535,9 @@ You can opt out of synchronization for individual Perses dashboard resources by 
 `dash0.com/enable: false` to the Perses dashboard resource.
 If this label is added to a dashboard which has previously been synchronized to Dash0, the operator will delete the
 corresponding dashboard in Dash0.
+Note that the `spec.instrumentWorkloads.labelSelector` in the monitoring resource does not affect the synchronization of
+Perses dashboards, the label to opt out of synchronization is always `dash0.com/enable: false`, even if a non-default
+label selector has been set in `spec.instrumentWorkloads.labelSelector`.
 
 When a Perses dashboard resource has been synchronized to Dash0, the operator will write a summary of that
 synchronization operation to the status of the Dash0 monitoring resource in the same namespace. This summary will also
@@ -1590,6 +1640,10 @@ Note that this refers to a _Kubernetes_ label on the Kubernetes resource, and it
 in this Prometheus rules resource.
 This mechanism is not to be confused with the Prometheus annotation `dash0-enabled`, which can be applied to
 individual rules in a Prometheus rules resource, and controls whether the check rule is enabled or disabled in Dash0.
+Please also note that the `spec.instrumentWorkloads.labelSelector` in the monitoring resource does not affect the
+synchronization of Prometheus rule resources, the label to opt out of synchronization is always
+`dash0.com/enable: false`, even if a non-default label selector has been set in
+`spec.instrumentWorkloads.labelSelector`.
 
 When a Prometheus rules resource has been synchronized to Dash0, the operator will write a summary of that
 synchronization operation to the status of the Dash0 monitoring resource in the same namespace.

@@ -45,7 +45,7 @@ type resourceHandler func(
 type routing map[string]map[string]map[string]resourceHandler
 
 const (
-	optOutAdmissionAllowedMessage    = "not instrumenting this workload due to dash0.com/enable=false"
+	optOutAdmissionAllowedMessage    = "not instrumenting this workload as it does not match the instrumentation label selector \"%s\""
 	sameVersionNoModificationMessage = "not updating the existing instrumentation for this workload, it has already " +
 		"been successfully instrumented by the same operator version"
 	actor = util.ActorWebhook
@@ -242,9 +242,19 @@ func (h *InstrumentationWebhookHandler) handleCronJob(
 			logger,
 		)
 	}
-	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(&cronJob.ObjectMeta) {
-		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
-	} else if util.WasInstrumentedButHasOptedOutNow(&cronJob.ObjectMeta) {
+	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(
+		&cronJob.ObjectMeta,
+		namespaceInstrumentationConfig.InstrumentationLabelSelector,
+	) {
+		return logAndReturnAllowed(
+			fmt.Sprintf(
+				optOutAdmissionAllowedMessage, namespaceInstrumentationConfig.InstrumentationLabelSelector),
+			logger,
+		)
+	} else if util.WasInstrumentedButHasOptedOutNow(
+		&cronJob.ObjectMeta,
+		namespaceInstrumentationConfig.InstrumentationLabelSelector,
+	) {
 		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).RevertCronJob(cronJob)
 		return h.postProcessUninstrumentation(request, cronJob, modificationResult, logger)
 	} else if workloads.InstrumentationIsUpToDate(
@@ -276,9 +286,19 @@ func (h *InstrumentationWebhookHandler) handleDaemonSet(
 	if util.CheckAndDeleteIgnoreOnceLabel(&daemonSet.ObjectMeta) {
 		return h.postProcessInstrumentation(request, daemonSet, workloads.NewIgnoredOnceResult(), false, logger)
 	}
-	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(&daemonSet.ObjectMeta) {
-		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
-	} else if util.WasInstrumentedButHasOptedOutNow(&daemonSet.ObjectMeta) {
+	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(
+		&daemonSet.ObjectMeta,
+		namespaceInstrumentationConfig.InstrumentationLabelSelector,
+	) {
+		return logAndReturnAllowed(
+			fmt.Sprintf(
+				optOutAdmissionAllowedMessage, namespaceInstrumentationConfig.InstrumentationLabelSelector),
+			logger,
+		)
+	} else if util.WasInstrumentedButHasOptedOutNow(
+		&daemonSet.ObjectMeta,
+		namespaceInstrumentationConfig.InstrumentationLabelSelector,
+	) {
 		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).RevertDaemonSet(daemonSet)
 		return h.postProcessUninstrumentation(request, daemonSet, modificationResult, logger)
 	} else if workloads.InstrumentationIsUpToDate(
@@ -310,9 +330,19 @@ func (h *InstrumentationWebhookHandler) handleDeployment(
 	if util.CheckAndDeleteIgnoreOnceLabel(&deployment.ObjectMeta) {
 		return h.postProcessInstrumentation(request, deployment, workloads.NewIgnoredOnceResult(), false, logger)
 	}
-	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(&deployment.ObjectMeta) {
-		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
-	} else if util.WasInstrumentedButHasOptedOutNow(&deployment.ObjectMeta) {
+	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(
+		&deployment.ObjectMeta,
+		namespaceInstrumentationConfig.InstrumentationLabelSelector,
+	) {
+		return logAndReturnAllowed(
+			fmt.Sprintf(
+				optOutAdmissionAllowedMessage, namespaceInstrumentationConfig.InstrumentationLabelSelector),
+			logger,
+		)
+	} else if util.WasInstrumentedButHasOptedOutNow(
+		&deployment.ObjectMeta,
+		namespaceInstrumentationConfig.InstrumentationLabelSelector,
+	) {
 		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).RevertDeployment(deployment)
 		return h.postProcessUninstrumentation(request, deployment, modificationResult, logger)
 	} else if workloads.InstrumentationIsUpToDate(
@@ -344,9 +374,19 @@ func (h *InstrumentationWebhookHandler) handleJob(
 	if util.CheckAndDeleteIgnoreOnceLabel(&job.ObjectMeta) {
 		return h.postProcessInstrumentation(request, job, workloads.NewIgnoredOnceResult(), false, logger)
 	}
-	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(&job.ObjectMeta) {
-		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
-	} else if util.WasInstrumentedButHasOptedOutNow(&job.ObjectMeta) {
+	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(
+		&job.ObjectMeta,
+		namespaceInstrumentationConfig.InstrumentationLabelSelector,
+	) {
+		return logAndReturnAllowed(
+			fmt.Sprintf(
+				optOutAdmissionAllowedMessage, namespaceInstrumentationConfig.InstrumentationLabelSelector),
+			logger,
+		)
+	} else if util.WasInstrumentedButHasOptedOutNow(
+		&job.ObjectMeta,
+		namespaceInstrumentationConfig.InstrumentationLabelSelector,
+	) {
 		// This should not happen, since it can only happen for an admission request with operation=UPDATE, and we are
 		// not listening to updates for jobs. We cannot uninstrument jobs if the user adds an opt-out label after the
 		// job has been already instrumented, since jobs are immutable.
@@ -380,9 +420,19 @@ func (h *InstrumentationWebhookHandler) handlePod(
 	if util.CheckAndDeleteIgnoreOnceLabel(&pod.ObjectMeta) {
 		return h.postProcessInstrumentation(request, pod, workloads.NewIgnoredOnceResult(), true, logger)
 	}
-	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(&pod.ObjectMeta) {
-		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
-	} else if util.WasInstrumentedButHasOptedOutNow(&pod.ObjectMeta) {
+	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(
+		&pod.ObjectMeta,
+		namespaceInstrumentationConfig.InstrumentationLabelSelector,
+	) {
+		return logAndReturnAllowed(
+			fmt.Sprintf(
+				optOutAdmissionAllowedMessage, namespaceInstrumentationConfig.InstrumentationLabelSelector),
+			logger,
+		)
+	} else if util.WasInstrumentedButHasOptedOutNow(
+		&pod.ObjectMeta,
+		namespaceInstrumentationConfig.InstrumentationLabelSelector,
+	) {
 		// This should not happen, since it can only happen for an admission request with operation=UPDATE, and we are
 		// not listening to updates for pods. We cannot uninstrument ownerless pods if the user adds an opt-out label
 		// after the pod has been already instrumented, since we cannot restart ownerless pods, which makes them
@@ -417,9 +467,19 @@ func (h *InstrumentationWebhookHandler) handleReplicaSet(
 	if util.CheckAndDeleteIgnoreOnceLabel(&replicaSet.ObjectMeta) {
 		return h.postProcessInstrumentation(request, replicaSet, workloads.NewIgnoredOnceResult(), false, logger)
 	}
-	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(&replicaSet.ObjectMeta) {
-		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
-	} else if util.WasInstrumentedButHasOptedOutNow(&replicaSet.ObjectMeta) {
+	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(
+		&replicaSet.ObjectMeta,
+		namespaceInstrumentationConfig.InstrumentationLabelSelector,
+	) {
+		return logAndReturnAllowed(
+			fmt.Sprintf(
+				optOutAdmissionAllowedMessage, namespaceInstrumentationConfig.InstrumentationLabelSelector),
+			logger,
+		)
+	} else if util.WasInstrumentedButHasOptedOutNow(
+		&replicaSet.ObjectMeta,
+		namespaceInstrumentationConfig.InstrumentationLabelSelector,
+	) {
 		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).RevertReplicaSet(replicaSet)
 		return h.postProcessUninstrumentation(request, replicaSet, modificationResult, logger)
 	} else if workloads.InstrumentationIsUpToDate(
@@ -451,9 +511,19 @@ func (h *InstrumentationWebhookHandler) handleStatefulSet(
 	if util.CheckAndDeleteIgnoreOnceLabel(&statefulSet.ObjectMeta) {
 		return h.postProcessInstrumentation(request, statefulSet, workloads.NewIgnoredOnceResult(), false, logger)
 	}
-	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(&statefulSet.ObjectMeta) {
-		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
-	} else if util.WasInstrumentedButHasOptedOutNow(&statefulSet.ObjectMeta) {
+	if util.HasOptedOutOfInstrumentationAndIsUninstrumented(
+		&statefulSet.ObjectMeta,
+		namespaceInstrumentationConfig.InstrumentationLabelSelector,
+	) {
+		return logAndReturnAllowed(
+			fmt.Sprintf(
+				optOutAdmissionAllowedMessage, namespaceInstrumentationConfig.InstrumentationLabelSelector),
+			logger,
+		)
+	} else if util.WasInstrumentedButHasOptedOutNow(
+		&statefulSet.ObjectMeta,
+		namespaceInstrumentationConfig.InstrumentationLabelSelector,
+	) {
 		modificationResult := h.newWorkloadModifier(namespaceInstrumentationConfig, logger).RevertStatefulSet(statefulSet)
 		return h.postProcessUninstrumentation(request, statefulSet, modificationResult, logger)
 	} else if workloads.InstrumentationIsUpToDate(

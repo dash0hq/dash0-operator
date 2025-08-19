@@ -381,22 +381,27 @@ func (i *Instrumenter) handleJobOnInstrumentation(
 	var requiredAction util.ModificationMode
 	modifyLabels := true
 	createImmutableWorkloadsError := true
-	if util.HasOptedOutOfInstrumentation(objectMeta) && util.InstrumentationAttemptHasFailed(objectMeta) {
+	if util.HasOptedOutOfInstrumentation(objectMeta, namespaceInstrumentationConfig.InstrumentationLabelSelector) &&
+		util.InstrumentationAttemptHasFailed(objectMeta) {
 		// There has been an unsuccessful attempt to instrument this job before, but now the user has added the opt-out
 		// label, so we can remove the labels left over from that earlier attempt.
 		// "requiredAction = Instrumentation" in the context of immutable jobs means "remove Dash0 labels from the job",
 		// no other modification will take place.
 		requiredAction = util.ModificationModeUninstrumentation
 		createImmutableWorkloadsError = false
-	} else if util.HasOptedOutOfInstrumentation(objectMeta) && util.HasBeenInstrumentedSuccessfully(objectMeta) {
+	} else if util.HasOptedOutOfInstrumentation(objectMeta, namespaceInstrumentationConfig.InstrumentationLabelSelector) &&
+		util.HasBeenInstrumentedSuccessfully(objectMeta) {
 		// This job has been instrumented successfully, presumably by the webhook. Since then, the opt-out label has
 		// been added. The correct action would be to uninstrument it, but since it is immutable, we cannot do that.
 		// We will not actually modify this job at all, but create a log message and a corresponding event.
 		modifyLabels = false
 		requiredAction = util.ModificationModeUninstrumentation
-	} else if util.HasOptedOutOfInstrumentation(objectMeta) {
+	} else if util.HasOptedOutOfInstrumentation(objectMeta, namespaceInstrumentationConfig.InstrumentationLabelSelector) {
 		// has opt-out label and there has been no previous instrumentation attempt
-		logger.Info("not instrumenting this workload due to dash0.com/enable=false")
+		logger.Info(
+			fmt.Sprintf(
+				"not instrumenting this workload as it does not match the instrumentation label selector \"%s\"",
+				namespaceInstrumentationConfig.InstrumentationLabelSelector))
 		return
 	} else if util.HasBeenInstrumentedSuccessfully(objectMeta) || util.InstrumentationAttemptHasFailed(objectMeta) {
 		// We already have instrumented this job (via the webhook) or have failed to instrument it, in either case,
@@ -563,7 +568,7 @@ func (i *Instrumenter) instrumentWorkload(
 	}
 
 	var requiredAction util.ModificationMode
-	if util.WasInstrumentedButHasOptedOutNow(workloadMeta) {
+	if util.WasInstrumentedButHasOptedOutNow(workloadMeta, namespaceInstrumentationConfig.InstrumentationLabelSelector) {
 		requiredAction = util.ModificationModeUninstrumentation
 	} else if workloads.InstrumentationIsUpToDate(workloadMeta, containers, i.ClusterInstrumentationConfig.Images, namespaceInstrumentationConfig) {
 		// No change necessary, this workload has already been instrumented and an opt-out label (which would need to
@@ -571,8 +576,14 @@ func (i *Instrumenter) instrumentWorkload(
 		logger.Info("not updating the existing instrumentation for this workload, it has already been successfully " +
 			"instrumented by the same operator version")
 		return false
-	} else if util.HasOptedOutOfInstrumentationAndIsUninstrumented(workload.getObjectMeta()) {
-		logger.Info("not instrumenting this workload due to dash0.com/enable=false")
+	} else if util.HasOptedOutOfInstrumentationAndIsUninstrumented(
+		workload.getObjectMeta(),
+		namespaceInstrumentationConfig.InstrumentationLabelSelector,
+	) {
+		logger.Info(
+			fmt.Sprintf(
+				"not instrumenting this workload as it does not match the instrumentation label selector \"%s\"",
+				namespaceInstrumentationConfig.InstrumentationLabelSelector))
 		return false
 	} else {
 		requiredAction = util.ModificationModeInstrumentation

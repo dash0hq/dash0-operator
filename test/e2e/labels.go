@@ -36,15 +36,13 @@ func verifyLabels(
 	instrumentationBy string,
 ) {
 	instrumented := readLabel(g, namespace, runtime, workloadType, "dash0.com/instrumented")
-	g.Expect(instrumented).To(Equal(strconv.FormatBool(successful)))
+	g.Expect(instrumented).To(Equal(strconv.FormatBool(successful)), "expected dash0.com/instrumented=true but it wasn't")
 	operatorImage := readLabel(g, namespace, runtime, workloadType, "dash0.com/operator-image")
 	verifyImageLabel(g, operatorImage, images.operator, "ghcr.io/dash0hq/operator-controller:")
 	initContainerImage := readLabel(g, namespace, runtime, workloadType, "dash0.com/init-container-image")
 	verifyImageLabel(g, initContainerImage, images.instrumentation, "ghcr.io/dash0hq/instrumentation:")
 	instrumentedBy := readLabel(g, namespace, runtime, workloadType, "dash0.com/instrumented-by")
 	g.Expect(instrumentedBy).To(Equal(instrumentationBy))
-	dash0Enable := readLabel(g, namespace, runtime, workloadType, "dash0.com/enable")
-	g.Expect(dash0Enable).To(Equal(""))
 }
 
 func verifyImageLabel(

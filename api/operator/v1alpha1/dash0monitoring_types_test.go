@@ -12,6 +12,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
+	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -61,8 +62,16 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				srcSpec:               Dash0MonitoringSpec{},
 				srcStatus:             Dash0MonitoringStatus{},
 				expectedDstObjectMeta: metav1.ObjectMeta{},
-				expectedDstSpec:       dash0v1beta1.Dash0MonitoringSpec{},
-				expectedDstStatus:     dash0v1beta1.Dash0MonitoringStatus{},
+				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+					},
+				},
+				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
+					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+					},
+				},
 			}),
 			Entry("object meta has no annotations, empty spec, empty status", convertToTestCase{
 				srcObjectMeta: metav1.ObjectMeta{
@@ -81,16 +90,32 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 						"test-label": "test-value",
 					},
 				},
-				expectedDstSpec:   dash0v1beta1.Dash0MonitoringSpec{},
-				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{},
+				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+					},
+				},
+				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
+					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+					},
+				},
 			}),
 			Entry("empty spec, empty status", convertToTestCase{
 				srcObjectMeta:         testObjectMeta(),
 				srcSpec:               Dash0MonitoringSpec{},
 				srcStatus:             Dash0MonitoringStatus{},
 				expectedDstObjectMeta: testObjectMeta(),
-				expectedDstSpec:       dash0v1beta1.Dash0MonitoringSpec{},
-				expectedDstStatus:     dash0v1beta1.Dash0MonitoringStatus{},
+				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+					},
+				},
+				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
+					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+					},
+				},
 			}),
 			Entry("full spec, full status", convertToTestCase{
 				srcObjectMeta: testObjectMeta(),
@@ -122,7 +147,8 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
 					Export: testExport(),
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						Mode: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
+						Mode:          dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
 					},
 					LogCollection: dash0common.LogCollection{
 						Enabled: ptr.To(false),
@@ -144,7 +170,8 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 						},
 					},
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						Mode: dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
+						Mode:          dash0common.InstrumentWorkloadsModeCreatedAndUpdated,
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
 					},
 				},
 			}),
@@ -155,8 +182,16 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				},
 				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+					},
 					PrometheusScraping: dash0common.PrometheusScraping{
 						Enabled: ptr.To(false),
+					},
+				},
+				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
+					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
 					},
 				},
 			}),
@@ -170,8 +205,16 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				},
 				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+					},
 					PrometheusScraping: dash0common.PrometheusScraping{
 						Enabled: ptr.To(false),
+					},
+				},
+				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
+					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
 					},
 				},
 			}),
@@ -185,8 +228,16 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				},
 				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+					},
 					PrometheusScraping: dash0common.PrometheusScraping{
 						Enabled: ptr.To(false),
+					},
+				},
+				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
+					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
 					},
 				},
 			}),
@@ -200,8 +251,16 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				},
 				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+					},
 					PrometheusScraping: dash0common.PrometheusScraping{
 						Enabled: ptr.To(false),
+					},
+				},
+				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
+					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
 					},
 				},
 			}),
@@ -222,12 +281,17 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
 						TraceContext: dash0v1beta1.TraceContext{
 							Propagators: ptr.To("tracecontext,xray"),
 						},
 					},
 				},
-				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{},
+				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
+					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+					},
+				},
 			}),
 			Entry("with previous propagators annotation", convertToTestCase{
 				srcObjectMeta: metav1.ObjectMeta{
@@ -244,16 +308,73 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				srcSpec:               Dash0MonitoringSpec{},
 				srcStatus:             Dash0MonitoringStatus{},
 				expectedDstObjectMeta: testObjectMeta(),
-				expectedDstSpec:       dash0v1beta1.Dash0MonitoringSpec{},
+				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+					},
+				},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
 						TraceContext: dash0v1beta1.TraceContext{
 							Propagators: ptr.To("tracecontext,xray"),
 						},
 					},
 				},
 			}),
-			Entry("with both propagators annotations", convertToTestCase{
+			Entry("with auto-instrumentation label selector annotation", convertToTestCase{
+				srcObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+					Labels: map[string]string{
+						"test-label": "test-value",
+					},
+					Annotations: map[string]string{
+						"test-annotation": "test-value",
+						annotationNameSpecInstrumentWorkloadsLabelSelector: "some-label,dash0-auto-instrument=yes,stage in (dev,prod)",
+					},
+				},
+				srcSpec:               Dash0MonitoringSpec{},
+				srcStatus:             Dash0MonitoringStatus{},
+				expectedDstObjectMeta: testObjectMeta(),
+				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: "some-label,dash0-auto-instrument=yes,stage in (dev,prod)",
+					},
+				},
+				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
+					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+					},
+				},
+			}),
+			Entry("with previous auto-instrumentation label selector annotation", convertToTestCase{
+				srcObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+					Labels: map[string]string{
+						"test-label": "test-value",
+					},
+					Annotations: map[string]string{
+						"test-annotation": "test-value",
+						annotationNameStatusPreviousInstrumentWorkloadsLabelSelector: "dash0-auto-instrument=yes-please",
+					},
+				},
+				srcSpec:               Dash0MonitoringSpec{},
+				srcStatus:             Dash0MonitoringStatus{},
+				expectedDstObjectMeta: testObjectMeta(),
+				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+					},
+				},
+				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
+					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: "dash0-auto-instrument=yes-please",
+					},
+				},
+			}),
+			Entry("with multiple annotations for saving attributes not supported in v1alpha1", convertToTestCase{
 				srcObjectMeta: metav1.ObjectMeta{
 					Namespace: TestNamespaceName,
 					Name:      MonitoringResourceName,
@@ -264,6 +385,8 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 						"test-annotation": "test-value",
 						annotationNameSpecInstrumentWorkloadsTraceContextPropagators:           "tracecontext,xray",
 						annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators: "xray",
+						annotationNameSpecInstrumentWorkloadsLabelSelector:                     "some-label,dash0-auto-instrument=yes,stage in (dev,prod)",
+						annotationNameStatusPreviousInstrumentWorkloadsLabelSelector:           "dash0-auto-instrument=yes-please",
 					},
 				},
 				srcSpec:               Dash0MonitoringSpec{},
@@ -271,6 +394,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				expectedDstObjectMeta: testObjectMeta(),
 				expectedDstSpec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: "some-label,dash0-auto-instrument=yes,stage in (dev,prod)",
 						TraceContext: dash0v1beta1.TraceContext{
 							Propagators: ptr.To("tracecontext,xray"),
 						},
@@ -278,6 +402,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				},
 				expectedDstStatus: dash0v1beta1.Dash0MonitoringStatus{
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: "dash0-auto-instrument=yes-please",
 						TraceContext: dash0v1beta1.TraceContext{
 							Propagators: ptr.To("xray"),
 						},
@@ -453,20 +578,34 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 				expectedDstSpec:   Dash0MonitoringSpec{},
 				expectedDstStatus: Dash0MonitoringStatus{},
 			}),
-			Entry("with propagators in both attributes", convertFromTestCase{
+			Entry("with spec.instrumentWorkloads.labelSelector", convertFromTestCase{
 				srcObjectMeta: testObjectMeta(),
 				srcSpec: dash0v1beta1.Dash0MonitoringSpec{
 					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("tracecontext,xray"),
-						},
+						LabelSelector: "some-label,dash0-auto-instrument=yes,stage in (dev,prod)",
 					},
 				},
+				srcStatus: dash0v1beta1.Dash0MonitoringStatus{},
+				expectedDstObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+					Labels: map[string]string{
+						"test-label": "test-value",
+					},
+					Annotations: map[string]string{
+						"test-annotation": "test-value",
+						annotationNameSpecInstrumentWorkloadsLabelSelector: "some-label,dash0-auto-instrument=yes,stage in (dev,prod)",
+					},
+				},
+				expectedDstSpec:   Dash0MonitoringSpec{},
+				expectedDstStatus: Dash0MonitoringStatus{},
+			}),
+			Entry("with status.previousInstrumentWorkloads.labelSelector", convertFromTestCase{
+				srcObjectMeta: testObjectMeta(),
+				srcSpec:       dash0v1beta1.Dash0MonitoringSpec{},
 				srcStatus: dash0v1beta1.Dash0MonitoringStatus{
 					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
-						TraceContext: dash0v1beta1.TraceContext{
-							Propagators: ptr.To("xray"),
-						},
+						LabelSelector: "dash0-auto-instrument=affirmative",
 					},
 				},
 				expectedDstObjectMeta: metav1.ObjectMeta{
@@ -477,8 +616,7 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 					},
 					Annotations: map[string]string{
 						"test-annotation": "test-value",
-						annotationNameSpecInstrumentWorkloadsTraceContextPropagators:           "tracecontext,xray",
-						annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators: "xray",
+						annotationNameStatusPreviousInstrumentWorkloadsLabelSelector: "dash0-auto-instrument=affirmative",
 					},
 				},
 				expectedDstSpec:   Dash0MonitoringSpec{},
@@ -555,6 +693,41 @@ var _ = Describe("v1alpha1 Dash0 monitoring CRD", func() {
 					Annotations: map[string]string{
 						annotationNameSpecInstrumentWorkloadsTraceContextPropagators:           "tracecontext,xray",
 						annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators: "xray",
+					},
+				},
+				expectedDstSpec:   Dash0MonitoringSpec{},
+				expectedDstStatus: Dash0MonitoringStatus{},
+			}),
+			Entry("with multiple attributes not supported in v1alpha1", convertFromTestCase{
+				srcObjectMeta: testObjectMeta(),
+				srcSpec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: "some-label,dash0-auto-instrument=yes,stage in (dev,prod)",
+						TraceContext: dash0v1beta1.TraceContext{
+							Propagators: ptr.To("tracecontext,xray"),
+						},
+					},
+				},
+				srcStatus: dash0v1beta1.Dash0MonitoringStatus{
+					PreviousInstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: "dash0-auto-instrument=affirmative",
+						TraceContext: dash0v1beta1.TraceContext{
+							Propagators: ptr.To("xray"),
+						},
+					},
+				},
+				expectedDstObjectMeta: metav1.ObjectMeta{
+					Namespace: TestNamespaceName,
+					Name:      MonitoringResourceName,
+					Labels: map[string]string{
+						"test-label": "test-value",
+					},
+					Annotations: map[string]string{
+						"test-annotation": "test-value",
+						annotationNameSpecInstrumentWorkloadsTraceContextPropagators:           "tracecontext,xray",
+						annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators: "xray",
+						annotationNameSpecInstrumentWorkloadsLabelSelector:                     "some-label,dash0-auto-instrument=yes,stage in (dev,prod)",
+						annotationNameStatusPreviousInstrumentWorkloadsLabelSelector:           "dash0-auto-instrument=affirmative",
 					},
 				},
 				expectedDstSpec:   Dash0MonitoringSpec{},

@@ -6,6 +6,7 @@ package v1alpha1
 import (
 	"fmt"
 	"slices"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -24,6 +25,8 @@ import (
 const (
 	annotationNameSpecInstrumentWorkloadsTraceContextPropagators           = "dash0.com/spec.instrumentWorkloads.traceContext.propagators"
 	annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators = "dash0.com/status.previousInstrumentWorkloads.traceContext.propagators"
+	annotationNameSpecInstrumentWorkloadsLabelSelector                     = "dash0.com/spec.instrumentWorkloads.labelSelector"
+	annotationNameStatusPreviousInstrumentWorkloadsLabelSelector           = "dash0.com/status.previousInstrumentWorkloads.labelSelector"
 )
 
 // Dash0MonitoringSpec describes the details of monitoring a single Kubernetes namespace with Dash0 and sending
@@ -385,6 +388,14 @@ func (dst *Dash0Monitoring) ConvertFrom(srcRaw conversion.Hub) error {
 	dst.ObjectMeta = src.ObjectMeta
 	dst.Spec.Export = src.Spec.Export
 	dst.Spec.InstrumentWorkloads = src.Spec.InstrumentWorkloads.Mode
+	if strings.TrimSpace(src.Spec.InstrumentWorkloads.LabelSelector) != "" &&
+		src.Spec.InstrumentWorkloads.LabelSelector != util.DefaultAutoInstrumentationLabelSelector {
+		if dst.ObjectMeta.Annotations == nil {
+			dst.ObjectMeta.Annotations = make(map[string]string)
+		}
+		dst.ObjectMeta.Annotations[annotationNameSpecInstrumentWorkloadsLabelSelector] =
+			src.Spec.InstrumentWorkloads.LabelSelector
+	}
 	if src.Spec.InstrumentWorkloads.TraceContext.Propagators != nil && *src.Spec.InstrumentWorkloads.TraceContext.Propagators != "" {
 		if dst.ObjectMeta.Annotations == nil {
 			dst.ObjectMeta.Annotations = make(map[string]string)
@@ -402,6 +413,14 @@ func (dst *Dash0Monitoring) ConvertFrom(srcRaw conversion.Hub) error {
 	dst.Spec.SynchronizePrometheusRules = src.Spec.SynchronizePrometheusRules
 	dst.Status.Conditions = src.Status.Conditions
 	dst.Status.PreviousInstrumentWorkloads = src.Status.PreviousInstrumentWorkloads.Mode
+	if strings.TrimSpace(src.Status.PreviousInstrumentWorkloads.LabelSelector) != "" &&
+		src.Status.PreviousInstrumentWorkloads.LabelSelector != util.DefaultAutoInstrumentationLabelSelector {
+		if dst.ObjectMeta.Annotations == nil {
+			dst.ObjectMeta.Annotations = make(map[string]string)
+		}
+		dst.ObjectMeta.Annotations[annotationNameStatusPreviousInstrumentWorkloadsLabelSelector] =
+			src.Status.PreviousInstrumentWorkloads.LabelSelector
+	}
 	if src.Status.PreviousInstrumentWorkloads.TraceContext.Propagators != nil && *src.Status.PreviousInstrumentWorkloads.TraceContext.Propagators != "" {
 		if dst.ObjectMeta.Annotations == nil {
 			dst.ObjectMeta.Annotations = make(map[string]string)
@@ -420,12 +439,20 @@ func (src *Dash0Monitoring) ConvertTo(dstRaw conversion.Hub) error {
 	dst.ObjectMeta = src.ObjectMeta
 	dst.Spec.Export = src.Spec.Export
 	dst.Spec.InstrumentWorkloads = dash0v1beta1.InstrumentWorkloads{
-		Mode: src.Spec.InstrumentWorkloads,
+		LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+		Mode:          src.Spec.InstrumentWorkloads,
 	}
 	if src.ObjectMeta.Annotations != nil {
+		labelSelector, labelSelectorFound :=
+			src.ObjectMeta.Annotations[annotationNameSpecInstrumentWorkloadsLabelSelector]
+		if labelSelectorFound && strings.TrimSpace(labelSelector) != "" {
+			dst.Spec.InstrumentWorkloads.LabelSelector = labelSelector
+		}
+		delete(dst.ObjectMeta.Annotations, annotationNameSpecInstrumentWorkloadsLabelSelector)
+
 		propagators, propagatorsFound :=
 			src.ObjectMeta.Annotations[annotationNameSpecInstrumentWorkloadsTraceContextPropagators]
-		if propagatorsFound && propagators != "" {
+		if propagatorsFound && strings.TrimSpace(propagators) != "" {
 			dst.Spec.InstrumentWorkloads.TraceContext.Propagators = ptr.To(propagators)
 		}
 		delete(dst.ObjectMeta.Annotations, annotationNameSpecInstrumentWorkloadsTraceContextPropagators)
@@ -446,12 +473,20 @@ func (src *Dash0Monitoring) ConvertTo(dstRaw conversion.Hub) error {
 	dst.Spec.SynchronizePrometheusRules = src.Spec.SynchronizePrometheusRules
 	dst.Status.Conditions = src.Status.Conditions
 	dst.Status.PreviousInstrumentWorkloads = dash0v1beta1.InstrumentWorkloads{
-		Mode: src.Status.PreviousInstrumentWorkloads,
+		LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+		Mode:          src.Status.PreviousInstrumentWorkloads,
 	}
 	if src.ObjectMeta.Annotations != nil {
+		previousLabelSelector, previousLabelSelectorFound :=
+			src.ObjectMeta.Annotations[annotationNameStatusPreviousInstrumentWorkloadsLabelSelector]
+		if previousLabelSelectorFound && strings.TrimSpace(previousLabelSelector) != "" {
+			dst.Status.PreviousInstrumentWorkloads.LabelSelector = previousLabelSelector
+		}
+		delete(dst.ObjectMeta.Annotations, annotationNameStatusPreviousInstrumentWorkloadsLabelSelector)
+
 		previousPropagators, previousPropagatorsFound :=
 			src.ObjectMeta.Annotations[annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators]
-		if previousPropagatorsFound && previousPropagators != "" {
+		if previousPropagatorsFound && strings.TrimSpace(previousPropagators) != "" {
 			dst.Status.PreviousInstrumentWorkloads.TraceContext.Propagators = ptr.To(previousPropagators)
 		}
 		delete(dst.ObjectMeta.Annotations, annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators)

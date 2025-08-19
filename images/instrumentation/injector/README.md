@@ -8,7 +8,7 @@ It serves two main purposes:
 * Set resource attributes automatically, in particular Kubernetes related resource attributes and service related
   resource attributes.
 
-The injector is used by the Dash0 operator to enable automatic zero-touch instrumenation of Kubernetes workloads.
+The injector is used by the Dash0 operator to enable automatic zero-touch instrumentation of Kubernetes workloads.
 In particular, workloads in namespaces monitored by the Dash0 operator are modified by the Dash0 operator
 to enable tracing for supported runtimes out of the box, and to improve Kubernetes-related resource attribute
 auto-detection.
