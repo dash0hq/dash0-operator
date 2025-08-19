@@ -14,6 +14,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
+	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -43,6 +44,9 @@ var (
 		},
 	}
 	MonitoringResourceDefaultSpec = dash0v1beta1.Dash0MonitoringSpec{
+		InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+			LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
+		},
 		Export: &dash0common.Export{
 			Dash0: &dash0common.Dash0Configuration{
 				Endpoint: EndpointDash0Test,
@@ -51,6 +55,10 @@ var (
 				},
 			},
 		},
+	}
+
+	DefaultNamespaceInstrumentationConfig = util.NamespaceInstrumentationConfig{
+		InstrumentationLabelSelector: util.DefaultAutoInstrumentationLabelSelector,
 	}
 )
 

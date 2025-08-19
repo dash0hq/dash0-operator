@@ -111,7 +111,9 @@ type Dash0MonitoringSpec struct {
 }
 
 type InstrumentWorkloads struct {
-	// Opt-out for automatic workload instrumentation for the target namespace. There are three possible settings:
+	// Controls the automatic workload instrumentation triggers for the target namespace, that is, which events will
+	// trigger the auto-instrumentation of a workload. There are three possible
+	// settings:
 	// `all`, `created-and-updated` and `none`. By default, the setting `all` is assumed, unless there is an operator
 	// configuration resource with `telemetryCollection.enabled=false`, then the setting `none` is assumed.
 	//
@@ -125,7 +127,8 @@ type InstrumentWorkloads struct {
 	// Note that the first two actions (instrumenting existing workloads) will result in restarting the pods of the
 	// affected workloads.
 	//
-	// If set to `created-and-updated`, the operator will not instrument existing workloads in the target namespace.
+	// If set to `created-and-updated`, the operator will not instrument existing workloads in the target namespace,
+	// neither when a Dash0 monitoring resource is deployed, nor when the Dash0 operator is started or restarted.
 	// Instead, it will only:
 	// * instrument new workloads in the target namespace when they are deployed, and
 	// * instrument changed workloads in the target namespace when changes are applied to them.
@@ -145,10 +148,34 @@ type InstrumentWorkloads struct {
 	// same time.
 	//
 	// More fine-grained per-workload control over instrumentation is available by setting the label
-	// dash0.com/enable=false on individual workloads.
+	// dash0.com/enable=false on individual workloads, or by using a custom label selector via
+	// spec.instrumentWorkloads.labelSelector.
 	//
 	// +kubebuilder:validation:Optional
 	Mode dash0common.InstrumentWorkloadsMode `json:"mode,omitempty"`
+
+	// An optional configurable label selector for fine-grained per-workload control over instrumentation. Workloads
+	// which match this label selector will be instrumented (according to the value of spec.instrumentWorkloads.mode).
+	// Workloads which do not match this label selector will never be instrumented, regardless of the value of
+	// spec.instrumentWorkloads.mode.
+	//
+	// This attribute is ignored if spec.instrumentWorkloads.mode=none.
+	//
+	// By default, this label selector has the value "dash0.com/enable!=false" - that is, the following workloads will
+	// be instrumented (assuming spec.instrumentWorkloads.mode!=none)
+	// - workloads that do not have the label dash0.com/enable at all, or
+	// - workloads that have the label dash0.com/enable with a value other than "false".
+	//
+	// It is recommended to leave this setting unset (i.e. leave the default "dash0.com/enable!=false" in place), unless
+	// you have a specific use case that requires a different label selector. One such use case is implementing an
+	// opt-in model for workload instrumentation instead of the usual opt-out model. That is, instead of instrumenting
+	// all workloads by default and only disabling instrumentation for a few specific workloads, you want to
+	// deliberately turn on instrumentation for a few specific workloads and leave all others uninstrumented. Use a
+	// label selector with equals instead of not-equals to achieve this, i.e.
+	// spec.instrumentWorkloads.labelSelector="auto-instrument-this-workload-with-dash0=true".
+	//
+	// +kubebuilder:default=dash0.com/enable!=false
+	LabelSelector string `json:"labelSelector,omitempty"`
 
 	// Optional settings for how trace context is handled in instrumented workloads.
 	//
@@ -388,6 +415,7 @@ func (d *Dash0Monitoring) At(list client.ObjectList, index int) dash0operator.Da
 
 func (d *Dash0Monitoring) GetNamespaceInstrumentationConfig() util.NamespaceInstrumentationConfig {
 	return util.NamespaceInstrumentationConfig{
+		InstrumentationLabelSelector:    d.Spec.InstrumentWorkloads.LabelSelector,
 		TraceContextPropagators:         d.Spec.InstrumentWorkloads.TraceContext.Propagators,
 		PreviousTraceContextPropagators: d.Status.PreviousInstrumentWorkloads.TraceContext.Propagators,
 	}

@@ -214,9 +214,9 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 				It("should instrument a workload when the opt-out label is removed from it", func() {
 					testId := generateTestId(runtimeTypeNodeJs, workloadTypeDaemonSet)
-					By("installing the Node.js daemonset with dash0.com/enable=false")
+					By("installing the Node.js daemon set with dash0.com/enable=false")
 					Expect(installNodeJsDaemonSetWithOptOutLabel(applicationUnderTestNamespace)).To(Succeed())
-					By("verifying that the Node.js daemonset has not been instrumented by the webhook")
+					By("verifying that the Node.js daemon set has not been instrumented by the webhook")
 					Consistently(func(g Gomega) {
 						verifyNoDash0LabelsOrOnlyOptOut(
 							g,
@@ -227,14 +227,14 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 						)
 					}, 10*time.Second, pollingInterval).Should(Succeed())
 
-					By("removing the opt-out label from the daemonset")
+					By("removing the opt-out label from the daemon set")
 					Expect(removeOptOutLabel(
 						applicationUnderTestNamespace,
 						"daemonset",
 						"dash0-operator-nodejs-20-express-test-daemonset",
 					)).To(Succeed())
 
-					By("verifying that the Node.js daemonset has been instrumented by the webhook")
+					By("verifying that the Node.js daemon set has been instrumented by the webhook")
 					verifyThatWorkloadHasBeenInstrumented(
 						applicationUnderTestNamespace,
 						runtimeTypeNodeJs,
@@ -797,6 +797,51 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 						testId,
 						"controller",
 					)
+				})
+			})
+
+			Describe("with a custom auto-instrumentation label selector", func() {
+
+				BeforeAll(func() {
+					deployDash0MonitoringResource(
+						applicationUnderTestNamespace,
+						dash0MonitoringValues{
+							InstrumentWorkloadsLabelSelector: "instrument-with-dash0=yes",
+						},
+						operatorNamespace,
+					)
+				})
+
+				AfterAll(func() {
+					undeployDash0MonitoringResource(applicationUnderTestNamespace)
+				})
+
+				It("should instrument workloads that match the label selector", func() {
+					testId := generateTestId(runtimeTypeNodeJs, workloadTypeStatefulSet)
+
+					By("installing the Node.js daemon set with label instrument-with-dash0: yes")
+					// The daemonset in daemonset.opt-out.yaml also has the instrument-with-dash0=true label, so it can
+					// be used for this test case.
+					Expect(installNodeJsDaemonSetWithOptOutLabel(applicationUnderTestNamespace)).To(Succeed())
+					By("verifying that the Node.js daemon set has been instrumented by the webhook")
+					verifyThatWorkloadHasBeenInstrumented(
+						applicationUnderTestNamespace,
+						runtimeTypeNodeJs,
+						workloadTypeDaemonSet,
+						testId,
+						images,
+						"webhook",
+						true,
+					)
+				})
+
+				It("should not instrument workloads that do not match the label selector", func() {
+					By("installing the Node.js daemon set")
+					Expect(installNodeJsDaemonSet(applicationUnderTestNamespace)).To(Succeed())
+					By("verifying that the Node.js daemon set has not been instrumented")
+					Consistently(func(g Gomega) {
+						verifyNoDash0Labels(g, applicationUnderTestNamespace, runtimeTypeNodeJs, workloadTypeDaemonSet)
+					}, 10*time.Second, pollingInterval).Should(Succeed())
 				})
 			})
 
@@ -1403,7 +1448,7 @@ trace_statements:
 			})
 
 			//nolint:lll
-			It("should update the daemonset collector configuration when updating the Dash0 endpoint in the operator configuration resource", func() {
+			It("should update the daemon set collector configuration when updating the Dash0 endpoint in the operator configuration resource", func() {
 				deployDash0OperatorConfigurationResource(dash0OperatorConfigurationValues{
 					SelfMonitoringEnabled:      false,
 					Endpoint:                   defaultEndpoint,

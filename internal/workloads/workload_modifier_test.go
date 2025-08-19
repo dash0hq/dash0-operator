@@ -47,7 +47,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 	logger := log.FromContext(ctx)
 	workloadModifier := NewResourceModifier(
 		clusterInstrumentationConfig,
-		util.NamespaceInstrumentationConfig{},
+		DefaultNamespaceInstrumentationConfig,
 		testActor,
 		&logger,
 	)
@@ -93,7 +93,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 						nil,
 						false,
 					),
-					util.NamespaceInstrumentationConfig{},
+					DefaultNamespaceInstrumentationConfig,
 					testActor,
 					&logger,
 				).ModifyDeployment(workload)
@@ -617,7 +617,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 		logger := log.FromContext(ctx)
 		workloadModifier := NewResourceModifier(
 			clusterInstrumentationConfig,
-			util.NamespaceInstrumentationConfig{},
+			DefaultNamespaceInstrumentationConfig,
 			testActor,
 			&logger,
 		)
@@ -1332,7 +1332,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 				VerifyEnvVarsFromMap(testConfig.expectedEnvVars, envVars)
 			},
 			Entry("should not add OTEL_PROPAGATORS if not configured", otelPropagatorsTest{
-				namespaceInstrumentationConfig:        util.NamespaceInstrumentationConfig{},
+				namespaceInstrumentationConfig:        DefaultNamespaceInstrumentationConfig,
 				expectedPreInstrumentationCheckResult: false,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					util.OtelPropagatorsEnvVarName: nil,
@@ -1343,7 +1343,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					Name:  util.OtelPropagatorsEnvVarName,
 					Value: "tracecontext,baggage",
 				}},
-				namespaceInstrumentationConfig:        util.NamespaceInstrumentationConfig{},
+				namespaceInstrumentationConfig:        DefaultNamespaceInstrumentationConfig,
 				expectedPreInstrumentationCheckResult: false,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					util.OtelPropagatorsEnvVarName: {Value: "tracecontext,baggage"},
@@ -1516,7 +1516,7 @@ var _ = Describe("Dash0 Workload Modification", func() {
 					Name:  util.OtelPropagatorsEnvVarName,
 					Value: "tracecontext,xray",
 				}},
-				namespaceInstrumentationConfig: util.NamespaceInstrumentationConfig{},
+				namespaceInstrumentationConfig: DefaultNamespaceInstrumentationConfig,
 				expectedEnvVars: map[string]*EnvVarExpectation{
 					util.OtelPropagatorsEnvVarName: {Value: "tracecontext,xray"},
 				},

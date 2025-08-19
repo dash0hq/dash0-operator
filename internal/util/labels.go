@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 )
 
 const (
@@ -23,7 +24,8 @@ const (
 	// or when the label is missing entirely.
 	instrumentedLabelValueUnknown instrumentedState = "unknown"
 
-	dash0EnableLabelKey        = "dash0.com/enable"
+	DefaultAutoInstrumentationLabelSelector = "dash0.com/enable!=false"
+
 	operatorImageLabelKey      = "dash0.com/operator-image"
 	initContainerImageLabelKey = "dash0.com/init-container-image"
 	instrumentedByLabelKey     = "dash0.com/instrumented-by"
@@ -117,21 +119,43 @@ func readInstrumentationState(objectMeta *metav1.ObjectMeta) instrumentedState {
 	}
 }
 
-func HasOptedOutOfInstrumentation(objectMeta *metav1.ObjectMeta) bool {
-	return hasOptedOutOfInstrumentation(objectMeta)
+func HasOptedOutOfInstrumentation(objectMeta *metav1.ObjectMeta, autoInstrumentationLabelSelector string) bool {
+	return hasOptedOutOfInstrumentation(objectMeta, autoInstrumentationLabelSelector)
 }
 
-func HasOptedOutOfInstrumentationAndIsUninstrumented(objectMeta *metav1.ObjectMeta) bool {
-	return hasOptedOutOfInstrumentation(objectMeta) && !HasBeenInstrumentedSuccessfully(objectMeta)
+func HasOptedOutOfInstrumentationAndIsUninstrumented(objectMeta *metav1.ObjectMeta, autoInstrumentationLabelSelector string) bool {
+	return hasOptedOutOfInstrumentation(objectMeta, autoInstrumentationLabelSelector) && !HasBeenInstrumentedSuccessfully(objectMeta)
 }
 
-func WasInstrumentedButHasOptedOutNow(objectMeta *metav1.ObjectMeta) bool {
-	return HasBeenInstrumentedSuccessfully(objectMeta) && hasOptedOutOfInstrumentation(objectMeta)
+func WasInstrumentedButHasOptedOutNow(objectMeta *metav1.ObjectMeta, autoInstrumentationLabelSelector string) bool {
+	return HasBeenInstrumentedSuccessfully(objectMeta) && hasOptedOutOfInstrumentation(objectMeta, autoInstrumentationLabelSelector)
 }
 
-func hasOptedOutOfInstrumentation(objectMeta *metav1.ObjectMeta) bool {
-	dash0EnabledValue, isSet := readLabel(objectMeta, dash0EnableLabelKey)
-	return isSet && dash0EnabledValue == "false"
+func hasOptedOutOfInstrumentation(objectMeta *metav1.ObjectMeta, autoInstrumentationLabelSelector string) bool {
+	return !shouldBeInstrumented(objectMeta, autoInstrumentationLabelSelector)
+}
+
+// shouldBeInstrumented checks whether the workload should be instrumented, that is, whether it has opted in to
+// instrumentation via a label, or not actively opted out of instrumentation. This condition can often be implicit: if
+// the instrumentation label selector uses the != operator (as the default selector dash0.com/enable!=false does), then
+// the absence of that label means that the label selector matches.
+//
+// If no custom label selector is configured in the monitoring resource, the label selector check is
+// `dash0.com/enable!=false`, that is, all workloads that
+// - do not have the dash0.com/enable label, or,
+// - that have that label with a value != false
+// will be instrumentated.
+func shouldBeInstrumented(objectMeta *metav1.ObjectMeta, autoInstrumentationLabelSelector string) bool {
+	labelSelector, err := labels.Parse(autoInstrumentationLabelSelector)
+	if err != nil {
+		// The setting is validated in the validation webhook for the monitoring resource, so this should never happen.
+		labelSelector, err = labels.Parse(DefaultAutoInstrumentationLabelSelector)
+		if err != nil {
+			// This also should never, ever happen.
+			panic(err)
+		}
+	}
+	return labelSelector.Matches(labels.Set(objectMeta.Labels))
 }
 
 func CheckAndDeleteIgnoreOnceLabel(objectMeta *metav1.ObjectMeta) bool {

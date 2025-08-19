@@ -1202,13 +1202,13 @@ func verifyThatDeploymentIsInstrumented(ctx context.Context, monitoringReconcile
 func verifyThatDeploymentIsNotBeingInstrumented(ctx context.Context, monitoringReconciler *MonitoringReconciler, createdObjects []client.Object) []client.Object {
 	name := UniqueName(DeploymentNamePrefix)
 	By("Inititalize a deployment")
-	deployment := CreateDeploymentWithOptOutLabel(ctx, k8sClient, namespace, name)
+	deployment := CreateBasicDeployment(ctx, k8sClient, namespace, name)
 	createdObjects = append(createdObjects, deployment)
 
 	triggerReconcileRequest(ctx, monitoringReconciler)
 
 	VerifyNoEvents(ctx, clientset, namespace)
-	VerifyDeploymentWithOptOutLabel(GetDeployment(ctx, k8sClient, namespace, name))
+	VerifyUnmodifiedDeployment(GetDeployment(ctx, k8sClient, namespace, name))
 
 	return createdObjects
 }

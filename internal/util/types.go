@@ -110,7 +110,7 @@ type DelayConfig struct {
 	// workspace via a monitoring resource.
 	AfterEachWorkloadMillis uint64
 
-	// AfterEachNamespace determines the delay to wait after updating the instrumenation in one namespace when running
+	// AfterEachNamespace determines the delay to wait after updating the instrumentation in one namespace when running
 	// InstrumentAtStartup.
 	AfterEachNamespaceMillis uint64
 }
@@ -118,6 +118,7 @@ type DelayConfig struct {
 // NamespaceInstrumentationConfig holds configuration values relevant for instrumenting workloads which apply to one
 // namespace, e.g. settings from the monitoring resource.
 type NamespaceInstrumentationConfig struct {
+	InstrumentationLabelSelector    string
 	TraceContextPropagators         *string
 	PreviousTraceContextPropagators *string
 }

@@ -187,6 +187,15 @@ func uninstallNodeJsCronJob(namespace string) error {
 	return runKubectlDelete(namespace, "cronjob", runtimeTypeNodeJs)
 }
 
+//nolint:unparam
+func installNodeJsDaemonSet(namespace string) error {
+	return installNodeJsWorkload(
+		workloadTypeDaemonSet,
+		namespace,
+		"",
+	)
+}
+
 func installNodeJsDaemonSetWithOptOutLabel(namespace string) error {
 	return runKubectlApply(
 		namespace,

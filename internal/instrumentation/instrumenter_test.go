@@ -73,7 +73,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 		dash0MonitoringResource = nil
 	})
 
-	Describe("when the controller reconciles", func() {
+	Describe("when the monitoring controller reconciles", func() {
 		DescribeTable("when instrumenting existing workloads", func(config WorkloadTestConfig) {
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
@@ -171,7 +171,7 @@ var _ = Describe("The instrumenter", Ordered, func() {
 
 				checkSettingsAndInstrumentExistingWorkloads(ctx, instrumenter, dash0MonitoringResource, &logger)
 
-				// We do not instrument existing pods via the controller, since they cannot be restarted.
+				// We do not instrument existing pods via the monitoring controller, since they cannot be restarted.
 				// We only instrument new pods via the webhook.
 				VerifyNoEvents(ctx, clientset, namespace)
 				VerifyUnmodifiedPod(GetPod(ctx, k8sClient, namespace, name))
@@ -345,6 +345,133 @@ var _ = Describe("The instrumenter", Ordered, func() {
 					testActor,
 				)
 			})
+		})
+
+		It("when existing workloads opt in to auto-instrumentation via a custom label selector", func() {
+			// Create two workloads, one that matches the custom instrumentation label selector and one that does not.
+			nameForWorkloadWithoutCustomOptIn := UniqueName(DeploymentNamePrefix)
+			workloadWithoutCustomOptIn := CreateBasicDeployment(ctx, k8sClient, namespace, nameForWorkloadWithoutCustomOptIn)
+			createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, workloadWithoutCustomOptIn)
+
+			nameForWorkloadWithCustomOptIn := UniqueName(DeploymentNamePrefix)
+			deploymentWithCustomOptIn := BasicDeployment(namespace, nameForWorkloadWithCustomOptIn)
+			deploymentWithCustomOptIn.ObjectMeta.Labels = map[string]string{"dash0-auto-instrument": "yes"}
+			workloadWithCustomOptIn :=
+				CreateWorkload(ctx, k8sClient, deploymentWithCustomOptIn).(*appsv1.Deployment)
+			createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, workloadWithCustomOptIn)
+
+			dash0MonitoringResourceWithCustomLabelSelector :=
+				&dash0v1beta1.Dash0Monitoring{
+					ObjectMeta: MonitoringResourceDefaultObjectMeta,
+					Spec: dash0v1beta1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+							LabelSelector: "dash0-auto-instrument=yes",
+						},
+					},
+				}
+
+			checkSettingsAndInstrumentExistingWorkloads(
+				ctx,
+				instrumenter,
+				dash0MonitoringResourceWithCustomLabelSelector,
+				&logger,
+			)
+
+			VerifySuccessfulInstrumentationEvent(ctx, clientset, namespace, nameForWorkloadWithCustomOptIn, testActor)
+			workloadWithCustomOptIn = GetDeployment(ctx, k8sClient, namespace, nameForWorkloadWithCustomOptIn)
+			VerifyModifiedDeployment(workloadWithCustomOptIn, BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
+			workloadWithoutCustomOptIn = GetDeployment(ctx, k8sClient, namespace, nameForWorkloadWithoutCustomOptIn)
+			VerifyUnmodifiedDeployment(workloadWithoutCustomOptIn)
+		})
+
+		It("when a label matching the custom auto-instrumentation label selector is changed", func() {
+			name := UniqueName(DeploymentNamePrefix)
+			deployment := BasicDeployment(namespace, name)
+			deployment.ObjectMeta.Labels = map[string]string{"dash0-auto-instrument": "yes"}
+			workload := CreateWorkload(ctx, k8sClient, deployment).(*appsv1.Deployment)
+			createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, workload)
+
+			dash0MonitoringResourceWithCustomLabelSelector :=
+				&dash0v1beta1.Dash0Monitoring{
+					ObjectMeta: MonitoringResourceDefaultObjectMeta,
+					Spec: dash0v1beta1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+							LabelSelector: "dash0-auto-instrument=yes",
+						},
+					},
+				}
+
+			checkSettingsAndInstrumentExistingWorkloads(
+				ctx,
+				instrumenter,
+				dash0MonitoringResourceWithCustomLabelSelector,
+				&logger,
+			)
+
+			VerifySuccessfulInstrumentationEvent(ctx, clientset, namespace, name, testActor)
+			workload = GetDeployment(ctx, k8sClient, namespace, name)
+			VerifyModifiedDeployment(workload, BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
+
+			DeleteAllEvents(ctx, clientset, namespace)
+
+			workload.Labels["dash0-auto-instrument"] = "no"
+			UpdateWorkload(ctx, k8sClient, workload)
+
+			checkSettingsAndInstrumentExistingWorkloads(
+				ctx,
+				instrumenter,
+				dash0MonitoringResourceWithCustomLabelSelector,
+				&logger,
+			)
+
+			VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, testActor)
+			workload = GetDeployment(ctx, k8sClient, namespace, name)
+			VerifyUnmodifiedDeployment(workload)
+		})
+
+		It("when a label matching the custom auto-instrumentation label selector is removed", func() {
+			name := UniqueName(DeploymentNamePrefix)
+			deployment := BasicDeployment(namespace, name)
+			deployment.ObjectMeta.Labels = map[string]string{"dash0-auto-instrument": "yes"}
+			workload := CreateWorkload(ctx, k8sClient, deployment).(*appsv1.Deployment)
+			createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, workload)
+
+			dash0MonitoringResourceWithCustomLabelSelector :=
+				&dash0v1beta1.Dash0Monitoring{
+					ObjectMeta: MonitoringResourceDefaultObjectMeta,
+					Spec: dash0v1beta1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+							LabelSelector: "dash0-auto-instrument=yes",
+						},
+					},
+				}
+
+			checkSettingsAndInstrumentExistingWorkloads(
+				ctx,
+				instrumenter,
+				dash0MonitoringResourceWithCustomLabelSelector,
+				&logger,
+			)
+
+			VerifySuccessfulInstrumentationEvent(ctx, clientset, namespace, name, testActor)
+			workload = GetDeployment(ctx, k8sClient, namespace, name)
+			VerifyModifiedDeployment(workload, BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
+
+			DeleteAllEvents(ctx, clientset, namespace)
+
+			delete(workload.Labels, "dash0-auto-instrument")
+			UpdateWorkload(ctx, k8sClient, workload)
+
+			checkSettingsAndInstrumentExistingWorkloads(
+				ctx,
+				instrumenter,
+				dash0MonitoringResourceWithCustomLabelSelector,
+				&logger,
+			)
+
+			VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, testActor)
+			workload = GetDeployment(ctx, k8sClient, namespace, name)
+			VerifyUnmodifiedDeployment(workload)
 		})
 
 		DescribeTable("when a workload is already instrumented by the same version", func(config WorkloadTestConfig) {
