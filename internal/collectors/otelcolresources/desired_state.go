@@ -644,6 +644,11 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 		)
 	}
 
+	priorityClassName := strings.TrimSpace(extraConfig.CollectorDaemonSetPriorityClassName)
+	if priorityClassName != "" {
+		podSpec.PriorityClassName = priorityClassName
+	}
+
 	collectorDaemonSet := &appsv1.DaemonSet{
 		TypeMeta: util.K8sTypeMetaDaemonSet,
 		ObjectMeta: metav1.ObjectMeta{
@@ -1266,6 +1271,52 @@ func assembleCollectorDeployment(
 	if err != nil {
 		return nil, err
 	}
+
+	podSpec := corev1.PodSpec{
+		Affinity: &corev1.Affinity{
+			NodeAffinity: &corev1.NodeAffinity{
+				RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+					NodeSelectorTerms: []corev1.NodeSelectorTerm{
+						{
+							MatchExpressions: []corev1.NodeSelectorRequirement{
+								{
+									Key:      dash0OptOutLabelKey,
+									Operator: corev1.NodeSelectorOpNotIn,
+									Values:   []string{"false"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		ServiceAccountName: deploymentServiceAccountName(config.NamePrefix),
+		SecurityContext: &corev1.PodSecurityContext{
+			RunAsNonRoot: ptr.To(true),
+			SeccompProfile: &corev1.SeccompProfile{
+				Type: corev1.SeccompProfileTypeRuntimeDefault,
+			},
+		},
+		// This setting is required to enable the configuration reloader process to send Unix signals to the
+		// collector process.
+		ShareProcessNamespace: ptr.To(true),
+		Containers: []corev1.Container{
+			collectorContainer,
+			assembleConfigurationReloaderContainer(
+				config,
+				workloadNameEnvVar,
+				extraConfig.CollectorDeploymentConfigurationReloaderContainerResources,
+			),
+		},
+		Volumes:     assembleCollectorDeploymentVolumes(config, configMapItems),
+		HostNetwork: false,
+	}
+
+	priorityClassName := strings.TrimSpace(extraConfig.CollectorDeploymentPriorityClassName)
+	if priorityClassName != "" {
+		podSpec.PriorityClassName = priorityClassName
+	}
+
 	collectorDeployment := &appsv1.Deployment{
 		TypeMeta: util.K8sTypeMetaDeployment,
 		ObjectMeta: metav1.ObjectMeta{
@@ -1285,45 +1336,7 @@ func assembleCollectorDeployment(
 				ObjectMeta: metav1.ObjectMeta{
 					Labels: deploymentMatchLabels,
 				},
-				Spec: corev1.PodSpec{
-					Affinity: &corev1.Affinity{
-						NodeAffinity: &corev1.NodeAffinity{
-							RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
-								NodeSelectorTerms: []corev1.NodeSelectorTerm{
-									{
-										MatchExpressions: []corev1.NodeSelectorRequirement{
-											{
-												Key:      dash0OptOutLabelKey,
-												Operator: corev1.NodeSelectorOpNotIn,
-												Values:   []string{"false"},
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-					ServiceAccountName: deploymentServiceAccountName(config.NamePrefix),
-					SecurityContext: &corev1.PodSecurityContext{
-						RunAsNonRoot: ptr.To(true),
-						SeccompProfile: &corev1.SeccompProfile{
-							Type: corev1.SeccompProfileTypeRuntimeDefault,
-						},
-					},
-					// This setting is required to enable the configuration reloader process to send Unix signals to the
-					// collector process.
-					ShareProcessNamespace: ptr.To(true),
-					Containers: []corev1.Container{
-						collectorContainer,
-						assembleConfigurationReloaderContainer(
-							config,
-							workloadNameEnvVar,
-							extraConfig.CollectorDeploymentConfigurationReloaderContainerResources,
-						),
-					},
-					Volumes:     assembleCollectorDeploymentVolumes(config, configMapItems),
-					HostNetwork: false,
-				},
+				Spec: podSpec,
 			},
 		},
 	}

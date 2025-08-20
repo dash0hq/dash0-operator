@@ -480,7 +480,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		verifyAbsentSelfMonitoringSettings(daemonSet)
 	})
 
-	It("should render custom tolerations", func() {
+	It("should render custom tolerations and priority classes", func() {
 		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
 			OperatorNamespace: OperatorNamespace,
 			NamePrefix:        namePrefix,
@@ -502,6 +502,8 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 					Effect:   corev1.TaintEffectNoSchedule,
 				},
 			},
+			CollectorDaemonSetPriorityClassName:  "daemonset-prio",
+			CollectorDeploymentPriorityClassName: "deployment-prio",
 		})
 
 		Expect(err).ToNot(HaveOccurred())
@@ -519,6 +521,10 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(daemonSetPodSpec.Tolerations[1].Value).To(BeEmpty())
 		Expect(daemonSetPodSpec.Tolerations[1].Effect).To(Equal(corev1.TaintEffectNoSchedule))
 		Expect(daemonSetPodSpec.Tolerations[1].TolerationSeconds).To(BeNil())
+		Expect(daemonSetPodSpec.PriorityClassName).To(Equal("daemonset-prio"))
+
+		deploymentPodSpec := getDeployment(desiredState).Spec.Template.Spec
+		Expect(deploymentPodSpec.PriorityClassName).To(Equal("deployment-prio"))
 	})
 
 	It("should collect logs from namespaces, but not from the operator namespace", func() {

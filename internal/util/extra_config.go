@@ -30,15 +30,20 @@ type ResourceRequirementsWithGoMemLimit struct {
 type ExtraConfig struct {
 	InstrumentationInitContainerResources ResourceRequirementsWithGoMemLimit `json:"initContainerResources"`
 
+	CollectorFilelogOffsetStorageVolume *corev1.Volume `json:"collectorFilelogOffsetStorageVolume,omitempty"`
+
 	CollectorDaemonSetCollectorContainerResources             ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetCollectorContainerResources,omitempty"`
 	CollectorDaemonSetConfigurationReloaderContainerResources ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetConfigurationReloaderContainerResources,omitempty"`
 	CollectorDaemonSetFileLogOffsetSyncContainerResources     ResourceRequirementsWithGoMemLimit `json:"collectorDaemonSetFileLogOffsetSyncContainerResources,omitempty"`
-	CollectorFilelogOffsetStorageVolume                       *corev1.Volume                     `json:"collectorFilelogOffsetStorageVolume,omitempty"`
+
+	DaemonSetTolerations []corev1.Toleration `json:"daemonSetTolerations,omitempty"`
+
+	CollectorDaemonSetPriorityClassName string `json:"collectorDaemonSetPriorityClassName,omitempty"`
 
 	CollectorDeploymentCollectorContainerResources             ResourceRequirementsWithGoMemLimit `json:"collectorDeploymentCollectorContainerResources,omitempty"`
 	CollectorDeploymentConfigurationReloaderContainerResources ResourceRequirementsWithGoMemLimit `json:"collectorDeploymentConfigurationReloaderContainerResources,omitempty"`
 
-	DaemonSetTolerations []corev1.Toleration `json:"daemonSetTolerations,omitempty"`
+	CollectorDeploymentPriorityClassName string `json:"collectorDeploymentPriorityClassName,omitempty"`
 }
 
 type ExtraConfigClient interface {
