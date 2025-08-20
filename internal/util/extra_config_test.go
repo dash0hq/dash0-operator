@@ -361,6 +361,9 @@ var _ = Describe("extra config map", func() {
 					Expect(extraConfig.InstrumentationInitContainerResources.GoMemLimit).To(BeEmpty())
 					Expect(extraConfig.InstrumentationInitContainerResources.Requests).To(BeNil())
 
+					filelogOffsetStorageVolume := extraConfig.CollectorFilelogOffsetStorageVolume
+					Expect(filelogOffsetStorageVolume).To(BeNil())
+
 					Expect(extraConfig.CollectorDaemonSetCollectorContainerResources.Limits.Cpu().IsZero()).To(BeTrue())
 					Expect(extraConfig.CollectorDaemonSetCollectorContainerResources.Limits.Memory().String()).To(Equal("500Mi"))
 					Expect(extraConfig.CollectorDaemonSetCollectorContainerResources.Limits.StorageEphemeral().IsZero()).To(BeTrue())
@@ -386,8 +389,9 @@ var _ = Describe("extra config map", func() {
 					Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Requests.Memory().String()).To(Equal("32Mi"))
 					Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
 
-					filelogOffsetStorageVolume := extraConfig.CollectorFilelogOffsetStorageVolume
-					Expect(filelogOffsetStorageVolume).To(BeNil())
+					Expect(extraConfig.DaemonSetTolerations).To(HaveLen(0))
+
+					Expect(extraConfig.CollectorDaemonSetPriorityClassName).To(Equal(""))
 
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Cpu().IsZero()).To(BeTrue())
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Memory().String()).To(Equal("500Mi"))
@@ -405,7 +409,7 @@ var _ = Describe("extra config map", func() {
 					Expect(extraConfig.CollectorDeploymentConfigurationReloaderContainerResources.Requests.Memory().String()).To(Equal("12Mi"))
 					Expect(extraConfig.CollectorDeploymentConfigurationReloaderContainerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
 
-					Expect(extraConfig.DaemonSetTolerations).To(HaveLen(0))
+					Expect(extraConfig.CollectorDeploymentPriorityClassName).To(Equal(""))
 				})
 
 				It("should parse the config map content with all values set", func() {
@@ -454,6 +458,7 @@ collectorFilelogOffsetStorageVolume:
   hostPath:
     path: /data/dash0-operator/offset-storage
     type: DirectoryOrCreate
+collectorDaemonSetPriorityClassName: daemon-set-priority
 collectorDeploymentCollectorContainerResources:
   limits:
     cpu: 100m
@@ -482,6 +487,7 @@ daemonSetTolerations:
   - key: key2
     operator: Exists
     effect: NoSchedule
+collectorDeploymentPriorityClassName: deployment-priority
 `)
 					Expect(err).ToNot(HaveOccurred())
 
@@ -495,6 +501,13 @@ daemonSetTolerations:
 					Expect(extraConfig.InstrumentationInitContainerResources.Requests.Cpu().String()).To(Equal("100m"))
 					Expect(extraConfig.InstrumentationInitContainerResources.Requests.Memory().String()).To(Equal("400Mi"))
 					Expect(extraConfig.InstrumentationInitContainerResources.Requests.StorageEphemeral().String()).To(Equal("2Gi"))
+
+					filelogOffsetStorageVolume := extraConfig.CollectorFilelogOffsetStorageVolume
+					Expect(filelogOffsetStorageVolume).ToNot(BeNil())
+					Expect(filelogOffsetStorageVolume.Name).To(Equal("offset-storage"))
+					Expect(filelogOffsetStorageVolume.HostPath.Path).To(Equal("/data/dash0-operator/offset-storage"))
+					Expect(filelogOffsetStorageVolume.HostPath.Type).ToNot(BeNil())
+					Expect(*filelogOffsetStorageVolume.HostPath.Type).To(Equal(corev1.HostPathDirectoryOrCreate))
 
 					Expect(extraConfig.CollectorDaemonSetCollectorContainerResources.Limits.Cpu().String()).To(Equal("900m"))
 					Expect(extraConfig.CollectorDaemonSetCollectorContainerResources.Limits.Memory().String()).To(Equal("600Mi"))
@@ -520,12 +533,7 @@ daemonSetTolerations:
 					Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Requests.Memory().String()).To(Equal("33Mi"))
 					Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Requests.StorageEphemeral().String()).To(Equal("500Mi"))
 
-					filelogOffsetStorageVolume := extraConfig.CollectorFilelogOffsetStorageVolume
-					Expect(filelogOffsetStorageVolume).ToNot(BeNil())
-					Expect(filelogOffsetStorageVolume.Name).To(Equal("offset-storage"))
-					Expect(filelogOffsetStorageVolume.HostPath.Path).To(Equal("/data/dash0-operator/offset-storage"))
-					Expect(filelogOffsetStorageVolume.HostPath.Type).ToNot(BeNil())
-					Expect(*filelogOffsetStorageVolume.HostPath.Type).To(Equal(corev1.HostPathDirectoryOrCreate))
+					Expect(extraConfig.CollectorDaemonSetPriorityClassName).To(Equal("daemon-set-priority"))
 
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Cpu().String()).To(Equal("100m"))
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Memory().String()).To(Equal("600Mi"))
@@ -554,6 +562,8 @@ daemonSetTolerations:
 					Expect(extraConfig.DaemonSetTolerations[1].Value).To(BeEmpty())
 					Expect(extraConfig.DaemonSetTolerations[1].Effect).To(Equal(corev1.TaintEffectNoSchedule))
 					Expect(extraConfig.DaemonSetTolerations[1].TolerationSeconds).To(BeNil())
+
+					Expect(extraConfig.CollectorDeploymentPriorityClassName).To(Equal("deployment-priority"))
 				})
 
 				It("should merge partial config and defaults", func() {
@@ -572,6 +582,7 @@ collectorDaemonSetConfigurationReloaderContainerResources:
   gomemlimit: 9MiB
   requests:
     memory: 13Mi
+collectorDaemonSetPriorityClassName: daemon-set-priority
 `)
 					Expect(err).ToNot(HaveOccurred())
 
@@ -608,6 +619,10 @@ collectorDaemonSetConfigurationReloaderContainerResources:
 					Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Requests.Memory().String()).To(Equal("32Mi"))
 					Expect(extraConfig.CollectorDaemonSetFileLogOffsetSyncContainerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
 
+					Expect(extraConfig.DaemonSetTolerations).To(HaveLen(0))
+
+					Expect(extraConfig.CollectorDaemonSetPriorityClassName).To(Equal("daemon-set-priority"))
+
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Cpu().IsZero()).To(BeTrue())
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.Memory().String()).To(Equal("500Mi"))
 					Expect(extraConfig.CollectorDeploymentCollectorContainerResources.Limits.StorageEphemeral().IsZero()).To(BeTrue())
@@ -624,7 +639,7 @@ collectorDaemonSetConfigurationReloaderContainerResources:
 					Expect(extraConfig.CollectorDeploymentConfigurationReloaderContainerResources.Requests.Memory().String()).To(Equal("12Mi"))
 					Expect(extraConfig.CollectorDeploymentConfigurationReloaderContainerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
 
-					Expect(extraConfig.DaemonSetTolerations).To(HaveLen(0))
+					Expect(extraConfig.CollectorDeploymentPriorityClassName).To(Equal(""))
 				})
 			})
 

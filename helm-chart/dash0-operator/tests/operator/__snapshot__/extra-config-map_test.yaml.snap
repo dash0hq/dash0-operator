@@ -23,6 +23,8 @@ extra config map should match snapshot:
             memory: 32Mi
           requests:
             memory: 32Mi
+        daemonSetTolerations:
+          []
         collectorDeploymentCollectorContainerResources:
           gomemlimit: 400MiB
           limits:
@@ -35,8 +37,6 @@ extra config map should match snapshot:
             memory: 24Mi
           requests:
             memory: 12Mi
-        daemonSetTolerations:
-          []
     kind: ConfigMap
     metadata:
       labels:

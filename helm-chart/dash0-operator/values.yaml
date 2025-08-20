@@ -158,6 +158,10 @@ operator:
       memory: 64Mi
       ephemeral-storage: 500Mi
 
+  # The priority class name for the operator manager pods. If set, the operator manager pods will be scheduled with
+  # the specified priority class. See https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/.
+  # managerPriorityClassName:
+
   # Resource settings for the dash0-instrumentation init container that will be added to each pod when automatic
   # workload instrumentation is enabled.
   initContainerResources: {}
@@ -373,6 +377,26 @@ operator:
         memory: 32Mi
         # ephemeral-storage: (no ephemeral-storage request by default)
 
+    # An array of tolerations for the collector DaemonSet pods managed by the operator. This can be used to make sure
+    # that collector pods are scheduled on nodes where they would not be scheduled otherwise due to Kubernetes taints.
+    # Example:
+    # daemonSetTolerations:
+    #   - key: "key1"
+    #     operator: "Equal"
+    #     value: "value1"
+    #     effect: "NoSchedule"
+    #   - key: "key2"
+    #     operator: "Exists"
+    #     effect: "NoSchedule"
+    daemonSetTolerations: []
+
+    # The priority class name for the DaemonSet collector pods. If set, these manager pods will be scheduled with
+    # the specified priority class.
+    # This is useful if you want to make sure that the collector pods are scheduled with a higher priority than other
+    # pods, that is, to ensure a collector pod is schedule on each node.
+    # See https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/.
+    # daemonSetPriorityClassName:
+
     # Resource settings for the collector container of the Deployment collector pod managed by the operator.
     # There should usually be no reason to override this.
     deploymentCollectorContainerResources:
@@ -399,15 +423,6 @@ operator:
         memory: 12Mi
         # ephemeral-storage: (no ephemeral-storage request by default)
 
-    # An array of tolerations for the collector DaemonSet pods managed by the operator. This can be used to make sure
-    # that collector pods are scheduled on nodes where they would not be scheduled otherwise due to Kubernetes taints.
-    # Example:
-    # daemonSetTolerations:
-    #   - key: "key1"
-    #     operator: "Equal"
-    #     value: "value1"
-    #     effect: "NoSchedule"
-    #   - key: "key2"
-    #     operator: "Exists"
-    #     effect: "NoSchedule"
-    daemonSetTolerations: []
+    # The priority class name for the Deployment collector pod. If set, this pod will be scheduled with the specified
+    # priority class. See https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/.
+    # deploymentPriorityClassName:

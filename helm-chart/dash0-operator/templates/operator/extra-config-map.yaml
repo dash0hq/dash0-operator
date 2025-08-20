@@ -22,6 +22,10 @@ data:
   extra.yaml: |-
     initContainerResources:
       {{- .Values.operator.initContainerResources | toYaml | nindent 6 }}
+{{- if .Values.operator.collectors.filelogOffsetSyncStorageVolume }}
+    collectorFilelogOffsetStorageVolume:
+      {{- .Values.operator.collectors.filelogOffsetSyncStorageVolume | toYaml | nindent 6 }}
+{{- end }}
     collectorDaemonSetCollectorContainerResources:
       {{- toYaml (
             default
@@ -40,9 +44,10 @@ data:
               .Values.operator.collectors.daemonSetFileLogOffsetSyncContainerResources
               .Values.operator.collectorDaemonSetFileLogOffsetSyncContainerResources
           ) | nindent 6 }}
-{{- if .Values.operator.collectors.filelogOffsetSyncStorageVolume }}
-    collectorFilelogOffsetStorageVolume:
-      {{- .Values.operator.collectors.filelogOffsetSyncStorageVolume | toYaml | nindent 6 }}
+    daemonSetTolerations:
+      {{- toYaml .Values.operator.collectors.daemonSetTolerations | nindent 6 }}
+{{- if .Values.operator.collectors.daemonSetPriorityClassName }}
+    collectorDaemonSetPriorityClassName: {{ .Values.operator.collectors.daemonSetPriorityClassName }}
 {{- end }}
     collectorDeploymentCollectorContainerResources:
       {{- toYaml (
@@ -56,5 +61,6 @@ data:
               .Values.operator.collectors.deploymentConfigurationReloaderContainerResources
               .Values.operator.collectorDeploymentConfigurationReloaderContainerResources
           ) | nindent 6 }}
-    daemonSetTolerations:
-      {{- toYaml .Values.operator.collectors.daemonSetTolerations | nindent 6 }}
+{{- if .Values.operator.collectors.deploymentPriorityClassName }}
+    collectorDeploymentPriorityClassName: {{ .Values.operator.collectors.deploymentPriorityClassName }}
+{{- end }}

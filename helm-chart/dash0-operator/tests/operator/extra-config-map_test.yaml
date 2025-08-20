@@ -19,6 +19,10 @@ tests:
             cpu: 506m
             ephemeral-storage: 606Mi
         collectors:
+          filelogOffsetSyncStorageVolume:
+            name: offset-storage
+            persistentVolumeClaim:
+              claimName: offset-storage-claim
           daemonSetCollectorContainerResources:
             limits:
               memory: 101Mi
@@ -49,10 +53,15 @@ tests:
               memory: 503Mi
               cpu: 603m
               ephemeral-storage: 703Mi
-          filelogOffsetSyncStorageVolume:
-            name: offset-storage
-            persistentVolumeClaim:
-              claimName: offset-storage-claim
+          daemonSetTolerations:
+            - key: key1
+              operator: Equal
+              value: value1
+              effect: NoSchedule
+            - key: key2
+              operator: Exists
+              effect: NoSchedule
+          daemonSetPriorityClassName: collector-daemonset-priority-class
           deploymentCollectorContainerResources:
             limits:
               memory: 104Mi
@@ -73,14 +82,7 @@ tests:
               memory: 505Mi
               cpu: 605m
               ephemeral-storage: 705Mi
-          daemonSetTolerations:
-            - key: key1
-              operator: Equal
-              value: value1
-              effect: NoSchedule
-            - key: key2
-              operator: Exists
-              effect: NoSchedule
+          deploymentPriorityClassName: collector-deployment-priority-class
     asserts:
       - equal:
           path: data['extra.yaml']
@@ -94,6 +96,10 @@ tests:
                 cpu: 506m
                 ephemeral-storage: 606Mi
                 memory: 406Mi
+            collectorFilelogOffsetStorageVolume:
+              name: offset-storage
+              persistentVolumeClaim:
+                claimName: offset-storage-claim
             collectorDaemonSetCollectorContainerResources:
               gomemlimit: 401MiB
               limits:
@@ -124,10 +130,15 @@ tests:
                 cpu: 603m
                 ephemeral-storage: 703Mi
                 memory: 503Mi
-            collectorFilelogOffsetStorageVolume:
-              name: offset-storage
-              persistentVolumeClaim:
-                claimName: offset-storage-claim
+            daemonSetTolerations:
+              - effect: NoSchedule
+                key: key1
+                operator: Equal
+                value: value1
+              - effect: NoSchedule
+                key: key2
+                operator: Exists
+            collectorDaemonSetPriorityClassName: collector-daemonset-priority-class
             collectorDeploymentCollectorContainerResources:
               gomemlimit: 404MiB
               limits:
@@ -148,14 +159,7 @@ tests:
                 cpu: 605m
                 ephemeral-storage: 705Mi
                 memory: 505Mi
-            daemonSetTolerations:
-              - effect: NoSchedule
-                key: key1
-                operator: Equal
-                value: value1
-              - effect: NoSchedule
-                key: key2
-                operator: Exists
+            collectorDeploymentPriorityClassName: collector-deployment-priority-class
 
   # This test also verifies that the collectorFilelogOffsetStorageVolume is not rendered if
   # operator.collectors.filelogOffsetSyncStorageVolume isn't set as a value.
@@ -232,6 +236,8 @@ tests:
               requests:
                 cpu: 503m
                 memory: 403Mi
+            daemonSetTolerations:
+              []
             collectorDeploymentCollectorContainerResources:
               gomemlimit: 304MiB
               limits:
@@ -248,5 +254,3 @@ tests:
               requests:
                 cpu: 505m
                 memory: 405Mi
-            daemonSetTolerations:
-              []

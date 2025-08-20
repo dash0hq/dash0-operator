@@ -44,6 +44,8 @@ setup_test_environment () {
   test-resources/bin/render-templates.sh
   check_if_kubectx_is_kind_or_minikube_cluster
   determine_container_images
+
+  kubectl apply -f test-resources/customresources/priorityclass/priorityclasses.yaml
 }
 
 ensure_namespace_exists() {

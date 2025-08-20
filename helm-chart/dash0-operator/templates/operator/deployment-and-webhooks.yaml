@@ -88,6 +88,9 @@ spec:
               - key: "dash0.com/enable"
                 operator: "NotIn"
                 values: ["false"]
+{{- if .Values.operator.managerPriorityClassName }}
+      priorityClassName: {{ .Values.operator.managerPriorityClassName }}
+{{- end }}
       containers:
       - name: manager
         image: {{ include "dash0-operator.image" . | quote }}

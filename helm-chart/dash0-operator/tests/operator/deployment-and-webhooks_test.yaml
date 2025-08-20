@@ -141,9 +141,21 @@ tests:
           limits:
             cpu: 123m
             memory: 456Mi
+            ephemeral-storage: 789Mi
           requests:
             cpu: 5m
             memory: 32Mi
+            ephemeral-storage: 123Mi
+        kubeRbacProxyContainerResources:
+          limits:
+            cpu: 234m
+            memory: 567Mi
+            ephemeral-storage: 890Mi
+          requests:
+            cpu: 6m
+            memory: 43Mi
+            ephemeral-storage: 234Mi
+        managerPriorityClassName: operator-manager-priority-class
         developmentMode: true
         instrumentation:
           delayAfterEachWorkloadMillis: 13
@@ -356,11 +368,38 @@ tests:
           path: spec.template.spec.containers[0].resources.limits.memory
           value: 456Mi
       - equal:
+          path: spec.template.spec.containers[0].resources.limits['ephemeral-storage']
+          value: 789Mi
+      - equal:
           path: spec.template.spec.containers[0].resources.requests.cpu
           value: 5m
       - equal:
           path: spec.template.spec.containers[0].resources.requests.memory
           value: 32Mi
+      - equal:
+          path: spec.template.spec.containers[0].resources.requests['ephemeral-storage']
+          value: 123Mi
+      - equal:
+          path: spec.template.spec.containers[1].resources.limits.cpu
+          value: 234m
+      - equal:
+          path: spec.template.spec.containers[1].resources.limits.memory
+          value: 567Mi
+      - equal:
+          path: spec.template.spec.containers[1].resources.limits['ephemeral-storage']
+          value: 890Mi
+      - equal:
+          path: spec.template.spec.containers[1].resources.requests.cpu
+          value: 6m
+      - equal:
+          path: spec.template.spec.containers[1].resources.requests.memory
+          value: 43Mi
+      - equal:
+          path: spec.template.spec.containers[1].resources.requests['ephemeral-storage']
+          value: 234Mi
+      - equal:
+          path: spec.template.spec.priorityClassName
+          value: operator-manager-priority-class
 
   - it: should render instrumentation args from legacy paths
     documentSelector:
