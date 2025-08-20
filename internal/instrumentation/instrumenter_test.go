@@ -474,6 +474,55 @@ var _ = Describe("The instrumenter", Ordered, func() {
 			VerifyUnmodifiedDeployment(workload)
 		})
 
+		It("when the custom auto-instrumentation label selector is changed in the monitoring resource", func() {
+			// This case is actually mainly tested in internal/controller/monitoring_controller_test.go,
+			// "the auto-instrumentation label selector changes on an existing Dash0 monitoring resource", because it
+			// involves MonitoringReconciler#manageInstrumentWorkloadsChanges, which is not covered here in
+			// instrumenter_test.go.
+			name := UniqueName(DeploymentNamePrefix)
+			deployment := BasicDeployment(namespace, name)
+			deployment.ObjectMeta.Labels = map[string]string{"dash0-auto-instrument": "yes"}
+			workload := CreateWorkload(ctx, k8sClient, deployment).(*appsv1.Deployment)
+			createdObjectsInstrumenterTest = append(createdObjectsInstrumenterTest, workload)
+
+			dash0MonitoringResourceWithCustomLabelSelector :=
+				&dash0v1beta1.Dash0Monitoring{
+					ObjectMeta: MonitoringResourceDefaultObjectMeta,
+					Spec: dash0v1beta1.Dash0MonitoringSpec{
+						InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+							LabelSelector: "dash0-auto-instrument=yes",
+						},
+					},
+				}
+
+			checkSettingsAndInstrumentExistingWorkloads(
+				ctx,
+				instrumenter,
+				dash0MonitoringResourceWithCustomLabelSelector,
+				&logger,
+			)
+
+			VerifySuccessfulInstrumentationEvent(ctx, clientset, namespace, name, testActor)
+			workload = GetDeployment(ctx, k8sClient, namespace, name)
+			VerifyModifiedDeployment(workload, BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
+
+			DeleteAllEvents(ctx, clientset, namespace)
+
+			dash0MonitoringResourceWithCustomLabelSelector.Spec.InstrumentWorkloads.LabelSelector =
+				"some-other-label=true"
+
+			checkSettingsAndInstrumentExistingWorkloads(
+				ctx,
+				instrumenter,
+				dash0MonitoringResourceWithCustomLabelSelector,
+				&logger,
+			)
+
+			VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, testActor)
+			workload = GetDeployment(ctx, k8sClient, namespace, name)
+			VerifyUnmodifiedDeployment(workload)
+		})
+
 		DescribeTable("when a workload is already instrumented by the same version", func(config WorkloadTestConfig) {
 			name := UniqueName(config.WorkloadNamePrefix)
 			workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)

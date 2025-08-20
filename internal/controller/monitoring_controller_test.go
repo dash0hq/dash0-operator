@@ -734,6 +734,168 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			)
 		})
 
+		Describe("the auto-instrumentation label selector changes on an existing Dash0 monitoring resource", Ordered, func() {
+			DescribeTable("when the auto-instrumentation label selector setting is changed so that an instrumented workload now opts out", func(config WorkloadTestConfig) {
+				EnsureMonitoringResourceWithSpecExistsAndIsAvailable(ctx, k8sClient, dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: "dash0-auto-instrument=yes",
+					},
+				})
+
+				name := UniqueName(config.WorkloadNamePrefix)
+				workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
+				createdObjectsMonitoringControllerTest = append(createdObjectsMonitoringControllerTest, workload.Get())
+				if workload.GetObjectMeta().Labels == nil {
+					workload.GetObjectMeta().Labels = make(map[string]string)
+				}
+				workload.GetObjectMeta().Labels["dash0-auto-instrument"] = "yes"
+				UpdateWorkload(ctx, k8sClient, workload.Get())
+				config.VerifyPreFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
+
+				UpdateInstrumentWorkloadsLabelSelector(ctx, k8sClient, "another-label=true")
+				triggerReconcileRequest(ctx, monitoringReconciler)
+
+				VerifySuccessfulUninstrumentationEvent(ctx, clientset, namespace, name, "controller")
+				config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
+
+				monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
+				previousLabelSelectorInStatus :=
+					monitoringResource.Status.PreviousInstrumentWorkloads.LabelSelector
+				Expect(previousLabelSelectorInStatus).To(Equal("another-label=true"))
+			}, Entry("for a cron job", WorkloadTestConfig{
+				WorkloadNamePrefix: CronJobNamePrefix,
+				CreateFn:           WrapCronJobFnAsTestableWorkload(CreateInstrumentedCronJob),
+				GetFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
+				VerifyPreFn: func(workload TestableWorkload) {
+					VerifyModifiedCronJob(workload.Get().(*batchv1.CronJob), BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
+				},
+				VerifyFn: func(workload TestableWorkload) {
+					VerifyUnmodifiedCronJob(workload.Get().(*batchv1.CronJob))
+				},
+			}), Entry("for a daemon set", WorkloadTestConfig{
+				WorkloadNamePrefix: DaemonSetNamePrefix,
+				CreateFn:           WrapDaemonSetFnAsTestableWorkload(CreateInstrumentedDaemonSet),
+				GetFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
+				VerifyPreFn: func(workload TestableWorkload) {
+					VerifyModifiedDaemonSet(workload.Get().(*appsv1.DaemonSet), BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
+				},
+				VerifyFn: func(workload TestableWorkload) {
+					VerifyUnmodifiedDaemonSet(workload.Get().(*appsv1.DaemonSet))
+				},
+			}), Entry("for a deployment", WorkloadTestConfig{
+				WorkloadNamePrefix: DeploymentNamePrefix,
+				CreateFn:           WrapDeploymentFnAsTestableWorkload(CreateInstrumentedDeployment),
+				GetFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
+				VerifyPreFn: func(workload TestableWorkload) {
+					VerifyModifiedDeployment(workload.Get().(*appsv1.Deployment), BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
+				},
+				VerifyFn: func(workload TestableWorkload) {
+					VerifyUnmodifiedDeployment(workload.Get().(*appsv1.Deployment))
+				},
+			}), Entry("for an ownerless replicaset", WorkloadTestConfig{
+				WorkloadNamePrefix: ReplicaSetNamePrefix,
+				CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateInstrumentedReplicaSet),
+				GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
+				VerifyPreFn: func(workload TestableWorkload) {
+					VerifyModifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet), BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
+				},
+				VerifyFn: func(workload TestableWorkload) {
+					VerifyUnmodifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet))
+				},
+			}), Entry("for a stateful set", WorkloadTestConfig{
+				WorkloadNamePrefix: StatefulSetNamePrefix,
+				CreateFn:           WrapStatefulSetFnAsTestableWorkload(CreateInstrumentedStatefulSet),
+				GetFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
+				VerifyPreFn: func(workload TestableWorkload) {
+					VerifyModifiedStatefulSet(workload.Get().(*appsv1.StatefulSet), BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
+				},
+				VerifyFn: func(workload TestableWorkload) {
+					VerifyUnmodifiedStatefulSet(workload.Get().(*appsv1.StatefulSet))
+				},
+			}),
+			)
+
+			DescribeTable("when the auto-instrumentation label selector setting is changed so that an instrumented workload now opts in", func(config WorkloadTestConfig) {
+				EnsureMonitoringResourceWithSpecExistsAndIsAvailable(ctx, k8sClient, dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						LabelSelector: "whatever=some-value",
+					},
+				})
+
+				name := UniqueName(config.WorkloadNamePrefix)
+				workload := config.CreateFn(ctx, k8sClient, TestNamespaceName, name)
+				createdObjectsMonitoringControllerTest = append(createdObjectsMonitoringControllerTest, workload.Get())
+				if workload.GetObjectMeta().Labels == nil {
+					workload.GetObjectMeta().Labels = make(map[string]string)
+				}
+				workload.GetObjectMeta().Labels["dash0-auto-instrument"] = "yes"
+				UpdateWorkload(ctx, k8sClient, workload.Get())
+				config.VerifyPreFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
+
+				UpdateInstrumentWorkloadsLabelSelector(ctx, k8sClient, "dash0-auto-instrument=yes")
+				triggerReconcileRequest(ctx, monitoringReconciler)
+
+				VerifySuccessfulInstrumentationEvent(ctx, clientset, namespace, name, "controller")
+				config.VerifyFn(config.GetFn(ctx, k8sClient, TestNamespaceName, name))
+
+				monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
+				previousLabelSelectorInStatus :=
+					monitoringResource.Status.PreviousInstrumentWorkloads.LabelSelector
+				Expect(previousLabelSelectorInStatus).To(Equal("dash0-auto-instrument=yes"))
+			}, Entry("for a cron job", WorkloadTestConfig{
+				WorkloadNamePrefix: CronJobNamePrefix,
+				CreateFn:           WrapCronJobFnAsTestableWorkload(CreateBasicCronJob),
+				GetFn:              WrapCronJobFnAsTestableWorkload(GetCronJob),
+				VerifyPreFn: func(workload TestableWorkload) {
+					VerifyUnmodifiedCronJob(workload.Get().(*batchv1.CronJob))
+				},
+				VerifyFn: func(workload TestableWorkload) {
+					VerifyModifiedCronJob(workload.Get().(*batchv1.CronJob), BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
+				},
+			}), Entry("for a daemon set", WorkloadTestConfig{
+				WorkloadNamePrefix: DaemonSetNamePrefix,
+				CreateFn:           WrapDaemonSetFnAsTestableWorkload(CreateBasicDaemonSet),
+				GetFn:              WrapDaemonSetFnAsTestableWorkload(GetDaemonSet),
+				VerifyPreFn: func(workload TestableWorkload) {
+					VerifyUnmodifiedDaemonSet(workload.Get().(*appsv1.DaemonSet))
+				},
+				VerifyFn: func(workload TestableWorkload) {
+					VerifyModifiedDaemonSet(workload.Get().(*appsv1.DaemonSet), BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
+				},
+			}), Entry("for a deployment", WorkloadTestConfig{
+				WorkloadNamePrefix: DeploymentNamePrefix,
+				CreateFn:           WrapDeploymentFnAsTestableWorkload(CreateBasicDeployment),
+				GetFn:              WrapDeploymentFnAsTestableWorkload(GetDeployment),
+				VerifyPreFn: func(workload TestableWorkload) {
+					VerifyUnmodifiedDeployment(workload.Get().(*appsv1.Deployment))
+				},
+				VerifyFn: func(workload TestableWorkload) {
+					VerifyModifiedDeployment(workload.Get().(*appsv1.Deployment), BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
+				},
+			}), Entry("for an ownerless replicaset", WorkloadTestConfig{
+				WorkloadNamePrefix: ReplicaSetNamePrefix,
+				CreateFn:           WrapReplicaSetFnAsTestableWorkload(CreateBasicReplicaSet),
+				GetFn:              WrapReplicaSetFnAsTestableWorkload(GetReplicaSet),
+				VerifyPreFn: func(workload TestableWorkload) {
+					VerifyUnmodifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet))
+				},
+				VerifyFn: func(workload TestableWorkload) {
+					VerifyModifiedReplicaSet(workload.Get().(*appsv1.ReplicaSet), BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
+				},
+			}), Entry("for a stateful set", WorkloadTestConfig{
+				WorkloadNamePrefix: StatefulSetNamePrefix,
+				CreateFn:           WrapStatefulSetFnAsTestableWorkload(CreateBasicStatefulSet),
+				GetFn:              WrapStatefulSetFnAsTestableWorkload(GetStatefulSet),
+				VerifyPreFn: func(workload TestableWorkload) {
+					VerifyUnmodifiedStatefulSet(workload.Get().(*appsv1.StatefulSet))
+				},
+				VerifyFn: func(workload TestableWorkload) {
+					VerifyModifiedStatefulSet(workload.Get().(*appsv1.StatefulSet), BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
+				},
+			}),
+			)
+		})
+
 		Describe("trace context propagators setting change on an existing Dash0 monitoring resource", Ordered, func() {
 
 			DescribeTable("when the trace context propagators setting is added", func(config WorkloadTestConfig) {

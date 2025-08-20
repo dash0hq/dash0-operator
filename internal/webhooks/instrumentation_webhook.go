@@ -45,7 +45,7 @@ type resourceHandler func(
 type routing map[string]map[string]map[string]resourceHandler
 
 const (
-	optOutAdmissionAllowedMessage    = "not instrumenting this workload due to dash0.com/enable=false"
+	optOutAdmissionAllowedMessage    = "not instrumenting this workload as it does not match the instrumentation label selector \"%s\""
 	sameVersionNoModificationMessage = "not updating the existing instrumentation for this workload, it has already " +
 		"been successfully instrumented by the same operator version"
 	actor = util.ActorWebhook
@@ -246,7 +246,11 @@ func (h *InstrumentationWebhookHandler) handleCronJob(
 		&cronJob.ObjectMeta,
 		namespaceInstrumentationConfig.InstrumentationLabelSelector,
 	) {
-		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
+		return logAndReturnAllowed(
+			fmt.Sprintf(
+				optOutAdmissionAllowedMessage, namespaceInstrumentationConfig.InstrumentationLabelSelector),
+			logger,
+		)
 	} else if util.WasInstrumentedButHasOptedOutNow(
 		&cronJob.ObjectMeta,
 		namespaceInstrumentationConfig.InstrumentationLabelSelector,
@@ -286,7 +290,11 @@ func (h *InstrumentationWebhookHandler) handleDaemonSet(
 		&daemonSet.ObjectMeta,
 		namespaceInstrumentationConfig.InstrumentationLabelSelector,
 	) {
-		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
+		return logAndReturnAllowed(
+			fmt.Sprintf(
+				optOutAdmissionAllowedMessage, namespaceInstrumentationConfig.InstrumentationLabelSelector),
+			logger,
+		)
 	} else if util.WasInstrumentedButHasOptedOutNow(
 		&daemonSet.ObjectMeta,
 		namespaceInstrumentationConfig.InstrumentationLabelSelector,
@@ -326,7 +334,11 @@ func (h *InstrumentationWebhookHandler) handleDeployment(
 		&deployment.ObjectMeta,
 		namespaceInstrumentationConfig.InstrumentationLabelSelector,
 	) {
-		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
+		return logAndReturnAllowed(
+			fmt.Sprintf(
+				optOutAdmissionAllowedMessage, namespaceInstrumentationConfig.InstrumentationLabelSelector),
+			logger,
+		)
 	} else if util.WasInstrumentedButHasOptedOutNow(
 		&deployment.ObjectMeta,
 		namespaceInstrumentationConfig.InstrumentationLabelSelector,
@@ -366,7 +378,11 @@ func (h *InstrumentationWebhookHandler) handleJob(
 		&job.ObjectMeta,
 		namespaceInstrumentationConfig.InstrumentationLabelSelector,
 	) {
-		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
+		return logAndReturnAllowed(
+			fmt.Sprintf(
+				optOutAdmissionAllowedMessage, namespaceInstrumentationConfig.InstrumentationLabelSelector),
+			logger,
+		)
 	} else if util.WasInstrumentedButHasOptedOutNow(
 		&job.ObjectMeta,
 		namespaceInstrumentationConfig.InstrumentationLabelSelector,
@@ -408,7 +424,11 @@ func (h *InstrumentationWebhookHandler) handlePod(
 		&pod.ObjectMeta,
 		namespaceInstrumentationConfig.InstrumentationLabelSelector,
 	) {
-		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
+		return logAndReturnAllowed(
+			fmt.Sprintf(
+				optOutAdmissionAllowedMessage, namespaceInstrumentationConfig.InstrumentationLabelSelector),
+			logger,
+		)
 	} else if util.WasInstrumentedButHasOptedOutNow(
 		&pod.ObjectMeta,
 		namespaceInstrumentationConfig.InstrumentationLabelSelector,
@@ -451,7 +471,11 @@ func (h *InstrumentationWebhookHandler) handleReplicaSet(
 		&replicaSet.ObjectMeta,
 		namespaceInstrumentationConfig.InstrumentationLabelSelector,
 	) {
-		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
+		return logAndReturnAllowed(
+			fmt.Sprintf(
+				optOutAdmissionAllowedMessage, namespaceInstrumentationConfig.InstrumentationLabelSelector),
+			logger,
+		)
 	} else if util.WasInstrumentedButHasOptedOutNow(
 		&replicaSet.ObjectMeta,
 		namespaceInstrumentationConfig.InstrumentationLabelSelector,
@@ -491,7 +515,11 @@ func (h *InstrumentationWebhookHandler) handleStatefulSet(
 		&statefulSet.ObjectMeta,
 		namespaceInstrumentationConfig.InstrumentationLabelSelector,
 	) {
-		return logAndReturnAllowed(optOutAdmissionAllowedMessage, logger)
+		return logAndReturnAllowed(
+			fmt.Sprintf(
+				optOutAdmissionAllowedMessage, namespaceInstrumentationConfig.InstrumentationLabelSelector),
+			logger,
+		)
 	} else if util.WasInstrumentedButHasOptedOutNow(
 		&statefulSet.ObjectMeta,
 		namespaceInstrumentationConfig.InstrumentationLabelSelector,

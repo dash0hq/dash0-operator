@@ -384,6 +384,16 @@ func UpdateInstrumentWorkloadsMode(
 	Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
 }
 
+func UpdateInstrumentWorkloadsLabelSelector(
+	ctx context.Context,
+	k8sClient client.Client,
+	autoInstrumentationLabelSelector string,
+) {
+	monitoringResource := LoadMonitoringResourceOrFail(ctx, k8sClient, Default)
+	monitoringResource.Spec.InstrumentWorkloads.LabelSelector = autoInstrumentationLabelSelector
+	Expect(k8sClient.Update(ctx, monitoringResource)).To(Succeed())
+}
+
 func UpdateInstrumentWorkloadsTraceContextPropagators(
 	ctx context.Context,
 	k8sClient client.Client,

@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -36,10 +37,12 @@ type MonitoringReconciler struct {
 }
 
 type statusUpdateInfo struct {
-	previousInstrumentWorkloadsMode dash0common.InstrumentWorkloadsMode
-	currentInstrumentWorkloadsMode  dash0common.InstrumentWorkloadsMode
-	previousTraceContextPropagators *string
-	currentTraceContextPropagators  *string
+	previousInstrumentWorkloadsMode          dash0common.InstrumentWorkloadsMode
+	currentInstrumentWorkloadsMode           dash0common.InstrumentWorkloadsMode
+	previousInstrumentWorkloadsLabelSelector string
+	currentInstrumentWorkloadsLabelSelector  string
+	previousTraceContextPropagators          *string
+	currentTraceContextPropagators           *string
 }
 
 const (
@@ -260,6 +263,9 @@ func (r *MonitoringReconciler) manageInstrumentWorkloadsChanges(
 	previousInstrumentWorkloadsMode := monitoringResource.Status.PreviousInstrumentWorkloads.Mode
 	currentInstrumentWorkloadsMode := monitoringResource.ReadInstrumentWorkloadsMode()
 
+	previousLabelSelector := monitoringResource.Status.PreviousInstrumentWorkloads.LabelSelector
+	currentLabelSelector := monitoringResource.Spec.InstrumentWorkloads.LabelSelector
+
 	previousTraceContextPropagators := monitoringResource.Status.PreviousInstrumentWorkloads.TraceContext.Propagators
 	currentTraceContextPropagators := monitoringResource.Spec.InstrumentWorkloads.TraceContext.Propagators
 
@@ -280,11 +286,15 @@ func (r *MonitoringReconciler) manageInstrumentWorkloadsChanges(
 			requiredAction = util.ModificationModeUninstrumentation
 		}
 
-		// If the mode switched to "none" and we need to uninstrument, changes in individual settings (like trace
-		// context propagators) are irrelevant. If the mode switched to "all" and we need to instrument because of that,
-		// changes in individual settings are also irrelevant. We only need to compare individual settings if the
-		// required action is "" so far, for example if the instrumentation mode has not changed.
+		// If the mode switched to "none" and we need to uninstrument, changes in individual settings (like label
+		// selector, trace context propagators) are irrelevant. If the mode switched to "all" and we need to instrument
+		// because of that, changes in individual settings are also irrelevant. We only need to compare individual
+		// settings if the required action is "" so far, for example if the instrumentation mode has not changed, or
+		// has changed to created-and-updated.
 		if requiredAction == "" {
+			if strings.TrimSpace(previousLabelSelector) != strings.TrimSpace(currentLabelSelector) {
+				requiredAction = util.ModificationModeInstrumentation
+			}
 			if util.IsStringPointerValueDifferent(previousTraceContextPropagators, currentTraceContextPropagators) {
 				requiredAction = util.ModificationModeInstrumentation
 			}
@@ -292,10 +302,12 @@ func (r *MonitoringReconciler) manageInstrumentWorkloadsChanges(
 	}
 
 	return monitoringResource, requiredAction, statusUpdateInfo{
-		previousInstrumentWorkloadsMode: previousInstrumentWorkloadsMode,
-		currentInstrumentWorkloadsMode:  currentInstrumentWorkloadsMode,
-		previousTraceContextPropagators: previousTraceContextPropagators,
-		currentTraceContextPropagators:  currentTraceContextPropagators,
+		previousInstrumentWorkloadsMode:          previousInstrumentWorkloadsMode,
+		currentInstrumentWorkloadsMode:           currentInstrumentWorkloadsMode,
+		previousInstrumentWorkloadsLabelSelector: previousLabelSelector,
+		currentInstrumentWorkloadsLabelSelector:  currentLabelSelector,
+		previousTraceContextPropagators:          previousTraceContextPropagators,
+		currentTraceContextPropagators:           currentTraceContextPropagators,
 	}
 }
 
@@ -448,6 +460,9 @@ func (r *MonitoringReconciler) updateStatusAfterReconcile(
 	monitoringResource.EnsureResourceIsMarkedAsAvailable()
 	if statusUpdate.previousInstrumentWorkloadsMode != statusUpdate.currentInstrumentWorkloadsMode {
 		monitoringResource.Status.PreviousInstrumentWorkloads.Mode = statusUpdate.currentInstrumentWorkloadsMode
+	}
+	if strings.TrimSpace(statusUpdate.previousInstrumentWorkloadsLabelSelector) != strings.TrimSpace(statusUpdate.currentInstrumentWorkloadsLabelSelector) {
+		monitoringResource.Status.PreviousInstrumentWorkloads.LabelSelector = statusUpdate.currentInstrumentWorkloadsLabelSelector
 	}
 	if util.IsStringPointerValueDifferent(statusUpdate.previousTraceContextPropagators, statusUpdate.currentTraceContextPropagators) {
 		monitoringResource.Status.PreviousInstrumentWorkloads.TraceContext.Propagators = statusUpdate.currentTraceContextPropagators

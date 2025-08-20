@@ -398,7 +398,10 @@ func (i *Instrumenter) handleJobOnInstrumentation(
 		requiredAction = util.ModificationModeUninstrumentation
 	} else if util.HasOptedOutOfInstrumentation(objectMeta, namespaceInstrumentationConfig.InstrumentationLabelSelector) {
 		// has opt-out label and there has been no previous instrumentation attempt
-		logger.Info("not instrumenting this workload due to dash0.com/enable=false")
+		logger.Info(
+			fmt.Sprintf(
+				"not instrumenting this workload as it does not match the instrumentation label selector \"%s\"",
+				namespaceInstrumentationConfig.InstrumentationLabelSelector))
 		return
 	} else if util.HasBeenInstrumentedSuccessfully(objectMeta) || util.InstrumentationAttemptHasFailed(objectMeta) {
 		// We already have instrumented this job (via the webhook) or have failed to instrument it, in either case,
@@ -577,7 +580,10 @@ func (i *Instrumenter) instrumentWorkload(
 		workload.getObjectMeta(),
 		namespaceInstrumentationConfig.InstrumentationLabelSelector,
 	) {
-		logger.Info("not instrumenting this workload due to dash0.com/enable=false")
+		logger.Info(
+			fmt.Sprintf(
+				"not instrumenting this workload as it does not match the instrumentation label selector \"%s\"",
+				namespaceInstrumentationConfig.InstrumentationLabelSelector))
 		return false
 	} else {
 		requiredAction = util.ModificationModeInstrumentation
