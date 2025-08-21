@@ -1465,8 +1465,8 @@ If you are curious, the source code for the injector is open source and can be f
 
 ## Scraping Prometheus Endpoints
 
-The Dash0 operator automatically scrapes Prometheus endpoints on pods labelled with the `prometheus.io/*` annotations as
-defined by the
+The Dash0 operator automatically scrapes Prometheus endpoints on pods annotated with the `prometheus.io/*` annotations
+as defined by the
 [Prometheus Helm chart](https://github.com/prometheus-community/helm-charts/tree/main/charts/prometheus#scraping-pod-metrics-via-annotations).
 
 The supported annotations are:
