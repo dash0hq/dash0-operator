@@ -56,7 +56,7 @@ check_all() {
   check_test_resources_util "$test_resources_util_file" "$kubectl_apply"
 
   if [[ "$found_in_readme" = "true" ]] && [[ "$found_in_unit_test_crd" = "true" ]] && [[ "$found_in_test_resources_util_file" = "true" ]]; then
-    exit 0
+    return
   fi
 
   echo

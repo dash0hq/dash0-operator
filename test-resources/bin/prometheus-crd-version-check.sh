@@ -20,3 +20,5 @@ remote_crd_url="https://raw.githubusercontent.com/prometheus-operator/prometheus
 kubectl_apply="kubectl apply --server-side -f $remote_crd_url"
 
 check_all
+
+echo "${BASH_SOURCE[0]}": All checks have passed.
