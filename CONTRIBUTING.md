@@ -255,6 +255,11 @@ If you want to report telemetry to a Dash0 backend, set `DASH0_AUTHORIZATION_TOK
     * `TELEMETRY_COLLECTION_ENABLED`: Set this to "false" to instruct the operator to not deploy OpenTelemetry
       collectors.
       This defaults to "true".
+    * `USE_CERT_MANAGER`: Set this to "true" to have the operator use cert-manager to manage TLS certificates, instead
+      of generating certificates on the fly during Helm install.
+      If this is set to "true", the test scenario scripts will also make sure cert-manager is installed in the
+      cert-manager namespace. (Note: After installing it once, it will not be automatically uninstalled again in
+      `test-cleanup.sh`. This is deliberate since deploying cert-manager can take a while.)
     * `USE_OTLP_SINK`: Set this to "true" to deploy a local collector named OTLP sink and send telemetry there instead
       of sending it to an actual Dash0 backend.
       This defaults to "false".

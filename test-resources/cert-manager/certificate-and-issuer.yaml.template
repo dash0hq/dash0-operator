@@ -1,0 +1,30 @@
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: dash0-operator-serving-certificate
+  labels:
+    app.kubernetes.io/name: certificate
+    app.kubernetes.io/instance: serving-cert
+    app.kubernetes.io/component: certificate
+spec:
+  dnsNames:
+  - custom-dash0-operator-webhook-service-name.$OPERATOR_NAMESPACE.svc
+  - custom-dash0-operator-webhook-service-name.$OPERATOR_NAMESPACE.svc.cluster.local
+  issuerRef:
+    kind: Issuer
+    name: dash0-operator-selfsigned-issuer
+  secretName: dash0-operator-certificate-secret
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: dash0-operator-selfsigned-issuer
+  labels:
+    app.kubernetes.io/name: certificate
+    app.kubernetes.io/instance: serving-cert
+    app.kubernetes.io/component: certificate
+spec:
+  selfSigned: {}

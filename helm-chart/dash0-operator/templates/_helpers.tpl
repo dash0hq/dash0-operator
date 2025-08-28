@@ -52,7 +52,11 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 {{- end }}
 
 {{- define "dash0-operator.webhookServiceName" -}}
-{{ include "dash0-operator.chartName" . }}-webhook-service
+{{- default (printf "%s-webhook-service" (include "dash0-operator.chartName" .)) .Values.operator.webhookService.name }}
+{{- end }}
+
+{{- define "dash0-operator.webhookServicePort" -}}
+{{- default .Values.operator.webhookService.port .Values.operator.webhookPort }}
 {{- end }}
 
 {{/* the controller manager container image */}}

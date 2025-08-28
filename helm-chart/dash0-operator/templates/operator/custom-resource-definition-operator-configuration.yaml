@@ -4,6 +4,11 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.14.0
+    {{- if .Values.operator.certManager.useCertManager }}
+    {{- with .Values.operator.certManager.certManagerAnnotations }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- end }}
   name: dash0operatorconfigurations.operator.dash0.com
 spec:
   group: operator.dash0.com

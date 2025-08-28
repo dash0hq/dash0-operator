@@ -12,6 +12,7 @@ target_namespace=${1:-test-namespace}
 kind=${2:-deployment}
 runtime_under_test=${3:-nodejs}
 additional_namespaces="${ADDITIONAL_NAMESPACES:-false}"
+operator_webhook_service_name=dash0-operator-webhook-service
 
 source test-resources/bin/util
 load_env_file
@@ -44,6 +45,8 @@ finish_step
 echo "STEP $step_counter: install third-party custom resource definitions"
 install_third_party_crds
 finish_step
+
+deploy_additional_resources
 
 install_third_party_resources
 

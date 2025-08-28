@@ -7,7 +7,7 @@ See https://helm.sh/docs/howto/charts_tips_and_tricks/#automatically-roll-deploy
 > Each invocation of the template function will generate a unique random string. This means that if it's necessary to
 > sync the random strings used by multiple resources, all relevant resources will need to be in the same template file.
 */ -}}
-{{- $altNames := list ( printf "%s-webhook-service.%s.svc" (include "dash0-operator.chartName" . ) .Release.Namespace ) ( printf "%s-metrics.%s.svc" (include "dash0-operator.chartName" . ) .Release.Namespace ) -}}
+{{- $altNames := list ( printf "%s.%s.svc" (include "dash0-operator.webhookServiceName" . ) .Release.Namespace ) ( printf "%s-metrics.%s.svc" (include "dash0-operator.chartName" . ) .Release.Namespace ) -}}
 {{- $ca := genCA "dash0-operator-ca" 365 -}}
 {{- $cert := genSignedCert ( include "dash0-operator.chartName" . ) nil $altNames 365 $ca -}}
 {{- /*
@@ -17,6 +17,7 @@ routing to the newer controller pods.
 */ -}}
 {{- $certFingerprint := $cert.Cert | b64enc | substr 10 25 | quote }}
 
+{{- if not .Values.operator.certManager.useCertManager }}
 {{/*
 ------
 Secret
@@ -37,6 +38,8 @@ data:
   ca.crt: {{ $ca.Cert | b64enc }}
   tls.crt: {{ $cert.Cert | b64enc }}
   tls.key: {{ $cert.Key | b64enc }}
+
+{{- end }}{{/* closes "if not .Values.operator.certManager.useCertManager" */}}
 
 {{/*
 ---------------------------
@@ -75,7 +78,9 @@ spec:
       labels:
         app.kubernetes.io/name: dash0-operator
         app.kubernetes.io/component: controller
+        {{- if not .Values.operator.certManager.useCertManager }}
         dash0.com/cert-digest: {{ $certFingerprint }}
+        {{- end }}
         {{- if .Values.operator.podLabels }}
         {{- include "dash0-operator.podLabels" . | nindent 8 }}
         {{- end }}
@@ -272,7 +277,14 @@ spec:
       - name: certificates
         secret:
           defaultMode: 420
+          {{- if not .Values.operator.certManager.useCertManager }}
           secretName: {{ include "dash0-operator.chartName" . }}-certificates
+          {{- else }}
+          {{- if not .Values.operator.certManager.secretName }}
+          {{- fail "Error: operator.certManager.useCertManager is set to true, but you did not provide a value for operator.certManager.secretName. Please refer to the instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator#using-cert-manager." -}}
+          {{- end }}
+          secretName: {{ .Values.operator.certManager.secretName | quote }}
+          {{- end }}
       - name: config-volume
         configMap:
           name: {{ template "dash0-operator.extraConfigMapName" . }}
@@ -295,13 +307,15 @@ metadata:
     {{- include "dash0-operator.labels" . | nindent 4 }}
 spec:
   ports:
-  - port: {{ .Values.operator.webhookPort }}
+  - port: {{ template "dash0-operator.webhookServicePort" . }}
     protocol: TCP
     targetPort: 9443
   selector:
     app.kubernetes.io/name: dash0-operator
     app.kubernetes.io/component: controller
+    {{- if not .Values.operator.certManager.useCertManager }}
     dash0.com/cert-digest: {{ $certFingerprint }}
+    {{- end }}
 
 {{/*
 ----------------------
@@ -318,6 +332,15 @@ metadata:
     app.kubernetes.io/component: injector
     app.kubernetes.io/instance: mutating-webhook
     {{- include "dash0-operator.labels" . | nindent 4 }}
+  {{- if .Values.operator.certManager.useCertManager }}
+  {{- if empty .Values.operator.certManager.certManagerAnnotations }}
+  {{- fail "Error: operator.certManager.useCertManager is set to true, but you did not provide any annotations in operator.certManager.certManagerAnnotations. Please refer to the instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator#using-cert-manager." -}}
+  {{- end }}
+  {{- with .Values.operator.certManager.certManagerAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
 webhooks:
 - name: inject.dash0.com
   admissionReviewVersions:
@@ -330,11 +353,13 @@ webhooks:
           - kube-system
           - kube-node-lease
   clientConfig:
+    {{- if not .Values.operator.certManager.useCertManager }}
     caBundle: {{ default "" ( $ca.Cert | b64enc ) }}
+    {{- end }}
     service:
-      name: {{ template "dash0-operator.chartName" . }}-webhook-service
+      name: {{ template "dash0-operator.webhookServiceName" . }}
       namespace: {{ .Release.Namespace }}
-      port: {{ .Values.operator.webhookPort }}
+      port: {{ template "dash0-operator.webhookServicePort" . }}
       path: /workloads/inject
   failurePolicy: Ignore
   rules:
@@ -393,14 +418,22 @@ metadata:
     app.kubernetes.io/component: validator
     app.kubernetes.io/instance: operator-configuration-mutating-webhook
     {{- include "dash0-operator.labels" . | nindent 4 }}
+  {{- if .Values.operator.certManager.useCertManager }}
+  {{- with .Values.operator.certManager.certManagerAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
 webhooks:
   - name: mutate-operator-configuration.dash0.com
     clientConfig:
+      {{- if not .Values.operator.certManager.useCertManager }}
       caBundle: {{ default "" ( $ca.Cert | b64enc ) }}
+      {{- end }}
       service:
-        name: {{ template "dash0-operator.chartName" . }}-webhook-service
+        name: {{ template "dash0-operator.webhookServiceName" . }}
         namespace: {{ .Release.Namespace }}
-        port: {{ .Values.operator.webhookPort }}
+        port: {{ template "dash0-operator.webhookServicePort" . }}
         path: /operator-configuration/mutate
     admissionReviewVersions:
       - v1
@@ -427,14 +460,22 @@ metadata:
     app.kubernetes.io/component: validator
     app.kubernetes.io/instance: operator-configuration-validator-webhook
     {{- include "dash0-operator.labels" . | nindent 4 }}
+  {{- if .Values.operator.certManager.useCertManager }}
+  {{- with .Values.operator.certManager.certManagerAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
 webhooks:
   - name: validate-operator-configuration.dash0.com
     clientConfig:
+      {{- if not .Values.operator.certManager.useCertManager }}
       caBundle: {{ default "" ( $ca.Cert | b64enc ) }}
+      {{- end }}
       service:
-        name: {{ template "dash0-operator.chartName" . }}-webhook-service
+        name: {{ template "dash0-operator.webhookServiceName" . }}
         namespace: {{ .Release.Namespace }}
-        port: {{ .Values.operator.webhookPort }}
+        port: {{ template "dash0-operator.webhookServicePort" . }}
         path: /operator-configuration/validate
     admissionReviewVersions:
       - v1
@@ -461,14 +502,22 @@ metadata:
     app.kubernetes.io/component: validator
     app.kubernetes.io/instance: monitoring-mutating-webhook
     {{- include "dash0-operator.labels" . | nindent 4 }}
+  {{- if .Values.operator.certManager.useCertManager }}
+  {{- with .Values.operator.certManager.certManagerAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
 webhooks:
   - name: mutate-monitoring.dash0.com
     clientConfig:
+      {{- if not .Values.operator.certManager.useCertManager }}
       caBundle: {{ default "" ( $ca.Cert | b64enc ) }}
+      {{- end }}
       service:
-        name: {{ template "dash0-operator.chartName" . }}-webhook-service
+        name: {{ template "dash0-operator.webhookServiceName" . }}
         namespace: {{ .Release.Namespace }}
-        port: {{ .Values.operator.webhookPort }}
+        port: {{ template "dash0-operator.webhookServicePort" . }}
         path: /monitoring/mutate
     admissionReviewVersions:
       - v1
@@ -495,14 +544,22 @@ metadata:
     app.kubernetes.io/component: validator
     app.kubernetes.io/instance: monitoring-validator-webhook
     {{- include "dash0-operator.labels" . | nindent 4 }}
+  {{- if .Values.operator.certManager.useCertManager }}
+  {{- with .Values.operator.certManager.certManagerAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
 webhooks:
   - name: validate-monitoring.dash0.com
     clientConfig:
+       {{- if not .Values.operator.certManager.useCertManager }}
       caBundle: {{ default "" ( $ca.Cert | b64enc ) }}
+      {{- end }}
       service:
-        name: {{ template "dash0-operator.chartName" . }}-webhook-service
+        name: {{ template "dash0-operator.webhookServiceName" . }}
         namespace: {{ .Release.Namespace }}
-        port: {{ .Values.operator.webhookPort }}
+        port: {{ template "dash0-operator.webhookServicePort" . }}
         path: /monitoring/validate
     admissionReviewVersions:
       - v1
@@ -549,7 +606,9 @@ spec:
   selector:
     app.kubernetes.io/name: dash0-operator
     app.kubernetes.io/component: controller
+    {{- if not .Values.operator.certManager.useCertManager }}
     dash0.com/cert-digest: {{ $certFingerprint }}
+    {{- end }}
 
 {{/*
 -------------------------------------------
@@ -562,6 +621,11 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.14.0
+    {{- if .Values.operator.certManager.useCertManager }}
+    {{- with .Values.operator.certManager.certManagerAnnotations }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- end }}
   name: dash0monitorings.operator.dash0.com
 spec:
   group: operator.dash0.com
@@ -2156,11 +2220,13 @@ config/crd/bases/operator.dash0.com_dash0monitorings.yaml; hence, this diff is t
       conversionReviewVersions:
       - v1
       clientConfig:
+        {{- if not .Values.operator.certManager.useCertManager }}
         caBundle: {{ default "" ( $ca.Cert | b64enc ) }}
+        {{- end }}
         service:
-          name: {{ template "dash0-operator.chartName" . }}-webhook-service
+          name: {{ template "dash0-operator.webhookServiceName" . }}
           namespace: {{ .Release.Namespace }}
-          port: {{ .Values.operator.webhookPort }}
+          port: {{ template "dash0-operator.webhookServicePort" . }}
 {{/*
 Looks like it is currently not possible to convince controller-runtime to serve the conversion webhook at a different
 path than "/convert". Something like "/monitoring/conversion" would be better. This might become an issue once we need

@@ -20,8 +20,9 @@ import (
 )
 
 const (
-	localHelmChart          = "helm-chart/dash0-operator"
-	operatorHelmReleaseName = "e2e-tests-operator-helm-release"
+	localHelmChart            = "helm-chart/dash0-operator"
+	operatorHelmReleaseName   = "e2e-tests-operator-helm-release"
+	defaultWebhookServiceName = "dash0-operator-webhook-service"
 )
 
 var (
@@ -40,6 +41,8 @@ func deployOperatorWithDefaultAutoOperationConfiguration(
 	operatorHelmChartUrl string,
 	images Images,
 	selfMonitoringEnabled bool,
+	additionalHelmParameters map[string]string,
+	webhookServiceName string,
 ) {
 	err := deployOperator(
 		operatorNamespace,
@@ -54,15 +57,20 @@ func deployOperatorWithDefaultAutoOperationConfiguration(
 			KubernetesInfrastructureMetricsCollectionEnabled: true,
 			CollectPodLabelsAndAnnotationsEnabled:            true,
 		},
+		additionalHelmParameters,
+		webhookServiceName,
 	)
 	Expect(err).ToNot(HaveOccurred())
 }
 
+//nolint:unparam
 func deployOperatorWithoutAutoOperationConfiguration(
 	operatorNamespace string,
 	operatorHelmChart string,
 	operatorHelmChartUrl string,
 	images Images,
+	additionalHelmParameters map[string]string,
+	webhookServiceName string,
 ) {
 	err := deployOperator(
 		operatorNamespace,
@@ -70,6 +78,8 @@ func deployOperatorWithoutAutoOperationConfiguration(
 		operatorHelmChartUrl,
 		images,
 		nil,
+		additionalHelmParameters,
+		webhookServiceName,
 	)
 	Expect(err).ToNot(HaveOccurred())
 }
@@ -80,6 +90,8 @@ func deployOperator(
 	operatorHelmChartUrl string,
 	images Images,
 	operatorConfigurationValues *startup.OperatorConfigurationValues,
+	additionalHelmParameters map[string]string,
+	webhookServiceName string,
 ) error {
 	ensureDash0OperatorHelmRepoIsInstalled(operatorHelmChart, operatorHelmChartUrl)
 
@@ -95,7 +107,7 @@ func deployOperator(
 		"--create-namespace",
 		"--set", "operator.developmentMode=true",
 	}
-	arguments = addOptionalHelmParameters(arguments, images)
+	arguments = addHelmParametersForImages(arguments, images)
 
 	if operatorConfigurationValues != nil {
 		arguments = setHelmParameter(arguments, "operator.dash0Export.enabled", "true")
@@ -117,6 +129,10 @@ func deployOperator(
 			operatorConfigurationValues.SelfMonitoringEnabled)
 	}
 
+	if additionalHelmParameters != nil {
+		arguments = setAdditionalHelmParameters(arguments, additionalHelmParameters)
+	}
+
 	arguments = append(arguments, operatorHelmReleaseName)
 	arguments = append(arguments, operatorHelmChart)
 
@@ -126,7 +142,7 @@ func deployOperator(
 	}
 
 	e2ePrint("output of helm install:\n%s\n", output)
-	waitForManagerPodAndWebhookToStart(operatorNamespace)
+	waitForManagerPodAndWebhookToStart(operatorNamespace, webhookServiceName)
 
 	if operatorConfigurationValues != nil {
 		waitForAutoOperatorConfigurationResourceToBecomeAvailable()
@@ -136,7 +152,7 @@ func deployOperator(
 	return nil
 }
 
-func addOptionalHelmParameters(arguments []string, images Images) []string {
+func addHelmParametersForImages(arguments []string, images Images) []string {
 	arguments = setIfNotEmpty(arguments, "operator.image.repository", images.operator.repository)
 	arguments = setIfNotEmpty(arguments, "operator.image.tag", images.operator.tag)
 	arguments = setIfNotEmpty(arguments, "operator.image.digest", images.operator.digest)
@@ -168,6 +184,13 @@ func addOptionalHelmParameters(arguments []string, images Images) []string {
 	arguments = setIfNotEmpty(arguments, "operator.filelogOffsetSyncImage.pullPolicy",
 		images.fileLogOffsetSync.pullPolicy)
 
+	return arguments
+}
+
+func setAdditionalHelmParameters(arguments []string, additionalHelmParameters map[string]string) []string {
+	for key, value := range additionalHelmParameters {
+		arguments = setIfNotEmpty(arguments, key, value)
+	}
 	return arguments
 }
 
@@ -238,7 +261,7 @@ func ensureDash0OperatorHelmRepoIsInstalled(
 	}
 }
 
-func waitForManagerPodAndWebhookToStart(operatorNamespace string) {
+func waitForManagerPodAndWebhookToStart(operatorNamespace string, webhookServiceName string) {
 	var managerPodName string
 	By("validating that the manager pod is running as expected")
 	verifyControllerUp := func(g Gomega) error {
@@ -283,10 +306,10 @@ func waitForManagerPodAndWebhookToStart(operatorNamespace string) {
 			"endpoints",
 			"--namespace",
 			operatorNamespace,
-			"dash0-operator-webhook-service",
+			webhookServiceName,
 		), false)
 		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(endpointsOutput).To(ContainSubstring("dash0-operator-webhook-service"))
+		g.Expect(endpointsOutput).To(ContainSubstring(webhookServiceName))
 		g.Expect(endpointsOutput).To(ContainSubstring(":9443"))
 	}, 20*time.Second, 200*time.Millisecond).Should(Succeed())
 }
@@ -335,6 +358,7 @@ func upgradeOperator(
 	operatorHelmChart string,
 	operatorHelmChartUrl string,
 	images Images,
+	webhookServiceName string,
 ) {
 	ensureDash0OperatorHelmRepoIsInstalled(operatorHelmChart, operatorHelmChartUrl)
 
@@ -345,7 +369,7 @@ func upgradeOperator(
 		operatorNamespace,
 		"--set", "operator.developmentMode=true",
 	}
-	arguments = addOptionalHelmParameters(arguments, images)
+	arguments = addHelmParametersForImages(arguments, images)
 
 	arguments = append(arguments, operatorHelmReleaseName)
 	arguments = append(arguments, operatorHelmChart)
@@ -357,7 +381,7 @@ func upgradeOperator(
 	By("waiting shortly, to give the operator time to restart after helm upgrade")
 	time.Sleep(5 * time.Second)
 
-	waitForManagerPodAndWebhookToStart(operatorNamespace)
+	waitForManagerPodAndWebhookToStart(operatorNamespace, webhookServiceName)
 
 	waitForCollectorToStart(operatorNamespace, operatorHelmChart)
 }

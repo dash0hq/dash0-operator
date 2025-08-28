@@ -800,6 +800,126 @@ issues, since the default config map for filelog offsets is updated very frequen
 This can cause Kyverno to consume a lot of CPU and memory resources, potentially even leading to OOMKills of the Kyverno
 admission controller.
 
+### Using cert-manager
+
+When installing the Helm chart, it generates TLS certificates on the fly for all components that need certificates
+(the operator's webhook service and its metrics service).
+This also happens when updating the operator, e.g. via `helm upgrade`.
+This is the default behavior, and it works out of the box without the need to manage certificates with a third-party
+solution.
+
+As an alternative, you can use [`cert-manager`](https://cert-manager.io/) to manage the certificates.
+To let `cert-manager` handle TLS certificates, provide the following additional settings when applying the Helm chart:
+
+```yaml
+operator:
+
+  # Settings for using cert-manager instead of auto-generating TLS certificates.
+  certManager:
+
+    # This disables the usage of automatically generated certificates by the Helm chart.
+    # If this is set to true, the assumption is that certificates are managed by
+    # cert-manager (see https://cert-manager.io/), and the other settings shown in this
+    # snippet (certManager.secretName, certManager.certManagerAnnotations) become
+    # required settings. It is recommended to set webhookService.name as well.
+    useCertManager: true
+
+    # The name of the secret used by cert-manager for the certificate.
+    # The provided name must match the `secretName` in the `cert-manager.io/v1.Certificate`
+    # resource's spec (see below).
+    # Note: This secret is created and managed by cert-manager, you do not need to create
+    # it manually.
+    secretName: dash0-operator-certificate-secret
+
+    # A map of additional annotations that are added to all Kubernetes resources that need
+    # the certificate.
+    # Usually this will be a single `cert-manager.io/inject-ca-from` annotation with the
+    # namespace and name of the Certificate resource (see below), but other annotations
+    # are possible, see https://cert-manager.io/docs/reference/annotations/.
+    certManagerAnnotations:
+      cert-manager.io/inject-ca-from: "dash0-system/dash0-operator-serving-certificate"
+
+  webhookService:
+    # A name override for the webhook service, defaults to dash0-operator-webhook-service.
+    # The name of the webhook service must match the DNS names provided in the
+    # cert-manager's Certificate resource.
+    # For that reason it is recommended to set this value when using cert-manager, as it
+    # guarantees that the names match, even if the Dash0 operator helm chart would change
+    # the default name of the webhook service in a future release.
+    name: dash0-operator-webhook-service-name
+```
+
+You will also need to provide `cert-manager` resources, for example a `Certificate` and an `Issuer`.
+Explaining all configuration options of `cert-manager` is out of scope for this documentation.
+Please refer to the [cert-manager documentation](https://cert-manager.io/docs/) for details on how to install and
+configure `cert-manager` in your cluster.
+
+The following annotated example is a minimal configuration that matches the Dash0 operator configuration snippet
+shown above.
+Both configuration snippets assume that the Dash0 operator is installed in the default `dash0-system` namespace,
+and the Certificate and Issuer resource are also deployed into that namespace.
+
+```yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+
+  # NOTE: This value, together with the namespace this resource is deployed into, must
+  # match the value of the cert-manager.io/inject-ca-from annotation provided in the
+  # certManager.certManagerAnnotations setting, i.e. this matches the following annotation:
+  #   cert-manager.io/inject-ca-from: "dash0-system/dash0-operator-serving-certificate"
+  name: dash0-operator-serving-certificate
+
+  labels:
+    app.kubernetes.io/name: certificate
+    app.kubernetes.io/instance: serving-cert
+    app.kubernetes.io/component: certificate
+
+spec:
+
+  # NOTE: Provide all DNS names that are used to access the webhook service.
+  # The service names usually follow the patterns <service-name>.<namespace>.svc and
+  # <service-name>.<namespace>.svc.cluster.local.
+  # If you use a custom name for the Dash0 operator's webhook service (recommended), the
+  # first part of the DNS names must match that name.
+  # If you use the default name for the webhook service, the first part of the DNS names
+  # must match the default name (dash0-operator-webhook-service).
+  # If the Dash0 operator is installed into a different namespace, you need to change the
+  # ".dash0-system." part of the DNS names accordingly.
+  dnsNames:
+  - dash0-operator-webhook-service-name.dash0-system.svc
+  - dash0-operator-webhook-service-name.dash0-system.svc.cluster.local
+
+  issuerRef:
+    kind: Issuer
+
+    # NOTE: Must match the name of the Issuer resource provided below.
+    name: dash0-operator-selfsigned-issuer
+
+  # NOTE: The secret name must match the operator.certManager.secretName setting above
+  # provided to the Dash0 operator Helm chart. This secret is created and managed by
+  # cert-manager, you do not need to create it manually.
+  secretName: dash0-operator-certificate-secret
+
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+
+  # NOTE: This issuer's name must match the issuerRef.name in the Certificate resource above.
+  name: dash0-operator-selfsigned-issuer
+
+  labels:
+    app.kubernetes.io/name: certificate
+    app.kubernetes.io/instance: serving-cert
+    app.kubernetes.io/component: certificate
+spec:
+
+  # There are many options for configuring an Issuer, this example uses a simple self-signed
+  # issuer. Make sure to configure the issuer according to your requirements.
+  selfSigned: {}
+```
+
 ### Controlling On Which Nodes the Operator's Collector Pods Are Scheduled
 
 #### Allow Scheduling on Tainted Nodes

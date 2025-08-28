@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+operator:
+  certManager:
+    useCertManager: true
+    secretName: dash0-operator-certificate-secret
+    certManagerAnnotations:
+      cert-manager.io/inject-ca-from: "$OPERATOR_NAMESPACE/dash0-operator-serving-certificate"
+  webhookService:
+    name: custom-dash0-operator-webhook-service-name

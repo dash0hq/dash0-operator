@@ -45,7 +45,7 @@ setup_test_environment () {
   check_if_kubectx_is_kind_or_minikube_cluster
   determine_container_images
 
-  kubectl apply -f test-resources/customresources/priorityclass/priorityclasses.yaml
+  install_cert_manager_if_necessary
 }
 
 ensure_namespace_exists() {
@@ -60,10 +60,14 @@ ensure_namespace_exists() {
   fi
 }
 
-finish_step() {
-  ((step_counter++))
-  echo
-  echo
+install_cert_manager_if_necessary() {
+  if [[ "${USE_CERT_MANAGER:-}" = "true" ]]; then
+    if ! kubectl get ns cert-manager &> /dev/null; then
+      echo cert-manager namespace not found, deploying cert-manager
+      test-resources/cert-manager/deploy.sh
+    fi
+    operator_webhook_service_name=custom-dash0-operator-webhook-service-name
+  fi
 }
 
 is_remote_image() {
@@ -287,6 +291,25 @@ deploy_filelog_offsets_pvc() {
   fi
 }
 
+deploy_additional_resources() {
+  deploy_priority_classes
+  deploy_additional_cert_manager_resources
+}
+
+deploy_priority_classes() {
+  echo "STEP $step_counter: deploying priority classes"
+  kubectl apply -f test-resources/customresources/priorityclass/priorityclasses.yaml
+  finish_step
+}
+
+deploy_additional_cert_manager_resources() {
+  if [[ "${USE_CERT_MANAGER:-}" = "true" ]]; then
+    echo "STEP $step_counter: install certificate and issuer for cert-manager"
+    kubectl apply -n "$operator_namespace" -f test-resources/cert-manager/certificate-and-issuer.yaml
+    finish_step
+  fi
+}
+
 deploy_via_helm() {
   run_helm install
 }
@@ -305,6 +328,9 @@ run_helm() {
   fi
   if [[ -e test-resources/bin/extra-values.yaml ]]; then
     helm_install_command+=" --values test-resources/bin/extra-values.yaml"
+  fi
+  if [[ "${USE_CERT_MANAGER:-}" = "true" ]]; then
+     helm_install_command+=" --values test-resources/cert-manager/helm-values.yaml"
   fi
   helm_install_command+=" --set operator.developmentMode=true"
   if [[ "${OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED:-}" = "true" ]]; then
@@ -433,8 +459,9 @@ wait_for_operator_manager_and_webhook() {
   echo "waiting for the operator's webhook endpoint to become available..."
   local webhook_available="false"
   for ((i=0; i<=100; i++)); do
-    local endpoints_output=$(kubectl get endpoints --namespace "$operator_namespace" dash0-operator-webhook-service)
-    local expected_endpoint_regex='dash0-operator-webhook-service.+:9443'
+    local endpoints_output=$(kubectl get endpoints --namespace "$operator_namespace" "$operator_webhook_service_name")
+    local expected_endpoint_regex="$operator_webhook_service_name"
+    expected_endpoint_regex+='.+:9443'
     if [[ "$endpoints_output" =~ $expected_endpoint_regex ]]; then
       webhook_available="true"
       break;
@@ -614,4 +641,10 @@ finish_scenario() {
     echo 'Detected minikube cluster, will run `eval $(minikube docker-env -u)`'
     eval $(minikube docker-env -u)
   fi
+}
+
+finish_step() {
+  ((step_counter++))
+  echo
+  echo
 }

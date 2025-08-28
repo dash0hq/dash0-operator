@@ -95,25 +95,63 @@ tests:
       - isNotNullOrEmpty:
           path: data["tls.key"]
 
+  - it: deployment should match snapshot when using cert-manager
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        certManager:
+          useCertManager: true
+          secretName: dash0-operator-certificate-secret
+          certManagerAnnotations:
+            cert-manager.io/inject-ca-from: dash0-system/dash0-operator-serving-certificate
+    asserts:
+      - matchSnapshot: {}
+
+  - it: should check secretName when using cert-manager
+    set:
+      operator:
+        certManager:
+          useCertManager: true
+          certManagerAnnotations:
+            cert-manager.io/inject-ca-from: dash0-system/dash0-operator-serving-certificate
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.certManager.useCertManager is set to true, but you did not provide a value for operator.certManager.secretName. Please refer to the instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator#using-cert-manager."
+
+  - it: should check certManagerAnnotations when using cert-manager
+    set:
+      operator:
+        certManager:
+          useCertManager: true
+          secretName: dash0-operator-certificate-secret
+    asserts:
+      - failedTemplate:
+          errorMessage: "Error: operator.certManager.useCertManager is set to true, but you did not provide any annotations in operator.certManager.certManagerAnnotations. Please refer to the instructions at https://github.com/dash0hq/dash0-operator/tree/main/helm-chart/dash0-operator#using-cert-manager."
+
   - it: should render deployment with custom settings
     documentSelector:
       path: metadata.name
       value: dash0-operator-controller
     set:
       operator:
-        additionalLabels:
-          label1: "value 1"
-          label2: "value 2"
-        deploymentAnnotations:
-          annotation1: "value 1"
-          annotation2: "value 2"
         replicaCount: 3
-        podAnnotations:
-          annotation1: "value 1"
-          annotation2: "value 2"
+        webhookService:
+          name: custom-webhook-service-name
+          port: 554
+        additionalLabels:
+          label1: "label 1"
+          label2: "label 2"
+        deploymentAnnotations:
+          annotation1: "deployment annotation 1"
+          annotation2: "deployment annotation 2"
         podLabels:
-          label1: "value 1"
-          label2: "value 2"
+          label1: "pod label 1"
+          label2: "pod label 2"
+        podAnnotations:
+          annotation1: "pod annotation 1"
+          annotation2: "pod annotation 2"
         image:
           repository: custom-operator-image
           tag: "1.2.3"
@@ -170,31 +208,31 @@ tests:
     asserts:
       - equal:
           path: metadata.labels['label1']
-          value: "value 1"
+          value: "label 1"
       - equal:
           path: metadata.labels['label2']
-          value: "value 2"
+          value: "label 2"
       - equal:
           path: metadata.annotations['annotation1']
-          value: "value 1"
+          value: "deployment annotation 1"
       - equal:
           path: metadata.annotations['annotation2']
-          value: "value 2"
+          value: "deployment annotation 2"
       - equal:
           path: spec.replicas
           value: 3
       - equal:
-          path: spec.template.metadata.annotations['annotation1']
-          value: "value 1"
-      - equal:
-          path: spec.template.metadata.annotations['annotation2']
-          value: "value 2"
-      - equal:
           path: spec.template.metadata.labels['label1']
-          value: "value 1"
+          value: "pod label 1"
       - equal:
           path: spec.template.metadata.labels['label2']
-          value: "value 2"
+          value: "pod label 2"
+      - equal:
+          path: spec.template.metadata.annotations['annotation1']
+          value: "pod annotation 1"
+      - equal:
+          path: spec.template.metadata.annotations['annotation2']
+          value: "pod annotation 2"
       - equal:
           path: spec.template.spec.imagePullSecrets[0].name
           value: regcred
@@ -244,7 +282,7 @@ tests:
           value: DASH0_WEBHOOK_SERVICE_NAME
       - equal:
           path: spec.template.spec.containers[0].env[2].value
-          value: dash0-operator-webhook-service
+          value: custom-webhook-service-name
       - equal:
           path: spec.template.spec.containers[0].env[3].name
           value: OTEL_COLLECTOR_NAME_PREFIX
@@ -614,6 +652,22 @@ tests:
       - isNotNullOrEmpty:
           path: spec.template.metadata.labels["dash0.com/cert-digest"]
 
+  - it: should not render the "dash0.com/cert-digest" label if cert-manager is used
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    set:
+      operator:
+        certManager:
+          useCertManager: true
+          secretName: dash0-operator-certificate-secret
+          certManagerAnnotations:
+            cert-manager.io/inject-ca-from: dash0-system/dash0-operator-serving-certificate
+    asserts:
+      - exists:
+          path: spec.template.metadata.labels["dash0.com/cert-digest"]
+        not: true
+
   - it: deployment should support referencing images by digest instead of tag
     documentSelector:
       path: metadata.name
@@ -862,6 +916,22 @@ tests:
       - isNotNullOrEmpty:
           path: spec.selector["dash0.com/cert-digest"]
 
+  - it: webhook service should not render the "dash0.com/cert-digest" label if cert-manager is used
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-webhook-service
+    set:
+      operator:
+        certManager:
+          useCertManager: true
+          secretName: dash0-operator-certificate-secret
+          certManagerAnnotations:
+            cert-manager.io/inject-ca-from: dash0-system/dash0-operator-serving-certificate
+    asserts:
+      - exists:
+          path: spec.template.metadata.labels["dash0.com/cert-digest"]
+        not: true
+
   - it: webhook service should match snapshot (default settings)
     documentSelector:
       path: metadata.name
@@ -872,13 +942,27 @@ tests:
   - it: should render webhook service with custom settings
     documentSelector:
       path: metadata.name
+      value: custom-webhook-service-name
+    set:
+      operator:
+        webhookService:
+          name: custom-webhook-service-name
+          port: 554
+    asserts:
+      - isNotNullOrEmpty:
+          path: spec.selector["dash0.com/cert-digest"]
+      - equal:
+          path: spec.ports[0].port
+          value: 554
+
+  - it: should render webhook service port with legacy setting
+    documentSelector:
+      path: metadata.name
       value: dash0-operator-webhook-service
     set:
       operator:
         webhookPort: 554
     asserts:
-      - isNotNullOrEmpty:
-          path: spec.selector["dash0.com/cert-digest"]
       - equal:
           path: spec.ports[0].port
           value: 554
@@ -897,12 +981,21 @@ tests:
     set:
       operator:
         metricsPort: 9554
+        serviceAnnotations:
+          annotation1: "metrics service annotation 1"
+          annotation2: "metrics service annotation 2"
     asserts:
       - isNotNullOrEmpty:
           path: spec.selector["dash0.com/cert-digest"]
       - equal:
           path: spec.ports[0].port
           value: 9554
+      - equal:
+          path: metadata.annotations['annotation1']
+          value: "metrics service annotation 1"
+      - equal:
+          path: metadata.annotations['annotation2']
+          value: "metrics service annotation 2"
 
   - it: monitoring resource CRD should match snapshot
     documentSelector:
@@ -912,3 +1005,27 @@ tests:
       - matchSnapshot:
           path:
             spec.versions
+
+  - it: monitoring resource CRD should render the "dash0.com/cert-digest" label for the conversion webhook
+    documentSelector:
+      path: metadata.name
+      value: dash0monitorings.operator.dash0.com
+    asserts:
+      - isNotNullOrEmpty:
+          path: spec.selector["dash0.com/cert-digest"]
+
+  - it: monitoring resource CRD should not render the "dash0.com/cert-digest" label if cert-manager is used
+    documentSelector:
+      path: metadata.name
+      value: dash0monitorings.operator.dash0.com
+    set:
+      operator:
+        certManager:
+          useCertManager: true
+          secretName: dash0-operator-certificate-secret
+          certManagerAnnotations:
+            cert-manager.io/inject-ca-from: dash0-system/dash0-operator-serving-certificate
+    asserts:
+      - exists:
+          path: spec.template.metadata.labels["dash0.com/cert-digest"]
+        not: true
