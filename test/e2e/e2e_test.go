@@ -88,6 +88,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		uninstallOtlpSink(workingDir)
 		removeAllTemporaryManifests()
 		undeployNginxIngressController()
+
 		if applicationUnderTestNamespace != "default" {
 			By("removing namespace for application under test")
 			_ = runAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", applicationUnderTestNamespace))
@@ -123,6 +124,8 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				operatorHelmChartUrl,
 				images,
 				true,
+				nil,
+				defaultWebhookServiceName,
 			)
 		})
 
@@ -926,6 +929,8 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				operatorHelmChart,
 				operatorHelmChartUrl,
 				images,
+				nil,
+				defaultWebhookServiceName,
 			)
 		})
 
@@ -1033,6 +1038,8 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					// self-monitoring metrics are namespaced, so we are deliberately disabling self-monitoring for this
 					// test.
 					false,
+					nil,
+					defaultWebhookServiceName,
 				)
 				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
 				time.Sleep(10 * time.Second)
@@ -1072,6 +1079,8 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					operatorHelmChart,
 					operatorHelmChartUrl,
 					images,
+					nil,
+					defaultWebhookServiceName,
 				)
 			})
 
@@ -1200,6 +1209,8 @@ traces:
 					operatorHelmChart,
 					operatorHelmChartUrl,
 					images,
+					nil,
+					defaultWebhookServiceName,
 				)
 			})
 
@@ -1316,7 +1327,7 @@ trace_statements:
 			})
 		})
 
-		Describe("with operatorConfiguration.telemetryCollection.enabled=false ", func() {
+		Describe("with operatorConfiguration.telemetryCollection.enabled=false", func() {
 
 			var timestampLowerBound time.Time
 
@@ -1327,6 +1338,8 @@ trace_statements:
 					operatorHelmChart,
 					operatorHelmChartUrl,
 					images,
+					nil,
+					defaultWebhookServiceName,
 				)
 				By("create an operator configuration resource with telemetryCollection.enabled=false")
 				deployDash0OperatorConfigurationResource(dash0OperatorConfigurationValues{
@@ -1362,6 +1375,73 @@ trace_statements:
 			})
 		})
 
+		Describe("when using cert-manager instead of auto-generated certs", func() {
+
+			BeforeAll(func() {
+				ensureCertManagerIsInstalled()
+				ensureNamespaceExists(operatorNamespace)
+				deployCertificateAndIssuer(operatorNamespace)
+
+				By("deploying the Dash0 operator with useCertManager enabled")
+				deployOperatorWithDefaultAutoOperationConfiguration(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					images,
+					true,
+					map[string]string{
+						"operator.certManager.useCertManager": "true",
+						"operator.certManager.secretName":     "e2e-certificate-secret",
+						//nolint:lll
+						"operator.certManager.certManagerAnnotations.cert-manager\\.io/inject-ca-from": operatorNamespace + "/e2e-serving-certificate",
+						"operator.webhookService.name": "e2e-webhook-service-name",
+					},
+					"e2e-webhook-service-name",
+				)
+				deployDash0MonitoringResource(
+					applicationUnderTestNamespace,
+					dash0MonitoringValuesDefault,
+					operatorNamespace,
+				)
+			})
+
+			AfterAll(func() {
+				undeployDash0MonitoringResource(applicationUnderTestNamespace)
+				undeployOperator(operatorNamespace)
+				removeCertificateAndIssuer(operatorNamespace)
+				uninstallCertManagerIfApplicable()
+			})
+
+			It("should instrument and uninstrument workloads via the webhook", func() {
+				testId := generateTestId(runtimeTypeNodeJs, workloadTypeDeployment)
+
+				By("installing the Node.js deployment")
+				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
+
+				By("verifying that the Node.js workload has been instrumented by the webhook")
+				verifyThatWorkloadHasBeenInstrumented(
+					applicationUnderTestNamespace,
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					testId,
+					images,
+					"webhook",
+					true,
+				)
+
+				By("removing the Dash0 monitoring resource")
+				undeployDash0MonitoringResource(applicationUnderTestNamespace)
+				By("verifying that the Node.js deployment has been uninstrumented")
+				verifyThatInstrumentationHasBeenReverted(
+					applicationUnderTestNamespace,
+					runtimeTypeNodeJs,
+					workloadTypeDeployment,
+					testId,
+					"controller",
+				)
+			})
+		})
+
 		Describe("operator startup", func() {
 			AfterAll(func() {
 				undeployOperator(operatorNamespace)
@@ -1389,6 +1469,8 @@ trace_statements:
 					operatorHelmChartUrl,
 					initialAlternativeImages,
 					true,
+					nil,
+					defaultWebhookServiceName,
 				)
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
@@ -1415,6 +1497,7 @@ trace_statements:
 					// now we use :latest (or :main-dev or whatever has been provided via env vars) instead of
 					// :e2e-test to trigger an actual change
 					images,
+					defaultWebhookServiceName,
 				)
 
 				By("verifying that the Node.js deployment's instrumentation settings have been updated by the controller")
@@ -1434,7 +1517,14 @@ trace_statements:
 		Describe("when updating the Dash0OperatorConfiguration resource", func() {
 			BeforeAll(func() {
 				By("deploy the Dash0 operator")
-				deployOperatorWithoutAutoOperationConfiguration(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images)
+				deployOperatorWithoutAutoOperationConfiguration(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					images,
+					nil,
+					defaultWebhookServiceName,
+				)
 				time.Sleep(10 * time.Second)
 			})
 
@@ -1508,7 +1598,14 @@ trace_statements:
 		Describe("when deleting the Dash0OperatorConfiguration resource", func() {
 			BeforeAll(func() {
 				By("deploy the Dash0 operator")
-				deployOperatorWithoutAutoOperationConfiguration(operatorNamespace, operatorHelmChart, operatorHelmChartUrl, images)
+				deployOperatorWithoutAutoOperationConfiguration(
+					operatorNamespace,
+					operatorHelmChart,
+					operatorHelmChartUrl,
+					images,
+					nil,
+					defaultWebhookServiceName,
+				)
 				time.Sleep(10 * time.Second)
 			})
 
@@ -1546,6 +1643,8 @@ trace_statements:
 						Endpoint: util.EndpointDash0Test,
 						// no token, no secret ref
 					},
+					nil,
+					defaultWebhookServiceName,
 				)
 				Expect(err).To(
 					MatchError(
@@ -1623,6 +1722,8 @@ trace_statements:
 						operatorHelmChartUrl,
 						images,
 						true,
+						nil,
+						defaultWebhookServiceName,
 					)
 					runInParallel(configs, func(config removalTestNamespaceConfig) {
 						deployDash0MonitoringResource(

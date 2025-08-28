@@ -175,6 +175,182 @@ deployment should match snapshot (default values):
             - configMap:
                 name: dash0-operator-extra-config
               name: config-volume
+deployment should match snapshot when using cert-manager:
+  1: |
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      labels:
+        app.kubernetes.io/component: controller
+        app.kubernetes.io/instance: deployment
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: dash0-operator
+        app.kubernetes.io/part-of: dash0-operator
+        app.kubernetes.io/version: 0.0.0
+        dash0.com/enable: "false"
+        helm.sh/chart: dash0-operator-0.0.0
+      name: dash0-operator-controller
+      namespace: NAMESPACE
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app.kubernetes.io/component: controller
+          app.kubernetes.io/name: dash0-operator
+      template:
+        metadata:
+          annotations:
+            kubectl.kubernetes.io/default-container: manager
+          labels:
+            app.kubernetes.io/component: controller
+            app.kubernetes.io/name: dash0-operator
+        spec:
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: dash0.com/enable
+                        operator: NotIn
+                        values:
+                          - "false"
+          automountServiceAccountToken: true
+          containers:
+            - args:
+                - --health-probe-bind-address=:8081
+                - --metrics-bind-address=127.0.0.1:8080
+                - --leader-elect
+                - --force-use-otel-collector-service-url=false
+                - --disable-otel-collector-host-ports=false
+              command:
+                - /manager
+              env:
+                - name: DASH0_OPERATOR_NAMESPACE
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.namespace
+                - name: DASH0_DEPLOYMENT_NAME
+                  value: dash0-operator-controller
+                - name: DASH0_WEBHOOK_SERVICE_NAME
+                  value: dash0-operator-webhook-service
+                - name: OTEL_COLLECTOR_NAME_PREFIX
+                  value: RELEASE-NAME
+                - name: DASH0_OPERATOR_IMAGE
+                  value: ghcr.io/dash0hq/operator-controller:0.0.0
+                - name: DASH0_INIT_CONTAINER_IMAGE
+                  value: ghcr.io/dash0hq/instrumentation:0.0.0
+                - name: DASH0_COLLECTOR_IMAGE
+                  value: ghcr.io/dash0hq/collector:0.0.0
+                - name: DASH0_CONFIGURATION_RELOADER_IMAGE
+                  value: ghcr.io/dash0hq/configuration-reloader:0.0.0
+                - name: DASH0_FILELOG_OFFSET_SYNC_IMAGE
+                  value: ghcr.io/dash0hq/filelog-offset-sync:0.0.0
+                - name: K8S_POD_UID
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.uid
+                - name: K8S_NODE_IP
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: status.hostIP
+                - name: K8S_NODE_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: spec.nodeName
+                - name: K8S_POD_IP
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: status.podIP
+                - name: K8S_POD_NAME
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.name
+              image: ghcr.io/dash0hq/operator-controller:0.0.0
+              livenessProbe:
+                httpGet:
+                  path: /healthz
+                  port: 8081
+                initialDelaySeconds: 15
+                periodSeconds: 20
+              name: manager
+              ports:
+                - containerPort: 9443
+                  name: webhook-server
+                  protocol: TCP
+              readinessProbe:
+                httpGet:
+                  path: /readyz
+                  port: 8081
+                initialDelaySeconds: 5
+                periodSeconds: 10
+              resources:
+                limits:
+                  cpu: 500m
+                  ephemeral-storage: 500Mi
+                  memory: 256Mi
+                requests:
+                  cpu: 10m
+                  ephemeral-storage: 500Mi
+                  memory: 128Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                seccompProfile:
+                  type: RuntimeDefault
+              volumeMounts:
+                - mountPath: /tmp/k8s-webhook-server/serving-certs
+                  name: certificates
+                  readOnly: true
+                - mountPath: /etc/config
+                  name: config-volume
+                  readOnly: true
+            - args:
+                - --secure-listen-address=0.0.0.0:8443
+                - --upstream=http://127.0.0.1:8080/
+                - --logtostderr=true
+                - --v=0
+              image: quay.io/brancz/kube-rbac-proxy:v0.18.0
+              name: kube-rbac-proxy
+              ports:
+                - containerPort: 8443
+                  name: https
+                  protocol: TCP
+              resources:
+                limits:
+                  cpu: 500m
+                  ephemeral-storage: 500Mi
+                  memory: 128Mi
+                requests:
+                  cpu: 5m
+                  ephemeral-storage: 500Mi
+                  memory: 64Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                seccompProfile:
+                  type: RuntimeDefault
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          serviceAccountName: dash0-operator-controller
+          terminationGracePeriodSeconds: 10
+          volumes:
+            - name: certificates
+              secret:
+                defaultMode: 420
+                secretName: dash0-operator-certificate-secret
+            - configMap:
+                name: dash0-operator-extra-config
+              name: config-volume
 metrics service should match snapshot (default settings):
   1: |
     apiVersion: v1

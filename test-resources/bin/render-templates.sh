@@ -100,3 +100,15 @@ cat \
   envsubst > \
   test-resources/customresources/dash0monitoring/dash0monitoring-3.yaml
 
+# shellcheck disable=SC2002
+cat \
+  test-resources/cert-manager/certificate-and-issuer.yaml.template | \
+  OPERATOR_NAMESPACE="$operator_namespace" \
+  envsubst > \
+  test-resources/cert-manager/certificate-and-issuer.yaml
+# shellcheck disable=SC2002
+cat \
+  test-resources/cert-manager/helm-values.yaml.template | \
+  OPERATOR_NAMESPACE="$operator_namespace" \
+  envsubst > \
+  test-resources/cert-manager/helm-values.yaml

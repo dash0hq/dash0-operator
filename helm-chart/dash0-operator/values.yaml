@@ -98,12 +98,47 @@ operator:
   # number of replicas for the operator manager deployment
   replicaCount: 1
 
+  # Settings for using cert-manager instead of auto-generating TLS certificates.
+  #
+  # See https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/README.md#using-cert-manager
+  # for details on how to use cert-manager with the Dash0 operator.
+  certManager:
+
+    # Setting this to true disables the usage of automatically generated certificates by the Helm chart. If this is set
+    # to true, the assumption is that certificates are managed by cert-manager (see https://cert-manager.io/),
+    # and the other settings below (certManager.secretName, certManager.certManagerAnnotations) become required
+    # settings, additionally it is recommended to set webhookService.name.
+    useCertManager: false
+
+    # The name of the secret used by cert-manager for the certificate.
+    # The provided name must match the `secretName` in the `cert-manager.io/v1.Certificate` resource's spec.
+    # Note: This secret is created by cert-manager, you do not need to create it manually.
+    secretName: null
+
+    # A map of additional annotations that are added to all Kubernetes resources that need the certificate.
+    # Usually this will be a single `cert-manager.io/inject-ca-from` annotation with the namespace and name of the
+    # Certificate resource, but other annotations are possible, see https://cert-manager.io/docs/reference/annotations/.
+    certManagerAnnotations: {}
+
+  webhookService:
+    # A name override for the webhook service, defaults to dash0-operator-webhook-service.
+    # If operator.certManager.useCertManager is set to true, the name of the webhook service (either the default name
+    # or the name provided here) must match the DNS names provided in the cert-manager's Certificate resource.
+    #
+    # For that reason it is recommended to set this value when using cert-manager, as it guarantees that the names
+    # match, even if the Dash0 operator helm chart would change the default name of the webhook service in a
+    # future release.
+    name: ""
+
+    # the port for the webhook service
+    port: 443
+
   # settings for the service account to be used
   serviceAccount:
     # whether to create a dedicated service account, set this to false if you want to provide a separately
     # created service account
     create: true
-    # can be used to override the default name of the serviceaccount (defaults to "dash0-operator-controller-manager")
+    # can be used to override the default name of the serviceaccount (defaults to "dash0-operator-controller")
     name: ""
 
   # common labels, will be added to all operator resources, example:
@@ -112,7 +147,7 @@ operator:
   #   label2: "value 2"
   additionalLabels: {}
 
-  # additional annotations for the operator manager service, example
+  # additional annotations for the operator manager's metrics service, example
   # serviceAnnotations:
   #   annotation1: "value 1"
   #   annotation2: "value 2"
@@ -124,17 +159,17 @@ operator:
   #   annotation2: "value 2"
   deploymentAnnotations: {}
 
-  # additional annotations for the operator manager pod(s), example:
-  # podAnnotations:
-  #   annotation1: "value 1"
-  #   annotation2: "value 2"
-  podAnnotations: {}
-
   # additional labels for the operator manager pod(s), example:
   # podLabels:
   #   label1: "value 1"
   #   label2: "value 2"
   podLabels: {}
+
+  # additional annotations for the operator manager pod(s), example:
+  # podAnnotations:
+  #   annotation1: "value 1"
+  #   annotation2: "value 2"
+  podAnnotations: {}
 
   # resources for the operator manager container
   managerContainerResources:
@@ -187,9 +222,6 @@ operator:
 
   # the port for the metrics service
   metricsPort: 8443
-
-  # the port for the admission webhook service which instruments new workloads at deploy time
-  webhookPort: 443
 
   # the container image to use for the operator manager component (there should usually be no reason to override this)
   image:

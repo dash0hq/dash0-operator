@@ -156,3 +156,15 @@ func recreateNamespace(namespace string) {
 	Expect(
 		runAndIgnoreOutput(exec.Command("kubectl", "create", "ns", namespace))).To(Succeed())
 }
+
+func ensureNamespaceExists(namespace string) {
+	output, err := run(exec.Command("kubectl", "get", "ns", namespace))
+	if err != nil {
+		if strings.Contains(output, "(NotFound)") {
+			Expect(
+				runAndIgnoreOutput(exec.Command("kubectl", "create", "ns", namespace))).To(Succeed())
+		} else {
+			Fail(fmt.Sprintf("kubectl get ns %s failed with unexpected error: %v", namespace, err))
+		}
+	}
+}
