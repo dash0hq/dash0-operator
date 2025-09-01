@@ -146,6 +146,7 @@ jobs:
           github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
         env:
           INSTRUMENTATION_IMAGE: ${{ steps.instrumentation-test-image.outputs.image_name }}
+          MISSING_ENVIRON_SYMBOL_TESTS: true 
         run: |
           images/instrumentation/injector/test/scripts/test-all.sh
 
