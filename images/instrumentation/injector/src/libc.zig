@@ -2,6 +2,7 @@ const builtin = @import("builtin");
 const std = @import("std");
 const testing = std.testing;
 
+const auxv = @import("auxv.zig");
 const elf = @import("elf.zig");
 const print = @import("print.zig");
 const test_util = @import("test_util.zig");
@@ -17,7 +18,6 @@ pub const LibCLibrary = struct {
 const LibCError = error{
     CannotAllocateMemory,
     CannotFindAtBase,
-    CannotFindAtPhdr,
     CannotFindElfDynamicSymbolTableOffset,
     CannotFindElfDynamicSymbolTableSize,
     CannotFindDlSymSymbol,
@@ -49,8 +49,6 @@ const AuxiliaryPointers = struct {
 //    infinite corner-cases of the various LibC flavors.
 // 3. Use the loaded LibC's `dlsym` function to look up the symbols we need.
 pub fn getLibc() !types.LibC {
-    const auxiliary_pointers = try getAuxiliaryPointers();
-
     const libc_library = try doGetLibCLibrary(proc_self_exe_path);
 
     var libc_start_memory_range: usize = 0;
@@ -58,7 +56,13 @@ pub fn getLibc() !types.LibC {
 
     switch (libc_library.flavor) {
         types.LibCFlavor.MUSL => {
-            const memory_range = try getMuslMemoryRange(auxiliary_pointers);
+            const at_base = auxv.getauxval(std.elf.AT_BASE);
+            if (at_base == 0) {
+                print.printError("Cannot find AT_BASE in /proc/self/auxv", .{});
+                return error.CannotFindAtBase;
+            }
+
+            const memory_range = try getMuslMemoryRange(at_base);
             libc_start_memory_range = memory_range.start;
             libc_end_memory_range = memory_range.end;
         },
@@ -92,43 +96,6 @@ pub fn getLibc() !types.LibC {
     };
 }
 
-fn getAuxiliaryPointers() !AuxiliaryPointers {
-    var auxv_file = try std.fs.openFileAbsolute("/proc/self/auxv", .{});
-    defer auxv_file.close();
-
-    var auxv_reader = auxv_file.reader();
-
-    var maybe_at_base: ?usize = null;
-    var maybe_at_phdr: ?usize = null;
-
-    while (true) {
-        const auxv_symbol = auxv_reader.readStruct(std.elf.Elf64_auxv_t) catch |err| {
-            if (err == error.EndOfStream) {
-                break;
-            }
-
-            return err;
-        };
-        switch (auxv_symbol.a_type) {
-            std.elf.AT_BASE => {
-                maybe_at_base = auxv_symbol.a_un.a_val;
-            },
-            std.elf.AT_PHDR => {
-                maybe_at_phdr = auxv_symbol.a_un.a_val;
-            },
-            std.elf.AT_NULL => {
-                break;
-            },
-            else => {},
-        }
-    }
-
-    return .{
-        .base = maybe_at_base orelse return error.CannotFindAtBase,
-        .phdr = maybe_at_phdr orelse return error.CannotFindAtPhdr,
-    };
-}
-
 const MemoryRange = struct {
     start: usize,
     end: usize,
@@ -150,7 +117,7 @@ fn getGlibcMemoryRange(libc_library: LibCLibrary) !MemoryRange {
         var slices = std.mem.splitAny(u8, line, " ");
         const memory_range = slices.first();
 
-        // TODO Ensure we get the memory range startging with the lowest number, as that is
+        // TODO Ensure we get the memory range starting with the lowest number, as that is
         // The one with the program header, but it is not guaranteed to appear first in the
         // `/proc/self/maps` content
         // const permissions = slices.next() orelse return error.PermissionsNotFoundInMaps;
@@ -177,7 +144,7 @@ fn getGlibcMemoryRange(libc_library: LibCLibrary) !MemoryRange {
     return error.CannotFindLibcMemoryRange;
 }
 
-fn getMuslMemoryRange(auxv_pointers: AuxiliaryPointers) !MemoryRange {
+fn getMuslMemoryRange(at_base: usize) !MemoryRange {
     // MuslC bundles the linker and the libc itself in the same .so and
     // it gets mapped in the same memory region. We can find where the
     // linker is, and so also the LibC, we can look up the AT_BASE location
@@ -200,9 +167,9 @@ fn getMuslMemoryRange(auxv_pointers: AuxiliaryPointers) !MemoryRange {
         if (std.mem.indexOf(u8, memory_range, "-")) |range_separator_index| {
             const start_memory_range = try std.fmt.parseInt(usize, memory_range[0..range_separator_index], 16);
 
-            if (start_memory_range == auxv_pointers.base) {
+            if (start_memory_range == at_base) {
                 return .{
-                    .start = auxv_pointers.base,
+                    .start = at_base,
                     .end = try std.fmt.parseInt(usize, memory_range[range_separator_index + 1 ..], 16),
                 };
             }
