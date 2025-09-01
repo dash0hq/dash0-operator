@@ -46,6 +46,8 @@ pub fn build(b: *std.Build) !void {
         .link_libc = false,
         .pic = true,
         .strip = false,
+        // Avoid a dependency from `__tls_get_addr` when compiling for x86
+        .single_threaded = true,
     });
 
     // Create a dynamically linked library based on the module created above.

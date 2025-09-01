@@ -5,6 +5,7 @@ const builtin = @import("builtin");
 const std = @import("std");
 
 const alloc = @import("allocator.zig");
+const libc = @import("libc.zig");
 const print = @import("print.zig");
 const types = @import("types.zig");
 
@@ -44,13 +45,11 @@ const DotnetError = error{
     OutOfMemory,
 };
 
-const LibCFlavor = enum { UNKNOWN, GNU_LIBC, MUSL };
-
 const dotnet_path_prefix = "/__dash0__/instrumentation/dotnet";
 var experimental_dotnet_injection_enabled: ?bool = null;
 
 var cached_dotnet_values: ?DotnetValues = null;
-var cached_libc_flavor: ?LibCFlavor = null;
+var cached_libc_flavor: ?types.LibCFlavor = null;
 
 const injection_happened_msg = "injecting the .NET OpenTelemetry instrumentation";
 var injection_happened_msg_has_been_printed = false;
@@ -78,10 +77,14 @@ pub fn getDotnetValues() ?DotnetValues {
     }
 
     if (cached_libc_flavor == null) {
-        cached_libc_flavor = getLibCFlavor();
+        const lib_c = libc.getLibc() catch |err| {
+            print.printError("Cannot get LibC information: {}", .{err});
+            return null;
+        };
+        cached_libc_flavor = lib_c.flavor;
     }
 
-    if (cached_libc_flavor == LibCFlavor.UNKNOWN) {
+    if (cached_libc_flavor == types.LibCFlavor.UNKNOWN) {
         print.printError("Cannot determine LibC flavor", .{});
         return null;
     }
@@ -118,216 +121,16 @@ test "getDotnetValues: should return null value if the profiler path cannot be a
     try testing.expect(dotnet_values == null);
 }
 
-fn getLibCFlavor() LibCFlavor {
-    const proc_self_exe_path = "/proc/self/exe";
-    return doGetLibCFlavor(proc_self_exe_path) catch |err| {
-        print.printError("Cannot determine LibC flavor from ELF metadata of \"{s}\": {}", .{ proc_self_exe_path, err });
-        return LibCFlavor.UNKNOWN;
-    };
-}
-
-fn doGetLibCFlavor(proc_self_exe_path: []const u8) !LibCFlavor {
-    const proc_self_exe_file = std.fs.openFileAbsolute(proc_self_exe_path, .{ .mode = .read_only }) catch |err| {
-        print.printError("Cannot open \"{s}\": {}", .{ proc_self_exe_path, err });
-        return LibCFlavor.UNKNOWN;
-    };
-    defer proc_self_exe_file.close();
-
-    const elf_header = std.elf.Header.read(proc_self_exe_file) catch |err| {
-        print.printError("Cannot read ELF header from  \"{s}\": {}", .{ proc_self_exe_path, err });
-        return LibCFlavor.UNKNOWN;
-    };
-
-    if (!elf_header.is_64) {
-        print.printError("ELF header from \"{s}\" seems to not be from a  64 bit binary", .{proc_self_exe_path});
-        return error.ElfNot64Bit;
-    }
-
-    var sections_header_iterator = elf_header.section_header_iterator(proc_self_exe_file);
-
-    var dynamic_symbols_table_offset: u64 = 0;
-    var dynamic_symbols_table_size: u64 = 0;
-
-    while (try sections_header_iterator.next()) |section_header| {
-        switch (section_header.sh_type) {
-            std.elf.SHT_DYNAMIC => {
-                dynamic_symbols_table_offset = section_header.sh_offset;
-                dynamic_symbols_table_size = section_header.sh_size;
-            },
-            else => {
-                // Ignore this section
-            },
-        }
-    }
-
-    if (dynamic_symbols_table_offset == 0) {
-        print.printError("No dynamic section found in ELF metadata when inspecting \"{s}\"", .{proc_self_exe_path});
-        return error.ElfDynamicSymbolTableNotFound;
-    }
-
-    // Look for DT_NEEDED entries in the Dynamic table, they state which libraries were
-    // used at compilation step. Examples:
-    //
-    // Java + GNU LibC
-    //
-    // $ readelf -Wd /usr/bin/java
-    // Dynamic section at offset 0xfd28 contains 30 entries:
-    //   Tag        Type                         Name/Value
-    //  0x0000000000000001 (NEEDED)             Shared library: [libz.so.1]
-    //  0x0000000000000001 (NEEDED)             Shared library: [libjli.so]
-    //  0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]
-    //
-    // Java + musl
-    //
-    // $ readelf -Wd /usr/bin/java
-    // Dynamic section at offset 0xfd18 contains 33 entries:
-    //   Tag        Type                         Name/Value
-    //  0x0000000000000001 (NEEDED)             Shared library: [libjli.so]
-    //  0x0000000000000001 (NEEDED)             Shared library: [libc.musl-aarch64.so.1]
-
-    // Read dynamic section
-    // Read dynamic section
-    try proc_self_exe_file.seekTo(dynamic_symbols_table_offset);
-    const dynamic_symbol_count = dynamic_symbols_table_size / @sizeOf(std.elf.Elf64_Dyn);
-    const dynamic_symbols = try alloc.page_allocator.alloc(std.elf.Elf64_Dyn, dynamic_symbol_count);
-    defer alloc.page_allocator.free(dynamic_symbols);
-    _ = try proc_self_exe_file.read(std.mem.sliceAsBytes(dynamic_symbols));
-
-    // Find string table address (DT_STRTAB)
-    var strtab_addr: u64 = 0;
-    for (dynamic_symbols) |dyn| {
-        if (dyn.d_tag == std.elf.DT_STRTAB) {
-            strtab_addr = dyn.d_val;
-            break;
-        }
-    }
-    if (strtab_addr == 0) {
-        print.printError("No string table found when inspecting ELF binary \"{s}\"", .{proc_self_exe_path});
-        return error.ElfStringsTableNotFound;
-    }
-
-    sections_header_iterator.index = 0;
-    var string_table_offset: u64 = 0;
-    while (try sections_header_iterator.next()) |shdr| {
-        if (shdr.sh_type == std.elf.SHT_STRTAB and shdr.sh_addr == strtab_addr) {
-            string_table_offset = shdr.sh_offset;
-            break;
-        }
-    }
-
-    if (string_table_offset == 0) {
-        // Fallback: Use program headers if section headers don’t map it
-        try proc_self_exe_file.seekTo(elf_header.phoff);
-        const phdrs = try std.heap.page_allocator.alloc(std.elf.Elf64_Phdr, elf_header.phnum);
-        defer std.heap.page_allocator.free(phdrs);
-        _ = try proc_self_exe_file.read(std.mem.sliceAsBytes(phdrs));
-        for (phdrs) |phdr| {
-            if (phdr.p_type == std.elf.PT_LOAD and phdr.p_vaddr <= strtab_addr and strtab_addr < phdr.p_vaddr + phdr.p_filesz) {
-                string_table_offset = phdr.p_offset + (strtab_addr - phdr.p_vaddr);
-                break;
-            }
-        }
-        if (string_table_offset == 0) {
-            print.printError("Could not map string table address when inspecting ELF binary \"{s}\"", .{proc_self_exe_path});
-            return error.ElfStringsTableNotFound;
-        }
-    }
-
-    for (dynamic_symbols) |dynamic_symbol| {
-        if (dynamic_symbol.d_tag == std.elf.DT_NULL) {
-            break;
-        }
-
-        if (dynamic_symbol.d_tag == std.elf.DT_NEEDED) {
-            const string_offset = string_table_offset + dynamic_symbol.d_val;
-            try proc_self_exe_file.seekTo(string_offset);
-
-            // Read null-terminated string (up to 256 bytes max for simplicity)
-            var buffer: [256]u8 = undefined;
-            const bytes_read = try proc_self_exe_file.read(&buffer);
-            const lib_name = buffer[0..bytes_read];
-
-            if (std.mem.indexOf(u8, lib_name, "musl")) |_| {
-                print.printDebug("Identified libc flavor \"musl\" from inspecting \"{s}\"", .{proc_self_exe_path});
-                return LibCFlavor.MUSL;
-            }
-
-            if (std.mem.indexOf(u8, lib_name, "libc.so.6")) |_| {
-                print.printDebug("Identified libc flavor \"glibc\" from inspecting \"{s}\"", .{proc_self_exe_path});
-                return LibCFlavor.GNU_LIBC;
-            }
-        }
-    }
-
-    print.printDebug("No libc flavor could be identified from inspecting \"{s}\"", .{proc_self_exe_path});
-    return LibCFlavor.UNKNOWN;
-}
-
-test "doGetLibCFlavor: should return libc flavor unknown when file does not exist" {
-    const libc_flavor = try doGetLibCFlavor("/does/not/exist");
-    try testing.expectEqual(libc_flavor, .UNKNOWN);
-}
-
-test "doGetLibCFlavor: should return libc flavor unknown when file is not an ELF binary" {
-    const allocator = std.heap.page_allocator;
-    const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
-    defer allocator.free(cwd_path);
-    const absolute_path_to_binary = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/not-an-elf-binary" });
-    defer allocator.free(absolute_path_to_binary);
-    const libc_flavor = try doGetLibCFlavor(absolute_path_to_binary);
-    try testing.expectEqual(libc_flavor, .UNKNOWN);
-}
-
-test "doGetLibCFlavor: should identify musl libc flavor (arm64)" {
-    const allocator = std.heap.page_allocator;
-    const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
-    defer allocator.free(cwd_path);
-    const absolute_path_to_binary = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/dotnet-app-arm64-musl" });
-    defer allocator.free(absolute_path_to_binary);
-    const libc_flavor = try doGetLibCFlavor(absolute_path_to_binary);
-    try testing.expectEqual(libc_flavor, .MUSL);
-}
-
-test "doGetLibCFlavor: should identify musl libc flavor (x86_64)" {
-    const allocator = std.heap.page_allocator;
-    const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
-    defer allocator.free(cwd_path);
-    const absolute_path_to_binary = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/dotnet-app-x86_64-musl" });
-    defer allocator.free(absolute_path_to_binary);
-    const libc_flavor = try doGetLibCFlavor(absolute_path_to_binary);
-    try testing.expectEqual(libc_flavor, .MUSL);
-}
-
-test "doGetLibCFlavor: should identify glibc libc flavor (arm64)" {
-    const allocator = std.heap.page_allocator;
-    const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
-    defer allocator.free(cwd_path);
-    const absolute_path_to_binary = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/dotnet-app-arm64-glibc" });
-    defer allocator.free(absolute_path_to_binary);
-    const libc_flavor = try doGetLibCFlavor(absolute_path_to_binary);
-    try testing.expectEqual(libc_flavor, .GNU_LIBC);
-}
-
-test "doGetLibCFlavor: should identify glibc libc flavor (x86_64)" {
-    const allocator = std.heap.page_allocator;
-    const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
-    defer allocator.free(cwd_path);
-    const absolute_path_to_binary = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/dotnet-app-x86_64-glibc" });
-    defer allocator.free(absolute_path_to_binary);
-    const libc_flavor = try doGetLibCFlavor(absolute_path_to_binary);
-    try testing.expectEqual(libc_flavor, .GNU_LIBC);
-}
-
-fn determineDotnetValues(libc_flavor: LibCFlavor, architecture: std.Target.Cpu.Arch) DotnetError!DotnetValues {
+fn determineDotnetValues(libc_flavor: types.LibCFlavor, architecture: std.Target.Cpu.Arch) DotnetError!DotnetValues {
     const libc_flavor_prefix =
         switch (libc_flavor) {
-            .GNU_LIBC => "glibc",
+            .GNU => "glibc",
             .MUSL => "musl",
             else => return error.UnknownLibCFlavor,
         };
     const platform =
         switch (libc_flavor) {
-            .GNU_LIBC => switch (architecture) {
+            .GNU => switch (architecture) {
                 .x86_64 => "linux-x64",
                 .aarch64 => "linux-arm64",
                 else => return error.UnsupportedCpuArchitecture,
@@ -373,7 +176,7 @@ fn determineDotnetValues(libc_flavor: LibCFlavor, architecture: std.Target.Cpu.A
 }
 
 test "determineDotnetValues: should return error for unsupported CPU architecture" {
-    try testing.expectError(error.UnsupportedCpuArchitecture, determineDotnetValues(.GNU_LIBC, .powerpc64le));
+    try testing.expectError(error.UnsupportedCpuArchitecture, determineDotnetValues(.GNU, .powerpc64le));
 }
 
 test "determineDotnetValues: should return error for unknown libc flavor" {
@@ -381,7 +184,7 @@ test "determineDotnetValues: should return error for unknown libc flavor" {
 }
 
 test "determineDotnetValues: should return values for glibc/x86_64" {
-    const dotnet_values = try determineDotnetValues(.GNU_LIBC, .x86_64);
+    const dotnet_values = try determineDotnetValues(.GNU, .x86_64);
     try testing.expectEqualStrings(
         "1",
         std.mem.span(dotnet_values.coreclr_enable_profiling),
@@ -413,7 +216,7 @@ test "determineDotnetValues: should return values for glibc/x86_64" {
 }
 
 test "determineDotnetValues: should return values for glibc/arm64" {
-    const dotnet_values = try determineDotnetValues(.GNU_LIBC, .aarch64);
+    const dotnet_values = try determineDotnetValues(.GNU, .aarch64);
     try testing.expectEqualStrings(
         "1",
         std.mem.span(dotnet_values.coreclr_enable_profiling),
