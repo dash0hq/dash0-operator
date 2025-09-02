@@ -1,0 +1,363 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+  name: dash0syntheticchecks.operator.dash0.com
+spec:
+  group: operator.dash0.com
+  names:
+    kind: Dash0SyntheticCheck
+    listKind: Dash0SyntheticCheckList
+    plural: dash0syntheticchecks
+    singular: dash0syntheticcheck
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      schema:
+        openAPIV3Schema:
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              properties:
+                display:
+                  properties:
+                    name:
+                      type: string
+                  required:
+                    - name
+                  type: object
+                enabled:
+                  type: boolean
+                notifications:
+                  properties:
+                    channels:
+                      items:
+                        format: uuid
+                        type: string
+                      type: array
+                  required:
+                    - channels
+                  type: object
+                plugin:
+                  properties:
+                    kind:
+                      enum:
+                        - http
+                      type: string
+                    spec:
+                      properties:
+                        assertions:
+                          properties:
+                            criticalAssertions:
+                              items:
+                                properties:
+                                  kind:
+                                    enum:
+                                      - status_code
+                                      - response_header
+                                      - json_body
+                                      - text_body
+                                      - timing
+                                      - error
+                                      - ssl_certificate
+                                    type: string
+                                  spec:
+                                    properties:
+                                      jsonPath:
+                                        type: string
+                                      key:
+                                        type: string
+                                      operator:
+                                        enum:
+                                          - is
+                                          - is_not
+                                          - gt
+                                          - lt
+                                          - gte
+                                          - lte
+                                        type: string
+                                      type:
+                                        enum:
+                                          - total
+                                          - dns
+                                          - connection
+                                          - ssl
+                                          - request
+                                          - response
+                                        type: string
+                                      value:
+                                        type: string
+                                    type: object
+                                required:
+                                  - kind
+                                  - spec
+                                type: object
+                                x-kubernetes-validations:
+                                  - rule:
+                                      (self.kind == ‘status_code’ && has(self.spec.operator) &&
+                                      has(self.spec.value)) || (self.kind ==
+                                      ‘response_header’ && has(self.spec.key) &&
+                                      has(self.spec.operator) &&
+                                      has(self.spec.value)) || (self.kind ==
+                                      ‘json_body’ && has(self.spec.jsonPath) &&
+                                      has(self.spec.operator) &&
+                                      has(self.spec.value)) || (self.kind ==
+                                      ‘text_body’ && has(self.spec.operator) &&
+                                      has(self.spec.value)) || (self.kind ==
+                                      ‘timing’ && has(self.spec.type) &&
+                                      has(self.spec.operator) &&
+                                      has(self.spec.value)) || (self.kind ==
+                                      ‘error’ && has(self.spec.value)) ||
+                                      (self.kind == ‘ssl_certificate’ &&
+                                      has(self.spec.value))
+                              type: array
+                            degradedAssertions:
+                              items:
+                                properties:
+                                  kind:
+                                    enum:
+                                      - status_code
+                                      - response_header
+                                      - json_body
+                                      - text_body
+                                      - timing
+                                      - error
+                                      - ssl_certificate
+                                    type: string
+                                  spec:
+                                    properties:
+                                      jsonPath:
+                                        type: string
+                                      key:
+                                        type: string
+                                      operator:
+                                        enum:
+                                          - is
+                                          - is_not
+                                          - gt
+                                          - lt
+                                          - gte
+                                          - lte
+                                        type: string
+                                      type:
+                                        enum:
+                                          - total
+                                          - dns
+                                          - connection
+                                          - ssl
+                                          - request
+                                          - response
+                                        type: string
+                                      value:
+                                        type: string
+                                    type: object
+                                required:
+                                  - kind
+                                  - spec
+                                type: object
+                                x-kubernetes-validations:
+                                  - rule:
+                                      (self.kind == ‘status_code’ && has(self.spec.operator) &&
+                                      has(self.spec.value)) || (self.kind ==
+                                      ‘response_header’ && has(self.spec.key) &&
+                                      has(self.spec.operator) &&
+                                      has(self.spec.value)) || (self.kind ==
+                                      ‘json_body’ && has(self.spec.jsonPath) &&
+                                      has(self.spec.operator) &&
+                                      has(self.spec.value)) || (self.kind ==
+                                      ‘text_body’ && has(self.spec.operator) &&
+                                      has(self.spec.value)) || (self.kind ==
+                                      ‘timing’ && has(self.spec.type) &&
+                                      has(self.spec.operator) &&
+                                      has(self.spec.value)) || (self.kind ==
+                                      ‘error’ && has(self.spec.value)) ||
+                                      (self.kind == ‘ssl_certificate’ &&
+                                      has(self.spec.value))
+                              type: array
+                          required:
+                            - criticalAssertions
+                            - degradedAssertions
+                          type: object
+                        request:
+                          properties:
+                            basicAuthentication:
+                              properties:
+                                password:
+                                  type: string
+                                username:
+                                  type: string
+                              required:
+                                - password
+                                - username
+                              type: object
+                            body:
+                              properties:
+                                kind:
+                                  enum:
+                                    - json
+                                    - graphql
+                                    - form
+                                    - raw
+                                  type: string
+                                spec:
+                                  properties:
+                                    content:
+                                      maxLength: 2048
+                                      type: string
+                                  required:
+                                    - content
+                                  type: object
+                              required:
+                                - kind
+                                - spec
+                              type: object
+                            headers:
+                              items:
+                                properties:
+                                  name:
+                                    type: string
+                                  value:
+                                    type: string
+                                required:
+                                  - name
+                                  - value
+                                type: object
+                              type: array
+                            method:
+                              enum:
+                                - get
+                                - post
+                                - put
+                                - delete
+                                - head
+                                - patch
+                              type: string
+                            queryParameters:
+                              items:
+                                properties:
+                                  name:
+                                    type: string
+                                  value:
+                                    type: string
+                                required:
+                                  - name
+                                  - value
+                                type: object
+                              type: array
+                            redirects:
+                              enum:
+                                - follow
+                                - disabled
+                              type: string
+                            tls:
+                              properties:
+                                allowInsecure:
+                                  type: boolean
+                              required:
+                                - allowInsecure
+                              type: object
+                            tracing:
+                              properties:
+                                addTracingHeaders:
+                                  type: boolean
+                              required:
+                                - addTracingHeaders
+                              type: object
+                            url:
+                              type: string
+                          required:
+                            - headers
+                            - method
+                            - queryParameters
+                            - redirects
+                            - tls
+                            - tracing
+                            - url
+                          type: object
+                      required:
+                        - assertions
+                        - request
+                      type: object
+                  required:
+                    - kind
+                    - spec
+                  type: object
+                  x-kubernetes-validations:
+                    - rule: self.kind == ‘http’
+                retries:
+                  properties:
+                    kind:
+                      enum:
+                        - "off"
+                        - fixed
+                        - linear
+                        - exponential
+                      type: string
+                    spec:
+                      properties:
+                        attempts:
+                          maximum: 10
+                          minimum: 0
+                          type: integer
+                        delay:
+                          pattern: (\d+(ms|s|m|h|d|w|M|Q|y))+
+                          type: string
+                        maximumDelay:
+                          pattern: (\d+(ms|s|m|h|d|w|M|Q|y))+
+                          type: string
+                      type: object
+                  required:
+                    - kind
+                    - spec
+                  type: object
+                  x-kubernetes-validations:
+                    - rule:
+                        (self.kind == ‘off’) || (self.kind == ‘fixed’ && has(self.spec.attempts)
+                        && has(self.spec.delay)) || (self.kind == ‘linear’ &&
+                        has(self.spec.attempts) && has(self.spec.delay) &&
+                        has(self.spec.maximumDelay)) || (self.kind ==
+                        ‘exponential’ && has(self.spec.attempts) &&
+                        has(self.spec.delay) && has(self.spec.maximumDelay))
+                schedule:
+                  properties:
+                    interval:
+                      pattern: (\d+(ms|s|m|h|d|w|M|Q|y))+
+                      type: string
+                    locations:
+                      items:
+                        type: string
+                      maxItems: 128
+                      minItems: 1
+                      type: array
+                    strategy:
+                      enum:
+                        - all_locations
+                        - random_location
+                      type: string
+                  required:
+                    - interval
+                    - locations
+                    - strategy
+                  type: object
+              required:
+                - display
+                - enabled
+                - notifications
+                - plugin
+                - retries
+                - schedule
+              type: object
+            status:
+              type: object
+          type: object
+      served: true
+      storage: true
+      subresources:
+        status: {}

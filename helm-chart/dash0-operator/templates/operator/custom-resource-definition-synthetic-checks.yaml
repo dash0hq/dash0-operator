@@ -1,0 +1,572 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    # {{- if .Values.operator.certManager.useCertManager }}
+    # {{- with .Values.operator.certManager.certManagerAnnotations }}
+    #   {{- toYaml . | nindent 4 }}
+    # {{- end }}
+    # {{- end }}
+  name: dash0syntheticchecks.operator.dash0.com
+spec:
+  group: operator.dash0.com
+  names:
+    kind: Dash0SyntheticCheck
+    listKind: Dash0SyntheticCheckList
+    plural: dash0syntheticchecks
+    singular: dash0syntheticcheck
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        properties:
+          kind:
+            type: string
+            enum:
+              - Dash0SyntheticCheck
+          metadata:
+            type: object
+          spec:
+            properties:
+              display:
+                properties:
+                  name:
+                    type: string
+                required:
+                  - name
+              plugin:
+                properties:
+                  kind:
+                    type: string
+                    enum:
+                      - http
+                  spec:
+                    properties:
+                      request:
+                        properties:
+                          method:
+                            type: string
+                            enum:
+                              - get
+                              - post
+                              - put
+                              - delete
+                              - head
+                              - patch
+                          url:
+                            type: string
+                          redirects:
+                            type: string
+                            enum:
+                              - follow
+                              - disabled
+                          tls:
+                            properties:
+                              allowInsecure:
+                                type: boolean
+                            required:
+                              - allowInsecure
+                          tracing:
+                            properties:
+                              addTracingHeaders:
+                                type: boolean
+                            required:
+                              - addTracingHeaders
+                          headers:
+                            type: array
+                            items:
+                              properties:
+                                name:
+                                  type: string
+                                value:
+                                  type: string
+                              required:
+                                - name
+                                - value
+                          queryParameters:
+                            type: array
+                            items:
+                              properties:
+                                name:
+                                  type: string
+                                value:
+                                  type: string
+                              required:
+                                - name
+                                - value
+                          basicAuthentication:
+                            properties:
+                              username:
+                                type: string
+                              password:
+                                type: string
+                            required:
+                              - username
+                              - password
+                          body:
+                            properties:
+                              kind:
+                                type: string
+                                enum:
+                                  - json
+                                  - graphql
+                                  - form
+                                  - raw
+                              spec:
+                                properties:
+                                  content:
+                                    type: string
+                                    maxLength: 2048
+                                required:
+                                  - content
+                            required:
+                              - kind
+                              - spec
+                        required:
+                          - method
+                          - url
+                          - redirects
+                          - tls
+                          - tracing
+                          - headers
+                          - queryParameters
+                      assertions:
+                        properties:
+                          criticalAssertions:
+                            type: array
+                            items:
+                              anyOf:
+                                - properties:
+                                    kind:
+                                      type: string
+                                      enum:
+                                        - status_code
+                                    spec:
+                                      properties:
+                                        operator:
+                                          type: string
+                                          enum: [ is, is_not, gt, lt, gte, lte ]
+                                        value:
+                                          type: string
+                                      required:
+                                        - operator
+                                        - value
+                                  required:
+                                    - kind
+                                    - spec
+                                - properties:
+                                    kind:
+                                      type: string
+                                      enum:
+                                        - response_header
+                                    spec:
+                                      properties:
+                                        key:
+                                          type: string
+                                        operator:
+                                          type: string
+                                          enum: [ is, is_not, is_set, is_not_set, is_one_of, is_not_one_of, matches, does_not_match, contains, does_not_contain, starts_with, does_not_start_with, ends_with, does_not_end_with ]
+                                        value:
+                                          type: string
+                                      required:
+                                        - key
+                                        - operator
+                                        - value
+                                  required:
+                                    - kind
+                                    - spec
+                                - properties:
+                                    kind:
+                                      type: string
+                                      enum:
+                                        - json_body
+                                    spec:
+                                      properties:
+                                        jsonPath:
+                                          type: string
+                                        operator:
+                                          type: string
+                                          enum: [ is, is_not, is_set, is_not_set, is_one_of, is_not_one_of, matches, does_not_match, contains, does_not_contain, starts_with, does_not_start_with, ends_with, does_not_end_with ]
+                                        value:
+                                          type: string
+                                      required:
+                                        - jsonPath
+                                        - operator
+                                        - value
+                                  required:
+                                    - kind
+                                    - spec
+                                - properties:
+                                    kind:
+                                      type: string
+                                      enum:
+                                        - text_body
+                                    spec:
+                                      properties:
+                                        operator:
+                                          type: string
+                                          enum: [ is, is_not, is_set, is_not_set, is_one_of, is_not_one_of, matches, does_not_match, contains, does_not_contain, starts_with, does_not_start_with, ends_with, does_not_end_with ]
+                                        value:
+                                          type: string
+                                      required:
+                                        - operator
+                                        - value
+                                  required:
+                                    - kind
+                                    - spec
+                                - properties:
+                                    kind:
+                                      type: string
+                                      enum:
+                                        - timing
+                                    spec:
+                                      properties:
+                                        type:
+                                          type: string
+                                          enum:
+                                            - total
+                                            - dns
+                                            - connection
+                                            - ssl
+                                            - request
+                                            - response
+                                        operator:
+                                          type: string
+                                          enum: [ is, is_not, gt, lt, gte, lte ]
+                                        value:
+                                          type: string
+                                          pattern: '(\d+(ms|s|m|h|d|w|M|Q|y))+'
+                                      required:
+                                        - type
+                                        - operator
+                                        - value
+                                  required:
+                                    - kind
+                                    - spec
+                                - properties:
+                                    kind:
+                                      type: string
+                                      enum:
+                                        - error
+                                    spec:
+                                      properties:
+                                        value:
+                                          type: string
+                                          enum:
+                                            - unknown
+                                            - dns
+                                            - tcp
+                                            - tls
+                                            - timeout
+                                      required:
+                                        - value
+                                  required:
+                                    - kind
+                                    - spec
+                                - properties:
+                                    kind:
+                                      type: string
+                                      enum:
+                                        - ssl_certificate
+                                    spec:
+                                      properties:
+                                        value:
+                                          type: string
+                                          pattern: '(\d+(ms|s|m|h|d|w|M|Q|y))+'
+                                      required:
+                                        - value
+                                  required:
+                                    - kind
+                                    - spec
+                          degradedAssertions:
+                            type: array
+                            items:
+                              anyOf:
+                                - properties:
+                                    kind:
+                                      type: string
+                                      enum:
+                                        - status_code
+                                    spec:
+                                      properties:
+                                        operator:
+                                          type: string
+                                          enum: [ is, is_not, gt, lt, gte, lte ]
+                                        value:
+                                          type: string
+                                      required:
+                                        - operator
+                                        - value
+                                  required:
+                                    - kind
+                                    - spec
+                                - properties:
+                                    kind:
+                                      type: string
+                                      enum:
+                                        - response_header
+                                    spec:
+                                      properties:
+                                        key:
+                                          type: string
+                                        operator:
+                                          type: string
+                                          enum: [ is, is_not, is_set, is_not_set, is_one_of, is_not_one_of, matches, does_not_match, contains, does_not_contain, starts_with, does_not_start_with, ends_with, does_not_end_with ]
+                                        value:
+                                          type: string
+                                      required:
+                                        - key
+                                        - operator
+                                        - value
+                                  required:
+                                    - kind
+                                    - spec
+                                - properties:
+                                    kind:
+                                      type: string
+                                      enum:
+                                        - json_body
+                                    spec:
+                                      properties:
+                                        jsonPath:
+                                          type: string
+                                        operator:
+                                          type: string
+                                          enum: [ is, is_not, is_set, is_not_set, is_one_of, is_not_one_of, matches, does_not_match, contains, does_not_contain, starts_with, does_not_start_with, ends_with, does_not_end_with ]
+                                        value:
+                                          type: string
+                                      required:
+                                        - jsonPath
+                                        - operator
+                                        - value
+                                  required:
+                                    - kind
+                                    - spec
+                                - properties:
+                                    kind:
+                                      type: string
+                                      enum:
+                                        - text_body
+                                    spec:
+                                      properties:
+                                        operator:
+                                          type: string
+                                          enum: [ is, is_not, is_set, is_not_set, is_one_of, is_not_one_of, matches, does_not_match, contains, does_not_contain, starts_with, does_not_start_with, ends_with, does_not_end_with ]
+                                        value:
+                                          type: string
+                                      required:
+                                        - operator
+                                        - value
+                                  required:
+                                    - kind
+                                    - spec
+                                - properties:
+                                    kind:
+                                      type: string
+                                      enum:
+                                        - timing
+                                    spec:
+                                      properties:
+                                        type:
+                                          type: string
+                                          enum:
+                                            - total
+                                            - dns
+                                            - connection
+                                            - ssl
+                                            - request
+                                            - response
+                                        operator:
+                                          type: string
+                                          enum: [ is, is_not, gt, lt, gte, lte ]
+                                        value:
+                                          type: string
+                                          pattern: '(\d+(ms|s|m|h|d|w|M|Q|y))+'
+                                      required:
+                                        - type
+                                        - operator
+                                        - value
+                                  required:
+                                    - kind
+                                    - spec
+                                - properties:
+                                    kind:
+                                      type: string
+                                      enum:
+                                        - error
+                                    spec:
+                                      properties:
+                                        value:
+                                          type: string
+                                          enum:
+                                            - unknown
+                                            - dns
+                                            - tcp
+                                            - tls
+                                            - timeout
+                                      required:
+                                        - value
+                                  required:
+                                    - kind
+                                    - spec
+                                - properties:
+                                    kind:
+                                      type: string
+                                      enum:
+                                        - ssl_certificate
+                                    spec:
+                                      properties:
+                                        value:
+                                          type: string
+                                          pattern: '(\d+(ms|s|m|h|d|w|M|Q|y))+'
+                                      required:
+                                        - value
+                                  required:
+                                    - kind
+                                    - spec
+                        required:
+                          - criticalAssertions
+                          - degradedAssertions
+                    required:
+                      - request
+                      - assertions
+                required:
+                  - kind
+                  - spec
+              schedule:
+                properties:
+                  strategy:
+                    type: string
+                    description: |
+                      Whether to run checks against all specified locations for every run, or just a single location per run.
+                    enum:
+                      - all_locations
+                      - random_location
+                  interval:
+                    description: |
+                      Specifies a check evaluation frequency.
+                    type: string
+                    pattern: '(\d+(ms|s|m|h|d|w|M|Q|y))+'
+                  locations:
+                    type: array
+                    items:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                    minItems: 1
+                    maxItems: 128
+                required:
+                  - strategy
+                  - interval
+                  - locations
+              retries:
+                anyOf:
+                  - properties:
+                      kind:
+                        type: string
+                        enum:
+                          - off
+                      spec:
+                        properties: {}
+                    required:
+                      - kind
+                      - spec
+                  - properties:
+                      kind:
+                        type: string
+                        enum:
+                          - fixed
+                      spec:
+                        properties:
+                          attempts:
+                            type: integer
+                            minimum: 0
+                            maximum: 10
+                          delay:
+                            type: string
+                            pattern: '(\d+(ms|s|m|h|d|w|M|Q|y))+'
+                        required:
+                          - attempts
+                          - delay
+                    required:
+                      - kind
+                      - spec
+                  - properties:
+                      kind:
+                        type: string
+                        enum:
+                          - linear
+                      spec:
+                        properties:
+                          attempts:
+                            type: integer
+                            minimum: 0
+                            maximum: 10
+                          delay:
+                            type: string
+                            pattern: '(\d+(ms|s|m|h|d|w|M|Q|y))+'
+                          maximumDelay:
+                            type: string
+                            pattern: '(\d+(ms|s|m|h|d|w|M|Q|y))+'
+                        required:
+                          - attempts
+                          - delay
+                          - maximumDelay
+                    required:
+                      - kind
+                      - spec
+                  - properties:
+                      kind:
+                        type: string
+                        enum:
+                          - exponential
+                      spec:
+                        properties:
+                          attempts:
+                            type: integer
+                            minimum: 0
+                            maximum: 10
+                          delay:
+                            type: string
+                            pattern: '(\d+(ms|s|m|h|d|w|M|Q|y))+'
+                          maximumDelay:
+                            type: string
+                            pattern: '(\d+(ms|s|m|h|d|w|M|Q|y))+'
+                        required:
+                          - attempts
+                          - delay
+                          - maximumDelay
+                    required:
+                      - kind
+                      - spec
+              notifications:
+                properties:
+                  channels:
+                    description: |
+                      The channel IDs that notifications should be sent to in case the check is critical or degraded after
+                      executing all the retries.
+                    type: array
+                    items:
+                      type: string
+                      format: uuid
+                required:
+                  - channels
+              enabled:
+                type: boolean
+            required:
+              - type
+              - plugin
+              - schedule
+              - retries
+              - notifications
+              - enabled
+        required:
+          - kind
+          - metadata
+          - spec
+    served: true
+    storage: true
+    subresources:
+      status: {}
