@@ -1,0 +1,7 @@
+suite: test custom resource definition
+templates:
+  - operator/custom-resource-definition-synthetic-checks.yaml
+tests:
+  - it: custom resource definition for synthetic checks should match snapshot
+    asserts:
+      - matchSnapshot: {}

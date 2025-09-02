@@ -2,6 +2,6 @@ suite: test custom resource definition
 templates:
   - operator/custom-resource-definition-operator-configuration.yaml
 tests:
-  - it: custom resource definition should match snapshot
+  - it: custom resource definition for operator configuration should match snapshot
     asserts:
       - matchSnapshot: {}
