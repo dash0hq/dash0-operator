@@ -16,11 +16,6 @@ const expect = std.testing.expect;
 
 export const init_array: [1]*const fn () callconv(.C) void linksection(".init_array") = .{&initEnviron};
 
-// Ensure we process requests synchronously. LibC is *not* threadsafe
-// with respect to the environment, but chances are some apps will try
-// to look up env vars in parallel
-const _env_mutex = std.Thread.Mutex{};
-
 // Keep global pointers to already-calculated values to avoid multiple allocations
 // on repeated lookups.
 var modified_java_tool_options_value_calculated = false;
@@ -86,11 +81,6 @@ fn updateStdOsEnviron() !void {
 
 export fn getenv(name_z: types.NullTerminatedString) ?types.NullTerminatedString {
     const name = std.mem.sliceTo(name_z, 0);
-
-    // Need to change type from `const` to be able to lock
-    var env_mutex = _env_mutex;
-    env_mutex.lock();
-    defer env_mutex.unlock();
 
     print.initDebugFlag();
     print.printDebug("getenv('{s}') called", .{name});

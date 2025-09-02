@@ -33,12 +33,8 @@ pub const ElfDynLib = struct {
     end_memory_range: usize,
     strings: [*:0]u8,
     syms: [*]std.elf.Sym,
-    hash_table: HashTable,
-
-    const HashTable = union(enum) {
-        dt_hash: [*]std.posix.Elf_Symndx,
-        dt_gnu_hash: *std.elf.gnu_hash.Header,
-    };
+    hash: ?[*]u32,
+    gnu_hash: ?*std.elf.gnu_hash.Header,
 
     pub fn open(start_memory_range: usize, end_memory_range: usize) !ElfDynLib {
         const elf_header = @as(*std.elf.Ehdr, @ptrFromInt(start_memory_range));
@@ -70,8 +66,8 @@ pub const ElfDynLib = struct {
         const dynamic_program_header = maybe_dynamic_program_header orelse return error.MissingDynamicLinkingInformation;
 
         var maybe_strings: ?[*:0]u8 = null;
-        var maybe_syms: ?[*]std.elf.Sym = null;
-        var maybe_hashtab: ?[*]std.posix.Elf_Symndx = null;
+        var maybe_syms: ?[*]std.elf.Elf64_Sym = null;
+        var maybe_hashtab: ?[*]u32 = null;
         var maybe_gnu_hash: ?*std.elf.gnu_hash.Header = null;
 
         {
@@ -97,22 +93,20 @@ pub const ElfDynLib = struct {
             }
         }
 
-        const hash_table: HashTable = if (maybe_gnu_hash) |gnu_hash|
-            .{ .dt_gnu_hash = gnu_hash }
-        else if (maybe_hashtab) |hashtab|
-            .{ .dt_hash = hashtab }
-        else
-            return error.ElfHashTableNotFound;
-
         const strings = maybe_strings orelse return error.ElfStringSectionNotFound;
         const syms = maybe_syms orelse return error.ElfSymSectionNotFound;
+
+        if (maybe_hashtab == null and maybe_gnu_hash == null) {
+            return error.ElfHashTableNotFound;
+        }
 
         return .{
             .start_memory_range = start_memory_range,
             .end_memory_range = end_memory_range,
             .strings = strings,
             .syms = syms,
-            .hash_table = hash_table,
+            .hash = maybe_hashtab,
+            .gnu_hash = maybe_gnu_hash,
         };
     }
 
@@ -159,66 +153,66 @@ pub const ElfDynLib = struct {
         const OK_TYPES = (1 << std.elf.STT_NOTYPE | 1 << std.elf.STT_OBJECT | 1 << std.elf.STT_FUNC | 1 << std.elf.STT_COMMON);
         const OK_BINDS = (1 << std.elf.STB_GLOBAL | 1 << std.elf.STB_WEAK | 1 << std.elf.STB_GNU_UNIQUE);
 
-        switch (self.hash_table) {
-            .dt_hash => |hashtab| {
-                var i: usize = 0;
-                while (i < hashtab[1]) : (i += 1) {
-                    if (0 == (@as(u32, 1) << @as(u5, @intCast(self.syms[i].st_info & 0xf)) & OK_TYPES)) continue;
-                    if (0 == (@as(u32, 1) << @as(u5, @intCast(self.syms[i].st_info >> 4)) & OK_BINDS)) continue;
-                    if (0 == self.syms[i].st_shndx) continue;
-                    const symbol_name = std.mem.sliceTo(self.strings + self.syms[i].st_name, 0);
-                    if (!std.mem.eql(u8, name, symbol_name)) continue;
-                    return self.start_memory_range + self.syms[i].st_value;
+        if (self.gnu_hash) |gnu_hash_header| {
+            const gnu_hash_section: GnuHashSection64 = .fromPtr(gnu_hash_header);
+            const hash = std.elf.gnu_hash.calculate(name);
+
+            const bloom_index = (hash / @bitSizeOf(usize)) % gnu_hash_header.bloom_size;
+            const bloom_val = gnu_hash_section.bloom[bloom_index];
+
+            const bit_index_0 = hash % @bitSizeOf(usize);
+            const bit_index_1 = (hash >> @intCast(gnu_hash_header.bloom_shift)) % @bitSizeOf(usize);
+
+            const one: usize = 1;
+            const bit_mask: usize = (one << @intCast(bit_index_0)) | (one << @intCast(bit_index_1));
+
+            if (bloom_val & bit_mask != bit_mask) {
+                // Symbol is not in bloom filter, so it definitely isn't here.
+                return null;
+            }
+
+            const bucket_index = hash % gnu_hash_header.nbuckets;
+            const chain_index = gnu_hash_section.buckets[bucket_index] - gnu_hash_header.symoffset;
+
+            const chains = gnu_hash_section.chain;
+            const hash_as_entry: std.elf.gnu_hash.ChainEntry = @bitCast(hash);
+
+            var current_index = chain_index;
+            var at_end_of_chain = false;
+            while (!at_end_of_chain) : (current_index += 1) {
+                const current_entry = chains[current_index];
+                at_end_of_chain = current_entry.end_of_chain;
+
+                if (current_entry.hash != hash_as_entry.hash) continue;
+
+                // check that symbol matches
+                const symbol_index = current_index + gnu_hash_header.symoffset;
+                const symbol = self.syms[symbol_index];
+
+                if (0 == (@as(u32, 1) << @as(u5, @intCast(symbol.st_info & 0xf)) & OK_TYPES)) continue;
+                if (0 == (@as(u32, 1) << @as(u5, @intCast(symbol.st_info >> 4)) & OK_BINDS)) continue;
+                if (0 == symbol.st_shndx) continue;
+
+                const symbol_name = std.mem.sliceTo(self.strings + symbol.st_name, 0);
+                if (!std.mem.eql(u8, name, symbol_name)) {
+                    continue;
                 }
-            },
-            .dt_gnu_hash => |gnu_hash_header| {
-                const gnu_hash_section: GnuHashSection64 = .fromPtr(gnu_hash_header);
-                const hash = std.elf.gnu_hash.calculate(name);
 
-                const bloom_index = (hash / @bitSizeOf(usize)) % gnu_hash_header.bloom_size;
-                const bloom_val = gnu_hash_section.bloom[bloom_index];
+                return self.start_memory_range + symbol.st_value;
+            }
+        }
 
-                const bit_index_0 = hash % @bitSizeOf(usize);
-                const bit_index_1 = (hash >> @intCast(gnu_hash_header.bloom_shift)) % @bitSizeOf(usize);
-
-                const one: usize = 1;
-                const bit_mask: usize = (one << @intCast(bit_index_0)) | (one << @intCast(bit_index_1));
-
-                if (bloom_val & bit_mask != bit_mask) {
-                    // Symbol is not in bloom filter, so it definitely isn't here.
-                    return null;
-                }
-
-                const bucket_index = hash % gnu_hash_header.nbuckets;
-                const chain_index = gnu_hash_section.buckets[bucket_index] - gnu_hash_header.symoffset;
-
-                const chains = gnu_hash_section.chain;
-                const hash_as_entry: std.elf.gnu_hash.ChainEntry = @bitCast(hash);
-
-                var current_index = chain_index;
-                var at_end_of_chain = false;
-                while (!at_end_of_chain) : (current_index += 1) {
-                    const current_entry = chains[current_index];
-                    at_end_of_chain = current_entry.end_of_chain;
-
-                    if (current_entry.hash != hash_as_entry.hash) continue;
-
-                    // check that symbol matches
-                    const symbol_index = current_index + gnu_hash_header.symoffset;
-                    const symbol = self.syms[symbol_index];
-
-                    if (0 == (@as(u32, 1) << @as(u5, @intCast(symbol.st_info & 0xf)) & OK_TYPES)) continue;
-                    if (0 == (@as(u32, 1) << @as(u5, @intCast(symbol.st_info >> 4)) & OK_BINDS)) continue;
-                    if (0 == symbol.st_shndx) continue;
-
-                    const symbol_name = std.mem.sliceTo(self.strings + symbol.st_name, 0);
-                    if (!std.mem.eql(u8, name, symbol_name)) {
-                        continue;
-                    }
-
-                    return self.start_memory_range + symbol.st_value;
-                }
-            },
+        if (self.hash) |hashtab| {
+            const symbol_count: usize = @intCast(hashtab[1]);
+            var i: usize = 0;
+            while (i < symbol_count) : (i += 1) {
+                if (0 == (@as(u32, 1) << @as(u5, @intCast(self.syms[i].st_info & 0xf)) & OK_TYPES)) continue;
+                if (0 == (@as(u32, 1) << @as(u5, @intCast(self.syms[i].st_info >> 4)) & OK_BINDS)) continue;
+                if (0 == self.syms[i].st_shndx) continue;
+                const symbol_name = std.mem.sliceTo(self.strings + self.syms[i].st_name, 0);
+                if (!std.mem.eql(u8, name, symbol_name)) continue;
+                return self.start_memory_range + self.syms[i].st_value;
+            }
         }
 
         return null;

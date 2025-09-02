@@ -342,8 +342,8 @@ fn doGetLibCLibrary(self_exe_path: []const u8) !LibCLibrary {
 }
 
 test "doGetLibCLibrary: should return libc flavor unknown when file does not exist" {
-    const libc_flavor = try doGetLibCLibrary("/does/not/exist");
-    try testing.expectEqual(libc_flavor, .UNKNOWN);
+    const lib_c = try doGetLibCLibrary("/does/not/exist");
+    try testing.expectEqual(lib_c.flavor, .UNKNOWN);
 }
 
 test "doGetLibCLibrary: should return libc flavor unknown when file is not an ELF binary" {
@@ -352,8 +352,8 @@ test "doGetLibCLibrary: should return libc flavor unknown when file is not an EL
     defer allocator.free(cwd_path);
     const absolute_path_to_binary = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/not-an-elf-binary" });
     defer allocator.free(absolute_path_to_binary);
-    const libc_library = try doGetLibCLibrary(absolute_path_to_binary);
-    try testing.expectEqual(libc_library.flavor, .UNKNOWN);
+    const lib_c = try doGetLibCLibrary(absolute_path_to_binary);
+    try testing.expectEqual(lib_c.flavor, .UNKNOWN);
 }
 
 test "doGetLibCLibrary: should identify musl libc flavor (arm64)" {
@@ -362,8 +362,8 @@ test "doGetLibCLibrary: should identify musl libc flavor (arm64)" {
     defer allocator.free(cwd_path);
     const absolute_path_to_binary = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/dotnet-app-arm64-musl" });
     defer allocator.free(absolute_path_to_binary);
-    const libc_library = try doGetLibCLibrary(absolute_path_to_binary);
-    try testing.expectEqual(libc_library.flavor, .MUSL);
+    const lib_c = try doGetLibCLibrary(absolute_path_to_binary);
+    try testing.expectEqual(lib_c.flavor, .MUSL);
 }
 
 test "doGetLibCLibrary: should identify musl libc flavor (x86_64)" {
@@ -372,8 +372,8 @@ test "doGetLibCLibrary: should identify musl libc flavor (x86_64)" {
     defer allocator.free(cwd_path);
     const absolute_path_to_binary = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/dotnet-app-x86_64-musl" });
     defer allocator.free(absolute_path_to_binary);
-    const libc_library = try doGetLibCLibrary(absolute_path_to_binary);
-    try testing.expectEqual(libc_library.flavor, .MUSL);
+    const lib_c = try doGetLibCLibrary(absolute_path_to_binary);
+    try testing.expectEqual(lib_c.flavor, .MUSL);
 }
 
 test "doGetLibCLibrary: should identify glibc libc flavor (arm64)" {
@@ -382,8 +382,8 @@ test "doGetLibCLibrary: should identify glibc libc flavor (arm64)" {
     defer allocator.free(cwd_path);
     const absolute_path_to_binary = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/dotnet-app-arm64-glibc" });
     defer allocator.free(absolute_path_to_binary);
-    const libc_library = try doGetLibCLibrary(absolute_path_to_binary);
-    try testing.expectEqual(libc_library.flavor, .GNU_LIBC);
+    const lib_c = try doGetLibCLibrary(absolute_path_to_binary);
+    try testing.expectEqual(lib_c.flavor, .GNU);
 }
 
 test "doGetLibCLibrary: should identify glibc libc flavor (x86_64)" {
@@ -392,6 +392,6 @@ test "doGetLibCLibrary: should identify glibc libc flavor (x86_64)" {
     defer allocator.free(cwd_path);
     const absolute_path_to_binary = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/dotnet-app-x86_64-glibc" });
     defer allocator.free(absolute_path_to_binary);
-    const libc_library = try doGetLibCLibrary(absolute_path_to_binary);
-    try testing.expectEqual(libc_library.flavor, .GNU_LIBC);
+    const lib_c = try doGetLibCLibrary(absolute_path_to_binary);
+    try testing.expectEqual(lib_c.flavor, .GNU);
 }
