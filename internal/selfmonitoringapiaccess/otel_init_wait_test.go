@@ -62,7 +62,7 @@ var _ = Describe("The OTel SDK starter", func() {
 			oTelSdkStarter.SetOTelSdkParameters(
 				ctx,
 				*Dash0ExportWithEndpointAndToken(),
-				ClusterUIDTest,
+				ClusterUidTest,
 				ClusterNameTest,
 				OperatorNamespace,
 				OperatorManagerDeploymentUID,
@@ -84,7 +84,7 @@ var _ = Describe("The OTel SDK starter", func() {
 			oTelSdkStarter.SetOTelSdkParameters(
 				ctx,
 				*Dash0ExportWithEndpointAndSecretRef(),
-				ClusterUIDTest,
+				ClusterUidTest,
 				ClusterNameTest,
 				OperatorNamespace,
 				OperatorManagerDeploymentUID,
@@ -101,7 +101,7 @@ var _ = Describe("The OTel SDK starter", func() {
 			oTelSdkStarter.SetOTelSdkParameters(
 				ctx,
 				*Dash0ExportWithEndpointAndSecretRef(),
-				ClusterUIDTest,
+				ClusterUidTest,
 				ClusterNameTest,
 				OperatorNamespace,
 				OperatorManagerDeploymentUID,
@@ -124,7 +124,7 @@ var _ = Describe("The OTel SDK starter", func() {
 			oTelSdkStarter.SetOTelSdkParameters(
 				ctx,
 				*Dash0ExportWithEndpointAndToken(),
-				ClusterUIDTest,
+				ClusterUidTest,
 				ClusterNameTest,
 				OperatorNamespace,
 				OperatorManagerDeploymentUID,
@@ -144,7 +144,7 @@ var _ = Describe("The OTel SDK starter", func() {
 			oTelSdkStarter.SetOTelSdkParameters(
 				ctx,
 				*Dash0ExportWithEndpointAndSecretRef(),
-				ClusterUIDTest,
+				ClusterUidTest,
 				ClusterNameTest,
 				OperatorNamespace,
 				OperatorManagerDeploymentUID,
@@ -165,7 +165,7 @@ var _ = Describe("The OTel SDK starter", func() {
 			oTelSdkStarter.SetOTelSdkParameters(
 				ctx,
 				*Dash0ExportWithEndpointAndToken(),
-				ClusterUIDTest,
+				ClusterUidTest,
 				ClusterNameTest,
 				OperatorNamespace,
 				OperatorManagerDeploymentUID,
@@ -186,7 +186,7 @@ var _ = Describe("The OTel SDK starter", func() {
 			oTelSdkStarter.SetOTelSdkParameters(
 				ctx,
 				*Dash0ExportWithEndpointAndToken(),
-				ClusterUIDTest,
+				ClusterUidTest,
 				ClusterNameTest,
 				OperatorNamespace,
 				OperatorManagerDeploymentUID,
@@ -209,7 +209,7 @@ var _ = Describe("The OTel SDK starter", func() {
 						},
 					},
 				},
-				ClusterUIDTest,
+				ClusterUidTest,
 				ClusterNameTest,
 				OperatorNamespace,
 				OperatorManagerDeploymentUID,
@@ -232,7 +232,7 @@ var _ = Describe("The OTel SDK starter", func() {
 			oTelSdkStarter.SetOTelSdkParameters(
 				ctx,
 				*Dash0ExportWithEndpointAndToken(),
-				ClusterUIDTest,
+				ClusterUidTest,
 				ClusterNameTest,
 				OperatorNamespace,
 				OperatorManagerDeploymentUID,
@@ -255,7 +255,7 @@ var _ = Describe("The OTel SDK starter", func() {
 						},
 					},
 				},
-				ClusterUIDTest,
+				ClusterUidTest,
 				ClusterNameTest,
 				OperatorNamespace,
 				OperatorManagerDeploymentUID,
@@ -297,7 +297,7 @@ var _ = Describe("The OTel SDK starter", func() {
 			oTelSdkStarter.SetOTelSdkParameters(
 				ctx,
 				*Dash0ExportWithEndpointAndToken(),
-				ClusterUIDTest,
+				ClusterUidTest,
 				ClusterNameTest,
 				OperatorNamespace,
 				OperatorManagerDeploymentUID,

@@ -95,10 +95,12 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		}
 		_ = runAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", dash0ApiMockNamespace))
 		uninstallMetricsServerIfApplicable(metricsServerHasBeenInstalled)
+
+		removeThirdPartyCrds()
+
 		if kubeContextHasBeenChanged {
 			revertKubernetesContext(originalKubeContext)
 		}
-		removeThirdPartyCrds()
 	})
 
 	BeforeEach(func() {
@@ -382,24 +384,63 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				})
 			})
 
-			Describe("synchronizing third-party resources", func() {
+			Describe("synchronizing Dash0 API resources", func() {
 				BeforeAll(func() {
 					installDash0ApiMock()
 				})
 
 				AfterEach(func() {
 					cleanupStoredApiRequests()
-					removeThirdPartyResources(applicationUnderTestNamespace)
+					removeDash0ApiSyncResources(applicationUnderTestNamespace)
 				})
 
 				AfterAll(func() {
 					uninstallDash0ApiMock()
 				})
 
+				//nolint:dupl
+				It("should synchronize synthetic check to the Dash0 API", func() {
+					deploySyntheticCheckResource(
+						applicationUnderTestNamespace,
+						dash0ApiResourceValues{},
+					)
+
+					//nolint:lll
+					routeRegex := "/api/synthetic-checks/dash0-operator_.*_default_e2e-application-under-test-namespace_synthetic-check-e2e-test\\?dataset=default"
+
+					By("verifying the synthetic check has been synchronized to the Dash0 API via PUT")
+					req := fetchCapturedApiRequest(0)
+					Expect(req.Method).To(Equal("PUT"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+					Expect(req.Body).ToNot(BeNil())
+					Expect(*req.Body).To(ContainSubstring("This is a test synthetic check."))
+
+					setOptOutLabelInSyntheticCheck(applicationUnderTestNamespace, "false")
+					By("verifying the synthetic check has been deleted via the Dash0 API (after setting dash0.com/enable=false)\"")
+					req = fetchCapturedApiRequest(1)
+					Expect(req.Method).To(Equal("DELETE"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+
+					setOptOutLabelInSyntheticCheck(applicationUnderTestNamespace, "true")
+					//nolint:lll
+					By("verifying the  synthetic check has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
+					req = fetchCapturedApiRequest(2)
+					Expect(req.Method).To(Equal("PUT"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+					Expect(*req.Body).To(ContainSubstring("This is a test synthetic check."))
+
+					removeSyntheticCheckResource(applicationUnderTestNamespace)
+					By("verifying the synthetic check has been deleted via the Dash0 API (after removing the resource)")
+					req = fetchCapturedApiRequest(3)
+					Expect(req.Method).To(Equal("DELETE"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+				})
+
+				//nolint:dupl
 				It("should synchronize Perses dashboards to the Dash0 API", func() {
 					deployPersesDashboardResource(
 						applicationUnderTestNamespace,
-						thirdPartyResourceValues{},
+						dash0ApiResourceValues{},
 					)
 
 					//nolint:lll
@@ -436,7 +477,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				It("should synchronize Prometheus rules to the Dash0 API", func() {
 					deployPrometheusRuleResource(
 						applicationUnderTestNamespace,
-						thirdPartyResourceValues{},
+						dash0ApiResourceValues{},
 					)
 
 					routeRegexes := []string{

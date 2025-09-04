@@ -1663,14 +1663,18 @@ When a Perses dashboard resource has been synchronized to Dash0, the operator wi
 synchronization operation to the status of the Dash0 monitoring resource in the same namespace. This summary will also
 show whether the dashboard had any validation issues or an error occurred during synchronization:
 ```
-Perses Dashboard Synchronization Results:
-  test-namespace/perses-dashboard-test:
-    Synchronization Status:     successful
-    Synchronized At:            2024-10-25T12:02:12Z
+Kind: Dash0Monitoring
+...
+Status:
+  Perses Dashboard Synchronization Results:
+    my-namespace/perses-dashboard-test:
+      Synchronization Status:     successful
+      Synchronized At:            2024-10-25T12:02:12Z
 ```
 
-Note: If you only want to manage dashboards and check rules via the Dash0 operator, and you do not want it to collect
-telemetry, you can set `telemetryCollection.enabled` to `false` in the Dash0 operator configuration resource.
+Note: If you only want to manage dashboards, check rules and synthetic checks via the Dash0 operator, and you do not
+want it to collect telemetry, you can set `telemetryCollection.enabled` to `false` in the Dash0 operator configuration
+resource.
 This will disable the telemetry collection by the operator, and it will also instruct the operator to not deploy the
 OpenTelemetry collector in your cluster.
 
@@ -1769,23 +1773,86 @@ When a Prometheus rules resource has been synchronized to Dash0, the operator wi
 synchronization operation to the status of the Dash0 monitoring resource in the same namespace.
 This summary will also
 show whether any of the rules had validation issues or errors occurred during synchronization:
-```
-Prometheus Rule Synchronization Results:
-  my-namespace/prometheus-example-rules:
-    Synchronization Status:        successful
-    Synchronized At:               2024-10-25T11:59:49Z
-    Alerting Rules Total:          3
-    Synchronized Rules Total:      3
-    Synchronized Rules:
-      dash0/k8s - K8s Deployment replicas mismatch
-      dash0/k8s - K8s pod crash looping
-      dash0/collector - exporter send failed spans
-    Invalid Rules Total:           0
-    Synchronization Errors Total:  0
+
+```yaml
+Kind: Dash0Monitoring
+...
+Status:
+  Prometheus Rule Synchronization Results:
+    my-namespace/prometheus-example-rules:
+      Synchronization Status:        successful
+      Synchronized At:               2024-10-25T11:59:49Z
+      Alerting Rules Total:          3
+      Synchronized Rules Total:      3
+      Synchronized Rules:
+        dash0/k8s - K8s Deployment replicas mismatch
+        dash0/k8s - K8s pod crash looping
+        dash0/collector - exporter send failed spans
+      Invalid Rules Total:           0
+      Synchronization Errors Total:  0
 ```
 
-Note: If you only want to manage dashboards and check rules via the Dash0 operator, and you do not want it to collect
-telemetry, you can set `telemetryCollection.enabled` to `false` in the Dash0 operator configuration resource.
+Note: If you only want to manage dashboards, check rules and synthetic checks via the Dash0 operator, and you do not
+want it to collect telemetry, you can set `telemetryCollection.enabled` to `false` in the Dash0 operator configuration
+resource.
+This will disable the telemetry collection by the operator, and it will also instruct the operator to not deploy the
+OpenTelemetry collector in your cluster.
+
+## Managing Dash0 Synthetic Checks
+
+You can manage your Dash0 synthetic checks via the Dash0 operator.
+
+Pre-requisites for this feature:
+* A Dash0 operator configuration resource has to be installed in the cluster.
+* The operator configuration resource must have the `apiEndpoint` property.
+* The operator configuration resource must have a Dash0 export configured with authorization
+  (either `token` or `secret-ref`).
+* The operator will only pick up synthetic check resources in namespaces that have a Dash0 monitoring resource
+  deployed.
+
+With the prerequisites in place, you can manage Dash0 synthetic checks via the operator.
+The Dash0 operator will watch for synthetic check resources in all namespaces that have a Dash0 monitoring resource
+deployed, and synchronize the synthetic check resources with the Dash0 backend:
+* When a new synthetic check resource is created, the operator will create a corresponding synthetic check via Dash0's
+  API.
+* When a synthetic check resource is changed, the operator will update the corresponding synthetic check via Dash0's
+  API.
+* When a synthetic check resource is deleted, the operator will delete the corresponding synthetic check via Dash0's
+  API.
+
+The synthetic checks created by the operator will be in read-only mode in the Dash0 UI.
+
+If the Dash0 operator configuration resource has the `dataset` property set, the operator will create the synthetic
+checks in that dataset, otherwise they will be created in the `default` dataset.
+
+You can opt out of synchronization for individual synthetic checks resources by adding the Kubernetes label
+`dash0.com/enable: false` to the synthetic check resource.
+If this label is added to a synthetic chec which has previously been synchronized to Dash0, the operator will delete the
+corresponding synthetic chec in Dash0.
+Note that the `spec.instrumentWorkloads.labelSelector` in the monitoring resource does not affect the synchronization of
+synthetic checks, the label to opt out of synchronization is always `dash0.com/enable: false`, even if a non-default
+label selector has been set in `spec.instrumentWorkloads.labelSelector`.
+
+When a synthetic check resource has been synchronized to Dash0, the operator will write a summary of that
+synchronization operation to its status.
+Note that in contrast to synchronizing Prometheus rules or Perses dashboards (which are third-party custom resources
+from the perspective of the operator, i.e. they are potentially owned and managed by another Kubernetes operator), the
+result of the synchronization operation will not be written to the status of the Dash0 monitoring resource in the same
+namespace, but to the synthetic check resource status directly.
+The status will also show whether the synthetic check had any validation issues or an error occurred during
+synchronization.
+
+```yaml
+Kind: Dash0SyntheticCheck
+...
+Status:
+  Synchronization Status: successful
+  Synchronized At:        2025-09-05T11:47:56Z
+```
+
+Note: If you only want to manage dashboards, check rules and synthetic checks via the Dash0 operator, and you do not
+want it to collect telemetry, you can set `telemetryCollection.enabled` to `false` in the Dash0 operator configuration
+resource.
 This will disable the telemetry collection by the operator, and it will also instruct the operator to not deploy the
 OpenTelemetry collector in your cluster.
 

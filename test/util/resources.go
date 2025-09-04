@@ -61,18 +61,18 @@ func Namespace(name string) *corev1.Namespace {
 	return namespace
 }
 
-func EnsureTestNamespaceExists(
-	ctx context.Context,
-	k8sClient client.Client,
-) *corev1.Namespace {
+func EnsureTestNamespaceExists(ctx context.Context, k8sClient client.Client) *corev1.Namespace {
 	return EnsureNamespaceExists(ctx, k8sClient, TestNamespaceName)
 }
 
-func EnsureOperatorNamespaceExists(
-	ctx context.Context,
-	k8sClient client.Client,
-) *corev1.Namespace {
+func EnsureOperatorNamespaceExists(ctx context.Context, k8sClient client.Client) *corev1.Namespace {
 	return EnsureNamespaceExists(ctx, k8sClient, OperatorNamespace)
+}
+
+func DeleteNamespace(ctx context.Context, k8sClient client.Client, name string) {
+	Expect(k8sClient.Delete(ctx, Namespace(name), &client.DeleteOptions{
+		GracePeriodSeconds: new(int64),
+	})).To(Succeed())
 }
 
 func EnsureNamespaceExists(

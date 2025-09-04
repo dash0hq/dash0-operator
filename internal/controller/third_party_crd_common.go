@@ -5,19 +5,13 @@ package controller
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"maps"
 	"net/http"
-	"slices"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/go-logr/logr"
-	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -40,24 +34,11 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1beta1 "github.com/dash0hq/dash0-operator/api/operator/v1beta1"
-	"github.com/dash0hq/dash0-operator/internal/resources"
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
-// TODO: possible refactoring: introduce a new type ThirdPartyResourceSynchronizer struct, create a singleton of it,
-// attach it to both third party resource reconciler and move most of the functions in this file to this new type as
-// methods. Then we could get rid of a lot of the interface methods in the ThirdPartyResourceReconciler interface.
-
-type ApiConfig struct {
-	Endpoint string
-	Dataset  string
-}
-
-type ApiClient interface {
-	SetApiEndpointAndDataset(context.Context, *ApiConfig, *logr.Logger)
-	RemoveApiEndpointAndDataset(context.Context, *logr.Logger)
-}
-
+// ThirdPartyCrdReconciler is an interface for reconcilers that act on CRDs of third-party resource types (i.e. when a
+// particular CRD is deployed to the cluster or removed).
 type ThirdPartyCrdReconciler interface {
 	handler.TypedEventHandler[client.Object, reconcile.Request]
 	reconcile.TypedReconciler[reconcile.Request]
@@ -73,28 +54,25 @@ type ThirdPartyCrdReconciler interface {
 	SetCrdExists(bool)
 	SkipNameValidation() bool
 	OperatorManagerIsLeader() bool
-	CreateResourceReconciler(types.UID, *http.Client)
-	ResourceReconciler() ThirdPartyResourceReconciler
+	CreateThirdPartyResourceReconciler(types.UID)
+	ThirdPartyResourceReconciler() ThirdPartyResourceReconciler
 }
 
+// ThirdPartyResourceReconciler extends the ApiSyncReconciler interface with methods that are specific to
+// reconcilers for third-party resource types (like Perses dashboards or Prometheus rules).
 type ThirdPartyResourceReconciler interface {
+	ApiSyncReconciler
+
 	handler.TypedEventHandler[*unstructured.Unstructured, reconcile.Request]
 	reconcile.TypedReconciler[reconcile.Request]
 
-	KindDisplayName() string
-	ShortName() string
+	IsSynchronizationEnabled(*dash0v1beta1.Dash0Monitoring) bool
 	ControllerStopFunctionLock() *sync.Mutex
 	GetControllerStopFunction() *context.CancelFunc
 	SetControllerStopFunction(*context.CancelFunc)
 	IsWatching() bool
-	GetAuthToken() string
-	GetApiConfig() *atomic.Pointer[ApiConfig]
-	ControllerName() string
-	K8sClient() client.Client
+
 	Queue() *workqueue.Typed[ThirdPartyResourceSyncJob]
-	HttpClient() *http.Client
-	GetHttpRetryDelay() time.Duration
-	IsSynchronizationEnabled(*dash0v1beta1.Dash0Monitoring) bool
 
 	// FetchExistingResourceIdsRequest creates an HTTP request for retrieving the existing IDs from the Dash0
 	// API for a given Kubernetes resource.
@@ -103,35 +81,20 @@ type ThirdPartyResourceReconciler interface {
 	// which manage objects with a one-to-one relation (like Perses dashboards) should return nil, nil.
 	FetchExistingResourceIdsRequest(*preconditionValidationResult) (*http.Request, error)
 
-	// MapResourceToHttpRequests converts a third-party resource object to a list of HTTP requests that can be sent to
-	// the Dash0 API. It returns:
-	// - the total number of eligible items in the third-party Kubernetes resource,
-	// - the request objects for which the conversion was successful,
-	// - validation issues for items that were invalid and
-	// - synchronization errors that occurred during the conversion.
-	MapResourceToHttpRequests(
-		*preconditionValidationResult,
-		apiAction,
-		*logr.Logger,
-	) (
-		int,
-		[]HttpRequestWithItemName,
-		[]string,
-		map[string][]string,
-		map[string]string,
-	)
-
-	// CreateDeleteRequests produces an HTTP DELETE requests for the third-party resources that still exist in Dash0,
-	// but should not. It does so by comparing the list of IDs of objects that exist in the Dash0 backend with the list
+	// CreateDeleteRequests produces an HTTP DELETE requests for the resources that still exist in Dash0, but should
+	// not. It does so by comparing the list of IDs of objects that exist in the Dash0 backend with the list
 	// of IDs found in a given Kubernetes resource. This mechanism is only used for resource types where one Kubernetes
 	// resource (say, a PrometheusRule) is potentially associated with multiple Dash0 api objects (multiple checks).
-	// Controllers which manage objects with a one-to-one relation (like Perses dashboards) should return nil, nil.
+	// Controllers which manage objects with a one-to-one relation (like Perses dashboards, synthetic checks, view)
+	// should return nil, nil.
 	CreateDeleteRequests(*preconditionValidationResult, []string, []string, *logr.Logger) ([]HttpRequestWithItemName, map[string]string)
 
-	UpdateSynchronizationResultsInStatus(
+	// UpdateSynchronizationResultsInDash0MonitoringStatus Modifies the status of the provided Dash0Monitoring resource
+	// to reflect the results of the synchronization operation for one third-party Kubernetes resource.
+	UpdateSynchronizationResultsInDash0MonitoringStatus(
 		monitoringResource *dash0v1beta1.Dash0Monitoring,
 		qualifiedName string,
-		status dash0common.SynchronizationStatus,
+		status dash0common.ThirdPartySynchronizationStatus,
 		itemsTotal int,
 		successfullySynchronized []string,
 		synchronizationErrorsPerItem map[string]string,
@@ -140,78 +103,33 @@ type ThirdPartyResourceReconciler interface {
 }
 
 type ThirdPartyResourceSyncJob struct {
-	resourceReconciler ThirdPartyResourceReconciler
-	thirdPartyResource *unstructured.Unstructured
-	action             apiAction
+	thirdPartyResourceReconciler ThirdPartyResourceReconciler
+	dash0ApiResource             *unstructured.Unstructured
+	action                       apiAction
 }
 
-type HttpRequestWithItemName struct {
-	ItemName string
-	Request  *http.Request
-}
-
-type Dash0ApiObjectWithId struct {
-	Id string `json:"id"`
-}
-
-type apiAction int
-
-const (
-	upsert apiAction = iota
-	delete
-)
-
-type preconditionValidationResult struct {
-	// synchronizeResource = false means no sync action whatsoever will happen for this resource, usually because a
-	// precondition for synchronizing resources is not met (no API token etc.)
-	synchronizeResource bool
-
-	// syncDisabledViaLabel = false means that the resource has the label dash0.com/enable=false set; this will turn
-	// any create/update event for the object into a delete request (for most purposes it would be enough to ignore
-	// resources with that label, but when a resource has been synchronized earlier, and then the dash0.com/enable=false
-	// is added after the fact, we need to delete the object in Dash0 to get back into a consistent state)
-	syncDisabledViaLabel bool
-
-	// thirdPartyResourceSpec is the parsed spec of the third-party resource that we are reconciling, as a map
-	thirdPartyResourceSpec map[string]interface{}
-
-	// monitoringResource is the Dash0 monitoring resource that was found in the same namespace as the third-party
-	// resource
-	monitoringResource *dash0v1beta1.Dash0Monitoring
-
-	// authToken is the Dash0 auth token that will be used to sync the third-party resource
-	authToken string
-
-	// apiEndpoint is the Dash0 API endpoint that will be used to sync the third-party resource
-	apiEndpoint string
-
-	// dataset is the Dash0 dataset into which the third-party resource will be synchronized
-	dataset string
-
-	// k8sNamespace is Kubernetes namespace in which the third-party resource has been found
-	k8sNamespace string
-
-	// k8sNamespace is Kubernetes name of the third-party resource
-	k8sName string
-}
-
+// SetupThirdPartyCrdReconcilerWithManager sets up a ThirdPartyCrdReconciler with the provided manager. It establishes
+// watches for the relevant CRD and starts/stops watching for the corresponding third-party resources as needed.
+// In particular, it
+//   - creates an ThirdPartyResourceReconciler for the respective third-party resource type,
+//   - checks if the relevant third-party CRD already exists in the cluster, and if so, calls
+//     maybeStartWatchingThirdPartyResources,
+//   - otherwise, maybeStartWatchingThirdPartyResources will be called later on different trigger points, for example
+//     when the third-party CRD is created in the cluster, or when a Dash0 API token is provided to the
+//     ThirdPartyCrdReconciler.
+//
+// See function maybeStartWatchingThirdPartyResources for further details on the startup process.
 func SetupThirdPartyCrdReconcilerWithManager(
 	ctx context.Context,
 	k8sClient client.Client,
 	crdReconciler ThirdPartyCrdReconciler,
 	logger *logr.Logger,
 ) error {
-	kubeSystemNamespace := &corev1.Namespace{}
-	if err := k8sClient.Get(ctx, client.ObjectKey{Name: "kube-system"}, kubeSystemNamespace); err != nil {
-		msg := "unable to get the kube-system namespace uid"
-		logger.Error(err, msg)
-		return fmt.Errorf("%s: %w", msg, err)
+	pseudoClusterUid, err := util.ReadPseudoClusterUidOrFail(ctx, k8sClient, logger)
+	if err != nil {
+		return err
 	}
-
-	crdReconciler.CreateResourceReconciler(
-		kubeSystemNamespace.UID,
-		&http.Client{},
-	)
+	crdReconciler.CreateThirdPartyResourceReconciler(pseudoClusterUid)
 
 	if err := k8sClient.Get(ctx, client.ObjectKey{
 		Name: crdReconciler.QualifiedKind(),
@@ -287,11 +205,20 @@ func isMatchingCrd(group string, kind string, crd client.Object) bool {
 	}
 }
 
+// maybeStartWatchingThirdPartyResources is called by a variety of triggers, for example
+// - when the third-party CRD is created in the cluster,
+// - when this operator manager replica is elected as leader,
+// - when the Dash0 API endpoint URL is provided, or
+// - when a Dash0 API token is provided.
+//
+// It then checks if all prerequisites (which are the same conditions that are listed as triggers above) for starting a
+// watch for the respective third-party resource type are fulfilled. If so, it creates and starts the reconciler for
+// the third-party resource type.
 func maybeStartWatchingThirdPartyResources(
 	crdReconciler ThirdPartyCrdReconciler,
 	logger *logr.Logger,
 ) {
-	resourceReconciler := crdReconciler.ResourceReconciler()
+	resourceReconciler := crdReconciler.ThirdPartyResourceReconciler()
 
 	resourceReconciler.ControllerStopFunctionLock().Lock()
 	defer resourceReconciler.ControllerStopFunctionLock().Unlock()
@@ -431,7 +358,7 @@ func stopWatchingThirdPartyResources(
 	ctx context.Context,
 	crdReconciler ThirdPartyCrdReconciler,
 	logger *logr.Logger) {
-	resourceReconciler := crdReconciler.ResourceReconciler()
+	resourceReconciler := crdReconciler.ThirdPartyResourceReconciler()
 	resourceReconciler.ControllerStopFunctionLock().Lock()
 	defer resourceReconciler.ControllerStopFunctionLock().Unlock()
 
@@ -468,35 +395,36 @@ func createUnstructuredGvk(crdReconciler ThirdPartyCrdReconciler) *unstructured.
 }
 
 func upsertViaApi(
-	resourceReconciler ThirdPartyResourceReconciler,
-	thirdPartyResource *unstructured.Unstructured,
+	thirdPartyResourceReconciler ThirdPartyResourceReconciler,
+	dash0ApiResource *unstructured.Unstructured,
 ) {
 	// The create/update/delete/... events we receive from K8s are sequential per resource type, that is, we only
 	// receive the next event for a Perses dashboard resource once we have processed the previous one; same for
 	// Prometheus rules. However, we might receive events for different resource types concurrently, that is, one event
-	// each for a Perses dashboard and a Prometheus rules might be processed concurrently. All third party resource
-	// synchronization attempts end with writing to the Dash0 monitoring resource status in the same namespace. These
-	// write attempts will fail if they happen concurrently. Therefore, we add all synchronization attempts to one
-	// queue that is shared across resource types, and only process them one at a time.
-	resourceReconciler.Queue().Add(
+	// each for a Perses dashboard and a Prometheus rules might be processed concurrently. All resource synchronization
+	// attempts that are related to third-party resources types (Prometheus rules, Perses dashboards) end with writing
+	// to the Dash0 monitoring resource status in the same namespace. These write attempts will fail if they happen
+	// concurrently. Therefore, we add all synchronization attempts to one queue that is shared across resource types,
+	// and only process them one at a time.
+	thirdPartyResourceReconciler.Queue().Add(
 		ThirdPartyResourceSyncJob{
-			resourceReconciler: resourceReconciler,
-			thirdPartyResource: thirdPartyResource,
-			action:             upsert,
+			thirdPartyResourceReconciler: thirdPartyResourceReconciler,
+			dash0ApiResource:             dash0ApiResource,
+			action:                       upsert,
 		},
 	)
 }
 
 func deleteViaApi(
-	resourceReconciler ThirdPartyResourceReconciler,
-	thirdPartyResource *unstructured.Unstructured,
+	thirdPartyResourceReconciler ThirdPartyResourceReconciler,
+	dash0ApiResource *unstructured.Unstructured,
 ) {
 	// See comment in upsertViaApi for an explanation why we use a shared queue for all resource types.
-	resourceReconciler.Queue().Add(
+	thirdPartyResourceReconciler.Queue().Add(
 		ThirdPartyResourceSyncJob{
-			resourceReconciler: resourceReconciler,
-			thirdPartyResource: thirdPartyResource,
-			action:             delete,
+			thirdPartyResourceReconciler: thirdPartyResourceReconciler,
+			dash0ApiResource:             dash0ApiResource,
+			action:                       delete,
 		},
 	)
 }
@@ -505,37 +433,38 @@ func StartProcessingThirdPartySynchronizationQueue(
 	resourceReconcileQueue *workqueue.Typed[ThirdPartyResourceSyncJob],
 	setupLog *logr.Logger,
 ) {
-	setupLog.Info("Starting the third-party resource synchronization queue.")
+	setupLog.Info("Starting the Dash0 API resource synchronization queue.")
 	go func() {
 		for {
 			ctx := context.Background()
 			logger := log.FromContext(ctx)
 			item, queueShutdown := resourceReconcileQueue.Get()
 			if queueShutdown {
-				logger.Info("The third-party resource synchronization queue has been shut down.")
+				logger.Info("The Dash0 API resource synchronization queue has been shut down.")
 				return
 			}
 			logger.Info(
 				fmt.Sprintf(
-					"starting to process third party resource synchronization for %s %s/%s.",
-					item.resourceReconciler.KindDisplayName(),
-					item.thirdPartyResource.GetNamespace(),
-					item.thirdPartyResource.GetName(),
+					"starting to process Dash0 API resource synchronization for %s %s/%s.",
+					item.thirdPartyResourceReconciler.KindDisplayName(),
+					item.dash0ApiResource.GetNamespace(),
+					item.dash0ApiResource.GetName(),
 				))
 
-			synchronizeViaApi(
+			synchronizeViaApiAndUpdateStatus(
 				ctx,
-				item.resourceReconciler,
-				item.thirdPartyResource,
+				item.thirdPartyResourceReconciler,
+				item.dash0ApiResource,
+				nil,
 				item.action,
 				&logger,
 			)
 			logger.Info(
 				fmt.Sprintf(
-					"finished processing third party resource synchronization for %s %s/%s.",
-					item.resourceReconciler.KindDisplayName(),
-					item.thirdPartyResource.GetNamespace(),
-					item.thirdPartyResource.GetName(),
+					"finished processing Dash0 API resource synchronization for %s %s/%s.",
+					item.thirdPartyResourceReconciler.KindDisplayName(),
+					item.dash0ApiResource.GetNamespace(),
+					item.dash0ApiResource.GetName(),
 				))
 			resourceReconcileQueue.Done(item)
 		}
@@ -546,622 +475,13 @@ func StopProcessingThirdPartySynchronizationQueue(
 	resourceReconcileQueue *workqueue.Typed[ThirdPartyResourceSyncJob],
 	logger *logr.Logger,
 ) {
-	logger.Info("Shutting down the third-party resource synchronization queue.")
+	logger.Info("Shutting down the Dash0 API resource synchronization queue.")
 	resourceReconcileQueue.ShutDown()
 }
 
-func synchronizeViaApi(
+func writeSynchronizationResultToDash0MonitoringStatus(
 	ctx context.Context,
-	resourceReconciler ThirdPartyResourceReconciler,
-	thirdPartyResource *unstructured.Unstructured,
-	action apiAction,
-	logger *logr.Logger,
-) {
-	preconditionChecksResult := validatePreconditions(
-		ctx,
-		resourceReconciler,
-		thirdPartyResource,
-		logger,
-	)
-	if !preconditionChecksResult.synchronizeResource {
-		return
-	}
-
-	if preconditionChecksResult.syncDisabledViaLabel {
-		// The resource has the label dash0.com/enable=false set; thus we override the API action unconditionally with
-		// delete, that is, we ask MapResourceToHttpRequests to create HTTP DELETE requests. For most purposes it would
-		// be enough to ignore resources with that label entirely and issue no HTTP requests, but when a resource has
-		// been synchronized earlier, and then the dash0.com/enable=false is added after the fact, we need to delete the
-		// object in Dash0 to get back into a consistent state)
-		action = delete
-	}
-
-	var existingIdsFromApi []string
-	if action != delete {
-		var err error
-		existingIdsFromApi, err = fetchExistingIds(resourceReconciler, preconditionChecksResult, logger)
-		if err != nil {
-			// the error has already been logged in fetchExistingIds, but we need to record the failure in the status of
-			// the monitoring resource
-			writeSynchronizationResult(
-				ctx,
-				resourceReconciler,
-				preconditionChecksResult.monitoringResource,
-				thirdPartyResource,
-				0,
-				[]string{},
-				map[string][]string{},
-				map[string]string{"*": err.Error()},
-				logger,
-			)
-			return
-		}
-	}
-
-	itemsTotal, httpRequests, idsInResource, validationIssues, synchronizationErrors :=
-		resourceReconciler.MapResourceToHttpRequests(preconditionChecksResult, action, logger)
-	if action != delete {
-		itemsTotal, httpRequests = addDeleteRequestsForObjectsThatHaveBeenDeletedInTheKubernetesResource(
-			resourceReconciler,
-			preconditionChecksResult,
-			existingIdsFromApi,
-			idsInResource,
-			httpRequests,
-			itemsTotal,
-			synchronizationErrors,
-			logger,
-		)
-	}
-	if len(httpRequests) == 0 && len(validationIssues) == 0 && len(synchronizationErrors) == 0 {
-		logger.Info(
-			fmt.Sprintf(
-				"%s %s/%s did not contain any %s, skipping.",
-				resourceReconciler.KindDisplayName(),
-				thirdPartyResource.GetNamespace(),
-				thirdPartyResource.GetName(),
-				resourceReconciler.ShortName(),
-			))
-	}
-
-	var successfullySynchronized []string
-	var httpErrors map[string]string
-	if len(httpRequests) > 0 {
-		successfullySynchronized, httpErrors =
-			executeAllHttpRequests(resourceReconciler, httpRequests, logger)
-	}
-	if len(httpErrors) > 0 {
-		if synchronizationErrors == nil {
-			synchronizationErrors = make(map[string]string)
-		}
-		// In theory, the following map merge could overwrite synchronization errors from the MapResourceToHttpRequests
-		// stage with errors occurring in executeAllHttpRequests, but items that have an error in
-		// MapResourceToHttpRequests are never converted to requests, so the two maps are disjoint.
-		maps.Copy(synchronizationErrors, httpErrors)
-	}
-	if len(validationIssues) == 0 && len(synchronizationErrors) == 0 {
-		logger.Info(
-			fmt.Sprintf("%s %s/%s: %d %s(s), %d successfully synchronized",
-				resourceReconciler.KindDisplayName(),
-				thirdPartyResource.GetNamespace(),
-				thirdPartyResource.GetName(),
-				itemsTotal,
-				resourceReconciler.ShortName(),
-				len(successfullySynchronized),
-			))
-	} else {
-		logger.Error(
-			fmt.Errorf("validation issues and/or synchronization issues occurred"),
-			fmt.Sprintf("%s %s/%s: %d %s(s), %d successfully synchronized, validation issues: %v, synchronization errors: %v",
-				resourceReconciler.KindDisplayName(),
-				thirdPartyResource.GetNamespace(),
-				thirdPartyResource.GetName(),
-				itemsTotal,
-				resourceReconciler.ShortName(),
-				len(successfullySynchronized),
-				validationIssues,
-				synchronizationErrors,
-			))
-	}
-	writeSynchronizationResult(
-		ctx,
-		resourceReconciler,
-		preconditionChecksResult.monitoringResource,
-		thirdPartyResource,
-		itemsTotal,
-		successfullySynchronized,
-		validationIssues,
-		synchronizationErrors,
-		logger,
-	)
-}
-
-func validatePreconditions(
-	ctx context.Context,
-	resourceReconciler ThirdPartyResourceReconciler,
-	thirdPartyResource *unstructured.Unstructured,
-	logger *logr.Logger,
-) *preconditionValidationResult {
-	namespace := thirdPartyResource.GetNamespace()
-	name := thirdPartyResource.GetName()
-
-	monitoringRes, err := resources.FindUniqueOrMostRecentResourceInScope(
-		ctx,
-		resourceReconciler.K8sClient(),
-		thirdPartyResource.GetNamespace(),
-		&dash0v1beta1.Dash0Monitoring{},
-		logger,
-	)
-	if err != nil {
-		logger.Error(err,
-			fmt.Sprintf(
-				"An error occurred when looking up the Dash0 monitoring resource in namespace %s while trying to synchronize the %s resource %s.",
-				namespace,
-				resourceReconciler.KindDisplayName(),
-				name,
-			))
-		return &preconditionValidationResult{
-			synchronizeResource: false,
-		}
-	}
-	if monitoringRes == nil {
-		logger.Info(
-			fmt.Sprintf(
-				"There is no Dash0 monitoring resource in namespace %s, will not synchronize the %s resource %s.",
-				namespace,
-				resourceReconciler.KindDisplayName(),
-				name,
-			))
-		return &preconditionValidationResult{
-			synchronizeResource: false,
-		}
-	}
-	monitoringResource := monitoringRes.(*dash0v1beta1.Dash0Monitoring)
-
-	if !resourceReconciler.IsSynchronizationEnabled(monitoringResource) {
-		logger.Info(
-			fmt.Sprintf(
-				"Synchronization for %ss is disabled via the settings of the Dash0 monitoring resource in namespace %s, will not synchronize the %s resource %s.",
-				resourceReconciler.KindDisplayName(),
-				namespace,
-				resourceReconciler.ShortName(),
-				name,
-			))
-		return &preconditionValidationResult{
-			synchronizeResource: false,
-		}
-	}
-
-	apiConfig := resourceReconciler.GetApiConfig().Load()
-	authToken := resourceReconciler.GetAuthToken()
-	if !isValidApiConfig(apiConfig) {
-		logger.Info(
-			fmt.Sprintf(
-				"No Dash0 API endpoint has been provided via the operator configuration resource, "+
-					"the %s(s) from %s/%s will not be updated in Dash0.",
-				resourceReconciler.ShortName(),
-				namespace,
-				name,
-			))
-		return &preconditionValidationResult{
-			synchronizeResource: false,
-		}
-	}
-	if authToken == "" {
-		logger.Info(
-			fmt.Sprintf(
-				"No Dash0 auth token is available, the %s(s) from %s/%s will not be updated in Dash0.",
-				resourceReconciler.ShortName(),
-				namespace,
-				name,
-			))
-		return &preconditionValidationResult{
-			synchronizeResource: false,
-		}
-	}
-
-	dataset := apiConfig.Dataset
-	if dataset == "" {
-		dataset = util.DatasetDefault
-	}
-
-	thirdPartyResourceObject := thirdPartyResource.Object
-	if thirdPartyResourceObject == nil {
-		logger.Info(
-			fmt.Sprintf(
-				"The \"Object\" property in the event for %s in %s/%s is absent or empty, the %s(s) will not be updated in Dash0.",
-				resourceReconciler.KindDisplayName(),
-				namespace,
-				name,
-				resourceReconciler.ShortName(),
-			))
-		return &preconditionValidationResult{
-			synchronizeResource: false,
-		}
-	}
-
-	syncDisabledViaLabel := isSyncDisabledViaLabel(thirdPartyResourceObject)
-
-	specRaw := thirdPartyResourceObject["spec"]
-	if specRaw == nil {
-		logger.Info(
-			fmt.Sprintf(
-				"%s %s/%s has no spec, the %s(s) from will not be updated in Dash0.",
-				resourceReconciler.KindDisplayName(),
-				namespace,
-				name,
-				resourceReconciler.ShortName(),
-			))
-		return &preconditionValidationResult{
-			synchronizeResource: false,
-		}
-	}
-	spec, ok := specRaw.(map[string]interface{})
-	if !ok {
-		logger.Info(
-			fmt.Sprintf(
-				"The %s spec in %s/%s is not a map, the %s(s) will not be updated in Dash0.",
-				resourceReconciler.KindDisplayName(),
-				namespace,
-				name,
-				resourceReconciler.ShortName(),
-			))
-		return &preconditionValidationResult{
-			synchronizeResource: false,
-		}
-	}
-
-	apiEndpoint := apiConfig.Endpoint
-	if !strings.HasSuffix(apiEndpoint, "/") {
-		apiEndpoint += "/"
-	}
-
-	return &preconditionValidationResult{
-		synchronizeResource:    true,
-		syncDisabledViaLabel:   syncDisabledViaLabel,
-		thirdPartyResourceSpec: spec,
-		monitoringResource:     monitoringResource,
-		authToken:              authToken,
-		apiEndpoint:            apiEndpoint,
-		dataset:                dataset,
-		k8sNamespace:           namespace,
-		k8sName:                name,
-	}
-}
-
-func isSyncDisabledViaLabel(thirdPartyResourceObject map[string]interface{}) bool {
-	if metadataRaw := thirdPartyResourceObject["metadata"]; metadataRaw != nil {
-		if metadata, ok := metadataRaw.(map[string]interface{}); ok {
-			if labelsRaw := metadata["labels"]; labelsRaw != nil {
-				if labels, ok := labelsRaw.(map[string]interface{}); ok {
-					if dash0Enable := labels["dash0.com/enable"]; dash0Enable == "false" {
-						return true
-					}
-				}
-			}
-		}
-	}
-	return false
-}
-
-func fetchExistingIds(
-	resourceReconciler ThirdPartyResourceReconciler,
-	preconditionChecksResult *preconditionValidationResult,
-	logger *logr.Logger,
-) ([]string, error) {
-	if fetchExistingIdsRequest, err :=
-		resourceReconciler.FetchExistingResourceIdsRequest(preconditionChecksResult); err != nil {
-		logger.Error(err, "cannot create request to fetch existing IDs")
-		return nil, err
-	} else if fetchExistingIdsRequest != nil {
-		if responseBytes, err := executeSingleHttpRequestWithRetryAndReadBody(
-			resourceReconciler,
-			fetchExistingIdsRequest,
-			logger,
-		); err != nil {
-			logger.Error(err, "cannot fetch existing IDs")
-			return nil, err
-		} else {
-			objectsWithId := make([]Dash0ApiObjectWithId, 0)
-			if err = json.Unmarshal(responseBytes, &objectsWithId); err != nil {
-				logger.Error(
-					err,
-					"cannot parse response after querying existing IDs",
-					"response",
-					string(responseBytes),
-				)
-				return nil, err
-			}
-			existingIdsWithMatchingPrefix := make([]string, 0, len(objectsWithId))
-			for _, objWithId := range objectsWithId {
-				if objWithId.Id != "" {
-					existingIdsWithMatchingPrefix = append(existingIdsWithMatchingPrefix, objWithId.Id)
-				}
-			}
-			return existingIdsWithMatchingPrefix, nil
-		}
-	} else {
-		// this resource reconciler does not support fetching existing IDs
-		return nil, nil
-	}
-}
-
-func addDeleteRequestsForObjectsThatHaveBeenDeletedInTheKubernetesResource(
-	resourceReconciler ThirdPartyResourceReconciler,
-	preconditionChecksResult *preconditionValidationResult,
-	existingIdsFromApi []string,
-	idsInResource []string,
-	httpRequests []HttpRequestWithItemName,
-	itemsTotal int,
-	synchronizationErrors map[string]string,
-	logger *logr.Logger,
-) (int, []HttpRequestWithItemName) {
-	deleteHttpRequests, deleteSynchronizationErrors := resourceReconciler.CreateDeleteRequests(
-		preconditionChecksResult,
-		existingIdsFromApi,
-		idsInResource,
-		logger,
-	)
-	itemsTotal += len(deleteHttpRequests)
-	maps.Copy(synchronizationErrors, deleteSynchronizationErrors)
-	httpRequests = slices.Concat(httpRequests, deleteHttpRequests)
-	return itemsTotal, httpRequests
-}
-
-func addAuthorizationHeader(req *http.Request, preconditionChecksResult *preconditionValidationResult) {
-	req.Header.Set(util.AuthorizationHeaderName, util.RenderAuthorizationHeader(preconditionChecksResult.authToken))
-}
-
-// executeAllHttpRequests executes all HTTP requests in the given list and returns the names of the items that were
-// successfully synchronized, as well as a map of name to error message for items that were rejected by the Dash0 API.
-func executeAllHttpRequests(
-	resourceReconciler ThirdPartyResourceReconciler,
-	allRequests []HttpRequestWithItemName,
-	logger *logr.Logger,
-) ([]string, map[string]string) {
-	successfullySynchronized := make([]string, 0)
-	httpErrors := make(map[string]string)
-	for _, req := range allRequests {
-		if err := executeSingleHttpRequestWithRetryAndDiscardBody(resourceReconciler, &req, logger); err != nil {
-			httpErrors[req.ItemName] = err.Error()
-		} else {
-			successfullySynchronized = append(successfullySynchronized, req.ItemName)
-		}
-	}
-	if len(successfullySynchronized) == 0 {
-		successfullySynchronized = nil
-	}
-	return successfullySynchronized, httpErrors
-}
-
-func executeSingleHttpRequestWithRetryAndDiscardBody(
-	resourceReconciler ThirdPartyResourceReconciler,
-	req *HttpRequestWithItemName,
-	logger *logr.Logger,
-) error {
-	logger.Info(
-		fmt.Sprintf(
-			"synchronizing %s \"%s\": %s %s in Dash0",
-			resourceReconciler.ShortName(),
-			req.ItemName,
-			req.Request.Method,
-			req.Request.URL.String(),
-		))
-
-	return util.RetryWithCustomBackoff(
-		fmt.Sprintf("http request to %s", req.Request.URL.String()),
-		func() error {
-			return executeSingleHttpRequestAndDiscardBody(
-				resourceReconciler,
-				req,
-				logger,
-			)
-		},
-		wait.Backoff{
-			Steps:    3,
-			Duration: resourceReconciler.GetHttpRetryDelay(),
-			Factor:   1.5,
-		},
-		true,
-		logger,
-	)
-}
-
-func executeSingleHttpRequestAndDiscardBody(
-	resourceReconciler ThirdPartyResourceReconciler,
-	req *HttpRequestWithItemName,
-	logger *logr.Logger,
-) error {
-	res, err := resourceReconciler.HttpClient().Do(req.Request)
-	if err != nil {
-		logger.Error(err,
-			fmt.Sprintf(
-				"unable to execute the HTTP request to synchronize the %s \"%s\": %s %s",
-				resourceReconciler.ShortName(),
-				req.ItemName,
-				req.Request.Method,
-				req.Request.URL.String(),
-			))
-		return util.NewRetryableErrorWithFlag(err, true)
-	}
-
-	isUnexpectedStatusCode := res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices
-	if req.Request.Method == http.MethodDelete {
-		isUnexpectedStatusCode = res.StatusCode != http.StatusNotFound && isUnexpectedStatusCode
-	}
-	if isUnexpectedStatusCode {
-		// HTTP status is not 2xx, treat this as an error
-		// convertNon2xxStatusCodeToError will also consume and close the response body
-		err = convertNon2xxStatusCodeToError(resourceReconciler, req, res)
-		retryableStatusCodeError := util.NewRetryableError(err)
-
-		if res.StatusCode >= http.StatusBadRequest && res.StatusCode < http.StatusInternalServerError {
-			// HTTP 4xx status codes are not retryable
-			retryableStatusCodeError.SetRetryable(false)
-			logger.Error(err, "unexpected status code")
-			return retryableStatusCodeError
-		} else {
-			// everything else, in particular HTTP 5xx status codes can be retried
-			retryableStatusCodeError.SetRetryable(true)
-			logger.Error(err, "unexpected status code, request might be retried")
-			return retryableStatusCodeError
-		}
-	}
-
-	// HTTP status code was 2xx, discard the response body and close it
-	defer func() {
-		_, _ = io.Copy(io.Discard, res.Body)
-		_ = res.Body.Close()
-	}()
-	return nil
-}
-
-func executeSingleHttpRequestWithRetryAndReadBody(
-	resourceReconciler ThirdPartyResourceReconciler,
-	req *http.Request,
-	logger *logr.Logger,
-) ([]byte, error) {
-	logger.Info(
-		fmt.Sprintf(
-			"executing request to %s (%s)",
-			req.URL.String(),
-			resourceReconciler.ShortName(),
-		))
-
-	responseBody := &[]byte{}
-	if err := util.RetryWithCustomBackoff(
-		fmt.Sprintf("http request to %s", req.URL.String()),
-		func() error {
-			return executeSingleHttpRequestAndReturnBody(
-				resourceReconciler,
-				req,
-				responseBody,
-				logger,
-			)
-		},
-		wait.Backoff{
-			Steps:    3,
-			Duration: resourceReconciler.GetHttpRetryDelay(),
-			Factor:   1.5,
-		},
-		true,
-		logger,
-	); err != nil {
-		return nil, err
-	} else if responseBody != nil && len(*responseBody) > 0 {
-		return *responseBody, nil
-	} else {
-		return nil, fmt.Errorf("unexpected nil/empty response body")
-	}
-}
-
-func executeSingleHttpRequestAndReturnBody(
-	resourceReconciler ThirdPartyResourceReconciler,
-	req *http.Request,
-	responseBody *[]byte,
-	logger *logr.Logger,
-) error {
-	res, err := resourceReconciler.HttpClient().Do(req)
-	if err != nil {
-		logger.Error(err,
-			fmt.Sprintf(
-				"unable to execute the HTTP request for %s at %s",
-				resourceReconciler.ShortName(),
-				req.URL.String(),
-			))
-		return util.NewRetryableErrorWithFlag(err, true)
-	}
-
-	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
-		// HTTP status is not 2xx, treat this as an error
-		defer func() {
-			_ = res.Body.Close()
-		}()
-		errorResponseBody, readErr := io.ReadAll(res.Body)
-		if readErr != nil {
-			readBodyErr := fmt.Errorf("unable to read the API response payload after receiving status code %d "+
-				"when executing the HTTP request for %s at %s",
-				res.StatusCode,
-				resourceReconciler.ShortName(),
-				req.URL.String(),
-			)
-			return readBodyErr
-		}
-		statusCodeErr := fmt.Errorf(
-			"unexpected status code %d when executing the HTTP request for %s at %s, response body is %s",
-			res.StatusCode,
-			resourceReconciler.ShortName(),
-			req.URL.String(),
-			string(errorResponseBody),
-		)
-		retryableStatusCodeError := util.NewRetryableError(statusCodeErr)
-		if res.StatusCode >= http.StatusBadRequest && res.StatusCode < http.StatusInternalServerError {
-			// HTTP 4xx status codes are not retryable
-			retryableStatusCodeError.SetRetryable(false)
-			logger.Error(err, "unexpected status code")
-			return retryableStatusCodeError
-		} else {
-			// everything else, in particular HTTP 5xx status codes can be retried
-			retryableStatusCodeError.SetRetryable(true)
-			logger.Error(err, "unexpected status code, request might be retried")
-			return retryableStatusCodeError
-		}
-	}
-
-	// HTTP status code was 2xx, read the response body and return it
-	defer func() {
-		_ = res.Body.Close()
-	}()
-
-	if responseBytes, err := io.ReadAll(res.Body); err != nil {
-		logger.Error(err,
-			fmt.Sprintf(
-				"unable to execute the HTTP request for %s at %s",
-				resourceReconciler.ShortName(),
-				req.URL.String(),
-			))
-		return util.NewRetryableErrorWithFlag(err, true)
-	} else {
-		*responseBody = responseBytes
-	}
-	return nil
-}
-
-func convertNon2xxStatusCodeToError(
-	resourceReconciler ThirdPartyResourceReconciler,
-	req *HttpRequestWithItemName,
-	res *http.Response,
-) error {
-	defer func() {
-		_ = res.Body.Close()
-	}()
-	responseBody, readErr := io.ReadAll(res.Body)
-	if readErr != nil {
-		readBodyErr := fmt.Errorf("unable to read the API response payload after receiving status code %d when "+
-			"trying to synchronizing the %s \"%s\": %s %s",
-			res.StatusCode,
-			resourceReconciler.ShortName(),
-			req.ItemName,
-			req.Request.Method,
-			req.Request.URL.String(),
-		)
-		return readBodyErr
-	}
-
-	statusCodeErr := fmt.Errorf(
-		"unexpected status code %d when synchronizing the %s \"%s\": %s %s, response body is %s",
-		res.StatusCode,
-		resourceReconciler.ShortName(),
-		req.ItemName,
-		req.Request.Method,
-		req.Request.URL.String(),
-		string(responseBody),
-	)
-	return statusCodeErr
-}
-
-func writeSynchronizationResult(
-	ctx context.Context,
-	resourceReconciler ThirdPartyResourceReconciler,
+	thirdPartyResourceReconciler ThirdPartyResourceReconciler,
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	thirdPartyResource *unstructured.Unstructured,
 	itemsTotal int,
@@ -1172,11 +492,11 @@ func writeSynchronizationResult(
 ) {
 	qualifiedName := fmt.Sprintf("%s/%s", thirdPartyResource.GetNamespace(), thirdPartyResource.GetName())
 
-	result := dash0common.Failed
+	result := dash0common.ThirdPartySynchronizationStatusFailed
 	if len(successfullySynchronized) > 0 && len(validationIssuesPerItem) == 0 && len(synchronizationErrorsPerItem) == 0 {
-		result = dash0common.Successful
+		result = dash0common.ThirdPartySynchronizationStatusSuccessful
 	} else if len(successfullySynchronized) > 0 {
-		result = dash0common.PartiallySuccessful
+		result = dash0common.ThirdPartySynchronizationStatusPartiallySuccessful
 	}
 
 	errAfterRetry := retry.OnError(
@@ -1191,7 +511,7 @@ func writeSynchronizationResult(
 		func() error {
 			// re-fetch monitoring resource in case it has been modified since the start of the synchronization
 			// operation
-			if err := resourceReconciler.K8sClient().Get(
+			if err := thirdPartyResourceReconciler.K8sClient().Get(
 				ctx,
 				types.NamespacedName{
 					Namespace: monitoringResource.GetNamespace(),
@@ -1205,7 +525,7 @@ func writeSynchronizationResult(
 						"fetch error: %v",
 						monitoringResource.GetNamespace(),
 						monitoringResource.GetName(),
-						resourceReconciler.ShortName(),
+						thirdPartyResourceReconciler.ShortName(),
 						qualifiedName,
 						itemsTotal,
 						successfullySynchronized,
@@ -1215,7 +535,7 @@ func writeSynchronizationResult(
 					))
 				return err
 			}
-			resultForThisResource := resourceReconciler.UpdateSynchronizationResultsInStatus(
+			resultForThisResource := thirdPartyResourceReconciler.UpdateSynchronizationResultsInDash0MonitoringStatus(
 				monitoringResource,
 				qualifiedName,
 				result,
@@ -1224,13 +544,13 @@ func writeSynchronizationResult(
 				synchronizationErrorsPerItem,
 				validationIssuesPerItem,
 			)
-			if err := resourceReconciler.K8sClient().Status().Update(ctx, monitoringResource); err != nil {
+			if err := thirdPartyResourceReconciler.K8sClient().Status().Update(ctx, monitoringResource); err != nil {
 				logger.Info(
 					fmt.Sprintf("failed attempt (might be retried) to update the Dash0 monitoring resource "+
 						"%s/%s with the synchronization results for %s \"%s\": %v; update error: %v",
 						monitoringResource.GetNamespace(),
 						monitoringResource.GetName(),
-						resourceReconciler.ShortName(),
+						thirdPartyResourceReconciler.ShortName(),
 						qualifiedName,
 						resultForThisResource,
 						err,
@@ -1243,7 +563,7 @@ func writeSynchronizationResult(
 					"results for %s \"%s\": %v",
 					monitoringResource.GetNamespace(),
 					monitoringResource.GetName(),
-					resourceReconciler.ShortName(),
+					thirdPartyResourceReconciler.ShortName(),
 					qualifiedName,
 					resultForThisResource,
 				))
@@ -1258,7 +578,7 @@ func writeSynchronizationResult(
 				"issues: %v, synchronization errors: %v",
 				monitoringResource.GetNamespace(),
 				monitoringResource.GetName(),
-				resourceReconciler.ShortName(),
+				thirdPartyResourceReconciler.ShortName(),
 				qualifiedName,
 				itemsTotal,
 				successfullySynchronized,

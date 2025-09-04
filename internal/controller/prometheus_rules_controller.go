@@ -42,6 +42,7 @@ type PrometheusRuleCrdReconciler struct {
 	queue                    *workqueue.Typed[ThirdPartyResourceSyncJob]
 	leaderElectionAware      util.LeaderElectionAware
 	mgr                      ctrl.Manager
+	httpClient               *http.Client
 	skipNameValidation       bool
 	prometheusRuleReconciler *PrometheusRuleReconciler
 	prometheusRuleCrdExists  atomic.Bool
@@ -49,7 +50,7 @@ type PrometheusRuleCrdReconciler struct {
 
 type PrometheusRuleReconciler struct {
 	client.Client
-	pseudoClusterUID           types.UID
+	pseudoClusterUid           types.UID
 	queue                      *workqueue.Typed[ThirdPartyResourceSyncJob]
 	httpClient                 *http.Client
 	apiConfig                  atomic.Pointer[ApiConfig]
@@ -90,11 +91,13 @@ func NewPrometheusRuleCrdReconciler(
 	k8sClient client.Client,
 	queue *workqueue.Typed[ThirdPartyResourceSyncJob],
 	leaderElectionAware util.LeaderElectionAware,
+	httpClient *http.Client,
 ) *PrometheusRuleCrdReconciler {
 	return &PrometheusRuleCrdReconciler{
 		Client:              k8sClient,
 		queue:               queue,
 		leaderElectionAware: leaderElectionAware,
+		httpClient:          httpClient,
 	}
 }
 
@@ -142,20 +145,17 @@ func (r *PrometheusRuleCrdReconciler) OperatorManagerIsLeader() bool {
 	return r.leaderElectionAware.IsLeader()
 }
 
-func (r *PrometheusRuleCrdReconciler) CreateResourceReconciler(
-	pseudoClusterUID types.UID,
-	httpClient *http.Client,
-) {
+func (r *PrometheusRuleCrdReconciler) CreateThirdPartyResourceReconciler(pseudoClusterUid types.UID) {
 	r.prometheusRuleReconciler = &PrometheusRuleReconciler{
 		Client:           r.Client,
 		queue:            r.queue,
-		pseudoClusterUID: pseudoClusterUID,
-		httpClient:       httpClient,
+		pseudoClusterUid: pseudoClusterUid,
+		httpClient:       r.httpClient,
 		httpRetryDelay:   1 * time.Second,
 	}
 }
 
-func (r *PrometheusRuleCrdReconciler) ResourceReconciler() ThirdPartyResourceReconciler {
+func (r *PrometheusRuleCrdReconciler) ThirdPartyResourceReconciler() ThirdPartyResourceReconciler {
 	return r.prometheusRuleReconciler
 }
 
@@ -473,7 +473,7 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 	action apiAction,
 	logger *logr.Logger,
 ) (int, []HttpRequestWithItemName, []string, map[string][]string, map[string]string) {
-	specRaw := preconditionChecksResult.thirdPartyResourceSpec
+	specRaw := preconditionChecksResult.dash0ApiResourceSpec
 	specAsYaml, err := yaml.Marshal(specRaw)
 	if err != nil {
 		logger.Error(err, "unable to marshal the Prometheus rule spec")
@@ -602,7 +602,7 @@ func (r *PrometheusRuleReconciler) renderCheckRuleIdPrefix(
 		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
 		// any potential naming collisions (e.g. namespace="abc" & name="def-ghi" vs. namespace="abc-def" & name="ghi").
 		"dash0-operator_%s_%s_%s_%s_",
-		r.pseudoClusterUID,
+		r.pseudoClusterUid,
 		dataset,
 		preconditionChecksResult.k8sNamespace,
 		preconditionChecksResult.k8sName,
@@ -864,10 +864,10 @@ func (r *PrometheusRuleReconciler) CreateDeleteRequests(
 	return deleteRequests, allSynchronizationErrors
 }
 
-func (r *PrometheusRuleReconciler) UpdateSynchronizationResultsInStatus(
+func (_ *PrometheusRuleReconciler) UpdateSynchronizationResultsInDash0MonitoringStatus(
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	qualifiedName string,
-	status dash0common.SynchronizationStatus,
+	status dash0common.ThirdPartySynchronizationStatus,
 	itemsTotal int,
 	successfullySynchronized []string,
 	synchronizationErrorsPerItem map[string]string,

@@ -635,7 +635,7 @@ spec:
                       type: string
                     synchronizationStatus:
                       description: |-
-                        SynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
+                        ThirdPartySynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
                         dashboard, Prometheus rule) to the Dash0 API.
                       enum:
                       - successful
@@ -685,7 +685,7 @@ spec:
                       type: integer
                     synchronizationStatus:
                       description: |-
-                        SynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
+                        ThirdPartySynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
                         dashboard, Prometheus rule) to the Dash0 API.
                       enum:
                       - successful
@@ -1401,7 +1401,7 @@ spec:
                       type: string
                     synchronizationStatus:
                       description: |-
-                        SynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
+                        ThirdPartySynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
                         dashboard, Prometheus rule) to the Dash0 API.
                       enum:
                       - successful
@@ -1552,7 +1552,7 @@ spec:
                       type: integer
                     synchronizationStatus:
                       description: |-
-                        SynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
+                        ThirdPartySynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
                         dashboard, Prometheus rule) to the Dash0 API.
                       enum:
                       - successful

@@ -196,8 +196,8 @@ If you want to report telemetry to a Dash0 backend, set `DASH0_AUTHORIZATION_TOK
     * `COLLECT_POD_LABELS_AND_ANNOTATIONS_ENABLED`: Set this to "false" to disable collecting pod labels and annotations
       as resource attributes.
       This defaults to `$TELEMETRY_COLLECTION_ENABLED`, which in turn defaults to "true".
-    * `DASH0_API_ENDPOINT`: The endpoint for API requests (for synching Perses dashboards and Prometheus check rules.
-      It is recommended to set this in `test-resources/.env`.
+    * `DASH0_API_ENDPOINT`: The endpoint for API requests (for synchronizing Perses dashboards, Prometheus check rules,
+      synthetic checks and views). It is recommended to set this in `test-resources/.env`.
     * `DASH0_AUTHORIZATION_TOKEN`: The authorization token for sending telemetry to the Dash0 ingress endpoint and
       making API requests to the Dash0 API endpoint.
       It is recommended to set this in `test-resources/.env`.
@@ -211,11 +211,14 @@ If you want to report telemetry to a Dash0 backend, set `DASH0_AUTHORIZATION_TOK
     * `DEPLOY_OPERATOR_CONFIGURATION_VIA_HELM`: Omit the Helm settings to have the operator's Helm chart deploy the
       Dash0 operator configuration resource (aka auto configuration resource) automatically at operator manager startup.
       This is assumed to be "true" by default.
-    * `DEPLOY_PERSES_DASHBOARD`: Set to "true" to deploy Perses dashboard resource that will be synched to Dash0 via the
-      Dash0 API.
+    * `DEPLOY_PERSES_DASHBOARD`: Set to "true" to deploy a Perses dashboard resource that will be synchronized to Dash0
+      via the Dash0 API.
       This defaults to "false".
-    * `DEPLOY_PROMETHEUS_RULE`: Set to "true" to deploy Prometheus rule resource that will be synched to Dash0 via the
-      Dash0 API.
+    * `DEPLOY_PROMETHEUS_RULE`: Set to "true" to deploy Prometheus rule resource that will be synchronized to Dash0 via
+      the Dash0 API.
+      This defaults to "false".
+    * `DEPLOY_SYNTHETIC_CHECK`: Set to "true" to deploy a synthetic check resource that will be synchronized to Dash0
+      via the Dash0 API.
       This defaults to "false".
     * `FILELOG_OFFSETS_PVC`: Use a persistent volume claim to store filelog offsets, instead of the default config map
       based storage.

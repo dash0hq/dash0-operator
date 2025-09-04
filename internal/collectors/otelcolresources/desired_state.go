@@ -14,6 +14,7 @@ import (
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -40,7 +41,7 @@ type oTelColConfig struct {
 	KubeletStatsReceiverConfig                       KubeletStatsReceiverConfig
 	UseHostMetricsReceiver                           bool
 	DisableHostPorts                                 bool
-	PseudoClusterUID                                 string
+	PseudoClusterUid                                 types.UID
 	ClusterName                                      string
 	Images                                           util.Images
 	IsIPv6Cluster                                    bool
@@ -730,7 +731,7 @@ func assembleFileLogOffsetSyncContainer(
 			},
 			{
 				Name:  "K8S_CLUSTER_UID",
-				Value: config.PseudoClusterUID,
+				Value: string(config.PseudoClusterUid),
 			},
 			{
 				Name:  "K8S_CLUSTER_NAME",
@@ -1006,7 +1007,7 @@ func assembleConfigurationReloaderContainer(
 			},
 			{
 				Name:  "K8S_CLUSTER_UID",
-				Value: config.PseudoClusterUID,
+				Value: string(config.PseudoClusterUid),
 			},
 			{
 				Name:  "K8S_CLUSTER_NAME",
@@ -1066,7 +1067,7 @@ func assembleFileLogOffsetSyncInitContainer(
 			},
 			{
 				Name:  "K8S_CLUSTER_UID",
-				Value: config.PseudoClusterUID,
+				Value: string(config.PseudoClusterUid),
 			},
 			{
 				Name:  "K8S_CLUSTER_NAME",

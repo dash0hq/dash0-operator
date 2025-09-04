@@ -38,7 +38,7 @@ import (
 var (
 	prometheusRuleCrd        *apiextensionsv1.CustomResourceDefinition
 	testQueuePrometheusRules = workqueue.NewTypedWithConfig(workqueue.TypedQueueConfig[ThirdPartyResourceSyncJob]{
-		Name: "dash0-third-party-resource-reconcile-queue",
+		Name: "dash0-third-party-resource-synchronization-queue",
 	})
 
 	checkRuleApiBasePath = "/api/alerting/check-rules/"
@@ -49,7 +49,7 @@ var (
 	}
 
 	defaultExpectedPrometheusSyncResult = dash0common.PrometheusRuleSynchronizationResult{
-		SynchronizationStatus:  dash0common.Successful,
+		SynchronizationStatus:  dash0common.ThirdPartySynchronizationStatusSuccessful,
 		AlertingRulesTotal:     4,
 		SynchronizedRulesTotal: 4,
 		SynchronizedRules: []string{
@@ -73,7 +73,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 	BeforeAll(func() {
 		EnsureTestNamespaceExists(ctx, k8sClient)
 		EnsureOperatorNamespaceExists(ctx, k8sClient)
-		clusterId = util.ReadPseudoClusterUID(ctx, k8sClient, &logger)
+		clusterId = string(util.ReadPseudoClusterUid(ctx, k8sClient, &logger))
 	})
 
 	Describe("the Prometheus rule CRD reconciler", func() {
@@ -494,7 +494,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 				ctx,
 				k8sClient,
 				dash0common.PrometheusRuleSynchronizationResult{
-					SynchronizationStatus:  dash0common.Successful,
+					SynchronizationStatus:  dash0common.ThirdPartySynchronizationStatusSuccessful,
 					AlertingRulesTotal:     4,
 					SynchronizedRulesTotal: 4,
 					SynchronizedRules: []string{
@@ -544,7 +544,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 				ctx,
 				k8sClient,
 				dash0common.PrometheusRuleSynchronizationResult{
-					SynchronizationStatus:  dash0common.Successful,
+					SynchronizationStatus:  dash0common.ThirdPartySynchronizationStatusSuccessful,
 					AlertingRulesTotal:     4,
 					SynchronizedRulesTotal: 4,
 					SynchronizedRules: []string{
@@ -596,7 +596,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 				ctx,
 				k8sClient,
 				dash0common.PrometheusRuleSynchronizationResult{
-					SynchronizationStatus:  dash0common.Successful,
+					SynchronizationStatus:  dash0common.ThirdPartySynchronizationStatusSuccessful,
 					AlertingRulesTotal:     6,
 					SynchronizedRulesTotal: 6,
 					SynchronizedRules: []string{
@@ -729,7 +729,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 				ctx,
 				k8sClient,
 				dash0common.PrometheusRuleSynchronizationResult{
-					SynchronizationStatus:  dash0common.PartiallySuccessful,
+					SynchronizationStatus:  dash0common.ThirdPartySynchronizationStatusPartiallySuccessful,
 					AlertingRulesTotal:     7,
 					SynchronizedRulesTotal: 2,
 					SynchronizedRules: []string{
@@ -824,7 +824,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 				ctx,
 				k8sClient,
 				dash0common.PrometheusRuleSynchronizationResult{
-					SynchronizationStatus:      dash0common.Failed,
+					SynchronizationStatus:      dash0common.ThirdPartySynchronizationStatusFailed,
 					AlertingRulesTotal:         5,
 					SynchronizedRulesTotal:     0,
 					SynchronizedRules:          nil,
@@ -1252,6 +1252,7 @@ func createPrometheusRuleCrdReconciler() *PrometheusRuleCrdReconciler {
 		k8sClient,
 		testQueuePrometheusRules,
 		&DummyLeaderElectionAware{Leader: true},
+		&http.Client{},
 	)
 
 	// We create the controller multiple times in tests, this option is required, otherwise the controller

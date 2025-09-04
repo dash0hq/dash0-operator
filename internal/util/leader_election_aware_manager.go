@@ -7,8 +7,13 @@ import (
 	"context"
 	"sync/atomic"
 
+	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
+
+type LeaderElectionClient interface {
+	NotifiyOperatorManagerJustBecameLeader(context.Context, *logr.Logger)
+}
 
 type LeaderElectionAware interface {
 	IsLeader() bool
@@ -18,6 +23,7 @@ type LeaderElectionAware interface {
 // or not.
 type LeaderElectionAwareRunnable struct {
 	isLeader atomic.Bool
+	clients  []LeaderElectionClient
 }
 
 func NewLeaderElectionAwareRunnable() *LeaderElectionAwareRunnable {
@@ -30,10 +36,18 @@ func (r *LeaderElectionAwareRunnable) NeedLeaderElection() bool {
 	return true
 }
 
+func (r *LeaderElectionAwareRunnable) AddLeaderElectionClient(client LeaderElectionClient) {
+	r.clients = append(r.clients, client)
+}
+
 // Start is the signal from controller-runtime for the runnable that this replica has become leader.
 func (r *LeaderElectionAwareRunnable) Start(ctx context.Context) error {
-	log.FromContext(ctx).Info("This operator manager replica has just become leader.")
+	logger := log.FromContext(ctx)
+	logger.Info("This operator manager replica has just become leader.")
 	r.isLeader.Store(true)
+	for _, client := range r.clients {
+		client.NotifiyOperatorManagerJustBecameLeader(ctx, &logger)
+	}
 	return nil
 }
 

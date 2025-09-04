@@ -268,10 +268,6 @@ func (d *Dash0OperatorConfiguration) GetDash0AuthorizationIfConfigured() *dash0c
 	return nil
 }
 
-func (d *Dash0OperatorConfiguration) GetResourceTypeName() string {
-	return "Dash0OperatorConfiguration"
-}
-
 func (d *Dash0OperatorConfiguration) GetNaturalLanguageResourceTypeName() string {
 	return "Dash0 operator configuration resource"
 }

@@ -1,0 +1,56 @@
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0SyntheticCheck
+metadata:
+  name: synthetic-check-e2e-test
+  labels:
+    app.kubernetes.io/name: synthetic-check-e2e-test
+{{- if .Dash0ComEnabled }}
+    dash0.com/enabled: {{ .Dash0ComEnabled | quote }}
+{{- end }}
+spec:
+  enabled: true
+  notifications:
+    channels: []
+  plugin:
+    kind: http
+    spec:
+      assertions:
+        criticalAssertions:
+          - kind: status_code
+            spec:
+              value: "200"
+              operator: is
+          - kind: timing
+            spec:
+              type: response
+              operator: lt
+              value: 5000ms
+        degradedAssertions:
+          - kind: timing
+            spec:
+              type: response
+              operator: lt
+              value: 2000ms
+      request:
+        headers: []
+        method: get
+        queryParameters: []
+        redirects: follow
+        tls:
+          allowInsecure: false
+        tracing:
+          addTracingHeaders: false
+        url: https://www.google.com
+  retries:
+    kind: fixed
+    spec:
+      attempts: 3
+      delay: 1s
+  schedule:
+    interval: 1m
+    locations:
+      - gcp-europe-west3
+      - gcp-us-west1
+    strategy: all_locations
+  display:
+    name: This is a test synthetic check.

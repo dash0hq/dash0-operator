@@ -9,6 +9,7 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 )
 
@@ -42,7 +43,7 @@ type CollectorConfig struct {
 	SendBatchMaxSize        *uint32
 	NodeIp                  string
 	NodeName                string
-	PseudoClusterUID        string
+	PseudoClusterUid        types.UID
 	IsIPv6Cluster           bool
 	IsDocker                bool
 	DisableHostPorts        bool

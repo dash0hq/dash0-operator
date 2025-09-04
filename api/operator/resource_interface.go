@@ -11,7 +11,6 @@ import (
 )
 
 type Dash0Resource interface {
-	GetResourceTypeName() string
 	GetNaturalLanguageResourceTypeName() string
 	Get() client.Object
 	GetName() string

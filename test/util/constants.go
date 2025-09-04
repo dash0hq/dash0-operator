@@ -18,11 +18,11 @@ import (
 )
 
 const (
-	ClusterUIDTest              = "cluster-uid-test"
+	ClusterUidTest              = "cluster-uid-test"
 	ClusterNameTest             = "cluster-name-test"
 	TestNamespaceName           = "test-namespace"
+	TestNamespaceName2          = "test-namespace-2"
 	OperatorNamespace           = "test-operator-namespace"
-	OperatorPodName             = "test-operator-pod-name"
 	OTelCollectorNamePrefixTest = "unit-test"
 
 	CronJobNamePrefix     = "cronjob"

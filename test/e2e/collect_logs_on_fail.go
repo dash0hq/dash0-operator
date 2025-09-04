@@ -32,6 +32,12 @@ func collectPodInfoAndLogsFailWrapper(message string, callerSkip ...int) {
 	if len(callerSkip) == 1 {
 		callerSkip[0]++
 	}
+
+	// When we call Fail below, the message is also printed. But collecting logs etc. may take a bit. So we print the
+	// failure message here right away for the impatient developer, accepting that it is printed twice in the full
+	// e2e test log.
+	e2ePrint("\n%s\n\n", message)
+
 	collectPodInfoAndLogs()
 	Fail(message, callerSkip...)
 }

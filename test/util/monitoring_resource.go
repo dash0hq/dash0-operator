@@ -143,18 +143,18 @@ func EnsureMonitoringResourceWithSpecExistsInNamespace(
 	ctx context.Context,
 	k8sClient client.Client,
 	spec dash0v1beta1.Dash0MonitoringSpec,
-	namespacesName types.NamespacedName,
+	namespacedName types.NamespacedName,
 ) *dash0v1beta1.Dash0Monitoring {
 	By("creating the Dash0 monitoring resource")
 
 	objectMeta := metav1.ObjectMeta{
-		Name:      namespacesName.Name,
-		Namespace: namespacesName.Namespace,
+		Name:      namespacedName.Name,
+		Namespace: namespacedName.Namespace,
 	}
 	object := EnsureKubernetesObjectExists(
 		ctx,
 		k8sClient,
-		MonitoringResourceQualifiedName,
+		namespacedName,
 		&dash0v1beta1.Dash0Monitoring{},
 		&dash0v1beta1.Dash0Monitoring{
 			ObjectMeta: objectMeta,

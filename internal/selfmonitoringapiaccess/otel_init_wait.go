@@ -27,7 +27,7 @@ type SelfMonitoringMetricsClient interface {
 
 type OTelSdkConfigInput struct {
 	export                        dash0common.Export
-	pseudoClusterUID              string
+	pseudoClusterUid              types.UID
 	clusterName                   string
 	operatorNamespace             string
 	operatorManagerDeploymentUID  types.UID
@@ -84,7 +84,7 @@ func (s *OTelSdkStarter) WaitForOTelConfig(
 func (s *OTelSdkStarter) SetOTelSdkParameters(
 	ctx context.Context,
 	export dash0common.Export,
-	pseudoClusterUID string,
+	pseudoClusterUid types.UID,
 	clusterName string,
 	operatorNamespace string,
 	operatorManagerDeploymentUID types.UID,
@@ -96,7 +96,7 @@ func (s *OTelSdkStarter) SetOTelSdkParameters(
 	s.oTelSdkConfigInput.Store(&OTelSdkConfigInput{
 		export:                        export,
 		clusterName:                   clusterName,
-		pseudoClusterUID:              pseudoClusterUID,
+		pseudoClusterUid:              pseudoClusterUid,
 		operatorNamespace:             operatorNamespace,
 		operatorManagerDeploymentUID:  operatorManagerDeploymentUID,
 		operatorManagerDeploymentName: operatorManagerDeploymentName,
@@ -242,7 +242,7 @@ func convertExportConfigurationToOTelSDKConfig(
 		Protocol:         endpointAndHeaders.Protocol,
 		ServiceName:      operatorManagerServiceName,
 		ServiceVersion:   oTelSdkConfigInput.operatorVersion,
-		PseudoClusterUID: oTelSdkConfigInput.pseudoClusterUID,
+		PseudoClusterUid: string(oTelSdkConfigInput.pseudoClusterUid),
 		ClusterName:      oTelSdkConfigInput.clusterName,
 		DeploymentUid:    string(oTelSdkConfigInput.operatorManagerDeploymentUID),
 		DeploymentName:   oTelSdkConfigInput.operatorManagerDeploymentName,
