@@ -67,16 +67,51 @@ pub fn getModifiedOtelResourceAttributesValue(maybe_original_value: ?[:0]const u
         try writer.writeAll(original_value);
     }
 
+    var has_modified_value = false;
+
     // DASH0_RESOURCE_ATTRIBUTES should not be overwritten by built-in mappings, so we process it first
     if (std.posix.getenv(dash0_resource_attributes_env_name)) |dash0_resource_attributes_value| {
-        if (res.items.len > 0) {
-            try writer.writeAll(",");
-        }
+        var resource_attributes = std.mem.splitAny(u8, dash0_resource_attributes_value, ",");
+        while (true) {
+            const resource_attribute = resource_attributes.next() orelse break;
 
-        try writer.writeAll(dash0_resource_attributes_value);
+            var resource_attribute_split = std.mem.splitAny(u8, resource_attribute, "=");
+            const resource_attribute_key = resource_attribute_split.first();
+            const resource_attribute_value = resource_attribute_split.rest();
+
+            var already_set_attribute_value: ?[]const u8 = null;
+            var already_set_attributes = std.mem.splitAny(u8, res.items, ",");
+
+            while (true) {
+                // If next() returns null, we are done
+                const already_set_attribute: []const u8 = already_set_attributes.next() orelse break;
+
+                var already_set_attribute_split = std.mem.splitAny(u8, already_set_attribute, "=");
+                const already_set_attribute_key = already_set_attribute_split.first();
+
+                if (std.mem.eql(u8, already_set_attribute_key, resource_attribute_key)) {
+                    already_set_attribute_value = already_set_attribute_split.rest();
+                    break;
+                }
+            }
+
+            if (already_set_attribute_value) |value| {
+                print.printDebug("OTEL_RESOURCE_ATTRIBUTES already sets '{s}={s}'; skipping appending '{s}={s}' from DASH0_RESOURCE_ATTRIBUTES", .{ resource_attribute_key, value, resource_attribute_key, resource_attribute_value });
+                continue;
+            }
+
+            if (res.items.len > 0) {
+                try writer.writeAll(",");
+            }
+
+            try writer.writeAll(resource_attribute_key);
+            try writer.writeAll("=");
+            try writer.writeAll(resource_attribute_value);
+
+            has_modified_value = true;
+        }
     }
 
-    var has_modified_value = false;
     for (mappings) |mapping| {
         const resource_attribute_key = mapping.resource_attributes_key orelse continue;
 
@@ -100,7 +135,7 @@ pub fn getModifiedOtelResourceAttributesValue(maybe_original_value: ?[:0]const u
         }
 
         if (already_set_attribute_value) |value| {
-            print.printDebug("OTEL_RESOURCE_ATTRIBUTES already sets '{s}={s}'; skipping appending '{s}={s}'", .{ resource_attribute_key, value, resource_attribute_key, value_to_be_set });
+            print.printDebug("OTEL_RESOURCE_ATTRIBUTES already sets '{s}={s}'; skipping appending '{s}={s}' from {s}", .{ resource_attribute_key, value, resource_attribute_key, value_to_be_set, mapping.environement_variable_name });
             continue;
         }
 
