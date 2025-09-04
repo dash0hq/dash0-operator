@@ -81,7 +81,7 @@ fi
 
 deploy_application_under_monitoring "$runtime_under_test"
 
-install_third_party_resources
+deploy_dash0_api_sync_resources
 
 finish_scenario
 

@@ -272,38 +272,52 @@ type NormalizedTransformGroup struct {
 	Statements []string                  `json:"statements,omitempty"`
 }
 
-// SynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
+// Dash0ApiResourceSynchronizationStatus describes the result of synchronizing a (non-third-party) Kubernetes resource
+// (e.g. synthetic checks) to the Dash0 API.
+//
+// +kubebuilder:validation:Enum=successful;failed
+type Dash0ApiResourceSynchronizationStatus string
+
+const (
+	// Dash0ApiResourceSynchronizationStatusSuccessful means the last synchronization attempt has been successsful.
+	Dash0ApiResourceSynchronizationStatusSuccessful Dash0ApiResourceSynchronizationStatus = "successful"
+
+	// Dash0ApiResourceSynchronizationStatusFailed means the last synchronization attempt has failed.
+	Dash0ApiResourceSynchronizationStatusFailed Dash0ApiResourceSynchronizationStatus = "failed"
+)
+
+// ThirdPartySynchronizationStatus describes the result of synchronizing a third-party Kubernetes resource (Perses
 // dashboard, Prometheus rule) to the Dash0 API.
 //
 // +kubebuilder:validation:Enum=successful;partially-successful;failed
-type SynchronizationStatus string
+type ThirdPartySynchronizationStatus string
 
 const (
-	// Successful means all items have been synchronized.
-	Successful SynchronizationStatus = "successful"
+	// ThirdPartySynchronizationStatusSuccessful means all items have been synchronized.
+	ThirdPartySynchronizationStatusSuccessful ThirdPartySynchronizationStatus = "successful"
 
-	// PartiallySuccessful means some items have been synchronized and for some the synchronization has failed.
-	PartiallySuccessful SynchronizationStatus = "partially-successful"
+	// ThirdPartySynchronizationStatusPartiallySuccessful means some items have been synchronized and for some the synchronization has failed.
+	ThirdPartySynchronizationStatusPartiallySuccessful ThirdPartySynchronizationStatus = "partially-successful"
 
-	// Failed means synchronization has failed for all items.
-	Failed SynchronizationStatus = "failed"
+	// ThirdPartySynchronizationStatusFailed means synchronization has failed for all items.
+	ThirdPartySynchronizationStatusFailed ThirdPartySynchronizationStatus = "failed"
 )
 
 type PersesDashboardSynchronizationResults struct {
-	SynchronizationStatus SynchronizationStatus `json:"synchronizationStatus"`
-	SynchronizedAt        metav1.Time           `json:"synchronizedAt"`
-	SynchronizationError  string                `json:"synchronizationError,omitempty"`
-	ValidationIssues      []string              `json:"validationIssues,omitempty"`
+	SynchronizationStatus ThirdPartySynchronizationStatus `json:"synchronizationStatus"`
+	SynchronizedAt        metav1.Time                     `json:"synchronizedAt"`
+	SynchronizationError  string                          `json:"synchronizationError,omitempty"`
+	ValidationIssues      []string                        `json:"validationIssues,omitempty"`
 }
 
 type PrometheusRuleSynchronizationResult struct {
-	SynchronizationStatus      SynchronizationStatus `json:"synchronizationStatus"`
-	SynchronizedAt             metav1.Time           `json:"synchronizedAt"`
-	AlertingRulesTotal         int                   `json:"alertingRulesTotal"`
-	SynchronizedRulesTotal     int                   `json:"synchronizedRulesTotal"`
-	SynchronizedRules          []string              `json:"synchronizedRules,omitempty"`
-	SynchronizationErrorsTotal int                   `json:"synchronizationErrorsTotal"`
-	SynchronizationErrors      map[string]string     `json:"synchronizationErrors,omitempty"`
-	InvalidRulesTotal          int                   `json:"invalidRulesTotal"`
-	InvalidRules               map[string][]string   `json:"invalidRules,omitempty"`
+	SynchronizationStatus      ThirdPartySynchronizationStatus `json:"synchronizationStatus"`
+	SynchronizedAt             metav1.Time                     `json:"synchronizedAt"`
+	AlertingRulesTotal         int                             `json:"alertingRulesTotal"`
+	SynchronizedRulesTotal     int                             `json:"synchronizedRulesTotal"`
+	SynchronizedRules          []string                        `json:"synchronizedRules,omitempty"`
+	SynchronizationErrorsTotal int                             `json:"synchronizationErrorsTotal"`
+	SynchronizationErrors      map[string]string               `json:"synchronizationErrors,omitempty"`
+	InvalidRulesTotal          int                             `json:"invalidRulesTotal"`
+	InvalidRules               map[string][]string             `json:"invalidRules,omitempty"`
 }

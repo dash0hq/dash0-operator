@@ -150,7 +150,7 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		UseHostMetricsReceiver: kubernetesInfrastructureMetricsCollectionEnabled && !m.collectorConfig.IsDocker,
 		DisableHostPorts:       m.collectorConfig.DisableHostPorts,
 		ClusterName:            clusterName,
-		PseudoClusterUID:       m.collectorConfig.PseudoClusterUID,
+		PseudoClusterUid:       m.collectorConfig.PseudoClusterUid,
 		Images:                 m.collectorConfig.Images,
 		IsIPv6Cluster:          m.collectorConfig.IsIPv6Cluster,
 		DevelopmentMode:        m.collectorConfig.DevelopmentMode,

@@ -685,7 +685,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 func verifyOperatorManagerResourceAttributes(g Gomega, oTelSdkConfig *common.OTelSdkConfig) {
 	g.Expect(oTelSdkConfig.ServiceName).To(Equal("operator-manager"))
 	g.Expect(oTelSdkConfig.ServiceVersion).To(Equal("1.2.3"))
-	g.Expect(oTelSdkConfig.PseudoClusterUID).To(Equal(ClusterUIDTest))
+	g.Expect(oTelSdkConfig.PseudoClusterUid).To(Equal(ClusterUidTest))
 	g.Expect(oTelSdkConfig.ClusterName).To(Equal(ClusterNameTest))
 	g.Expect(oTelSdkConfig.DeploymentUid).To(Equal(OperatorManagerDeploymentUIDStr))
 	g.Expect(oTelSdkConfig.DeploymentName).To(Equal(OperatorManagerDeploymentName))
@@ -721,7 +721,7 @@ func createReconciler() *OperatorConfigurationReconciler {
 			apiClient2,
 		},
 		collectorManager,
-		ClusterUIDTest,
+		ClusterUidTest,
 		OperatorManagerDeployment.Namespace,
 		OperatorManagerDeployment.UID,
 		OperatorManagerDeployment.Name,

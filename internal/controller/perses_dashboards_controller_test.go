@@ -35,7 +35,7 @@ import (
 var (
 	persesDashboardCrd        *apiextensionsv1.CustomResourceDefinition
 	testQueuePersesDashboards = workqueue.NewTypedWithConfig(workqueue.TypedQueueConfig[ThirdPartyResourceSyncJob]{
-		Name: "dash0-third-party-resource-reconcile-queue",
+		Name: "dash0-third-party-resource-synchronization-queue",
 	})
 
 	dashboardApiBasePath = "/api/dashboards/"
@@ -43,7 +43,7 @@ var (
 	defaultExpectedPathDashboard = fmt.Sprintf("%s.*%s", dashboardApiBasePath, "dash0-operator_.*_test-dataset_test-namespace_test-dashboard")
 
 	defaultExpectedPersesSyncResult = dash0common.PersesDashboardSynchronizationResults{
-		SynchronizationStatus: dash0common.Successful,
+		SynchronizationStatus: dash0common.ThirdPartySynchronizationStatusSuccessful,
 		SynchronizationError:  "",
 		ValidationIssues:      nil,
 	}
@@ -488,7 +488,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 				ctx,
 				k8sClient,
 				dash0common.PersesDashboardSynchronizationResults{
-					SynchronizationStatus: dash0common.Failed,
+					SynchronizationStatus: dash0common.ThirdPartySynchronizationStatusFailed,
 					SynchronizationError:  "",
 					ValidationIssues:      []string{"spec.display is not a map"},
 				},
@@ -519,7 +519,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 				ctx,
 				k8sClient,
 				dash0common.PersesDashboardSynchronizationResults{
-					SynchronizationStatus: dash0common.Failed,
+					SynchronizationStatus: dash0common.ThirdPartySynchronizationStatusFailed,
 					SynchronizationError:  "^unexpected status code 503 when synchronizing the dashboard \"test-dashboard\": PUT https://api.dash0.com/api/dashboards/dash0-operator_.*_test-dataset_test-namespace_test-dashboard\\?dataset=test-dataset, response body is {}\n$",
 					ValidationIssues:      nil,
 				},
@@ -534,6 +534,7 @@ func createPersesDashboardCrdReconciler() *PersesDashboardCrdReconciler {
 		k8sClient,
 		testQueuePersesDashboards,
 		&DummyLeaderElectionAware{Leader: true},
+		&http.Client{},
 	)
 
 	// We create the controller multiple times in tests, this option is required, otherwise the controller

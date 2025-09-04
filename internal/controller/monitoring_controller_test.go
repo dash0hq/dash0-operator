@@ -102,6 +102,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 	Describe("when the Dash0 monitoring resource exists", Ordered, func() {
 		BeforeEach(func() {
 			EnsureMonitoringResourceExists(ctx, k8sClient)
+			extraMonitoringResourceNames = make([]types.NamespacedName, 0)
 		})
 
 		AfterEach(func() {
@@ -109,6 +110,7 @@ var _ = Describe("The monitoring resource controller", Ordered, func() {
 			for _, name := range extraMonitoringResourceNames {
 				DeleteMonitoringResourceByName(ctx, k8sClient, name, true)
 			}
+			extraMonitoringResourceNames = make([]types.NamespacedName, 0)
 		})
 
 		Describe("when reconciling", func() {

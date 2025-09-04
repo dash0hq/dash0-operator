@@ -34,7 +34,7 @@ type OTelSdkConfig struct {
 	Protocol         string
 	ServiceName      string
 	ServiceVersion   string
-	PseudoClusterUID string
+	PseudoClusterUid string
 	ClusterName      string
 	DeploymentUid    string
 	DeploymentName   string
@@ -91,7 +91,7 @@ func InitOTelSdkFromEnvVars(
 			serviceName,
 			// serviceVersion will be read from env var
 			"",
-			// pseudoClusterUID will be read from env var
+			// pseudoClusterUid will be read from env var
 			"",
 			// clusterName will be read from env var
 			"",
@@ -198,7 +198,7 @@ func InitOTelSdkWithConfig(ctx context.Context, meterName string, oTelSdkConfig 
 			ctx,
 			oTelSdkConfig.ServiceName,
 			oTelSdkConfig.ServiceVersion,
-			oTelSdkConfig.PseudoClusterUID,
+			oTelSdkConfig.PseudoClusterUid,
 			oTelSdkConfig.ClusterName,
 			oTelSdkConfig.DeploymentUid,
 			oTelSdkConfig.DeploymentName,
@@ -346,7 +346,7 @@ func assembleResource(
 	ctx context.Context,
 	serviceName,
 	serviceVersion,
-	pseudoClusterUID string,
+	pseudoClusterUid string,
 	clusterName string,
 	deploymentUid string,
 	deploymentName string,
@@ -364,8 +364,8 @@ func assembleResource(
 		attributes = append(attributes, semconv.ServiceVersion(serviceVersionFromEnvVar))
 	}
 
-	if pseudoClusterUID != "" {
-		attributes = append(attributes, semconv.K8SClusterUID(pseudoClusterUID))
+	if pseudoClusterUid != "" {
+		attributes = append(attributes, semconv.K8SClusterUID(pseudoClusterUid))
 	} else if pseudoClusterUidFromEnvVar := os.Getenv("K8S_CLUSTER_UID"); pseudoClusterUidFromEnvVar != "" {
 		attributes = append(attributes, semconv.K8SClusterUID(pseudoClusterUidFromEnvVar))
 	}

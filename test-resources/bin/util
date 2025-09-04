@@ -614,7 +614,12 @@ install_third_party_crds() {
   kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.85.0/example/prometheus-operator-crd/monitoring.coreos.com_prometheusrules.yaml
 }
 
-install_third_party_resources() {
+deploy_dash0_api_sync_resources() {
+  if [[ "${DEPLOY_SYNTHETIC_CHECK:-}" = "true" ]]; then
+    echo "STEP $step_counter: deploy a synthetic check resource to namespace ${target_namespace}"
+    kubectl apply -n ${target_namespace} -f test-resources/customresources/syntheticcheck/syntheticcheck.yaml
+    finish_step
+  fi
   if [[ "${DEPLOY_PERSES_DASHBOARD:-}" = "true" ]]; then
     echo "STEP $step_counter: deploy a Perses dashboard resource to namespace ${target_namespace}"
     kubectl apply -n ${target_namespace} -f test-resources/customresources/persesdashboard/persesdashboard.yaml

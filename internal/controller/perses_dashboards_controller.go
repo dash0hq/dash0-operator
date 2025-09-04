@@ -38,6 +38,7 @@ type PersesDashboardCrdReconciler struct {
 	queue                     *workqueue.Typed[ThirdPartyResourceSyncJob]
 	leaderElectionAware       util.LeaderElectionAware
 	mgr                       ctrl.Manager
+	httpClient                *http.Client
 	skipNameValidation        bool
 	persesDashboardReconciler *PersesDashboardReconciler
 	persesDashboardCrdExists  atomic.Bool
@@ -45,7 +46,7 @@ type PersesDashboardCrdReconciler struct {
 
 type PersesDashboardReconciler struct {
 	client.Client
-	pseudoClusterUID           types.UID
+	pseudoClusterUid           types.UID
 	queue                      *workqueue.Typed[ThirdPartyResourceSyncJob]
 	httpClient                 *http.Client
 	apiConfig                  atomic.Pointer[ApiConfig]
@@ -64,11 +65,13 @@ func NewPersesDashboardCrdReconciler(
 	k8sClient client.Client,
 	queue *workqueue.Typed[ThirdPartyResourceSyncJob],
 	leaderElectionAware util.LeaderElectionAware,
+	httpClient *http.Client,
 ) *PersesDashboardCrdReconciler {
 	return &PersesDashboardCrdReconciler{
 		Client:              k8sClient,
 		queue:               queue,
 		leaderElectionAware: leaderElectionAware,
+		httpClient:          httpClient,
 	}
 }
 
@@ -116,20 +119,17 @@ func (r *PersesDashboardCrdReconciler) OperatorManagerIsLeader() bool {
 	return r.leaderElectionAware.IsLeader()
 }
 
-func (r *PersesDashboardCrdReconciler) CreateResourceReconciler(
-	pseudoClusterUid types.UID,
-	httpClient *http.Client,
-) {
+func (r *PersesDashboardCrdReconciler) CreateThirdPartyResourceReconciler(pseudoClusterUid types.UID) {
 	r.persesDashboardReconciler = &PersesDashboardReconciler{
 		Client:           r.Client,
 		queue:            r.queue,
-		pseudoClusterUID: pseudoClusterUid,
-		httpClient:       httpClient,
+		pseudoClusterUid: pseudoClusterUid,
+		httpClient:       r.httpClient,
 		httpRetryDelay:   1 * time.Second,
 	}
 }
 
-func (r *PersesDashboardCrdReconciler) ResourceReconciler() ThirdPartyResourceReconciler {
+func (r *PersesDashboardCrdReconciler) ThirdPartyResourceReconciler() ThirdPartyResourceReconciler {
 	return r.persesDashboardReconciler
 }
 
@@ -454,7 +454,7 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 	//nolint:ineffassign
 	switch action {
 	case upsert:
-		specOrConfig := preconditionChecksResult.thirdPartyResourceSpec
+		specOrConfig := preconditionChecksResult.dash0ApiResourceSpec
 
 		configRaw := specOrConfig["config"]
 		if configRaw != nil {
@@ -542,7 +542,7 @@ func (r *PersesDashboardReconciler) renderDashboardUrl(preconditionChecksResult 
 		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
 		// any potential naming collisions (e.g. namespace="abc" & name="def-ghi" vs. namespace="abc-def" & name="ghi").
 		"dash0-operator_%s_%s_%s_%s",
-		r.pseudoClusterUID,
+		r.pseudoClusterUid,
 		datasetUrlEncoded,
 		preconditionChecksResult.k8sNamespace,
 		preconditionChecksResult.k8sName,
@@ -568,10 +568,10 @@ func (r *PersesDashboardReconciler) CreateDeleteRequests(
 	return nil, nil
 }
 
-func (r *PersesDashboardReconciler) UpdateSynchronizationResultsInStatus(
+func (_ *PersesDashboardReconciler) UpdateSynchronizationResultsInDash0MonitoringStatus(
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	qualifiedName string,
-	status dash0common.SynchronizationStatus,
+	status dash0common.ThirdPartySynchronizationStatus,
 	_ int,
 	_ []string,
 	synchronizationErrors map[string]string,

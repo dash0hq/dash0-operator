@@ -748,7 +748,7 @@ service:
 {{- if .InternalTelemetryEnabled }}
   telemetry:
     resource:
-      "k8s.cluster.uid": "{{- .PseudoClusterUID }}"
+      "k8s.cluster.uid": "{{- .PseudoClusterUid }}"
       {{- if .ClusterName }}
       "k8s.cluster.name": "{{- .ClusterName }}"
       {{- end }}

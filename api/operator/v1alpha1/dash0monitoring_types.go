@@ -307,10 +307,6 @@ func (d *Dash0Monitoring) EnsureResourceIsMarkedAsDegraded(
 		})
 }
 
-func (d *Dash0Monitoring) GetResourceTypeName() string {
-	return "Dash0Monitoring"
-}
-
 func (d *Dash0Monitoring) GetNaturalLanguageResourceTypeName() string {
 	return "Dash0 monitoring resource"
 }

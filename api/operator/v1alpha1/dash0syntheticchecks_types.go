@@ -5,6 +5,8 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 )
 
 // Dash0SyntheticCheckSpec defines the desired state of Dash0SyntheticCheck
@@ -251,6 +253,10 @@ type NotificationChannelID string
 
 // Dash0SyntheticCheckStatus defines the observed state of Dash0SyntheticCheck
 type Dash0SyntheticCheckStatus struct {
+	SynchronizationStatus dash0common.Dash0ApiResourceSynchronizationStatus `json:"synchronizationStatus"`
+	SynchronizedAt        metav1.Time                                       `json:"synchronizedAt"`
+	SynchronizationError  string                                            `json:"synchronizationError,omitempty"`
+	ValidationIssues      []string                                          `json:"validationIssues,omitempty"`
 }
 
 // Dash0SyntheticCheck is the Schema for the dash0syntheticchecks API

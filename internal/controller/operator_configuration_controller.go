@@ -28,7 +28,7 @@ type OperatorConfigurationReconciler struct {
 	apiClients                  []ApiClient
 	authTokenClients            []selfmonitoringapiaccess.AuthTokenClient
 	collectorManager            *collectors.CollectorManager
-	pseudoClusterUID            string
+	pseudoClusterUid            types.UID
 	operatorDeploymentNamespace string
 	operatorDeploymentUID       types.UID
 	operatorDeploymentName      string
@@ -54,7 +54,7 @@ func NewOperatorConfigurationReconciler(
 	clientset *kubernetes.Clientset,
 	apiClients []ApiClient,
 	collectorManager *collectors.CollectorManager,
-	pseudoClusterUID string,
+	pseudoClusterUid types.UID,
 	operatorDeploymentNamespace string,
 	operatorDeploymentUID types.UID,
 	operatorDeploymentName string,
@@ -68,7 +68,7 @@ func NewOperatorConfigurationReconciler(
 		clientset:                   clientset,
 		apiClients:                  apiClients,
 		collectorManager:            collectorManager,
-		pseudoClusterUID:            pseudoClusterUID,
+		pseudoClusterUid:            pseudoClusterUid,
 		operatorDeploymentNamespace: operatorDeploymentNamespace,
 		operatorDeploymentUID:       operatorDeploymentUID,
 		operatorDeploymentName:      operatorDeploymentName,
@@ -293,7 +293,7 @@ func (r *OperatorConfigurationReconciler) applyOperatorManagerSelfMonitoringSett
 		r.oTelSdkStarter.SetOTelSdkParameters(
 			ctx,
 			selfMonitoringAndApiAccessConfiguration.Export,
-			r.pseudoClusterUID,
+			r.pseudoClusterUid,
 			clusterName,
 			r.operatorDeploymentNamespace,
 			r.operatorDeploymentUID,

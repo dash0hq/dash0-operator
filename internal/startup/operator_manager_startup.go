@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -22,6 +23,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -136,7 +138,8 @@ var (
 	extraConfig                     util.ExtraConfig
 	extraConfigMapWatcher           = util.NewExtraConfigWatcher()
 
-	thirdPartyResourceSynchronizationQueue *workqueue.Typed[controller.ThirdPartyResourceSyncJob]
+	httpClient                           = &http.Client{}
+	dash0ApiResourceSynchronizationQueue *workqueue.Typed[controller.ThirdPartyResourceSyncJob]
 )
 
 var (
@@ -218,7 +221,6 @@ func Start() {
 		startupTasksK8sClient,
 		&setupLog,
 	)
-	pseudoClusterUID := util.ReadPseudoClusterUID(ctx, startupTasksK8sClient, &setupLog)
 	if operatorDeploymentSelfReference, err = findDeploymentReference(
 		ctx,
 		startupTasksK8sClient,
@@ -260,7 +262,6 @@ func Start() {
 		webhookServer,
 		operatorConfigurationValues,
 		delegatingZapCoreWrapper,
-		pseudoClusterUID,
 		developmentMode,
 	); err != nil {
 		setupLog.Error(err, "The Dash0 operator manager process failed to start.")
@@ -627,7 +628,6 @@ func startOperatorManager(
 	webhookServer k8swebhook.Server,
 	operatorConfigurationValues *OperatorConfigurationValues,
 	delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper,
-	pseudoClusterUID string,
 	developmentMode bool,
 ) error {
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
@@ -708,7 +708,6 @@ func startOperatorManager(
 		cliArgs,
 		operatorConfigurationValues,
 		delegatingZapCoreWrapper,
-		pseudoClusterUID,
 		developmentMode,
 	)
 	if err != nil {
@@ -725,8 +724,8 @@ func startOperatorManager(
 	}
 
 	defer func() {
-		if thirdPartyResourceSynchronizationQueue != nil {
-			controller.StopProcessingThirdPartySynchronizationQueue(thirdPartyResourceSynchronizationQueue, &setupLog)
+		if dash0ApiResourceSynchronizationQueue != nil {
+			controller.StopProcessingThirdPartySynchronizationQueue(dash0ApiResourceSynchronizationQueue, &setupLog)
 		}
 	}()
 
@@ -752,7 +751,6 @@ func startDash0Controllers(
 	cliArgs *commandLineArguments,
 	operatorConfigurationValues *OperatorConfigurationValues,
 	delegatingZapCoreWrapper *zaputil.DelegatingZapCoreWrapper,
-	pseudoClusterUID string,
 	developmentMode bool,
 ) error {
 	images := util.Images{
@@ -815,6 +813,7 @@ func startDash0Controllers(
 	// is useless.
 	extraConfigMapWatcher.AddClient(instrumenter)
 
+	pseudoClusterUid := util.ReadPseudoClusterUid(ctx, startupTasksK8sClient, &setupLog)
 	collectorConfig := util.CollectorConfig{
 		Images:                  images,
 		OperatorNamespace:       envVars.operatorNamespace,
@@ -822,7 +821,7 @@ func startDash0Controllers(
 		SendBatchMaxSize:        envVars.sendBatchMaxSize,
 		NodeIp:                  envVars.nodeIp,
 		NodeName:                envVars.nodeName,
-		PseudoClusterUID:        pseudoClusterUID,
+		PseudoClusterUid:        pseudoClusterUid,
 		IsIPv6Cluster:           isIPv6Cluster,
 		IsDocker:                isDocker,
 		DisableHostPorts:        cliArgs.disableOpenTelemetryCollectorHostPorts,
@@ -855,28 +854,44 @@ func startDash0Controllers(
 		return fmt.Errorf("unable to set up the collector reconciler: %w", err)
 	}
 
-	thirdPartyResourceSynchronizationQueue =
+	dash0ApiResourceSynchronizationQueue =
 		workqueue.NewTypedWithConfig(
 			workqueue.TypedQueueConfig[controller.ThirdPartyResourceSyncJob]{
-				Name: "dash0-third-party-resource-reconcile-queue",
+				Name: "dash0-third-party-resource-synchronization-queue",
 			})
+	clusterUid, err := util.ReadPseudoClusterUidOrFail(ctx, startupTasksK8sClient, &setupLog)
+	if err != nil {
+		return err
+	}
+	syntheticCheckReconciler := controller.NewSyntheticCheckReconciler(
+		k8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		httpClient,
+	)
+	if err := syntheticCheckReconciler.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to set up the synthetic check reconciler: %w", err)
+	}
+	leaderElectionAwareRunnable.AddLeaderElectionClient(syntheticCheckReconciler)
 	persesDashboardCrdReconciler := controller.NewPersesDashboardCrdReconciler(
 		k8sClient,
-		thirdPartyResourceSynchronizationQueue,
+		dash0ApiResourceSynchronizationQueue,
 		leaderElectionAwareRunnable,
+		httpClient,
 	)
 	if err := persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, startupTasksK8sClient, &setupLog); err != nil {
 		return fmt.Errorf("unable to set up the Perses dashboard reconciler: %w", err)
 	}
 	prometheusRuleCrdReconciler := controller.NewPrometheusRuleCrdReconciler(
 		k8sClient,
-		thirdPartyResourceSynchronizationQueue,
+		dash0ApiResourceSynchronizationQueue,
 		leaderElectionAwareRunnable,
+		httpClient,
 	)
 	if err := prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, startupTasksK8sClient, &setupLog); err != nil {
 		return fmt.Errorf("unable to set up the Prometheus rule reconciler: %w", err)
 	}
-	controller.StartProcessingThirdPartySynchronizationQueue(thirdPartyResourceSynchronizationQueue, &setupLog)
+	controller.StartProcessingThirdPartySynchronizationQueue(dash0ApiResourceSynchronizationQueue, &setupLog)
 
 	setupLog.Info("Creating the self-monitoring OTel SDK starter.")
 	oTelSdkStarter = selfmonitoringapiaccess.NewOTelSdkStarter(delegatingZapCoreWrapper)
@@ -886,11 +901,12 @@ func startDash0Controllers(
 		k8sClient,
 		clientset,
 		[]controller.ApiClient{
+			syntheticCheckReconciler,
 			persesDashboardCrdReconciler,
 			prometheusRuleCrdReconciler,
 		},
 		collectorManager,
-		pseudoClusterUID,
+		pseudoClusterUid,
 		operatorDeploymentSelfReference.Namespace,
 		operatorDeploymentSelfReference.UID,
 		operatorDeploymentSelfReference.Name,
@@ -954,12 +970,14 @@ func startDash0Controllers(
 		[]selfmonitoringapiaccess.SelfMonitoringMetricsClient{
 			operatorConfigurationReconciler,
 			monitoringReconciler,
+			syntheticCheckReconciler,
 			persesDashboardCrdReconciler,
 			prometheusRuleCrdReconciler,
 		},
 	)
 	authTokenClients := []selfmonitoringapiaccess.AuthTokenClient{
 		oTelSdkStarter,
+		syntheticCheckReconciler,
 		persesDashboardCrdReconciler,
 		prometheusRuleCrdReconciler,
 	}
@@ -970,7 +988,7 @@ func startDash0Controllers(
 		oTelSdkStarter,
 		authTokenClients,
 		operatorConfigurationResource,
-		pseudoClusterUID,
+		pseudoClusterUid,
 		images.GetOperatorVersion(),
 		developmentMode,
 	)
@@ -1093,7 +1111,7 @@ func triggerSecretRefExchangeAndStartSelfMonitoringIfPossible(
 	oTelSdkStarter *selfmonitoringapiaccess.OTelSdkStarter,
 	authTokenClients []selfmonitoringapiaccess.AuthTokenClient,
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
-	pseudoClusterUID string,
+	pseudoClusterUid types.UID,
 	operatorVersion string,
 	developmentMode bool,
 ) {
@@ -1140,7 +1158,7 @@ func triggerSecretRefExchangeAndStartSelfMonitoringIfPossible(
 	oTelSdkStarter.SetOTelSdkParameters(
 		ctx,
 		selfMonitoringConfiguration.Export,
-		pseudoClusterUID,
+		pseudoClusterUid,
 		operatorConfigurationResource.Spec.ClusterName,
 		operatorDeploymentSelfReference.Namespace,
 		operatorDeploymentSelfReference.UID,

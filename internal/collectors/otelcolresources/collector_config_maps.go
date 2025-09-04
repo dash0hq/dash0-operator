@@ -77,7 +77,7 @@ type collectorConfigurationTemplateValues struct {
 	CollectPodLabelsAndAnnotationsEnabled            bool
 	KubeletStatsReceiverConfig                       KubeletStatsReceiverConfig
 	UseHostMetricsReceiver                           bool
-	PseudoClusterUID                                 string
+	PseudoClusterUid                                 string
 	ClusterName                                      string
 	NamespacesWithLogCollection                      []string
 	NamespaceOttlFilter                              string
@@ -207,7 +207,7 @@ func assembleCollectorConfigMap(
 				CollectPodLabelsAndAnnotationsEnabled:            config.CollectPodLabelsAndAnnotationsEnabled,
 				KubeletStatsReceiverConfig:                       config.KubeletStatsReceiverConfig,
 				UseHostMetricsReceiver:                           config.UseHostMetricsReceiver,
-				PseudoClusterUID:                                 config.PseudoClusterUID,
+				PseudoClusterUid:                                 string(config.PseudoClusterUid),
 				ClusterName:                                      config.ClusterName,
 				NamespacesWithLogCollection:                      namespacesWithLogCollection,
 				NamespaceOttlFilter:                              namespaceOttlFilter,

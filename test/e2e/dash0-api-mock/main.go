@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -18,7 +19,7 @@ type StoredRequest struct {
 }
 
 var (
-	requests     []StoredRequest
+	requests     = make([]StoredRequest, 0)
 	requestMutex sync.RWMutex
 
 	checkRuleOrigins     []string
@@ -28,9 +29,14 @@ var (
 func main() {
 	router := gin.Default()
 
+	router.Use(gin.Recovery(), Logger())
+
 	router.GET("/ready", func(ginCtx *gin.Context) {
 		ginCtx.Status(http.StatusNoContent)
 	})
+
+	router.PUT("/api/synthetic-checks/:origin", handleSyntheticCheckRequest)
+	router.DELETE("/api/synthetic-checks/:origin", handleSyntheticCheckRequest)
 
 	router.GET("/api/alerting/check-rules", handleGetCheckRuleOriginsRequest)
 
@@ -52,6 +58,13 @@ func main() {
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("Failed to run server: %v", err)
 	}
+}
+
+func handleSyntheticCheckRequest(ginCtx *gin.Context) {
+	storeRequest(ginCtx)
+	ginCtx.JSON(http.StatusOK, map[string]any{
+		"message": "ok",
+	})
 }
 
 func handleDashboardRequest(ginCtx *gin.Context) {
@@ -164,6 +177,19 @@ func deleteStoredRequests(ginCtx *gin.Context) {
 	fmt.Printf("deleting stored requests: %s %s\n", ginCtx.Request.Method, ginCtx.Request.URL.String())
 	requestMutex.Lock()
 	defer requestMutex.Unlock()
-	requests = nil
+	requests = make([]StoredRequest, 0)
 	ginCtx.Status(http.StatusNoContent)
+}
+
+func Logger() gin.HandlerFunc {
+	return gin.LoggerWithFormatter(func(Param gin.LogFormatterParams) string {
+		return fmt.Sprintf("%s - [%s], %s %s %d %s \n",
+			Param.ClientIP,
+			Param.TimeStamp.Format(time.RFC1123Z),
+			Param.Method,
+			Param.Path,
+			Param.StatusCode,
+			Param.Latency,
+		)
+	})
 }

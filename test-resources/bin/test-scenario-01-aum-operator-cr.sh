@@ -48,7 +48,7 @@ finish_step
 
 deploy_additional_resources
 
-install_third_party_resources
+deploy_dash0_api_sync_resources
 
 echo "STEP $step_counter: rebuild images"
 build_all_images

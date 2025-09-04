@@ -414,6 +414,27 @@ spec:
             type: object
           status:
             description: Dash0SyntheticCheckStatus defines the observed state of Dash0SyntheticCheck
+            properties:
+              synchronizationError:
+                type: string
+              synchronizationStatus:
+                description: |-
+                  Dash0ApiResourceSynchronizationStatus describes the result of synchronizing a (non-third-party) Kubernetes resource
+                  (e.g. synthetic checks) to the Dash0 API.
+                enum:
+                - successful
+                - failed
+                type: string
+              synchronizedAt:
+                format: date-time
+                type: string
+              validationIssues:
+                items:
+                  type: string
+                type: array
+            required:
+            - synchronizationStatus
+            - synchronizedAt
             type: object
         type: object
     served: true

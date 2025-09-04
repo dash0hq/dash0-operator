@@ -181,6 +181,26 @@ rules:
   - patch
   - update
 
+# Permissions required to watch Dash0 synthetic check resources:
+- apiGroups:
+    - operator.dash0.com
+  resources:
+    - dash0syntheticchecks
+  verbs:
+    - get
+    - list
+    - watch
+
+# Permissions required to write to Dash0 synthetic check resource status:
+- apiGroups:
+    - operator.dash0.com
+  resources:
+    - dash0syntheticchecks/status
+  verbs:
+    - get
+    - patch
+    - update
+
 # Permissions required to manage OTel collector resources:
 - apiGroups:
   - ""
