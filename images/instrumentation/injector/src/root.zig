@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+const builtin = @import("builtin");
 const std = @import("std");
 
 const dotnet = @import("dotnet.zig");
@@ -14,7 +15,15 @@ const types = @import("types.zig");
 const assert = std.debug.assert;
 const expect = std.testing.expect;
 
-export const init_array: [1]*const fn () callconv(.C) void linksection(".init_array") = .{&initEnviron};
+const init_section_name = switch (builtin.target.os.tag) {
+    .linux => ".init_array",
+    .macos => "__DATA,__mod_init_func", // needed to run tests locally on macOS
+    else => {
+        error.OsNotSupported;
+    },
+};
+
+export const init_array: [1]*const fn () callconv(.C) void linksection(init_section_name) = .{&initEnviron};
 
 // Keep global pointers to already-calculated values to avoid multiple allocations
 // on repeated lookups.
