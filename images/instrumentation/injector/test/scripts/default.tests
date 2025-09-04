@@ -61,7 +61,7 @@ run_test_case \
   "getenv: sets k8s.pod.uid and k8s.container.name via OTEL_RESOURCE_ATTRIBUTES with pre-existing value" \
   "app" \
   "node index.js otel_resource_attributes" \
-  "OTEL_RESOURCE_ATTRIBUTES: k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app,foo=bar" \
+  "OTEL_RESOURCE_ATTRIBUTES: foo=bar,k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app" \
   "OTEL_RESOURCE_ATTRIBUTES=foo=bar"
 run_test_case \
   "getenv: use mapped app.kubernetes.io labels for service.name and friends" \
@@ -73,13 +73,19 @@ run_test_case \
   "getenv: use mapped resource.opentelemetry.io labels as additional resource attributes" \
   "app" \
   "node index.js otel_resource_attributes" \
-  "OTEL_RESOURCE_ATTRIBUTES: k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app,aaa=bbb,ccc=ddd" \
+  "OTEL_RESOURCE_ATTRIBUTES: aaa=bbb,ccc=ddd,k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app" \
   "DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd"
+run_test_case \
+  "getenv: attributes set via DASH0_RESOURCE_ATTRIBUTES do not get overwritten" \
+  "app" \
+  "node index.js otel_resource_attributes" \
+  "OTEL_RESOURCE_ATTRIBUTES: k8s.pod.uid=1234,aaa=bbb,ccc=ddd,k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.container.name=test-app" \
+  "DASH0_RESOURCE_ATTRIBUTES=k8s.pod.uid=1234,aaa=bbb,ccc=ddd"
 run_test_case \
   "getenv: combine mapped app.kubernetes.io and resource.opentelemetry.io labels" \
   "app" \
   "node index.js otel_resource_attributes" \
-  "OTEL_RESOURCE_ATTRIBUTES: k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app,service.name=service-name,service.version=service-version,service.namespace=service-namespace,aaa=bbb,ccc=ddd" \
+  "OTEL_RESOURCE_ATTRIBUTES: aaa=bbb,ccc=ddd,k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app,service.name=service-name,service.version=service-version,service.namespace=service-namespace" \
   "DASH0_SERVICE_NAME=service-name DASH0_SERVICE_VERSION=service-version DASH0_SERVICE_NAMESPACE=service-namespace DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd"
 
 if [ "${MISSING_ENVIRON_SYMBOL_TESTS:-}" = "true" ]; then

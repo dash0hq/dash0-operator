@@ -53,10 +53,15 @@ fn initEnviron() callconv(.C) void {
         return;
     };
 
-    if (res_attrs.getModifiedOtelResourceAttributesValue(std.posix.getenv(res_attrs.otel_resource_attributes_env_var_name))) |otel_resource_attributes_value| {
-        const setenv_res = libc_library.setenv_fn_ptr(res_attrs.otel_resource_attributes_env_var_name, otel_resource_attributes_value, true);
+    const maybe_modified_resource_attributes = res_attrs.getModifiedOtelResourceAttributesValue(std.posix.getenv(res_attrs.otel_resource_attributes_env_var_name)) catch |err| {
+        print.printError("cannot calculate modified OTEL_RESOURCE_ATTRIBUTES: {}", .{err});
+        return;
+    };
+
+    if (maybe_modified_resource_attributes) |modified_resource_attributes| {
+        const setenv_res = libc_library.setenv_fn_ptr(res_attrs.otel_resource_attributes_env_var_name, modified_resource_attributes, true);
         if (setenv_res != 0) {
-            print.printError("failed to set modified value for '{s}' to '{s}': errno={}", .{ res_attrs.otel_resource_attributes_env_var_name, otel_resource_attributes_value, setenv_res });
+            print.printError("failed to set modified value for '{s}' to '{s}': errno={}", .{ res_attrs.otel_resource_attributes_env_var_name, modified_resource_attributes, setenv_res });
         }
     }
 }
