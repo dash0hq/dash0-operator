@@ -71,7 +71,8 @@ func (ct *customTransforms) HasLogTransforms() bool {
 }
 
 type collectorConfigurationTemplateValues struct {
-	Exporters                                        []OtlpExporter
+	ExportersDefault                                 []OtlpExporter
+	ExportersRouted                                  []OtlpExporter
 	SendBatchMaxSize                                 *uint32
 	KubernetesInfrastructureMetricsCollectionEnabled bool
 	CollectPodLabelsAndAnnotationsEnabled            bool
@@ -178,7 +179,7 @@ func assembleCollectorConfigMap(
 	if forDeletion {
 		configMapData = map[string]string{}
 	} else {
-		exporters, err := ConvertExportSettingsToExporterList(config.Export)
+		exporterMap, err := ConvertExportSettingsToExporterMap(config.DefaultExport, config.PerNamespaceExports)
 		if err != nil {
 			return nil, fmt.Errorf("%s %w", commonExportErrorPrefix, err)
 		}
@@ -201,7 +202,8 @@ func assembleCollectorConfigMap(
 
 		collectorConfiguration, err := renderCollectorConfiguration(template,
 			&collectorConfigurationTemplateValues{
-				Exporters:        exporters,
+				ExportersDefault: exporterMap["default"],
+				ExportersRouted:  exporterMap["routed"],
 				SendBatchMaxSize: config.SendBatchMaxSize,
 				KubernetesInfrastructureMetricsCollectionEnabled: config.KubernetesInfrastructureMetricsCollectionEnabled,
 				CollectPodLabelsAndAnnotationsEnabled:            config.CollectPodLabelsAndAnnotationsEnabled,
@@ -422,13 +424,36 @@ func compareErrorMode(
 	return errorMode1
 }
 
-func ConvertExportSettingsToExporterList(export dash0common.Export) ([]OtlpExporter, error) {
-	var exporters []OtlpExporter
+// TODO
+// - actually use the exporter settings from the Dash0Monitoring resources
+// - also create different exporters for other export types, e.g. gRPC, HTTP
+// - ...?
 
+func ConvertExportSettingsToExporterMap(
+	defaultExport dash0common.Export,
+	perNamespaceExports map[string]dash0common.Export,
+) (map[string][]OtlpExporter, error) {
+	exporterMap := make(map[string][]OtlpExporter)
+	var err error
+	exporterMap["_default"], err = convertExportSettingsToExporterList(defaultExport)
+	if err != nil {
+		return nil, err
+	}
+	for namespace, export := range perNamespaceExports {
+		exporterMap[namespace], err = convertExportSettingsToExporterList(export)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return exporterMap, nil
+}
+
+func convertExportSettingsToExporterList(export dash0common.Export) ([]OtlpExporter, error) {
 	if export.Dash0 == nil && export.Grpc == nil && export.Http == nil {
 		return nil, fmt.Errorf("%s no exporter configuration found", commonExportErrorPrefix)
 	}
 
+	var exporters []OtlpExporter
 	if export.Dash0 != nil {
 		d0 := export.Dash0
 		if d0.Endpoint == "" {
@@ -445,12 +470,25 @@ func ConvertExportSettingsToExporterList(export dash0common.Export) ([]OtlpExpor
 			})
 		}
 		dash0Exporter := OtlpExporter{
-			Name:     "otlp/dash0",
+			Name:     "otlp/dash0/_default",
 			Endpoint: export.Dash0.Endpoint,
 			Headers:  headers,
 		}
 		setGrpcTls(export.Dash0.Endpoint, &dash0Exporter)
 		exporters = append(exporters, dash0Exporter)
+
+		//headersRouted := headers
+		//headersRouted = append(headersRouted, dash0common.Header{
+		//	Name:  util.Dash0DatasetHeaderName,
+		//	Value: "routed",
+		//})
+		//dash0ExporterForRoutedNamespace := OtlpExporter{
+		//	Name:     "otlp/dash0/routed-namespace",
+		//	Endpoint: export.Dash0.Endpoint,
+		//	Headers:  headersRouted,
+		//}
+		//setGrpcTls(export.Dash0.Endpoint, &dash0ExporterForRoutedNamespace)
+		//exporterMap["routed"] = []OtlpExporter{dash0ExporterForRoutedNamespace}
 	}
 
 	if export.Grpc != nil {

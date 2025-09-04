@@ -7,8 +7,6 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"slices"
-	"strings"
 	"sync/atomic"
 
 	"github.com/go-logr/logr"
@@ -128,33 +126,14 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 	if err != nil {
 		return false, err
 	}
-	var export *dash0common.Export
+	hasAtLeastOneExport := false
 	if operatorConfigurationResource != nil && operatorConfigurationResource.Spec.Export != nil {
-		export = operatorConfigurationResource.Spec.Export
+		hasAtLeastOneExport = true
 	}
-	if export == nil && triggeringMonitoringResource != nil &&
-		triggeringMonitoringResource.IsAvailable() &&
-		triggeringMonitoringResource.Spec.Export != nil {
-		export = triggeringMonitoringResource.Spec.Export
-	}
-	if export == nil {
-		// Using the export setting of an arbitrary monitoring resource is a bandaid as long as we do not allow
-		// exporting, telemetry to different backends per namespace.
-		// Additional note: When using the export from an arbitrary monitoring resource, we need to be aware that the
-		// result of we findAllMonitoringResources is not guaranteed to be sorted in the same way for each invocation.
-		// Thus, we need to sort the monitoring resources before we arbitrarily pick the first resource, otherwise we
-		// could get configmap flapping (i.e. the collector configmaps get re-rendered again and again because we
-		// accidentally pick a different monitoring resource each time).
-		slices.SortFunc(
-			allMonitoringResources,
-			func(mr1 dash0v1beta1.Dash0Monitoring, mr2 dash0v1beta1.Dash0Monitoring) int {
-				return strings.Compare(mr1.Namespace, mr2.Namespace)
-			},
-		)
+	if hasAtLeastOneExport == false {
 		for _, monitoringResource := range allMonitoringResources {
 			if monitoringResource.Spec.Export != nil {
-				export = monitoringResource.Spec.Export
-				break
+				hasAtLeastOneExport = true
 			}
 		}
 	}
@@ -172,13 +151,12 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 		)
 		err = m.removeOpenTelemetryCollector(ctx, *extraConfig, &logger)
 		return err == nil, err
-	} else if export != nil {
+	} else if hasAtLeastOneExport {
 		err = m.createOrUpdateOpenTelemetryCollector(
 			ctx,
 			operatorConfigurationResource,
 			allMonitoringResources,
 			*extraConfig,
-			export,
 			&logger,
 		)
 		return err == nil, err
@@ -202,7 +180,6 @@ func (m *CollectorManager) createOrUpdateOpenTelemetryCollector(
 	operatorConfigurationResource *dash0v1alpha1.Dash0OperatorConfiguration,
 	allMonitoringResources []dash0v1beta1.Dash0Monitoring,
 	extraConfig util.ExtraConfig,
-	export *dash0common.Export,
 	logger *logr.Logger,
 ) error {
 	resourcesHaveBeenCreated, resourcesHaveBeenUpdated, err :=
@@ -211,7 +188,6 @@ func (m *CollectorManager) createOrUpdateOpenTelemetryCollector(
 			extraConfig,
 			operatorConfigurationResource,
 			allMonitoringResources,
-			export,
 			logger,
 		)
 	if err != nil {
