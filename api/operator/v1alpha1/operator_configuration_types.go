@@ -14,6 +14,25 @@ import (
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 )
 
+// Dash0OperatorConfiguration is the schema for the Dash0OperatorConfiguration API
+//
+// +kubebuilder:object:root=true
+// +groupName=operator.dash0.com
+// +kubebuilder:subresource:status
+// +kubebuilder:resource:scope=Cluster
+// +kubebuilder:printcolumn:name="Collect Telemetry",type="boolean",JSONPath=".spec.telemetryCollection.enabled"
+// +kubebuilder:printcolumn:name="Collect Metrics",type="boolean",JSONPath=".spec.kubernetesInfrastructureMetricsCollection.enabled"
+// +kubebuilder:printcolumn:name="Collect Pod Meta",type="boolean",JSONPath=".spec.collectPodLabelsAndAnnotations.enabled"
+// +kubebuilder:printcolumn:name="Available",type="string",JSONPath=`.status.conditions[?(@.type == "Available")].status`
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+type Dash0OperatorConfiguration struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   Dash0OperatorConfigurationSpec   `json:"spec,omitempty"`
+	Status Dash0OperatorConfigurationStatus `json:"status,omitempty"`
+}
+
 // Dash0OperatorConfigurationSpec describes cluster-wide configuration settings for the Dash0 operator.
 type Dash0OperatorConfigurationSpec struct {
 	// The configuration of the default observability backend to which telemetry data will be sent by the operator, as
@@ -129,25 +148,6 @@ type TelemetryCollection struct {
 // Dash0OperatorConfigurationStatus defines the observed state of the Dash0 operator configuration resource.
 type Dash0OperatorConfigurationStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
-}
-
-// Dash0OperatorConfiguration is the schema for the Dash0OperatorConfiguration API
-//
-// +kubebuilder:object:root=true
-// +kubebuilder:resource:scope=Cluster
-// +kubebuilder:printcolumn:name="Collect Telemetry",type="boolean",JSONPath=".spec.telemetryCollection.enabled"
-// +kubebuilder:printcolumn:name="Collect Metrics",type="boolean",JSONPath=".spec.kubernetesInfrastructureMetricsCollection.enabled"
-// +kubebuilder:printcolumn:name="Collect Pod Meta",type="boolean",JSONPath=".spec.collectPodLabelsAndAnnotations.enabled"
-// +kubebuilder:printcolumn:name="Available",type="string",JSONPath=`.status.conditions[?(@.type == "Available")].status`
-// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
-// +kubebuilder:subresource:status
-// +groupName=operator.dash0.com
-type Dash0OperatorConfiguration struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-
-	Spec   Dash0OperatorConfigurationSpec   `json:"spec,omitempty"`
-	Status Dash0OperatorConfigurationStatus `json:"status,omitempty"`
 }
 
 func (d *Dash0OperatorConfiguration) IsMarkedForDeletion() bool {

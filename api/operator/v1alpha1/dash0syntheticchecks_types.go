@@ -9,6 +9,19 @@ import (
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 )
 
+// Dash0SyntheticCheck is the Schema for the dash0syntheticchecks API
+//
+// +kubebuilder:object:root=true
+// +groupName=operator.dash0.com
+// +kubebuilder:subresource:status
+type Dash0SyntheticCheck struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   Dash0SyntheticCheckSpec   `json:"spec,omitempty"`
+	Status Dash0SyntheticCheckStatus `json:"status,omitempty"`
+}
+
 // Dash0SyntheticCheckSpec defines the desired state of Dash0SyntheticCheck
 type Dash0SyntheticCheckSpec struct {
 	// +kubebuilder:validation:Required
@@ -32,8 +45,7 @@ type Dash0SyntheticCheckSpec struct {
 
 // Dash0SyntheticCheckDisplay defines the display configuration
 type Dash0SyntheticCheckDisplay struct {
-	// Short-form name for the view to be shown prominently within the view list and atop
-	// the screen when the view is selected.
+	// Short-form name for the synthetic check.
 	// +kubebuilder:validation:Required
 	Name string `json:"name"`
 }
@@ -259,22 +271,9 @@ type Dash0SyntheticCheckStatus struct {
 	ValidationIssues      []string                                          `json:"validationIssues,omitempty"`
 }
 
-// Dash0SyntheticCheck is the Schema for the dash0syntheticchecks API
+// Dash0SyntheticCheckList contains a list of Dash0SyntheticCheck
 //
 // +kubebuilder:object:root=true
-// +kubebuilder:subresource:status
-// +groupName=operator.dash0.com
-type Dash0SyntheticCheck struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-
-	Spec   Dash0SyntheticCheckSpec   `json:"spec,omitempty"`
-	Status Dash0SyntheticCheckStatus `json:"status,omitempty"`
-}
-
-// +kubebuilder:object:root=true
-
-// Dash0SyntheticCheckList contains a list of Dash0SyntheticCheck
 type Dash0SyntheticCheckList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
