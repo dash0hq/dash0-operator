@@ -353,7 +353,7 @@ func (r *SyntheticCheckReconciler) MapResourceToHttpRequests(
 
 func (r *SyntheticCheckReconciler) renderSyntheticCheckUrl(preconditionChecksResult *preconditionValidationResult) string {
 	datasetUrlEncoded := url.QueryEscape(preconditionChecksResult.dataset)
-	syntheticCheckId := fmt.Sprintf(
+	syntheticCheckOrigin := fmt.Sprintf(
 		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
 		// any potential naming collisions (e.g. namespace="abc" & name="def-ghi" vs. namespace="abc-def" & name="ghi").
 		"dash0-operator_%s_%s_%s_%s",
@@ -365,7 +365,7 @@ func (r *SyntheticCheckReconciler) renderSyntheticCheckUrl(preconditionChecksRes
 	return fmt.Sprintf(
 		"%sapi/synthetic-checks/%s?dataset=%s",
 		preconditionChecksResult.apiEndpoint,
-		syntheticCheckId,
+		syntheticCheckOrigin,
 		datasetUrlEncoded,
 	)
 }

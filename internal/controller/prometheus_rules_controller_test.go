@@ -347,7 +347,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		It("creates check rules", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
-			expectFetchIdGetRequest(clusterId)
+			expectFetchOriginsGetRequest(clusterId)
 			expectRulePutRequests(defaultExpectedPathsCheckRules(clusterId))
 			defer gock.Off()
 
@@ -371,7 +371,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		It("updates check rules", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
-			expectFetchIdGetRequest(clusterId)
+			expectFetchOriginsGetRequest(clusterId)
 			expectRulePutRequests(defaultExpectedPathsCheckRules(clusterId))
 			defer gock.Off()
 
@@ -395,7 +395,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		It("updates check rules if dash0.com/enable is set but not to \"false\"", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
-			expectFetchIdGetRequest(clusterId)
+			expectFetchOriginsGetRequest(clusterId)
 			expectRulePutRequests(defaultExpectedPathsCheckRules(clusterId))
 			defer gock.Off()
 
@@ -465,7 +465,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		It("deletes individual check rules when the rule has been removed from the PrometheusRule resource", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
-			expectFetchIdGetRequest(clusterId)
+			expectFetchOriginsGetRequest(clusterId)
 			expectRulePutRequests(
 				[]string{
 					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_1_0"),
@@ -515,7 +515,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		It("deletes individual check rules when the group has been removed from the PrometheusRule resource", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
-			expectFetchIdGetRequest(clusterId)
+			expectFetchOriginsGetRequest(clusterId)
 			expectRulePutRequests(
 				[]string{
 					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_1_0"),
@@ -565,7 +565,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		It("deletes individual check rules when the group in the PrometheusRule resource has been renamed", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
-			expectFetchIdGetRequest(clusterId)
+			expectFetchOriginsGetRequest(clusterId)
 			expectRulePutRequests(
 				[]string{
 					fmt.Sprintf("%s.*%s", checkRuleApiBasePath, "dash0-operator_"+clusterId+"_test-dataset_test-namespace_test-rule_dash0|group_1_0"),
@@ -642,7 +642,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		It("reports validation issues and http errors for Prometheus rules", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
-			expectFetchIdGetRequest(clusterId)
+			expectFetchOriginsGetRequest(clusterId)
 
 			// successful requests (HTTP 200)
 			for _, pathRegex := range []string{
@@ -755,7 +755,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 		It("reports as failed if no Prometheus rule is synchronized succcessul", func() {
 			EnsureMonitoringResourceExistsAndIsAvailable(ctx, k8sClient)
 
-			expectFetchIdGetRequest(clusterId)
+			expectFetchOriginsGetRequest(clusterId)
 
 			// failed request, HTTP 401, no retry
 			gock.New(ApiEndpointTest).
@@ -1115,7 +1115,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 	Describe("converting Prometheus rule resources to http requests", func() {
 		It("should ignore/skip a record rule", func() {
 			req, validationIssues, syncError, ok := convertRuleToRequest(
-				"https://api.dash0.com/alerting/check-rules/rule-id",
+				"https://api.dash0.com/alerting/check-rules/rule-origin",
 				upsert,
 				prometheusv1.Rule{
 					Record: "record",
@@ -1135,7 +1135,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 
 		It("should treat an empty rule as invalid", func() {
 			req, validationIssues, syncError, ok := convertRuleToRequest(
-				"https://api.dash0.com/alerting/check-rules/rule-id",
+				"https://api.dash0.com/alerting/check-rules/rule-origin",
 				upsert,
 				prometheusv1.Rule{},
 				&preconditionValidationResult{},
@@ -1153,7 +1153,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 
 		It("should treat a rule without alert or record as invalid", func() {
 			req, validationIssues, syncError, ok := convertRuleToRequest(
-				"https://api.dash0.com/alerting/check-rules/rule-id",
+				"https://api.dash0.com/alerting/check-rules/rule-origin",
 				upsert,
 				prometheusv1.Rule{
 					Expr:          intstr.FromString("expr"),
@@ -1175,7 +1175,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 
 		It("should treat a rule with empty expression as invalid", func() {
 			req, validationIssues, syncError, ok := convertRuleToRequest(
-				"https://api.dash0.com/alerting/check-rules/rule-id",
+				"https://api.dash0.com/alerting/check-rules/rule-origin",
 				upsert,
 				prometheusv1.Rule{
 					Alert: "alert",
@@ -1196,7 +1196,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 
 		It("should convert an almost empty rule", func() {
 			req, validationIssues, syncError, ok := convertRuleToRequest(
-				"https://api.dash0.com/alerting/check-rules/rule-id",
+				"https://api.dash0.com/alerting/check-rules/rule-origin",
 				upsert,
 				prometheusv1.Rule{
 					Alert: "alert",
@@ -1211,12 +1211,12 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			Expect(validationIssues).To(BeEmpty())
 			Expect(syncError).To(BeNil())
 			Expect(req).ToNot(BeNil())
-			Expect(req.URL.String()).To(Equal("https://api.dash0.com/alerting/check-rules/rule-id"))
+			Expect(req.URL.String()).To(Equal("https://api.dash0.com/alerting/check-rules/rule-origin"))
 		})
 
 		It("should convert a rule with all attributes", func() {
 			req, validationIssues, syncError, ok := convertRuleToRequest(
-				"https://api.dash0.com/alerting/check-rules/rule-id",
+				"https://api.dash0.com/alerting/check-rules/rule-origin",
 				upsert,
 				prometheusv1.Rule{
 					Alert:         "alert",
@@ -1242,7 +1242,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			Expect(validationIssues).To(BeEmpty())
 			Expect(syncError).To(BeNil())
 			Expect(req).ToNot(BeNil())
-			Expect(req.URL.String()).To(Equal("https://api.dash0.com/alerting/check-rules/rule-id"))
+			Expect(req.URL.String()).To(Equal("https://api.dash0.com/alerting/check-rules/rule-origin"))
 		})
 	})
 })
@@ -1261,7 +1261,7 @@ func createPrometheusRuleCrdReconciler() *PrometheusRuleCrdReconciler {
 	return crdReconciler
 }
 
-func expectFetchIdGetRequest(clusterId string) {
+func expectFetchOriginsGetRequest(clusterId string) {
 	gock.New(ApiEndpointTest).
 		Get("/api/alerting/check-rules").
 		MatchHeader("Authorization", AuthorizationHeaderTest).
@@ -1271,16 +1271,16 @@ func expectFetchIdGetRequest(clusterId string) {
 		Reply(200).
 		JSON([]map[string]string{
 			{
-				"id": fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0|group_1_0", clusterId),
+				"origin": fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0|group_1_0", clusterId),
 			},
 			{
-				"id": fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0|group_1_1", clusterId),
+				"origin": fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0|group_1_1", clusterId),
 			},
 			{
-				"id": fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0|group_2_0", clusterId),
+				"origin": fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0|group_2_0", clusterId),
 			},
 			{
-				"id": fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0|group_2_1", clusterId),
+				"origin": fmt.Sprintf("dash0-operator_%s_test-dataset_test-namespace_test-rule_dash0|group_2_1", clusterId),
 			},
 		})
 }

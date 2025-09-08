@@ -353,7 +353,7 @@ func (r *ViewReconciler) MapResourceToHttpRequests(
 
 func (r *ViewReconciler) renderViewUrl(preconditionChecksResult *preconditionValidationResult) string {
 	datasetUrlEncoded := url.QueryEscape(preconditionChecksResult.dataset)
-	viewId := fmt.Sprintf(
+	viewOrigin := fmt.Sprintf(
 		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
 		// any potential naming collisions (e.g. namespace="abc" & name="def-ghi" vs. namespace="abc-def" & name="ghi").
 		"dash0-operator_%s_%s_%s_%s",
@@ -365,7 +365,7 @@ func (r *ViewReconciler) renderViewUrl(preconditionChecksResult *preconditionVal
 	return fmt.Sprintf(
 		"%sapi/views/%s?dataset=%s",
 		preconditionChecksResult.apiEndpoint,
-		viewId,
+		viewOrigin,
 		datasetUrlEncoded,
 	)
 }

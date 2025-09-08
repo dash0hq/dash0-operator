@@ -93,7 +93,7 @@ func handleGetCheckRuleOriginsRequest(ginCtx *gin.Context) {
 	var responsePayload []any
 	for _, checkRuleOrigin := range checkRuleOrigins {
 		responsePayload = append(responsePayload, map[string]any{
-			"id": checkRuleOrigin,
+			"origin": checkRuleOrigin,
 		})
 	}
 	ginCtx.JSON(http.StatusOK, responsePayload)

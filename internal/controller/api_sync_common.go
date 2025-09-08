@@ -91,8 +91,8 @@ type HttpRequestWithItemName struct {
 	Request  *http.Request
 }
 
-type Dash0ApiObjectWithId struct {
-	Id string `json:"id"`
+type Dash0ApiObjectWithOrigin struct {
+	Origin string `json:"origin"`
 }
 
 type apiAction int
@@ -164,12 +164,12 @@ func synchronizeViaApiAndUpdateStatus(
 		action = delete
 	}
 
-	var existingIdsFromApi []string
+	var existingOriginsFromApi []string
 	if action != delete {
 		var err error
-		existingIdsFromApi, err = fetchExistingIds(apiSyncReconciler, preconditionChecksResult, logger)
+		existingOriginsFromApi, err = fetchExistingOrigins(apiSyncReconciler, preconditionChecksResult, logger)
 		if err != nil {
-			// the error has already been logged in fetchExistingIds, but we need to record the failure in the status of
+			// the error has already been logged in fetchExistingOrigins, but we need to record the failure in the status of
 			// the monitoring resource
 			writeSynchronizationResult(
 				ctx,
@@ -188,14 +188,14 @@ func synchronizeViaApiAndUpdateStatus(
 		}
 	}
 
-	itemsTotal, httpRequests, idsInResource, validationIssues, synchronizationErrors :=
+	itemsTotal, httpRequests, originsInResource, validationIssues, synchronizationErrors :=
 		apiSyncReconciler.MapResourceToHttpRequests(preconditionChecksResult, action, logger)
 	if action != delete {
 		itemsTotal, httpRequests = addDeleteRequestsForObjectsThatHaveBeenDeletedInTheKubernetesResource(
 			apiSyncReconciler,
 			preconditionChecksResult,
-			existingIdsFromApi,
-			idsInResource,
+			existingOriginsFromApi,
+			originsInResource,
 			httpRequests,
 			itemsTotal,
 			synchronizationErrors,
@@ -445,52 +445,53 @@ func isSyncDisabledViaLabel(dash0ApiResourceObject map[string]interface{}) bool 
 	return false
 }
 
-func fetchExistingIds(
+func fetchExistingOrigins(
 	apiSyncReconciler ApiSyncReconciler,
 	preconditionChecksResult *preconditionValidationResult,
 	logger *logr.Logger,
 ) ([]string, error) {
 	thirdPartyResourceReconciler, ok := apiSyncReconciler.(ThirdPartyResourceReconciler)
 	if !ok {
-		// this resource reconciler synchronizes a resource type owned by the Dash0 operator, fetching existing IDs is
-		// neither supported nor necessary since there is a one-to-one relationship between K8s resource and Dash0 API
-		// object
+		// this resource reconciler synchronizes a resource type owned by the Dash0 operator, fetching existing origins
+		// is neither supported nor necessary since there is a one-to-one relationship between K8s resource and Dash0
+		// API object
 		return nil, nil
 	}
-	if fetchExistingIdsRequest, err :=
-		thirdPartyResourceReconciler.FetchExistingResourceIdsRequest(preconditionChecksResult); err != nil {
-		logger.Error(err, "cannot create request to fetch existing IDs")
+	if fetchExistingOriginsRequest, err :=
+		thirdPartyResourceReconciler.FetchExistingResourceOriginsRequest(preconditionChecksResult); err != nil {
+		logger.Error(err, "cannot create request to fetch existing resource origins")
 		return nil, err
-	} else if fetchExistingIdsRequest != nil {
+	} else if fetchExistingOriginsRequest != nil {
 		if responseBytes, err := executeSingleHttpRequestWithRetryAndReadBody(
 			apiSyncReconciler,
-			fetchExistingIdsRequest,
+			fetchExistingOriginsRequest,
 			logger,
 		); err != nil {
-			logger.Error(err, "cannot fetch existing IDs")
+			logger.Error(err, "cannot fetch existing origins")
 			return nil, err
 		} else {
-			objectsWithId := make([]Dash0ApiObjectWithId, 0)
-			if err = json.Unmarshal(responseBytes, &objectsWithId); err != nil {
+			objectsWithOrigin := make([]Dash0ApiObjectWithOrigin, 0)
+			if err = json.Unmarshal(responseBytes, &objectsWithOrigin); err != nil {
 				logger.Error(
 					err,
-					"cannot parse response after querying existing IDs",
+					"cannot parse response after querying existing origins",
 					"response",
 					string(responseBytes),
 				)
 				return nil, err
 			}
-			existingIdsWithMatchingPrefix := make([]string, 0, len(objectsWithId))
-			for _, objWithId := range objectsWithId {
-				if objWithId.Id != "" {
-					existingIdsWithMatchingPrefix = append(existingIdsWithMatchingPrefix, objWithId.Id)
+			existingOriginsWithMatchingPrefix := make([]string, 0, len(objectsWithOrigin))
+			for _, objWithOrigin := range objectsWithOrigin {
+				if objWithOrigin.Origin != "" {
+					existingOriginsWithMatchingPrefix =
+						append(existingOriginsWithMatchingPrefix, objWithOrigin.Origin)
 				}
 			}
-			return existingIdsWithMatchingPrefix, nil
+			return existingOriginsWithMatchingPrefix, nil
 		}
 	} else {
-		// this third party resource reconciler does not support fetching existing IDs, this is expected for resource
-		// types that have a one-to-one relationship between K8s resource and Dash0 API object
+		// this third party resource reconciler does not support fetching existing origins, this is expected for
+		// resource types that have a one-to-one relationship between K8s resource and Dash0 API object
 		return nil, nil
 	}
 }
@@ -498,8 +499,8 @@ func fetchExistingIds(
 func addDeleteRequestsForObjectsThatHaveBeenDeletedInTheKubernetesResource(
 	apiSyncReconciler ApiSyncReconciler,
 	preconditionChecksResult *preconditionValidationResult,
-	existingIdsFromApi []string,
-	idsInResource []string,
+	existingOriginsFromApi []string,
+	originsInResource []string,
 	httpRequests []HttpRequestWithItemName,
 	itemsTotal int,
 	synchronizationErrors map[string]string,
@@ -514,8 +515,8 @@ func addDeleteRequestsForObjectsThatHaveBeenDeletedInTheKubernetesResource(
 	}
 	deleteHttpRequests, deleteSynchronizationErrors := thirdPartyResourceReconciler.CreateDeleteRequests(
 		preconditionChecksResult,
-		existingIdsFromApi,
-		idsInResource,
+		existingOriginsFromApi,
+		originsInResource,
 		logger,
 	)
 	itemsTotal += len(deleteHttpRequests)
