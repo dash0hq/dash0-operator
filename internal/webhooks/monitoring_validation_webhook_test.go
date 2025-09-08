@@ -22,6 +22,26 @@ import (
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
+// ???
+//
+// when there is no available operator configuration resource, or it has no export:
+// - only allow monitoring resources without telemetry stuff, that is, only for API sync. (All telemetry related things
+//   are off/none/false, only dashboard and check rule synch can be enabled.)
+// - whether the monitoring resource has an export or not does not matter
+//
+// TODO it would be nice if we could outright disallow monitoring resources if there is no operator configuration with
+// an export???
+//
+// Unfortunately, we want to allow setups where with self-monitoring and k8s infra metrics disabled, and
+// then maybe also monitor one specific namespace, so we probably need to allow only specificing the export in the
+// respective monitoring resource.
+// Hence the otel config export render logic needs to be able to cope with not having a default export. :-/
+// Or could we just say "you cannot monitor namespaces without defining a default export as a fallback?".
+// Might be justifiable, and in practive it would probably not matter, because most customers will export to exactly
+// one Dash0 org, and only maybe vary the dataset per namespace.
+//
+//
+
 var _ = Describe("The validation webhook for the monitoring resource", func() {
 
 	type validationTestConfig struct {
