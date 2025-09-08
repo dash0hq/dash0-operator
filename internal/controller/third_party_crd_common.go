@@ -74,12 +74,12 @@ type ThirdPartyResourceReconciler interface {
 
 	Queue() *workqueue.Typed[ThirdPartyResourceSyncJob]
 
-	// FetchExistingResourceIdsRequest creates an HTTP request for retrieving the existing IDs from the Dash0
+	// FetchExistingResourceOriginsRequest creates an HTTP request for retrieving the existing origins from the Dash0
 	// API for a given Kubernetes resource.
-	// FetchExistingResourceIdsRequest is only used for resource types where one Kubernetes resource (say, a
+	// FetchExistingResourceOriginsRequest is only used for resource types where one Kubernetes resource (say, a
 	// PrometheusRule) is potentially associated with multiple Dash0 api objects (multiple checks). Controllers
 	// which manage objects with a one-to-one relation (like Perses dashboards) should return nil, nil.
-	FetchExistingResourceIdsRequest(*preconditionValidationResult) (*http.Request, error)
+	FetchExistingResourceOriginsRequest(*preconditionValidationResult) (*http.Request, error)
 
 	// CreateDeleteRequests produces an HTTP DELETE requests for the resources that still exist in Dash0, but should
 	// not. It does so by comparing the list of IDs of objects that exist in the Dash0 backend with the list

@@ -429,7 +429,7 @@ func (r *PersesDashboardReconciler) Reconcile(
 	return reconcile.Result{}, nil
 }
 
-func (r *PersesDashboardReconciler) FetchExistingResourceIdsRequest(
+func (r *PersesDashboardReconciler) FetchExistingResourceOriginsRequest(
 	_ *preconditionValidationResult,
 ) (*http.Request, error) {
 	// The mechanism to delete individual dashboards when synchronizing one Kubernetes PersesDashboard resource is not
@@ -538,7 +538,7 @@ func (r *PersesDashboardReconciler) MapResourceToHttpRequests(
 
 func (r *PersesDashboardReconciler) renderDashboardUrl(preconditionChecksResult *preconditionValidationResult) string {
 	datasetUrlEncoded := url.QueryEscape(preconditionChecksResult.dataset)
-	dashboardId := fmt.Sprintf(
+	dashboardOrigin := fmt.Sprintf(
 		// we deliberately use _ as the separator, since that is an illegal character in Kubernetes names. This avoids
 		// any potential naming collisions (e.g. namespace="abc" & name="def-ghi" vs. namespace="abc-def" & name="ghi").
 		"dash0-operator_%s_%s_%s_%s",
@@ -550,7 +550,7 @@ func (r *PersesDashboardReconciler) renderDashboardUrl(preconditionChecksResult 
 	return fmt.Sprintf(
 		"%sapi/dashboards/%s?dataset=%s",
 		preconditionChecksResult.apiEndpoint,
-		dashboardId,
+		dashboardOrigin,
 		datasetUrlEncoded,
 	)
 }

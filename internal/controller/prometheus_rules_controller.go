@@ -455,7 +455,7 @@ func (r *PrometheusRuleReconciler) Reconcile(
 	return reconcile.Result{}, nil
 }
 
-func (r *PrometheusRuleReconciler) FetchExistingResourceIdsRequest(
+func (r *PrometheusRuleReconciler) FetchExistingResourceOriginsRequest(
 	preconditionChecksResult *preconditionValidationResult,
 ) (*http.Request, error) {
 	checkRulesUrl := r.renderCheckRuleListUrl(preconditionChecksResult)
@@ -485,7 +485,7 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 		return 0, nil, nil, nil, map[string]string{"*": err.Error()}
 	}
 
-	var idsInResource []string
+	var originsInResource []string
 	var requests []HttpRequestWithItemName
 	allValidationIssues := make(map[string][]string)
 	allSynchronizationErrors := make(map[string]string)
@@ -497,8 +497,9 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 				itemNameSuffix = strconv.Itoa(ruleIdx)
 			}
 			checkRuleName := fmt.Sprintf("%s - %s", group.Name, itemNameSuffix)
-			checkRuleIdNotUrlEncoded, checkRuleIdUrlEncoded := r.renderCheckRuleId(preconditionChecksResult, group, ruleIdx)
-			checkRuleUrl := r.renderCheckRuleUrl(preconditionChecksResult, checkRuleIdUrlEncoded)
+			checkRuleOriginNotUrlEncoded, checkRuleOriginUrlEncoded :=
+				r.renderCheckRuleOrigin(preconditionChecksResult, group, ruleIdx)
+			checkRuleUrl := r.renderCheckRuleUrl(preconditionChecksResult, checkRuleOriginUrlEncoded)
 			request, validationIssues, syncError, ok := convertRuleToRequest(
 				checkRuleUrl,
 				action,
@@ -515,7 +516,7 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 				// most recent valid state. To do that, we add its id to the list of ids we have seen (the list will
 				// later be used to determine which of the checks in Dash0 need to be removed because they are no longer
 				// in the K8s resource.
-				idsInResource = append(idsInResource, checkRuleIdNotUrlEncoded)
+				originsInResource = append(originsInResource, checkRuleOriginNotUrlEncoded)
 				continue
 			}
 			if syncError != nil {
@@ -532,40 +533,49 @@ func (r *PrometheusRuleReconciler) MapResourceToHttpRequests(
 					ItemName: checkRuleName,
 					Request:  request,
 				})
-				idsInResource = append(idsInResource, checkRuleIdNotUrlEncoded)
+				originsInResource = append(originsInResource, checkRuleOriginNotUrlEncoded)
 			}
 		}
 	}
 
 	return len(requests) + len(allValidationIssues) + len(allSynchronizationErrors),
 		requests,
-		idsInResource,
+		originsInResource,
 		allValidationIssues,
 		allSynchronizationErrors
 }
 
 // renderCheckRuleListUrl renders the URL to fetch the list of existing check rule IDs from the Dash0 API.
 func (r *PrometheusRuleReconciler) renderCheckRuleListUrl(preconditionChecksResult *preconditionValidationResult) string {
+	// 08.09.2025: Start sending the prefix already as originPrefix, the Dash0 API will rename the parameter
+	// soon-ish. We can remove the (misnamed) idPrefix query parameter as soon as the Dash0 API has rolled out the
+	// rename. Then, ~1 year later, the Dash0 API can remove support for the legacy query parameter idPrefix.
+	originPrefix :=
+		r.renderCheckRuleOriginPrefix(preconditionChecksResult, url.QueryEscape(preconditionChecksResult.dataset))
 	return fmt.Sprintf(
-		"%sapi/alerting/check-rules?dataset=%s&idPrefix=%s",
+		"%sapi/alerting/check-rules?dataset=%s&idPrefix=%s&originPrefix=%s",
 		preconditionChecksResult.apiEndpoint,
 		url.QueryEscape(preconditionChecksResult.dataset),
-		r.renderCheckRuleIdPrefix(preconditionChecksResult, url.QueryEscape(preconditionChecksResult.dataset)),
+		originPrefix,
+		originPrefix,
 	)
 }
 
 // renderCheckRuleUrl renders the URL for a single Dash0 check rule.
-func (r *PrometheusRuleReconciler) renderCheckRuleUrl(preconditionChecksResult *preconditionValidationResult, checkRuleId string) string {
+func (r *PrometheusRuleReconciler) renderCheckRuleUrl(
+	preconditionChecksResult *preconditionValidationResult,
+	checkRuleOrigin string,
+) string {
 	return fmt.Sprintf(
 		"%sapi/alerting/check-rules/%s?dataset=%s",
 		preconditionChecksResult.apiEndpoint,
-		checkRuleId,
+		checkRuleOrigin,
 		url.QueryEscape(preconditionChecksResult.dataset),
 	)
 }
 
-// renderCheckRuleId renders the ID of a single Dash0 check rule.
-func (r *PrometheusRuleReconciler) renderCheckRuleId(
+// renderCheckRuleOrigin renders the origin of a single Dash0 check rule.
+func (r *PrometheusRuleReconciler) renderCheckRuleOrigin(
 	preconditionChecksResult *preconditionValidationResult,
 	group prometheusv1.RuleGroup,
 	checkIdx int,
@@ -576,25 +586,25 @@ func (r *PrometheusRuleReconciler) renderCheckRuleId(
 	// https://stackoverflow.com/questions/71581828/gin-problem-accessing-url-encoded-path-param-containing-forward-slash
 	groupNameNotUrlEncoded := strings.ReplaceAll(group.Name, "/", "|")
 	groupNameUrlEncoded := url.PathEscape(groupNameNotUrlEncoded)
-	checkIdNotUrlEncoded := fmt.Sprintf(
+	checkOriginNotUrlEncoded := fmt.Sprintf(
 		"%s%s_%d",
-		r.renderCheckRuleIdPrefix(preconditionChecksResult, preconditionChecksResult.dataset),
+		r.renderCheckRuleOriginPrefix(preconditionChecksResult, preconditionChecksResult.dataset),
 		groupNameNotUrlEncoded,
 		checkIdx,
 	)
-	checkIdUrlEncoded := fmt.Sprintf(
+	checkOriginUrlEncoded := fmt.Sprintf(
 		"%s%s_%d",
 		// dataset can only contain letters, numbers, underscores, and hyphens, so we do not need to replace "/" -> "|".
-		r.renderCheckRuleIdPrefix(preconditionChecksResult, url.PathEscape(preconditionChecksResult.dataset)),
+		r.renderCheckRuleOriginPrefix(preconditionChecksResult, url.PathEscape(preconditionChecksResult.dataset)),
 		groupNameUrlEncoded,
 		checkIdx,
 	)
-	return checkIdNotUrlEncoded, checkIdUrlEncoded
+	return checkOriginNotUrlEncoded, checkOriginUrlEncoded
 }
 
-// renderCheckRuleIdPrefix renders the common ID prefix for all Dash0 check rules that are created from one
+// renderCheckRuleOriginPrefix renders the common origin prefix for all Dash0 check rules that are created from one
 // Kubernetes PrometheusRule resource.
-func (r *PrometheusRuleReconciler) renderCheckRuleIdPrefix(
+func (r *PrometheusRuleReconciler) renderCheckRuleOriginPrefix(
 	preconditionChecksResult *preconditionValidationResult,
 	dataset string,
 ) string {
@@ -830,16 +840,16 @@ func validateThreshold(
 
 func (r *PrometheusRuleReconciler) CreateDeleteRequests(
 	preconditionChecksResult *preconditionValidationResult,
-	existingIdsFromApi []string,
-	idsInResource []string,
+	existingOriginsFromApi []string,
+	originsInResource []string,
 	logger *logr.Logger,
 ) ([]HttpRequestWithItemName, map[string]string) {
 	var deleteRequests []HttpRequestWithItemName
 	allSynchronizationErrors := make(map[string]string)
-	for _, existingId := range existingIdsFromApi {
-		if !slices.Contains(idsInResource, existingId) {
+	for _, existingOrigin := range existingOriginsFromApi {
+		if !slices.Contains(originsInResource, existingOrigin) {
 			// This means that the rule has been deleted in the resource, so we need to delete it via the API.
-			deleteUrl := r.renderCheckRuleUrl(preconditionChecksResult, existingId)
+			deleteUrl := r.renderCheckRuleUrl(preconditionChecksResult, existingOrigin)
 			if req, err := http.NewRequest(
 				http.MethodDelete,
 				deleteUrl,
@@ -851,11 +861,11 @@ func (r *PrometheusRuleReconciler) CreateDeleteRequests(
 					err,
 				)
 				logger.Error(httpError, "error creating http request to delete rule")
-				allSynchronizationErrors[existingId] = httpError.Error()
+				allSynchronizationErrors[existingOrigin] = httpError.Error()
 			} else {
 				addAuthorizationHeader(req, preconditionChecksResult)
 				deleteRequests = append(deleteRequests, HttpRequestWithItemName{
-					ItemName: existingId + " (deleted)",
+					ItemName: existingOrigin + " (deleted)",
 					Request:  req,
 				})
 			}
