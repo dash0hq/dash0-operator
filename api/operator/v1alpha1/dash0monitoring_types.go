@@ -29,6 +29,20 @@ const (
 	annotationNameStatusPreviousInstrumentWorkloadsLabelSelector           = "dash0.com/status.previousInstrumentWorkloads.labelSelector"
 )
 
+// Dash0Monitoring is the schema for the Dash0Monitoring API
+//
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +groupName=operator.dash0.com
+// +kubebuilder:conversion:spoke
+type Dash0Monitoring struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   Dash0MonitoringSpec   `json:"spec,omitempty"`
+	Status Dash0MonitoringStatus `json:"status,omitempty"`
+}
+
 // Dash0MonitoringSpec describes the details of monitoring a single Kubernetes namespace with Dash0 and sending
 // telemetry to an observability backend.
 type Dash0MonitoringSpec struct {
@@ -185,20 +199,6 @@ type Dash0MonitoringStatus struct {
 	// Shows results of synchronizing Prometheus rule resources in this namespace via the Dash0 API.
 	// +kubebuilder:validation:Optional
 	PrometheusRuleSynchronizationResults map[string]dash0common.PrometheusRuleSynchronizationResult `json:"prometheusRuleSynchronizationResults,omitempty"`
-}
-
-// Dash0Monitoring is the schema for the Dash0Monitoring API
-//
-// +kubebuilder:object:root=true
-// +kubebuilder:subresource:status
-// +groupName=operator.dash0.com
-// +kubebuilder:conversion:spoke
-type Dash0Monitoring struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-
-	Spec   Dash0MonitoringSpec   `json:"spec,omitempty"`
-	Status Dash0MonitoringStatus `json:"status,omitempty"`
 }
 
 func (d *Dash0Monitoring) ReadInstrumentWorkloadsSetting() dash0common.InstrumentWorkloadsMode {

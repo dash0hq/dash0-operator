@@ -101,14 +101,6 @@ cluster roles should match snapshot:
       - apiGroups:
           - operator.dash0.com
         resources:
-          - dash0views
-        verbs:
-          - get
-          - list
-          - watch
-      - apiGroups:
-          - operator.dash0.com
-        resources:
           - dash0monitorings
         verbs:
           - create
@@ -172,6 +164,22 @@ cluster roles should match snapshot:
           - operator.dash0.com
         resources:
           - dash0syntheticchecks/status
+        verbs:
+          - get
+          - patch
+          - update
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0views
+        verbs:
+          - get
+          - list
+          - watch
+      - apiGroups:
+          - operator.dash0.com
+        resources:
+          - dash0views/status
         verbs:
           - get
           - patch

@@ -18,6 +18,26 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
+// Dash0Monitoring is the schema for the Dash0Monitoring API
+//
+// +kubebuilder:object:root=true
+// +groupName=operator.dash0.com
+// +kubebuilder:subresource:status
+// +kubebuilder:storageversion
+// +kubebuilder:conversion:hub
+// +kubebuilder:printcolumn:name="Instrument Workloads",type="string",JSONPath=".spec.instrumentWorkloads.mode"
+// +kubebuilder:printcolumn:name="Collect Logs",type="boolean",JSONPath=".spec.logCollection.enabled"
+// +kubebuilder:printcolumn:name="Prometheus Scraping",type="boolean",JSONPath=".spec.prometheusScraping.enabled"
+// +kubebuilder:printcolumn:name="Available",type="string",JSONPath=`.status.conditions[?(@.type == "Available")].status`
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+type Dash0Monitoring struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   Dash0MonitoringSpec   `json:"spec,omitempty"`
+	Status Dash0MonitoringStatus `json:"status,omitempty"`
+}
+
 // Dash0MonitoringSpec describes the details of monitoring a single Kubernetes namespace with Dash0 and sending
 // telemetry to an observability backend.
 type Dash0MonitoringSpec struct {
@@ -219,26 +239,6 @@ type Dash0MonitoringStatus struct {
 	// Shows results of synchronizing Prometheus rule resources in this namespace via the Dash0 API.
 	// +kubebuilder:validation:Optional
 	PrometheusRuleSynchronizationResults map[string]dash0common.PrometheusRuleSynchronizationResult `json:"prometheusRuleSynchronizationResults,omitempty"`
-}
-
-// Dash0Monitoring is the schema for the Dash0Monitoring API
-//
-// +kubebuilder:object:root=true
-// +kubebuilder:subresource:status
-// +groupName=operator.dash0.com
-// +kubebuilder:storageversion
-// +kubebuilder:conversion:hub
-// +kubebuilder:printcolumn:name="Instrument Workloads",type="string",JSONPath=".spec.instrumentWorkloads.mode"
-// +kubebuilder:printcolumn:name="Collect Logs",type="boolean",JSONPath=".spec.logCollection.enabled"
-// +kubebuilder:printcolumn:name="Prometheus Scraping",type="boolean",JSONPath=".spec.prometheusScraping.enabled"
-// +kubebuilder:printcolumn:name="Available",type="string",JSONPath=`.status.conditions[?(@.type == "Available")].status`
-// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
-type Dash0Monitoring struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-
-	Spec   Dash0MonitoringSpec   `json:"spec,omitempty"`
-	Status Dash0MonitoringStatus `json:"status,omitempty"`
 }
 
 // Hub marks this version as the hub for conversions, all other versions are implicitly spokes. See

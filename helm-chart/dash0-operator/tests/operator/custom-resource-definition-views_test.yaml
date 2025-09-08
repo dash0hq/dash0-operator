@@ -1,0 +1,7 @@
+suite: test view CRD
+templates:
+  - operator/custom-resource-definition-views.yaml
+tests:
+  - it: custom resource definition for views should match snapshot
+    asserts:
+      - matchSnapshot: {}

@@ -1674,9 +1674,9 @@ Status:
       Synchronized At:            2024-10-25T12:02:12Z
 ```
 
-Note: If you only want to manage dashboards, check rules and synthetic checks via the Dash0 operator, and you do not
-want it to collect telemetry, you can set `telemetryCollection.enabled` to `false` in the Dash0 operator configuration
-resource.
+Note: If you only want to manage dashboards, check rules, synthetic checks and views via the Dash0 operator, and you do
+not want it to collect telemetry, you can set `telemetryCollection.enabled` to `false` in the Dash0 operator
+configuration resource.
 This will disable the telemetry collection by the operator, and it will also instruct the operator to not deploy the
 OpenTelemetry collector in your cluster.
 
@@ -1794,9 +1794,9 @@ Status:
       Synchronization Errors Total:  0
 ```
 
-Note: If you only want to manage dashboards, check rules and synthetic checks via the Dash0 operator, and you do not
-want it to collect telemetry, you can set `telemetryCollection.enabled` to `false` in the Dash0 operator configuration
-resource.
+Note: If you only want to manage dashboards, check rules, synthetic checks and views via the Dash0 operator, and you do
+not want it to collect telemetry, you can set `telemetryCollection.enabled` to `false` in the Dash0 operator
+configuration resource.
 This will disable the telemetry collection by the operator, and it will also instruct the operator to not deploy the
 OpenTelemetry collector in your cluster.
 
@@ -1852,9 +1852,9 @@ Status:
   Synchronized At:        2025-09-05T11:47:56Z
 ```
 
-Note: If you only want to manage dashboards, check rules and synthetic checks via the Dash0 operator, and you do not
-want it to collect telemetry, you can set `telemetryCollection.enabled` to `false` in the Dash0 operator configuration
-resource.
+Note: If you only want to manage dashboards, check rules, synthetic checks and views via the Dash0 operator, and you do
+not want it to collect telemetry, you can set `telemetryCollection.enabled` to `false` in the Dash0 operator
+configuration resource.
 This will disable the telemetry collection by the operator, and it will also instruct the operator to not deploy the
 OpenTelemetry collector in your cluster.
 
@@ -1869,11 +1869,48 @@ Pre-requisites for this feature:
   (either `token` or `secret-ref`).
 * The operator will only pick up Dash0 view resources in namespaces that have a Dash0 monitoring resource
   deployed.
-* The operator will not synchronize Dash0 view resources in namespaces where the Dash0 monitoring resource
-  has the setting `synchronizeViews` set to `false`. (This setting is optional and defaults to `true` when
-  omitted.)
 
-TODO complete this section...
+With the prerequisites in place, you can manage Dash0 views via the operator.
+The Dash0 operator will watch for view resources in all namespaces that have a Dash0 monitoring resource deployed, and
+synchronize the view resources with the Dash0 backend:
+* When a new view resource is created, the operator will create a corresponding view via Dash0's API.
+* When a view resource is changed, the operator will update the corresponding view via Dash0's API.
+* When a view resource is deleted, the operator will delete the corresponding view via Dash0's API.
+
+The views created by the operator will be in read-only mode in the Dash0 UI.
+
+If the Dash0 operator configuration resource has the `dataset` property set, the operator will create the view in that
+dataset, otherwise they will be created in the `default` dataset.
+
+You can opt out of synchronization for individual views resources by adding the Kubernetes label
+`dash0.com/enable: false` to the view resource.
+If this label is added to a synthetic chec which has previously been synchronized to Dash0, the operator will delete the
+corresponding synthetic chec in Dash0.
+Note that the `spec.instrumentWorkloads.labelSelector` in the monitoring resource does not affect the synchronization of
+views, the label to opt out of synchronization is always `dash0.com/enable: false`, even if a non-default label selector
+has been set in `spec.instrumentWorkloads.labelSelector`.
+
+When a view resource has been synchronized to Dash0, the operator will write a summary of that synchronization operation
+to its status.
+Note that in contrast to synchronizing Prometheus rules or Perses dashboards (which are third-party custom resources
+from the perspective of the operator, i.e. they are potentially owned and managed by another Kubernetes operator), the
+result of the synchronization operation will not be written to the status of the Dash0 monitoring resource in the same
+namespace, but to the view resource status directly.
+The status will also show whether the view had any validation issues or an error occurred during synchronization.
+
+```yaml
+Kind: Dash0View
+...
+Status:
+  Synchronization Status: successful
+  Synchronized At:        2025-09-05T11:47:56Z
+```
+
+Note: If you only want to manage dashboards, check rules, synthetic checks and views via the Dash0 operator, and you do
+not want it to collect telemetry, you can set `telemetryCollection.enabled` to `false` in the Dash0 operator
+configuration resource.
+This will disable the telemetry collection by the operator, and it will also instruct the operator to not deploy the
+OpenTelemetry collector in your cluster.
 
 ## Notes on ArgoCD
 

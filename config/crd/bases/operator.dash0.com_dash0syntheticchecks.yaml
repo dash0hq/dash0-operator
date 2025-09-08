@@ -44,9 +44,7 @@ spec:
                 description: Dash0SyntheticCheckDisplay defines the display configuration
                 properties:
                   name:
-                    description: |-
-                      Short-form name for the view to be shown prominently within the view list and atop
-                      the screen when the view is selected.
+                    description: Short-form name for the synthetic check.
                     type: string
                 required:
                 - name
