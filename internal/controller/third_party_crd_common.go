@@ -430,7 +430,7 @@ func deleteViaApi(
 }
 
 func StartProcessingThirdPartySynchronizationQueue(
-	resourceReconcileQueue *workqueue.Typed[ThirdPartyResourceSyncJob],
+	thirdPartyResourceSynchronizationQueue *workqueue.Typed[ThirdPartyResourceSyncJob],
 	setupLog *logr.Logger,
 ) {
 	setupLog.Info("Starting the Dash0 API resource synchronization queue.")
@@ -438,7 +438,7 @@ func StartProcessingThirdPartySynchronizationQueue(
 		for {
 			ctx := context.Background()
 			logger := log.FromContext(ctx)
-			item, queueShutdown := resourceReconcileQueue.Get()
+			item, queueShutdown := thirdPartyResourceSynchronizationQueue.Get()
 			if queueShutdown {
 				logger.Info("The Dash0 API resource synchronization queue has been shut down.")
 				return
@@ -466,7 +466,7 @@ func StartProcessingThirdPartySynchronizationQueue(
 					item.dash0ApiResource.GetNamespace(),
 					item.dash0ApiResource.GetName(),
 				))
-			resourceReconcileQueue.Done(item)
+			thirdPartyResourceSynchronizationQueue.Done(item)
 		}
 	}()
 }

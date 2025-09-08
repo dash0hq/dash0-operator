@@ -616,18 +616,23 @@ install_third_party_crds() {
 
 deploy_dash0_api_sync_resources() {
   if [[ "${DEPLOY_SYNTHETIC_CHECK:-}" = "true" ]]; then
-    echo "STEP $step_counter: deploy a synthetic check resource to namespace ${target_namespace}"
-    kubectl apply -n ${target_namespace} -f test-resources/customresources/syntheticcheck/syntheticcheck.yaml
+    echo "STEP $step_counter: deploy a Dash0 synthetic check resource to namespace ${target_namespace}"
+    kubectl apply -n "$target_namespace" -f test-resources/customresources/dash0syntheticcheck/dash0syntheticcheck.yaml
+    finish_step
+  fi
+  if [[ "${DEPLOY_VIEW:-}" = "true" ]]; then
+    echo "STEP $step_counter: deploy a Dash0 view resource to namespace ${target_namespace}"
+    kubectl apply -n "$target_namespace" -f test-resources/customresources/dash0view/dash0view.yaml
     finish_step
   fi
   if [[ "${DEPLOY_PERSES_DASHBOARD:-}" = "true" ]]; then
     echo "STEP $step_counter: deploy a Perses dashboard resource to namespace ${target_namespace}"
-    kubectl apply -n ${target_namespace} -f test-resources/customresources/persesdashboard/persesdashboard.yaml
+    kubectl apply -n "$target_namespace" -f test-resources/customresources/persesdashboard/persesdashboard.yaml
     finish_step
   fi
   if [[ "${DEPLOY_PROMETHEUS_RULE:-}" = "true" ]]; then
     echo "STEP $step_counter: deploy a Prometheus rule resource to namespace ${target_namespace}"
-    kubectl apply -n ${target_namespace} -f test-resources/customresources/prometheusrule/prometheusrule.yaml
+    kubectl apply -n "$target_namespace" -f test-resources/customresources/prometheusrule/prometheusrule.yaml
     finish_step
   fi
 }

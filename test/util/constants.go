@@ -21,7 +21,6 @@ const (
 	ClusterUidTest              = "cluster-uid-test"
 	ClusterNameTest             = "cluster-name-test"
 	TestNamespaceName           = "test-namespace"
-	TestNamespaceName2          = "test-namespace-2"
 	OperatorNamespace           = "test-operator-namespace"
 	OTelCollectorNamePrefixTest = "unit-test"
 

@@ -28,14 +28,15 @@ import (
 )
 
 const (
-	syntheticCheckName        = "test-synthetic-check"
-	syntheticCheckName2       = "test-synthetic-check-2"
-	syntheticCheckApiBasePath = "/api/synthetic-checks/"
+	syntheticCheckName            = "test-synthetic-check"
+	extraNamespaceSyntheticChecks = "extra-namespace-synthetic-checks"
+	syntheticCheckName2           = "test-synthetic-check-2"
+	syntheticCheckApiBasePath     = "/api/synthetic-checks/"
 )
 
 var (
 	defaultExpectedPathSyntheticCheck  = fmt.Sprintf("%s.*%s", syntheticCheckApiBasePath, "dash0-operator_.*_test-dataset_test-namespace_test-synthetic-check")
-	defaultExpectedPathSyntheticCheck2 = fmt.Sprintf("%s.*%s", syntheticCheckApiBasePath, "dash0-operator_.*_test-dataset_test-namespace-2_test-synthetic-check-2")
+	defaultExpectedPathSyntheticCheck2 = fmt.Sprintf("%s.*%s", syntheticCheckApiBasePath, "dash0-operator_.*_test-dataset_extra-namespace-synthetic-checks_test-synthetic-check-2")
 	leaderElectionAware                = leaderElectionAwareMock{
 		isLeader: true,
 	}
@@ -61,10 +62,6 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 	BeforeAll(func() {
 		EnsureTestNamespaceExists(ctx, k8sClient)
 		EnsureOperatorNamespaceExists(ctx, k8sClient)
-	})
-
-	AfterAll(func() {
-		DeleteNamespace(ctx, k8sClient, TestNamespaceName2)
 	})
 
 	BeforeEach(func() {
@@ -99,7 +96,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 		AfterEach(func() {
 			DeleteMonitoringResourceIfItExists(ctx, k8sClient)
 			deleteSyntheticCheckResourceIfItExists(ctx, k8sClient, TestNamespaceName, syntheticCheckName)
-			deleteSyntheticCheckResourceIfItExists(ctx, k8sClient, TestNamespaceName2, syntheticCheckName2)
+			deleteSyntheticCheckResourceIfItExists(ctx, k8sClient, extraNamespaceSyntheticChecks, syntheticCheckName2)
 		})
 
 		It("it ignores synthetic check resource changes if no Dash0 monitoring resource exists in the namespace", func() {
@@ -406,12 +403,12 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 			// Disable synchronization by removing the auth token or api endpoint.
 			testConfig.disableSync()
 
-			EnsureNamespaceExists(ctx, k8sClient, TestNamespaceName2)
+			EnsureNamespaceExists(ctx, k8sClient, extraNamespaceSyntheticChecks)
 			secondMonitoringResource := EnsureMonitoringResourceWithSpecExistsInNamespaceAndIsAvailable(
 				ctx,
 				k8sClient,
 				MonitoringResourceDefaultSpec,
-				types.NamespacedName{Namespace: TestNamespaceName2, Name: MonitoringResourceName},
+				types.NamespacedName{Namespace: extraNamespaceSyntheticChecks, Name: MonitoringResourceName},
 			)
 			extraMonitoringResourceNames = append(extraMonitoringResourceNames, types.NamespacedName{
 				Namespace: secondMonitoringResource.Namespace,
@@ -424,13 +421,13 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 
 			syntheticCheckResource1 := createSyntheticCheckResource(TestNamespaceName, syntheticCheckName)
 			Expect(k8sClient.Create(ctx, syntheticCheckResource1)).To(Succeed())
-			syntheticCheckResource2 := createSyntheticCheckResource(TestNamespaceName2, syntheticCheckName2)
+			syntheticCheckResource2 := createSyntheticCheckResource(extraNamespaceSyntheticChecks, syntheticCheckName2)
 			Expect(k8sClient.Create(ctx, syntheticCheckResource2)).To(Succeed())
 
 			// verify that the synthetic checks have not been synchronized yet
 			Expect(gock.IsPending()).To(BeTrue())
 			verifySyntheticCheckHasNoSynchronizationStatus(ctx, k8sClient, TestNamespaceName, syntheticCheckName)
-			verifySyntheticCheckHasNoSynchronizationStatus(ctx, k8sClient, TestNamespaceName2, syntheticCheckName2)
+			verifySyntheticCheckHasNoSynchronizationStatus(ctx, k8sClient, extraNamespaceSyntheticChecks, syntheticCheckName2)
 
 			// Now provide the auth token or API endpoint, which was unset before. This should trigger initial
 			// synchronization of all resources.
@@ -449,7 +446,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 			verifySyntheticCheckSynchronizationStatus(
 				ctx,
 				k8sClient,
-				TestNamespaceName2,
+				extraNamespaceSyntheticChecks,
 				syntheticCheckName2,
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,

@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 )
 
 // Dash0View is the Schema for the Dash0View API
@@ -107,8 +109,7 @@ type Dash0ViewFilter struct {
 
 	// The match operation for filtering attributes.
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=is;is_not;is_set;is_not_set;is_one_of;is_not_one_of;gt;lt;gte;lte;matches;does_not_match;contains;does_not_contain;starts_with;does_not_start_with;ends_with;does_not_end_with;is_any
-	Operator string `json:"operator"`
+	Operator Dash0ViewFilterOperator `json:"operator"`
 
 	// +kubebuilder:validation:Optional
 	// +kubebuilder:pruning:PreserveUnknownFields
@@ -119,6 +120,10 @@ type Dash0ViewFilter struct {
 	// +kubebuilder:pruning:PreserveUnknownFields
 	Values []AnyValue `json:"values,omitempty"`
 }
+
+// Dash0ViewFilterOperator defines the operator for a filter in a view.
+// +kubebuilder:validation:Enum=is;is_not;is_set;is_not_set;is_one_of;is_not_one_of;gt;lt;gte;lte;matches;does_not_match;contains;does_not_contain;starts_with;does_not_start_with;ends_with;does_not_end_with;is_any
+type Dash0ViewFilterOperator string
 
 // AnyValue represents a value that can be a string or a structured object
 // +kubebuilder:pruning:PreserveUnknownFields
@@ -232,19 +237,25 @@ type Dash0ViewVisualization struct {
 	// The matching prioritizes precise matches before wildcard matches.
 	// If there are multiple renderers, select buttons will be added to allow toggling between the renderers.
 	// +kubebuilder:validation:Optional
-	// +kubebuilder:validation:Enum=traces-explorer/*/outliers;traces-explorer/*/red;logging/*/stacked_bar;resources/*/table-tree;resources/overview/overview;resources/services/red;resources/operations/red;resources/names/red;resources/k8s-cron-jobs/executions;resources/k8s-cron-jobs/red;resources/k8s-daemon-sets/scheduled-nodes;resources/k8s-daemon-sets/red;resources/k8s-deployments/replicas;resources/k8s-deployments/red;resources/k8s-jobs/executions;resources/k8s-jobs/red;resources/k8s-namespaces/red;resources/k8s-nodes/cpu-memory-disk;resources/k8s-nodes/status;resources/k8s-pods/cpu-memory;resources/k8s-pods/status;resources/k8s-pods/red;resources/k8s-replica-sets/replicas;resources/k8s-replica-sets/red;resources/k8s-stateful-sets/replicas;resources/k8s-stateful-sets/red;resources/faas/red
 	// +kubebuilder:deprecated
-	Renderer string `json:"renderer,omitempty"`
+	Renderer Dash0ViewRenderer `json:"renderer,omitempty"`
 
 	// A set of visualizations (charts) to render as part of this view. We currently only expect
 	// to render a single
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=traces-explorer/*/outliers;traces-explorer/*/red;logging/*/stacked_bar;resources/*/table-tree;resources/overview/overview;resources/services/red;resources/operations/red;resources/names/red;resources/k8s-cron-jobs/executions;resources/k8s-cron-jobs/red;resources/k8s-daemon-sets/scheduled-nodes;resources/k8s-daemon-sets/red;resources/k8s-deployments/replicas;resources/k8s-deployments/red;resources/k8s-jobs/executions;resources/k8s-jobs/red;resources/k8s-namespaces/red;resources/k8s-nodes/cpu-memory-disk;resources/k8s-nodes/status;resources/k8s-pods/cpu-memory;resources/k8s-pods/status;resources/k8s-pods/red;resources/k8s-replica-sets/replicas;resources/k8s-replica-sets/red;resources/k8s-stateful-sets/replicas;resources/k8s-stateful-sets/red;resources/faas/red
-	Renderers []string `json:"renderers"`
+	Renderers []Dash0ViewRenderer `json:"renderers"`
 }
+
+// Dash0ViewRenderer defines a visualization renderer.
+// +kubebuilder:validation:Enum=traces-explorer/*/outliers;traces-explorer/*/red;logging/*/stacked_bar;resources/*/table-tree;resources/overview/overview;resources/services/red;resources/operations/red;resources/names/red;resources/k8s-cron-jobs/executions;resources/k8s-cron-jobs/red;resources/k8s-daemon-sets/scheduled-nodes;resources/k8s-daemon-sets/red;resources/k8s-deployments/replicas;resources/k8s-deployments/red;resources/k8s-jobs/executions;resources/k8s-jobs/red;resources/k8s-namespaces/red;resources/k8s-nodes/cpu-memory-disk;resources/k8s-nodes/status;resources/k8s-pods/cpu-memory;resources/k8s-pods/status;resources/k8s-pods/red;resources/k8s-replica-sets/replicas;resources/k8s-replica-sets/red;resources/k8s-stateful-sets/replicas;resources/k8s-stateful-sets/red;resources/faas/red
+type Dash0ViewRenderer string
 
 // Dash0ViewStatus defines the observed state of Dash0View
 type Dash0ViewStatus struct {
+	SynchronizationStatus dash0common.Dash0ApiResourceSynchronizationStatus `json:"synchronizationStatus"`
+	SynchronizedAt        metav1.Time                                       `json:"synchronizedAt"`
+	SynchronizationError  string                                            `json:"synchronizationError,omitempty"`
+	ValidationIssues      []string                                          `json:"validationIssues,omitempty"`
 }
 
 //+kubebuilder:object:root=true

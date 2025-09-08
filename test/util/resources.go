@@ -69,12 +69,6 @@ func EnsureOperatorNamespaceExists(ctx context.Context, k8sClient client.Client)
 	return EnsureNamespaceExists(ctx, k8sClient, OperatorNamespace)
 }
 
-func DeleteNamespace(ctx context.Context, k8sClient client.Client, name string) {
-	Expect(k8sClient.Delete(ctx, Namespace(name), &client.DeleteOptions{
-		GracePeriodSeconds: new(int64),
-	})).To(Succeed())
-}
-
 func EnsureNamespaceExists(
 	ctx context.Context,
 	k8sClient client.Client,

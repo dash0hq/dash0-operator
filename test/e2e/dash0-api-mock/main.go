@@ -38,6 +38,9 @@ func main() {
 	router.PUT("/api/synthetic-checks/:origin", handleSyntheticCheckRequest)
 	router.DELETE("/api/synthetic-checks/:origin", handleSyntheticCheckRequest)
 
+	router.PUT("/api/views/:origin", handleViewRequest)
+	router.DELETE("/api/views/:origin", handleViewRequest)
+
 	router.GET("/api/alerting/check-rules", handleGetCheckRuleOriginsRequest)
 
 	router.PUT("/api/dashboards/:origin", handleDashboardRequest)
@@ -61,6 +64,13 @@ func main() {
 }
 
 func handleSyntheticCheckRequest(ginCtx *gin.Context) {
+	storeRequest(ginCtx)
+	ginCtx.JSON(http.StatusOK, map[string]any{
+		"message": "ok",
+	})
+}
+
+func handleViewRequest(ginCtx *gin.Context) {
 	storeRequest(ginCtx)
 	ginCtx.JSON(http.StatusOK, map[string]any{
 		"message": "ok",

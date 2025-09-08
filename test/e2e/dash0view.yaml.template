@@ -1,0 +1,41 @@
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0View
+metadata:
+  name: view-e2e-test
+  labels:
+    app.kubernetes.io/name: view-e2e-test
+{{- if .Dash0ComEnabled }}
+    dash0.com/enabled: {{ .Dash0ComEnabled | quote }}
+{{- end }}
+spec:
+  type: resources
+  display:
+    name: E2E test view
+    description: A test view for the e2e-test for synchronizing views with the Dash0 Operator.
+    folder: ["Test", "Operator"]
+  filter:
+    - key: service.name
+      operator: is
+      value:
+        stringValue: test-service
+    - key: http.status_code
+      operator: gte
+      value:
+        stringValue: "200"
+  groupBy:
+    - service.name
+    - deployment.environment
+  table:
+    columns:
+      - key: service.name
+        label: Service
+        colSize: "150px"
+      - key: http.status_code
+        label: Status Code
+    sort:
+      - key: service.name
+        direction: ascending
+  visualizations:
+    - renderers:
+        - resources/services/red
+      yAxisScale: linear

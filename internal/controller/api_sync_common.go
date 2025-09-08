@@ -524,6 +524,21 @@ func addDeleteRequestsForObjectsThatHaveBeenDeletedInTheKubernetesResource(
 	return itemsTotal, httpRequests
 }
 
+// structToMap converts any struct to an unstructured.Unstructured object.
+func structToMap(obj interface{}) (*unstructured.Unstructured, error) {
+	jsonBytes, err := json.Marshal(obj)
+	if err != nil {
+		return nil, err
+	}
+	var object map[string]interface{}
+	if err = json.Unmarshal(jsonBytes, &object); err != nil {
+		return nil, err
+	}
+	return &unstructured.Unstructured{
+		Object: object,
+	}, nil
+}
+
 func addAuthorizationHeader(req *http.Request, preconditionChecksResult *preconditionValidationResult) {
 	req.Header.Set(util.AuthorizationHeaderName, util.RenderAuthorizationHeader(preconditionChecksResult.authToken))
 }
