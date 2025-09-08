@@ -80,8 +80,8 @@ section of the Dash0 operator Helm chart documentation.
 
 ### Views
 
-The Dash0 operator supports the `Dash0View` custom resource definition which is used to create views on tracing or logging
-data within Dash0.
+The Dash0 operator supports the `Dash0View` custom resource definition which is used to create views on tracing,
+logging or resource data within Dash0.
 
 ## Getting Started
 

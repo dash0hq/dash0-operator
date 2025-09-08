@@ -138,8 +138,8 @@ var (
 	extraConfig                     util.ExtraConfig
 	extraConfigMapWatcher           = util.NewExtraConfigWatcher()
 
-	httpClient                           = &http.Client{}
-	dash0ApiResourceSynchronizationQueue *workqueue.Typed[controller.ThirdPartyResourceSyncJob]
+	httpClient                             = &http.Client{}
+	thirdPartyResourceSynchronizationQueue *workqueue.Typed[controller.ThirdPartyResourceSyncJob]
 )
 
 var (
@@ -724,8 +724,8 @@ func startOperatorManager(
 	}
 
 	defer func() {
-		if dash0ApiResourceSynchronizationQueue != nil {
-			controller.StopProcessingThirdPartySynchronizationQueue(dash0ApiResourceSynchronizationQueue, &setupLog)
+		if thirdPartyResourceSynchronizationQueue != nil {
+			controller.StopProcessingThirdPartySynchronizationQueue(thirdPartyResourceSynchronizationQueue, &setupLog)
 		}
 	}()
 
@@ -854,15 +854,11 @@ func startDash0Controllers(
 		return fmt.Errorf("unable to set up the collector reconciler: %w", err)
 	}
 
-	dash0ApiResourceSynchronizationQueue =
-		workqueue.NewTypedWithConfig(
-			workqueue.TypedQueueConfig[controller.ThirdPartyResourceSyncJob]{
-				Name: "dash0-third-party-resource-synchronization-queue",
-			})
 	clusterUid, err := util.ReadPseudoClusterUidOrFail(ctx, startupTasksK8sClient, &setupLog)
 	if err != nil {
 		return err
 	}
+
 	syntheticCheckReconciler := controller.NewSyntheticCheckReconciler(
 		k8sClient,
 		clusterUid,
@@ -873,25 +869,45 @@ func startDash0Controllers(
 		return fmt.Errorf("unable to set up the synthetic check reconciler: %w", err)
 	}
 	leaderElectionAwareRunnable.AddLeaderElectionClient(syntheticCheckReconciler)
+
+	viewReconciler := controller.NewViewReconciler(
+		k8sClient,
+		clusterUid,
+		leaderElectionAwareRunnable,
+		httpClient,
+	)
+	if err := viewReconciler.SetupWithManager(mgr); err != nil {
+		return fmt.Errorf("unable to set up the view reconciler: %w", err)
+	}
+	leaderElectionAwareRunnable.AddLeaderElectionClient(viewReconciler)
+
+	thirdPartyResourceSynchronizationQueue =
+		workqueue.NewTypedWithConfig(
+			workqueue.TypedQueueConfig[controller.ThirdPartyResourceSyncJob]{
+				Name: "dash0-third-party-resource-synchronization-queue",
+			})
+
 	persesDashboardCrdReconciler := controller.NewPersesDashboardCrdReconciler(
 		k8sClient,
-		dash0ApiResourceSynchronizationQueue,
+		thirdPartyResourceSynchronizationQueue,
 		leaderElectionAwareRunnable,
 		httpClient,
 	)
 	if err := persesDashboardCrdReconciler.SetupWithManager(ctx, mgr, startupTasksK8sClient, &setupLog); err != nil {
 		return fmt.Errorf("unable to set up the Perses dashboard reconciler: %w", err)
 	}
+
 	prometheusRuleCrdReconciler := controller.NewPrometheusRuleCrdReconciler(
 		k8sClient,
-		dash0ApiResourceSynchronizationQueue,
+		thirdPartyResourceSynchronizationQueue,
 		leaderElectionAwareRunnable,
 		httpClient,
 	)
 	if err := prometheusRuleCrdReconciler.SetupWithManager(ctx, mgr, startupTasksK8sClient, &setupLog); err != nil {
 		return fmt.Errorf("unable to set up the Prometheus rule reconciler: %w", err)
 	}
-	controller.StartProcessingThirdPartySynchronizationQueue(dash0ApiResourceSynchronizationQueue, &setupLog)
+
+	controller.StartProcessingThirdPartySynchronizationQueue(thirdPartyResourceSynchronizationQueue, &setupLog)
 
 	setupLog.Info("Creating the self-monitoring OTel SDK starter.")
 	oTelSdkStarter = selfmonitoringapiaccess.NewOTelSdkStarter(delegatingZapCoreWrapper)
@@ -902,6 +918,7 @@ func startDash0Controllers(
 		clientset,
 		[]controller.ApiClient{
 			syntheticCheckReconciler,
+			viewReconciler,
 			persesDashboardCrdReconciler,
 			prometheusRuleCrdReconciler,
 		},
@@ -971,6 +988,7 @@ func startDash0Controllers(
 			operatorConfigurationReconciler,
 			monitoringReconciler,
 			syntheticCheckReconciler,
+			viewReconciler,
 			persesDashboardCrdReconciler,
 			prometheusRuleCrdReconciler,
 		},
@@ -978,6 +996,7 @@ func startDash0Controllers(
 	authTokenClients := []selfmonitoringapiaccess.AuthTokenClient{
 		oTelSdkStarter,
 		syntheticCheckReconciler,
+		viewReconciler,
 		persesDashboardCrdReconciler,
 		prometheusRuleCrdReconciler,
 	}

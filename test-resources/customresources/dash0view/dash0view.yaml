@@ -1,0 +1,36 @@
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0View
+metadata:
+  name: operator-test-view
+spec:
+  type: resources
+  display:
+    name: Test View
+    description: A test view for testing the operator's synchronization of view resources.
+    folder: ["Test", "Operator"]
+  filter:
+    - key: service.name
+      operator: is
+      value:
+        stringValue: test-service
+    - key: http.status_code
+      operator: gte
+      value:
+        stringValue: "200"
+  groupBy:
+    - service.name
+    - deployment.environment
+  table:
+    columns:
+      - key: service.name
+        label: Service
+        colSize: "150px"
+      - key: http.status_code
+        label: Status Code
+    sort:
+      - key: service.name
+        direction: ascending
+  visualizations:
+    - renderers:
+        - resources/services/red
+      yAxisScale: linear

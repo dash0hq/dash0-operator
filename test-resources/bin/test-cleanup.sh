@@ -36,18 +36,25 @@ for resource_type in "${resource_types[@]}"; do
 done
 
 wait_for_third_party_resource_deletion="false"
-if kubectl delete -n "${target_namespace}" -f test-resources/customresources/persesdashboard/persesdashboard.yaml; then
+if kubectl delete -n "$target_namespace" -f test-resources/customresources/dash0syntheticcheck/dash0syntheticcheck.yaml; then
   wait_for_third_party_resource_deletion="true"
 fi
-if kubectl delete -n "${target_namespace}" -f test-resources/customresources/prometheusrule/prometheusrule.yaml; then
+if kubectl delete -n "$target_namespace" -f test-resources/customresources/dash0view/dash0view.yaml; then
   wait_for_third_party_resource_deletion="true"
 fi
+if kubectl delete -n "$target_namespace" -f test-resources/customresources/persesdashboard/persesdashboard.yaml; then
+  wait_for_third_party_resource_deletion="true"
+fi
+if kubectl delete -n "$target_namespace" -f test-resources/customresources/prometheusrule/prometheusrule.yaml; then
+  wait_for_third_party_resource_deletion="true"
+fi
+
 if [[ "$wait_for_third_party_resource_deletion" = "true" ]]; then
   echo "Waiting for third party resource deletion to be synchronized to the Dash0 API."
   sleep 2
 fi
 
-kubectl delete -n "${target_namespace}" -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml --wait=false || true
+kubectl delete -n "$target_namespace" -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml --wait=false || true
 kubectl delete -n test-namespace-2 -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml --wait=false || true
 kubectl delete -n test-namespace-3 -f test-resources/customresources/dash0monitoring/dash0monitoring.yaml --wait=false || true
 sleep 1

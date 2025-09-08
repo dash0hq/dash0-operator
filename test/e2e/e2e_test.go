@@ -399,7 +399,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				})
 
 				//nolint:dupl
-				It("should synchronize synthetic check to the Dash0 API", func() {
+				It("should synchronize a synthetic check to the Dash0 API", func() {
 					deploySyntheticCheckResource(
 						applicationUnderTestNamespace,
 						dash0ApiResourceValues{},
@@ -423,7 +423,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 					setOptOutLabelInSyntheticCheck(applicationUnderTestNamespace, "true")
 					//nolint:lll
-					By("verifying the  synthetic check has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
+					By("verifying the synthetic check has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
 					req = fetchCapturedApiRequest(2)
 					Expect(req.Method).To(Equal("PUT"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
@@ -431,6 +431,44 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 					removeSyntheticCheckResource(applicationUnderTestNamespace)
 					By("verifying the synthetic check has been deleted via the Dash0 API (after removing the resource)")
+					req = fetchCapturedApiRequest(3)
+					Expect(req.Method).To(Equal("DELETE"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+				})
+
+				//nolint:dupl
+				It("should synchronize a view to the Dash0 API", func() {
+					deployViewResource(
+						applicationUnderTestNamespace,
+						dash0ApiResourceValues{},
+					)
+
+					//nolint:lll
+					routeRegex := "/api/views/dash0-operator_.*_default_e2e-application-under-test-namespace_view-e2e-test\\?dataset=default"
+
+					By("verifying the view has been synchronized to the Dash0 API via PUT")
+					req := fetchCapturedApiRequest(0)
+					Expect(req.Method).To(Equal("PUT"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+					Expect(req.Body).ToNot(BeNil())
+					Expect(*req.Body).To(ContainSubstring("\"name\":\"E2E test view\""))
+
+					setOptOutLabelInView(applicationUnderTestNamespace, "false")
+					By("verifying the view has been deleted via the Dash0 API (after setting dash0.com/enable=false)\"")
+					req = fetchCapturedApiRequest(1)
+					Expect(req.Method).To(Equal("DELETE"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+
+					setOptOutLabelInView(applicationUnderTestNamespace, "true")
+					//nolint:lll
+					By("verifying the view has been synchronized to the Dash0 API via PUT (after setting dash0.com/enable=true)")
+					req = fetchCapturedApiRequest(2)
+					Expect(req.Method).To(Equal("PUT"))
+					Expect(req.Url).To(MatchRegexp(routeRegex))
+					Expect(*req.Body).To(ContainSubstring("\"name\":\"E2E test view\""))
+
+					removeViewResource(applicationUnderTestNamespace)
+					By("verifying the view has been deleted via the Dash0 API (after removing the resource)")
 					req = fetchCapturedApiRequest(3)
 					Expect(req.Method).To(Equal("DELETE"))
 					Expect(req.Url).To(MatchRegexp(routeRegex))
