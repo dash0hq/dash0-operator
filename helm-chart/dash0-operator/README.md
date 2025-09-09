@@ -791,7 +791,7 @@ operator:
 ```
 
 **Important:** Since this volume is needed by a Daemonset run by the Dash0 operator, the PersistentVolumeClaim needs
-to be set with the `ReadWriteOnce` access mode.
+to be set with the `ReadWriteMany` access mode.
 
 Using a volume instead of the default config map approach is also helpful if you have webhooks in your cluster which
 process every config map update.
