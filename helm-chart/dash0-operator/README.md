@@ -790,6 +790,9 @@ operator:
         claimName: offset-storage-claim
 ```
 
+**Important:** Since this volume is needed by a Daemonset run by the Dash0 operator, the PersistentVolumeClaim needs
+to be set with the `ReadWriteOnce` access mode.
+
 Using a volume instead of the default config map approach is also helpful if you have webhooks in your cluster which
 process every config map update.
 One known example is the
