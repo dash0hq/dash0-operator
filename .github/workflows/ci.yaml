@@ -34,7 +34,7 @@ jobs:
       should_skip: ${{ steps.skip_check.outputs.should_skip }}
     steps:
       - id: skip_check
-        uses: fkirc/skip-duplicate-actions@f75f66ce1886f00957d99748a42c724f4330bdcf #v5
+        uses: fkirc/skip-duplicate-actions@f75f66ce1886f00957d99748a42c724f4330bdcf
 
   verify:
     name: Build & Test
@@ -45,9 +45,9 @@ jobs:
     if: needs.check_for_successful_builds_for_same_commit.outputs.should_skip != 'true'
 
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 #v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
-      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00 #v5
+      - uses: actions/setup-go@44694675825211faa026b3c33043df3e48a5fa00
         with:
           go-version: ~1.24
           cache: true
@@ -56,12 +56,12 @@ jobs:
         run: |
           go version
 
-      - uses: mlugg/setup-zig@8d6198c65fb0feaa111df26e6b467fea8345e46f # v2
+      - uses: mlugg/setup-zig@8d6198c65fb0feaa111df26e6b467fea8345e46f
         with:
           # keep in sync with images/instrumentation/injector/zig-version, if possible
           version: 0.14.1
 
-      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v4
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444
         with:
           node-version: '24.x'
           cache: 'npm'
@@ -127,7 +127,7 @@ jobs:
     timeout-minutes: 120
 
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 #v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
         with:
           fetch-depth: 0
 
@@ -191,7 +191,7 @@ jobs:
     if: ${{ always() && ! contains(github.ref, 'refs/tags/') && github.actor != 'dependabot[bot]' && needs.build_and_push_images.result == 'success' }}
 
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 #v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       - name: publish helm chart (dry run)
         run: |
@@ -226,7 +226,7 @@ jobs:
       - build_and_push_images
 
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 #v4
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
       - name: publish helm chart
         run: |
