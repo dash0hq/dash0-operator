@@ -93,7 +93,7 @@ jobs:
       # Just for building on arm, buildx is enough but doing docker run with --platform=linux/arm64 (which we do when
       # testing the injector binary and the instrumentation image) requires qemu.
       - name: set up qemu
-        uses: docker/setup-qemu-action@05340d1c670183e7caabdb33ae9f1c80fae3b0c2
+        uses: docker/setup-qemu-action@e77e8065d9f7ec6abdd9838668cd7b43924dd64d
         if: |
           steps.changed-files.outputs.instrumentation_any_changed == 'true' ||
           github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
