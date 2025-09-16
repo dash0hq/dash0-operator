@@ -12,7 +12,7 @@
     "body-parser": "^2.2.0",
     "bootstrap": "^5.3.8",
     "cookie-parser": "~1.4.7",
-    "debug": "~4.4.1",
+    "debug": "~4.4.3",
     "express": "^5.1.0",
     "http-errors": "~2.0.0",
     "morgan": "~1.10.1",
