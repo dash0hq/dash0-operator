@@ -5,10 +5,10 @@
 
 # build the LD_PRELOAD injector binary
 
-FROM alpine:3.21.3 AS build-injector
+FROM alpine:3.22.1 AS build-injector
 COPY injector/zig-version /dash0-init-container/zig-version
 RUN source /dash0-init-container/zig-version && \
-  apk add zig="$ZIG_VERSION" --repository=https://dl-cdn.alpinelinux.org/alpine/edge/community
+  apk add zig="$ZIG_VERSION"
 COPY injector /dash0-init-container
 WORKDIR /dash0-init-container
 ARG TARGETARCH
@@ -25,7 +25,7 @@ RUN ./mvnw dependency:copy-dependencies \
   && cp pom.xml ./build/pom.xml
 
 # build Node.js artifacts
-FROM node:22.15.0-alpine3.21 AS build-node-js
+FROM node:22.19.0-alpine3.22 AS build-node-js
 RUN mkdir -p /dash0-init-container/instrumentation/node.js
 WORKDIR /dash0-init-container/instrumentation/node.js
 COPY node.js/package* .
@@ -37,7 +37,7 @@ RUN NPM_CONFIG_UPDATE_NOTIFIER=false \
   --no-fund=true
 
 # download .NET auto instrumentation
-FROM alpine:3.21.3 AS build-dotnet
+FROM alpine:3.22.1 AS build-dotnet
 RUN apk add --no-cache \
 		curl \
 		unzip
@@ -46,7 +46,7 @@ COPY dotnet/download-instrumentation.sh .
 RUN ./download-instrumentation.sh
 
 # build the final instrumentation image
-FROM alpine:3.21.3
+FROM alpine:3.22.1
 COPY copy-instrumentation.sh /
 
 # copy artifacts (distros, injector binary) from the build stages to the final image
