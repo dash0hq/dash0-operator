@@ -31,7 +31,7 @@ verify_kubectx() {
   done
   if [[ "$current_context_is_allowed" != "true" ]]; then
     echo "error: The current kube context \"$current_kubectx\" is not allowed for testing according to the setting ALLOWED_KUBECTXS (current value: \"$allowed_contexts_raw\"). Please switch to an allowed context or set ALLOWED_KUBECTXS differently in .env. Refusing to run test scenarios/cleanup in context where that is potentially dangerous."
-	exit 1
+    exit 1
   fi
 }
 
@@ -322,7 +322,7 @@ run_helm() {
   deploy_otlp_sink_if_requested
 
   local action=${1:-install}
-  local helm_install_command="helm $action --namespace $operator_namespace"
+  local helm_install_command="helm $action --wait --namespace $operator_namespace"
   if [[ -n "${OPERATOR_HELM_CHART_VERSION:-}" ]]; then
     helm_install_command+=" --version $OPERATOR_HELM_CHART_VERSION"
   fi
@@ -447,51 +447,15 @@ run_helm() {
   helm_install_command+=" ${OPERATOR_HELM_CHART:-helm-chart/dash0-operator}"
   echo Helm install command:
   echo "$helm_install_command"
-  $helm_install_command
-
-  wait_for_operator_manager_and_webhook
-}
-
-wait_for_operator_manager_and_webhook() {
-  echo "waiting for the operator deployment to become available..."
-  kubectl wait deployment.apps/dash0-operator-controller --for condition=Available --namespace "$operator_namespace" --timeout 30s
-
-  echo "waiting for the operator's webhook endpoint to become available..."
-  local webhook_available="false"
-  for ((i=0; i<=100; i++)); do
-    local endpoints_output=$(kubectl get endpoints --namespace "$operator_namespace" "$operator_webhook_service_name")
-    local expected_endpoint_regex="$operator_webhook_service_name"
-    expected_endpoint_regex+='.+:9443'
-    if [[ "$endpoints_output" =~ $expected_endpoint_regex ]]; then
-      webhook_available="true"
-      break;
-    fi
-    sleep 0.3
-  done
-  if [[ "$webhook_available" != "true" ]]; then
-    echo "The operator's webhook endpoint never became available."
-    exit 1
-  fi
-
-  # We deploy an operator configuration at startup via operator.dash0Export.enabled=true, wait for that resource to
-  # become available as well.
-  if [[ "${DEPLOY_OPERATOR_CONFIGURATION_VIA_HELM:-}" != "false" ]]; then
-    echo "waiting for the automatically created operator configuration resource to become available"
-    for ((i=0; i<=20; i++)); do
-      # wait until the resource has been created
-      if kubectl get dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration-auto-resource; then
-	     break;
-	  fi
-	  sleep 1
-	done
-	# wait until the resource has been reconciled and is marked as available
-	kubectl wait dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration-auto-resource --for condition=Available --timeout 30s
-  fi
+  # helm install --wait can take a couple of seconds, since the readiness check and the Helm post-install hook make sure
+  # that the operator deployment is actually ready, and a monitoring resource can be deployed immediately afterwards.
+  # Executing the command with `time` to get some feedback about the duration.
+  time $helm_install_command
 }
 
 deploy_otlp_sink_if_requested() {
   if [[ "${USE_OTLP_SINK:-}" != "true" ]]; then
-	  return
+    return
   fi
 
   echo "deploying otlp-sink"
@@ -500,22 +464,22 @@ deploy_otlp_sink_if_requested() {
   local otlp_sink_dir="$(realpath "$(pwd)")/test-resources/e2e/volumes/otlp-sink"
   sed "s|/tmp/telemetry|$otlp_sink_dir|g" test-resources/otlp-sink/otlp-sink.yaml > "$tmpfile"
 
-	mkdir -p "$otlp_sink_dir"
-	echo "deleting old OTLP sink old telemetry dump files"
-	rm -rf "$otlp_sink_dir/traces.jsonl"
-	rm -rf "$otlp_sink_dir/metrics.jsonl"
-	rm -rf "$otlp_sink_dir/logs.jsonl"
-	echo "creating OTLP sink old telemetry dump files"
-	touch "$otlp_sink_dir/traces.jsonl"
-	touch "$otlp_sink_dir/metrics.jsonl"
-	touch "$otlp_sink_dir/logs.jsonl"
+  mkdir -p "$otlp_sink_dir"
+  echo "deleting old OTLP sink old telemetry dump files"
+  rm -rf "$otlp_sink_dir/traces.jsonl"
+  rm -rf "$otlp_sink_dir/metrics.jsonl"
+  rm -rf "$otlp_sink_dir/logs.jsonl"
+  echo "creating OTLP sink old telemetry dump files"
+  touch "$otlp_sink_dir/traces.jsonl"
+  touch "$otlp_sink_dir/metrics.jsonl"
+  touch "$otlp_sink_dir/logs.jsonl"
 
-	kubectl apply -f "$tmpfile"
-	kubectl rollout status \
-	  deployment \
-	  otlp-sink \
-	  --namespace otlp-sink \
-	  --timeout 1m
+  kubectl apply -f "$tmpfile"
+  kubectl rollout status \
+    deployment \
+    otlp-sink \
+    --namespace otlp-sink \
+    --timeout 1m
 }
 
 install_operator_configuration_resource() {
@@ -529,10 +493,6 @@ install_operator_configuration_resource() {
 
   echo "waiting for the operator configuration resource to become available"
   kubectl wait dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration-resource --for condition=Available
-
-  # Deploying the operator configuration resource might result in a restart of the operator manager deployment pod,
-  # hence we check again that both are up and running.
-  wait_for_operator_manager_and_webhook
 }
 
 install_monitoring_resource() {

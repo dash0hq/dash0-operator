@@ -22,14 +22,11 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/format"
-
-	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
 var (
 	cfg       *rest.Config
 	k8sClient client.Client
-	handler   *AutoOperatorConfigurationResourceHandler
 	testEnv   *envtest.Environment
 )
 
@@ -63,14 +60,6 @@ var _ = BeforeSuite(func() {
 	k8sClient, err = client.New(cfg, client.Options{Scheme: scheme.Scheme})
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
-
-	handler = &AutoOperatorConfigurationResourceHandler{
-		Client:             k8sClient,
-		OperatorNamespace:  OperatorNamespace,
-		WebhookServiceName: OperatorWebhookServiceName,
-		bypassWebhookCheck: true,
-	}
-	Expect(err).NotTo(HaveOccurred())
 })
 
 var _ = AfterSuite(func() {

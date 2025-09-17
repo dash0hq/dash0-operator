@@ -42,7 +42,6 @@ func deployOperatorWithDefaultAutoOperationConfiguration(
 	images Images,
 	selfMonitoringEnabled bool,
 	additionalHelmParameters map[string]string,
-	webhookServiceName string,
 ) {
 	err := deployOperator(
 		operatorNamespace,
@@ -58,7 +57,6 @@ func deployOperatorWithDefaultAutoOperationConfiguration(
 			CollectPodLabelsAndAnnotationsEnabled:            true,
 		},
 		additionalHelmParameters,
-		webhookServiceName,
 	)
 	Expect(err).ToNot(HaveOccurred())
 }
@@ -70,7 +68,6 @@ func deployOperatorWithoutAutoOperationConfiguration(
 	operatorHelmChartUrl string,
 	images Images,
 	additionalHelmParameters map[string]string,
-	webhookServiceName string,
 ) {
 	err := deployOperator(
 		operatorNamespace,
@@ -79,7 +76,6 @@ func deployOperatorWithoutAutoOperationConfiguration(
 		images,
 		nil,
 		additionalHelmParameters,
-		webhookServiceName,
 	)
 	Expect(err).ToNot(HaveOccurred())
 }
@@ -91,7 +87,6 @@ func deployOperator(
 	images Images,
 	operatorConfigurationValues *startup.OperatorConfigurationValues,
 	additionalHelmParameters map[string]string,
-	webhookServiceName string,
 ) error {
 	ensureDash0OperatorHelmRepoIsInstalled(operatorHelmChart, operatorHelmChartUrl)
 
@@ -102,6 +97,7 @@ func deployOperator(
 		))
 	arguments := []string{
 		"install",
+		"--wait",
 		"--namespace",
 		operatorNamespace,
 		"--create-namespace",
@@ -142,10 +138,8 @@ func deployOperator(
 	}
 
 	e2ePrint("output of helm install:\n%s\n", output)
-	waitForManagerPodAndWebhookToStart(operatorNamespace, webhookServiceName)
 
 	if operatorConfigurationValues != nil {
-		waitForAutoOperatorConfigurationResourceToBecomeAvailable()
 		waitForCollectorToStart(operatorNamespace, operatorHelmChart)
 	}
 
@@ -261,59 +255,6 @@ func ensureDash0OperatorHelmRepoIsInstalled(
 	}
 }
 
-func waitForManagerPodAndWebhookToStart(operatorNamespace string, webhookServiceName string) {
-	var managerPodName string
-	By("validating that the manager pod is running as expected")
-	verifyControllerUp := func(g Gomega) error {
-		cmd := exec.Command("kubectl", "get",
-			"pods", "-l", "app.kubernetes.io/name=dash0-operator",
-			"-l", "app.kubernetes.io/component=controller",
-			"-o", "go-template={{ range .items }}"+
-				"{{ if not .metadata.deletionTimestamp }}"+
-				"{{ .metadata.name }}"+
-				"{{ \"\\n\" }}{{ end }}{{ end }}",
-			"-n", operatorNamespace,
-		)
-
-		podOutput, err := run(cmd, false)
-		g.Expect(err).NotTo(HaveOccurred())
-		podNames := getNonEmptyLines(podOutput)
-		if len(podNames) != 1 {
-			return fmt.Errorf("expect 1 controller pod running, but got %d -- %s", len(podNames), podOutput)
-		}
-		managerPodName = podNames[0]
-		g.Expect(managerPodName).To(ContainSubstring("controller"))
-
-		cmd = exec.Command("kubectl", "get",
-			"pods", managerPodName, "-o", "jsonpath={.status.phase}",
-			"-n", operatorNamespace,
-		)
-		status, err := run(cmd)
-		g.Expect(err).NotTo(HaveOccurred())
-		if status != "Running" {
-			return fmt.Errorf("controller pod in %s status", status)
-		}
-		return nil
-	}
-
-	Eventually(verifyControllerUp, 120*time.Second, time.Second).Should(Succeed())
-
-	By("waiting for webhook endpoint to become available")
-	Eventually(func(g Gomega) {
-		endpointsOutput, err := run(exec.Command(
-			"kubectl",
-			"get",
-			"endpoints",
-			"--namespace",
-			operatorNamespace,
-			webhookServiceName,
-		), false)
-		g.Expect(err).NotTo(HaveOccurred())
-		g.Expect(endpointsOutput).To(ContainSubstring(webhookServiceName))
-		g.Expect(endpointsOutput).To(ContainSubstring(":9443"))
-	}, 20*time.Second, 200*time.Millisecond).Should(Succeed())
-}
-
 func undeployOperator(operatorNamespace string) {
 	By("undeploying the operator")
 	Expect(
@@ -358,13 +299,13 @@ func upgradeOperator(
 	operatorHelmChart string,
 	operatorHelmChartUrl string,
 	images Images,
-	webhookServiceName string,
 ) {
 	ensureDash0OperatorHelmRepoIsInstalled(operatorHelmChart, operatorHelmChartUrl)
 
 	By("upgrading the operator controller")
 	arguments := []string{
 		"upgrade",
+		"--wait",
 		"--namespace",
 		operatorNamespace,
 		"--set", "operator.developmentMode=true",
@@ -377,11 +318,6 @@ func upgradeOperator(
 	output, err := run(exec.Command("helm", arguments...))
 	Expect(err).NotTo(HaveOccurred())
 	e2ePrint("output of helm upgrade:\n%s\n", output)
-
-	By("waiting shortly, to give the operator time to restart after helm upgrade")
-	time.Sleep(5 * time.Second)
-
-	waitForManagerPodAndWebhookToStart(operatorNamespace, webhookServiceName)
 
 	waitForCollectorToStart(operatorNamespace, operatorHelmChart)
 }

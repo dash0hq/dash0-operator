@@ -43,6 +43,7 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/collectors/otelcolresources"
 	"github.com/dash0hq/dash0-operator/internal/controller"
 	"github.com/dash0hq/dash0-operator/internal/instrumentation"
+	"github.com/dash0hq/dash0-operator/internal/postinstall"
 	"github.com/dash0hq/dash0-operator/internal/predelete"
 	"github.com/dash0hq/dash0-operator/internal/selfmonitoringapiaccess"
 	"github.com/dash0hq/dash0-operator/internal/util"
@@ -74,6 +75,7 @@ type environmentVariables struct {
 
 type commandLineArguments struct {
 	isUninstrumentAll                                                     bool
+	autoOperatorConfigurationResourceAvailableCheck                       bool
 	operatorConfigurationEndpoint                                         string
 	operatorConfigurationToken                                            string
 	operatorConfigurationSecretRefName                                    string
@@ -178,6 +180,13 @@ func Start() {
 		}
 		os.Exit(0)
 	}
+	if cliArgs.autoOperatorConfigurationResourceAvailableCheck {
+		if err := waitForOperatorConfigurationResourceAvailability(&setupLog); err != nil {
+			setupLog.Error(err, "waiting for the Dash0 operator configuration resource to become available has failed")
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -275,9 +284,16 @@ func defineCommandLineArguments() *commandLineArguments {
 		&cliArgs.isUninstrumentAll,
 		"uninstrument-all",
 		false,
-		"If set, the process will remove all Dash0 monitoring resources from all namespaces in the cluste, then "+
+		"If set, the process will remove all Dash0 monitoring resources from all namespaces in the cluster, then "+
 			"exit. This will trigger the Dash0 monitoring resources' finalizers in each namespace, which in turn will "+
 			"revert the instrumentation of all workloads in all namespaces.",
+	)
+	flag.BoolVar(
+		&cliArgs.autoOperatorConfigurationResourceAvailableCheck,
+		"auto-operator-configuration-resource-available-check",
+		false,
+		"If set, the process will only wait until the Dash0 operator configuration resource has been created and "+
+			"becomes available, then exit.",
 	)
 	flag.StringVar(
 		&cliArgs.operatorConfigurationEndpoint,
@@ -315,7 +331,7 @@ func defineCommandLineArguments() *commandLineArguments {
 		&cliArgs.operatorConfigurationApiEndpoint,
 		"operator-configuration-api-endpoint",
 		"",
-		"The Dash0 API endpoint for managing dashboards and check rules via the operator.",
+		"The Dash0 API endpoint for managing dashboards, check rules, synthetic checks and views via the operator.",
 	)
 	flag.BoolVar(
 		&cliArgs.operatorConfigurationSelfMonitoringEnabled,
@@ -714,15 +730,6 @@ func startOperatorManager(
 		return err
 	}
 
-	//+kubebuilder:scaffold:builder
-
-	if err = mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
-		return fmt.Errorf("unable to set up the health check: %w", err)
-	}
-	if err = mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
-		return fmt.Errorf("unable to set up the ready check: %w", err)
-	}
-
 	defer func() {
 		if thirdPartyResourceSynchronizationQueue != nil {
 			controller.StopProcessingThirdPartySynchronizationQueue(thirdPartyResourceSynchronizationQueue, &setupLog)
@@ -768,6 +775,11 @@ func startDash0Controllers(
 	isIPv6Cluster := strings.Count(envVars.podIp, ":") >= 2
 	oTelCollectorBaseUrl := determineCollectorBaseUrl(cliArgs.forceUseOpenTelemetryCollectorServiceUrl, isIPv6Cluster)
 
+	readyCheckExecuter, err := registerHealthAndReadyChecks(ctx, mgr)
+	if err != nil {
+		return err
+	}
+
 	clusterInstrumentationConfig := util.NewClusterInstrumentationConfig(
 		images,
 		oTelCollectorBaseUrl,
@@ -785,7 +797,6 @@ func startDash0Controllers(
 	// For consistency, we update the extra config map in the startupInstrumenter handler as well if it changes. Since
 	// it this instrumenter only runs once at starup, this has no effect whatsoever.
 	extraConfigMapWatcher.AddClient(startupInstrumenter)
-	var err error
 	if err = mgr.Add(leaderElectionAwareRunnable); err != nil {
 		return fmt.Errorf("unable to add the leader election aware runnable: %w", err)
 	}
@@ -793,13 +804,15 @@ func startDash0Controllers(
 	if err = mgr.Add(NewInstrumentAtStartupRunnable(mgr, startupInstrumenter)); err != nil {
 		return fmt.Errorf("unable to add instrument-at-startup task: %w", err)
 	}
-	operatorConfigurationResource := executeStartupTasks(
+	operatorConfigurationResource := createOrUpdateAutoOperatorConfigurationResource(
 		ctx,
+		readyCheckExecuter,
 		operatorConfigurationValues,
 		&setupLog,
 	)
 
 	k8sClient := mgr.GetClient()
+
 	instrumenter := instrumentation.NewInstrumenter(
 		k8sClient,
 		clientset,
@@ -1015,6 +1028,22 @@ func startDash0Controllers(
 	return nil
 }
 
+func registerHealthAndReadyChecks(ctx context.Context, mgr manager.Manager) (*ReadyCheckExecuter, error) {
+	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
+		return nil, fmt.Errorf("unable to set up the operator manager health check: %w", err)
+	}
+	readyCheckExecuter := NewReadyCheckExecuter(
+		startupTasksK8sClient,
+		envVars.operatorNamespace,
+		envVars.webhookServiceName,
+	)
+	readyCheckExecuter.start(ctx, &setupLog)
+	if err := mgr.AddReadyzCheck("readyz", readyCheckExecuter.isReady); err != nil {
+		return readyCheckExecuter, fmt.Errorf("unable to set up the operator manager ready check: %w", err)
+	}
+	return readyCheckExecuter, nil
+}
+
 func determineCollectorBaseUrl(forceOTelCollectorServiceUrl bool, isIPv6Cluster bool) string {
 	oTelCollectorServiceBaseUrl :=
 		fmt.Sprintf(
@@ -1079,36 +1108,26 @@ func findDeploymentReference(
 	return deploymentReference, nil
 }
 
-func executeStartupTasks(
-	ctx context.Context,
-	operatorConfigurationValues *OperatorConfigurationValues,
-	logger *logr.Logger,
-) *dash0v1alpha1.Dash0OperatorConfiguration {
-	operatorConfigurationResource := createOrUpdateAutoOperatorConfigurationResource(
-		ctx,
-		startupTasksK8sClient,
-		operatorConfigurationValues,
-		logger,
-	)
-	return operatorConfigurationResource
-}
-
 func createOrUpdateAutoOperatorConfigurationResource(
 	ctx context.Context,
-	k8sClient client.Client,
+	readyCheckExecuter *ReadyCheckExecuter,
 	operatorConfigurationValues *OperatorConfigurationValues,
 	logger *logr.Logger,
 ) *dash0v1alpha1.Dash0OperatorConfiguration {
 	if operatorConfigurationValues == nil {
 		return nil
 	}
-	handler := AutoOperatorConfigurationResourceHandler{
-		Client:             k8sClient,
-		OperatorNamespace:  envVars.operatorNamespace,
-		WebhookServiceName: envVars.webhookServiceName,
-	}
+	autoOperatorConfigurationResourceHandler := NewAutoOperatorConfigurationResourceHandler(
+		startupTasksK8sClient,
+		readyCheckExecuter,
+	)
+	leaderElectionAwareRunnable.AddLeaderElectionClient(autoOperatorConfigurationResourceHandler)
 	if operatorConfigurationResource, err :=
-		handler.CreateOrUpdateOperatorConfigurationResource(ctx, operatorConfigurationValues, logger); err != nil {
+		autoOperatorConfigurationResourceHandler.CreateOrUpdateOperatorConfigurationResource(
+			ctx,
+			operatorConfigurationValues,
+			logger,
+		); err != nil {
 		logger.Error(err, "Failed to create the requested Dash0 operator configuration resource.")
 		return nil
 	} else {
@@ -1119,10 +1138,10 @@ func createOrUpdateAutoOperatorConfigurationResource(
 // triggerSecretRefExchangeAndStartSelfMonitoringIfPossible starts the OTel SDK directly, instead of waiting for the
 // operator configuration resource to be picked up by a reconcile cycle. That is, if the command line parameters used to
 // start the operator manager process had instructions to create an auto operator configuration resource,
-// executeStartupTasks has already triggered the asynchronous creation of the resource. Instead of waiting for the
-// resource to actually be created, and then waiting for a reconcile request being routed to the
-// OperatorConfigurationController, just for the purpose of initializing the OTel SDK, we can initialize the OTel SDK
-// right away with the values from the command line parameters.
+// createOrUpdateAutoOperatorConfigurationResource has already triggered the asynchronous creation of the resource.
+// Instead of waiting for the resource to actually be created, and then waiting for a reconcile request being routed to
+// the OperatorConfigurationController, just for the purpose of initializing the OTel SDK, we can initialize the OTel
+// SDK right away with the values from the command line parameters.
 // The function also triggers exchanging the secret ref for a token if necessary (i.e. if the operator configuration
 // resource command line parameters specify a secret ref instead of a token).
 func triggerSecretRefExchangeAndStartSelfMonitoringIfPossible(
@@ -1191,12 +1210,24 @@ func triggerSecretRefExchangeAndStartSelfMonitoringIfPossible(
 func deleteMonitoringResourcesInAllNamespaces(logger *logr.Logger) error {
 	handler, err := predelete.NewOperatorPreDeleteHandler()
 	if err != nil {
-		logger.Error(err, "Failed to create the OperatorPreDeleteHandler.")
+		logger.Error(err, "Failed to create the pre-delete handler.")
 		return err
 	}
-	err = handler.DeleteAllMonitoringResources()
-	if err != nil {
+	if err = handler.DeleteAllMonitoringResources(); err != nil {
 		logger.Error(err, "Failed to delete all monitoring resources.")
+		return err
+	}
+	return nil
+}
+
+func waitForOperatorConfigurationResourceAvailability(logger *logr.Logger) error {
+	handler, err := postinstall.NewOperatorPostInstallHandler()
+	if err != nil {
+		logger.Error(err, "Failed to create the post-install handler.")
+		return err
+	}
+	if err = handler.WaitForOperatorConfigurationResourceToBecomeAvailable(); err != nil {
+		logger.Error(err, "Failed to wait for the operator monitoring resource.")
 		return err
 	}
 	return nil

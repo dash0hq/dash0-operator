@@ -1,0 +1,60 @@
+post-install hook job should match snapshot:
+  1: |
+    apiVersion: batch/v1
+    kind: Job
+    metadata:
+      annotations:
+        helm.sh/hook: post-install
+        helm.sh/hook-delete-policy: hook-succeeded
+      labels:
+        app.kubernetes.io/component: uninstallation-process
+        app.kubernetes.io/managed-by: Helm
+        app.kubernetes.io/name: dash0-operator
+        app.kubernetes.io/part-of: dash0-operator
+        app.kubernetes.io/version: 0.0.0
+        dash0.com/enable: "false"
+        helm.sh/chart: dash0-operator-0.0.0
+      name: dash0-operator-post-install
+      namespace: NAMESPACE
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: readiness-check
+            app.kubernetes.io/instance: post-install-hook
+            app.kubernetes.io/managed-by: Helm
+            app.kubernetes.io/name: dash0-operator
+            helm.sh/chart: dash0-operator-0.0.0
+          name: RELEASE-NAME-post-install-job
+        spec:
+          automountServiceAccountToken: true
+          containers:
+            - command:
+                - /manager
+                - --auto-operator-configuration-resource-available-check
+              image: ghcr.io/dash0hq/operator-controller:0.0.0
+              imagePullPolicy: null
+              name: post-install-job
+              resources:
+                limits:
+                  cpu: 500m
+                  ephemeral-storage: 500Mi
+                  memory: 256Mi
+                requests:
+                  cpu: 10m
+                  ephemeral-storage: 500Mi
+                  memory: 128Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                seccompProfile:
+                  type: RuntimeDefault
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+          serviceAccountName: dash0-operator-controller

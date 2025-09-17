@@ -98,7 +98,7 @@ kubectl delete --ignore-not-found=true customresourcedefinition dash0operatorcon
 kubectl delete --ignore-not-found=true customresourcedefinition persesdashboards.perses.dev
 kubectl delete --ignore-not-found=true customresourcedefinition prometheusrules.monitoring.coreos.com
 kubectl delete --ignore-not-found=true -f test-resources/customresources/priorityclass/priorityclasses.yaml
-kubectl delete --ignore-not-found=true -f test-resources/cert-manager/certificate-and-issuer.yaml
+kubectl delete --ignore-not-found=true -f test-resources/cert-manager/certificate-and-issuer.yaml || true
 
 # The following resources are deleted automatically with helm uninstall, unless for example when the operator manager
 # crashes and the helm pre-delete helm hook cannot run, then they might be left behind.

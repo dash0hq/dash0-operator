@@ -13,11 +13,13 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -1239,4 +1241,69 @@ func VerifyResourceStatusCondition(
 	g.Expect(condition.Status).To(Equal(expectedStatus))
 	g.Expect(condition.Reason).To(Equal(expectedReason))
 	g.Expect(condition.Message).To(Equal(expectedMessage))
+}
+
+func WebhookService() corev1.Service {
+	return corev1.Service{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Service",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: OperatorNamespace,
+			Name:      OperatorWebhookServiceName,
+			Labels: map[string]string{
+				"app.kubernetes.io/name":      "dash0-operator",
+				"app.kubernetes.io/component": "webhook-service",
+				"app.kubernetes.io/instance":  "webhook-service",
+			},
+		},
+		Spec: corev1.ServiceSpec{
+			Ports: []corev1.ServicePort{
+				{
+					Port:       443,
+					Protocol:   "TCP",
+					TargetPort: intstr.FromInt32(9443),
+				},
+			},
+			Selector: map[string]string{
+				"app.kubernetes.io/name":      "dash0-operator",
+				"app.kubernetes.io/component": "controller",
+			},
+		},
+	}
+}
+
+func WebhookServiceEndpointSlice(withPort bool, withReadyCondition bool) discoveryv1.EndpointSlice {
+	endpointSlice := discoveryv1.EndpointSlice{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "discovery.k8s.io",
+			Kind:       "endpointslice",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      OperatorWebhookServiceName + "-endpointslice",
+			Namespace: OperatorNamespace,
+			Labels: map[string]string{
+				"kubernetes.io/service-name": OperatorWebhookServiceName,
+			},
+		},
+		AddressType: discoveryv1.AddressTypeIPv4,
+		Endpoints: []discoveryv1.Endpoint{{
+			Addresses: []string{"10.0.0.1"},
+		}},
+	}
+
+	if withPort {
+		endpointSlice.Ports = []discoveryv1.EndpointPort{{
+			Port: ptr.To(int32(9443)),
+		}}
+	}
+
+	if withReadyCondition {
+		endpointSlice.Endpoints[0].Conditions = discoveryv1.EndpointConditions{
+			Ready: ptr.To(true),
+		}
+	}
+
+	return endpointSlice
 }
