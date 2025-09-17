@@ -127,7 +127,6 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				images,
 				true,
 				nil,
-				defaultWebhookServiceName,
 			)
 		})
 
@@ -1009,7 +1008,6 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				operatorHelmChartUrl,
 				images,
 				nil,
-				defaultWebhookServiceName,
 			)
 		})
 
@@ -1118,7 +1116,6 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					// test.
 					false,
 					nil,
-					defaultWebhookServiceName,
 				)
 				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
 				time.Sleep(10 * time.Second)
@@ -1159,7 +1156,6 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					operatorHelmChartUrl,
 					images,
 					nil,
-					defaultWebhookServiceName,
 				)
 			})
 
@@ -1289,7 +1285,6 @@ traces:
 					operatorHelmChartUrl,
 					images,
 					nil,
-					defaultWebhookServiceName,
 				)
 			})
 
@@ -1418,7 +1413,6 @@ trace_statements:
 					operatorHelmChartUrl,
 					images,
 					nil,
-					defaultWebhookServiceName,
 				)
 				By("create an operator configuration resource with telemetryCollection.enabled=false")
 				deployDash0OperatorConfigurationResource(dash0OperatorConfigurationValues{
@@ -1475,7 +1469,6 @@ trace_statements:
 						"operator.certManager.certManagerAnnotations.cert-manager\\.io/inject-ca-from": operatorNamespace + "/e2e-serving-certificate",
 						"operator.webhookService.name": "e2e-webhook-service-name",
 					},
-					"e2e-webhook-service-name",
 				)
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
@@ -1549,7 +1542,6 @@ trace_statements:
 					initialAlternativeImages,
 					true,
 					nil,
-					defaultWebhookServiceName,
 				)
 				deployDash0MonitoringResource(
 					applicationUnderTestNamespace,
@@ -1576,7 +1568,6 @@ trace_statements:
 					// now we use :latest (or :main-dev or whatever has been provided via env vars) instead of
 					// :e2e-test to trigger an actual change
 					images,
-					defaultWebhookServiceName,
 				)
 
 				By("verifying that the Node.js deployment's instrumentation settings have been updated by the controller")
@@ -1602,7 +1593,6 @@ trace_statements:
 					operatorHelmChartUrl,
 					images,
 					nil,
-					defaultWebhookServiceName,
 				)
 				time.Sleep(10 * time.Second)
 			})
@@ -1683,7 +1673,6 @@ trace_statements:
 					operatorHelmChartUrl,
 					images,
 					nil,
-					defaultWebhookServiceName,
 				)
 				time.Sleep(10 * time.Second)
 			})
@@ -1723,7 +1712,6 @@ trace_statements:
 						// no token, no secret ref
 					},
 					nil,
-					defaultWebhookServiceName,
 				)
 				Expect(err).To(
 					MatchError(
@@ -1802,7 +1790,6 @@ trace_statements:
 						images,
 						true,
 						nil,
-						defaultWebhookServiceName,
 					)
 					runInParallel(configs, func(config removalTestNamespaceConfig) {
 						deployDash0MonitoringResource(

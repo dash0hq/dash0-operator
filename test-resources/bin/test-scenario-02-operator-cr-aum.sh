@@ -74,6 +74,7 @@ fi
 if [[ "${DEPLOY_MONITORING_RESOURCE:-}" != "false" ]]; then
   echo "STEP $step_counter: deploy the Dash0 monitoring resource to namespace ${target_namespace}"
   install_monitoring_resource "$additional_namespaces"
+  finish_step
 else
   echo "not deploying a Dash0 monitoring resource"
   echo

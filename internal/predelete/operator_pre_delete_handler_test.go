@@ -75,21 +75,20 @@ var _ = Describe("Uninstalling the Dash0 operator", Ordered, func() {
 
 	It("should time out if the deletion of all Dash0 monitoring resources does not happen in a timely manner", func() {
 		startTime := time.Now()
-		preDeleteHandlerTerminatedAt := time.Time{}
+		var elapsedTimeNanoseconds int64
 
 		go func() {
 			defer GinkgoRecover()
 			Expect(preDeleteHandler.DeleteAllMonitoringResources()).To(Succeed())
-			preDeleteHandlerTerminatedAt = time.Now()
+			elapsedTimeNanoseconds = time.Since(startTime).Nanoseconds()
 		}()
 
 		// Deliberately not triggering a reconcile loop -> the finalizer action of the Dash0 monitoring resources will
 		// not trigger, and the Dash0 monitoring resources won't be deleted. Ultimately, the timeout will kick in.
 
 		Eventually(func(g Gomega) {
-			g.Expect(preDeleteHandlerTerminatedAt).ToNot(BeZero())
-			elapsedTime := preDeleteHandlerTerminatedAt.Sub(startTime).Nanoseconds()
-			g.Expect(elapsedTime).To(BeNumerically("~", preDeleteHandlerTimeoutForTests, time.Second))
+			g.Expect(elapsedTimeNanoseconds).ToNot(BeZero())
+			g.Expect(elapsedTimeNanoseconds).To(BeNumerically("~", preDeleteHandlerTimeoutForTests, time.Second))
 		}, testTimeout, pollingInterval).Should(Succeed())
 	})
 

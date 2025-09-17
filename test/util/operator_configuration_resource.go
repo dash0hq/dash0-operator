@@ -15,6 +15,7 @@ import (
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
+	"github.com/dash0hq/dash0-operator/internal/util"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -181,6 +182,18 @@ func CreateDefaultOperatorConfigurationResource(
 	)
 }
 
+func CreateOperatorConfigurationAutoResource(
+	ctx context.Context,
+	k8sClient client.Client,
+) *dash0v1alpha1.Dash0OperatorConfiguration {
+	return CreateOperatorConfigurationResourceWithName(
+		ctx,
+		k8sClient,
+		util.OperatorConfigurationAutoResourceName,
+		OperatorConfigurationResourceDefaultSpec,
+	)
+}
+
 func CreateOperatorConfigurationResourceWithSpec(
 	ctx context.Context,
 	k8sClient client.Client,
@@ -201,6 +214,7 @@ func CreateOperatorConfigurationResourceWithName(
 	ctx context.Context,
 	k8sClient client.Client,
 	resourceName string,
+	operatorConfigurationSpec dash0v1alpha1.Dash0OperatorConfigurationSpec,
 ) *dash0v1alpha1.Dash0OperatorConfiguration {
 	operatorConfigurationResource, err := CreateOperatorConfigurationResource(
 		ctx,

@@ -36,9 +36,7 @@ const (
 var (
 	defaultExpectedPathView  = fmt.Sprintf("%s.*%s", viewApiBasePath, "dash0-operator_.*_test-dataset_test-namespace_test-view")
 	defaultExpectedPathView2 = fmt.Sprintf("%s.*%s", viewApiBasePath, "dash0-operator_.*_test-dataset_extra-namespace-views_test-view-2")
-	viewLeaderElectionAware  = leaderElectionAwareMock{
-		isLeader: true,
-	}
+	viewLeaderElectionAware  = NewLeaderElectionAwareMock(true)
 )
 
 var _ = Describe("The View controller", Ordered, func() {
@@ -463,10 +461,10 @@ var _ = Describe("The View controller", Ordered, func() {
 			}),
 			Entry("when the operator manager becomes leader", maybeDoInitialSynchronizationOfAllResourcesTest{
 				disableSync: func() {
-					viewLeaderElectionAware.isLeader = false
+					viewLeaderElectionAware.SetLeader(false)
 				},
 				enabledSync: func() {
-					viewLeaderElectionAware.isLeader = true
+					viewLeaderElectionAware.SetLeader(true)
 					viewReconciler.NotifiyOperatorManagerJustBecameLeader(ctx, &logger)
 				},
 			}),
@@ -488,7 +486,7 @@ func createViewReconciler() *ViewReconciler {
 	viewReconciler := NewViewReconciler(
 		k8sClient,
 		ClusterUidTest,
-		&viewLeaderElectionAware,
+		viewLeaderElectionAware,
 		&http.Client{},
 	)
 	return viewReconciler

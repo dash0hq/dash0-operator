@@ -250,7 +250,7 @@ spec:
             path: /readyz
             port: 8081
           initialDelaySeconds: 5
-          periodSeconds: 10
+          periodSeconds: 5
       - name: kube-rbac-proxy
         image: {{ include "dash0-operator.kubeRbacProxyImage" . | quote }}
         args:
