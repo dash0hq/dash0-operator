@@ -18,7 +18,6 @@ injector/unit-test-assets
 injector/zig-*.sh
 injector/zig-out
 injector-experiments/
-node.js/build.sh
 test/
 **/*.swp
 **/.DS_Store

@@ -29,7 +29,6 @@ FROM node:22.15.0-alpine3.21 AS build-node-js
 RUN mkdir -p /dash0-init-container/instrumentation/node.js
 WORKDIR /dash0-init-container/instrumentation/node.js
 COPY node.js/package* .
-COPY node.js/dash0-opentelemetry-*.tgz .
 RUN NPM_CONFIG_UPDATE_NOTIFIER=false \
   npm ci \
   --ignore-scripts \
