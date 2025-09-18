@@ -91,11 +91,12 @@ type transformTestConfig struct {
 }
 
 const (
-	GrpcEndpointTest = "example.com:4317"
-	HttpEndpointTest = "https://example.com:4318"
-	namespace1       = "namespace-1"
-	namespace2       = "namespace-2"
-	namespace3       = "namespace-3"
+	GrpcEndpointTest         = "example.com:4317"
+	HttpEndpointTest         = "https://example.com:4318"
+	HttpInsecureEndpointTest = "http://example.com:1234"
+	namespace1               = "namespace-1"
+	namespace2               = "namespace-2"
+	namespace3               = "namespace-3"
 )
 
 var (
@@ -427,6 +428,72 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlp/grpc")
 		}, daemonSetAndDeployment)
 
+		DescribeTable("should render a gRPC exporter with the insecureSkipVerify flag if it is using TLS and has the skipVerifyFlag set to true", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Export: dash0common.Export{
+					Grpc: &dash0common.GrpcConfiguration{
+						Endpoint:           "https://example.com:1234",
+						InsecureSkipVerify: ptr.To(true),
+					},
+				},
+			}, monitoredNamespaces, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]interface{})
+			Expect(exporters).To(HaveLen(1))
+
+			exporter2 := exporters["otlp/grpc"]
+			Expect(exporter2).ToNot(BeNil())
+			otlpGrpcExporter := exporter2.(map[string]interface{})
+			Expect(otlpGrpcExporter).ToNot(BeNil())
+			Expect(otlpGrpcExporter["endpoint"]).To(Equal("https://example.com:1234"))
+			insecureSkipVerifyFlag := readFromMap(otlpGrpcExporter, []string{"tls", "insecure_skip_verify"})
+			Expect(insecureSkipVerifyFlag).To(BeTrue())
+			headersRaw := otlpGrpcExporter["headers"]
+			Expect(headersRaw).To(BeNil())
+			Expect(otlpGrpcExporter["encoding"]).To(BeNil())
+
+			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlp/grpc")
+		}, daemonSetAndDeployment)
+
+		DescribeTable("should render a gRPC exporter and ignore the insecureSkipVerify flag if the endpoint is not using TLS", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Export: dash0common.Export{
+					Grpc: &dash0common.GrpcConfiguration{
+						Endpoint:           "http://example.com:1234",
+						InsecureSkipVerify: ptr.To(true),
+					},
+				},
+			}, monitoredNamespaces, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]interface{})
+			Expect(exporters).To(HaveLen(1))
+
+			exporter2 := exporters["otlp/grpc"]
+			Expect(exporter2).ToNot(BeNil())
+			otlpGrpcExporter := exporter2.(map[string]interface{})
+			Expect(otlpGrpcExporter).ToNot(BeNil())
+			Expect(otlpGrpcExporter["endpoint"]).To(Equal("http://example.com:1234"))
+			insecureSkipVerifyFlag := readFromMap(otlpGrpcExporter, []string{"tls", "insecure_skip_verify"})
+			Expect(insecureSkipVerifyFlag).To(BeNil())
+			headersRaw := otlpGrpcExporter["headers"]
+			Expect(headersRaw).To(BeNil())
+			Expect(otlpGrpcExporter["encoding"]).To(BeNil())
+
+			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlp/grpc")
+		}, daemonSetAndDeployment)
+
 		DescribeTable("should fail to render an HTTP exporter when no endpoint is provided", func(cmTypeDef configMapTypeDefinition) {
 			_, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
@@ -502,6 +569,101 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			otlpHttpExporter := exporter2.(map[string]interface{})
 			Expect(otlpHttpExporter).ToNot(BeNil())
 			Expect(otlpHttpExporter["endpoint"]).To(Equal(HttpEndpointTest))
+			headersRaw := otlpHttpExporter["headers"]
+			Expect(headersRaw).ToNot(BeNil())
+			headers := headersRaw.(map[string]interface{})
+			Expect(headers).To(HaveLen(2))
+			Expect(headers["Key1"]).To(Equal("Value1"))
+			Expect(headers["Key2"]).To(Equal("Value2"))
+			Expect(otlpHttpExporter["encoding"]).To(Equal("json"))
+
+			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlphttp/json")
+		}, daemonSetAndDeployment)
+
+		DescribeTable("should render an HTTP exporter with insecureSkipVerify", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Export: dash0common.Export{
+					Http: &dash0common.HttpConfiguration{
+						Endpoint:           HttpEndpointTest,
+						InsecureSkipVerify: ptr.To(true),
+						Headers: []dash0common.Header{
+							{
+								Name:  "Key1",
+								Value: "Value1",
+							},
+							{
+								Name:  "Key2",
+								Value: "Value2",
+							},
+						},
+						Encoding: dash0common.Json,
+					},
+				},
+			}, monitoredNamespaces, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]interface{})
+			Expect(exporters).To(HaveLen(1))
+
+			exporter := exporters["otlphttp/json"]
+			Expect(exporter).ToNot(BeNil())
+			otlpHttpExporter := exporter.(map[string]interface{})
+			Expect(otlpHttpExporter).ToNot(BeNil())
+			Expect(otlpHttpExporter["endpoint"]).To(Equal(HttpEndpointTest))
+			insecureSkipVerifyFlag := readFromMap(otlpHttpExporter, []string{"tls", "insecure_skip_verify"})
+			Expect(insecureSkipVerifyFlag).To(BeTrue())
+			headersRaw := otlpHttpExporter["headers"]
+			Expect(headersRaw).ToNot(BeNil())
+			headers := headersRaw.(map[string]interface{})
+			Expect(headers).To(HaveLen(2))
+			Expect(headers["Key1"]).To(Equal("Value1"))
+			Expect(headers["Key2"]).To(Equal("Value2"))
+			Expect(otlpHttpExporter["encoding"]).To(Equal("json"))
+
+			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlphttp/json")
+		}, daemonSetAndDeployment)
+
+		DescribeTable("should render an HTTP exporter and ignore insecureSkipVerify if not using TLS", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Export: dash0common.Export{
+					Http: &dash0common.HttpConfiguration{
+						Endpoint:           HttpInsecureEndpointTest,
+						InsecureSkipVerify: ptr.To(true),
+						Headers: []dash0common.Header{
+							{
+								Name:  "Key1",
+								Value: "Value1",
+							},
+							{
+								Name:  "Key2",
+								Value: "Value2",
+							},
+						},
+						Encoding: dash0common.Json,
+					},
+				},
+			}, monitoredNamespaces, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]interface{})
+			Expect(exporters).To(HaveLen(1))
+
+			exporter2 := exporters["otlphttp/json"]
+			Expect(exporter2).ToNot(BeNil())
+			otlpHttpExporter := exporter2.(map[string]interface{})
+			Expect(otlpHttpExporter).ToNot(BeNil())
+			Expect(otlpHttpExporter["endpoint"]).To(Equal(HttpInsecureEndpointTest))
+			Expect(otlpHttpExporter["tls"]).To(BeNil())
 			headersRaw := otlpHttpExporter["headers"]
 			Expect(headersRaw).ToNot(BeNil())
 			headers := headersRaw.(map[string]interface{})

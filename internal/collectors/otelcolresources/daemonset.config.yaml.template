@@ -610,7 +610,10 @@ exporters:
 {{- if $exporter.Insecure }}
     tls:
       insecure: true
-{{ end }}
+{{- else if $exporter.InsecureSkipVerify }}
+    tls:
+      insecure_skip_verify: true
+{{- end }}
 {{- if $exporter.Headers }}
     headers:
 {{- range $i, $header := $exporter.Headers }}

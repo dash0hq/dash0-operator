@@ -150,6 +150,16 @@ func (h *MonitoringValidationWebhookHandler) validateExport(
 				"The provided Dash0 monitoring resource does not have an export configuration, and the existing Dash0 " +
 					"operator configuration does not have an export configuration either."), true
 		}
+	} else {
+		if monitoringResource.Spec.Export.Grpc != nil {
+			if util.ReadBoolPointerWithDefault(monitoringResource.Spec.Export.Grpc.Insecure, false) &&
+				util.ReadBoolPointerWithDefault(monitoringResource.Spec.Export.Grpc.InsecureSkipVerify, false) {
+				return admission.Denied(
+					"The provided Dash0 monitoring resource has both insecure and insecureSkipVerify " +
+						"explicitly enabled for the GRPC export. This is an invalid combination. " +
+						"Please either set export.grpc.insecure=true or export.grpc.insecureSkipVerify=true."), true
+			}
+		}
 	}
 	return admission.Response{}, false
 }
