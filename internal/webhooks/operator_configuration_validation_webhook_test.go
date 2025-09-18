@@ -196,6 +196,28 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				"collectPodLabelsAndAnnotations.enabled=false.")))
 	})
 
+	It("should reject a new operator configuration resource with a GRPC export having both insecure and insecureSkipVerify set to true", func() {
+		_, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					Export: &dash0common.Export{
+						Grpc: &dash0common.GrpcConfiguration{
+							Endpoint:           EndpointGrpcTest,
+							Insecure:           ptr.To(true),
+							InsecureSkipVerify: ptr.To(true),
+						},
+					},
+				},
+			})
+		Expect(err).To(MatchError(ContainSubstring(
+			"The provided Dash0 operator configuration resource has both insecure and insecureSkipVerify " +
+				"explicitly enabled for the GRPC export. This is an invalid combination. " +
+				"Please either set export.grpc.insecure=true or export.grpc.insecureSkipVerify=true.")))
+	})
+
 	It("should allow updating an existing operator configuration resource", func() {
 		operatorConfiguration, err := CreateOperatorConfigurationResource(
 			ctx,

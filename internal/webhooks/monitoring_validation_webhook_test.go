@@ -205,6 +205,29 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 			Expect(err).ToNot(HaveOccurred())
 		})
 
+		It("should reject monitoring resources with an GRPC export having both insecure and insecureSkipVerify set to true", func() {
+			_, err := CreateMonitoringResourceWithPotentialError(ctx, k8sClient, &dash0v1beta1.Dash0Monitoring{
+				ObjectMeta: MonitoringResourceDefaultObjectMeta,
+				Spec: dash0v1beta1.Dash0MonitoringSpec{
+					InstrumentWorkloads: dash0v1beta1.InstrumentWorkloads{
+						Mode: dash0common.InstrumentWorkloadsModeAll,
+					},
+					Export: &dash0common.Export{
+						Grpc: &dash0common.GrpcConfiguration{
+							Endpoint:           "https://example.com:1234",
+							Insecure:           ptr.To(true),
+							InsecureSkipVerify: ptr.To(true),
+						},
+					},
+				},
+			})
+
+			Expect(err).To(MatchError(ContainSubstring(
+				"The provided Dash0 monitoring resource has both insecure and insecureSkipVerify " +
+					"explicitly enabled for the GRPC export. This is an invalid combination. " +
+					"Please either set export.grpc.insecure=true or export.grpc.insecureSkipVerify=true.")))
+		})
+
 		DescribeTable("should reject monitoring resource creation with telemetry settings if the operator configuration resource has telemetry collection disabled", func(testConfig validationTestConfig) {
 			operatorConfigurationResource := CreateOperatorConfigurationResourceWithSpec(
 				ctx,

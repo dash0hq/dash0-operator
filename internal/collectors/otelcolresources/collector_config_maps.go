@@ -93,11 +93,12 @@ type collectorConfigurationTemplateValues struct {
 }
 
 type OtlpExporter struct {
-	Name     string
-	Endpoint string
-	Headers  []dash0common.Header
-	Encoding string
-	Insecure bool
+	Name               string
+	Endpoint           string
+	Headers            []dash0common.Header
+	Encoding           string
+	Insecure           bool
+	InsecureSkipVerify bool
 }
 
 type KubeletStatsReceiverConfig struct {
@@ -464,6 +465,7 @@ func ConvertExportSettingsToExporterList(export dash0common.Export) ([]OtlpExpor
 			Headers:  grpc.Headers,
 		}
 		setGrpcTls(grpc.Endpoint, &grpcExporter)
+		setInsecureSkipVerify(grpc.Endpoint, grpc.InsecureSkipVerify, &grpcExporter)
 		if len(grpc.Headers) > 0 {
 			grpcExporter.Headers = grpc.Headers
 		}
@@ -484,6 +486,7 @@ func ConvertExportSettingsToExporterList(export dash0common.Export) ([]OtlpExpor
 			Endpoint: http.Endpoint,
 			Encoding: encoding,
 		}
+		setInsecureSkipVerify(http.Endpoint, http.InsecureSkipVerify, &httpExporter)
 		if len(http.Headers) > 0 {
 			httpExporter.Headers = http.Headers
 		}
@@ -504,10 +507,19 @@ func renderCollectorConfiguration(
 	return collectorConfiguration.String(), nil
 }
 
-func setGrpcTls(endpoint string, exporter *OtlpExporter) {
+func hasNonTlsPrefix(endpoint string) bool {
 	endpointNormalized := strings.ToLower(endpoint)
-	hasNonTlsPrefix := strings.HasPrefix(endpointNormalized, "http://")
-	if hasNonTlsPrefix {
+	return strings.HasPrefix(endpointNormalized, "http://")
+}
+
+func setGrpcTls(endpoint string, exporter *OtlpExporter) {
+	if hasNonTlsPrefix(endpoint) {
 		exporter.Insecure = true
+	}
+}
+
+func setInsecureSkipVerify(endpoint string, insecureSkipVerify *bool, exporter *OtlpExporter) {
+	if !hasNonTlsPrefix(endpoint) && util.ReadBoolPointerWithDefault(insecureSkipVerify, false) {
+		exporter.InsecureSkipVerify = true
 	}
 }
