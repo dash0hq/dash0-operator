@@ -137,6 +137,14 @@ tests:
     set:
       operator:
         replicaCount: 3
+        tolerations:
+          - key: key1
+            operator: Equal
+            value: value1
+            effect: NoSchedule
+          - key: key2
+            operator: Exists
+            effect: NoSchedule
         webhookService:
           name: custom-webhook-service-name
           port: 554
@@ -221,6 +229,16 @@ tests:
       - equal:
           path: spec.replicas
           value: 3
+      - equal:
+          path: spec.template.spec.tolerations
+          value:
+            - key: key1
+              operator: Equal
+              value: value1
+              effect: NoSchedule
+            - key: key2
+              operator: Exists
+              effect: NoSchedule
       - equal:
           path: spec.template.metadata.labels['label1']
           value: "pod label 1"

@@ -95,8 +95,21 @@ operator:
   # resource will be created by the Helm chart then.
   clusterName: ""
 
-  # number of replicas for the operator manager deployment
+  # The number of replicas for the operator manager deployment.
   replicaCount: 1
+
+  # An array of tolerations for the operator manager deployment. This can be used to make sure that the operator manager
+  # pod(s) can be scheduled on nodes where they would not be scheduled otherwise due to Kubernetes taints.
+  # Example:
+  # tolerations:
+  #   - key: "key1"
+  #     operator: "Equal"
+  #     value: "value1"
+  #     effect: "NoSchedule"
+  #   - key: "key2"
+  #     operator: "Exists"
+  #     effect: "NoSchedule"
+  tolerations: []
 
   # Settings for using cert-manager instead of auto-generating TLS certificates.
   #
@@ -429,8 +442,8 @@ operator:
     # See https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/.
     # daemonSetPriorityClassName:
 
-    # Resource settings for the collector container of the Deployment collector pod managed by the operator.
-    # There should usually be no reason to override this.
+    # Resource settings for the collector container of the Deployment collector pod (cluster-metrics-collector) managed
+    # by the operator. There should usually be no reason to override this.
     deploymentCollectorContainerResources:
       limits:
         # cpu: (no cpu limit by default)
@@ -442,8 +455,8 @@ operator:
         memory: 500Mi
         # ephemeral-storage: (no ephemeral-storage request by default)
 
-    # Resource settings for the configuration reloader container of the Deployment collector pod managed by the
-    # operator. There should usually be no reason to override this.
+    # Resource settings for the configuration reloader container of the Deployment collector pod
+    # (cluster-metrics-collector) managed by the operator. There should usually be no reason to override this.
     deploymentConfigurationReloaderContainerResources:
       limits:
         # cpu: (no cpu limit by default)
@@ -458,3 +471,17 @@ operator:
     # The priority class name for the Deployment collector pod. If set, this pod will be scheduled with the specified
     # priority class. See https://kubernetes.io/docs/concepts/scheduling-eviction/pod-priority-preemption/.
     # deploymentPriorityClassName:
+
+    # An array of tolerations for the collector Deployment pod (cluster-metrics-collector) managed by the operator.
+    # This can be used to make sure that collector pod can be scheduled on nodes where it would not be scheduled
+    # otherwise due to Kubernetes taints.
+    # Example:
+    # deploymentTolerations:
+    #   - key: "key1"
+    #     operator: "Equal"
+    #     value: "value1"
+    #     effect: "NoSchedule"
+    #   - key: "key2"
+    #     operator: "Exists"
+    #     effect: "NoSchedule"
+    deploymentTolerations: []

@@ -409,6 +409,8 @@ var _ = Describe("extra config map", func() {
 					Expect(extraConfig.CollectorDeploymentConfigurationReloaderContainerResources.Requests.Memory().String()).To(Equal("12Mi"))
 					Expect(extraConfig.CollectorDeploymentConfigurationReloaderContainerResources.Requests.StorageEphemeral().IsZero()).To(BeTrue())
 
+					Expect(extraConfig.DeploymentTolerations).To(HaveLen(0))
+
 					Expect(extraConfig.CollectorDeploymentPriorityClassName).To(Equal(""))
 				})
 
@@ -488,6 +490,14 @@ daemonSetTolerations:
     operator: Exists
     effect: NoSchedule
 collectorDeploymentPriorityClassName: deployment-priority
+deploymentTolerations:
+  - key: key3
+    operator: Equal
+    value: value3
+    effect: NoSchedule
+  - key: key4
+    operator: Exists
+    effect: NoSchedule
 `)
 					Expect(err).ToNot(HaveOccurred())
 
@@ -564,6 +574,18 @@ collectorDeploymentPriorityClassName: deployment-priority
 					Expect(extraConfig.DaemonSetTolerations[1].TolerationSeconds).To(BeNil())
 
 					Expect(extraConfig.CollectorDeploymentPriorityClassName).To(Equal("deployment-priority"))
+
+					Expect(extraConfig.DeploymentTolerations).To(HaveLen(2))
+					Expect(extraConfig.DeploymentTolerations[0].Key).To(Equal("key3"))
+					Expect(extraConfig.DeploymentTolerations[0].Operator).To(Equal(corev1.TolerationOpEqual))
+					Expect(extraConfig.DeploymentTolerations[0].Value).To(Equal("value3"))
+					Expect(extraConfig.DeploymentTolerations[0].Effect).To(Equal(corev1.TaintEffectNoSchedule))
+					Expect(extraConfig.DeploymentTolerations[0].TolerationSeconds).To(BeNil())
+					Expect(extraConfig.DeploymentTolerations[1].Key).To(Equal("key4"))
+					Expect(extraConfig.DeploymentTolerations[1].Operator).To(Equal(corev1.TolerationOpExists))
+					Expect(extraConfig.DeploymentTolerations[1].Value).To(BeEmpty())
+					Expect(extraConfig.DeploymentTolerations[1].Effect).To(Equal(corev1.TaintEffectNoSchedule))
+					Expect(extraConfig.DeploymentTolerations[1].TolerationSeconds).To(BeNil())
 				})
 
 				It("should merge partial config and defaults", func() {

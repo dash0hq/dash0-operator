@@ -963,10 +963,12 @@ operator:
       effect: NoSchedule
 ```
 
-Changing this setting while the operator is already running requires a `helm upgrade`/`helm upgrade --reuse-values` or
-similar to take effect.
+In the same fashion, tolerations can also be configured for the Dash0 operator manager (Helm value
+`operator.tolerations`) and the OpenTelemetry collector deployment for collecting cluster metrics
+(Helm value `operator.collectors.deploymentTolerations`).
 
-Note: The tolerations will be added to the daemonset collector pods, but not to the deployment collector pod.
+Changing Helm settings while the operator is already running requires a `helm upgrade`/`helm upgrade --reuse-values` or
+similar to take effect.
 
 #### Preventing Operator Scheduling on Specific Nodes
 

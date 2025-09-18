@@ -502,7 +502,20 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 					Effect:   corev1.TaintEffectNoSchedule,
 				},
 			},
-			CollectorDaemonSetPriorityClassName:  "daemonset-prio",
+			CollectorDaemonSetPriorityClassName: "daemonset-prio",
+			DeploymentTolerations: []corev1.Toleration{
+				{
+					Key:      "key3",
+					Operator: corev1.TolerationOpEqual,
+					Value:    "value3",
+					Effect:   corev1.TaintEffectNoSchedule,
+				},
+				{
+					Key:      "key4",
+					Operator: corev1.TolerationOpExists,
+					Effect:   corev1.TaintEffectNoSchedule,
+				},
+			},
 			CollectorDeploymentPriorityClassName: "deployment-prio",
 		})
 
@@ -524,6 +537,18 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(daemonSetPodSpec.PriorityClassName).To(Equal("daemonset-prio"))
 
 		deploymentPodSpec := getDeployment(desiredState).Spec.Template.Spec
+		Expect(deploymentPodSpec.Tolerations).To(HaveLen(2))
+		Expect(deploymentPodSpec.Tolerations).To(HaveLen(2))
+		Expect(deploymentPodSpec.Tolerations[0].Key).To(Equal("key3"))
+		Expect(deploymentPodSpec.Tolerations[0].Operator).To(Equal(corev1.TolerationOpEqual))
+		Expect(deploymentPodSpec.Tolerations[0].Value).To(Equal("value3"))
+		Expect(deploymentPodSpec.Tolerations[0].Effect).To(Equal(corev1.TaintEffectNoSchedule))
+		Expect(deploymentPodSpec.Tolerations[0].TolerationSeconds).To(BeNil())
+		Expect(deploymentPodSpec.Tolerations[1].Key).To(Equal("key4"))
+		Expect(deploymentPodSpec.Tolerations[1].Operator).To(Equal(corev1.TolerationOpExists))
+		Expect(deploymentPodSpec.Tolerations[1].Value).To(BeEmpty())
+		Expect(deploymentPodSpec.Tolerations[1].Effect).To(Equal(corev1.TaintEffectNoSchedule))
+		Expect(deploymentPodSpec.Tolerations[1].TolerationSeconds).To(BeNil())
 		Expect(deploymentPodSpec.PriorityClassName).To(Equal("deployment-prio"))
 	})
 
