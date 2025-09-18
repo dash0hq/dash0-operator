@@ -1291,6 +1291,7 @@ func assembleCollectorDeployment(
 				},
 			},
 		},
+		Tolerations:        extraConfig.DeploymentTolerations,
 		ServiceAccountName: deploymentServiceAccountName(config.NamePrefix),
 		SecurityContext: &corev1.PodSecurityContext{
 			RunAsNonRoot: ptr.To(true),

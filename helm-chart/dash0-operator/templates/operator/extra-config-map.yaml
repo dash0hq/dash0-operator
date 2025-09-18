@@ -61,6 +61,8 @@ data:
               .Values.operator.collectors.deploymentConfigurationReloaderContainerResources
               .Values.operator.collectorDeploymentConfigurationReloaderContainerResources
           ) | nindent 6 }}
+    deploymentTolerations:
+      {{- toYaml .Values.operator.collectors.deploymentTolerations | nindent 6 }}
 {{- if .Values.operator.collectors.deploymentPriorityClassName }}
     collectorDeploymentPriorityClassName: {{ .Values.operator.collectors.deploymentPriorityClassName }}
 {{- end }}

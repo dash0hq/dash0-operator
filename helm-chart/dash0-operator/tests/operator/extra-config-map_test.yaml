@@ -82,6 +82,14 @@ tests:
               memory: 505Mi
               cpu: 605m
               ephemeral-storage: 705Mi
+          deploymentTolerations:
+            - key: key3
+              operator: Equal
+              value: value3
+              effect: NoSchedule
+            - key: key4
+              operator: Exists
+              effect: NoSchedule
           deploymentPriorityClassName: collector-deployment-priority-class
     asserts:
       - equal:
@@ -159,6 +167,14 @@ tests:
                 cpu: 605m
                 ephemeral-storage: 705Mi
                 memory: 505Mi
+            deploymentTolerations:
+              - effect: NoSchedule
+                key: key3
+                operator: Equal
+                value: value3
+              - effect: NoSchedule
+                key: key4
+                operator: Exists
             collectorDeploymentPriorityClassName: collector-deployment-priority-class
 
   # This test also verifies that the collectorFilelogOffsetStorageVolume is not rendered if
@@ -254,3 +270,5 @@ tests:
               requests:
                 cpu: 505m
                 memory: 405Mi
+            deploymentTolerations:
+              []

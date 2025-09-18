@@ -37,6 +37,8 @@ extra config map should match snapshot:
             memory: 24Mi
           requests:
             memory: 12Mi
+        deploymentTolerations:
+          []
     kind: ConfigMap
     metadata:
       labels:
