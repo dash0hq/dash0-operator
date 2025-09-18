@@ -795,15 +795,29 @@ to be set with the `ReadWriteMany` access mode.
 
 Using a volume instead of the default config map approach is also helpful if you have webhooks in your cluster which
 process every config map update.
-One known example is the
-[Kyverno admission controller](https://kyverno.io/docs/introduction/how-kyverno-works/#kubernetes-admission-controls).
-When operating Kyverno in the same cluster as the Dash0 operator, it is highly recommended to either use a volume for
-filelog offsets, or to [exclude](https://kyverno.io/docs/installation/customization/#resource-filters) ConfigMaps (or
-all resource types) in the Dash0 operator's namespace from Kyverno's processing.
-Leaving Kyverno processing in place and using the config map filelog offset storage can lead to severe performance
-issues, since the default config map for filelog offsets is updated very frequently.
-This can cause Kyverno to consume a lot of CPU and memory resources, potentially even leading to OOMKills of the Kyverno
-admission controller.
+
+Known examples for this are:
+* The [Open Police Agent](https://www.openpolicyagent.org/), in particular the
+  [OPA gatekeeeper](https://github.com/open-policy-agent/gatekeeper).
+  When operating the OPA gatekeeper in the same cluster as the Dash0 operator, it is highly recommended to use a volume
+  for filelog offsets.
+  Using the default config map filelog offset storage in clusters with the OPA gatekeeper can lead to severe performance
+  issues, since the default config map for filelog offsets is updated very frequently. This can cause the OPA gatekeeper
+  to consume a lot of CPU and memory resources, potentially even leading to OOMKills of the OPA gatekeeper.
+* [AKS](https://azure.microsoft.com/products/kubernetes-service) clusters with the
+  [Azure Policy add-on](https://learn.microsoft.com/azure/aks/use-azure-policy): A managed instance of the OPA
+  gatekeeper (see above) is installed by the Azure Policy add-on for AKS, i.e. the OPA gatekeeper is active in AKS
+  cluster that have enabled the Azure Policy add-on. It is highly recommended to use a volume for filelog offsets for
+  AKS clusters with the Azure Policy add-on.
+* The
+  [Kyverno admission controller](https://kyverno.io/docs/introduction/how-kyverno-works/#kubernetes-admission-controls).
+  When operating Kyverno in the same cluster as the Dash0 operator, it is highly recommended to either use a volume for
+  filelog offsets, or to [exclude](https://kyverno.io/docs/installation/customization/#resource-filters) ConfigMaps (or
+  all resource types) in the Dash0 operator's namespace from Kyverno's processing.
+  Leaving Kyverno processing in place and using the config map filelog offset storage can lead to severe performance
+  issues, since the default config map for filelog offsets is updated very frequently.
+  This can cause Kyverno to consume a lot of CPU and memory resources, potentially even leading to OOMKills of the
+  Kyverno admission controller.
 
 ### Using cert-manager
 
@@ -1980,6 +1994,23 @@ spec:
       jsonPointers:
         - /webhooks/0/clientConfig/caBundle
 ```
+
+## Notes on Azure AKS
+
+In [AKS](https://azure.microsoft.com/products/kubernetes-service) clusters that have the
+[Azure Policy add-on](https://learn.microsoft.com/azure/aks/use-azure-policy) enabled, it is highly recommended to
+[use a volume for filelog offsets](#providing-a-filelog-offset-volume)
+instead of the default filelog offset config map.
+Using the default config map filelog offset storage in AKS clusters with this add-on can lead to severe performance
+issues.
+
+## Notes on the Open Policy Agent
+
+In clusters that have the [OPA gatekeeeper](https://github.com/open-policy-agent/gatekeeper) deployed it is highly
+recommended to [use a volume for filelog offsets](#providing-a-filelog-offset-volume) instead of the default filelog
+offset config map.
+Using the default config map filelog offset storage in clusters with this component can lead to severe performance
+issues.
 
 ## Notes on Kyverno Admission Controller
 
