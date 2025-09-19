@@ -21,10 +21,33 @@ else
   exit 1
 fi
 
-image_name="dash0-injector-dev-$ARCHITECTURE"
+# Debian/Ubuntu and Alpine base images are supported, for example:
+# - BASE_IMAGE=ubuntu:noble
+# - BASE_IMAGE=debian:11-slim
+# - BASE_IMAGE=alpine:3.22.1
+base_image="${BASE_IMAGE:-ubuntu:noble}"
+base_image_for_image_name="${base_image//:/-}"
+base_image_for_image_name="${base_image_for_image_name//./-}"
+base_image_for_image_name="${base_image_for_image_name//\//-}"
+image_name="dash0-injector-dev-$ARCHITECTURE-$base_image_for_image_name"
+container_name="$image_name"
+
+if docker container inspect "$container_name" > /dev/null 2>&1; then
+   # shellcheck disable=SC2086
+  if [[ "$( docker container inspect -f '{{.State.Running}}' $container_name )" = "true" ]]; then
+  echo "Container $container_name is already running, joining existing container."
+  docker exec \
+    -it \
+    "$container_name" \
+    /bin/bash
+ fi
+ exit 0
+fi
+
 docker rmi -f "$image_name" 2> /dev/null || true
 docker build \
   --platform "$docker_platform" \
+  --build-arg "base_image=$base_image" \
   --build-arg "zig_architecture=${zig_architecture}" \
   -f Dockerfile-injector-development \
   -t "$image_name" \
@@ -35,6 +58,7 @@ docker rm -f "$container_name" 2> /dev/null || true
 docker run \
   --rm \
   -it \
+  --platform "$docker_platform" \
   --name "$container_name" \
   --volume "$(pwd):/home/dash0/instrumentation" \
   "$image_name" \

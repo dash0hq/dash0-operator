@@ -15,6 +15,8 @@ const types = @import("types.zig");
 const assert = std.debug.assert;
 const expect = std.testing.expect;
 
+const empty_z_string = "\x00";
+
 const init_section_name = switch (builtin.target.os.tag) {
     .linux => ".init_array",
     .macos => "__DATA,__mod_init_func", // needed to run tests locally on macOS
@@ -40,16 +42,15 @@ const InjectorError = error{
 };
 
 fn initEnviron() callconv(.C) void {
-    const libc_library = libc.getLibc() catch |err| {
+    const libc_library = libc.getLibCInfo() catch |err| {
         if (err == error.UnknownLibCFlavor) {
-            print.printDebug("no LibC found: {}", .{err});
+            print.printMessage("no libc found: {}", .{err});
         } else {
             print.printError("failed to identify libc: {}", .{err});
         }
         return;
     };
-
-    print.printDebug("identified {s} LibC loaded from {s}", .{ switch (libc_library.flavor) {
+    print.printDebug("identified {s} libc loaded from {s}", .{ switch (libc_library.flavor) {
         types.LibCFlavor.GNU => "GNU",
         types.LibCFlavor.MUSL => "musl",
         else => "unknown",
@@ -58,7 +59,7 @@ fn initEnviron() callconv(.C) void {
     environ_ptr = libc_library.environ_ptr;
 
     updateStdOsEnviron() catch |err| {
-        print.printError("cannot initiailize OTEL_RESOURCE_ATTRIBUTES: {}", .{err});
+        print.printError("initEnviron(): cannot update std.os.environ: {}; ", .{err});
         return;
     };
 
@@ -75,37 +76,19 @@ fn initEnviron() callconv(.C) void {
     }
 }
 
-fn updateStdOsEnviron() !void {
-    // Dynamic libs do not get the std.os.environ initialized, see https://github.com/ziglang/zig/issues/4524, so we
-    // back fill it. This logic is based on parsing of envp on zig's start. We re-bind the environment every time, as
-    // we cannot ensure it did not change since the previous invocation. Libc implementations can re-allocate the
-    // environment (http://github.com/lattera/glibc/blob/master/stdlib/setenv.c;
-    // https://git.musl-libc.org/cgit/musl/tree/src/env/setenv.c) if the backing memory location is outgrown by apps
-    // modifying the environment via setenv or putenv.
-    if (environ_ptr) |environment_ptr| {
-        const env_array = environment_ptr.*;
-        var env_var_count: usize = 0;
-        while (env_array[env_var_count] != null) : (env_var_count += 1) {}
-
-        std.os.environ = @ptrCast(@constCast(env_array[0..env_var_count]));
-    } else {
-        return error.CannotFindEnvironSymbol;
-    }
-}
-
 export fn getenv(name_z: types.NullTerminatedString) ?types.NullTerminatedString {
     const name = std.mem.sliceTo(name_z, 0);
 
-    print.initDebugFlag();
-    print.printDebug("getenv('{s}') called", .{name});
-
     updateStdOsEnviron() catch |err| {
-        print.printDebug("getenv('{s}') -> null; could not update std.os.environ: {}; ", .{ name, err });
+        print.printError("getenv('{s}') -> null; cannot update std.os.environ: {}; ", .{ name, err });
         return null;
     };
 
     // Technically, a process could change the value of `DASH0_INJECTOR_DEBUG` after it started (mostly when we debug
     // stuff in REPL) so we look up the value every time.
+    print.initDebugFlag();
+
+    print.printDebug("getenv('{s}') called", .{name});
 
     const res = getEnvValue(name);
 
@@ -116,6 +99,30 @@ export fn getenv(name_z: types.NullTerminatedString) ?types.NullTerminatedString
     }
 
     return res;
+}
+
+fn updateStdOsEnviron() !void {
+    // Dynamic libs do not get the std.os.environ initialized, see https://github.com/ziglang/zig/issues/4524, so we
+    // back fill it. This logic is based on parsing of envp on zig's start. We re-bind the environment every time, as
+    // we cannot ensure it did not change since the previous invocation. libc implementations can re-allocate the
+    // environment (http://github.com/lattera/glibc/blob/master/stdlib/setenv.c;
+    // https://git.musl-libc.org/cgit/musl/tree/src/env/setenv.c) if the backing memory location is outgrown by apps
+    // modifying the environment via setenv or putenv.
+    if (environ_ptr) |environment_ptr| {
+        const env_array = environment_ptr.*;
+        var env_var_count: usize = 0;
+        // Note: env_array will be empty in some cases, for example if the application calls clearenv. Accessing
+        // env_array[0] as we do in the while loop below would segfault. Instead we initialize an empty environ slice.
+        if (env_array == 0) {
+            std.os.environ = &.{};
+            return;
+        }
+        while (env_array[env_var_count] != null) : (env_var_count += 1) {}
+
+        std.os.environ = @ptrCast(@constCast(env_array[0..env_var_count]));
+    } else {
+        return error.CannotFindEnvironSymbol;
+    }
 }
 
 fn getEnvValue(name: [:0]const u8) ?types.NullTerminatedString {
@@ -174,6 +181,14 @@ fn getEnvValue(name: [:0]const u8) ?types.NullTerminatedString {
     // The requested environment variable is not one that we want to modify, hence we just return the original value by
     // returning a pointer to it.
     if (original_value) |val| {
+        if (val.len == 0) {
+            // This can happen if an environment variable has been _deleted_ by calling putenv("VARIABLE") instead of
+            // putenv("VARIABLE=some-value"). Accessing val.ptr would lead to a segfault in this case. Unfortunately,
+            // we do not have a good way of distinguishing between environment variables that have been unset vs.
+            // environment variables that have been set explicitly to the empty string here. We choose to return the empty
+            // string here.
+            return empty_z_string;
+        }
         return val.ptr;
     }
 

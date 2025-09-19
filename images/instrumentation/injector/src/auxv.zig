@@ -2,10 +2,10 @@ const std = @import("std");
 
 const print = @import("print.zig");
 
-// Need to implement and export this to prevent an unwanted
-// dependency on the `getauxval` symbol from LibC, which will
-// not be fulfilled when linking to a process that does not
-// include LibC itself.
+// Need to implement and export this symbol to prevent an unwanted dependency on the `getauxval` symbol from libc, which
+// will not be fulfilled when linking to a process that does not include libc itself. It is safe to export this, since
+// we do not export any _global_ symbols, only local symbols, and in particular, getauxval is only exported locally.
+// Executables requiring getauxval will bind this to libc's getauxval.
 pub export fn getauxval(auxv_type: u32) callconv(.C) usize {
     var auxv_file = std.fs.openFileAbsolute("/proc/self/auxv", .{}) catch |err| {
         print.printError("Failed to open /proc/self/auxv: {}", .{err});

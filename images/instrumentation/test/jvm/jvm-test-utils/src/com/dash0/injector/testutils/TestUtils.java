@@ -15,7 +15,9 @@ public class TestUtils {
             if (actual != null) {
                 throw new RuntimeException(
                         String.format(
-                                "Unexpected value for the %s \"%s\" -- expected: null, was: \"%s\"",
+                                "Unexpected value for the %s \"%s\" --\n" +
+                                        "- expected: null,\n" +
+                                        "- was:      \"%s\"",
                                 label,
                                 propertyName,
                                 actual
@@ -26,7 +28,9 @@ public class TestUtils {
         if (!expected.equals(actual)) {
             throw new RuntimeException(
                     String.format(
-                            "Unexpected value for the %s \"%s\" -- expected: \"%s\", was: \"%s\"",
+                            "Unexpected value for the %s \"%s\" --\n" +
+                                    "expected: \"%s\",\n" +
+                                    "was:      \"%s\"",
                             label,
                             propertyName,
                             expected,

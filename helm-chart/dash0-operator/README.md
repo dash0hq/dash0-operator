@@ -1233,10 +1233,9 @@ If the workload is in a namespace that is monitored by Dash0 and
 [workload instrumentation](#monitoringresource.spec.instrumentWorkloads.mode) is enabled, Dash0 will automatically add
 Kubernetes-related OpenTelemetry resource attributes to your telemetry, even if the runtime in question is not
 yet supported by Dash0's auto-instrumentation.
-(There is currently one caveat: The resource attribute auto-detection relies on the process or runtime in question to
-use the Posix function [`getenv`](#https://pubs.opengroup.org/onlinepubs/9799919799/) to read environment variables,
-which is true for almost all runtimes.
-Two notable exceptions are Python and some statically compiled binaries.)
+There is currently one caveat: The resource attribute auto-detection relies on the process or runtime in question to
+use dynamic linking at startup (that is, binding to a flavor of libc), which is true for almost all runtimes.
+One notable exception are so called freestanding a.k.a. libc-free binaries, for example most binaries built with Go.
 
 ### Exporting Data to Other Observability Backends
 
@@ -1509,10 +1508,9 @@ For other runtimes, you can add an OpenTelemetry SDK to your workloads
 Auto-detecting OpenTelemetry resource attributes works for _all_ runtimes, that is, for runtimes that are
 supported by Dash0's auto-instrumentation as well as for workloads to which an OpenTelemetry SDK has been added
 otherwise.
-(There is currently one caveat: The resource attribute auto-detection relies on the process or runtime in question to
-use the Posix function [`getenv`](#https://pubs.opengroup.org/onlinepubs/9799919799/) to read environment variables,
-which is true for almost all runtimes.
-Two notable exceptions are Python and some statically compiled binaries.)
+There is currently one caveat: The resource attribute auto-detection relies on the process or runtime in question to
+use dynamic linking at startup (that is, binding to a flavor of libc), which is true for almost all runtimes.
+One notable exception are so called freestanding a.k.a. libc-free binaries, for example most binaries built with Go.
 
 The Dash0 operator will instrument the following workload types:
 
@@ -1615,7 +1613,8 @@ You can safely skip this section if you are not interested in the technical deta
    In general, it specifies a list of additional shared objects to be loaded before the actual code of the executable.
    In this specific case, the Dash0 injector binary is added to the `LD_PRELOAD` list.
 4. At process startup, the Dash0 injector adds additional environment variables to the running process by hooking into
-   the `getenv` function of the standard library.
+   the application startup, finding the `dlsym` symbol and `setenv` symbols, and then calling `setenv` to add or modify
+   environment variables (like `OTEL_RESOURCES`, `NODE_OPTIONS`, `JAVA_TOOL_OPTIONS`).
    The reason for doing that at process startup and not when modifying the pod spec (where environment variables can
    also be added and modified) is that the original environment variables are not necessarily fully known at that time.
    Workloads will sometimes set environment variables in their Dockerfile or in an entrypoint script; those environment
@@ -1624,8 +1623,7 @@ You can safely skip this section if you are not interested in the technical deta
    [Dash0 OpenTelemetry distribution for Node.js](https://github.com/dash0hq/opentelemetry-js-distribution) to collect
    tracing data from all Node.js workloads.
    For JVMs, the same is achieved by setting (or appending to) the `JAVA_TOOL_OPTIONS` environment variable, namely
-   `-javaagent` and `-Dotel.resource.attributes`).
-   The latter is neccessary because JVMs do not rely on `getenv` to read environment variables.
+   adding a `-javaagent`).
 5. Additionally, the Dash0 injector automatically improves Kubernetes-related resource attributes as follows:
    The operator sets the environment variables `DASH0_NAMESPACE_NAME`, `DASH0_POD_NAME`, `DASH0_POD_UID` and
    `DASH0_CONTAINER_NAME` on workloads.

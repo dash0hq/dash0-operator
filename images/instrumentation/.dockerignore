@@ -8,7 +8,6 @@ injector/test/scripts/*
 !injector/test/scripts/*.tests
 injector/.zig-cache
 injector/README.md
-injector/notes
 injector/test/.container_images_to_be_deleted_at_end
 injector/test/.containers_to_be_deleted_at_end
 injector/test/README.md
@@ -19,5 +18,8 @@ injector/zig-*.sh
 injector/zig-out
 injector-experiments/
 test/
+**/*.o
+**/*.javac
+**/*.jar
 **/*.swp
 **/.DS_Store

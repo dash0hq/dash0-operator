@@ -25,10 +25,10 @@ pub fn printDebug(comptime fmt: []const u8, args: anytype) void {
     }
 }
 
-pub fn printError(comptime fmt: []const u8, args: anytype) void {
+pub fn printMessage(comptime fmt: []const u8, args: anytype) void {
     std.debug.print(log_prefix ++ fmt ++ "\n", args);
 }
 
-pub fn printMessage(comptime fmt: []const u8, args: anytype) void {
+pub fn printError(comptime fmt: []const u8, args: anytype) void {
     std.debug.print(log_prefix ++ fmt ++ "\n", args);
 }

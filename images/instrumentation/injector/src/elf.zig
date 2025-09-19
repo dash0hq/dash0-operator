@@ -13,21 +13,17 @@ const ElfError = error{
     MissingDynamicLinkingInformation,
 };
 
-// Provide a minimal support for looking up symbols from the memory location
-// where an ELF binary has been memory-mapped upon load.
-//
-// This is based on dynamic_library.zig's ElfDynLib, but with a few changes:
-// 1. Only support Elf on 64 bits.
-// 2. Instead mapping the library's binary to memory, as we would do when loading
-//    a library, we are working with already mapped memory regions, which also
-//    means no allocations are necessary.
-// 3. Skip the implementation of symbol version checking: we use this facility only
-//    to look up the `dlsym` symbol, which is a function provided by LibC that will
-//    allow us to look up all other symbols across the entire process. And, between
-//    us, if your binary has TWO versions of the `dlsym` symbol, I would like to hear
-//    about it.
-// 4. Compensate for some quirks in the updating (or lack thereof) of dynamic symbol
-//    offsets.
+/// Provide a minimal support for looking up symbols from the memory location where an ELF binary has been memory-mapped
+/// upon load.
+///
+/// This is based on dynamic_library.zig's ElfDynLib, but with a few changes:
+/// 1. Only support Elf on 64 bits.
+/// 2. Instead of mapping the library's binary to memory, as we would do when loading a library, we are working with
+///    already mapped memory regions, which also means no allocations are necessary.
+/// 3. Skip the implementation of symbol version checking: we use this facility only to look up the dlsym symbol, which
+///    is a function provided by libc that will allow us to look up all other symbols across the entire process. And,
+///    between us, if your binary has TWO versions of the dlsym symbol, I would like to hear about it.
+/// 4. Compensate for some quirks in the updating (or lack thereof) of dynamic symbol offsets.
 pub const ElfDynLib = struct {
     start_memory_range: usize,
     end_memory_range: usize,
@@ -38,7 +34,9 @@ pub const ElfDynLib = struct {
 
     pub fn open(start_memory_range: usize, end_memory_range: usize) !ElfDynLib {
         const elf_header = @as(*std.elf.Ehdr, @ptrFromInt(start_memory_range));
-        if (!std.mem.eql(u8, elf_header.e_ident[0..4], std.elf.MAGIC)) return error.NotElfFile;
+        if (!std.mem.eql(u8, elf_header.e_ident[0..4], std.elf.MAGIC)) {
+            return error.NotElfFile;
+        }
 
         switch (elf_header.e_ident[std.elf.EI_CLASS]) {
             std.elf.ELFCLASS64 => {
@@ -78,9 +76,8 @@ pub const ElfDynLib = struct {
             for (dynamic_symbols) |dynamic_symbol| {
                 var p = dynamic_symbol.d_val;
                 if (p < start_memory_range) {
-                    // Musl LibC does not update the dynamic symbol locations to add the start memory offset.
-                    // GNU LibC seems to, except for DT_VERDEF.
-                    // We compensate for it.
+                    // Musl libc does not update the dynamic symbol locations to add the start memory offset. GNU libc
+                    // seems to, except for DT_VERDEF. We compensate for it.
                     p += start_memory_range;
                 }
                 switch (dynamic_symbol.d_tag) {
