@@ -107,7 +107,7 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 			return admission.Denied(
 				"The provided Dash0 operator configuration resource has both insecure and insecureSkipVerify " +
 					"explicitly enabled for the GRPC export. This is an invalid combination. " +
-					"Please either set export.grpc.insecure=true or export.grpc.insecureSkipVerify=true.")
+					"Please set at most one of these two flags to true.")
 		}
 	}
 

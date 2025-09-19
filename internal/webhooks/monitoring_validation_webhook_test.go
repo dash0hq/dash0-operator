@@ -225,7 +225,7 @@ var _ = Describe("The validation webhook for the monitoring resource", func() {
 			Expect(err).To(MatchError(ContainSubstring(
 				"The provided Dash0 monitoring resource has both insecure and insecureSkipVerify " +
 					"explicitly enabled for the GRPC export. This is an invalid combination. " +
-					"Please either set export.grpc.insecure=true or export.grpc.insecureSkipVerify=true.")))
+					"Please set at most one of these two flags to true.")))
 		})
 
 		DescribeTable("should reject monitoring resource creation with telemetry settings if the operator configuration resource has telemetry collection disabled", func(testConfig validationTestConfig) {
