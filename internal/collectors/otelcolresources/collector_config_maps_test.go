@@ -428,6 +428,70 @@ var _ = Describe("The OpenTelemetry Collector ConfigMaps", func() {
 			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlp/grpc")
 		}, daemonSetAndDeployment)
 
+		DescribeTable("should render a gRPC exporter with an endpoint without http:// or https:// prefix, defaulting insecure to false", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Export: dash0common.Export{
+					Grpc: &dash0common.GrpcConfiguration{
+						Endpoint: "example.com:1234",
+					},
+				},
+			}, monitoredNamespaces, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]interface{})
+			Expect(exporters).To(HaveLen(1))
+
+			exporter2 := exporters["otlp/grpc"]
+			Expect(exporter2).ToNot(BeNil())
+			otlpGrpcExporter := exporter2.(map[string]interface{})
+			Expect(otlpGrpcExporter).ToNot(BeNil())
+			Expect(otlpGrpcExporter["endpoint"]).To(Equal("example.com:1234"))
+			Expect(otlpGrpcExporter["tls"]).To(BeNil())
+			headersRaw := otlpGrpcExporter["headers"]
+			Expect(headersRaw).To(BeNil())
+			Expect(otlpGrpcExporter["encoding"]).To(BeNil())
+
+			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlp/grpc")
+		}, daemonSetAndDeployment)
+
+		DescribeTable("should render a gRPC exporter with an endpoint without http:// or https:// prefix using the explicitly set insecure flag", func(cmTypeDef configMapTypeDefinition) {
+			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
+				OperatorNamespace: OperatorNamespace,
+				NamePrefix:        namePrefix,
+				Export: dash0common.Export{
+					Grpc: &dash0common.GrpcConfiguration{
+						Endpoint: "example.com:1234",
+						Insecure: ptr.To(true),
+					},
+				},
+			}, monitoredNamespaces, nil, nil, false)
+
+			Expect(err).ToNot(HaveOccurred())
+			collectorConfig := parseConfigMapContent(configMap)
+			exportersRaw := collectorConfig["exporters"]
+			Expect(exportersRaw).ToNot(BeNil())
+			exporters := exportersRaw.(map[string]interface{})
+			Expect(exporters).To(HaveLen(1))
+
+			exporter2 := exporters["otlp/grpc"]
+			Expect(exporter2).ToNot(BeNil())
+			otlpGrpcExporter := exporter2.(map[string]interface{})
+			Expect(otlpGrpcExporter).ToNot(BeNil())
+			Expect(otlpGrpcExporter["endpoint"]).To(Equal("example.com:1234"))
+			insecureFlag := readFromMap(otlpGrpcExporter, []string{"tls", "insecure"})
+			Expect(insecureFlag).To(BeTrue())
+			headersRaw := otlpGrpcExporter["headers"]
+			Expect(headersRaw).To(BeNil())
+			Expect(otlpGrpcExporter["encoding"]).To(BeNil())
+
+			verifyDownstreamExportersInPipelines(collectorConfig, cmTypeDef, "otlp/grpc")
+		}, daemonSetAndDeployment)
+
 		DescribeTable("should render a gRPC exporter with the insecureSkipVerify flag if it is using TLS and has the skipVerifyFlag set to true", func(cmTypeDef configMapTypeDefinition) {
 			configMap, err := cmTypeDef.assembleConfigMapFunction(&oTelColConfig{
 				OperatorNamespace: OperatorNamespace,
