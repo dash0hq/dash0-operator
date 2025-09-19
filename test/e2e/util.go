@@ -57,6 +57,7 @@ func sendRequest(g Gomega, runtime runtimeType, workloadType workloadType, route
 	httpPathWithQuery := fmt.Sprintf("%s?%s", route, query)
 	executeHttpRequest(
 		g,
+		runtime.runtimeTypeLabel,
 		workloadType.workloadTypeString,
 		getPort(runtime, workloadType),
 		httpPathWithQuery,
@@ -68,6 +69,7 @@ func sendRequest(g Gomega, runtime runtimeType, workloadType workloadType, route
 func sendReadyProbe(g Gomega, runtime runtimeType, workloadType workloadType) {
 	executeHttpRequest(
 		g,
+		runtime.runtimeTypeLabel,
 		workloadType.workloadTypeString,
 		getPort(runtime, workloadType),
 		"/ready",
@@ -78,6 +80,7 @@ func sendReadyProbe(g Gomega, runtime runtimeType, workloadType workloadType) {
 
 func executeHttpRequest(
 	g Gomega,
+	runtimeTypeLabel string,
 	workloadTypeString string,
 	port int,
 	httpPathWithQuery string,
@@ -86,7 +89,13 @@ func executeHttpRequest(
 ) {
 	url := fmt.Sprintf("http://localhost:%d%s", port, httpPathWithQuery)
 	if isKindCluster() {
-		url = fmt.Sprintf("http://%s/%s%s", kindClusterIngressIp, workloadTypeString, httpPathWithQuery)
+		url = fmt.Sprintf(
+			"http://%s/%s/%s%s",
+			kindClusterIngressIp,
+			workloadTypeString,
+			strings.ToLower(runtimeTypeLabel),
+			httpPathWithQuery,
+		)
 	}
 	httpClient := http.Client{
 		Timeout: 500 * time.Millisecond,

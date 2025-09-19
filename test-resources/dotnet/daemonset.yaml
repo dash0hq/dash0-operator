@@ -78,7 +78,7 @@ spec:
   rules:
   - http:
       paths:
-      - path: /daemonset(/|$)(.*)
+      - path: /daemonset/.net(/|$)(.*)
         pathType: ImplementationSpecific
         backend:
           service:

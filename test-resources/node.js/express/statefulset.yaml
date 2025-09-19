@@ -77,7 +77,7 @@ spec:
   rules:
   - http:
       paths:
-      - path: /statefulset(/|$)(.*)
+      - path: /statefulset/node.js(/|$)(.*)
         pathType: ImplementationSpecific
         backend:
           service:

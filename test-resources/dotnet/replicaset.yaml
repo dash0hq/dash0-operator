@@ -79,7 +79,7 @@ spec:
   rules:
   - http:
       paths:
-      - path: /replicaset(/|$)(.*)
+      - path: /replicaset/.net(/|$)(.*)
         pathType: ImplementationSpecific
         backend:
           service:

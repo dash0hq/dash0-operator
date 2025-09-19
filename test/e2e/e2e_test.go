@@ -39,6 +39,7 @@ var (
 var _ = Describe("Dash0 Operator", Ordered, func() {
 
 	BeforeAll(func() {
+		By("running BeforeAll hook of test suite root")
 		// Do not truncate string diff output.
 		gomegaformat.MaxLength = 0
 
@@ -81,9 +82,11 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		deployThirdPartyCrds()
 
 		stopPodCrashOrOOMKillDetection = failOnPodCrashOrOOMKill()
+		By("finished BeforeAll hook of test suite root")
 	})
 
 	AfterAll(func() {
+		By("running AfterAll hook of test suite root")
 		stopPodCrashOrOOMKillDetection <- true
 		uninstallOtlpSink(workingDir)
 		removeAllTemporaryManifests()
@@ -101,13 +104,16 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		if kubeContextHasBeenChanged {
 			revertKubernetesContext(originalKubeContext)
 		}
+		By("finished AfterAll hook of test suite root")
 	})
 
 	BeforeEach(func() {
+		By("running BeforeEach hook of test suite root")
 		createDirAndDeleteOldCollectedLogs()
 	})
 
 	AfterEach(func() {
+		By("running AfterEach hook of test suite root")
 		removeAllTestApplications(applicationUnderTestNamespace)
 	})
 

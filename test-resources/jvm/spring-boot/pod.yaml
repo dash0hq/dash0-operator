@@ -61,7 +61,7 @@ spec:
   rules:
   - http:
       paths:
-      - path: /pod(/|$)(.*)
+      - path: /pod/jvm(/|$)(.*)
         pathType: ImplementationSpecific
         backend:
           service:
