@@ -20,7 +20,7 @@ if [[ -z ${SKIP_DOCKER_BUILD:-} ]]; then
   if [[ "$is_kind_cluster" = "true" ]]; then
     echo loading test image into Kind cluster
     kind load docker-image \
-      --name "$cluster" \
+      --name "$kind_cluster_name" \
       dash0-operator-nodejs-20-express-test-app:latest
   fi
 fi

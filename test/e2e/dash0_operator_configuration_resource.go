@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"text/template"
-	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -85,28 +84,6 @@ func deployDash0OperatorConfigurationResource(
 		// OpenTelemetry collector instance.
 		waitForCollectorToStart(operatorNamespace, operatorHelmChart)
 	}
-}
-
-func waitForAutoOperatorConfigurationResourceToBecomeAvailable() {
-	By("waiting for the automatically create Dash0 operator configuration resource to become available")
-	Eventually(func(g Gomega) {
-		g.Expect(
-			runAndIgnoreOutput(exec.Command(
-				"kubectl",
-				"get",
-				"dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration-auto-resource",
-			))).To(Succeed())
-	}, 60*time.Second, 1*time.Second).Should(Succeed())
-	Expect(
-		runAndIgnoreOutput(exec.Command(
-			"kubectl",
-			"wait",
-			"dash0operatorconfigurations.operator.dash0.com/dash0-operator-configuration-auto-resource",
-			"--for",
-			"condition=Available",
-			"--timeout",
-			"30s",
-		))).To(Succeed())
 }
 
 func updateEndpointOfDash0OperatorConfigurationResource(

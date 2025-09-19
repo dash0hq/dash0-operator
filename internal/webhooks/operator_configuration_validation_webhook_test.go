@@ -22,7 +22,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 		DeleteAllOperatorConfigurationResources(ctx, k8sClient)
 	})
 
-	It("should reject a new operator configuration resources if there already is one in the cluster", func() {
+	It("should reject a new operator configuration resource if there already is one in the cluster", func() {
 		_, err := CreateOperatorConfigurationResource(
 			ctx,
 			k8sClient,

@@ -16,6 +16,8 @@ const (
 	DatasetDefault           = "default"
 	FieldManager             = "dash0-operator"
 
+	OperatorConfigurationAutoResourceName = "dash0-operator-configuration-auto-resource"
+
 	ActorController WorkloadModifierActor = "controller"
 	ActorWebhook    WorkloadModifierActor = "webhook"
 

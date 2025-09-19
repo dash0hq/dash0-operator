@@ -1,0 +1,39 @@
+suite: test post-install hook job
+templates:
+  - operator/post-install-hook.yaml
+tests:
+  - it: post-install hook job should match snapshot
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+          apiEndpoint: https://api.dash0.com
+    asserts:
+      - matchSnapshot: {}
+
+  - it: image tag should default to appVersion
+    chart:
+      version: 4.5.6
+      appVersion: 99.100.101
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+          apiEndpoint: https://api.dash0.com
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/dash0hq/operator-controller:99.100.101
+
+  - it: post-install hook job should not be deployed if no operator configuration auto resource is requested
+    set:
+      operator:
+        dash0Export:
+          enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0

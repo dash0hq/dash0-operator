@@ -37,22 +37,8 @@ const (
 var (
 	defaultExpectedPathSyntheticCheck  = fmt.Sprintf("%s.*%s", syntheticCheckApiBasePath, "dash0-operator_.*_test-dataset_test-namespace_test-synthetic-check")
 	defaultExpectedPathSyntheticCheck2 = fmt.Sprintf("%s.*%s", syntheticCheckApiBasePath, "dash0-operator_.*_test-dataset_extra-namespace-synthetic-checks_test-synthetic-check-2")
-	leaderElectionAware                = leaderElectionAwareMock{
-		isLeader: true,
-	}
+	leaderElectionAware                = NewLeaderElectionAwareMock(true)
 )
-
-type leaderElectionAwareMock struct {
-	isLeader bool
-}
-
-func (l *leaderElectionAwareMock) NeedLeaderElection() bool {
-	return true
-}
-
-func (l *leaderElectionAwareMock) IsLeader() bool {
-	return l.isLeader
-}
 
 var _ = Describe("The Synthetic Check controller", Ordered, func() {
 	ctx := context.Background()
@@ -478,10 +464,10 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 			}),
 			Entry("when the operator manager becomes leader", maybeDoInitialSynchronizationOfAllResourcesTest{
 				disableSync: func() {
-					leaderElectionAware.isLeader = false
+					leaderElectionAware.SetLeader(false)
 				},
 				enabledSync: func() {
-					leaderElectionAware.isLeader = true
+					leaderElectionAware.SetLeader(true)
 					syntheticCheckReconciler.NotifiyOperatorManagerJustBecameLeader(ctx, &logger)
 				},
 			}),
@@ -503,7 +489,7 @@ func createSyntheticCheckReconciler() *SyntheticCheckReconciler {
 	syntheticCheckReconciler := NewSyntheticCheckReconciler(
 		k8sClient,
 		ClusterUidTest,
-		&leaderElectionAware,
+		leaderElectionAware,
 		&http.Client{},
 	)
 	return syntheticCheckReconciler

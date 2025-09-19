@@ -609,6 +609,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				ctx,
 				k8sClient,
 				firstName.Name,
+				OperatorConfigurationResourceWithoutSelfMonitoringWithToken,
 			)
 			createdObjectsOperatorConfigurationControllerTest = append(createdObjectsOperatorConfigurationControllerTest, firstResource)
 			time.Sleep(10 * time.Millisecond)
@@ -618,6 +619,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				ctx,
 				k8sClient,
 				secondName.Name,
+				OperatorConfigurationResourceWithoutSelfMonitoringWithToken,
 			)
 			createdObjectsOperatorConfigurationControllerTest = append(createdObjectsOperatorConfigurationControllerTest, secondResource)
 			time.Sleep(10 * time.Millisecond)
@@ -627,6 +629,7 @@ var _ = Describe("The operation configuration resource controller", Ordered, fun
 				ctx,
 				k8sClient,
 				thirdName.Name,
+				OperatorConfigurationResourceWithoutSelfMonitoringWithToken,
 			)
 			createdObjectsOperatorConfigurationControllerTest = append(createdObjectsOperatorConfigurationControllerTest, thirdResource)
 			time.Sleep(10 * time.Millisecond)

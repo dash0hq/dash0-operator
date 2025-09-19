@@ -63,6 +63,7 @@ Now you can install the operator into your cluster via Helm with the following c
 
 ```console
 helm install \
+  --wait \
   --namespace dash0-system \
   --create-namespace \
   --set operator.dash0Export.enabled=true \
@@ -78,6 +79,7 @@ Instead of providing the auth token directly, you can also use a secret referenc
 
 ```console
 helm install \
+  --wait \
   --namespace dash0-system \
   --create-namespace \
   --set operator.dash0Export.enabled=true \
@@ -107,6 +109,7 @@ Last but not least, you can also install the operator without providing a Dash0 
 
 ```console
 helm install \
+  --wait \
   --namespace dash0-system \
   --create-namespace \
   dash0-operator \
@@ -595,6 +598,7 @@ secret has been created as shown above:
 
 ```console
 helm install \
+  --wait \
   --namespace dash0-system \
   --set operator.dash0Export.enabled=true \
   --set operator.dash0Export.endpoint=REPLACE THIS WITH YOUR DASH0 INGRESS ENDPOINT \
@@ -1355,7 +1359,7 @@ To upgrade the Dash0 Operator to a newer version, run the following commands:
 
 ```console
 helm repo update dash0-operator
-helm upgrade --namespace dash0-system dash0-operator dash0-operator/dash0-operator
+helm upgrade --wait --namespace dash0-system dash0-operator dash0-operator/dash0-operator
 ```
 
 ## CRD Version Upgrades

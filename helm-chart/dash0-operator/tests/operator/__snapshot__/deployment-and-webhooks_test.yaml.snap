@@ -106,7 +106,7 @@ deployment should match snapshot (default values):
                   path: /readyz
                   port: 8081
                 initialDelaySeconds: 5
-                periodSeconds: 10
+                periodSeconds: 5
               resources:
                 limits:
                   cpu: 500m
@@ -282,7 +282,7 @@ deployment should match snapshot when using cert-manager:
                   path: /readyz
                   port: 8081
                 initialDelaySeconds: 5
-                periodSeconds: 10
+                periodSeconds: 5
               resources:
                 limits:
                   cpu: 500m

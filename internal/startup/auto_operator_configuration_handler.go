@@ -9,16 +9,13 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
-	discoveryv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	dash0common "github.com/dash0hq/dash0-operator/api/operator/common"
 	dash0v1alpha1 "github.com/dash0hq/dash0-operator/api/operator/v1alpha1"
-
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
@@ -41,23 +38,36 @@ type OperatorConfigurationValues struct {
 
 type AutoOperatorConfigurationResourceHandler struct {
 	client.Client
-	OperatorNamespace  string
-	WebhookServiceName string
-	bypassWebhookCheck bool
+	readyCheckExecuter  *ReadyCheckExecuter
+	hasBecomeLeaderChan chan struct{}
 }
 
 const (
-	operatorConfigurationAutoResourceName = "dash0-operator-configuration-auto-resource"
-
 	argoCdAyncOptionsAnnotationKey    = "argocd.argoproj.io/sync-options"
 	argoCdCompareOptionsAnnotationKey = "argocd.argoproj.io/compare-options"
 	managedByHelmAnnotationKey        = "dash0.com/managed-by-helm"
 )
 
-// CreateOrUpdateOperatorConfigurationResource creates or updates the Dash0 operator configuration resource. The
-// function will create/update the resource asynchronously, that is, when the function returns the resource might not
-// have been created/updated yet. The function will optimistically return the resource that is going to be
-// created/updated, without guarantees that the resource will be created/updated successfully.
+func NewAutoOperatorConfigurationResourceHandler(
+	client client.Client,
+	readyCheckExecuter *ReadyCheckExecuter,
+) *AutoOperatorConfigurationResourceHandler {
+	return &AutoOperatorConfigurationResourceHandler{
+		Client:              client,
+		readyCheckExecuter:  readyCheckExecuter,
+		hasBecomeLeaderChan: make(chan struct{}),
+	}
+}
+
+func (r *AutoOperatorConfigurationResourceHandler) NotifiyOperatorManagerJustBecameLeader(_ context.Context, _ *logr.Logger) {
+	close(r.hasBecomeLeaderChan)
+}
+
+// CreateOrUpdateOperatorConfigurationResource waits until this replica becomes the leader, then it creates or updates
+// the Dash0 operator configuration resource. The function will create/update the resource asynchronously, that is, when
+// the function returns the resource might not have been created/updated yet. The function will optimistically return
+// the resource that is going to be created/updated, without guarantees that the resource will be created/updated
+// successfully.
 func (r *AutoOperatorConfigurationResourceHandler) CreateOrUpdateOperatorConfigurationResource(
 	ctx context.Context,
 	operatorConfigurationValues *OperatorConfigurationValues,
@@ -70,22 +80,38 @@ func (r *AutoOperatorConfigurationResourceHandler) CreateOrUpdateOperatorConfigu
 
 	operatorConfigurationResource := convertValuesToResource(operatorConfigurationValues)
 	go func() {
+		// If multiple replicas are active, only the leader should attempt to create or update the operator
+		// configuration resource.
+		logger.Info(
+			"waiting for this replica to become leader before creating or updating the Dash0 operator configuration " +
+				"resource",
+		)
+		// Block until NotifiyOperatorManagerJustBecameLeader has been called.
+		select {
+		case <-ctx.Done():
+			logger.Error(ctx.Err(), "context cancelled while waiting for this replica to become leader")
+			return
+		case <-r.hasBecomeLeaderChan:
+			logger.Info("this replica has become leader, proceeding with creating/updating the operator configuration resource")
+		}
+
 		// There is a validation webhook for operator configuration resources. Thus, before we can create or update an
 		// operator configuration resource, we need to wait for the webhook endpoint to become available.
 		logger.Info(
-			fmt.Sprintf(
-				"waiting for the service %s to become available before creating or updating the Dash0 "+
-					"operator configuration resource",
-				r.WebhookServiceName),
+			"waiting for the webhook service to become available before creating or updating the Dash0 " +
+				"operator configuration resource",
 		)
-
-		if err := r.waitForWebserviceEndpoint(ctx, logger); err != nil {
+		if webhookServiceIsAvailable, err := r.readyCheckExecuter.waitForWebhookServiceEndpointToBecomeReady(ctx, &setupLog); err != nil {
 			logger.Error(err, "failed to create the Dash0 operator configuration resource")
 			return
+		} else if !webhookServiceIsAvailable {
+			logger.Error(
+				fmt.Errorf("cannot create the Dash0 operator configuration resource because the webhook service did not become available"),
+				"failed to create the Dash0 operator configuration resource",
+			)
+			return
 		}
-		logger.Info(
-			fmt.Sprintf("the service %s is available now", r.WebhookServiceName),
-		)
+		logger.Info("the webhook service is available now")
 
 		if err := r.createOrUpdateOperatorConfigurationResourceWithRetry(ctx, operatorConfigurationResource, logger); err != nil {
 			logger.Error(err, "failed to create the Dash0 operator configuration resource")
@@ -116,60 +142,6 @@ func (r *AutoOperatorConfigurationResourceHandler) validateOperatorConfiguration
 		}
 	}
 	return nil
-}
-
-func (r *AutoOperatorConfigurationResourceHandler) waitForWebserviceEndpoint(
-	ctx context.Context,
-	logger *logr.Logger,
-) error {
-	if r.bypassWebhookCheck {
-		return nil
-	}
-	if err := util.RetryWithCustomBackoff(
-		"waiting for webservice endpoint to become available",
-		func() error {
-			return r.checkWebServiceEndpoint(ctx)
-		},
-		wait.Backoff{
-			Duration: 1 * time.Second,
-			Factor:   1,
-			Steps:    60,
-		},
-		false,
-		logger,
-	); err != nil {
-		return fmt.Errorf("failed to wait for the webservice endpoint to become available: %w", err)
-	}
-
-	return nil
-}
-
-//nolint:staticcheck
-func (r *AutoOperatorConfigurationResourceHandler) checkWebServiceEndpoint(ctx context.Context) error {
-	labelSelector := labels.SelectorFromSet(map[string]string{"kubernetes.io/service-name": r.WebhookServiceName})
-	endpointSliceList := discoveryv1.EndpointSliceList{}
-	if err := r.List(ctx, &endpointSliceList, &client.ListOptions{
-		Namespace:     r.OperatorNamespace,
-		LabelSelector: labelSelector,
-	}); err != nil {
-		return err
-	}
-
-	for _, endpointSlice := range endpointSliceList.Items {
-		for _, endpoint := range endpointSlice.Endpoints {
-			if endpoint.Conditions.Ready == nil || !*endpoint.Conditions.Ready {
-				// wait for the endpoint to be ready
-				continue
-			}
-			for _, port := range endpointSlice.Ports {
-				if port.Port != nil && *port.Port == 9443 {
-					return nil
-				}
-			}
-		}
-	}
-
-	return fmt.Errorf("the webservice endpoint is not available yet")
 }
 
 func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigurationResourceWithRetry(
@@ -207,7 +179,7 @@ func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigu
 		// resource per cluster. Thus, we can arbitrarily update the first item in the list.
 		existingOperatorConfigurationResource := allOperatorConfigurationResources.Items[0]
 		// If this is a manually created operator configuration resource, we refuse to overwrite it.
-		if existingOperatorConfigurationResource.Name != operatorConfigurationAutoResourceName {
+		if existingOperatorConfigurationResource.Name != util.OperatorConfigurationAutoResourceName {
 			return util.NewRetryableErrorWithFlag(fmt.Errorf(
 				"The configuration provided via Helm instructs the operator manager to create an operator "+
 					"configuration resource at startup, that is, operator.dash0Export.enabled is true and "+
@@ -264,7 +236,7 @@ func convertValuesToResource(operatorConfigurationValues *OperatorConfigurationV
 	}
 	operatorConfigurationResource := dash0v1alpha1.Dash0OperatorConfiguration{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: operatorConfigurationAutoResourceName,
+			Name: util.OperatorConfigurationAutoResourceName,
 			Annotations: map[string]string{
 				// For clusters managed by ArgoCD, we need to prevent ArgoCD to sync or prune resources that are not
 				// created directly via the Helm chart and that have no owner reference. These are all cluster-scoped

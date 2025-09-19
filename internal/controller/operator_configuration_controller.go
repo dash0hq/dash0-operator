@@ -330,8 +330,9 @@ func (r *OperatorConfigurationReconciler) applyApiAccessSettings(
 
 		}
 	} else {
-		logger.Info("The API endpoint setting required for managing dashboards or check rules via the operator is " +
-			"missing or has been removed, the operator will not update dashboards nor check rules in Dash0.")
+		logger.Info("The API endpoint setting required for managing dashboards, check rules, synthetic checks and	 " +
+			"views via the operator is missing or has been removed, the operator will not update these resources " +
+			"in Dash0.")
 		for _, apiClient := range r.apiClients {
 			apiClient.RemoveApiEndpointAndDataset(ctx, &logger)
 		}
