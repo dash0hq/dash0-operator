@@ -450,7 +450,7 @@ func ConvertExportSettingsToExporterList(export dash0common.Export) ([]OtlpExpor
 			Endpoint: export.Dash0.Endpoint,
 			Headers:  headers,
 		}
-		setGrpcTls(export.Dash0.Endpoint, &dash0Exporter)
+		setGrpcTlsFromPrefix(export.Dash0.Endpoint, &dash0Exporter)
 		exporters = append(exporters, dash0Exporter)
 	}
 
@@ -464,7 +464,11 @@ func ConvertExportSettingsToExporterList(export dash0common.Export) ([]OtlpExpor
 			Endpoint: grpc.Endpoint,
 			Headers:  grpc.Headers,
 		}
-		setGrpcTls(grpc.Endpoint, &grpcExporter)
+		if grpc.Insecure != nil {
+			grpcExporter.Insecure = *grpc.Insecure
+		} else {
+			setGrpcTlsFromPrefix(grpc.Endpoint, &grpcExporter)
+		}
 		setInsecureSkipVerify(grpc.Endpoint, grpc.InsecureSkipVerify, &grpcExporter)
 		if len(grpc.Headers) > 0 {
 			grpcExporter.Headers = grpc.Headers
@@ -512,8 +516,8 @@ func hasNonTlsPrefix(endpoint string) bool {
 	return strings.HasPrefix(endpointNormalized, "http://")
 }
 
-func setGrpcTls(endpoint string, exporter *OtlpExporter) {
-	if hasNonTlsPrefix(endpoint) {
+func setGrpcTlsFromPrefix(endpoint string, exporter *OtlpExporter) {
+	if exporter.Insecure || hasNonTlsPrefix(endpoint) {
 		exporter.Insecure = true
 	}
 }
