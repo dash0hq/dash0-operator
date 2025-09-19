@@ -73,7 +73,7 @@ spec:
   rules:
   - http:
       paths:
-      - path: /statefulset(/|$)(.*)
+      - path: /statefulset/jvm(/|$)(.*)
         pathType: ImplementationSpecific
         backend:
           service:

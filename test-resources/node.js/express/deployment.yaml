@@ -95,7 +95,7 @@ spec:
   rules:
   - http:
       paths:
-      - path: /deployment(/|$)(.*)
+      - path: /deployment/node.js(/|$)(.*)
         pathType: ImplementationSpecific
         backend:
           service:

@@ -69,7 +69,7 @@ spec:
   rules:
   - http:
       paths:
-      - path: /daemonset(/|$)(.*)
+      - path: /daemonset/jvm(/|$)(.*)
         pathType: ImplementationSpecific
         backend:
           service:

@@ -77,7 +77,7 @@ spec:
   rules:
   - http:
       paths:
-      - path: /daemonset(/|$)(.*)
+      - path: /daemonset/node.js(/|$)(.*)
         pathType: ImplementationSpecific
         backend:
           service:

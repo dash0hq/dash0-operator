@@ -65,7 +65,7 @@ spec:
   rules:
   - http:
       paths:
-      - path: /pod(/|$)(.*)
+      - path: /pod/node.js(/|$)(.*)
         pathType: ImplementationSpecific
         backend:
           service:

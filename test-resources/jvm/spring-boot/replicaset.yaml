@@ -70,7 +70,7 @@ spec:
   rules:
   - http:
       paths:
-      - path: /replicaset(/|$)(.*)
+      - path: /replicaset/jvm(/|$)(.*)
         pathType: ImplementationSpecific
         backend:
           service:

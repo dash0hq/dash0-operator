@@ -61,7 +61,7 @@ spec:
   rules:
   - http:
       paths:
-      - path: /pod(/|$)(.*)
+      - path: /pod/python(/|$)(.*)
         pathType: ImplementationSpecific
         backend:
           service:

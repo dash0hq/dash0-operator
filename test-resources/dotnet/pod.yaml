@@ -70,7 +70,7 @@ spec:
   rules:
   - http:
       paths:
-      - path: /pod(/|$)(.*)
+      - path: /pod/.net(/|$)(.*)
         pathType: ImplementationSpecific
         backend:
           service:

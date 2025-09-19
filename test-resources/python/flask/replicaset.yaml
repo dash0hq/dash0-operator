@@ -70,7 +70,7 @@ spec:
   rules:
   - http:
       paths:
-      - path: /replicaset(/|$)(.*)
+      - path: /replicaset/python(/|$)(.*)
         pathType: ImplementationSpecific
         backend:
           service:

@@ -69,7 +69,7 @@ spec:
   rules:
   - http:
       paths:
-      - path: /daemonset(/|$)(.*)
+      - path: /daemonset/python(/|$)(.*)
         pathType: ImplementationSpecific
         backend:
           service:

@@ -94,6 +94,7 @@ func createDirAndDeleteOldExportedTelemetry() {
 }
 
 func uninstallOtlpSink(workingDir string) {
+	By("removing otlp-sink")
 	originalManifest := fmt.Sprintf(
 		"%s/test-resources/otlp-sink/otlp-sink.yaml",
 		workingDir,
@@ -109,5 +110,4 @@ func uninstallOtlpSink(workingDir string) {
 				originalManifest,
 				"--wait",
 			))).To(Succeed())
-
 }

@@ -104,6 +104,7 @@ func deployIngressController() {
 }
 
 func undeployNginxIngressController() {
+	By("removing nginx ingress controller")
 	Expect(runAndIgnoreOutput(exec.Command(
 		"kubectl",
 		"delete",

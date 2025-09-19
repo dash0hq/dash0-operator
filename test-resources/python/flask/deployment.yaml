@@ -70,7 +70,7 @@ spec:
   rules:
   - http:
       paths:
-      - path: /deployment(/|$)(.*)
+      - path: /deployment/python(/|$)(.*)
         pathType: ImplementationSpecific
         backend:
           service:
