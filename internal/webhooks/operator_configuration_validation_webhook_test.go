@@ -212,10 +212,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 					},
 				},
 			})
-		Expect(err).To(MatchError(ContainSubstring(
-			"The provided Dash0 operator configuration resource has both insecure and insecureSkipVerify " +
-				"explicitly enabled for the GRPC export. This is an invalid combination. " +
-				"Please set at most one of these two flags to true.")))
+		Expect(err).To(MatchError(ContainSubstring(ErrorMessageOperatorConfigurationGrpcExportInvalidInsecure)))
 	})
 
 	It("should allow updating an existing operator configuration resource", func() {

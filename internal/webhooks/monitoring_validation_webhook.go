@@ -31,6 +31,10 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/webhooks/vendored/opentelemetry-collector-contrib/processor/transformprocessor/internal_/traces"
 )
 
+const ErrorMessageMonitoringGrpcExportInvalidInsecure = "The provided Dash0 monitoring resource has both insecure and insecureSkipVerify " +
+	"explicitly enabled for the GRPC export. This is an invalid combination. " +
+	"Please set at most one of these two flags to true."
+
 type MonitoringValidationWebhookHandler struct {
 	Client client.Client
 }
@@ -143,23 +147,15 @@ func (h *MonitoringValidationWebhookHandler) validateExport(
 					"one available Dash0 operator configuration, remove all but one Dash0 operator configuration resource."), true
 		}
 
-		opperatorConfiguration := availableOperatorConfigurations[0]
+		operatorConfiguration := availableOperatorConfigurations[0]
 
-		if opperatorConfiguration.Spec.Export == nil {
+		if operatorConfiguration.Spec.Export == nil {
 			return admission.Denied(
 				"The provided Dash0 monitoring resource does not have an export configuration, and the existing Dash0 " +
 					"operator configuration does not have an export configuration either."), true
 		}
-	} else {
-		if monitoringResource.Spec.Export.Grpc != nil {
-			if util.ReadBoolPointerWithDefault(monitoringResource.Spec.Export.Grpc.Insecure, false) &&
-				util.ReadBoolPointerWithDefault(monitoringResource.Spec.Export.Grpc.InsecureSkipVerify, false) {
-				return admission.Denied(
-					"The provided Dash0 monitoring resource has both insecure and insecureSkipVerify " +
-						"explicitly enabled for the GRPC export. This is an invalid combination. " +
-						"Please set at most one of these two flags to true."), true
-			}
-		}
+	} else if !validateGrpcExportInsecureFlags(monitoringResource.Spec.Export) {
+		return admission.Denied(ErrorMessageMonitoringGrpcExportInvalidInsecure), true
 	}
 	return admission.Response{}, false
 }

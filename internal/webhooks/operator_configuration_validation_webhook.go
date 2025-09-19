@@ -18,6 +18,10 @@ import (
 	"github.com/dash0hq/dash0-operator/internal/util"
 )
 
+const ErrorMessageOperatorConfigurationGrpcExportInvalidInsecure = "The provided Dash0 operator configuration resource has both insecure and insecureSkipVerify " +
+	"explicitly enabled for the GRPC export. This is an invalid combination. " +
+	"Please set at most one of these two flags to true."
+
 type OperatorConfigurationValidationWebhookHandler struct {
 	Client client.Client
 }
@@ -102,13 +106,8 @@ func (h *OperatorConfigurationValidationWebhookHandler) Handle(ctx context.Conte
 		}
 	}
 
-	if spec.Export != nil && spec.Export.Grpc != nil {
-		if util.ReadBoolPointerWithDefault(spec.Export.Grpc.Insecure, false) && util.ReadBoolPointerWithDefault(spec.Export.Grpc.InsecureSkipVerify, false) {
-			return admission.Denied(
-				"The provided Dash0 operator configuration resource has both insecure and insecureSkipVerify " +
-					"explicitly enabled for the GRPC export. This is an invalid combination. " +
-					"Please set at most one of these two flags to true.")
-		}
+	if !validateGrpcExportInsecureFlags(spec.Export) {
+		return admission.Denied(ErrorMessageOperatorConfigurationGrpcExportInvalidInsecure)
 	}
 
 	if request.Operation == admissionv1.Create {
