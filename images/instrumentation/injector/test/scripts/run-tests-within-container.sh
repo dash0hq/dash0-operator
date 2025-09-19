@@ -97,8 +97,24 @@ run_test_case() {
     fi
   fi
 
-  if [ "${test_case_label#*"__environ"}" != "$test_case_label" ] && [ "${ARCH_UNDER_TEST:-}" = "x86_64" ] && [ "${LIBC_UNDER_TEST:-}" = "musl" ]; then
-    echo "- skipping test case \"$test_case_label\": tests for no __environ are currently disabled for x86_64/musl"
+  # The no_environ_symbol tests do not work for libc-flavor=musl when the CPU architecture is different from the
+  # underlying host's CPU architecture. There seems to be an issue that occurs with this binary under test
+  # (noenviron.*) when starting it via some kind of emulation. This is true for CI (with qemu), where the combination
+  # arm64/musl will fail (CI runs on AMD64 by default), as well as for Apple Silicon Macs.
+  #
+  # The error on CI/amd64 is:
+  # qemu-aarch64: Could not open '/lib/ld-linux-aarch64.so.1': No such file or directory
+  #
+  # The error on Apple Silicon Macs is:
+  # rosetta error: failed to open elf at /lib64/ld-linux-x86-64.so.2
+  #
+  # However, this is mostly irrelevant for the injector, since it is a problem with the binary under test. The exact
+  # same error happens, even if LD_PRELOAD is not set and the injector is not involved at all.
+  #
+  # We skip this test case for the problematic combinations, and for CI we run tests on two different runners so we can
+  # be sure to always test all combinations there.
+  if [ "${test_case_label#*"__environ"}" != "$test_case_label" ] && [ "${LIBC_UNDER_TEST:-}" = "musl" ] && [ "${USES_EMULATION:-false}" = "true" ]; then
+    echo "- skipping test case \"$test_case_label\": tests for no __environ are currently disabled for libc flavor musl when using CPU architecture emulation (QEMU, Rosetta)"
     return
   fi
 

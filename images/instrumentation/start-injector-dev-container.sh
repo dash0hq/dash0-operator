@@ -35,6 +35,7 @@ docker rm -f "$container_name" 2> /dev/null || true
 docker run \
   --rm \
   -it \
+  --platform "$docker_platform" \
   --name "$container_name" \
   --volume "$(pwd):/home/dash0/instrumentation" \
   "$image_name" \
