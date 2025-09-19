@@ -66,4 +66,3 @@ copy_binary_from_container_image \
   "$docker_platform" \
   "$source_file_name" \
   "$target_file_name"
-

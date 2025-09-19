@@ -1,0 +1,5 @@
+# SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# one base image per line
+python:3.13.7-slim

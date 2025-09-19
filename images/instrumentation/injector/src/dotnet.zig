@@ -77,7 +77,7 @@ pub fn getDotnetValues() ?DotnetValues {
     }
 
     if (cached_libc_flavor == null) {
-        const lib_c = libc.getLibc() catch |err| {
+        const lib_c = libc.getLibCInfo() catch |err| {
             print.printError("Cannot get LibC information: {}", .{err});
             return null;
         };

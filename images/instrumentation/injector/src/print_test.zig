@@ -28,6 +28,14 @@ test "initDebugFlag: false" {
     try testing.expect(!print.isDebug());
 }
 
+test "initDebugFlag: arbitrary string" {
+    const original_environ = try test_util.setStdCEnviron(&[1][]const u8{"DASH0_INJECTOR_DEBUG=whatever"});
+    defer test_util.resetStdCEnviron(original_environ);
+
+    print.initDebugFlag();
+    try testing.expect(!print.isDebug());
+}
+
 test "initDebugFlag: true" {
     const original_environ = try test_util.setStdCEnviron(&[1][]const u8{"DASH0_INJECTOR_DEBUG=true"});
     defer test_util.resetStdCEnviron(original_environ);
