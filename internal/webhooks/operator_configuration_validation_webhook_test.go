@@ -49,7 +49,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				"cluster. Only one operator configuration resource is allowed per cluster.")))
 	})
 
-	It("should reject a new operator configuration resource without spec (and thus without export) since self-monitoring defaults to true", func() {
+	It("should reject a new operator configuration resource without spec (and thus without export) since self-monitoring and k8s metrics default to true", func() {
 		_, err := CreateOperatorConfigurationResource(
 			ctx,
 			k8sClient,
@@ -58,12 +58,13 @@ var _ = Describe("The validation webhook for the operator configuration resource
 			})
 		Expect(err).To(MatchError(ContainSubstring(
 			"admission webhook \"validate-operator-configuration.dash0.com\" denied the request: The provided " +
-				"Dash0 operator configuration resource has self-monitoring enabled, but it does not have an " +
-				"export configuration. Either disable self-monitoring or provide an export configuration for " +
-				"self-monitoring telemetry.")))
+				"Dash0 operator configuration resource has self-monitoring and Kubernetes infrastructure metrics " +
+				"collection enabled, but it does not have an export configuration. Either disable both " + "" +
+				"self-monitoring and Kubernetes infrastructure metrics collection or provide an export configuration " +
+				"for telemetry.")))
 	})
 
-	It("should reject a new operator configuration resource without export if self-monitoring is unset and defaults to true", func() {
+	It("should reject a new operator configuration resource without export if self-monitoring and k8s metrics are unset and default to true", func() {
 		_, err := CreateOperatorConfigurationResource(
 			ctx,
 			k8sClient,
@@ -71,16 +72,18 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
 				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{},
+					KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{},
 				},
 			})
 		Expect(err).To(MatchError(ContainSubstring(
 			"admission webhook \"validate-operator-configuration.dash0.com\" denied the request: The provided " +
-				"Dash0 operator configuration resource has self-monitoring enabled, but it does not have an " +
-				"export configuration. Either disable self-monitoring or provide an export configuration for " +
-				"self-monitoring telemetry.")))
+				"Dash0 operator configuration resource has self-monitoring and Kubernetes infrastructure metrics " +
+				"collection enabled, but it does not have an export configuration. Either disable both " + "" +
+				"self-monitoring and Kubernetes infrastructure metrics collection or provide an export configuration " +
+				"for telemetry.")))
 	})
 
-	It("should reject a new operator configuration resource without export if self-monitoring is enabled", func() {
+	It("should reject a new operator configuration resource without export if self-monitoring and k8s metrics are enabled explicitly", func() {
 		_, err := CreateOperatorConfigurationResource(
 			ctx,
 			k8sClient,
@@ -89,6 +92,48 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
 					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
 						Enabled: ptr.To(true),
+					},
+					KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
+						Enabled: ptr.To(true),
+					},
+				},
+			})
+		Expect(err).To(MatchError(ContainSubstring(
+			"admission webhook \"validate-operator-configuration.dash0.com\" denied the request: The provided " +
+				"Dash0 operator configuration resource has self-monitoring and Kubernetes infrastructure metrics " +
+				"collection enabled, but it does not have an export configuration. Either disable both " + "" +
+				"self-monitoring and Kubernetes infrastructure metrics collection or provide an export configuration " +
+				"for telemetry.")))
+	})
+
+	It("should reject a new operator configuration resource without export if only self-monitoring is disabled, but k8s metrics aren't", func() {
+		_, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					SelfMonitoring: dash0v1alpha1.SelfMonitoring{
+						Enabled: ptr.To(false),
+					},
+				},
+			})
+		Expect(err).To(MatchError(ContainSubstring(
+			"admission webhook \"validate-operator-configuration.dash0.com\" denied the request: The provided " +
+				"Dash0 operator configuration resource has Kubernetes infrastructure metrics collection enabled, " +
+				"but it does not have an export configuration. Either disable Kubernetes infrastructure metrics " +
+				"collection or provide an export configuration for telemetry.")))
+	})
+
+	It("should reject a new operator configuration resource without export if only k8s metrics is disabled, but self-monitoring isn't", func() {
+		_, err := CreateOperatorConfigurationResource(
+			ctx,
+			k8sClient,
+			&dash0v1alpha1.Dash0OperatorConfiguration{
+				ObjectMeta: OperatorConfigurationResourceDefaultObjectMeta,
+				Spec: dash0v1alpha1.Dash0OperatorConfigurationSpec{
+					KubernetesInfrastructureMetricsCollection: dash0v1alpha1.KubernetesInfrastructureMetricsCollection{
+						Enabled: ptr.To(false),
 					},
 				},
 			})
@@ -99,7 +144,7 @@ var _ = Describe("The validation webhook for the operator configuration resource
 				"self-monitoring telemetry.")))
 	})
 
-	It("should allow a new operator configuration resource without export if self-monitoring is disabled", func() {
+	It("should allow a new operator configuration resource without export if self-monitoring and k8s metrics are disabled", func() {
 		_, err := CreateOperatorConfigurationResource(
 			ctx,
 			k8sClient,
