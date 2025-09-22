@@ -158,14 +158,6 @@ custom resource definition for operator configuration should match snapshot:
                           type: object
                         grpc:
                           description: The settings for an exporter to send telemetry to an arbitrary OTLP-compatible receiver via gRPC.
-                          insecure:
-                            description: Explicitly defines whether TLS is used. Per default, a secure connection is assumed, unless the Endpoint starts with 'http://'.
-                            type: boolean
-                          insecureSkipVerify:
-                            description: |-
-                              Whether to skip verifying the server's certificate chain. It is a validation error to explicitly set
-                              `insecure=true` and `insecureSkipVerify=true` at the same time, since `insecure` means TLS won't be used at all.
-                            type: boolean
                           properties:
                             endpoint:
                               description: The URL of the OTLP-compatible receiver to which telemetry data will be sent. This property is mandatory.
@@ -183,6 +175,14 @@ custom resource definition for operator configuration should match snapshot:
                                   - value
                                 type: object
                               type: array
+                            insecure:
+                              description: Explicitly defines whether TLS is used. Per default, a secure connection is assumed, unless the Endpoint starts with 'http://'.
+                              type: boolean
+                            insecureSkipVerify:
+                              description: |-
+                                Whether to skip verifying the server's certificate chain. It is a validation error to explicitly set
+                                `insecure=true` and `insecureSkipVerify=true` at the same time, since `insecure` means TLS won't be used at all.
+                              type: boolean
                           required:
                             - endpoint
                           type: object
