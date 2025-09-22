@@ -775,7 +775,7 @@ tests:
           value: metadata.name
       - notExists:
           path: spec.template.spec.containers[0].env[14].name
-  
+
   - it: deployment should support changing repositories for images
     chart:
       version: 4.5.6
@@ -805,7 +805,7 @@ tests:
           path: spec.template.spec.containers[0].imagePullPolicy
       - equal:
           path: spec.template.spec.containers[1].image
-          value: customrepo.io/repo/custom-kube-rbac-proxy:v0.18.0
+          value: customrepo.io/repo/custom-kube-rbac-proxy:v0.20.0
       - equal:
           path: spec.template.spec.containers[0].env[4].name
           value: DASH0_OPERATOR_IMAGE
