@@ -63,10 +63,6 @@ pub fn getModifiedOtelResourceAttributesValue(maybe_original_value: ?[:0]const u
     var res = try std.ArrayList(u8).initCapacity(alloc.page_allocator, std.heap.pageSize());
     const writer = res.writer();
 
-    if (maybe_original_value) |original_value| {
-        try writer.writeAll(original_value);
-    }
-
     var has_modified_value = false;
 
     // DASH0_RESOURCE_ATTRIBUTES should not be overwritten by built-in mappings, so we process it first
@@ -153,6 +149,13 @@ pub fn getModifiedOtelResourceAttributesValue(maybe_original_value: ?[:0]const u
     if (!has_modified_value) {
         res.deinit();
         return null;
+    }
+
+    if (maybe_original_value) |original_value| {
+        if (has_modified_value) {
+            try writer.writeAll(",");
+        }
+        try writer.writeAll(original_value);
     }
 
     try writer.writeAll("\x00");

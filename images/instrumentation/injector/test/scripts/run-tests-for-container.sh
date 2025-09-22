@@ -105,6 +105,7 @@ docker run \
   --env MISSING_ENVIRON_SYMBOL_TESTS="${MISSING_ENVIRON_SYMBOL_TESTS:-}" \
   --env USES_EMULATION="$uses_emulation" \
   --env VERBOSE="${VERBOSE:-}" \
+  --env DASH0_INJECTOR_DEBUG="${DASH0_INJECTOR_DEBUG:-}" \
   "$image_name" \
   $docker_run_extra_arguments
 { set +x; } 2> /dev/null
