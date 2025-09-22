@@ -135,7 +135,7 @@ type GrpcConfiguration struct {
 	// +kubebuilder:validation:Optional
 	Headers []Header `json:"headers,omitempty"`
 
-	// Explicitly defines whether TLS is used. Per default, a secure connection is assumed, unless the Endpoint starts with 'http://'.
+	// Explicitly defines whether TLS is used. Per default, a secure connection is assumed, unless the endpoint starts with 'http://'.
 	//
 	// +kubebuilder:validation:Optional
 	Insecure *bool `json:"insecure,omitempty"`

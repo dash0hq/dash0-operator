@@ -176,7 +176,7 @@ custom resource definition for operator configuration should match snapshot:
                                 type: object
                               type: array
                             insecure:
-                              description: Explicitly defines whether TLS is used. Per default, a secure connection is assumed, unless the Endpoint starts with 'http://'.
+                              description: Explicitly defines whether TLS is used. Per default, a secure connection is assumed, unless the endpoint starts with 'http://'.
                               type: boolean
                             insecureSkipVerify:
                               description: |-
