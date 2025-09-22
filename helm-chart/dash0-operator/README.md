@@ -1301,6 +1301,38 @@ spec:
       endpoint: ... # provide the OTLP gRPC endpoint of your observability backend here
 ```
 
+#### Note regarding TLS when using arbitrary OTLP-compatible backends
+
+##### gRPC
+
+- By default, a secure connection is assumed, unless explicitly setting `insecure: true`, or when the `insecure` field
+is omitted and the endpoint URL starts with `http://`
+- When using TLS, you can set `insecureSkipVerify: true` to disable the verification of the server's certificate chain,
+which can be useful when using self-signed certificates.
+
+Here's an example using `insecureSkipVerify`:
+
+```yaml
+apiVersion: operator.dash0.com/v1alpha1
+kind: Dash0OperatorConfiguration
+metadata:
+  name: dash0-operator-configuration
+spec:
+  export:
+    grpc:
+      endpoint: ...             # provide the secure OTLP gRPC endpoint of your observability backend here
+      insecureSkipVerify: true  # disables the verification of the server's certificate chain
+```
+
+Please note that it is a validation error to set both `insecure` and `insecureSkipVerify` explicitly to true at the same time, since `insecureSkipVerify` is only applicable when using TLS.
+
+##### HTTP
+
+- For HTTP, the connection security is automatically detected based on whether the endpoint URL starts with `http://` or
+`https://`
+- When using TLS, you can set `insecureSkipVerify: true` to disable the verification of the server's certificate chain,
+which can be useful when using self-signed certificates.
+
 #### Exporting Telemetry to Different Backends Per Namespace
 
 Exporting telemetry to different backends per namespace is not yet implemented.

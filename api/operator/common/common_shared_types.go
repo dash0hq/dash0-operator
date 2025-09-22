@@ -115,6 +115,11 @@ type HttpConfiguration struct {
 	//
 	// +kubebuilder:default=proto
 	Encoding OtlpEncoding `json:"encoding,omitempty"`
+
+	// Whether verification of TLS certificates should be skipped. Ignored when the endpoint uses an insecure connection.
+	//
+	// +kubebuilder:validation:Optional
+	InsecureSkipVerify *bool `json:"insecureSkipVerify,omitempty"`
 }
 
 // GrpcConfiguration descibe the settings for an exporter to send telemetry to an arbitrary OTLP-compatible receiver
@@ -129,6 +134,17 @@ type GrpcConfiguration struct {
 	//
 	// +kubebuilder:validation:Optional
 	Headers []Header `json:"headers,omitempty"`
+
+	// Explicitly defines whether TLS is used. Per default, a secure connection is assumed, unless the endpoint starts with 'http://'.
+	//
+	// +kubebuilder:validation:Optional
+	Insecure *bool `json:"insecure,omitempty"`
+
+	// Whether to skip verifying the server's certificate chain. It is a validation error to explicitly set
+	// `insecure=true` and `insecureSkipVerify=true` at the same time, since `insecure` means TLS won't be used at all.
+	//
+	// +kubebuilder:validation:Optional
+	InsecureSkipVerify *bool `json:"insecureSkipVerify,omitempty"`
 }
 
 // OtlpEncoding describes the encoding of the OTLP data when sent via HTTP.
