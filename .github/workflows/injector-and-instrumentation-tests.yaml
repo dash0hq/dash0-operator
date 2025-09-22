@@ -8,8 +8,8 @@ on:
         required: true
 
 jobs:
-  build_image_and_run_injector_tests:
-    name: Build Instrumentation Image and Run Injector Tests
+  build_instrumentation_image:
+    name: Build Instrumentation Image
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -90,14 +90,6 @@ jobs:
           steps.changed-files.outputs.instrumentation_any_changed == 'true' ||
           github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
 
-      # Just for building on arm, buildx is enough but doing docker run with --platform=linux/arm64 (which we do when
-      # testing the injector binary and the instrumentation image) requires qemu.
-      - name: set up qemu
-        uses: docker/setup-qemu-action@e77e8065d9f7ec6abdd9838668cd7b43924dd64d
-        if: |
-          steps.changed-files.outputs.instrumentation_any_changed == 'true' ||
-          github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
-
       - name: login to GitHub container registry
         uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef
         if: |
@@ -140,21 +132,67 @@ jobs:
           cache-to: type=gha,mode=max,scope=instrumentation
           push: true
 
-      - name: injector tests
+  run_injector_tests_x86_64:
+    name: Run Injector Binary Tests (x86_64)
+    needs: build_instrumentation_image
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 0
+
+      - name: set up qemu
+        uses: docker/setup-qemu-action@e77e8065d9f7ec6abdd9838668cd7b43924dd64d
         if: |
-          steps.changed-files.outputs.instrumentation_any_changed == 'true' ||
+          needs.build_instrumentation_image.outputs.instrumentation_any_changed == 'true' ||
+          github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
+
+      - name: injector binary tests (x86_64)
+        if: |
+          needs.build_instrumentation_image.outputs.instrumentation_any_changed == 'true' ||
           github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
         env:
           INSTRUMENTATION_IMAGE: ${{ steps.instrumentation-test-image.outputs.image_name }}
-          MISSING_ENVIRON_SYMBOL_TESTS: true 
+          ARCHITECTURES: 'x86_64'
+          MISSING_ENVIRON_SYMBOL_TESTS: true
+        run: |
+          images/instrumentation/injector/test/scripts/test-all.sh
+
+  run_injector_tests_arm64:
+    name: Run Injector Binary Tests (arm64)
+    needs: build_instrumentation_image
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+        with:
+          fetch-depth: 0
+
+      - name: set up qemu
+        uses: docker/setup-qemu-action@e77e8065d9f7ec6abdd9838668cd7b43924dd64d
+        if: |
+          needs.build_instrumentation_image.outputs.instrumentation_any_changed == 'true' ||
+          github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
+
+      - name: injector binary tests (arm64)
+        if: |
+          needs.build_instrumentation_image.outputs.instrumentation_any_changed == 'true' ||
+          github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
+        env:
+          INSTRUMENTATION_IMAGE: ${{ steps.instrumentation-test-image.outputs.image_name }}
+          ARCHITECTURES: 'arm64'
+          MISSING_ENVIRON_SYMBOL_TESTS: true
         run: |
           images/instrumentation/injector/test/scripts/test-all.sh
 
   run_instrumentation_image_tests_x86_64:
     name: Run Instrumentation Image Tests (x86_64)
-    needs: build_image_and_run_injector_tests
+    needs:
+    - build_instrumentation_image
+    - run_injector_tests_x86_64
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
@@ -169,11 +207,11 @@ jobs:
 
       - name: run instrumentation image tests (x86_64)
         if: |
-          needs.build_image_and_run_injector_tests.outputs.instrumentation_any_changed == 'true' ||
+          needs.build_instrumentation_image.outputs.instrumentation_any_changed == 'true' ||
           github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
         working-directory: images/instrumentation/test
         env:
-          INSTRUMENTATION_IMAGE: ${{ needs.build_image_and_run_injector_tests.outputs.image_name }}
+          INSTRUMENTATION_IMAGE: ${{ needs.build_instrumentation_image.outputs.image_name }}
           ARCHITECTURES: 'x86_64'
         run: |
           npm ci
@@ -181,9 +219,11 @@ jobs:
 
   run_instrumentation_image_tests_arm64:
     name: Run Instrumentation Image Tests (arm64)
-    needs: build_image_and_run_injector_tests
+    needs:
+    - build_instrumentation_image
+    - run_injector_tests_arm64
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 45
+    timeout-minutes: 15
 
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
@@ -198,11 +238,11 @@ jobs:
 
       - name: run instrumentation image tests (arm64)
         if: |
-          needs.build_image_and_run_injector_tests.outputs.instrumentation_any_changed == 'true' ||
+          needs.build_instrumentation_image.outputs.instrumentation_any_changed == 'true' ||
           github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
         working-directory: images/instrumentation/test
         env:
-          INSTRUMENTATION_IMAGE: ${{ needs.build_image_and_run_injector_tests.outputs.image_name }}
+          INSTRUMENTATION_IMAGE: ${{ needs.build_instrumentation_image.outputs.image_name }}
           ARCHITECTURES: 'arm64'
         run: |
           npm ci
@@ -211,7 +251,7 @@ jobs:
   clean_up:
     name: clean up instrumentation image test build
     needs:
-    - build_image_and_run_injector_tests
+    - build_instrumentation_image
     - run_instrumentation_image_tests_x86_64
     - run_instrumentation_image_tests_arm64
     runs-on: ubuntu-latest
@@ -219,7 +259,7 @@ jobs:
     steps:
       - name: delete test image
         uses: bots-house/ghcr-delete-image-action@3827559c68cb4dcdf54d813ea9853be6d468d3a4
-        if: ${{ always() && ( needs.build_image_and_run_injector_tests.outputs.instrumentation_any_changed == 'true' || github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/') ) }}
+        if: ${{ always() && ( needs.build_instrumentation_image.outputs.instrumentation_any_changed == 'true' || github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/') ) }}
         with:
           owner: dash0hq
           name: instrumentation-ci-test
