@@ -184,6 +184,9 @@ operator:
   #   annotation2: "value 2"
   podAnnotations: {}
 
+  # if working on a multi-platform cluster, you can turn on a linux node selector for the operator manager pod(s)
+  applyPodLinuxNodeSelector: false
+
   # resources for the operator manager container
   managerContainerResources:
     limits:
