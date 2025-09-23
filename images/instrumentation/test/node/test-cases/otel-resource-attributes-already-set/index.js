@@ -4,7 +4,7 @@
 const process = require('node:process');
 const envVarName = 'OTEL_RESOURCE_ATTRIBUTES';
 const expectedValue =
-  'k8s.namespace.name=namespace,k8s.pod.name=pod_name,k8s.pod.uid=pod_uid,k8s.container.name=container_name,key1=value1,key2=value2';
+  'key1=value1,key2=value2,k8s.namespace.name=namespace,k8s.pod.name=pod_name,k8s.pod.uid=pod_uid,k8s.container.name=container_name';
 
 if (process.env[envVarName] !== expectedValue) {
   console.error(
