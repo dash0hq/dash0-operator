@@ -292,6 +292,10 @@ spec:
       - name: config-volume
         configMap:
           name: {{ template "dash0-operator.extraConfigMapName" . }}
+      {{- if not .Values.operator.applyLinuxNodeSelector }}
+      nodeSelector:
+        kubernetes.io/os: linux
+      {{- end }}
 
 {{/*
 ---------------
