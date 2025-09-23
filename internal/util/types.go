@@ -51,15 +51,17 @@ type CollectorConfig struct {
 	DebugVerbosityDetailed  bool
 }
 type Images struct {
-	OperatorImage                        string
-	InitContainerImage                   string
-	InitContainerImagePullPolicy         corev1.PullPolicy
-	CollectorImage                       string
-	CollectorImagePullPolicy             corev1.PullPolicy
-	ConfigurationReloaderImage           string
-	ConfigurationReloaderImagePullPolicy corev1.PullPolicy
-	FilelogOffsetSyncImage               string
-	FilelogOffsetSyncImagePullPolicy     corev1.PullPolicy
+	OperatorImage                               string
+	InitContainerImage                          string
+	InitContainerImagePullPolicy                corev1.PullPolicy
+	CollectorImage                              string
+	CollectorImagePullPolicy                    corev1.PullPolicy
+	ConfigurationReloaderImage                  string
+	ConfigurationReloaderImagePullPolicy        corev1.PullPolicy
+	FilelogOffsetSyncImage                      string
+	FilelogOffsetSyncImagePullPolicy            corev1.PullPolicy
+	FilelogOffsetVolumeOwnershipImage           string
+	FilelogOffsetVolumeOwnershipImagePullPolicy corev1.PullPolicy
 }
 
 func (i Images) GetOperatorVersion() string {

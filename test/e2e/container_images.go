@@ -22,11 +22,12 @@ type ImageSpec struct {
 }
 
 type Images struct {
-	operator              ImageSpec
-	instrumentation       ImageSpec
-	collector             ImageSpec
-	configurationReloader ImageSpec
-	fileLogOffsetSync     ImageSpec
+	operator                     ImageSpec
+	instrumentation              ImageSpec
+	collector                    ImageSpec
+	configurationReloader        ImageSpec
+	fileLogOffsetSync            ImageSpec
+	fileLogOffsetVolumeOwnership ImageSpec
 }
 
 const (
@@ -69,6 +70,13 @@ var (
 			dockerContext: "images",
 			dockerfile:    "images/filelogoffsetsync/Dockerfile",
 		},
+		fileLogOffsetVolumeOwnership: ImageSpec{
+			repository:    "filelog-offset-volume-ownership",
+			tag:           tagLatest,
+			pullPolicy:    "Never",
+			dockerContext: "images",
+			dockerfile:    "images/filelogoffsetvolumeownership/Dockerfile",
+		},
 	}
 
 	emptyImages = Images{
@@ -107,6 +115,13 @@ var (
 			dockerContext: localImages.fileLogOffsetSync.dockerContext,
 			dockerfile:    localImages.fileLogOffsetSync.dockerfile,
 		},
+		fileLogOffsetVolumeOwnership: ImageSpec{
+			repository:    "",
+			tag:           "",
+			pullPolicy:    "",
+			dockerContext: localImages.fileLogOffsetVolumeOwnership.dockerContext,
+			dockerfile:    localImages.fileLogOffsetVolumeOwnership.dockerfile,
+		},
 	}
 
 	images = localImages
@@ -118,6 +133,7 @@ func rebuildAllContainerImages() {
 	rebuildLocalImage(images.collector)
 	rebuildLocalImage(images.configurationReloader)
 	rebuildLocalImage(images.fileLogOffsetSync)
+	rebuildLocalImage(images.fileLogOffsetVolumeOwnership)
 }
 
 func rebuildLocalImage(imageSpec ImageSpec) {

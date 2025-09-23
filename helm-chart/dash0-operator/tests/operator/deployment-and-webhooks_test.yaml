@@ -52,36 +52,42 @@ tests:
           value: ghcr.io/dash0hq/filelog-offset-sync:99.100.101
       - equal:
           path: spec.template.spec.containers[0].env[9].name
-          value: K8S_POD_UID
+          value: DASH0_FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE
       - equal:
-          path: spec.template.spec.containers[0].env[9].valueFrom.fieldRef.fieldPath
-          value: metadata.uid
+          path: spec.template.spec.containers[0].env[9].value
+          value: ghcr.io/dash0hq/filelog-offset-volume-ownership:99.100.101
       - equal:
           path: spec.template.spec.containers[0].env[10].name
-          value: K8S_NODE_IP
+          value: K8S_POD_UID
       - equal:
           path: spec.template.spec.containers[0].env[10].valueFrom.fieldRef.fieldPath
-          value: status.hostIP
+          value: metadata.uid
       - equal:
           path: spec.template.spec.containers[0].env[11].name
-          value: K8S_NODE_NAME
+          value: K8S_NODE_IP
       - equal:
           path: spec.template.spec.containers[0].env[11].valueFrom.fieldRef.fieldPath
-          value: spec.nodeName
+          value: status.hostIP
       - equal:
           path: spec.template.spec.containers[0].env[12].name
-          value: K8S_POD_IP
+          value: K8S_NODE_NAME
       - equal:
           path: spec.template.spec.containers[0].env[12].valueFrom.fieldRef.fieldPath
-          value: status.podIP
+          value: spec.nodeName
       - equal:
           path: spec.template.spec.containers[0].env[13].name
-          value: K8S_POD_NAME
+          value: K8S_POD_IP
       - equal:
           path: spec.template.spec.containers[0].env[13].valueFrom.fieldRef.fieldPath
+          value: status.podIP
+      - equal:
+          path: spec.template.spec.containers[0].env[14].name
+          value: K8S_POD_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[14].valueFrom.fieldRef.fieldPath
           value: metadata.name
       - notExists:
-          path: spec.template.spec.containers[0].env[14].name
+          path: spec.template.spec.containers[0].env[15].name
 
   - it: secret should contain ca and cert
     documentSelector:
@@ -183,6 +189,10 @@ tests:
           repository: custom-filelog-offset-sync-image
           tag: "13.14.15"
           pullPolicy: Never
+        filelogOffsetVolumeOwnershipImage:
+          repository: custom-filelog-offset-volume-ownership-image
+          tag: "16.17.18"
+          pullPolicy: Always
         managerContainerResources:
           limits:
             cpu: 123m
@@ -363,60 +373,72 @@ tests:
           value: Never
       - equal:
           path: spec.template.spec.containers[0].env[13].name
-          value: DASH0_DEVELOPMENT_MODE
+          value: DASH0_FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[13].value
-          value: "true"
+          value: custom-filelog-offset-volume-ownership-image:16.17.18
       - equal:
           path: spec.template.spec.containers[0].env[14].name
-          value: DASH0_INSTRUMENTATION_DEBUG
+          value: DASH0_FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_PULL_POLICY
       - equal:
           path: spec.template.spec.containers[0].env[14].value
-          value: "true"
+          value: Always
       - equal:
           path: spec.template.spec.containers[0].env[15].name
-          value: OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED
+          value: DASH0_DEVELOPMENT_MODE
       - equal:
           path: spec.template.spec.containers[0].env[15].value
           value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[16].name
-          value: OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE
+          value: DASH0_INSTRUMENTATION_DEBUG
       - equal:
           path: spec.template.spec.containers[0].env[16].value
-          value: "32768"
+          value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[17].name
-          value: K8S_POD_UID
+          value: OTEL_COLLECTOR_DEBUG_VERBOSITY_DETAILED
       - equal:
-          path: spec.template.spec.containers[0].env[17].valueFrom.fieldRef.fieldPath
-          value: metadata.uid
+          path: spec.template.spec.containers[0].env[17].value
+          value: "true"
       - equal:
           path: spec.template.spec.containers[0].env[18].name
-          value: K8S_NODE_IP
+          value: OTEL_COLLECTOR_SEND_BATCH_MAX_SIZE
       - equal:
-          path: spec.template.spec.containers[0].env[18].valueFrom.fieldRef.fieldPath
-          value: status.hostIP
+          path: spec.template.spec.containers[0].env[18].value
+          value: "32768"
       - equal:
           path: spec.template.spec.containers[0].env[19].name
-          value: K8S_NODE_NAME
+          value: K8S_POD_UID
       - equal:
           path: spec.template.spec.containers[0].env[19].valueFrom.fieldRef.fieldPath
-          value: spec.nodeName
+          value: metadata.uid
       - equal:
           path: spec.template.spec.containers[0].env[20].name
-          value: K8S_POD_IP
+          value: K8S_NODE_IP
       - equal:
           path: spec.template.spec.containers[0].env[20].valueFrom.fieldRef.fieldPath
-          value: status.podIP
+          value: status.hostIP
       - equal:
           path: spec.template.spec.containers[0].env[21].name
-          value: K8S_POD_NAME
+          value: K8S_NODE_NAME
       - equal:
           path: spec.template.spec.containers[0].env[21].valueFrom.fieldRef.fieldPath
+          value: spec.nodeName
+      - equal:
+          path: spec.template.spec.containers[0].env[22].name
+          value: K8S_POD_IP
+      - equal:
+          path: spec.template.spec.containers[0].env[22].valueFrom.fieldRef.fieldPath
+          value: status.podIP
+      - equal:
+          path: spec.template.spec.containers[0].env[23].name
+          value: K8S_POD_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[23].valueFrom.fieldRef.fieldPath
           value: metadata.name
       - notExists:
-          path: spec.template.spec.containers[0].env[22].name
+          path: spec.template.spec.containers[0].env[24].name
       - equal:
           path: spec.template.spec.containers[0].resources.limits.cpu
           value: 123m
@@ -697,13 +719,15 @@ tests:
         initContainerImage:
           digest: sha256:1e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda01
         kubeRbacProxyImage:
-          digest: sha256:5e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda05
-        collectorImage:
           digest: sha256:2e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda02
-        configurationReloaderImage:
+        collectorImage:
           digest: sha256:3e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda03
-        filelogOffsetSyncImage:
+        configurationReloaderImage:
           digest: sha256:4e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda04
+        filelogOffsetSyncImage:
+          digest: sha256:5e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda05
+        filelogOffsetVolumeOwnershipImage:
+          digest: sha256:6e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda06
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
@@ -712,7 +736,7 @@ tests:
           path: spec.template.spec.containers[0].imagePullPolicy
       - equal:
           path: spec.template.spec.containers[1].image
-          value: quay.io/brancz/kube-rbac-proxy@sha256:5e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda05
+          value: quay.io/brancz/kube-rbac-proxy@sha256:2e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda02
       - equal:
           path: spec.template.spec.containers[0].env[4].name
           value: DASH0_OPERATOR_IMAGE
@@ -730,51 +754,57 @@ tests:
           value: DASH0_COLLECTOR_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[6].value
-          value: ghcr.io/dash0hq/collector@sha256:2e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda02
+          value: ghcr.io/dash0hq/collector@sha256:3e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda03
       - equal:
           path: spec.template.spec.containers[0].env[7].name
           value: DASH0_CONFIGURATION_RELOADER_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[7].value
-          value: ghcr.io/dash0hq/configuration-reloader@sha256:3e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda03
+          value: ghcr.io/dash0hq/configuration-reloader@sha256:4e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda04
       - equal:
           path: spec.template.spec.containers[0].env[8].name
           value: DASH0_FILELOG_OFFSET_SYNC_IMAGE
       - equal:
           path: spec.template.spec.containers[0].env[8].value
-          value: ghcr.io/dash0hq/filelog-offset-sync@sha256:4e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda04
+          value: ghcr.io/dash0hq/filelog-offset-sync@sha256:5e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda05
       - equal:
           path: spec.template.spec.containers[0].env[9].name
-          value: K8S_POD_UID
+          value: DASH0_FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE
       - equal:
-          path: spec.template.spec.containers[0].env[9].valueFrom.fieldRef.fieldPath
-          value: metadata.uid
+          path: spec.template.spec.containers[0].env[9].value
+          value: ghcr.io/dash0hq/filelog-offset-volume-ownership@sha256:6e8c25853217c7393dbd95e17fe2117bb31b39478bbea4479cc5e7c1257dda06
       - equal:
           path: spec.template.spec.containers[0].env[10].name
-          value: K8S_NODE_IP
+          value: K8S_POD_UID
       - equal:
           path: spec.template.spec.containers[0].env[10].valueFrom.fieldRef.fieldPath
-          value: status.hostIP
+          value: metadata.uid
       - equal:
           path: spec.template.spec.containers[0].env[11].name
-          value: K8S_NODE_NAME
+          value: K8S_NODE_IP
       - equal:
           path: spec.template.spec.containers[0].env[11].valueFrom.fieldRef.fieldPath
-          value: spec.nodeName
+          value: status.hostIP
       - equal:
           path: spec.template.spec.containers[0].env[12].name
-          value: K8S_POD_IP
+          value: K8S_NODE_NAME
       - equal:
           path: spec.template.spec.containers[0].env[12].valueFrom.fieldRef.fieldPath
-          value: status.podIP
+          value: spec.nodeName
       - equal:
           path: spec.template.spec.containers[0].env[13].name
-          value: K8S_POD_NAME
+          value: K8S_POD_IP
       - equal:
           path: spec.template.spec.containers[0].env[13].valueFrom.fieldRef.fieldPath
+          value: status.podIP
+      - equal:
+          path: spec.template.spec.containers[0].env[14].name
+          value: K8S_POD_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[14].valueFrom.fieldRef.fieldPath
           value: metadata.name
       - notExists:
-          path: spec.template.spec.containers[0].env[14].name
+          path: spec.template.spec.containers[0].env[15].name
 
   - it: deployment should support changing repositories for images
     chart:
@@ -797,6 +827,8 @@ tests:
           repository: customrepo.io/repo/custom-configuration-reloader
         filelogOffsetSyncImage:
           repository: customrepo.io/repo/custom-filelog-offset-sync
+        filelogOffsetVolumeOwnershipImage:
+          repository: customrepo.io/repo/custom-filelog-offset-volume-ownership
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
@@ -838,36 +870,42 @@ tests:
           value: customrepo.io/repo/custom-filelog-offset-sync:99.100.101
       - equal:
           path: spec.template.spec.containers[0].env[9].name
-          value: K8S_POD_UID
+          value: DASH0_FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE
       - equal:
-          path: spec.template.spec.containers[0].env[9].valueFrom.fieldRef.fieldPath
-          value: metadata.uid
+          path: spec.template.spec.containers[0].env[9].value
+          value: customrepo.io/repo/custom-filelog-offset-volume-ownership:99.100.101
       - equal:
           path: spec.template.spec.containers[0].env[10].name
-          value: K8S_NODE_IP
+          value: K8S_POD_UID
       - equal:
           path: spec.template.spec.containers[0].env[10].valueFrom.fieldRef.fieldPath
-          value: status.hostIP
+          value: metadata.uid
       - equal:
           path: spec.template.spec.containers[0].env[11].name
-          value: K8S_NODE_NAME
+          value: K8S_NODE_IP
       - equal:
           path: spec.template.spec.containers[0].env[11].valueFrom.fieldRef.fieldPath
-          value: spec.nodeName
+          value: status.hostIP
       - equal:
           path: spec.template.spec.containers[0].env[12].name
-          value: K8S_POD_IP
+          value: K8S_NODE_NAME
       - equal:
           path: spec.template.spec.containers[0].env[12].valueFrom.fieldRef.fieldPath
-          value: status.podIP
+          value: spec.nodeName
       - equal:
           path: spec.template.spec.containers[0].env[13].name
-          value: K8S_POD_NAME
+          value: K8S_POD_IP
       - equal:
           path: spec.template.spec.containers[0].env[13].valueFrom.fieldRef.fieldPath
+          value: status.podIP
+      - equal:
+          path: spec.template.spec.containers[0].env[14].name
+          value: K8S_POD_NAME
+      - equal:
+          path: spec.template.spec.containers[0].env[14].valueFrom.fieldRef.fieldPath
           value: metadata.name
       - notExists:
-          path: spec.template.spec.containers[0].env[14].name
+          path: spec.template.spec.containers[0].env[15].name
 
   - it: mutating webhook should have caBundle set
     documentSelector:

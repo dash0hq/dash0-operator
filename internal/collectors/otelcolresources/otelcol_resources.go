@@ -60,11 +60,12 @@ var (
 	knownIrrelevantPatches = []string{bogusDeploymentPatch}
 
 	dummyImagesForDeletion = util.Images{
-		OperatorImage:              "ghcr.io/dash0hq/operator-controller:latest",
-		InitContainerImage:         "ghcr.io/dash0hq/instrumentation:latest",
-		CollectorImage:             "ghcr.io/dash0hq/collector:latest",
-		ConfigurationReloaderImage: "ghcr.io/dash0hq/configuration-reloader:latest",
-		FilelogOffsetSyncImage:     "ghcr.io/dash0hq/filelog-offset-sync:latest",
+		OperatorImage:                     "ghcr.io/dash0hq/operator-controller:latest",
+		InitContainerImage:                "ghcr.io/dash0hq/instrumentation:latest",
+		CollectorImage:                    "ghcr.io/dash0hq/collector:latest",
+		ConfigurationReloaderImage:        "ghcr.io/dash0hq/configuration-reloader:latest",
+		FilelogOffsetSyncImage:            "ghcr.io/dash0hq/filelog-offset-sync:latest",
+		FilelogOffsetVolumeOwnershipImage: "ghcr.io/dash0hq/filelog-offset-volume-ownership:latest",
 	}
 
 	httpClient     = &http.Client{}

@@ -841,6 +841,7 @@ var _ = Describe("The collector manager", Ordered, func() {
 			initContainers := podSpec.InitContainers
 			Expect(initContainers).To(HaveLen(1))
 			Expect(initContainers[0].Name).To(Equal("filelog-offset-volume-ownership"))
+			Expect(initContainers[0].Image).To(Equal(TestImages.FilelogOffsetVolumeOwnershipImage))
 			containers := podSpec.Containers
 			Expect(containers).To(HaveLen(2))
 

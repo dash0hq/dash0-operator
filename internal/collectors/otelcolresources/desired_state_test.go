@@ -648,7 +648,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(namespaces).To(ContainElement("explicitly-set"))
 	})
 
-	It("should omit the filelog offset containers if a volume is provided for filelog offset storage", func() {
+	It("should omit the filelog offset containers if a PVC volume is provided for filelog offset storage", func() {
 		offsetStorageVolume := corev1.Volume{
 			Name: "offset-storage-volume",
 			VolumeSource: corev1.VolumeSource{
@@ -677,6 +677,49 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		daemonSetPodSpec := daemonSet.Spec.Template.Spec
 
 		Expect(daemonSetPodSpec.InitContainers).To(BeEmpty())
+		Expect(daemonSetPodSpec.Containers).To(HaveLen(2))
+		daemonSetCollectorContainer := daemonSetPodSpec.Containers[0]
+
+		Expect(daemonSetPodSpec.Volumes).To(HaveLen(6))
+		offsetVolumeFromDesiredState := FindVolumeByName(daemonSetPodSpec.Volumes, offsetStorageVolume.Name)
+		Expect(offsetVolumeFromDesiredState).ToNot(BeNil())
+		Expect(*offsetVolumeFromDesiredState).To(Equal(offsetStorageVolume))
+		offsetVolumeMount := FindVolumeMountByName(daemonSetCollectorContainer.VolumeMounts, offsetStorageVolume.Name)
+		Expect(offsetVolumeFromDesiredState).NotTo(BeNil())
+		Expect(offsetVolumeMount.SubPathExpr).To(Equal("$(K8S_NODE_NAME)"))
+	})
+
+	It("should omit the filelog offset containers but add the volume ownership container if a host volume is provided for filelog offset storage", func() {
+		offsetStorageVolume := corev1.Volume{
+			Name: "offset-storage-volume",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{},
+			},
+		}
+		desiredState, err := assembleDesiredStateForUpsert(&oTelColConfig{
+			OperatorNamespace: OperatorNamespace,
+			NamePrefix:        namePrefix,
+			Export:            *Dash0ExportWithEndpointAndToken(),
+			KubernetesInfrastructureMetricsCollectionEnabled: true,
+			UseHostMetricsReceiver:                           true,
+			Images:                                           TestImages,
+			OffsetStorageVolume:                              &offsetStorageVolume,
+		}, nil, util.ExtraConfigDefaults)
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(desiredState).To(HaveLen(numberOfResourcesWithKubernetesInfrastructureMetricsCollectionEnabled - 1))
+
+		Expect(getConfigMap(desiredState, ExpectedDaemonSetFilelogOffsetSyncConfigMapName)).To(BeNil())
+
+		daemonSet := getDaemonSet(desiredState)
+		Expect(daemonSet).NotTo(BeNil())
+		daemonSetPodSpec := daemonSet.Spec.Template.Spec
+
+		Expect(daemonSetPodSpec.InitContainers).To(HaveLen(1))
+		filelogOffsetVolumeOwnershipInitContainer := daemonSetPodSpec.InitContainers[0]
+		Expect(filelogOffsetVolumeOwnershipInitContainer.Image).To(Equal(TestImages.FilelogOffsetVolumeOwnershipImage))
+		Expect(filelogOffsetVolumeOwnershipInitContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
+
 		Expect(daemonSetPodSpec.Containers).To(HaveLen(2))
 		daemonSetCollectorContainer := daemonSetPodSpec.Containers[0]
 

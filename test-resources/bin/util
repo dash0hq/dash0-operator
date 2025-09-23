@@ -106,6 +106,10 @@ determine_container_images() {
   filelog_offset_sync_img_tag="latest"
   filelog_offset_sync_img_digest=""
   filelog_offset_sync_img_pull_policy="Never"
+  filelog_offset_volume_ownership_img_repository="filelog-offset-volume-ownership"
+  filelog_offset_volume_ownership_img_tag="latest"
+  filelog_offset_volume_ownership_img_digest=""
+  filelog_offset_volume_ownership_img_pull_policy="Never"
 
   operator_helm_chart=${OPERATOR_HELM_CHART:-helm-chart/dash0-operator}
 
@@ -129,6 +133,9 @@ determine_container_images() {
     filelog_offset_sync_img_repository=""
     filelog_offset_sync_img_tag=""
     filelog_offset_sync_img_pull_policy=""
+    filelog_offset_volume_ownership_img_repository=""
+    filelog_offset_volume_ownership_img_tag=""
+    filelog_offset_volume_ownership_img_pull_policy=""
   fi
 
   if [[ -n "${CONTROLLER_IMG_REPOSITORY:-}" ]]; then
@@ -196,6 +203,19 @@ determine_container_images() {
     filelog_offset_sync_img_pull_policy="$FILELOG_OFFSET_SYNC_IMG_PULL_POLICY"
   fi
 
+  if [[ -n "${FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_REPOSITORY:-}" ]]; then
+    filelog_offset_volume_ownership_img_repository="$FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_REPOSITORY"
+  fi
+  if [[ -n "${FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_TAG:-}" ]]; then
+    filelog_offset_volume_ownership_img_tag="$FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_TAG"
+  fi
+  if [[ -n "${FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_DIGEST:-}" ]]; then
+    filelog_offset_volume_ownership_img_digest="$FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_DIGEST"
+  fi
+  if [[ -n "${FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_PULL_POLICY:-}" ]]; then
+    filelog_offset_volume_ownership_img_pull_policy="$FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_PULL_POLICY"
+  fi
+
   if [[ "$is_local_helm_chart" = "true" ]]; then
     # support using the local helm chart with remote images
     if [[ $(is_remote_image "$controller_img_repository") = "true" ]]; then
@@ -213,6 +233,9 @@ determine_container_images() {
     if [[ $(is_remote_image "$filelog_offset_sync_img_repository") = "true" ]]; then
       filelog_offset_sync_img_pull_policy=""
     fi
+    if [[ $(is_remote_image "$filelog_offset_volume_ownership_img_repository") = "true" ]]; then
+      filelog_offset_volume_ownership_img_pull_policy=""
+    fi
   fi
 }
 
@@ -226,6 +249,8 @@ build_all_images() {
     CONFIGURATION_RELOADER_IMG_TAG="$configuration_reloader_img_tag" \
     FILELOG_OFFSET_SYNC_IMG_REPOSITORY=$filelog_offset_sync_img_repository \
     FILELOG_OFFSET_SYNC_IMG_TAG="$filelog_offset_sync_img_tag" \
+    FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_REPOSITORY=$filelog_offset_volume_ownership_img_repository \
+    FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_TAG="$filelog_offset_volume_ownership_img_tag" \
     make docker-build
 
   if [[ "$is_kind_cluster" = "true" ]]; then
@@ -236,7 +261,8 @@ build_all_images() {
       instrumentation:latest \
       collector:latest \
       configuration-reloader:latest \
-      filelog-offset-sync:latest
+      filelog-offset-sync:latest \
+      filelog-offset-volume-ownership:latest
   fi
 }
 
@@ -408,6 +434,19 @@ run_helm() {
   fi
   if [[ -n "$filelog_offset_sync_img_pull_policy" ]]; then
     helm_install_command+=" --set operator.filelogOffsetSyncImage.pullPolicy=$filelog_offset_sync_img_pull_policy"
+  fi
+
+  if [[ -n "$filelog_offset_volume_ownership_img_repository" ]]; then
+    helm_install_command+=" --set operator.filelogOffsetVolumeOwnershipImage.repository=$filelog_offset_volume_ownership_img_repository"
+  fi
+  if [[ -n "$filelog_offset_volume_ownership_img_tag" ]]; then
+    helm_install_command+=" --set operator.filelogOffsetVolumeOwnershipImage.tag=$filelog_offset_volume_ownership_img_tag"
+  fi
+  if [[ -n "$filelog_offset_volume_ownership_img_digest" ]]; then
+    helm_install_command+=" --set operator.filelogOffsetVolumeOwnershipImage.digest=$filelog_offset_volume_ownership_img_digest"
+  fi
+  if [[ -n "$filelog_offset_volume_ownership_img_pull_policy" ]]; then
+    helm_install_command+=" --set operator.filelogOffsetVolumeOwnershipImage.pullPolicy=$filelog_offset_volume_ownership_img_pull_policy"
   fi
 
   # Deploy an operator configuration right away.

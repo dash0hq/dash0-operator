@@ -81,6 +81,11 @@ FILELOG_OFFSET_SYNC_IMG_TAG ?= latest
 FILELOG_OFFSET_SYNC_IMG ?= $(FILELOG_OFFSET_SYNC_IMG_REPOSITORY):$(FILELOG_OFFSET_SYNC_IMG_TAG)
 FILELOG_OFFSET_SYNC_IMG_PULL_POLICY ?= Never
 
+FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_REPOSITORY ?= filelog-offset-volume-ownership
+FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_TAG ?= latest
+FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG ?= $(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_REPOSITORY):$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_TAG)
+FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_PULL_POLICY ?= Never
+
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 ENVTEST_K8S_VERSION = 1.28.3
 
@@ -280,7 +285,8 @@ docker-build: \
   docker-build-instrumentation \
   docker-build-collector \
   docker-build-config-reloader \
-  docker-build-filelog-offset-sync ## Build all container images.
+  docker-build-filelog-offset-sync \
+  docker-build-filelog-offset-volume-ownership
 
 define build_container_image
 $(eval $@_IMAGE_REPOSITORY = $(1))
@@ -323,6 +329,10 @@ docker-build-config-reloader: ## Build the config reloader container image.
 docker-build-filelog-offset-sync: ## Build the filelog offset sync container image.
 	@$(call build_container_image,$(FILELOG_OFFSET_SYNC_IMG_REPOSITORY),$(FILELOG_OFFSET_SYNC_IMG_TAG),images,images/filelogoffsetsync/Dockerfile)
 
+.PHONY: docker-build-filelog-offset-volume-ownership
+docker-build-filelog-offset-volume-ownership: ## Build the filelog offset volume ownership container image.
+	@$(call build_container_image,$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_REPOSITORY),$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_TAG),images,images/filelogoffsetvolumeownership/Dockerfile)
+
 ifndef ignore-not-found
   ignore-not-found = false
 endif
@@ -356,6 +366,9 @@ deploy-via-helm: ## Deploy the controller via helm to the K8s cluster specified 
 		--set operator.filelogOffsetSyncImage.repository=$(FILELOG_OFFSET_SYNC_IMG_REPOSITORY) \
 		--set operator.filelogOffsetSyncImage.tag=$(FILELOG_OFFSET_SYNC_IMG_TAG) \
 		--set operator.filelogOffsetSyncImage.pullPolicy=$(FILELOG_OFFSET_SYNC_IMG_PULL_POLICY) \
+		--set operator.filelogOffsetVolumeOwnershipImage.repository=$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_REPOSITORY) \
+		--set operator.filelogOffsetVolumeOwnershipImage.tag=$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_TAG) \
+		--set operator.filelogOffsetVolumeOwnershipImage.pullPolicy=$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_PULL_POLICY) \
 		--set operator.developmentMode=true \
 		dash0-operator \
 		$(OPERATOR_HELM_CHART)
