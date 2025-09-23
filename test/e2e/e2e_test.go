@@ -1535,11 +1535,12 @@ trace_statements:
 				// image names that are used throughout the whole test suite (defined by environment variables).
 
 				initialAlternativeImages := Images{
-					operator:              deriveAlternativeImageForUpdateTest(images.operator),
-					instrumentation:       deriveAlternativeImageForUpdateTest(images.instrumentation),
-					collector:             deriveAlternativeImageForUpdateTest(images.collector),
-					configurationReloader: deriveAlternativeImageForUpdateTest(images.configurationReloader),
-					fileLogOffsetSync:     deriveAlternativeImageForUpdateTest(images.fileLogOffsetSync),
+					operator:                     deriveAlternativeImageForUpdateTest(images.operator),
+					instrumentation:              deriveAlternativeImageForUpdateTest(images.instrumentation),
+					collector:                    deriveAlternativeImageForUpdateTest(images.collector),
+					configurationReloader:        deriveAlternativeImageForUpdateTest(images.configurationReloader),
+					fileLogOffsetSync:            deriveAlternativeImageForUpdateTest(images.fileLogOffsetSync),
+					fileLogOffsetVolumeOwnership: deriveAlternativeImageForUpdateTest(images.fileLogOffsetVolumeOwnership),
 				}
 				deployOperatorWithDefaultAutoOperationConfiguration(
 					operatorNamespace,
@@ -1961,6 +1962,20 @@ func determineContainerImages() {
 		images.fileLogOffsetSync.pullPolicy,
 	)
 
+	images.fileLogOffsetVolumeOwnership.repository = getEnvOrDefault(
+		"FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_REPOSITORY",
+		images.fileLogOffsetVolumeOwnership.repository,
+	)
+	images.fileLogOffsetVolumeOwnership.tag =
+		getEnvOrDefault("FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_TAG", images.fileLogOffsetVolumeOwnership.tag)
+	images.fileLogOffsetVolumeOwnership.digest =
+		getEnvOrDefault("FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_DIGEST",
+			images.fileLogOffsetVolumeOwnership.digest)
+	images.fileLogOffsetVolumeOwnership.pullPolicy = getEnvOrDefault(
+		"FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_PULL_POLICY",
+		images.fileLogOffsetVolumeOwnership.pullPolicy,
+	)
+
 	if isLocalHelmChart() {
 		// support using the local helm chart with remote images
 		if isRemoteImage(images.operator) {
@@ -1977,6 +1992,10 @@ func determineContainerImages() {
 		}
 		if isRemoteImage(images.fileLogOffsetSync) {
 			images.fileLogOffsetSync.pullPolicy = getEnvOrDefault("FILELOG_OFFSET_SYNC_IMG_PULL_POLICY", "")
+		}
+		if isRemoteImage(images.fileLogOffsetVolumeOwnership) {
+			images.fileLogOffsetVolumeOwnership.pullPolicy =
+				getEnvOrDefault("FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_PULL_POLICY", "")
 		}
 	}
 }

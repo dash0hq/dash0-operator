@@ -183,6 +183,17 @@ jobs:
           context: images
           file: images/filelogoffsetsync/Dockerfile
 
+      - name: build filelog offset volume ownership image
+        uses: ./.github/actions/build-image
+        with:
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          imageName: filelog-offset-volume-ownership
+          imageTitle: Dash0 Kubernetes Filelog Offset Volume Ownership
+          imageDescription: the filelog offset volume ownership init container for the Dash0 operator for Kubernetes
+          imageUrl: https://github.com/dash0hq/dash0-operator/tree/main
+          context: images
+          file: images/filelogoffsetvolumeownership/Dockerfile
+
   publish_helm_chart_dry_run:
     name: Publish Helm Chart (Dry Run)
     runs-on: ubuntu-latest

@@ -32,12 +32,13 @@ const (
 	ReplicaSetNamePrefix  = "replicaset"
 	StatefulSetNamePrefix = "statefulset"
 
-	OperatorVersionTest            = "1.2.3"
-	OperatorImageTest              = "some-registry.com:1234/dash0hq/operator-controller:1.2.3"
-	InitContainerImageTest         = "some-registry.com:1234/dash0hq/instrumentation:4.5.6"
-	CollectorImageTest             = "some-registry.com:1234/dash0hq/collector:7.8.9"
-	ConfigurationReloaderImageTest = "some-registry.com:1234/dash0hq/configuration-reloader:10.11.12"
-	FilelogOffsetSyncImageTest     = "some-registry.com:1234/dash0hq/filelog-offset-sync:13.14.15"
+	OperatorVersionTest                   = "1.2.3"
+	OperatorImageTest                     = "some-registry.com:1234/dash0hq/operator-controller:1.2.3"
+	InitContainerImageTest                = "some-registry.com:1234/dash0hq/instrumentation:4.5.6"
+	CollectorImageTest                    = "some-registry.com:1234/dash0hq/collector:7.8.9"
+	ConfigurationReloaderImageTest        = "some-registry.com:1234/dash0hq/configuration-reloader:10.11.12"
+	FilelogOffsetSyncImageTest            = "some-registry.com:1234/dash0hq/filelog-offset-sync:13.14.15"
+	FilelogOffsetVolumeOwnershipImageTest = "some-registry.com:1234/dash0hq/filelog-offset-volume-ownership:16.17.18"
 
 	OTelCollectorNodeLocalBaseUrlTest = "http://$(DASH0_NODE_IP):40318"
 	OTelCollectorServiceBaseUrlTest   = //
@@ -69,15 +70,17 @@ var (
 	ArbitraryNumer int64 = 1302
 
 	TestImages = util.Images{
-		OperatorImage:                        OperatorImageTest,
-		InitContainerImage:                   InitContainerImageTest,
-		InitContainerImagePullPolicy:         corev1.PullAlways,
-		CollectorImage:                       CollectorImageTest,
-		CollectorImagePullPolicy:             corev1.PullAlways,
-		ConfigurationReloaderImage:           ConfigurationReloaderImageTest,
-		ConfigurationReloaderImagePullPolicy: corev1.PullAlways,
-		FilelogOffsetSyncImage:               FilelogOffsetSyncImageTest,
-		FilelogOffsetSyncImagePullPolicy:     corev1.PullAlways,
+		OperatorImage:                               OperatorImageTest,
+		InitContainerImage:                          InitContainerImageTest,
+		InitContainerImagePullPolicy:                corev1.PullAlways,
+		CollectorImage:                              CollectorImageTest,
+		CollectorImagePullPolicy:                    corev1.PullAlways,
+		ConfigurationReloaderImage:                  ConfigurationReloaderImageTest,
+		ConfigurationReloaderImagePullPolicy:        corev1.PullAlways,
+		FilelogOffsetSyncImage:                      FilelogOffsetSyncImageTest,
+		FilelogOffsetSyncImagePullPolicy:            corev1.PullAlways,
+		FilelogOffsetVolumeOwnershipImage:           FilelogOffsetVolumeOwnershipImageTest,
+		FilelogOffsetVolumeOwnershipImagePullPolicy: corev1.PullAlways,
 	}
 
 	OperatorManagerDeploymentUIDStr = "2f009c75-d69f-4b02-9d9d-fa17e76f5c1d"
