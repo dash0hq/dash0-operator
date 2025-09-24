@@ -140,6 +140,7 @@ jobs:
           imageDescription: the controller for the Dash0 operator for Kubernetes
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main
           context: .
+          scan: 'true'
 
       - name: build instrumentation image
         uses: ./.github/actions/build-image
