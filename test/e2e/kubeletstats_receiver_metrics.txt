@@ -1,7 +1,6 @@
 # extracted from https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/kubeletstatsreceiver/metadata.yaml
 container.cpu.time
 container.cpu.usage
-container.cpu.utilization
 container.filesystem.available
 container.filesystem.capacity
 container.filesystem.usage
@@ -20,7 +19,6 @@ k8s.container.memory_limit_utilization
 k8s.container.memory_request_utilization
 k8s.node.cpu.time
 k8s.node.cpu.usage
-k8s.node.cpu.utilization
 k8s.node.filesystem.available
 k8s.node.filesystem.capacity
 k8s.node.filesystem.usage
@@ -36,7 +34,6 @@ k8s.node.uptime
 k8s.pod.cpu.node.utilization
 k8s.pod.cpu.time
 k8s.pod.cpu.usage
-k8s.pod.cpu.utilization
 k8s.pod.cpu_limit_utilization
 k8s.pod.cpu_request_utilization
 k8s.pod.filesystem.available
