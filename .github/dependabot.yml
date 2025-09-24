@@ -46,11 +46,11 @@ updates:
       - "/images/collector"
       - "/images/configreloader"
       - "/images/filelogoffsetsync"
-      # - "/images/filelogoffsetvolumeownership"
+      - "/images/filelogoffsetvolumeownership"
       - "/images/instrumentation"
     schedule:
       interval: "daily"
-      time: "07:20"
+      time: "07:15"
       timezone: "Europe/Berlin"
 
   # -----------------------
