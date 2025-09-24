@@ -111,6 +111,9 @@ securityContext:
   allowPrivilegeEscalation: false
   readOnlyRootFilesystem: true
   runAsNonRoot: true
+{{- if .userId }}
+  runAsUser: {{ .userId }}
+{{- end }}
   capabilities:
     drop:
     - ALL

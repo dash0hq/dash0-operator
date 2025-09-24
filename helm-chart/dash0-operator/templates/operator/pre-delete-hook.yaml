@@ -30,7 +30,7 @@ spec:
           command:
             - /manager
             - "--uninstrument-all"
-          {{ include "dash0-operator.restrictiveContainerSecurityContext" . | nindent 10 }}
+          {{ include "dash0-operator.restrictiveContainerSecurityContext" dict | nindent 10 }}
           resources:
             {{- toYaml .Values.operator.managerContainerResources | nindent 12 }}
       securityContext:
