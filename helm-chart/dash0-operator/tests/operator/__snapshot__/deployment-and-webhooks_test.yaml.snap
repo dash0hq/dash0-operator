@@ -139,7 +139,7 @@ deployment should match snapshot (default values):
                 - --upstream=http://127.0.0.1:8080/
                 - --logtostderr=true
                 - --v=0
-              image: quay.io/brancz/kube-rbac-proxy:v0.19.1
+              image: quay.io/brancz/kube-rbac-proxy:v0.20.0
               name: kube-rbac-proxy
               ports:
                 - containerPort: 8443
@@ -161,6 +161,7 @@ deployment should match snapshot (default values):
                     - ALL
                 readOnlyRootFilesystem: true
                 runAsNonRoot: true
+                runAsUser: 65532
                 seccompProfile:
                   type: RuntimeDefault
           securityContext:
@@ -317,7 +318,7 @@ deployment should match snapshot when using cert-manager:
                 - --upstream=http://127.0.0.1:8080/
                 - --logtostderr=true
                 - --v=0
-              image: quay.io/brancz/kube-rbac-proxy:v0.19.1
+              image: quay.io/brancz/kube-rbac-proxy:v0.20.0
               name: kube-rbac-proxy
               ports:
                 - containerPort: 8443
@@ -339,6 +340,7 @@ deployment should match snapshot when using cert-manager:
                     - ALL
                 readOnlyRootFilesystem: true
                 runAsNonRoot: true
+                runAsUser: 65532
                 seccompProfile:
                   type: RuntimeDefault
           securityContext:

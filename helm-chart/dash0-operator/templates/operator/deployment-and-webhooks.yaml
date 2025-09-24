@@ -241,7 +241,7 @@ spec:
           protocol: TCP
         resources:
           {{- toYaml .Values.operator.managerContainerResources | nindent 10 }}
-        {{ include "dash0-operator.restrictiveContainerSecurityContext" . | nindent 8 }}
+        {{ include "dash0-operator.restrictiveContainerSecurityContext" dict | nindent 8 }}
         volumeMounts:
         - name: certificates
           mountPath: /tmp/k8s-webhook-server/serving-certs
@@ -274,12 +274,12 @@ spec:
           protocol: TCP
         resources:
           {{- toYaml .Values.operator.kubeRbacProxyContainerResources | nindent 10 }}
-        {{ include "dash0-operator.restrictiveContainerSecurityContext" . | nindent 8 }}
+        {{ include "dash0-operator.restrictiveContainerSecurityContext" (dict "userId" 65532) | nindent 8 }}
       {{- with .Values.operator.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{ include "dash0-operator.restrictivePodSecurityContext" . | nindent 6 }}
+      {{ include "dash0-operator.restrictivePodSecurityContext" dict | nindent 6 }}
       serviceAccountName: {{ template "dash0-operator.serviceAccountName" . }}
       automountServiceAccountToken: true
       terminationGracePeriodSeconds: 10

@@ -267,7 +267,7 @@ operator:
     # setups that do not use Dash0's official kube RBAC proxy image.
     repository: "quay.io/brancz/kube-rbac-proxy"
     # overrides the image tag
-    tag: "v0.19.1"
+    tag: "v0.20.0"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy
