@@ -60,15 +60,6 @@ receivers:
     k8s_api_config:
       auth_type: serviceAccount
     metrics:
-      # deprecated -> container.cpu.usage
-      container.cpu.utilization:
-        enabled: false
-      # deprecated -> k8s.node.cpu.usage
-      k8s.node.cpu.utilization:
-        enabled: false
-      # deprecated -> k8s.pod.cpu.usage
-      k8s.pod.cpu.utilization:
-        enabled: false
       container.cpu.usage:
         enabled: true
       k8s.node.cpu.usage:
