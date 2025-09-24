@@ -39,6 +39,20 @@ updates:
     schedule:
       interval: "daily"
 
+  # Docker
+  - package-ecosystem: "docker"
+    directories:
+      - "/"
+      - "/images/collector"
+      - "/images/configreloader"
+      - "/images/filelogoffsetsync"
+      - "/images/filelogoffsetvolumeownership"
+      - "/images/instrumentation"
+    schedule:
+      interval: "daily"
+      time: "07:15"
+      timezone: "Europe/Berlin"
+
   # -----------------------
   # -- Test applications --
   # -----------------------
