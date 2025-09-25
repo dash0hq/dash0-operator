@@ -26,6 +26,21 @@ spec:
         app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
         helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
     spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: "dash0.com/enable"
+                    operator: "NotIn"
+                    values: ["false"]
+{{- if .Values.operator.tolerations }}
+      tolerations:
+        {{- toYaml .Values.operator.tolerations | nindent 8 }}
+{{- end }}
+{{- if .Values.operator.managerPriorityClassName }}
+      priorityClassName: {{ .Values.operator.managerPriorityClassName }}
+{{- end }}
       restartPolicy: OnFailure
       containers:
         - name: post-install-job

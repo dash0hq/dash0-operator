@@ -28,6 +28,15 @@ pre-delete hook job should match snapshot:
             helm.sh/chart: dash0-operator-0.0.0
           name: RELEASE-NAME-pre-delete-job
         spec:
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: dash0.com/enable
+                        operator: NotIn
+                        values:
+                          - "false"
           automountServiceAccountToken: true
           containers:
             - command:

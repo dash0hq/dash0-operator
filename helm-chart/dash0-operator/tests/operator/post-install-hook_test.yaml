@@ -37,3 +37,35 @@ tests:
     asserts:
       - hasDocuments:
           count: 0
+
+  - it: should render tolerations and priority class
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+          apiEndpoint: https://api.dash0.com
+        tolerations:
+          - key: key1
+            operator: Equal
+            value: value1
+            effect: NoSchedule
+          - key: key2
+            operator: Exists
+            effect: NoSchedule
+        managerPriorityClassName: operator-manager-priority-class
+    asserts:
+      - equal:
+          path: spec.template.spec.tolerations
+          value:
+            - key: key1
+              operator: Equal
+              value: value1
+              effect: NoSchedule
+            - key: key2
+              operator: Exists
+              effect: NoSchedule
+      - equal:
+          path: spec.template.spec.priorityClassName
+          value: operator-manager-priority-class
