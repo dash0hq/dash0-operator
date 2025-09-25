@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { PromisePool } from '@supercharge/promise-pool';
 import chalk from 'chalk';
 import { program } from 'commander';
+import { parse as parseYaml } from 'yaml';
 
 import { setStartTimeBuild, storeBuildStepDuration, printTotalBuildTimeInfo } from './build-time-profiling.ts';
 
@@ -42,6 +43,7 @@ type RunTestCasePromise = {
 
 type TestCaseProperties = {
   skip?: boolean;
+  skipReason?: string;
 };
 
 const exec = promisify(childProcess.exec);
@@ -597,20 +599,28 @@ function createRunTestCaseTask(
       const testCasePath = `${testScriptDir}/${runtime}/test-cases/${testCase}`;
 
       let testCaseProperties: TestCaseProperties = {};
-      const testCasePropertiesFile = `${testCasePath}/.testcase.json`;
+      const testCasePropertiesFile = `${testCasePath}/.testcase.yaml`;
       if (existsSync(testCasePropertiesFile)) {
         const testCasePropertiesContent = await readFile(testCasePropertiesFile);
         try {
-          testCaseProperties = JSON.parse(testCasePropertiesContent.toString());
+          testCaseProperties = parseYaml(testCasePropertiesContent.toString());
         } catch (e) {
-          log(chalk.red(`Error: cannot parse ${testCasePropertiesFile}, ignoring; error: ${e}`));
+          log(chalk.red(`Error: cannot parse ${testCasePropertiesFile}; test case won't be executed. Error: ${e}`));
+          failedTestCases++;
+          summary += chalk.red(
+            `\nError: cannot parse ${testCasePropertiesFile}; test case has not been executed. Error: ${e}`,
+          );
         }
       }
 
       if (testCaseProperties.skip === true) {
         skippedTestCases++;
         if (!suppressSkippedInfo) {
-          log(chalk.yellow(`${archRuntimeBaseImagePrefix.padEnd(32)}\t- skipping test case "${testCase}"`));
+          log(
+            chalk.yellow(
+              `${archRuntimeBaseImagePrefix.padEnd(32)}\t- skipping test case "${testCase} because of "skip: true" in ${testCasePropertiesFile}; reason: ${testCaseProperties.skipReason}"`,
+            ),
+          );
           summary += chalk.yellow(`\n${archRuntimeBaseImagePrefix.padEnd(32)}\t- ${testCase}: skipped`);
         }
         return;
