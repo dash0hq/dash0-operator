@@ -231,7 +231,7 @@ func (r *ViewReconciler) Reconcile(ctx context.Context, req reconcile.Request) (
 		viewReconcileRequestMetric.Add(ctx, 1)
 	}
 
-	qualifiedName := req.NamespacedName.String()
+	qualifiedName := req.NamespacedName.String() //nolint:staticcheck
 	logger := log.FromContext(ctx)
 	logger.Info("processing reconcile request for a view resource", "name", qualifiedName)
 

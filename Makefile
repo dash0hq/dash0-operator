@@ -87,7 +87,7 @@ FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG ?= $(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_REP
 FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_PULL_POLICY ?= Never
 
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
-ENVTEST_K8S_VERSION = 1.28.3
+ENVTEST_K8S_VERSION = 1.34.1
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -294,7 +294,7 @@ $(eval $@_IMAGE_TAG = $(2))
 $(eval $@_CONTEXT = $(3))
 $(eval $@_DOCKERFILE = $(4))
 if [[ -n "$($@_IMAGE_REPOSITORY)" ]]; then                                                                \
-  if [[ "$($@_IMAGE_REPOSITORY)" = *"/"* ]]; then                                                         \
+  if [[ "$($@_IMAGE_REPOSITORY)" = *"/"* && "$($@_IMAGE_REPOSITORY)" != *"/library/"* ]]; then                                                         \
     echo "not rebuilding the image $($@_IMAGE_REPOSITORY), this looks like a remote image";               \
   else                                                                                                    \
     dockerfile=$($@_DOCKERFILE);                                                                          \
@@ -393,7 +393,7 @@ ENVTEST ?= $(LOCALBIN)/setup-envtest
 HUSKY ?= $(LOCALBIN)/husky
 
 ## Tool Versions
-KUSTOMIZE_VERSION ?= v5.2.1
+KUSTOMIZE_VERSION ?= v5.7.1
 CONTROLLER_TOOLS_VERSION ?= v0.19.0
 
 .PHONY: kustomize

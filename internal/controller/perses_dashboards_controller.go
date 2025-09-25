@@ -568,7 +568,7 @@ func (r *PersesDashboardReconciler) CreateDeleteRequests(
 	return nil, nil
 }
 
-func (_ *PersesDashboardReconciler) UpdateSynchronizationResultsInDash0MonitoringStatus(
+func (*PersesDashboardReconciler) UpdateSynchronizationResultsInDash0MonitoringStatus(
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	qualifiedName string,
 	status dash0common.ThirdPartySynchronizationStatus,

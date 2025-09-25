@@ -130,12 +130,12 @@ func (r *AutoOperatorConfigurationResourceHandler) validateOperatorConfiguration
 		return fmt.Errorf("invalid operator configuration: --operator-configuration-endpoint has not been provided")
 	}
 	if operatorConfiguration.Token == "" {
-		if operatorConfiguration.SecretRef.Name == "" {
+		if operatorConfiguration.SecretRef.Name == "" { //nolint:staticcheck
 			return fmt.Errorf("invalid operator configuration: --operator-configuration-endpoint has been provided, " +
 				"indicating that an operator configuration resource should be created, but neither " +
 				"--operator-configuration-token nor --operator-configuration-secret-ref-name have been provided")
 		}
-		if operatorConfiguration.SecretRef.Key == "" {
+		if operatorConfiguration.SecretRef.Key == "" { //nolint:staticcheck
 			return fmt.Errorf("invalid operator configuration: --operator-configuration-endpoint has been provided, " +
 				"indicating that an operator configuration resource should be created, but neither " +
 				"--operator-configuration-token nor --operator-configuration-secret-ref-key have been provided")
@@ -180,7 +180,7 @@ func (r *AutoOperatorConfigurationResourceHandler) createOrUpdateOperatorConfigu
 		existingOperatorConfigurationResource := allOperatorConfigurationResources.Items[0]
 		// If this is a manually created operator configuration resource, we refuse to overwrite it.
 		if existingOperatorConfigurationResource.Name != util.OperatorConfigurationAutoResourceName {
-			return util.NewRetryableErrorWithFlag(fmt.Errorf(
+			return util.NewRetryableErrorWithFlag(fmt.Errorf( //nolint:staticcheck
 				"The configuration provided via Helm instructs the operator manager to create an operator "+
 					"configuration resource at startup, that is, operator.dash0Export.enabled is true and "+
 					"operator.dash0Export.endpoint has been provided. But there is already an operator configuration "+
@@ -217,8 +217,8 @@ func convertValuesToResource(operatorConfigurationValues *OperatorConfigurationV
 		authorization.Token = &operatorConfigurationValues.Token
 	} else {
 		authorization.SecretRef = &dash0common.SecretRef{
-			Name: operatorConfigurationValues.SecretRef.Name,
-			Key:  operatorConfigurationValues.SecretRef.Key,
+			Name: operatorConfigurationValues.SecretRef.Name, //nolint:staticcheck
+			Key:  operatorConfigurationValues.SecretRef.Key,  //nolint:staticcheck
 		}
 	}
 

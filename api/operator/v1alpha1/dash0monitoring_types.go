@@ -386,17 +386,17 @@ func (dst *Dash0Monitoring) ConvertFrom(srcRaw conversion.Hub) error {
 	dst.Spec.InstrumentWorkloads = src.Spec.InstrumentWorkloads.Mode
 	if strings.TrimSpace(src.Spec.InstrumentWorkloads.LabelSelector) != "" &&
 		src.Spec.InstrumentWorkloads.LabelSelector != util.DefaultAutoInstrumentationLabelSelector {
-		if dst.ObjectMeta.Annotations == nil {
-			dst.ObjectMeta.Annotations = make(map[string]string)
+		if dst.Annotations == nil {
+			dst.Annotations = make(map[string]string)
 		}
-		dst.ObjectMeta.Annotations[annotationNameSpecInstrumentWorkloadsLabelSelector] =
+		dst.Annotations[annotationNameSpecInstrumentWorkloadsLabelSelector] =
 			src.Spec.InstrumentWorkloads.LabelSelector
 	}
 	if src.Spec.InstrumentWorkloads.TraceContext.Propagators != nil && *src.Spec.InstrumentWorkloads.TraceContext.Propagators != "" {
-		if dst.ObjectMeta.Annotations == nil {
-			dst.ObjectMeta.Annotations = make(map[string]string)
+		if dst.Annotations == nil {
+			dst.Annotations = make(map[string]string)
 		}
-		dst.ObjectMeta.Annotations[annotationNameSpecInstrumentWorkloadsTraceContextPropagators] =
+		dst.Annotations[annotationNameSpecInstrumentWorkloadsTraceContextPropagators] =
 			*src.Spec.InstrumentWorkloads.TraceContext.Propagators
 	}
 	dst.Spec.LogCollection = src.Spec.LogCollection
@@ -411,17 +411,17 @@ func (dst *Dash0Monitoring) ConvertFrom(srcRaw conversion.Hub) error {
 	dst.Status.PreviousInstrumentWorkloads = src.Status.PreviousInstrumentWorkloads.Mode
 	if strings.TrimSpace(src.Status.PreviousInstrumentWorkloads.LabelSelector) != "" &&
 		src.Status.PreviousInstrumentWorkloads.LabelSelector != util.DefaultAutoInstrumentationLabelSelector {
-		if dst.ObjectMeta.Annotations == nil {
-			dst.ObjectMeta.Annotations = make(map[string]string)
+		if dst.Annotations == nil {
+			dst.Annotations = make(map[string]string)
 		}
-		dst.ObjectMeta.Annotations[annotationNameStatusPreviousInstrumentWorkloadsLabelSelector] =
+		dst.Annotations[annotationNameStatusPreviousInstrumentWorkloadsLabelSelector] =
 			src.Status.PreviousInstrumentWorkloads.LabelSelector
 	}
 	if src.Status.PreviousInstrumentWorkloads.TraceContext.Propagators != nil && *src.Status.PreviousInstrumentWorkloads.TraceContext.Propagators != "" {
-		if dst.ObjectMeta.Annotations == nil {
-			dst.ObjectMeta.Annotations = make(map[string]string)
+		if dst.Annotations == nil {
+			dst.Annotations = make(map[string]string)
 		}
-		dst.ObjectMeta.Annotations[annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators] =
+		dst.Annotations[annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators] =
 			*src.Status.PreviousInstrumentWorkloads.TraceContext.Propagators
 	}
 	dst.Status.PersesDashboardSynchronizationResults = src.Status.PersesDashboardSynchronizationResults
@@ -438,20 +438,20 @@ func (src *Dash0Monitoring) ConvertTo(dstRaw conversion.Hub) error {
 		LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
 		Mode:          src.Spec.InstrumentWorkloads,
 	}
-	if src.ObjectMeta.Annotations != nil {
+	if src.Annotations != nil {
 		labelSelector, labelSelectorFound :=
-			src.ObjectMeta.Annotations[annotationNameSpecInstrumentWorkloadsLabelSelector]
+			src.Annotations[annotationNameSpecInstrumentWorkloadsLabelSelector]
 		if labelSelectorFound && strings.TrimSpace(labelSelector) != "" {
 			dst.Spec.InstrumentWorkloads.LabelSelector = labelSelector
 		}
-		delete(dst.ObjectMeta.Annotations, annotationNameSpecInstrumentWorkloadsLabelSelector)
+		delete(dst.Annotations, annotationNameSpecInstrumentWorkloadsLabelSelector)
 
 		propagators, propagatorsFound :=
-			src.ObjectMeta.Annotations[annotationNameSpecInstrumentWorkloadsTraceContextPropagators]
+			src.Annotations[annotationNameSpecInstrumentWorkloadsTraceContextPropagators]
 		if propagatorsFound && strings.TrimSpace(propagators) != "" {
 			dst.Spec.InstrumentWorkloads.TraceContext.Propagators = ptr.To(propagators)
 		}
-		delete(dst.ObjectMeta.Annotations, annotationNameSpecInstrumentWorkloadsTraceContextPropagators)
+		delete(dst.Annotations, annotationNameSpecInstrumentWorkloadsTraceContextPropagators)
 	}
 	dst.Spec.LogCollection = src.Spec.LogCollection
 	dst.Spec.PrometheusScraping = src.Spec.PrometheusScraping
@@ -472,20 +472,20 @@ func (src *Dash0Monitoring) ConvertTo(dstRaw conversion.Hub) error {
 		LabelSelector: util.DefaultAutoInstrumentationLabelSelector,
 		Mode:          src.Status.PreviousInstrumentWorkloads,
 	}
-	if src.ObjectMeta.Annotations != nil {
+	if src.Annotations != nil {
 		previousLabelSelector, previousLabelSelectorFound :=
-			src.ObjectMeta.Annotations[annotationNameStatusPreviousInstrumentWorkloadsLabelSelector]
+			src.Annotations[annotationNameStatusPreviousInstrumentWorkloadsLabelSelector]
 		if previousLabelSelectorFound && strings.TrimSpace(previousLabelSelector) != "" {
 			dst.Status.PreviousInstrumentWorkloads.LabelSelector = previousLabelSelector
 		}
-		delete(dst.ObjectMeta.Annotations, annotationNameStatusPreviousInstrumentWorkloadsLabelSelector)
+		delete(dst.Annotations, annotationNameStatusPreviousInstrumentWorkloadsLabelSelector)
 
 		previousPropagators, previousPropagatorsFound :=
-			src.ObjectMeta.Annotations[annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators]
+			src.Annotations[annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators]
 		if previousPropagatorsFound && strings.TrimSpace(previousPropagators) != "" {
 			dst.Status.PreviousInstrumentWorkloads.TraceContext.Propagators = ptr.To(previousPropagators)
 		}
-		delete(dst.ObjectMeta.Annotations, annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators)
+		delete(dst.Annotations, annotationNameStatusPreviousInstrumentWorkloadsTraceContextPropagators)
 	}
 	dst.Status.PersesDashboardSynchronizationResults = src.Status.PersesDashboardSynchronizationResults
 	dst.Status.PrometheusRuleSynchronizationResults = src.Status.PrometheusRuleSynchronizationResults

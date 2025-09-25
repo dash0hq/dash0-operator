@@ -299,8 +299,6 @@ spec:
                 required:
                 - enabled
                 type: object
-            required:
-            - export
             type: object
           status:
             description: Dash0OperatorConfigurationStatus defines the observed state

@@ -1,6 +1,6 @@
 module dash0-api-mock
 
-go 1.24.1
+go 1.25.1
 
 require github.com/gin-gonic/gin v1.11.0
 
