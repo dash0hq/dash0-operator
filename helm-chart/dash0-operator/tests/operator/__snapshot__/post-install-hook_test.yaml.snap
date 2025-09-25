@@ -28,6 +28,15 @@ post-install hook job should match snapshot:
             helm.sh/chart: dash0-operator-0.0.0
           name: RELEASE-NAME-post-install-job
         spec:
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: dash0.com/enable
+                        operator: NotIn
+                        values:
+                          - "false"
           automountServiceAccountToken: true
           containers:
             - command:
