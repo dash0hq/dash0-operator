@@ -48,7 +48,7 @@ endif
 
 # Set the Operator SDK version to use. By default, what is installed on the system is used.
 # This is useful for CI or a project to utilize a specific version of the operator-sdk toolkit.
-OPERATOR_SDK_VERSION ?= v1.34.1
+OPERATOR_SDK_VERSION ?= v1.41.1
 
 # Use the local Helm chart sources by default, can be overridden with a chart referencing a remote repository,
 # for example dash0-operator/dash0-operator. The remote repository needs to have been installed previously, e.g. via
@@ -496,4 +496,3 @@ husky-install:
 .PHONY: husky-setup-hooks
 husky-setup-hooks: husky-install
 	$(HUSKY) install
-
