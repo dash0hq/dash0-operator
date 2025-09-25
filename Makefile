@@ -176,7 +176,7 @@ test-e2e:
 	go run github.com/onsi/ginkgo/v2/ginkgo -v test/e2e
 
 GOLANGCI_LINT = $(shell pwd)/bin/golangci-lint
-GOLANGCI_LINT_VERSION ?= v1.64.8
+GOLANGCI_LINT_VERSION ?= v2.5.0
 golangci-lint-install:
 	@[ -f $(GOLANGCI_LINT) ] || { \
 	set -e ;\

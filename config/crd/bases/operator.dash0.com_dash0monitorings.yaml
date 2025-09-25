@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.19.0
   name: dash0monitorings.operator.dash0.com
 spec:
   group: operator.dash0.com
@@ -134,7 +134,6 @@ spec:
                   Dash0OperatorConfiguration resource, if present. If no Dash0OperatorConfiguration resource has been created for
                   the cluster, or if the Dash0OperatorConfiguration resource does not have at least one export defined, creating a
                   Dash0Monitoring resource without export settings will result in an error.
-
 
                   The export can either be Dash0 or another OTLP-compatible backend. You can also combine up to three exporters
                   (i.e. Dash0 plus gRPC plus HTTP). This allows sending the same data to two or three targets simultaneously. When
@@ -299,9 +298,7 @@ spec:
                       - propagate: return the error up the processing pipeline. This will result in the payload being dropped from the
                                 collector. Not recommended.
 
-
                       This is optional, default to "ignore", there is usually no reason to change this.
-
 
                       Note that although this can be specified per namespace, the filter conditions will be aggregated into one
                       single filter processor in the resulting OpenTelemetry collector configuration; if different error modes are
@@ -396,7 +393,6 @@ spec:
                   `all`, `created-and-updated` and `none`. By default, the setting `all` is assumed, unless there is an operator
                   configuration resource with `telemetryCollection.enabled=false`, then the setting `none` is assumed.
 
-
                   If set to `all`, the operator will:
                   * automatically instrument existing workloads in the target namespace (i.e. workloads already running in the
                     namespace) when the Dash0 monitoring resource is deployed,
@@ -407,7 +403,6 @@ spec:
                   Note that the first two actions (instrumenting existing workloads) will result in restarting the pods of the
                   affected workloads.
 
-
                   If set to `created-and-updated`, the operator will not instrument existing workloads in the target namespace.
                   Instead, it will only:
                   * instrument new workloads in the target namespace when they are deployed, and
@@ -415,22 +410,18 @@ spec:
                   This setting is useful if you want to avoid pod restarts as a side effect of deploying the Dash0 monitoring
                   resource or restarting the Dash0 operator.
 
-
                   You can opt out of automatically instrumenting workloads entirely by setting this option to `none`. With
                   `instrumentWorkloads: none`, workloads in the target namespace will never be instrumented to send telemetry to
                   Dash0.
-
 
                   If this setting is omitted, the value `all` is assumed and new, updated as well as existing Kubernetes workloads
                   will be automatically intrumented by the operator to send telemetry to Dash0, as described above. There is one
                   exception to this rule: If there is an operator configuration resource with `telemetryCollection.enabled=false`,
                   then the default setting is `none` instead of `all`, and no workloads will be instrumented by the Dash0 operator.
 
-
                   It is a validation error to set `telemetryCollection.enabled=false` in the operator configuration resource and
                   `instrumentWorkloadsMode=all` or `instrumentWorkloadsMode=created-and-updated` in any monitoring resource at the
                   same time.
-
 
                   More fine-grained per-workload control over instrumentation is available by setting the label
                   dash0.com/enable=false on individual workloads.
@@ -451,7 +442,6 @@ spec:
                     description: |-
                       Opt-out for log collection for the target namespace. If set to `false`, the operator will not collect pod logs
                       in the target namespace and send the resulting log records to Dash0.
-
 
                       This setting is optional, it defaults to `true`, that is, if this setting is omitted, the value `true` is assumed
                       and the operator will collect pod logs in the target namespace; unless there is an operator configuration
@@ -487,7 +477,6 @@ spec:
                   instead of
                       prometheusScrapingEnabled: false
 
-
                   If enabled, the operator will configure its OpenTelemetry collector to scrape metrics from pods in the namespace
                   of this Dash0Monitoring resource according to their prometheus.io/scrape annotations via the OpenTelemetry
                   Prometheus receiver. This setting is optional, it defaults to `true`; unless there is an operator configuration
@@ -517,7 +506,6 @@ spec:
                   remove span attributes, metric data point attributes, log record attributes etc. See "Filter" for basic filters
                   that can be used to drop entire spans, span events, metrics, metric data points, or log records.
 
-
                   For each signal type (traces, metrics, logs), a list of OTTL statements can be defined. These will be applied to
                   the telemetry collected in the namespace, following the order specified in the configuration. Each statement can
                   access and transform telemetry using OTTL functions.
@@ -527,7 +515,6 @@ spec:
                   of the transform processor. The
                   [advanced config style](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md#advanced-config)
                   is not supported.
-
 
                   This setting is optional, by default, no transformations are applied. It is a validation error to set
                   `telemetryCollection.enabled=false` in the operator configuration resource and set transforms in any monitoring
@@ -543,9 +530,7 @@ spec:
                       - propagate: return the error up the processing pipeline. This will result in the payload being dropped from the
                         collector.
 
-
                       This is optional, default to "ignore".
-
 
                       Note that although this can be specified per namespace, the transform statements will be aggregated into one
                       single transform processor in the resulting OpenTelemetry collector configuration; if different error modes are
@@ -575,16 +560,8 @@ spec:
             properties:
               conditions:
                 items:
-                  description: "Condition contains details for one aspect of the current
-                    state of this API Resource.\n---\nThis struct is intended for
-                    direct use as an array at the field path .status.conditions.  For
-                    example,\n\n\n\ttype FooStatus struct{\n\t    // Represents the
-                    observations of a foo's current state.\n\t    // Known .status.conditions.type
-                    are: \"Available\", \"Progressing\", and \"Degraded\"\n\t    //
-                    +patchMergeKey=type\n\t    // +patchStrategy=merge\n\t    // +listType=map\n\t
-                    \   // +listMapKey=type\n\t    Conditions []metav1.Condition `json:\"conditions,omitempty\"
-                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`\n\n\n\t
-                    \   // other fields\n\t}"
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
                   properties:
                     lastTransitionTime:
                       description: |-
@@ -625,12 +602,7 @@ spec:
                       - Unknown
                       type: string
                     type:
-                      description: |-
-                        type of condition in CamelCase or in foo.example.com/CamelCase.
-                        ---
-                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
-                        useful (see .node.status.conditions), the ability to deconflict is important.
-                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
@@ -869,7 +841,6 @@ spec:
                   the cluster, or if the Dash0OperatorConfiguration resource does not have at least one export defined, creating a
                   Dash0Monitoring resource without export settings will result in an error.
 
-
                   The export can either be Dash0 or another OTLP-compatible backend. You can also combine up to three exporters
                   (i.e. Dash0 plus gRPC plus HTTP). This allows sending the same data to two or three targets simultaneously. When
                   the export setting is present, it has to contain at least one exporter.
@@ -1033,9 +1004,7 @@ spec:
                       - propagate: return the error up the processing pipeline. This will result in the payload being dropped from the
                                 collector. Not recommended.
 
-
                       This is optional, default to "ignore", there is usually no reason to change this.
-
 
                       Note that although this can be specified per namespace, the filter conditions will be aggregated into one
                       single filter processor in the resulting OpenTelemetry collector configuration; if different error modes are
@@ -1138,15 +1107,12 @@ spec:
                       Workloads which do not match this label selector will never be instrumented, regardless of the value of
                       spec.instrumentWorkloads.mode.
 
-
                       This attribute is ignored if spec.instrumentWorkloads.mode=none.
-
 
                       By default, this label selector has the value "dash0.com/enable!=false" - that is, the following workloads will
                       be instrumented (assuming spec.instrumentWorkloads.mode!=none)
                       - workloads that do not have the label dash0.com/enable at all, or
                       - workloads that have the label dash0.com/enable with a value other than "false".
-
 
                       It is recommended to leave this setting unset (i.e. leave the default "dash0.com/enable!=false" in place), unless
                       you have a specific use case that requires a different label selector. One such use case is implementing an
@@ -1164,7 +1130,6 @@ spec:
                       `all`, `created-and-updated` and `none`. By default, the setting `all` is assumed, unless there is an operator
                       configuration resource with `telemetryCollection.enabled=false`, then the setting `none` is assumed.
 
-
                       If set to `all`, the operator will:
                       * automatically instrument existing workloads in the target namespace (i.e. workloads already running in the
                         namespace) when the Dash0 monitoring resource is deployed,
@@ -1175,7 +1140,6 @@ spec:
                       Note that the first two actions (instrumenting existing workloads) will result in restarting the pods of the
                       affected workloads.
 
-
                       If set to `created-and-updated`, the operator will not instrument existing workloads in the target namespace,
                       neither when a Dash0 monitoring resource is deployed, nor when the Dash0 operator is started or restarted.
                       Instead, it will only:
@@ -1184,21 +1148,17 @@ spec:
                       This setting is useful if you want to avoid pod restarts as a side effect of deploying the Dash0 monitoring
                       resource or restarting the Dash0 operator.
 
-
                       You can opt out of automatically instrumenting workloads entirely by setting this option to `none`. With
                       `mode: none`, workloads in the target namespace will never be instrumented to send telemetry to Dash0.
-
 
                       If this setting is omitted, the value `all` is assumed and new, updated as well as existing Kubernetes workloads
                       will be automatically intrumented by the operator to send telemetry to Dash0, as described above. There is one
                       exception to this rule: If there is an operator configuration resource with `telemetryCollection.enabled=false`,
                       then the default setting is `none` instead of `all`, and no workloads will be instrumented by the Dash0 operator.
 
-
                       It is a validation error to set `telemetryCollection.enabled=false` in the operator configuration resource and
                       `mode: all` or `mode: created-and-updated` in any monitoring resource at the
                       same time.
-
 
                       More fine-grained per-workload control over instrumentation is available by setting the label
                       dash0.com/enable=false on individual workloads, or by using a custom label selector via
@@ -1219,17 +1179,14 @@ spec:
                           propagators for trace context propagation. The value can be a comma-separated list of propagators, for exampmle
                           "tracecontext,xray" for the W3C trace context traceparent header and AWS X-Ray headers.
 
-
                           Note that you usually want to list the preferred propagator last, if multiple propagators are specified. The
                           reason is that both `Extract` (reading trace context information from headers and adding it to the span) and
                           `Inject` (addding trace context information to headers on outgoing requests) are both run in the order in which
                           the propagators are defined. For extract that means that the _last one wins_, if multiple propagators extract the
                           same information (e.g. trace ID and span ID). Hence, the need to specify them in reverse order of priority.
 
-
                           By default, the value is not set and the environment variable OTEL_PROPAGATORS will not be added to workloads.
                           (The default values for OpenTelemetry SDKs when OTEL_PROPAGATORS is not set is "tracecontext,baggage".)
-
 
                           See also: https://opentelemetry.io/docs/languages/sdk-configuration/general/#otel_propagators
                         type: string
@@ -1247,7 +1204,6 @@ spec:
                     description: |-
                       Opt-out for log collection for the target namespace. If set to `false`, the operator will not collect pod logs
                       in the target namespace and send the resulting log records to Dash0.
-
 
                       This setting is optional, it defaults to `true`, that is, if this setting is omitted, the value `true` is assumed
                       and the operator will collect pod logs in the target namespace; unless there is an operator configuration
@@ -1297,7 +1253,6 @@ spec:
                   remove span attributes, metric data point attributes, log record attributes etc. See "Filter" for basic filters
                   that can be used to drop entire spans, span events, metrics, metric data points, or log records.
 
-
                   For each signal type (traces, metrics, logs), a list of OTTL statements can be defined. These will be applied to
                   the telemetry collected in the namespace, following the order specified in the configuration. Each statement can
                   access and transform telemetry using OTTL functions.
@@ -1307,7 +1262,6 @@ spec:
                   of the transform processor. The
                   [advanced config style](https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/processor/transformprocessor/README.md#advanced-config)
                   is not supported.
-
 
                   This setting is optional, by default, no transformations are applied. It is a validation error to set
                   `telemetryCollection.enabled=false` in the operator configuration resource and set transforms in any monitoring
@@ -1323,9 +1277,7 @@ spec:
                       - propagate: return the error up the processing pipeline. This will result in the payload being dropped from the
                         collector.
 
-
                       This is optional, default to "ignore".
-
 
                       Note that although this can be specified per namespace, the transform statements will be aggregated into one
                       single transform processor in the resulting OpenTelemetry collector configuration; if different error modes are
@@ -1355,16 +1307,8 @@ spec:
             properties:
               conditions:
                 items:
-                  description: "Condition contains details for one aspect of the current
-                    state of this API Resource.\n---\nThis struct is intended for
-                    direct use as an array at the field path .status.conditions.  For
-                    example,\n\n\n\ttype FooStatus struct{\n\t    // Represents the
-                    observations of a foo's current state.\n\t    // Known .status.conditions.type
-                    are: \"Available\", \"Progressing\", and \"Degraded\"\n\t    //
-                    +patchMergeKey=type\n\t    // +patchStrategy=merge\n\t    // +listType=map\n\t
-                    \   // +listMapKey=type\n\t    Conditions []metav1.Condition `json:\"conditions,omitempty\"
-                    patchStrategy:\"merge\" patchMergeKey:\"type\" protobuf:\"bytes,1,rep,name=conditions\"`\n\n\n\t
-                    \   // other fields\n\t}"
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
                   properties:
                     lastTransitionTime:
                       description: |-
@@ -1405,12 +1349,7 @@ spec:
                       - Unknown
                       type: string
                     type:
-                      description: |-
-                        type of condition in CamelCase or in foo.example.com/CamelCase.
-                        ---
-                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
-                        useful (see .node.status.conditions), the ability to deconflict is important.
-                        The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
                       maxLength: 316
                       pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                       type: string
@@ -1462,15 +1401,12 @@ spec:
                       Workloads which do not match this label selector will never be instrumented, regardless of the value of
                       spec.instrumentWorkloads.mode.
 
-
                       This attribute is ignored if spec.instrumentWorkloads.mode=none.
-
 
                       By default, this label selector has the value "dash0.com/enable!=false" - that is, the following workloads will
                       be instrumented (assuming spec.instrumentWorkloads.mode!=none)
                       - workloads that do not have the label dash0.com/enable at all, or
                       - workloads that have the label dash0.com/enable with a value other than "false".
-
 
                       It is recommended to leave this setting unset (i.e. leave the default "dash0.com/enable!=false" in place), unless
                       you have a specific use case that requires a different label selector. One such use case is implementing an
@@ -1488,7 +1424,6 @@ spec:
                       `all`, `created-and-updated` and `none`. By default, the setting `all` is assumed, unless there is an operator
                       configuration resource with `telemetryCollection.enabled=false`, then the setting `none` is assumed.
 
-
                       If set to `all`, the operator will:
                       * automatically instrument existing workloads in the target namespace (i.e. workloads already running in the
                         namespace) when the Dash0 monitoring resource is deployed,
@@ -1499,7 +1434,6 @@ spec:
                       Note that the first two actions (instrumenting existing workloads) will result in restarting the pods of the
                       affected workloads.
 
-
                       If set to `created-and-updated`, the operator will not instrument existing workloads in the target namespace,
                       neither when a Dash0 monitoring resource is deployed, nor when the Dash0 operator is started or restarted.
                       Instead, it will only:
@@ -1508,21 +1442,17 @@ spec:
                       This setting is useful if you want to avoid pod restarts as a side effect of deploying the Dash0 monitoring
                       resource or restarting the Dash0 operator.
 
-
                       You can opt out of automatically instrumenting workloads entirely by setting this option to `none`. With
                       `mode: none`, workloads in the target namespace will never be instrumented to send telemetry to Dash0.
-
 
                       If this setting is omitted, the value `all` is assumed and new, updated as well as existing Kubernetes workloads
                       will be automatically intrumented by the operator to send telemetry to Dash0, as described above. There is one
                       exception to this rule: If there is an operator configuration resource with `telemetryCollection.enabled=false`,
                       then the default setting is `none` instead of `all`, and no workloads will be instrumented by the Dash0 operator.
 
-
                       It is a validation error to set `telemetryCollection.enabled=false` in the operator configuration resource and
                       `mode: all` or `mode: created-and-updated` in any monitoring resource at the
                       same time.
-
 
                       More fine-grained per-workload control over instrumentation is available by setting the label
                       dash0.com/enable=false on individual workloads, or by using a custom label selector via
@@ -1543,17 +1473,14 @@ spec:
                           propagators for trace context propagation. The value can be a comma-separated list of propagators, for exampmle
                           "tracecontext,xray" for the W3C trace context traceparent header and AWS X-Ray headers.
 
-
                           Note that you usually want to list the preferred propagator last, if multiple propagators are specified. The
                           reason is that both `Extract` (reading trace context information from headers and adding it to the span) and
                           `Inject` (addding trace context information to headers on outgoing requests) are both run in the order in which
                           the propagators are defined. For extract that means that the _last one wins_, if multiple propagators extract the
                           same information (e.g. trace ID and span ID). Hence, the need to specify them in reverse order of priority.
 
-
                           By default, the value is not set and the environment variable OTEL_PROPAGATORS will not be added to workloads.
                           (The default values for OpenTelemetry SDKs when OTEL_PROPAGATORS is not set is "tracecontext,baggage".)
-
 
                           See also: https://opentelemetry.io/docs/languages/sdk-configuration/general/#otel_propagators
                         type: string
