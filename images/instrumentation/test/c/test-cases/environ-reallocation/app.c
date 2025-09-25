@@ -8,11 +8,11 @@
 void expect_getenv_value(char* name, char* expected) {
   char* actual = getenv(name);
   if (actual == NULL) {
-    printf("Unexpected value for the environment variable %s -- expected: %s, was: null\n", name, expected);
+    fprintf(stderr, "Unexpected value for the environment variable %s --\nexpected: %s\n     was: null\n", name, expected);
     exit(1);
   }
   if (strcmp(expected, actual) != 0) {
-    printf("Unexpected value for the environment variable %s -- expected: %s, was: %s\n", name, expected, actual);
+    fprintf(stderr, "Unexpected value for the environment variable %s --\nexpected: %s\n     was: %s\n", name, expected, actual);
     exit(1);
   }
 }
@@ -20,7 +20,7 @@ void expect_getenv_value(char* name, char* expected) {
 void expect_getenv_null(const char* name) {
   char* actual = getenv(name);
   if (actual != NULL) {
-    printf("Unexpected value for the environment variable %s -- expected: null, was: %s\n", name, actual);
+    fprintf(stderr, "Unexpected value for the environment variable %s -- expected: null, was: %s\n", name, actual);
     exit(1);
   }
 }
@@ -28,7 +28,7 @@ void expect_getenv_null(const char* name) {
 void expect_putenv_no_err(char* arg) {
   int err = putenv(arg);
   if (err != 0) {
-    printf("putenv(%s) failed, return code: %d\n", arg, err);
+    fprintf(stderr, "putenv(%s) failed, return code: %d\n", arg, err);
     exit(1);
   }
 }
@@ -36,7 +36,7 @@ void expect_putenv_no_err(char* arg) {
 void expect_setenv_no_err(const char *name, const char *value, int replace) {
   int err = setenv(name, value, replace);
   if (err != 0) {
-    printf("setenv(%s, %s, %d) failed, return code: %d\n", name, value, replace, err);
+    fprintf(stderr, "setenv(%s, %s, %d) failed, return code: %d\n", name, value, replace, err);
     exit(1);
   }
 }

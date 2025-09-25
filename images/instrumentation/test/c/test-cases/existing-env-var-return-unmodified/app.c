@@ -10,11 +10,11 @@ int main() {
   char* actual = getenv(name);
   char* expected = "value";
   if (actual == NULL) {
-    printf("Unexpected value for the environment variable %s -- expected: %s, was: null\n", name, expected);
+    fprintf(stderr, "Unexpected value for the environment variable %s --\nexpected: %s\n     was: null\n", name, expected);
     return 1;
   }
   if (strcmp(expected, actual) != 0) {
-    printf("Unexpected value for the environment variable %s -- expected: %s, was: %s\n", name, expected, actual);
+    fprintf(stderr, "Unexpected value for the environment variable %s --\nexpected: %s\n     was: %s\n", name, expected, actual);
     return 1;
   }
 }
