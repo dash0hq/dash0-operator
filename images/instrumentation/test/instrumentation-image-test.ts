@@ -634,7 +634,7 @@ function createRunTestCaseTask(
       const dockerRunCmd = dockerRunCmdArray.map(arg => `"${arg}"`).join(' ');
 
       if (verbose) {
-        log(`running: ${dockerRunCmd}`);
+        log(`running: ${dockerRunCmdArray.join(' ')}`);
       }
       const { stdout: dockerRunOutputStdOut, stderr: dockerRunOutputStdErr } = await exec(dockerRunCmd, {
         encoding: 'utf8',
