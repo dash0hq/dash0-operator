@@ -8,27 +8,36 @@
 void expect_getenv_value(char* name, char* expected) {
   char* actual = getenv(name);
   if (actual == NULL) {
-    printf("Unexpected value for the environment variable %s -- expected: %s, was: null\n", name, expected);
+    fprintf(stderr,
+            "Unexpected value for the environment variable %s --\nexpected: "
+            "%s\n     was: null\n",
+            name, expected);
     exit(1);
   }
   if (strcmp(expected, actual) != 0) {
-    printf("Unexpected value for the environment variable %s -- expected: %s, was: %s\n", name, expected, actual);
+    fprintf(stderr,
+            "Unexpected value for the environment variable %s --\nexpected: "
+            "%s\n     was: %s\n",
+            name, expected, actual);
     exit(1);
   }
 }
 
-void expect_getenv_null(const char* name) {
-  char* actual = getenv(name);
+void expect_getenv_null(const char *name) {
+  char *actual = getenv(name);
   if (actual != NULL) {
-    printf("Unexpected value for the environment variable %s -- expected: null, was: %s\n", name, actual);
+    fprintf(stderr,
+            "Unexpected value for the environment variable %s -- expected: "
+            "null, was: \"%s\"\n",
+            name, actual);
     exit(1);
   }
 }
 
-void expect_putenv_no_err(char* arg) {
+void expect_putenv_no_err(char *arg) {
   int err = putenv(arg);
   if (err != 0) {
-    printf("putenv(%s) failed, return code: %d\n", arg, err);
+    fprintf(stderr, "putenv(%s) failed, return code: %d\n", arg, err);
     exit(1);
   }
 }
@@ -36,7 +45,8 @@ void expect_putenv_no_err(char* arg) {
 void expect_setenv_no_err(const char *name, const char *value, int replace) {
   int err = setenv(name, value, replace);
   if (err != 0) {
-    printf("setenv(%s, %s, %d) failed, return code: %d\n", name, value, replace, err);
+    fprintf(stderr, "setenv(%s, %s, %d) failed, return code: %d\n", name, value,
+            replace, err);
     exit(1);
   }
 }
@@ -44,7 +54,7 @@ void expect_setenv_no_err(const char *name, const char *value, int replace) {
 void expect_unsetenv_no_err(const char *arg) {
   int err = unsetenv(arg);
   if (err != 0) {
-    printf("unsetenv(%s) failed, return code: %d\n", arg, err);
+    fprintf(stderr, "unsetenv(%s) failed, return code: %d\n", arg, err);
     exit(1);
   }
 }
@@ -70,10 +80,9 @@ int main() {
   expect_getenv_value("NON_EXISTING_VAR_1", "new value from putenv for variable that did not exist before");
 
   // Calling putenv with a string without "=" should delete the env var.
-  expect_putenv_no_err("EXISTING_VAR_2");
+  expect_putenv_no_err("EXISTING_VAR_2"); // TODO this crashes, probably segfault?
   expect_getenv_null("EXISTING_VAR_2");
 
-  // The setenv function can be used to add a new definition to the environment. The entry with the name name is replaced by the value ‘name=value’. Please note that this is also true if value is the empty string. To do this a new string is created and the strings name and value are copied. A null pointer for the value parameter is illegal. If the environment already contains an entry with key name the replace parameter controls the action. If replace is zero, nothing happens. Otherwise the old entry is replaced by the new one.
   setenv("NON_EXISTING_VAR_2", "value from setenv for non-existing without replace", 0);
   expect_getenv_value("NON_EXISTING_VAR_2", "value from setenv for non-existing without replace");
   setenv("NON_EXISTING_VAR_3", "value from setenv for non-existing with replace", 1);
@@ -93,13 +102,13 @@ int main() {
 
   err = unsetenv("string=with_equals_character");
   if (err == 0) {
-    printf("unsetenv(string=with_equals_character) succeeded, should have failed.\n");
+    fprintf(stderr, "unsetenv(string=with_equals_character) succeeded, should have failed.\n");
     exit(1);
   }
 
   err = clearenv();
   if (err != 0) {
-    printf("clearenv() failed, return code: %d\n", err);
+    fprintf(stderr, "clearenv() failed, return code: %d\n", err);
     exit(1);
   }
 
