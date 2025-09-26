@@ -34,8 +34,8 @@ spec:
                   - key: "dash0.com/enable"
                     operator: "NotIn"
                     values: ["false"]
-                  - key: kubernetes.io/os
-                    operator: In
+                  - key: "kubernetes.io/os"
+                    operator: "In"
                     values: ["linux"]
 {{- if .Values.operator.tolerations }}
       tolerations:

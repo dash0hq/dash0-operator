@@ -101,6 +101,7 @@ const (
 
 	// label keys
 	dash0OptOutLabelKey = "dash0.com/enable"
+	nodeOsSelectorLabelKey = "kubernetes.io/os"
 
 	// label values
 	appKubernetesIoNameValue      = openTelemetryCollector
@@ -586,6 +587,11 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 									Operator: corev1.NodeSelectorOpNotIn,
 									Values:   []string{"false"},
 								},
+								{
+									Key:      nodeOsSelectorLabelKey,
+									Operator: corev1.NodeSelectorOpIn,
+									Values:   []string{"linux"},
+								}
 							},
 						},
 					},
@@ -1291,6 +1297,11 @@ func assembleCollectorDeployment(
 									Operator: corev1.NodeSelectorOpNotIn,
 									Values:   []string{"false"},
 								},
+								{
+									Key:      nodeOsSelectorLabelKey,
+									Operator: corev1.NodeSelectorOpIn,
+									Values:   []string{"linux"},
+								}
 							},
 						},
 					},
