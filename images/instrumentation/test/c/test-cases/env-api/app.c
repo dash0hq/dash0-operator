@@ -61,10 +61,12 @@ void expect_unsetenv_no_err(const char *arg) {
 
 int main() {
   // See
-  // https://www.gnu.org/software/libc/manual/html_node/Environment-Access.html
+  // https://sourceware.org/glibc/manual/latest/html_mono/libc.html#Environment-Access
   // for docs on env-related functions.
 
   int err = 0;
+
+  expect_getenv_null("NON_EXISTING_VAR_1");
 
   expect_getenv_value("EXISTING_VAR_1", "original-value-1");
   expect_getenv_value("EXISTING_VAR_2", "original-value-2");

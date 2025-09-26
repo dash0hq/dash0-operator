@@ -6,7 +6,7 @@ FROM ${base_image}
 
 ARG zig_architecture
 
-RUN yes | unminimize
+RUN (yes | unminimize) || true
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -26,12 +26,8 @@ RUN apt-get update && \
       libx11-dev libxext-dev libxrender-dev libxrandr-dev libxtst-dev libxt-dev \
       locales \
       man-db \
-      manpages-dev \
-      manpages-posix \
-      manpages-posix-dev \
       nodejs \
       npm \
-      openjdk-21-jdk \
       python3 \
       python3-pip \
       silversearcher-ag \

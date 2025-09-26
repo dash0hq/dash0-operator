@@ -118,7 +118,7 @@ fn getGlibcMemoryRange(libc_library: LibCLibrary) !MemoryRange {
         const memory_range = slices.first();
 
         // TODO Ensure we get the memory range starting with the lowest number, as that is
-        // The one with the program header, but it is not guaranteed to appear first in the
+        // the one with the program header, but it is not guaranteed to appear first in the
         // `/proc/self/maps` content
         // const permissions = slices.next() orelse return error.PermissionsNotFoundInMaps;
         // if (!std.mem.eql(u8, permissions, "r-xp")) {
