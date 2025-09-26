@@ -25,6 +25,7 @@ image_name="dash0-injector-dev-$ARCHITECTURE"
 docker rmi -f "$image_name" 2> /dev/null || true
 docker build \
   --platform "$docker_platform" \
+  --build-arg "base_image=${BASE_IMAGE:-ubuntu:noble}" \
   --build-arg "zig_architecture=${zig_architecture}" \
   -f Dockerfile-injector-development \
   -t "$image_name" \
@@ -35,6 +36,7 @@ docker rm -f "$container_name" 2> /dev/null || true
 docker run \
   --rm \
   -it \
+  --platform "$docker_platform" \
   --name "$container_name" \
   --volume "$(pwd):/home/dash0/instrumentation" \
   "$image_name" \

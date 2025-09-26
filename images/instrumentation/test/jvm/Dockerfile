@@ -8,14 +8,19 @@ FROM ${instrumentation_image} AS init
 
 FROM ${base_image}
 
-COPY jvm-test-utils /jvm-test-utils
-COPY test-cases /test-cases
-
 RUN export JAVA_HOME=$(which java | xargs dirname | xargs dirname)
 
+COPY no-op-agent /no-op-agent
+WORKDIR /no-op-agent/src/main/java
+RUN javac io/opentelemetry/javaagent/NoOpAgent.java && \
+    jar -c -m manifest.mf -f no-op-agent.jar io/opentelemetry/javaagent/NoOpAgent.class && \
+    cp no-op-agent.jar ../../..
+
+COPY jvm-test-utils /jvm-test-utils
 WORKDIR /jvm-test-utils
 RUN javac src/com/dash0/injector/testutils/*.java
 
+COPY test-cases /test-cases
 WORKDIR /
 RUN for test in /test-cases/*; do \
   cd "/${test}" && \

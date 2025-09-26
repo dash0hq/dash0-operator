@@ -2,6 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # one base image per line
-openjdk:24-jdk-bookworm
+openjdk:26-jdk-bookworm
 openjdk:21-jdk-bookworm
 openjdk:17-jdk-bullseye

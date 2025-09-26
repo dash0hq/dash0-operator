@@ -1,0 +1,13 @@
+#  This is a rudimentary test case based on docker compose and exporting telemetry directly to an actual OTel collector,
+#  which is a very different setup from the other test cases, which only execute an application in a container with the
+#  instrumentation agent attached and then verify environment variables etc. This setup here could be used to verify
+#  whether the instrumentation agent is actually successfully activated, whether it is exporting telemetry correctly,
+#  and how the resource attributes look like. However, more work in the test framework is required to actually support
+#  this setup fully. Right now, this test case can be executed in a very manual fashion:
+#      cd images/instrumentation/test
+#      DOCKER_CLEANUP_ENABLED=false ARCHITECTURES=arm64 RUNTIMES=jvm BASE_IMAGES=openjdk:24-jdk-bookworm TEST_CASES=activate-sdk npm run test
+#      cd jvm/test-cases/activate-sdk
+#      docker compose up
+#      ...check the telemetry that is printed to the screen in the otlp-sink container
+skip: true
+skipReason: docker compose based tests are not implemented in the test framework yet
