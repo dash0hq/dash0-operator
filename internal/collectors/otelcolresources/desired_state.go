@@ -624,7 +624,7 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 			// permissions set to 755. The OpenTelemetry collector container does not run as root, so it wouldn't be
 			// able to write into the mounted volume. We fix the permissions with an init container.
 			podSpec.InitContainers = []corev1.Container{
-				assembleFileLogVolumeOwnershipInitContainer(filelogOffsetsVolume),
+				assembleFileLogVolumeOwnershipInitContainer(config, filelogOffsetsVolume),
 			}
 		}
 	} else {
@@ -1088,10 +1088,13 @@ func assembleFileLogOffsetSyncInitContainer(
 	return initFilelogOffsetSyncContainer
 }
 
-func assembleFileLogVolumeOwnershipInitContainer(filelogOffsetsVolume corev1.Volume) corev1.Container {
+func assembleFileLogVolumeOwnershipInitContainer(
+	config *oTelColConfig,
+	filelogOffsetsVolume corev1.Volume,
+) corev1.Container {
 	initFilelogOffsetVolumeOwnershipContainer := corev1.Container{
 		Name:  "filelog-offset-volume-ownership",
-		Image: "busybox:1.37.0-glibc",
+		Image: config.Images.FilelogOffsetVolumeOwnershipImage,
 		Command: []string{
 			"/bin/chown",
 			"-R",
@@ -1128,6 +1131,9 @@ func assembleFileLogVolumeOwnershipInitContainer(filelogOffsetsVolume corev1.Vol
 		VolumeMounts: []corev1.VolumeMount{
 			createVolumeMountForUserProvidedFileLogOffsetVolume(filelogOffsetsVolume),
 		},
+	}
+	if config.Images.FilelogOffsetVolumeOwnershipImagePullPolicy != "" {
+		initFilelogOffsetVolumeOwnershipContainer.ImagePullPolicy = config.Images.FilelogOffsetVolumeOwnershipImagePullPolicy
 	}
 	return initFilelogOffsetVolumeOwnershipContainer
 }

@@ -93,6 +93,11 @@ helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
 {{- include "dash0-operator.imageRef" (dict "image" .Values.operator.filelogOffsetSyncImage "context" .) -}}
 {{- end }}
 
+{{/* the filelog offset volume ownership image */}}
+{{- define "dash0-operator.filelogOffsetVolumeOwnershipImage" -}}
+{{- include "dash0-operator.imageRef" (dict "image" .Values.operator.filelogOffsetVolumeOwnershipImage "context" .) -}}
+{{- end }}
+
 {{- define "dash0-operator.imageRef" -}}
 {{- if .image.digest -}}
 {{- printf "%s@%s" .image.repository .image.digest }}
@@ -106,6 +111,9 @@ securityContext:
   allowPrivilegeEscalation: false
   readOnlyRootFilesystem: true
   runAsNonRoot: true
+{{- if .userId }}
+  runAsUser: {{ .userId }}
+{{- end }}
   capabilities:
     drop:
     - ALL

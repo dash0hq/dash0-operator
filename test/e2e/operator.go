@@ -178,6 +178,15 @@ func addHelmParametersForImages(arguments []string, images Images) []string {
 	arguments = setIfNotEmpty(arguments, "operator.filelogOffsetSyncImage.pullPolicy",
 		images.fileLogOffsetSync.pullPolicy)
 
+	arguments = setIfNotEmpty(arguments, "operator.filelogOffsetVolumeOwnershipImage.repository",
+		images.fileLogOffsetVolumeOwnership.repository)
+	arguments = setIfNotEmpty(arguments, "operator.filelogOffsetVolumeOwnershipImage.tag",
+		images.fileLogOffsetVolumeOwnership.tag)
+	arguments = setIfNotEmpty(arguments, "operator.filelogOffsetVolumeOwnershipImage.digest",
+		images.fileLogOffsetVolumeOwnership.digest)
+	arguments = setIfNotEmpty(arguments, "operator.filelogOffsetVolumeOwnershipImage.pullPolicy",
+		images.fileLogOffsetVolumeOwnership.pullPolicy)
+
 	return arguments
 }
 

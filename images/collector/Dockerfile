@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM --platform=${BUILDPLATFORM} golang:1.24-alpine3.21 AS builder
+FROM --platform=${BUILDPLATFORM} golang:1.25-alpine3.22 AS builder
 
 RUN apk add --update git make yq && apk cache clean
 
@@ -21,7 +21,7 @@ RUN CGO_ENABLED=0 \
     builder --config=builder/config.yaml && \
     chmod u+x /src/dist/dash0-operator-collector
 
-FROM alpine:3.21.3
+FROM alpine:3.22.1
 COPY src/image/entrypoint.sh /entrypoint.sh
 COPY --from=builder /src/dist/dash0-operator-collector otelcol
 USER 65532:65532

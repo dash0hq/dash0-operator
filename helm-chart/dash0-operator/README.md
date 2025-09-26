@@ -1879,6 +1879,12 @@ deployed, and synchronize the synthetic check resources with the Dash0 backend:
 
 The synthetic checks created by the operator will be in read-only mode in the Dash0 UI.
 
+The custom resource definition for Dash0 synthetic checks can be found
+[here](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/templates/operator/custom-resource-definition-synthetic-checks.yaml).
+An easy way to get started is to create a synthetic check in the Dash0 UI and then download the YAML representation of
+that check with the button in the upper right corner, then deploy the downloaded YAML as the manifest of a synthethic
+check in your Kubernetes cluster.
+
 If the Dash0 operator configuration resource has the `dataset` property set, the operator will create the synthetic
 checks in that dataset, otherwise they will be created in the `default` dataset.
 
@@ -1934,10 +1940,13 @@ synchronize the view resources with the Dash0 backend:
 
 The views created by the operator will be in read-only mode in the Dash0 UI.
 
+The custom resource definition for Dash0 views can be found
+[here](https://github.com/dash0hq/dash0-operator/blob/main/helm-chart/dash0-operator/templates/operator/custom-resource-definition-views.yaml).
+
 If the Dash0 operator configuration resource has the `dataset` property set, the operator will create the view in that
 dataset, otherwise they will be created in the `default` dataset.
 
-You can opt out of synchronization for individual views resources by adding the Kubernetes label
+You can opt out of synchronization for individual view resources by adding the Kubernetes label
 `dash0.com/enable: false` to the view resource.
 If this label is added to a synthetic chec which has previously been synchronized to Dash0, the operator will delete the
 corresponding synthetic chec in Dash0.

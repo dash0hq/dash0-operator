@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.19.0
   name: dash0views.operator.dash0.com
 spec:
   group: operator.dash0.com
@@ -51,7 +51,6 @@ spec:
                     description: |-
                       The name of the folder in which the view is located. For example, if
                       the view is located in the root folder, this field will be an empty array.
-
 
                       A view can only be located within a single folder. However, it can be nested.
                       Meaning, a value such as `["Shop", "Checkout"]` describes that the view is

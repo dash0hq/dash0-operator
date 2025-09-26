@@ -874,7 +874,7 @@ func (r *PrometheusRuleReconciler) CreateDeleteRequests(
 	return deleteRequests, allSynchronizationErrors
 }
 
-func (_ *PrometheusRuleReconciler) UpdateSynchronizationResultsInDash0MonitoringStatus(
+func (*PrometheusRuleReconciler) UpdateSynchronizationResultsInDash0MonitoringStatus(
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	qualifiedName string,
 	status dash0common.ThirdPartySynchronizationStatus,

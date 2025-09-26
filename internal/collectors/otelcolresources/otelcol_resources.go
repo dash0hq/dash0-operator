@@ -60,11 +60,12 @@ var (
 	knownIrrelevantPatches = []string{bogusDeploymentPatch}
 
 	dummyImagesForDeletion = util.Images{
-		OperatorImage:              "ghcr.io/dash0hq/operator-controller:latest",
-		InitContainerImage:         "ghcr.io/dash0hq/instrumentation:latest",
-		CollectorImage:             "ghcr.io/dash0hq/collector:latest",
-		ConfigurationReloaderImage: "ghcr.io/dash0hq/configuration-reloader:latest",
-		FilelogOffsetSyncImage:     "ghcr.io/dash0hq/filelog-offset-sync:latest",
+		OperatorImage:                     "ghcr.io/dash0hq/operator-controller:latest",
+		InitContainerImage:                "ghcr.io/dash0hq/instrumentation:latest",
+		CollectorImage:                    "ghcr.io/dash0hq/collector:latest",
+		ConfigurationReloaderImage:        "ghcr.io/dash0hq/configuration-reloader:latest",
+		FilelogOffsetSyncImage:            "ghcr.io/dash0hq/filelog-offset-sync:latest",
+		FilelogOffsetVolumeOwnershipImage: "ghcr.io/dash0hq/filelog-offset-volume-ownership:latest",
 	}
 
 	httpClient     = &http.Client{}
@@ -204,7 +205,7 @@ func (m *OTelColResourceManager) createOrUpdateResource(
 	if err != nil {
 		return false, false, err
 	}
-	err = m.Client.Get(ctx, client.ObjectKeyFromObject(desiredResource), existingResource)
+	err = m.Get(ctx, client.ObjectKeyFromObject(desiredResource), existingResource)
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return false, false, err
@@ -249,7 +250,7 @@ func (m *OTelColResourceManager) createResource(
 	if err := patch.DefaultAnnotator.SetLastAppliedAnnotation(desiredResource); err != nil {
 		return err
 	}
-	err := m.Client.Create(ctx, desiredResource)
+	err := m.Create(ctx, desiredResource)
 	if err != nil {
 		return err
 	}
@@ -294,7 +295,7 @@ func (m *OTelColResourceManager) updateResource(
 		return false, err
 	}
 
-	err = m.Client.Update(ctx, desiredResource)
+	err = m.Update(ctx, desiredResource)
 	if err != nil {
 		return false, err
 	}
@@ -403,7 +404,7 @@ func (m *OTelColResourceManager) DeleteResources(
 	resourcesHaveBeenDeleted := false
 	for _, wrapper := range desiredResources {
 		desiredResource := wrapper.object
-		err = m.Client.Delete(ctx, desiredResource)
+		err = m.Delete(ctx, desiredResource)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				// A resource that we want to delete didn't exist in the first place, we can ignore this silently.
@@ -454,7 +455,7 @@ func (m *OTelColResourceManager) deleteResourcesThatAreNoLongerDesired(
 			}
 		}
 		if !isDesired {
-			err = m.Client.Delete(ctx, possibleResource.object)
+			err = m.Delete(ctx, possibleResource.object)
 			if err != nil {
 				if apierrors.IsNotFound(err) {
 					// expected, ignore silently
@@ -491,7 +492,7 @@ func (m *OTelColResourceManager) deleteObsoleteResourcesFromPreviousOperatorVers
 	)
 	var allErrors []error
 	for _, obsoleteResource := range obsoleteResources {
-		err := m.Client.Delete(ctx, obsoleteResource)
+		err := m.Delete(ctx, obsoleteResource)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				// expected, ignore silently

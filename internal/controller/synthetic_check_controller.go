@@ -231,7 +231,7 @@ func (r *SyntheticCheckReconciler) Reconcile(ctx context.Context, req reconcile.
 		syntheticCheckReconcileRequestMetric.Add(ctx, 1)
 	}
 
-	qualifiedName := req.NamespacedName.String()
+	qualifiedName := req.NamespacedName.String() //nolint:staticcheck
 	logger := log.FromContext(ctx)
 	logger.Info("processing reconcile request for a synthetic check resource", "name", qualifiedName)
 

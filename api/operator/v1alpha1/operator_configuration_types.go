@@ -44,8 +44,6 @@ type Dash0OperatorConfigurationSpec struct {
 	// Please note that self-monitoring data is only sent to one backend, with Dash0 taking precedence over gRPC and
 	// HTTP, and gRPC taking precedence over HTTP if multiple exports are defined. Furthermore, HTTP export with JSON
 	// encoding is not supported for self-monitoring telemetry.
-	//
-	// +kubebuilder:validation:Required
 	Export *dash0common.Export `json:"export,omitempty"`
 
 	// Global opt-out for self-monitoring for this operator

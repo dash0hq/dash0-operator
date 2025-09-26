@@ -267,7 +267,7 @@ operator:
     # setups that do not use Dash0's official kube RBAC proxy image.
     repository: "quay.io/brancz/kube-rbac-proxy"
     # overrides the image tag
-    tag: "v0.19.1"
+    tag: "v0.20.0"
     # pull image by digest instead of tag; if this is set, the tag value will be ignored
     digest:
     # override the default image pull policy
@@ -294,10 +294,25 @@ operator:
     # override the default image pull policy
     pullPolicy:
 
-  # the container image to use for the synchronizing of the offset files for the filelog receiver
+  # the container image to use for synchronizing the offset files for the filelog receiver to the filelog offset config
+  # map; will not be used if a filelog offset storage volume is provided via
+  # operator.collectors.filelogOffsetSyncStorageVolume
   # (there should usually be no reason to override this)
   filelogOffsetSyncImage:
     repository: "ghcr.io/dash0hq/filelog-offset-sync"
+    # overrides the image tag, which defaults to the chart appVersion.
+    tag:
+    # pull image by digest instead of tag; if this is set, the tag value will be ignored
+    digest:
+    # override the default image pull policy
+    pullPolicy:
+
+  # the container image to use for the init container which sets up the required file system ownership in the log file
+  # offset volume; will only be used if a host volume is provided for filelog offset storage via
+  # operator.collectors.filelogOffsetSyncStorageVolume
+  # (there should usually be no reason to override this)
+  filelogOffsetVolumeOwnershipImage:
+    repository: "ghcr.io/dash0hq/filelog-offset-volume-ownership"
     # overrides the image tag, which defaults to the chart appVersion.
     tag:
     # pull image by digest instead of tag; if this is set, the tag value will be ignored

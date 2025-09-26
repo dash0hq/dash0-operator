@@ -1,6 +1,6 @@
 module github.com/dash0hq/dash0-operator/images/filelogoffsetsync
 
-go 1.24.1
+go 1.25.1
 
 require (
 	github.com/dash0hq/dash0-operator/images/pkg/common v0.0.0-00010101000000-000000000000

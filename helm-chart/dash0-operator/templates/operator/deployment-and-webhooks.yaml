@@ -196,6 +196,12 @@ spec:
         - name: DASH0_FILELOG_OFFSET_SYNC_IMAGE_PULL_POLICY
           value: {{ .Values.operator.filelogOffsetSyncImage.pullPolicy }}
         {{- end }}
+        - name: DASH0_FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE
+          value: {{ include "dash0-operator.filelogOffsetVolumeOwnershipImage" . | quote }}
+        {{- if .Values.operator.filelogOffsetVolumeOwnershipImage.pullPolicy }}
+        - name: DASH0_FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_PULL_POLICY
+          value: {{ .Values.operator.filelogOffsetVolumeOwnershipImage.pullPolicy }}
+        {{- end }}
         {{- if .Values.operator.developmentMode }}
         - name: DASH0_DEVELOPMENT_MODE
           value: {{ .Values.operator.developmentMode | toString | quote }}
@@ -238,7 +244,7 @@ spec:
           protocol: TCP
         resources:
           {{- toYaml .Values.operator.managerContainerResources | nindent 10 }}
-        {{ include "dash0-operator.restrictiveContainerSecurityContext" . | nindent 8 }}
+        {{ include "dash0-operator.restrictiveContainerSecurityContext" dict | nindent 8 }}
         volumeMounts:
         - name: certificates
           mountPath: /tmp/k8s-webhook-server/serving-certs
@@ -271,12 +277,12 @@ spec:
           protocol: TCP
         resources:
           {{- toYaml .Values.operator.kubeRbacProxyContainerResources | nindent 10 }}
-        {{ include "dash0-operator.restrictiveContainerSecurityContext" . | nindent 8 }}
+        {{ include "dash0-operator.restrictiveContainerSecurityContext" (dict "userId" 65532) | nindent 8 }}
       {{- with .Values.operator.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{ include "dash0-operator.restrictivePodSecurityContext" . | nindent 6 }}
+      {{ include "dash0-operator.restrictivePodSecurityContext" dict | nindent 6 }}
       serviceAccountName: {{ template "dash0-operator.serviceAccountName" . }}
       automountServiceAccountToken: true
       terminationGracePeriodSeconds: 10

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM --platform=${BUILDPLATFORM} golang:1.24-alpine3.21 AS builder
+FROM --platform=${BUILDPLATFORM} golang:1.25-alpine3.22 AS builder
 
 WORKDIR /usr/local/go/dash0_api_mock
 

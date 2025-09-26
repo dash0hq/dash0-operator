@@ -55,7 +55,8 @@ func GetReceiverForWorkloadType(
 	apiVersion string,
 	kind string,
 ) (client.Object, error) {
-	if apiVersion == K8sApiVersionAppsV1 {
+	switch apiVersion {
+	case K8sApiVersionAppsV1:
 		switch kind {
 		case K8sTypeMetaDaemonSet.Kind:
 			return &appsv1.DaemonSet{}, nil
@@ -66,14 +67,14 @@ func GetReceiverForWorkloadType(
 		case K8sTypeMetaStatefulSet.Kind:
 			return &appsv1.StatefulSet{}, nil
 		}
-	} else if apiVersion == K8sApiVersionBatchV1 {
+	case K8sApiVersionBatchV1:
 		switch kind {
 		case K8sTypeMetaCronJob.Kind:
 			return &batchv1.CronJob{}, nil
 		case K8sTypeMetaJob.Kind:
 			return &batchv1.Job{}, nil
 		}
-	} else if apiVersion == K8sApiVersionCoreV1 {
+	case K8sApiVersionCoreV1:
 		switch kind {
 		case K8sTypeMetaPod.Kind:
 			return &corev1.Pod{}, nil

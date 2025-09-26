@@ -17,7 +17,7 @@ RUN zig build -Dcpu-arch=${TARGETARCH} --prominent-compile-errors --summary none
 # injector_build_end - do not remove this line (see images/instrumentation/injector/test/scripts/test-all.sh)
 
 # download OpenTelemetry Java agent
-FROM openjdk:24-jdk-bookworm AS build-jvm
+FROM openjdk:26-jdk-bookworm AS build-jvm
 COPY jvm /dash0-init-container/instrumentation/jvm
 WORKDIR /dash0-init-container/instrumentation/jvm
 RUN ./mvnw dependency:copy-dependencies \
@@ -25,7 +25,7 @@ RUN ./mvnw dependency:copy-dependencies \
   && cp pom.xml ./build/pom.xml
 
 # build Node.js artifacts
-FROM node:22.19.0-alpine3.22 AS build-node-js
+FROM node:24.8.0-alpine3.22 AS build-node-js
 RUN mkdir -p /dash0-init-container/instrumentation/node.js
 WORKDIR /dash0-init-container/instrumentation/node.js
 COPY node.js/package* .

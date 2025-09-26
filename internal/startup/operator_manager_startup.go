@@ -52,25 +52,27 @@ import (
 )
 
 type environmentVariables struct {
-	operatorNamespace                    string
-	deploymentName                       string
-	webhookServiceName                   string
-	oTelCollectorNamePrefix              string
-	operatorImage                        string
-	initContainerImage                   string
-	initContainerImagePullPolicy         corev1.PullPolicy
-	collectorImage                       string
-	collectorImagePullPolicy             corev1.PullPolicy
-	configurationReloaderImage           string
-	configurationReloaderImagePullPolicy corev1.PullPolicy
-	filelogOffsetSyncImage               string
-	filelogOffsetSyncImagePullPolicy     corev1.PullPolicy
-	nodeIp                               string
-	nodeName                             string
-	podIp                                string
-	sendBatchMaxSize                     *uint32
-	instrumentationDebug                 bool
-	debugVerbosityDetailed               bool
+	operatorNamespace                           string
+	deploymentName                              string
+	webhookServiceName                          string
+	oTelCollectorNamePrefix                     string
+	operatorImage                               string
+	initContainerImage                          string
+	initContainerImagePullPolicy                corev1.PullPolicy
+	collectorImage                              string
+	collectorImagePullPolicy                    corev1.PullPolicy
+	configurationReloaderImage                  string
+	configurationReloaderImagePullPolicy        corev1.PullPolicy
+	filelogOffsetSyncImage                      string
+	filelogOffsetSyncImagePullPolicy            corev1.PullPolicy
+	filelogOffsetVolumeOwnershipImage           string
+	filelogOffsetVolumeOwnershipImagePullPolicy corev1.PullPolicy
+	nodeIp                                      string
+	nodeName                                    string
+	podIp                                       string
+	sendBatchMaxSize                            *uint32
+	instrumentationDebug                        bool
+	debugVerbosityDetailed                      bool
 }
 
 type commandLineArguments struct {
@@ -97,22 +99,24 @@ type commandLineArguments struct {
 }
 
 const (
-	operatorNamespaceEnvVarName                    = "DASH0_OPERATOR_NAMESPACE"
-	deploymentNameEnvVarName                       = "DASH0_DEPLOYMENT_NAME"
-	webhookServiceNameEnvVarName                   = "DASH0_WEBHOOK_SERVICE_NAME"
-	oTelCollectorNamePrefixEnvVarName              = "OTEL_COLLECTOR_NAME_PREFIX"
-	operatorImageEnvVarName                        = "DASH0_OPERATOR_IMAGE"
-	initContainerImageEnvVarName                   = "DASH0_INIT_CONTAINER_IMAGE"
-	initContainerImagePullPolicyEnvVarName         = "DASH0_INIT_CONTAINER_IMAGE_PULL_POLICY"
-	collectorImageEnvVarName                       = "DASH0_COLLECTOR_IMAGE"
-	collectorImageImagePullPolicyEnvVarName        = "DASH0_COLLECTOR_IMAGE_PULL_POLICY"
-	configurationReloaderImageEnvVarName           = "DASH0_CONFIGURATION_RELOADER_IMAGE"
-	configurationReloaderImagePullPolicyEnvVarName = "DASH0_CONFIGURATION_RELOADER_IMAGE_PULL_POLICY"
-	filelogOffsetSyncImageEnvVarName               = "DASH0_FILELOG_OFFSET_SYNC_IMAGE"
-	filelogOffsetSyncImagePullPolicyEnvVarName     = "DASH0_FILELOG_OFFSET_SYNC_IMAGE_PULL_POLICY"
-	k8sNodeIpEnvVarName                            = "K8S_NODE_IP"
-	k8sNodeNameEnvVarName                          = "K8S_NODE_NAME"
-	k8sPodIpEnvVarName                             = "K8S_POD_IP"
+	operatorNamespaceEnvVarName                           = "DASH0_OPERATOR_NAMESPACE"
+	deploymentNameEnvVarName                              = "DASH0_DEPLOYMENT_NAME"
+	webhookServiceNameEnvVarName                          = "DASH0_WEBHOOK_SERVICE_NAME"
+	oTelCollectorNamePrefixEnvVarName                     = "OTEL_COLLECTOR_NAME_PREFIX"
+	operatorImageEnvVarName                               = "DASH0_OPERATOR_IMAGE"
+	initContainerImageEnvVarName                          = "DASH0_INIT_CONTAINER_IMAGE"
+	initContainerImagePullPolicyEnvVarName                = "DASH0_INIT_CONTAINER_IMAGE_PULL_POLICY"
+	collectorImageEnvVarName                              = "DASH0_COLLECTOR_IMAGE"
+	collectorImageImagePullPolicyEnvVarName               = "DASH0_COLLECTOR_IMAGE_PULL_POLICY"
+	configurationReloaderImageEnvVarName                  = "DASH0_CONFIGURATION_RELOADER_IMAGE"
+	configurationReloaderImagePullPolicyEnvVarName        = "DASH0_CONFIGURATION_RELOADER_IMAGE_PULL_POLICY"
+	filelogOffsetSyncImageEnvVarName                      = "DASH0_FILELOG_OFFSET_SYNC_IMAGE"
+	filelogOffsetSyncImagePullPolicyEnvVarName            = "DASH0_FILELOG_OFFSET_SYNC_IMAGE_PULL_POLICY"
+	filelogOffsetVolumeOwnershipImageEnvVarName           = "DASH0_FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE"
+	filelogOffsetVolumeOwnershipImagePullPolicyEnvVarName = "DASH0_FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_PULL_POLICY"
+	k8sNodeIpEnvVarName                                   = "K8S_NODE_IP"
+	k8sNodeNameEnvVarName                                 = "K8S_NODE_NAME"
+	k8sPodIpEnvVarName                                    = "K8S_POD_IP"
 
 	oTelCollectorServiceBaseUrlPattern   = "http://%s-opentelemetry-collector-service.%s.svc.cluster.local:4318"
 	oTelCollectorNodeLocalBaseUrlPattern = "http://$(%s):%d"
@@ -524,6 +528,13 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 	filelogOffsetSyncImagePullPolicy :=
 		readOptionalPullPolicyFromEnvironmentVariable(filelogOffsetSyncImagePullPolicyEnvVarName)
 
+	filelogOffsetVolumeOwnershipImage, isSet := os.LookupEnv(filelogOffsetVolumeOwnershipImageEnvVarName)
+	if !isSet {
+		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, filelogOffsetVolumeOwnershipImageEnvVarName)
+	}
+	filelogOffsetVolumeOwnershipImagePullPolicy :=
+		readOptionalPullPolicyFromEnvironmentVariable(filelogOffsetVolumeOwnershipImagePullPolicyEnvVarName)
+
 	nodeIp, isSet := os.LookupEnv(k8sNodeIpEnvVarName)
 	if !isSet {
 		return fmt.Errorf(mandatoryEnvVarMissingMessageTemplate, k8sNodeIpEnvVarName)
@@ -555,25 +566,27 @@ func readEnvironmentVariables(logger *logr.Logger) error {
 	}
 
 	envVars = environmentVariables{
-		operatorNamespace:                    operatorNamespace,
-		deploymentName:                       deploymentName,
-		webhookServiceName:                   webhookServiceName,
-		oTelCollectorNamePrefix:              oTelCollectorNamePrefix,
-		operatorImage:                        operatorImage,
-		initContainerImage:                   initContainerImage,
-		initContainerImagePullPolicy:         initContainerImagePullPolicy,
-		collectorImage:                       collectorImage,
-		collectorImagePullPolicy:             collectorImagePullPolicy,
-		configurationReloaderImage:           configurationReloaderImage,
-		configurationReloaderImagePullPolicy: configurationReloaderImagePullPolicy,
-		filelogOffsetSyncImage:               filelogOffsetSyncImage,
-		filelogOffsetSyncImagePullPolicy:     filelogOffsetSyncImagePullPolicy,
-		nodeIp:                               nodeIp,
-		nodeName:                             nodeName,
-		podIp:                                podIp,
-		sendBatchMaxSize:                     sendBatchMaxSize,
-		instrumentationDebug:                 instrumentationDebug,
-		debugVerbosityDetailed:               debugVerbosityDetailed,
+		operatorNamespace:                           operatorNamespace,
+		deploymentName:                              deploymentName,
+		webhookServiceName:                          webhookServiceName,
+		oTelCollectorNamePrefix:                     oTelCollectorNamePrefix,
+		operatorImage:                               operatorImage,
+		initContainerImage:                          initContainerImage,
+		initContainerImagePullPolicy:                initContainerImagePullPolicy,
+		collectorImage:                              collectorImage,
+		collectorImagePullPolicy:                    collectorImagePullPolicy,
+		configurationReloaderImage:                  configurationReloaderImage,
+		configurationReloaderImagePullPolicy:        configurationReloaderImagePullPolicy,
+		filelogOffsetSyncImage:                      filelogOffsetSyncImage,
+		filelogOffsetSyncImagePullPolicy:            filelogOffsetSyncImagePullPolicy,
+		filelogOffsetVolumeOwnershipImage:           filelogOffsetVolumeOwnershipImage,
+		filelogOffsetVolumeOwnershipImagePullPolicy: filelogOffsetVolumeOwnershipImagePullPolicy,
+		nodeIp:                 nodeIp,
+		nodeName:               nodeName,
+		podIp:                  podIp,
+		sendBatchMaxSize:       sendBatchMaxSize,
+		instrumentationDebug:   instrumentationDebug,
+		debugVerbosityDetailed: debugVerbosityDetailed,
 	}
 
 	return nil
@@ -761,15 +774,17 @@ func startDash0Controllers(
 	developmentMode bool,
 ) error {
 	images := util.Images{
-		OperatorImage:                        envVars.operatorImage,
-		InitContainerImage:                   envVars.initContainerImage,
-		InitContainerImagePullPolicy:         envVars.initContainerImagePullPolicy,
-		CollectorImage:                       envVars.collectorImage,
-		CollectorImagePullPolicy:             envVars.collectorImagePullPolicy,
-		ConfigurationReloaderImage:           envVars.configurationReloaderImage,
-		ConfigurationReloaderImagePullPolicy: envVars.configurationReloaderImagePullPolicy,
-		FilelogOffsetSyncImage:               envVars.filelogOffsetSyncImage,
-		FilelogOffsetSyncImagePullPolicy:     envVars.filelogOffsetSyncImagePullPolicy,
+		OperatorImage:                               envVars.operatorImage,
+		InitContainerImage:                          envVars.initContainerImage,
+		InitContainerImagePullPolicy:                envVars.initContainerImagePullPolicy,
+		CollectorImage:                              envVars.collectorImage,
+		CollectorImagePullPolicy:                    envVars.collectorImagePullPolicy,
+		ConfigurationReloaderImage:                  envVars.configurationReloaderImage,
+		ConfigurationReloaderImagePullPolicy:        envVars.configurationReloaderImagePullPolicy,
+		FilelogOffsetSyncImage:                      envVars.filelogOffsetSyncImage,
+		FilelogOffsetSyncImagePullPolicy:            envVars.filelogOffsetSyncImagePullPolicy,
+		FilelogOffsetVolumeOwnershipImage:           envVars.filelogOffsetVolumeOwnershipImage,
+		FilelogOffsetVolumeOwnershipImagePullPolicy: envVars.filelogOffsetVolumeOwnershipImagePullPolicy,
 	}
 
 	isIPv6Cluster := strings.Count(envVars.podIp, ":") >= 2

@@ -1185,13 +1185,13 @@ func (m *ResourceModifier) removeLegacyEnvVarNodeOptions(container *corev1.Conta
 	}
 
 	// for cases where other options are listed after our --require value
-	newValue := strings.Replace(previousValue, legacyEnvVarNodeOptionsValue+" ", "", -1)
+	newValue := strings.ReplaceAll(previousValue, legacyEnvVarNodeOptionsValue+" ", "")
 	// for cases where other options are listed before our --require value (if the previous replace command worked, this
 	// one will not match)
-	newValue = strings.Replace(newValue, " "+legacyEnvVarNodeOptionsValue, "", -1)
+	newValue = strings.ReplaceAll(newValue, " "+legacyEnvVarNodeOptionsValue, "")
 	// this should have been handled earlier (the Dash0 --require is the only option present), but just in case
 	// (if one of the previous replace commands worked, this one will not match)
-	newValue = strings.Replace(newValue, legacyEnvVarNodeOptionsValue, "", -1)
+	newValue = strings.ReplaceAll(newValue, legacyEnvVarNodeOptionsValue, "")
 	if strings.TrimSpace(newValue) == "" {
 		// if it was only our --require, surrounded by whitespace, we have an empty string now and can remove the env
 		// var entirely

@@ -31,6 +31,21 @@ spec:
                 operator: In
                 values: ["linux"]
       restartPolicy: OnFailure
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: "dash0.com/enable"
+                    operator: "NotIn"
+                    values: ["false"]
+{{- if .Values.operator.tolerations }}
+      tolerations:
+        {{- toYaml .Values.operator.tolerations | nindent 8 }}
+{{- end }}
+{{- if .Values.operator.managerPriorityClassName }}
+      priorityClassName: {{ .Values.operator.managerPriorityClassName }}
+{{- end }}
       containers:
         - name: pre-delete-job
           image: {{ include "dash0-operator.image" . | quote }}
@@ -38,7 +53,7 @@ spec:
           command:
             - /manager
             - "--uninstrument-all"
-          {{ include "dash0-operator.restrictiveContainerSecurityContext" . | nindent 10 }}
+          {{ include "dash0-operator.restrictiveContainerSecurityContext" dict | nindent 10 }}
           resources:
             {{- toYaml .Values.operator.managerContainerResources | nindent 12 }}
       securityContext:
