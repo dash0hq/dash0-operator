@@ -37,6 +37,10 @@ pre-delete hook job should match snapshot:
                         operator: NotIn
                         values:
                           - "false"
+                      - key: kubernetes.io/os
+                        operator: In
+                        values:
+                          - linux
           automountServiceAccountToken: true
           containers:
             - command:
