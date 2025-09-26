@@ -22,6 +22,14 @@ spec:
         app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
         helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
     spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: kubernetes.io/os
+                operator: In
+                values: ["linux"]
       restartPolicy: OnFailure
       containers:
         - name: pre-delete-job

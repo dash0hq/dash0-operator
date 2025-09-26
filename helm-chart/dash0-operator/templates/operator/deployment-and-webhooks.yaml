@@ -93,6 +93,9 @@ spec:
               - key: "dash0.com/enable"
                 operator: "NotIn"
                 values: ["false"]
+              - key: kubernetes.io/os
+                operator: In
+                values: ["linux"]
 {{- if .Values.operator.tolerations }}
       tolerations:
         {{- toYaml .Values.operator.tolerations | nindent 8 }}
@@ -292,10 +295,6 @@ spec:
       - name: config-volume
         configMap:
           name: {{ template "dash0-operator.extraConfigMapName" . }}
-      {{- if not .Values.operator.applyPodLinuxNodeSelector }}
-      nodeSelector:
-        kubernetes.io/os: linux
-      {{- end }}
 
 {{/*
 ---------------
