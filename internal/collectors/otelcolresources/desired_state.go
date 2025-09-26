@@ -591,7 +591,7 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 									Key:      nodeOsSelectorLabelKey,
 									Operator: corev1.NodeSelectorOpIn,
 									Values:   []string{"linux"},
-								}
+								},
 							},
 						},
 					},
@@ -1301,7 +1301,7 @@ func assembleCollectorDeployment(
 									Key:      nodeOsSelectorLabelKey,
 									Operator: corev1.NodeSelectorOpIn,
 									Values:   []string{"linux"},
-								}
+								},
 							},
 						},
 					},
