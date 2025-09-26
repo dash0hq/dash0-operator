@@ -25,6 +25,7 @@ image_name="dash0-injector-dev-$ARCHITECTURE"
 docker rmi -f "$image_name" 2> /dev/null || true
 docker build \
   --platform "$docker_platform" \
+  --build-arg "base_image=${BASE_IMAGE:-ubuntu:noble}" \
   --build-arg "zig_architecture=${zig_architecture}" \
   -f Dockerfile-injector-development \
   -t "$image_name" \

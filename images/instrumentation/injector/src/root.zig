@@ -84,7 +84,13 @@ fn updateStdOsEnviron() !void {
     if (environ_ptr) |environment_ptr| {
         const env_array = environment_ptr.*;
         var env_var_count: usize = 0;
-        while (env_array[env_var_count] != null) : (env_var_count += 1) {}
+        // Note: env_array will be empty in some cases, for example if the application calls clearenv. Accessing
+        // env_array[0] as we do in the while loop below would segfault. Instead we initialize an empty environ slice.
+        if (env_array == 0) {
+            std.os.environ = &.{};
+            return;
+        }
+        while (env_array[env_var_count] != null) : (env_var_count += 1) {} // TODO this segfaults directly after a call to clearenv
 
         std.os.environ = @ptrCast(@constCast(env_array[0..env_var_count]));
     } else {
@@ -95,9 +101,6 @@ fn updateStdOsEnviron() !void {
 export fn getenv(name_z: types.NullTerminatedString) ?types.NullTerminatedString {
     const name = std.mem.sliceTo(name_z, 0);
 
-    print.initDebugFlag();
-    print.printDebug("getenv('{s}') called", .{name});
-
     updateStdOsEnviron() catch |err| {
         print.printDebug("getenv('{s}') -> null; could not update std.os.environ: {}; ", .{ name, err });
         return null;
@@ -105,6 +108,9 @@ export fn getenv(name_z: types.NullTerminatedString) ?types.NullTerminatedString
 
     // Technically, a process could change the value of `DASH0_INJECTOR_DEBUG` after it started (mostly when we debug
     // stuff in REPL) so we look up the value every time.
+    print.initDebugFlag();
+
+    print.printDebug("getenv('{s}') called", .{name});
 
     const res = getEnvValue(name);
 
@@ -173,6 +179,14 @@ fn getEnvValue(name: [:0]const u8) ?types.NullTerminatedString {
     // The requested environment variable is not one that we want to modify, hence we just return the original value by
     // returning a pointer to it.
     if (original_value) |val| {
+        if (val.len == 0) {
+            // This can happen if an environment variable has been _deleted_ by calling putenv("VARIABLE") instead of
+            // putenv("VARIABLE=some-value"). Accessing val.ptr would lead to a segfault in this case. Unfortunately,
+            // we do not have a good way of distinguishing between environment variables that have been unset vs.
+            // environment variables that have been set explicitly to the empty string here. We choose to return the empty
+            // string here.
+            return "\x00";
+        }
         return val.ptr;
     }
 
