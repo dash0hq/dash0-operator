@@ -22,14 +22,6 @@ spec:
         app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
         helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
     spec:
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-            - matchExpressions:
-              - key: kubernetes.io/os
-                operator: In
-                values: ["linux"]
       restartPolicy: OnFailure
       affinity:
         nodeAffinity:
@@ -39,6 +31,9 @@ spec:
                   - key: "dash0.com/enable"
                     operator: "NotIn"
                     values: ["false"]
+                  - key: kubernetes.io/os
+                    operator: In
+                    values: ["linux"]
 {{- if .Values.operator.tolerations }}
       tolerations:
         {{- toYaml .Values.operator.tolerations | nindent 8 }}
