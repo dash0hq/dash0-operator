@@ -421,7 +421,7 @@ func (i *Instrumenter) handleJobOnInstrumentation(
 			return nil
 		}
 
-		if err := i.Client.Get(ctx, client.ObjectKey{
+		if err := i.Get(ctx, client.ObjectKey{
 			Namespace: job.GetNamespace(),
 			Name:      job.GetName(),
 		}, &job); err != nil {
@@ -448,7 +448,7 @@ func (i *Instrumenter) handleJobOnInstrumentation(
 		}
 
 		if modificationResult.HasBeenModified {
-			return i.Client.Update(ctx, &job, &client.UpdateOptions{FieldManager: util.FieldManager})
+			return i.Update(ctx, &job, &client.UpdateOptions{FieldManager: util.FieldManager})
 		} else {
 			return nil
 		}
@@ -591,7 +591,7 @@ func (i *Instrumenter) instrumentWorkload(
 
 	modificationResult := workloads.NewNotModifiedReasonUnknownResult()
 	retryErr := util.Retry(fmt.Sprintf("instrumenting %s", kind), func() error {
-		if err := i.Client.Get(ctx, client.ObjectKey{
+		if err := i.Get(ctx, client.ObjectKey{
 			Namespace: workloadMeta.GetNamespace(),
 			Name:      workloadMeta.GetName(),
 		}, workload.asClientObject()); err != nil {
@@ -620,7 +620,7 @@ func (i *Instrumenter) instrumentWorkload(
 		}
 
 		if modificationResult.HasBeenModified {
-			return i.Client.Update(ctx, workload.asClientObject(), &client.UpdateOptions{FieldManager: util.FieldManager})
+			return i.Update(ctx, workload.asClientObject(), &client.UpdateOptions{FieldManager: util.FieldManager})
 		} else {
 			return nil
 		}
@@ -882,7 +882,7 @@ func (i *Instrumenter) handleJobOnUninstrumentation(
 	createImmutableWorkloadsError := false
 	modificationResult := workloads.NewNotModifiedReasonUnknownResult()
 	retryErr := util.Retry("removing labels from immutable job", func() error {
-		if err := i.Client.Get(ctx, client.ObjectKey{
+		if err := i.Get(ctx, client.ObjectKey{
 			Namespace: job.GetNamespace(),
 			Name:      job.GetName(),
 		}, &job); err != nil {
@@ -910,7 +910,7 @@ func (i *Instrumenter) handleJobOnUninstrumentation(
 
 			// Apparently for jobs we do not need to set the "dash0.com/webhook-ignore-once" label, since changing their
 			// labels does not trigger a new admission request.
-			return i.Client.Update(ctx, &job, &client.UpdateOptions{FieldManager: util.FieldManager})
+			return i.Update(ctx, &job, &client.UpdateOptions{FieldManager: util.FieldManager})
 		} else {
 			// No dash0.com/instrumented label is present, do nothing.
 			modificationResult = workloads.NewNotModifiedNoChangesResult()
@@ -1038,7 +1038,7 @@ func (i *Instrumenter) revertWorkloadInstrumentation(
 
 	modificationResult := workloads.NewNotModifiedReasonUnknownResult()
 	retryErr := util.Retry(fmt.Sprintf("uninstrumenting %s", kind), func() error {
-		if err := i.Client.Get(ctx, client.ObjectKey{
+		if err := i.Get(ctx, client.ObjectKey{
 			Namespace: objectMeta.GetNamespace(),
 			Name:      objectMeta.GetName(),
 		}, workload.asClientObject()); err != nil {
@@ -1060,7 +1060,7 @@ func (i *Instrumenter) revertWorkloadInstrumentation(
 			// workload via the webhook immediately. To prevent this, we add a label that the webhook can check to
 			// prevent instrumentation.
 			util.AddWebhookIgnoreOnceLabel(objectMeta)
-			return i.Client.Update(ctx, workload.asClientObject(), &client.UpdateOptions{FieldManager: util.FieldManager})
+			return i.Update(ctx, workload.asClientObject(), &client.UpdateOptions{FieldManager: util.FieldManager})
 		} else {
 			return nil
 		}
@@ -1151,7 +1151,7 @@ func (i *Instrumenter) restartPodsOfReplicaSet(
 	})
 
 	for _, pod := range podsOfReplicaSet {
-		err := i.Client.Delete(ctx, &pod)
+		err := i.Delete(ctx, &pod)
 		if err != nil {
 			logger.Info(
 				fmt.Sprintf(

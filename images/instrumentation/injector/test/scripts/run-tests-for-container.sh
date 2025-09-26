@@ -88,4 +88,3 @@ docker run \
   "$image_name" \
   $docker_run_extra_arguments
 { set +x; } 2> /dev/null
-

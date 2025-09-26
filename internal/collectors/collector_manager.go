@@ -95,12 +95,13 @@ func (m *CollectorManager) ReconcileOpenTelemetryCollector(
 ) (bool, error) {
 	logger := log.FromContext(ctx)
 	if m.resourcesHaveBeenDeletedByOperator.Load() {
-		if trigger == TriggeredByWatchEvent {
+		switch trigger {
+		case TriggeredByWatchEvent:
 			if m.developmentMode {
 				logger.Info("OpenTelemetry collector resources have already been deleted, ignoring reconciliation request.")
 			}
 			return false, nil
-		} else if trigger == TriggeredByDash0ResourceReconcile {
+		case TriggeredByDash0ResourceReconcile:
 			if m.developmentMode {
 				logger.Info("resetting resourcesHaveBeenDeletedByOperator")
 			}

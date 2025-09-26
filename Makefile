@@ -48,7 +48,7 @@ endif
 
 # Set the Operator SDK version to use. By default, what is installed on the system is used.
 # This is useful for CI or a project to utilize a specific version of the operator-sdk toolkit.
-OPERATOR_SDK_VERSION ?= v1.34.1
+OPERATOR_SDK_VERSION ?= v1.41.1
 
 # Use the local Helm chart sources by default, can be overridden with a chart referencing a remote repository,
 # for example dash0-operator/dash0-operator. The remote repository needs to have been installed previously, e.g. via
@@ -87,7 +87,7 @@ FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG ?= $(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_REP
 FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_PULL_POLICY ?= Never
 
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
-ENVTEST_K8S_VERSION = 1.28.3
+ENVTEST_K8S_VERSION = 1.34.1
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -176,7 +176,7 @@ test-e2e:
 	go run github.com/onsi/ginkgo/v2/ginkgo -v test/e2e
 
 GOLANGCI_LINT = $(shell pwd)/bin/golangci-lint
-GOLANGCI_LINT_VERSION ?= v1.64.8
+GOLANGCI_LINT_VERSION ?= v2.5.0
 golangci-lint-install:
 	@[ -f $(GOLANGCI_LINT) ] || { \
 	set -e ;\
@@ -294,7 +294,7 @@ $(eval $@_IMAGE_TAG = $(2))
 $(eval $@_CONTEXT = $(3))
 $(eval $@_DOCKERFILE = $(4))
 if [[ -n "$($@_IMAGE_REPOSITORY)" ]]; then                                                                \
-  if [[ "$($@_IMAGE_REPOSITORY)" = *"/"* ]]; then                                                         \
+  if [[ "$($@_IMAGE_REPOSITORY)" = *"/"* && "$($@_IMAGE_REPOSITORY)" != *"/library/"* ]]; then                                                         \
     echo "not rebuilding the image $($@_IMAGE_REPOSITORY), this looks like a remote image";               \
   else                                                                                                    \
     dockerfile=$($@_DOCKERFILE);                                                                          \
@@ -393,8 +393,8 @@ ENVTEST ?= $(LOCALBIN)/setup-envtest
 HUSKY ?= $(LOCALBIN)/husky
 
 ## Tool Versions
-KUSTOMIZE_VERSION ?= v5.2.1
-CONTROLLER_TOOLS_VERSION ?= v0.14.0
+KUSTOMIZE_VERSION ?= v5.7.1
+CONTROLLER_TOOLS_VERSION ?= v0.19.0
 
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary. If wrong version is installed, it will be removed before downloading.
@@ -496,4 +496,3 @@ husky-install:
 .PHONY: husky-setup-hooks
 husky-setup-hooks: husky-install
 	$(HUSKY) install
-

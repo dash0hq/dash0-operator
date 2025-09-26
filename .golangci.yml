@@ -1,32 +1,22 @@
+version: "2"
+
 run:
-  deadline: 5m
+  timeout: 5m
   allow-parallel-runners: true
 
-issues:
-  # don't skip warning about doc comments
-  # don't exclude the default set of lint
-  exclude-use-default: false
-  # restore some of the defaults
-  # (fill in the rest as needed)
-  exclude-rules:
-    - path: "api/*"
-      linters:
-        - lll
-    - path: "internal/*"
-      linters:
-        - dupl
-        - lll
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
 linters:
-  disable-all: true
+  default: none
   enable:
     - dupl
     - copyloopvar
     - errcheck
     - goconst
     - gocyclo
-    - gofmt
-    - goimports
-    - gosimple
     - govet
     - ineffassign
     - lll
@@ -34,14 +24,24 @@ linters:
     - nakedret
     - prealloc
     - staticcheck
-    - typecheck
     - unconvert
     - unparam
     - unused
   exclusions:
+    rules:
+      - path: "api/*"
+        linters:
+          - lll
+      - path: "internal/*"
+        linters:
+          - dupl
+          - lll
+      - path: "test/*"
+        linters:
+          - staticcheck
     paths:
       - "internal/webhooks/vendored/*"
-linters-settings:
-  errcheck:
-    exclude-functions:
-      - fmt.Fprintf
+  settings:
+    errcheck:
+      exclude-functions:
+        - fmt.Fprintf

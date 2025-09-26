@@ -15,7 +15,7 @@ func validateGrpcExportInsecureFlags(export *common.Export) valid {
 	if export == nil || export.Grpc == nil {
 		return true
 	} else {
-		return !(util.ReadBoolPointerWithDefault(export.Grpc.Insecure, false) &&
-			util.ReadBoolPointerWithDefault(export.Grpc.InsecureSkipVerify, false))
+		return !util.ReadBoolPointerWithDefault(export.Grpc.Insecure, false) ||
+			!util.ReadBoolPointerWithDefault(export.Grpc.InsecureSkipVerify, false)
 	}
 }
