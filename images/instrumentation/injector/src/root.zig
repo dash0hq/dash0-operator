@@ -42,7 +42,7 @@ const InjectorError = error{
 fn initEnviron() callconv(.C) void {
     const libc_library = libc.getLibCInfo() catch |err| {
         if (err == error.UnknownLibCFlavor) {
-            print.printDebug("no LibC found: {}", .{err});
+            print.printMessage("no libc found: {}", .{err});
         } else {
             print.printError("failed to identify libc: {}", .{err});
         }
@@ -57,7 +57,7 @@ fn initEnviron() callconv(.C) void {
     environ_ptr = libc_library.environ_ptr;
 
     updateStdOsEnviron() catch |err| {
-        print.printError("cannot initiailize OTEL_RESOURCE_ATTRIBUTES: {}", .{err});
+        print.printError("initEnviron(): cannot update std.os.environ: {}; ", .{err});
         return;
     };
 
@@ -72,6 +72,31 @@ fn initEnviron() callconv(.C) void {
             print.printError("failed to set modified value for '{s}' to '{s}': errno={}", .{ res_attrs.otel_resource_attributes_env_var_name, modified_resource_attributes, setenv_res });
         }
     }
+}
+
+export fn getenv(name_z: types.NullTerminatedString) ?types.NullTerminatedString {
+    const name = std.mem.sliceTo(name_z, 0);
+
+    updateStdOsEnviron() catch |err| {
+        print.printError("getenv('{s}') -> null; cannot update std.os.environ: {}; ", .{ name, err });
+        return null;
+    };
+
+    // Technically, a process could change the value of `DASH0_INJECTOR_DEBUG` after it started (mostly when we debug
+    // stuff in REPL) so we look up the value every time.
+    print.initDebugFlag();
+
+    print.printDebug("getenv('{s}') called", .{name});
+
+    const res = getEnvValue(name);
+
+    if (res) |value| {
+        print.printDebug("getenv('{s}') -> '{s}'", .{ name, value });
+    } else {
+        print.printDebug("getenv('{s}') -> null", .{name});
+    }
+
+    return res;
 }
 
 fn updateStdOsEnviron() !void {
@@ -96,31 +121,6 @@ fn updateStdOsEnviron() !void {
     } else {
         return error.CannotFindEnvironSymbol;
     }
-}
-
-export fn getenv(name_z: types.NullTerminatedString) ?types.NullTerminatedString {
-    const name = std.mem.sliceTo(name_z, 0);
-
-    updateStdOsEnviron() catch |err| {
-        print.printDebug("getenv('{s}') -> null; could not update std.os.environ: {}; ", .{ name, err });
-        return null;
-    };
-
-    // Technically, a process could change the value of `DASH0_INJECTOR_DEBUG` after it started (mostly when we debug
-    // stuff in REPL) so we look up the value every time.
-    print.initDebugFlag();
-
-    print.printDebug("getenv('{s}') called", .{name});
-
-    const res = getEnvValue(name);
-
-    if (res) |value| {
-        print.printDebug("getenv('{s}') -> '{s}'", .{ name, value });
-    } else {
-        print.printDebug("getenv('{s}') -> null", .{name});
-    }
-
-    return res;
 }
 
 fn getEnvValue(name: [:0]const u8) ?types.NullTerminatedString {

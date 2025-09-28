@@ -9,7 +9,8 @@ const test_util = @import("test_util.zig");
 const types = @import("types.zig");
 
 const proc_self_exe_path: []const u8 = "/proc/self/exe";
-const libc_permissions = "r-xp";
+const readable_executable_private = "r-xp";
+const readable_private = "r--p";
 const dlsym_function_name = "dlsym";
 const setenv_function_name = "setenv";
 const environ_symbol_name = "__environ";
@@ -316,11 +317,22 @@ fn findGlibcMemoryRangeAndLookupMemoryLocations(libc_name_and_flavor: LibCNameAn
         var slices = std.mem.splitAny(u8, line, " ");
         const memory_range = slices.first();
 
+        // TODO the following check for "r-xp" (readable, not writable, executable & private i.e., copy-on-write) should
+        // be correct, but it breaks the injector tests for x86_64/glibc when run on Apple Silicon Macs -- might be some
+        // Rosetta/Hardware emulation snafu. Check which permissions the successful memory range has in that
+        // combination.
         const permissions = slices.next() orelse return error.PermissionsNotFoundInMaps;
-        if (!std.mem.eql(u8, permissions, libc_permissions)) {
+        if (!std.mem.eql(u8, permissions, readable_executable_private) and !std.mem.eql(u8, permissions, readable_private)) {
             // we need the executable memory range
             continue;
         }
+        // As long as the check for x-xp is disabled, at least check that the memory range is readable.
+        // TODO This can be r-xp or r--p, e.g. something like this:
+        // 7fffff267000-7fffff28d000 r--p 00000000 00:c4 285718                     /usr/lib/x86_64-linux-gnu/libc.so.6
+        // if (permissions[0] != 'r') {
+        //     // we need the executable memory range
+        //     continue;
+        // }
 
         if (!std.mem.endsWith(u8, slices.rest(), libc_name_and_flavor.name)) {
             continue;
@@ -335,33 +347,45 @@ fn findGlibcMemoryRangeAndLookupMemoryLocations(libc_name_and_flavor: LibCNameAn
                 start_memory_range,
                 end_memory_range,
             )) |libc_info| {
-                print.printMessage("dlsym lookup via {s} succeeded", .{libc_name_and_flavor.name});
+                print.printMessage("dlsym lookup via {s} succeeded (permissions: {s})", .{ libc_name_and_flavor.name, permissions });
                 return libc_info;
             } else |err| {
-                print.printMessage("dlsym lookup via {s} failed: {}", .{ libc_name_and_flavor.name, err });
+                print.printMessage("dlsym lookup via {s} failed (permissions: {s}): {}", .{ libc_name_and_flavor.name, permissions, err });
                 continue;
             }
         }
     }
 
+    // TODO add the second pass for musl as well!
     // Second pass: try the dlsym lookup for all /proc/self/maps memory rnages with matching permissions.
     try maps_file.seekTo(0);
     buf_reader = std.io.bufferedReader(maps_file.reader());
     in_stream = buf_reader.reader();
     print.printMessage("SECOND PASS OVER /proc/self/maps", .{});
     while (try in_stream.readUntilDelimiterOrEof(&buf, '\n')) |line| {
-        print.printMessage("{s}", .{line});
         // Parse the address range (e.g., "55b3e9c1a000-55b3e9e1a000 ...")
         // address           perms offset  dev   inode   pathname
         // aaaac5560000-aaaaca1fd000 r-xp 00000000 00:11e 8682241 /usr/local/bin/node
         var slices = std.mem.splitAny(u8, line, " ");
         const memory_range = slices.first();
 
-        const permissions = slices.next() orelse return error.PermissionsNotFoundInMaps;
-        if (!std.mem.eql(u8, permissions, libc_permissions)) {
-            // we need the executable memory range
+        // TODO the following check should be correct, but it breaks the instrumentation tests for Debian bullsey base
+        // images, where the second-pass fallback is used.
+        const permissions = slices.next() orelse "?";
+        // if (!std.mem.eql(u8, permissions, libc_permissions)) {
+        //     // we need the executable memory range
+        //     continue;
+        // }
+        if (!std.mem.eql(u8, permissions, readable_executable_private) and !std.mem.eql(u8, permissions, readable_private)) {
             continue;
         }
+        // For now, reduce the permission check to only check whether the range is readble.
+        // TODO this can also be "r--p", e.g. something like this:
+        // 7fffff71e000-7fffff71f000 r--p 00000000 00:c4 246696                     /lib/x86_64-linux-gnu/libdl-2.31.so
+        // if (permissions[0] != 'r') {
+        //     // we need the executable memory range
+        //     continue;
+        // }
 
         if (std.mem.indexOf(u8, memory_range, "-")) |range_separator_index| {
             const start_memory_range_hex = memory_range[0..range_separator_index];
@@ -374,7 +398,15 @@ fn findGlibcMemoryRangeAndLookupMemoryLocations(libc_name_and_flavor: LibCNameAn
                 start_memory_range,
                 end_memory_range,
             )) |libc_info| {
-                print.printMessage("dlsym lookup for /proc/self/maps entry \"{s}\" succeeded", .{slices.rest()});
+                print.printMessage(
+                    "dlsym lookup for /proc/self/maps entry \"{s}\" succeeded for memory range {s}-{s} (permissions {s})",
+                    .{
+                        slices.rest(),
+                        start_memory_range_hex,
+                        end_memory_range_hex,
+                        permissions,
+                    },
+                );
                 return libc_info;
             } else |err| {
                 print.printMessage("dlsym lookup for /proc/self/maps entry \"{s}\" failed: {}", .{ slices.rest(), err });
@@ -451,4 +483,3 @@ fn findSymbolsInMemoryRange(
         .setenv_fn_ptr = setenv_fn_ptr,
     };
 }
-
