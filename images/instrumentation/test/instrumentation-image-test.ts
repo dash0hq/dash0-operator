@@ -614,14 +614,18 @@ function createRunTestCaseTask(
       }
 
       if (testCaseProperties.skip === true) {
-        skippedTestCases++;
+        // Do not count test cases skipped via .testcase.yaml as skipped for the test suite summary, that would fail
+        // CI builds etc.
+        // skippedTestCases++;
         if (!suppressSkippedInfo) {
           log(
             chalk.yellow(
               `${archRuntimeBaseImagePrefix.padEnd(32)}\t- skipping test case "${testCase} because of "skip: true" in ${testCasePropertiesFile}; reason: ${testCaseProperties.skipReason}"`,
             ),
           );
-          summary += chalk.yellow(`\n${archRuntimeBaseImagePrefix.padEnd(32)}\t- ${testCase}: skipped`);
+          summary += chalk.yellow(
+            `\n${archRuntimeBaseImagePrefix.padEnd(32)}\t- ${testCase}: skipped via ${testCasePropertiesFile}`,
+          );
         }
         return;
       }
