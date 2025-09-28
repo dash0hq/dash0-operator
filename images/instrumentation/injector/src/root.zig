@@ -40,7 +40,7 @@ const InjectorError = error{
 };
 
 fn initEnviron() callconv(.C) void {
-    const libc_library = libc.getLibc() catch |err| {
+    const libc_library = libc.getLibCInfo() catch |err| {
         if (err == error.UnknownLibCFlavor) {
             print.printDebug("no LibC found: {}", .{err});
         } else {
@@ -77,7 +77,7 @@ fn initEnviron() callconv(.C) void {
 fn updateStdOsEnviron() !void {
     // Dynamic libs do not get the std.os.environ initialized, see https://github.com/ziglang/zig/issues/4524, so we
     // back fill it. This logic is based on parsing of envp on zig's start. We re-bind the environment every time, as
-    // we cannot ensure it did not change since the previous invocation. Libc implementations can re-allocate the
+    // we cannot ensure it did not change since the previous invocation. libc implementations can re-allocate the
     // environment (http://github.com/lattera/glibc/blob/master/stdlib/setenv.c;
     // https://git.musl-libc.org/cgit/musl/tree/src/env/setenv.c) if the backing memory location is outgrown by apps
     // modifying the environment via setenv or putenv.

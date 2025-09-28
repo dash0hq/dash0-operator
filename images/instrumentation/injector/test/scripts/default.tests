@@ -40,7 +40,7 @@ run_test_case \
 
 # JAVA_TOOL_OPTIONS
 run_test_case \
-  "getenv: adds JAVA_TOOL_OPTIONS if it the Java agent is present" \
+  "getenv: adds JAVA_TOOL_OPTIONS if the Java agent is present" \
   "app" \
   "node index.js java_tool_options" \
   "JAVA_TOOL_OPTIONS: -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar"

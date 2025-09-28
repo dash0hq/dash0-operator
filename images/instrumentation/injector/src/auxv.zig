@@ -3,9 +3,9 @@ const std = @import("std");
 const print = @import("print.zig");
 
 // Need to implement and export this to prevent an unwanted
-// dependency on the `getauxval` symbol from LibC, which will
+// dependency on the `getauxval` symbol from libc, which will
 // not be fulfilled when linking to a process that does not
-// include LibC itself.
+// include libc itself.
 pub export fn getauxval(auxv_type: u32) callconv(.C) usize {
     var auxv_file = std.fs.openFileAbsolute("/proc/self/auxv", .{}) catch |err| {
         print.printError("Failed to open /proc/self/auxv: {}", .{err});
