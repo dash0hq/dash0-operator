@@ -317,22 +317,10 @@ fn findGlibcMemoryRangeAndLookupMemoryLocations(libc_name_and_flavor: LibCNameAn
         var slices = std.mem.splitAny(u8, line, " ");
         const memory_range = slices.first();
 
-        // TODO the following check for "r-xp" (readable, not writable, executable & private i.e., copy-on-write) should
-        // be correct, but it breaks the injector tests for x86_64/glibc when run on Apple Silicon Macs -- might be some
-        // Rosetta/Hardware emulation snafu. Check which permissions the successful memory range has in that
-        // combination.
         const permissions = slices.next() orelse return error.PermissionsNotFoundInMaps;
-        if (!std.mem.eql(u8, permissions, readable_executable_private) and !std.mem.eql(u8, permissions, readable_private)) {
-            // we need the executable memory range
+        if (!memoryRangeHasMatchingPermissions(permissions)) {
             continue;
         }
-        // As long as the check for x-xp is disabled, at least check that the memory range is readable.
-        // TODO This can be r-xp or r--p, e.g. something like this:
-        // 7fffff267000-7fffff28d000 r--p 00000000 00:c4 285718                     /usr/lib/x86_64-linux-gnu/libc.so.6
-        // if (permissions[0] != 'r') {
-        //     // we need the executable memory range
-        //     continue;
-        // }
 
         if (!std.mem.endsWith(u8, slices.rest(), libc_name_and_flavor.name)) {
             continue;
@@ -342,7 +330,7 @@ fn findGlibcMemoryRangeAndLookupMemoryLocations(libc_name_and_flavor: LibCNameAn
         if (std.mem.indexOf(u8, memory_range, "-")) |range_separator_index| {
             const start_memory_range = try std.fmt.parseInt(usize, memory_range[0..range_separator_index], 16);
             const end_memory_range = try std.fmt.parseInt(usize, memory_range[range_separator_index + 1 ..], 16);
-            if (findSymbolsInMemoryRange(
+            if (tryToFindSymbolsInMemoryRange(
                 libc_name_and_flavor,
                 start_memory_range,
                 end_memory_range,
@@ -371,21 +359,10 @@ fn findGlibcMemoryRangeAndLookupMemoryLocations(libc_name_and_flavor: LibCNameAn
 
         // TODO the following check should be correct, but it breaks the instrumentation tests for Debian bullsey base
         // images, where the second-pass fallback is used.
-        const permissions = slices.next() orelse "?";
-        // if (!std.mem.eql(u8, permissions, libc_permissions)) {
-        //     // we need the executable memory range
-        //     continue;
-        // }
-        if (!std.mem.eql(u8, permissions, readable_executable_private) and !std.mem.eql(u8, permissions, readable_private)) {
+        const permissions = slices.next() orelse return error.PermissionsNotFoundInMaps;
+        if (!memoryRangeHasMatchingPermissions(permissions)) {
             continue;
         }
-        // For now, reduce the permission check to only check whether the range is readble.
-        // TODO this can also be "r--p", e.g. something like this:
-        // 7fffff71e000-7fffff71f000 r--p 00000000 00:c4 246696                     /lib/x86_64-linux-gnu/libdl-2.31.so
-        // if (permissions[0] != 'r') {
-        //     // we need the executable memory range
-        //     continue;
-        // }
 
         if (std.mem.indexOf(u8, memory_range, "-")) |range_separator_index| {
             const start_memory_range_hex = memory_range[0..range_separator_index];
@@ -393,7 +370,7 @@ fn findGlibcMemoryRangeAndLookupMemoryLocations(libc_name_and_flavor: LibCNameAn
             print.printMessage("attempting dlsym lookup for {s}-{s}", .{ start_memory_range_hex, end_memory_range_hex });
             const start_memory_range = try std.fmt.parseInt(usize, memory_range[0..range_separator_index], 16);
             const end_memory_range = try std.fmt.parseInt(usize, memory_range[range_separator_index + 1 ..], 16);
-            if (findSymbolsInMemoryRange(
+            if (tryToFindSymbolsInMemoryRange(
                 libc_name_and_flavor,
                 start_memory_range,
                 end_memory_range,
@@ -438,13 +415,18 @@ fn findMuslMemoryRangeAndLookupMemoryLocations(libc_name_and_flavor: LibCNameAnd
         var slices = std.mem.splitAny(u8, line, " ");
         const memory_range = slices.first();
 
+        const permissions = slices.next() orelse return error.PermissionsNotFoundInMaps;
+        if (!memoryRangeHasMatchingPermissions(permissions)) {
+            continue;
+        }
+
         if (std.mem.indexOf(u8, memory_range, "-")) |range_separator_index| {
             const start_memory_range =
                 try std.fmt.parseInt(usize, memory_range[0..range_separator_index], 16);
             if (start_memory_range == at_base) {
                 const memory_range_end =
                     try std.fmt.parseInt(usize, memory_range[range_separator_index + 1 ..], 16);
-                return findSymbolsInMemoryRange(libc_name_and_flavor, at_base, memory_range_end);
+                return tryToFindSymbolsInMemoryRange(libc_name_and_flavor, at_base, memory_range_end);
             }
         }
     }
@@ -452,13 +434,25 @@ fn findMuslMemoryRangeAndLookupMemoryLocations(libc_name_and_flavor: LibCNameAnd
     return error.CannotFindLibcMemoryRange;
 }
 
-fn findSymbolsInMemoryRange(
+fn memoryRangeHasMatchingPermissions(permissions: []const u8) bool {
+    // Intuitively, one might thing that looking for dlsym in /proc/self/maps memory ranges with permission flags r-xp
+    // (readable, not writable, executable & private i.e., copy-on-write) would be enough. But in some scenarios, the
+    // memory range that actually contains dlsym has "r--p" instead. Two known cases:
+    // - Node.js on x86_64/glibc with base image node:22.15.0-bookworm-slim (might only happen when running via
+    //   emulation, i.e. running x86_64 on an Apple Silicon Macs or other arm64 system).
+    // - JVM & Node.js on Debian Bullseye (glibc), in particular when iterating over all /proc/self/maps entries in the
+    //   second pass, because the entry is not named "libc.so.6" but something like "libc-2.31.so".
+    //
+    // Either way, we allow /proc/self/maps entries with both "r-xp" and "r--p" permissions to be inspected for dlsym.
+    return std.mem.eql(u8, permissions, readable_executable_private) or
+        std.mem.eql(u8, permissions, readable_private);
+}
+
+fn tryToFindSymbolsInMemoryRange(
     libc_name_and_flavor: LibCNameAndFlavor,
     start: usize,
     end: usize,
 ) !types.LibCInfo {
-    print.printMessage("Found start and end range: {d} - {d}", .{ start, end });
-
     const linker = elf.ElfDynLib.open(start, end) catch |err| {
         print.printError("cannot open libc mapped range {x}-{x} as Elf library: {}", .{ start, end, err });
         return error.CannotOpenLibc;

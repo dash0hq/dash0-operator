@@ -115,7 +115,7 @@ fn updateStdOsEnviron() !void {
             std.os.environ = &.{};
             return;
         }
-        while (env_array[env_var_count] != null) : (env_var_count += 1) {} // TODO this segfaults directly after a call to clearenv
+        while (env_array[env_var_count] != null) : (env_var_count += 1) {}
 
         std.os.environ = @ptrCast(@constCast(env_array[0..env_var_count]));
     } else {
