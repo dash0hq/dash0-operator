@@ -4,4 +4,14 @@
 alpine:3.21.3
 alpine:3.19.8
 debian:bookworm-slim
-debian:bullseye-slim
+
+# TODO: On debian:bullseye-slim, the injector segfaults for this application, when attempting do look up dlsym in memory
+# range
+#   aaaac9e40000-aaaac9e41000 r--p 00000000 00:2d 404 /home/dash0/instrumentation/test/c/test-cases/otel-resource-attributes-unset/app.o
+# The segfault happens in src/elf.zig, in ElfDynLib#open, when accessing the first element of the dynamic_symbols
+# array, which is the result of:
+#   const dynamic_symbols_ptr: [*]std.elf.Elf64_Dyn = @ptrFromInt(start_memory_range + dynamic_program_header.p_vaddr);
+#   const dynamic_symbols = dynamic_symbols_ptr[0..dynamic_symbols_count];
+# The array has len 30, so it is not just a simple missing out of bounds check. Maybe the pointer cast @ptrFromInt is
+# unsafe?
+# debian:bullseye-slim
