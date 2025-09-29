@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 void expect_getenv_value(char* name, char* expected) {
   char* actual = getenv(name);
@@ -60,13 +62,19 @@ void expect_unsetenv_no_err(const char *arg) {
 }
 
 int main() {
+  pid_t pid = getpid();
+  printf("app.c pid: %d\n", pid);
+
   // See
   // https://sourceware.org/glibc/manual/latest/html_mono/libc.html#Environment-Access
   // for docs on env-related functions.
 
   int err = 0;
 
+  // This variable is not set, libc is supposed to return NULL.
   expect_getenv_null("NON_EXISTING_VAR_1");
+  // This variable is explicitly set to the empty string, getenv is supposed to return "".
+  expect_getenv_value("EMPTY_ENV_VAR", "");
 
   expect_getenv_value("EXISTING_VAR_1", "original-value-1");
   expect_getenv_value("EXISTING_VAR_2", "original-value-2");
