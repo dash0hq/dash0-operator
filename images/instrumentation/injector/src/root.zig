@@ -15,7 +15,7 @@ const types = @import("types.zig");
 const assert = std.debug.assert;
 const expect = std.testing.expect;
 
-const empty_z_string= "\x00";
+const empty_z_string = "\x00";
 
 const init_section_name = switch (builtin.target.os.tag) {
     .linux => ".init_array",

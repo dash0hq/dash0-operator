@@ -8,14 +8,24 @@
 #include <string.h>
 
 int main() {
-  // TODO We do not hook into secure_getenv, so this test case currently fails.
-  // For now, it is disabled by default.
-  fprintf(stderr, "! test case disabled: otel-resource-attributes-unset-secure-getenv\n");
-  return 0;
-
+  // The test for OTEL_RESOURCE_ATTRIBUTES works independently of whether we override getenv, since it relies on the
+  // injector putting the updated OTEL_RESOURCE_ATTRIBUTES into __environ via the setenv call in root.zig/initEnviron.
   char* name = "OTEL_RESOURCE_ATTRIBUTES";
   char* actual = secure_getenv(name);
   char* expected = "k8s.namespace.name=namespace,k8s.pod.name=pod_name,k8s.pod.uid=pod_uid,k8s.container.name=container_name";
+  if (actual == NULL) {
+    fprintf(stderr, "Unexpected value for the environment variable %s --\nexpected: %s\n     was: null\n", name, expected);
+    return 1;
+  }
+  if (strcmp(expected, actual) != 0) {
+    fprintf(stderr, "Unexpected value for the environment variable %s --\nexpected: %s\n     was: %s\n", name, expected, actual);
+    return 1;
+  }
+
+  // Also check NODE_OPTIONS, since that actually depends on the getenv/secure_getenv override.
+  name = "NODE_OPTIONS";
+  actual = secure_getenv(name);
+  expected = "--require /__dash0__/instrumentation/node.js/node_modules/@dash0/opentelemetry";
   if (actual == NULL) {
     fprintf(stderr, "Unexpected value for the environment variable %s --\nexpected: %s\n     was: null\n", name, expected);
     return 1;
