@@ -21,11 +21,16 @@ else
   exit 1
 fi
 
-image_name="dash0-injector-dev-$ARCHITECTURE"
+# Debian/Ubuntu and Alpine base images are supported, for example:
+# - BASE_IMAGE=ubuntu:noble
+# - BASE_IMAGE=debian:11-slim
+# - BASE_IMAGE=alpine:3.22.1
+base_image="${BASE_IMAGE:-ubuntu:noble}"
+image_name="dash0-injector-dev-$ARCHITECTURE-${base_image//[^a-zA-Z0-9_\.\-]/\_}"
 docker rmi -f "$image_name" 2> /dev/null || true
 docker build \
   --platform "$docker_platform" \
-  --build-arg "base_image=${BASE_IMAGE:-ubuntu:noble}" \
+  --build-arg "base_image=$base_image" \
   --build-arg "zig_architecture=${zig_architecture}" \
   -f Dockerfile-injector-development \
   -t "$image_name" \
