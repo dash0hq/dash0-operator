@@ -15,6 +15,8 @@ const types = @import("types.zig");
 const assert = std.debug.assert;
 const expect = std.testing.expect;
 
+const empty_z_string= "\x00";
+
 const init_section_name = switch (builtin.target.os.tag) {
     .linux => ".init_array",
     .macos => "__DATA,__mod_init_func", // needed to run tests locally on macOS
@@ -185,7 +187,7 @@ fn getEnvValue(name: [:0]const u8) ?types.NullTerminatedString {
             // we do not have a good way of distinguishing between environment variables that have been unset vs.
             // environment variables that have been set explicitly to the empty string here. We choose to return the empty
             // string here.
-            return "\x00";
+            return empty_z_string;
         }
         return val.ptr;
     }
