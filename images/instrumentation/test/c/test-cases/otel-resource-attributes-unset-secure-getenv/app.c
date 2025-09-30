@@ -8,8 +8,9 @@
 #include <string.h>
 
 int main() {
-  // The test for OTEL_RESOURCE_ATTRIBUTES works independently of whether we override getenv, since it relies on the
-  // injector putting the updated OTEL_RESOURCE_ATTRIBUTES into __environ via the setenv call in root.zig/initEnviron.
+  // The test for OTEL_RESOURCE_ATTRIBUTES works independently of whether we override secure_getenv, since it relies on
+  // the injector putting the updated OTEL_RESOURCE_ATTRIBUTES into __environ via the setenv call in
+  // root.zig/initEnviron.
   char* name = "OTEL_RESOURCE_ATTRIBUTES";
   char* actual = secure_getenv(name);
   char* expected = "k8s.namespace.name=namespace,k8s.pod.name=pod_name,k8s.pod.uid=pod_uid,k8s.container.name=container_name";

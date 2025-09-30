@@ -78,8 +78,8 @@ pub const ElfDynLib = struct {
             for (dynamic_symbols) |dynamic_symbol| {
                 var p = dynamic_symbol.d_val;
                 if (p < start_memory_range) {
-                    // Musl libc does not update the dynamic symbol locations to add the start memory offset. GNU libc seems to,
-                    // except for DT_VERDEF. We compensate for it.
+                    // Musl libc does not update the dynamic symbol locations to add the start memory offset. GNU libc
+                    // seems to, except for DT_VERDEF. We compensate for it.
                     p += start_memory_range;
                 }
                 switch (dynamic_symbol.d_tag) {

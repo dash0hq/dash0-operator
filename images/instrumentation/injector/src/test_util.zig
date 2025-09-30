@@ -4,6 +4,7 @@
 // **Note: This file must only be imported from *_test.zig files, never from actual production code zig files.**
 
 const std = @import("std");
+const testing = std.testing;
 
 pub const test_allocator: std.mem.Allocator = std.heap.page_allocator;
 
@@ -48,4 +49,11 @@ pub fn setStdCEnviron(env_vars: []const []const u8) anyerror![*:null]?[*:0]u8 {
 /// setStdCEnviron earler, to restore the original environment after the test is done.
 pub fn resetStdCEnviron(original_environ: [*:null]?[*:0]u8) void {
     std.c.environ = original_environ;
+}
+
+pub inline fn expectMemoryRangeLimit(expected: comptime_int, actual: anytype) !void {
+    testing.expectEqual(expected, @intFromPtr(actual)) catch |err| {
+        std.debug.print("expected memory range limit {x:0>8}, found {x:0>8}\n", .{ expected, @intFromPtr(actual) });
+        return err;
+    };
 }

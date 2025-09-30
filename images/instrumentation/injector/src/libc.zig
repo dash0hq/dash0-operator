@@ -8,7 +8,12 @@ const print = @import("print.zig");
 const test_util = @import("test_util.zig");
 const types = @import("types.zig");
 
-const proc_self_exe_path: []const u8 = "/proc/self/exe";
+const proc_self_exe_path = "/proc/self/exe";
+const proc_self_maps_path = "/proc/self/maps";
+
+const glibc_name = "libc.so.6";
+const musl_name_part = "musl";
+
 const readable_executable_private = "r-xp";
 const readable_private = "r--p";
 const dlsym_function_name = "dlsym";
@@ -49,6 +54,8 @@ const AuxiliaryPointers = struct {
     phdr: usize,
 };
 
+pub const DlsymLookupFn = *const fn (LibCNameAndFlavor, usize, usize) @typeInfo(@typeInfo(@TypeOf(tryToFindSymbolsInMemoryRange)).@"fn".return_type.?).error_union.error_set!types.LibCInfo;
+
 /// Look up which libc flavor (glibc vs. musl) is used (if any), and the memory addresses of key libc facilities we need
 /// (i.e. __environ, setenv).
 ///
@@ -61,7 +68,7 @@ const AuxiliaryPointers = struct {
 /// 3. Use the loaded libc's `dlsym` function to look up the symbols we need (setenv, __environ).
 pub fn getLibCInfo() !types.LibCInfo {
     const libc_name_and_flavor = try getLibCNameAndFlavor(proc_self_exe_path);
-    return getLibCMemoryLocations(libc_name_and_flavor);
+    return getLibCMemoryLocations(proc_self_maps_path, libc_name_and_flavor, tryToFindSymbolsInMemoryRange);
 }
 
 ///  Inspect the Elf metadata of the program's executable ("/proc/self/exe"), using the DT_NEEDED symbols for the
@@ -191,7 +198,7 @@ fn getLibCNameAndFlavor(self_exe_path: []const u8) !LibCNameAndFlavor {
 
             const maybe_lib_name = try self_exe_file.reader().readUntilDelimiterOrEofAlloc(std.heap.page_allocator, '\x00', 256);
             if (maybe_lib_name) |lib_name| {
-                if (std.mem.indexOf(u8, lib_name, "musl")) |_| {
+                if (std.mem.indexOf(u8, lib_name, musl_name_part)) |_| {
                     // lib_name exists on the stack, we need to allocate a string with the same content on the heap
                     const lib_name_owned = std.fmt.allocPrintZ(std.heap.page_allocator, "{s}", .{lib_name}) catch |err| {
                         print.printError("Failed to allocate memory for libc name: {}", .{err});
@@ -200,7 +207,7 @@ fn getLibCNameAndFlavor(self_exe_path: []const u8) !LibCNameAndFlavor {
                     return LibCNameAndFlavor{ .flavor = types.LibCFlavor.MUSL, .name = lib_name_owned };
                 }
 
-                if (std.mem.indexOf(u8, lib_name, "libc.so.6")) |_| {
+                if (std.mem.indexOf(u8, lib_name, glibc_name)) |_| {
                     print.printMessage("found a libc at {s}", .{lib_name});
                     // lib_name exists on the stack, we need to allocate a string with the same content on the heap
                     const lib_name_owned = std.fmt.allocPrintZ(std.heap.page_allocator, "{s}", .{lib_name}) catch |err| {
@@ -218,7 +225,7 @@ fn getLibCNameAndFlavor(self_exe_path: []const u8) !LibCNameAndFlavor {
 
 test "getLibCNameAndFlavor: should return libc flavor unknown when file does not exist" {
     const lib_c = try getLibCNameAndFlavor("/does/not/exist");
-    try testing.expectEqual(lib_c.flavor, .UNKNOWN);
+    try testing.expectEqual(.UNKNOWN, lib_c.flavor);
 }
 
 test "getLibCNameAndFlavor: should return libc flavor unknown when file is not an ELF binary" {
@@ -228,37 +235,7 @@ test "getLibCNameAndFlavor: should return libc flavor unknown when file is not a
     const absolute_path_to_binary = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/not-an-elf-binary" });
     defer allocator.free(absolute_path_to_binary);
     const lib_c = try getLibCNameAndFlavor(absolute_path_to_binary);
-    try testing.expectEqual(lib_c.flavor, .UNKNOWN);
-}
-
-test "getLibCNameAndFlavor: should identify musl libc flavor (arm64)" {
-    const allocator = std.heap.page_allocator;
-    const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
-    defer allocator.free(cwd_path);
-    const absolute_path_to_binary = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/dotnet-app-arm64-musl" });
-    defer allocator.free(absolute_path_to_binary);
-    const lib_c = try getLibCNameAndFlavor(absolute_path_to_binary);
-    try testing.expectEqual(lib_c.flavor, .MUSL);
-}
-
-test "getLibCNameAndFlavor: should identify musl libc flavor (x86_64)" {
-    const allocator = std.heap.page_allocator;
-    const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
-    defer allocator.free(cwd_path);
-    const absolute_path_to_binary = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/dotnet-app-x86_64-musl" });
-    defer allocator.free(absolute_path_to_binary);
-    const lib_c = try getLibCNameAndFlavor(absolute_path_to_binary);
-    try testing.expectEqual(lib_c.flavor, .MUSL);
-}
-
-test "getLibCNameAndFlavor: should identify glibc libc flavor (arm64)" {
-    const allocator = std.heap.page_allocator;
-    const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
-    defer allocator.free(cwd_path);
-    const absolute_path_to_binary = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/dotnet-app-arm64-glibc" });
-    defer allocator.free(absolute_path_to_binary);
-    const lib_c = try getLibCNameAndFlavor(absolute_path_to_binary);
-    try testing.expectEqual(lib_c.flavor, .GNU);
+    try testing.expectEqual(.UNKNOWN, lib_c.flavor);
 }
 
 test "getLibCNameAndFlavor: should identify glibc libc flavor (x86_64)" {
@@ -268,29 +245,98 @@ test "getLibCNameAndFlavor: should identify glibc libc flavor (x86_64)" {
     const absolute_path_to_binary = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/dotnet-app-x86_64-glibc" });
     defer allocator.free(absolute_path_to_binary);
     const lib_c = try getLibCNameAndFlavor(absolute_path_to_binary);
-    try testing.expectEqual(lib_c.flavor, .GNU);
+    try testing.expectEqual(.GNU, lib_c.flavor);
 }
 
-fn getLibCMemoryLocations(libc_name_and_flavor: LibCNameAndFlavor) !types.LibCInfo {
+test "getLibCNameAndFlavor: should identify glibc libc flavor (arm64)" {
+    const allocator = std.heap.page_allocator;
+    const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
+    defer allocator.free(cwd_path);
+    const absolute_path_to_binary = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/dotnet-app-arm64-glibc" });
+    defer allocator.free(absolute_path_to_binary);
+    const lib_c = try getLibCNameAndFlavor(absolute_path_to_binary);
+    try testing.expectEqual(.GNU, lib_c.flavor);
+}
+
+test "getLibCNameAndFlavor: should identify musl libc flavor (x86_64)" {
+    const allocator = std.heap.page_allocator;
+    const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
+    defer allocator.free(cwd_path);
+    const absolute_path_to_binary = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/dotnet-app-x86_64-musl" });
+    defer allocator.free(absolute_path_to_binary);
+    const lib_c = try getLibCNameAndFlavor(absolute_path_to_binary);
+    try testing.expectEqual(.MUSL, lib_c.flavor);
+}
+
+test "getLibCNameAndFlavor: should identify musl libc flavor (arm64)" {
+    const allocator = std.heap.page_allocator;
+    const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
+    defer allocator.free(cwd_path);
+    const absolute_path_to_binary = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/dotnet-app-arm64-musl" });
+    defer allocator.free(absolute_path_to_binary);
+    const lib_c = try getLibCNameAndFlavor(absolute_path_to_binary);
+    try testing.expectEqual(.MUSL, lib_c.flavor);
+}
+
+fn getLibCMemoryLocations(self_maps_path: []const u8, libc_name_and_flavor: LibCNameAndFlavor, dlsym_lookup_fn: DlsymLookupFn) !types.LibCInfo {
     switch (libc_name_and_flavor.flavor) {
         types.LibCFlavor.GNU => {
-            return findGlibcMemoryRangeAndLookupMemoryLocations(libc_name_and_flavor);
+            return findGlibcMemoryRangeAndLookupMemoryLocations(
+                self_maps_path,
+                libc_name_and_flavor,
+                dlsym_lookup_fn,
+            );
         },
         types.LibCFlavor.MUSL => {
             const at_base = auxv.getauxval(std.elf.AT_BASE);
             if (at_base == 0) {
-                print.printError("Cannot find AT_BASE in /proc/self/auxv", .{});
+                print.printError("cannot find AT_BASE in /proc/self/auxv", .{});
                 return error.CannotFindAtBase;
             }
-
-            return findMuslMemoryRangeAndLookupMemoryLocations(libc_name_and_flavor, at_base);
+            return findMuslMemoryRangeAndLookupMemoryLocations(
+                self_maps_path,
+                libc_name_and_flavor,
+                at_base,
+                dlsym_lookup_fn,
+            );
         },
         else => return error.UnknownLibCFlavor,
     }
 }
 
-fn findGlibcMemoryRangeAndLookupMemoryLocations(libc_name_and_flavor: LibCNameAndFlavor) !types.LibCInfo {
-    var maps_file = try std.fs.openFileAbsolute("/proc/self/maps", .{});
+test "getLibCMemoryLocations: glibc" {
+    const allocator = std.heap.page_allocator;
+    const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
+    defer allocator.free(cwd_path);
+    const absolute_path_to_maps_file = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/proc-self-maps-glibc-x86_64" });
+    defer allocator.free(absolute_path_to_maps_file);
+
+    __test_find_symbol_actual_attempts = 0;
+    __test_find_symbol_succeed_on_attempt = 2;
+    const libc_info = try getLibCMemoryLocations(
+        absolute_path_to_maps_file,
+        .{
+            .flavor = .GNU,
+            .name = glibc_name,
+        },
+        mockFindSymbolsInMemoryRange,
+    );
+    try testing.expectEqual(.GNU, libc_info.flavor);
+    try testing.expectEqual(glibc_name, libc_info.name);
+    try test_util.expectMemoryRangeLimit(0x7fffff2e6000, libc_info.environ_ptr);
+    try test_util.expectMemoryRangeLimit(0x7fffff43c000, libc_info.setenv_fn_ptr);
+    try testing.expectEqual(__test_find_symbol_succeed_on_attempt, __test_find_symbol_actual_attempts);
+}
+
+// Note: Tests for getLibCMemoryLocations for musl are deliberately omitted because for that we would also have to mock
+// the auxv.getauxval() function. There are tests for findMuslMemoryRangeAndLookupMemoryLocations, see below.
+
+fn findGlibcMemoryRangeAndLookupMemoryLocations(
+    self_maps_path: []const u8,
+    libc_name_and_flavor: LibCNameAndFlavor,
+    dlsym_lookup_fn: DlsymLookupFn,
+) !types.LibCInfo {
+    var maps_file = try std.fs.openFileAbsolute(self_maps_path, .{});
     defer maps_file.close();
 
     // Find the end of the memory range of the linker using /proc/self/maps
@@ -308,7 +354,7 @@ fn findGlibcMemoryRangeAndLookupMemoryLocations(libc_name_and_flavor: LibCNameAn
     // to find dlsym in all memory ranges referenced by and /proc/self/maps entry that has the correct permissions.
     //
     // First pass/fast path: look for an entry in /proc/self/maps that matches the libc name.
-    print.printMessage("FIRST PASS OVER /proc/self/maps, looking for library name {s}", .{libc_name_and_flavor.name});
+    // print.printMessage("FIRST PASS OVER /proc/self/maps, looking for library name {s}", .{libc_name_and_flavor.name});
     while (try in_stream.readUntilDelimiterOrEof(&buf, '\n')) |line| {
         print.printMessage("{s}", .{line});
         // Parse the address range (e.g., "55b3e9c1a000-55b3e9e1a000 ...")
@@ -321,16 +367,20 @@ fn findGlibcMemoryRangeAndLookupMemoryLocations(libc_name_and_flavor: LibCNameAn
         if (!memoryRangeHasMatchingPermissions(permissions)) {
             continue;
         }
-
         if (!std.mem.endsWith(u8, slices.rest(), libc_name_and_flavor.name)) {
             continue;
         }
 
-        print.printMessage("We found a match! -- {s}", .{line});
         if (std.mem.indexOf(u8, memory_range, "-")) |range_separator_index| {
-            const start_memory_range = try std.fmt.parseInt(usize, memory_range[0..range_separator_index], 16);
-            const end_memory_range = try std.fmt.parseInt(usize, memory_range[range_separator_index + 1 ..], 16);
-            if (tryToFindSymbolsInMemoryRange(
+            const start_memory_range_hex = memory_range[0..range_separator_index];
+            const end_memory_range_hex = memory_range[range_separator_index + 1 ..];
+            const start_memory_range = try std.fmt.parseInt(usize, start_memory_range_hex, 16);
+            const end_memory_range = try std.fmt.parseInt(usize, end_memory_range_hex, 16);
+            print.printMessage(
+                "attempting dlsym lookup via {s} (range: {s}-{s}, permissions: {s})",
+                .{ libc_name_and_flavor.name, start_memory_range_hex, end_memory_range_hex, permissions },
+            );
+            if (dlsym_lookup_fn(
                 libc_name_and_flavor,
                 start_memory_range,
                 end_memory_range,
@@ -349,28 +399,36 @@ fn findGlibcMemoryRangeAndLookupMemoryLocations(libc_name_and_flavor: LibCNameAn
     try maps_file.seekTo(0);
     buf_reader = std.io.bufferedReader(maps_file.reader());
     in_stream = buf_reader.reader();
-    print.printMessage("SECOND PASS OVER /proc/self/maps", .{});
+    print.printMessage("\n\nSECOND PASS OVER /proc/self/maps", .{});
     while (try in_stream.readUntilDelimiterOrEof(&buf, '\n')) |line| {
+        print.printMessage("{s}", .{line});
         // Parse the address range (e.g., "55b3e9c1a000-55b3e9e1a000 ...")
         // address           perms offset  dev   inode   pathname
         // aaaac5560000-aaaaca1fd000 r-xp 00000000 00:11e 8682241 /usr/local/bin/node
         var slices = std.mem.splitAny(u8, line, " ");
         const memory_range = slices.first();
 
-        // TODO the following check should be correct, but it breaks the instrumentation tests for Debian bullsey base
-        // images, where the second-pass fallback is used.
         const permissions = slices.next() orelse return error.PermissionsNotFoundInMaps;
         if (!memoryRangeHasMatchingPermissions(permissions)) {
+            continue;
+        }
+        _ = slices.next() orelse continue; // offset
+        _ = slices.next() orelse continue; // device
+        _ = slices.next() orelse continue; // inode
+        if (!pathLooksLikeSharedObject(slices.rest())) {
             continue;
         }
 
         if (std.mem.indexOf(u8, memory_range, "-")) |range_separator_index| {
             const start_memory_range_hex = memory_range[0..range_separator_index];
             const end_memory_range_hex = memory_range[range_separator_index + 1 ..];
-            print.printMessage("attempting dlsym lookup for {s}-{s}", .{ start_memory_range_hex, end_memory_range_hex });
-            const start_memory_range = try std.fmt.parseInt(usize, memory_range[0..range_separator_index], 16);
-            const end_memory_range = try std.fmt.parseInt(usize, memory_range[range_separator_index + 1 ..], 16);
-            if (tryToFindSymbolsInMemoryRange(
+            const start_memory_range = try std.fmt.parseInt(usize, start_memory_range_hex, 16);
+            const end_memory_range = try std.fmt.parseInt(usize, end_memory_range_hex, 16);
+            print.printMessage(
+                "attempting dlsym lookup in second pass for line\n  {s}",
+                .{line},
+            );
+            if (dlsym_lookup_fn(
                 libc_name_and_flavor,
                 start_memory_range,
                 end_memory_range,
@@ -395,12 +453,103 @@ fn findGlibcMemoryRangeAndLookupMemoryLocations(libc_name_and_flavor: LibCNameAn
     return error.CannotFindLibcMemoryRange;
 }
 
-fn findMuslMemoryRangeAndLookupMemoryLocations(libc_name_and_flavor: LibCNameAndFlavor, at_base: usize) !types.LibCInfo {
-    // MuslC bundles the linker and the libc itself in the same .so and
-    // it gets mapped in the same memory region. We can find where the
-    // linker is, and so also the libc, we can look up the AT_BASE location
-    // in /proc/self/auxv.
-    var maps_file = try std.fs.openFileAbsolute("/proc/self/maps", .{});
+test "findGlibcMemoryRangeAndLookupMemoryLocations (x86_64)" {
+    const allocator = std.heap.page_allocator;
+    const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
+    defer allocator.free(cwd_path);
+    const absolute_path_to_maps_file = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/proc-self-maps-glibc-x86_64" });
+    defer allocator.free(absolute_path_to_maps_file);
+
+    __test_find_symbol_actual_attempts = 0;
+    __test_find_symbol_succeed_on_attempt = 2;
+    const libc_info = try findGlibcMemoryRangeAndLookupMemoryLocations(
+        absolute_path_to_maps_file,
+        .{
+            .flavor = .GNU,
+            .name = glibc_name,
+        },
+        mockFindSymbolsInMemoryRange,
+    );
+    try testing.expectEqual(.GNU, libc_info.flavor);
+    try testing.expectEqual(glibc_name, libc_info.name);
+    try test_util.expectMemoryRangeLimit(0x7fffff2e6000, libc_info.environ_ptr);
+    try test_util.expectMemoryRangeLimit(0x7fffff43c000, libc_info.setenv_fn_ptr);
+    try testing.expectEqual(__test_find_symbol_succeed_on_attempt, __test_find_symbol_actual_attempts);
+}
+
+test "findGlibcMemoryRangeAndLookupMemoryLocations: glibc (arm64)" {
+    const allocator = std.heap.page_allocator;
+    const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
+    defer allocator.free(cwd_path);
+    const absolute_path_to_maps_file = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/proc-self-maps-glibc-arm64" });
+    defer allocator.free(absolute_path_to_maps_file);
+
+    __test_find_symbol_actual_attempts = 0;
+    __test_find_symbol_succeed_on_attempt = 1;
+    const libc_info = try findGlibcMemoryRangeAndLookupMemoryLocations(absolute_path_to_maps_file, .{
+        .flavor = .GNU,
+        .name = glibc_name,
+    }, mockFindSymbolsInMemoryRange);
+    try testing.expectEqual(.GNU, libc_info.flavor);
+    try testing.expectEqual(glibc_name, libc_info.name);
+    try test_util.expectMemoryRangeLimit(0xffff88c50000, libc_info.environ_ptr);
+    try test_util.expectMemoryRangeLimit(0xffff88ddb000, libc_info.setenv_fn_ptr);
+    try testing.expectEqual(__test_find_symbol_succeed_on_attempt, __test_find_symbol_actual_attempts);
+}
+
+test "findGlibcMemoryRangeAndLookupMemoryLocations (x86_64, Debian 11)" {
+    const allocator = std.heap.page_allocator;
+    const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
+    defer allocator.free(cwd_path);
+    const absolute_path_to_maps_file = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/proc-self-maps-glibc-x86_64-bullseye" });
+    defer allocator.free(absolute_path_to_maps_file);
+
+    __test_find_symbol_actual_attempts = 0;
+    __test_find_symbol_succeed_on_attempt = 2;
+    const libc_info = try findGlibcMemoryRangeAndLookupMemoryLocations(
+        absolute_path_to_maps_file,
+        .{
+            .flavor = .GNU,
+            .name = glibc_name,
+        },
+        mockFindSymbolsInMemoryRange,
+    );
+    try testing.expectEqual(.GNU, libc_info.flavor);
+    try testing.expectEqual(glibc_name, libc_info.name);
+    try test_util.expectMemoryRangeLimit(0x7fffff2c9000, libc_info.environ_ptr);
+    try test_util.expectMemoryRangeLimit(0x7fffff422000, libc_info.setenv_fn_ptr);
+    try testing.expectEqual(__test_find_symbol_succeed_on_attempt, __test_find_symbol_actual_attempts);
+}
+
+test "findGlibcMemoryRangeAndLookupMemoryLocations: glibc (arm64, Debian 11)" {
+    const allocator = std.heap.page_allocator;
+    const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
+    defer allocator.free(cwd_path);
+    const absolute_path_to_maps_file = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/proc-self-maps-glibc-arm64-bullseye" });
+    defer allocator.free(absolute_path_to_maps_file);
+
+    __test_find_symbol_actual_attempts = 0;
+    __test_find_symbol_succeed_on_attempt = 1;
+    const libc_info = try findGlibcMemoryRangeAndLookupMemoryLocations(absolute_path_to_maps_file, .{
+        .flavor = .GNU,
+        .name = glibc_name,
+    }, mockFindSymbolsInMemoryRange);
+    try testing.expectEqual(.GNU, libc_info.flavor);
+    try testing.expectEqual(glibc_name, libc_info.name);
+    try test_util.expectMemoryRangeLimit(0xffffa72b3000, libc_info.environ_ptr);
+    try test_util.expectMemoryRangeLimit(0xffffa740f000, libc_info.setenv_fn_ptr);
+    try testing.expectEqual(__test_find_symbol_succeed_on_attempt, __test_find_symbol_actual_attempts);
+}
+
+fn findMuslMemoryRangeAndLookupMemoryLocations(
+    self_maps_path: []const u8,
+    libc_name_and_flavor: LibCNameAndFlavor,
+    at_base: usize,
+    dlsym_lookup_fn: DlsymLookupFn,
+) !types.LibCInfo {
+    // musl bundles the linker and the libc itself in the same .so and it gets mapped in the same memory region. We can
+    // find where the linker is, and so also the libc, we can look up the AT_BASE location in /proc/self/auxv.
+    var maps_file = try std.fs.openFileAbsolute(self_maps_path, .{});
     defer maps_file.close();
 
     // Find the end of the memory range of the linker using /proc/self/maps
@@ -421,17 +570,71 @@ fn findMuslMemoryRangeAndLookupMemoryLocations(libc_name_and_flavor: LibCNameAnd
         }
 
         if (std.mem.indexOf(u8, memory_range, "-")) |range_separator_index| {
-            const start_memory_range =
-                try std.fmt.parseInt(usize, memory_range[0..range_separator_index], 16);
+            const start_memory_range_hex = memory_range[0..range_separator_index];
+            const end_memory_range_hex = memory_range[range_separator_index + 1 ..];
+            const start_memory_range = try std.fmt.parseInt(usize, start_memory_range_hex, 16);
             if (start_memory_range == at_base) {
-                const memory_range_end =
-                    try std.fmt.parseInt(usize, memory_range[range_separator_index + 1 ..], 16);
-                return tryToFindSymbolsInMemoryRange(libc_name_and_flavor, at_base, memory_range_end);
+                const memory_range_end = try std.fmt.parseInt(usize, end_memory_range_hex, 16);
+                return dlsym_lookup_fn(
+                    libc_name_and_flavor,
+                    at_base,
+                    memory_range_end,
+                );
             }
         }
     }
 
     return error.CannotFindLibcMemoryRange;
+}
+
+test "findMuslMemoryRangeAndLookupMemoryLocations: musl (x86_64)" {
+    const allocator = std.heap.page_allocator;
+    const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
+    defer allocator.free(cwd_path);
+    const absolute_path_to_maps_file = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/proc-self-maps-musl-x86_64" });
+    defer allocator.free(absolute_path_to_maps_file);
+
+    __test_find_symbol_actual_attempts = 0;
+    __test_find_symbol_succeed_on_attempt = 1;
+    const libc_info = try findMuslMemoryRangeAndLookupMemoryLocations(
+        absolute_path_to_maps_file,
+        .{
+            .flavor = .MUSL,
+            .name = musl_name_part,
+        },
+        0x7ffffff6e000,
+        mockFindSymbolsInMemoryRange,
+    );
+    try testing.expectEqual(.MUSL, libc_info.flavor);
+    try testing.expectEqual(musl_name_part, libc_info.name);
+    try test_util.expectMemoryRangeLimit(0x7ffffff6e000, libc_info.environ_ptr);
+    try test_util.expectMemoryRangeLimit(0x7ffffffc5000, libc_info.setenv_fn_ptr);
+    try testing.expectEqual(__test_find_symbol_succeed_on_attempt, __test_find_symbol_actual_attempts);
+}
+
+test "findMuslMemoryRangeAndLookupMemoryLocations: musl (arm64)" {
+    const allocator = std.heap.page_allocator;
+    const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
+    defer allocator.free(cwd_path);
+    const absolute_path_to_maps_file = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/proc-self-maps-musl-arm64" });
+    defer allocator.free(absolute_path_to_maps_file);
+
+    __test_find_symbol_actual_attempts = 0;
+    __test_find_symbol_succeed_on_attempt = 1;
+    const libc_info = try findMuslMemoryRangeAndLookupMemoryLocations(
+        absolute_path_to_maps_file,
+        .{
+            .flavor = .MUSL,
+            .name = musl_name_part,
+        },
+        0xffffb3670000,
+        mockFindSymbolsInMemoryRange,
+    );
+    try testing.expectEqual(.MUSL, libc_info.flavor);
+    try testing.expectEqual(musl_name_part, libc_info.name);
+    try test_util.expectMemoryRangeLimit(0xffffb3670000, libc_info.environ_ptr);
+    try test_util.expectMemoryRangeLimit(0xffffb3712000, libc_info.setenv_fn_ptr);
+    try testing.expectEqual(__test_find_symbol_succeed_on_attempt, __test_find_symbol_actual_attempts);
 }
 
 fn memoryRangeHasMatchingPermissions(permissions: []const u8) bool {
@@ -444,10 +647,64 @@ fn memoryRangeHasMatchingPermissions(permissions: []const u8) bool {
     //   second pass, because the entry is not named "libc.so.6" but something like "libc-2.31.so".
     //
     // Either way, we allow /proc/self/maps entries with both "r-xp" and "r--p" permissions to be inspected for dlsym.
+
     return std.mem.eql(u8, permissions, readable_executable_private) or
         std.mem.eql(u8, permissions, readable_private);
 }
 
+test "memoryRangeHasMatchingPermissions" {
+    try testing.expect(memoryRangeHasMatchingPermissions("r-xp"));
+    try testing.expect(memoryRangeHasMatchingPermissions("r--p"));
+    try testing.expect(!memoryRangeHasMatchingPermissions("rw-p"));
+    try testing.expect(!memoryRangeHasMatchingPermissions("rwxp"));
+    try testing.expect(!memoryRangeHasMatchingPermissions("rw-s"));
+    try testing.expect(!memoryRangeHasMatchingPermissions("r--s"));
+    try testing.expect(!memoryRangeHasMatchingPermissions("----"));
+}
+
+/// Checks whether the given path ends with something that matches ".so([.0-9]+)?".
+fn pathLooksLikeSharedObject(path: []const u8) bool {
+    if (std.mem.indexOf(u8, path, "dash0_injector.so")) |_| {
+        // never match the injector itself
+        return false;
+    }
+    if (std.mem.lastIndexOf(u8, path, ".so")) |dot_so_index| {
+        const after_dot_so = path[dot_so_index + 3 ..];
+        if (after_dot_so.len == 0) {
+            return true;
+        }
+        if (after_dot_so[0] != '.') {
+            return false;
+        }
+        // after_dot_so starts with a '.', check that the rest is only digits and dots
+        for (after_dot_so[1..]) |c| {
+            if (!std.ascii.isDigit(c) and c != '.') {
+                return false;
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+test "pathLooksLikeSharedObject" {
+    try testing.expect(pathLooksLikeSharedObject("/lib/x86_64-linux-gnu/libc.so.6"));
+    try testing.expect(pathLooksLikeSharedObject("/lib/aarch64-linux-gnu/libc.so.1"));
+    try testing.expect(pathLooksLikeSharedObject("/lib/libc.so"));
+    try testing.expect(pathLooksLikeSharedObject("/usr/lib/libc.so.2.31"));
+    try testing.expect(pathLooksLikeSharedObject("/usr/lib/libc.so.2.31.1"));
+    try testing.expect(!pathLooksLikeSharedObject("/usr/lib/libc.so.backup"));
+    try testing.expect(!pathLooksLikeSharedObject("/path/to/app.o"));
+    try testing.expect(!pathLooksLikeSharedObject("/usr/lib/libc.s"));
+    try testing.expect(!pathLooksLikeSharedObject("/usr/lib/libc.a"));
+    try testing.expect(!pathLooksLikeSharedObject("/usr/lib/libc.dylib"));
+    try testing.expect(!pathLooksLikeSharedObject("/usr/lib/libc.dll"));
+    try testing.expect(!pathLooksLikeSharedObject("/usr/lib/not-a-lib.txt"));
+    try testing.expect(!pathLooksLikeSharedObject("dash0_injector.so"));
+}
+
+/// Reads the given memory range via elf.ElfDynLib.open and tries to lookup the dlsym function via elf.ElfDynLib#lookup.
+/// If that succeeds, proceeds to try to lookup the setenv function and the __environ symbol using dlsym.
 fn tryToFindSymbolsInMemoryRange(
     libc_name_and_flavor: LibCNameAndFlavor,
     start: usize,
@@ -476,4 +733,24 @@ fn tryToFindSymbolsInMemoryRange(
         .environ_ptr = environ_ptr,
         .setenv_fn_ptr = setenv_fn_ptr,
     };
+}
+
+var __test_find_symbol_actual_attempts: u32 = 0;
+var __test_find_symbol_succeed_on_attempt: u32 = 0;
+
+fn mockFindSymbolsInMemoryRange(
+    libc_name_and_flavor: LibCNameAndFlavor,
+    start: usize,
+    end: usize,
+) !types.LibCInfo {
+    __test_find_symbol_actual_attempts += 1;
+    if (__test_find_symbol_actual_attempts == __test_find_symbol_succeed_on_attempt) {
+        return .{
+            .flavor = libc_name_and_flavor.flavor,
+            .name = libc_name_and_flavor.name,
+            .environ_ptr = @ptrFromInt(start),
+            .setenv_fn_ptr = @ptrFromInt(end),
+        };
+    }
+    return error.CannotFindDlSymSymbol;
 }
