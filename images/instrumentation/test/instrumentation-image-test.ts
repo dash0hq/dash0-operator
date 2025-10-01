@@ -543,6 +543,7 @@ async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestIma
         break;
 
       case 'dotnet':
+      case 'distroless-static':
         testCmd = [`/test-cases/${testCase}/app`];
         break;
 

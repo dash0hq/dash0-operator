@@ -569,6 +569,11 @@ fn findMuslMemoryRangeAndLookupMemoryLocations(
             continue;
         }
 
+        // Deliberately not checking for the name of the libarary here, the start_memory_range == at_base check below
+        // will only let one specific memory range got into the dlsym_lookup_fn, so no further checks are necessary.
+        // This is also the reason why there is no second-pass over /proc/self/maps where we try to find the correct
+        // musl memory range by attempting dlsym_lookup_fn for every entry with matching permissions.
+
         if (std.mem.indexOf(u8, memory_range, "-")) |range_separator_index| {
             const start_memory_range_hex = memory_range[0..range_separator_index];
             const end_memory_range_hex = memory_range[range_separator_index + 1 ..];

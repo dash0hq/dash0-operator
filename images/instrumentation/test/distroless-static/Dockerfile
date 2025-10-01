@@ -2,24 +2,27 @@
 # SPDX-License-Identifier: Apache-2.0
 
 ARG instrumentation_image=dash0-instrumentation:latest
-ARG base_image=alpine:3.21.3
+ARG base_image_build=golang:1.25-alpine3.22
+ARG base_image_run=scratch
 
 FROM ${instrumentation_image} AS init
 
-FROM ${base_image}
+FROM --platform=${BUILDPLATFORM} ${base_image_build} AS builder
 
-# Need to repeat ARG base_image since build args are cleared by FROM.
-ARG base_image
-
-RUN case ${base_image} in \
-  *alpine*) apk update && apk upgrade --no-cache && apk add --no-cache build-base ;; \
-  *) apt-get update && apt-get install -y --no-install-recommends build-essential && apt-get clean; \
-esac
-
+WORKDIR /build
 COPY Makefile .
-COPY test-cases /test-cases
+COPY test-cases test-cases
 
-RUN make
+RUN apk update && apk upgrade --no-cache && apk add --no-cache build-base
+
+ARG TARGETOS
+ARG TARGETARCH
+
+RUN make build
+
+FROM ${base_image_run}
+COPY --from=builder /build/test-cases /test-cases
+USER 65532:65532
 
 # The following lines emulate the behavior of running the instrumentation image as a Kubernetes init container and
 # setting the LD_PRELOAD environment variable via the operator.
