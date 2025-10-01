@@ -53,3 +53,6 @@ k8s.pod.network.io
 k8s.pod.uptime
 k8s.volume.available
 k8s.volume.capacity
+k8s.volume.inodes
+k8s.volume.inodes.free
+k8s.volume.inodes.used

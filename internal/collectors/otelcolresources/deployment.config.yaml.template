@@ -6,8 +6,8 @@ extensions:
 receivers:
   k8s_cluster:
     metrics:
-      k8s.container.restarts:
-        enabled: false
+      k8s.container.status.reason:
+        enabled: true
       k8s.namespace.phase:
         enabled: false
 

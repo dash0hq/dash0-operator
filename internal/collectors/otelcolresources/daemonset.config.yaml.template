@@ -74,15 +74,6 @@ receivers:
         enabled: true
       k8s.pod.memory_request_utilization:
         enabled: true
-      # With metric_groups including "volume" (see above), volume metrics will be collected. Disable the inode-related
-      # metrics, and only leave k8s.volume.available and k8s.volume.capacity enabled (they are enabled by default if
-      # the metric group volume is explicitly enabled via metric_groups).
-      k8s.volume.inodes:
-        enabled: false
-      k8s.volume.inodes.free:
-        enabled: false
-      k8s.volume.inodes.used:
-        enabled: false
 
 {{- end }}{{/* if .KubeletStatsReceiverConfig.Enabled */}}
 
