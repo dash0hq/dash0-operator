@@ -7,6 +7,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <dlfcn.h>
 
 extern char **__environ;
 
@@ -118,6 +119,13 @@ void expect_unsetenv_no_err(const char *arg) {
 }
 
 int main() {
+  // We need to include dlfcn.h and use at least one symbol from dlfcn.h, otherwise, on systems where libc-xxx.so
+  // (providing almost all libc things) and libdl-xxx.so (providing only dlopen, dlcose, dlsysm and dlerror) are
+  // actually two different shared libraries (which is the case on some older distributions, like Debian bullseye), the
+  // dynamic linker might decide to not load libdl-xxx.so at all, hence the dlsym lookup in the injector would not
+  // succeed.
+  dlerror();
+
   pid_t pid = getpid();
   printf("app.c pid: %d\n", pid);
 

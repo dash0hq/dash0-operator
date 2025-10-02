@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dlfcn.h>
 
 void expect_getenv_value(char* name, char* expected) {
   char* actual = getenv(name);
@@ -42,6 +43,13 @@ void expect_setenv_no_err(const char *name, const char *value, int replace) {
 }
 
 int main() {
+  // We need to include dlfcn.h and use at least one symbol from dlfcn.h, otherwise, on systems where libc-xxx.so
+  // (providing almost all libc things) and libdl-xxx.so (providing only dlopen, dlcose, dlsysm and dlerror) are
+  // actually two different shared libraries (which is the case on some older distributions, like Debian bullseye), the
+  // dynamic linker might decide to not load libdl-xxx.so at all, hence the dlsym lookup in the injector would not
+  // succeed.
+  dlerror();
+
   int number_of_calls = 5000;
 
   // putenv

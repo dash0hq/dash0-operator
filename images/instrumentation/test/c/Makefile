@@ -3,6 +3,7 @@
 
 ARCH := $(shell uname -m)
 CFLAGS ?= -Wall -Werror -Wextra -O2
+LDFLAGS ?= -ldl
 
 TEST_CASES_DIR := test-cases
 SRC_EXT := c
@@ -28,5 +29,5 @@ clean:
 build: $(TEST_CASE_NAMES)
 
 $(TEST_CASE_NAMES):
-	$(CC) $(CFLAGS) $(TEST_CASES_DIR)/$@/app.c -o $(TEST_CASES_DIR)/$@/app.o $(DEBUG) $^
+	$(CC) $(CFLAGS) $(TEST_CASES_DIR)/$@/app.c -o $(TEST_CASES_DIR)/$@/app.o $(DEBUG) $(LDFLAGS) $^
 	@chmod 755 $(TEST_CASES_DIR)/$@/app.o
