@@ -15,6 +15,7 @@ const glibc_name = "libc.so.6";
 const musl_name_part = "musl";
 
 const readable_executable_private = "r-xp";
+const readable_private = "r--p";
 const dlsym_function_name = "dlsym";
 const setenv_function_name = "setenv";
 const environ_symbol_name = "__environ";
@@ -452,93 +453,93 @@ fn findGlibcMemoryRangeAndLookupMemoryLocations(
     return error.CannotFindLibcMemoryRange;
 }
 
-// test "findGlibcMemoryRangeAndLookupMemoryLocations (x86_64)" {
-//     const allocator = std.heap.page_allocator;
-//     const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
-//     defer allocator.free(cwd_path);
-//     const absolute_path_to_maps_file = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/proc-self-maps-glibc-x86_64" });
-//     defer allocator.free(absolute_path_to_maps_file);
-//
-//     __test_find_symbol_actual_attempts = 0;
-//     __test_find_symbol_succeed_on_attempt = 2;
-//     const libc_info = try findGlibcMemoryRangeAndLookupMemoryLocations(
-//         absolute_path_to_maps_file,
-//         .{
-//             .flavor = .GNU,
-//             .name = glibc_name,
-//         },
-//         mockFindSymbolsInMemoryRange,
-//     );
-//     try testing.expectEqual(.GNU, libc_info.flavor);
-//     try testing.expectEqual(glibc_name, libc_info.name);
-//     try test_util.expectMemoryRangeLimit(0x7fffff2e6000, libc_info.environ_ptr);
-//     try test_util.expectMemoryRangeLimit(0x7fffff43c000, libc_info.setenv_fn_ptr);
-//     try testing.expectEqual(__test_find_symbol_succeed_on_attempt, __test_find_symbol_actual_attempts);
-// }
-//
-// test "findGlibcMemoryRangeAndLookupMemoryLocations: glibc (arm64)" {
-//     const allocator = std.heap.page_allocator;
-//     const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
-//     defer allocator.free(cwd_path);
-//     const absolute_path_to_maps_file = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/proc-self-maps-glibc-arm64" });
-//     defer allocator.free(absolute_path_to_maps_file);
-//
-//     __test_find_symbol_actual_attempts = 0;
-//     __test_find_symbol_succeed_on_attempt = 1;
-//     const libc_info = try findGlibcMemoryRangeAndLookupMemoryLocations(absolute_path_to_maps_file, .{
-//         .flavor = .GNU,
-//         .name = glibc_name,
-//     }, mockFindSymbolsInMemoryRange);
-//     try testing.expectEqual(.GNU, libc_info.flavor);
-//     try testing.expectEqual(glibc_name, libc_info.name);
-//     try test_util.expectMemoryRangeLimit(0xffff88c50000, libc_info.environ_ptr);
-//     try test_util.expectMemoryRangeLimit(0xffff88ddb000, libc_info.setenv_fn_ptr);
-//     try testing.expectEqual(__test_find_symbol_succeed_on_attempt, __test_find_symbol_actual_attempts);
-// }
-//
-// test "findGlibcMemoryRangeAndLookupMemoryLocations (x86_64, Debian 11)" {
-//     const allocator = std.heap.page_allocator;
-//     const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
-//     defer allocator.free(cwd_path);
-//     const absolute_path_to_maps_file = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/proc-self-maps-glibc-x86_64-bullseye" });
-//     defer allocator.free(absolute_path_to_maps_file);
-//
-//     __test_find_symbol_actual_attempts = 0;
-//     __test_find_symbol_succeed_on_attempt = 2;
-//     const libc_info = try findGlibcMemoryRangeAndLookupMemoryLocations(
-//         absolute_path_to_maps_file,
-//         .{
-//             .flavor = .GNU,
-//             .name = glibc_name,
-//         },
-//         mockFindSymbolsInMemoryRange,
-//     );
-//     try testing.expectEqual(.GNU, libc_info.flavor);
-//     try testing.expectEqual(glibc_name, libc_info.name);
-//     try test_util.expectMemoryRangeLimit(0x7fffff2c9000, libc_info.environ_ptr);
-//     try test_util.expectMemoryRangeLimit(0x7fffff422000, libc_info.setenv_fn_ptr);
-//     try testing.expectEqual(__test_find_symbol_succeed_on_attempt, __test_find_symbol_actual_attempts);
-// }
-//
-// test "findGlibcMemoryRangeAndLookupMemoryLocations: glibc (arm64, Debian 11)" {
-//     const allocator = std.heap.page_allocator;
-//     const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
-//     defer allocator.free(cwd_path);
-//     const absolute_path_to_maps_file = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/proc-self-maps-glibc-arm64-bullseye" });
-//     defer allocator.free(absolute_path_to_maps_file);
-//
-//     __test_find_symbol_actual_attempts = 0;
-//     __test_find_symbol_succeed_on_attempt = 1;
-//     const libc_info = try findGlibcMemoryRangeAndLookupMemoryLocations(absolute_path_to_maps_file, .{
-//         .flavor = .GNU,
-//         .name = glibc_name,
-//     }, mockFindSymbolsInMemoryRange);
-//     try testing.expectEqual(.GNU, libc_info.flavor);
-//     try testing.expectEqual(glibc_name, libc_info.name);
-//     try test_util.expectMemoryRangeLimit(0xffffa72b3000, libc_info.environ_ptr);
-//     try test_util.expectMemoryRangeLimit(0xffffa740f000, libc_info.setenv_fn_ptr);
-//     try testing.expectEqual(__test_find_symbol_succeed_on_attempt, __test_find_symbol_actual_attempts);
-// }
+test "findGlibcMemoryRangeAndLookupMemoryLocations (x86_64)" {
+    const allocator = std.heap.page_allocator;
+    const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
+    defer allocator.free(cwd_path);
+    const absolute_path_to_maps_file = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/proc-self-maps-glibc-x86_64" });
+    defer allocator.free(absolute_path_to_maps_file);
+
+    __test_find_symbol_actual_attempts = 0;
+    __test_find_symbol_succeed_on_attempt = 2;
+    const libc_info = try findGlibcMemoryRangeAndLookupMemoryLocations(
+        absolute_path_to_maps_file,
+        .{
+            .flavor = .GNU,
+            .name = glibc_name,
+        },
+        mockFindSymbolsInMemoryRange,
+    );
+    try testing.expectEqual(.GNU, libc_info.flavor);
+    try testing.expectEqual(glibc_name, libc_info.name);
+    try test_util.expectMemoryRangeLimit(0x7fffff2e6000, libc_info.environ_ptr);
+    try test_util.expectMemoryRangeLimit(0x7fffff43c000, libc_info.setenv_fn_ptr);
+    try testing.expectEqual(__test_find_symbol_succeed_on_attempt, __test_find_symbol_actual_attempts);
+}
+
+test "findGlibcMemoryRangeAndLookupMemoryLocations: glibc (arm64)" {
+    const allocator = std.heap.page_allocator;
+    const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
+    defer allocator.free(cwd_path);
+    const absolute_path_to_maps_file = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/proc-self-maps-glibc-arm64" });
+    defer allocator.free(absolute_path_to_maps_file);
+
+    __test_find_symbol_actual_attempts = 0;
+    __test_find_symbol_succeed_on_attempt = 1;
+    const libc_info = try findGlibcMemoryRangeAndLookupMemoryLocations(absolute_path_to_maps_file, .{
+        .flavor = .GNU,
+        .name = glibc_name,
+    }, mockFindSymbolsInMemoryRange);
+    try testing.expectEqual(.GNU, libc_info.flavor);
+    try testing.expectEqual(glibc_name, libc_info.name);
+    try test_util.expectMemoryRangeLimit(0xffff88c50000, libc_info.environ_ptr);
+    try test_util.expectMemoryRangeLimit(0xffff88ddb000, libc_info.setenv_fn_ptr);
+    try testing.expectEqual(__test_find_symbol_succeed_on_attempt, __test_find_symbol_actual_attempts);
+}
+
+test "findGlibcMemoryRangeAndLookupMemoryLocations (x86_64, Debian 11)" {
+    const allocator = std.heap.page_allocator;
+    const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
+    defer allocator.free(cwd_path);
+    const absolute_path_to_maps_file = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/proc-self-maps-glibc-x86_64-bullseye" });
+    defer allocator.free(absolute_path_to_maps_file);
+
+    __test_find_symbol_actual_attempts = 0;
+    __test_find_symbol_succeed_on_attempt = 2;
+    const libc_info = try findGlibcMemoryRangeAndLookupMemoryLocations(
+        absolute_path_to_maps_file,
+        .{
+            .flavor = .GNU,
+            .name = glibc_name,
+        },
+        mockFindSymbolsInMemoryRange,
+    );
+    try testing.expectEqual(.GNU, libc_info.flavor);
+    try testing.expectEqual(glibc_name, libc_info.name);
+    try test_util.expectMemoryRangeLimit(0x7fffff2c9000, libc_info.environ_ptr);
+    try test_util.expectMemoryRangeLimit(0x7fffff422000, libc_info.setenv_fn_ptr);
+    try testing.expectEqual(__test_find_symbol_succeed_on_attempt, __test_find_symbol_actual_attempts);
+}
+
+test "findGlibcMemoryRangeAndLookupMemoryLocations: glibc (arm64, Debian 11)" {
+    const allocator = std.heap.page_allocator;
+    const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
+    defer allocator.free(cwd_path);
+    const absolute_path_to_maps_file = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/proc-self-maps-glibc-arm64-bullseye" });
+    defer allocator.free(absolute_path_to_maps_file);
+
+    __test_find_symbol_actual_attempts = 0;
+    __test_find_symbol_succeed_on_attempt = 1;
+    const libc_info = try findGlibcMemoryRangeAndLookupMemoryLocations(absolute_path_to_maps_file, .{
+        .flavor = .GNU,
+        .name = glibc_name,
+    }, mockFindSymbolsInMemoryRange);
+    try testing.expectEqual(.GNU, libc_info.flavor);
+    try testing.expectEqual(glibc_name, libc_info.name);
+    try test_util.expectMemoryRangeLimit(0xffffa72b3000, libc_info.environ_ptr);
+    try test_util.expectMemoryRangeLimit(0xffffa740f000, libc_info.setenv_fn_ptr);
+    try testing.expectEqual(__test_find_symbol_succeed_on_attempt, __test_find_symbol_actual_attempts);
+}
 
 fn findMuslMemoryRangeAndLookupMemoryLocations(
     self_maps_path: []const u8,
@@ -591,80 +592,84 @@ fn findMuslMemoryRangeAndLookupMemoryLocations(
     return error.CannotFindLibcMemoryRange;
 }
 
-// test "findMuslMemoryRangeAndLookupMemoryLocations: musl (x86_64)" {
-//     const allocator = std.heap.page_allocator;
-//     const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
-//     defer allocator.free(cwd_path);
-//     const absolute_path_to_maps_file = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/proc-self-maps-musl-x86_64" });
-//     defer allocator.free(absolute_path_to_maps_file);
-//
-//     __test_find_symbol_actual_attempts = 0;
-//     __test_find_symbol_succeed_on_attempt = 1;
-//     const libc_info = try findMuslMemoryRangeAndLookupMemoryLocations(
-//         absolute_path_to_maps_file,
-//         .{
-//             .flavor = .MUSL,
-//             .name = musl_name_part,
-//         },
-//         0x7ffffff6e000,
-//         mockFindSymbolsInMemoryRange,
-//     );
-//     try testing.expectEqual(.MUSL, libc_info.flavor);
-//     try testing.expectEqual(musl_name_part, libc_info.name);
-//     try test_util.expectMemoryRangeLimit(0x7ffffff6e000, libc_info.environ_ptr);
-//     try test_util.expectMemoryRangeLimit(0x7ffffffc5000, libc_info.setenv_fn_ptr);
-//     try testing.expectEqual(__test_find_symbol_succeed_on_attempt, __test_find_symbol_actual_attempts);
-// }
-//
-// test "findMuslMemoryRangeAndLookupMemoryLocations: musl (arm64)" {
-//     const allocator = std.heap.page_allocator;
-//     const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
-//     defer allocator.free(cwd_path);
-//     const absolute_path_to_maps_file = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/proc-self-maps-musl-arm64" });
-//     defer allocator.free(absolute_path_to_maps_file);
-//
-//     __test_find_symbol_actual_attempts = 0;
-//     __test_find_symbol_succeed_on_attempt = 1;
-//     const libc_info = try findMuslMemoryRangeAndLookupMemoryLocations(
-//         absolute_path_to_maps_file,
-//         .{
-//             .flavor = .MUSL,
-//             .name = musl_name_part,
-//         },
-//         0xffffb3670000,
-//         mockFindSymbolsInMemoryRange,
-//     );
-//     try testing.expectEqual(.MUSL, libc_info.flavor);
-//     try testing.expectEqual(musl_name_part, libc_info.name);
-//     try test_util.expectMemoryRangeLimit(0xffffb3670000, libc_info.environ_ptr);
-//     try test_util.expectMemoryRangeLimit(0xffffb3712000, libc_info.setenv_fn_ptr);
-//     try testing.expectEqual(__test_find_symbol_succeed_on_attempt, __test_find_symbol_actual_attempts);
-// }
+test "findMuslMemoryRangeAndLookupMemoryLocations: musl (x86_64)" {
+    const allocator = std.heap.page_allocator;
+    const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
+    defer allocator.free(cwd_path);
+    const absolute_path_to_maps_file = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/proc-self-maps-musl-x86_64" });
+    defer allocator.free(absolute_path_to_maps_file);
 
+    __test_find_symbol_actual_attempts = 0;
+    __test_find_symbol_succeed_on_attempt = 1;
+    const libc_info = try findMuslMemoryRangeAndLookupMemoryLocations(
+        absolute_path_to_maps_file,
+        .{
+            .flavor = .MUSL,
+            .name = musl_name_part,
+        },
+        0x7ffffff6e000,
+        mockFindSymbolsInMemoryRange,
+    );
+    try testing.expectEqual(.MUSL, libc_info.flavor);
+    try testing.expectEqual(musl_name_part, libc_info.name);
+    try test_util.expectMemoryRangeLimit(0x7ffffff6e000, libc_info.environ_ptr);
+    try test_util.expectMemoryRangeLimit(0x7ffffffc5000, libc_info.setenv_fn_ptr);
+    try testing.expectEqual(__test_find_symbol_succeed_on_attempt, __test_find_symbol_actual_attempts);
+}
+
+test "findMuslMemoryRangeAndLookupMemoryLocations: musl (arm64)" {
+    const allocator = std.heap.page_allocator;
+    const cwd_path = try std.fs.cwd().realpathAlloc(allocator, ".");
+    defer allocator.free(cwd_path);
+    const absolute_path_to_maps_file = try std.fs.path.resolve(allocator, &.{ cwd_path, "unit-test-assets/proc-self-maps-musl-arm64" });
+    defer allocator.free(absolute_path_to_maps_file);
+
+    __test_find_symbol_actual_attempts = 0;
+    __test_find_symbol_succeed_on_attempt = 1;
+    const libc_info = try findMuslMemoryRangeAndLookupMemoryLocations(
+        absolute_path_to_maps_file,
+        .{
+            .flavor = .MUSL,
+            .name = musl_name_part,
+        },
+        0xffffb3670000,
+        mockFindSymbolsInMemoryRange,
+    );
+    try testing.expectEqual(.MUSL, libc_info.flavor);
+    try testing.expectEqual(musl_name_part, libc_info.name);
+    try test_util.expectMemoryRangeLimit(0xffffb3670000, libc_info.environ_ptr);
+    try test_util.expectMemoryRangeLimit(0xffffb3712000, libc_info.setenv_fn_ptr);
+    try testing.expectEqual(__test_find_symbol_succeed_on_attempt, __test_find_symbol_actual_attempts);
+}
+
+/// Checks whether a given permission string (e.g. "r-xp") matches the permissions signature of a memory region that
+/// might potentially contain the dlsym symbol.
 fn memoryRangeHasMatchingPermissions(permissions: []const u8) bool {
     // Intuitively, one might thing that looking for dlsym in /proc/self/maps memory ranges with permission flags r-xp
     // (readable, not writable, executable & private i.e., copy-on-write) would be enough. But in some scenarios, the
     // memory range that actually contains dlsym has "r--p" instead. Two known cases:
-    // - Node.js on x86_64/glibc with base image node:22.15.0-bookworm-slim (might only happen when running via
-    //   emulation, i.e. running x86_64 on an Apple Silicon Macs or other arm64 system).
+    // - Node.js on x86_64/glibc with base image node:22.15.0-bookworm-slim.
     // - JVM & Node.js on Debian Bullseye (glibc), in particular when iterating over all /proc/self/maps entries in the
-    //   second pass, because the entry is not named "libc.so.6" but something like "libc-2.31.so".
+    //   second pass (which is necessary because the maps entry is not named "libc.so.6", but dlsym is mapped from the
+    //   shared object "libdl-2.31.so" instead).
     //
-    // Either way, we allow /proc/self/maps entries with both "r-xp" and "r--p" permissions to be inspected for dlsym.
-
-    // TODO can we remove readable_private from allowed permissions again? Try. If not, get to the bottom of it.
-    return std.mem.eql(u8, permissions, readable_executable_private);
+    // Apparently allowing entries in /proc/self/maps with "r--p" permissions can be required for looking up dlsym,
+    // because the _symbols_ (i.e., the names and metadata about functions) exist in the binary's read-only sections;
+    // specifically, in the ELF file's .rodata and symbol tables, which are not part of the executable segment, even if
+    // the actual executable code for those functions then resides in the "r-xp" segment.
+    return std.mem.eql(u8, permissions, readable_executable_private) or
+        std.mem.eql(u8, permissions, readable_private);
 }
 
-// test "memoryRangeHasMatchingPermissions" {
-//     try testing.expect(memoryRangeHasMatchingPermissions("r-xp"));
-//     try testing.expect(memoryRangeHasMatchingPermissions("r--p"));
-//     try testing.expect(!memoryRangeHasMatchingPermissions("rw-p"));
-//     try testing.expect(!memoryRangeHasMatchingPermissions("rwxp"));
-//     try testing.expect(!memoryRangeHasMatchingPermissions("rw-s"));
-//     try testing.expect(!memoryRangeHasMatchingPermissions("r--s"));
-//     try testing.expect(!memoryRangeHasMatchingPermissions("----"));
-// }
+test "memoryRangeHasMatchingPermissions" {
+    try testing.expect(memoryRangeHasMatchingPermissions("r-xp"));
+    try testing.expect(memoryRangeHasMatchingPermissions("r--p"));
+    try testing.expect(!memoryRangeHasMatchingPermissions("rw-p"));
+    try testing.expect(!memoryRangeHasMatchingPermissions("rwxp"));
+    try testing.expect(!memoryRangeHasMatchingPermissions("rw-s"));
+    try testing.expect(!memoryRangeHasMatchingPermissions("r--s"));
+    try testing.expect(!memoryRangeHasMatchingPermissions("----"));
+}
 
 /// Checks whether the given path ends with something that matches ".so([.0-9]+)?".
 fn pathLooksLikeSharedObject(path: []const u8) bool {
