@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 ARG instrumentation_image=dash0-instrumentation:latest
-ARG base_image_build=alpine:3.22
+ARG base_image_build=debian:bookworm-slim
 ARG base_image_run=gcr.io/distroless/cc-debian12
 
 FROM ${instrumentation_image} AS init
@@ -18,6 +18,8 @@ esac
 WORKDIR /build
 COPY Makefile .
 COPY test-cases test-cases
+
+RUN make
 
 FROM ${base_image_run}
 COPY --from=builder /build/test-cases /test-cases
