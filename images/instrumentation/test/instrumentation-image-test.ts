@@ -539,6 +539,7 @@ async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestIma
     let testCmd: string[];
     switch (runtime) {
       case 'c':
+      case 'distroless-with-libc':
         testCmd = [`/test-cases/${testCase}/app.o`];
         break;
 
@@ -555,6 +556,10 @@ async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestIma
           testCmd.push(...props);
         }
         testCmd.push('-Dotel.instrumentation.common.default-enabled=false', `/test-cases/${testCase}/app.jar`);
+        break;
+
+      case 'python':
+        testCmd = ['python', `/test-cases/${testCase}/app.py`];
         break;
 
       case 'node':

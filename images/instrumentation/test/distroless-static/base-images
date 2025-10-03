@@ -2,5 +2,4 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # one pair of build and run base images per line
-# golang:1.25-alpine3.22,scratch
-golang:1.25-alpine3.22,alpine:3.22
+golang:1.25-alpine3.22,scratch

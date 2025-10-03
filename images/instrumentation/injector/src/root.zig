@@ -50,7 +50,7 @@ fn initEnviron() callconv(.C) void {
         }
         return;
     };
-    print.printDebug("identified {s} LibC loaded from {s}", .{ switch (libc_library.flavor) {
+    print.printDebug("identified {s} libc loaded from {s}", .{ switch (libc_library.flavor) {
         types.LibCFlavor.GNU => "GNU",
         types.LibCFlavor.MUSL => "musl",
         else => "unknown",

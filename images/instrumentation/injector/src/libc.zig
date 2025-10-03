@@ -208,7 +208,7 @@ fn getLibCNameAndFlavor(self_exe_path: []const u8) !LibCNameAndFlavor {
                 }
 
                 if (std.mem.indexOf(u8, lib_name, glibc_name)) |_| {
-                    print.printMessage("found a libc at {s}", .{lib_name});
+                    print.printDebug("found a libc: {s}", .{lib_name});
                     // lib_name exists on the stack, we need to allocate a string with the same content on the heap
                     const lib_name_owned = std.fmt.allocPrintZ(std.heap.page_allocator, "{s}", .{lib_name}) catch |err| {
                         print.printError("Failed to allocate memory for libc name: {}", .{err});
@@ -354,9 +354,7 @@ fn findGlibcMemoryRangeAndLookupMemoryLocations(
     // to find dlsym in all memory ranges referenced by and /proc/self/maps entry that has the correct permissions.
     //
     // First pass/fast path: look for an entry in /proc/self/maps that matches the libc name.
-    // print.printMessage("FIRST PASS OVER /proc/self/maps, looking for library name {s}", .{libc_name_and_flavor.name});
     while (try in_stream.readUntilDelimiterOrEof(&buf, '\n')) |line| {
-        print.printMessage("{s}", .{line});
         // Parse the address range (e.g., "55b3e9c1a000-55b3e9e1a000 ...")
         // address           perms offset  dev   inode   pathname
         // aaaac5560000-aaaaca1fd000 r-xp 00000000 00:11e 8682241 /usr/local/bin/node
@@ -376,35 +374,36 @@ fn findGlibcMemoryRangeAndLookupMemoryLocations(
             const end_memory_range_hex = memory_range[range_separator_index + 1 ..];
             const start_memory_range = try std.fmt.parseInt(usize, start_memory_range_hex, 16);
             const end_memory_range = try std.fmt.parseInt(usize, end_memory_range_hex, 16);
-            print.printMessage(
-                "attempting dlsym lookup via {s} (range: {s}-{s}, permissions: {s})",
-                .{ libc_name_and_flavor.name, start_memory_range_hex, end_memory_range_hex, permissions },
+            print.printDebug(
+                "attempting dlsym lookup via libc name {s} for {s} line: {s}",
+                .{ libc_name_and_flavor.name, self_maps_path, line },
             );
             if (dlsym_lookup_fn(
                 libc_name_and_flavor,
                 start_memory_range,
                 end_memory_range,
             )) |libc_info| {
-                print.printMessage("dlsym lookup via {s} succeeded (permissions: {s})", .{ libc_name_and_flavor.name, permissions });
+                print.printDebug(
+                    "dlsym lookup via libc name {s} succeeded for {s} line: {s}",
+                    .{ libc_name_and_flavor.name, self_maps_path, line },
+                );
                 return libc_info;
             } else |err| {
-                print.printMessage("dlsym lookup via {s} failed (permissions: {s}): {}", .{ libc_name_and_flavor.name, permissions, err });
+                print.printDebug(
+                    "dlsym lookup via libc name {s} failed for {s} line: {s} -- {}",
+                    .{ libc_name_and_flavor.name, self_maps_path, line, err },
+                );
                 continue;
             }
         }
     }
 
-    // TODO add the second pass for musl as well!
-    // Second pass: try the dlsym lookup for all /proc/self/maps memory rnages with matching permissions.
+    // Second pass: try the dlsym lookup for all /proc/self/maps memory ranges with matching permissions and file names
+    // that could be shared objects.
     try maps_file.seekTo(0);
     buf_reader = std.io.bufferedReader(maps_file.reader());
     in_stream = buf_reader.reader();
-    print.printMessage("\n\nSECOND PASS OVER /proc/self/maps", .{});
     while (try in_stream.readUntilDelimiterOrEof(&buf, '\n')) |line| {
-        print.printMessage("{s}", .{line});
-        // Parse the address range (e.g., "55b3e9c1a000-55b3e9e1a000 ...")
-        // address           perms offset  dev   inode   pathname
-        // aaaac5560000-aaaaca1fd000 r-xp 00000000 00:11e 8682241 /usr/local/bin/node
         var slices = std.mem.splitAny(u8, line, " ");
         const memory_range = slices.first();
 
@@ -424,27 +423,25 @@ fn findGlibcMemoryRangeAndLookupMemoryLocations(
             const end_memory_range_hex = memory_range[range_separator_index + 1 ..];
             const start_memory_range = try std.fmt.parseInt(usize, start_memory_range_hex, 16);
             const end_memory_range = try std.fmt.parseInt(usize, end_memory_range_hex, 16);
-            print.printMessage(
-                "attempting dlsym lookup in second pass for line\n  {s}",
-                .{line},
+            print.printDebug(
+                "attempting dlsym lookup in second pass for {s} line: {s}",
+                .{ self_maps_path, line },
             );
             if (dlsym_lookup_fn(
                 libc_name_and_flavor,
                 start_memory_range,
                 end_memory_range,
             )) |libc_info| {
-                print.printMessage(
-                    "dlsym lookup for /proc/self/maps entry \"{s}\" succeeded for memory range {s}-{s} (permissions {s})",
-                    .{
-                        slices.rest(),
-                        start_memory_range_hex,
-                        end_memory_range_hex,
-                        permissions,
-                    },
+                print.printDebug(
+                    "dlsym lookup in second pass succeeded for {s} line: {s}",
+                    .{ self_maps_path, line },
                 );
                 return libc_info;
             } else |err| {
-                print.printMessage("dlsym lookup for /proc/self/maps entry \"{s}\" failed: {}", .{ slices.rest(), err });
+                print.printDebug(
+                    "dlsym lookup in second pass failed for {s} line: {s} -- {}",
+                    .{ self_maps_path, line, err },
+                );
                 continue;
             }
         }

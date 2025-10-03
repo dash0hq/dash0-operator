@@ -35,8 +35,6 @@ pub const ElfDynLib = struct {
     pub fn open(start_memory_range: usize, end_memory_range: usize) !ElfDynLib {
         const elf_header = @as(*std.elf.Ehdr, @ptrFromInt(start_memory_range));
         if (!std.mem.eql(u8, elf_header.e_ident[0..4], std.elf.MAGIC)) {
-            // TODO remove printError
-            print.printError("unexpected/invalid ELF header: {s}", .{elf_header.e_ident});
             return error.NotElfFile;
         }
 
