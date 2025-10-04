@@ -1,0 +1,5 @@
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# one pair of build and run base images per line
+debian:bookworm-slim,gcr.io/distroless/cc-debian12

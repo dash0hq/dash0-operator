@@ -23,6 +23,25 @@ else
   exit 1
 fi
 
+uses_emulation="false"
+test_runner_architecture=$(uname -m)
+case "$test_runner_architecture" in
+  "arm64"|"aarch64")
+    if [ "$ARCH" != arm64 ]; then
+      uses_emulation="true"
+    fi
+    ;;
+  "x86_64")
+    if [ "$ARCH" != x86_64 ]; then
+      uses_emulation="true"
+    fi
+    ;;
+  *)
+    echo "Unkonwn test runner CPU architecture: $test_runner_architecture."
+    exit 1
+    ;;
+esac
+
 if [ -z "${LIBC:-}" ]; then
   LIBC=glibc
 fi
@@ -84,7 +103,9 @@ docker run \
   --env TEST_CASES="$TEST_CASES" \
   --env TEST_CASES_CONTAINING="$TEST_CASES_CONTAINING" \
   --env MISSING_ENVIRON_SYMBOL_TESTS="${MISSING_ENVIRON_SYMBOL_TESTS:-}" \
+  --env USES_EMULATION="$uses_emulation" \
   --env VERBOSE="${VERBOSE:-}" \
+  --env DASH0_INJECTOR_DEBUG="${DASH0_INJECTOR_DEBUG:-}" \
   "$image_name" \
   $docker_run_extra_arguments
 { set +x; } 2> /dev/null

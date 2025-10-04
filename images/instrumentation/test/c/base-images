@@ -1,5 +1,7 @@
 # SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-alpine:3.21.3
+alpine:3.22.1
+alpine:3.19.8
 debian:bookworm-slim
+debian:bullseye-slim

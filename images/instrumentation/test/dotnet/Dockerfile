@@ -9,9 +9,8 @@ FROM ${instrumentation_image} AS init
 
 FROM ${base_image_build} AS build
 
-COPY test-cases /test-cases
-
 WORKDIR /
+COPY test-cases /test-cases
 
 # run dotnet restore for all test-cases/apps as a separate image layer (speeds up docker build)
 RUN for test in /test-cases/*; do \

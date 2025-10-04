@@ -43,6 +43,15 @@ test "checkNodeJsOTelDistributionAndGetModifiedNodeOptionsValue: should return t
 
 fn getModifiedNodeOptionsValue(original_value_optional: ?[:0]const u8) ?types.NullTerminatedString {
     if (original_value_optional) |original_value| {
+        if (std.mem.indexOf(u8, original_value, require_dash0_nodejs_otel_sdk_distribution)) |_| {
+            // If the "--require ..." flag is already present in NODE_OPTIONS, do nothing. This is particularly
+            // important to avoid double injection, for example if we are injecting into a container which has a shell
+            // executable as its entry point (into which we inject env var modifications), and then this shell starts
+            // the Node.js executable as a child process, which inherits the environment from the already injected
+            // shell.
+            return original_value;
+        }
+
         // If NODE_OPTIONS is already set, prepend the "--require ..." flag to the original value.
         // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
         // parent process.
@@ -73,5 +82,13 @@ test "getModifiedNodeOptionsValue: should prepend --require if original value ex
     try testing.expectEqualStrings(
         "--require /__dash0__/instrumentation/node.js/node_modules/@dash0/opentelemetry --abort-on-uncaught-exception",
         std.mem.span(modified_node_options_value orelse "-"),
+    );
+}
+
+test "getModifiedNodeOptionsValue: should do nothing if our --require is already present" {
+    const modifiedNodeOptionsValue = getModifiedNodeOptionsValue("--abort-on-uncaught-exception --require /__dash0__/instrumentation/node.js/node_modules/@dash0/opentelemetry --something-else"[0.. :0]);
+    try testing.expectEqualStrings(
+        "--abort-on-uncaught-exception --require /__dash0__/instrumentation/node.js/node_modules/@dash0/opentelemetry --something-else",
+        std.mem.span(modifiedNodeOptionsValue orelse "-"),
     );
 }

@@ -3,46 +3,73 @@
 # on injector changes. Use ./start-injector-dev-container.sh to build and run the container.
 ARG base_image=ubuntu:noble
 FROM ${base_image}
+ARG base_image=ubuntu:noble
 
 ARG zig_architecture
 
-RUN yes | unminimize
+RUN (yes | unminimize) || true
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-      autoconf \
-      binutils \
-      build-essential \
-      ca-certificates \
-      curl \
-      entr \
-      file \
-      gdb \
-      less \
-      libasound2-dev \
-      libcups2-dev \
-      libfontconfig1-dev \
-      libx11-dev libxext-dev libxrender-dev libxrandr-dev libxtst-dev libxt-dev \
-      locales \
-      man-db \
-      manpages-dev \
-      manpages-posix \
-      manpages-posix-dev \
-      nodejs \
-      openjdk-21-jdk \
-      python3 \
-      python3-pip \
-      silversearcher-ag \
-      unzip \
-      vim \
-      wget \
-      zip \
-      && \
-    apt-get clean && \
-    localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8
+# test cases where the OTel SDK/distro exists but is not accessible.
+RUN case ${base_image} in \
+  *alpine*) apk update && \
+     apk upgrade --no-cache && \
+     apk add --no-cache \
+       bash \
+       build-base \
+       curl \
+       entr \
+       fd \
+       gdb \
+       nodejs \
+       npm \
+       python3 \
+       the_silver_searcher \
+       vim \
+       wget \
+       zip \
+     ;; \
+  *) apt-get update && \
+     apt-get install -y --no-install-recommends \
+       autoconf \
+       binutils \
+       build-essential \
+       ca-certificates \
+       curl \
+       entr \
+       fd-find \
+       file \
+       gdb \
+       less \
+       libasound2-dev \
+       libcups2-dev \
+       libfontconfig1-dev \
+       libx11-dev libxext-dev libxrender-dev libxrandr-dev libxtst-dev libxt-dev \
+       locales \
+       nodejs \
+       npm \
+       python3 \
+       python3-pip \
+       silversearcher-ag \
+       unzip \
+       vim \
+       wget \
+       zip \
+       && \
+     apt-get clean && \
+     localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8 \
+     ;; \
+esac
+
 ENV LANG=en_US.utf8
 
-# enable LD_DEBUG, required for certain setups
+RUN npm config set update-notifier false
+
+# Make fd available as `fd` instead of `fdfind`, see https://github.com/sharkdp/fd/issues/1009.
+RUN ln -s $(which fdfind) /usr/local/bin/fd
+# See https://github.com/eradman/entr?tab=readme-ov-file#docker-and-wsl
+ENV ENTR_INOTIFY_WORKAROUND=true
+
+# required for certain setups to enable LD_DEBUG
 RUN touch /etc/suid-debug
 
 RUN mkdir -p /opt/zig
@@ -53,6 +80,6 @@ RUN . /opt/zig/zig-version && \
   tar --strip-components=1 -xf /tmp/zig.tar.gz
 ENV PATH="$PATH:/opt/zig"
 
-WORKDIR /home/dash0/instrumentation/injector-experiments/zig-to-c/03_export__environ
+WORKDIR /home/dash0/instrumentation/injector
 
 CMD ["/bin/bash"]

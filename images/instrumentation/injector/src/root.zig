@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+const builtin = @import("builtin");
 const std = @import("std");
 
 const dotnet = @import("dotnet.zig");
+const libc = @import("libc.zig");
 const jvm = @import("jvm.zig");
 const node_js = @import("node_js.zig");
 const print = @import("print.zig");
@@ -11,17 +13,19 @@ const res_attrs = @import("resource_attributes.zig");
 const types = @import("types.zig");
 
 const assert = std.debug.assert;
-const testing = std.testing;
-const expect = testing.expect;
+const expect = std.testing.expect;
 
-// We need to use a rather "innocent" type here, the actual type involves
-// optionals that cannot be used in global declarations.
-extern var __environ: [*]u8;
+const empty_z_string = "\x00";
 
-// Ensure we process requests synchronously. LibC is *not* threadsafe
-// with respect to the environment, but chances are some apps will try
-// to look up env vars in parallel
-const _env_mutex = std.Thread.Mutex{};
+const init_section_name = switch (builtin.target.os.tag) {
+    .linux => ".init_array",
+    .macos => "__DATA,__mod_init_func", // needed to run tests locally on macOS
+    else => {
+        error.OsNotSupported;
+    },
+};
+
+export const init_array: [1]*const fn () callconv(.C) void linksection(init_section_name) = .{&initEnviron};
 
 // Keep global pointers to already-calculated values to avoid multiple allocations
 // on repeated lookups.
@@ -29,62 +33,107 @@ var modified_java_tool_options_value_calculated = false;
 var modified_java_tool_options_value: ?types.NullTerminatedString = null;
 var modified_node_options_value_calculated = false;
 var modified_node_options_value: ?types.NullTerminatedString = null;
-var modified_otel_resource_attributes_value_calculated = false;
-var modified_otel_resource_attributes_value: ?types.NullTerminatedString = null;
 
-export fn getenv(name_z: types.NullTerminatedString) ?types.NullTerminatedString {
-    const name = std.mem.sliceTo(name_z, 0);
+var environ_ptr: ?types.EnvironPtr = null;
 
-    // Need to change type from `const` to be able to lock
-    var env_mutex = _env_mutex;
-    env_mutex.lock();
-    defer env_mutex.unlock();
+const InjectorError = error{
+    CannotFindEnvironSymbol,
+};
 
+fn initEnviron() callconv(.C) void {
+    const libc_library = libc.getLibCInfo() catch |err| {
+        if (err == error.UnknownLibCFlavor) {
+            print.printMessage("no libc found: {}", .{err});
+        } else {
+            print.printError("failed to identify libc: {}", .{err});
+        }
+        return;
+    };
+
+    environ_ptr = libc_library.environ_ptr;
+
+    updateStdOsEnviron() catch |err| {
+        print.printError("initEnviron(): cannot update std.os.environ: {}; ", .{err});
+        return;
+    };
+    print.initDebugFlag();
+
+    print.printDebug("identified {s} libc loaded from {s}", .{ switch (libc_library.flavor) {
+        types.LibCFlavor.GNU => "GNU",
+        types.LibCFlavor.MUSL => "musl",
+        else => "unknown",
+    }, libc_library.name });
+
+    const maybe_modified_resource_attributes = res_attrs.getModifiedOtelResourceAttributesValue(std.posix.getenv(res_attrs.otel_resource_attributes_env_var_name)) catch |err| {
+        print.printError("cannot calculate modified OTEL_RESOURCE_ATTRIBUTES: {}", .{err});
+        return;
+    };
+
+    if (maybe_modified_resource_attributes) |modified_resource_attributes| {
+        const setenv_res =
+            libc_library.setenv_fn_ptr(
+                res_attrs.otel_resource_attributes_env_var_name,
+                modified_resource_attributes,
+                true,
+            );
+        if (setenv_res != 0) {
+            print.printError("failed to set modified value for '{s}' to '{s}': errno={}", .{ res_attrs.otel_resource_attributes_env_var_name, modified_resource_attributes, setenv_res });
+        }
+    }
+
+    modifyEnvironmentVariable(libc_library.setenv_fn_ptr, node_js.node_options_env_var_name);
+    modifyEnvironmentVariable(libc_library.setenv_fn_ptr, jvm.java_tool_options_env_var_name);
+    if (dotnet.isEnabled()) {
+        modifyEnvironmentVariable(libc_library.setenv_fn_ptr, dotnet.coreclr_enable_profiling_env_var_name);
+        modifyEnvironmentVariable(libc_library.setenv_fn_ptr, dotnet.coreclr_profiler_env_var_name);
+        modifyEnvironmentVariable(libc_library.setenv_fn_ptr, dotnet.coreclr_profiler_path_env_var_name);
+        modifyEnvironmentVariable(libc_library.setenv_fn_ptr, dotnet.dotnet_additional_deps_env_var_name);
+        modifyEnvironmentVariable(libc_library.setenv_fn_ptr, dotnet.dotnet_shared_store_env_var_name);
+        modifyEnvironmentVariable(libc_library.setenv_fn_ptr, dotnet.dotnet_startup_hooks_env_var_name);
+        modifyEnvironmentVariable(libc_library.setenv_fn_ptr, dotnet.otel_dotnet_auto_home_env_var_name);
+    }
+}
+
+fn updateStdOsEnviron() !void {
     // Dynamic libs do not get the std.os.environ initialized, see https://github.com/ziglang/zig/issues/4524, so we
-    // back fill it. This logic is based on parsing of envp on zig's start. We re-bind the environment every time, as we
-    // cannot ensure it did not change since the previous invocation. Libc implementations can re-allocate the
+    // back fill it. This logic is based on parsing of envp on zig's start. We re-bind the environment every time, as
+    // we cannot ensure it did not change since the previous invocation. libc implementations can re-allocate the
     // environment (http://github.com/lattera/glibc/blob/master/stdlib/setenv.c;
     // https://git.musl-libc.org/cgit/musl/tree/src/env/setenv.c) if the backing memory location is outgrown by apps
     // modifying the environment via setenv or putenv.
-    const environment_optional: [*:null]?[*:0]u8 = @ptrCast(@alignCast(__environ));
-    var environment_count: usize = 0;
-    if (@intFromPtr(__environ) != 0) { // __environ can be a null pointer, e.g. directly after clearenv()
-        while (environment_optional[environment_count]) |_| : (environment_count += 1) {}
-    }
-    std.os.environ = @as([*][*:0]u8, @ptrCast(environment_optional))[0..environment_count];
+    if (environ_ptr) |environment_ptr| {
+        const env_array = environment_ptr.*;
+        var env_var_count: usize = 0;
+        // Note: env_array will be empty in some cases, for example if the application calls clearenv. Accessing
+        // env_array[0] as we do in the while loop below would segfault. Instead we initialize an empty environ slice.
+        if (env_array == 0) {
+            std.os.environ = &.{};
+            return;
+        }
+        while (env_array[env_var_count] != null) : (env_var_count += 1) {}
 
-    // Technically, a process could change the value of `DASH0_INJECTOR_DEBUG` after it started (mostly when we debug
-    // stuff in REPL) so we look up the value every time.
-    print.initDebugFlag();
-    print.printDebug("getenv({s}) called", .{name});
-
-    const res = getEnvValue(name);
-
-    if (res) |value| {
-        print.printDebug("getenv({s}) -> '{s}'", .{ name, value });
+        std.os.environ = @ptrCast(@constCast(env_array[0..env_var_count]));
     } else {
-        print.printDebug("getenv({s}) -> null", .{name});
+        return error.CannotFindEnvironSymbol;
     }
+}
 
-    return res;
+fn modifyEnvironmentVariable(setenv_fn_ptr: types.SetenvFnPtr, name: [:0]const u8) void {
+    if (getEnvValue(name)) |value| {
+        const setenv_res = setenv_fn_ptr(name, value, true);
+        if (setenv_res != 0) {
+            print.printError(
+                "failed to set modified value for '{s}' to '{s}': errno={}",
+                .{ name, value, setenv_res },
+            );
+        }
+    }
 }
 
 fn getEnvValue(name: [:0]const u8) ?types.NullTerminatedString {
     const original_value = std.posix.getenv(name);
 
-    if (std.mem.eql(
-        u8,
-        name,
-        res_attrs.otel_resource_attributes_env_var_name,
-    )) {
-        if (!modified_otel_resource_attributes_value_calculated) {
-            modified_otel_resource_attributes_value = res_attrs.getModifiedOtelResourceAttributesValue(original_value);
-            modified_otel_resource_attributes_value_calculated = true;
-        }
-        if (modified_otel_resource_attributes_value) |updated_value| {
-            return updated_value;
-        }
-    } else if (std.mem.eql(u8, name, jvm.java_tool_options_env_var_name)) {
+    if (std.mem.eql(u8, name, jvm.java_tool_options_env_var_name)) {
         if (!modified_java_tool_options_value_calculated) {
             modified_java_tool_options_value =
                 jvm.checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue(original_value);
@@ -102,41 +151,47 @@ fn getEnvValue(name: [:0]const u8) ?types.NullTerminatedString {
         if (modified_node_options_value) |updated_value| {
             return updated_value;
         }
-    } else if (dotnet.isEnabled()) {
-        if (std.mem.eql(u8, name, "CORECLR_ENABLE_PROFILING")) {
-            if (dotnet.getDotnetValues()) |v| {
-                return v.coreclr_enable_profiling;
-            }
-        } else if (std.mem.eql(u8, name, "CORECLR_PROFILER")) {
-            if (dotnet.getDotnetValues()) |v| {
-                return v.coreclr_profiler;
-            }
-        } else if (std.mem.eql(u8, name, "CORECLR_PROFILER_PATH")) {
-            if (dotnet.getDotnetValues()) |v| {
-                return v.coreclr_profiler_path;
-            }
-        } else if (std.mem.eql(u8, name, "DOTNET_ADDITIONAL_DEPS")) {
-            if (dotnet.getDotnetValues()) |v| {
-                return v.additional_deps;
-            }
-        } else if (std.mem.eql(u8, name, "DOTNET_SHARED_STORE")) {
-            if (dotnet.getDotnetValues()) |v| {
-                return v.shared_store;
-            }
-        } else if (std.mem.eql(u8, name, "DOTNET_STARTUP_HOOKS")) {
-            if (dotnet.getDotnetValues()) |v| {
-                return v.startup_hooks;
-            }
-        } else if (std.mem.eql(u8, name, "OTEL_DOTNET_AUTO_HOME")) {
-            if (dotnet.getDotnetValues()) |v| {
-                return v.otel_auto_home;
-            }
+    } else if (std.mem.eql(u8, name, dotnet.coreclr_enable_profiling_env_var_name)) {
+        if (dotnet.getDotnetValues()) |v| {
+            return v.coreclr_enable_profiling;
+        }
+    } else if (std.mem.eql(u8, name, dotnet.coreclr_profiler_env_var_name)) {
+        if (dotnet.getDotnetValues()) |v| {
+            return v.coreclr_profiler;
+        }
+    } else if (std.mem.eql(u8, name, dotnet.coreclr_profiler_path_env_var_name)) {
+        if (dotnet.getDotnetValues()) |v| {
+            return v.coreclr_profiler_path;
+        }
+    } else if (std.mem.eql(u8, name, dotnet.dotnet_additional_deps_env_var_name)) {
+        if (dotnet.getDotnetValues()) |v| {
+            return v.additional_deps;
+        }
+    } else if (std.mem.eql(u8, name, dotnet.dotnet_shared_store_env_var_name)) {
+        if (dotnet.getDotnetValues()) |v| {
+            return v.shared_store;
+        }
+    } else if (std.mem.eql(u8, name, dotnet.dotnet_startup_hooks_env_var_name)) {
+        if (dotnet.getDotnetValues()) |v| {
+            return v.startup_hooks;
+        }
+    } else if (std.mem.eql(u8, name, dotnet.otel_dotnet_auto_home_env_var_name)) {
+        if (dotnet.getDotnetValues()) |v| {
+            return v.otel_auto_home;
         }
     }
 
     // The requested environment variable is not one that we want to modify, hence we just return the original value by
     // returning a pointer to it.
     if (original_value) |val| {
+        if (val.len == 0) {
+            // This can happen if an environment variable has been _deleted_ by calling putenv("VARIABLE") instead of
+            // putenv("VARIABLE=some-value"). Accessing val.ptr would lead to a segfault in this case. Unfortunately,
+            // we do not have a good way of distinguishing between environment variables that have been unset vs.
+            // environment variables that have been set explicitly to the empty string here. We choose to return the empty
+            // string here.
+            return empty_z_string;
+        }
         return val.ptr;
     }
 

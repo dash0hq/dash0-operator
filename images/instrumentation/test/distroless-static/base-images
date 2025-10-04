@@ -1,0 +1,5 @@
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+# one pair of build and run base images per line
+golang:1.25-alpine3.22,scratch
