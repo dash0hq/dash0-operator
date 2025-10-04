@@ -641,6 +641,7 @@ function createRunTestCaseTask(
       if (existsSync(envFile)) {
         dockerRunCmdArray = dockerRunCmdArray.concat(['--env-file', envFile]);
       }
+      dockerRunCmdArray = dockerRunCmdArray.concat(['--env', "BASE_IMAGE_RUN='" + baseImageRun + "'"]);
       dockerRunCmdArray = dockerRunCmdArray.concat([imageNameTest, ...testCmd]);
       const dockerRunCmd = dockerRunCmdArray.map(arg => `"${arg}"`).join(' ');
 
