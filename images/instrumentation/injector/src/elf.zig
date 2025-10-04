@@ -17,7 +17,7 @@ const ElfError = error{
 /// upon load.
 ///
 /// This is based on dynamic_library.zig's ElfDynLib, but with a few changes:
-/// 1. Only support Elf on 64 bits.
+/// 1. Only support ELF on 64 bits.
 /// 2. Instead of mapping the library's binary to memory, as we would do when loading a library, we are working with
 ///    already mapped memory regions, which also means no allocations are necessary.
 /// 3. Skip the implementation of symbol version checking: we use this facility only to look up the dlsym symbol, which
@@ -112,7 +112,7 @@ pub const ElfDynLib = struct {
             // if (symbol_ptr > self.start_memory_range and symbol_ptr < self.end_memory_range) {
             return @as(T, @ptrFromInt(symbol_ptr));
             // } else {
-            //     print.printError("found symbol at {x}, but it is outside the expected memory range {x}-{x}", .{ symbol_ptr, self.start_memory_range, self.end_memory_range });
+            //     print.printMessage("found symbol at {x}, but it is outside the expected memory range {x}-{x}", .{ symbol_ptr, self.start_memory_range, self.end_memory_range });
             // }
         }
 

@@ -175,60 +175,45 @@ trap cleanup_docker_images EXIT
 ###############################################################
 # rebuild all compiled test apps
 ###############################################################
-if [[ "${MISSING_ENVIRON_SYMBOL_TESTS:-}" = "true" ]]; then
-  echo ----------------------------------------
-  echo building the no_environ_symbol test app binary
-  echo ----------------------------------------
-  for arch in "${all_architectures[@]}"; do
-    if [[ -n "${architectures[0]}" ]]; then
-      if [[ $(echo "${architectures[@]}" | grep -o "$arch" | wc -w) -eq 0 ]]; then
-        echo "skipping no_environ_symbol test app build for CPU architecture $arch"
+echo ----------------------------------------
+echo building the no_environ_symbol test app binary
+echo ----------------------------------------
+for arch in "${all_architectures[@]}"; do
+  if [[ -n "${architectures[0]}" ]]; then
+    if [[ $(echo "${architectures[@]}" | grep -o "$arch" | wc -w) -eq 0 ]]; then
+      echo "skipping no_environ_symbol test app build for CPU architecture $arch"
+      continue
+    fi
+  fi
+  goarch="$arch"
+  if [[ "$goarch" = "x86_64" ]]; then
+    goarch="amd64"
+  fi
+  for libc_flavor in "${all_libc_flavors[@]}"; do
+    if [[ -n "${libc_flavors[0]}" ]]; then
+      if [[ $(echo "${libc_flavors[@]}" | grep -o "$libc_flavor" | wc -w) -eq 0 ]]; then
+        echo "skipping no_environ_symbol test app build for libc flavor $libc_flavor"
         continue
       fi
     fi
-    goarch="$arch"
-    if [[ "$goarch" = "x86_64" ]]; then
-      goarch="amd64"
+    if [[ "$libc_flavor" = "glibc" ]]; then
+      no_environ_base_image="golang:1.23.7-bookworm"
+    elif [[ "$libc_flavor" = "musl" ]]; then
+      no_environ_base_image="golang:1.23.7-alpine3.21"
     fi
-    for libc_flavor in "${all_libc_flavors[@]}"; do
-      if [[ -n "${libc_flavors[0]}" ]]; then
-        if [[ $(echo "${libc_flavors[@]}" | grep -o "$libc_flavor" | wc -w) -eq 0 ]]; then
-          echo "skipping no_environ_symbol test app build for libc flavor $libc_flavor"
-          continue
-        fi
-      fi
-      if [[ "$libc_flavor" = "glibc" ]]; then
-        no_environ_base_image="golang:1.23.7-bookworm"
-      elif [[ "$libc_flavor" = "musl" ]]; then
-        no_environ_base_image="golang:1.23.7-alpine3.21"
-      fi
-      echo "building the no_environ_symbol test app for CPU architecture $arch [GOARCH=$goarch] and libc flavor $libc_flavor (base image: $no_environ_base_image)"
-      ARCH="$arch" \
-        GOARCH="$goarch" \
-        LIBC="$libc_flavor" \
-        BASE_IMAGE="$no_environ_base_image" \
-        injector/test/scripts/build-in-container.sh \
-          "/workspace/noenviron" \
-          "injector/test/no_environ_symbol/noenviron.$arch.$libc_flavor" \
-          injector/test/no_environ_symbol/Dockerfile-build \
-          "no-environ-symbol-builder-$arch-$libc_flavor" \
-          injector/test/no_environ_symbol
-    done
+    echo "building the no_environ_symbol test app for CPU architecture $arch [GOARCH=$goarch] and libc flavor $libc_flavor (base image: $no_environ_base_image)"
+    ARCH="$arch" \
+      GOARCH="$goarch" \
+      LIBC="$libc_flavor" \
+      BASE_IMAGE="$no_environ_base_image" \
+      injector/test/scripts/build-in-container.sh \
+        "/workspace/noenviron" \
+        "injector/test/no_environ_symbol/noenviron.$arch.$libc_flavor" \
+        injector/test/no_environ_symbol/Dockerfile-build \
+        "no-environ-symbol-builder-$arch-$libc_flavor" \
+        injector/test/no_environ_symbol
   done
-else
-  for arch in "${all_architectures[@]}"; do
-    goarch="$arch"
-    if [[ "$goarch" = "x86_64" ]]; then
-      goarch="amd64"
-    fi
-    for libc_flavor in "${all_libc_flavors[@]}"; do
-      # Produce an empty file so that the instruction
-      #   COPY no_environ_symbol/$noenviron_binary no_environ_symbol/noenviron
-      # in ../docker/Dockerfile-test does not fail.
-      touch "injector/test/no_environ_symbol/noenviron.$arch.$libc_flavor"
-    done
-  done
-fi
+done
 
 instrumentation_image=${INSTRUMENTATION_IMAGE:-}
 if [[ -z "$instrumentation_image" ]]; then

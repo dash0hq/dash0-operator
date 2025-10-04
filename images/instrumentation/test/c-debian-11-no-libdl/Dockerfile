@@ -2,28 +2,24 @@
 # SPDX-License-Identifier: Apache-2.0
 
 ARG instrumentation_image=dash0-instrumentation:latest
-ARG base_image_build=debian:bookworm-slim
-ARG base_image_run=gcr.io/distroless/cc-debian12
+ARG base_image=alpine:3.21.3
 
 FROM ${instrumentation_image} AS init
 
-FROM ${base_image_build} AS builder
-ARG base_image_build=alpine:3.22
+FROM ${base_image}
 
-RUN case ${base_image_build} in \
+# Need to repeat ARG base_image since build args are cleared by FROM.
+ARG base_image
+
+RUN case ${base_image} in \
   *alpine*) apk update && apk upgrade --no-cache && apk add --no-cache build-base ;; \
   *) apt-get update && apt-get install -y --no-install-recommends build-essential && apt-get clean; \
 esac
 
-WORKDIR /build
 COPY Makefile .
-COPY test-cases test-cases
+COPY test-cases /test-cases
 
-RUN make && ls -R test-cases
-
-FROM ${base_image_run}
-COPY --from=builder /build/test-cases /test-cases
-USER 65532:65532
+RUN make
 
 # The following lines emulate the behavior of running the instrumentation image as a Kubernetes init container and
 # setting the LD_PRELOAD environment variable via the operator.

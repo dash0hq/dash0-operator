@@ -17,7 +17,7 @@ test "initDebugFlag: not set" {
     const original_environ = try test_util.clearStdCEnviron();
     defer test_util.resetStdCEnviron(original_environ);
     print.initDebugFlag();
-    try testing.expect(!print.isDebug());
+    try test_util.expectWithMessage(!print.isDebug(), "!print.isDebug()");
 }
 
 test "initDebugFlag: false" {
@@ -25,7 +25,7 @@ test "initDebugFlag: false" {
     defer test_util.resetStdCEnviron(original_environ);
 
     print.initDebugFlag();
-    try testing.expect(!print.isDebug());
+    try test_util.expectWithMessage(!print.isDebug(), "!print.isDebug()");
 }
 
 test "initDebugFlag: arbitrary string" {
@@ -33,7 +33,7 @@ test "initDebugFlag: arbitrary string" {
     defer test_util.resetStdCEnviron(original_environ);
 
     print.initDebugFlag();
-    try testing.expect(!print.isDebug());
+    try test_util.expectWithMessage(!print.isDebug(), "!print.isDebug()");
 }
 
 test "initDebugFlag: true" {
@@ -41,5 +41,5 @@ test "initDebugFlag: true" {
     defer test_util.resetStdCEnviron(original_environ);
 
     print.initDebugFlag();
-    try testing.expect(print.isDebug());
+    try test_util.expectWithMessage(print.isDebug(), "print.isDebug()");
 }

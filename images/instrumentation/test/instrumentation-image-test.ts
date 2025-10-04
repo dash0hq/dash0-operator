@@ -528,6 +528,7 @@ async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestIma
     let testCmd: string[];
     switch (runtime) {
       case 'c':
+      case 'c-debian-11-no-libdl':
       case 'distroless-with-libc':
         testCmd = [`/test-cases/${testCase}/app.o`];
         break;
@@ -628,6 +629,7 @@ function createRunTestCaseTask(
       if (existsSync(envFile)) {
         dockerRunCmdArray = dockerRunCmdArray.concat(['--env-file', envFile]);
       }
+      dockerRunCmdArray = dockerRunCmdArray.concat(['--env', "BASE_IMAGE_RUN='" + baseImageRun + "'"]);
       dockerRunCmdArray = dockerRunCmdArray.concat([imageNameTest, ...testCmd]);
       const dockerRunCmd = dockerRunCmdArray.map(arg => `"${arg}"`).join(' ');
 

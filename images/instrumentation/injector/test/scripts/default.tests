@@ -88,18 +88,15 @@ run_test_case \
   "OTEL_RESOURCE_ATTRIBUTES: aaa=bbb,ccc=ddd,k8s.namespace.name=my-namespace,k8s.pod.name=my-pod,k8s.pod.uid=275ecb36-5aa8-4c2a-9c47-d8bb681b9aff,k8s.container.name=test-app,service.name=service-name,service.version=service-version,service.namespace=service-namespace" \
   "DASH0_SERVICE_NAME=service-name DASH0_SERVICE_VERSION=service-version DASH0_SERVICE_NAMESPACE=service-namespace DASH0_RESOURCE_ATTRIBUTES=aaa=bbb,ccc=ddd"
 
-if [ "${MISSING_ENVIRON_SYMBOL_TESTS:-}" = "true" ]; then
-  # Regression tests for missing __environ symbol:
-  run_test_case \
-    "no __environ symbol: read unset environment variable" \
-    "no_environ_symbol" \
-    "./noenviron" \
-    "The environmet variable \"NO_ENVIRON_TEST_VAR\" is not set."
-  run_test_case \
-    "no __environ symbol: read an environment variable that is set" \
-    "no_environ_symbol" \
-    "./noenviron" \
-    "The environmet variable \"NO_ENVIRON_TEST_VAR\" had the value: \"some-value\"." \
-    "NO_ENVIRON_TEST_VAR=some-value"
-fi
-
+# Regression tests for missing __environ symbol:
+run_test_case \
+  "no __environ symbol: read unset environment variable" \
+  "no_environ_symbol" \
+  "./noenviron" \
+  "The environmet variable \"NO_ENVIRON_TEST_VAR\" is not set."
+run_test_case \
+  "no __environ symbol: read an environment variable that is set" \
+  "no_environ_symbol" \
+  "./noenviron" \
+  "The environmet variable \"NO_ENVIRON_TEST_VAR\" had the value: \"some-value\"." \
+  "NO_ENVIRON_TEST_VAR=some-value"
