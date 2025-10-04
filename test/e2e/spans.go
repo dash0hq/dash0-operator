@@ -210,10 +210,6 @@ func workloadSpansResourceMatcher(runtime runtimeType, workloadType workloadType
 		if workloadType.workloadTypeString == "replicaset" {
 			// There is no k8s.replicaset.name attribute.
 			matchResult.addSkippedAssertion(workloadAttribute, "not checked, there is no k8s.replicaset.name attribute")
-		} else if runtime.isDotnet() {
-			// .NET currently has none of the resource attributes that are set via the injector overriding getenv, see
-			// comment in images/instrumentation/injector/src/dotnet.zig.
-			matchResult.addSkippedAssertion(workloadAttribute, "not checked for .NET")
 		} else {
 			verifyResourceAttributeEquals(
 				resourceAttributes,
@@ -224,11 +220,7 @@ func workloadSpansResourceMatcher(runtime runtimeType, workloadType workloadType
 		}
 
 		expectedPodName := workloadName(runtime, workloadType)
-		if runtime.isDotnet() {
-			// .NET currently has none of the resource attributes that are set via the injector overriding getenv, see
-			// comment in images/instrumentation/injector/src/dotnet.zig.
-			matchResult.addSkippedAssertion(string(semconv.K8SPodNameKey), "not checked for .NET")
-		} else if workloadType.workloadTypeString == "pod" {
+		if workloadType.workloadTypeString == "pod" {
 			verifyResourceAttributeEquals(
 				resourceAttributes,
 				string(semconv.K8SPodNameKey),
@@ -244,25 +236,18 @@ func workloadSpansResourceMatcher(runtime runtimeType, workloadType workloadType
 			)
 		}
 
-		if runtime.isDotnet() {
-			// .NET currently has none of the resource attributes that are set via the injector overriding getenv, see
-			// comment in images/instrumentation/injector/src/dotnet.zig.
-			matchResult.addSkippedAssertion("k8s.pod.label.test.label/key", "not checked for .NET")
-			matchResult.addSkippedAssertion("k8s.pod.annotation.test.annotation/key", "not checked for .NET")
-		} else {
-			verifyResourceAttributeStartsWith(
-				resourceAttributes,
-				"k8s.pod.label.test.label/key",
-				"label-value",
-				matchResult,
-			)
-			verifyResourceAttributeStartsWith(
-				resourceAttributes,
-				"k8s.pod.annotation.test.annotation/key",
-				"annotation value",
-				matchResult,
-			)
-		}
+		verifyResourceAttributeStartsWith(
+			resourceAttributes,
+			"k8s.pod.label.test.label/key",
+			"label-value",
+			matchResult,
+		)
+		verifyResourceAttributeStartsWith(
+			resourceAttributes,
+			"k8s.pod.annotation.test.annotation/key",
+			"annotation value",
+			matchResult,
+		)
 	}
 }
 

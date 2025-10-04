@@ -155,7 +155,6 @@ jobs:
         env:
           INSTRUMENTATION_IMAGE: ${{ steps.instrumentation-test-image.outputs.image_name }}
           ARCHITECTURES: 'x86_64'
-          MISSING_ENVIRON_SYMBOL_TESTS: true
         run: |
           images/instrumentation/injector/test/scripts/test-all.sh
 
@@ -182,7 +181,6 @@ jobs:
         env:
           INSTRUMENTATION_IMAGE: ${{ steps.instrumentation-test-image.outputs.image_name }}
           ARCHITECTURES: 'arm64'
-          MISSING_ENVIRON_SYMBOL_TESTS: true
         run: |
           images/instrumentation/injector/test/scripts/test-all.sh
 

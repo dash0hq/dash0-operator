@@ -51,9 +51,68 @@ pub fn resetStdCEnviron(original_environ: [*:null]?[*:0]u8) void {
     std.c.environ = original_environ;
 }
 
+/// An extended version of std.testing.expect that prints a message in case of failure. Useful for tests that have
+/// multiple expects; this version should generally be used in favor of the original std.testing.expect function.
+pub fn expectWithMessage(
+    ok: bool,
+    comptime message: []const u8,
+) !void {
+    if (!ok) {
+        print("\n====== assertion failed: =========\n", .{});
+        print(message, .{});
+        print("\n==================================\n", .{});
+        return error.TestUnexpectedResult;
+    }
+}
+
+pub fn expectStringStartAndEnd(actual: []const u8, prefix: []const u8, suffix: []const u8) !void {
+    try testing.expectStringStartsWith(actual, prefix);
+    try testing.expectStringEndsWith(actual, suffix);
+}
+
+pub fn expectStringContains(actual: []const u8, expected_needle: []const u8) !void {
+    if (std.mem.indexOf(u8, actual, expected_needle) != null) {
+        return;
+    }
+    print("\n====== expected to contain: =========\n", .{});
+    printWithVisibleNewlines(expected_needle);
+    print("\n========= full output: ==============\n", .{});
+    printWithVisibleNewlines(actual);
+    print("\n======================================\n", .{});
+
+    return error.TestExpectedContains;
+}
+
 pub inline fn expectMemoryRangeLimit(expected: comptime_int, actual: anytype) !void {
     testing.expectEqual(expected, @intFromPtr(actual)) catch |err| {
         std.debug.print("expected memory range limit {x:0>8}, found {x:0>8}\n", .{ expected, @intFromPtr(actual) });
         return err;
     };
+}
+
+// Copied from Zig's std.testing module.
+fn print(comptime fmt: []const u8, args: anytype) void {
+    if (@inComptime()) {
+        @compileError(std.fmt.comptimePrint(fmt, args));
+    } else if (testing.backend_can_print) {
+        std.debug.print(fmt, args);
+    }
+}
+
+// Copied from Zig's std.testing module.
+fn printWithVisibleNewlines(source: []const u8) void {
+    var i: usize = 0;
+    while (std.mem.indexOfScalar(u8, source[i..], '\n')) |nl| : (i += nl + 1) {
+        printLine(source[i..][0..nl]);
+    }
+    print("{s}␃\n", .{source[i..]}); // End of Text symbol (ETX)
+}
+
+// Copied from Zig's std.testing module.
+fn printLine(line: []const u8) void {
+    if (line.len != 0) switch (line[line.len - 1]) {
+        ' ', '\t' => return print("{s}⏎\n", .{line}), // Return symbol
+        else => {},
+    };
+    print("{s}\n", .{line});
 }

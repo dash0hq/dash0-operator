@@ -18,14 +18,14 @@ test "getModifiedOtelResourceAttributesValue: no original value, no new resource
     const original_environ = try test_util.clearStdCEnviron();
     defer test_util.resetStdCEnviron(original_environ);
     const modified_value = try res_attrs.getModifiedOtelResourceAttributesValue(null);
-    try testing.expect(modified_value == null);
+    try test_util.expectWithMessage(modified_value == null, "modified_value == null");
 }
 
 test "getModifiedOtelResourceAttributesValue: no original value, no new resource attributes (empty string)" {
     const original_environ = try test_util.clearStdCEnviron();
     defer test_util.resetStdCEnviron(original_environ);
     const modified_value = try res_attrs.getModifiedOtelResourceAttributesValue("");
-    try testing.expect(modified_value == null);
+    try test_util.expectWithMessage(modified_value == null, "modified_value == null");
 }
 
 test "getModifiedOtelResourceAttributesValue: no original value (null), new resource attributes: namespace only" {
@@ -108,7 +108,7 @@ test "getModifiedOtelResourceAttributesValue: original value exists, no new reso
     const original_environ = try test_util.clearStdCEnviron();
     defer test_util.resetStdCEnviron(original_environ);
     const modified_value = try res_attrs.getModifiedOtelResourceAttributesValue("aaa=bbb,ccc=ddd");
-    try testing.expect(modified_value == null);
+    try test_util.expectWithMessage(modified_value == null, "modified_value == null");
 }
 
 test "getModifiedOtelResourceAttributesValue: original value and new resource attributes" {

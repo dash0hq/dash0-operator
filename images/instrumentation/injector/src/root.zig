@@ -12,9 +12,6 @@ const print = @import("print.zig");
 const res_attrs = @import("resource_attributes.zig");
 const types = @import("types.zig");
 
-const assert = std.debug.assert;
-const expect = std.testing.expect;
-
 const empty_z_string = "\x00";
 
 const init_section_name = switch (builtin.target.os.tag) {
@@ -35,70 +32,65 @@ var modified_node_options_value_calculated = false;
 var modified_node_options_value: ?types.NullTerminatedString = null;
 
 var environ_ptr: ?types.EnvironPtr = null;
-var setenv_fn_ptr: ?types.SetenvFnPtr = null;
 
 const InjectorError = error{
     CannotFindEnvironSymbol,
 };
 
 fn initEnviron() callconv(.C) void {
+    print.printMessage("starting environment injection", .{});
     const libc_library = libc.getLibCInfo() catch |err| {
         if (err == error.UnknownLibCFlavor) {
             print.printMessage("no libc found: {}", .{err});
         } else {
-            print.printError("failed to identify libc: {}", .{err});
+            print.printMessage("failed to identify libc: {}", .{err});
         }
         return;
     };
+
+    environ_ptr = libc_library.environ_ptr;
+
+    updateStdOsEnviron() catch |err| {
+        print.printMessage("initEnviron(): cannot update std.os.environ: {}; ", .{err});
+        return;
+    };
+    print.initDebugFlag();
+
     print.printDebug("identified {s} libc loaded from {s}", .{ switch (libc_library.flavor) {
         types.LibCFlavor.GNU => "GNU",
         types.LibCFlavor.MUSL => "musl",
         else => "unknown",
     }, libc_library.name });
 
-    environ_ptr = libc_library.environ_ptr;
-
-    updateStdOsEnviron() catch |err| {
-        print.printError("initEnviron(): cannot update std.os.environ: {}; ", .{err});
-        return;
-    };
-
     const maybe_modified_resource_attributes = res_attrs.getModifiedOtelResourceAttributesValue(std.posix.getenv(res_attrs.otel_resource_attributes_env_var_name)) catch |err| {
-        print.printError("cannot calculate modified OTEL_RESOURCE_ATTRIBUTES: {}", .{err});
+        print.printMessage("cannot calculate modified OTEL_RESOURCE_ATTRIBUTES: {}", .{err});
         return;
     };
 
     if (maybe_modified_resource_attributes) |modified_resource_attributes| {
-        const setenv_res = libc_library.setenv_fn_ptr(res_attrs.otel_resource_attributes_env_var_name, modified_resource_attributes, true);
+        const setenv_res =
+            libc_library.setenv_fn_ptr(
+                res_attrs.otel_resource_attributes_env_var_name,
+                modified_resource_attributes,
+                true,
+            );
         if (setenv_res != 0) {
-            print.printError("failed to set modified value for '{s}' to '{s}': errno={}", .{ res_attrs.otel_resource_attributes_env_var_name, modified_resource_attributes, setenv_res });
+            print.printMessage("failed to set modified value for '{s}' to '{s}': errno={}", .{ res_attrs.otel_resource_attributes_env_var_name, modified_resource_attributes, setenv_res });
         }
     }
-}
 
-export fn getenv(name_z: types.NullTerminatedString) ?types.NullTerminatedString {
-    const name = std.mem.sliceTo(name_z, 0);
-
-    updateStdOsEnviron() catch |err| {
-        print.printError("getenv('{s}') -> null; cannot update std.os.environ: {}; ", .{ name, err });
-        return null;
-    };
-
-    // Technically, a process could change the value of `DASH0_INJECTOR_DEBUG` after it started (mostly when we debug
-    // stuff in REPL) so we look up the value every time.
-    print.initDebugFlag();
-
-    print.printDebug("getenv('{s}') called", .{name});
-
-    const res = getEnvValue(name);
-
-    if (res) |value| {
-        print.printDebug("getenv('{s}') -> '{s}'", .{ name, value });
-    } else {
-        print.printDebug("getenv('{s}') -> null", .{name});
+    modifyEnvironmentVariable(libc_library.setenv_fn_ptr, node_js.node_options_env_var_name);
+    modifyEnvironmentVariable(libc_library.setenv_fn_ptr, jvm.java_tool_options_env_var_name);
+    if (dotnet.isEnabled()) {
+        modifyEnvironmentVariable(libc_library.setenv_fn_ptr, dotnet.coreclr_enable_profiling_env_var_name);
+        modifyEnvironmentVariable(libc_library.setenv_fn_ptr, dotnet.coreclr_profiler_env_var_name);
+        modifyEnvironmentVariable(libc_library.setenv_fn_ptr, dotnet.coreclr_profiler_path_env_var_name);
+        modifyEnvironmentVariable(libc_library.setenv_fn_ptr, dotnet.dotnet_additional_deps_env_var_name);
+        modifyEnvironmentVariable(libc_library.setenv_fn_ptr, dotnet.dotnet_shared_store_env_var_name);
+        modifyEnvironmentVariable(libc_library.setenv_fn_ptr, dotnet.dotnet_startup_hooks_env_var_name);
+        modifyEnvironmentVariable(libc_library.setenv_fn_ptr, dotnet.otel_dotnet_auto_home_env_var_name);
     }
-
-    return res;
+    print.printMessage("finished environment injection", .{});
 }
 
 fn updateStdOsEnviron() !void {
@@ -125,6 +117,22 @@ fn updateStdOsEnviron() !void {
     }
 }
 
+fn modifyEnvironmentVariable(setenv_fn_ptr: types.SetenvFnPtr, name: [:0]const u8) void {
+    if (getEnvValue(name)) |value| {
+        print.printMessage(
+            "setting {s}={s}",
+            .{ name, value },
+        );
+        const setenv_res = setenv_fn_ptr(name, value, true);
+        if (setenv_res != 0) {
+            print.printMessage(
+                "failed to set modified value for '{s}' to '{s}': errno={}",
+                .{ name, value, setenv_res },
+            );
+        }
+    }
+}
+
 fn getEnvValue(name: [:0]const u8) ?types.NullTerminatedString {
     const original_value = std.posix.getenv(name);
 
@@ -146,35 +154,33 @@ fn getEnvValue(name: [:0]const u8) ?types.NullTerminatedString {
         if (modified_node_options_value) |updated_value| {
             return updated_value;
         }
-    } else if (dotnet.isEnabled()) {
-        if (std.mem.eql(u8, name, "CORECLR_ENABLE_PROFILING")) {
-            if (dotnet.getDotnetValues()) |v| {
-                return v.coreclr_enable_profiling;
-            }
-        } else if (std.mem.eql(u8, name, "CORECLR_PROFILER")) {
-            if (dotnet.getDotnetValues()) |v| {
-                return v.coreclr_profiler;
-            }
-        } else if (std.mem.eql(u8, name, "CORECLR_PROFILER_PATH")) {
-            if (dotnet.getDotnetValues()) |v| {
-                return v.coreclr_profiler_path;
-            }
-        } else if (std.mem.eql(u8, name, "DOTNET_ADDITIONAL_DEPS")) {
-            if (dotnet.getDotnetValues()) |v| {
-                return v.additional_deps;
-            }
-        } else if (std.mem.eql(u8, name, "DOTNET_SHARED_STORE")) {
-            if (dotnet.getDotnetValues()) |v| {
-                return v.shared_store;
-            }
-        } else if (std.mem.eql(u8, name, "DOTNET_STARTUP_HOOKS")) {
-            if (dotnet.getDotnetValues()) |v| {
-                return v.startup_hooks;
-            }
-        } else if (std.mem.eql(u8, name, "OTEL_DOTNET_AUTO_HOME")) {
-            if (dotnet.getDotnetValues()) |v| {
-                return v.otel_auto_home;
-            }
+    } else if (std.mem.eql(u8, name, dotnet.coreclr_enable_profiling_env_var_name)) {
+        if (dotnet.getDotnetValues()) |v| {
+            return v.coreclr_enable_profiling;
+        }
+    } else if (std.mem.eql(u8, name, dotnet.coreclr_profiler_env_var_name)) {
+        if (dotnet.getDotnetValues()) |v| {
+            return v.coreclr_profiler;
+        }
+    } else if (std.mem.eql(u8, name, dotnet.coreclr_profiler_path_env_var_name)) {
+        if (dotnet.getDotnetValues()) |v| {
+            return v.coreclr_profiler_path;
+        }
+    } else if (std.mem.eql(u8, name, dotnet.dotnet_additional_deps_env_var_name)) {
+        if (dotnet.getDotnetValues()) |v| {
+            return v.additional_deps;
+        }
+    } else if (std.mem.eql(u8, name, dotnet.dotnet_shared_store_env_var_name)) {
+        if (dotnet.getDotnetValues()) |v| {
+            return v.shared_store;
+        }
+    } else if (std.mem.eql(u8, name, dotnet.dotnet_startup_hooks_env_var_name)) {
+        if (dotnet.getDotnetValues()) |v| {
+            return v.startup_hooks;
+        }
+    } else if (std.mem.eql(u8, name, dotnet.otel_dotnet_auto_home_env_var_name)) {
+        if (dotnet.getDotnetValues()) |v| {
+            return v.otel_auto_home;
         }
     }
 

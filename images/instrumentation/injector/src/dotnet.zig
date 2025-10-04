@@ -7,6 +7,7 @@ const std = @import("std");
 const alloc = @import("allocator.zig");
 const libc = @import("libc.zig");
 const print = @import("print.zig");
+const test_util = @import("test_util.zig");
 const types = @import("types.zig");
 
 const testing = std.testing;
@@ -45,6 +46,14 @@ const DotnetError = error{
     OutOfMemory,
 };
 
+pub const coreclr_enable_profiling_env_var_name = "CORECLR_ENABLE_PROFILING";
+pub const coreclr_profiler_env_var_name = "CORECLR_PROFILER";
+pub const coreclr_profiler_path_env_var_name = "CORECLR_PROFILER_PATH";
+pub const dotnet_additional_deps_env_var_name = "DOTNET_ADDITIONAL_DEPS";
+pub const dotnet_shared_store_env_var_name = "DOTNET_SHARED_STORE";
+pub const dotnet_startup_hooks_env_var_name = "DOTNET_STARTUP_HOOKS";
+pub const otel_dotnet_auto_home_env_var_name = "OTEL_DOTNET_AUTO_HOME";
+
 const dotnet_path_prefix = "/__dash0__/instrumentation/dotnet";
 var experimental_dotnet_injection_enabled: ?bool = null;
 
@@ -78,20 +87,20 @@ pub fn getDotnetValues() ?DotnetValues {
 
     if (cached_libc_flavor == null) {
         const lib_c = libc.getLibCInfo() catch |err| {
-            print.printError("Cannot get LibC information: {}", .{err});
+            print.printMessage("Cannot get LibC information: {}", .{err});
             return null;
         };
         cached_libc_flavor = lib_c.flavor;
     }
 
     if (cached_libc_flavor == types.LibCFlavor.UNKNOWN) {
-        print.printError("Cannot determine LibC flavor", .{});
+        print.printMessage("Cannot determine LibC flavor", .{});
         return null;
     }
 
     if (cached_libc_flavor) |flavor| {
         const dotnet_values = determineDotnetValues(flavor, builtin.cpu.arch) catch |err| {
-            print.printError("Cannot determine .NET environment variables: {}", .{err});
+            print.printMessage("Cannot determine .NET environment variables: {}", .{err});
             return null;
         };
 
@@ -104,7 +113,7 @@ pub fn getDotnetValues() ?DotnetValues {
         };
         for (paths_to_check) |p| {
             std.fs.cwd().access(std.mem.span(p), .{}) catch |err| {
-                print.printError("Skipping injection of injecting the .NET OpenTelemetry instrumentation because of an issue accessing {s}: {}", .{ p, err });
+                print.printMessage("Skipping injection of injecting the .NET OpenTelemetry instrumentation because of an issue accessing {s}: {}", .{ p, err });
                 return null;
             };
         }
@@ -118,7 +127,7 @@ pub fn getDotnetValues() ?DotnetValues {
 
 test "getDotnetValues: should return null value if the profiler path cannot be accessed" {
     const dotnet_values = getDotnetValues();
-    try testing.expect(dotnet_values == null);
+    try test_util.expectWithMessage(dotnet_values == null, "dotnet_values == null");
 }
 
 fn determineDotnetValues(libc_flavor: types.LibCFlavor, architecture: std.Target.Cpu.Arch) DotnetError!DotnetValues {
@@ -161,7 +170,7 @@ fn determineDotnetValues(libc_flavor: types.LibCFlavor, architecture: std.Target
     });
 
     if (!injection_happened_msg_has_been_printed) {
-        print.printMessage(injection_happened_msg, .{});
+        print.printDebug(injection_happened_msg, .{});
         injection_happened_msg_has_been_printed = true;
     }
     return .{

@@ -60,38 +60,53 @@ pub const DlsymLookupFn = *const fn (LibCNameAndFlavor, usize, usize) @typeInfo(
 /// (i.e. __environ, setenv).
 ///
 /// This is performed in three steps:
-/// 1. Inspect the Elf metadata of the program's executable ("/proc/self/exe"), using the DT_NEEDED symbols for the
+/// 1. Inspect the ELF metadata of the program's executable ("/proc/self/exe"), using the DT_NEEDED symbols for the
 ///    libraries that must be linked.
 /// 2. Look up pointer to the `dlsym` function in the libc loaded by the program, as springboard for the next look ups.
-///    We use a simplified version of the Elf support in Zig's std (`dynamic_library`) because we do not want to have to
-///    support the infinite number of corner cases of the various libc flavors and versions.
-/// 3. Use the loaded libc's `dlsym` function to look up the symbols we need (setenv, __environ).
+///    We use a simplified version of the ELF support in Zig's std library (`dynamic_library`) because we do not want to
+///    have to support the infinite number of corner cases of the various libc flavors and versions.
+/// 3. Use the loaded libc's `dlsym` function to look up the symbols we need (__environ, setenv).
 pub fn getLibCInfo() !types.LibCInfo {
     const libc_name_and_flavor = try getLibCNameAndFlavor(proc_self_exe_path);
-    return getLibCMemoryLocations(proc_self_maps_path, libc_name_and_flavor, tryToFindSymbolsInMemoryRange);
+    const libc_info = getLibCMemoryLocations(
+        proc_self_maps_path,
+        libc_name_and_flavor,
+        tryToFindSymbolsInMemoryRange,
+    ) catch |err| {
+        if (err == error.PermissionsNotFoundInMaps or err == error.CannotFindLibcMemoryRange) {
+            // The error will be properly logged in the code calling getLibCInfo, but for those specific errors, let's
+            // include a dump of /proc/self/maps in the log output.
+            print.printMessage("printing content of {s} below as debugging information", .{proc_self_maps_path});
+            logProcSelfMaps(proc_self_maps_path) catch {
+                // ignore errors from logProcSelfMaps deliberately
+            };
+        }
+        return err;
+    };
+    return libc_info;
 }
 
-///  Inspect the Elf metadata of the program's executable ("/proc/self/exe"), using the DT_NEEDED symbols for the
-///  libraries that must be linked. We use the executable's file instead of its in-memory mapping to avoid annoyances
-///  with looking up the in-memory location of the Elf header (it is never in memory at location 0 is the virtual memory
-///  space of the program, is is usually offset by 40 bytes).
-// TODO MM: Rewrite this to use in-memory, finding u=out the Elf header location using auxv? If that would work, we
-// could make this logic allocation-free.
+/// Inspect the ELF metadata of the program's executable ("/proc/self/exe"), using the DT_NEEDED symbols for the
+/// libraries that must be linked. We use the executable's file instead of its in-memory mapping to avoid annoyances
+/// with looking up the in-memory location of the ELF header (it is never in memory at location 0 is the virtual memory
+/// space of the program, is is usually offset by 40 bytes).
 fn getLibCNameAndFlavor(self_exe_path: []const u8) !LibCNameAndFlavor {
+    // TODO MM: Rewrite this to use in-memory, finding u=out the ELF header location using auxv? If that would work, we
+    // could make this logic allocation-free.
     const self_exe_file =
         std.fs.openFileAbsolute(self_exe_path, .{ .mode = .read_only }) catch |err| {
-            print.printError("Cannot open \"{s}\": {}", .{ self_exe_path, err });
+            print.printMessage("Cannot open \"{s}\": {}", .{ self_exe_path, err });
             return UnknownLibC;
         };
     defer self_exe_file.close();
 
     const elf_header = std.elf.Header.read(self_exe_file) catch |err| {
-        print.printError("Cannot read ELF header from  \"{s}\": {}", .{ self_exe_path, err });
+        print.printMessage("Cannot read ELF header from  \"{s}\": {}", .{ self_exe_path, err });
         return UnknownLibC;
     };
 
     if (!elf_header.is_64) {
-        print.printError("ELF header from \"{s}\" seems to not be from a 64 bit binary", .{self_exe_path});
+        print.printMessage("ELF header from \"{s}\" seems to not be from a 64 bit binary", .{self_exe_path});
         return error.ElfNot64Bit;
     }
 
@@ -113,7 +128,7 @@ fn getLibCNameAndFlavor(self_exe_path: []const u8) !LibCNameAndFlavor {
     }
 
     if (dynamic_symbols_table_offset == 0) {
-        print.printError("No dynamic section found in ELF metadata when inspecting \"{s}\"", .{self_exe_path});
+        print.printMessage("No dynamic section found in ELF metadata when inspecting \"{s}\"", .{self_exe_path});
         return error.ElfDynamicSymbolTableNotFound;
     }
 
@@ -153,7 +168,7 @@ fn getLibCNameAndFlavor(self_exe_path: []const u8) !LibCNameAndFlavor {
         }
     }
     if (strtab_addr == 0) {
-        print.printError("No string table found when inspecting ELF binary \"{s}\"", .{self_exe_path});
+        print.printMessage("No string table found when inspecting ELF binary \"{s}\"", .{self_exe_path});
         return error.ElfStringsTableNotFound;
     }
 
@@ -181,7 +196,7 @@ fn getLibCNameAndFlavor(self_exe_path: []const u8) !LibCNameAndFlavor {
             }
         }
         if (string_table_offset == 0) {
-            print.printError("Could not map string table address when inspecting ELF binary \"{s}\"", .{self_exe_path});
+            print.printMessage("Could not map string table address when inspecting ELF binary \"{s}\"", .{self_exe_path});
             return error.ElfStringsTableNotFound;
         }
     }
@@ -201,7 +216,7 @@ fn getLibCNameAndFlavor(self_exe_path: []const u8) !LibCNameAndFlavor {
                 if (std.mem.indexOf(u8, lib_name, musl_name_part)) |_| {
                     // lib_name exists on the stack, we need to allocate a string with the same content on the heap
                     const lib_name_owned = std.fmt.allocPrintZ(std.heap.page_allocator, "{s}", .{lib_name}) catch |err| {
-                        print.printError("Failed to allocate memory for libc name: {}", .{err});
+                        print.printMessage("Failed to allocate memory for libc name: {}", .{err});
                         return error.CannotAllocateMemory;
                     };
                     return LibCNameAndFlavor{ .flavor = types.LibCFlavor.MUSL, .name = lib_name_owned };
@@ -211,7 +226,7 @@ fn getLibCNameAndFlavor(self_exe_path: []const u8) !LibCNameAndFlavor {
                     print.printDebug("found a libc: {s}", .{lib_name});
                     // lib_name exists on the stack, we need to allocate a string with the same content on the heap
                     const lib_name_owned = std.fmt.allocPrintZ(std.heap.page_allocator, "{s}", .{lib_name}) catch |err| {
-                        print.printError("Failed to allocate memory for libc name: {}", .{err});
+                        print.printMessage("Failed to allocate memory for libc name: {}", .{err});
                         return error.CannotAllocateMemory;
                     };
                     return LibCNameAndFlavor{ .flavor = types.LibCFlavor.GNU, .name = lib_name_owned };
@@ -290,7 +305,7 @@ fn getLibCMemoryLocations(self_maps_path: []const u8, libc_name_and_flavor: LibC
         types.LibCFlavor.MUSL => {
             const at_base = auxv.getauxval(std.elf.AT_BASE);
             if (at_base == 0) {
-                print.printError("cannot find AT_BASE in /proc/self/auxv", .{});
+                print.printMessage("cannot find AT_BASE in /proc/self/auxv", .{});
                 return error.CannotFindAtBase;
             }
             return findMuslMemoryRangeAndLookupMemoryLocations(
@@ -659,13 +674,13 @@ fn memoryRangeHasMatchingPermissions(permissions: []const u8) bool {
 }
 
 test "memoryRangeHasMatchingPermissions" {
-    try testing.expect(memoryRangeHasMatchingPermissions("r-xp"));
-    try testing.expect(memoryRangeHasMatchingPermissions("r--p"));
-    try testing.expect(!memoryRangeHasMatchingPermissions("rw-p"));
-    try testing.expect(!memoryRangeHasMatchingPermissions("rwxp"));
-    try testing.expect(!memoryRangeHasMatchingPermissions("rw-s"));
-    try testing.expect(!memoryRangeHasMatchingPermissions("r--s"));
-    try testing.expect(!memoryRangeHasMatchingPermissions("----"));
+    try test_util.expectWithMessage(memoryRangeHasMatchingPermissions("r-xp"), "memoryRangeHasMatchingPermissions(\"r-xp\")");
+    try test_util.expectWithMessage(memoryRangeHasMatchingPermissions("r--p"), "memoryRangeHasMatchingPermissions(\"r--p\")");
+    try test_util.expectWithMessage(!memoryRangeHasMatchingPermissions("rw-p"), "!memoryRangeHasMatchingPermissions(\"rw-p\")");
+    try test_util.expectWithMessage(!memoryRangeHasMatchingPermissions("rwxp"), "!memoryRangeHasMatchingPermissions(\"rwxp\")");
+    try test_util.expectWithMessage(!memoryRangeHasMatchingPermissions("rw-s"), "!memoryRangeHasMatchingPermissions(\"rw-s\")");
+    try test_util.expectWithMessage(!memoryRangeHasMatchingPermissions("r--s"), "!memoryRangeHasMatchingPermissions(\"r--s\")");
+    try test_util.expectWithMessage(!memoryRangeHasMatchingPermissions("----"), "!memoryRangeHasMatchingPermissions(\"----\")");
 }
 
 /// Checks whether the given path ends with something that matches ".so([.0-9]+)?".
@@ -694,19 +709,19 @@ fn pathLooksLikeSharedObject(path: []const u8) bool {
 }
 
 test "pathLooksLikeSharedObject" {
-    try testing.expect(pathLooksLikeSharedObject("/lib/x86_64-linux-gnu/libc.so.6"));
-    try testing.expect(pathLooksLikeSharedObject("/lib/aarch64-linux-gnu/libc.so.1"));
-    try testing.expect(pathLooksLikeSharedObject("/lib/libc.so"));
-    try testing.expect(pathLooksLikeSharedObject("/usr/lib/libc.so.2.31"));
-    try testing.expect(pathLooksLikeSharedObject("/usr/lib/libc.so.2.31.1"));
-    try testing.expect(!pathLooksLikeSharedObject("/usr/lib/libc.so.backup"));
-    try testing.expect(!pathLooksLikeSharedObject("/path/to/app.o"));
-    try testing.expect(!pathLooksLikeSharedObject("/usr/lib/libc.s"));
-    try testing.expect(!pathLooksLikeSharedObject("/usr/lib/libc.a"));
-    try testing.expect(!pathLooksLikeSharedObject("/usr/lib/libc.dylib"));
-    try testing.expect(!pathLooksLikeSharedObject("/usr/lib/libc.dll"));
-    try testing.expect(!pathLooksLikeSharedObject("/usr/lib/not-a-lib.txt"));
-    try testing.expect(!pathLooksLikeSharedObject("dash0_injector.so"));
+    try test_util.expectWithMessage(pathLooksLikeSharedObject("/lib/x86_64-linux-gnu/libc.so.6"), "pathLooksLikeSharedObject(\"/lib/x86_64-linux-gnu/libc.so.6\")");
+    try test_util.expectWithMessage(pathLooksLikeSharedObject("/lib/aarch64-linux-gnu/libc.so.1"), "pathLooksLikeSharedObject(\"/lib/aarch64-linux-gnu/libc.so.1\")");
+    try test_util.expectWithMessage(pathLooksLikeSharedObject("/lib/libc.so"), "pathLooksLikeSharedObject(\"/lib/libc.so\")");
+    try test_util.expectWithMessage(pathLooksLikeSharedObject("/usr/lib/libc.so.2.31"), "pathLooksLikeSharedObject(\"/usr/lib/libc.so.2.31\")");
+    try test_util.expectWithMessage(pathLooksLikeSharedObject("/usr/lib/libc.so.2.31.1"), "pathLooksLikeSharedObject(\"/usr/lib/libc.so.2.31.1\")");
+    try test_util.expectWithMessage(!pathLooksLikeSharedObject("/usr/lib/libc.so.backup"), "!pathLooksLikeSharedObject(\"/usr/lib/libc.so.backup\")");
+    try test_util.expectWithMessage(!pathLooksLikeSharedObject("/path/to/app.o"), "!pathLooksLikeSharedObject(\"/path/to/app.o\")");
+    try test_util.expectWithMessage(!pathLooksLikeSharedObject("/usr/lib/libc.s"), "!pathLooksLikeSharedObject(\"/usr/lib/libc.s\")");
+    try test_util.expectWithMessage(!pathLooksLikeSharedObject("/usr/lib/libc.a"), "!pathLooksLikeSharedObject(\"/usr/lib/libc.a\")");
+    try test_util.expectWithMessage(!pathLooksLikeSharedObject("/usr/lib/libc.dylib"), "!pathLooksLikeSharedObject(\"/usr/lib/libc.dylib\")");
+    try test_util.expectWithMessage(!pathLooksLikeSharedObject("/usr/lib/libc.dll"), "!pathLooksLikeSharedObject(\"/usr/lib/libc.dll\")");
+    try test_util.expectWithMessage(!pathLooksLikeSharedObject("/usr/lib/not-a-lib.txt"), "!pathLooksLikeSharedObject(\"/usr/lib/not-a-lib.txt\")");
+    try test_util.expectWithMessage(!pathLooksLikeSharedObject("dash0_injector.so"), "!pathLooksLikeSharedObject(\"dash0_injector.so\")");
 }
 
 /// Reads the given memory range via elf.ElfDynLib.open and tries to lookup the dlsym function via elf.ElfDynLib#lookup.
@@ -717,7 +732,7 @@ fn tryToFindSymbolsInMemoryRange(
     end: usize,
 ) !types.LibCInfo {
     const linker = elf.ElfDynLib.open(start, end) catch |err| {
-        print.printError("cannot open libc mapped range {x}-{x} as Elf library: {}", .{ start, end, err });
+        print.printMessage("cannot open libc mapped range {x}-{x} as ELF library: {}", .{ start, end, err });
         return error.CannotOpenLibc;
     };
 
@@ -759,4 +774,15 @@ fn mockFindSymbolsInMemoryRange(
         };
     }
     return error.CannotFindDlSymSymbol;
+}
+
+fn logProcSelfMaps(self_maps_path: []const u8) !void {
+    var maps_file = try std.fs.openFileAbsolute(self_maps_path, .{});
+    defer maps_file.close();
+    var buf_reader = std.io.bufferedReader(maps_file.reader());
+    var in_stream = buf_reader.reader();
+    var buf: [1024]u8 = undefined;
+    while (try in_stream.readUntilDelimiterOrEof(&buf, '\n')) |line| {
+        print.printMessage("{s}", .{line});
+    }
 }
