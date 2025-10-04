@@ -51,7 +51,17 @@ test "checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue: should return the
 fn getModifiedJavaToolOptionsValue(original_java_tool_options_env_var_value_optional: ?[:0]const u8) ?types.NullTerminatedString {
     // For auto-instrumentation, we inject the -javaagent flag into the JAVA_TOOL_OPTIONS environment variable.
     if (original_java_tool_options_env_var_value_optional) |original_java_tool_options_env_var_value| {
-        // JAVA_TOOL_OPTIONS is set, but no new resource attributes have been provided.
+        if (std.mem.indexOf(u8, original_java_tool_options_env_var_value, javaagent_flag_value)) |_| {
+            // If our "-javaagent ..." flag is already present in JAVA_TOOL_OPTIONS, do nothing. This is particularly
+            // important to avoid double injection, for example if we are injecting into a container which has a shell
+            // executable as its entry point (into which we inject env var modifications), and then this shell starts
+            // the JVM executable as a child process, which inherits the environment from the already injected shell.
+            return original_java_tool_options_env_var_value;
+        }
+
+        // If JAVA_TOOL_OPTIONS is already set, prepend the "-javaagent ..." flag to the original value.
+        // Note: We must never free the return_buffer, or we may cause a USE_AFTER_FREE memory corruption in the
+        // parent process.
         const return_buffer =
             std.fmt.allocPrintZ(alloc.page_allocator, "{s} {s}", .{
                 original_java_tool_options_env_var_value,
@@ -63,7 +73,7 @@ fn getModifiedJavaToolOptionsValue(original_java_tool_options_env_var_value_opti
         print.printMessage(injection_happened_msg, .{});
         return return_buffer.ptr;
     } else {
-        // JAVA_TOOL_OPTIONS is not set, and no new resource attributes have been provided. Simply return the -javaagent flag.
+        // JAVA_TOOL_OPTIONS is not set, simply return the -javaagent flag.
         print.printMessage(injection_happened_msg, .{});
         return javaagent_flag_value[0..].ptr;
     }
@@ -82,6 +92,15 @@ test "getModifiedJavaToolOptionsValue: should append -javaagent if original valu
     const modifiedJavaToolOptions = getModifiedJavaToolOptionsValue(original_value);
     try testing.expectEqualStrings(
         "-Dsome.property=value -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar",
+        std.mem.span(modifiedJavaToolOptions orelse "-"),
+    );
+}
+
+test "getModifiedJavaToolOptionsValue: should do nothing if our -javaagent is already present" {
+    const original_value: [:0]const u8 = "-Dsome.property=value -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar -Dsome.other.property=value"[0.. :0];
+    const modifiedJavaToolOptions = getModifiedJavaToolOptionsValue(original_value);
+    try testing.expectEqualStrings(
+        "-Dsome.property=value -javaagent:/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar -Dsome.other.property=value",
         std.mem.span(modifiedJavaToolOptions orelse "-"),
     );
 }

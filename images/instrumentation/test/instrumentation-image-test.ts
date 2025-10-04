@@ -539,6 +539,7 @@ async function runTestCasesForArchitectureRuntimeAndBaseImage(testImage: TestIma
     let testCmd: string[];
     switch (runtime) {
       case 'c':
+      case 'c-debian-11-no-libdl':
       case 'distroless-with-libc':
         testCmd = [`/test-cases/${testCase}/app.o`];
         break;

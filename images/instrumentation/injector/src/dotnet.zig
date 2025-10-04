@@ -45,6 +45,14 @@ const DotnetError = error{
     OutOfMemory,
 };
 
+pub const coreclr_enable_profiling_env_var_name = "CORECLR_ENABLE_PROFILING";
+pub const coreclr_profiler_env_var_name = "CORECLR_PROFILER";
+pub const coreclr_profiler_path_env_var_name = "CORECLR_PROFILER_PATH";
+pub const dotnet_additional_deps_env_var_name = "DOTNET_ADDITIONAL_DEPS";
+pub const dotnet_shared_store_env_var_name = "DOTNET_SHARED_STORE";
+pub const dotnet_startup_hooks_env_var_name = "DOTNET_STARTUP_HOOKS";
+pub const otel_dotnet_auto_home_env_var_name = "OTEL_DOTNET_AUTO_HOME";
+
 const dotnet_path_prefix = "/__dash0__/instrumentation/dotnet";
 var experimental_dotnet_injection_enabled: ?bool = null;
 
