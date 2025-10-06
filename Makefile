@@ -213,7 +213,7 @@ shellcheck-check-installed:
 .PHONY: shellcheck-lint
 shellcheck-lint: shellcheck-check-installed
 	@echo "-------------------------------- (linting shell scripts)"
-	find . -name \*.sh -not -path "./images/instrumentation/injector-experiments/third-party/*" | xargs shellcheck -x
+	find . -name \*.sh | xargs shellcheck -x
 
 .PHONY: zig-installed
 zig-installed:
@@ -230,7 +230,6 @@ ifeq ("${CI}","true")
 else
 	@echo "-------------------------------- (linting Zig source files)"
 	zig fmt --check images/instrumentation/injector/src
-	zig fmt --check images/instrumentation/injector-experiments
 endif
 
 .PHONY: npm-installed
