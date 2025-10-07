@@ -12,24 +12,6 @@ const types = @import("types.zig");
 
 const testing = std.testing;
 
-// Note: The CLR bootstrapping code (implemented in C++) uses getenv, but when doing
-// Environment.GetEnvironmentVariable from within a .NET application, it will apparently bypass getenv.
-// That is, while we can inject the OTel SDK and activate tracing for a .NET application, overriding the the getenv
-// function is probably not suitable for overriding
-// environment variables that the OTel SDK looks up from within the CLR (like OTEL_DOTNET_AUTO_HOME,
-// OTEL_RESOURCE_ATTRIBUTES, etc.).
-//
-// Here is an example for the lookup of DOTNET_SHARED_STORE, which happens at runtime startup, via getenv:
-// https://github.com/dotnet/runtime/blob/v9.0.5/src/native/corehost/hostpolicy/shared_store.cpp#L16
-// -> https://github.com/dotnet/runtime/blob/v9.0.5/src/native/corehost/hostmisc/pal.unix.cpp#L954.
-//
-// In contrast to that, the implementation of Environment.GetEnvironmentVariable reads the __environ into a dictionary
-// and then uses that dictionary for all lookups, see here:
-// https://github.com/dotnet/runtime/blob/v9.0.5/src/libraries/System.Private.CoreLib/src/System/Environment.cs#L66 ->
-// - https://github.com/dotnet/runtime/blob/v9.0.5/src/libraries/System.Private.CoreLib/src/System/Environment.Variables.Unix.cs#L15-L32,
-// - https://github.com/dotnet/runtime/blob/v9.0.5/src/libraries/System.Private.CoreLib/src/System/Environment.Variables.Unix.cs#L85-L91, and
-// https://github.com/dotnet/runtime/blob/v9.0.5/src/libraries/System.Private.CoreLib/src/System/Environment.Variables.Unix.cs#L93-L166
-
 pub const DotnetValues = struct {
     coreclr_enable_profiling: types.NullTerminatedString,
     coreclr_profiler: types.NullTerminatedString,
@@ -40,11 +22,18 @@ pub const DotnetValues = struct {
     otel_auto_home: types.NullTerminatedString,
 };
 
+pub const CachedDotnetValues = struct {
+    values: ?DotnetValues,
+    done: bool,
+};
+
 const DotnetError = error{
     UnknownLibCFlavor,
     UnsupportedCpuArchitecture,
     OutOfMemory,
 };
+
+const dash0_experimental_dotnet_injection_env_var_name = "DASH0_EXPERIMENTAL_DOTNET_INJECTION";
 
 pub const coreclr_enable_profiling_env_var_name = "CORECLR_ENABLE_PROFILING";
 pub const coreclr_profiler_env_var_name = "CORECLR_PROFILER";
@@ -57,15 +46,18 @@ pub const otel_dotnet_auto_home_env_var_name = "OTEL_DOTNET_AUTO_HOME";
 const dotnet_path_prefix = "/__dash0__/instrumentation/dotnet";
 var experimental_dotnet_injection_enabled: ?bool = null;
 
-var cached_dotnet_values: ?DotnetValues = null;
-var cached_libc_flavor: ?types.LibCFlavor = null;
+var cached_dotnet_values = CachedDotnetValues{
+    .values = null,
+    .done = false,
+};
+var libc_flavor: ?types.LibCFlavor = null;
 
 const injection_happened_msg = "injecting the .NET OpenTelemetry instrumentation";
 var injection_happened_msg_has_been_printed = false;
 
 fn initIsEnabled() void {
     if (experimental_dotnet_injection_enabled == null) {
-        if (std.posix.getenv("DASH0_EXPERIMENTAL_DOTNET_INJECTION")) |raw| {
+        if (std.posix.getenv(dash0_experimental_dotnet_injection_env_var_name)) |raw| {
             experimental_dotnet_injection_enabled = std.ascii.eqlIgnoreCase("true", raw);
         } else {
             experimental_dotnet_injection_enabled = false;
@@ -80,65 +72,91 @@ pub fn isEnabled() bool {
     return experimental_dotnet_injection_enabled orelse false;
 }
 
+pub fn setLibcFlavor(lf: types.LibCFlavor) void {
+    libc_flavor = lf;
+}
+
 pub fn getDotnetValues() ?DotnetValues {
-    if (cached_dotnet_values) |val| {
-        return val;
+    if (libc_flavor == null) {
+        print.printMessage("invariant violated: libc flavor has not been set prior to calling getDotnetValues().", .{});
+        return null;
     }
-
-    if (cached_libc_flavor == null) {
-        const lib_c = libc.getLibCInfo() catch |err| {
-            print.printMessage("Cannot get LibC information: {}", .{err});
-            return null;
-        };
-        cached_libc_flavor = lib_c.flavor;
-    }
-
-    if (cached_libc_flavor == types.LibCFlavor.UNKNOWN) {
-        print.printMessage("Cannot determine LibC flavor", .{});
+    if (libc_flavor == types.LibCFlavor.UNKNOWN) {
+        print.printMessage("Cannot determine libc flavor", .{});
         return null;
     }
 
-    if (cached_libc_flavor) |flavor| {
-        const dotnet_values = determineDotnetValues(flavor, builtin.cpu.arch) catch |err| {
+    if (cached_dotnet_values.done) {
+        return cached_dotnet_values.values;
+    }
+
+    if (libc_flavor) |libc_f| {
+        const values = determineDotnetValues(libc_f, builtin.cpu.arch) catch |err| {
             print.printMessage("Cannot determine .NET environment variables: {}", .{err});
+            cached_dotnet_values = .{
+                .values = null,
+                // do not try to determine the .NET values again
+                .done = true,
+            };
             return null;
         };
 
         const paths_to_check = [_]types.NullTerminatedString{
-            dotnet_values.coreclr_profiler_path,
-            dotnet_values.additional_deps,
-            dotnet_values.otel_auto_home,
-            dotnet_values.shared_store,
-            dotnet_values.startup_hooks,
+            values.coreclr_profiler_path,
+            values.additional_deps,
+            values.otel_auto_home,
+            values.shared_store,
+            values.startup_hooks,
         };
         for (paths_to_check) |p| {
             std.fs.cwd().access(std.mem.span(p), .{}) catch |err| {
                 print.printMessage("Skipping injection of injecting the .NET OpenTelemetry instrumentation because of an issue accessing {s}: {}", .{ p, err });
+                cached_dotnet_values = .{
+                    .values = null,
+                    // do not try to determine the .NET values again
+                    .done = true,
+                };
                 return null;
             };
         }
 
-        cached_dotnet_values = dotnet_values;
-        return cached_dotnet_values;
+        cached_dotnet_values = .{
+            .values = values,
+            .done = true,
+        };
+        return values;
     }
 
     unreachable;
 }
 
-test "getDotnetValues: should return null value if the profiler path cannot be accessed" {
+test "getDotnetValues: should return null value if the libc flavor has not been set" {
+    _resetState();
+    defer _resetState();
+
+    libc_flavor = null;
     const dotnet_values = getDotnetValues();
     try test_util.expectWithMessage(dotnet_values == null, "dotnet_values == null");
 }
 
-fn determineDotnetValues(libc_flavor: types.LibCFlavor, architecture: std.Target.Cpu.Arch) DotnetError!DotnetValues {
+test "getDotnetValues: should return null value if the profiler path cannot be accessed" {
+    _resetState();
+    defer _resetState();
+
+    libc_flavor = .GNU;
+    const dotnet_values = getDotnetValues();
+    try test_util.expectWithMessage(dotnet_values == null, "dotnet_values == null");
+}
+
+fn determineDotnetValues(libc_f: types.LibCFlavor, architecture: std.Target.Cpu.Arch) DotnetError!DotnetValues {
     const libc_flavor_prefix =
-        switch (libc_flavor) {
+        switch (libc_f) {
             .GNU => "glibc",
             .MUSL => "musl",
             else => return error.UnknownLibCFlavor,
         };
     const platform =
-        switch (libc_flavor) {
+        switch (libc_f) {
             .GNU => switch (architecture) {
                 .x86_64 => "linux-x64",
                 .aarch64 => "linux-arm64",
@@ -318,4 +336,12 @@ test "determineDotnetValues: should return values for musl/arm64" {
         "/__dash0__/instrumentation/dotnet/musl/net/OpenTelemetry.AutoInstrumentation.StartupHook.dll",
         std.mem.span(dotnet_values.startup_hooks),
     );
+}
+
+fn _resetState() void {
+    cached_dotnet_values = CachedDotnetValues{
+        .values = null,
+        .done = false,
+    };
+    libc_flavor = null;
 }
