@@ -148,8 +148,6 @@ func (r *PersesDashboardCrdReconciler) SetupWithManager(
 	)
 }
 
-//+kubebuilder:rbac:groups=perses.dev,resources=persesdashboards,verbs=get;list;watch
-
 func (r *PersesDashboardCrdReconciler) Create(
 	ctx context.Context,
 	_ event.TypedCreateEvent[client.Object],
