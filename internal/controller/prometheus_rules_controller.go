@@ -60,8 +60,6 @@ type PrometheusRuleReconciler struct {
 	controllerStopFunction     *context.CancelFunc
 }
 
-//+kubebuilder:rbac:groups=apiextensions.k8s.io,resources=customresourcedefinitions,verbs=get;list;watch
-
 type CheckRule struct {
 	Name          string            `json:"name"`
 	Expression    string            `json:"expression"`
@@ -173,8 +171,6 @@ func (r *PrometheusRuleCrdReconciler) SetupWithManager(
 		logger,
 	)
 }
-
-//+kubebuilder:rbac:groups=monitoring.coreos.com,resources=prometheusrules,verbs=get;list;watch
 
 func (r *PrometheusRuleCrdReconciler) Create(
 	ctx context.Context,

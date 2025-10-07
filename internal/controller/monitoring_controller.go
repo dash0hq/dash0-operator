@@ -104,19 +104,6 @@ func (r *MonitoringReconciler) InitializeSelfMonitoringMetrics(
 	}
 }
 
-// The following markers are used to generate the rules permissions (RBAC) on config/rbac using controller-gen
-// when the command <make manifests> is executed.
-// To know more about markers see: https://book.kubebuilder.io/reference/markers.html
-//+kubebuilder:rbac:groups=apps,resources=daemonsets;deployments;replicasets;statefulsets,verbs=get;list;watch;update;patch
-//+kubebuilder:rbac:groups=batch,resources=cronjobs;jobs,verbs=get;list;watch;update;patch
-//+kubebuilder:rbac:groups=core,resources=events,verbs=create;list;patch;update
-//+kubebuilder:rbac:groups=core,resources=namespaces,verbs=get
-//+kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;delete
-//+kubebuilder:rbac:groups=core,resources=endpoints,verbs=get
-//+kubebuilder:rbac:groups=operator.dash0.com,resources=dash0monitorings,verbs=get;list;watch;create;update;patch;delete;deletecollection
-//+kubebuilder:rbac:groups=operator.dash0.com,resources=dash0monitorings/finalizers,verbs=update
-//+kubebuilder:rbac:groups=operator.dash0.com,resources=dash0monitorings/status,verbs=get;update;patch
-
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 // It is essential for the controller's reconciliation loop to be idempotent. By following the Operator
