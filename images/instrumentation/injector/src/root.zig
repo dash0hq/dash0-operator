@@ -39,7 +39,7 @@ const InjectorError = error{
 
 fn initEnviron() callconv(.C) void {
     print.printMessage("starting environment injection", .{});
-    const libc_library = libc.getLibCInfo() catch |err| {
+    const libc_info = libc.getLibCInfo() catch |err| {
         if (err == error.UnknownLibCFlavor) {
             print.printMessage("no libc found: {}", .{err});
         } else {
@@ -47,8 +47,9 @@ fn initEnviron() callconv(.C) void {
         }
         return;
     };
+    dotnet.setLibcFlavor(libc_info.flavor);
 
-    environ_ptr = libc_library.environ_ptr;
+    environ_ptr = libc_info.environ_ptr;
 
     updateStdOsEnviron() catch |err| {
         print.printMessage("initEnviron(): cannot update std.os.environ: {}; ", .{err});
@@ -56,11 +57,11 @@ fn initEnviron() callconv(.C) void {
     };
     print.initDebugFlag();
 
-    print.printDebug("identified {s} libc loaded from {s}", .{ switch (libc_library.flavor) {
+    print.printDebug("identified {s} libc loaded from {s}", .{ switch (libc_info.flavor) {
         types.LibCFlavor.GNU => "GNU",
         types.LibCFlavor.MUSL => "musl",
         else => "unknown",
-    }, libc_library.name });
+    }, libc_info.name });
 
     const maybe_modified_resource_attributes = res_attrs.getModifiedOtelResourceAttributesValue(std.posix.getenv(res_attrs.otel_resource_attributes_env_var_name)) catch |err| {
         print.printMessage("cannot calculate modified OTEL_RESOURCE_ATTRIBUTES: {}", .{err});
@@ -69,7 +70,7 @@ fn initEnviron() callconv(.C) void {
 
     if (maybe_modified_resource_attributes) |modified_resource_attributes| {
         const setenv_res =
-            libc_library.setenv_fn_ptr(
+            libc_info.setenv_fn_ptr(
                 res_attrs.otel_resource_attributes_env_var_name,
                 modified_resource_attributes,
                 true,
@@ -79,16 +80,16 @@ fn initEnviron() callconv(.C) void {
         }
     }
 
-    modifyEnvironmentVariable(libc_library.setenv_fn_ptr, node_js.node_options_env_var_name);
-    modifyEnvironmentVariable(libc_library.setenv_fn_ptr, jvm.java_tool_options_env_var_name);
+    modifyEnvironmentVariable(libc_info.setenv_fn_ptr, node_js.node_options_env_var_name);
+    modifyEnvironmentVariable(libc_info.setenv_fn_ptr, jvm.java_tool_options_env_var_name);
     if (dotnet.isEnabled()) {
-        modifyEnvironmentVariable(libc_library.setenv_fn_ptr, dotnet.coreclr_enable_profiling_env_var_name);
-        modifyEnvironmentVariable(libc_library.setenv_fn_ptr, dotnet.coreclr_profiler_env_var_name);
-        modifyEnvironmentVariable(libc_library.setenv_fn_ptr, dotnet.coreclr_profiler_path_env_var_name);
-        modifyEnvironmentVariable(libc_library.setenv_fn_ptr, dotnet.dotnet_additional_deps_env_var_name);
-        modifyEnvironmentVariable(libc_library.setenv_fn_ptr, dotnet.dotnet_shared_store_env_var_name);
-        modifyEnvironmentVariable(libc_library.setenv_fn_ptr, dotnet.dotnet_startup_hooks_env_var_name);
-        modifyEnvironmentVariable(libc_library.setenv_fn_ptr, dotnet.otel_dotnet_auto_home_env_var_name);
+        modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.coreclr_enable_profiling_env_var_name);
+        modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.coreclr_profiler_env_var_name);
+        modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.coreclr_profiler_path_env_var_name);
+        modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.dotnet_additional_deps_env_var_name);
+        modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.dotnet_shared_store_env_var_name);
+        modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.dotnet_startup_hooks_env_var_name);
+        modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.otel_dotnet_auto_home_env_var_name);
     }
     print.printMessage("finished environment injection", .{});
 }
