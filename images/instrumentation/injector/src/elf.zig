@@ -109,11 +109,7 @@ pub const ElfDynLib = struct {
 
     pub fn lookup(self: *const ElfDynLib, comptime T: type, name: [:0]const u8) ?T {
         if (self.lookupAddress(name)) |symbol_ptr| {
-            // if (symbol_ptr > self.start_memory_range and symbol_ptr < self.end_memory_range) {
             return @as(T, @ptrFromInt(symbol_ptr));
-            // } else {
-            //     print.printMessage("found symbol at {x}, but it is outside the expected memory range {x}-{x}", .{ symbol_ptr, self.start_memory_range, self.end_memory_range });
-            // }
         }
 
         return null;
