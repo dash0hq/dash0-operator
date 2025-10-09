@@ -15,14 +15,14 @@ const testing = std.testing;
 
 test "initFlags: DASH0_INJECTOR_DEBUG is not set" {
     const original_environ = try test_util.clearStdCEnviron();
-    defer test_util.resetStdCEnviron(original_environ);
+    defer test_util.resetStdCEnvironAndPrintFlags(original_environ);
     print.initFlags();
     try test_util.expectWithMessage(!print.isDebug(), "!print.isDebug()");
 }
 
 test "initFlags: DASH0_INJECTOR_DEBUG=false" {
     const original_environ = try test_util.setStdCEnviron(&[1][]const u8{"DASH0_INJECTOR_DEBUG=false"});
-    defer test_util.resetStdCEnviron(original_environ);
+    defer test_util.resetStdCEnvironAndPrintFlags(original_environ);
 
     print.initFlags();
     try test_util.expectWithMessage(!print.isDebug(), "!print.isDebug()");
@@ -30,7 +30,7 @@ test "initFlags: DASH0_INJECTOR_DEBUG=false" {
 
 test "initFlags: DASH0_INJECTOR_DEBUG is arbitrary string" {
     const original_environ = try test_util.setStdCEnviron(&[1][]const u8{"DASH0_INJECTOR_DEBUG=whatever"});
-    defer test_util.resetStdCEnviron(original_environ);
+    defer test_util.resetStdCEnvironAndPrintFlags(original_environ);
 
     print.initFlags();
     try test_util.expectWithMessage(!print.isDebug(), "!print.isDebug()");
@@ -38,7 +38,7 @@ test "initFlags: DASH0_INJECTOR_DEBUG is arbitrary string" {
 
 test "initFlags: DASH0_INJECTOR_DEBUG=true" {
     const original_environ = try test_util.setStdCEnviron(&[1][]const u8{"DASH0_INJECTOR_DEBUG=true"});
-    defer test_util.resetStdCEnviron(original_environ);
+    defer test_util.resetStdCEnvironAndPrintFlags(original_environ);
 
     print.initFlags();
     try test_util.expectWithMessage(print.isDebug(), "print.isDebug()");
@@ -46,14 +46,14 @@ test "initFlags: DASH0_INJECTOR_DEBUG=true" {
 
 test "initFlags: DASH0_INJECTOR_QUIET is not set" {
     const original_environ = try test_util.clearStdCEnviron();
-    defer test_util.resetStdCEnviron(original_environ);
+    defer test_util.resetStdCEnvironAndPrintFlags(original_environ);
     print.initFlags();
     try test_util.expectWithMessage(!print.isQuiet(), "!print.isQuiet()");
 }
 
 test "initFlags: DASH0_INJECTOR_QUIET=false" {
     const original_environ = try test_util.setStdCEnviron(&[1][]const u8{"DASH0_INJECTOR_QUIET=false"});
-    defer test_util.resetStdCEnviron(original_environ);
+    defer test_util.resetStdCEnvironAndPrintFlags(original_environ);
 
     print.initFlags();
     try test_util.expectWithMessage(!print.isQuiet(), "!print.isQuiet()");
@@ -61,7 +61,7 @@ test "initFlags: DASH0_INJECTOR_QUIET=false" {
 
 test "initFlags: DASH0_INJECTOR_QUIET is arbitrary string" {
     const original_environ = try test_util.setStdCEnviron(&[1][]const u8{"DASH0_INJECTOR_QUIET=whatever"});
-    defer test_util.resetStdCEnviron(original_environ);
+    defer test_util.resetStdCEnvironAndPrintFlags(original_environ);
 
     print.initFlags();
     try test_util.expectWithMessage(!print.isQuiet(), "!print.isQuiet()");
@@ -69,7 +69,7 @@ test "initFlags: DASH0_INJECTOR_QUIET is arbitrary string" {
 
 test "initFlags: DASH0_INJECTOR_QUIET=true" {
     const original_environ = try test_util.setStdCEnviron(&[1][]const u8{"DASH0_INJECTOR_QUIET=true"});
-    defer test_util.resetStdCEnviron(original_environ);
+    defer test_util.resetStdCEnvironAndPrintFlags(original_environ);
 
     print.initFlags();
     try test_util.expectWithMessage(print.isQuiet(), "print.isQuiet()");

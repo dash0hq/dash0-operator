@@ -44,3 +44,8 @@ pub fn printMessage(comptime fmt: []const u8, args: anytype) void {
 fn _printMessage(comptime fmt: []const u8, args: anytype) void {
     std.debug.print(log_prefix ++ fmt ++ "\n", args);
 }
+
+pub fn resetFlags() void {
+    is_debug = false;
+    is_quiet = false;
+}
