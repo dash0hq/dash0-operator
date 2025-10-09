@@ -185,20 +185,5 @@ fn getEnvValue(name: [:0]const u8) ?types.NullTerminatedString {
         }
     }
 
-    // The requested environment variable is not one that we want to modify, hence we just return the original value by
-    // returning a pointer to it.
-    if (original_value) |val| {
-        if (val.len == 0) {
-            // This can happen if an environment variable has been _deleted_ by calling putenv("VARIABLE") instead of
-            // putenv("VARIABLE=some-value"). Accessing val.ptr would lead to a segfault in this case. Unfortunately,
-            // we do not have a good way of distinguishing between environment variables that have been unset vs.
-            // environment variables that have been set explicitly to the empty string here. We choose to return the empty
-            // string here.
-            return empty_z_string;
-        }
-        return val.ptr;
-    }
-
-    // The requested environment variable is not one that we want to modify, and it does not exist. Return null.
     return null;
 }
