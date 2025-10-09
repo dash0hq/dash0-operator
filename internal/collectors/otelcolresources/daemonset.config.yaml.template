@@ -29,21 +29,27 @@ connectors:
   forward/logs: {}
 
   routing/traces:
+{{- if .ExportersDefault }}
     default_pipelines: [traces/export/_default]
+{{- end }}
     error_mode: ignore
     table:
       - context: resource
         condition: attributes["k8s.namespace.name"] == "routed-namespace"
         pipelines: [traces/export/routed-namespace]
   routing/metrics:
+{{- if .ExportersDefault }}
     default_pipelines: [metrics/export/_default]
+{{- end }}
     error_mode: ignore
     table:
       - context: resource
         condition: attributes["k8s.namespace.name"] == "routed-namespace"
         pipelines: [metrics/export/routed-namespace]
   routing/logs:
+{{- if .ExportersDefault }}
     default_pipelines: [logs/export/_default]
+{{- end }}
     error_mode: ignore
     table:
       - context: resource
@@ -695,7 +701,6 @@ exporters:
 {{- end }}
 
 
-
 service:
   extensions:
   - health_check
@@ -723,6 +728,7 @@ service:
       exporters:
       - routing/traces
 
+    {{- if .ExportersDefault }}
     traces/export/_default:
       receivers:
        - routing/traces
@@ -733,6 +739,7 @@ service:
       {{- range $i, $exporter := .ExportersDefault }}
       - {{ $exporter.Name }}
       {{- end }}
+    {{- end }}
 
     traces/export/routed-namespace:
       receivers:
@@ -788,6 +795,7 @@ service:
       exporters:
       - routing/metrics
 
+    {{- if .ExportersDefault }}
     metrics/export/_default:
       receivers:
        - routing/metrics
@@ -798,6 +806,7 @@ service:
       {{- range $i, $exporter := .ExportersDefault }}
       - {{ $exporter.Name }}
       {{- end }}
+    {{- end }}
 
     metrics/export/routed-namespace:
       receivers:
@@ -849,6 +858,7 @@ service:
       exporters:
       - routing/logs
 
+    {{- if .ExportersDefault }}
     logs/export/_default:
       receivers:
        - routing/logs
@@ -859,6 +869,7 @@ service:
       {{- range $i, $exporter := .ExportersDefault }}
       - {{ $exporter.Name }}
       {{- end }}
+    {{- end }}
 
     logs/export/routed-namespace:
       receivers:
