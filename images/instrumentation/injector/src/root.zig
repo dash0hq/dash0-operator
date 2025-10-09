@@ -61,6 +61,10 @@ fn initEnviron() callconv(.C) void {
     };
 
     if (maybe_modified_resource_attributes) |modified_resource_attributes| {
+        print.printDebug(
+            "setting {s}={s}",
+            .{ res_attrs.otel_resource_attributes_env_var_name, modified_resource_attributes },
+        );
         const setenv_res =
             libc_info.setenv_fn_ptr(
                 res_attrs.otel_resource_attributes_env_var_name,

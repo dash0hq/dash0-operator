@@ -14,7 +14,6 @@ const testing = std.testing;
 pub const java_tool_options_env_var_name = "JAVA_TOOL_OPTIONS";
 const otel_java_agent_path = "/__dash0__/instrumentation/jvm/opentelemetry-javaagent.jar";
 const javaagent_flag_value = "-javaagent:" ++ otel_java_agent_path;
-const injection_happened_msg = "injecting the Java OpenTelemetry agent";
 
 pub fn checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue(original_value_optional: ?[:0]const u8) ?types.NullTerminatedString {
     // Check the existence of the Jar file: by passing a `-javaagent` to a
@@ -65,11 +64,9 @@ fn getModifiedJavaToolOptionsValue(original_java_tool_options_env_var_value_opti
                 print.printMessage("Cannot allocate memory to manipulate the value of '{s}': {}", .{ java_tool_options_env_var_name, err });
                 return null;
             };
-        print.printDebug(injection_happened_msg, .{});
         return return_buffer.ptr;
     } else {
         // JAVA_TOOL_OPTIONS is not set, simply return the -javaagent flag.
-        print.printDebug(injection_happened_msg, .{});
         return javaagent_flag_value[0..].ptr;
     }
 }
