@@ -31,7 +31,6 @@ const InjectorError = error{
 };
 
 fn initEnviron() callconv(.C) void {
-    print.printMessage("starting environment injection", .{});
     const libc_info = libc.getLibCInfo() catch |err| {
         if (err == error.UnknownLibCFlavor) {
             print.printMessage("no libc found: {}", .{err});
@@ -48,7 +47,7 @@ fn initEnviron() callconv(.C) void {
         print.printMessage("initEnviron(): cannot update std.os.environ: {}; ", .{err});
         return;
     };
-    print.initDebugFlag();
+    print.initLogLevel();
 
     print.printDebug("identified {s} libc loaded from {s}", .{ switch (libc_info.flavor) {
         types.LibCFlavor.GNU => "GNU",
@@ -84,7 +83,7 @@ fn initEnviron() callconv(.C) void {
         modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.dotnet_startup_hooks_env_var_name);
         modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.otel_dotnet_auto_home_env_var_name);
     }
-    print.printMessage("finished environment injection", .{});
+    print.printMessage("environment injection finished", .{});
 }
 
 fn updateStdOsEnviron() !void {
@@ -113,7 +112,7 @@ fn updateStdOsEnviron() !void {
 
 fn modifyEnvironmentVariable(setenv_fn_ptr: types.SetenvFnPtr, name: [:0]const u8) void {
     if (getEnvValue(name)) |value| {
-        print.printMessage(
+        print.printDebug(
             "setting {s}={s}",
             .{ name, value },
         );
