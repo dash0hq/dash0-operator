@@ -5,7 +5,7 @@
 
 # build the LD_PRELOAD injector binary
 
-FROM alpine:3.22.1 AS build-injector
+FROM alpine:3.22.2 AS build-injector
 COPY injector/zig-version /dash0-init-container/zig-version
 RUN source /dash0-init-container/zig-version && \
   apk add zig="$ZIG_VERSION"
@@ -37,7 +37,7 @@ RUN NPM_CONFIG_UPDATE_NOTIFIER=false \
   --no-fund=true
 
 # download .NET auto instrumentation
-FROM alpine:3.22.1 AS build-dotnet
+FROM alpine:3.22.2 AS build-dotnet
 RUN apk add --no-cache \
 		curl \
 		unzip
@@ -46,7 +46,7 @@ COPY dotnet/download-instrumentation.sh .
 RUN ./download-instrumentation.sh
 
 # build the final instrumentation image
-FROM alpine:3.22.1
+FROM alpine:3.22.2
 COPY copy-instrumentation.sh /
 
 # copy artifacts (distros, injector binary) from the build stages to the final image
