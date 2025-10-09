@@ -33,8 +33,6 @@ const DotnetError = error{
     OutOfMemory,
 };
 
-const dash0_experimental_dotnet_injection_env_var_name = "DASH0_EXPERIMENTAL_DOTNET_INJECTION";
-
 pub const coreclr_enable_profiling_env_var_name = "CORECLR_ENABLE_PROFILING";
 pub const coreclr_profiler_env_var_name = "CORECLR_PROFILER";
 pub const coreclr_profiler_path_env_var_name = "CORECLR_PROFILER_PATH";
@@ -44,30 +42,12 @@ pub const dotnet_startup_hooks_env_var_name = "DOTNET_STARTUP_HOOKS";
 pub const otel_dotnet_auto_home_env_var_name = "OTEL_DOTNET_AUTO_HOME";
 
 const dotnet_path_prefix = "/__dash0__/instrumentation/dotnet";
-var experimental_dotnet_injection_enabled: ?bool = null;
 
 var cached_dotnet_values = CachedDotnetValues{
     .values = null,
     .done = false,
 };
 var libc_flavor: ?types.LibCFlavor = null;
-
-fn initIsEnabled() void {
-    if (experimental_dotnet_injection_enabled == null) {
-        if (std.posix.getenv(dash0_experimental_dotnet_injection_env_var_name)) |raw| {
-            experimental_dotnet_injection_enabled = std.ascii.eqlIgnoreCase("true", raw);
-        } else {
-            experimental_dotnet_injection_enabled = false;
-        }
-    }
-}
-
-pub fn isEnabled() bool {
-    if (experimental_dotnet_injection_enabled == null) {
-        initIsEnabled();
-    }
-    return experimental_dotnet_injection_enabled orelse false;
-}
 
 pub fn setLibcFlavor(lf: types.LibCFlavor) void {
     libc_flavor = lf;

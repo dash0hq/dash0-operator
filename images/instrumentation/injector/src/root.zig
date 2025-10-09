@@ -78,15 +78,13 @@ fn initEnviron() callconv(.C) void {
 
     modifyEnvironmentVariable(libc_info.setenv_fn_ptr, node_js.node_options_env_var_name);
     modifyEnvironmentVariable(libc_info.setenv_fn_ptr, jvm.java_tool_options_env_var_name);
-    if (dotnet.isEnabled()) {
-        modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.coreclr_enable_profiling_env_var_name);
-        modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.coreclr_profiler_env_var_name);
-        modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.coreclr_profiler_path_env_var_name);
-        modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.dotnet_additional_deps_env_var_name);
-        modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.dotnet_shared_store_env_var_name);
-        modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.dotnet_startup_hooks_env_var_name);
-        modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.otel_dotnet_auto_home_env_var_name);
-    }
+    modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.coreclr_enable_profiling_env_var_name);
+    modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.coreclr_profiler_env_var_name);
+    modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.coreclr_profiler_path_env_var_name);
+    modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.dotnet_additional_deps_env_var_name);
+    modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.dotnet_shared_store_env_var_name);
+    modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.dotnet_startup_hooks_env_var_name);
+    modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.otel_dotnet_auto_home_env_var_name);
     print.printMessage("environment injection finished", .{});
 }
 
