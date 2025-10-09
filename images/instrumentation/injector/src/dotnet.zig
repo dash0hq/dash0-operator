@@ -52,9 +52,6 @@ var cached_dotnet_values = CachedDotnetValues{
 };
 var libc_flavor: ?types.LibCFlavor = null;
 
-const injection_happened_msg = "injecting the .NET OpenTelemetry instrumentation";
-var injection_happened_msg_has_been_printed = false;
-
 fn initIsEnabled() void {
     if (experimental_dotnet_injection_enabled == null) {
         if (std.posix.getenv(dash0_experimental_dotnet_injection_env_var_name)) |raw| {
@@ -187,10 +184,6 @@ fn determineDotnetValues(libc_f: types.LibCFlavor, architecture: std.Target.Cpu.
         dotnet_path_prefix, libc_flavor_prefix,
     });
 
-    if (!injection_happened_msg_has_been_printed) {
-        print.printDebug(injection_happened_msg, .{});
-        injection_happened_msg_has_been_printed = true;
-    }
     return .{
         .coreclr_enable_profiling = "1",
         .coreclr_profiler = "{918728DD-259F-4A6A-AC2B-B85E1B658318}",
