@@ -24,13 +24,6 @@ const init_section_name = switch (builtin.target.os.tag) {
 
 export const init_array: [1]*const fn () callconv(.C) void linksection(init_section_name) = .{&initEnviron};
 
-// Keep global pointers to already-calculated values to avoid multiple allocations
-// on repeated lookups.
-var modified_java_tool_options_value_calculated = false;
-var modified_java_tool_options_value: ?types.NullTerminatedString = null;
-var modified_node_options_value_calculated = false;
-var modified_node_options_value: ?types.NullTerminatedString = null;
-
 var environ_ptr: ?types.EnvironPtr = null;
 
 const InjectorError = error{
@@ -138,23 +131,9 @@ fn getEnvValue(name: [:0]const u8) ?types.NullTerminatedString {
     const original_value = std.posix.getenv(name);
 
     if (std.mem.eql(u8, name, jvm.java_tool_options_env_var_name)) {
-        if (!modified_java_tool_options_value_calculated) {
-            modified_java_tool_options_value =
-                jvm.checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue(original_value);
-            modified_java_tool_options_value_calculated = true;
-        }
-        if (modified_java_tool_options_value) |updated_value| {
-            return updated_value;
-        }
+        return jvm.checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue(original_value);
     } else if (std.mem.eql(u8, name, node_js.node_options_env_var_name)) {
-        if (!modified_node_options_value_calculated) {
-            modified_node_options_value =
-                node_js.checkNodeJsOTelSdkDistributionAndGetModifiedNodeOptionsValue(original_value);
-            modified_node_options_value_calculated = true;
-        }
-        if (modified_node_options_value) |updated_value| {
-            return updated_value;
-        }
+        return node_js.checkNodeJsOTelSdkDistributionAndGetModifiedNodeOptionsValue(original_value);
     } else if (std.mem.eql(u8, name, dotnet.coreclr_enable_profiling_env_var_name)) {
         if (dotnet.getDotnetValues()) |v| {
             return v.coreclr_enable_profiling;
