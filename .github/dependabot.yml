@@ -52,6 +52,11 @@ updates:
       interval: "daily"
       time: "07:15"
       timezone: "Europe/Berlin"
+    groups:
+      production-dependencies:
+        dependency-type: "production"
+      development-dependencies:
+        dependency-type: "development"
 
   # -----------------------
   # -- Test applications --
