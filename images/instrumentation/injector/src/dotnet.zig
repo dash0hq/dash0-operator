@@ -33,8 +33,6 @@ const DotnetError = error{
     OutOfMemory,
 };
 
-const dash0_experimental_dotnet_injection_env_var_name = "DASH0_EXPERIMENTAL_DOTNET_INJECTION";
-
 pub const coreclr_enable_profiling_env_var_name = "CORECLR_ENABLE_PROFILING";
 pub const coreclr_profiler_env_var_name = "CORECLR_PROFILER";
 pub const coreclr_profiler_path_env_var_name = "CORECLR_PROFILER_PATH";
@@ -44,33 +42,12 @@ pub const dotnet_startup_hooks_env_var_name = "DOTNET_STARTUP_HOOKS";
 pub const otel_dotnet_auto_home_env_var_name = "OTEL_DOTNET_AUTO_HOME";
 
 const dotnet_path_prefix = "/__dash0__/instrumentation/dotnet";
-var experimental_dotnet_injection_enabled: ?bool = null;
 
 var cached_dotnet_values = CachedDotnetValues{
     .values = null,
     .done = false,
 };
 var libc_flavor: ?types.LibCFlavor = null;
-
-const injection_happened_msg = "injecting the .NET OpenTelemetry instrumentation";
-var injection_happened_msg_has_been_printed = false;
-
-fn initIsEnabled() void {
-    if (experimental_dotnet_injection_enabled == null) {
-        if (std.posix.getenv(dash0_experimental_dotnet_injection_env_var_name)) |raw| {
-            experimental_dotnet_injection_enabled = std.ascii.eqlIgnoreCase("true", raw);
-        } else {
-            experimental_dotnet_injection_enabled = false;
-        }
-    }
-}
-
-pub fn isEnabled() bool {
-    if (experimental_dotnet_injection_enabled == null) {
-        initIsEnabled();
-    }
-    return experimental_dotnet_injection_enabled orelse false;
-}
 
 pub fn setLibcFlavor(lf: types.LibCFlavor) void {
     libc_flavor = lf;
@@ -187,10 +164,6 @@ fn determineDotnetValues(libc_f: types.LibCFlavor, architecture: std.Target.Cpu.
         dotnet_path_prefix, libc_flavor_prefix,
     });
 
-    if (!injection_happened_msg_has_been_printed) {
-        print.printDebug(injection_happened_msg, .{});
-        injection_happened_msg_has_been_printed = true;
-    }
     return .{
         .coreclr_enable_profiling = "1",
         .coreclr_profiler = "{918728DD-259F-4A6A-AC2B-B85E1B658318}",

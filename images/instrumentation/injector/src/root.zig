@@ -24,13 +24,6 @@ const init_section_name = switch (builtin.target.os.tag) {
 
 export const init_array: [1]*const fn () callconv(.C) void linksection(init_section_name) = .{&initEnviron};
 
-// Keep global pointers to already-calculated values to avoid multiple allocations
-// on repeated lookups.
-var modified_java_tool_options_value_calculated = false;
-var modified_java_tool_options_value: ?types.NullTerminatedString = null;
-var modified_node_options_value_calculated = false;
-var modified_node_options_value: ?types.NullTerminatedString = null;
-
 var environ_ptr: ?types.EnvironPtr = null;
 
 const InjectorError = error{
@@ -38,7 +31,6 @@ const InjectorError = error{
 };
 
 fn initEnviron() callconv(.C) void {
-    print.printMessage("starting environment injection", .{});
     const libc_info = libc.getLibCInfo() catch |err| {
         if (err == error.UnknownLibCFlavor) {
             print.printMessage("no libc found: {}", .{err});
@@ -55,7 +47,7 @@ fn initEnviron() callconv(.C) void {
         print.printMessage("initEnviron(): cannot update std.os.environ: {}; ", .{err});
         return;
     };
-    print.initDebugFlag();
+    print.initFlags();
 
     print.printDebug("identified {s} libc loaded from {s}", .{ switch (libc_info.flavor) {
         types.LibCFlavor.GNU => "GNU",
@@ -69,6 +61,10 @@ fn initEnviron() callconv(.C) void {
     };
 
     if (maybe_modified_resource_attributes) |modified_resource_attributes| {
+        print.printDebug(
+            "setting {s}={s}",
+            .{ res_attrs.otel_resource_attributes_env_var_name, modified_resource_attributes },
+        );
         const setenv_res =
             libc_info.setenv_fn_ptr(
                 res_attrs.otel_resource_attributes_env_var_name,
@@ -82,16 +78,14 @@ fn initEnviron() callconv(.C) void {
 
     modifyEnvironmentVariable(libc_info.setenv_fn_ptr, node_js.node_options_env_var_name);
     modifyEnvironmentVariable(libc_info.setenv_fn_ptr, jvm.java_tool_options_env_var_name);
-    if (dotnet.isEnabled()) {
-        modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.coreclr_enable_profiling_env_var_name);
-        modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.coreclr_profiler_env_var_name);
-        modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.coreclr_profiler_path_env_var_name);
-        modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.dotnet_additional_deps_env_var_name);
-        modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.dotnet_shared_store_env_var_name);
-        modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.dotnet_startup_hooks_env_var_name);
-        modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.otel_dotnet_auto_home_env_var_name);
-    }
-    print.printMessage("finished environment injection", .{});
+    modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.coreclr_enable_profiling_env_var_name);
+    modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.coreclr_profiler_env_var_name);
+    modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.coreclr_profiler_path_env_var_name);
+    modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.dotnet_additional_deps_env_var_name);
+    modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.dotnet_shared_store_env_var_name);
+    modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.dotnet_startup_hooks_env_var_name);
+    modifyEnvironmentVariable(libc_info.setenv_fn_ptr, dotnet.otel_dotnet_auto_home_env_var_name);
+    print.printMessage("environment injection finished", .{});
 }
 
 fn updateStdOsEnviron() !void {
@@ -120,7 +114,7 @@ fn updateStdOsEnviron() !void {
 
 fn modifyEnvironmentVariable(setenv_fn_ptr: types.SetenvFnPtr, name: [:0]const u8) void {
     if (getEnvValue(name)) |value| {
-        print.printMessage(
+        print.printDebug(
             "setting {s}={s}",
             .{ name, value },
         );
@@ -138,23 +132,9 @@ fn getEnvValue(name: [:0]const u8) ?types.NullTerminatedString {
     const original_value = std.posix.getenv(name);
 
     if (std.mem.eql(u8, name, jvm.java_tool_options_env_var_name)) {
-        if (!modified_java_tool_options_value_calculated) {
-            modified_java_tool_options_value =
-                jvm.checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue(original_value);
-            modified_java_tool_options_value_calculated = true;
-        }
-        if (modified_java_tool_options_value) |updated_value| {
-            return updated_value;
-        }
+        return jvm.checkOTelJavaAgentJarAndGetModifiedJavaToolOptionsValue(original_value);
     } else if (std.mem.eql(u8, name, node_js.node_options_env_var_name)) {
-        if (!modified_node_options_value_calculated) {
-            modified_node_options_value =
-                node_js.checkNodeJsOTelSdkDistributionAndGetModifiedNodeOptionsValue(original_value);
-            modified_node_options_value_calculated = true;
-        }
-        if (modified_node_options_value) |updated_value| {
-            return updated_value;
-        }
+        return node_js.checkNodeJsOTelSdkDistributionAndGetModifiedNodeOptionsValue(original_value);
     } else if (std.mem.eql(u8, name, dotnet.coreclr_enable_profiling_env_var_name)) {
         if (dotnet.getDotnetValues()) |v| {
             return v.coreclr_enable_profiling;
@@ -185,20 +165,5 @@ fn getEnvValue(name: [:0]const u8) ?types.NullTerminatedString {
         }
     }
 
-    // The requested environment variable is not one that we want to modify, hence we just return the original value by
-    // returning a pointer to it.
-    if (original_value) |val| {
-        if (val.len == 0) {
-            // This can happen if an environment variable has been _deleted_ by calling putenv("VARIABLE") instead of
-            // putenv("VARIABLE=some-value"). Accessing val.ptr would lead to a segfault in this case. Unfortunately,
-            // we do not have a good way of distinguishing between environment variables that have been unset vs.
-            // environment variables that have been set explicitly to the empty string here. We choose to return the empty
-            // string here.
-            return empty_z_string;
-        }
-        return val.ptr;
-    }
-
-    // The requested environment variable is not one that we want to modify, and it does not exist. Return null.
     return null;
 }

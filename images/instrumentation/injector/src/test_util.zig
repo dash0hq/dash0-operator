@@ -4,6 +4,9 @@
 // **Note: This file must only be imported from *_test.zig files, never from actual production code zig files.**
 
 const std = @import("std");
+
+const _print = @import("print.zig");
+
 const testing = std.testing;
 
 pub const test_allocator: std.mem.Allocator = std.heap.page_allocator;
@@ -45,8 +48,16 @@ pub fn setStdCEnviron(env_vars: []const []const u8) anyerror![*:null]?[*:0]u8 {
     return original_environ;
 }
 
+/// Resets std.c.environ to the given value, and resets the print flags to their original value. This function is meant
+/// to be used after doing clearStdCEnviron or setStdCEnviron earlier, to restore the original environment after the
+/// test is done, and to reset print flags that might have been changed during a test.
+pub fn resetStdCEnvironAndPrintFlags(original_environ: [*:null]?[*:0]u8) void {
+    resetStdCEnviron(original_environ);
+    _print.resetFlags();
+}
+
 /// Resets std.c.environ to the given value. This function is meant to be used after doing clearStdCEnviron or
-/// setStdCEnviron earler, to restore the original environment after the test is done.
+/// setStdCEnviron earlier, to restore the original environment after the test is done.
 pub fn resetStdCEnviron(original_environ: [*:null]?[*:0]u8) void {
     std.c.environ = original_environ;
 }
