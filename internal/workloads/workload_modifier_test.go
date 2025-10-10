@@ -413,6 +413,21 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			Expect(modificationResult.HasBeenModified).To(BeTrue())
 			VerifyModifiedStatefulSet(workload, BasicInstrumentedPodSpecExpectations(), IgnoreManagedFields)
 		})
+
+		It("should not try to instrument Windows workloads", func() {
+			workload := BasicDeployment(TestNamespaceName, DeploymentNamePrefix)
+			workload.Spec.Template.Spec.NodeSelector = map[string]string{
+				util.KubernetesIoOs: "windows",
+			}
+			modificationResult := workloadModifier.ModifyDeployment(workload)
+
+			Expect(modificationResult.HasBeenModified).To(BeFalse())
+			Expect(modificationResult.RenderReasonMessage(testActor)).To(Equal(
+				"The actor has not modified this workload since it seems to be targeting a non-Linux operating " +
+					"system, workload modifications are only supported for Linux workloads. " +
+					"Details: pod.spec.nodeSelector: \"kubernetes.io/os=windows\""))
+			VerifyUnmodifiedDeployment(workload)
+		})
 	})
 
 	Describe("when instrumenting workloads multiple times (instrumentation needs to be idempotent)", func() {
@@ -620,6 +635,228 @@ var _ = Describe("Dash0 Workload Modification", func() {
 			DefaultNamespaceInstrumentationConfig,
 			testActor,
 			&logger,
+		)
+
+		type detectNonLinuxPodTest struct {
+			podSpec         corev1.PodSpec
+			expectedMessage *string
+		}
+
+		DescribeTable("should detect non-Linux pods heuristically based on pod OS, node selectors or node affinities",
+			func(testConfig detectNonLinuxPodTest) {
+				result := workloadModifier.checkEligibleForModification(&testConfig.podSpec)
+				if testConfig.expectedMessage == nil {
+					Expect(result).To(BeNil())
+				} else {
+					Expect(*result).ToNot(BeNil())
+					Expect(result.HasBeenModified).To(BeFalse())
+					message := result.RenderReasonMessage(testActor)
+					Expect(message).To(Equal(*testConfig.expectedMessage))
+				}
+			},
+			Entry("should deem pod spec without any OS specification eligible", detectNonLinuxPodTest{
+				podSpec:         corev1.PodSpec{},
+				expectedMessage: nil,
+			}),
+			Entry("should deem pod spec with Linux pod OS eligible", detectNonLinuxPodTest{
+				podSpec: corev1.PodSpec{
+					OS: &corev1.PodOS{
+						Name: corev1.Linux,
+					},
+				},
+				expectedMessage: nil,
+			}),
+			Entry("should deem pod spec with Windows pod OS non-eligible", detectNonLinuxPodTest{
+				podSpec: corev1.PodSpec{
+					OS: &corev1.PodOS{
+						Name: corev1.Windows,
+					},
+				},
+				expectedMessage: ptr.To(
+					"The actor has not modified this workload since it seems to be targeting a non-Linux operating " +
+						"system, workload modifications are only supported for Linux workloads. Details: " +
+						"pod.spec.os.name: \"windows\"",
+				),
+			}),
+			Entry("should deem pod spec with random pod OS non-eligible", detectNonLinuxPodTest{
+				podSpec: corev1.PodSpec{
+					OS: &corev1.PodOS{
+						Name: "whatever",
+					},
+				},
+				expectedMessage: ptr.To(
+					"The actor has not modified this workload since it seems to be targeting a non-Linux operating " +
+						"system, workload modifications are only supported for Linux workloads. Details: " +
+						"pod.spec.os.name: \"whatever\""),
+			}),
+			Entry("should deem pod spec with unrelated node selectors eligible", detectNonLinuxPodTest{
+				podSpec: corev1.PodSpec{
+					NodeSelector: map[string]string{
+						"some-label":    "some-value",
+						"another-label": "another-value",
+					},
+				},
+				expectedMessage: nil,
+			}),
+			Entry("should deem pod spec with Linux node selector eligible", detectNonLinuxPodTest{
+				podSpec: corev1.PodSpec{
+					NodeSelector: map[string]string{
+						util.KubernetesIoOs: "linux",
+					},
+				},
+				expectedMessage: nil,
+			}),
+			Entry("should deem pod spec with Windows node selector non-eligible", detectNonLinuxPodTest{
+				podSpec: corev1.PodSpec{
+					NodeSelector: map[string]string{
+						util.KubernetesIoOs: "windows",
+					},
+				},
+				expectedMessage: ptr.To(
+					"The actor has not modified this workload since it seems to be targeting a non-Linux operating " +
+						"system, workload modifications are only supported for Linux workloads. " +
+						"Details: pod.spec.nodeSelector: \"kubernetes.io/os=windows\"",
+				),
+			}),
+			Entry("should deem pod spec with empty Affinity struct eligible", detectNonLinuxPodTest{
+				podSpec: corev1.PodSpec{
+					Affinity: &corev1.Affinity{},
+				},
+				expectedMessage: nil,
+			}),
+			Entry("should deem pod spec with empty NodeAffinity struct eligible", detectNonLinuxPodTest{
+				podSpec: corev1.PodSpec{
+					Affinity: &corev1.Affinity{
+						NodeAffinity: &corev1.NodeAffinity{},
+					},
+				},
+				expectedMessage: nil,
+			}),
+			Entry("should deem pod spec with only PreferredDuringSchedulingIgnoredDuringExecution node affinities eligible", detectNonLinuxPodTest{
+				podSpec: corev1.PodSpec{
+					Affinity: &corev1.Affinity{
+						NodeAffinity: &corev1.NodeAffinity{
+							PreferredDuringSchedulingIgnoredDuringExecution: []corev1.PreferredSchedulingTerm{
+								{Preference: corev1.NodeSelectorTerm{}},
+							},
+						},
+					},
+				},
+				expectedMessage: nil,
+			}),
+			Entry("should deem pod spec with unrelated RequiredDuringSchedulingIgnoredDuringExecution node affinities eligible", detectNonLinuxPodTest{
+				podSpec: corev1.PodSpec{
+					Affinity: &corev1.Affinity{
+						NodeAffinity: &corev1.NodeAffinity{
+							RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+								NodeSelectorTerms: []corev1.NodeSelectorTerm{
+									{
+										MatchExpressions: []corev1.NodeSelectorRequirement{
+											{Key: "some-label", Operator: corev1.NodeSelectorOpIn, Values: []string{"label-value"}},
+										},
+										MatchFields: []corev1.NodeSelectorRequirement{
+											{Key: "field", Operator: corev1.NodeSelectorOpIn, Values: []string{"field-value"}},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				expectedMessage: nil,
+			}),
+			Entry("should deem pod spec with Linux node affinities via operator 'In' eligible", detectNonLinuxPodTest{
+				podSpec: corev1.PodSpec{
+					Affinity: &corev1.Affinity{
+						NodeAffinity: &corev1.NodeAffinity{
+							RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+								NodeSelectorTerms: []corev1.NodeSelectorTerm{
+									{
+										MatchExpressions: []corev1.NodeSelectorRequirement{
+											{Key: "some-label1", Operator: corev1.NodeSelectorOpIn, Values: []string{"label-value1"}},
+											{Key: util.KubernetesIoOs, Operator: corev1.NodeSelectorOpIn, Values: []string{"windows", "linux"}},
+											{Key: "some-label2", Operator: corev1.NodeSelectorOpIn, Values: []string{"label-value2"}},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				expectedMessage: nil,
+			}),
+			Entry("should deem pod spec with non-Linux node affinities via operator 'In' non-eligible", detectNonLinuxPodTest{
+				podSpec: corev1.PodSpec{
+					Affinity: &corev1.Affinity{
+						NodeAffinity: &corev1.NodeAffinity{
+							RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+								NodeSelectorTerms: []corev1.NodeSelectorTerm{
+									{
+										MatchExpressions: []corev1.NodeSelectorRequirement{
+											{Key: "some-label1", Operator: corev1.NodeSelectorOpIn, Values: []string{"label-value1"}},
+											{Key: util.KubernetesIoOs, Operator: corev1.NodeSelectorOpIn, Values: []string{"some-operating-system", "windows"}},
+											{Key: "some-label2", Operator: corev1.NodeSelectorOpIn, Values: []string{"label-value2"}},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				expectedMessage: ptr.To(
+					"The actor has not modified this workload since it seems to be targeting a non-Linux operating " +
+						"system, workload modifications are only supported for Linux workloads. " +
+						"Details: pod.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution." +
+						"nodeSelectorTerms.matchExpression: key: \"kubernetes.io/os\", operator: \"In\", " +
+						"values: \"[some-operating-system windows]\"",
+				),
+			}),
+			Entry("should deem pod spec with Linux node affinities via operator 'NotIn' eligible", detectNonLinuxPodTest{
+				podSpec: corev1.PodSpec{
+					Affinity: &corev1.Affinity{
+						NodeAffinity: &corev1.NodeAffinity{
+							RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+								NodeSelectorTerms: []corev1.NodeSelectorTerm{
+									{
+										MatchExpressions: []corev1.NodeSelectorRequirement{
+											{Key: "some-label1", Operator: corev1.NodeSelectorOpIn, Values: []string{"label-value1"}},
+											{Key: util.KubernetesIoOs, Operator: corev1.NodeSelectorOpNotIn, Values: []string{"windows", "some-operating-system"}},
+											{Key: "some-label2", Operator: corev1.NodeSelectorOpIn, Values: []string{"label-value2"}},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				expectedMessage: nil,
+			}),
+			Entry("should deem pod spec with non-Linux node affinities via operator 'NotIn' non-eligible", detectNonLinuxPodTest{
+				podSpec: corev1.PodSpec{
+					Affinity: &corev1.Affinity{
+						NodeAffinity: &corev1.NodeAffinity{
+							RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
+								NodeSelectorTerms: []corev1.NodeSelectorTerm{
+									{
+										MatchExpressions: []corev1.NodeSelectorRequirement{
+											{Key: "some-label1", Operator: corev1.NodeSelectorOpIn, Values: []string{"label-value1"}},
+											{Key: util.KubernetesIoOs, Operator: corev1.NodeSelectorOpNotIn, Values: []string{"linux", "some-operating-system"}},
+											{Key: "some-label2", Operator: corev1.NodeSelectorOpIn, Values: []string{"label-value2"}},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+				expectedMessage: ptr.To(
+					"The actor has not modified this workload since it seems to be targeting a non-Linux operating " +
+						"system, workload modifications are only supported for Linux workloads. " +
+						"Details: pod.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution." +
+						"nodeSelectorTerms.matchExpression: key: \"kubernetes.io/os\", operator: \"NotIn\", " +
+						"values: \"[linux some-operating-system]\"",
+				),
+			}),
 		)
 
 		type addLdPreloadTest struct {

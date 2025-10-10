@@ -100,8 +100,7 @@ const (
 	fileLogOffsetSync = "filelog-offset-sync"
 
 	// label keys
-	dash0OptOutLabelKey    = "dash0.com/enable"
-	nodeOsSelectorLabelKey = "kubernetes.io/os"
+	dash0OptOutLabelKey = "dash0.com/enable"
 
 	// label values
 	appKubernetesIoNameValue      = openTelemetryCollector
@@ -588,7 +587,7 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 									Values:   []string{"false"},
 								},
 								{
-									Key:      nodeOsSelectorLabelKey,
+									Key:      util.KubernetesIoOs,
 									Operator: corev1.NodeSelectorOpIn,
 									Values:   []string{"linux"},
 								},
@@ -1298,7 +1297,7 @@ func assembleCollectorDeployment(
 									Values:   []string{"false"},
 								},
 								{
-									Key:      nodeOsSelectorLabelKey,
+									Key:      util.KubernetesIoOs,
 									Operator: corev1.NodeSelectorOpIn,
 									Values:   []string{"linux"},
 								},
