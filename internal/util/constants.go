@@ -27,6 +27,7 @@ const (
 	AppKubernetesIoComponentLabel = "app.kubernetes.io/component"
 	AppKubernetesIoManagedByLabel = "app.kubernetes.io/managed-by"
 	AppKubernetesIoVersionLabel   = "app.kubernetes.io/version"
+	KubernetesIoOs                = "kubernetes.io/os"
 )
 
 func RenderAuthorizationHeader(authToken string) string {
