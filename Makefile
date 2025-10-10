@@ -490,8 +490,17 @@ catalog-push: ## Push a catalog image.
 
 .PHONY: husky-install
 husky-install:
-	test -s $(HUSKY) || GOBIN=$(LOCALBIN) go install github.com/automation-co/husky@latest
+ifeq ("${CI}","true")
+	@echo "CI: skipping husky-install in CI"
+else
+	(test -d .git && (test -s $(HUSKY) || GOBIN=$(LOCALBIN) go install github.com/automation-co/husky@latest)) || true
+endif
 
+# Install git hooks, but only if .git actually exists (this helps with git worktrees, where .git does not exist).
 .PHONY: husky-setup-hooks
 husky-setup-hooks: husky-install
-	$(HUSKY) install
+ifeq ("${CI}","true")
+	@echo "CI: skipping husky-setup-hooks in CI"
+else
+	(test -d .git && $(HUSKY) install) || true
+endif
