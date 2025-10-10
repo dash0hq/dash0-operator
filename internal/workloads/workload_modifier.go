@@ -119,6 +119,14 @@ func NewNotModifiedOwnedByHigherOrderWorkloadResult() ModificationResult {
 	return newNotModifiedSkipLoggingResult(NoModificationReasonOwnedByHigherOrderWorkload)
 }
 
+func NewNotModifiedUnsupportedOperatingSystemResult(details string) ModificationResult {
+	return newNotModifiedResult(func(actor util.WorkloadModifierActor) string {
+		return fmt.Sprintf(
+			"The %s has not modified this workload since it seems to be targeting a non-Linux operating system, workload "+
+				"modifications are only supported for Linux workloads. Details: %s", actor, details)
+	})
+}
+
 func NewNotModifiedNoChangesResult() ModificationResult {
 	return newNotModifiedResult(NoModificationReasonNoChanges)
 }
@@ -260,6 +268,9 @@ func (m *ResourceModifier) ModifyPod(pod *corev1.Pod) ModificationResult {
 	}) {
 		return NewNotModifiedOwnedByHigherOrderWorkloadResult()
 	}
+	if isIneligibleForModificationResult := m.checkEligibleForModification(&pod.Spec); isIneligibleForModificationResult != nil {
+		return *isIneligibleForModificationResult
+	}
 	if hasBeenModified := m.modifyPodSpec(&pod.Spec, &pod.ObjectMeta, &pod.ObjectMeta); !hasBeenModified {
 		return NewNotModifiedNoChangesResult()
 	}
@@ -283,6 +294,9 @@ func (m *ResourceModifier) modifyResource(
 	workloadMeta *metav1.ObjectMeta,
 	podMeta *metav1.ObjectMeta,
 ) ModificationResult {
+	if isIneligibleForModificationResult := m.checkEligibleForModification(&podTemplateSpec.Spec); isIneligibleForModificationResult != nil {
+		return *isIneligibleForModificationResult
+	}
 	if hasBeenModified := m.modifyPodSpec(&podTemplateSpec.Spec, workloadMeta, podMeta); !hasBeenModified {
 		return NewNotModifiedNoChangesResult()
 	}
@@ -1202,6 +1216,41 @@ func (m *ResourceModifier) removeLegacyEnvVarNodeOptions(container *corev1.Conta
 	// there are other options left, so leave the env var in place and only update the value with the string where the
 	// Dash0 --require has been removed.
 	container.Env[idx].Value = newValue
+}
+
+// checkEligibleForModification checks whether the given PodTemplateSpec is eligible for modification.
+// If it is, the function returns nil, otherwise it returns a ModificationResult describing why it is not eligible.
+// In particular, this function checks whether the pod spec template is a non-Linux workload. (Other checks might be
+// added in the future.)
+func (m *ResourceModifier) checkEligibleForModification(podSpec *corev1.PodSpec) *ModificationResult {
+	if podSpec.OS != nil && podSpec.OS.Name != "" && podSpec.OS.Name != corev1.Linux {
+		return ptr.To(NewNotModifiedUnsupportedOperatingSystemResult(fmt.Sprintf("pod.spec.os.name: \"%s\"", podSpec.OS.Name)))
+	}
+	for key, value := range podSpec.NodeSelector {
+		if key == util.KubernetesIoOs && value != "linux" {
+			return ptr.To(NewNotModifiedUnsupportedOperatingSystemResult(fmt.Sprintf("pod.spec.nodeSelector: \"%s=%s\"", key, value)))
+		}
+	}
+	if podSpec.Affinity != nil &&
+		podSpec.Affinity.NodeAffinity != nil &&
+		podSpec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution != nil {
+		for _, nodeSelectorTerm := range podSpec.Affinity.NodeAffinity.RequiredDuringSchedulingIgnoredDuringExecution.NodeSelectorTerms {
+			for _, matchExpression := range nodeSelectorTerm.MatchExpressions {
+				if matchExpression.Key == util.KubernetesIoOs &&
+					((matchExpression.Operator == corev1.NodeSelectorOpIn && !slices.Contains(matchExpression.Values, "linux")) ||
+						(matchExpression.Operator == corev1.NodeSelectorOpNotIn && slices.Contains(matchExpression.Values, "linux"))) {
+					return ptr.To(NewNotModifiedUnsupportedOperatingSystemResult(fmt.Sprintf(
+						"pod.spec.affinity.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution."+
+							"nodeSelectorTerms.matchExpression: key: \"%s\", operator: \"%s\", values: \"%v\"",
+						matchExpression.Key,
+						matchExpression.Operator,
+						matchExpression.Values,
+					)))
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func (m *ResourceModifier) hasMatchingOwnerReference(workload client.Object, possibleOwnerTypes []metav1.TypeMeta) bool {
