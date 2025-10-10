@@ -18,6 +18,10 @@ import (
 )
 
 const (
+	// EnvtestK8sVersion is the version of the binaries used by envtest. Maintenance note: Keep this in sync with
+	// ENVTEST_K8S_VERSION in the Makefile.
+	EnvtestK8sVersion = "1.34.1"
+
 	ClusterUidTest              = "cluster-uid-test"
 	ClusterNameTest             = "cluster-name-test"
 	TestNamespaceName           = "test-namespace"
