@@ -87,6 +87,7 @@ FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG ?= $(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_REP
 FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_PULL_POLICY ?= Never
 
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
+# Maintenance note: Keep this in sync with EnvtestK8sVersion in test/util/constants.go.
 ENVTEST_K8S_VERSION = 1.34.1
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)

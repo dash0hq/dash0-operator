@@ -22,6 +22,8 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+
+	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
 var (
@@ -44,7 +46,7 @@ var _ = BeforeSuite(func() {
 		CRDDirectoryPaths:     []string{filepath.Join("..", "..", "config", "crd", "bases")},
 		ErrorIfCRDPathMissing: true,
 		BinaryAssetsDirectory: filepath.Join("..", "..", "bin", "k8s",
-			fmt.Sprintf("1.28.3-%s-%s", runtime.GOOS, runtime.GOARCH)),
+			fmt.Sprintf("%s-%s-%s", EnvtestK8sVersion, runtime.GOOS, runtime.GOARCH)),
 	}
 
 	var err error
