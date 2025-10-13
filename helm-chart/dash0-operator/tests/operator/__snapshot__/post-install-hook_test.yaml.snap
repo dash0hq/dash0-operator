@@ -55,7 +55,7 @@ post-install hook job should match snapshot:
                   ephemeral-storage: 500Mi
                   memory: 256Mi
                 requests:
-                  cpu: 10m
+                  cpu: 50m
                   ephemeral-storage: 500Mi
                   memory: 128Mi
               securityContext:

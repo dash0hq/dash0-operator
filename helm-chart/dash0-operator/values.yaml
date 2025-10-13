@@ -98,6 +98,28 @@ operator:
   # The number of replicas for the operator manager deployment.
   replicaCount: 1
 
+  # Settings for GKE clusters:
+  gke:
+    # Settings for GKE Autopilot clusters:
+    autopilot:
+      # Set operator.gke.autopilot.enabled=true if you are running the Dash0 operator in a GKE Autopilot cluster.
+      # This will:
+      # - omit the dash0.com/enable node affinity rule (custom node affinities are not allowed in GKE Autopilot)
+      # - disable the host metrics receiver, as it requires mounting the full host file system as a volume, which is not
+      #   permitted on GKE autopilot
+      # - disable collecting all four utilization metrics for the kubeletstats receiver metrics, collecting these
+      #   requires access to the /pod endpoint of the kubelet API which is not available in GKE autopilot:
+      #     - k8s.pod.cpu_limit_utilization
+      #     - k8s.pod.cpu_request_utilization
+      #     - k8s.pod.memory_limit_utilization
+      #     - k8s.pod.memory_request_utilization
+      # - disable collecting the extra metadata labels container.id and k8s.volume.type for the kubeletstats receiver
+      #   metrics, collecting these requires access to the /pod endpoint of the kubelet API which is not available in
+      #   GKE autopilot
+      # - add additional namespaces to the NotIn namespaceSelectors to all three mutating webhooks; GKE autopilot would
+      #   add these namespaces anyway
+      enabled: false
+
   # An array of tolerations for the operator manager deployment. This can be used to make sure that the operator manager
   # pod(s) can be scheduled on nodes where they would not be scheduled otherwise due to Kubernetes taints.
   # Example:
@@ -191,7 +213,7 @@ operator:
       memory: 256Mi
       ephemeral-storage: 500Mi
     requests:
-      cpu: 10m
+      cpu: 50m
       memory: 128Mi
       ephemeral-storage: 500Mi
 

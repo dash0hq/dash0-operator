@@ -707,6 +707,8 @@ By default, the operator collects metrics as follows:
   in the Dash0 operator configuration resource (or setting the value
   `operator.kubernetesInfrastructureMetricsCollectionEnabled` to `false` when deploying the operator configuration
   resource via the Helm chart).
+  (Collecting node metrics via the host metrics receiver is not supported in
+  [GKE Autopilot clusters](#notes-on-gke-autopilot), the host metric receiver will be disabled there.)
 * Namespace-scoped metrics (e.g. metrics related to a workload running in a specific namespace) will only be collected
   if the namespace is monitored, that is, there is a Dash0 monitoring resource in that namespace.
 * The Dash0 operator scrapes Prometheus endpoints on pods annotated with the `prometheus.io/*` annotations in monitored
@@ -980,6 +982,7 @@ similar to take effect.
 All the pods deployed by the operator have a default node anti-affinity for the `dash0.com/enable=false` node label.
 That is, if you add the `dash0.com/enable=false` label to a node, none of the pods owned by the operator will be
 scheduled on that node.
+(This features is not available on [GKE Autopilot clusters](#notes-on-gke-autopilot).)
 
 **IMPORTANT:** This includes the daemonset that the operator will set up to receive telemetry from the pods, which might
 leads to situations in which instrumented pods cannot send telemetry because the local node does not have a daemonset
@@ -1984,6 +1987,67 @@ configuration resource.
 This will disable the telemetry collection by the operator, and it will also instruct the operator to not deploy the
 OpenTelemetry collector in your cluster.
 
+## Notes on GKE Autopilot
+
+When deploying the Dash0 operator to a GKE Autopilot cluster, provide the following additional setting when applying the
+Helm chart:
+
+```yaml
+operator:
+  gke:
+    autopilot:
+      enabled: true
+```
+
+GKE Autopilot [restricts](https://cloud.google.com/kubernetes-engine/docs/concepts/autopilot-security) what workloads
+in an autopilot clusters can do.
+By setting `operator.gke.autopilot.enabled` to true, the Dash0 operator Helm chart will adjust its own configuration
+to comply with these restrictions.
+In particular, this will:
+- omit the `dash0.com/enable` node affinity rule (custom node affinities are not allowed in GKE Autopilot)
+- disable the host metrics receiver, as it requires mounting the full host file system as a volume, which is not
+  permitted on GKE autopilot
+- disable collecting all four utilization metrics for the `kubeletstats` receiver metrics; collecting these requires access to the
+  `/pod` endpoint of the kubelet API which is not available in GKE autopilot due to the lack of the `nodes/proxy`
+  permission:
+    - `k8s.pod.cpu_limit_utilization`,
+    - `k8s.pod.cpu_request_utilization`,
+    - `k8s.pod.memory_limit_utilization`, and
+    - `k8s.pod.memory_request_utilization`
+- disable collecting the extra metadata labels `container.id` and `k8s.volume.type` for the `kubeletstats` receiver
+  metrics, collecting these requires access to the `/pod` endpoint of the kubelet API which is not available in GKE
+  autopilot due to the lack of the `nodes/proxy` permission
+
+## Notes on Azure AKS
+
+In [AKS](https://azure.microsoft.com/products/kubernetes-service) clusters that have the
+[Azure Policy add-on](https://learn.microsoft.com/azure/aks/use-azure-policy) enabled, it is highly recommended to
+[use a volume for filelog offsets](#providing-a-filelog-offset-volume)
+instead of the default filelog offset config map.
+Using the default config map filelog offset storage in AKS clusters with this add-on can lead to severe performance
+issues.
+
+## Notes on the Open Policy Agent
+
+In clusters that have the [OPA gatekeeeper](https://github.com/open-policy-agent/gatekeeper) deployed it is highly
+recommended to [use a volume for filelog offsets](#providing-a-filelog-offset-volume) instead of the default filelog
+offset config map.
+Using the default config map filelog offset storage in clusters with this component can lead to severe performance
+issues.
+
+## Notes on Kyverno Admission Controller
+
+In clusters that have the
+[Kyverno admission controller](https://kyverno.io/docs/introduction/how-kyverno-works/#kubernetes-admission-controls)
+deployed, it is highly recommended to either [use a volume for filelog offsets](#providing-a-filelog-offset-volume)
+instead of the default filelog offset config map, or to
+[exclude](https://kyverno.io/docs/installation/customization/#resource-filters) ConfigMaps (or all resource types) in
+the Dash0 operator's namespace from Kyverno's processing.
+Leaving Kyverno processing in place and using the config map filelog offset storage can lead to severe performance
+issues, since the default config map for filelog offsets is updated very frequently.
+This can cause Kyverno to consume a lot of CPU and memory resources, potentially even leading to OOMKills of the Kyverno
+admission controller.
+
 ## Notes on GitOps
 
 When deploying workloads via GitOps tools like ArgoCD or Flux in a cluster where the Dash0 operator is installed, some
@@ -2081,36 +2145,6 @@ spec:
       jsonPointers:
         - /webhooks/0/clientConfig/caBundle
 ```
-
-## Notes on Azure AKS
-
-In [AKS](https://azure.microsoft.com/products/kubernetes-service) clusters that have the
-[Azure Policy add-on](https://learn.microsoft.com/azure/aks/use-azure-policy) enabled, it is highly recommended to
-[use a volume for filelog offsets](#providing-a-filelog-offset-volume)
-instead of the default filelog offset config map.
-Using the default config map filelog offset storage in AKS clusters with this add-on can lead to severe performance
-issues.
-
-## Notes on the Open Policy Agent
-
-In clusters that have the [OPA gatekeeeper](https://github.com/open-policy-agent/gatekeeper) deployed it is highly
-recommended to [use a volume for filelog offsets](#providing-a-filelog-offset-volume) instead of the default filelog
-offset config map.
-Using the default config map filelog offset storage in clusters with this component can lead to severe performance
-issues.
-
-## Notes on Kyverno Admission Controller
-
-In clusters that have the
-[Kyverno admission controller](https://kyverno.io/docs/introduction/how-kyverno-works/#kubernetes-admission-controls)
-deployed, it is highly recommended to either [use a volume for filelog offsets](#providing-a-filelog-offset-volume)
-instead of the default filelog offset config map, or to
-[exclude](https://kyverno.io/docs/installation/customization/#resource-filters) ConfigMaps (or all resource types) in
-the Dash0 operator's namespace from Kyverno's processing.
-Leaving Kyverno processing in place and using the config map filelog offset storage can lead to severe performance
-issues, since the default config map for filelog offsets is updated very frequently.
-This can cause Kyverno to consume a lot of CPU and memory resources, potentially even leading to OOMKills of the Kyverno
-admission controller.
 
 ## Notes on Running The Operator on Apple Silicon
 

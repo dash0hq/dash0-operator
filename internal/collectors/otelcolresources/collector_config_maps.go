@@ -77,6 +77,7 @@ type collectorConfigurationTemplateValues struct {
 	CollectPodLabelsAndAnnotationsEnabled            bool
 	KubeletStatsReceiverConfig                       KubeletStatsReceiverConfig
 	UseHostMetricsReceiver                           bool
+	IsGkeAutopilot                                   bool
 	PseudoClusterUid                                 string
 	ClusterName                                      string
 	NamespacesWithLogCollection                      []string
@@ -208,6 +209,7 @@ func assembleCollectorConfigMap(
 				CollectPodLabelsAndAnnotationsEnabled:            config.CollectPodLabelsAndAnnotationsEnabled,
 				KubeletStatsReceiverConfig:                       config.KubeletStatsReceiverConfig,
 				UseHostMetricsReceiver:                           config.UseHostMetricsReceiver,
+				IsGkeAutopilot:                                   config.IsGkeAutopilot,
 				PseudoClusterUid:                                 string(config.PseudoClusterUid),
 				ClusterName:                                      config.ClusterName,
 				NamespacesWithLogCollection:                      namespacesWithLogCollection,
