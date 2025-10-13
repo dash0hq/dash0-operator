@@ -287,15 +287,18 @@ tests:
           value: --force-use-otel-collector-service-url=true
       - equal:
           path: spec.template.spec.containers[0].args[4]
-          value: --disable-otel-collector-host-ports=true
+          value: --gke-autopilot=false
       - equal:
           path: spec.template.spec.containers[0].args[5]
-          value: --instrumentation-delay-after-each-workload-millis=13
+          value: --disable-otel-collector-host-ports=true
       - equal:
           path: spec.template.spec.containers[0].args[6]
+          value: --instrumentation-delay-after-each-workload-millis=13
+      - equal:
+          path: spec.template.spec.containers[0].args[7]
           value: --instrumentation-delay-after-each-namespace-millis=123
       - notExists:
-          path: spec.template.spec.containers[0].args[7]
+          path: spec.template.spec.containers[0].args[8]
       - equal:
           path: spec.template.spec.containers[0].env[0].name
           value: DASH0_OPERATOR_NAMESPACE
@@ -489,13 +492,13 @@ tests:
         instrumentationDelayAfterEachNamespaceMillis: 135
     asserts:
       - equal:
-          path: spec.template.spec.containers[0].args[5]
+          path: spec.template.spec.containers[0].args[6]
           value: --instrumentation-delay-after-each-workload-millis=2
       - equal:
-          path: spec.template.spec.containers[0].args[6]
+          path: spec.template.spec.containers[0].args[7]
           value: --instrumentation-delay-after-each-namespace-millis=135
       - notExists:
-          path: spec.template.spec.containers[0].args[7]
+          path: spec.template.spec.containers[0].args[8]
 
   - it: should add args for creating an operator configuration resource with a token to the deployment
     documentSelector:

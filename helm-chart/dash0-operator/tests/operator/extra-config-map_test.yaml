@@ -272,3 +272,64 @@ tests:
                 memory: 405Mi
             deploymentTolerations:
               []
+
+  - it: should set defaults for initContainerResources if gke.autopilot is true
+    set:
+      operator:
+        gke:
+          autopilot:
+            enabled: true
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern:  |-
+            initContainerResources:
+              limits:
+                ephemeral-storage: 500Mi
+              requests:
+                cpu: 100m
+                ephemeral-storage: 500Mi
+                memory: 128Mi
+            .*
+
+  - it: should not set defaults for initContainerResources if gke.autopilot is false
+    set:
+      operator:
+        initContainerResources: {}
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern:  |-
+            initContainerResources:
+              {}
+            .*
+
+  - it: should use configured initContainerResources and not the gke defauls, even if gke.autopilot is true
+    set:
+      operator:
+        gke:
+          autopilot:
+            enabled: true
+        initContainerResources:
+          limits:
+            cpu: 206m
+            ephemeral-storage: 306Mi
+            memory: 106Mi
+          requests:
+            cpu: 506m
+            ephemeral-storage: 606Mi
+            memory: 406Mi
+    asserts:
+      - matchRegex:
+          path: data['extra.yaml']
+          pattern:  |-
+            initContainerResources:
+              limits:
+                cpu: 206m
+                ephemeral-storage: 306Mi
+                memory: 106Mi
+              requests:
+                cpu: 506m
+                ephemeral-storage: 606Mi
+                memory: 406Mi
+            .*

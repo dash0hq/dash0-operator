@@ -54,9 +54,21 @@ receivers:
     - pod
     - node
     - volume
+    {{- /*
+    Collecting any metadata label requires the nodes/proxy permission, which will not be granted in GKE Autopilot
+    clusters, see:
+    - https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/kubeletstatsreceiver/scraper.go#L112
+    - https://cloud.google.com/kubernetes-engine/docs/how-to/disable-kubelet-readonly-port#:~:text=In%20Kubernetes%20clusters%2C%20including%20GKE,more%20secure%2C%20authenticated%20port%2010250%20.
+      > If your workload uses the /pods endpoint on the insecure kubelet read-only port, you need to grant the
+      > nodes/proxy RBAC permission to access the endpoint on the secure kubelet port. nodes/proxy is a powerful
+      > permission that you can't grant in GKE Autopilot clusters [...].
+    Hence, these labels are disabled on GKE autopilot.
+    */}}
+    {{- if not .IsGkeAutopilot }}
     extra_metadata_labels:
       - container.id
       - k8s.volume.type
+    {{- end }}
     k8s_api_config:
       auth_type: serviceAccount
     metrics:
@@ -66,6 +78,18 @@ receivers:
         enabled: true
       k8s.pod.cpu.usage:
         enabled: true
+
+      {{- /*
+      The k8s.pod.(cpu|memory)_(limit|request)_utilization metrics require the nodes/proxy permission, which will not be
+      granted in GKE Autopilot clusters, see:
+      - https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/kubeletstatsreceiver/scraper.go#L112
+      - https://cloud.google.com/kubernetes-engine/docs/how-to/disable-kubelet-readonly-port#:~:text=In%20Kubernetes%20clusters%2C%20including%20GKE,more%20secure%2C%20authenticated%20port%2010250%20.
+        > If your workload uses the /pods endpoint on the insecure kubelet read-only port, you need to grant the
+        > nodes/proxy RBAC permission to access the endpoint on the secure kubelet port. nodes/proxy is a powerful
+        > permission that you can't grant in GKE Autopilot clusters [...].
+      Hence, these four metrics are disabled on GKE autopilot.
+      */}}
+      {{- if not .IsGkeAutopilot }}
       k8s.pod.cpu_limit_utilization:
         enabled: true
       k8s.pod.cpu_request_utilization:
@@ -74,6 +98,7 @@ receivers:
         enabled: true
       k8s.pod.memory_request_utilization:
         enabled: true
+    {{- end }}
 
 {{- end }}{{/* if .KubeletStatsReceiverConfig.Enabled */}}
 
