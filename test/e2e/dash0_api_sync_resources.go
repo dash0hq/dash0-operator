@@ -43,7 +43,7 @@ var (
 	prometheusRuleTemplate *template.Template
 )
 
-func deployThirdPartyCrds() {
+func deployThirdPartyCrds(cleanupSteps *neccessaryCleanupSteps) {
 	By("deploying PersesDashboard and PrometheusRule CRDs")
 	Expect(runAndIgnoreOutput(exec.Command(
 		"kubectl",
@@ -57,9 +57,13 @@ func deployThirdPartyCrds() {
 		"-f",
 		"test/util/crds/monitoring.coreos.com_prometheusrules.yaml",
 	))).To(Succeed())
+	cleanupSteps.removeThirdPartyCrds = true
 }
 
-func removeThirdPartyCrds() {
+func removeThirdPartyCrds(cleanupSteps *neccessaryCleanupSteps) {
+	if !cleanupSteps.removeThirdPartyCrds {
+		return
+	}
 	By("removing PersesDashboard and PrometheusRule CRDs")
 	Expect(runAndIgnoreOutput(exec.Command(
 		"kubectl",

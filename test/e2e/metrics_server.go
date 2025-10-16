@@ -11,7 +11,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func ensureMetricsServerIsInstalled() bool {
+func ensureMetricsServerIsInstalled(cleanupSteps *neccessaryCleanupSteps) {
 	err := runAndIgnoreOutput(
 		exec.Command("kubectl", "--namespace", "kube-system", "get", "deployments", "metrics-server"))
 	if err != nil {
@@ -24,15 +24,13 @@ func ensureMetricsServerIsInstalled() bool {
 				"If the e2e tests find an existing metrics-server installation, they " +
 				"will not deploy metrics-server and they will also not undeploy it after running the test suite.\n",
 		)
-		installMetricsServer()
-		return true
+		installMetricsServer(cleanupSteps)
 	} else {
 		e2ePrint("The metrics-server deployment exists, assuming metrics-server has been deployed already.\n")
 	}
-	return false
 }
 
-func installMetricsServer() {
+func installMetricsServer(cleanupSteps *neccessaryCleanupSteps) {
 	repoList, err := run(exec.Command("helm", "repo", "list"))
 	Expect(err).ToNot(HaveOccurred())
 
@@ -63,6 +61,7 @@ func installMetricsServer() {
 		"--timeout",
 		"1m",
 	))).To(Succeed())
+	cleanupSteps.removeMetricsServer = true
 	Expect(runAndIgnoreOutput(
 		exec.Command(
 			"kubectl",
@@ -77,8 +76,8 @@ func installMetricsServer() {
 		))).To(Succeed())
 }
 
-func uninstallMetricsServerIfApplicable(metricsServerHasBeenInstalled bool) {
-	if metricsServerHasBeenInstalled {
+func uninstallMetricsServerIfApplicable(cleanupSteps *neccessaryCleanupSteps) {
+	if cleanupSteps.removeMetricsServer {
 		By("uninstalling the metrics-server helm chart")
 		uninstallMetricsServer()
 	} else {

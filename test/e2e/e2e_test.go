@@ -30,10 +30,11 @@ const (
 )
 
 var (
-	workingDir                    string
-	metricsServerHasBeenInstalled = false
+	workingDir string
 
 	stopPodCrashOrOOMKillDetection chan bool
+
+	cleanupSteps = neccessaryCleanupSteps{}
 )
 
 var _ = Describe("Dash0 Operator", Ordered, func() {
@@ -71,38 +72,52 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 		checkIfRequiredPortsAreBlocked()
 
-		metricsServerHasBeenInstalled = ensureMetricsServerIsInstalled()
+		ensureMetricsServerIsInstalled(&cleanupSteps)
 
 		recreateNamespace(applicationUnderTestNamespace)
+		cleanupSteps.removeTestApplicationNamespace = true
 		recreateNamespace(dash0ApiMockNamespace)
+		cleanupSteps.removeApiMockNamespace = true
 
 		determineContainerImages()
 		rebuildAllContainerImages()
 		rebuildAppUnderTestContainerImages()
 		rebuildDash0ApiMockImage()
 
-		deployOtlpSink(workingDir)
-		deployThirdPartyCrds()
+		deployOtlpSink(workingDir, &cleanupSteps)
+		if isKindCluster() {
+			deployIngressController(&cleanupSteps)
+		}
+		deployThirdPartyCrds(&cleanupSteps)
 
-		stopPodCrashOrOOMKillDetection = failOnPodCrashOrOOMKill()
+		stopPodCrashOrOOMKillDetection = failOnPodCrashOrOOMKill(&cleanupSteps)
+
+		// If BeforeAll does not complete successfully, we will not have deployed any test applications. Once BeforeAll
+		// has finished we do not keep track of test applications in detail, but just assume that a test might have
+		// deployed some of them, so we make sure to remove all of them in the AfterEach cleanup hook.
+		cleanupSteps.removeTestApplications = true
 		By("finished BeforeAll hook of test suite root")
 	})
 
 	AfterAll(func() {
 		By("running AfterAll hook of test suite root")
-		stopPodCrashOrOOMKillDetection <- true
-		uninstallOtlpSink(workingDir)
+		if cleanupSteps.stopOOMDetection {
+			stopPodCrashOrOOMKillDetection <- true
+		}
+		uninstallOtlpSink(workingDir, &cleanupSteps)
 		removeAllTemporaryManifests()
-		undeployNginxIngressController()
+		undeployNginxIngressController(&cleanupSteps)
 
-		if applicationUnderTestNamespace != "default" {
+		if cleanupSteps.removeTestApplicationNamespace {
 			By("removing namespace for application under test")
 			_ = runAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", applicationUnderTestNamespace))
 		}
-		_ = runAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", dash0ApiMockNamespace))
-		uninstallMetricsServerIfApplicable(metricsServerHasBeenInstalled)
+		if cleanupSteps.removeApiMockNamespace {
+			_ = runAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", dash0ApiMockNamespace))
+		}
+		uninstallMetricsServerIfApplicable(&cleanupSteps)
 
-		removeThirdPartyCrds()
+		removeThirdPartyCrds(&cleanupSteps)
 
 		if kubeContextHasBeenChanged {
 			revertKubernetesContext(originalKubeContext)
@@ -116,6 +131,9 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 	})
 
 	AfterEach(func() {
+		if !cleanupSteps.removeTestApplications {
+			return
+		}
 		By("running AfterEach hook of test suite root")
 		removeAllTestApplications(applicationUnderTestNamespace)
 	})
@@ -1897,7 +1915,7 @@ func cleanupAll() {
 		_ = runAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", applicationUnderTestNamespace, "--ignore-not-found"))
 	}
 	undeployOperator(operatorNamespace)
-	uninstallOtlpSink(workingDir)
+	uninstallOtlpSink(workingDir, &cleanupSteps)
 }
 
 func determineContainerImages() {

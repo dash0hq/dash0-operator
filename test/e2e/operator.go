@@ -416,7 +416,7 @@ func readOperatorManagerMemoryUsage(g Gomega) int64 {
 	return -1
 }
 
-func failOnPodCrashOrOOMKill() chan bool {
+func failOnPodCrashOrOOMKill(cleanupSteps *neccessaryCleanupSteps) chan bool {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	stop := make(chan bool, 1)
 	e2ePrint("Starting pod crash/oom kill detection.\n")
@@ -433,7 +433,7 @@ func failOnPodCrashOrOOMKill() chan bool {
 			}
 		}
 	}()
-
+	cleanupSteps.stopOOMDetection = true
 	return stop
 }
 

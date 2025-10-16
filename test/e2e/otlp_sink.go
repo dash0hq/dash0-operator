@@ -14,7 +14,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func deployOtlpSink(workingDir string) {
+func deployOtlpSink(workingDir string, cleanupSteps *neccessaryCleanupSteps) {
 
 	createDirAndDeleteOldExportedTelemetry()
 
@@ -63,6 +63,7 @@ func deployOtlpSink(workingDir string) {
 				"-f",
 				tmpFile.Name(),
 			))).To(Succeed())
+	cleanupSteps.removeOtlpSink = true
 
 	By("waiting for otlp-sink to become ready")
 	Expect(
@@ -93,7 +94,10 @@ func createDirAndDeleteOldExportedTelemetry() {
 	_, _ = os.Create("test-resources/e2e/volumes/otlp-sink/logs.jsonl")
 }
 
-func uninstallOtlpSink(workingDir string) {
+func uninstallOtlpSink(workingDir string, cleanupSteps *neccessaryCleanupSteps) {
+	if !cleanupSteps.removeOtlpSink {
+		return
+	}
 	By("removing otlp-sink")
 	originalManifest := fmt.Sprintf(
 		"%s/test-resources/otlp-sink/otlp-sink.yaml",
