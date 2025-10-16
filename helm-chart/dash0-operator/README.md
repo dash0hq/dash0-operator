@@ -1984,6 +1984,38 @@ configuration resource.
 This will disable the telemetry collection by the operator, and it will also instruct the operator to not deploy the
 OpenTelemetry collector in your cluster.
 
+## Notes on GitOps
+
+When deploying workloads via GitOps tools like ArgoCD or Flux in a cluster where the Dash0 operator is installed, some
+care needs to be exercised to not create conflicts between the workload definition in the GitOps repsitory and the
+[workload modifications](#automatic-workload-instrumentation) that are applied automatically by the Dash0 operator.
+Otherwise, workload settings might flip-flop between what the GitOps system wants to apply and what the Dash0 operator
+does, or the GitOps system might overwrite the Dash0 operator's settings, thereby breaking telemetry collection for the
+workload.
+
+Environment variable definitions in pod spec templates are the most likely source of conflict.
+To avoid conflicts, it is recommended to not define the following environment variables via GitOps:
+
+* `OTEL_EXPORTER_OTLP_ENDPOINT`
+* `OTEL_EXPORTER_OTLP_PROTOCOL`
+* `OTEL_PROPAGATORS`
+* `LD_PRELOAD`
+* `DASH0_NODE_IP`
+* `DASH0_OTEL_COLLECTOR_BASE_URL`
+* `DASH0_NAMESPACE_NAME`
+* `DASH0_POD_NAME`
+* `DASH0_POD_UID`
+* `DASH0_CONTAINER_NAME`
+* `DASH0_SERVICE_NAME`
+* `DASH0_SERVICE_NAMESPACE`
+* `DASH0_SERVICE_VERSION`
+* `DASH0_RESOURCE_ATTRIBUTES`
+
+This recommendation does not apply to workloads that are
+[excluded from workload instrumentation](#disabling-auto-instrumentation-for-specific-workloads) or workloads in
+namespaces without a [Dash0 monitoring resource](#enable-dash0-monitoring-for-a-namespace) or a monitoring resource with
+[`spec.instrumentWorkloads.mode`](#monitoringresource.spec.instrumentWorkloads.mode) set to `none`.
+
 ## Notes on ArgoCD
 
 As many other Helm charts, the Dash0 operator Helm chart regenerates TLS certificates for in-cluster communication,
