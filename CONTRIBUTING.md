@@ -76,7 +76,8 @@ Docker Desktop is probably the easiest setup to get started with.
 See below for additional instructions for [kind](#running-end-to-end-tests-on-kind).
 
 Copy the file `test-resources/.env.template` to `test-resources/.env` and set `E2E_KUBECTX` to the name of the
-Kubernetes context you want to use for the tests.
+Kubernetes context you want to use for the tests, or set `E2E_KUBECTX` via other means (e.g. export it in your shell,
+via `direnv` etc.).
 
 To run the end-to-end tests:
 ```
