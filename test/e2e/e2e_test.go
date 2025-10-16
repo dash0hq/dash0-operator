@@ -48,13 +48,17 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		workingDir = strings.TrimSpace(pwdOutput)
 		e2ePrint("workingDir: %s\n", workingDir)
 
-		Expect(godotenv.Load(dotEnvFile)).To(Succeed())
+		if _, err := os.Stat(dotEnvFile); err == nil {
+			Expect(godotenv.Load(dotEnvFile)).To(Succeed())
+		} else {
+			e2ePrint("%s not found, assuming required environment variables are set via other means\n", dotEnvFile)
+		}
 		e2eKubernetesContext = os.Getenv("E2E_KUBECTX")
 		verboseHttp = strings.ToLower(os.Getenv("E2E_VERBOSE_HTTP")) == "true"
 		if e2eKubernetesContext == "" {
 			Fail(
 				fmt.Sprintf(
-					"The mandatory setting E2E_KUBECTX is missing in your environment variables (and also in the file %s).",
+					"The mandatory environment variable E2E_KUBECTX is not set, add it to %s or set it explicitly.",
 					dotEnvFile,
 				))
 		}
@@ -66,7 +70,6 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		cleanupAll()
 
 		checkIfRequiredPortsAreBlocked()
-		renderTemplates()
 
 		metricsServerHasBeenInstalled = ensureMetricsServerIsInstalled()
 

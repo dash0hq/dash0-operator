@@ -72,11 +72,6 @@ func checkIfRequiredPortsAreBlocked() {
 	}
 }
 
-func renderTemplates() {
-	By("rendering yaml templates via render-templates.sh")
-	Expect(runAndIgnoreOutput(exec.Command("test-resources/bin/render-templates.sh"))).To(Succeed())
-}
-
 func setKubernetesContext(kubernetesContextForTest string) (bool, string) {
 	By("reading current Kubernetes context")
 	kubectlCurrentContextOutput, err := run(exec.Command("kubectl", "config", "current-context"))
