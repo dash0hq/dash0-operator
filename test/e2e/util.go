@@ -31,6 +31,17 @@ func e2ePrint(format string, a ...any) {
 	fmt.Fprintf(GinkgoWriter, "%v: "+format, slices.Concat([]interface{}{time.Now()}, a)...)
 }
 
+type neccessaryCleanupSteps struct {
+	removeMetricsServer            bool
+	removeTestApplicationNamespace bool
+	removeApiMockNamespace         bool
+	removeOtlpSink                 bool
+	removeThirdPartyCrds           bool
+	removeIngressNginx             bool
+	stopOOMDetection               bool
+	removeTestApplications         bool
+}
+
 type workloadType struct {
 	workloadTypeString string
 	basePort           int
