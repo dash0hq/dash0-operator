@@ -9,7 +9,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     app.kubernetes.io/name: dash0-operator
-    app.kubernetes.io/component: uninstallation-process
+    app.kubernetes.io/component: installation-process
     {{- include "dash0-operator.labels" . | nindent 4 }}
     dash0.com/enable: "false"
   annotations:
