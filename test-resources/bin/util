@@ -10,11 +10,29 @@
 operator_namespace=${OPERATOR_NAMESPACE:-operator-namespace}
 
 load_env_file () {
-  if [[ ! -f test-resources/.env ]]; then
-    echo "error: The file test-resources/.env does not exist. Copy test-resources/.env.template to test-resources/.env and edit it to provide a Dash0 authorization token."
+  if [[ -f test-resources/.env ]]; then
+    source test-resources/.env
+  fi
+  if [[ -z "${ALLOWED_KUBECTXS:-}" ]]; then
+    echo "error: ALLOWED_KUBECTXS is not set, please set it in test-resources/.env or via other means"
     exit 1
   fi
-  source test-resources/.env
+
+  if [[ -z "${DASH0_AUTHORIZATION_TOKEN:-}" ]]; then
+    echo "warning: DASH0_AUTHORIZATION_TOKEN is not set. Exporting telemetry to Dash0 might not work; set it in test-resources/.env or via other means."
+  fi
+  if [[ -z "${DASH0_INGRESS_ENDPOINT:-}" ]]; then
+    echo "warning: DASH0_INGRESS_ENDPOINT is not set. Exporting telemetry to Dash0 might not work; set it in test-resources/.env or via other means."
+  fi
+  if [[ -z "${DASH0_API_ENDPOINT:-}" ]]; then
+    echo "warning: DASH0_API_ENDPOINT is not set. Synchronizing K8s resources via the Dash0 API might not work; set it in test-resources/.env or via other means."
+  fi
+  # Provide default values for missing environment variables, otherwise scripts will fail with "XYZ: unbound variable"
+  # later on, since we run scripts generally with set -u. The variables might not be needed at all, for example when
+  # reporting telemetry to otlp-sink instead of an actual backend.
+  export DASH0_INGRESS_ENDPOINT="${DASH0_INGRESS_ENDPOINT:-localhost:4317}"
+  export DASH0_API_ENDPOINT="${DASH0_API_ENDPOINT:-http://localhost:8001}"
+  export DASH0_AUTHORIZATION_TOKEN="${DASH0_AUTHORIZATION_TOKEN:-auth_token_not_set}"
 }
 
 verify_kubectx() {
@@ -30,7 +48,7 @@ verify_kubectx() {
     fi
   done
   if [[ "$current_context_is_allowed" != "true" ]]; then
-    echo "error: The current kube context \"$current_kubectx\" is not allowed for testing according to the setting ALLOWED_KUBECTXS (current value: \"$allowed_contexts_raw\"). Please switch to an allowed context or set ALLOWED_KUBECTXS differently in .env. Refusing to run test scenarios/cleanup in context where that is potentially dangerous."
+    echo "error: The current kube context \"$current_kubectx\" is not allowed for running local tests according to the setting ALLOWED_KUBECTXS (current value: \"$allowed_contexts_raw\"). Please switch to an allowed context or set ALLOWED_KUBECTXS differently (for example, in test-resources/.env). Refusing to run test scenarios/cleanup in context where that is potentially dangerous."
     exit 1
   fi
 }
