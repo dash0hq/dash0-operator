@@ -153,7 +153,6 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		//   https://github.com/prometheus/node_exporter/issues/2002#issuecomment-801763211 and similar.
 		//   For this reason, we do not allow enabling the hostmetrics receiver when the node runtime is Docker.
 		UseHostMetricsReceiver: kubernetesInfrastructureMetricsCollectionEnabled &&
-			!m.collectorConfig.IsGkeAutopilot &&
 			!m.collectorConfig.IsDocker,
 		DisableHostPorts:       m.collectorConfig.DisableHostPorts,
 		ClusterName:            clusterName,
@@ -393,8 +392,8 @@ func (m *OTelColResourceManager) DeleteResources(
 		// related resources, we always try to delete all collector resources (daemonset & deployment), no matter
 		// whether both sets have been created earlier or not.
 		KubernetesInfrastructureMetricsCollectionEnabled: true,
-		UseHostMetricsReceiver:                           !m.collectorConfig.IsGkeAutopilot && !m.collectorConfig.IsDocker, // irrelevant for deletion
-		DisableHostPorts:                                 m.collectorConfig.DisableHostPorts,                               // irrelevant for deletion
+		UseHostMetricsReceiver:                           !m.collectorConfig.IsDocker,        // irrelevant for deletion
+		DisableHostPorts:                                 m.collectorConfig.DisableHostPorts, // irrelevant for deletion
 		Images:                                           dummyImagesForDeletion,
 		IsIPv6Cluster:                                    m.collectorConfig.IsIPv6Cluster,
 		IsGkeAutopilot:                                   m.collectorConfig.IsGkeAutopilot,

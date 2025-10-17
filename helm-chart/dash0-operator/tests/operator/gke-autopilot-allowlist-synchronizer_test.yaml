@@ -1,0 +1,30 @@
+suite: test allowlist synchronizer
+templates:
+  - operator/gke-autopilot-allowlist-synchronizer.yaml
+tests:
+  - it: should not install the GKE Autopilot AllowlistSynchronizer if operator.gke.autopilot.enabled is false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should not install the GKE Autopilot AllowlistSynchronizer if operator.gke.autopilot.enabled is true but operator.gke.autopilot.deployAllowListSynchronizer is false
+    set:
+      operator:
+        gke:
+          autopilot:
+            enabled: true
+            deployAllowListSynchronizer: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should install the GKE Autopilot AllowlistSynchronizer if operator.gke.autopilot.enabled is true
+    set:
+      operator:
+        gke:
+          autopilot:
+            enabled: true
+    asserts:
+      - hasDocuments:
+          count: 1
+      - matchSnapshot: {}
