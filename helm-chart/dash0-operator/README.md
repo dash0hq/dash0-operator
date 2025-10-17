@@ -982,7 +982,6 @@ similar to take effect.
 All the pods deployed by the operator have a default node anti-affinity for the `dash0.com/enable=false` node label.
 That is, if you add the `dash0.com/enable=false` label to a node, none of the pods owned by the operator will be
 scheduled on that node.
-(This features is not available on [GKE Autopilot clusters](#notes-on-gke-autopilot).)
 
 **IMPORTANT:** This includes the daemonset that the operator will set up to receive telemetry from the pods, which might
 leads to situations in which instrumented pods cannot send telemetry because the local node does not have a daemonset
@@ -2004,7 +2003,6 @@ in an autopilot clusters can do.
 By setting `operator.gke.autopilot.enabled` to true, the Dash0 operator Helm chart will adjust its own configuration
 to comply with these restrictions.
 In particular, this will:
-- omit the `dash0.com/enable` node affinity rule (custom node affinities are not allowed in GKE Autopilot)
 - disable the host metrics receiver, as it requires mounting the full host file system as a volume, which is not
   permitted on GKE autopilot
 - disable collecting all four utilization metrics for the `kubeletstats` receiver metrics; collecting these requires access to the

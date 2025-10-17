@@ -43,9 +43,10 @@ post-install hook job should match snapshot:
                           - linux
           automountServiceAccountToken: true
           containers:
-            - command:
-                - /manager
+            - args:
                 - --auto-operator-configuration-resource-available-check
+              command:
+                - /manager
               image: ghcr.io/dash0hq/operator-controller:0.0.0
               imagePullPolicy: null
               name: post-install-job
