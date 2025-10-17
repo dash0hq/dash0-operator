@@ -146,15 +146,11 @@ func (m *OTelColResourceManager) CreateOrUpdateOpenTelemetryCollectorResources(
 		// The hostmetrics receiver requires mapping the root file system as a volume mount, see
 		// https://github.com/open-telemetry/opentelemetry-collector-contrib/tree/main/receiver/hostmetricsreceiver#collecting-host-metrics-from-inside-a-container-linux-only.
 		// Therefore, we disable the hostmetrics receiver on platforms where this is not possible or not supported:
-		// - Disable the hostmetrics receiver when running on GKE Autopilot, which allows /var/log as the only hostPath
-		//   volume mount. We might be able to lift this restriction via privilige workload allowlists.
 		// - Disable the hostmetrics receiver when the node runtime is Docker. Mapping / is as a host path is apparently
 		//   not supported in Docker, at least not in Docker Desktop. See
 		//   https://github.com/prometheus/node_exporter/issues/2002#issuecomment-801763211 and similar.
 		//   For this reason, we do not allow enabling the hostmetrics receiver when the node runtime is Docker.
-		UseHostMetricsReceiver: kubernetesInfrastructureMetricsCollectionEnabled &&
-			!m.collectorConfig.IsGkeAutopilot &&
-			!m.collectorConfig.IsDocker,
+		UseHostMetricsReceiver: kubernetesInfrastructureMetricsCollectionEnabled && !m.collectorConfig.IsDocker,
 		DisableHostPorts:       m.collectorConfig.DisableHostPorts,
 		ClusterName:            clusterName,
 		PseudoClusterUid:       m.collectorConfig.PseudoClusterUid,
@@ -393,8 +389,8 @@ func (m *OTelColResourceManager) DeleteResources(
 		// related resources, we always try to delete all collector resources (daemonset & deployment), no matter
 		// whether both sets have been created earlier or not.
 		KubernetesInfrastructureMetricsCollectionEnabled: true,
-		UseHostMetricsReceiver:                           !m.collectorConfig.IsGkeAutopilot && !m.collectorConfig.IsDocker, // irrelevant for deletion
-		DisableHostPorts:                                 m.collectorConfig.DisableHostPorts,                               // irrelevant for deletion
+		UseHostMetricsReceiver:                           !m.collectorConfig.IsDocker,        // irrelevant for deletion
+		DisableHostPorts:                                 m.collectorConfig.DisableHostPorts, // irrelevant for deletion
 		Images:                                           dummyImagesForDeletion,
 		IsIPv6Cluster:                                    m.collectorConfig.IsIPv6Cluster,
 		IsGkeAutopilot:                                   m.collectorConfig.IsGkeAutopilot,

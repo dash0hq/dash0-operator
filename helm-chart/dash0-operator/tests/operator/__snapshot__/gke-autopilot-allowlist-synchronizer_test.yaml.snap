@@ -1,0 +1,16 @@
+should install the GKE Autopilot AllowlistSynchronizer if operator.gke.autopilot.enabled is true:
+  1: |
+    apiVersion: auto.gke.io/v1
+    kind: AllowlistSynchronizer
+    metadata:
+      annotations:
+        helm.sh/hook: pre-install,pre-upgrade
+        helm.sh/hook-weight: "-1"
+      name: dash0-allowlist-synchronizer
+    spec:
+      allowlistPaths:
+        - Dash0/operator-manager/dash0-operator-manager-v1.0.0.yaml
+        - Dash0/post-install/dash0-post-install-v1.0.0.yaml
+        - Dash0/pre-delete/dash0-pre-delete-v1.0.0.yaml
+        - Dash0/opentelemetry-collector-agent/dash0-opentelemetry-collector-agent-v1.0.0.yaml
+        - Dash0/opentelemetry-cluster-metrics-collector/dash0-opentelemetry-cluster-metrics-collector-v1.0.0.yaml
