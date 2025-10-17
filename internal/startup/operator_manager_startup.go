@@ -89,6 +89,7 @@ type commandLineArguments struct {
 	operatorConfigurationCollectPodLabelsAndAnnotationsEnabled            bool
 	operatorConfigurationClusterName                                      string
 	forceUseOpenTelemetryCollectorServiceUrl                              bool
+	isGkeAutopilot                                                        bool
 	disableOpenTelemetryCollectorHostPorts                                bool
 	instrumentationDelays                                                 *util.DelayConfig
 	metricsAddr                                                           string
@@ -369,6 +370,12 @@ func defineCommandLineArguments() *commandLineArguments {
 		false,
 		"When modifying workloads, always use the service URL of the OpenTelemetry collector DaemonSet, instead of "+
 			"routing telemetry from workloads via node-local traffic to the node IP/host port of the collector pod.")
+	flag.BoolVar(
+		&cliArgs.isGkeAutopilot,
+		"gke-autopilot",
+		false,
+		"Whether the operator is running on GKE Autopilot.",
+	)
 	flag.BoolVar(
 		&cliArgs.disableOpenTelemetryCollectorHostPorts,
 		"disable-otel-collector-host-ports",
@@ -716,6 +723,8 @@ func startOperatorManager(
 		cliArgs.forceUseOpenTelemetryCollectorServiceUrl,
 		"disable OpenTelemetry collector host ports",
 		cliArgs.disableOpenTelemetryCollectorHostPorts,
+		"is GKE Autopilot",
+		cliArgs.isGkeAutopilot,
 
 		"extra config",
 		extraConfig,
@@ -853,6 +862,7 @@ func startDash0Controllers(
 		IsIPv6Cluster:           isIPv6Cluster,
 		IsDocker:                isDocker,
 		DisableHostPorts:        cliArgs.disableOpenTelemetryCollectorHostPorts,
+		IsGkeAutopilot:          cliArgs.isGkeAutopilot,
 		DevelopmentMode:         developmentMode,
 		DebugVerbosityDetailed:  envVars.debugVerbosityDetailed,
 	}

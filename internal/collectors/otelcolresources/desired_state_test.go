@@ -648,7 +648,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(namespaces).To(ContainElement("explicitly-set"))
 	})
 
-	It("should omit the filelog offset containers if a PVC volume is provided for filelog offset storage", func() {
+	It("should omit the filelog offset container but add the volume ownership container if a PVC volume is provided for filelog offset storage", func() {
 		offsetStorageVolume := corev1.Volume{
 			Name: "offset-storage-volume",
 			VolumeSource: corev1.VolumeSource{
@@ -676,7 +676,11 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(daemonSet).NotTo(BeNil())
 		daemonSetPodSpec := daemonSet.Spec.Template.Spec
 
-		Expect(daemonSetPodSpec.InitContainers).To(BeEmpty())
+		Expect(daemonSetPodSpec.InitContainers).To(HaveLen(1))
+		filelogOffsetVolumeOwnershipInitContainer := daemonSetPodSpec.InitContainers[0]
+		Expect(filelogOffsetVolumeOwnershipInitContainer.Image).To(Equal(TestImages.FilelogOffsetVolumeOwnershipImage))
+		Expect(filelogOffsetVolumeOwnershipInitContainer.ImagePullPolicy).To(Equal(corev1.PullAlways))
+
 		Expect(daemonSetPodSpec.Containers).To(HaveLen(2))
 		daemonSetCollectorContainer := daemonSetPodSpec.Containers[0]
 
@@ -689,7 +693,7 @@ var _ = Describe("The desired state of the OpenTelemetry Collector resources", f
 		Expect(offsetVolumeMount.SubPathExpr).To(Equal("$(K8S_NODE_NAME)"))
 	})
 
-	It("should omit the filelog offset containers but add the volume ownership container if a host volume is provided for filelog offset storage", func() {
+	It("should omit the filelog offset container but add the volume ownership container if a host volume is provided for filelog offset storage", func() {
 		offsetStorageVolume := corev1.Volume{
 			Name: "offset-storage-volume",
 			VolumeSource: corev1.VolumeSource{

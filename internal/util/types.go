@@ -47,6 +47,7 @@ type CollectorConfig struct {
 	IsIPv6Cluster           bool
 	IsDocker                bool
 	DisableHostPorts        bool
+	IsGkeAutopilot          bool
 	DevelopmentMode         bool
 	DebugVerbosityDetailed  bool
 }

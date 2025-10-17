@@ -45,6 +45,7 @@ type oTelColConfig struct {
 	ClusterName                                      string
 	Images                                           util.Images
 	IsIPv6Cluster                                    bool
+	IsGkeAutopilot                                   bool
 	OffsetStorageVolume                              *corev1.Volume
 	DevelopmentMode                                  bool
 	DebugVerbosityDetailed                           bool
@@ -469,7 +470,8 @@ func assembleClusterRoleForDaemonSet(config *oTelColConfig) *rbacv1.ClusterRole 
 			{
 				APIGroups: []string{""},
 				Resources: []string{
-					// required for Kubeletstats receiver ({request|limit}_utilization metrics)
+					// required for Kubeletstats receiver ({request|limit}_utilization metrics), and
+					// extra_metadata_labels.
 					"nodes/proxy",
 				},
 				Verbs: []string{"get"},
@@ -574,24 +576,28 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 		return nil, err
 	}
 
+	matchExpressions := []corev1.NodeSelectorRequirement{
+
+		{
+			Key:      util.KubernetesIoOs,
+			Operator: corev1.NodeSelectorOpIn,
+			Values:   []string{"linux"},
+		},
+	}
+	if !config.IsGkeAutopilot {
+		matchExpressions = append(matchExpressions, corev1.NodeSelectorRequirement{
+			Key:      dash0OptOutLabelKey,
+			Operator: corev1.NodeSelectorOpNotIn,
+			Values:   []string{"false"},
+		})
+	}
 	podSpec := corev1.PodSpec{
 		Affinity: &corev1.Affinity{
 			NodeAffinity: &corev1.NodeAffinity{
 				RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
 					NodeSelectorTerms: []corev1.NodeSelectorTerm{
 						{
-							MatchExpressions: []corev1.NodeSelectorRequirement{
-								{
-									Key:      dash0OptOutLabelKey,
-									Operator: corev1.NodeSelectorOpNotIn,
-									Values:   []string{"false"},
-								},
-								{
-									Key:      util.KubernetesIoOs,
-									Operator: corev1.NodeSelectorOpIn,
-									Values:   []string{"linux"},
-								},
-							},
+							MatchExpressions: matchExpressions,
 						},
 					},
 				},
@@ -624,13 +630,13 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 	}
 
 	if config.usesOffsetStorageVolume() {
-		if config.OffsetStorageVolume.HostPath != nil {
-			// Host path volumes and sub paths in host path volumes are, by default, created for root:root with
-			// permissions set to 755. The OpenTelemetry collector container does not run as root, so it wouldn't be
-			// able to write into the mounted volume. We fix the permissions with an init container.
-			podSpec.InitContainers = []corev1.Container{
-				assembleFileLogVolumeOwnershipInitContainer(config, filelogOffsetsVolume),
-			}
+		// Volume file systems by default often belong to root:root, without write permissions for other users.
+		// When the otel collector container starts and tries to create the directory for file log offsets within the
+		// volume, it might fail because it does not have the required permissions to create the directory. To avoid
+		// that, we create the directory in an init container and hand ownership over to the user that the collector
+		// process is running under.
+		podSpec.InitContainers = []corev1.Container{
+			assembleFileLogVolumeOwnershipInitContainer(config, filelogOffsetsVolume),
 		}
 	} else {
 		podSpec.InitContainers = []corev1.Container{
@@ -788,14 +794,6 @@ func assembleCollectorDaemonSetVolumes(
 			},
 		},
 		{
-			Name: "node-docker-container-logs",
-			VolumeSource: corev1.VolumeSource{
-				HostPath: &corev1.HostPathVolumeSource{
-					Path: "/var/lib/docker/containers",
-				},
-			},
-		},
-		{
 			Name: configMapVolumeName,
 			VolumeSource: corev1.VolumeSource{
 				ConfigMap: &corev1.ConfigMapVolumeSource{
@@ -815,8 +813,20 @@ func assembleCollectorDaemonSetVolumes(
 			},
 		},
 	}
+	if !config.IsGkeAutopilot {
+		// On Docker desktop and other runtimes using docker, the files in /var/log/pods are symlinked to this folder.
+		// In GKE Autopilot, host path volumes are only allowed for /var/log/pods, which we already mount above.
+		volumes = append(volumes, corev1.Volume{
+			Name: "node-docker-container-logs",
+			VolumeSource: corev1.VolumeSource{
+				HostPath: &corev1.HostPathVolumeSource{
+					Path: "/var/lib/docker/containers",
+				},
+			},
+		})
+	}
 
-	if config.UseHostMetricsReceiver {
+	if config.UseHostMetricsReceiver && !config.IsGkeAutopilot {
 		// Mounting the entire host file system is required for the hostmetrics receiver, see
 		// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/hostmetricsreceiver/README.md#collecting-host-metrics-from-inside-a-container-linux-only
 		volumes = append(volumes, corev1.Volume{
@@ -849,16 +859,17 @@ func assembleCollectorDaemonSetVolumeMounts(
 			MountPath: "/var/log/pods",
 			ReadOnly:  true,
 		},
-		// On Docker desktop and other runtimes using docker, the files in /var/log/pods
-		// are symlinked to this folder.
-		{
+		filelogOffsetVolumeMount,
+	}
+	if !config.IsGkeAutopilot {
+		volumeMounts = append(volumeMounts, corev1.VolumeMount{
 			Name:      "node-docker-container-logs",
 			MountPath: "/var/lib/docker/containers",
 			ReadOnly:  true,
-		},
-		filelogOffsetVolumeMount,
+		})
 	}
-	if config.UseHostMetricsReceiver {
+
+	if config.UseHostMetricsReceiver && !config.IsGkeAutopilot {
 		// Mounting the entire host file system is required for the hostmetrics receiver, see
 		// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/hostmetricsreceiver/README.md#collecting-host-metrics-from-inside-a-container-linux-only
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
@@ -1101,10 +1112,9 @@ func assembleFileLogVolumeOwnershipInitContainer(
 		Name:  "filelog-offset-volume-ownership",
 		Image: config.Images.FilelogOffsetVolumeOwnershipImage,
 		Command: []string{
-			"/bin/chown",
-			"-R",
-			fmt.Sprintf("%d:%d", defaultUser, defaultGroup),
-			offsetsDirPath,
+			"/bin/sh",
+			"-c",
+			fmt.Sprintf("/bin/mkdir -p %s && /bin/chown -R %d:%d %s", offsetsDirPath, defaultUser, defaultGroup, offsetsDirPath),
 		},
 		Env: []corev1.EnvVar{
 			k8sNodeNameEnvVar,
@@ -1284,24 +1294,28 @@ func assembleCollectorDeployment(
 		return nil, err
 	}
 
+	matchExpressions := []corev1.NodeSelectorRequirement{
+
+		{
+			Key:      util.KubernetesIoOs,
+			Operator: corev1.NodeSelectorOpIn,
+			Values:   []string{"linux"},
+		},
+	}
+	if !config.IsGkeAutopilot {
+		matchExpressions = append(matchExpressions, corev1.NodeSelectorRequirement{
+			Key:      dash0OptOutLabelKey,
+			Operator: corev1.NodeSelectorOpNotIn,
+			Values:   []string{"false"},
+		})
+	}
 	podSpec := corev1.PodSpec{
 		Affinity: &corev1.Affinity{
 			NodeAffinity: &corev1.NodeAffinity{
 				RequiredDuringSchedulingIgnoredDuringExecution: &corev1.NodeSelector{
 					NodeSelectorTerms: []corev1.NodeSelectorTerm{
 						{
-							MatchExpressions: []corev1.NodeSelectorRequirement{
-								{
-									Key:      dash0OptOutLabelKey,
-									Operator: corev1.NodeSelectorOpNotIn,
-									Values:   []string{"false"},
-								},
-								{
-									Key:      util.KubernetesIoOs,
-									Operator: corev1.NodeSelectorOpIn,
-									Values:   []string{"linux"},
-								},
-							},
+							MatchExpressions: matchExpressions,
 						},
 					},
 				},

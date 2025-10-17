@@ -1,3 +1,10 @@
+{{- $initContainerResources := .Values.operator.initContainerResources }}
+{{- if .Values.operator.gke.autopilot.enabled }}
+  {{- if not $initContainerResources }}
+    {{- $initContainerResources = dict "limits" (dict "ephemeral-storage" "500Mi") "requests" (dict "cpu" "100m" "memory" "128Mi" "ephemeral-storage" "500Mi") }}
+  {{- end }}
+{{- end }}
+
 {{/*
 This ConfigMap contains structured configuration values (as yaml) for the opertor manager, which would be slightly
 awkward to transmit as command line arguments or environment variables.
@@ -21,7 +28,7 @@ compatibility.
 data:
   extra.yaml: |-
     initContainerResources:
-      {{- .Values.operator.initContainerResources | toYaml | nindent 6 }}
+      {{- $initContainerResources | toYaml | nindent 6 }}
 {{- if .Values.operator.collectors.filelogOffsetSyncStorageVolume }}
     collectorFilelogOffsetStorageVolume:
       {{- .Values.operator.collectors.filelogOffsetSyncStorageVolume | toYaml | nindent 6 }}

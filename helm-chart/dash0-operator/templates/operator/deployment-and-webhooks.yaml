@@ -90,9 +90,11 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
             - matchExpressions:
+              {{- if not .Values.operator.gke.autopilot.enabled }}
               - key: "dash0.com/enable"
                 operator: "NotIn"
                 values: ["false"]
+              {{- end }}
               - key: "kubernetes.io/os"
                 operator: "In"
                 values: ["linux"]
@@ -152,6 +154,7 @@ spec:
 {{- end }}{{/*closes "if .Values.operator.dash0Export.dataset" */}}
 {{- end }}{{/*closes "if .Values.operator.dash0Export.enabled" */}}
         - --force-use-otel-collector-service-url={{ .Values.operator.collectors.forceUseServiceUrl }}
+        - --gke-autopilot={{ .Values.operator.gke.autopilot.enabled }}
         - --disable-otel-collector-host-ports={{ .Values.operator.collectors.disableHostPorts }}
 {{- if (default .Values.operator.instrumentation.delayAfterEachWorkloadMillis .Values.operator.instrumentationDelayAfterEachWorkloadMillis) }}
         - --instrumentation-delay-after-each-workload-millis={{ default .Values.operator.instrumentation.delayAfterEachWorkloadMillis .Values.operator.instrumentationDelayAfterEachWorkloadMillis }}
@@ -365,6 +368,18 @@ webhooks:
         values:
           - kube-system
           - kube-node-lease
+      {{- if .Values.operator.gke.autopilot.enabled }}
+      - key: kubernetes.io/metadata.name
+        operator: NotIn
+        values:
+          - kube-system
+          - gke-gmp-system
+          - gke-managed-cim
+          - gke-managed-volumepopulator
+          - gke-managed-checkpointing
+          - gke-managed-parallelstorecsi
+          - gke-managed-lustrecsi
+      {{- end }}
   clientConfig:
     {{- if not .Values.operator.certManager.useCertManager }}
     caBundle: {{ default "" ( $ca.Cert | b64enc ) }}
@@ -450,6 +465,20 @@ webhooks:
         path: /operator-configuration/mutate
     admissionReviewVersions:
       - v1
+    {{- if .Values.operator.gke.autopilot.enabled }}
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - kube-system
+            - gke-gmp-system
+            - gke-managed-cim
+            - gke-managed-volumepopulator
+            - gke-managed-checkpointing
+            - gke-managed-parallelstorecsi
+            - gke-managed-lustrecsi
+    {{- end }}
     rules:
       - apiGroups:
           - operator.dash0.com
@@ -534,6 +563,20 @@ webhooks:
         path: /monitoring/mutate
     admissionReviewVersions:
       - v1
+    {{- if .Values.operator.gke.autopilot.enabled }}
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: NotIn
+          values:
+            - kube-system
+            - gke-gmp-system
+            - gke-managed-cim
+            - gke-managed-volumepopulator
+            - gke-managed-checkpointing
+            - gke-managed-parallelstorecsi
+            - gke-managed-lustrecsi
+    {{- end }}
     rules:
       - apiGroups:
           - operator.dash0.com

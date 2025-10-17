@@ -28,9 +28,11 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
               - matchExpressions:
+                  {{- if not .Values.operator.gke.autopilot.enabled }}
                   - key: "dash0.com/enable"
                     operator: "NotIn"
                     values: ["false"]
+                  {{- end }}
                   - key: "kubernetes.io/os"
                     operator: "In"
                     values: ["linux"]

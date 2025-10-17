@@ -49,6 +49,7 @@ deployment should match snapshot (default values):
                 - --metrics-bind-address=127.0.0.1:8080
                 - --leader-elect
                 - --force-use-otel-collector-service-url=false
+                - --gke-autopilot=false
                 - --disable-otel-collector-host-ports=false
               command:
                 - /manager
@@ -119,7 +120,7 @@ deployment should match snapshot (default values):
                   ephemeral-storage: 500Mi
                   memory: 256Mi
                 requests:
-                  cpu: 10m
+                  cpu: 50m
                   ephemeral-storage: 500Mi
                   memory: 128Mi
               securityContext:
@@ -232,6 +233,7 @@ deployment should match snapshot when using cert-manager:
                 - --metrics-bind-address=127.0.0.1:8080
                 - --leader-elect
                 - --force-use-otel-collector-service-url=false
+                - --gke-autopilot=false
                 - --disable-otel-collector-host-ports=false
               command:
                 - /manager
@@ -302,7 +304,7 @@ deployment should match snapshot when using cert-manager:
                   ephemeral-storage: 500Mi
                   memory: 256Mi
                 requests:
-                  cpu: 10m
+                  cpu: 50m
                   ephemeral-storage: 500Mi
                   memory: 128Mi
               securityContext:

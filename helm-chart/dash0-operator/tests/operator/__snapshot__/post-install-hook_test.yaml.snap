@@ -7,7 +7,7 @@ post-install hook job should match snapshot:
         helm.sh/hook: post-install
         helm.sh/hook-delete-policy: hook-succeeded
       labels:
-        app.kubernetes.io/component: uninstallation-process
+        app.kubernetes.io/component: installation-process
         app.kubernetes.io/managed-by: Helm
         app.kubernetes.io/name: dash0-operator
         app.kubernetes.io/part-of: dash0-operator
@@ -55,7 +55,7 @@ post-install hook job should match snapshot:
                   ephemeral-storage: 500Mi
                   memory: 256Mi
                 requests:
-                  cpu: 10m
+                  cpu: 50m
                   ephemeral-storage: 500Mi
                   memory: 128Mi
               securityContext:
