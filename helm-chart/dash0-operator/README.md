@@ -707,8 +707,6 @@ By default, the operator collects metrics as follows:
   in the Dash0 operator configuration resource (or setting the value
   `operator.kubernetesInfrastructureMetricsCollectionEnabled` to `false` when deploying the operator configuration
   resource via the Helm chart).
-  (Collecting node metrics via the host metrics receiver is not supported in
-  [GKE Autopilot clusters](#notes-on-gke-autopilot), the host metric receiver will be disabled there.)
 * Namespace-scoped metrics (e.g. metrics related to a workload running in a specific namespace) will only be collected
   if the namespace is monitored, that is, there is a Dash0 monitoring resource in that namespace.
 * The Dash0 operator scrapes Prometheus endpoints on pods annotated with the `prometheus.io/*` annotations in monitored
@@ -2003,8 +2001,6 @@ in an autopilot clusters can do.
 By setting `operator.gke.autopilot.enabled` to true, the Dash0 operator Helm chart will adjust its own configuration
 to comply with these restrictions.
 In particular, this will:
-- disable the host metrics receiver, as it requires mounting the full host file system as a volume, which is not
-  permitted on GKE autopilot
 - disable collecting all four utilization metrics for the `kubeletstats` receiver metrics; collecting these requires access to the
   `/pod` endpoint of the kubelet API which is not available in GKE autopilot due to the lack of the `nodes/proxy`
   permission:

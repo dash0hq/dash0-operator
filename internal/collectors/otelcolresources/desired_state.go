@@ -828,7 +828,7 @@ func assembleCollectorDaemonSetVolumes(
 		})
 	}
 
-	if config.UseHostMetricsReceiver && !config.IsGkeAutopilot {
+	if config.UseHostMetricsReceiver {
 		// Mounting the entire host file system is required for the hostmetrics receiver, see
 		// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/hostmetricsreceiver/README.md#collecting-host-metrics-from-inside-a-container-linux-only
 		volumes = append(volumes, corev1.Volume{
@@ -871,7 +871,7 @@ func assembleCollectorDaemonSetVolumeMounts(
 		})
 	}
 
-	if config.UseHostMetricsReceiver && !config.IsGkeAutopilot {
+	if config.UseHostMetricsReceiver {
 		// Mounting the entire host file system is required for the hostmetrics receiver, see
 		// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/hostmetricsreceiver/README.md#collecting-host-metrics-from-inside-a-container-linux-only
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
