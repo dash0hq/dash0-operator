@@ -101,15 +101,15 @@ runs:
       uses: aquasecurity/trivy-action@0.28.0
       with:
         image-ref: 'ghcr.io/dash0hq/${{ inputs.imageName }}:sha-${{ env.SHORT_SHA }}'
-        format: 'table'
-        # output: 'trivy-results.sarif'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
 
-#    - name: upload Trivy scan results to GitHub Security tab
-#      if: ${{ inputs.scan }}
-#      uses: github/codeql-action/upload-sarif@v3
-#      with:
-#        sarif_file: 'trivy-results.sarif'
-#        category: ".github/workflows/ci.yaml:build_and_push_images/${{ inputs.imageName }}"
+    - name: upload Trivy scan results to GitHub Security tab
+      if: ${{ inputs.scan }}
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: 'trivy-results.sarif'
+        category: ".github/workflows/ci.yaml:build_and_push_images/${{ inputs.imageName }}"
 
     - name: push container image
       if: ${{ env.PUSH_ENABLED }}
