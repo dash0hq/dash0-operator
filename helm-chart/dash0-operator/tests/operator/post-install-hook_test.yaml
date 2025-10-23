@@ -69,3 +69,19 @@ tests:
       - equal:
           path: spec.template.spec.priorityClassName
           value: operator-manager-priority-class
+
+  - it: should consider the provided imagePullSecrets
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+          apiEndpoint: https://api.dash0.com
+        imagePullSecrets:
+          - name: secret-for-private-reg
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value:
+            - name: secret-for-private-reg

@@ -55,6 +55,10 @@ spec:
           {{ include "dash0-operator.restrictiveContainerSecurityContext" dict | nindent 10 }}
           resources:
             {{- toYaml .Values.operator.managerContainerResources | nindent 12 }}
+      {{- with .Values.operator.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       securityContext:
         runAsNonRoot: true
       serviceAccountName: {{ template "dash0-operator.serviceAccountName" . }}

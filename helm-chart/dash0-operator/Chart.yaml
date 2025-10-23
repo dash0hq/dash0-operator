@@ -19,5 +19,7 @@ sources:
 maintainers:
   - name: Bastian Krol
     email: bastian.krol@dash0.com
+  - name: Petra Bierleutgeb
+    email: petra.bierleutgeb@dash0.com
 icon: https://www.dash0.com/shared/logo_colors_128x128.png
 appVersion: "0.0.0" # note: will be replaced when building a release

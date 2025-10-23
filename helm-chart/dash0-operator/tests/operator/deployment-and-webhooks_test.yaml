@@ -1085,3 +1085,22 @@ tests:
       - exists:
           path: spec.template.metadata.labels["dash0.com/cert-digest"]
         not: true
+
+  - it: should consider the provided imagePullSecrets
+    set:
+      operator:
+        dash0Export:
+          enabled: true
+          endpoint: https://ingress.dash0.com
+          token: "very-secret-dash0-auth-token"
+          apiEndpoint: https://api.dash0.com
+        imagePullSecrets:
+          - name: secret-for-private-reg
+    documentSelector:
+      path: metadata.name
+      value: dash0-operator-controller
+    asserts:
+      - equal:
+          path: spec.template.spec.imagePullSecrets
+          value:
+            - name: secret-for-private-reg
