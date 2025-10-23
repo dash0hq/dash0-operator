@@ -25,17 +25,18 @@ spec:
         app.kubernetes.io/instance: post-install-hook
         app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
         helm.sh/chart: {{ include "dash0-operator.chartNameWithVersion" . }}
+        {{- if .Values.operator.gke.autopilot.enabled }}
+        cloud.google.com/matching-allowlist: dash0-post-install-v1.0.0
+        {{- end }}
     spec:
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
               - matchExpressions:
-                  {{- if not .Values.operator.gke.autopilot.enabled }}
                   - key: "dash0.com/enable"
                     operator: "NotIn"
                     values: ["false"]
-                  {{- end }}
                   - key: "kubernetes.io/os"
                     operator: "In"
                     values: ["linux"]
@@ -53,6 +54,7 @@ spec:
           imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
           command:
             - /manager
+          args:
             - "--auto-operator-configuration-resource-available-check"
           {{ include "dash0-operator.restrictiveContainerSecurityContext" dict | nindent 10 }}
           resources:
