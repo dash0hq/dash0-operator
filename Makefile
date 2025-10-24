@@ -219,7 +219,7 @@ lint-fix: golang-lint-fix zig-fmt
 ##@ Build
 
 .PHONY: build
-build: husky-setup-hooks manifests generate fmt vet ## Build manager binary.
+build: manifests generate fmt vet ## Build manager binary.
 	go build -o bin/manager cmd/main.go
 
 # If you wish to build the manager image targeting other platforms you can use the --platform flag.
