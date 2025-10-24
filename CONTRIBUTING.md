@@ -11,20 +11,32 @@ Contributing
 - Zig (with the version referenced in the [zig-version file](images/instrumentation/injector/zig-version), see
   [Zig download](https://ziglang.org/download/) or [Zig installation instructions](https://github.com/ziglang/zig/wiki/Install-Zig-from-a-Package-Manager).
 
+## Make Targets
+
+Run `make help` for more information on all potential `make` targets.
+More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
+
 ## Deploying to a Local Cluster for Testing Purposes
 
 This approach is suitable for deploying the operator to a cluster running locally on your machine, for example
 via the Kubernetes support included in Docker Desktop.
 
-Run `make docker-build` to build the container image locally, this will tag the image as
-`operator-controller:latest`.
+As an alternative to the steps outlined in this section, there is also a suite of scripts available that take care of
+building and deploying everything required for a full local test, including the Dash0OperatorConfiguration resource, 
+Dash0Monitoring resources, test workloads, third-party CRDs etc.)
+See section [Semi-Manual Test Scenarios](#semi-manual-test-scenarios) for more information on that.
 
-After that, you can deploy the operator to your cluster:
+In contrast to the semi-manual test scenarios, this section only describes the individual steps to build and deploy a
+bare-bones Dash0 operator.
 
-* Deploy the locally built image `operator-controller:latest` to the cluster: `make deploy-via-helm`
+1. Run `make docker-build` to build all required container images locally, this will tag the image as
+`operator-controller:latest`, `collector:latest` etc.
+2. Run `make deploy` to deploy the operator with locally built images to the cluster.
+   Note: No Dash0OperatorConfiguration or Dash0Monitoring resource will be created automatically, so the operator will
+   not really do anything.
 * Alternatively, deploy with images from a remote registry:
   ```
-  make deploy-via-helm \
+  make deploy \
     CONTROLLER_IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller \
     CONTROLLER_IMG_TAG=main-dev \
     CONTROLLER_IMG_PULL_POLICY="" \
@@ -44,8 +56,6 @@ After that, you can deploy the operator to your cluster:
     FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_TAG=main-dev \
     FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_PULL_POLICY=""
   ```
-* The custom resource definition will automatically be installed when deploying the operator. However, you can also do
-  that separately via kustomize if required via `make install`.
 
 **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin privileges or be logged in as
 admin.
@@ -53,11 +63,10 @@ admin.
 **Undeploy the controller from the cluster:**
 
 ```sh
-make undeploy-via-helm
+make undeploy
 ```
 
-This will also remove the custom resource definition. However, the custom resource definition can also be removed
-separately via `make uninstall` without removing the operator.
+This will also remove the custom resource definition.
 
 ## Run Tests
 
@@ -67,117 +76,31 @@ make test
 
 This will run the go unit tests as well as the helm chart tests.
 
-### End-to-End Tests
-
-The end-to-end tests have been tested with [Docker Desktop](https://docs.docker.com/desktop/features/kubernetes/)
-on Mac (with Kubernetes support enabled) and [kind](https://kind.sigs.k8s.io/), as well experimentally against remote
-clusters.
-Docker Desktop is probably the easiest setup to get started with.
-See below for additional instructions for [kind](#running-end-to-end-tests-on-kind).
-
-Copy the file `test-resources/.env.template` to `test-resources/.env` and set `E2E_KUBECTX` to the name of the
-Kubernetes context you want to use for the tests, or set `E2E_KUBECTX` via other means (e.g. export it in your shell,
-via `direnv` etc.).
-
-To run the end-to-end tests:
-```
-make test-e2e
-```
-
-The tests can also be run with remote images, like this:
-```
-CONTROLLER_IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller \
-  CONTROLLER_IMG_TAG=main-dev \
-  INSTRUMENTATION_IMG_REPOSITORY=ghcr.io/dash0hq/instrumentation \
-  INSTRUMENTATION_IMG_TAG=main-dev \
-  COLLECTOR_IMG_REPOSITORY=ghcr.io/dash0hq/collector \
-  COLLECTOR_IMG_TAG=main-dev \
-  CONFIGURATION_RELOADER_IMG_REPOSITORY=ghcr.io/dash0hq/configuration-reloader \
-  CONFIGURATION_RELOADER_IMG_TAG=main-dev \
-  FILELOG_OFFSET_SYNC_IMG_REPOSITORY=ghcr.io/dash0hq/filelog-offset-sync \
-  FILELOG_OFFSET_SYNC_IMG_TAG=main-dev \
-  FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_REPOSITORY=ghcr.io/dash0hq/filelog-offset-volume-ownership \
-  FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_TAG=main-dev \
-  make test-e2e
-```
-
-The test suite can also be run with a Helm chart from a remote repository:
-
-```
-OPERATOR_HELM_CHART=dash0-operator/dash0-operator \
-  OPERATOR_HELM_CHART_URL=https://dash0hq.github.io/dash0-operator \
-  make test-e2e
-```
-
-When an end-to-end test case fails, the test suite automatically collects pod descriptions, config maps and pod logs
-from the Kubernetes cluster at the time of the failure.
-The collected data can be found in `test-resources/e2e/logs`.
-It is often helpful to understand why the test case has failed.
-In addition, the data that the OpenTelemetry collectors emitted during the last test case can be reviewed in
-`test-resources/e2e/volumes/otlp-sink`, in `logs.jsonl`, `metrics.jsonl`, and `traces.jsonl` respectively.
-
-#### Running End-to-End Tests on kind
-
-To use kind for running the end-to-end tests, you need to create a kind cluster first.
-The file <test-resources/kind-config.yaml> file can be used as a blueprint to create a cluster.
-
-Before creating the cluster, the two hostPath settings in `test-resources/kind-config.yaml` need to be aligned with your
-local file system structure.
-(Alternatively, create a symbolic link from
-`/Users/username/dash0/code/dash0-operator/test-resources/e2e/volumes/` to the actual path, see instructions in
-`test-resources/kind-config.yaml` for details).
-Also, make sure the path mentioned under `hostPath` is listed in Docker Desktop's settings under
-"Resources -> File sharing".
-
-Then execute the following command to create the cluster:
-
-```
-kind create cluster --name dash0-operator-playground --config test-resources/kind-config.yaml
-```
-
-Also, the [Kubernetes Cloud Provider for KIND](https://github.com/kubernetes-sigs/cloud-provider-kind) needs to be
-running. Install it with the following commands:
-
-```
-go install sigs.k8s.io/cloud-provider-kind@latest
-sudo install ~/go/bin/cloud-provider-kind /usr/local/bin
-```
-
-Then, start it (in a separate shell) with the following command and leave it running:
-```
-sudo cloud-provider-kind
-```
-
-Last but not least, set `E2E_KUBECTX` in `test-resources/.env` to the name of the Kubernetes context that corresponds to
-your kind cluster (e.g. `kind-dash0-operator-playground`).
-
-Optionally, once you are done, execute the following command to delete the cluster:
-
-```
-kind delete cluster --name dash0-operator-playground
-```
-
-#### Running End-to-End Tests against a Remote Cluster
-
-TODO: Add instructions for running the e2e tests against a remote cluster.
-Currently, this involves some local ad hoc modifications, like
-* pushing the test image to the remote registry,
-* changing`test-resources/node.js/express/deployment.yaml` and friends
-    * to set the container image `ghcr.io/dash0hq/dash0-operator-nodejs-20-express-test-app:latest"`, and
-    * removing `imagePullPolicy: Never`
-
 ### Semi-Manual Test Scenarios
 
-The e2e tests might sometimes not be the best tool to troubleshoot the operator, simply because they remove everything
-they deploy in their `AfterAll`/`AfterEach` hooks.
-The scripts in `test-resources/bin` can be used for creating a specific scenario and inspecting then its behavior.
+The steps described in the section
+[Deploying to a Local Cluster for Testing Purposes](#deploying-to-a-local-cluster-for-testing-purposes) can be used
+as a basis for executing manual tests, but they would require a lot of repetitive manual steps to create the full
+test scenario (deploy the operator, create a test namespace, deploy a Dash0Monitoring resource, deploy a test workload,
+etc.)
+
+On the other hand, the [end-to-end tests](#end-to-end-tests) automate all of that, but might sometimes not be the best
+tool to troubleshoot the operator or experiment with new functionality, simply because the end-to-end tests remove
+everything they deploy in their `AfterAll`/`AfterEach` hooks.
+
+The scripts in `test-resources/bin` can be used for creating a specific scenario with one shell command, and then
+inspecting its behavior.
 They are also useful to actually report data to an actual Dash0 backend.
 
-If you haven't created `test-resources/.env` yet, copy the file `test-resources/.env.template` to `test-resources/.env`.
+If you haven't created `test-resources/.env` yet, you can copy the file `test-resources/.env.template` to
+`test-resources/.env`, or set the environment variables listed in `test-resources/.env.template` via other means.
 Make sure the comma-separated list `ALLOWED_KUBECTXS` contains the name of the kubernetes you want to use for the test
 scripts.
+If you want to report telemetry to a Dash0 backend, make sure that `DASH0_INGRESS_ENDPOINT` and
+`DASH0_AUTHORIZATION_TOKEN` are set correctly.
+Alternatively, instead of providing `test-resources/.env`, make sure that the environment variables mentioned in
+`test-resources/.env.template` are set via other means.
 Use `kubectx` or `kubectl config set-context` to switch to the desired Kubernetes context before running the scripts.
-If you want to report telemetry to a Dash0 backend, set `DASH0_AUTHORIZATION_TOKEN` as well.
 
 * `test-resources/bin/test-scenario-01-aum-operator-cr.sh`: Deploys an application under monitoring (this is
   abbreviated to "aum" in the name of the script) to the namespace `test-namespace`, then it deploys the operator to
@@ -330,19 +253,113 @@ If you want to report telemetry to a Dash0 backend, set `DASH0_AUTHORIZATION_TOK
       FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_TAG=main-dev \
       test-resources/bin/test-scenario-01-aum-operator-cr.sh
     ```
-   * To run the scenario with the helm chart from the official remote repository and the default images referenced in
-     that chart (the Helm repository must have been installed beforehand):
-     ```
-     OPERATOR_HELM_CHART=dash0-operator/dash0-operator \
-       test-resources/bin/test-scenario-01-aum-operator-cr.sh
-     ```
-   * You can add `OPERATOR_HELM_CHART_VERSION=0.11.0` to the command above to install a specific version of the
-       Helm chart. This can be useful to test upgrade scenarios.
+    * To run the scenario with the helm chart from the official remote repository and the default images referenced in
+      that chart (the Helm repository must have been installed beforehand):
+      ```
+      OPERATOR_HELM_CHART=dash0-operator/dash0-operator \
+        test-resources/bin/test-scenario-01-aum-operator-cr.sh
+      ```
+    * You can add `OPERATOR_HELM_CHART_VERSION=0.11.0` to the command above to install a specific version of the
+      Helm chart. This can be useful to test upgrade scenarios.
 
-## Make Targets
+### End-to-End Tests
 
-Run `make help` for more information on all potential `make` targets.
-More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
+The end-to-end tests have been tested with [Docker Desktop](https://docs.docker.com/desktop/features/kubernetes/)
+on Mac (with Kubernetes support enabled) and [kind](https://kind.sigs.k8s.io/), as well experimentally against remote
+clusters.
+Docker Desktop is probably the easiest setup to get started with.
+See below for additional instructions for [kind](#running-end-to-end-tests-on-kind).
+
+Copy the file `test-resources/.env.template` to `test-resources/.env` and set `E2E_KUBECTX` to the name of the
+Kubernetes context you want to use for the tests, or set `E2E_KUBECTX` via other means (e.g. export it in your shell,
+via `direnv` etc.).
+
+To run the end-to-end tests:
+```
+make test-e2e
+```
+
+The tests can also be run with remote images, like this:
+```
+CONTROLLER_IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller \
+  CONTROLLER_IMG_TAG=main-dev \
+  INSTRUMENTATION_IMG_REPOSITORY=ghcr.io/dash0hq/instrumentation \
+  INSTRUMENTATION_IMG_TAG=main-dev \
+  COLLECTOR_IMG_REPOSITORY=ghcr.io/dash0hq/collector \
+  COLLECTOR_IMG_TAG=main-dev \
+  CONFIGURATION_RELOADER_IMG_REPOSITORY=ghcr.io/dash0hq/configuration-reloader \
+  CONFIGURATION_RELOADER_IMG_TAG=main-dev \
+  FILELOG_OFFSET_SYNC_IMG_REPOSITORY=ghcr.io/dash0hq/filelog-offset-sync \
+  FILELOG_OFFSET_SYNC_IMG_TAG=main-dev \
+  FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_REPOSITORY=ghcr.io/dash0hq/filelog-offset-volume-ownership \
+  FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_TAG=main-dev \
+  make test-e2e
+```
+
+The test suite can also be run with a Helm chart from a remote repository:
+
+```
+OPERATOR_HELM_CHART=dash0-operator/dash0-operator \
+  OPERATOR_HELM_CHART_URL=https://dash0hq.github.io/dash0-operator \
+  make test-e2e
+```
+
+When an end-to-end test case fails, the test suite automatically collects pod descriptions, config maps and pod logs
+from the Kubernetes cluster at the time of the failure.
+The collected data can be found in `test-resources/e2e/logs`.
+It is often helpful to understand why the test case has failed.
+In addition, the data that the OpenTelemetry collectors emitted during the last test case can be reviewed in
+`test-resources/e2e/volumes/otlp-sink`, in `logs.jsonl`, `metrics.jsonl`, and `traces.jsonl` respectively.
+
+#### Running End-to-End Tests on kind
+
+To use kind for running the end-to-end tests, you need to create a kind cluster first.
+The file <test-resources/kind-config.yaml> file can be used as a blueprint to create a cluster.
+
+Before creating the cluster, the two hostPath settings in `test-resources/kind-config.yaml` need to be aligned with your
+local file system structure.
+(Alternatively, create a symbolic link from
+`/Users/username/dash0/code/dash0-operator/test-resources/e2e/volumes/` to the actual path, see instructions in
+`test-resources/kind-config.yaml` for details).
+Also, make sure the path mentioned under `hostPath` is listed in Docker Desktop's settings under
+"Resources -> File sharing".
+
+Then execute the following command to create the cluster:
+
+```
+kind create cluster --name dash0-operator-playground --config test-resources/kind-config.yaml
+```
+
+Also, the [Kubernetes Cloud Provider for KIND](https://github.com/kubernetes-sigs/cloud-provider-kind) needs to be
+running. Install it with the following commands:
+
+```
+go install sigs.k8s.io/cloud-provider-kind@latest
+sudo install ~/go/bin/cloud-provider-kind /usr/local/bin
+```
+
+Then, start it (in a separate shell) with the following command and leave it running:
+```
+sudo cloud-provider-kind
+```
+
+Last but not least, set `E2E_KUBECTX` in `test-resources/.env` to the name of the Kubernetes context that corresponds to
+your kind cluster (e.g. `kind-dash0-operator-playground`).
+
+Optionally, once you are done, execute the following command to delete the cluster:
+
+```
+kind delete cluster --name dash0-operator-playground
+```
+
+#### Running End-to-End Tests against a Remote Cluster
+
+TODO: Add instructions for running the e2e tests against a remote cluster.
+Currently, this involves some local ad hoc modifications, like
+* pushing the test image to the remote registry,
+* changing`test-resources/node.js/express/deployment.yaml` and friends
+    * to set the container image `ghcr.io/dash0hq/dash0-operator-nodejs-20-express-test-app:latest"`, and
+    * removing `imagePullPolicy: Never`
 
 ## Migration Strategy When Updating Instrumentation Values
 
@@ -351,7 +368,3 @@ new volumes etc.), we need to make sure that previously instrumented workloads a
 be accompanied by corresponding tests (for example new test cases in `workload_modifier_test.go`, see the test suite
 `"when updating instrumentation from 0.5.1 to 0.6.0"` in commit 300a765a64a42d98dcc6d9a66dccc534b610ab65 for an
 example).
-
-## Contributing
-
-No contribution guidelines are available at this point.
