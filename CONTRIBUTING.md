@@ -16,6 +16,15 @@ Contributing
 Run `make help` for more information on all potential `make` targets.
 More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
 
+## Install Husky Hooks
+
+When working on the operator code base with the intent of contributing changes, it is recommended to install the 
+pre-push git hooks via `make husky-setup-hooks`.
+This will install a git pre-push hook that runs `make build`, `make lint` and `make test` before every `git push`,
+thereby catching simple syntax, formatting or unit test issues before pushing changes.
+Using this facility is optional, all checks will be run in CI anyway, the intent of the pre-push hooks is simply to
+reduce the turnaround time.
+
 ## Deploying to a Local Cluster for Testing Purposes
 
 This approach is suitable for deploying the operator to a cluster running locally on your machine, for example
