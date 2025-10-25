@@ -146,41 +146,12 @@ var (
 )
 
 func rebuildAppUnderTestContainerImages() {
-	rebuildNodeJsApplicationContainerImage()
-	rebuildJvmApplicationContainerImage()
-	rebuildDotnetApplicationContainerImage()
-}
-
-func rebuildNodeJsApplicationContainerImage() {
-	rebuildApplicationContainerImage(workloadNameNodeJs+"-app", applicationPathNodeJs)
-}
-
-func rebuildJvmApplicationContainerImage() {
-	rebuildApplicationContainerImage(workloadNameJvm+"-app", applicationPathJvm)
-}
-
-func rebuildDotnetApplicationContainerImage() {
-	rebuildApplicationContainerImage(workloadNameDotnet+"-app", applicationPathDotnet)
-}
-
-func rebuildApplicationContainerImage(imageName string, applicationPath string) {
-	By(fmt.Sprintf("building the %s image", imageName))
 	Expect(
 		runAndIgnoreOutput(
 			exec.Command(
-				"docker",
-				"build",
-				applicationPath,
-				"-t",
-				imageName,
+				"make",
+				"test-app-images",
 			))).To(Succeed())
-
-	loadImageToKindClusterIfRequired(
-		ImageSpec{
-			repository: imageName,
-			tag:        "latest",
-		}, nil,
-	)
 }
 
 func uninstallNodeJsCronJob(namespace string) error {

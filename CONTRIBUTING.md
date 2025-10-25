@@ -46,24 +46,9 @@ bare-bones Dash0 operator.
 * Alternatively, deploy with images from a remote registry:
   ```
   make deploy \
-    CONTROLLER_IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller \
-    CONTROLLER_IMG_TAG=main-dev \
-    CONTROLLER_IMG_PULL_POLICY="" \
-    INSTRUMENTATION_IMG_REPOSITORY=ghcr.io/dash0hq/instrumentation \
-    INSTRUMENTATION_IMG_TAG=main-dev \
-    INSTRUMENTATION_IMG_PULL_POLICY="" \
-    COLLECTOR_IMG_REPOSITORY=ghcr.io/dash0hq/collector \
-    COLLECTOR_IMG_TAG=main-dev \
-    COLLECTOR_IMG_PULL_POLICY="" \
-    CONFIGURATION_RELOADER_IMG_REPOSITORY=ghcr.io/dash0hq/configuration-reloader \
-    CONFIGURATION_RELOADER_IMG_TAG=main-dev \
-    CONFIGURATION_RELOADER_IMG_PULL_POLICY=""
-    FILELOG_OFFSET_SYNC_IMG_REPOSITORY=ghcr.io/dash0hq/filelog-offset-sync \
-    FILELOG_OFFSET_SYNC_IMG_TAG=main-dev \
-    FILELOG_OFFSET_SYNC_IMG_PULL_POLICY="" \
-    FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_REPOSITORY=ghcr.io/dash0hq/filelog-offset-volume-ownership \
-    FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_TAG=main-dev \
-    FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_PULL_POLICY=""
+    IMAGE_REPOSITORY_PREFIX=ghcr.io/dash0hq/
+    IMAGE_TAG=main-dev \
+    PULL_POLICY=""
   ```
 
 **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin privileges or be logged in as
@@ -215,51 +200,59 @@ Use `kubectx` or `kubectl config set-context` to switch to the desired Kubernete
       has been provided.
     * Additional configuration for the Helm deployment can be put into `test-resources/bin/extra-values.yaml` (create
       the file if necessary).
-* Additionally, there is a set of four variables for each of the container images to determine which version of the
-  image is used. By default, all images will be built locally before deploying anything. The `*_IMG_REPOSITORY` together
-  with `*_IMG_TAG` will override the fully qualified name of the image. For example, setting
-  `CONTROLLER_IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller` and `CONTROLLER_IMG_TAG=0.45.1` will instruct the
-  scripts to use `ghcr.io/dash0hq/operator-controller:0.45.1` instead of the locally built operator manager image.
-  You can also use `*_IMG_DIGEST` to use a specific image digest instead of an image tag.
+* Last but not least, there are a couple of environment variables that control which images are built, potentially
+  pushed, and used:
+  * `IMAGE_REPOSITORY_PREFIX`: Set this to `registry.tld/path/` to build images as
+    `registry.tld/path/operator-controller` instead of just `operator-controller`. (Default: `""`)
+  * `IMAGE_TAG`: Set this to use a different image tag, i.e. set this to `some-tag` to use the images like
+     `operator-controller:some-tag` instead of `operator-controller:latest`. (Default: `latest`)
+  * `PULL_POLICY`: Set this to use a different default pull policy for all container images. The default is `NEVER`,
+     which works with Docker Desktop when building images locally.
+* There are also sets of four variables for each of the container images to override the values provided by
+  `IMAGE_REPOSITORY_PREFIX`, `IMAGE_TAG`, and `PULL_POLICY`. These can be used if you need a different
+  container image registry, tag or pull policy per image. The `*_IMAGE_REPOSITORY` variables together
+  with `*_IMAGE_TAG` will override the fully qualified name of the image. For example, setting
+  `CONTROLLER_IMAGE_REPOSITORY=ghcr.io/dash0hq/operator-controller` and `CONTROLLER_IMAGE_TAG=0.45.1` will instruct the
+  scripts to use `ghcr.io/dash0hq/operator-controller:0.45.1`.
+  You can also use `*_IMAGE_DIGEST` to use a specific image digest instead of an image tag.
   Here is the full list of image related environment variables:
-    * `CONTROLLER_IMG_REPOSITORY`
-    * `CONTROLLER_IMG_TAG`
-    * `CONTROLLER_IMG_DIGEST`
-    * `CONTROLLER_IMG_PULL_POLICY`
-    * `INSTRUMENTATION_IMG_REPOSITORY`
-    * `INSTRUMENTATION_IMG_TAG`
-    * `INSTRUMENTATION_IMG_DIGEST`
-    * `INSTRUMENTATION_IMG_PULL_POLICY`
-    * `COLLECTOR_IMG_REPOSITORY`
-    * `COLLECTOR_IMG_TAG`
-    * `COLLECTOR_IMG_DIGEST`
-    * `COLLECTOR_IMG_PULL_POLICY`
-    * `CONFIGURATION_RELOADER_IMG_REPOSITORY`
-    * `CONFIGURATION_RELOADER_IMG_TAG`
-    * `CONFIGURATION_RELOADER_IMG_DIGEST`
-    * `CONFIGURATION_RELOADER_IMG_PULL_POLICY`
-    * `FILELOG_OFFSET_SYNC_IMG_REPOSITORY`
-    * `FILELOG_OFFSET_SYNC_IMG_TAG`
-    * `FILELOG_OFFSET_SYNC_IMG_DIGEST`
-    * `FILELOG_OFFSET_SYNC_IMG_PULL_POLICY`
-    * `FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_REPOSITORY`
-    * `FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_TAG`
-    * `FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_DIGEST`
-    * `FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_PULL_POLICY`
+    * `CONTROLLER_IMAGE_REPOSITORY`
+    * `CONTROLLER_IMAGE_TAG`
+    * `CONTROLLER_IMAGE_DIGEST`
+    * `CONTROLLER_IMAGE_PULL_POLICY`
+    * `INSTRUMENTATION_IMAGE_REPOSITORY`
+    * `INSTRUMENTATION_IMAGE_TAG`
+    * `INSTRUMENTATION_IMAGE_DIGEST`
+    * `INSTRUMENTATION_IMAGE_PULL_POLICY`
+    * `COLLECTOR_IMAGE_REPOSITORY`
+    * `COLLECTOR_IMAGE_TAG`
+    * `COLLECTOR_IMAGE_DIGEST`
+    * `COLLECTOR_IMAGE_PULL_POLICY`
+    * `CONFIGURATION_RELOADER_IMAGE_REPOSITORY`
+    * `CONFIGURATION_RELOADER_IMAGE_TAG`
+    * `CONFIGURATION_RELOADER_IMAGE_DIGEST`
+    * `CONFIGURATION_RELOADER_IMAGE_PULL_POLICY`
+    * `FILELOG_OFFSET_SYNC_IMAGE_REPOSITORY`
+    * `FILELOG_OFFSET_SYNC_IMAGE_TAG`
+    * `FILELOG_OFFSET_SYNC_IMAGE_DIGEST`
+    * `FILELOG_OFFSET_SYNC_IMAGE_PULL_POLICY`
+    * `FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_REPOSITORY`
+    * `FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_TAG`
+    * `FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_DIGEST`
+    * `FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_PULL_POLICY`
+* Similar environment variables are available for the test applications:
+    * `TEST_IMAGE_REPOSITORY_PREFIX`: container registry for all test applications (defaults to "").
+    * `TEST_IMAGE_TAG`: image tag for all test applications (defaults to "latest").
+    * `TEST_IMAGE_PULL_POLICY`: pull policy for all test applications (defaults to "Never").
+    * To override any of the previous three values for a specific test application image:
+        * `TEST_APP_DOTNET_IMAGE_REPOSITORY`, `TEST_APP_DOTNET_IMAGE_TAG`, `TEST_APP_DOTNET_IMAGE`, and `TEST_APP_DOTNET_IMAGE_PULL_POLICY`.
+        * `TEST_APP_JVM_IMAGE_REPOSITORY`, `TEST_APP_JVM_IMAGE_TAG`, `TEST_APP_JVM_IMAGE`, and `TEST_APP_JVM_IMAGE_PULL_POLICY`.
+        * `TEST_APP_NODEJS_IMAGE_REPOSITORY`, `TEST_APP_NODEJS_IMAGE_TAG`, `TEST_APP_NODEJS_IMAGE`, and `TEST_APP_NODEJS_IMAGE_PULL_POLICY`.
 * To run the scenario with the images that have been built from the main branch and pushed to ghcr.io most recently:
     ```
-    CONTROLLER_IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller \
-      CONTROLLER_IMG_TAG=main-dev \
-      INSTRUMENTATION_IMG_REPOSITORY=ghcr.io/dash0hq/instrumentation \
-      INSTRUMENTATION_IMG_TAG=main-dev \
-      COLLECTOR_IMG_REPOSITORY=ghcr.io/dash0hq/collector \
-      COLLECTOR_IMG_TAG=main-dev \
-      CONFIGURATION_RELOADER_IMG_REPOSITORY=ghcr.io/dash0hq/configuration-reloader \
-      CONFIGURATION_RELOADER_IMG_TAG=main-dev \
-      FILELOG_OFFSET_SYNC_IMG_REPOSITORY=ghcr.io/dash0hq/filelog-offset-sync \
-      FILELOG_OFFSET_SYNC_IMG_TAG=main-dev \
-      FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_REPOSITORY=ghcr.io/dash0hq/filelog-offset-volume-ownership \
-      FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_TAG=main-dev \
+    IMAGE_REPOSITORY_PREFIX=ghcr.io/dash0hq/ \
+      IMAGE_TAG=main-dev \
+      PULL_POLICY="" \
       test-resources/bin/test-scenario-01-aum-operator-cr.sh
     ```
     * To run the scenario with the helm chart from the official remote repository and the default images referenced in
@@ -283,25 +276,25 @@ Copy the file `test-resources/.env.template` to `test-resources/.env` and set `E
 Kubernetes context you want to use for the tests, or set `E2E_KUBECTX` via other means (e.g. export it in your shell,
 via `direnv` etc.).
 
-To run the end-to-end tests:
-```
-make test-e2e
-```
+The end-to-end tests can be run via `make test-e2e`.
+This assumes that all required images have been built beforehand.
+Use `make build-images-test-e2e` to build all images from local sources and then run the end-to-end tests using those
+images.
 
 The tests can also be run with remote images, like this:
 ```
-CONTROLLER_IMG_REPOSITORY=ghcr.io/dash0hq/operator-controller \
-  CONTROLLER_IMG_TAG=main-dev \
-  INSTRUMENTATION_IMG_REPOSITORY=ghcr.io/dash0hq/instrumentation \
-  INSTRUMENTATION_IMG_TAG=main-dev \
-  COLLECTOR_IMG_REPOSITORY=ghcr.io/dash0hq/collector \
-  COLLECTOR_IMG_TAG=main-dev \
-  CONFIGURATION_RELOADER_IMG_REPOSITORY=ghcr.io/dash0hq/configuration-reloader \
-  CONFIGURATION_RELOADER_IMG_TAG=main-dev \
-  FILELOG_OFFSET_SYNC_IMG_REPOSITORY=ghcr.io/dash0hq/filelog-offset-sync \
-  FILELOG_OFFSET_SYNC_IMG_TAG=main-dev \
-  FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_REPOSITORY=ghcr.io/dash0hq/filelog-offset-volume-ownership \
-  FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_TAG=main-dev \
+CONTROLLER_IMAGE_REPOSITORY=ghcr.io/dash0hq/operator-controller \
+  CONTROLLER_IMAGE_TAG=main-dev \
+  INSTRUMENTATION_IMAGE_REPOSITORY=ghcr.io/dash0hq/instrumentation \
+  INSTRUMENTATION_IMAGE_TAG=main-dev \
+  COLLECTOR_IMAGE_REPOSITORY=ghcr.io/dash0hq/collector \
+  COLLECTOR_IMAGE_TAG=main-dev \
+  CONFIGURATION_RELOADER_IMAGE_REPOSITORY=ghcr.io/dash0hq/configuration-reloader \
+  CONFIGURATION_RELOADER_IMAGE_TAG=main-dev \
+  FILELOG_OFFSET_SYNC_IMAGE_REPOSITORY=ghcr.io/dash0hq/filelog-offset-sync \
+  FILELOG_OFFSET_SYNC_IMAGE_TAG=main-dev \
+  FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_REPOSITORY=ghcr.io/dash0hq/filelog-offset-volume-ownership \
+  FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_TAG=main-dev \
   make test-e2e
 ```
 

@@ -80,7 +80,6 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		cleanupSteps.removeApiMockNamespace = true
 
 		determineContainerImages()
-		rebuildAllContainerImages()
 		rebuildAppUnderTestContainerImages()
 		rebuildDash0ApiMockImage()
 
@@ -1542,6 +1541,19 @@ trace_statements:
 		})
 
 		Describe("operator startup", func() {
+			BeforeAll(func() {
+				// TODO building the images with alternative tags will not work when running the e2e tests against a
+				// cluster where images need to be pushed to a specific registry, we probably need to come up with an
+				// alternative solution for this test case.
+				Expect(
+					runAndIgnoreOutput(
+						exec.Command(
+							"make",
+							"docker-build",
+							fmt.Sprintf("IMAGE_TAG=%s", updateTestAdditionalImageTag),
+						))).To(Succeed())
+			})
+
 			AfterAll(func() {
 				undeployOperator(operatorNamespace)
 			})
@@ -1551,17 +1563,17 @@ trace_statements:
 				By("installing the Node.js deployment")
 				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
 
-				// We initially deploy the operator with alternative image names to simulate the workloads having
+				// We initially deploy the operator with alternative image tags to simulate the workloads having
 				// been instrumented by outdated images. Then (later) we will redeploy the operator with the actual
-				// image names that are used throughout the whole test suite (defined by environment variables).
-
+				// image names that are used throughout the whole test suite (defined by environment variables), to
+				// simulate updating the instrumentation.
 				initialAlternativeImages := Images{
-					operator:                     deriveAlternativeImageForUpdateTest(images.operator),
-					instrumentation:              deriveAlternativeImageForUpdateTest(images.instrumentation),
-					collector:                    deriveAlternativeImageForUpdateTest(images.collector),
-					configurationReloader:        deriveAlternativeImageForUpdateTest(images.configurationReloader),
-					fileLogOffsetSync:            deriveAlternativeImageForUpdateTest(images.fileLogOffsetSync),
-					fileLogOffsetVolumeOwnership: deriveAlternativeImageForUpdateTest(images.fileLogOffsetVolumeOwnership),
+					operator:                     swapTag(images.operator, updateTestAdditionalImageTag),
+					instrumentation:              swapTag(images.instrumentation, updateTestAdditionalImageTag),
+					collector:                    swapTag(images.collector, updateTestAdditionalImageTag),
+					configurationReloader:        swapTag(images.configurationReloader, updateTestAdditionalImageTag),
+					fileLogOffsetSync:            swapTag(images.fileLogOffsetSync, updateTestAdditionalImageTag),
+					fileLogOffsetVolumeOwnership: swapTag(images.fileLogOffsetVolumeOwnership, updateTestAdditionalImageTag),
 				}
 				deployOperatorWithDefaultAutoOperationConfiguration(
 					operatorNamespace,
@@ -1932,91 +1944,91 @@ func determineContainerImages() {
 		images = emptyImages
 	}
 
-	images.operator.repository = getEnvOrDefault("CONTROLLER_IMG_REPOSITORY", images.operator.repository)
-	images.operator.tag = getEnvOrDefault("CONTROLLER_IMG_TAG", images.operator.tag)
-	images.operator.digest = getEnvOrDefault("CONTROLLER_IMG_DIGEST", images.operator.digest)
-	images.operator.pullPolicy = getEnvOrDefault("CONTROLLER_IMG_PULL_POLICY", images.operator.pullPolicy)
+	images.operator.repository = getEnvOrDefault("CONTROLLER_IMAGE_REPOSITORY", images.operator.repository)
+	images.operator.tag = getEnvOrDefault("CONTROLLER_IMAGE_TAG", images.operator.tag)
+	images.operator.digest = getEnvOrDefault("CONTROLLER_IMAGE_DIGEST", images.operator.digest)
+	images.operator.pullPolicy = getEnvOrDefault("CONTROLLER_IMAGE_PULL_POLICY", images.operator.pullPolicy)
 
 	images.instrumentation.repository = getEnvOrDefault(
-		"INSTRUMENTATION_IMG_REPOSITORY",
+		"INSTRUMENTATION_IMAGE_REPOSITORY",
 		images.instrumentation.repository,
 	)
-	images.instrumentation.tag = getEnvOrDefault("INSTRUMENTATION_IMG_TAG", images.instrumentation.tag)
-	images.instrumentation.digest = getEnvOrDefault("INSTRUMENTATION_IMG_DIGEST", images.instrumentation.digest)
+	images.instrumentation.tag = getEnvOrDefault("INSTRUMENTATION_IMAGE_TAG", images.instrumentation.tag)
+	images.instrumentation.digest = getEnvOrDefault("INSTRUMENTATION_IMAGE_DIGEST", images.instrumentation.digest)
 	images.instrumentation.pullPolicy = getEnvOrDefault(
-		"INSTRUMENTATION_IMG_PULL_POLICY",
+		"INSTRUMENTATION_IMAGE_PULL_POLICY",
 		images.instrumentation.pullPolicy,
 	)
 
 	images.collector.repository = getEnvOrDefault(
-		"COLLECTOR_IMG_REPOSITORY",
+		"COLLECTOR_IMAGE_REPOSITORY",
 		images.collector.repository,
 	)
-	images.collector.tag = getEnvOrDefault("COLLECTOR_IMG_TAG", images.collector.tag)
-	images.collector.digest = getEnvOrDefault("COLLECTOR_IMG_DIGEST", images.collector.digest)
+	images.collector.tag = getEnvOrDefault("COLLECTOR_IMAGE_TAG", images.collector.tag)
+	images.collector.digest = getEnvOrDefault("COLLECTOR_IMAGE_DIGEST", images.collector.digest)
 	images.collector.pullPolicy = getEnvOrDefault(
-		"COLLECTOR_IMG_PULL_POLICY",
+		"COLLECTOR_IMAGE_PULL_POLICY",
 		images.collector.pullPolicy,
 	)
 
 	images.configurationReloader.repository = getEnvOrDefault(
-		"CONFIGURATION_RELOADER_IMG_REPOSITORY",
+		"CONFIGURATION_RELOADER_IMAGE_REPOSITORY",
 		images.configurationReloader.repository,
 	)
-	images.configurationReloader.tag = getEnvOrDefault("CONFIGURATION_RELOADER_IMG_TAG", images.configurationReloader.tag)
-	images.configurationReloader.digest = getEnvOrDefault("CONFIGURATION_RELOADER_IMG_DIGEST",
+	images.configurationReloader.tag = getEnvOrDefault("CONFIGURATION_RELOADER_IMAGE_TAG", images.configurationReloader.tag)
+	images.configurationReloader.digest = getEnvOrDefault("CONFIGURATION_RELOADER_IMAGE_DIGEST",
 		images.configurationReloader.digest)
 	images.configurationReloader.pullPolicy = getEnvOrDefault(
-		"CONFIGURATION_RELOADER_IMG_PULL_POLICY",
+		"CONFIGURATION_RELOADER_IMAGE_PULL_POLICY",
 		images.configurationReloader.pullPolicy,
 	)
 
 	images.fileLogOffsetSync.repository = getEnvOrDefault(
-		"FILELOG_OFFSET_SYNC_IMG_REPOSITORY",
+		"FILELOG_OFFSET_SYNC_IMAGE_REPOSITORY",
 		images.fileLogOffsetSync.repository,
 	)
-	images.fileLogOffsetSync.tag = getEnvOrDefault("FILELOG_OFFSET_SYNC_IMG_TAG", images.fileLogOffsetSync.tag)
-	images.fileLogOffsetSync.digest = getEnvOrDefault("FILELOG_OFFSET_SYNC_IMG_DIGEST",
+	images.fileLogOffsetSync.tag = getEnvOrDefault("FILELOG_OFFSET_SYNC_IMAGE_TAG", images.fileLogOffsetSync.tag)
+	images.fileLogOffsetSync.digest = getEnvOrDefault("FILELOG_OFFSET_SYNC_IMAGE_DIGEST",
 		images.fileLogOffsetSync.digest)
 	images.fileLogOffsetSync.pullPolicy = getEnvOrDefault(
-		"FILELOG_OFFSET_SYNC_IMG_PULL_POLICY",
+		"FILELOG_OFFSET_SYNC_IMAGE_PULL_POLICY",
 		images.fileLogOffsetSync.pullPolicy,
 	)
 
 	images.fileLogOffsetVolumeOwnership.repository = getEnvOrDefault(
-		"FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_REPOSITORY",
+		"FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_REPOSITORY",
 		images.fileLogOffsetVolumeOwnership.repository,
 	)
 	images.fileLogOffsetVolumeOwnership.tag =
-		getEnvOrDefault("FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_TAG", images.fileLogOffsetVolumeOwnership.tag)
+		getEnvOrDefault("FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_TAG", images.fileLogOffsetVolumeOwnership.tag)
 	images.fileLogOffsetVolumeOwnership.digest =
-		getEnvOrDefault("FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_DIGEST",
+		getEnvOrDefault("FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_DIGEST",
 			images.fileLogOffsetVolumeOwnership.digest)
 	images.fileLogOffsetVolumeOwnership.pullPolicy = getEnvOrDefault(
-		"FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_PULL_POLICY",
+		"FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_PULL_POLICY",
 		images.fileLogOffsetVolumeOwnership.pullPolicy,
 	)
 
 	if isLocalHelmChart() {
 		// support using the local helm chart with remote images
 		if isRemoteImage(images.operator) {
-			images.operator.pullPolicy = getEnvOrDefault("CONTROLLER_IMG_PULL_POLICY", "")
+			images.operator.pullPolicy = getEnvOrDefault("CONTROLLER_IMAGE_PULL_POLICY", "")
 		}
 		if isRemoteImage(images.instrumentation) {
-			images.instrumentation.pullPolicy = getEnvOrDefault("INSTRUMENTATION_IMG_PULL_POLICY", "")
+			images.instrumentation.pullPolicy = getEnvOrDefault("INSTRUMENTATION_IMAGE_PULL_POLICY", "")
 		}
 		if isRemoteImage(images.collector) {
-			images.collector.pullPolicy = getEnvOrDefault("COLLECTOR_IMG_PULL_POLICY", "")
+			images.collector.pullPolicy = getEnvOrDefault("COLLECTOR_IMAGE_PULL_POLICY", "")
 		}
 		if isRemoteImage(images.configurationReloader) {
-			images.configurationReloader.pullPolicy = getEnvOrDefault("CONFIGURATION_RELOADER_IMG_PULL_POLICY", "")
+			images.configurationReloader.pullPolicy = getEnvOrDefault("CONFIGURATION_RELOADER_IMAGE_PULL_POLICY", "")
 		}
 		if isRemoteImage(images.fileLogOffsetSync) {
-			images.fileLogOffsetSync.pullPolicy = getEnvOrDefault("FILELOG_OFFSET_SYNC_IMG_PULL_POLICY", "")
+			images.fileLogOffsetSync.pullPolicy = getEnvOrDefault("FILELOG_OFFSET_SYNC_IMAGE_PULL_POLICY", "")
 		}
 		if isRemoteImage(images.fileLogOffsetVolumeOwnership) {
 			images.fileLogOffsetVolumeOwnership.pullPolicy =
-				getEnvOrDefault("FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_PULL_POLICY", "")
+				getEnvOrDefault("FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_PULL_POLICY", "")
 		}
 	}
 }

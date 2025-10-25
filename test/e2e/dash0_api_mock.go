@@ -61,13 +61,7 @@ func rebuildDash0ApiMockImage() {
 	By(fmt.Sprintf("building the %s image", dash0ApiMockImageName))
 	Expect(
 		runAndIgnoreOutput(
-			exec.Command(
-				"docker",
-				"build",
-				dash0ApiMockDirectory,
-				"-t",
-				dash0ApiMockImageName,
-			))).To(Succeed())
+			exec.Command("make", "dash0-api-mock-container-image"))).To(Succeed())
 
 	loadImageToKindClusterIfRequired(
 		ImageSpec{
