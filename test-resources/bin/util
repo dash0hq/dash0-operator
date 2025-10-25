@@ -104,30 +104,35 @@ determine_container_images() {
   # The defaults when using a remote helm chart are:
   # - default to not setting an explicit image repository or tag
   # - default to not setting a pull policy, instead let Kubernetes use the default pull policy
-  controller_img_repository="operator-controller"
-  controller_img_tag="latest"
-  controller_img_digest=""
-  controller_img_pull_policy="Never"
-  instrumentation_img_repository="instrumentation"
-  instrumentation_img_tag="latest"
-  instrumentation_img_digest=""
-  instrumentation_img_pull_policy="Never"
-  collector_img_repository="collector"
-  collector_img_tag="latest"
-  collector_img_digest=""
-  collector_img_pull_policy="Never"
-  configuration_reloader_img_repository="configuration-reloader"
-  configuration_reloader_img_tag="latest"
-  configuration_reloader_img_digest=""
-  configuration_reloader_img_pull_policy="Never"
-  filelog_offset_sync_img_repository="filelog-offset-sync"
-  filelog_offset_sync_img_tag="latest"
-  filelog_offset_sync_img_digest=""
-  filelog_offset_sync_img_pull_policy="Never"
-  filelog_offset_volume_ownership_img_repository="filelog-offset-volume-ownership"
-  filelog_offset_volume_ownership_img_tag="latest"
-  filelog_offset_volume_ownership_img_digest=""
-  filelog_offset_volume_ownership_img_pull_policy="Never"
+
+  image_repository_prefix=${IMAGE_REPOSITORY_PREFIX:-}
+  image_tag=${IMAGE_TAG:-latest}
+  pull_policy=${PULL_POLICY:-Never}
+
+  controller_image_repository="${image_repository_prefix}operator-controller"
+  controller_image_tag="$image_tag"
+  controller_image_digest=""
+  controller_image_pull_policy="$pull_policy"
+  instrumentation_image_repository="${image_repository_prefix}instrumentation"
+  instrumentation_image_tag="$image_tag"
+  instrumentation_image_digest=""
+  instrumentation_image_pull_policy="$pull_policy"
+  collector_image_repository="${image_repository_prefix}collector"
+  collector_image_tag="$image_tag"
+  collector_image_digest=""
+  collector_image_pull_policy="$pull_policy"
+  configuration_reloader_image_repository="${image_repository_prefix}configuration-reloader"
+  configuration_reloader_image_tag="$image_tag"
+  configuration_reloader_image_digest=""
+  configuration_reloader_image_pull_policy="$pull_policy"
+  filelog_offset_sync_image_repository="${image_repository_prefix}filelog-offset-sync"
+  filelog_offset_sync_image_tag="$image_tag"
+  filelog_offset_sync_image_digest=""
+  filelog_offset_sync_image_pull_policy="$pull_policy"
+  filelog_offset_volume_ownership_image_repository="${image_repository_prefix}filelog-offset-volume-ownership"
+  filelog_offset_volume_ownership_image_tag="$image_tag"
+  filelog_offset_volume_ownership_image_digest=""
+  filelog_offset_volume_ownership_image_pull_policy="$pull_policy"
 
   operator_helm_chart=${OPERATOR_HELM_CHART:-helm-chart/dash0-operator}
 
@@ -136,139 +141,137 @@ determine_container_images() {
     echo "Looks like a remote helm chart or an installed Helm chart is used."
     is_local_helm_chart="false"
 
-    controller_img_repository=""
-    controller_img_tag=""
-    controller_img_pull_policy=""
-    instrumentation_img_repository=""
-    instrumentation_img_tag=""
-    instrumentation_img_pull_policy=""
-    collector_img_repository=""
-    collector_img_tag=""
-    collector_img_pull_policy=""
-    configuration_reloader_img_repository=""
-    configuration_reloader_img_tag=""
-    configuration_reloader_img_pull_policy=""
-    filelog_offset_sync_img_repository=""
-    filelog_offset_sync_img_tag=""
-    filelog_offset_sync_img_pull_policy=""
-    filelog_offset_volume_ownership_img_repository=""
-    filelog_offset_volume_ownership_img_tag=""
-    filelog_offset_volume_ownership_img_pull_policy=""
+    controller_image_repository=""
+    controller_image_tag=""
+    controller_image_pull_policy=""
+    instrumentation_image_repository=""
+    instrumentation_image_tag=""
+    instrumentation_image_pull_policy=""
+    collector_image_repository=""
+    collector_image_tag=""
+    collector_image_pull_policy=""
+    configuration_reloader_image_repository=""
+    configuration_reloader_image_tag=""
+    configuration_reloader_image_pull_policy=""
+    filelog_offset_sync_image_repository=""
+    filelog_offset_sync_image_tag=""
+    filelog_offset_sync_image_pull_policy=""
+    filelog_offset_volume_ownership_image_repository=""
+    filelog_offset_volume_ownership_image_tag=""
+    filelog_offset_volume_ownership_image_pull_policy=""
   fi
 
-  if [[ -n "${CONTROLLER_IMG_REPOSITORY:-}" ]]; then
-    controller_img_repository="$CONTROLLER_IMG_REPOSITORY"
+  if [[ -n "${CONTROLLER_IMAGE_REPOSITORY:-}" ]]; then
+    controller_image_repository="$CONTROLLER_IMAGE_REPOSITORY"
   fi
-  if [[ -n "${CONTROLLER_IMG_TAG:-}" ]]; then
-    controller_img_tag="$CONTROLLER_IMG_TAG"
+  if [[ -n "${CONTROLLER_IMAGE_TAG:-}" ]]; then
+    controller_image_tag="$CONTROLLER_IMAGE_TAG"
   fi
-  if [[ -n "${CONTROLLER_IMG_DIGEST:-}" ]]; then
-    controller_img_digest="$CONTROLLER_IMG_DIGEST"
+  if [[ -n "${CONTROLLER_IMAGE_DIGEST:-}" ]]; then
+    controller_image_digest="$CONTROLLER_IMAGE_DIGEST"
   fi
-  if [[ -n "${CONTROLLER_IMG_PULL_POLICY:-}" ]]; then
-    controller_img_pull_policy="$CONTROLLER_IMG_PULL_POLICY"
-  fi
-
-  if [[ -n "${INSTRUMENTATION_IMG_REPOSITORY:-}" ]]; then
-    instrumentation_img_repository="$INSTRUMENTATION_IMG_REPOSITORY"
-  fi
-  if [[ -n "${INSTRUMENTATION_IMG_TAG:-}" ]]; then
-    instrumentation_img_tag="$INSTRUMENTATION_IMG_TAG"
-  fi
-  if [[ -n "${INSTRUMENTATION_IMG_DIGEST:-}" ]]; then
-    instrumentation_img_digest="$INSTRUMENTATION_IMG_DIGEST"
-  fi
-  if [[ -n "${INSTRUMENTATION_IMG_PULL_POLICY:-}" ]]; then
-    instrumentation_img_pull_policy="$INSTRUMENTATION_IMG_PULL_POLICY"
+  if [[ -n "${CONTROLLER_IMAGE_PULL_POLICY:-}" ]]; then
+    controller_image_pull_policy="$CONTROLLER_IMAGE_PULL_POLICY"
   fi
 
-  if [[ -n "${COLLECTOR_IMG_REPOSITORY:-}" ]]; then
-    collector_img_repository="$COLLECTOR_IMG_REPOSITORY"
+  if [[ -n "${INSTRUMENTATION_IMAGE_REPOSITORY:-}" ]]; then
+    instrumentation_image_repository="$INSTRUMENTATION_IMAGE_REPOSITORY"
   fi
-  if [[ -n "${COLLECTOR_IMG_TAG:-}" ]]; then
-    collector_img_tag="$COLLECTOR_IMG_TAG"
+  if [[ -n "${INSTRUMENTATION_IMAGE_TAG:-}" ]]; then
+    instrumentation_image_tag="$INSTRUMENTATION_IMAGE_TAG"
   fi
-  if [[ -n "${COLLECTOR_IMG_DIGEST:-}" ]]; then
-    collector_img_digest="$COLLECTOR_IMG_DIGEST"
+  if [[ -n "${INSTRUMENTATION_IMAGE_DIGEST:-}" ]]; then
+    instrumentation_image_digest="$INSTRUMENTATION_IMAGE_DIGEST"
   fi
-  if [[ -n "${COLLECTOR_IMG_PULL_POLICY:-}" ]]; then
-    collector_img_pull_policy="$COLLECTOR_IMG_PULL_POLICY"
-  fi
-
-  if [[ -n "${CONFIGURATION_RELOADER_IMG_REPOSITORY:-}" ]]; then
-    configuration_reloader_img_repository="$CONFIGURATION_RELOADER_IMG_REPOSITORY"
-  fi
-  if [[ -n "${CONFIGURATION_RELOADER_IMG_TAG:-}" ]]; then
-    configuration_reloader_img_tag="$CONFIGURATION_RELOADER_IMG_TAG"
-  fi
-  if [[ -n "${CONFIGURATION_RELOADER_IMG_DIGEST:-}" ]]; then
-    configuration_reloader_img_digest="$CONFIGURATION_RELOADER_IMG_DIGEST"
-  fi
-  if [[ -n "${CONFIGURATION_RELOADER_IMG_PULL_POLICY:-}" ]]; then
-    configuration_reloader_img_pull_policy="$CONFIGURATION_RELOADER_IMG_PULL_POLICY"
+  if [[ -n "${INSTRUMENTATION_IMAGE_PULL_POLICY:-}" ]]; then
+    instrumentation_image_pull_policy="$INSTRUMENTATION_IMAGE_PULL_POLICY"
   fi
 
-  if [[ -n "${FILELOG_OFFSET_SYNC_IMG_REPOSITORY:-}" ]]; then
-    filelog_offset_sync_img_repository="$FILELOG_OFFSET_SYNC_IMG_REPOSITORY"
+  if [[ -n "${COLLECTOR_IMAGE_REPOSITORY:-}" ]]; then
+    collector_image_repository="$COLLECTOR_IMAGE_REPOSITORY"
   fi
-  if [[ -n "${FILELOG_OFFSET_SYNC_IMG_TAG:-}" ]]; then
-    filelog_offset_sync_img_tag="$FILELOG_OFFSET_SYNC_IMG_TAG"
+  if [[ -n "${COLLECTOR_IMAGE_TAG:-}" ]]; then
+    collector_image_tag="$COLLECTOR_IMAGE_TAG"
   fi
-  if [[ -n "${FILELOG_OFFSET_SYNC_IMG_DIGEST:-}" ]]; then
-    filelog_offset_sync_img_digest="$FILELOG_OFFSET_SYNC_IMG_DIGEST"
+  if [[ -n "${COLLECTOR_IMAGE_DIGEST:-}" ]]; then
+    collector_image_digest="$COLLECTOR_IMAGE_DIGEST"
   fi
-  if [[ -n "${FILELOG_OFFSET_SYNC_IMG_PULL_POLICY:-}" ]]; then
-    filelog_offset_sync_img_pull_policy="$FILELOG_OFFSET_SYNC_IMG_PULL_POLICY"
+  if [[ -n "${COLLECTOR_IMAGE_PULL_POLICY:-}" ]]; then
+    collector_image_pull_policy="$COLLECTOR_IMAGE_PULL_POLICY"
   fi
 
-  if [[ -n "${FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_REPOSITORY:-}" ]]; then
-    filelog_offset_volume_ownership_img_repository="$FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_REPOSITORY"
+  if [[ -n "${CONFIGURATION_RELOADER_IMAGE_REPOSITORY:-}" ]]; then
+    configuration_reloader_image_repository="$CONFIGURATION_RELOADER_IMAGE_REPOSITORY"
   fi
-  if [[ -n "${FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_TAG:-}" ]]; then
-    filelog_offset_volume_ownership_img_tag="$FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_TAG"
+  if [[ -n "${CONFIGURATION_RELOADER_IMAGE_TAG:-}" ]]; then
+    configuration_reloader_image_tag="$CONFIGURATION_RELOADER_IMAGE_TAG"
   fi
-  if [[ -n "${FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_DIGEST:-}" ]]; then
-    filelog_offset_volume_ownership_img_digest="$FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_DIGEST"
+  if [[ -n "${CONFIGURATION_RELOADER_IMAGE_DIGEST:-}" ]]; then
+    configuration_reloader_image_digest="$CONFIGURATION_RELOADER_IMAGE_DIGEST"
   fi
-  if [[ -n "${FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_PULL_POLICY:-}" ]]; then
-    filelog_offset_volume_ownership_img_pull_policy="$FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_PULL_POLICY"
+  if [[ -n "${CONFIGURATION_RELOADER_IMAGE_PULL_POLICY:-}" ]]; then
+    configuration_reloader_image_pull_policy="$CONFIGURATION_RELOADER_IMAGE_PULL_POLICY"
+  fi
+
+  if [[ -n "${FILELOG_OFFSET_SYNC_IMAGE_REPOSITORY:-}" ]]; then
+    filelog_offset_sync_image_repository="$FILELOG_OFFSET_SYNC_IMAGE_REPOSITORY"
+  fi
+  if [[ -n "${FILELOG_OFFSET_SYNC_IMAGE_TAG:-}" ]]; then
+    filelog_offset_sync_image_tag="$FILELOG_OFFSET_SYNC_IMAGE_TAG"
+  fi
+  if [[ -n "${FILELOG_OFFSET_SYNC_IMAGE_DIGEST:-}" ]]; then
+    filelog_offset_sync_image_digest="$FILELOG_OFFSET_SYNC_IMAGE_DIGEST"
+  fi
+  if [[ -n "${FILELOG_OFFSET_SYNC_IMAGE_PULL_POLICY:-}" ]]; then
+    filelog_offset_sync_image_pull_policy="$FILELOG_OFFSET_SYNC_IMAGE_PULL_POLICY"
+  fi
+
+  if [[ -n "${FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_REPOSITORY:-}" ]]; then
+    filelog_offset_volume_ownership_image_repository="$FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_REPOSITORY"
+  fi
+  if [[ -n "${FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_TAG:-}" ]]; then
+    filelog_offset_volume_ownership_image_tag="$FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_TAG"
+  fi
+  if [[ -n "${FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_DIGEST:-}" ]]; then
+    filelog_offset_volume_ownership_image_digest="$FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_DIGEST"
+  fi
+  if [[ -n "${FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_PULL_POLICY:-}" ]]; then
+    filelog_offset_volume_ownership_image_pull_policy="$FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_PULL_POLICY"
   fi
 
   if [[ "$is_local_helm_chart" = "true" ]]; then
     # support using the local helm chart with remote images
-    if [[ $(is_remote_image "$controller_img_repository") = "true" ]]; then
-      controller_img_pull_policy=""
-    fi
-    if [[ $(is_remote_image "$instrumentation_img_repository") = "true" ]]; then
-      instrumentation_img_pull_policy=""
-    fi
-    if [[ $(is_remote_image "$collector_img_repository") = "true" ]]; then
-      collector_img_pull_policy=""
-    fi
-    if [[ $(is_remote_image "$configuration_reloader_img_repository") = "true" ]]; then
-      configuration_reloader_img_pull_policy=""
-    fi
-    if [[ $(is_remote_image "$filelog_offset_sync_img_repository") = "true" ]]; then
-      filelog_offset_sync_img_pull_policy=""
-    fi
-    if [[ $(is_remote_image "$filelog_offset_volume_ownership_img_repository") = "true" ]]; then
-      filelog_offset_volume_ownership_img_pull_policy=""
-    fi
+    controller_image_pull_policy=$(determine_pull_policy "$controller_image_repository" "$controller_image_pull_policy")
+    instrumentation_image_pull_policy=$(determine_pull_policy "$instrumentation_image_repository" "$instrumentation_image_pull_policy")
+    collector_image_pull_policy=$(determine_pull_policy "$collector_image_repository" "$collector_image_pull_policy")
+    configuration_reloader_image_pull_policy=$(determine_pull_policy "$configuration_reloader_image_repository" "$configuration_reloader_image_pull_policy")
+    filelog_offset_sync_image_pull_policy=$(determine_pull_policy "$filelog_offset_sync_image_repository" "$filelog_offset_sync_image_pull_policy")
+    filelog_offset_volume_ownership_image_pull_policy=$(determine_pull_policy "$filelog_offset_volume_ownership_image_repository" "$filelog_offset_volume_ownership_image_pull_policy")
+  fi
+}
+
+determine_pull_policy() {
+  local image_repo="$1"
+  local pp="$2"
+  if [[ $(is_remote_image "$image_repo") = "true" ]]; then
+    echo ""
+  else
+    echo "$pp"
   fi
 }
 
 build_all_images() {
-  CONTROLLER_IMG_REPOSITORY="$controller_img_repository" \
-    CONTROLLER_IMG_TAG="$controller_img_tag" \
-    INSTRUMENTATION_IMG_REPOSITORY="$instrumentation_img_repository" \
-    INSTRUMENTATION_IMG_TAG="$instrumentation_img_tag" \
-    COLLECTOR_IMG_REPOSITORY="$collector_img_repository" \
-    CONFIGURATION_RELOADER_IMG_REPOSITORY="$configuration_reloader_img_repository" \
-    CONFIGURATION_RELOADER_IMG_TAG="$configuration_reloader_img_tag" \
-    FILELOG_OFFSET_SYNC_IMG_REPOSITORY=$filelog_offset_sync_img_repository \
-    FILELOG_OFFSET_SYNC_IMG_TAG="$filelog_offset_sync_img_tag" \
-    FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_REPOSITORY=$filelog_offset_volume_ownership_img_repository \
-    FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_TAG="$filelog_offset_volume_ownership_img_tag" \
+  CONTROLLER_IMAGE_REPOSITORY="$controller_image_repository" \
+    CONTROLLER_IMAGE_TAG="$controller_image_tag" \
+    INSTRUMENTATION_IMAGE_REPOSITORY="$instrumentation_image_repository" \
+    INSTRUMENTATION_IMAGE_TAG="$instrumentation_image_tag" \
+    COLLECTOR_IMAGE_REPOSITORY="$collector_image_repository" \
+    CONFIGURATION_RELOADER_IMAGE_REPOSITORY="$configuration_reloader_image_repository" \
+    CONFIGURATION_RELOADER_IMAGE_TAG="$configuration_reloader_image_tag" \
+    FILELOG_OFFSET_SYNC_IMAGE_REPOSITORY=$filelog_offset_sync_image_repository \
+    FILELOG_OFFSET_SYNC_IMAGE_TAG="$filelog_offset_sync_image_tag" \
+    FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_REPOSITORY=$filelog_offset_volume_ownership_image_repository \
+    FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_TAG="$filelog_offset_volume_ownership_image_tag" \
     make docker-build
 
   if [[ "$is_kind_cluster" = "true" ]]; then
@@ -389,82 +392,82 @@ run_helm() {
     helm_install_command+=" --values test-resources/bin/filelog-offset-volume-hostpath-values.yaml"
   fi
 
-  if [[ -n "$controller_img_repository" ]]; then
-    helm_install_command+=" --set operator.image.repository=$controller_img_repository"
+  if [[ -n "$controller_image_repository" ]]; then
+    helm_install_command+=" --set operator.image.repository=$controller_image_repository"
   fi
-  if [[ -n "$controller_img_tag" ]]; then
-    helm_install_command+=" --set operator.image.tag=$controller_img_tag"
+  if [[ -n "$controller_image_tag" ]]; then
+    helm_install_command+=" --set operator.image.tag=$controller_image_tag"
   fi
-  if [[ -n "$controller_img_digest" ]]; then
-    helm_install_command+=" --set operator.image.digest=$controller_img_digest"
+  if [[ -n "$controller_image_digest" ]]; then
+    helm_install_command+=" --set operator.image.digest=$controller_image_digest"
   fi
-  if [[ -n "$controller_img_pull_policy" ]]; then
-    helm_install_command+=" --set operator.image.pullPolicy=$controller_img_pull_policy"
-  fi
-
-  if [[ -n "$instrumentation_img_repository" ]]; then
-    helm_install_command+=" --set operator.initContainerImage.repository=$instrumentation_img_repository"
-  fi
-  if [[ -n "$instrumentation_img_tag" ]]; then
-    helm_install_command+=" --set operator.initContainerImage.tag=$instrumentation_img_tag"
-  fi
-  if [[ -n "$instrumentation_img_digest" ]]; then
-    helm_install_command+=" --set operator.initContainerImage.digest=$instrumentation_img_digest"
-  fi
-  if [[ -n "$instrumentation_img_pull_policy" ]]; then
-    helm_install_command+=" --set operator.initContainerImage.pullPolicy=$instrumentation_img_pull_policy"
+  if [[ -n "$controller_image_pull_policy" ]]; then
+    helm_install_command+=" --set operator.image.pullPolicy=$controller_image_pull_policy"
   fi
 
-  if [[ -n "$collector_img_repository" ]]; then
-    helm_install_command+=" --set operator.collectorImage.repository=$collector_img_repository"
+  if [[ -n "$instrumentation_image_repository" ]]; then
+    helm_install_command+=" --set operator.initContainerImage.repository=$instrumentation_image_repository"
   fi
-  if [[ -n "$collector_img_tag" ]]; then
-    helm_install_command+=" --set operator.collectorImage.tag=$collector_img_tag"
+  if [[ -n "$instrumentation_image_tag" ]]; then
+    helm_install_command+=" --set operator.initContainerImage.tag=$instrumentation_image_tag"
   fi
-  if [[ -n "$collector_img_digest" ]]; then
-    helm_install_command+=" --set operator.collectorImage.digest=$collector_img_digest"
+  if [[ -n "$instrumentation_image_digest" ]]; then
+    helm_install_command+=" --set operator.initContainerImage.digest=$instrumentation_image_digest"
   fi
-  if [[ -n "$collector_img_pull_policy" ]]; then
-    helm_install_command+=" --set operator.collectorImage.pullPolicy=$collector_img_pull_policy"
-  fi
-
-  if [[ -n "$configuration_reloader_img_repository" ]]; then
-    helm_install_command+=" --set operator.configurationReloaderImage.repository=$configuration_reloader_img_repository"
-  fi
-  if [[ -n "$configuration_reloader_img_tag" ]]; then
-    helm_install_command+=" --set operator.configurationReloaderImage.tag=$configuration_reloader_img_tag"
-  fi
-  if [[ -n "$configuration_reloader_img_digest" ]]; then
-    helm_install_command+=" --set operator.configurationReloaderImage.digest=$configuration_reloader_img_digest"
-  fi
-  if [[ -n "$configuration_reloader_img_pull_policy" ]]; then
-    helm_install_command+=" --set operator.configurationReloaderImage.pullPolicy=$configuration_reloader_img_pull_policy"
+  if [[ -n "$instrumentation_image_pull_policy" ]]; then
+    helm_install_command+=" --set operator.initContainerImage.pullPolicy=$instrumentation_image_pull_policy"
   fi
 
-  if [[ -n "$filelog_offset_sync_img_repository" ]]; then
-    helm_install_command+=" --set operator.filelogOffsetSyncImage.repository=$filelog_offset_sync_img_repository"
+  if [[ -n "$collector_image_repository" ]]; then
+    helm_install_command+=" --set operator.collectorImage.repository=$collector_image_repository"
   fi
-  if [[ -n "$filelog_offset_sync_img_tag" ]]; then
-    helm_install_command+=" --set operator.filelogOffsetSyncImage.tag=$filelog_offset_sync_img_tag"
+  if [[ -n "$collector_image_tag" ]]; then
+    helm_install_command+=" --set operator.collectorImage.tag=$collector_image_tag"
   fi
-  if [[ -n "$filelog_offset_sync_img_digest" ]]; then
-    helm_install_command+=" --set operator.filelogOffsetSyncImage.digest=$filelog_offset_sync_img_digest"
+  if [[ -n "$collector_image_digest" ]]; then
+    helm_install_command+=" --set operator.collectorImage.digest=$collector_image_digest"
   fi
-  if [[ -n "$filelog_offset_sync_img_pull_policy" ]]; then
-    helm_install_command+=" --set operator.filelogOffsetSyncImage.pullPolicy=$filelog_offset_sync_img_pull_policy"
+  if [[ -n "$collector_image_pull_policy" ]]; then
+    helm_install_command+=" --set operator.collectorImage.pullPolicy=$collector_image_pull_policy"
   fi
 
-  if [[ -n "$filelog_offset_volume_ownership_img_repository" ]]; then
-    helm_install_command+=" --set operator.filelogOffsetVolumeOwnershipImage.repository=$filelog_offset_volume_ownership_img_repository"
+  if [[ -n "$configuration_reloader_image_repository" ]]; then
+    helm_install_command+=" --set operator.configurationReloaderImage.repository=$configuration_reloader_image_repository"
   fi
-  if [[ -n "$filelog_offset_volume_ownership_img_tag" ]]; then
-    helm_install_command+=" --set operator.filelogOffsetVolumeOwnershipImage.tag=$filelog_offset_volume_ownership_img_tag"
+  if [[ -n "$configuration_reloader_image_tag" ]]; then
+    helm_install_command+=" --set operator.configurationReloaderImage.tag=$configuration_reloader_image_tag"
   fi
-  if [[ -n "$filelog_offset_volume_ownership_img_digest" ]]; then
-    helm_install_command+=" --set operator.filelogOffsetVolumeOwnershipImage.digest=$filelog_offset_volume_ownership_img_digest"
+  if [[ -n "$configuration_reloader_image_digest" ]]; then
+    helm_install_command+=" --set operator.configurationReloaderImage.digest=$configuration_reloader_image_digest"
   fi
-  if [[ -n "$filelog_offset_volume_ownership_img_pull_policy" ]]; then
-    helm_install_command+=" --set operator.filelogOffsetVolumeOwnershipImage.pullPolicy=$filelog_offset_volume_ownership_img_pull_policy"
+  if [[ -n "$configuration_reloader_image_pull_policy" ]]; then
+    helm_install_command+=" --set operator.configurationReloaderImage.pullPolicy=$configuration_reloader_image_pull_policy"
+  fi
+
+  if [[ -n "$filelog_offset_sync_image_repository" ]]; then
+    helm_install_command+=" --set operator.filelogOffsetSyncImage.repository=$filelog_offset_sync_image_repository"
+  fi
+  if [[ -n "$filelog_offset_sync_image_tag" ]]; then
+    helm_install_command+=" --set operator.filelogOffsetSyncImage.tag=$filelog_offset_sync_image_tag"
+  fi
+  if [[ -n "$filelog_offset_sync_image_digest" ]]; then
+    helm_install_command+=" --set operator.filelogOffsetSyncImage.digest=$filelog_offset_sync_image_digest"
+  fi
+  if [[ -n "$filelog_offset_sync_image_pull_policy" ]]; then
+    helm_install_command+=" --set operator.filelogOffsetSyncImage.pullPolicy=$filelog_offset_sync_image_pull_policy"
+  fi
+
+  if [[ -n "$filelog_offset_volume_ownership_image_repository" ]]; then
+    helm_install_command+=" --set operator.filelogOffsetVolumeOwnershipImage.repository=$filelog_offset_volume_ownership_image_repository"
+  fi
+  if [[ -n "$filelog_offset_volume_ownership_image_tag" ]]; then
+    helm_install_command+=" --set operator.filelogOffsetVolumeOwnershipImage.tag=$filelog_offset_volume_ownership_image_tag"
+  fi
+  if [[ -n "$filelog_offset_volume_ownership_image_digest" ]]; then
+    helm_install_command+=" --set operator.filelogOffsetVolumeOwnershipImage.digest=$filelog_offset_volume_ownership_image_digest"
+  fi
+  if [[ -n "$filelog_offset_volume_ownership_image_pull_policy" ]]; then
+    helm_install_command+=" --set operator.filelogOffsetVolumeOwnershipImage.pullPolicy=$filelog_offset_volume_ownership_image_pull_policy"
   fi
 
   # Deploy an operator configuration right away.

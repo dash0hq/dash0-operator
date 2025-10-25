@@ -3,35 +3,73 @@
 # helm repo add dash0-operator https://dash0hq.github.io/dash0-operator && helm repo update
 OPERATOR_HELM_CHART ?= helm-chart/dash0-operator
 
-CONTROLLER_IMG_REPOSITORY ?= operator-controller
-CONTROLLER_IMG_TAG ?= latest
-CONTROLLER_IMG ?= $(CONTROLLER_IMG_REPOSITORY):$(CONTROLLER_IMG_TAG)
-CONTROLLER_IMG_PULL_POLICY ?= Never
+# Variables for all operator container images:
 
-INSTRUMENTATION_IMG_REPOSITORY ?= instrumentation
-INSTRUMENTATION_IMG_TAG ?= latest
-INSTRUMENTATION_IMG ?= $(INSTRUMENTATION_IMG_REPOSITORY):$(INSTRUMENTATION_IMG_TAG)
-INSTRUMENTATION_IMG_PULL_POLICY ?= Never
+# Leave empty for local images, set to registry path (e.g., "ghcr.io/dash0hq/") for remote images
+IMAGE_REPOSITORY_PREFIX ?= ""
 
-COLLECTOR_IMG_REPOSITORY ?= collector
-COLLECTOR_IMG_TAG ?= latest
-COLLECTOR_IMG ?= $(COLLECTOR_IMG_REPOSITORY):$(COLLECTOR_IMG_TAG)
-COLLECTOR_IMG_PULL_POLICY ?= Never
+# Use "latest" for local dev, specific tag for CI/remote registries
+IMAGE_TAG ?= latest
 
-CONFIGURATION_RELOADER_IMG_REPOSITORY ?= configuration-reloader
-CONFIGURATION_RELOADER_IMG_TAG ?= latest
-CONFIGURATION_RELOADER_IMG ?= $(CONFIGURATION_RELOADER_IMG_REPOSITORY):$(CONFIGURATION_RELOADER_IMG_TAG)
-CONFIGURATION_RELOADER_IMG_PULL_POLICY ?= Never
+# Use "Never" for local images, "" (empty) to let Kubernetes decide for remote images
+PULL_POLICY ?= Never
 
-FILELOG_OFFSET_SYNC_IMG_REPOSITORY ?= filelog-offset-sync
-FILELOG_OFFSET_SYNC_IMG_TAG ?= latest
-FILELOG_OFFSET_SYNC_IMG ?= $(FILELOG_OFFSET_SYNC_IMG_REPOSITORY):$(FILELOG_OFFSET_SYNC_IMG_TAG)
-FILELOG_OFFSET_SYNC_IMG_PULL_POLICY ?= Never
+CONTROLLER_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY_PREFIX)operator-controller
+CONTROLLER_IMAGE_TAG ?= $(IMAGE_TAG)
+CONTROLLER_IMAGE ?= $(CONTROLLER_IMAGE_REPOSITORY):$(CONTROLLER_IMAGE_TAG)
+CONTROLLER_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
 
-FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_REPOSITORY ?= filelog-offset-volume-ownership
-FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_TAG ?= latest
-FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG ?= $(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_REPOSITORY):$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_TAG)
-FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_PULL_POLICY ?= Never
+INSTRUMENTATION_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY_PREFIX)instrumentation
+INSTRUMENTATION_IMAGE_TAG ?= $(IMAGE_TAG)
+INSTRUMENTATION_IMAGE ?= $(INSTRUMENTATION_IMAGE_REPOSITORY):$(INSTRUMENTATION_IMAGE_TAG)
+INSTRUMENTATION_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
+
+COLLECTOR_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY_PREFIX)collector
+COLLECTOR_IMAGE_TAG ?= $(IMAGE_TAG)
+COLLECTOR_IMAGE ?= $(COLLECTOR_IMAGE_REPOSITORY):$(COLLECTOR_IMAGE_TAG)
+COLLECTOR_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
+
+CONFIGURATION_RELOADER_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY_PREFIX)configuration-reloader
+CONFIGURATION_RELOADER_IMAGE_TAG ?= $(IMAGE_TAG)
+CONFIGURATION_RELOADER_IMAGE ?= $(CONFIGURATION_RELOADER_IMAGE_REPOSITORY):$(CONFIGURATION_RELOADER_IMAGE_TAG)
+CONFIGURATION_RELOADER_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
+
+FILELOG_OFFSET_SYNC_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY_PREFIX)filelog-offset-sync
+FILELOG_OFFSET_SYNC_IMAGE_TAG ?= $(IMAGE_TAG)
+FILELOG_OFFSET_SYNC_IMAGE ?= $(FILELOG_OFFSET_SYNC_IMAGE_REPOSITORY):$(FILELOG_OFFSET_SYNC_IMAGE_TAG)
+FILELOG_OFFSET_SYNC_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
+
+FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_REPOSITORY ?= $(IMAGE_REPOSITORY_PREFIX)filelog-offset-volume-ownership
+FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_TAG ?= $(IMAGE_TAG)
+FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE ?= $(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_REPOSITORY):$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_TAG)
+FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_PULL_POLICY ?= $(PULL_POLICY)
+
+# Variables for test application container images:
+
+TEST_IMAGE_REPOSITORY_PREFIX ?= ""
+TEST_IMAGE_TAG ?= latest
+TEST_IMAGE_PULL_POLICY ?= Never
+
+TEST_APP_DOTNET_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-operator-dotnet-test-app
+TEST_APP_DOTNET_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
+TEST_APP_DOTNET_IMAGE ?= $(TEST_APP_DOTNET_IMAGE_REPOSITORY):$(TEST_APP_DOTNET_IMAGE_TAG)
+TEST_APP_DOTNET_IMAGE_PULL_POLICY ?= $(TEST_IMAGE_PULL_POLICY)
+
+TEST_APP_JVM_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-operator-jvm-spring-boot-test-app
+TEST_APP_JVM_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
+TEST_APP_JVM_IMAGE ?= $(TEST_APP_JVM_IMAGE_REPOSITORY):$(TEST_APP_JVM_IMAGE_TAG)
+TEST_APP_JVM_IMAGE_PULL_POLICY ?= $(TEST_IMAGE_PULL_POLICY)
+
+TEST_APP_NODEJS_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-operator-nodejs-20-express-test-app
+TEST_APP_NODEJS_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
+TEST_APP_NODEJS_IMAGE ?= $(TEST_APP_NODEJS_IMAGE_REPOSITORY):$(TEST_APP_NODEJS_IMAGE_TAG)
+TEST_APP_NODEJS_IMAGE_PULL_POLICY ?= $(TEST_IMAGE_PULL_POLICY)
+
+# Variables for additional container images used in end-to-end tests:
+DASH0_API_MOCK_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-api-mock
+DASH0_API_MOCK_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
+DASH0_API_MOCK_IMAGE ?= $(DASH0_API_MOCK_IMAGE_REPOSITORY):$(DASH0_API_MOCK_IMAGE_TAG)
+DASH0_API_MOCK_IMAGE_PULL_POLICY ?= $(TEST_IMAGE_PULL_POLICY)
 
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 # Maintenance note: Keep this in sync with EnvtestK8sVersion in test/util/constants.go.
@@ -216,6 +254,28 @@ lint: golangci-lint helm-chart-lint shellcheck-lint zig-fmt-check instrumentatio
 .PHONY: lint-fix
 lint-fix: golang-lint-fix zig-fmt
 
+PHONY: test-apps-container-image-build
+test-apps-container-image-build: \
+  test-app-container-image-build-dotnet \
+  test-app-container-image-build-jvm \
+  test-app-container-image-build-nodejs ## Build all test application container images.
+
+.PHONY: test-app-container-image-build-dotnet
+test-app-container-image-build-dotnet: ## Build the .NET test application.
+	@$(call build_container_image,$(TEST_APP_DOTNET_IMAGE_REPOSITORY),$(TEST_APP_DOTNET_IMAGE_TAG),test-resources/dotnet)
+
+.PHONY: test-app-container-image-build-jvm
+test-app-container-image-build-jvm: ## Build the JVM test application.
+	@$(call build_container_image,$(TEST_APP_JVM_IMAGE_REPOSITORY),$(TEST_APP_JVM_IMAGE_TAG),test-resources/jvm/spring-boot)
+
+.PHONY: test-app-container-image-build-nodejs
+test-app-container-image-build-nodejs: ## Build the Node.js test application.
+	@$(call build_container_image,$(TEST_APP_NODEJS_IMAGE_REPOSITORY),$(TEST_APP_NODEJS_IMAGE_TAG),test-resources/node.js/express)
+
+.PHONY: dash0-api-mock-container-image
+dash0-api-mock-container-image: ## Build the Dash0 API mock container image, which is used in end-to-end tests.
+	@$(call build_container_image,$(DASH0_API_MOCK_IMAGE_REPOSITORY),$(DASH0_API_MOCK_IMAGE_TAG),test/e2e/dash0-api-mock)
+
 ##@ Build
 
 .PHONY: build
@@ -232,7 +292,7 @@ docker-build: \
   docker-build-collector \
   docker-build-config-reloader \
   docker-build-filelog-offset-sync \
-  docker-build-filelog-offset-volume-ownership
+  docker-build-filelog-offset-volume-ownership ## Build all container images used by the operator.
 
 define build_container_image
 $(eval $@_IMAGE_REPOSITORY = $(1))
@@ -257,27 +317,27 @@ endef
 
 .PHONY: docker-build-controller
 docker-build-controller: ## Build the manager container image.
-	@$(call build_container_image,$(CONTROLLER_IMG_REPOSITORY),$(CONTROLLER_IMG_TAG),.)
+	@$(call build_container_image,$(CONTROLLER_IMAGE_REPOSITORY),$(CONTROLLER_IMAGE_TAG),.)
 
 .PHONY: docker-build-instrumentation
 docker-build-instrumentation: ## Build the instrumentation image.
-	@$(call build_container_image,$(INSTRUMENTATION_IMG_REPOSITORY),$(INSTRUMENTATION_IMG_TAG),images/instrumentation)
+	@$(call build_container_image,$(INSTRUMENTATION_IMAGE_REPOSITORY),$(INSTRUMENTATION_IMAGE_TAG),images/instrumentation)
 
 .PHONY: docker-build-collector
 docker-build-collector: ## Build the OpenTelemetry collector container image.
-	@$(call build_container_image,$(COLLECTOR_IMG_REPOSITORY),$(COLLECTOR_IMG_TAG),images/collector)
+	@$(call build_container_image,$(COLLECTOR_IMAGE_REPOSITORY),$(COLLECTOR_IMAGE_TAG),images/collector)
 
 .PHONY: docker-build-config-reloader
 docker-build-config-reloader: ## Build the config reloader container image.
-	@$(call build_container_image,$(CONFIGURATION_RELOADER_IMG_REPOSITORY),$(CONFIGURATION_RELOADER_IMG_TAG),images,images/configreloader/Dockerfile)
+	@$(call build_container_image,$(CONFIGURATION_RELOADER_IMAGE_REPOSITORY),$(CONFIGURATION_RELOADER_IMAGE_TAG),images,images/configreloader/Dockerfile)
 
 .PHONY: docker-build-filelog-offset-sync
 docker-build-filelog-offset-sync: ## Build the filelog offset sync container image.
-	@$(call build_container_image,$(FILELOG_OFFSET_SYNC_IMG_REPOSITORY),$(FILELOG_OFFSET_SYNC_IMG_TAG),images,images/filelogoffsetsync/Dockerfile)
+	@$(call build_container_image,$(FILELOG_OFFSET_SYNC_IMAGE_REPOSITORY),$(FILELOG_OFFSET_SYNC_IMAGE_TAG),images,images/filelogoffsetsync/Dockerfile)
 
 .PHONY: docker-build-filelog-offset-volume-ownership
 docker-build-filelog-offset-volume-ownership: ## Build the filelog offset volume ownership container image.
-	@$(call build_container_image,$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_REPOSITORY),$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_TAG),images,images/filelogoffsetvolumeownership/Dockerfile)
+	@$(call build_container_image,$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_REPOSITORY),$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_TAG),images,images/filelogoffsetvolumeownership/Dockerfile)
 
 .PHONY: deploy
 deploy: ## Deploy the controller via helm to the current kubectl context.
@@ -285,24 +345,24 @@ deploy: ## Deploy the controller via helm to the current kubectl context.
 	helm upgrade --install \
 		--namespace dash0-system \
 		--create-namespace \
-		--set operator.image.repository=$(CONTROLLER_IMG_REPOSITORY) \
-		--set operator.image.tag=$(CONTROLLER_IMG_TAG) \
-		--set operator.image.pullPolicy=$(CONTROLLER_IMG_PULL_POLICY) \
-		--set operator.initContainerImage.repository=$(INSTRUMENTATION_IMG_REPOSITORY) \
-		--set operator.initContainerImage.tag=$(INSTRUMENTATION_IMG_TAG) \
-		--set operator.initContainerImage.pullPolicy=$(INSTRUMENTATION_IMG_PULL_POLICY) \
-		--set operator.collectorImage.repository=$(COLLECTOR_IMG_REPOSITORY) \
-		--set operator.collectorImage.tag=$(COLLECTOR_IMG_TAG) \
-		--set operator.collectorImage.pullPolicy=$(COLLECTOR_IMG_PULL_POLICY) \
-		--set operator.configurationReloaderImage.repository=$(CONFIGURATION_RELOADER_IMG_REPOSITORY) \
-		--set operator.configurationReloaderImage.tag=$(CONFIGURATION_RELOADER_IMG_TAG) \
-		--set operator.configurationReloaderImage.pullPolicy=$(CONFIGURATION_RELOADER_IMG_PULL_POLICY) \
-		--set operator.filelogOffsetSyncImage.repository=$(FILELOG_OFFSET_SYNC_IMG_REPOSITORY) \
-		--set operator.filelogOffsetSyncImage.tag=$(FILELOG_OFFSET_SYNC_IMG_TAG) \
-		--set operator.filelogOffsetSyncImage.pullPolicy=$(FILELOG_OFFSET_SYNC_IMG_PULL_POLICY) \
-		--set operator.filelogOffsetVolumeOwnershipImage.repository=$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_REPOSITORY) \
-		--set operator.filelogOffsetVolumeOwnershipImage.tag=$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_TAG) \
-		--set operator.filelogOffsetVolumeOwnershipImage.pullPolicy=$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMG_PULL_POLICY) \
+		--set operator.image.repository=$(CONTROLLER_IMAGE_REPOSITORY) \
+		--set operator.image.tag=$(CONTROLLER_IMAGE_TAG) \
+		--set operator.image.pullPolicy=$(CONTROLLER_IMAGE_PULL_POLICY) \
+		--set operator.initContainerImage.repository=$(INSTRUMENTATION_IMAGE_REPOSITORY) \
+		--set operator.initContainerImage.tag=$(INSTRUMENTATION_IMAGE_TAG) \
+		--set operator.initContainerImage.pullPolicy=$(INSTRUMENTATION_IMAGE_PULL_POLICY) \
+		--set operator.collectorImage.repository=$(COLLECTOR_IMAGE_REPOSITORY) \
+		--set operator.collectorImage.tag=$(COLLECTOR_IMAGE_TAG) \
+		--set operator.collectorImage.pullPolicy=$(COLLECTOR_IMAGE_PULL_POLICY) \
+		--set operator.configurationReloaderImage.repository=$(CONFIGURATION_RELOADER_IMAGE_REPOSITORY) \
+		--set operator.configurationReloaderImage.tag=$(CONFIGURATION_RELOADER_IMAGE_TAG) \
+		--set operator.configurationReloaderImage.pullPolicy=$(CONFIGURATION_RELOADER_IMAGE_PULL_POLICY) \
+		--set operator.filelogOffsetSyncImage.repository=$(FILELOG_OFFSET_SYNC_IMAGE_REPOSITORY) \
+		--set operator.filelogOffsetSyncImage.tag=$(FILELOG_OFFSET_SYNC_IMAGE_TAG) \
+		--set operator.filelogOffsetSyncImage.pullPolicy=$(FILELOG_OFFSET_SYNC_IMAGE_PULL_POLICY) \
+		--set operator.filelogOffsetVolumeOwnershipImage.repository=$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_REPOSITORY) \
+		--set operator.filelogOffsetVolumeOwnershipImage.tag=$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_TAG) \
+		--set operator.filelogOffsetVolumeOwnershipImage.pullPolicy=$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_PULL_POLICY) \
 		--set operator.developmentMode=true \
 		dash0-operator \
 		$(OPERATOR_HELM_CHART)
