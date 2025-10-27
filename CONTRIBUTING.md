@@ -200,14 +200,15 @@ Use `kubectx` or `kubectl config set-context` to switch to the desired Kubernete
       has been provided.
     * Additional configuration for the Helm deployment can be put into `test-resources/bin/extra-values.yaml` (create
       the file if necessary).
-* Last but not least, there are a couple of environment variables that control which images are built, potentially
-  pushed, and used:
+* Last but not least, there are a couple of environment variables that control which images are built and used:
   * `IMAGE_REPOSITORY_PREFIX`: Set this to `registry.tld/path/` to build images as
     `registry.tld/path/operator-controller` instead of just `operator-controller`. (Default: `""`)
   * `IMAGE_TAG`: Set this to use a different image tag, i.e. set this to `some-tag` to use the images like
      `operator-controller:some-tag` instead of `operator-controller:latest`. (Default: `latest`)
   * `PULL_POLICY`: Set this to use a different default pull policy for all container images. The default is `NEVER`,
      which works with Docker Desktop when building images locally.
+  * `SKIP_IMAGE_BUILDS`: Set this to `true` to skip all image builds for operator images (test app images will still be
+     built, see `SKIP_TEST_APP_IMAGE_BUILDS`.)
 * There are also sets of four variables for each of the container images to override the values provided by
   `IMAGE_REPOSITORY_PREFIX`, `IMAGE_TAG`, and `PULL_POLICY`. These can be used if you need a different
   container image registry, tag or pull policy per image. The `*_IMAGE_REPOSITORY` variables together
@@ -244,6 +245,7 @@ Use `kubectx` or `kubectl config set-context` to switch to the desired Kubernete
     * `TEST_IMAGE_REPOSITORY_PREFIX`: container registry for all test applications (defaults to "").
     * `TEST_IMAGE_TAG`: image tag for all test applications (defaults to "latest").
     * `TEST_IMAGE_PULL_POLICY`: pull policy for all test applications (defaults to "Never").
+    * `SKIP_TEST_APP_IMAGE_BUILDS`: Set this to true to skip building the images for the test applications.
     * To override any of the previous three values for a specific test application image:
         * `TEST_APP_DOTNET_IMAGE_REPOSITORY`, `TEST_APP_DOTNET_IMAGE_TAG`, `TEST_APP_DOTNET_IMAGE`, and `TEST_APP_DOTNET_IMAGE_PULL_POLICY`.
         * `TEST_APP_JVM_IMAGE_REPOSITORY`, `TEST_APP_JVM_IMAGE_TAG`, `TEST_APP_JVM_IMAGE`, and `TEST_APP_JVM_IMAGE_PULL_POLICY`.
@@ -255,14 +257,15 @@ Use `kubectx` or `kubectl config set-context` to switch to the desired Kubernete
       PULL_POLICY="" \
       test-resources/bin/test-scenario-01-aum-operator-cr.sh
     ```
-    * To run the scenario with the helm chart from the official remote repository and the default images referenced in
-      that chart (the Helm repository must have been installed beforehand):
-      ```
-      OPERATOR_HELM_CHART=dash0-operator/dash0-operator \
-        test-resources/bin/test-scenario-01-aum-operator-cr.sh
-      ```
-    * You can add `OPERATOR_HELM_CHART_VERSION=0.11.0` to the command above to install a specific version of the
-      Helm chart. This can be useful to test upgrade scenarios.
+* To run the scenario with the helm chart from the official remote repository and the default images referenced in
+  that chart (the Helm repository must have been installed beforehand):
+  ```
+  SKIP_IMAGE_BUILDS=true \
+    OPERATOR_HELM_CHART=dash0-operator/dash0-operator \
+    test-resources/bin/test-scenario-01-aum-operator-cr.sh
+  ```
+* You can add `OPERATOR_HELM_CHART_VERSION=x.y.z` to the command above to install a specific version of the
+  Helm chart. This can be useful to test upgrade scenarios.
 
 ### End-to-End Tests
 

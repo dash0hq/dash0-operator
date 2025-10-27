@@ -261,6 +261,10 @@ determine_pull_policy() {
 }
 
 build_all_images() {
+  if [[ "${SKIP_IMAGE_BUILDS:-}" = "true" ]]; then
+    return
+  fi
+
   CONTROLLER_IMAGE_REPOSITORY="$controller_image_repository" \
     CONTROLLER_IMAGE_TAG="$controller_image_tag" \
     INSTRUMENTATION_IMAGE_REPOSITORY="$instrumentation_image_repository" \
@@ -578,11 +582,14 @@ deploy_application_under_monitoring() {
   runtime_under_test="${1:-nodejs}"
   echo "STEP $step_counter: deploy application under monitoring ($runtime_under_test)"
   if [[ "${runtime_under_test:-}" = "nodejs" ]]; then
-    test-resources/node.js/express/deploy.sh "${target_namespace}" "${kind}"
+    build_test_application test-resources/node.js/express dash0-operator-nodejs-20-express-test-app
+    pushd test-resources/node.js/express > /dev/null
+    kubectl apply -n "${target_namespace}" -f "${kind}".yaml
     if [[ "$additional_namespaces" = true ]]; then
-      test-resources/node.js/express/deploy.sh test-namespace-2 daemonset
-      test-resources/node.js/express/deploy.sh test-namespace-3 statefulset
+      kubectl apply -n test-namespace-2 test-namespace-2 daemonset.yaml
+      kubectl apply -n test-namespace-3 test-namespace-3 statefulset.yaml
     fi
+    popd > /dev/null
   elif [[ "${runtime_under_test:-}" = "jvm" ]]; then
     build_test_application test-resources/jvm/spring-boot dash0-operator-jvm-spring-boot-test-app
     pushd test-resources/jvm/spring-boot > /dev/null
@@ -605,11 +612,41 @@ deploy_application_under_monitoring() {
     echo "Error: unknown runtime: $runtime_under_test"
     exit 1
   fi
+
+  if [[ "$is_kind_cluster" = "true" ]]; then
+    echo
+    echo "Note: The test application is running on a kind cluster, make sure cloud-provider-kind is running."
+    echo
+    echo "checking if ingress-nginx is already running..."
+    if ! kubectl wait --namespace ingress-nginx --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=5s; then
+      echo "deploying ingress-nginx..."
+      echo
+      kubectl apply -f https://kind.sigs.k8s.io/examples/ingress/deploy-ingress-nginx.yaml
+      echo
+      echo "waiting for ingress-nginx..."
+      kubectl wait \
+        --namespace ingress-nginx \
+        --for=condition=ready \
+        pod \
+        --selector=app.kubernetes.io/component=controller \
+        --timeout=90s
+    else
+      echo ingress-nginx is already running
+    fi
+    ingress_ip=$(kubectl get services \
+      --namespace ingress-nginx \
+      ingress-nginx-controller \
+      --output jsonpath='{.status.loadBalancer.ingress[0].ip}'
+    )
+    echo
+    echo "Use http://$ingress_ip/$kind/$runtime_under_test/dash0-k8s-operator-test to access the test application"
+  fi
+
   finish_step
 }
 
 build_test_application() {
-  if [[ "${SKIP_DOCKER_BUILD:-}" = "true" ]]; then
+  if [[ "${SKIP_TEST_APP_IMAGE_BUILDS:-}" = "true" ]]; then
     return
   fi
 

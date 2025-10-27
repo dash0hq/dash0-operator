@@ -17,23 +17,29 @@ verify_kubectx
 
 resource_types=( cronjob daemonset deployment job pod replicaset statefulset )
 for resource_type in "${resource_types[@]}"; do
-  test-resources/node.js/express/undeploy.sh "$target_namespace" "$resource_type"
+  pushd test-resources/node.js/express > /dev/null
+  if [[ -f "$resource_type.yaml" ]]; then
+    kubectl delete --namespace "$target_namespace" --ignore-not-found -f "$resource_type.yaml"
+  fi
+  popd > /dev/null
   pushd test-resources/jvm/spring-boot > /dev/null
-    if [[ -f "$resource_type.yaml" ]]; then
-      kubectl delete --namespace "$target_namespace" --ignore-not-found -f "$resource_type.yaml"
-    fi
+  if [[ -f "$resource_type.yaml" ]]; then
+    kubectl delete --namespace "$target_namespace" --ignore-not-found -f "$resource_type.yaml"
+  fi
   popd > /dev/null
   pushd test-resources/dotnet > /dev/null
-    if [[ -f "$resource_type.yaml" ]]; then
-      kubectl delete --namespace "$target_namespace" --ignore-not-found -f "$resource_type.yaml"
-    fi
+  if [[ -f "$resource_type.yaml" ]]; then
+    kubectl delete --namespace "$target_namespace" --ignore-not-found -f "$resource_type.yaml"
+  fi
   popd > /dev/null
   pushd test-resources/python/flask > /dev/null
-    if [[ -f "$resource_type.yaml" ]]; then
-      kubectl delete --namespace "$target_namespace" --ignore-not-found -f "$resource_type.yaml"
-    fi
+  if [[ -f "$resource_type.yaml" ]]; then
+    kubectl delete --namespace "$target_namespace" --ignore-not-found -f "$resource_type.yaml"
+  fi
   popd > /dev/null
 done
+
+kubectl delete -f https://kind.sigs.k8s.io/examples/ingress/deploy-ingress-nginx.yaml --ignore-not-found || true
 
 wait_for_third_party_resource_deletion="false"
 if kubectl delete -n "$target_namespace" -f test-resources/customresources/dash0syntheticcheck/dash0syntheticcheck.yaml; then
