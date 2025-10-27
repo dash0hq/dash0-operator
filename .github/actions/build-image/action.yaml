@@ -103,9 +103,10 @@ runs:
         image-ref: 'ghcr.io/dash0hq/${{ inputs.imageName }}:sha-${{ env.SHORT_SHA }}'
         format: 'sarif'
         output: 'trivy-results.sarif'
+        exit-code: '1' # fail build if vulnerabilities are found
 
     - name: upload Trivy scan results to GitHub Security tab
-      if: ${{ inputs.scan }}
+      if: ${{ always() && inputs.scan }}
       uses: github/codeql-action/upload-sarif@v3
       with:
         sarif_file: 'trivy-results.sarif'
