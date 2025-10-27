@@ -27,7 +27,7 @@ inputs:
   scan:
     description: "whether to scan the built image with Trivy"
     required: false
-    default: "false"
+    default: 'false'
 
 runs:
   using: "composite"
@@ -97,7 +97,7 @@ runs:
 
     # optionally scan the built container image with Trivy and upload the results
     - name: run Trivy vulnerability scanner
-      if: ${{ inputs.scan }}
+      if: ${{ inputs.scan == 'true' }}
       uses: aquasecurity/trivy-action@0.28.0
       with:
         image-ref: 'ghcr.io/dash0hq/${{ inputs.imageName }}:sha-${{ env.SHORT_SHA }}'
@@ -106,14 +106,14 @@ runs:
         exit-code: '1' # fail build if vulnerabilities are found
 
     - name: upload Trivy scan results to GitHub Security tab
-      if: ${{ always() && inputs.scan }}
+      if: ${{ always() && inputs.scan == 'true' }}
       uses: github/codeql-action/upload-sarif@v3
       with:
         sarif_file: 'trivy-results.sarif'
         category: ".github/workflows/ci.yaml:build_and_push_images/${{ inputs.imageName }}"
 
     - name: push container image
-      if: ${{ env.PUSH_ENABLED }}
+      if: ${{ env.PUSH_ENABLED == 'true' }}
       uses: docker/build-push-action@471d1dc4e07e5cdedd4c2171150001c434f0b7a4
       with:
         context: ${{ inputs.context }}
@@ -123,4 +123,4 @@ runs:
         platforms: 'linux/amd64,linux/arm64'
         cache-from: type=gha,scope=${{ inputs.imageName }}
         cache-to: type=gha,mode=max,scope=${{ inputs.imageName }}
-        push: false # setting this to false during testing
+        push: ${{ env.PUSH_ENABLED }}
