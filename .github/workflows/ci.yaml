@@ -140,6 +140,7 @@ jobs:
           imageDescription: the controller for the Dash0 operator for Kubernetes
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main
           context: .
+          scan: 'true'
 
       - name: build instrumentation image
         uses: ./.github/actions/build-image
@@ -150,6 +151,7 @@ jobs:
           imageDescription: contains Dash0 OpenTelemetry distributions for multiple runtimes
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/instrumentation
           context: images/instrumentation
+          scan: 'true'
 
       - name: build collector image
         uses: ./.github/actions/build-image
@@ -160,6 +162,7 @@ jobs:
           imageDescription: the OpenTelemetry collector for the Dash0 operator for Kubernetes
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/collector
           context: images/collector
+          scan: 'true'
 
       - name: build configuration reloader image
         uses: ./.github/actions/build-image
@@ -171,6 +174,7 @@ jobs:
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main/images/configreloader
           context: images
           file: images/configreloader/Dockerfile
+          scan: 'true'
 
       - name: build filelog offset sync image
         uses: ./.github/actions/build-image
@@ -182,6 +186,7 @@ jobs:
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main
           context: images
           file: images/filelogoffsetsync/Dockerfile
+          scan: 'true'
 
       - name: build filelog offset volume ownership image
         uses: ./.github/actions/build-image
@@ -193,6 +198,7 @@ jobs:
           imageUrl: https://github.com/dash0hq/dash0-operator/tree/main
           context: images
           file: images/filelogoffsetvolumeownership/Dockerfile
+          scan: 'true'
 
   publish_helm_chart_dry_run:
     name: Publish Helm Chart (Dry Run)
