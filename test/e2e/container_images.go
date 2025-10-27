@@ -5,8 +5,8 @@ package e2e
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
-	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -31,6 +31,10 @@ type Images struct {
 const (
 	tagLatest                    = "latest"
 	updateTestAdditionalImageTag = "e2e-test"
+
+	defaultImageRepositoryPrefix = ""
+	defaultImageTag              = tagLatest
+	defaultPullPolicy            = "Never"
 )
 
 var (
@@ -103,6 +107,96 @@ var (
 	images = localImages
 )
 
+func determineContainerImages() {
+	operatorHelmChart = getEnvOrDefault("OPERATOR_HELM_CHART", operatorHelmChart)
+	operatorHelmChartUrl = getEnvOrDefault("OPERATOR_HELM_CHART_URL", operatorHelmChartUrl)
+
+	if !isLocalHelmChart() {
+		images = emptyImages
+		e2ePrint("Using a non-local Helm chart (%s). Image settings will come from the chart. "+
+			"Ignoring IMAGE_REPOSITORY_PREFIX, IMAGE_TAG, PULL_POLICY, and per-image environment variables.\n",
+			operatorHelmChart)
+		return
+	}
+
+	repositoryPrefix := getEnvOrDefault("IMAGE_REPOSITORY_PREFIX", defaultImageRepositoryPrefix)
+	imageTag := getEnvOrDefault("IMAGE_TAG", defaultImageTag)
+	pullPolicy := getEnvOrDefault("PULL_POLICY", defaultPullPolicy)
+
+	images.operator =
+		determineContainerImage(
+			"CONTROLLER",
+			repositoryPrefix,
+			"operator-controller",
+			imageTag,
+			pullPolicy,
+		)
+	images.instrumentation =
+		determineContainerImage(
+			"INSTRUMENTATION",
+			repositoryPrefix,
+			"instrumentation",
+			imageTag,
+			pullPolicy,
+		)
+	images.collector =
+		determineContainerImage(
+			"COLLECTOR",
+			repositoryPrefix,
+			"collector",
+			imageTag,
+			pullPolicy,
+		)
+	images.configurationReloader =
+		determineContainerImage(
+			"CONFIGURATION_RELOADER",
+			repositoryPrefix,
+			"configuration-reloader",
+			imageTag,
+			pullPolicy,
+		)
+	images.fileLogOffsetSync =
+		determineContainerImage(
+			"FILELOG_OFFSET_SYNC",
+			repositoryPrefix,
+			"filelog-offset-sync",
+			imageTag,
+			pullPolicy,
+		)
+	images.fileLogOffsetVolumeOwnership =
+		determineContainerImage(
+			"FILELOG_OFFSET_VOLUME_OWNERSHIP",
+			repositoryPrefix,
+			"filelog-offset-volume-ownership",
+			imageTag,
+			pullPolicy,
+		)
+}
+
+func determineContainerImage(
+	envVarPrefix string,
+	repositoryPrefix string,
+	imageName string,
+	imageTag string,
+	pullPolicy string,
+) ImageSpec {
+	imageRepository := fmt.Sprintf("%s%s", repositoryPrefix, imageName)
+	return ImageSpec{
+		repository: getEnvOrDefault(fmt.Sprintf("%s_IMAGE_REPOSITORY", envVarPrefix), imageRepository),
+		tag:        getEnvOrDefault(fmt.Sprintf("%s_IMAGE_TAG", envVarPrefix), imageTag),
+		digest:     getEnvOrDefault(fmt.Sprintf("%s_IMAGE_DIGEST", envVarPrefix), ""),
+		pullPolicy: getEnvOrDefault(fmt.Sprintf("%s_IMAGE_PULL_POLICY", envVarPrefix), pullPolicy),
+	}
+}
+
+func getEnvOrDefault(name string, defaultValue string) string {
+	value, isSet := os.LookupEnv(name)
+	if isSet {
+		return value
+	}
+	return defaultValue
+}
+
 func loadImageToKindClusterIfRequired(image ImageSpec, additionalTag *ImageSpec) {
 	if !isKindCluster() {
 		return
@@ -127,8 +221,6 @@ func loadImageToKindClusterIfRequired(image ImageSpec, additionalTag *ImageSpec)
 	}
 }
 
-func isRemoteImage(image ImageSpec) bool {
-	return strings.Contains(image.repository, "/")
 }
 
 func swapTag(image ImageSpec, newTag string) ImageSpec {

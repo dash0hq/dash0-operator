@@ -283,7 +283,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					Eventually(func(g Gomega) {
 						verifyAtLeastOneLogRecord(
 							g,
-							selfMonitoringLogsResourceMatcherOperatorManager,
+							selfMonitoringLogsResourceMatcherOperatorManager(images.operator.tag),
 							func(logRecord plog.LogRecord, matchResult *ObjectMatchResult[plog.ResourceLogs, plog.LogRecord]) {
 								expectedLogBody := "operator manager configuration:"
 								logBody := logRecord.Body().AsString()
@@ -1928,117 +1928,6 @@ func cleanupAll() {
 	}
 	undeployOperator(operatorNamespace)
 	uninstallOtlpSink(workingDir, &cleanupSteps)
-}
-
-func determineContainerImages() {
-	operatorHelmChart = getEnvOrDefault("OPERATOR_HELM_CHART", operatorHelmChart)
-	operatorHelmChartUrl = getEnvOrDefault("OPERATOR_HELM_CHART_URL", operatorHelmChartUrl)
-
-	// The defaults when using the Helm chart from local sources are:
-	// - use the locally built image with tag latest
-	// - use pull policy "Never"
-	// The defaults when using a remote helm chart are:
-	// - default to not setting an explicit image repository or tag
-	// - default to not setting a pull policy, instead let Kubernetes use the default pull policy
-	if !isLocalHelmChart() {
-		images = emptyImages
-	}
-
-	images.operator.repository = getEnvOrDefault("CONTROLLER_IMAGE_REPOSITORY", images.operator.repository)
-	images.operator.tag = getEnvOrDefault("CONTROLLER_IMAGE_TAG", images.operator.tag)
-	images.operator.digest = getEnvOrDefault("CONTROLLER_IMAGE_DIGEST", images.operator.digest)
-	images.operator.pullPolicy = getEnvOrDefault("CONTROLLER_IMAGE_PULL_POLICY", images.operator.pullPolicy)
-
-	images.instrumentation.repository = getEnvOrDefault(
-		"INSTRUMENTATION_IMAGE_REPOSITORY",
-		images.instrumentation.repository,
-	)
-	images.instrumentation.tag = getEnvOrDefault("INSTRUMENTATION_IMAGE_TAG", images.instrumentation.tag)
-	images.instrumentation.digest = getEnvOrDefault("INSTRUMENTATION_IMAGE_DIGEST", images.instrumentation.digest)
-	images.instrumentation.pullPolicy = getEnvOrDefault(
-		"INSTRUMENTATION_IMAGE_PULL_POLICY",
-		images.instrumentation.pullPolicy,
-	)
-
-	images.collector.repository = getEnvOrDefault(
-		"COLLECTOR_IMAGE_REPOSITORY",
-		images.collector.repository,
-	)
-	images.collector.tag = getEnvOrDefault("COLLECTOR_IMAGE_TAG", images.collector.tag)
-	images.collector.digest = getEnvOrDefault("COLLECTOR_IMAGE_DIGEST", images.collector.digest)
-	images.collector.pullPolicy = getEnvOrDefault(
-		"COLLECTOR_IMAGE_PULL_POLICY",
-		images.collector.pullPolicy,
-	)
-
-	images.configurationReloader.repository = getEnvOrDefault(
-		"CONFIGURATION_RELOADER_IMAGE_REPOSITORY",
-		images.configurationReloader.repository,
-	)
-	images.configurationReloader.tag = getEnvOrDefault("CONFIGURATION_RELOADER_IMAGE_TAG", images.configurationReloader.tag)
-	images.configurationReloader.digest = getEnvOrDefault("CONFIGURATION_RELOADER_IMAGE_DIGEST",
-		images.configurationReloader.digest)
-	images.configurationReloader.pullPolicy = getEnvOrDefault(
-		"CONFIGURATION_RELOADER_IMAGE_PULL_POLICY",
-		images.configurationReloader.pullPolicy,
-	)
-
-	images.fileLogOffsetSync.repository = getEnvOrDefault(
-		"FILELOG_OFFSET_SYNC_IMAGE_REPOSITORY",
-		images.fileLogOffsetSync.repository,
-	)
-	images.fileLogOffsetSync.tag = getEnvOrDefault("FILELOG_OFFSET_SYNC_IMAGE_TAG", images.fileLogOffsetSync.tag)
-	images.fileLogOffsetSync.digest = getEnvOrDefault("FILELOG_OFFSET_SYNC_IMAGE_DIGEST",
-		images.fileLogOffsetSync.digest)
-	images.fileLogOffsetSync.pullPolicy = getEnvOrDefault(
-		"FILELOG_OFFSET_SYNC_IMAGE_PULL_POLICY",
-		images.fileLogOffsetSync.pullPolicy,
-	)
-
-	images.fileLogOffsetVolumeOwnership.repository = getEnvOrDefault(
-		"FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_REPOSITORY",
-		images.fileLogOffsetVolumeOwnership.repository,
-	)
-	images.fileLogOffsetVolumeOwnership.tag =
-		getEnvOrDefault("FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_TAG", images.fileLogOffsetVolumeOwnership.tag)
-	images.fileLogOffsetVolumeOwnership.digest =
-		getEnvOrDefault("FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_DIGEST",
-			images.fileLogOffsetVolumeOwnership.digest)
-	images.fileLogOffsetVolumeOwnership.pullPolicy = getEnvOrDefault(
-		"FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_PULL_POLICY",
-		images.fileLogOffsetVolumeOwnership.pullPolicy,
-	)
-
-	if isLocalHelmChart() {
-		// support using the local helm chart with remote images
-		if isRemoteImage(images.operator) {
-			images.operator.pullPolicy = getEnvOrDefault("CONTROLLER_IMAGE_PULL_POLICY", "")
-		}
-		if isRemoteImage(images.instrumentation) {
-			images.instrumentation.pullPolicy = getEnvOrDefault("INSTRUMENTATION_IMAGE_PULL_POLICY", "")
-		}
-		if isRemoteImage(images.collector) {
-			images.collector.pullPolicy = getEnvOrDefault("COLLECTOR_IMAGE_PULL_POLICY", "")
-		}
-		if isRemoteImage(images.configurationReloader) {
-			images.configurationReloader.pullPolicy = getEnvOrDefault("CONFIGURATION_RELOADER_IMAGE_PULL_POLICY", "")
-		}
-		if isRemoteImage(images.fileLogOffsetSync) {
-			images.fileLogOffsetSync.pullPolicy = getEnvOrDefault("FILELOG_OFFSET_SYNC_IMAGE_PULL_POLICY", "")
-		}
-		if isRemoteImage(images.fileLogOffsetVolumeOwnership) {
-			images.fileLogOffsetVolumeOwnership.pullPolicy =
-				getEnvOrDefault("FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_PULL_POLICY", "")
-		}
-	}
-}
-
-func getEnvOrDefault(name string, defaultValue string) string {
-	value, isSet := os.LookupEnv(name)
-	if isSet {
-		return value
-	}
-	return defaultValue
 }
 
 func generateTestId(runtime runtimeType, workloadType workloadType) string {
