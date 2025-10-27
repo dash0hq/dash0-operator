@@ -1549,7 +1549,7 @@ trace_statements:
 					runAndIgnoreOutput(
 						exec.Command(
 							"make",
-							"docker-build",
+							"images",
 							fmt.Sprintf("IMAGE_TAG=%s", updateTestAdditionalImageTag),
 						))).To(Succeed())
 			})

@@ -272,7 +272,7 @@ build_all_images() {
     FILELOG_OFFSET_SYNC_IMAGE_TAG="$filelog_offset_sync_image_tag" \
     FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_REPOSITORY=$filelog_offset_volume_ownership_image_repository \
     FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_TAG="$filelog_offset_volume_ownership_image_tag" \
-    make docker-build
+    make images
 
   if [[ "$is_kind_cluster" = "true" ]]; then
     echo loading images into Kind cluster
