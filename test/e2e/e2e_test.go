@@ -1567,14 +1567,7 @@ trace_statements:
 				// been instrumented by outdated images. Then (later) we will redeploy the operator with the actual
 				// image names that are used throughout the whole test suite (defined by environment variables), to
 				// simulate updating the instrumentation.
-				initialAlternativeImages := Images{
-					operator:                     swapTag(images.operator, updateTestAdditionalImageTag),
-					instrumentation:              swapTag(images.instrumentation, updateTestAdditionalImageTag),
-					collector:                    swapTag(images.collector, updateTestAdditionalImageTag),
-					configurationReloader:        swapTag(images.configurationReloader, updateTestAdditionalImageTag),
-					fileLogOffsetSync:            swapTag(images.fileLogOffsetSync, updateTestAdditionalImageTag),
-					fileLogOffsetVolumeOwnership: swapTag(images.fileLogOffsetVolumeOwnership, updateTestAdditionalImageTag),
-				}
+				initialAlternativeImages := deriveAlternativeImagesForUpdateTest(images)
 				deployOperatorWithDefaultAutoOperationConfiguration(
 					operatorNamespace,
 					operatorHelmChart,

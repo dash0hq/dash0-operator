@@ -30,6 +30,7 @@ type Images struct {
 
 const (
 	tagLatest                    = "latest"
+	tagMainDev                   = "main-dev"
 	updateTestAdditionalImageTag = "e2e-test"
 
 	defaultImageRepositoryPrefix = ""
@@ -221,12 +222,51 @@ func loadImageToKindClusterIfRequired(image ImageSpec, additionalTag *ImageSpec)
 	}
 }
 
+func deriveAlternativeImagesForUpdateTest(images Images) Images {
+	return Images{
+		operator:                     deriveAlternativeImageForUpdateTest(images.operator),
+		instrumentation:              deriveAlternativeImageForUpdateTest(images.instrumentation),
+		collector:                    deriveAlternativeImageForUpdateTest(images.collector),
+		configurationReloader:        deriveAlternativeImageForUpdateTest(images.configurationReloader),
+		fileLogOffsetSync:            deriveAlternativeImageForUpdateTest(images.fileLogOffsetSync),
+		fileLogOffsetVolumeOwnership: deriveAlternativeImageForUpdateTest(images.fileLogOffsetVolumeOwnership),
+	}
 }
 
-func swapTag(image ImageSpec, newTag string) ImageSpec {
+func deriveAlternativeImageForUpdateTest(image ImageSpec) ImageSpec {
+	// For the "should update instrumentation modifications at startup" test case, we need to come up with an
+	// alternative fully qualified image name, one that is different from the image name that is being used for the
+	// all "helm install" invocations in this e2e test suite run.
+	//
+	// The way we do that is by using the same image repository and image name, but use a different tag.
+	var alternativeTag string
+	if isDefaultImageFromHelmChart(image) {
+		// When running the e2e test suite with the published Helm chart and the default images from the Helm chart
+		// (that is, "ghcr.io/dash0hq/operator-controller@x.y.z" etc.), we cannot easily re-tag the image, since they
+		// come from the production container image repository -- we do not want to push a tag there that is only used
+		// in the e2e test suite. For that situation, i.e. when all other "helm install" invocations use with the
+		// version tag of the currrent operator release, we use "latest" as the alternative tag (latest is always also
+		// built when publishing an operator release, but it is not used in the published Helm charts).
+		alternativeTag = tagLatest
+		if image.tag == tagLatest {
+			// If for some reason, the e2e test suite is configured to use the published Helm chart but the e2e test
+			// suite is configured to use the "latest" tag, we use "main-dev" as the alternative tag (this tag is pushed
+			// by each successful build of the main branch).
+			alternativeTag = tagMainDev
+		}
+	} else {
+		// When testing with the local, unpublished Helm chart, we usually use the tag "latest". We re-tag all "latest"
+		// images also under the tag "e2e-test", to have a second tag available.
+		alternativeTag = updateTestAdditionalImageTag
+	}
+
 	return ImageSpec{
 		repository: image.repository,
-		tag:        newTag,
+		tag:        alternativeTag,
 		pullPolicy: image.pullPolicy,
 	}
+}
+
+func isDefaultImageFromHelmChart(image ImageSpec) bool {
+	return image.repository == "" && operatorHelmChartUrl != ""
 }
