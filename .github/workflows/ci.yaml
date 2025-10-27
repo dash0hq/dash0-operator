@@ -27,9 +27,17 @@ concurrency:
   cancel-in-progress: ${{ !(github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')) }}
 
 jobs:
+
+  # Skip some test steps in release builds, or on the main branch, if a successful build for the very same commit
+  # exists. This is quite handy:
+  # - for builds on the main branch, directly after merging a PR, where the same commit has already been built
+  #   successfully in the last PR build before merging,
+  # - for release builds, where the very same commit has usually been build successfully already when building the main
+  # branch.
   check_for_successful_builds_for_same_commit:
     name: Check for existing successful builds for same commit
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
     outputs:
       should_skip: ${{ steps.skip_check.outputs.should_skip }}
     steps:
@@ -42,7 +50,7 @@ jobs:
     timeout-minutes: 15
 
     needs: check_for_successful_builds_for_same_commit
-    if: needs.check_for_successful_builds_for_same_commit.outputs.should_skip != 'true'
+    if: always() && needs.check_for_successful_builds_for_same_commit.outputs.should_skip != 'true'
 
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
@@ -103,7 +111,7 @@ jobs:
     secrets:
       github-token: ${{ secrets.GITHUB_TOKEN }}
     needs: check_for_successful_builds_for_same_commit
-    if: needs.check_for_successful_builds_for_same_commit.outputs.should_skip != 'true'
+    if: always() && needs.check_for_successful_builds_for_same_commit.outputs.should_skip != 'true'
 
   # Builds and potentially pushes all container images. For pushes to PRs/branches, we simply verify that the image
   # build still works, the resulting image will not be pushed to any target registry. For pushes to the main branch, the
