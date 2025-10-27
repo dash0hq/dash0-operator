@@ -154,7 +154,7 @@ helm-unit-tests: ## Run the Helm chart unit tests.
 	cd helm-chart/dash0-operator && helm unittest -f 'tests/**/*.yaml' .
 
 .PHONY: build-images-test-e2e
-build-images-test-e2e: docker-build test-e2e ## Build all container images, then run the end-to-end tests.
+build-images-test-e2e: images test-e2e ## Build all container images, then run the end-to-end tests.
 
 # Invoking ginkgo via go run makes sure we use the version from go.mod and not a version installed globally, which
 # would be used when simply running `ginkgo -v test/e2e`. An alternative would be to invoke ginkgo via go test, that
@@ -254,26 +254,26 @@ lint: golangci-lint helm-chart-lint shellcheck-lint zig-fmt-check instrumentatio
 .PHONY: lint-fix
 lint-fix: golang-lint-fix zig-fmt
 
-PHONY: test-apps-container-image-build
-test-apps-container-image-build: \
-  test-app-container-image-build-dotnet \
-  test-app-container-image-build-jvm \
-  test-app-container-image-build-nodejs ## Build all test application container images.
+PHONY: test-app-images
+test-app-images: \
+  test-app-image-dotnet \
+  test-app-image-jvm \
+  test-app-image-nodejs ## Build all test application container images. If IMAGE_PLATFORMS is set, it will be passed as --platform to the build.
 
-.PHONY: test-app-container-image-build-dotnet
-test-app-container-image-build-dotnet: ## Build the .NET test application.
+.PHONY: test-app-image-dotnet
+test-app-image-dotnet: ## Build the .NET test application.
 	@$(call build_container_image,$(TEST_APP_DOTNET_IMAGE_REPOSITORY),$(TEST_APP_DOTNET_IMAGE_TAG),test-resources/dotnet)
 
-.PHONY: test-app-container-image-build-jvm
-test-app-container-image-build-jvm: ## Build the JVM test application.
+.PHONY: test-app-image-jvm
+test-app-image-jvm: ## Build the JVM test application.
 	@$(call build_container_image,$(TEST_APP_JVM_IMAGE_REPOSITORY),$(TEST_APP_JVM_IMAGE_TAG),test-resources/jvm/spring-boot)
 
-.PHONY: test-app-container-image-build-nodejs
-test-app-container-image-build-nodejs: ## Build the Node.js test application.
+.PHONY: test-app-image-nodejs
+test-app-image-nodejs: ## Build the Node.js test application.
 	@$(call build_container_image,$(TEST_APP_NODEJS_IMAGE_REPOSITORY),$(TEST_APP_NODEJS_IMAGE_TAG),test-resources/node.js/express)
 
-.PHONY: dash0-api-mock-container-image
-dash0-api-mock-container-image: ## Build the Dash0 API mock container image, which is used in end-to-end tests.
+.PHONY: dash0-api-mock-image
+dash0-api-mock-image: ## Build the Dash0 API mock container image, which is used in end-to-end tests.
 	@$(call build_container_image,$(DASH0_API_MOCK_IMAGE_REPOSITORY),$(DASH0_API_MOCK_IMAGE_TAG),test/e2e/dash0-api-mock)
 
 ##@ Build
@@ -282,53 +282,55 @@ dash0-api-mock-container-image: ## Build the Dash0 API mock container image, whi
 build: manifests generate fmt vet ## Build manager binary.
 	go build -o bin/manager cmd/main.go
 
-# If you wish to build the manager image targeting other platforms you can use the --platform flag.
-# (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.
-# More info: https://docs.docker.com/develop/develop-images/build_enhancements/
-.PHONY: docker-build
-docker-build: \
-  docker-build-controller \
-  docker-build-instrumentation \
-  docker-build-collector \
-  docker-build-config-reloader \
-  docker-build-filelog-offset-sync \
-  docker-build-filelog-offset-volume-ownership ## Build all container images used by the operator.
+.PHONY: images
+images: \
+  image-controller \
+  image-instrumentation \
+  image-collector \
+  image-config-reloader \
+  image-filelog-offset-sync \
+  image-filelog-offset-volume-ownership ## Build all container images used by the operator. If IMAGE_PLATFORMS is set, it will be passed as --platform to the build.
 
 define build_container_image
 $(eval $@_IMAGE_REPOSITORY = $(1))
 $(eval $@_IMAGE_TAG = $(2))
 $(eval $@_CONTEXT = $(3))
 $(eval $@_DOCKERFILE = $(4))
-dockerfile=$($@_DOCKERFILE);                                                                          \
-if [[ -z $$dockerfile ]]; then                                                                        \
-    dockerfile=$($@_CONTEXT)/Dockerfile;                                                              \
-fi;                                                                                                   \
-echo $(CONTAINER_TOOL) build -t $($@_IMAGE_REPOSITORY):$($@_IMAGE_TAG) -f $$dockerfile $($@_CONTEXT); \
-$(CONTAINER_TOOL) build -t $($@_IMAGE_REPOSITORY):$($@_IMAGE_TAG) -f $$dockerfile $($@_CONTEXT);
+dockerfile=$($@_DOCKERFILE);                                                                     \
+if [[ -z $$dockerfile ]]; then                                                                   \
+  dockerfile=$($@_CONTEXT)/Dockerfile;                                                           \
+fi;                                                                                              \
+build_cmd="$(CONTAINER_TOOL) build";                                                             \
+if [[ -n "$(IMAGE_PLATFORMS)" ]]; then                                                           \
+  build_cmd="$$build_cmd --platform $(IMAGE_PLATFORMS)";                                         \
+fi;                                                                                              \
+build_cmd="$$build_cmd -t $($@_IMAGE_REPOSITORY):$($@_IMAGE_TAG) -f $$dockerfile $($@_CONTEXT)"; \
+echo "$$build_cmd";                                                                              \
+$$build_cmd;
 endef
 
-.PHONY: docker-build-controller
-docker-build-controller: ## Build the manager container image.
+.PHONY: image-controller
+image-controller: ## Build the manager container image.
 	@$(call build_container_image,$(CONTROLLER_IMAGE_REPOSITORY),$(CONTROLLER_IMAGE_TAG),.)
 
-.PHONY: docker-build-instrumentation
-docker-build-instrumentation: ## Build the instrumentation image.
+.PHONY: image-instrumentation
+image-instrumentation: ## Build the instrumentation image.
 	@$(call build_container_image,$(INSTRUMENTATION_IMAGE_REPOSITORY),$(INSTRUMENTATION_IMAGE_TAG),images/instrumentation)
 
-.PHONY: docker-build-collector
-docker-build-collector: ## Build the OpenTelemetry collector container image.
+.PHONY: image-collector
+image-collector: ## Build the OpenTelemetry collector container image.
 	@$(call build_container_image,$(COLLECTOR_IMAGE_REPOSITORY),$(COLLECTOR_IMAGE_TAG),images/collector)
 
-.PHONY: docker-build-config-reloader
-docker-build-config-reloader: ## Build the config reloader container image.
+.PHONY: image-config-reloader
+image-config-reloader: ## Build the config reloader container image.
 	@$(call build_container_image,$(CONFIGURATION_RELOADER_IMAGE_REPOSITORY),$(CONFIGURATION_RELOADER_IMAGE_TAG),images,images/configreloader/Dockerfile)
 
-.PHONY: docker-build-filelog-offset-sync
-docker-build-filelog-offset-sync: ## Build the filelog offset sync container image.
+.PHONY: image-filelog-offset-sync
+image-filelog-offset-sync: ## Build the filelog offset sync container image.
 	@$(call build_container_image,$(FILELOG_OFFSET_SYNC_IMAGE_REPOSITORY),$(FILELOG_OFFSET_SYNC_IMAGE_TAG),images,images/filelogoffsetsync/Dockerfile)
 
-.PHONY: docker-build-filelog-offset-volume-ownership
-docker-build-filelog-offset-volume-ownership: ## Build the filelog offset volume ownership container image.
+.PHONY: image-filelog-offset-volume-ownership
+image-filelog-offset-volume-ownership: ## Build the filelog offset volume ownership container image.
 	@$(call build_container_image,$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_REPOSITORY),$(FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_TAG),images,images/filelogoffsetvolumeownership/Dockerfile)
 
 .PHONY: deploy

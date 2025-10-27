@@ -38,7 +38,7 @@ See section [Semi-Manual Test Scenarios](#semi-manual-test-scenarios) for more i
 In contrast to the semi-manual test scenarios, this section only describes the individual steps to build and deploy a
 bare-bones Dash0 operator.
 
-1. Run `make docker-build` to build all required container images locally, this will tag the image as
+1. Run `make images` to build all required container images locally, this will tag the image as
 `operator-controller:latest`, `collector:latest` etc.
 2. Run `make deploy` to deploy the operator with locally built images to the cluster.
    Note: No Dash0OperatorConfiguration or Dash0Monitoring resource will be created automatically, so the operator will
