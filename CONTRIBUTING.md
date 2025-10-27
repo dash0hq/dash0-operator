@@ -277,28 +277,23 @@ Kubernetes context you want to use for the tests, or set `E2E_KUBECTX` via other
 via `direnv` etc.).
 
 The end-to-end tests can be run via `make test-e2e`.
-This assumes that all required images have been built beforehand.
-Use `make build-images-test-e2e` to build all images from local sources and then run the end-to-end tests using those
-images.
+The make target `test-e2e` assumes that all required images have been built beforehand and are available in the target
+Kubernetes cluster (the one associated with the kubectl context determined by `E2E_KUBECTX`).
+Or, use `make build-images-test-e2e` to build all images from local sources and then run the end-to-end tests using
+those images.
+This make target assumes that the target Kubernetes cluster can access container images that have been built locally
+(which is generally only true for Docker Desktop's built-in Kubernetes cluster).
 
-The tests can also be run with remote images, like this:
+The tests can also be run with images from any registry, like this:
 ```
-CONTROLLER_IMAGE_REPOSITORY=ghcr.io/dash0hq/operator-controller \
-  CONTROLLER_IMAGE_TAG=main-dev \
-  INSTRUMENTATION_IMAGE_REPOSITORY=ghcr.io/dash0hq/instrumentation \
-  INSTRUMENTATION_IMAGE_TAG=main-dev \
-  COLLECTOR_IMAGE_REPOSITORY=ghcr.io/dash0hq/collector \
-  COLLECTOR_IMAGE_TAG=main-dev \
-  CONFIGURATION_RELOADER_IMAGE_REPOSITORY=ghcr.io/dash0hq/configuration-reloader \
-  CONFIGURATION_RELOADER_IMAGE_TAG=main-dev \
-  FILELOG_OFFSET_SYNC_IMAGE_REPOSITORY=ghcr.io/dash0hq/filelog-offset-sync \
-  FILELOG_OFFSET_SYNC_IMAGE_TAG=main-dev \
-  FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_REPOSITORY=ghcr.io/dash0hq/filelog-offset-volume-ownership \
-  FILELOG_OFFSET_VOLUME_OWNERSHIP_IMAGE_TAG=main-dev \
+IMAGE_REPOSITORY_PREFIX=ghcr.io/dash0hq/ \
+  IMAGE_TAG=main-dev \
+  PULL_POLICY="" \
   make test-e2e
 ```
 
-The test suite can also be run with a Helm chart from a remote repository:
+All of the above use the local Helm chart from the directory `helm-chart/dash0-operator`.
+The test suite can also be run with a Helm chart from a remote Helm repository:
 
 ```
 OPERATOR_HELM_CHART=dash0-operator/dash0-operator \

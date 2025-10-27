@@ -154,53 +154,67 @@ func hasMatchingLogRecords(
 }
 
 func selfMonitoringLogsResourceMatcherOperatorManager(
-	resourceLogs plog.ResourceLogs,
-	matchResult *ResourceMatchResult[plog.ResourceLogs],
-) {
-	attributes := resourceLogs.Resource().Attributes()
-	verifyResourceAttributeEquals(
-		attributes,
-		string(semconv.ServiceNamespaceKey),
-		"dash0-operator",
-		matchResult,
-	)
-	verifyResourceAttributeEquals(
-		attributes,
-		string(semconv.ServiceNameKey),
-		"operator-manager",
-		matchResult,
-	)
-	verifyResourceAttributeEquals(
-		attributes,
-		string(semconv.ServiceVersionKey),
-		"latest",
-		matchResult,
-	)
-	verifyResourceAttributeEquals(
-		attributes,
-		string(semconv.K8SDeploymentNameKey),
-		"dash0-operator-controller",
-		matchResult,
-	)
-	verifyResourceAttributeExists(
-		attributes,
-		string(semconv.K8SDeploymentUIDKey),
-		matchResult,
-	)
-	verifyResourceAttributeStartsWith(
-		attributes,
-		string(semconv.K8SPodNameKey),
-		"dash0-operator-controller-",
-		matchResult,
-	)
-	verifyResourceAttributeStartsWith(
-		attributes,
-		string(semconv.K8SContainerNameKey),
-		"operator-manager",
-		matchResult,
-	)
+	expectedServiceVersion string,
+) func(plog.ResourceLogs, *ResourceMatchResult[plog.ResourceLogs]) {
+	return func(
+		resourceLogs plog.ResourceLogs,
+		matchResult *ResourceMatchResult[plog.ResourceLogs],
+	) {
+		attributes := resourceLogs.Resource().Attributes()
+		verifyResourceAttributeEquals(
+			attributes,
+			string(semconv.ServiceNamespaceKey),
+			"dash0-operator",
+			matchResult,
+		)
+		verifyResourceAttributeEquals(
+			attributes,
+			string(semconv.ServiceNameKey),
+			"operator-manager",
+			matchResult,
+		)
+		if expectedServiceVersion == "" {
+			// The expected service version will be the empty string when we are testing with a published Helm chart
+			// and are using the container images from the chart.
+			verifyResourceAttributeExists(
+				attributes,
+				string(semconv.ServiceVersionKey),
+				matchResult,
+			)
+		} else {
+			verifyResourceAttributeEquals(
+				attributes,
+				string(semconv.ServiceVersionKey),
+				expectedServiceVersion,
+				matchResult,
+			)
+		}
+		verifyResourceAttributeEquals(
+			attributes,
+			string(semconv.K8SDeploymentNameKey),
+			"dash0-operator-controller",
+			matchResult,
+		)
+		verifyResourceAttributeExists(
+			attributes,
+			string(semconv.K8SDeploymentUIDKey),
+			matchResult,
+		)
+		verifyResourceAttributeStartsWith(
+			attributes,
+			string(semconv.K8SPodNameKey),
+			"dash0-operator-controller-",
+			matchResult,
+		)
+		verifyResourceAttributeStartsWith(
+			attributes,
+			string(semconv.K8SContainerNameKey),
+			"operator-manager",
+			matchResult,
+		)
 
-	selfMonitoringCommonResourceMatcher(attributes, matchResult)
+		selfMonitoringCommonResourceMatcher(attributes, matchResult)
+	}
 }
 
 func selfMonitoringLogsResourceMatcherCollector(
