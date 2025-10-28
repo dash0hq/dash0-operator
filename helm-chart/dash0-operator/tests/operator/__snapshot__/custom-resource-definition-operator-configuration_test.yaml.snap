@@ -4,7 +4,7 @@ custom resource definition for operator configuration should match snapshot:
     kind: CustomResourceDefinition
     metadata:
       annotations:
-        controller-gen.kubebuilder.io/version: v0.14.0
+        controller-gen.kubebuilder.io/version: v0.19.0
       name: dash0operatorconfigurations.operator.dash0.com
     spec:
       group: operator.dash0.com
@@ -74,7 +74,6 @@ custom resource definition for operator configuration should match snapshot:
                             Opt-out for log collecting all pod labels and annotations as resource . If set to `false`, the operator will not
                             collect Kubernetes labels and annotations as resource attributes.
 
-
                             This setting is optional, it defaults to `true`, that is, if this setting is omitted, the value `true` is assumed
                             and the operator will collect pod labels and annotations as resource attributes; unless
                             `telemetryCollection.enabled` is set to `false`, then  `collectPodLabelsAndAnnotations.enabled` defaults to
@@ -89,7 +88,6 @@ custom resource definition for operator configuration should match snapshot:
                         This can either be Dash0 or another OTLP-compatible backend. You can also combine up to three exporters (i.e.
                         Dash0 plus gRPC plus HTTP). This allows sending the same data to two or three targets simultaneously. At least
                         one exporter has to be defined.
-
 
                         Please note that self-monitoring data is only sent to one backend, with Dash0 taking precedence over gRPC and
                         HTTP, and gRPC taking precedence over HTTP if multiple exports are defined. Furthermore, HTTP export with JSON
@@ -243,7 +241,6 @@ custom resource definition for operator configuration should match snapshot:
                         instead of
                             kubernetesInfrastructureMetricsCollectionEnabled: false
 
-
                         If enabled, the operator will collect Kubernetes infrastructure metrics. This setting is optional, it defaults
                         to true; unless `telemetryCollection.enabled` is set to `false`, then it defaults to `false` as well. It is a
                         validation error to set `telemetryCollection.enabled=false` and
@@ -278,7 +275,6 @@ custom resource definition for operator configuration should match snapshot:
                             the operator, but do not want it to deploy the OpenTelemetry collector. This setting is optional, it defaults to
                             `true` (i.e. by default telemetry collection is enabled).
 
-
                             Note that setting this to false does not disable the operator's self-monitoring telemetry, use the setting
                             selfMonitoring.enabled to disable self-monitoring if required (self-monitoring does not require an OpenTelemetry
                             collector).
@@ -292,7 +288,7 @@ custom resource definition for operator configuration should match snapshot:
                   properties:
                     conditions:
                       items:
-                        description: Condition contains details for one aspect of the current state of this resource.
+                        description: Condition contains details for one aspect of the current state of this API Resource.
                         properties:
                           lastTransitionTime:
                             description: |-
@@ -333,12 +329,7 @@ custom resource definition for operator configuration should match snapshot:
                               - Unknown
                             type: string
                           type:
-                            description: |-
-                              type of condition in CamelCase or in foo.example.com/CamelCase.
-                              ---
-                              Many .condition.type values are consistent across resources like Available, but because arbitrary conditions can be
-                              useful (see .node.status.conditions), the ability to deconflict is important.
-                              The regex it matches is (dns1123SubdomainFmt/)?(qualifiedNameFmt)
+                            description: type of condition in CamelCase or in foo.example.com/CamelCase.
                             maxLength: 316
                             pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
                             type: string

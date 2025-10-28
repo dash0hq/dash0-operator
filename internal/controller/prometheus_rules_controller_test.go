@@ -35,6 +35,10 @@ import (
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
+const (
+	checkRuleOrigin = "check-rule-origin"
+)
+
 var (
 	prometheusRuleCrd        *apiextensionsv1.CustomResourceDefinition
 	testQueuePrometheusRules = workqueue.NewTypedWithConfig(workqueue.TypedQueueConfig[ThirdPartyResourceSyncJob]{
@@ -52,16 +56,37 @@ var (
 		SynchronizationStatus:  dash0common.ThirdPartySynchronizationStatusSuccessful,
 		AlertingRulesTotal:     4,
 		SynchronizedRulesTotal: 4,
-		SynchronizedRules: []string{
-			"dash0/group_1 - rule_1_1",
-			"dash0/group_1 - rule_1_2",
-			"dash0/group_2 - rule_2_1",
-			"dash0/group_2 - rule_2_2",
+		SynchronizedRulesAttributes: map[string]dash0common.PrometheusRuleSynchronizedRuleAttributes{
+			"dash0/group_2 - rule_2_1": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
+			"dash0/group_2 - rule_2_2": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
+			"dash0/group_1 - rule_1_1": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
+			"dash0/group_1 - rule_1_2": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
 		},
 		SynchronizationErrorsTotal: 0,
 		SynchronizationErrors:      nil,
 		InvalidRulesTotal:          0,
 		InvalidRules:               nil,
+	}
+
+	defaultExpectedPrometheusSyncResultNoOriginAndDataset = dash0common.PrometheusRuleSynchronizationResult{
+		SynchronizationStatus:  dash0common.ThirdPartySynchronizationStatusSuccessful,
+		AlertingRulesTotal:     4,
+		SynchronizedRulesTotal: 4,
+		SynchronizedRulesAttributes: map[string]dash0common.PrometheusRuleSynchronizedRuleAttributes{
+			"dash0/group_2 - rule_2_1": {Dash0Origin: "", Dash0Dataset: ""},
+			"dash0/group_2 - rule_2_2": {Dash0Origin: "", Dash0Dataset: ""},
+			"dash0/group_1 - rule_1_1": {Dash0Origin: "", Dash0Dataset: ""},
+			"dash0/group_1 - rule_1_2": {Dash0Origin: "", Dash0Dataset: ""},
+		},
+		SynchronizationErrorsTotal: 0,
+		SynchronizationErrors:      nil,
+		InvalidRulesTotal:          0,
+		InvalidRules:               nil,
+	}
+
+	checkRuleResponseWithOriginAndDataset = map[string]interface{}{
+		"id":      checkRuleOrigin,
+		"dataset": DatasetCustomTest,
 	}
 )
 
@@ -434,7 +459,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			verifyPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
 				ctx,
 				k8sClient,
-				defaultExpectedPrometheusSyncResult,
+				defaultExpectedPrometheusSyncResultNoOriginAndDataset,
 			)
 			Expect(gock.IsDone()).To(BeTrue())
 		})
@@ -457,7 +482,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			verifyPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
 				ctx,
 				k8sClient,
-				defaultExpectedPrometheusSyncResult,
+				defaultExpectedPrometheusSyncResultNoOriginAndDataset,
 			)
 			Expect(gock.IsDone()).To(BeTrue())
 		})
@@ -497,11 +522,11 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 					SynchronizationStatus:  dash0common.ThirdPartySynchronizationStatusSuccessful,
 					AlertingRulesTotal:     4,
 					SynchronizedRulesTotal: 4,
-					SynchronizedRules: []string{
-						"dash0/group_1 - rule_1_1",
-						"dash0/group_2 - rule_2_1",
-						"dash0/group_2 - rule_2_2",
-						"dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_1_1 (deleted)",
+					SynchronizedRulesAttributes: map[string]dash0common.PrometheusRuleSynchronizedRuleAttributes{
+						"dash0/group_1 - rule_1_1": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
+						"dash0/group_2 - rule_2_1": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
+						"dash0/group_2 - rule_2_2": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
+						"dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_1_1 (deleted)": {Dash0Origin: "", Dash0Dataset: ""},
 					},
 					SynchronizationErrorsTotal: 0,
 					SynchronizationErrors:      nil,
@@ -547,11 +572,11 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 					SynchronizationStatus:  dash0common.ThirdPartySynchronizationStatusSuccessful,
 					AlertingRulesTotal:     4,
 					SynchronizedRulesTotal: 4,
-					SynchronizedRules: []string{
-						"dash0/group_1 - rule_1_1",
-						"dash0/group_1 - rule_1_2",
-						"dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_2_0 (deleted)",
-						"dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_2_1 (deleted)",
+					SynchronizedRulesAttributes: map[string]dash0common.PrometheusRuleSynchronizedRuleAttributes{
+						"dash0/group_1 - rule_1_1": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
+						"dash0/group_1 - rule_1_2": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
+						"dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_2_0 (deleted)": {Dash0Origin: "", Dash0Dataset: ""},
+						"dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_2_1 (deleted)": {Dash0Origin: "", Dash0Dataset: ""},
 					},
 					SynchronizationErrorsTotal: 0,
 					SynchronizationErrors:      nil,
@@ -599,13 +624,13 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 					SynchronizationStatus:  dash0common.ThirdPartySynchronizationStatusSuccessful,
 					AlertingRulesTotal:     6,
 					SynchronizedRulesTotal: 6,
-					SynchronizedRules: []string{
-						"dash0/group_1 - rule_1_1",
-						"dash0/group_1 - rule_1_2",
-						"renamed - rule_2_1",
-						"renamed - rule_2_2",
-						"dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_2_0 (deleted)",
-						"dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_2_1 (deleted)",
+					SynchronizedRulesAttributes: map[string]dash0common.PrometheusRuleSynchronizedRuleAttributes{
+						"dash0/group_1 - rule_1_1": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
+						"dash0/group_1 - rule_1_2": {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
+						"renamed - rule_2_1":       {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
+						"renamed - rule_2_2":       {Dash0Origin: checkRuleOrigin, Dash0Dataset: DatasetCustomTest},
+						"dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_2_0 (deleted)": {Dash0Origin: "", Dash0Dataset: ""},
+						"dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_2_1 (deleted)": {Dash0Origin: "", Dash0Dataset: ""},
 					},
 					SynchronizationErrorsTotal: 0,
 					SynchronizationErrors:      nil,
@@ -634,7 +659,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 			verifyPrometheusRuleSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
 				ctx,
 				k8sClient,
-				defaultExpectedPrometheusSyncResult,
+				defaultExpectedPrometheusSyncResultNoOriginAndDataset,
 			)
 			Expect(gock.IsDone()).To(BeTrue())
 		})
@@ -654,7 +679,7 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 					MatchParam("dataset", DatasetCustomTest).
 					Times(1).
 					Reply(200).
-					JSON(map[string]string{})
+					JSON(defaultExpectedPrometheusSyncResultNoOriginAndDataset)
 			}
 			// failed requests (HTTP 401)
 			for _, pathRegex := range []string{
@@ -732,9 +757,9 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 					SynchronizationStatus:  dash0common.ThirdPartySynchronizationStatusPartiallySuccessful,
 					AlertingRulesTotal:     7,
 					SynchronizedRulesTotal: 2,
-					SynchronizedRules: []string{
-						"dash0/group_1 - rule_1_3",
-						"dash0/group_2 - rule_2_1",
+					SynchronizedRulesAttributes: map[string]dash0common.PrometheusRuleSynchronizedRuleAttributes{
+						"dash0/group_1 - rule_1_3": {Dash0Origin: "", Dash0Dataset: ""},
+						"dash0/group_2 - rule_2_1": {Dash0Origin: "", Dash0Dataset: ""},
 					},
 					SynchronizationErrorsTotal: 2,
 					SynchronizationErrors: map[string]string{
@@ -824,11 +849,11 @@ var _ = Describe("The Prometheus rule controller", Ordered, func() {
 				ctx,
 				k8sClient,
 				dash0common.PrometheusRuleSynchronizationResult{
-					SynchronizationStatus:      dash0common.ThirdPartySynchronizationStatusFailed,
-					AlertingRulesTotal:         5,
-					SynchronizedRulesTotal:     0,
-					SynchronizedRules:          nil,
-					SynchronizationErrorsTotal: 2,
+					SynchronizationStatus:       dash0common.ThirdPartySynchronizationStatusFailed,
+					AlertingRulesTotal:          5,
+					SynchronizedRulesTotal:      0,
+					SynchronizedRulesAttributes: nil,
+					SynchronizationErrorsTotal:  2,
 					SynchronizationErrors: map[string]string{
 						"dash0/group_1 - rule_1_2": "^unexpected status code 401 when synchronizing the rule \"dash0/group_1 - rule_1_2\": PUT https://api.dash0.com/api/alerting/check-rules/dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_1_1\\?dataset=test-dataset, response body is {}\n$",
 						"dash0/group_2 - rule_2_2": "^unexpected status code 500 when synchronizing the rule \"dash0/group_2 - rule_2_2\": PUT https://api.dash0.com/api/alerting/check-rules/dash0-operator_" + clusterId + "_test-dataset_test-namespace_test-rule_dash0|group_2_1\\?dataset=test-dataset, response body is {}\n$",
@@ -1293,7 +1318,7 @@ func expectRulePutRequests(expectedPaths []string) {
 			MatchParam("dataset", DatasetCustomTest).
 			Times(1).
 			Reply(200).
-			JSON(map[string]string{})
+			JSON(checkRuleResponseWithOriginAndDataset)
 	}
 }
 

@@ -566,12 +566,32 @@ func (r *PersesDashboardReconciler) CreateDeleteRequests(
 	return nil, nil
 }
 
+func (r *PersesDashboardReconciler) ExtractIdOriginAndLinkFromResponseBody(
+	responseBytes []byte,
+	logger *logr.Logger,
+) Dash0ApiObjectLabels {
+	dashboardResponse := Dash0DashboardResponse{}
+	if err := json.Unmarshal(responseBytes, &dashboardResponse); err != nil {
+		logger.Error(
+			err,
+			"cannot parse response, will not extract the synchronized object's ID or origin",
+			"response",
+			string(responseBytes),
+		)
+		return Dash0ApiObjectLabels{}
+	}
+	return Dash0ApiObjectLabels{
+		Origin:  dashboardResponse.Metadata.Dash0Extensions.Origin,
+		Dataset: dashboardResponse.Metadata.Dash0Extensions.Dataset,
+	}
+}
+
 func (*PersesDashboardReconciler) UpdateSynchronizationResultsInDash0MonitoringStatus(
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	qualifiedName string,
 	status dash0common.ThirdPartySynchronizationStatus,
 	_ int,
-	_ []string,
+	successfullySynchronized []SuccessfulSynchronizationResult,
 	synchronizationErrors map[string]string,
 	validationIssuesMap map[string][]string,
 ) interface{} {
@@ -594,6 +614,12 @@ func (*PersesDashboardReconciler) UpdateSynchronizationResultsInDash0MonitoringS
 	if len(validationIssuesMap) > 0 {
 		// there can only be at most one list of validation issues for a Perses dashboard resource
 		result.ValidationIssues = slices.Collect(maps.Values(validationIssuesMap))[0]
+	}
+	if len(successfullySynchronized) > 0 {
+		// there can only be at most one successfullySynchronized object for a Perses dashboard resource
+		apiObjectLabels := successfullySynchronized[0].Labels
+		result.Dash0Origin = apiObjectLabels.Origin
+		result.Dash0Dataset = apiObjectLabels.Dataset
 	}
 	previousResults[qualifiedName] = result
 	return result

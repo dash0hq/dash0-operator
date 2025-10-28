@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.19.0
     {{- if .Values.operator.certManager.useCertManager }}
     {{- with .Values.operator.certManager.certManagerAnnotations }}
       {{- toYaml . | nindent 4 }}
@@ -49,8 +49,7 @@ spec:
                 description: Dash0SyntheticCheckDisplay defines the display configuration
                 properties:
                   name:
-                    description: |-
-                      Short-form name for the synthetic check.
+                    description: Short-form name for the synthetic check.
                     type: string
                 required:
                 - name
@@ -419,6 +418,12 @@ spec:
           status:
             description: Dash0SyntheticCheckStatus defines the observed state of Dash0SyntheticCheck
             properties:
+              dash0Dataset:
+                type: string
+              dash0Id:
+                type: string
+              dash0Origin:
+                type: string
               synchronizationError:
                 type: string
               synchronizationStatus:

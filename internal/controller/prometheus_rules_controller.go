@@ -870,12 +870,32 @@ func (r *PrometheusRuleReconciler) CreateDeleteRequests(
 	return deleteRequests, allSynchronizationErrors
 }
 
+func (r *PrometheusRuleReconciler) ExtractIdOriginAndLinkFromResponseBody(
+	responseBytes []byte,
+	logger *logr.Logger,
+) Dash0ApiObjectLabels {
+	apiResponseWithOriginAsId := Dash0ApiResponseWithOriginAsId{}
+	if err := json.Unmarshal(responseBytes, &apiResponseWithOriginAsId); err != nil {
+		logger.Error(
+			err,
+			"cannot parse response, will not extract the synchronized object's ID or origin",
+			"response",
+			string(responseBytes),
+		)
+		return Dash0ApiObjectLabels{}
+	}
+	return Dash0ApiObjectLabels{
+		Origin:  apiResponseWithOriginAsId.Origin,
+		Dataset: apiResponseWithOriginAsId.Dataset,
+	}
+}
+
 func (*PrometheusRuleReconciler) UpdateSynchronizationResultsInDash0MonitoringStatus(
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	qualifiedName string,
 	status dash0common.ThirdPartySynchronizationStatus,
 	itemsTotal int,
-	successfullySynchronized []string,
+	successfullySynchronized []SuccessfulSynchronizationResult,
 	synchronizationErrorsPerItem map[string]string,
 	validationIssuesPerItem map[string][]string,
 ) interface{} {
@@ -884,16 +904,26 @@ func (*PrometheusRuleReconciler) UpdateSynchronizationResultsInDash0MonitoringSt
 		previousResults = make(map[string]dash0common.PrometheusRuleSynchronizationResult)
 		monitoringResource.Status.PrometheusRuleSynchronizationResults = previousResults
 	}
+
+	synchronizedRuleAttributes := make(map[string]dash0common.PrometheusRuleSynchronizedRuleAttributes, len(successfullySynchronized))
+	for _, syncResult := range successfullySynchronized {
+		promRuleSyncAttributes := dash0common.PrometheusRuleSynchronizedRuleAttributes{}
+		apiObjectLabels := syncResult.Labels
+		promRuleSyncAttributes.Dash0Origin = apiObjectLabels.Origin
+		promRuleSyncAttributes.Dash0Dataset = apiObjectLabels.Dataset
+		synchronizedRuleAttributes[syncResult.ItemName] = promRuleSyncAttributes
+	}
+
 	result := dash0common.PrometheusRuleSynchronizationResult{
-		SynchronizationStatus:      status,
-		SynchronizedAt:             metav1.Time{Time: time.Now()},
-		AlertingRulesTotal:         itemsTotal,
-		SynchronizedRulesTotal:     len(successfullySynchronized),
-		SynchronizedRules:          successfullySynchronized,
-		SynchronizationErrorsTotal: len(synchronizationErrorsPerItem),
-		SynchronizationErrors:      synchronizationErrorsPerItem,
-		InvalidRulesTotal:          len(validationIssuesPerItem),
-		InvalidRules:               validationIssuesPerItem,
+		SynchronizationStatus:       status,
+		SynchronizedAt:              metav1.Time{Time: time.Now()},
+		AlertingRulesTotal:          itemsTotal,
+		SynchronizedRulesTotal:      len(successfullySynchronized),
+		SynchronizedRulesAttributes: synchronizedRuleAttributes,
+		SynchronizationErrorsTotal:  len(synchronizationErrorsPerItem),
+		SynchronizationErrors:       synchronizationErrorsPerItem,
+		InvalidRulesTotal:           len(validationIssuesPerItem),
+		InvalidRules:                validationIssuesPerItem,
 	}
 	previousResults[qualifiedName] = result
 	return result

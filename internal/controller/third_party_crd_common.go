@@ -96,7 +96,7 @@ type ThirdPartyResourceReconciler interface {
 		qualifiedName string,
 		status dash0common.ThirdPartySynchronizationStatus,
 		itemsTotal int,
-		successfullySynchronized []string,
+		successfullySynchronizedAttributes []SuccessfulSynchronizationResult,
 		synchronizationErrorsPerItem map[string]string,
 		validationIssuesPerItem map[string][]string,
 	) interface{}
@@ -485,7 +485,7 @@ func writeSynchronizationResultToDash0MonitoringStatus(
 	monitoringResource *dash0v1beta1.Dash0Monitoring,
 	thirdPartyResource *unstructured.Unstructured,
 	itemsTotal int,
-	successfullySynchronized []string,
+	successfullySynchronized []SuccessfulSynchronizationResult,
 	validationIssuesPerItem map[string][]string,
 	synchronizationErrorsPerItem map[string]string,
 	logger *logr.Logger,
@@ -499,6 +499,10 @@ func writeSynchronizationResultToDash0MonitoringStatus(
 		result = dash0common.ThirdPartySynchronizationStatusPartiallySuccessful
 	}
 
+	successfullySynchronizedNames := make([]string, 0, len(successfullySynchronized))
+	for _, syncResult := range successfullySynchronized {
+		successfullySynchronizedNames = append(successfullySynchronizedNames, syncResult.ItemName)
+	}
 	errAfterRetry := retry.OnError(
 		wait.Backoff{
 			Steps:    3,
@@ -528,7 +532,7 @@ func writeSynchronizationResultToDash0MonitoringStatus(
 						thirdPartyResourceReconciler.ShortName(),
 						qualifiedName,
 						itemsTotal,
-						successfullySynchronized,
+						successfullySynchronizedNames,
 						validationIssuesPerItem,
 						synchronizationErrorsPerItem,
 						err,
@@ -581,7 +585,7 @@ func writeSynchronizationResultToDash0MonitoringStatus(
 				thirdPartyResourceReconciler.ShortName(),
 				qualifiedName,
 				itemsTotal,
-				successfullySynchronized,
+				successfullySynchronizedNames,
 				validationIssuesPerItem,
 				synchronizationErrorsPerItem,
 			))

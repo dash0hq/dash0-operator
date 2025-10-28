@@ -32,12 +32,25 @@ const (
 	extraNamespaceSyntheticChecks = "extra-namespace-synthetic-checks"
 	syntheticCheckName2           = "test-synthetic-check-2"
 	syntheticCheckApiBasePath     = "/api/synthetic-checks/"
+
+	syntheticCheckId     = "synthetic-check-id"
+	syntheticCheckOrigin = "synthetic-check-origin"
 )
 
 var (
 	defaultExpectedPathSyntheticCheck  = fmt.Sprintf("%s.*%s", syntheticCheckApiBasePath, "dash0-operator_.*_test-dataset_test-namespace_test-synthetic-check")
 	defaultExpectedPathSyntheticCheck2 = fmt.Sprintf("%s.*%s", syntheticCheckApiBasePath, "dash0-operator_.*_test-dataset_extra-namespace-synthetic-checks_test-synthetic-check-2")
 	leaderElectionAware                = NewLeaderElectionAwareMock(true)
+
+	syntheticCheckResponseWithIdOriginDataset = map[string]interface{}{
+		"metadata": map[string]interface{}{
+			"labels": map[string]interface{}{
+				"dash0.com/id":      syntheticCheckId,
+				"dash0.com/origin":  syntheticCheckOrigin,
+				"dash0.com/dataset": DatasetCustomTest,
+			},
+		},
+	}
 )
 
 var _ = Describe("The Synthetic Check controller", Ordered, func() {
@@ -182,6 +195,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 				syntheticCheckName,
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
+				true,
 				"",
 			)
 			Expect(gock.IsDone()).To(BeTrue())
@@ -216,6 +230,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 				syntheticCheckName,
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
+				true,
 				"",
 			)
 			Expect(gock.IsDone()).To(BeTrue())
@@ -269,6 +284,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 				syntheticCheckName,
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
+				false,
 				"",
 			)
 			Expect(gock.IsDone()).To(BeTrue())
@@ -300,6 +316,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 				syntheticCheckName,
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
+				true,
 				"",
 			)
 			Expect(gock.IsDone()).To(BeTrue())
@@ -335,7 +352,8 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 				syntheticCheckName,
 				dash0common.Dash0ApiResourceSynchronizationStatusFailed,
 				testStartedAt,
-				"unexpected status code 503 when synchronizing the check \"test-synthetic-check\": "+
+				false,
+				"unexpected status code 503 when trying to synchronize the check \"test-synthetic-check\": "+
 					"PUT https://api.dash0.com/api/synthetic-checks/"+
 					"dash0-operator_cluster-uid-test_test-dataset_test-namespace_test-synthetic-check?dataset=test-dataset, response body is {}",
 			)
@@ -373,6 +391,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 				syntheticCheckName,
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
+				true,
 				"",
 			)
 			Expect(gock.IsDone()).To(BeTrue())
@@ -427,6 +446,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 				syntheticCheckName,
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
+				true,
 				"",
 			)
 			verifySyntheticCheckSynchronizationStatus(
@@ -436,6 +456,7 @@ var _ = Describe("The Synthetic Check controller", Ordered, func() {
 				syntheticCheckName2,
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
+				true,
 				"",
 			)
 			Expect(gock.IsDone()).To(BeTrue())
@@ -502,7 +523,7 @@ func expectSyntheticCheckPutRequest(expectedPath string) {
 		MatchParam("dataset", DatasetCustomTest).
 		Times(1).
 		Reply(200).
-		JSON(map[string]string{})
+		JSON(syntheticCheckResponseWithIdOriginDataset)
 }
 
 func expectSyntheticCheckDeleteRequest(expectedPath string) {
@@ -612,6 +633,7 @@ func verifySyntheticCheckSynchronizationStatus(
 	name string,
 	expectedStatus dash0common.Dash0ApiResourceSynchronizationStatus,
 	testStartedAt time.Time,
+	expectIdOriginAndDataset bool,
 	expectedError string,
 ) {
 	Eventually(func(g Gomega) {
@@ -624,6 +646,11 @@ func verifySyntheticCheckSynchronizationStatus(
 		g.Expect(syntheticCheck.Status.SynchronizationStatus).To(Equal(expectedStatus))
 		g.Expect(syntheticCheck.Status.SynchronizedAt.Time).To(BeTemporally(">=", testStartedAt.Add(-1*time.Second)))
 		g.Expect(syntheticCheck.Status.SynchronizedAt.Time).To(BeTemporally("<=", time.Now()))
+		if expectIdOriginAndDataset {
+			g.Expect(syntheticCheck.Status.Dash0Id).To(Equal(syntheticCheckId))
+			g.Expect(syntheticCheck.Status.Dash0Origin).To(Equal(syntheticCheckOrigin))
+			g.Expect(syntheticCheck.Status.Dash0Dataset).To(Equal(DatasetCustomTest))
+		}
 		g.Expect(syntheticCheck.Status.SynchronizationError).To(ContainSubstring(expectedError))
 		// synthetic checks have no operator-side validations, all local validations are encoded in the CRD already
 		g.Expect(syntheticCheck.Status.ValidationIssues).To(BeNil())
