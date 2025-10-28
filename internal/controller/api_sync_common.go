@@ -66,6 +66,11 @@ type ApiSyncReconciler interface {
 		map[string][]string,
 		map[string]string,
 	)
+
+	ExtractIdOriginAndLinkFromResponseBody(
+		responseBytes []byte,
+		logger *logr.Logger,
+	) Dash0ApiObjectLabels
 }
 
 // OwnedResourceReconciler extends the ApiSyncReconciler interface with methods that are specific to resource types
@@ -80,6 +85,7 @@ type OwnedResourceReconciler interface {
 		context.Context,
 		client.Object,
 		dash0common.Dash0ApiResourceSynchronizationStatus,
+		Dash0ApiObjectLabels,
 		[]string,
 		string,
 		*logr.Logger,
@@ -93,6 +99,38 @@ type HttpRequestWithItemName struct {
 
 type Dash0ApiObjectWithOrigin struct {
 	Origin string `json:"origin"`
+}
+
+type Dash0ApiObjectWithMetadata struct {
+	Metadata Dash0ApiObjectMetadata `json:"metadata"`
+}
+
+type Dash0ApiObjectMetadata struct {
+	Labels Dash0ApiObjectLabels `json:"labels"`
+}
+
+type Dash0ApiObjectLabels struct {
+	Id      string `json:"dash0.com/id,omitempty"`
+	Origin  string `json:"dash0.com/origin,omitempty"`
+	Dataset string `json:"dash0.com/dataset"`
+}
+
+type Dash0DashboardResponse struct {
+	Metadata Dash0DashboardMetadata `json:"metadata"`
+}
+
+type Dash0DashboardMetadata struct {
+	Dash0Extensions Dash0ApiResponseWithOriginAsId `json:"dash0Extensions"`
+}
+
+type Dash0ApiResponseWithOriginAsId struct {
+	Origin  string `json:"id"`
+	Dataset string `json:"dataset"`
+}
+
+type SuccessfulSynchronizationResult struct {
+	ItemName string
+	Labels   Dash0ApiObjectLabels
 }
 
 type apiAction int
@@ -160,7 +198,7 @@ func synchronizeViaApiAndUpdateStatus(
 		// delete, that is, we ask MapResourceToHttpRequests to create HTTP DELETE requests. For most purposes it would
 		// be enough to ignore resources with that label entirely and issue no HTTP requests, but when a resource has
 		// been synchronized earlier, and then the dash0.com/enable=false is added after the fact, we need to delete the
-		// object in Dash0 to get back into a consistent state)
+		// object in Dash0 to get back into a consistent state.
 		action = delete
 	}
 
@@ -178,7 +216,7 @@ func synchronizeViaApiAndUpdateStatus(
 				dash0ApiResource,
 				ownedResource,
 				0,
-				[]string{},
+				nil,
 				map[string][]string{},
 				map[string]string{"*": err.Error()},
 				false,
@@ -213,7 +251,7 @@ func synchronizeViaApiAndUpdateStatus(
 			))
 	}
 
-	var successfullySynchronized []string
+	var successfullySynchronized []SuccessfulSynchronizationResult
 	var httpErrors map[string]string
 	if len(httpRequests) > 0 {
 		successfullySynchronized, httpErrors =
@@ -462,9 +500,13 @@ func fetchExistingOrigins(
 		logger.Error(err, "cannot create request to fetch existing resource origins")
 		return nil, err
 	} else if fetchExistingOriginsRequest != nil {
+		actionLabel := fmt.Sprintf("fetch existing origins: %s %s",
+			fetchExistingOriginsRequest.Method,
+			fetchExistingOriginsRequest.URL.String())
 		if responseBytes, err := executeSingleHttpRequestWithRetryAndReadBody(
 			apiSyncReconciler,
 			fetchExistingOriginsRequest,
+			actionLabel,
 			logger,
 		); err != nil {
 			logger.Error(err, "cannot fetch existing origins")
@@ -550,14 +592,23 @@ func executeAllHttpRequests(
 	apiSyncReconciler ApiSyncReconciler,
 	allRequests []HttpRequestWithItemName,
 	logger *logr.Logger,
-) ([]string, map[string]string) {
-	successfullySynchronized := make([]string, 0)
+) ([]SuccessfulSynchronizationResult, map[string]string) {
+	successfullySynchronized := make([]SuccessfulSynchronizationResult, 0)
 	httpErrors := make(map[string]string)
 	for _, req := range allRequests {
-		if err := executeSingleHttpRequestWithRetryAndDiscardBody(apiSyncReconciler, &req, logger); err != nil {
+		actionLabel := fmt.Sprintf("synchronize the %s \"%s\": %s %s",
+			apiSyncReconciler.ShortName(),
+			req.ItemName,
+			req.Request.Method,
+			req.Request.URL.String())
+		if responseBytes, err := executeSingleHttpRequestWithRetryAndReadBody(apiSyncReconciler, req.Request, actionLabel, logger); err != nil {
 			httpErrors[req.ItemName] = err.Error()
 		} else {
-			successfullySynchronized = append(successfullySynchronized, req.ItemName)
+			syncResponse := SuccessfulSynchronizationResult{
+				ItemName: req.ItemName,
+				Labels:   apiSyncReconciler.ExtractIdOriginAndLinkFromResponseBody(responseBytes, logger),
+			}
+			successfullySynchronized = append(successfullySynchronized, syncResponse)
 		}
 	}
 	if len(successfullySynchronized) == 0 {
@@ -566,108 +617,22 @@ func executeAllHttpRequests(
 	return successfullySynchronized, httpErrors
 }
 
-func executeSingleHttpRequestWithRetryAndDiscardBody(
-	apiSyncReconciler ApiSyncReconciler,
-	req *HttpRequestWithItemName,
-	logger *logr.Logger,
-) error {
-	logger.Info(
-		fmt.Sprintf(
-			"synchronizing %s \"%s\": %s %s in Dash0",
-			apiSyncReconciler.ShortName(),
-			req.ItemName,
-			req.Request.Method,
-			req.Request.URL.String(),
-		))
-
-	return util.RetryWithCustomBackoff(
-		fmt.Sprintf("http request to %s", req.Request.URL.String()),
-		func() error {
-			return executeSingleHttpRequestAndDiscardBody(
-				apiSyncReconciler,
-				req,
-				logger,
-			)
-		},
-		wait.Backoff{
-			Steps:    3,
-			Duration: apiSyncReconciler.GetHttpRetryDelay(),
-			Factor:   1.5,
-		},
-		true,
-		logger,
-	)
-}
-
-func executeSingleHttpRequestAndDiscardBody(
-	apiSyncReconciler ApiSyncReconciler,
-	req *HttpRequestWithItemName,
-	logger *logr.Logger,
-) error {
-	res, err := apiSyncReconciler.HttpClient().Do(req.Request)
-	if err != nil {
-		logger.Error(err,
-			fmt.Sprintf(
-				"unable to execute the HTTP request to synchronize the %s \"%s\": %s %s",
-				apiSyncReconciler.ShortName(),
-				req.ItemName,
-				req.Request.Method,
-				req.Request.URL.String(),
-			))
-		return util.NewRetryableErrorWithFlag(err, true)
-	}
-
-	isUnexpectedStatusCode := res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices
-	if req.Request.Method == http.MethodDelete {
-		isUnexpectedStatusCode = res.StatusCode != http.StatusNotFound && isUnexpectedStatusCode
-	}
-	if isUnexpectedStatusCode {
-		// HTTP status is not 2xx, treat this as an error
-		// convertNon2xxStatusCodeToError will also consume and close the response body
-		err = convertNon2xxStatusCodeToError(apiSyncReconciler, req, res)
-		retryableStatusCodeError := util.NewRetryableError(err)
-
-		if res.StatusCode >= http.StatusBadRequest && res.StatusCode < http.StatusInternalServerError {
-			// HTTP 4xx status codes are not retryable
-			retryableStatusCodeError.SetRetryable(false)
-			logger.Error(err, "unexpected status code")
-			return retryableStatusCodeError
-		} else {
-			// everything else, in particular HTTP 5xx status codes can be retried
-			retryableStatusCodeError.SetRetryable(true)
-			logger.Error(err, "unexpected status code, request might be retried")
-			return retryableStatusCodeError
-		}
-	}
-
-	// HTTP status code was 2xx, discard the response body and close it
-	defer func() {
-		_, _ = io.Copy(io.Discard, res.Body)
-		_ = res.Body.Close()
-	}()
-	return nil
-}
-
 func executeSingleHttpRequestWithRetryAndReadBody(
 	apiSyncReconciler ApiSyncReconciler,
 	req *http.Request,
+	actionLabel string,
 	logger *logr.Logger,
 ) ([]byte, error) {
-	logger.Info(
-		fmt.Sprintf(
-			"executing request to %s (%s)",
-			req.URL.String(),
-			apiSyncReconciler.ShortName(),
-		))
-
+	logger.Info(fmt.Sprintf("executing HTTP request to %s", actionLabel))
 	responseBody := &[]byte{}
 	if err := util.RetryWithCustomBackoff(
 		fmt.Sprintf("http request to %s", req.URL.String()),
 		func() error {
-			return executeSingleHttpRequestAndReturnBody(
+			return executeSingleHttpRequestAndReadBody(
 				apiSyncReconciler,
 				req,
 				responseBody,
+				actionLabel,
 				logger,
 			)
 		},
@@ -687,46 +652,29 @@ func executeSingleHttpRequestWithRetryAndReadBody(
 	}
 }
 
-func executeSingleHttpRequestAndReturnBody(
+func executeSingleHttpRequestAndReadBody(
 	apiSyncReconciler ApiSyncReconciler,
 	req *http.Request,
 	responseBody *[]byte,
+	actionLabel string,
 	logger *logr.Logger,
 ) error {
 	res, err := apiSyncReconciler.HttpClient().Do(req)
 	if err != nil {
 		logger.Error(err,
-			fmt.Sprintf(
-				"unable to execute the HTTP request for %s at %s",
-				apiSyncReconciler.ShortName(),
-				req.URL.String(),
-			))
+			fmt.Sprintf("unable to execute the HTTP request to %s", actionLabel))
 		return util.NewRetryableErrorWithFlag(err, true)
 	}
 
-	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices {
-		// HTTP status is not 2xx, treat this as an error
-		defer func() {
-			_ = res.Body.Close()
-		}()
-		errorResponseBody, readErr := io.ReadAll(res.Body)
-		if readErr != nil {
-			readBodyErr := fmt.Errorf("unable to read the API response payload after receiving status code %d "+
-				"when executing the HTTP request for %s at %s",
-				res.StatusCode,
-				apiSyncReconciler.ShortName(),
-				req.URL.String(),
-			)
-			return readBodyErr
-		}
-		statusCodeErr := fmt.Errorf(
-			"unexpected status code %d when executing the HTTP request for %s at %s, response body is %s",
-			res.StatusCode,
-			apiSyncReconciler.ShortName(),
-			req.URL.String(),
-			string(errorResponseBody),
-		)
-		retryableStatusCodeError := util.NewRetryableError(statusCodeErr)
+	isUnexpectedStatusCode := res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusMultipleChoices
+	if req.Method == http.MethodDelete {
+		isUnexpectedStatusCode = res.StatusCode != http.StatusNotFound && isUnexpectedStatusCode
+	}
+	if isUnexpectedStatusCode {
+		// HTTP status is not 2xx, treat this as an error.
+		// convertNon2xxStatusCodeToError will also consume and close the response body.
+		err = convertNon2xxStatusCodeToError(res, actionLabel)
+		retryableStatusCodeError := util.NewRetryableError(err)
 		if res.StatusCode >= http.StatusBadRequest && res.StatusCode < http.StatusInternalServerError {
 			// HTTP 4xx status codes are not retryable
 			retryableStatusCodeError.SetRetryable(false)
@@ -760,34 +708,27 @@ func executeSingleHttpRequestAndReturnBody(
 }
 
 func convertNon2xxStatusCodeToError(
-	apiSyncReconciler ApiSyncReconciler,
-	req *HttpRequestWithItemName,
 	res *http.Response,
+	actionLabel string,
 ) error {
 	defer func() {
 		_ = res.Body.Close()
 	}()
-	responseBody, readErr := io.ReadAll(res.Body)
+	errorResponseBody, readErr := io.ReadAll(res.Body)
 	if readErr != nil {
 		readBodyErr := fmt.Errorf("unable to read the API response payload after receiving status code %d when "+
-			"trying to synchronizing the %s \"%s\": %s %s",
+			"trying to %s",
 			res.StatusCode,
-			apiSyncReconciler.ShortName(),
-			req.ItemName,
-			req.Request.Method,
-			req.Request.URL.String(),
+			actionLabel,
 		)
 		return readBodyErr
 	}
 
 	statusCodeErr := fmt.Errorf(
-		"unexpected status code %d when synchronizing the %s \"%s\": %s %s, response body is %s",
+		"unexpected status code %d when trying to %s, response body is %s",
 		res.StatusCode,
-		apiSyncReconciler.ShortName(),
-		req.ItemName,
-		req.Request.Method,
-		req.Request.URL.String(),
-		string(responseBody),
+		actionLabel,
+		string(errorResponseBody),
 	)
 	return statusCodeErr
 }
@@ -804,7 +745,7 @@ func writeSynchronizationResult(
 	dash0ApiResource *unstructured.Unstructured,
 	ownedResource client.Object,
 	itemsTotal int,
-	successfullySynchronized []string,
+	successfullySynchronized []SuccessfulSynchronizationResult,
 	validationIssuesPerItem map[string][]string,
 	synchronizationErrorsPerItem map[string]string,
 	resourceHasBeenDeleted bool,
@@ -850,14 +791,15 @@ func writeSynchronizationResult(
 }
 
 // convertAndWriteSynchronizationResultForOwnedResource converts the generalized synchronization result (which could be
-// the result of synchronizing a third-party resource type with a 1-to-many relationship between K8s resource and Dash0 API
-// objects) to the specific case of a resource type owned by the Dash0 operator, which always has a 1-to-1 relationship
-// between K8s resource and Dash0 API object, and write the result to the status of the synchronized resource.
+// the result of synchronizing a third-party resource type with a 1-to-many relationship between K8s resource and Dash0
+// API objects) to the specific case of a resource type owned by the Dash0 operator, which always has a 1-to-1
+// relationship between K8s resource and Dash0 API object, and writes the result to the status of the synchronized
+// resource.
 func convertAndWriteSynchronizationResultForOwnedResource(
 	ctx context.Context,
 	ownedResourceReconciler OwnedResourceReconciler,
 	ownedResource client.Object,
-	successfullySynchronized []string,
+	successfullySynchronized []SuccessfulSynchronizationResult,
 	validationIssuesPerItem map[string][]string,
 	synchronizationErrorsPerItem map[string]string,
 	logger *logr.Logger,
@@ -866,6 +808,11 @@ func convertAndWriteSynchronizationResultForOwnedResource(
 	if len(successfullySynchronized) > 0 && len(validationIssuesPerItem) == 0 && len(synchronizationErrorsPerItem) == 0 {
 		// successfullySynchronized can always only be 0 or 1
 		status = dash0common.Dash0ApiResourceSynchronizationStatusSuccessful
+	}
+
+	apiObjectLabels := Dash0ApiObjectLabels{}
+	if len(successfullySynchronized) > 0 {
+		apiObjectLabels = successfullySynchronized[0].Labels
 	}
 
 	synchronizationError := ""
@@ -890,6 +837,7 @@ func convertAndWriteSynchronizationResultForOwnedResource(
 		ctx,
 		ownedResource,
 		status,
+		apiObjectLabels,
 		validationIssues,
 		synchronizationError,
 		logger,

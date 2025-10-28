@@ -32,6 +32,10 @@ import (
 	. "github.com/dash0hq/dash0-operator/test/util"
 )
 
+const (
+	dashboardOrigin = "dashboard-origin"
+)
+
 var (
 	persesDashboardCrd        *apiextensionsv1.CustomResourceDefinition
 	testQueuePersesDashboards = workqueue.NewTypedWithConfig(workqueue.TypedQueueConfig[ThirdPartyResourceSyncJob]{
@@ -44,8 +48,25 @@ var (
 
 	defaultExpectedPersesSyncResult = dash0common.PersesDashboardSynchronizationResults{
 		SynchronizationStatus: dash0common.ThirdPartySynchronizationStatusSuccessful,
+		Dash0Origin:           dashboardOrigin,
+		Dash0Dataset:          DatasetCustomTest,
 		SynchronizationError:  "",
 		ValidationIssues:      nil,
+	}
+
+	defaultExpectedPersesSyncResultNoOriginAndDataset = dash0common.PersesDashboardSynchronizationResults{
+		SynchronizationStatus: dash0common.ThirdPartySynchronizationStatusSuccessful,
+		SynchronizationError:  "",
+		ValidationIssues:      nil,
+	}
+
+	dashboardResponseWithOriginAndDataset = map[string]interface{}{
+		"metadata": map[string]interface{}{
+			"dash0Extensions": map[string]interface{}{
+				"id":      dashboardOrigin,
+				"dataset": DatasetCustomTest,
+			},
+		},
 	}
 )
 
@@ -419,7 +440,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			verifyPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
 				ctx,
 				k8sClient,
-				defaultExpectedPersesSyncResult,
+				defaultExpectedPersesSyncResultNoOriginAndDataset,
 			)
 			Expect(gock.IsDone()).To(BeTrue())
 		})
@@ -442,7 +463,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			verifyPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
 				ctx,
 				k8sClient,
-				defaultExpectedPersesSyncResult,
+				defaultExpectedPersesSyncResultNoOriginAndDataset,
 			)
 			Expect(gock.IsDone()).To(BeTrue())
 		})
@@ -465,7 +486,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 			verifyPersesDashboardSynchronizationResultHasBeenWrittenToMonitoringResourceStatus(
 				ctx,
 				k8sClient,
-				defaultExpectedPersesSyncResult,
+				defaultExpectedPersesSyncResultNoOriginAndDataset,
 			)
 			Expect(gock.IsDone()).To(BeTrue())
 		})
@@ -520,7 +541,7 @@ var _ = Describe("The Perses dashboard controller", Ordered, func() {
 				k8sClient,
 				dash0common.PersesDashboardSynchronizationResults{
 					SynchronizationStatus: dash0common.ThirdPartySynchronizationStatusFailed,
-					SynchronizationError:  "^unexpected status code 503 when synchronizing the dashboard \"test-dashboard\": PUT https://api.dash0.com/api/dashboards/dash0-operator_.*_test-dataset_test-namespace_test-dashboard\\?dataset=test-dataset, response body is {}\n$",
+					SynchronizationError:  "^unexpected status code 503 when trying to synchronize the dashboard \"test-dashboard\": PUT https://api.dash0.com/api/dashboards/dash0-operator_.*_test-dataset_test-namespace_test-dashboard\\?dataset=test-dataset, response body is {}\n$",
 					ValidationIssues:      nil,
 				},
 			)
@@ -550,7 +571,7 @@ func expectDashboardPutRequest(expectedPath string) {
 		MatchParam("dataset", DatasetCustomTest).
 		Times(1).
 		Reply(200).
-		JSON(map[string]string{})
+		JSON(dashboardResponseWithOriginAndDataset)
 }
 
 func expectDashboardDeleteRequest(expectedPath string) {

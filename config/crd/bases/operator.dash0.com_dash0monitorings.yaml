@@ -617,6 +617,10 @@ spec:
               persesDashboardSynchronizationResults:
                 additionalProperties:
                   properties:
+                    dash0Dataset:
+                      type: string
+                    dash0Origin:
+                      type: string
                     synchronizationError:
                       type: string
                     synchronizationStatus:
@@ -681,10 +685,15 @@ spec:
                     synchronizedAt:
                       format: date-time
                       type: string
-                    synchronizedRules:
-                      items:
-                        type: string
-                      type: array
+                    synchronizedRulesAttributes:
+                      additionalProperties:
+                        properties:
+                          dash0Dataset:
+                            type: string
+                          dash0Origin:
+                            type: string
+                        type: object
+                      type: object
                     synchronizedRulesTotal:
                       type: integer
                   required:
@@ -1364,6 +1373,10 @@ spec:
               persesDashboardSynchronizationResults:
                 additionalProperties:
                   properties:
+                    dash0Dataset:
+                      type: string
+                    dash0Origin:
+                      type: string
                     synchronizationError:
                       type: string
                     synchronizationStatus:
@@ -1517,10 +1530,15 @@ spec:
                     synchronizedAt:
                       format: date-time
                       type: string
-                    synchronizedRules:
-                      items:
-                        type: string
-                      type: array
+                    synchronizedRulesAttributes:
+                      additionalProperties:
+                        properties:
+                          dash0Dataset:
+                            type: string
+                          dash0Origin:
+                            type: string
+                        type: object
+                      type: object
                     synchronizedRulesTotal:
                       type: integer
                   required:

@@ -266,6 +266,7 @@ func (r *SyntheticCheckReconciler) Reconcile(ctx context.Context, req reconcile.
 				ctx,
 				syntheticCheckResource,
 				dash0common.Dash0ApiResourceSynchronizationStatusFailed,
+				Dash0ApiObjectLabels{},
 				nil,
 				msg,
 				&logger,
@@ -370,10 +371,28 @@ func (r *SyntheticCheckReconciler) renderSyntheticCheckUrl(preconditionChecksRes
 	)
 }
 
+func (r *SyntheticCheckReconciler) ExtractIdOriginAndLinkFromResponseBody(
+	responseBytes []byte,
+	logger *logr.Logger,
+) Dash0ApiObjectLabels {
+	objectWithMetadata := Dash0ApiObjectWithMetadata{}
+	if err := json.Unmarshal(responseBytes, &objectWithMetadata); err != nil {
+		logger.Error(
+			err,
+			"cannot parse response, will not extract the synchronized object's ID or origin",
+			"response",
+			string(responseBytes),
+		)
+		return Dash0ApiObjectLabels{}
+	}
+	return objectWithMetadata.Metadata.Labels
+}
+
 func (r *SyntheticCheckReconciler) WriteSynchronizationResultToSynchronizedResource(
 	ctx context.Context,
 	synchronizedResource client.Object,
 	status dash0common.Dash0ApiResourceSynchronizationStatus,
+	apiObjectLabels Dash0ApiObjectLabels,
 	validationIssues []string,
 	synchronizationError string,
 	logger *logr.Logger,
@@ -381,6 +400,15 @@ func (r *SyntheticCheckReconciler) WriteSynchronizationResultToSynchronizedResou
 	syntheticCheck := synchronizedResource.(*dash0v1alpha1.Dash0SyntheticCheck)
 	syntheticCheck.Status.SynchronizationStatus = status
 	syntheticCheck.Status.SynchronizedAt = metav1.Time{Time: time.Now()}
+	if apiObjectLabels.Id != "" {
+		syntheticCheck.Status.Dash0Id = apiObjectLabels.Id
+	}
+	if apiObjectLabels.Origin != "" {
+		syntheticCheck.Status.Dash0Origin = apiObjectLabels.Origin
+	}
+	if apiObjectLabels.Dataset != "" {
+		syntheticCheck.Status.Dash0Dataset = apiObjectLabels.Dataset
+	}
 	syntheticCheck.Status.SynchronizationError = synchronizationError
 	syntheticCheck.Status.ValidationIssues = validationIssues
 	if err := r.Status().Update(ctx, syntheticCheck); err != nil {

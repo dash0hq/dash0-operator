@@ -266,6 +266,7 @@ func (r *ViewReconciler) Reconcile(ctx context.Context, req reconcile.Request) (
 				ctx,
 				viewResource,
 				dash0common.Dash0ApiResourceSynchronizationStatusFailed,
+				Dash0ApiObjectLabels{},
 				nil,
 				msg,
 				&logger,
@@ -370,10 +371,28 @@ func (r *ViewReconciler) renderViewUrl(preconditionChecksResult *preconditionVal
 	)
 }
 
+func (r *ViewReconciler) ExtractIdOriginAndLinkFromResponseBody(
+	responseBytes []byte,
+	logger *logr.Logger,
+) Dash0ApiObjectLabels {
+	objectWithMetadata := Dash0ApiObjectWithMetadata{}
+	if err := json.Unmarshal(responseBytes, &objectWithMetadata); err != nil {
+		logger.Error(
+			err,
+			"cannot parse response, will not extract the synchronized object's ID or origin",
+			"response",
+			string(responseBytes),
+		)
+		return Dash0ApiObjectLabels{}
+	}
+	return objectWithMetadata.Metadata.Labels
+}
+
 func (r *ViewReconciler) WriteSynchronizationResultToSynchronizedResource(
 	ctx context.Context,
 	synchronizedResource client.Object,
 	status dash0common.Dash0ApiResourceSynchronizationStatus,
+	apiObjectLabels Dash0ApiObjectLabels,
 	validationIssues []string,
 	synchronizationError string,
 	logger *logr.Logger,
@@ -381,6 +400,15 @@ func (r *ViewReconciler) WriteSynchronizationResultToSynchronizedResource(
 	view := synchronizedResource.(*dash0v1alpha1.Dash0View)
 	view.Status.SynchronizationStatus = status
 	view.Status.SynchronizedAt = metav1.Time{Time: time.Now()}
+	if apiObjectLabels.Id != "" {
+		view.Status.Dash0Id = apiObjectLabels.Id
+	}
+	if apiObjectLabels.Origin != "" {
+		view.Status.Dash0Origin = apiObjectLabels.Origin
+	}
+	if apiObjectLabels.Dataset != "" {
+		view.Status.Dash0Dataset = apiObjectLabels.Dataset
+	}
 	view.Status.SynchronizationError = synchronizationError
 	view.Status.ValidationIssues = validationIssues
 	if err := r.Status().Update(ctx, view); err != nil {

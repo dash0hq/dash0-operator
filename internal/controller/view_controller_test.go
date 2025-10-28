@@ -31,12 +31,25 @@ const (
 	extraNamespaceViews = "extra-namespace-views"
 	viewName2           = "test-view-2"
 	viewApiBasePath     = "/api/views/"
+
+	viewId     = "view-id"
+	viewOrigin = "view-origin"
 )
 
 var (
 	defaultExpectedPathView  = fmt.Sprintf("%s.*%s", viewApiBasePath, "dash0-operator_.*_test-dataset_test-namespace_test-view")
 	defaultExpectedPathView2 = fmt.Sprintf("%s.*%s", viewApiBasePath, "dash0-operator_.*_test-dataset_extra-namespace-views_test-view-2")
 	viewLeaderElectionAware  = NewLeaderElectionAwareMock(true)
+
+	viewResponseWithIdOriginDataset = map[string]interface{}{
+		"metadata": map[string]interface{}{
+			"labels": map[string]interface{}{
+				"dash0.com/id":      viewId,
+				"dash0.com/origin":  viewOrigin,
+				"dash0.com/dataset": DatasetCustomTest,
+			},
+		},
+	}
 )
 
 var _ = Describe("The View controller", Ordered, func() {
@@ -181,6 +194,7 @@ var _ = Describe("The View controller", Ordered, func() {
 				viewName,
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
+				true,
 				"",
 			)
 			Expect(gock.IsDone()).To(BeTrue())
@@ -215,6 +229,7 @@ var _ = Describe("The View controller", Ordered, func() {
 				viewName,
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
+				true,
 				"",
 			)
 			Expect(gock.IsDone()).To(BeTrue())
@@ -267,6 +282,7 @@ var _ = Describe("The View controller", Ordered, func() {
 				viewName,
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
+				false,
 				"",
 			)
 			Expect(gock.IsDone()).To(BeTrue())
@@ -297,6 +313,7 @@ var _ = Describe("The View controller", Ordered, func() {
 				viewName,
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
+				true,
 				"",
 			)
 			Expect(gock.IsDone()).To(BeTrue())
@@ -332,7 +349,8 @@ var _ = Describe("The View controller", Ordered, func() {
 				viewName,
 				dash0common.Dash0ApiResourceSynchronizationStatusFailed,
 				testStartedAt,
-				"unexpected status code 503 when synchronizing the view \"test-view\": "+
+				false,
+				"unexpected status code 503 when trying to synchronize the view \"test-view\": "+
 					"PUT https://api.dash0.com/api/views/"+
 					"dash0-operator_cluster-uid-test_test-dataset_test-namespace_test-view?dataset=test-dataset, response body is {}",
 			)
@@ -347,7 +365,7 @@ var _ = Describe("The View controller", Ordered, func() {
 				MatchParam("dataset", DatasetCustomTest).
 				Times(2).
 				Reply(503).
-				JSON(map[string]string{})
+				JSON(viewResponseWithIdOriginDataset)
 			expectViewPutRequest(defaultExpectedPathView)
 			defer gock.Off()
 
@@ -370,6 +388,7 @@ var _ = Describe("The View controller", Ordered, func() {
 				viewName,
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
+				true,
 				"",
 			)
 			Expect(gock.IsDone()).To(BeTrue())
@@ -424,6 +443,7 @@ var _ = Describe("The View controller", Ordered, func() {
 				viewName,
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
+				true,
 				"",
 			)
 			verifyViewSynchronizationStatus(
@@ -433,6 +453,7 @@ var _ = Describe("The View controller", Ordered, func() {
 				viewName2,
 				dash0common.Dash0ApiResourceSynchronizationStatusSuccessful,
 				testStartedAt,
+				true,
 				"",
 			)
 			Expect(gock.IsDone()).To(BeTrue())
@@ -499,7 +520,7 @@ func expectViewPutRequest(expectedPath string) {
 		MatchParam("dataset", DatasetCustomTest).
 		Times(1).
 		Reply(200).
-		JSON(map[string]string{})
+		JSON(viewResponseWithIdOriginDataset)
 }
 
 func expectViewDeleteRequest(expectedPath string) {
@@ -594,6 +615,7 @@ func verifyViewSynchronizationStatus(
 	name string,
 	expectedStatus dash0common.Dash0ApiResourceSynchronizationStatus,
 	testStartedAt time.Time,
+	expectIdOriginAndDataset bool,
 	expectedError string,
 ) {
 	Eventually(func(g Gomega) {
@@ -606,6 +628,11 @@ func verifyViewSynchronizationStatus(
 		g.Expect(view.Status.SynchronizationStatus).To(Equal(expectedStatus))
 		g.Expect(view.Status.SynchronizedAt.Time).To(BeTemporally(">=", testStartedAt.Add(-1*time.Second)))
 		g.Expect(view.Status.SynchronizedAt.Time).To(BeTemporally("<=", time.Now()))
+		if expectIdOriginAndDataset {
+			g.Expect(view.Status.Dash0Id).To(Equal(viewId))
+			g.Expect(view.Status.Dash0Origin).To(Equal(viewOrigin))
+			g.Expect(view.Status.Dash0Dataset).To(Equal(DatasetCustomTest))
+		}
 		g.Expect(view.Status.SynchronizationError).To(ContainSubstring(expectedError))
 		// views have no operator-side validations, all local validations are encoded in the CRD already
 		g.Expect(view.Status.ValidationIssues).To(BeNil())

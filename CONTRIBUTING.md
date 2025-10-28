@@ -228,6 +228,8 @@ If you want to report telemetry to a Dash0 backend, set `DASH0_AUTHORIZATION_TOK
     * `DEPLOY_SYNTHETIC_CHECK`: Set to "true" to deploy a synthetic check resource that will be synchronized to Dash0
       via the Dash0 API.
       This defaults to "false".
+    * `DEPLOY_VIEW`: Set to "true" to deploy a view resource that will be synchronized to Dash0 via the Dash0 API.
+      This defaults to "false".
     * `FILELOG_OFFSETS_PVC`: Use a persistent volume claim to store filelog offsets, instead of the default config map
       based storage.
     * `FILELOG_OFFSETS_HOST_PATH_VOLUME`: Use a `hostPath` volume to store filelog offsets, instead of the default

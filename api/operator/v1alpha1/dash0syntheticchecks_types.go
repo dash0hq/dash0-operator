@@ -267,8 +267,14 @@ type NotificationChannelID string
 type Dash0SyntheticCheckStatus struct {
 	SynchronizationStatus dash0common.Dash0ApiResourceSynchronizationStatus `json:"synchronizationStatus"`
 	SynchronizedAt        metav1.Time                                       `json:"synchronizedAt"`
-	SynchronizationError  string                                            `json:"synchronizationError,omitempty"`
-	ValidationIssues      []string                                          `json:"validationIssues,omitempty"`
+	// +kubebuilder:validation:Optional
+	Dash0Id string `json:"dash0Id,omitempty"`
+	// +kubebuilder:validation:Optional
+	Dash0Origin string `json:"dash0Origin,omitempty"`
+	// +kubebuilder:validation:Optional
+	Dash0Dataset         string   `json:"dash0Dataset,omitempty"`
+	SynchronizationError string   `json:"synchronizationError,omitempty"`
+	ValidationIssues     []string `json:"validationIssues,omitempty"`
 }
 
 // Dash0SyntheticCheckList contains a list of Dash0SyntheticCheck
