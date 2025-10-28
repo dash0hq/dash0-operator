@@ -13,7 +13,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/h2non/gock v1.2.0
 	github.com/joho/godotenv v1.5.1
-	github.com/onsi/ginkgo/v2 v2.26.0
+	github.com/onsi/ginkgo/v2 v2.27.2
 	github.com/onsi/gomega v1.38.2
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/ottl v0.138.0
 	github.com/perses/perses-operator v0.2.0
@@ -134,7 +134,6 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.38.0 // indirect
 	go.opentelemetry.io/otel/trace v1.38.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.7.1 // indirect
-	go.uber.org/automaxprocs v1.6.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/crypto v0.42.0 // indirect
