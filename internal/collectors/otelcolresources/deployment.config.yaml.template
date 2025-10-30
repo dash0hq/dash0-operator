@@ -164,7 +164,7 @@ exporters:
 {{ else if .DevelopmentMode }}
   debug: {}
 {{- end }}
-{{- range $i, $exporter := .Exporters }}
+{{- range $i, $exporter := .ExportersDefault }}
   {{ $exporter.Name }}:
     endpoint: "{{ $exporter.Endpoint }}"
     {{- if $exporter.Insecure }}
@@ -217,7 +217,7 @@ service:
       {{- if (or .DevelopmentMode .DebugVerbosityDetailed) }}
       - debug
       {{- end }}
-      {{- range $i, $exporter := .Exporters }}
+      {{- range $i, $exporter := .ExportersDefault }}
       - {{ $exporter.Name }}
       {{- end }}
 
