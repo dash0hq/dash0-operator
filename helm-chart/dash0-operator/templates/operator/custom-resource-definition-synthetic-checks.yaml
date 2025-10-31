@@ -56,6 +56,11 @@ spec:
                 type: object
               enabled:
                 type: boolean
+              labels:
+                additionalProperties:
+                  type: string
+                description: Custom labels that can be added to a synthetic check
+                type: object
               notifications:
                 description: Dash0SyntheticCheckNotifications defines notification
                   configuration
