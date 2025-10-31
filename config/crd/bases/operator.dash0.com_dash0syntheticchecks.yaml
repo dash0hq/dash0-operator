@@ -51,6 +51,10 @@ spec:
                 type: object
               enabled:
                 type: boolean
+              labels:
+                additionalProperties:
+                  type: string
+                type: object
               notifications:
                 description: Dash0SyntheticCheckNotifications defines notification
                   configuration
@@ -405,6 +409,7 @@ spec:
             required:
             - display
             - enabled
+            - labels
             - notifications
             - plugin
             - retries
