@@ -409,7 +409,6 @@ spec:
             required:
             - display
             - enabled
-            - labels
             - notifications
             - plugin
             - retries

@@ -42,7 +42,7 @@ type Dash0SyntheticCheckSpec struct {
 	// +kubebuilder:validation:Required
 	Enabled bool `json:"enabled"`
 
-	Labels map[string]string `json:"labels"`
+	Labels map[string]string `json:"labels,omitempty"`
 }
 
 // Dash0SyntheticCheckDisplay defines the display configuration
