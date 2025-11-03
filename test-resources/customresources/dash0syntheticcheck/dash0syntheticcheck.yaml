@@ -49,7 +49,6 @@ spec:
     strategy: all_locations
   display:
     name: Google.com
-
   labels:
     team: backend
     priority: p1
