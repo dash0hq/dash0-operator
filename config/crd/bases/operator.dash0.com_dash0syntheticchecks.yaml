@@ -51,6 +51,12 @@ spec:
                 type: object
               enabled:
                 type: boolean
+              labels:
+                additionalProperties:
+                  type: string
+                description: Custom labels that can be used for notification routing
+                  when a synthetic check fails.
+                type: object
               notifications:
                 description: Dash0SyntheticCheckNotifications defines notification
                   configuration
