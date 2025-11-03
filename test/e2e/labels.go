@@ -63,9 +63,9 @@ func expectedImageLabel(image ImageSpec, defaultImageName string) (string, bool)
 	// If the repository has been unset explicitly via the respective environment variable, the default image from the
 	// helm chart will be used, so we need to test against that.
 	if image.repository == "" {
-		return util.ImageNameToLabel(defaultImageName), false
+		return util.ImageRefToLabel(defaultImageName), false
 	}
-	return util.ImageNameToLabel(renderFullyQualifiedImageName(image)), true
+	return util.ImageRefToLabel(renderFullyQualifiedImageName(image)), true
 }
 
 func renderFullyQualifiedImageName(image ImageSpec) string {

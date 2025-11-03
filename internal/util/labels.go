@@ -4,6 +4,7 @@
 package util
 
 import (
+	"regexp"
 	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -52,8 +53,8 @@ func AddInstrumentationLabels(
 	} else {
 		addLabel(objectMeta, instrumentedLabelKey, string(instrumentedLabelValueUnsuccessful))
 	}
-	addLabel(objectMeta, operatorImageLabelKey, ImageNameToLabel(clusterInstrumentationConfig.OperatorImage))
-	addLabel(objectMeta, initContainerImageLabelKey, ImageNameToLabel(clusterInstrumentationConfig.InitContainerImage))
+	addLabel(objectMeta, operatorImageLabelKey, ImageRefToLabel(clusterInstrumentationConfig.OperatorImage))
+	addLabel(objectMeta, initContainerImageLabelKey, ImageRefToLabel(clusterInstrumentationConfig.InitContainerImage))
 	addLabel(objectMeta, instrumentedByLabelKey, string(actor))
 }
 
@@ -95,8 +96,8 @@ func HasBeenInstrumentedSuccessfullyByThisVersion(
 	if !operatorImageIsSet || !initContainerImageIsSet {
 		return false
 	}
-	expectedOperatorImageLabel := ImageNameToLabel(images.OperatorImage)
-	expectedInitContainerImageLabel := ImageNameToLabel(images.InitContainerImage)
+	expectedOperatorImageLabel := ImageRefToLabel(images.OperatorImage)
+	expectedInitContainerImageLabel := ImageRefToLabel(images.InitContainerImage)
 	return operatorImageValue == expectedOperatorImageLabel && initContainerImageValue == expectedInitContainerImageLabel
 }
 
@@ -169,26 +170,31 @@ func CheckAndDeleteIgnoreOnceLabel(objectMeta *metav1.ObjectMeta) bool {
 	return false
 }
 
-func ImageNameToLabel(imageName string) string {
-	// See https://github.com/distribution/reference/blob/e60f3474a5da95391815dacd158f9dba50ef7df4/regexp.go#L136 ->
-	// referencePat for parsing logic for image names, if required. In particular, if we see longer image names out in
-	// the wild (due to longer registry names), we might want to prefer the tag/version over the registry name when
-	// truncating. For now, we conveniently ignore this problem.
-	label :=
-		strings.ReplaceAll(
-			strings.ReplaceAll(
-				strings.ReplaceAll(
-					imageName,
-					"@", "_",
-				),
-				"/", "_",
-			),
-			":", "_",
-		)
-	if len(label) <= 63 {
-		return label
+// ImageRefToLabel takes an image ref as input and returns a string that conforms to the spec of k8s labels:
+// https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#syntax-and-character-set
+// If the image ref is longer than 63 characters, the registry part is dropped and the remaining part is truncated
+// to 63 characters and it is ensured that the string ends with an alphanumeric character.
+// Characters not supported in k8s labels are converted to underscores.
+func ImageRefToLabel(imageRef string) string {
+	if imageRef == "" {
+		return imageRef
 	}
-	return label[:63]
+
+	const maxLen = 63
+	if len(imageRef) > maxLen {
+		lastSlash := strings.LastIndex(imageRef, "/")
+		if lastSlash != -1 {
+			imageRef = imageRef[lastSlash+1:]
+		}
+		imageRef = imageRef[:maxLen]
+	}
+
+	regex := regexp.MustCompile(`[^a-zA-Z0-9._-]`)
+	imageRef = regex.ReplaceAllString(imageRef, "_")
+
+	imageRef = strings.TrimRight(imageRef, "-._")
+
+	return imageRef
 }
 
 func readLabel(objectMeta *metav1.ObjectMeta, key string) (string, bool) {
