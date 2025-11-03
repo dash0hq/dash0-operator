@@ -42,6 +42,7 @@ type Dash0SyntheticCheckSpec struct {
 	// +kubebuilder:validation:Required
 	Enabled bool `json:"enabled"`
 
+	// Custom labels that can be used for notification routing when a synthetic check fails.
 	Labels map[string]string `json:"labels,omitempty"`
 }
 
