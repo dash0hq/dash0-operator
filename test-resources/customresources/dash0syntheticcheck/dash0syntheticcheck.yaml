@@ -44,8 +44,8 @@ spec:
   schedule:
     interval: 1m
     locations:
-      - gcp-europe-west3
-      - gcp-us-west1
+      - de-frankfurt
+      - us-oregon
     strategy: all_locations
   display:
     name: Google.com
