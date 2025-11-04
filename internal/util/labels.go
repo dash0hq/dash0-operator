@@ -186,6 +186,8 @@ func ImageRefToLabel(imageRef string) string {
 		if lastSlash != -1 {
 			imageRef = imageRef[lastSlash+1:]
 		}
+	}
+	if len(imageRef) > maxLen {
 		imageRef = imageRef[:maxLen]
 	}
 
