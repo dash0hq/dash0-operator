@@ -3,5 +3,5 @@
 
 # one base image per line
 eclipse-temurin:25-jdk-alpine
-eclipse-temurin:21-jdk-alpine
-eclipse-temurin:17-jdk-alpine
+eclipse-temurin:21-jdk-noble
+eclipse-temurin:17-jdk-noble
