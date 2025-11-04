@@ -41,7 +41,7 @@ Usage
 * `npm run test` to run all tests.
 * `ARCHITECTURES=arm64,x86_64 npm run test` to run tests for a subset of CPU architectures.
 * `RUNTIMES=c,dotnet,jvm,node npm run test` to run tests for a subset of runtimes.
-* `RUNTIMES=node,jvm BASE_IMAGES=openjdk:24-jdk-bookworm,openjdk:21-jdk-bookworm npm run test` to run tests for a subset
+* `RUNTIMES=node,jvm BASE_IMAGES=eclipse-temurin:25-jdk-alpine,eclipse-temurin:21-jdk-alpine npm run test` to run tests for a subset
   of runtimes and only for a subset of base images. Note that base images names are usually different per runtime, see
   the `base-images` file in the respective runtime directory.
 * `TEST_CASES=non-existing-env-var-return-null,otel-resource-attributes-already-set, npm run test` to only run tests
