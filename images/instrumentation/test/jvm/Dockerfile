@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 ARG instrumentation_image=dash0-instrumentation:latest
-ARG base_image=openjdk:24-jdk-bookworm
+ARG base_image=eclipse-temurin:25-jdk-alpine
 
 FROM ${instrumentation_image} AS init
 

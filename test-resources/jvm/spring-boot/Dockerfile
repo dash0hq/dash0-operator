@@ -3,7 +3,7 @@
 
 ARG JDK_VERSION=24
 
-FROM openjdk:${JDK_VERSION}-jdk-bookworm
+FROM eclipse-temurin:${JDK_VERSION}-jdk-alpine
 
 COPY . .
 COPY .m2 /m2
