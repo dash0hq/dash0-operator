@@ -17,7 +17,7 @@ RUN zig build -Dcpu-arch=${TARGETARCH} --prominent-compile-errors --summary none
 # injector_build_end - do not remove this line (see images/instrumentation/injector/test/scripts/test-all.sh)
 
 # download OpenTelemetry Java agent
-FROM eclipse-temurin:25-jdk-alpine AS build-jvm
+FROM eclipse-temurin:25-jdk-noble AS build-jvm
 COPY jvm /dash0-init-container/instrumentation/jvm
 WORKDIR /dash0-init-container/instrumentation/jvm
 RUN ./mvnw dependency:copy-dependencies \
