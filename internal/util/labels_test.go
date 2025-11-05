@@ -70,5 +70,17 @@ var _ = Describe("labels", func() {
 			)
 			Expect(labelFromLongImageName).To(HaveLen(62))
 		})
+
+		It("should truncate long image names and leave the repo and tag unchanged if those parts are < 63 chars", func() {
+			labelFromLongImageName := ImageRefToLabel(
+				"some.very.long.registry.that.needs.to.be.truncated.io/dash0hq/operator-controller@latest",
+			)
+			Expect(labelFromLongImageName).To(
+				Equal(
+					"operator-controller_latest",
+				),
+			)
+			Expect(len(labelFromLongImageName)).To(BeNumerically("<", 63))
+		})
 	})
 })
