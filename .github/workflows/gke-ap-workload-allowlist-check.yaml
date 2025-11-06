@@ -43,7 +43,5 @@ jobs:
       # Note: We could potentially optimize this check by only running it when the Helm chart has changed.
 
       - name: run check
-        env:
-          GKE_AP_WORKLOAD_ALLOWLIST_CHECK_KUBECTX: TODO-which-test-cluster-should-we-use
         run: |-
           .github/workflows/scripts/gke-ap-workload-allowlist-check.sh

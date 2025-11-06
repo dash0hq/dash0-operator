@@ -11,13 +11,6 @@ set -xeuo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")"/../../..
 
-kubectx="${GKE_AP_WORKLOAD_ALLOWLIST_CHECK_KUBECTX:-}"
-
-if [[ -z "$kubectx" ]]; then
-  echo The mandatory environment variable GKE_AP_WORKLOAD_ALLOWLIST_CHECK_KUBECTX is not set. Terminating.
-  exit 1
-fi
-
 namespace=gke-ap-workload-allowlist-check
 helm_release_name=dash0-operator
 image_tag=latest
@@ -26,24 +19,23 @@ cleanup() {
   set +e
 
   helm uninstall \
-    --kube-context "$kubectx" \
     --namespace "$namespace" \
     --ignore-not-found \
     --wait \
     "$helm_release_name"
 
   # If the workload allow list for the pre-delete hook does not match, it might stick around as a Zombie job, force-delete it.
-  kubectl --context "$kubectx" delete job --namespace "$namespace" --ignore-not-found "${helm_release_name}-pre-delete" --wait --grace-period=0 --force
+  kubectl delete job --namespace "$namespace" --ignore-not-found "${helm_release_name}-pre-delete" --wait --grace-period=0 --force
 
-  kubectl --context "$kubectx" delete namespace "$namespace" --ignore-not-found --grace-period=0 --force
+  kubectl delete namespace "$namespace" --ignore-not-found --grace-period=0 --force
 }
 
 # Install a trap to make sure we clean up after ourselves, no matter the outcome of the check.
 trap cleanup HUP INT TERM EXIT
 
 # Create the namespace and a dummy auth token secret.
-kubectl --context "$kubectx" create namespace "$namespace"
-kubectl --context "$kubectx" create secret \
+kubectl create namespace "$namespace"
+kubectl create secret \
   generic \
   dash0-authorization-secret \
   --namespace "$namespace" \
@@ -51,7 +43,6 @@ kubectl --context "$kubectx" create secret \
 
 # Try to install the Helm chart with a typical set of configuration values:
 helm install \
-  --kube-context "$kubectx" \
   --namespace "$namespace" \
   --set operator.gke.autopilot.enabled=true \
   --set operator.dash0Export.enabled=true \
@@ -69,16 +60,15 @@ helm install \
   dash0-operator helm-chart/dash0-operator
 
 # Wait for the OTel collector workloads to become ready, this ensures that the WorkloadAllowlists for those also match.
-kubectl --context "$kubectx" \
+kubectl \
   rollout status \
   daemonset "${helm_release_name}-opentelemetry-collector-agent-daemonset" \
   --namespace "$namespace" \
   --timeout 90s
-kubectl --context "$kubectx" \
+kubectl \
   rollout status \
   deployment "${helm_release_name}-cluster-metrics-collector-deployment" \
   --namespace "$namespace" \
   --timeout 60s
 
 echo "helm install has been successful"
-
