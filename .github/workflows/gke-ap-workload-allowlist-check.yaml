@@ -1,0 +1,12 @@
+name: GKE Autopilot WorkloadAllowlist Check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check_workload_allowlists:
+    name: Check WorkloadAllowlists
+    runs-on: ubuntu-latest
+
+    steps:
+      - run: echo "ohai"
