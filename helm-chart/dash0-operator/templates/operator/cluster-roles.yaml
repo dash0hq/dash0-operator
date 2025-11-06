@@ -369,6 +369,14 @@ rules:
   - get
   - list
   - watch
+
+# Permissions required for cleaning up the Dash0 AllowlistSynchronizer in GKE Autopilot clusters.
+- apiGroups:
+  - auto.gke.io
+  resources:
+  - allowlistsynchronizers
+  verbs:
+  - delete
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

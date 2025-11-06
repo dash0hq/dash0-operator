@@ -12,8 +12,10 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/dash0hq/dash0-operator/images/pkg/common"
 	"github.com/dash0hq/dash0-operator/internal/util"
@@ -731,4 +733,45 @@ func FindVolumeMountByName(volumeMounts []corev1.VolumeMount, name string) *core
 		}
 	}
 	return nil
+}
+
+// VerifyResourceExists checks whether client.Get for a specific resource returns a result. Use namespace="" for
+// cluster-scoped resources.
+func VerifyResourceExists(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	expectedName string,
+	receiver client.Object,
+) client.Object {
+	key := client.ObjectKey{Name: expectedName}
+	if namespace != "" {
+		key.Namespace = namespace
+	}
+	err := k8sClient.Get(ctx, key, receiver)
+	Expect(err).ToNot(HaveOccurred())
+	Expect(receiver).NotTo(BeNil())
+	return receiver
+}
+
+// VerifyResourceDoesNotExist checks whether client.Get for a specific resource produces an error with
+// reason=StatusReasonNotFound. Use namespace="" for cluster-scoped resources.
+func VerifyResourceDoesNotExist(
+	ctx context.Context,
+	k8sClient client.Client,
+	namespace string,
+	name string,
+	receiver client.Object,
+) {
+	key := client.ObjectKey{Name: name}
+	if namespace != "" {
+		key.Namespace = namespace
+	}
+	err := k8sClient.Get(ctx, key, receiver)
+	Expect(err).To(
+		HaveOccurred(),
+		fmt.Sprintf("the resource %s exists although it should not", name),
+	)
+	Expect(apierrors.IsNotFound(err)).To(BeTrue(),
+		fmt.Sprintf("attempting to load the resource %s failed with an unexpected error: %v", name, err))
 }
