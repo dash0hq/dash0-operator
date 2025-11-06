@@ -29,17 +29,6 @@ jobs:
         with:
           credentials_json: '${{ secrets.GKE_SA_KEY }}'
 
-      # set up the gcloud CLI
-      #- name: set up Cloud SDK
-      #  uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
-      #  with:
-      #    project_id: ${{ secrets.GKE_PROJECT }}
-
-      # configure Docker to use the gcloud command-line tool as a credential
-      # helper for authentication
-      # - run: |-
-      #     gcloud --quiet auth configure-docker
-
       # get the GKE credentials so we can deploy to the cluster
       - uses: google-github-actions/get-gke-credentials@3da1e46a907576cefaa90c484278bb5b259dd395
         with:
