@@ -163,6 +163,7 @@ spec:
 {{- if (default .Values.operator.instrumentation.delayAfterEachNamespaceMillis .Values.operator.instrumentationDelayAfterEachNamespaceMillis) }}
         - --instrumentation-delay-after-each-namespace-millis={{ default .Values.operator.instrumentation.delayAfterEachNamespaceMillis .Values.operator.instrumentationDelayAfterEachNamespaceMillis }}
 {{- end }}
+        - foobar=baz
         env:
         - name: DASH0_OPERATOR_NAMESPACE
           valueFrom:
