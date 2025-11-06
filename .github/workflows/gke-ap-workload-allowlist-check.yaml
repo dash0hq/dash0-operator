@@ -1,12 +1,88 @@
 name: GKE Autopilot WorkloadAllowlist Check
 
 on:
+  deployment_status:
   workflow_dispatch:
 
+env:
+  PROJECT_ID: ${{ secrets.GKE_PROJECT }}
+  GKE_CLUSTER: ci-workload-allowlist-check
+  GKE_ZONE: europe-central2
+
+concurrency:
+  # This workflow uses a shared resource, allow only one execution at a time. Alternatively, we would need to add
+  # steps to create a GKE Autopilot cluster on the fly and discard it after the GH action run.
+  group: gke-ap-workload-allowlist-check-concurrency-group
+
+
+# Note: We could potentially optimize this check by only running it when the Helm chart has changed.
 jobs:
   check_workload_allowlists:
     name: Check WorkloadAllowlists
     runs-on: ubuntu-latest
+    timeout-minutes: 8
 
     steps:
-      - run: echo "ohai"
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
+
+      - id: 'auth'
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          credentials_json: '${{ secrets.GKE_SA_KEY }}'
+
+      # get the GKE credentials so we can deploy to the cluster
+      - uses: google-github-actions/get-gke-credentials@3da1e46a907576cefaa90c484278bb5b259dd395
+        with:
+          project_id: ${{ secrets.GKE_PROJECT }}
+          cluster_name: ${{ env.GKE_CLUSTER }}
+          location: ${{ env.GKE_ZONE }}
+
+      - name: run check
+        run: |-
+          .github/workflows/scripts/gke-ap-workload-allowlist-check.sh
+
+      - name: send Slack notification on success
+        if: success()
+        uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a
+        with:
+          errors: true
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          # language=YAML
+          payload: |
+            channel: ${{ secrets.SLACK_CHANNEL_ID }}
+            text: 'GKE Autopilot WorkloadAllowlist check successful'
+            blocks:
+              - type: header
+                text:
+                  type: plain_text
+                  text: ':white_check_mark: GKE Autopilot WorkloadAllowlist check successful'
+              - type: context
+                elements:
+                  - type: mrkdwn
+                    text: ':github: <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Workflow run #${{ github.run_id }}>'
+                  - type: mrkdwn
+                    text: ':diff: <${{ github.event.head_commit.url }}|Commit>'
+
+      - name: send Slack notification on failure
+        if: failure()
+        uses: slackapi/slack-github-action@91efab103c0de0a537f72a35f6b8cda0ee76bf0a
+        with:
+          errors: true
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          # language=YAML
+          payload: |
+            channel: ${{ secrets.SLACK_CHANNEL_ID }}
+            text: 'GKE Autopilot WorkloadAllowlist check has failed'
+            blocks:
+              - type: header
+                text:
+                  type: plain_text
+                  text: ':x: GKE Autopilot WorkloadAllowlist check has failed'
+              - type: context
+                elements:
+                  - type: mrkdwn
+                    text: ':github: <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|Workflow run #${{ github.run_id }}>'
+                  - type: mrkdwn
+                    text: ':diff: <${{ github.event.head_commit.url }}|Commit>'
