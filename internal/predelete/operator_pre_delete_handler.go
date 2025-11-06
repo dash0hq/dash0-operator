@@ -10,8 +10,11 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -23,6 +26,23 @@ import (
 
 const (
 	defaultTimeout = 2 * time.Minute
+
+	gkeAutopilotAllowlistSynchronizerGroup   = "auto.gke.io"
+	gkeAutopilotAllowlistSynchronizerKind    = "AllowlistSynchronizer"
+	gkeAutopilotAllowlistSynchronizerVersion = "v1"
+	dash0AllowlistSynchronizerName           = "dash0-allowlist-synchronizer"
+)
+
+var (
+	// "allowlistsynchronizers"
+	gkeAutopilotAllowlistSynchronizerPlural = fmt.Sprintf("%ss", strings.ToLower(gkeAutopilotAllowlistSynchronizerKind))
+
+	// "allowlistsynchronizers.auto.gke.io"
+	gkeAutopilotAllowlistSynchronizerCrdName = fmt.Sprintf(
+		"%s.%s",
+		gkeAutopilotAllowlistSynchronizerPlural,
+		gkeAutopilotAllowlistSynchronizerGroup,
+	)
 )
 
 type OperatorPreDeleteHandler struct {
@@ -43,6 +63,9 @@ func NewOperatorPreDeleteHandlerFromConfig(config *rest.Config) (*OperatorPreDel
 		return nil, err
 	}
 	if err := dash0v1beta1.AddToScheme(s); err != nil {
+		return nil, err
+	}
+	if err := apiextensionsv1.AddToScheme(s); err != nil {
 		return nil, err
 	}
 	k8sClient, err := client.NewWithWatch(config, client.Options{
@@ -191,6 +214,49 @@ func (h *OperatorPreDeleteHandler) watchAndProcessEvents(
 		case watch.Deleted:
 			namespace := event.Object.(*dash0v1beta1.Dash0Monitoring).Namespace
 			*channelToSignalDeletions <- namespace
+		}
+	}
+}
+
+func (h *OperatorPreDeleteHandler) DeleteGkeAutopilotAllowlistSynchronizer(ctx context.Context, logger *logr.Logger) {
+	if err := h.client.Get(ctx, client.ObjectKey{
+		Name: gkeAutopilotAllowlistSynchronizerCrdName,
+	}, &apiextensionsv1.CustomResourceDefinition{}); err != nil {
+		if !apierrors.IsNotFound(err) {
+			logger.Error(
+				err,
+				fmt.Sprintf(
+					"error when checking for the existence of the GKE Autopilot AllowlistSynchronizer CRD (client.Get(\"%s\") failed)",
+					gkeAutopilotAllowlistSynchronizerCrdName,
+				))
+		}
+
+		// The AllowlistSynchronizer CRD does not exist, or we haven't been able to check for its existence, abort
+		// attempt to delete the AllowlistSynchronizer.
+		return
+	}
+
+	dash0AllowlistSynchronizer := &unstructured.Unstructured{}
+	dash0AllowlistSynchronizer.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   gkeAutopilotAllowlistSynchronizerGroup,
+		Kind:    gkeAutopilotAllowlistSynchronizerKind,
+		Version: gkeAutopilotAllowlistSynchronizerVersion,
+	})
+	dash0AllowlistSynchronizer.SetName(dash0AllowlistSynchronizerName)
+
+	if err := h.client.Delete(ctx, dash0AllowlistSynchronizer); err != nil {
+		if !apierrors.IsNotFound(err) {
+			logger.Error(
+				err,
+				fmt.Sprintf(
+					"error when attempting to delete the Dash0 AllowlistSynchronizer (%s: %s)",
+					dash0AllowlistSynchronizerName,
+					gkeAutopilotAllowlistSynchronizerCrdName,
+				))
+			// We deliberately only log the error and ignore it otherwise, since this currently happens in a Goroutine
+			// in the pre-delete hook. We might want to exit with a non-zero exit code for any error except for
+			// not-found-errors once this has been extracted into its own post-delete hook job. This would then trigger
+			// a retry of the post-delete hook job.
 		}
 	}
 }

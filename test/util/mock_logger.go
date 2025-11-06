@@ -57,3 +57,7 @@ func (s *CapturingLogSink) Reset() {
 func (s *CapturingLogSink) HasLogMessage(g Gomega, message string) {
 	g.Expect(s.messages).To(ContainElement(message))
 }
+
+func (s *CapturingLogSink) HasZeroMessages(g Gomega) {
+	g.Expect(s.messages).To(BeEmpty())
+}

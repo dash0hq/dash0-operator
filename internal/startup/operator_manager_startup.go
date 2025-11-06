@@ -12,6 +12,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
@@ -179,7 +180,7 @@ func Start() {
 	// setupLog is initialized after this point and can be used
 
 	if cliArgs.isUninstrumentAll {
-		if err := deleteMonitoringResourcesInAllNamespaces(&setupLog); err != nil {
+		if err := runPreDeleteCleanup(ctx, &setupLog); err != nil {
 			setupLog.Error(err, "deleting the Dash0 monitoring resources in all namespaces failed")
 			os.Exit(1)
 		}
@@ -1232,16 +1233,41 @@ func triggerSecretRefExchangeAndStartSelfMonitoringIfPossible(
 	)
 }
 
-func deleteMonitoringResourcesInAllNamespaces(logger *logr.Logger) error {
+func runPreDeleteCleanup(ctx context.Context, logger *logr.Logger) error {
 	handler, err := predelete.NewOperatorPreDeleteHandler()
 	if err != nil {
 		logger.Error(err, "Failed to create the pre-delete handler.")
 		return err
 	}
+
+	// In GKE Autopilot clusters, we also need to remove AllowlistSynchronizer resource we have installed via the Helm
+	// chart. Since that resource is annotated as a pre-install hook (to make sure it is installed before we actually
+	// install the workloads that require the exemptions via the WorkloadAllowlist), it is not considered to be part of
+	// the Helm release, and thus it is not removed as part of running "helm uninstall". To clean up after ourselves, we
+	// remove the AllowlistSynchronizer manually in Helm hook job.
+	//
+	// Ideally, we would handle this in a separate post-delete Helm hook, instead of the pre-delete hook for
+	// removing monitoring resources. But for that we would need yet another WorkloadAllowlist for this new
+	// Kubernetes job, and have it reviewed and merged by Google again. We can refactor this later (i.e. with the
+	// next WorkloadAllowlist update). Extracting that into a separate would also easily allow to only run this when
+	// the Helm value operator.gke.autopilot.enabled is true.
+	//
+	// To make these two cleanup steps (AllowlistSynchronizer deletion and monitoring resource deletion) at least
+	// somewhat independent of each other, we run the deletion of the AllowlistSynchronizer in a separate goroutine.
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		handler.DeleteGkeAutopilotAllowlistSynchronizer(ctx, logger)
+	}()
+
 	if err = handler.DeleteAllMonitoringResources(); err != nil {
 		logger.Error(err, "Failed to delete all monitoring resources.")
+		wg.Wait()
 		return err
 	}
+
+	wg.Wait()
 	return nil
 }
 

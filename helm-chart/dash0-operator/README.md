@@ -707,8 +707,6 @@ By default, the operator collects metrics as follows:
   in the Dash0 operator configuration resource (or setting the value
   `operator.kubernetesInfrastructureMetricsCollectionEnabled` to `false` when deploying the operator configuration
   resource via the Helm chart).
-  (Collecting node metrics via the host metrics receiver is not supported in
-  [GKE Autopilot clusters](#notes-on-gke-autopilot), the host metric receiver will be disabled there.)
 * Namespace-scoped metrics (e.g. metrics related to a workload running in a specific namespace) will only be collected
   if the namespace is monitored, that is, there is a Dash0 monitoring resource in that namespace.
 * The Dash0 operator scrapes Prometheus endpoints on pods annotated with the `prometheus.io/*` annotations in monitored
@@ -982,7 +980,6 @@ similar to take effect.
 All the pods deployed by the operator have a default node anti-affinity for the `dash0.com/enable=false` node label.
 That is, if you add the `dash0.com/enable=false` label to a node, none of the pods owned by the operator will be
 scheduled on that node.
-(This features is not available on [GKE Autopilot clusters](#notes-on-gke-autopilot).)
 
 **IMPORTANT:** This includes the daemonset that the operator will set up to receive telemetry from the pods, which might
 leads to situations in which instrumented pods cannot send telemetry because the local node does not have a daemonset
@@ -2001,22 +1998,67 @@ operator:
 
 GKE Autopilot [restricts](https://cloud.google.com/kubernetes-engine/docs/concepts/autopilot-security) what workloads
 in an autopilot clusters can do.
-By setting `operator.gke.autopilot.enabled` to true, the Dash0 operator Helm chart will adjust its own configuration
-to comply with these restrictions.
-In particular, this will:
-- omit the `dash0.com/enable` node affinity rule (custom node affinities are not allowed in GKE Autopilot)
-- disable the host metrics receiver, as it requires mounting the full host file system as a volume, which is not
-  permitted on GKE autopilot
-- disable collecting all four utilization metrics for the `kubeletstats` receiver metrics; collecting these requires access to the
+With `operator.gke.autopilot.enabled` set to `true`, the Dash0 operator Helm chart deploys an
+`auto.gke.io/AllowlistSynchronizer` resource into the target cluster, which in turn will add the required
+`auto.gke.io/WorkloadAllowlist` resources for Dash0 workloads (the operator and the OpenTelemetry collectors it
+manages).
+This allows the Dash0 operator to work on GKE Autopilot clusters.
+
+Not all restrictions can be lifted via workload allowlist, the following features are not available on GKE Autopilot
+clusters:
+- collecting utilization metrics with the `kubeletstats` receiver is disabled; collecting these requires access to the
   `/pod` endpoint of the kubelet API which is not available in GKE autopilot due to the lack of the `nodes/proxy`
   permission:
     - `k8s.pod.cpu_limit_utilization`,
     - `k8s.pod.cpu_request_utilization`,
     - `k8s.pod.memory_limit_utilization`, and
     - `k8s.pod.memory_request_utilization`
-- disable collecting the extra metadata labels `container.id` and `k8s.volume.type` for the `kubeletstats` receiver
-  metrics, collecting these requires access to the `/pod` endpoint of the kubelet API which is not available in GKE
+- collecting the extra metadata labels `container.id` and `k8s.volume.type` for the `kubeletstats` receiver metrics is
+  disabled, collecting these requires access to the `/pod` endpoint of the kubelet API which is not available in GKE
   autopilot due to the lack of the `nodes/proxy` permission
+
+Please note that the `AllowlistSynchronizer` resource is not removed automatically with `helm uninstall dash0-operator`.
+If you decide to later remove the Dash0 operator Helm release from the cluster, you might want to delete the
+`AllowlistSynchronizer` manually afterward.
+(Deleting the `AllowlistSynchronizer` will also delete all associated `WorkloadAllowlist` resources.)
+
+### Managing the AllowlistSynchronizer Manually
+
+As an alternative to letting the Helm chart install the `AllowlistSynchronizer`, you can also choose to manage this
+manually, if you prefer:
+
+```yaml
+operator:
+  gke:
+    autopilot:
+      enabled: true
+      deployAllowListSynchronizer: false
+```
+
+With these settings, the Dash0 operator Helm chart will not deploy the `AllowlistSynchronizer`.
+Using these settings requires that you deploy the Dash0 `AllowlistSynchronizer` before installing the Dash0 operator.
+To do that, create the following file `dash0-gke-autopilot-allowlist-synchronizer.yaml`:
+```yaml
+apiVersion: auto.gke.io/v1
+kind: AllowlistSynchronizer
+metadata:
+  name: dash0-allowlist-synchronizer
+spec:
+  allowlistPaths:
+    - Dash0/operator-manager/dash0-operator-manager-v1.0.0.yaml
+    - Dash0/post-install/dash0-post-install-v1.0.0.yaml
+    - Dash0/pre-delete/dash0-pre-delete-v1.0.0.yaml
+    - Dash0/opentelemetry-collector-agent/dash0-opentelemetry-collector-agent-v1.0.0.yaml
+    - Dash0/opentelemetry-cluster-metrics-collector/dash0-opentelemetry-cluster-metrics-collector-v1.0.0.yaml
+```
+
+Then deploy it as follows:
+```
+kubectl apply -f dash0-gke-autopilot-allowlist-synchronizer.yaml
+```
+
+When managing the `AllowlistSynchronizer` manually, you might need to update it from time to time for future Dash0
+operator releases.
 
 ## Notes on Azure AKS
 

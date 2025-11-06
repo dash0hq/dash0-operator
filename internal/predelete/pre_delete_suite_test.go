@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	apiextensionscs "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -39,12 +40,13 @@ const (
 )
 
 var (
-	k8sClient        client.Client
-	clientset        *kubernetes.Clientset
-	preDeleteHandler *OperatorPreDeleteHandler
-	reconciler       *controller.MonitoringReconciler
-	cfg              *rest.Config
-	testEnv          *envtest.Environment
+	k8sClient              client.Client
+	clientset              *kubernetes.Clientset
+	apiExtensionsClientset *apiextensionscs.Clientset
+	preDeleteHandler       *OperatorPreDeleteHandler
+	reconciler             *controller.MonitoringReconciler
+	cfg                    *rest.Config
+	testEnv                *envtest.Environment
 )
 
 func TestRemoval(t *testing.T) {
@@ -85,6 +87,10 @@ var _ = BeforeSuite(func() {
 	clientset, err = kubernetes.NewForConfig(cfg)
 	Expect(err).NotTo(HaveOccurred())
 	Expect(clientset).NotTo(BeNil())
+
+	apiExtensionsClientset, err = apiextensionscs.NewForConfig(cfg)
+	Expect(err).NotTo(HaveOccurred())
+	Expect(apiExtensionsClientset).NotTo(BeNil())
 
 	mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme.Scheme,
