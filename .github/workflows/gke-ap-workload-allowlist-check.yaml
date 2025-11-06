@@ -13,6 +13,8 @@ concurrency:
   # steps to create a GKE Autopilot cluster on the fly and discard it after the GH action run.
   group: gke-ap-workload-allowlist-check-concurrency-group
 
+
+# Note: We could potentially optimize this check by only running it when the Helm chart has changed.
 jobs:
   check_workload_allowlists:
     name: Check WorkloadAllowlists
@@ -22,25 +24,28 @@ jobs:
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8
 
+      - id: 'auth'
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
+        with:
+          credentials_json: '${{ secrets.GKE_SA_KEY }}'
+
       # set up the gcloud CLI
-      - uses: google-github-actions/setup-gcloud@1bee7de035d65ec5da40a31f8589e240eba8fde5
-        with:
-          service_account_key: ${{ secrets.GKE_SA_KEY }}
-          project_id: ${{ secrets.GKE_PROJECT }}
+      #- name: set up Cloud SDK
+      #  uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db
+      #  with:
+      #    project_id: ${{ secrets.GKE_PROJECT }}
 
-      # Configure Docker to use the gcloud command-line tool as a credential
+      # configure Docker to use the gcloud command-line tool as a credential
       # helper for authentication
-      - run: |-
-          gcloud --quiet auth configure-docker
+      # - run: |-
+      #     gcloud --quiet auth configure-docker
 
-      # Get the GKE credentials so we can deploy to the cluster
-      - uses: google-github-actions/get-gke-credentials@db150f2cc60d1716e61922b832eae71d2a45938f
+      # get the GKE credentials so we can deploy to the cluster
+      - uses: google-github-actions/get-gke-credentials@3da1e46a907576cefaa90c484278bb5b259dd395
         with:
+          project_id: ${{ secrets.GKE_PROJECT }}
           cluster_name: ${{ env.GKE_CLUSTER }}
           location: ${{ env.GKE_ZONE }}
-          credentials: ${{ secrets.GKE_SA_KEY }}
-
-      # Note: We could potentially optimize this check by only running it when the Helm chart has changed.
 
       - name: run check
         run: |-
