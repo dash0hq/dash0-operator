@@ -97,7 +97,6 @@ type commandLineArguments struct {
 	probeAddr                                                             string
 	secureMetrics                                                         bool
 	enableHTTP2                                                           bool
-	foobar                                                                string
 }
 
 const (
@@ -428,12 +427,6 @@ func defineCommandLineArguments() *commandLineArguments {
 		"enable-http2",
 		false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers.",
-	)
-	flag.StringVar(
-		&cliArgs.foobar,
-		"foobar",
-		"",
-		"----",
 	)
 	return cliArgs
 }
