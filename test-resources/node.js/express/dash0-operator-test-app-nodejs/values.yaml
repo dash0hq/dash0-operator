@@ -1,0 +1,63 @@
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+image:
+  repository: dash0-operator-nodejs-20-express-test-app
+  tag: latest
+  pullPolicy: Never
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 128Mi
+    ephemeral-storage: 500Mi
+  requests:
+    cpu: 100m
+    memory: 64Mi
+    ephemeral-storage: 500Mi
+
+cronjob:
+  enabled: false
+  port: 1205
+  schedule: "* * * * *"
+  testId: ""
+
+daemonset:
+  enabled: false
+  port: 1206
+  targetPort: 1206
+  selector: dash0-operator-nodejs-20-express-test-daemonset-app
+  ingressPath: /daemonset/node.js(/|$)(.*)
+
+deployment:
+  enabled: false
+  port: 1207
+  targetPort: 1207
+  selector: dash0-operator-nodejs-20-express-test-deployment-app
+  ingressPath: /deployment/node.js(/|$)(.*)
+
+job:
+  enabled: false
+  port: 1208
+  testId: ""
+
+pod:
+  enabled: false
+  port: 1211
+  targetPort: 1211
+  selector: dash0-operator-nodejs-20-express-test-pod-app
+  ingressPath: /pod/node.js(/|$)(.*)
+
+replicaset:
+  enabled: false
+  port: 1209
+  targetPort: 1209
+  selector: dash0-operator-nodejs-20-express-test-replicaset-app
+  ingressPath: /replicaset/node.js(/|$)(.*)
+
+statefulset:
+  enabled: false
+  port: 1210
+  targetPort: 1210
+  selector: dash0-operator-nodejs-20-express-test-statefulset-app
+  ingressPath: /statefulset/node.js(/|$)(.*)

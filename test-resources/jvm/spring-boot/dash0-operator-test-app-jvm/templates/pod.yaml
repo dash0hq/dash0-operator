@@ -1,0 +1,37 @@
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.pod.enabled }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dash0-operator-jvm-spring-boot-test-pod
+  labels:
+    app: {{ .Values.pod.selector }}
+    test.label/key: "label-value"
+    {{- with .Values.pod.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "{{ .Values.pod.port }}"
+    test.annotation/key: "annotation value"
+spec:
+  containers:
+    - name: app
+      image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+      env:
+        - name: PORT
+          value: "{{ .Values.pod.port }}"
+      ports:
+        - containerPort: {{ .Values.pod.port }}
+      resources:
+        {{- toYaml .Values.resources | nindent 8 }}
+      imagePullPolicy: {{ .Values.image.pullPolicy }}
+      readinessProbe:
+        httpGet:
+          path: /ready
+          port: {{ .Values.pod.port }}
+        initialDelaySeconds: 1
+        periodSeconds: 1
+{{- end }}

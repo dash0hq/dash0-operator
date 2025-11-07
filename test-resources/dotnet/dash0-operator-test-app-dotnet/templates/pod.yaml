@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: Copyright 2024 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.pod.enabled }}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: dash0-operator-dotnet-test-pod
+  labels:
+    app: {{ .Values.pod.selector }}
+    test.label/key: "label-value"
+    {{- with .Values.pod.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "{{ .Values.pod.port }}"
+    test.annotation/key: "annotation value"
+spec:
+  containers:
+    - name: app
+      image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+      env:
+        - name: PORT
+          # See https://opentelemetry.io/docs/zero-code/dotnet/instrumentations/#instrumentation-options
+          value: "{{ .Values.pod.port }}"
+        - name: OTEL_DOTNET_EXPERIMENTAL_ASPNETCORE_DISABLE_URL_QUERY_REDACTION
+          value: "true"
+        - name: OTEL_DOTNET_EXPERIMENTAL_ASPNET_DISABLE_URL_QUERY_REDACTION
+          value: "true"
+        - name: OTEL_DOTNET_EXPERIMENTAL_HTTPCLIENT_DISABLE_URL_QUERY_REDACTION
+          value: "true"
+      ports:
+        - containerPort: {{ .Values.pod.port }}
+      resources:
+        {{- toYaml .Values.resources | nindent 8 }}
+      imagePullPolicy: {{ .Values.image.pullPolicy }}
+      readinessProbe:
+        httpGet:
+          path: /ready
+          port: {{ .Values.pod.port }}
+        initialDelaySeconds: 1
+        periodSeconds: 1
+{{- end }}

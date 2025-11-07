@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.replicaset.enabled }}
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: dash0-operator-nodejs-20-express-test-replicaset
+  labels:
+    app: {{ .Values.replicaset.selector }}
+    {{- with .Values.replicaset.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ .Values.replicaset.selector }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.replicaset.selector }}
+        test.label/key: "label-value"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ .Values.replicaset.port }}"
+        test.annotation/key: "annotation value"
+    spec:
+      containers:
+        - name: app
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          env:
+            - name: PORT
+              value: "{{ .Values.replicaset.port }}"
+          ports:
+            - containerPort: {{ .Values.replicaset.port }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: {{ .Values.replicaset.port }}
+            initialDelaySeconds: 1
+            periodSeconds: 1
+{{- end }}

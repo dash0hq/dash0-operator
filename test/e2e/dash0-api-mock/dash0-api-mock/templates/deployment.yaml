@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dash0-api-mock
+  labels:
+    app: dash0-api-mock-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dash0-api-mock-app
+  template:
+    metadata:
+      labels:
+        app: dash0-api-mock-app
+        app.kubernetes.io/name: "dash0-api-mock"
+        app.kubernetes.io/version: "1.0.0"
+        app.kubernetes.io/part-of: "dash0-operator-test"
+        app.kubernetes.io/instance: "api-mock"
+    spec:
+      containers:
+        - name: dash0-api-mock-app
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          env:
+            - name: PORT
+              value: "{{ .Values.port }}"
+          ports:
+            - containerPort: {{ .Values.port }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: {{ .Values.port }}
+            initialDelaySeconds: 1
+            periodSeconds: 1

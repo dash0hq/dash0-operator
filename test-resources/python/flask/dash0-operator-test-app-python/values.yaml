@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+image:
+  repository: dash0-operator-python-flask-test-app
+  tag: latest
+  pullPolicy: Never
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+    ephemeral-storage: 500Mi
+  requests:
+    cpu: 200m
+    memory: 128Mi
+    ephemeral-storage: 500Mi
+
+daemonset:
+  enabled: false
+  port: 1506
+  targetPort: 1506
+  selector: dash0-operator-python-flask-test-daemonset-app
+  ingressPath: /daemonset/python(/|$)(.*)
+
+deployment:
+  enabled: false
+  port: 1507
+  targetPort: 1507
+  selector: dash0-operator-python-flask-test-deployment-app
+  ingressPath: /deployment/python(/|$)(.*)
+
+pod:
+  enabled: false
+  port: 1511
+  targetPort: 1511
+  selector: dash0-operator-python-flask-test-pod-app
+  ingressPath: /pod/python(/|$)(.*)
+
+replicaset:
+  enabled: false
+  port: 1509
+  targetPort: 1509
+  selector: dash0-operator-python-flask-test-replicaset-app
+  ingressPath: /replicaset/python(/|$)(.*)
+
+statefulset:
+  enabled: false
+  port: 1510
+  targetPort: 1510
+  selector: dash0-operator-python-flask-test-statefulset-app
+  ingressPath: /statefulset/python(/|$)(.*)

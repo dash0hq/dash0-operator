@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.deployment.enabled }}
+{{ include "jvm-test-app.service" (dict "workloadType" "deployment" "selector" .Values.deployment.selector "port" .Values.deployment.port "targetPort" .Values.deployment.targetPort) }}
+{{- end }}
+
+{{- if .Values.daemonset.enabled }}
+{{ include "jvm-test-app.service" (dict "workloadType" "daemonset" "selector" .Values.daemonset.selector "port" .Values.daemonset.port "targetPort" .Values.daemonset.targetPort) }}
+{{- end }}
+
+{{- if .Values.statefulset.enabled }}
+{{ include "jvm-test-app.service" (dict "workloadType" "statefulset" "selector" .Values.statefulset.selector "port" .Values.statefulset.port "targetPort" .Values.statefulset.targetPort) }}
+{{- end }}
+
+{{- if .Values.replicaset.enabled }}
+{{ include "jvm-test-app.service" (dict "workloadType" "replicaset" "selector" .Values.replicaset.selector "port" .Values.replicaset.port "targetPort" .Values.replicaset.targetPort) }}
+{{- end }}
+
+{{- if .Values.pod.enabled }}
+{{ include "jvm-test-app.service" (dict "workloadType" "pod" "selector" .Values.pod.selector "port" .Values.pod.port "targetPort" .Values.pod.targetPort) }}
+{{- end }}

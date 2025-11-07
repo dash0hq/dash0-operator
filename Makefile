@@ -52,24 +52,19 @@ TEST_IMAGE_PULL_POLICY ?= Never
 
 TEST_APP_DOTNET_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-operator-dotnet-test-app
 TEST_APP_DOTNET_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
-TEST_APP_DOTNET_IMAGE ?= $(TEST_APP_DOTNET_IMAGE_REPOSITORY):$(TEST_APP_DOTNET_IMAGE_TAG)
-TEST_APP_DOTNET_IMAGE_PULL_POLICY ?= $(TEST_IMAGE_PULL_POLICY)
 
 TEST_APP_JVM_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-operator-jvm-spring-boot-test-app
 TEST_APP_JVM_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
-TEST_APP_JVM_IMAGE ?= $(TEST_APP_JVM_IMAGE_REPOSITORY):$(TEST_APP_JVM_IMAGE_TAG)
-TEST_APP_JVM_IMAGE_PULL_POLICY ?= $(TEST_IMAGE_PULL_POLICY)
 
 TEST_APP_NODEJS_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-operator-nodejs-20-express-test-app
 TEST_APP_NODEJS_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
-TEST_APP_NODEJS_IMAGE ?= $(TEST_APP_NODEJS_IMAGE_REPOSITORY):$(TEST_APP_NODEJS_IMAGE_TAG)
-TEST_APP_NODEJS_IMAGE_PULL_POLICY ?= $(TEST_IMAGE_PULL_POLICY)
+
+TEST_APP_PYTHON_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-operator-python-flask-test-app
+TEST_APP_PYTHON_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
 
 # Variables for additional container images used in end-to-end tests:
 DASH0_API_MOCK_IMAGE_REPOSITORY ?= $(TEST_IMAGE_REPOSITORY_PREFIX)dash0-api-mock
 DASH0_API_MOCK_IMAGE_TAG ?= $(TEST_IMAGE_TAG)
-DASH0_API_MOCK_IMAGE ?= $(DASH0_API_MOCK_IMAGE_REPOSITORY):$(DASH0_API_MOCK_IMAGE_TAG)
-DASH0_API_MOCK_IMAGE_PULL_POLICY ?= $(TEST_IMAGE_PULL_POLICY)
 
 # ENVTEST_K8S_VERSION refers to the version of kubebuilder assets to be downloaded by envtest binary.
 # Maintenance note: Keep this in sync with EnvtestK8sVersion in test/util/constants.go.
@@ -181,15 +176,23 @@ golangci-lint: golangci-lint-install ## Run static code analysis for Go code.
 golang-lint-fix: golangci-lint-install ## Run static code analysis for Go code and fix issues automatically.
 	$(GOLANGCI_LINT) run --fix
 
+define lint_helm_chart
+$(eval HELM_LINT_OUTPUT=$(shell helm lint --quiet $(1)))
+if [ -n "$(HELM_LINT_OUTPUT)" ]; then \
+  echo helm lint found issues: ; \
+  echo "$(HELM_LINT_OUTPUT)" ; \
+  exit 1; \
+fi
+endef
+
 .PHONY: helm-chart-lint
 helm-chart-lint: ## Run static code analysis for the Helm chart templates.
 	@echo "-------------------------------- (linting Helm charts)"
-	$(eval HELM_LINT_OUTPUT=$(shell helm lint --quiet helm-chart/dash0-operator))
-	@if [ -n "$(HELM_LINT_OUTPUT)" ]; then \
-	  echo helm lint found issues: ; \
-	  echo "$(HELM_LINT_OUTPUT)" ; \
-		exit 1; \
-	fi
+	@$(call lint_helm_chart,helm-chart/dash0-operator)
+	@$(call lint_helm_chart,test-resources/dotnet/dash0-operator-test-app-dotnet)
+	@$(call lint_helm_chart,test-resources/jvm/spring-boot/dash0-operator-test-app-jvm)
+	@$(call lint_helm_chart,test-resources/node.js/express/dash0-operator-test-app-nodejs)
+	@$(call lint_helm_chart,test-resources/python/flask/dash0-operator-test-app-python)
 
 .PHONY: shellcheck-check-installed
 shellcheck-check-installed:
@@ -271,6 +274,10 @@ test-app-image-jvm: ## Build the JVM test application.
 .PHONY: test-app-image-nodejs
 test-app-image-nodejs: ## Build the Node.js test application.
 	@$(call build_container_image,$(TEST_APP_NODEJS_IMAGE_REPOSITORY),$(TEST_APP_NODEJS_IMAGE_TAG),test-resources/node.js/express)
+
+.PHONY: test-app-image-python
+test-app-image-python: ## Build the Python test application.
+	@$(call build_container_image,$(TEST_APP_PYTHON_IMAGE_REPOSITORY),$(TEST_APP_PYTHON_IMAGE_TAG),test-resources/python/flask)
 
 .PHONY: dash0-api-mock-image
 dash0-api-mock-image: ## Build the Dash0 API mock container image, which is used in end-to-end tests.

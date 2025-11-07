@@ -37,6 +37,13 @@ Build, lint and test tasks in this repository are performed via the Makefile in 
 
 ## Common Workflows
 
+### Linting
+
+After changing Go code, run `make golangci-lint`.
+After changing the Helm chart, run `make helm-chart-lint`.
+After changing Zig code, run `make zig-fmt-check`.
+After changing or creating bash scripts, run `make shellcheck-lint` to verify they have no issues.
+
 ### Changing the Kubernetes Custom Resource Definitions
 
 Start by making changes to the Go code in `api/operator`.

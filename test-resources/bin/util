@@ -62,6 +62,7 @@ setup_test_environment () {
   test-resources/bin/render-templates.sh
   check_if_kubectx_is_kind_or_minikube_cluster
   determine_container_images
+  determine_test_app_images
 
   install_cert_manager_if_necessary
 }
@@ -105,9 +106,9 @@ determine_container_images() {
   # - default to not setting an explicit image repository or tag
   # - default to not setting a pull policy, instead let Kubernetes use the default pull policy
 
-  image_repository_prefix=${IMAGE_REPOSITORY_PREFIX:-}
-  image_tag=${IMAGE_TAG:-latest}
-  pull_policy=${PULL_POLICY:-Never}
+  local image_repository_prefix=${IMAGE_REPOSITORY_PREFIX:-}
+  local image_tag=${IMAGE_TAG:-latest}
+  local pull_policy=${PULL_POLICY:-Never}
 
   controller_image_repository="${image_repository_prefix}operator-controller"
   controller_image_tag="$image_tag"
@@ -257,6 +258,65 @@ determine_pull_policy() {
     echo ""
   else
     echo "$pp"
+  fi
+}
+
+determine_test_app_images() {
+  local image_repository_prefix=${TEST_IMAGE_REPOSITORY_PREFIX:-}
+  local image_tag=${TEST_IMAGE_TAG:-latest}
+  local pull_policy=${TEST_IMAGE_PULL_POLICY:-Never}
+
+  test_app_dotnet_image_repository="${image_repository_prefix}dash0-operator-dotnet-test-app"
+  test_app_dotnet_image_tag="$image_tag"
+  test_app_dotnet_image_pull_policy="$pull_policy"
+  test_app_jvm_image_repository="${image_repository_prefix}dash0-operator-jvm-spring-boot-test-app"
+  test_app_jvm_image_tag="$image_tag"
+  test_app_jvm_image_pull_policy="$pull_policy"
+  test_app_nodejs_image_repository="${image_repository_prefix}dash0-operator-nodejs-20-express-test-app"
+  test_app_nodejs_image_tag="$image_tag"
+  test_app_nodejs_image_pull_policy="$pull_policy"
+  test_app_python_image_repository="${image_repository_prefix}dash0-operator-python-flask-test-app"
+  test_app_python_image_tag="$image_tag"
+  test_app_python_image_pull_policy="$pull_policy"
+
+  if [[ -n "${TEST_APP_DOTNET_IMAGE_REPOSITORY:-}" ]]; then
+    test_app_dotnet_image_repository="$TEST_APP_DOTNET_IMAGE_REPOSITORY"
+  fi
+  if [[ -n "${TEST_APP_DOTNET_IMAGE_TAG:-}" ]]; then
+    test_app_dotnet_image_tag="$TEST_APP_DOTNET_IMAGE_TAG"
+  fi
+  if [[ -n "${TEST_APP_DOTNET_IMAGE_PULL_POLICY:-}" ]]; then
+    test_app_dotnet_image_pull_policy="$TEST_APP_DOTNET_IMAGE_PULL_POLICY"
+  fi
+
+  if [[ -n "${TEST_APP_JVM_IMAGE_REPOSITORY:-}" ]]; then
+    test_app_jvm_image_repository="$TEST_APP_JVM_IMAGE_REPOSITORY"
+  fi
+  if [[ -n "${TEST_APP_JVM_IMAGE_TAG:-}" ]]; then
+    test_app_jvm_image_tag="$TEST_APP_JVM_IMAGE_TAG"
+  fi
+  if [[ -n "${TEST_APP_JVM_IMAGE_PULL_POLICY:-}" ]]; then
+    test_app_jvm_image_pull_policy="$TEST_APP_JVM_IMAGE_PULL_POLICY"
+  fi
+
+  if [[ -n "${TEST_APP_NODEJS_IMAGE_REPOSITORY:-}" ]]; then
+    test_app_nodejs_image_repository="$TEST_APP_NODEJS_IMAGE_REPOSITORY"
+  fi
+  if [[ -n "${TEST_APP_NODEJS_IMAGE_TAG:-}" ]]; then
+    test_app_nodejs_image_tag="$TEST_APP_NODEJS_IMAGE_TAG"
+  fi
+  if [[ -n "${TEST_APP_NODEJS_IMAGE_PULL_POLICY:-}" ]]; then
+    test_app_nodejs_image_pull_policy="$TEST_APP_NODEJS_IMAGE_PULL_POLICY"
+  fi
+
+  if [[ -n "${TEST_APP_PYTHON_IMAGE_REPOSITORY:-}" ]]; then
+    test_app_python_image_repository="$TEST_APP_PYTHON_IMAGE_REPOSITORY"
+  fi
+  if [[ -n "${TEST_APP_PYTHON_IMAGE_TAG:-}" ]]; then
+    test_app_python_image_tag="$TEST_APP_PYTHON_IMAGE_TAG"
+  fi
+  if [[ -n "${TEST_APP_PYTHON_IMAGE_PULL_POLICY:-}" ]]; then
+    test_app_python_image_pull_policy="$TEST_APP_PYTHON_IMAGE_PULL_POLICY"
   fi
 }
 
@@ -583,31 +643,116 @@ deploy_application_under_monitoring() {
   echo "STEP $step_counter: deploy application under monitoring ($runtime_under_test)"
   if [[ "${runtime_under_test:-}" = "nodejs" ]]; then
     build_test_application test-resources/node.js/express dash0-operator-nodejs-20-express-test-app
-    pushd test-resources/node.js/express > /dev/null
-    kubectl apply -n "${target_namespace}" -f "${kind}".yaml
+    helm_install_test_application \
+      test-resources/node.js/express/dash0-operator-test-app-nodejs \
+      test-app-nodejs \
+      "$target_namespace" \
+      "$kind" \
+      "$test_app_nodejs_image_repository" \
+      "$test_app_nodejs_image_tag" \
+      "$test_app_nodejs_image_pull_policy"
     if [[ "$additional_namespaces" = true ]]; then
-      kubectl apply -n test-namespace-2 test-namespace-2 daemonset.yaml
-      kubectl apply -n test-namespace-3 test-namespace-3 statefulset.yaml
+      helm_install_test_application \
+        test-resources/node.js/express/dash0-operator-test-app-nodejs \
+        test-app-nodejs-2 \
+        test-namespace-2 \
+        daemonset \
+        "$test_app_nodejs_image_repository" \
+        "$test_app_nodejs_image_tag" \
+        "$test_app_nodejs_image_pull_policy"
+      helm_install_test_application \
+        test-resources/node.js/express/dash0-operator-test-app-nodejs \
+        test-app-nodejs-3 \
+        test-namespace-3 \
+        statefulset \
+        "$test_app_nodejs_image_repository" \
+        "$test_app_nodejs_image_tag" \
+        "$test_app_nodejs_image_pull_policy"
     fi
-    popd > /dev/null
   elif [[ "${runtime_under_test:-}" = "jvm" ]]; then
     build_test_application test-resources/jvm/spring-boot dash0-operator-jvm-spring-boot-test-app
-    pushd test-resources/jvm/spring-boot > /dev/null
-    kubectl apply -n "${target_namespace}" -f "${kind}".yaml
+    helm_install_test_application \
+      "test-resources/jvm/spring-boot/dash0-operator-test-app-jvm" \
+      "test-app-jvm" \
+      "${target_namespace}" \
+      "${kind}"
+      "$test_app_jvm_image_repository" \
+      "$test_app_jvm_image_tag" \
+      "$test_app_jvm_image_pull_policy"
     if [[ "$additional_namespaces" = true ]]; then
-      kubectl apply -n test-namespace-2 -f daemonset.yaml
-      kubectl apply -n test-namespace-3 -f statefulset.yaml
+      helm_install_test_application \
+        "test-resources/jvm/spring-boot/dash0-operator-test-app-jvm" \
+        "test-app-jvm-ns2" \
+        "test-namespace-2" \
+        "daemonset"
+        "$test_app_jvm_image_repository" \
+        "$test_app_jvm_image_tag" \
+        "$test_app_jvm_image_pull_policy"
+      helm_install_test_application \
+        "test-resources/jvm/spring-boot/dash0-operator-test-app-jvm" \
+        "test-app-jvm-ns3" \
+        "test-namespace-3" \
+        "statefulset" \
+        "$test_app_jvm_image_repository" \
+        "$test_app_jvm_image_tag" \
+        "$test_app_jvm_image_pull_policy"
     fi
-    popd > /dev/null
+  elif [[ "${runtime_under_test:-}" = "dotnet" ]]; then
+    build_test_application test-resources/dotnet dash0-operator-dotnet-test-app
+    helm_install_test_application \
+      "test-resources/dotnet/dash0-operator-test-app-dotnet" \
+      "test-app-dotnet" \
+      "${target_namespace}" \
+      "${kind}"
+      "$test_app_dotnet_image_repository" \
+      "$test_app_dotnet_image_tag" \
+      "$test_app_dotnet_image_pull_policy"
+    if [[ "$additional_namespaces" = true ]]; then
+      helm_install_test_application \
+        "test-resources/dotnet/dash0-operator-test-app-dotnet" \
+        "test-app-dotnet-ns2" \
+        "test-namespace-2" \
+        "daemonset" \
+        "$test_app_dotnet_image_repository" \
+        "$test_app_dotnet_image_tag" \
+        "$test_app_dotnet_image_pull_policy"
+      helm_install_test_application \
+        "test-resources/dotnet/dash0-operator-test-app-dotnet" \
+        "test-app-dotnet-ns3" \
+        "test-namespace-3" \
+        "statefulset" \
+        "$test_app_dotnet_image_repository" \
+        "$test_app_dotnet_image_tag" \
+        "$test_app_dotnet_image_pull_policy"
+    fi
   elif [[ "${runtime_under_test:-}" = "python" ]]; then
     build_test_application test-resources/python/flask dash0-operator-python-flask-test-app
-    pushd test-resources/python/flask > /dev/null
-    kubectl apply -n "${target_namespace}" -f "${kind}".yaml
+    helm_install_test_application \
+      "test-resources/python/flask/dash0-operator-test-app-python" \
+      "test-app-python" \
+      "${target_namespace}" \
+      "${kind}" \
+      "$test_app_python_image_repository" \
+      "$test_app_python_image_tag" \
+      "$test_app_python_image_pull_policy"
     if [[ "$additional_namespaces" = true ]]; then
-      kubectl apply -n test-namespace-2 -f daemonset.yaml
-      kubectl apply -n test-namespace-3 -f statefulset.yaml
+      helm_install_test_application \
+        "test-resources/python/flask/dash0-operator-test-app-python" \
+        "test-app-python-ns2" \
+        "test-namespace-2" \
+        "daemonset" \
+        "$test_app_python_image_repository" \
+        "$test_app_python_image_tag" \
+        "$test_app_python_image_pull_policy"
+      helm_install_test_application \
+        "test-resources/python/flask/dash0-operator-test-app-python" \
+        "test-app-python-ns3" \
+        "test-namespace-3" \
+        "statefulset" \
+        "$test_app_python_image_repository" \
+        "$test_app_python_image_tag" \
+        "$test_app_python_image_pull_policy"
     fi
-    popd > /dev/null
   else
     echo "Error: unknown runtime: $runtime_under_test"
     exit 1
@@ -664,6 +809,27 @@ build_test_application() {
       --name "$kind_cluster_name" \
       "$image_name:latest"
   fi
+}
+
+helm_install_test_application() {
+  local chart_path="$1"
+  local release_name="$2"
+  local namespace="$3"
+  local workload_type="$4"
+  local image_repository="$5"
+  local image_tag="$6"
+  local image_pull_policy="$7"
+
+  local helm_install_command="helm install --namespace $namespace --wait"
+  helm_install_command+=" --set ${workload_type}.enabled=true"
+  helm_install_command+=" --set image.repository=$image_repository"
+  helm_install_command+=" --set image.tag=$image_tag"
+  helm_install_command+=" --set image.pullPolicy=$image_pull_policy"
+  helm_install_command+=" $release_name"
+  helm_install_command+=" $chart_path"
+  echo Helm install command for test application:
+  echo "$helm_install_command"
+  $helm_install_command
 }
 
 install_third_party_crds() {

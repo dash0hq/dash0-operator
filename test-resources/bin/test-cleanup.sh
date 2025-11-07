@@ -15,29 +15,22 @@ source test-resources/bin/util
 load_env_file
 verify_kubectx
 
-resource_types=( cronjob daemonset deployment job pod replicaset statefulset )
-for resource_type in "${resource_types[@]}"; do
-  pushd test-resources/node.js/express > /dev/null
-  if [[ -f "$resource_type.yaml" ]]; then
-    kubectl delete --namespace "$target_namespace" --ignore-not-found -f "$resource_type.yaml"
-  fi
-  popd > /dev/null
-  pushd test-resources/jvm/spring-boot > /dev/null
-  if [[ -f "$resource_type.yaml" ]]; then
-    kubectl delete --namespace "$target_namespace" --ignore-not-found -f "$resource_type.yaml"
-  fi
-  popd > /dev/null
-  pushd test-resources/dotnet > /dev/null
-  if [[ -f "$resource_type.yaml" ]]; then
-    kubectl delete --namespace "$target_namespace" --ignore-not-found -f "$resource_type.yaml"
-  fi
-  popd > /dev/null
-  pushd test-resources/python/flask > /dev/null
-  if [[ -f "$resource_type.yaml" ]]; then
-    kubectl delete --namespace "$target_namespace" --ignore-not-found -f "$resource_type.yaml"
-  fi
-  popd > /dev/null
-done
+# uninstall test applications
+helm uninstall --namespace "$target_namespace" test-app-nodejs --ignore-not-found || true
+helm uninstall --namespace test-namespace-2 test-app-nodejs-2 --ignore-not-found || true
+helm uninstall --namespace test-namespace-3 test-app-nodejs-3 --ignore-not-found || true
+
+helm uninstall --namespace "$target_namespace" test-app-jvm --ignore-not-found || true
+helm uninstall --namespace test-namespace-2 test-app-jvm-ns2 --ignore-not-found || true
+helm uninstall --namespace test-namespace-3 test-app-jvm-ns3 --ignore-not-found || true
+
+helm uninstall --namespace "$target_namespace" test-app-dotnet --ignore-not-found || true
+helm uninstall --namespace test-namespace-2 test-app-dotnet-ns2 --ignore-not-found || true
+helm uninstall --namespace test-namespace-3 test-app-dotnet-ns3 --ignore-not-found || true
+
+helm uninstall --namespace "$target_namespace" test-app-python --ignore-not-found || true
+helm uninstall --namespace test-namespace-2 test-app-python-ns2 --ignore-not-found || true
+helm uninstall --namespace test-namespace-3 test-app-python-ns3 --ignore-not-found || true
 
 kubectl delete -f https://kind.sigs.k8s.io/examples/ingress/deploy-ingress-nginx.yaml --ignore-not-found || true
 

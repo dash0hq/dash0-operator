@@ -25,4 +25,3 @@ docker build \
   -t ghcr.io/dash0hq/dash0-operator-nodejs-20-express-test-app:latest
 
 docker push ghcr.io/dash0hq/dash0-operator-nodejs-20-express-test-app:latest
-

@@ -39,39 +39,6 @@ const (
 )
 
 var (
-	localImages = Images{
-		operator: ImageSpec{
-			repository: "operator-controller",
-			tag:        tagLatest,
-			pullPolicy: "Never",
-		},
-		instrumentation: ImageSpec{
-			repository: "instrumentation",
-			tag:        tagLatest,
-			pullPolicy: "Never",
-		},
-		collector: ImageSpec{
-			repository: "collector",
-			tag:        tagLatest,
-			pullPolicy: "Never",
-		},
-		configurationReloader: ImageSpec{
-			repository: "configuration-reloader",
-			tag:        tagLatest,
-			pullPolicy: "Never",
-		},
-		fileLogOffsetSync: ImageSpec{
-			repository: "filelog-offset-sync",
-			tag:        tagLatest,
-			pullPolicy: "Never",
-		},
-		fileLogOffsetVolumeOwnership: ImageSpec{
-			repository: "filelog-offset-volume-ownership",
-			tag:        tagLatest,
-			pullPolicy: "Never",
-		},
-	}
-
 	emptyImages = Images{
 		operator: ImageSpec{
 			repository: "",
@@ -105,7 +72,7 @@ var (
 		},
 	}
 
-	images = localImages
+	images = emptyImages
 )
 
 func determineContainerImages() {

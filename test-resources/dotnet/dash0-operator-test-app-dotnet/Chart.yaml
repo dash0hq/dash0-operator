@@ -1,0 +1,8 @@
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+apiVersion: v2
+name: dash0-operator-test-app-dotnet
+description: A Helm chart for the Dash0 operator .NET test application
+type: application
+version: 1.0.0

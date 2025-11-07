@@ -5,7 +5,6 @@ package e2e
 
 import (
 	"fmt"
-	"os/exec"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -152,15 +151,4 @@ func verifyThatInstrumentationIsRevertedEventually(
 		runtime.runtimeTypeLabel,
 		workloadType.workloadTypeString,
 	))
-}
-
-func waitForApplicationToBecomeReady(runtimeTypeLabel, workloadType string, waitCommand *exec.Cmd) error {
-	By(fmt.Sprintf("waiting for %s %s to become ready", runtimeTypeLabel, workloadType))
-	err := runAndIgnoreOutput(waitCommand)
-	if err != nil {
-		By(fmt.Sprintf("%s %s never became ready", runtimeTypeLabel, workloadType))
-	} else {
-		By(fmt.Sprintf("%s %s is ready now", runtimeTypeLabel, workloadType))
-	}
-	return err
 }

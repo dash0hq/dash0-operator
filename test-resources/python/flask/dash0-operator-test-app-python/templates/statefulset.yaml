@@ -1,0 +1,47 @@
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.statefulset.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: dash0-operator-python-flask-test-statefulset
+  {{- with .Values.statefulset.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Values.statefulset.selector }}
+  serviceName: "{{ include "python-test-app.chartName" . }}-python-flask-test-service"
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.statefulset.selector }}
+        test.label/key: "label-value"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ .Values.statefulset.port }}"
+        test.annotation/key: "annotation value"
+    spec:
+      terminationGracePeriodSeconds: 3
+      containers:
+        - name: app
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          env:
+            - name: PORT
+              value: "{{ .Values.statefulset.port }}"
+          ports:
+            - containerPort: {{ .Values.statefulset.port }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: {{ .Values.statefulset.port }}
+            initialDelaySeconds: 1
+            periodSeconds: 1
+{{- end }}

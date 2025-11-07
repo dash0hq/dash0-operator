@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+image:
+  repository: dash0-api-mock
+  tag: latest
+  pullPolicy: Never
+
+port: 8001
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 32Mi
