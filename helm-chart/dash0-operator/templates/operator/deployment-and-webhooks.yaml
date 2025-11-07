@@ -84,17 +84,18 @@ spec:
         {{- if .Values.operator.podLabels }}
         {{- include "dash0-operator.podLabels" . | nindent 8 }}
         {{- end }}
+        {{- if .Values.operator.gke.autopilot.enabled }}
+        cloud.google.com/matching-allowlist: dash0-operator-manager-v1.0.0
+        {{- end }}
     spec:
       affinity:
         nodeAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
             - matchExpressions:
-              {{- if not .Values.operator.gke.autopilot.enabled }}
               - key: "dash0.com/enable"
                 operator: "NotIn"
                 values: ["false"]
-              {{- end }}
               - key: "kubernetes.io/os"
                 operator: "In"
                 values: ["linux"]

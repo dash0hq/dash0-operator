@@ -117,6 +117,10 @@ const (
 	collectorPidFilePath = "/etc/otelcol/run/pid.file"
 	pidFileVolumeName    = "opentelemetry-collector-pidfile"
 	offsetsDirPath       = "/var/otelcol/filelogreceiver_offsets"
+
+	gkeAutopilotAllowlistLabelKey             = "cloud.google.com/matching-allowlist"
+	gkeAutopilotAllowlistLabelDaemonsetValue  = "dash0-opentelemetry-collector-agent-v1.0.0"
+	gkeAutopilotAllowlistLabelDeploymentValue = "dash0-opentelemetry-cluster-metrics-collector-v1.0.0"
 )
 
 var (
@@ -577,19 +581,16 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 	}
 
 	matchExpressions := []corev1.NodeSelectorRequirement{
-
+		{
+			Key:      dash0OptOutLabelKey,
+			Operator: corev1.NodeSelectorOpNotIn,
+			Values:   []string{"false"},
+		},
 		{
 			Key:      util.KubernetesIoOs,
 			Operator: corev1.NodeSelectorOpIn,
 			Values:   []string{"linux"},
 		},
-	}
-	if !config.IsGkeAutopilot {
-		matchExpressions = append(matchExpressions, corev1.NodeSelectorRequirement{
-			Key:      dash0OptOutLabelKey,
-			Operator: corev1.NodeSelectorOpNotIn,
-			Values:   []string{"false"},
-		})
 	}
 	podSpec := corev1.PodSpec{
 		Affinity: &corev1.Affinity{
@@ -661,6 +662,7 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 		podSpec.PriorityClassName = priorityClassName
 	}
 
+	templateLabels := addGkeAutopilotAllowListMatchLabel(config, daemonSetMatchLabels, gkeAutopilotAllowlistLabelDaemonsetValue)
 	collectorDaemonSet := &appsv1.DaemonSet{
 		TypeMeta: util.K8sTypeMetaDaemonSet,
 		ObjectMeta: metav1.ObjectMeta{
@@ -677,7 +679,7 @@ func assembleCollectorDaemonSet(config *oTelColConfig, extraConfig util.ExtraCon
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: daemonSetMatchLabels,
+					Labels: templateLabels,
 				},
 				Spec: podSpec,
 			},
@@ -815,7 +817,8 @@ func assembleCollectorDaemonSetVolumes(
 	}
 	if !config.IsGkeAutopilot {
 		// On Docker desktop and other runtimes using docker, the files in /var/log/pods are symlinked to this folder.
-		// In GKE Autopilot, host path volumes are only allowed for /var/log/pods, which we already mount above.
+		// (In GKE Autopilot we know for sure that /var/lib/docker/containers does not exist, so there is no need to
+		// mount it.)
 		volumes = append(volumes, corev1.Volume{
 			Name: "node-docker-container-logs",
 			VolumeSource: corev1.VolumeSource{
@@ -826,7 +829,7 @@ func assembleCollectorDaemonSetVolumes(
 		})
 	}
 
-	if config.UseHostMetricsReceiver && !config.IsGkeAutopilot {
+	if config.UseHostMetricsReceiver {
 		// Mounting the entire host file system is required for the hostmetrics receiver, see
 		// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/hostmetricsreceiver/README.md#collecting-host-metrics-from-inside-a-container-linux-only
 		volumes = append(volumes, corev1.Volume{
@@ -862,6 +865,8 @@ func assembleCollectorDaemonSetVolumeMounts(
 		filelogOffsetVolumeMount,
 	}
 	if !config.IsGkeAutopilot {
+		// This volume mount is only useful for Docker Desktop and similar container runtimes. In GKE Autopilot we know
+		// for sure that /var/lib/docker/containers does not exist, so there is no need to mount it.
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
 			Name:      "node-docker-container-logs",
 			MountPath: "/var/lib/docker/containers",
@@ -869,7 +874,7 @@ func assembleCollectorDaemonSetVolumeMounts(
 		})
 	}
 
-	if config.UseHostMetricsReceiver && !config.IsGkeAutopilot {
+	if config.UseHostMetricsReceiver {
 		// Mounting the entire host file system is required for the hostmetrics receiver, see
 		// https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/receiver/hostmetricsreceiver/README.md#collecting-host-metrics-from-inside-a-container-linux-only
 		volumeMounts = append(volumeMounts, corev1.VolumeMount{
@@ -1295,19 +1300,16 @@ func assembleCollectorDeployment(
 	}
 
 	matchExpressions := []corev1.NodeSelectorRequirement{
-
+		{
+			Key:      dash0OptOutLabelKey,
+			Operator: corev1.NodeSelectorOpNotIn,
+			Values:   []string{"false"},
+		},
 		{
 			Key:      util.KubernetesIoOs,
 			Operator: corev1.NodeSelectorOpIn,
 			Values:   []string{"linux"},
 		},
-	}
-	if !config.IsGkeAutopilot {
-		matchExpressions = append(matchExpressions, corev1.NodeSelectorRequirement{
-			Key:      dash0OptOutLabelKey,
-			Operator: corev1.NodeSelectorOpNotIn,
-			Values:   []string{"false"},
-		})
 	}
 	podSpec := corev1.PodSpec{
 		Affinity: &corev1.Affinity{
@@ -1349,6 +1351,7 @@ func assembleCollectorDeployment(
 		podSpec.PriorityClassName = priorityClassName
 	}
 
+	templateLabels := addGkeAutopilotAllowListMatchLabel(config, deploymentMatchLabels, gkeAutopilotAllowlistLabelDeploymentValue)
 	collectorDeployment := &appsv1.Deployment{
 		TypeMeta: util.K8sTypeMetaDeployment,
 		ObjectMeta: metav1.ObjectMeta{
@@ -1366,7 +1369,7 @@ func assembleCollectorDeployment(
 			},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{
-					Labels: deploymentMatchLabels,
+					Labels: templateLabels,
 				},
 				Spec: podSpec,
 			},
@@ -1481,10 +1484,6 @@ func DeploymentCollectorConfigConfigMapName(namePrefix string) string {
 	return renderName(namePrefix, openTelemetryCollectorDeploymentNameSuffix, "cm")
 }
 
-func OperatorExtracConfigConfigMapName(namePrefix string) string {
-	return renderName(namePrefix, "extra-config")
-}
-
 func DaemonSetClusterRoleName(namePrefix string) string {
 	return renderName(namePrefix, openTelemetryCollector, "cr")
 }
@@ -1561,6 +1560,22 @@ func addCommonMetadata(object client.Object) clientObject {
 	return clientObject{
 		object: object,
 	}
+}
+
+func addGkeAutopilotAllowListMatchLabel(
+	config *oTelColConfig,
+	originalLabels map[string]string,
+	gkeAutopilotAllowlistLabelValue string,
+) map[string]string {
+	if !config.IsGkeAutopilot {
+		return originalLabels
+	}
+	modifiedLabels := make(map[string]string, len(originalLabels)+1)
+	for k, v := range originalLabels {
+		modifiedLabels[k] = v
+	}
+	modifiedLabels[gkeAutopilotAllowlistLabelKey] = gkeAutopilotAllowlistLabelValue
+	return modifiedLabels
 }
 
 func compileObsoleteResources(namespace string, namePrefix string) []client.Object {
