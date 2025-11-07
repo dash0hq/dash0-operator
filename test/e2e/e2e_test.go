@@ -5,8 +5,10 @@ package e2e
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"time"
 
@@ -80,6 +82,8 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		cleanupSteps.removeApiMockNamespace = true
 
 		determineContainerImages()
+		determineTestAppImages()
+		determineDash0ApiMockImage()
 		rebuildAppUnderTestContainerImages()
 		rebuildDash0ApiMockImage()
 
@@ -104,7 +108,6 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 			stopPodCrashOrOOMKillDetection <- true
 		}
 		uninstallOtlpSink(workingDir, &cleanupSteps)
-		removeAllTemporaryManifests()
 		undeployNginxIngressController(&cleanupSteps)
 
 		if cleanupSteps.removeTestApplicationNamespace {
@@ -177,9 +180,9 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				DescribeTable(
 					"when instrumenting new workloads",
 					func(workloadType workloadType, runtime runtimeType) {
-						testId := generateTestId(runtime, workloadType)
+						testId := generateNewTestId(runtime, workloadType)
 						By(fmt.Sprintf("installing the %s %s", runtime.runtimeTypeLabel, workloadType.workloadTypeString))
-						Expect(installWorkload(runtime, workloadType, applicationUnderTestNamespace, testId)).To(Succeed())
+						Expect(installTestAppWorkload(runtime, workloadType, applicationUnderTestNamespace, testId, nil)).To(Succeed())
 						By(fmt.Sprintf("verifying that the %s %s has been instrumented by the webhook",
 							runtime.runtimeTypeLabel, workloadType.workloadTypeString))
 						verifyThatWorkloadHasBeenInstrumented(
@@ -212,7 +215,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				)
 
 				It("should revert an instrumented workload when the opt-out label is added after the fact", func() {
-					testId := generateTestId(runtimeTypeNodeJs, workloadTypeDeployment)
+					testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
 					By("installing the Node.js deployment")
 					Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
 					By("verifying that the Node.js deployment has been instrumented by the webhook")
@@ -243,7 +246,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				})
 
 				It("should instrument a workload when the opt-out label is removed from it", func() {
-					testId := generateTestId(runtimeTypeNodeJs, workloadTypeDaemonSet)
+					testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDaemonSet)
 					By("installing the Node.js daemon set with dash0.com/enable=false")
 					Expect(installNodeJsDaemonSetWithOptOutLabel(applicationUnderTestNamespace)).To(Succeed())
 					By("verifying that the Node.js daemon set has not been instrumented by the webhook")
@@ -326,7 +329,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 			Describe("log collection", func() {
 				It("collects logs, but does not collect the same logs twice from a file when the collector pod churns", func() {
-					testId := generateTestId(runtimeTypeNodeJs, workloadTypeDeployment)
+					testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
 					deployDash0MonitoringResource(
 						applicationUnderTestNamespace,
 						dash0MonitoringValuesDefault,
@@ -635,34 +638,14 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 			Describe("when instrumenting existing workloads", func() {
 
 				It("should instrument and uninstrument all workload types", func() {
-					testIds := make(map[string]string)
+					testIds := make(testIdMap)
 					workloadTestConfigs := workloadTestConfigs()
 					for _, c := range workloadTestConfigs {
-						mapKey := fmt.Sprintf(
-							"%s-%s",
-							c.runtime.runtimeTypeLabel,
-							c.workloadType.workloadTypeString,
-						)
-						testIds[mapKey] = generateTestId(c.runtime, c.workloadType)
+						mapKey := getTestIdMapKey(c.runtime, c.workloadType)
+						testIds[mapKey] = generateNewTestId(c.runtime, c.workloadType)
 					}
 
-					By("deploying all workloads")
-					runInParallel(workloadTestConfigs, func(c workloadTestConfig) {
-						By(
-							fmt.Sprintf(
-								"deploying the %s %s", c.runtime.runtimeTypeLabel, c.workloadType.workloadTypeString))
-						Expect(installWorkload(
-							c.runtime,
-							c.workloadType,
-							applicationUnderTestNamespace,
-							testIds[fmt.Sprintf(
-								"%s-%s",
-								c.runtime.runtimeTypeLabel,
-								c.workloadType.workloadTypeString,
-							)],
-						)).To(Succeed())
-					})
-					By("all workloads have been deployed")
+					deployWorkloadsForMultipleRuntimesInParallel(workloadTestConfigs, testIds)
 
 					deployDash0MonitoringResource(
 						applicationUnderTestNamespace,
@@ -683,7 +666,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					//  In [It] at: /Users/bastian/dco/test/e2e/verify_instrumentation.go:64 @ 11/26/24 10:28:53.645
 					// No amount of retrying helps. Once the collector is in this state, all spans lack that resource
 					// attribute. See comment in spans.go#workloadSpansResourceMatcher.
-					runInParallel(workloadTestConfigs, func(c workloadTestConfig) {
+					runInParallel(workloadTestConfigs, func(c runtimeWorkloadTestConfig) {
 						By(fmt.Sprintf("verifying that the %s %s has been instrumented by the controller",
 							c.runtime.runtimeTypeLabel,
 							c.workloadType.workloadTypeString,
@@ -692,11 +675,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 							applicationUnderTestNamespace,
 							c.runtime,
 							c.workloadType,
-							testIds[fmt.Sprintf(
-								"%s-%s",
-								c.runtime.runtimeTypeLabel,
-								c.workloadType.workloadTypeString,
-							)],
+							getTestIdFromMap(testIds, c.runtime, c.workloadType),
 							images,
 							"controller",
 							true,
@@ -712,16 +691,12 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 					// created.
 					killBatchJobsAndPods(applicationUnderTestNamespace)
 
-					runInParallel(workloadTestConfigs, func(c workloadTestConfig) {
+					runInParallel(workloadTestConfigs, func(c runtimeWorkloadTestConfig) {
 						verifyThatInstrumentationHasBeenReverted(
 							applicationUnderTestNamespace,
 							c.runtime,
 							c.workloadType,
-							testIds[fmt.Sprintf(
-								"%s-%s",
-								c.runtime.runtimeTypeLabel,
-								c.workloadType.workloadTypeString,
-							)],
+							getTestIdFromMap(testIds, c.runtime, c.workloadType),
 							"controller",
 						)
 					})
@@ -731,7 +706,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 			Describe("when it detects existing jobs or ownerless pods", func() {
 				It("should label immutable jobs accordingly", func() {
-					testId := generateTestId(runtimeTypeNodeJs, workloadTypeJob)
+					testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeJob)
 					By("installing the Node.js job")
 					Expect(installNodeJsJob(applicationUnderTestNamespace, testId)).To(Succeed())
 					deployDash0MonitoringResource(
@@ -793,9 +768,11 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				})
 
 				It("when instrumenting a job via webhook and then trying to uninstrument it via the controller", func() {
-					testId := generateTestId(runtimeTypeNodeJs, workloadTypeJob)
+					testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeJob)
 					By(fmt.Sprintf("installing the %s %s", runtimeTypeNodeJs.runtimeTypeLabel, workloadTypeJob.workloadTypeString))
-					Expect(installWorkload(runtimeTypeNodeJs, workloadTypeJob, applicationUnderTestNamespace, testId)).To(Succeed())
+					Expect(
+						installTestAppWorkload(runtimeTypeNodeJs, workloadTypeJob, applicationUnderTestNamespace, testId, nil),
+					).To(Succeed())
 					By(fmt.Sprintf("verifying that the %s %s has been instrumented by the webhook",
 						runtimeTypeNodeJs.runtimeTypeLabel, workloadTypeJob.workloadTypeString))
 					verifyThatWorkloadHasBeenInstrumented(
@@ -834,7 +811,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 			Describe("when updating the Dash0Monitoring resource", func() {
 				It("should instrument workloads when the Dash0Monitoring resource is switched from instrumentWorkloads.mode=none to instrumentWorkloads.mode=all", func() { //nolint
-					testId := generateTestId(runtimeTypeNodeJs, workloadTypeStatefulSet)
+					testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeStatefulSet)
 					deployDash0MonitoringResource(
 						applicationUnderTestNamespace,
 						dash0MonitoringValues{
@@ -871,7 +848,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				})
 
 				It("should revert an instrumented workload when the Dash0Monitoring resource is switched from instrumentWorkloads.mode=all to instrumentWorkloads.mode=none", func() { //nolint
-					testId := generateTestId(runtimeTypeNodeJs, workloadTypeDeployment)
+					testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
 					deployDash0MonitoringResource(
 						applicationUnderTestNamespace,
 						dash0MonitoringValuesDefault,
@@ -924,12 +901,15 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 				})
 
 				It("should instrument workloads that match the label selector", func() {
-					testId := generateTestId(runtimeTypeNodeJs, workloadTypeStatefulSet)
+					testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeStatefulSet)
 
 					By("installing the Node.js daemon set with label instrument-with-dash0: yes")
-					// The daemonset in daemonset.opt-out.yaml also has the instrument-with-dash0=true label, so it can
-					// be used for this test case.
-					Expect(installNodeJsDaemonSetWithOptOutLabel(applicationUnderTestNamespace)).To(Succeed())
+					Expect(installNodeJsDaemonSetWithExtraLabels(
+						applicationUnderTestNamespace,
+						map[string]string{
+							"instrument-with-dash0": "yes",
+						},
+					)).To(Succeed())
 					By("verifying that the Node.js daemon set has been instrumented by the webhook")
 					verifyThatWorkloadHasBeenInstrumented(
 						applicationUnderTestNamespace,
@@ -975,7 +955,7 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 			Describe("when using the v1alpha1 version of the monitoring resource", func() {
 
 				It("should instrument and uninstrument workloads", func() {
-					testId := generateTestId(runtimeTypeNodeJs, workloadTypeDeployment)
+					testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
 
 					By("installing the Node.js deployment")
 					Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
@@ -1055,9 +1035,11 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 			})
 
 			It("should instrument workloads and send telemetry to the endpoint configured in the monitoring resource", func() {
-				testId := generateTestId(runtimeTypeNodeJs, workloadTypeDeployment)
+				testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
 				By("installing the Node.js deployment")
-				Expect(installNodeJsWorkload(workloadTypeDeployment, applicationUnderTestNamespace, testId)).To(Succeed())
+				Expect(
+					installTestAppWorkload(runtimeTypeNodeJs, workloadTypeDeployment, applicationUnderTestNamespace, testId, nil),
+				).To(Succeed())
 				By("verifying that the Node.js deployment has been instrumented by the webhook")
 				verifyThatWorkloadHasBeenInstrumented(
 					applicationUnderTestNamespace,
@@ -1511,7 +1493,7 @@ trace_statements:
 			})
 
 			It("should instrument and uninstrument workloads via the webhook", func() {
-				testId := generateTestId(runtimeTypeNodeJs, workloadTypeDeployment)
+				testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
 
 				By("installing the Node.js deployment")
 				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
@@ -1559,7 +1541,7 @@ trace_statements:
 			})
 
 			It("should update instrumentation modifications at startup", func() {
-				testId := generateTestId(runtimeTypeNodeJs, workloadTypeDeployment)
+				testId := generateNewTestId(runtimeTypeNodeJs, workloadTypeDeployment)
 				By("installing the Node.js deployment")
 				Expect(installNodeJsDeployment(applicationUnderTestNamespace)).To(Succeed())
 
@@ -1789,7 +1771,7 @@ trace_statements:
 				{
 					namespace:    "e2e-application-under-test-namespace-removal-2",
 					workloadType: workloadTypeDeployment,
-					runtime:      runtimeTypeNodeJs,
+					runtime:      runtimeTypeJvm,
 				},
 			}
 
@@ -1799,7 +1781,7 @@ trace_statements:
 					testIds := make(map[string]string)
 					for _, config := range configs {
 						testIds[config.workloadType.workloadTypeString] =
-							generateTestId(config.runtime, config.workloadType)
+							generateNewTestId(config.runtime, config.workloadType)
 					}
 
 					runInParallel(configs, func(config removalTestNamespaceConfig) {
@@ -1808,11 +1790,12 @@ trace_statements:
 							config.workloadType.workloadTypeString,
 							config.namespace,
 						))
-						Expect(installWorkload(
+						Expect(installTestAppWorkload(
 							config.runtime,
 							config.workloadType,
 							config.namespace,
 							testIds[config.workloadType.workloadTypeString],
+							nil,
 						)).To(Succeed())
 					})
 
@@ -1875,21 +1858,21 @@ trace_statements:
 	}) // end of suite "without an existing operator deployment"
 })
 
-type workloadTestConfig struct {
-	workloadType workloadType
+type runtimeWorkloadTestConfig struct {
 	runtime      runtimeType
+	workloadType workloadType
 }
 
-func (c workloadTestConfig) GetWorkloadType() workloadType {
-	return c.workloadType
+func (c runtimeWorkloadTestConfig) GetMapKey() string {
+	return getTestIdMapKey(c.runtime, c.workloadType)
 }
 
-func (c workloadTestConfig) GetRuntimeType() runtimeType {
-	return c.runtime
+func (c runtimeWorkloadTestConfig) GetLabel() string {
+	return fmt.Sprintf("%s %s", c.runtime.runtimeTypeLabel, c.workloadType.workloadTypeString)
 }
 
-func workloadTestConfigs() []workloadTestConfig {
-	return []workloadTestConfig{
+func workloadTestConfigs() []runtimeWorkloadTestConfig {
+	return []runtimeWorkloadTestConfig{
 		{workloadType: workloadTypeCronjob, runtime: runtimeTypeNodeJs},
 		{workloadType: workloadTypeDaemonSet, runtime: runtimeTypeNodeJs},
 		{workloadType: workloadTypeDeployment, runtime: runtimeTypeNodeJs},
@@ -1900,18 +1883,66 @@ func workloadTestConfigs() []workloadTestConfig {
 	}
 }
 
+type deployHelmChartConfig struct {
+	runtime       runtimeType
+	workloadTypes []workloadType
+}
+
+func (c deployHelmChartConfig) GetMapKey() string {
+	return fmt.Sprintf("%s", c.runtime.runtimeTypeLabel)
+}
+
+func (c deployHelmChartConfig) GetLabel() string {
+	workloadTypeStrings := make([]string, 0, len(c.workloadTypes))
+	for _, wt := range c.workloadTypes {
+		workloadTypeStrings = append(workloadTypeStrings, wt.workloadTypeString)
+	}
+	return fmt.Sprintf(
+		"deploy %s test app (workload types: %s)",
+		c.runtime.runtimeTypeLabel,
+		strings.Join(workloadTypeStrings, ", "),
+	)
+}
+
+func deployWorkloadsForMultipleRuntimesInParallel(workloadTestConfigs []runtimeWorkloadTestConfig, testIds testIdMap) {
+	// group test config workloads by runtime
+	deployConfigMap := make(map[runtimeType]deployHelmChartConfig)
+	for _, testCfg := range workloadTestConfigs {
+		if deployConfig, ok := deployConfigMap[testCfg.runtime]; ok {
+			deployConfig.workloadTypes = append(deployConfig.workloadTypes, testCfg.workloadType)
+			deployConfigMap[testCfg.runtime] = deployConfig
+		} else {
+			deployConfigMap[testCfg.runtime] = deployHelmChartConfig{
+				runtime:       testCfg.runtime,
+				workloadTypes: []workloadType{testCfg.workloadType},
+			}
+		}
+	}
+
+	By("deploying all workloads")
+	runInParallel(slices.Collect(maps.Values(deployConfigMap)), func(deployConfig deployHelmChartConfig) {
+		Expect(installTestAppWorkloads(
+			deployConfig.runtime,
+			deployConfig.workloadTypes,
+			applicationUnderTestNamespace,
+			testIds,
+		)).To(Succeed())
+	})
+	By("all workloads have been deployed")
+}
+
 type removalTestNamespaceConfig struct {
 	namespace    string
 	workloadType workloadType
 	runtime      runtimeType
 }
 
-func (c removalTestNamespaceConfig) GetWorkloadType() workloadType {
-	return c.workloadType
+func (c removalTestNamespaceConfig) GetMapKey() string {
+	return getTestIdMapKey(c.runtime, c.workloadType)
 }
 
-func (c removalTestNamespaceConfig) GetRuntimeType() runtimeType {
-	return c.runtime
+func (c removalTestNamespaceConfig) GetLabel() string {
+	return fmt.Sprintf("%s %s (%s)", c.runtime.runtimeTypeLabel, c.workloadType.workloadTypeString, c.namespace)
 }
 
 func cleanupAll() {
@@ -1921,11 +1952,4 @@ func cleanupAll() {
 	}
 	undeployOperator(operatorNamespace)
 	uninstallOtlpSink(workingDir, &cleanupSteps)
-}
-
-func generateTestId(runtime runtimeType, workloadType workloadType) string {
-	testIdUuid := uuid.New()
-	testId := testIdUuid.String()
-	By(fmt.Sprintf("%s %s: test ID: %s", runtime.runtimeTypeLabel, workloadType.workloadTypeString, testId))
-	return testId
 }

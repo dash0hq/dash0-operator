@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+image:
+  repository: dash0-operator-jvm-spring-boot-test-app
+  tag: latest
+  pullPolicy: Never
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+    ephemeral-storage: 500Mi
+  requests:
+    cpu: 200m
+    memory: 128Mi
+    ephemeral-storage: 500Mi
+
+daemonset:
+  enabled: false
+  port: 1306
+  targetPort: 1306
+  selector: dash0-operator-jvm-spring-boot-test-daemonset-app
+  ingressPath: /daemonset/jvm(/|$)(.*)
+
+deployment:
+  enabled: false
+  port: 1307
+  targetPort: 1307
+  selector: dash0-operator-jvm-spring-boot-test-deployment-app
+  ingressPath: /deployment/jvm(/|$)(.*)
+
+pod:
+  enabled: false
+  port: 1311
+  targetPort: 1311
+  selector: dash0-operator-jvm-spring-boot-test-pod-app
+  ingressPath: /pod/jvm(/|$)(.*)
+
+replicaset:
+  enabled: false
+  port: 1309
+  targetPort: 1309
+  selector: dash0-operator-jvm-spring-boot-test-replicaset-app
+  ingressPath: /replicaset/jvm(/|$)(.*)
+
+statefulset:
+  enabled: false
+  port: 1310
+  targetPort: 1310
+  selector: dash0-operator-jvm-spring-boot-test-statefulset-app
+  ingressPath: /statefulset/jvm(/|$)(.*)

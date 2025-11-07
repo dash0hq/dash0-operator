@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.deployment.enabled }}
+{{ include "dotnet-test-app.ingress" (dict "workloadType" "deployment" "path" .Values.deployment.ingressPath "port" .Values.deployment.port) }}
+{{- end }}
+
+{{- if .Values.daemonset.enabled }}
+{{ include "dotnet-test-app.ingress" (dict "workloadType" "daemonset" "path" .Values.daemonset.ingressPath "port" .Values.daemonset.port) }}
+{{- end }}
+
+{{- if .Values.statefulset.enabled }}
+{{ include "dotnet-test-app.ingress" (dict "workloadType" "statefulset" "path" .Values.statefulset.ingressPath "port" .Values.statefulset.port) }}
+{{- end }}
+
+{{- if .Values.replicaset.enabled }}
+{{ include "dotnet-test-app.ingress" (dict "workloadType" "replicaset" "path" .Values.replicaset.ingressPath "port" .Values.replicaset.port) }}
+{{- end }}
+
+{{- if .Values.pod.enabled }}
+{{ include "dotnet-test-app.ingress" (dict "workloadType" "pod" "path" .Values.pod.ingressPath "port" .Values.pod.port) }}
+{{- end }}

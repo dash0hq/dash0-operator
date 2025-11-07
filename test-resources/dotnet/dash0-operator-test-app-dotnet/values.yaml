@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+image:
+  repository: dash0-operator-dotnet-test-app
+  tag: latest
+  pullPolicy: Never
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+    ephemeral-storage: 500Mi
+  requests:
+    cpu: 200m
+    memory: 128Mi
+    ephemeral-storage: 500Mi
+
+daemonset:
+  enabled: false
+  port: 1406
+  targetPort: 1406
+  selector: dash0-operator-dotnet-test-daemonset-app
+  ingressPath: /daemonset/.net(/|$)(.*)
+
+deployment:
+  enabled: false
+  port: 1407
+  targetPort: 1407
+  selector: dash0-operator-dotnet-test-deployment-app
+  ingressPath: /deployment/.net(/|$)(.*)
+
+pod:
+  enabled: false
+  port: 1411
+  targetPort: 1411
+  selector: dash0-operator-dotnet-test-pod-app
+  ingressPath: /pod/.net(/|$)(.*)
+
+replicaset:
+  enabled: false
+  port: 1409
+  targetPort: 1409
+  selector: dash0-operator-dotnet-test-replicaset-app
+  ingressPath: /replicaset/.net(/|$)(.*)
+
+statefulset:
+  enabled: false
+  port: 1410
+  targetPort: 1410
+  selector: dash0-operator-dotnet-test-statefulset-app
+  ingressPath: /statefulset/.net(/|$)(.*)

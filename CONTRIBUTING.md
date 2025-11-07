@@ -295,6 +295,20 @@ IMAGE_REPOSITORY_PREFIX=ghcr.io/dash0hq/ \
   make test-e2e
 ```
 
+If test applications are also coming from a remote registry:
+```
+IMAGE_REPOSITORY_PREFIX=some-registry/ \
+  PULL_POLICY="" \
+  TEST_IMAGE_REPOSITORY_PREFIX=some-registry/ \
+  TEST_IMAGE_PULL_POLICY="" \
+  SKIP_TEST_APP_IMAGE_BUILDS=true \
+  make test-e2e
+```
+
+Note that the `TEST_IMAGE_*` environment variables will also be used for auxiliary images like the Dash0 API mock.
+`DASH0_API_MOCK_IMAGE_REPOSITORY`, `DASH0_API_MOCK_IMAGE_TAG`, and `DASH0_API_MOCK_IMAGE_PULL_POLICY` are supported for
+individual control over this image.
+
 All of the above use the local Helm chart from the directory `helm-chart/dash0-operator`.
 The test suite can also be run with a Helm chart from a remote Helm repository:
 
@@ -303,6 +317,8 @@ OPERATOR_HELM_CHART=dash0-operator/dash0-operator \
   OPERATOR_HELM_CHART_URL=https://dash0hq.github.io/dash0-operator \
   make test-e2e
 ```
+
+When running with a remote Helm chart like this, the images from the chart are used by default, instead of local images.
 
 When an end-to-end test case fails, the test suite automatically collects pod descriptions, config maps and pod logs
 from the Kubernetes cluster at the time of the failure.

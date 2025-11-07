@@ -9,13 +9,13 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"slices"
 	"strings"
 	"text/template"
 	"time"
 
 	"github.com/Masterminds/sprig/v3"
+	"github.com/google/uuid"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -46,14 +46,35 @@ type workloadType struct {
 	workloadTypeString string
 	basePort           int
 	isBatch            bool
-	waitCommand        func(string, runtimeType) *exec.Cmd
 }
 
 type runtimeType struct {
 	runtimeTypeLabel string
 	portOffset       int
 	workloadName     string
-	applicationPath  string
+	helmChartPath    string
+	helmReleaseName  string
+}
+
+func generateNewTestId(runtime runtimeType, workloadType workloadType) string {
+	testIdUuid := uuid.New()
+	testId := testIdUuid.String()
+	By(fmt.Sprintf("%s %s: test ID: %s", runtime.runtimeTypeLabel, workloadType.workloadTypeString, testId))
+	return testId
+}
+
+type testIdMap = map[string]string
+
+func getTestIdFromMap(m testIdMap, runtime runtimeType, workload workloadType) string {
+	return m[getTestIdMapKey(runtime, workload)]
+}
+
+func getTestIdMapKey(runtime runtimeType, workload workloadType) string {
+	return fmt.Sprintf(
+		"%s-%s",
+		runtime.runtimeTypeLabel,
+		workload.workloadTypeString,
+	)
 }
 
 func workloadName(runtime runtimeType, workloadType workloadType) string {
@@ -156,6 +177,10 @@ func executeHttpRequest(
 
 func getPort(runtime runtimeType, workloadType workloadType) int {
 	return workloadType.basePort + runtime.portOffset
+}
+
+func testImageBuildsShouldBeSkipped() bool {
+	return os.Getenv("SKIP_TEST_APP_IMAGE_BUILDS") == "true"
 }
 
 func verifyResourceAttributeEquals[T any](

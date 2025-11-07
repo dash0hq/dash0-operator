@@ -5,147 +5,116 @@ package e2e
 
 import (
 	_ "embed"
+	"encoding/json"
 	"fmt"
-	"os"
 	"os/exec"
-
-	"gopkg.in/yaml.v3"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
-var (
-	temporaryManifestFiles []string
+const (
+	testAppHelmInstallTimeout = "30s"
+)
 
+var (
 	workloadTypeCronjob = workloadType{
 		workloadTypeString: "cronjob",
 		basePort:           1205,
 		isBatch:            true,
-		waitCommand:        nil,
 	}
 	workloadTypeDaemonSet = workloadType{
 		workloadTypeString: "daemonset",
 		basePort:           1206,
 		isBatch:            false,
-		waitCommand: func(namespace string, runtime runtimeType) *exec.Cmd {
-			return exec.Command(
-				"kubectl",
-				"rollout",
-				"status",
-				"daemonset",
-				fmt.Sprintf("%s-daemonset", runtime.workloadName),
-				"--namespace",
-				namespace,
-				"--timeout",
-				"60s",
-			)
-		},
 	}
 	workloadTypeDeployment = workloadType{
 		workloadTypeString: "deployment",
 		isBatch:            false,
 		basePort:           1207,
-		waitCommand: func(namespace string, runtime runtimeType) *exec.Cmd {
-			return exec.Command(
-				"kubectl",
-				"wait",
-				fmt.Sprintf("deployment.apps/%s-deployment", runtime.workloadName),
-				"--for",
-				"condition=Available",
-				"--namespace",
-				namespace,
-				"--timeout",
-				"60s",
-			)
-		},
 	}
 	workloadTypeJob = workloadType{
 		workloadTypeString: "job",
 		basePort:           1208,
 		isBatch:            true,
-		waitCommand:        nil,
 	}
 	workloadTypePod = workloadType{
 		workloadTypeString: "pod",
 		basePort:           1211,
 		isBatch:            false,
-		waitCommand: func(namespace string, runtime runtimeType) *exec.Cmd {
-			return exec.Command(
-				"kubectl",
-				"wait",
-				"pod",
-				"--namespace",
-				namespace,
-				"--selector",
-				fmt.Sprintf("app=%s-pod-app", runtime.workloadName),
-				"--for",
-				"condition=ContainersReady",
-				"--timeout",
-				"60s",
-			)
-		},
 	}
 	workloadTypeReplicaSet = workloadType{
 		workloadTypeString: "replicaset",
 		basePort:           1209,
 		isBatch:            false,
-		waitCommand: func(namespace string, runtime runtimeType) *exec.Cmd {
-			return exec.Command(
-				"kubectl",
-				"wait",
-				"pod",
-				"--namespace",
-				namespace,
-				"--selector",
-				fmt.Sprintf("app=%s-replicaset-app", runtime.workloadName),
-				"--for",
-				"condition=ContainersReady",
-				"--timeout",
-				"60s",
-			)
-		},
 	}
 	workloadTypeStatefulSet = workloadType{
 		workloadTypeString: "statefulset",
 		basePort:           1210,
 		isBatch:            false,
-		waitCommand: func(namespace string, runtime runtimeType) *exec.Cmd {
-			return exec.Command(
-				"kubectl",
-				"rollout",
-				"status",
-				"statefulset",
-				fmt.Sprintf("%s-statefulset", runtime.workloadName),
-				"--namespace",
-				namespace,
-				"--timeout",
-				"60s",
-			)
-		},
 	}
 
 	runtimeTypeNodeJs = runtimeType{
 		runtimeTypeLabel: runtimeTypeLabelNodeJs,
 		portOffset:       0,
 		workloadName:     workloadNameNodeJs,
-		applicationPath:  applicationPathNodeJs,
+		helmChartPath:    chartPathNodeJs,
+		helmReleaseName:  releaseNameNodeJs,
 	}
 	runtimeTypeJvm = runtimeType{
 		runtimeTypeLabel: runtimeTypeLabelJvm,
 		portOffset:       100,
 		workloadName:     workloadNameJvm,
-		applicationPath:  applicationPathJvm,
+		helmChartPath:    chartPathJvm,
+		helmReleaseName:  releaseNameJvm,
 	}
 	runtimeTypeDotnet = runtimeType{
 		runtimeTypeLabel: runtimeTypeLabelDotnet,
 		portOffset:       200,
 		workloadName:     workloadNameDotnet,
-		applicationPath:  applicationPathDotnet,
+		helmChartPath:    chartPathDotnet,
+		helmReleaseName:  releaseNameDotnet,
 	}
+
+	testAppImages = make(map[runtimeType]ImageSpec)
 )
 
+func determineTestAppImages() {
+	repositoryPrefix := getEnvOrDefault("TEST_IMAGE_REPOSITORY_PREFIX", defaultImageRepositoryPrefix)
+	imageTag := getEnvOrDefault("TEST_IMAGE_TAG", defaultImageTag)
+	pullPolicy := getEnvOrDefault("TEST_IMAGE_PULL_POLICY", defaultPullPolicy)
+
+	testAppImages[runtimeTypeDotnet] =
+		determineContainerImage(
+			"TEST_APP_DOTNET",
+			repositoryPrefix,
+			"dash0-operator-dotnet-test-app",
+			imageTag,
+			pullPolicy,
+		)
+	testAppImages[runtimeTypeJvm] =
+		determineContainerImage(
+			"TEST_APP_JVM",
+			repositoryPrefix,
+			"dash0-operator-jvm-spring-boot-test-app",
+			imageTag,
+			pullPolicy,
+		)
+	testAppImages[runtimeTypeNodeJs] =
+		determineContainerImage(
+			"TEST_APP_NODEJS",
+			repositoryPrefix,
+			"dash0-operator-nodejs-20-express-test-app",
+			imageTag,
+			pullPolicy,
+		)
+}
+
 func rebuildAppUnderTestContainerImages() {
+	if testImageBuildsShouldBeSkipped() {
+		e2ePrint("Skipping make test-app-images (SKIP_TEST_APP_IMAGE_BUILDS=true)\n")
+		return
+	}
 	Expect(
 		runAndIgnoreOutput(
 			exec.Command(
@@ -154,191 +123,186 @@ func rebuildAppUnderTestContainerImages() {
 			))).To(Succeed())
 }
 
-func uninstallNodeJsCronJob(namespace string) error {
-	return runKubectlDelete(namespace, "cronjob", runtimeTypeNodeJs)
-}
-
 //nolint:unparam
 func installNodeJsDaemonSet(namespace string) error {
-	return installNodeJsWorkload(
+	return installTestAppWorkload(
+		runtimeTypeNodeJs,
 		workloadTypeDaemonSet,
 		namespace,
 		"",
+		nil,
 	)
 }
 
 func installNodeJsDaemonSetWithOptOutLabel(namespace string) error {
-	return runKubectlApply(
+	return installNodeJsDaemonSetWithExtraLabels(
 		namespace,
-		manifest(runtimeTypeNodeJs, "daemonset.opt-out"),
-		runtimeTypeNodeJs.runtimeTypeLabel,
-		"daemonset",
-		workloadTypeDaemonSet.waitCommand(namespace, runtimeTypeNodeJs),
+		map[string]string{
+			"dash0.com/enable": "false",
+		},
 	)
 }
 
-func uninstallNodeJsDaemonSet(namespace string) error {
-	return runKubectlDelete(namespace, "daemonset", runtimeTypeNodeJs)
-}
-
-func uninstallJvmDaemonSet(namespace string) error {
-	return runKubectlDelete(namespace, "daemonset", runtimeTypeJvm)
-}
-
-func uninstallDotnetDaemonSet(namespace string) error {
-	return runKubectlDelete(namespace, "daemonset", runtimeTypeDotnet)
+func installNodeJsDaemonSetWithExtraLabels(namespace string, extraLabels map[string]string) error {
+	return installTestAppWorkload(
+		runtimeTypeNodeJs,
+		workloadTypeDaemonSet,
+		namespace,
+		"",
+		extraLabels,
+	)
 }
 
 //nolint:unparam
 func installNodeJsDeployment(namespace string) error {
-	return installNodeJsWorkload(
+	return installTestAppWorkload(
+		runtimeTypeNodeJs,
 		workloadTypeDeployment,
 		namespace,
 		"",
+		nil,
 	)
-}
-
-func uninstallNodeJsDeployment(namespace string) error {
-	return runKubectlDelete(namespace, "deployment", runtimeTypeNodeJs)
-}
-
-func uninstallJvmDeployment(namespace string) error {
-	return runKubectlDelete(namespace, "deployment", runtimeTypeJvm)
-}
-
-func uninstallDotnetDeployment(namespace string) error {
-	return runKubectlDelete(namespace, "deployment", runtimeTypeDotnet)
 }
 
 func installNodeJsJob(namespace string, testId string) error {
-	return installNodeJsWorkload(
+	return installTestAppWorkload(
+		runtimeTypeNodeJs,
 		workloadTypeJob,
 		namespace,
 		testId,
+		nil,
 	)
-}
-
-func uninstallNodeJsJob(namespace string) error {
-	return runKubectlDelete(namespace, "job", runtimeTypeNodeJs)
 }
 
 func installNodeJsPod(namespace string) error {
-	return installNodeJsWorkload(
+	return installTestAppWorkload(
+		runtimeTypeNodeJs,
 		workloadTypePod,
 		namespace,
 		"",
+		nil,
 	)
-}
-
-func uninstallNodeJsPod(namespace string) error {
-	return runKubectlDelete(namespace, "pod", runtimeTypeNodeJs)
-}
-
-func uninstallJvmPod(namespace string) error {
-	return runKubectlDelete(namespace, "pod", runtimeTypeJvm)
-}
-
-func uninstallDotnetPod(namespace string) error {
-	return runKubectlDelete(namespace, "pod", runtimeTypeDotnet)
-}
-
-func uninstallNodeJsReplicaSet(namespace string) error {
-	return runKubectlDelete(namespace, "replicaset", runtimeTypeNodeJs)
-}
-
-func uninstallJvmReplicaSet(namespace string) error {
-	return runKubectlDelete(namespace, "replicaset", runtimeTypeJvm)
-}
-
-func uninstallDotnetReplicaSet(namespace string) error {
-	return runKubectlDelete(namespace, "replicaset", runtimeTypeDotnet)
 }
 
 func installNodeJsStatefulSet(namespace string) error {
-	return installNodeJsWorkload(
+	return installTestAppWorkload(
+		runtimeTypeNodeJs,
 		workloadTypeStatefulSet,
 		namespace,
 		"",
+		nil,
 	)
 }
 
-func uninstallNodeJsStatefulSet(namespace string) error {
-	return runKubectlDelete(namespace, "statefulset", runtimeTypeNodeJs)
+// installTestAppWorkload runs helm install for a single workload, that is, for one particular runtime (Node.js, JVM,
+// ...) and one particular workload type (i.e. Deployment, DaemonSet, ...).
+func installTestAppWorkload(
+	runtime runtimeType,
+	workloadType workloadType,
+	namespace string,
+	testId string,
+	extraLabels map[string]string,
+) error {
+	helmSetParams := compileWorkloadTypeSetParams(workloadType)
+	helmSetParams = addTestAppImageSetParams(runtime, helmSetParams)
+
+	// Add testId for batch workloads
+	if workloadType.isBatch && testId != "" {
+		helmSetParams = append(helmSetParams, "--set", fmt.Sprintf("%s.testId=%s", workloadType.workloadTypeString, testId))
+	}
+	if len(extraLabels) > 0 {
+		labelsJson, err := json.Marshal(extraLabels)
+		Expect(err).ToNot(HaveOccurred())
+		helmSetParams = append(
+			helmSetParams,
+			"--set-json",
+			fmt.Sprintf("%s.labels=%s", workloadType.workloadTypeString, string(labelsJson)),
+		)
+	}
+
+	return runTestAppHelmInstall(
+		namespace,
+		runtime,
+		helmSetParams,
+	)
 }
 
-func uninstallJvmStatefulSet(namespace string) error {
-	return runKubectlDelete(namespace, "statefulset", runtimeTypeJvm)
-}
+// installTestAppWorkloads runs helm install for a single Helm chart, deploying multiple workload types for one
+// particular runtime at once; for exapmle deploy the Node.js Deployment, DaemonSet and CronJob in one go. Workloads for
+// different runtimes cannot be installed with a single installTestAppWorkloads call, since they are deployed via
+// different Helm charts.
+func installTestAppWorkloads(
+	runtime runtimeType,
+	workloadTypes []workloadType,
+	namespace string,
+	testIds testIdMap,
+) error {
+	helmSetParams := compileWorkloadTypeSetParams(workloadTypes...)
+	helmSetParams = addTestAppImageSetParams(runtime, helmSetParams)
 
-func uninstallDotnetStatefulSet(namespace string) error {
-	return runKubectlDelete(namespace, "statefulset", runtimeTypeDotnet)
-}
-
-func installNodeJsWorkload(workloadType workloadType, namespace string, testId string) error {
-	return installWorkload(runtimeTypeNodeJs, workloadType, namespace, testId)
-}
-
-func installWorkload(runtime runtimeType, workloadType workloadType, namespace string, testId string) error {
-	manifestFile := manifest(runtime, workloadType.workloadTypeString)
-	if workloadType.isBatch {
-		switch workloadType.workloadTypeString {
-		case "cronjob":
-			manifestFile = addTestIdToCronjobManifest(runtime, testId)
-		case "job":
-			manifestFile = addTestIdToJobManifest(runtime, testId)
-		default:
-			return fmt.Errorf("unsupported batch workload type %s", workloadType.workloadTypeString)
+	// Add testIds for batch workloads
+	for _, wt := range workloadTypes {
+		if wt.isBatch {
+			if testId := getTestIdFromMap(testIds, runtime, wt); testId != "" {
+				helmSetParams =
+					append(
+						helmSetParams,
+						"--set",
+						fmt.Sprintf("%s.testId=%s", wt.workloadTypeString, testId),
+					)
+			}
 		}
 	}
 
-	var waitCommand *exec.Cmd
-	if workloadType.waitCommand != nil {
-		waitCommand = workloadType.waitCommand(namespace, runtime)
-	}
-	return runKubectlApply(
+	return runTestAppHelmInstall(
 		namespace,
-		manifestFile,
-		runtime.runtimeTypeLabel,
-		workloadType.workloadTypeString,
-		waitCommand,
+		runtime,
+		helmSetParams,
 	)
 }
 
-func runKubectlApply(
+func runTestAppHelmInstall(
 	namespace string,
-	manifestFile string,
-	runtimeLabel string,
-	workloadTypeString string,
-	waitCommand *exec.Cmd,
+	runtime runtimeType,
+	setValues []string,
 ) error {
-	err := runAndIgnoreOutput(exec.Command(
-		"kubectl",
-		"apply",
+	args := []string{
+		"install",
 		"--namespace",
 		namespace,
-		"-f",
-		manifestFile,
-	))
-	if err != nil {
-		return err
+		"--wait",
+		"--timeout",
+		testAppHelmInstallTimeout,
+		runtime.helmReleaseName,
+		runtime.helmChartPath,
 	}
-	if waitCommand == nil {
-		return nil
-	}
-	return waitForApplicationToBecomeReady(runtimeLabel, workloadTypeString, waitCommand)
+	args = append(args, setValues...)
+
+	return runAndIgnoreOutput(exec.Command("helm", args...))
 }
 
-func runKubectlDelete(namespace string, workloadType string, runtime runtimeType) error {
+func runTestAppHelmUninstall(namespace string, releaseName string) error {
 	return runAndIgnoreOutput(
 		exec.Command(
-			"kubectl",
-			"delete",
+			"helm",
+			"uninstall",
+			releaseName,
 			"--namespace",
 			namespace,
 			"--ignore-not-found",
-			"-f",
-			manifest(runtime, workloadType),
 		), false)
+}
+
+func uninstallDotnetRelease(namespace string) error {
+	return runTestAppHelmUninstall(namespace, runtimeTypeDotnet.helmReleaseName)
+}
+
+func uninstallJvmRelease(namespace string) error {
+	return runTestAppHelmUninstall(namespace, runtimeTypeJvm.helmReleaseName)
+}
+
+func uninstallNodeJsRelease(namespace string) error {
+	return runTestAppHelmUninstall(namespace, runtimeTypeNodeJs.helmReleaseName)
 }
 
 func killBatchJobsAndPods(namespace string) {
@@ -378,23 +342,30 @@ func killBatchJobsAndPods(namespace string) {
 
 func removeAllTestApplications(namespace string) {
 	By("uninstalling the test applications")
-	Expect(uninstallNodeJsCronJob(namespace)).To(Succeed())
-	Expect(uninstallNodeJsDaemonSet(namespace)).To(Succeed())
-	Expect(uninstallJvmDaemonSet(namespace)).To(Succeed())
-	Expect(uninstallDotnetDaemonSet(namespace)).To(Succeed())
-	Expect(uninstallNodeJsDeployment(namespace)).To(Succeed())
-	Expect(uninstallJvmDeployment(namespace)).To(Succeed())
-	Expect(uninstallDotnetDeployment(namespace)).To(Succeed())
-	Expect(uninstallNodeJsJob(namespace)).To(Succeed())
-	Expect(uninstallNodeJsPod(namespace)).To(Succeed())
-	Expect(uninstallJvmPod(namespace)).To(Succeed())
-	Expect(uninstallDotnetPod(namespace)).To(Succeed())
-	Expect(uninstallNodeJsReplicaSet(namespace)).To(Succeed())
-	Expect(uninstallJvmReplicaSet(namespace)).To(Succeed())
-	Expect(uninstallDotnetReplicaSet(namespace)).To(Succeed())
-	Expect(uninstallNodeJsStatefulSet(namespace)).To(Succeed())
-	Expect(uninstallJvmStatefulSet(namespace)).To(Succeed())
-	Expect(uninstallDotnetStatefulSet(namespace)).To(Succeed())
+	Expect(uninstallDotnetRelease(namespace)).To(Succeed())
+	Expect(uninstallJvmRelease(namespace)).To(Succeed())
+	Expect(uninstallNodeJsRelease(namespace)).To(Succeed())
+}
+
+// compileWorkloadTypeSetParams creates a list of Helm --set flags for the test app Helm chart to deploy a specific set
+// of workload types.
+func compileWorkloadTypeSetParams(workloadTypes ...workloadType) []string {
+	setValues := make([]string, 0, len(workloadTypes)*2)
+	for _, wt := range workloadTypes {
+		setValues = append(setValues, "--set", fmt.Sprintf("%s.enabled=true", wt.workloadTypeString))
+	}
+	return setValues
+}
+
+// addTestAppImageSetParams adds image-related --set parameters according to TEST_IMAGE_REPOSITORY_PREFIX,
+// TEST_IMAGE_TAG, TEST_IMAGE_PULL_POLICY, or TEST_APP_NODEJS_IMAGE_REPOSITORY etc.
+func addTestAppImageSetParams(runtime runtimeType, helmSetParams []string) []string {
+	testAppImageSpec, ok := testAppImages[runtime]
+	Expect(ok).To(BeTrue())
+	helmSetParams = append(helmSetParams, "--set", fmt.Sprintf("image.repository=%s", testAppImageSpec.repository))
+	helmSetParams = append(helmSetParams, "--set", fmt.Sprintf("image.tag=%s", testAppImageSpec.tag))
+	helmSetParams = append(helmSetParams, "--set", fmt.Sprintf("image.pullPolicy=%s", testAppImageSpec.pullPolicy))
+	return helmSetParams
 }
 
 func addOptOutLabel(namespace string, workloadType string, workloadName string) error {
@@ -422,83 +393,4 @@ func removeOptOutLabel(namespace string, workloadType string, workloadName strin
 			workloadName,
 			"dash0.com/enable-",
 		))
-}
-
-func addTestIdToCronjobManifest(runtime runtimeType, testId string) string {
-	source := manifest(runtime, "cronjob")
-	applicationManifestContentRaw, err := os.ReadFile(source)
-	Expect(err).ToNot(HaveOccurred())
-	applicationManifestParsed := make(map[string]interface{})
-	Expect(yaml.Unmarshal(applicationManifestContentRaw, &applicationManifestParsed)).To(Succeed())
-	cronjobSpec := (applicationManifestParsed["spec"]).(map[string]interface{})
-	jobTemplate := (cronjobSpec["jobTemplate"]).(map[string]interface{})
-	jobTemplate["spec"] = addEnvVarToContainer(testId, jobTemplate)
-	cronjobSpec["jobTemplate"] = jobTemplate
-	applicationManifestParsed["spec"] = cronjobSpec
-	updatedApplicationManifestContentRaw, err := yaml.Marshal(&applicationManifestParsed)
-	Expect(err).ToNot(HaveOccurred())
-	return writeManifest("cronjob", testId, updatedApplicationManifestContentRaw)
-}
-
-func addTestIdToJobManifest(runtime runtimeType, testId string) string {
-	source := manifest(runtime, "job")
-	applicationManifestContentRaw, err := os.ReadFile(source)
-	Expect(err).ToNot(HaveOccurred())
-	applicationManifestParsed := make(map[string]interface{})
-	Expect(yaml.Unmarshal(applicationManifestContentRaw, &applicationManifestParsed)).To(Succeed())
-	applicationManifestParsed["spec"] = addEnvVarToContainer(testId, applicationManifestParsed)
-	updatedApplicationManifestContentRaw, err := yaml.Marshal(&applicationManifestParsed)
-	Expect(err).ToNot(HaveOccurred())
-	return writeManifest("job", testId, updatedApplicationManifestContentRaw)
-}
-
-func writeManifest(manifestFileName string, testId string, updatedApplicationManifestContentRaw []byte) string {
-	target, err := os.CreateTemp(os.TempDir(), fmt.Sprintf("%s_%s.yaml", manifestFileName, testId))
-	Expect(err).ToNot(HaveOccurred())
-	targetName := target.Name()
-	temporaryManifestFiles = append(temporaryManifestFiles, targetName)
-	Expect(os.WriteFile(targetName, updatedApplicationManifestContentRaw, 0644)).To(Succeed())
-	return targetName
-}
-
-func removeAllTemporaryManifests() {
-	for _, tmpfile := range temporaryManifestFiles {
-		_ = os.Remove(tmpfile)
-	}
-}
-
-func addEnvVarToContainer(testId string, jobTemplateOrManifest map[string]interface{}) map[string]interface{} {
-	jobSpec := (jobTemplateOrManifest["spec"]).(map[string]interface{})
-	template := (jobSpec["template"]).(map[string]interface{})
-	podSpec := (template["spec"]).(map[string]interface{})
-	containers := (podSpec["containers"]).([]interface{})
-	container := (containers[0]).(map[string]interface{})
-	env := (container["env"]).([]interface{})
-
-	for _, v := range env {
-		envVar := (v).(map[string]interface{})
-		if envVar["name"] == "TEST_ID" {
-			// TEST_ID already present, we just need to update the value
-			envVar["value"] = testId
-			return jobSpec
-		}
-	}
-
-	// no TEST_ID present, we need to add a new env var
-	newEnvVar := make(map[string]string)
-	newEnvVar["name"] = "TEST_ID"
-	newEnvVar["value"] = testId
-	env = append(env, newEnvVar)
-
-	// since append does not modify the original slice, we need to update all the objects all the way up the hierarchy
-	container["env"] = env
-	containers[0] = container
-	podSpec["containers"] = containers
-	template["spec"] = podSpec
-	jobSpec["template"] = template
-	return jobSpec
-}
-
-func manifest(runtime runtimeType, manifestFileName string) string {
-	return fmt.Sprintf("%s/%s.yaml", runtime.applicationPath, manifestFileName)
 }

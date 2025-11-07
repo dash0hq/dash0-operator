@@ -27,15 +27,12 @@ type StoredRequests struct {
 }
 
 const (
-	dash0ApiMockDirectory = "test/e2e/dash0-api-mock"
-	dash0ApiMockManifest  = dash0ApiMockDirectory + "/dash0-api-mock.yaml"
+	dash0ApiMockChartPath   = "test/e2e/dash0-api-mock/dash0-api-mock"
+	dash0ApiMockReleaseName = "dash0-api-mock"
 
-	dash0ApiMockImageName = "dash0-api-mock"
-
-	dash0ApiMockNamespace      = "dash0-api"
-	dash0ApiMockDeploymentName = "dash0-api-mock"
-	dash0ApiMockServiceName    = "dash0-api-mock-service"
-	dash0ApiMockServicePort    = 8001
+	dash0ApiMockNamespace   = "dash0-api"
+	dash0ApiMockServiceName = "dash0-api-mock-service"
+	dash0ApiMockServicePort = 8001
 )
 
 var (
@@ -48,6 +45,8 @@ var (
 
 	dash0ApiMockServerExternalBaseUrl = "http://localhost:8001"
 	dash0ApiMockServerClient          *http.Client
+
+	dash0ApiMockImage ImageSpec
 )
 
 func init() {
@@ -57,53 +56,59 @@ func init() {
 	dash0ApiMockServerClient = &http.Client{Transport: t}
 }
 
+func determineDash0ApiMockImage() {
+	repositoryPrefix := getEnvOrDefault("TEST_IMAGE_REPOSITORY_PREFIX", defaultImageRepositoryPrefix)
+	imageTag := getEnvOrDefault("TEST_IMAGE_TAG", defaultImageTag)
+	pullPolicy := getEnvOrDefault("TEST_IMAGE_PULL_POLICY", defaultPullPolicy)
+
+	dash0ApiMockImage =
+		determineContainerImage(
+			"DASH0_API_MOCK",
+			repositoryPrefix,
+			"dash0-api-mock",
+			imageTag,
+			pullPolicy,
+		)
+}
+
 func rebuildDash0ApiMockImage() {
-	By(fmt.Sprintf("building the %s image", dash0ApiMockImageName))
+	if testImageBuildsShouldBeSkipped() {
+		e2ePrint("Skipping make dash0-api-mock-image (SKIP_TEST_APP_IMAGE_BUILDS=true)\n")
+		return
+	}
+	By(fmt.Sprintf("building the %v image", dash0ApiMockImage))
 	Expect(
 		runAndIgnoreOutput(
 			exec.Command("make", "dash0-api-mock-image"))).To(Succeed())
 
-	loadImageToKindClusterIfRequired(
-		ImageSpec{
-			repository: dash0ApiMockImageName,
-			tag:        "latest",
-		}, nil,
-	)
+	loadImageToKindClusterIfRequired(dash0ApiMockImage, nil)
 }
 
 func installDash0ApiMock() {
-	Expect(runAndIgnoreOutput(exec.Command(
-		"kubectl",
-		"apply",
+	helmArgs := []string{"install",
 		"--namespace",
 		dash0ApiMockNamespace,
-		"-f",
-		dash0ApiMockManifest,
-	))).To(Succeed())
-
-	Expect(runAndIgnoreOutput(exec.Command(
-		"kubectl",
-		"wait",
-		fmt.Sprintf("deployment.apps/%s", dash0ApiMockDeploymentName),
-		"--for",
-		"condition=Available",
-		"--namespace",
-		dash0ApiMockNamespace,
+		"--wait",
 		"--timeout",
 		"60s",
-	))).To(Succeed())
+		dash0ApiMockReleaseName,
+		dash0ApiMockChartPath,
+	}
+	helmArgs = append(helmArgs, "--set", fmt.Sprintf("image.repository=%s", dash0ApiMockImage.repository))
+	helmArgs = append(helmArgs, "--set", fmt.Sprintf("image.tag=%s", dash0ApiMockImage.tag))
+	helmArgs = append(helmArgs, "--set", fmt.Sprintf("image.pullPolicy=%s", dash0ApiMockImage.pullPolicy))
+	Expect(runAndIgnoreOutput(exec.Command("helm", helmArgs...))).To(Succeed())
 }
 
 func uninstallDash0ApiMock() {
 	Expect(runAndIgnoreOutput(
 		exec.Command(
-			"kubectl",
-			"delete",
+			"helm",
+			"uninstall",
+			dash0ApiMockReleaseName,
 			"--namespace",
 			dash0ApiMockNamespace,
 			"--ignore-not-found",
-			"-f",
-			dash0ApiMockManifest,
 		))).To(Succeed())
 }
 

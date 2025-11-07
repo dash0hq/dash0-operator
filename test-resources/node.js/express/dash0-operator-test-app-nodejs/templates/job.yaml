@@ -1,0 +1,53 @@
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.job.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dash0-operator-nodejs-20-express-test-job
+  {{- with .Values.job.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: "test-job"
+        app.kubernetes.io/version: "1.0.0"
+        app.kubernetes.io/part-of: "dash0-operator-test"
+        app.kubernetes.io/instance: "express"
+        test.label/key: "label-value"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ .Values.job.port }}"
+        test.annotation/key: "annotation value"
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: app
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          env:
+            - name: PORT
+              value: "{{ .Values.job.port }}"
+            - name: TRIGGER_SELF_AND_EXIT
+              value: "true"
+            {{- if .Values.job.testId }}
+            - name: TEST_ID
+              value: "{{ .Values.job.testId }}"
+            {{- end }}
+            #- name: OTEL_LOG_LEVEL
+            #  value: "debug"
+          ports:
+            - containerPort: {{ .Values.job.port }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: {{ .Values.job.port }}
+            initialDelaySeconds: 1
+            periodSeconds: 1
+{{- end }}

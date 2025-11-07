@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: Copyright 2025 Dash0 Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+{{- if .Values.daemonset.enabled }}
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: dash0-operator-python-flask-test-daemonset
+  labels:
+    app: {{ .Values.daemonset.selector }}
+    {{- with .Values.daemonset.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ .Values.daemonset.selector }}
+  template:
+    metadata:
+      labels:
+        app: {{ .Values.daemonset.selector }}
+        test.label/key: "label-value"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "{{ .Values.daemonset.port }}"
+        test.annotation/key: "annotation value"
+    spec:
+      containers:
+        - name: app
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          env:
+            - name: PORT
+              value: "{{ .Values.daemonset.port }}"
+          ports:
+            - containerPort: {{ .Values.daemonset.port }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: {{ .Values.daemonset.port }}
+            initialDelaySeconds: 1
+            periodSeconds: 1
+{{- end }}
