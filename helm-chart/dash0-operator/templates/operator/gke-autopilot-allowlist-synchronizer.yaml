@@ -5,12 +5,17 @@ metadata:
   name: dash0-allowlist-synchronizer
   annotations:
     {{/*
-    We need to make sure that the AllowlistSynchronizer has been deployed (and is ready, i.e. has fetched the
-    referenced WorkloadAllowlist resources) before Helm tries to deploy the rest of our resources, in particular the
-    operator manager deployment. Unfortunately, Helm has no good out-of-the box support for defining dependencies like
-    this in a chart, but annotating a resource as a pre-install hook gives us the desired order.
-    The downside is that hook resources are not considered to be part of the release, so they are not removed with
-    helm uninstall.
+    We need to make sure that the AllowlistSynchronizer has been deployed before Helm tries to deploy the rest of our
+    resources, in particular the operator manager deployment. Unfortunately, Helm has no good out-of-the box support for
+    defining dependencies like this in a chart, but annotating a resource as a pre-install hook gives us the desired
+    order.
+    Strictly speaking, we actually also need the AllowlistSynchronizer to become ready, as that signals that it has
+    successfully fetched the referenced WorkloadAllowlist resources. This is currently not guaranteed just by declaring
+    it as a pre-install hook. In practice, synchronizing the referenced AllowLists happens almost instantly, so this is
+    good enough for now. (We could potentially enforce the readiness by defining yet another pre-install/pre-upgrade
+    hook: a job that checks for the ready condition of AllowlistSynchronizer and only succeeds once it is ready.)
+    A downside of declaring this resource as a hook is that hook resources are not considered to be part of the release,
+    so they are not removed with helm uninstall.
     */}}
     helm.sh/hook: "pre-install,pre-upgrade"
     helm.sh/hook-weight: "-1"
