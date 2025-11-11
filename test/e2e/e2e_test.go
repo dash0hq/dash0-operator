@@ -78,8 +78,6 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 
 		recreateNamespace(applicationUnderTestNamespace)
 		cleanupSteps.removeTestApplicationNamespace = true
-		recreateNamespace(dash0ApiMockNamespace)
-		cleanupSteps.removeApiMockNamespace = true
 
 		determineContainerImages()
 		determineTestAppImages()
@@ -113,9 +111,6 @@ var _ = Describe("Dash0 Operator", Ordered, func() {
 		if cleanupSteps.removeTestApplicationNamespace {
 			By("removing namespace for application under test")
 			_ = runAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", applicationUnderTestNamespace))
-		}
-		if cleanupSteps.removeApiMockNamespace {
-			_ = runAndIgnoreOutput(exec.Command("kubectl", "delete", "ns", dash0ApiMockNamespace))
 		}
 		uninstallMetricsServerIfApplicable(&cleanupSteps)
 

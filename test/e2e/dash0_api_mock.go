@@ -88,6 +88,7 @@ func installDash0ApiMock() {
 	helmArgs := []string{"install",
 		"--namespace",
 		dash0ApiMockNamespace,
+		"--create-namespace",
 		"--wait",
 		"--timeout",
 		"60s",
@@ -108,6 +109,15 @@ func uninstallDash0ApiMock() {
 			dash0ApiMockReleaseName,
 			"--namespace",
 			dash0ApiMockNamespace,
+			"--ignore-not-found",
+		))).To(Succeed())
+	Expect(runAndIgnoreOutput(
+		exec.Command(
+			"kubectl",
+			"delete",
+			"ns",
+			dash0ApiMockNamespace,
+			"--wait",
 			"--ignore-not-found",
 		))).To(Succeed())
 }
