@@ -27,7 +27,7 @@ type StoredRequests struct {
 }
 
 const (
-	dash0ApiMockChartPath   = "test/e2e/dash0-api-mock/dash0-api-mock"
+	dash0ApiMockChartPath   = "test/e2e/dash0-api-mock/helm-chart"
 	dash0ApiMockReleaseName = "dash0-api-mock"
 
 	dash0ApiMockNamespace   = "dash0-api"

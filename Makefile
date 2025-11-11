@@ -209,11 +209,11 @@ endef
 helm-chart-lint: ## Run static code analysis for the Helm chart templates.
 	@echo "-------------------------------- (linting Helm charts)"
 	@$(call lint_helm_chart,helm-chart/dash0-operator)
-	@$(call lint_helm_chart,test-resources/dotnet/dash0-operator-test-app-dotnet)
-	@$(call lint_helm_chart,test-resources/jvm/spring-boot/dash0-operator-test-app-jvm)
-	@$(call lint_helm_chart,test-resources/node.js/express/dash0-operator-test-app-nodejs)
-	@$(call lint_helm_chart,test-resources/python/flask/dash0-operator-test-app-python)
-	@$(call lint_helm_chart,test/e2e/dash0-api-mock/dash0-api-mock)
+	@$(call lint_helm_chart,test-resources/dotnet/helm-chart)
+	@$(call lint_helm_chart,test-resources/jvm/spring-boot/helm-chart)
+	@$(call lint_helm_chart,test-resources/node.js/express/helm-chart)
+	@$(call lint_helm_chart,test-resources/python/flask/helm-chart)
+	@$(call lint_helm_chart,test/e2e/dash0-api-mock/helm-chart)
 	@$(call lint_helm_chart,test/e2e/otlp-sink/helm-chart)
 
 .PHONY: shellcheck-check-installed
