@@ -27,7 +27,7 @@ const (
 )
 
 var (
-	chartPathNodeJs = fmt.Sprintf("%s/dash0-operator-test-app-nodejs", applicationPathNodeJs)
-	chartPathJvm    = fmt.Sprintf("%s/dash0-operator-test-app-jvm", applicationPathJvm)
-	chartPathDotnet = fmt.Sprintf("%s/dash0-operator-test-app-dotnet", applicationPathDotnet)
+	chartPathNodeJs = fmt.Sprintf("%s/helm-chart", applicationPathNodeJs)
+	chartPathJvm    = fmt.Sprintf("%s/helm-chart", applicationPathJvm)
+	chartPathDotnet = fmt.Sprintf("%s/helm-chart", applicationPathDotnet)
 )
