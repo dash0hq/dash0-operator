@@ -34,7 +34,6 @@ func e2ePrint(format string, a ...any) {
 type neccessaryCleanupSteps struct {
 	removeMetricsServer            bool
 	removeTestApplicationNamespace bool
-	removeApiMockNamespace         bool
 	removeOtlpSink                 bool
 	removeThirdPartyCrds           bool
 	removeIngressNginx             bool
