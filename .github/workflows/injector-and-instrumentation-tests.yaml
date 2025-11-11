@@ -143,7 +143,7 @@ jobs:
           fetch-depth: 0
 
       - name: set up qemu
-        uses: docker/setup-qemu-action@e77e8065d9f7ec6abdd9838668cd7b43924dd64d
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130
         if: |
           needs.build_instrumentation_image.outputs.instrumentation_any_changed == 'true' ||
           github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
@@ -169,7 +169,7 @@ jobs:
           fetch-depth: 0
 
       - name: set up qemu
-        uses: docker/setup-qemu-action@e77e8065d9f7ec6abdd9838668cd7b43924dd64d
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130
         if: |
           needs.build_instrumentation_image.outputs.instrumentation_any_changed == 'true' ||
           github.ref == 'refs/heads/main' || contains(github.ref, 'refs/tags/')
