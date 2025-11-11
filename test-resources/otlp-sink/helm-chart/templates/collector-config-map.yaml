@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otlp-sink
+data:
+  config.yaml: |
+    extensions:
+      health_check:
+        endpoint: ${env:K8S_POD_IP}:13100
+
+    exporters:
+      debug:
+        verbosity: detailed
+      file/traces:
+        path: /telemetry/traces.jsonl
+        flush_interval: 100ms
+      file/metrics:
+        path: /telemetry/metrics.jsonl
+        flush_interval: 100ms
+      file/logs:
+        path: /telemetry/logs.jsonl
+        flush_interval: 100ms
+
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: ${env:K8S_POD_IP}:4317
+            max_recv_msg_size_mib: 64
+          http:
+            endpoint: ${env:K8S_POD_IP}:4318
+            max_request_body_size: 20971520
+    service:
+      extensions:
+        - health_check
+      pipelines:
+        traces:
+          receivers:
+            - otlp
+          exporters:
+            - debug
+            - file/traces
+        metrics:
+          receivers:
+            - otlp
+          exporters:
+            - debug
+            - file/metrics
+        logs:
+          receivers:
+            - otlp
+          exporters:
+            - debug
+            - file/logs
